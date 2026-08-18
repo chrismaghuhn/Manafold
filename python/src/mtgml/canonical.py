@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import binascii
 import json
 import re
 from collections.abc import Mapping
@@ -62,7 +63,7 @@ def require_canonical_base64(value: object) -> str:
         raise WireError("decode.invalid_json", "base64 payload must be a string")
     try:
         decoded = base64.b64decode(value, validate=True)
-    except (ValueError, base64.binascii.Error) as exc:
+    except (ValueError, binascii.Error) as exc:
         raise WireError("semantic.observation", "payload is not canonical base64") from exc
     if base64.b64encode(decoded).decode("ascii") != value:
         raise WireError("semantic.observation", "payload is not canonical base64")
