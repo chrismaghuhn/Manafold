@@ -833,7 +833,6 @@ mod tests {
                         last_known: second,
                         new_snapshot: third,
                     }),
-                    },
                 },
             },
         ];
