@@ -72,7 +72,7 @@ class CandidateIntent:
             raise WireError("encode.serialization", "unknown candidate intent")
         result: dict[str, object] = {"kind": self.kind}
         for key, value in self.payload:
-            result[key] = uint_wire(int(value)) if key in {"object", "ability", "player"} else value
+            result[key] = uint_wire(value) if key in {"object", "ability", "player"} else value  # type: ignore[arg-type]
         # Reuse the reader as exact structural validation.
         CandidateIntent.from_wire(result)
         return result
