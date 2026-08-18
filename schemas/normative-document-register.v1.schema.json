@@ -1,0 +1,61 @@
+{
+  "$id": "https://example.invalid/schemas/normative-document-register.v1.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "documents": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "change_process": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "owner_role": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "path": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "role": {
+            "enum": [
+              "normative",
+              "process",
+              "informative",
+              "template"
+            ]
+          },
+          "stability": {
+            "enum": [
+              "draft",
+              "experimental",
+              "provisional",
+              "accepted",
+              "deprecated"
+            ]
+          }
+        },
+        "required": [
+          "path",
+          "role",
+          "stability",
+          "owner_role",
+          "change_process"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "schema_version": {
+      "const": "normative-document-register.v1"
+    }
+  },
+  "required": [
+    "schema_version",
+    "documents"
+  ],
+  "title": "Normative Document Register v1",
+  "type": "object"
+}

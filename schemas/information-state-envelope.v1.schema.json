@@ -1,0 +1,79 @@
+{
+  "$id": "information-state-envelope.v1.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "current_observation": {
+      "additionalProperties": false,
+      "properties": {
+        "digest": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "payload_base64": {
+          "type": "string"
+        },
+        "payload_codec": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "perspective": {
+          "pattern": "^(0|[1-9][0-9]*)$",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": "observation-envelope.v1"
+        },
+        "state_revision": {
+          "pattern": "^(0|[1-9][0-9]*)$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "schema_version",
+        "perspective",
+        "state_revision",
+        "payload_codec",
+        "payload_base64",
+        "digest"
+      ],
+      "type": "object"
+    },
+    "digest": {
+      "pattern": "^[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "perspective": {
+      "pattern": "^(0|[1-9][0-9]*)$",
+      "type": "string"
+    },
+    "private_history_length": {
+      "maximum": 18446744073709551615,
+      "minimum": 0,
+      "type": "integer"
+    },
+    "public_history_length": {
+      "maximum": 18446744073709551615,
+      "minimum": 0,
+      "type": "integer"
+    },
+    "schema_version": {
+      "const": "information-state-envelope.v1"
+    },
+    "state_revision": {
+      "pattern": "^(0|[1-9][0-9]*)$",
+      "type": "string"
+    }
+  },
+  "required": [
+    "schema_version",
+    "perspective",
+    "state_revision",
+    "current_observation",
+    "public_history_length",
+    "private_history_length",
+    "digest"
+  ],
+  "title": "InformationStateEnvelope v1",
+  "type": "object"
+}

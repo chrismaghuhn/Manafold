@@ -1,0 +1,1 @@
+{"actor":"01","candidates":[{"candidate_id":"yes","intent":{"kind":"choose_boolean","value":true},"semantic_key":"boolean:true"},{"candidate_id":"no","intent":{"kind":"choose_boolean","value":false},"semantic_key":"boolean:false"}],"decision":{"kind":"choose_one"},"decision_id":"1","schema_version":"player-decision-request.v1","state_revision":"0","visibility":"public"}

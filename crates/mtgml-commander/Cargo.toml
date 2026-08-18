@@ -1,0 +1,10 @@
+[package]
+name = "mtgml-commander"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+mtgml-model = { path = "../mtgml-model" }
+mtgml-state = { path = "../mtgml-state" }
+thiserror.workspace = true

@@ -1,0 +1,143 @@
+{
+  "$id": "https://example.invalid/schemas/capability-registry.v1.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "entries": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "authority_refs": {
+            "items": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "type": "array",
+            "uniqueItems": true
+          },
+          "benchmark_scenarios": {
+            "items": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "type": "array",
+            "uniqueItems": true
+          },
+          "category": {
+            "enum": [
+              "core_rule",
+              "mechanic",
+              "format_policy",
+              "decision",
+              "visibility",
+              "tooling"
+            ]
+          },
+          "conformance_cases": {
+            "items": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "type": "array",
+            "uniqueItems": true
+          },
+          "dependencies": {
+            "items": {
+              "pattern": "^(rules|mechanic|decision|visibility|tooling|format/[a-z0-9-]+)/[a-z0-9][a-z0-9-]*(/[a-z0-9][a-z0-9-]*)*$",
+              "type": "string"
+            },
+            "type": "array",
+            "uniqueItems": true
+          },
+          "implementation_paths": {
+            "items": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "type": "array",
+            "uniqueItems": true
+          },
+          "information_risk": {
+            "enum": [
+              "unreviewed",
+              "none",
+              "low",
+              "medium",
+              "high",
+              "critical"
+            ]
+          },
+          "key": {
+            "pattern": "^(rules|mechanic|decision|visibility|tooling|format/[a-z0-9-]+)/[a-z0-9][a-z0-9-]*(/[a-z0-9][a-z0-9-]*)*$",
+            "type": "string"
+          },
+          "lifecycle": {
+            "enum": [
+              "proposed",
+              "specified",
+              "implemented",
+              "covered",
+              "certified",
+              "deprecated"
+            ]
+          },
+          "notes": {
+            "type": "string"
+          },
+          "owners": {
+            "items": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "minItems": 1,
+            "type": "array",
+            "uniqueItems": true
+          },
+          "spec_path": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "summary": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "version": {
+            "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "version",
+          "category",
+          "lifecycle",
+          "summary",
+          "dependencies",
+          "authority_refs",
+          "spec_path",
+          "implementation_paths",
+          "conformance_cases",
+          "information_risk",
+          "benchmark_scenarios",
+          "owners"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "registry_id": {
+      "pattern": "^[a-z0-9][a-z0-9-]*(/[a-z0-9][a-z0-9-]*)+$",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "capability-registry.v1"
+    }
+  },
+  "required": [
+    "schema_version",
+    "registry_id",
+    "entries"
+  ],
+  "title": "Capability Registry v1",
+  "type": "object"
+}

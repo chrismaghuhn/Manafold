@@ -1,0 +1,19 @@
+{
+  "cards": [
+    {
+      "definition_id": "example/card/commander-b",
+      "quantity": 1
+    },
+    {
+      "definition_id": "example/card/basic-land",
+      "quantity": 99
+    }
+  ],
+  "certification_status": "draft",
+  "commanders": [
+    "example/card/commander-b"
+  ],
+  "content_digest": "0000000000000000000000000000000000000000000000000000000000000000",
+  "deck_id": "example/deck-b",
+  "format_policy_snapshot": "TBD-policy"
+}

@@ -1,0 +1,158 @@
+{
+  "$id": "https://example.invalid/schemas/card-definition-manifest.v1.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "conformance_cases": {
+      "items": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "type": "array",
+      "uniqueItems": true
+    },
+    "decision_surface": {
+      "items": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "type": "array",
+      "uniqueItems": true
+    },
+    "definition_id": {
+      "pattern": "^[a-z0-9][a-z0-9-]*(/[a-z0-9][a-z0-9-]*)+$",
+      "type": "string"
+    },
+    "display_name": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "faces": {
+      "items": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "minItems": 1,
+      "type": "array",
+      "uniqueItems": true
+    },
+    "generated_objects": {
+      "items": {
+        "pattern": "^[a-z0-9][a-z0-9-]*(/[a-z0-9][a-z0-9-]*)+$",
+        "type": "string"
+      },
+      "type": "array",
+      "uniqueItems": true
+    },
+    "implementation_path": {
+      "minLength": 1,
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "information_risks": {
+      "items": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "type": "array",
+      "uniqueItems": true
+    },
+    "lifecycle": {
+      "enum": [
+        "draft",
+        "imported",
+        "parsed",
+        "implemented",
+        "covered",
+        "certified",
+        "blocked",
+        "deprecated"
+      ]
+    },
+    "native_executor": {
+      "minLength": 1,
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "notes": {
+      "type": "string"
+    },
+    "required_capabilities": {
+      "items": {
+        "pattern": "^(rules|mechanic|decision|visibility|tooling|format/[a-z0-9-]+)/[a-z0-9][a-z0-9-]*(/[a-z0-9][a-z0-9-]*)*$",
+        "type": "string"
+      },
+      "type": "array",
+      "uniqueItems": true
+    },
+    "schema_version": {
+      "const": "card-definition-manifest.v1"
+    },
+    "source": {
+      "additionalProperties": false,
+      "properties": {
+        "generator": {
+          "additionalProperties": false,
+          "properties": {
+            "output_digest": {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            "tool_id": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "tool_version": {
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          "required": [
+            "tool_id",
+            "tool_version",
+            "output_digest"
+          ],
+          "type": "object"
+        },
+        "normalized_digest": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "record_id": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "snapshot": {
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "snapshot",
+        "record_id",
+        "normalized_digest"
+      ],
+      "type": "object"
+    }
+  },
+  "required": [
+    "schema_version",
+    "definition_id",
+    "display_name",
+    "source",
+    "faces",
+    "generated_objects",
+    "required_capabilities",
+    "decision_surface",
+    "information_risks",
+    "conformance_cases",
+    "native_executor",
+    "lifecycle"
+  ],
+  "title": "Card Definition Manifest v1",
+  "type": "object"
+}

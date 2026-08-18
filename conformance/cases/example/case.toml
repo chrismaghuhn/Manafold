@@ -1,0 +1,15 @@
+case_id = "example.synthetic.revision-advance"
+status = "illustrative-only"
+capability = "rules/synthetic-transition"
+rules_snapshot = "TBD-rules"
+format_policy_snapshot = "TBD-policy"
+oracle_snapshot = "TBD-oracle"
+initial_fixture = "conformance/fixtures/example.initial.json"
+response_fixture = "conformance/fixtures/example.response.json"
+expected_fixture = "conformance/expected/example.expected.json"
+
+[proof_obligations]
+legal_action_soundness = true
+legal_action_completeness = false
+hidden_information_noninterference = false
+replay_round_trip = true

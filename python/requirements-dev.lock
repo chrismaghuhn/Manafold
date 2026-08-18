@@ -1,0 +1,9 @@
+# Exact direct development-tool pins for the V0.2.2 reference toolchain.
+# This is not yet a hash-locked transitive environment; public certified releases
+# require the clean build-image/attestation decision in OD-016/OD-021.
+jsonschema==4.26.0
+mypy==1.17.1
+pytest==8.4.1
+PyYAML==6.0.3
+referencing==0.36.2
+ruff==0.12.9

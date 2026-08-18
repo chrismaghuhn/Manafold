@@ -1,0 +1,4 @@
+manifest_version = "reproducibility.v1"
+source_date_epoch = 1787011200
+archive_prefix = "mtg-ml-engine-foundation-v0.2.2"
+zip_compression = "deflate-9"

@@ -1,0 +1,20 @@
+{
+  "$id": "contract-vocabulary-catalog.v1.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "catalog_version": {"pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$", "type": "string"},
+    "observed_event_kinds": {"items": {"minLength": 1, "type": "string"}, "minItems": 1, "type": "array", "uniqueItems": true},
+    "player_results": {"items": {"items": {"minLength": 1, "type": "string"}, "maxItems": 3, "minItems": 3, "type": "array"}, "minItems": 1, "type": "array"},
+    "schema_ids": {"additionalProperties": {"minLength": 1, "type": "string"}, "minProperties": 1, "type": "object"},
+    "schema_version": {"const": "contract-vocabulary-catalog.v1"},
+    "scope": {"const": "mechanical_cross_language_vocabulary_only"},
+    "stable_wire_error_codes": {"items": {"pattern": "^[a-z0-9_]+(\\.[a-z0-9_]+)+$", "type": "string"}, "minItems": 1, "type": "array", "uniqueItems": true},
+    "terminal_reasons": {"items": {"items": {"minLength": 1, "type": "string"}, "maxItems": 3, "minItems": 3, "type": "array"}, "minItems": 1, "type": "array"},
+    "truncation_reasons": {"items": {"items": {"minLength": 1, "type": "string"}, "maxItems": 3, "minItems": 3, "type": "array"}, "minItems": 1, "type": "array"},
+    "zone_kinds": {"items": {"items": {"minLength": 1, "type": "string"}, "maxItems": 3, "minItems": 3, "type": "array"}, "minItems": 1, "type": "array"}
+  },
+  "required": ["schema_version", "catalog_version", "scope", "terminal_reasons", "truncation_reasons", "player_results", "zone_kinds", "observed_event_kinds", "schema_ids", "stable_wire_error_codes"],
+  "title": "Contract Vocabulary Catalog v1",
+  "type": "object"
+}

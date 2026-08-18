@@ -1,0 +1,18 @@
+schema_version = "0.2.2"
+rules_snapshot = "TBD-rules"
+format_policy_snapshot = "TBD-policy"
+oracle_snapshot = "TBD-oracle"
+card_bundle = "example/bundle-v1"
+root_seed_hex = "0000000000000000000000000000000000000000000000000000000000000000"
+
+[[seats]]
+player_id = 1
+deck_id = "example/deck-a"
+
+[[seats]]
+player_id = 2
+deck_id = "example/deck-b"
+
+[limits]
+maximum_decisions = 10000
+maximum_rule_events = 100000

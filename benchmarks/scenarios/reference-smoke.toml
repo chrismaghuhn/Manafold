@@ -1,0 +1,18 @@
+scenario_id = "foundation/reference-smoke"
+status = "blocked"
+engine_profile = "release"
+card_bundle = "example/bundle-v1"
+environment_config = "config/v1.example.toml"
+hardware_manifest = "config/reference-hardware.example.toml"
+
+[workload]
+warmup_episodes = 0
+measured_episodes = 0
+parallel_environments = 1
+
+[blockers]
+items = [
+  "OD-003 exact decks",
+  "OD-007 reference hardware and budgets",
+  "M1 executable deterministic kernel"
+]

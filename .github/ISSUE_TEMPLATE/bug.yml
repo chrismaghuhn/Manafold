@@ -1,0 +1,39 @@
+name: Engine bug
+about: Report reproducible incorrect or unstable behavior
+labels: [bug, needs-triage]
+body:
+  - type: markdown
+    attributes:
+      value: Do not include private security or hidden-information leak details here.
+  - type: input
+    id: build
+    attributes:
+      label: Engine build or commit
+    validations:
+      required: true
+  - type: input
+    id: bundle
+    attributes:
+      label: Capability bundle and snapshot IDs
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior and authority
+      description: Include pinned rule, policy, Oracle, or conformance references.
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Minimal reproduction
+      description: Replay, case ID, seed, decisions, and relevant digests.
+    validations:
+      required: true

@@ -1,0 +1,9 @@
+[package]
+name = "mtgml-card-ir"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+mtgml-model = { path = "../mtgml-model" }
+serde.workspace = true

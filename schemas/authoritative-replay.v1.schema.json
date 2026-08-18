@@ -1,0 +1,275 @@
+{
+  "$id": "authoritative-replay.v1.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "final_state_digest": {
+      "pattern": "^[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "final_state_revision": {
+      "pattern": "^(0|[1-9][0-9]*)$",
+      "type": "string"
+    },
+    "manifest": {
+      "additionalProperties": false,
+      "properties": {
+        "card_bundle": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "decks": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "deck_id": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "digest": {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              },
+              "player": {
+                "pattern": "^(0|[1-9][0-9]*)$",
+                "type": "string"
+              }
+            },
+            "required": [
+              "player",
+              "deck_id",
+              "digest"
+            ],
+            "type": "object"
+          },
+          "minItems": 1,
+          "type": "array"
+        },
+        "engine_build": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "format_policy_snapshot": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "initial_state_digest": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "initial_state_revision": {
+          "pattern": "^(0|[1-9][0-9]*)$",
+          "type": "string"
+        },
+        "kernel": {
+          "additionalProperties": false,
+          "properties": {
+            "build_profile": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "implementation_id": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "semantic_version": {
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          "required": [
+            "implementation_id",
+            "semantic_version",
+            "build_profile"
+          ],
+          "type": "object"
+        },
+        "oracle_snapshot": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "randomness": {
+          "additionalProperties": false,
+          "properties": {
+            "algorithm_id": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "derivation_version": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "root_seed_hex": {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            }
+          },
+          "required": [
+            "algorithm_id",
+            "derivation_version",
+            "root_seed_hex"
+          ],
+          "type": "object"
+        },
+        "rules_snapshot": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "schema_version": {
+          "const": "replay-manifest.v1"
+        },
+        "schemas": {
+          "additionalProperties": false,
+          "properties": {
+            "decision": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "decision_response": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "information_state": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "observation": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "observed_event": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "player_step": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "replay_step": {
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          "required": [
+            "observation",
+            "information_state",
+            "decision",
+            "decision_response",
+            "observed_event",
+            "player_step",
+            "replay_step"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "schema_version",
+        "engine_build",
+        "kernel",
+        "rules_snapshot",
+        "format_policy_snapshot",
+        "oracle_snapshot",
+        "card_bundle",
+        "schemas",
+        "randomness",
+        "decks",
+        "initial_state_revision",
+        "initial_state_digest"
+      ],
+      "type": "object"
+    },
+    "schema_version": {
+      "const": "authoritative-replay.v1"
+    },
+    "steps": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "accepted": {
+            "type": "boolean"
+          },
+          "response": {
+            "additionalProperties": false,
+            "properties": {
+              "assignments": {
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "candidate_id": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "ordinal": {
+                      "maximum": 4294967295,
+                      "minimum": 0,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "candidate_id"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "decision_id": {
+                "pattern": "^(0|[1-9][0-9]*)$",
+                "type": "string"
+              },
+              "schema_version": {
+                "const": "decision-response.v1"
+              },
+              "state_revision": {
+                "pattern": "^(0|[1-9][0-9]*)$",
+                "type": "string"
+              }
+            },
+            "required": [
+              "schema_version",
+              "decision_id",
+              "state_revision",
+              "assignments"
+            ],
+            "type": "object"
+          },
+          "state_digest_after": {
+            "pattern": "^[0-9a-f]{64}$",
+            "type": "string"
+          },
+          "state_revision_after": {
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string"
+          },
+          "state_revision_before": {
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string"
+          },
+          "step_index": {
+            "maximum": 18446744073709551615,
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "step_index",
+          "state_revision_before",
+          "response",
+          "accepted",
+          "state_revision_after",
+          "state_digest_after"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    }
+  },
+  "required": [
+    "schema_version",
+    "manifest",
+    "steps",
+    "final_state_revision",
+    "final_state_digest"
+  ],
+  "title": "AuthoritativeReplay v1",
+  "type": "object"
+}

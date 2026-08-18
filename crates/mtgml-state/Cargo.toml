@@ -1,0 +1,13 @@
+[package]
+name = "mtgml-state"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+mtgml-decision = { path = "../mtgml-decision" }
+mtgml-model = { path = "../mtgml-model" }
+mtgml-random = { path = "../mtgml-random" }
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true

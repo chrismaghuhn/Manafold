@@ -1,0 +1,274 @@
+{
+  "$id": "https://example.invalid/schemas/bundle-certification.v1.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "backend": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "bundle_content_digest": {
+      "pattern": "^[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "bundle_id": {
+      "pattern": "^[a-z0-9][a-z0-9-]*(/[a-z0-9][a-z0-9-]*)+$",
+      "type": "string"
+    },
+    "capability_closure": {
+      "additionalProperties": false,
+      "properties": {
+        "below_certified": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "key": {
+                "pattern": "^(rules|mechanic|decision|visibility|tooling|format/[a-z0-9-]+)/[a-z0-9][a-z0-9-]*(/[a-z0-9][a-z0-9-]*)*$",
+                "type": "string"
+              },
+              "lifecycle": {
+                "enum": [
+                  "proposed",
+                  "specified",
+                  "implemented",
+                  "covered",
+                  "deprecated"
+                ]
+              }
+            },
+            "required": [
+              "key",
+              "lifecycle"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "card_lifecycle_blockers": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "definition_id": {
+                "pattern": "^[a-z0-9][a-z0-9-]*(/[a-z0-9][a-z0-9-]*)+$",
+                "type": "string"
+              },
+              "lifecycle": {
+                "enum": [
+                  "draft",
+                  "imported",
+                  "parsed",
+                  "implemented",
+                  "blocked",
+                  "deprecated"
+                ]
+              }
+            },
+            "required": [
+              "definition_id",
+              "lifecycle"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "cycles": {
+          "items": {
+            "items": {
+              "pattern": "^(rules|mechanic|decision|visibility|tooling|format/[a-z0-9-]+)/[a-z0-9][a-z0-9-]*(/[a-z0-9][a-z0-9-]*)*$",
+              "type": "string"
+            },
+            "minItems": 2,
+            "type": "array"
+          },
+          "type": "array"
+        },
+        "missing": {
+          "items": {
+            "pattern": "^(rules|mechanic|decision|visibility|tooling|format/[a-z0-9-]+)/[a-z0-9][a-z0-9-]*(/[a-z0-9][a-z0-9-]*)*$",
+            "type": "string"
+          },
+          "type": "array",
+          "uniqueItems": true
+        },
+        "missing_definitions": {
+          "items": {
+            "pattern": "^[a-z0-9][a-z0-9-]*(/[a-z0-9][a-z0-9-]*)+$",
+            "type": "string"
+          },
+          "type": "array",
+          "uniqueItems": true
+        },
+        "native_executors": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "type": "array",
+          "uniqueItems": true
+        },
+        "required": {
+          "items": {
+            "pattern": "^(rules|mechanic|decision|visibility|tooling|format/[a-z0-9-]+)/[a-z0-9][a-z0-9-]*(/[a-z0-9][a-z0-9-]*)*$",
+            "type": "string"
+          },
+          "type": "array",
+          "uniqueItems": true
+        },
+        "resolved": {
+          "items": {
+            "pattern": "^(rules|mechanic|decision|visibility|tooling|format/[a-z0-9-]+)/[a-z0-9][a-z0-9-]*(/[a-z0-9][a-z0-9-]*)*$",
+            "type": "string"
+          },
+          "type": "array",
+          "uniqueItems": true
+        },
+        "stale_native_executor_declarations": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "type": "array",
+          "uniqueItems": true
+        },
+        "undeclared_native_executors": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "type": "array",
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "required",
+        "resolved",
+        "missing",
+        "cycles",
+        "below_certified",
+        "missing_definitions",
+        "card_lifecycle_blockers",
+        "native_executors",
+        "undeclared_native_executors",
+        "stale_native_executor_declarations"
+      ],
+      "type": "object"
+    },
+    "engine_build": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "evidence_digest": {
+      "pattern": "^[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "exclusions": {
+      "items": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "type": "array",
+      "uniqueItems": true
+    },
+    "gates": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "evidence": {
+            "items": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "type": "array",
+            "uniqueItems": true
+          },
+          "gate": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "PASS",
+              "FAIL",
+              "NOT_RUN"
+            ]
+          }
+        },
+        "required": [
+          "gate",
+          "status",
+          "evidence"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "generated_by": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "bundle-certification.v1"
+    },
+    "snapshots": {
+      "additionalProperties": false,
+      "properties": {
+        "format_policy": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "legality": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "oracle": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "rules": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "rulings": {
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "rules",
+        "format_policy",
+        "oracle",
+        "rulings",
+        "legality"
+      ],
+      "type": "object"
+    },
+    "status": {
+      "enum": [
+        "blocked",
+        "candidate",
+        "certified",
+        "revoked",
+        "superseded"
+      ]
+    }
+  },
+  "required": [
+    "schema_version",
+    "bundle_id",
+    "bundle_content_digest",
+    "engine_build",
+    "backend",
+    "snapshots",
+    "capability_closure",
+    "gates",
+    "status",
+    "exclusions",
+    "evidence_digest",
+    "generated_by"
+  ],
+  "title": "Bundle Certification Report v1",
+  "type": "object"
+}

@@ -1,0 +1,31 @@
+name: Rules semantics proposal
+about: Add or correct a rule primitive or interaction
+labels: [rules, needs-authority]
+body:
+  - type: input
+    id: capability
+    attributes:
+      label: Capability key
+      placeholder: rules/example-capability
+    validations:
+      required: true
+  - type: textarea
+    id: authority
+    attributes:
+      label: Pinned authority
+      description: Identify immutable rule, policy, Oracle, and ruling snapshots.
+    validations:
+      required: true
+  - type: textarea
+    id: cases
+    attributes:
+      label: Required conformance cases
+      description: Include normal, illegal, interaction, serialization, and visibility cases.
+    validations:
+      required: true
+  - type: textarea
+    id: decisions
+    attributes:
+      label: Decision and information impact
+    validations:
+      required: true

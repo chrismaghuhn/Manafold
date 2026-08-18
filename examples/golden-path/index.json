@@ -1,0 +1,19 @@
+{
+  "bundle_manifest": "examples/golden-path/bundle-manifest.json",
+  "capability_registry": "examples/golden-path/capability-registry.json",
+  "card_definition": "examples/golden-path/card-definition.json",
+  "expected_certification_status": "blocked",
+  "schema_version": "golden-path-index.v1",
+  "wire_fixtures": [
+    "wire/golden/player-decision-request.v1.json",
+    "wire/golden/decision-response.v1.json",
+    "wire/golden/observation-envelope.v1.json",
+    "wire/golden/information-state-envelope.v1.json",
+    "wire/golden/observed-event-ceased.v1.json",
+    "wire/golden/observed-event-tapped.v1.json",
+    "wire/golden/player-step.v1.json",
+    "wire/golden/episode-status.v1.json",
+    "wire/golden/replay-manifest.v1.json",
+    "wire/golden/authoritative-replay-empty.v1.json"
+  ]
+}

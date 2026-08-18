@@ -1,0 +1,146 @@
+{
+  "$id": "https://example.invalid/schemas/scope-impact-report.v1.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "capabilities": {
+      "additionalProperties": false,
+      "properties": {
+        "added": {
+          "items": {
+            "pattern": "^(rules|mechanic|decision|visibility|tooling|format/[a-z0-9-]+)/[a-z0-9][a-z0-9-]*(/[a-z0-9][a-z0-9-]*)*$",
+            "type": "string"
+          },
+          "type": "array",
+          "uniqueItems": true
+        },
+        "removed": {
+          "items": {
+            "pattern": "^(rules|mechanic|decision|visibility|tooling|format/[a-z0-9-]+)/[a-z0-9][a-z0-9-]*(/[a-z0-9][a-z0-9-]*)*$",
+            "type": "string"
+          },
+          "type": "array",
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "added",
+        "removed"
+      ],
+      "type": "object"
+    },
+    "certification_impact": {
+      "enum": [
+        "none",
+        "revalidate",
+        "supersede",
+        "revoke"
+      ]
+    },
+    "definitions": {
+      "additionalProperties": false,
+      "properties": {
+        "added": {
+          "items": {
+            "pattern": "^[a-z0-9][a-z0-9-]*(/[a-z0-9][a-z0-9-]*)+$",
+            "type": "string"
+          },
+          "type": "array",
+          "uniqueItems": true
+        },
+        "removed": {
+          "items": {
+            "pattern": "^[a-z0-9][a-z0-9-]*(/[a-z0-9][a-z0-9-]*)+$",
+            "type": "string"
+          },
+          "type": "array",
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "added",
+        "removed"
+      ],
+      "type": "object"
+    },
+    "previous_bundle": {
+      "additionalProperties": false,
+      "properties": {
+        "bundle_id": {
+          "pattern": "^[a-z0-9][a-z0-9-]*(/[a-z0-9][a-z0-9-]*)+$",
+          "type": "string"
+        },
+        "content_digest": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "bundle_id",
+        "content_digest"
+      ],
+      "type": [
+        "object",
+        "null"
+      ]
+    },
+    "proposed_bundle": {
+      "additionalProperties": false,
+      "properties": {
+        "bundle_id": {
+          "pattern": "^[a-z0-9][a-z0-9-]*(/[a-z0-9][a-z0-9-]*)+$",
+          "type": "string"
+        },
+        "content_digest": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "bundle_id",
+        "content_digest"
+      ],
+      "type": "object"
+    },
+    "required_evidence": {
+      "items": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "type": "array",
+      "uniqueItems": true
+    },
+    "schema_version": {
+      "const": "scope-impact-report.v1"
+    },
+    "snapshot_changes": {
+      "items": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "type": "array",
+      "uniqueItems": true
+    },
+    "status": {
+      "enum": [
+        "draft",
+        "reviewed",
+        "accepted",
+        "rejected"
+      ]
+    }
+  },
+  "required": [
+    "schema_version",
+    "previous_bundle",
+    "proposed_bundle",
+    "definitions",
+    "capabilities",
+    "snapshot_changes",
+    "certification_impact",
+    "required_evidence",
+    "status"
+  ],
+  "title": "Scope Impact Report v1",
+  "type": "object"
+}

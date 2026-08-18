@@ -1,0 +1,149 @@
+{
+  "$id": "https://example.invalid/schemas/bundle-manifest.v1.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "bundle_id": {
+      "pattern": "^[a-z0-9][a-z0-9-]*(/[a-z0-9][a-z0-9-]*)+$",
+      "type": "string"
+    },
+    "bundle_version": {
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$",
+      "type": "string"
+    },
+    "content_digest": {
+      "pattern": "^[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "decks": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "deck_id": {
+            "pattern": "^[a-z0-9][a-z0-9-]*(/[a-z0-9][a-z0-9-]*)+$",
+            "type": "string"
+          },
+          "digest": {
+            "pattern": "^[0-9a-f]{64}$",
+            "type": "string"
+          },
+          "player": {
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "player",
+          "deck_id",
+          "digest"
+        ],
+        "type": "object"
+      },
+      "minItems": 1,
+      "type": "array"
+    },
+    "definition_ids": {
+      "items": {
+        "pattern": "^[a-z0-9][a-z0-9-]*(/[a-z0-9][a-z0-9-]*)+$",
+        "type": "string"
+      },
+      "type": "array",
+      "uniqueItems": true
+    },
+    "exclusions": {
+      "items": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "type": "array",
+      "uniqueItems": true
+    },
+    "generated_definition_ids": {
+      "items": {
+        "pattern": "^[a-z0-9][a-z0-9-]*(/[a-z0-9][a-z0-9-]*)+$",
+        "type": "string"
+      },
+      "type": "array",
+      "uniqueItems": true
+    },
+    "native_executors": {
+      "items": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "type": "array",
+      "uniqueItems": true
+    },
+    "required_capabilities": {
+      "items": {
+        "pattern": "^(rules|mechanic|decision|visibility|tooling|format/[a-z0-9-]+)/[a-z0-9][a-z0-9-]*(/[a-z0-9][a-z0-9-]*)*$",
+        "type": "string"
+      },
+      "type": "array",
+      "uniqueItems": true
+    },
+    "schema_version": {
+      "const": "bundle-manifest.v1"
+    },
+    "snapshots": {
+      "additionalProperties": false,
+      "properties": {
+        "format_policy": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "legality": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "oracle": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "rules": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "rulings": {
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "rules",
+        "format_policy",
+        "oracle",
+        "rulings",
+        "legality"
+      ],
+      "type": "object"
+    },
+    "status": {
+      "enum": [
+        "draft",
+        "locked",
+        "certification_candidate",
+        "certified",
+        "revoked",
+        "superseded",
+        "example"
+      ]
+    }
+  },
+  "required": [
+    "schema_version",
+    "bundle_id",
+    "bundle_version",
+    "status",
+    "snapshots",
+    "decks",
+    "definition_ids",
+    "generated_definition_ids",
+    "required_capabilities",
+    "native_executors",
+    "content_digest",
+    "exclusions"
+  ],
+  "title": "Capability Bundle Manifest v1",
+  "type": "object"
+}

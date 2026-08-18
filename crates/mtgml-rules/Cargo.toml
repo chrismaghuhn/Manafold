@@ -1,0 +1,15 @@
+[package]
+name = "mtgml-rules"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+mtgml-decision = { path = "../mtgml-decision" }
+mtgml-model = { path = "../mtgml-model" }
+mtgml-state = { path = "../mtgml-state" }
+serde.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+mtgml-random = { path = "../mtgml-random" }

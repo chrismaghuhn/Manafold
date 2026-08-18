@@ -1,0 +1,117 @@
+{
+  "$id": "episode-status.v1.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "oneOf": [
+    {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "running"
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "terminal"
+        },
+        "players": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "player": {
+                "pattern": "^(0|[1-9][0-9]*)$",
+                "type": "string"
+              },
+              "result": {
+                "enum": [
+                  "win",
+                  "loss",
+                  "draw",
+                  "eliminated",
+                  "unresolved"
+                ]
+              }
+            },
+            "required": [
+              "player",
+              "result"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "reason": {
+          "enum": [
+            "rules_loss",
+            "concession",
+            "simultaneous_outcome",
+            "rules_draw",
+            "specified_loop"
+          ]
+        }
+      },
+      "required": [
+        "kind",
+        "reason",
+        "players"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "truncated"
+        },
+        "players": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "player": {
+                "pattern": "^(0|[1-9][0-9]*)$",
+                "type": "string"
+              },
+              "result": {
+                "enum": [
+                  "win",
+                  "loss",
+                  "draw",
+                  "eliminated",
+                  "unresolved"
+                ]
+              }
+            },
+            "required": [
+              "player",
+              "result"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "reason": {
+          "enum": [
+            "decision_limit",
+            "rule_event_limit",
+            "wall_clock_limit",
+            "resource_limit",
+            "external_stop"
+          ]
+        }
+      },
+      "required": [
+        "kind",
+        "reason",
+        "players"
+      ],
+      "type": "object"
+    }
+  ],
+  "title": "EpisodeStatus v1"
+}

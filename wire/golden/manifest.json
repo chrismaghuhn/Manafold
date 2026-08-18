@@ -1,0 +1,44 @@
+{
+  "fixtures": [
+    {
+      "contract": "episode-status.v1",
+      "path": "episode-status.v1.json"
+    },
+    {
+      "contract": "observed-event-envelope.v1",
+      "path": "observed-event-tapped.v1.json"
+    },
+    {
+      "contract": "observed-event-envelope.v1",
+      "path": "observed-event-ceased.v1.json"
+    },
+    {
+      "contract": "player-decision-request.v1",
+      "path": "player-decision-request.v1.json"
+    },
+    {
+      "contract": "decision-response.v1",
+      "path": "decision-response.v1.json"
+    },
+    {
+      "contract": "observation-envelope.v1",
+      "path": "observation-envelope.v1.json"
+    },
+    {
+      "contract": "information-state-envelope.v1",
+      "path": "information-state-envelope.v1.json"
+    },
+    {
+      "contract": "player-step.v1",
+      "path": "player-step.v1.json"
+    },
+    {
+      "contract": "replay-manifest.v1",
+      "path": "replay-manifest.v1.json"
+    },
+    {
+      "contract": "authoritative-replay.v1",
+      "path": "authoritative-replay-empty.v1.json"
+    }
+  ]
+}

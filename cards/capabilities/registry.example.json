@@ -1,0 +1,50 @@
+{
+  "entries": [
+    {
+      "authority_refs": [
+        "TBD-rules-snapshot"
+      ],
+      "benchmark_scenarios": [],
+      "category": "core_rule",
+      "conformance_cases": [
+        "example/zone-change-new-incarnation"
+      ],
+      "dependencies": [],
+      "implementation_paths": [],
+      "information_risk": "high",
+      "key": "rules/zone-change",
+      "lifecycle": "specified",
+      "notes": "Example only; not a support claim.",
+      "owners": [
+        "rules-maintainer"
+      ],
+      "spec_path": "docs/rules/capabilities/rules/zone-change.md",
+      "summary": "Synthetic example of object-incarnation zone transitions.",
+      "version": "0.1.0"
+    },
+    {
+      "authority_refs": [
+        "TBD-rules-snapshot"
+      ],
+      "benchmark_scenarios": [],
+      "category": "mechanic",
+      "conformance_cases": [],
+      "dependencies": [
+        "rules/zone-change"
+      ],
+      "implementation_paths": [],
+      "information_risk": "high",
+      "key": "mechanic/example-draw",
+      "lifecycle": "proposed",
+      "notes": "Example only.",
+      "owners": [
+        "rules-maintainer"
+      ],
+      "spec_path": "docs/rules/capabilities/mechanic/example-draw.md",
+      "summary": "Synthetic example capability depending on zone changes.",
+      "version": "0.1.0"
+    }
+  ],
+  "registry_id": "example/capabilities",
+  "schema_version": "capability-registry.v1"
+}

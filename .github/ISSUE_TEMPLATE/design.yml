@@ -1,0 +1,29 @@
+name: Architecture decision
+about: Propose a cross-cutting contract or dependency change
+labels: [architecture, adr-required]
+body:
+  - type: textarea
+    id: context
+    attributes:
+      label: Context and problem
+    validations:
+      required: true
+  - type: textarea
+    id: options
+    attributes:
+      label: Options and trade-offs
+    validations:
+      required: true
+  - type: textarea
+    id: impact
+    attributes:
+      label: Compatibility, replay, security, and maintenance impact
+    validations:
+      required: true
+  - type: checkboxes
+    id: process
+    attributes:
+      label: Process
+      options:
+        - label: I will add or link an ADR before implementation.
+          required: true

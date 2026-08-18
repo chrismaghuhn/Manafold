@@ -1,0 +1,59 @@
+{
+  "backend": "reference-unimplemented",
+  "bundle_content_digest": "2222222222222222222222222222222222222222222222222222222222222222",
+  "bundle_id": "example/bundle-v1",
+  "capability_closure": {
+    "below_certified": [
+      {
+        "key": "mechanic/example-draw",
+        "lifecycle": "proposed"
+      },
+      {
+        "key": "rules/zone-change",
+        "lifecycle": "specified"
+      }
+    ],
+    "card_lifecycle_blockers": [
+      {
+        "definition_id": "example/card/example-card",
+        "lifecycle": "draft"
+      }
+    ],
+    "cycles": [],
+    "missing": [],
+    "missing_definitions": [],
+    "native_executors": [],
+    "required": [
+      "mechanic/example-draw"
+    ],
+    "resolved": [
+      "mechanic/example-draw",
+      "rules/zone-change"
+    ],
+    "stale_native_executor_declarations": [],
+    "undeclared_native_executors": []
+  },
+  "engine_build": "foundation-0.2.2",
+  "evidence_digest": "3333333333333333333333333333333333333333333333333333333333333333",
+  "exclusions": [
+    "Synthetic example only."
+  ],
+  "gates": [
+    {
+      "evidence": [],
+      "gate": "REFERENCE_IMPLEMENTATION",
+      "reason": "No playable kernel exists.",
+      "status": "NOT_RUN"
+    }
+  ],
+  "generated_by": "example-only",
+  "schema_version": "bundle-certification.v1",
+  "snapshots": {
+    "format_policy": "TBD-format",
+    "legality": "TBD-legality",
+    "oracle": "example-source",
+    "rules": "TBD-rules",
+    "rulings": "TBD-rulings"
+  },
+  "status": "blocked"
+}

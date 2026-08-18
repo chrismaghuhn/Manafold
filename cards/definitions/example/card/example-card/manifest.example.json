@@ -1,0 +1,28 @@
+{
+  "conformance_cases": [
+    "example/card/example-card-resolves"
+  ],
+  "decision_surface": [],
+  "definition_id": "example/card/example-card",
+  "display_name": "Synthetic Example Card",
+  "faces": [
+    "front"
+  ],
+  "generated_objects": [],
+  "implementation_path": null,
+  "information_risks": [
+    "draws from a hidden ordered zone"
+  ],
+  "lifecycle": "draft",
+  "native_executor": null,
+  "notes": "Synthetic example only; not a real Magic card.",
+  "required_capabilities": [
+    "mechanic/example-draw"
+  ],
+  "schema_version": "card-definition-manifest.v1",
+  "source": {
+    "normalized_digest": "0000000000000000000000000000000000000000000000000000000000000000",
+    "record_id": "synthetic-001",
+    "snapshot": "example/source-snapshot"
+  }
+}

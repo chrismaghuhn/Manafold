@@ -1,0 +1,13 @@
+[package]
+name = "mtgml-conformance"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+mtgml-decision = { path = "../mtgml-decision" }
+mtgml-model = { path = "../mtgml-model" }
+mtgml-observation = { path = "../mtgml-observation" }
+mtgml-rules = { path = "../mtgml-rules" }
+mtgml-state = { path = "../mtgml-state" }
+thiserror.workspace = true

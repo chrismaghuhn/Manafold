@@ -1,0 +1,711 @@
+{
+  "$id": "player-step.v1.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "information_state": {
+      "additionalProperties": false,
+      "properties": {
+        "current_observation": {
+          "additionalProperties": false,
+          "properties": {
+            "digest": {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            "payload_base64": {
+              "type": "string"
+            },
+            "payload_codec": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "perspective": {
+              "pattern": "^(0|[1-9][0-9]*)$",
+              "type": "string"
+            },
+            "schema_version": {
+              "const": "observation-envelope.v1"
+            },
+            "state_revision": {
+              "pattern": "^(0|[1-9][0-9]*)$",
+              "type": "string"
+            }
+          },
+          "required": [
+            "schema_version",
+            "perspective",
+            "state_revision",
+            "payload_codec",
+            "payload_base64",
+            "digest"
+          ],
+          "type": "object"
+        },
+        "digest": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "perspective": {
+          "pattern": "^(0|[1-9][0-9]*)$",
+          "type": "string"
+        },
+        "private_history_length": {
+          "maximum": 18446744073709551615,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "public_history_length": {
+          "maximum": 18446744073709551615,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "schema_version": {
+          "const": "information-state-envelope.v1"
+        },
+        "state_revision": {
+          "pattern": "^(0|[1-9][0-9]*)$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "schema_version",
+        "perspective",
+        "state_revision",
+        "current_observation",
+        "public_history_length",
+        "private_history_length",
+        "digest"
+      ],
+      "type": "object"
+    },
+    "next_decision": {
+      "additionalProperties": false,
+      "properties": {
+        "actor": {
+          "pattern": "^(0|[1-9][0-9]*)$",
+          "type": "string"
+        },
+        "candidates": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "candidate_id": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "intent": {
+                "oneOf": [
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "kind": {
+                        "const": "pass_priority"
+                      }
+                    },
+                    "required": [
+                      "kind"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "kind": {
+                        "const": "cast_spell"
+                      },
+                      "object": {
+                        "pattern": "^(0|[1-9][0-9]*)$",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "object"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "ability": {
+                        "pattern": "^(0|[1-9][0-9]*)$",
+                        "type": "string"
+                      },
+                      "kind": {
+                        "const": "activate_ability"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "ability"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "kind": {
+                        "const": "select_object"
+                      },
+                      "object": {
+                        "pattern": "^(0|[1-9][0-9]*)$",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "object"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "kind": {
+                        "const": "select_player"
+                      },
+                      "player": {
+                        "pattern": "^(0|[1-9][0-9]*)$",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "player"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "kind": {
+                        "const": "select_mode"
+                      },
+                      "mode_index": {
+                        "maximum": 4294967295,
+                        "minimum": 0,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "mode_index"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "kind": {
+                        "const": "choose_boolean"
+                      },
+                      "value": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "value"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "kind": {
+                        "const": "declare_number"
+                      },
+                      "value": {
+                        "maximum": 9223372036854775807,
+                        "minimum": -9223372036854775808,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "value"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "kind": {
+                        "const": "confirm"
+                      }
+                    },
+                    "required": [
+                      "kind"
+                    ],
+                    "type": "object"
+                  }
+                ]
+              },
+              "semantic_key": {
+                "minLength": 1,
+                "type": "string"
+              }
+            },
+            "required": [
+              "candidate_id",
+              "semantic_key",
+              "intent"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "decision": {
+          "oneOf": [
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "choose_one"
+                }
+              },
+              "required": [
+                "kind"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "choose_many"
+                },
+                "maximum": {
+                  "maximum": 4294967295,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "minimum": {
+                  "maximum": 4294967295,
+                  "minimum": 0,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "kind",
+                "minimum",
+                "maximum"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "choose_number"
+                },
+                "maximum": {
+                  "maximum": 9223372036854775807,
+                  "minimum": -9223372036854775808,
+                  "type": "integer"
+                },
+                "minimum": {
+                  "maximum": 9223372036854775807,
+                  "minimum": -9223372036854775808,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "kind",
+                "minimum",
+                "maximum"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "order"
+                },
+                "maximum": {
+                  "maximum": 4294967295,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "minimum": {
+                  "maximum": 4294967295,
+                  "minimum": 0,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "kind",
+                "minimum",
+                "maximum"
+              ],
+              "type": "object"
+            }
+          ]
+        },
+        "decision_id": {
+          "pattern": "^(0|[1-9][0-9]*)$",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": "player-decision-request.v1"
+        },
+        "state_revision": {
+          "pattern": "^(0|[1-9][0-9]*)$",
+          "type": "string"
+        },
+        "visibility": {
+          "enum": [
+            "public",
+            "acting_player_only",
+            "mixed"
+          ]
+        }
+      },
+      "required": [
+        "schema_version",
+        "decision_id",
+        "state_revision",
+        "actor",
+        "visibility",
+        "decision",
+        "candidates"
+      ],
+      "type": "object"
+    },
+    "observed_events": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "event": {
+            "oneOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "from": {
+                    "enum": [
+                      "library",
+                      "hand",
+                      "battlefield",
+                      "graveyard",
+                      "exile",
+                      "stack",
+                      "command",
+                      "ante",
+                      "outside"
+                    ]
+                  },
+                  "kind": {
+                    "const": "object_moved"
+                  },
+                  "new_object": {
+                    "pattern": "^(0|[1-9][0-9]*)$",
+                    "type": "string"
+                  },
+                  "old_object": {
+                    "pattern": "^(0|[1-9][0-9]*)$",
+                    "type": "string"
+                  },
+                  "to": {
+                    "enum": [
+                      "library",
+                      "hand",
+                      "battlefield",
+                      "graveyard",
+                      "exile",
+                      "stack",
+                      "command",
+                      "ante",
+                      "outside"
+                    ]
+                  }
+                },
+                "required": [
+                  "kind",
+                  "from",
+                  "to"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "const": "object_ceased_to_exist"
+                  },
+                  "object": {
+                    "pattern": "^(0|[1-9][0-9]*)$",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "object"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "from": {
+                    "maximum": 9223372036854775807,
+                    "minimum": -9223372036854775808,
+                    "type": "integer"
+                  },
+                  "kind": {
+                    "const": "life_changed"
+                  },
+                  "player": {
+                    "pattern": "^(0|[1-9][0-9]*)$",
+                    "type": "string"
+                  },
+                  "to": {
+                    "maximum": 9223372036854775807,
+                    "minimum": -9223372036854775808,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "player",
+                  "from",
+                  "to"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "const": "object_tapped"
+                  },
+                  "object": {
+                    "pattern": "^(0|[1-9][0-9]*)$",
+                    "type": "string"
+                  },
+                  "tapped": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "object",
+                  "tapped"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "actor": {
+                    "pattern": "^(0|[1-9][0-9]*)$",
+                    "type": "string"
+                  },
+                  "kind": {
+                    "const": "decision_available"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "actor"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "exclusive_upper_bound": {
+                    "maximum": 18446744073709551615,
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "kind": {
+                    "const": "random_outcome_visible"
+                  },
+                  "label": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "value": {
+                    "maximum": 18446744073709551615,
+                    "minimum": 0,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "label",
+                  "exclusive_upper_bound",
+                  "value"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "code": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "kind": {
+                    "const": "public_outcome"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "code"
+                ],
+                "type": "object"
+              }
+            ]
+          },
+          "schema_version": {
+            "const": "observed-event-envelope.v1"
+          },
+          "sequence": {
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string"
+          },
+          "state_revision": {
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "schema_version",
+          "sequence",
+          "state_revision",
+          "event"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "schema_version": {
+      "const": "player-step.v1"
+    },
+    "status": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "running"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "terminal"
+            },
+            "players": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "player": {
+                    "pattern": "^(0|[1-9][0-9]*)$",
+                    "type": "string"
+                  },
+                  "result": {
+                    "enum": [
+                      "win",
+                      "loss",
+                      "draw",
+                      "eliminated",
+                      "unresolved"
+                    ]
+                  }
+                },
+                "required": [
+                  "player",
+                  "result"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "reason": {
+              "enum": [
+                "rules_loss",
+                "concession",
+                "simultaneous_outcome",
+                "rules_draw",
+                "specified_loop"
+              ]
+            }
+          },
+          "required": [
+            "kind",
+            "reason",
+            "players"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "truncated"
+            },
+            "players": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "player": {
+                    "pattern": "^(0|[1-9][0-9]*)$",
+                    "type": "string"
+                  },
+                  "result": {
+                    "enum": [
+                      "win",
+                      "loss",
+                      "draw",
+                      "eliminated",
+                      "unresolved"
+                    ]
+                  }
+                },
+                "required": [
+                  "player",
+                  "result"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "reason": {
+              "enum": [
+                "decision_limit",
+                "rule_event_limit",
+                "wall_clock_limit",
+                "resource_limit",
+                "external_stop"
+              ]
+            }
+          },
+          "required": [
+            "kind",
+            "reason",
+            "players"
+          ],
+          "type": "object"
+        }
+      ]
+    }
+  },
+  "required": [
+    "schema_version",
+    "information_state",
+    "observed_events",
+    "status"
+  ],
+  "title": "PlayerStep v1",
+  "type": "object"
+}

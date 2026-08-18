@@ -1,0 +1,47 @@
+{
+  "$id": "decision-response.v1.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "assignments": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "candidate_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "ordinal": {
+            "maximum": 4294967295,
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "candidate_id"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "decision_id": {
+      "pattern": "^(0|[1-9][0-9]*)$",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "decision-response.v1"
+    },
+    "state_revision": {
+      "pattern": "^(0|[1-9][0-9]*)$",
+      "type": "string"
+    }
+  },
+  "required": [
+    "schema_version",
+    "decision_id",
+    "state_revision",
+    "assignments"
+  ],
+  "title": "DecisionResponse v1",
+  "type": "object"
+}

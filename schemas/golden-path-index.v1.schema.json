@@ -1,0 +1,16 @@
+{
+  "$id": "golden-path-index.v1.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "bundle_manifest": {"minLength": 1, "type": "string"},
+    "capability_registry": {"minLength": 1, "type": "string"},
+    "card_definition": {"minLength": 1, "type": "string"},
+    "expected_certification_status": {"const": "blocked"},
+    "schema_version": {"const": "golden-path-index.v1"},
+    "wire_fixtures": {"items": {"minLength": 1, "type": "string"}, "minItems": 1, "type": "array", "uniqueItems": true}
+  },
+  "required": ["schema_version", "capability_registry", "card_definition", "bundle_manifest", "wire_fixtures", "expected_certification_status"],
+  "title": "Synthetic Golden Path Index v1",
+  "type": "object"
+}

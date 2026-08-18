@@ -1,0 +1,82 @@
+{
+  "fixtures": [
+    {
+      "contract": "player-decision-request.v1",
+      "expected_error_code": "semantic.decision",
+      "expected_reject_layer": "rust-python-semantic-or-decode",
+      "path": "decision-duplicate-candidate-id.json"
+    },
+    {
+      "contract": "player-decision-request.v1",
+      "expected_error_code": "semantic.decision",
+      "expected_reject_layer": "rust-python-semantic-or-decode",
+      "path": "decision-inverted-bounds.json"
+    },
+    {
+      "contract": "player-decision-request.v1",
+      "expected_error_code": "decode.invalid_json",
+      "expected_reject_layer": "rust-python-semantic-or-decode",
+      "path": "decision-noncanonical-id.json"
+    },
+    {
+      "contract": "player-decision-request.v1",
+      "expected_error_code": "decode.invalid_json",
+      "expected_reject_layer": "rust-python-semantic-or-decode",
+      "path": "decision-unknown-intent.json"
+    },
+    {
+      "contract": "episode-status.v1",
+      "expected_error_code": "decode.non_canonical_json",
+      "expected_reject_layer": "rust-python-semantic-or-decode",
+      "path": "episode-noncanonical-whitespace.json"
+    },
+    {
+      "contract": "episode-status.v1",
+      "expected_error_code": "decode.invalid_json",
+      "expected_reject_layer": "rust-python-semantic-or-decode",
+      "path": "episode-unknown-reason.json"
+    },
+    {
+      "contract": "observation-envelope.v1",
+      "expected_error_code": "semantic.observation",
+      "expected_reject_layer": "rust-python-semantic-or-decode",
+      "path": "observation-invalid-base64.json"
+    },
+    {
+      "contract": "observed-event-envelope.v1",
+      "expected_error_code": "decode.invalid_json",
+      "expected_reject_layer": "rust-python-semantic-or-decode",
+      "path": "observed-event-unknown-kind.json"
+    },
+    {
+      "contract": "player-step.v1",
+      "expected_error_code": "decode.invalid_json",
+      "expected_reject_layer": "rust-python-semantic-or-decode",
+      "path": "player-step-privileged-extra-field.json"
+    },
+    {
+      "contract": "authoritative-replay.v1",
+      "expected_error_code": "semantic.replay",
+      "expected_reject_layer": "rust-python-semantic-or-decode",
+      "path": "replay-empty-revision-mismatch.json"
+    },
+    {
+      "contract": "replay-manifest.v1",
+      "expected_error_code": "decode.invalid_json",
+      "expected_reject_layer": "rust-python-semantic-or-decode",
+      "path": "replay-missing-kernel.json"
+    },
+    {
+      "contract": "authoritative-replay.v1",
+      "expected_error_code": "semantic.replay",
+      "expected_reject_layer": "rust-python-semantic-or-decode",
+      "path": "replay-rejected-digest-mutation.json"
+    },
+    {
+      "contract": "decision-response.v1",
+      "expected_error_code": "semantic.decision_response",
+      "expected_reject_layer": "rust-python-semantic-or-decode",
+      "path": "response-duplicate-assignment.json"
+    }
+  ]
+}

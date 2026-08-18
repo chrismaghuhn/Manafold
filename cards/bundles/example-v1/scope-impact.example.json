@@ -1,0 +1,29 @@
+{
+  "capabilities": {
+    "added": [
+      "mechanic/example-draw"
+    ],
+    "removed": []
+  },
+  "certification_impact": "revalidate",
+  "definitions": {
+    "added": [
+      "example/card/example-card"
+    ],
+    "removed": []
+  },
+  "previous_bundle": null,
+  "proposed_bundle": {
+    "bundle_id": "example/bundle-v1",
+    "content_digest": "2222222222222222222222222222222222222222222222222222222222222222"
+  },
+  "required_evidence": [
+    "capability closure",
+    "conformance cases"
+  ],
+  "schema_version": "scope-impact-report.v1",
+  "snapshot_changes": [
+    "initial synthetic example"
+  ],
+  "status": "draft"
+}

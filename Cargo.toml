@@ -1,0 +1,29 @@
+[workspace]
+resolver = "2"
+members = [
+  "crates/mtgml-model",
+  "crates/mtgml-random",
+  "crates/mtgml-decision",
+  "crates/mtgml-state",
+  "crates/mtgml-card-ir",
+  "crates/mtgml-rules",
+  "crates/mtgml-observation",
+  "crates/mtgml-replay",
+  "crates/mtgml-wire",
+  "crates/mtgml-environment",
+  "crates/mtgml-commander",
+  "crates/mtgml-conformance",
+]
+
+[workspace.package]
+version = "0.2.2"
+edition = "2021"
+rust-version = "1.85.1"
+authors = ["MTG ML Engine contributors"]
+
+[workspace.dependencies]
+base64 = "=0.22.1"
+serde = { version = "=1.0.219", features = ["derive"] }
+serde_json = "=1.0.140"
+sha2 = "=0.10.8"
+thiserror = "=2.0.12"
