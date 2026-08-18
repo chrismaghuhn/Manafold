@@ -37,7 +37,13 @@ class MaintainerScaffoldTests(unittest.TestCase):
             registry = work / "cards/capabilities/registry.json"
             registry.parent.mkdir(parents=True)
             registry.write_text(
-                json.dumps({"schema_version": "capability-registry.v1", "registry_id": "test/capabilities", "entries": []}),
+                json.dumps(
+                    {
+                        "schema_version": "capability-registry.v1",
+                        "registry_id": "test/capabilities",
+                        "entries": [],
+                    }
+                ),
                 encoding="utf-8",
             )
             command = [

@@ -22,8 +22,7 @@ def main() -> None:
     config = reproducibility_config()
     expected_prefix = f"{config['archive_prefix']}/"
     expected_members = {
-        f"{expected_prefix}{path.relative_to(ROOT).as_posix()}": path
-        for path in source_files()
+        f"{expected_prefix}{path.relative_to(ROOT).as_posix()}": path for path in source_files()
     }
     with ZipFile(args.archive) as archive:
         names = archive.namelist()
@@ -43,7 +42,17 @@ def main() -> None:
                 raise SystemExit(f"unsafe archive member: {name}")
             if not name.startswith(expected_prefix):
                 raise SystemExit(f"unexpected archive root: {name}")
-            if any(part in {"__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache", "target"} for part in path.parts):
+            if any(
+                part
+                in {
+                    "__pycache__",
+                    ".pytest_cache",
+                    ".mypy_cache",
+                    ".ruff_cache",
+                    "target",
+                }
+                for part in path.parts
+            ):
                 raise SystemExit(f"generated/cache member in archive: {name}")
             info = archive.getinfo(name)
             if info.is_dir():

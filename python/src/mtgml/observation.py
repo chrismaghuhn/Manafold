@@ -2,7 +2,15 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from .canonical import parse_u64_number, parse_uint, require_canonical_base64, require_digest, require_exact_keys, require_nonempty, uint_wire
+from .canonical import (
+    parse_u64_number,
+    parse_uint,
+    require_canonical_base64,
+    require_digest,
+    require_exact_keys,
+    require_nonempty,
+    uint_wire,
+)
 from .decision import PlayerDecisionRequest
 from .episode import EpisodeStatus
 from .errors import WireError
@@ -23,8 +31,18 @@ class ObservationEnvelope:
     digest: str
 
     @classmethod
-    def from_wire(cls, value: object) -> "ObservationEnvelope":
-        obj = require_exact_keys(value, {"schema_version", "perspective", "state_revision", "payload_codec", "payload_base64", "digest"})
+    def from_wire(cls, value: object) -> ObservationEnvelope:
+        obj = require_exact_keys(
+            value,
+            {
+                "schema_version",
+                "perspective",
+                "state_revision",
+                "payload_codec",
+                "payload_base64",
+                "digest",
+            },
+        )
         if obj["schema_version"] != OBSERVATION_SCHEMA:
             raise WireError("decode.invalid_json", "unsupported observation schema")
         return cls(
@@ -58,8 +76,19 @@ class InformationStateEnvelope:
     digest: str
 
     @classmethod
-    def from_wire(cls, value: object) -> "InformationStateEnvelope":
-        obj = require_exact_keys(value, {"schema_version", "perspective", "state_revision", "current_observation", "public_history_length", "private_history_length", "digest"})
+    def from_wire(cls, value: object) -> InformationStateEnvelope:
+        obj = require_exact_keys(
+            value,
+            {
+                "schema_version",
+                "perspective",
+                "state_revision",
+                "current_observation",
+                "public_history_length",
+                "private_history_length",
+                "digest",
+            },
+        )
         if obj["schema_version"] != INFORMATION_STATE_SCHEMA:
             raise WireError("decode.invalid_json", "unsupported information-state schema")
         result = cls(
@@ -71,13 +100,25 @@ class InformationStateEnvelope:
             parse_u64_number(obj["private_history_length"]),
             require_digest(obj["digest"]),
         )
-        if result.current_observation.perspective != result.perspective or result.current_observation.state_revision != result.state_revision:
-            raise WireError("semantic.information_state", "current observation disagrees with information state")
+        if (
+            result.current_observation.perspective != result.perspective
+            or result.current_observation.state_revision != result.state_revision
+        ):
+            raise WireError(
+                "semantic.information_state",
+                "current observation disagrees with information state",
+            )
         return result
 
     def to_wire(self) -> dict[str, object]:
-        if self.current_observation.perspective != self.perspective or self.current_observation.state_revision != self.state_revision:
-            raise WireError("semantic.information_state", "current observation disagrees with information state")
+        if (
+            self.current_observation.perspective != self.perspective
+            or self.current_observation.state_revision != self.state_revision
+        ):
+            raise WireError(
+                "semantic.information_state",
+                "current observation disagrees with information state",
+            )
         return {
             "current_observation": self.current_observation.to_wire(),
             "digest": require_digest(self.digest),
@@ -98,15 +139,25 @@ class PlayerStep:
     status: EpisodeStatus
 
     @classmethod
-    def from_wire(cls, value: object) -> "PlayerStep":
-        obj = require_exact_keys(value, {"schema_version", "information_state", "observed_events", "status"}, {"next_decision"})
-        if obj["schema_version"] != PLAYER_STEP_SCHEMA or not isinstance(obj["observed_events"], list):
+    def from_wire(cls, value: object) -> PlayerStep:
+        obj = require_exact_keys(
+            value,
+            {"schema_version", "information_state", "observed_events", "status"},
+            {"next_decision"},
+        )
+        if obj["schema_version"] != PLAYER_STEP_SCHEMA or not isinstance(
+            obj["observed_events"], list
+        ):
             raise WireError("decode.invalid_json", "unsupported player-step schema")
         result = cls(
             PLAYER_STEP_SCHEMA,
             InformationStateEnvelope.from_wire(obj["information_state"]),
             tuple(ObservedEventEnvelope.from_wire(item) for item in obj["observed_events"]),
-            PlayerDecisionRequest.from_wire(obj["next_decision"]) if "next_decision" in obj else None,
+            (
+                PlayerDecisionRequest.from_wire(obj["next_decision"])
+                if "next_decision" in obj
+                else None
+            ),
             EpisodeStatus.from_wire(obj["status"]),
         )
         result.validate()

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Callable
-from typing import Any, TypeVar
+from typing import TypeVar
 
 from .canonical import canonical_json_bytes
 from .decision import DecisionResponse, PlayerDecisionRequest

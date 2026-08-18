@@ -11,7 +11,7 @@ import shutil
 import subprocess
 import sys
 import tomllib
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -103,12 +103,10 @@ def equality_gate(name: str, before: str, after: str, reason: str) -> dict[str, 
 def write_reports(output: Path, gates: list[dict[str, Any]], epoch: int) -> str:
     freeze = "PASS" if all(gate["status"] == "PASS" for gate in gates) else "BLOCKED"
     source_tree_mutated = next(
-        gate["status"] != "PASS"
-        for gate in gates
-        if gate["name"] == "source_tree_unchanged"
+        gate["status"] != "PASS" for gate in gates if gate["name"] == "source_tree_unchanged"
     )
     report = {
-        "generated_at": datetime.fromtimestamp(epoch, timezone.utc).isoformat(),
+        "generated_at": datetime.fromtimestamp(epoch, UTC).isoformat(),
         "foundation": FOUNDATION,
         "freeze": freeze,
         "source_tree_mutated": source_tree_mutated,
@@ -143,14 +141,14 @@ def write_reports(output: Path, gates: list[dict[str, Any]], epoch: int) -> str:
             "",
             "## Interpretation",
             "",
-            "Every `NOT_RUN` or `FAIL` blocks V0.2.2 contract freeze. M1 remains blocked until every required gate is `PASS`.",
-            "The deterministic archive gate is deliberately last, and no archived file is modified afterward.",
+            "Every `NOT_RUN` or `FAIL` blocks V0.2.2 contract freeze."
+            " M1 remains blocked until every required gate is `PASS`.",
+            "The deterministic archive gate is deliberately last,"
+            " and no archived file is modified afterward.",
             "",
         ]
     )
-    (output / "FOUNDATION_VERIFICATION.md").write_text(
-        "\n".join(lines), encoding="utf-8"
-    )
+    (output / "FOUNDATION_VERIFICATION.md").write_text("\n".join(lines), encoding="utf-8")
 
     blockers = [gate for gate in gates if gate["status"] != "PASS"]
     blocker_lines = [
@@ -165,9 +163,7 @@ def write_reports(output: Path, gates: list[dict[str, Any]], epoch: int) -> str:
         detail = gate.get("reason") or gate.get("log") or "command failed"
         blocker_lines.append(f"| `{gate['name']}` | **{gate['status']}** | {detail} |")
     blocker_lines.extend(["", f"M1 unblocked: **{'yes' if freeze == 'PASS' else 'no'}**", ""])
-    (output / "FOUNDATION_BLOCKERS.md").write_text(
-        "\n".join(blocker_lines), encoding="utf-8"
-    )
+    (output / "FOUNDATION_BLOCKERS.md").write_text("\n".join(blocker_lines), encoding="utf-8")
 
     status = {
         "version": "0.2.2",
@@ -199,9 +195,7 @@ def main() -> None:
     args = parser.parse_args()
     source_before = source_tree_fingerprint()
     output = args.output_dir.resolve()
-    if output == ROOT or (
-        ROOT in output.parents and "dist" not in output.relative_to(ROOT).parts
-    ):
+    if output == ROOT or (ROOT in output.parents and "dist" not in output.relative_to(ROOT).parts):
         parser.error("verification output must be outside the archived source set")
     if output.exists():
         marker = output / OUTPUT_MARKER

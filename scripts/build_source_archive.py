@@ -10,9 +10,9 @@ import stat
 import sys
 import tomllib
 import zipfile
-from datetime import datetime, timezone
+from collections.abc import Iterable
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Iterable
 
 sys.dont_write_bytecode = True
 
@@ -58,9 +58,9 @@ def reproducibility_config() -> dict[str, object]:
 def zip_timestamp() -> tuple[int, int, int, int, int, int]:
     config = reproducibility_config()
     epoch = int(os.environ.get("SOURCE_DATE_EPOCH", str(config["source_date_epoch"])))
-    moment = datetime.fromtimestamp(epoch, tz=timezone.utc)
+    moment = datetime.fromtimestamp(epoch, tz=UTC)
     if moment.year < 1980:
-        moment = datetime(1980, 1, 1, tzinfo=timezone.utc)
+        moment = datetime(1980, 1, 1, tzinfo=UTC)
     return (
         moment.year,
         moment.month,

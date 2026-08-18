@@ -156,9 +156,7 @@ def validate(path: Path) -> list[str]:
     if block_depth:
         errors.append(f"{path}: unterminated block comment")
     for opener, position in reversed(stack):
-        errors.append(
-            f"{position.path}:{position.line}:{position.column}: unclosed {opener}"
-        )
+        errors.append(f"{position.path}:{position.line}:{position.column}: unclosed {opener}")
     return errors
 
 

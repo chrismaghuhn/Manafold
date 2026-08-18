@@ -1,12 +1,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
 
+from ._generated_contract_vocab import PlayerResult, TerminalReason, TruncationReason
 from .canonical import parse_uint, require_exact_keys, uint_wire
 from .errors import WireError
-from ._generated_contract_vocab import PlayerResult, TerminalReason, TruncationReason
-
 
 
 @dataclass(frozen=True, slots=True)
@@ -15,7 +13,7 @@ class PlayerOutcome:
     result: PlayerResult
 
     @classmethod
-    def from_wire(cls, value: object) -> "PlayerOutcome":
+    def from_wire(cls, value: object) -> PlayerOutcome:
         obj = require_exact_keys(value, {"player", "result"})
         try:
             result = PlayerResult(obj["result"])
@@ -34,11 +32,11 @@ class EpisodeStatus:
     players: tuple[PlayerOutcome, ...] = ()
 
     @classmethod
-    def running(cls) -> "EpisodeStatus":
+    def running(cls) -> EpisodeStatus:
         return cls("running")
 
     @classmethod
-    def from_wire(cls, value: object) -> "EpisodeStatus":
+    def from_wire(cls, value: object) -> EpisodeStatus:
         if not isinstance(value, dict):
             raise WireError("decode.invalid_json", "episode status must be an object")
         kind = value.get("kind")

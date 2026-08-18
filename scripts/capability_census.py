@@ -19,7 +19,9 @@ from maintainer_common import (
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Compute recursive card/bundle capability closure.")
+    parser = argparse.ArgumentParser(
+        description="Compute recursive card/bundle capability closure."
+    )
     parser.add_argument("--bundle", required=True, type=Path)
     parser.add_argument("--registry", type=Path)
     parser.add_argument("--root", type=Path, default=ROOT)

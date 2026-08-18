@@ -16,7 +16,11 @@ from mtgml.player_client import PlayerClient
 class PlayerApiTests(unittest.TestCase):
     def test_python_protocol_contains_the_full_rust_player_surface(self) -> None:
         self.assertEqual(
-            {name for name, value in inspect.getmembers(PlayerClient, inspect.isfunction) if not name.startswith("_")},
+            {
+                name
+                for name, value in inspect.getmembers(PlayerClient, inspect.isfunction)
+                if not name.startswith("_")
+            },
             {"observation", "information_state", "visible_decision", "submit"},
         )
         hints = get_type_hints(PlayerClient.submit)
@@ -24,8 +28,19 @@ class PlayerApiTests(unittest.TestCase):
 
     def test_player_step_has_no_authoritative_or_controller_capabilities(self) -> None:
         fields = set(PlayerStep.__dataclass_fields__)
-        self.assertEqual(fields, {"schema_version", "information_state", "observed_events", "next_decision", "status"})
-        self.assertTrue(fields.isdisjoint({"root_seed", "checkpoint", "fork", "authoritative_events", "replay"}))
+        self.assertEqual(
+            fields,
+            {
+                "schema_version",
+                "information_state",
+                "observed_events",
+                "next_decision",
+                "status",
+            },
+        )
+        self.assertTrue(
+            fields.isdisjoint({"root_seed", "checkpoint", "fork", "authoritative_events", "replay"})
+        )
 
 
 if __name__ == "__main__":

@@ -2,9 +2,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from ._generated_contract_vocab import (
+    OBSERVED_EVENT_KINDS,
+    OBSERVED_EVENT_SCHEMA,
+    ZONE_KINDS,
+)
 from .canonical import parse_uint, require_exact_keys, require_nonempty, uint_wire
 from .errors import WireError
-from ._generated_contract_vocab import OBSERVED_EVENT_KINDS, OBSERVED_EVENT_SCHEMA, ZONE_KINDS
 
 _EVENT_KINDS = OBSERVED_EVENT_KINDS
 _ZONE_KINDS = ZONE_KINDS
@@ -16,7 +20,7 @@ class ObservedEvent:
     payload: tuple[tuple[str, object], ...]
 
     @classmethod
-    def from_wire(cls, value: object) -> "ObservedEvent":
+    def from_wire(cls, value: object) -> ObservedEvent:
         if not isinstance(value, dict) or value.get("kind") not in _EVENT_KINDS:
             raise WireError("decode.invalid_json", "unknown observed event kind")
         kind = str(value["kind"])
@@ -26,7 +30,12 @@ class ObservedEvent:
             "life_changed": {"kind", "player", "from", "to"},
             "object_tapped": {"kind", "object", "tapped"},
             "decision_available": {"kind", "actor"},
-            "random_outcome_visible": {"kind", "label", "exclusive_upper_bound", "value"},
+            "random_outcome_visible": {
+                "kind",
+                "label",
+                "exclusive_upper_bound",
+                "value",
+            },
             "public_outcome": {"kind", "code"},
         }
         optional = {"old_object", "new_object"} if kind == "object_moved" else set()
@@ -59,7 +68,12 @@ class ObservedEvent:
         elif kind == "random_outcome_visible":
             label = require_nonempty(obj["label"], "label")
             upper, result = obj["exclusive_upper_bound"], obj["value"]
-            if isinstance(upper, bool) or isinstance(result, bool) or not isinstance(upper, int) or not isinstance(result, int):
+            if (
+                isinstance(upper, bool)
+                or isinstance(result, bool)
+                or not isinstance(upper, int)
+                or not isinstance(result, int)
+            ):
                 raise WireError("decode.invalid_json", "random outcome bounds must be integers")
             if upper <= 0 or upper > 2**64 - 1 or result < 0 or result >= upper:
                 raise WireError("semantic.observed_event", "random outcome is outside its range")
@@ -71,7 +85,11 @@ class ObservedEvent:
     def to_wire(self) -> dict[str, object]:
         result: dict[str, object] = {"kind": self.kind}
         for key, value in self.payload:
-            result[key] = uint_wire(value) if key in {"old_object", "new_object", "object", "player", "actor"} else value
+            result[key] = (
+                uint_wire(value)
+                if key in {"old_object", "new_object", "object", "player", "actor"}
+                else value
+            )
         ObservedEvent.from_wire(result)
         return result
 
@@ -84,7 +102,7 @@ class ObservedEventEnvelope:
     event: ObservedEvent
 
     @classmethod
-    def from_wire(cls, value: object) -> "ObservedEventEnvelope":
+    def from_wire(cls, value: object) -> ObservedEventEnvelope:
         obj = require_exact_keys(value, {"schema_version", "sequence", "state_revision", "event"})
         if obj["schema_version"] != OBSERVED_EVENT_SCHEMA:
             raise WireError("decode.invalid_json", "unsupported observed-event schema")

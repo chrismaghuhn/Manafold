@@ -31,7 +31,9 @@ def main() -> None:
         if not line or line.startswith("#"):
             continue
         if PIN_RE.fullmatch(line) is None:
-            errors.append(f"non-exact direct tool pin at {lock_path.relative_to(ROOT)}:{number}: {line}")
+            errors.append(
+                f"non-exact direct tool pin at {lock_path.relative_to(ROOT)}:{number}: {line}"
+            )
             continue
         name, version = line.split("==", 1)
         normalized = name.lower().replace("_", "-")
@@ -44,7 +46,9 @@ def main() -> None:
     if missing:
         errors.append(f"missing direct tool pins: {missing}")
     if (ROOT / "requirements-dev.lock").exists():
-        errors.append("duplicate root requirements-dev.lock is forbidden; Python lock has one owner")
+        errors.append(
+            "duplicate root requirements-dev.lock is forbidden; Python lock has one owner"
+        )
 
     pyproject = tomllib.loads((ROOT / "python" / "pyproject.toml").read_text(encoding="utf-8"))
     declared = pyproject.get("project", {}).get("requires-python")

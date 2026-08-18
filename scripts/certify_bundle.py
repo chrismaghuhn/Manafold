@@ -32,7 +32,9 @@ REQUIRED_GATES = [
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Generate a conservative static bundle-certification preflight.")
+    parser = argparse.ArgumentParser(
+        description="Generate a conservative static bundle-certification preflight."
+    )
     parser.add_argument("--bundle", required=True, type=Path)
     parser.add_argument("--registry", type=Path)
     parser.add_argument("--root", type=Path, default=ROOT)
@@ -55,7 +57,15 @@ def main() -> None:
         )
     except MaintainerArtifactError as exc:
         parser.error(str(exc))
-    gates = [{"gate": gate, "status": "NOT_RUN", "evidence": [], "reason": "No runtime evidence supplied to static preflight."} for gate in REQUIRED_GATES]
+    gates = [
+        {
+            "gate": gate,
+            "status": "NOT_RUN",
+            "evidence": [],
+            "reason": "No runtime evidence supplied to static preflight.",
+        }
+        for gate in REQUIRED_GATES
+    ]
     status = certification_status(census, gates)
     closure_wire = certification_closure(census)
     report = {
@@ -68,11 +78,18 @@ def main() -> None:
         "capability_closure": closure_wire,
         "gates": gates,
         "status": status,
-        "exclusions": sorted(set(bundle.get("exclusions", []) + ["Static preflight cannot prove semantic correctness."])),
+        "exclusions": sorted(
+            {
+                *bundle.get("exclusions", []),
+                "Static preflight cannot prove semantic correctness.",
+            }
+        ),
         "evidence_digest": "0" * 64,
         "generated_by": "scripts/certify_bundle.py@0.2.2",
     }
-    report["evidence_digest"] = digest_json({k: v for k, v in report.items() if k != "evidence_digest"})
+    report["evidence_digest"] = digest_json(
+        {k: v for k, v in report.items() if k != "evidence_digest"}
+    )
     write_json(args.output, report)
     print(f"{status}: {args.output}")
     raise SystemExit(0 if status == "certified" else 2)

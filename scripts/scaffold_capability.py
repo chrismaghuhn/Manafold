@@ -31,7 +31,9 @@ def category_for(key: str) -> str:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Register and scaffold a capability specification.")
+    parser = argparse.ArgumentParser(
+        description="Register and scaffold a capability specification."
+    )
     parser.add_argument("key")
     parser.add_argument("title")
     parser.add_argument("--root", type=Path, default=ROOT)
@@ -63,22 +65,24 @@ def main() -> None:
         "## Conformance, property, replay, and performance evidence\n",
         encoding="utf-8",
     )
-    entries.append({
-        "key": args.key,
-        "version": "0.1.0",
-        "category": category_for(args.key),
-        "lifecycle": "proposed",
-        "summary": args.title,
-        "dependencies": [],
-        "authority_refs": [],
-        "spec_path": spec_rel.as_posix(),
-        "implementation_paths": [],
-        "conformance_cases": [],
-        "information_risk": "unreviewed",
-        "benchmark_scenarios": [],
-        "owners": ["TBD-owner-role"],
-        "notes": "Generated proposal; complete the specification before implementation.",
-    })
+    entries.append(
+        {
+            "key": args.key,
+            "version": "0.1.0",
+            "category": category_for(args.key),
+            "lifecycle": "proposed",
+            "summary": args.title,
+            "dependencies": [],
+            "authority_refs": [],
+            "spec_path": spec_rel.as_posix(),
+            "implementation_paths": [],
+            "conformance_cases": [],
+            "information_risk": "unreviewed",
+            "benchmark_scenarios": [],
+            "owners": ["TBD-owner-role"],
+            "notes": "Generated proposal; complete the specification before implementation.",
+        }
+    )
     entries.sort(key=lambda item: item["key"])
     validate_capability_registry(registry, root=args.root)
     write_json(registry_path, registry)

@@ -51,9 +51,7 @@ def main() -> None:
     registered_paths = {ROOT / path for path in paths}
     unregistered = sorted(path.relative_to(ROOT) for path in expected_classified - registered_paths)
     unexpected = sorted(
-        path.relative_to(ROOT)
-        for path in registered_paths
-        if path not in expected_classified
+        path.relative_to(ROOT) for path in registered_paths if path not in expected_classified
     )
     if unregistered:
         errors.append(f"unregistered project/process documents: {unregistered}")
@@ -65,10 +63,15 @@ def main() -> None:
         if not isinstance(path, str):
             continue
         document_path = ROOT / path
-        if document_path.suffix == ".md" and item.get("role") in {"normative", "process"}:
+        if document_path.suffix == ".md" and item.get("role") in {
+            "normative",
+            "process",
+        }:
             header = document_path.read_text(encoding="utf-8")[:800]
             if "**Status:**" not in header and not path.endswith("CODE_OF_CONDUCT.md"):
-                errors.append(f"registered {item.get('role')} document lacks explicit status: {path}")
+                errors.append(
+                    f"registered {item.get('role')} document lacks explicit status: {path}"
+                )
 
     for document in sorted(ROOT.rglob("*.md")):
         text = document.read_text(encoding="utf-8")

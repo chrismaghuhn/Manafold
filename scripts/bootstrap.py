@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Prepare .venv without mutating contract or lock files."""
+
 from __future__ import annotations
 
 import argparse
@@ -24,7 +25,14 @@ def main() -> int:
         venv.EnvBuilder(with_pip=True).create(args.venv)
     py = args.venv / ("Scripts/python.exe" if sys.platform == "win32" else "bin/python")
     commands = [
-        [str(py), "-m", "pip", "install", "-r", str(ROOT / "python/requirements-dev.lock")],
+        [
+            str(py),
+            "-m",
+            "pip",
+            "install",
+            "-r",
+            str(ROOT / "python/requirements-dev.lock"),
+        ],
         [str(py), "-m", "pip", "install", "--no-deps", "-e", str(ROOT / "python")],
     ]
     for command in commands:
@@ -32,7 +40,11 @@ def main() -> int:
         try:
             subprocess.run(command, cwd=ROOT, check=True)
         except subprocess.CalledProcessError as exc:
-            print("bootstrap could not install pinned tooling; package-index access may be unavailable", file=sys.stderr)
+            print(
+                "bootstrap could not install pinned tooling;"
+                " package-index access may be unavailable",
+                file=sys.stderr,
+            )
             return exc.returncode
     print("PASS: Python environment prepared; Rust and Cargo.lock were not mutated")
     return 0

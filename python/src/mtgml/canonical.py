@@ -27,7 +27,6 @@ def uint_wire(value: int, *, maximum: int = 2**64 - 1) -> str:
     return str(value)
 
 
-
 def parse_u64_number(value: object) -> int:
     if isinstance(value, bool) or not isinstance(value, int) or value < 0 or value > 2**64 - 1:
         raise WireError("decode.invalid_json", "expected unsigned 64-bit JSON integer")
@@ -46,7 +45,9 @@ def require_nonempty(value: object, label: str) -> str:
     return value
 
 
-def require_exact_keys(value: object, required: set[str], optional: set[str] | None = None) -> Mapping[str, Any]:
+def require_exact_keys(
+    value: object, required: set[str], optional: set[str] | None = None
+) -> Mapping[str, Any]:
     if not isinstance(value, dict):
         raise WireError("decode.invalid_json", "expected object")
     optional = optional or set()
