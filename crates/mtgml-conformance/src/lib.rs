@@ -43,7 +43,10 @@ pub fn assert_exact_transition(
     )?;
     validate_transition_contract(before, result)
         .map_err(|error| ConformanceFailure::Contract(error.to_string()))?;
-    let accepted = matches!(expected.expected_response_result, ExpectedResponseResult::Accepted);
+    let accepted = matches!(
+        expected.expected_response_result,
+        ExpectedResponseResult::Accepted
+    );
     if result.accepted != accepted {
         return Err(ConformanceFailure::Acceptance);
     }
@@ -70,14 +73,15 @@ pub fn assert_exact_transition(
     if actual_player_steps != &expected.expected_player_steps {
         return Err(ConformanceFailure::PlayerProjection);
     }
-    if matches!(expected.expected_response_result, ExpectedResponseResult::RejectedWithoutMutation)
-        && &result.next_state != before
+    if matches!(
+        expected.expected_response_result,
+        ExpectedResponseResult::RejectedWithoutMutation
+    ) && &result.next_state != before
     {
         return Err(ConformanceFailure::RejectedMutation);
     }
     Ok(())
 }
-
 
 fn assert_conformance_inputs(
     actual_current_decision: Option<&PlayerDecisionRequest>,
@@ -129,8 +133,7 @@ pub enum ConformanceFailure {
 mod tests {
     use super::*;
     use mtgml_decision::{
-        DecisionKind, DecisionVisibility, DECISION_RESPONSE_SCHEMA,
-        PLAYER_DECISION_REQUEST_SCHEMA,
+        DecisionKind, DecisionVisibility, DECISION_RESPONSE_SCHEMA, PLAYER_DECISION_REQUEST_SCHEMA,
     };
     use mtgml_model::{DecisionId, StateRevision};
 

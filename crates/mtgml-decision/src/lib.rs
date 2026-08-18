@@ -177,12 +177,27 @@ impl EngineCandidateBinding {
             (self, visible),
             (Self::PassPriority, CandidateIntent::PassPriority)
                 | (Self::CastSpell { .. }, CandidateIntent::CastSpell { .. })
-                | (Self::ActivateAbility { .. }, CandidateIntent::ActivateAbility { .. })
-                | (Self::SelectObject { .. }, CandidateIntent::SelectObject { .. })
-                | (Self::SelectPlayer { .. }, CandidateIntent::SelectPlayer { .. })
+                | (
+                    Self::ActivateAbility { .. },
+                    CandidateIntent::ActivateAbility { .. }
+                )
+                | (
+                    Self::SelectObject { .. },
+                    CandidateIntent::SelectObject { .. }
+                )
+                | (
+                    Self::SelectPlayer { .. },
+                    CandidateIntent::SelectPlayer { .. }
+                )
                 | (Self::SelectMode { .. }, CandidateIntent::SelectMode { .. })
-                | (Self::ChooseBoolean { .. }, CandidateIntent::ChooseBoolean { .. })
-                | (Self::DeclareNumber { .. }, CandidateIntent::DeclareNumber { .. })
+                | (
+                    Self::ChooseBoolean { .. },
+                    CandidateIntent::ChooseBoolean { .. }
+                )
+                | (
+                    Self::DeclareNumber { .. },
+                    CandidateIntent::DeclareNumber { .. }
+                )
                 | (Self::Confirm, CandidateIntent::Confirm)
         )
     }
@@ -279,18 +294,10 @@ mod tests {
         abilities: BTreeMap<(PlayerId, OpaqueAbilityId), AbilityInstanceId>,
     }
     impl PerspectiveIdentityResolver for Ids {
-        fn resolve_object(
-            &self,
-            p: PlayerId,
-            o: OpaqueObjectId,
-        ) -> Option<GameObjectId> {
+        fn resolve_object(&self, p: PlayerId, o: OpaqueObjectId) -> Option<GameObjectId> {
             self.objects.get(&(p, o)).copied()
         }
-        fn resolve_ability(
-            &self,
-            p: PlayerId,
-            a: OpaqueAbilityId,
-        ) -> Option<AbilityInstanceId> {
+        fn resolve_ability(&self, p: PlayerId, a: OpaqueAbilityId) -> Option<AbilityInstanceId> {
             self.abilities.get(&(p, a)).copied()
         }
     }

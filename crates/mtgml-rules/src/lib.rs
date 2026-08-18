@@ -1,9 +1,7 @@
 //! Authoritative events and exact, compositional transition validation.
 
 use mtgml_decision::PlayerDecisionRequest;
-use mtgml_model::{
-    DecisionId, EpisodeStatus, GameObjectId, PlayerId, RuleEventId, StateRevision,
-};
+use mtgml_model::{DecisionId, EpisodeStatus, GameObjectId, PlayerId, RuleEventId, StateRevision};
 use mtgml_state::{
     validate_engine_state, EngineState, EngineStateViolation, ObjectSnapshot,
     SemanticDeltaOperation, StateDelta, ZoneTransition,
@@ -15,12 +13,28 @@ use thiserror::Error;
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum AuthoritativeRuleEventKind {
-    ZoneTransition { transition: ZoneTransition },
-    ObjectCeasedToExist { object: GameObjectId },
-    LifeChanged { player: PlayerId, from: i64, to: i64 },
-    ObjectTapped { object: GameObjectId, from: bool, to: bool },
-    DecisionCreated { decision: DecisionId },
-    DecisionCleared { decision: DecisionId },
+    ZoneTransition {
+        transition: ZoneTransition,
+    },
+    ObjectCeasedToExist {
+        object: GameObjectId,
+    },
+    LifeChanged {
+        player: PlayerId,
+        from: i64,
+        to: i64,
+    },
+    ObjectTapped {
+        object: GameObjectId,
+        from: bool,
+        to: bool,
+    },
+    DecisionCreated {
+        decision: DecisionId,
+    },
+    DecisionCleared {
+        decision: DecisionId,
+    },
     RandomnessConsumed {
         stream: String,
         counter_before: u64,
@@ -28,7 +42,9 @@ pub enum AuthoritativeRuleEventKind {
         exclusive_upper_bound: u64,
         value: u64,
     },
-    PublicOutcome { code: String },
+    PublicOutcome {
+        code: String,
+    },
 }
 
 impl AuthoritativeRuleEventKind {
@@ -50,12 +66,12 @@ impl AuthoritativeRuleEventKind {
                 from: *from,
                 to: *to,
             },
-            Self::DecisionCreated { decision } => {
-                SemanticDeltaOperation::DecisionCreated { decision: *decision }
-            }
-            Self::DecisionCleared { decision } => {
-                SemanticDeltaOperation::DecisionCleared { decision: *decision }
-            }
+            Self::DecisionCreated { decision } => SemanticDeltaOperation::DecisionCreated {
+                decision: *decision,
+            },
+            Self::DecisionCleared { decision } => SemanticDeltaOperation::DecisionCleared {
+                decision: *decision,
+            },
             Self::RandomnessConsumed {
                 stream,
                 counter_before,
@@ -178,8 +194,8 @@ pub fn validate_transition_contract(
     }
     cursor.validate_final_state(&result.next_state)?;
 
-    let event_count = u64::try_from(result.events.len())
-        .map_err(|_| TransitionViolation::EventIdentity)?;
+    let event_count =
+        u64::try_from(result.events.len()).map_err(|_| TransitionViolation::EventIdentity)?;
     let expected_next_event = before
         .allocators
         .next_rule_event_id
@@ -445,16 +461,15 @@ mod tests {
     use super::*;
     use mtgml_decision::{DecisionKind, DecisionVisibility};
     use mtgml_model::{
-        AbilityInstanceId, CardDefinitionId, ContinuationId, EffectInstanceId,
-        OpaqueAbilityId, OpaqueObjectId, PhysicalCardId, StackObjectId, TriggerInstanceId,
-        ZoneKind,
+        AbilityInstanceId, CardDefinitionId, ContinuationId, EffectInstanceId, OpaqueAbilityId,
+        OpaqueObjectId, PhysicalCardId, StackObjectId, TriggerInstanceId, ZoneKind,
     };
     use mtgml_random::{RandomState, RandomStreamState};
     use mtgml_state::{
         CoreRulesState, ExecutionState, FormatState, GameObject, IdentityAllocatorState,
-        KnowledgeState, PendingDecisionRecord, PerspectiveIdentityMap,
-        PerspectiveIdentityState, PlayerKnowledgeState, PlayerState, VisibilityPartition,
-        ZoneLocation, ZonePosition, ZoneState,
+        KnowledgeState, PendingDecisionRecord, PerspectiveIdentityMap, PerspectiveIdentityState,
+        PlayerKnowledgeState, PlayerState, VisibilityPartition, ZoneLocation, ZonePosition,
+        ZoneState,
     };
 
     fn request(id: u64, revision: u64) -> PlayerDecisionRequest {
@@ -522,10 +537,7 @@ mod tests {
                 algorithm_id: "test-counter".into(),
                 derivation_version: "v1".into(),
                 root_seed_hex: "00".repeat(32),
-                streams: BTreeMap::from([(
-                    "test".into(),
-                    RandomStreamState { counter: 0 },
-                )]),
+                streams: BTreeMap::from([("test".into(), RandomStreamState { counter: 0 })]),
             },
             knowledge: KnowledgeState {
                 players: BTreeMap::from([
@@ -688,11 +700,7 @@ mod tests {
                 },
             },
         ];
-        validate_transition_contract(
-            &before,
-            &result(&before, after, events, Some(next)),
-        )
-        .unwrap();
+        validate_transition_contract(&before, &result(&before, after, events, Some(next))).unwrap();
     }
 
     #[test]
@@ -843,14 +851,14 @@ mod tests {
 
         let mut after = before.clone();
         after.revision = StateRevision(1);
-        after.execution.pending_decision.as_mut().unwrap().request.state_revision =
-            StateRevision(1);
-        let transition = result(
-            &before,
-            after,
-            vec![],
-            Some(request(1, 1)),
-        );
+        after
+            .execution
+            .pending_decision
+            .as_mut()
+            .unwrap()
+            .request
+            .state_revision = StateRevision(1);
+        let transition = result(&before, after, vec![], Some(request(1, 1)));
         assert!(matches!(
             validate_transition_contract(&before, &transition),
             Err(TransitionViolation::DecisionIdentityReused)

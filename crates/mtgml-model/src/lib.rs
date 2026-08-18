@@ -208,9 +208,6 @@ domain_digest!(ContentDigest, "mtgml.content-digest.v1");
 domain_digest!(ReplayDigest, "mtgml.replay-digest.v1");
 domain_digest!(CheckpointDigest, "mtgml.checkpoint-digest.v1");
 
-
-
-
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct PlayerOutcome {
@@ -251,7 +248,6 @@ pub enum StatusValidationError {
     #[error("episode status contains the same player more than once")]
     DuplicatePlayer,
 }
-
 
 #[cfg(test)]
 mod tests {
