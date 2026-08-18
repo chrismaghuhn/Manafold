@@ -10,7 +10,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
 
-from maintainer_common import (  # noqa: E402
+from maintainer_common import (
     MaintainerArtifactError,
     capability_census,
     certification_status,
@@ -23,7 +23,9 @@ class MaintainerArtifactTests(unittest.TestCase):
     def test_example_bundle_has_resolvable_structural_closure(self) -> None:
         bundle = load_json(ROOT / "cards/bundles/example-v1/manifest.example.json")
         registry = load_json(ROOT / "cards/capabilities/registry.example.json")
-        census = capability_census(bundle, registry, root=ROOT, required_capability_lifecycle="proposed")
+        census = capability_census(
+            bundle, registry, root=ROOT, required_capability_lifecycle="proposed"
+        )
         self.assertEqual(census.missing, ())
         self.assertEqual(census.cycles, ())
         self.assertEqual(census.missing_definitions, ())
@@ -90,7 +92,9 @@ class MaintainerArtifactTests(unittest.TestCase):
     def test_deprecated_lifecycle_cannot_be_used_as_minimum_threshold(self) -> None:
         bundle = load_json(ROOT / "cards/bundles/example-v1/manifest.example.json")
         registry = load_json(ROOT / "cards/capabilities/registry.example.json")
-        with self.assertRaisesRegex(MaintainerArtifactError, "unknown required capability lifecycle"):
+        with self.assertRaisesRegex(
+            MaintainerArtifactError, "unknown required capability lifecycle"
+        ):
             capability_census(
                 bundle,
                 registry,
@@ -121,7 +125,9 @@ class MaintainerArtifactTests(unittest.TestCase):
                     }
                 ],
             }
-            with self.assertRaisesRegex(MaintainerArtifactError, "missing capability specification"):
+            with self.assertRaisesRegex(
+                MaintainerArtifactError, "missing capability specification"
+            ):
                 validate_capability_registry(registry, root=Path(directory))
 
     def test_implemented_capability_requires_existing_implementation(self) -> None:
@@ -151,7 +157,9 @@ class MaintainerArtifactTests(unittest.TestCase):
                     }
                 ],
             }
-            with self.assertRaisesRegex(MaintainerArtifactError, "requires at least one implementation path"):
+            with self.assertRaisesRegex(
+                MaintainerArtifactError, "requires at least one implementation path"
+            ):
                 validate_capability_registry(registry, root=root)
 
     def test_native_executors_are_discovered_from_definition_closure(self) -> None:
@@ -177,12 +185,8 @@ class MaintainerArtifactTests(unittest.TestCase):
                 json.dumps(manifest, indent=2, sort_keys=True) + "\n",
                 encoding="utf-8",
             )
-            bundle = load_json(
-                root / "cards" / "bundles" / "example-v1" / "manifest.example.json"
-            )
-            registry = load_json(
-                root / "cards" / "capabilities" / "registry.example.json"
-            )
+            bundle = load_json(root / "cards" / "bundles" / "example-v1" / "manifest.example.json")
+            registry = load_json(root / "cards" / "capabilities" / "registry.example.json")
 
             census = capability_census(
                 bundle,
@@ -220,8 +224,12 @@ class MaintainerArtifactTests(unittest.TestCase):
     def test_static_preflight_never_certifies_not_run_gates(self) -> None:
         bundle = load_json(ROOT / "cards/bundles/example-v1/manifest.example.json")
         registry = load_json(ROOT / "cards/capabilities/registry.example.json")
-        census = capability_census(bundle, registry, root=ROOT, required_capability_lifecycle="proposed")
-        status = certification_status(census, [{"gate": "REFERENCE_IMPLEMENTATION", "status": "NOT_RUN"}])
+        census = capability_census(
+            bundle, registry, root=ROOT, required_capability_lifecycle="proposed"
+        )
+        status = certification_status(
+            census, [{"gate": "REFERENCE_IMPLEMENTATION", "status": "NOT_RUN"}]
+        )
         self.assertEqual(status, "blocked")
 
 

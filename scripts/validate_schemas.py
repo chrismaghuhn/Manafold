@@ -23,12 +23,30 @@ WIRE_MAPPING = {
 ARTIFACT_CASES = [
     ("capability-registry.v1.schema.json", "cards/capabilities/registry.json"),
     ("capability-registry.v1.schema.json", "cards/capabilities/registry.example.json"),
-    ("card-definition-manifest.v1.schema.json", "cards/definitions/example/card/example-card/manifest.example.json"),
-    ("bundle-manifest.v1.schema.json", "cards/bundles/example-v1/manifest.example.json"),
-    ("bundle-certification.v1.schema.json", "cards/bundles/example-v1/certification.example.json"),
-    ("scope-impact-report.v1.schema.json", "cards/bundles/example-v1/scope-impact.example.json"),
-    ("normative-document-register.v1.schema.json", "docs/normative-document-register.v1.json"),
-    ("contract-vocabulary-catalog.v1.schema.json", "contracts/catalog/contract-vocabulary.v1.json"),
+    (
+        "card-definition-manifest.v1.schema.json",
+        "cards/definitions/example/card/example-card/manifest.example.json",
+    ),
+    (
+        "bundle-manifest.v1.schema.json",
+        "cards/bundles/example-v1/manifest.example.json",
+    ),
+    (
+        "bundle-certification.v1.schema.json",
+        "cards/bundles/example-v1/certification.example.json",
+    ),
+    (
+        "scope-impact-report.v1.schema.json",
+        "cards/bundles/example-v1/scope-impact.example.json",
+    ),
+    (
+        "normative-document-register.v1.schema.json",
+        "docs/normative-document-register.v1.json",
+    ),
+    (
+        "contract-vocabulary-catalog.v1.schema.json",
+        "contracts/catalog/contract-vocabulary.v1.json",
+    ),
     ("golden-path-index.v1.schema.json", "examples/golden-path/index.json"),
 ]
 
@@ -46,8 +64,13 @@ def main() -> None:
         instance = load(ROOT / "wire/golden" / case["path"])
         jsonschema.Draft202012Validator(schema).validate(instance)
     for schema_rel, value_rel in ARTIFACT_CASES:
-        jsonschema.Draft202012Validator(load(ROOT / "schemas" / schema_rel)).validate(load(ROOT / value_rel))
-    print(f"PASS: {len(fixtures)} wire fixtures and {len(ARTIFACT_CASES)} maintainer artifacts validated against schemas")
+        jsonschema.Draft202012Validator(load(ROOT / "schemas" / schema_rel)).validate(
+            load(ROOT / value_rel)
+        )
+    print(
+        f"PASS: {len(fixtures)} wire fixtures and"
+        f" {len(ARTIFACT_CASES)} maintainer artifacts validated against schemas"
+    )
 
 
 if __name__ == "__main__":

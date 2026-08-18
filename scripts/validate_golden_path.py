@@ -54,8 +54,7 @@ def main() -> int:
     )
     if census.returncode != 0:
         raise SystemExit(
-            "golden-path census unexpectedly blocked:\n"
-            f"{census.stdout}\n{census.stderr}"
+            f"golden-path census unexpectedly blocked:\n{census.stdout}\n{census.stderr}"
         )
 
     with tempfile.TemporaryDirectory() as temp:
@@ -85,13 +84,9 @@ def main() -> int:
             )
         payload = json.loads(report.read_text(encoding="utf-8"))
         if payload.get("status") != data["expected_certification_status"]:
-            raise SystemExit(
-                f"unexpected certification status: {payload.get('status')}"
-            )
+            raise SystemExit(f"unexpected certification status: {payload.get('status')}")
 
-    print(
-        "PASS: synthetic golden path is structurally closed and certification fails closed"
-    )
+    print("PASS: synthetic golden path is structurally closed and certification fails closed")
     return 0
 
 

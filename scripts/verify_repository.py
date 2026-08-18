@@ -2,15 +2,16 @@
 from __future__ import annotations
 
 import sys
+
 sys.dont_write_bytecode = True
 
 import ast
 import json
 import re
 import tomllib
+from pathlib import Path
 
 import yaml
-from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SCAN_EXCLUDED_PARTS = {".git", ".venv", "target", "dist"}
@@ -38,9 +39,7 @@ def main() -> None:
     forbidden = [
         path.relative_to(ROOT)
         for path in ROOT.rglob("*")
-        if not any(
-            part in SCAN_EXCLUDED_PARTS for part in path.relative_to(ROOT).parts
-        )
+        if not any(part in SCAN_EXCLUDED_PARTS for part in path.relative_to(ROOT).parts)
         and (path.name == "__pycache__" or path.suffix in {".pyc", ".pyo"})
     ]
     if forbidden:
@@ -120,7 +119,9 @@ def main() -> None:
     ]
     present_generated = [name for name in generated_source_reports if (ROOT / name).exists()]
     if present_generated:
-        fail(f"generated verification output must remain outside source archive: {present_generated}")
+        fail(
+            f"generated verification output must remain outside source archive: {present_generated}"
+        )
 
     with (ROOT / "config/reproducibility.toml").open("rb") as handle:
         reproducibility = tomllib.load(handle)
@@ -178,18 +179,27 @@ def main() -> None:
         except Exception as exc:
             fail(f"invalid YAML in {path.relative_to(ROOT)}: {exc}")
 
-    golden = json.loads((ROOT / "wire/golden/manifest.json").read_text(encoding="utf-8"))["fixtures"]
-    negative = json.loads((ROOT / "wire/negative/manifest.json").read_text(encoding="utf-8"))["fixtures"]
+    golden = json.loads((ROOT / "wire/golden/manifest.json").read_text(encoding="utf-8"))[
+        "fixtures"
+    ]
+    negative = json.loads((ROOT / "wire/negative/manifest.json").read_text(encoding="utf-8"))[
+        "fixtures"
+    ]
     if len(golden) < 10 or len(negative) < 13:
         fail("shared fixture suites are incomplete")
     for directory, cases in (("golden", golden), ("negative", negative)):
         for case in cases:
             if not (ROOT / "wire" / directory / case["path"]).is_file():
                 fail(f"missing {directory} fixture {case['path']}")
-            if directory == "negative" and case.get("expected_reject_layer") != "rust-python-semantic-or-decode":
+            if (
+                directory == "negative"
+                and case.get("expected_reject_layer") != "rust-python-semantic-or-decode"
+            ):
                 fail(f"negative fixture has unsupported reject layer: {case['path']}")
 
-    catalog = json.loads((ROOT / "contracts/catalog/contract-vocabulary.v1.json").read_text(encoding="utf-8"))
+    catalog = json.loads(
+        (ROOT / "contracts/catalog/contract-vocabulary.v1.json").read_text(encoding="utf-8")
+    )
     catalog_codes = set(catalog["stable_wire_error_codes"])
     rust_wire_text = (ROOT / "crates/mtgml-wire/src/lib.rs").read_text(encoding="utf-8")
     python_wire_text = "\n".join(
@@ -207,7 +217,14 @@ def main() -> None:
         )
 
     justfile = (ROOT / "justfile").read_text(encoding="utf-8")
-    for recipe in ("doctor:", "bootstrap:", "check-fast:", "check:", "check-all:", "release-candidate:"):
+    for recipe in (
+        "doctor:",
+        "bootstrap:",
+        "check-fast:",
+        "check:",
+        "check-all:",
+        "release-candidate:",
+    ):
         if recipe not in justfile:
             fail(f"maintainer justfile lacks {recipe}")
     if (ROOT / ".github/workflows/ci.yml").exists():
@@ -215,8 +232,14 @@ def main() -> None:
 
     replay_rust = (ROOT / "crates/mtgml-replay/src/lib.rs").read_text(encoding="utf-8")
     for token in (
-        "format_policy_snapshot", "card_bundle", "pub kernel:", "pub decks:",
-        "initial_state_revision", "algorithm_id", "derivation_version", "root_seed_hex",
+        "format_policy_snapshot",
+        "card_bundle",
+        "pub kernel:",
+        "pub decks:",
+        "initial_state_revision",
+        "algorithm_id",
+        "derivation_version",
+        "root_seed_hex",
     ):
         if token not in replay_rust:
             fail(f"Rust replay contract lacks {token}")
@@ -230,7 +253,9 @@ def main() -> None:
 
     events_rust = (ROOT / "crates/mtgml-observation/src/lib.rs").read_text(encoding="utf-8")
     events_python = (ROOT / "python/src/mtgml/events.py").read_text(encoding="utf-8")
-    events_schema = (ROOT / "schemas/observed-event-envelope.v1.schema.json").read_text(encoding="utf-8")
+    events_schema = (ROOT / "schemas/observed-event-envelope.v1.schema.json").read_text(
+        encoding="utf-8"
+    )
     for token in ("ObjectCeasedToExist", "ObjectTapped"):
         if token not in events_rust:
             fail(f"Rust observed events lack {token}")
@@ -244,7 +269,10 @@ def main() -> None:
             fail(f"Python PlayerClient lacks {token}")
 
     wire_rust = (ROOT / "crates/mtgml-wire/src/lib.rs").read_text(encoding="utf-8")
-    if "verify_negative_fixture_directory" not in wire_rust or "every_shared_negative_fixture" not in wire_rust:
+    if (
+        "verify_negative_fixture_directory" not in wire_rust
+        or "every_shared_negative_fixture" not in wire_rust
+    ):
         fail("Rust shared negative fixture test is not implemented")
 
     env_rust = (ROOT / "crates/mtgml-environment/src/lib.rs").read_text(encoding="utf-8")
@@ -252,7 +280,12 @@ def main() -> None:
         fail("player endpoint handles still borrow the controller exclusively")
 
     state_rust = (ROOT / "crates/mtgml-state/src/lib.rs").read_text(encoding="utf-8")
-    for token in ("validate_engine_state", "EngineStateParts", "pub replacement:", "PerspectiveIdentityState"):
+    for token in (
+        "validate_engine_state",
+        "EngineStateParts",
+        "pub replacement:",
+        "PerspectiveIdentityState",
+    ):
         if token not in state_rust:
             fail(f"state contract lacks {token}")
 
@@ -303,16 +336,18 @@ def main() -> None:
             fail(f"conformance input assertion lacks {token}")
 
     maintainer = (ROOT / "scripts/maintainer_common.py").read_text(encoding="utf-8")
-    for token in ("discovered_native_executors", "undeclared_native_executors", "stale_native_executor_declarations"):
+    for token in (
+        "discovered_native_executors",
+        "undeclared_native_executors",
+        "stale_native_executor_declarations",
+    ):
         if token not in maintainer:
             fail(f"native executor closure lacks {token}")
 
     verification_runner = (ROOT / "scripts/run_verification.py").read_text(encoding="utf-8")
-    if (
-        'ROOT / "dist" / "verification"' not in verification_runner
-        or verification_runner.rfind("archive_reproducibility")
-        < verification_runner.rfind("cargo_test")
-    ):
+    if 'ROOT / "dist" / "verification"' not in verification_runner or verification_runner.rfind(
+        "archive_reproducibility"
+    ) < verification_runner.rfind("cargo_test"):
         fail("verification output is not external or archive gate is not last")
     for token in (
         "source_tree_fingerprint",
@@ -337,21 +372,25 @@ def main() -> None:
             decode_canonical(case["contract"], payload)
         except WireError as error:
             if error.code != case["expected_error_code"]:
-                fail(f"negative fixture {case['path']} returned {error.code}, expected {case['expected_error_code']}")
+                fail(
+                    f"negative fixture {case['path']} returned"
+                    f" {error.code}, expected {case['expected_error_code']}"
+                )
         else:
             fail(f"negative fixture was accepted: {case['path']}")
 
     if any(
         (path.name == "__pycache__" or path.suffix in {".pyc", ".pyo"})
-        and not any(
-            part in SCAN_EXCLUDED_PARTS for part in path.relative_to(ROOT).parts
-        )
+        and not any(part in SCAN_EXCLUDED_PARTS for part in path.relative_to(ROOT).parts)
         for path in ROOT.rglob("*")
     ):
         fail("verifier created Python bytecode")
 
     file_count = sum(1 for path in source_paths("*") if path.is_file())
-    print(f"PASS: V0.2.2 repository contracts verified ({file_count} files, {len(golden)} golden, {len(negative)} negative fixtures)")
+    print(
+        f"PASS: V0.2.2 repository contracts verified"
+        f" ({file_count} files, {len(golden)} golden, {len(negative)} negative fixtures)"
+    )
 
 
 if __name__ == "__main__":

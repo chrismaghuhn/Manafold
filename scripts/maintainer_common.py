@@ -5,14 +5,17 @@ import hashlib
 import json
 import re
 import sys
+from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
 sys.dont_write_bytecode = True
 
 ROOT = Path(__file__).resolve().parents[1]
-CAPABILITY_RE = re.compile(r"^(rules|mechanic|decision|visibility|tooling|format/[a-z0-9-]+)/[a-z0-9][a-z0-9-]*(/[a-z0-9][a-z0-9-]*)*$")
+CAPABILITY_RE = re.compile(
+    r"^(rules|mechanic|decision|visibility|tooling|format/[a-z0-9-]+)/[a-z0-9][a-z0-9-]*(/[a-z0-9][a-z0-9-]*)*$"
+)
 ARTIFACT_ID_RE = re.compile(r"^[a-z0-9][a-z0-9-]*(/[a-z0-9][a-z0-9-]*)+$")
 LIFECYCLE_ORDER = {
     "proposed": 0,
@@ -32,12 +35,8 @@ CARD_LIFECYCLE_ORDER = {
     "blocked": -1,
     "deprecated": -1,
 }
-CAPABILITY_LIFECYCLE_THRESHOLDS = tuple(
-    key for key, order in LIFECYCLE_ORDER.items() if order >= 0
-)
-CARD_LIFECYCLE_THRESHOLDS = tuple(
-    key for key, order in CARD_LIFECYCLE_ORDER.items() if order >= 0
-)
+CAPABILITY_LIFECYCLE_THRESHOLDS = tuple(key for key, order in LIFECYCLE_ORDER.items() if order >= 0)
+CARD_LIFECYCLE_THRESHOLDS = tuple(key for key, order in CARD_LIFECYCLE_ORDER.items() if order >= 0)
 
 
 class MaintainerArtifactError(ValueError):
@@ -60,7 +59,9 @@ def write_json(path: Path, value: object) -> None:
 
 
 def canonical_json_bytes(value: object) -> bytes:
-    return (json.dumps(value, ensure_ascii=False, separators=(",", ":"), sort_keys=True) + "\n").encode("utf-8")
+    return (
+        json.dumps(value, ensure_ascii=False, separators=(",", ":"), sort_keys=True) + "\n"
+    ).encode("utf-8")
 
 
 def digest_json(value: object) -> str:
@@ -137,14 +138,19 @@ def validate_capability_registry(
                 raise MaintainerArtifactError(f"spec_path must be a string for {key}")
             spec_path = resolve_repository_path(root, spec_value, f"spec_path for {key}")
             if not spec_path.is_file():
-                raise MaintainerArtifactError(f"missing capability specification for {key}: {spec_value}")
+                raise MaintainerArtifactError(
+                    f"missing capability specification for {key}: {spec_value}"
+                )
 
             implementation_paths = raw.get("implementation_paths", [])
             if not isinstance(implementation_paths, list) or any(
                 not isinstance(item, str) for item in implementation_paths
             ):
                 raise MaintainerArtifactError(f"invalid implementation_paths for {key}")
-            if LIFECYCLE_ORDER[lifecycle] >= LIFECYCLE_ORDER["implemented"] and not implementation_paths:
+            if (
+                LIFECYCLE_ORDER[lifecycle] >= LIFECYCLE_ORDER["implemented"]
+                and not implementation_paths
+            ):
                 raise MaintainerArtifactError(
                     f"{key}@{lifecycle} requires at least one implementation path"
                 )
@@ -167,16 +173,17 @@ def validate_capability_registry(
                 and raw.get("information_risk") == "unreviewed"
             ):
                 raise MaintainerArtifactError(f"{key}@{lifecycle} has unreviewed information risk")
-            if (
-                LIFECYCLE_ORDER[lifecycle] >= LIFECYCLE_ORDER["covered"]
-                and not raw.get("conformance_cases")
+            if LIFECYCLE_ORDER[lifecycle] >= LIFECYCLE_ORDER["covered"] and not raw.get(
+                "conformance_cases"
             ):
                 raise MaintainerArtifactError(f"{key}@{lifecycle} requires conformance cases")
         by_key[key] = raw
 
     for key, entry in by_key.items():
         dependencies = entry.get("dependencies", [])
-        if not isinstance(dependencies, list) or any(not isinstance(dep, str) for dep in dependencies):
+        if not isinstance(dependencies, list) or any(
+            not isinstance(dep, str) for dep in dependencies
+        ):
             raise MaintainerArtifactError(f"invalid dependencies for {key}")
         if len(dependencies) != len(set(dependencies)):
             raise MaintainerArtifactError(f"duplicate dependency for {key}")
@@ -200,7 +207,7 @@ def find_dependency_cycles(by_key: dict[str, dict[str, Any]]) -> list[list[str]]
             return
         if marker == 1:
             index = visiting.index(key)
-            cycle = visiting[index:] + [key]
+            cycle = [*visiting[index:], key]
             if cycle not in cycles:
                 cycles.append(cycle)
             return
@@ -236,9 +243,7 @@ def validate_card_manifest(
         ensure_capability_key(key)
     lifecycle = manifest.get("lifecycle")
     if lifecycle not in CARD_LIFECYCLE_ORDER:
-        raise MaintainerArtifactError(
-            f"invalid card lifecycle for {definition_id}: {lifecycle!r}"
-        )
+        raise MaintainerArtifactError(f"invalid card lifecycle for {definition_id}: {lifecycle!r}")
     generated = manifest.get("generated_objects", [])
     if not isinstance(generated, list) or any(not isinstance(item, str) for item in generated):
         raise MaintainerArtifactError(f"invalid generated objects for {definition_id}")
@@ -250,9 +255,7 @@ def validate_card_manifest(
     if native_executor is not None and (
         not isinstance(native_executor, str) or not native_executor
     ):
-        raise MaintainerArtifactError(
-            f"invalid native_executor for {definition_id}"
-        )
+        raise MaintainerArtifactError(f"invalid native_executor for {definition_id}")
     if root is not None:
         implementation_value = manifest.get("implementation_path")
         if CARD_LIFECYCLE_ORDER[lifecycle] >= CARD_LIFECYCLE_ORDER["implemented"]:
@@ -269,13 +272,10 @@ def validate_card_manifest(
                 raise MaintainerArtifactError(
                     f"missing card implementation for {definition_id}: {implementation_value}"
                 )
-        if (
-            CARD_LIFECYCLE_ORDER[lifecycle] >= CARD_LIFECYCLE_ORDER["covered"]
-            and not manifest.get("conformance_cases")
+        if CARD_LIFECYCLE_ORDER[lifecycle] >= CARD_LIFECYCLE_ORDER["covered"] and not manifest.get(
+            "conformance_cases"
         ):
-            raise MaintainerArtifactError(
-                f"{definition_id}@{lifecycle} requires conformance cases"
-            )
+            raise MaintainerArtifactError(f"{definition_id}@{lifecycle} requires conformance cases")
 
 
 def validate_bundle_manifest(bundle: dict[str, Any]) -> None:
@@ -353,9 +353,7 @@ class CapabilityCensus:
             ],
             "native_executors": list(self.native_executors),
             "undeclared_native_executors": list(self.undeclared_native_executors),
-            "stale_native_executor_declarations": list(
-                self.stale_native_executor_declarations
-            ),
+            "stale_native_executor_declarations": list(self.stale_native_executor_declarations),
         }
 
 
@@ -381,7 +379,9 @@ def capability_census(
     required: set[str] = set(bundle.get("required_capabilities", []))
     missing_definitions: list[str] = []
     card_blockers: list[tuple[str, str]] = []
-    definition_ids = list(bundle.get("definition_ids", [])) + list(bundle.get("generated_definition_ids", []))
+    definition_ids = list(bundle.get("definition_ids", [])) + list(
+        bundle.get("generated_definition_ids", [])
+    )
     visited_definitions: set[str] = set()
     discovered_native_executors: set[str] = set()
 
@@ -398,15 +398,15 @@ def capability_census(
         manifest = load_json(path)
         validate_card_manifest(manifest, root=root)
         if manifest["definition_id"] != definition_id:
-            raise MaintainerArtifactError(f"definition path/id mismatch: {definition_id} vs {manifest['definition_id']}")
+            raise MaintainerArtifactError(
+                f"definition path/id mismatch: {definition_id} vs {manifest['definition_id']}"
+            )
         required.update(manifest.get("required_capabilities", []))
         queue.extend(manifest.get("generated_objects", []))
         native_executor = manifest.get("native_executor")
         if native_executor is not None:
             if not isinstance(native_executor, str) or not native_executor:
-                raise MaintainerArtifactError(
-                    f"invalid native_executor for {definition_id}"
-                )
+                raise MaintainerArtifactError(f"invalid native_executor for {definition_id}")
             discovered_native_executors.add(native_executor)
         lifecycle = manifest.get("lifecycle", "draft")
         if CARD_LIFECYCLE_ORDER.get(lifecycle, -1) < CARD_LIFECYCLE_ORDER[required_card_lifecycle]:
@@ -446,9 +446,7 @@ def capability_census(
         card_lifecycle_blockers=tuple(sorted(set(card_blockers))),
         native_executors=tuple(sorted(discovered_native_executors)),
         undeclared_native_executors=tuple(sorted(undeclared_native_executors)),
-        stale_native_executor_declarations=tuple(
-            sorted(stale_native_executor_declarations)
-        ),
+        stale_native_executor_declarations=tuple(sorted(stale_native_executor_declarations)),
     )
 
 
@@ -464,9 +462,7 @@ def certification_closure(census: CapabilityCensus) -> dict[str, object]:
         "card_lifecycle_blockers": closure["card_lifecycle_blockers"],
         "native_executors": closure["native_executors"],
         "undeclared_native_executors": closure["undeclared_native_executors"],
-        "stale_native_executor_declarations": closure[
-            "stale_native_executor_declarations"
-        ],
+        "stale_native_executor_declarations": closure["stale_native_executor_declarations"],
     }
 
 

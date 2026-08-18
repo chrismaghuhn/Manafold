@@ -6,7 +6,13 @@ from .decision import (
     DecisionSpec,
     PlayerDecisionRequest,
 )
-from .episode import EpisodeStatus, PlayerOutcome, PlayerResult, TerminalReason, TruncationReason
+from .episode import (
+    EpisodeStatus,
+    PlayerOutcome,
+    PlayerResult,
+    TerminalReason,
+    TruncationReason,
+)
 from .events import ObservedEvent, ObservedEventEnvelope
 from .observation import InformationStateEnvelope, ObservationEnvelope, PlayerStep
 from .player_client import PlayerClient

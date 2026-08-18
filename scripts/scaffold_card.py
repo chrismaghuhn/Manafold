@@ -55,7 +55,17 @@ def main() -> None:
     }
     validate_card_manifest(manifest, root=args.root)
     write_json(manifest_path, manifest)
-    readme = f"""# Card Work Item — `{args.definition_id}`\n\n**Display name:** {args.display_name}  \n**Lifecycle:** draft  \n**Manifest digest at scaffold:** `{digest_json(manifest)}`\n\nFollow `docs/cards/ADDING_CARDS.md`. Do not promote lifecycle until provenance, capability closure, decisions, information behavior, and conformance evidence are reviewed.\n"""
+    readme = (
+        f"# Card Work Item — `{args.definition_id}`\n"
+        f"\n"
+        f"**Display name:** {args.display_name}  \n"
+        f"**Lifecycle:** draft  \n"
+        f"**Manifest digest at scaffold:** `{digest_json(manifest)}`\n"
+        f"\n"
+        f"Follow `docs/cards/ADDING_CARDS.md`. Do not promote lifecycle until"
+        f" provenance, capability closure, decisions, information behavior,"
+        f" and conformance evidence are reviewed.\n"
+    )
     (directory / "README.md").write_text(readme, encoding="utf-8")
     print(manifest_path.relative_to(args.root))
 

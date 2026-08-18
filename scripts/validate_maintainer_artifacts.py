@@ -1,13 +1,10 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
-import json
 import sys
-from pathlib import Path
 
 sys.dont_write_bytecode = True
 import jsonschema
-
 from maintainer_common import (
     ROOT,
     MaintainerArtifactError,
@@ -21,12 +18,30 @@ from maintainer_common import (
 
 CASES = [
     ("schemas/capability-registry.v1.schema.json", "cards/capabilities/registry.json"),
-    ("schemas/capability-registry.v1.schema.json", "cards/capabilities/registry.example.json"),
-    ("schemas/card-definition-manifest.v1.schema.json", "cards/definitions/example/card/example-card/manifest.example.json"),
-    ("schemas/bundle-manifest.v1.schema.json", "cards/bundles/example-v1/manifest.example.json"),
-    ("schemas/bundle-certification.v1.schema.json", "cards/bundles/example-v1/certification.example.json"),
-    ("schemas/scope-impact-report.v1.schema.json", "cards/bundles/example-v1/scope-impact.example.json"),
-    ("schemas/normative-document-register.v1.schema.json", "docs/normative-document-register.v1.json"),
+    (
+        "schemas/capability-registry.v1.schema.json",
+        "cards/capabilities/registry.example.json",
+    ),
+    (
+        "schemas/card-definition-manifest.v1.schema.json",
+        "cards/definitions/example/card/example-card/manifest.example.json",
+    ),
+    (
+        "schemas/bundle-manifest.v1.schema.json",
+        "cards/bundles/example-v1/manifest.example.json",
+    ),
+    (
+        "schemas/bundle-certification.v1.schema.json",
+        "cards/bundles/example-v1/certification.example.json",
+    ),
+    (
+        "schemas/scope-impact-report.v1.schema.json",
+        "cards/bundles/example-v1/scope-impact.example.json",
+    ),
+    (
+        "schemas/normative-document-register.v1.schema.json",
+        "docs/normative-document-register.v1.json",
+    ),
 ]
 
 
@@ -47,7 +62,9 @@ def main() -> None:
     validate_card_manifest(card, root=ROOT)
     bundle = load_json(ROOT / "cards/bundles/example-v1/manifest.example.json")
     validate_bundle_manifest(bundle)
-    census = capability_census(bundle, example_registry, root=ROOT, required_capability_lifecycle="proposed")
+    census = capability_census(
+        bundle, example_registry, root=ROOT, required_capability_lifecycle="proposed"
+    )
     if census.missing or census.cycles or census.missing_definitions:
         raise MaintainerArtifactError(f"example census is structurally incomplete: {census}")
 
@@ -61,7 +78,9 @@ def main() -> None:
     )
     expected_closure = certification_closure(certification_census)
     if certification["capability_closure"] != expected_closure:
-        raise MaintainerArtifactError("example certification closure does not match bundle/registry census")
+        raise MaintainerArtifactError(
+            "example certification closure does not match bundle/registry census"
+        )
     if certification["status"] == "certified" and any(
         gate["status"] != "PASS" for gate in certification["gates"]
     ):

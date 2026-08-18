@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
 
 from .canonical import parse_uint, require_exact_keys, require_nonempty, uint_wire
 from .errors import WireError
@@ -30,7 +29,7 @@ class CandidateIntent:
     payload: tuple[tuple[str, object], ...] = ()
 
     @classmethod
-    def from_wire(cls, value: object) -> "CandidateIntent":
+    def from_wire(cls, value: object) -> CandidateIntent:
         if not isinstance(value, dict) or value.get("kind") not in _ALLOWED_INTENTS:
             raise WireError("decode.invalid_json", "unknown candidate intent")
         kind = str(value["kind"])
@@ -86,7 +85,7 @@ class ActionCandidate:
     intent: CandidateIntent
 
     @classmethod
-    def from_wire(cls, value: object) -> "ActionCandidate":
+    def from_wire(cls, value: object) -> ActionCandidate:
         obj = require_exact_keys(value, {"candidate_id", "semantic_key", "intent"})
         return cls(
             require_nonempty(obj["candidate_id"], "candidate_id"),
@@ -109,7 +108,7 @@ class DecisionSpec:
     maximum: int | None = None
 
     @classmethod
-    def from_wire(cls, value: object) -> "DecisionSpec":
+    def from_wire(cls, value: object) -> DecisionSpec:
         if not isinstance(value, dict) or value.get("kind") not in _ALLOWED_DECISIONS:
             raise WireError("decode.invalid_json", "unknown decision kind")
         kind = str(value["kind"])
@@ -118,13 +117,18 @@ class DecisionSpec:
             return cls(kind)
         obj = require_exact_keys(value, {"kind", "minimum", "maximum"})
         minimum, maximum = obj["minimum"], obj["maximum"]
-        if isinstance(minimum, bool) or isinstance(maximum, bool) or not isinstance(minimum, int) or not isinstance(maximum, int):
-            raise WireError("decode.invalid_json", "decision bounds must be integers")
-        if kind in {"choose_many", "order"} and (
-            minimum < 0 or maximum < 0 or maximum > 2**32 - 1
+        if (
+            isinstance(minimum, bool)
+            or isinstance(maximum, bool)
+            or not isinstance(minimum, int)
+            or not isinstance(maximum, int)
         ):
+            raise WireError("decode.invalid_json", "decision bounds must be integers")
+        if kind in {"choose_many", "order"} and (minimum < 0 or maximum < 0 or maximum > 2**32 - 1):
             raise WireError("decode.invalid_json", "selection bounds are outside u32")
-        if kind == "choose_number" and not (-(2**63) <= minimum < 2**63 and -(2**63) <= maximum < 2**63):
+        if kind == "choose_number" and not (
+            -(2**63) <= minimum < 2**63 and -(2**63) <= maximum < 2**63
+        ):
             raise WireError("decode.invalid_json", "numeric bounds are outside i64")
         return cls(kind, minimum, maximum)
 
@@ -134,7 +138,11 @@ class DecisionSpec:
         if self.minimum is not None and self.maximum is not None and self.minimum > self.maximum:
             raise WireError("semantic.decision", "decision bounds are inverted")
         effective_minimum = 1 if self.kind == "choose_one" else self.minimum
-        if self.kind in {"choose_one", "choose_many", "order"} and effective_minimum is not None and effective_minimum > candidate_count:
+        if (
+            self.kind in {"choose_one", "choose_many", "order"}
+            and effective_minimum is not None
+            and effective_minimum > candidate_count
+        ):
             raise WireError("semantic.decision", "minimum cannot be satisfied")
 
     def to_wire(self) -> dict[str, object]:
@@ -157,12 +165,23 @@ class PlayerDecisionRequest:
     candidates: tuple[ActionCandidate, ...]
 
     @classmethod
-    def from_wire(cls, value: object) -> "PlayerDecisionRequest":
+    def from_wire(cls, value: object) -> PlayerDecisionRequest:
         obj = require_exact_keys(
             value,
-            {"schema_version", "decision_id", "state_revision", "actor", "visibility", "decision", "candidates"},
+            {
+                "schema_version",
+                "decision_id",
+                "state_revision",
+                "actor",
+                "visibility",
+                "decision",
+                "candidates",
+            },
         )
-        if obj["schema_version"] != PLAYER_DECISION_REQUEST_SCHEMA or obj["visibility"] not in _ALLOWED_VISIBILITY:
+        if (
+            obj["schema_version"] != PLAYER_DECISION_REQUEST_SCHEMA
+            or obj["visibility"] not in _ALLOWED_VISIBILITY
+        ):
             raise WireError("decode.invalid_json", "unsupported decision schema or visibility")
         if not isinstance(obj["candidates"], list):
             raise WireError("decode.invalid_json", "candidates must be an array")
@@ -206,17 +225,21 @@ class CandidateAssignment:
     ordinal: int | None = None
 
     @classmethod
-    def from_wire(cls, value: object) -> "CandidateAssignment":
+    def from_wire(cls, value: object) -> CandidateAssignment:
         obj = require_exact_keys(value, {"candidate_id"}, {"ordinal"})
         ordinal = obj.get("ordinal")
         if ordinal is not None and (
-            isinstance(ordinal, bool) or not isinstance(ordinal, int) or not 0 <= ordinal <= 2**32 - 1
+            isinstance(ordinal, bool)
+            or not isinstance(ordinal, int)
+            or not 0 <= ordinal <= 2**32 - 1
         ):
             raise WireError("decode.invalid_json", "ordinal is outside u32")
         return cls(require_nonempty(obj["candidate_id"], "candidate_id"), ordinal)
 
     def to_wire(self) -> dict[str, object]:
-        result: dict[str, object] = {"candidate_id": require_nonempty(self.candidate_id, "candidate_id")}
+        result: dict[str, object] = {
+            "candidate_id": require_nonempty(self.candidate_id, "candidate_id")
+        }
         if self.ordinal is not None:
             result["ordinal"] = self.ordinal
         CandidateAssignment.from_wire(result)
@@ -231,9 +254,13 @@ class DecisionResponse:
     assignments: tuple[CandidateAssignment, ...]
 
     @classmethod
-    def from_wire(cls, value: object) -> "DecisionResponse":
-        obj = require_exact_keys(value, {"schema_version", "decision_id", "state_revision", "assignments"})
-        if obj["schema_version"] != DECISION_RESPONSE_SCHEMA or not isinstance(obj["assignments"], list):
+    def from_wire(cls, value: object) -> DecisionResponse:
+        obj = require_exact_keys(
+            value, {"schema_version", "decision_id", "state_revision", "assignments"}
+        )
+        if obj["schema_version"] != DECISION_RESPONSE_SCHEMA or not isinstance(
+            obj["assignments"], list
+        ):
             raise WireError("decode.invalid_json", "unsupported response schema or assignments")
         result = cls(
             DECISION_RESPONSE_SCHEMA,
@@ -247,7 +274,10 @@ class DecisionResponse:
     def validate(self) -> None:
         ids = [assignment.candidate_id for assignment in self.assignments]
         if len(set(ids)) != len(ids):
-            raise WireError("semantic.decision_response", "assignments contain duplicate candidate IDs")
+            raise WireError(
+                "semantic.decision_response",
+                "assignments contain duplicate candidate IDs",
+            )
 
     def to_wire(self) -> dict[str, object]:
         self.validate()

@@ -4,12 +4,14 @@ from __future__ import annotations
 
 from enum import StrEnum
 
+
 class TerminalReason(StrEnum):
     RULES_LOSS = "rules_loss"
     CONCESSION = "concession"
     SIMULTANEOUS_OUTCOME = "simultaneous_outcome"
     RULES_DRAW = "rules_draw"
     SPECIFIED_LOOP = "specified_loop"
+
 
 class TruncationReason(StrEnum):
     DECISION_LIMIT = "decision_limit"
@@ -18,6 +20,7 @@ class TruncationReason(StrEnum):
     RESOURCE_LIMIT = "resource_limit"
     EXTERNAL_STOP = "external_stop"
 
+
 class PlayerResult(StrEnum):
     WIN = "win"
     LOSS = "loss"
@@ -25,8 +28,50 @@ class PlayerResult(StrEnum):
     ELIMINATED = "eliminated"
     UNRESOLVED = "unresolved"
 
-ZONE_KINDS = frozenset(('library', 'hand', 'battlefield', 'graveyard', 'exile', 'stack', 'command', 'ante', 'outside',))
-OBSERVED_EVENT_KINDS = frozenset(('object_moved', 'object_ceased_to_exist', 'life_changed', 'object_tapped', 'decision_available', 'random_outcome_visible', 'public_outcome',))
-STABLE_WIRE_ERROR_CODES = frozenset(('decode.invalid_json', 'decode.non_canonical_json', 'encode.serialization', 'semantic.decision', 'semantic.decision_response', 'semantic.observation', 'semantic.information_state', 'semantic.observed_event', 'semantic.player_step', 'semantic.episode_status', 'semantic.replay_manifest', 'semantic.replay', 'fixture.unknown_contract',))
-EPISODE_STATUS_SCHEMA = 'episode-status.v1'
-OBSERVED_EVENT_SCHEMA = 'observed-event-envelope.v1'
+
+ZONE_KINDS = frozenset(
+    (
+        "library",
+        "hand",
+        "battlefield",
+        "graveyard",
+        "exile",
+        "stack",
+        "command",
+        "ante",
+        "outside",
+    )
+)
+
+OBSERVED_EVENT_KINDS = frozenset(
+    (
+        "object_moved",
+        "object_ceased_to_exist",
+        "life_changed",
+        "object_tapped",
+        "decision_available",
+        "random_outcome_visible",
+        "public_outcome",
+    )
+)
+
+STABLE_WIRE_ERROR_CODES = frozenset(
+    (
+        "decode.invalid_json",
+        "decode.non_canonical_json",
+        "encode.serialization",
+        "semantic.decision",
+        "semantic.decision_response",
+        "semantic.observation",
+        "semantic.information_state",
+        "semantic.observed_event",
+        "semantic.player_step",
+        "semantic.episode_status",
+        "semantic.replay_manifest",
+        "semantic.replay",
+        "fixture.unknown_contract",
+    )
+)
+
+EPISODE_STATUS_SCHEMA = "episode-status.v1"
+OBSERVED_EVENT_SCHEMA = "observed-event-envelope.v1"

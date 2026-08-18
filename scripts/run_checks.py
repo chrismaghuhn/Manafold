@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Run maintainer checks at development, integration, or certification depth."""
+
 from __future__ import annotations
 
 import argparse
@@ -26,7 +27,17 @@ INTEGRATION_EXTRA = [
     ["mypy", "--config-file", "python/pyproject.toml"],
     ["cargo", "fmt", "--all", "--", "--check"],
     ["cargo", "check", "--workspace", "--all-targets", "--all-features", "--locked"],
-    ["cargo", "clippy", "--workspace", "--all-targets", "--all-features", "--locked", "--", "-D", "warnings"],
+    [
+        "cargo",
+        "clippy",
+        "--workspace",
+        "--all-targets",
+        "--all-features",
+        "--locked",
+        "--",
+        "-D",
+        "warnings",
+    ],
     ["cargo", "test", "--workspace", "--all-features", "--locked"],
     [sys.executable, "scripts/validate_maintainer_artifacts.py"],
 ]
