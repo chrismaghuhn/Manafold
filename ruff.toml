@@ -6,3 +6,4 @@ select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
 
 [lint.per-file-ignores]
 "scripts/*.py" = ["E402"]
+"python/tests/*.py" = ["E402"]
