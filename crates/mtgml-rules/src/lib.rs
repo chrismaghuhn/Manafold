@@ -51,7 +51,7 @@ impl AuthoritativeRuleEventKind {
     pub fn semantic_delta(&self) -> SemanticDeltaOperation {
         match self {
             Self::ZoneTransition { transition } => SemanticDeltaOperation::ZoneTransition {
-                transition: transition.clone(),
+                transition: Box::new(transition.clone()),
             },
             Self::ObjectCeasedToExist { object } => {
                 SemanticDeltaOperation::ObjectCeasedToExist { object: *object }

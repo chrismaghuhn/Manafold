@@ -510,7 +510,7 @@ impl From<EngineStateParts> for EngineState {
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum SemanticDeltaOperation {
     ZoneTransition {
-        transition: ZoneTransition,
+        transition: Box<ZoneTransition>,
     },
     ObjectCeasedToExist {
         object: GameObjectId,
