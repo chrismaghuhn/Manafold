@@ -1,6 +1,6 @@
 name: Integration
 on:
-  push: {branches: [main]}
+  push: {branches: [master]}
   workflow_dispatch: {}
 permissions: {contents: read}
 jobs:
