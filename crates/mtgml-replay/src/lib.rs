@@ -97,9 +97,11 @@ impl ReplayManifestV1 {
             return Err(ReplayValidationError::MissingDecks);
         }
         let mut players = BTreeSet::new();
-        if self.decks.iter().any(|deck| {
-            deck.deck_id.is_empty() || !players.insert(deck.player)
-        }) {
+        if self
+            .decks
+            .iter()
+            .any(|deck| deck.deck_id.is_empty() || !players.insert(deck.player))
+        {
             return Err(ReplayValidationError::DuplicateDeckPlayer);
         }
         Ok(())
@@ -307,7 +309,10 @@ mod tests {
     fn replay_schema_version_fields_must_all_be_non_empty() {
         let mut invalid = manifest();
         invalid.schemas.observed_event.clear();
-        assert_eq!(invalid.validate(), Err(ReplayValidationError::EmptyIdentity));
+        assert_eq!(
+            invalid.validate(),
+            Err(ReplayValidationError::EmptyIdentity)
+        );
     }
 
     #[test]

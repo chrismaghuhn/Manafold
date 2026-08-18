@@ -169,28 +169,29 @@ const SUPPORTED_REJECT_LAYER: &str = "rust-python-semantic-or-decode";
 
 pub fn verify_golden_fixture_directory(root: &Path) -> Result<(), FixtureVerificationError> {
     let manifest: FixtureManifest = serde_json::from_slice(
-        &fs::read(root.join("manifest.json"))
-            .map_err(FixtureVerificationError::Io)?,
+        &fs::read(root.join("manifest.json")).map_err(FixtureVerificationError::Io)?,
     )
     .map_err(FixtureVerificationError::Manifest)?;
     for fixture in manifest.fixtures {
         if fixture.expected_error_code.is_some() || fixture.expected_reject_layer.is_some() {
-            return Err(FixtureVerificationError::UnexpectedExpectation(fixture.path));
+            return Err(FixtureVerificationError::UnexpectedExpectation(
+                fixture.path,
+            ));
         }
         let bytes = fs::read(root.join(&fixture.path)).map_err(FixtureVerificationError::Io)?;
-        decode_named(&fixture.contract, &bytes)
-            .map_err(|error| FixtureVerificationError::UnexpectedRejection {
+        decode_named(&fixture.contract, &bytes).map_err(|error| {
+            FixtureVerificationError::UnexpectedRejection {
                 path: fixture.path,
                 error,
-            })?;
+            }
+        })?;
     }
     Ok(())
 }
 
 pub fn verify_negative_fixture_directory(root: &Path) -> Result<(), FixtureVerificationError> {
     let manifest: FixtureManifest = serde_json::from_slice(
-        &fs::read(root.join("manifest.json"))
-            .map_err(FixtureVerificationError::Io)?,
+        &fs::read(root.join("manifest.json")).map_err(FixtureVerificationError::Io)?,
     )
     .map_err(FixtureVerificationError::Manifest)?;
     for fixture in manifest.fixtures {
@@ -224,23 +225,17 @@ pub fn verify_negative_fixture_directory(root: &Path) -> Result<(), FixtureVerif
 
 fn decode_named(contract: &str, bytes: &[u8]) -> Result<(), WireError> {
     match contract {
-        "player-decision-request.v1" => {
-            decode_canonical::<PlayerDecisionRequest>(bytes).map(drop)
-        }
+        "player-decision-request.v1" => decode_canonical::<PlayerDecisionRequest>(bytes).map(drop),
         "decision-response.v1" => decode_canonical::<DecisionResponse>(bytes).map(drop),
         "observation-envelope.v1" => decode_canonical::<ObservationEnvelope>(bytes).map(drop),
         "information-state-envelope.v1" => {
             decode_canonical::<InformationStateEnvelope>(bytes).map(drop)
         }
-        "observed-event-envelope.v1" => {
-            decode_canonical::<ObservedEventEnvelope>(bytes).map(drop)
-        }
+        "observed-event-envelope.v1" => decode_canonical::<ObservedEventEnvelope>(bytes).map(drop),
         "player-step.v1" => decode_canonical::<PlayerStep>(bytes).map(drop),
         "episode-status.v1" => decode_canonical::<EpisodeStatus>(bytes).map(drop),
         "replay-manifest.v1" => decode_canonical::<ReplayManifestV1>(bytes).map(drop),
-        "authoritative-replay.v1" => {
-            decode_canonical::<AuthoritativeReplayV1>(bytes).map(drop)
-        }
+        "authoritative-replay.v1" => decode_canonical::<AuthoritativeReplayV1>(bytes).map(drop),
         _ => Err(WireError::new(
             "fixture.unknown_contract",
             format!("unknown fixture contract {contract}"),
@@ -279,8 +274,7 @@ mod tests {
     use super::*;
 
     fn repository_root() -> std::path::PathBuf {
-        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../..")
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")
     }
 
     #[test]

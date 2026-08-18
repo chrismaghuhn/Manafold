@@ -3,14 +3,11 @@
 //! `EngineState` is the only semantic source of truth. Kernels may hold caches,
 //! but caches must be derivable and must never affect a transition.
 
-use mtgml_decision::{
-    EngineCandidateBinding, PerspectiveIdentityResolver, PlayerDecisionRequest,
-};
+use mtgml_decision::{EngineCandidateBinding, PerspectiveIdentityResolver, PlayerDecisionRequest};
 use mtgml_model::{
     AbilityInstanceId, CardDefinitionId, ContinuationId, DecisionId, EffectInstanceId,
-    EventSequence, FullStateDigest, GameObjectId, OpaqueAbilityId, OpaqueObjectId,
-    PhysicalCardId, PlayerId, RuleEventId, StackObjectId, StateRevision, TriggerInstanceId,
-    ZoneKind,
+    EventSequence, FullStateDigest, GameObjectId, OpaqueAbilityId, OpaqueObjectId, PhysicalCardId,
+    PlayerId, RuleEventId, StackObjectId, StateRevision, TriggerInstanceId, ZoneKind,
 };
 use mtgml_random::RandomState;
 use serde::{Deserialize, Serialize};
@@ -437,10 +434,8 @@ impl EngineState {
             perspective_identities: &self.perspective_identities,
             format: &self.format,
         };
-        let value = serde_json::to_value(&input)
-            .map_err(|_| StateDigestError::Serialization)?;
-        serde_json::to_vec(&canonicalize_json(value))
-            .map_err(|_| StateDigestError::Serialization)
+        let value = serde_json::to_value(&input).map_err(|_| StateDigestError::Serialization)?;
+        serde_json::to_vec(&canonicalize_json(value)).map_err(|_| StateDigestError::Serialization)
     }
 
     pub fn digest(&self) -> Result<FullStateDigest, StateDigestError> {
@@ -514,12 +509,28 @@ impl From<EngineStateParts> for EngineState {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum SemanticDeltaOperation {
-    ZoneTransition { transition: ZoneTransition },
-    ObjectCeasedToExist { object: GameObjectId },
-    LifeChanged { player: PlayerId, from: i64, to: i64 },
-    ObjectTapped { object: GameObjectId, from: bool, to: bool },
-    DecisionCreated { decision: DecisionId },
-    DecisionCleared { decision: DecisionId },
+    ZoneTransition {
+        transition: ZoneTransition,
+    },
+    ObjectCeasedToExist {
+        object: GameObjectId,
+    },
+    LifeChanged {
+        player: PlayerId,
+        from: i64,
+        to: i64,
+    },
+    ObjectTapped {
+        object: GameObjectId,
+        from: bool,
+        to: bool,
+    },
+    DecisionCreated {
+        decision: DecisionId,
+    },
+    DecisionCleared {
+        decision: DecisionId,
+    },
     RandomStreamAdvanced {
         stream: String,
         counter_before: u64,
@@ -527,7 +538,9 @@ pub enum SemanticDeltaOperation {
         exclusive_upper_bound: u64,
         value: u64,
     },
-    PublicOutcome { code: String },
+    PublicOutcome {
+        code: String,
+    },
 }
 
 /// Exact state patch. The replacement contains every authoritative component;
@@ -632,9 +645,7 @@ fn acquisition_matches_channel(
 ) -> bool {
     match reason {
         KnowledgeAcquisitionReason::PublicEvent { .. }
-        | KnowledgeAcquisitionReason::ExplicitReveal => {
-            channel == KnowledgeHistoryChannel::Public
-        }
+        | KnowledgeAcquisitionReason::ExplicitReveal => channel == KnowledgeHistoryChannel::Public,
         KnowledgeAcquisitionReason::PrivateEvent { .. }
         | KnowledgeAcquisitionReason::OwnZoneIdentity => {
             channel == KnowledgeHistoryChannel::Private
@@ -703,8 +714,7 @@ pub fn validate_engine_state(state: &EngineState) -> Result<(), EngineStateViola
     }
     let stack_record_ids: BTreeSet<_> = state.zones.stack_records.keys().copied().collect();
     let stack_order_ids: BTreeSet<_> = state.zones.stack_order.iter().copied().collect();
-    if stack_record_ids != stack_order_ids
-        || stack_order_ids.len() != state.zones.stack_order.len()
+    if stack_record_ids != stack_order_ids || stack_order_ids.len() != state.zones.stack_order.len()
     {
         return Err(EngineStateViolation::StackMismatch);
     }
@@ -732,13 +742,9 @@ pub fn validate_engine_state(state: &EngineState) -> Result<(), EngineStateViola
             .delayed_effects
             .iter()
             .any(|(id, record)| id != &record.id)
-        || state
-            .execution
-            .waiting_triggers
-            .iter()
-            .any(|(id, record)| {
-                id != &record.id || !state.core.players.contains_key(&record.controller)
-            })
+        || state.execution.waiting_triggers.iter().any(|(id, record)| {
+            id != &record.id || !state.core.players.contains_key(&record.controller)
+        })
     {
         return Err(EngineStateViolation::ExecutionMismatch);
     }
@@ -1001,8 +1007,20 @@ mod tests {
         let p1 = PlayerId(1);
         let p2 = PlayerId(2);
         let mut players = BTreeMap::new();
-        players.insert(p1, PlayerState { life: 40, has_lost: false });
-        players.insert(p2, PlayerState { life: 40, has_lost: false });
+        players.insert(
+            p1,
+            PlayerState {
+                life: 40,
+                has_lost: false,
+            },
+        );
+        players.insert(
+            p2,
+            PlayerState {
+                life: 40,
+                has_lost: false,
+            },
+        );
         let random = RandomState {
             algorithm_id: "test-counter".into(),
             derivation_version: "v1".into(),
@@ -1062,7 +1080,10 @@ mod tests {
             partition: None,
         };
         value.zones.objects.insert(object.id, object);
-        value.zones.locations.insert(GameObjectId(1), location.clone());
+        value
+            .zones
+            .locations
+            .insert(GameObjectId(1), location.clone());
         value
             .zones
             .ordered_zones
@@ -1098,7 +1119,10 @@ mod tests {
             partition: None,
         };
         value.zones.objects.insert(object.id, object);
-        value.zones.locations.insert(GameObjectId(1), location.clone());
+        value
+            .zones
+            .locations
+            .insert(GameObjectId(1), location.clone());
         value
             .zones
             .ordered_zones
@@ -1160,7 +1184,12 @@ mod tests {
         after.revision = StateRevision(1);
         after.core.turn_number = 2;
         after.allocators.next_rule_event_id = RuleEventId(4);
-        after.knowledge.players.get_mut(&PlayerId(1)).unwrap().public_history_length = 7;
+        after
+            .knowledge
+            .players
+            .get_mut(&PlayerId(1))
+            .unwrap()
+            .public_history_length = 7;
         let delta = StateDelta::between(&before, &after, vec![]).unwrap();
         assert_eq!(delta.apply(&before).unwrap(), after);
     }

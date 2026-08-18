@@ -100,8 +100,8 @@ impl EnvironmentCheckpointV1 {
             limit_counters,
             codec,
         };
-        let bytes = serde_json::to_vec(&input)
-            .map_err(|_| CheckpointValidationError::CheckpointDigest)?;
+        let bytes =
+            serde_json::to_vec(&input).map_err(|_| CheckpointValidationError::CheckpointDigest)?;
         Ok(CheckpointDigest::from_canonical_bytes(&bytes))
     }
 
@@ -134,9 +134,7 @@ impl EnvironmentCheckpointV1 {
         self.status
             .validate()
             .map_err(|_| CheckpointValidationError::EpisodeStatus)?;
-        if self.limit_counters.accepted_transitions
-            > self.limit_counters.decisions_submitted
-        {
+        if self.limit_counters.accepted_transitions > self.limit_counters.decisions_submitted {
             return Err(CheckpointValidationError::LimitCounters);
         }
         if !matches!(&self.status, EpisodeStatus::Running)
@@ -169,10 +167,7 @@ pub enum CheckpointValidationError {
 pub trait EnvironmentBackend: Send {
     fn players(&self) -> Vec<PlayerId>;
     fn checkpoint(&self) -> Result<EnvironmentCheckpointV1, ControllerError>;
-    fn restore(
-        &mut self,
-        checkpoint: EnvironmentCheckpointV1,
-    ) -> Result<(), ControllerError>;
+    fn restore(&mut self, checkpoint: EnvironmentCheckpointV1) -> Result<(), ControllerError>;
     fn fork_boxed(&self) -> Result<Box<dyn EnvironmentBackend>, ControllerError>;
     fn export_replay(&self) -> Result<AuthoritativeReplayV1, ControllerError>;
 
@@ -223,10 +218,7 @@ impl TrustedEnvironmentController {
         self.lock()?.checkpoint()
     }
 
-    pub fn restore(
-        &self,
-        checkpoint: EnvironmentCheckpointV1,
-    ) -> Result<(), ControllerError> {
+    pub fn restore(&self, checkpoint: EnvironmentCheckpointV1) -> Result<(), ControllerError> {
         checkpoint
             .validate()
             .map_err(|error| ControllerError::InvalidCheckpoint(error.to_string()))?;
@@ -322,17 +314,16 @@ pub enum ControllerError {
 mod tests {
     use super::*;
     use mtgml_model::{
-        AbilityInstanceId, ContinuationId, DecisionId, EffectInstanceId,
-        GameObjectId, InformationStateDigest, ObservationDigest, OpaqueAbilityId,
-        OpaqueObjectId, RuleEventId, StackObjectId, StateRevision, TriggerInstanceId,
-        TruncationReason,
+        AbilityInstanceId, ContinuationId, DecisionId, EffectInstanceId, GameObjectId,
+        InformationStateDigest, ObservationDigest, OpaqueAbilityId, OpaqueObjectId, RuleEventId,
+        StackObjectId, StateRevision, TriggerInstanceId, TruncationReason,
     };
-    use mtgml_random::{RandomState, RandomStreamState};
     use mtgml_observation::{INFORMATION_STATE_SCHEMA, OBSERVATION_SCHEMA};
+    use mtgml_random::{RandomState, RandomStreamState};
     use mtgml_state::{
-        CoreRulesState, ExecutionState, FormatState, IdentityAllocatorState,
-        KnowledgeState, PerspectiveIdentityMap, PerspectiveIdentityState,
-        PlayerKnowledgeState, PlayerState, ZoneState,
+        CoreRulesState, ExecutionState, FormatState, IdentityAllocatorState, KnowledgeState,
+        PerspectiveIdentityMap, PerspectiveIdentityState, PlayerKnowledgeState, PlayerState,
+        ZoneState,
     };
     use std::collections::BTreeMap;
 
@@ -343,8 +334,20 @@ mod tests {
             revision: StateRevision(0),
             core: CoreRulesState {
                 players: BTreeMap::from([
-                    (p1, PlayerState { life: 40, has_lost: false }),
-                    (p2, PlayerState { life: 40, has_lost: false }),
+                    (
+                        p1,
+                        PlayerState {
+                            life: 40,
+                            has_lost: false,
+                        },
+                    ),
+                    (
+                        p2,
+                        PlayerState {
+                            life: 40,
+                            has_lost: false,
+                        },
+                    ),
                 ]),
                 active_player: p1,
                 priority_player: p1,
@@ -374,10 +377,7 @@ mod tests {
                 algorithm_id: "test-counter".into(),
                 derivation_version: "v1".into(),
                 root_seed_hex: "00".repeat(32),
-                streams: BTreeMap::from([(
-                    "shuffle".into(),
-                    RandomStreamState { counter: 0 },
-                )]),
+                streams: BTreeMap::from([("shuffle".into(), RandomStreamState { counter: 0 })]),
             },
             knowledge: KnowledgeState {
                 players: BTreeMap::from([
@@ -421,7 +421,10 @@ mod tests {
                     )
                 })
                 .collect();
-            Self { players, observations }
+            Self {
+                players,
+                observations,
+            }
         }
     }
 
@@ -432,10 +435,7 @@ mod tests {
         fn checkpoint(&self) -> Result<EnvironmentCheckpointV1, ControllerError> {
             Err(ControllerError::Backend("not needed in handle test".into()))
         }
-        fn restore(
-            &mut self,
-            _checkpoint: EnvironmentCheckpointV1,
-        ) -> Result<(), ControllerError> {
+        fn restore(&mut self, _checkpoint: EnvironmentCheckpointV1) -> Result<(), ControllerError> {
             Ok(())
         }
         fn fork_boxed(&self) -> Result<Box<dyn EnvironmentBackend>, ControllerError> {
@@ -541,7 +541,6 @@ mod tests {
         .unwrap_err();
         assert_eq!(error, CheckpointValidationError::LimitCounters);
     }
-
 
     #[test]
     fn checkpoint_digest_covers_status_and_limit_counters() {
