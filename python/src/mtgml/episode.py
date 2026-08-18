@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from ._generated_contract_vocab import PlayerResult, TerminalReason, TruncationReason
+from ._generated_contract_vocab import PlayerResult as PlayerResult
+from ._generated_contract_vocab import TerminalReason as TerminalReason
+from ._generated_contract_vocab import TruncationReason as TruncationReason
 from .canonical import parse_uint, require_exact_keys, uint_wire
 from .errors import WireError
 

@@ -86,7 +86,7 @@ class ObservedEvent:
         result: dict[str, object] = {"kind": self.kind}
         for key, value in self.payload:
             result[key] = (
-                uint_wire(value)
+                uint_wire(int(value))
                 if key in {"old_object", "new_object", "object", "player", "actor"}
                 else value
             )
