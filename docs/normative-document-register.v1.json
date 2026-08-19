@@ -559,6 +559,13 @@
       "path": "docs/testing/PROPERTY_AND_FUZZING.md",
       "role": "process",
       "stability": "accepted"
+    },
+    {
+      "change_process": "governance-pr",
+      "owner_role": "project-governance",
+      "path": "LICENSE",
+      "role": "normative",
+      "stability": "accepted"
     }
   ],
   "schema_version": "normative-document-register.v1"

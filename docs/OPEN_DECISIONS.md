@@ -6,7 +6,7 @@
 | ID | Status | Decision | Deadline | Safe default / current resolution |
 |---|---|---|---|---|
 | OD-001 | open | Public name and crate namespace | first public release | working name; publish nothing |
-| OD-002 | open | Code/docs license | public repo or contribution | all rights reserved |
+| OD-002 | resolved | Code/docs license | public repo or contribution | Apache License 2.0; ADR 0034 |
 | OD-003 | open | Exact Deck A/B manifests | M2.5 | no card milestone |
 | OD-004 | open | Comprehensive Rules snapshot | first rules case | no certified rule |
 | OD-005 | open | Commander policy and banlist snapshots | first format reset | reject config |

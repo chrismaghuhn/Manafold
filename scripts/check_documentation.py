@@ -36,6 +36,7 @@ def main() -> None:
         ROOT / "PROJECT_CHARTER.md",
         ROOT / "CONTRIBUTING.md",
         ROOT / "GOVERNANCE.md",
+        ROOT / "LICENSE",
         ROOT / "MAINTAINERS.md",
         ROOT / "SECURITY.md",
         ROOT / "SUPPORT.md",
