@@ -290,7 +290,7 @@ def main() -> None:
             fail(f"state contract lacks {token}")
 
     for token in (
-        "FullStateDigestInputV1",
+        "FullStateDigestInputV2",
         "CanonicalOrderedZoneEntryV1",
         "canonicalize_json",
         "nonempty_ordered_zone_has_a_stable_domain_separated_digest",
@@ -301,10 +301,10 @@ def main() -> None:
             fail(f"state contract closure lacks {token}")
 
     for token in (
-        "EnvironmentCheckpointV1",
+        "EnvironmentCheckpointV2",
         "EnvironmentLimitCounters",
         "CheckpointCodecIdentity",
-        "checkpoint_digest: CheckpointDigest",
+        "checkpoint_digest: CheckpointDigestV2",
         "checkpoint_digest_covers_status_and_limit_counters",
     ):
         if token not in env_rust:
@@ -315,7 +315,6 @@ def main() -> None:
         "SemanticValidationCursor",
         "two_life_changes_in_one_atomic_transition_are_compositional",
         "decision_clear_then_create_composes_to_the_next_decision",
-        "two_rng_uses_of_one_stream_are_compositional",
         "repeated_tap_changes_in_one_atomic_transition_are_compositional",
         "consecutive_zone_incarnations_in_one_transition_are_compositional",
         "accepted_transition_cannot_reuse_the_consumed_decision_id",

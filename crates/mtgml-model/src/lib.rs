@@ -220,6 +220,10 @@ domain_digest!(ContentDigest, "mtgml.content-digest.v1");
 domain_digest!(ReplayDigest, "mtgml.replay-digest.v1");
 domain_digest!(CheckpointDigest, "mtgml.checkpoint-digest.v1");
 
+// === V2 digest domains ===
+domain_digest!(FullStateDigestV2, "mtgml.full-state-digest.v2");
+domain_digest!(CheckpointDigestV2, "mtgml.checkpoint-digest.v2");
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct PlayerOutcome {

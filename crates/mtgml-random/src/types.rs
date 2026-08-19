@@ -254,6 +254,15 @@ impl RandomStateV1 {
             streams: BTreeMap::new(),
         }
     }
+}
+
+impl Default for RandomStateV1 {
+    fn default() -> Self {
+        Self::new(RootSeed256::from_lower_hex(&"00".repeat(32)).unwrap())
+    }
+}
+
+impl RandomStateV1 {
 
     pub fn add_stream(
         &mut self,

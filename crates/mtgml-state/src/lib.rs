@@ -6,10 +6,10 @@
 use mtgml_decision::{EngineCandidateBinding, PerspectiveIdentityResolver, PlayerDecisionRequest};
 use mtgml_model::{
     AbilityInstanceId, CardDefinitionId, ContinuationId, DecisionId, EffectInstanceId,
-    EventSequence, FullStateDigest, GameObjectId, OpaqueAbilityId, OpaqueObjectId, PhysicalCardId,
+    EventSequence, FullStateDigestV2, GameObjectId, OpaqueAbilityId, OpaqueObjectId, PhysicalCardId,
     PlayerId, RuleEventId, StackObjectId, StateRevision, TriggerInstanceId, ZoneKind,
 };
-use mtgml_random::RandomState;
+use mtgml_random::RandomStateV1;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map as JsonMap, Value as JsonValue};
 use std::collections::{BTreeMap, BTreeSet};
@@ -360,13 +360,13 @@ pub struct EngineState {
     pub zones: ZoneState,
     pub allocators: IdentityAllocatorState,
     pub execution: ExecutionState,
-    pub random: RandomState,
+    pub random: RandomStateV1,
     pub knowledge: KnowledgeState,
     pub perspective_identities: PerspectiveIdentityState,
     pub format: FormatState,
 }
 
-pub const FULL_STATE_DIGEST_INPUT_SCHEMA: &str = "full-state-digest-input.v1";
+pub const FULL_STATE_DIGEST_INPUT_SCHEMA: &str = "full-state-digest-input.v2";
 
 #[derive(Serialize)]
 struct CanonicalOrderedZoneEntryV1<'a> {
@@ -384,7 +384,7 @@ struct CanonicalZoneStateV1<'a> {
 }
 
 #[derive(Serialize)]
-struct FullStateDigestInputV1<'a> {
+struct FullStateDigestInputV2<'a> {
     schema_version: &'static str,
     domain: &'static str,
     revision: StateRevision,
@@ -392,7 +392,7 @@ struct FullStateDigestInputV1<'a> {
     zones: CanonicalZoneStateV1<'a>,
     allocators: &'a IdentityAllocatorState,
     execution: &'a ExecutionState,
-    random: &'a RandomState,
+    random: &'a RandomStateV1,
     knowledge: &'a KnowledgeState,
     perspective_identities: &'a PerspectiveIdentityState,
     format: &'a FormatState,
@@ -415,9 +415,9 @@ impl EngineState {
                 objects: objects.as_slice(),
             })
             .collect();
-        let input = FullStateDigestInputV1 {
+        let input = FullStateDigestInputV2 {
             schema_version: FULL_STATE_DIGEST_INPUT_SCHEMA,
-            domain: FullStateDigest::DOMAIN,
+            domain: FullStateDigestV2::DOMAIN,
             revision: self.revision,
             core: &self.core,
             zones: CanonicalZoneStateV1 {
@@ -438,9 +438,9 @@ impl EngineState {
         serde_json::to_vec(&canonicalize_json(value)).map_err(|_| StateDigestError::Serialization)
     }
 
-    pub fn digest(&self) -> Result<FullStateDigest, StateDigestError> {
+    pub fn digest(&self) -> Result<FullStateDigestV2, StateDigestError> {
         self.canonical_digest_bytes()
-            .map(|bytes| FullStateDigest::from_canonical_bytes(&bytes))
+            .map(|bytes| FullStateDigestV2::from_canonical_bytes(&bytes))
     }
 
     pub fn parts(&self) -> EngineStateParts {
@@ -484,7 +484,7 @@ pub struct EngineStateParts {
     pub zones: ZoneState,
     pub allocators: IdentityAllocatorState,
     pub execution: ExecutionState,
-    pub random: RandomState,
+    pub random: RandomStateV1,
     pub knowledge: KnowledgeState,
     pub perspective_identities: PerspectiveIdentityState,
     pub format: FormatState,
@@ -531,13 +531,6 @@ pub enum SemanticDeltaOperation {
     DecisionCleared {
         decision: DecisionId,
     },
-    RandomStreamAdvanced {
-        stream: String,
-        counter_before: u64,
-        counter_after: u64,
-        exclusive_upper_bound: u64,
-        value: u64,
-    },
     PublicOutcome {
         code: String,
     },
@@ -550,8 +543,8 @@ pub enum SemanticDeltaOperation {
 pub struct StateDelta {
     pub before_revision: StateRevision,
     pub after_revision: StateRevision,
-    pub before_digest: FullStateDigest,
-    pub after_digest: FullStateDigest,
+    pub before_digest: FullStateDigestV2,
+    pub after_digest: FullStateDigestV2,
     pub replacement: EngineStateParts,
     pub audit: Vec<SemanticDeltaOperation>,
 }
@@ -1001,7 +994,6 @@ pub fn validate_engine_state(state: &EngineState) -> Result<(), EngineStateViola
 #[cfg(test)]
 mod tests {
     use super::*;
-    use mtgml_random::RandomStreamState;
 
     fn state() -> EngineState {
         let p1 = PlayerId(1);
@@ -1021,12 +1013,7 @@ mod tests {
                 has_lost: false,
             },
         );
-        let random = RandomState {
-            algorithm_id: "test-counter".into(),
-            derivation_version: "v1".into(),
-            root_seed_hex: "00".repeat(32),
-            streams: BTreeMap::from([("shuffle".into(), RandomStreamState { counter: 0 })]),
-        };
+        let random = RandomStateV1::default();
         EngineState {
             revision: StateRevision(0),
             core: CoreRulesState {

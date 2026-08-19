@@ -1,7 +1,7 @@
 //! Normative replay wire contracts and internal replay identity.
 
 use mtgml_decision::DecisionResponse;
-use mtgml_model::{ContentDigest, FullStateDigest, PlayerId, StateRevision};
+use mtgml_model::{ContentDigest, FullStateDigest, FullStateDigestV2, PlayerId, StateRevision};
 use mtgml_random::validate_seed_hex;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
@@ -288,7 +288,7 @@ pub struct ReplayManifestV2 {
     pub randomness: RandomnessIdentityV2,
     pub decks: Vec<DeckIdentityV1>,
     pub initial_state_revision: StateRevision,
-    pub initial_state_digest: FullStateDigest,
+    pub initial_state_digest: FullStateDigestV2,
 }
 
 impl ReplayManifestV2 {
@@ -345,7 +345,7 @@ pub struct AuthoritativeReplayV2 {
     pub manifest: ReplayManifestV2,
     pub steps: Vec<ReplayStepV2>,
     pub final_state_revision: StateRevision,
-    pub final_state_digest: FullStateDigest,
+    pub final_state_digest: FullStateDigestV2,
 }
 
 impl AuthoritativeReplayV2 {
@@ -402,7 +402,7 @@ pub struct ReplayStepV2 {
     pub response: DecisionResponse,
     pub accepted: bool,
     pub state_revision_after: StateRevision,
-    pub state_digest_after: FullStateDigest,
+    pub state_digest_after: FullStateDigestV2,
 }
 
 #[cfg(test)]

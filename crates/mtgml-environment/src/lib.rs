@@ -5,7 +5,7 @@
 //! projected information. Multiple player handles may coexist.
 
 use mtgml_decision::{DecisionResponse, PlayerDecisionRequest};
-use mtgml_model::{CheckpointDigest, EpisodeStatus, FullStateDigest, PlayerId};
+use mtgml_model::{CheckpointDigestV2, EpisodeStatus, FullStateDigestV2, PlayerId};
 use mtgml_observation::{InformationStateEnvelope, ObservationEnvelope, PlayerStep};
 use mtgml_replay::AuthoritativeReplayV1;
 use mtgml_state::{validate_engine_state, EngineState};
@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 use std::sync::{Arc, Mutex, MutexGuard};
 use thiserror::Error;
 
-pub const ENVIRONMENT_CHECKPOINT_SCHEMA: &str = "environment-checkpoint.v1";
+pub const ENVIRONMENT_CHECKPOINT_SCHEMA: &str = "environment-checkpoint.v2";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(deny_unknown_fields)]
@@ -34,27 +34,27 @@ pub struct CheckpointCodecIdentity {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct EnvironmentCheckpointV1 {
+pub struct EnvironmentCheckpointV2 {
     pub schema_version: String,
     pub state: EngineState,
-    pub state_digest: FullStateDigest,
+    pub state_digest: FullStateDigestV2,
     pub status: EpisodeStatus,
     pub limit_counters: EnvironmentLimitCounters,
     pub codec: CheckpointCodecIdentity,
-    pub checkpoint_digest: CheckpointDigest,
+    pub checkpoint_digest: CheckpointDigestV2,
 }
 
 #[derive(Serialize)]
-struct CheckpointDigestInputV1<'a> {
+struct CheckpointDigestInputV2<'a> {
     schema_version: &'a str,
     domain: &'static str,
-    state_digest: &'a FullStateDigest,
+    state_digest: &'a FullStateDigestV2,
     status: &'a EpisodeStatus,
     limit_counters: &'a EnvironmentLimitCounters,
     codec: &'a CheckpointCodecIdentity,
 }
 
-impl EnvironmentCheckpointV1 {
+impl EnvironmentCheckpointV2 {
     pub fn new(
         state: EngineState,
         status: EpisodeStatus,
@@ -87,14 +87,14 @@ impl EnvironmentCheckpointV1 {
 
     fn calculate_digest(
         schema_version: &str,
-        state_digest: &FullStateDigest,
+        state_digest: &FullStateDigestV2,
         status: &EpisodeStatus,
         limit_counters: &EnvironmentLimitCounters,
         codec: &CheckpointCodecIdentity,
-    ) -> Result<CheckpointDigest, CheckpointValidationError> {
-        let input = CheckpointDigestInputV1 {
+    ) -> Result<CheckpointDigestV2, CheckpointValidationError> {
+        let input = CheckpointDigestInputV2 {
             schema_version,
-            domain: CheckpointDigest::DOMAIN,
+            domain: CheckpointDigestV2::DOMAIN,
             state_digest,
             status,
             limit_counters,
@@ -102,7 +102,7 @@ impl EnvironmentCheckpointV1 {
         };
         let bytes =
             serde_json::to_vec(&input).map_err(|_| CheckpointValidationError::CheckpointDigest)?;
-        Ok(CheckpointDigest::from_canonical_bytes(&bytes))
+        Ok(CheckpointDigestV2::from_canonical_bytes(&bytes))
     }
 
     pub fn validate(&self) -> Result<(), CheckpointValidationError> {
@@ -166,8 +166,8 @@ pub enum CheckpointValidationError {
 
 pub trait EnvironmentBackend: Send {
     fn players(&self) -> Vec<PlayerId>;
-    fn checkpoint(&self) -> Result<EnvironmentCheckpointV1, ControllerError>;
-    fn restore(&mut self, checkpoint: EnvironmentCheckpointV1) -> Result<(), ControllerError>;
+    fn checkpoint(&self) -> Result<EnvironmentCheckpointV2, ControllerError>;
+    fn restore(&mut self, checkpoint: EnvironmentCheckpointV2) -> Result<(), ControllerError>;
     fn fork_boxed(&self) -> Result<Box<dyn EnvironmentBackend>, ControllerError>;
     fn export_replay(&self) -> Result<AuthoritativeReplayV1, ControllerError>;
 
@@ -214,11 +214,11 @@ impl TrustedEnvironmentController {
         })
     }
 
-    pub fn checkpoint(&self) -> Result<EnvironmentCheckpointV1, ControllerError> {
+    pub fn checkpoint(&self) -> Result<EnvironmentCheckpointV2, ControllerError> {
         self.lock()?.checkpoint()
     }
 
-    pub fn restore(&self, checkpoint: EnvironmentCheckpointV1) -> Result<(), ControllerError> {
+    pub fn restore(&self, checkpoint: EnvironmentCheckpointV2) -> Result<(), ControllerError> {
         checkpoint
             .validate()
             .map_err(|error| ControllerError::InvalidCheckpoint(error.to_string()))?;
@@ -319,7 +319,7 @@ mod tests {
         StackObjectId, StateRevision, TriggerInstanceId, TruncationReason,
     };
     use mtgml_observation::{INFORMATION_STATE_SCHEMA, OBSERVATION_SCHEMA};
-    use mtgml_random::{RandomState, RandomStreamState};
+    use mtgml_random::RandomStateV1;
     use mtgml_state::{
         CoreRulesState, ExecutionState, FormatState, IdentityAllocatorState, KnowledgeState,
         PerspectiveIdentityMap, PerspectiveIdentityState, PlayerKnowledgeState, PlayerState,
@@ -373,12 +373,7 @@ mod tests {
                 ]),
             },
             execution: ExecutionState::default(),
-            random: RandomState {
-                algorithm_id: "test-counter".into(),
-                derivation_version: "v1".into(),
-                root_seed_hex: "00".repeat(32),
-                streams: BTreeMap::from([("shuffle".into(), RandomStreamState { counter: 0 })]),
-            },
+            random: RandomStateV1::default(),
             knowledge: KnowledgeState {
                 players: BTreeMap::from([
                     (p1, PlayerKnowledgeState::default()),
@@ -432,10 +427,10 @@ mod tests {
         fn players(&self) -> Vec<PlayerId> {
             self.players.clone()
         }
-        fn checkpoint(&self) -> Result<EnvironmentCheckpointV1, ControllerError> {
+        fn checkpoint(&self) -> Result<EnvironmentCheckpointV2, ControllerError> {
             Err(ControllerError::Backend("not needed in handle test".into()))
         }
-        fn restore(&mut self, _checkpoint: EnvironmentCheckpointV1) -> Result<(), ControllerError> {
+        fn restore(&mut self, _checkpoint: EnvironmentCheckpointV2) -> Result<(), ControllerError> {
             Ok(())
         }
         fn fork_boxed(&self) -> Result<Box<dyn EnvironmentBackend>, ControllerError> {
@@ -493,7 +488,7 @@ mod tests {
 
     #[test]
     fn checkpoint_closes_state_status_and_limit_counters() {
-        let checkpoint = EnvironmentCheckpointV1::new(
+        let checkpoint = EnvironmentCheckpointV2::new(
             checkpoint_state(),
             EpisodeStatus::Truncated {
                 reason: TruncationReason::ExternalStop,
@@ -525,7 +520,7 @@ mod tests {
 
     #[test]
     fn checkpoint_rejects_impossible_limit_counters() {
-        let error = EnvironmentCheckpointV1::new(
+        let error = EnvironmentCheckpointV2::new(
             checkpoint_state(),
             EpisodeStatus::Running,
             EnvironmentLimitCounters {
@@ -544,7 +539,7 @@ mod tests {
 
     #[test]
     fn checkpoint_digest_covers_status_and_limit_counters() {
-        let mut checkpoint = EnvironmentCheckpointV1::new(
+        let mut checkpoint = EnvironmentCheckpointV2::new(
             checkpoint_state(),
             EpisodeStatus::Running,
             EnvironmentLimitCounters::default(),
