@@ -90,12 +90,23 @@ canonical_id!(OpaqueAbilityId);
 canonical_id!(StateRevision);
 canonical_id!(EventSequence);
 
+fn encode_lower_hex(bytes: &[u8]) -> String {
+    const HEX: &[u8; 16] = b"0123456789abcdef";
+    let mut encoded = String::with_capacity(bytes.len() * 2);
+    for &byte in bytes {
+        encoded.push(HEX[(byte >> 4) as usize] as char);
+        encoded.push(HEX[(byte & 0x0f) as usize] as char);
+    }
+    encoded
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Digest(String);
 
 impl Digest {
     pub fn from_bytes(bytes: &[u8]) -> Self {
-        Self(format!("{:x}", Sha256::digest(bytes)))
+        let digest = Sha256::digest(bytes);
+        Self(encode_lower_hex(digest.as_ref()))
     }
 
     pub fn parse(text: impl Into<String>) -> Result<Self, DigestError> {
@@ -157,7 +168,8 @@ macro_rules! domain_digest {
                 hasher.update(Self::DOMAIN.as_bytes());
                 hasher.update([0u8]);
                 hasher.update(bytes);
-                Self(Digest(format!("{:x}", hasher.finalize())))
+                let digest = hasher.finalize();
+                Self(Digest(encode_lower_hex(digest.as_ref())))
             }
 
             pub fn parse(text: impl Into<String>) -> Result<Self, DigestError> {
@@ -263,6 +275,48 @@ mod tests {
     fn episode_reasons_are_closed_during_deserialization() {
         let value = r#"{"kind":"terminal","reason":"banana","players":[]}"#;
         assert!(serde_json::from_str::<EpisodeStatus>(value).is_err());
+    }
+
+    #[test]
+    fn digest_encoding_matches_stable_sha256_vectors() {
+        assert_eq!(
+            Digest::from_bytes(b"").as_str(),
+            "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        );
+
+        let bytes = b"same canonical bytes";
+        assert_eq!(
+            FullStateDigest::from_canonical_bytes(bytes).as_str(),
+            "753d6b2756e60227af224f919169ce034dd94c60b142f6eded0931548d866c1a"
+        );
+        assert_eq!(
+            PublicStateDigest::from_canonical_bytes(bytes).as_str(),
+            "9ba50ec6cfe0ac09da1ce7844c3362bf8ea7643936a8384835d8718a3d25e442"
+        );
+        assert_eq!(
+            InformationStateDigest::from_canonical_bytes(bytes).as_str(),
+            "1bcb220ae39f043426dedf86a5422f95cc0a61cbeb3690efa4d853f0b0986a4c"
+        );
+        assert_eq!(
+            ObservationDigest::from_canonical_bytes(bytes).as_str(),
+            "9456c304ea3d6e0dd3637ae7b0c913869e31a0d29a8d2a22b6320e557449be03"
+        );
+        assert_eq!(
+            CandidateSetDigest::from_canonical_bytes(bytes).as_str(),
+            "1e74e9031e32e0adaab4c54df259744c6a0b20935e97e2356e7e18c352ff7eb5"
+        );
+        assert_eq!(
+            ContentDigest::from_canonical_bytes(bytes).as_str(),
+            "a5465c6197e67749768cb91df6d1e6f8831257b5cefbb35205a04bcfc9d04e01"
+        );
+        assert_eq!(
+            ReplayDigest::from_canonical_bytes(bytes).as_str(),
+            "93e08ec06c09ef5c53e0cc350c045176cc654c31cbef6afc08ad227fa9d413c8"
+        );
+        assert_eq!(
+            CheckpointDigest::from_canonical_bytes(bytes).as_str(),
+            "e68abf91d68057ab81bcbacdbc9f1dfe35b4e3fded6b9f8309fb7c948d8750f4"
+        );
     }
 
     #[test]
