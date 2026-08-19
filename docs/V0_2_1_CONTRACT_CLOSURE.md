@@ -155,4 +155,4 @@ V0.2.1 does not:
 
 ## Exit
 
-V0.2.1 becomes `CONTRACT_FROZEN` only after every required gate is recorded as `PASS` by the external verification report. Until then it remains a freeze candidate and M1 remains blocked.
+V0.2.1 becomes `CONTRACT_FROZEN` only after every required gate is recorded as `PASS` by the external verification report. M1 was unblocked with V0.2.2.
