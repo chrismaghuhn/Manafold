@@ -1,88 +1,586 @@
 {
   "documents": [
-    {"change_process":"governance-pr","owner_role":"project-governance","path":"CODE_OF_CONDUCT.md","role":"process","stability":"accepted"},
-    {"change_process":"governance-pr","owner_role":"maintainer","path":"CONTRIBUTING.md","role":"process","stability":"accepted"},
-    {"change_process":"governance-pr","owner_role":"project-governance","path":"GOVERNANCE.md","role":"normative","stability":"accepted"},
-    {"change_process":"governance-pr","owner_role":"project-governance","path":"MAINTAINERS.md","role":"process","stability":"accepted"},
-    {"change_process":"adr-and-pr","owner_role":"architecture-maintainer","path":"PROJECT_CHARTER.md","role":"normative","stability":"accepted"},
-    {"change_process":"documentation-pr","owner_role":"maintainer","path":"README.md","role":"informative","stability":"accepted"},
-    {"change_process":"security-pr","owner_role":"security-maintainer","path":"SECURITY.md","role":"process","stability":"accepted"},
-    {"change_process":"documentation-pr","owner_role":"maintainer","path":"SUPPORT.md","role":"informative","stability":"accepted"},
-    {"change_process":"adr-and-pr","owner_role":"architecture-maintainer","path":"docs/ARCHITECTURE.md","role":"normative","stability":"accepted"},
-    {"change_process":"adr-and-deck-census","owner_role":"content-maintainer","path":"docs/CARD_IR.md","role":"normative","stability":"experimental"},
-    {"change_process":"adr-and-determinism-tests","owner_role":"architecture-maintainer","path":"docs/CONCURRENCY_MODEL.md","role":"normative","stability":"accepted"},
-    {"change_process":"historical-only","owner_role":"architecture-maintainer","path":"docs/CONTRACT_CLOSURE_M0_1_1.md","role":"informative","stability":"deprecated"},
-    {"change_process":"historical-only","owner_role":"architecture-maintainer","path":"docs/CONTRACT_HARDENING_M0_1.md","role":"informative","stability":"deprecated"},
-    {"change_process":"scope-census-pr","owner_role":"decision-maintainer","path":"docs/DECISION_INVENTORY.md","role":"informative","stability":"provisional"},
-    {"change_process":"cross-layer-contract-change","owner_role":"decision-maintainer","path":"docs/DECISION_PROTOCOL.md","role":"normative","stability":"provisional"},
-    {"change_process":"adr-and-pr","owner_role":"observability-maintainer","path":"docs/DEBUG_ARCHITECTURE_CONTRACT.md","role":"normative","stability":"accepted"},
-    {"change_process":"adr-and-conformance","owner_role":"state-maintainer","path":"docs/DOMAIN_MODEL.md","role":"normative","stability":"accepted"},
-    {"change_process":"cross-layer-contract-change","owner_role":"api-maintainer","path":"docs/ERROR_MODEL.md","role":"normative","stability":"accepted"},
-    {"change_process":"adr-and-conformance","owner_role":"rules-maintainer","path":"docs/EXECUTION_MODEL.md","role":"normative","stability":"accepted"},
-    {"change_process":"adr-and-conformance","owner_role":"rules-maintainer","path":"docs/FORMAT_MODULES.md","role":"normative","stability":"accepted"},
-    {"change_process":"documentation-pr","owner_role":"maintainer","path":"docs/GLOSSARY.md","role":"informative","stability":"accepted"},
-    {"change_process":"standards-pr","owner_role":"maintainer","path":"docs/IMPLEMENTATION_STANDARDS.md","role":"normative","stability":"accepted"},
-    {"change_process":"adr-and-noninterference","owner_role":"information-safety-reviewer","path":"docs/INFORMATION_MODEL.md","role":"normative","stability":"accepted"},
-    {"change_process":"release-definition-pr","owner_role":"architecture-maintainer","path":"docs/M0_2_SPECIFICATION.md","role":"normative","stability":"accepted"},
-    {"change_process":"process-pr","owner_role":"maintainer","path":"docs/MAINTAINER_PLAYBOOK.md","role":"process","stability":"accepted"},
-    {"change_process":"cross-layer-contract-change","owner_role":"environment-maintainer","path":"docs/ML_ENVIRONMENT.md","role":"normative","stability":"accepted"},
-    {"change_process":"schema-and-dataset-pr","owner_role":"ml-contract-maintainer","path":"docs/ML_TRAJECTORIES.md","role":"normative","stability":"provisional"},
-    {"change_process":"adr-and-pr","owner_role":"architecture-maintainer","path":"docs/NORMATIVE_HIERARCHY.md","role":"normative","stability":"accepted"},
-    {"change_process":"information-review-pr","owner_role":"observability-maintainer","path":"docs/OBSERVABILITY_AND_DEBUGGING.md","role":"normative","stability":"accepted"},
-    {"change_process":"decision-register-pr","owner_role":"architecture-maintainer","path":"docs/OPEN_DECISIONS.md","role":"process","stability":"accepted"},
-    {"change_process":"benchmark-pr","owner_role":"performance-maintainer","path":"docs/PERFORMANCE.md","role":"normative","stability":"provisional"},
-    {"change_process":"adr-and-pr","owner_role":"architecture-maintainer","path":"docs/PROJECT_STRUCTURE.md","role":"normative","stability":"accepted"},
-    {"change_process":"documentation-pr","owner_role":"maintainer","path":"docs/README.md","role":"informative","stability":"accepted"},
-    {"change_process":"cross-layer-contract-change","owner_role":"replay-maintainer","path":"docs/REPLAY_AND_DETERMINISM.md","role":"normative","stability":"provisional"},
-    {"change_process":"cross-layer-contract-change","owner_role":"state-maintainer","path":"docs/RNG_CONTRACT.md","role":"normative","stability":"accepted"},
-    {"change_process":"roadmap-pr","owner_role":"architecture-maintainer","path":"docs/ROADMAP.md","role":"process","stability":"accepted"},
-    {"change_process":"adr-and-conformance","owner_role":"rules-maintainer","path":"docs/RULES_SEMANTICS.md","role":"normative","stability":"accepted"},
-    {"change_process":"adr-and-scope-impact","owner_role":"architecture-maintainer","path":"docs/SCOPE.md","role":"normative","stability":"accepted"},
-    {"change_process":"adr-and-fixtures","owner_role":"state-maintainer","path":"docs/STATE_HASHING.md","role":"normative","stability":"provisional"},
-    {"change_process":"proof-architecture-pr","owner_role":"conformance-maintainer","path":"docs/TESTING_AND_CONFORMANCE.md","role":"normative","stability":"accepted"},
-    {"change_process":"threat-review-pr","owner_role":"security-maintainer","path":"docs/THREAT_MODEL.md","role":"normative","stability":"accepted"},
-    {"change_process":"release-definition-pr","owner_role":"architecture-maintainer","path":"docs/V0_2_1_CONTRACT_CLOSURE.md","role":"normative","stability":"accepted"},
-    {"change_process":"release-definition-pr","owner_role":"architecture-maintainer","path":"docs/V0_2_2_EXECUTABLE_FREEZE_AND_MAINTAINER_ERGONOMICS.md","role":"normative","stability":"accepted"},
-    {"change_process":"strategy-pr","owner_role":"architecture-maintainer","path":"docs/VISION.md","role":"informative","stability":"accepted"},
-    {"change_process":"process-pr","owner_role":"content-maintainer","path":"docs/cards/ADDING_CARDS.md","role":"process","stability":"accepted"},
-    {"change_process":"adr-and-artifact-schema","owner_role":"content-maintainer","path":"docs/cards/CAPABILITY_MODEL.md","role":"normative","stability":"accepted"},
-    {"change_process":"process-pr","owner_role":"content-maintainer","path":"docs/cards/CARD_DIRECTORY_LAYOUT.md","role":"process","stability":"accepted"},
-    {"change_process":"adr-and-release-gates","owner_role":"release-maintainer","path":"docs/cards/CERTIFICATION.md","role":"normative","stability":"accepted"},
-    {"change_process":"adr-required","owner_role":"architecture-maintainer","path":"docs/cards/NATIVE_EXECUTOR_POLICY.md","role":"normative","stability":"provisional"},
-    {"change_process":"source-policy-pr","owner_role":"content-maintainer","path":"docs/cards/SOURCE_AND_GENERATION_PIPELINE.md","role":"normative","stability":"accepted"},
-    {"change_process":"adr-or-gate-pr","owner_role":"release-maintainer","path":"docs/contracts/ACCEPTANCE_GATES.md","role":"normative","stability":"accepted"},
-    {"change_process":"adr-required","owner_role":"api-maintainer","path":"docs/contracts/COMPATIBILITY_POLICY.md","role":"normative","stability":"accepted"},
-    {"change_process":"adr-and-state-tests","owner_role":"state-maintainer","path":"docs/contracts/ENGINE_STATE_CLOSURE.md","role":"normative","stability":"accepted"},
-    {"change_process":"release-definition-pr","owner_role":"architecture-maintainer","path":"docs/contracts/M0_2_DESIGN_LOCK_MATRIX.md","role":"normative","stability":"accepted"},
-    {"change_process":"schema-and-client-pr","owner_role":"ml-contract-maintainer","path":"docs/contracts/ML_CONTRACT.md","role":"normative","stability":"accepted"},
-    {"change_process":"cross-layer-contract-change","owner_role":"information-safety-reviewer","path":"docs/contracts/PLAYER_API_CAPABILITY_MATRIX.md","role":"normative","stability":"accepted"},
-    {"change_process":"adr-and-conformance","owner_role":"rules-maintainer","path":"docs/contracts/SEMANTIC_CONTRACT.md","role":"normative","stability":"accepted"},
-    {"change_process":"scope-lock-pr","owner_role":"scope-maintainer","path":"docs/contracts/V1_SCOPE_MATRIX.md","role":"normative","stability":"draft"},
-    {"change_process":"cross-layer-contract-change","owner_role":"wire-maintainer","path":"docs/contracts/WIRE_CONTRACT.md","role":"normative","stability":"provisional"},
-    {"change_process":"generated-only","owner_role":"api-maintainer","path":"docs/generated/CONTRACT_VOCABULARY.md","role":"informative","stability":"accepted"},
-    {"change_process":"adr-and-compatibility-pr","owner_role":"api-maintainer","path":"docs/maintenance/API_LIFECYCLE.md","role":"normative","stability":"accepted"},
-    {"change_process":"dependency-policy-pr","owner_role":"release-maintainer","path":"docs/maintenance/DEPENDENCY_POLICY.md","role":"normative","stability":"accepted"},
-    {"change_process":"release-policy-pr","owner_role":"release-maintainer","path":"docs/maintenance/FREEZE_LEVELS.md","role":"normative","stability":"accepted"},
-    {"change_process":"process-pr","owner_role":"maintainer","path":"docs/maintenance/MAINTAINER_PROFILES.md","role":"process","stability":"accepted"},
-    {"change_process":"governance-pr","owner_role":"project-governance","path":"docs/maintenance/OWNERSHIP_MODEL.md","role":"process","stability":"accepted"},
-    {"change_process":"process-pr","owner_role":"release-maintainer","path":"docs/maintenance/RELEASE_PROCESS.md","role":"process","stability":"accepted"},
-    {"change_process":"cross-layer-contract-change","owner_role":"wire-maintainer","path":"docs/maintenance/SCHEMA_EVOLUTION.md","role":"normative","stability":"accepted"},
-    {"change_process":"toolchain-and-clean-build-pr","owner_role":"release-maintainer","path":"docs/maintenance/TOOLCHAIN_POLICY.md","role":"normative","stability":"accepted"},
-    {"change_process":"process-pr","owner_role":"rules-maintainer","path":"docs/rules/ADDING_RULES_AND_MECHANICS.md","role":"process","stability":"accepted"},
-    {"change_process":"authority-policy-pr","owner_role":"rules-maintainer","path":"docs/rules/AUTHORITY_POLICY.md","role":"normative","stability":"accepted"},
-    {"change_process":"lifecycle-pr","owner_role":"rules-maintainer","path":"docs/rules/MECHANIC_LIFECYCLE.md","role":"normative","stability":"accepted"},
-    {"change_process":"template-pr","owner_role":"maintainer","path":"docs/templates/BENCHMARK_REPORT_TEMPLATE.md","role":"template","stability":"accepted"},
-    {"change_process":"template-pr","owner_role":"maintainer","path":"docs/templates/CARD_CAPABILITY_MATRIX.md","role":"template","stability":"accepted"},
-    {"change_process":"template-pr","owner_role":"maintainer","path":"docs/templates/CARD_IMPLEMENTATION_TEMPLATE.md","role":"template","stability":"accepted"},
-    {"change_process":"template-pr","owner_role":"maintainer","path":"docs/templates/CONFORMANCE_CASE_TEMPLATE.md","role":"template","stability":"accepted"},
-    {"change_process":"template-pr","owner_role":"maintainer","path":"docs/templates/INTERPRETATION_RECORD_TEMPLATE.md","role":"template","stability":"accepted"},
-    {"change_process":"template-pr","owner_role":"maintainer","path":"docs/templates/MECHANIC_SPEC_TEMPLATE.md","role":"template","stability":"accepted"},
-    {"change_process":"template-pr","owner_role":"maintainer","path":"docs/templates/RELEASE_CHECKLIST.md","role":"template","stability":"accepted"},
-    {"change_process":"template-pr","owner_role":"maintainer","path":"docs/templates/SCOPE_IMPACT_REPORT_TEMPLATE.md","role":"template","stability":"accepted"},
-    {"change_process":"process-pr","owner_role":"conformance-maintainer","path":"docs/testing/CONFORMANCE_AUTHORING.md","role":"process","stability":"accepted"},
-    {"change_process":"proof-process-pr","owner_role":"information-safety-reviewer","path":"docs/testing/NONINTERFERENCE_TESTING.md","role":"process","stability":"accepted"},
-    {"change_process":"proof-process-pr","owner_role":"conformance-maintainer","path":"docs/testing/PROPERTY_AND_FUZZING.md","role":"process","stability":"accepted"},
-    {"change_process":"governance-pr","owner_role":"project-governance","path":"LICENSE","role":"normative","stability":"accepted"}
+    {
+      "change_process": "governance-pr",
+      "owner_role": "project-governance",
+      "path": "CODE_OF_CONDUCT.md",
+      "role": "process",
+      "stability": "accepted"
+    },
+    {
+      "change_process": "governance-pr",
+      "owner_role": "maintainer",
+      "path": "CONTRIBUTING.md",
+      "role": "process",
+      "stability": "accepted"
+    },
+    {
+      "change_process": "governance-pr",
+      "owner_role": "project-governance",
+      "path": "GOVERNANCE.md",
+      "role": "normative",
+      "stability": "accepted"
+    },
+    {
+      "change_process": "governance-pr",
+      "owner_role": "project-governance",
+      "path": "MAINTAINERS.md",
+      "role": "process",
+      "stability": "accepted"
+    },
+    {
+      "change_process": "adr-and-pr",
+      "owner_role": "architecture-maintainer",
+      "path": "PROJECT_CHARTER.md",
+      "role": "normative",
+      "stability": "accepted"
+    },
+    {
+      "change_process": "documentation-pr",
+      "owner_role": "maintainer",
+      "path": "README.md",
+      "role": "informative",
+      "stability": "accepted"
+    },
+    {
+      "change_process": "security-pr",
+      "owner_role": "security-maintainer",
+      "path": "SECURITY.md",
+      "role": "process",
+      "stability": "accepted"
+    },
+    {
+      "change_process": "documentation-pr",
+      "owner_role": "maintainer",
+      "path": "SUPPORT.md",
+      "role": "informative",
+      "stability": "accepted"
+    },
+    {
+      "change_process": "adr-and-pr",
+      "owner_role": "architecture-maintainer",
+      "path": "docs/ARCHITECTURE.md",
+      "role": "normative",
+      "stability": "accepted"
+    },
+    {
+      "change_process": "adr-and-deck-census",
+      "owner_role": "content-maintainer",
+      "path": "docs/CARD_IR.md",
+      "role": "normative",
+      "stability": "experimental"
+    },
+    {
+      "change_process": "adr-and-determinism-tests",
+      "owner_role": "architecture-maintainer",
+      "path": "docs/CONCURRENCY_MODEL.md",
+      "role": "normative",
+      "stability": "accepted"
+    },
+    {
+      "change_process": "historical-only",
+      "owner_role": "architecture-maintainer",
+      "path": "docs/CONTRACT_CLOSURE_M0_1_1.md",
+      "role": "informative",
+      "stability": "deprecated"
+    },
+    {
+      "change_process": "historical-only",
+      "owner_role": "architecture-maintainer",
+      "path": "docs/CONTRACT_HARDENING_M0_1.md",
+      "role": "informative",
+      "stability": "deprecated"
+    },
+    {
+      "change_process": "scope-census-pr",
+      "owner_role": "decision-maintainer",
+      "path": "docs/DECISION_INVENTORY.md",
+      "role": "informative",
+      "stability": "provisional"
+    },
+    {
+      "change_process": "cross-layer-contract-change",
+      "owner_role": "decision-maintainer",
+      "path": "docs/DECISION_PROTOCOL.md",
+      "role": "normative",
+      "stability": "provisional"
+    },
+    {
+      "change_process": "adr-and-pr",
+      "owner_role": "observability-maintainer",
+      "path": "docs/DEBUG_ARCHITECTURE_CONTRACT.md",
+      "role": "normative",
+      "stability": "accepted"
+    },
+    {
+      "change_process": "adr-and-conformance",
+      "owner_role": "state-maintainer",
+      "path": "docs/DOMAIN_MODEL.md",
+      "role": "normative",
+      "stability": "accepted"
+    },
+    {
+      "change_process": "cross-layer-contract-change",
+      "owner_role": "api-maintainer",
+      "path": "docs/ERROR_MODEL.md",
+      "role": "normative",
+      "stability": "accepted"
+    },
+    {
+      "change_process": "adr-and-conformance",
+      "owner_role": "rules-maintainer",
+      "path": "docs/EXECUTION_MODEL.md",
+      "role": "normative",
+      "stability": "accepted"
+    },
+    {
+      "change_process": "adr-and-conformance",
+      "owner_role": "rules-maintainer",
+      "path": "docs/FORMAT_MODULES.md",
+      "role": "normative",
+      "stability": "accepted"
+    },
+    {
+      "change_process": "documentation-pr",
+      "owner_role": "maintainer",
+      "path": "docs/GLOSSARY.md",
+      "role": "informative",
+      "stability": "accepted"
+    },
+    {
+      "change_process": "standards-pr",
+      "owner_role": "maintainer",
+      "path": "docs/IMPLEMENTATION_STANDARDS.md",
+      "role": "normative",
+      "stability": "accepted"
+    },
+    {
+      "change_process": "adr-and-noninterference",
+      "owner_role": "information-safety-reviewer",
+      "path": "docs/INFORMATION_MODEL.md",
+      "role": "normative",
+      "stability": "accepted"
+    },
+    {
+      "change_process": "release-definition-pr",
+      "owner_role": "architecture-maintainer",
+      "path": "docs/M0_2_SPECIFICATION.md",
+      "role": "normative",
+      "stability": "accepted"
+    },
+    {
+      "change_process": "process-pr",
+      "owner_role": "maintainer",
+      "path": "docs/MAINTAINER_PLAYBOOK.md",
+      "role": "process",
+      "stability": "accepted"
+    },
+    {
+      "change_process": "cross-layer-contract-change",
+      "owner_role": "environment-maintainer",
+      "path": "docs/ML_ENVIRONMENT.md",
+      "role": "normative",
+      "stability": "accepted"
+    },
+    {
+      "change_process": "schema-and-dataset-pr",
+      "owner_role": "ml-contract-maintainer",
+      "path": "docs/ML_TRAJECTORIES.md",
+      "role": "normative",
+      "stability": "provisional"
+    },
+    {
+      "change_process": "adr-and-pr",
+      "owner_role": "architecture-maintainer",
+      "path": "docs/NORMATIVE_HIERARCHY.md",
+      "role": "normative",
+      "stability": "accepted"
+    },
+    {
+      "change_process": "information-review-pr",
+      "owner_role": "observability-maintainer",
+      "path": "docs/OBSERVABILITY_AND_DEBUGGING.md",
+      "role": "normative",
+      "stability": "accepted"
+    },
+    {
+      "change_process": "decision-register-pr",
+      "owner_role": "architecture-maintainer",
+      "path": "docs/OPEN_DECISIONS.md",
+      "role": "process",
+      "stability": "accepted"
+    },
+    {
+      "change_process": "benchmark-pr",
+      "owner_role": "performance-maintainer",
+      "path": "docs/PERFORMANCE.md",
+      "role": "normative",
+      "stability": "provisional"
+    },
+    {
+      "change_process": "adr-and-pr",
+      "owner_role": "architecture-maintainer",
+      "path": "docs/PROJECT_STRUCTURE.md",
+      "role": "normative",
+      "stability": "accepted"
+    },
+    {
+      "change_process": "documentation-pr",
+      "owner_role": "maintainer",
+      "path": "docs/README.md",
+      "role": "informative",
+      "stability": "accepted"
+    },
+    {
+      "change_process": "cross-layer-contract-change",
+      "owner_role": "replay-maintainer",
+      "path": "docs/REPLAY_AND_DETERMINISM.md",
+      "role": "normative",
+      "stability": "provisional"
+    },
+    {
+      "change_process": "cross-layer-contract-change",
+      "owner_role": "state-maintainer",
+      "path": "docs/RNG_CONTRACT.md",
+      "role": "normative",
+      "stability": "accepted"
+    },
+    {
+      "change_process": "roadmap-pr",
+      "owner_role": "architecture-maintainer",
+      "path": "docs/ROADMAP.md",
+      "role": "process",
+      "stability": "accepted"
+    },
+    {
+      "change_process": "adr-and-conformance",
+      "owner_role": "rules-maintainer",
+      "path": "docs/RULES_SEMANTICS.md",
+      "role": "normative",
+      "stability": "accepted"
+    },
+    {
+      "change_process": "adr-and-scope-impact",
+      "owner_role": "architecture-maintainer",
+      "path": "docs/SCOPE.md",
+      "role": "normative",
+      "stability": "accepted"
+    },
+    {
+      "change_process": "adr-and-fixtures",
+      "owner_role": "state-maintainer",
+      "path": "docs/STATE_HASHING.md",
+      "role": "normative",
+      "stability": "provisional"
+    },
+    {
+      "change_process": "proof-architecture-pr",
+      "owner_role": "conformance-maintainer",
+      "path": "docs/TESTING_AND_CONFORMANCE.md",
+      "role": "normative",
+      "stability": "accepted"
+    },
+    {
+      "change_process": "threat-review-pr",
+      "owner_role": "security-maintainer",
+      "path": "docs/THREAT_MODEL.md",
+      "role": "normative",
+      "stability": "accepted"
+    },
+    {
+      "change_process": "release-definition-pr",
+      "owner_role": "architecture-maintainer",
+      "path": "docs/V0_2_1_CONTRACT_CLOSURE.md",
+      "role": "normative",
+      "stability": "accepted"
+    },
+    {
+      "change_process": "release-definition-pr",
+      "owner_role": "architecture-maintainer",
+      "path": "docs/V0_2_2_EXECUTABLE_FREEZE_AND_MAINTAINER_ERGONOMICS.md",
+      "role": "normative",
+      "stability": "accepted"
+    },
+    {
+      "change_process": "strategy-pr",
+      "owner_role": "architecture-maintainer",
+      "path": "docs/VISION.md",
+      "role": "informative",
+      "stability": "accepted"
+    },
+    {
+      "change_process": "process-pr",
+      "owner_role": "content-maintainer",
+      "path": "docs/cards/ADDING_CARDS.md",
+      "role": "process",
+      "stability": "accepted"
+    },
+    {
+      "change_process": "adr-and-artifact-schema",
+      "owner_role": "content-maintainer",
+      "path": "docs/cards/CAPABILITY_MODEL.md",
+      "role": "normative",
+      "stability": "accepted"
+    },
+    {
+      "change_process": "process-pr",
+      "owner_role": "content-maintainer",
+      "path": "docs/cards/CARD_DIRECTORY_LAYOUT.md",
+      "role": "process",
+      "stability": "accepted"
+    },
+    {
+      "change_process": "adr-and-release-gates",
+      "owner_role": "release-maintainer",
+      "path": "docs/cards/CERTIFICATION.md",
+      "role": "normative",
+      "stability": "accepted"
+    },
+    {
+      "change_process": "adr-required",
+      "owner_role": "architecture-maintainer",
+      "path": "docs/cards/NATIVE_EXECUTOR_POLICY.md",
+      "role": "normative",
+      "stability": "provisional"
+    },
+    {
+      "change_process": "source-policy-pr",
+      "owner_role": "content-maintainer",
+      "path": "docs/cards/SOURCE_AND_GENERATION_PIPELINE.md",
+      "role": "normative",
+      "stability": "accepted"
+    },
+    {
+      "change_process": "adr-or-gate-pr",
+      "owner_role": "release-maintainer",
+      "path": "docs/contracts/ACCEPTANCE_GATES.md",
+      "role": "normative",
+      "stability": "accepted"
+    },
+    {
+      "change_process": "adr-required",
+      "owner_role": "api-maintainer",
+      "path": "docs/contracts/COMPATIBILITY_POLICY.md",
+      "role": "normative",
+      "stability": "accepted"
+    },
+    {
+      "change_process": "adr-and-state-tests",
+      "owner_role": "state-maintainer",
+      "path": "docs/contracts/ENGINE_STATE_CLOSURE.md",
+      "role": "normative",
+      "stability": "accepted"
+    },
+    {
+      "change_process": "release-definition-pr",
+      "owner_role": "architecture-maintainer",
+      "path": "docs/contracts/M0_2_DESIGN_LOCK_MATRIX.md",
+      "role": "normative",
+      "stability": "accepted"
+    },
+    {
+      "change_process": "schema-and-client-pr",
+      "owner_role": "ml-contract-maintainer",
+      "path": "docs/contracts/ML_CONTRACT.md",
+      "role": "normative",
+      "stability": "accepted"
+    },
+    {
+      "change_process": "cross-layer-contract-change",
+      "owner_role": "information-safety-reviewer",
+      "path": "docs/contracts/PLAYER_API_CAPABILITY_MATRIX.md",
+      "role": "normative",
+      "stability": "accepted"
+    },
+    {
+      "change_process": "adr-and-conformance",
+      "owner_role": "rules-maintainer",
+      "path": "docs/contracts/SEMANTIC_CONTRACT.md",
+      "role": "normative",
+      "stability": "accepted"
+    },
+    {
+      "change_process": "scope-lock-pr",
+      "owner_role": "scope-maintainer",
+      "path": "docs/contracts/V1_SCOPE_MATRIX.md",
+      "role": "normative",
+      "stability": "draft"
+    },
+    {
+      "change_process": "cross-layer-contract-change",
+      "owner_role": "wire-maintainer",
+      "path": "docs/contracts/WIRE_CONTRACT.md",
+      "role": "normative",
+      "stability": "provisional"
+    },
+    {
+      "change_process": "generated-only",
+      "owner_role": "api-maintainer",
+      "path": "docs/generated/CONTRACT_VOCABULARY.md",
+      "role": "informative",
+      "stability": "accepted"
+    },
+    {
+      "change_process": "adr-and-compatibility-pr",
+      "owner_role": "api-maintainer",
+      "path": "docs/maintenance/API_LIFECYCLE.md",
+      "role": "normative",
+      "stability": "accepted"
+    },
+    {
+      "change_process": "dependency-policy-pr",
+      "owner_role": "release-maintainer",
+      "path": "docs/maintenance/DEPENDENCY_POLICY.md",
+      "role": "normative",
+      "stability": "accepted"
+    },
+    {
+      "change_process": "release-policy-pr",
+      "owner_role": "release-maintainer",
+      "path": "docs/maintenance/FREEZE_LEVELS.md",
+      "role": "normative",
+      "stability": "accepted"
+    },
+    {
+      "change_process": "process-pr",
+      "owner_role": "maintainer",
+      "path": "docs/maintenance/MAINTAINER_PROFILES.md",
+      "role": "process",
+      "stability": "accepted"
+    },
+    {
+      "change_process": "governance-pr",
+      "owner_role": "project-governance",
+      "path": "docs/maintenance/OWNERSHIP_MODEL.md",
+      "role": "process",
+      "stability": "accepted"
+    },
+    {
+      "change_process": "process-pr",
+      "owner_role": "release-maintainer",
+      "path": "docs/maintenance/RELEASE_PROCESS.md",
+      "role": "process",
+      "stability": "accepted"
+    },
+    {
+      "change_process": "cross-layer-contract-change",
+      "owner_role": "wire-maintainer",
+      "path": "docs/maintenance/SCHEMA_EVOLUTION.md",
+      "role": "normative",
+      "stability": "accepted"
+    },
+    {
+      "change_process": "toolchain-and-clean-build-pr",
+      "owner_role": "release-maintainer",
+      "path": "docs/maintenance/TOOLCHAIN_POLICY.md",
+      "role": "normative",
+      "stability": "accepted"
+    },
+    {
+      "change_process": "process-pr",
+      "owner_role": "rules-maintainer",
+      "path": "docs/rules/ADDING_RULES_AND_MECHANICS.md",
+      "role": "process",
+      "stability": "accepted"
+    },
+    {
+      "change_process": "authority-policy-pr",
+      "owner_role": "rules-maintainer",
+      "path": "docs/rules/AUTHORITY_POLICY.md",
+      "role": "normative",
+      "stability": "accepted"
+    },
+    {
+      "change_process": "lifecycle-pr",
+      "owner_role": "rules-maintainer",
+      "path": "docs/rules/MECHANIC_LIFECYCLE.md",
+      "role": "normative",
+      "stability": "accepted"
+    },
+    {
+      "change_process": "template-pr",
+      "owner_role": "maintainer",
+      "path": "docs/templates/BENCHMARK_REPORT_TEMPLATE.md",
+      "role": "template",
+      "stability": "accepted"
+    },
+    {
+      "change_process": "template-pr",
+      "owner_role": "maintainer",
+      "path": "docs/templates/CARD_CAPABILITY_MATRIX.md",
+      "role": "template",
+      "stability": "accepted"
+    },
+    {
+      "change_process": "template-pr",
+      "owner_role": "maintainer",
+      "path": "docs/templates/CARD_IMPLEMENTATION_TEMPLATE.md",
+      "role": "template",
+      "stability": "accepted"
+    },
+    {
+      "change_process": "template-pr",
+      "owner_role": "maintainer",
+      "path": "docs/templates/CONFORMANCE_CASE_TEMPLATE.md",
+      "role": "template",
+      "stability": "accepted"
+    },
+    {
+      "change_process": "template-pr",
+      "owner_role": "maintainer",
+      "path": "docs/templates/INTERPRETATION_RECORD_TEMPLATE.md",
+      "role": "template",
+      "stability": "accepted"
+    },
+    {
+      "change_process": "template-pr",
+      "owner_role": "maintainer",
+      "path": "docs/templates/MECHANIC_SPEC_TEMPLATE.md",
+      "role": "template",
+      "stability": "accepted"
+    },
+    {
+      "change_process": "template-pr",
+      "owner_role": "maintainer",
+      "path": "docs/templates/RELEASE_CHECKLIST.md",
+      "role": "template",
+      "stability": "accepted"
+    },
+    {
+      "change_process": "template-pr",
+      "owner_role": "maintainer",
+      "path": "docs/templates/SCOPE_IMPACT_REPORT_TEMPLATE.md",
+      "role": "template",
+      "stability": "accepted"
+    },
+    {
+      "change_process": "process-pr",
+      "owner_role": "conformance-maintainer",
+      "path": "docs/testing/CONFORMANCE_AUTHORING.md",
+      "role": "process",
+      "stability": "accepted"
+    },
+    {
+      "change_process": "proof-process-pr",
+      "owner_role": "information-safety-reviewer",
+      "path": "docs/testing/NONINTERFERENCE_TESTING.md",
+      "role": "process",
+      "stability": "accepted"
+    },
+    {
+      "change_process": "proof-process-pr",
+      "owner_role": "conformance-maintainer",
+      "path": "docs/testing/PROPERTY_AND_FUZZING.md",
+      "role": "process",
+      "stability": "accepted"
+    },
+    {
+      "change_process": "governance-pr",
+      "owner_role": "project-governance",
+      "path": "LICENSE",
+      "role": "normative",
+      "stability": "accepted"
+    }
   ],
-  "schema_version":"normative-document-register.v1"
+  "schema_version": "normative-document-register.v1"
 }
