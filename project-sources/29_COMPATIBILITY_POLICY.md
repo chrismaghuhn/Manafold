@@ -25,4 +25,4 @@ Classify changes as:
 
 Unknown required fields or variants fail closed. Optional extensions are namespaced/versioned. Enum/key values never change meaning in place. Migrations create new artifacts with source provenance and never overwrite old data.
 
-Experimental surfaces may break before freeze, but still increment versions, update fixtures, and document impact. Frozen public surfaces follow [`../maintenance/API_LIFECYCLE.md`](../maintenance/API_LIFECYCLE.md).
+Experimental surfaces may break before freeze, but still increment versions, update fixtures, and document impact. Frozen public surfaces follow [`../maintenance/API_LIFECYCLE.md`](../docs/maintenance/API_LIFECYCLE.md).

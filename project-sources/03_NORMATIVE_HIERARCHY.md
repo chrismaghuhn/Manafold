@@ -54,4 +54,4 @@ Do **not**:
 
 ## Machine-readable register
 
-[`normative-document-register.v1.json`](normative-document-register.v1.json) lists every binding or process document, its owner role, stability, and change process. `scripts/check_documentation.py` verifies that registered paths exist, every project/process/template document is classified, and local Markdown links resolve. Per-capability specifications under `docs/rules/capabilities/` are governed by the versioned capability registry instead of being duplicated here.
+[`normative-document-register.v1.json`](../docs/normative-document-register.v1.json) lists every binding or process document, its owner role, stability, and change process. `scripts/check_documentation.py` verifies that registered paths exist, every project/process/template document is classified, and local Markdown links resolve. Per-capability specifications under `docs/rules/capabilities/` are governed by the versioned capability registry instead of being duplicated here.

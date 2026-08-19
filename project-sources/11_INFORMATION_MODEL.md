@@ -41,7 +41,7 @@ Authoritative events may include internal IDs and full RNG provenance. Observed 
 
 ## Noninterference
 
-Paired states differing only in unauthorized information must produce identical bytes for that perspective’s observation, information state, visible decision/candidates, observed events, errors, and semantic trajectory fields. See [`testing/NONINTERFERENCE_TESTING.md`](testing/NONINTERFERENCE_TESTING.md).
+Paired states differing only in unauthorized information must produce identical bytes for that perspective’s observation, information state, visible decision/candidates, observed events, errors, and semantic trajectory fields. See [`testing/NONINTERFERENCE_TESTING.md`](../docs/testing/NONINTERFERENCE_TESTING.md).
 
 ## V0.2.1 knowledge provenance records
 

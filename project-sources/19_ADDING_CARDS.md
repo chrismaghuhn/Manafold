@@ -19,7 +19,7 @@ This creates a manifest, implementation note, and case directory without copying
 
 ### 2. Pin source provenance
 
-Record source snapshot, source record ID, normalized-source digest, card-definition identity, faces, and generated/reference objects. Source text may be retrieved from the pinned source during authorized local generation; redistribution follows [`SOURCE_AND_GENERATION_PIPELINE.md`](SOURCE_AND_GENERATION_PIPELINE.md).
+Record source snapshot, source record ID, normalized-source digest, card-definition identity, faces, and generated/reference objects. Source text may be retrieved from the pinned source during authorized local generation; redistribution follows [`SOURCE_AND_GENERATION_PIPELINE.md`](../docs/cards/SOURCE_AND_GENERATION_PIPELINE.md).
 
 ### 3. Run or author an IR candidate
 

@@ -23,7 +23,7 @@ A capability entry contains:
 - benchmark scenario IDs where relevant;
 - owner roles and notes.
 
-The normative shape is [`../../schemas/capability-registry.v1.schema.json`](../../schemas/capability-registry.v1.schema.json). Cross-entry uniqueness, dependency existence, cycle checks, safe repository-relative paths, specification existence, and lifecycle-specific evidence are semantic validation beyond JSON Schema. In particular, `implemented` requires an existing implementation path, `covered` requires conformance evidence, and `specified` or later cannot retain an unreviewed information-risk classification.
+The normative shape is [`../../schemas/capability-registry.v1.schema.json`](../schemas/capability-registry.v1.schema.json). Cross-entry uniqueness, dependency existence, cycle checks, safe repository-relative paths, specification existence, and lifecycle-specific evidence are semantic validation beyond JSON Schema. In particular, `implemented` requires an existing implementation path, `covered` requires conformance evidence, and `specified` or later cannot retain an unreviewed information-risk classification.
 
 ## Closure sources
 

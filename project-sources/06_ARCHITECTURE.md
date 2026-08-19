@@ -89,4 +89,4 @@ An experiment may expose a reduced/canonicalized action view only as an explicit
 
 ## Dependency ownership
 
-See [`PROJECT_STRUCTURE.md`](PROJECT_STRUCTURE.md). `mtgml-state` is the sole state owner; duplicate/orphan state crates are prohibited.
+See [`PROJECT_STRUCTURE.md`](../docs/PROJECT_STRUCTURE.md). `mtgml-state` is the sole state owner; duplicate/orphan state crates are prohibited.

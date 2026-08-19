@@ -7,7 +7,7 @@
 
 1. Identify the semantic surface and its stability class.
 2. Read the relevant normative docs and ADRs.
-3. Check [`OPEN_DECISIONS.md`](OPEN_DECISIONS.md) and the design lock matrix.
+3. Check [`OPEN_DECISIONS.md`](../docs/OPEN_DECISIONS.md) and the design lock matrix.
 4. Pin authority/input artifacts.
 5. State the support claim and exact non-goals.
 6. Add red evidence before changing behavior.
@@ -23,11 +23,11 @@
 
 ## Adding a mechanic
 
-Follow [`rules/ADDING_RULES_AND_MECHANICS.md`](rules/ADDING_RULES_AND_MECHANICS.md). Use `scripts/scaffold_capability.py`, specify authority/state/events/decisions/information/order, add red conformance cases, implement reusable primitives, then advance lifecycle only with evidence.
+Follow [`rules/ADDING_RULES_AND_MECHANICS.md`](../docs/rules/ADDING_RULES_AND_MECHANICS.md). Use `scripts/scaffold_capability.py`, specify authority/state/events/decisions/information/order, add red conformance cases, implement reusable primitives, then advance lifecycle only with evidence.
 
 ## Adding a card
 
-Follow [`cards/ADDING_CARDS.md`](cards/ADDING_CARDS.md). Use `scripts/scaffold_card.py`, pin provenance, review generated IR, declare capabilities, test decisions/information/interactions, and certify only through a locked bundle.
+Follow [`cards/ADDING_CARDS.md`](../docs/cards/ADDING_CARDS.md). Use `scripts/scaffold_card.py`, pin provenance, review generated IR, declare capabilities, test decisions/information/interactions, and certify only through a locked bundle.
 
 ## Changing a deck or bundle
 
@@ -55,4 +55,4 @@ Preserve semantic parity first. Benchmark a pinned workload and report distribut
 
 ## Release
 
-Follow [`maintenance/RELEASE_PROCESS.md`](maintenance/RELEASE_PROCESS.md) and [`maintenance/FREEZE_LEVELS.md`](maintenance/FREEZE_LEVELS.md). Generate reports from executed commands; do not edit gate status manually.
+Follow [`maintenance/RELEASE_PROCESS.md`](../docs/maintenance/RELEASE_PROCESS.md) and [`maintenance/FREEZE_LEVELS.md`](../docs/maintenance/FREEZE_LEVELS.md). Generate reports from executed commands; do not edit gate status manually.
