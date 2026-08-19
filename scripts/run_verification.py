@@ -55,7 +55,13 @@ def run_gate(
     tool: str | None = None,
 ) -> dict[str, Any]:
     shown = display_command(command)
-    if tool is not None and shutil.which(tool) is None:
+    is_module_run = (
+        len(command) >= 3
+        and command[0] == sys.executable
+        and command[1] == "-m"
+        and command[2] == tool
+    )
+    if tool is not None and not is_module_run and shutil.which(tool) is None:
         return {
             "name": name,
             "status": "NOT_RUN",
@@ -260,19 +266,19 @@ def main() -> None:
         ),
         run_gate(
             "ruff_format",
-            ["ruff", "format", "--check", "python", "scripts"],
+            [sys.executable, "-m", "ruff", "format", "--check", "python", "scripts"],
             logs=logs,
             tool="ruff",
         ),
         run_gate(
             "ruff",
-            ["ruff", "check", "python", "scripts"],
+            [sys.executable, "-m", "ruff", "check", "python", "scripts"],
             logs=logs,
             tool="ruff",
         ),
         run_gate(
             "mypy",
-            ["mypy", "--config-file", "python/pyproject.toml"],
+            [sys.executable, "-m", "mypy", "--config-file", "python/pyproject.toml"],
             logs=logs,
             tool="mypy",
         ),
