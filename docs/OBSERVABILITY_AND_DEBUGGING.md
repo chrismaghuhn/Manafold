@@ -38,6 +38,10 @@ secret_seed_material
 
 Sinks must reject fields above their permitted classification. Raw debug formatting of `EngineState` is never sent through player or general experiment logs.
 
+## Developer diagnostic architecture
+
+The detailed trusted developer-debugging architecture is defined by [`DEBUG_ARCHITECTURE_CONTRACT.md`](DEBUG_ARCHITECTURE_CONTRACT.md) and ADR 0036. This document remains the information-safety boundary: the detailed diagnostic architecture may refine trusted tooling, artifacts, and workflows but cannot weaken the separation between trusted diagnostics and player/experiment telemetry.
+
 ## Performance instrumentation
 
 Instrumentation must be observationally inert. Timing is not part of player-visible protocol data. Benchmarks separate semantic work, projection, serialization, inference wait, and orchestration overhead.
