@@ -1,7 +1,7 @@
 # Open Decisions
 
 **Status:** blocking and resolved decision register  
-**Last reviewed:** 2026-08-18
+**Last reviewed:** 2026-08-19
 
 | ID | Status | Decision | Deadline | Safe default / current resolution |
 |---|---|---|---|---|
@@ -12,7 +12,7 @@
 | OD-005 | open | Commander policy and banlist snapshots | first format reset | reject config |
 | OD-006 | open | Oracle/card source and distribution basis | card import | distribute no bulk data |
 | OD-007 | open | Reference hardware and numerical budgets | performance acceptance | metrics only |
-| OD-008 | open | RNG algorithm and stream derivation | first deterministic reset | certification blocked |
+| OD-008 | resolved | RNG algorithm and stream derivation | first deterministic reset | `mtgml.rng.v1`: counter-addressed HMAC-SHA-256, 256-bit root seed, typed streams, project-owned bounded sampling and shuffle; ADR 0035 |
 | OD-009 | open | Python/native transport | M5 | protocols only |
 | OD-010 | resolved | Initial canonical wire encoding | M0.1 | canonical UTF-8 JSON; ADR 0017 |
 | OD-011 | open | Semantic action-key and trajectory encoding | first dataset | dataset publication blocked |
