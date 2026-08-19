@@ -75,15 +75,12 @@ pub fn next_raw_u64(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::{RandomStreamKindV1, RandomStreamScopeV1};
+    use crate::types::RandomStreamKindV1;
 
     const ALL_ZERO_SEED: &str = "0000000000000000000000000000000000000000000000000000000000000000";
 
     fn global_key() -> RandomStreamKeyV1 {
-        RandomStreamKeyV1 {
-            kind: RandomStreamKindV1::SyntheticM1,
-            scope: RandomStreamScopeV1::Global,
-        }
+        RandomStreamKeyV1::global(RandomStreamKindV1::SyntheticM1)
     }
 
     #[test]
@@ -104,7 +101,7 @@ mod tests {
         let k_stream = derive_stream_key(&seed, &key);
         assert_eq!(
             crate::types::encode_lower_hex(&k_stream),
-            "73635feaa9e90effe337e2cc9e1d801f63c9ede8d51b21a1120e624da2d648f9"
+            "9e3b48c1a153bfd9bc07a5c670b74d43c977f261fe1ca84cfc528a3ae15a7c03"
         );
     }
 
@@ -116,7 +113,7 @@ mod tests {
         let block = raw_block(&k_stream, 0);
         assert_eq!(
             crate::types::encode_lower_hex(&block),
-            "6818e6bd053d9b770e26253e8d724b0403c524aeb6b3cff52508069342e336e4"
+            "2cc50125184ebe3cef287a11b7a89b3e6a68456bca60386e9eef6d5a82c6f93c"
         );
     }
 
@@ -128,7 +125,7 @@ mod tests {
         let block = raw_block(&k_stream, 1);
         assert_eq!(
             crate::types::encode_lower_hex(&block),
-            "ac6a5d827f0dcbbf060d1adce197e55569da50c9030d2a2b2a7f637923566d45"
+            "01dfd2ac6752ded1f508f0bd1cbffddd5d3894b7ddee85a61d856a3b9ef5e646"
         );
     }
 
@@ -139,14 +136,14 @@ mod tests {
         let k_stream = derive_stream_key(&seed, &key);
         let block0 = raw_block(&k_stream, 0);
         let block1 = raw_block(&k_stream, 1);
-        assert_eq!(raw_u64_at(&block0, 0), 0x6818e6bd053d9b77);
-        assert_eq!(raw_u64_at(&block0, 1), 0x0e26253e8d724b04);
-        assert_eq!(raw_u64_at(&block0, 2), 0x03c524aeb6b3cff5);
-        assert_eq!(raw_u64_at(&block0, 3), 0x2508069342e336e4);
-        assert_eq!(raw_u64_at(&block1, 0), 0xac6a5d827f0dcbbf);
-        assert_eq!(raw_u64_at(&block1, 1), 0x060d1adce197e555);
-        assert_eq!(raw_u64_at(&block1, 2), 0x69da50c9030d2a2b);
-        assert_eq!(raw_u64_at(&block1, 3), 0x2a7f637923566d45);
+        assert_eq!(raw_u64_at(&block0, 0), 0x2cc50125184ebe3c);
+        assert_eq!(raw_u64_at(&block0, 1), 0xef287a11b7a89b3e);
+        assert_eq!(raw_u64_at(&block0, 2), 0x6a68456bca60386e);
+        assert_eq!(raw_u64_at(&block0, 3), 0x9eef6d5a82c6f93c);
+        assert_eq!(raw_u64_at(&block1, 0), 0x01dfd2ac6752ded1);
+        assert_eq!(raw_u64_at(&block1, 1), 0xf508f0bd1cbffddd);
+        assert_eq!(raw_u64_at(&block1, 2), 0x5d3894b7ddee85a6);
+        assert_eq!(raw_u64_at(&block1, 3), 0x1d856a3b9ef5e646);
     }
 
     #[test]
@@ -157,7 +154,10 @@ mod tests {
             next_raw_u64: u64::MAX - 1,
         };
         let (value, new_cursor) = next_raw_u64(&seed, &key, &cursor).unwrap();
-        assert_eq!(value, 0x021a6c120112e7b3);
+        // (u64::MAX - 1) = 18446744073709551614
+        // block_index = 18446744073709551614 / 4 = 4611686018427387903
+        // lane = 18446744073709551614 % 4 = 2
+        assert_eq!(value, 0x2a2987f0ea91c326);
         assert_eq!(new_cursor.next_raw_u64, u64::MAX);
     }
 
@@ -178,10 +178,7 @@ mod tests {
     fn stream_isolation() {
         let seed = RootSeed256::from_lower_hex(ALL_ZERO_SEED).unwrap();
         let key1 = global_key();
-        let _key2 = RandomStreamKeyV1 {
-            kind: RandomStreamKindV1::SyntheticM1,
-            scope: RandomStreamScopeV1::Player(mtgml_model::PlayerId(1)),
-        };
+        let _key2 = RandomStreamKeyV1::player(RandomStreamKindV1::SyntheticM1, 1);
         let cursor1 = RandomStreamCursorV1::default();
         let (_, new_cursor1) = next_raw_u64(&seed, &key1, &cursor1).unwrap();
         assert_eq!(new_cursor1.next_raw_u64, 1);
@@ -195,10 +192,10 @@ mod tests {
         let key = global_key();
         let cursor = RandomStreamCursorV1 { next_raw_u64: 3 };
         let (value, new_cursor) = next_raw_u64(&seed, &key, &cursor).unwrap();
-        assert_eq!(value, 0x2508069342e336e4);
+        assert_eq!(value, 0x9eef6d5a82c6f93c);
         assert_eq!(new_cursor.next_raw_u64, 4);
         let cursor4 = new_cursor;
         let (value4, _) = next_raw_u64(&seed, &key, &cursor4).unwrap();
-        assert_eq!(value4, 0xac6a5d827f0dcbbf);
+        assert_eq!(value4, 0x01dfd2ac6752ded1);
     }
 }

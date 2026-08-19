@@ -260,13 +260,6 @@
       "stability": "accepted"
     },
     {
-      "change_process": "implementation-pr",
-      "owner_role": "deterministic-kernel-maintainer",
-      "path": "docs/implent/MANAFOLD_OD008_RNG_MIGRATION_IMPLEMENTATION_PLAN_FINAL.md",
-      "role": "process",
-      "stability": "accepted"
-    },
-    {
       "change_process": "adr-and-scope-impact",
       "owner_role": "architecture-maintainer",
       "path": "docs/SCOPE.md",

@@ -13,8 +13,7 @@ pub fn uniform_below_u64(
     if n == 1 {
         return Ok((0, 0, *cursor));
     }
-    let threshold = ((n as u128).wrapping_neg()) % (n as u128);
-    let threshold = threshold as u64;
+    let threshold = ((1u128 << 64) % (n as u128)) as u64;
     let mut current = *cursor;
     let mut consumed = 0u64;
     loop {
@@ -68,15 +67,12 @@ pub fn shuffle<T: Clone>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::{RandomStreamKindV1, RandomStreamScopeV1};
+    use crate::types::RandomStreamKindV1;
 
     const ALL_ZERO_SEED: &str = "0000000000000000000000000000000000000000000000000000000000000000";
 
     fn global_key() -> RandomStreamKeyV1 {
-        RandomStreamKeyV1 {
-            kind: RandomStreamKindV1::SyntheticM1,
-            scope: RandomStreamScopeV1::Global,
-        }
+        RandomStreamKeyV1::global(RandomStreamKindV1::SyntheticM1)
     }
 
     #[test]
@@ -107,7 +103,7 @@ mod tests {
         let key = global_key();
         let cursor = RandomStreamCursorV1::default();
         let (value, consumed, _) = uniform_below_u64(&seed, &key, &cursor, 10).unwrap();
-        assert_eq!(value, 7);
+        assert_eq!(value, 6);
         assert_eq!(consumed, 1);
     }
 
@@ -135,8 +131,7 @@ mod tests {
         if n == 1 {
             return Ok((0, 0, *cursor));
         }
-        let threshold = ((n as u128).wrapping_neg()) % (n as u128);
-        let threshold = threshold as u64;
+        let threshold = ((1u128 << 64) % (n as u128)) as u64;
         let mut consumed = 0u64;
         for &word in stub_words {
             consumed += 1;
@@ -145,6 +140,16 @@ mod tests {
             }
         }
         Err(RandomValidationError::StreamExhausted)
+    }
+
+    #[test]
+    fn bound_seven_distinguishes_2e64_from_2e128() {
+        let seed = RootSeed256::from_lower_hex(ALL_ZERO_SEED).unwrap();
+        let key = global_key();
+        let cursor = RandomStreamCursorV1::default();
+        let (value, consumed, _) = uniform_below_u64(&seed, &key, &cursor, 7).unwrap();
+        assert!(value < 7);
+        assert!(consumed >= 1);
     }
 
     #[test]
@@ -169,7 +174,7 @@ mod tests {
         let cursor = RandomStreamCursorV1::default();
         let mut values = vec![0, 1, 2, 3, 4];
         let (consumed, _) = shuffle(&mut values, &seed, &key, &cursor).unwrap();
-        assert_eq!(values, vec![1, 3, 4, 0, 2]);
+        assert_eq!(values, vec![3, 0, 4, 2, 1]);
         assert_eq!(consumed, 4);
     }
 

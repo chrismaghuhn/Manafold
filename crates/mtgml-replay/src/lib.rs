@@ -2,10 +2,21 @@
 
 use mtgml_decision::DecisionResponse;
 use mtgml_model::{ContentDigest, FullStateDigest, FullStateDigestV2, PlayerId, StateRevision};
-use mtgml_random::validate_seed_hex;
-use serde::{Deserialize, Serialize};
+use mtgml_random::types::validate_seed_hex;
+use serde::{Deserialize, Deserializer, Serialize};
 use std::collections::BTreeSet;
 use thiserror::Error;
+
+fn deserialize_root_seed_hex<'de, D>(deserializer: D) -> Result<String, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let s = String::deserialize(deserializer)?;
+    validate_seed_hex(&s).map_err(|_| {
+        serde::de::Error::custom("root seed is not canonical lowercase hexadecimal")
+    })?;
+    Ok(s)
+}
 
 pub const REPLAY_MANIFEST_SCHEMA: &str = "replay-manifest.v1";
 pub const REPLAY_FILE_SCHEMA: &str = "authoritative-replay.v1";
@@ -262,6 +273,8 @@ pub enum ReplayValidationError {
     EmptyReplayIdentity,
     #[error("unsupported RNG contract in replay")]
     UnsupportedRngContract,
+    #[error("replay-step schema identity must be replay-step.v2")]
+    ReplayStepIdentity,
 }
 
 // === V2 replay types ===
@@ -270,6 +283,7 @@ pub enum ReplayValidationError {
 #[serde(deny_unknown_fields)]
 pub struct RandomnessIdentityV2 {
     pub contract_id: String,
+    #[serde(deserialize_with = "deserialize_root_seed_hex")]
     pub root_seed_hex: String,
 }
 
@@ -321,6 +335,9 @@ impl ReplayManifestV2 {
             .map_err(|_| ReplayValidationError::Seed)?;
         if self.randomness.contract_id != "mtgml.rng.v1" {
             return Err(ReplayValidationError::UnsupportedRngContract);
+        }
+        if self.schemas.replay_step != "replay-step.v2" {
+            return Err(ReplayValidationError::ReplayStepIdentity);
         }
         if self.decks.is_empty() {
             return Err(ReplayValidationError::MissingDecks);

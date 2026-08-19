@@ -203,6 +203,8 @@ class ReplayManifestV1:
         players = [deck.player for deck in self.decks]
         if len(players) != len(set(players)):
             raise WireError("semantic.replay_manifest", "duplicate deck player")
+        if any(deck.deck_id == "" for deck in self.decks):
+            raise WireError("semantic.replay_manifest", "deck_id must not be empty")
 
     def to_wire(self) -> dict[str, object]:
         self.validate()
@@ -465,6 +467,8 @@ class ReplayStepV2:
                 "state_digest_after",
             },
         )
+        if not isinstance(obj["accepted"], bool):
+            raise WireError("decode.invalid_json", "accepted must be boolean")
         return cls(
             parse_u64_number(obj["step_index"]),
             parse_uint(obj["state_revision_before"]),
@@ -514,9 +518,47 @@ class AuthoritativeReplayV2:
             parse_uint(obj["final_state_revision"]),
             require_digest(obj["final_state_digest"]),
         )
+        result.validate()
         return result
 
+    def validate(self) -> None:
+        if self.schema_version != REPLAY_FILE_SCHEMA_V2:
+            raise WireError("semantic.replay", "unsupported replay schema version")
+        self.manifest.validate()
+        revision = self.manifest.initial_state_revision
+        state_digest = self.manifest.initial_state_digest
+        for index, step in enumerate(self.steps):
+            if (
+                step.step_index != index
+                or step.state_revision_before != revision
+                or step.response.state_revision != revision
+            ):
+                raise WireError("semantic.replay", "replay revisions are discontinuous")
+            if step.accepted and step.state_revision_after <= step.state_revision_before:
+                raise WireError("semantic.replay", "accepted step did not advance revision")
+            if not step.accepted and (
+                step.state_revision_after != step.state_revision_before
+                or step.state_digest_after != state_digest
+            ):
+                raise WireError(
+                    "semantic.replay",
+                    "rejected step changed revision or full-state identity",
+                )
+            revision = step.state_revision_after
+            state_digest = step.state_digest_after
+        if self.final_state_revision != revision:
+            raise WireError("semantic.replay", "final revision differs")
+        if self.steps:
+            if self.final_state_digest != self.steps[-1].state_digest_after:
+                raise WireError("semantic.replay", "final digest differs")
+        elif (
+            self.final_state_revision != self.manifest.initial_state_revision
+            or self.final_state_digest != self.manifest.initial_state_digest
+        ):
+            raise WireError("semantic.replay", "empty replay does not preserve initial identity")
+
     def to_wire(self) -> dict[str, object]:
+        self.validate()
         return {
             "final_state_digest": require_digest(self.final_state_digest),
             "final_state_revision": uint_wire(self.final_state_revision),

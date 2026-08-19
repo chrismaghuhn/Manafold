@@ -10,7 +10,7 @@ use mtgml_model::{
     PhysicalCardId, PlayerId, RuleEventId, StackObjectId, StateRevision, TriggerInstanceId,
     ZoneKind,
 };
-use mtgml_random::RandomStateV1;
+use mtgml_random::{RandomStateV1, RandomStreamScopeV1};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map as JsonMap, Value as JsonValue};
 use std::collections::{BTreeMap, BTreeSet};
@@ -456,6 +456,55 @@ impl EngineState {
             perspective_identities: self.perspective_identities.clone(),
             format: self.format.clone(),
         }
+    }
+
+    pub fn consume_raw_u64(
+        &mut self,
+        key: &mtgml_random::RandomStreamKeyV1,
+    ) -> Result<(u64, u64), mtgml_random::RandomValidationError> {
+        let root = self.random.root_seed;
+        let cursor = self.random.lookup_stream(key)?;
+        let (word, next) = mtgml_random::hmac_counter::next_raw_u64(&root, key, &cursor)?;
+        self.random.set_cursor(key, next)?;
+        Ok((word, cursor.next_raw_u64))
+    }
+
+    pub fn uniform_below_u64(
+        &mut self,
+        key: &mtgml_random::RandomStreamKeyV1,
+        n: u64,
+    ) -> Result<(u64, u64), mtgml_random::RandomValidationError> {
+        if n == 0 {
+            return Err(mtgml_random::RandomValidationError::InvalidRandomBound);
+        }
+        if n == 1 {
+            return Ok((0, 0));
+        }
+        let threshold = ((1u128 << 64) % (n as u128)) as u64;
+        loop {
+            let (word, consumed) = self.consume_raw_u64(key)?;
+            if word >= threshold {
+                return Ok((word % n, consumed));
+            }
+        }
+    }
+
+    pub fn shuffle<T: Clone>(
+        &mut self,
+        values: &mut [T],
+        key: &mtgml_random::RandomStreamKeyV1,
+    ) -> Result<u64, mtgml_random::RandomValidationError> {
+        let len = values.len();
+        if len <= 1 {
+            return Ok(0);
+        }
+        let mut total_consumed = 0u64;
+        for i in (1..len).rev() {
+            let (j, consumed) = self.uniform_below_u64(key, (i as u64) + 1)?;
+            total_consumed += consumed;
+            values.swap(i, j as usize);
+        }
+        Ok(total_consumed)
     }
 }
 
@@ -989,12 +1038,27 @@ pub fn validate_engine_state(state: &EngineState) -> Result<(), EngineStateViola
         .random
         .validate()
         .map_err(|_| EngineStateViolation::RandomState)?;
+
+    for key in state.random.streams.keys() {
+        if key.scope == RandomStreamScopeV1::Player {
+            if let Some(player_raw) = key.player {
+                let player = PlayerId(player_raw);
+                if !state.core.players.contains_key(&player) {
+                    return Err(EngineStateViolation::RandomState);
+                }
+            }
+        }
+    }
     Ok(())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use mtgml_random::{
+        RandomStreamCursorV1, RandomStreamKeyV1, RandomStreamKindV1, RandomValidationError,
+        RootSeed256,
+    };
 
     fn state() -> EngineState {
         let p1 = PlayerId(1);
@@ -1041,6 +1105,15 @@ mod tests {
             },
             format: FormatState::None,
         }
+    }
+
+    fn add_stream_entry(
+        state: &mut EngineState,
+        key: RandomStreamKeyV1,
+    ) -> Result<(), RandomValidationError> {
+        state
+            .random
+            .add_stream(key, RandomStreamCursorV1::default())
     }
 
     #[test]
@@ -1202,6 +1275,121 @@ mod tests {
         assert_eq!(
             validate_engine_state(&invalid),
             Err(EngineStateViolation::PendingDecisionMismatch)
+        );
+    }
+
+    #[test]
+    fn rng_player_scope_rejects_absent_player() {
+        let mut value = state();
+        let p3 = PlayerId(3);
+        value
+            .random
+            .add_stream(
+                RandomStreamKeyV1::player(RandomStreamKindV1::Sampling, p3.0),
+                RandomStreamCursorV1::default(),
+            )
+            .unwrap();
+        assert_eq!(
+            validate_engine_state(&value),
+            Err(EngineStateViolation::RandomState)
+        );
+    }
+
+    #[test]
+    fn nonempty_rng_stream_changes_v2_digest() {
+        let mut value = state();
+        value
+            .random
+            .add_stream(
+                RandomStreamKeyV1::global(RandomStreamKindV1::Shuffle),
+                RandomStreamCursorV1::default(),
+            )
+            .unwrap();
+        validate_engine_state(&value).unwrap();
+        let empty_digest = state().digest().unwrap();
+        let nonempty_digest = value.digest().unwrap();
+        assert_ne!(empty_digest, nonempty_digest);
+        let bytes = value.canonical_digest_bytes().unwrap();
+        let text = String::from_utf8(bytes).unwrap();
+        assert!(
+            text.contains("\"random\""),
+            "canonical bytes must include random field"
+        );
+    }
+
+    #[test]
+    fn root_seed_change_changes_v2_digest() {
+        let seed = RootSeed256::from_lower_hex(&"ab".repeat(32)).unwrap();
+        let mut value_a = state();
+        let value_b = state();
+        value_a.random = RandomStateV1::new(seed);
+        validate_engine_state(&value_a).unwrap();
+        validate_engine_state(&value_b).unwrap();
+        assert_ne!(value_a.digest().unwrap(), value_b.digest().unwrap());
+    }
+
+    #[test]
+    fn cursor_change_changes_v2_digest() {
+        let mut value = state();
+        value
+            .random
+            .add_stream(
+                RandomStreamKeyV1::global(RandomStreamKindV1::Shuffle),
+                RandomStreamCursorV1::default(),
+            )
+            .unwrap();
+        validate_engine_state(&value).unwrap();
+        let before = value.digest().unwrap();
+        value
+            .random
+            .set_cursor(
+                &RandomStreamKeyV1::global(RandomStreamKindV1::Shuffle),
+                RandomStreamCursorV1 { next_raw_u64: 42 },
+            )
+            .unwrap();
+        let after = value.digest().unwrap();
+        assert_ne!(before, after);
+    }
+
+    #[test]
+    fn insertion_order_does_not_change_v2_digest() {
+        let mut value_a = state();
+        let mut value_b = state();
+        let key_global = RandomStreamKeyV1::global(RandomStreamKindV1::Shuffle);
+        let key_player = RandomStreamKeyV1::player(RandomStreamKindV1::Sampling, 1);
+        add_stream_entry(&mut value_a, key_global).unwrap();
+        add_stream_entry(&mut value_a, key_player).unwrap();
+        add_stream_entry(&mut value_b, key_player).unwrap();
+        add_stream_entry(&mut value_b, key_global).unwrap();
+        validate_engine_state(&value_a).unwrap();
+        validate_engine_state(&value_b).unwrap();
+        assert_eq!(value_a.digest().unwrap(), value_b.digest().unwrap());
+    }
+
+    #[test]
+    fn rng_digest_canonical_bytes_are_sorted() {
+        let mut value = state();
+        value
+            .random
+            .add_stream(
+                RandomStreamKeyV1::global(RandomStreamKindV1::Shuffle),
+                RandomStreamCursorV1::default(),
+            )
+            .unwrap();
+        value
+            .random
+            .add_stream(
+                RandomStreamKeyV1::player(RandomStreamKindV1::Sampling, 1),
+                RandomStreamCursorV1 { next_raw_u64: 7 },
+            )
+            .unwrap();
+        validate_engine_state(&value).unwrap();
+        let bytes = String::from_utf8(value.canonical_digest_bytes().unwrap()).unwrap();
+        let shuffle_pos = bytes.find("shuffle").unwrap();
+        let sampling_pos = bytes.find("sampling").unwrap();
+        assert!(
+            shuffle_pos < sampling_pos,
+            "streams in canonical bytes must be sorted by canonical key"
         );
     }
 }
