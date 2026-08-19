@@ -1,4 +1,4 @@
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::collections::BTreeMap;
 use std::fmt;
 use thiserror::Error;
@@ -83,59 +83,61 @@ pub fn encode_lower_hex(bytes: &[u8]) -> String {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum RandomStreamKindV1 {
-    SyntheticM1 = 0,
-    Shuffle = 1,
-    Sampling = 2,
+    SyntheticM1 = 1,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum RandomStreamScopeV1 {
-    Global = 0,
-    Player = 1,
+    Global,
+    Player(u64),
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct RandomStreamKeyV1 {
-    pub version: u8,
-    pub kind: RandomStreamKindV1,
-    pub scope: RandomStreamScopeV1,
-    pub player: Option<u64>,
+    kind: RandomStreamKindV1,
+    scope: RandomStreamScopeV1,
 }
 
 impl RandomStreamKeyV1 {
-    pub const VERSION: u8 = 1;
+    const VERSION: u8 = 1;
 
     pub fn global(kind: RandomStreamKindV1) -> Self {
         Self {
-            version: Self::VERSION,
             kind,
             scope: RandomStreamScopeV1::Global,
-            player: None,
         }
     }
 
-    pub fn player(kind: RandomStreamKindV1, player_id: u64) -> Self {
+    pub fn player_scoped(kind: RandomStreamKindV1, player_id: u64) -> Self {
         Self {
-            version: Self::VERSION,
             kind,
-            scope: RandomStreamScopeV1::Player,
-            player: Some(player_id),
+            scope: RandomStreamScopeV1::Player(player_id),
+        }
+    }
+
+    pub fn kind(&self) -> RandomStreamKindV1 {
+        self.kind
+    }
+
+    pub fn scope(&self) -> RandomStreamScopeV1 {
+        self.scope
+    }
+
+    pub fn player(&self) -> Option<u64> {
+        match self.scope {
+            RandomStreamScopeV1::Global => None,
+            RandomStreamScopeV1::Player(p) => Some(p),
         }
     }
 
     pub fn to_canonical_bytes(&self) -> Vec<u8> {
-        let mut bytes = Vec::with_capacity(4 + 2 + 1 + 8);
-        bytes.push(self.version);
+        let mut bytes = Vec::with_capacity(4 + 8);
+        bytes.push(Self::VERSION);
         bytes.extend_from_slice(&self.kind.to_canonical_u16());
-        bytes.push(self.scope.to_canonical_u8());
-        match self.scope {
-            RandomStreamScopeV1::Global => {}
-            RandomStreamScopeV1::Player => {
-                if let Some(p) = self.player {
-                    bytes.extend_from_slice(&p.to_be_bytes());
-                }
-            }
+        let (scope_tag, player) = self.scope.to_canonical_tag_and_player();
+        bytes.push(scope_tag);
+        if let Some(p) = player {
+            bytes.extend_from_slice(&p.to_be_bytes());
         }
         bytes
     }
@@ -152,17 +154,16 @@ impl RandomStreamKeyV1 {
             return Err(RandomValidationError::MalformedStreamKey);
         }
         let kind_u16 = u16::from_be_bytes([bytes[1], bytes[2]]);
-        let scope_u8 = bytes[3];
+        let scope_tag = bytes[3];
         let kind = RandomStreamKindV1::from_canonical_u16(kind_u16)?;
-        let scope = RandomStreamScopeV1::from_canonical_u8(scope_u8)?;
-        let player = match scope {
-            RandomStreamScopeV1::Global => {
+        let player = match scope_tag {
+            0 => {
                 if bytes.len() != 4 {
                     return Err(RandomValidationError::MalformedStreamKey);
                 }
                 None
             }
-            RandomStreamScopeV1::Player => {
+            1 => {
                 if bytes.len() != 12 {
                     return Err(RandomValidationError::MalformedStreamKey);
                 }
@@ -172,13 +173,10 @@ impl RandomStreamKeyV1 {
                 ]);
                 Some(p)
             }
+            _ => return Err(RandomValidationError::UnknownScopeTag(scope_tag)),
         };
-        Ok(Self {
-            version,
-            kind,
-            scope,
-            player,
-        })
+        let scope = RandomStreamScopeV1::from_canonical_tag(scope_tag, player)?;
+        Ok(Self { kind, scope })
     }
 }
 
@@ -189,25 +187,98 @@ impl RandomStreamKindV1 {
 
     fn from_canonical_u16(u: u16) -> Result<Self, RandomValidationError> {
         match u {
-            0 => Ok(Self::SyntheticM1),
-            1 => Ok(Self::Shuffle),
-            2 => Ok(Self::Sampling),
+            1 => Ok(Self::SyntheticM1),
+            0 => Err(RandomValidationError::ReservedKind(0)),
             _ => Err(RandomValidationError::UnknownKind(u)),
         }
     }
 }
 
 impl RandomStreamScopeV1 {
-    fn to_canonical_u8(self) -> u8 {
-        self as u8
+    fn to_canonical_tag_and_player(self) -> (u8, Option<u64>) {
+        match self {
+            Self::Global => (0, None),
+            Self::Player(p) => (1, Some(p)),
+        }
     }
 
-    fn from_canonical_u8(u: u8) -> Result<Self, RandomValidationError> {
-        match u {
-            0 => Ok(Self::Global),
-            1 => Ok(Self::Player),
-            _ => Err(RandomValidationError::UnknownScopeTag(u)),
+    fn from_canonical_tag(tag: u8, player: Option<u64>) -> Result<Self, RandomValidationError> {
+        match tag {
+            0 => {
+                if player.is_some() {
+                    return Err(RandomValidationError::MalformedStreamKey);
+                }
+                Ok(Self::Global)
+            }
+            1 => {
+                if let Some(p) = player {
+                    Ok(Self::Player(p))
+                } else {
+                    Err(RandomValidationError::MalformedStreamKey)
+                }
+            }
+            _ => Err(RandomValidationError::UnknownScopeTag(tag)),
         }
+    }
+}
+
+impl Serialize for RandomStreamScopeV1 {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let bytes = match self {
+            Self::Global => vec![0u8],
+            Self::Player(p) => {
+                let mut v = vec![1u8];
+                v.extend_from_slice(&p.to_be_bytes());
+                v
+            }
+        };
+        serializer.serialize_bytes(&bytes)
+    }
+}
+
+impl<'de> Deserialize<'de> for RandomStreamScopeV1 {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let bytes: Vec<u8> = Vec::deserialize(deserializer)?;
+        if bytes.is_empty() {
+            return Err(serde::de::Error::custom("empty scope bytes"));
+        }
+        let tag = bytes[0];
+        let player = match tag {
+            0 => {
+                if bytes.len() != 1 {
+                    return Err(serde::de::Error::custom("malformed global scope"));
+                }
+                None
+            }
+            1 => {
+                if bytes.len() != 9 {
+                    return Err(serde::de::Error::custom("malformed player scope"));
+                }
+                Some(u64::from_be_bytes([
+                    bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7], bytes[8],
+                ]))
+            }
+            _ => {
+                return Err(serde::de::Error::custom(format!(
+                    "unknown scope tag: {}",
+                    tag
+                )))
+            }
+        };
+        Self::from_canonical_tag(tag, player).map_err(serde::de::Error::custom)
+    }
+}
+
+impl Serialize for RandomStreamKeyV1 {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_bytes(&self.to_canonical_bytes())
+    }
+}
+
+impl<'de> Deserialize<'de> for RandomStreamKeyV1 {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let bytes: Vec<u8> = Vec::deserialize(deserializer)?;
+        Self::from_canonical_bytes(&bytes).map_err(serde::de::Error::custom)
     }
 }
 
@@ -230,13 +301,18 @@ fn serialize_stream_entries<S: serde::Serializer>(
     map: &BTreeMap<RandomStreamKeyV1, RandomStreamCursorV1>,
     serializer: S,
 ) -> Result<S::Ok, S::Error> {
-    let entries: Vec<CanonicalRandomStreamEntryV1> = map
+    let mut entries: Vec<CanonicalRandomStreamEntryV1> = map
         .iter()
         .map(|(key, cursor)| CanonicalRandomStreamEntryV1 {
             key: *key,
             next_raw_u64: cursor.next_raw_u64,
         })
         .collect();
+    entries.sort_by(|a, b| {
+        let a_bytes = a.key.to_canonical_bytes();
+        let b_bytes = b.key.to_canonical_bytes();
+        a_bytes.cmp(&b_bytes)
+    });
     entries.serialize(serializer)
 }
 
@@ -273,10 +349,40 @@ impl<'de> Deserialize<'de> for RandomStateV1 {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CanonicalRandomStreamEntryV1 {
     pub key: RandomStreamKeyV1,
     pub next_raw_u64: u64,
+}
+
+impl Serialize for CanonicalRandomStreamEntryV1 {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        #[derive(Serialize)]
+        struct EntryDto<'a> {
+            key: &'a RandomStreamKeyV1,
+            next_raw_u64: u64,
+        }
+        EntryDto {
+            key: &self.key,
+            next_raw_u64: self.next_raw_u64,
+        }
+        .serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for CanonicalRandomStreamEntryV1 {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        #[derive(Deserialize)]
+        struct EntryDto {
+            key: RandomStreamKeyV1,
+            next_raw_u64: u64,
+        }
+        let dto = EntryDto::deserialize(deserializer)?;
+        Ok(Self {
+            key: dto.key,
+            next_raw_u64: dto.next_raw_u64,
+        })
+    }
 }
 
 impl RandomStateV1 {
@@ -318,10 +424,12 @@ impl RandomStateV1 {
             if streams.contains_key(&entry.key) {
                 return Err(RandomValidationError::DuplicateStreamKey);
             }
-            if entry.next_raw_u64 != 0 {
-                return Err(RandomValidationError::NonZeroInitialCursor);
-            }
-            streams.insert(entry.key, RandomStreamCursorV1::default());
+            streams.insert(
+                entry.key,
+                RandomStreamCursorV1 {
+                    next_raw_u64: entry.next_raw_u64,
+                },
+            );
             drop(key_bytes);
         }
         Ok(Self {
@@ -385,6 +493,8 @@ pub enum RandomValidationError {
     InvalidSeedHex,
     #[error("unknown stream-key codec version: {0}")]
     UnknownKeyVersion(u8),
+    #[error("reserved stream kind code: {0}")]
+    ReservedKind(u16),
     #[error("unknown stream kind code: {0}")]
     UnknownKind(u16),
     #[error("unknown scope tag: {0}")]
@@ -405,8 +515,6 @@ pub enum RandomValidationError {
     StreamExhausted,
     #[error("requested stream not found")]
     StreamNotFound,
-    #[error("non-zero initial cursor in canonical entry")]
-    NonZeroInitialCursor,
     #[error("too many streams")]
     TooManyStreams,
 }
@@ -446,7 +554,7 @@ mod tests {
 
     #[test]
     fn stream_key_global_canonical_roundtrip() {
-        let key = RandomStreamKeyV1::global(RandomStreamKindV1::Shuffle);
+        let key = RandomStreamKeyV1::global(RandomStreamKindV1::SyntheticM1);
         let bytes = key.to_canonical_bytes();
         let parsed = RandomStreamKeyV1::from_canonical_bytes(&bytes).unwrap();
         assert_eq!(key, parsed);
@@ -455,7 +563,7 @@ mod tests {
 
     #[test]
     fn stream_key_player_canonical_roundtrip() {
-        let key = RandomStreamKeyV1::player(RandomStreamKindV1::Sampling, 42);
+        let key = RandomStreamKeyV1::player_scoped(RandomStreamKindV1::SyntheticM1, 42);
         let bytes = key.to_canonical_bytes();
         let parsed = RandomStreamKeyV1::from_canonical_bytes(&bytes).unwrap();
         assert_eq!(key, parsed);
@@ -464,15 +572,15 @@ mod tests {
 
     #[test]
     fn stream_key_rejects_wrong_version() {
-        let mut key = RandomStreamKeyV1::global(RandomStreamKindV1::Shuffle);
-        key.version = 2;
-        let bytes = key.to_canonical_bytes();
+        let key = RandomStreamKeyV1::global(RandomStreamKindV1::SyntheticM1);
+        let mut bytes = key.to_canonical_bytes();
+        bytes[0] = 2; // Change version byte
         assert!(RandomStreamKeyV1::from_canonical_bytes(&bytes).is_err());
     }
 
     #[test]
     fn stream_key_rejects_unknown_kind() {
-        let key = RandomStreamKeyV1::global(RandomStreamKindV1::Shuffle);
+        let key = RandomStreamKeyV1::global(RandomStreamKindV1::SyntheticM1);
         let mut bytes = key.to_canonical_bytes();
         bytes[2] = 99;
         assert!(RandomStreamKeyV1::from_canonical_bytes(&bytes).is_err());
@@ -480,7 +588,7 @@ mod tests {
 
     #[test]
     fn stream_key_rejects_unknown_scope() {
-        let key = RandomStreamKeyV1::global(RandomStreamKindV1::Shuffle);
+        let key = RandomStreamKeyV1::global(RandomStreamKindV1::SyntheticM1);
         let mut bytes = key.to_canonical_bytes();
         bytes[3] = 99;
         assert!(RandomStreamKeyV1::from_canonical_bytes(&bytes).is_err());
@@ -488,7 +596,7 @@ mod tests {
 
     #[test]
     fn stream_key_rejects_malformed_player() {
-        let key = RandomStreamKeyV1::player(RandomStreamKindV1::Sampling, 42);
+        let key = RandomStreamKeyV1::player_scoped(RandomStreamKindV1::SyntheticM1, 42);
         let mut bytes = key.to_canonical_bytes();
         bytes.truncate(6);
         assert!(RandomStreamKeyV1::from_canonical_bytes(&bytes).is_err());
@@ -502,9 +610,9 @@ mod tests {
 
     #[test]
     fn canonical_entries_sorted_by_key_bytes() {
-        let p1 = RandomStreamKeyV1::player(RandomStreamKindV1::Shuffle, 1);
-        let p2 = RandomStreamKeyV1::player(RandomStreamKindV1::Shuffle, 2);
-        let global = RandomStreamKeyV1::global(RandomStreamKindV1::Shuffle);
+        let p1 = RandomStreamKeyV1::player_scoped(RandomStreamKindV1::SyntheticM1, 1);
+        let p2 = RandomStreamKeyV1::player_scoped(RandomStreamKindV1::SyntheticM1, 2);
+        let global = RandomStreamKeyV1::global(RandomStreamKindV1::SyntheticM1);
         let mut map = BTreeMap::new();
         map.insert(p2, RandomStreamCursorV1::default());
         map.insert(global, RandomStreamCursorV1::default());
@@ -530,7 +638,7 @@ mod tests {
     fn duplicate_stream_key_rejected() {
         let seed = RootSeed256::from_lower_hex(ALL_ZERO_SEED).unwrap();
         let mut state = RandomStateV1::new(seed);
-        let key = RandomStreamKeyV1::global(RandomStreamKindV1::Shuffle);
+        let key = RandomStreamKeyV1::global(RandomStreamKindV1::SyntheticM1);
         state
             .add_stream(key, RandomStreamCursorV1::default())
             .unwrap();
@@ -543,7 +651,7 @@ mod tests {
     #[test]
     fn duplicate_deserialize_rejected() {
         let seed = RootSeed256::from_lower_hex(ALL_ZERO_SEED).unwrap();
-        let key = RandomStreamKeyV1::global(RandomStreamKindV1::Shuffle);
+        let key = RandomStreamKeyV1::global(RandomStreamKindV1::SyntheticM1);
         let entries = vec![
             CanonicalRandomStreamEntryV1 {
                 key,
@@ -561,31 +669,18 @@ mod tests {
     }
 
     #[test]
-    fn non_zero_cursor_rejected() {
-        let seed = RootSeed256::from_lower_hex(ALL_ZERO_SEED).unwrap();
-        let entries = vec![CanonicalRandomStreamEntryV1 {
-            key: RandomStreamKeyV1::global(RandomStreamKindV1::Shuffle),
-            next_raw_u64: 1,
-        }];
-        assert_eq!(
-            RandomStateV1::from_entries(seed, entries),
-            Err(RandomValidationError::NonZeroInitialCursor)
-        );
-    }
-
-    #[test]
     fn serde_roundtrip_preserves_entries() {
         let seed = RootSeed256::from_lower_hex(ALL_ZERO_SEED).unwrap();
         let mut state = RandomStateV1::new(seed);
         state
             .add_stream(
-                RandomStreamKeyV1::global(RandomStreamKindV1::Shuffle),
+                RandomStreamKeyV1::global(RandomStreamKindV1::SyntheticM1),
                 RandomStreamCursorV1 { next_raw_u64: 42 },
             )
             .unwrap();
         state
             .add_stream(
-                RandomStreamKeyV1::player(RandomStreamKindV1::Sampling, 1),
+                RandomStreamKeyV1::player_scoped(RandomStreamKindV1::SyntheticM1, 1),
                 RandomStreamCursorV1 { next_raw_u64: 17 },
             )
             .unwrap();
@@ -603,7 +698,7 @@ mod tests {
     fn cursor_mutation_changes_digest() {
         let seed = RootSeed256::from_lower_hex(ALL_ZERO_SEED).unwrap();
         let mut state = RandomStateV1::new(seed);
-        let key = RandomStreamKeyV1::global(RandomStreamKindV1::Shuffle);
+        let key = RandomStreamKeyV1::global(RandomStreamKindV1::SyntheticM1);
         state
             .add_stream(key, RandomStreamCursorV1::default())
             .unwrap();
@@ -618,8 +713,8 @@ mod tests {
     #[test]
     fn insertion_order_does_not_change_digest() {
         let seed = RootSeed256::from_lower_hex(ALL_ZERO_SEED).unwrap();
-        let k1 = RandomStreamKeyV1::global(RandomStreamKindV1::Shuffle);
-        let k2 = RandomStreamKeyV1::player(RandomStreamKindV1::Sampling, 1);
+        let k1 = RandomStreamKeyV1::global(RandomStreamKindV1::SyntheticM1);
+        let k2 = RandomStreamKeyV1::player_scoped(RandomStreamKindV1::SyntheticM1, 1);
         let mut state1 = RandomStateV1::new(seed);
         state1
             .add_stream(k1, RandomStreamCursorV1::default())
@@ -647,7 +742,7 @@ mod tests {
     fn lookup_stream_success() {
         let seed = RootSeed256::from_lower_hex(ALL_ZERO_SEED).unwrap();
         let mut state = RandomStateV1::new(seed);
-        let key = RandomStreamKeyV1::global(RandomStreamKindV1::Shuffle);
+        let key = RandomStreamKeyV1::global(RandomStreamKindV1::SyntheticM1);
         state
             .add_stream(key, RandomStreamCursorV1 { next_raw_u64: 5 })
             .unwrap();
@@ -659,7 +754,7 @@ mod tests {
     fn lookup_stream_missing_returns_error() {
         let seed = RootSeed256::from_lower_hex(ALL_ZERO_SEED).unwrap();
         let state = RandomStateV1::new(seed);
-        let key = RandomStreamKeyV1::global(RandomStreamKindV1::Shuffle);
+        let key = RandomStreamKeyV1::global(RandomStreamKindV1::SyntheticM1);
         assert_eq!(
             state.lookup_stream(&key),
             Err(RandomValidationError::StreamNotFound)
@@ -670,7 +765,7 @@ mod tests {
     fn set_cursor_updates_existing() {
         let seed = RootSeed256::from_lower_hex(ALL_ZERO_SEED).unwrap();
         let mut state = RandomStateV1::new(seed);
-        let key = RandomStreamKeyV1::global(RandomStreamKindV1::Shuffle);
+        let key = RandomStreamKeyV1::global(RandomStreamKindV1::SyntheticM1);
         state
             .add_stream(key, RandomStreamCursorV1::default())
             .unwrap();
@@ -684,7 +779,7 @@ mod tests {
     fn set_cursor_missing_returns_error() {
         let seed = RootSeed256::from_lower_hex(ALL_ZERO_SEED).unwrap();
         let mut state = RandomStateV1::new(seed);
-        let key = RandomStreamKeyV1::global(RandomStreamKindV1::Shuffle);
+        let key = RandomStreamKeyV1::global(RandomStreamKindV1::SyntheticM1);
         assert_eq!(
             state.set_cursor(&key, RandomStreamCursorV1::default()),
             Err(RandomValidationError::StreamNotFound)

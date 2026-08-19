@@ -103,7 +103,7 @@ mod tests {
         let key = global_key();
         let cursor = RandomStreamCursorV1::default();
         let (value, consumed, _) = uniform_below_u64(&seed, &key, &cursor, 10).unwrap();
-        assert_eq!(value, 6);
+        assert_eq!(value, 7);
         assert_eq!(consumed, 1);
     }
 
@@ -174,7 +174,7 @@ mod tests {
         let cursor = RandomStreamCursorV1::default();
         let mut values = vec![0, 1, 2, 3, 4];
         let (consumed, _) = shuffle(&mut values, &seed, &key, &cursor).unwrap();
-        assert_eq!(values, vec![3, 0, 4, 2, 1]);
+        assert_eq!(values, vec![1, 3, 4, 0, 2]);
         assert_eq!(consumed, 4);
     }
 

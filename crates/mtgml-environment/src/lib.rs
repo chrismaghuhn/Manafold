@@ -567,7 +567,7 @@ mod tests {
         state_b
             .random
             .add_stream(
-                RandomStreamKeyV1::global(RandomStreamKindV1::Shuffle),
+                RandomStreamKeyV1::global(RandomStreamKindV1::SyntheticM1),
                 RandomStreamCursorV1::default(),
             )
             .unwrap();
