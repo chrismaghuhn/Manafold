@@ -1,6 +1,6 @@
 # V0.2.2 — Executable Freeze and Maintainer Ergonomics
 
-**Status:** freeze candidate
+**Status:** CONTRACT_FROZEN
 
 V0.2.2 preserves the V0.2.1 semantic architecture and reduces the maintenance cost of keeping Rust, Python, schemas, fixtures and release evidence aligned.
 
@@ -27,4 +27,4 @@ PR Fast catches drift quickly; Integration runs full typed contracts on main/on-
 
 ## Freeze rule
 
-V0.2.2 becomes `CONTRACT_FROZEN` only when `Cargo.lock`, Rust 1.85.1 fmt/check/clippy/test, Ruff, Mypy, generated-contract drift, golden path and archive gates are all recorded as `PASS`. Until then M1 remains blocked.
+V0.2.2 is `CONTRACT_FROZEN`. M1 is unblocked.

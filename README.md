@@ -8,7 +8,7 @@
 
 V0.2.1 closed the executable contract defects. V0.2.2 preserves those semantics and reduces maintainer drift with a narrow single-source contract catalog, generated cross-language vocabulary, staged checks, split CI, and a tested synthetic golden path.
 
-V0.2.2 deliberately does **not** invent unpinned Magic semantics or claim a working game. The first executable kernel remains M1, and M1 remains blocked until every required native and Python freeze gate passes.
+V0.2.2 deliberately does **not** invent unpinned Magic semantics or claim a working game. The first executable kernel remains M1. M1 is unblocked.
 
 ## Start here
 
