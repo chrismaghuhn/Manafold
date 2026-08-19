@@ -232,6 +232,13 @@
       "stability": "provisional"
     },
     {
+      "change_process": "cross-layer-contract-change",
+      "owner_role": "state-maintainer",
+      "path": "docs/RNG_CONTRACT.md",
+      "role": "normative",
+      "stability": "accepted"
+    },
+    {
       "change_process": "roadmap-pr",
       "owner_role": "architecture-maintainer",
       "path": "docs/ROADMAP.md",

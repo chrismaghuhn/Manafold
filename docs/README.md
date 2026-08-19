@@ -30,6 +30,7 @@ The machine-readable classification of binding, process, and informative documen
 - [`ERROR_MODEL.md`](ERROR_MODEL.md)
 - [`FORMAT_MODULES.md`](FORMAT_MODULES.md)
 - [`STATE_HASHING.md`](STATE_HASHING.md)
+- [`RNG_CONTRACT.md`](RNG_CONTRACT.md)
 - [`CONCURRENCY_MODEL.md`](CONCURRENCY_MODEL.md)
 - [`REPLAY_AND_DETERMINISM.md`](REPLAY_AND_DETERMINISM.md)
 - [`ML_ENVIRONMENT.md`](ML_ENVIRONMENT.md)
