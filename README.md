@@ -4,7 +4,6 @@
 - **Project type:** independent greenfield MTG/ML engine foundation
 - **Playable engine:** no
 - **Real card support:** none
-- **Argentum dependency:** none
 
 V0.2.1 closed the executable contract defects. V0.2.2 preserves those semantics and reduces maintainer drift with a narrow single-source contract catalog, generated cross-language vocabulary, staged checks, split CI, and a tested synthetic golden path.
 
