@@ -1,4 +1,4 @@
-use crate::types::{RandomStreamCursorV1, RandomStreamKeyV1, RootSeed256, RandomValidationError};
+use crate::types::{RandomStreamCursorV1, RandomStreamKeyV1, RandomValidationError, RootSeed256};
 use hmac::{Hmac, KeyInit, Mac};
 use sha2::Sha256;
 
@@ -14,8 +14,7 @@ pub fn derive_stream_key(root: &RootSeed256, key: &RandomStreamKeyV1) -> [u8; 32
     data.push(0x00);
     data.extend_from_slice(&(canonical.len() as u32).to_be_bytes());
     data.extend_from_slice(&canonical);
-    let mut mac =
-        HmacSha256::new_from_slice(root.as_bytes()).expect("HMAC accepts any key length");
+    let mut mac = HmacSha256::new_from_slice(root.as_bytes()).expect("HMAC accepts any key length");
     mac.update(&data);
     let result = mac.finalize().into_bytes();
     let mut out = [0u8; 32];
@@ -28,8 +27,7 @@ pub fn raw_block(k_stream: &[u8; 32], block_index: u64) -> [u8; 32] {
     data.extend_from_slice(RAW_DOMAIN);
     data.push(0x00);
     data.extend_from_slice(&block_index.to_be_bytes());
-    let mut mac =
-        HmacSha256::new_from_slice(k_stream).expect("HMAC accepts any key length");
+    let mut mac = HmacSha256::new_from_slice(k_stream).expect("HMAC accepts any key length");
     mac.update(&data);
     let result = mac.finalize().into_bytes();
     let mut out = [0u8; 32];
@@ -66,7 +64,12 @@ pub fn next_raw_u64(
     let lane = (i % 4) as usize;
     let block = raw_block(&k_stream, block_index);
     let value = raw_u64_at(&block, lane);
-    Ok((value, RandomStreamCursorV1 { next_raw_u64: i + 1 }))
+    Ok((
+        value,
+        RandomStreamCursorV1 {
+            next_raw_u64: i + 1,
+        },
+    ))
 }
 
 #[cfg(test)]
@@ -74,8 +77,7 @@ mod tests {
     use super::*;
     use crate::types::{RandomStreamKindV1, RandomStreamScopeV1};
 
-    const ALL_ZERO_SEED: &str =
-        "0000000000000000000000000000000000000000000000000000000000000000";
+    const ALL_ZERO_SEED: &str = "0000000000000000000000000000000000000000000000000000000000000000";
 
     fn global_key() -> RandomStreamKeyV1 {
         RandomStreamKeyV1 {
@@ -86,8 +88,7 @@ mod tests {
 
     #[test]
     fn hmac_sha256_empty_key_empty_data() {
-        let mut mac =
-            HmacSha256::new_from_slice(b"").expect("HMAC accepts any key length");
+        let mut mac = HmacSha256::new_from_slice(b"").expect("HMAC accepts any key length");
         mac.update(b"");
         let result = mac.finalize().into_bytes();
         assert_eq!(

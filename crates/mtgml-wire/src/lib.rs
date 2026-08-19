@@ -8,7 +8,9 @@ use mtgml_model::EpisodeStatus;
 use mtgml_observation::{
     InformationStateEnvelope, ObservationEnvelope, ObservedEventEnvelope, PlayerStep,
 };
-use mtgml_replay::{AuthoritativeReplayV1, AuthoritativeReplayV2, ReplayManifestV1, ReplayManifestV2};
+use mtgml_replay::{
+    AuthoritativeReplayV1, AuthoritativeReplayV2, ReplayManifestV1, ReplayManifestV2,
+};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use serde_json::{Map, Value};
 use std::{fmt, fs, path::Path};

@@ -1,7 +1,5 @@
 use crate::hmac_counter::next_raw_u64;
-use crate::types::{
-    RandomStreamCursorV1, RandomStreamKeyV1, RootSeed256, RandomValidationError,
-};
+use crate::types::{RandomStreamCursorV1, RandomStreamKeyV1, RandomValidationError, RootSeed256};
 
 pub fn uniform_below_u64(
     root: &RootSeed256,
@@ -72,8 +70,7 @@ mod tests {
     use super::*;
     use crate::types::{RandomStreamKindV1, RandomStreamScopeV1};
 
-    const ALL_ZERO_SEED: &str =
-        "0000000000000000000000000000000000000000000000000000000000000000";
+    const ALL_ZERO_SEED: &str = "0000000000000000000000000000000000000000000000000000000000000000";
 
     fn global_key() -> RandomStreamKeyV1 {
         RandomStreamKeyV1 {

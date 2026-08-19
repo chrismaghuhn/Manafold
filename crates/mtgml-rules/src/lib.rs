@@ -238,7 +238,7 @@ impl SemanticValidationCursor {
                 .random
                 .streams
                 .iter()
-                .map(|(stream, value)| (stream.clone(), value.next_raw_u64))
+                .map(|(stream, value)| (*stream, value.next_raw_u64))
                 .collect(),
         })
     }
@@ -336,7 +336,7 @@ impl SemanticValidationCursor {
             .random
             .streams
             .iter()
-            .map(|(stream, value)| (stream.clone(), value.next_raw_u64))
+            .map(|(stream, value)| (*stream, value.next_raw_u64))
             .collect();
         if self.random_counters != after_counters {
             return Err(TransitionViolation::Randomness);

@@ -6,8 +6,9 @@
 use mtgml_decision::{EngineCandidateBinding, PerspectiveIdentityResolver, PlayerDecisionRequest};
 use mtgml_model::{
     AbilityInstanceId, CardDefinitionId, ContinuationId, DecisionId, EffectInstanceId,
-    EventSequence, FullStateDigestV2, GameObjectId, OpaqueAbilityId, OpaqueObjectId, PhysicalCardId,
-    PlayerId, RuleEventId, StackObjectId, StateRevision, TriggerInstanceId, ZoneKind,
+    EventSequence, FullStateDigestV2, GameObjectId, OpaqueAbilityId, OpaqueObjectId,
+    PhysicalCardId, PlayerId, RuleEventId, StackObjectId, StateRevision, TriggerInstanceId,
+    ZoneKind,
 };
 use mtgml_random::RandomStateV1;
 use serde::{Deserialize, Serialize};

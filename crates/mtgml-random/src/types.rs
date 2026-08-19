@@ -131,10 +131,8 @@ impl RandomStreamKeyV1 {
             return Err(RandomValidationError::MalformedStreamKey);
         }
         let kind_code = u16::from_be_bytes([bytes[1], bytes[2]]);
-        let kind =
-            RandomStreamKindV1::from_code(kind_code).ok_or(RandomValidationError::UnknownKind(
-                kind_code,
-            ))?;
+        let kind = RandomStreamKindV1::from_code(kind_code)
+            .ok_or(RandomValidationError::UnknownKind(kind_code))?;
         let scope_tag = bytes[3];
         let scope = match scope_tag {
             0x00 => {
@@ -148,7 +146,8 @@ impl RandomStreamKeyV1 {
                     return Err(RandomValidationError::MalformedStreamKey);
                 }
                 let player_id = u64::from_be_bytes([
-                    bytes[4], bytes[5], bytes[6], bytes[7], bytes[8], bytes[9], bytes[10], bytes[11],
+                    bytes[4], bytes[5], bytes[6], bytes[7], bytes[8], bytes[9], bytes[10],
+                    bytes[11],
                 ]);
                 RandomStreamScopeV1::Player(mtgml_model::PlayerId(player_id))
             }
@@ -189,16 +188,10 @@ impl<'de> Deserialize<'de> for RandomStreamKeyV1 {
 }
 
 #[derive(
-    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+    Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
 )]
 pub struct RandomStreamCursorV1 {
     pub next_raw_u64: u64,
-}
-
-impl Default for RandomStreamCursorV1 {
-    fn default() -> Self {
-        Self { next_raw_u64: 0 }
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -263,7 +256,6 @@ impl Default for RandomStateV1 {
 }
 
 impl RandomStateV1 {
-
     pub fn add_stream(
         &mut self,
         key: RandomStreamKeyV1,
@@ -379,8 +371,7 @@ pub enum RandomValidationError {
 mod tests {
     use super::*;
 
-    const ALL_ZERO_SEED: &str =
-        "0000000000000000000000000000000000000000000000000000000000000000";
+    const ALL_ZERO_SEED: &str = "0000000000000000000000000000000000000000000000000000000000000000";
 
     #[test]
     fn root_seed_roundtrip() {
@@ -518,8 +509,12 @@ mod tests {
             kind: RandomStreamKindV1::SyntheticM1,
             scope: RandomStreamScopeV1::Global,
         };
-        state.add_stream(player_key, RandomStreamCursorV1::default()).unwrap();
-        state.add_stream(global_key, RandomStreamCursorV1::default()).unwrap();
+        state
+            .add_stream(player_key, RandomStreamCursorV1::default())
+            .unwrap();
+        state
+            .add_stream(global_key, RandomStreamCursorV1::default())
+            .unwrap();
         assert_eq!(state.stream_entries.len(), 2);
         let key0_bytes = state.stream_entries[0].key.to_canonical_bytes();
         let key1_bytes = state.stream_entries[1].key.to_canonical_bytes();
@@ -534,7 +529,9 @@ mod tests {
             kind: RandomStreamKindV1::SyntheticM1,
             scope: RandomStreamScopeV1::Global,
         };
-        state.add_stream(key, RandomStreamCursorV1::default()).unwrap();
+        state
+            .add_stream(key, RandomStreamCursorV1::default())
+            .unwrap();
         assert_eq!(
             state.add_stream(key, RandomStreamCursorV1::default()),
             Err(RandomValidationError::DuplicateStreamKey)
@@ -572,7 +569,9 @@ mod tests {
             kind: RandomStreamKindV1::SyntheticM1,
             scope: RandomStreamScopeV1::Global,
         };
-        state.add_stream(key, RandomStreamCursorV1 { next_raw_u64: 5 }).unwrap();
+        state
+            .add_stream(key, RandomStreamCursorV1 { next_raw_u64: 5 })
+            .unwrap();
         let json = serde_json::to_string(&state).unwrap();
         let decoded: RandomStateV1 = serde_json::from_str(&json).unwrap();
         assert_eq!(decoded.root_seed, state.root_seed);
