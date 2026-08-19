@@ -56,6 +56,7 @@ The machine-readable classification of binding, process, and informative documen
 - [`testing/NONINTERFERENCE_TESTING.md`](testing/NONINTERFERENCE_TESTING.md)
 - [`testing/PROPERTY_AND_FUZZING.md`](testing/PROPERTY_AND_FUZZING.md)
 - [`OBSERVABILITY_AND_DEBUGGING.md`](OBSERVABILITY_AND_DEBUGGING.md)
+- [`DEBUG_ARCHITECTURE_CONTRACT.md`](DEBUG_ARCHITECTURE_CONTRACT.md)
 - [`PERFORMANCE.md`](PERFORMANCE.md)
 
 ## Binding contract sheets
