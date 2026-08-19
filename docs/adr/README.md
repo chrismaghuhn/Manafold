@@ -1,6 +1,6 @@
 # Architecture Decision Records
 
-ADRs are immutable decision history. Superseded records remain and point to replacements. Accepted records currently run through ADR 0036; ADR 0000 is the template.
+ADRs are immutable decision history. Superseded records remain and point to replacements. Accepted records currently run through ADR 0037; ADR 0000 is the template.
 
 Create a new record with:
 
