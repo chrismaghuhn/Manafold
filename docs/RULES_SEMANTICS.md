@@ -26,7 +26,7 @@ Validation covers at least:
 - object cessation;
 - life and tapped changes;
 - decision creation/clearing;
-- RNG counter advancement, bound, and sampled value;
+- RNG cursor advancement, bound, and sampled value;
 - revision monotonicity and event-ID allocation;
 - next-decision/status consistency.
 
@@ -43,6 +43,8 @@ M3 pins exact ordering from authority. Architectural obligations already fixed:
 - state-based actions execute as deterministic forced progress to a fixpoint;
 - a player choice pauses through a serialized continuation;
 - priority and stack changes are authoritative state, not controller flow.
+
+Typed RNG semantic events and delta integration (replacing the legacy `RandomnessConsumed` event) is M1.5 work.
 
 ## Failure
 

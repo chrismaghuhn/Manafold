@@ -1,6 +1,6 @@
 # Deterministic RNG Contract
 
-**Status:** accepted architecture contract; executable migration pending  
+**Status:** accepted architecture contract; implemented  
 **Stability:** normative deterministic-randomness contract  
 **Owner:** deterministic-kernel maintainers  
 **Decision:** ADR 0035  
@@ -12,7 +12,7 @@ This document defines the exact authoritative random-bit, stream-derivation, bou
 
 The contract exists so that reset, checkpoint, restore, fork, replay, regression fixtures, dependency upgrades, and future optimized backends can reproduce the same random results exactly.
 
-Completing this document does not implement the contract and does not make any M1 gate PASS.
+The contract is implemented. See the executable migration evidence for required gate status.
 
 ## Contract composition
 

@@ -56,9 +56,11 @@ canonical bytes
 
 The canonical DTO also carries its domain and input schema for diagnostics and migrations. A canonicalization or semantic-coverage change requires a new input schema/domain version.
 
-## Checkpoint identity
+## State identity versions
 
-`FullStateDigest` identifies only `EngineState`. Complete environment restoration additionally requires `EpisodeStatus`, environment limit counters, and codec identity through `EnvironmentCheckpointV1`. A full-state digest must not be presented as a complete-checkpoint digest.
+### V1 identity (historical)
+
+`FullStateDigest` (V1) identifies `EngineState` including the legacy `random` component using placeholder RNG semantics (free-form algorithm/derivation strings, string stream names, u64 counters). There is no current-engine V1 producer; V1 exists only in historical fixtures and migration reference material.
 
 `EnvironmentCheckpointV1::checkpoint_digest` is a typed `CheckpointDigest` over this canonical semantic input:
 
@@ -71,7 +73,22 @@ EnvironmentLimitCounters
 CheckpointCodecIdentity
 ```
 
-The complete checkpoint validator recomputes both the embedded `FullStateDigest` from `EngineState` and the `CheckpointDigest` from the remaining checkpoint identity. Altering status, limits, codec identity, or state identity without updating the corresponding digest is rejected. The in-memory semantic checkpoint contract is frozen by V0.2.1; a durable checkpoint wire codec remains a separate future contract.
+### V2 identity (current)
+
+`FullStateDigestV2` replaces `FullStateDigest` as the current full-state identity. It consumes `FullStateDigestInputV2`, which includes `EngineState` with typed RNG state (`mtgml.rng.v1` contract ID, `RootSeed256`, typed `RandomStreamKeyV1`/`RandomStreamCursorV1` stream map) instead of placeholder algorithm strings and string stream names.
+
+`EnvironmentCheckpointV2` replaces `EnvironmentCheckpointV1`. The V1 checkpoint embeds an unversioned `EngineState` serializer whose canonical meaning can shift when the `random` component migrates from placeholder to typed RNG. V2 binds the full-state digest input version explicitly, so checkpoint identity cannot silently drift from a changed state representation.
+
+```text
+schema_version = environment-checkpoint.v2
+domain = mtgml.checkpoint-digest.v2
+FullStateDigestV2
+EpisodeStatus
+EnvironmentLimitCounters
+CheckpointCodecIdentity
+```
+
+The complete checkpoint validator recomputes both the embedded `FullStateDigestV2` from `EngineState` and the `CheckpointDigest` from the remaining checkpoint identity. Altering status, limits, codec identity, or state identity without updating the corresponding digest is rejected. The in-memory semantic checkpoint contract is frozen by V0.2.1; a durable checkpoint wire codec remains a separate future contract.
 
 ## Security note
 

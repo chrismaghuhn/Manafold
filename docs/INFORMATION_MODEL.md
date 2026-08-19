@@ -37,7 +37,7 @@ Projection is deterministic from explicit state, perspective, and declared schem
 
 ## Observed events
 
-Authoritative events may include internal IDs and full RNG provenance. Observed events contain only opaque/public identities and perspective-local sequence. A visible random result may be exposed when rules make it visible; stream name, counter, and root seed remain trusted.
+Authoritative events may include internal IDs and full RNG provenance. Observed events contain only opaque/public identities and perspective-local sequence. A visible random result may be exposed when rules make it visible; root seed, typed stream key, derived stream key, stream cursor, and raw words remain trusted and never cross the player boundary.
 
 ## Noninterference
 

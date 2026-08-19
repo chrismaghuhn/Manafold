@@ -14,7 +14,8 @@
 
 ## Current classification
 
-- canonical v1 player/replay wire contracts: provisional-public until native gates and first external consumer;
+- canonical v1 player/replay wire contracts: provisional-public until native gates and first external consumer; retained V1 reader support alongside current V2 replay manifest;
+- canonical v2 replay wire contracts (`ReplayManifestV2` / `AuthoritativeReplayV2`): provisional-public; V1 readers may continue to consume V1 manifests;
 - concrete Card IR variants: experimental;
 - Rust crate APIs: internal/experimental unless explicitly registered;
 - Python client DTOs/codecs matching v1 wire: provisional-public;

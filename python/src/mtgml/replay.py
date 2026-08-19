@@ -15,6 +15,8 @@ from .errors import WireError
 
 REPLAY_MANIFEST_SCHEMA = "replay-manifest.v1"
 REPLAY_FILE_SCHEMA = "authoritative-replay.v1"
+REPLAY_MANIFEST_SCHEMA_V2 = "replay-manifest.v2"
+REPLAY_FILE_SCHEMA_V2 = "authoritative-replay.v2"
 
 
 @dataclass(frozen=True, slots=True)
@@ -338,5 +340,187 @@ class AuthoritativeReplayV1:
             "final_state_revision": uint_wire(self.final_state_revision),
             "manifest": self.manifest.to_wire(),
             "schema_version": self.schema_version,
+            "steps": [step.to_wire() for step in self.steps],
+        }
+
+
+# === V2 replay types ===
+
+
+@dataclass(frozen=True, slots=True)
+class RandomnessIdentityV2:
+    contract_id: str
+    root_seed_hex: str
+
+    @classmethod
+    def from_wire(cls, value: object) -> RandomnessIdentityV2:
+        obj = require_exact_keys(value, {"contract_id", "root_seed_hex"})
+        return cls(
+            require_nonempty(obj["contract_id"], "contract_id"),
+            require_digest(obj["root_seed_hex"]),
+        )
+
+    def to_wire(self) -> dict[str, object]:
+        return {
+            "contract_id": require_nonempty(self.contract_id, "contract_id"),
+            "root_seed_hex": require_digest(self.root_seed_hex),
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class ReplayManifestV2:
+    schema_version: str
+    engine_build: str
+    kernel: KernelIdentityV1
+    rules_snapshot: str
+    format_policy_snapshot: str
+    oracle_snapshot: str
+    card_bundle: str
+    schemas: ReplaySchemaVersionsV1
+    randomness: RandomnessIdentityV2
+    decks: tuple[DeckIdentityV1, ...]
+    initial_state_revision: int
+    initial_state_digest: str
+
+    @classmethod
+    def from_wire(cls, value: object) -> ReplayManifestV2:
+        obj = require_exact_keys(
+            value,
+            {
+                "schema_version",
+                "engine_build",
+                "kernel",
+                "rules_snapshot",
+                "format_policy_snapshot",
+                "oracle_snapshot",
+                "card_bundle",
+                "schemas",
+                "randomness",
+                "decks",
+                "initial_state_revision",
+                "initial_state_digest",
+            },
+        )
+        if obj["schema_version"] != REPLAY_MANIFEST_SCHEMA_V2 or not isinstance(obj["decks"], list):
+            raise WireError("decode.invalid_json", "unsupported replay manifest or deck list")
+        result = cls(
+            REPLAY_MANIFEST_SCHEMA_V2,
+            require_nonempty(obj["engine_build"], "engine_build"),
+            KernelIdentityV1.from_wire(obj["kernel"]),
+            require_nonempty(obj["rules_snapshot"], "rules_snapshot"),
+            require_nonempty(obj["format_policy_snapshot"], "format_policy_snapshot"),
+            require_nonempty(obj["oracle_snapshot"], "oracle_snapshot"),
+            require_nonempty(obj["card_bundle"], "card_bundle"),
+            ReplaySchemaVersionsV1.from_wire(obj["schemas"]),
+            RandomnessIdentityV2.from_wire(obj["randomness"]),
+            tuple(DeckIdentityV1.from_wire(item) for item in obj["decks"]),
+            parse_uint(obj["initial_state_revision"]),
+            require_digest(obj["initial_state_digest"]),
+        )
+        result.validate()
+        return result
+
+    def to_wire(self) -> dict[str, object]:
+        return {
+            "card_bundle": require_nonempty(self.card_bundle, "card_bundle"),
+            "decks": [deck.to_wire() for deck in self.decks],
+            "engine_build": require_nonempty(self.engine_build, "engine_build"),
+            "format_policy_snapshot": require_nonempty(
+                self.format_policy_snapshot, "format_policy_snapshot"
+            ),
+            "initial_state_digest": require_digest(self.initial_state_digest),
+            "initial_state_revision": uint_wire(self.initial_state_revision),
+            "kernel": self.kernel.to_wire(),
+            "oracle_snapshot": require_nonempty(self.oracle_snapshot, "oracle_snapshot"),
+            "randomness": self.randomness.to_wire(),
+            "rules_snapshot": require_nonempty(self.rules_snapshot, "rules_snapshot"),
+            "schema_version": REPLAY_MANIFEST_SCHEMA_V2,
+            "schemas": self.schemas.to_wire(),
+        }
+
+    def validate(self) -> None:
+        if self.randomness.contract_id != "mtgml.rng.v1":
+            raise WireError("semantic.replay_manifest", "unsupported RNG contract in replay")
+
+
+@dataclass(frozen=True, slots=True)
+class ReplayStepV2:
+    step_index: int
+    state_revision_before: int
+    response: DecisionResponse
+    accepted: bool
+    state_revision_after: int
+    state_digest_after: str
+
+    @classmethod
+    def from_wire(cls, value: object) -> ReplayStepV2:
+        obj = require_exact_keys(
+            value,
+            {
+                "step_index",
+                "state_revision_before",
+                "response",
+                "accepted",
+                "state_revision_after",
+                "state_digest_after",
+            },
+        )
+        return cls(
+            parse_u64_number(obj["step_index"]),
+            parse_uint(obj["state_revision_before"]),
+            DecisionResponse.from_wire(obj["response"]),
+            obj["accepted"],
+            parse_uint(obj["state_revision_after"]),
+            require_digest(obj["state_digest_after"]),
+        )
+
+    def to_wire(self) -> dict[str, object]:
+        return {
+            "accepted": self.accepted,
+            "response": self.response.to_wire(),
+            "state_digest_after": require_digest(self.state_digest_after),
+            "state_revision_after": uint_wire(self.state_revision_after),
+            "state_revision_before": uint_wire(self.state_revision_before),
+            "step_index": parse_u64_number(self.step_index),
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class AuthoritativeReplayV2:
+    schema_version: str
+    manifest: ReplayManifestV2
+    steps: tuple[ReplayStepV2, ...]
+    final_state_revision: int
+    final_state_digest: str
+
+    @classmethod
+    def from_wire(cls, value: object) -> AuthoritativeReplayV2:
+        obj = require_exact_keys(
+            value,
+            {
+                "schema_version",
+                "manifest",
+                "steps",
+                "final_state_revision",
+                "final_state_digest",
+            },
+        )
+        if obj["schema_version"] != REPLAY_FILE_SCHEMA_V2 or not isinstance(obj["steps"], list):
+            raise WireError("decode.invalid_json", "unsupported replay or step list")
+        result = cls(
+            REPLAY_FILE_SCHEMA_V2,
+            ReplayManifestV2.from_wire(obj["manifest"]),
+            tuple(ReplayStepV2.from_wire(item) for item in obj["steps"]),
+            parse_uint(obj["final_state_revision"]),
+            require_digest(obj["final_state_digest"]),
+        )
+        return result
+
+    def to_wire(self) -> dict[str, object]:
+        return {
+            "final_state_digest": require_digest(self.final_state_digest),
+            "final_state_revision": uint_wire(self.final_state_revision),
+            "manifest": self.manifest.to_wire(),
+            "schema_version": REPLAY_FILE_SCHEMA_V2,
             "steps": [step.to_wire() for step in self.steps],
         }

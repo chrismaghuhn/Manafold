@@ -6,9 +6,9 @@
 
 Consumers receive immutable snapshots/opaque handles. Definition, physical-card,
 and game-object IDs are distinct. Every committed transition advances one
-revision and validates invariants. Privileged RNG seed/stream counters are part
-of checkpointable full state. Full state, observation, and information state are
-separate.
+revision and validates invariants. Typed RNG state (contract ID, root seed,
+stream keys, and raw-word cursors) is part of checkpointable full state. Full
+state, observation, and information state are separate.
 
 ## Transition
 

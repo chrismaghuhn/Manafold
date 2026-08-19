@@ -30,7 +30,7 @@ Malformed, stale, wrong-actor, illegal, unsupported, or mismatched submissions r
 
 - full-state digest and revision;
 - current decision and bindings;
-- RNG streams/counters;
+- RNG stream keys and raw-word cursors;
 - identity allocators;
 - knowledge and opaque identity maps;
 - replay accepted-step count;
@@ -89,4 +89,4 @@ Bookkeeping changes remain in the exact full `StateDelta` even when they have no
 
 ## Complete checkpoints
 
-The controller checkpoint contract is `EnvironmentCheckpointV1`, not bare `EngineState`. It includes the full-state digest, episode status, declared decision/transition/event/resource/wall-clock counters, and a codec identity. Restore validates the complete checkpoint before backend mutation.
+The controller checkpoint contract is `EnvironmentCheckpointV2`, not bare `EngineState`. It includes the full-state digest V2, episode status, declared decision/transition/event/resource/wall-clock counters, and a codec identity. Restore validates the complete checkpoint before backend mutation.

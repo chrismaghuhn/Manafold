@@ -27,6 +27,8 @@ class SchemaParityTests(unittest.TestCase):
             "player-step.v1": "player-step.v1.schema.json",
             "replay-manifest.v1": "replay-manifest.v1.schema.json",
             "authoritative-replay.v1": "authoritative-replay.v1.schema.json",
+            "replay-manifest.v2": "replay-manifest.v2.schema.json",
+            "authoritative-replay.v2": "authoritative-replay.v2.schema.json",
         }
         directory = ROOT / "wire" / "golden"
         manifest = json.loads((directory / "manifest.json").read_text(encoding="utf-8"))

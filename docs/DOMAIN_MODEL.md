@@ -35,7 +35,7 @@ EngineState
 ├── zones, objects, stack records and ordering
 ├── deterministic identity allocators
 ├── pending decision, continuations, effects and triggers
-├── named RNG streams and counters
+├── typed RNG stream keys and raw-word cursors
 ├── per-player knowledge ledgers
 ├── per-player opaque identity mappings
 └── format state, including Commander ledgers

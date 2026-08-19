@@ -10,7 +10,7 @@ from .episode import EpisodeStatus
 from .errors import WireError
 from .events import ObservedEventEnvelope
 from .observation import InformationStateEnvelope, ObservationEnvelope, PlayerStep
-from .replay import AuthoritativeReplayV1, ReplayManifestV1
+from .replay import AuthoritativeReplayV1, AuthoritativeReplayV2, ReplayManifestV1, ReplayManifestV2
 
 T = TypeVar("T")
 
@@ -24,6 +24,8 @@ _DECODERS: dict[str, Callable[[object], object]] = {
     "player-step.v1": PlayerStep.from_wire,
     "replay-manifest.v1": ReplayManifestV1.from_wire,
     "authoritative-replay.v1": AuthoritativeReplayV1.from_wire,
+    "replay-manifest.v2": ReplayManifestV2.from_wire,
+    "authoritative-replay.v2": AuthoritativeReplayV2.from_wire,
 }
 
 
