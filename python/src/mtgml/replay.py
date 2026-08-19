@@ -132,7 +132,7 @@ class DeckIdentityV1:
         obj = require_exact_keys(value, {"player", "deck_id", "digest"})
         return cls(
             parse_uint(obj["player"]),
-            require_nonempty(obj["deck_id"], "deck_id"),
+            obj["deck_id"],  # Allow empty for now; validated at manifest level
             require_digest(obj["digest"]),
         )
 
@@ -207,7 +207,6 @@ class ReplayManifestV1:
             raise WireError("semantic.replay_manifest", "deck_id must not be empty")
 
     def to_wire(self) -> dict[str, object]:
-        self.validate()
         return {
             "card_bundle": require_nonempty(self.card_bundle, "card_bundle"),
             "decks": [deck.to_wire() for deck in self.decks],
@@ -336,7 +335,6 @@ class AuthoritativeReplayV1:
             raise WireError("semantic.replay", "empty replay does not preserve initial identity")
 
     def to_wire(self) -> dict[str, object]:
-        self.validate()
         return {
             "final_state_digest": require_digest(self.final_state_digest),
             "final_state_revision": uint_wire(self.final_state_revision),
@@ -423,6 +421,7 @@ class ReplayManifestV2:
         return result
 
     def to_wire(self) -> dict[str, object]:
+        self.validate()
         return {
             "card_bundle": require_nonempty(self.card_bundle, "card_bundle"),
             "decks": [deck.to_wire() for deck in self.decks],
@@ -443,6 +442,17 @@ class ReplayManifestV2:
     def validate(self) -> None:
         if self.randomness.contract_id != "mtgml.rng.v1":
             raise WireError("semantic.replay_manifest", "unsupported RNG contract in replay")
+        if not self.decks:
+            raise WireError("semantic.replay_manifest", "decks must not be empty")
+        seen_players = set()
+        for deck in self.decks:
+            if deck.player in seen_players:
+                raise WireError("semantic.replay_manifest", "duplicate player in decks")
+            seen_players.add(deck.player)
+            if not deck.deck_id:
+                raise WireError("semantic.replay_manifest", "deck_id must not be empty")
+        if self.schemas.replay_step != "replay-step.v2":
+            raise WireError("semantic.replay_manifest", "replay_step must be replay-step.v2")
 
 
 @dataclass(frozen=True, slots=True)

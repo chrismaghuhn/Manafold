@@ -55,7 +55,8 @@ pub fn shuffle<T: Clone>(
     let mut total_consumed = 0u64;
     let mut i = len - 1;
     while i >= 1 {
-        let (j, consumed, next) = uniform_below_u64(root, key, &current, i as u64 + 1)?;
+        let bound = u64::try_from(i + 1).map_err(|_| RandomValidationError::InvalidRandomBound)?;
+        let (j, consumed, next) = uniform_below_u64(root, key, &current, bound)?;
         total_consumed += consumed;
         current = next;
         values.swap(i, j as usize);

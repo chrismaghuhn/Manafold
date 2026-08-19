@@ -474,25 +474,11 @@ impl EngineState {
         key: &mtgml_random::RandomStreamKeyV1,
         n: u64,
     ) -> Result<(u64, u64), mtgml_random::RandomValidationError> {
-        if n == 0 {
-            return Err(mtgml_random::RandomValidationError::InvalidRandomBound);
-        }
-        if n == 1 {
-            return Ok((0, 0));
-        }
-        let threshold = ((1u128 << 64) % (n as u128)) as u64;
-        let mut current = self.random.lookup_stream(key)?;
-        let mut consumed = 0u64;
-        loop {
-            let (word, next) =
-                mtgml_random::hmac_counter::next_raw_u64(&self.random.root_seed, key, &current)?;
-            consumed += 1;
-            if word >= threshold {
-                self.random.set_cursor(key, next)?;
-                return Ok((word % n, consumed));
-            }
-            current = next;
-        }
+        let current = self.random.lookup_stream(key)?;
+        let (value, consumed, next) =
+            mtgml_random::sampling::uniform_below_u64(&self.random.root_seed, key, &current, n)?;
+        self.random.set_cursor(key, next)?;
+        Ok((value, consumed))
     }
 
     pub fn shuffle<T: Clone>(
