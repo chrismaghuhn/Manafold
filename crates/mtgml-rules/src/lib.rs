@@ -14,7 +14,7 @@ use thiserror::Error;
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum AuthoritativeRuleEventKind {
     ZoneTransition {
-        transition: ZoneTransition,
+        transition: Box<ZoneTransition>,
     },
     ObjectCeasedToExist {
         object: GameObjectId,
@@ -51,7 +51,7 @@ impl AuthoritativeRuleEventKind {
     pub fn semantic_delta(&self) -> SemanticDeltaOperation {
         match self {
             Self::ZoneTransition { transition } => SemanticDeltaOperation::ZoneTransition {
-                transition: Box::new(transition.clone()),
+                transition: transition.clone(),
             },
             Self::ObjectCeasedToExist { object } => {
                 SemanticDeltaOperation::ObjectCeasedToExist { object: *object }
@@ -809,7 +809,7 @@ mod tests {
                 event_id: RuleEventId(1),
                 state_revision: StateRevision(1),
                 event: AuthoritativeRuleEventKind::ZoneTransition {
-                    transition: ZoneTransition {
+                    transition: Box::new(ZoneTransition {
                         old_object: GameObjectId(1),
                         new_object: GameObjectId(2),
                         physical_card: Some(PhysicalCardId(1)),
@@ -817,14 +817,14 @@ mod tests {
                         to: second_location,
                         last_known: first,
                         new_snapshot: second.clone(),
-                    },
+                    }),
                 },
             },
             AuthoritativeRuleEvent {
                 event_id: RuleEventId(2),
                 state_revision: StateRevision(1),
                 event: AuthoritativeRuleEventKind::ZoneTransition {
-                    transition: ZoneTransition {
+                    transition: Box::new(ZoneTransition {
                         old_object: GameObjectId(2),
                         new_object: GameObjectId(3),
                         physical_card: Some(PhysicalCardId(1)),
@@ -832,7 +832,7 @@ mod tests {
                         to: third_location,
                         last_known: second,
                         new_snapshot: third,
-                    },
+                    }),
                 },
             },
         ];
