@@ -106,6 +106,13 @@
       "stability": "provisional"
     },
     {
+      "change_process": "adr-and-pr",
+      "owner_role": "observability-maintainer",
+      "path": "docs/DEBUG_ARCHITECTURE_CONTRACT.md",
+      "role": "normative",
+      "stability": "accepted"
+    },
+    {
       "change_process": "adr-and-conformance",
       "owner_role": "state-maintainer",
       "path": "docs/DOMAIN_MODEL.md",
