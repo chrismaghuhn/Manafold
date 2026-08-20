@@ -388,4 +388,3 @@ Use gh pr create --draft --base master --head chris/m1-2-accepted-transaction. T
 - [ ] Delta reapplication reconstructs the exact after-state and digest.
 - [ ] No M1.3 rejection matrix, M1.4 multi-event behavior, M1.5 RNG/allocator consumption, PlayerEndpoint work, or real Magic behavior was added.
 - [ ] No gate is reported PASS without executed evidence.
-
