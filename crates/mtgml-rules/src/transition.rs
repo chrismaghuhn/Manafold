@@ -1,7 +1,8 @@
 use mtgml_decision::PlayerDecisionRequest;
-use mtgml_model::EpisodeStatus;
+use mtgml_model::{EpisodeStatus, PlayerId};
 use mtgml_state::{EngineState, StateDelta};
 
+use crate::errors::KernelExecutionError;
 use crate::events::AuthoritativeRuleEvent;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -18,6 +19,7 @@ pub trait RulesKernel: Send {
     fn apply(
         &mut self,
         state: &EngineState,
+        trusted_actor: PlayerId,
         response: &mtgml_decision::DecisionResponse,
-    ) -> TransitionResult;
+    ) -> Result<TransitionResult, KernelExecutionError>;
 }
