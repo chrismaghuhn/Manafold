@@ -1,4 +1,6 @@
-use crate::types::{RandomStreamCursorV1, RandomStreamKeyV1, RandomValidationError, RootSeed256};
+use crate::seed::{RandomValidationError, RootSeed256};
+use crate::state::RandomStreamCursorV1;
+use crate::stream_key::RandomStreamKeyV1;
 use hmac::{Hmac, KeyInit, Mac};
 use sha2::Sha256;
 
@@ -75,7 +77,7 @@ pub fn next_raw_u64(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::RandomStreamKindV1;
+    use crate::stream_key::RandomStreamKindV1;
 
     const ALL_ZERO_SEED: &str = "0000000000000000000000000000000000000000000000000000000000000000";
 
@@ -89,7 +91,7 @@ mod tests {
         mac.update(b"");
         let result = mac.finalize().into_bytes();
         assert_eq!(
-            crate::types::encode_lower_hex(&result),
+            crate::seed::encode_lower_hex(&result),
             "b613679a0814d9ec772f95d778c35fc5ff1697c493715653c6c712144292c5ad"
         );
     }
@@ -100,7 +102,7 @@ mod tests {
         let key = global_key();
         let k_stream = derive_stream_key(&seed, &key);
         assert_eq!(
-            crate::types::encode_lower_hex(&k_stream),
+            crate::seed::encode_lower_hex(&k_stream),
             "73635feaa9e90effe337e2cc9e1d801f63c9ede8d51b21a1120e624da2d648f9"
         );
     }
@@ -112,7 +114,7 @@ mod tests {
         let k_stream = derive_stream_key(&seed, &key);
         let block = raw_block(&k_stream, 0);
         assert_eq!(
-            crate::types::encode_lower_hex(&block),
+            crate::seed::encode_lower_hex(&block),
             "6818e6bd053d9b770e26253e8d724b0403c524aeb6b3cff52508069342e336e4"
         );
     }
@@ -124,7 +126,7 @@ mod tests {
         let k_stream = derive_stream_key(&seed, &key);
         let block = raw_block(&k_stream, 1);
         assert_eq!(
-            crate::types::encode_lower_hex(&block),
+            crate::seed::encode_lower_hex(&block),
             "ac6a5d827f0dcbbf060d1adce197e55569da50c9030d2a2b2a7f637923566d45"
         );
     }
