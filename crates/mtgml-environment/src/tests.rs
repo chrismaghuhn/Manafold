@@ -466,3 +466,36 @@ fn two_player_endpoints_can_remain_alive_simultaneously() {
     assert_eq!(player_two.observation().unwrap().perspective, PlayerId(2));
     assert_eq!(player_one.observation().unwrap().perspective, PlayerId(1));
 }
+
+#[test]
+fn player_api_errors_do_not_render_trusted_or_hidden_values() {
+    let errors = [
+        PlayerApiError::NoVisibleDecision,
+        PlayerApiError::StaleResponse,
+        PlayerApiError::InvalidSelection,
+        PlayerApiError::EpisodeComplete,
+        PlayerApiError::Unavailable,
+    ];
+    let forbidden = [
+        "KernelExecutionError",
+        "before state",
+        "GameObjectId",
+        "DecisionId",
+        "OpaqueObjectId",
+        "binding",
+        "root seed",
+        "next_raw_u64",
+        "allocator",
+        "knowledge",
+    ];
+
+    for error in errors {
+        let rendered = error.to_string();
+        for value in forbidden {
+            assert!(
+                !rendered.contains(value),
+                "{error:?} exposed forbidden internal text {value:?}: {rendered:?}"
+            );
+        }
+    }
+}

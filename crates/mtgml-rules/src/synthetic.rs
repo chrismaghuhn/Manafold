@@ -39,6 +39,9 @@ impl RulesKernel for SyntheticM1RulesKernel {
         }
 
         let assignment = &response.assignments[0];
+        if assignment.ordinal.is_some() {
+            return rejected(state);
+        }
         let Some(candidate) = request
             .candidates
             .iter()

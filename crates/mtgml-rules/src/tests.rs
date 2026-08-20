@@ -123,31 +123,71 @@ fn response_for_candidate(state: &EngineState, candidate_id: &str) -> DecisionRe
     }
 }
 
+fn response_for_state_or_default(state: &EngineState) -> DecisionResponse {
+    state
+        .execution
+        .pending_decision
+        .as_ref()
+        .map(|_| response_for_candidate(state, "select_public_object"))
+        .unwrap_or_else(|| DecisionResponse {
+            schema_version: DECISION_RESPONSE_SCHEMA.to_owned(),
+            decision_id: DecisionId(1),
+            state_revision: state.revision,
+            assignments: vec![CandidateAssignment {
+                candidate_id: "select_public_object".to_owned(),
+                ordinal: None,
+            }],
+        })
+}
+
 fn assert_exact_rejected_product(before: &EngineState, result: TransitionResult) {
     let before_digest = before.digest().unwrap();
+    let expected_next_decision = before
+        .execution
+        .pending_decision
+        .as_ref()
+        .map(|record| record.request.clone());
 
     assert!(!result.accepted);
     assert_eq!(result.next_state, *before);
+    assert_eq!(
+        before.digest().unwrap(),
+        result.next_state.digest().unwrap()
+    );
+    assert_eq!(result.next_state.revision, before.revision);
+    assert_eq!(
+        result.next_state.execution.pending_decision,
+        before.execution.pending_decision
+    );
+    assert_eq!(
+        result.next_state.execution.continuations,
+        before.execution.continuations
+    );
+    assert_eq!(result.next_state.random.root_seed, before.random.root_seed);
+    assert_eq!(result.next_state.random.streams, before.random.streams);
+    assert_eq!(result.next_state.allocators, before.allocators);
+    assert_eq!(result.next_state.zones, before.zones);
+    assert_eq!(result.next_state.core, before.core);
+    assert_eq!(result.next_state.knowledge, before.knowledge);
+    assert_eq!(
+        result.next_state.perspective_identities,
+        before.perspective_identities
+    );
+    assert_eq!(result.next_state.format, before.format);
     assert!(result.events.is_empty());
     assert!(result.delta.audit.is_empty());
+    assert_eq!(result.delta.replacement, before.parts());
     assert_eq!(result.delta.before_revision, before.revision);
     assert_eq!(result.delta.after_revision, before.revision);
     assert_eq!(result.delta.before_digest, before_digest);
     assert_eq!(result.delta.after_digest, before_digest);
-    assert_eq!(
-        result.next_decision,
-        Some(
-            before
-                .execution
-                .pending_decision
-                .as_ref()
-                .unwrap()
-                .request
-                .clone()
-        )
-    );
+    assert_eq!(result.next_decision, expected_next_decision);
     assert_eq!(result.status, EpisodeStatus::Running);
     assert_eq!(result.delta.apply(before).unwrap(), *before);
+    assert_eq!(
+        before.digest().unwrap(),
+        result.next_state.digest().unwrap()
+    );
     validate_transition_contract(before, &result).unwrap();
 }
 
@@ -227,21 +267,70 @@ fn synthetic_m1_acceptance_returns_exact_transition_product() {
     validate_transition_contract(&before, &result).unwrap();
 }
 
-#[test]
-fn synthetic_wrong_actor_returns_exact_rejected_product() {
-    let before = synthetic_state();
-    let response = synthetic_response(&before);
-    let mut kernel = SyntheticM1RulesKernel;
-
-    let result = kernel.apply(&before, PlayerId(2), &response).unwrap();
-
-    assert_exact_rejected_product(&before, result);
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum RejectionClassification {
+    PlayerSubmission,
+    TrustedBeforeState(EngineStateViolation),
 }
 
-#[test]
-fn synthetic_kernel_rejects_otherwise_valid_confirm_semantics() {
-    let mut before = synthetic_state();
-    let pending = before.execution.pending_decision.as_mut().unwrap();
+#[derive(Clone)]
+struct RejectionCase {
+    name: &'static str,
+    mutate_state: fn(&mut EngineState),
+    mutate_response: fn(&EngineState, &mut DecisionResponse),
+    trusted_actor: PlayerId,
+    classification: RejectionClassification,
+}
+
+fn no_state_mutation(_state: &mut EngineState) {}
+
+fn no_response_mutation(_state: &EngineState, _response: &mut DecisionResponse) {}
+
+fn response_with_stale_revision(_state: &EngineState, response: &mut DecisionResponse) {
+    response.state_revision = StateRevision(response.state_revision.0 + 1);
+}
+
+fn response_with_wrong_decision_id(_state: &EngineState, response: &mut DecisionResponse) {
+    response.decision_id = DecisionId(99);
+}
+
+fn response_with_wrong_schema(_state: &EngineState, response: &mut DecisionResponse) {
+    response.schema_version = "decision-response.invalid".to_owned();
+}
+
+fn response_with_empty_candidate(_state: &EngineState, response: &mut DecisionResponse) {
+    response.assignments[0].candidate_id.clear();
+}
+
+fn response_with_duplicate_assignment(_state: &EngineState, response: &mut DecisionResponse) {
+    let candidate_id = response.assignments[0].candidate_id.clone();
+    response.assignments.push(CandidateAssignment {
+        candidate_id,
+        ordinal: None,
+    });
+}
+
+fn response_with_zero_assignments(_state: &EngineState, response: &mut DecisionResponse) {
+    response.assignments.clear();
+}
+
+fn response_with_multiple_assignments(_state: &EngineState, response: &mut DecisionResponse) {
+    response.assignments.push(CandidateAssignment {
+        candidate_id: "second-selection".to_owned(),
+        ordinal: None,
+    });
+}
+
+fn response_with_unknown_candidate(_state: &EngineState, response: &mut DecisionResponse) {
+    response.assignments[0].candidate_id = "unknown-candidate".to_owned();
+}
+
+fn response_with_unsupported_ordinal(_state: &EngineState, response: &mut DecisionResponse) {
+    response.assignments[0].ordinal = Some(0);
+}
+
+fn state_with_confirm_candidate(state: &mut EngineState) {
+    let pending = state.execution.pending_decision.as_mut().unwrap();
     pending.request.candidates[0] = ActionCandidate {
         candidate_id: "select_public_object".to_owned(),
         semantic_key: "synthetic.select_public_object".to_owned(),
@@ -251,19 +340,10 @@ fn synthetic_kernel_rejects_otherwise_valid_confirm_semantics() {
         "select_public_object".to_owned(),
         EngineCandidateBinding::Confirm,
     );
-    assert!(mtgml_state::validate_engine_state(&before).is_ok());
-
-    let response = response_for_candidate(&before, "select_public_object");
-    let mut kernel = SyntheticM1RulesKernel;
-    let result = kernel.apply(&before, PlayerId(1), &response).unwrap();
-
-    assert_exact_rejected_product(&before, result);
 }
 
-#[test]
-fn synthetic_kernel_rejects_multiple_valid_candidates() {
-    let mut before = synthetic_state();
-    let pending = before.execution.pending_decision.as_mut().unwrap();
+fn state_with_multiple_candidates(state: &mut EngineState) {
+    let pending = state.execution.pending_decision.as_mut().unwrap();
     pending.request.candidates.push(ActionCandidate {
         candidate_id: "confirm".to_owned(),
         semantic_key: "synthetic.confirm".to_owned(),
@@ -272,40 +352,229 @@ fn synthetic_kernel_rejects_multiple_valid_candidates() {
     pending
         .candidate_bindings
         .insert("confirm".to_owned(), EngineCandidateBinding::Confirm);
-    assert!(mtgml_state::validate_engine_state(&before).is_ok());
-
-    let response = synthetic_response(&before);
-    let mut kernel = SyntheticM1RulesKernel;
-    let result = kernel.apply(&before, PlayerId(1), &response).unwrap();
-
-    assert_exact_rejected_product(&before, result);
 }
 
-#[test]
-fn synthetic_kernel_rejects_valid_pending_decision_with_continuation() {
-    let mut before = synthetic_state();
+fn state_with_continuation(state: &mut EngineState) {
     let continuation = ContinuationId(1);
-    before.execution.continuations.insert(
+    state.execution.continuations.insert(
         continuation,
         ContinuationRecord {
             id: continuation,
             label: "synthetic continuation".to_owned(),
         },
     );
-    before
+    state
         .execution
         .pending_decision
         .as_mut()
         .unwrap()
         .continuation = Some(continuation);
-    before.allocators.next_continuation_id = ContinuationId(2);
-    assert!(mtgml_state::validate_engine_state(&before).is_ok());
+    state.allocators.next_continuation_id = ContinuationId(2);
+}
 
-    let response = synthetic_response(&before);
-    let mut kernel = SyntheticM1RulesKernel;
-    let result = kernel.apply(&before, PlayerId(1), &response).unwrap();
+fn state_with_choose_many(state: &mut EngineState) {
+    state
+        .execution
+        .pending_decision
+        .as_mut()
+        .unwrap()
+        .request
+        .decision = DecisionKind::ChooseMany {
+        minimum: 1,
+        maximum: 1,
+    };
+}
 
-    assert_exact_rejected_product(&before, result);
+fn state_without_pending_decision(state: &mut EngineState) {
+    state.execution.pending_decision = None;
+}
+
+fn state_with_invalid_rule_event_allocator(state: &mut EngineState) {
+    state.allocators.next_rule_event_id = RuleEventId(0);
+}
+
+fn state_with_binding_mismatch(state: &mut EngineState) {
+    state
+        .execution
+        .pending_decision
+        .as_mut()
+        .unwrap()
+        .candidate_bindings
+        .insert(
+            "select_public_object".to_owned(),
+            EngineCandidateBinding::SelectObject {
+                object: GameObjectId(2),
+            },
+        );
+}
+
+fn rejection_cases() -> Vec<RejectionCase> {
+    let player_rejection = RejectionClassification::PlayerSubmission;
+    vec![
+        RejectionCase {
+            name: "wrong trusted actor",
+            mutate_state: no_state_mutation,
+            mutate_response: no_response_mutation,
+            trusted_actor: PlayerId(2),
+            classification: player_rejection.clone(),
+        },
+        RejectionCase {
+            name: "stale state revision",
+            mutate_state: no_state_mutation,
+            mutate_response: response_with_stale_revision,
+            trusted_actor: PlayerId(1),
+            classification: player_rejection.clone(),
+        },
+        RejectionCase {
+            name: "wrong decision ID",
+            mutate_state: no_state_mutation,
+            mutate_response: response_with_wrong_decision_id,
+            trusted_actor: PlayerId(1),
+            classification: player_rejection.clone(),
+        },
+        RejectionCase {
+            name: "wrong schema version",
+            mutate_state: no_state_mutation,
+            mutate_response: response_with_wrong_schema,
+            trusted_actor: PlayerId(1),
+            classification: player_rejection.clone(),
+        },
+        RejectionCase {
+            name: "empty candidate ID",
+            mutate_state: no_state_mutation,
+            mutate_response: response_with_empty_candidate,
+            trusted_actor: PlayerId(1),
+            classification: player_rejection.clone(),
+        },
+        RejectionCase {
+            name: "duplicate assignment",
+            mutate_state: no_state_mutation,
+            mutate_response: response_with_duplicate_assignment,
+            trusted_actor: PlayerId(1),
+            classification: player_rejection.clone(),
+        },
+        RejectionCase {
+            name: "zero assignments",
+            mutate_state: no_state_mutation,
+            mutate_response: response_with_zero_assignments,
+            trusted_actor: PlayerId(1),
+            classification: player_rejection.clone(),
+        },
+        RejectionCase {
+            name: "more than one assignment for ChooseOne",
+            mutate_state: no_state_mutation,
+            mutate_response: response_with_multiple_assignments,
+            trusted_actor: PlayerId(1),
+            classification: player_rejection.clone(),
+        },
+        RejectionCase {
+            name: "unknown candidate ID",
+            mutate_state: no_state_mutation,
+            mutate_response: response_with_unknown_candidate,
+            trusted_actor: PlayerId(1),
+            classification: player_rejection.clone(),
+        },
+        RejectionCase {
+            name: "unsupported ordinal",
+            mutate_state: no_state_mutation,
+            mutate_response: response_with_unsupported_ordinal,
+            trusted_actor: PlayerId(1),
+            classification: player_rejection.clone(),
+        },
+        RejectionCase {
+            name: "otherwise-valid Confirm candidate and binding",
+            mutate_state: state_with_confirm_candidate,
+            mutate_response: no_response_mutation,
+            trusted_actor: PlayerId(1),
+            classification: player_rejection.clone(),
+        },
+        RejectionCase {
+            name: "more than one valid candidate",
+            mutate_state: state_with_multiple_candidates,
+            mutate_response: no_response_mutation,
+            trusted_actor: PlayerId(1),
+            classification: player_rejection.clone(),
+        },
+        RejectionCase {
+            name: "pending decision with continuation",
+            mutate_state: state_with_continuation,
+            mutate_response: no_response_mutation,
+            trusted_actor: PlayerId(1),
+            classification: player_rejection.clone(),
+        },
+        RejectionCase {
+            name: "otherwise-valid ChooseMany decision",
+            mutate_state: state_with_choose_many,
+            mutate_response: no_response_mutation,
+            trusted_actor: PlayerId(1),
+            classification: player_rejection.clone(),
+        },
+        RejectionCase {
+            name: "no pending decision",
+            mutate_state: state_without_pending_decision,
+            mutate_response: no_response_mutation,
+            trusted_actor: PlayerId(1),
+            classification: player_rejection,
+        },
+        RejectionCase {
+            name: "invalid rule-event allocator",
+            mutate_state: state_with_invalid_rule_event_allocator,
+            mutate_response: no_response_mutation,
+            trusted_actor: PlayerId(1),
+            classification: RejectionClassification::TrustedBeforeState(
+                EngineStateViolation::AllocatorBehind,
+            ),
+        },
+        RejectionCase {
+            name: "visible and authoritative binding mismatch",
+            mutate_state: state_with_binding_mismatch,
+            mutate_response: no_response_mutation,
+            trusted_actor: PlayerId(1),
+            classification: RejectionClassification::TrustedBeforeState(
+                EngineStateViolation::PendingDecisionMismatch,
+            ),
+        },
+    ]
+}
+
+#[test]
+fn synthetic_rejection_matrix_preserves_complete_nonmutation() {
+    for case in rejection_cases() {
+        let mut before = synthetic_state();
+        (case.mutate_state)(&mut before);
+        if matches!(
+            case.classification,
+            RejectionClassification::PlayerSubmission
+        ) {
+            assert!(
+                mtgml_state::validate_engine_state(&before).is_ok(),
+                "{}: player-rejection fixture must be a valid before-state",
+                case.name
+            );
+        }
+
+        let mut response = response_for_state_or_default(&before);
+        (case.mutate_response)(&before, &mut response);
+        let mut kernel = SyntheticM1RulesKernel;
+        let result = kernel.apply(&before, case.trusted_actor, &response);
+
+        match (&case.classification, result) {
+            (RejectionClassification::PlayerSubmission, Ok(result)) => {
+                assert_exact_rejected_product(&before, result);
+            }
+            (
+                RejectionClassification::TrustedBeforeState(expected),
+                Err(KernelExecutionError::BeforeState(actual)),
+            ) => {
+                assert_eq!(
+                    &actual, expected,
+                    "{}: trusted before-state error differed",
+                    case.name
+                );
+            }
+            (expected, actual) => panic!("{}: expected {expected:?}, got {actual:?}", case.name),
+        }
+    }
 }
 
 #[test]
