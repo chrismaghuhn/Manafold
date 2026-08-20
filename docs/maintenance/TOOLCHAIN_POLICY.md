@@ -8,7 +8,7 @@
 V0.2.2 uses one exact reference toolchain for generated freeze evidence:
 
 ```text
-Python: 3.13.5
+Python: 3.13.15
 Rust:   1.85.1 with rustfmt and Clippy
 ```
 
@@ -16,7 +16,7 @@ Rust:   1.85.1 with rustfmt and Clippy
 
 ## Python runtime compatibility versus reference version
 
-The rules-free Python client currently declares `>=3.11,<3.14`. That is a compatibility intention, not the freeze interpreter. Mypy targets Python 3.11 deliberately so public DTO/client code remains valid at the lowest declared runtime; the full repository verification executes under Python 3.13.5.
+The rules-free Python client currently declares `>=3.11,<3.14`. That is a compatibility intention, not the freeze interpreter. Mypy targets Python 3.11 deliberately so public DTO/client code remains valid at the lowest declared runtime; the full repository verification executes under Python 3.13.15.
 
 Compatibility is proven by a version matrix. Freeze/release reproducibility is proven by the exact reference interpreter. Neither substitutes for the other.
 
