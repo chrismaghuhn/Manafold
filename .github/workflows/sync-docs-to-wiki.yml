@@ -1,0 +1,231 @@
+name: Sync docs/ to Wiki
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - 'docs/**'
+      - 'PROJECT_CHARTER.md'
+      - 'README.md'
+      - 'ROADMAP.md'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  sync-wiki:
+    name: Sync docs to Wiki
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout main repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Checkout wiki repository
+        uses: actions/checkout@v4
+        with:
+          repository: chrismaghuhn/Manafold.wiki
+          token: ${{ secrets.GITHUB_TOKEN }}
+          path: wiki
+          fetch-depth: 0
+
+      - name: Configure git
+        run: |
+          cd wiki
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Sync docs/ to wiki
+        run: |
+          cd wiki
+
+          # Process docs/
+          if [ -d "../docs" ]; then
+            for file in ../docs/*.md; do
+              [ -f "$file" ] || continue
+              basename=$(basename "$file" .md)
+              wiki_name=$(echo "$basename" | sed 's/_/ /g')
+              cp "$file" "$wiki_name.md"
+              echo "Copied: $file -> $wiki_name.md"
+            done
+          fi
+
+          # Process root-level key files
+          for file in ../PROJECT_CHARTER.md ../README.md ../ROADMAP.md; do
+            [ -f "$file" ] || continue
+            basename=$(basename "$file" .md)
+            wiki_name=$(echo "$basename" | sed 's/_/ /g')
+            cp "$file" "$wiki_name.md"
+            echo "Copied: $file -> $wiki_name.md"
+          done
+
+          # Also copy docs/contracts/ if exists
+          if [ -d "../docs/contracts" ]; then
+            for file in ../docs/contracts/*.md; do
+              [ -f "$file" ] || continue
+              basename=$(basename "$file" .md)
+              wiki_name=$(echo "$basename" | sed 's/_/ /g')
+              cp "$file" "$wiki_name.md"
+              echo "Copied: $file -> $wiki_name.md"
+            done
+          fi
+
+      - name: Generate _Sidebar.md
+        run: |
+          cd wiki
+          cat > _Sidebar.md << 'SIDEBAR_EOF'
+# Manafold Wiki Navigation
+
+## Getting Started
+- [Home](Home)
+- [Project Charter](PROJECT_CHARTER)
+- [README](README)
+- [Roadmap](ROADMAP)
+
+## Architecture & Design
+- [Architecture](ARCHITECTURE)
+- [Domain Model](DOMAIN_MODEL)
+- [Execution Model](EXECUTION_MODEL)
+- [Normative Hierarchy](NORMATIVE_HIERARCHY)
+
+## Specifications
+- [M0.2 Specification](M0_2_SPECIFICATION)
+- [V0.2.2 Executable Freeze](V0_2_2_EXECUTABLE_FREEZE_AND_MAINTAINER_ERGONOMICS)
+- [V0.2.1 Contract Closure](V0_2_1_CONTRACT_CLOSURE)
+
+## Contracts
+- [Design Lock Matrix](M0_2_DESIGN_LOCK_MATRIX)
+- [Acceptance Gates](ACCEPTANCE_GATES)
+
+## Development
+- [Developer Setup](DEVELOPER_SETUP)
+- [Verification Gates](VERIFICATION_GATES)
+- [Crates Reference](CRATES_REFERENCE)
+
+## External Links
+- [GitHub Repository](https://github.com/chrismaghuhn/Manafold)
+- [Issues](https://github.com/chrismaghuhn/Manafold/issues)
+- [Discussions](https://github.com/chrismaghuhn/Manafold/discussions)
+- [Releases](https://github.com/chrismaghuhn/Manafold/releases)
+SIDEBAR_EOF
+          echo "Generated _Sidebar.md"
+
+      - name: Generate _Footer.md
+        run: |
+          cd wiki
+          cat > _Footer.md << 'FOOTER_EOF'
+---
+*Auto-synced from [chrismaghuhn/Manafold](https://github.com/chrismaghuhn/Manafold) on every push to master.*
+*Last sync: $(date -u +"%Y-%m-%d %H:%M UTC")*
+*[View source](https://github.com/chrismaghuhn/Manafold/tree/master/docs)*
+FOOTER_EOF
+          echo "Generated _Footer.md"
+
+      - name: Generate Home.md
+        run: |
+          cd wiki
+          if [ ! -f "Home.md" ] || ! grep -q "Manafold Wiki" "Home.md"; then
+            cat > Home.md << 'HOME_EOF'
+# Manafold Wiki
+
+Welcome to the **Manafold** documentation wiki - automatically synced from the [docs/](https://github.com/chrismaghuhn/Manafold/tree/master/docs) folder of the main repository.
+
+## What is Manafold?
+
+**Manafold** is a deterministic, inspectable, and high-performance **Magic: The Gathering rules engine** designed for ML agents. It provides:
+
+- **Exact information projection** - agents receive only what they may know
+- **Complete legal decision construction** - every legal choice in certified scope
+- **Full reproducibility** - every episode step from versioned artifacts
+- **Formal verification** - strict lifecycle: Imported - Parsed - Implemented - Covered - Certified
+
+> **Current Status:** V0.2.2 - Executable Freeze & Maintainer Ergonomics
+> **Next Milestone:** M1 - Closed Deterministic Kernel Shell
+> **License:** Apache-2.0
+
+## Quick Links
+
+| Area | Links |
+|------|-------|
+| **Start Here** | [Project Charter](PROJECT_CHARTER) - [README](README) - [Roadmap](ROADMAP) |
+| **Architecture** | [Architecture](ARCHITECTURE) - [Domain Model](DOMAIN_MODEL) - [Execution Model](EXECUTION_MODEL) |
+| **Specifications** | [M0.2 Spec](M0_2_SPECIFICATION) - [V0.2.2 Freeze](V0_2_2_EXECUTABLE_FREEZE_AND_MAINTAINER_ERGONOMICS) |
+| **Contracts** | [Design Lock Matrix](M0_2_DESIGN_LOCK_MATRIX) - [Acceptance Gates](ACCEPTANCE_GATES) |
+| **Development** | [Developer Setup](DEVELOPER_SETUP) - [Verification Gates](VERIFICATION_GATES) - [Crates Reference](CRATES_REFERENCE) |
+
+## Core Crates (Rust)
+
+| Crate | Role |
+|-------|------|
+| mtgml-state | **Sole State Owner** - EngineState, Identities, RNG, Format State |
+| mtgml-rules | RulesKernel, TransitionProduct, Semantic Events |
+| mtgml-decision | Hierarchical Decisions, Continuations |
+| mtgml-observation | ObservationProjector, Information State, Perspective-Bound Views |
+| mtgml-environment | TrustedEnvironmentController, Checkpoint/Fork/Replay |
+| mtgml-random | Deterministic ID/RNG Streams |
+| mtgml-replay | Authoritative Replay Export |
+| mtgml-conformance | Conformance Assertions, Test Harnesses |
+| mtgml-card-ir | Typed Card IR (Reviewed - Certified) |
+| mtgml-wire | Cross-Language Rust/Python/JSON Fixtures |
+| mtgml-model | Rules-free ML Process |
+| mtgml-commander | Commander-specific Tracking |
+
+## Roadmap Overview
+
+| Milestone | Target | Status |
+|-----------|--------|--------|
+| M0.2 | Specification & Maintainer Readiness | Done |
+| V0.2.1 | Executable Contract Closure | Done |
+| V0.2.2 | Executable Freeze & Maintainer Ergonomics | Current |
+| M1 | Closed Deterministic Kernel Shell | Next |
+| M2 | Decision Machinery & Information Safety | Planned |
+| M2.5 | Exact V1 Deck Lock & Capability Census | Planned |
+| M3 | Required Magic Primitives | Planned |
+| M4 | Card Definitions & Certified V1 Bundle | Planned |
+| M5 | ML Environment & Baselines | Planned |
+
+## Verification
+
+```bash
+# Quick checks
+just check-fast
+
+# Standard verification
+just check
+
+# Full verification (all gates)
+just doctor
+just release-candidate
+```
+
+> **Only Certified capability bundles are support claims.** Parser success, compilation, green unit tests, or raw card counts are **not** certification.
+
+## Source Documents
+
+All wiki pages are auto-generated from the main repository:
+
+- **Root docs:** PROJECT_CHARTER.md, README.md, ROADMAP.md
+- **docs/ folder:** All .md files
+- **docs/contracts/:** Contract specifications
+
+**Sync trigger:** Every push to master branch on the main repo.
+HOME_EOF
+            echo "Generated Home.md"
+          else
+            echo "Home.md already exists with custom content, keeping it"
+          fi
+        shell: bash
+
+      - name: Commit and push wiki changes
+        run: |
+          cd wiki
+          if git diff --quiet && git diff --cached --quiet; then
+            echo "No changes to commit"
+            exit 0
+          fi
+          git add -A
+          git commit -m "docs: auto-sync from main repo $(date -u +"%Y-%m-%d %H:%M UTC")"
+          git push origin master
+          echo "Wiki updated successfully"
