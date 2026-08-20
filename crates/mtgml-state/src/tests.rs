@@ -1,8 +1,8 @@
 use super::*;
 use mtgml_decision::PlayerDecisionRequest;
 use mtgml_model::{
-    CardDefinitionId, DecisionId, EffectInstanceId, EventSequence, FullStateDigestV2,
-    GameObjectId, OpaqueObjectId, PhysicalCardId, PlayerId, RuleEventId, StateRevision, ZoneKind,
+    CardDefinitionId, DecisionId, EffectInstanceId, EventSequence, FullStateDigestV2, GameObjectId,
+    OpaqueObjectId, PhysicalCardId, PlayerId, RuleEventId, StateRevision, ZoneKind,
 };
 use mtgml_random::{
     RandomStateV1, RandomStreamCursorV1, RandomStreamKeyV1, RandomStreamKindV1,
@@ -77,8 +77,10 @@ fn effect_allocator_returns_current_id_and_checked_advances() {
 
 #[test]
 fn effect_allocator_exhaustion_does_not_mutate_allocator() {
-    let mut allocators = IdentityAllocatorState::default();
-    allocators.next_effect_id = EffectInstanceId(u64::MAX);
+    let mut allocators = IdentityAllocatorState {
+        next_effect_id: EffectInstanceId(u64::MAX),
+        ..IdentityAllocatorState::default()
+    };
     let before = allocators.clone();
 
     assert_eq!(

@@ -96,8 +96,8 @@ python -m json.tool docs/normative-document-register.v1.json
 git diff --check
 ~~~
 
-Expected: the placeholder search prints no matches; JSON parsing and
-`git diff --check` exit with code 0.
+Expected: JSON parsing and `git diff --check` exit with code 0; manual review
+confirms that the process artifacts contain no placeholder instructions.
 
 - [ ] **Step 3: Run documentation validation**
 
