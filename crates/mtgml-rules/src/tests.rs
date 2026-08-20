@@ -103,7 +103,11 @@ fn insert_object(
         zone,
         player: Some(PlayerId(1)),
         position: ZonePosition::Unordered,
-        visibility: VisibilityPartition::Public,
+        visibility: if zone == ZoneKind::Battlefield || zone == ZoneKind::Graveyard {
+            VisibilityPartition::Public
+        } else {
+            VisibilityPartition::OwnerOnly
+        },
         partition: None,
     };
     let object = GameObject {
