@@ -1,5 +1,9 @@
 # M1.2 Accepted Transaction Implementation Plan
 
+**Status:** accepted
+**Stability:** provisional
+**Owner:** maintainer
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox syntax for tracking.
 
 **Goal:** Implement one exact accepted synthetic ChooseOne response transition with explicit trusted actor validation, one DecisionCleared event, complete StateDelta reapplication, and fail-closed rejection preparation.

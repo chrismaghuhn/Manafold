@@ -1,5 +1,9 @@
 # M1.2 Accepted Transaction Design
 
+**Status:** accepted
+**Stability:** provisional
+**Owner:** maintainer
+
 ## Scope
 
 Implement one accepted synthetic player-response transaction on top of the
