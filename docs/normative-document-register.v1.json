@@ -169,6 +169,13 @@
       "stability": "accepted"
     },
     {
+      "change_process": "adr-and-state-tests",
+      "owner_role": "state-maintainer",
+      "path": "docs/M1_1_STATE_FOUNDATION_SPECIFICATION.md",
+      "role": "normative",
+      "stability": "provisional"
+    },
+    {
       "change_process": "process-pr",
       "owner_role": "maintainer",
       "path": "docs/MAINTAINER_PLAYBOOK.md",

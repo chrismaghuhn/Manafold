@@ -3,6 +3,7 @@
 //! `EngineState` is the only semantic source of truth. Kernels may hold caches,
 //! but caches must be derivable and must never affect a transition.
 
+mod construction;
 mod core;
 mod delta;
 mod digest;
@@ -14,6 +15,9 @@ mod knowledge;
 mod validation;
 mod zones;
 
+pub use construction::{
+    construct_synthetic_engine_state, SyntheticResetInputs, SyntheticStateConstructionError,
+};
 pub use core::{CoreRulesState, PlayerState};
 pub use delta::{DeltaApplicationError, SemanticDeltaOperation, StateDelta};
 pub use digest::StateDigestError;

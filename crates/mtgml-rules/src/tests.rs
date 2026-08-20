@@ -121,12 +121,6 @@ fn insert_object(
     };
     state.zones.objects.insert(id, object.clone());
     state.zones.locations.insert(id, location.clone());
-    state
-        .zones
-        .ordered_zones
-        .entry(location.key())
-        .or_default()
-        .push(id);
     state.allocators.next_object_id = GameObjectId(object_id + 1);
     ObjectSnapshot {
         object: id,
@@ -144,10 +138,11 @@ fn remove_object(state: &mut EngineState, object: GameObjectId) {
     let location = state.zones.locations.remove(&object).unwrap();
     state.zones.objects.remove(&object).unwrap();
     let key = location.key();
-    let objects = state.zones.ordered_zones.get_mut(&key).unwrap();
-    objects.retain(|current| *current != object);
-    if objects.is_empty() {
-        state.zones.ordered_zones.remove(&key);
+    if let Some(objects) = state.zones.ordered_zones.get_mut(&key) {
+        objects.retain(|current| *current != object);
+        if objects.is_empty() {
+            state.zones.ordered_zones.remove(&key);
+        }
     }
 }
 
