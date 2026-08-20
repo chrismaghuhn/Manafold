@@ -6,7 +6,7 @@
 
 > For agentic workers: REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox syntax for tracking.
 
-**Goal:** Prove complete nonmutation for every currently executable M1 synthetic player rejection while preserving the M1.2 accepted transaction and explicitly reporting unavailable environment/replay evidence.
+**Goal:** Complete the M1.3 RulesKernel rejection-atomicity scope for every currently executable M1 synthetic player rejection while preserving the M1.2 accepted transaction and explicitly reporting the unavailable environment/replay evidence that remains an M1.6 responsibility.
 
 **Architecture:** Keep RulesKernel::apply actor-aware and fallible. Add only the missing M1 ChooseOne ordinal rejection before accepted workspace mutation. Exercise the real mtgml-rules owner with a table-driven matrix and one explicit full-surface rejected-product assertion; do not add an environment transaction owner, replay recorder, endpoint binding, RNG consumption, allocator consumption, or multi-event behavior.
 
@@ -375,6 +375,11 @@ REPLAY_PARITY                             = NOT_RUN
 MULTI_PLAYER_ENDPOINT_BINDING             = NOT_RUN
 ~~~
 
+The issue-local M1.3 RulesKernel closure may be reported complete when its
+RulesKernel-owned matrix and exact nonmutation evidence pass. That status is
+independent from the repository-level rejection gate, which remains `BLOCKED`
+until M1.6 supplies an executable environment/replay transaction owner.
+
 The M1.3 report must separately list authoritative state, V2 digest, revision, pending decision/bindings, RNG, allocators, knowledge/history, opaque identities, rule events, delta, episode status, environment counters, accepted replay state/count, and player-safe errors as PASS, BLOCKED, or NOT_RUN based only on executed evidence.
 
 - [ ] **Step 6: Create the one Draft PR only after verification**
@@ -385,6 +390,11 @@ Push the dedicated branch and create one Draft PR against master. The body must 
 git push --set-upstream origin chris/m1-3-rejection-atomicity
 gh pr create --draft --base master --head chris/m1-3-rejection-atomicity
 ~~~
+
+For the revised issue ownership, add `Closes #22` to the PR when the
+issue-local RulesKernel scope is satisfied, even if the repository-level
+rejection gate remains `BLOCKED`. Do not claim the global gate is `PASS` and
+do not add environment/replay implementation to this M1.3 branch.
 
 ## Plan self-review
 

@@ -43,6 +43,11 @@ same applies to accepted replay-step count and replay history: `mtgml-replay`
 currently supplies V2 DTOs and validation, not a runtime recorder. These
 surfaces are recorded as `BLOCKED` or `NOT_RUN`, not promoted to `PASS`.
 
+Issue #22 may nevertheless be completed when the RulesKernel-owned evidence
+below passes. That issue-local M1.3 completion does not redefine or satisfy
+the repository-level `REJECTED_RESPONSE_COMPLETE_NONMUTATION` gate. The
+missing environment/replay closure remains an M1.6 responsibility.
+
 Observation and information-state types remain projections/DTOs. Their
 sequence fields and `KnowledgeState` remain untouched; no new history owner is
 introduced in this milestone.
@@ -78,7 +83,9 @@ This design does not add environment commit/checkpoint/replay execution, RNG
 draws, allocator consumption, multiple dependent rule events, new semantic
 cursor families, endpoint binding, real Magic semantics, or M1.4+ behavior.
 
-The resulting M1.3 gate is `PASS` only if every required owner has executable
-evidence. With the current repository ownership, the rules-level evidence can
-be complete while the overall `REJECTED_RESPONSE_COMPLETE_NONMUTATION` gate
-remains `BLOCKED` on the missing environment/replay execution path.
+The issue-local RulesKernel closure is complete only when every currently
+executable RulesKernel rejection case has the required evidence. With the
+current repository ownership, that evidence can be complete while the overall
+`REJECTED_RESPONSE_COMPLETE_NONMUTATION` gate remains `BLOCKED` on the missing
+environment/replay execution path. M1.6 must later supply that executable
+owner and promote the global gate only after the remaining surfaces pass.

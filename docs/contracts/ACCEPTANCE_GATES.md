@@ -52,6 +52,16 @@ DETERMINISTIC_RNG_AND_ALLOCATORS
 MULTI_PLAYER_ENDPOINT_BINDING
 ```
 
+`REJECTED_RESPONSE_COMPLETE_NONMUTATION` is a repository-level gate over the
+complete rejection contract, including the currently owned `EngineState`
+surface and the environment/replay surfaces owned outside `mtgml-rules`.
+Issue #22 may close its M1.3 RulesKernel scope when the RulesKernel-owned
+evidence passes; that issue-local completion does not promote this global
+gate. M1.6 owns the executable environment transaction and replay closure
+needed to prove the remaining status, limit-counter, checkpoint, replay, and
+history surfaces. M1.F must still record this global gate as `PASS` on the
+final coherent M1 tree before M1 can close.
+
 ## Capability coverage
 
 ```text
