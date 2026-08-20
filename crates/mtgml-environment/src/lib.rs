@@ -489,6 +489,36 @@ mod tests {
     }
 
     #[test]
+    fn frozen_checkpoint_v2_digest_is_stable() {
+        let checkpoint = EnvironmentCheckpointV2::new(
+            checkpoint_state(),
+            EpisodeStatus::Running,
+            EnvironmentLimitCounters::default(),
+            CheckpointCodecIdentity {
+                codec_id: "in-memory-reference".into(),
+                semantic_version: "1".into(),
+            },
+        )
+        .unwrap();
+        checkpoint.validate().unwrap();
+        let digest = checkpoint.checkpoint_digest.clone();
+        let canonical = serde_json::to_vec(&CheckpointDigestInputV2 {
+            schema_version: &checkpoint.schema_version,
+            domain: CheckpointDigestV2::DOMAIN,
+            state_digest: &checkpoint.state_digest,
+            status: &checkpoint.status,
+            limit_counters: &checkpoint.limit_counters,
+            codec: &checkpoint.codec,
+        })
+        .unwrap();
+        let recomputed = CheckpointDigestV2::from_canonical_bytes(&canonical);
+        assert_eq!(
+            digest, recomputed,
+            "frozen migration evidence: CheckpointDigestV2 from canonical bytes must match"
+        );
+    }
+
+    #[test]
     fn checkpoint_closes_state_status_and_limit_counters() {
         let checkpoint = EnvironmentCheckpointV2::new(
             checkpoint_state(),

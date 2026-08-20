@@ -321,6 +321,14 @@ mod tests {
             CheckpointDigest::from_canonical_bytes(bytes).as_str(),
             "e68abf91d68057ab81bcbacdbc9f1dfe35b4e3fded6b9f8309fb7c948d8750f4"
         );
+        assert_eq!(
+            FullStateDigestV2::from_canonical_bytes(bytes).as_str(),
+            "ea09c274b70ebb52c34f28ccb637801c923d03744cec4de8900b016e9323ab37"
+        );
+        assert_eq!(
+            CheckpointDigestV2::from_canonical_bytes(bytes).as_str(),
+            "373265db972e21d967a41932938aeedbdb5f5782b41951904f6b2ecae28a1f08"
+        );
     }
 
     #[test]

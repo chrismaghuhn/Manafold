@@ -1391,4 +1391,26 @@ mod tests {
             "canonical digest bytes must be non-empty"
         );
     }
+
+    #[test]
+    fn frozen_empty_state_v2_digest_is_stable() {
+        let value = state();
+        let digest = value.digest().unwrap();
+        assert_eq!(
+            digest.as_str(),
+            "b25fb0a19adbe75c069e4e58c658ba333ed28ec0a652eb4a93334e65fa35c712",
+            "frozen migration evidence: empty state V2 digest must not change"
+        );
+        let bytes = value.canonical_digest_bytes().unwrap();
+        assert_eq!(
+            bytes.len(),
+            1293,
+            "frozen migration evidence: canonical bytes length must not change"
+        );
+        let digest_v2 = FullStateDigestV2::from_canonical_bytes(&bytes);
+        assert_eq!(
+            digest, digest_v2,
+            "from_canonical_bytes must reproduce the same frozen digest"
+        );
+    }
 }

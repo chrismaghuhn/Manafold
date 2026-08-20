@@ -133,11 +133,6 @@
                 "replay_step": {
                     "const": "replay-step.v2",
                     "type": "string"
-                },
-                "step_index": {
-                    "maximum": 18446744073709551615,
-                    "minimum": 0,
-                    "type": "integer"
                 }
             },
             "required": [
