@@ -511,10 +511,23 @@ mod tests {
             codec: &checkpoint.codec,
         })
         .unwrap();
+        let expected_canonical = br#"{"schema_version":"environment-checkpoint.v2","domain":"mtgml.checkpoint-digest.v2","state_digest":"3ce7c015bba9669f2b7cabf0efc423b31b4507e213de56c10e1242e9e001334e","status":{"kind":"running"},"limit_counters":{"decisions_submitted":0,"accepted_transitions":0,"rule_events_emitted":0,"resource_units_consumed":0,"wall_clock_elapsed_millis":0},"codec":{"codec_id":"in-memory-reference","semantic_version":"1"}}"#;
+        assert_eq!(
+            canonical, expected_canonical,
+            "frozen migration evidence: exact checkpoint V2 canonical bytes must not change"
+        );
         let recomputed = CheckpointDigestV2::from_canonical_bytes(&canonical);
         assert_eq!(
             digest, recomputed,
             "frozen migration evidence: CheckpointDigestV2 from canonical bytes must match"
+        );
+        let expected_digest = CheckpointDigestV2::parse(
+            "c823b1b894ba40f137a1b31a4330671f670d5da962233e0eeb1289eb13cce356",
+        )
+        .unwrap();
+        assert_eq!(
+            digest, expected_digest,
+            "frozen migration evidence: exact checkpoint V2 digest must not change"
         );
     }
 

@@ -486,28 +486,11 @@ impl EngineState {
         values: &mut [T],
         key: &mtgml_random::RandomStreamKeyV1,
     ) -> Result<u64, mtgml_random::RandomValidationError> {
-        let len = values.len();
-        if len <= 1 {
-            return Ok(0);
-        }
-        if len > u64::MAX as usize {
-            return Err(mtgml_random::RandomValidationError::InvalidRandomBound);
-        }
-        let mut current = self.random.lookup_stream(key)?;
-        let mut total_consumed = 0u64;
-        for i in (1..len).rev() {
-            let (j, consumed, next) = mtgml_random::sampling::uniform_below_u64(
-                &self.random.root_seed,
-                key,
-                &current,
-                (i as u64) + 1,
-            )?;
-            total_consumed += consumed;
-            current = next;
-            values.swap(i, j as usize);
-        }
-        self.random.set_cursor(key, current)?;
-        Ok(total_consumed)
+        let cursor = self.random.lookup_stream(key)?;
+        let (consumed, next) =
+            mtgml_random::sampling::shuffle(values, &self.random.root_seed, key, &cursor)?;
+        self.random.set_cursor(key, next)?;
+        Ok(consumed)
     }
 }
 
@@ -1406,6 +1389,11 @@ mod tests {
             bytes.len(),
             1293,
             "frozen migration evidence: canonical bytes length must not change"
+        );
+        let expected_canonical = br#"{"allocators":{"next_ability_id":"1","next_continuation_id":"1","next_decision_id":"1","next_effect_id":"1","next_object_id":"1","next_opaque_ability_id":{},"next_opaque_object_id":{},"next_rule_event_id":"1","next_stack_object_id":"1","next_trigger_id":"1"},"core":{"active_player":"1","players":{"1":{"has_lost":false,"life":40},"2":{"has_lost":false,"life":40}},"priority_player":"1","turn_number":1},"domain":"mtgml.full-state-digest.v2","execution":{"continuations":{},"delayed_effects":{},"effects":{},"waiting_triggers":{}},"format":{"kind":"none"},"knowledge":{"players":{"1":{"invalidations":[],"known_objects":{},"private_history_length":0,"public_history_length":0},"2":{"invalidations":[],"known_objects":{},"private_history_length":0,"public_history_length":0}}},"perspective_identities":{"players":{"1":{"ability_to_opaque":{},"object_to_opaque":{},"opaque_to_ability":{},"opaque_to_object":{}},"2":{"ability_to_opaque":{},"object_to_opaque":{},"opaque_to_ability":{},"opaque_to_object":{}}}},"random":{"contract_id":"mtgml.rng.v1","root_seed":"0000000000000000000000000000000000000000000000000000000000000000","streams":[]},"revision":"0","schema_version":"full-state-digest-input.v2","zones":{"locations":{},"objects":{},"ordered_zones":[],"stack_order":[],"stack_records":{}}}"#;
+        assert_eq!(
+            bytes, expected_canonical,
+            "frozen migration evidence: exact canonical bytes must not change"
         );
         let digest_v2 = FullStateDigestV2::from_canonical_bytes(&bytes);
         assert_eq!(
