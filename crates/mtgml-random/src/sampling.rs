@@ -47,26 +47,27 @@ pub fn shuffle<T: Clone>(
     key: &RandomStreamKeyV1,
     cursor: &RandomStreamCursorV1,
 ) -> Result<(u64, RandomStreamCursorV1), RandomValidationError> {
-    let len = values.len();
-    if len <= 1 {
+    let len_u64 =
+        u64::try_from(values.len()).map_err(|_| RandomValidationError::InvalidRandomBound)?;
+
+    if len_u64 <= 1 {
         return Ok((0, *cursor));
     }
 
-    // First, compute all (i, j) swaps without mutating values
-    // This ensures atomicity: either all swaps succeed or none do
+    // Pre-compute all (i, j) swap pairs with a local cursor.
+    // Only apply swaps if all draws succeed — no partial mutation on StreamExhausted.
     let mut current = *cursor;
     let mut total_consumed = 0u64;
-    let mut swaps: Vec<(usize, usize)> = Vec::with_capacity(len.saturating_sub(1));
+    let mut swaps: Vec<(usize, usize)> = Vec::with_capacity(values.len() - 1);
 
-    for i in (1..len).rev() {
-        let bound = u64::try_from(i + 1).map_err(|_| RandomValidationError::InvalidRandomBound)?;
+    for i in (1..values.len()).rev() {
+        let bound = (i + 1) as u64;
         let (j, consumed, next) = uniform_below_u64(root, key, &current, bound)?;
         total_consumed += consumed;
         current = next;
         swaps.push((i, j as usize));
     }
 
-    // Only apply swaps if all draws succeeded
     for (i, j) in swaps {
         values.swap(i, j);
     }
@@ -200,5 +201,25 @@ mod tests {
         let (consumed, _) = shuffle(&mut one, &seed, &key, &cursor).unwrap();
         assert_eq!(consumed, 0);
         assert_eq!(one, vec![42]);
+    }
+
+    #[test]
+    fn shuffle_atomicity_on_stream_exhaustion() {
+        let seed = RootSeed256::from_lower_hex(ALL_ZERO_SEED).unwrap();
+        let key = global_key();
+        let cursor = RandomStreamCursorV1 {
+            next_raw_u64: u64::MAX - 1,
+        };
+        let mut values = vec![10, 20, 30];
+        let original = values.clone();
+        let result = shuffle(&mut values, &seed, &key, &cursor);
+        assert!(
+            result.is_err(),
+            "second draw must fail with StreamExhausted"
+        );
+        assert_eq!(
+            values, original,
+            "slice must be unchanged when shuffle fails atomically"
+        );
     }
 }
