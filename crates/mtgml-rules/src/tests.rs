@@ -891,6 +891,143 @@ fn synthetic_rejection_matrix_preserves_complete_nonmutation() {
 }
 
 #[test]
+fn deterministic_services_repeat_exact_transition_result() {
+    let before_a = synthetic_state();
+    let before_b = synthetic_state();
+    let response_a = synthetic_response(&before_a);
+    let response_b = synthetic_response(&before_b);
+    let mut kernel_a = SyntheticM1RulesKernel;
+    let mut kernel_b = SyntheticM1RulesKernel;
+
+    let result_a = kernel_a.apply(&before_a, PlayerId(1), &response_a).unwrap();
+    let result_b = kernel_b.apply(&before_b, PlayerId(1), &response_b).unwrap();
+
+    assert_eq!(result_a, result_b);
+    assert_eq!(
+        result_a.next_state.random.root_seed,
+        before_a.random.root_seed
+    );
+    assert_eq!(
+        result_a
+            .next_state
+            .random
+            .lookup_stream(&RandomStreamKeyV1::global(RandomStreamKindV1::SyntheticM1))
+            .unwrap()
+            .next_raw_u64,
+        1
+    );
+    assert_eq!(
+        result_a.next_state.allocators.next_effect_id,
+        EffectInstanceId(2)
+    );
+}
+
+#[test]
+fn deterministic_services_isolate_named_stream_and_allocator_cursors() {
+    let mut before = synthetic_state();
+    let player_stream = RandomStreamKeyV1::player_scoped(RandomStreamKindV1::SyntheticM1, 1);
+    before
+        .random
+        .add_stream(player_stream, RandomStreamCursorV1 { next_raw_u64: 17 })
+        .unwrap();
+    let response = synthetic_response(&before);
+    let mut kernel = SyntheticM1RulesKernel;
+
+    let result = kernel.apply(&before, PlayerId(1), &response).unwrap();
+
+    let global_stream = RandomStreamKeyV1::global(RandomStreamKindV1::SyntheticM1);
+    let mut expected_random = before.random.clone();
+    expected_random
+        .set_cursor(&global_stream, RandomStreamCursorV1 { next_raw_u64: 1 })
+        .unwrap();
+    assert_eq!(result.next_state.random, expected_random);
+
+    let mut expected_allocators = before.allocators.clone();
+    expected_allocators.next_effect_id = EffectInstanceId(2);
+    expected_allocators.next_rule_event_id = RuleEventId(5);
+    assert_eq!(result.next_state.allocators, expected_allocators);
+    assert_eq!(
+        result
+            .next_state
+            .random
+            .lookup_stream(&player_stream)
+            .unwrap()
+            .next_raw_u64,
+        17
+    );
+}
+
+#[test]
+fn missing_synthetic_stream_is_an_exact_normal_rejection() {
+    let mut before = synthetic_state();
+    before.random.streams.clear();
+    mtgml_state::validate_engine_state(&before).unwrap();
+    let response = synthetic_response(&before);
+    let mut kernel = SyntheticM1RulesKernel;
+
+    let result = kernel.apply(&before, PlayerId(1), &response).unwrap();
+
+    assert_exact_rejected_product(&before, result);
+}
+
+#[test]
+fn rng_exhaustion_is_a_typed_internal_failure_without_input_mutation() {
+    let mut before = synthetic_state();
+    let stream = RandomStreamKeyV1::global(RandomStreamKindV1::SyntheticM1);
+    before
+        .random
+        .set_cursor(
+            &stream,
+            RandomStreamCursorV1 {
+                next_raw_u64: u64::MAX,
+            },
+        )
+        .unwrap();
+    mtgml_state::validate_engine_state(&before).unwrap();
+    let original = before.clone();
+    let response = synthetic_response(&before);
+    let mut kernel = SyntheticM1RulesKernel;
+
+    let result = kernel.apply(&before, PlayerId(1), &response);
+
+    assert!(matches!(
+        result,
+        Err(KernelExecutionError::Random(
+            RandomValidationError::StreamExhausted
+        ))
+    ));
+    assert_eq!(before, original);
+}
+
+#[test]
+fn effect_allocator_exhaustion_is_a_typed_internal_failure_before_rng() {
+    let mut before = synthetic_state();
+    before.allocators.next_effect_id = EffectInstanceId(u64::MAX);
+    mtgml_state::validate_engine_state(&before).unwrap();
+    let original = before.clone();
+    let response = synthetic_response(&before);
+    let mut kernel = SyntheticM1RulesKernel;
+
+    let result = kernel.apply(&before, PlayerId(1), &response);
+
+    assert!(matches!(
+        result,
+        Err(KernelExecutionError::IdentityAllocation(
+            IdentityAllocationError::EffectInstanceIdExhausted
+        ))
+    ));
+    assert_eq!(before, original);
+    assert_eq!(
+        before
+            .random
+            .lookup_stream(&RandomStreamKeyV1::global(RandomStreamKindV1::SyntheticM1))
+            .unwrap()
+            .next_raw_u64,
+        0
+    );
+}
+
+#[test]
 fn invalid_before_state_is_a_kernel_execution_error() {
     let before = synthetic_state();
     let response = synthetic_response(&before);
