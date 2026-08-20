@@ -1,7 +1,7 @@
 use super::*;
 use mtgml_decision::{
-    CandidateAssignment, DecisionKind, DecisionResponse, DecisionVisibility,
-    EngineCandidateBinding, PlayerDecisionRequest, DECISION_RESPONSE_SCHEMA,
+    ActionCandidate, CandidateAssignment, CandidateIntent, DecisionKind, DecisionResponse,
+    DecisionVisibility, EngineCandidateBinding, PlayerDecisionRequest, DECISION_RESPONSE_SCHEMA,
 };
 use mtgml_model::{
     AbilityInstanceId, CardDefinitionId, ContinuationId, DecisionId, EffectInstanceId,
@@ -11,11 +11,12 @@ use mtgml_model::{
 use mtgml_random::RandomStateV1;
 use mtgml_random::RootSeed256;
 use mtgml_state::{
-    construct_synthetic_engine_state, CoreRulesState, EngineState, EngineStateViolation,
-    ExecutionState, FormatState, GameObject, IdentityAllocatorState, KnowledgeState,
-    ObjectSnapshot, PendingDecisionRecord, PerspectiveIdentityMap, PerspectiveIdentityState,
-    PlayerKnowledgeState, PlayerState, SemanticDeltaOperation, StateDelta, SyntheticResetInputs,
-    VisibilityPartition, ZoneLocation, ZonePosition, ZoneState, ZoneTransition,
+    construct_synthetic_engine_state, ContinuationRecord, CoreRulesState, EngineState,
+    EngineStateViolation, ExecutionState, FormatState, GameObject, IdentityAllocatorState,
+    KnowledgeState, ObjectSnapshot, PendingDecisionRecord, PerspectiveIdentityMap,
+    PerspectiveIdentityState, PlayerKnowledgeState, PlayerState, SemanticDeltaOperation,
+    StateDelta, SyntheticResetInputs, VisibilityPartition, ZoneLocation, ZonePosition, ZoneState,
+    ZoneTransition,
 };
 use std::collections::BTreeMap;
 
@@ -106,16 +107,48 @@ fn synthetic_state() -> EngineState {
 }
 
 fn synthetic_response(state: &EngineState) -> DecisionResponse {
+    response_for_candidate(state, "select_public_object")
+}
+
+fn response_for_candidate(state: &EngineState, candidate_id: &str) -> DecisionResponse {
     let request = &state.execution.pending_decision.as_ref().unwrap().request;
     DecisionResponse {
         schema_version: DECISION_RESPONSE_SCHEMA.to_owned(),
         decision_id: request.decision_id,
         state_revision: request.state_revision,
         assignments: vec![CandidateAssignment {
-            candidate_id: "select_public_object".to_owned(),
+            candidate_id: candidate_id.to_owned(),
             ordinal: None,
         }],
     }
+}
+
+fn assert_exact_rejected_product(before: &EngineState, result: TransitionResult) {
+    let before_digest = before.digest().unwrap();
+
+    assert!(!result.accepted);
+    assert_eq!(result.next_state, *before);
+    assert!(result.events.is_empty());
+    assert!(result.delta.audit.is_empty());
+    assert_eq!(result.delta.before_revision, before.revision);
+    assert_eq!(result.delta.after_revision, before.revision);
+    assert_eq!(result.delta.before_digest, before_digest);
+    assert_eq!(result.delta.after_digest, before_digest);
+    assert_eq!(
+        result.next_decision,
+        Some(
+            before
+                .execution
+                .pending_decision
+                .as_ref()
+                .unwrap()
+                .request
+                .clone()
+        )
+    );
+    assert_eq!(result.status, EpisodeStatus::Running);
+    assert_eq!(result.delta.apply(before).unwrap(), *before);
+    validate_transition_contract(before, &result).unwrap();
 }
 
 #[test]
@@ -198,34 +231,81 @@ fn synthetic_m1_acceptance_returns_exact_transition_product() {
 fn synthetic_wrong_actor_returns_exact_rejected_product() {
     let before = synthetic_state();
     let response = synthetic_response(&before);
-    let before_digest = before.digest().unwrap();
     let mut kernel = SyntheticM1RulesKernel;
 
     let result = kernel.apply(&before, PlayerId(2), &response).unwrap();
 
-    assert!(!result.accepted);
-    assert_eq!(result.next_state, before);
-    assert!(result.events.is_empty());
-    assert!(result.delta.audit.is_empty());
-    assert_eq!(result.delta.before_revision, before.revision);
-    assert_eq!(result.delta.after_revision, before.revision);
-    assert_eq!(result.delta.before_digest, before_digest);
-    assert_eq!(result.delta.after_digest, before_digest);
-    assert_eq!(
-        result.next_decision,
-        Some(
-            before
-                .execution
-                .pending_decision
-                .as_ref()
-                .unwrap()
-                .request
-                .clone()
-        )
+    assert_exact_rejected_product(&before, result);
+}
+
+#[test]
+fn synthetic_kernel_rejects_otherwise_valid_confirm_semantics() {
+    let mut before = synthetic_state();
+    let pending = before.execution.pending_decision.as_mut().unwrap();
+    pending.request.candidates[0] = ActionCandidate {
+        candidate_id: "select_public_object".to_owned(),
+        semantic_key: "synthetic.select_public_object".to_owned(),
+        intent: CandidateIntent::Confirm,
+    };
+    pending.candidate_bindings.insert(
+        "select_public_object".to_owned(),
+        EngineCandidateBinding::Confirm,
     );
-    assert_eq!(result.status, EpisodeStatus::Running);
-    assert_eq!(result.delta.apply(&before).unwrap(), before);
-    validate_transition_contract(&before, &result).unwrap();
+    assert!(mtgml_state::validate_engine_state(&before).is_ok());
+
+    let response = response_for_candidate(&before, "select_public_object");
+    let mut kernel = SyntheticM1RulesKernel;
+    let result = kernel.apply(&before, PlayerId(1), &response).unwrap();
+
+    assert_exact_rejected_product(&before, result);
+}
+
+#[test]
+fn synthetic_kernel_rejects_multiple_valid_candidates() {
+    let mut before = synthetic_state();
+    let pending = before.execution.pending_decision.as_mut().unwrap();
+    pending.request.candidates.push(ActionCandidate {
+        candidate_id: "confirm".to_owned(),
+        semantic_key: "synthetic.confirm".to_owned(),
+        intent: CandidateIntent::Confirm,
+    });
+    pending
+        .candidate_bindings
+        .insert("confirm".to_owned(), EngineCandidateBinding::Confirm);
+    assert!(mtgml_state::validate_engine_state(&before).is_ok());
+
+    let response = synthetic_response(&before);
+    let mut kernel = SyntheticM1RulesKernel;
+    let result = kernel.apply(&before, PlayerId(1), &response).unwrap();
+
+    assert_exact_rejected_product(&before, result);
+}
+
+#[test]
+fn synthetic_kernel_rejects_valid_pending_decision_with_continuation() {
+    let mut before = synthetic_state();
+    let continuation = ContinuationId(1);
+    before.execution.continuations.insert(
+        continuation,
+        ContinuationRecord {
+            id: continuation,
+            label: "synthetic continuation".to_owned(),
+        },
+    );
+    before
+        .execution
+        .pending_decision
+        .as_mut()
+        .unwrap()
+        .continuation = Some(continuation);
+    before.allocators.next_continuation_id = ContinuationId(2);
+    assert!(mtgml_state::validate_engine_state(&before).is_ok());
+
+    let response = synthetic_response(&before);
+    let mut kernel = SyntheticM1RulesKernel;
+    let result = kernel.apply(&before, PlayerId(1), &response).unwrap();
+
+    assert_exact_rejected_product(&before, result);
 }
 
 #[test]

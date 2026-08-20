@@ -1,5 +1,8 @@
-use mtgml_decision::{validate_candidate_binding, DecisionKind, DecisionResponse};
-use mtgml_model::{EpisodeStatus, PlayerId, RuleEventId, StateRevision};
+use mtgml_decision::{
+    validate_candidate_binding, CandidateIntent, DecisionKind, DecisionResponse,
+    EngineCandidateBinding, PerspectiveIdentityResolver,
+};
+use mtgml_model::{EpisodeStatus, GameObjectId, PlayerId, RuleEventId, StateRevision};
 use mtgml_state::{validate_engine_state, EngineState, EngineStateViolation, StateDelta};
 
 use crate::errors::KernelExecutionError;
@@ -28,6 +31,8 @@ impl RulesKernel for SyntheticM1RulesKernel {
             || response.decision_id != request.decision_id
             || response.state_revision != state.revision
             || !matches!(request.decision, DecisionKind::ChooseOne)
+            || pending.continuation.is_some()
+            || request.candidates.len() != 1
             || response.assignments.len() != 1
         {
             return rejected(state);
@@ -41,12 +46,35 @@ impl RulesKernel for SyntheticM1RulesKernel {
         else {
             return rejected(state);
         };
+        if assignment.candidate_id != "select_public_object" {
+            return rejected(state);
+        }
+        let CandidateIntent::SelectObject {
+            object: opaque_object,
+        } = &candidate.intent
+        else {
+            return rejected(state);
+        };
+        if state
+            .perspective_identities
+            .resolve_object(trusted_actor, *opaque_object)
+            != Some(GameObjectId(1))
+        {
+            return rejected(state);
+        }
         let binding = pending
             .candidate_bindings
             .get(&assignment.candidate_id)
             .ok_or(KernelExecutionError::BeforeState(
                 EngineStateViolation::PendingDecisionMismatch,
             ))?;
+        if binding
+            != &(EngineCandidateBinding::SelectObject {
+                object: GameObjectId(1),
+            })
+        {
+            return rejected(state);
+        }
         if validate_candidate_binding(
             candidate,
             binding,
