@@ -169,13 +169,13 @@ The equality assertions are intentionally explicit even though EngineState equal
 Define test-only function-pointer mutators and a case descriptor so every case records its name, before-state mutation, response mutation, trusted actor, and classification:
 
 ~~~rust
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 enum RejectionClassification {
     PlayerSubmission,
     TrustedBeforeState(EngineStateViolation),
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 struct RejectionCase {
     name: &'static str,
     mutate_state: fn(&mut EngineState),
@@ -391,4 +391,3 @@ gh pr create --draft --base master --head chris/m1-3-rejection-atomicity
 - Environment checkpoint/limit counters and replay state are explicitly identified as missing executable owners and cannot become PASS by test fabrication.
 - M1.4+ work, RNG draws, allocator consumption, checkpoint/restore/fork/replay execution, endpoint binding, and Magic semantics are explicitly excluded.
 - No plan step contains a placeholder or asks an implementer to infer an unspecified validation rule.
-
