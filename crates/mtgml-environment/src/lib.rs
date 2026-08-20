@@ -17,5 +17,5 @@ pub use checkpoint::{
     EnvironmentLimitCounters, ENVIRONMENT_CHECKPOINT_SCHEMA,
 };
 pub use controller::{EnvironmentBackend, TrustedEnvironmentController};
-pub use endpoint::{PlayerEndpoint, PlayerEndpointHandle, PlayerApiError};
+pub use endpoint::{PlayerApiError, PlayerEndpoint, PlayerEndpointHandle};
 pub use errors::ControllerError;
