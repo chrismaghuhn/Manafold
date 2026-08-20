@@ -252,9 +252,7 @@ def main() -> None:
     ):
         if token not in replay_rust:
             fail(f"Rust replay identity validation lacks {token}")
-    for token in (
-        "rejected_replay_step_must_preserve_the_full_state_digest",
-    ):
+    for token in ("rejected_replay_step_must_preserve_the_full_state_digest",):
         if token not in replay_tests:
             fail(f"Rust replay test evidence lacks {token}")
 
@@ -325,9 +323,7 @@ def main() -> None:
         if token not in env_rust:
             fail(f"checkpoint contract lacks {token}")
 
-    for token in (
-        "checkpoint_digest_covers_status_and_limit_counters",
-    ):
+    for token in ("checkpoint_digest_covers_status_and_limit_counters",):
         if token not in env_tests:
             fail(f"environment test evidence lacks {token}")
 
@@ -335,9 +331,7 @@ def main() -> None:
     rules_prod = [p for p in sorted(rules_src.glob("*.rs")) if p.name != "tests.rs"]
     rules_rust = "\n".join(p.read_text(encoding="utf-8") for p in rules_prod)
     rules_tests = (rules_src / "tests.rs").read_text(encoding="utf-8")
-    for token in (
-        "SemanticValidationCursor",
-    ):
+    for token in ("SemanticValidationCursor",):
         if token not in rules_rust:
             fail(f"compositional transition validation lacks {token}")
     for token in (
