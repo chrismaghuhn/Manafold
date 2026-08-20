@@ -279,7 +279,8 @@ def main() -> None:
     if "Arc<Mutex" not in env_rust or re.search(r"fn\s+bind_player\s*\(\s*&self", env_rust) is None:
         fail("player endpoint handles still borrow the controller exclusively")
 
-    state_rust = (ROOT / "crates/mtgml-state/src/lib.rs").read_text(encoding="utf-8")
+    state_src = ROOT / "crates/mtgml-state/src"
+    state_rust = "\n".join(p.read_text(encoding="utf-8") for p in sorted(state_src.glob("*.rs")))
     for token in (
         "validate_engine_state",
         "EngineStateParts",
