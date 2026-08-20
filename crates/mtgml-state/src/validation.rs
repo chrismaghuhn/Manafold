@@ -1,7 +1,7 @@
 use std::collections::BTreeSet;
 
-use mtgml_decision::EngineCandidateBinding;
-use mtgml_model::{PlayerId, RuleEventId};
+use mtgml_decision::{validate_candidate_binding, EngineCandidateBinding};
+use mtgml_model::{PhysicalCardId, PlayerId, RuleEventId};
 use thiserror::Error;
 
 use crate::engine::EngineState;
@@ -9,6 +9,7 @@ use crate::format::FormatState;
 use crate::knowledge::{
     KnowledgeAcquisitionReason, KnowledgeHistoryChannel, KnowledgePoint, PlayerKnowledgeState,
 };
+use crate::zones::ZonePosition;
 
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum EngineStateViolation {
@@ -20,12 +21,16 @@ pub enum EngineStateViolation {
     ObjectPlayerMismatch,
     #[error("objects and locations are not bijective")]
     ObjectLocationMismatch,
+    #[error("a physical card identifies more than one live game-object incarnation")]
+    DuplicatePhysicalCard,
     #[error("ordered zones contain a missing, duplicated, or wrongly located object")]
     OrderedZoneMismatch,
     #[error("stack records and stack order are not bijective")]
     StackMismatch,
     #[error("an identity allocator does not exceed every allocated identity")]
     AllocatorBehind,
+    #[error("an opaque identity allocator references an absent player")]
+    AllocatorPlayerMismatch,
     #[error("pending decision is invalid for this state")]
     PendingDecisionMismatch,
     #[error("continuation reference is missing")]
@@ -103,23 +108,42 @@ pub fn validate_engine_state(state: &EngineState) -> Result<(), EngineStateViola
     {
         return Err(EngineStateViolation::ObjectPlayerMismatch);
     }
+    let mut live_physical_cards = BTreeSet::<PhysicalCardId>::new();
+    for object in state.zones.objects.values() {
+        if let Some(physical_card) = object.physical_card {
+            if !live_physical_cards.insert(physical_card) {
+                return Err(EngineStateViolation::DuplicatePhysicalCard);
+            }
+        }
+    }
     let object_ids: BTreeSet<_> = state.zones.objects.keys().copied().collect();
     let location_ids: BTreeSet<_> = state.zones.locations.keys().copied().collect();
     if object_ids != location_ids {
         return Err(EngineStateViolation::ObjectLocationMismatch);
     }
+    let expected_ordered: BTreeSet<_> = state
+        .zones
+        .locations
+        .iter()
+        .filter_map(|(object, location)| {
+            (!matches!(location.position, ZonePosition::Unordered)).then_some(*object)
+        })
+        .collect();
     let mut ordered_seen = BTreeSet::new();
     for (key, objects) in &state.zones.ordered_zones {
         for object in objects {
             let Some(location) = state.zones.locations.get(object) else {
                 return Err(EngineStateViolation::OrderedZoneMismatch);
             };
-            if &location.key() != key || !ordered_seen.insert(*object) {
+            if matches!(location.position, ZonePosition::Unordered)
+                || &location.key() != key
+                || !ordered_seen.insert(*object)
+            {
                 return Err(EngineStateViolation::OrderedZoneMismatch);
             }
         }
     }
-    if ordered_seen != object_ids {
+    if ordered_seen != expected_ordered {
         return Err(EngineStateViolation::OrderedZoneMismatch);
     }
     let stack_record_ids: BTreeSet<_> = state.zones.stack_records.keys().copied().collect();
@@ -232,6 +256,15 @@ pub fn validate_engine_state(state: &EngineState) -> Result<(), EngineStateViola
     {
         return Err(EngineStateViolation::AllocatorBehind);
     }
+    if state
+        .allocators
+        .next_opaque_object_id
+        .keys()
+        .chain(state.allocators.next_opaque_ability_id.keys())
+        .any(|player| !state.core.players.contains_key(player))
+    {
+        return Err(EngineStateViolation::AllocatorPlayerMismatch);
+    }
 
     if let Some(pending) = &state.execution.pending_decision {
         pending
@@ -256,6 +289,21 @@ pub fn validate_engine_state(state: &EngineState) -> Result<(), EngineStateViola
             .collect();
         if candidate_ids != binding_ids {
             return Err(EngineStateViolation::PendingDecisionMismatch);
+        }
+        for candidate in &pending.request.candidates {
+            let Some(binding) = pending.candidate_bindings.get(&candidate.candidate_id) else {
+                return Err(EngineStateViolation::PendingDecisionMismatch);
+            };
+            if validate_candidate_binding(
+                candidate,
+                binding,
+                pending.request.actor,
+                &state.perspective_identities,
+            )
+            .is_err()
+            {
+                return Err(EngineStateViolation::PendingDecisionMismatch);
+            }
         }
         if let Some(continuation) = pending.continuation {
             if !state.execution.continuations.contains_key(&continuation) {
@@ -380,6 +428,15 @@ pub fn validate_engine_state(state: &EngineState) -> Result<(), EngineStateViola
                 return Err(EngineStateViolation::FormatMismatch);
             }
             if cards.iter().any(|card| !designated.insert(*card)) {
+                return Err(EngineStateViolation::FormatMismatch);
+            }
+            if cards.iter().any(|card| {
+                !state
+                    .zones
+                    .objects
+                    .values()
+                    .any(|object| object.physical_card == Some(*card) && object.owner == *player)
+            }) {
                 return Err(EngineStateViolation::FormatMismatch);
             }
         }

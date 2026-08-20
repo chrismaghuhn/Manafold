@@ -134,10 +134,6 @@ fn knowledge_provenance_must_fit_the_perspective_history() {
         .zones
         .locations
         .insert(GameObjectId(1), location.clone());
-    value
-        .zones
-        .ordered_zones
-        .insert(location.key(), vec![GameObjectId(1)]);
     value.allocators.next_object_id = GameObjectId(2);
     value
         .allocators
@@ -379,5 +375,324 @@ fn frozen_empty_state_v2_digest_is_stable() {
     assert_eq!(
         digest, digest_v2,
         "from_canonical_bytes must reproduce the same frozen digest"
+    );
+}
+
+fn synthetic_inputs() -> SyntheticResetInputs {
+    SyntheticResetInputs {
+        players: [PlayerId(1), PlayerId(2)],
+        root_seed: RootSeed256::from_lower_hex(&"11".repeat(32)).unwrap(),
+    }
+}
+
+fn synthetic_state() -> EngineState {
+    construct_synthetic_engine_state(synthetic_inputs()).unwrap()
+}
+
+#[test]
+fn synthetic_constructor_builds_a_nontrivial_valid_state() {
+    let value = construct_synthetic_engine_state(synthetic_inputs()).unwrap();
+
+    validate_engine_state(&value).unwrap();
+    assert_eq!(value.revision, StateRevision(0));
+    assert_eq!(value.core.players.len(), 2);
+    assert_eq!(value.zones.objects.len(), 2);
+    assert_eq!(value.zones.locations.len(), 2);
+    assert_eq!(value.zones.ordered_zones.len(), 1);
+    assert!(matches!(
+        value.zones.locations[&GameObjectId(1)].position,
+        ZonePosition::Unordered
+    ));
+    assert!(matches!(
+        value.zones.locations[&GameObjectId(1)].visibility,
+        VisibilityPartition::Public
+    ));
+    assert!(matches!(
+        value.zones.locations[&GameObjectId(2)].position,
+        ZonePosition::Top { offset: 0 }
+    ));
+    assert!(matches!(
+        value.zones.locations[&GameObjectId(2)].visibility,
+        VisibilityPartition::FaceDown
+    ));
+    assert_eq!(
+        value.zones.ordered_zones.values().next().unwrap(),
+        &vec![GameObjectId(2)]
+    );
+    assert_eq!(
+        value
+            .execution
+            .pending_decision
+            .as_ref()
+            .unwrap()
+            .request
+            .actor,
+        PlayerId(1)
+    );
+    assert_eq!(value.knowledge.players.len(), 2);
+    assert_eq!(value.knowledge.players[&PlayerId(1)].known_objects.len(), 1);
+    assert_eq!(value.knowledge.players[&PlayerId(2)].known_objects.len(), 2);
+    assert_eq!(value.perspective_identities.players.len(), 2);
+    assert_eq!(
+        value.perspective_identities.players[&PlayerId(1)]
+            .object_to_opaque
+            .len(),
+        1
+    );
+    assert_eq!(
+        value.perspective_identities.players[&PlayerId(2)]
+            .object_to_opaque
+            .len(),
+        2
+    );
+    assert_eq!(value.allocators.next_object_id, GameObjectId(3));
+    assert_eq!(value.allocators.next_decision_id, DecisionId(2));
+    assert_eq!(
+        value.allocators.next_opaque_object_id[&PlayerId(1)],
+        OpaqueObjectId(2)
+    );
+    assert_eq!(
+        value.allocators.next_opaque_object_id[&PlayerId(2)],
+        OpaqueObjectId(3)
+    );
+    assert!(matches!(value.format, FormatState::None));
+    assert_eq!(value.random.streams.len(), 1);
+    assert_eq!(value.random.contract_id, mtgml_random::MTGML_RNG_V1);
+    assert_eq!(
+        value
+            .random
+            .lookup_stream(&RandomStreamKeyV1::global(RandomStreamKindV1::SyntheticM1))
+            .unwrap(),
+        RandomStreamCursorV1::default()
+    );
+}
+
+#[test]
+fn synthetic_reset_is_exactly_deterministic_for_identical_inputs() {
+    let first = construct_synthetic_engine_state(synthetic_inputs()).unwrap();
+    let second = construct_synthetic_engine_state(synthetic_inputs()).unwrap();
+
+    assert_eq!(first, second);
+    assert_eq!(first.parts(), second.parts());
+    assert_eq!(
+        first.canonical_digest_bytes().unwrap(),
+        second.canonical_digest_bytes().unwrap()
+    );
+    assert_eq!(first.digest().unwrap(), second.digest().unwrap());
+}
+
+#[test]
+fn synthetic_root_seed_is_an_explicit_v2_identity_input() {
+    let first = construct_synthetic_engine_state(synthetic_inputs()).unwrap();
+    let second = construct_synthetic_engine_state(SyntheticResetInputs {
+        players: [PlayerId(1), PlayerId(2)],
+        root_seed: RootSeed256::from_lower_hex(&"22".repeat(32)).unwrap(),
+    })
+    .unwrap();
+    let key = RandomStreamKeyV1::global(RandomStreamKindV1::SyntheticM1);
+
+    assert_ne!(first.random.root_seed, second.random.root_seed);
+    assert_eq!(first.random.streams.keys().collect::<Vec<_>>(), vec![&key]);
+    assert_eq!(second.random.streams.keys().collect::<Vec<_>>(), vec![&key]);
+    assert_eq!(
+        first.random.lookup_stream(&key).unwrap(),
+        second.random.lookup_stream(&key).unwrap()
+    );
+    assert_ne!(first.digest().unwrap(), second.digest().unwrap());
+}
+
+#[test]
+fn synthetic_construction_does_not_consume_the_initial_rng_word() {
+    let value = synthetic_state();
+    let key = RandomStreamKeyV1::global(RandomStreamKindV1::SyntheticM1);
+    let cursor = value.random.lookup_stream(&key).unwrap();
+    assert_eq!(cursor, RandomStreamCursorV1::default());
+
+    let expected =
+        mtgml_random::hmac_counter::next_raw_u64(&value.random.root_seed, &key, &cursor).unwrap();
+    let mut after = value.clone();
+    let actual = after.consume_raw_u64(&key).unwrap();
+
+    assert_eq!(actual, expected.0);
+    assert_eq!(after.random.lookup_stream(&key).unwrap(), expected.1);
+}
+
+#[test]
+fn synthetic_reset_rejects_duplicate_players() {
+    let mut inputs = synthetic_inputs();
+    inputs.players = [PlayerId(1), PlayerId(1)];
+
+    assert_eq!(
+        construct_synthetic_engine_state(inputs),
+        Err(SyntheticStateConstructionError::DuplicatePlayers)
+    );
+}
+
+#[test]
+fn opaque_allocator_must_reference_declared_player() {
+    let mut value = synthetic_state();
+    value
+        .allocators
+        .next_opaque_object_id
+        .insert(PlayerId(99), OpaqueObjectId(1));
+
+    assert_eq!(
+        validate_engine_state(&value),
+        Err(EngineStateViolation::AllocatorPlayerMismatch)
+    );
+}
+
+#[test]
+fn unordered_object_must_not_appear_in_ordered_zones() {
+    let mut value = synthetic_state();
+    let public_object = GameObjectId(1);
+    let public_key = value.zones.locations[&public_object].key();
+    value
+        .zones
+        .ordered_zones
+        .entry(public_key)
+        .or_default()
+        .push(public_object);
+
+    assert_eq!(
+        validate_engine_state(&value),
+        Err(EngineStateViolation::OrderedZoneMismatch)
+    );
+}
+
+#[test]
+fn ordered_object_must_appear_exactly_once() {
+    let mut value = synthetic_state();
+    let hidden_object = GameObjectId(2);
+    let hidden_key = value.zones.locations[&hidden_object].key();
+    value
+        .zones
+        .ordered_zones
+        .get_mut(&hidden_key)
+        .unwrap()
+        .push(hidden_object);
+
+    assert_eq!(
+        validate_engine_state(&value),
+        Err(EngineStateViolation::OrderedZoneMismatch)
+    );
+}
+
+#[test]
+fn ordered_object_must_not_be_missing() {
+    let mut value = synthetic_state();
+    let hidden_object = GameObjectId(2);
+    let hidden_key = value.zones.locations[&hidden_object].key();
+    value.zones.ordered_zones.remove(&hidden_key);
+
+    assert_eq!(
+        validate_engine_state(&value),
+        Err(EngineStateViolation::OrderedZoneMismatch)
+    );
+}
+
+#[test]
+fn duplicate_live_physical_card_incarnation_rejected() {
+    let mut value = synthetic_state();
+    let physical_card = value.zones.objects[&GameObjectId(1)].physical_card;
+    value
+        .zones
+        .objects
+        .get_mut(&GameObjectId(2))
+        .unwrap()
+        .physical_card = physical_card;
+
+    assert_eq!(
+        validate_engine_state(&value),
+        Err(EngineStateViolation::DuplicatePhysicalCard)
+    );
+}
+
+#[test]
+fn pending_candidate_binding_must_match_authoritative_binding() {
+    let mut value = synthetic_state();
+    let binding = value
+        .execution
+        .pending_decision
+        .as_mut()
+        .unwrap()
+        .candidate_bindings
+        .get_mut("select_public_object")
+        .unwrap();
+    *binding = mtgml_decision::EngineCandidateBinding::SelectObject {
+        object: GameObjectId(2),
+    };
+
+    assert_eq!(
+        validate_engine_state(&value),
+        Err(EngineStateViolation::PendingDecisionMismatch)
+    );
+}
+
+#[test]
+fn commander_designation_must_reference_owned_live_physical_card() {
+    let mut value = synthetic_state();
+    value.format = FormatState::Commander {
+        state: CommanderState {
+            designations: BTreeMap::from([(PlayerId(1), vec![PhysicalCardId(2)])]),
+            cast_counts: BTreeMap::new(),
+            damage: BTreeMap::new(),
+        },
+    };
+
+    assert_eq!(
+        validate_engine_state(&value),
+        Err(EngineStateViolation::FormatMismatch)
+    );
+}
+
+#[test]
+fn valid_commander_structural_references_are_accepted() {
+    let mut value = synthetic_state();
+    value.format = FormatState::Commander {
+        state: CommanderState {
+            designations: BTreeMap::from([
+                (PlayerId(1), vec![PhysicalCardId(1)]),
+                (PlayerId(2), vec![PhysicalCardId(2)]),
+            ]),
+            cast_counts: BTreeMap::new(),
+            damage: BTreeMap::new(),
+        },
+    };
+
+    validate_engine_state(&value).unwrap();
+}
+
+#[test]
+fn commander_ledger_must_reference_a_designated_physical_card() {
+    let mut value = synthetic_state();
+    value.format = FormatState::Commander {
+        state: CommanderState {
+            designations: BTreeMap::from([(PlayerId(1), vec![PhysicalCardId(1)])]),
+            cast_counts: BTreeMap::from([(PhysicalCardId(2), 1)]),
+            damage: BTreeMap::new(),
+        },
+    };
+
+    assert_eq!(
+        validate_engine_state(&value),
+        Err(EngineStateViolation::FormatMismatch)
+    );
+}
+
+#[test]
+fn commander_damage_ledger_must_reference_a_declared_player() {
+    let mut value = synthetic_state();
+    value.format = FormatState::Commander {
+        state: CommanderState {
+            designations: BTreeMap::from([(PlayerId(1), vec![PhysicalCardId(1)])]),
+            cast_counts: BTreeMap::new(),
+            damage: BTreeMap::from([(PhysicalCardId(1), BTreeMap::from([(PlayerId(99), 1)]))]),
+        },
+    };
+
+    assert_eq!(
+        validate_engine_state(&value),
+        Err(EngineStateViolation::FormatMismatch)
     );
 }
