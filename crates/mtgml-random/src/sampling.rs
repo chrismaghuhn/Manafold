@@ -51,17 +51,26 @@ pub fn shuffle<T: Clone>(
     if len <= 1 {
         return Ok((0, *cursor));
     }
+
+    // First, compute all (i, j) swaps without mutating values
+    // This ensures atomicity: either all swaps succeed or none do
     let mut current = *cursor;
     let mut total_consumed = 0u64;
-    let mut i = len - 1;
-    while i >= 1 {
+    let mut swaps: Vec<(usize, usize)> = Vec::with_capacity(len.saturating_sub(1));
+
+    for i in (1..len).rev() {
         let bound = u64::try_from(i + 1).map_err(|_| RandomValidationError::InvalidRandomBound)?;
         let (j, consumed, next) = uniform_below_u64(root, key, &current, bound)?;
         total_consumed += consumed;
         current = next;
-        values.swap(i, j as usize);
-        i -= 1;
+        swaps.push((i, j as usize));
     }
+
+    // Only apply swaps if all draws succeeded
+    for (i, j) in swaps {
+        values.swap(i, j);
+    }
+
     Ok((total_consumed, current))
 }
 
