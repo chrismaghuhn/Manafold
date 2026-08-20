@@ -4,10 +4,10 @@
 //! `PlayerEndpointHandle` is permanently perspective-bound and exposes only
 //! projected information. Multiple player handles may coexist.
 
-pub mod checkpoint;
-pub mod controller;
-pub mod endpoint;
-pub mod errors;
+mod checkpoint;
+mod controller;
+mod endpoint;
+mod errors;
 
 #[cfg(test)]
 mod tests;
@@ -17,5 +17,5 @@ pub use checkpoint::{
     EnvironmentLimitCounters, ENVIRONMENT_CHECKPOINT_SCHEMA,
 };
 pub use controller::{EnvironmentBackend, TrustedEnvironmentController};
-pub use endpoint::{PlayerApiError, PlayerEndpoint, PlayerEndpointHandle};
+pub use endpoint::{PlayerEndpoint, PlayerEndpointHandle, PlayerApiError};
 pub use errors::ControllerError;
