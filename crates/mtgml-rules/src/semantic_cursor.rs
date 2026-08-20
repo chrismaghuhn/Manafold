@@ -1,5 +1,5 @@
 use mtgml_model::{DecisionId, GameObjectId, PlayerId};
-use mtgml_random::RandomStreamKeyV1;
+use mtgml_random::{RandomStreamCursorV1, RandomStreamKeyV1, RootSeed256};
 use mtgml_state::{EngineState, ObjectSnapshot};
 use std::collections::BTreeMap;
 
@@ -10,6 +10,7 @@ pub(crate) struct SemanticValidationCursor {
     life: BTreeMap<PlayerId, i64>,
     objects: BTreeMap<GameObjectId, ObjectSnapshot>,
     pending_decision: Option<DecisionId>,
+    root_seed: RootSeed256,
     random_counters: BTreeMap<RandomStreamKeyV1, u64>,
 }
 
@@ -28,6 +29,7 @@ impl SemanticValidationCursor {
                 .pending_decision
                 .as_ref()
                 .map(|record| record.request.decision_id),
+            root_seed: state.random.root_seed,
             random_counters: state
                 .random
                 .streams
@@ -99,6 +101,42 @@ impl SemanticValidationCursor {
                     return Err(TransitionViolation::DecisionEvent);
                 }
                 self.pending_decision = None;
+            }
+            AuthoritativeRuleEventKind::RandomValueSampled {
+                stream,
+                bound,
+                value,
+                raw_words_consumed,
+                cursor_before,
+                cursor_after,
+            } => {
+                let current = self
+                    .random_counters
+                    .get(stream)
+                    .copied()
+                    .ok_or(TransitionViolation::Randomness)?;
+                if current != *cursor_before {
+                    return Err(TransitionViolation::Randomness);
+                }
+                let current_cursor = RandomStreamCursorV1 {
+                    next_raw_u64: current,
+                };
+                let (expected_value, expected_consumed, expected_cursor) =
+                    mtgml_random::sampling::uniform_below_u64(
+                        &self.root_seed,
+                        stream,
+                        &current_cursor,
+                        *bound,
+                    )
+                    .map_err(|_| TransitionViolation::Randomness)?;
+                if expected_value != *value
+                    || expected_consumed != *raw_words_consumed
+                    || expected_cursor.next_raw_u64 != *cursor_after
+                {
+                    return Err(TransitionViolation::Randomness);
+                }
+                self.random_counters
+                    .insert(*stream, expected_cursor.next_raw_u64);
             }
             AuthoritativeRuleEventKind::PublicOutcome { code } => {
                 if code.is_empty() {

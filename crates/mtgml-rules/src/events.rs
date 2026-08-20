@@ -1,4 +1,5 @@
 use mtgml_model::{DecisionId, GameObjectId, PlayerId, RuleEventId, StateRevision};
+use mtgml_random::RandomStreamKeyV1;
 use mtgml_state::{SemanticDeltaOperation, ZoneTransition};
 use serde::{Deserialize, Serialize};
 
@@ -26,6 +27,14 @@ pub enum AuthoritativeRuleEventKind {
     },
     DecisionCleared {
         decision: DecisionId,
+    },
+    RandomValueSampled {
+        stream: RandomStreamKeyV1,
+        bound: u64,
+        value: u64,
+        raw_words_consumed: u64,
+        cursor_before: u64,
+        cursor_after: u64,
     },
     PublicOutcome {
         code: String,
@@ -56,6 +65,21 @@ impl AuthoritativeRuleEventKind {
             },
             Self::DecisionCleared { decision } => SemanticDeltaOperation::DecisionCleared {
                 decision: *decision,
+            },
+            Self::RandomValueSampled {
+                stream,
+                bound,
+                value,
+                raw_words_consumed,
+                cursor_before,
+                cursor_after,
+            } => SemanticDeltaOperation::RandomValueSampled {
+                stream: *stream,
+                bound: *bound,
+                value: *value,
+                raw_words_consumed: *raw_words_consumed,
+                cursor_before: *cursor_before,
+                cursor_after: *cursor_after,
             },
             Self::PublicOutcome { code } => {
                 SemanticDeltaOperation::PublicOutcome { code: code.clone() }

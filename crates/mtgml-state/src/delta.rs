@@ -1,4 +1,5 @@
 use mtgml_model::{DecisionId, FullStateDigestV2, GameObjectId, PlayerId, StateRevision};
+use mtgml_random::RandomStreamKeyV1;
 use serde::{Deserialize, Serialize};
 
 use crate::digest::StateDigestError;
@@ -29,6 +30,14 @@ pub enum SemanticDeltaOperation {
     },
     DecisionCleared {
         decision: DecisionId,
+    },
+    RandomValueSampled {
+        stream: RandomStreamKeyV1,
+        bound: u64,
+        value: u64,
+        raw_words_consumed: u64,
+        cursor_before: u64,
+        cursor_after: u64,
     },
     PublicOutcome {
         code: String,
