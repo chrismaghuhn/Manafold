@@ -230,7 +230,10 @@ def main() -> None:
     if (ROOT / ".github/workflows/ci.yml").exists():
         fail("legacy monolithic CI workflow must not coexist with V0.2.2 split profiles")
 
-    replay_rust = (ROOT / "crates/mtgml-replay/src/lib.rs").read_text(encoding="utf-8")
+    replay_src = ROOT / "crates/mtgml-replay/src"
+    replay_prod = [p for p in sorted(replay_src.glob("*.rs")) if p.name != "tests.rs"]
+    replay_rust = "\n".join(p.read_text(encoding="utf-8") for p in replay_prod)
+    replay_tests = (replay_src / "tests.rs").read_text(encoding="utf-8")
     for token in (
         "format_policy_snapshot",
         "card_bundle",
@@ -244,12 +247,16 @@ def main() -> None:
         if token not in replay_rust:
             fail(f"Rust replay contract lacks {token}")
     for token in (
-        "rejected_replay_step_must_preserve_the_full_state_digest",
-        "state_digest_after != state_digest",
         "rejected response mutated the authoritative revision or full-state identity",
+        "state_digest_after != state_digest",
     ):
         if token not in replay_rust:
             fail(f"Rust replay identity validation lacks {token}")
+    for token in (
+        "rejected_replay_step_must_preserve_the_full_state_digest",
+    ):
+        if token not in replay_tests:
+            fail(f"Rust replay test evidence lacks {token}")
 
     events_rust = (ROOT / "crates/mtgml-observation/src/lib.rs").read_text(encoding="utf-8")
     events_python = (ROOT / "python/src/mtgml/events.py").read_text(encoding="utf-8")
@@ -275,7 +282,10 @@ def main() -> None:
     ):
         fail("Rust shared negative fixture test is not implemented")
 
-    env_rust = (ROOT / "crates/mtgml-environment/src/lib.rs").read_text(encoding="utf-8")
+    env_src = ROOT / "crates/mtgml-environment/src"
+    env_prod = [p for p in sorted(env_src.glob("*.rs")) if p.name != "tests.rs"]
+    env_rust = "\n".join(p.read_text(encoding="utf-8") for p in env_prod)
+    env_tests = (env_src / "tests.rs").read_text(encoding="utf-8")
     if "Arc<Mutex" not in env_rust or re.search(r"fn\s+bind_player\s*\(\s*&self", env_rust) is None:
         fail("player endpoint handles still borrow the controller exclusively")
 
@@ -311,10 +321,15 @@ def main() -> None:
         "EnvironmentLimitCounters",
         "CheckpointCodecIdentity",
         "checkpoint_digest: CheckpointDigestV2",
-        "checkpoint_digest_covers_status_and_limit_counters",
     ):
         if token not in env_rust:
             fail(f"checkpoint contract lacks {token}")
+
+    for token in (
+        "checkpoint_digest_covers_status_and_limit_counters",
+    ):
+        if token not in env_tests:
+            fail(f"environment test evidence lacks {token}")
 
     rules_rust = (ROOT / "crates/mtgml-rules/src/lib.rs").read_text(encoding="utf-8")
     for token in (
