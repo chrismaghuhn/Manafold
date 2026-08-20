@@ -331,17 +331,24 @@ def main() -> None:
         if token not in env_tests:
             fail(f"environment test evidence lacks {token}")
 
-    rules_rust = (ROOT / "crates/mtgml-rules/src/lib.rs").read_text(encoding="utf-8")
+    rules_src = ROOT / "crates/mtgml-rules/src"
+    rules_prod = [p for p in sorted(rules_src.glob("*.rs")) if p.name != "tests.rs"]
+    rules_rust = "\n".join(p.read_text(encoding="utf-8") for p in rules_prod)
+    rules_tests = (rules_src / "tests.rs").read_text(encoding="utf-8")
     for token in (
         "SemanticValidationCursor",
+    ):
+        if token not in rules_rust:
+            fail(f"compositional transition validation lacks {token}")
+    for token in (
         "two_life_changes_in_one_atomic_transition_are_compositional",
         "decision_clear_then_create_composes_to_the_next_decision",
         "repeated_tap_changes_in_one_atomic_transition_are_compositional",
         "consecutive_zone_incarnations_in_one_transition_are_compositional",
         "accepted_transition_cannot_reuse_the_consumed_decision_id",
     ):
-        if token not in rules_rust:
-            fail(f"compositional transition validation lacks {token}")
+        if token not in rules_tests:
+            fail(f"rules test evidence lacks {token}")
 
     conformance_rust = (ROOT / "crates/mtgml-conformance/src/lib.rs").read_text(encoding="utf-8")
     for token in (
