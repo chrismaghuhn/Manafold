@@ -1,7 +1,7 @@
 # Open Decisions
 
 **Status:** blocking and resolved decision register  
-**Last reviewed:** 2026-08-19
+**Last reviewed:** 2026-08-20
 
 | ID | Status | Decision | Deadline | Safe default / current resolution |
 |---|---|---|---|---|
@@ -21,7 +21,7 @@
 | OD-014 | open | Multiplayer utility semantics | multiplayer entry | two-player only |
 | OD-015 | partial | API stability and deprecation | first external consumer | lifecycle classes accepted; APIs not frozen |
 | OD-016 | partial | Toolchain/build image and lockfile | V0.2.2 freeze/release | Python 3.13.15 and Rust 1.85.1 pinned; Cargo.lock, native clean build, and public-release transitive/hash lock or build image still required |
-| OD-017 | open | Persisted digest algorithm and canonical state codec version | first persisted checkpoint | internal digests non-public |
+| OD-017 | resolved | Persisted digest algorithm and canonical state codec version | first persisted checkpoint | unkeyed SHA-256 + versioned digest envelope + `mtgml.canonical-cbor.v1` + detached persisted DTOs; ADR 0038 |
 | OD-018 | resolved | Capability key grammar/lifecycle | M0.2 | capability model and ADR 0022 |
 | OD-019 | open | Exact format-module hook interface | M3 | compile-time Commander only; no hidden state |
 | OD-020 | open | Search/determinization capability boundary | first search integration | no policy access to full-state forks |
