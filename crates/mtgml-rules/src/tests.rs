@@ -322,6 +322,83 @@ fn synthetic_m1_acceptance_returns_exact_transition_product() {
 }
 
 #[test]
+fn synthetic_m1_acceptance_uses_the_first_player_for_non_default_ids() {
+    let first_player = PlayerId(7);
+    let second_player = PlayerId(9);
+    let before = construct_synthetic_engine_state(SyntheticResetInputs {
+        players: [first_player, second_player],
+        root_seed: RootSeed256::from_lower_hex(&"22".repeat(32)).unwrap(),
+    })
+    .unwrap();
+    let response = synthetic_response(&before);
+
+    assert_eq!(before.revision, StateRevision(0));
+    assert_eq!(before.core.players[&first_player].life, 40);
+    assert_eq!(before.core.players[&second_player].life, 40);
+    assert_eq!(
+        before
+            .execution
+            .pending_decision
+            .as_ref()
+            .unwrap()
+            .request
+            .actor,
+        first_player
+    );
+
+    let mut kernel = SyntheticM1RulesKernel;
+    let result = kernel.apply(&before, first_player, &response).unwrap();
+
+    assert!(result.accepted);
+    assert_eq!(result.next_state.revision, StateRevision(1));
+    assert_eq!(result.next_state.core.players[&first_player].life, 38);
+    assert_eq!(result.next_state.core.players[&second_player].life, 40);
+    assert_eq!(result.next_state.execution.pending_decision, None);
+    assert_eq!(
+        result.next_state.allocators.next_rule_event_id,
+        RuleEventId(4)
+    );
+    assert_eq!(
+        result.events,
+        vec![
+            AuthoritativeRuleEvent {
+                event_id: RuleEventId(1),
+                state_revision: StateRevision(1),
+                event: AuthoritativeRuleEventKind::LifeChanged {
+                    player: first_player,
+                    from: 40,
+                    to: 39,
+                },
+            },
+            AuthoritativeRuleEvent {
+                event_id: RuleEventId(2),
+                state_revision: StateRevision(1),
+                event: AuthoritativeRuleEventKind::LifeChanged {
+                    player: first_player,
+                    from: 39,
+                    to: 38,
+                },
+            },
+            AuthoritativeRuleEvent {
+                event_id: RuleEventId(3),
+                state_revision: StateRevision(1),
+                event: AuthoritativeRuleEventKind::DecisionCleared {
+                    decision: DecisionId(1),
+                },
+            },
+        ]
+    );
+
+    let reapplied = result.delta.apply(&before).unwrap();
+    assert_eq!(reapplied, result.next_state);
+    assert_eq!(
+        reapplied.digest().unwrap(),
+        result.next_state.digest().unwrap()
+    );
+    validate_transition_contract(&before, &result).unwrap();
+}
+
+#[test]
 fn second_life_event_must_use_cursor_life_after_first_event() {
     let before = state();
     let mut after = before.clone();

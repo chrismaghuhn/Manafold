@@ -26,6 +26,7 @@ impl RulesKernel for SyntheticM1RulesKernel {
             return rejected(state);
         };
         let request = &pending.request;
+        let actor = request.actor;
         if trusted_actor != request.actor
             || response.validate().is_err()
             || response.decision_id != request.decision_id
@@ -119,7 +120,7 @@ impl RulesKernel for SyntheticM1RulesKernel {
         if next_state
             .core
             .players
-            .get(&PlayerId(1))
+            .get(&actor)
             .map(|player| player.life)
             != Some(40)
         {
@@ -128,7 +129,7 @@ impl RulesKernel for SyntheticM1RulesKernel {
         next_state
             .core
             .players
-            .get_mut(&PlayerId(1))
+            .get_mut(&actor)
             .ok_or(KernelExecutionError::AfterState(
                 EngineStateViolation::MissingTurnPlayer,
             ))?
@@ -137,7 +138,7 @@ impl RulesKernel for SyntheticM1RulesKernel {
             event_id: first_event_id,
             state_revision: next_state.revision,
             event: AuthoritativeRuleEventKind::LifeChanged {
-                player: PlayerId(1),
+                player: actor,
                 from: 40,
                 to: 39,
             },
@@ -145,7 +146,7 @@ impl RulesKernel for SyntheticM1RulesKernel {
         next_state
             .core
             .players
-            .get_mut(&PlayerId(1))
+            .get_mut(&actor)
             .ok_or(KernelExecutionError::AfterState(
                 EngineStateViolation::MissingTurnPlayer,
             ))?
@@ -154,7 +155,7 @@ impl RulesKernel for SyntheticM1RulesKernel {
             event_id: second_event_id,
             state_revision: next_state.revision,
             event: AuthoritativeRuleEventKind::LifeChanged {
-                player: PlayerId(1),
+                player: actor,
                 from: 39,
                 to: 38,
             },

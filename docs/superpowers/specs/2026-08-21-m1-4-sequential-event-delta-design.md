@@ -12,8 +12,13 @@ transaction in `SyntheticM1RulesKernel`. The response remains one atomic
 outer transition, but its local workspace performs three ordered semantic
 mutations:
 
-1. `PlayerId(1)` life `40 -> 39`;
-2. `PlayerId(1)` life `39 -> 38`;
+Throughout this design, `P1` means the acting synthetic player
+(`pending.request.actor`), which the M1.1 constructor sets to the first entry
+of `SyntheticResetInputs.players`; it is not a hardcoded numeric
+`PlayerId(1)`. `P2` means the second supplied player.
+
+1. `P1` life `40 -> 39`;
+2. `P1` life `39 -> 38`;
 3. clear `DecisionId(1)`.
 
 The selected object remains semantically inert. The life changes are synthetic

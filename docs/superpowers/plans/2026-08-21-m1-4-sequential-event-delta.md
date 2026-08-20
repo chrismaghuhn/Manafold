@@ -8,6 +8,12 @@
 
 **Architecture:** Keep EngineState authoritative and SyntheticM1RulesKernel as the single synthetic implementation. After existing M1.3 validation succeeds, mutate a cloned workspace in semantic order, assign all three events to one revision, advance only the rule-event allocator from 1 to 4, build a complete replacement StateDelta, and validate the complete product before returning.
 
+**Identity convention:** In this plan, `P1` means the acting synthetic player
+(`pending.request.actor`, the first entry of `SyntheticResetInputs.players`),
+not literal `PlayerId(1)`. `P2` means the second supplied player. The ordinary
+`[PlayerId(1), PlayerId(2)]` fixture remains valid, but production semantics
+must work for any two distinct player IDs.
+
 **Tech Stack:** Rust 1.85.1, mtgml-rules, mtgml-state, FullStateDigestV2, AuthoritativeRuleEvent, SemanticDeltaOperation, locked Cargo tests, repository Python checks, just profiles, and GitHub Actions Draft PR checks.
 
 ---
@@ -117,6 +123,13 @@ assert_eq!(result.next_state.allocators.next_decision_id, before.allocators.next
 assert_eq!(result.next_state.allocators.next_continuation_id, before.allocators.next_continuation_id);
 ~~~
 
+- [ ] Add a regression test through `construct_synthetic_engine_state` with
+  `players = [PlayerId(7), PlayerId(9)]` and submit the valid response as
+  `PlayerId(7)`. Assert acceptance, `PlayerId(7)` life `40 -> 38`,
+  `PlayerId(9)` life unchanged at `40`, all three exact events naming
+  `PlayerId(7)`, revision `0 -> 1`, `next_rule_event_id == RuleEventId(4)`,
+  complete delta reapplication, and digest parity.
+
 - [ ] Run the red test:
 
 ~~~
@@ -169,7 +182,13 @@ let next_event_id = RuleEventId(third_event_id.0.checked_add(1)
     .ok_or(KernelExecutionError::RuleEventIdOverflow)?);
 ~~~
 
-- [ ] On the cloned workspace, set P1 life to 39, append LifeChanged(P1, 40, 39), set P1 life to 38, append LifeChanged(P1, 39, 38), clear the pending decision, and append DecisionCleared(request.decision_id). Every event uses next_state.revision; the outer revision is incremented once.
+- [ ] Derive `let actor = request.actor` from the already validated pending
+  request. On the cloned workspace, set `actor` life to 39, append
+  `LifeChanged(actor, 40, 39)`, set `actor` life to 38, append
+  `LifeChanged(actor, 39, 38)`, clear the pending decision, and append
+  `DecisionCleared(request.decision_id)`. Every event uses
+  `next_state.revision`; the outer revision is incremented once. Do not use a
+  global numeric player ID as production semantics.
 
 - [ ] Set only next_state.allocators.next_rule_event_id = next_event_id. Construct audit from the ordered event vector, create StateDelta::between(state, &next_state, audit), derive next_decision = None and EpisodeStatus::Running, validate the after-state and validate_transition_contract, then return. Do not mutate the input state, call RNG, or consume any allocator other than rule-event IDs.
 
@@ -277,6 +296,8 @@ The body must include the starting SHA, final head SHA, changed files, exact thr
 ## Plan self-review
 
 - Exact event order, one outer revision, state mutations, audit order, full delta reapplication, digest parity, and unrelated-state identity are covered by Tasks 2 and 4.
+- The non-default identity regression proves the first/acting synthetic player
+  is selected by `request.actor`, not by numeric `PlayerId(1)`.
 - Repeated dependent events, reversed events, incomplete final projection, audit disagreement, and the exact mixed sequence are covered by Tasks 2 and 3.
 - The existing M1.3 rejection matrix is rerun unchanged.
 - Existing generic semantic_cursor.rs, contract.rs, events.rs, and StateDelta contracts are reused; no parallel kernel or speculative abstraction is planned.
