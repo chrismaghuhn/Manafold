@@ -122,7 +122,7 @@ fn synthetic_response(state: &EngineState) -> DecisionResponse {
 fn synthetic_kernel_boundary_carries_trusted_actor() {
     let state = synthetic_state();
     let response = synthetic_response(&state);
-    let mut kernel = SyntheticM1RulesKernel::default();
+    let mut kernel = SyntheticM1RulesKernel;
     let result = kernel.apply(&state, PlayerId(1), &response);
     assert!(result.is_ok());
 }
@@ -166,7 +166,7 @@ fn synthetic_m1_acceptance_returns_exact_transition_product() {
     let expected_delta =
         StateDelta::between(&before, &expected_after, expected_audit.clone()).unwrap();
 
-    let mut kernel = SyntheticM1RulesKernel::default();
+    let mut kernel = SyntheticM1RulesKernel;
     let result = kernel.apply(&before, PlayerId(1), &response).unwrap();
 
     assert!(result.accepted);
@@ -199,7 +199,7 @@ fn synthetic_wrong_actor_returns_exact_rejected_product() {
     let before = synthetic_state();
     let response = synthetic_response(&before);
     let before_digest = before.digest().unwrap();
-    let mut kernel = SyntheticM1RulesKernel::default();
+    let mut kernel = SyntheticM1RulesKernel;
 
     let result = kernel.apply(&before, PlayerId(2), &response).unwrap();
 
@@ -234,7 +234,7 @@ fn invalid_before_state_is_a_kernel_execution_error() {
     let response = synthetic_response(&before);
     let mut invalid = before.clone();
     invalid.allocators.next_rule_event_id = RuleEventId(0);
-    let mut kernel = SyntheticM1RulesKernel::default();
+    let mut kernel = SyntheticM1RulesKernel;
 
     assert!(matches!(
         kernel.apply(&invalid, PlayerId(1), &response),
