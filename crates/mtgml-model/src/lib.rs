@@ -220,6 +220,10 @@ domain_digest!(ContentDigest, "mtgml.content-digest.v1");
 domain_digest!(ReplayDigest, "mtgml.replay-digest.v1");
 domain_digest!(CheckpointDigest, "mtgml.checkpoint-digest.v1");
 
+// === V2 digest domains ===
+domain_digest!(FullStateDigestV2, "mtgml.full-state-digest.v2");
+domain_digest!(CheckpointDigestV2, "mtgml.checkpoint-digest.v2");
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct PlayerOutcome {
@@ -316,6 +320,45 @@ mod tests {
         assert_eq!(
             CheckpointDigest::from_canonical_bytes(bytes).as_str(),
             "e68abf91d68057ab81bcbacdbc9f1dfe35b4e3fded6b9f8309fb7c948d8750f4"
+        );
+        assert_eq!(
+            FullStateDigestV2::from_canonical_bytes(bytes).as_str(),
+            "ea09c274b70ebb52c34f28ccb637801c923d03744cec4de8900b016e9323ab37"
+        );
+        assert_eq!(
+            CheckpointDigestV2::from_canonical_bytes(bytes).as_str(),
+            "373265db972e21d967a41932938aeedbdb5f5782b41951904f6b2ecae28a1f08"
+        );
+    }
+
+    #[test]
+    fn full_state_digest_v1_historical_golden() {
+        // Historical V1 canonical bytes (frozen from original V1 implementation at commit 840c269)
+        // This is test-only detached evidence; no EngineStateV1 runtime exists.
+        // V1 RandomState had: algorithm_id, derivation_version, root_seed_hex, streams: BTreeMap<String, RandomStreamState { counter }>
+        // Fields sorted lexicographically by canonicalize_json
+        let v1_bytes = br#"{"allocators":{"next_ability_id":"1","next_continuation_id":"1","next_decision_id":"1","next_effect_id":"1","next_object_id":"1","next_opaque_ability_id":{},"next_opaque_object_id":{},"next_rule_event_id":"1","next_stack_object_id":"1","next_trigger_id":"1"},"core":{"active_player":"1","players":{"1":{"has_lost":false,"life":40},"2":{"has_lost":false,"life":40}},"priority_player":"1","turn_number":1},"domain":"mtgml.full-state-digest.v1","execution":{"continuations":{},"delayed_effects":{},"effects":{},"waiting_triggers":{}},"format":{"kind":"none"},"knowledge":{"players":{"1":{"invalidations":[],"known_objects":{},"private_history_length":0,"public_history_length":0},"2":{"invalidations":[],"known_objects":{},"private_history_length":0,"public_history_length":0}}},"perspective_identities":{"players":{"1":{"ability_to_opaque":{},"object_to_opaque":{},"opaque_to_ability":{},"opaque_to_object":{}},"2":{"ability_to_opaque":{},"object_to_opaque":{},"opaque_to_ability":{},"opaque_to_object":{}}}},"random":{"algorithm_id":"mtgml.rng.v1","derivation_version":"1","root_seed_hex":"0000000000000000000000000000000000000000000000000000000000000000","streams":{}},"revision":0,"schema_version":"full-state-digest-input.v1","zones":{"locations":{},"objects":{},"ordered_zones":[],"stack_order":[],"stack_records":{}}}"#;
+        let v1_digest = FullStateDigest::from_canonical_bytes(v1_bytes);
+        assert_eq!(
+            v1_digest.as_str(),
+            "f567ad841d1935e4baaf194cc4fd899fa09adbad64134b429f51ccf765089681",
+            "Historical V1 FullStateDigest golden must not change"
+        );
+    }
+
+    #[test]
+    fn checkpoint_digest_v1_historical_golden() {
+        // Historical V1 checkpoint canonical bytes (frozen from original V1 implementation at commit 840c269)
+        // This is test-only detached evidence; no EngineStateV1 runtime exists.
+        // V1 field order after canonicalize_json: codec, domain, limit_counters, schema_version, state_digest, status
+        // V1 status: {"kind":"running"} (internally tagged enum), not "running"
+        // V1 state_digest uses the V1 FullStateDigest above
+        let v1_bytes = br#"{"codec":{"codec_id":"in-memory-reference","semantic_version":"1"},"domain":"mtgml.checkpoint-digest.v1","limit_counters":{"accepted_transitions":0,"decisions_submitted":0,"resource_units_consumed":0,"rule_events_emitted":0,"wall_clock_elapsed_millis":0},"schema_version":"environment-checkpoint.v1","state_digest":"f567ad841d1935e4baaf194cc4fd899fa09adbad64134b429f51ccf765089681","status":{"kind":"running"}}"#;
+        let v1_digest = CheckpointDigest::from_canonical_bytes(v1_bytes);
+        assert_eq!(
+            v1_digest.as_str(),
+            "793afd4d0866ae99aec2abccab932a2a8d86893c5099231e46c6f7736a8b0755",
+            "Historical V1 CheckpointDigest golden must not change"
         );
     }
 

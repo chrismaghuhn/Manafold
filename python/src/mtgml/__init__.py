@@ -16,12 +16,18 @@ from .episode import (
 from .events import ObservedEvent, ObservedEventEnvelope
 from .observation import InformationStateEnvelope, ObservationEnvelope, PlayerStep
 from .player_client import PlayerClient
-from .replay import AuthoritativeReplayV1, ReplayManifestV1
+from .replay import (
+    AuthoritativeReplayV1,
+    AuthoritativeReplayV2,
+    ReplayManifestV1,
+    ReplayManifestV2,
+)
 from .wire import decode_canonical, encode_canonical
 
 __all__ = [
     "ActionCandidate",
     "AuthoritativeReplayV1",
+    "AuthoritativeReplayV2",
     "CandidateAssignment",
     "CandidateIntent",
     "DecisionResponse",
@@ -37,6 +43,7 @@ __all__ = [
     "PlayerResult",
     "PlayerStep",
     "ReplayManifestV1",
+    "ReplayManifestV2",
     "TerminalReason",
     "TruncationReason",
     "decode_canonical",

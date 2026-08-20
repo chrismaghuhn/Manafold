@@ -1,7 +1,7 @@
 //! Exact per-step conformance assertions. Event counts are diagnostic only.
 
 use mtgml_decision::{DecisionResponse, PlayerDecisionRequest};
-use mtgml_model::{EpisodeStatus, FullStateDigest, PlayerId};
+use mtgml_model::{EpisodeStatus, FullStateDigestV2, PlayerId};
 use mtgml_observation::PlayerStep;
 use mtgml_rules::{validate_transition_contract, AuthoritativeRuleEvent, TransitionResult};
 use mtgml_state::{EngineState, SemanticDeltaOperation};
@@ -21,7 +21,7 @@ pub struct ConformanceStep {
     pub expected_response_result: ExpectedResponseResult,
     pub expected_authoritative_events: Vec<AuthoritativeRuleEvent>,
     pub expected_semantic_delta: Vec<SemanticDeltaOperation>,
-    pub expected_state_digest: FullStateDigest,
+    pub expected_state_digest: FullStateDigestV2,
     pub expected_next_decision: Option<PlayerDecisionRequest>,
     pub expected_player_steps: BTreeMap<PlayerId, PlayerStep>,
     pub expected_status: EpisodeStatus,

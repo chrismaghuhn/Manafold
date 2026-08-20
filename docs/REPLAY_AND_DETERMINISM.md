@@ -4,12 +4,18 @@
 
 ## Replay identity
 
-A replay manifest identifies:
+### V1 replay (historical)
+
+Historical replay manifests used placeholder RNG fields: RNG algorithm string, derivation version string, named stream names, and u64 counters. V1 manifests exist in fixtures and migration reference material but are not produced by the current engine.
+
+### V2 replay (current)
+
+A V2 replay manifest (`ReplayManifestV2` / `AuthoritativeReplayV2`) identifies:
 
 - engine build and kernel/backend identity;
 - rules, format-policy, Oracle/source, and bundle snapshots;
 - fixed schema/canonicalization versions;
-- RNG algorithm, derivation version, and root seed material (trusted replay only);
+- RNG contract ID (`mtgml.rng.v1`), root seed material (trusted replay only), and typed stream keys with cursor semantics;
 - exact deck identities;
 - initial state revision and full digest.
 
@@ -23,7 +29,7 @@ A replay manifest identifies:
 
 ## Deterministic sources
 
-Authoritative behavior cannot depend on wall clock, thread scheduling, randomized container iteration, locale, filesystem order, network responses, or process-global RNG. Every random use consumes one named checkpointable stream with explicit counter progression.
+Authoritative behavior cannot depend on wall clock, thread scheduling, randomized container iteration, locale, filesystem order, network responses, or process-global RNG. Every random use consumes one typed checkpointable stream (`RandomStreamKeyV1`) with explicit cursor progression (`RandomStreamCursorV1::next_raw_u64`).
 
 ## Checkpoint and fork
 
@@ -43,6 +49,6 @@ The deterministic source-archive timestamp, root prefix, and compression policy 
 
 ## V0.2.1 checkpoint/replay boundary
 
-`FullStateDigest` identifies authoritative game state only. `EnvironmentCheckpointV1` additionally captures episode status and environment-limit counters. Replays record accepted/rejected decision history and state identities; a replay implementation that resumes execution must restore equivalent checkpoint semantics rather than reconstructing hidden controller counters heuristically.
+`FullStateDigest` (V1, historical) identifies authoritative game state only. `EnvironmentCheckpointV1` (V1, historical) additionally captures episode status and environment-limit counters but embeds an unversioned state representation. `FullStateDigestV2` and `EnvironmentCheckpointV2` are the current identity/checkpoint contracts, binding the typed RNG state representation explicitly. Replays record accepted/rejected decision history and state identities; a replay implementation that resumes execution must restore equivalent checkpoint semantics rather than reconstructing hidden controller counters heuristically.
 
 Generated verification logs and reports are not replay or source inputs. They live outside the deterministic source archive.

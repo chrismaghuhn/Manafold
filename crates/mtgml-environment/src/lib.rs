@@ -5,15 +5,15 @@
 //! projected information. Multiple player handles may coexist.
 
 use mtgml_decision::{DecisionResponse, PlayerDecisionRequest};
-use mtgml_model::{CheckpointDigest, EpisodeStatus, FullStateDigest, PlayerId};
+use mtgml_model::{CheckpointDigestV2, EpisodeStatus, FullStateDigestV2, PlayerId};
 use mtgml_observation::{InformationStateEnvelope, ObservationEnvelope, PlayerStep};
-use mtgml_replay::AuthoritativeReplayV1;
+use mtgml_replay::AuthoritativeReplayV2;
 use mtgml_state::{validate_engine_state, EngineState};
 use serde::{Deserialize, Serialize};
 use std::sync::{Arc, Mutex, MutexGuard};
 use thiserror::Error;
 
-pub const ENVIRONMENT_CHECKPOINT_SCHEMA: &str = "environment-checkpoint.v1";
+pub const ENVIRONMENT_CHECKPOINT_SCHEMA: &str = "environment-checkpoint.v2";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(deny_unknown_fields)]
@@ -34,27 +34,27 @@ pub struct CheckpointCodecIdentity {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct EnvironmentCheckpointV1 {
+pub struct EnvironmentCheckpointV2 {
     pub schema_version: String,
     pub state: EngineState,
-    pub state_digest: FullStateDigest,
+    pub state_digest: FullStateDigestV2,
     pub status: EpisodeStatus,
     pub limit_counters: EnvironmentLimitCounters,
     pub codec: CheckpointCodecIdentity,
-    pub checkpoint_digest: CheckpointDigest,
+    pub checkpoint_digest: CheckpointDigestV2,
 }
 
 #[derive(Serialize)]
-struct CheckpointDigestInputV1<'a> {
+struct CheckpointDigestInputV2<'a> {
     schema_version: &'a str,
     domain: &'static str,
-    state_digest: &'a FullStateDigest,
+    state_digest: &'a FullStateDigestV2,
     status: &'a EpisodeStatus,
     limit_counters: &'a EnvironmentLimitCounters,
     codec: &'a CheckpointCodecIdentity,
 }
 
-impl EnvironmentCheckpointV1 {
+impl EnvironmentCheckpointV2 {
     pub fn new(
         state: EngineState,
         status: EpisodeStatus,
@@ -87,14 +87,14 @@ impl EnvironmentCheckpointV1 {
 
     fn calculate_digest(
         schema_version: &str,
-        state_digest: &FullStateDigest,
+        state_digest: &FullStateDigestV2,
         status: &EpisodeStatus,
         limit_counters: &EnvironmentLimitCounters,
         codec: &CheckpointCodecIdentity,
-    ) -> Result<CheckpointDigest, CheckpointValidationError> {
-        let input = CheckpointDigestInputV1 {
+    ) -> Result<CheckpointDigestV2, CheckpointValidationError> {
+        let input = CheckpointDigestInputV2 {
             schema_version,
-            domain: CheckpointDigest::DOMAIN,
+            domain: CheckpointDigestV2::DOMAIN,
             state_digest,
             status,
             limit_counters,
@@ -102,7 +102,7 @@ impl EnvironmentCheckpointV1 {
         };
         let bytes =
             serde_json::to_vec(&input).map_err(|_| CheckpointValidationError::CheckpointDigest)?;
-        Ok(CheckpointDigest::from_canonical_bytes(&bytes))
+        Ok(CheckpointDigestV2::from_canonical_bytes(&bytes))
     }
 
     pub fn validate(&self) -> Result<(), CheckpointValidationError> {
@@ -166,10 +166,10 @@ pub enum CheckpointValidationError {
 
 pub trait EnvironmentBackend: Send {
     fn players(&self) -> Vec<PlayerId>;
-    fn checkpoint(&self) -> Result<EnvironmentCheckpointV1, ControllerError>;
-    fn restore(&mut self, checkpoint: EnvironmentCheckpointV1) -> Result<(), ControllerError>;
+    fn checkpoint(&self) -> Result<EnvironmentCheckpointV2, ControllerError>;
+    fn restore(&mut self, checkpoint: EnvironmentCheckpointV2) -> Result<(), ControllerError>;
     fn fork_boxed(&self) -> Result<Box<dyn EnvironmentBackend>, ControllerError>;
-    fn export_replay(&self) -> Result<AuthoritativeReplayV1, ControllerError>;
+    fn export_replay(&self) -> Result<AuthoritativeReplayV2, ControllerError>;
 
     fn player_observation(
         &self,
@@ -214,11 +214,11 @@ impl TrustedEnvironmentController {
         })
     }
 
-    pub fn checkpoint(&self) -> Result<EnvironmentCheckpointV1, ControllerError> {
+    pub fn checkpoint(&self) -> Result<EnvironmentCheckpointV2, ControllerError> {
         self.lock()?.checkpoint()
     }
 
-    pub fn restore(&self, checkpoint: EnvironmentCheckpointV1) -> Result<(), ControllerError> {
+    pub fn restore(&self, checkpoint: EnvironmentCheckpointV2) -> Result<(), ControllerError> {
         checkpoint
             .validate()
             .map_err(|error| ControllerError::InvalidCheckpoint(error.to_string()))?;
@@ -232,7 +232,7 @@ impl TrustedEnvironmentController {
         })
     }
 
-    pub fn export_replay(&self) -> Result<AuthoritativeReplayV1, ControllerError> {
+    pub fn export_replay(&self) -> Result<AuthoritativeReplayV2, ControllerError> {
         self.lock()?.export_replay()
     }
 
@@ -316,10 +316,12 @@ mod tests {
     use mtgml_model::{
         AbilityInstanceId, ContinuationId, DecisionId, EffectInstanceId, GameObjectId,
         InformationStateDigest, ObservationDigest, OpaqueAbilityId, OpaqueObjectId, RuleEventId,
-        StackObjectId, StateRevision, TriggerInstanceId, TruncationReason,
+        StackObjectId, StateRevision, TerminalReason, TriggerInstanceId, TruncationReason,
     };
     use mtgml_observation::{INFORMATION_STATE_SCHEMA, OBSERVATION_SCHEMA};
-    use mtgml_random::{RandomState, RandomStreamState};
+    use mtgml_random::{
+        RandomStateV1, RandomStreamCursorV1, RandomStreamKeyV1, RandomStreamKindV1,
+    };
     use mtgml_state::{
         CoreRulesState, ExecutionState, FormatState, IdentityAllocatorState, KnowledgeState,
         PerspectiveIdentityMap, PerspectiveIdentityState, PlayerKnowledgeState, PlayerState,
@@ -373,12 +375,7 @@ mod tests {
                 ]),
             },
             execution: ExecutionState::default(),
-            random: RandomState {
-                algorithm_id: "test-counter".into(),
-                derivation_version: "v1".into(),
-                root_seed_hex: "00".repeat(32),
-                streams: BTreeMap::from([("shuffle".into(), RandomStreamState { counter: 0 })]),
-            },
+            random: RandomStateV1::default(),
             knowledge: KnowledgeState {
                 players: BTreeMap::from([
                     (p1, PlayerKnowledgeState::default()),
@@ -432,16 +429,16 @@ mod tests {
         fn players(&self) -> Vec<PlayerId> {
             self.players.clone()
         }
-        fn checkpoint(&self) -> Result<EnvironmentCheckpointV1, ControllerError> {
+        fn checkpoint(&self) -> Result<EnvironmentCheckpointV2, ControllerError> {
             Err(ControllerError::Backend("not needed in handle test".into()))
         }
-        fn restore(&mut self, _checkpoint: EnvironmentCheckpointV1) -> Result<(), ControllerError> {
+        fn restore(&mut self, _checkpoint: EnvironmentCheckpointV2) -> Result<(), ControllerError> {
             Ok(())
         }
         fn fork_boxed(&self) -> Result<Box<dyn EnvironmentBackend>, ControllerError> {
             Ok(Box::new(self.clone()))
         }
-        fn export_replay(&self) -> Result<AuthoritativeReplayV1, ControllerError> {
+        fn export_replay(&self) -> Result<AuthoritativeReplayV2, ControllerError> {
             Err(ControllerError::Backend("not needed in handle test".into()))
         }
         fn player_observation(
@@ -492,8 +489,51 @@ mod tests {
     }
 
     #[test]
+    fn frozen_checkpoint_v2_digest_is_stable() {
+        let checkpoint = EnvironmentCheckpointV2::new(
+            checkpoint_state(),
+            EpisodeStatus::Running,
+            EnvironmentLimitCounters::default(),
+            CheckpointCodecIdentity {
+                codec_id: "in-memory-reference".into(),
+                semantic_version: "1".into(),
+            },
+        )
+        .unwrap();
+        checkpoint.validate().unwrap();
+        let digest = checkpoint.checkpoint_digest.clone();
+        let canonical = serde_json::to_vec(&CheckpointDigestInputV2 {
+            schema_version: &checkpoint.schema_version,
+            domain: CheckpointDigestV2::DOMAIN,
+            state_digest: &checkpoint.state_digest,
+            status: &checkpoint.status,
+            limit_counters: &checkpoint.limit_counters,
+            codec: &checkpoint.codec,
+        })
+        .unwrap();
+        let expected_canonical = br#"{"schema_version":"environment-checkpoint.v2","domain":"mtgml.checkpoint-digest.v2","state_digest":"3ce7c015bba9669f2b7cabf0efc423b31b4507e213de56c10e1242e9e001334e","status":{"kind":"running"},"limit_counters":{"decisions_submitted":0,"accepted_transitions":0,"rule_events_emitted":0,"resource_units_consumed":0,"wall_clock_elapsed_millis":0},"codec":{"codec_id":"in-memory-reference","semantic_version":"1"}}"#;
+        assert_eq!(
+            canonical, expected_canonical,
+            "frozen migration evidence: exact checkpoint V2 canonical bytes must not change"
+        );
+        let recomputed = CheckpointDigestV2::from_canonical_bytes(&canonical);
+        assert_eq!(
+            digest, recomputed,
+            "frozen migration evidence: CheckpointDigestV2 from canonical bytes must match"
+        );
+        let expected_digest = CheckpointDigestV2::parse(
+            "c823b1b894ba40f137a1b31a4330671f670d5da962233e0eeb1289eb13cce356",
+        )
+        .unwrap();
+        assert_eq!(
+            digest, expected_digest,
+            "frozen migration evidence: exact checkpoint V2 digest must not change"
+        );
+    }
+
+    #[test]
     fn checkpoint_closes_state_status_and_limit_counters() {
-        let checkpoint = EnvironmentCheckpointV1::new(
+        let checkpoint = EnvironmentCheckpointV2::new(
             checkpoint_state(),
             EpisodeStatus::Truncated {
                 reason: TruncationReason::ExternalStop,
@@ -525,7 +565,7 @@ mod tests {
 
     #[test]
     fn checkpoint_rejects_impossible_limit_counters() {
-        let error = EnvironmentCheckpointV1::new(
+        let error = EnvironmentCheckpointV2::new(
             checkpoint_state(),
             EpisodeStatus::Running,
             EnvironmentLimitCounters {
@@ -544,7 +584,7 @@ mod tests {
 
     #[test]
     fn checkpoint_digest_covers_status_and_limit_counters() {
-        let mut checkpoint = EnvironmentCheckpointV1::new(
+        let mut checkpoint = EnvironmentCheckpointV2::new(
             checkpoint_state(),
             EpisodeStatus::Running,
             EnvironmentLimitCounters::default(),
@@ -559,6 +599,172 @@ mod tests {
             checkpoint.validate(),
             Err(CheckpointValidationError::CheckpointDigest)
         );
+    }
+
+    #[test]
+    fn checkpoint_v2_digest_is_stable_and_depends_on_rng() {
+        let state_a = checkpoint_state();
+        let mut state_b = checkpoint_state();
+        let state_c = checkpoint_state();
+
+        state_b
+            .random
+            .add_stream(
+                RandomStreamKeyV1::global(RandomStreamKindV1::SyntheticM1),
+                RandomStreamCursorV1::default(),
+            )
+            .unwrap();
+
+        let cp_a = EnvironmentCheckpointV2::new(
+            state_a,
+            EpisodeStatus::Running,
+            EnvironmentLimitCounters::default(),
+            CheckpointCodecIdentity {
+                codec_id: "in-memory-reference".into(),
+                semantic_version: "1".into(),
+            },
+        )
+        .unwrap();
+
+        let cp_b = EnvironmentCheckpointV2::new(
+            state_b,
+            EpisodeStatus::Running,
+            EnvironmentLimitCounters::default(),
+            CheckpointCodecIdentity {
+                codec_id: "in-memory-reference".into(),
+                semantic_version: "1".into(),
+            },
+        )
+        .unwrap();
+
+        cp_a.validate().unwrap();
+        cp_b.validate().unwrap();
+
+        let digest_a = cp_a.checkpoint_digest;
+        let digest_b = cp_b.checkpoint_digest;
+
+        assert_ne!(
+            digest_a, digest_b,
+            "checkpoint digest must depend on RNG state"
+        );
+        assert_eq!(digest_a, digest_a, "checkpoint digest must be stable");
+
+        let cp_c = EnvironmentCheckpointV2::new(
+            state_c,
+            EpisodeStatus::Running,
+            EnvironmentLimitCounters::default(),
+            CheckpointCodecIdentity {
+                codec_id: "in-memory-reference".into(),
+                semantic_version: "1".into(),
+            },
+        )
+        .unwrap();
+        cp_c.validate().unwrap();
+        assert_eq!(
+            digest_a, cp_c.checkpoint_digest,
+            "identical checkpoints must share a digest"
+        );
+    }
+
+    #[test]
+    fn checkpoint_v2_digest_changes_with_status() {
+        let state = checkpoint_state();
+        let cp_running = EnvironmentCheckpointV2::new(
+            state.clone(),
+            EpisodeStatus::Running,
+            EnvironmentLimitCounters::default(),
+            CheckpointCodecIdentity {
+                codec_id: "in-memory-reference".into(),
+                semantic_version: "1".into(),
+            },
+        )
+        .unwrap();
+
+        let cp_terminal = EnvironmentCheckpointV2::new(
+            state,
+            EpisodeStatus::Terminal {
+                reason: TerminalReason::Concession,
+                players: vec![],
+            },
+            EnvironmentLimitCounters::default(),
+            CheckpointCodecIdentity {
+                codec_id: "in-memory-reference".into(),
+                semantic_version: "1".into(),
+            },
+        )
+        .unwrap();
+
+        cp_running.validate().unwrap();
+        cp_terminal.validate().unwrap();
+
+        assert_ne!(cp_running.checkpoint_digest, cp_terminal.checkpoint_digest);
+    }
+
+    #[test]
+    fn checkpoint_v2_digest_changes_with_limit_counters() {
+        let state = checkpoint_state();
+        let cp_a = EnvironmentCheckpointV2::new(
+            state.clone(),
+            EpisodeStatus::Running,
+            EnvironmentLimitCounters::default(),
+            CheckpointCodecIdentity {
+                codec_id: "in-memory-reference".into(),
+                semantic_version: "1".into(),
+            },
+        )
+        .unwrap();
+
+        let limits = EnvironmentLimitCounters {
+            resource_units_consumed: 42,
+            ..Default::default()
+        };
+
+        let cp_b = EnvironmentCheckpointV2::new(
+            state,
+            EpisodeStatus::Running,
+            limits,
+            CheckpointCodecIdentity {
+                codec_id: "in-memory-reference".into(),
+                semantic_version: "1".into(),
+            },
+        )
+        .unwrap();
+
+        cp_a.validate().unwrap();
+        cp_b.validate().unwrap();
+
+        assert_ne!(cp_a.checkpoint_digest, cp_b.checkpoint_digest);
+    }
+
+    #[test]
+    fn checkpoint_v2_digest_changes_with_codec() {
+        let state = checkpoint_state();
+        let cp_a = EnvironmentCheckpointV2::new(
+            state.clone(),
+            EpisodeStatus::Running,
+            EnvironmentLimitCounters::default(),
+            CheckpointCodecIdentity {
+                codec_id: "codec-a".into(),
+                semantic_version: "1".into(),
+            },
+        )
+        .unwrap();
+
+        let cp_b = EnvironmentCheckpointV2::new(
+            state,
+            EpisodeStatus::Running,
+            EnvironmentLimitCounters::default(),
+            CheckpointCodecIdentity {
+                codec_id: "codec-b".into(),
+                semantic_version: "1".into(),
+            },
+        )
+        .unwrap();
+
+        cp_a.validate().unwrap();
+        cp_b.validate().unwrap();
+
+        assert_ne!(cp_a.checkpoint_digest, cp_b.checkpoint_digest);
     }
 
     #[test]

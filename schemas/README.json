@@ -10,6 +10,7 @@
   "note": "JSON Schema validates shape. Rust/Python codecs or maintainer semantic validators enforce cross-field, uniqueness, closure, cycle, lifecycle, and canonicalization invariants.",
   "wire_contracts": [
     "authoritative-replay.v1.schema.json",
+    "authoritative-replay.v2.schema.json",
     "decision-response.v1.schema.json",
     "episode-status.v1.schema.json",
     "information-state-envelope.v1.schema.json",
@@ -17,6 +18,7 @@
     "observed-event-envelope.v1.schema.json",
     "player-decision-request.v1.schema.json",
     "player-step.v1.schema.json",
-    "replay-manifest.v1.schema.json"
+    "replay-manifest.v1.schema.json",
+    "replay-manifest.v2.schema.json"
   ]
 }

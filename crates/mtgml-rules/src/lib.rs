@@ -2,6 +2,7 @@
 
 use mtgml_decision::PlayerDecisionRequest;
 use mtgml_model::{DecisionId, EpisodeStatus, GameObjectId, PlayerId, RuleEventId, StateRevision};
+use mtgml_random::RandomStreamKeyV1;
 use mtgml_state::{
     validate_engine_state, EngineState, EngineStateViolation, ObjectSnapshot,
     SemanticDeltaOperation, StateDelta, ZoneTransition,
@@ -35,13 +36,6 @@ pub enum AuthoritativeRuleEventKind {
     DecisionCleared {
         decision: DecisionId,
     },
-    RandomnessConsumed {
-        stream: String,
-        counter_before: u64,
-        counter_after: u64,
-        exclusive_upper_bound: u64,
-        value: u64,
-    },
     PublicOutcome {
         code: String,
     },
@@ -71,19 +65,6 @@ impl AuthoritativeRuleEventKind {
             },
             Self::DecisionCleared { decision } => SemanticDeltaOperation::DecisionCleared {
                 decision: *decision,
-            },
-            Self::RandomnessConsumed {
-                stream,
-                counter_before,
-                counter_after,
-                exclusive_upper_bound,
-                value,
-            } => SemanticDeltaOperation::RandomStreamAdvanced {
-                stream: stream.clone(),
-                counter_before: *counter_before,
-                counter_after: *counter_after,
-                exclusive_upper_bound: *exclusive_upper_bound,
-                value: *value,
             },
             Self::PublicOutcome { code } => {
                 SemanticDeltaOperation::PublicOutcome { code: code.clone() }
@@ -235,7 +216,7 @@ struct SemanticValidationCursor {
     life: BTreeMap<PlayerId, i64>,
     objects: BTreeMap<GameObjectId, ObjectSnapshot>,
     pending_decision: Option<DecisionId>,
-    random_counters: BTreeMap<String, u64>,
+    random_counters: BTreeMap<RandomStreamKeyV1, u64>,
 }
 
 impl SemanticValidationCursor {
@@ -257,7 +238,7 @@ impl SemanticValidationCursor {
                 .random
                 .streams
                 .iter()
-                .map(|(stream, value)| (stream.clone(), value.counter))
+                .map(|(stream, value)| (*stream, value.next_raw_u64))
                 .collect(),
         })
     }
@@ -321,26 +302,6 @@ impl SemanticValidationCursor {
                 }
                 self.pending_decision = None;
             }
-            AuthoritativeRuleEventKind::RandomnessConsumed {
-                stream,
-                counter_before,
-                counter_after,
-                exclusive_upper_bound,
-                value,
-            } => {
-                let counter = self
-                    .random_counters
-                    .get_mut(stream)
-                    .ok_or(TransitionViolation::Randomness)?;
-                if *exclusive_upper_bound == 0
-                    || *value >= *exclusive_upper_bound
-                    || (*counter_before).checked_add(1) != Some(*counter_after)
-                    || *counter != *counter_before
-                {
-                    return Err(TransitionViolation::Randomness);
-                }
-                *counter = *counter_after;
-            }
             AuthoritativeRuleEventKind::PublicOutcome { code } => {
                 if code.is_empty() {
                     return Err(TransitionViolation::PublicOutcome);
@@ -375,7 +336,7 @@ impl SemanticValidationCursor {
             .random
             .streams
             .iter()
-            .map(|(stream, value)| (stream.clone(), value.counter))
+            .map(|(stream, value)| (*stream, value.next_raw_u64))
             .collect();
         if self.random_counters != after_counters {
             return Err(TransitionViolation::Randomness);
@@ -464,7 +425,7 @@ mod tests {
         AbilityInstanceId, CardDefinitionId, ContinuationId, EffectInstanceId, OpaqueAbilityId,
         OpaqueObjectId, PhysicalCardId, StackObjectId, TriggerInstanceId, ZoneKind,
     };
-    use mtgml_random::{RandomState, RandomStreamState};
+    use mtgml_random::RandomStateV1;
     use mtgml_state::{
         CoreRulesState, ExecutionState, FormatState, GameObject, IdentityAllocatorState,
         KnowledgeState, PendingDecisionRecord, PerspectiveIdentityMap, PerspectiveIdentityState,
@@ -533,12 +494,7 @@ mod tests {
                 ]),
             },
             execution: ExecutionState::default(),
-            random: RandomState {
-                algorithm_id: "test-counter".into(),
-                derivation_version: "v1".into(),
-                root_seed_hex: "00".repeat(32),
-                streams: BTreeMap::from([("test".into(), RandomStreamState { counter: 0 })]),
-            },
+            random: RandomStateV1::default(),
             knowledge: KnowledgeState {
                 players: BTreeMap::from([
                     (p1, PlayerKnowledgeState::default()),
@@ -701,40 +657,6 @@ mod tests {
             },
         ];
         validate_transition_contract(&before, &result(&before, after, events, Some(next))).unwrap();
-    }
-
-    #[test]
-    fn two_rng_uses_of_one_stream_are_compositional() {
-        let before = state();
-        let mut after = before.clone();
-        after.revision = StateRevision(1);
-        after.random.streams.get_mut("test").unwrap().counter = 2;
-        after.allocators.next_rule_event_id = RuleEventId(3);
-        let events = vec![
-            AuthoritativeRuleEvent {
-                event_id: RuleEventId(1),
-                state_revision: StateRevision(1),
-                event: AuthoritativeRuleEventKind::RandomnessConsumed {
-                    stream: "test".into(),
-                    counter_before: 0,
-                    counter_after: 1,
-                    exclusive_upper_bound: 6,
-                    value: 2,
-                },
-            },
-            AuthoritativeRuleEvent {
-                event_id: RuleEventId(2),
-                state_revision: StateRevision(1),
-                event: AuthoritativeRuleEventKind::RandomnessConsumed {
-                    stream: "test".into(),
-                    counter_before: 1,
-                    counter_after: 2,
-                    exclusive_upper_bound: 6,
-                    value: 4,
-                },
-            },
-        ];
-        validate_transition_contract(&before, &result(&before, after, events, None)).unwrap();
     }
 
     #[test]

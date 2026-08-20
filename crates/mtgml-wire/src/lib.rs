@@ -8,7 +8,9 @@ use mtgml_model::EpisodeStatus;
 use mtgml_observation::{
     InformationStateEnvelope, ObservationEnvelope, ObservedEventEnvelope, PlayerStep,
 };
-use mtgml_replay::{AuthoritativeReplayV1, ReplayManifestV1};
+use mtgml_replay::{
+    AuthoritativeReplayV1, AuthoritativeReplayV2, ReplayManifestV1, ReplayManifestV2,
+};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use serde_json::{Map, Value};
 use std::{fmt, fs, path::Path};
@@ -98,6 +100,20 @@ impl WireContract for ReplayManifestV1 {
 }
 
 impl WireContract for AuthoritativeReplayV1 {
+    fn validate_wire(&self) -> Result<(), WireError> {
+        self.validate()
+            .map_err(|error| WireError::new("semantic.replay", error.to_string()))
+    }
+}
+
+impl WireContract for ReplayManifestV2 {
+    fn validate_wire(&self) -> Result<(), WireError> {
+        self.validate()
+            .map_err(|error| WireError::new("semantic.replay_manifest", error.to_string()))
+    }
+}
+
+impl WireContract for AuthoritativeReplayV2 {
     fn validate_wire(&self) -> Result<(), WireError> {
         self.validate()
             .map_err(|error| WireError::new("semantic.replay", error.to_string()))
@@ -236,6 +252,8 @@ fn decode_named(contract: &str, bytes: &[u8]) -> Result<(), WireError> {
         "episode-status.v1" => decode_canonical::<EpisodeStatus>(bytes).map(drop),
         "replay-manifest.v1" => decode_canonical::<ReplayManifestV1>(bytes).map(drop),
         "authoritative-replay.v1" => decode_canonical::<AuthoritativeReplayV1>(bytes).map(drop),
+        "replay-manifest.v2" => decode_canonical::<ReplayManifestV2>(bytes).map(drop),
+        "authoritative-replay.v2" => decode_canonical::<AuthoritativeReplayV2>(bytes).map(drop),
         _ => Err(WireError::new(
             "fixture.unknown_contract",
             format!("unknown fixture contract {contract}"),

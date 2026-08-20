@@ -35,7 +35,11 @@ A future trajectory record must identify:
 
 Published model trajectories cannot include:
 
-- root seed or hidden RNG counters;
+- root seed;
+- typed stream keys (which may reveal hidden random purpose);
+- derived stream keys;
+- stream cursors;
+- raw random words;
 - authoritative object/ability IDs;
 - full state or opponent-private knowledge;
 - trusted errors or event traces;

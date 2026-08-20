@@ -6,10 +6,11 @@
 use mtgml_decision::{EngineCandidateBinding, PerspectiveIdentityResolver, PlayerDecisionRequest};
 use mtgml_model::{
     AbilityInstanceId, CardDefinitionId, ContinuationId, DecisionId, EffectInstanceId,
-    EventSequence, FullStateDigest, GameObjectId, OpaqueAbilityId, OpaqueObjectId, PhysicalCardId,
-    PlayerId, RuleEventId, StackObjectId, StateRevision, TriggerInstanceId, ZoneKind,
+    EventSequence, FullStateDigestV2, GameObjectId, OpaqueAbilityId, OpaqueObjectId,
+    PhysicalCardId, PlayerId, RuleEventId, StackObjectId, StateRevision, TriggerInstanceId,
+    ZoneKind,
 };
-use mtgml_random::RandomState;
+use mtgml_random::RandomStateV1;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map as JsonMap, Value as JsonValue};
 use std::collections::{BTreeMap, BTreeSet};
@@ -360,13 +361,13 @@ pub struct EngineState {
     pub zones: ZoneState,
     pub allocators: IdentityAllocatorState,
     pub execution: ExecutionState,
-    pub random: RandomState,
+    pub random: RandomStateV1,
     pub knowledge: KnowledgeState,
     pub perspective_identities: PerspectiveIdentityState,
     pub format: FormatState,
 }
 
-pub const FULL_STATE_DIGEST_INPUT_SCHEMA: &str = "full-state-digest-input.v1";
+pub const FULL_STATE_DIGEST_INPUT_SCHEMA: &str = "full-state-digest-input.v2";
 
 #[derive(Serialize)]
 struct CanonicalOrderedZoneEntryV1<'a> {
@@ -384,7 +385,7 @@ struct CanonicalZoneStateV1<'a> {
 }
 
 #[derive(Serialize)]
-struct FullStateDigestInputV1<'a> {
+struct FullStateDigestInputV2<'a> {
     schema_version: &'static str,
     domain: &'static str,
     revision: StateRevision,
@@ -392,7 +393,7 @@ struct FullStateDigestInputV1<'a> {
     zones: CanonicalZoneStateV1<'a>,
     allocators: &'a IdentityAllocatorState,
     execution: &'a ExecutionState,
-    random: &'a RandomState,
+    random: &'a RandomStateV1,
     knowledge: &'a KnowledgeState,
     perspective_identities: &'a PerspectiveIdentityState,
     format: &'a FormatState,
@@ -415,9 +416,9 @@ impl EngineState {
                 objects: objects.as_slice(),
             })
             .collect();
-        let input = FullStateDigestInputV1 {
+        let input = FullStateDigestInputV2 {
             schema_version: FULL_STATE_DIGEST_INPUT_SCHEMA,
-            domain: FullStateDigest::DOMAIN,
+            domain: FullStateDigestV2::DOMAIN,
             revision: self.revision,
             core: &self.core,
             zones: CanonicalZoneStateV1 {
@@ -438,9 +439,9 @@ impl EngineState {
         serde_json::to_vec(&canonicalize_json(value)).map_err(|_| StateDigestError::Serialization)
     }
 
-    pub fn digest(&self) -> Result<FullStateDigest, StateDigestError> {
+    pub fn digest(&self) -> Result<FullStateDigestV2, StateDigestError> {
         self.canonical_digest_bytes()
-            .map(|bytes| FullStateDigest::from_canonical_bytes(&bytes))
+            .map(|bytes| FullStateDigestV2::from_canonical_bytes(&bytes))
     }
 
     pub fn parts(&self) -> EngineStateParts {
@@ -455,6 +456,41 @@ impl EngineState {
             perspective_identities: self.perspective_identities.clone(),
             format: self.format.clone(),
         }
+    }
+
+    pub fn consume_raw_u64(
+        &mut self,
+        key: &mtgml_random::RandomStreamKeyV1,
+    ) -> Result<u64, mtgml_random::RandomValidationError> {
+        let root = self.random.root_seed;
+        let cursor = self.random.lookup_stream(key)?;
+        let (word, next) = mtgml_random::hmac_counter::next_raw_u64(&root, key, &cursor)?;
+        self.random.set_cursor(key, next)?;
+        Ok(word)
+    }
+
+    pub fn uniform_below_u64(
+        &mut self,
+        key: &mtgml_random::RandomStreamKeyV1,
+        n: u64,
+    ) -> Result<(u64, u64), mtgml_random::RandomValidationError> {
+        let current = self.random.lookup_stream(key)?;
+        let (value, consumed, next) =
+            mtgml_random::sampling::uniform_below_u64(&self.random.root_seed, key, &current, n)?;
+        self.random.set_cursor(key, next)?;
+        Ok((value, consumed))
+    }
+
+    pub fn shuffle<T: Clone>(
+        &mut self,
+        values: &mut [T],
+        key: &mtgml_random::RandomStreamKeyV1,
+    ) -> Result<u64, mtgml_random::RandomValidationError> {
+        let cursor = self.random.lookup_stream(key)?;
+        let (consumed, next) =
+            mtgml_random::sampling::shuffle(values, &self.random.root_seed, key, &cursor)?;
+        self.random.set_cursor(key, next)?;
+        Ok(consumed)
     }
 }
 
@@ -484,7 +520,7 @@ pub struct EngineStateParts {
     pub zones: ZoneState,
     pub allocators: IdentityAllocatorState,
     pub execution: ExecutionState,
-    pub random: RandomState,
+    pub random: RandomStateV1,
     pub knowledge: KnowledgeState,
     pub perspective_identities: PerspectiveIdentityState,
     pub format: FormatState,
@@ -531,13 +567,6 @@ pub enum SemanticDeltaOperation {
     DecisionCleared {
         decision: DecisionId,
     },
-    RandomStreamAdvanced {
-        stream: String,
-        counter_before: u64,
-        counter_after: u64,
-        exclusive_upper_bound: u64,
-        value: u64,
-    },
     PublicOutcome {
         code: String,
     },
@@ -550,8 +579,8 @@ pub enum SemanticDeltaOperation {
 pub struct StateDelta {
     pub before_revision: StateRevision,
     pub after_revision: StateRevision,
-    pub before_digest: FullStateDigest,
-    pub after_digest: FullStateDigest,
+    pub before_digest: FullStateDigestV2,
+    pub after_digest: FullStateDigestV2,
     pub replacement: EngineStateParts,
     pub audit: Vec<SemanticDeltaOperation>,
 }
@@ -995,13 +1024,25 @@ pub fn validate_engine_state(state: &EngineState) -> Result<(), EngineStateViola
         .random
         .validate()
         .map_err(|_| EngineStateViolation::RandomState)?;
+
+    for key in state.random.streams.keys() {
+        if let Some(player_raw) = key.player() {
+            let player = PlayerId(player_raw);
+            if !state.core.players.contains_key(&player) {
+                return Err(EngineStateViolation::RandomState);
+            }
+        }
+    }
     Ok(())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use mtgml_random::RandomStreamState;
+    use mtgml_random::{
+        RandomStreamCursorV1, RandomStreamKeyV1, RandomStreamKindV1, RandomValidationError,
+        RootSeed256,
+    };
 
     fn state() -> EngineState {
         let p1 = PlayerId(1);
@@ -1021,12 +1062,7 @@ mod tests {
                 has_lost: false,
             },
         );
-        let random = RandomState {
-            algorithm_id: "test-counter".into(),
-            derivation_version: "v1".into(),
-            root_seed_hex: "00".repeat(32),
-            streams: BTreeMap::from([("shuffle".into(), RandomStreamState { counter: 0 })]),
-        };
+        let random = RandomStateV1::default();
         EngineState {
             revision: StateRevision(0),
             core: CoreRulesState {
@@ -1053,6 +1089,15 @@ mod tests {
             },
             format: FormatState::None,
         }
+    }
+
+    fn add_stream_entry(
+        state: &mut EngineState,
+        key: RandomStreamKeyV1,
+    ) -> Result<(), RandomValidationError> {
+        state
+            .random
+            .add_stream(key, RandomStreamCursorV1::default())
     }
 
     #[test]
@@ -1214,6 +1259,160 @@ mod tests {
         assert_eq!(
             validate_engine_state(&invalid),
             Err(EngineStateViolation::PendingDecisionMismatch)
+        );
+    }
+
+    #[test]
+    fn rng_player_scope_rejects_absent_player() {
+        let mut value = state();
+        let p3 = PlayerId(3);
+        value
+            .random
+            .add_stream(
+                RandomStreamKeyV1::player_scoped(RandomStreamKindV1::SyntheticM1, p3.0),
+                RandomStreamCursorV1::default(),
+            )
+            .unwrap();
+        assert_eq!(
+            validate_engine_state(&value),
+            Err(EngineStateViolation::RandomState)
+        );
+    }
+
+    #[test]
+    fn nonempty_rng_stream_changes_v2_digest() {
+        let mut value = state();
+        value
+            .random
+            .add_stream(
+                RandomStreamKeyV1::global(RandomStreamKindV1::SyntheticM1),
+                RandomStreamCursorV1::default(),
+            )
+            .unwrap();
+        validate_engine_state(&value).unwrap();
+        let empty_digest = state().digest().unwrap();
+        let nonempty_digest = value.digest().unwrap();
+        assert_ne!(empty_digest, nonempty_digest);
+        let bytes = value.canonical_digest_bytes().unwrap();
+        let text = String::from_utf8(bytes).unwrap();
+        assert!(
+            text.contains("\"random\""),
+            "canonical bytes must include random field"
+        );
+    }
+
+    #[test]
+    fn root_seed_change_changes_v2_digest() {
+        let seed = RootSeed256::from_lower_hex(&"ab".repeat(32)).unwrap();
+        let mut value_a = state();
+        let value_b = state();
+        value_a.random = RandomStateV1::new(seed);
+        validate_engine_state(&value_a).unwrap();
+        validate_engine_state(&value_b).unwrap();
+        assert_ne!(value_a.digest().unwrap(), value_b.digest().unwrap());
+    }
+
+    #[test]
+    fn cursor_change_changes_v2_digest() {
+        let mut value = state();
+        value
+            .random
+            .add_stream(
+                RandomStreamKeyV1::global(RandomStreamKindV1::SyntheticM1),
+                RandomStreamCursorV1::default(),
+            )
+            .unwrap();
+        validate_engine_state(&value).unwrap();
+        let before = value.digest().unwrap();
+        value
+            .random
+            .set_cursor(
+                &RandomStreamKeyV1::global(RandomStreamKindV1::SyntheticM1),
+                RandomStreamCursorV1 { next_raw_u64: 42 },
+            )
+            .unwrap();
+        let after = value.digest().unwrap();
+        assert_ne!(before, after);
+    }
+
+    #[test]
+    fn insertion_order_does_not_change_v2_digest() {
+        let mut value_a = state();
+        let mut value_b = state();
+        let key_global = RandomStreamKeyV1::global(RandomStreamKindV1::SyntheticM1);
+        let key_player = RandomStreamKeyV1::player_scoped(RandomStreamKindV1::SyntheticM1, 1);
+        add_stream_entry(&mut value_a, key_global).unwrap();
+        add_stream_entry(&mut value_a, key_player).unwrap();
+        add_stream_entry(&mut value_b, key_player).unwrap();
+        add_stream_entry(&mut value_b, key_global).unwrap();
+        validate_engine_state(&value_a).unwrap();
+        validate_engine_state(&value_b).unwrap();
+        assert_eq!(value_a.digest().unwrap(), value_b.digest().unwrap());
+    }
+
+    #[test]
+    fn rng_streams_canonical_bytes_sorted_by_key() {
+        let mut value = state();
+        value
+            .random
+            .add_stream(
+                RandomStreamKeyV1::player_scoped(RandomStreamKindV1::SyntheticM1, 1),
+                RandomStreamCursorV1 { next_raw_u64: 7 },
+            )
+            .unwrap();
+        value
+            .random
+            .add_stream(
+                RandomStreamKeyV1::global(RandomStreamKindV1::SyntheticM1),
+                RandomStreamCursorV1::default(),
+            )
+            .unwrap();
+        validate_engine_state(&value).unwrap();
+        let bytes = value.canonical_digest_bytes().unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        let streams = json["random"]["streams"].as_array().unwrap();
+        let keys: Vec<_> = streams
+            .iter()
+            .map(|s| {
+                s["key"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .map(|v| v.as_u64().unwrap())
+                    .collect::<Vec<_>>()
+            })
+            .collect();
+        assert_eq!(
+            keys,
+            vec![vec![1, 0, 1, 0], vec![1, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 1]],
+            "RNG streams in canonical bytes must be sorted by key"
+        );
+    }
+
+    #[test]
+    fn frozen_empty_state_v2_digest_is_stable() {
+        let value = state();
+        let digest = value.digest().unwrap();
+        assert_eq!(
+            digest.as_str(),
+            "b25fb0a19adbe75c069e4e58c658ba333ed28ec0a652eb4a93334e65fa35c712",
+            "frozen migration evidence: empty state V2 digest must not change"
+        );
+        let bytes = value.canonical_digest_bytes().unwrap();
+        assert_eq!(
+            bytes.len(),
+            1293,
+            "frozen migration evidence: canonical bytes length must not change"
+        );
+        let expected_canonical = br#"{"allocators":{"next_ability_id":"1","next_continuation_id":"1","next_decision_id":"1","next_effect_id":"1","next_object_id":"1","next_opaque_ability_id":{},"next_opaque_object_id":{},"next_rule_event_id":"1","next_stack_object_id":"1","next_trigger_id":"1"},"core":{"active_player":"1","players":{"1":{"has_lost":false,"life":40},"2":{"has_lost":false,"life":40}},"priority_player":"1","turn_number":1},"domain":"mtgml.full-state-digest.v2","execution":{"continuations":{},"delayed_effects":{},"effects":{},"waiting_triggers":{}},"format":{"kind":"none"},"knowledge":{"players":{"1":{"invalidations":[],"known_objects":{},"private_history_length":0,"public_history_length":0},"2":{"invalidations":[],"known_objects":{},"private_history_length":0,"public_history_length":0}}},"perspective_identities":{"players":{"1":{"ability_to_opaque":{},"object_to_opaque":{},"opaque_to_ability":{},"opaque_to_object":{}},"2":{"ability_to_opaque":{},"object_to_opaque":{},"opaque_to_ability":{},"opaque_to_object":{}}}},"random":{"contract_id":"mtgml.rng.v1","root_seed":"0000000000000000000000000000000000000000000000000000000000000000","streams":[]},"revision":"0","schema_version":"full-state-digest-input.v2","zones":{"locations":{},"objects":{},"ordered_zones":[],"stack_order":[],"stack_records":{}}}"#;
+        assert_eq!(
+            bytes, expected_canonical,
+            "frozen migration evidence: exact canonical bytes must not change"
+        );
+        let digest_v2 = FullStateDigestV2::from_canonical_bytes(&bytes);
+        assert_eq!(
+            digest, digest_v2,
+            "from_canonical_bytes must reproduce the same frozen digest"
         );
     }
 }

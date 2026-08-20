@@ -39,13 +39,13 @@ A future trusted search API may checkpoint/fork or sample states consistent with
 
 ## Complete trusted checkpoint surface
 
-The player endpoint never exposes checkpoints. The trusted controller uses `EnvironmentCheckpointV1` containing:
+The player endpoint never exposes checkpoints. The trusted controller uses `EnvironmentCheckpointV2` containing:
 
 - complete `EngineState`;
-- typed `FullStateDigest`;
+- typed `FullStateDigestV2`;
 - `EpisodeStatus`;
 - decision, accepted-transition, emitted-rule-event, resource, and elapsed-wall-clock counters;
 - checkpoint codec ID and semantic version;
-- typed `CheckpointDigest` covering state identity, status, counters, and codec identity.
+- typed `CheckpointDigestV2` covering state identity, status, counters, and codec identity.
 
 Fork and restore preserve and validate this entire object. A bare board/state snapshot is insufficient because truncation and limit behavior would diverge after restore.

@@ -37,8 +37,20 @@
       "path": "replay-manifest.v1.json"
     },
     {
+      "contract": "replay-manifest.v2",
+      "path": "replay-manifest.v2.json"
+    },
+    {
       "contract": "authoritative-replay.v1",
       "path": "authoritative-replay-empty.v1.json"
+    },
+    {
+      "contract": "authoritative-replay.v2",
+      "path": "authoritative-replay-empty.v2.json"
+    },
+    {
+      "contract": "authoritative-replay.v2",
+      "path": "authoritative-replay-rejected-step.v2.json"
     }
   ]
 }

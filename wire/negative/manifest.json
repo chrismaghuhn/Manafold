@@ -77,6 +77,54 @@
       "expected_error_code": "semantic.decision_response",
       "expected_reject_layer": "rust-python-semantic-or-decode",
       "path": "response-duplicate-assignment.json"
+    },
+    {
+      "contract": "replay-manifest.v2",
+      "expected_error_code": "semantic.replay_manifest",
+      "expected_reject_layer": "rust-python-semantic-or-decode",
+      "path": "replay-v2-unknown-rng-contract.json"
+    },
+    {
+      "contract": "replay-manifest.v2",
+      "expected_error_code": "decode.invalid_json",
+      "expected_reject_layer": "rust-python-semantic-or-decode",
+      "path": "replay-v2-root-seed-nonhex.json"
+    },
+    {
+      "contract": "replay-manifest.v2",
+      "expected_error_code": "decode.invalid_json",
+      "expected_reject_layer": "rust-python-semantic-or-decode",
+      "path": "replay-v2-root-seed-wrong-length.json"
+    },
+    {
+      "contract": "replay-manifest.v2",
+      "expected_error_code": "semantic.replay_manifest",
+      "expected_reject_layer": "rust-python-semantic-or-decode",
+      "path": "replay-v2-wrong-replay-step.json"
+    },
+    {
+      "contract": "replay-manifest.v2",
+      "expected_error_code": "semantic.replay_manifest",
+      "expected_reject_layer": "rust-python-semantic-or-decode",
+      "path": "replay-v2-duplicate-deck-player.json"
+    },
+    {
+      "contract": "replay-manifest.v2",
+      "expected_error_code": "semantic.replay_manifest",
+      "expected_reject_layer": "rust-python-semantic-or-decode",
+      "path": "replay-v2-empty-decks.json"
+    },
+    {
+      "contract": "replay-manifest.v2",
+      "expected_error_code": "semantic.replay_manifest",
+      "expected_reject_layer": "rust-python-semantic-or-decode",
+      "path": "replay-v2-empty-deck-id.json"
+    },
+    {
+      "contract": "authoritative-replay.v2",
+      "expected_error_code": "semantic.replay",
+      "expected_reject_layer": "rust-python-semantic-or-decode",
+      "path": "replay-v2-revision-discontinuity.json"
     }
   ]
 }
