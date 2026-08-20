@@ -26,6 +26,7 @@ impl RulesKernel for SyntheticM1RulesKernel {
             return rejected(state);
         };
         let request = &pending.request;
+        let actor = request.actor;
         if trusted_actor != request.actor
             || response.validate().is_err()
             || response.decision_id != request.decision_id
@@ -95,23 +96,79 @@ impl RulesKernel for SyntheticM1RulesKernel {
             .0
             .checked_add(1)
             .ok_or(KernelExecutionError::RevisionOverflow)?;
-        let event_id = state.allocators.next_rule_event_id;
-        let next_event_id = event_id
-            .0
-            .checked_add(1)
-            .ok_or(KernelExecutionError::RuleEventIdOverflow)?;
+        let first_event_id = state.allocators.next_rule_event_id;
+        let second_event_id = RuleEventId(
+            first_event_id
+                .0
+                .checked_add(1)
+                .ok_or(KernelExecutionError::RuleEventIdOverflow)?,
+        );
+        let third_event_id = RuleEventId(
+            second_event_id
+                .0
+                .checked_add(1)
+                .ok_or(KernelExecutionError::RuleEventIdOverflow)?,
+        );
+        let next_event_id = RuleEventId(
+            third_event_id
+                .0
+                .checked_add(1)
+                .ok_or(KernelExecutionError::RuleEventIdOverflow)?,
+        );
 
         next_state.revision = StateRevision(next_revision);
+        if next_state
+            .core
+            .players
+            .get(&actor)
+            .map(|player| player.life)
+            != Some(40)
+        {
+            return rejected(state);
+        }
+        next_state
+            .core
+            .players
+            .get_mut(&actor)
+            .ok_or(KernelExecutionError::AfterState(
+                EngineStateViolation::MissingTurnPlayer,
+            ))?
+            .life = 39;
+        let mut events = vec![AuthoritativeRuleEvent {
+            event_id: first_event_id,
+            state_revision: next_state.revision,
+            event: AuthoritativeRuleEventKind::LifeChanged {
+                player: actor,
+                from: 40,
+                to: 39,
+            },
+        }];
+        next_state
+            .core
+            .players
+            .get_mut(&actor)
+            .ok_or(KernelExecutionError::AfterState(
+                EngineStateViolation::MissingTurnPlayer,
+            ))?
+            .life = 38;
+        events.push(AuthoritativeRuleEvent {
+            event_id: second_event_id,
+            state_revision: next_state.revision,
+            event: AuthoritativeRuleEventKind::LifeChanged {
+                player: actor,
+                from: 39,
+                to: 38,
+            },
+        });
         next_state.execution.pending_decision = None;
-        next_state.allocators.next_rule_event_id = RuleEventId(next_event_id);
-
-        let events = vec![AuthoritativeRuleEvent {
-            event_id,
+        events.push(AuthoritativeRuleEvent {
+            event_id: third_event_id,
             state_revision: next_state.revision,
             event: AuthoritativeRuleEventKind::DecisionCleared {
                 decision: request.decision_id,
             },
-        }];
+        });
+        next_state.allocators.next_rule_event_id = next_event_id;
         let audit = events
             .iter()
             .map(|event| event.event.semantic_delta())
