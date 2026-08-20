@@ -8,17 +8,18 @@ use mtgml_model::{
     EpisodeStatus, GameObjectId, OpaqueAbilityId, OpaqueObjectId, PhysicalCardId, PlayerId,
     RuleEventId, StackObjectId, StateRevision, TriggerInstanceId, ZoneKind,
 };
+use mtgml_random::RootSeed256;
 use mtgml_random::{
     RandomStateV1, RandomStreamCursorV1, RandomStreamKeyV1, RandomStreamKindV1,
+    RandomValidationError,
 };
-use mtgml_random::RootSeed256;
 use mtgml_state::{
     construct_synthetic_engine_state, ContinuationRecord, CoreRulesState, EngineState,
-    EngineStateViolation, ExecutionState, FormatState, GameObject, IdentityAllocatorState,
-    KnowledgeState, ObjectSnapshot, PendingDecisionRecord, PerspectiveIdentityMap,
-    PerspectiveIdentityState, PlayerKnowledgeState, PlayerState, SemanticDeltaOperation,
-    StateDelta, SyntheticResetInputs, VisibilityPartition, ZoneLocation, ZonePosition, ZoneState,
-    ZoneTransition,
+    EngineStateViolation, ExecutionState, FormatState, GameObject, IdentityAllocationError,
+    IdentityAllocatorState, KnowledgeState, ObjectSnapshot, PendingDecisionRecord,
+    PerspectiveIdentityMap, PerspectiveIdentityState, PlayerKnowledgeState, PlayerState,
+    SemanticDeltaOperation, StateDelta, SyntheticResetInputs, VisibilityPartition, ZoneLocation,
+    ZonePosition, ZoneState, ZoneTransition,
 };
 use std::collections::BTreeMap;
 
@@ -232,7 +233,15 @@ fn synthetic_m1_acceptance_returns_exact_transition_product() {
         .unwrap()
         .life = 38;
     expected_after.execution.pending_decision = None;
-    expected_after.allocators.next_rule_event_id = RuleEventId(4);
+    expected_after
+        .random
+        .set_cursor(
+            &RandomStreamKeyV1::global(RandomStreamKindV1::SyntheticM1),
+            RandomStreamCursorV1 { next_raw_u64: 1 },
+        )
+        .unwrap();
+    expected_after.allocators.next_effect_id = EffectInstanceId(2);
+    expected_after.allocators.next_rule_event_id = RuleEventId(5);
 
     let expected_events = vec![
         AuthoritativeRuleEvent {
@@ -255,6 +264,18 @@ fn synthetic_m1_acceptance_returns_exact_transition_product() {
         },
         AuthoritativeRuleEvent {
             event_id: RuleEventId(3),
+            state_revision: StateRevision(1),
+            event: AuthoritativeRuleEventKind::RandomValueSampled {
+                stream: RandomStreamKeyV1::global(RandomStreamKindV1::SyntheticM1),
+                bound: 10,
+                value: 1,
+                raw_words_consumed: 1,
+                cursor_before: 0,
+                cursor_after: 1,
+            },
+        },
+        AuthoritativeRuleEvent {
+            event_id: RuleEventId(4),
             state_revision: StateRevision(1),
             event: AuthoritativeRuleEventKind::DecisionCleared {
                 decision: DecisionId(1),
@@ -283,10 +304,19 @@ fn synthetic_m1_acceptance_returns_exact_transition_product() {
     assert_eq!(result.next_state.core.players[&PlayerId(2)].life, 40);
     assert_eq!(
         result.next_state.allocators.next_rule_event_id,
-        RuleEventId(4)
+        RuleEventId(5)
     );
     assert_eq!(result.next_state.zones, before.zones);
-    assert_eq!(result.next_state.random, before.random);
+    assert_eq!(result.next_state.random.root_seed, before.random.root_seed);
+    assert_eq!(
+        result
+            .next_state
+            .random
+            .lookup_stream(&RandomStreamKeyV1::global(RandomStreamKindV1::SyntheticM1))
+            .unwrap()
+            .next_raw_u64,
+        1
+    );
     assert_eq!(result.next_state.knowledge, before.knowledge);
     assert_eq!(
         result.next_state.perspective_identities,
@@ -304,6 +334,10 @@ fn synthetic_m1_acceptance_returns_exact_transition_product() {
     assert_eq!(
         result.next_state.allocators.next_continuation_id,
         before.allocators.next_continuation_id
+    );
+    assert_eq!(
+        result.next_state.allocators.next_effect_id,
+        EffectInstanceId(2)
     );
     assert_eq!(result.delta.before_revision, StateRevision(0));
     assert_eq!(result.delta.after_revision, StateRevision(1));
@@ -358,7 +392,7 @@ fn synthetic_m1_acceptance_uses_the_first_player_for_non_default_ids() {
     assert_eq!(result.next_state.execution.pending_decision, None);
     assert_eq!(
         result.next_state.allocators.next_rule_event_id,
-        RuleEventId(4)
+        RuleEventId(5)
     );
     assert_eq!(
         result.events,
@@ -383,6 +417,18 @@ fn synthetic_m1_acceptance_uses_the_first_player_for_non_default_ids() {
             },
             AuthoritativeRuleEvent {
                 event_id: RuleEventId(3),
+                state_revision: StateRevision(1),
+                event: AuthoritativeRuleEventKind::RandomValueSampled {
+                    stream: RandomStreamKeyV1::global(RandomStreamKindV1::SyntheticM1),
+                    bound: 10,
+                    value: 1,
+                    raw_words_consumed: 1,
+                    cursor_before: 0,
+                    cursor_after: 1,
+                },
+            },
+            AuthoritativeRuleEvent {
+                event_id: RuleEventId(4),
                 state_revision: StateRevision(1),
                 event: AuthoritativeRuleEventKind::DecisionCleared {
                     decision: DecisionId(1),
