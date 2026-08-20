@@ -1,5 +1,9 @@
 # M1.3 Rejection Atomicity Implementation Plan
 
+**Status:** accepted
+**Stability:** provisional
+**Owner:** maintainer
+
 > For agentic workers: REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox syntax for tracking.
 
 **Goal:** Prove complete nonmutation for every currently executable M1 synthetic player rejection while preserving the M1.2 accepted transaction and explicitly reporting unavailable environment/replay evidence.
