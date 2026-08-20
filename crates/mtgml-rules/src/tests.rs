@@ -1257,6 +1257,34 @@ fn random_sample_event_is_required_for_final_cursor_progression() {
 }
 
 #[test]
+fn random_transition_rejects_root_seed_mutation() {
+    let stream = RandomStreamKeyV1::global(RandomStreamKindV1::SyntheticM1);
+    let (before, mut transition) = random_transition(
+        AuthoritativeRuleEventKind::RandomValueSampled {
+            stream,
+            bound: 10,
+            value: 1,
+            raw_words_consumed: 1,
+            cursor_before: 0,
+            cursor_after: 1,
+        },
+        1,
+    );
+    transition.next_state.random.root_seed = RootSeed256::from_lower_hex(&"22".repeat(32)).unwrap();
+    transition.delta = StateDelta::between(
+        &before,
+        &transition.next_state,
+        transition.delta.audit.clone(),
+    )
+    .unwrap();
+
+    assert!(matches!(
+        validate_transition_contract(&before, &transition),
+        Err(TransitionViolation::Randomness)
+    ));
+}
+
+#[test]
 fn random_sample_event_and_delta_audit_must_agree() {
     let stream = RandomStreamKeyV1::global(RandomStreamKindV1::SyntheticM1);
     let (before, mut transition) = random_transition(

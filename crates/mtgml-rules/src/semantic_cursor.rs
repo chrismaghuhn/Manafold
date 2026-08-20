@@ -171,6 +171,9 @@ impl SemanticValidationCursor {
         if self.pending_decision != after_pending {
             return Err(TransitionViolation::DecisionEvent);
         }
+        if self.root_seed != after.random.root_seed {
+            return Err(TransitionViolation::Randomness);
+        }
         let after_counters: BTreeMap<_, _> = after
             .random
             .streams

@@ -18,7 +18,7 @@ the authoritative `mtgml-random` sampler. Keep `mtgml-rules` independent of
 `mtgml-environment`; use the existing `EnvironmentCheckpointV2` only from
 environment-owned tests.
 
-**Tech Stack:** Rust 1.85.1, `mtgml-rng.v1`, `mtgml-state`,
+**Tech Stack:** Rust 1.85.1, `mtgml.rng.v1`, `mtgml-state`,
 `mtgml-rules`, `mtgml-environment`, serde, locked Cargo tests, Python
 repository checks, and `just` verification profiles.
 
@@ -333,7 +333,9 @@ AuthoritativeRuleEventKind::RandomValueSampled {
 Use `TransitionViolation::Randomness` for absent streams, invalid bounds,
 sampler exhaustion, and all field mismatches. Import
 `RandomStreamCursorV1`, `RandomStreamKeyV1`, and `RootSeed256` as needed.
-Do not hand-roll HMAC or bounded-sampling logic.
+Compare the retained root seed with `after.random.root_seed` during final
+projection and add a regression for root-seed mutation. Do not hand-roll HMAC
+or bounded-sampling logic.
 
 - [ ] **Step 5: Run the causal and existing composition tests**
 
