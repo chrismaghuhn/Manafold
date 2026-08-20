@@ -1,6 +1,6 @@
 # Deterministic RNG Contract
 
-**Status:** accepted architecture contract; not implemented  
+**Status:** accepted executable reference contract
 **Stability:** normative deterministic-randomness contract  
 **Owner:** deterministic-kernel maintainers  
 **Decision:** ADR 0035  
@@ -12,7 +12,17 @@ This document defines the exact authoritative random-bit, stream-derivation, bou
 
 The contract exists so that reset, checkpoint, restore, fork, replay, regression fixtures, dependency upgrades, and future optimized backends can reproduce the same random results exactly.
 
-The contract is not yet implemented. Implementation must pass all required verification gates before status can be upgraded.
+The contract is implemented by the current Rust reference code for typed random state, explicit seeds, typed stream keys and cursors, HMAC-SHA-256 counter draws, unbiased bounded sampling, and generic shuffle. The complete proof obligations below remain evidence requirements: this document does not itself make a transition, replay, checkpoint, fork, or M1 acceptance gate `PASS`.
+
+## Architecture and executable evidence
+
+ADR 0035 is the accepted architectural decision; this document is its normative byte-level contract. Executable evidence is supplied separately by the current repository implementation and its tests. In particular:
+
+- `mtgml-random` owns `RandomStateV1`, `RootSeed256`, `RandomStreamKeyV1`, `RandomStreamCursorV1`, the `mtgml.rng.v1` identity, HMAC counter/raw-word semantics, bounded sampling, and shuffle primitives;
+- `mtgml-state` integrates the typed random state into `EngineState` and validates its cross-component invariants;
+- the M1.1 synthetic constructor initializes exactly the required `SyntheticM1/Global` stream at cursor zero and performs no authoritative RNG draw.
+
+Later transition-time consumption and complete replay/checkpoint/fork parity remain separate executable gates. They must be reported from the checks that actually run them and are not inferred from the accepted architecture text.
 
 ## Contract composition
 
@@ -447,19 +457,17 @@ Root seed and RNG internals are forbidden from published player trajectories.
 
 ## Full-state digest compatibility
 
-Implementing `RandomStateV1` changes the semantic and canonical representation of the `random` component of `EngineState`.
-
-Therefore the executable migration implementing this contract must introduce a new full-state canonical digest input version and domain rather than reusing `full-state-digest-input.v1` / `mtgml.full-state-digest.v1` with changed meaning.
-
-The stream map inside that digest input must use the explicit canonical entry-array representation defined above.
+The current typed `RandomStateV1` representation is bound into `FullStateDigestInputV2` and the current
+`mtgml.full-state-digest.v2` domain. Its stream map uses the explicit canonical entry-array representation defined
+above. The historical V1 digest input/domain retain their original placeholder-RNG meaning and have no current-engine
+producer; they are not reinterpreted by this contract.
 
 ## Replay and checkpoint versioning
 
-The executable migration requires a new replay-manifest version rather than reinterpreting existing randomness fields in place.
-
-A `CheckpointDigest` version bump is not automatic. Its own canonical input and semantic meaning must be evaluated separately. If it already binds the newly versioned `FullStateDigest` identity without changing its own semantics, it may remain unchanged. If its own contract changes, it receives an explicit version migration.
-
-This contract does not resolve OD-017, the future durable persisted checkpoint codec/version decision.
+The current repository uses the typed `AuthoritativeReplayV2` identity and `EnvironmentCheckpointV2` identity rather than
+reinterpreting historical V1 randomness fields in place. V1 replay/checkpoint material remains historical migration
+evidence. This contract does not create another replay or checkpoint version and does not make the future durable
+persisted-checkpoint codec complete.
 
 ## Versioning rules
 
@@ -485,7 +493,9 @@ A value-changing dependency upgrade must be rejected or introduced under a new s
 
 ## Known-answer vectors
 
-The following vectors were independently recomputed from this specification before acceptance. They become executable normative fixtures only when committed and run by the executable migration.
+The following vectors were independently recomputed from this specification before acceptance. They are normative proof
+obligations for the executable reference contract. The current repository contains executable primitive/state/sampling/
+shuffle evidence; any broader obligation not covered by an executed check remains `NOT_RUN`.
 
 ### Base fixture
 
@@ -573,9 +583,9 @@ result cursor = u64::MAX
 next draw     = counter-exhaustion error, zero mutation
 ```
 
-## Required executable evidence
+## Complete-contract executable evidence
 
-The implementation migration must add and execute evidence for at least:
+A complete executable evidence set must add and execute evidence for at least:
 
 1. standard HMAC-SHA-256 primitive vectors;
 2. all Manafold KATs above;
@@ -654,17 +664,11 @@ Failure before commit preserves authoritative RNG state exactly.
 
 ## Implementation boundary
 
-ADR 0035 resolves the architecture decision. This document owns the normative detailed contract.
+ADR 0035 resolves the architecture decision. This document owns the normative detailed contract. The current
+repository implements the typed state and primitive reference behavior in `mtgml-random`, integrates it into
+`EngineState`, and binds it to the current V2 state/checkpoint/replay identities. Future changes must update every
+affected representation together, including Rust/Python/schema/fixture and migration evidence where applicable.
 
-The executable migration is a separate cross-layer change and must update every affected representation together, including as applicable:
-
-- `mtgml-random` typed state and primitives;
-- `EngineState` integration and generic invariants;
-- full-state digest input/domain version;
-- replay-manifest version;
-- Rust/Python/schema/golden/negative fixtures;
-- compatibility/migration documentation.
-
-That migration must be merged and its required checks executed before M1.1 performs the first production deterministic reset.
-
-The M1.1 synthetic constructor owns only its required stream plan (`SyntheticM1/Global` at cursor zero); generic `validate_engine_state()` does not.
+The M1.1 synthetic constructor owns only its required stream plan (`SyntheticM1/Global` at cursor zero); generic
+`validate_engine_state()` does not. Construction performs zero RNG draws. Transition-time RNG consumption belongs to
+later M1 work and is not introduced by this documentation reconciliation.

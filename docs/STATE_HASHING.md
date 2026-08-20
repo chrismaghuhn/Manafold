@@ -1,7 +1,7 @@
 # State and Artifact Hashing
 
-**Status:** accepted V0.2.1 digest contract
-**Stability:** normative identity separation; full-state input v1 accepted
+**Status:** accepted current V2 digest/checkpoint contract; V1 evidence retained
+**Stability:** normative identity separation; `FullStateDigestV2` is current
 
 ## Digest domains
 
@@ -9,26 +9,26 @@ The project uses distinct Rust types and domain tags:
 
 | Digest | Includes | Excludes | Consumer |
 |---|---|---|---|
-| `FullStateDigest` | complete authoritative `EngineState` | derivable caches, environment status/counters | trusted kernel/replay |
+| `FullStateDigestV2` | complete authoritative `EngineState` | derivable caches, environment status/counters | trusted kernel/replay |
 | `PublicStateDigest` | information public to all current players | private knowledge/state | diagnostics/search keys |
 | `InformationStateDigest(player)` | current observation plus retained knowledge for one perspective | unauthorized hidden state | agent datasets/search |
 | `ObservationDigest(player)` | exact current observation bytes | historical knowledge not in observation | transport/tests |
 | `CandidateSetDigest` | ordered visible candidates and decision constraints | authoritative bindings | soundness/dataset diagnostics |
 | `ContentDigest` | canonical manifests/definitions/bundle closure | build-local paths/timestamps | certification |
 | `ReplayDigest` | canonical replay manifest and steps | non-normative logs | provenance |
-| `CheckpointDigest` | canonical checkpoint schema, full-state identity, episode status, limit counters, and codec identity | replay steps, logs, backend-local caches | trusted checkpoint storage |
+| `CheckpointDigestV2` | canonical checkpoint schema, full-state identity, episode status, limit counters, and codec identity | replay steps, logs, backend-local caches | trusted checkpoint storage |
 
 Digests from different domains are never compared directly. The Rust types make accidental equality checks a compile-time mismatch.
 
-## Full-state canonical input v1
+## Full-state canonical input V2 (current)
 
-`EngineState::digest()` is fallible and consumes `FullStateDigestInputV1`, not the internal `EngineState` serializer directly.
+`EngineState::digest()` is fallible and consumes `FullStateDigestInputV2`, not the internal `EngineState` serializer directly.
 
 The input contains:
 
 ```text
-schema_version = full-state-digest-input.v1
-domain = mtgml.full-state-digest.v1
+schema_version = full-state-digest-input.v2
+domain = mtgml.full-state-digest.v2
 revision
 core
 canonical zones
@@ -44,6 +44,9 @@ format
 
 A mandatory regression test hashes a valid state with a nonempty ordered zone. Tests limited to empty maps are insufficient.
 
+The current random component in this input is typed `RandomStateV1` under the `mtgml.rng.v1` contract, including the
+explicit root seed, typed stream keys, and cursor entry array. There is no current-engine V1 full-state producer.
+
 ## Domain separation
 
 The SHA-256 preimage is:
@@ -58,7 +61,7 @@ The canonical DTO also carries its domain and input schema for diagnostics and m
 
 ## State identity versions
 
-### V1 identity (historical)
+### V1 identity (historical/migration evidence)
 
 `FullStateDigest` (V1) identifies `EngineState` including the legacy `random` component using placeholder RNG semantics (free-form algorithm/derivation strings, string stream names, u64 counters). There is no current-engine V1 producer; V1 exists only in historical fixtures and migration reference material.
 
@@ -88,7 +91,15 @@ EnvironmentLimitCounters
 CheckpointCodecIdentity
 ```
 
-The complete checkpoint validator recomputes both the embedded `FullStateDigestV2` from `EngineState` and the `CheckpointDigest` from the remaining checkpoint identity. Altering status, limits, codec identity, or state identity without updating the corresponding digest is rejected. The in-memory semantic checkpoint contract is frozen by V0.2.1; a durable checkpoint wire codec remains a separate future contract.
+The complete checkpoint validator recomputes both the embedded `FullStateDigestV2` from `EngineState` and the `CheckpointDigestV2` from the remaining checkpoint identity. Altering status, limits, codec identity, or state identity without updating the corresponding digest is rejected. The in-memory semantic checkpoint contract is frozen by V0.2.1; a durable checkpoint wire codec remains a separate future contract.
+
+## Executable evidence boundary
+
+The current Rust implementation provides `FullStateDigestV2`/`FullStateDigestInputV2` through `EngineState::digest()`
+and validates `EnvironmentCheckpointV2` against the complete state, V2 state digest, status, limits, and checkpoint
+identity. The historical V1 bytes and golden fixtures remain immutable detached evidence; they are not current-engine
+producers and are not reinterpreted. Broader replay, durable persistence, or certification claims require their own
+executed evidence and are not created by this document update.
 
 ## Security note
 
