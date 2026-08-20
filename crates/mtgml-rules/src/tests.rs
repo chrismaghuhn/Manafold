@@ -223,19 +223,46 @@ fn synthetic_m1_acceptance_returns_exact_transition_product() {
 
     let mut expected_after = before.clone();
     expected_after.revision = StateRevision(1);
+    expected_after
+        .core
+        .players
+        .get_mut(&PlayerId(1))
+        .unwrap()
+        .life = 38;
     expected_after.execution.pending_decision = None;
-    expected_after.allocators.next_rule_event_id = RuleEventId(2);
+    expected_after.allocators.next_rule_event_id = RuleEventId(4);
 
-    let expected_event = AuthoritativeRuleEvent {
-        event_id: RuleEventId(1),
-        state_revision: StateRevision(1),
-        event: AuthoritativeRuleEventKind::DecisionCleared {
-            decision: DecisionId(1),
+    let expected_events = vec![
+        AuthoritativeRuleEvent {
+            event_id: RuleEventId(1),
+            state_revision: StateRevision(1),
+            event: AuthoritativeRuleEventKind::LifeChanged {
+                player: PlayerId(1),
+                from: 40,
+                to: 39,
+            },
         },
-    };
-    let expected_audit = vec![SemanticDeltaOperation::DecisionCleared {
-        decision: DecisionId(1),
-    }];
+        AuthoritativeRuleEvent {
+            event_id: RuleEventId(2),
+            state_revision: StateRevision(1),
+            event: AuthoritativeRuleEventKind::LifeChanged {
+                player: PlayerId(1),
+                from: 39,
+                to: 38,
+            },
+        },
+        AuthoritativeRuleEvent {
+            event_id: RuleEventId(3),
+            state_revision: StateRevision(1),
+            event: AuthoritativeRuleEventKind::DecisionCleared {
+                decision: DecisionId(1),
+            },
+        },
+    ];
+    let expected_audit = expected_events
+        .iter()
+        .map(|event| event.event.semantic_delta())
+        .collect::<Vec<_>>();
     let expected_delta =
         StateDelta::between(&before, &expected_after, expected_audit.clone()).unwrap();
 
@@ -244,11 +271,38 @@ fn synthetic_m1_acceptance_returns_exact_transition_product() {
 
     assert!(result.accepted);
     assert_eq!(result.next_state, expected_after);
-    assert_eq!(result.events, vec![expected_event]);
+    assert_eq!(result.events, expected_events);
     assert_eq!(result.delta, expected_delta);
     assert_eq!(result.delta.audit, expected_audit);
     assert_eq!(result.next_decision, None);
     assert_eq!(result.status, EpisodeStatus::Running);
+    assert_eq!(result.next_state.revision, StateRevision(1));
+    assert_eq!(result.next_state.core.players[&PlayerId(1)].life, 38);
+    assert_eq!(result.next_state.core.players[&PlayerId(2)].life, 40);
+    assert_eq!(
+        result.next_state.allocators.next_rule_event_id,
+        RuleEventId(4)
+    );
+    assert_eq!(result.next_state.zones, before.zones);
+    assert_eq!(result.next_state.random, before.random);
+    assert_eq!(result.next_state.knowledge, before.knowledge);
+    assert_eq!(
+        result.next_state.perspective_identities,
+        before.perspective_identities
+    );
+    assert_eq!(result.next_state.format, before.format);
+    assert_eq!(
+        result.next_state.allocators.next_object_id,
+        before.allocators.next_object_id
+    );
+    assert_eq!(
+        result.next_state.allocators.next_decision_id,
+        before.allocators.next_decision_id
+    );
+    assert_eq!(
+        result.next_state.allocators.next_continuation_id,
+        before.allocators.next_continuation_id
+    );
     assert_eq!(result.delta.before_revision, StateRevision(0));
     assert_eq!(result.delta.after_revision, StateRevision(1));
     assert_eq!(result.delta.before_digest, before_digest);
@@ -265,6 +319,140 @@ fn synthetic_m1_acceptance_returns_exact_transition_product() {
         result.next_state.digest().unwrap()
     );
     validate_transition_contract(&before, &result).unwrap();
+}
+
+#[test]
+fn second_life_event_must_use_cursor_life_after_first_event() {
+    let before = state();
+    let mut after = before.clone();
+    after.revision = StateRevision(1);
+    after.core.players.get_mut(&PlayerId(1)).unwrap().life = 38;
+    after.allocators.next_rule_event_id = RuleEventId(3);
+    let events = vec![
+        AuthoritativeRuleEvent {
+            event_id: RuleEventId(1),
+            state_revision: StateRevision(1),
+            event: AuthoritativeRuleEventKind::LifeChanged {
+                player: PlayerId(1),
+                from: 40,
+                to: 39,
+            },
+        },
+        AuthoritativeRuleEvent {
+            event_id: RuleEventId(2),
+            state_revision: StateRevision(1),
+            event: AuthoritativeRuleEventKind::LifeChanged {
+                player: PlayerId(1),
+                from: 40,
+                to: 38,
+            },
+        },
+    ];
+    let transition = result(&before, after, events, None);
+
+    assert!(matches!(
+        validate_transition_contract(&before, &transition),
+        Err(TransitionViolation::LifeChange)
+    ));
+}
+
+#[test]
+fn reversed_dependent_life_events_fail() {
+    let before = state();
+    let mut after = before.clone();
+    after.revision = StateRevision(1);
+    after.core.players.get_mut(&PlayerId(1)).unwrap().life = 38;
+    after.allocators.next_rule_event_id = RuleEventId(3);
+    let events = vec![
+        AuthoritativeRuleEvent {
+            event_id: RuleEventId(1),
+            state_revision: StateRevision(1),
+            event: AuthoritativeRuleEventKind::LifeChanged {
+                player: PlayerId(1),
+                from: 39,
+                to: 38,
+            },
+        },
+        AuthoritativeRuleEvent {
+            event_id: RuleEventId(2),
+            state_revision: StateRevision(1),
+            event: AuthoritativeRuleEventKind::LifeChanged {
+                player: PlayerId(1),
+                from: 40,
+                to: 39,
+            },
+        },
+    ];
+    let transition = result(&before, after, events, None);
+
+    assert!(matches!(
+        validate_transition_contract(&before, &transition),
+        Err(TransitionViolation::LifeChange)
+    ));
+}
+
+#[test]
+fn incomplete_life_trace_fails_final_projection() {
+    let before = state();
+    let mut after = before.clone();
+    after.revision = StateRevision(1);
+    after.core.players.get_mut(&PlayerId(1)).unwrap().life = 38;
+    after.allocators.next_rule_event_id = RuleEventId(2);
+    let events = vec![AuthoritativeRuleEvent {
+        event_id: RuleEventId(1),
+        state_revision: StateRevision(1),
+        event: AuthoritativeRuleEventKind::LifeChanged {
+            player: PlayerId(1),
+            from: 40,
+            to: 39,
+        },
+    }];
+    let transition = result(&before, after, events, None);
+
+    assert!(matches!(
+        validate_transition_contract(&before, &transition),
+        Err(TransitionViolation::LifeChange)
+    ));
+}
+
+#[test]
+fn event_and_delta_audit_disagreement_fails() {
+    let before = state();
+    let mut after = before.clone();
+    after.revision = StateRevision(1);
+    after.core.players.get_mut(&PlayerId(1)).unwrap().life = 38;
+    after.allocators.next_rule_event_id = RuleEventId(3);
+    let events = vec![
+        AuthoritativeRuleEvent {
+            event_id: RuleEventId(1),
+            state_revision: StateRevision(1),
+            event: AuthoritativeRuleEventKind::LifeChanged {
+                player: PlayerId(1),
+                from: 40,
+                to: 39,
+            },
+        },
+        AuthoritativeRuleEvent {
+            event_id: RuleEventId(2),
+            state_revision: StateRevision(1),
+            event: AuthoritativeRuleEventKind::LifeChanged {
+                player: PlayerId(1),
+                from: 39,
+                to: 38,
+            },
+        },
+    ];
+    let mut transition = result(&before, after, events, None);
+    transition.delta.audit[1] = SemanticDeltaOperation::LifeChanged {
+        player: PlayerId(1),
+        from: 39,
+        to: 37,
+    };
+
+    assert!(matches!(
+        validate_transition_contract(&before, &transition),
+        Err(TransitionViolation::EventDeltaMismatch)
+    ));
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
