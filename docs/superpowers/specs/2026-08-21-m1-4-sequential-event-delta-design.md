@@ -29,8 +29,9 @@ pass, mutates that workspace in event order, advances the outer revision once,
 and validates the complete product before returning it.
 
 No environment transaction owner, checkpoint/restore, fork, replay recorder,
-endpoint binding, RNG draw, allocator consumption, new decision, or real Magic
-semantics is introduced. The pre-existing rule-event allocator advances from
+endpoint binding, RNG draw, non-rule allocator consumption, new decision, or
+real Magic semantics is introduced. The pre-existing rule-event allocator
+advances from
 `RuleEventId(1)` to `RuleEventId(4)` solely to identify the three emitted
 events. The repository-level `REJECTED_RESPONSE_COMPLETE_NONMUTATION` gate
 remains `BLOCKED`; its environment/replay closure belongs to #25.
