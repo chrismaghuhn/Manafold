@@ -279,7 +279,10 @@ def main() -> None:
     if "Arc<Mutex" not in env_rust or re.search(r"fn\s+bind_player\s*\(\s*&self", env_rust) is None:
         fail("player endpoint handles still borrow the controller exclusively")
 
-    state_rust = (ROOT / "crates/mtgml-state/src/lib.rs").read_text(encoding="utf-8")
+    state_src = ROOT / "crates/mtgml-state/src"
+    production_files = [p for p in sorted(state_src.glob("*.rs")) if p.name != "tests.rs"]
+    state_rust = "\n".join(p.read_text(encoding="utf-8") for p in production_files)
+    state_tests = (state_src / "tests.rs").read_text(encoding="utf-8")
     for token in (
         "validate_engine_state",
         "EngineStateParts",
@@ -293,12 +296,15 @@ def main() -> None:
         "FullStateDigestInputV2",
         "CanonicalOrderedZoneEntryV1",
         "canonicalize_json",
-        "nonempty_ordered_zone_has_a_stable_domain_separated_digest",
         "KnowledgeInvalidationRecord",
         "KnowledgeAcquisitionReason",
     ):
         if token not in state_rust:
             fail(f"state contract closure lacks {token}")
+
+    for token in ("nonempty_ordered_zone_has_a_stable_domain_separated_digest",):
+        if token not in state_tests:
+            fail(f"state test evidence lacks {token}")
 
     for token in (
         "EnvironmentCheckpointV2",
