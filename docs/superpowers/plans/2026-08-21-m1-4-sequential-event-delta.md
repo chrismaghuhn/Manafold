@@ -1,6 +1,6 @@
 # M1.4 Sequential Event/Delta Composition Implementation Plan
 
-**Status:** accepted  
+**Status:** accepted
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox syntax for tracking.
 
@@ -12,7 +12,7 @@
 
 ---
 
-**Starting master:** 476db61152990eda7f74198ef853b924746fac39  
+**Starting master:** 476db61152990eda7f74198ef853b924746fac39
 **Branch:** chris/m1-4-sequential-event-delta
 
 ## Files and responsibilities

@@ -1,8 +1,8 @@
 # M1.4 Sequential Event/Delta Composition Design
 
-**Status:** accepted for implementation  
-**Stability:** provisional  
-**Owner:** maintainer  
+**Status:** accepted for implementation
+**Stability:** provisional
+**Owner:** maintainer
 **Starting master:** `476db61152990eda7f74198ef853b924746fac39`
 
 ## Scope
