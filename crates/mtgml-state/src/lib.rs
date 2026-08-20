@@ -3,22 +3,24 @@
 //! `EngineState` is the only semantic source of truth. Kernels may hold caches,
 //! but caches must be derivable and must never affect a transition.
 
-pub mod core;
-pub mod delta;
-pub mod digest;
-pub mod engine;
-pub mod execution;
-pub mod format;
-pub mod identity;
-pub mod knowledge;
-pub mod validation;
-pub mod zones;
+mod core;
+mod delta;
+mod digest;
+mod engine;
+mod execution;
+mod format;
+mod identity;
+mod knowledge;
+mod validation;
+mod zones;
 
 pub use core::{CoreRulesState, PlayerState};
 pub use delta::{DeltaApplicationError, SemanticDeltaOperation, StateDelta};
 pub use digest::StateDigestError;
-pub use engine::{EngineState, EngineStateParts};
-pub use execution::{ContinuationRecord, ExecutionState, PendingDecisionRecord};
+pub use engine::{EngineState, EngineStateParts, FULL_STATE_DIGEST_INPUT_SCHEMA};
+pub use execution::{
+    ContinuationRecord, EffectRecord, ExecutionState, PendingDecisionRecord, TriggerRecord,
+};
 pub use format::{CommanderState, FormatState};
 pub use identity::{IdentityAllocatorState, PerspectiveIdentityMap, PerspectiveIdentityState};
 pub use knowledge::{

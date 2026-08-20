@@ -2,7 +2,7 @@
 
 use mtgml_decision::DecisionResponse;
 use mtgml_model::{ContentDigest, FullStateDigest, FullStateDigestV2, PlayerId, StateRevision};
-use mtgml_random::validate_seed_hex;
+use mtgml_random::types::validate_seed_hex;
 use serde::{Deserialize, Deserializer, Serialize};
 use std::collections::BTreeSet;
 use thiserror::Error;
