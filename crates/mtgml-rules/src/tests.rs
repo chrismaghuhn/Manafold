@@ -1,16 +1,21 @@
 use super::*;
-use mtgml_decision::{DecisionKind, DecisionVisibility, PlayerDecisionRequest};
+use mtgml_decision::{
+    CandidateAssignment, DecisionKind, DecisionResponse, DecisionVisibility,
+    EngineCandidateBinding, PlayerDecisionRequest, DECISION_RESPONSE_SCHEMA,
+};
 use mtgml_model::{
     AbilityInstanceId, CardDefinitionId, ContinuationId, DecisionId, EffectInstanceId,
     EpisodeStatus, GameObjectId, OpaqueAbilityId, OpaqueObjectId, PhysicalCardId, PlayerId,
     RuleEventId, StackObjectId, StateRevision, TriggerInstanceId, ZoneKind,
 };
 use mtgml_random::RandomStateV1;
+use mtgml_random::RootSeed256;
 use mtgml_state::{
-    CoreRulesState, EngineState, ExecutionState, FormatState, GameObject, IdentityAllocatorState,
-    KnowledgeState, ObjectSnapshot, PendingDecisionRecord, PerspectiveIdentityMap,
-    PerspectiveIdentityState, PlayerKnowledgeState, PlayerState, StateDelta, VisibilityPartition,
-    ZoneLocation, ZonePosition, ZoneState, ZoneTransition,
+    construct_synthetic_engine_state, CoreRulesState, EngineState, EngineStateViolation,
+    ExecutionState, FormatState, GameObject, IdentityAllocatorState, KnowledgeState,
+    ObjectSnapshot, PendingDecisionRecord, PerspectiveIdentityMap, PerspectiveIdentityState,
+    PlayerKnowledgeState, PlayerState, SemanticDeltaOperation, StateDelta, SyntheticResetInputs,
+    VisibilityPartition, ZoneLocation, ZonePosition, ZoneState, ZoneTransition,
 };
 use std::collections::BTreeMap;
 
@@ -90,6 +95,153 @@ fn state() -> EngineState {
         },
         format: FormatState::None,
     }
+}
+
+fn synthetic_state() -> EngineState {
+    construct_synthetic_engine_state(SyntheticResetInputs {
+        players: [PlayerId(1), PlayerId(2)],
+        root_seed: RootSeed256::from_lower_hex(&"11".repeat(32)).unwrap(),
+    })
+    .unwrap()
+}
+
+fn synthetic_response(state: &EngineState) -> DecisionResponse {
+    let request = &state.execution.pending_decision.as_ref().unwrap().request;
+    DecisionResponse {
+        schema_version: DECISION_RESPONSE_SCHEMA.to_owned(),
+        decision_id: request.decision_id,
+        state_revision: request.state_revision,
+        assignments: vec![CandidateAssignment {
+            candidate_id: "select_public_object".to_owned(),
+            ordinal: None,
+        }],
+    }
+}
+
+#[test]
+fn synthetic_kernel_boundary_carries_trusted_actor() {
+    let state = synthetic_state();
+    let response = synthetic_response(&state);
+    let mut kernel = SyntheticM1RulesKernel::default();
+    let result = kernel.apply(&state, PlayerId(1), &response);
+    assert!(result.is_ok());
+}
+
+#[test]
+fn synthetic_m1_acceptance_returns_exact_transition_product() {
+    let before = synthetic_state();
+    let response = synthetic_response(&before);
+    let before_digest = before.digest().unwrap();
+    let pending = before.execution.pending_decision.as_ref().unwrap();
+
+    assert_eq!(pending.request.actor, PlayerId(1));
+    assert_eq!(pending.request.decision, DecisionKind::ChooseOne);
+    assert_eq!(pending.request.candidates.len(), 1);
+    assert_eq!(
+        pending.request.candidates[0].candidate_id,
+        "select_public_object"
+    );
+    assert_eq!(
+        pending.candidate_bindings["select_public_object"],
+        EngineCandidateBinding::SelectObject {
+            object: GameObjectId(1)
+        }
+    );
+
+    let mut expected_after = before.clone();
+    expected_after.revision = StateRevision(1);
+    expected_after.execution.pending_decision = None;
+    expected_after.allocators.next_rule_event_id = RuleEventId(2);
+
+    let expected_event = AuthoritativeRuleEvent {
+        event_id: RuleEventId(1),
+        state_revision: StateRevision(1),
+        event: AuthoritativeRuleEventKind::DecisionCleared {
+            decision: DecisionId(1),
+        },
+    };
+    let expected_audit = vec![SemanticDeltaOperation::DecisionCleared {
+        decision: DecisionId(1),
+    }];
+    let expected_delta =
+        StateDelta::between(&before, &expected_after, expected_audit.clone()).unwrap();
+
+    let mut kernel = SyntheticM1RulesKernel::default();
+    let result = kernel.apply(&before, PlayerId(1), &response).unwrap();
+
+    assert!(result.accepted);
+    assert_eq!(result.next_state, expected_after);
+    assert_eq!(result.events, vec![expected_event]);
+    assert_eq!(result.delta, expected_delta);
+    assert_eq!(result.delta.audit, expected_audit);
+    assert_eq!(result.next_decision, None);
+    assert_eq!(result.status, EpisodeStatus::Running);
+    assert_eq!(result.delta.before_revision, StateRevision(0));
+    assert_eq!(result.delta.after_revision, StateRevision(1));
+    assert_eq!(result.delta.before_digest, before_digest);
+    assert_eq!(
+        result.delta.after_digest,
+        result.next_state.digest().unwrap()
+    );
+    assert_ne!(before_digest, result.next_state.digest().unwrap());
+
+    let reapplied = result.delta.apply(&before).unwrap();
+    assert_eq!(reapplied, result.next_state);
+    assert_eq!(
+        reapplied.digest().unwrap(),
+        result.next_state.digest().unwrap()
+    );
+    validate_transition_contract(&before, &result).unwrap();
+}
+
+#[test]
+fn synthetic_wrong_actor_returns_exact_rejected_product() {
+    let before = synthetic_state();
+    let response = synthetic_response(&before);
+    let before_digest = before.digest().unwrap();
+    let mut kernel = SyntheticM1RulesKernel::default();
+
+    let result = kernel.apply(&before, PlayerId(2), &response).unwrap();
+
+    assert!(!result.accepted);
+    assert_eq!(result.next_state, before);
+    assert!(result.events.is_empty());
+    assert!(result.delta.audit.is_empty());
+    assert_eq!(result.delta.before_revision, before.revision);
+    assert_eq!(result.delta.after_revision, before.revision);
+    assert_eq!(result.delta.before_digest, before_digest);
+    assert_eq!(result.delta.after_digest, before_digest);
+    assert_eq!(
+        result.next_decision,
+        Some(
+            before
+                .execution
+                .pending_decision
+                .as_ref()
+                .unwrap()
+                .request
+                .clone()
+        )
+    );
+    assert_eq!(result.status, EpisodeStatus::Running);
+    assert_eq!(result.delta.apply(&before).unwrap(), before);
+    validate_transition_contract(&before, &result).unwrap();
+}
+
+#[test]
+fn invalid_before_state_is_a_kernel_execution_error() {
+    let before = synthetic_state();
+    let response = synthetic_response(&before);
+    let mut invalid = before.clone();
+    invalid.allocators.next_rule_event_id = RuleEventId(0);
+    let mut kernel = SyntheticM1RulesKernel::default();
+
+    assert!(matches!(
+        kernel.apply(&invalid, PlayerId(1), &response),
+        Err(KernelExecutionError::BeforeState(
+            EngineStateViolation::AllocatorBehind
+        ))
+    ));
 }
 
 fn insert_object(
