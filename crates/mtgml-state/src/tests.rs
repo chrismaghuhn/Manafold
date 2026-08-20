@@ -594,13 +594,22 @@ fn ordered_object_must_not_be_missing() {
 #[test]
 fn duplicate_live_physical_card_incarnation_rejected() {
     let mut value = synthetic_state();
-    let physical_card = value.zones.objects[&GameObjectId(1)].physical_card;
+    let duplicate = value.zones.objects[&GameObjectId(1)].physical_card;
     value
         .zones
         .objects
         .get_mut(&GameObjectId(2))
         .unwrap()
-        .physical_card = physical_card;
+        .physical_card = duplicate;
+    value
+        .knowledge
+        .players
+        .get_mut(&PlayerId(2))
+        .unwrap()
+        .known_objects
+        .get_mut(&GameObjectId(2))
+        .unwrap()
+        .physical_card = duplicate;
 
     assert_eq!(
         validate_engine_state(&value),
