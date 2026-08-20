@@ -332,6 +332,32 @@ mod tests {
     }
 
     #[test]
+    fn full_state_digest_v1_historical_golden() {
+        // Historical V1 canonical bytes (frozen from original V1 implementation)
+        // This is test-only detached evidence; no EngineStateV1 runtime exists.
+        let v1_bytes = br#"{"allocators":{"next_ability_id":"1","next_continuation_id":"1","next_decision_id":"1","next_effect_id":"1","next_object_id":"1","next_opaque_ability_id":{},"next_opaque_object_id":{},"next_rule_event_id":"1","next_stack_object_id":"1","next_trigger_id":"1"},"core":{"active_player":"1","players":{"1":{"has_lost":false,"life":40},"2":{"has_lost":false,"life":40}},"priority_player":"1","turn_number":1},"domain":"mtgml.full-state-digest.v1","execution":{"continuations":{},"delayed_effects":{},"effects":{},"waiting_triggers":{}},"format":{"kind":"none"},"knowledge":{"players":{"1":{"invalidations":[],"known_objects":{},"private_history_length":0,"public_history_length":0},"2":{"invalidations":[],"known_objects":{},"private_history_length":0,"public_history_length":0}}},"perspective_identities":{"players":{"1":{"ability_to_opaque":{},"object_to_opaque":{},"opaque_to_ability":{},"opaque_to_object":{}},"2":{"ability_to_opaque":{},"object_to_opaque":{},"opaque_to_ability":{},"opaque_to_object":{}}}},"random":{"contract_id":"mtgml.rng.v1","root_seed":"0000000000000000000000000000000000000000000000000000000000000000","streams":[]},"revision":"0","schema_version":"full-state-digest-input.v1","zones":{"locations":{},"objects":{},"ordered_zones":[],"stack_order":[],"stack_records":{}}}"#;
+        let v1_digest = FullStateDigest::from_canonical_bytes(v1_bytes);
+        assert_eq!(
+            v1_digest.as_str(),
+            "98ca7687ab8df1ab11613aa927d9deeb9dfdc105ecfab5c45ddbc761022c0593",
+            "Historical V1 FullStateDigest golden must not change"
+        );
+    }
+
+    #[test]
+    fn checkpoint_digest_v1_historical_golden() {
+        // Historical V1 checkpoint canonical bytes (frozen from original V1 implementation)
+        // This is test-only detached evidence; no EngineStateV1 runtime exists.
+        let v1_bytes = br#"{"codec":{"codec_id":"in-memory-reference","semantic_version":"1"},"domain":"mtgml.checkpoint-digest.v1","limit_counters":{"decisions_submitted":0,"accepted_transitions":0,"rule_events_emitted":0,"resource_units_consumed":0,"wall_clock_elapsed_millis":0},"schema_version":"environment-checkpoint.v1","state_digest":"753d6b2756e60227af224f919169ce034dd94c60b142f6eded0931548d866c1a","status":"running"}"#;
+        let v1_digest = CheckpointDigest::from_canonical_bytes(v1_bytes);
+        assert_eq!(
+            v1_digest.as_str(),
+            "e51cfb03fe6be4f2d31fb00e5dca6c3f52b1d09125ab2d10d1af520471468518",
+            "Historical V1 CheckpointDigest golden must not change"
+        );
+    }
+
+    #[test]
     fn digest_domains_cannot_compare_accidentally_and_hash_differently() {
         let full = FullStateDigest::from_canonical_bytes(b"same canonical bytes");
         let public = PublicStateDigest::from_canonical_bytes(b"same canonical bytes");

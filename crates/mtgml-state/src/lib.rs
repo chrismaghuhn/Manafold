@@ -1351,15 +1351,8 @@ mod tests {
     }
 
     #[test]
-    fn rng_digest_canonical_bytes_are_sorted() {
+    fn rng_streams_canonical_bytes_sorted_by_key() {
         let mut value = state();
-        value
-            .random
-            .add_stream(
-                RandomStreamKeyV1::global(RandomStreamKindV1::SyntheticM1),
-                RandomStreamCursorV1::default(),
-            )
-            .unwrap();
         value
             .random
             .add_stream(
@@ -1367,11 +1360,32 @@ mod tests {
                 RandomStreamCursorV1 { next_raw_u64: 7 },
             )
             .unwrap();
+        value
+            .random
+            .add_stream(
+                RandomStreamKeyV1::global(RandomStreamKindV1::SyntheticM1),
+                RandomStreamCursorV1::default(),
+            )
+            .unwrap();
         validate_engine_state(&value).unwrap();
         let bytes = value.canonical_digest_bytes().unwrap();
-        assert!(
-            !bytes.is_empty(),
-            "canonical digest bytes must be non-empty"
+        let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        let streams = json["random"]["streams"].as_array().unwrap();
+        let keys: Vec<_> = streams
+            .iter()
+            .map(|s| {
+                s["key"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .map(|v| v.as_u64().unwrap())
+                    .collect::<Vec<_>>()
+            })
+            .collect();
+        assert_eq!(
+            keys,
+            vec![vec![1, 0, 1, 0], vec![1, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 1]],
+            "RNG streams in canonical bytes must be sorted by key"
         );
     }
 
