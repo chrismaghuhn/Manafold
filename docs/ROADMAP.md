@@ -64,7 +64,7 @@
 ### M2 implementation slices
 
 ```text
-M2.A      contract/version architecture freeze (accepted; executable gate remains open until M2.B)
+M2.A      contract/version architecture freeze (accepted; M2.B local structural gate PASS)
 M2.B      one V3 state/digest/checkpoint/replay structural cut
 M2.C      closed decisions and typed continuations
 M2.D      player projection, PlayerStep, and errors

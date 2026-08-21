@@ -19,7 +19,8 @@ The machine-readable classification of binding, process, and informative documen
 
 Current executable status is M1 complete. M2.A architecture contracts are
 accepted and the M2.B structural implementation is present; the authoritative
-M2 gate remains `NOT_RUN` until it executes on a clean exact source head.
+`M2_EXECUTABLE_CONTRACT_AND_VERSION_CUT` is `PASS` on the local clean exact
+head. Hosted PR evidence and M2.Final closure remain separate.
 
 ## Normative architecture and semantics
 

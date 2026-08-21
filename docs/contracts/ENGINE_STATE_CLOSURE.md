@@ -1,6 +1,6 @@
 # Engine State Closure
 
-**Status:** accepted state-closure contract including M2 field refinements; executable M2 evidence `NOT_RUN`  
+**Status:** accepted state-closure contract including M2 field refinements; local M2.B structural evidence `PASS`, hosted/M2.Final closure pending  
 **Stability:** normative
 
 `EngineState` is the complete semantic input to a transition:

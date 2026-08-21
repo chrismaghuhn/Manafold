@@ -107,7 +107,9 @@ Every intermediate continuation and information-lifecycle state used by M2 has e
 
 A source test that has never executed in the pinned toolchain is `NOT_RUN`, not `PASS`.
 
-Generated closure reports are the only milestone-status authority. M2.A documentation does not promote any M2 behavior gate.
+Generated closure reports are the only milestone-status authority. M2.A
+documentation alone does not promote any M2 behavior gate; the M2.B local
+structural gate is promoted only by its exact-head runner evidence.
 
 ## Coverage meaning
 
