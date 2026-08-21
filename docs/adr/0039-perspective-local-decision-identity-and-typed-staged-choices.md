@@ -1,9 +1,9 @@
 # ADR 0039: Perspective-local decision identity and typed staged choices
 
-- **Status:** proposed
+- **Status:** accepted
 - **Date:** 2026-08-21
 - **Supersedes:** none; M1 Decision V1 retains its historical meaning
-- **Unblocks:** M2 structural Decision V2 implementation after ADR 0040/V3 persistence contract are also accepted
+- **Unblocks:** M2.B structural Decision V2/V3 implementation; executable gates remain `NOT_RUN` until M2.B evidence runs
 
 ## Context
 
