@@ -26,4 +26,8 @@ pub enum ReplayValidationError {
     UnsupportedRngContract,
     #[error("replay-step schema identity must be replay-step.v2")]
     ReplayStepIdentity,
+    #[error("replay checkpoint identity does not recompute")]
+    CheckpointIdentity,
+    #[error("replay step actor identity is invalid")]
+    Actor,
 }

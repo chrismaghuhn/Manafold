@@ -2,6 +2,7 @@
 resolver = "2"
 members = [
   "crates/mtgml-model",
+  "crates/mtgml-persistence",
   "crates/mtgml-random",
   "crates/mtgml-decision",
   "crates/mtgml-state",

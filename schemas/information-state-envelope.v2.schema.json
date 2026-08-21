@@ -1,0 +1,55 @@
+{
+  "$id": "information-state-envelope.v2.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "$defs": {
+    "uint": {"pattern": "^(0|[1-9][0-9]*)$", "type": "string"},
+    "digest": {"pattern": "^[0-9a-f]{64}$", "type": "string"},
+    "observation": {
+      "additionalProperties": false,
+      "properties": {
+        "digest": {"$ref": "#/$defs/digest"},
+        "payload_base64": {"type": "string"},
+        "payload_codec": {"minLength": 1, "type": "string"},
+        "perspective": {"$ref": "#/$defs/uint"},
+        "schema_version": {"const": "observation-envelope.v1"},
+        "state_revision": {"$ref": "#/$defs/uint"}
+      },
+      "required": ["schema_version", "perspective", "state_revision", "payload_codec", "payload_base64", "digest"],
+      "type": "object"
+    },
+    "provenance": {
+      "oneOf": [
+        {"additionalProperties": false, "properties": {"kind": {"const": "initial_configuration"}}, "required": ["kind"], "type": "object"},
+        {"additionalProperties": false, "properties": {"cause": {"enum": ["public_event", "private_look", "explicit_reveal", "own_private_identity"]}, "channel": {"enum": ["public", "private"]}, "kind": {"const": "observed"}, "sequence": {"$ref": "#/$defs/uint"}}, "required": ["kind", "channel", "sequence", "cause"], "type": "object"}
+      ]
+    },
+    "location_fact": {
+      "additionalProperties": false,
+      "properties": {
+        "location": {"additionalProperties": false, "properties": {"player": {"anyOf": [{"$ref": "#/$defs/uint"}, {"type": "null"}]}, "zone": {"enum": ["library", "hand", "battlefield", "graveyard", "exile", "stack", "command", "ante", "outside"]}}, "required": ["zone", "player"], "type": "object"},
+        "provenance": {"$ref": "#/$defs/provenance"}
+      },
+      "required": ["location", "provenance"],
+      "type": "object"
+    },
+    "known_object": {
+      "oneOf": [
+        {"additionalProperties": false, "properties": {"acquisition": {"$ref": "#/$defs/provenance"}, "current_known_location_fact": {"anyOf": [{"$ref": "#/$defs/location_fact"}, {"type": "null"}]}, "historical_locations": {"items": {"$ref": "#/$defs/location_fact"}, "type": "array"}, "kind": {"const": "active"}, "known_definition": {"anyOf": [{"$ref": "#/$defs/uint"}, {"type": "null"}]}, "opaque_object_id": {"$ref": "#/$defs/uint"}}, "required": ["kind", "opaque_object_id", "known_definition", "current_known_location_fact", "historical_locations", "acquisition"], "type": "object"},
+        {"additionalProperties": false, "properties": {"acquisition": {"$ref": "#/$defs/provenance"}, "historical_locations": {"items": {"$ref": "#/$defs/location_fact"}, "type": "array"}, "invalidation": {"additionalProperties": false, "properties": {"provenance": {"$ref": "#/$defs/provenance"}, "reason": {"enum": ["hidden_transition", "randomization", "shuffle", "explicit_forget"]}}, "required": ["provenance", "reason"], "type": "object"}, "kind": {"const": "retired"}, "known_definition": {"anyOf": [{"$ref": "#/$defs/uint"}, {"type": "null"}]}, "last_known_location_fact": {"anyOf": [{"$ref": "#/$defs/location_fact"}, {"type": "null"}]}, "opaque_object_id": {"$ref": "#/$defs/uint"}}, "required": ["kind", "opaque_object_id", "known_definition", "last_known_location_fact", "historical_locations", "acquisition", "invalidation"], "type": "object"}
+      ]
+    }
+  },
+  "properties": {
+    "current_observation": {"$ref": "#/$defs/observation"},
+    "digest": {"$ref": "#/$defs/digest"},
+    "next_visible_sequence": {"$ref": "#/$defs/uint"},
+    "perspective": {"$ref": "#/$defs/uint"},
+    "retained_knowledge": {"items": {"$ref": "#/$defs/known_object"}, "type": "array"},
+    "schema_version": {"const": "information-state-envelope.v2"},
+    "state_revision": {"$ref": "#/$defs/uint"}
+  },
+  "required": ["schema_version", "perspective", "state_revision", "current_observation", "next_visible_sequence", "retained_knowledge", "digest"],
+  "title": "PlayerInformationState V2",
+  "type": "object"
+}

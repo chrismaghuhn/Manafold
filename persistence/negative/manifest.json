@@ -1,0 +1,9 @@
+{
+  "schema_version": "persistence-fixture-manifest.v1",
+  "fixtures": [
+    {"contract": "canonical-cbor.v1", "expected_error_code": "noncanonical_primitive", "path": "noncanonical-unsigned.cbor"},
+    {"contract": "canonical-cbor.v1", "expected_error_code": "trailing_data", "path": "trailing-value.cbor"},
+    {"contract": "canonical-cbor.v1", "expected_error_code": "disallowed_cbor_form", "path": "map-form.cbor"},
+    {"contract": "digest-envelope.v1", "expected_error_code": "envelope_identity", "path": "wrong-envelope-identity.cbor"}
+  ]
+}

@@ -1,0 +1,33 @@
+{
+  "$id": "authoritative-replay.v3.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "$defs": {
+    "uint": {"pattern": "^(0|[1-9][0-9]*)$", "type": "string"},
+    "digest": {"pattern": "^[0-9a-f]{64}$", "type": "string"},
+    "identity": {"additionalProperties": false, "properties": {"checkpoint_codec_identity": {"additionalProperties": false, "properties": {"codec_id": {"minLength": 1, "type": "string"}, "semantic_version": {"minLength": 1, "type": "string"}}, "required": ["codec_id", "semantic_version"], "type": "object"}, "checkpoint_digest": {"$ref": "#/$defs/digest"}, "environment_limit_counters": {"additionalProperties": false, "properties": {"accepted_transitions": {"type": "integer"}, "decisions_submitted": {"type": "integer"}, "resource_units_consumed": {"type": "integer"}, "rule_events_emitted": {"type": "integer"}, "wall_clock_elapsed_millis": {"type": "integer"}}, "required": ["decisions_submitted", "accepted_transitions", "rule_events_emitted", "resource_units_consumed", "wall_clock_elapsed_millis"], "type": "object"}, "episode_status": {"type": "object"}, "full_state_digest": {"$ref": "#/$defs/digest"}, "state_revision": {"$ref": "#/$defs/uint"}}, "required": ["state_revision", "full_state_digest", "episode_status", "environment_limit_counters", "checkpoint_codec_identity", "checkpoint_digest"], "type": "object"},
+    "manifest": {
+      "additionalProperties": false,
+      "properties": {
+        "card_bundle": {"minLength": 1, "type": "string"},
+        "decks": {"items": {"type": "object"}, "minItems": 1, "type": "array"},
+        "engine_build": {"minLength": 1, "type": "string"},
+        "format_policy_snapshot": {"minLength": 1, "type": "string"},
+        "initial_identity": {"$ref": "#/$defs/identity"},
+        "kernel": {"type": "object"},
+        "oracle_snapshot": {"minLength": 1, "type": "string"},
+        "randomness": {"type": "object"},
+        "rules_snapshot": {"minLength": 1, "type": "string"},
+        "schema_version": {"const": "replay-manifest.v3"},
+        "schemas": {"type": "object"}
+      },
+      "required": ["schema_version", "engine_build", "kernel", "rules_snapshot", "format_policy_snapshot", "oracle_snapshot", "card_bundle", "schemas", "randomness", "decks", "initial_identity"],
+      "type": "object"
+    },
+    "step": {"additionalProperties": false, "properties": {"accepted": {"type": "boolean"}, "actor": {"$ref": "#/$defs/uint"}, "checkpoint_digest_after": {"$ref": "#/$defs/digest"}, "checkpoint_digest_before": {"$ref": "#/$defs/digest"}, "environment_limit_counters_after": {"type": "object"}, "episode_status_after": {"type": "object"}, "full_state_digest_after": {"$ref": "#/$defs/digest"}, "response": {"type": "object"}, "state_revision_after": {"$ref": "#/$defs/uint"}, "state_revision_before": {"$ref": "#/$defs/uint"}, "step_index": {"maximum": 18446744073709551615, "minimum": 0, "type": "integer"}}, "required": ["step_index", "actor", "checkpoint_digest_before", "state_revision_before", "response", "accepted", "state_revision_after", "full_state_digest_after", "episode_status_after", "environment_limit_counters_after", "checkpoint_digest_after"], "type": "object"}
+  },
+  "properties": {"final_identity": {"$ref": "#/$defs/identity"}, "manifest": {"$ref": "#/$defs/manifest"}, "schema_version": {"const": "authoritative-replay.v3"}, "steps": {"items": {"$ref": "#/$defs/step"}, "type": "array"}},
+  "required": ["schema_version", "manifest", "steps", "final_identity"],
+  "title": "AuthoritativeReplay V3",
+  "type": "object"
+}

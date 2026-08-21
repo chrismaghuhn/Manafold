@@ -7,6 +7,8 @@ from .errors import WireError
 
 PLAYER_DECISION_REQUEST_SCHEMA = "player-decision-request.v1"
 DECISION_RESPONSE_SCHEMA = "decision-response.v1"
+PLAYER_DECISION_REQUEST_V2_SCHEMA = "player-decision-request.v2"
+DECISION_RESPONSE_V2_SCHEMA = "decision-response.v2"
 
 _ALLOWED_VISIBILITY = {"public", "acting_player_only", "mixed"}
 _ALLOWED_DECISIONS = {"choose_one", "choose_many", "choose_number", "order"}
@@ -284,6 +286,221 @@ class DecisionResponse:
         return {
             "assignments": [assignment.to_wire() for assignment in self.assignments],
             "decision_id": uint_wire(self.decision_id),
+            "schema_version": self.schema_version,
+            "state_revision": uint_wire(self.state_revision),
+        }
+
+
+def _parse_candidate_id(value: object) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or not 0 <= value <= 2**32 - 1:
+        raise WireError("decode.invalid_json", "candidate_id is outside u32")
+    return value
+
+
+@dataclass(frozen=True, slots=True)
+class VisibleCandidateV2:
+    candidate_id: int
+    intent: CandidateIntent
+
+    @classmethod
+    def from_wire(cls, value: object) -> VisibleCandidateV2:
+        obj = require_exact_keys(value, {"candidate_id", "intent"})
+        return cls(
+            _parse_candidate_id(obj["candidate_id"]), CandidateIntent.from_wire(obj["intent"])
+        )
+
+    def to_wire(self) -> dict[str, object]:
+        return {
+            "candidate_id": _parse_candidate_id(self.candidate_id),
+            "intent": self.intent.to_wire(),
+        }
+
+
+def _ordering_key(intent: CandidateIntent) -> tuple[int, object]:
+    payload = dict(intent.payload)
+    if intent.kind == "pass_priority":
+        return (0, ())
+    if intent.kind == "cast_spell":
+        return (1, payload["object"])
+    if intent.kind == "activate_ability":
+        return (2, payload["ability"])
+    if intent.kind == "select_object":
+        return (3, payload["object"])
+    if intent.kind == "select_player":
+        return (4, payload["player"])
+    if intent.kind == "select_mode":
+        return (5, payload["mode_index"])
+    if intent.kind == "choose_boolean":
+        return (6, payload["value"])
+    if intent.kind == "declare_number":
+        return (7, payload["value"])
+    if intent.kind == "confirm":
+        return (8, ())
+    raise WireError("semantic.decision", "unknown candidate ordering variant")
+
+
+@dataclass(frozen=True, slots=True)
+class PlayerDecisionRequestV2:
+    schema_version: str
+    player_decision_id: int
+    state_revision: int
+    actor: int
+    visibility: str
+    decision: DecisionSpec
+    candidates: tuple[VisibleCandidateV2, ...]
+
+    @classmethod
+    def from_wire(cls, value: object) -> PlayerDecisionRequestV2:
+        obj = require_exact_keys(
+            value,
+            {
+                "schema_version",
+                "player_decision_id",
+                "state_revision",
+                "actor",
+                "visibility",
+                "decision",
+                "candidates",
+            },
+        )
+        if (
+            obj["schema_version"] != PLAYER_DECISION_REQUEST_V2_SCHEMA
+            or obj["visibility"] not in _ALLOWED_VISIBILITY
+        ):
+            raise WireError("decode.invalid_json", "unsupported decision V2 schema or visibility")
+        if not isinstance(obj["candidates"], list):
+            raise WireError("decode.invalid_json", "candidates must be an array")
+        result = cls(
+            PLAYER_DECISION_REQUEST_V2_SCHEMA,
+            parse_uint(obj["player_decision_id"]),
+            parse_uint(obj["state_revision"]),
+            parse_uint(obj["actor"]),
+            str(obj["visibility"]),
+            DecisionSpec.from_wire(obj["decision"]),
+            tuple(VisibleCandidateV2.from_wire(item) for item in obj["candidates"]),
+        )
+        result.validate()
+        return result
+
+    def validate(self) -> None:
+        self.decision.validate(len(self.candidates))
+        for index, candidate in enumerate(self.candidates):
+            if candidate.candidate_id != index:
+                raise WireError("semantic.decision", "candidate IDs must be dense from zero")
+            if index and _ordering_key(self.candidates[index - 1].intent) >= _ordering_key(
+                candidate.intent
+            ):
+                raise WireError("semantic.decision", "candidate ordering is not canonical")
+        if self.decision.kind == "choose_number" and self.candidates:
+            raise WireError("semantic.decision", "choose_number cannot contain candidates")
+
+    def to_wire(self) -> dict[str, object]:
+        self.validate()
+        return {
+            "actor": uint_wire(self.actor),
+            "candidates": [candidate.to_wire() for candidate in self.candidates],
+            "decision": self.decision.to_wire(),
+            "player_decision_id": uint_wire(self.player_decision_id),
+            "schema_version": self.schema_version,
+            "state_revision": uint_wire(self.state_revision),
+            "visibility": self.visibility,
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class DecisionAnswerV2:
+    kind: str
+    candidate_id: int | None = None
+    candidate_ids: tuple[int, ...] = ()
+    value: int | None = None
+
+    @classmethod
+    def from_wire(cls, value: object) -> DecisionAnswerV2:
+        if not isinstance(value, dict) or value.get("kind") not in {
+            "select_one",
+            "select_many",
+            "choose_number",
+            "order",
+        }:
+            raise WireError("decode.invalid_json", "unknown DecisionAnswerV2 variant")
+        kind = str(value["kind"])
+        if kind == "select_one":
+            obj = require_exact_keys(value, {"kind", "candidate_id"})
+            return cls(kind, candidate_id=_parse_candidate_id(obj["candidate_id"]))
+        if kind in {"select_many", "order"}:
+            obj = require_exact_keys(value, {"kind", "candidate_ids"})
+            if not isinstance(obj["candidate_ids"], list):
+                raise WireError("decode.invalid_json", "candidate_ids must be an array")
+            return cls(
+                kind,
+                candidate_ids=tuple(_parse_candidate_id(item) for item in obj["candidate_ids"]),
+            )
+        obj = require_exact_keys(value, {"kind", "value"})
+        raw = obj["value"]
+        if isinstance(raw, bool) or not isinstance(raw, int) or not -(2**63) <= raw < 2**63:
+            raise WireError("decode.invalid_json", "numeric answer is outside i64")
+        return cls(kind, value=raw)
+
+    def validate(self) -> None:
+        if self.kind == "select_many" and any(
+            left >= right
+            for left, right in zip(self.candidate_ids, self.candidate_ids[1:], strict=False)
+        ):
+            raise WireError("semantic.decision_response", "SelectMany IDs are not ascending")
+        if self.kind == "order" and len(set(self.candidate_ids)) != len(self.candidate_ids):
+            raise WireError("semantic.decision_response", "Order contains duplicate IDs")
+
+    def to_wire(self) -> dict[str, object]:
+        self.validate()
+        if self.kind == "select_one":
+            return {"candidate_id": _parse_candidate_id(self.candidate_id), "kind": self.kind}
+        if self.kind in {"select_many", "order"}:
+            return {
+                "candidate_ids": [_parse_candidate_id(item) for item in self.candidate_ids],
+                "kind": self.kind,
+            }
+        if self.kind == "choose_number":
+            if (
+                self.value is None
+                or isinstance(self.value, bool)
+                or not -(2**63) <= self.value < 2**63
+            ):
+                raise WireError("encode.serialization", "numeric answer is outside i64")
+            return {"kind": self.kind, "value": self.value}
+        raise WireError("encode.serialization", "unknown DecisionAnswerV2 variant")
+
+
+@dataclass(frozen=True, slots=True)
+class DecisionResponseV2:
+    schema_version: str
+    player_decision_id: int
+    state_revision: int
+    answer: DecisionAnswerV2
+
+    @classmethod
+    def from_wire(cls, value: object) -> DecisionResponseV2:
+        obj = require_exact_keys(
+            value, {"schema_version", "player_decision_id", "state_revision", "answer"}
+        )
+        if obj["schema_version"] != DECISION_RESPONSE_V2_SCHEMA:
+            raise WireError("decode.invalid_json", "unsupported response V2 schema")
+        result = cls(
+            DECISION_RESPONSE_V2_SCHEMA,
+            parse_uint(obj["player_decision_id"]),
+            parse_uint(obj["state_revision"]),
+            DecisionAnswerV2.from_wire(obj["answer"]),
+        )
+        result.validate()
+        return result
+
+    def validate(self) -> None:
+        self.answer.validate()
+
+    def to_wire(self) -> dict[str, object]:
+        self.validate()
+        return {
+            "answer": self.answer.to_wire(),
+            "player_decision_id": uint_wire(self.player_decision_id),
             "schema_version": self.schema_version,
             "state_revision": uint_wire(self.state_revision),
         }

@@ -1,0 +1,24 @@
+{
+  "$id": "player-step.v2.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "$defs": {
+    "uint": {"pattern": "^(0|[1-9][0-9]*)$", "type": "string"},
+    "digest": {"pattern": "^[0-9a-f]{64}$", "type": "string"},
+    "observation": {"additionalProperties": false, "properties": {"digest": {"$ref": "#/$defs/digest"}, "payload_base64": {"type": "string"}, "payload_codec": {"minLength": 1, "type": "string"}, "perspective": {"$ref": "#/$defs/uint"}, "schema_version": {"const": "observation-envelope.v1"}, "state_revision": {"$ref": "#/$defs/uint"}}, "required": ["schema_version", "perspective", "state_revision", "payload_codec", "payload_base64", "digest"], "type": "object"},
+    "info": {"additionalProperties": false, "properties": {"current_observation": {"$ref": "#/$defs/observation"}, "digest": {"$ref": "#/$defs/digest"}, "next_visible_sequence": {"$ref": "#/$defs/uint"}, "perspective": {"$ref": "#/$defs/uint"}, "retained_knowledge": {"type": "array"}, "schema_version": {"const": "information-state-envelope.v2"}, "state_revision": {"$ref": "#/$defs/uint"}}, "required": ["schema_version", "perspective", "state_revision", "current_observation", "next_visible_sequence", "retained_knowledge", "digest"], "type": "object"},
+    "intent": {"oneOf": [{"additionalProperties": false, "properties": {"kind": {"const": "choose_boolean"}, "value": {"type": "boolean"}}, "required": ["kind", "value"], "type": "object"}, {"additionalProperties": false, "properties": {"kind": {"const": "select_object"}, "object": {"$ref": "#/$defs/uint"}}, "required": ["kind", "object"], "type": "object"}, {"additionalProperties": false, "properties": {"kind": {"enum": ["pass_priority", "confirm"]}}, "required": ["kind"], "type": "object"}]},
+    "decision": {"additionalProperties": false, "properties": {"actor": {"$ref": "#/$defs/uint"}, "candidates": {"items": {"additionalProperties": false, "properties": {"candidate_id": {"maximum": 4294967295, "minimum": 0, "type": "integer"}, "intent": {"$ref": "#/$defs/intent"}}, "required": ["candidate_id", "intent"], "type": "object"}, "type": "array"}, "decision": {"type": "object"}, "player_decision_id": {"$ref": "#/$defs/uint"}, "schema_version": {"const": "player-decision-request.v2"}, "state_revision": {"$ref": "#/$defs/uint"}, "visibility": {"enum": ["public", "acting_player_only", "mixed"]}}, "required": ["schema_version", "player_decision_id", "state_revision", "actor", "visibility", "decision", "candidates"], "type": "object"},
+    "event": {"additionalProperties": false, "properties": {"event": {"type": "object"}, "schema_version": {"const": "observed-event-envelope.v2"}, "sequence": {"$ref": "#/$defs/uint"}, "state_revision": {"$ref": "#/$defs/uint"}}, "required": ["schema_version", "sequence", "state_revision", "event"], "type": "object"}
+  },
+  "properties": {
+    "information_state": {"$ref": "#/$defs/info"},
+    "next_decision": {"anyOf": [{"$ref": "#/$defs/decision"}, {"type": "null"}]},
+    "observed_events": {"items": {"$ref": "#/$defs/event"}, "type": "array"},
+    "schema_version": {"const": "player-step.v2"},
+    "status": {"type": "object"}
+  },
+  "required": ["schema_version", "information_state", "observed_events", "status"],
+  "title": "PlayerStep V2",
+  "type": "object"
+}

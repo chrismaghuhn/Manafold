@@ -104,9 +104,11 @@ A future trusted search API may checkpoint/fork or sample states consistent with
 
 The player endpoint never exposes checkpoints.
 
-M1 currently uses `EnvironmentCheckpointV2`. M2's authoritative state changes require a new V3 checkpoint/state identity. When the runtime `EngineState` changes, V2 cannot remain an executable historical runtime type by silently adopting the new `EngineState` layout.
+The current runtime uses `EnvironmentCheckpointV3`. `EnvironmentCheckpointV2`
+is retired from the current controller API and is preserved only as detached
+historical evidence; it is never deserialized into the changed `EngineState`.
 
-The M2 current checkpoint is planned to contain:
+The current checkpoint contains:
 
 - complete current `EngineState`;
 - typed `FullStateDigestV3`;
@@ -117,4 +119,8 @@ The M2 current checkpoint is planned to contain:
 
 Restore validates the complete object before backend mutation. Fork and replay preserve equivalent status/counter/information behavior.
 
-Historical V2 semantics are preserved as immutable evidence/support classification; no legacy second `EngineState` is introduced merely to keep V2 executable.
+`mtgml-persistence` computes the single `CheckpointDigestV3` input/hash path
+used by environment and replay. Historical V2 semantics are preserved as
+immutable evidence/support classification; no legacy second `EngineState` is
+introduced merely to keep V2 executable. M2.B adds no public checkpoint JSON
+or Python checkpoint DTO.

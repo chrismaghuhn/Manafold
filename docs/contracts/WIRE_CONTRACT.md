@@ -86,3 +86,17 @@ M2 uses new versions where meaning changes:
 `ObservationEnvelopeV1` may remain because its payload codec identity is independently versioned; M2 uses `synthetic-m2-observation.v1`.
 
 Old wire values retain their original meaning. A new reader may support multiple versions only through explicit per-version decode/validation; no enum/key value is repurposed.
+
+## M2 digest and persistence ownership
+
+`mtgml-observation` owns the semantic `InformationStateDigestInputV2` view and
+player-information DTOs. It does not encode canonical JSON or calculate the
+digest. `mtgml-wire` is the single owner of the canonical JSON bytes and
+`InformationStateDigestV2` calculation; `mtgml-environment` projects the
+semantic input, requests that calculation, verifies the result, and only then
+exposes or commits the player information state.
+
+`mtgml-persistence` separately owns the restricted canonical CBOR/envelope
+codec and the single `CheckpointDigestV3` calculation. M2.B does not introduce
+an `EnvironmentCheckpointV3` public JSON schema, Python checkpoint DTO,
+durable checkpoint file format, or public JSON `FullStateDigestInputV3` DTO.

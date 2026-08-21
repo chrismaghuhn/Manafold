@@ -1,6 +1,6 @@
 # Engine State Closure
 
-**Status:** accepted state-closure contract including M2 field refinements; executable M2 evidence `NOT_RUN`  
+**Status:** accepted state-closure contract including M2 field refinements; local M2.B structural evidence `PASS`, hosted/M2.Final closure pending
 **Stability:** normative
 
 `EngineState` is the complete semantic input to a transition:
@@ -97,5 +97,9 @@ The reference contract prefers correctness/auditability over compactness. A late
 ## Versioning
 
 M2 changes authoritative execution/knowledge/perspective-identity meaning and therefore requires a new V3 full-state identity. Historical V1/V2 state/checkpoint identities are never reinterpreted against the changed runtime `EngineState`.
+
+`FullStateDigestInputV2` remains detached historical evidence only. The current
+runtime converts to `FullStateDigestInputV3` and constructs `FullStateDigestV3`
+through the accepted persisted semantic codec.
 
 The detached V3 semantic digest mapping is specified in [`../STATE_HASHING.md`](../STATE_HASHING.md).
