@@ -1,6 +1,6 @@
 # M2.B V3 Structural Cut Design
 
-**Status:** design v2 after review, pending implementation-plan approval
+**Status:** design v3 after review, pending implementation-plan approval
 
 **Issue:** [#49 — M2.B: V3 Structural Cut](https://github.com/chrismaghuhn/Manafold/issues/49)
 
@@ -64,6 +64,7 @@ mtgml-persistence
     mtgml.digest-envelope.v1
     mtgml.canonical-cbor.v1
     strict byte codec, limits, and PersistenceDecodeErrorV1
+    one CheckpointDigestV3 input encoder/calculator
 
 mtgml-decision
     Decision V1/V2 DTOs, candidate ordering, bindings, local validation
@@ -79,7 +80,8 @@ mtgml-replay
     replay identity, detached environment identity, Replay V1/V2/V3 validation
 
 mtgml-wire
-    public canonical UTF-8 JSON and shared wire fixtures only
+    public canonical UTF-8 JSON, InformationStateDigestV2 bytes,
+    and shared wire fixtures
 
 mtgml-environment
     trusted checkpoint/controller/endpoint ownership and replay execution
@@ -94,7 +96,9 @@ decision / state / replay
         ↓
 observation / rules
         ↓
-wire / environment / conformance
+wire
+        ↓
+environment / conformance
         ↓
 Python client and ML orchestration
 ```
@@ -102,6 +106,25 @@ Python client and ML orchestration
 `mtgml-model` will not own the persistence codec. `mtgml-wire` will not own CBOR. `mtgml-state` will not depend on `mtgml-wire`. The workspace manifest, crate ownership documentation, and dependency documentation will be updated together when the new crate is introduced.
 
 `EnvironmentLimitCounters` and `CheckpointCodecIdentity` move from `mtgml-environment` to `mtgml-model` as small rules-neutral shared value types. Their field names, Serde representation, validation meaning, and V2 historical meaning remain unchanged. `mtgml-replay` may then use the shared values without depending on `mtgml-environment`; `EnvironmentCheckpointV3` continues to be owned by the environment crate.
+
+The dependency graph has two explicit single-owner byte paths:
+
+```text
+mtgml-persistence
+    calculate_checkpoint_digest_v3(...)
+    ↓                         ↓
+mtgml-environment          mtgml-replay
+
+mtgml-observation
+    semantic PlayerInformationStateV2
+    ↓
+mtgml-wire
+    canonical JSON bytes and calculate_information_state_digest_v2(...)
+    ↓
+mtgml-environment
+```
+
+Neither semantic producer depends upward on its byte owner. `mtgml-wire` depends on `mtgml-observation`; `mtgml-environment` may depend on `mtgml-wire`; no reverse dependency is introduced.
 
 ## 4. Old-to-new migration matrix
 
@@ -219,6 +242,19 @@ It owns:
 
 It does not own schema-specific `EngineState` conversion or rules semantics. State, replay, and environment producers provide detached semantic values and invoke the codec only after their own Rust-authoritative structural validation.
 
+`mtgml-persistence` is also the sole owner of the detached `environment-checkpoint-digest-input.v3` layout and its calculation. It exposes one shared operation conceptually equivalent to:
+
+```rust
+calculate_checkpoint_digest_v3(
+    full_state_digest: &DigestReferenceV1,
+    status: &EpisodeStatus,
+    counters: &EnvironmentLimitCounters,
+    codec: &CheckpointCodecIdentity,
+) -> Result<CheckpointDigestV3, PersistenceError>
+```
+
+The operation encodes exactly one canonical payload, applies the digest envelope exactly once, and returns the raw-byte-based typed V3 wrapper. `EnvironmentCheckpointV3` calls it when constructing and validating a checkpoint. Replay V3 calls the same operation when validating an initial, before, or after environment identity. Neither consumer owns a second checkpoint-input struct or digest calculation.
+
 The V3 digest construction path is deliberately separate from the existing `domain_digest!` path:
 
 ```text
@@ -239,9 +275,21 @@ The codec must reject maps, floats, tags, bignums, indefinite values, shared ref
 
 ### InformationStateDigestV2
 
-`mtgml-observation` owns the player-safe `PlayerInformationStateV2` shape and its canonical JSON digest input. The digest input contains exactly the schema identity, perspective, state revision, current `ObservationEnvelopeV1`, next `VisibleSequence`, and canonical retained `PlayerKnownObjectV1[]`, with the digest field omitted.
+`mtgml-observation` owns the player-safe `PlayerInformationStateV2` shape and the semantic `InformationStateDigestInputV2` view. It does not own canonical JSON byte encoding or the digest calculation. The digest input contains exactly the schema identity, perspective, state revision, current `ObservationEnvelopeV1`, next `VisibleSequence`, and canonical retained `PlayerKnownObjectV1[]`, with the digest field omitted.
 
 It excludes episode status, environment counters, trusted IDs, other-player knowledge, authoritative events, RNG state, checkpoint/replay identity, and any hidden location or ordering data.
+
+`mtgml-wire` is the sole owner of canonical JSON bytes for this input and exposes one shared operation conceptually equivalent to:
+
+```rust
+compute_information_state_digest_v2(
+    input: &InformationStateDigestInputV2,
+) -> Result<(Vec<u8>, InformationStateDigestV2), WireError>
+```
+
+It uses the existing canonical JSON key-sorting/duplicate-rejection path and applies the accepted `mtgml.information-state-digest.v2` domain separation exactly once. `mtgml-observation` must not implement a second JSON canonicalizer or depend on `mtgml-wire`.
+
+`mtgml-environment` orchestrates projection, asks `mtgml-wire` to encode and calculate the digest, verifies the returned digest before exposing or committing `PlayerInformationStateV2`, and retains no alternate digest authority.
 
 ### FullStateDigestV3
 
@@ -301,9 +349,11 @@ M2.B does not introduce an `EnvironmentCheckpointV3` public JSON schema, a Pytho
 | --- | --- | --- | --- |
 | model IDs/digests/shared leaves | `mtgml-model` | none | range, canonical text, domain type, preserved V2 Serde meaning |
 | persisted bytes | `mtgml-persistence` | detached producer | profile, limits, canonicality, error precedence |
+| CheckpointDigestV3 | `mtgml-persistence` | environment/replay consumers | one exact checkpoint-input layout and one envelope hash |
 | Decision V2 DTOs | `mtgml-decision` | `mtgml-state` | closed shape, bounds, candidate order, binding/reference coherence |
 | authoritative state | `mtgml-state` component modules | `validate_engine_state()` | complete state closure and no hidden duplicate authority |
 | player information/event/step | `mtgml-observation` | environment endpoint | perspective/revision coherence and privileged-type absence |
+| InformationStateDigestV2 bytes | `mtgml-wire` | environment endpoint | one canonical JSON encoding and one V2 digest calculation |
 | FullStateDigestInputV3 | detached state producer | `mtgml-state` | exact layout, sorting, unsupported-state rejection |
 | checkpoint | `mtgml-environment` | backend restore boundary | complete identity and no-mutation rejection |
 | replay | `mtgml-replay` | environment execution | revision, actor, digest, status, counter, and checkpoint continuity |
@@ -331,20 +381,20 @@ The implementation will use one coherent PR and reviewable internal commits in t
 
 1. inventory current producers, readers, fixtures, and historical contracts;
 2. move shared environment leaf values to `mtgml-model` with unchanged V2 Serde meaning;
-3. add `mtgml-persistence` and neutral model identity/digest values;
+3. add `mtgml-persistence` and its sole CheckpointDigestV3 input/calculation path;
 4. add Decision V2 types, comparator, and focused positive/negative tests;
 5. migrate `StateDelta` and the authoritative transition product to `FullStateDigestV3`;
 6. retire `EnvironmentCheckpointV2` from current runtime/controller APIs and isolate its detached evidence;
 7. migrate execution, knowledge, perspective identity, and synthetic construction;
 8. make `validate_engine_state()` own the new cross-component invariants;
-9. add InformationStateDigestV2 and public V2 mechanical shapes;
+9. add InformationStateDigestV2 semantic DTOs in observation and its sole canonical byte/digest path in wire;
 10. implement the persisted codec, envelope, detached V3 state input, and raw-byte digest construction;
-11. implement Checkpoint V3 and restore no-mutation validation;
-12. implement Replay V3 and complete environment identity chaining without ReplayControlV1;
+11. implement Checkpoint V3 and restore no-mutation validation through the shared persistence calculator;
+12. implement Replay V3 and complete environment identity chaining through the same calculator, without ReplayControlV1;
 13. update schemas, wire fixtures, Python mechanical codecs, and compatibility negatives;
 14. migrate M1 synthetic tests without changing historical fixtures;
 15. run focused evidence, native fallbacks where possible, and exact hosted checks;
-16. self-review the final diff for information leakage, hidden state, version reinterpretation, and M2.C+ scope creep.
+16. self-review the final diff for information leakage, hidden state, version reinterpretation, duplicate byte authorities, and M2.C+ scope creep.
 
 No intermediate commit may leave the current runtime producing a new semantic V2/V3 value that lacks its corresponding validator, detached identity, or public/fixture contract.
 
@@ -379,6 +429,8 @@ only after the executable structural evidence passes on the exact final source h
 ## 14. Design self-review
 
 - The persistence codec has a separate lower-layer owner and does not introduce `mtgml-state -> mtgml-wire` or I/O into `mtgml-model`.
+- CheckpointDigestV3 has one calculation owner in `mtgml-persistence`; environment and replay are consumers only.
+- InformationStateDigestV2 has one canonical JSON/digest owner in `mtgml-wire`; observation owns semantic DTOs only and environment verifies the result.
 - The design has one current `EngineState` and no legacy duplicate or V3 sidecar state.
 - V1/V2 meanings, fixtures, and historical support classifications remain immutable.
 - `DecisionId`, `ContinuationId`, authoritative object IDs, physical IDs, RNG internals, and checkpoint/replay identities are excluded from player surfaces.
