@@ -660,7 +660,12 @@ def main() -> int:
                     "status": toolchains.get("status"),
                     "python": toolchains.get("python", {}),
                     "rust": {
-                        name: value.get("status")
+                        name: {
+                            "status": value.get("status"),
+                            "reported": value.get("reported"),
+                            "expected": value.get("expected"),
+                            "output": value.get("output", ""),
+                        }
                         for name, value in toolchains.get("rust", {}).items()
                     },
                 },
