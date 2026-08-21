@@ -152,6 +152,7 @@ dependencies = [
 name = "mtgml-environment"
 version = "0.2.2"
 dependencies = [
+ "base64",
  "mtgml-decision",
  "mtgml-model",
  "mtgml-observation",

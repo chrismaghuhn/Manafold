@@ -35,7 +35,7 @@
   Add entries with `owner_role = maintainer`, `role = process`,
   `stability = provisional`, and `change_process = process-pr`.
 
-- [ ] **Step 3: Run the documentation checks.**
+- [x] **Step 3: Run the documentation checks.**
 
   Run:
 
@@ -47,7 +47,7 @@
   Expected result: both commands exit 0 and report the new registered paths as
   existing local documents.
 
-- [ ] **Step 4: Commit only process artifacts.**
+- [x] **Step 4: Commit only process artifacts.**
 
   ```text
   git add -- docs/normative-document-register.v1.json docs/superpowers/specs/2026-08-21-m1-7-two-player-endpoints-design.md docs/superpowers/plans/2026-08-21-m1-7-two-player-endpoints.md
@@ -58,7 +58,7 @@
 
 **Files:** `crates/mtgml-environment/src/tests.rs`
 
-- [ ] **Step 1: Add a canonical player-surface snapshot helper.**
+- [x] **Step 1: Add a canonical player-surface snapshot helper.**
 
   Capture canonical bytes for P1/P2 observation, information state, and visible
   decision, then capture the complete checkpoint, its typed digests/status/
@@ -67,7 +67,7 @@
   `mtgml_wire::encode_canonical` for public DTOs and replay, not internal state
   serialization.
 
-- [ ] **Step 2: Replace the old fail-closed placeholder test.**
+- [x] **Step 2: Replace the old fail-closed placeholder test.**
 
   Replace `synthetic_backend_player_submission_surface_fails_closed_before_m1_7`
   with a test that requires:
@@ -84,7 +84,7 @@
   Require both initial observations at revision 0, valid initial information
   states, and a valid actor-free response.
 
-- [ ] **Step 3: Add the RED shared-binding test.**
+- [x] **Step 3: Add the RED shared-binding test.**
 
   Submit the exact valid P1 response through P2 and assert
   `Err(PlayerApiError::NoVisibleDecision)`. Compare the complete snapshot before
@@ -92,14 +92,14 @@
   require a valid `PlayerStep`; then require both existing handles to observe
   revision 1 and no visible decision.
 
-- [ ] **Step 4: Add RED rejection and stale tests.**
+- [x] **Step 4: Add RED rejection and stale tests.**
 
   On fresh controllers, submit `candidate_id = "unknown_candidate"` and both
   stale variants (wrong `decision_id`, wrong `state_revision`) through P1.
   Require `InvalidSelection` or `StaleResponse` respectively and exact
   snapshot equality after each rejection.
 
-- [ ] **Step 5: Add RED projection, ID, parity, and leakage tests.**
+- [x] **Step 5: Add RED projection, ID, parity, and leakage tests.**
 
   Require after-state `PlayerStep::validate()`, empty observed events, `None`
   next decision, actual bound IDs `[PlayerId(7), PlayerId(9)]`, exact
@@ -107,7 +107,7 @@
   player values without seed/RNG/authoritative identity/checkpoint/replay or
   trusted error text.
 
-- [ ] **Step 6: Run the focused tests to prove RED.**
+- [x] **Step 6: Run the focused tests to prove RED.**
 
   ```text
   cargo test -p mtgml-environment --locked
@@ -121,7 +121,7 @@
 
 **Files:** `crates/mtgml-environment/src/synthetic.rs`, `crates/mtgml-environment/Cargo.toml`
 
-- [ ] **Step 1: Add explicit payload/digest constants and imports.**
+- [x] **Step 1: Add explicit payload/digest constants and imports.**
 
   Use `base64::engine::general_purpose::STANDARD` and add
   `base64.workspace = true`. Define the provisional codec identifiers:
@@ -131,7 +131,7 @@
   const SYNTHETIC_M1_INFORMATION_DIGEST_INPUT: &str = "synthetic-m1-information-state.v1";
   ```
 
-- [ ] **Step 2: Add `require_player` and `player_observation`.**
+- [x] **Step 2: Add `require_player` and `player_observation`.**
 
   Require membership in `state.core.players`, then build the exact UTF-8
   payload `synthetic-m1-observation.v1|perspective=<u64>|state-revision=<u64>`.
@@ -140,7 +140,7 @@
   envelope before returning it. Do not read zones, root seed, RNG, allocator,
   event, replay, or checkpoint data.
 
-- [ ] **Step 3: Add `player_information_state`.**
+- [x] **Step 3: Add `player_information_state`.**
 
   Reuse `player_observation`, read only the bound player's
   `public_history_length` and `private_history_length`, and hash the explicit
@@ -148,7 +148,7 @@
   `synthetic-m1-information-state.v1|perspective=<u64>|state-revision=<u64>|public-history-length=<u64>|private-history-length=<u64>|observation-payload=<base64>`.
   Validate the resulting `InformationStateEnvelope` before returning it.
 
-- [ ] **Step 4: Add `player_visible_decision`.**
+- [x] **Step 4: Add `player_visible_decision`.**
 
   Return `Ok(None)` for no pending decision or a pending decision owned by
   another player. For the bound actor, clone and validate only
@@ -158,21 +158,21 @@
 
 **File:** `crates/mtgml-environment/src/synthetic.rs`
 
-- [ ] **Step 1: Implement fail-closed classification before execution.**
+- [x] **Step 1: Implement fail-closed classification before execution.**
 
   Use this exact order: unknown player -> `Unavailable`; non-running status ->
   `EpisodeComplete`; no pending request or other actor -> `NoVisibleDecision`;
   invalid response shape -> `InvalidSelection`; mismatched decision ID or
   state revision -> `StaleResponse`.
 
-- [ ] **Step 2: Reuse `execute_response`.**
+- [x] **Step 2: Reuse `execute_response`.**
 
   Call `self.execute_response(perspective, response)` exactly once for the
   authorized candidate. Map every `ControllerError` to `Unavailable`. If the
   transition is not accepted, return `InvalidSelection`; do not append replay
   or modify any environment field in this method.
 
-- [ ] **Step 3: Project and validate the accepted step.**
+- [x] **Step 3: Project and validate the accepted step.**
 
   Build:
 
@@ -189,7 +189,7 @@
   Map projection or validation failure to `Unavailable` and require
   `step.validate()` before returning the step.
 
-- [ ] **Step 4: Run the focused environment tests to prove GREEN.**
+- [x] **Step 4: Run the focused environment tests to prove GREEN.**
 
   ```text
   cargo test -p mtgml-environment --locked

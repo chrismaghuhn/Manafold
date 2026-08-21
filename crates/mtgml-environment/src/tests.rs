@@ -1,4 +1,5 @@
 use super::*;
+use base64::{engine::general_purpose::STANDARD, Engine as _};
 use mtgml_decision::{
     CandidateAssignment, DecisionResponse, PlayerDecisionRequest, DECISION_RESPONSE_SCHEMA,
 };
@@ -10,7 +11,7 @@ use mtgml_model::{
 };
 use mtgml_observation::{
     InformationStateEnvelope, ObservationEnvelope, PlayerStep, INFORMATION_STATE_SCHEMA,
-    OBSERVATION_SCHEMA,
+    OBSERVATION_SCHEMA, PLAYER_STEP_SCHEMA,
 };
 use mtgml_random::{
     CanonicalRandomStreamEntryV1, RandomStateV1, RandomStreamCursorV1, RandomStreamKeyV1,
@@ -23,8 +24,8 @@ use mtgml_replay::{
 use mtgml_rules::AuthoritativeRuleEventKind;
 use mtgml_state::{
     CoreRulesState, EngineState, ExecutionState, FormatState, IdentityAllocatorState,
-    KnowledgeState, PerspectiveIdentityMap, PerspectiveIdentityState, PlayerKnowledgeState,
-    PlayerState, ZoneState,
+    KnowledgeState, PendingDecisionRecord, PerspectiveIdentityMap, PerspectiveIdentityState,
+    PlayerKnowledgeState, PlayerState, ZoneState,
 };
 use std::collections::BTreeMap;
 
@@ -343,6 +344,147 @@ impl EnvironmentBackend for CounterCorruptingBackend {
     ) -> Result<PlayerStep, PlayerApiError> {
         self.inner.submit_player_response(perspective, response)
     }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct PlayerSurfaceSnapshot {
+    p1_observation: Vec<u8>,
+    p1_information_state: Vec<u8>,
+    p1_visible_decision: Vec<u8>,
+    p2_observation: Vec<u8>,
+    p2_information_state: Vec<u8>,
+    p2_visible_decision: Vec<u8>,
+    checkpoint: EnvironmentCheckpointV2,
+    state_digest: FullStateDigestV2,
+    checkpoint_digest: CheckpointDigestV2,
+    status: EpisodeStatus,
+    counters: EnvironmentLimitCounters,
+    accepted_replay: AuthoritativeReplayV2,
+    accepted_replay_step_count: usize,
+    canonical_replay_bytes: Vec<u8>,
+    rng_cursor: u64,
+    allocators: IdentityAllocatorState,
+    pending_decision: Option<PendingDecisionRecord>,
+    revision: StateRevision,
+}
+
+fn canonical_observation(endpoint: &PlayerEndpointHandle) -> Vec<u8> {
+    mtgml_wire::encode_canonical(&endpoint.observation().unwrap()).unwrap()
+}
+
+fn canonical_information_state(endpoint: &PlayerEndpointHandle) -> Vec<u8> {
+    mtgml_wire::encode_canonical(&endpoint.information_state().unwrap()).unwrap()
+}
+
+fn canonical_visible_decision(endpoint: &PlayerEndpointHandle) -> Vec<u8> {
+    endpoint
+        .visible_decision()
+        .unwrap()
+        .map(|request| mtgml_wire::encode_canonical(&request).unwrap())
+        .unwrap_or_else(|| b"<none>".to_vec())
+}
+
+impl PlayerSurfaceSnapshot {
+    fn capture(
+        controller: &TrustedEnvironmentController,
+        p1: &PlayerEndpointHandle,
+        p2: &PlayerEndpointHandle,
+    ) -> Self {
+        let checkpoint = controller.checkpoint().unwrap();
+        let accepted_replay = controller.export_replay().unwrap();
+        let rng_cursor = checkpoint
+            .state
+            .random
+            .lookup_stream(&RandomStreamKeyV1::global(RandomStreamKindV1::SyntheticM1))
+            .unwrap()
+            .next_raw_u64;
+        Self {
+            p1_observation: canonical_observation(p1),
+            p1_information_state: canonical_information_state(p1),
+            p1_visible_decision: canonical_visible_decision(p1),
+            p2_observation: canonical_observation(p2),
+            p2_information_state: canonical_information_state(p2),
+            p2_visible_decision: canonical_visible_decision(p2),
+            state_digest: checkpoint.state_digest.clone(),
+            checkpoint_digest: checkpoint.checkpoint_digest.clone(),
+            status: checkpoint.status.clone(),
+            counters: checkpoint.limit_counters.clone(),
+            accepted_replay_step_count: accepted_replay.steps.len(),
+            canonical_replay_bytes: mtgml_wire::encode_canonical(&accepted_replay).unwrap(),
+            rng_cursor,
+            allocators: checkpoint.state.allocators.clone(),
+            pending_decision: checkpoint.state.execution.pending_decision.clone(),
+            revision: checkpoint.state.revision,
+            checkpoint,
+            accepted_replay,
+        }
+    }
+}
+
+fn assert_player_surface_unchanged(before: &PlayerSurfaceSnapshot, after: &PlayerSurfaceSnapshot) {
+    assert_eq!(before.p1_observation, after.p1_observation);
+    assert_eq!(before.p1_information_state, after.p1_information_state);
+    assert_eq!(before.p1_visible_decision, after.p1_visible_decision);
+    assert_eq!(before.p2_observation, after.p2_observation);
+    assert_eq!(before.p2_information_state, after.p2_information_state);
+    assert_eq!(before.p2_visible_decision, after.p2_visible_decision);
+    assert_eq!(before.checkpoint, after.checkpoint);
+    assert_eq!(before.state_digest, after.state_digest);
+    assert_eq!(before.checkpoint_digest, after.checkpoint_digest);
+    assert_eq!(before.status, after.status);
+    assert_eq!(before.counters, after.counters);
+    assert_eq!(before.accepted_replay, after.accepted_replay);
+    assert_eq!(
+        before.accepted_replay_step_count,
+        after.accepted_replay_step_count
+    );
+    assert_eq!(before.canonical_replay_bytes, after.canonical_replay_bytes);
+    assert_eq!(before.rng_cursor, after.rng_cursor);
+    assert_eq!(before.allocators, after.allocators);
+    assert_eq!(before.pending_decision, after.pending_decision);
+    assert_eq!(before.revision, after.revision);
+}
+
+fn assert_player_step_is_valid(step: &PlayerStep, perspective: PlayerId) {
+    step.validate().unwrap();
+    assert_eq!(step.schema_version, PLAYER_STEP_SCHEMA);
+    assert_eq!(step.information_state.perspective, perspective);
+    assert_eq!(step.observation().perspective, perspective);
+    assert_eq!(step.information_state.state_revision, StateRevision(1));
+    assert_eq!(step.observation().state_revision, StateRevision(1));
+    assert!(step.observed_events.is_empty());
+    assert!(step.next_decision.is_none());
+    assert_eq!(step.status, EpisodeStatus::Running);
+}
+
+fn assert_no_trusted_player_text(rendered: &str) {
+    let forbidden = [
+        "mtgml.rng.v1",
+        "SyntheticM1",
+        "Global",
+        "cursor_before",
+        "cursor_after",
+        "raw_words_consumed",
+        "GameObjectId",
+        "AbilityInstanceId",
+        "EffectInstanceId",
+        "TriggerInstanceId",
+        "ContinuationId",
+        "RuleEventId",
+        "EnvironmentCheckpoint",
+        "CheckpointDigest",
+        "AuthoritativeReplay",
+        "KernelExecutionError",
+        "candidate_bindings",
+        "EngineState",
+    ];
+    for value in forbidden {
+        assert!(
+            !rendered.contains(value),
+            "player-facing value exposed trusted text {value:?}: {rendered:?}"
+        );
+    }
+    assert!(!rendered.contains(&"11".repeat(32)));
 }
 
 #[test]
@@ -726,23 +868,259 @@ fn trusted_execution_api_can_export_and_verify_an_empty_replay_segment() {
 }
 
 #[test]
-fn synthetic_backend_player_submission_surface_fails_closed_before_m1_7() {
+fn synthetic_backend_player_surface_projects_two_bound_players() {
     let controller = TrustedEnvironmentController::new(synthetic_backend());
-    let endpoint = controller.bind_player(PlayerId(1)).unwrap();
+    let p1 = controller.bind_player(PlayerId(1)).unwrap();
+    let p2 = controller.bind_player(PlayerId(2)).unwrap();
 
-    assert_eq!(endpoint.observation(), Err(PlayerApiError::Unavailable));
+    assert_eq!(p1.perspective(), PlayerId(1));
+    assert_eq!(p2.perspective(), PlayerId(2));
+
+    let p1_observation = p1.observation().unwrap();
+    let p2_observation = p2.observation().unwrap();
+    p1_observation.validate().unwrap();
+    p2_observation.validate().unwrap();
+    assert_eq!(p1_observation.state_revision, StateRevision(0));
+    assert_eq!(p2_observation.state_revision, StateRevision(0));
+    assert_eq!(p1_observation.payload_codec, "synthetic-m1-observation.v1");
+
+    let p1_information = p1.information_state().unwrap();
+    let p2_information = p2.information_state().unwrap();
+    p1_information.validate().unwrap();
+    p2_information.validate().unwrap();
+    assert_eq!(p1_information.perspective, PlayerId(1));
+    assert_eq!(p2_information.perspective, PlayerId(2));
+    assert_eq!(p1_information.state_revision, StateRevision(0));
+    assert_eq!(p2_information.state_revision, StateRevision(0));
+
+    let p1_decision = p1.visible_decision().unwrap().unwrap();
+    assert_eq!(p1_decision.actor, PlayerId(1));
     assert_eq!(
-        endpoint.information_state(),
-        Err(PlayerApiError::Unavailable)
+        p1_decision,
+        controller
+            .checkpoint()
+            .unwrap()
+            .state
+            .execution
+            .pending_decision
+            .unwrap()
+            .request
+    );
+    assert_eq!(p2.visible_decision().unwrap(), None);
+
+    let p1_payload = STANDARD.decode(&p1_observation.payload_base64).unwrap();
+    assert_eq!(
+        p1_observation.digest,
+        ObservationDigest::from_canonical_bytes(&p1_payload)
+    );
+    let information_digest_input = format!(
+        "synthetic-m1-information-state.v1|perspective=1|state-revision=0|public-history-length=0|private-history-length=0|observation-payload={}",
+        p1_observation.payload_base64
     );
     assert_eq!(
-        endpoint.visible_decision(),
-        Err(PlayerApiError::Unavailable)
+        p1_information.digest,
+        InformationStateDigest::from_canonical_bytes(information_digest_input.as_bytes())
+    );
+
+    let response_json = serde_json::to_string(&synthetic_response()).unwrap();
+    assert!(!response_json.contains("actor"));
+}
+
+#[test]
+fn wrong_perspective_submission_is_nonmutating_and_shared_p1_submission_advances_both() {
+    let controller = TrustedEnvironmentController::new(synthetic_backend());
+    let p1 = controller.bind_player(PlayerId(1)).unwrap();
+    let p2 = controller.bind_player(PlayerId(2)).unwrap();
+    let before = PlayerSurfaceSnapshot::capture(&controller, &p1, &p2);
+
+    assert_eq!(
+        p2.submit(synthetic_response()),
+        Err(PlayerApiError::NoVisibleDecision)
+    );
+
+    let after_rejection = PlayerSurfaceSnapshot::capture(&controller, &p1, &p2);
+    assert_player_surface_unchanged(&before, &after_rejection);
+    assert!(p1.visible_decision().unwrap().is_some());
+    assert_eq!(p2.visible_decision().unwrap(), None);
+
+    let step = p1.submit(synthetic_response()).unwrap();
+    assert_player_step_is_valid(&step, PlayerId(1));
+
+    let p1_after = p1.observation().unwrap();
+    let p2_after = p2.observation().unwrap();
+    assert_eq!(p1_after.perspective, PlayerId(1));
+    assert_eq!(p2_after.perspective, PlayerId(2));
+    assert_eq!(p1_after.state_revision, StateRevision(1));
+    assert_eq!(p2_after.state_revision, StateRevision(1));
+    assert_eq!(p1.visible_decision().unwrap(), None);
+    assert_eq!(p2.visible_decision().unwrap(), None);
+
+    let checkpoint = controller.checkpoint().unwrap();
+    assert_eq!(checkpoint.state.core.players[&PlayerId(1)].life, 38);
+    assert_eq!(checkpoint.state.core.players[&PlayerId(2)].life, 40);
+    assert_eq!(checkpoint.state.revision, StateRevision(1));
+    assert_eq!(
+        checkpoint
+            .state
+            .random
+            .lookup_stream(&RandomStreamKeyV1::global(RandomStreamKindV1::SyntheticM1))
+            .unwrap()
+            .next_raw_u64,
+        1
     );
     assert_eq!(
-        endpoint.submit(synthetic_response()),
-        Err(PlayerApiError::Unavailable)
+        checkpoint.state.allocators.next_effect_id,
+        EffectInstanceId(2)
     );
+    assert_eq!(
+        checkpoint.state.allocators.next_rule_event_id,
+        RuleEventId(5)
+    );
+    assert_eq!(
+        checkpoint.limit_counters,
+        EnvironmentLimitCounters {
+            decisions_submitted: 1,
+            accepted_transitions: 1,
+            rule_events_emitted: 4,
+            resource_units_consumed: 0,
+            wall_clock_elapsed_millis: 0,
+        }
+    );
+    assert_eq!(controller.export_replay().unwrap().steps.len(), 1);
+}
+
+#[test]
+fn authorized_invalid_selection_is_sanitized_and_completely_nonmutating() {
+    let controller = TrustedEnvironmentController::new(synthetic_backend());
+    let p1 = controller.bind_player(PlayerId(1)).unwrap();
+    let p2 = controller.bind_player(PlayerId(2)).unwrap();
+    let before = PlayerSurfaceSnapshot::capture(&controller, &p1, &p2);
+
+    let mut invalid = synthetic_response();
+    invalid.assignments[0].candidate_id = "unknown_candidate".into();
+    assert_eq!(p1.submit(invalid), Err(PlayerApiError::InvalidSelection));
+
+    let after = PlayerSurfaceSnapshot::capture(&controller, &p1, &p2);
+    assert_player_surface_unchanged(&before, &after);
+}
+
+#[test]
+fn stale_player_responses_are_sanitized_and_completely_nonmutating() {
+    let mut stale_decision = synthetic_response();
+    stale_decision.decision_id = DecisionId(2);
+    let mut stale_revision = synthetic_response();
+    stale_revision.state_revision = StateRevision(1);
+
+    for stale in [stale_decision, stale_revision] {
+        let controller = TrustedEnvironmentController::new(synthetic_backend());
+        let p1 = controller.bind_player(PlayerId(1)).unwrap();
+        let p2 = controller.bind_player(PlayerId(2)).unwrap();
+        let before = PlayerSurfaceSnapshot::capture(&controller, &p1, &p2);
+
+        assert_eq!(p1.submit(stale), Err(PlayerApiError::StaleResponse));
+
+        let after = PlayerSurfaceSnapshot::capture(&controller, &p1, &p2);
+        assert_player_surface_unchanged(&before, &after);
+    }
+}
+
+#[test]
+fn non_default_player_ids_remain_bound_through_visibility_rejection_and_step() {
+    let players = [PlayerId(7), PlayerId(9)];
+    let controller = TrustedEnvironmentController::new(
+        SyntheticM1EnvironmentBackend::new(players, synthetic_seed(), synthetic_config(players))
+            .unwrap(),
+    );
+    let p7 = controller.bind_player(PlayerId(7)).unwrap();
+    let p9 = controller.bind_player(PlayerId(9)).unwrap();
+
+    assert_eq!(p7.perspective(), PlayerId(7));
+    assert_eq!(p9.perspective(), PlayerId(9));
+    assert_eq!(p7.visible_decision().unwrap().unwrap().actor, PlayerId(7));
+    assert_eq!(p9.visible_decision().unwrap(), None);
+    assert_eq!(
+        p9.submit(synthetic_response()),
+        Err(PlayerApiError::NoVisibleDecision)
+    );
+
+    let step = p7.submit(synthetic_response()).unwrap();
+    assert_player_step_is_valid(&step, PlayerId(7));
+    assert_eq!(p7.observation().unwrap().state_revision, StateRevision(1));
+    assert_eq!(p9.observation().unwrap().state_revision, StateRevision(1));
+    assert_eq!(p7.visible_decision().unwrap(), None);
+    assert_eq!(p9.visible_decision().unwrap(), None);
+}
+
+#[test]
+fn unknown_player_binding_remains_rejected_without_exposing_backend_details() {
+    let controller = TrustedEnvironmentController::new(synthetic_backend());
+    assert!(matches!(
+        controller.bind_player(PlayerId(99)),
+        Err(ControllerError::UnknownPlayer)
+    ));
+}
+
+#[test]
+fn endpoint_submission_matches_trusted_authoritative_checkpoint_and_replay() {
+    let trusted = TrustedEnvironmentController::new(synthetic_backend());
+    trusted
+        .execute_trusted_response(PlayerId(1), synthetic_response())
+        .unwrap();
+    let trusted_checkpoint = trusted.checkpoint().unwrap();
+    let trusted_replay = trusted.export_replay().unwrap();
+
+    let endpoint_controller = TrustedEnvironmentController::new(synthetic_backend());
+    let p1 = endpoint_controller.bind_player(PlayerId(1)).unwrap();
+    let step = p1.submit(synthetic_response()).unwrap();
+    assert_player_step_is_valid(&step, PlayerId(1));
+
+    assert_eq!(
+        endpoint_controller.checkpoint().unwrap(),
+        trusted_checkpoint
+    );
+    assert_eq!(endpoint_controller.export_replay().unwrap(), trusted_replay);
+}
+
+#[test]
+fn successful_player_values_and_errors_do_not_render_trusted_provenance() {
+    let controller = TrustedEnvironmentController::new(synthetic_backend());
+    let p1 = controller.bind_player(PlayerId(1)).unwrap();
+    let p2 = controller.bind_player(PlayerId(2)).unwrap();
+
+    let p1_observation = p1.observation().unwrap();
+    let p1_information = p1.information_state().unwrap();
+    let p1_decision = p1.visible_decision().unwrap().unwrap();
+    let p2_observation = p2.observation().unwrap();
+    let p2_information = p2.information_state().unwrap();
+    let player_values = [
+        serde_json::to_string(&p1_observation).unwrap(),
+        serde_json::to_string(&p1_information).unwrap(),
+        serde_json::to_string(&p1_decision).unwrap(),
+        serde_json::to_string(&p2_observation).unwrap(),
+        serde_json::to_string(&p2_information).unwrap(),
+    ];
+    for value in player_values {
+        assert_no_trusted_player_text(&value);
+    }
+    assert_no_trusted_player_text(
+        &mtgml_wire::encode_canonical(&p1_decision)
+            .map(|bytes| String::from_utf8(bytes).unwrap())
+            .unwrap(),
+    );
+
+    let step = p1.submit(synthetic_response()).unwrap();
+    assert_no_trusted_player_text(&serde_json::to_string(&step).unwrap());
+
+    let errors = [
+        PlayerApiError::NoVisibleDecision,
+        PlayerApiError::StaleResponse,
+        PlayerApiError::InvalidSelection,
+        PlayerApiError::EpisodeComplete,
+        PlayerApiError::Unavailable,
+    ];
+    for error in errors {
+        assert_no_trusted_player_text(&error.to_string());
+    }
 }
 
 #[test]
