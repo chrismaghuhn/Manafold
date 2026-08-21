@@ -17,7 +17,7 @@ The machine-readable classification of binding, process, and informative documen
 - [`ROADMAP.md`](ROADMAP.md)
 - [`OPEN_DECISIONS.md`](OPEN_DECISIONS.md)
 
-Current executable status is M1 complete; M2 contract work is a freeze candidate and does not itself claim M2 behavior gates.
+Current executable status is M1 complete. M2.A architecture contracts are accepted; M2.B executable structural work has not yet run, so M2 behavior gates remain `NOT_RUN`.
 
 ## Normative architecture and semantics
 
@@ -39,7 +39,7 @@ Current executable status is M1 complete; M2 contract work is a freeze candidate
 - [`ML_ENVIRONMENT.md`](ML_ENVIRONMENT.md)
 - [`ML_TRAJECTORIES.md`](ML_TRAJECTORIES.md)
 
-`STATE_HASHING.md` owns the ADR-0038 byte-level digest-envelope / `mtgml.canonical-cbor.v1` specification for the M2 V3 freeze candidate.
+`STATE_HASHING.md` owns the accepted ADR-0038 byte-level digest-envelope / `mtgml.canonical-cbor.v1` specification for the M2 V3 structural implementation.
 
 ## Content and rules maintenance
 
@@ -90,4 +90,4 @@ Current executable status is M1 complete; M2 contract work is a freeze candidate
 - [`maintenance/SCHEMA_EVOLUTION.md`](maintenance/SCHEMA_EVOLUTION.md)
 - [`adr/README.md`](adr/README.md)
 
-Proposed ADRs 0039 and 0040 contain the M2 decision and information/V3 compatibility freeze decisions. ADRs record intent; executable M2 closure remains evidence-driven.
+Accepted ADRs 0039 and 0040 contain the M2 decision and information/V3 compatibility architecture. ADRs record intent; executable M2 closure remains evidence-driven.
