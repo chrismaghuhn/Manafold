@@ -22,7 +22,7 @@
 - Modify docs/normative-document-register.v1.json: register the M1.6 design and plan.
 - Create docs/superpowers/specs/2026-08-21-m1-6-checkpoint-fork-replay-design.md: reconciled design and segment-root decision.
 - Create this plan at docs/superpowers/plans/2026-08-21-m1-6-checkpoint-fork-replay.md.
-- Create docs/superpowers/m1-6-pr-body.md after final verification: exact Draft PR evidence and status table.
+- Create an untracked `m1-6-pr-body.md` after final verification: exact Draft PR evidence and status table. Keep this delivery file outside source history because it embeds the final head and hosted-check status.
 - Modify crates/mtgml-replay/src/validation.rs: add narrow typed recorder/manifest/semantic mismatch errors only where existing structural errors cannot express the failure.
 - Create crates/mtgml-replay/src/recorder.rs: fallible ReplayRecorderV2 with accepted-step append, empty segment creation, and validated export.
 - Modify crates/mtgml-replay/src/lib.rs and src/tests.rs: expose the recorder and prove V2 continuity/rejection behavior.
@@ -414,7 +414,7 @@ After all local evidence is captured:
 
 ~~~
 git push --set-upstream origin chris/m1-6-checkpoint-fork-replay
-gh pr create --draft --base master --head chris/m1-6-checkpoint-fork-replay --title "M1.6: checkpoint, fork, and replay parity" --body-file docs/superpowers/m1-6-pr-body.md
+gh pr create --draft --base master --head chris/m1-6-checkpoint-fork-replay --title "M1.6: checkpoint, fork, and replay parity" --body-file m1-6-pr-body.md
 ~~~
 
 The PR body must include starting/final SHA, changed files, transaction and counter policy, segment-root semantics, checkpoint/restore/fork/replay evidence, rejected diagnostic replay, canonical roundtrip, tamper cases, environment rejection closure, RNG/allocator continuity, information-safety assessment, M1.7 non-goal, and an exact PASS/FAIL/BLOCKED/NOT_RUN command table. Use Closes #25 only when the four M1.6 outcomes actually pass. Do not merge.
