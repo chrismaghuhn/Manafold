@@ -1,6 +1,6 @@
 # Information Model
 
-**Status:** accepted M2 information-safety contract freeze candidate  
+**Status:** accepted M2 information-safety architecture contract; executable M2 evidence `NOT_RUN`  
 **Stability:** normative
 
 ## Three distinct concepts
@@ -49,13 +49,16 @@ Active record:
   "kind": "active",
   "opaque_object_id": "7",
   "known_definition": "42",
-  "current_known_location": {"zone": "exile", "player": "2"},
+  "current_known_location_fact": {
+    "location": {"zone": "exile", "player": "2"},
+    "provenance": {"kind": "observed", "channel": "public", "sequence": "4", "cause": "public_event"}
+  },
   "historical_locations": [],
   "acquisition": {"kind": "initial_configuration"}
 }
 ```
 
-`known_definition` and `current_known_location` may be `null`.
+`known_definition` and `current_known_location_fact` may be `null`. Current-location update provenance is deliberately part of `PlayerInformationStateV2`; it is not dropped merely because the fact is current rather than historical.
 
 Retired record:
 
@@ -64,7 +67,10 @@ Retired record:
   "kind": "retired",
   "opaque_object_id": "7",
   "known_definition": null,
-  "last_known_location": {"zone": "library", "player": "2"},
+  "last_known_location_fact": {
+    "location": {"zone": "library", "player": "2"},
+    "provenance": {"kind": "observed", "channel": "private", "sequence": "3", "cause": "private_look"}
+  },
   "historical_locations": [],
   "acquisition": {"kind": "observed", "channel": "private", "sequence": "3", "cause": "private_look"},
   "invalidation": {
@@ -74,7 +80,7 @@ Retired record:
 }
 ```
 
-`known_definition` and `last_known_location` may be `null`; `invalidation` is mandatory for retired records.
+`known_definition` and `last_known_location_fact` may be `null`; `invalidation` is mandatory for retired records. Last-known-location provenance remains player-visible retained information when the location fact itself is retained.
 
 The public-safe `PlayerKnownLocationV1` shape is exactly:
 
