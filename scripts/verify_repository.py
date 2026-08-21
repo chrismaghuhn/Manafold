@@ -301,29 +301,35 @@ def main() -> None:
             fail(f"state contract lacks {token}")
 
     for token in (
-        "FullStateDigestInputV2",
-        "CanonicalOrderedZoneEntryV1",
-        "canonicalize_json",
-        "KnowledgeInvalidationRecord",
+        "FullStateDigestInputV3",
+        "canonical_digest_bytes",
+        "KnowledgeInvalidationReason",
         "KnowledgeAcquisitionReason",
     ):
         if token not in state_rust:
             fail(f"state contract closure lacks {token}")
 
-    for token in ("nonempty_ordered_zone_has_a_stable_domain_separated_digest",):
+    for token in (
+        "full_state_digest_v3_known_answer",
+        "m2_b_full_state_digest_v3_mutation_matrix",
+        "state_delta_uses_full_state_digest_v3",
+    ):
         if token not in state_tests:
             fail(f"state test evidence lacks {token}")
 
     for token in (
-        "EnvironmentCheckpointV2",
+        "EnvironmentCheckpointV3",
         "EnvironmentLimitCounters",
         "CheckpointCodecIdentity",
-        "checkpoint_digest: CheckpointDigestV2",
+        "checkpoint_digest: CheckpointDigestV3",
     ):
         if token not in env_rust:
             fail(f"checkpoint contract lacks {token}")
 
-    for token in ("checkpoint_digest_covers_status_and_limit_counters",):
+    for token in (
+        "checkpoint_v3_validation_and_restore_nonmutation_matrix",
+        "checkpoint_identity_tampering_is_rejected",
+    ):
         if token not in env_tests:
             fail(f"environment test evidence lacks {token}")
 
@@ -335,11 +341,9 @@ def main() -> None:
         if token not in rules_rust:
             fail(f"compositional transition validation lacks {token}")
     for token in (
-        "two_life_changes_in_one_atomic_transition_are_compositional",
-        "decision_clear_then_create_composes_to_the_next_decision",
-        "repeated_tap_changes_in_one_atomic_transition_are_compositional",
-        "consecutive_zone_incarnations_in_one_transition_are_compositional",
-        "accepted_transition_cannot_reuse_the_consumed_decision_id",
+        "synthetic_m2_choose_one_returns_authoritative_transition_product",
+        "invalid_v2_answer_is_rejected_without_state_mutation",
+        "wrong_actor_and_stale_revision_fail_closed",
     ):
         if token not in rules_tests:
             fail(f"rules test evidence lacks {token}")

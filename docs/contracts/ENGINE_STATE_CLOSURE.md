@@ -98,4 +98,8 @@ The reference contract prefers correctness/auditability over compactness. A late
 
 M2 changes authoritative execution/knowledge/perspective-identity meaning and therefore requires a new V3 full-state identity. Historical V1/V2 state/checkpoint identities are never reinterpreted against the changed runtime `EngineState`.
 
+`FullStateDigestInputV2` remains detached historical evidence only. The current
+runtime converts to `FullStateDigestInputV3` and constructs `FullStateDigestV3`
+through the accepted persisted semantic codec.
+
 The detached V3 semantic digest mapping is specified in [`../STATE_HASHING.md`](../STATE_HASHING.md).
