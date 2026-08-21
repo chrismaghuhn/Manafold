@@ -13,7 +13,7 @@ import shutil
 import subprocess
 import sys
 import tomllib
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -309,6 +309,28 @@ def capture_source_snapshot() -> dict[str, Any]:
         return {"status": "BLOCKED", "reason": str(error)}
 
 
+def aggregate_status(statuses: Iterable[str]) -> str:
+    status_set = set(statuses)
+    if status_set == {"PASS"}:
+        return "PASS"
+    if "BLOCKED" in status_set:
+        return "BLOCKED"
+    if "NOT_RUN" in status_set:
+        return "NOT_RUN"
+    return "FAIL"
+
+
+def reported_toolchain_version(name: str, output: str) -> str | None:
+    first_line = output.splitlines()[0] if output.splitlines() else ""
+    if name in {"rustc", "cargo"}:
+        match = re.match(rf"^{re.escape(name)}\s+(\d+\.\d+\.\d+)(?=\s|\(|$)", first_line)
+    elif name == "active_toolchain":
+        match = re.match(r"^(\d+\.\d+\.\d+)(?=-|\s|$)", first_line)
+    else:
+        return None
+    return match.group(1) if match else None
+
+
 def capture_toolchain() -> dict[str, Any]:
     try:
         expected_python = (ROOT / ".python-version").read_text(encoding="utf-8").strip()
@@ -318,7 +340,21 @@ def capture_toolchain() -> dict[str, Any]:
         return {"status": "BLOCKED", "reason": f"toolchain policy unreadable: {error}"}
 
     python_version = platform.python_version()
-    python_result = run_command((sys.executable, "--version"))
+    python_result: subprocess.CompletedProcess[str] | None = None
+    python_reason: str | None = None
+    try:
+        python_result = run_command((sys.executable, "--version"))
+    except OSError as error:
+        python_status = "BLOCKED"
+        python_reason = str(error)
+    else:
+        python_status = (
+            "PASS"
+            if python_result is not None
+            and python_result.returncode == 0
+            and python_version == expected_python
+            else "FAIL"
+        )
     rust_commands = {
         "rustc": ("rustc", "--version"),
         "cargo": ("cargo", "--version"),
@@ -334,7 +370,7 @@ def capture_toolchain() -> dict[str, Any]:
             }
             continue
         try:
-            result = run_command(command)
+            completed = run_command(command)
         except OSError as error:
             rust_results[name] = {
                 "status": "BLOCKED",
@@ -342,44 +378,46 @@ def capture_toolchain() -> dict[str, Any]:
                 "reason": str(error),
             }
             continue
-        output = result.stdout.strip()
+        output = completed.stdout.strip()
         rust_results[name] = {
-            "status": "PASS" if result.returncode == 0 else "FAIL",
+            "status": "PASS" if completed.returncode == 0 else "FAIL",
             "command": list(command),
-            "returncode": result.returncode,
+            "returncode": completed.returncode,
             "output": output,
         }
 
-    python_status = (
-        "PASS" if python_result.returncode == 0 and python_version == expected_python else "FAIL"
-    )
-    rust_status = "PASS"
-    for result in rust_results.values():
-        if result["status"] != "PASS":
-            rust_status = result["status"]
-            break
+    rust_status = aggregate_status(result["status"] for result in rust_results.values())
+    version_checks: dict[str, dict[str, Any]] = {}
     if rust_status == "PASS":
-        rust_status = (
-            "PASS"
-            if expected_rust in rust_results["rustc"]["output"]
-            and expected_rust in rust_results["cargo"]["output"]
-            and expected_rust in rust_results["active_toolchain"]["output"]
-            else "FAIL"
-        )
+        for name, record in rust_results.items():
+            reported = reported_toolchain_version(name, record["output"])
+            version_checks[name] = {
+                "expected": expected_rust,
+                "reported": reported,
+                "status": "PASS" if reported == expected_rust else "FAIL",
+            }
+        if any(check["status"] != "PASS" for check in version_checks.values()):
+            rust_status = "FAIL"
+    combined_status = aggregate_status((python_status, rust_status))
+    python_report: dict[str, Any] = {
+        "status": python_status,
+        "executable": sys.executable,
+        "version": python_version,
+        "expected_version": expected_python,
+        "version_command": [sys.executable, "--version"],
+    }
+    if python_result is not None:
+        python_report["version_output"] = python_result.stdout.strip()
+    if python_reason is not None:
+        python_report["reason"] = python_reason
     return {
-        "status": "PASS" if python_status == "PASS" and rust_status == "PASS" else "FAIL",
-        "python": {
-            "status": python_status,
-            "executable": sys.executable,
-            "version": python_version,
-            "expected_version": expected_python,
-            "version_command": [sys.executable, "--version"],
-            "version_output": python_result.stdout.strip(),
-        },
+        "status": combined_status,
+        "python": python_report,
         "rust": {
             "status": rust_status,
             "expected_channel": expected_rust,
             "commands": rust_results,
+            "version_checks": version_checks,
         },
     }
 
@@ -443,6 +481,36 @@ def execute_test(definition: TestDefinition, logs: Path, index: int) -> dict[str
     return evidence
 
 
+def executable_pass_evidence(item: Any) -> bool:
+    command = item.get("command") if isinstance(item, dict) else None
+    return (
+        isinstance(item, dict)
+        and item.get("status") == "PASS"
+        and isinstance(item.get("test"), str)
+        and bool(item["test"])
+        and isinstance(command, list)
+        and bool(command)
+        and all(isinstance(part, str) and bool(part) for part in command)
+        and item.get("returncode") == 0
+        and item.get("tests_observed") == 1
+    )
+
+
+def complete_gate_set(gates: Any) -> bool:
+    if not isinstance(gates, list):
+        return False
+    if tuple(gate.get("name") for gate in gates if isinstance(gate, dict)) != GATE_NAMES:
+        return False
+    return all(
+        isinstance(gate, dict)
+        and gate.get("status") == "PASS"
+        and isinstance(gate.get("evidence"), list)
+        and bool(gate["evidence"])
+        and all(executable_pass_evidence(item) for item in gate["evidence"])
+        for gate in gates
+    )
+
+
 def build_report(
     source_identity: dict[str, Any],
     toolchains: dict[str, Any],
@@ -453,8 +521,7 @@ def build_report(
     complete = (
         source_identity.get("status") == "PASS"
         and toolchains.get("status") == "PASS"
-        and len(gates) == len(GATE_NAMES)
-        and all(gate.get("status") == "PASS" for gate in gates)
+        and complete_gate_set(gates)
     )
     return {
         "generated_at": generated_at or datetime.now(UTC).isoformat(),
