@@ -1,0 +1,55 @@
+{
+  "schema_version": "wire-staging-manifest.v1",
+  "fixtures": [
+    {
+      "contract": "player-decision-request.v2",
+      "path": "player-decision-request.v2.json",
+      "schema": "player-decision-request.v2.schema.json"
+    },
+    {
+      "contract": "decision-response.v2",
+      "path": "decision-response.v2-select-one.json",
+      "schema": "decision-response.v2.schema.json"
+    },
+    {
+      "contract": "information-state-envelope.v2",
+      "path": "information-state-envelope.v2.json",
+      "schema": "information-state-envelope.v2.schema.json"
+    },
+    {
+      "contract": "observed-event-envelope.v2",
+      "path": "observed-event-envelope.v2.json",
+      "schema": "observed-event-envelope.v2.schema.json"
+    },
+    {
+      "contract": "player-step.v2",
+      "path": "player-step.v2.json",
+      "schema": "player-step.v2.schema.json"
+    },
+    {
+      "contract": "replay-manifest.v3",
+      "path": "replay-manifest.v3.json",
+      "schema": "replay-manifest.v3.schema.json"
+    },
+    {
+      "contract": "authoritative-replay.v3",
+      "path": "authoritative-replay-empty.v3.json",
+      "schema": "authoritative-replay.v3.schema.json"
+    },
+    {
+      "contract": "decision-response.v2",
+      "path": "decision-v2-candidate-id-overflow.json",
+      "schema": "decision-response.v2.schema.json"
+    },
+    {
+      "contract": "decision-response.v2",
+      "path": "decision-v2-noncanonical-select-many.json",
+      "schema": "decision-response.v2.schema.json"
+    },
+    {
+      "contract": "authoritative-replay.v3",
+      "path": "replay-v3-checkpoint-digest-mismatch.json",
+      "schema": "authoritative-replay.v3.schema.json"
+    }
+  ]
+}
