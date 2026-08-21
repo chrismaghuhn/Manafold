@@ -19,7 +19,7 @@ from mtgml.persistence import (
 
 
 class PersistenceCodecTests(unittest.TestCase):
-    def test_golden_vectors_decode_and_match_known_digest(self) -> None:
+    def test_cross_language_mechanical_golden_vectors(self) -> None:
         golden = ROOT / "persistence" / "golden"
         manifest = json.loads((golden / "manifest.json").read_text(encoding="utf-8"))
         for entry in manifest["fixtures"]:
@@ -35,7 +35,7 @@ class PersistenceCodecTests(unittest.TestCase):
                     )
                     self.assertEqual(reference["semantic_domain"], "mtgml.test-domain.v1")
 
-    def test_negative_vectors_use_closed_codec_categories(self) -> None:
+    def test_cross_language_mechanical_negative_categories(self) -> None:
         negative = ROOT / "persistence" / "negative"
         manifest = json.loads((negative / "manifest.json").read_text(encoding="utf-8"))
         for entry in manifest["fixtures"]:
@@ -66,6 +66,16 @@ class PersistenceCodecTests(unittest.TestCase):
             ),
             "b0cf94e1f49fb58feb6ebc07d88b2a7e226be78c1ca92ee7b9772d4f51290f6c",
         )
+
+
+def test_cross_language_mechanical_golden_vectors() -> None:
+    test = PersistenceCodecTests("test_cross_language_mechanical_golden_vectors")
+    test.test_cross_language_mechanical_golden_vectors()
+
+
+def test_cross_language_mechanical_negative_categories() -> None:
+    test = PersistenceCodecTests("test_cross_language_mechanical_negative_categories")
+    test.test_cross_language_mechanical_negative_categories()
 
 
 if __name__ == "__main__":

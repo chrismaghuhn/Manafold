@@ -53,7 +53,7 @@ fn deterministic_structural_identity_repeats_exactly() {
 }
 
 #[test]
-fn state_delta_uses_full_state_digest_v3_and_reapplies_exactly() {
+fn state_delta_uses_full_state_digest_v3() {
     let before = synthetic_state();
     let mut after = before.clone();
     after.core.players.get_mut(&PlayerId(1)).unwrap().life -= 1;

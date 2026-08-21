@@ -9,6 +9,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+      - name: Assert exact pull request head
+        shell: bash
+        run: test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha }}"
       - uses: actions/setup-python@v7
         with: {python-version-file: ".python-version"}
       - run: |
@@ -21,3 +27,4 @@ jobs:
       - run: |
           cargo +1.85.1 fmt --all -- --check
           cargo +1.85.1 check --workspace --all-targets --all-features --locked
+      - run: python scripts/run_m2_b_contract_cut.py

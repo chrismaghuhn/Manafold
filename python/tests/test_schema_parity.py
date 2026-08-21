@@ -133,5 +133,10 @@ class SchemaParityTests(unittest.TestCase):
         self.assertEqual(len(truncated["properties"]["reason"]["enum"]), 5)
 
 
+def test_m2_b_detached_schema_fixtures() -> None:
+    test = SchemaParityTests("test_m2_b_detached_schema_fixtures")
+    test.test_m2_b_detached_schema_fixtures()
+
+
 if __name__ == "__main__":
     unittest.main()
