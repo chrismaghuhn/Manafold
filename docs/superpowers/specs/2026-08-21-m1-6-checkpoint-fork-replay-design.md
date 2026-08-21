@@ -1,8 +1,8 @@
 # M1.6 Checkpoint, Fork, and Replay Design
 
-**Status:** accepted for implementation  
-**Stability:** provisional  
-**Owner:** maintainer  
+**Status:** accepted for implementation
+**Stability:** provisional
+**Owner:** maintainer
 **Starting master:** a1545c5f8846d2a4780506c8f323f81ca4698cd5
 
 ## Goal
@@ -97,4 +97,3 @@ Focused tests prove:
 - absence of trusted values from the player capability surface.
 
 The change does not add a second decision, real cards, Magic semantics, PlayerEndpoint submission binding, search, M2 information-safety machinery, or any V3 checkpoint/replay contract.
-

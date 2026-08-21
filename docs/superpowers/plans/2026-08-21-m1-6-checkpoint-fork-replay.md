@@ -12,8 +12,8 @@
 
 ---
 
-**Starting master:** a1545c5f8846d2a4780506c8f323f81ca4698cd5  
-**Branch:** chris/m1-6-checkpoint-fork-replay  
+**Starting master:** a1545c5f8846d2a4780506c8f323f81ca4698cd5
+**Branch:** chris/m1-6-checkpoint-fork-replay
 **Worktree:** C:\Users\chris\.config\superpowers\worktrees\Manafold\m1-6-checkpoint-fork-replay
 
 ## Files and responsibilities
