@@ -3,7 +3,6 @@
 **Status:** accepted documentation index  
 **Stability:** informative
 
-
 The machine-readable classification of binding, process, and informative documents is [`normative-document-register.v1.json`](normative-document-register.v1.json).
 
 ## Orientation
@@ -18,6 +17,8 @@ The machine-readable classification of binding, process, and informative documen
 - [`ROADMAP.md`](ROADMAP.md)
 - [`OPEN_DECISIONS.md`](OPEN_DECISIONS.md)
 
+Current executable status is M1 complete; M2 contract work is a freeze candidate and does not itself claim M2 behavior gates.
+
 ## Normative architecture and semantics
 
 - [`NORMATIVE_HIERARCHY.md`](NORMATIVE_HIERARCHY.md)
@@ -27,6 +28,7 @@ The machine-readable classification of binding, process, and informative documen
 - [`EXECUTION_MODEL.md`](EXECUTION_MODEL.md)
 - [`RULES_SEMANTICS.md`](RULES_SEMANTICS.md)
 - [`DECISION_PROTOCOL.md`](DECISION_PROTOCOL.md)
+- [`DECISION_INVENTORY.md`](DECISION_INVENTORY.md)
 - [`INFORMATION_MODEL.md`](INFORMATION_MODEL.md)
 - [`ERROR_MODEL.md`](ERROR_MODEL.md)
 - [`FORMAT_MODULES.md`](FORMAT_MODULES.md)
@@ -36,6 +38,8 @@ The machine-readable classification of binding, process, and informative documen
 - [`REPLAY_AND_DETERMINISM.md`](REPLAY_AND_DETERMINISM.md)
 - [`ML_ENVIRONMENT.md`](ML_ENVIRONMENT.md)
 - [`ML_TRAJECTORIES.md`](ML_TRAJECTORIES.md)
+
+`STATE_HASHING.md` owns the ADR-0038 byte-level digest-envelope / `mtgml.canonical-cbor.v1` specification for the M2 V3 freeze candidate.
 
 ## Content and rules maintenance
 
@@ -85,3 +89,5 @@ The machine-readable classification of binding, process, and informative documen
 - [`maintenance/RELEASE_PROCESS.md`](maintenance/RELEASE_PROCESS.md)
 - [`maintenance/SCHEMA_EVOLUTION.md`](maintenance/SCHEMA_EVOLUTION.md)
 - [`adr/README.md`](adr/README.md)
+
+Proposed ADRs 0039 and 0040 contain the M2 decision and information/V3 compatibility freeze decisions. ADRs record intent; executable M2 closure remains evidence-driven.

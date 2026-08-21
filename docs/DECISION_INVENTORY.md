@@ -1,8 +1,37 @@
 # Decision Inventory
 
-**Status:** taxonomy baseline; exact V1 census occurs in M2.5
+**Status:** M2 representative taxonomy freeze candidate; exact V1 Magic census occurs in roadmap M2.5
 
-The unified protocol must represent every player-influenced decision. Candidate families include at least:
+The unified protocol must eventually represent every player-influenced decision. The complete Magic inventory is intentionally not frozen in M2.
+
+## M2 representative closed families
+
+M2 executable synthetic scope proves these generic protocol shapes:
+
+```text
+ChooseOne
+ChooseMany
+ChooseNumber
+Order
+typed staged continuation
+```
+
+They are protocol machinery, not claims that every future Magic choice can be encoded without extension.
+
+M2 uses an explicit answer union:
+
+```text
+SelectOne
+SelectMany
+ChooseNumber
+Order
+```
+
+Request-local candidate IDs are dense/canonical and perspective-safe. Stable semantic action keys remain deferred under OD-011.
+
+## Future Magic decision inventory
+
+The eventual protocol/capability closure must consider at least:
 
 - mulligan and starting-player choices;
 - priority: pass, cast, activate, special action;
@@ -22,12 +51,12 @@ The unified protocol must represent every player-influenced decision. Candidate 
 - trigger ordering under applicable player ordering;
 - library search/reveal/selection/reordering;
 - choices made by another player during resolution;
-- Commander/format-specific zone or designation choices;
+- Commander/format-specific zone/designation choices;
 - loop/shortcut decisions once policy is pinned.
 
 ## Hierarchical decisions
 
-A full Magic action may form a decision graph:
+A full Magic action may later form a decision graph such as:
 
 ```text
 cast spell
@@ -39,8 +68,12 @@ cast spell
   -> confirm
 ```
 
-Each node is an explicit state revision/decision. The engine may generate candidates lazily or through constrained continuation requests, but the representation must remain sound, complete, deterministic, replayable, and visible to training.
+Every meaningful player-controlled node remains an explicit decision/environment step.
+
+M2 proves one bounded **linear typed continuation** only. It does not freeze one linear frame as the permanent architecture and does not claim nested/simultaneous/distribution/payment semantics. M3 may add new closed decision variants or typed continuation composition when locked capability evidence requires them.
 
 ## M2.5 census
 
-For the locked decks, enumerate every reachable decision type, maximum cardinality, ordering semantics, visibility, candidate source, equivalence/canonicalization opportunity, and expected branching stress. Missing inventory entries block M3 capability closure.
+For the two locked V1 decks, enumerate every reachable decision type, maximum cardinality, ordering semantics, visibility, candidate source, equivalence/canonicalization opportunity, and expected branching stress.
+
+Any required decision form not covered by the M2 representative machinery becomes an explicit capability/protocol gap. Missing inventory entries block M3 capability closure; they are not silently approximated.
