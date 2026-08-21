@@ -1142,6 +1142,8 @@ fn semantic_replay_executes_rejected_diagnostic_without_live_recording() {
         })
         .unwrap();
     let diagnostic = recorder.export().unwrap();
+    let canonical = mtgml_wire::encode_canonical(&diagnostic).unwrap();
+    let diagnostic: AuthoritativeReplayV2 = mtgml_wire::decode_canonical(&canonical).unwrap();
 
     let report = controller
         .execute_replay_from_checkpoint(c0.clone(), diagnostic)
