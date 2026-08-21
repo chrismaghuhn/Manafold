@@ -1,6 +1,6 @@
 # M2.B V3 Structural Cut Design
 
-**Status:** approved design, pending implementation
+**Status:** design v2 after review, pending implementation-plan approval
 
 **Issue:** [#49 — M2.B: V3 Structural Cut](https://github.com/chrismaghuhn/Manafold/issues/49)
 
@@ -55,6 +55,7 @@ The new persistence layer is a small rules-neutral crate with a concrete ownersh
 ```text
 mtgml-model
     primitive IDs, digest wrappers, small identity/value constants
+    EnvironmentLimitCounters and CheckpointCodecIdentity
 
 mtgml-random
     typed RNG state and canonical stream identity
@@ -100,6 +101,8 @@ Python client and ML orchestration
 
 `mtgml-model` will not own the persistence codec. `mtgml-wire` will not own CBOR. `mtgml-state` will not depend on `mtgml-wire`. The workspace manifest, crate ownership documentation, and dependency documentation will be updated together when the new crate is introduced.
 
+`EnvironmentLimitCounters` and `CheckpointCodecIdentity` move from `mtgml-environment` to `mtgml-model` as small rules-neutral shared value types. Their field names, Serde representation, validation meaning, and V2 historical meaning remain unchanged. `mtgml-replay` may then use the shared values without depending on `mtgml-environment`; `EnvironmentCheckpointV3` continues to be owned by the environment crate.
+
 ## 4. Old-to-new migration matrix
 
 | Historical/current M1 representation | Current M2.B representation | Compatibility treatment |
@@ -117,9 +120,22 @@ Python client and ML orchestration
 | `FullStateDigestV2` from canonical JSON runtime serialization | detached `FullStateDigestInputV3` encoded with the persisted codec and digest envelope | V2 is readable/verifiable evidence only; no current producer |
 | `EnvironmentCheckpointV2` embedding unversioned `EngineState` | `EnvironmentCheckpointV3` with current state, V3 state identity, environment identity, and V3 checkpoint identity | V2 is unsupported by the current engine |
 | Replay V2 state-only identity | Replay V3 complete before/after environment identity | V2 remains detached/readable/verifiable only |
+| `StateDelta { before_digest: FullStateDigestV2, after_digest: FullStateDigestV2 }` | current `StateDelta` uses `FullStateDigestV3` before/after identities and `EngineState::digest()` uses V3 | historical V2 delta evidence is detached and immutable |
 | `CandidateSetDigest` V1 | no Decision V2 producer | V1 remains historical/dormant; no V2 reinterpretation |
 
 Historical fixtures are never rewritten, deleted, or silently upgraded.
+
+### Shared leaves and numeric identity widths
+
+The new model values have explicit widths and do not all use the existing `canonical_id!` macro:
+
+```text
+PlayerDecisionIdV1  u64
+VisibleSequence     u64
+CandidateIdV1      u32
+```
+
+`PlayerDecisionIdV1` and `VisibleSequence` use the existing canonical decimal-string public convention. `CandidateIdV1` is a dedicated `u32` newtype with its own range-aware Serde implementation. Its M2 public JSON representation is a canonical unsigned JSON integer, and the schema/decoder reject negative, fractional, non-integer, and greater-than-`u32::MAX` values. Its persisted CBOR representation is an unsigned integer that must also fit the `u32` semantic range. `CandidateIdV1` is never generated through the u64-only ID macro.
 
 ## 5. Decision V2 design
 
@@ -203,6 +219,20 @@ It owns:
 
 It does not own schema-specific `EngineState` conversion or rules semantics. State, replay, and environment producers provide detached semantic values and invoke the codec only after their own Rust-authoritative structural validation.
 
+The V3 digest construction path is deliberately separate from the existing `domain_digest!` path:
+
+```text
+historical V1/V2 wrappers:
+    existing from_canonical_bytes semantics remain unchanged
+
+persisted V3 wrappers:
+    mtgml-persistence computes SHA-256 over the exact digest envelope once
+    FullStateDigestV3 / CheckpointDigestV3 accept raw [u8; 32] digest bytes
+    wrappers expose canonical lowercase hex and raw bytes for DigestReferenceV1
+```
+
+`FullStateDigestV3` and `CheckpointDigestV3` must not be added to the historical macro and must not hash envelope bytes through `from_canonical_bytes()`. `InformationStateDigestV2` remains a separate canonical-JSON/domain path and is not routed through the persisted CBOR envelope.
+
 The codec must reject maps, floats, tags, bignums, indefinite values, shared references, undefined, malformed UTF-8, noncanonical primitives, wrong record lengths, unknown variants, out-of-range values, duplicate semantic keys, noncanonical order, trailing data, and re-encode mismatch according to the accepted precedence. Length limits are checked before allocation.
 
 ## 8. Digest, checkpoint, and replay identity
@@ -243,15 +273,19 @@ CheckpointDigestV3
 
 The checkpoint digest binds a complete `FullStateDigestV3` reference, status, all limit counters, and codec identity through `environment-checkpoint-digest-input.v3` and the same persisted codec/envelope. Restore validates state, state digest, status, counters, codec, and checkpoint digest before replacing backend state. A rejected restore has no mutation effect.
 
+`EnvironmentCheckpointV2` is retired from the current runtime/controller API when the state cut lands. The implementation must not leave a compiling `EnvironmentCheckpointV2 { state: EngineState, ... }`, create `LegacyEngineStateV2`, or adapt the new `EngineState` into a historical checkpoint wrapper. Historical V2 preservation is limited to constants, documentation, detached digest/domain evidence, and immutable fixtures. Existing V2 checkpoint tests must move to detached evidence tests or V3 current-runtime tests.
+
 ### Replay V3
 
 `mtgml-replay` owns detached Replay V3 manifest, step, and complete environment-identity values. Every step carries the actor, before checkpoint digest/revision, `DecisionResponseV2`, accepted flag, and the complete after revision/state/status/counter/checkpoint identity. Rejected steps preserve the complete before identity. Empty replay final identity equals initial identity.
 
 Replay validation recomputes checkpoint identities and enforces continuity. It never samples host wall-clock time to reconstruct semantic replay values. Non-game-state environment values must come from explicit trusted replay-control input or remain unchanged under the accepted deterministic model.
 
+M2.B introduces no `ReplayControlV1`. In the preserved synthetic path, `resource_units_consumed` and `wall_clock_elapsed_millis` remain unchanged. A later environment feature that needs externally supplied progression must allocate an explicit versioned replay-control input rather than adding an implicit clock read or an unversioned control field to Replay V3.
+
 ## 9. Public wire and Python boundary
 
-`mtgml-wire` remains the canonical compact UTF-8 JSON owner. It will add only the public/persisted DTO contracts required by M2.B, with exact schema IDs, closed fields/variants, canonical scalar forms, positive fixtures, and negative fixtures.
+`mtgml-wire` remains the canonical compact UTF-8 JSON owner. It will add only the public DTO contracts required by M2.B, with exact schema IDs, closed fields/variants, canonical scalar forms, positive fixtures, and negative fixtures.
 
 `ObservationEnvelopeV1` may remain V1 because its payload codec identity is independently versioned. Information, observed-event, PlayerStep, decision, and replay surfaces receive new versions where their meanings change.
 
@@ -259,11 +293,13 @@ Python receives mechanical DTO, schema-ID, canonical JSON, and shared-fixture su
 
 Persisted CBOR state and trusted checkpoint/replay identities are never exposed through the player-facing JSON surface.
 
+M2.B does not introduce an `EnvironmentCheckpointV3` public JSON schema, a Python `EnvironmentCheckpointV3` DTO, a durable checkpoint file format, or a public JSON `FullStateDigestInputV3` DTO unless an already accepted contract explicitly requires one. Persisted CBOR known-answer and negative fixtures remain required because they test trusted semantic identity, not public wire compatibility.
+
 ## 10. Validator ownership matrix
 
 | Surface | Local owner | Cross-component owner | Required result |
 | --- | --- | --- | --- |
-| model IDs/digests | `mtgml-model` | none | range, canonical text, domain type |
+| model IDs/digests/shared leaves | `mtgml-model` | none | range, canonical text, domain type, preserved V2 Serde meaning |
 | persisted bytes | `mtgml-persistence` | detached producer | profile, limits, canonicality, error precedence |
 | Decision V2 DTOs | `mtgml-decision` | `mtgml-state` | closed shape, bounds, candidate order, binding/reference coherence |
 | authoritative state | `mtgml-state` component modules | `validate_engine_state()` | complete state closure and no hidden duplicate authority |
@@ -294,18 +330,21 @@ An invariant failure is a trusted implementation/service failure, not a player-f
 The implementation will use one coherent PR and reviewable internal commits in this order:
 
 1. inventory current producers, readers, fixtures, and historical contracts;
-2. add `mtgml-persistence` and neutral model identity/digest values;
-3. add Decision V2 types, comparator, and focused positive/negative tests;
-4. migrate execution, knowledge, perspective identity, and synthetic construction;
-5. make `validate_engine_state()` own the new cross-component invariants;
-6. add InformationStateDigestV2 and public V2 mechanical shapes;
-7. implement the persisted codec, envelope, detached V3 state input, and digest;
-8. implement Checkpoint V3 and restore no-mutation validation;
-9. implement Replay V3 and complete environment identity chaining;
-10. update schemas, wire fixtures, Python mechanical codecs, and compatibility negatives;
-11. migrate M1 synthetic tests without changing historical fixtures;
-12. run focused evidence, native fallbacks where possible, and exact hosted checks;
-13. self-review the final diff for information leakage, hidden state, version reinterpretation, and M2.C+ scope creep.
+2. move shared environment leaf values to `mtgml-model` with unchanged V2 Serde meaning;
+3. add `mtgml-persistence` and neutral model identity/digest values;
+4. add Decision V2 types, comparator, and focused positive/negative tests;
+5. migrate `StateDelta` and the authoritative transition product to `FullStateDigestV3`;
+6. retire `EnvironmentCheckpointV2` from current runtime/controller APIs and isolate its detached evidence;
+7. migrate execution, knowledge, perspective identity, and synthetic construction;
+8. make `validate_engine_state()` own the new cross-component invariants;
+9. add InformationStateDigestV2 and public V2 mechanical shapes;
+10. implement the persisted codec, envelope, detached V3 state input, and raw-byte digest construction;
+11. implement Checkpoint V3 and restore no-mutation validation;
+12. implement Replay V3 and complete environment identity chaining without ReplayControlV1;
+13. update schemas, wire fixtures, Python mechanical codecs, and compatibility negatives;
+14. migrate M1 synthetic tests without changing historical fixtures;
+15. run focused evidence, native fallbacks where possible, and exact hosted checks;
+16. self-review the final diff for information leakage, hidden state, version reinterpretation, and M2.C+ scope creep.
 
 No intermediate commit may leave the current runtime producing a new semantic V2/V3 value that lacks its corresponding validator, detached identity, or public/fixture contract.
 
@@ -314,6 +353,7 @@ No intermediate commit may leave the current runtime producing a new semantic V2
 Required focused evidence includes:
 
 - candidate ordering, including numeric `2 < 10`, dense IDs, duplicate-key rejection, variant mismatch, and `ChooseNumber` candidate rejection;
+- `CandidateIdV1` u32 construction, canonical public integer decoding, and overflow rejection above `u32::MAX`;
 - typed continuation/reference and allocator validation;
 - all accepted canonical-CBOR primitives, resource limits, forbidden forms, precedence cases, re-encode equality, and trailing-data rejection;
 - digest-envelope vectors and SHA-256 vectors;
@@ -322,6 +362,7 @@ Required focused evidence includes:
 - CheckpointDigestV3 known-answer, corrupt-state/digest/status/counter/codec rejection, and restore no-mutation cases;
 - Replay V3 empty/accepted/rejected identity chains, final identity equality, and no wall-clock sampling;
 - immutable V1/V2 fixture preservation and explicit historical support negatives;
+- absence of current `EnvironmentCheckpointV2`/legacy-state producers and detached-only V2 checkpoint evidence;
 - Rust/Python mechanical byte and digest parity where the public/persisted tooling applies;
 - M1 regression evidence on the final exact head.
 
