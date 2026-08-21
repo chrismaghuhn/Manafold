@@ -105,7 +105,8 @@
   next decision, actual bound IDs `[PlayerId(7), PlayerId(9)]`, exact
   trusted-versus-endpoint checkpoint/replay equality, and serialized/rendered
   player values without seed/RNG/authoritative identity/checkpoint/replay or
-  trusted error text.
+  trusted error text. Add both actor-ownership directions and a direct
+  pre-commit projection-failure nonmutation regression.
 
 - [x] **Step 6: Run the focused tests to prove RED.**
 
@@ -165,29 +166,33 @@
   invalid response shape -> `InvalidSelection`; mismatched decision ID or
   state revision -> `StaleResponse`.
 
-- [x] **Step 2: Reuse `execute_response`.**
+- [x] **Step 2: Reuse the `execute_response` transaction with pre-commit projection.**
 
-  Call `self.execute_response(perspective, response)` exactly once for the
-  authorized candidate. Map every `ControllerError` to `Unavailable`. If the
-  transition is not accepted, return `InvalidSelection`; do not append replay
-  or modify any environment field in this method.
+  Keep `execute_response` as the trusted wrapper over the shared transaction
+  path. For the player path, use its internal pre-commit hook exactly once for
+  the authorized candidate: derive the step from the candidate checkpoint,
+  validate it, then allow the existing commit of state, counters, and replay.
+  Map every `ControllerError` to `Unavailable`. If the transition is not
+  accepted, return `InvalidSelection`; a failed projection must also leave the
+  live environment unchanged.
 
-- [x] **Step 3: Project and validate the accepted step.**
+- [x] **Step 3: Project and validate the accepted step before commit.**
 
   Build:
 
   ```rust
   PlayerStep {
       schema_version: PLAYER_STEP_SCHEMA.into(),
-      information_state: self.player_information_state(perspective)?,
+      information_state: candidate-state information for `perspective`,
       observed_events: vec![],
       next_decision: None,
       status: transition.status,
   }
   ```
 
-  Map projection or validation failure to `Unavailable` and require
-  `step.validate()` before returning the step.
+  Map projection or validation failure to the internal commit failure before
+  any candidate is assigned, and require `step.validate()` before returning
+  the step.
 
 - [x] **Step 4: Run the focused environment tests to prove GREEN.**
 
@@ -199,14 +204,14 @@
 
 ## Task 5: Refactor only if the focused suite remains green
 
-- [ ] **Step 1: Inspect the diff and API surface.**
+- [x] **Step 1: Inspect the diff and API surface.**
 
   Confirm no `DecisionResponse.actor`, mutable endpoint perspective, duplicate
   binding registry, endpoint semantic state, observed-event history, public
   checkpoint/replay method, trusted diagnostic, or second transaction path was
   added.
 
-- [ ] **Step 2: Run formatting and focused regressions.**
+- [x] **Step 2: Run formatting and focused regressions.**
 
   ```text
   cargo fmt --all -- --check
@@ -220,7 +225,7 @@
 
 ## Task 6: Run the required repository verification
 
-- [ ] **Step 1: Run locked Rust verification.**
+- [x] **Step 1: Run locked Rust verification.**
 
   ```text
   cargo test --workspace --all-features --locked
@@ -228,7 +233,7 @@
   cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
   ```
 
-- [ ] **Step 2: Run Python, documentation, and repository checks.**
+- [x] **Step 2: Run Python, documentation, and repository checks.**
 
   ```text
   python scripts/run_checks.py fast
@@ -236,7 +241,7 @@
   python scripts/verify_repository.py
   ```
 
-- [ ] **Step 3: Run maintainer profiles and inspect generated evidence.**
+- [x] **Step 3: Run maintainer profiles and inspect generated evidence.**
 
   ```text
   just check-fast
@@ -245,9 +250,10 @@
 
   If the documented Windows/WSL lock wrapper is unavailable, record the exact
   command as `BLOCKED` and run native fallbacks without relabeling the blocked
-  gate as `PASS`.
+  gate as `PASS`. In this worktree, both commands were blocked by
+  `HCS_E_HYPERV_NOT_INSTALLED` while the direct native profiles passed.
 
-- [ ] **Step 4: Inspect source cleanliness and status boundary.**
+- [x] **Step 4: Inspect source cleanliness and status boundary.**
 
   ```text
   git diff --check origin/master...HEAD

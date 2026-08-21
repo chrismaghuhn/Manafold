@@ -990,6 +990,61 @@ fn wrong_perspective_submission_is_nonmutating_and_shared_p1_submission_advances
 }
 
 #[test]
+fn wrong_perspective_submission_is_nonmutating_when_p2_owns_decision() {
+    let players = [PlayerId(2), PlayerId(1)];
+    let controller = TrustedEnvironmentController::new(
+        SyntheticM1EnvironmentBackend::new(players, synthetic_seed(), synthetic_config(players))
+            .unwrap(),
+    );
+    let p1 = controller.bind_player(PlayerId(1)).unwrap();
+    let p2 = controller.bind_player(PlayerId(2)).unwrap();
+    let before = PlayerSurfaceSnapshot::capture(&controller, &p1, &p2);
+
+    assert_eq!(p1.visible_decision().unwrap(), None);
+    assert_eq!(p2.visible_decision().unwrap().unwrap().actor, PlayerId(2));
+    assert_eq!(
+        p1.submit(synthetic_response()),
+        Err(PlayerApiError::NoVisibleDecision)
+    );
+
+    let after_rejection = PlayerSurfaceSnapshot::capture(&controller, &p1, &p2);
+    assert_player_surface_unchanged(&before, &after_rejection);
+
+    let step = p2.submit(synthetic_response()).unwrap();
+    assert_player_step_is_valid(&step, PlayerId(2));
+    assert_eq!(p1.observation().unwrap().state_revision, StateRevision(1));
+    assert_eq!(p2.observation().unwrap().state_revision, StateRevision(1));
+    assert_eq!(p1.visible_decision().unwrap(), None);
+    assert_eq!(p2.visible_decision().unwrap(), None);
+}
+
+#[test]
+fn failed_player_projection_does_not_commit_candidate() {
+    let mut backend = synthetic_backend();
+    let before = backend.checkpoint().unwrap();
+    let replay_before = backend.export_replay().unwrap();
+
+    let result = backend.execute_response(
+        PlayerId(1),
+        synthetic_response(),
+        |_candidate, _transition| {
+            Err(ControllerError::EnvironmentCommit(
+                crate::errors::EnvironmentCommitError::PlayerProjectionInvalid,
+            ))
+        },
+    );
+
+    assert!(matches!(
+        result,
+        Err(ControllerError::EnvironmentCommit(
+            crate::errors::EnvironmentCommitError::PlayerProjectionInvalid
+        ))
+    ));
+    assert_eq!(backend.checkpoint().unwrap(), before);
+    assert_eq!(backend.export_replay().unwrap(), replay_before);
+}
+
+#[test]
 fn authorized_invalid_selection_is_sanitized_and_completely_nonmutating() {
     let controller = TrustedEnvironmentController::new(synthetic_backend());
     let p1 = controller.bind_player(PlayerId(1)).unwrap();

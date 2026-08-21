@@ -152,11 +152,15 @@ impl SyntheticM1EnvironmentBackend {
         })
     }
 
-    fn execute_response(
+    pub(crate) fn execute_response<F>(
         &mut self,
         actor: PlayerId,
         response: DecisionResponse,
-    ) -> Result<TransitionResult, ControllerError> {
+        before_commit: F,
+    ) -> Result<TransitionResult, ControllerError>
+    where
+        F: FnOnce(&EnvironmentCheckpointV2, &TransitionResult) -> Result<(), ControllerError>,
+    {
         let before = self.current_checkpoint()?;
         let transition = self.kernel.apply(&before.state, actor, &response)?;
         validate_transition_contract(&before.state, &transition)?;
@@ -197,6 +201,7 @@ impl SyntheticM1EnvironmentBackend {
         let mut candidate_replay = self.replay.clone();
         candidate_replay.append(step)?;
         candidate_replay.export()?;
+        before_commit(&candidate, &transition)?;
 
         self.state = candidate.state;
         self.status = candidate.status;
@@ -235,6 +240,58 @@ impl SyntheticM1EnvironmentBackend {
             .validate()
             .map_err(|_| PlayerApiError::Unavailable)?;
         Ok(observation)
+    }
+
+    fn player_information_state_from_state(
+        state: &EngineState,
+        perspective: PlayerId,
+    ) -> Result<InformationStateEnvelope, PlayerApiError> {
+        if !state.core.players.contains_key(&perspective) {
+            return Err(PlayerApiError::Unavailable);
+        }
+        let current_observation = Self::synthetic_observation(perspective, state.revision)?;
+        let knowledge = state
+            .knowledge
+            .players
+            .get(&perspective)
+            .ok_or(PlayerApiError::Unavailable)?;
+        let digest_input = format!(
+            "{SYNTHETIC_M1_INFORMATION_DIGEST_INPUT}|perspective={}|state-revision={}|public-history-length={}|private-history-length={}|observation-payload={}",
+            perspective.0,
+            state.revision.0,
+            knowledge.public_history_length,
+            knowledge.private_history_length,
+            current_observation.payload_base64,
+        );
+        let information_state = InformationStateEnvelope {
+            schema_version: INFORMATION_STATE_SCHEMA.into(),
+            perspective,
+            state_revision: state.revision,
+            current_observation,
+            public_history_length: knowledge.public_history_length,
+            private_history_length: knowledge.private_history_length,
+            digest: InformationStateDigest::from_canonical_bytes(digest_input.as_bytes()),
+        };
+        information_state
+            .validate()
+            .map_err(|_| PlayerApiError::Unavailable)?;
+        Ok(information_state)
+    }
+
+    fn player_step_from_state(
+        state: &EngineState,
+        perspective: PlayerId,
+        status: EpisodeStatus,
+    ) -> Result<PlayerStep, PlayerApiError> {
+        let step = PlayerStep {
+            schema_version: PLAYER_STEP_SCHEMA.into(),
+            information_state: Self::player_information_state_from_state(state, perspective)?,
+            observed_events: vec![],
+            next_decision: None,
+            status,
+        };
+        step.validate().map_err(|_| PlayerApiError::Unavailable)?;
+        Ok(step)
     }
 }
 
@@ -275,7 +332,7 @@ impl EnvironmentBackend for SyntheticM1EnvironmentBackend {
         actor: PlayerId,
         response: DecisionResponse,
     ) -> Result<TransitionResult, ControllerError> {
-        self.execute_response(actor, response)
+        self.execute_response(actor, response, |_candidate, _transition| Ok(()))
     }
 
     fn player_observation(
@@ -291,34 +348,7 @@ impl EnvironmentBackend for SyntheticM1EnvironmentBackend {
         perspective: PlayerId,
     ) -> Result<InformationStateEnvelope, PlayerApiError> {
         self.require_player(perspective)?;
-        let current_observation = self.player_observation(perspective)?;
-        let knowledge = self
-            .state
-            .knowledge
-            .players
-            .get(&perspective)
-            .ok_or(PlayerApiError::Unavailable)?;
-        let digest_input = format!(
-            "{SYNTHETIC_M1_INFORMATION_DIGEST_INPUT}|perspective={}|state-revision={}|public-history-length={}|private-history-length={}|observation-payload={}",
-            perspective.0,
-            self.state.revision.0,
-            knowledge.public_history_length,
-            knowledge.private_history_length,
-            current_observation.payload_base64,
-        );
-        let information_state = InformationStateEnvelope {
-            schema_version: INFORMATION_STATE_SCHEMA.into(),
-            perspective,
-            state_revision: self.state.revision,
-            current_observation,
-            public_history_length: knowledge.public_history_length,
-            private_history_length: knowledge.private_history_length,
-            digest: InformationStateDigest::from_canonical_bytes(digest_input.as_bytes()),
-        };
-        information_state
-            .validate()
-            .map_err(|_| PlayerApiError::Unavailable)?;
-        Ok(information_state)
+        Self::player_information_state_from_state(&self.state, perspective)
     }
 
     fn player_visible_decision(
@@ -364,22 +394,27 @@ impl EnvironmentBackend for SyntheticM1EnvironmentBackend {
             return Err(PlayerApiError::StaleResponse);
         }
 
+        let mut projected_step = None;
         let transition = self
-            .execute_response(perspective, response)
+            .execute_response(perspective, response, |candidate, transition| {
+                let step = Self::player_step_from_state(
+                    &candidate.state,
+                    perspective,
+                    transition.status.clone(),
+                )
+                .map_err(|_| {
+                    ControllerError::EnvironmentCommit(
+                        EnvironmentCommitError::PlayerProjectionInvalid,
+                    )
+                })?;
+                projected_step = Some(step);
+                Ok(())
+            })
             .map_err(|_| PlayerApiError::Unavailable)?;
         if !transition.accepted {
             return Err(PlayerApiError::InvalidSelection);
         }
-
-        let step = PlayerStep {
-            schema_version: PLAYER_STEP_SCHEMA.into(),
-            information_state: self.player_information_state(perspective)?,
-            observed_events: vec![],
-            next_decision: None,
-            status: transition.status,
-        };
-        step.validate().map_err(|_| PlayerApiError::Unavailable)?;
-        Ok(step)
+        projected_step.ok_or(PlayerApiError::Unavailable)
     }
 }
 
