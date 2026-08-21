@@ -64,7 +64,7 @@
 ### M2 implementation slices
 
 ```text
-M2.A      contract/version freeze candidate
+M2.A      contract/version architecture freeze (accepted; executable gate remains open until M2.B)
 M2.B      one V3 state/digest/checkpoint/replay structural cut
 M2.C      closed decisions and typed continuations
 M2.D      player projection, PlayerStep, and errors
@@ -75,7 +75,7 @@ M2.H      temporary rules-free Python semantic adapter
 M2.Final  exact-head executable closure
 ```
 
-M2.A documentation alone does not mark any M2 behavior gate PASS. M2.Final reruns the complete M1 matrix.
+M2.A architecture acceptance does not mark any M2 executable behavior gate PASS. M2.B owns the executable structural half of `M2_EXECUTABLE_CONTRACT_AND_VERSION_CUT`; M2.Final reruns the complete M1 matrix.
 
 ## M2.5 — Exact V1 Deck Lock and Capability Census
 
