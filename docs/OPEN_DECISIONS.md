@@ -29,4 +29,4 @@
 
 Resolved rows remain as history. Every resolution requires an ADR describing choice, alternatives, compatibility, evidence, risks, and milestone unblocked.
 
-Proposed M2-local ADRs 0039/0040 refine already accepted decision/information architecture; they do not resolve OD-009, OD-011, or unrelated later decisions.
+Accepted M2-local ADRs 0039/0040 refine the decision/information architecture for M2.B; they do not resolve OD-009, OD-011, or unrelated later decisions.
