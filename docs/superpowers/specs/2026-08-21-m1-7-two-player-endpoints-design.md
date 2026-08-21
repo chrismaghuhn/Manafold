@@ -1,7 +1,7 @@
 # M1.7 Two Player Endpoints Design
 
-**Status:** accepted for implementation  
-**Stability:** provisional  
+**Status:** accepted for implementation
+**Stability:** provisional
 **Starting `origin/master`:** `246a3f1431a0a97158a135f7e2642d839265503a`
 
 ## Goal
