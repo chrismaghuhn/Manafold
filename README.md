@@ -1,7 +1,7 @@
 # Manafold
 
 - **Current executable milestone:** M1 — Closed Deterministic Kernel Shell (`COMPLETE` by merged M1 closure evidence)
-- **Current design work:** M2 — Decision Machinery and Synthetic Information Safety contract freeze candidate
+- **Current design milestone:** M2.A — Decision Machinery and Synthetic Information Safety architecture contract accepted; M2.B structural implementation is next
 - **Project type:** independent greenfield MTG/ML rules and simulation engine
 - **Playable engine:** no
 - **Real Magic rules:** no
@@ -22,7 +22,7 @@ correctness
 
 M1 established the deterministic synthetic kernel shell: complete state construction, accepted/rejected atomic transitions, exact state/event/delta parity, deterministic RNG/allocators, checkpoint/restore/fork/replay parity, and two bound synthetic player endpoints.
 
-M2 is not complete. Its contract work strengthens the decision/information boundary before any real Magic or deck scope begins.
+M2 is not complete. M2.A freezes the architecture for the structural M2.B cut; no M2 executable behavior gate is claimed by that design acceptance.
 
 ## Start here
 
@@ -66,7 +66,7 @@ No player endpoint can obtain full state, root seed, RNG internals, authoritativ
 
 ## M2 contract direction
 
-The M2 freeze candidate requires:
+The accepted M2.A architecture requires:
 
 - separate trusted `DecisionId` and perspective-local `PlayerDecisionIdV1`;
 - dense request-local `CandidateIdV1`;
