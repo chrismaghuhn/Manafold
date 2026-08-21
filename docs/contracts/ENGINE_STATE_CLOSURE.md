@@ -1,6 +1,6 @@
 # Engine State Closure
 
-**Status:** accepted state-closure contract; M2 field refinements are freeze candidates  
+**Status:** accepted state-closure contract including M2 field refinements; executable M2 evidence `NOT_RUN`  
 **Stability:** normative
 
 `EngineState` is the complete semantic input to a transition:
@@ -71,6 +71,7 @@ It validates at least:
 - object/location and stack bijections;
 - global internal allocator monotonicity;
 - authoritative pending decision/candidate binding integrity;
+- exact `CandidateOrderingV1`: candidate array already sorted by the frozen public semantic comparator, `candidate_id` equals its dense zero-based array index, no duplicate public ordering key exists, and `ChooseNumber` carries an empty candidate array;
 - continuation reference/stage/payload consistency;
 - knowledge/history/provenance relationships joined through the sole live mapping in `PerspectiveIdentityState`;
 - opaque mapping bijections and retirement;
