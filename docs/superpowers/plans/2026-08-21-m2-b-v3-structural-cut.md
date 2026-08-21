@@ -130,7 +130,7 @@ InformationStateDigestV2
 - `wire/staging/m2-b/manifest.json` and `wire/staging/m2-b/*.json` — staging-only V2/V3 public fixtures prepared before their live decoder/manifest promotion.
 - `wire/golden/player-decision-request.v2.json`, `decision-response.v2-select-one.json`, `information-state-envelope.v2.json`, `observed-event-envelope.v2.json`, `player-step.v2.json`, `replay-manifest.v3.json`, and `authoritative-replay-empty.v3.json` — promoted public fixtures; promotion is performed by Tasks 4, 8, and 10 only after the corresponding decoder exists.
 - `wire/negative/decision-v2-candidate-id-overflow.json`, `decision-v2-noncanonical-select-many.json`, and `replay-v3-checkpoint-digest-mismatch.json` — promoted public negative fixtures; their active manifest registration is performed by the corresponding decoder task, not Task 1.
-- `wire/historical/v1-v2-fixtures.json` — immutable list/baseline references used by the M2.B historical/source evidence check.
+- `wire/historical/v1-v2-fixtures.json` — immutable list/baseline references used by the M2.B historical/source evidence check; the runner must prove that this inventory exactly covers the V1/V2 fixture set present at the starting SHA.
 - `persistence/golden/manifest.json` and `persistence/golden/*.cbor` — persisted CBOR known-answer fixtures.
 - `persistence/negative/manifest.json` and `persistence/negative/*.cbor` — cross-language codec, envelope, resource-limit, primitive-range, and detached-schema rejection fixtures only.
 - `persistence/rust-negative/manifest.json` and `persistence/rust-negative/*.cbor` — Rust-authoritative `EngineState`, checkpoint, replay, and `semantic_validation` rejection fixtures; Python must not enumerate this directory.
@@ -179,7 +179,7 @@ InformationStateDigestV2
 
 - [ ] **Step 3: Add red staging tests for file contents and historical immutability.**
 
-  Add `python/tests/test_m2_b_staging_fixtures.py` assertions that the old fixture bytes/text are unchanged, staged manifest paths exist, staged contract/schema IDs resolve to schema files, V2 public requests contain no trusted `DecisionId`, and a staged V3 replay fixture contains full initial/final environment identity. This test may parse JSON and inspect closed-field/schema identity shape, but it must not call `mtgml.wire.decode_canonical()` or otherwise require future V2/V3 decoders. Run:
+  Add `python/tests/test_m2_b_staging_fixtures.py` assertions that the old fixture bytes/text are unchanged, staged manifest paths exist, the staging manifest records the expected contract/schema IDs, V2 public requests contain no trusted `DecisionId`, and a staged V3 replay fixture contains full initial/final environment identity. This test may parse JSON and inspect closed-field/schema identity shape, but it must not require schema files that are created by later promotion tasks, call `mtgml.wire.decode_canonical()`, or otherwise require future V2/V3 decoders. Run:
 
   ```powershell
   python -m pytest python/tests/test_m2_b_staging_fixtures.py python/tests/test_wire_contracts.py -q
@@ -189,7 +189,7 @@ InformationStateDigestV2
 
 - [ ] **Step 4: Implement the minimum staging inventory and turn the staging red phase green.**
 
-  Add only the staged fixture files, staging manifest, schema-ID references, and immutable historical inventory needed for the tests in Step 3 to pass. Re-run the same focused command and confirm the staging test is green while the historical V1 tests remain green. Do not commit the intentionally red phase from Step 3 and do not promote any new contract into a live manifest.
+  Add only the staged fixture files, staging manifest, schema-ID references, and immutable historical inventory needed for the tests in Step 3 to pass. The staging test intentionally does not require the future schema files or perform their JSON-Schema validation; each decoder/promotion task owns creating, registering, and validating its schema. Re-run the same focused command and confirm the staging test is green while the historical V1 tests remain green. Do not commit the intentionally red phase from Step 3 and do not promote any new contract into a live manifest.
 
 - [ ] **Step 5: Commit the green fixture/inventory boundary.**
 
@@ -332,6 +332,7 @@ This task adds dormant Decision V2 trusted/player forms, local validators, schem
 
 **Files:**
 - Modify: `crates/mtgml-decision/src/lib.rs`
+- Modify: `crates/mtgml-wire/src/lib.rs`
 - Modify: `schemas/player-decision-request.v2.schema.json`, `schemas/decision-response.v2.schema.json`
 - Modify: `python/src/mtgml/decision.py`, `python/src/mtgml/wire.py`
 - Modify: new public Decision V2 fixtures and manifests
@@ -371,12 +372,13 @@ This task adds dormant Decision V2 trusted/player forms, local validators, schem
 
   Keep wire/shape checks in the decision crate, including candidate width/range, canonical `SelectMany` order, `Order` semantic order, and variant/value equality between visible intent and trusted binding. Leave contextual legality in Rust rules/environment; do not add a conformance oracle to production.
 
-- [ ] **Step 5: Promote only Decision V2 fixtures after its decoder exists and run focused tests.**
+- [ ] **Step 5: Register the Rust decoder, then promote only Decision V2 fixtures and run focused tests.**
 
-  Add V2 dataclasses/readers/writers in `python/src/mtgml/decision.py`, reject JSON candidate values above `4294967295`, and keep V1 readers unchanged. Move only the staged Decision V2 positive/negative fixture files into their live `wire/golden/`/`wire/negative/` locations, register them in the live manifests and active schema-parity mapping, and remove those files/entries from `wire/staging/m2-b/`. Do not promote Information V2 or Replay V3 entries here. Run:
+  Add V2 dataclasses/readers/writers in `python/src/mtgml/decision.py`, reject JSON candidate values above `4294967295`, and keep V1 readers unchanged. In `crates/mtgml-wire/src/lib.rs`, implement and register the Decision V2 `WireContract` implementations and `decode_named()` cases before promoting any live fixture entry; the Rust verifier must recognize every Decision V2 contract ID that will be present in the manifests. Only after that decoder change is present, move the staged Decision V2 positive/negative fixture files into their live `wire/golden/`/`wire/negative/` locations, register them in the live manifests and active schema-parity mapping, and remove those files/entries from `wire/staging/m2-b/`. Do not promote Information V2 or Replay V3 entries here. Run:
 
   ```powershell
   cargo test -p mtgml-decision --locked
+  cargo test -p mtgml-wire --locked
   python -m pytest python/tests/test_wire_contracts.py python/tests/test_schema_parity.py -q
   ```
 
@@ -652,6 +654,7 @@ This task adds dormant Decision V2 trusted/player forms, local validators, schem
 - Modify: `crates/mtgml-replay/Cargo.toml`
 - Modify: `crates/mtgml-replay/src/lib.rs`, `identity.rs`, `validation.rs`, `recorder.rs`, `tests.rs`
 - Modify: `crates/mtgml-environment/src/replay.rs`, `controller.rs`, `synthetic.rs`, `errors.rs`, `tests.rs`
+- Modify: `crates/mtgml-wire/src/lib.rs`
 - Modify: `schemas/replay-manifest.v3.schema.json`, `schemas/authoritative-replay.v3.schema.json`, `wire/golden/`, `wire/negative/`, `python/src/mtgml/replay.py`
 - Modify: `wire/golden/manifest.json`, `wire/negative/manifest.json`, and the active schema-parity mapping only for Replay V3 entries
 - Test: Replay V3 unit/integration tests and public schema/fixture tests
@@ -701,12 +704,13 @@ This task adds dormant Decision V2 trusted/player forms, local validators, schem
 
   Make `mtgml-environment/src/replay.rs` execute only Replay V3, validate before mutation, preserve rejected-step identity, and use the V3 checkpoint returned by the backend. Test no host wall-clock sampling, accepted/rejected parity, corrupt before/after status/counter/codec/digest rejection, and no mutation on failure.
 
-- [ ] **Step 6: Promote Replay V3 fixtures and add JSON/schema/Python parity without committing.**
+- [ ] **Step 6: Register the Rust decoder, then promote Replay V3 fixtures and add JSON/schema/Python parity without committing.**
 
-  Move only the staged Replay V3 fixtures into their live golden/negative locations, register them in the live manifests and active schema-parity mapping now that the Replay V3 decoder/validator exists, and remove those files/entries from `wire/staging/m2-b/`. Keep all historical V1/V2 entries and readers intact. After this promotion, delete the empty `wire/staging/m2-b/manifest.json` and `wire/staging/m2-b/` directory; assert that no staged M2.B fixture remains.
+  In `crates/mtgml-wire/src/lib.rs`, implement and register the Replay V3 `WireContract` implementations and `decode_named()` cases before promoting any live fixture entry; the Rust verifier must recognize every Replay V3 contract ID that will be present in the manifests. Only after that decoder/validator change is present, move the staged Replay V3 fixtures into their live golden/negative locations, register them in the live manifests and active schema-parity mapping, and remove those files/entries from `wire/staging/m2-b/`. Keep all historical V1/V2 entries and readers intact. After this promotion, delete the empty `wire/staging/m2-b/manifest.json` and `wire/staging/m2-b/` directory; assert that no staged M2.B fixture remains.
 
   ```powershell
   cargo test -p mtgml-replay -p mtgml-environment --locked
+  cargo test -p mtgml-wire --locked
   python -m pytest python/tests/test_schema_parity.py python/tests/test_wire_contracts.py -q
   ```
 
@@ -886,7 +890,7 @@ historical/source evidence owned by the runner:
   source_check::no_current_v2_producer
 ```
 
-The matrix tests are not placeholders for smaller unowned checks. `candidate_ordering_v1_exact_matrix` must cover numeric ordering (`2 < 10`), dense IDs, duplicate public-key rejection, `ChooseNumber` with no candidates, and noncanonical ordering rejection. `canonical_cbor_v1_complete_profile_matrix` and `digest_envelope_v1_known_answer_matrix` must cover the complete accepted/forbidden profile and exact envelope bytes/hash. `checkpoint_v3_validation_and_restore_nonmutation_matrix` must cover all current checkpoint fields, corrupt state/digest/status/counter/codec rejection, and restore nonmutation. `replay_v3_empty_accepted_rejected_identity_matrix` must cover empty, accepted, and rejected identity chains, complete rejected-step identity preservation, continuity, and final identity equality. `v1_v2_fixtures_are_immutable` must compare every path/hash in `wire/historical/v1-v2-fixtures.json` to the starting source, allowing only append-only changes to the active manifests for newly promoted contracts. The historical/source family must reject every current V2 producer outside detached readers/evidence. The deterministic structural identity test is the explicit identity-repeat member of the same controlled set.
+The matrix tests are not placeholders for smaller unowned checks. `candidate_ordering_v1_exact_matrix` must cover numeric ordering (`2 < 10`), dense IDs, duplicate public-key rejection, `ChooseNumber` with no candidates, and noncanonical ordering rejection. `canonical_cbor_v1_complete_profile_matrix` and `digest_envelope_v1_known_answer_matrix` must cover the complete accepted/forbidden profile and exact envelope bytes/hash. `checkpoint_v3_validation_and_restore_nonmutation_matrix` must cover all current checkpoint fields, corrupt state/digest/status/counter/codec rejection, and restore nonmutation. `replay_v3_empty_accepted_rejected_identity_matrix` must cover empty, accepted, and rejected identity chains, complete rejected-step identity preservation, continuity, and final identity equality. `v1_v2_fixtures_are_immutable` must read `wire/golden/manifest.json` and `wire/negative/manifest.json` from starting SHA `a4e769eb940611d34df05fc79effd9430891d897`, derive the complete baseline V1/V2 fixture set, and require exact set equality with `wire/historical/v1-v2-fixtures.json`—no missing, extra, or duplicate inventory entries—before comparing current fixture bytes/hashes to that baseline. Active manifests may append newly promoted M2.B V2/V3 entries, but such additions must not change the historical inventory or baseline comparison. The historical/source family must reject every current V2 producer outside detached readers/evidence. The deterministic structural identity test is the explicit identity-repeat member of the same controlled set.
 
 The runner must also execute these exact Python/fixture checks:
 
@@ -903,7 +907,7 @@ python scripts/validate_schemas.py
 python scripts/validate_golden_path.py
 ```
 
-The Rust entries use `cargo test --package <package> --locked --lib -- <exact-test-name> --exact`; the Python entries use exact pytest node IDs; `source_check::...` entries are named read-only checks implemented by the runner itself and must produce their own logs/evidence. The runner must record each command/check, return code where applicable, log path, and status. It must additionally record the source SHA/tree, clean-tree status, pinned Python/Rust toolchain identity, host identity, and an overall `PASS`, `FAIL`, `BLOCKED`, or `NOT_RUN`. The default mode is authoritative and requires a clean source tree. An explicit `--development` mode may run the same underlying checks while the worktree is dirty, but its report must set `mode=development` and its gate status to `NOT_RUN` regardless of underlying test results; it must never emit `M2_EXECUTABLE_CONTRACT_AND_VERSION_CUT = PASS`. Development mode may exit successfully only when its underlying checks pass; that exit status is not an authoritative gate result. The runner must write only to the external, marker-owned `dist/verification/m2-b/` directory (`logs/`, JSON report, Markdown report) and must never rewrite source or convert an unavailable tool/environment into `PASS`.
+The Rust entries use `cargo test --package <package> --locked --lib -- <exact-test-name> --exact`; the Python entries use exact pytest node IDs; `source_check::...` entries are named read-only checks implemented by the runner itself and must produce their own logs/evidence. The runner must record each command/check, return code where applicable, log path, and status. It must additionally record the source SHA/tree, clean-tree status, pinned Python/Rust toolchain identity, host identity, and an overall `PASS`, `FAIL`, `BLOCKED`, or `NOT_RUN`. The default mode is authoritative and requires a clean source tree. An explicit `--development` mode may run the same underlying checks while the worktree is dirty, but its report must set `mode=development` and its gate status to `NOT_RUN` regardless of underlying test results; it must never emit `M2_EXECUTABLE_CONTRACT_AND_VERSION_CUT = PASS`. Development mode may exit successfully only when its underlying checks pass; that exit status is not an authoritative gate result. The runner must accept `--output-dir` like `run_m1_closure.py`, default to the external marker-owned sibling directory `dist/m2-b-verification/`, and write only there (`logs/`, JSON report, Markdown report). A custom output directory must not be `dist/verification/` or any descendant, because that release root is exclusively owned by `scripts/run_verification.py`; the runner must never rewrite source or convert an unavailable tool/environment into `PASS`.
 
 The authoritative runner's overall gate is `PASS` only when the source tree is clean and every named test/check, source identity check, and toolchain check is `PASS`. A missing tool is `NOT_RUN`; an execution/environment failure such as unavailable WSL/Hyper-V is `BLOCKED`; an executed failing test is `FAIL`. Rust-authoritative semantic negatives from `persistence/rust-negative/` are covered by the named Rust state/checkpoint/replay tests and are not part of Python parity.
 
@@ -945,7 +949,7 @@ This keeps the gate executable on Linux CI while preserving the existing `pull_r
 
 **Files:**
 - Modify only if a verification-discovered contract/documentation defect is real: the exact affected source file
-- External output only: `dist/verification/` or the repository-defined external evidence directory
+- External output only: `dist/m2-b-verification/`, `dist/m1-regression/`, and `dist/verification/` (the last one is exclusively owned by `just release-candidate` / `scripts/run_verification.py`)
 
 - [ ] **Step 1: Inspect the final diff and source boundary.**
 
@@ -962,9 +966,11 @@ This keeps the gate executable on Linux CI while preserving the existing `pull_r
 
   The following is the first authoritative execution of the M2.B gate; Task 14's development-mode run can never satisfy this requirement:
 
+  Keep the M2.B and M1 regression reports in sibling directories outside the release-owned root. The M2.B runner writes to `dist/m2-b-verification/`, the M1 runner writes to `dist/m1-regression/`, and only `just release-candidate` may create or replace `dist/verification/`. This prevents either slice runner from colliding with `scripts/run_verification.py`'s root marker and exclusive output ownership.
+
   ```powershell
-  python scripts/run_m2_b_contract_cut.py
-  python scripts/run_m1_closure.py
+  python scripts/run_m2_b_contract_cut.py --output-dir dist/m2-b-verification
+  python scripts/run_m1_closure.py --output-dir dist/m1-regression
   cargo fmt --all -- --check
   cargo test --workspace --all-features --locked
   python scripts/generate_contracts.py --check
@@ -985,7 +991,7 @@ This keeps the gate executable on Linux CI while preserving the existing `pull_r
   just release-candidate
   ```
 
-  If the current V3 naming requires it, update only the current regression mapping in `scripts/run_m1_closure.py`; do not rewrite historical M1 V2 reports or silently drop a gate. If the Bash/WSL wrapper remains unavailable, preserve that result and attach native fallback evidence. The release/archive check is the last source-changing operation; do not modify archived source afterward. Both the M2.B and M1 runner reports must show the same `git rev-parse HEAD` as this verification pass.
+  If the current V3 naming requires it, update only the current regression mapping in `scripts/run_m1_closure.py`; do not rewrite historical M1 V2 reports or silently drop a gate. If the Bash/WSL wrapper remains unavailable, preserve that result and attach native fallback evidence. The release/archive check is the last source-changing operation; do not modify archived source afterward. Both the M2.B and M1 runner reports must show the same `git rev-parse HEAD` as this verification pass, and their sibling output directories must remain separate from the release-owned `dist/verification/` directory.
 
 - [ ] **Step 3: Perform the exact-head self-review before push.**
 
