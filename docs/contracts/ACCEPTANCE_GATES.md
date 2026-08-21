@@ -116,7 +116,7 @@ M2.A documentation is only the contract half. The gate cannot become `PASS` unti
 
 `SERIALIZED_CONTINUATION_LIFECYCLE` requires creation, stage advancement, fresh stage request identities, rejection atomicity, completion/removal, checkpoint/fork/replay parity, and exact delta/event/after-state parity for every accepted continuation mutation.
 
-`VISIBLE_DECISION_CANONICAL_ORDER_AND_IDENTITY` requires public-only ordering, dense request-local candidate IDs, perspective-local player-decision IDs, and insertion/global-allocation-history independence.
+`VISIBLE_DECISION_CANONICAL_ORDER_AND_IDENTITY` requires exact `CandidateOrderingV1`: the frozen variant-rank table, semantic numeric/boolean payload comparator, unconditional duplicate-public-key rejection, dense request-local candidate IDs, perspective-local player-decision IDs, and insertion/global-allocation-history independence. JSON/text/Rust-enum/trusted-binding order may not define candidate order. Negative state-validation evidence must reject an authoritative pending request whose candidates are out of `CandidateOrderingV1` order, whose `CandidateIdV1` values are not the dense array indices, whose public ordering key is duplicated, or whose `ChooseNumber` request contains candidates.
 
 ### Player projection/error gates
 
