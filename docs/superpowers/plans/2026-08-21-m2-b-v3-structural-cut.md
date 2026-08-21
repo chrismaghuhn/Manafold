@@ -111,7 +111,9 @@ InformationStateDigestV2
 - `crates/mtgml-persistence/README.md` — codec ownership and non-I/O boundary.
 - `python/src/mtgml/persistence.py` — mechanical restricted-CBOR/envelope/vector reader; no state conversion or rules semantics.
 - `python/tests/test_persistence_codec.py` — Python parity against committed Rust-produced vectors and negative fixtures.
+- `python/tests/test_m2_b_staging_fixtures.py` — staging-only file/schema-id/historical-fixture checks; never calls live wire decoders.
 - `scripts/run_m2_b_contract_cut.py` — executable owner of the single `M2_EXECUTABLE_CONTRACT_AND_VERSION_CUT` gate and its external evidence report.
+- `crates/mtgml-state/src/m2_shape.rs` — private pre-cut namespace for collision-free dormant M2 state building blocks.
 - `schemas/player-decision-request.v2.schema.json` — public Decision V2 request shape.
 - `schemas/decision-response.v2.schema.json` — public Decision V2 response shape.
 - `schemas/information-state-envelope.v2.schema.json` — public player-information V2 shape.
@@ -119,14 +121,10 @@ InformationStateDigestV2
 - `schemas/player-step.v2.schema.json` — public PlayerStep V2 shape.
 - `schemas/replay-manifest.v3.schema.json` — public Replay Manifest V3 shape.
 - `schemas/authoritative-replay.v3.schema.json` — public Replay V3 file shape.
-- `wire/golden/player-decision-request.v2.json` — positive Decision V2 request.
-- `wire/golden/decision-response.v2-select-one.json` — positive `SelectOne` response.
-- `wire/golden/information-state-envelope.v2.json` — positive active/retired retained-knowledge projection.
-- `wire/golden/observed-event-envelope.v2.json` and `wire/golden/player-step.v2.json` — positive V2 information surfaces.
-- `wire/golden/replay-manifest.v3.json` and `wire/golden/authoritative-replay-empty.v3.json` — positive Replay V3 fixtures.
-- `wire/negative/decision-v2-candidate-id-overflow.json` — public `u32` overflow rejection.
-- `wire/negative/decision-v2-noncanonical-select-many.json` — set-order rejection.
-- `wire/negative/replay-v3-checkpoint-digest-mismatch.json` — complete environment identity rejection.
+- `wire/staging/m2-b/manifest.json` and `wire/staging/m2-b/*.json` — staging-only V2/V3 public fixtures prepared before their live decoder/manifest promotion.
+- `wire/golden/player-decision-request.v2.json`, `decision-response.v2-select-one.json`, `information-state-envelope.v2.json`, `observed-event-envelope.v2.json`, `player-step.v2.json`, `replay-manifest.v3.json`, and `authoritative-replay-empty.v3.json` — promoted public fixtures; promotion is performed by Tasks 4, 8, and 10 only after the corresponding decoder exists.
+- `wire/negative/decision-v2-candidate-id-overflow.json`, `decision-v2-noncanonical-select-many.json`, and `replay-v3-checkpoint-digest-mismatch.json` — promoted public negative fixtures; their active manifest registration is performed by the corresponding decoder task, not Task 1.
+- `wire/historical/v1-v2-fixtures.json` — immutable list/baseline references used by the M2.B historical/source evidence check.
 - `persistence/golden/manifest.json` and `persistence/golden/*.cbor` — persisted CBOR known-answer fixtures.
 - `persistence/negative/manifest.json` and `persistence/negative/*.cbor` — cross-language codec, envelope, resource-limit, primitive-range, and detached-schema rejection fixtures only.
 - `persistence/rust-negative/manifest.json` and `persistence/rust-negative/*.cbor` — Rust-authoritative `EngineState`, checkpoint, replay, and `semantic_validation` rejection fixtures; Python must not enumerate this directory.
@@ -155,9 +153,11 @@ InformationStateDigestV2
 
 **Files:**
 - Create: `persistence/golden/manifest.json`, `persistence/negative/manifest.json`
-- Create: the public V2/V3 JSON fixture paths listed in the file map
-- Modify: `wire/golden/manifest.json`, `wire/negative/manifest.json`, `schemas/README.json`, `wire/README.md`
-- Test: `python/tests/test_schema_parity.py`, `python/tests/test_wire_contracts.py`, new persistence fixture tests
+- Create: `wire/staging/m2-b/manifest.json` and the staged public V2/V3 JSON fixture paths listed in the file map
+- Create: `wire/historical/v1-v2-fixtures.json` as an immutable historical fixture path/hash inventory
+- Modify: `python/tests/test_m2_b_staging_fixtures.py`, new persistence fixture tests
+- Do not modify: live `wire/golden/manifest.json`, live `wire/negative/manifest.json`, or the active schema-parity mapping in this task
+- Test: staging-only fixture checks plus the unchanged historical `python/tests/test_wire_contracts.py`
 
 - [ ] **Step 1: Record the exact current producers and historical readers.**
 
@@ -167,23 +167,23 @@ InformationStateDigestV2
   rg -n "FullStateDigestV2|CheckpointDigestV2|EnvironmentCheckpointV2|AuthoritativeReplayV2|PlayerDecisionRequest|DecisionResponse|public_history_length|private_history_length|ContinuationRecord|label" crates python schemas wire docs
   ```
 
-- [ ] **Step 2: Add the public V2/V3 fixture manifests and schema map before producer code.**
+- [ ] **Step 2: Add staged public V2/V3 fixtures without registering live decoders.**
 
-  Register the exact new contract strings in the fixture manifests and the schema-parity mapping. Keep every existing V1/V2 path in place. The new fixtures must contain closed fields only, explicit `schema_version`, `PlayerDecisionIdV1` as a canonical decimal string, `CandidateIdV1` as an unsigned JSON integer, and no semantic action key.
+  Place the exact new fixture files under `wire/staging/m2-b/` and record their contract/schema IDs in the staging manifest only. Keep every existing live V1/V2 path and active manifest entry in place. The staged fixtures must contain closed fields only, explicit `schema_version`, `PlayerDecisionIdV1` as a canonical decimal string, `CandidateIdV1` as an unsigned JSON integer, and no semantic action key. Do not add a staged contract to `wire/golden/manifest.json`, `wire/negative/manifest.json`, or the active schema-parity mapping before its decoder task.
 
-- [ ] **Step 3: Add red tests for fixture registration and historical immutability.**
+- [ ] **Step 3: Add red staging tests for file contents and historical immutability.**
 
-  Add assertions that the old fixture bytes/text are unchanged, new manifest contract names resolve to schemas, V2 public requests contain no trusted `DecisionId`, and a V3 replay fixture contains full initial/final environment identity. Run:
+  Add `python/tests/test_m2_b_staging_fixtures.py` assertions that the old fixture bytes/text are unchanged, staged manifest paths exist, staged contract/schema IDs resolve to schema files, V2 public requests contain no trusted `DecisionId`, and a staged V3 replay fixture contains full initial/final environment identity. This test may parse JSON and inspect closed-field/schema identity shape, but it must not call `mtgml.wire.decode_canonical()` or otherwise require future V2/V3 decoders. Run:
 
   ```powershell
-  python -m pytest python/tests/test_schema_parity.py python/tests/test_wire_contracts.py -q
+  python -m pytest python/tests/test_m2_b_staging_fixtures.py python/tests/test_wire_contracts.py -q
   ```
 
-  Expected result: the new tests fail because the V2/V3 DTOs, schemas, and decoders do not yet exist; existing V1 tests must remain green when the native Python environment is available.
+  Expected result: only the new staging test is red until the staged files/inventory exist; the live V1 tests must remain green when the native Python environment is available.
 
-- [ ] **Step 4: Implement the minimum fixture/schema registration and turn the red phase green.**
+- [ ] **Step 4: Implement the minimum staging inventory and turn the staging red phase green.**
 
-  Add only the manifest/schema registration needed for the tests in Step 3 to pass. Re-run the same focused command and confirm the new fixture tests are green while the historical V1 tests remain green. Do not commit the intentionally red phase from Step 3.
+  Add only the staged fixture files, staging manifest, schema-ID references, and immutable historical inventory needed for the tests in Step 3 to pass. Re-run the same focused command and confirm the staging test is green while the historical V1 tests remain green. Do not commit the intentionally red phase from Step 3 and do not promote any new contract into a live manifest.
 
 - [ ] **Step 5: Commit the green fixture/inventory boundary.**
 
@@ -365,9 +365,9 @@ This task adds dormant Decision V2 trusted/player forms, local validators, schem
 
   Keep wire/shape checks in the decision crate, including candidate width/range, canonical `SelectMany` order, `Order` semantic order, and variant/value equality between visible intent and trusted binding. Leave contextual legality in Rust rules/environment; do not add a conformance oracle to production.
 
-- [ ] **Step 5: Add Python/schema parity and run focused tests.**
+- [ ] **Step 5: Promote only Decision V2 fixtures after its decoder exists and run focused tests.**
 
-  Add V2 dataclasses/readers/writers in `python/src/mtgml/decision.py`, reject JSON candidate values above `4294967295`, and keep V1 readers unchanged. Add closed V2 schemas and positive/negative fixtures. Run:
+  Add V2 dataclasses/readers/writers in `python/src/mtgml/decision.py`, reject JSON candidate values above `4294967295`, and keep V1 readers unchanged. Add closed V2 schemas and promote only the staged Decision V2 positive/negative fixtures into `wire/golden/manifest.json`, `wire/negative/manifest.json`, and the active schema-parity mapping. Do not promote Information V2 or Replay V3 entries here. Run:
 
   ```powershell
   cargo test -p mtgml-decision --locked
@@ -384,7 +384,8 @@ This task adds dormant Decision V2 trusted/player forms, local validators, schem
 ## Task 5: Prepare dormant typed M2 state structures (no current-runtime change)
 
 **Files:**
-- Create or modify: the corresponding typed building-block modules under `crates/mtgml-state/src/`
+- Create: `crates/mtgml-state/src/m2_shape.rs` as a private pre-cut module namespace
+- Modify: `crates/mtgml-state/src/lib.rs` only to keep `m2_shape` private and detached before the cut
 - Modify: `crates/mtgml-state/src/tests.rs` for detached M2-shape tests
 - Do not modify current `EngineState` field types, current constructors, current `validate_engine_state()`, current `StateDelta`, rules consumers, or synthetic call sites in this task
 - Test: detached state-shape unit tests and structural source checks
@@ -393,9 +394,9 @@ This task adds dormant Decision V2 trusted/player forms, local validators, schem
 
   Add tests against the dormant typed building blocks that reject a free-form continuation label, missing continuation reference, stale stage revision, duplicated/invalid active or retired opaque identity, missing player-decision allocator state, knowledge keyed by live `GameObjectId`, duplicated live opaque mapping, non-monotonic `VisibleSequence`, and reverse-map disagreement. Add a positive fixture with one typed synthetic continuation and active/retired knowledge records. The tests must not construct or reinterpret the current `EngineState`.
 
-- [ ] **Step 2: Define the dormant `AuthoritativeDecisionRequestV2` building blocks.**
+- [ ] **Step 2: Define the dormant `PendingDecisionRecordV2`/`AuthoritativeDecisionRequestV2` building blocks.**
 
-  Define the typed V2 pending-decision shape and co-located candidates without changing current `PendingDecisionRecord`. Keep the trusted `DecisionId` and perspective-local `PlayerDecisionIdV1` separate. Store only an optional trusted `ContinuationId` reference in the dormant shape. Current storage changes happen only in the atomic cut.
+  Define `PendingDecisionRecordV2` and the typed V2 pending-decision shape with co-located candidates without changing current `PendingDecisionRecord`. Keep the trusted `DecisionId` and perspective-local `PlayerDecisionIdV1` separate. Store only an optional trusted `ContinuationId` reference in the dormant shape. Current storage changes happen only in the atomic cut.
 
 - [ ] **Step 3: Define the dormant bounded typed continuation payload.**
 
@@ -411,7 +412,7 @@ This task adds dormant Decision V2 trusted/player forms, local validators, schem
       },
   }
 
-  pub struct ContinuationRecord {
+  pub struct ContinuationRecordV2 {
       pub id: ContinuationId,
       pub actor: PlayerId,
       pub created_at_revision: StateRevision,
@@ -422,13 +423,13 @@ This task adds dormant Decision V2 trusted/player forms, local validators, schem
 
   `EffectRecord`, `TriggerRecord`, and `delayed_effects` remain structurally present in the current state until the atomic cut, while the dormant M2 converter rejects non-empty unsupported values. No label interpreter or callback state is introduced.
 
-- [ ] **Step 4: Define dormant perspective-local allocator and retirement state.**
+- [ ] **Step 4: Define dormant `PerspectiveIdentityStateV2` allocator and retirement state.**
 
-  Define the typed shape with `next_player_decision_id`, `retired_object_ids`, and `retired_ability_ids` per player. Keep one canonical persisted mapping direction and runtime reverse maps only for bijection validation. Allocators must be checkpointed state and must not derive from global allocation history. Do not wire these fields into current `EngineState` yet.
+  Define `PerspectiveIdentityStateV2` with `next_player_decision_id`, `retired_object_ids`, and `retired_ability_ids` per player. Keep one canonical persisted mapping direction and runtime reverse maps only for bijection validation. Allocators must be checkpointed state and must not derive from global allocation history. Do not wire these fields into current `EngineState` yet.
 
-- [ ] **Step 5: Define dormant knowledge records keyed by opaque identity.**
+- [ ] **Step 5: Define dormant `KnowledgeStateV2` records keyed by opaque identity.**
 
-  Define active/retired knowledge maps and records keyed by `OpaqueObjectId`, add `next_visible_sequence`, preserve typed provenance/history/invalidation, and exclude any duplicated live `OpaqueObjectId -> GameObjectId` association from knowledge. This task adds detached structural records and validation only; it does not implement later hidden-transition/randomization lifecycle semantics.
+  Define `KnowledgeStateV2` with active/retired knowledge maps and records keyed by `OpaqueObjectId`, add `next_visible_sequence`, preserve typed provenance/history/invalidation, and exclude any duplicated live `OpaqueObjectId -> GameObjectId` association from knowledge. This task adds detached structural records and validation only; it does not implement later hidden-transition/randomization lifecycle semantics.
 
 - [ ] **Step 6: Add a dormant M2-shape validator.**
 
@@ -446,7 +447,7 @@ This task adds dormant Decision V2 trusted/player forms, local validators, schem
   git commit -m "feat: add dormant M2 state structures"
   ```
 
-  This commit is permitted only if source inspection confirms that no current runtime producer or consumer has changed. The current EngineState migration is deferred to the one atomic cut in Tasks 7–11.
+  This commit is permitted only if source inspection confirms that no current runtime producer or consumer has changed and the new types are reachable only through the private `m2_shape` module. The current EngineState migration is deferred to the one atomic cut in Tasks 7–11.
 
 ## Task 6: Prepare detached `FullStateDigestInputV3` (no current-runtime switch)
 
@@ -506,7 +507,7 @@ This task adds dormant Decision V2 trusted/player forms, local validators, schem
 
 - [ ] **Step 2: Wire the dormant M2 shape into the one current `EngineState` and switch its digest.**
 
-  Replace the current state fields and validators with the prepared typed M2 structures, then wire the detached V3 conversion into the current `EngineState::digest()` and `canonical_digest_bytes()`. Replace only current authoritative references to `FullStateDigestV2` with `FullStateDigestV3`. Preserve V1/V2 fixture readers and detached historical tests. Do not add `FullStateDigestV2 -> FullStateDigestV3` adapters, `LegacyEngineStateV2`, or a sidecar state.
+  Promote the private `m2_shape::{PendingDecisionRecordV2, ContinuationRecordV2, KnowledgeStateV2, PerspectiveIdentityStateV2}` definitions into the one current `EngineState` representation, replacing the current unversioned field types in this same worktree. Then wire the detached V3 conversion into the current `EngineState::digest()` and `canonical_digest_bytes()`. Replace only current authoritative references to `FullStateDigestV2` with `FullStateDigestV3`. Preserve V1/V2 fixture readers and detached historical tests. Do not add `FullStateDigestV2 -> FullStateDigestV3` adapters, `LegacyEngineStateV2`, or a sidecar state.
 
 - [ ] **Step 3: Change the current transition product and conformance expectations in the same worktree.**
 
@@ -528,6 +529,7 @@ This task adds dormant Decision V2 trusted/player forms, local validators, schem
 - Modify: `crates/mtgml-wire/Cargo.toml`, `crates/mtgml-wire/src/lib.rs`
 - Modify: `crates/mtgml-environment/Cargo.toml`, `crates/mtgml-environment/src/synthetic.rs`, `endpoint.rs`, `tests.rs`
 - Modify: `python/src/mtgml/observation.py`, `python/src/mtgml/wire.py`
+- Modify: `wire/golden/manifest.json`, `wire/negative/manifest.json`, and the active schema-parity mapping only for Information/Event/PlayerStep V2 entries
 - Test: observation, wire, environment endpoint tests and information KATs
 
 - [ ] **Step 1: Add red semantic DTO tests in observation.**
@@ -558,7 +560,9 @@ This task adds dormant Decision V2 trusted/player forms, local validators, schem
 
   Assert that mutations to perspective, revision, observation, next sequence, or retained knowledge change the digest; mutations to status, counters, trusted IDs, RNG, or replay/checkpoint fields do not. Add a source/dependency assertion that observation does not depend on wire and wire does not depend on environment.
 
-- [ ] **Step 6: Run focused information tests without committing.**
+- [ ] **Step 6: Promote Information V2 fixtures and run focused tests without committing.**
+
+  Promote only the staged Information V2, observed-event V2, and PlayerStep V2 fixtures into the live golden/negative manifests and active schema-parity mapping now that their semantic DTOs and wire decoders exist. Do not promote Replay V3 entries here.
 
   ```powershell
   cargo test -p mtgml-observation -p mtgml-wire -p mtgml-environment information --locked
@@ -633,6 +637,7 @@ This task adds dormant Decision V2 trusted/player forms, local validators, schem
 - Modify: `crates/mtgml-replay/src/lib.rs`, `identity.rs`, `validation.rs`, `recorder.rs`, `tests.rs`
 - Modify: `crates/mtgml-environment/src/replay.rs`, `controller.rs`, `synthetic.rs`, `errors.rs`, `tests.rs`
 - Modify: `schemas/replay-manifest.v3.schema.json`, `schemas/authoritative-replay.v3.schema.json`, `wire/golden/`, `wire/negative/`, `python/src/mtgml/replay.py`
+- Modify: `wire/golden/manifest.json`, `wire/negative/manifest.json`, and the active schema-parity mapping only for Replay V3 entries
 - Test: Replay V3 unit/integration tests and public schema/fixture tests
 
 - [ ] **Step 1: Add red Replay V3 identity-chain tests.**
@@ -680,7 +685,9 @@ This task adds dormant Decision V2 trusted/player forms, local validators, schem
 
   Make `mtgml-environment/src/replay.rs` execute only Replay V3, validate before mutation, preserve rejected-step identity, and use the V3 checkpoint returned by the backend. Test no host wall-clock sampling, accepted/rejected parity, corrupt before/after status/counter/codec/digest rejection, and no mutation on failure.
 
-- [ ] **Step 6: Add Replay V3 JSON/schema/Python parity without committing.**
+- [ ] **Step 6: Promote Replay V3 fixtures and add JSON/schema/Python parity without committing.**
+
+  Promote only the staged Replay V3 fixtures into the live golden/negative manifests and active schema-parity mapping now that the Replay V3 decoder/validator exists. Keep all historical V1/V2 entries and readers intact.
 
   ```powershell
   cargo test -p mtgml-replay -p mtgml-environment --locked
@@ -810,6 +817,7 @@ This task adds dormant Decision V2 trusted/player forms, local validators, schem
 - Modify: `python/tests/test_player_api.py`, `test_wire_contracts.py`, `test_schema_parity.py`
 - Modify: `persistence/negative/manifest.json`, `persistence/rust-negative/manifest.json`
 - Create: `scripts/run_m2_b_contract_cut.py`
+- Modify: `scripts/run_m1_closure.py` only if the current V3 names require re-pointing its M1 regression `GATE_TESTS`; preserve the M1 gate names, historical report format, and existing historical V2 evidence
 - Modify: `.github/workflows/pr-fast.yml` to invoke the M2.B slice runner after the pinned Rust toolchain is installed
 
 ### Executable gate owner
@@ -827,15 +835,19 @@ mtgml-model:
   tests::m2_b_candidate_id_is_u32_and_v3_digest_is_raw
 
 mtgml-persistence:
+  tests::canonical_cbor_v1_complete_profile_matrix
+  tests::digest_envelope_v1_known_answer_matrix
   tests::checkpoint_digest_v3_known_answer
-  tests::mechanical_negative_precedence_is_stable
 
 mtgml-decision:
+  tests::candidate_ordering_v1_exact_matrix
   tests::candidate_id_overflow_is_rejected
 
 mtgml-state:
+  tests::full_state_digest_v3_known_answer
   tests::m2_b_full_state_digest_v3_mutation_matrix
   tests::state_delta_uses_full_state_digest_v3
+  tests::deterministic_structural_identity_repeats_exactly
 
 mtgml-rules:
   tests::synthetic_m2_choose_one_returns_v2_transition_product
@@ -846,13 +858,19 @@ mtgml-observation:
 mtgml-wire:
   tests::information_state_digest_v2_known_answer
 
-mtgml-replay:
-  tests::replay_v3_rejected_step_preserves_complete_identity
-
 mtgml-environment:
-  tests::environment_checkpoint_v2_is_not_current_api
+  tests::checkpoint_v3_validation_and_restore_nonmutation_matrix
   tests::synthetic_endpoint_returns_v2_surface
+
+mtgml-replay:
+  tests::replay_v3_empty_accepted_rejected_identity_matrix
+
+historical/source evidence owned by the runner:
+  source_check::v1_v2_fixtures_are_immutable
+  source_check::no_current_v2_producer
 ```
+
+The matrix tests are not placeholders for smaller unowned checks. `candidate_ordering_v1_exact_matrix` must cover numeric ordering (`2 < 10`), dense IDs, duplicate public-key rejection, `ChooseNumber` with no candidates, and noncanonical ordering rejection. `canonical_cbor_v1_complete_profile_matrix` and `digest_envelope_v1_known_answer_matrix` must cover the complete accepted/forbidden profile and exact envelope bytes/hash. `checkpoint_v3_validation_and_restore_nonmutation_matrix` must cover all current checkpoint fields, corrupt state/digest/status/counter/codec rejection, and restore nonmutation. `replay_v3_empty_accepted_rejected_identity_matrix` must cover empty, accepted, and rejected identity chains, complete rejected-step identity preservation, continuity, and final identity equality. `v1_v2_fixtures_are_immutable` must compare every path/hash in `wire/historical/v1-v2-fixtures.json` to the starting source, allowing only append-only changes to the active manifests for newly promoted contracts. The historical/source family must reject every current V2 producer outside detached readers/evidence. The deterministic structural identity test is the explicit identity-repeat member of the same controlled set.
 
 The runner must also execute these exact Python/fixture checks:
 
@@ -869,7 +887,7 @@ python scripts/validate_schemas.py
 python scripts/validate_golden_path.py
 ```
 
-The Rust entries use `cargo test --package <package> --locked --lib -- <exact-test-name> --exact`; the Python entries use exact pytest node IDs. The runner must record each command, return code, log path, and status. It must additionally record the source SHA/tree, clean-tree status, pinned Python/Rust toolchain identity, host identity, and an overall `PASS`, `FAIL`, `BLOCKED`, or `NOT_RUN`. It must write only to the external, marker-owned `dist/verification/m2-b/` directory (`logs/`, JSON report, Markdown report) and must never rewrite source or convert an unavailable tool/environment into `PASS`.
+The Rust entries use `cargo test --package <package> --locked --lib -- <exact-test-name> --exact`; the Python entries use exact pytest node IDs; `source_check::...` entries are named read-only checks implemented by the runner itself and must produce their own logs/evidence. The runner must record each command/check, return code where applicable, log path, and status. It must additionally record the source SHA/tree, clean-tree status, pinned Python/Rust toolchain identity, host identity, and an overall `PASS`, `FAIL`, `BLOCKED`, or `NOT_RUN`. It must write only to the external, marker-owned `dist/verification/m2-b/` directory (`logs/`, JSON report, Markdown report) and must never rewrite source or convert an unavailable tool/environment into `PASS`.
 
 The runner's overall gate is `PASS` only when every named test/check, source identity check, and toolchain check is `PASS`. A missing tool is `NOT_RUN`; an execution/environment failure such as unavailable WSL/Hyper-V is `BLOCKED`; an executed failing test is `FAIL`. Rust-authoritative semantic negatives from `persistence/rust-negative/` are covered by the named Rust state/checkpoint/replay tests and are not part of Python parity.
 
@@ -901,7 +919,7 @@ This keeps the gate executable on Linux CI while preserving the existing `pull_r
 
   ```powershell
   python scripts/run_m2_b_contract_cut.py
-  git add crates python schemas wire persistence scripts/run_m2_b_contract_cut.py .github/workflows/pr-fast.yml docs
+  git add crates python schemas wire persistence scripts/run_m2_b_contract_cut.py scripts/run_m1_closure.py .github/workflows/pr-fast.yml docs
   git commit -m "test: add M2.B executable contract-cut evidence"
   ```
 
@@ -928,6 +946,7 @@ This keeps the gate executable on Linux CI while preserving the existing `pull_r
 
   ```powershell
   python scripts/run_m2_b_contract_cut.py
+  python scripts/run_m1_closure.py
   cargo fmt --all -- --check
   cargo test --workspace --all-features --locked
   python scripts/generate_contracts.py --check
@@ -948,7 +967,7 @@ This keeps the gate executable on Linux CI while preserving the existing `pull_r
   just release-candidate
   ```
 
-  If the Bash/WSL wrapper remains unavailable, preserve that result and attach native fallback evidence. The release/archive check is the last source-changing operation; do not modify archived source afterward. The local M2 runner report must show the same `git rev-parse HEAD` as this verification pass.
+  If the current V3 naming requires it, update only the current regression mapping in `scripts/run_m1_closure.py`; do not rewrite historical M1 V2 reports or silently drop a gate. If the Bash/WSL wrapper remains unavailable, preserve that result and attach native fallback evidence. The release/archive check is the last source-changing operation; do not modify archived source afterward. Both the M2.B and M1 runner reports must show the same `git rev-parse HEAD` as this verification pass.
 
 - [ ] **Step 3: Perform the exact-head self-review before push.**
 
