@@ -38,7 +38,13 @@ EngineState M2 structure
 EngineState::digest() -> FullStateDigestV3
 StateDelta -> FullStateDigestV3
 RulesKernel -> DecisionResponseV2
-TransitionResult -> PlayerDecisionRequestV2
+TransitionResult ->
+    next_state: EngineState
+    events: AuthoritativeRuleEvent[]
+    delta: StateDelta
+    next_decision: Option<AuthoritativeDecisionRequestV2>
+    status: EpisodeStatus
+Environment/perspective endpoint -> PlayerDecisionRequestV2 projection
 EnvironmentCheckpointV3
 remove current EnvironmentCheckpointV2
 Replay V3 current producer/executor
@@ -367,7 +373,7 @@ This task adds dormant Decision V2 trusted/player forms, local validators, schem
 
 - [ ] **Step 5: Promote only Decision V2 fixtures after its decoder exists and run focused tests.**
 
-  Add V2 dataclasses/readers/writers in `python/src/mtgml/decision.py`, reject JSON candidate values above `4294967295`, and keep V1 readers unchanged. Add closed V2 schemas and promote only the staged Decision V2 positive/negative fixtures into `wire/golden/manifest.json`, `wire/negative/manifest.json`, and the active schema-parity mapping. Do not promote Information V2 or Replay V3 entries here. Run:
+  Add V2 dataclasses/readers/writers in `python/src/mtgml/decision.py`, reject JSON candidate values above `4294967295`, and keep V1 readers unchanged. Move only the staged Decision V2 positive/negative fixture files into their live `wire/golden/`/`wire/negative/` locations, register them in the live manifests and active schema-parity mapping, and remove those files/entries from `wire/staging/m2-b/`. Do not promote Information V2 or Replay V3 entries here. Run:
 
   ```powershell
   cargo test -p mtgml-decision --locked
@@ -511,7 +517,17 @@ This task adds dormant Decision V2 trusted/player forms, local validators, schem
 
 - [ ] **Step 3: Change the current transition product and conformance expectations in the same worktree.**
 
-  Make `RulesKernel` consume `DecisionResponseV2`, make `TransitionResult` return `PlayerDecisionRequestV2`, and update current conformance expectations to the V3 state/delta identity. Preserve only the structural `ChooseOne`/`SelectOne` synthetic path; do not add M2.C–H behavior.
+  Make `RulesKernel` consume `DecisionResponseV2` together with the trusted actor supplied by the environment. Keep `TransitionResult` authoritative and state/event/delta-auditable:
+
+  ```text
+  next_state: EngineState
+  events: AuthoritativeRuleEvent[]
+  delta: StateDelta
+  next_decision: Option<AuthoritativeDecisionRequestV2>
+  status: EpisodeStatus
+  ```
+
+  The environment then binds/projects `next_decision` into the perspective-safe `PlayerDecisionRequestV2`; `TransitionResult` must never carry that player-safe projection. Update current conformance expectations to the V3 state/delta identity. Preserve only the structural `ChooseOne`/`SelectOne` synthetic path; do not add M2.C–H behavior.
 
 - [ ] **Step 4: Run the partial-cut compiler/test loop without committing.**
 
@@ -562,7 +578,7 @@ This task adds dormant Decision V2 trusted/player forms, local validators, schem
 
 - [ ] **Step 6: Promote Information V2 fixtures and run focused tests without committing.**
 
-  Promote only the staged Information V2, observed-event V2, and PlayerStep V2 fixtures into the live golden/negative manifests and active schema-parity mapping now that their semantic DTOs and wire decoders exist. Do not promote Replay V3 entries here.
+  Move only the staged Information V2, observed-event V2, and PlayerStep V2 fixtures into their live golden/negative locations, register them in the live manifests and active schema-parity mapping now that their semantic DTOs and wire decoders exist, and remove those files/entries from `wire/staging/m2-b/`. Do not promote Replay V3 entries here.
 
   ```powershell
   cargo test -p mtgml-observation -p mtgml-wire -p mtgml-environment information --locked
@@ -687,7 +703,7 @@ This task adds dormant Decision V2 trusted/player forms, local validators, schem
 
 - [ ] **Step 6: Promote Replay V3 fixtures and add JSON/schema/Python parity without committing.**
 
-  Promote only the staged Replay V3 fixtures into the live golden/negative manifests and active schema-parity mapping now that the Replay V3 decoder/validator exists. Keep all historical V1/V2 entries and readers intact.
+  Move only the staged Replay V3 fixtures into their live golden/negative locations, register them in the live manifests and active schema-parity mapping now that the Replay V3 decoder/validator exists, and remove those files/entries from `wire/staging/m2-b/`. Keep all historical V1/V2 entries and readers intact. After this promotion, delete the empty `wire/staging/m2-b/manifest.json` and `wire/staging/m2-b/` directory; assert that no staged M2.B fixture remains.
 
   ```powershell
   cargo test -p mtgml-replay -p mtgml-environment --locked
@@ -710,7 +726,7 @@ This task adds dormant Decision V2 trusted/player forms, local validators, schem
 
 - [ ] **Step 2: Migrate synthetic reset/submit/checkpoint flow atomically.**
 
-  On reset, construct valid M2 state, derive V3 full-state identity, construct V3 checkpoint, and initialize Replay V3. On accepted `ChooseOne`/`SelectOne`, build transition workspace, candidate counters, V3 checkpoint, V3 replay step, information projection, and wire-owned digest; validate the complete product before committing state, counters, replay, or exposed bytes. On rejection, return the closed typed rejection and preserve every state/identity/counter/sequence value.
+  On reset, construct valid M2 state, derive V3 full-state identity, construct V3 checkpoint, and initialize Replay V3. On accepted `ChooseOne`/`SelectOne`, let Rules produce the authoritative `TransitionResult` (`next_state`, ordered events, exact `StateDelta`, `next_decision: Option<AuthoritativeDecisionRequestV2>`, and `EpisodeStatus`). The environment validates that complete product, then projects the actor-bound authoritative request into `PlayerDecisionRequestV2`, computes the wire-owned information digest, and validates the checkpoint/replay/projection product before committing state, counters, replay, or exposed bytes. On rejection, return the closed typed rejection and preserve every state/identity/counter/sequence value.
 
 - [ ] **Step 3: Keep unsupported M2.B behavior fail-closed.**
 
@@ -805,7 +821,7 @@ This task adds dormant Decision V2 trusted/player forms, local validators, schem
   python scripts/check_documentation.py
   python scripts/validate_schemas.py
   python scripts/validate_golden_path.py
-  git add contracts scripts crates/mtgml-model/src/generated_contract_vocab.rs python/src/mtgml/_generated_contract_vocab.py schemas wire docs crates/README.md
+  git add contracts scripts crates/mtgml-model/src/generated_contract_vocab.rs python/src/mtgml/_generated_contract_vocab.py schemas wire persistence docs crates/README.md
   git commit -m "docs: synchronize M2.B contracts and historical evidence"
   ```
 
@@ -850,7 +866,7 @@ mtgml-state:
   tests::deterministic_structural_identity_repeats_exactly
 
 mtgml-rules:
-  tests::synthetic_m2_choose_one_returns_v2_transition_product
+  tests::synthetic_m2_choose_one_returns_authoritative_transition_product
 
 mtgml-observation:
   tests::information_state_input_excludes_trusted_fields
@@ -887,9 +903,9 @@ python scripts/validate_schemas.py
 python scripts/validate_golden_path.py
 ```
 
-The Rust entries use `cargo test --package <package> --locked --lib -- <exact-test-name> --exact`; the Python entries use exact pytest node IDs; `source_check::...` entries are named read-only checks implemented by the runner itself and must produce their own logs/evidence. The runner must record each command/check, return code where applicable, log path, and status. It must additionally record the source SHA/tree, clean-tree status, pinned Python/Rust toolchain identity, host identity, and an overall `PASS`, `FAIL`, `BLOCKED`, or `NOT_RUN`. It must write only to the external, marker-owned `dist/verification/m2-b/` directory (`logs/`, JSON report, Markdown report) and must never rewrite source or convert an unavailable tool/environment into `PASS`.
+The Rust entries use `cargo test --package <package> --locked --lib -- <exact-test-name> --exact`; the Python entries use exact pytest node IDs; `source_check::...` entries are named read-only checks implemented by the runner itself and must produce their own logs/evidence. The runner must record each command/check, return code where applicable, log path, and status. It must additionally record the source SHA/tree, clean-tree status, pinned Python/Rust toolchain identity, host identity, and an overall `PASS`, `FAIL`, `BLOCKED`, or `NOT_RUN`. The default mode is authoritative and requires a clean source tree. An explicit `--development` mode may run the same underlying checks while the worktree is dirty, but its report must set `mode=development` and its gate status to `NOT_RUN` regardless of underlying test results; it must never emit `M2_EXECUTABLE_CONTRACT_AND_VERSION_CUT = PASS`. Development mode may exit successfully only when its underlying checks pass; that exit status is not an authoritative gate result. The runner must write only to the external, marker-owned `dist/verification/m2-b/` directory (`logs/`, JSON report, Markdown report) and must never rewrite source or convert an unavailable tool/environment into `PASS`.
 
-The runner's overall gate is `PASS` only when every named test/check, source identity check, and toolchain check is `PASS`. A missing tool is `NOT_RUN`; an execution/environment failure such as unavailable WSL/Hyper-V is `BLOCKED`; an executed failing test is `FAIL`. Rust-authoritative semantic negatives from `persistence/rust-negative/` are covered by the named Rust state/checkpoint/replay tests and are not part of Python parity.
+The authoritative runner's overall gate is `PASS` only when the source tree is clean and every named test/check, source identity check, and toolchain check is `PASS`. A missing tool is `NOT_RUN`; an execution/environment failure such as unavailable WSL/Hyper-V is `BLOCKED`; an executed failing test is `FAIL`. Rust-authoritative semantic negatives from `persistence/rust-negative/` are covered by the named Rust state/checkpoint/replay tests and are not part of Python parity.
 
 Add this step after the existing pinned toolchain-install step in `.github/workflows/pr-fast.yml` (and before the final handoff review):
 
@@ -915,15 +931,15 @@ This keeps the gate executable on Linux CI while preserving the existing `pull_r
 
   Run Rust/Python canonical JSON fixture parity, V2/V3 schema parity, Python persistence byte/digest parity for `persistence/negative/` only, historical V1/V2 fixture immutability, and player-boundary privileged-field exclusion. Run the Rust-authoritative semantic negatives from `persistence/rust-negative/` only through Rust state/checkpoint/replay validation. Do not claim paired-state noninterference closure; that is outside M2.B.
 
-- [ ] **Step 5: Turn the executable gate green and commit the gate/evidence changes.**
+- [ ] **Step 5: Run the underlying gate checks in development mode and commit the gate/evidence changes.**
 
   ```powershell
-  python scripts/run_m2_b_contract_cut.py
+  python scripts/run_m2_b_contract_cut.py --development
   git add crates python schemas wire persistence scripts/run_m2_b_contract_cut.py scripts/run_m1_closure.py .github/workflows/pr-fast.yml docs
   git commit -m "test: add M2.B executable contract-cut evidence"
   ```
 
-  A red runner result is fixed before this commit; it is never committed as an expected failure. The runner report remains external evidence and is not added to the source tree.
+  The development report may show underlying test/check `PASS` entries, but its gate status is `NOT_RUN` because the worktree is dirty. Fix every red underlying check before this commit; do not treat the development report as authoritative evidence and never commit an expected failure. The runner report remains external evidence and is not added to the source tree.
 
 ## Task 15: Final exact-head verification and handoff
 
@@ -943,6 +959,8 @@ This keeps the gate executable on Linux CI while preserving the existing `pull_r
   Review every remaining V2 match and classify it as immutable fixture, detached reader/verifier, documentation, or an illegal current producer. Stop on any illegal producer, second digest authority, current checkpoint V2 API, public checkpoint JSON contract, or M2.C–H behavior.
 
 - [ ] **Step 2: Run all local/native exact-head evidence before any remote operation.**
+
+  The following is the first authoritative execution of the M2.B gate; Task 14's development-mode run can never satisfy this requirement:
 
   ```powershell
   python scripts/run_m2_b_contract_cut.py
