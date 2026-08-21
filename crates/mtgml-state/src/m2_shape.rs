@@ -194,11 +194,11 @@ pub fn validate_m2_shape(
         if identity
             .opaque_to_object
             .values()
-            .any(|object| identity.object_to_opaque.get(object).is_none())
+            .any(|object| !identity.object_to_opaque.contains_key(object))
             || identity
                 .opaque_to_ability
                 .values()
-                .any(|ability| identity.ability_to_opaque.get(ability).is_none())
+                .any(|ability| !identity.ability_to_opaque.contains_key(ability))
         {
             return Err(M2ShapeViolation::IdentityMapping);
         }

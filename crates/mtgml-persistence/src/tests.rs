@@ -107,5 +107,13 @@ fn error_categories_are_closed_and_stable() {
 }
 
 fn hex(bytes: &[u8]) -> String {
-    bytes.iter().map(|byte| format!("{byte:02x}")).collect()
+    use std::fmt::Write as _;
+
+    bytes.iter().fold(
+        String::with_capacity(bytes.len() * 2),
+        |mut encoded, byte| {
+            write!(encoded, "{byte:02x}").expect("writing hexadecimal bytes to String cannot fail");
+            encoded
+        },
+    )
 }

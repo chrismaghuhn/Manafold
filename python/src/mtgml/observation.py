@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from itertools import pairwise
 
 from .canonical import (
     parse_u64_number,
@@ -261,7 +262,12 @@ class PlayerKnowledgeProvenanceV1:
         if self.kind == "initial_configuration":
             require_exact_keys({"kind": self.kind}, {"kind"})
             return {"kind": self.kind}
-        if self.kind != "observed" or self.channel is None or self.sequence is None or self.cause is None:
+        if (
+            self.kind != "observed"
+            or self.channel is None
+            or self.sequence is None
+            or self.cause is None
+        ):
             raise WireError("encode.serialization", "invalid knowledge provenance")
         return {
             "cause": self.cause,
@@ -350,7 +356,8 @@ class PlayerKnownObjectV1:
                 if obj["current_known_location_fact"] is None
                 else PlayerKnownLocationFactV1.from_wire(obj["current_known_location_fact"]),
                 historical_locations=tuple(
-                    PlayerKnownLocationFactV1.from_wire(item) for item in obj["historical_locations"]
+                    PlayerKnownLocationFactV1.from_wire(item)
+                    for item in obj["historical_locations"]
                 ),
                 acquisition=PlayerKnowledgeProvenanceV1.from_wire(obj["acquisition"]),
             )
@@ -394,7 +401,7 @@ class PlayerKnownObjectV1:
             for fact in self.historical_locations
             if fact.provenance.sequence is not None
         ]
-        if any(left >= right for left, right in zip(sequences, sequences[1:])):
+        if any(left >= right for left, right in pairwise(sequences)):
             raise WireError("semantic.information_state", "historical sequences are not increasing")
 
     def to_wire(self) -> dict[str, object]:

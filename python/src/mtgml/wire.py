@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-import json
 import hashlib
+import json
 from collections.abc import Callable
 from typing import TypeVar
 
@@ -89,7 +89,5 @@ def compute_information_state_digest_v2(
     input_value: InformationStateDigestInputV2,
 ) -> tuple[bytes, str]:
     payload = encode_canonical(input_value)
-    digest = hashlib.sha256(
-        b"mtgml.information-state-digest.v2\0" + payload
-    ).hexdigest()
+    digest = hashlib.sha256(b"mtgml.information-state-digest.v2\0" + payload).hexdigest()
     return payload, digest

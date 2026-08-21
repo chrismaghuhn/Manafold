@@ -159,16 +159,12 @@ GATE_TESTS: dict[str, tuple[TestDefinition, ...]] = {
         ),
         *test_definitions(
             "mtgml-state",
-            (
-                "tests::deterministic_structural_identity_repeats_exactly",
-            ),
+            ("tests::deterministic_structural_identity_repeats_exactly",),
             "checked deterministic identity and state digest repeatability",
         ),
         *test_definitions(
             "mtgml-rules",
-            (
-                "tests::synthetic_m2_choose_one_returns_authoritative_transition_product",
-            ),
+            ("tests::synthetic_m2_choose_one_returns_authoritative_transition_product",),
             "deterministic synthetic transition and fail-closed service errors",
         ),
     ),
@@ -180,9 +176,7 @@ GATE_TESTS: dict[str, tuple[TestDefinition, ...]] = {
                 "tests::accepted_endpoint_submission_commits_v3_state_delta_and_replay",
                 "tests::stale_endpoint_response_is_rejected_without_mutation",
             ),
-            (
-                "perspective-bound endpoint, actor ownership, nonmutation, and safe player surface"
-            ),
+            ("perspective-bound endpoint, actor ownership, nonmutation, and safe player surface"),
         ),
     ),
 }

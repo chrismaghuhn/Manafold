@@ -12,12 +12,24 @@ STAGING = ROOT / "wire" / "staging" / "m2-b"
 HISTORICAL = ROOT / "wire" / "historical" / "v1-v2-fixtures.json"
 
 EXPECTED_PROMOTED = {
-    ("information-state-envelope.v2", "information-state-envelope.v2.json"): "information-state-envelope.v2.schema.json",
-    ("observed-event-envelope.v2", "observed-event-envelope.v2.json"): "observed-event-envelope.v2.schema.json",
+    (
+        "information-state-envelope.v2",
+        "information-state-envelope.v2.json",
+    ): "information-state-envelope.v2.schema.json",
+    (
+        "observed-event-envelope.v2",
+        "observed-event-envelope.v2.json",
+    ): "observed-event-envelope.v2.schema.json",
     ("player-step.v2", "player-step.v2.json"): "player-step.v2.schema.json",
     ("replay-manifest.v3", "replay-manifest.v3.json"): "replay-manifest.v3.schema.json",
-    ("authoritative-replay.v3", "authoritative-replay-empty.v3.json"): "authoritative-replay.v3.schema.json",
-    ("authoritative-replay.v3", "replay-v3-checkpoint-digest-mismatch.json"): "authoritative-replay.v3.schema.json",
+    (
+        "authoritative-replay.v3",
+        "authoritative-replay-empty.v3.json",
+    ): "authoritative-replay.v3.schema.json",
+    (
+        "authoritative-replay.v3",
+        "replay-v3-checkpoint-digest-mismatch.json",
+    ): "authoritative-replay.v3.schema.json",
 }
 
 
@@ -26,8 +38,7 @@ def _git_bytes(relative_path: str) -> bytes:
         ["git", "show", f"{STARTING_SHA}:{relative_path}"],
         cwd=ROOT,
         check=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
+        capture_output=True,
     )
     return completed.stdout
 
@@ -65,7 +76,9 @@ class M2BStagingFixtureTests(unittest.TestCase):
         self.assertNotIn("semantic_key", decision["candidates"][0])
 
         replay = json.loads(
-            (ROOT / "wire" / "golden" / "authoritative-replay-empty.v3.json").read_text(encoding="utf-8")
+            (ROOT / "wire" / "golden" / "authoritative-replay-empty.v3.json").read_text(
+                encoding="utf-8"
+            )
         )
         self.assertEqual(replay["schema_version"], "authoritative-replay.v3")
         initial_identity = replay["manifest"]["initial_identity"]

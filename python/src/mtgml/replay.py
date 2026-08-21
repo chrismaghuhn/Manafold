@@ -612,7 +612,7 @@ class EnvironmentLimitCountersV3:
         )
 
     def to_wire(self) -> dict[str, object]:
-        values = {
+        values: dict[str, object] = {
             "decisions_submitted": self.decisions_submitted,
             "accepted_transitions": self.accepted_transitions,
             "rule_events_emitted": self.rule_events_emitted,

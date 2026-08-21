@@ -66,7 +66,9 @@ class SchemaParityTests(unittest.TestCase):
             set(mapping),
         )
         for case in cases:
-            schema = json.loads((ROOT / "schemas" / mapping[case["contract"]]).read_text(encoding="utf-8"))
+            schema = json.loads(
+                (ROOT / "schemas" / mapping[case["contract"]]).read_text(encoding="utf-8")
+            )
             instance = json.loads((directory / case["path"]).read_text(encoding="utf-8"))
             with self.subTest(case=case["path"]):
                 jsonschema.Draft202012Validator(schema).validate(instance)

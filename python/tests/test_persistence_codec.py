@@ -30,9 +30,7 @@ class PersistenceCodecTests(unittest.TestCase):
                 else:
                     reference, decoded = decode_envelope(payload)
                     self.assertEqual(decoded, bytes.fromhex("8268696e7075742e763107"))
-                    self.assertEqual(
-                        hashlib.sha256(payload).hexdigest(), entry["sha256"]
-                    )
+                    self.assertEqual(hashlib.sha256(payload).hexdigest(), entry["sha256"])
                     self.assertEqual(reference["semantic_domain"], "mtgml.test-domain.v1")
 
     def test_cross_language_mechanical_negative_categories(self) -> None:

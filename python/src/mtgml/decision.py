@@ -305,10 +305,15 @@ class VisibleCandidateV2:
     @classmethod
     def from_wire(cls, value: object) -> VisibleCandidateV2:
         obj = require_exact_keys(value, {"candidate_id", "intent"})
-        return cls(_parse_candidate_id(obj["candidate_id"]), CandidateIntent.from_wire(obj["intent"]))
+        return cls(
+            _parse_candidate_id(obj["candidate_id"]), CandidateIntent.from_wire(obj["intent"])
+        )
 
     def to_wire(self) -> dict[str, object]:
-        return {"candidate_id": _parse_candidate_id(self.candidate_id), "intent": self.intent.to_wire()}
+        return {
+            "candidate_id": _parse_candidate_id(self.candidate_id),
+            "intent": self.intent.to_wire(),
+        }
 
 
 def _ordering_key(intent: CandidateIntent) -> tuple[int, object]:
@@ -358,7 +363,10 @@ class PlayerDecisionRequestV2:
                 "candidates",
             },
         )
-        if obj["schema_version"] != PLAYER_DECISION_REQUEST_V2_SCHEMA or obj["visibility"] not in _ALLOWED_VISIBILITY:
+        if (
+            obj["schema_version"] != PLAYER_DECISION_REQUEST_V2_SCHEMA
+            or obj["visibility"] not in _ALLOWED_VISIBILITY
+        ):
             raise WireError("decode.invalid_json", "unsupported decision V2 schema or visibility")
         if not isinstance(obj["candidates"], list):
             raise WireError("decode.invalid_json", "candidates must be an array")
@@ -379,7 +387,9 @@ class PlayerDecisionRequestV2:
         for index, candidate in enumerate(self.candidates):
             if candidate.candidate_id != index:
                 raise WireError("semantic.decision", "candidate IDs must be dense from zero")
-            if index and _ordering_key(self.candidates[index - 1].intent) >= _ordering_key(candidate.intent):
+            if index and _ordering_key(self.candidates[index - 1].intent) >= _ordering_key(
+                candidate.intent
+            ):
                 raise WireError("semantic.decision", "candidate ordering is not canonical")
         if self.decision.kind == "choose_number" and self.candidates:
             raise WireError("semantic.decision", "choose_number cannot contain candidates")
@@ -421,7 +431,10 @@ class DecisionAnswerV2:
             obj = require_exact_keys(value, {"kind", "candidate_ids"})
             if not isinstance(obj["candidate_ids"], list):
                 raise WireError("decode.invalid_json", "candidate_ids must be an array")
-            return cls(kind, candidate_ids=tuple(_parse_candidate_id(item) for item in obj["candidate_ids"]))
+            return cls(
+                kind,
+                candidate_ids=tuple(_parse_candidate_id(item) for item in obj["candidate_ids"]),
+            )
         obj = require_exact_keys(value, {"kind", "value"})
         raw = obj["value"]
         if isinstance(raw, bool) or not isinstance(raw, int) or not -(2**63) <= raw < 2**63:
@@ -430,7 +443,8 @@ class DecisionAnswerV2:
 
     def validate(self) -> None:
         if self.kind == "select_many" and any(
-            left >= right for left, right in zip(self.candidate_ids, self.candidate_ids[1:])
+            left >= right
+            for left, right in zip(self.candidate_ids, self.candidate_ids[1:], strict=False)
         ):
             raise WireError("semantic.decision_response", "SelectMany IDs are not ascending")
         if self.kind == "order" and len(set(self.candidate_ids)) != len(self.candidate_ids):
@@ -441,9 +455,16 @@ class DecisionAnswerV2:
         if self.kind == "select_one":
             return {"candidate_id": _parse_candidate_id(self.candidate_id), "kind": self.kind}
         if self.kind in {"select_many", "order"}:
-            return {"candidate_ids": [_parse_candidate_id(item) for item in self.candidate_ids], "kind": self.kind}
+            return {
+                "candidate_ids": [_parse_candidate_id(item) for item in self.candidate_ids],
+                "kind": self.kind,
+            }
         if self.kind == "choose_number":
-            if self.value is None or isinstance(self.value, bool) or not -(2**63) <= self.value < 2**63:
+            if (
+                self.value is None
+                or isinstance(self.value, bool)
+                or not -(2**63) <= self.value < 2**63
+            ):
                 raise WireError("encode.serialization", "numeric answer is outside i64")
             return {"kind": self.kind, "value": self.value}
         raise WireError("encode.serialization", "unknown DecisionAnswerV2 variant")
@@ -458,7 +479,9 @@ class DecisionResponseV2:
 
     @classmethod
     def from_wire(cls, value: object) -> DecisionResponseV2:
-        obj = require_exact_keys(value, {"schema_version", "player_decision_id", "state_revision", "answer"})
+        obj = require_exact_keys(
+            value, {"schema_version", "player_decision_id", "state_revision", "answer"}
+        )
         if obj["schema_version"] != DECISION_RESPONSE_V2_SCHEMA:
             raise WireError("decode.invalid_json", "unsupported response V2 schema")
         result = cls(

@@ -3,7 +3,11 @@ from __future__ import annotations
 from typing import Protocol
 
 from .decision import DecisionResponseV2, PlayerDecisionRequestV2
-from .observation import InformationStateEnvelope, ObservationEnvelope, PlayerInformationStateV2, PlayerStepV2
+from .observation import (
+    ObservationEnvelope,
+    PlayerInformationStateV2,
+    PlayerStepV2,
+)
 
 
 class PlayerClient(Protocol):

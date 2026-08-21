@@ -111,7 +111,7 @@ class _Decoder:
         end = self.offset + length
         if length < 0 or end > len(self.data):
             raise _error("envelope_length", "CBOR value is truncated")
-        result = self.data[self.offset:end]
+        result = self.data[self.offset : end]
         self.offset = end
         return result
 
@@ -227,7 +227,9 @@ def decode_envelope(envelope: bytes) -> tuple[dict[str, object], bytes]:
         offset += 8
         limit = MAX_IDENTIFIER_BYTES if identifier else MAX_PAYLOAD_BYTES
         if length > limit:
-            raise _error("envelope_identity" if identifier else "payload_too_large", "frame is too large")
+            raise _error(
+                "envelope_identity" if identifier else "payload_too_large", "frame is too large"
+            )
         end = offset + length
         if end > len(envelope):
             raise _error("envelope_length", "envelope frame is truncated")
@@ -254,7 +256,7 @@ def decode_envelope(envelope: bytes) -> tuple[dict[str, object], bytes]:
     _identifier(domain_text)
     _identifier(schema_text)
     decode_canonical(payload)
-    reference = {
+    reference: dict[str, object] = {
         "envelope_version": DIGEST_ENVELOPE_ID,
         "algorithm_id": algorithm_text,
         "semantic_domain": domain_text,
@@ -280,15 +282,14 @@ def digest_reference_value(reference: dict[str, object]) -> list[PersistenceValu
 
 
 def _episode_status_value(status: EpisodeStatus) -> list[PersistenceValue]:
-    wire = status.to_wire()
-    kind = wire["kind"]
-    if kind == "running":
+    status.to_wire()
+    if status.kind == "running":
         return ["running", None]
-    players = [
-        [int(player["player"]), str(player["result"])]
-        for player in sorted(wire["players"], key=lambda item: int(item["player"]))  # type: ignore[index]
-    ]
-    return [str(kind), [str(wire["reason"]), players]]
+    assert status.reason is not None
+    players: list[PersistenceValue] = []
+    for outcome in sorted(status.players, key=lambda item: item.player):
+        players.append([outcome.player, outcome.result.value])
+    return [status.kind, [status.reason.value, players]]
 
 
 def calculate_checkpoint_digest_v3(
@@ -299,7 +300,7 @@ def calculate_checkpoint_digest_v3(
     semantic_version: str,
 ) -> str:
     full_state_digest = require_digest(full_state_digest)
-    reference = {
+    reference: dict[str, object] = {
         "envelope_version": DIGEST_ENVELOPE_ID,
         "algorithm_id": SHA256_ID,
         "semantic_domain": "mtgml.full-state-digest.v3",
@@ -330,4 +331,6 @@ def calculate_checkpoint_digest_v3(
             [codec_id, semantic_version],
         ]
     )
-    return hashlib.sha256(encode_envelope(CHECKPOINT_DOMAIN, CHECKPOINT_INPUT_SCHEMA, payload)).hexdigest()
+    return hashlib.sha256(
+        encode_envelope(CHECKPOINT_DOMAIN, CHECKPOINT_INPUT_SCHEMA, payload)
+    ).hexdigest()
