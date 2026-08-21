@@ -1,13 +1,20 @@
-use mtgml_decision::{CandidateAssignment, DecisionResponse, DECISION_RESPONSE_SCHEMA};
+use mtgml_decision::{
+    CandidateAssignment, DecisionAnswerV2, DecisionResponse, DecisionResponseV2,
+    DECISION_RESPONSE_SCHEMA, DECISION_RESPONSE_V2_SCHEMA,
+};
 use mtgml_model::{
-    ContentDigest, DecisionId, FullStateDigest, FullStateDigestV2, PlayerId, StateRevision,
+    CheckpointCodecIdentity, ContentDigest, DecisionId, EnvironmentLimitCounters, EpisodeStatus,
+    FullStateDigest, FullStateDigestV2, FullStateDigestV3, PlayerDecisionIdV1, PlayerId,
+    StateRevision,
 };
 
 use crate::{
-    AuthoritativeReplayV1, DeckIdentityV1, KernelIdentityV1, RandomnessIdentityV1,
-    RandomnessIdentityV2, ReplayManifestV1, ReplayManifestV2, ReplayRecorderV2,
-    ReplaySchemaVersionsV1, ReplayStepV1, ReplayStepV2, ReplayValidationError, REPLAY_FILE_SCHEMA,
+    AuthoritativeReplayV1, AuthoritativeReplayV3, DeckIdentityV1, InitialEnvironmentIdentityV3,
+    KernelIdentityV1, RandomnessIdentityV1, RandomnessIdentityV2, ReplayManifestV1,
+    ReplayManifestV2, ReplayManifestV3, ReplayRecorderV2, ReplayRecorderV3, ReplaySchemaVersionsV1,
+    ReplayStepV1, ReplayStepV2, ReplayStepV3, ReplayValidationError, REPLAY_FILE_SCHEMA,
     REPLAY_FILE_SCHEMA_V2, REPLAY_MANIFEST_SCHEMA, REPLAY_MANIFEST_SCHEMA_V2,
+    REPLAY_MANIFEST_SCHEMA_V3, REPLAY_STEP_SCHEMA_V3,
 };
 
 fn digest(text: char) -> FullStateDigest {
@@ -217,4 +224,131 @@ fn rejected_replay_step_must_preserve_the_full_state_digest() {
     replay.steps[0].state_digest_after = digest('0');
     replay.final_state_digest = digest('0');
     replay.validate().unwrap();
+}
+
+fn v3_identity(
+    revision: u64,
+    digest_byte: u8,
+    counters: EnvironmentLimitCounters,
+) -> InitialEnvironmentIdentityV3 {
+    let full_state_digest = FullStateDigestV3::from_digest_bytes([digest_byte; 32]);
+    let codec = CheckpointCodecIdentity {
+        codec_id: "in-memory-reference".into(),
+        semantic_version: "3".into(),
+    };
+    let checkpoint_digest = mtgml_persistence::checkpoint_digest::calculate_checkpoint_digest_v3(
+        &full_state_digest.as_digest_reference(),
+        &EpisodeStatus::Running,
+        &counters,
+        &codec,
+    )
+    .unwrap();
+    InitialEnvironmentIdentityV3 {
+        state_revision: StateRevision(revision),
+        full_state_digest,
+        episode_status: EpisodeStatus::Running,
+        environment_limit_counters: counters,
+        checkpoint_codec_identity: codec,
+        checkpoint_digest,
+    }
+}
+
+fn manifest_v3() -> ReplayManifestV3 {
+    ReplayManifestV3 {
+        schema_version: REPLAY_MANIFEST_SCHEMA_V3.into(),
+        engine_build: "synthetic-build".into(),
+        kernel: KernelIdentityV1 {
+            implementation_id: "synthetic-m2".into(),
+            semantic_version: "0.2.2".into(),
+            build_profile: "test".into(),
+        },
+        rules_snapshot: "rules".into(),
+        format_policy_snapshot: "format".into(),
+        oracle_snapshot: "oracle".into(),
+        card_bundle: "bundle".into(),
+        schemas: ReplaySchemaVersionsV1 {
+            observation: "observation-envelope.v1".into(),
+            information_state: "information-state-envelope.v2".into(),
+            decision: "player-decision-request.v2".into(),
+            decision_response: DECISION_RESPONSE_V2_SCHEMA.into(),
+            observed_event: "observed-event-envelope.v2".into(),
+            player_step: "player-step.v2".into(),
+            replay_step: REPLAY_STEP_SCHEMA_V3.into(),
+        },
+        randomness: RandomnessIdentityV2 {
+            contract_id: "mtgml.rng.v1".into(),
+            root_seed_hex: "00".repeat(32),
+        },
+        decks: vec![DeckIdentityV1 {
+            player: PlayerId(1),
+            deck_id: "deck".into(),
+            digest: ContentDigest::parse("11".repeat(32)).unwrap(),
+        }],
+        initial_identity: v3_identity(0, 0, EnvironmentLimitCounters::default()),
+    }
+}
+
+fn response_v3() -> DecisionResponseV2 {
+    DecisionResponseV2 {
+        schema_version: DECISION_RESPONSE_V2_SCHEMA.into(),
+        player_decision_id: PlayerDecisionIdV1(1),
+        state_revision: StateRevision(0),
+        answer: DecisionAnswerV2::ChooseNumber { value: 0 },
+    }
+}
+
+#[test]
+fn replay_v3_empty_accepted_rejected_identity_matrix() {
+    let manifest = manifest_v3();
+    manifest.validate().unwrap();
+
+    let recorder = ReplayRecorderV3::new(manifest.clone()).unwrap();
+    let empty: AuthoritativeReplayV3 = recorder.export().unwrap();
+    assert!(empty.steps.is_empty());
+    assert_eq!(empty.final_identity, manifest.initial_identity);
+
+    let mut rejected_recorder = ReplayRecorderV3::new(manifest.clone()).unwrap();
+    let rejected = ReplayStepV3 {
+        step_index: 0,
+        actor: PlayerId(1),
+        checkpoint_digest_before: manifest.initial_identity.checkpoint_digest.clone(),
+        state_revision_before: StateRevision(0),
+        response: response_v3(),
+        accepted: false,
+        state_revision_after: StateRevision(0),
+        full_state_digest_after: manifest.initial_identity.full_state_digest.clone(),
+        episode_status_after: EpisodeStatus::Running,
+        environment_limit_counters_after: EnvironmentLimitCounters::default(),
+        checkpoint_digest_after: manifest.initial_identity.checkpoint_digest.clone(),
+    };
+    rejected_recorder.append(rejected).unwrap();
+    let rejected_replay = rejected_recorder.export().unwrap();
+    rejected_replay.validate().unwrap();
+    assert_eq!(rejected_replay.final_identity, manifest.initial_identity);
+
+    let counters = EnvironmentLimitCounters {
+        decisions_submitted: 1,
+        accepted_transitions: 1,
+        ..EnvironmentLimitCounters::default()
+    };
+    let after = v3_identity(1, 1, counters.clone());
+    let mut accepted_recorder = ReplayRecorderV3::new(manifest.clone()).unwrap();
+    accepted_recorder
+        .append(ReplayStepV3 {
+            step_index: 0,
+            actor: PlayerId(1),
+            checkpoint_digest_before: manifest.initial_identity.checkpoint_digest.clone(),
+            state_revision_before: StateRevision(0),
+            response: response_v3(),
+            accepted: true,
+            state_revision_after: after.state_revision,
+            full_state_digest_after: after.full_state_digest.clone(),
+            episode_status_after: after.episode_status.clone(),
+            environment_limit_counters_after: after.environment_limit_counters.clone(),
+            checkpoint_digest_after: after.checkpoint_digest.clone(),
+        })
+        .unwrap();
+    let accepted_replay = accepted_recorder.export().unwrap();
+    accepted_replay.validate().unwrap();
+    assert_eq!(accepted_replay.final_identity, after);
 }

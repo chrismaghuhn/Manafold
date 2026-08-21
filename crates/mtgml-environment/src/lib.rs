@@ -15,13 +15,13 @@ mod synthetic;
 mod tests;
 
 pub use checkpoint::{
-    CheckpointValidationError, EnvironmentCheckpointV2, ENVIRONMENT_CHECKPOINT_SCHEMA,
+    CheckpointValidationError, EnvironmentCheckpointV3, ENVIRONMENT_CHECKPOINT_SCHEMA,
 };
-pub use mtgml_model::{CheckpointCodecIdentity, EnvironmentLimitCounters};
 pub use controller::{EnvironmentBackend, TrustedEnvironmentController};
 pub use endpoint::{PlayerApiError, PlayerEndpoint, PlayerEndpointHandle};
 pub use errors::ControllerError;
 pub use errors::ReplayExecutionError;
+pub use mtgml_model::{CheckpointCodecIdentity, EnvironmentLimitCounters};
 pub use replay::{ReplayExecutionReport, ReplayExecutionTrace};
 pub use synthetic::{
     SyntheticM1EnvironmentBackend, SyntheticM1EnvironmentConfig, SyntheticM1ReplayConfig,

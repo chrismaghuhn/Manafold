@@ -31,6 +31,11 @@ class SchemaParityTests(unittest.TestCase):
             "authoritative-replay.v1": "authoritative-replay.v1.schema.json",
             "replay-manifest.v2": "replay-manifest.v2.schema.json",
             "authoritative-replay.v2": "authoritative-replay.v2.schema.json",
+            "information-state-envelope.v2": "information-state-envelope.v2.schema.json",
+            "observed-event-envelope.v2": "observed-event-envelope.v2.schema.json",
+            "player-step.v2": "player-step.v2.schema.json",
+            "replay-manifest.v3": "replay-manifest.v3.schema.json",
+            "authoritative-replay.v3": "authoritative-replay.v3.schema.json",
         }
         directory = ROOT / "wire" / "golden"
         manifest = json.loads((directory / "manifest.json").read_text(encoding="utf-8"))
@@ -47,6 +52,11 @@ class SchemaParityTests(unittest.TestCase):
         mapping = {
             "player-decision-request.v2": "player-decision-request.v2.schema.json",
             "decision-response.v2": "decision-response.v2.schema.json",
+            "information-state-envelope.v2": "information-state-envelope.v2.schema.json",
+            "observed-event-envelope.v2": "observed-event-envelope.v2.schema.json",
+            "player-step.v2": "player-step.v2.schema.json",
+            "replay-manifest.v3": "replay-manifest.v3.schema.json",
+            "authoritative-replay.v3": "authoritative-replay.v3.schema.json",
         }
         directory = ROOT / "wire" / "golden"
         manifest = json.loads((directory / "manifest.json").read_text(encoding="utf-8"))

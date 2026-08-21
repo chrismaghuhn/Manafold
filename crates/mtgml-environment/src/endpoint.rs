@@ -1,6 +1,6 @@
-use mtgml_decision::{DecisionResponse, PlayerDecisionRequest};
+use mtgml_decision::{DecisionResponseV2, PlayerDecisionRequestV2};
 use mtgml_model::PlayerId;
-use mtgml_observation::{InformationStateEnvelope, ObservationEnvelope, PlayerStep};
+use mtgml_observation::{ObservationEnvelope, PlayerInformationStateV2, PlayerStepV2};
 use std::sync::MutexGuard;
 use thiserror::Error;
 
@@ -15,9 +15,9 @@ pub struct PlayerEndpointHandle {
 pub trait PlayerEndpoint: Send + Sync {
     fn perspective(&self) -> PlayerId;
     fn observation(&self) -> Result<ObservationEnvelope, PlayerApiError>;
-    fn information_state(&self) -> Result<InformationStateEnvelope, PlayerApiError>;
-    fn visible_decision(&self) -> Result<Option<PlayerDecisionRequest>, PlayerApiError>;
-    fn submit(&self, response: DecisionResponse) -> Result<PlayerStep, PlayerApiError>;
+    fn information_state(&self) -> Result<PlayerInformationStateV2, PlayerApiError>;
+    fn visible_decision(&self) -> Result<Option<PlayerDecisionRequestV2>, PlayerApiError>;
+    fn submit(&self, response: DecisionResponseV2) -> Result<PlayerStepV2, PlayerApiError>;
 }
 
 impl PlayerEndpointHandle {
@@ -38,15 +38,15 @@ impl PlayerEndpoint for PlayerEndpointHandle {
         self.lock()?.player_observation(self.perspective)
     }
 
-    fn information_state(&self) -> Result<InformationStateEnvelope, PlayerApiError> {
+    fn information_state(&self) -> Result<PlayerInformationStateV2, PlayerApiError> {
         self.lock()?.player_information_state(self.perspective)
     }
 
-    fn visible_decision(&self) -> Result<Option<PlayerDecisionRequest>, PlayerApiError> {
+    fn visible_decision(&self) -> Result<Option<PlayerDecisionRequestV2>, PlayerApiError> {
         self.lock()?.player_visible_decision(self.perspective)
     }
 
-    fn submit(&self, response: DecisionResponse) -> Result<PlayerStep, PlayerApiError> {
+    fn submit(&self, response: DecisionResponseV2) -> Result<PlayerStepV2, PlayerApiError> {
         self.lock()?
             .submit_player_response(self.perspective, response)
     }

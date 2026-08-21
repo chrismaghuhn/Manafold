@@ -11,7 +11,7 @@ STARTING_SHA = "a4e769eb940611d34df05fc79effd9430891d897"
 STAGING = ROOT / "wire" / "staging" / "m2-b"
 HISTORICAL = ROOT / "wire" / "historical" / "v1-v2-fixtures.json"
 
-EXPECTED_STAGED = {
+EXPECTED_PROMOTED = {
     ("information-state-envelope.v2", "information-state-envelope.v2.json"): "information-state-envelope.v2.schema.json",
     ("observed-event-envelope.v2", "observed-event-envelope.v2.json"): "observed-event-envelope.v2.schema.json",
     ("player-step.v2", "player-step.v2.json"): "player-step.v2.schema.json",
@@ -38,32 +38,21 @@ def _baseline_manifest(kind: str) -> list[dict[str, object]]:
 
 
 class M2BStagingFixtureTests(unittest.TestCase):
-    def test_staging_manifest_records_expected_ids_and_existing_fixture_paths(self) -> None:
-        manifest = json.loads((STAGING / "manifest.json").read_text(encoding="utf-8"))
-        self.assertEqual(manifest["schema_version"], "wire-staging-manifest.v1")
-        records = {
-            (entry["contract"], entry["path"]): entry["schema"]
-            for entry in manifest["fixtures"]
-        }
-        self.assertEqual(records, EXPECTED_STAGED)
-
-        for entry in manifest["fixtures"]:
-            fixture_path = STAGING / entry["path"]
-            self.assertTrue(fixture_path.is_file(), entry["path"])
-            self.assertTrue(
-                entry["schema"].startswith(
-                    (
-                        "player-",
-                        "decision-",
-                        "information-",
-                        "observed-",
-                        "replay-",
-                        "authoritative-",
-                    )
-                )
+    def test_promoted_fixtures_have_no_staging_copy(self) -> None:
+        self.assertFalse(STAGING.exists())
+        records = {}
+        for kind in ("golden", "negative"):
+            manifest = json.loads(
+                (ROOT / "wire" / kind / "manifest.json").read_text(encoding="utf-8")
             )
+            for entry in manifest["fixtures"]:
+                if entry["path"] in {path for _, path in EXPECTED_PROMOTED}:
+                    records[(entry["contract"], entry["path"])] = kind
+        self.assertEqual(set(records), set(EXPECTED_PROMOTED))
+        for contract, path in EXPECTED_PROMOTED:
+            self.assertTrue((ROOT / "wire" / records[(contract, path)] / path).is_file())
 
-    def test_staged_public_shapes_are_closed_and_perspective_safe(self) -> None:
+    def test_promoted_public_shapes_are_closed_and_perspective_safe(self) -> None:
         decision = json.loads(
             (ROOT / "wire" / "golden" / "player-decision-request.v2.json").read_text(
                 encoding="utf-8"
@@ -76,9 +65,10 @@ class M2BStagingFixtureTests(unittest.TestCase):
         self.assertNotIn("semantic_key", decision["candidates"][0])
 
         replay = json.loads(
-            (STAGING / "authoritative-replay-empty.v3.json").read_text(encoding="utf-8")
+            (ROOT / "wire" / "golden" / "authoritative-replay-empty.v3.json").read_text(encoding="utf-8")
         )
         self.assertEqual(replay["schema_version"], "authoritative-replay.v3")
+        initial_identity = replay["manifest"]["initial_identity"]
         for key in (
             "state_revision",
             "full_state_digest",
@@ -87,7 +77,7 @@ class M2BStagingFixtureTests(unittest.TestCase):
             "checkpoint_codec_identity",
             "checkpoint_digest",
         ):
-            self.assertIn(key, replay["initial_identity"])
+            self.assertIn(key, initial_identity)
             self.assertIn(key, replay["final_identity"])
 
     def test_baseline_fixture_bytes_and_historical_inventory_remain_covered(self) -> None:

@@ -1,13 +1,13 @@
 use std::collections::BTreeMap;
 
 use mtgml_decision::{
-    ActionCandidate, CandidateIntent, DecisionKind, DecisionVisibility, EngineCandidateBinding,
-    PlayerDecisionRequest, PLAYER_DECISION_REQUEST_SCHEMA,
+    AuthoritativeCandidateV2, AuthoritativeDecisionRequestV2, CandidateIntent, DecisionDomainV2,
+    DecisionVisibility, EngineCandidateBinding,
 };
 use mtgml_model::{
     AbilityInstanceId, CardDefinitionId, ContinuationId, DecisionId, EffectInstanceId,
-    EventSequence, GameObjectId, OpaqueAbilityId, OpaqueObjectId, PhysicalCardId, PlayerId,
-    RuleEventId, StackObjectId, StateRevision, TriggerInstanceId, ZoneKind,
+    GameObjectId, OpaqueAbilityId, OpaqueObjectId, PhysicalCardId, PlayerDecisionIdV1, PlayerId,
+    RuleEventId, StackObjectId, StateRevision, TriggerInstanceId, VisibleSequence, ZoneKind,
 };
 use mtgml_random::{
     CanonicalRandomStreamEntryV1, RandomStateV1, RandomStreamCursorV1, RandomStreamKeyV1,
@@ -17,12 +17,13 @@ use thiserror::Error;
 
 use crate::core::{CoreRulesState, PlayerState};
 use crate::engine::EngineState;
-use crate::execution::{ExecutionState, PendingDecisionRecord};
+use crate::execution::ExecutionState;
 use crate::format::FormatState;
-use crate::identity::{IdentityAllocatorState, PerspectiveIdentityMap, PerspectiveIdentityState};
-use crate::knowledge::{
-    KnowledgeAcquisitionReason, KnowledgeHistoryChannel, KnowledgePoint, KnowledgeState,
-    KnownObjectIdentity, PlayerKnowledgeState,
+use crate::identity::IdentityAllocatorState;
+use crate::knowledge::{KnowledgeAcquisitionReason, KnowledgeHistoryChannel, KnowledgePoint};
+use crate::m2_shape::{
+    KnowledgeRecordV2, PendingDecisionRecordV2, PerspectiveIdentityRecordV2,
+    PerspectiveIdentityStateV2, PlayerKnowledgeStateV2,
 };
 use crate::validation::{validate_engine_state, EngineStateViolation};
 use crate::zones::{GameObject, VisibilityPartition, ZoneLocation, ZonePosition, ZoneState};
@@ -85,7 +86,6 @@ pub fn construct_synthetic_engine_state(
         tapped: false,
         face_down: true,
     };
-
     let zones = ZoneState {
         objects: BTreeMap::from([
             (public_object_id, public_object),
@@ -102,101 +102,109 @@ pub fn construct_synthetic_engine_state(
 
     let public_opaque_id = OpaqueObjectId(1);
     let hidden_opaque_id = OpaqueObjectId(2);
-    let player_one_identities = PerspectiveIdentityMap {
-        object_to_opaque: BTreeMap::from([(public_object_id, public_opaque_id)]),
+    let player_one_identity = PerspectiveIdentityRecordV2 {
         opaque_to_object: BTreeMap::from([(public_opaque_id, public_object_id)]),
-        ability_to_opaque: BTreeMap::new(),
         opaque_to_ability: BTreeMap::new(),
+        object_to_opaque: BTreeMap::from([(public_object_id, public_opaque_id)]),
+        ability_to_opaque: BTreeMap::new(),
+        next_opaque_object_id: OpaqueObjectId(2),
+        next_opaque_ability_id: OpaqueAbilityId(1),
+        next_player_decision_id: PlayerDecisionIdV1(2),
+        retired_object_ids: Default::default(),
+        retired_ability_ids: Default::default(),
     };
-    let player_two_identities = PerspectiveIdentityMap {
-        object_to_opaque: BTreeMap::from([
-            (public_object_id, public_opaque_id),
-            (hidden_object_id, hidden_opaque_id),
-        ]),
+    let player_two_identity = PerspectiveIdentityRecordV2 {
         opaque_to_object: BTreeMap::from([
             (public_opaque_id, public_object_id),
             (hidden_opaque_id, hidden_object_id),
         ]),
-        ability_to_opaque: BTreeMap::new(),
         opaque_to_ability: BTreeMap::new(),
+        object_to_opaque: BTreeMap::from([
+            (public_object_id, public_opaque_id),
+            (hidden_object_id, hidden_opaque_id),
+        ]),
+        ability_to_opaque: BTreeMap::new(),
+        next_opaque_object_id: OpaqueObjectId(3),
+        next_opaque_ability_id: OpaqueAbilityId(1),
+        next_player_decision_id: PlayerDecisionIdV1(2),
+        retired_object_ids: Default::default(),
+        retired_ability_ids: Default::default(),
     };
-    let perspective_identities = PerspectiveIdentityState {
+    let perspective_identities = PerspectiveIdentityStateV2 {
         players: BTreeMap::from([
-            (player_one, player_one_identities),
-            (player_two, player_two_identities),
+            (player_one, player_one_identity),
+            (player_two, player_two_identity),
         ]),
     };
 
-    let public_knowledge = KnownObjectIdentity {
-        object: public_object_id,
+    let public_knowledge = KnowledgeRecordV2 {
+        opaque_object: public_opaque_id,
         physical_card: Some(PhysicalCardId(1)),
         card_definition: Some(CardDefinitionId(1)),
         known_location: Some(public_location.clone()),
         learned_at: KnowledgePoint {
             channel: KnowledgeHistoryChannel::Public,
-            sequence: EventSequence(0),
+            sequence: VisibleSequence(0),
         },
-        learned_via: KnowledgeAcquisitionReason::ExplicitReveal,
+        learned_via: KnowledgeAcquisitionReason::InitialConfiguration,
+        historical_locations: Vec::new(),
     };
-    let hidden_knowledge = KnownObjectIdentity {
-        object: hidden_object_id,
+    let hidden_knowledge = KnowledgeRecordV2 {
+        opaque_object: hidden_opaque_id,
         physical_card: Some(PhysicalCardId(2)),
         card_definition: Some(CardDefinitionId(2)),
         known_location: Some(hidden_location),
         learned_at: KnowledgePoint {
             channel: KnowledgeHistoryChannel::Private,
-            sequence: EventSequence(0),
+            sequence: VisibleSequence(0),
         },
-        learned_via: KnowledgeAcquisitionReason::OwnZoneIdentity,
+        learned_via: KnowledgeAcquisitionReason::InitialConfiguration,
+        historical_locations: Vec::new(),
     };
     let knowledge = KnowledgeState {
         players: BTreeMap::from([
             (
                 player_one,
-                PlayerKnowledgeState {
-                    known_objects: BTreeMap::from([(public_object_id, public_knowledge.clone())]),
-                    ..PlayerKnowledgeState::default()
+                PlayerKnowledgeStateV2 {
+                    active: BTreeMap::from([(public_opaque_id, public_knowledge.clone())]),
+                    next_visible_sequence: VisibleSequence(1),
+                    ..Default::default()
                 },
             ),
             (
                 player_two,
-                PlayerKnowledgeState {
-                    known_objects: BTreeMap::from([
-                        (public_object_id, public_knowledge),
-                        (hidden_object_id, hidden_knowledge),
+                PlayerKnowledgeStateV2 {
+                    active: BTreeMap::from([
+                        (public_opaque_id, public_knowledge),
+                        (hidden_opaque_id, hidden_knowledge),
                     ]),
-                    ..PlayerKnowledgeState::default()
+                    next_visible_sequence: VisibleSequence(1),
+                    ..Default::default()
                 },
             ),
         ]),
     };
 
-    let request = PlayerDecisionRequest {
-        schema_version: PLAYER_DECISION_REQUEST_SCHEMA.to_owned(),
+    let request = AuthoritativeDecisionRequestV2 {
         decision_id: DecisionId(1),
+        player_decision_id: PlayerDecisionIdV1(1),
         state_revision: StateRevision(0),
         actor: player_one,
         visibility: DecisionVisibility::Public,
-        decision: DecisionKind::ChooseOne,
-        candidates: vec![ActionCandidate {
-            candidate_id: "select_public_object".to_owned(),
-            semantic_key: "synthetic.select_public_object".to_owned(),
-            intent: CandidateIntent::SelectObject {
+        decision: DecisionDomainV2::ChooseOne,
+        candidates: vec![AuthoritativeCandidateV2 {
+            candidate_id: mtgml_model::CandidateIdV1(0),
+            visible_intent: CandidateIntent::SelectObject {
                 object: public_opaque_id,
             },
+            trusted_binding: EngineCandidateBinding::SelectObject {
+                object: public_object_id,
+            },
         }],
+        continuation_id: None,
     };
     let execution = ExecutionState {
-        pending_decision: Some(PendingDecisionRecord {
-            request,
-            candidate_bindings: BTreeMap::from([(
-                "select_public_object".to_owned(),
-                EngineCandidateBinding::SelectObject {
-                    object: public_object_id,
-                },
-            )]),
-            continuation: None,
-        }),
+        pending_decision: Some(PendingDecisionRecordV2 { request }),
         ..ExecutionState::default()
     };
 
@@ -209,16 +217,7 @@ pub fn construct_synthetic_engine_state(
         next_decision_id: DecisionId(2),
         next_continuation_id: ContinuationId(1),
         next_rule_event_id: RuleEventId(1),
-        next_opaque_object_id: BTreeMap::from([
-            (player_one, OpaqueObjectId(2)),
-            (player_two, OpaqueObjectId(3)),
-        ]),
-        next_opaque_ability_id: BTreeMap::from([
-            (player_one, OpaqueAbilityId(1)),
-            (player_two, OpaqueAbilityId(1)),
-        ]),
     };
-
     let random = RandomStateV1::from_entries(
         inputs.root_seed,
         vec![CanonicalRandomStreamEntryV1 {
@@ -258,7 +257,10 @@ pub fn construct_synthetic_engine_state(
         perspective_identities,
         format: FormatState::None,
     };
-
     validate_engine_state(&state)?;
     Ok(state)
 }
+
+// Keep the type name used by the current EngineState field explicit at the
+// module boundary; the implementation is the M2 V2 semantic shape.
+type KnowledgeState = crate::m2_shape::KnowledgeStateV2;

@@ -1,4 +1,4 @@
-use mtgml_decision::PlayerDecisionRequest;
+use mtgml_decision::{AuthoritativeDecisionRequestV2, DecisionResponseV2};
 use mtgml_model::{EpisodeStatus, PlayerId};
 use mtgml_state::{EngineState, StateDelta};
 
@@ -11,7 +11,7 @@ pub struct TransitionResult {
     pub next_state: EngineState,
     pub delta: StateDelta,
     pub events: Vec<AuthoritativeRuleEvent>,
-    pub next_decision: Option<PlayerDecisionRequest>,
+    pub next_decision: Option<AuthoritativeDecisionRequestV2>,
     pub status: EpisodeStatus,
 }
 
@@ -20,6 +20,6 @@ pub trait RulesKernel: Send {
         &mut self,
         state: &EngineState,
         trusted_actor: PlayerId,
-        response: &mtgml_decision::DecisionResponse,
+        response: &DecisionResponseV2,
     ) -> Result<TransitionResult, KernelExecutionError>;
 }

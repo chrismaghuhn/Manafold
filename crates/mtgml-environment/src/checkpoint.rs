@@ -1,54 +1,38 @@
-use mtgml_model::{CheckpointDigestV2, EpisodeStatus, FullStateDigestV2};
+use mtgml_model::{CheckpointDigestV3, EpisodeStatus, FullStateDigestV3};
 use mtgml_state::{validate_engine_state, EngineState};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 pub use mtgml_model::{CheckpointCodecIdentity, EnvironmentLimitCounters};
 
-pub const ENVIRONMENT_CHECKPOINT_SCHEMA: &str = "environment-checkpoint.v2";
+pub const ENVIRONMENT_CHECKPOINT_SCHEMA: &str = "environment-checkpoint.v3";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct EnvironmentCheckpointV2 {
+pub struct EnvironmentCheckpointV3 {
     pub schema_version: String,
     pub state: EngineState,
-    pub state_digest: FullStateDigestV2,
+    pub state_digest: FullStateDigestV3,
     pub status: EpisodeStatus,
-    pub limit_counters: mtgml_model::EnvironmentLimitCounters,
-    pub codec: mtgml_model::CheckpointCodecIdentity,
-    pub checkpoint_digest: CheckpointDigestV2,
+    pub limit_counters: EnvironmentLimitCounters,
+    pub codec: CheckpointCodecIdentity,
+    pub checkpoint_digest: CheckpointDigestV3,
 }
 
-#[derive(Serialize)]
-pub(crate) struct CheckpointDigestInputV2<'a> {
-    pub schema_version: &'a str,
-    pub domain: &'static str,
-    pub state_digest: &'a FullStateDigestV2,
-    pub status: &'a EpisodeStatus,
-    pub limit_counters: &'a mtgml_model::EnvironmentLimitCounters,
-    pub codec: &'a mtgml_model::CheckpointCodecIdentity,
-}
-
-impl EnvironmentCheckpointV2 {
+impl EnvironmentCheckpointV3 {
     pub fn new(
         state: EngineState,
         status: EpisodeStatus,
-        limit_counters: mtgml_model::EnvironmentLimitCounters,
-        codec: mtgml_model::CheckpointCodecIdentity,
+        limit_counters: EnvironmentLimitCounters,
+        codec: CheckpointCodecIdentity,
     ) -> Result<Self, CheckpointValidationError> {
         let state_digest = state
             .digest()
             .map_err(|_| CheckpointValidationError::StateDigest)?;
-        let schema_version = ENVIRONMENT_CHECKPOINT_SCHEMA.to_owned();
-        let checkpoint_digest = Self::calculate_digest(
-            &schema_version,
-            &state_digest,
-            &status,
-            &limit_counters,
-            &codec,
-        )?;
+        let checkpoint_digest =
+            calculate_checkpoint_digest(&state_digest, &status, &limit_counters, &codec)?;
         let checkpoint = Self {
-            schema_version,
+            schema_version: ENVIRONMENT_CHECKPOINT_SCHEMA.into(),
             state,
             state_digest,
             status,
@@ -60,26 +44,6 @@ impl EnvironmentCheckpointV2 {
         Ok(checkpoint)
     }
 
-    fn calculate_digest(
-        schema_version: &str,
-        state_digest: &FullStateDigestV2,
-        status: &EpisodeStatus,
-        limit_counters: &mtgml_model::EnvironmentLimitCounters,
-        codec: &mtgml_model::CheckpointCodecIdentity,
-    ) -> Result<CheckpointDigestV2, CheckpointValidationError> {
-        let input = CheckpointDigestInputV2 {
-            schema_version,
-            domain: CheckpointDigestV2::DOMAIN,
-            state_digest,
-            status,
-            limit_counters,
-            codec,
-        };
-        let bytes =
-            serde_json::to_vec(&input).map_err(|_| CheckpointValidationError::CheckpointDigest)?;
-        Ok(CheckpointDigestV2::from_canonical_bytes(&bytes))
-    }
-
     pub fn validate(&self) -> Result<(), CheckpointValidationError> {
         if self.schema_version != ENVIRONMENT_CHECKPOINT_SCHEMA
             || self.codec.codec_id.is_empty()
@@ -89,15 +53,14 @@ impl EnvironmentCheckpointV2 {
         }
         validate_engine_state(&self.state)
             .map_err(|_| CheckpointValidationError::StateInvariant)?;
-        let digest = self
+        let state_digest = self
             .state
             .digest()
             .map_err(|_| CheckpointValidationError::StateDigest)?;
-        if digest != self.state_digest {
+        if state_digest != self.state_digest {
             return Err(CheckpointValidationError::StateDigest);
         }
-        let checkpoint_digest = Self::calculate_digest(
-            &self.schema_version,
+        let checkpoint_digest = calculate_checkpoint_digest(
             &self.state_digest,
             &self.status,
             &self.limit_counters,
@@ -112,13 +75,28 @@ impl EnvironmentCheckpointV2 {
         if self.limit_counters.accepted_transitions > self.limit_counters.decisions_submitted {
             return Err(CheckpointValidationError::LimitCounters);
         }
-        if !matches!(&self.status, EpisodeStatus::Running)
+        if !matches!(self.status, EpisodeStatus::Running)
             && self.state.execution.pending_decision.is_some()
         {
             return Err(CheckpointValidationError::CompletedWithDecision);
         }
         Ok(())
     }
+}
+
+fn calculate_checkpoint_digest(
+    state_digest: &FullStateDigestV3,
+    status: &EpisodeStatus,
+    counters: &EnvironmentLimitCounters,
+    codec: &CheckpointCodecIdentity,
+) -> Result<CheckpointDigestV3, CheckpointValidationError> {
+    mtgml_persistence::checkpoint_digest::calculate_checkpoint_digest_v3(
+        &state_digest.as_digest_reference(),
+        status,
+        counters,
+        codec,
+    )
+    .map_err(|_| CheckpointValidationError::CheckpointDigest)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]

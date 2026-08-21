@@ -23,6 +23,11 @@ WIRE_MAPPING = {
     "authoritative-replay.v1": "authoritative-replay.v1.schema.json",
     "replay-manifest.v2": "replay-manifest.v2.schema.json",
     "authoritative-replay.v2": "authoritative-replay.v2.schema.json",
+    "information-state-envelope.v2": "information-state-envelope.v2.schema.json",
+    "observed-event-envelope.v2": "observed-event-envelope.v2.schema.json",
+    "player-step.v2": "player-step.v2.schema.json",
+    "replay-manifest.v3": "replay-manifest.v3.schema.json",
+    "authoritative-replay.v3": "authoritative-replay.v3.schema.json",
 }
 ARTIFACT_CASES = [
     ("capability-registry.v1.schema.json", "cards/capabilities/registry.json"),

@@ -157,6 +157,7 @@ dependencies = [
  "mtgml-decision",
  "mtgml-model",
  "mtgml-observation",
+ "mtgml-persistence",
  "mtgml-random",
  "mtgml-replay",
  "mtgml-rules",
@@ -218,6 +219,7 @@ version = "0.2.2"
 dependencies = [
  "mtgml-decision",
  "mtgml-model",
+ "mtgml-persistence",
  "mtgml-random",
  "serde",
  "thiserror",

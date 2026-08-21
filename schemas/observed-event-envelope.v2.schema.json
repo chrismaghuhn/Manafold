@@ -1,0 +1,24 @@
+{
+  "$id": "observed-event-envelope.v2.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "$defs": {
+    "uint": {"pattern": "^(0|[1-9][0-9]*)$", "type": "string"},
+    "zone": {"enum": ["library", "hand", "battlefield", "graveyard", "exile", "stack", "command", "ante", "outside"]},
+    "event": {
+      "oneOf": [
+        {"additionalProperties": false, "properties": {"from": {"$ref": "#/$defs/zone"}, "kind": {"const": "object_moved"}, "new_object": {"$ref": "#/$defs/uint"}, "old_object": {"$ref": "#/$defs/uint"}, "to": {"$ref": "#/$defs/zone"}}, "required": ["kind", "from", "to"], "type": "object"},
+        {"additionalProperties": false, "properties": {"kind": {"const": "object_ceased_to_exist"}, "object": {"$ref": "#/$defs/uint"}}, "required": ["kind", "object"], "type": "object"},
+        {"additionalProperties": false, "properties": {"from": {"maximum": 9223372036854775807, "minimum": -9223372036854775808, "type": "integer"}, "kind": {"const": "life_changed"}, "player": {"$ref": "#/$defs/uint"}, "to": {"maximum": 9223372036854775807, "minimum": -9223372036854775808, "type": "integer"}}, "required": ["kind", "player", "from", "to"], "type": "object"},
+        {"additionalProperties": false, "properties": {"kind": {"const": "object_tapped"}, "object": {"$ref": "#/$defs/uint"}, "tapped": {"type": "boolean"}}, "required": ["kind", "object", "tapped"], "type": "object"},
+        {"additionalProperties": false, "properties": {"actor": {"$ref": "#/$defs/uint"}, "kind": {"const": "decision_available"}}, "required": ["kind", "actor"], "type": "object"},
+        {"additionalProperties": false, "properties": {"exclusive_upper_bound": {"maximum": 18446744073709551615, "minimum": 1, "type": "integer"}, "kind": {"const": "random_outcome_visible"}, "label": {"minLength": 1, "type": "string"}, "value": {"maximum": 18446744073709551615, "minimum": 0, "type": "integer"}}, "required": ["kind", "label", "exclusive_upper_bound", "value"], "type": "object"},
+        {"additionalProperties": false, "properties": {"code": {"minLength": 1, "type": "string"}, "kind": {"const": "public_outcome"}}, "required": ["kind", "code"], "type": "object"}
+      ]
+    }
+  },
+  "properties": {"event": {"$ref": "#/$defs/event"}, "schema_version": {"const": "observed-event-envelope.v2"}, "sequence": {"$ref": "#/$defs/uint"}, "state_revision": {"$ref": "#/$defs/uint"}},
+  "required": ["schema_version", "sequence", "state_revision", "event"],
+  "title": "ObservedEventEnvelope V2",
+  "type": "object"
+}

@@ -1,0 +1,29 @@
+{
+  "$id": "replay-manifest.v3.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "$defs": {
+    "uint": {"pattern": "^(0|[1-9][0-9]*)$", "type": "string"},
+    "digest": {"pattern": "^[0-9a-f]{64}$", "type": "string"},
+    "counters": {"additionalProperties": false, "properties": {"accepted_transitions": {"maximum": 18446744073709551615, "minimum": 0, "type": "integer"}, "decisions_submitted": {"maximum": 18446744073709551615, "minimum": 0, "type": "integer"}, "resource_units_consumed": {"maximum": 18446744073709551615, "minimum": 0, "type": "integer"}, "rule_events_emitted": {"maximum": 18446744073709551615, "minimum": 0, "type": "integer"}, "wall_clock_elapsed_millis": {"maximum": 18446744073709551615, "minimum": 0, "type": "integer"}}, "required": ["decisions_submitted", "accepted_transitions", "rule_events_emitted", "resource_units_consumed", "wall_clock_elapsed_millis"], "type": "object"},
+    "status": {"oneOf": [{"additionalProperties": false, "properties": {"kind": {"const": "running"}}, "required": ["kind"], "type": "object"}, {"additionalProperties": false, "properties": {"kind": {"enum": ["terminal", "truncated"]}, "players": {"type": "array"}, "reason": {"type": "string"}}, "required": ["kind", "reason", "players"], "type": "object"}]},
+    "identity": {"additionalProperties": false, "properties": {"checkpoint_codec_identity": {"additionalProperties": false, "properties": {"codec_id": {"minLength": 1, "type": "string"}, "semantic_version": {"minLength": 1, "type": "string"}}, "required": ["codec_id", "semantic_version"], "type": "object"}, "checkpoint_digest": {"$ref": "#/$defs/digest"}, "environment_limit_counters": {"$ref": "#/$defs/counters"}, "episode_status": {"$ref": "#/$defs/status"}, "full_state_digest": {"$ref": "#/$defs/digest"}, "state_revision": {"$ref": "#/$defs/uint"}}, "required": ["state_revision", "full_state_digest", "episode_status", "environment_limit_counters", "checkpoint_codec_identity", "checkpoint_digest"], "type": "object"},
+    "schemas": {"additionalProperties": false, "properties": {"observation": {"minLength": 1, "type": "string"}, "information_state": {"const": "information-state-envelope.v2"}, "decision": {"const": "player-decision-request.v2"}, "decision_response": {"const": "decision-response.v2"}, "observed_event": {"const": "observed-event-envelope.v2"}, "player_step": {"const": "player-step.v2"}, "replay_step": {"const": "replay-step.v3"}}, "required": ["observation", "information_state", "decision", "decision_response", "observed_event", "player_step", "replay_step"], "type": "object"}
+  },
+  "properties": {
+    "card_bundle": {"minLength": 1, "type": "string"},
+    "decks": {"items": {"additionalProperties": false, "properties": {"deck_id": {"minLength": 1, "type": "string"}, "digest": {"$ref": "#/$defs/digest"}, "player": {"$ref": "#/$defs/uint"}}, "required": ["player", "deck_id", "digest"], "type": "object"}, "minItems": 1, "type": "array"},
+    "engine_build": {"minLength": 1, "type": "string"},
+    "format_policy_snapshot": {"minLength": 1, "type": "string"},
+    "initial_identity": {"$ref": "#/$defs/identity"},
+    "kernel": {"additionalProperties": false, "properties": {"build_profile": {"minLength": 1, "type": "string"}, "implementation_id": {"minLength": 1, "type": "string"}, "semantic_version": {"minLength": 1, "type": "string"}}, "required": ["implementation_id", "semantic_version", "build_profile"], "type": "object"},
+    "oracle_snapshot": {"minLength": 1, "type": "string"},
+    "randomness": {"additionalProperties": false, "properties": {"contract_id": {"const": "mtgml.rng.v1"}, "root_seed_hex": {"$ref": "#/$defs/digest"}}, "required": ["contract_id", "root_seed_hex"], "type": "object"},
+    "rules_snapshot": {"minLength": 1, "type": "string"},
+    "schema_version": {"const": "replay-manifest.v3"},
+    "schemas": {"$ref": "#/$defs/schemas"}
+  },
+  "required": ["schema_version", "engine_build", "kernel", "rules_snapshot", "format_policy_snapshot", "oracle_snapshot", "card_bundle", "schemas", "randomness", "decks", "initial_identity"],
+  "title": "ReplayManifest V3",
+  "type": "object"
+}

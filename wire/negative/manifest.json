@@ -137,6 +137,12 @@
       "expected_error_code": "semantic.replay",
       "expected_reject_layer": "rust-python-semantic-or-decode",
       "path": "replay-v2-revision-discontinuity.json"
+    },
+    {
+      "contract": "authoritative-replay.v3",
+      "expected_error_code": "semantic.replay",
+      "expected_reject_layer": "rust-python-semantic-or-decode",
+      "path": "replay-v3-checkpoint-digest-mismatch.json"
     }
   ]
 }

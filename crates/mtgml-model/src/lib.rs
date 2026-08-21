@@ -223,9 +223,14 @@ domain_digest!(CheckpointDigest, "mtgml.checkpoint-digest.v1");
 // === V2 digest domains ===
 domain_digest!(FullStateDigestV2, "mtgml.full-state-digest.v2");
 domain_digest!(CheckpointDigestV2, "mtgml.checkpoint-digest.v2");
-domain_digest!(InformationStateDigestV2, "mtgml.information-state-digest.v2");
+domain_digest!(
+    InformationStateDigestV2,
+    "mtgml.information-state-digest.v2"
+);
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default, Serialize, Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default, Serialize, Deserialize,
+)]
 pub struct CandidateIdV1(pub u32);
 
 impl fmt::Display for CandidateIdV1 {
@@ -320,6 +325,19 @@ macro_rules! raw_digest {
 
 raw_digest!(FullStateDigestV3, "mtgml.full-state-digest.v3");
 raw_digest!(CheckpointDigestV3, "mtgml.checkpoint-digest.v3");
+
+impl FullStateDigestV3 {
+    pub fn as_digest_reference(&self) -> DigestReferenceV1 {
+        DigestReferenceV1 {
+            envelope_version: "mtgml.digest-envelope.v1".to_owned(),
+            algorithm_id: "sha-256".to_owned(),
+            semantic_domain: Self::DOMAIN.to_owned(),
+            payload_codec_id: "mtgml.canonical-cbor.v1".to_owned(),
+            input_schema_id: "full-state-digest-input.v3".to_owned(),
+            digest_bytes: self.raw_bytes(),
+        }
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(deny_unknown_fields)]
@@ -498,7 +516,10 @@ mod tests {
     fn m2_b_candidate_id_is_u32_and_v3_digest_is_raw() {
         assert_eq!(std::mem::size_of::<CandidateIdV1>(), 4);
         assert_eq!(serde_json::to_string(&CandidateIdV1(7)).unwrap(), "7");
-        assert_eq!(serde_json::to_string(&PlayerDecisionIdV1(7)).unwrap(), "\"7\"");
+        assert_eq!(
+            serde_json::to_string(&PlayerDecisionIdV1(7)).unwrap(),
+            "\"7\""
+        );
         assert_eq!(serde_json::to_string(&VisibleSequence(7)).unwrap(), "\"7\"");
         assert_eq!(
             FullStateDigestV3::from_digest_bytes([0xabu8; 32]).raw_bytes(),

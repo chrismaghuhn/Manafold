@@ -9,13 +9,12 @@ base64.workspace = true
 mtgml-decision = { path = "../mtgml-decision" }
 mtgml-model = { path = "../mtgml-model" }
 mtgml-observation = { path = "../mtgml-observation" }
+mtgml-persistence = { path = "../mtgml-persistence" }
 mtgml-random = { path = "../mtgml-random" }
 mtgml-rules = { path = "../mtgml-rules" }
 mtgml-replay = { path = "../mtgml-replay" }
 mtgml-state = { path = "../mtgml-state" }
+mtgml-wire = { path = "../mtgml-wire" }
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
-
-[dev-dependencies]
-mtgml-wire = { path = "../mtgml-wire" }

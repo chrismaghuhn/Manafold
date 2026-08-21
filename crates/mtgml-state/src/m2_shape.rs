@@ -82,6 +82,8 @@ pub struct KnowledgeRecordV2 {
     pub known_location: Option<ZoneLocation>,
     pub learned_at: crate::knowledge::KnowledgePoint,
     pub learned_via: KnowledgeAcquisitionReason,
+    #[serde(default)]
+    pub historical_locations: Vec<KnowledgeHistoryRecordV2>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -96,6 +98,16 @@ pub struct KnowledgeHistoryRecordV2 {
 #[serde(deny_unknown_fields)]
 pub struct RetiredKnowledgeRecordV2 {
     pub opaque_object: OpaqueObjectId,
+    #[serde(default)]
+    pub physical_card: Option<PhysicalCardId>,
+    #[serde(default)]
+    pub card_definition: Option<CardDefinitionId>,
+    #[serde(default)]
+    pub last_known_location: Option<KnowledgeHistoryRecordV2>,
+    #[serde(default)]
+    pub historical_locations: Vec<KnowledgeHistoryRecordV2>,
+    pub learned_at: crate::knowledge::KnowledgePoint,
+    pub learned_via: KnowledgeAcquisitionReason,
     pub invalidated_at: crate::knowledge::KnowledgePoint,
     pub reason: KnowledgeInvalidationReason,
 }

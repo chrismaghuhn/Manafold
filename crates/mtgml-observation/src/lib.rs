@@ -1,10 +1,10 @@
 //! Perspective-safe observations, information states, and observed events.
 
 use base64::{engine::general_purpose::STANDARD, Engine as _};
-use mtgml_decision::PlayerDecisionRequest;
+use mtgml_decision::{PlayerDecisionRequest, PlayerDecisionRequestV2};
 use mtgml_model::{
-    EpisodeStatus, EventSequence, InformationStateDigest, ObservationDigest, OpaqueObjectId,
-    PlayerId, StateRevision, ZoneKind,
+    EpisodeStatus, EventSequence, InformationStateDigest, InformationStateDigestV2,
+    ObservationDigest, OpaqueObjectId, PlayerId, StateRevision, VisibleSequence, ZoneKind,
 };
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -13,6 +13,9 @@ pub const OBSERVATION_SCHEMA: &str = "observation-envelope.v1";
 pub const INFORMATION_STATE_SCHEMA: &str = "information-state-envelope.v1";
 pub const OBSERVED_EVENT_SCHEMA: &str = "observed-event-envelope.v1";
 pub const PLAYER_STEP_SCHEMA: &str = "player-step.v1";
+pub const INFORMATION_STATE_SCHEMA_V2: &str = "information-state-envelope.v2";
+pub const OBSERVED_EVENT_SCHEMA_V2: &str = "observed-event-envelope.v2";
+pub const PLAYER_STEP_SCHEMA_V2: &str = "player-step.v2";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -204,6 +207,294 @@ pub enum ObservationValidationError {
     Decision,
     #[error("episode status is invalid")]
     EpisodeStatus,
+    #[error("information-state retained knowledge is not canonical")]
+    RetainedKnowledge,
+    #[error("information-state visible sequence is not monotonic")]
+    VisibleSequence,
+    #[error("information-state perspective or revision is inconsistent")]
+    PerspectiveRevision,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PlayerKnownLocationV1 {
+    pub zone: ZoneKind,
+    pub player: Option<PlayerId>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+pub enum PlayerKnowledgeProvenanceV1 {
+    InitialConfiguration,
+    Observed {
+        channel: PlayerKnowledgeChannelV1,
+        sequence: VisibleSequence,
+        cause: PlayerKnowledgeCauseV1,
+    },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PlayerKnowledgeChannelV1 {
+    Public,
+    Private,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PlayerKnowledgeCauseV1 {
+    PublicEvent,
+    PrivateLook,
+    ExplicitReveal,
+    OwnPrivateIdentity,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PlayerKnownLocationFactV1 {
+    pub location: PlayerKnownLocationV1,
+    pub provenance: PlayerKnowledgeProvenanceV1,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PlayerKnowledgeInvalidationV1 {
+    pub provenance: PlayerKnowledgeProvenanceV1,
+    pub reason: PlayerKnowledgeInvalidationReasonV1,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PlayerKnowledgeInvalidationReasonV1 {
+    HiddenTransition,
+    Randomization,
+    Shuffle,
+    ExplicitForget,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+pub enum PlayerKnownObjectV1 {
+    Active {
+        opaque_object_id: OpaqueObjectId,
+        known_definition: Option<mtgml_model::CardDefinitionId>,
+        current_known_location_fact: Option<PlayerKnownLocationFactV1>,
+        historical_locations: Vec<PlayerKnownLocationFactV1>,
+        acquisition: PlayerKnowledgeProvenanceV1,
+    },
+    Retired {
+        opaque_object_id: OpaqueObjectId,
+        known_definition: Option<mtgml_model::CardDefinitionId>,
+        last_known_location_fact: Option<PlayerKnownLocationFactV1>,
+        historical_locations: Vec<PlayerKnownLocationFactV1>,
+        acquisition: PlayerKnowledgeProvenanceV1,
+        invalidation: PlayerKnowledgeInvalidationV1,
+    },
+}
+
+impl PlayerKnownObjectV1 {
+    fn opaque_object_id(&self) -> OpaqueObjectId {
+        match self {
+            Self::Active {
+                opaque_object_id, ..
+            }
+            | Self::Retired {
+                opaque_object_id, ..
+            } => *opaque_object_id,
+        }
+    }
+
+    fn historical_locations(&self) -> &[PlayerKnownLocationFactV1] {
+        match self {
+            Self::Active {
+                historical_locations,
+                ..
+            }
+            | Self::Retired {
+                historical_locations,
+                ..
+            } => historical_locations,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct InformationStateDigestInputV2 {
+    pub schema_version: String,
+    pub perspective: PlayerId,
+    pub state_revision: StateRevision,
+    pub current_observation: ObservationEnvelope,
+    pub next_visible_sequence: VisibleSequence,
+    pub retained_knowledge: Vec<PlayerKnownObjectV1>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PlayerInformationStateV2 {
+    pub schema_version: String,
+    pub perspective: PlayerId,
+    pub state_revision: StateRevision,
+    pub current_observation: ObservationEnvelope,
+    pub next_visible_sequence: VisibleSequence,
+    pub retained_knowledge: Vec<PlayerKnownObjectV1>,
+    pub digest: InformationStateDigestV2,
+}
+
+impl PlayerInformationStateV2 {
+    pub fn digest_input(&self) -> InformationStateDigestInputV2 {
+        InformationStateDigestInputV2 {
+            schema_version: "information-state-digest-input.v2".into(),
+            perspective: self.perspective,
+            state_revision: self.state_revision,
+            current_observation: self.current_observation.clone(),
+            next_visible_sequence: self.next_visible_sequence,
+            retained_knowledge: self.retained_knowledge.clone(),
+        }
+    }
+
+    pub fn validate(&self) -> Result<(), ObservationValidationError> {
+        if self.schema_version != INFORMATION_STATE_SCHEMA_V2 {
+            return Err(ObservationValidationError::SchemaOrCodec);
+        }
+        self.current_observation.validate()?;
+        if self.current_observation.perspective != self.perspective
+            || self.current_observation.state_revision != self.state_revision
+        {
+            return Err(ObservationValidationError::PerspectiveRevision);
+        }
+        let mut previous = None;
+        for record in &self.retained_knowledge {
+            let current = record.opaque_object_id();
+            if current.0 == 0 || previous.is_some_and(|previous| previous >= current) {
+                return Err(ObservationValidationError::RetainedKnowledge);
+            }
+            previous = Some(current);
+            if record.historical_locations().windows(2).any(|window| {
+                provenance_sequence(&window[0].provenance)
+                    >= provenance_sequence(&window[1].provenance)
+            }) {
+                return Err(ObservationValidationError::VisibleSequence);
+            }
+        }
+        Ok(())
+    }
+}
+
+fn provenance_sequence(value: &PlayerKnowledgeProvenanceV1) -> VisibleSequence {
+    match value {
+        PlayerKnowledgeProvenanceV1::InitialConfiguration => VisibleSequence(0),
+        PlayerKnowledgeProvenanceV1::Observed { sequence, .. } => *sequence,
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+pub enum ObservedEventKindV2 {
+    ObjectMoved {
+        old_object: Option<OpaqueObjectId>,
+        new_object: Option<OpaqueObjectId>,
+        from: ZoneKind,
+        to: ZoneKind,
+    },
+    ObjectCeasedToExist {
+        object: OpaqueObjectId,
+    },
+    LifeChanged {
+        player: PlayerId,
+        from: i64,
+        to: i64,
+    },
+    ObjectTapped {
+        object: OpaqueObjectId,
+        tapped: bool,
+    },
+    DecisionAvailable {
+        actor: PlayerId,
+    },
+    RandomOutcomeVisible {
+        label: String,
+        exclusive_upper_bound: u64,
+        value: u64,
+    },
+    PublicOutcome {
+        code: String,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ObservedEventEnvelopeV2 {
+    pub schema_version: String,
+    pub sequence: VisibleSequence,
+    pub state_revision: StateRevision,
+    pub event: ObservedEventKindV2,
+}
+
+impl ObservedEventEnvelopeV2 {
+    pub fn validate(&self) -> Result<(), ObservationValidationError> {
+        if self.schema_version != OBSERVED_EVENT_SCHEMA_V2 {
+            return Err(ObservationValidationError::SchemaOrCodec);
+        }
+        match &self.event {
+            ObservedEventKindV2::RandomOutcomeVisible {
+                label,
+                exclusive_upper_bound,
+                value,
+            } if label.is_empty()
+                || *exclusive_upper_bound == 0
+                || *value >= *exclusive_upper_bound =>
+            {
+                Err(ObservationValidationError::RandomOutcome)
+            }
+            ObservedEventKindV2::PublicOutcome { code } if code.is_empty() => {
+                Err(ObservationValidationError::EmptyEventText)
+            }
+            _ => Ok(()),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PlayerStepV2 {
+    pub schema_version: String,
+    pub information_state: PlayerInformationStateV2,
+    pub observed_events: Vec<ObservedEventEnvelopeV2>,
+    pub next_decision: Option<PlayerDecisionRequestV2>,
+    pub status: EpisodeStatus,
+}
+
+impl PlayerStepV2 {
+    pub fn validate(&self) -> Result<(), ObservationValidationError> {
+        if self.schema_version != PLAYER_STEP_SCHEMA_V2 {
+            return Err(ObservationValidationError::SchemaOrCodec);
+        }
+        self.information_state.validate()?;
+        self.status
+            .validate()
+            .map_err(|_| ObservationValidationError::EpisodeStatus)?;
+        for event in &self.observed_events {
+            event.validate()?;
+            if event.state_revision > self.information_state.state_revision {
+                return Err(ObservationValidationError::FutureEvent);
+            }
+        }
+        if let Some(decision) = &self.next_decision {
+            decision
+                .validate()
+                .map_err(|_| ObservationValidationError::Decision)?;
+            if decision.actor != self.information_state.perspective
+                || decision.state_revision != self.information_state.state_revision
+            {
+                return Err(ObservationValidationError::Decision);
+            }
+        }
+        if !matches!(self.status, EpisodeStatus::Running) && self.next_decision.is_some() {
+            return Err(ObservationValidationError::Decision);
+        }
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -260,5 +551,42 @@ mod tests {
             empty_code.validate(),
             Err(ObservationValidationError::EmptyEventText)
         );
+    }
+
+    #[test]
+    fn information_state_input_excludes_trusted_fields() {
+        let observation = ObservationEnvelope {
+            schema_version: OBSERVATION_SCHEMA.into(),
+            perspective: PlayerId(1),
+            state_revision: StateRevision(0),
+            payload_codec: "synthetic-m2-observation.v1".into(),
+            payload_base64: "e30=".into(),
+            digest: ObservationDigest::from_canonical_bytes(b"{}"),
+        };
+        let input = InformationStateDigestInputV2 {
+            schema_version: "information-state-digest-input.v2".into(),
+            perspective: PlayerId(1),
+            state_revision: StateRevision(0),
+            current_observation: observation,
+            next_visible_sequence: VisibleSequence(0),
+            retained_knowledge: vec![],
+        };
+        let json = serde_json::to_string(&input).unwrap();
+        for forbidden in [
+            "EpisodeStatus",
+            "environment_limit_counters",
+            "checkpoint_digest",
+            "root_seed",
+            "GameObjectId",
+            "physical_card",
+        ] {
+            assert!(
+                !json.contains(forbidden),
+                "unexpected trusted field {forbidden}"
+            );
+        }
+        let object = serde_json::to_value(&input).unwrap();
+        assert!(object.get("digest").is_none());
+        assert_eq!(input.schema_version, "information-state-digest-input.v2");
     }
 }

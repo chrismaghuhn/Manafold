@@ -1,6 +1,6 @@
 use mtgml_decision::{
-    validate_candidate_binding, CandidateIntent, DecisionKind, DecisionResponse,
-    EngineCandidateBinding, PerspectiveIdentityResolver,
+    validate_candidate_binding, ActionCandidate, CandidateIntent, DecisionAnswerV2,
+    DecisionDomainV2, DecisionResponseV2, EngineCandidateBinding, PerspectiveIdentityResolver,
 };
 use mtgml_model::{EpisodeStatus, GameObjectId, PlayerId, RuleEventId, StateRevision};
 use mtgml_random::{RandomStreamKeyV1, RandomStreamKindV1};
@@ -19,7 +19,7 @@ impl RulesKernel for SyntheticM1RulesKernel {
         &mut self,
         state: &EngineState,
         trusted_actor: PlayerId,
-        response: &DecisionResponse,
+        response: &DecisionResponseV2,
     ) -> Result<TransitionResult, KernelExecutionError> {
         validate_engine_state(state).map_err(KernelExecutionError::BeforeState)?;
 
@@ -28,35 +28,29 @@ impl RulesKernel for SyntheticM1RulesKernel {
         };
         let request = &pending.request;
         let actor = request.actor;
+        let Ok(player_request) = request.project_player_request() else {
+            return rejected(state);
+        };
         if trusted_actor != request.actor
-            || response.validate().is_err()
-            || response.decision_id != request.decision_id
+            || response.validate_for(&player_request).is_err()
             || response.state_revision != state.revision
-            || !matches!(request.decision, DecisionKind::ChooseOne)
-            || pending.continuation.is_some()
+            || !matches!(request.decision, DecisionDomainV2::ChooseOne)
+            || request.continuation_id.is_some()
             || request.candidates.len() != 1
-            || response.assignments.len() != 1
         {
             return rejected(state);
         }
 
-        let assignment = &response.assignments[0];
-        if assignment.ordinal.is_some() {
-            return rejected(state);
-        }
-        let Some(candidate) = request
-            .candidates
-            .iter()
-            .find(|candidate| candidate.candidate_id == assignment.candidate_id)
-        else {
+        let DecisionAnswerV2::SelectOne { candidate_id } = &response.answer else {
             return rejected(state);
         };
-        if assignment.candidate_id != "select_public_object" {
+        if candidate_id.0 != 0 {
             return rejected(state);
         }
+        let candidate = &request.candidates[0];
         let CandidateIntent::SelectObject {
             object: opaque_object,
-        } = &candidate.intent
+        } = &candidate.visible_intent
         else {
             return rejected(state);
         };
@@ -67,12 +61,7 @@ impl RulesKernel for SyntheticM1RulesKernel {
         {
             return rejected(state);
         }
-        let binding = pending
-            .candidate_bindings
-            .get(&assignment.candidate_id)
-            .ok_or(KernelExecutionError::BeforeState(
-                EngineStateViolation::PendingDecisionMismatch,
-            ))?;
+        let binding = &candidate.trusted_binding;
         if binding
             != &(EngineCandidateBinding::SelectObject {
                 object: GameObjectId(1),
@@ -80,8 +69,13 @@ impl RulesKernel for SyntheticM1RulesKernel {
         {
             return rejected(state);
         }
+        let visible = ActionCandidate {
+            candidate_id: candidate.candidate_id.to_string(),
+            semantic_key: "candidate.0".into(),
+            intent: candidate.visible_intent.clone(),
+        };
         if validate_candidate_binding(
-            candidate,
+            &visible,
             binding,
             trusted_actor,
             &state.perspective_identities,

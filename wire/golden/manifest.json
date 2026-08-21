@@ -29,6 +29,18 @@
       "path": "decision-response.v2-select-one.json"
     },
     {
+      "contract": "information-state-envelope.v2",
+      "path": "information-state-envelope.v2.json"
+    },
+    {
+      "contract": "observed-event-envelope.v2",
+      "path": "observed-event-envelope.v2.json"
+    },
+    {
+      "contract": "player-step.v2",
+      "path": "player-step.v2.json"
+    },
+    {
       "contract": "observation-envelope.v1",
       "path": "observation-envelope.v1.json"
     },
@@ -55,6 +67,14 @@
     {
       "contract": "authoritative-replay.v2",
       "path": "authoritative-replay-empty.v2.json"
+    },
+    {
+      "contract": "replay-manifest.v3",
+      "path": "replay-manifest.v3.json"
+    },
+    {
+      "contract": "authoritative-replay.v3",
+      "path": "authoritative-replay-empty.v3.json"
     },
     {
       "contract": "authoritative-replay.v2",

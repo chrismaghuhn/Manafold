@@ -18,20 +18,35 @@ from .episode import (
     TruncationReason,
 )
 from .events import ObservedEvent, ObservedEventEnvelope
-from .observation import InformationStateEnvelope, ObservationEnvelope, PlayerStep
+from .observation import (
+    InformationStateDigestInputV2,
+    InformationStateEnvelope,
+    ObservationEnvelope,
+    ObservedEventEnvelopeV2,
+    PlayerInformationStateV2,
+    PlayerStep,
+    PlayerStepV2,
+)
 from .player_client import PlayerClient
 from .replay import (
     AuthoritativeReplayV1,
     AuthoritativeReplayV2,
+    AuthoritativeReplayV3,
+    CheckpointCodecIdentityV3,
+    EnvironmentLimitCountersV3,
+    InitialEnvironmentIdentityV3,
     ReplayManifestV1,
     ReplayManifestV2,
+    ReplayManifestV3,
+    ReplayStepV3,
 )
-from .wire import decode_canonical, encode_canonical
+from .wire import compute_information_state_digest_v2, decode_canonical, encode_canonical
 
 __all__ = [
     "ActionCandidate",
     "AuthoritativeReplayV1",
     "AuthoritativeReplayV2",
+    "AuthoritativeReplayV3",
     "CandidateAssignment",
     "CandidateIntent",
     "DecisionAnswerV2",
@@ -39,21 +54,31 @@ __all__ = [
     "DecisionResponseV2",
     "DecisionSpec",
     "EpisodeStatus",
+    "EnvironmentLimitCountersV3",
+    "CheckpointCodecIdentityV3",
+    "InformationStateDigestInputV2",
     "InformationStateEnvelope",
     "ObservationEnvelope",
     "ObservedEvent",
     "ObservedEventEnvelope",
+    "ObservedEventEnvelopeV2",
     "PlayerClient",
     "PlayerDecisionRequest",
     "PlayerDecisionRequestV2",
     "PlayerOutcome",
     "PlayerResult",
     "PlayerStep",
+    "PlayerStepV2",
+    "PlayerInformationStateV2",
+    "InitialEnvironmentIdentityV3",
     "ReplayManifestV1",
     "ReplayManifestV2",
+    "ReplayManifestV3",
+    "ReplayStepV3",
     "TerminalReason",
     "TruncationReason",
     "VisibleCandidateV2",
     "decode_canonical",
     "encode_canonical",
+    "compute_information_state_digest_v2",
 ]
