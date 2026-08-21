@@ -152,7 +152,7 @@ InformationStateDigestV2
 - `python/tests/test_wire_contracts.py`, `test_player_api.py`, `test_schema_parity.py`, `test_documentation_contracts.py` — public V2/V3 parity and boundary tests.
 - `contracts/catalog/contract-vocabulary.v1.json`, `scripts/generate_contracts.py`, generated outputs under `crates/mtgml-model/src/generated_contract_vocab.rs`, `python/src/mtgml/_generated_contract_vocab.py`, `schemas/`, and `docs/generated/` — update only mechanically shared vocabulary from the catalog.
 - `schemas/README.json`, `wire/golden/manifest.json`, `wire/negative/manifest.json`, `wire/README.md` — register public versions and preserve every historical fixture.
-- `.github/workflows/pr-fast.yml` — invoke the executable M2.B slice runner after the pinned Rust toolchain is installed; preserve the existing `pull_request` trigger.
+- `.github/workflows/pr-fast.yml` — check out `${{ github.event.pull_request.head.sha }}` with `fetch-depth: 0`, assert the exact PR head, and invoke the executable M2.B slice runner after the pinned Rust toolchain is installed; preserve the existing `pull_request` trigger.
 - `docs/ARCHITECTURE.md`, `docs/PROJECT_STRUCTURE.md`, `crates/README.md`, `docs/DECISION_PROTOCOL.md`, `docs/INFORMATION_MODEL.md`, `docs/STATE_HASHING.md`, `docs/REPLAY_AND_DETERMINISM.md`, `docs/contracts/WIRE_CONTRACT.md`, `docs/ERROR_MODEL.md` — record implemented ownership/version boundaries without claiming M2 gates `PASS`.
 
 ## Task 1: Freeze test-first fixtures and source inventory
@@ -335,6 +335,7 @@ This task adds dormant Decision V2 trusted/player forms, local validators, schem
 - Modify: `crates/mtgml-wire/src/lib.rs`
 - Modify: `schemas/player-decision-request.v2.schema.json`, `schemas/decision-response.v2.schema.json`
 - Modify: `python/src/mtgml/decision.py`, `python/src/mtgml/wire.py`
+- Modify: `python/tests/test_schema_parity.py` for the active Decision V2 contract-to-schema mapping
 - Modify: new public Decision V2 fixtures and manifests
 - Test: `crates/mtgml-decision/src/lib.rs`, `python/tests/test_wire_contracts.py`, `python/tests/test_schema_parity.py`
 
@@ -385,7 +386,7 @@ This task adds dormant Decision V2 trusted/player forms, local validators, schem
 - [ ] **Step 6: Commit Decision V2.**
 
   ```powershell
-  git add crates/mtgml-decision schemas python/src/mtgml/decision.py python/src/mtgml/wire.py wire
+  git add crates/mtgml-decision crates/mtgml-wire schemas python/src/mtgml/decision.py python/src/mtgml/wire.py python/tests/test_schema_parity.py wire
   git commit -m "feat: add Decision V2 and canonical candidate ordering"
   ```
 
@@ -911,7 +912,24 @@ The Rust entries use `cargo test --package <package> --locked --lib -- <exact-te
 
 The authoritative runner's overall gate is `PASS` only when the source tree is clean and every named test/check, source identity check, and toolchain check is `PASS`. A missing tool is `NOT_RUN`; an execution/environment failure such as unavailable WSL/Hyper-V is `BLOCKED`; an executed failing test is `FAIL`. Rust-authoritative semantic negatives from `persistence/rust-negative/` are covered by the named Rust state/checkpoint/replay tests and are not part of Python parity.
 
-Add this step after the existing pinned toolchain-install step in `.github/workflows/pr-fast.yml` (and before the final handoff review):
+Replace the bare checkout in `.github/workflows/pr-fast.yml` with an exact PR-head, full-history checkout before setup/toolchain steps:
+
+```yaml
+- uses: actions/checkout@v7
+  with:
+    ref: ${{ github.event.pull_request.head.sha }}
+    fetch-depth: 0
+```
+
+Immediately after checkout, assert that the workspace is on that same head before running any gate:
+
+```yaml
+- name: Assert exact pull request head
+  shell: bash
+  run: test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha }}"
+```
+
+This makes the runner's recorded source commit equal to the PR `headRefOid` and guarantees that starting SHA `a4e769eb940611d34df05fc79effd9430891d897` is available for the historical-fixture source check. Add the M2.B slice step after the existing pinned toolchain-install step (and before the final handoff review):
 
 ```yaml
 - run: python scripts/run_m2_b_contract_cut.py
