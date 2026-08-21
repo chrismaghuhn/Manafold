@@ -275,7 +275,7 @@
   git commit -m "feat: bind two synthetic player endpoints"
   ```
 
-- [ ] **Step 2: Verify the final commit identity.**
+- [x] **Step 2: Verify the final commit identity.**
 
   ```text
   git rev-parse HEAD
