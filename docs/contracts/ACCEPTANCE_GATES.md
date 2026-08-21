@@ -102,8 +102,9 @@ Requires both architecture and executable structural evidence:
 - accepted M2 decision/information ADRs;
 - exact Decision V2 / information-event-step V2 meanings;
 - exact V3 full-state/checkpoint/replay identity plan;
-- ADR-0038 digest-envelope and `mtgml.canonical-cbor.v1` byte contract;
-- explicit historical V1/V2 support/retirement classifications;
+- complete ADR-0038 digest-envelope and `mtgml.canonical-cbor.v1` byte contract, including every nested leaf layout, decoder resource bounds, closed persistence-decode error taxonomy, canonical re-encoding, and known-answer/negative fixtures;
+- exact `InformationStateDigestV2` domain/input identity;
+- explicit historical V1/V2 writer/reader/verifier/execution/migration classifications;
 - no reinterpretation of old artifacts;
 - Rust/Python/schema/fixture identity coherence where public DTOs exist.
 
@@ -111,9 +112,9 @@ M2.A documentation is only the contract half. The gate cannot become `PASS` unti
 
 ### Decision gates
 
-`CLOSED_DECISION_FAMILY_EXACTNESS` requires exact accepted/rejected evidence for ChooseOne, ChooseMany, ChooseNumber and Order.
+`CLOSED_DECISION_FAMILY_EXACTNESS` requires exact accepted/rejected evidence for ChooseOne, ChooseMany, ChooseNumber and Order. Every accepted decision-family mutation must also prove exact `StateDelta` full reapplication, exact after-state/full-state digest, and sequential authoritative-event cursor parity.
 
-`SERIALIZED_CONTINUATION_LIFECYCLE` requires creation, stage advancement, fresh stage request identities, rejection atomicity, completion/removal, checkpoint/fork/replay parity.
+`SERIALIZED_CONTINUATION_LIFECYCLE` requires creation, stage advancement, fresh stage request identities, rejection atomicity, completion/removal, checkpoint/fork/replay parity, and exact delta/event/after-state parity for every accepted continuation mutation.
 
 `VISIBLE_DECISION_CANONICAL_ORDER_AND_IDENTITY` requires public-only ordering, dense request-local candidate IDs, perspective-local player-decision IDs, and insertion/global-allocation-history independence.
 
@@ -131,17 +132,19 @@ Wrong actor/private request and binding/internal mismatch must not become inform
 
 ### Information gates
 
-`KNOWLEDGE_RETENTION_INVALIDATION_AND_HISTORY` covers public/own-private/private-look/reveal/tracked-hidden/history/forget/randomization lifecycle.
+`KNOWLEDGE_RETENTION_INVALIDATION_AND_HISTORY` covers public/own-private/private-look/reveal/tracked-hidden/history/forget/randomization lifecycle. Each accepted knowledge mutation must prove exact delta reapplication, sequential authoritative-event parity, and after-state digest parity.
 
-`OPAQUE_ID_DISTINGUISHABILITY_LIFECYCLE` proves identity persistence while distinguishable, retirement after indistinguishability/randomization, deterministic new identity, no reuse, and read-only projection.
+`OPAQUE_ID_DISTINGUISHABILITY_LIFECYCLE` proves identity persistence while distinguishable, retirement after indistinguishability/randomization, deterministic new identity, no reuse, read-only projection, sole live-mapping authority in `PerspectiveIdentityState`, and exact delta/event/after-state parity for accepted identity mutations.
 
-`OBSERVED_EVENT_REDACTION_AND_SEQUENCE` proves public/private/mixed/hidden audience behavior, contiguous perspective-local visible sequence, and absence of authoritative IDs/RNG provenance.
+`OBSERVED_EVENT_REDACTION_AND_SEQUENCE` proves public/private/mixed/hidden audience behavior, contiguous perspective-local visible sequence, absence of authoritative IDs/RNG provenance, and equality between the final per-perspective visible-sequence cursor and after-state together with the transition's authoritative event/delta product.
 
 ### Legal-space gates
 
-`SYNTHETIC_LEGAL_CHOICE_SOUNDNESS`: every emitted/reachable protocol choice is legal under the independent bounded synthetic reference model.
+`SYNTHETIC_LEGAL_CHOICE_SOUNDNESS`:
+every emitted/reachable protocol choice is legal under the independent bounded synthetic reference model.
 
-`SYNTHETIC_LEGAL_CHOICE_COMPLETENESS`: every reference-legal synthetic complete choice has exactly one canonical reachable protocol path.
+`SYNTHETIC_LEGAL_CHOICE_COMPLETENESS`:
+every reference-legal synthetic complete choice has exactly one canonical reachable protocol path.
 
 The conformance oracle is test-only and cannot be imported by production rules/environment code.
 

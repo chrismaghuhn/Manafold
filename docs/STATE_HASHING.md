@@ -14,7 +14,8 @@ Current/historical families include:
 | `FullStateDigest` | historical V1 full state under placeholder RNG semantics |
 | `FullStateDigestV2` | M1 full state under typed `mtgml.rng.v1` semantics |
 | `FullStateDigestV3` | M2 full authoritative state with typed continuation/information/perspective-local visible identity semantics |
-| `InformationStateDigest` / successor | exact perspective-safe current observation + retained knowledge |
+| `InformationStateDigest` | historical M1 information-state digest (`mtgml.information-state-digest.v1`) |
+| `InformationStateDigestV2` | M2 perspective-safe current observation + retained knowledge (`mtgml.information-state-digest.v2`) |
 | `ObservationDigest` | exact current observation bytes |
 | `CandidateSetDigest` | ordered visible candidates/constraints only |
 | `CheckpointDigestV2/V3` | complete trusted checkpoint identity for the corresponding state version |
@@ -49,7 +50,15 @@ Replay V2               historical support only as explicitly classified
 
 Do not reinterpret V2 using the new `EngineState`, and do not create a legacy `EngineStateV2` solely to keep a historical in-memory checkpoint type executable.
 
-Historical V2 artifacts retain immutable bytes/domain/schema documentation and are classified per ADR 0038 as `READABLE_VERIFIABLE_ONLY`, `MIGRATION_REQUIRED`, or `UNSUPPORTED`. Current-engine semantic execution is never inferred from structural readability.
+Historical V2 meaning remains immutable. After the M2 state cut the current-engine support matrix is fixed:
+
+| V2 surface | writer | reader | verifier | semantic execution | migration | classification |
+|---|---:|---:|---:|---:|---:|---|
+| `FullStateDigestV2` / detached V2 digest evidence | no | reference parsing only | yes, immutable V2 vectors/domain evidence | n/a | n/a | `READABLE_VERIFIABLE_ONLY` |
+| `EnvironmentCheckpointV2` | no | no current-runtime checkpoint reader | detached checkpoint-digest/contract evidence only | no; archived matching M1 engine required | none | `UNSUPPORTED` by the current engine |
+| Replay V2 | no | detached/version-specific V2 DTO only | yes, V2 structural/identity validation | no current-engine execution | none | `READABLE_VERIFIABLE_ONLY` |
+
+`EnvironmentCheckpointV2` has no durable detached historical state codec; it must never be "read" by deserializing into the changed M2 `EngineState`. No V2→V3 migration is defined by M2.A.
 
 ## V3 requirement
 
@@ -180,6 +189,54 @@ Canonical encoding rules:
 
 Canonical comparison for unordered entries is unsigned lexicographic byte comparison of the complete canonical CBOR encoding of the semantic key.
 
+### Decoder resource bounds
+
+Every `mtgml.canonical-cbor.v1` reader enforces the following limits **before allocating the declared value**:
+
+```text
+identifier frame bytes             1..255
+canonical payload bytes            <= 67_108_864       # 64 MiB
+individual UTF-8 text string bytes <= 1_048_576        # 1 MiB
+individual byte string bytes       <= 67_108_864       # 64 MiB
+individual array element count     <= 1_048_576
+maximum nested array depth         <= 64
+maximum decoded CBOR data items    <= 4_194_304
+```
+
+The payload limit applies to the canonical payload frame, not to arbitrary transport/container bytes. Envelope identity fields remain non-empty ASCII and additionally obey the 255-byte identifier-frame limit. A decoder must reject an over-limit length from the CBOR/envelope header before allocating that length.
+
+These limits are part of codec identity `mtgml.canonical-cbor.v1`; changing them requires a new payload-codec identity.
+
+### Persistence decoder error taxonomy V1
+
+Trusted persistence decoding reports one closed category before any runtime semantic object is exposed:
+
+```text
+envelope_identity
+envelope_length
+payload_too_large
+string_too_large
+array_too_large
+depth_exceeded
+item_limit_exceeded
+disallowed_cbor_form
+noncanonical_primitive
+invalid_utf8
+wrong_record_length
+unknown_variant
+value_out_of_range
+duplicate_semantic_key
+noncanonical_order
+schema_identity_mismatch
+trailing_data
+reencode_mismatch
+digest_mismatch
+unsupported_historical_version
+semantic_validation
+```
+
+These are trusted codec/validation categories, not player-facing errors. Implementations may attach restricted diagnostics internally, but the category meaning and precedence are stable for V1 fixtures. When more than one condition is observable, readers report the earliest failure in this order: envelope framing/identity and resource bounds; CBOR form/canonical primitive/UTF-8; schema shape/variant/range; duplicate/order checks; schema identity; canonical re-encode; digest; semantic conversion/validation.
+
 ## Scalar conventions
 
 - every Manafold numeric ID newtype is encoded as its underlying unsigned `u64`;
@@ -190,6 +247,43 @@ Canonical comparison for unordered entries is unsigned lexicographic byte compar
 - `RandomStreamKeyV1` is a byte string containing its already normative canonical stream-key bytes;
 - SHA-256 digest values embedded inside another persisted input are 32-byte byte strings carried through `DigestReferenceV1`;
 - free-form runtime debug labels are never accepted merely because a Rust field is `String`; every persisted string field must be explicitly declared by the semantic schema.
+
+# InformationStateDigestV2
+
+M2 changes information-state semantics and therefore does not reuse `mtgml.information-state-digest.v1`.
+
+Identity:
+
+```text
+semantic_domain = mtgml.information-state-digest.v2
+input_schema_id = information-state-digest-input.v2
+codec           = canonical public UTF-8 JSON (`WIRE_CONTRACT.md`)
+```
+
+The digest preimage remains the non-persisted/player-safe domain-separated form:
+
+```text
+ASCII("mtgml.information-state-digest.v2")
+0x00
+canonical_json(InformationStateDigestInputV2)
+```
+
+`InformationStateDigestInputV2` is the exact player-safe `PlayerInformationStateV2` semantic payload **with its digest field omitted**, and with schema identity fixed to `information-state-digest-input.v2`. It contains exactly:
+
+```text
+{
+  "schema_version": "information-state-digest-input.v2",
+  "perspective": <PlayerId>,
+  "state_revision": <StateRevision>,
+  "current_observation": <ObservationEnvelopeV1>,
+  "next_visible_sequence": <VisibleSequence>,
+  "retained_knowledge": <canonical ordered PlayerKnownObjectV1[]>
+}
+```
+
+It excludes `EpisodeStatus`, environment counters, trusted IDs, another player's knowledge, authoritative events, RNG state, checkpoint/replay identity, and the digest field itself. `PlayerKnownObjectV1` ordering/shape is part of the M2 public Information V2 wire contract and must be shared by Rust/Python/schema/golden fixtures before this digest producer is current.
+
+`ObservationDigest` remains V1 because `ObservationEnvelopeV1` already binds an independently versioned payload codec; M2 uses `synthetic-m2-observation.v1` without reinterpreting the envelope/digest domain.
 
 # FullStateDigestInputV3
 
@@ -282,6 +376,8 @@ The first two payload fields intentionally duplicate schema/domain identity for 
   partition_or_null
 ]
 ```
+
+`partition_or_null`, when present, is an exact semantic UTF-8 partition identifier subject to the V1 text-string limit and no normalization. It is not a debug label.
 
 `zone_position` variant IDs are exactly:
 
@@ -413,7 +509,33 @@ declare_number
 confirm
 ```
 
-The visible payload uses opaque/player-visible IDs; the trusted binding uses corresponding authoritative IDs. Unit variants use `null`.
+The exact M2 persisted layouts are:
+
+```text
+visible_intent:
+["pass_priority", null]
+["cast_spell", opaque_object_id]
+["activate_ability", opaque_ability_id]
+["select_object", opaque_object_id]
+["select_player", player_id]
+["select_mode", mode_index_u32]
+["choose_boolean", bool]
+["declare_number", value_i64]
+["confirm", null]
+
+trusted_binding:
+["pass_priority", null]
+["cast_spell", game_object_id]
+["activate_ability", ability_instance_id]
+["select_object", game_object_id]
+["select_player", player_id]
+["select_mode", mode_index_u32]
+["choose_boolean", bool]
+["declare_number", value_i64]
+["confirm", null]
+```
+
+The visible/trusted variant ID must match exactly. `ChooseNumber` V2 uses a direct numeric answer and therefore emits no candidates; `declare_number` remains defined only so the detached V3 schema can represent any explicitly admitted internal M2 candidate value without relying on a runtime enum layout.
 
 A continuation entry is:
 
@@ -441,24 +563,25 @@ M2 continuation payload variant:
 ]
 ```
 
-Assembly stage IDs:
+`assembly_stage` uses the normal enum representation and is exactly one of:
 
 ```text
-choose_count
-choose_members
-order_members
+["choose_count", null]
+["choose_members", null]
+["order_members", null]
 ```
 
 Synthetic piece keys are unsigned `u32` semantic fixture keys. Selected set values are stored in ascending key order; ordered values preserve semantic order.
 
-Existing synthetic effect/trigger record semantics remain represented as explicit fixed arrays:
+M2 does not execute synthetic effect, delayed-effect, or trigger machinery. For `full-state-digest-input.v3`, the three corresponding arrays in `execution_v2` MUST therefore be empty:
 
 ```text
-effect:  [effect_id, declared_label]
-trigger: [trigger_id, controller]
+effects          = []
+waiting_triggers = []
+delayed_effects  = []
 ```
 
-Only labels explicitly admitted by the M2 synthetic state schema are valid persisted labels. Arbitrary debug text is rejected.
+Any non-empty value is rejected as `semantic_validation` / unsupported M2 state before persistence. This avoids making free-form M1 `label: String` runtime fields part of historical V3 meaning. The first later milestone that needs non-empty effect/trigger state must define an explicit detached schema and allocate a new full-state semantic input/domain version if state identity meaning changes.
 
 ## `random_v1`
 
@@ -496,10 +619,9 @@ Active objects sorted by `OpaqueObjectId`:
   opaque_object_id,
   physical_card_or_null,
   card_definition_or_null,
-  current_object_or_null,
   current_known_location_fact_or_null,
   historical_location_facts[],
-  learned_at
+  acquisition_provenance
 ]
 ```
 
@@ -520,14 +642,14 @@ A retired record is:
   card_definition_or_null,
   last_known_location_fact_or_null,
   historical_location_facts[],
-  learned_at,
+  acquisition_provenance,
   invalidation
 ]
 ```
 
-Retired records carry no live `GameObjectId` association.
+Neither active nor retired knowledge records persist a live `GameObjectId` association. `PerspectiveIdentityState` is the sole persisted owner of `OpaqueObjectId -> GameObjectId`; active knowledge is joined to that mapping by `OpaqueObjectId` during validation/projection. Retired records have no active mapping.
 
-`provenance` variants:
+`acquisition_provenance` and every location-fact `provenance` use the same exact type. `provenance` variants:
 
 ```text
 ["initial_configuration", null]
@@ -613,7 +735,16 @@ Variants:
 ]
 ```
 
-Each map is encoded as sorted entries by its declared numeric semantic key; nested Commander-damage player entries are sorted by `PlayerId`.
+Exact entries are:
+
+```text
+designations entry = [player_id, commander_physical_card_ids[]]
+cast_counts entry   = [physical_card_id, cast_count_u32]
+damage entry        = [physical_card_id, player_damage_entries[]]
+player damage entry = [player_id, damage_u32]
+```
+
+`designations` entries are sorted by `PlayerId`; each commander physical-card list is ascending and duplicate-free because designation membership is semantic and order is not. `cast_counts` and outer `damage` entries are sorted by `PhysicalCardId`; nested player-damage entries are sorted by `PlayerId` and duplicate-free.
 
 The presence of this historical structural field does not claim executable Commander semantics in M2.
 
@@ -641,7 +772,25 @@ Canonical payload:
 ]
 ```
 
-`episode_status` uses the repository's closed episode variants and exact stable terminal/truncation/result vocabulary. `environment_limit_counters` is the fixed array:
+`episode_status` is exactly:
+
+```text
+["running", null]
+["terminal", [terminal_reason, player_outcomes[]]]
+["truncated", [truncation_reason, player_outcomes[]]]
+
+player outcome = [player_id, player_result]
+```
+
+`player_outcomes` is semantically keyed by player and is encoded sorted by `PlayerId`, duplicate-free. Stable strings are exactly:
+
+```text
+terminal_reason = rules_loss | concession | simultaneous_outcome | rules_draw | specified_loop
+truncation_reason = decision_limit | rule_event_limit | wall_clock_limit | resource_limit | external_stop
+player_result = win | loss | draw | eliminated | unresolved
+```
+
+`environment_limit_counters` is the fixed array:
 
 ```text
 [
@@ -693,8 +842,9 @@ M2.B must add executable evidence for:
 
 - standard SHA-256 test vectors;
 - exact envelope framing vectors;
-- canonical CBOR primitive/boundary vectors;
-- every enum/unit/optional encoding rule;
+- canonical CBOR primitive/boundary vectors and every decoder resource-bound boundary/overflow case;
+- every enum/unit/optional/leaf payload encoding rule, including visible/trusted candidate payloads, provenance, Commander structural entries, and EpisodeStatus;
+- every `PersistenceDecodeErrorV1` category/precedence case;
 - nonempty structured unordered collections;
 - insertion-order independence;
 - duplicate and noncanonical-order rejection;
@@ -703,6 +853,7 @@ M2.B must add executable evidence for:
 - full-state V3 golden known-answer digest;
 - mutation of every authoritative M2 component changing the V3 digest;
 - checkpoint V3 known-answer digest;
+- InformationStateDigestV2 known-answer and mutation/exclusion vectors;
 - Rust and trusted Python mechanical byte/digest parity where the persisted codec tooling is implemented;
 - immutable V1/V2 fixture preservation and explicit historical support classification.
 

@@ -27,7 +27,6 @@ M2 retained knowledge explicitly represents:
 
 - known definition/face or synthetic kind when authorized;
 - optional physical-card identity internally;
-- current live object association internally;
 - known current location when authorized;
 - ordered historical location facts;
 - acquisition/update provenance;
@@ -35,7 +34,7 @@ M2 retained knowledge explicitly represents:
 
 Active known-object records are keyed by that perspective's `OpaqueObjectId`, not by the current `GameObjectId`.
 
-Trusted records may retain internal object/physical/definition identities for validation. Player projection never exposes them.
+Trusted knowledge records may retain physical/definition identities for validation, but they do **not** duplicate the live `OpaqueObjectId -> GameObjectId` association. `PerspectiveIdentityState` is the sole owner of that current live association. Player projection never exposes trusted physical/definition identities.
 
 ## Knowledge lifecycle
 
@@ -151,8 +150,8 @@ Wall-clock timing is outside the semantic byte guarantee, but timing never enter
 - non-bijective active mapping;
 - active use of a retired opaque ID;
 - opaque/player-decision allocator not strictly ahead of issued IDs;
-- active knowledge without the required live mapping;
-- active mapping inconsistent with trusted current-object association;
+- active knowledge without exactly one required live mapping in `PerspectiveIdentityState`;
+- any knowledge record that attempts to carry a second authoritative live `GameObjectId` association;
 - retired knowledge still active;
 - current known location contradicting an authorized live association;
 - future or non-monotonic visible-sequence provenance;

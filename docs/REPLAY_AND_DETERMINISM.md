@@ -106,7 +106,8 @@ When M2 changes `EngineState`:
 - do not reinterpret `FullStateDigestV2`;
 - do not keep `EnvironmentCheckpointV2` executable by introducing a legacy duplicate `EngineState`;
 - preserve V2 replay schemas/fixtures exactly;
-- classify each historical V2 reader/execution capability explicitly as `READABLE_VERIFIABLE_ONLY`, `MIGRATION_REQUIRED`, or `UNSUPPORTED`;
+- current-engine support is fixed: `FullStateDigestV2` evidence and Replay V2 are `READABLE_VERIFIABLE_ONLY`; `EnvironmentCheckpointV2` is `UNSUPPORTED` by the current engine after the state cut because it embeds unversioned runtime `EngineState`;
+- no V2→V3 migration is defined in M2.A;
 - structural readability does not imply current-engine semantic execution;
 - an archived matching engine build may be required to execute historical V2 semantics.
 

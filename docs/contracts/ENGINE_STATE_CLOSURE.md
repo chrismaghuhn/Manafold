@@ -51,7 +51,7 @@ The authoritative knowledge/identity closure includes:
 - active and retired retained knowledge;
 - current/historical known-location facts;
 - typed provenance/invalidation;
-- active opaque mappings;
+- active opaque mappings, which solely own the current opaque→live-object relation;
 - retired opaque IDs;
 - next opaque object/ability IDs per perspective;
 - next player-decision ID per perspective;
@@ -72,7 +72,7 @@ It validates at least:
 - global internal allocator monotonicity;
 - authoritative pending decision/candidate binding integrity;
 - continuation reference/stage/payload consistency;
-- knowledge/current-object/history/provenance relationships;
+- knowledge/history/provenance relationships joined through the sole live mapping in `PerspectiveIdentityState`;
 - opaque mapping bijections and retirement;
 - perspective-local allocator monotonicity;
 - Commander/format structural references;

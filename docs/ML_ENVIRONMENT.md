@@ -57,7 +57,7 @@ A private/wrong-actor request is not exposed as a distinct oracle. Internal cand
 
 ## Episode semantics
 
-- `Running`: another decision or forced-progress step may follow;
+- `Running`: another player decision may follow after any required internal forced progress;
 - `Terminal`: rules/format result with closed reason and per-player outcome;
 - `Truncated`: technical stop such as resource/decision/event/external limit.
 

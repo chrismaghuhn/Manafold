@@ -136,7 +136,7 @@ When the M2 runtime state cut occurs:
 
 - V2 is not reinterpreted against the new `EngineState`;
 - no duplicate legacy `EngineStateV2` is introduced merely to keep the V2 runtime checkpoint executable;
-- historical V2 support is classified explicitly;
+- historical V2 support follows the fixed M2 matrix: FullStateDigestV2/ReplayV2 `READABLE_VERIFIABLE_ONLY`, EnvironmentCheckpointV2 `UNSUPPORTED` by the current engine;
 - V3 restore validates complete state, episode status, limit counters and codec identity before backend mutation.
 
 The ADR-0038 V3 persisted digest bytes are specified in [`STATE_HASHING.md`](STATE_HASHING.md).

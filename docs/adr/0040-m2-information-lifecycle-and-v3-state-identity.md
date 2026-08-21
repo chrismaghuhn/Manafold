@@ -36,14 +36,15 @@ Hidden events emit nothing and advance no sequence for that perspective. No glob
 
 Active retained object knowledge is keyed by `OpaqueObjectId`.
 
-Trusted records may contain:
+Trusted knowledge records may contain:
 
-- current `GameObjectId` association;
 - physical-card identity;
 - definition identity;
 - current known location;
 - historical location facts;
 - typed provenance.
+
+`PerspectiveIdentityState` is the **sole authoritative owner** of the current `OpaqueObjectId -> GameObjectId` association. Knowledge does not duplicate that live relation; validation/projection resolves the current incarnation through the perspective mapping. Historical incarnation/location facts may remain explicit knowledge.
 
 Player projection contains only authorized opaque/synthetic/public values.
 
@@ -132,7 +133,7 @@ EnvironmentCheckpointV3 / CheckpointDigestV3
 ReplayManifestV3 / ReplayStepV3 / AuthoritativeReplayV3
 ```
 
-alongside Decision/Information/Event/Step V2 public contracts.
+alongside Decision/Information/Event/Step V2 public contracts and the explicit `InformationStateDigestV2` identity `mtgml.information-state-digest.v2` / `information-state-digest-input.v2`.
 
 V3 full-state/checkpoint digests are the first new persisted semantic identities after ADR 0038 and use its common envelope plus `mtgml.canonical-cbor.v1` detached input specified normatively in `STATE_HASHING.md`.
 
@@ -146,8 +147,10 @@ Manafold therefore:
 - does not create a permanent legacy `EngineStateV2` only for compatibility;
 - stops producing V2 full-state/checkpoint identity from the current engine;
 - preserves historical schemas/fixtures/domain evidence;
-- explicitly classifies replay/checkpoint historical support as `READABLE_VERIFIABLE_ONLY`, `MIGRATION_REQUIRED`, or `UNSUPPORTED`;
-- uses archived matching engine builds where historical semantic execution requires them.
+- classifies `FullStateDigestV2` evidence and Replay V2 as `READABLE_VERIFIABLE_ONLY` in the current engine;
+- classifies `EnvironmentCheckpointV2` as `UNSUPPORTED` by the current engine after the state cut because it embeds the unversioned runtime `EngineState` and has no detached durable state codec;
+- defines no V2→V3 migration in M2.A;
+- uses archived matching M1 engine builds where historical semantic execution is required.
 
 Migration, if later required, is Rust-authoritative, versioned and provenance-preserving.
 
@@ -206,7 +209,7 @@ M2 executable evidence must cover:
 
 - tracked hidden identity persistence;
 - explicit forget and randomization retirement/new identity;
-- retained current/historical knowledge/provenance;
+- retained current/historical knowledge/provenance without duplicating the live opaque→object association;
 - public/private/mixed/hidden observed events;
 - perspective-local sequence continuity;
 - query purity;

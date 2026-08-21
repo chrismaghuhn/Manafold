@@ -127,12 +127,12 @@ Exact binding validation compares visible values and perspective mappings, not m
 9. cardinality or numeric bounds;
 10. exact candidate-binding integrity;
 11. context-dependent legality against current state;
-12. supported continuation program/stage;
+12. verify authoritative continuation program/stage consistency;
 13. create transition workspace;
 14. execute and validate state/event/delta/projections;
 15. atomic commit.
 
-Malformed or noncanonical bytes fail before a typed semantic submission exists and do not produce a semantic `PlayerStep`.
+Malformed or noncanonical bytes fail before a typed semantic submission exists and do not produce a semantic `PlayerStep`. A typed answer variant that does not match the current visible domain is `invalid_answer`. A stale prior-stage response is `stale_decision`. An invalid/unsupported authoritative continuation stage or engine-offered unsupported path is an internal soundness/invariant failure, not a player rejection.
 
 ## Continuations
 

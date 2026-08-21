@@ -29,13 +29,12 @@ Once a valid `DecisionResponseV2` exists, semantic rejection uses closed perspec
 ```text
 stale_decision
 unavailable_decision
+invalid_answer
 invalid_candidate
 duplicate_assignment
 invalid_cardinality
 invalid_number
 invalid_order
-invalid_stage
-unsupported_choice
 episode_closed
 ```
 
@@ -43,11 +42,11 @@ They may include only bounded public metadata already present in the request.
 
 `wrong_actor` is not a distinct player-observable code. The endpoint supplies its bound actor; an endpoint with no authorized current request returns the same non-disclosing `unavailable_decision` surface.
 
-An internal `DecisionId` mismatch is never directly exposed because V2 player responses use perspective-local `PlayerDecisionIdV1`.
+An internal `DecisionId` mismatch is never directly exposed because V2 player responses use perspective-local `PlayerDecisionIdV1`. A response whose closed answer variant does not match the current visible decision domain is client-caused `invalid_answer`; it is not a continuation-stage disclosure.
 
 ### Endpoint/internal service failure
 
-State inconsistency, candidate-binding mismatch, event/delta disagreement, impossible allocator state, digest/codec failure, projection failure, determinism divergence, or other invariant failure is an implementation defect, not normal player illegality.
+State inconsistency, candidate-binding mismatch, invalid/unsupported authoritative continuation stage, an engine-emitted candidate whose execution capability is unsupported, event/delta disagreement, impossible allocator state, digest/codec failure, projection failure, determinism divergence, or other invariant failure is an implementation defect, not normal player illegality.
 
 The player endpoint exposes only:
 
@@ -67,7 +66,7 @@ Configuration, checkpoint, fork, replay, bundle-loading, scheduling, and trusted
 
 An absent/unimplemented/out-of-scope capability fails closed. It is never converted to pass, random selection, automatic target/mode/order/payment, or a rules draw.
 
-For a typed player choice whose closed domain is understood but capability execution is unsupported, the safe semantic code is `unsupported_choice` only when revealing that class itself is authorized. Otherwise an internal capability/configuration defect fails through the trusted boundary.
+A current authoritative request must be executable for every choice it offers. If the engine emits a candidate/path and later discovers that its continuation/capability is unsupported, soundness has failed; discard the workspace and surface only the closed endpoint service failure. `unsupported_choice` is therefore not an M2 player-submission code.
 
 ## Stable error identity
 
@@ -110,7 +109,10 @@ M2 resolves the contract:
 - actor comes from the endpoint and is not a player-authored field;
 - private/wrong-actor request availability is not separately disclosed;
 - internal `DecisionId` is not present on the V2 player response;
-- candidate-binding mismatch is an invariant/internal failure, not a forged player choice.
+- candidate-binding mismatch is an invariant/internal failure, not a forged player choice;
+- stale prior-stage responses collapse to `stale_decision` through visible request identity/revision;
+- unsupported/invalid authoritative continuation stages and engine-offered unsupported choices are internal soundness/capability failures;
+- a typed but wrong answer union variant maps to `invalid_answer`, not `invalid_stage`.
 
 Historical V1 code meanings remain historical; V2 public error values follow this document.
 

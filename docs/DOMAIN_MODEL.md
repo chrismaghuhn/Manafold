@@ -99,7 +99,7 @@ M2 retained knowledge represents:
 - provenance via perspective-local visible sequence;
 - explicit typed invalidation/retirement.
 
-Active object knowledge is associated with that perspective's opaque identity. Trusted current-object association may change across incarnations while the opaque identity persists.
+Active object knowledge is associated with that perspective's opaque identity. `PerspectiveIdentityState` alone owns the live `OpaqueObjectId -> GameObjectId` association; knowledge does not duplicate it. That mapping may move to a new authoritative incarnation while the opaque identity persists.
 
 A global event count is forbidden as observable knowledge metadata.
 
