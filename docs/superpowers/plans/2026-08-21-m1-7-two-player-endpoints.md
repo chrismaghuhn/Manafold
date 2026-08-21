@@ -282,7 +282,7 @@
   git show --stat --oneline --decorate HEAD
   ```
 
-- [ ] **Step 3: Push and create one Draft PR without merging.**
+- [x] **Step 3: Push and create one Draft PR without merging.**
 
   ```text
   git push --set-upstream origin chris/m1-7-two-player-endpoints
