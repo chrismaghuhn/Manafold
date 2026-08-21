@@ -189,6 +189,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "mtgml-persistence"
+version = "0.2.2"
+dependencies = [
+ "mtgml-model",
+ "serde",
+ "serde_json",
+ "sha2",
+ "thiserror",
+]
+
+[[package]]
 name = "mtgml-random"
 version = "0.2.2"
 dependencies = [
