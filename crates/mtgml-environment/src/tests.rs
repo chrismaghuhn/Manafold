@@ -896,3 +896,196 @@ fn counter_overflow_fails_before_environment_commit() {
     assert_eq!(controller.checkpoint().unwrap(), before_checkpoint);
     assert_eq!(controller.export_replay().unwrap(), before_replay);
 }
+
+#[test]
+fn checkpoint_restore_repeats_exact_transition_and_replay_segment() {
+    let controller = TrustedEnvironmentController::new(synthetic_backend());
+    let mut rejected = synthetic_response();
+    rejected.assignments[0].candidate_id = "unknown_candidate".into();
+    let rejected_result = controller
+        .execute_trusted_response(PlayerId(1), rejected)
+        .unwrap();
+    assert!(!rejected_result.accepted);
+
+    let c0 = controller.checkpoint().unwrap();
+    assert_eq!(c0.state.revision, StateRevision(0));
+    assert_eq!(
+        c0.state
+            .random
+            .lookup_stream(&RandomStreamKeyV1::global(RandomStreamKindV1::SyntheticM1))
+            .unwrap()
+            .next_raw_u64,
+        0
+    );
+    assert_eq!(c0.state.allocators.next_effect_id, EffectInstanceId(1));
+    assert_eq!(c0.state.allocators.next_rule_event_id, RuleEventId(1));
+
+    let transition_c = controller
+        .execute_trusted_response(PlayerId(1), synthetic_response())
+        .unwrap();
+    let c1 = controller.checkpoint().unwrap();
+    let replay_1 = controller.export_replay().unwrap();
+    let replay_bytes_1 = mtgml_wire::encode_canonical(&replay_1).unwrap();
+
+    controller.restore(c0.clone()).unwrap();
+    let transition_f = controller
+        .execute_trusted_response(PlayerId(1), synthetic_response())
+        .unwrap();
+    let c1b = controller.checkpoint().unwrap();
+    let replay_1b = controller.export_replay().unwrap();
+    let replay_bytes_1b = mtgml_wire::encode_canonical(&replay_1b).unwrap();
+
+    assert_eq!(transition_c, transition_f);
+    assert_eq!(c1, c1b);
+    assert_eq!(c1.state_digest, c1b.state_digest);
+    assert_eq!(c1.checkpoint_digest, c1b.checkpoint_digest);
+    assert_eq!(replay_1, replay_1b);
+    assert_eq!(replay_bytes_1, replay_bytes_1b);
+    assert_eq!(
+        c1.state
+            .random
+            .lookup_stream(&RandomStreamKeyV1::global(RandomStreamKindV1::SyntheticM1))
+            .unwrap()
+            .next_raw_u64,
+        1
+    );
+    assert_eq!(c1.state.allocators.next_effect_id, EffectInstanceId(2));
+    assert_eq!(c1.state.allocators.next_rule_event_id, RuleEventId(5));
+    assert_eq!(
+        c1.limit_counters,
+        EnvironmentLimitCounters {
+            decisions_submitted: 1,
+            accepted_transitions: 1,
+            rule_events_emitted: 4,
+            resource_units_consumed: 0,
+            wall_clock_elapsed_millis: 0,
+        }
+    );
+}
+
+#[test]
+fn accepted_state_restore_preserves_identity_and_rebases_empty_replay() {
+    let source = TrustedEnvironmentController::new(synthetic_backend());
+    source
+        .execute_trusted_response(PlayerId(1), synthetic_response())
+        .unwrap();
+    let c1 = source.checkpoint().unwrap();
+
+    let restored = TrustedEnvironmentController::new(
+        SyntheticM1EnvironmentBackend::from_checkpoint(
+            c1.clone(),
+            synthetic_config([PlayerId(1), PlayerId(2)]),
+        )
+        .unwrap(),
+    );
+    let restored_checkpoint = restored.checkpoint().unwrap();
+    let restored_replay = restored.export_replay().unwrap();
+
+    assert_eq!(restored_checkpoint, c1);
+    assert!(restored_replay.steps.is_empty());
+    assert_eq!(
+        restored_replay.manifest.initial_state_revision,
+        StateRevision(1)
+    );
+    assert_eq!(
+        restored_replay.manifest.initial_state_digest,
+        c1.state_digest
+    );
+    assert_eq!(restored_replay.final_state_revision, StateRevision(1));
+    assert_eq!(restored_replay.final_state_digest, c1.state_digest);
+    assert_eq!(
+        restored_checkpoint
+            .state
+            .random
+            .lookup_stream(&RandomStreamKeyV1::global(RandomStreamKindV1::SyntheticM1))
+            .unwrap()
+            .next_raw_u64,
+        1
+    );
+    assert_eq!(
+        restored_checkpoint.state.allocators.next_effect_id,
+        EffectInstanceId(2)
+    );
+    assert_eq!(
+        restored_checkpoint.state.allocators.next_rule_event_id,
+        RuleEventId(5)
+    );
+}
+
+#[test]
+fn forks_from_a_checkpoint_begin_with_exact_identity_and_empty_segments() {
+    let source = TrustedEnvironmentController::new(synthetic_backend());
+    let c0 = source.checkpoint().unwrap();
+    let fork_a = source.fork().unwrap();
+    let fork_b = source.fork().unwrap();
+
+    assert_eq!(fork_a.checkpoint().unwrap(), c0);
+    assert_eq!(fork_b.checkpoint().unwrap(), c0);
+    let replay_a = fork_a.export_replay().unwrap();
+    let replay_b = fork_b.export_replay().unwrap();
+    assert_eq!(replay_a, replay_b);
+    assert!(replay_a.steps.is_empty());
+    assert_eq!(
+        mtgml_wire::encode_canonical(&replay_a).unwrap(),
+        mtgml_wire::encode_canonical(&replay_b).unwrap()
+    );
+}
+
+#[test]
+fn forks_with_the_same_input_have_exact_continuation_parity() {
+    let source = TrustedEnvironmentController::new(synthetic_backend());
+    let fork_a = source.fork().unwrap();
+    let fork_b = source.fork().unwrap();
+
+    let transition_a = fork_a
+        .execute_trusted_response(PlayerId(1), synthetic_response())
+        .unwrap();
+    let transition_b = fork_b
+        .execute_trusted_response(PlayerId(1), synthetic_response())
+        .unwrap();
+
+    assert_eq!(transition_a, transition_b);
+    assert_eq!(fork_a.checkpoint().unwrap(), fork_b.checkpoint().unwrap());
+    assert_eq!(
+        fork_a.export_replay().unwrap(),
+        fork_b.export_replay().unwrap()
+    );
+    assert_eq!(
+        mtgml_wire::encode_canonical(&fork_a.export_replay().unwrap()).unwrap(),
+        mtgml_wire::encode_canonical(&fork_b.export_replay().unwrap()).unwrap()
+    );
+    assert_eq!(
+        source.checkpoint().unwrap(),
+        synthetic_backend().checkpoint().unwrap()
+    );
+}
+
+#[test]
+fn forks_diverge_only_on_explicit_accepted_or_rejected_input() {
+    let source = TrustedEnvironmentController::new(synthetic_backend());
+    let fork_accepted = source.fork().unwrap();
+    let fork_rejected = source.fork().unwrap();
+    let source_checkpoint = source.checkpoint().unwrap();
+
+    let accepted = fork_accepted
+        .execute_trusted_response(PlayerId(1), synthetic_response())
+        .unwrap();
+    let mut rejected_response = synthetic_response();
+    rejected_response.assignments[0].candidate_id = "unknown_candidate".into();
+    let rejected = fork_rejected
+        .execute_trusted_response(PlayerId(1), rejected_response)
+        .unwrap();
+
+    assert!(accepted.accepted);
+    assert!(!rejected.accepted);
+    assert_eq!(
+        fork_accepted.checkpoint().unwrap().state.revision,
+        StateRevision(1)
+    );
+    assert_eq!(fork_rejected.checkpoint().unwrap(), source_checkpoint);
+    assert_ne!(
+        fork_accepted.checkpoint().unwrap(),
+        fork_rejected.checkpoint().unwrap()
+    );
+    assert_eq!(source.checkpoint().unwrap(), source_checkpoint);
+}
