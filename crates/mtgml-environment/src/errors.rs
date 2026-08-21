@@ -11,6 +11,8 @@ pub enum EnvironmentCommitError {
     RejectedMutation,
     #[error("candidate environment product did not match the transition")]
     CandidateMismatch,
+    #[error("candidate player projection could not be validated")]
+    PlayerProjectionInvalid,
 }
 
 #[derive(Debug, Error)]
