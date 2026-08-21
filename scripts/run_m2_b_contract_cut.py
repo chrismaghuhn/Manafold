@@ -650,6 +650,11 @@ def main() -> int:
                 "underlying": underlying,
                 "output_dir": str(output),
                 "source_commit": report["source_commit"],
+                "source_identity": source_identity_status,
+                "before_clean": before.get("clean"),
+                "after_clean": after.get("clean"),
+                "before_git_status": before.get("git_status", ""),
+                "after_git_status": after.get("git_status", ""),
             },
             sort_keys=True,
         )
