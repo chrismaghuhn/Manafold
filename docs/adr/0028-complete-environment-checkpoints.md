@@ -9,7 +9,7 @@
 
 ## Decision
 
-Trusted checkpoint and restore use `EnvironmentCheckpointV2`, containing `EngineState`, its typed digest, `EpisodeStatus`, declared limit counters, and checkpoint codec identity/version. Restore validates the whole object before mutation.
+Trusted checkpoint and restore use `EnvironmentCheckpointV1`, containing `EngineState`, its typed digest, `EpisodeStatus`, declared limit counters, and checkpoint codec identity/version. Restore validates the whole object before mutation.
 
 ## Consequences
 
