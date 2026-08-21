@@ -12,6 +12,7 @@ mod execution;
 mod format;
 mod identity;
 mod knowledge;
+mod m2_shape;
 mod validation;
 mod zones;
 

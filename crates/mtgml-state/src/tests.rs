@@ -1,8 +1,9 @@
 use super::*;
 use mtgml_decision::PlayerDecisionRequest;
 use mtgml_model::{
-    CardDefinitionId, DecisionId, EffectInstanceId, EventSequence, FullStateDigestV2, GameObjectId,
-    OpaqueObjectId, PhysicalCardId, PlayerId, RuleEventId, StateRevision, ZoneKind,
+    CardDefinitionId, ContinuationId, DecisionId, EffectInstanceId, EventSequence,
+    FullStateDigestV2, GameObjectId, OpaqueObjectId, PhysicalCardId, PlayerId, RuleEventId,
+    StateRevision, VisibleSequence, ZoneKind,
 };
 use mtgml_random::{
     RandomStateV1, RandomStreamCursorV1, RandomStreamKeyV1, RandomStreamKindV1,
@@ -728,4 +729,256 @@ fn commander_damage_ledger_must_reference_a_declared_player() {
         validate_engine_state(&value),
         Err(EngineStateViolation::FormatMismatch)
     );
+}
+
+#[test]
+fn m2_shape_rejects_untyped_continuations_and_live_object_knowledge_keys() {
+    assert!(serde_json::from_str::<m2_shape::ContinuationRecordV2>(
+        r#"{"id":"1","label":"free-form"}"#
+    )
+    .is_err());
+    assert!(serde_json::from_str::<m2_shape::KnowledgeRecordV2>(
+        r#"{"object":"1","learned_at":{"channel":"public","sequence":"0"},"learned_via":{"kind":"initial_configuration"}}"#
+    )
+    .is_err());
+}
+
+#[test]
+fn m2_shape_validation_matrix_is_fail_closed() {
+    let (revision, players, pending, continuations, knowledge, identities) = m2_shape_fixture();
+    m2_shape::validate_m2_shape(
+        revision,
+        &players,
+        pending.as_ref(),
+        &continuations,
+        &knowledge,
+        &identities,
+    )
+    .unwrap();
+
+    let mut missing_allocator = identities.clone();
+    missing_allocator
+        .players
+        .get_mut(&PlayerId(1))
+        .unwrap()
+        .next_player_decision_id = mtgml_model::PlayerDecisionIdV1(0);
+    assert_eq!(
+        m2_shape::validate_m2_shape(
+            revision,
+            &players,
+            pending.as_ref(),
+            &continuations,
+            &knowledge,
+            &missing_allocator,
+        ),
+        Err(m2_shape::M2ShapeViolation::Allocator)
+    );
+
+    let mut duplicate_retirement = identities.clone();
+    duplicate_retirement
+        .players
+        .get_mut(&PlayerId(1))
+        .unwrap()
+        .retired_object_ids
+        .insert(mtgml_model::OpaqueObjectId(1));
+    assert_eq!(
+        m2_shape::validate_m2_shape(
+            revision,
+            &players,
+            pending.as_ref(),
+            &continuations,
+            &knowledge,
+            &duplicate_retirement,
+        ),
+        Err(m2_shape::M2ShapeViolation::RetiredIdentity)
+    );
+
+    let mut disagreement = identities.clone();
+    disagreement
+        .players
+        .get_mut(&PlayerId(1))
+        .unwrap()
+        .object_to_opaque
+        .insert(GameObjectId(1), OpaqueObjectId(2));
+    assert_eq!(
+        m2_shape::validate_m2_shape(
+            revision,
+            &players,
+            pending.as_ref(),
+            &continuations,
+            &knowledge,
+            &disagreement,
+        ),
+        Err(m2_shape::M2ShapeViolation::IdentityMapping)
+    );
+
+    let mut nonmonotonic = knowledge.clone();
+    nonmonotonic
+        .players
+        .get_mut(&PlayerId(1))
+        .unwrap()
+        .history
+        .push(m2_shape::KnowledgeHistoryRecordV2 {
+            opaque_object: OpaqueObjectId(1),
+            location: None,
+            observed_at: KnowledgePoint {
+                channel: KnowledgeHistoryChannel::Public,
+                sequence: EventSequence(0),
+            },
+        });
+    assert_eq!(
+        m2_shape::validate_m2_shape(
+            revision,
+            &players,
+            pending.as_ref(),
+            &continuations,
+            &nonmonotonic,
+            &identities,
+        ),
+        Err(m2_shape::M2ShapeViolation::VisibleSequence)
+    );
+}
+
+#[test]
+fn m2_shape_requires_a_live_continuation_reference_and_current_stage_revision() {
+    let (revision, mut players, _pending, mut continuations, knowledge, identities) =
+        m2_shape_fixture();
+    let request = m2_shape_request(Some(ContinuationId(1)));
+    let pending = Some(m2_shape::PendingDecisionRecordV2 { request });
+
+    assert_eq!(
+        m2_shape::validate_m2_shape(
+            revision,
+            &players,
+            pending.as_ref(),
+            &continuations,
+            &knowledge,
+            &identities,
+        ),
+        Err(m2_shape::M2ShapeViolation::ContinuationReference)
+    );
+
+    continuations.insert(
+        ContinuationId(1),
+        m2_shape::ContinuationRecordV2 {
+            id: ContinuationId(1),
+            actor: PlayerId(1),
+            created_at_revision: StateRevision(2),
+            stage_index: 0,
+            payload: m2_shape::ContinuationPayloadV2::SyntheticM2Assembly {
+                stage: m2_shape::AssemblyStageV2::AwaitingSelectOne,
+                selected_count: None,
+                selected_piece_keys: vec![],
+                ordered_piece_keys: vec![],
+            },
+        },
+    );
+    assert_eq!(
+        m2_shape::validate_m2_shape(
+            revision,
+            &players,
+            pending.as_ref(),
+            &continuations,
+            &knowledge,
+            &identities,
+        ),
+        Err(m2_shape::M2ShapeViolation::ContinuationRevision)
+    );
+
+    players.insert(PlayerId(2));
+    assert_eq!(
+        m2_shape::validate_m2_shape(
+            revision,
+            &players,
+            pending.as_ref(),
+            &continuations,
+            &knowledge,
+            &identities,
+        ),
+        Err(m2_shape::M2ShapeViolation::PlayerCoverage)
+    );
+}
+
+fn m2_shape_request(
+    continuation_id: Option<ContinuationId>,
+) -> mtgml_decision::AuthoritativeDecisionRequestV2 {
+    mtgml_decision::AuthoritativeDecisionRequestV2 {
+        decision_id: DecisionId(1),
+        player_decision_id: mtgml_model::PlayerDecisionIdV1(1),
+        state_revision: StateRevision(1),
+        actor: PlayerId(1),
+        visibility: mtgml_decision::DecisionVisibility::Public,
+        decision: mtgml_decision::DecisionDomainV2::ChooseOne,
+        candidates: vec![mtgml_decision::AuthoritativeCandidateV2 {
+            candidate_id: mtgml_model::CandidateIdV1(0),
+            visible_intent: mtgml_decision::CandidateIntent::Confirm,
+            trusted_binding: mtgml_decision::EngineCandidateBinding::Confirm,
+        }],
+        continuation_id,
+    }
+}
+
+fn m2_shape_fixture() -> (
+    StateRevision,
+    std::collections::BTreeSet<PlayerId>,
+    Option<m2_shape::PendingDecisionRecordV2>,
+    BTreeMap<ContinuationId, m2_shape::ContinuationRecordV2>,
+    m2_shape::KnowledgeStateV2,
+    m2_shape::PerspectiveIdentityStateV2,
+) {
+    let players = std::collections::BTreeSet::from([PlayerId(1)]);
+    let pending = None;
+    let continuations = BTreeMap::new();
+    let knowledge = m2_shape::KnowledgeStateV2 {
+        players: BTreeMap::from([(
+            PlayerId(1),
+            m2_shape::PlayerKnowledgeStateV2 {
+                active: BTreeMap::from([(
+                    OpaqueObjectId(1),
+                    m2_shape::KnowledgeRecordV2 {
+                        opaque_object: OpaqueObjectId(1),
+                        physical_card: None,
+                        card_definition: None,
+                        known_location: None,
+                        learned_at: KnowledgePoint {
+                            channel: KnowledgeHistoryChannel::Public,
+                            sequence: EventSequence(0),
+                        },
+                        learned_via: KnowledgeAcquisitionReason::InitialConfiguration,
+                    },
+                )]),
+                history: vec![m2_shape::KnowledgeHistoryRecordV2 {
+                    opaque_object: OpaqueObjectId(1),
+                    location: None,
+                    observed_at: KnowledgePoint {
+                        channel: KnowledgeHistoryChannel::Public,
+                        sequence: EventSequence(0),
+                    },
+                }],
+                next_visible_sequence: VisibleSequence(1),
+                ..Default::default()
+            },
+        )]),
+    };
+    let identities = m2_shape::PerspectiveIdentityStateV2 {
+        players: BTreeMap::from([(
+            PlayerId(1),
+            m2_shape::PerspectiveIdentityRecordV2 {
+                opaque_to_object: BTreeMap::from([(OpaqueObjectId(1), GameObjectId(1))]),
+                object_to_opaque: BTreeMap::from([(GameObjectId(1), OpaqueObjectId(1))]),
+                next_opaque_object_id: OpaqueObjectId(2),
+                next_opaque_ability_id: mtgml_model::OpaqueAbilityId(1),
+                next_player_decision_id: mtgml_model::PlayerDecisionIdV1(1),
+                ..Default::default()
+            },
+        )]),
+    };
+    (
+        StateRevision(1),
+        players,
+        pending,
+        continuations,
+        knowledge,
+        identities,
+    )
 }
