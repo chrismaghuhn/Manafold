@@ -2,6 +2,7 @@
 
 mod identity;
 mod manifest;
+mod recorder;
 mod v1;
 mod v2;
 mod validation;
@@ -13,6 +14,7 @@ pub use identity::{
     DeckIdentityV1, KernelIdentityV1, RandomnessIdentityV1, ReplayIdentity, ReplaySchemaVersionsV1,
 };
 pub use manifest::ReplayManifestV1;
+pub use recorder::ReplayRecorderV2;
 pub use v1::{AuthoritativeReplayV1, ReplayStepV1};
 pub use v2::{AuthoritativeReplayV2, RandomnessIdentityV2, ReplayManifestV2, ReplayStepV2};
 pub use validation::ReplayValidationError;

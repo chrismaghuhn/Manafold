@@ -322,10 +322,24 @@
       "role": "process",
       "stability": "provisional"
     },
+   {
+     "change_process": "process-pr",
+     "owner_role": "maintainer",
+     "path": "docs/superpowers/plans/2026-08-21-m1-5-deterministic-services.md",
+     "role": "process",
+     "stability": "provisional"
+   },
     {
       "change_process": "process-pr",
       "owner_role": "maintainer",
-      "path": "docs/superpowers/plans/2026-08-21-m1-5-deterministic-services.md",
+      "path": "docs/superpowers/specs/2026-08-21-m1-6-checkpoint-fork-replay-design.md",
+      "role": "process",
+      "stability": "provisional"
+    },
+    {
+      "change_process": "process-pr",
+      "owner_role": "maintainer",
+      "path": "docs/superpowers/plans/2026-08-21-m1-6-checkpoint-fork-replay.md",
       "role": "process",
       "stability": "provisional"
     },
