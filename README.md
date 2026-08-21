@@ -1,29 +1,47 @@
-# MTG ML Engine Foundation
+# Manafold
 
-- **Current revision:** V0.2.2 — Executable Freeze & Maintainer Ergonomics
-- **Project type:** independent greenfield MTG/ML engine foundation
+- **Current executable milestone:** M1 — Closed Deterministic Kernel Shell (`COMPLETE` by merged M1 closure evidence)
+- **Current design milestone:** M2.A — Decision Machinery and Synthetic Information Safety architecture contract accepted; M2.B structural implementation is next
+- **Project type:** independent greenfield MTG/ML rules and simulation engine
 - **Playable engine:** no
+- **Real Magic rules:** no
 - **Real card support:** none
 
-V0.2.1 closed the executable contract defects. V0.2.2 preserves those semantics and reduces maintainer drift with a narrow single-source contract catalog, generated cross-language vocabulary, staged checks, split CI, and a tested synthetic golden path.
+Manafold prioritizes:
 
-V0.2.2 deliberately does **not** invent unpinned Magic semantics or claim a working game. The first executable kernel remains M1. M1 is unblocked.
+```text
+correctness
+→ determinism
+→ information safety
+→ decision completeness
+→ replayability
+→ maintainability
+→ performance
+→ ML scale
+```
+
+M1 established the deterministic synthetic kernel shell: complete state construction, accepted/rejected atomic transitions, exact state/event/delta parity, deterministic RNG/allocators, checkpoint/restore/fork/replay parity, and two bound synthetic player endpoints.
+
+M2 is not complete. M2.A freezes the architecture for the structural M2.B cut; no M2 executable behavior gate is claimed by that design acceptance.
 
 ## Start here
 
 1. [`PROJECT_CHARTER.md`](PROJECT_CHARTER.md)
-2. [`docs/M0_2_SPECIFICATION.md`](docs/M0_2_SPECIFICATION.md)
-3. [`docs/V0_2_2_EXECUTABLE_FREEZE_AND_MAINTAINER_ERGONOMICS.md`](docs/V0_2_2_EXECUTABLE_FREEZE_AND_MAINTAINER_ERGONOMICS.md)
-4. [`docs/V0_2_1_CONTRACT_CLOSURE.md`](docs/V0_2_1_CONTRACT_CLOSURE.md)
-5. [`docs/NORMATIVE_HIERARCHY.md`](docs/NORMATIVE_HIERARCHY.md)
-6. [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
-7. [`docs/DOMAIN_MODEL.md`](docs/DOMAIN_MODEL.md)
-8. [`docs/EXECUTION_MODEL.md`](docs/EXECUTION_MODEL.md)
-9. [`docs/contracts/M0_2_DESIGN_LOCK_MATRIX.md`](docs/contracts/M0_2_DESIGN_LOCK_MATRIX.md)
-10. [`docs/contracts/ACCEPTANCE_GATES.md`](docs/contracts/ACCEPTANCE_GATES.md)
-11. [`docs/ROADMAP.md`](docs/ROADMAP.md)
+2. [`AGENTS.md`](AGENTS.md)
+3. [`docs/NORMATIVE_HIERARCHY.md`](docs/NORMATIVE_HIERARCHY.md)
+4. [`docs/ROADMAP.md`](docs/ROADMAP.md)
+5. [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
+6. [`docs/DOMAIN_MODEL.md`](docs/DOMAIN_MODEL.md)
+7. [`docs/EXECUTION_MODEL.md`](docs/EXECUTION_MODEL.md)
+8. [`docs/DECISION_PROTOCOL.md`](docs/DECISION_PROTOCOL.md)
+9. [`docs/INFORMATION_MODEL.md`](docs/INFORMATION_MODEL.md)
+10. [`docs/ML_ENVIRONMENT.md`](docs/ML_ENVIRONMENT.md)
+11. [`docs/STATE_HASHING.md`](docs/STATE_HASHING.md)
+12. [`docs/contracts/ACCEPTANCE_GATES.md`](docs/contracts/ACCEPTANCE_GATES.md)
 
-Generated verification evidence is intentionally external to the source archive. After running verification, read `dist/verification/FOUNDATION_VERIFICATION.md` and `dist/verification/FOUNDATION_BLOCKERS.md`.
+The ADR index is [`docs/adr/README.md`](docs/adr/README.md).
+
+Generated verification evidence is external to the reproducible source archive. M1 closure uses `scripts/run_m1_closure.py`; future M2 final closure must similarly generate evidence rather than relying on prose status.
 
 ## Durable boundaries
 
@@ -36,30 +54,50 @@ Trusted environment controller
   authoritative replay, scheduling
 
 Perspective-bound player endpoint
-  observation, information state, visible decision,
+  observation, retained information state, visible decision,
   observed events, submit -> PlayerStep
 
-Rules-free ML process
-  models, rewards, replay buffer, experiment policy, analytics
+Rules-free Python/ML
+  DTO/client consumption, models, rewards, datasets, experiment policy
+  no legality/state/RNG authority
 ```
 
-No player endpoint can obtain full state, root seed, RNG counters, authoritative events, checkpoints, forks, or authoritative replay export.
+No player endpoint can obtain full state, root seed, RNG internals, authoritative events, checkpoints, forks, authoritative replay, trusted IDs, or free-form diagnostics.
 
-## What the current foundation fixes
+## M2 contract direction
 
-- machine-readable normative-document hierarchy and contradiction blocking;
-- explicit crate ownership and dependency direction;
-- closed authoritative state, identity allocators, continuations, knowledge, format state, and RNG;
-- complete trusted checkpoints including status, limit counters, codec identity, and a typed checkpoint digest;
-- canonical, domain-typed state and artifact digests;
-- compositional ordered semantic-event validation inside atomic revisions;
-- perspective-bound observations, information state, decisions, events, and safe errors;
-- exact cross-language Rust/Python/JSON wire fixtures;
-- detailed rule/mechanic and card contribution lifecycles;
-- recursive capability and generated-object closure;
-- native-executor quarantine derived from actual definition closure;
-- conformance, noninterference, property/fuzz, replay, and benchmark authoring guides;
-- state-independent deterministic source archives and adjacent verification evidence.
+The accepted M2.A architecture requires:
+
+- separate trusted `DecisionId` and perspective-local `PlayerDecisionIdV1`;
+- dense request-local `CandidateIdV1`;
+- closed answer variants for choose-one/many/number/order;
+- typed serialized continuations inside `EngineState`;
+- read-only perspective projection;
+- retained knowledge keyed through perspective-local opaque identity;
+- opaque identity persistence only while distinguishability persists;
+- retirement/new identity after hidden randomization;
+- one perspective-local visible event sequence;
+- independent bounded soundness/completeness proof;
+- paired-state byte noninterference;
+- a temporary rules-free Python semantic adapter without resolving production transport;
+- one coordinated V3 state/digest/checkpoint/replay identity cut.
+
+`EpisodeStatus` remains environment/PlayerStep semantics, not part of retained information state.
+
+Malformed/noncanonical wire bytes fail before a semantic submission and do not synthesize a PlayerStep.
+
+## Historical identity discipline
+
+M2 must not reinterpret M1 V2 state/checkpoint/replay values.
+
+When the runtime `EngineState` changes:
+
+- V2 full-state production is retired;
+- V2 in-memory checkpoint semantics are not kept executable by creating a duplicate legacy state model;
+- historical fixtures/domains remain immutable evidence;
+- historical replay/read/migration support is explicitly classified.
+
+New V3 persisted semantic digests follow ADR 0038 and the byte-level specification in [`docs/STATE_HASHING.md`](docs/STATE_HASHING.md).
 
 ## Support claims
 
@@ -69,11 +107,13 @@ The project uses strict lifecycle language:
 Imported -> Parsed -> Implemented -> Covered -> Certified
 ```
 
-Only **Certified** capability bundles are support claims. Parser success, compilation, a green unit test, or a raw card count is not certification.
+Only a certified locked bundle is a real support claim. Parsed/imported/compiled/implemented artifacts are not automatically supported.
+
+No real cards are added before roadmap M2.5 locks exact decks and capability closure.
 
 ## Local verification
 
-Use the maintainer profiles:
+Use:
 
 ```bash
 just doctor
@@ -83,7 +123,7 @@ just check-all
 just release-candidate
 ```
 
-The underlying structural gates are:
+Core direct checks include:
 
 ```bash
 python scripts/verify_repository.py
@@ -93,34 +133,21 @@ python scripts/validate_schemas.py
 python scripts/validate_maintainer_artifacts.py
 python scripts/verify_python_toolchain.py
 python scripts/run_python_tests.py
-```
 
-The pinned native/tooling gates are:
-
-```bash
 cargo fmt --all -- --check
 cargo check --workspace --all-targets --all-features --locked
 cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
 cargo test --workspace --all-features --locked
-ruff format --check python scripts
-ruff check python scripts
-mypy --config-file python/pyproject.toml
 ```
 
-Generate one authoritative adjacent result set with:
-
-```bash
-python scripts/run_verification.py
-```
-
-The command writes only beneath `dist/verification/`, which is excluded from the source archive. The deterministic archive gate runs last. `NOT_RUN` and `FAIL` are never promoted to `PASS`.
+`PASS` is reported only for commands actually executed successfully. Missing/unavailable tools are `NOT_RUN` or `BLOCKED`.
 
 ## Scope discipline
 
-- no hidden or heuristic completion of player choices;
+- no hidden/heuristic completion of player choices;
 - unsupported semantics fail closed;
 - no rules logic in Python or card generators;
 - no real cards before exact V1 deck closure in M2.5;
 - no optimized rollout backend before reference parity and profiling;
-- no native card executor in a certified bundle until its policy and API are accepted;
-- no broad support claim based on parsing, compilation, or raw card counts.
+- no native card executor in a certified bundle under the current quarantine policy;
+- no broad support claim from parsing, compilation, or raw card counts.

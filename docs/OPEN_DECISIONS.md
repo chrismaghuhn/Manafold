@@ -1,7 +1,7 @@
 # Open Decisions
 
 **Status:** blocking and resolved decision register  
-**Last reviewed:** 2026-08-20
+**Last reviewed:** 2026-08-21
 
 | ID | Status | Decision | Deadline | Safe default / current resolution |
 |---|---|---|---|---|
@@ -13,18 +13,20 @@
 | OD-006 | open | Oracle/card source and distribution basis | card import | distribute no bulk data |
 | OD-007 | open | Reference hardware and numerical budgets | performance acceptance | metrics only |
 | OD-008 | resolved | RNG algorithm and stream derivation | first deterministic reset | `mtgml.rng.v1`: counter-addressed HMAC-SHA-256, 256-bit root seed, typed streams, project-owned bounded sampling and shuffle; ADR 0035 |
-| OD-009 | open | Python/native transport | M5 | protocols only |
+| OD-009 | open | Python/native transport | M5 | M2 may use a temporary non-published subprocess semantic adapter for parity only; no production transport decision |
 | OD-010 | resolved | Initial canonical wire encoding | M0.1 | canonical UTF-8 JSON; ADR 0017 |
-| OD-011 | open | Semantic action-key and trajectory encoding | first dataset | dataset publication blocked |
+| OD-011 | open | Semantic action-key and trajectory encoding | first dataset | M2 Decision V2 omits mandatory semantic keys; dataset publication remains blocked |
 | OD-012 | partial | Native executor policy/API | first escape hatch | quarantine policy accepted; certified bundles reject executors |
 | OD-013 | open | Loop and shortcut policy | loop-capable primitive | capability unsupported |
 | OD-014 | open | Multiplayer utility semantics | multiplayer entry | two-player only |
-| OD-015 | partial | API stability and deprecation | first external consumer | lifecycle classes accepted; APIs not frozen |
+| OD-015 | partial | API stability and deprecation | first external consumer | lifecycle classes accepted; M2 surfaces remain experimental/provisional until executable closure |
 | OD-016 | partial | Toolchain/build image and lockfile | V0.2.2 freeze/release | Python 3.13.15 and Rust 1.85.1 pinned; Cargo.lock, native clean build, and public-release transitive/hash lock or build image still required |
-| OD-017 | resolved | Persisted digest algorithm and canonical state codec version | first persisted checkpoint | unkeyed SHA-256 + versioned digest envelope + `mtgml.canonical-cbor.v1` + detached persisted DTOs; ADR 0038 |
+| OD-017 | resolved | Persisted digest algorithm and canonical state codec version | first persisted checkpoint | unkeyed SHA-256 + versioned digest envelope + `mtgml.canonical-cbor.v1` + detached persisted DTOs; ADR 0038; M2 V3 byte profile specified in `STATE_HASHING.md` |
 | OD-018 | resolved | Capability key grammar/lifecycle | M0.2 | capability model and ADR 0022 |
 | OD-019 | open | Exact format-module hook interface | M3 | compile-time Commander only; no hidden state |
 | OD-020 | open | Search/determinization capability boundary | first search integration | no policy access to full-state forks |
 | OD-021 | open | Certification artifact signing/attestation | first public certified bundle | checksums only |
 
 Resolved rows remain as history. Every resolution requires an ADR describing choice, alternatives, compatibility, evidence, risks, and milestone unblocked.
+
+Accepted M2-local ADRs 0039/0040 refine the decision/information architecture for M2.B; they do not resolve OD-009, OD-011, or unrelated later decisions.
