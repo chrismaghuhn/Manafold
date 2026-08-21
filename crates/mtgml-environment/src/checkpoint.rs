@@ -3,24 +3,9 @@ use mtgml_state::{validate_engine_state, EngineState};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
+pub use mtgml_model::{CheckpointCodecIdentity, EnvironmentLimitCounters};
+
 pub const ENVIRONMENT_CHECKPOINT_SCHEMA: &str = "environment-checkpoint.v2";
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
-#[serde(deny_unknown_fields)]
-pub struct EnvironmentLimitCounters {
-    pub decisions_submitted: u64,
-    pub accepted_transitions: u64,
-    pub rule_events_emitted: u64,
-    pub resource_units_consumed: u64,
-    pub wall_clock_elapsed_millis: u64,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct CheckpointCodecIdentity {
-    pub codec_id: String,
-    pub semantic_version: String,
-}
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -29,8 +14,8 @@ pub struct EnvironmentCheckpointV2 {
     pub state: EngineState,
     pub state_digest: FullStateDigestV2,
     pub status: EpisodeStatus,
-    pub limit_counters: EnvironmentLimitCounters,
-    pub codec: CheckpointCodecIdentity,
+    pub limit_counters: mtgml_model::EnvironmentLimitCounters,
+    pub codec: mtgml_model::CheckpointCodecIdentity,
     pub checkpoint_digest: CheckpointDigestV2,
 }
 
@@ -40,16 +25,16 @@ pub(crate) struct CheckpointDigestInputV2<'a> {
     pub domain: &'static str,
     pub state_digest: &'a FullStateDigestV2,
     pub status: &'a EpisodeStatus,
-    pub limit_counters: &'a EnvironmentLimitCounters,
-    pub codec: &'a CheckpointCodecIdentity,
+    pub limit_counters: &'a mtgml_model::EnvironmentLimitCounters,
+    pub codec: &'a mtgml_model::CheckpointCodecIdentity,
 }
 
 impl EnvironmentCheckpointV2 {
     pub fn new(
         state: EngineState,
         status: EpisodeStatus,
-        limit_counters: EnvironmentLimitCounters,
-        codec: CheckpointCodecIdentity,
+        limit_counters: mtgml_model::EnvironmentLimitCounters,
+        codec: mtgml_model::CheckpointCodecIdentity,
     ) -> Result<Self, CheckpointValidationError> {
         let state_digest = state
             .digest()
@@ -79,8 +64,8 @@ impl EnvironmentCheckpointV2 {
         schema_version: &str,
         state_digest: &FullStateDigestV2,
         status: &EpisodeStatus,
-        limit_counters: &EnvironmentLimitCounters,
-        codec: &CheckpointCodecIdentity,
+        limit_counters: &mtgml_model::EnvironmentLimitCounters,
+        codec: &mtgml_model::CheckpointCodecIdentity,
     ) -> Result<CheckpointDigestV2, CheckpointValidationError> {
         let input = CheckpointDigestInputV2 {
             schema_version,

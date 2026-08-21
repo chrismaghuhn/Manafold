@@ -15,9 +15,9 @@ mod synthetic;
 mod tests;
 
 pub use checkpoint::{
-    CheckpointCodecIdentity, CheckpointValidationError, EnvironmentCheckpointV2,
-    EnvironmentLimitCounters, ENVIRONMENT_CHECKPOINT_SCHEMA,
+    CheckpointValidationError, EnvironmentCheckpointV2, ENVIRONMENT_CHECKPOINT_SCHEMA,
 };
+pub use mtgml_model::{CheckpointCodecIdentity, EnvironmentLimitCounters};
 pub use controller::{EnvironmentBackend, TrustedEnvironmentController};
 pub use endpoint::{PlayerApiError, PlayerEndpoint, PlayerEndpointHandle};
 pub use errors::ControllerError;

@@ -223,6 +223,130 @@ domain_digest!(CheckpointDigest, "mtgml.checkpoint-digest.v1");
 // === V2 digest domains ===
 domain_digest!(FullStateDigestV2, "mtgml.full-state-digest.v2");
 domain_digest!(CheckpointDigestV2, "mtgml.checkpoint-digest.v2");
+domain_digest!(InformationStateDigestV2, "mtgml.information-state-digest.v2");
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default, Serialize, Deserialize)]
+pub struct CandidateIdV1(pub u32);
+
+impl fmt::Display for CandidateIdV1 {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl From<u32> for CandidateIdV1 {
+    fn from(value: u32) -> Self {
+        Self(value)
+    }
+}
+
+canonical_id!(PlayerDecisionIdV1);
+canonical_id!(VisibleSequence);
+
+fn decode_lower_hex_32(text: &str) -> Result<[u8; 32], DigestError> {
+    if text.len() != 64
+        || !text
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+    {
+        return Err(DigestError);
+    }
+    let mut bytes = [0u8; 32];
+    for (index, chunk) in text.as_bytes().chunks_exact(2).enumerate() {
+        let high = (chunk[0] as char).to_digit(16).ok_or(DigestError)? as u8;
+        let low = (chunk[1] as char).to_digit(16).ok_or(DigestError)? as u8;
+        bytes[index] = (high << 4) | low;
+    }
+    Ok(bytes)
+}
+
+macro_rules! raw_digest {
+    ($name:ident, $domain:literal) => {
+        #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+        pub struct $name(Digest);
+
+        impl $name {
+            pub const DOMAIN: &'static str = $domain;
+
+            pub fn from_digest_bytes(bytes: [u8; 32]) -> Self {
+                Self(Digest(encode_lower_hex(&bytes)))
+            }
+
+            pub fn parse(text: impl Into<String>) -> Result<Self, DigestError> {
+                let text = text.into();
+                decode_lower_hex_32(&text)?;
+                Ok(Self(Digest(text)))
+            }
+
+            pub fn raw_bytes(&self) -> [u8; 32] {
+                decode_lower_hex_32(self.0.as_str()).expect("raw digest invariant")
+            }
+
+            pub fn as_str(&self) -> &str {
+                self.0.as_str()
+            }
+
+            pub fn into_untyped(self) -> Digest {
+                self.0
+            }
+        }
+
+        impl fmt::Display for $name {
+            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                fmt::Display::fmt(&self.0, f)
+            }
+        }
+
+        impl Serialize for $name {
+            fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+            where
+                S: Serializer,
+            {
+                self.0.serialize(serializer)
+            }
+        }
+
+        impl<'de> Deserialize<'de> for $name {
+            fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+            where
+                D: Deserializer<'de>,
+            {
+                Digest::deserialize(deserializer)
+                    .and_then(|digest| Self::parse(digest.as_str()).map_err(D::Error::custom))
+            }
+        }
+    };
+}
+
+raw_digest!(FullStateDigestV3, "mtgml.full-state-digest.v3");
+raw_digest!(CheckpointDigestV3, "mtgml.checkpoint-digest.v3");
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(deny_unknown_fields)]
+pub struct EnvironmentLimitCounters {
+    pub decisions_submitted: u64,
+    pub accepted_transitions: u64,
+    pub rule_events_emitted: u64,
+    pub resource_units_consumed: u64,
+    pub wall_clock_elapsed_millis: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CheckpointCodecIdentity {
+    pub codec_id: String,
+    pub semantic_version: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DigestReferenceV1 {
+    pub envelope_version: String,
+    pub algorithm_id: String,
+    pub semantic_domain: String,
+    pub payload_codec_id: String,
+    pub input_schema_id: String,
+    pub digest_bytes: [u8; 32],
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -368,5 +492,19 @@ mod tests {
         let public = PublicStateDigest::from_canonical_bytes(b"same canonical bytes");
         assert_ne!(full.as_str(), public.as_str());
         assert_eq!(FullStateDigest::parse(full.as_str()).unwrap(), full);
+    }
+
+    #[test]
+    fn m2_b_candidate_id_is_u32_and_v3_digest_is_raw() {
+        assert_eq!(std::mem::size_of::<CandidateIdV1>(), 4);
+        assert_eq!(serde_json::to_string(&CandidateIdV1(7)).unwrap(), "7");
+        assert_eq!(serde_json::to_string(&PlayerDecisionIdV1(7)).unwrap(), "\"7\"");
+        assert_eq!(serde_json::to_string(&VisibleSequence(7)).unwrap(), "\"7\"");
+        assert_eq!(
+            FullStateDigestV3::from_digest_bytes([0xabu8; 32]).raw_bytes(),
+            [0xabu8; 32]
+        );
+        assert!(serde_json::from_str::<CandidateIdV1>("4294967296").is_err());
+        assert!(serde_json::from_str::<CandidateIdV1>("-1").is_err());
     }
 }
