@@ -14,6 +14,15 @@ pub trait EnvironmentBackend: Send {
     fn restore(&mut self, checkpoint: EnvironmentCheckpointV2) -> Result<(), ControllerError>;
     fn fork_boxed(&self) -> Result<Box<dyn EnvironmentBackend>, ControllerError>;
     fn export_replay(&self) -> Result<AuthoritativeReplayV2, ControllerError>;
+    fn execute_trusted_response(
+        &mut self,
+        _actor: PlayerId,
+        _response: DecisionResponse,
+    ) -> Result<mtgml_rules::TransitionResult, ControllerError> {
+        Err(ControllerError::Backend(
+            "trusted execution is unavailable".into(),
+        ))
+    }
 
     fn player_observation(
         &self,
@@ -65,7 +74,7 @@ impl TrustedEnvironmentController {
     pub fn restore(&self, checkpoint: EnvironmentCheckpointV2) -> Result<(), ControllerError> {
         checkpoint
             .validate()
-            .map_err(|error| ControllerError::InvalidCheckpoint(error.to_string()))?;
+            .map_err(ControllerError::CheckpointValidation)?;
         self.lock()?.restore(checkpoint)
     }
 
@@ -78,6 +87,27 @@ impl TrustedEnvironmentController {
 
     pub fn export_replay(&self) -> Result<AuthoritativeReplayV2, ControllerError> {
         self.lock()?.export_replay()
+    }
+
+    pub fn execute_trusted_response(
+        &self,
+        actor: PlayerId,
+        response: DecisionResponse,
+    ) -> Result<mtgml_rules::TransitionResult, ControllerError> {
+        self.lock()?.execute_trusted_response(actor, response)
+    }
+
+    pub fn execute_replay_from_checkpoint(
+        &self,
+        checkpoint: EnvironmentCheckpointV2,
+        replay: AuthoritativeReplayV2,
+    ) -> Result<crate::replay::ReplayExecutionReport, ControllerError> {
+        checkpoint
+            .validate()
+            .map_err(ControllerError::CheckpointValidation)?;
+        let mut backend = self.lock()?.fork_boxed()?;
+        backend.restore(checkpoint)?;
+        crate::replay::execute_replay(&mut *backend, replay)
     }
 
     pub(crate) fn lock(

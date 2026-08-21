@@ -8,6 +8,8 @@ rust-version.workspace = true
 mtgml-decision = { path = "../mtgml-decision" }
 mtgml-model = { path = "../mtgml-model" }
 mtgml-observation = { path = "../mtgml-observation" }
+mtgml-random = { path = "../mtgml-random" }
+mtgml-rules = { path = "../mtgml-rules" }
 mtgml-replay = { path = "../mtgml-replay" }
 mtgml-state = { path = "../mtgml-state" }
 serde.workspace = true
@@ -15,4 +17,4 @@ serde_json.workspace = true
 thiserror.workspace = true
 
 [dev-dependencies]
-mtgml-random = { path = "../mtgml-random" }
+mtgml-wire = { path = "../mtgml-wire" }

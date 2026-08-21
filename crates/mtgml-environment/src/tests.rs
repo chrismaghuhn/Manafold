@@ -1,10 +1,12 @@
 use super::*;
-use mtgml_decision::{DecisionResponse, PlayerDecisionRequest};
+use mtgml_decision::{
+    CandidateAssignment, DecisionResponse, PlayerDecisionRequest, DECISION_RESPONSE_SCHEMA,
+};
 use mtgml_model::{
-    AbilityInstanceId, CheckpointDigestV2, ContinuationId, DecisionId, EffectInstanceId,
-    EpisodeStatus, GameObjectId, InformationStateDigest, ObservationDigest, OpaqueAbilityId,
-    OpaqueObjectId, PlayerId, RuleEventId, StackObjectId, StateRevision, TerminalReason,
-    TriggerInstanceId, TruncationReason,
+    AbilityInstanceId, CheckpointDigestV2, ContentDigest, ContinuationId, DecisionId,
+    EffectInstanceId, EpisodeStatus, GameObjectId, InformationStateDigest, ObservationDigest,
+    OpaqueAbilityId, OpaqueObjectId, PlayerId, RuleEventId, StackObjectId, StateRevision,
+    TerminalReason, TriggerInstanceId, TruncationReason,
 };
 use mtgml_observation::{
     InformationStateEnvelope, ObservationEnvelope, PlayerStep, INFORMATION_STATE_SCHEMA,
@@ -14,13 +16,79 @@ use mtgml_random::{
     CanonicalRandomStreamEntryV1, RandomStateV1, RandomStreamCursorV1, RandomStreamKeyV1,
     RandomStreamKindV1, RootSeed256,
 };
-use mtgml_replay::AuthoritativeReplayV2;
+use mtgml_replay::{
+    AuthoritativeReplayV2, DeckIdentityV1, KernelIdentityV1, ReplaySchemaVersionsV1,
+};
 use mtgml_state::{
     CoreRulesState, EngineState, ExecutionState, FormatState, IdentityAllocatorState,
     KnowledgeState, PerspectiveIdentityMap, PerspectiveIdentityState, PlayerKnowledgeState,
     PlayerState, ZoneState,
 };
 use std::collections::BTreeMap;
+
+fn synthetic_config(players: [PlayerId; 2]) -> SyntheticM1EnvironmentConfig {
+    SyntheticM1EnvironmentConfig {
+        codec: CheckpointCodecIdentity {
+            codec_id: "synthetic-m1-memory".into(),
+            semantic_version: "2".into(),
+        },
+        replay: SyntheticM1ReplayConfig {
+            engine_build: "synthetic-build".into(),
+            kernel: KernelIdentityV1 {
+                implementation_id: "synthetic-m1".into(),
+                semantic_version: "0.2.2".into(),
+                build_profile: "test".into(),
+            },
+            rules_snapshot: "synthetic-rules".into(),
+            format_policy_snapshot: "synthetic-format".into(),
+            oracle_snapshot: "synthetic-oracle".into(),
+            card_bundle: "synthetic-bundle".into(),
+            randomness_contract_id: "mtgml.rng.v1".into(),
+            schemas: ReplaySchemaVersionsV1 {
+                observation: OBSERVATION_SCHEMA.into(),
+                information_state: INFORMATION_STATE_SCHEMA.into(),
+                decision: "player-decision-request.v1".into(),
+                decision_response: DECISION_RESPONSE_SCHEMA.into(),
+                observed_event: "observed-event-envelope.v1".into(),
+                player_step: "player-step.v1".into(),
+                replay_step: "replay-step.v2".into(),
+            },
+            decks: players
+                .into_iter()
+                .enumerate()
+                .map(|(index, player)| DeckIdentityV1 {
+                    player,
+                    deck_id: format!("synthetic-deck-{}", index + 1),
+                    digest: ContentDigest::from_canonical_bytes(
+                        format!("synthetic-deck-{}", index + 1).as_bytes(),
+                    ),
+                })
+                .collect(),
+        },
+    }
+}
+
+fn synthetic_seed() -> RootSeed256 {
+    RootSeed256::from_lower_hex(&"11".repeat(32)).unwrap()
+}
+
+fn synthetic_response() -> DecisionResponse {
+    DecisionResponse {
+        schema_version: DECISION_RESPONSE_SCHEMA.into(),
+        decision_id: DecisionId(1),
+        state_revision: StateRevision(0),
+        assignments: vec![CandidateAssignment {
+            candidate_id: "select_public_object".into(),
+            ordinal: None,
+        }],
+    }
+}
+
+fn synthetic_backend() -> SyntheticM1EnvironmentBackend {
+    let players = [PlayerId(1), PlayerId(2)];
+    SyntheticM1EnvironmentBackend::new(players, synthetic_seed(), synthetic_config(players))
+        .unwrap()
+}
 
 fn checkpoint_state() -> EngineState {
     let p1 = PlayerId(1);
@@ -545,4 +613,147 @@ fn player_api_errors_do_not_render_trusted_or_hidden_values() {
             );
         }
     }
+}
+
+#[test]
+fn trusted_execution_api_can_export_and_verify_an_empty_replay_segment() {
+    let controller = TrustedEnvironmentController::new(synthetic_backend());
+    let checkpoint = controller.checkpoint().unwrap();
+    let replay = controller.export_replay().unwrap();
+
+    let report = controller
+        .execute_replay_from_checkpoint(checkpoint.clone(), replay)
+        .unwrap();
+
+    assert!(report.traces.is_empty());
+    assert_eq!(report.final_checkpoint, checkpoint);
+}
+
+#[test]
+fn synthetic_backend_player_submission_surface_fails_closed_before_m1_7() {
+    let controller = TrustedEnvironmentController::new(synthetic_backend());
+    let endpoint = controller.bind_player(PlayerId(1)).unwrap();
+
+    assert_eq!(endpoint.observation(), Err(PlayerApiError::Unavailable));
+    assert_eq!(
+        endpoint.information_state(),
+        Err(PlayerApiError::Unavailable)
+    );
+    assert_eq!(
+        endpoint.visible_decision(),
+        Err(PlayerApiError::Unavailable)
+    );
+    assert_eq!(
+        endpoint.submit(synthetic_response()),
+        Err(PlayerApiError::Unavailable)
+    );
+}
+
+#[test]
+fn synthetic_backend_checkpoint_captures_the_complete_initial_product() {
+    let controller = TrustedEnvironmentController::new(synthetic_backend());
+    let checkpoint = controller.checkpoint().unwrap();
+    let stream = RandomStreamKeyV1::global(RandomStreamKindV1::SyntheticM1);
+
+    assert_eq!(checkpoint.state.revision, StateRevision(0));
+    assert!(checkpoint.state.execution.pending_decision.is_some());
+    assert_eq!(
+        checkpoint
+            .state
+            .random
+            .lookup_stream(&stream)
+            .unwrap()
+            .next_raw_u64,
+        0
+    );
+    assert_eq!(
+        checkpoint.state.allocators.next_effect_id,
+        EffectInstanceId(1)
+    );
+    assert_eq!(
+        checkpoint.state.allocators.next_rule_event_id,
+        RuleEventId(1)
+    );
+    assert_eq!(
+        checkpoint.limit_counters,
+        EnvironmentLimitCounters::default()
+    );
+    checkpoint.validate().unwrap();
+}
+
+#[test]
+fn synthetic_backend_restore_rejects_state_tampering_without_mutation() {
+    let controller = TrustedEnvironmentController::new(synthetic_backend());
+    let before = controller.checkpoint().unwrap();
+    let mut tampered = before.clone();
+    tampered
+        .state
+        .core
+        .players
+        .get_mut(&PlayerId(1))
+        .unwrap()
+        .life = 39;
+
+    assert!(controller.restore(tampered).is_err());
+    assert_eq!(controller.checkpoint().unwrap(), before);
+}
+
+#[test]
+fn synthetic_backend_restore_rejects_counter_tampering_without_mutation() {
+    let controller = TrustedEnvironmentController::new(synthetic_backend());
+    let before = controller.checkpoint().unwrap();
+    let mut tampered = before.clone();
+    tampered.limit_counters.resource_units_consumed = 1;
+
+    assert!(controller.restore(tampered).is_err());
+    assert_eq!(controller.checkpoint().unwrap(), before);
+}
+
+#[test]
+fn synthetic_backend_restore_rejects_unsupported_codec_without_mutation() {
+    let controller = TrustedEnvironmentController::new(synthetic_backend());
+    let before = controller.checkpoint().unwrap();
+    let unsupported = EnvironmentCheckpointV2::new(
+        before.state.clone(),
+        before.status.clone(),
+        before.limit_counters.clone(),
+        CheckpointCodecIdentity {
+            codec_id: "other-codec".into(),
+            semantic_version: "2".into(),
+        },
+    )
+    .unwrap();
+
+    assert!(matches!(
+        controller.restore(unsupported),
+        Err(ControllerError::UnsupportedCheckpointCodec)
+    ));
+    assert_eq!(controller.checkpoint().unwrap(), before);
+}
+
+#[test]
+fn synthetic_backend_from_checkpoint_rebases_to_an_empty_segment() {
+    let source = synthetic_backend();
+    let checkpoint = source.checkpoint().unwrap();
+    let players = [PlayerId(1), PlayerId(2)];
+    let restored = SyntheticM1EnvironmentBackend::from_checkpoint(
+        checkpoint.clone(),
+        synthetic_config(players),
+    )
+    .unwrap();
+    let controller = TrustedEnvironmentController::new(restored);
+
+    assert_eq!(controller.checkpoint().unwrap(), checkpoint);
+    let replay = controller.export_replay().unwrap();
+    assert!(replay.steps.is_empty());
+    assert_eq!(
+        replay.manifest.initial_state_revision,
+        checkpoint.state.revision
+    );
+    assert_eq!(
+        replay.manifest.initial_state_digest,
+        checkpoint.state_digest
+    );
+    assert_eq!(replay.final_state_revision, checkpoint.state.revision);
+    assert_eq!(replay.final_state_digest, checkpoint.state_digest);
 }
