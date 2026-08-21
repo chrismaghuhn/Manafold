@@ -26,13 +26,17 @@ pub struct PendingDecisionRecordV2 {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum AssemblyStageV2 {
-    AwaitingSelectOne,
+    ChooseCount,
+    ChooseMembers,
+    OrderMembers,
 }
 
 impl AssemblyStageV2 {
     fn index(self) -> u16 {
         match self {
-            Self::AwaitingSelectOne => 0,
+            Self::ChooseCount => 0,
+            Self::ChooseMembers => 1,
+            Self::OrderMembers => 2,
         }
     }
 }

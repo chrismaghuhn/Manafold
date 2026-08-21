@@ -7,6 +7,7 @@ mod construction;
 mod core;
 mod delta;
 mod digest;
+mod digest_v3;
 mod engine;
 mod execution;
 mod format;

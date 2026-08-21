@@ -241,6 +241,7 @@ version = "0.2.2"
 dependencies = [
  "mtgml-decision",
  "mtgml-model",
+ "mtgml-persistence",
  "mtgml-random",
  "serde",
  "serde_json",

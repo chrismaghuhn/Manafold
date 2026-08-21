@@ -866,7 +866,7 @@ fn m2_shape_requires_a_live_continuation_reference_and_current_stage_revision() 
             created_at_revision: StateRevision(2),
             stage_index: 0,
             payload: m2_shape::ContinuationPayloadV2::SyntheticM2Assembly {
-                stage: m2_shape::AssemblyStageV2::AwaitingSelectOne,
+                stage: m2_shape::AssemblyStageV2::ChooseCount,
                 selected_count: None,
                 selected_piece_keys: vec![],
                 ordered_piece_keys: vec![],
@@ -897,6 +897,158 @@ fn m2_shape_requires_a_live_continuation_reference_and_current_stage_revision() 
         ),
         Err(m2_shape::M2ShapeViolation::PlayerCoverage)
     );
+}
+
+#[test]
+fn full_state_digest_v3_known_answer() {
+    let input = detached_state_digest_v3_fixture();
+    let digest = digest_v3::calculate_full_state_digest_v3(&input).unwrap();
+    assert_eq!(
+        digest.as_str(),
+        "de7e3160413e09ffcccd37740fe2798e48f56fe2d7c9f2f9774cd2afc18fc144"
+    );
+    let payload = input.canonical_payload().unwrap();
+    let value = mtgml_persistence::cbor::decode_canonical(&payload).unwrap();
+    let mtgml_persistence::cbor::Value::Array(fields) = value else {
+        panic!("full-state input must be an array")
+    };
+    assert_eq!(fields.len(), 11);
+    assert_eq!(
+        fields[0],
+        mtgml_persistence::cbor::Value::Text("full-state-digest-input.v3".into())
+    );
+    assert_eq!(
+        fields[1],
+        mtgml_persistence::cbor::Value::Text("mtgml.full-state-digest.v3".into())
+    );
+}
+
+#[test]
+fn m2_b_full_state_digest_v3_mutation_matrix() {
+    let input = detached_state_digest_v3_fixture();
+    let baseline = digest_v3::calculate_full_state_digest_v3(&input).unwrap();
+    let mut mutations = vec![
+        |value: &mut digest_v3::FullStateDigestInputV3| value.revision += 1,
+        |value: &mut digest_v3::FullStateDigestInputV3| {
+            value.core = mtgml_persistence::cbor::Value::Array(vec![
+                mtgml_persistence::cbor::Value::Unsigned(1),
+            ])
+        },
+        |value: &mut digest_v3::FullStateDigestInputV3| {
+            value.zones = mtgml_persistence::cbor::Value::Array(vec![
+                mtgml_persistence::cbor::Value::Unsigned(1),
+            ])
+        },
+        |value: &mut digest_v3::FullStateDigestInputV3| {
+            value.allocators = mtgml_persistence::cbor::Value::Array(vec![
+                mtgml_persistence::cbor::Value::Unsigned(2),
+            ])
+        },
+        |value: &mut digest_v3::FullStateDigestInputV3| {
+            value.execution = mtgml_persistence::cbor::Value::Array(vec![
+                mtgml_persistence::cbor::Value::Null,
+                mtgml_persistence::cbor::Value::Array(vec![
+                    mtgml_persistence::cbor::Value::Unsigned(1),
+                ]),
+                mtgml_persistence::cbor::Value::Array(vec![]),
+                mtgml_persistence::cbor::Value::Array(vec![]),
+                mtgml_persistence::cbor::Value::Array(vec![]),
+            ])
+        },
+        |value: &mut digest_v3::FullStateDigestInputV3| {
+            value.random = mtgml_persistence::cbor::Value::Array(vec![
+                mtgml_persistence::cbor::Value::Text("mtgml.rng.v1".into()),
+                mtgml_persistence::cbor::Value::Bytes(vec![1; 32]),
+                mtgml_persistence::cbor::Value::Array(vec![]),
+            ])
+        },
+        |value: &mut digest_v3::FullStateDigestInputV3| {
+            value.knowledge = mtgml_persistence::cbor::Value::Array(vec![
+                mtgml_persistence::cbor::Value::Unsigned(1),
+            ])
+        },
+        |value: &mut digest_v3::FullStateDigestInputV3| {
+            value.perspective_identities = mtgml_persistence::cbor::Value::Array(vec![
+                mtgml_persistence::cbor::Value::Unsigned(1),
+            ])
+        },
+        |value: &mut digest_v3::FullStateDigestInputV3| {
+            value.format = mtgml_persistence::cbor::Value::Array(vec![
+                mtgml_persistence::cbor::Value::Text("commander".into()),
+                mtgml_persistence::cbor::Value::Null,
+            ])
+        },
+    ];
+    for mutate in mutations.drain(..) {
+        let mut changed = input.clone();
+        mutate(&mut changed);
+        assert_ne!(
+            digest_v3::calculate_full_state_digest_v3(&changed).unwrap(),
+            baseline
+        );
+    }
+}
+
+#[test]
+fn detached_state_digest_v3_rejects_nonempty_unsupported_effects() {
+    let mut input = detached_state_digest_v3_fixture();
+    input.execution = mtgml_persistence::cbor::Value::Array(vec![
+        mtgml_persistence::cbor::Value::Null,
+        mtgml_persistence::cbor::Value::Array(vec![]),
+        mtgml_persistence::cbor::Value::Array(vec![mtgml_persistence::cbor::Value::Null]),
+        mtgml_persistence::cbor::Value::Array(vec![]),
+        mtgml_persistence::cbor::Value::Array(vec![]),
+    ]);
+    assert_eq!(
+        digest_v3::calculate_full_state_digest_v3(&input),
+        Err(StateDigestError::Persistence(
+            mtgml_persistence::PersistenceDecodeErrorV1::SemanticValidation
+        ))
+    );
+}
+
+fn detached_state_digest_v3_fixture() -> digest_v3::FullStateDigestInputV3 {
+    let array = mtgml_persistence::cbor::Value::Array;
+    digest_v3::FullStateDigestInputV3 {
+        revision: 0,
+        core: array(vec![
+            array(vec![]),
+            array(vec![]),
+            mtgml_persistence::cbor::Value::Unsigned(1),
+            mtgml_persistence::cbor::Value::Unsigned(1),
+            mtgml_persistence::cbor::Value::Unsigned(1),
+        ]),
+        zones: array(vec![
+            array(vec![]),
+            array(vec![]),
+            array(vec![]),
+            array(vec![]),
+            array(vec![]),
+        ]),
+        allocators: array(
+            (1..=8)
+                .map(mtgml_persistence::cbor::Value::Unsigned)
+                .collect(),
+        ),
+        execution: array(vec![
+            mtgml_persistence::cbor::Value::Null,
+            array(vec![]),
+            array(vec![]),
+            array(vec![]),
+            array(vec![]),
+        ]),
+        random: array(vec![
+            mtgml_persistence::cbor::Value::Text("mtgml.rng.v1".into()),
+            mtgml_persistence::cbor::Value::Bytes(vec![0; 32]),
+            array(vec![]),
+        ]),
+        knowledge: array(vec![]),
+        perspective_identities: array(vec![]),
+        format: array(vec![
+            mtgml_persistence::cbor::Value::Text("none".into()),
+            mtgml_persistence::cbor::Value::Null,
+        ]),
+    }
 }
 
 fn m2_shape_request(

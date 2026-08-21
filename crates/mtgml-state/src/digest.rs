@@ -6,6 +6,8 @@ use thiserror::Error;
 pub enum StateDigestError {
     #[error("canonical full-state digest serialization failed")]
     Serialization,
+    #[error("persisted full-state digest encoding failed: {0}")]
+    Persistence(mtgml_persistence::PersistenceDecodeErrorV1),
 }
 
 #[derive(serde::Serialize)]
