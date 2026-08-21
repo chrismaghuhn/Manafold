@@ -5,10 +5,9 @@ use mtgml_model::{
 
 use crate::{
     AuthoritativeReplayV1, DeckIdentityV1, KernelIdentityV1, RandomnessIdentityV1,
-    RandomnessIdentityV2, ReplayManifestV1, ReplayManifestV2,
-    ReplayRecorderV2, ReplaySchemaVersionsV1, ReplayStepV1, ReplayStepV2,
-    ReplayValidationError, REPLAY_FILE_SCHEMA, REPLAY_FILE_SCHEMA_V2, REPLAY_MANIFEST_SCHEMA,
-    REPLAY_MANIFEST_SCHEMA_V2,
+    RandomnessIdentityV2, ReplayManifestV1, ReplayManifestV2, ReplayRecorderV2,
+    ReplaySchemaVersionsV1, ReplayStepV1, ReplayStepV2, ReplayValidationError, REPLAY_FILE_SCHEMA,
+    REPLAY_FILE_SCHEMA_V2, REPLAY_MANIFEST_SCHEMA, REPLAY_MANIFEST_SCHEMA_V2,
 };
 
 fn digest(text: char) -> FullStateDigest {

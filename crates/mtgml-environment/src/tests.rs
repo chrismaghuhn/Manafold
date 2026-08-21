@@ -19,6 +19,7 @@ use mtgml_random::{
 use mtgml_replay::{
     AuthoritativeReplayV2, DeckIdentityV1, KernelIdentityV1, ReplaySchemaVersionsV1,
 };
+use mtgml_rules::AuthoritativeRuleEventKind;
 use mtgml_state::{
     CoreRulesState, EngineState, ExecutionState, FormatState, IdentityAllocatorState,
     KnowledgeState, PerspectiveIdentityMap, PerspectiveIdentityState, PlayerKnowledgeState,
@@ -756,4 +757,142 @@ fn synthetic_backend_from_checkpoint_rebases_to_an_empty_segment() {
     );
     assert_eq!(replay.final_state_revision, checkpoint.state.revision);
     assert_eq!(replay.final_state_digest, checkpoint.state_digest);
+}
+
+#[test]
+fn accepted_environment_transaction_commits_the_exact_m1_product() {
+    let controller = TrustedEnvironmentController::new(synthetic_backend());
+    let before = controller.checkpoint().unwrap();
+
+    let transition = controller
+        .execute_trusted_response(PlayerId(1), synthetic_response())
+        .unwrap();
+
+    assert!(transition.accepted);
+    assert_eq!(transition.next_state.revision, StateRevision(1));
+    assert_eq!(transition.next_state.core.players[&PlayerId(1)].life, 38);
+    assert_eq!(transition.next_state.core.players[&PlayerId(2)].life, 40);
+    assert!(transition.next_state.execution.pending_decision.is_none());
+    assert_eq!(transition.events.len(), 4);
+    assert!(matches!(
+        transition.events[2].event,
+        AuthoritativeRuleEventKind::RandomValueSampled {
+            bound: 10,
+            value: 1,
+            raw_words_consumed: 1,
+            cursor_before: 0,
+            cursor_after: 1,
+            ..
+        }
+    ));
+    assert_eq!(
+        transition
+            .next_state
+            .random
+            .lookup_stream(&RandomStreamKeyV1::global(RandomStreamKindV1::SyntheticM1))
+            .unwrap()
+            .next_raw_u64,
+        1
+    );
+    assert_eq!(
+        transition.next_state.allocators.next_effect_id,
+        EffectInstanceId(2)
+    );
+    assert_eq!(
+        transition.next_state.allocators.next_rule_event_id,
+        RuleEventId(5)
+    );
+    assert_eq!(
+        transition.delta.apply(&before.state).unwrap(),
+        transition.next_state
+    );
+
+    let after = controller.checkpoint().unwrap();
+    assert_eq!(after.state, transition.next_state);
+    assert_eq!(
+        after.limit_counters,
+        EnvironmentLimitCounters {
+            decisions_submitted: 1,
+            accepted_transitions: 1,
+            rule_events_emitted: 4,
+            resource_units_consumed: 0,
+            wall_clock_elapsed_millis: 0,
+        }
+    );
+    assert_eq!(after.state_digest, after.state.digest().unwrap());
+
+    let replay = controller.export_replay().unwrap();
+    assert_eq!(replay.steps.len(), 1);
+    assert_eq!(replay.steps[0].step_index, 0);
+    assert_eq!(replay.steps[0].state_revision_before, StateRevision(0));
+    assert_eq!(replay.steps[0].response, synthetic_response());
+    assert!(replay.steps[0].accepted);
+    assert_eq!(replay.steps[0].state_revision_after, StateRevision(1));
+    assert_eq!(replay.steps[0].state_digest_after, after.state_digest);
+    assert_eq!(replay.final_state_revision, StateRevision(1));
+    assert_eq!(replay.final_state_digest, after.state_digest);
+    replay.validate().unwrap();
+
+    let canonical = mtgml_wire::encode_canonical(&replay).unwrap();
+    let decoded: AuthoritativeReplayV2 = mtgml_wire::decode_canonical(&canonical).unwrap();
+    assert_eq!(decoded, replay);
+}
+
+#[test]
+fn rejected_environment_submission_preserves_complete_outer_nonmutation() {
+    let controller = TrustedEnvironmentController::new(synthetic_backend());
+    let before_checkpoint = controller.checkpoint().unwrap();
+    let before_replay = controller.export_replay().unwrap();
+    let before_bytes = mtgml_wire::encode_canonical(&before_replay).unwrap();
+    let mut rejected = synthetic_response();
+    rejected.assignments[0].candidate_id = "unknown_candidate".into();
+
+    let transition = controller
+        .execute_trusted_response(PlayerId(1), rejected)
+        .unwrap();
+
+    assert!(!transition.accepted);
+    let after_checkpoint = controller.checkpoint().unwrap();
+    let after_replay = controller.export_replay().unwrap();
+    assert_eq!(after_checkpoint, before_checkpoint);
+    assert_eq!(after_replay, before_replay);
+    assert_eq!(
+        mtgml_wire::encode_canonical(&after_replay).unwrap(),
+        before_bytes
+    );
+    assert_eq!(after_replay.steps.len(), 0);
+}
+
+#[test]
+fn counter_overflow_fails_before_environment_commit() {
+    let source = synthetic_backend();
+    let initial = source.checkpoint().unwrap();
+    let overflow_checkpoint = EnvironmentCheckpointV2::new(
+        initial.state,
+        initial.status,
+        EnvironmentLimitCounters {
+            decisions_submitted: u64::MAX,
+            ..EnvironmentLimitCounters::default()
+        },
+        initial.codec,
+    )
+    .unwrap();
+    let players = [PlayerId(1), PlayerId(2)];
+    let backend = SyntheticM1EnvironmentBackend::from_checkpoint(
+        overflow_checkpoint,
+        synthetic_config(players),
+    )
+    .unwrap();
+    let controller = TrustedEnvironmentController::new(backend);
+    let before_checkpoint = controller.checkpoint().unwrap();
+    let before_replay = controller.export_replay().unwrap();
+
+    assert!(matches!(
+        controller.execute_trusted_response(PlayerId(1), synthetic_response()),
+        Err(ControllerError::CounterOverflow {
+            counter: "decisions_submitted"
+        })
+    ));
+    assert_eq!(controller.checkpoint().unwrap(), before_checkpoint);
+    assert_eq!(controller.export_replay().unwrap(), before_replay);
 }

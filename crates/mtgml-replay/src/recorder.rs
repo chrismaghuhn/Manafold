@@ -1,8 +1,6 @@
 use mtgml_model::{FullStateDigestV2, StateRevision};
 
-use crate::{
-    AuthoritativeReplayV2, ReplayManifestV2, ReplayStepV2, ReplayValidationError,
-};
+use crate::{AuthoritativeReplayV2, ReplayManifestV2, ReplayStepV2, ReplayValidationError};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ReplayRecorderV2 {
