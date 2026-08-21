@@ -264,9 +264,7 @@ def toolchain_snapshot() -> dict[str, Any]:
             continue
         output = result.stdout.strip()
         if name == "active_toolchain":
-            match = re.search(
-                r"^(\d+\.\d+\.\d+)(?:-|\s|$)", output, re.MULTILINE
-            )
+            match = re.search(r"^(\d+\.\d+\.\d+)(?:-|\s|$)", output, re.MULTILINE)
         else:
             match = re.match(
                 rf"^{name}\s+(\d+\.\d+\.\d+)", output.splitlines()[0] if output else ""
