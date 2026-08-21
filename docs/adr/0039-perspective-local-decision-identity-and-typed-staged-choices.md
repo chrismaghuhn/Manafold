@@ -80,16 +80,31 @@ Order { candidate_ids }
 
 ### Candidate ordering
 
-Production candidate generation orders choices by player-authorized material only:
+M2 freezes `CandidateOrderingV1`; candidate order is not derived from Rust enum order or serialized JSON/text bytes.
+
+Exact visible-intent ranks are:
 
 ```text
-visible intent variant rank
-canonical visible payload bytes
+0 pass_priority
+1 cast_spell
+2 activate_ability
+3 select_object
+4 select_player
+5 select_mode
+6 choose_boolean
+7 declare_number
+8 confirm
 ```
 
-Trusted IDs, candidate bindings, hidden definitions, insertion/hash-map order, RNG state, allocator history and continuation internals cannot break ties.
+Within a rank, the visible payload comparator is semantic and numeric: opaque object/ability/player IDs compare by underlying `u64`, mode indices by `u32`, booleans `false < true`, and declared numbers by signed `i64`; unit variants have no payload. The complete key is the lexicographic tuple `(variant_rank, payload_value)`.
 
-If two distinct non-equivalent bindings are publicly indistinguishable under the declared player choice, generation fails closed rather than sorting by hidden identity.
+After sorting, candidate IDs are assigned densely from zero. Any duplicate public ordering key fails closed in M2, even if trusted code considers the bindings equivalent. There is no collapse and no hidden/trusted tiebreaker. A future equivalence policy requires a new versioned ordering contract.
+
+Trusted IDs, candidate bindings, hidden definitions, insertion/hash-map order, RNG state, allocator history, continuation internals, Rust declaration order and textual serialization cannot influence the order.
+
+### Candidate-set digest compatibility
+
+Historical `CandidateSetDigest` V1 remains an M1/dormant identity and is not produced for Decision V2 candidate sets. If M2 later needs a concrete candidate-set digest, it must allocate `CandidateSetDigestV2` with semantic domain `mtgml.candidate-set-digest.v2`, input schema `candidate-set-digest-input.v2`, and an exact input contract based on `CandidateOrderingV1` before any producer is current. V1 is never reinterpreted for the V2 candidate model.
 
 ### Semantic keys remain deferred
 

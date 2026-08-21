@@ -34,7 +34,98 @@ M2 retained knowledge explicitly represents:
 
 Active known-object records are keyed by that perspective's `OpaqueObjectId`, not by the current `GameObjectId`.
 
-Trusted knowledge records may retain physical/definition identities for validation, but they do **not** duplicate the live `OpaqueObjectId -> GameObjectId` association. `PerspectiveIdentityState` is the sole owner of that current live association. Player projection never exposes trusted physical/definition identities.
+Trusted knowledge records may retain physical/definition identities for validation, but they do **not** duplicate the live `OpaqueObjectId -> GameObjectId` association. `PerspectiveIdentityState` is the sole owner of that current live association. Player projection never exposes physical-card identity or live authoritative object identity. A known `CardDefinitionId` may be projected only when that perspective is already authorized to know the definition.
+
+## PlayerInformationStateV2 retained-knowledge contract
+
+`PlayerInformationStateV2` contains exactly one current observation plus retained perspective knowledge. Its retained object array is `PlayerKnownObjectV1[]`; retired records remain present because retirement ends live identity resolution, not the player's historical memory.
+
+`PlayerKnownObjectV1` uses the following exact canonical-JSON semantic shapes. Object keys are serialized by the global canonical JSON rule; every field shown is required, and nullable fields are encoded as explicit `null` rather than omission. IDs use their canonical decimal-string wire representation.
+
+Active record:
+
+```json
+{
+  "kind": "active",
+  "opaque_object_id": "7",
+  "known_definition": "42",
+  "current_known_location": {"zone": "exile", "player": "2"},
+  "historical_locations": [],
+  "acquisition": {"kind": "initial_configuration"}
+}
+```
+
+`known_definition` and `current_known_location` may be `null`.
+
+Retired record:
+
+```json
+{
+  "kind": "retired",
+  "opaque_object_id": "7",
+  "known_definition": null,
+  "last_known_location": {"zone": "library", "player": "2"},
+  "historical_locations": [],
+  "acquisition": {"kind": "observed", "channel": "private", "sequence": "3", "cause": "private_look"},
+  "invalidation": {
+    "provenance": {"kind": "observed", "channel": "public", "sequence": "5", "cause": "public_event"},
+    "reason": "shuffle"
+  }
+}
+```
+
+`known_definition` and `last_known_location` may be `null`; `invalidation` is mandatory for retired records.
+
+The public-safe `PlayerKnownLocationV1` shape is exactly:
+
+```json
+{"zone": "<ZoneKind>", "player": "<PlayerId>"}
+```
+
+where `player` may be `null`. It never exposes hidden zone position, partition identity, internal ordering, or a trusted `ZoneLocation`. M3 may version this public location surface if a certified capability requires additional authorized location knowledge.
+
+A `PlayerKnownLocationFactV1` is exactly:
+
+```json
+{
+  "location": {"zone": "<ZoneKind>", "player": null},
+  "provenance": {"kind": "initial_configuration"}
+}
+```
+
+`PlayerKnowledgeProvenanceV1` has exactly two JSON variants:
+
+```json
+{"kind": "initial_configuration"}
+```
+
+and:
+
+```json
+{
+  "kind": "observed",
+  "channel": "public",
+  "sequence": "4",
+  "cause": "explicit_reveal"
+}
+```
+
+`channel` is exactly `public | private`; `cause` is exactly `public_event | private_look | explicit_reveal | own_private_identity`. `VisibleSequence` uses canonical decimal-string wire representation.
+
+`PlayerKnowledgeInvalidationV1` is exactly:
+
+```json
+{
+  "provenance": {"kind": "observed", "channel": "public", "sequence": "5", "cause": "public_event"},
+  "reason": "hidden_transition"
+}
+```
+
+`reason` is exactly `hidden_transition | randomization | shuffle | explicit_forget`.
+
+Canonical retained-knowledge order is ascending numeric `OpaqueObjectId` across active and retired records. One opaque ID may occur at most once. Historical-location arrays preserve semantic history order and their visible sequences must be strictly increasing. Active records have no invalidation. Retired records have exactly one invalidation and no active mapping in `PerspectiveIdentityState`.
+
+The public DTO excludes `PhysicalCardId`, `GameObjectId`, trusted `ZoneLocation`, authoritative event IDs, RNG provenance, and another perspective's knowledge.
 
 ## Knowledge lifecycle
 

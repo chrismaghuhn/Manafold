@@ -25,7 +25,7 @@ ReplayStepV3
 AuthoritativeReplayV3
 ```
 
-A V3 manifest identifies at least:
+A V3 manifest identifies:
 
 - engine build and kernel/backend identity;
 - rules, format-policy, Oracle/source, bundle and deck identities already required by replay provenance;
@@ -33,9 +33,22 @@ A V3 manifest identifies at least:
 - player decision request/response schema versions;
 - observation payload/envelope identity;
 - information-state, observed-event and PlayerStep schema identities;
-- full-state digest envelope/algorithm/domain/codec/input-schema identity;
+- full-state and checkpoint digest envelope/algorithm/domain/codec/input-schema identities;
 - replay-step/file schema identities;
-- initial state revision and `FullStateDigestV3`.
+- one complete `InitialEnvironmentIdentityV3`.
+
+`InitialEnvironmentIdentityV3` contains exactly:
+
+```text
+state_revision
+FullStateDigestV3
+EpisodeStatus
+EnvironmentLimitCounters
+CheckpointCodecIdentity
+CheckpointDigestV3
+```
+
+The checkpoint digest must recompute from the other fields using the V3 checkpoint-digest contract. A replay cannot identify its initial environment by `FullStateDigestV3` alone.
 
 M2 does not resolve stable semantic action keys or trajectory encoding.
 
@@ -46,23 +59,30 @@ A step contains:
 ```text
 step_index
 actor
+CheckpointDigestV3 before
 state_revision_before
 DecisionResponseV2
 accepted
 state_revision_after
 FullStateDigestV3 after
+EpisodeStatus after
+EnvironmentLimitCounters after
+CheckpointDigestV3 after
 ```
 
-The actor is trusted replay input. It is not taken from the player response.
+The checkpoint codec identity is fixed by the manifest/initial environment identity for the replay segment. The actor is trusted replay input; it is not taken from the player response.
 
 Rules:
 
-- accepted steps advance revision strictly;
-- rejected diagnostic steps preserve revision and full-state identity;
+- `checkpoint_digest_before` equals the initial checkpoint digest for step 0 and the previous step's `checkpoint_digest_after` thereafter;
+- accepted steps advance revision strictly and produce a V3 checkpoint digest that recomputes from after-state digest, after status, after counters and checkpoint codec identity;
+- rejected diagnostic steps preserve the **complete checkpoint identity**, including status and every environment counter, not merely state revision/full-state digest;
 - adjacent accepted semantic revisions are contiguous under the execution contract;
 - response expected revision equals the step before revision;
 - response player-decision identity must match the authoritative request reconstructed at that point;
-- final revision/digest equal the final step or, for an empty replay, the initial identity.
+- final replay identity includes final revision, final `FullStateDigestV3`, final `EpisodeStatus`, final `EnvironmentLimitCounters`, and final `CheckpointDigestV3`; for an empty replay these equal the initial environment identity.
+
+Counters whose values are deterministic consequences of submitted decisions/events/resources are recomputed and compared. A replay executor MUST NOT sample the host wall clock to reconstruct `wall_clock_elapsed_millis`; recorded wall-clock/external-limit progression is trusted environment-control trace and is replayed/validated explicitly. The same rule applies to any future environment value that is not a deterministic function of authoritative game state plus submitted responses: it must become explicit versioned replay input rather than hidden controller state.
 
 Wire-decode failures are not semantic replay steps because no typed `DecisionResponseV2` exists.
 

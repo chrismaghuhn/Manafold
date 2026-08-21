@@ -99,18 +99,41 @@ There is no optional ordinal field.
 
 ## Candidate ordering and bindings
 
-Production candidate generation is authoritative Rust rules behavior.
+Production candidate generation is authoritative Rust rules behavior. M2 freezes one exact ordering policy, `CandidateOrderingV1`. It is a semantic comparator, not Rust enum declaration order and not lexicographic JSON/text ordering.
 
-Candidates are ordered only by player-authorized material:
+The visible-intent variant rank is exactly:
 
 ```text
-visible intent variant rank
-canonical visible payload bytes
+0 pass_priority
+1 cast_spell
+2 activate_ability
+3 select_object
+4 select_player
+5 select_mode
+6 choose_boolean
+7 declare_number
+8 confirm
 ```
 
-Ordering must not use trusted object IDs, physical IDs, hidden definitions, candidate bindings, allocator history, hash-map iteration, RNG state, or continuation internals.
+Within one variant, compare the authorized payload as follows:
 
-If two distinct legal bindings have identical public ordering keys and are not semantically equivalent, generation fails closed. Hidden identity must never be used as a tiebreaker.
+```text
+pass_priority / confirm   no payload
+cast_spell / select_object  OpaqueObjectId underlying u64, numeric ascending
+activate_ability            OpaqueAbilityId underlying u64, numeric ascending
+select_player               PlayerId underlying u64, numeric ascending
+select_mode                 u32 numeric ascending
+choose_boolean              false < true
+declare_number              signed i64 numeric ascending
+```
+
+The complete ordering key is the lexicographic semantic tuple `(variant_rank, payload_value)`. Implementations MUST NOT obtain this order by serializing the payload to JSON/Base64/text, by using Rust enum order, or by comparing trusted bindings. Thus `OpaqueObjectId(2) < OpaqueObjectId(10)` numerically regardless of their textual wire rendering.
+
+After sorting, `CandidateIdV1` values are assigned densely as `0..n-1`.
+
+M2 permits **no duplicate public ordering key**. If two generated candidate records have the same `(variant_rank, payload_value)`, generation fails closed even when trusted code believes the bindings are semantically equivalent. M2 does not collapse duplicates and never uses a trusted/hidden tiebreaker. A future equivalence/canonicalization policy requires its own explicitly versioned ordering contract.
+
+Ordering must not use trusted object IDs, physical IDs, hidden definitions, candidate bindings, allocator history, insertion/hash-map order, RNG state, or continuation internals.
 
 Exact binding validation compares visible values and perspective mappings, not merely enum variants.
 
@@ -153,7 +176,7 @@ Nested/recursive continuation composition is deferred until M3 evidence requires
 
 ```text
 soundness:    every emitted/reachable player choice is legal
-completeness: every legal player choice in the declared scope is representable/reachable
+completeness : every legal player choice in the declared scope is representable/reachable
 ```
 
 Production legality remains in Rust rules. An independent bounded oracle exists only in conformance tooling and can never be imported as production legality.

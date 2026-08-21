@@ -137,6 +137,8 @@ alongside Decision/Information/Event/Step V2 public contracts and the explicit `
 
 V3 full-state/checkpoint digests are the first new persisted semantic identities after ADR 0038 and use its common envelope plus `mtgml.canonical-cbor.v1` detached input specified normatively in `STATE_HASHING.md`.
 
+Replay V3 binds complete environment identity, not only game-state identity: its initial record contains `FullStateDigestV3`, `EpisodeStatus`, `EnvironmentLimitCounters`, checkpoint codec identity and `CheckpointDigestV3`, and step continuity verifies the corresponding after checkpoint identity. Environment values that are not deterministic functions of game state/responses (for example recorded wall-clock progression) are explicit trusted replay-control data and are never reconstructed from the replay host's wall clock.
+
 ### V2 runtime retirement
 
 `EnvironmentCheckpointV2` embeds the then-current unversioned `EngineState`. After M2 changes `EngineState`, that runtime type cannot retain historical V2 executable meaning.
@@ -153,6 +155,36 @@ Manafold therefore:
 - uses archived matching M1 engine builds where historical semantic execution is required.
 
 Migration, if later required, is Rust-authoritative, versioned and provenance-preserving.
+
+### Persistence decode precedence refinement
+
+For M2 V3 persisted identities, the grouped precedence described by `STATE_HASHING.md` is refined to this total `PersistenceDecodeErrorV1` order whenever an input has multiple detectable defects:
+
+```text
+1  unsupported_historical_version
+2  envelope_identity
+3  envelope_length
+4  payload_too_large
+5  string_too_large
+6  array_too_large
+7  depth_exceeded
+8  item_limit_exceeded
+9  disallowed_cbor_form
+10 noncanonical_primitive
+11 invalid_utf8
+12 wrong_record_length
+13 unknown_variant
+14 value_out_of_range
+15 duplicate_semantic_key
+16 noncanonical_order
+17 schema_identity_mismatch
+18 trailing_data
+19 reencode_mismatch
+20 digest_mismatch
+21 semantic_validation
+```
+
+Negative fixtures with multiple defects assert the first applicable category in this order. Implementations must not choose an arbitrary error from the same conceptual group. This refinement does not make persistence errors player-facing.
 
 ## Compatibility
 
