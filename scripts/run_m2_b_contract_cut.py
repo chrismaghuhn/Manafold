@@ -248,9 +248,10 @@ def toolchain_snapshot() -> dict[str, Any]:
         "PASS" if python_result.returncode == 0 and python_version == expected_python else "FAIL"
     )
     rust: dict[str, Any] = {}
+    pinned = f"+{expected_rust}"
     for name, command in (
-        ("rustc", ("rustc", "--version")),
-        ("cargo", ("cargo", "--version")),
+        ("rustc", ("rustc", pinned, "--version")),
+        ("cargo", ("cargo", pinned, "--version")),
         ("active_toolchain", ("rustup", "show", "active-toolchain")),
     ):
         if not command_available(command):
