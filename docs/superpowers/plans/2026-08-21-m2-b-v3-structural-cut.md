@@ -1,0 +1,871 @@
+# M2.B V3 Structural Cut Implementation Plan
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+**Goal:** Implement Issue #49 as one atomic cross-layer structural cut in which the current Manafold runtime uses Decision V2, the M2 `EngineState` shape, `InformationStateDigestV2`, `FullStateDigestV3`, `EnvironmentCheckpointV3`, and Replay V3 while preserving V1/V2 historical evidence without reinterpretation.
+
+**Architecture:** Keep `mtgml-state` as the only current `EngineState` authority. Add the rules-neutral `mtgml-persistence` lower layer for the restricted canonical CBOR/envelope codec and the single `CheckpointDigestV3` calculation; keep semantic state producers above it. Let `mtgml-observation` own semantic player-information DTOs, `mtgml-wire` own their one canonical JSON/digest byte path, and `mtgml-environment` orchestrate and verify the result.
+
+**Tech Stack:** Rust 2021 workspace with pinned Serde/SHA-256/thiserror dependencies, manually enforced `mtgml.canonical-cbor.v1` profile, canonical compact UTF-8 JSON, JSON Schema Draft 2020-12, Python 3.11–3.13 rules-free mechanical DTO/codec tooling, shared golden/negative fixtures, and the repository `just`/Python verification commands.
+
+---
+
+## Starting point and non-negotiable boundaries
+
+Implementation starts only from:
+
+```text
+source commit: a4e769eb940611d34df05fc79effd9430891d897
+branch:        chris/m2-b-v3-structural-cut
+```
+
+The local `just check-fast` baseline is already known to be `BLOCKED` because Windows cannot start WSL2/Hyper-V (`HCS_E_HYPERV_NOT_INSTALLED`). It must remain reported as `BLOCKED`, never upgraded to `PASS`, and native Rust/Python fallback evidence must be labeled separately.
+
+The implementation is one PR with reviewable internal commits. No commit may leave a current producer using a newly reinterpreted V2 value. V1/V2 fixtures, domain vectors, detached V2 readers, and historical support classifications remain unchanged. M2.B must not add general `ChooseMany`, `ChooseNumber`, or `Order` execution, knowledge lifecycle behavior, event-redaction lifecycle, legality completeness, noninterference closure, semantic action keys, Python transport, real Magic rules, cards, decks, M2.5, or M3 behavior.
+
+## Ownership and dependency map
+
+| Surface | Sole owner | Consumers | Explicit prohibition |
+|---|---|---|---|
+| Shared IDs, digest wrappers, `EnvironmentLimitCounters`, `CheckpointCodecIdentity` | `crates/mtgml-model` | all declared consumers | no persistence I/O or codec implementation |
+| Canonical CBOR, digest envelope, resource limits, decode precedence | new `crates/mtgml-persistence` | state, environment, replay, trusted Python parity | no rules, `EngineState`, public JSON, or filesystem ownership |
+| `CheckpointDigestV3` input layout/calculation | `mtgml-persistence` | environment and replay | no second checkpoint input struct or hash path |
+| Decision V2 semantic/trusted/player forms and local validation | `crates/mtgml-decision` | state, wire, environment | no legality oracle or semantic action keys |
+| Current `EngineState`, detached full-state input, cross-component state validation | `crates/mtgml-state` | rules, environment, replay | no second state crate, sidecar state, or `mtgml-wire` dependency |
+| Semantic player-information DTOs and semantic digest input view | `crates/mtgml-observation` | wire and environment | no canonical JSON bytes or digest calculation |
+| Canonical public JSON and `InformationStateDigestV2` bytes/hash | `crates/mtgml-wire` | environment endpoint, Python parity | no CBOR and no dependency on environment |
+| Replay V3 identity and structural validation | `crates/mtgml-replay` | environment execution | no dependency on environment; V2 remains detached only |
+| Checkpoint/controller/replay execution orchestration | `crates/mtgml-environment` | trusted callers | no current V2 checkpoint API and no duplicate digest authority |
+| Mechanical public/persistence DTO and byte parity | `python/src/mtgml` | tests and tooling | no rules, state, legality, migration, or transport authority |
+
+The dependency direction after the cut is:
+
+```text
+mtgml-model / mtgml-random / mtgml-persistence
+        ↓
+mtgml-decision / mtgml-state / mtgml-replay
+        ↓
+mtgml-observation / mtgml-rules
+        ↓
+mtgml-wire
+        ↓
+mtgml-environment / mtgml-conformance
+        ↓
+Python DTO/codec tooling
+```
+
+The two digest paths are intentionally separate:
+
+```text
+state/environment/replay semantic values
+        ↓
+mtgml-persistence::calculate_checkpoint_digest_v3
+        ↓
+CheckpointDigestV3
+
+mtgml-observation::InformationStateDigestInputV2
+        ↓
+mtgml-wire::compute_information_state_digest_v2
+        ↓
+InformationStateDigestV2
+```
+
+## File and module map
+
+### New files
+
+- `crates/mtgml-persistence/Cargo.toml` — pinned lower-layer crate metadata and path dependency on `mtgml-model`.
+- `crates/mtgml-persistence/src/lib.rs` — public codec/envelope/checkpoint-digest API.
+- `crates/mtgml-persistence/src/cbor.rs` — restricted CBOR value model, canonical encoder, bounded decoder, and re-encode check.
+- `crates/mtgml-persistence/src/envelope.rs` — exact `mtgml.digest-envelope.v1` framing and SHA-256 calculation.
+- `crates/mtgml-persistence/src/error.rs` — `PersistenceDecodeErrorV1` with the accepted total precedence.
+- `crates/mtgml-persistence/src/checkpoint_digest.rs` — the only `environment-checkpoint-digest-input.v3` builder/calculator.
+- `crates/mtgml-persistence/src/tests.rs` — primitive, envelope, limit, precedence, and checkpoint known-answer tests.
+- `crates/mtgml-state/src/digest_v3.rs` — detached `FullStateDigestInputV3` semantic conversion and canonical-value construction.
+- `crates/mtgml-replay/src/v3.rs` — `ReplayManifestV3`, `InitialEnvironmentIdentityV3`, `ReplayStepV3`, `AuthoritativeReplayV3`, and V3 recorder.
+- `crates/mtgml-persistence/README.md` — codec ownership and non-I/O boundary.
+- `python/src/mtgml/persistence.py` — mechanical restricted-CBOR/envelope/vector reader; no state conversion or rules semantics.
+- `python/tests/test_persistence_codec.py` — Python parity against committed Rust-produced vectors and negative fixtures.
+- `schemas/player-decision-request.v2.schema.json` — public Decision V2 request shape.
+- `schemas/decision-response.v2.schema.json` — public Decision V2 response shape.
+- `schemas/information-state-envelope.v2.schema.json` — public player-information V2 shape.
+- `schemas/observed-event-envelope.v2.schema.json` — public perspective-safe observed-event V2 shape.
+- `schemas/player-step.v2.schema.json` — public PlayerStep V2 shape.
+- `schemas/replay-manifest.v3.schema.json` — public Replay Manifest V3 shape.
+- `schemas/authoritative-replay.v3.schema.json` — public Replay V3 file shape.
+- `wire/golden/player-decision-request.v2.json` — positive Decision V2 request.
+- `wire/golden/decision-response.v2-select-one.json` — positive `SelectOne` response.
+- `wire/golden/information-state-envelope.v2.json` — positive active/retired retained-knowledge projection.
+- `wire/golden/observed-event-envelope.v2.json` and `wire/golden/player-step.v2.json` — positive V2 information surfaces.
+- `wire/golden/replay-manifest.v3.json` and `wire/golden/authoritative-replay-empty.v3.json` — positive Replay V3 fixtures.
+- `wire/negative/decision-v2-candidate-id-overflow.json` — public `u32` overflow rejection.
+- `wire/negative/decision-v2-noncanonical-select-many.json` — set-order rejection.
+- `wire/negative/replay-v3-checkpoint-digest-mismatch.json` — complete environment identity rejection.
+- `persistence/golden/manifest.json` and `persistence/golden/*.cbor` — persisted CBOR known-answer fixtures.
+- `persistence/negative/manifest.json` and `persistence/negative/*.cbor` — malformed, precedence, and semantic rejection fixtures.
+- `docs/superpowers/plans/2026-08-21-m2-b-v3-structural-cut.md` — this plan.
+
+### Existing files to modify
+
+- `Cargo.toml`, `Cargo.lock` — register `mtgml-persistence` and its locked dependencies.
+- `crates/mtgml-model/src/lib.rs` — add shared leaves, manual `CandidateIdV1`, `PlayerDecisionIdV1`, `VisibleSequence`, `DigestReferenceV1`, and raw-byte V3 wrappers while preserving historical macro types.
+- `crates/mtgml-decision/src/lib.rs` — add Decision V2 forms, `CandidateOrderingV1`, answer union, and local validation; retain V1 forms unchanged.
+- `crates/mtgml-state/Cargo.toml`, `crates/mtgml-state/src/engine.rs`, `execution.rs`, `identity.rs`, `knowledge.rs`, `validation.rs`, `construction.rs`, `delta.rs`, `digest.rs`, `lib.rs`, `tests.rs` — depend on the persistence lower layer, migrate the one current state authority, and remove free-form current continuation/state shapes.
+- `crates/mtgml-rules/src/transition.rs`, `contract.rs`, `validation.rs`, `tests.rs` — carry V3 state/delta identity and preserve only the structural synthetic path.
+- `crates/mtgml-observation/src/lib.rs` — add semantic `PlayerInformationStateV2`, retained-knowledge projection types, and `InformationStateDigestInputV2` without canonical byte code.
+- `crates/mtgml-wire/src/lib.rs` — register V2/V3 public contracts and own `compute_information_state_digest_v2` through the existing canonical JSON implementation.
+- `crates/mtgml-replay/Cargo.toml`, `crates/mtgml-replay/src/lib.rs`, `identity.rs`, `manifest.rs`, `recorder.rs`, `validation.rs`, `tests.rs` — depend on the persistence lower layer, preserve V1/V2 detached contracts, and add V3 identity/continuity validation.
+- `crates/mtgml-environment/Cargo.toml`, `checkpoint.rs`, `controller.rs`, `replay.rs`, `synthetic.rs`, `endpoint.rs`, `errors.rs`, `lib.rs`, `tests.rs` — retire current V2 checkpoint/controller APIs, wire shared digest owners, and keep the synthetic path structurally valid.
+- `crates/mtgml-conformance/src/lib.rs` — update authoritative transition expectations to V3 and add structural evidence cases.
+- `python/src/mtgml/decision.py`, `observation.py`, `replay.py`, `wire.py`, `canonical.py`, `__init__.py` — mechanical V2/V3 DTO/codec parity while retaining V1 readers.
+- `python/tests/test_wire_contracts.py`, `test_player_api.py`, `test_schema_parity.py`, `test_documentation_contracts.py` — public V2/V3 parity and boundary tests.
+- `contracts/catalog/contract-vocabulary.v1.json`, `scripts/generate_contracts.py`, generated outputs under `crates/mtgml-model/src/generated_contract_vocab.rs`, `python/src/mtgml/_generated_contract_vocab.py`, `schemas/`, and `docs/generated/` — update only mechanically shared vocabulary from the catalog.
+- `schemas/README.json`, `wire/golden/manifest.json`, `wire/negative/manifest.json`, `wire/README.md` — register public versions and preserve every historical fixture.
+- `docs/ARCHITECTURE.md`, `docs/PROJECT_STRUCTURE.md`, `crates/README.md`, `docs/DECISION_PROTOCOL.md`, `docs/INFORMATION_MODEL.md`, `docs/STATE_HASHING.md`, `docs/REPLAY_AND_DETERMINISM.md`, `docs/contracts/WIRE_CONTRACT.md`, `docs/ERROR_MODEL.md` — record implemented ownership/version boundaries without claiming M2 gates `PASS`.
+
+## Task 1: Freeze test-first fixtures and source inventory
+
+**Files:**
+- Create: `persistence/golden/manifest.json`, `persistence/negative/manifest.json`
+- Create: the public V2/V3 JSON fixture paths listed in the file map
+- Modify: `wire/golden/manifest.json`, `wire/negative/manifest.json`, `schemas/README.json`, `wire/README.md`
+- Test: `python/tests/test_schema_parity.py`, `python/tests/test_wire_contracts.py`, new persistence fixture tests
+
+- [ ] **Step 1: Record the exact current producers and historical readers.**
+
+  Search and record the current locations of `FullStateDigestV2`, `CheckpointDigestV2`, `EnvironmentCheckpointV2`, `AuthoritativeReplayV2`, `PlayerDecisionRequest`, `DecisionResponse`, `public_history_length`, `private_history_length`, and `ContinuationRecord.label`. The inventory must distinguish current producers from historical fixtures/tests before any rename.
+
+  ```powershell
+  rg -n "FullStateDigestV2|CheckpointDigestV2|EnvironmentCheckpointV2|AuthoritativeReplayV2|PlayerDecisionRequest|DecisionResponse|public_history_length|private_history_length|ContinuationRecord|label" crates python schemas wire docs
+  ```
+
+- [ ] **Step 2: Add the public V2/V3 fixture manifests and schema map before producer code.**
+
+  Register the exact new contract strings in the fixture manifests and the schema-parity mapping. Keep every existing V1/V2 path in place. The new fixtures must contain closed fields only, explicit `schema_version`, `PlayerDecisionIdV1` as a canonical decimal string, `CandidateIdV1` as an unsigned JSON integer, and no semantic action key.
+
+- [ ] **Step 3: Add red tests for fixture registration and historical immutability.**
+
+  Add assertions that the old fixture bytes/text are unchanged, new manifest contract names resolve to schemas, V2 public requests contain no trusted `DecisionId`, and a V3 replay fixture contains full initial/final environment identity. Run:
+
+  ```powershell
+  python -m pytest python/tests/test_schema_parity.py python/tests/test_wire_contracts.py -q
+  ```
+
+  Expected result: the new tests fail because the V2/V3 DTOs, schemas, and decoders do not yet exist; existing V1 tests must remain green when the native Python environment is available.
+
+- [ ] **Step 4: Commit the fixture/inventory boundary.**
+
+  ```powershell
+  git add persistence wire schemas python/tests
+  git commit -m "test: freeze M2.B public fixture boundaries"
+  ```
+
+## Task 2: Add model-owned shared leaves, IDs, and digest wrappers
+
+**Files:**
+- Modify: `crates/mtgml-model/src/lib.rs`
+- Modify: `crates/mtgml-environment/src/checkpoint.rs`, `crates/mtgml-environment/src/lib.rs` only to remove the duplicate leaf definitions and re-export the model-owned types if existing callers still need that path
+- Test: `crates/mtgml-model/src/lib.rs` unit tests
+
+- [ ] **Step 1: Add red tests for type width, Serde meaning, and raw V3 construction.**
+
+  The tests must assert:
+
+  ```rust
+  assert_eq!(std::mem::size_of::<CandidateIdV1>(), 4);
+  assert_eq!(serde_json::to_string(&CandidateIdV1(7)).unwrap(), "7");
+  assert_eq!(serde_json::to_string(&PlayerDecisionIdV1(7)).unwrap(), "\"7\"");
+  assert_eq!(serde_json::to_string(&VisibleSequence(7)).unwrap(), "\"7\"");
+  assert_eq!(FullStateDigestV3::from_digest_bytes([0xabu8; 32]).raw_bytes(), [0xabu8; 32]);
+  assert!(serde_json::from_str::<CandidateIdV1>("4294967296").is_err());
+  assert!(serde_json::from_str::<CandidateIdV1>("-1").is_err());
+  ```
+
+  Also retain the existing V1/V2 digest known-answer assertions unchanged.
+
+- [ ] **Step 2: Implement manual `u32` and `u64` ID semantics.**
+
+  Keep the existing `canonical_id!` macro untouched for historical types. Implement `CandidateIdV1(pub u32)` separately with numeric JSON Serde, checked construction, `Display`, and ordered/hash traits. Implement `PlayerDecisionIdV1(pub u64)` and `VisibleSequence(pub u64)` with the existing canonical decimal-string behavior under their own named types. No new type may use `canonical_id!` for `CandidateIdV1`.
+
+- [ ] **Step 3: Add model-owned environment leaves without changing their V2 representation.**
+
+  Move `EnvironmentLimitCounters` and `CheckpointCodecIdentity` exactly, including field names, order, `deny_unknown_fields`, derives, and validation meaning. Their five counters remain unsigned `u64`; `codec_id` and `semantic_version` remain exact non-empty strings. Remove the environment-local struct definitions rather than copying them. A temporary `pub use mtgml_model::{EnvironmentLimitCounters, CheckpointCodecIdentity};` is allowed only as a re-export of the same types.
+
+- [ ] **Step 4: Add `DigestReferenceV1` and raw-byte V3 wrappers.**
+
+  Add owned model values with these construction rules:
+
+  ```rust
+  pub struct DigestReferenceV1 {
+      pub semantic_domain: String,
+      pub input_schema_id: String,
+      pub digest_bytes: [u8; 32],
+  }
+
+  impl FullStateDigestV3 {
+      pub fn from_digest_bytes(bytes: [u8; 32]) -> Self;
+      pub fn raw_bytes(&self) -> [u8; 32];
+      pub fn as_digest_reference(&self) -> DigestReferenceV1;
+  }
+
+  impl CheckpointDigestV3 {
+      pub fn from_digest_bytes(bytes: [u8; 32]) -> Self;
+      pub fn raw_bytes(&self) -> [u8; 32];
+  }
+  ```
+
+  V3 wrappers parse/render exactly 64 lowercase hexadecimal characters and never expose `from_canonical_bytes`. Do not add them to `domain_digest!`; the persistence layer supplies the already-computed SHA-256 bytes exactly once. Add `InformationStateDigestV2` separately with the `mtgml.information-state-digest.v2` domain and its existing JSON/domain `from_canonical_bytes` semantics; it is not routed through the persisted envelope.
+
+- [ ] **Step 5: Run model tests and commit.**
+
+  ```powershell
+  cargo test -p mtgml-model --locked
+  git add crates/mtgml-model crates/mtgml-environment/src/checkpoint.rs crates/mtgml-environment/src/lib.rs
+  git commit -m "feat: add M2 shared identities and digest values"
+  ```
+
+  Expected result: all historical model vectors pass and the new width/raw-byte tests pass.
+
+## Task 3: Implement the rules-neutral persistence codec and envelope
+
+**Files:**
+- Create: `crates/mtgml-persistence/Cargo.toml`, `src/lib.rs`, `src/cbor.rs`, `src/envelope.rs`, `src/error.rs`, `src/checkpoint_digest.rs`, `src/tests.rs`, `README.md`
+- Modify: root `Cargo.toml`, `Cargo.lock`
+- Test: `crates/mtgml-persistence/src/tests.rs`, `persistence/golden/`, `persistence/negative/`
+
+- [ ] **Step 1: Register the crate with only lower-layer dependencies.**
+
+  Add `mtgml-persistence` to the workspace. Its dependencies are `mtgml-model`, workspace `sha2`, workspace `thiserror`, and workspace `serde` only where a trusted typed leaf needs it. It must not depend on `mtgml-state`, `mtgml-environment`, `mtgml-replay`, `mtgml-wire`, `mtgml-rules`, or any filesystem/network crate API.
+
+- [ ] **Step 2: Add red codec tests for the complete primitive/profile surface.**
+
+  Test canonical encodings for unsigned integers, signed integers, booleans, null, byte strings, UTF-8 text, and fixed arrays. Add negative cases for maps, floats, tags, bignums, indefinite arrays/strings, shared references, undefined, malformed UTF-8, non-shortest integer encodings, wrong array length, unknown variant, out-of-range values, duplicate keys, noncanonical order, trailing bytes, and re-encode mismatch. Use the exact accepted precedence:
+
+  ```text
+  unsupported_historical_version
+  envelope_identity
+  envelope_length
+  payload_too_large
+  string_too_large
+  array_too_large
+  depth_exceeded
+  item_limit_exceeded
+  disallowed_cbor_form
+  noncanonical_primitive
+  invalid_utf8
+  wrong_record_length
+  unknown_variant
+  value_out_of_range
+  duplicate_semantic_key
+  noncanonical_order
+  schema_identity_mismatch
+  trailing_data
+  reencode_mismatch
+  digest_mismatch
+  semantic_validation
+  ```
+
+- [ ] **Step 3: Implement the restricted CBOR value model and bounded decoder.**
+
+  Use an internal value enum with only `Null`, `Bool`, `Unsigned(u64)`, `Signed(i64)`, `Bytes(Vec<u8>)`, `Text(String)`, and `Array(Vec<Value>)`. Encode definite-length arrays and shortest legal integer/length forms. Decode headers into checked lengths before allocating, track depth/items, reject all excluded CBOR forms, preserve exact UTF-8 bytes, and require `encode(decoded) == input` before returning a canonical value. Do not delegate semantic state or runtime Serde representation to this module.
+
+- [ ] **Step 4: Implement exact digest-envelope framing.**
+
+  Implement the `mtgml.digest-envelope.v1` frame from `docs/STATE_HASHING.md` with non-empty ASCII identity fields, 255-byte identifier limits, explicit payload length, SHA-256 over the complete envelope bytes, and a `DigestReferenceV1` whose canonical six-element rendering is `["mtgml.digest-envelope.v1", "sha-256", semantic_domain, "mtgml.canonical-cbor.v1", input_schema_id, digest_bytes_32]`. The envelope must not hash a hex rendering and must not domain-separate a second time.
+
+- [ ] **Step 5: Add committed persistence vectors and parity assertions.**
+
+  Store canonical payload/envelope bytes as `.cbor` fixtures under `persistence/golden/`; store malformed byte fixtures and expected error categories under `persistence/negative/`. Add Rust tests that read every manifest entry, assert exact bytes and digest hex, and assert the first error category for multi-defect inputs.
+
+- [ ] **Step 6: Run focused persistence tests and commit.**
+
+  ```powershell
+  cargo test -p mtgml-persistence --locked
+  git add Cargo.toml Cargo.lock crates/mtgml-persistence persistence
+  git commit -m "feat: add strict persisted semantic codec"
+  ```
+
+  Expected result: the codec test suite is green; no public JSON fixture or Python module is used to define persisted CBOR semantics.
+
+## Task 4: Implement Decision V2 and `CandidateOrderingV1`
+
+**Files:**
+- Modify: `crates/mtgml-decision/src/lib.rs`
+- Modify: `schemas/player-decision-request.v2.schema.json`, `schemas/decision-response.v2.schema.json`
+- Modify: `python/src/mtgml/decision.py`, `python/src/mtgml/wire.py`
+- Modify: new public Decision V2 fixtures and manifests
+- Test: `crates/mtgml-decision/src/lib.rs`, `python/tests/test_wire_contracts.py`, `python/tests/test_schema_parity.py`
+
+- [ ] **Step 1: Add red Rust tests for all closed domains and answers.**
+
+  Define and test these exact semantic forms:
+
+  ```rust
+  pub enum DecisionDomainV2 {
+      ChooseOne,
+      ChooseMany { minimum: u32, maximum: u32 },
+      ChooseNumber { minimum: i64, maximum: i64 },
+      Order { minimum: u32, maximum: u32 },
+  }
+
+  pub enum DecisionAnswerV2 {
+      SelectOne { candidate_id: CandidateIdV1 },
+      SelectMany { candidate_ids: Vec<CandidateIdV1> },
+      ChooseNumber { value: i64 },
+      Order { candidate_ids: Vec<CandidateIdV1> },
+  }
+  ```
+
+  Red tests must reject inverted bounds, wrong answer/domain pair, missing or extra candidates, duplicate IDs, nonascending `SelectMany`, duplicate `Order` IDs, out-of-range `ChooseNumber`, and any `ChooseNumber` request that emits candidates.
+
+- [ ] **Step 2: Implement co-located authoritative candidates and projections.**
+
+  Add `AuthoritativeCandidateV2 { candidate_id: CandidateIdV1, visible_intent: CandidateIntent, trusted_binding: EngineCandidateBinding }`, `AuthoritativeDecisionRequestV2`, `PlayerDecisionRequestV2`, and `DecisionResponseV2`. The player request contains `PlayerDecisionIdV1`, actor, revision, visibility, domain, and public candidates only. It contains no trusted `DecisionId`, continuation, binding, hidden context, allocator history, or mandatory semantic key.
+
+- [ ] **Step 3: Implement the exact semantic comparator and dense assignment.**
+
+  Add `CandidateOrderingV1` with ranks `pass_priority = 0` through `confirm = 8`. Compare payloads numerically by the underlying ID/number rules, reject duplicate `(variant_rank, payload_value)` keys, sort deterministically, and assign `CandidateIdV1(0..n-1)`. Never compare JSON/text, enum declaration order, bindings, trusted IDs, insertion order, RNG, or allocator history.
+
+- [ ] **Step 4: Implement local validation and exact binding checks.**
+
+  Keep wire/shape checks in the decision crate, including candidate width/range, canonical `SelectMany` order, `Order` semantic order, and variant/value equality between visible intent and trusted binding. Leave contextual legality in Rust rules/environment; do not add a conformance oracle to production.
+
+- [ ] **Step 5: Add Python/schema parity and run focused tests.**
+
+  Add V2 dataclasses/readers/writers in `python/src/mtgml/decision.py`, reject JSON candidate values above `4294967295`, and keep V1 readers unchanged. Add closed V2 schemas and positive/negative fixtures. Run:
+
+  ```powershell
+  cargo test -p mtgml-decision --locked
+  python -m pytest python/tests/test_wire_contracts.py python/tests/test_schema_parity.py -q
+  ```
+
+- [ ] **Step 6: Commit Decision V2.**
+
+  ```powershell
+  git add crates/mtgml-decision schemas python/src/mtgml/decision.py python/src/mtgml/wire.py wire
+  git commit -m "feat: add Decision V2 and canonical candidate ordering"
+  ```
+
+## Task 5: Migrate the one current `EngineState` to typed M2 structures
+
+**Files:**
+- Modify: `crates/mtgml-state/src/execution.rs`, `identity.rs`, `knowledge.rs`, `validation.rs`, `construction.rs`, `lib.rs`, `tests.rs`
+- Modify: `crates/mtgml-state/src/engine.rs` only for field/type wiring; do not switch digest identity yet
+- Modify: `crates/mtgml-rules/src/tests.rs` and synthetic construction call sites as compiler-guided consumers
+- Test: state unit tests and structural source checks
+
+- [ ] **Step 1: Add red state-invariant tests.**
+
+  Add tests that reject a free-form continuation label, missing continuation reference, stale stage revision, duplicated/invalid active or retired opaque identity, missing player-decision allocator state, knowledge keyed by live `GameObjectId`, duplicated live opaque mapping, non-monotonic `VisibleSequence`, and reverse-map disagreement. Add a positive fixture with one typed synthetic continuation and active/retired knowledge records.
+
+- [ ] **Step 2: Replace current pending decision storage with `AuthoritativeDecisionRequestV2`.**
+
+  Change `PendingDecisionRecord` to store the authoritative V2 request and co-located candidates. Keep the trusted `DecisionId` and perspective-local `PlayerDecisionIdV1` separate. Store only an optional trusted `ContinuationId` reference in the pending record.
+
+- [ ] **Step 3: Replace free-form continuation state with the bounded typed payload.**
+
+  Define the current M2 payload as:
+
+  ```rust
+  pub enum ContinuationPayloadV2 {
+      SyntheticM2Assembly {
+          stage: AssemblyStageV2,
+          selected_count: Option<u32>,
+          selected_piece_keys: Vec<u32>,
+          ordered_piece_keys: Vec<u32>,
+      },
+  }
+
+  pub struct ContinuationRecord {
+      pub id: ContinuationId,
+      pub actor: PlayerId,
+      pub created_at_revision: StateRevision,
+      pub stage_index: u16,
+      pub payload: ContinuationPayloadV2,
+  }
+  ```
+
+  `EffectRecord`, `TriggerRecord`, and `delayed_effects` remain structurally present but the M2 detached converter will reject non-empty unsupported values. No label interpreter or callback state is introduced.
+
+- [ ] **Step 4: Move perspective-local allocators and retirement state into `PerspectiveIdentityState`.**
+
+  Add `next_player_decision_id`, `retired_object_ids`, and `retired_ability_ids` per player. Keep one canonical persisted mapping direction and runtime reverse maps only for bijection validation. Allocators must be checkpointed state and must not derive from global allocation history.
+
+- [ ] **Step 5: Re-key knowledge by opaque identity and add one visible sequence.**
+
+  Change active/retired knowledge maps and records to use `OpaqueObjectId`, add `next_visible_sequence`, preserve typed provenance/history/invalidation, and remove any duplicated live `OpaqueObjectId -> GameObjectId` association from knowledge. This task adds structural records and validation only; it does not implement later hidden-transition/randomization lifecycle semantics.
+
+- [ ] **Step 6: Extend `validate_engine_state()` with M2 cross-component invariants.**
+
+  Validate co-located candidate/binding identity, dense candidate IDs, exact visible/trusted variants and payloads, valid continuation references/stages, allocator ceilings, mapping bijection/retirement, knowledge provenance and sequence order, and complete player coverage. Keep the first error category deterministic.
+
+- [ ] **Step 7: Update synthetic construction to one structurally valid `ChooseOne`/`SelectOne` path.**
+
+  Construct a valid V2 request with dense `CandidateIdV1`, allocate a perspective-local `PlayerDecisionIdV1`, and retain unchanged M1 transition behavior. Do not execute `ChooseMany`, `ChooseNumber`, `Order`, or continuation advancement in this task.
+
+- [ ] **Step 8: Run state/rules tests and commit.**
+
+  ```powershell
+  cargo test -p mtgml-state -p mtgml-rules --locked
+  git add crates/mtgml-state crates/mtgml-rules
+  git commit -m "feat: migrate EngineState to typed M2 structures"
+  ```
+
+## Task 6: Build detached `FullStateDigestInputV3`
+
+**Files:**
+- Create: `crates/mtgml-state/src/digest_v3.rs`
+- Modify: `crates/mtgml-state/Cargo.toml`
+- Modify: `crates/mtgml-state/src/lib.rs`, `engine.rs`, `digest.rs`, `validation.rs`, `tests.rs`
+- Test: `crates/mtgml-state/src/tests.rs`, `persistence/golden/`
+
+- [ ] **Step 1: Add red known-answer and mutation tests.**
+
+  Build a minimal valid M2 state and assert the detached payload contains exactly the eleven fields from `docs/STATE_HASHING.md`: `full-state-digest-input.v3`, domain, revision, `core_v1`, `zones_v1`, `allocators_v3`, `execution_v2`, `random_v1`, `knowledge_v2`, `perspective_identities_v2`, and `format_v1`. Mutate every authoritative component one at a time and assert the V3 digest changes. Assert non-empty effects/triggers/delayed effects fail as `semantic_validation`.
+
+- [ ] **Step 2: Implement detached conversion with explicit numeric sorting.**
+
+  Add `EngineState::full_state_digest_input_v3()` returning a persistence-owned canonical value or typed detached input. Sort player/object/stack/knowledge/identity/format maps by declared semantic numeric keys, preserve semantic sequence order, encode IDs with declared widths, and encode only the one canonical mapping direction for perspective identity. Never use runtime Serde output as the V3 definition.
+
+- [ ] **Step 3: Implement V3 state hashing exactly once through the persistence envelope.**
+
+  Add:
+
+  ```rust
+  impl EngineState {
+      pub fn canonical_digest_bytes(&self) -> Result<Vec<u8>, StateDigestError>;
+      pub fn digest(&self) -> Result<FullStateDigestV3, StateDigestError>;
+  }
+  ```
+
+  `digest()` must convert the detached semantic input, call the single persistence encoder/envelope hash, and construct `FullStateDigestV3::from_digest_bytes`. It must not call the historical `domain_digest!` path. Keep frozen V2 bytes/domain tests detached under explicit historical test names; they must not be reachable as current `EngineState::digest()` behavior.
+
+- [ ] **Step 4: Run focused V3 digest tests and commit.**
+
+  ```powershell
+  cargo test -p mtgml-state state_digest --locked
+  cargo test -p mtgml-persistence --locked
+  git add crates/mtgml-state persistence
+  git commit -m "feat: add detached FullStateDigestV3"
+  ```
+
+## Task 7: Perform the explicit current-runtime V2→V3 identity switch
+
+**Files:**
+- Modify: `crates/mtgml-state/src/delta.rs`, `lib.rs`, `tests.rs`
+- Modify: `crates/mtgml-rules/src/transition.rs`, `contract.rs`, `tests.rs`
+- Modify: `crates/mtgml-conformance/src/lib.rs`
+- Modify: current environment/replay imports only as required by compiler errors
+- Test: state delta, transition-contract, conformance, and source-boundary tests
+
+- [ ] **Step 1: Add the red V3 `StateDelta` identity tests.**
+
+  Assert that `StateDelta` has `before_digest: FullStateDigestV3` and `after_digest: FullStateDigestV3`, `between()` records V3 identities, `apply()` rejects a mismatched V3 before/after identity, and replacement reapplication produces the same V3 digest.
+
+- [ ] **Step 2: Change the current transition product and conformance expectations.**
+
+  Replace only current authoritative references to `FullStateDigestV2` with `FullStateDigestV3`. Preserve V1/V2 fixture readers and detached historical tests. Do not add `FullStateDigestV2 -> FullStateDigestV3` adapters and do not create `EngineStateV2`.
+
+- [ ] **Step 3: Run the switch gate before checkpoint/replay work.**
+
+  ```powershell
+  cargo test -p mtgml-state -p mtgml-rules -p mtgml-conformance --locked
+  rg -n "FullStateDigestV2|EnvironmentCheckpointV2|AuthoritativeReplayV2" crates/mtgml-state crates/mtgml-rules crates/mtgml-conformance
+  ```
+
+  Expected source result: no current `EngineState::digest`, current `StateDelta`, transition expectation, or conformance producer uses V2. Remaining matches must be explicitly detached historical evidence or V2 fixture compatibility code.
+
+- [ ] **Step 4: Commit the exact identity cut.**
+
+  ```powershell
+  git add crates/mtgml-state crates/mtgml-rules crates/mtgml-conformance
+  git commit -m "feat: switch current transitions to FullStateDigestV3"
+  ```
+
+This is the irreversible semantic switch inside the PR. All later current checkpoint/replay code must consume V3; no later task may restore a V2 current producer.
+
+## Task 8: Add semantic Information V2 DTOs and the one wire-owned digest path
+
+**Files:**
+- Modify: `crates/mtgml-observation/src/lib.rs`
+- Modify: `crates/mtgml-wire/Cargo.toml`, `crates/mtgml-wire/src/lib.rs`
+- Modify: `crates/mtgml-environment/Cargo.toml`, `crates/mtgml-environment/src/synthetic.rs`, `endpoint.rs`, `tests.rs`
+- Modify: `python/src/mtgml/observation.py`, `python/src/mtgml/wire.py`
+- Test: observation, wire, environment endpoint tests and information KATs
+
+- [ ] **Step 1: Add red semantic DTO tests in observation.**
+
+  Add `PlayerKnownObjectV1`, location/provenance/invalidation values, `PlayerInformationStateV2`, `ObservedEventEnvelopeV2`, `PlayerStepV2`, and `InformationStateDigestInputV2` with exact fields from `docs/INFORMATION_MODEL.md` and `docs/STATE_HASHING.md`. `ObservationEnvelopeV1` remains the independently versioned current-observation payload. Test that the information DTO excludes physical/live authoritative IDs, other-player knowledge, status, environment counters, RNG, checkpoint/replay identity, and the digest field itself; V2 observed events use one `VisibleSequence` and no authoritative event ID.
+
+- [ ] **Step 2: Implement observation-owned semantic validation.**
+
+  Validate perspective/revision coherence, active/retired shape, one occurrence per opaque ID, strictly increasing historical visible sequences, required retired invalidation, and public-safe location fields. Do not import `mtgml-wire` and do not sort/encode JSON bytes here.
+
+- [ ] **Step 3: Add the wire-owned digest operation.**
+
+  Add:
+
+  ```rust
+  pub fn compute_information_state_digest_v2(
+      input: &InformationStateDigestInputV2,
+  ) -> Result<(Vec<u8>, InformationStateDigestV2), WireError>;
+  ```
+
+  The function must call the existing canonical JSON key-sorting/duplicate-rejection path, use `information-state-digest-input.v2` as the schema identity, apply `SHA256(ASCII("mtgml.information-state-digest.v2") || 0x00 || canonical_json)` exactly once, and return both bytes and the typed digest. No observation module or environment module may calculate a second digest.
+
+- [ ] **Step 4: Make environment the only orchestrator/verifier.**
+
+  Add the normal `mtgml-wire` dependency to `mtgml-environment`. The environment must project semantic input, call `mtgml-wire`, verify the returned digest before exposing or committing `PlayerInformationStateV2`, and map failures to the trusted/internal endpoint error. It must not implement canonicalization itself.
+
+- [ ] **Step 5: Add mutation/exclusion and cycle tests.**
+
+  Assert that mutations to perspective, revision, observation, next sequence, or retained knowledge change the digest; mutations to status, counters, trusted IDs, RNG, or replay/checkpoint fields do not. Add a source/dependency assertion that observation does not depend on wire and wire does not depend on environment.
+
+- [ ] **Step 6: Run focused tests and commit.**
+
+  ```powershell
+  cargo test -p mtgml-observation -p mtgml-wire -p mtgml-environment information --locked
+  python -m pytest python/tests/test_player_api.py -q
+  git add crates/mtgml-observation crates/mtgml-wire crates/mtgml-environment python/src/mtgml/observation.py python/src/mtgml/wire.py
+  git commit -m "feat: centralize InformationStateDigestV2 bytes"
+  ```
+
+## Task 9: Implement Checkpoint V3 and retire the current V2 checkpoint API
+
+**Files:**
+- Modify: `crates/mtgml-environment/src/checkpoint.rs`, `controller.rs`, `replay.rs`, `synthetic.rs`, `errors.rs`, `lib.rs`, `tests.rs`
+- Modify: `crates/mtgml-environment/Cargo.toml` to add the normal `mtgml-persistence` dependency
+- Modify: `crates/mtgml-replay/Cargo.toml` to add the normal `mtgml-persistence` dependency
+- Test: checkpoint construction, validation, restore nonmutation, and V2 retirement tests
+
+- [ ] **Step 1: Add red V3 checkpoint tests.**
+
+  Test the exact current fields:
+
+  ```text
+  schema_version = environment-checkpoint.v3
+  state
+  state_digest: FullStateDigestV3
+  status: EpisodeStatus
+  limit_counters: EnvironmentLimitCounters
+  codec: CheckpointCodecIdentity
+  checkpoint_digest: CheckpointDigestV3
+  ```
+
+  Assert a known-answer checkpoint digest, rejection for corrupt state/digest/status/counter/codec, and no backend mutation on rejected restore.
+
+- [ ] **Step 2: Move checkpoint calculation to the shared persistence owner.**
+
+  `EnvironmentCheckpointV3::new` and `validate` must call:
+
+  ```rust
+  mtgml_persistence::calculate_checkpoint_digest_v3(
+      &state_digest.as_digest_reference(),
+      &status,
+      &limit_counters,
+      &codec,
+  )
+  ```
+
+  `mtgml-environment` must not retain `CheckpointDigestInputV2`, `calculate_digest`, or another V3 input encoder. `mtgml-replay` calls the same persistence operation in Task 10.
+
+- [ ] **Step 3: Remove `EnvironmentCheckpointV2` from current runtime/controller APIs.**
+
+  Change `EnvironmentBackend::checkpoint`, `restore`, `TrustedEnvironmentController::checkpoint`, `restore`, `execute_replay_from_checkpoint`, replay traces/reports, and synthetic backend construction to V3. Delete the live V2 struct and its current Serde-derived state wrapper. Do not add `LegacyEngineStateV2` and do not adapt new `EngineState` into V2. Do not add a public checkpoint JSON schema or durable checkpoint file format in M2.B.
+
+- [ ] **Step 4: Preserve V2 only as detached evidence.**
+
+  Keep immutable V2 digest/domain vectors, documentation, and detached Replay V2 DTO validation. Move old V2 checkpoint assertions to a historical evidence test that never accepts a current `EngineState` and never feeds the current controller.
+
+- [ ] **Step 5: Run checkpoint tests and the retirement search.**
+
+  ```powershell
+  cargo test -p mtgml-environment checkpoint --locked
+  rg -n "EnvironmentCheckpointV2|LegacyEngineStateV2|FullStateDigestV2|CheckpointDigestV2" crates/mtgml-environment
+  ```
+
+  Remaining V2 matches must be detached evidence only. The current controller/backend API and current synthetic backend must expose V3 exclusively.
+
+- [ ] **Step 6: Commit Checkpoint V3.**
+
+  ```powershell
+  git add crates/mtgml-environment crates/mtgml-replay
+  git commit -m "feat: add Checkpoint V3 and retire current V2"
+  ```
+
+## Task 10: Implement Replay V3 and complete environment identity chaining
+
+**Files:**
+- Create: `crates/mtgml-replay/src/v3.rs`
+- Modify: `crates/mtgml-replay/Cargo.toml`
+- Modify: `crates/mtgml-replay/src/lib.rs`, `identity.rs`, `validation.rs`, `recorder.rs`, `tests.rs`
+- Modify: `crates/mtgml-environment/src/replay.rs`, `controller.rs`, `synthetic.rs`, `errors.rs`, `tests.rs`
+- Modify: `schemas/replay-manifest.v3.schema.json`, `schemas/authoritative-replay.v3.schema.json`, `wire/golden/`, `wire/negative/`, `python/src/mtgml/replay.py`
+- Test: Replay V3 unit/integration tests and public schema/fixture tests
+
+- [ ] **Step 1: Add red Replay V3 identity-chain tests.**
+
+  Test empty, accepted, and rejected segments with these exact identities:
+
+  ```text
+  InitialEnvironmentIdentityV3:
+      state_revision
+      FullStateDigestV3
+      EpisodeStatus
+      EnvironmentLimitCounters
+      CheckpointCodecIdentity
+      CheckpointDigestV3
+
+  ReplayStepV3:
+      step_index
+      actor
+      checkpoint_digest_before
+      state_revision_before
+      DecisionResponseV2
+      accepted
+      state_revision_after
+      FullStateDigestV3 after
+      EpisodeStatus after
+      EnvironmentLimitCounters after
+      checkpoint_digest_after
+  ```
+
+  Assert step 0 starts at the manifest identity, each later step equals the prior after identity, accepted revisions advance, rejected steps preserve the complete checkpoint identity, and final identity equals the backend checkpoint.
+
+- [ ] **Step 2: Implement Replay V3 detached DTOs and validation.**
+
+  Add `ReplayManifestV3`, `InitialEnvironmentIdentityV3`, `ReplayStepV3`, `AuthoritativeReplayV3`, and `ReplayRecorderV3`. Validate schema identities, complete environment identity, actor binding as trusted replay input, V3 digest domains, response version, continuity, and final identity. V2 modules remain readable/verifiable detached DTOs only.
+
+- [ ] **Step 3: Recompute checkpoint identities through `mtgml-persistence`.**
+
+  Replay validation must call the shared `calculate_checkpoint_digest_v3` for initial, before, and after identities. It must compare the complete `DigestReferenceV1`, status, every counter, and codec identity. There is no duplicated checkpoint encoder in replay.
+
+- [ ] **Step 4: Keep M2.B replay control narrow.**
+
+  Do not add `ReplayControlV1`. For the preserved synthetic path, `resource_units_consumed` and `wall_clock_elapsed_millis` remain unchanged. Later external progression is outside this plan and would require an explicit versioned input.
+
+- [ ] **Step 5: Update environment execution and tests.**
+
+  Make `mtgml-environment/src/replay.rs` execute only Replay V3, validate before mutation, preserve rejected-step identity, and use the V3 checkpoint returned by the backend. Test no host wall-clock sampling, accepted/rejected parity, corrupt before/after status/counter/codec/digest rejection, and no mutation on failure.
+
+- [ ] **Step 6: Add Replay V3 JSON/schema/Python parity and commit.**
+
+  ```powershell
+  cargo test -p mtgml-replay -p mtgml-environment --locked
+  python -m pytest python/tests/test_schema_parity.py python/tests/test_wire_contracts.py -q
+  git add crates/mtgml-replay crates/mtgml-environment schemas wire python/src/mtgml/replay.py
+  git commit -m "feat: add Replay V3 environment identity chain"
+  ```
+
+## Task 11: Finish the synthetic M1 path and public endpoint migration
+
+**Files:**
+- Modify: `crates/mtgml-environment/src/synthetic.rs`, `endpoint.rs`, `controller.rs`, `errors.rs`, `tests.rs`
+- Modify: `crates/mtgml-observation/src/lib.rs`, `crates/mtgml-wire/src/lib.rs`
+- Modify: `python/src/mtgml/player_client.py`, `decision.py`, `observation.py`, `wire.py`
+- Test: environment endpoint/controller tests and Python public-boundary tests
+
+- [ ] **Step 1: Add red endpoint tests for the V2 public boundary.**
+
+  Assert a bound player receives only `PlayerDecisionRequestV2`, `PlayerInformationStateV2`, observed/public values, and `PlayerStepV2`; the response contains only `PlayerDecisionIdV1`, current revision, and the closed answer. Assert trusted `DecisionId`, continuation, bindings, checkpoint/replay identity, RNG, raw state, and hidden fields never appear.
+
+- [ ] **Step 2: Migrate synthetic reset/submit/checkpoint flow atomically.**
+
+  On reset, construct valid M2 state, derive V3 full-state identity, construct V3 checkpoint, and initialize Replay V3. On accepted `ChooseOne`/`SelectOne`, build transition workspace, candidate counters, V3 checkpoint, V3 replay step, information projection, and wire-owned digest; validate the complete product before committing state, counters, replay, or exposed bytes. On rejection, return the closed typed rejection and preserve every state/identity/counter/sequence value.
+
+- [ ] **Step 3: Keep unsupported M2.B behavior fail-closed.**
+
+  A request for `ChooseMany`, `ChooseNumber`, `Order`, unsupported continuation stage, or later lifecycle behavior must not be silently executed, guessed, randomized, or transformed into M2.C–H behavior. Return the trusted/internal unsupported path while leaving state untouched.
+
+- [ ] **Step 4: Run endpoint and Python boundary tests and commit.**
+
+  ```powershell
+  cargo test -p mtgml-environment endpoint --locked
+  python -m pytest python/tests/test_player_api.py python/tests/test_wire_contracts.py -q
+  git add crates/mtgml-environment crates/mtgml-observation crates/mtgml-wire python/src/mtgml
+  git commit -m "feat: migrate synthetic endpoints to M2 public contracts"
+  ```
+
+## Task 12: Add mechanical Python persistence parity without adding a Python rules engine
+
+**Files:**
+- Create: `python/src/mtgml/persistence.py`, `python/tests/test_persistence_codec.py`
+- Modify: `python/src/mtgml/__init__.py`, `python/src/mtgml/canonical.py`
+- Modify: `python/tests/test_wire_contracts.py`, `python/tests/test_schema_parity.py`
+
+- [ ] **Step 1: Add red vector tests before the Python implementation.**
+
+  Load every persistence manifest entry, compare Python-produced canonical CBOR/envelope bytes and lowercase digest text to the committed Rust vectors, and assert every negative fixture reports the same category. Add a test that Python cannot construct or validate `EngineState`, transition legality, knowledge lifecycle, or migration semantics.
+
+- [ ] **Step 2: Implement only mechanical persistence operations.**
+
+  Mirror the restricted primitive encoder/decoder, envelope framing, SHA-256, digest-reference rendering, and fixture reader using only the Python standard library. Preserve exact UTF-8 bytes, length/depth/item limits, canonical re-encode behavior, and error-category order. The module must accept already detached semantic values; it must not derive them from runtime state or duplicate Rust validation. No Python package dependency is added for CBOR.
+
+- [ ] **Step 3: Run Python parity and lint/type checks.**
+
+  ```powershell
+  python -m pytest python/tests/test_persistence_codec.py python/tests/test_wire_contracts.py -q
+  ruff format --check python scripts
+  ruff check python scripts
+  mypy --config-file python/pyproject.toml
+  ```
+
+- [ ] **Step 4: Commit mechanical parity.**
+
+  ```powershell
+  git add python
+  git commit -m "feat: add mechanical Python persistence parity"
+  ```
+
+## Task 13: Synchronize schemas, generated vocabulary, fixtures, and historical classifications
+
+**Files:**
+- Modify: `contracts/catalog/contract-vocabulary.v1.json`, `scripts/generate_contracts.py` only for mechanically shared identifiers
+- Regenerate: `crates/mtgml-model/src/generated_contract_vocab.rs`, `python/src/mtgml/_generated_contract_vocab.py`, generated schema/docs outputs
+- Modify: all V2/V3 schema and manifest files, `wire/golden/`, `wire/negative/`, `persistence/golden/`, `persistence/negative/`
+- Modify: `docs/STATE_HASHING.md`, `docs/REPLAY_AND_DETERMINISM.md`, `docs/contracts/WIRE_CONTRACT.md`, `docs/ERROR_MODEL.md`, `docs/PROJECT_STRUCTURE.md`, `docs/ARCHITECTURE.md`, `crates/README.md`
+- Test: generator drift, schema validation, Rust/Python fixture verification, documentation checks
+
+- [ ] **Step 1: Update authoritative sources before generated outputs.**
+
+  Add only stable vocabulary that is mechanically duplicated across Rust/Python/schema. Keep semantic ordering, information-flow policy, state invariants, persistence layouts, and cross-field validation in explicit reviewed Rust/Python logic rather than the catalog generator.
+
+- [ ] **Step 2: Regenerate and verify no drift.**
+
+  ```powershell
+  python scripts/generate_contracts.py
+  python scripts/generate_contracts.py --check
+  ```
+
+  Expected result: the generator reports that catalog-derived outputs match the source catalog. Hand-edited generated files are forbidden.
+
+- [ ] **Step 3: Add negative evidence for version retirement and unsupported scope.**
+
+  Cover V2 checkpoint current-runtime rejection, V2 full-state/replay current-producer absence, CandidateId overflow, digest double-domain-separation, duplicate/order/limit/CBOR precedence, corrupt checkpoint identity, replay identity divergence, public privileged-field injection, and malformed wire bytes producing no semantic PlayerStep.
+
+- [ ] **Step 4: Document the implementation boundary without upgrading status.**
+
+  State that `mtgml-model` owns the moved leaves but their V2 Serde meaning is byte-identical; `mtgml-persistence` owns the checkpoint calculator; `mtgml-wire` owns Information V2 canonical bytes; no public checkpoint/full-state JSON or durable checkpoint file format is added; M2.C–H remain out of scope; and the baseline environment evidence remains `BLOCKED` when Hyper-V/WSL is unavailable.
+
+- [ ] **Step 5: Run contract checks and commit.**
+
+  ```powershell
+  python scripts/verify_repository.py
+  python scripts/check_rust_source_structure.py
+  python scripts/check_documentation.py
+  python scripts/validate_schemas.py
+  python scripts/validate_golden_path.py
+  git add contracts scripts crates/mtgml-model/src/generated_contract_vocab.rs python/src/mtgml/_generated_contract_vocab.py schemas wire docs crates/README.md
+  git commit -m "docs: synchronize M2.B contracts and historical evidence"
+  ```
+
+## Task 14: Add conformance, transition, and regression evidence
+
+**Files:**
+- Modify: `crates/mtgml-conformance/src/lib.rs` and tests added beside relevant crates
+- Modify: `crates/mtgml-state/src/tests.rs`, `crates/mtgml-environment/src/tests.rs`, `crates/mtgml-replay/src/tests.rs`, `crates/mtgml-wire/src/lib.rs` tests
+- Modify: `python/tests/test_player_api.py`, `test_wire_contracts.py`, `test_schema_parity.py`
+- Create: focused evidence manifests/scripts only where the repository already has a corresponding verifier location
+
+- [ ] **Step 1: Prove decision and state structural evidence.**
+
+  Cover numeric `2 < 10`, dense IDs, duplicate ordering keys, CandidateId overflow, variant mismatch, `ChooseNumber` candidate rejection, typed continuation/reference/allocator validation, state mutation coverage, and StateDelta V3 reapplication.
+
+- [ ] **Step 2: Prove codec and digest evidence.**
+
+  Cover all accepted CBOR primitives, every forbidden form, resource-limit-before-allocation behavior, all precedence cases, re-encode equality, trailing-data rejection, envelope SHA-256 vectors, FullStateDigestV3 mutation vectors, InformationStateDigestV2 inclusion/exclusion vectors, and CheckpointDigestV3 known-answer/corruption vectors.
+
+- [ ] **Step 3: Prove checkpoint/replay/nonmutation evidence.**
+
+  Cover restore failure with no mutation, empty/accepted/rejected Replay V3 chains, complete rejected identity preservation, final identity equality, no wall-clock sampling, fork/checkpoint/replay parity, and exact synthetic M1 `ChooseOne`/`SelectOne` regression behavior.
+
+- [ ] **Step 4: Prove cross-language public and mechanical parity.**
+
+  Run Rust/Python canonical JSON fixture parity, V2/V3 schema parity, Python persistence byte/digest parity, historical V1/V2 fixture immutability, and player-boundary privileged-field exclusion. Do not claim paired-state noninterference closure; that is outside M2.B.
+
+- [ ] **Step 5: Commit evidence changes.**
+
+  ```powershell
+  git add crates python schemas wire persistence docs
+  git commit -m "test: add M2.B structural and identity evidence"
+  ```
+
+## Task 15: Final exact-head verification and handoff
+
+**Files:**
+- Modify only if a verification-discovered contract/documentation defect is real: the exact affected source file
+- External output only: `dist/verification/` or the repository-defined external evidence directory
+
+- [ ] **Step 1: Inspect the final diff and source boundary.**
+
+  ```powershell
+  git status --short --branch
+  git diff --check a4e769eb940611d34df05fc79effd9430891d897...HEAD
+  git diff --stat a4e769eb940611d34df05fc79effd9430891d897...HEAD
+  rg -n "EngineStateV2|LegacyEngineStateV2|ReplayControlV1|mtgml-state.*mtgml-wire|EnvironmentCheckpointV2" crates python schemas wire docs
+  ```
+
+  Review every remaining V2 match and classify it as immutable fixture, detached reader/verifier, documentation, or an illegal current producer. Stop on any illegal producer, second digest authority, current checkpoint V2 API, public checkpoint JSON contract, or M2.C–H behavior.
+
+- [ ] **Step 2: Run focused native fallback evidence where available.**
+
+  ```powershell
+  cargo fmt --all -- --check
+  cargo test --workspace --all-features --locked
+  python scripts/generate_contracts.py --check
+  python scripts/verify_repository.py
+  python scripts/check_rust_source_structure.py
+  python scripts/check_documentation.py
+  python scripts/validate_schemas.py
+  python scripts/validate_golden_path.py
+  python scripts/run_python_tests.py
+  ```
+
+  Record each command as `PASS`, `FAIL`, `NOT_RUN`, or `BLOCKED`. A command that cannot execute because of WSL/Hyper-V is `BLOCKED`; it is not a pass by inference from another command.
+
+- [ ] **Step 3: Run the repository profiles on the exact final head.**
+
+  ```powershell
+  just check-fast
+  just check
+  just check-all
+  ```
+
+  If the Bash/WSL wrapper remains unavailable, preserve that result and attach native fallback evidence. The required hosted CI run must execute on the exact final commit; do not use a previous SHA's result.
+
+- [ ] **Step 4: Run final source-tree/reproducibility verification last.**
+
+  ```powershell
+  just release-candidate
+  git status --short --branch
+  git rev-parse HEAD
+  ```
+
+  The archive/reproducibility gate must be the last source-changing operation. Do not modify archived source afterward. The report must show every required gate explicitly and must not convert `BLOCKED`, `FAIL`, or `NOT_RUN` into `PASS`.
+
+- [ ] **Step 5: Perform independent final-head review before any PR/merge action.**
+
+  Review the exact final SHA against this plan and Spec v3. Confirm the current runtime switch occurred in Task 7, V2 checkpoint retirement occurred before Task 9's V3 checkpoint implementation, both single-owner digest paths are unique, moved leaves are Serde-identical, Python remains mechanical, and no production code outside M2.B scope was added. Open a draft PR only after this review and required hosted evidence; do not merge it in this issue.
+
+## Commit sequence
+
+The implementation should normally produce these focused commits, each green under its narrowest available test command before the next:
+
+```text
+test: freeze M2.B public fixture boundaries
+feat: add M2 shared identities and digest values
+feat: add strict persisted semantic codec
+feat: add Decision V2 and canonical candidate ordering
+feat: migrate EngineState to typed M2 structures
+feat: add detached FullStateDigestV3
+feat: switch current transitions to FullStateDigestV3
+feat: centralize InformationStateDigestV2 bytes
+feat: add Checkpoint V3 and retire current V2
+feat: add Replay V3 environment identity chain
+feat: migrate synthetic endpoints to M2 public contracts
+feat: add mechanical Python persistence parity
+docs: synchronize M2.B contracts and historical evidence
+test: add M2.B structural and identity evidence
+```
+
+The plan is complete only when the final exact-head review has evidence for the requested structural/versioning cut. It is not complete merely because the workspace compiles, Python tests pass, or the design documents look consistent.
