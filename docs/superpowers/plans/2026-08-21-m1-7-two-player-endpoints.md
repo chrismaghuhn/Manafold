@@ -15,6 +15,7 @@
 ## File map
 
 - Modify `crates/mtgml-environment/src/synthetic.rs`: own the player-safe synthetic projection, coarse player error mapping, and the bound-perspective submission path.
+- Modify `crates/mtgml-environment/src/errors.rs`: add the internal typed failure used when candidate player-step projection cannot validate before commit.
 - Modify `crates/mtgml-environment/Cargo.toml`: add the already pinned workspace `base64` dependency for exact payload encoding.
 - Modify `crates/mtgml-environment/src/tests.rs`: replace the M1.6 fail-closed placeholder with RED/GREEN endpoint, rejection, parity, serialization-safety, and non-default-ID tests.
 - Create `docs/superpowers/specs/2026-08-21-m1-7-two-player-endpoints-design.md`: record the accepted provisional design.
@@ -265,12 +266,12 @@
 
 ## Task 7: Commit, publish, and open the Draft PR
 
-- [ ] **Step 1: Review and stage only confirmed files.**
+- [x] **Step 1: Review and stage only confirmed files.**
 
   ```text
   git diff --stat origin/master...HEAD
-  git diff -- docs/normative-document-register.v1.json docs/superpowers/specs/2026-08-21-m1-7-two-player-endpoints-design.md docs/superpowers/plans/2026-08-21-m1-7-two-player-endpoints.md crates/mtgml-environment/Cargo.toml crates/mtgml-environment/src/synthetic.rs crates/mtgml-environment/src/tests.rs
-  git add -- docs/normative-document-register.v1.json docs/superpowers/specs/2026-08-21-m1-7-two-player-endpoints-design.md docs/superpowers/plans/2026-08-21-m1-7-two-player-endpoints.md crates/mtgml-environment/Cargo.toml crates/mtgml-environment/src/synthetic.rs crates/mtgml-environment/src/tests.rs Cargo.lock
+  git diff -- docs/normative-document-register.v1.json docs/superpowers/specs/2026-08-21-m1-7-two-player-endpoints-design.md docs/superpowers/plans/2026-08-21-m1-7-two-player-endpoints.md crates/mtgml-environment/Cargo.toml crates/mtgml-environment/src/errors.rs crates/mtgml-environment/src/synthetic.rs crates/mtgml-environment/src/tests.rs
+  git add -- docs/normative-document-register.v1.json docs/superpowers/specs/2026-08-21-m1-7-two-player-endpoints-design.md docs/superpowers/plans/2026-08-21-m1-7-two-player-endpoints.md crates/mtgml-environment/Cargo.toml crates/mtgml-environment/src/errors.rs crates/mtgml-environment/src/synthetic.rs crates/mtgml-environment/src/tests.rs Cargo.lock
   git commit -m "feat: bind two synthetic player endpoints"
   ```
 
