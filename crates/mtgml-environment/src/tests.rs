@@ -4,9 +4,9 @@ use mtgml_decision::{
 };
 use mtgml_model::{
     AbilityInstanceId, CheckpointDigestV2, ContentDigest, ContinuationId, DecisionId,
-    EffectInstanceId, EpisodeStatus, GameObjectId, InformationStateDigest, ObservationDigest,
-    OpaqueAbilityId, OpaqueObjectId, PlayerId, RuleEventId, StackObjectId, StateRevision,
-    TerminalReason, TriggerInstanceId, TruncationReason,
+    EffectInstanceId, EpisodeStatus, FullStateDigestV2, GameObjectId, InformationStateDigest,
+    ObservationDigest, OpaqueAbilityId, OpaqueObjectId, PlayerId, RuleEventId, StackObjectId,
+    StateRevision, TerminalReason, TriggerInstanceId, TruncationReason,
 };
 use mtgml_observation::{
     InformationStateEnvelope, ObservationEnvelope, PlayerStep, INFORMATION_STATE_SCHEMA,
@@ -17,7 +17,8 @@ use mtgml_random::{
     RandomStreamKindV1, RootSeed256,
 };
 use mtgml_replay::{
-    AuthoritativeReplayV2, DeckIdentityV1, KernelIdentityV1, ReplaySchemaVersionsV1,
+    AuthoritativeReplayV2, DeckIdentityV1, KernelIdentityV1, ReplayRecorderV2,
+    ReplaySchemaVersionsV1, ReplayStepV2,
 };
 use mtgml_rules::AuthoritativeRuleEventKind;
 use mtgml_state::{
@@ -733,6 +734,17 @@ fn synthetic_backend_restore_rejects_unsupported_codec_without_mutation() {
 }
 
 #[test]
+fn direct_backend_restore_also_validates_before_mutation() {
+    let mut backend = synthetic_backend();
+    let before = backend.checkpoint().unwrap();
+    let mut tampered = before.clone();
+    tampered.limit_counters.accepted_transitions = 1;
+
+    assert!(EnvironmentBackend::restore(&mut backend, tampered).is_err());
+    assert_eq!(backend.checkpoint().unwrap(), before);
+}
+
+#[test]
 fn synthetic_backend_from_checkpoint_rebases_to_an_empty_segment() {
     let source = synthetic_backend();
     let checkpoint = source.checkpoint().unwrap();
@@ -1088,4 +1100,156 @@ fn forks_diverge_only_on_explicit_accepted_or_rejected_input() {
         fork_rejected.checkpoint().unwrap()
     );
     assert_eq!(source.checkpoint().unwrap(), source_checkpoint);
+}
+
+#[test]
+fn semantic_replay_reproduces_the_live_accepted_transition_exactly() {
+    let controller = TrustedEnvironmentController::new(synthetic_backend());
+    let c0 = controller.checkpoint().unwrap();
+    let live_transition = controller
+        .execute_trusted_response(PlayerId(1), synthetic_response())
+        .unwrap();
+    let live_after = controller.checkpoint().unwrap();
+    let replay = controller.export_replay().unwrap();
+
+    let report = controller
+        .execute_replay_from_checkpoint(c0, replay)
+        .unwrap();
+
+    assert_eq!(report.traces.len(), 1);
+    assert_eq!(report.traces[0].step_index, 0);
+    assert_eq!(report.traces[0].transition, live_transition);
+    assert_eq!(report.traces[0].after, live_after);
+    assert_eq!(report.final_checkpoint, live_after);
+}
+
+#[test]
+fn semantic_replay_executes_rejected_diagnostic_without_live_recording() {
+    let controller = TrustedEnvironmentController::new(synthetic_backend());
+    let c0 = controller.checkpoint().unwrap();
+    let empty = controller.export_replay().unwrap();
+    let mut rejected_response = synthetic_response();
+    rejected_response.assignments[0].candidate_id = "unknown_candidate".into();
+    let mut recorder = ReplayRecorderV2::new(empty.manifest).unwrap();
+    recorder
+        .append(ReplayStepV2 {
+            step_index: 0,
+            state_revision_before: StateRevision(0),
+            response: rejected_response,
+            accepted: false,
+            state_revision_after: StateRevision(0),
+            state_digest_after: c0.state_digest.clone(),
+        })
+        .unwrap();
+    let diagnostic = recorder.export().unwrap();
+
+    let report = controller
+        .execute_replay_from_checkpoint(c0.clone(), diagnostic)
+        .unwrap();
+
+    assert_eq!(report.traces.len(), 1);
+    assert!(!report.traces[0].transition.accepted);
+    assert_eq!(report.traces[0].before, c0);
+    assert_eq!(report.traces[0].after, c0);
+    assert_eq!(report.final_checkpoint, c0);
+    assert!(controller.export_replay().unwrap().steps.is_empty());
+}
+
+#[test]
+fn semantic_replay_rejects_wrong_initial_digest_before_execution() {
+    let controller = TrustedEnvironmentController::new(synthetic_backend());
+    let c0 = controller.checkpoint().unwrap();
+    controller
+        .execute_trusted_response(PlayerId(1), synthetic_response())
+        .unwrap();
+    let mut replay = controller.export_replay().unwrap();
+    replay.manifest.initial_state_digest = FullStateDigestV2::parse("ff".repeat(32)).unwrap();
+    let before = controller.checkpoint().unwrap();
+
+    assert!(matches!(
+        controller.execute_replay_from_checkpoint(c0, replay),
+        Err(ControllerError::ReplayExecution(
+            ReplayExecutionError::ManifestMismatch
+        ))
+    ));
+    assert_eq!(controller.checkpoint().unwrap(), before);
+}
+
+#[test]
+fn semantic_replay_rejects_wrong_root_seed_before_execution() {
+    let controller = TrustedEnvironmentController::new(synthetic_backend());
+    let c0 = controller.checkpoint().unwrap();
+    controller
+        .execute_trusted_response(PlayerId(1), synthetic_response())
+        .unwrap();
+    let mut replay = controller.export_replay().unwrap();
+    replay.manifest.randomness.root_seed_hex = "22".repeat(32);
+    let before = controller.checkpoint().unwrap();
+
+    assert!(matches!(
+        controller.execute_replay_from_checkpoint(c0, replay),
+        Err(ControllerError::ReplayExecution(
+            ReplayExecutionError::ManifestMismatch
+        ))
+    ));
+    assert_eq!(controller.checkpoint().unwrap(), before);
+}
+
+#[test]
+fn semantic_replay_rejects_tampered_accepted_after_digest_at_first_step() {
+    let controller = TrustedEnvironmentController::new(synthetic_backend());
+    let c0 = controller.checkpoint().unwrap();
+    controller
+        .execute_trusted_response(PlayerId(1), synthetic_response())
+        .unwrap();
+    let mut replay = controller.export_replay().unwrap();
+    replay.steps[0].state_digest_after = FullStateDigestV2::parse("ff".repeat(32)).unwrap();
+    replay.final_state_digest = replay.steps[0].state_digest_after.clone();
+
+    assert!(matches!(
+        controller.execute_replay_from_checkpoint(c0, replay),
+        Err(ControllerError::ReplayExecution(
+            ReplayExecutionError::AfterDigestMismatch { step_index: 0 }
+        ))
+    ));
+}
+
+#[test]
+fn semantic_replay_rejects_tampered_accepted_flag_at_first_step() {
+    let controller = TrustedEnvironmentController::new(synthetic_backend());
+    let c0 = controller.checkpoint().unwrap();
+    controller
+        .execute_trusted_response(PlayerId(1), synthetic_response())
+        .unwrap();
+    let mut replay = controller.export_replay().unwrap();
+    replay.steps[0].accepted = false;
+    replay.steps[0].state_revision_after = StateRevision(0);
+    replay.steps[0].state_digest_after = c0.state_digest.clone();
+    replay.final_state_revision = StateRevision(0);
+    replay.final_state_digest = c0.state_digest.clone();
+
+    assert!(matches!(
+        controller.execute_replay_from_checkpoint(c0, replay),
+        Err(ControllerError::ReplayExecution(
+            ReplayExecutionError::OutcomeMismatch { step_index: 0 }
+        ))
+    ));
+}
+
+#[test]
+fn semantic_replay_rejects_stale_response_at_first_step() {
+    let controller = TrustedEnvironmentController::new(synthetic_backend());
+    let c0 = controller.checkpoint().unwrap();
+    controller
+        .execute_trusted_response(PlayerId(1), synthetic_response())
+        .unwrap();
+    let mut replay = controller.export_replay().unwrap();
+    replay.steps[0].response.decision_id = DecisionId(999);
+
+    assert!(matches!(
+        controller.execute_replay_from_checkpoint(c0, replay),
+        Err(ControllerError::ReplayExecution(
+            ReplayExecutionError::OutcomeMismatch { step_index: 0 }
+        ))
+    ));
 }
