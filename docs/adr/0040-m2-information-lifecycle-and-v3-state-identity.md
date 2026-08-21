@@ -1,9 +1,9 @@
 # ADR 0040: M2 information lifecycle, perspective-local visible identity, and V3 state identity
 
-- **Status:** proposed
+- **Status:** accepted
 - **Date:** 2026-08-21
 - **Supersedes:** none; existing information/identity principles remain
-- **Unblocks:** M2 V3 structural migration after the byte-level state-digest specification in `STATE_HASHING.md` is accepted
+- **Unblocks:** M2.B V3 structural migration under the accepted byte-level contract in `STATE_HASHING.md`; executable gates remain `NOT_RUN` until M2.B evidence runs
 
 ## Context
 
