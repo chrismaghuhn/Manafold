@@ -1,5 +1,7 @@
 # M2.B V3 Structural Cut Implementation Plan
 
+**Status:** provisional process plan
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Implement Issue #49 as one atomic cross-layer structural cut in which the current Manafold runtime uses Decision V2, the M2 `EngineState` shape, `InformationStateDigestV2`, `FullStateDigestV3`, `EnvironmentCheckpointV3`, and Replay V3 while preserving V1/V2 historical evidence without reinterpretation.
