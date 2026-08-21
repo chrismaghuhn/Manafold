@@ -155,13 +155,8 @@ impl SyntheticM1EnvironmentBackend {
         validate_transition_contract(&before.state, &transition)?;
 
         if !transition.accepted {
-            let unchanged = EnvironmentCheckpointV2::new(
-                before.state.clone(),
-                before.status.clone(),
-                before.limit_counters.clone(),
-                before.codec.clone(),
-            )?;
-            if unchanged != before {
+            let after = self.current_checkpoint()?;
+            if after != before {
                 return Err(EnvironmentCommitError::RejectedMutation.into());
             }
             return Ok(transition);
@@ -299,7 +294,11 @@ fn build_manifest(
 
     let state_players: BTreeSet<_> = checkpoint.state.core.players.keys().copied().collect();
     let manifest_players: BTreeSet<_> = manifest.decks.iter().map(|deck| deck.player).collect();
-    if state_players != manifest_players || state_players.len() != manifest.decks.len() {
+    if state_players.len() != 2
+        || manifest.decks.len() != 2
+        || state_players != manifest_players
+        || state_players.len() != manifest.decks.len()
+    {
         return Err(ControllerError::ReplayIdentityMismatch);
     }
     Ok(manifest)

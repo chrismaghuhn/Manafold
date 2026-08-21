@@ -251,6 +251,100 @@ impl EnvironmentBackend for FakeBackend {
     }
 }
 
+struct CounterCorruptingBackend {
+    inner: Box<dyn EnvironmentBackend>,
+    corrupt_after_execute: bool,
+}
+
+impl CounterCorruptingBackend {
+    fn new() -> Self {
+        Self {
+            inner: Box::new(synthetic_backend()),
+            corrupt_after_execute: false,
+        }
+    }
+}
+
+impl EnvironmentBackend for CounterCorruptingBackend {
+    fn players(&self) -> Vec<PlayerId> {
+        self.inner.players()
+    }
+
+    fn checkpoint(&self) -> Result<EnvironmentCheckpointV2, ControllerError> {
+        let checkpoint = self.inner.checkpoint()?;
+        if !self.corrupt_after_execute {
+            return Ok(checkpoint);
+        }
+        let mut counters = checkpoint.limit_counters.clone();
+        counters.decisions_submitted = counters.decisions_submitted.checked_add(1).unwrap();
+        EnvironmentCheckpointV2::new(
+            checkpoint.state,
+            checkpoint.status,
+            counters,
+            checkpoint.codec,
+        )
+        .map_err(ControllerError::CheckpointValidation)
+    }
+
+    fn restore(&mut self, checkpoint: EnvironmentCheckpointV2) -> Result<(), ControllerError> {
+        self.inner.restore(checkpoint)?;
+        self.corrupt_after_execute = false;
+        Ok(())
+    }
+
+    fn fork_boxed(&self) -> Result<Box<dyn EnvironmentBackend>, ControllerError> {
+        Ok(Box::new(Self {
+            inner: self.inner.fork_boxed()?,
+            corrupt_after_execute: false,
+        }))
+    }
+
+    fn export_replay(&self) -> Result<AuthoritativeReplayV2, ControllerError> {
+        self.inner.export_replay()
+    }
+
+    fn execute_trusted_response(
+        &mut self,
+        actor: PlayerId,
+        response: DecisionResponse,
+    ) -> Result<mtgml_rules::TransitionResult, ControllerError> {
+        let transition = self.inner.execute_trusted_response(actor, response)?;
+        if transition.accepted {
+            self.corrupt_after_execute = true;
+        }
+        Ok(transition)
+    }
+
+    fn player_observation(
+        &self,
+        perspective: PlayerId,
+    ) -> Result<ObservationEnvelope, PlayerApiError> {
+        self.inner.player_observation(perspective)
+    }
+
+    fn player_information_state(
+        &self,
+        perspective: PlayerId,
+    ) -> Result<InformationStateEnvelope, PlayerApiError> {
+        self.inner.player_information_state(perspective)
+    }
+
+    fn player_visible_decision(
+        &self,
+        perspective: PlayerId,
+    ) -> Result<Option<PlayerDecisionRequest>, PlayerApiError> {
+        self.inner.player_visible_decision(perspective)
+    }
+
+    fn submit_player_response(
+        &mut self,
+        perspective: PlayerId,
+        response: DecisionResponse,
+    ) -> Result<PlayerStep, PlayerApiError> {
+        self.inner.submit_player_response(perspective, response)
+    }
+}
+
 #[test]
 fn frozen_checkpoint_v2_digest_is_stable() {
     let checkpoint = EnvironmentCheckpointV2::new(
@@ -772,6 +866,19 @@ fn synthetic_backend_from_checkpoint_rebases_to_an_empty_segment() {
 }
 
 #[test]
+fn synthetic_backend_restore_rejects_non_two_player_replay_identity() {
+    let backend = synthetic_backend();
+    let checkpoint = backend.checkpoint().unwrap();
+    let mut config = synthetic_config([PlayerId(1), PlayerId(2)]);
+    config.replay.decks.pop();
+
+    assert!(matches!(
+        SyntheticM1EnvironmentBackend::from_checkpoint(checkpoint, config),
+        Err(ControllerError::ReplayIdentityMismatch)
+    ));
+}
+
+#[test]
 fn accepted_environment_transaction_commits_the_exact_m1_product() {
     let controller = TrustedEnvironmentController::new(synthetic_backend());
     let before = controller.checkpoint().unwrap();
@@ -1121,6 +1228,23 @@ fn semantic_replay_reproduces_the_live_accepted_transition_exactly() {
     assert_eq!(report.traces[0].transition, live_transition);
     assert_eq!(report.traces[0].after, live_after);
     assert_eq!(report.final_checkpoint, live_after);
+}
+
+#[test]
+fn semantic_replay_rejects_counter_divergence_at_first_step() {
+    let controller = TrustedEnvironmentController::new(CounterCorruptingBackend::new());
+    let c0 = controller.checkpoint().unwrap();
+    controller
+        .execute_trusted_response(PlayerId(1), synthetic_response())
+        .unwrap();
+    let replay = controller.export_replay().unwrap();
+
+    assert!(matches!(
+        controller.execute_replay_from_checkpoint(c0, replay),
+        Err(ControllerError::ReplayExecution(
+            ReplayExecutionError::CounterMismatch { step_index: 0 }
+        ))
+    ));
 }
 
 #[test]

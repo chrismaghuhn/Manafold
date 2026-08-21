@@ -1,6 +1,7 @@
 use mtgml_replay::AuthoritativeReplayV2;
+use mtgml_rules::validate_transition_contract;
 
-use crate::checkpoint::EnvironmentCheckpointV2;
+use crate::checkpoint::{EnvironmentCheckpointV2, EnvironmentLimitCounters};
 use crate::controller::EnvironmentBackend;
 use crate::errors::{ControllerError, ReplayExecutionError};
 
@@ -18,6 +19,58 @@ pub struct ReplayExecutionReport {
     pub final_checkpoint: EnvironmentCheckpointV2,
 }
 
+fn checked_counter_add(
+    value: u64,
+    increment: u64,
+    counter: &'static str,
+) -> Result<u64, ControllerError> {
+    value
+        .checked_add(increment)
+        .ok_or(ControllerError::CounterOverflow { counter })
+}
+
+fn expected_counters(
+    before: &EnvironmentCheckpointV2,
+    transition: &mtgml_rules::TransitionResult,
+) -> Result<EnvironmentLimitCounters, ControllerError> {
+    if !transition.accepted {
+        return Ok(before.limit_counters.clone());
+    }
+    let event_count =
+        u64::try_from(transition.events.len()).map_err(|_| ControllerError::CounterOverflow {
+            counter: "rule_events_emitted",
+        })?;
+    Ok(EnvironmentLimitCounters {
+        decisions_submitted: checked_counter_add(
+            before.limit_counters.decisions_submitted,
+            1,
+            "decisions_submitted",
+        )?,
+        accepted_transitions: checked_counter_add(
+            before.limit_counters.accepted_transitions,
+            1,
+            "accepted_transitions",
+        )?,
+        rule_events_emitted: checked_counter_add(
+            before.limit_counters.rule_events_emitted,
+            event_count,
+            "rule_events_emitted",
+        )?,
+        resource_units_consumed: before.limit_counters.resource_units_consumed,
+        wall_clock_elapsed_millis: before.limit_counters.wall_clock_elapsed_millis,
+    })
+}
+
+fn checkpoint(
+    backend: &dyn EnvironmentBackend,
+) -> Result<EnvironmentCheckpointV2, ControllerError> {
+    let checkpoint = backend.checkpoint()?;
+    checkpoint
+        .validate()
+        .map_err(ControllerError::CheckpointValidation)?;
+    Ok(checkpoint)
+}
+
 pub(crate) fn execute_replay(
     backend: &mut dyn EnvironmentBackend,
     replay: AuthoritativeReplayV2,
@@ -30,7 +83,7 @@ pub(crate) fn execute_replay(
     let mut expected_digest = replay.manifest.initial_state_digest.clone();
     let mut traces = Vec::with_capacity(replay.steps.len());
     for step in replay.steps {
-        let before = backend.checkpoint()?;
+        let before = checkpoint(backend)?;
         if before.state.revision != step.state_revision_before {
             return Err(ReplayExecutionError::BeforeRevisionMismatch {
                 step_index: step.step_index,
@@ -53,7 +106,8 @@ pub(crate) fn execute_replay(
                 step_index: step.step_index,
             })?;
         let transition = backend.execute_trusted_response(actor, step.response.clone())?;
-        let after = backend.checkpoint()?;
+        validate_transition_contract(&before.state, &transition)?;
+        let after = checkpoint(backend)?;
         if transition.accepted != step.accepted {
             return Err(ReplayExecutionError::OutcomeMismatch {
                 step_index: step.step_index,
@@ -62,6 +116,12 @@ pub(crate) fn execute_replay(
         }
         if transition.next_state != after.state || transition.status != after.status {
             return Err(ReplayExecutionError::TransitionMismatch {
+                step_index: step.step_index,
+            }
+            .into());
+        }
+        if after.limit_counters != expected_counters(&before, &transition)? {
+            return Err(ReplayExecutionError::CounterMismatch {
                 step_index: step.step_index,
             }
             .into());
@@ -86,7 +146,7 @@ pub(crate) fn execute_replay(
             after,
         });
     }
-    let checkpoint = backend.checkpoint()?;
+    let checkpoint = checkpoint(backend)?;
     if replay.final_state_revision != checkpoint.state.revision
         || replay.final_state_digest != checkpoint.state_digest
     {

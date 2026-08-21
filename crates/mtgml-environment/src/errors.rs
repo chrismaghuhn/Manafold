@@ -31,6 +31,8 @@ pub enum ReplayExecutionError {
     AfterDigestMismatch { step_index: u64 },
     #[error("replay step {step_index} transition product differs")]
     TransitionMismatch { step_index: u64 },
+    #[error("replay step {step_index} environment counters differ")]
+    CounterMismatch { step_index: u64 },
     #[error("replay final identity differs")]
     FinalIdentityMismatch,
 }
