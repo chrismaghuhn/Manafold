@@ -655,6 +655,14 @@ def main() -> int:
                 "after_clean": after.get("clean"),
                 "before_git_status": before.get("git_status", ""),
                 "after_git_status": after.get("git_status", ""),
+                "toolchains": {
+                    "status": toolchains.get("status"),
+                    "python": toolchains.get("python", {}),
+                    "rust": {
+                        name: value.get("status")
+                        for name, value in toolchains.get("rust", {}).items()
+                    },
+                },
             },
             sort_keys=True,
         )
