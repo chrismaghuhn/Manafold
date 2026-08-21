@@ -1,4 +1,5 @@
-use mtgml_state::{EngineStateViolation, StateDigestError};
+use mtgml_random::RandomValidationError;
+use mtgml_state::{EngineStateViolation, IdentityAllocationError, StateDigestError};
 use thiserror::Error;
 
 use crate::TransitionViolation;
@@ -17,4 +18,8 @@ pub enum KernelExecutionError {
     AfterState(EngineStateViolation),
     #[error("transition contract failed: {0}")]
     TransitionContract(TransitionViolation),
+    #[error("deterministic RNG service failed: {0}")]
+    Random(#[from] RandomValidationError),
+    #[error("identity allocator failed: {0}")]
+    IdentityAllocation(#[from] IdentityAllocationError),
 }

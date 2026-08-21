@@ -8,15 +8,18 @@ use mtgml_model::{
     EpisodeStatus, GameObjectId, OpaqueAbilityId, OpaqueObjectId, PhysicalCardId, PlayerId,
     RuleEventId, StackObjectId, StateRevision, TriggerInstanceId, ZoneKind,
 };
-use mtgml_random::RandomStateV1;
 use mtgml_random::RootSeed256;
+use mtgml_random::{
+    RandomStateV1, RandomStreamCursorV1, RandomStreamKeyV1, RandomStreamKindV1,
+    RandomValidationError,
+};
 use mtgml_state::{
     construct_synthetic_engine_state, ContinuationRecord, CoreRulesState, EngineState,
-    EngineStateViolation, ExecutionState, FormatState, GameObject, IdentityAllocatorState,
-    KnowledgeState, ObjectSnapshot, PendingDecisionRecord, PerspectiveIdentityMap,
-    PerspectiveIdentityState, PlayerKnowledgeState, PlayerState, SemanticDeltaOperation,
-    StateDelta, SyntheticResetInputs, VisibilityPartition, ZoneLocation, ZonePosition, ZoneState,
-    ZoneTransition,
+    EngineStateViolation, ExecutionState, FormatState, GameObject, IdentityAllocationError,
+    IdentityAllocatorState, KnowledgeState, ObjectSnapshot, PendingDecisionRecord,
+    PerspectiveIdentityMap, PerspectiveIdentityState, PlayerKnowledgeState, PlayerState,
+    SemanticDeltaOperation, StateDelta, SyntheticResetInputs, VisibilityPartition, ZoneLocation,
+    ZonePosition, ZoneState, ZoneTransition,
 };
 use std::collections::BTreeMap;
 
@@ -230,7 +233,15 @@ fn synthetic_m1_acceptance_returns_exact_transition_product() {
         .unwrap()
         .life = 38;
     expected_after.execution.pending_decision = None;
-    expected_after.allocators.next_rule_event_id = RuleEventId(4);
+    expected_after
+        .random
+        .set_cursor(
+            &RandomStreamKeyV1::global(RandomStreamKindV1::SyntheticM1),
+            RandomStreamCursorV1 { next_raw_u64: 1 },
+        )
+        .unwrap();
+    expected_after.allocators.next_effect_id = EffectInstanceId(2);
+    expected_after.allocators.next_rule_event_id = RuleEventId(5);
 
     let expected_events = vec![
         AuthoritativeRuleEvent {
@@ -253,6 +264,18 @@ fn synthetic_m1_acceptance_returns_exact_transition_product() {
         },
         AuthoritativeRuleEvent {
             event_id: RuleEventId(3),
+            state_revision: StateRevision(1),
+            event: AuthoritativeRuleEventKind::RandomValueSampled {
+                stream: RandomStreamKeyV1::global(RandomStreamKindV1::SyntheticM1),
+                bound: 10,
+                value: 1,
+                raw_words_consumed: 1,
+                cursor_before: 0,
+                cursor_after: 1,
+            },
+        },
+        AuthoritativeRuleEvent {
+            event_id: RuleEventId(4),
             state_revision: StateRevision(1),
             event: AuthoritativeRuleEventKind::DecisionCleared {
                 decision: DecisionId(1),
@@ -281,10 +304,19 @@ fn synthetic_m1_acceptance_returns_exact_transition_product() {
     assert_eq!(result.next_state.core.players[&PlayerId(2)].life, 40);
     assert_eq!(
         result.next_state.allocators.next_rule_event_id,
-        RuleEventId(4)
+        RuleEventId(5)
     );
     assert_eq!(result.next_state.zones, before.zones);
-    assert_eq!(result.next_state.random, before.random);
+    assert_eq!(result.next_state.random.root_seed, before.random.root_seed);
+    assert_eq!(
+        result
+            .next_state
+            .random
+            .lookup_stream(&RandomStreamKeyV1::global(RandomStreamKindV1::SyntheticM1))
+            .unwrap()
+            .next_raw_u64,
+        1
+    );
     assert_eq!(result.next_state.knowledge, before.knowledge);
     assert_eq!(
         result.next_state.perspective_identities,
@@ -302,6 +334,10 @@ fn synthetic_m1_acceptance_returns_exact_transition_product() {
     assert_eq!(
         result.next_state.allocators.next_continuation_id,
         before.allocators.next_continuation_id
+    );
+    assert_eq!(
+        result.next_state.allocators.next_effect_id,
+        EffectInstanceId(2)
     );
     assert_eq!(result.delta.before_revision, StateRevision(0));
     assert_eq!(result.delta.after_revision, StateRevision(1));
@@ -356,7 +392,7 @@ fn synthetic_m1_acceptance_uses_the_first_player_for_non_default_ids() {
     assert_eq!(result.next_state.execution.pending_decision, None);
     assert_eq!(
         result.next_state.allocators.next_rule_event_id,
-        RuleEventId(4)
+        RuleEventId(5)
     );
     assert_eq!(
         result.events,
@@ -381,6 +417,18 @@ fn synthetic_m1_acceptance_uses_the_first_player_for_non_default_ids() {
             },
             AuthoritativeRuleEvent {
                 event_id: RuleEventId(3),
+                state_revision: StateRevision(1),
+                event: AuthoritativeRuleEventKind::RandomValueSampled {
+                    stream: RandomStreamKeyV1::global(RandomStreamKindV1::SyntheticM1),
+                    bound: 10,
+                    value: 1,
+                    raw_words_consumed: 1,
+                    cursor_before: 0,
+                    cursor_after: 1,
+                },
+            },
+            AuthoritativeRuleEvent {
+                event_id: RuleEventId(4),
                 state_revision: StateRevision(1),
                 event: AuthoritativeRuleEventKind::DecisionCleared {
                     decision: DecisionId(1),
@@ -843,6 +891,143 @@ fn synthetic_rejection_matrix_preserves_complete_nonmutation() {
 }
 
 #[test]
+fn deterministic_services_repeat_exact_transition_result() {
+    let before_a = synthetic_state();
+    let before_b = synthetic_state();
+    let response_a = synthetic_response(&before_a);
+    let response_b = synthetic_response(&before_b);
+    let mut kernel_a = SyntheticM1RulesKernel;
+    let mut kernel_b = SyntheticM1RulesKernel;
+
+    let result_a = kernel_a.apply(&before_a, PlayerId(1), &response_a).unwrap();
+    let result_b = kernel_b.apply(&before_b, PlayerId(1), &response_b).unwrap();
+
+    assert_eq!(result_a, result_b);
+    assert_eq!(
+        result_a.next_state.random.root_seed,
+        before_a.random.root_seed
+    );
+    assert_eq!(
+        result_a
+            .next_state
+            .random
+            .lookup_stream(&RandomStreamKeyV1::global(RandomStreamKindV1::SyntheticM1))
+            .unwrap()
+            .next_raw_u64,
+        1
+    );
+    assert_eq!(
+        result_a.next_state.allocators.next_effect_id,
+        EffectInstanceId(2)
+    );
+}
+
+#[test]
+fn deterministic_services_isolate_named_stream_and_allocator_cursors() {
+    let mut before = synthetic_state();
+    let player_stream = RandomStreamKeyV1::player_scoped(RandomStreamKindV1::SyntheticM1, 1);
+    before
+        .random
+        .add_stream(player_stream, RandomStreamCursorV1 { next_raw_u64: 17 })
+        .unwrap();
+    let response = synthetic_response(&before);
+    let mut kernel = SyntheticM1RulesKernel;
+
+    let result = kernel.apply(&before, PlayerId(1), &response).unwrap();
+
+    let global_stream = RandomStreamKeyV1::global(RandomStreamKindV1::SyntheticM1);
+    let mut expected_random = before.random.clone();
+    expected_random
+        .set_cursor(&global_stream, RandomStreamCursorV1 { next_raw_u64: 1 })
+        .unwrap();
+    assert_eq!(result.next_state.random, expected_random);
+
+    let mut expected_allocators = before.allocators.clone();
+    expected_allocators.next_effect_id = EffectInstanceId(2);
+    expected_allocators.next_rule_event_id = RuleEventId(5);
+    assert_eq!(result.next_state.allocators, expected_allocators);
+    assert_eq!(
+        result
+            .next_state
+            .random
+            .lookup_stream(&player_stream)
+            .unwrap()
+            .next_raw_u64,
+        17
+    );
+}
+
+#[test]
+fn missing_synthetic_stream_is_an_exact_normal_rejection() {
+    let mut before = synthetic_state();
+    before.random.streams.clear();
+    mtgml_state::validate_engine_state(&before).unwrap();
+    let response = synthetic_response(&before);
+    let mut kernel = SyntheticM1RulesKernel;
+
+    let result = kernel.apply(&before, PlayerId(1), &response).unwrap();
+
+    assert_exact_rejected_product(&before, result);
+}
+
+#[test]
+fn rng_exhaustion_is_a_typed_internal_failure_without_input_mutation() {
+    let mut before = synthetic_state();
+    let stream = RandomStreamKeyV1::global(RandomStreamKindV1::SyntheticM1);
+    before
+        .random
+        .set_cursor(
+            &stream,
+            RandomStreamCursorV1 {
+                next_raw_u64: u64::MAX,
+            },
+        )
+        .unwrap();
+    mtgml_state::validate_engine_state(&before).unwrap();
+    let original = before.clone();
+    let response = synthetic_response(&before);
+    let mut kernel = SyntheticM1RulesKernel;
+
+    let result = kernel.apply(&before, PlayerId(1), &response);
+
+    assert!(matches!(
+        result,
+        Err(KernelExecutionError::Random(
+            RandomValidationError::StreamExhausted
+        ))
+    ));
+    assert_eq!(before, original);
+}
+
+#[test]
+fn effect_allocator_exhaustion_is_a_typed_internal_failure_before_rng() {
+    let mut before = synthetic_state();
+    before.allocators.next_effect_id = EffectInstanceId(u64::MAX);
+    mtgml_state::validate_engine_state(&before).unwrap();
+    let original = before.clone();
+    let response = synthetic_response(&before);
+    let mut kernel = SyntheticM1RulesKernel;
+
+    let result = kernel.apply(&before, PlayerId(1), &response);
+
+    assert!(matches!(
+        result,
+        Err(KernelExecutionError::IdentityAllocation(
+            IdentityAllocationError::EffectInstanceIdExhausted
+        ))
+    ));
+    assert_eq!(before, original);
+    assert_eq!(
+        before
+            .random
+            .lookup_stream(&RandomStreamKeyV1::global(RandomStreamKindV1::SyntheticM1))
+            .unwrap()
+            .next_raw_u64,
+        0
+    );
+}
+
+#[test]
 fn invalid_before_state_is_a_kernel_execution_error() {
     let before = synthetic_state();
     let response = synthetic_response(&before);
@@ -930,6 +1115,197 @@ fn result(
         next_decision,
         status: EpisodeStatus::Running,
     }
+}
+
+fn random_before_and_stream() -> (EngineState, RandomStreamKeyV1) {
+    let stream = RandomStreamKeyV1::global(RandomStreamKindV1::SyntheticM1);
+    let mut before = state();
+    before.random = RandomStateV1::new(RootSeed256::from_lower_hex(&"11".repeat(32)).unwrap());
+    before
+        .random
+        .add_stream(stream, RandomStreamCursorV1::default())
+        .unwrap();
+    (before, stream)
+}
+
+fn random_transition(
+    event: AuthoritativeRuleEventKind,
+    after_cursor: u64,
+) -> (EngineState, TransitionResult) {
+    let (before, stream) = random_before_and_stream();
+    let mut after = before.clone();
+    after.revision = StateRevision(1);
+    after
+        .random
+        .set_cursor(
+            &stream,
+            RandomStreamCursorV1 {
+                next_raw_u64: after_cursor,
+            },
+        )
+        .unwrap();
+    after.allocators.next_rule_event_id = RuleEventId(2);
+    let transition = result(
+        &before,
+        after,
+        vec![AuthoritativeRuleEvent {
+            event_id: RuleEventId(1),
+            state_revision: StateRevision(1),
+            event,
+        }],
+        None,
+    );
+    (before, transition)
+}
+
+#[test]
+fn random_sample_event_is_validated_against_authoritative_sampler() {
+    let stream = RandomStreamKeyV1::global(RandomStreamKindV1::SyntheticM1);
+    let (before, transition) = random_transition(
+        AuthoritativeRuleEventKind::RandomValueSampled {
+            stream,
+            bound: 10,
+            value: 1,
+            raw_words_consumed: 1,
+            cursor_before: 0,
+            cursor_after: 1,
+        },
+        1,
+    );
+
+    validate_transition_contract(&before, &transition).unwrap();
+}
+
+#[test]
+fn random_sample_event_rejects_wrong_cursor_precondition() {
+    let stream = RandomStreamKeyV1::global(RandomStreamKindV1::SyntheticM1);
+    let (before, transition) = random_transition(
+        AuthoritativeRuleEventKind::RandomValueSampled {
+            stream,
+            bound: 10,
+            value: 1,
+            raw_words_consumed: 1,
+            cursor_before: 1,
+            cursor_after: 2,
+        },
+        1,
+    );
+
+    assert!(matches!(
+        validate_transition_contract(&before, &transition),
+        Err(TransitionViolation::Randomness)
+    ));
+}
+
+#[test]
+fn random_sample_event_rejects_wrong_value() {
+    let stream = RandomStreamKeyV1::global(RandomStreamKindV1::SyntheticM1);
+    let (before, transition) = random_transition(
+        AuthoritativeRuleEventKind::RandomValueSampled {
+            stream,
+            bound: 10,
+            value: 2,
+            raw_words_consumed: 1,
+            cursor_before: 0,
+            cursor_after: 1,
+        },
+        1,
+    );
+
+    assert!(matches!(
+        validate_transition_contract(&before, &transition),
+        Err(TransitionViolation::Randomness)
+    ));
+}
+
+#[test]
+fn random_sample_event_rejects_wrong_consumption_and_cursor_after() {
+    let stream = RandomStreamKeyV1::global(RandomStreamKindV1::SyntheticM1);
+    let (before, transition) = random_transition(
+        AuthoritativeRuleEventKind::RandomValueSampled {
+            stream,
+            bound: 10,
+            value: 1,
+            raw_words_consumed: 2,
+            cursor_before: 0,
+            cursor_after: 2,
+        },
+        1,
+    );
+
+    assert!(matches!(
+        validate_transition_contract(&before, &transition),
+        Err(TransitionViolation::Randomness)
+    ));
+}
+
+#[test]
+fn random_sample_event_is_required_for_final_cursor_progression() {
+    let (before, stream) = random_before_and_stream();
+    let mut after = before.clone();
+    after.revision = StateRevision(1);
+    after
+        .random
+        .set_cursor(&stream, RandomStreamCursorV1 { next_raw_u64: 1 })
+        .unwrap();
+    let transition = result(&before, after, vec![], None);
+
+    assert!(matches!(
+        validate_transition_contract(&before, &transition),
+        Err(TransitionViolation::Randomness)
+    ));
+}
+
+#[test]
+fn random_transition_rejects_root_seed_mutation() {
+    let stream = RandomStreamKeyV1::global(RandomStreamKindV1::SyntheticM1);
+    let (before, mut transition) = random_transition(
+        AuthoritativeRuleEventKind::RandomValueSampled {
+            stream,
+            bound: 10,
+            value: 1,
+            raw_words_consumed: 1,
+            cursor_before: 0,
+            cursor_after: 1,
+        },
+        1,
+    );
+    transition.next_state.random.root_seed = RootSeed256::from_lower_hex(&"22".repeat(32)).unwrap();
+    transition.delta = StateDelta::between(
+        &before,
+        &transition.next_state,
+        transition.delta.audit.clone(),
+    )
+    .unwrap();
+
+    assert!(matches!(
+        validate_transition_contract(&before, &transition),
+        Err(TransitionViolation::Randomness)
+    ));
+}
+
+#[test]
+fn random_sample_event_and_delta_audit_must_agree() {
+    let stream = RandomStreamKeyV1::global(RandomStreamKindV1::SyntheticM1);
+    let (before, mut transition) = random_transition(
+        AuthoritativeRuleEventKind::RandomValueSampled {
+            stream,
+            bound: 10,
+            value: 1,
+            raw_words_consumed: 1,
+            cursor_before: 0,
+            cursor_after: 1,
+        },
+        1,
+    );
+    transition.delta.audit = vec![SemanticDeltaOperation::PublicOutcome {
+        code: "mismatch".into(),
+    }];
+
+    assert!(matches!(
+        validate_transition_contract(&before, &transition),
+        Err(TransitionViolation::EventDeltaMismatch)
+    ));
 }
 
 #[test]

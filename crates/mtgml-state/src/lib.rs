@@ -26,7 +26,10 @@ pub use execution::{
     ContinuationRecord, EffectRecord, ExecutionState, PendingDecisionRecord, TriggerRecord,
 };
 pub use format::{CommanderState, FormatState};
-pub use identity::{IdentityAllocatorState, PerspectiveIdentityMap, PerspectiveIdentityState};
+pub use identity::{
+    IdentityAllocationError, IdentityAllocatorState, PerspectiveIdentityMap,
+    PerspectiveIdentityState,
+};
 pub use knowledge::{
     KnowledgeAcquisitionReason, KnowledgeHistoryChannel, KnowledgeInvalidationReason,
     KnowledgeInvalidationRecord, KnowledgePoint, KnowledgeState, KnownObjectIdentity,

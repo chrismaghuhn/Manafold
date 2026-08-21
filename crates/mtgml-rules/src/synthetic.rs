@@ -3,6 +3,7 @@ use mtgml_decision::{
     EngineCandidateBinding, PerspectiveIdentityResolver,
 };
 use mtgml_model::{EpisodeStatus, GameObjectId, PlayerId, RuleEventId, StateRevision};
+use mtgml_random::{RandomStreamKeyV1, RandomStreamKindV1};
 use mtgml_state::{validate_engine_state, EngineState, EngineStateViolation, StateDelta};
 
 use crate::errors::KernelExecutionError;
@@ -90,7 +91,16 @@ impl RulesKernel for SyntheticM1RulesKernel {
             return rejected(state);
         }
 
+        let stream = RandomStreamKeyV1::global(RandomStreamKindV1::SyntheticM1);
+        if !state.random.streams.contains_key(&stream) {
+            return rejected(state);
+        }
+        if state.core.players.get(&actor).map(|player| player.life) != Some(40) {
+            return rejected(state);
+        }
+
         let mut next_state = state.clone();
+        next_state.allocators.allocate_effect_id()?;
         let next_revision = state
             .revision
             .0
@@ -109,23 +119,20 @@ impl RulesKernel for SyntheticM1RulesKernel {
                 .checked_add(1)
                 .ok_or(KernelExecutionError::RuleEventIdOverflow)?,
         );
-        let next_event_id = RuleEventId(
+        let fourth_event_id = RuleEventId(
             third_event_id
+                .0
+                .checked_add(1)
+                .ok_or(KernelExecutionError::RuleEventIdOverflow)?,
+        );
+        let next_event_id = RuleEventId(
+            fourth_event_id
                 .0
                 .checked_add(1)
                 .ok_or(KernelExecutionError::RuleEventIdOverflow)?,
         );
 
         next_state.revision = StateRevision(next_revision);
-        if next_state
-            .core
-            .players
-            .get(&actor)
-            .map(|player| player.life)
-            != Some(40)
-        {
-            return rejected(state);
-        }
         next_state
             .core
             .players
@@ -160,9 +167,24 @@ impl RulesKernel for SyntheticM1RulesKernel {
                 to: 38,
             },
         });
-        next_state.execution.pending_decision = None;
+        let cursor_before = next_state.random.lookup_stream(&stream)?.next_raw_u64;
+        let (value, raw_words_consumed) = next_state.uniform_below_u64(&stream, 10)?;
+        let cursor_after = next_state.random.lookup_stream(&stream)?.next_raw_u64;
         events.push(AuthoritativeRuleEvent {
             event_id: third_event_id,
+            state_revision: next_state.revision,
+            event: AuthoritativeRuleEventKind::RandomValueSampled {
+                stream,
+                bound: 10,
+                value,
+                raw_words_consumed,
+                cursor_before,
+                cursor_after,
+            },
+        });
+        next_state.execution.pending_decision = None;
+        events.push(AuthoritativeRuleEvent {
+            event_id: fourth_event_id,
             state_revision: next_state.revision,
             event: AuthoritativeRuleEventKind::DecisionCleared {
                 decision: request.decision_id,

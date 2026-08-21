@@ -10,7 +10,10 @@ use mtgml_observation::{
     InformationStateEnvelope, ObservationEnvelope, PlayerStep, INFORMATION_STATE_SCHEMA,
     OBSERVATION_SCHEMA,
 };
-use mtgml_random::{RandomStateV1, RandomStreamCursorV1, RandomStreamKeyV1, RandomStreamKindV1};
+use mtgml_random::{
+    CanonicalRandomStreamEntryV1, RandomStateV1, RandomStreamCursorV1, RandomStreamKeyV1,
+    RandomStreamKindV1, RootSeed256,
+};
 use mtgml_replay::AuthoritativeReplayV2;
 use mtgml_state::{
     CoreRulesState, EngineState, ExecutionState, FormatState, IdentityAllocatorState,
@@ -354,6 +357,50 @@ fn checkpoint_v2_digest_is_stable_and_depends_on_rng() {
         digest_a, cp_c.checkpoint_digest,
         "identical checkpoints must share a digest"
     );
+}
+
+#[test]
+fn checkpoint_captures_m1_5_continuation_state() {
+    let stream = RandomStreamKeyV1::global(RandomStreamKindV1::SyntheticM1);
+    let mut state = checkpoint_state();
+    state.allocators.next_effect_id = EffectInstanceId(2);
+    state.random = RandomStateV1::from_entries(
+        RootSeed256::from_lower_hex(&"11".repeat(32)).unwrap(),
+        vec![CanonicalRandomStreamEntryV1 {
+            key: stream,
+            next_raw_u64: 1,
+        }],
+    )
+    .unwrap();
+
+    let checkpoint = EnvironmentCheckpointV2::new(
+        state,
+        EpisodeStatus::Running,
+        EnvironmentLimitCounters::default(),
+        CheckpointCodecIdentity {
+            codec_id: "in-memory-reference".into(),
+            semantic_version: "1".into(),
+        },
+    )
+    .unwrap();
+    checkpoint.validate().unwrap();
+
+    let encoded = serde_json::to_vec(&checkpoint).unwrap();
+    let decoded: EnvironmentCheckpointV2 = serde_json::from_slice(&encoded).unwrap();
+
+    assert_eq!(decoded, checkpoint);
+    assert_eq!(decoded.state.allocators.next_effect_id, EffectInstanceId(2));
+    assert_eq!(
+        decoded
+            .state
+            .random
+            .lookup_stream(&stream)
+            .unwrap()
+            .next_raw_u64,
+        1
+    );
+    assert_eq!(decoded.state_digest, decoded.state.digest().unwrap());
+    decoded.validate().unwrap();
 }
 
 #[test]

@@ -3,6 +3,13 @@ use std::collections::BTreeMap;
 use mtgml_decision::PerspectiveIdentityResolver;
 use mtgml_model::{AbilityInstanceId, GameObjectId, OpaqueAbilityId, OpaqueObjectId, PlayerId};
 use serde::{Deserialize, Serialize};
+use thiserror::Error;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
+pub enum IdentityAllocationError {
+    #[error("effect instance identity is exhausted")]
+    EffectInstanceIdExhausted,
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -17,6 +24,24 @@ pub struct IdentityAllocatorState {
     pub next_rule_event_id: mtgml_model::RuleEventId,
     pub next_opaque_object_id: BTreeMap<PlayerId, OpaqueObjectId>,
     pub next_opaque_ability_id: BTreeMap<PlayerId, OpaqueAbilityId>,
+}
+
+impl IdentityAllocatorState {
+    pub fn allocate_effect_id(
+        &mut self,
+    ) -> Result<mtgml_model::EffectInstanceId, IdentityAllocationError> {
+        let allocated = self.next_effect_id;
+        if allocated.0 == u64::MAX {
+            return Err(IdentityAllocationError::EffectInstanceIdExhausted);
+        }
+        self.next_effect_id = mtgml_model::EffectInstanceId(
+            allocated
+                .0
+                .checked_add(1)
+                .ok_or(IdentityAllocationError::EffectInstanceIdExhausted)?,
+        );
+        Ok(allocated)
+    }
 }
 
 impl Default for IdentityAllocatorState {
