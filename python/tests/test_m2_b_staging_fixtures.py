@@ -12,15 +12,11 @@ STAGING = ROOT / "wire" / "staging" / "m2-b"
 HISTORICAL = ROOT / "wire" / "historical" / "v1-v2-fixtures.json"
 
 EXPECTED_STAGED = {
-    ("player-decision-request.v2", "player-decision-request.v2.json"): "player-decision-request.v2.schema.json",
-    ("decision-response.v2", "decision-response.v2-select-one.json"): "decision-response.v2.schema.json",
     ("information-state-envelope.v2", "information-state-envelope.v2.json"): "information-state-envelope.v2.schema.json",
     ("observed-event-envelope.v2", "observed-event-envelope.v2.json"): "observed-event-envelope.v2.schema.json",
     ("player-step.v2", "player-step.v2.json"): "player-step.v2.schema.json",
     ("replay-manifest.v3", "replay-manifest.v3.json"): "replay-manifest.v3.schema.json",
     ("authoritative-replay.v3", "authoritative-replay-empty.v3.json"): "authoritative-replay.v3.schema.json",
-    ("decision-response.v2", "decision-v2-candidate-id-overflow.json"): "decision-response.v2.schema.json",
-    ("decision-response.v2", "decision-v2-noncanonical-select-many.json"): "decision-response.v2.schema.json",
     ("authoritative-replay.v3", "replay-v3-checkpoint-digest-mismatch.json"): "authoritative-replay.v3.schema.json",
 }
 
@@ -69,7 +65,9 @@ class M2BStagingFixtureTests(unittest.TestCase):
 
     def test_staged_public_shapes_are_closed_and_perspective_safe(self) -> None:
         decision = json.loads(
-            (STAGING / "player-decision-request.v2.json").read_text(encoding="utf-8")
+            (ROOT / "wire" / "golden" / "player-decision-request.v2.json").read_text(
+                encoding="utf-8"
+            )
         )
         self.assertEqual(decision["schema_version"], "player-decision-request.v2")
         self.assertNotIn("decision_id", decision)

@@ -20,6 +20,8 @@ class SchemaParityTests(unittest.TestCase):
         mapping = {
             "player-decision-request.v1": "player-decision-request.v1.schema.json",
             "decision-response.v1": "decision-response.v1.schema.json",
+            "player-decision-request.v2": "player-decision-request.v2.schema.json",
+            "decision-response.v2": "decision-response.v2.schema.json",
             "episode-status.v1": "episode-status.v1.schema.json",
             "observed-event-envelope.v1": "observed-event-envelope.v1.schema.json",
             "observation-envelope.v1": "observation-envelope.v1.schema.json",
@@ -36,6 +38,25 @@ class SchemaParityTests(unittest.TestCase):
             schema = json.loads(
                 (ROOT / "schemas" / mapping[case["contract"]]).read_text(encoding="utf-8")
             )
+            instance = json.loads((directory / case["path"]).read_text(encoding="utf-8"))
+            with self.subTest(case=case["path"]):
+                jsonschema.Draft202012Validator(schema).validate(instance)
+
+    @unittest.skipIf(jsonschema is None, "jsonschema is not installed")
+    def test_m2_b_detached_schema_fixtures(self) -> None:
+        mapping = {
+            "player-decision-request.v2": "player-decision-request.v2.schema.json",
+            "decision-response.v2": "decision-response.v2.schema.json",
+        }
+        directory = ROOT / "wire" / "golden"
+        manifest = json.loads((directory / "manifest.json").read_text(encoding="utf-8"))
+        cases = [case for case in manifest["fixtures"] if case["contract"] in mapping]
+        self.assertEqual(
+            {case["contract"] for case in cases},
+            set(mapping),
+        )
+        for case in cases:
+            schema = json.loads((ROOT / "schemas" / mapping[case["contract"]]).read_text(encoding="utf-8"))
             instance = json.loads((directory / case["path"]).read_text(encoding="utf-8"))
             with self.subTest(case=case["path"]):
                 jsonschema.Draft202012Validator(schema).validate(instance)

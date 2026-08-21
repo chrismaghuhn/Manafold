@@ -5,7 +5,12 @@ from collections.abc import Callable
 from typing import TypeVar
 
 from .canonical import canonical_json_bytes
-from .decision import DecisionResponse, PlayerDecisionRequest
+from .decision import (
+    DecisionResponse,
+    DecisionResponseV2,
+    PlayerDecisionRequest,
+    PlayerDecisionRequestV2,
+)
 from .episode import EpisodeStatus
 from .errors import WireError
 from .events import ObservedEventEnvelope
@@ -17,6 +22,8 @@ T = TypeVar("T")
 _DECODERS: dict[str, Callable[[object], object]] = {
     "player-decision-request.v1": PlayerDecisionRequest.from_wire,
     "decision-response.v1": DecisionResponse.from_wire,
+    "player-decision-request.v2": PlayerDecisionRequestV2.from_wire,
+    "decision-response.v2": DecisionResponseV2.from_wire,
     "episode-status.v1": EpisodeStatus.from_wire,
     "observed-event-envelope.v1": ObservedEventEnvelope.from_wire,
     "observation-envelope.v1": ObservationEnvelope.from_wire,

@@ -1,0 +1,29 @@
+{
+  "$id": "decision-response.v2.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "answer": {
+      "oneOf": [
+        {"additionalProperties": false, "properties": {"candidate_id": {"maximum": 4294967295, "minimum": 0, "type": "integer"}, "kind": {"const": "select_one"}}, "required": ["kind", "candidate_id"], "type": "object"},
+        {"additionalProperties": false, "properties": {"candidate_ids": {"items": {"maximum": 4294967295, "minimum": 0, "type": "integer"}, "type": "array"}, "kind": {"const": "select_many"}}, "required": ["kind", "candidate_ids"], "type": "object"},
+        {"additionalProperties": false, "properties": {"kind": {"const": "choose_number"}, "value": {"maximum": 9223372036854775807, "minimum": -9223372036854775808, "type": "integer"}}, "required": ["kind", "value"], "type": "object"},
+        {"additionalProperties": false, "properties": {"candidate_ids": {"items": {"maximum": 4294967295, "minimum": 0, "type": "integer"}, "type": "array"}, "kind": {"const": "order"}}, "required": ["kind", "candidate_ids"], "type": "object"}
+      ]
+    },
+    "player_decision_id": {
+      "pattern": "^(0|[1-9][0-9]*)$",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "decision-response.v2"
+    },
+    "state_revision": {
+      "pattern": "^(0|[1-9][0-9]*)$",
+      "type": "string"
+    }
+  },
+  "required": ["schema_version", "player_decision_id", "state_revision", "answer"],
+  "title": "DecisionResponse V2",
+  "type": "object"
+}

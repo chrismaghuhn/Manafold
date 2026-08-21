@@ -3,7 +3,9 @@
 //! JSON Schema validates shape. This crate additionally enforces closed Rust
 //! variants, integer ranges, canonical bytes, and cross-field semantics.
 
-use mtgml_decision::{DecisionResponse, PlayerDecisionRequest};
+use mtgml_decision::{
+    DecisionResponse, DecisionResponseV2, PlayerDecisionRequest, PlayerDecisionRequestV2,
+};
 use mtgml_model::EpisodeStatus;
 use mtgml_observation::{
     InformationStateEnvelope, ObservationEnvelope, ObservedEventEnvelope, PlayerStep,
@@ -51,6 +53,20 @@ impl WireContract for PlayerDecisionRequest {
 }
 
 impl WireContract for DecisionResponse {
+    fn validate_wire(&self) -> Result<(), WireError> {
+        self.validate()
+            .map_err(|error| WireError::new("semantic.decision_response", error.to_string()))
+    }
+}
+
+impl WireContract for PlayerDecisionRequestV2 {
+    fn validate_wire(&self) -> Result<(), WireError> {
+        self.validate()
+            .map_err(|error| WireError::new("semantic.decision", error.to_string()))
+    }
+}
+
+impl WireContract for DecisionResponseV2 {
     fn validate_wire(&self) -> Result<(), WireError> {
         self.validate()
             .map_err(|error| WireError::new("semantic.decision_response", error.to_string()))
@@ -243,6 +259,10 @@ fn decode_named(contract: &str, bytes: &[u8]) -> Result<(), WireError> {
     match contract {
         "player-decision-request.v1" => decode_canonical::<PlayerDecisionRequest>(bytes).map(drop),
         "decision-response.v1" => decode_canonical::<DecisionResponse>(bytes).map(drop),
+        "player-decision-request.v2" => {
+            decode_canonical::<PlayerDecisionRequestV2>(bytes).map(drop)
+        }
+        "decision-response.v2" => decode_canonical::<DecisionResponseV2>(bytes).map(drop),
         "observation-envelope.v1" => decode_canonical::<ObservationEnvelope>(bytes).map(drop),
         "information-state-envelope.v1" => {
             decode_canonical::<InformationStateEnvelope>(bytes).map(drop)

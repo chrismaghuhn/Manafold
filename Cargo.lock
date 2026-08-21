@@ -145,6 +145,7 @@ version = "0.2.2"
 dependencies = [
  "mtgml-model",
  "serde",
+ "serde_json",
  "thiserror",
 ]
 

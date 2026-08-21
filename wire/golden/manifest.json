@@ -21,6 +21,14 @@
       "path": "decision-response.v1.json"
     },
     {
+      "contract": "player-decision-request.v2",
+      "path": "player-decision-request.v2.json"
+    },
+    {
+      "contract": "decision-response.v2",
+      "path": "decision-response.v2-select-one.json"
+    },
+    {
       "contract": "observation-envelope.v1",
       "path": "observation-envelope.v1.json"
     },

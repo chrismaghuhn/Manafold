@@ -2,16 +2,6 @@
   "schema_version": "wire-staging-manifest.v1",
   "fixtures": [
     {
-      "contract": "player-decision-request.v2",
-      "path": "player-decision-request.v2.json",
-      "schema": "player-decision-request.v2.schema.json"
-    },
-    {
-      "contract": "decision-response.v2",
-      "path": "decision-response.v2-select-one.json",
-      "schema": "decision-response.v2.schema.json"
-    },
-    {
       "contract": "information-state-envelope.v2",
       "path": "information-state-envelope.v2.json",
       "schema": "information-state-envelope.v2.schema.json"
@@ -35,16 +25,6 @@
       "contract": "authoritative-replay.v3",
       "path": "authoritative-replay-empty.v3.json",
       "schema": "authoritative-replay.v3.schema.json"
-    },
-    {
-      "contract": "decision-response.v2",
-      "path": "decision-v2-candidate-id-overflow.json",
-      "schema": "decision-response.v2.schema.json"
-    },
-    {
-      "contract": "decision-response.v2",
-      "path": "decision-v2-noncanonical-select-many.json",
-      "schema": "decision-response.v2.schema.json"
     },
     {
       "contract": "authoritative-replay.v3",

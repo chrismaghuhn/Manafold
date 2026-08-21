@@ -12,6 +12,8 @@ ROOT = Path(__file__).resolve().parents[1]
 WIRE_MAPPING = {
     "player-decision-request.v1": "player-decision-request.v1.schema.json",
     "decision-response.v1": "decision-response.v1.schema.json",
+    "player-decision-request.v2": "player-decision-request.v2.schema.json",
+    "decision-response.v2": "decision-response.v2.schema.json",
     "episode-status.v1": "episode-status.v1.schema.json",
     "observed-event-envelope.v1": "observed-event-envelope.v1.schema.json",
     "observation-envelope.v1": "observation-envelope.v1.schema.json",
