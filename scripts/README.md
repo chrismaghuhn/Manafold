@@ -7,6 +7,7 @@
 - `validate_maintainer_artifacts.py` — capability, card, bundle, and certification semantics;
 - `run_python_tests.py` — Python contract suite;
 - `run_verification.py` — external authoritative gate report under `dist/verification/`;
+- `run_m1_closure.py` — external M1 ten-gate closure report under `dist/verification/m1/`;
 - `build_source_archive.py` — deterministic source ZIP and checksum;
 - `verify_source_archive.py` — source/archive member and byte parity;
 - `verify_archive_reproducibility.py` — repeated deterministic build and ZIP safety;
