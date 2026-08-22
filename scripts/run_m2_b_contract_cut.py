@@ -31,6 +31,7 @@ STARTING_SHA = "a4e769eb940611d34df05fc79effd9430891d897"
 OUTPUT = ROOT / "dist" / "m2-b-verification"
 OUTPUT_MARKER = ".mtgml-m2-b-contract-cut-output"
 GATE_NAME = "M2_EXECUTABLE_CONTRACT_AND_VERSION_CUT"
+PINNED_TOOLCHAIN: dict[str, str | None] = {"channel": None}
 
 
 @dataclass(frozen=True)
@@ -138,6 +139,11 @@ GATE_TESTS: dict[str, tuple[EvidenceDefinition, ...]] = {
             "tests::replay_v3_empty_accepted_rejected_identity_matrix",
             "ReplayV3 empty/accepted/rejected identity chain",
         ),
+        rust(
+            "mtgml-replay",
+            "tests::replay_v3_rejects_corrupt_accepted_progression",
+            "ReplayV3 contiguous advancement and counter progression rejection",
+        ),
         source(
             "source_check::v1_v2_fixtures_are_immutable",
             "complete baseline fixture inventory and byte immutability",
@@ -240,7 +246,9 @@ def toolchain_snapshot() -> dict[str, Any]:
         with (ROOT / "rust-toolchain.toml").open("rb") as handle:
             expected_rust = str(tomllib.load(handle)["toolchain"]["channel"])
     except (OSError, KeyError, tomllib.TOMLDecodeError) as error:
+        PINNED_TOOLCHAIN["channel"] = None
         return {"status": "BLOCKED", "reason": f"toolchain policy unreadable: {error}"}
+    PINNED_TOOLCHAIN["channel"] = expected_rust
 
     python_version = platform.python_version()
     python_result = run_command((sys.executable, "--version"))
@@ -323,8 +331,10 @@ def exact_rust_pass(output: str, returncode: int) -> bool:
 def execute_command(definition: EvidenceDefinition, logs: Path, index: int) -> dict[str, Any]:
     if definition.kind == "rust":
         assert definition.package is not None
+        pinned = PINNED_TOOLCHAIN["channel"]
+        cargo = ("cargo", f"+{pinned}") if pinned else ("cargo",)
         command = (
-            "cargo",
+            *cargo,
             "test",
             "--package",
             definition.package,
@@ -581,6 +591,15 @@ def main() -> int:
     parser.add_argument(
         "--output-dir", type=Path, default=OUTPUT, help="external sibling output directory"
     )
+    parser.add_argument(
+        "--expect-commit",
+        metavar="SHA",
+        default=None,
+        help=(
+            "authoritative mode: require the source head to equal this exact commit "
+            "identity before any gate evidence can pass"
+        ),
+    )
     args = parser.parse_args()
     output = args.output_dir.resolve()
     try:
@@ -600,14 +619,29 @@ def main() -> int:
         )
     after = source_snapshot()
     underlying = aggregate(item["status"] for item in evidence)
-    source_identity_status = (
-        "PASS"
-        if before.get("clean")
-        and after.get("clean")
-        and before.get("commit") == after.get("commit")
-        and before.get("tree") == after.get("tree")
-        else ("BLOCKED" if not before.get("clean") else "FAIL")
-    )
+    if before.get("clean") and after.get("clean"):
+        unchanged = (
+            before.get("commit") == after.get("commit")
+            and before.get("tree") == after.get("tree")
+            and before.get("fingerprint") == after.get("fingerprint")
+        )
+        source_identity_status = "PASS" if unchanged else "FAIL"
+    else:
+        source_identity_status = "BLOCKED" if not before.get("clean") else "FAIL"
+    expected_commit_note: str | None = None
+    if args.expect_commit:
+        if args.development:
+            expected_commit_note = (
+                f"expected commit {args.expect_commit} not enforced in development mode"
+            )
+        elif source_identity_status == "PASS" and before.get("commit") != args.expect_commit:
+            source_identity_status = "FAIL"
+            expected_commit_note = (
+                f"source head {before.get('commit')} does not equal the "
+                f"expected target SHA {args.expect_commit}"
+            )
+        elif source_identity_status == "PASS":
+            expected_commit_note = "source head equals the expected target SHA"
     if args.development:
         gate_status = "NOT_RUN"
     elif source_identity_status != "PASS":
@@ -622,6 +656,8 @@ def main() -> int:
         "source_commit": before.get("commit"),
         "source_tree_identity": {
             "status": source_identity_status,
+            "expected_commit": args.expect_commit,
+            "expected_commit_note": expected_commit_note,
             "before": before,
             "after": after,
         },
