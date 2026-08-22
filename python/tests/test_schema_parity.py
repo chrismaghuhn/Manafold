@@ -73,6 +73,35 @@ class SchemaParityTests(unittest.TestCase):
             with self.subTest(case=case["path"]):
                 jsonschema.Draft202012Validator(schema).validate(instance)
 
+    def test_m2_b_schemas_are_fully_closed(self) -> None:
+        m2_b_schemas = [
+            "player-decision-request.v2.schema.json",
+            "decision-response.v2.schema.json",
+            "information-state-envelope.v2.schema.json",
+            "observed-event-envelope.v2.schema.json",
+            "player-step.v2.schema.json",
+            "replay-manifest.v3.schema.json",
+            "authoritative-replay.v3.schema.json",
+        ]
+
+        def walk(node: object, path: str) -> None:
+            if isinstance(node, dict):
+                declares_object = (
+                    node.get("type") == "object" or "properties" in node or "required" in node
+                )
+                if declares_object and node.get("additionalProperties") is not False:
+                    raise AssertionError(f"open object schema at {path}")
+                for key, value in node.items():
+                    walk(value, f"{path}/{key}")
+            elif isinstance(node, list):
+                for index, value in enumerate(node):
+                    walk(value, f"{path}/{index}")
+
+        for name in m2_b_schemas:
+            schema = json.loads((ROOT / "schemas" / name).read_text(encoding="utf-8"))
+            with self.subTest(schema=name):
+                walk(schema, name)
+
     def test_replay_manifest_schema_has_exact_required_identity_fields(self) -> None:
         schema = json.loads(
             (ROOT / "schemas" / "replay-manifest.v1.schema.json").read_text(encoding="utf-8")

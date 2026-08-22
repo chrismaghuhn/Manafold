@@ -4,10 +4,11 @@
   "additionalProperties": false,
   "$defs": {
     "uint": {"pattern": "^(0|[1-9][0-9]*)$", "type": "string"},
+    "nullable_uint": {"anyOf": [{"$ref": "#/$defs/uint"}, {"type": "null"}]},
     "zone": {"enum": ["library", "hand", "battlefield", "graveyard", "exile", "stack", "command", "ante", "outside"]},
     "event": {
       "oneOf": [
-        {"additionalProperties": false, "properties": {"from": {"$ref": "#/$defs/zone"}, "kind": {"const": "object_moved"}, "new_object": {"$ref": "#/$defs/uint"}, "old_object": {"$ref": "#/$defs/uint"}, "to": {"$ref": "#/$defs/zone"}}, "required": ["kind", "from", "to"], "type": "object"},
+        {"additionalProperties": false, "properties": {"from": {"$ref": "#/$defs/zone"}, "kind": {"const": "object_moved"}, "new_object": {"$ref": "#/$defs/nullable_uint"}, "old_object": {"$ref": "#/$defs/nullable_uint"}, "to": {"$ref": "#/$defs/zone"}}, "required": ["kind", "old_object", "new_object", "from", "to"], "type": "object"},
         {"additionalProperties": false, "properties": {"kind": {"const": "object_ceased_to_exist"}, "object": {"$ref": "#/$defs/uint"}}, "required": ["kind", "object"], "type": "object"},
         {"additionalProperties": false, "properties": {"from": {"maximum": 9223372036854775807, "minimum": -9223372036854775808, "type": "integer"}, "kind": {"const": "life_changed"}, "player": {"$ref": "#/$defs/uint"}, "to": {"maximum": 9223372036854775807, "minimum": -9223372036854775808, "type": "integer"}}, "required": ["kind", "player", "from", "to"], "type": "object"},
         {"additionalProperties": false, "properties": {"kind": {"const": "object_tapped"}, "object": {"$ref": "#/$defs/uint"}, "tapped": {"type": "boolean"}}, "required": ["kind", "object", "tapped"], "type": "object"},
