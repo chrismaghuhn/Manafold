@@ -50,35 +50,43 @@ pub fn hash_envelope(envelope: &[u8]) -> [u8; 32] {
 pub fn decode_envelope(
     envelope: &[u8],
 ) -> Result<(DigestReferenceV1, Vec<u8>), PersistenceDecodeErrorV1> {
-    // ADR-0040 total precedence: envelope_identity precedes envelope_length.
-    // An input that cannot match the required prefix — including an input
-    // shorter than the prefix — is an identity defect first.
+    // ADR-0040 total precedence. Every identity field is validated
+    // immediately after its own frame is read, so an identity defect always
+    // precedes any later framing or payload defect (rank 2 < 3 < 4).
     let prefix = [DIGEST_ENVELOPE_ID.as_bytes(), &[0]].concat();
     if !envelope.starts_with(&prefix) {
         return Err(PersistenceDecodeErrorV1::EnvelopeIdentity);
     }
     let mut offset = prefix.len();
+
     let algorithm = read_frame(envelope, &mut offset, true)?;
-    let semantic_domain = read_frame(envelope, &mut offset, true)?;
-    let codec = read_frame(envelope, &mut offset, true)?;
-    let input_schema = read_frame(envelope, &mut offset, true)?;
-    let payload = read_frame(envelope, &mut offset, false)?;
     let algorithm =
         String::from_utf8(algorithm).map_err(|_| PersistenceDecodeErrorV1::EnvelopeIdentity)?;
-    let semantic_domain = String::from_utf8(semantic_domain)
-        .map_err(|_| PersistenceDecodeErrorV1::EnvelopeIdentity)?;
-    let codec = String::from_utf8(codec).map_err(|_| PersistenceDecodeErrorV1::EnvelopeIdentity)?;
-    let input_schema =
-        String::from_utf8(input_schema).map_err(|_| PersistenceDecodeErrorV1::EnvelopeIdentity)?;
     validate_identifier(&algorithm)?;
-    validate_identifier(&semantic_domain)?;
-    validate_identifier(&codec)?;
-    validate_identifier(&input_schema)?;
-    if algorithm != SHA256_ID || codec != CANONICAL_CBOR_ID {
+    if algorithm != SHA256_ID {
         return Err(PersistenceDecodeErrorV1::EnvelopeIdentity);
     }
-    // Only after every envelope identity field validates may a framing
-    // defect such as trailing bytes be reported (identity=2 < length=3).
+
+    let semantic_domain = read_frame(envelope, &mut offset, true)?;
+    let semantic_domain = String::from_utf8(semantic_domain)
+        .map_err(|_| PersistenceDecodeErrorV1::EnvelopeIdentity)?;
+    validate_identifier(&semantic_domain)?;
+
+    let codec = read_frame(envelope, &mut offset, true)?;
+    let codec = String::from_utf8(codec).map_err(|_| PersistenceDecodeErrorV1::EnvelopeIdentity)?;
+    validate_identifier(&codec)?;
+    if codec != CANONICAL_CBOR_ID {
+        return Err(PersistenceDecodeErrorV1::EnvelopeIdentity);
+    }
+
+    let input_schema = read_frame(envelope, &mut offset, true)?;
+    let input_schema =
+        String::from_utf8(input_schema).map_err(|_| PersistenceDecodeErrorV1::EnvelopeIdentity)?;
+    validate_identifier(&input_schema)?;
+
+    // Identity fields are fully validated; only now may payload bounds
+    // (rank 4) and framing defects such as trailing bytes be reported.
+    let payload = read_frame(envelope, &mut offset, false)?;
     if offset != envelope.len() {
         return Err(PersistenceDecodeErrorV1::EnvelopeLength);
     }

@@ -243,24 +243,42 @@ def decode_envelope(envelope: bytes) -> tuple[dict[str, object], bytes]:
         offset = end
         return value
 
+    # ADR-0040 total precedence. Every identity field is validated
+    # immediately after its own frame is read, so an identity defect always
+    # precedes any later framing or payload defect (rank 2 < 3 < 4).
     algorithm = read_frame(True)
-    domain = read_frame(True)
-    codec = read_frame(True)
-    schema = read_frame(True)
-    payload = read_frame(False)
     try:
         algorithm_text = algorithm.decode("ascii")
+    except UnicodeDecodeError as exc:
+        raise _error("envelope_identity", "identifier is not ASCII") from exc
+    if algorithm_text != SHA256_ID:
+        raise _error("envelope_identity", "unsupported envelope algorithm")
+
+    domain = read_frame(True)
+    try:
         domain_text = domain.decode("ascii")
+    except UnicodeDecodeError as exc:
+        raise _error("envelope_identity", "identifier is not ASCII") from exc
+    _identifier(domain_text)
+
+    codec = read_frame(True)
+    try:
         codec_text = codec.decode("ascii")
+    except UnicodeDecodeError as exc:
+        raise _error("envelope_identity", "identifier is not ASCII") from exc
+    if codec_text != CANONICAL_CBOR_ID:
+        raise _error("envelope_identity", "unsupported envelope payload codec")
+
+    schema = read_frame(True)
+    try:
         schema_text = schema.decode("ascii")
     except UnicodeDecodeError as exc:
         raise _error("envelope_identity", "identifier is not ASCII") from exc
-    if algorithm_text != SHA256_ID or codec_text != CANONICAL_CBOR_ID:
-        raise _error("envelope_identity", "unsupported envelope algorithm or codec")
-    _identifier(domain_text)
     _identifier(schema_text)
-    # Only after every envelope identity field validates may a framing
-    # defect such as trailing bytes be reported (identity=2 < length=3).
+
+    # Identity fields are fully validated; only now may payload bounds
+    # (rank 4) and framing defects such as trailing bytes be reported.
+    payload = read_frame(False)
     if offset != len(envelope):
         raise _error("envelope_length", "trailing envelope bytes")
     decode_canonical(payload)

@@ -29,6 +29,9 @@
     {"contract": "digest-envelope.v1", "expected_error_code": "envelope_identity", "path": "wrong-algorithm.cbor"},
     {"contract": "digest-envelope.v1", "expected_error_code": "envelope_identity", "path": "wrong-codec.cbor"},
     {"contract": "digest-envelope.v1", "expected_error_code": "envelope_length", "path": "trailing-envelope-bytes.cbor"},
-    {"contract": "digest-envelope.v1", "expected_error_code": "envelope_identity", "path": "identity-and-trailing.cbor"}
+    {"contract": "digest-envelope.v1", "expected_error_code": "envelope_identity", "path": "identity-and-trailing.cbor"},
+    {"contract": "digest-envelope.v1", "expected_error_code": "envelope_identity", "path": "wrong-algorithm-payload-too-large.cbor"},
+    {"contract": "digest-envelope.v1", "expected_error_code": "envelope_identity", "path": "wrong-codec-truncated-payload.cbor"},
+    {"contract": "digest-envelope.v1", "expected_error_code": "envelope_identity", "path": "non-ascii-identity-truncated.cbor"}
   ]
 }

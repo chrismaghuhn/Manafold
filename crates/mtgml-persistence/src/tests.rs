@@ -240,6 +240,40 @@ fn digest_envelope_v1_known_answer_matrix() {
             assemble(&[&fields[0], &[0x80; 20], &fields[2], &fields[3], &fields[4]]),
             "non-ASCII identifier",
         ),
+        // Cross-frame precedence: an early identity defect must beat any
+        // later payload or framing defect (rank 2 < 3 < 4).
+        (
+            [
+                assemble(&[b"sha-512", &fields[1], &fields[2], &fields[3]]),
+                ((u64::from(cbor::MAX_PAYLOAD_BYTES as u32)) + 1)
+                    .to_be_bytes()
+                    .to_vec(),
+            ]
+            .concat(),
+            "wrong algorithm + over-limit payload declaration",
+        ),
+        (
+            [
+                envelope[..prefix_len].to_vec(),
+                mtgml_frame(b"sha-256"),
+                mtgml_frame(&fields[1]),
+                mtgml_frame(b"mtgml.canonical-json.v1"),
+                mtgml_frame(&fields[3]),
+                128_u64.to_be_bytes().to_vec(),
+            ]
+            .concat(),
+            "wrong codec + truncated payload frame",
+        ),
+        (
+            [
+                envelope[..prefix_len].to_vec(),
+                mtgml_frame(b"sha-256"),
+                mtgml_frame(&[0x80, 0x80, 0x80, 0x80, b't', b'e', b's', b't']),
+                vec![0x00, 0x00, 0x00],
+            ]
+            .concat(),
+            "non-ASCII domain + truncated tail",
+        ),
     ];
     for (input, why) in identity_cases {
         assert_eq!(
