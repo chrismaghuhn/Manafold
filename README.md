@@ -1,7 +1,7 @@
 # Manafold
 
 - **Current executable milestone:** M1 — Closed Deterministic Kernel Shell (`COMPLETE` by merged M1 closure evidence)
-- **Current design milestone:** M2.A — Decision Machinery and Synthetic Information Safety architecture contract accepted; M2.B structural implementation is next
+- **Current design milestone:** M2.B — V3 structural implementation landed; local clean exact-head contract gate `PASS`, hosted/M2.Final closure pending
 - **Project type:** independent greenfield MTG/ML rules and simulation engine
 - **Playable engine:** no
 - **Real Magic rules:** no

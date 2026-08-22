@@ -6,7 +6,7 @@
 ## Repository layers
 
 ```text
-crates/       authoritative Rust domain, rules, environment, replay, wire
+crates/       authoritative Rust domain, rules, persistence, environment, replay, wire
 python/       rules-free ML/client DTOs and codecs
 schemas/      normative serialized shape constraints
 wire/         shared canonical positive and negative fixtures
@@ -24,6 +24,7 @@ scripts/      deterministic repository and maintainer automation
 |---|---|---|
 | `mtgml-model` | primitive identifiers, digest wrappers, shared small value types | rules, visibility, I/O |
 | `mtgml-random` | checkpointable RNG identity/state interfaces | policy decisions, wall-clock randomness |
+| `mtgml-persistence` | rules-neutral restricted canonical CBOR, digest envelope, and the single CheckpointDigestV3 calculation | `EngineState`, checkpoint/replay ownership, public JSON, filesystem I/O |
 | `mtgml-decision` | closed player decision DTOs, authoritative bindings, validation | card execution, observation projection |
 | `mtgml-state` | complete checkpointable `EngineState`, identity/knowledge/format state, exact delta | hidden mutable caches, network transport |
 | `mtgml-card-ir` | experimental typed content vocabulary | authoritative source parsing, direct state mutation |
@@ -50,6 +51,12 @@ wire/environment/conformance
     ↓
 Python client and ML orchestration
 ```
+
+`mtgml-persistence` is a rules-neutral lower layer consumed by state,
+environment, and replay semantic producers. It does not depend on or own any
+of those runtime layers. `mtgml-wire` remains the sole canonical public JSON
+and InformationStateDigestV2 byte/digest owner; it is separate from the
+persisted CBOR codec.
 
 Lower layers cannot depend on environment, Python, or model-training concerns. Cycles require an ADR and should normally be resolved by moving a small neutral type downward.
 

@@ -108,7 +108,9 @@ Requires both architecture and executable structural evidence:
 - no reinterpretation of old artifacts;
 - Rust/Python/schema/fixture identity coherence where public DTOs exist.
 
-M2.A documentation is only the contract half. The gate cannot become `PASS` until M2.B implements the structural cut and its fixtures.
+M2.A documentation is only the contract half. M2.B now supplies the local
+clean exact-head structural implementation and executable evidence; hosted PR
+evidence and the broader M2.Final closure remain separate gates.
 
 ### Decision gates
 

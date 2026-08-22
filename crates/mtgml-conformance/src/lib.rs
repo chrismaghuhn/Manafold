@@ -1,8 +1,12 @@
-//! Exact per-step conformance assertions. Event counts are diagnostic only.
+//! Exact per-step conformance assertions for the current V2/V3 runtime.
+//!
+//! Event counts are diagnostic only.  The authoritative assertions are the
+//! transition product, V3 state identity, delta, next trusted request, and
+//! player projections supplied by the caller.
 
-use mtgml_decision::{DecisionResponse, PlayerDecisionRequest};
-use mtgml_model::{EpisodeStatus, FullStateDigestV2, PlayerId};
-use mtgml_observation::PlayerStep;
+use mtgml_decision::{AuthoritativeDecisionRequestV2, DecisionResponseV2};
+use mtgml_model::{EpisodeStatus, FullStateDigestV3, PlayerId};
+use mtgml_observation::PlayerStepV2;
 use mtgml_rules::{validate_transition_contract, AuthoritativeRuleEvent, TransitionResult};
 use mtgml_state::{EngineState, SemanticDeltaOperation};
 use std::collections::BTreeMap;
@@ -16,23 +20,23 @@ pub enum ExpectedResponseResult {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ConformanceStep {
-    pub expected_current_decision: Option<PlayerDecisionRequest>,
-    pub response: DecisionResponse,
+    pub expected_current_decision: Option<AuthoritativeDecisionRequestV2>,
+    pub response: DecisionResponseV2,
     pub expected_response_result: ExpectedResponseResult,
     pub expected_authoritative_events: Vec<AuthoritativeRuleEvent>,
     pub expected_semantic_delta: Vec<SemanticDeltaOperation>,
-    pub expected_state_digest: FullStateDigestV2,
-    pub expected_next_decision: Option<PlayerDecisionRequest>,
-    pub expected_player_steps: BTreeMap<PlayerId, PlayerStep>,
+    pub expected_state_digest: FullStateDigestV3,
+    pub expected_next_decision: Option<AuthoritativeDecisionRequestV2>,
+    pub expected_player_steps: BTreeMap<PlayerId, PlayerStepV2>,
     pub expected_status: EpisodeStatus,
 }
 
 pub fn assert_exact_transition(
     before: &EngineState,
-    actual_current_decision: Option<&PlayerDecisionRequest>,
-    actual_response: &DecisionResponse,
+    actual_current_decision: Option<&AuthoritativeDecisionRequestV2>,
+    actual_response: &DecisionResponseV2,
     result: &TransitionResult,
-    actual_player_steps: &BTreeMap<PlayerId, PlayerStep>,
+    actual_player_steps: &BTreeMap<PlayerId, PlayerStepV2>,
     expected: &ConformanceStep,
 ) -> Result<(), ConformanceFailure> {
     assert_conformance_inputs(
@@ -84,10 +88,10 @@ pub fn assert_exact_transition(
 }
 
 fn assert_conformance_inputs(
-    actual_current_decision: Option<&PlayerDecisionRequest>,
-    actual_response: &DecisionResponse,
-    expected_current_decision: Option<&PlayerDecisionRequest>,
-    expected_response: &DecisionResponse,
+    actual_current_decision: Option<&AuthoritativeDecisionRequestV2>,
+    actual_response: &DecisionResponseV2,
+    expected_current_decision: Option<&AuthoritativeDecisionRequestV2>,
+    expected_response: &DecisionResponseV2,
 ) -> Result<(), ConformanceFailure> {
     if actual_current_decision != expected_current_decision {
         return Err(ConformanceFailure::CurrentDecision);
@@ -107,7 +111,7 @@ pub fn minimum_event_count_diagnostic(events: &[AuthoritativeRuleEvent], minimum
 pub enum ConformanceFailure {
     #[error("transition contract failed: {0}")]
     Contract(String),
-    #[error("current visible decision differed")]
+    #[error("current trusted decision differed")]
     CurrentDecision,
     #[error("submitted response differed")]
     Response,
@@ -119,7 +123,7 @@ pub enum ConformanceFailure {
     Delta,
     #[error("state digest differed")]
     StateDigest,
-    #[error("next decision differed")]
+    #[error("next trusted decision differed")]
     NextDecision,
     #[error("episode status differed")]
     Status,
@@ -133,31 +137,32 @@ pub enum ConformanceFailure {
 mod tests {
     use super::*;
     use mtgml_decision::{
-        DecisionKind, DecisionVisibility, DECISION_RESPONSE_SCHEMA, PLAYER_DECISION_REQUEST_SCHEMA,
+        DecisionAnswerV2, DecisionDomainV2, DecisionResponseV2, DecisionVisibility,
     };
-    use mtgml_model::{DecisionId, StateRevision};
+    use mtgml_model::{DecisionId, PlayerDecisionIdV1, StateRevision};
 
-    fn decision(id: u64) -> PlayerDecisionRequest {
-        PlayerDecisionRequest {
-            schema_version: PLAYER_DECISION_REQUEST_SCHEMA.into(),
+    fn decision(id: u64) -> AuthoritativeDecisionRequestV2 {
+        AuthoritativeDecisionRequestV2 {
             decision_id: DecisionId(id),
+            player_decision_id: PlayerDecisionIdV1(id),
             state_revision: StateRevision(0),
             actor: PlayerId(1),
             visibility: DecisionVisibility::Public,
-            decision: DecisionKind::ChooseNumber {
+            decision: DecisionDomainV2::ChooseNumber {
                 minimum: 0,
                 maximum: 0,
             },
             candidates: vec![],
+            continuation_id: None,
         }
     }
 
-    fn response(id: u64) -> DecisionResponse {
-        DecisionResponse {
-            schema_version: DECISION_RESPONSE_SCHEMA.into(),
-            decision_id: DecisionId(id),
+    fn response(id: u64) -> DecisionResponseV2 {
+        DecisionResponseV2 {
+            schema_version: "decision-response.v2".into(),
+            player_decision_id: PlayerDecisionIdV1(id),
             state_revision: StateRevision(0),
-            assignments: vec![],
+            answer: DecisionAnswerV2::ChooseNumber { value: 0 },
         }
     }
 

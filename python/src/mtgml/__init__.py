@@ -2,9 +2,13 @@ from .decision import (
     ActionCandidate,
     CandidateAssignment,
     CandidateIntent,
+    DecisionAnswerV2,
     DecisionResponse,
+    DecisionResponseV2,
     DecisionSpec,
     PlayerDecisionRequest,
+    PlayerDecisionRequestV2,
+    VisibleCandidateV2,
 )
 from .episode import (
     EpisodeStatus,
@@ -14,38 +18,67 @@ from .episode import (
     TruncationReason,
 )
 from .events import ObservedEvent, ObservedEventEnvelope
-from .observation import InformationStateEnvelope, ObservationEnvelope, PlayerStep
+from .observation import (
+    InformationStateDigestInputV2,
+    InformationStateEnvelope,
+    ObservationEnvelope,
+    ObservedEventEnvelopeV2,
+    PlayerInformationStateV2,
+    PlayerStep,
+    PlayerStepV2,
+)
 from .player_client import PlayerClient
 from .replay import (
     AuthoritativeReplayV1,
     AuthoritativeReplayV2,
+    AuthoritativeReplayV3,
+    CheckpointCodecIdentityV3,
+    EnvironmentLimitCountersV3,
+    InitialEnvironmentIdentityV3,
     ReplayManifestV1,
     ReplayManifestV2,
+    ReplayManifestV3,
+    ReplayStepV3,
 )
-from .wire import decode_canonical, encode_canonical
+from .wire import compute_information_state_digest_v2, decode_canonical, encode_canonical
 
 __all__ = [
     "ActionCandidate",
     "AuthoritativeReplayV1",
     "AuthoritativeReplayV2",
+    "AuthoritativeReplayV3",
     "CandidateAssignment",
     "CandidateIntent",
+    "CheckpointCodecIdentityV3",
+    "DecisionAnswerV2",
     "DecisionResponse",
+    "DecisionResponseV2",
     "DecisionSpec",
+    "EnvironmentLimitCountersV3",
     "EpisodeStatus",
+    "InformationStateDigestInputV2",
     "InformationStateEnvelope",
+    "InitialEnvironmentIdentityV3",
     "ObservationEnvelope",
     "ObservedEvent",
     "ObservedEventEnvelope",
+    "ObservedEventEnvelopeV2",
     "PlayerClient",
     "PlayerDecisionRequest",
+    "PlayerDecisionRequestV2",
+    "PlayerInformationStateV2",
     "PlayerOutcome",
     "PlayerResult",
     "PlayerStep",
+    "PlayerStepV2",
     "ReplayManifestV1",
     "ReplayManifestV2",
+    "ReplayManifestV3",
+    "ReplayStepV3",
     "TerminalReason",
     "TruncationReason",
+    "VisibleCandidateV2",
+    "compute_information_state_digest_v2",
     "decode_canonical",
     "encode_canonical",
 ]

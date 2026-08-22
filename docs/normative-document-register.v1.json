@@ -1,6 +1,26 @@
 {
   "documents": [
-    {
+  {
+    "change_process": "documentation-pr",
+    "owner_role": "maintainer",
+    "path": "docs/agents/domain.md",
+    "role": "process",
+    "stability": "accepted"
+  },
+  {
+    "change_process": "documentation-pr",
+    "owner_role": "maintainer",
+    "path": "docs/agents/issue-tracker.md",
+    "role": "process",
+    "stability": "accepted"
+  },
+  {
+    "change_process": "documentation-pr",
+    "owner_role": "maintainer",
+    "path": "docs/agents/triage-labels.md",
+    "role": "process",
+    "stability": "accepted"
+  },    {
       "change_process": "governance-pr",
       "owner_role": "project-governance",
       "path": "CODE_OF_CONDUCT.md",
@@ -382,6 +402,20 @@
       "change_process": "process-pr",
       "owner_role": "maintainer",
       "path": "docs/superpowers/specs/2026-08-21-m1-f-final-closure-design.md",
+      "role": "process",
+      "stability": "provisional"
+    },
+    {
+      "change_process": "process-pr",
+      "owner_role": "maintainer",
+      "path": "docs/superpowers/specs/2026-08-21-m2-b-v3-structural-cut-design.md",
+      "role": "process",
+      "stability": "provisional"
+    },
+    {
+      "change_process": "process-pr",
+      "owner_role": "maintainer",
+      "path": "docs/superpowers/plans/2026-08-21-m2-b-v3-structural-cut.md",
       "role": "process",
       "stability": "provisional"
     },

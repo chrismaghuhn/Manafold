@@ -1,14 +1,15 @@
 use std::collections::BTreeSet;
 
-use mtgml_decision::{validate_candidate_binding, EngineCandidateBinding};
-use mtgml_model::{PhysicalCardId, PlayerId, RuleEventId};
+use mtgml_decision::{
+    validate_candidate_binding, ActionCandidate, EngineCandidateBinding, VisibleCandidateV2,
+};
+use mtgml_model::{PhysicalCardId, PlayerId};
 use thiserror::Error;
 
 use crate::engine::EngineState;
 use crate::format::FormatState;
-use crate::knowledge::{
-    KnowledgeAcquisitionReason, KnowledgeHistoryChannel, KnowledgePoint, PlayerKnowledgeState,
-};
+use crate::knowledge::KnowledgeAcquisitionReason;
+use crate::m2_shape::{validate_m2_shape, KnownLocationFactV2, PlayerKnowledgeStateV2};
 use crate::zones::ZonePosition;
 
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
@@ -29,8 +30,6 @@ pub enum EngineStateViolation {
     StackMismatch,
     #[error("an identity allocator does not exceed every allocated identity")]
     AllocatorBehind,
-    #[error("an opaque identity allocator references an absent player")]
-    AllocatorPlayerMismatch,
     #[error("pending decision is invalid for this state")]
     PendingDecisionMismatch,
     #[error("continuation reference is missing")]
@@ -45,41 +44,20 @@ pub enum EngineStateViolation {
     FormatMismatch,
     #[error("random state is invalid")]
     RandomState,
+    #[error("M2 state shape is invalid: {0}")]
+    M2Shape(#[from] crate::m2_shape::M2ShapeViolation),
 }
 
-fn knowledge_point_is_valid(point: KnowledgePoint, state: &PlayerKnowledgeState) -> bool {
-    match point.channel {
-        KnowledgeHistoryChannel::Public => point.sequence.0 <= state.public_history_length,
-        KnowledgeHistoryChannel::Private => point.sequence.0 <= state.private_history_length,
-    }
-}
-
-fn acquisition_matches_channel(
-    reason: &KnowledgeAcquisitionReason,
-    channel: KnowledgeHistoryChannel,
+fn provenance_is_valid(
+    provenance: &KnowledgeAcquisitionReason,
+    knowledge: &PlayerKnowledgeStateV2,
 ) -> bool {
-    match reason {
-        KnowledgeAcquisitionReason::PublicEvent { .. }
-        | KnowledgeAcquisitionReason::ExplicitReveal => channel == KnowledgeHistoryChannel::Public,
-        KnowledgeAcquisitionReason::PrivateEvent { .. }
-        | KnowledgeAcquisitionReason::OwnZoneIdentity => {
-            channel == KnowledgeHistoryChannel::Private
-        }
-        KnowledgeAcquisitionReason::InitialConfiguration => true,
-    }
+    provenance.has_accepted_channel_cause()
+        && provenance.is_within_visible_sequence(knowledge.next_visible_sequence)
 }
 
-fn knowledge_event_is_from_the_future(
-    reason: &KnowledgeAcquisitionReason,
-    next_rule_event_id: RuleEventId,
-) -> bool {
-    match reason {
-        KnowledgeAcquisitionReason::PublicEvent { event }
-        | KnowledgeAcquisitionReason::PrivateEvent { event } => event.0 >= next_rule_event_id.0,
-        KnowledgeAcquisitionReason::InitialConfiguration
-        | KnowledgeAcquisitionReason::OwnZoneIdentity
-        | KnowledgeAcquisitionReason::ExplicitReveal => false,
-    }
+fn fact_is_valid(fact: &KnownLocationFactV2, knowledge: &PlayerKnowledgeStateV2) -> bool {
+    provenance_is_valid(&fact.provenance, knowledge)
 }
 
 pub fn validate_engine_state(state: &EngineState) -> Result<(), EngineStateViolation> {
@@ -161,27 +139,6 @@ pub fn validate_engine_state(state: &EngineState) -> Result<(), EngineStateViola
     }) {
         return Err(EngineStateViolation::StackMismatch);
     }
-    if state
-        .execution
-        .continuations
-        .iter()
-        .any(|(id, record)| id != &record.id)
-        || state
-            .execution
-            .effects
-            .iter()
-            .any(|(id, record)| id != &record.id)
-        || state
-            .execution
-            .delayed_effects
-            .iter()
-            .any(|(id, record)| id != &record.id)
-        || state.execution.waiting_triggers.iter().any(|(id, record)| {
-            id != &record.id || !state.core.players.contains_key(&record.controller)
-        })
-    {
-        return Err(EngineStateViolation::ExecutionMismatch);
-    }
 
     let max_object = state.zones.objects.keys().map(|id| id.0).max().unwrap_or(0);
     let max_stack = state
@@ -213,112 +170,208 @@ pub fn validate_engine_state(state: &EngineState) -> Result<(), EngineStateViola
         .map(|id| id.0)
         .max()
         .unwrap_or(0);
-    let max_ability = state
-        .zones
-        .stack_records
-        .values()
-        .filter_map(|record| record.source_ability)
-        .map(|id| id.0)
-        .chain(
-            state
-                .perspective_identities
-                .players
-                .values()
-                .flat_map(|identities| identities.ability_to_opaque.keys().map(|id| id.0)),
-        )
-        .chain(
-            state
-                .execution
-                .pending_decision
-                .iter()
-                .flat_map(|pending| pending.candidate_bindings.values())
-                .filter_map(|binding| match binding {
-                    EngineCandidateBinding::ActivateAbility { ability } => Some(ability.0),
-                    _ => None,
-                }),
-        )
-        .max()
-        .unwrap_or(0);
-    let pending_decision_id = state
+    if state.allocators.next_object_id.0 <= max_object
+        || state.allocators.next_stack_object_id.0 <= max_stack
+        || state.allocators.next_effect_id.0 <= max_effect
+        || state.allocators.next_trigger_id.0 <= max_trigger
+        || state.allocators.next_continuation_id.0 <= max_continuation
+        || state.allocators.next_rule_event_id.0 == 0
+    {
+        return Err(EngineStateViolation::AllocatorBehind);
+    }
+
+    // Trusted decision identities are issued to authoritative pending
+    // requests; every issued trusted identity must stay strictly below the
+    // global allocator cursor.
+    let issued_decision_id = state
         .execution
         .pending_decision
         .as_ref()
         .map(|record| record.request.decision_id.0)
         .unwrap_or(0);
-    if state.allocators.next_object_id.0 <= max_object
-        || state.allocators.next_ability_id.0 <= max_ability
-        || state.allocators.next_stack_object_id.0 <= max_stack
-        || state.allocators.next_effect_id.0 <= max_effect
-        || state.allocators.next_trigger_id.0 <= max_trigger
-        || state.allocators.next_continuation_id.0 <= max_continuation
-        || state.allocators.next_decision_id.0 <= pending_decision_id
-        || state.allocators.next_rule_event_id.0 == 0
-    {
+    if state.allocators.next_decision_id.0 <= issued_decision_id {
         return Err(EngineStateViolation::AllocatorBehind);
     }
-    if state
-        .allocators
-        .next_opaque_object_id
-        .keys()
-        .chain(state.allocators.next_opaque_ability_id.keys())
-        .any(|player| !state.core.players.contains_key(player))
+    // Trusted ability identities are reachable through stack records and the
+    // perspective-local opaque ability mappings.
+    let issued_ability_id = state
+        .zones
+        .stack_records
+        .values()
+        .filter_map(|record| record.source_ability)
+        .chain(
+            state
+                .perspective_identities
+                .players
+                .values()
+                .flat_map(|identity| identity.opaque_to_ability.values().copied()),
+        )
+        .map(|ability| ability.0)
+        .max()
+        .unwrap_or(0);
+    if state.allocators.next_ability_id.0 <= issued_ability_id {
+        return Err(EngineStateViolation::AllocatorBehind);
+    }
+    if state.execution.effects.is_empty()
+        && state.execution.waiting_triggers.is_empty()
+        && state.execution.delayed_effects.is_empty()
     {
-        return Err(EngineStateViolation::AllocatorPlayerMismatch);
+        // M2.B explicitly has no executable effect/trigger machinery.
+    } else {
+        return Err(EngineStateViolation::ExecutionMismatch);
+    }
+    if state
+        .execution
+        .continuations
+        .iter()
+        .any(|(id, record)| id != &record.id || !state.core.players.contains_key(&record.actor))
+    {
+        return Err(EngineStateViolation::ExecutionMismatch);
     }
 
+    let players: BTreeSet<_> = state.core.players.keys().copied().collect();
+    validate_m2_shape(
+        state.revision,
+        &players,
+        state.execution.pending_decision.as_ref(),
+        &state.execution.continuations,
+        &state.knowledge,
+        &state.perspective_identities,
+    )?;
+
+    for player in &players {
+        let identity = state
+            .perspective_identities
+            .players
+            .get(player)
+            .ok_or(EngineStateViolation::PerspectiveIdentityMismatch)?;
+        let knowledge = state
+            .knowledge
+            .players
+            .get(player)
+            .ok_or(EngineStateViolation::KnowledgeMismatch)?;
+        for (opaque, record) in &knowledge.active {
+            let object = identity
+                .opaque_to_object
+                .get(opaque)
+                .ok_or(EngineStateViolation::KnowledgeMismatch)?;
+            let live = state
+                .zones
+                .objects
+                .get(object)
+                .ok_or(EngineStateViolation::KnowledgeMismatch)?;
+            let known_fact_matches_live = record
+                .known_location
+                .as_ref()
+                .is_some_and(|fact| state.zones.locations.get(object) != Some(&fact.location));
+            let observed: Vec<_> = record
+                .historical_locations
+                .iter()
+                .filter_map(|fact| {
+                    fact.provenance
+                        .observed_sequence()
+                        .map(|sequence| sequence.0)
+                })
+                .collect();
+            let history_is_increasing = observed.windows(2).any(|window| window[0] >= window[1]);
+            if known_fact_matches_live
+                || record
+                    .physical_card
+                    .is_some_and(|physical| Some(physical) != live.physical_card)
+                || record
+                    .card_definition
+                    .is_some_and(|definition| definition != live.card_definition)
+                || !provenance_is_valid(&record.acquisition, knowledge)
+                || record
+                    .known_location
+                    .as_ref()
+                    .is_some_and(|fact| !fact_is_valid(fact, knowledge))
+                || !record
+                    .historical_locations
+                    .iter()
+                    .all(|fact| fact_is_valid(fact, knowledge))
+                || history_is_increasing
+            {
+                return Err(EngineStateViolation::KnowledgeMismatch);
+            }
+        }
+        for record in knowledge.retired.values() {
+            // Retirement must carry an observed invalidation sequence
+            // (INFORMATION_MODEL.md: invalidation reason *and visible
+            // sequence*); an unsequenced initial configuration cannot
+            // invalidate anything.
+            let invalidation_is_observed =
+                record.invalidation.provenance.observed_sequence().is_some();
+            if identity
+                .opaque_to_object
+                .contains_key(&record.opaque_object)
+                || !invalidation_is_observed
+                || !provenance_is_valid(&record.acquisition, knowledge)
+                || !provenance_is_valid(&record.invalidation.provenance, knowledge)
+                || record
+                    .last_known_location
+                    .as_ref()
+                    .is_some_and(|fact| !fact_is_valid(fact, knowledge))
+                || !record
+                    .historical_locations
+                    .iter()
+                    .all(|fact| fact_is_valid(fact, knowledge))
+                || {
+                    let observed: Vec<_> = record
+                        .historical_locations
+                        .iter()
+                        .filter_map(|fact| {
+                            fact.provenance
+                                .observed_sequence()
+                                .map(|sequence| sequence.0)
+                        })
+                        .collect();
+                    observed.windows(2).any(|window| window[0] >= window[1])
+                }
+            {
+                return Err(EngineStateViolation::KnowledgeMismatch);
+            }
+        }
+    }
     if let Some(pending) = &state.execution.pending_decision {
-        pending
-            .request
+        let request = &pending.request;
+        request
             .validate()
             .map_err(|_| EngineStateViolation::PendingDecisionMismatch)?;
-        if pending.request.state_revision != state.revision
-            || !state.core.players.contains_key(&pending.request.actor)
+        if request.state_revision != state.revision
+            || !state.core.players.contains_key(&request.actor)
+            || state
+                .perspective_identities
+                .players
+                .get(&request.actor)
+                .is_none_or(|identity| {
+                    identity.next_player_decision_id.0 <= request.player_decision_id.0
+                })
         {
             return Err(EngineStateViolation::PendingDecisionMismatch);
         }
-        let candidate_ids: BTreeSet<_> = pending
-            .request
-            .candidates
-            .iter()
-            .map(|candidate| candidate.candidate_id.as_str())
-            .collect();
-        let binding_ids: BTreeSet<_> = pending
-            .candidate_bindings
-            .keys()
-            .map(String::as_str)
-            .collect();
-        if candidate_ids != binding_ids {
-            return Err(EngineStateViolation::PendingDecisionMismatch);
-        }
-        for candidate in &pending.request.candidates {
-            let Some(binding) = pending.candidate_bindings.get(&candidate.candidate_id) else {
-                return Err(EngineStateViolation::PendingDecisionMismatch);
+        for candidate in &request.candidates {
+            let visible = ActionCandidate {
+                candidate_id: candidate.candidate_id.to_string(),
+                semantic_key: format!("candidate.{}", candidate.candidate_id.0),
+                intent: candidate.visible_intent.clone(),
             };
-            if validate_candidate_binding(
-                candidate,
-                binding,
-                pending.request.actor,
-                &state.perspective_identities,
-            )
-            .is_err()
+            if !candidate
+                .trusted_binding
+                .same_variant_as(&candidate.visible_intent)
+                || validate_candidate_binding(
+                    &visible,
+                    &candidate.trusted_binding,
+                    request.actor,
+                    &state.perspective_identities,
+                )
+                .is_err()
             {
                 return Err(EngineStateViolation::PendingDecisionMismatch);
             }
         }
-        if let Some(continuation) = pending.continuation {
-            if !state.execution.continuations.contains_key(&continuation) {
-                return Err(EngineStateViolation::MissingContinuation);
-            }
-        }
     }
 
-    for player in state.core.players.keys() {
-        if !state.perspective_identities.players.contains_key(player)
-            || !state.knowledge.players.contains_key(player)
-        {
-            return Err(EngineStateViolation::PerspectiveIdentityMismatch);
-        }
-    }
     for (player, identities) in &state.perspective_identities.players {
         if !state.core.players.contains_key(player)
             || identities.object_to_opaque.len() != identities.opaque_to_object.len()
@@ -326,98 +379,44 @@ pub fn validate_engine_state(state: &EngineState) -> Result<(), EngineStateViola
         {
             return Err(EngineStateViolation::PerspectiveIdentityMismatch);
         }
-        for (object, opaque) in &identities.object_to_opaque {
-            if !state.zones.objects.contains_key(object)
-                || identities.opaque_to_object.get(opaque) != Some(object)
+        for (opaque, object) in &identities.opaque_to_object {
+            if identities.object_to_opaque.get(object) != Some(opaque)
+                || !state.zones.objects.contains_key(object)
+                || identities.retired_object_ids.contains(opaque)
             {
                 return Err(EngineStateViolation::PerspectiveIdentityMismatch);
             }
         }
-        for (opaque, object) in &identities.opaque_to_object {
-            if identities.object_to_opaque.get(object) != Some(opaque) {
-                return Err(EngineStateViolation::PerspectiveIdentityMismatch);
-            }
-        }
-        for (ability, opaque) in &identities.ability_to_opaque {
-            if identities.opaque_to_ability.get(opaque) != Some(ability) {
+        for (object, opaque) in &identities.object_to_opaque {
+            if identities.opaque_to_object.get(opaque) != Some(object) {
                 return Err(EngineStateViolation::PerspectiveIdentityMismatch);
             }
         }
         for (opaque, ability) in &identities.opaque_to_ability {
-            if identities.ability_to_opaque.get(ability) != Some(opaque) {
+            if identities.ability_to_opaque.get(ability) != Some(opaque)
+                || identities.retired_ability_ids.contains(opaque)
+            {
                 return Err(EngineStateViolation::PerspectiveIdentityMismatch);
             }
         }
-        let max_opaque_object = identities
+        if identities
             .opaque_to_object
             .keys()
-            .map(|id| id.0)
-            .max()
-            .unwrap_or(0);
-        let max_opaque_ability = identities
-            .opaque_to_ability
-            .keys()
-            .map(|id| id.0)
-            .max()
-            .unwrap_or(0);
-        let next_object = state
-            .allocators
-            .next_opaque_object_id
-            .get(player)
-            .map(|id| id.0)
-            .unwrap_or(1);
-        let next_ability = state
-            .allocators
-            .next_opaque_ability_id
-            .get(player)
-            .map(|id| id.0)
-            .unwrap_or(1);
-        if next_object <= max_opaque_object || next_ability <= max_opaque_ability {
+            .any(|id| id.0 >= identities.next_opaque_object_id.0)
+            || identities
+                .opaque_to_ability
+                .keys()
+                .any(|id| id.0 >= identities.next_opaque_ability_id.0)
+            || identities
+                .retired_object_ids
+                .iter()
+                .any(|id| id.0 >= identities.next_opaque_object_id.0)
+            || identities
+                .retired_ability_ids
+                .iter()
+                .any(|id| id.0 >= identities.next_opaque_ability_id.0)
+        {
             return Err(EngineStateViolation::AllocatorBehind);
-        }
-    }
-
-    for (player, knowledge) in &state.knowledge.players {
-        if !state.core.players.contains_key(player) {
-            return Err(EngineStateViolation::KnowledgeMismatch);
-        }
-        let Some(identities) = state.perspective_identities.players.get(player) else {
-            return Err(EngineStateViolation::KnowledgeMismatch);
-        };
-        if knowledge.known_objects.iter().any(|(id, known)| {
-            let Some(object) = state.zones.objects.get(id) else {
-                return true;
-            };
-            let Some(location) = state.zones.locations.get(id) else {
-                return true;
-            };
-            id != &known.object
-                || !identities.object_to_opaque.contains_key(id)
-                || known
-                    .physical_card
-                    .is_some_and(|physical| Some(physical) != object.physical_card)
-                || known
-                    .card_definition
-                    .is_some_and(|definition| definition != object.card_definition)
-                || known
-                    .known_location
-                    .as_ref()
-                    .is_some_and(|known_location| known_location != location)
-                || !knowledge_point_is_valid(known.learned_at, knowledge)
-                || !acquisition_matches_channel(&known.learned_via, known.learned_at.channel)
-                || knowledge_event_is_from_the_future(
-                    &known.learned_via,
-                    state.allocators.next_rule_event_id,
-                )
-        }) {
-            return Err(EngineStateViolation::KnowledgeMismatch);
-        }
-        let mut invalidations = BTreeSet::new();
-        if knowledge.invalidations.iter().any(|record| {
-            !knowledge_point_is_valid(record.invalidated_at, knowledge)
-                || !invalidations.insert(record)
-        }) {
-            return Err(EngineStateViolation::KnowledgeMismatch);
         }
     }
 
@@ -448,13 +447,12 @@ pub fn validate_engine_state(state: &EngineState) -> Result<(), EngineStateViola
         {
             return Err(EngineStateViolation::FormatMismatch);
         }
-        for targets in commander.damage.values() {
-            if targets
+        if commander.damage.values().any(|targets| {
+            targets
                 .keys()
                 .any(|player| !state.core.players.contains_key(player))
-            {
-                return Err(EngineStateViolation::FormatMismatch);
-            }
+        }) {
+            return Err(EngineStateViolation::FormatMismatch);
         }
     }
 
@@ -462,14 +460,15 @@ pub fn validate_engine_state(state: &EngineState) -> Result<(), EngineStateViola
         .random
         .validate()
         .map_err(|_| EngineStateViolation::RandomState)?;
-
     for key in state.random.streams.keys() {
         if let Some(player_raw) = key.player() {
-            let player = PlayerId(player_raw);
-            if !state.core.players.contains_key(&player) {
+            if !state.core.players.contains_key(&PlayerId(player_raw)) {
                 return Err(EngineStateViolation::RandomState);
             }
         }
     }
     Ok(())
 }
+
+#[allow(dead_code)]
+fn _binding_type_marker(_: &EngineCandidateBinding, _: &VisibleCandidateV2) {}

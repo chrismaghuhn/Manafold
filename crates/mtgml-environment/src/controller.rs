@@ -1,23 +1,23 @@
-use mtgml_decision::{DecisionResponse, PlayerDecisionRequest};
+use mtgml_decision::{DecisionResponseV2, PlayerDecisionRequestV2};
 use mtgml_model::PlayerId;
-use mtgml_observation::{InformationStateEnvelope, ObservationEnvelope, PlayerStep};
-use mtgml_replay::AuthoritativeReplayV2;
+use mtgml_observation::{ObservationEnvelope, PlayerInformationStateV2, PlayerStepV2};
+use mtgml_replay::AuthoritativeReplayV3;
 use std::sync::{Arc, Mutex, MutexGuard};
 
-use crate::checkpoint::EnvironmentCheckpointV2;
+use crate::checkpoint::EnvironmentCheckpointV3;
 use crate::endpoint::PlayerEndpointHandle;
 use crate::errors::ControllerError;
 
 pub trait EnvironmentBackend: Send {
     fn players(&self) -> Vec<PlayerId>;
-    fn checkpoint(&self) -> Result<EnvironmentCheckpointV2, ControllerError>;
-    fn restore(&mut self, checkpoint: EnvironmentCheckpointV2) -> Result<(), ControllerError>;
+    fn checkpoint(&self) -> Result<EnvironmentCheckpointV3, ControllerError>;
+    fn restore(&mut self, checkpoint: EnvironmentCheckpointV3) -> Result<(), ControllerError>;
     fn fork_boxed(&self) -> Result<Box<dyn EnvironmentBackend>, ControllerError>;
-    fn export_replay(&self) -> Result<AuthoritativeReplayV2, ControllerError>;
+    fn export_replay(&self) -> Result<AuthoritativeReplayV3, ControllerError>;
     fn execute_trusted_response(
         &mut self,
         _actor: PlayerId,
-        _response: DecisionResponse,
+        _response: DecisionResponseV2,
     ) -> Result<mtgml_rules::TransitionResult, ControllerError> {
         Err(ControllerError::Backend(
             "trusted execution is unavailable".into(),
@@ -31,16 +31,16 @@ pub trait EnvironmentBackend: Send {
     fn player_information_state(
         &self,
         perspective: PlayerId,
-    ) -> Result<InformationStateEnvelope, crate::endpoint::PlayerApiError>;
+    ) -> Result<PlayerInformationStateV2, crate::endpoint::PlayerApiError>;
     fn player_visible_decision(
         &self,
         perspective: PlayerId,
-    ) -> Result<Option<PlayerDecisionRequest>, crate::endpoint::PlayerApiError>;
+    ) -> Result<Option<PlayerDecisionRequestV2>, crate::endpoint::PlayerApiError>;
     fn submit_player_response(
         &mut self,
         perspective: PlayerId,
-        response: DecisionResponse,
-    ) -> Result<PlayerStep, crate::endpoint::PlayerApiError>;
+        response: DecisionResponseV2,
+    ) -> Result<PlayerStepV2, crate::endpoint::PlayerApiError>;
 }
 
 pub(crate) type SharedBackend = Arc<Mutex<Box<dyn EnvironmentBackend>>>;
@@ -67,11 +67,11 @@ impl TrustedEnvironmentController {
         })
     }
 
-    pub fn checkpoint(&self) -> Result<EnvironmentCheckpointV2, ControllerError> {
+    pub fn checkpoint(&self) -> Result<EnvironmentCheckpointV3, ControllerError> {
         self.lock()?.checkpoint()
     }
 
-    pub fn restore(&self, checkpoint: EnvironmentCheckpointV2) -> Result<(), ControllerError> {
+    pub fn restore(&self, checkpoint: EnvironmentCheckpointV3) -> Result<(), ControllerError> {
         checkpoint
             .validate()
             .map_err(ControllerError::CheckpointValidation)?;
@@ -85,22 +85,22 @@ impl TrustedEnvironmentController {
         })
     }
 
-    pub fn export_replay(&self) -> Result<AuthoritativeReplayV2, ControllerError> {
+    pub fn export_replay(&self) -> Result<AuthoritativeReplayV3, ControllerError> {
         self.lock()?.export_replay()
     }
 
     pub fn execute_trusted_response(
         &self,
         actor: PlayerId,
-        response: DecisionResponse,
+        response: DecisionResponseV2,
     ) -> Result<mtgml_rules::TransitionResult, ControllerError> {
         self.lock()?.execute_trusted_response(actor, response)
     }
 
     pub fn execute_replay_from_checkpoint(
         &self,
-        checkpoint: EnvironmentCheckpointV2,
-        replay: AuthoritativeReplayV2,
+        checkpoint: EnvironmentCheckpointV3,
+        replay: AuthoritativeReplayV3,
     ) -> Result<crate::replay::ReplayExecutionReport, ControllerError> {
         checkpoint
             .validate()

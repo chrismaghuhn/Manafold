@@ -1,32 +1,40 @@
 use std::collections::BTreeSet;
 
 use base64::{engine::general_purpose::STANDARD, Engine as _};
-use mtgml_decision::DecisionResponse;
-use mtgml_model::{EpisodeStatus, InformationStateDigest, ObservationDigest, PlayerId};
+use mtgml_decision::{DecisionResponseV2, PlayerDecisionRequestV2};
+use mtgml_model::{
+    EpisodeStatus, InformationStateDigestV2, ObservationDigest, PlayerId, StateRevision,
+};
 use mtgml_observation::{
-    InformationStateEnvelope, ObservationEnvelope, PlayerStep, INFORMATION_STATE_SCHEMA,
-    OBSERVATION_SCHEMA, PLAYER_STEP_SCHEMA,
+    InformationStateDigestInputV2, ObservationEnvelope, ObservedEventEnvelopeV2,
+    PlayerInformationStateV2, PlayerKnowledgeCauseV1, PlayerKnowledgeChannelV1,
+    PlayerKnowledgeInvalidationReasonV1, PlayerKnowledgeProvenanceV1, PlayerKnownLocationFactV1,
+    PlayerKnownLocationV1, PlayerKnownObjectV1, PlayerStepV2, INFORMATION_STATE_SCHEMA_V2,
+    OBSERVATION_SCHEMA, PLAYER_STEP_SCHEMA_V2,
 };
 use mtgml_random::RootSeed256;
 use mtgml_replay::{
-    AuthoritativeReplayV2, DeckIdentityV1, KernelIdentityV1, RandomnessIdentityV2,
-    ReplayManifestV2, ReplayRecorderV2, ReplaySchemaVersionsV1, ReplayStepV2,
-    REPLAY_MANIFEST_SCHEMA_V2,
+    AuthoritativeReplayV3, DeckIdentityV1, InitialEnvironmentIdentityV3, KernelIdentityV1,
+    RandomnessIdentityV2, ReplayManifestV3, ReplayRecorderV3, ReplaySchemaVersionsV1, ReplayStepV3,
+    REPLAY_MANIFEST_SCHEMA_V3,
 };
 use mtgml_rules::{
     validate_transition_contract, RulesKernel, SyntheticM1RulesKernel, TransitionResult,
 };
-use mtgml_state::{construct_synthetic_engine_state, EngineState, SyntheticResetInputs};
+use mtgml_state::{
+    construct_synthetic_engine_state, EngineState, KnowledgeAcquisitionCause,
+    KnowledgeAcquisitionReason, KnowledgeHistoryChannel, KnowledgeInvalidationReason,
+    SyntheticResetInputs,
+};
 
 use crate::checkpoint::{
-    CheckpointCodecIdentity, EnvironmentCheckpointV2, EnvironmentLimitCounters,
+    CheckpointCodecIdentity, EnvironmentCheckpointV3, EnvironmentLimitCounters,
 };
 use crate::controller::EnvironmentBackend;
 use crate::endpoint::PlayerApiError;
 use crate::errors::{ControllerError, EnvironmentCommitError};
 
-const SYNTHETIC_M1_OBSERVATION_CODEC: &str = "synthetic-m1-observation.v1";
-const SYNTHETIC_M1_INFORMATION_DIGEST_INPUT: &str = "synthetic-m1-information-state.v1";
+const SYNTHETIC_M2_OBSERVATION_CODEC: &str = "synthetic-m2-observation.v1";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SyntheticM1EnvironmentConfig {
@@ -53,7 +61,7 @@ pub struct SyntheticM1EnvironmentBackend {
     limit_counters: EnvironmentLimitCounters,
     codec: CheckpointCodecIdentity,
     config: SyntheticM1EnvironmentConfig,
-    replay: ReplayRecorderV2,
+    replay: ReplayRecorderV3,
     kernel: SyntheticM1RulesKernel,
 }
 
@@ -66,13 +74,13 @@ impl SyntheticM1EnvironmentBackend {
         let state = construct_synthetic_engine_state(SyntheticResetInputs { players, root_seed })?;
         let status = EpisodeStatus::Running;
         let limit_counters = EnvironmentLimitCounters::default();
-        let checkpoint = EnvironmentCheckpointV2::new(
+        let checkpoint = EnvironmentCheckpointV3::new(
             state.clone(),
             status.clone(),
             limit_counters.clone(),
             config.codec.clone(),
         )?;
-        let replay = ReplayRecorderV2::new(build_manifest(&config, &checkpoint)?)?;
+        let replay = ReplayRecorderV3::new(build_manifest(&config, &checkpoint)?)?;
         Ok(Self {
             state,
             status,
@@ -85,14 +93,14 @@ impl SyntheticM1EnvironmentBackend {
     }
 
     pub fn from_checkpoint(
-        checkpoint: EnvironmentCheckpointV2,
+        checkpoint: EnvironmentCheckpointV3,
         config: SyntheticM1EnvironmentConfig,
     ) -> Result<Self, ControllerError> {
         checkpoint.validate()?;
         if checkpoint.codec != config.codec {
             return Err(ControllerError::UnsupportedCheckpointCodec);
         }
-        let replay = ReplayRecorderV2::new(build_manifest(&config, &checkpoint)?)?;
+        let replay = ReplayRecorderV3::new(build_manifest(&config, &checkpoint)?)?;
         Ok(Self {
             state: checkpoint.state,
             status: checkpoint.status,
@@ -104,8 +112,8 @@ impl SyntheticM1EnvironmentBackend {
         })
     }
 
-    fn current_checkpoint(&self) -> Result<EnvironmentCheckpointV2, ControllerError> {
-        Ok(EnvironmentCheckpointV2::new(
+    fn current_checkpoint(&self) -> Result<EnvironmentCheckpointV3, ControllerError> {
+        Ok(EnvironmentCheckpointV3::new(
             self.state.clone(),
             self.status.clone(),
             self.limit_counters.clone(),
@@ -155,11 +163,11 @@ impl SyntheticM1EnvironmentBackend {
     pub(crate) fn execute_response<F>(
         &mut self,
         actor: PlayerId,
-        response: DecisionResponse,
+        response: DecisionResponseV2,
         before_commit: F,
     ) -> Result<TransitionResult, ControllerError>
     where
-        F: FnOnce(&EnvironmentCheckpointV2, &TransitionResult) -> Result<(), ControllerError>,
+        F: FnOnce(&EnvironmentCheckpointV3, &TransitionResult) -> Result<(), ControllerError>,
     {
         let before = self.current_checkpoint()?;
         let transition = self.kernel.apply(&before.state, actor, &response)?;
@@ -175,7 +183,7 @@ impl SyntheticM1EnvironmentBackend {
 
         let candidate_counters =
             Self::candidate_counters(&before.limit_counters, transition.events.len())?;
-        let candidate = EnvironmentCheckpointV2::new(
+        let candidate = EnvironmentCheckpointV3::new(
             transition.next_state.clone(),
             transition.status.clone(),
             candidate_counters,
@@ -190,13 +198,18 @@ impl SyntheticM1EnvironmentBackend {
                 counter: "replay_step_index",
             }
         })?;
-        let step = ReplayStepV2 {
+        let step = ReplayStepV3 {
             step_index,
+            actor,
+            checkpoint_digest_before: before.checkpoint_digest.clone(),
             state_revision_before: before.state.revision,
             response,
             accepted: true,
             state_revision_after: candidate.state.revision,
-            state_digest_after: candidate.state_digest.clone(),
+            full_state_digest_after: candidate.state_digest.clone(),
+            episode_status_after: candidate.status.clone(),
+            environment_limit_counters_after: candidate.limit_counters.clone(),
+            checkpoint_digest_after: candidate.checkpoint_digest.clone(),
         };
         let mut candidate_replay = self.replay.clone();
         candidate_replay.append(step)?;
@@ -221,10 +234,10 @@ impl SyntheticM1EnvironmentBackend {
 
     fn synthetic_observation(
         perspective: PlayerId,
-        revision: mtgml_model::StateRevision,
+        revision: StateRevision,
     ) -> Result<ObservationEnvelope, PlayerApiError> {
         let payload = format!(
-            "{SYNTHETIC_M1_OBSERVATION_CODEC}|perspective={}|state-revision={}",
+            "{SYNTHETIC_M2_OBSERVATION_CODEC}|perspective={}|state-revision={}",
             perspective.0, revision.0
         )
         .into_bytes();
@@ -232,7 +245,7 @@ impl SyntheticM1EnvironmentBackend {
             schema_version: OBSERVATION_SCHEMA.into(),
             perspective,
             state_revision: revision,
-            payload_codec: SYNTHETIC_M1_OBSERVATION_CODEC.into(),
+            payload_codec: SYNTHETIC_M2_OBSERVATION_CODEC.into(),
             payload_base64: STANDARD.encode(&payload),
             digest: ObservationDigest::from_canonical_bytes(&payload),
         };
@@ -242,10 +255,76 @@ impl SyntheticM1EnvironmentBackend {
         Ok(observation)
     }
 
+    fn public_location(location: &mtgml_state::ZoneLocation) -> PlayerKnownLocationV1 {
+        PlayerKnownLocationV1 {
+            zone: location.zone,
+            player: location.player,
+        }
+    }
+
+    fn public_fact(fact: &mtgml_state::KnownLocationFactV2) -> PlayerKnownLocationFactV1 {
+        PlayerKnownLocationFactV1 {
+            location: Self::public_location(&fact.location),
+            provenance: Self::public_provenance(&fact.provenance),
+        }
+    }
+
+    fn public_provenance(reason: &KnowledgeAcquisitionReason) -> PlayerKnowledgeProvenanceV1 {
+        match reason {
+            KnowledgeAcquisitionReason::InitialConfiguration => {
+                PlayerKnowledgeProvenanceV1::InitialConfiguration
+            }
+            KnowledgeAcquisitionReason::Observed {
+                channel,
+                sequence,
+                cause,
+            } => PlayerKnowledgeProvenanceV1::Observed {
+                channel: match channel {
+                    KnowledgeHistoryChannel::Public => PlayerKnowledgeChannelV1::Public,
+                    KnowledgeHistoryChannel::Private => PlayerKnowledgeChannelV1::Private,
+                },
+                sequence: *sequence,
+                cause: match cause {
+                    KnowledgeAcquisitionCause::PublicEvent => PlayerKnowledgeCauseV1::PublicEvent,
+                    KnowledgeAcquisitionCause::PrivateLook => PlayerKnowledgeCauseV1::PrivateLook,
+                    KnowledgeAcquisitionCause::ExplicitReveal => {
+                        PlayerKnowledgeCauseV1::ExplicitReveal
+                    }
+                    KnowledgeAcquisitionCause::OwnPrivateIdentity => {
+                        PlayerKnowledgeCauseV1::OwnPrivateIdentity
+                    }
+                },
+            },
+        }
+    }
+
+    fn public_invalidation_reason(
+        reason: &KnowledgeInvalidationReason,
+    ) -> PlayerKnowledgeInvalidationReasonV1 {
+        match reason {
+            KnowledgeInvalidationReason::Shuffle => PlayerKnowledgeInvalidationReasonV1::Shuffle,
+            KnowledgeInvalidationReason::Randomization => {
+                PlayerKnowledgeInvalidationReasonV1::Randomization
+            }
+            KnowledgeInvalidationReason::HiddenTransition => {
+                PlayerKnowledgeInvalidationReasonV1::HiddenTransition
+            }
+            KnowledgeInvalidationReason::ExplicitForget => {
+                PlayerKnowledgeInvalidationReasonV1::ExplicitForget
+            }
+        }
+    }
+
+    fn public_history(
+        records: &[mtgml_state::KnownLocationFactV2],
+    ) -> Vec<PlayerKnownLocationFactV1> {
+        records.iter().map(Self::public_fact).collect()
+    }
+
     fn player_information_state_from_state(
         state: &EngineState,
         perspective: PlayerId,
-    ) -> Result<InformationStateEnvelope, PlayerApiError> {
+    ) -> Result<PlayerInformationStateV2, PlayerApiError> {
         if !state.core.players.contains_key(&perspective) {
             return Err(PlayerApiError::Unavailable);
         }
@@ -255,23 +334,65 @@ impl SyntheticM1EnvironmentBackend {
             .players
             .get(&perspective)
             .ok_or(PlayerApiError::Unavailable)?;
-        let digest_input = format!(
-            "{SYNTHETIC_M1_INFORMATION_DIGEST_INPUT}|perspective={}|state-revision={}|public-history-length={}|private-history-length={}|observation-payload={}",
-            perspective.0,
-            state.revision.0,
-            knowledge.public_history_length,
-            knowledge.private_history_length,
-            current_observation.payload_base64,
-        );
-        let information_state = InformationStateEnvelope {
-            schema_version: INFORMATION_STATE_SCHEMA.into(),
+        // Canonical retained-knowledge order is ascending numeric OpaqueObjectId
+        // across active and retired records (INFORMATION_MODEL.md).
+        let mut retained_knowledge =
+            Vec::with_capacity(knowledge.active.len() + knowledge.retired.len());
+        for record in knowledge.active.values() {
+            retained_knowledge.push((
+                record.opaque_object,
+                PlayerKnownObjectV1::Active {
+                    opaque_object_id: record.opaque_object,
+                    known_definition: record.card_definition,
+                    current_known_location_fact: record
+                        .known_location
+                        .as_ref()
+                        .map(Self::public_fact),
+                    historical_locations: Self::public_history(&record.historical_locations),
+                    acquisition: Self::public_provenance(&record.acquisition),
+                },
+            ));
+        }
+        for record in knowledge.retired.values() {
+            retained_knowledge.push((
+                record.opaque_object,
+                PlayerKnownObjectV1::Retired {
+                    opaque_object_id: record.opaque_object,
+                    known_definition: record.card_definition,
+                    last_known_location_fact: record
+                        .last_known_location
+                        .as_ref()
+                        .map(Self::public_fact),
+                    historical_locations: Self::public_history(&record.historical_locations),
+                    acquisition: Self::public_provenance(&record.acquisition),
+                    invalidation: mtgml_observation::PlayerKnowledgeInvalidationV1 {
+                        provenance: Self::public_provenance(&record.invalidation.provenance),
+                        reason: Self::public_invalidation_reason(&record.invalidation.reason),
+                    },
+                },
+            ));
+        }
+        retained_knowledge.sort_by_key(|(opaque, _)| *opaque);
+        let retained_knowledge: Vec<_> = retained_knowledge
+            .into_iter()
+            .map(|(_, object)| object)
+            .collect();
+
+        let mut information_state = PlayerInformationStateV2 {
+            schema_version: INFORMATION_STATE_SCHEMA_V2.into(),
             perspective,
             state_revision: state.revision,
             current_observation,
-            public_history_length: knowledge.public_history_length,
-            private_history_length: knowledge.private_history_length,
-            digest: InformationStateDigest::from_canonical_bytes(digest_input.as_bytes()),
+            next_visible_sequence: knowledge.next_visible_sequence,
+            retained_knowledge,
+            digest: InformationStateDigestV2::from_canonical_bytes(
+                b"m2-information-state-placeholder",
+            ),
         };
+        let input: InformationStateDigestInputV2 = information_state.digest_input();
+        let (_, digest) = mtgml_wire::compute_information_state_digest_v2(&input)
+            .map_err(|_| PlayerApiError::Unavailable)?;
+        information_state.digest = digest;
         information_state
             .validate()
             .map_err(|_| PlayerApiError::Unavailable)?;
@@ -282,12 +403,20 @@ impl SyntheticM1EnvironmentBackend {
         state: &EngineState,
         perspective: PlayerId,
         status: EpisodeStatus,
-    ) -> Result<PlayerStep, PlayerApiError> {
-        let step = PlayerStep {
-            schema_version: PLAYER_STEP_SCHEMA.into(),
+    ) -> Result<PlayerStepV2, PlayerApiError> {
+        let next_decision = state
+            .execution
+            .pending_decision
+            .as_ref()
+            .filter(|pending| pending.request.actor == perspective)
+            .map(|pending| pending.request.project_player_request())
+            .transpose()
+            .map_err(|_| PlayerApiError::Unavailable)?;
+        let step = PlayerStepV2 {
+            schema_version: PLAYER_STEP_SCHEMA_V2.into(),
             information_state: Self::player_information_state_from_state(state, perspective)?,
-            observed_events: vec![],
-            next_decision: None,
+            observed_events: Vec::<ObservedEventEnvelopeV2>::new(),
+            next_decision,
             status,
         };
         step.validate().map_err(|_| PlayerApiError::Unavailable)?;
@@ -300,11 +429,11 @@ impl EnvironmentBackend for SyntheticM1EnvironmentBackend {
         self.state.core.players.keys().copied().collect()
     }
 
-    fn checkpoint(&self) -> Result<EnvironmentCheckpointV2, ControllerError> {
+    fn checkpoint(&self) -> Result<EnvironmentCheckpointV3, ControllerError> {
         self.current_checkpoint()
     }
 
-    fn restore(&mut self, checkpoint: EnvironmentCheckpointV2) -> Result<(), ControllerError> {
+    fn restore(&mut self, checkpoint: EnvironmentCheckpointV3) -> Result<(), ControllerError> {
         let candidate = Self::from_checkpoint(checkpoint, self.config.clone())?;
         self.state = candidate.state;
         self.status = candidate.status;
@@ -323,14 +452,14 @@ impl EnvironmentBackend for SyntheticM1EnvironmentBackend {
         )?))
     }
 
-    fn export_replay(&self) -> Result<AuthoritativeReplayV2, ControllerError> {
+    fn export_replay(&self) -> Result<AuthoritativeReplayV3, ControllerError> {
         Ok(self.replay.export()?)
     }
 
     fn execute_trusted_response(
         &mut self,
         actor: PlayerId,
-        response: DecisionResponse,
+        response: DecisionResponseV2,
     ) -> Result<TransitionResult, ControllerError> {
         self.execute_response(actor, response, |_candidate, _transition| Ok(()))
     }
@@ -346,7 +475,7 @@ impl EnvironmentBackend for SyntheticM1EnvironmentBackend {
     fn player_information_state(
         &self,
         perspective: PlayerId,
-    ) -> Result<InformationStateEnvelope, PlayerApiError> {
+    ) -> Result<PlayerInformationStateV2, PlayerApiError> {
         self.require_player(perspective)?;
         Self::player_information_state_from_state(&self.state, perspective)
     }
@@ -354,7 +483,7 @@ impl EnvironmentBackend for SyntheticM1EnvironmentBackend {
     fn player_visible_decision(
         &self,
         perspective: PlayerId,
-    ) -> Result<Option<mtgml_decision::PlayerDecisionRequest>, PlayerApiError> {
+    ) -> Result<Option<PlayerDecisionRequestV2>, PlayerApiError> {
         self.require_player(perspective)?;
         let Some(pending) = self.state.execution.pending_decision.as_ref() else {
             return Ok(None);
@@ -364,16 +493,16 @@ impl EnvironmentBackend for SyntheticM1EnvironmentBackend {
         }
         pending
             .request
-            .validate()
-            .map_err(|_| PlayerApiError::Unavailable)?;
-        Ok(Some(pending.request.clone()))
+            .project_player_request()
+            .map(Some)
+            .map_err(|_| PlayerApiError::Unavailable)
     }
 
     fn submit_player_response(
         &mut self,
         perspective: PlayerId,
-        response: DecisionResponse,
-    ) -> Result<PlayerStep, PlayerApiError> {
+        response: DecisionResponseV2,
+    ) -> Result<PlayerStepV2, PlayerApiError> {
         self.require_player(perspective)?;
         if !matches!(&self.status, EpisodeStatus::Running) {
             return Err(PlayerApiError::EpisodeComplete);
@@ -384,14 +513,17 @@ impl EnvironmentBackend for SyntheticM1EnvironmentBackend {
         if pending.request.actor != perspective {
             return Err(PlayerApiError::NoVisibleDecision);
         }
-        if response.validate().is_err() {
+        let visible_request = pending
+            .request
+            .project_player_request()
+            .map_err(|_| PlayerApiError::Unavailable)?;
+        if response.validate_for(&visible_request).is_err() {
+            if response.state_revision != visible_request.state_revision
+                || response.player_decision_id != visible_request.player_decision_id
+            {
+                return Err(PlayerApiError::StaleResponse);
+            }
             return Err(PlayerApiError::InvalidSelection);
-        }
-        if response.decision_id != pending.request.decision_id
-            || response.state_revision != pending.request.state_revision
-            || response.state_revision != self.state.revision
-        {
-            return Err(PlayerApiError::StaleResponse);
         }
 
         let mut projected_step = None;
@@ -420,10 +552,10 @@ impl EnvironmentBackend for SyntheticM1EnvironmentBackend {
 
 fn build_manifest(
     config: &SyntheticM1EnvironmentConfig,
-    checkpoint: &EnvironmentCheckpointV2,
-) -> Result<ReplayManifestV2, ControllerError> {
-    let manifest = ReplayManifestV2 {
-        schema_version: REPLAY_MANIFEST_SCHEMA_V2.into(),
+    checkpoint: &EnvironmentCheckpointV3,
+) -> Result<ReplayManifestV3, ControllerError> {
+    let manifest = ReplayManifestV3 {
+        schema_version: REPLAY_MANIFEST_SCHEMA_V3.into(),
         engine_build: config.replay.engine_build.clone(),
         kernel: config.replay.kernel.clone(),
         rules_snapshot: config.replay.rules_snapshot.clone(),
@@ -436,8 +568,14 @@ fn build_manifest(
             root_seed_hex: checkpoint.state.random.root_seed.to_lower_hex(),
         },
         decks: config.replay.decks.clone(),
-        initial_state_revision: checkpoint.state.revision,
-        initial_state_digest: checkpoint.state_digest.clone(),
+        initial_identity: InitialEnvironmentIdentityV3 {
+            state_revision: checkpoint.state.revision,
+            full_state_digest: checkpoint.state_digest.clone(),
+            episode_status: checkpoint.status.clone(),
+            environment_limit_counters: checkpoint.limit_counters.clone(),
+            checkpoint_codec_identity: checkpoint.codec.clone(),
+            checkpoint_digest: checkpoint.checkpoint_digest.clone(),
+        },
     };
     manifest.validate()?;
 

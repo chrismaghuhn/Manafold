@@ -79,6 +79,18 @@
       "path": "response-duplicate-assignment.json"
     },
     {
+      "contract": "decision-response.v2",
+      "expected_error_code": "decode.invalid_json",
+      "expected_reject_layer": "rust-python-semantic-or-decode",
+      "path": "decision-v2-candidate-id-overflow.json"
+    },
+    {
+      "contract": "decision-response.v2",
+      "expected_error_code": "semantic.decision_response",
+      "expected_reject_layer": "rust-python-semantic-or-decode",
+      "path": "decision-v2-noncanonical-select-many.json"
+    },
+    {
       "contract": "replay-manifest.v2",
       "expected_error_code": "semantic.replay_manifest",
       "expected_reject_layer": "rust-python-semantic-or-decode",
@@ -125,6 +137,36 @@
       "expected_error_code": "semantic.replay",
       "expected_reject_layer": "rust-python-semantic-or-decode",
       "path": "replay-v2-revision-discontinuity.json"
+    },
+    {
+      "contract": "authoritative-replay.v3",
+      "expected_error_code": "semantic.replay",
+      "expected_reject_layer": "rust-python-semantic-or-decode",
+      "path": "replay-v3-checkpoint-digest-mismatch.json"
+    },
+    {
+      "contract": "information-state-envelope.v2",
+      "expected_error_code": "semantic.information_state",
+      "expected_reject_layer": "rust-python-semantic-or-decode",
+      "path": "information-v2-forged-digest.json"
+    },
+    {
+      "contract": "information-state-envelope.v2",
+      "expected_error_code": "semantic.information_state",
+      "expected_reject_layer": "rust-python-semantic-or-decode",
+      "path": "information-v2-future-provenance.json"
+    },
+    {
+      "contract": "information-state-envelope.v2",
+      "expected_error_code": "semantic.information_state",
+      "expected_reject_layer": "rust-python-semantic-or-decode",
+      "path": "information-v2-invalid-cause-channel.json"
+    },
+    {
+      "contract": "information-state-envelope.v2",
+      "expected_error_code": "semantic.information_state",
+      "expected_reject_layer": "rust-python-semantic-or-decode",
+      "path": "information-v2-initial-invalidation.json"
     }
   ]
 }

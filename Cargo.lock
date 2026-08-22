@@ -145,6 +145,7 @@ version = "0.2.2"
 dependencies = [
  "mtgml-model",
  "serde",
+ "serde_json",
  "thiserror",
 ]
 
@@ -156,6 +157,7 @@ dependencies = [
  "mtgml-decision",
  "mtgml-model",
  "mtgml-observation",
+ "mtgml-persistence",
  "mtgml-random",
  "mtgml-replay",
  "mtgml-rules",
@@ -189,6 +191,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "mtgml-persistence"
+version = "0.2.2"
+dependencies = [
+ "mtgml-model",
+ "serde",
+ "serde_json",
+ "sha2",
+ "thiserror",
+]
+
+[[package]]
 name = "mtgml-random"
 version = "0.2.2"
 dependencies = [
@@ -206,6 +219,7 @@ version = "0.2.2"
 dependencies = [
  "mtgml-decision",
  "mtgml-model",
+ "mtgml-persistence",
  "mtgml-random",
  "serde",
  "thiserror",
@@ -229,6 +243,7 @@ version = "0.2.2"
 dependencies = [
  "mtgml-decision",
  "mtgml-model",
+ "mtgml-persistence",
  "mtgml-random",
  "serde",
  "serde_json",

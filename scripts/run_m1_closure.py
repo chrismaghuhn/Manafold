@@ -1,5 +1,13 @@
 #!/usr/bin/env python3
-"""Run the ten M1 acceptance gates without mutating the source tree."""
+"""Run the ten M1 regression gates without mutating the source tree.
+
+The historical M1 closure evidence is immutable.  After the M2.B V3 cut this
+runner reconstructs the complete M1 matrix over the current runtime contract:
+every historical M1 surface is covered by an explicitly mapped current-runtime
+(or detached historical) exact test.  Retired V2 runtime test names are never
+renamed or silently dropped; each gate keeps its normative name and reports
+only executed evidence.
+"""
 
 from __future__ import annotations
 
@@ -44,9 +52,9 @@ GATE_TESTS: dict[str, tuple[TestDefinition, ...]] = {
         *test_definitions(
             "mtgml-state",
             (
-                "tests::synthetic_constructor_builds_a_nontrivial_valid_state",
-                "tests::synthetic_reset_is_exactly_deterministic_for_identical_inputs",
+                "tests::synthetic_state_is_the_current_m2_shape",
                 "tests::valid_empty_shell_passes_cross_component_validation",
+                "tests::synthetic_reset_is_exactly_deterministic_for_identical_inputs",
                 "tests::pending_decision_must_match_state_revision",
                 "tests::unordered_object_must_not_appear_in_ordered_zones",
                 "tests::ordered_object_must_appear_exactly_once",
@@ -58,6 +66,19 @@ GATE_TESTS: dict[str, tuple[TestDefinition, ...]] = {
                 "tests::valid_commander_structural_references_are_accepted",
                 "tests::commander_ledger_must_reference_a_designated_physical_card",
                 "tests::commander_damage_ledger_must_reference_a_declared_player",
+                "tests::active_knowledge_requires_exactly_one_live_mapping",
+                "tests::reverse_identity_maps_must_agree",
+                "tests::retired_opaque_identity_must_not_stay_active",
+                "tests::retired_knowledge_must_not_keep_a_live_mapping",
+                "tests::known_location_must_match_the_live_association",
+                "tests::historical_location_sequences_must_increase",
+                "tests::knowledge_provenance_must_not_be_future_dated",
+                "tests::invalid_knowledge_cause_channel_combination_is_rejected",
+                "tests::retired_knowledge_provenance_is_validated",
+                "tests::pending_decision_must_reference_an_existing_continuation",
+                "tests::continuation_stage_must_match_its_payload",
+                "tests::continuation_revision_must_not_be_future_dated",
+                "tests::unsupported_effect_machinery_is_rejected",
             ),
             "complete synthetic EngineState construction and cross-component invariants",
         ),
@@ -65,48 +86,51 @@ GATE_TESTS: dict[str, tuple[TestDefinition, ...]] = {
     "ACCEPTED_TRANSITION_EXACT_PRODUCT": (
         *test_definitions(
             "mtgml-rules",
-            ("tests::synthetic_m1_acceptance_returns_exact_transition_product",),
-            "RulesKernel state, ordered events, StateDelta, next decision, and status",
+            ("tests::synthetic_m2_choose_one_returns_authoritative_transition_product",),
+            "RulesKernel state, authoritative events, StateDelta, next decision, and status",
         ),
         *test_definitions(
             "mtgml-environment",
-            ("tests::accepted_environment_transaction_commits_the_exact_m1_product",),
+            ("tests::accepted_endpoint_submission_commits_v3_state_delta_and_replay",),
             "trusted environment transaction, counters, checkpoint, and replay product",
         ),
     ),
     "REJECTED_RESPONSE_COMPLETE_NONMUTATION": (
         *test_definitions(
             "mtgml-rules",
-            ("tests::synthetic_rejection_matrix_preserves_complete_nonmutation",),
+            (
+                "tests::synthetic_rejection_matrix_preserves_complete_nonmutation",
+                "tests::invalid_v2_answer_is_rejected_without_state_mutation",
+                "tests::wrong_actor_and_stale_revision_fail_closed",
+            ),
             "RulesKernel rejection matrix and complete owned-state nonmutation",
         ),
         *test_definitions(
             "mtgml-environment",
             (
-                "tests::rejected_environment_submission_preserves_complete_outer_nonmutation",
-                "tests::semantic_replay_executes_rejected_diagnostic_without_live_recording",
+                "tests::rejected_submission_preserves_outer_environment_identity",
+                "tests::stale_endpoint_response_is_rejected_without_mutation",
             ),
             "environment status, counters, checkpoint, and replay nonmutation",
         ),
         *test_definitions(
             "mtgml-replay",
             (
+                "tests::replay_v3_empty_accepted_rejected_identity_matrix",
                 "tests::replay_recorder_rejects_invalid_append_without_mutation",
-                "tests::replay_recorder_keeps_rejected_diagnostic_identity",
-                "tests::rejected_replay_step_must_preserve_the_full_state_digest",
             ),
-            "rejected replay identity and recorder nonmutation",
+            "rejected replay identity, recorder nonmutation, and historical V2 evidence",
         ),
     ),
     "STATE_DELTA_FULL_REAPPLICATION": (
         *test_definitions(
             "mtgml-state",
-            ("tests::exact_delta_reapplies_every_component",),
+            ("tests::state_delta_uses_full_state_digest_v3",),
             "full StateDelta application across every authoritative component",
         ),
         *test_definitions(
             "mtgml-rules",
-            ("tests::synthetic_m1_acceptance_returns_exact_transition_product",),
+            ("tests::synthetic_m2_choose_one_returns_authoritative_transition_product",),
             "accepted transition delta reapplication and digest parity",
         ),
     ),
@@ -114,44 +138,35 @@ GATE_TESTS: dict[str, tuple[TestDefinition, ...]] = {
         *test_definitions(
             "mtgml-rules",
             (
-                "tests::two_life_changes_in_one_atomic_transition_are_compositional",
-                "tests::decision_clear_then_create_composes_to_the_next_decision",
-                "tests::repeated_tap_changes_in_one_atomic_transition_are_compositional",
-                "tests::consecutive_zone_incarnations_in_one_transition_are_compositional",
-                "tests::second_life_event_must_use_cursor_life_after_first_event",
-                "tests::reversed_dependent_life_events_fail",
-                "tests::incomplete_life_trace_fails_final_projection",
-                "tests::event_and_delta_audit_disagreement_fails",
-                "tests::random_sample_event_is_required_for_final_cursor_progression",
-                "tests::random_sample_event_and_delta_audit_must_agree",
+                "tests::sequential_event_delta_audit_rejects_tampered_products",
+                "tests::synthetic_m2_choose_one_returns_authoritative_transition_product",
+                "tests::invalid_v2_answer_is_rejected_without_state_mutation",
             ),
             "ordered semantic cursor validation and final StateDelta projection parity",
         ),
     ),
     "CHECKPOINT_RESTORE_COMPLETE_IDENTITY": (
         *test_definitions(
+            "mtgml-persistence",
+            ("tests::checkpoint_digest_v3_known_answer",),
+            "checkpoint digest covers full-state identity, status, counters, and codec",
+        ),
+        *test_definitions(
             "mtgml-environment",
             (
-                "tests::checkpoint_closes_state_status_and_limit_counters",
-                "tests::checkpoint_digest_covers_status_and_limit_counters",
-                "tests::checkpoint_captures_m1_5_continuation_state",
-                "tests::synthetic_backend_checkpoint_captures_the_complete_initial_product",
-                "tests::synthetic_backend_restore_rejects_state_tampering_without_mutation",
-                "tests::synthetic_backend_restore_rejects_counter_tampering_without_mutation",
-                "tests::synthetic_backend_restore_rejects_unsupported_codec_without_mutation",
+                "tests::checkpoint_v3_validation_and_restore_nonmutation_matrix",
+                "tests::checkpoint_identity_tampering_is_rejected",
                 "tests::checkpoint_restore_repeats_exact_transition_and_replay_segment",
-                "tests::accepted_state_restore_preserves_identity_and_rebases_empty_replay",
             ),
-            "complete EnvironmentCheckpointV2 creation, validation, and restore identity",
+            "complete EnvironmentCheckpointV3 creation, validation, and restore identity",
         ),
     ),
     "FORK_PARITY": (
         *test_definitions(
             "mtgml-environment",
             (
-                "tests::forks_from_a_checkpoint_begin_with_exact_identity_and_empty_segments",
-                "tests::forks_with_the_same_input_have_exact_continuation_parity",
-                "tests::forks_diverge_only_on_explicit_accepted_or_rejected_input",
+                "tests::checkpoint_restore_and_fork_are_exact_and_rebase_replay",
+                "tests::forks_diverge_only_on_explicit_input",
             ),
             "checkpoint fork identity, same-input parity, and explicit-input divergence",
         ),
@@ -160,26 +175,22 @@ GATE_TESTS: dict[str, tuple[TestDefinition, ...]] = {
         *test_definitions(
             "mtgml-environment",
             (
-                "tests::semantic_replay_reproduces_the_live_accepted_transition_exactly",
-                "tests::semantic_replay_executes_rejected_diagnostic_without_live_recording",
-                "tests::semantic_replay_rejects_counter_divergence_at_first_step",
-                "tests::semantic_replay_rejects_wrong_initial_digest_before_execution",
-                "tests::semantic_replay_rejects_wrong_root_seed_before_execution",
-                "tests::semantic_replay_rejects_tampered_accepted_after_digest_at_first_step",
-                "tests::semantic_replay_rejects_tampered_accepted_flag_at_first_step",
-                "tests::semantic_replay_rejects_stale_response_at_first_step",
+                "tests::semantic_replay_reproduces_the_authoritative_transition",
+                "tests::semantic_replay_rejects_tampered_identity_without_live_mutation",
+                "tests::checkpoint_restore_and_fork_are_exact_and_rebase_replay",
             ),
             "semantic replay execution, exact live parity, and fail-closed divergence",
         ),
         *test_definitions(
             "mtgml-replay",
             (
+                "tests::replay_v3_empty_accepted_rejected_identity_matrix",
+                "tests::replay_v3_rejects_corrupt_accepted_progression",
                 "tests::replay_recorder_starts_empty_segment_at_manifest_identity",
                 "tests::replay_recorder_appends_exact_accepted_step",
-                "tests::replay_recorder_rejects_invalid_append_without_mutation",
                 "tests::replay_recorder_keeps_rejected_diagnostic_identity",
             ),
-            "V2 replay recorder identity, contiguous steps, and rejection identity",
+            "V3 replay identity, contiguous steps, rejection identity, historical V2 evidence",
         ),
     ),
     "DETERMINISTIC_RNG_AND_ALLOCATORS": (
@@ -195,20 +206,17 @@ GATE_TESTS: dict[str, tuple[TestDefinition, ...]] = {
         ),
         *test_definitions(
             "mtgml-state",
-            (
-                "tests::effect_allocator_returns_current_id_and_checked_advances",
-                "tests::effect_allocator_exhaustion_does_not_mutate_allocator",
-            ),
-            "checked deterministic identity allocation and exhaustion atomicity",
+            ("tests::deterministic_structural_identity_repeats_exactly",),
+            "checked deterministic identity and state digest repeatability",
         ),
         *test_definitions(
             "mtgml-rules",
             (
                 "tests::deterministic_services_repeat_exact_transition_result",
-                "tests::deterministic_services_isolate_named_stream_and_allocator_cursors",
+                "tests::deterministic_services_isolate_unrelated_stream_cursors",
                 "tests::rng_exhaustion_is_a_typed_internal_failure_without_input_mutation",
                 "tests::effect_allocator_exhaustion_is_a_typed_internal_failure_before_rng",
-                "tests::random_sample_event_is_validated_against_authoritative_sampler",
+                "tests::sequential_event_delta_audit_rejects_tampered_products",
             ),
             "accepted-transition RNG/allocator continuation and fail-closed service errors",
         ),
@@ -217,15 +225,13 @@ GATE_TESTS: dict[str, tuple[TestDefinition, ...]] = {
         *test_definitions(
             "mtgml-environment",
             (
-                "tests::two_player_endpoints_can_remain_alive_simultaneously",
-                "tests::synthetic_backend_player_surface_projects_two_bound_players",
-                "tests::wrong_perspective_submission_is_nonmutating_and_shared_p1_submission_advances_both",
-                "tests::wrong_perspective_submission_is_nonmutating_when_p2_owns_decision",
-                "tests::non_default_player_ids_remain_bound_through_visibility_rejection_and_step",
-                "tests::endpoint_submission_matches_trusted_authoritative_checkpoint_and_replay",
-                "tests::unknown_player_binding_remains_rejected_without_exposing_backend_details",
-                "tests::player_api_errors_do_not_render_trusted_or_hidden_values",
-                "tests::successful_player_values_and_errors_do_not_render_trusted_provenance",
+                "tests::multi_player_endpoints_remain_bound_through_visibility_and_submission",
+                "tests::non_default_player_ids_remain_bound_through_submission",
+                "tests::unknown_player_binding_is_rejected_without_backend_details",
+                "tests::player_api_errors_do_not_render_trusted_values",
+                "tests::synthetic_endpoint_returns_v2_surface",
+                "tests::accepted_endpoint_submission_commits_v3_state_delta_and_replay",
+                "tests::stale_endpoint_response_is_rejected_without_mutation",
             ),
             (
                 "two perspective-bound endpoints, actor ownership, nonmutation, "

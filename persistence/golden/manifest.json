@@ -1,0 +1,7 @@
+{
+  "schema_version": "persistence-fixture-manifest.v1",
+  "fixtures": [
+    {"contract": "canonical-cbor.v1", "path": "canonical-array.cbor"},
+    {"contract": "digest-envelope.v1", "path": "digest-envelope-test.cbor", "sha256": "b1188a072cbe39da6a521f51a3d5790fe1f0e4c46c25b5e90f62bf5ee4a7f6ad"}
+  ]
+}

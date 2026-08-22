@@ -119,18 +119,3 @@ pub struct ZoneState {
     pub stack_records: BTreeMap<StackObjectId, StackRecord>,
     pub stack_order: Vec<StackObjectId>,
 }
-
-#[derive(Serialize)]
-pub(crate) struct CanonicalOrderedZoneEntryV1<'a> {
-    pub key: &'a ZoneKey,
-    pub objects: &'a [GameObjectId],
-}
-
-#[derive(Serialize)]
-pub(crate) struct CanonicalZoneStateV1<'a> {
-    pub objects: &'a BTreeMap<GameObjectId, GameObject>,
-    pub locations: &'a BTreeMap<GameObjectId, ZoneLocation>,
-    pub ordered_zones: Vec<CanonicalOrderedZoneEntryV1<'a>>,
-    pub stack_records: &'a BTreeMap<StackObjectId, StackRecord>,
-    pub stack_order: &'a [StackObjectId],
-}

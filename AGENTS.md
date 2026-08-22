@@ -438,3 +438,19 @@ When an existing normative contract answers the question, use it rather than rep
 When evidence has not been produced, say so.
 
 **Manafold's output may become ML training data. Treat semantic correctness and provenance accordingly.**
+
+---
+
+## Agent skills
+
+### Issue tracker
+
+Issues are tracked as GitHub issues on `github.com/chrismaghuhn/Manafold`, via the `gh` CLI. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Default five-role triage vocabulary (`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`). See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: `CONTEXT.md` + `docs/adr/` at the repo root. See `docs/agents/domain.md`.

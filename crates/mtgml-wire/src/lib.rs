@@ -3,13 +3,18 @@
 //! JSON Schema validates shape. This crate additionally enforces closed Rust
 //! variants, integer ranges, canonical bytes, and cross-field semantics.
 
-use mtgml_decision::{DecisionResponse, PlayerDecisionRequest};
+use mtgml_decision::{
+    DecisionResponse, DecisionResponseV2, PlayerDecisionRequest, PlayerDecisionRequestV2,
+};
 use mtgml_model::EpisodeStatus;
 use mtgml_observation::{
-    InformationStateEnvelope, ObservationEnvelope, ObservedEventEnvelope, PlayerStep,
+    InformationStateDigestInputV2, InformationStateEnvelope, ObservationEnvelope,
+    ObservedEventEnvelope, ObservedEventEnvelopeV2, PlayerInformationStateV2, PlayerStep,
+    PlayerStepV2,
 };
 use mtgml_replay::{
-    AuthoritativeReplayV1, AuthoritativeReplayV2, ReplayManifestV1, ReplayManifestV2,
+    AuthoritativeReplayV1, AuthoritativeReplayV2, AuthoritativeReplayV3, ReplayManifestV1,
+    ReplayManifestV2, ReplayManifestV3,
 };
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use serde_json::{Map, Value};
@@ -57,6 +62,20 @@ impl WireContract for DecisionResponse {
     }
 }
 
+impl WireContract for PlayerDecisionRequestV2 {
+    fn validate_wire(&self) -> Result<(), WireError> {
+        self.validate()
+            .map_err(|error| WireError::new("semantic.decision", error.to_string()))
+    }
+}
+
+impl WireContract for DecisionResponseV2 {
+    fn validate_wire(&self) -> Result<(), WireError> {
+        self.validate()
+            .map_err(|error| WireError::new("semantic.decision_response", error.to_string()))
+    }
+}
+
 impl WireContract for ObservationEnvelope {
     fn validate_wire(&self) -> Result<(), WireError> {
         self.validate()
@@ -68,6 +87,69 @@ impl WireContract for InformationStateEnvelope {
     fn validate_wire(&self) -> Result<(), WireError> {
         self.validate()
             .map_err(|error| WireError::new("semantic.information_state", error.to_string()))
+    }
+}
+
+impl WireContract for InformationStateDigestInputV2 {
+    fn validate_wire(&self) -> Result<(), WireError> {
+        if self.schema_version != "information-state-digest-input.v2" {
+            return Err(WireError::new(
+                "semantic.information_state",
+                "unsupported information-state digest input schema",
+            ));
+        }
+        self.current_observation
+            .validate()
+            .map_err(|error| WireError::new("semantic.information_state", error.to_string()))?;
+        let public = PlayerInformationStateV2 {
+            schema_version: "information-state-envelope.v2".into(),
+            perspective: self.perspective,
+            state_revision: self.state_revision,
+            current_observation: self.current_observation.clone(),
+            next_visible_sequence: self.next_visible_sequence,
+            retained_knowledge: self.retained_knowledge.clone(),
+            digest: mtgml_model::InformationStateDigestV2::from_canonical_bytes(b"wire-validation"),
+        };
+        public
+            .validate()
+            .map_err(|error| WireError::new("semantic.information_state", error.to_string()))
+    }
+}
+
+impl WireContract for PlayerInformationStateV2 {
+    fn validate_wire(&self) -> Result<(), WireError> {
+        self.validate()
+            .map_err(|error| WireError::new("semantic.information_state", error.to_string()))?;
+        verify_information_state_digest_v2(self)
+    }
+}
+
+/// The persisted `InformationStateDigestV2` is the canonical identity of the
+/// player-safe semantic payload; forged digest values must never validate.
+fn verify_information_state_digest_v2(state: &PlayerInformationStateV2) -> Result<(), WireError> {
+    let (_, expected) = compute_information_state_digest_v2(&state.digest_input())?;
+    if expected == state.digest {
+        Ok(())
+    } else {
+        Err(WireError::new(
+            "semantic.information_state",
+            "information-state digest does not match its semantic payload",
+        ))
+    }
+}
+
+impl WireContract for ObservedEventEnvelopeV2 {
+    fn validate_wire(&self) -> Result<(), WireError> {
+        self.validate()
+            .map_err(|error| WireError::new("semantic.observed_event", error.to_string()))
+    }
+}
+
+impl WireContract for PlayerStepV2 {
+    fn validate_wire(&self) -> Result<(), WireError> {
+        self.validate()
+            .map_err(|error| WireError::new("semantic.player_step", error.to_string()))?;
+        verify_information_state_digest_v2(&self.information_state)
     }
 }
 
@@ -83,6 +165,14 @@ impl WireContract for PlayerStep {
         self.validate()
             .map_err(|error| WireError::new("semantic.player_step", error.to_string()))
     }
+}
+
+pub fn compute_information_state_digest_v2(
+    input: &InformationStateDigestInputV2,
+) -> Result<(Vec<u8>, mtgml_model::InformationStateDigestV2), WireError> {
+    let bytes = encode_canonical(input)?;
+    let digest = mtgml_model::InformationStateDigestV2::from_canonical_bytes(&bytes);
+    Ok((bytes, digest))
 }
 
 impl WireContract for EpisodeStatus {
@@ -114,6 +204,20 @@ impl WireContract for ReplayManifestV2 {
 }
 
 impl WireContract for AuthoritativeReplayV2 {
+    fn validate_wire(&self) -> Result<(), WireError> {
+        self.validate()
+            .map_err(|error| WireError::new("semantic.replay", error.to_string()))
+    }
+}
+
+impl WireContract for ReplayManifestV3 {
+    fn validate_wire(&self) -> Result<(), WireError> {
+        self.validate()
+            .map_err(|error| WireError::new("semantic.replay_manifest", error.to_string()))
+    }
+}
+
+impl WireContract for AuthoritativeReplayV3 {
     fn validate_wire(&self) -> Result<(), WireError> {
         self.validate()
             .map_err(|error| WireError::new("semantic.replay", error.to_string()))
@@ -243,17 +347,30 @@ fn decode_named(contract: &str, bytes: &[u8]) -> Result<(), WireError> {
     match contract {
         "player-decision-request.v1" => decode_canonical::<PlayerDecisionRequest>(bytes).map(drop),
         "decision-response.v1" => decode_canonical::<DecisionResponse>(bytes).map(drop),
+        "player-decision-request.v2" => {
+            decode_canonical::<PlayerDecisionRequestV2>(bytes).map(drop)
+        }
+        "decision-response.v2" => decode_canonical::<DecisionResponseV2>(bytes).map(drop),
         "observation-envelope.v1" => decode_canonical::<ObservationEnvelope>(bytes).map(drop),
         "information-state-envelope.v1" => {
             decode_canonical::<InformationStateEnvelope>(bytes).map(drop)
         }
         "observed-event-envelope.v1" => decode_canonical::<ObservedEventEnvelope>(bytes).map(drop),
         "player-step.v1" => decode_canonical::<PlayerStep>(bytes).map(drop),
+        "information-state-envelope.v2" => {
+            decode_canonical::<PlayerInformationStateV2>(bytes).map(drop)
+        }
+        "observed-event-envelope.v2" => {
+            decode_canonical::<ObservedEventEnvelopeV2>(bytes).map(drop)
+        }
+        "player-step.v2" => decode_canonical::<PlayerStepV2>(bytes).map(drop),
         "episode-status.v1" => decode_canonical::<EpisodeStatus>(bytes).map(drop),
         "replay-manifest.v1" => decode_canonical::<ReplayManifestV1>(bytes).map(drop),
         "authoritative-replay.v1" => decode_canonical::<AuthoritativeReplayV1>(bytes).map(drop),
         "replay-manifest.v2" => decode_canonical::<ReplayManifestV2>(bytes).map(drop),
         "authoritative-replay.v2" => decode_canonical::<AuthoritativeReplayV2>(bytes).map(drop),
+        "replay-manifest.v3" => decode_canonical::<ReplayManifestV3>(bytes).map(drop),
+        "authoritative-replay.v3" => decode_canonical::<AuthoritativeReplayV3>(bytes).map(drop),
         _ => Err(WireError::new(
             "fixture.unknown_contract",
             format!("unknown fixture contract {contract}"),
@@ -290,6 +407,12 @@ pub enum FixtureVerificationError {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use mtgml_model::{
+        InformationStateDigestV2, ObservationDigest, PlayerId, StateRevision, VisibleSequence,
+    };
+    use mtgml_observation::{
+        InformationStateDigestInputV2, ObservationEnvelope, OBSERVATION_SCHEMA,
+    };
 
     fn repository_root() -> std::path::PathBuf {
         std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")
@@ -303,5 +426,36 @@ mod tests {
     #[test]
     fn every_shared_negative_fixture_is_rejected_with_the_expected_code() {
         verify_negative_fixture_directory(&repository_root().join("wire/negative")).unwrap();
+    }
+
+    #[test]
+    fn information_state_digest_v2_known_answer() {
+        let input = InformationStateDigestInputV2 {
+            schema_version: "information-state-digest-input.v2".into(),
+            perspective: PlayerId(1),
+            state_revision: StateRevision(0),
+            current_observation: ObservationEnvelope {
+                schema_version: OBSERVATION_SCHEMA.into(),
+                perspective: PlayerId(1),
+                state_revision: StateRevision(0),
+                payload_codec: "synthetic-m2-observation.v1".into(),
+                payload_base64: "e30=".into(),
+                digest: ObservationDigest::from_canonical_bytes(b"{}"),
+            },
+            next_visible_sequence: VisibleSequence(0),
+            retained_knowledge: vec![],
+        };
+        let (bytes, digest) = compute_information_state_digest_v2(&input).unwrap();
+        assert_eq!(
+            String::from_utf8(bytes).unwrap(),
+            r#"{"current_observation":{"digest":"90845308617867fd703c6c4f37ede7908da24420053821f89190ad36236dfca3","payload_base64":"e30=","payload_codec":"synthetic-m2-observation.v1","perspective":"1","schema_version":"observation-envelope.v1","state_revision":"0"},"next_visible_sequence":"0","perspective":"1","retained_knowledge":[],"schema_version":"information-state-digest-input.v2","state_revision":"0"}"#
+        );
+        assert_eq!(
+            digest,
+            InformationStateDigestV2::parse(
+                "a329332227a8e6f4ca95e4e798e5fad3996f344ec924070b71080f44291e2f33",
+            )
+            .unwrap()
+        );
     }
 }

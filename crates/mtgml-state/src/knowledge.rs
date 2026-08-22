@@ -1,11 +1,5 @@
-use std::collections::BTreeMap;
-
-use mtgml_model::{
-    CardDefinitionId, EventSequence, GameObjectId, PhysicalCardId, PlayerId, RuleEventId,
-};
+use mtgml_model::VisibleSequence;
 use serde::{Deserialize, Serialize};
-
-use crate::zones::ZoneLocation;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -15,64 +9,84 @@ pub enum KnowledgeHistoryChannel {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct KnowledgePoint {
-    pub channel: KnowledgeHistoryChannel,
-    pub sequence: EventSequence,
+#[serde(rename_all = "snake_case")]
+pub enum KnowledgeAcquisitionCause {
+    PublicEvent,
+    PrivateLook,
+    ExplicitReveal,
+    OwnPrivateIdentity,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+/// Complete typed provenance for one retained semantic fact.
+///
+/// The authoritative state owns the exact observed cause; downstream layers
+/// (digest, projection) consume this value and never infer a cause from the
+/// channel. `InitialConfiguration` carries no visible sequence; an observed
+/// fact binds channel, sequence, and cause explicitly.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum KnowledgeAcquisitionReason {
     InitialConfiguration,
-    PublicEvent { event: RuleEventId },
-    PrivateEvent { event: RuleEventId },
-    OwnZoneIdentity,
-    ExplicitReveal,
+    Observed {
+        channel: KnowledgeHistoryChannel,
+        sequence: VisibleSequence,
+        cause: KnowledgeAcquisitionCause,
+    },
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum KnowledgeInvalidationReason {
     Shuffle,
-    HiddenZoneTransition,
     Randomization,
+    HiddenTransition,
     ExplicitForget,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct KnownObjectIdentity {
-    pub object: GameObjectId,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub physical_card: Option<PhysicalCardId>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub card_definition: Option<CardDefinitionId>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub known_location: Option<ZoneLocation>,
-    pub learned_at: KnowledgePoint,
-    pub learned_via: KnowledgeAcquisitionReason,
-}
+impl KnowledgeAcquisitionReason {
+    /// The observed visible sequence of this provenance, if any.
+    pub fn observed_sequence(&self) -> Option<VisibleSequence> {
+        match self {
+            Self::InitialConfiguration => None,
+            Self::Observed { sequence, .. } => Some(*sequence),
+        }
+    }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct KnowledgeInvalidationRecord {
-    pub object: GameObjectId,
-    pub invalidated_at: KnowledgePoint,
-    pub reason: KnowledgeInvalidationReason,
-}
+    /// Whether the declared channel and cause are an accepted combination:
+    /// public facts are `public_event`/`explicit_reveal`; private facts are
+    /// `private_look`/`own_private_identity`.
+    pub fn has_accepted_channel_cause(&self) -> bool {
+        match self {
+            Self::InitialConfiguration => true,
+            Self::Observed {
+                channel,
+                cause: KnowledgeAcquisitionCause::PublicEvent,
+                ..
+            }
+            | Self::Observed {
+                channel,
+                cause: KnowledgeAcquisitionCause::ExplicitReveal,
+                ..
+            } => *channel == KnowledgeHistoryChannel::Public,
+            Self::Observed {
+                channel,
+                cause: KnowledgeAcquisitionCause::PrivateLook,
+                ..
+            }
+            | Self::Observed {
+                channel,
+                cause: KnowledgeAcquisitionCause::OwnPrivateIdentity,
+                ..
+            } => *channel == KnowledgeHistoryChannel::Private,
+        }
+    }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
-#[serde(deny_unknown_fields)]
-pub struct PlayerKnowledgeState {
-    pub known_objects: BTreeMap<GameObjectId, KnownObjectIdentity>,
-    pub public_history_length: u64,
-    pub private_history_length: u64,
-    pub invalidations: Vec<KnowledgeInvalidationRecord>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
-#[serde(deny_unknown_fields)]
-pub struct KnowledgeState {
-    pub players: BTreeMap<PlayerId, PlayerKnowledgeState>,
+    /// Whether this provenance is valid inside a perspective whose next
+    /// unused visible sequence is `next_visible_sequence`.
+    pub fn is_within_visible_sequence(&self, next_visible_sequence: VisibleSequence) -> bool {
+        match self.observed_sequence() {
+            None => true,
+            Some(sequence) => sequence.0 < next_visible_sequence.0,
+        }
+    }
 }

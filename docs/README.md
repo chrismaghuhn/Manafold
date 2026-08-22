@@ -17,7 +17,10 @@ The machine-readable classification of binding, process, and informative documen
 - [`ROADMAP.md`](ROADMAP.md)
 - [`OPEN_DECISIONS.md`](OPEN_DECISIONS.md)
 
-Current executable status is M1 complete. M2.A architecture contracts are accepted; M2.B executable structural work has not yet run, so M2 behavior gates remain `NOT_RUN`.
+Current executable status is M1 complete. M2.A architecture contracts are
+accepted and the M2.B structural implementation is present; the authoritative
+`M2_EXECUTABLE_CONTRACT_AND_VERSION_CUT` is `PASS` on the local clean exact
+head. Hosted PR evidence and M2.Final closure remain separate.
 
 ## Normative architecture and semantics
 

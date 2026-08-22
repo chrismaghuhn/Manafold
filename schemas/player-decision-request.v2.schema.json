@@ -1,0 +1,64 @@
+{
+  "$id": "player-decision-request.v2.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "actor": {
+      "pattern": "^(0|[1-9][0-9]*)$",
+      "type": "string"
+    },
+    "candidates": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "candidate_id": {
+            "maximum": 4294967295,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "intent": {
+            "oneOf": [
+              {"additionalProperties": false, "properties": {"kind": {"const": "pass_priority"}}, "required": ["kind"], "type": "object"},
+              {"additionalProperties": false, "properties": {"kind": {"const": "cast_spell"}, "object": {"pattern": "^(0|[1-9][0-9]*)$", "type": "string"}}, "required": ["kind", "object"], "type": "object"},
+              {"additionalProperties": false, "properties": {"ability": {"pattern": "^(0|[1-9][0-9]*)$", "type": "string"}, "kind": {"const": "activate_ability"}}, "required": ["kind", "ability"], "type": "object"},
+              {"additionalProperties": false, "properties": {"kind": {"const": "select_object"}, "object": {"pattern": "^(0|[1-9][0-9]*)$", "type": "string"}}, "required": ["kind", "object"], "type": "object"},
+              {"additionalProperties": false, "properties": {"kind": {"const": "select_player"}, "player": {"pattern": "^(0|[1-9][0-9]*)$", "type": "string"}}, "required": ["kind", "player"], "type": "object"},
+              {"additionalProperties": false, "properties": {"kind": {"const": "select_mode"}, "mode_index": {"maximum": 4294967295, "minimum": 0, "type": "integer"}}, "required": ["kind", "mode_index"], "type": "object"},
+              {"additionalProperties": false, "properties": {"kind": {"const": "choose_boolean"}, "value": {"type": "boolean"}}, "required": ["kind", "value"], "type": "object"},
+              {"additionalProperties": false, "properties": {"kind": {"const": "declare_number"}, "value": {"maximum": 9223372036854775807, "minimum": -9223372036854775808, "type": "integer"}}, "required": ["kind", "value"], "type": "object"},
+              {"additionalProperties": false, "properties": {"kind": {"const": "confirm"}}, "required": ["kind"], "type": "object"}
+            ]
+          }
+        },
+        "required": ["candidate_id", "intent"],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "decision": {
+      "oneOf": [
+        {"additionalProperties": false, "properties": {"kind": {"const": "choose_one"}}, "required": ["kind"], "type": "object"},
+        {"additionalProperties": false, "properties": {"kind": {"const": "choose_many"}, "maximum": {"maximum": 4294967295, "minimum": 0, "type": "integer"}, "minimum": {"maximum": 4294967295, "minimum": 0, "type": "integer"}}, "required": ["kind", "minimum", "maximum"], "type": "object"},
+        {"additionalProperties": false, "properties": {"kind": {"const": "choose_number"}, "maximum": {"maximum": 9223372036854775807, "minimum": -9223372036854775808, "type": "integer"}, "minimum": {"maximum": 9223372036854775807, "minimum": -9223372036854775808, "type": "integer"}}, "required": ["kind", "minimum", "maximum"], "type": "object"},
+        {"additionalProperties": false, "properties": {"kind": {"const": "order"}, "maximum": {"maximum": 4294967295, "minimum": 0, "type": "integer"}, "minimum": {"maximum": 4294967295, "minimum": 0, "type": "integer"}}, "required": ["kind", "minimum", "maximum"], "type": "object"}
+      ]
+    },
+    "player_decision_id": {
+      "pattern": "^(0|[1-9][0-9]*)$",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "player-decision-request.v2"
+    },
+    "state_revision": {
+      "pattern": "^(0|[1-9][0-9]*)$",
+      "type": "string"
+    },
+    "visibility": {
+      "enum": ["public", "acting_player_only", "mixed"]
+    }
+  },
+  "required": ["schema_version", "player_decision_id", "state_revision", "actor", "visibility", "decision", "candidates"],
+  "title": "PlayerDecisionRequest V2",
+  "type": "object"
+}

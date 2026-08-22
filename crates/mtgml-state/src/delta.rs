@@ -1,4 +1,4 @@
-use mtgml_model::{DecisionId, FullStateDigestV2, GameObjectId, PlayerId, StateRevision};
+use mtgml_model::{DecisionId, FullStateDigestV3, GameObjectId, PlayerId, StateRevision};
 use mtgml_random::RandomStreamKeyV1;
 use serde::{Deserialize, Serialize};
 
@@ -51,8 +51,8 @@ pub enum SemanticDeltaOperation {
 pub struct StateDelta {
     pub before_revision: StateRevision,
     pub after_revision: StateRevision,
-    pub before_digest: FullStateDigestV2,
-    pub after_digest: FullStateDigestV2,
+    pub before_digest: FullStateDigestV3,
+    pub after_digest: FullStateDigestV3,
     pub replacement: EngineStateParts,
     pub audit: Vec<SemanticDeltaOperation>,
 }

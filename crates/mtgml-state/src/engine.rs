@@ -1,16 +1,16 @@
-use mtgml_model::{FullStateDigestV2, StateRevision};
+use mtgml_model::{FullStateDigestV3, StateRevision};
 use mtgml_random::RandomStateV1;
 use serde::{Deserialize, Serialize};
 
 use crate::core::CoreRulesState;
-use crate::digest::{canonicalize_json, FullStateDigestInputV2, StateDigestError};
+use crate::digest::StateDigestError;
 use crate::execution::ExecutionState;
 use crate::format::FormatState;
 use crate::identity::IdentityAllocatorState;
-use crate::knowledge::KnowledgeState;
-use crate::zones::{CanonicalOrderedZoneEntryV1, CanonicalZoneStateV1, ZoneState};
+use crate::m2_shape::{KnowledgeStateV2, PerspectiveIdentityStateV2};
+use crate::zones::ZoneState;
 
-pub const FULL_STATE_DIGEST_INPUT_SCHEMA: &str = "full-state-digest-input.v2";
+pub const FULL_STATE_DIGEST_INPUT_SCHEMA: &str = "full-state-digest-input.v3";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -21,48 +21,18 @@ pub struct EngineState {
     pub allocators: IdentityAllocatorState,
     pub execution: ExecutionState,
     pub random: RandomStateV1,
-    pub knowledge: KnowledgeState,
-    pub perspective_identities: crate::identity::PerspectiveIdentityState,
+    pub knowledge: KnowledgeStateV2,
+    pub perspective_identities: PerspectiveIdentityStateV2,
     pub format: FormatState,
 }
 
 impl EngineState {
     pub fn canonical_digest_bytes(&self) -> Result<Vec<u8>, StateDigestError> {
-        let ordered_zones = self
-            .zones
-            .ordered_zones
-            .iter()
-            .map(|(key, objects)| CanonicalOrderedZoneEntryV1 {
-                key,
-                objects: objects.as_slice(),
-            })
-            .collect();
-        let input = FullStateDigestInputV2 {
-            schema_version: FULL_STATE_DIGEST_INPUT_SCHEMA,
-            domain: FullStateDigestV2::DOMAIN,
-            revision: self.revision,
-            core: &self.core,
-            zones: CanonicalZoneStateV1 {
-                objects: &self.zones.objects,
-                locations: &self.zones.locations,
-                ordered_zones,
-                stack_records: &self.zones.stack_records,
-                stack_order: self.zones.stack_order.as_slice(),
-            },
-            allocators: &self.allocators,
-            execution: &self.execution,
-            random: &self.random,
-            knowledge: &self.knowledge,
-            perspective_identities: &self.perspective_identities,
-            format: &self.format,
-        };
-        let value = serde_json::to_value(&input).map_err(|_| StateDigestError::Serialization)?;
-        serde_json::to_vec(&canonicalize_json(value)).map_err(|_| StateDigestError::Serialization)
+        crate::digest_v3::full_state_digest_input(self)?.canonical_payload()
     }
 
-    pub fn digest(&self) -> Result<FullStateDigestV2, StateDigestError> {
-        self.canonical_digest_bytes()
-            .map(|bytes| FullStateDigestV2::from_canonical_bytes(&bytes))
+    pub fn digest(&self) -> Result<FullStateDigestV3, StateDigestError> {
+        crate::digest_v3::calculate_full_state_digest_v3_for_state(self)
     }
 
     pub fn parts(&self) -> EngineStateParts {
@@ -124,8 +94,8 @@ pub struct EngineStateParts {
     pub allocators: IdentityAllocatorState,
     pub execution: ExecutionState,
     pub random: RandomStateV1,
-    pub knowledge: KnowledgeState,
-    pub perspective_identities: crate::identity::PerspectiveIdentityState,
+    pub knowledge: KnowledgeStateV2,
+    pub perspective_identities: PerspectiveIdentityStateV2,
     pub format: FormatState,
 }
 
