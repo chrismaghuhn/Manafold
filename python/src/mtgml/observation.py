@@ -416,6 +416,13 @@ class PlayerKnownObjectV1:
                     self.last_known_location_fact.provenance, next_visible_sequence
                 )
             if self.invalidation is not None:
+                # Retirement must be an observed fact: it records an
+                # explicit reason *and visible sequence*.
+                if self.invalidation.provenance.kind != "observed":
+                    raise WireError(
+                        "semantic.information_state",
+                        "invalidation provenance must be an observed fact",
+                    )
                 _validate_provenance(self.invalidation.provenance, next_visible_sequence)
 
     def to_wire(self) -> dict[str, object]:

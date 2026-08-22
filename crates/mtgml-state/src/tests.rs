@@ -1455,3 +1455,23 @@ fn historical_monotonicity_ignores_unsequenced_provenance() {
         ))
     );
 }
+
+#[test]
+fn invalidation_must_carry_an_observed_visible_sequence() {
+    let mut state = synthetic_state();
+    let identity = state
+        .perspective_identities
+        .players
+        .get_mut(&PlayerId(1))
+        .unwrap();
+    identity.next_opaque_object_id = OpaqueObjectId(6);
+    identity.retired_object_ids.insert(OpaqueObjectId(5));
+    let knowledge = state.knowledge.players.get_mut(&PlayerId(1)).unwrap();
+    let mut record = retired_record(OpaqueObjectId(5));
+    record.invalidation.provenance = KnowledgeAcquisitionReason::InitialConfiguration;
+    knowledge.retired.insert(OpaqueObjectId(5), record);
+    assert_eq!(
+        validate_engine_state(&state),
+        Err(EngineStateViolation::M2Shape(M2ShapeViolation::Knowledge))
+    );
+}

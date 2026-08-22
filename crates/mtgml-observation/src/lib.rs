@@ -445,14 +445,21 @@ impl PlayerKnownObjectV1 {
                 invalidation,
                 ..
             } => {
-                valid(acquisition)
+                // Invalidation must be an observed fact: retirement records
+                // an explicit reason *and visible sequence*.
+                let invalidation_is_observed = matches!(
+                    &invalidation.provenance,
+                    PlayerKnowledgeProvenanceV1::Observed { .. }
+                );
+                invalidation_is_observed
+                    && valid(&invalidation.provenance)
+                    && valid(acquisition)
                     && last_known_location_fact
                         .as_ref()
                         .is_none_or(|fact| valid(&fact.provenance))
                     && historical_locations
                         .iter()
                         .all(|fact| valid(&fact.provenance))
-                    && valid(&invalidation.provenance)
             }
         }
     }

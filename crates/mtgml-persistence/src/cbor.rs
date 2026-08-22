@@ -151,20 +151,36 @@ impl<'a> Decoder<'a> {
                 Ok(Value::Signed(-1 - argument as i64))
             }
             2 => {
-                let length = checked_length(
-                    argument,
-                    MAX_BYTE_STRING_BYTES,
-                    PersistenceDecodeErrorV1::PayloadTooLarge,
-                )?;
-                Ok(Value::Bytes(self.read_exact(length)?.to_vec()))
+                // ADR-0040: truncation (rank 3) precedes an over-limit
+                // declaration (rank 4) for length-prefixed values.
+                let declared = usize::try_from(argument)
+                    .map_err(|_| PersistenceDecodeErrorV1::EnvelopeLength)?;
+                let end = self
+                    .offset
+                    .checked_add(declared)
+                    .ok_or(PersistenceDecodeErrorV1::EnvelopeLength)?;
+                if end > self.input.len() {
+                    return Err(PersistenceDecodeErrorV1::EnvelopeLength);
+                }
+                if declared > MAX_BYTE_STRING_BYTES {
+                    return Err(PersistenceDecodeErrorV1::PayloadTooLarge);
+                }
+                Ok(Value::Bytes(self.read_exact(declared)?.to_vec()))
             }
             3 => {
-                let length = checked_length(
-                    argument,
-                    MAX_TEXT_BYTES,
-                    PersistenceDecodeErrorV1::StringTooLarge,
-                )?;
-                let bytes = self.read_exact(length)?;
+                let declared = usize::try_from(argument)
+                    .map_err(|_| PersistenceDecodeErrorV1::EnvelopeLength)?;
+                let end = self
+                    .offset
+                    .checked_add(declared)
+                    .ok_or(PersistenceDecodeErrorV1::EnvelopeLength)?;
+                if end > self.input.len() {
+                    return Err(PersistenceDecodeErrorV1::EnvelopeLength);
+                }
+                if declared > MAX_TEXT_BYTES {
+                    return Err(PersistenceDecodeErrorV1::StringTooLarge);
+                }
+                let bytes = self.read_exact(declared)?;
                 let text = String::from_utf8(bytes.to_vec())
                     .map_err(|_| PersistenceDecodeErrorV1::InvalidUtf8)?;
                 Ok(Value::Text(text))

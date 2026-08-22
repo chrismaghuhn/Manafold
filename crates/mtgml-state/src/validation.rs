@@ -296,9 +296,16 @@ pub fn validate_engine_state(state: &EngineState) -> Result<(), EngineStateViola
             }
         }
         for record in knowledge.retired.values() {
+            // Retirement must carry an observed invalidation sequence
+            // (INFORMATION_MODEL.md: invalidation reason *and visible
+            // sequence*); an unsequenced initial configuration cannot
+            // invalidate anything.
+            let invalidation_is_observed =
+                record.invalidation.provenance.observed_sequence().is_some();
             if identity
                 .opaque_to_object
                 .contains_key(&record.opaque_object)
+                || !invalidation_is_observed
                 || !provenance_is_valid(&record.acquisition, knowledge)
                 || !provenance_is_valid(&record.invalidation.provenance, knowledge)
                 || record

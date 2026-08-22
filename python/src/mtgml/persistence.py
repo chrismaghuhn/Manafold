@@ -150,10 +150,16 @@ class _Decoder:
                 raise _error("value_out_of_range", "negative integer is outside i64")
             return -1 - argument
         if major == 2:
+            # ADR-0040: truncation (rank 3) precedes an over-limit
+            # declaration (rank 4) for length-prefixed values.
+            if argument > len(self.data) - self.offset:
+                raise _error("envelope_length", "byte string is truncated")
             if argument > MAX_BYTE_STRING_BYTES:
                 raise _error("payload_too_large", "byte string is too large")
             return self.exact(argument)
         if major == 3:
+            if argument > len(self.data) - self.offset:
+                raise _error("envelope_length", "text string is truncated")
             if argument > MAX_TEXT_BYTES:
                 raise _error("string_too_large", "text string is too large")
             try:
@@ -225,28 +231,46 @@ def decode_envelope(envelope: bytes) -> tuple[dict[str, object], bytes]:
         raise _error("envelope_identity", "envelope prefix is invalid")
     offset = len(prefix)
 
-    def read_frame(identifier: bool) -> bytes:
+    def read_declared_bytes(declared: int) -> bytes:
         nonlocal offset
-        if offset + 8 > len(envelope):
-            raise _error("envelope_length", "envelope frame length is truncated")
-        length = struct.unpack(">Q", envelope[offset : offset + 8])[0]
-        offset += 8
-        limit = MAX_IDENTIFIER_BYTES if identifier else MAX_PAYLOAD_BYTES
-        if length > limit:
-            raise _error(
-                "envelope_identity" if identifier else "payload_too_large", "frame is too large"
-            )
-        end = offset + length
+        end = offset + declared
         if end > len(envelope):
             raise _error("envelope_length", "envelope frame is truncated")
         value = envelope[offset:end]
         offset = end
         return value
 
+    def read_identifier_frame() -> bytes:
+        # Identifier precedence is rank 2 over rank 3: a declared length
+        # above the identifier bound is an identity defect even when the
+        # declared bytes are also absent.
+        nonlocal offset
+        if offset + 8 > len(envelope):
+            raise _error("envelope_length", "envelope frame length is truncated")
+        declared = struct.unpack(">Q", envelope[offset : offset + 8])[0]
+        offset += 8
+        if declared > MAX_IDENTIFIER_BYTES:
+            raise _error("envelope_identity", "identifier frame is too large")
+        return read_declared_bytes(declared)
+
+    def read_payload_frame() -> bytes:
+        # Payload precedence follows ADR-0040: truncation (rank 3) is
+        # reported before an over-limit declaration (rank 4).
+        nonlocal offset
+        if offset + 8 > len(envelope):
+            raise _error("envelope_length", "envelope frame length is truncated")
+        declared = struct.unpack(">Q", envelope[offset : offset + 8])[0]
+        offset += 8
+        if declared > len(envelope) - offset:
+            raise _error("envelope_length", "payload frame is truncated")
+        if declared > MAX_PAYLOAD_BYTES:
+            raise _error("payload_too_large", "payload frame is too large")
+        return read_declared_bytes(declared)
+
     # ADR-0040 total precedence. Every identity field is validated
     # immediately after its own frame is read, so an identity defect always
     # precedes any later framing or payload defect (rank 2 < 3 < 4).
-    algorithm = read_frame(True)
+    algorithm = read_identifier_frame()
     try:
         algorithm_text = algorithm.decode("ascii")
     except UnicodeDecodeError as exc:
@@ -254,14 +278,14 @@ def decode_envelope(envelope: bytes) -> tuple[dict[str, object], bytes]:
     if algorithm_text != SHA256_ID:
         raise _error("envelope_identity", "unsupported envelope algorithm")
 
-    domain = read_frame(True)
+    domain = read_identifier_frame()
     try:
         domain_text = domain.decode("ascii")
     except UnicodeDecodeError as exc:
         raise _error("envelope_identity", "identifier is not ASCII") from exc
     _identifier(domain_text)
 
-    codec = read_frame(True)
+    codec = read_identifier_frame()
     try:
         codec_text = codec.decode("ascii")
     except UnicodeDecodeError as exc:
@@ -269,7 +293,7 @@ def decode_envelope(envelope: bytes) -> tuple[dict[str, object], bytes]:
     if codec_text != CANONICAL_CBOR_ID:
         raise _error("envelope_identity", "unsupported envelope payload codec")
 
-    schema = read_frame(True)
+    schema = read_identifier_frame()
     try:
         schema_text = schema.decode("ascii")
     except UnicodeDecodeError as exc:
@@ -278,7 +302,7 @@ def decode_envelope(envelope: bytes) -> tuple[dict[str, object], bytes]:
 
     # Identity fields are fully validated; only now may payload bounds
     # (rank 4) and framing defects such as trailing bytes be reported.
-    payload = read_frame(False)
+    payload = read_payload_frame()
     if offset != len(envelope):
         raise _error("envelope_length", "trailing envelope bytes")
     decode_canonical(payload)

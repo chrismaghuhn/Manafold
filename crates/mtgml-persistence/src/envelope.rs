@@ -59,7 +59,7 @@ pub fn decode_envelope(
     }
     let mut offset = prefix.len();
 
-    let algorithm = read_frame(envelope, &mut offset, true)?;
+    let algorithm = read_identifier_frame(envelope, &mut offset)?;
     let algorithm =
         String::from_utf8(algorithm).map_err(|_| PersistenceDecodeErrorV1::EnvelopeIdentity)?;
     validate_identifier(&algorithm)?;
@@ -67,26 +67,26 @@ pub fn decode_envelope(
         return Err(PersistenceDecodeErrorV1::EnvelopeIdentity);
     }
 
-    let semantic_domain = read_frame(envelope, &mut offset, true)?;
+    let semantic_domain = read_identifier_frame(envelope, &mut offset)?;
     let semantic_domain = String::from_utf8(semantic_domain)
         .map_err(|_| PersistenceDecodeErrorV1::EnvelopeIdentity)?;
     validate_identifier(&semantic_domain)?;
 
-    let codec = read_frame(envelope, &mut offset, true)?;
+    let codec = read_identifier_frame(envelope, &mut offset)?;
     let codec = String::from_utf8(codec).map_err(|_| PersistenceDecodeErrorV1::EnvelopeIdentity)?;
     validate_identifier(&codec)?;
     if codec != CANONICAL_CBOR_ID {
         return Err(PersistenceDecodeErrorV1::EnvelopeIdentity);
     }
 
-    let input_schema = read_frame(envelope, &mut offset, true)?;
+    let input_schema = read_identifier_frame(envelope, &mut offset)?;
     let input_schema =
         String::from_utf8(input_schema).map_err(|_| PersistenceDecodeErrorV1::EnvelopeIdentity)?;
     validate_identifier(&input_schema)?;
 
-    // Identity fields are fully validated; only now may payload bounds
-    // (rank 4) and framing defects such as trailing bytes be reported.
-    let payload = read_frame(envelope, &mut offset, false)?;
+    // Identity fields are fully validated; only now may payload framing
+    // (rank 3) and payload bounds (rank 4) be reported.
+    let payload = read_payload_frame(envelope, &mut offset)?;
     if offset != envelope.len() {
         return Err(PersistenceDecodeErrorV1::EnvelopeLength);
     }
@@ -134,10 +134,12 @@ fn write_frame(output: &mut Vec<u8>, value: &[u8]) -> Result<(), PersistenceDeco
     Ok(())
 }
 
-fn read_frame(
+/// Reads one identifier frame. Precedence for identifiers is rank 2 over
+/// rank 3: a declared length above the identifier bound is an identity
+/// defect even when the declared bytes are also absent.
+fn read_identifier_frame(
     input: &[u8],
     offset: &mut usize,
-    identifier: bool,
 ) -> Result<Vec<u8>, PersistenceDecodeErrorV1> {
     let end_of_length = offset
         .checked_add(8)
@@ -145,33 +147,57 @@ fn read_frame(
     if end_of_length > input.len() {
         return Err(PersistenceDecodeErrorV1::EnvelopeLength);
     }
-    let length = u64::from_be_bytes(
+    let declared = u64::from_be_bytes(
         input[*offset..end_of_length]
             .try_into()
-            .map_err(|_| PersistenceDecodeErrorV1::EnvelopeLength)?,
+            .expect("length is 8 bytes"),
     );
     *offset = end_of_length;
-    let limit = if identifier {
-        MAX_IDENTIFIER_BYTES
-    } else {
-        cbor::MAX_PAYLOAD_BYTES
-    };
-    let length = usize::try_from(length).map_err(|_| {
-        if identifier {
-            PersistenceDecodeErrorV1::EnvelopeIdentity
-        } else {
-            PersistenceDecodeErrorV1::PayloadTooLarge
-        }
-    })?;
-    if length > limit {
-        return Err(if identifier {
-            PersistenceDecodeErrorV1::EnvelopeIdentity
-        } else {
-            PersistenceDecodeErrorV1::PayloadTooLarge
-        });
+    let declared =
+        usize::try_from(declared).map_err(|_| PersistenceDecodeErrorV1::EnvelopeIdentity)?;
+    if declared > MAX_IDENTIFIER_BYTES {
+        return Err(PersistenceDecodeErrorV1::EnvelopeIdentity);
     }
+    read_declared_bytes(input, offset, declared)
+}
+
+/// Reads the payload frame. Precedence follows ADR-0040: truncation
+/// (rank 3) is reported before an over-limit declaration (rank 4).
+fn read_payload_frame(
+    input: &[u8],
+    offset: &mut usize,
+) -> Result<Vec<u8>, PersistenceDecodeErrorV1> {
+    let end_of_length = offset
+        .checked_add(8)
+        .ok_or(PersistenceDecodeErrorV1::EnvelopeLength)?;
+    if end_of_length > input.len() {
+        return Err(PersistenceDecodeErrorV1::EnvelopeLength);
+    }
+    let declared = u64::from_be_bytes(
+        input[*offset..end_of_length]
+            .try_into()
+            .expect("length is 8 bytes"),
+    );
+    *offset = end_of_length;
+    let declared =
+        usize::try_from(declared).map_err(|_| PersistenceDecodeErrorV1::EnvelopeLength)?;
+    let remaining = input.len() - *offset;
+    if declared > remaining {
+        return Err(PersistenceDecodeErrorV1::EnvelopeLength);
+    }
+    if declared > cbor::MAX_PAYLOAD_BYTES {
+        return Err(PersistenceDecodeErrorV1::PayloadTooLarge);
+    }
+    read_declared_bytes(input, offset, declared)
+}
+
+fn read_declared_bytes(
+    input: &[u8],
+    offset: &mut usize,
+    declared: usize,
+) -> Result<Vec<u8>, PersistenceDecodeErrorV1> {
     let end = offset
-        .checked_add(length)
+        .checked_add(declared)
         .ok_or(PersistenceDecodeErrorV1::EnvelopeLength)?;
     if end > input.len() {
         return Err(PersistenceDecodeErrorV1::EnvelopeLength);

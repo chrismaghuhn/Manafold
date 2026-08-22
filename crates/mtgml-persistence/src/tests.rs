@@ -118,20 +118,21 @@ fn canonical_cbor_v1_complete_profile_matrix() {
                 .collect(),
             PersistenceDecodeErrorV1::ValueOutOfRange,
         ),
-        // Declared over-limit lengths are rejected before allocation.
+        // Declared over-limit lengths that are ALSO truncated report the
+        // earlier framing category (rank 3 < rank 4/5).
         (
             [0x7a]
                 .into_iter()
                 .chain((1024u32 * 1024 + 1).to_be_bytes())
                 .collect(),
-            PersistenceDecodeErrorV1::StringTooLarge,
+            PersistenceDecodeErrorV1::EnvelopeLength,
         ),
         (
             [0x5a]
                 .into_iter()
                 .chain(((64u32 * 1024 * 1024) + 1).to_be_bytes())
                 .collect(),
-            PersistenceDecodeErrorV1::PayloadTooLarge,
+            PersistenceDecodeErrorV1::EnvelopeLength,
         ),
         (
             [0x9a]
@@ -175,6 +176,44 @@ fn canonical_cbor_v1_complete_profile_matrix() {
         cbor::decode_canonical(&item_bomb),
         Err(PersistenceDecodeErrorV1::ItemLimitExceeded)
     ));
+
+    // With the declared bytes fully present the resource categories fire:
+    // a real 1 MiB + 1 byte text exceeds MAX_TEXT_BYTES.
+    let full_text_size = 1024usize * 1024 + 1;
+    let mut full_text = vec![0x7a];
+    full_text.extend((full_text_size as u32).to_be_bytes());
+    full_text.extend(std::iter::repeat_n(b'a', full_text_size));
+    assert_eq!(
+        cbor::decode_canonical(&full_text).unwrap_err(),
+        PersistenceDecodeErrorV1::StringTooLarge
+    );
+}
+
+/// An envelope whose payload frame declares above the bound AND fully
+/// contains those bytes proves `payload_too_large` fires once truncation is
+/// excluded (rank 4 after rank 3).
+#[test]
+fn payload_too_large_requires_full_bytes_present() {
+    let payload_limit = cbor::MAX_PAYLOAD_BYTES;
+    let declared = payload_limit + 1;
+    let mut envelope = Vec::with_capacity(declared + 256);
+    envelope.extend_from_slice(envelope::DIGEST_ENVELOPE_ID.as_bytes());
+    envelope.push(0);
+    for field in [
+        &envelope::SHA256_ID.as_bytes().to_vec(),
+        &b"mtgml.test-domain.v1".to_vec(),
+        &envelope::CANONICAL_CBOR_ID.as_bytes().to_vec(),
+        &b"test-input.v1".to_vec(),
+    ] {
+        envelope.extend((field.len() as u64).to_be_bytes());
+        envelope.extend_from_slice(field);
+    }
+    envelope.extend((declared as u64).to_be_bytes());
+    envelope.resize(envelope.len() + declared, 0);
+    assert_eq!(
+        envelope::decode_envelope(&envelope).unwrap_err(),
+        PersistenceDecodeErrorV1::PayloadTooLarge
+    );
 }
 
 #[test]
@@ -297,12 +336,15 @@ fn digest_envelope_v1_known_answer_matrix() {
         PersistenceDecodeErrorV1::EnvelopeLength
     );
 
-    // Resource bounds before allocation.
+    // A payload frame that both declares above the bound and lacks its
+    // bytes reports the earlier framing defect (rank 3 < rank 4). The
+    // bytes-present counterpart is covered by
+    // payload_too_large_requires_full_bytes_present.
     let mut over_limit_payload_decl = assemble(&[&fields[0], &fields[1], &fields[2], &fields[3]]);
     over_limit_payload_decl.extend((u64::from(cbor::MAX_PAYLOAD_BYTES as u32) + 1).to_be_bytes());
     assert_eq!(
         envelope::decode_envelope(&over_limit_payload_decl).unwrap_err(),
-        PersistenceDecodeErrorV1::PayloadTooLarge
+        PersistenceDecodeErrorV1::EnvelopeLength
     );
 }
 

@@ -361,6 +361,12 @@ fn validate_knowledge(knowledge: &PlayerKnowledgeStateV2) -> Result<(), M2ShapeV
         {
             return Err(M2ShapeViolation::Knowledge);
         }
+        // INFORMATION_MODEL.md: retirement records an explicit invalidation
+        // reason *and visible sequence* — an unsequenced initial
+        // configuration cannot invalidate anything.
+        if record.invalidation.provenance.observed_sequence().is_none() {
+            return Err(M2ShapeViolation::Knowledge);
+        }
         provenance_is_valid(&record.acquisition)?;
         provenance_is_valid(&record.invalidation.provenance)?;
         if let Some(fact) = record.last_known_location.as_ref() {
