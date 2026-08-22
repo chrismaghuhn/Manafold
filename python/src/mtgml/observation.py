@@ -531,6 +531,14 @@ class PlayerInformationStateV2:
             raise WireError("semantic.information_state", "retained knowledge is not canonical")
         for item in self.retained_knowledge:
             item.validate()
+        from .wire import compute_information_state_digest_v2
+
+        _, expected = compute_information_state_digest_v2(self.digest_input())
+        if self.digest != expected:
+            raise WireError(
+                "semantic.information_state",
+                "information-state digest does not match its semantic payload",
+            )
 
     def digest_input(self) -> InformationStateDigestInputV2:
         return InformationStateDigestInputV2(

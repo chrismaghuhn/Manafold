@@ -96,6 +96,12 @@ digest. `mtgml-wire` is the single owner of the canonical JSON bytes and
 semantic input, requests that calculation, verifies the result, and only then
 exposes or commits the player information state.
 
+Because `InformationStateDigestV2` is the canonical identity of the
+player-safe semantic payload, canonical decoders verify it: Rust
+`decode_canonical` and the Python `from_wire()`/`validate()` path recompute
+the digest over the decoded payload and reject forged digest values as closed
+semantic errors before any trusted value is constructed.
+
 `mtgml-persistence` separately owns the restricted canonical CBOR/envelope
 codec and the single `CheckpointDigestV3` calculation. M2.B does not introduce
 an `EnvironmentCheckpointV3` public JSON schema, Python checkpoint DTO,

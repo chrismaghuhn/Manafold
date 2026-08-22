@@ -119,7 +119,22 @@ impl WireContract for InformationStateDigestInputV2 {
 impl WireContract for PlayerInformationStateV2 {
     fn validate_wire(&self) -> Result<(), WireError> {
         self.validate()
-            .map_err(|error| WireError::new("semantic.information_state", error.to_string()))
+            .map_err(|error| WireError::new("semantic.information_state", error.to_string()))?;
+        verify_information_state_digest_v2(self)
+    }
+}
+
+/// The persisted `InformationStateDigestV2` is the canonical identity of the
+/// player-safe semantic payload; forged digest values must never validate.
+fn verify_information_state_digest_v2(state: &PlayerInformationStateV2) -> Result<(), WireError> {
+    let (_, expected) = compute_information_state_digest_v2(&state.digest_input())?;
+    if expected == state.digest {
+        Ok(())
+    } else {
+        Err(WireError::new(
+            "semantic.information_state",
+            "information-state digest does not match its semantic payload",
+        ))
     }
 }
 
@@ -133,7 +148,8 @@ impl WireContract for ObservedEventEnvelopeV2 {
 impl WireContract for PlayerStepV2 {
     fn validate_wire(&self) -> Result<(), WireError> {
         self.validate()
-            .map_err(|error| WireError::new("semantic.player_step", error.to_string()))
+            .map_err(|error| WireError::new("semantic.player_step", error.to_string()))?;
+        verify_information_state_digest_v2(&self.information_state)
     }
 }
 

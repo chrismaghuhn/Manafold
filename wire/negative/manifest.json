@@ -143,6 +143,12 @@
       "expected_error_code": "semantic.replay",
       "expected_reject_layer": "rust-python-semantic-or-decode",
       "path": "replay-v3-checkpoint-digest-mismatch.json"
+    },
+    {
+      "contract": "information-state-envelope.v2",
+      "expected_error_code": "semantic.information_state",
+      "expected_reject_layer": "rust-python-semantic-or-decode",
+      "path": "information-v2-forged-digest.json"
     }
   ]
 }
