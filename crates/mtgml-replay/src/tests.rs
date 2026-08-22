@@ -8,13 +8,14 @@ use mtgml_model::{
     StateRevision,
 };
 
+use crate::recorder::ReplayRecorderV2;
 use crate::{
     AuthoritativeReplayV1, AuthoritativeReplayV3, DeckIdentityV1, InitialEnvironmentIdentityV3,
     KernelIdentityV1, RandomnessIdentityV1, RandomnessIdentityV2, ReplayManifestV1,
-    ReplayManifestV2, ReplayManifestV3, ReplayRecorderV2, ReplayRecorderV3, ReplaySchemaVersionsV1,
-    ReplayStepV1, ReplayStepV2, ReplayStepV3, ReplayValidationError, REPLAY_FILE_SCHEMA,
-    REPLAY_FILE_SCHEMA_V2, REPLAY_MANIFEST_SCHEMA, REPLAY_MANIFEST_SCHEMA_V2,
-    REPLAY_MANIFEST_SCHEMA_V3, REPLAY_STEP_SCHEMA_V3,
+    ReplayManifestV2, ReplayManifestV3, ReplayRecorderV3, ReplaySchemaVersionsV1, ReplayStepV1,
+    ReplayStepV2, ReplayStepV3, ReplayValidationError, REPLAY_FILE_SCHEMA, REPLAY_FILE_SCHEMA_V2,
+    REPLAY_MANIFEST_SCHEMA, REPLAY_MANIFEST_SCHEMA_V2, REPLAY_MANIFEST_SCHEMA_V3,
+    REPLAY_STEP_SCHEMA_V3,
 };
 
 fn digest(text: char) -> FullStateDigest {
@@ -351,4 +352,172 @@ fn replay_v3_empty_accepted_rejected_identity_matrix() {
     let accepted_replay = accepted_recorder.export().unwrap();
     accepted_replay.validate().unwrap();
     assert_eq!(accepted_replay.final_identity, after);
+}
+
+fn accepted_v3_step(
+    index: u64,
+    before: &InitialEnvironmentIdentityV3,
+    after: InitialEnvironmentIdentityV3,
+) -> ReplayStepV3 {
+    ReplayStepV3 {
+        step_index: index,
+        actor: PlayerId(1),
+        checkpoint_digest_before: before.checkpoint_digest.clone(),
+        state_revision_before: before.state_revision,
+        response: DecisionResponseV2 {
+            state_revision: before.state_revision,
+            ..response_v3()
+        },
+        accepted: true,
+        state_revision_after: after.state_revision,
+        full_state_digest_after: after.full_state_digest.clone(),
+        episode_status_after: after.episode_status.clone(),
+        environment_limit_counters_after: after.environment_limit_counters.clone(),
+        checkpoint_digest_after: after.checkpoint_digest.clone(),
+    }
+}
+
+fn regressed_final(manifest: &ReplayManifestV3) -> InitialEnvironmentIdentityV3 {
+    let mut final_identity = manifest.initial_identity.clone();
+    final_identity.state_revision = StateRevision(1);
+    final_identity.full_state_digest = FullStateDigestV3::from_digest_bytes([1; 32]);
+    final_identity.environment_limit_counters = EnvironmentLimitCounters {
+        decisions_submitted: 1,
+        accepted_transitions: 1,
+        ..EnvironmentLimitCounters::default()
+    };
+    let checkpoint_digest = mtgml_persistence::checkpoint_digest::calculate_checkpoint_digest_v3(
+        &final_identity.full_state_digest.as_digest_reference(),
+        &final_identity.episode_status,
+        &final_identity.environment_limit_counters,
+        &final_identity.checkpoint_codec_identity,
+    )
+    .unwrap();
+    final_identity.checkpoint_digest = checkpoint_digest;
+    final_identity
+}
+
+#[test]
+fn replay_v3_rejects_corrupt_accepted_progression() {
+    let manifest = manifest_v3();
+    let initial = manifest.initial_identity.clone();
+
+    // Accepted steps must advance the revision exactly contiguously.
+    let jumped_counters = EnvironmentLimitCounters {
+        decisions_submitted: 1,
+        accepted_transitions: 1,
+        ..EnvironmentLimitCounters::default()
+    };
+    let jumped = v3_identity(2, 1, jumped_counters);
+    let mut replay = AuthoritativeReplayV3 {
+        schema_version: crate::REPLAY_FILE_SCHEMA_V3.into(),
+        manifest: manifest.clone(),
+        steps: vec![accepted_v3_step(0, &initial, jumped)],
+        final_identity: v3_identity(
+            2,
+            1,
+            EnvironmentLimitCounters {
+                decisions_submitted: 1,
+                accepted_transitions: 1,
+                ..EnvironmentLimitCounters::default()
+            },
+        ),
+    };
+    assert_eq!(
+        replay.validate(),
+        Err(ReplayValidationError::RevisionDiscontinuity)
+    );
+
+    // Counter progression is deterministic per accepted step.
+    for (name, counters) in [
+        (
+            "decisions_submitted",
+            EnvironmentLimitCounters {
+                decisions_submitted: 2,
+                accepted_transitions: 1,
+                ..EnvironmentLimitCounters::default()
+            },
+        ),
+        (
+            "accepted_transitions",
+            EnvironmentLimitCounters {
+                decisions_submitted: 1,
+                accepted_transitions: 2,
+                ..EnvironmentLimitCounters::default()
+            },
+        ),
+    ] {
+        let after = v3_identity(1, 1, counters);
+        replay.steps = vec![accepted_v3_step(0, &initial, after.clone())];
+        replay.final_identity = after;
+        assert_eq!(
+            replay.validate(),
+            Err(ReplayValidationError::CounterProgression),
+            "counter corruption case {name} must be rejected"
+        );
+    }
+
+    // Trace counters never move backwards.
+    let started_counters = EnvironmentLimitCounters {
+        rule_events_emitted: 5,
+        resource_units_consumed: 7,
+        wall_clock_elapsed_millis: 9,
+        ..EnvironmentLimitCounters::default()
+    };
+    let mut regressing_manifest = manifest_v3();
+    regressing_manifest.initial_identity = v3_identity(0, 0, started_counters);
+    let regressed = v3_identity(
+        1,
+        1,
+        EnvironmentLimitCounters {
+            decisions_submitted: 1,
+            accepted_transitions: 1,
+            ..EnvironmentLimitCounters::default()
+        },
+    );
+    let regressing_replay = AuthoritativeReplayV3 {
+        schema_version: crate::REPLAY_FILE_SCHEMA_V3.into(),
+        manifest: regressing_manifest.clone(),
+        steps: vec![accepted_v3_step(
+            0,
+            &regressing_manifest.initial_identity,
+            regressed,
+        )],
+        final_identity: regressed_final(&regressing_manifest),
+    };
+    assert_eq!(
+        regressing_replay.validate(),
+        Err(ReplayValidationError::CounterProgression)
+    );
+
+    // The exact deterministic progression remains valid.
+    let after = v3_identity(
+        1,
+        1,
+        EnvironmentLimitCounters {
+            decisions_submitted: 1,
+            accepted_transitions: 1,
+            rule_events_emitted: 4,
+            ..EnvironmentLimitCounters::default()
+        },
+    );
+    replay.steps = vec![accepted_v3_step(0, &initial, after.clone())];
+    replay.final_identity = after;
+    replay.validate().unwrap();
+
+    // A rejected step must preserve the complete checkpoint identity.
+    let mut step = accepted_v3_step(0, &initial, {
+        let counters = EnvironmentLimitCounters {
+            decisions_submitted: 1,
+            accepted_transitions: 1,
+            ..EnvironmentLimitCounters::default()
+        };
+        v3_identity(1, 1, counters)
+    });
+    step.accepted = false;
+    replay.steps = vec![step];
+    assert_eq!(
+        replay.validate(),
+        Err(ReplayValidationError::RejectedMutation)
+    );
 }

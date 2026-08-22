@@ -911,8 +911,25 @@ class AuthoritativeReplayV3:
                     or step.checkpoint_digest_after != previous.checkpoint_digest
                 ):
                     raise WireError("semantic.replay", "rejected step mutated identity")
-            elif step.state_revision_after <= previous.state_revision:
-                raise WireError("semantic.replay", "accepted step did not advance revision")
+            else:
+                if step.state_revision_after != previous.state_revision + 1:
+                    raise WireError(
+                        "semantic.replay", "accepted step did not advance revision contiguously"
+                    )
+                after = step.environment_limit_counters_after
+                before = previous.environment_limit_counters
+                if (
+                    after.decisions_submitted != before.decisions_submitted + 1
+                    or after.accepted_transitions != before.accepted_transitions + 1
+                    or after.accepted_transitions > after.decisions_submitted
+                    or after.rule_events_emitted < before.rule_events_emitted
+                    or after.resource_units_consumed < before.resource_units_consumed
+                    or after.wall_clock_elapsed_millis < before.wall_clock_elapsed_millis
+                ):
+                    raise WireError(
+                        "semantic.replay",
+                        "accepted step counter progression is not deterministic",
+                    )
             previous = InitialEnvironmentIdentityV3(
                 step.state_revision_after,
                 step.full_state_digest_after,

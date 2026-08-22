@@ -30,4 +30,6 @@ pub enum ReplayValidationError {
     CheckpointIdentity,
     #[error("replay step actor identity is invalid")]
     Actor,
+    #[error("accepted replay step counter progression is not deterministic")]
+    CounterProgression,
 }

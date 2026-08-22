@@ -166,8 +166,38 @@ impl AuthoritativeReplayV3 {
                 {
                     return Err(ReplayValidationError::RejectedMutation);
                 }
-            } else if step.state_revision_after.0 <= previous.state_revision.0 {
-                return Err(ReplayValidationError::RevisionDiscontinuity);
+            } else {
+                // Accepted steps advance exactly one authoritative revision.
+                let expected_revision = previous
+                    .state_revision
+                    .0
+                    .checked_add(1)
+                    .ok_or(ReplayValidationError::RevisionDiscontinuity)?;
+                if step.state_revision_after.0 != expected_revision {
+                    return Err(ReplayValidationError::RevisionDiscontinuity);
+                }
+                // Every accepted step submits exactly one decision and commits
+                // exactly one accepted transition; trace counters never move
+                // backwards.
+                let after = &step.environment_limit_counters_after;
+                let before_counters = &previous.environment_limit_counters;
+                let next_decisions = before_counters
+                    .decisions_submitted
+                    .checked_add(1)
+                    .ok_or(ReplayValidationError::CounterProgression)?;
+                let next_accepted = before_counters
+                    .accepted_transitions
+                    .checked_add(1)
+                    .ok_or(ReplayValidationError::CounterProgression)?;
+                if after.decisions_submitted != next_decisions
+                    || after.accepted_transitions != next_accepted
+                    || after.accepted_transitions > after.decisions_submitted
+                    || after.rule_events_emitted < before_counters.rule_events_emitted
+                    || after.resource_units_consumed < before_counters.resource_units_consumed
+                    || after.wall_clock_elapsed_millis < before_counters.wall_clock_elapsed_millis
+                {
+                    return Err(ReplayValidationError::CounterProgression);
+                }
             }
             let next = InitialEnvironmentIdentityV3 {
                 state_revision: step.state_revision_after,
