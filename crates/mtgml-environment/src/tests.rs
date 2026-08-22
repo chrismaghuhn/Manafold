@@ -654,16 +654,22 @@ fn player_api_errors_do_not_render_trusted_values() {
         format!("{}", p2_error_text(&controller)),
     ];
     for message in errors {
-        for trusted in [
+        // Evaluate to a bare boolean: no trusted-looking literal may reach a
+        // log/format sink here (cf. CodeQL cleartext-logging).
+        let renders_trusted_vocabulary = [
             "seed",
             "digest",
             "checkpoint",
             "continuation",
             "GameObject",
             "DecisionId",
-        ] {
-            assert!(!message.contains(trusted), "leaked {trusted}: {message}");
-        }
+        ]
+        .iter()
+        .any(|vocabulary| message.contains(vocabulary));
+        assert!(
+            !renders_trusted_vocabulary,
+            "player API error must not render trusted values"
+        );
     }
 }
 
