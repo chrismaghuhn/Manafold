@@ -118,14 +118,20 @@ class _Decoder:
     def head(self) -> tuple[int, int]:
         first = self.exact(1)[0]
         major, additional = first >> 5, first & 0x1F
+        # ADR-0040 precedence: a disallowed form is observable from the head
+        # itself and precedes any canonical-primitive defect of the argument.
+        if major in (5, 6):
+            raise _error("disallowed_cbor_form", "CBOR maps and tags are forbidden")
+        if additional >= 28:
+            raise _error("disallowed_cbor_form", "CBOR additional information is forbidden")
+        if major == 7 and additional > 23:
+            raise _error(
+                "disallowed_cbor_form", "floats and unassigned simple values are forbidden"
+            )
         if additional <= 23:
             return major, additional
-        if additional == 31:
-            raise _error("disallowed_cbor_form", "indefinite values are forbidden")
         widths = {24: 1, 25: 2, 26: 4, 27: 8}
-        width = widths.get(additional)
-        if width is None:
-            raise _error("disallowed_cbor_form", "CBOR additional information is forbidden")
+        width = widths[additional]
         raw = int.from_bytes(self.exact(width), "big")
         minimum = {1: 24, 2: 256, 4: 65536, 8: 2**32}[width]
         if raw < minimum:
@@ -242,8 +248,6 @@ def decode_envelope(envelope: bytes) -> tuple[dict[str, object], bytes]:
     codec = read_frame(True)
     schema = read_frame(True)
     payload = read_frame(False)
-    if offset != len(envelope):
-        raise _error("envelope_length", "trailing envelope bytes")
     try:
         algorithm_text = algorithm.decode("ascii")
         domain_text = domain.decode("ascii")
@@ -255,6 +259,10 @@ def decode_envelope(envelope: bytes) -> tuple[dict[str, object], bytes]:
         raise _error("envelope_identity", "unsupported envelope algorithm or codec")
     _identifier(domain_text)
     _identifier(schema_text)
+    # Only after every envelope identity field validates may a framing
+    # defect such as trailing bytes be reported (identity=2 < length=3).
+    if offset != len(envelope):
+        raise _error("envelope_length", "trailing envelope bytes")
     decode_canonical(payload)
     reference: dict[str, object] = {
         "envelope_version": DIGEST_ENVELOPE_ID,

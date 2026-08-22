@@ -50,10 +50,10 @@ pub fn hash_envelope(envelope: &[u8]) -> [u8; 32] {
 pub fn decode_envelope(
     envelope: &[u8],
 ) -> Result<(DigestReferenceV1, Vec<u8>), PersistenceDecodeErrorV1> {
+    // ADR-0040 total precedence: envelope_identity precedes envelope_length.
+    // An input that cannot match the required prefix — including an input
+    // shorter than the prefix — is an identity defect first.
     let prefix = [DIGEST_ENVELOPE_ID.as_bytes(), &[0]].concat();
-    if envelope.len() < prefix.len() {
-        return Err(PersistenceDecodeErrorV1::EnvelopeLength);
-    }
     if !envelope.starts_with(&prefix) {
         return Err(PersistenceDecodeErrorV1::EnvelopeIdentity);
     }
@@ -63,9 +63,6 @@ pub fn decode_envelope(
     let codec = read_frame(envelope, &mut offset, true)?;
     let input_schema = read_frame(envelope, &mut offset, true)?;
     let payload = read_frame(envelope, &mut offset, false)?;
-    if offset != envelope.len() {
-        return Err(PersistenceDecodeErrorV1::EnvelopeLength);
-    }
     let algorithm =
         String::from_utf8(algorithm).map_err(|_| PersistenceDecodeErrorV1::EnvelopeIdentity)?;
     let semantic_domain = String::from_utf8(semantic_domain)
@@ -79,6 +76,11 @@ pub fn decode_envelope(
     validate_identifier(&input_schema)?;
     if algorithm != SHA256_ID || codec != CANONICAL_CBOR_ID {
         return Err(PersistenceDecodeErrorV1::EnvelopeIdentity);
+    }
+    // Only after every envelope identity field validates may a framing
+    // defect such as trailing bytes be reported (identity=2 < length=3).
+    if offset != envelope.len() {
+        return Err(PersistenceDecodeErrorV1::EnvelopeLength);
     }
     cbor::decode_canonical(&payload)?;
     let digest_bytes = hash_envelope(envelope);

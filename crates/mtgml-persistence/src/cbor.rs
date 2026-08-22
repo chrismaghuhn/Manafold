@@ -206,6 +206,19 @@ impl<'a> Decoder<'a> {
         self.offset += 1;
         let major = first >> 5;
         let additional = first & 0x1f;
+        // ADR-0040 precedence: a disallowed form is observable from the head
+        // itself and precedes any canonical-primitive defect of the argument.
+        if matches!(major, 5 | 6) {
+            return Err(PersistenceDecodeErrorV1::DisallowedCborForm);
+        }
+        if additional >= 28 {
+            return Err(PersistenceDecodeErrorV1::DisallowedCborForm);
+        }
+        if major == 7 && additional > 23 {
+            // Only false/true/null are allowed; every wider major-7 encoding
+            // is a float or an unassigned simple value.
+            return Err(PersistenceDecodeErrorV1::DisallowedCborForm);
+        }
         let argument = match additional {
             0..=23 => additional as u64,
             24 => {
@@ -236,7 +249,6 @@ impl<'a> Decoder<'a> {
                 }
                 value
             }
-            31 => return Err(PersistenceDecodeErrorV1::DisallowedCborForm),
             _ => return Err(PersistenceDecodeErrorV1::DisallowedCborForm),
         };
         Ok((major, argument))
