@@ -389,7 +389,7 @@ class PlayerKnownObjectV1:
             invalidation=PlayerKnowledgeInvalidationV1.from_wire(obj["invalidation"]),
         )
 
-    def validate(self) -> None:
+    def validate(self, next_visible_sequence: int | None = None) -> None:
         if self.opaque_object_id == 0 or self.acquisition is None:
             raise WireError("semantic.information_state", "retained object identity is invalid")
         if self.kind == "active" and self.invalidation is not None:
@@ -403,6 +403,20 @@ class PlayerKnownObjectV1:
         ]
         if any(left >= right for left, right in pairwise(sequences)):
             raise WireError("semantic.information_state", "historical sequences are not increasing")
+        for fact in self.historical_locations:
+            _validate_provenance(fact.provenance, next_visible_sequence)
+        if next_visible_sequence is not None:
+            _validate_provenance(self.acquisition, next_visible_sequence)
+            if self.current_known_location_fact is not None:
+                _validate_provenance(
+                    self.current_known_location_fact.provenance, next_visible_sequence
+                )
+            if self.last_known_location_fact is not None:
+                _validate_provenance(
+                    self.last_known_location_fact.provenance, next_visible_sequence
+                )
+            if self.invalidation is not None:
+                _validate_provenance(self.invalidation.provenance, next_visible_sequence)
 
     def to_wire(self) -> dict[str, object]:
         self.validate()
@@ -530,7 +544,7 @@ class PlayerInformationStateV2:
         if ids != sorted(ids) or len(ids) != len(set(ids)):
             raise WireError("semantic.information_state", "retained knowledge is not canonical")
         for item in self.retained_knowledge:
-            item.validate()
+            item.validate(self.next_visible_sequence)
         from .wire import compute_information_state_digest_v2
 
         _, expected = compute_information_state_digest_v2(self.digest_input())
@@ -561,6 +575,32 @@ class PlayerInformationStateV2:
             "schema_version": INFORMATION_STATE_SCHEMA_V2,
             "state_revision": uint_wire(self.state_revision),
         }
+
+
+def _validate_provenance(
+    provenance: PlayerKnowledgeProvenanceV1, next_visible_sequence: int | None
+) -> None:
+    if next_visible_sequence is None:
+        return
+    sequence = provenance.sequence
+    if sequence is not None and sequence >= next_visible_sequence:
+        raise WireError(
+            "semantic.information_state",
+            "observed provenance sequence is not below the next visible sequence",
+        )
+    if provenance.kind == "initial_configuration":
+        return
+    accepted = {
+        ("public", "public_event"),
+        ("public", "explicit_reveal"),
+        ("private", "private_look"),
+        ("private", "own_private_identity"),
+    }
+    if (provenance.channel, provenance.cause) not in accepted:
+        raise WireError(
+            "semantic.information_state",
+            "knowledge provenance cause is not accepted for its channel",
+        )
 
 
 @dataclass(frozen=True, slots=True)

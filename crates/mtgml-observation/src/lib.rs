@@ -370,6 +370,9 @@ impl PlayerInformationStateV2 {
                 return Err(ObservationValidationError::RetainedKnowledge);
             }
             previous = Some(current);
+            if !record.provenance_is_valid(self.next_visible_sequence) {
+                return Err(ObservationValidationError::VisibleSequence);
+            }
             if record.historical_locations().windows(2).any(|window| {
                 provenance_sequence(&window[0].provenance)
                     >= provenance_sequence(&window[1].provenance)
@@ -378,6 +381,68 @@ impl PlayerInformationStateV2 {
             }
         }
         Ok(())
+    }
+}
+
+impl PlayerKnownObjectV1 {
+    /// Every provenance-bearing public fact must carry an accepted
+    /// channel/cause combination and an observed sequence below this
+    /// perspective's next unused visible sequence.
+    fn provenance_is_valid(&self, next_visible_sequence: VisibleSequence) -> bool {
+        let valid = |provenance: &PlayerKnowledgeProvenanceV1| -> bool {
+            provenance_sequence(provenance).0 < next_visible_sequence.0
+                && match provenance {
+                    PlayerKnowledgeProvenanceV1::InitialConfiguration => true,
+                    PlayerKnowledgeProvenanceV1::Observed { channel, cause, .. } => matches!(
+                        (channel, cause),
+                        (
+                            PlayerKnowledgeChannelV1::Public,
+                            PlayerKnowledgeCauseV1::PublicEvent
+                        ) | (
+                            PlayerKnowledgeChannelV1::Public,
+                            PlayerKnowledgeCauseV1::ExplicitReveal
+                        ) | (
+                            PlayerKnowledgeChannelV1::Private,
+                            PlayerKnowledgeCauseV1::PrivateLook
+                        ) | (
+                            PlayerKnowledgeChannelV1::Private,
+                            PlayerKnowledgeCauseV1::OwnPrivateIdentity
+                        )
+                    ),
+                }
+        };
+        match self {
+            Self::Active {
+                current_known_location_fact,
+                historical_locations,
+                acquisition,
+                ..
+            } => {
+                valid(acquisition)
+                    && current_known_location_fact
+                        .as_ref()
+                        .is_none_or(|fact| valid(&fact.provenance))
+                    && historical_locations
+                        .iter()
+                        .all(|fact| valid(&fact.provenance))
+            }
+            Self::Retired {
+                last_known_location_fact,
+                historical_locations,
+                acquisition,
+                invalidation,
+                ..
+            } => {
+                valid(acquisition)
+                    && last_known_location_fact
+                        .as_ref()
+                        .is_none_or(|fact| valid(&fact.provenance))
+                    && historical_locations
+                        .iter()
+                        .all(|fact| valid(&fact.provenance))
+                    && valid(&invalidation.provenance)
+            }
+        }
     }
 }
 
@@ -588,5 +653,129 @@ mod tests {
         let object = serde_json::to_value(&input).unwrap();
         assert!(object.get("digest").is_none());
         assert_eq!(input.schema_version, "information-state-digest-input.v2");
+    }
+}
+
+#[cfg(test)]
+mod provenance_tests {
+    use super::*;
+    use crate::{PlayerKnowledgeCauseV1, PlayerKnowledgeChannelV1, OBSERVATION_SCHEMA};
+
+    fn observation() -> ObservationEnvelope {
+        ObservationEnvelope {
+            schema_version: OBSERVATION_SCHEMA.into(),
+            perspective: PlayerId(1),
+            state_revision: StateRevision(0),
+            payload_codec: "synthetic-m2-observation.v1".into(),
+            payload_base64: "e30=".into(),
+            digest: ObservationDigest::from_canonical_bytes(b"{}"),
+        }
+    }
+
+    fn observed(
+        channel: PlayerKnowledgeChannelV1,
+        sequence: u64,
+        cause: PlayerKnowledgeCauseV1,
+    ) -> PlayerKnowledgeProvenanceV1 {
+        PlayerKnowledgeProvenanceV1::Observed {
+            channel,
+            sequence: VisibleSequence(sequence),
+            cause,
+        }
+    }
+
+    fn state_with(
+        next_visible_sequence: VisibleSequence,
+        acquisition: PlayerKnowledgeProvenanceV1,
+    ) -> PlayerInformationStateV2 {
+        PlayerInformationStateV2 {
+            schema_version: INFORMATION_STATE_SCHEMA_V2.into(),
+            perspective: PlayerId(1),
+            state_revision: StateRevision(0),
+            current_observation: observation(),
+            next_visible_sequence,
+            retained_knowledge: vec![PlayerKnownObjectV1::Active {
+                opaque_object_id: OpaqueObjectId(1),
+                known_definition: None,
+                current_known_location_fact: None,
+                historical_locations: Vec::new(),
+                acquisition,
+            }],
+            digest: InformationStateDigestV2::from_canonical_bytes(b"placeholder"),
+        }
+    }
+
+    #[test]
+    fn future_provenance_sequence_is_rejected() {
+        let state = state_with(
+            VisibleSequence(1),
+            observed(
+                PlayerKnowledgeChannelV1::Public,
+                999,
+                PlayerKnowledgeCauseV1::PublicEvent,
+            ),
+        );
+        assert!(matches!(
+            state.validate(),
+            Err(ObservationValidationError::VisibleSequence)
+        ));
+    }
+
+    #[test]
+    fn invalid_cause_channel_combination_is_rejected() {
+        let state = state_with(
+            VisibleSequence(5),
+            observed(
+                PlayerKnowledgeChannelV1::Public,
+                1,
+                PlayerKnowledgeCauseV1::PrivateLook,
+            ),
+        );
+        assert!(matches!(
+            state.validate(),
+            Err(ObservationValidationError::VisibleSequence)
+        ));
+    }
+
+    #[test]
+    fn every_accepted_cause_is_validated_in_context() {
+        let cases = [
+            (
+                PlayerKnowledgeChannelV1::Public,
+                1,
+                PlayerKnowledgeCauseV1::PublicEvent,
+            ),
+            (
+                PlayerKnowledgeChannelV1::Public,
+                2,
+                PlayerKnowledgeCauseV1::ExplicitReveal,
+            ),
+            (
+                PlayerKnowledgeChannelV1::Private,
+                3,
+                PlayerKnowledgeCauseV1::PrivateLook,
+            ),
+            (
+                PlayerKnowledgeChannelV1::Private,
+                4,
+                PlayerKnowledgeCauseV1::OwnPrivateIdentity,
+            ),
+        ];
+        for (channel, sequence, cause) in cases {
+            let state = state_with(VisibleSequence(5), observed(channel, sequence, cause));
+            // Digest is intentionally not recomputed here; semantic shape only.
+            let result = {
+                let mut previous = None;
+                for record in &state.retained_knowledge {
+                    if !record.provenance_is_valid(state.next_visible_sequence) {
+                        previous = Some(Err(ObservationValidationError::VisibleSequence));
+                        break;
+                    }
+                    previous = Some(Ok(()));
+                }
+                previous.unwrap()
+            };
+            assert!(result.is_ok(), "accepted combination must validate");
+        }
     }
 }

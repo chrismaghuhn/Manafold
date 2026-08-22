@@ -149,6 +149,18 @@
       "expected_error_code": "semantic.information_state",
       "expected_reject_layer": "rust-python-semantic-or-decode",
       "path": "information-v2-forged-digest.json"
+    },
+    {
+      "contract": "information-state-envelope.v2",
+      "expected_error_code": "semantic.information_state",
+      "expected_reject_layer": "rust-python-semantic-or-decode",
+      "path": "information-v2-future-provenance.json"
+    },
+    {
+      "contract": "information-state-envelope.v2",
+      "expected_error_code": "semantic.information_state",
+      "expected_reject_layer": "rust-python-semantic-or-decode",
+      "path": "information-v2-invalid-cause-channel.json"
     }
   ]
 }
