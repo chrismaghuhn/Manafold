@@ -8,10 +8,8 @@ use thiserror::Error;
 
 use crate::engine::EngineState;
 use crate::format::FormatState;
-use crate::knowledge::{
-    KnowledgeAcquisitionCause, KnowledgeAcquisitionReason, KnowledgeHistoryChannel, KnowledgePoint,
-};
-use crate::m2_shape::{validate_m2_shape, PlayerKnowledgeStateV2};
+use crate::knowledge::KnowledgeAcquisitionReason;
+use crate::m2_shape::{validate_m2_shape, KnownLocationFactV2, PlayerKnowledgeStateV2};
 use crate::zones::ZonePosition;
 
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
@@ -50,42 +48,16 @@ pub enum EngineStateViolation {
     M2Shape(#[from] crate::m2_shape::M2ShapeViolation),
 }
 
-fn knowledge_point_is_valid(point: KnowledgePoint, state: &PlayerKnowledgeStateV2) -> bool {
-    point.sequence.0 < state.next_visible_sequence.0
+fn provenance_is_valid(
+    provenance: &KnowledgeAcquisitionReason,
+    knowledge: &PlayerKnowledgeStateV2,
+) -> bool {
+    provenance.has_accepted_channel_cause()
+        && provenance.is_within_visible_sequence(knowledge.next_visible_sequence)
 }
 
-fn acquisition_matches_channel(
-    reason: &KnowledgeAcquisitionReason,
-    channel: KnowledgeHistoryChannel,
-) -> bool {
-    match reason {
-        KnowledgeAcquisitionReason::InitialConfiguration => true,
-        KnowledgeAcquisitionReason::Observed {
-            channel: observed,
-            cause,
-            ..
-        } => {
-            if *observed != channel {
-                return false;
-            }
-            matches!(
-                (channel, cause),
-                (
-                    KnowledgeHistoryChannel::Public,
-                    KnowledgeAcquisitionCause::PublicEvent
-                ) | (
-                    KnowledgeHistoryChannel::Public,
-                    KnowledgeAcquisitionCause::ExplicitReveal
-                ) | (
-                    KnowledgeHistoryChannel::Private,
-                    KnowledgeAcquisitionCause::PrivateLook
-                ) | (
-                    KnowledgeHistoryChannel::Private,
-                    KnowledgeAcquisitionCause::OwnPrivateIdentity
-                )
-            )
-        }
-    }
+fn fact_is_valid(fact: &KnownLocationFactV2, knowledge: &PlayerKnowledgeStateV2) -> bool {
+    provenance_is_valid(&fact.provenance, knowledge)
 }
 
 pub fn validate_engine_state(state: &EngineState) -> Result<(), EngineStateViolation> {
@@ -207,6 +179,39 @@ pub fn validate_engine_state(state: &EngineState) -> Result<(), EngineStateViola
     {
         return Err(EngineStateViolation::AllocatorBehind);
     }
+
+    // Trusted decision identities are issued to authoritative pending
+    // requests; every issued trusted identity must stay strictly below the
+    // global allocator cursor.
+    let issued_decision_id = state
+        .execution
+        .pending_decision
+        .as_ref()
+        .map(|record| record.request.decision_id.0)
+        .unwrap_or(0);
+    if state.allocators.next_decision_id.0 <= issued_decision_id {
+        return Err(EngineStateViolation::AllocatorBehind);
+    }
+    // Trusted ability identities are reachable through stack records and the
+    // perspective-local opaque ability mappings.
+    let issued_ability_id = state
+        .zones
+        .stack_records
+        .values()
+        .filter_map(|record| record.source_ability)
+        .chain(
+            state
+                .perspective_identities
+                .players
+                .values()
+                .flat_map(|identity| identity.opaque_to_ability.values().copied()),
+        )
+        .map(|ability| ability.0)
+        .max()
+        .unwrap_or(0);
+    if state.allocators.next_ability_id.0 <= issued_ability_id {
+        return Err(EngineStateViolation::AllocatorBehind);
+    }
     if state.execution.effects.is_empty()
         && state.execution.waiting_triggers.is_empty()
         && state.execution.delayed_effects.is_empty()
@@ -255,51 +260,57 @@ pub fn validate_engine_state(state: &EngineState) -> Result<(), EngineStateViola
                 .objects
                 .get(object)
                 .ok_or(EngineStateViolation::KnowledgeMismatch)?;
-            if record
+            let known_fact_matches_live = record
                 .known_location
                 .as_ref()
-                .is_some_and(|location| state.zones.locations.get(object) != Some(location))
+                .is_some_and(|fact| state.zones.locations.get(object) != Some(&fact.location));
+            let history_is_increasing = record.historical_locations.windows(2).any(|window| {
+                window[0].provenance.observed_sequence() >= window[1].provenance.observed_sequence()
+            });
+            if known_fact_matches_live
                 || record
                     .physical_card
                     .is_some_and(|physical| Some(physical) != live.physical_card)
                 || record
                     .card_definition
                     .is_some_and(|definition| definition != live.card_definition)
-                || !knowledge_point_is_valid(record.learned_at, knowledge)
-                || !acquisition_matches_channel(&record.learned_via, record.learned_at.channel)
+                || !provenance_is_valid(&record.acquisition, knowledge)
                 || record
+                    .known_location
+                    .as_ref()
+                    .is_some_and(|fact| !fact_is_valid(fact, knowledge))
+                || !record
                     .historical_locations
-                    .windows(2)
-                    .any(|window| window[0].observed_at.sequence >= window[1].observed_at.sequence)
+                    .iter()
+                    .all(|fact| fact_is_valid(fact, knowledge))
+                || history_is_increasing
             {
                 return Err(EngineStateViolation::KnowledgeMismatch);
             }
         }
-        for (opaque, record) in &knowledge.retired {
-            if identity.opaque_to_object.contains_key(opaque)
-                || !knowledge_point_is_valid(record.learned_at, knowledge)
-                || !knowledge_point_is_valid(record.invalidated_at, knowledge)
+        for record in knowledge.retired.values() {
+            if identity
+                .opaque_to_object
+                .contains_key(&record.opaque_object)
+                || !provenance_is_valid(&record.acquisition, knowledge)
+                || !provenance_is_valid(&record.invalidation.provenance, knowledge)
                 || record
                     .last_known_location
                     .as_ref()
-                    .is_some_and(|fact| !knowledge_point_is_valid(fact.observed_at, knowledge))
-                || record
-                    .historical_locations
-                    .windows(2)
-                    .any(|window| window[0].observed_at.sequence >= window[1].observed_at.sequence)
-                || record
+                    .is_some_and(|fact| !fact_is_valid(fact, knowledge))
+                || !record
                     .historical_locations
                     .iter()
-                    .any(|fact| !knowledge_point_is_valid(fact.observed_at, knowledge))
+                    .all(|fact| fact_is_valid(fact, knowledge))
+                || record.historical_locations.windows(2).any(|window| {
+                    window[0].provenance.observed_sequence()
+                        >= window[1].provenance.observed_sequence()
+                })
             {
-                return Err(EngineStateViolation::KnowledgeMismatch);
-            }
-            if !acquisition_matches_channel(&record.learned_via, record.learned_at.channel) {
                 return Err(EngineStateViolation::KnowledgeMismatch);
             }
         }
     }
-
     if let Some(pending) = &state.execution.pending_decision {
         let request = &pending.request;
         request

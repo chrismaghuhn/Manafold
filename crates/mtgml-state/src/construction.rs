@@ -20,9 +20,9 @@ use crate::engine::EngineState;
 use crate::execution::ExecutionState;
 use crate::format::FormatState;
 use crate::identity::IdentityAllocatorState;
-use crate::knowledge::{KnowledgeAcquisitionReason, KnowledgeHistoryChannel, KnowledgePoint};
+use crate::knowledge::KnowledgeAcquisitionReason;
 use crate::m2_shape::{
-    KnowledgeRecordV2, PendingDecisionRecordV2, PerspectiveIdentityRecordV2,
+    KnowledgeRecordV2, KnownLocationFactV2, PendingDecisionRecordV2, PerspectiveIdentityRecordV2,
     PerspectiveIdentityStateV2, PlayerKnowledgeStateV2,
 };
 use crate::validation::{validate_engine_state, EngineStateViolation};
@@ -141,24 +141,22 @@ pub fn construct_synthetic_engine_state(
         opaque_object: public_opaque_id,
         physical_card: Some(PhysicalCardId(1)),
         card_definition: Some(CardDefinitionId(1)),
-        known_location: Some(public_location.clone()),
-        learned_at: KnowledgePoint {
-            channel: KnowledgeHistoryChannel::Public,
-            sequence: VisibleSequence(0),
-        },
-        learned_via: KnowledgeAcquisitionReason::InitialConfiguration,
+        known_location: Some(KnownLocationFactV2 {
+            location: public_location.clone(),
+            provenance: KnowledgeAcquisitionReason::InitialConfiguration,
+        }),
+        acquisition: KnowledgeAcquisitionReason::InitialConfiguration,
         historical_locations: Vec::new(),
     };
     let hidden_knowledge = KnowledgeRecordV2 {
         opaque_object: hidden_opaque_id,
         physical_card: Some(PhysicalCardId(2)),
         card_definition: Some(CardDefinitionId(2)),
-        known_location: Some(hidden_location),
-        learned_at: KnowledgePoint {
-            channel: KnowledgeHistoryChannel::Private,
-            sequence: VisibleSequence(0),
-        },
-        learned_via: KnowledgeAcquisitionReason::InitialConfiguration,
+        known_location: Some(KnownLocationFactV2 {
+            location: hidden_location.clone(),
+            provenance: KnowledgeAcquisitionReason::InitialConfiguration,
+        }),
+        acquisition: KnowledgeAcquisitionReason::InitialConfiguration,
         historical_locations: Vec::new(),
     };
     let knowledge = KnowledgeState {

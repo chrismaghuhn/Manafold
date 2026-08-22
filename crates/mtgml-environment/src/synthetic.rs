@@ -1,4 +1,4 @@
-﻿use std::collections::BTreeSet;
+use std::collections::BTreeSet;
 
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 use mtgml_decision::{DecisionResponseV2, PlayerDecisionRequestV2};
@@ -262,27 +262,10 @@ impl SyntheticM1EnvironmentBackend {
         }
     }
 
-    fn public_fact(
-        location: &mtgml_state::ZoneLocation,
-        point: &mtgml_state::KnowledgePoint,
-    ) -> PlayerKnownLocationFactV1 {
+    fn public_fact(fact: &mtgml_state::KnownLocationFactV2) -> PlayerKnownLocationFactV1 {
         PlayerKnownLocationFactV1 {
-            location: Self::public_location(location),
-            provenance: Self::public_point_provenance(point),
-        }
-    }
-
-    fn public_point_provenance(point: &mtgml_state::KnowledgePoint) -> PlayerKnowledgeProvenanceV1 {
-        PlayerKnowledgeProvenanceV1::Observed {
-            channel: match point.channel {
-                KnowledgeHistoryChannel::Public => PlayerKnowledgeChannelV1::Public,
-                KnowledgeHistoryChannel::Private => PlayerKnowledgeChannelV1::Private,
-            },
-            sequence: point.sequence,
-            cause: match point.channel {
-                KnowledgeHistoryChannel::Public => PlayerKnowledgeCauseV1::PublicEvent,
-                KnowledgeHistoryChannel::Private => PlayerKnowledgeCauseV1::PrivateLook,
-            },
+            location: Self::public_location(&fact.location),
+            provenance: Self::public_provenance(&fact.provenance),
         }
     }
 
@@ -333,17 +316,9 @@ impl SyntheticM1EnvironmentBackend {
     }
 
     fn public_history(
-        records: &[mtgml_state::KnowledgeHistoryRecordV2],
+        records: &[mtgml_state::KnownLocationFactV2],
     ) -> Vec<PlayerKnownLocationFactV1> {
-        records
-            .iter()
-            .filter_map(|record| {
-                record
-                    .location
-                    .as_ref()
-                    .map(|location| Self::public_fact(location, &record.observed_at))
-            })
-            .collect()
+        records.iter().map(Self::public_fact).collect()
     }
 
     fn player_information_state_from_state(
@@ -372,9 +347,9 @@ impl SyntheticM1EnvironmentBackend {
                     current_known_location_fact: record
                         .known_location
                         .as_ref()
-                        .map(|location| Self::public_fact(location, &record.learned_at)),
+                        .map(Self::public_fact),
                     historical_locations: Self::public_history(&record.historical_locations),
-                    acquisition: Self::public_provenance(&record.learned_via),
+                    acquisition: Self::public_provenance(&record.acquisition),
                 },
             ));
         }
@@ -384,18 +359,15 @@ impl SyntheticM1EnvironmentBackend {
                 PlayerKnownObjectV1::Retired {
                     opaque_object_id: record.opaque_object,
                     known_definition: record.card_definition,
-                    last_known_location_fact: record.last_known_location.as_ref().and_then(
-                        |fact| {
-                            fact.location
-                                .as_ref()
-                                .map(|location| Self::public_fact(location, &fact.observed_at))
-                        },
-                    ),
+                    last_known_location_fact: record
+                        .last_known_location
+                        .as_ref()
+                        .map(Self::public_fact),
                     historical_locations: Self::public_history(&record.historical_locations),
-                    acquisition: Self::public_provenance(&record.learned_via),
+                    acquisition: Self::public_provenance(&record.acquisition),
                     invalidation: mtgml_observation::PlayerKnowledgeInvalidationV1 {
-                        provenance: Self::public_point_provenance(&record.invalidated_at),
-                        reason: Self::public_invalidation_reason(&record.reason),
+                        provenance: Self::public_provenance(&record.invalidation.provenance),
+                        reason: Self::public_invalidation_reason(&record.invalidation.reason),
                     },
                 },
             ));

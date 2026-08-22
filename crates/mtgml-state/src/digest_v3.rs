@@ -3,8 +3,6 @@
 //! The conversion below deliberately does not use Rust/Serde output.  Every
 //! field is mapped to the fixed semantic CBOR layout from STATE_HASHING.md.
 
-use std::cmp::Ordering;
-
 use mtgml_decision::{
     AuthoritativeCandidateV2, AuthoritativeDecisionRequestV2, CandidateIntent, DecisionDomainV2,
     DecisionVisibility, EngineCandidateBinding,
@@ -14,17 +12,14 @@ use mtgml_persistence::{
     cbor::{self, Value},
     envelope, PersistenceDecodeErrorV1,
 };
-use mtgml_random::{RandomStreamKeyV1, RandomStreamScopeV1};
 
 use crate::digest::StateDigestError;
 use crate::engine::EngineState;
 use crate::format::FormatState;
-use crate::knowledge::{
-    KnowledgeAcquisitionCause, KnowledgeAcquisitionReason, KnowledgeHistoryChannel,
-    KnowledgeInvalidationReason, KnowledgePoint,
-};
+use crate::knowledge::{KnowledgeAcquisitionReason, KnowledgeInvalidationReason};
 use crate::m2_shape::{
-    AssemblyStageV2, ContinuationPayloadV2, KnowledgeRecordV2, RetiredKnowledgeRecordV2,
+    AssemblyStageV2, ContinuationPayloadV2, KnowledgeInvalidationV2, KnowledgeRecordV2,
+    KnownLocationFactV2, RetiredKnowledgeRecordV2,
 };
 use crate::zones::{VisibilityPartition, ZoneKey, ZoneLocation, ZonePosition};
 
@@ -477,14 +472,9 @@ fn active_knowledge_value(record: &KnowledgeRecordV2) -> Value {
         u(record.opaque_object.0),
         optional(record.physical_card.map(|value| u(value.0))),
         optional(record.card_definition.map(|value| u(value.0))),
-        optional(record.known_location.as_ref().map(|location| {
-            array([
-                zone_location_value(location),
-                provenance_value(&record.learned_at, &record.learned_via),
-            ])
-        })),
-        array(record.historical_locations.iter().map(history_value)),
-        provenance_value(&record.learned_at, &record.learned_via),
+        optional(record.known_location.as_ref().map(location_fact_value)),
+        array(record.historical_locations.iter().map(location_fact_value)),
+        provenance_value(&record.acquisition),
     ])
 }
 
@@ -493,66 +483,60 @@ fn retired_knowledge_value(record: &RetiredKnowledgeRecordV2) -> Result<Value, S
         u(record.opaque_object.0),
         optional(record.physical_card.map(|value| u(value.0))),
         optional(record.card_definition.map(|value| u(value.0))),
-        optional(record.last_known_location.as_ref().map(history_value)),
-        array(record.historical_locations.iter().map(history_value)),
-        provenance_value(&record.learned_at, &record.learned_via),
-        array([
-            provenance_value(
-                &record.invalidated_at,
-                &KnowledgeAcquisitionReason::Observed {
-                    channel: record.invalidated_at.channel,
-                    sequence: record.invalidated_at.sequence,
-                    cause: KnowledgeAcquisitionCause::ExplicitReveal,
-                },
-            ),
-            text(invalidation_reason(record.reason.clone())),
-        ]),
+        optional(record.last_known_location.as_ref().map(location_fact_value)),
+        array(record.historical_locations.iter().map(location_fact_value)),
+        provenance_value(&record.acquisition),
+        invalidation_value(&record.invalidation),
     ]))
 }
 
-fn history_value(record: &crate::m2_shape::KnowledgeHistoryRecordV2) -> Value {
+fn location_fact_value(fact: &KnownLocationFactV2) -> Value {
     array([
-        optional(record.location.as_ref().map(zone_location_value)),
-        provenance_value(
-            &record.observed_at,
-            &KnowledgeAcquisitionReason::Observed {
-                channel: record.observed_at.channel,
-                sequence: record.observed_at.sequence,
-                cause: KnowledgeAcquisitionCause::PublicEvent,
-            },
-        ),
+        zone_location_value(&fact.location),
+        provenance_value(&fact.provenance),
     ])
 }
 
-fn provenance_value(point: &KnowledgePoint, reason: &KnowledgeAcquisitionReason) -> Value {
+fn invalidation_value(invalidation: &KnowledgeInvalidationV2) -> Value {
+    array([
+        provenance_value(&invalidation.provenance),
+        text(invalidation_reason(invalidation.reason)),
+    ])
+}
+
+fn provenance_value(reason: &KnowledgeAcquisitionReason) -> Value {
     match reason {
         KnowledgeAcquisitionReason::InitialConfiguration => {
             array([text("initial_configuration"), Value::Null])
         }
-        KnowledgeAcquisitionReason::Observed { cause, .. } => array([
+        KnowledgeAcquisitionReason::Observed {
+            channel,
+            sequence,
+            cause,
+        } => array([
             text("observed"),
             array([
-                text(channel(point.channel)),
-                u(point.sequence.0),
-                text(cause_name(cause.clone())),
+                text(channel_name(*channel)),
+                u(sequence.0),
+                text(cause_name(*cause)),
             ]),
         ]),
     }
 }
 
-fn channel(value: KnowledgeHistoryChannel) -> &'static str {
+fn channel_name(value: crate::knowledge::KnowledgeHistoryChannel) -> &'static str {
     match value {
-        KnowledgeHistoryChannel::Public => "public",
-        KnowledgeHistoryChannel::Private => "private",
+        crate::knowledge::KnowledgeHistoryChannel::Public => "public",
+        crate::knowledge::KnowledgeHistoryChannel::Private => "private",
     }
 }
 
-fn cause_name(value: KnowledgeAcquisitionCause) -> &'static str {
+fn cause_name(value: crate::knowledge::KnowledgeAcquisitionCause) -> &'static str {
     match value {
-        KnowledgeAcquisitionCause::PublicEvent => "public_event",
-        KnowledgeAcquisitionCause::PrivateLook => "private_look",
-        KnowledgeAcquisitionCause::ExplicitReveal => "explicit_reveal",
-        KnowledgeAcquisitionCause::OwnPrivateIdentity => "own_private_identity",
+        crate::knowledge::KnowledgeAcquisitionCause::PublicEvent => "public_event",
+        crate::knowledge::KnowledgeAcquisitionCause::PrivateLook => "private_look",
+        crate::knowledge::KnowledgeAcquisitionCause::ExplicitReveal => "explicit_reveal",
+        crate::knowledge::KnowledgeAcquisitionCause::OwnPrivateIdentity => "own_private_identity",
     }
 }
 
@@ -621,16 +605,4 @@ fn format_value(format: &FormatState) -> Result<Value, StateDigestError> {
             ]))
         }
     }
-}
-
-#[allow(dead_code)]
-fn compare_cbor(left: &Value, right: &Value) -> Ordering {
-    let left = cbor::encode_canonical(left).expect("semantic V3 values are encodable");
-    let right = cbor::encode_canonical(right).expect("semantic V3 values are encodable");
-    left.cmp(&right)
-}
-
-#[allow(dead_code)]
-fn _identity_key(_key: &RandomStreamKeyV1) -> Option<RandomStreamScopeV1> {
-    None
 }

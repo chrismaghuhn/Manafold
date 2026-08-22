@@ -1,7 +1,7 @@
 //! Private, detached M2 state shapes prepared before the current-runtime cut.
 //!
 //! Nothing in this module is reachable through the current `EngineState` until
-//! the coordinated Tasks 7–11 cut. The types deliberately do not adapt or
+//! the coordinated Tasks 7â€“11 cut. The types deliberately do not adapt or
 //! reinterpret any historical V1/V2 value.
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -16,7 +16,6 @@ use thiserror::Error;
 
 use crate::knowledge::{KnowledgeAcquisitionReason, KnowledgeInvalidationReason};
 use crate::zones::ZoneLocation;
-
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct PendingDecisionRecordV2 {
@@ -70,6 +69,23 @@ pub struct ContinuationRecordV2 {
     pub payload: ContinuationPayloadV2,
 }
 
+/// One retained known-location fact. The fact owns its complete typed
+/// provenance; no downstream layer may infer or synthesize it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct KnownLocationFactV2 {
+    pub location: ZoneLocation,
+    pub provenance: KnowledgeAcquisitionReason,
+}
+
+/// Typed invalidation of a retired knowledge record.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct KnowledgeInvalidationV2 {
+    pub provenance: KnowledgeAcquisitionReason,
+    pub reason: KnowledgeInvalidationReason,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct KnowledgeRecordV2 {
@@ -79,21 +95,10 @@ pub struct KnowledgeRecordV2 {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub card_definition: Option<CardDefinitionId>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub known_location: Option<ZoneLocation>,
-    pub learned_at: crate::knowledge::KnowledgePoint,
-    pub learned_via: KnowledgeAcquisitionReason,
+    pub known_location: Option<KnownLocationFactV2>,
     #[serde(default)]
-    pub historical_locations: Vec<KnowledgeHistoryRecordV2>,
-}
-
-/// One historical known-location fact. The authoritative knowledge history is
-/// carried per knowledge record (`historical_locations`); there is no separate
-/// player-level history aggregate and no duplicated object identity here.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct KnowledgeHistoryRecordV2 {
-    pub location: Option<ZoneLocation>,
-    pub observed_at: crate::knowledge::KnowledgePoint,
+    pub historical_locations: Vec<KnownLocationFactV2>,
+    pub acquisition: KnowledgeAcquisitionReason,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -105,13 +110,11 @@ pub struct RetiredKnowledgeRecordV2 {
     #[serde(default)]
     pub card_definition: Option<CardDefinitionId>,
     #[serde(default)]
-    pub last_known_location: Option<KnowledgeHistoryRecordV2>,
+    pub last_known_location: Option<KnownLocationFactV2>,
     #[serde(default)]
-    pub historical_locations: Vec<KnowledgeHistoryRecordV2>,
-    pub learned_at: crate::knowledge::KnowledgePoint,
-    pub learned_via: KnowledgeAcquisitionReason,
-    pub invalidated_at: crate::knowledge::KnowledgePoint,
-    pub reason: KnowledgeInvalidationReason,
+    pub historical_locations: Vec<KnownLocationFactV2>,
+    pub acquisition: KnowledgeAcquisitionReason,
+    pub invalidation: KnowledgeInvalidationV2,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -170,6 +173,8 @@ pub enum M2ShapeViolation {
     PendingDecision,
     #[error("M2 pending decision references a missing continuation")]
     ContinuationReference,
+    #[error("M2 continuation stage is owned by a different actor than its request")]
+    ContinuationActor,
     #[error("M2 continuation revision is stale or future-dated")]
     ContinuationRevision,
     #[error("M2 continuation stage is invalid")]
@@ -236,6 +241,14 @@ pub fn validate_m2_shape(
             let continuation = continuations
                 .get(&continuation_id)
                 .ok_or(M2ShapeViolation::ContinuationReference)?;
+            // DECISION_PROTOCOL.md: the endpoint bound to the actor projects
+            // the request; ADR 0039 serializes the owning actor as
+            // continuation state. M2 has no accepted stage-transfer
+            // semantics, so a referenced continuation must belong to the
+            // pending request's actor.
+            if continuation.actor != pending.request.actor {
+                return Err(M2ShapeViolation::ContinuationActor);
+            }
             if continuation.created_at_revision > pending.request.state_revision {
                 return Err(M2ShapeViolation::ContinuationRevision);
             }
@@ -303,40 +316,55 @@ fn validate_identity(identity: &PerspectiveIdentityRecordV2) -> Result<(), M2Sha
 }
 
 fn validate_knowledge(knowledge: &PlayerKnowledgeStateV2) -> Result<(), M2ShapeViolation> {
-    let point_in_range = |point: &crate::knowledge::KnowledgePoint| -> bool {
-        point.sequence.0 < knowledge.next_visible_sequence.0
-    };
-    let history_is_valid = |records: &[KnowledgeHistoryRecordV2]| -> bool {
-        records
-            .windows(2)
-            .all(|window| window[0].observed_at.sequence < window[1].observed_at.sequence)
-            && records
-                .iter()
-                .all(|record| point_in_range(&record.observed_at))
+    let provenance_is_valid =
+        |provenance: &KnowledgeAcquisitionReason| -> Result<(), M2ShapeViolation> {
+            if !provenance.has_accepted_channel_cause()
+                || !provenance.is_within_visible_sequence(knowledge.next_visible_sequence)
+            {
+                return Err(M2ShapeViolation::VisibleSequence);
+            }
+            Ok(())
+        };
+    let history_is_valid = |records: &[KnownLocationFactV2]| -> Result<(), M2ShapeViolation> {
+        for fact in records {
+            provenance_is_valid(&fact.provenance)?;
+        }
+        for window in records.windows(2) {
+            let left = window[0]
+                .provenance
+                .observed_sequence()
+                .map_or(0, |sequence| sequence.0);
+            let right = window[1]
+                .provenance
+                .observed_sequence()
+                .map_or(0, |sequence| sequence.0);
+            if left >= right {
+                return Err(M2ShapeViolation::VisibleSequence);
+            }
+        }
+        Ok(())
     };
     for (opaque, record) in &knowledge.active {
         if opaque != &record.opaque_object || opaque.0 == 0 {
             return Err(M2ShapeViolation::Knowledge);
         }
-        if !point_in_range(&record.learned_at) || !history_is_valid(&record.historical_locations) {
-            return Err(M2ShapeViolation::VisibleSequence);
+        provenance_is_valid(&record.acquisition)?;
+        if let Some(fact) = record.known_location.as_ref() {
+            provenance_is_valid(&fact.provenance)?;
         }
+        history_is_valid(&record.historical_locations)?;
     }
     for (opaque, record) in &knowledge.retired {
         if opaque != &record.opaque_object || opaque.0 == 0 || knowledge.active.contains_key(opaque)
         {
             return Err(M2ShapeViolation::Knowledge);
         }
-        if !point_in_range(&record.learned_at)
-            || !point_in_range(&record.invalidated_at)
-            || record
-                .last_known_location
-                .as_ref()
-                .is_some_and(|fact| !point_in_range(&fact.observed_at))
-            || !history_is_valid(&record.historical_locations)
-        {
-            return Err(M2ShapeViolation::VisibleSequence);
+        provenance_is_valid(&record.acquisition)?;
+        provenance_is_valid(&record.invalidation.provenance)?;
+        if let Some(fact) = record.last_known_location.as_ref() {
+            provenance_is_valid(&fact.provenance)?;
         }
+        history_is_valid(&record.historical_locations)?;
     }
     Ok(())
 }

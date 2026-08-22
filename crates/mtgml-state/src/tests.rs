@@ -87,6 +87,48 @@ fn public_location() -> ZoneLocation {
     }
 }
 
+fn observed(
+    channel: KnowledgeHistoryChannel,
+    sequence: u64,
+    cause: KnowledgeAcquisitionCause,
+) -> KnowledgeAcquisitionReason {
+    KnowledgeAcquisitionReason::Observed {
+        channel,
+        sequence: VisibleSequence(sequence),
+        cause,
+    }
+}
+
+fn fact(location: ZoneLocation, provenance: KnowledgeAcquisitionReason) -> KnownLocationFactV2 {
+    KnownLocationFactV2 {
+        location,
+        provenance,
+    }
+}
+
+fn retired_record(opaque: OpaqueObjectId) -> RetiredKnowledgeRecordV2 {
+    RetiredKnowledgeRecordV2 {
+        opaque_object: opaque,
+        physical_card: None,
+        card_definition: Some(CardDefinitionId(3)),
+        last_known_location: None,
+        historical_locations: Vec::new(),
+        acquisition: observed(
+            KnowledgeHistoryChannel::Public,
+            0,
+            KnowledgeAcquisitionCause::PublicEvent,
+        ),
+        invalidation: KnowledgeInvalidationV2 {
+            provenance: observed(
+                KnowledgeHistoryChannel::Public,
+                0,
+                KnowledgeAcquisitionCause::ExplicitReveal,
+            ),
+            reason: KnowledgeInvalidationReason::Shuffle,
+        },
+    }
+}
+
 #[test]
 fn synthetic_state_is_the_current_m2_shape() {
     let state = synthetic_state();
@@ -246,7 +288,9 @@ fn m2_b_full_state_digest_v3_mutation_matrix() {
                 .insert(GameObjectId(1), graveyard.clone());
             for knowledge in state.knowledge.players.values_mut() {
                 if let Some(record) = knowledge.active.get_mut(&OpaqueObjectId(1)) {
-                    record.known_location = Some(graveyard.clone());
+                    if let Some(current) = record.known_location.as_mut() {
+                        current.location = graveyard.clone();
+                    }
                 }
             }
         }),
@@ -261,6 +305,7 @@ fn m2_b_full_state_digest_v3_mutation_matrix() {
                 .known_location
                 .as_mut()
                 .unwrap()
+                .location
                 .position = ZonePosition::Bottom { offset: 0 };
         }),
         ("zone_stack_records", |state| {
@@ -307,6 +352,7 @@ fn m2_b_full_state_digest_v3_mutation_matrix() {
         ("pending_decision_trusted_id", |state| {
             let pending = state.execution.pending_decision.as_mut().unwrap();
             pending.request.decision_id = DecisionId(2);
+            state.allocators.next_decision_id = DecisionId(3);
         }),
         ("pending_decision_actor", |state| {
             let pending = state.execution.pending_decision.as_mut().unwrap();
@@ -403,11 +449,20 @@ fn m2_b_full_state_digest_v3_mutation_matrix() {
         ("knowledge_acquisition_provenance", |state| {
             let knowledge = state.knowledge.players.get_mut(&PlayerId(1)).unwrap();
             let record = knowledge.active.get_mut(&OpaqueObjectId(1)).unwrap();
-            record.learned_via = KnowledgeAcquisitionReason::Observed {
-                channel: KnowledgeHistoryChannel::Public,
-                sequence: VisibleSequence(0),
-                cause: KnowledgeAcquisitionCause::PublicEvent,
-            };
+            record.acquisition = observed(
+                KnowledgeHistoryChannel::Public,
+                0,
+                KnowledgeAcquisitionCause::PublicEvent,
+            );
+        }),
+        ("knowledge_provenance_cause_only", |state| {
+            let knowledge = state.knowledge.players.get_mut(&PlayerId(1)).unwrap();
+            let record = knowledge.active.get_mut(&OpaqueObjectId(1)).unwrap();
+            record.acquisition = observed(
+                KnowledgeHistoryChannel::Public,
+                0,
+                KnowledgeAcquisitionCause::ExplicitReveal,
+            );
         }),
         ("knowledge_known_location", |state| {
             let graveyard = ZoneLocation {
@@ -420,18 +475,20 @@ fn m2_b_full_state_digest_v3_mutation_matrix() {
                 .insert(GameObjectId(1), graveyard.clone());
             for knowledge in state.knowledge.players.values_mut() {
                 if let Some(record) = knowledge.active.get_mut(&OpaqueObjectId(1)) {
-                    record.known_location = Some(graveyard.clone());
+                    if let Some(current) = record.known_location.as_mut() {
+                        current.location = graveyard.clone();
+                    }
                 }
             }
         }),
         ("knowledge_private_acquisition", |state| {
             let knowledge = state.knowledge.players.get_mut(&PlayerId(2)).unwrap();
             let record = knowledge.active.get_mut(&OpaqueObjectId(2)).unwrap();
-            record.learned_via = KnowledgeAcquisitionReason::Observed {
-                channel: KnowledgeHistoryChannel::Private,
-                sequence: VisibleSequence(0),
-                cause: KnowledgeAcquisitionCause::PrivateLook,
-            };
+            record.acquisition = observed(
+                KnowledgeHistoryChannel::Private,
+                0,
+                KnowledgeAcquisitionCause::PrivateLook,
+            );
         }),
         ("knowledge_historical_location", |state| {
             let knowledge = state.knowledge.players.get_mut(&PlayerId(1)).unwrap();
@@ -440,13 +497,14 @@ fn m2_b_full_state_digest_v3_mutation_matrix() {
                 .get_mut(&OpaqueObjectId(1))
                 .unwrap()
                 .historical_locations
-                .push(KnowledgeHistoryRecordV2 {
-                    location: Some(public_location()),
-                    observed_at: KnowledgePoint {
-                        channel: KnowledgeHistoryChannel::Public,
-                        sequence: VisibleSequence(0),
-                    },
-                });
+                .push(fact(
+                    public_location(),
+                    observed(
+                        KnowledgeHistoryChannel::Public,
+                        0,
+                        KnowledgeAcquisitionCause::PublicEvent,
+                    ),
+                ));
         }),
         ("knowledge_retired_record", |state| {
             let identity = state
@@ -457,26 +515,9 @@ fn m2_b_full_state_digest_v3_mutation_matrix() {
             identity.next_opaque_object_id = OpaqueObjectId(6);
             identity.retired_object_ids.insert(OpaqueObjectId(5));
             let knowledge = state.knowledge.players.get_mut(&PlayerId(1)).unwrap();
-            knowledge.retired.insert(
-                OpaqueObjectId(5),
-                RetiredKnowledgeRecordV2 {
-                    opaque_object: OpaqueObjectId(5),
-                    physical_card: None,
-                    card_definition: Some(CardDefinitionId(3)),
-                    last_known_location: None,
-                    historical_locations: Vec::new(),
-                    learned_at: KnowledgePoint {
-                        channel: KnowledgeHistoryChannel::Public,
-                        sequence: VisibleSequence(0),
-                    },
-                    learned_via: KnowledgeAcquisitionReason::InitialConfiguration,
-                    invalidated_at: KnowledgePoint {
-                        channel: KnowledgeHistoryChannel::Public,
-                        sequence: VisibleSequence(0),
-                    },
-                    reason: KnowledgeInvalidationReason::Shuffle,
-                },
-            );
+            knowledge
+                .retired
+                .insert(OpaqueObjectId(5), retired_record(OpaqueObjectId(5)));
         }),
         ("knowledge_next_visible_sequence", |state| {
             let knowledge = state.knowledge.players.get_mut(&PlayerId(1)).unwrap();
@@ -509,6 +550,7 @@ fn m2_b_full_state_digest_v3_mutation_matrix() {
                 .ability_to_opaque
                 .insert(AbilityInstanceId(1), OpaqueAbilityId(1));
             identity.next_opaque_ability_id = OpaqueAbilityId(2);
+            state.allocators.next_ability_id = AbilityInstanceId(2);
         }),
         ("identity_next_player_decision_id", |state| {
             let identity = state
@@ -550,13 +592,15 @@ fn knowledge_history_is_digested_without_a_player_level_aggregate() {
     let mut state = synthetic_state();
     let knowledge = state.knowledge.players.get_mut(&PlayerId(2)).unwrap();
     let record = knowledge.active.get_mut(&OpaqueObjectId(2)).unwrap();
-    record.historical_locations.push(KnowledgeHistoryRecordV2 {
-        location: Some(record.known_location.clone().unwrap()),
-        observed_at: KnowledgePoint {
-            channel: KnowledgeHistoryChannel::Private,
-            sequence: VisibleSequence(0),
-        },
-    });
+    let location = record.known_location.clone().unwrap().location;
+    record.historical_locations.push(fact(
+        location,
+        observed(
+            KnowledgeHistoryChannel::Private,
+            0,
+            KnowledgeAcquisitionCause::PrivateLook,
+        ),
+    ));
     validate_engine_state(&state).unwrap();
     let with_history = state.digest().unwrap();
     let mut stripped = state.clone();
@@ -601,7 +645,9 @@ fn state_delta_uses_full_state_digest_v3() {
         .insert(GameObjectId(1), graveyard.clone());
     for knowledge in after.knowledge.players.values_mut() {
         if let Some(record) = knowledge.active.get_mut(&OpaqueObjectId(1)) {
-            record.known_location = Some(graveyard.clone());
+            if let Some(current) = record.known_location.as_mut() {
+                current.location = graveyard.clone();
+            }
         }
     }
     let knowledge = after.knowledge.players.get_mut(&PlayerId(1)).unwrap();
@@ -903,26 +949,9 @@ fn retired_knowledge_must_not_keep_a_live_mapping() {
     identity.next_opaque_object_id = OpaqueObjectId(6);
     identity.retired_object_ids.insert(OpaqueObjectId(5));
     let knowledge = state.knowledge.players.get_mut(&PlayerId(1)).unwrap();
-    knowledge.retired.insert(
-        OpaqueObjectId(5),
-        RetiredKnowledgeRecordV2 {
-            opaque_object: OpaqueObjectId(5),
-            physical_card: None,
-            card_definition: None,
-            last_known_location: None,
-            historical_locations: Vec::new(),
-            learned_at: KnowledgePoint {
-                channel: KnowledgeHistoryChannel::Public,
-                sequence: VisibleSequence(0),
-            },
-            learned_via: KnowledgeAcquisitionReason::InitialConfiguration,
-            invalidated_at: KnowledgePoint {
-                channel: KnowledgeHistoryChannel::Public,
-                sequence: VisibleSequence(0),
-            },
-            reason: KnowledgeInvalidationReason::ExplicitForget,
-        },
-    );
+    knowledge
+        .retired
+        .insert(OpaqueObjectId(5), retired_record(OpaqueObjectId(5)));
     validate_engine_state(&state).unwrap();
 
     // The same opaque identity cannot simultaneously be retired and active.
@@ -953,9 +982,12 @@ fn known_location_must_match_the_live_association() {
         .active
         .get_mut(&OpaqueObjectId(1))
         .unwrap()
-        .known_location = Some(ZoneLocation {
-        zone: ZoneKind::Exile,
-        ..public_location()
+        .known_location = Some(KnownLocationFactV2 {
+        location: ZoneLocation {
+            zone: ZoneKind::Exile,
+            ..public_location()
+        },
+        provenance: KnowledgeAcquisitionReason::InitialConfiguration,
     });
     assert!(matches!(
         validate_engine_state(&state),
@@ -966,17 +998,20 @@ fn known_location_must_match_the_live_association() {
 #[test]
 fn historical_location_sequences_must_increase() {
     let mut state = synthetic_state();
-    let fact = |sequence: u64| KnowledgeHistoryRecordV2 {
-        location: Some(public_location()),
-        observed_at: KnowledgePoint {
-            channel: KnowledgeHistoryChannel::Public,
-            sequence: VisibleSequence(sequence),
-        },
+    let fact_at = |sequence: u64| {
+        fact(
+            public_location(),
+            observed(
+                KnowledgeHistoryChannel::Public,
+                sequence,
+                KnowledgeAcquisitionCause::PublicEvent,
+            ),
+        )
     };
     {
         let knowledge = state.knowledge.players.get_mut(&PlayerId(1)).unwrap();
         let record = knowledge.active.get_mut(&OpaqueObjectId(1)).unwrap();
-        record.historical_locations = vec![fact(0), fact(0)];
+        record.historical_locations = vec![fact_at(0), fact_at(0)];
     }
     assert!(matches!(
         validate_engine_state(&state),
@@ -987,7 +1022,7 @@ fn historical_location_sequences_must_increase() {
     {
         let knowledge = state.knowledge.players.get_mut(&PlayerId(1)).unwrap();
         let record = knowledge.active.get_mut(&OpaqueObjectId(1)).unwrap();
-        record.historical_locations = vec![fact(1), fact(0)];
+        record.historical_locations = vec![fact_at(1), fact_at(0)];
     }
     assert!(matches!(
         validate_engine_state(&state),
@@ -1002,15 +1037,11 @@ fn knowledge_provenance_must_not_be_future_dated() {
     let mut state = synthetic_state();
     let knowledge = state.knowledge.players.get_mut(&PlayerId(1)).unwrap();
     let record = knowledge.active.get_mut(&OpaqueObjectId(1)).unwrap();
-    record.learned_at = KnowledgePoint {
-        channel: KnowledgeHistoryChannel::Public,
-        sequence: VisibleSequence(5),
-    };
-    record.learned_via = KnowledgeAcquisitionReason::Observed {
-        channel: KnowledgeHistoryChannel::Public,
-        sequence: VisibleSequence(5),
-        cause: KnowledgeAcquisitionCause::PublicEvent,
-    };
+    record.acquisition = observed(
+        KnowledgeHistoryChannel::Public,
+        5,
+        KnowledgeAcquisitionCause::PublicEvent,
+    );
     assert!(matches!(
         validate_engine_state(&state),
         Err(EngineStateViolation::M2Shape(
@@ -1024,15 +1055,17 @@ fn invalid_knowledge_cause_channel_combination_is_rejected() {
     let mut state = synthetic_state();
     let knowledge = state.knowledge.players.get_mut(&PlayerId(1)).unwrap();
     let record = knowledge.active.get_mut(&OpaqueObjectId(1)).unwrap();
-    record.learned_via = KnowledgeAcquisitionReason::Observed {
-        channel: KnowledgeHistoryChannel::Private,
-        sequence: VisibleSequence(0),
-        cause: KnowledgeAcquisitionCause::PublicEvent,
-    };
-    assert!(matches!(
+    record.acquisition = observed(
+        KnowledgeHistoryChannel::Private,
+        0,
+        KnowledgeAcquisitionCause::PublicEvent,
+    );
+    assert_eq!(
         validate_engine_state(&state),
-        Err(EngineStateViolation::KnowledgeMismatch)
-    ));
+        Err(EngineStateViolation::M2Shape(
+            M2ShapeViolation::VisibleSequence
+        ))
+    );
 }
 
 #[test]
@@ -1046,30 +1079,13 @@ fn retired_knowledge_provenance_is_validated() {
     identity.next_opaque_object_id = OpaqueObjectId(6);
     identity.retired_object_ids.insert(OpaqueObjectId(5));
     let knowledge = state.knowledge.players.get_mut(&PlayerId(1)).unwrap();
-    knowledge.retired.insert(
-        OpaqueObjectId(5),
-        RetiredKnowledgeRecordV2 {
-            opaque_object: OpaqueObjectId(5),
-            physical_card: None,
-            card_definition: None,
-            last_known_location: None,
-            historical_locations: Vec::new(),
-            learned_at: KnowledgePoint {
-                channel: KnowledgeHistoryChannel::Public,
-                sequence: VisibleSequence(9),
-            },
-            learned_via: KnowledgeAcquisitionReason::Observed {
-                channel: KnowledgeHistoryChannel::Public,
-                sequence: VisibleSequence(9),
-                cause: KnowledgeAcquisitionCause::PublicEvent,
-            },
-            invalidated_at: KnowledgePoint {
-                channel: KnowledgeHistoryChannel::Public,
-                sequence: VisibleSequence(0),
-            },
-            reason: KnowledgeInvalidationReason::Shuffle,
-        },
+    let mut record = retired_record(OpaqueObjectId(5));
+    record.acquisition = observed(
+        KnowledgeHistoryChannel::Public,
+        9,
+        KnowledgeAcquisitionCause::PublicEvent,
     );
+    knowledge.retired.insert(OpaqueObjectId(5), record);
     assert!(matches!(
         validate_engine_state(&state),
         Err(EngineStateViolation::M2Shape(
@@ -1167,4 +1183,228 @@ fn hex(bytes: &[u8]) -> String {
         std::fmt::Write::write_fmt(&mut out, format_args!("{byte:02x}")).unwrap();
         out
     })
+}
+
+fn digest_payload_texts(state: &EngineState) -> Vec<String> {
+    fn walk(value: &Value, out: &mut Vec<String>) {
+        match value {
+            Value::Text(text) => out.push(text.clone()),
+            Value::Array(items) => {
+                for item in items {
+                    walk(item, out);
+                }
+            }
+            _ => {}
+        }
+    }
+    let payload = state.canonical_digest_bytes().unwrap();
+    let decoded = mtgml_persistence::cbor::decode_canonical(&payload).unwrap();
+    let mut texts = Vec::new();
+    walk(&decoded, &mut texts);
+    texts
+}
+
+#[test]
+fn historical_private_look_provenance_is_bound_into_the_digest() {
+    let mut state = synthetic_state();
+    let knowledge = state.knowledge.players.get_mut(&PlayerId(2)).unwrap();
+    let record = knowledge.active.get_mut(&OpaqueObjectId(2)).unwrap();
+    let location = record.known_location.clone().unwrap().location;
+    record.historical_locations.push(fact(
+        location,
+        observed(
+            KnowledgeHistoryChannel::Private,
+            0,
+            KnowledgeAcquisitionCause::PrivateLook,
+        ),
+    ));
+    validate_engine_state(&state).unwrap();
+    assert!(digest_payload_texts(&state).contains(&"private_look".to_string()));
+
+    // Changing only the retained cause changes the V3 digest.
+    let baseline_digest = state.digest().unwrap();
+    let mut changed = state.clone();
+    let knowledge = changed.knowledge.players.get_mut(&PlayerId(2)).unwrap();
+    let record = knowledge.active.get_mut(&OpaqueObjectId(2)).unwrap();
+    record.historical_locations[0].provenance = observed(
+        KnowledgeHistoryChannel::Private,
+        0,
+        KnowledgeAcquisitionCause::OwnPrivateIdentity,
+    );
+    validate_engine_state(&changed).unwrap();
+    assert_ne!(baseline_digest, changed.digest().unwrap());
+}
+
+#[test]
+fn explicit_reveal_is_not_collapsed_to_public_event() {
+    let mut state = synthetic_state();
+    let knowledge = state.knowledge.players.get_mut(&PlayerId(1)).unwrap();
+    let record = knowledge.active.get_mut(&OpaqueObjectId(1)).unwrap();
+    let location = record.known_location.clone().unwrap().location;
+    record.historical_locations.push(fact(
+        location,
+        observed(
+            KnowledgeHistoryChannel::Public,
+            0,
+            KnowledgeAcquisitionCause::ExplicitReveal,
+        ),
+    ));
+    validate_engine_state(&state).unwrap();
+    let texts = digest_payload_texts(&state);
+    assert!(texts.contains(&"explicit_reveal".to_string()));
+}
+
+#[test]
+fn own_private_identity_is_not_collapsed_to_private_look() {
+    let mut state = synthetic_state();
+    let knowledge = state.knowledge.players.get_mut(&PlayerId(2)).unwrap();
+    let record = knowledge.active.get_mut(&OpaqueObjectId(2)).unwrap();
+    let location = record.known_location.clone().unwrap().location;
+    record.historical_locations.push(fact(
+        location,
+        observed(
+            KnowledgeHistoryChannel::Private,
+            0,
+            KnowledgeAcquisitionCause::OwnPrivateIdentity,
+        ),
+    ));
+    validate_engine_state(&state).unwrap();
+    assert!(digest_payload_texts(&state).contains(&"own_private_identity".to_string()));
+}
+
+#[test]
+fn invalidation_provenance_is_preserved_exactly() {
+    let mut state = synthetic_state();
+    let identity = state
+        .perspective_identities
+        .players
+        .get_mut(&PlayerId(1))
+        .unwrap();
+    identity.next_opaque_object_id = OpaqueObjectId(6);
+    identity.retired_object_ids.insert(OpaqueObjectId(5));
+    let knowledge = state.knowledge.players.get_mut(&PlayerId(1)).unwrap();
+    knowledge
+        .retired
+        .insert(OpaqueObjectId(5), retired_record(OpaqueObjectId(5)));
+    validate_engine_state(&state).unwrap();
+
+    let texts = digest_payload_texts(&state);
+    assert!(texts.contains(&"explicit_reveal".to_string()));
+    assert!(texts.contains(&"shuffle".to_string()));
+
+    // Mutating only the invalidation provenance changes the digest.
+    let baseline_digest = state.digest().unwrap();
+    let mut changed = state.clone();
+    let knowledge = changed.knowledge.players.get_mut(&PlayerId(1)).unwrap();
+    let record = knowledge.retired.get_mut(&OpaqueObjectId(5)).unwrap();
+    record.invalidation.provenance = observed(
+        KnowledgeHistoryChannel::Public,
+        0,
+        KnowledgeAcquisitionCause::PublicEvent,
+    );
+    validate_engine_state(&changed).unwrap();
+    assert_ne!(baseline_digest, changed.digest().unwrap());
+}
+
+#[test]
+fn global_decision_allocator_must_exceed_every_issued_identity() {
+    let build = |next: u64| {
+        let mut state = synthetic_state();
+        state.allocators.next_decision_id = DecisionId(next);
+        state
+    };
+    // next == issued must fail closed.
+    assert_eq!(
+        validate_engine_state(&build(1)),
+        Err(EngineStateViolation::AllocatorBehind)
+    );
+    // next < issued must fail closed.
+    assert_eq!(
+        validate_engine_state(&build(0)),
+        Err(EngineStateViolation::AllocatorBehind)
+    );
+    // A strictly greater cursor is accepted.
+    validate_engine_state(&build(2)).unwrap();
+    assert!(build(2).digest().is_ok());
+}
+
+#[test]
+fn global_ability_allocator_must_exceed_every_issued_identity() {
+    let issue = |state: &mut EngineState| {
+        let identity = state
+            .perspective_identities
+            .players
+            .get_mut(&PlayerId(1))
+            .unwrap();
+        identity
+            .opaque_to_ability
+            .insert(OpaqueAbilityId(1), AbilityInstanceId(5));
+        identity
+            .ability_to_opaque
+            .insert(AbilityInstanceId(5), OpaqueAbilityId(1));
+        identity.next_opaque_ability_id = OpaqueAbilityId(2);
+    };
+    let build = |next: u64| {
+        let mut state = synthetic_state();
+        issue(&mut state);
+        state.allocators.next_ability_id = AbilityInstanceId(next);
+        state
+    };
+    // next == issued must fail closed.
+    assert_eq!(
+        validate_engine_state(&build(5)),
+        Err(EngineStateViolation::AllocatorBehind)
+    );
+    // next < issued must fail closed.
+    assert_eq!(
+        validate_engine_state(&build(4)),
+        Err(EngineStateViolation::AllocatorBehind)
+    );
+    // A strictly greater cursor is accepted.
+    validate_engine_state(&build(6)).unwrap();
+}
+
+#[test]
+fn continuation_actor_must_own_the_referenced_request() {
+    let mut state = empty_shell();
+    state.execution.continuations.insert(
+        ContinuationId(1),
+        ContinuationRecordV2 {
+            id: ContinuationId(1),
+            actor: PlayerId(1),
+            created_at_revision: StateRevision(0),
+            stage_index: 0,
+            payload: ContinuationPayloadV2::SyntheticM2Assembly {
+                stage: AssemblyStageV2::ChooseCount,
+                selected_count: None,
+                selected_piece_keys: Vec::new(),
+                ordered_piece_keys: Vec::new(),
+            },
+        },
+    );
+    state.allocators.next_continuation_id = ContinuationId(2);
+    state.allocators.next_decision_id = DecisionId(2);
+    // A valid pending request owned by a different player.
+    state.execution.pending_decision = Some(PendingDecisionRecordV2 {
+        request: mtgml_decision::AuthoritativeDecisionRequestV2 {
+            decision_id: DecisionId(1),
+            player_decision_id: mtgml_model::PlayerDecisionIdV1(1),
+            state_revision: StateRevision(0),
+            actor: PlayerId(2),
+            visibility: mtgml_decision::DecisionVisibility::Public,
+            decision: mtgml_decision::DecisionDomainV2::ChooseOne,
+            candidates: vec![mtgml_decision::AuthoritativeCandidateV2 {
+                candidate_id: mtgml_model::CandidateIdV1(0),
+                visible_intent: mtgml_decision::CandidateIntent::PassPriority,
+                trusted_binding: mtgml_decision::EngineCandidateBinding::PassPriority,
+            }],
+            continuation_id: Some(ContinuationId(1)),
+        },
+    });
+    assert_eq!(
+        validate_engine_state(&state),
+        Err(EngineStateViolation::M2Shape(
+            M2ShapeViolation::ContinuationActor
+        ))
+    );
 }

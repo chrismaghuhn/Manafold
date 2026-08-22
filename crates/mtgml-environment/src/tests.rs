@@ -305,8 +305,14 @@ fn information_state_orders_active_and_retired_knowledge_jointly() {
     use mtgml_model::VisibleSequence;
     use mtgml_observation::PlayerKnownObjectV1;
     use mtgml_state::{
-        KnowledgeHistoryChannel, KnowledgeInvalidationReason, KnowledgePoint,
+        KnowledgeAcquisitionCause, KnowledgeAcquisitionReason, KnowledgeHistoryChannel,
+        KnowledgeInvalidationReason, KnowledgeInvalidationV2, KnownLocationFactV2,
         RetiredKnowledgeRecordV2,
+    };
+    let observed = |channel, sequence: u64, cause| KnowledgeAcquisitionReason::Observed {
+        channel,
+        sequence: VisibleSequence(sequence),
+        cause,
     };
 
     let mut state =
@@ -349,16 +355,15 @@ fn information_state_orders_active_and_retired_knowledge_jointly() {
             card_definition: None,
             last_known_location: None,
             historical_locations: Vec::new(),
-            learned_at: KnowledgePoint {
-                channel: KnowledgeHistoryChannel::Private,
-                sequence: VisibleSequence(0),
+            acquisition: KnowledgeAcquisitionReason::InitialConfiguration,
+            invalidation: KnowledgeInvalidationV2 {
+                provenance: observed(
+                    KnowledgeHistoryChannel::Public,
+                    0,
+                    KnowledgeAcquisitionCause::ExplicitReveal,
+                ),
+                reason: KnowledgeInvalidationReason::Shuffle,
             },
-            learned_via: mtgml_state::KnowledgeAcquisitionReason::InitialConfiguration,
-            invalidated_at: KnowledgePoint {
-                channel: KnowledgeHistoryChannel::Public,
-                sequence: VisibleSequence(0),
-            },
-            reason: KnowledgeInvalidationReason::Shuffle,
         },
     );
     knowledge.active.remove(&mtgml_model::OpaqueObjectId(2));
@@ -368,16 +373,19 @@ fn information_state_orders_active_and_retired_knowledge_jointly() {
             opaque_object: mtgml_model::OpaqueObjectId(3),
             physical_card: None,
             card_definition: Some(mtgml_model::CardDefinitionId(2)),
-            known_location: Some(hidden_location),
-            learned_at: KnowledgePoint {
-                channel: KnowledgeHistoryChannel::Public,
-                sequence: VisibleSequence(0),
-            },
-            learned_via: mtgml_state::KnowledgeAcquisitionReason::Observed {
-                channel: KnowledgeHistoryChannel::Public,
-                sequence: VisibleSequence(0),
-                cause: mtgml_state::KnowledgeAcquisitionCause::PublicEvent,
-            },
+            known_location: Some(KnownLocationFactV2 {
+                location: hidden_location,
+                provenance: observed(
+                    KnowledgeHistoryChannel::Public,
+                    0,
+                    KnowledgeAcquisitionCause::PublicEvent,
+                ),
+            }),
+            acquisition: observed(
+                KnowledgeHistoryChannel::Public,
+                0,
+                KnowledgeAcquisitionCause::PublicEvent,
+            ),
             historical_locations: Vec::new(),
         },
     );
@@ -678,4 +686,284 @@ fn p2_error_text(controller: &TrustedEnvironmentController) -> String {
         Ok(endpoint) => format!("{}", endpoint.submit(response(0, 0)).unwrap_err()),
         Err(error) => format!("{error}"),
     }
+}
+
+fn rich_provenance_state() -> mtgml_state::EngineState {
+    use mtgml_model::VisibleSequence;
+    use mtgml_state::{
+        KnowledgeAcquisitionCause, KnowledgeAcquisitionReason, KnowledgeHistoryChannel,
+        KnowledgeInvalidationReason, KnowledgeInvalidationV2, KnownLocationFactV2,
+        RetiredKnowledgeRecordV2,
+    };
+    let observed = |channel, sequence: u64, cause| KnowledgeAcquisitionReason::Observed {
+        channel,
+        sequence: VisibleSequence(sequence),
+        cause,
+    };
+    let mut state =
+        mtgml_state::construct_synthetic_engine_state(mtgml_state::SyntheticResetInputs {
+            players: [PlayerId(1), PlayerId(2)],
+            root_seed: seed(),
+        })
+        .unwrap();
+
+    let identity = state
+        .perspective_identities
+        .players
+        .get_mut(&PlayerId(1))
+        .unwrap();
+    identity
+        .opaque_to_object
+        .insert(mtgml_model::OpaqueObjectId(3), mtgml_model::GameObjectId(2));
+    identity
+        .object_to_opaque
+        .insert(mtgml_model::GameObjectId(2), mtgml_model::OpaqueObjectId(3));
+    identity.next_opaque_object_id = mtgml_model::OpaqueObjectId(4);
+    identity
+        .retired_object_ids
+        .insert(mtgml_model::OpaqueObjectId(2));
+
+    let knowledge = state.knowledge.players.get_mut(&PlayerId(1)).unwrap();
+    let hidden_location = mtgml_state::ZoneLocation {
+        zone: mtgml_model::ZoneKind::Library,
+        player: Some(PlayerId(2)),
+        position: mtgml_state::ZonePosition::Top { offset: 0 },
+        visibility: mtgml_state::VisibilityPartition::FaceDown,
+        partition: None,
+    };
+
+    // Retired record: private_look acquisition, own_private_identity history,
+    // explicit_reveal invalidation.
+    let mut retired = RetiredKnowledgeRecordV2 {
+        opaque_object: mtgml_model::OpaqueObjectId(2),
+        physical_card: None,
+        card_definition: None,
+        last_known_location: Some(KnownLocationFactV2 {
+            location: hidden_location.clone(),
+            provenance: observed(
+                KnowledgeHistoryChannel::Private,
+                0,
+                KnowledgeAcquisitionCause::PrivateLook,
+            ),
+        }),
+        historical_locations: vec![KnownLocationFactV2 {
+            location: hidden_location.clone(),
+            provenance: observed(
+                KnowledgeHistoryChannel::Private,
+                0,
+                KnowledgeAcquisitionCause::OwnPrivateIdentity,
+            ),
+        }],
+        acquisition: observed(
+            KnowledgeHistoryChannel::Private,
+            0,
+            KnowledgeAcquisitionCause::PrivateLook,
+        ),
+        invalidation: KnowledgeInvalidationV2 {
+            provenance: observed(
+                KnowledgeHistoryChannel::Public,
+                0,
+                KnowledgeAcquisitionCause::ExplicitReveal,
+            ),
+            reason: KnowledgeInvalidationReason::Shuffle,
+        },
+    };
+    retired.last_known_location = Some(KnownLocationFactV2 {
+        location: hidden_location.clone(),
+        provenance: observed(
+            KnowledgeHistoryChannel::Private,
+            0,
+            KnowledgeAcquisitionCause::PrivateLook,
+        ),
+    });
+    knowledge
+        .retired
+        .insert(mtgml_model::OpaqueObjectId(2), retired);
+    knowledge.active.remove(&mtgml_model::OpaqueObjectId(2));
+
+    // Active record with explicit_reveal current-fact provenance.
+    knowledge.active.insert(
+        mtgml_model::OpaqueObjectId(3),
+        mtgml_state::KnowledgeRecordV2 {
+            opaque_object: mtgml_model::OpaqueObjectId(3),
+            physical_card: None,
+            card_definition: Some(mtgml_model::CardDefinitionId(2)),
+            known_location: Some(KnownLocationFactV2 {
+                location: hidden_location,
+                provenance: observed(
+                    KnowledgeHistoryChannel::Public,
+                    0,
+                    KnowledgeAcquisitionCause::ExplicitReveal,
+                ),
+            }),
+            acquisition: observed(
+                KnowledgeHistoryChannel::Public,
+                0,
+                KnowledgeAcquisitionCause::ExplicitReveal,
+            ),
+            historical_locations: Vec::new(),
+        },
+    );
+    state
+}
+
+fn projected_provenance(
+    information: &mtgml_observation::PlayerInformationStateV2,
+) -> Vec<(u64, String)> {
+    use mtgml_observation::{PlayerKnowledgeProvenanceV1, PlayerKnownObjectV1};
+    fn render(provenance: &PlayerKnowledgeProvenanceV1) -> String {
+        match provenance {
+            PlayerKnowledgeProvenanceV1::InitialConfiguration => "initial_configuration".into(),
+            PlayerKnowledgeProvenanceV1::Observed {
+                channel,
+                sequence,
+                cause,
+            } => format!("observed/{channel:?}/{}/{cause:?}", sequence.0),
+        }
+    }
+    let mut rendered = Vec::new();
+    for record in &information.retained_knowledge {
+        match record {
+            PlayerKnownObjectV1::Active {
+                opaque_object_id,
+                current_known_location_fact,
+                historical_locations,
+                acquisition,
+                ..
+            } => {
+                if let Some(current) = current_known_location_fact {
+                    rendered.push((
+                        opaque_object_id.0,
+                        format!("current/{}", render(&current.provenance)),
+                    ));
+                }
+                for historical in historical_locations {
+                    rendered.push((
+                        opaque_object_id.0,
+                        format!("historical/{}", render(&historical.provenance)),
+                    ));
+                }
+                rendered.push((
+                    opaque_object_id.0,
+                    format!("acquisition/{}", render(acquisition)),
+                ));
+            }
+            PlayerKnownObjectV1::Retired {
+                opaque_object_id,
+                last_known_location_fact,
+                historical_locations,
+                acquisition,
+                invalidation,
+                ..
+            } => {
+                if let Some(last) = last_known_location_fact {
+                    rendered.push((
+                        opaque_object_id.0,
+                        format!("last/{}", render(&last.provenance)),
+                    ));
+                }
+                for historical in historical_locations {
+                    rendered.push((
+                        opaque_object_id.0,
+                        format!("historical/{}", render(&historical.provenance)),
+                    ));
+                }
+                rendered.push((
+                    opaque_object_id.0,
+                    format!("acquisition/{}", render(acquisition)),
+                ));
+                let reason_text = format!("{:?}", invalidation.reason);
+                rendered.push((
+                    opaque_object_id.0,
+                    format!(
+                        "invalidation/{}/{}",
+                        render(&invalidation.provenance),
+                        reason_text
+                    ),
+                ));
+            }
+        }
+    }
+    rendered.sort();
+    rendered
+}
+
+#[test]
+fn provenance_is_preserved_through_projection_restore_and_fork() {
+    let codec = CheckpointCodecIdentity {
+        codec_id: "synthetic-m2-memory".into(),
+        semantic_version: "3".into(),
+    };
+    let state = rich_provenance_state();
+    let checkpoint = EnvironmentCheckpointV3::new(
+        state.clone(),
+        EpisodeStatus::Running,
+        EnvironmentLimitCounters::default(),
+        codec.clone(),
+    )
+    .unwrap();
+
+    let controller = TrustedEnvironmentController::new(
+        SyntheticM1EnvironmentBackend::from_checkpoint(
+            checkpoint.clone(),
+            config([PlayerId(1), PlayerId(2)]),
+        )
+        .unwrap(),
+    );
+    let endpoint = controller.bind_player(PlayerId(1)).unwrap();
+    let projected = endpoint.information_state().unwrap();
+    projected.validate().unwrap();
+    let expected = projected_provenance(&projected);
+
+    // The projection must not invent causes: every projected provenance
+    // equals its authoritative counterpart.
+    assert!(
+        expected.contains(&(
+            2u64,
+            "invalidation/observed/Public/0/ExplicitReveal/Shuffle".to_string()
+        )),
+        "invalidation provenance was not preserved: {expected:?}"
+    );
+    assert!(
+        expected.contains(&(
+            2u64,
+            "historical/observed/Private/0/OwnPrivateIdentity".to_string()
+        )),
+        "own_private_identity history was collapsed: {expected:?}"
+    );
+    assert!(
+        expected.contains(&(3u64, "current/observed/Public/0/ExplicitReveal".to_string())),
+        "explicit_reveal current fact was collapsed: {expected:?}"
+    );
+    assert!(
+        !expected
+            .iter()
+            .any(|(_, text)| text.contains("PublicEvent")),
+        "projection invented a public_event cause: {expected:?}"
+    );
+
+    // Checkpoint -> restore preserves exact provenance.
+    let restored = TrustedEnvironmentController::new(
+        SyntheticM1EnvironmentBackend::from_checkpoint(
+            checkpoint.clone(),
+            config([PlayerId(1), PlayerId(2)]),
+        )
+        .unwrap(),
+    );
+    restored.restore(checkpoint.clone()).unwrap();
+    let restored_endpoint = restored.bind_player(PlayerId(1)).unwrap();
+    assert_eq!(
+        projected_provenance(&restored_endpoint.information_state().unwrap()),
+        expected
+    );
+    assert_eq!(restored.checkpoint().unwrap().state, state);
+
+    // A fork preserves exact provenance.
+    let fork = controller.fork().unwrap();
+    let fork_endpoint = fork.bind_player(PlayerId(1)).unwrap();
+    assert_eq!(
+        projected_provenance(&fork_endpoint.information_state().unwrap()),
+        expected
+    );
+    assert_eq!(fork.checkpoint().unwrap().state, state);
 }
