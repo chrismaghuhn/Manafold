@@ -86,10 +86,12 @@ pub struct KnowledgeRecordV2 {
     pub historical_locations: Vec<KnowledgeHistoryRecordV2>,
 }
 
+/// One historical known-location fact. The authoritative knowledge history is
+/// carried per knowledge record (`historical_locations`); there is no separate
+/// player-level history aggregate and no duplicated object identity here.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct KnowledgeHistoryRecordV2 {
-    pub opaque_object: OpaqueObjectId,
     pub location: Option<ZoneLocation>,
     pub observed_at: crate::knowledge::KnowledgePoint,
 }
@@ -117,7 +119,6 @@ pub struct RetiredKnowledgeRecordV2 {
 pub struct PlayerKnowledgeStateV2 {
     pub active: BTreeMap<OpaqueObjectId, KnowledgeRecordV2>,
     pub retired: BTreeMap<OpaqueObjectId, RetiredKnowledgeRecordV2>,
-    pub history: Vec<KnowledgeHistoryRecordV2>,
     pub next_visible_sequence: VisibleSequence,
 }
 
@@ -302,9 +303,23 @@ fn validate_identity(identity: &PerspectiveIdentityRecordV2) -> Result<(), M2Sha
 }
 
 fn validate_knowledge(knowledge: &PlayerKnowledgeStateV2) -> Result<(), M2ShapeViolation> {
+    let point_in_range = |point: &crate::knowledge::KnowledgePoint| -> bool {
+        point.sequence.0 < knowledge.next_visible_sequence.0
+    };
+    let history_is_valid = |records: &[KnowledgeHistoryRecordV2]| -> bool {
+        records
+            .windows(2)
+            .all(|window| window[0].observed_at.sequence < window[1].observed_at.sequence)
+            && records
+                .iter()
+                .all(|record| point_in_range(&record.observed_at))
+    };
     for (opaque, record) in &knowledge.active {
         if opaque != &record.opaque_object || opaque.0 == 0 {
             return Err(M2ShapeViolation::Knowledge);
+        }
+        if !point_in_range(&record.learned_at) || !history_is_valid(&record.historical_locations) {
+            return Err(M2ShapeViolation::VisibleSequence);
         }
     }
     for (opaque, record) in &knowledge.retired {
@@ -312,18 +327,16 @@ fn validate_knowledge(knowledge: &PlayerKnowledgeStateV2) -> Result<(), M2ShapeV
         {
             return Err(M2ShapeViolation::Knowledge);
         }
-    }
-    for window in knowledge.history.windows(2) {
-        if window[0].observed_at.sequence >= window[1].observed_at.sequence {
+        if !point_in_range(&record.learned_at)
+            || !point_in_range(&record.invalidated_at)
+            || record
+                .last_known_location
+                .as_ref()
+                .is_some_and(|fact| !point_in_range(&fact.observed_at))
+            || !history_is_valid(&record.historical_locations)
+        {
             return Err(M2ShapeViolation::VisibleSequence);
         }
-    }
-    if knowledge
-        .history
-        .last()
-        .is_some_and(|record| record.observed_at.sequence.0 >= knowledge.next_visible_sequence.0)
-    {
-        return Err(M2ShapeViolation::VisibleSequence);
     }
     Ok(())
 }

@@ -275,17 +275,28 @@ pub fn validate_engine_state(state: &EngineState) -> Result<(), EngineStateViola
                 return Err(EngineStateViolation::KnowledgeMismatch);
             }
         }
-        for opaque in knowledge.retired.keys() {
-            if identity.opaque_to_object.contains_key(opaque) {
+        for (opaque, record) in &knowledge.retired {
+            if identity.opaque_to_object.contains_key(opaque)
+                || !knowledge_point_is_valid(record.learned_at, knowledge)
+                || !knowledge_point_is_valid(record.invalidated_at, knowledge)
+                || record
+                    .last_known_location
+                    .as_ref()
+                    .is_some_and(|fact| !knowledge_point_is_valid(fact.observed_at, knowledge))
+                || record
+                    .historical_locations
+                    .windows(2)
+                    .any(|window| window[0].observed_at.sequence >= window[1].observed_at.sequence)
+                || record
+                    .historical_locations
+                    .iter()
+                    .any(|fact| !knowledge_point_is_valid(fact.observed_at, knowledge))
+            {
                 return Err(EngineStateViolation::KnowledgeMismatch);
             }
-        }
-        if knowledge
-            .history
-            .windows(2)
-            .any(|window| window[0].observed_at.sequence >= window[1].observed_at.sequence)
-        {
-            return Err(EngineStateViolation::KnowledgeMismatch);
+            if !acquisition_matches_channel(&record.learned_via, record.learned_at.channel) {
+                return Err(EngineStateViolation::KnowledgeMismatch);
+            }
         }
     }
 
