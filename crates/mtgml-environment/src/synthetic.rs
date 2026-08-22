@@ -1,4 +1,4 @@
-use std::collections::BTreeSet;
+﻿use std::collections::BTreeSet;
 
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 use mtgml_decision::{DecisionResponseV2, PlayerDecisionRequestV2};
@@ -359,37 +359,52 @@ impl SyntheticM1EnvironmentBackend {
             .players
             .get(&perspective)
             .ok_or(PlayerApiError::Unavailable)?;
+        // Canonical retained-knowledge order is ascending numeric OpaqueObjectId
+        // across active and retired records (INFORMATION_MODEL.md).
         let mut retained_knowledge =
             Vec::with_capacity(knowledge.active.len() + knowledge.retired.len());
         for record in knowledge.active.values() {
-            retained_knowledge.push(PlayerKnownObjectV1::Active {
-                opaque_object_id: record.opaque_object,
-                known_definition: record.card_definition,
-                current_known_location_fact: record
-                    .known_location
-                    .as_ref()
-                    .map(|location| Self::public_fact(location, &record.learned_at)),
-                historical_locations: Self::public_history(&record.historical_locations),
-                acquisition: Self::public_provenance(&record.learned_via),
-            });
+            retained_knowledge.push((
+                record.opaque_object,
+                PlayerKnownObjectV1::Active {
+                    opaque_object_id: record.opaque_object,
+                    known_definition: record.card_definition,
+                    current_known_location_fact: record
+                        .known_location
+                        .as_ref()
+                        .map(|location| Self::public_fact(location, &record.learned_at)),
+                    historical_locations: Self::public_history(&record.historical_locations),
+                    acquisition: Self::public_provenance(&record.learned_via),
+                },
+            ));
         }
         for record in knowledge.retired.values() {
-            retained_knowledge.push(PlayerKnownObjectV1::Retired {
-                opaque_object_id: record.opaque_object,
-                known_definition: record.card_definition,
-                last_known_location_fact: record.last_known_location.as_ref().and_then(|fact| {
-                    fact.location
-                        .as_ref()
-                        .map(|location| Self::public_fact(location, &fact.observed_at))
-                }),
-                historical_locations: Self::public_history(&record.historical_locations),
-                acquisition: Self::public_provenance(&record.learned_via),
-                invalidation: mtgml_observation::PlayerKnowledgeInvalidationV1 {
-                    provenance: Self::public_point_provenance(&record.invalidated_at),
-                    reason: Self::public_invalidation_reason(&record.reason),
+            retained_knowledge.push((
+                record.opaque_object,
+                PlayerKnownObjectV1::Retired {
+                    opaque_object_id: record.opaque_object,
+                    known_definition: record.card_definition,
+                    last_known_location_fact: record.last_known_location.as_ref().and_then(
+                        |fact| {
+                            fact.location
+                                .as_ref()
+                                .map(|location| Self::public_fact(location, &fact.observed_at))
+                        },
+                    ),
+                    historical_locations: Self::public_history(&record.historical_locations),
+                    acquisition: Self::public_provenance(&record.learned_via),
+                    invalidation: mtgml_observation::PlayerKnowledgeInvalidationV1 {
+                        provenance: Self::public_point_provenance(&record.invalidated_at),
+                        reason: Self::public_invalidation_reason(&record.reason),
+                    },
                 },
-            });
+            ));
         }
+        retained_knowledge.sort_by_key(|(opaque, _)| *opaque);
+        let retained_knowledge: Vec<_> = retained_knowledge
+            .into_iter()
+            .map(|(_, object)| object)
+            .collect();
 
         let mut information_state = PlayerInformationStateV2 {
             schema_version: INFORMATION_STATE_SCHEMA_V2.into(),
