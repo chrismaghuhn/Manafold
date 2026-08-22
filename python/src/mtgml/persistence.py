@@ -254,15 +254,17 @@ def decode_envelope(envelope: bytes) -> tuple[dict[str, object], bytes]:
         return read_declared_bytes(declared)
 
     def read_payload_frame() -> bytes:
-        # Payload precedence follows ADR-0040: truncation (rank 3) is
-        # reported before an over-limit declaration (rank 4).
+        # As the last envelope frame the payload carries the complete
+        # framing invariant: any mismatch between the declared length and
+        # the remaining bytes - truncated OR trailing - is a framing defect
+        # (rank 3) reported before the resource bound (rank 4).
         nonlocal offset
         if offset + 8 > len(envelope):
             raise _error("envelope_length", "envelope frame length is truncated")
         declared = struct.unpack(">Q", envelope[offset : offset + 8])[0]
         offset += 8
-        if declared > len(envelope) - offset:
-            raise _error("envelope_length", "payload frame is truncated")
+        if declared != len(envelope) - offset:
+            raise _error("envelope_length", "payload frame does not end the envelope")
         if declared > MAX_PAYLOAD_BYTES:
             raise _error("payload_too_large", "payload frame is too large")
         return read_declared_bytes(declared)

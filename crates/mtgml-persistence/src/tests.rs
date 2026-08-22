@@ -214,6 +214,15 @@ fn payload_too_large_requires_full_bytes_present() {
         envelope::decode_envelope(&envelope).unwrap_err(),
         PersistenceDecodeErrorV1::PayloadTooLarge
     );
+
+    // The same oversized payload plus a single trailing byte is a framing
+    // defect first (rank 3 < rank 4): the payload frame must end the
+    // envelope exactly.
+    envelope.push(0);
+    assert_eq!(
+        envelope::decode_envelope(&envelope).unwrap_err(),
+        PersistenceDecodeErrorV1::EnvelopeLength
+    );
 }
 
 #[test]

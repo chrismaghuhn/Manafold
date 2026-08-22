@@ -182,7 +182,7 @@ fn read_payload_frame(
     let declared =
         usize::try_from(declared).map_err(|_| PersistenceDecodeErrorV1::EnvelopeLength)?;
     let remaining = input.len() - *offset;
-    if declared > remaining {
+    if declared != remaining {
         return Err(PersistenceDecodeErrorV1::EnvelopeLength);
     }
     if declared > cbor::MAX_PAYLOAD_BYTES {

@@ -78,3 +78,35 @@ def test_cross_language_mechanical_negative_categories() -> None:
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class PayloadFramingPrecedenceTests(unittest.TestCase):
+    """The payload frame must end the envelope exactly: trailing bytes are a
+    framing defect (rank 3) reported before the resource bound (rank 4)."""
+
+    def test_trailing_byte_beats_payload_too_large(self) -> None:
+        from mtgml.persistence import MAX_PAYLOAD_BYTES, decode_envelope
+
+        declared = MAX_PAYLOAD_BYTES + 1
+
+        def build(total_payload_bytes: int) -> bytes:
+            envelope = bytearray()
+            envelope += b"mtgml.digest-envelope.v1\x00"
+            for field in (
+                b"sha-256",
+                b"mtgml.test-domain.v1",
+                b"mtgml.canonical-cbor.v1",
+                b"test-input.v1",
+            ):
+                envelope += len(field).to_bytes(8, "big") + field
+            envelope += declared.to_bytes(8, "big")
+            envelope += bytes(total_payload_bytes)
+            return bytes(envelope)
+
+        with self.assertRaises(PersistenceError) as exact:
+            decode_envelope(build(declared))
+        self.assertEqual(exact.exception.code, "payload_too_large")
+
+        with self.assertRaises(PersistenceError) as trailing:
+            decode_envelope(build(declared) + b"\x00")
+        self.assertEqual(trailing.exception.code, "envelope_length")
