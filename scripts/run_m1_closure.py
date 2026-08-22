@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 """Run the ten M1 regression gates without mutating the source tree.
 
-The historical M1 closure evidence is immutable.  After the M2.B V3 cut,
-this runner's current mapping names only tests that still exist on the current
-runtime surface; it does not pretend that retired M1 V2 runtime test names
-remain executable.
+The historical M1 closure evidence is immutable.  After the M2.B V3 cut this
+runner reconstructs the complete M1 matrix over the current runtime contract:
+every historical M1 surface is covered by an explicitly mapped current-runtime
+(or detached historical) exact test.  Retired V2 runtime test names are never
+renamed or silently dropped; each gate keeps its normative name and reports
+only executed evidence.
 """
 
 from __future__ import annotations
@@ -51,8 +53,32 @@ GATE_TESTS: dict[str, tuple[TestDefinition, ...]] = {
             "mtgml-state",
             (
                 "tests::synthetic_state_is_the_current_m2_shape",
-                "tests::deterministic_structural_identity_repeats_exactly",
-                "tests::synthetic_reset_rejects_duplicate_players",
+                "tests::valid_empty_shell_passes_cross_component_validation",
+                "tests::synthetic_reset_is_exactly_deterministic_for_identical_inputs",
+                "tests::pending_decision_must_match_state_revision",
+                "tests::unordered_object_must_not_appear_in_ordered_zones",
+                "tests::ordered_object_must_appear_exactly_once",
+                "tests::ordered_object_must_not_be_missing",
+                "tests::duplicate_live_physical_card_incarnation_rejected",
+                "tests::pending_candidate_binding_must_match_authoritative_binding",
+                "tests::opaque_allocator_must_reference_declared_player",
+                "tests::commander_designation_must_reference_owned_live_physical_card",
+                "tests::valid_commander_structural_references_are_accepted",
+                "tests::commander_ledger_must_reference_a_designated_physical_card",
+                "tests::commander_damage_ledger_must_reference_a_declared_player",
+                "tests::active_knowledge_requires_exactly_one_live_mapping",
+                "tests::reverse_identity_maps_must_agree",
+                "tests::retired_opaque_identity_must_not_stay_active",
+                "tests::retired_knowledge_must_not_keep_a_live_mapping",
+                "tests::known_location_must_match_the_live_association",
+                "tests::historical_location_sequences_must_increase",
+                "tests::knowledge_provenance_must_not_be_future_dated",
+                "tests::invalid_knowledge_cause_channel_combination_is_rejected",
+                "tests::retired_knowledge_provenance_is_validated",
+                "tests::pending_decision_must_reference_an_existing_continuation",
+                "tests::continuation_stage_must_match_its_payload",
+                "tests::continuation_revision_must_not_be_future_dated",
+                "tests::unsupported_effect_machinery_is_rejected",
             ),
             "complete synthetic EngineState construction and cross-component invariants",
         ),
@@ -73,6 +99,7 @@ GATE_TESTS: dict[str, tuple[TestDefinition, ...]] = {
         *test_definitions(
             "mtgml-rules",
             (
+                "tests::synthetic_rejection_matrix_preserves_complete_nonmutation",
                 "tests::invalid_v2_answer_is_rejected_without_state_mutation",
                 "tests::wrong_actor_and_stale_revision_fail_closed",
             ),
@@ -88,8 +115,11 @@ GATE_TESTS: dict[str, tuple[TestDefinition, ...]] = {
         ),
         *test_definitions(
             "mtgml-replay",
-            ("tests::replay_v3_empty_accepted_rejected_identity_matrix",),
-            "rejected replay identity and recorder nonmutation",
+            (
+                "tests::replay_v3_empty_accepted_rejected_identity_matrix",
+                "tests::replay_recorder_rejects_invalid_append_without_mutation",
+            ),
+            "rejected replay identity, recorder nonmutation, and historical V2 evidence",
         ),
     ),
     "STATE_DELTA_FULL_REAPPLICATION": (
@@ -108,18 +138,25 @@ GATE_TESTS: dict[str, tuple[TestDefinition, ...]] = {
         *test_definitions(
             "mtgml-rules",
             (
+                "tests::sequential_event_delta_audit_rejects_tampered_products",
                 "tests::synthetic_m2_choose_one_returns_authoritative_transition_product",
                 "tests::invalid_v2_answer_is_rejected_without_state_mutation",
             ),
-            "current synthetic event/delta audit and fail-closed transition parity",
+            "ordered semantic cursor validation and final StateDelta projection parity",
         ),
     ),
     "CHECKPOINT_RESTORE_COMPLETE_IDENTITY": (
+        *test_definitions(
+            "mtgml-persistence",
+            ("tests::checkpoint_digest_v3_known_answer",),
+            "checkpoint digest covers full-state identity, status, counters, and codec",
+        ),
         *test_definitions(
             "mtgml-environment",
             (
                 "tests::checkpoint_v3_validation_and_restore_nonmutation_matrix",
                 "tests::checkpoint_identity_tampering_is_rejected",
+                "tests::checkpoint_restore_repeats_exact_transition_and_replay_segment",
             ),
             "complete EnvironmentCheckpointV3 creation, validation, and restore identity",
         ),
@@ -127,7 +164,10 @@ GATE_TESTS: dict[str, tuple[TestDefinition, ...]] = {
     "FORK_PARITY": (
         *test_definitions(
             "mtgml-environment",
-            ("tests::checkpoint_restore_and_fork_are_exact_and_rebase_replay",),
+            (
+                "tests::checkpoint_restore_and_fork_are_exact_and_rebase_replay",
+                "tests::forks_diverge_only_on_explicit_input",
+            ),
             "checkpoint fork identity, same-input parity, and explicit-input divergence",
         ),
     ),
@@ -136,14 +176,21 @@ GATE_TESTS: dict[str, tuple[TestDefinition, ...]] = {
             "mtgml-environment",
             (
                 "tests::semantic_replay_reproduces_the_authoritative_transition",
+                "tests::semantic_replay_rejects_tampered_identity_without_live_mutation",
                 "tests::checkpoint_restore_and_fork_are_exact_and_rebase_replay",
             ),
             "semantic replay execution, exact live parity, and fail-closed divergence",
         ),
         *test_definitions(
             "mtgml-replay",
-            ("tests::replay_v3_empty_accepted_rejected_identity_matrix",),
-            "V3 replay identity, contiguous steps, and rejection identity",
+            (
+                "tests::replay_v3_empty_accepted_rejected_identity_matrix",
+                "tests::replay_v3_rejects_corrupt_accepted_progression",
+                "tests::replay_recorder_starts_empty_segment_at_manifest_identity",
+                "tests::replay_recorder_appends_exact_accepted_step",
+                "tests::replay_recorder_keeps_rejected_diagnostic_identity",
+            ),
+            "V3 replay identity, contiguous steps, rejection identity, historical V2 evidence",
         ),
     ),
     "DETERMINISTIC_RNG_AND_ALLOCATORS": (
@@ -164,19 +211,32 @@ GATE_TESTS: dict[str, tuple[TestDefinition, ...]] = {
         ),
         *test_definitions(
             "mtgml-rules",
-            ("tests::synthetic_m2_choose_one_returns_authoritative_transition_product",),
-            "deterministic synthetic transition and fail-closed service errors",
+            (
+                "tests::deterministic_services_repeat_exact_transition_result",
+                "tests::deterministic_services_isolate_unrelated_stream_cursors",
+                "tests::rng_exhaustion_is_a_typed_internal_failure_without_input_mutation",
+                "tests::effect_allocator_exhaustion_is_a_typed_internal_failure_before_rng",
+                "tests::sequential_event_delta_audit_rejects_tampered_products",
+            ),
+            "accepted-transition RNG/allocator continuation and fail-closed service errors",
         ),
     ),
     "MULTI_PLAYER_ENDPOINT_BINDING": (
         *test_definitions(
             "mtgml-environment",
             (
+                "tests::multi_player_endpoints_remain_bound_through_visibility_and_submission",
+                "tests::non_default_player_ids_remain_bound_through_submission",
+                "tests::unknown_player_binding_is_rejected_without_backend_details",
+                "tests::player_api_errors_do_not_render_trusted_values",
                 "tests::synthetic_endpoint_returns_v2_surface",
                 "tests::accepted_endpoint_submission_commits_v3_state_delta_and_replay",
                 "tests::stale_endpoint_response_is_rejected_without_mutation",
             ),
-            ("perspective-bound endpoint, actor ownership, nonmutation, and safe player surface"),
+            (
+                "two perspective-bound endpoints, actor ownership, nonmutation, "
+                "and safe player surface"
+            ),
         ),
     ),
 }
