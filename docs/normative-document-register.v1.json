@@ -1,6 +1,26 @@
 {
   "documents": [
-    {
+  {
+    "change_process": "documentation-pr",
+    "owner_role": "maintainer",
+    "path": "docs/agents/domain.md",
+    "role": "process",
+    "stability": "accepted"
+  },
+  {
+    "change_process": "documentation-pr",
+    "owner_role": "maintainer",
+    "path": "docs/agents/issue-tracker.md",
+    "role": "process",
+    "stability": "accepted"
+  },
+  {
+    "change_process": "documentation-pr",
+    "owner_role": "maintainer",
+    "path": "docs/agents/triage-labels.md",
+    "role": "process",
+    "stability": "accepted"
+  },    {
       "change_process": "governance-pr",
       "owner_role": "project-governance",
       "path": "CODE_OF_CONDUCT.md",
