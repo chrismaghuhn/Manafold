@@ -126,3 +126,73 @@ class InformationProvenanceParityTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class InitialConfigurationCursorParityTests(unittest.TestCase):
+    """Rust and Python must agree: initial_configuration owns no visible
+    sequence and is valid even at cursor zero, while observed facts are bound
+    by the cursor."""
+
+    @staticmethod
+    def _information(next_visible_sequence: int, acquisition: dict) -> PlayerInformationStateV2:
+        import sys
+
+        sys.path.insert(0, str(ROOT / "python" / "src"))
+        from mtgml.observation import InformationStateDigestInputV2, ObservationEnvelope
+        from mtgml.wire import compute_information_state_digest_v2
+
+        observation = ObservationEnvelope(
+            schema_version="observation-envelope.v1",
+            perspective=1,
+            state_revision=0,
+            payload_codec="synthetic-m2-observation.v1",
+            payload_base64="e30=",
+            digest="0000000000000000000000000000000000000000000000000000000000000000",
+        )
+        record = {
+            "kind": "active",
+            "opaque_object_id": "1",
+            "known_definition": None,
+            "current_known_location_fact": None,
+            "historical_locations": [],
+            "acquisition": acquisition,
+        }
+        input_value = InformationStateDigestInputV2.from_wire(
+            {
+                "schema_version": "information-state-digest-input.v2",
+                "perspective": "1",
+                "state_revision": "0",
+                "current_observation": observation.to_wire(),
+                "next_visible_sequence": str(next_visible_sequence),
+                "retained_knowledge": [record],
+            }
+        )
+        _, digest = compute_information_state_digest_v2(input_value)
+        return PlayerInformationStateV2(
+            schema_version="information-state-envelope.v2",
+            perspective=1,
+            state_revision=0,
+            current_observation=observation,
+            next_visible_sequence=next_visible_sequence,
+            retained_knowledge=(PlayerKnownObjectV1.from_wire(record),),
+            digest=digest,
+        )
+
+    def test_initial_configuration_is_valid_at_cursor_zero(self) -> None:
+        information = self._information(0, {"kind": "initial_configuration"})
+        information.validate()
+
+    def test_observed_sequence_zero_is_invalid_at_cursor_zero(self) -> None:
+        from mtgml.errors import WireError
+
+        information = self._information(
+            0,
+            {
+                "kind": "observed",
+                "channel": "public",
+                "sequence": "0",
+                "cause": "public_event",
+            },
+        )
+        with self.assertRaises(WireError):
+            information.validate()

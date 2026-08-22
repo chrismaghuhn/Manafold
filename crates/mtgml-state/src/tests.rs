@@ -1408,3 +1408,50 @@ fn continuation_actor_must_own_the_referenced_request() {
         ))
     );
 }
+
+#[test]
+fn historical_monotonicity_ignores_unsequenced_provenance() {
+    let build = |provenances: Vec<KnowledgeAcquisitionReason>| {
+        let mut state = synthetic_state();
+        let knowledge = state.knowledge.players.get_mut(&PlayerId(1)).unwrap();
+        let record = knowledge.active.get_mut(&OpaqueObjectId(1)).unwrap();
+        let location = record.known_location.clone().unwrap().location;
+        record.historical_locations = provenances
+            .into_iter()
+            .map(|provenance| fact(location.clone(), provenance))
+            .collect();
+        state
+    };
+
+    // An unsequenced initial fact followed by an observed fact is valid.
+    let valid = build(vec![
+        KnowledgeAcquisitionReason::InitialConfiguration,
+        observed(
+            KnowledgeHistoryChannel::Public,
+            0,
+            KnowledgeAcquisitionCause::PublicEvent,
+        ),
+    ]);
+    validate_engine_state(&valid).unwrap();
+
+    // Two observed facts at the same sequence remain invalid.
+    let invalid = build(vec![
+        observed(
+            KnowledgeHistoryChannel::Public,
+            0,
+            KnowledgeAcquisitionCause::PublicEvent,
+        ),
+        KnowledgeAcquisitionReason::InitialConfiguration,
+        observed(
+            KnowledgeHistoryChannel::Public,
+            0,
+            KnowledgeAcquisitionCause::PublicEvent,
+        ),
+    ]);
+    assert_eq!(
+        validate_engine_state(&invalid),
+        Err(EngineStateViolation::M2Shape(
+            M2ShapeViolation::VisibleSequence
+        ))
+    );
+}

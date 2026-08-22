@@ -264,9 +264,16 @@ pub fn validate_engine_state(state: &EngineState) -> Result<(), EngineStateViola
                 .known_location
                 .as_ref()
                 .is_some_and(|fact| state.zones.locations.get(object) != Some(&fact.location));
-            let history_is_increasing = record.historical_locations.windows(2).any(|window| {
-                window[0].provenance.observed_sequence() >= window[1].provenance.observed_sequence()
-            });
+            let observed: Vec<_> = record
+                .historical_locations
+                .iter()
+                .filter_map(|fact| {
+                    fact.provenance
+                        .observed_sequence()
+                        .map(|sequence| sequence.0)
+                })
+                .collect();
+            let history_is_increasing = observed.windows(2).any(|window| window[0] >= window[1]);
             if known_fact_matches_live
                 || record
                     .physical_card
@@ -302,10 +309,18 @@ pub fn validate_engine_state(state: &EngineState) -> Result<(), EngineStateViola
                     .historical_locations
                     .iter()
                     .all(|fact| fact_is_valid(fact, knowledge))
-                || record.historical_locations.windows(2).any(|window| {
-                    window[0].provenance.observed_sequence()
-                        >= window[1].provenance.observed_sequence()
-                })
+                || {
+                    let observed: Vec<_> = record
+                        .historical_locations
+                        .iter()
+                        .filter_map(|fact| {
+                            fact.provenance
+                                .observed_sequence()
+                                .map(|sequence| sequence.0)
+                        })
+                        .collect();
+                    observed.windows(2).any(|window| window[0] >= window[1])
+                }
             {
                 return Err(EngineStateViolation::KnowledgeMismatch);
             }

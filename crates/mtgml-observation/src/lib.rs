@@ -373,10 +373,14 @@ impl PlayerInformationStateV2 {
             if !record.provenance_is_valid(self.next_visible_sequence) {
                 return Err(ObservationValidationError::VisibleSequence);
             }
-            if record.historical_locations().windows(2).any(|window| {
-                provenance_sequence(&window[0].provenance)
-                    >= provenance_sequence(&window[1].provenance)
-            }) {
+            // Only actually observed facts carry visible sequences; the
+            // strictly-increasing rule compares observed sequences.
+            let observed: Vec<_> = record
+                .historical_locations()
+                .iter()
+                .filter_map(|fact| provenance_sequence(&fact.provenance))
+                .collect();
+            if observed.windows(2).any(|window| window[0] >= window[1]) {
                 return Err(ObservationValidationError::VisibleSequence);
             }
         }
@@ -390,26 +394,34 @@ impl PlayerKnownObjectV1 {
     /// perspective's next unused visible sequence.
     fn provenance_is_valid(&self, next_visible_sequence: VisibleSequence) -> bool {
         let valid = |provenance: &PlayerKnowledgeProvenanceV1| -> bool {
-            provenance_sequence(provenance).0 < next_visible_sequence.0
-                && match provenance {
-                    PlayerKnowledgeProvenanceV1::InitialConfiguration => true,
-                    PlayerKnowledgeProvenanceV1::Observed { channel, cause, .. } => matches!(
-                        (channel, cause),
-                        (
-                            PlayerKnowledgeChannelV1::Public,
-                            PlayerKnowledgeCauseV1::PublicEvent
-                        ) | (
-                            PlayerKnowledgeChannelV1::Public,
-                            PlayerKnowledgeCauseV1::ExplicitReveal
-                        ) | (
-                            PlayerKnowledgeChannelV1::Private,
-                            PlayerKnowledgeCauseV1::PrivateLook
-                        ) | (
-                            PlayerKnowledgeChannelV1::Private,
-                            PlayerKnowledgeCauseV1::OwnPrivateIdentity
+            match provenance {
+                // InitialConfiguration owns no visible sequence and is not
+                // bound by the perspective cursor.
+                PlayerKnowledgeProvenanceV1::InitialConfiguration => true,
+                PlayerKnowledgeProvenanceV1::Observed {
+                    channel,
+                    sequence,
+                    cause,
+                } => {
+                    sequence.0 < next_visible_sequence.0
+                        && matches!(
+                            (channel, cause),
+                            (
+                                PlayerKnowledgeChannelV1::Public,
+                                PlayerKnowledgeCauseV1::PublicEvent
+                            ) | (
+                                PlayerKnowledgeChannelV1::Public,
+                                PlayerKnowledgeCauseV1::ExplicitReveal
+                            ) | (
+                                PlayerKnowledgeChannelV1::Private,
+                                PlayerKnowledgeCauseV1::PrivateLook
+                            ) | (
+                                PlayerKnowledgeChannelV1::Private,
+                                PlayerKnowledgeCauseV1::OwnPrivateIdentity
+                            )
                         )
-                    ),
                 }
+            }
         };
         match self {
             Self::Active {
@@ -446,10 +458,10 @@ impl PlayerKnownObjectV1 {
     }
 }
 
-fn provenance_sequence(value: &PlayerKnowledgeProvenanceV1) -> VisibleSequence {
+fn provenance_sequence(value: &PlayerKnowledgeProvenanceV1) -> Option<VisibleSequence> {
     match value {
-        PlayerKnowledgeProvenanceV1::InitialConfiguration => VisibleSequence(0),
-        PlayerKnowledgeProvenanceV1::Observed { sequence, .. } => *sequence,
+        PlayerKnowledgeProvenanceV1::InitialConfiguration => None,
+        PlayerKnowledgeProvenanceV1::Observed { sequence, .. } => Some(*sequence),
     }
 }
 
@@ -705,6 +717,26 @@ mod provenance_tests {
         }
     }
 
+    #[test]
+    fn initial_configuration_is_not_bound_by_the_visible_cursor() {
+        let initial = state_with(
+            VisibleSequence(0),
+            PlayerKnowledgeProvenanceV1::InitialConfiguration,
+        );
+        let record = &initial.retained_knowledge[0];
+        assert!(record.provenance_is_valid(initial.next_visible_sequence));
+
+        let observed_at_zero = state_with(
+            VisibleSequence(0),
+            observed(
+                PlayerKnowledgeChannelV1::Public,
+                0,
+                PlayerKnowledgeCauseV1::PublicEvent,
+            ),
+        );
+        let record = &observed_at_zero.retained_knowledge[0];
+        assert!(!record.provenance_is_valid(observed_at_zero.next_visible_sequence));
+    }
     #[test]
     fn future_provenance_sequence_is_rejected() {
         let state = state_with(

@@ -329,16 +329,18 @@ fn validate_knowledge(knowledge: &PlayerKnowledgeStateV2) -> Result<(), M2ShapeV
         for fact in records {
             provenance_is_valid(&fact.provenance)?;
         }
-        for window in records.windows(2) {
-            let left = window[0]
-                .provenance
-                .observed_sequence()
-                .map_or(0, |sequence| sequence.0);
-            let right = window[1]
-                .provenance
-                .observed_sequence()
-                .map_or(0, |sequence| sequence.0);
-            if left >= right {
+        // Only observed facts carry visible sequences; the strictly
+        // increasing rule compares those observed sequences.
+        let observed: Vec<_> = records
+            .iter()
+            .filter_map(|fact| {
+                fact.provenance
+                    .observed_sequence()
+                    .map(|sequence| sequence.0)
+            })
+            .collect();
+        for window in observed.windows(2) {
+            if window[0] >= window[1] {
                 return Err(M2ShapeViolation::VisibleSequence);
             }
         }
