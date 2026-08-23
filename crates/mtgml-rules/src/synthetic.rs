@@ -24,10 +24,11 @@ use mtgml_model::{
 };
 use mtgml_random::{RandomStreamKeyV1, RandomStreamKindV1};
 use mtgml_state::{
-    validate_engine_state, AssemblyStageV2, ContinuationPayloadV2, ContinuationRecordV2,
+    AssemblyStageV2, ContinuationPayloadV2, ContinuationRecordV2,
     EngineState, EngineStateViolation, PendingDecisionRecordV2, StateDelta,
 };
 
+use crate::product::build_accepted_product;
 use crate::errors::KernelExecutionError;
 use crate::events::{AuthoritativeRuleEvent, AuthoritativeRuleEventKind};
 use crate::transition::{RulesKernel, TransitionResult};
@@ -98,7 +99,7 @@ impl RulesKernel for SyntheticM1RulesKernel {
 ///
 /// `validate_engine_state()` proves generic authoritative invariants; this
 /// proof additionally guarantees that every decision this environment can
-/// offer is actually executable by the kernel — including the standalone
+/// offer is actually executable by the kernel Ã¢â‚¬â€ including the standalone
 /// root decision. An unsupported engine-offered path is an internal
 /// soundness failure, never a player rejection.
 pub fn validate_synthetic_runtime_state(state: &EngineState) -> Result<(), KernelExecutionError> {
@@ -667,46 +668,7 @@ fn advance_player_allocator(
     Ok(())
 }
 
-/// Shared accepted-product epilogue: applies the workspace mutation, closes
-/// the event cursor, builds the exact delta, and validates the complete
-/// product before returning it for atomic commit.
-fn build_accepted_product(
-    state: &EngineState,
-    mut next: EngineState,
-    events: Vec<AuthoritativeRuleEvent>,
-    mutate: impl FnOnce(&mut EngineState) -> Result<(), KernelExecutionError>,
-) -> Result<TransitionResult, KernelExecutionError> {
-    let next_rule_event_id = state
-        .allocators
-        .next_rule_event_id
-        .0
-        .checked_add(events.len() as u64)
-        .ok_or(KernelExecutionError::RuleEventIdOverflow)?;
-    mutate(&mut next)?;
-    next.allocators.next_rule_event_id = RuleEventId(next_rule_event_id);
 
-    let audit = events
-        .iter()
-        .map(|event| event.event.semantic_delta())
-        .collect();
-    let delta = StateDelta::between(state, &next, audit).map_err(KernelExecutionError::Delta)?;
-    let result = TransitionResult {
-        accepted: true,
-        next_decision: next
-            .execution
-            .pending_decision
-            .as_ref()
-            .map(|record| record.request.clone()),
-        status: EpisodeStatus::Running,
-        next_state: next,
-        delta,
-        events,
-    };
-    validate_engine_state(&result.next_state).map_err(KernelExecutionError::AfterState)?;
-    validate_transition_contract(state, &result)
-        .map_err(KernelExecutionError::TransitionContract)?;
-    Ok(result)
-}
 
 fn rejected(state: &EngineState) -> Result<TransitionResult, KernelExecutionError> {
     let result = TransitionResult {

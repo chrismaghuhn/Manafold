@@ -76,6 +76,14 @@ pub fn validate_transition_contract(
         {
             return Err(TransitionViolation::EventIdentity);
         }
+        if let crate::events::AuthoritativeRuleEventKind::PerspectiveOccurrence {
+            lifecycle,
+            observation,
+        } = &event.event
+        {
+            crate::events::validate_occurrence_pairing(lifecycle, observation)
+                .map_err(|_| TransitionViolation::OccurrencePairing)?;
+        }
         cursor.apply(&event.event)?;
     }
     cursor.validate_final_state(&result.next_state)?;

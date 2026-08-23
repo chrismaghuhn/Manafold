@@ -29,6 +29,8 @@ pub enum TransitionViolation {
     ObjectCessation,
     #[error("object trace does not compose to the final state")]
     ObjectTraceIncomplete,
+    #[error("perspective occurrence pairing or lifecycle replay is invalid")]
+    OccurrencePairing,
     #[error("life event sequence does not compose to the final state")]
     LifeChange,
     #[error("tap event sequence does not compose to the final state")]
