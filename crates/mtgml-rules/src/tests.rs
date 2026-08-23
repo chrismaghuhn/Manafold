@@ -369,7 +369,7 @@ fn deterministic_services_repeat_exact_transition_result() {
 
 #[test]
 fn deterministic_services_isolate_unrelated_stream_cursors() {
-    use mtgml_random::{RandomStreamCursorV1, RandomStreamKindV1};
+    use mtgml_random::{RandomStreamCursorV1, RandomStreamKeyV1, RandomStreamKindV1};
     let baseline_state = synthetic_state();
     let mut isolated_state = synthetic_state();
     isolated_state.random.streams.insert(
@@ -410,7 +410,7 @@ fn deterministic_services_isolate_unrelated_stream_cursors() {
 
 #[test]
 fn rng_exhaustion_is_a_typed_internal_failure_without_input_mutation() {
-    use mtgml_random::{RandomStreamCursorV1, RandomStreamKindV1};
+    use mtgml_random::{RandomStreamCursorV1, RandomStreamKeyV1, RandomStreamKindV1};
     let mut state = synthetic_state();
     let key = RandomStreamKeyV1::global(RandomStreamKindV1::SyntheticM1);
     state
