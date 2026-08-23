@@ -125,14 +125,19 @@ pub fn validate_transition_contract(
                 }),
                 _ => None,
             };
+            // The sequential identity snapshot ALWAYS advances for every
+            // perspective occurrence, even when no physical observation
+            // exists (NoEnvelope with Allocate/Remap/Retire).
+            let (record_pre, record_post) = {
+                let _ = lifecycle;
+                let pre = running_identities.get(&lifecycle.perspective).cloned();
+                let mut post = pre.clone().unwrap_or_default();
+                mtgml_state::advance_identity_record(&mut post, &lifecycle.mutation.identity);
+                running_identities.insert(lifecycle.perspective, post.clone());
+                (pre, post)
+            };
             if let Some(transition) = bound {
-                use mtgml_state::{KnowledgeMutationV1, PerspectiveIdentityRecordV2};
-                let record_pre = running_identities.get(&lifecycle.perspective).cloned();
-                let mut record_post = record_pre.clone().unwrap_or_default();
-                mtgml_state::advance_identity_record(
-                    &mut record_post,
-                    &lifecycle.mutation.identity,
-                );
+                use mtgml_state::KnowledgeMutationV1;
                 let resolves = |record: Option<PerspectiveIdentityRecordV2>,
                                 opaque: &mtgml_model::OpaqueObjectId,
                                 object: &mtgml_model::GameObjectId| {

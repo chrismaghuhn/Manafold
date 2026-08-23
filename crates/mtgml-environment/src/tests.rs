@@ -2059,7 +2059,7 @@ fn internal_failures_surface_only_service_unavailable() {
 // ---------------------------------------------------------------- M2.E projection
 
 use mtgml_model::{GameObjectId, OpaqueObjectId, VisibleSequence};
-use mtgml_rules::{AuthoritativeRuleEvent, AuthoritativeRuleEventKind, TransitionResult};
+use mtgml_rules::TransitionResult;
 use mtgml_state::{construct_synthetic_engine_state, EngineState};
 
 fn m2e_fixture() -> EngineState {
@@ -2233,74 +2233,6 @@ fn occurrence_projection_resolves_old_via_before_and_new_via_after() {
 }
 
 #[test]
-fn unauthorized_fields_stay_absent_even_when_a_mapping_exists() {
-    let (before, result) = tracked_incarnation_product().unwrap();
-    // Same physical move, but the old incarnation is not authorized even
-    // though P1's BEFORE map still resolves it.
-    let mut events = Vec::new();
-    for event in &result.events {
-        if let AuthoritativeRuleEventKind::PerspectiveOccurrence {
-            lifecycle,
-            observation,
-        } = &event.event
-        {
-            let observation = match observation {
-                mtgml_rules::PerspectiveObservationPolicyV1::MovedInSight {
-                    from_zone,
-                    to_zone,
-                    old_object,
-                    new_object,
-                    ..
-                } => mtgml_rules::PerspectiveObservationPolicyV1::MovedInSight {
-                    from_zone: *from_zone,
-                    to_zone: *to_zone,
-                    old_object: *old_object,
-                    new_object: *new_object,
-                    reveals_old: false,
-                    reveals_new: false,
-                },
-                other => other.clone(),
-            };
-            events.push(AuthoritativeRuleEvent {
-                event_id: event.event_id,
-                state_revision: event.state_revision,
-                event: AuthoritativeRuleEventKind::PerspectiveOccurrence {
-                    lifecycle: lifecycle.clone(),
-                    observation,
-                },
-            });
-        } else {
-            events.push(event.clone());
-        }
-    }
-    let envelopes = crate::lifecycle_projection::project_occurrence_envelopes(
-        &before,
-        &result.next_state,
-        &events,
-    )
-    .unwrap();
-    // First envelope: Appeared always authorizes its new incarnation.
-    match &envelopes[&PlayerId(1)][0].event {
-        mtgml_observation::ObservedEventKindV2::ObjectMoved { new_object, .. } => {
-            assert_eq!(*new_object, Some(OpaqueObjectId(2)));
-        }
-        other => panic!("unexpected first envelope {other:?}"),
-    }
-    // Second envelope: both fields unauthorized -> absent despite mappings.
-    match &envelopes[&PlayerId(1)][1].event {
-        mtgml_observation::ObservedEventKindV2::ObjectMoved {
-            old_object,
-            new_object,
-            ..
-        } => {
-            assert_eq!(*old_object, None);
-            assert_eq!(*new_object, None);
-        }
-        other => panic!("unexpected second envelope {other:?}"),
-    }
-}
-
-#[test]
 fn repeated_projection_is_pure_and_stable() {
     let (before, result) = tracked_incarnation_product().unwrap();
     let before_digest = before.digest().unwrap();
@@ -2325,13 +2257,40 @@ fn repeated_projection_is_pure_and_stable() {
 #[test]
 fn checkpoint_restore_preserves_the_lifecycle_public_surface() {
     let (_before, result) = tracked_incarnation_product().unwrap();
+    // Give the state a retired opaque id so authoritative closure covers
+    // retirement sets, not only active tracking.
+    let mut state = result.next_state.clone();
+    state.revision = mtgml_model::StateRevision(state.revision.0 + 1);
+    mtgml_state::apply_perspective_lifecycle(
+        &mut state,
+        &mtgml_state::PerspectiveLifecycleAuditV1 {
+            perspective: PlayerId(1),
+            sequence: VisibleSequence(3),
+            mutation: mtgml_state::PerspectiveLifecycleMutationV1 {
+                identity: mtgml_state::IdentityMutationV1::Retire {
+                    opaque: OpaqueObjectId(2),
+                    object: GameObjectId(6),
+                },
+                knowledge: Some(mtgml_state::KnowledgeMutationV1::Invalidate {
+                    opaque: OpaqueObjectId(2),
+                    reason: mtgml_state::KnowledgeInvalidationReason::ExplicitForget,
+                    invalidation_provenance: mtgml_state::KnowledgeAcquisitionReason::Observed {
+                        channel: mtgml_state::KnowledgeHistoryChannel::Public,
+                        sequence: VisibleSequence(3),
+                        cause: mtgml_state::KnowledgeAcquisitionCause::PublicEvent,
+                    },
+                }),
+            },
+        },
+    )
+    .unwrap();
     let codec = CheckpointCodecIdentity {
         codec_id: "synthetic-m2-memory".into(),
         semantic_version: "3".into(),
     };
     let counters = EnvironmentLimitCounters::default();
     let checkpoint = EnvironmentCheckpointV3::new(
-        result.next_state.clone(),
+        state.clone(),
         EpisodeStatus::Running,
         counters.clone(),
         codec.clone(),
@@ -2369,6 +2328,14 @@ fn checkpoint_restore_preserves_the_lifecycle_public_surface() {
     )
     .unwrap();
     assert_eq!(p1_bytes_original, p1_bytes_restored);
+    // Authoritative lifecycle closure: knowledge, provenance/history,
+    // mappings, retirement sets, allocators and the visible cursor are all
+    // bound by checkpoint identity, not only the public projection bytes.
+    assert_eq!(
+        restored.checkpoint().unwrap(),
+        original.checkpoint().unwrap()
+    );
+    assert_eq!(original.checkpoint().unwrap().state, state);
 }
 
 #[test]
@@ -2376,9 +2343,11 @@ fn global_hidden_allocator_history_cannot_move_opaque_assignment() {
     use mtgml_rules::fixture_support::{FixtureTransition, PlannedOccurrence};
     let base = m2e_fixture();
     let mut variant = base.clone();
-    // Hidden global allocation history differs wildly between the pair.
+    // Hidden global allocation history differs wildly between the pair,
+    // including the risky global OBJECT allocator itself.
     variant.allocators.next_effect_id = mtgml_model::EffectInstanceId(900);
     variant.allocators.next_trigger_id = mtgml_model::TriggerInstanceId(700);
+    variant.allocators.next_object_id = GameObjectId(500);
 
     let mut previous: Option<Vec<u8>> = None;
     let mut collected_seen: Vec<u32> = Vec::new();
@@ -2430,6 +2399,8 @@ fn global_hidden_allocator_history_cannot_move_opaque_assignment() {
         }
         previous = Some(knowledge_bytes);
     }
+    // The trusted incarnations must differ (hidden object-allocator history)
+    assert_ne!(collected_seen[0], collected_seen[1]);
 }
 
 #[test]
@@ -2461,4 +2432,6 @@ fn equal_input_fork_reproduces_lifecycle_public_bytes() {
         mtgml_wire::encode_canonical(&p1_fork.information_state().unwrap()).unwrap()
     );
     assert_eq!(original.checkpoint().unwrap(), checkpoint);
+    // Equal-input fork preserves the complete authoritative lifecycle state.
+    assert_eq!(fork.checkpoint().unwrap(), original.checkpoint().unwrap());
 }

@@ -619,10 +619,16 @@ impl EnvironmentBackend for SyntheticM1EnvironmentBackend {
                         )
                     })?;
                     let mut step = step;
-                    // Attach the per-perspective observed batch validated above.
+                    // Attach the per-perspective observed batch and re-validate
+                    // the COMPLETE player product before the atomic commit.
                     if let Some(envelopes) = occurrence_envelopes.get(&perspective) {
                         step.observed_events = envelopes.clone();
                     }
+                    step.validate().map_err(|_| {
+                        ControllerError::EnvironmentCommit(
+                            EnvironmentCommitError::PlayerProjectionInvalid,
+                        )
+                    })?;
                     projected_step = Some(step);
                     Ok(())
                 },
