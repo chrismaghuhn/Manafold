@@ -91,6 +91,21 @@ GATE_TESTS: dict[str, tuple[EvidenceDefinition, ...]] = {
             "tests::checkpoint_restore_preserves_the_lifecycle_public_surface",
             "checkpoint/restore preserves the lifecycle public bytes exactly",
         ),
+        rust(
+            "mtgml-conformance",
+            "lifecycle::gate_evidence_history::private_look_and_public_return_order_history_strictly",
+            "private look and accepted location updates order history strictly",
+        ),
+        rust(
+            "mtgml-conformance",
+            "lifecycle::gate_evidence_history::own_private_identity_acquisition_is_owned_gate_evidence",
+            "own-private acquisition through the no-envelope policy",
+        ),
+        rust(
+            "mtgml-environment",
+            "tests::global_hidden_allocator_history_cannot_move_opaque_assignment",
+            "hidden global allocation history cannot move opaque assignment",
+        ),
     ),
     GATE_OPAQUE: (
         rust(
@@ -117,6 +132,11 @@ GATE_TESTS: dict[str, tuple[EvidenceDefinition, ...]] = {
             "source_check::no_runtime_lifecycle_channel",
             "lifecycle fixture driver has no runtime/controller/replay caller",
         ),
+        rust(
+            "mtgml-environment",
+            "tests::equal_input_fork_reproduces_lifecycle_public_bytes",
+            "equal-input fork reproduces lifecycle public bytes exactly",
+        ),
     ),
     GATE_EVENTS: (
         rust(
@@ -138,6 +158,11 @@ GATE_TESTS: dict[str, tuple[EvidenceDefinition, ...]] = {
             "mtgml-wire",
             "tests::every_shared_negative_fixture_is_rejected_with_the_expected_code",
             "shared negative corpus rejects observed-event sequence violations",
+        ),
+        rust(
+            "mtgml-conformance",
+            "lifecycle::gate_evidence::public_fanout_assigns_independent_perspective_sequences",
+            "public occurrences fan out with independent perspective sequences",
         ),
         python(
             "python/tests/test_wire_contracts.py::SharedFixtureTests::test_every_negative_fixture_is_rejected_with_expected_code",
