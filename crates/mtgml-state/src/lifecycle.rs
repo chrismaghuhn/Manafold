@@ -15,7 +15,7 @@ use serde::{Deserialize, Serialize};
 use crate::engine::EngineState;
 use crate::knowledge::{KnowledgeAcquisitionReason, KnowledgeInvalidationReason};
 use crate::m2_shape::{
-    KnownLocationFactV2, KnowledgeInvalidationV2, KnowledgeRecordV2, PerspectiveIdentityRecordV2,
+    KnowledgeInvalidationV2, KnowledgeRecordV2, KnownLocationFactV2, PerspectiveIdentityRecordV2,
     PlayerKnowledgeStateV2, RetiredKnowledgeRecordV2,
 };
 use crate::zones::ZoneLocation;
@@ -244,12 +244,10 @@ pub fn apply_lifecycle_to_player(
                 return Err(LifecycleApplicationError::DuplicateOpaque);
             }
             ensure_bound_provenance(acquisition, audit.sequence)?;
-            let known_location = location
-                .clone()
-                .map(|location| KnownLocationFactV2 {
-                    location,
-                    provenance: *acquisition,
-                });
+            let known_location = location.clone().map(|location| KnownLocationFactV2 {
+                location,
+                provenance: *acquisition,
+            });
             knowledge.active.insert(
                 *opaque,
                 KnowledgeRecordV2 {
@@ -347,7 +345,10 @@ pub fn apply_perspective_lifecycle(
         .players
         .get_mut(&audit.perspective)
         .ok_or(LifecycleApplicationError::UnknownPlayer)?;
-    apply_lifecycle_to_player(knowledge, identity, &|object| {
-        zones_objects.contains_key(&object)
-    }, audit)
+    apply_lifecycle_to_player(
+        knowledge,
+        identity,
+        &|object| zones_objects.contains_key(&object),
+        audit,
+    )
 }

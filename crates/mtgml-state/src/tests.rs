@@ -1891,8 +1891,16 @@ fn lifecycle_fixture() -> EngineState {
     state
 }
 
-fn observed_at(sequence: u64, channel: crate::knowledge::KnowledgeHistoryChannel, cause: crate::knowledge::KnowledgeAcquisitionCause) -> crate::knowledge::KnowledgeAcquisitionReason {
-    crate::knowledge::KnowledgeAcquisitionReason::Observed { channel, sequence: VisibleSequence(sequence), cause }
+fn observed_at(
+    sequence: u64,
+    channel: crate::knowledge::KnowledgeHistoryChannel,
+    cause: crate::knowledge::KnowledgeAcquisitionCause,
+) -> crate::knowledge::KnowledgeAcquisitionReason {
+    crate::knowledge::KnowledgeAcquisitionReason::Observed {
+        channel,
+        sequence: VisibleSequence(sequence),
+        cause,
+    }
 }
 
 #[test]
@@ -1902,7 +1910,10 @@ fn reveal_occurrence_allocates_and_acquires_with_bound_provenance() {
         perspective: PlayerId(1),
         sequence: VisibleSequence(1),
         mutation: PerspectiveLifecycleMutationV1 {
-            identity: IdentityMutationV1::Allocate { opaque: OpaqueObjectId(2), object: GameObjectId(3) },
+            identity: IdentityMutationV1::Allocate {
+                opaque: OpaqueObjectId(2),
+                object: GameObjectId(3),
+            },
             knowledge: Some(KnowledgeMutationV1::Acquire {
                 opaque: OpaqueObjectId(2),
                 definition: Some(CardDefinitionId(3)),
@@ -1913,14 +1924,21 @@ fn reveal_occurrence_allocates_and_acquires_with_bound_provenance() {
                     visibility: crate::zones::VisibilityPartition::Public,
                     partition: None,
                 }),
-                acquisition: observed_at(1, crate::knowledge::KnowledgeHistoryChannel::Public, crate::knowledge::KnowledgeAcquisitionCause::ExplicitReveal),
+                acquisition: observed_at(
+                    1,
+                    crate::knowledge::KnowledgeHistoryChannel::Public,
+                    crate::knowledge::KnowledgeAcquisitionCause::ExplicitReveal,
+                ),
             }),
         },
     };
     apply_perspective_lifecycle(&mut state, &audit).unwrap();
     validate_engine_state(&state).unwrap();
     let identity = &state.perspective_identities.players[&PlayerId(1)];
-    assert_eq!(identity.opaque_to_object.get(&OpaqueObjectId(2)), Some(&GameObjectId(3)));
+    assert_eq!(
+        identity.opaque_to_object.get(&OpaqueObjectId(2)),
+        Some(&GameObjectId(3))
+    );
     assert_eq!(identity.next_opaque_object_id, OpaqueObjectId(3));
     assert!(identity.retired_object_ids.is_empty());
     let knowledge = &state.knowledge.players[&PlayerId(1)];
@@ -1937,12 +1955,19 @@ fn provenance_sequence_mismatch_is_rejected_without_mutation() {
         perspective: PlayerId(1),
         sequence: VisibleSequence(1),
         mutation: PerspectiveLifecycleMutationV1 {
-            identity: IdentityMutationV1::Allocate { opaque: OpaqueObjectId(2), object: GameObjectId(3) },
+            identity: IdentityMutationV1::Allocate {
+                opaque: OpaqueObjectId(2),
+                object: GameObjectId(3),
+            },
             knowledge: Some(KnowledgeMutationV1::Acquire {
                 opaque: OpaqueObjectId(2),
                 definition: None,
                 location: None,
-                acquisition: observed_at(2, crate::knowledge::KnowledgeHistoryChannel::Public, crate::knowledge::KnowledgeAcquisitionCause::ExplicitReveal),
+                acquisition: observed_at(
+                    2,
+                    crate::knowledge::KnowledgeHistoryChannel::Public,
+                    crate::knowledge::KnowledgeAcquisitionCause::ExplicitReveal,
+                ),
             }),
         },
     };
@@ -2002,12 +2027,19 @@ fn tracked_incarnation_remap_keeps_opaque_and_allocator() {
         perspective: PlayerId(1),
         sequence: VisibleSequence(1),
         mutation: PerspectiveLifecycleMutationV1 {
-            identity: IdentityMutationV1::Allocate { opaque: OpaqueObjectId(2), object: GameObjectId(3) },
+            identity: IdentityMutationV1::Allocate {
+                opaque: OpaqueObjectId(2),
+                object: GameObjectId(3),
+            },
             knowledge: Some(KnowledgeMutationV1::Acquire {
                 opaque: OpaqueObjectId(2),
                 definition: Some(CardDefinitionId(3)),
                 location: Some(state.zones.locations[&GameObjectId(3)].clone()),
-                acquisition: observed_at(1, crate::knowledge::KnowledgeHistoryChannel::Public, crate::knowledge::KnowledgeAcquisitionCause::ExplicitReveal),
+                acquisition: observed_at(
+                    1,
+                    crate::knowledge::KnowledgeHistoryChannel::Public,
+                    crate::knowledge::KnowledgeAcquisitionCause::ExplicitReveal,
+                ),
             }),
         },
     };
@@ -2031,7 +2063,10 @@ fn tracked_incarnation_remap_keeps_opaque_and_allocator() {
     apply_perspective_lifecycle(&mut state, &remap).unwrap();
     validate_engine_state(&state).unwrap();
     let identity = &state.perspective_identities.players[&PlayerId(1)];
-    assert_eq!(identity.opaque_to_object.get(&OpaqueObjectId(2)), Some(&GameObjectId(4)));
+    assert_eq!(
+        identity.opaque_to_object.get(&OpaqueObjectId(2)),
+        Some(&GameObjectId(4))
+    );
     assert_eq!(identity.next_opaque_object_id, OpaqueObjectId(3));
     assert!(!identity.object_to_opaque.contains_key(&GameObjectId(3)));
     let record = &state.knowledge.players[&PlayerId(1)].active[&OpaqueObjectId(2)];
@@ -2046,12 +2081,19 @@ fn explicit_forget_retires_mapping_and_knowledge_together() {
         perspective: PlayerId(1),
         sequence: VisibleSequence(1),
         mutation: PerspectiveLifecycleMutationV1 {
-            identity: IdentityMutationV1::Allocate { opaque: OpaqueObjectId(2), object: GameObjectId(3) },
+            identity: IdentityMutationV1::Allocate {
+                opaque: OpaqueObjectId(2),
+                object: GameObjectId(3),
+            },
             knowledge: Some(KnowledgeMutationV1::Acquire {
                 opaque: OpaqueObjectId(2),
                 definition: Some(CardDefinitionId(3)),
                 location: Some(state.zones.locations[&GameObjectId(3)].clone()),
-                acquisition: observed_at(1, crate::knowledge::KnowledgeHistoryChannel::Public, crate::knowledge::KnowledgeAcquisitionCause::ExplicitReveal),
+                acquisition: observed_at(
+                    1,
+                    crate::knowledge::KnowledgeHistoryChannel::Public,
+                    crate::knowledge::KnowledgeAcquisitionCause::ExplicitReveal,
+                ),
             }),
         },
     };
@@ -2060,11 +2102,18 @@ fn explicit_forget_retires_mapping_and_knowledge_together() {
         perspective: PlayerId(1),
         sequence: VisibleSequence(2),
         mutation: PerspectiveLifecycleMutationV1 {
-            identity: IdentityMutationV1::Retire { opaque: OpaqueObjectId(2), object: GameObjectId(3) },
+            identity: IdentityMutationV1::Retire {
+                opaque: OpaqueObjectId(2),
+                object: GameObjectId(3),
+            },
             knowledge: Some(KnowledgeMutationV1::Invalidate {
                 opaque: OpaqueObjectId(2),
                 reason: crate::knowledge::KnowledgeInvalidationReason::ExplicitForget,
-                invalidation_provenance: observed_at(2, crate::knowledge::KnowledgeHistoryChannel::Public, crate::knowledge::KnowledgeAcquisitionCause::PublicEvent),
+                invalidation_provenance: observed_at(
+                    2,
+                    crate::knowledge::KnowledgeHistoryChannel::Public,
+                    crate::knowledge::KnowledgeAcquisitionCause::PublicEvent,
+                ),
             }),
         },
     };
@@ -2089,13 +2138,27 @@ fn explicit_forget_retires_mapping_and_knowledge_together() {
 fn retired_opaque_cannot_be_reallocated_even_by_cursor_accident() {
     let mut state = lifecycle_fixture();
     // Drive P1's allocator forward so it would collide with a retired id.
-    state.perspective_identities.players.get_mut(&PlayerId(1)).unwrap().next_opaque_object_id = OpaqueObjectId(2);
-    state.perspective_identities.players.get_mut(&PlayerId(1)).unwrap().retired_object_ids.insert(OpaqueObjectId(2));
+    state
+        .perspective_identities
+        .players
+        .get_mut(&PlayerId(1))
+        .unwrap()
+        .next_opaque_object_id = OpaqueObjectId(2);
+    state
+        .perspective_identities
+        .players
+        .get_mut(&PlayerId(1))
+        .unwrap()
+        .retired_object_ids
+        .insert(OpaqueObjectId(2));
     let audit = PerspectiveLifecycleAuditV1 {
         perspective: PlayerId(1),
         sequence: VisibleSequence(1),
         mutation: PerspectiveLifecycleMutationV1 {
-            identity: IdentityMutationV1::Allocate { opaque: OpaqueObjectId(2), object: GameObjectId(3) },
+            identity: IdentityMutationV1::Allocate {
+                opaque: OpaqueObjectId(2),
+                object: GameObjectId(3),
+            },
             knowledge: None,
         },
     };

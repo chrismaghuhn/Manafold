@@ -134,6 +134,7 @@ dependencies = [
  "mtgml-decision",
  "mtgml-model",
  "mtgml-observation",
+ "mtgml-random",
  "mtgml-rules",
  "mtgml-state",
  "thiserror",
