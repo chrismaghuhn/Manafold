@@ -182,6 +182,13 @@ pub enum M2ShapeViolation {
     ContinuationStage,
 }
 
+/// Inclusive numeric interval of the synthetic assembly ChooseCount stage.
+///
+/// This is the single authority for the frozen M2.C program bound; the rules
+/// kernel consumes these values instead of restating them.
+pub const SYNTHETIC_COUNT_MIN: u32 = 0;
+pub const SYNTHETIC_COUNT_MAX: u32 = 3;
+
 /// Stage-payload invariants of the one frozen synthetic assembly payload.
 ///
 /// Every reachable continuation state must have exactly one unambiguous
@@ -227,6 +234,13 @@ fn validate_synthetic_assembly(
             {
                 return Err(M2ShapeViolation::Knowledge);
             }
+        }
+    }
+    // A decided count can only originate from the supported ChooseCount
+    // interval; anything else was never offered by this program.
+    if let Some(count) = selected_count {
+        if count > SYNTHETIC_COUNT_MAX {
+            return Err(M2ShapeViolation::Knowledge);
         }
     }
     Ok(())
@@ -376,7 +390,11 @@ fn validate_program_coherence(
             AssemblyStageV2::ChooseCount,
             mtgml_decision::DecisionDomainV2::ChooseNumber { minimum, maximum },
         ) => {
-            if minimum > maximum || !pending.request.candidates.is_empty() {
+            // The engine may offer exactly the supported program interval.
+            if *minimum != i64::from(SYNTHETIC_COUNT_MIN)
+                || *maximum != i64::from(SYNTHETIC_COUNT_MAX)
+                || !pending.request.candidates.is_empty()
+            {
                 return Err(M2ShapeViolation::PendingDecision);
             }
         }
@@ -385,7 +403,7 @@ fn validate_program_coherence(
             mtgml_decision::DecisionDomainV2::ChooseMany { minimum, maximum },
         ) => {
             let count = selected_count.ok_or(M2ShapeViolation::Knowledge)?;
-            if *minimum != count || *maximum != count {
+            if count > SYNTHETIC_COUNT_MAX || *minimum != count || *maximum != count {
                 return Err(M2ShapeViolation::PendingDecision);
             }
             // Stage members are the fixed synthetic piece surface 0..count.
@@ -399,7 +417,7 @@ fn validate_program_coherence(
             mtgml_decision::DecisionDomainV2::Order { minimum, maximum },
         ) => {
             let count = selected_count.ok_or(M2ShapeViolation::Knowledge)?;
-            if *minimum != count || *maximum != count {
+            if count > SYNTHETIC_COUNT_MAX || *minimum != count || *maximum != count {
                 return Err(M2ShapeViolation::PendingDecision);
             }
             if !candidates_express(selected_piece_keys) {

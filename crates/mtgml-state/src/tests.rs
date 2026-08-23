@@ -1688,3 +1688,149 @@ fn assembly_payload_stage_invariants_are_enforced() {
         .is_err()
     );
 }
+
+#[test]
+fn continuation_pending_program_coherence_matrix() {
+    use crate::m2_shape::SYNTHETIC_COUNT_MAX;
+    use mtgml_decision::AuthoritativeCandidateV2;
+    use mtgml_model::CandidateIdV1;
+
+    // Coherent base: ChooseCount stage of the supported program.
+    let coherent = state_with_continuation(assembly_continuation(
+        AssemblyStageV2::ChooseCount,
+        None,
+        vec![],
+        vec![],
+    ));
+    validate_engine_state(&coherent).unwrap();
+
+    let set_pending_domain = |state: &mut EngineState, domain, pieces: Vec<u32>| {
+        let pending = state.execution.pending_decision.as_mut().unwrap();
+        pending.request.decision = domain;
+        pending.request.candidates = pieces
+            .iter()
+            .enumerate()
+            .map(|(index, piece)| AuthoritativeCandidateV2 {
+                candidate_id: CandidateIdV1(index as u32),
+                visible_intent: mtgml_decision::CandidateIntent::SelectMode { mode_index: *piece },
+                trusted_binding: mtgml_decision::EngineCandidateBinding::SelectMode {
+                    mode_index: *piece,
+                },
+            })
+            .collect();
+    };
+
+    // BLOCKER regression: the engine may offer exactly the supported
+    // program interval - nothing wider, nothing shifted.
+    for bounds in [(0_i64, 99_i64), (1, 3), (-1, 3), (0, 2)] {
+        let mut state = coherent.clone();
+        set_pending_domain(
+            &mut state,
+            mtgml_decision::DecisionDomainV2::ChooseNumber {
+                minimum: bounds.0,
+                maximum: bounds.1,
+            },
+            vec![],
+        );
+        assert!(
+            validate_engine_state(&state).is_err(),
+            "ChooseCount {bounds:?} must be invalid"
+        );
+    }
+
+    // Wrong pending decision family at the ChooseCount stage.
+    let mut state = coherent.clone();
+    set_pending_domain(
+        &mut state,
+        mtgml_decision::DecisionDomainV2::ChooseMany {
+            minimum: 0,
+            maximum: 3,
+        },
+        vec![0, 1, 2],
+    );
+    assert!(validate_engine_state(&state).is_err());
+
+    // selected_count disagrees with the pending ChooseMany bounds.
+    let members_state = |count: u32| {
+        let mut state = state_with_continuation(assembly_continuation(
+            AssemblyStageV2::ChooseMembers,
+            Some(count),
+            vec![],
+            vec![],
+        ));
+        set_pending_domain(
+            &mut state,
+            mtgml_decision::DecisionDomainV2::ChooseMany {
+                minimum: count,
+                maximum: count,
+            },
+            (0..count).collect(),
+        );
+        state
+    };
+    assert!(validate_engine_state(&members_state(2)).is_ok());
+    let mut mismatched = members_state(3);
+    set_pending_domain(
+        &mut mismatched,
+        mtgml_decision::DecisionDomainV2::ChooseMany {
+            minimum: 1,
+            maximum: 2,
+        },
+        vec![0, 1],
+    );
+    assert!(validate_engine_state(&mismatched).is_err());
+
+    // A decided count outside the supported interval is unreachable and
+    // invalid even with fully matching request bounds.
+    let mut over_limit = members_state(SYNTHETIC_COUNT_MAX + 1);
+    set_pending_domain(
+        &mut over_limit,
+        mtgml_decision::DecisionDomainV2::ChooseMany {
+            minimum: SYNTHETIC_COUNT_MAX + 1,
+            maximum: SYNTHETIC_COUNT_MAX + 1,
+        },
+        (0..=SYNTHETIC_COUNT_MAX).collect(),
+    );
+    assert!(validate_engine_state(&over_limit).is_err());
+
+    // OrderMembers with the wrong candidate surface is invalid even though
+    // cardinality matches.
+    let order_stage = |pieces: &[u32]| {
+        let mut state = state_with_continuation(assembly_continuation(
+            AssemblyStageV2::OrderMembers,
+            Some(pieces.len() as u32),
+            pieces.to_vec(),
+            vec![],
+        ));
+        set_pending_domain(
+            &mut state,
+            mtgml_decision::DecisionDomainV2::Order {
+                minimum: pieces.len() as u32,
+                maximum: pieces.len() as u32,
+            },
+            pieces.to_vec(),
+        );
+        validate_engine_state(&state).unwrap();
+        state
+    };
+    let _ = order_stage(&[0, 1]);
+    let mut wrong_surface = order_stage(&[0, 2]);
+    set_pending_domain(
+        &mut wrong_surface,
+        mtgml_decision::DecisionDomainV2::Order {
+            minimum: 2,
+            maximum: 2,
+        },
+        vec![0, 1],
+    );
+    assert!(validate_engine_state(&wrong_surface).is_err());
+
+    // An active continuation without a resuming pending request can never
+    // become checkpointable state.
+    let orphaned = {
+        let mut state = coherent.clone();
+        state.execution.pending_decision = None;
+        state
+    };
+    assert!(validate_engine_state(&orphaned).is_err());
+}

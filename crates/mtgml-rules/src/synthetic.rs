@@ -395,18 +395,18 @@ impl SyntheticM1RulesKernel {
             }) if selected_piece_keys.is_empty() && ordered_piece_keys.is_empty() => *count,
             _ => return rejected(state),
         };
-        // The visible request bounds were validated before dispatch; the
-        // chosen length becomes the authoritative partial count.
-        let _ = selected_count;
+        // The pending request bounds equal the authoritative partial count
+        // (state-level program coherence), and the answer was validated
+        // against them before dispatch - so the answer length must equal the
+        // persisted authoritative count.
+        if candidate_ids.len() != selected_count as usize {
+            return rejected(state);
+        }
         let mut selected_piece_keys = Vec::with_capacity(candidate_ids.len());
         for candidate_id in candidate_ids {
             selected_piece_keys.push(answered_piece(request, *candidate_id)?);
         }
-        let chosen_count = selected_piece_keys.len() as u32;
         selected_piece_keys.sort_unstable();
-        debug_assert!(selected_piece_keys
-            .windows(2)
-            .all(|window| window[0] < window[1]));
 
         let identity = fresh_stage_identity(state, actor)?;
         let mut next = state.clone();
@@ -426,7 +426,8 @@ impl SyntheticM1RulesKernel {
             record.stage_index = AssemblyStageV2::OrderMembers.stage_index();
             record.payload = ContinuationPayloadV2::SyntheticM2Assembly {
                 stage: AssemblyStageV2::OrderMembers,
-                selected_count: Some(chosen_count),
+                // Persist the authoritative partial value unchanged.
+                selected_count: Some(selected_count),
                 selected_piece_keys: selected_piece_keys.clone(),
                 ordered_piece_keys: Vec::new(),
             };
@@ -438,8 +439,8 @@ impl SyntheticM1RulesKernel {
                     actor,
                     visibility: request.visibility,
                     decision: DecisionDomainV2::Order {
-                        minimum: chosen_count,
-                        maximum: chosen_count,
+                        minimum: selected_count,
+                        maximum: selected_count,
                     },
                     candidates,
                     continuation_id: Some(continuation_id),

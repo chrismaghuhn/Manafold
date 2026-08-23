@@ -135,6 +135,11 @@ GATE_TESTS: dict[str, tuple[EvidenceDefinition, ...]] = {
         ),
         rust(
             "mtgml-state",
+            "tests::continuation_pending_program_coherence_matrix",
+            "pending request must express exactly the referenced stage program",
+        ),
+        rust(
+            "mtgml-state",
             "tests::pending_decision_must_reference_an_existing_continuation",
             "missing continuation reference rejected",
         ),
