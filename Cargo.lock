@@ -132,9 +132,11 @@ name = "mtgml-conformance"
 version = "0.2.2"
 dependencies = [
  "mtgml-decision",
+ "mtgml-environment",
  "mtgml-model",
  "mtgml-observation",
  "mtgml-random",
+ "mtgml-replay",
  "mtgml-rules",
  "mtgml-state",
  "thiserror",
