@@ -22,4 +22,8 @@ pub enum KernelExecutionError {
     Random(#[from] RandomValidationError),
     #[error("identity allocator failed: {0}")]
     IdentityAllocation(#[from] IdentityAllocationError),
+    #[error("{0} identity space is exhausted")]
+    Exhaustion(&'static str),
+    #[error("engine-offered stage path is unsupported in the current synthetic protocol")]
+    UnsupportedStagePath,
 }

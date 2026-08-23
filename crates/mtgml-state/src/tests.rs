@@ -1475,3 +1475,123 @@ fn invalidation_must_carry_an_observed_visible_sequence() {
         Err(EngineStateViolation::M2Shape(M2ShapeViolation::Knowledge))
     );
 }
+
+fn assembly_continuation(
+    stage: AssemblyStageV2,
+    selected_count: Option<u32>,
+    selected_piece_keys: Vec<u32>,
+    ordered_piece_keys: Vec<u32>,
+) -> ContinuationRecordV2 {
+    ContinuationRecordV2 {
+        id: ContinuationId(1),
+        actor: PlayerId(1),
+        created_at_revision: StateRevision(0),
+        stage_index: stage.stage_index(),
+        payload: ContinuationPayloadV2::SyntheticM2Assembly {
+            stage,
+            selected_count,
+            selected_piece_keys,
+            ordered_piece_keys,
+        },
+    }
+}
+
+fn state_with_continuation(record: ContinuationRecordV2) -> EngineState {
+    let mut state = empty_shell();
+    state.execution.continuations.insert(record.id, record);
+    state.allocators.next_continuation_id = ContinuationId(2);
+    state
+}
+
+#[test]
+fn assembly_payload_stage_invariants_are_enforced() {
+    // ChooseCount must carry no partial values.
+    assert!(
+        validate_engine_state(&state_with_continuation(assembly_continuation(
+            AssemblyStageV2::ChooseCount,
+            None,
+            vec![],
+            vec![],
+        )))
+        .is_ok()
+    );
+    assert!(
+        validate_engine_state(&state_with_continuation(assembly_continuation(
+            AssemblyStageV2::ChooseCount,
+            Some(2),
+            vec![],
+            vec![],
+        )))
+        .is_err()
+    );
+
+    // ChooseMembers carries only the decided count.
+    assert!(
+        validate_engine_state(&state_with_continuation(assembly_continuation(
+            AssemblyStageV2::ChooseMembers,
+            Some(2),
+            vec![],
+            vec![],
+        )))
+        .is_ok()
+    );
+    assert!(
+        validate_engine_state(&state_with_continuation(assembly_continuation(
+            AssemblyStageV2::ChooseMembers,
+            None,
+            vec![],
+            vec![],
+        )))
+        .is_err()
+    );
+    assert!(
+        validate_engine_state(&state_with_continuation(assembly_continuation(
+            AssemblyStageV2::ChooseMembers,
+            Some(2),
+            vec![0, 1],
+            vec![],
+        )))
+        .is_err()
+    );
+
+    // OrderMembers carries exactly the canonical member set and no order.
+    assert!(
+        validate_engine_state(&state_with_continuation(assembly_continuation(
+            AssemblyStageV2::OrderMembers,
+            Some(2),
+            vec![0, 1],
+            vec![],
+        )))
+        .is_ok()
+    );
+    // Member-set size disagrees with the decided count.
+    assert!(
+        validate_engine_state(&state_with_continuation(assembly_continuation(
+            AssemblyStageV2::OrderMembers,
+            Some(3),
+            vec![0, 1],
+            vec![],
+        )))
+        .is_err()
+    );
+    // Noncanonical set representation.
+    assert!(
+        validate_engine_state(&state_with_continuation(assembly_continuation(
+            AssemblyStageV2::OrderMembers,
+            Some(2),
+            vec![1, 0],
+            vec![],
+        )))
+        .is_err()
+    );
+    // A persisted order is never a valid partial value.
+    assert!(
+        validate_engine_state(&state_with_continuation(assembly_continuation(
+            AssemblyStageV2::OrderMembers,
+            Some(2),
+            vec![0, 1],
+            vec![1, 0],
+        )))
+        .is_err()
+    );
+}

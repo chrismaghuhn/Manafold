@@ -1,11 +1,12 @@
 use super::*;
 use mtgml_decision::{DecisionAnswerV2, DecisionResponseV2, DECISION_RESPONSE_V2_SCHEMA};
 use mtgml_model::{
-    CandidateIdV1, CheckpointDigestV3, ContentDigest, EpisodeStatus, FullStateDigestV3,
-    PlayerDecisionIdV1, PlayerId, StateRevision, TerminalReason, TruncationReason,
+    CandidateIdV1, CheckpointDigestV3, ContentDigest, ContinuationId, EpisodeStatus,
+    FullStateDigestV3, PlayerDecisionIdV1, PlayerId, StateRevision, TerminalReason,
+    TruncationReason,
 };
 use mtgml_observation::{
-    INFORMATION_STATE_SCHEMA_V2, OBSERVATION_SCHEMA, OBSERVED_EVENT_SCHEMA_V2,
+    PlayerStepV2, INFORMATION_STATE_SCHEMA_V2, OBSERVATION_SCHEMA, OBSERVED_EVENT_SCHEMA_V2,
     PLAYER_STEP_SCHEMA_V2,
 };
 use mtgml_random::RootSeed256;
@@ -191,7 +192,15 @@ fn accepted_endpoint_submission_commits_v3_state_delta_and_replay() {
     step.validate().unwrap();
     assert_eq!(step.schema_version, PLAYER_STEP_SCHEMA_V2);
     assert_eq!(step.information_state.state_revision, StateRevision(1));
-    assert!(step.next_decision.is_none());
+    // The entry acceptance creates the continuation and exposes stage 0.
+    assert!(step.next_decision.is_some());
+    assert_eq!(
+        step.next_decision.as_ref().unwrap().decision,
+        mtgml_decision::DecisionDomainV2::ChooseNumber {
+            minimum: 0,
+            maximum: 3
+        }
+    );
 
     let after = controller.checkpoint().unwrap();
     assert_eq!(after.state.revision, StateRevision(1));
@@ -212,6 +221,54 @@ fn accepted_endpoint_submission_commits_v3_state_delta_and_replay() {
     let bytes = mtgml_wire::encode_canonical(&replay).unwrap();
     let decoded: AuthoritativeReplayV3 = mtgml_wire::decode_canonical(&bytes).unwrap();
     assert_eq!(decoded, replay);
+
+    // Drive the remaining stages through the bound endpoint.
+    let stage0 = p1.visible_decision().unwrap().unwrap();
+    let count_step = p1
+        .submit(mtgml_decision::DecisionResponseV2 {
+            schema_version: DECISION_RESPONSE_V2_SCHEMA.into(),
+            player_decision_id: stage0.player_decision_id,
+            state_revision: stage0.state_revision,
+            answer: mtgml_decision::DecisionAnswerV2::ChooseNumber { value: 2 },
+        })
+        .unwrap();
+    count_step.validate().unwrap();
+    let stage1 = p1.visible_decision().unwrap().unwrap();
+    assert_eq!(
+        stage1.decision,
+        mtgml_decision::DecisionDomainV2::ChooseMany {
+            minimum: 2,
+            maximum: 2
+        }
+    );
+    let members_step = p1
+        .submit(mtgml_decision::DecisionResponseV2 {
+            schema_version: DECISION_RESPONSE_V2_SCHEMA.into(),
+            player_decision_id: stage1.player_decision_id,
+            state_revision: stage1.state_revision,
+            answer: mtgml_decision::DecisionAnswerV2::SelectMany {
+                candidate_ids: vec![CandidateIdV1(0), CandidateIdV1(1)],
+            },
+        })
+        .unwrap();
+    members_step.validate().unwrap();
+    let stage2 = p1.visible_decision().unwrap().unwrap();
+    let order_step = p1
+        .submit(mtgml_decision::DecisionResponseV2 {
+            schema_version: DECISION_RESPONSE_V2_SCHEMA.into(),
+            player_decision_id: stage2.player_decision_id,
+            state_revision: stage2.state_revision,
+            answer: mtgml_decision::DecisionAnswerV2::Order {
+                candidate_ids: vec![CandidateIdV1(1), CandidateIdV1(0)],
+            },
+        })
+        .unwrap();
+    order_step.validate().unwrap();
+    // Completion removes the continuation and clears pending decisions.
+    assert!(p1.visible_decision().unwrap().is_none());
+    let completed = controller.checkpoint().unwrap();
+    assert!(completed.state.execution.continuations.is_empty());
+    assert_eq!(controller.export_replay().unwrap().steps.len(), 4);
 }
 
 #[test]
@@ -610,11 +667,12 @@ fn multi_player_endpoints_remain_bound_through_visibility_and_submission() {
     assert_eq!(p1.information_state().unwrap().perspective, PlayerId(1));
     assert_eq!(p2.information_state().unwrap().perspective, PlayerId(2));
 
-    // After player 1 commits, both endpoints project the advanced state.
+    // After player 1 commits, both endpoints project the advanced state;
+    // the created continuation keeps a visible decision alive for p1.
     let step = p1.submit(response(0, 0)).unwrap();
     assert_eq!(step.information_state.perspective, PlayerId(1));
     assert_eq!(step.information_state.state_revision, StateRevision(1));
-    assert!(p1.visible_decision().unwrap().is_none());
+    assert!(p1.visible_decision().unwrap().is_some());
     assert_eq!(
         p2.information_state().unwrap().state_revision,
         StateRevision(1)
@@ -966,4 +1024,186 @@ fn provenance_is_preserved_through_projection_restore_and_fork() {
         expected
     );
     assert_eq!(fork.checkpoint().unwrap().state, state);
+}
+
+fn submit_answer(
+    endpoint: &PlayerEndpointHandle,
+    answer: mtgml_decision::DecisionAnswerV2,
+) -> PlayerStepV2 {
+    let request = endpoint
+        .visible_decision()
+        .unwrap()
+        .expect("a stage decision is visible");
+    let step = endpoint
+        .submit(mtgml_decision::DecisionResponseV2 {
+            schema_version: DECISION_RESPONSE_V2_SCHEMA.into(),
+            player_decision_id: request.player_decision_id,
+            state_revision: request.state_revision,
+            answer,
+        })
+        .unwrap();
+    step.validate().unwrap();
+    step
+}
+
+fn number_answer(value: i64) -> mtgml_decision::DecisionAnswerV2 {
+    mtgml_decision::DecisionAnswerV2::ChooseNumber { value }
+}
+
+fn members_answer(ids: &[u32]) -> mtgml_decision::DecisionAnswerV2 {
+    mtgml_decision::DecisionAnswerV2::SelectMany {
+        candidate_ids: ids.iter().copied().map(CandidateIdV1).collect(),
+    }
+}
+
+fn order_answer(ids: &[u32]) -> mtgml_decision::DecisionAnswerV2 {
+    mtgml_decision::DecisionAnswerV2::Order {
+        candidate_ids: ids.iter().copied().map(CandidateIdV1).collect(),
+    }
+}
+
+/// Drives entry + ChooseCount(2) so the environment sits at the nonterminal
+/// ChooseMembers stage of continuation C(1).
+fn environment_at_members_stage() -> TrustedEnvironmentController {
+    let controller = TrustedEnvironmentController::new(backend());
+    let p1 = controller.bind_player(PlayerId(1)).unwrap();
+    let _ = submit_answer(&p1, order_entry_answer());
+    let _ = submit_answer(&p1, number_answer(2));
+    controller
+}
+
+fn order_entry_answer() -> mtgml_decision::DecisionAnswerV2 {
+    mtgml_decision::DecisionAnswerV2::SelectOne {
+        candidate_id: CandidateIdV1(0),
+    }
+}
+
+#[test]
+fn continuation_checkpoint_restore_roundtrip_preserves_the_chain() {
+    let source = environment_at_members_stage();
+    let mid_checkpoint = source.checkpoint().unwrap();
+
+    // Complete the chain on the source to capture the reference product.
+    let source_p1 = source.bind_player(PlayerId(1)).unwrap();
+    let reference_step = submit_answer(&source_p1, members_answer(&[0, 1]));
+    let reference_after = source.checkpoint().unwrap();
+
+    // Restore the mid-chain checkpoint into an equivalent environment and
+    // submit the same next answer.
+    let restored = TrustedEnvironmentController::new(backend());
+    restored.restore(mid_checkpoint.clone()).unwrap();
+    let restored_p1 = restored.bind_player(PlayerId(1)).unwrap();
+    let replayed_step = submit_answer(&restored_p1, members_answer(&[0, 1]));
+
+    assert_eq!(reference_step, replayed_step);
+    assert_eq!(restored.checkpoint().unwrap(), reference_after);
+
+    // The checkpoint itself contains the live continuation state.
+    let state = &mid_checkpoint.state;
+    assert_eq!(
+        state
+            .execution
+            .continuations
+            .keys()
+            .copied()
+            .collect::<Vec<_>>(),
+        vec![ContinuationId(1)]
+    );
+}
+
+#[test]
+fn continuation_fork_equal_input_produces_equal_results() {
+    let source = environment_at_members_stage();
+    let fork_a = source.fork().unwrap();
+    let fork_b = source.fork().unwrap();
+    let a = fork_a.bind_player(PlayerId(1)).unwrap();
+    let b = fork_b.bind_player(PlayerId(1)).unwrap();
+
+    let step_a = submit_answer(&a, members_answer(&[0, 1]));
+    let step_b = submit_answer(&b, members_answer(&[0, 1]));
+    assert_eq!(step_a, step_b);
+    assert_eq!(fork_a.checkpoint().unwrap(), fork_b.checkpoint().unwrap());
+
+    // Divergence happens only through different valid inputs afterwards.
+    let a2 = fork_a.bind_player(PlayerId(1)).unwrap();
+    assert!(a2.visible_decision().unwrap().is_some());
+}
+
+#[test]
+fn continuation_replay_full_chain_parity() {
+    let controller = TrustedEnvironmentController::new(backend());
+    let p1 = controller.bind_player(PlayerId(1)).unwrap();
+    let c0 = controller.checkpoint().unwrap();
+
+    let _ = submit_answer(&p1, order_entry_answer());
+    let _ = submit_answer(&p1, number_answer(2));
+    // One rejection during the active continuation must not enter the
+    // accepted replay history.
+    let before_rejection = controller.export_replay().unwrap();
+    let before_checkpoint = controller.checkpoint().unwrap();
+    let stale_request = p1.visible_decision().unwrap().unwrap();
+    let wrong_cardinality = p1
+        .submit(mtgml_decision::DecisionResponseV2 {
+            schema_version: DECISION_RESPONSE_V2_SCHEMA.into(),
+            player_decision_id: stale_request.player_decision_id,
+            state_revision: stale_request.state_revision,
+            answer: members_answer(&[0]),
+        })
+        .unwrap_err();
+    assert_eq!(wrong_cardinality, PlayerApiError::InvalidSelection);
+    assert_eq!(controller.export_replay().unwrap(), before_rejection);
+    assert_eq!(controller.checkpoint().unwrap(), before_checkpoint);
+
+    let _ = submit_answer(&p1, members_answer(&[0, 1]));
+    let _ = submit_answer(&p1, order_answer(&[1, 0]));
+
+    let live_after = controller.checkpoint().unwrap();
+    let replay = controller.export_replay().unwrap();
+    assert_eq!(replay.steps.len(), 4);
+    for step in &replay.steps {
+        assert!(step.accepted, "rejections are not replay steps");
+    }
+
+    // Replay reproduces the whole continuation progression deterministically.
+    let report = controller
+        .execute_replay_from_checkpoint(c0.clone(), replay.clone())
+        .unwrap();
+    assert_eq!(report.traces.len(), 4);
+    assert_eq!(report.final_checkpoint, live_after);
+    assert!(report
+        .final_checkpoint
+        .state
+        .execution
+        .continuations
+        .is_empty());
+}
+
+#[test]
+fn stale_stage_response_is_rejected_without_any_mutation() {
+    let controller = TrustedEnvironmentController::new(backend());
+    let p1 = controller.bind_player(PlayerId(1)).unwrap();
+
+    // Complete the entry and capture the stage-0 (ChooseNumber) identity.
+    let _ = submit_answer(&p1, order_entry_answer());
+    let stage0_request = p1.visible_decision().unwrap().unwrap();
+    let stage0_response = mtgml_decision::DecisionResponseV2 {
+        schema_version: DECISION_RESPONSE_V2_SCHEMA.into(),
+        player_decision_id: stage0_request.player_decision_id,
+        state_revision: stage0_request.state_revision,
+        answer: number_answer(1),
+    };
+
+    // Advance to stage 1 with a fresh visible identity.
+    let _ = submit_answer(&p1, number_answer(2));
+    let advanced = controller.checkpoint().unwrap();
+    let advanced_replay = controller.export_replay().unwrap();
+
+    // Resubmitting the earlier stage response is stale_decision: no mutation
+    // of state, counters, continuation, or replay history.
+    assert_eq!(
+        p1.submit(stage0_response).unwrap_err(),
+        PlayerApiError::StaleResponse
+    );
+    assert_eq!(controller.checkpoint().unwrap(), advanced);
+    assert_eq!(controller.export_replay().unwrap(), advanced_replay);
 }

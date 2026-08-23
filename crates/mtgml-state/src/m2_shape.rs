@@ -1,7 +1,7 @@
 //! Private, detached M2 state shapes prepared before the current-runtime cut.
 //!
 //! Nothing in this module is reachable through the current `EngineState` until
-//! the coordinated Tasks 7â€“11 cut. The types deliberately do not adapt or
+//! the coordinated Tasks 7Ã¢â‚¬â€œ11 cut. The types deliberately do not adapt or
 //! reinterpret any historical V1/V2 value.
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -31,7 +31,7 @@ pub enum AssemblyStageV2 {
 }
 
 impl AssemblyStageV2 {
-    fn index(self) -> u16 {
+    pub fn stage_index(self) -> u16 {
         match self {
             Self::ChooseCount => 0,
             Self::ChooseMembers => 1,
@@ -52,9 +52,9 @@ pub enum ContinuationPayloadV2 {
 }
 
 impl ContinuationPayloadV2 {
-    fn stage_index(&self) -> u16 {
+    pub fn stage_index(&self) -> u16 {
         match self {
-            Self::SyntheticM2Assembly { stage, .. } => stage.index(),
+            Self::SyntheticM2Assembly { stage, .. } => stage.stage_index(),
         }
     }
 }
@@ -181,6 +181,56 @@ pub enum M2ShapeViolation {
     ContinuationStage,
 }
 
+/// Stage-payload invariants of the one frozen synthetic assembly payload.
+///
+/// Every reachable continuation state must have exactly one unambiguous
+/// semantic interpretation:
+///
+/// - `ChooseCount`: nothing decided yet;
+/// - `ChooseMembers`: the numeric count is decided, the member set is not;
+/// - `OrderMembers`: the member set is decided in canonical set form, the
+///   semantic order is not (it lives only in the pending stage answer).
+///
+/// Ordered partial data never persists: completion removes the continuation.
+fn validate_synthetic_assembly(
+    stage: AssemblyStageV2,
+    selected_count: Option<u32>,
+    selected_piece_keys: &[u32],
+    ordered_piece_keys: &[u32],
+) -> Result<(), M2ShapeViolation> {
+    let canonical_set = |values: &[u32]| values.windows(2).all(|window| window[0] < window[1]);
+    match stage {
+        AssemblyStageV2::ChooseCount => {
+            if selected_count.is_some()
+                || !selected_piece_keys.is_empty()
+                || !ordered_piece_keys.is_empty()
+            {
+                return Err(M2ShapeViolation::Knowledge);
+            }
+        }
+        AssemblyStageV2::ChooseMembers => {
+            if selected_count.is_none()
+                || !selected_piece_keys.is_empty()
+                || !ordered_piece_keys.is_empty()
+            {
+                return Err(M2ShapeViolation::Knowledge);
+            }
+        }
+        AssemblyStageV2::OrderMembers => {
+            let Some(count) = selected_count else {
+                return Err(M2ShapeViolation::Knowledge);
+            };
+            if !ordered_piece_keys.is_empty()
+                || selected_piece_keys.len() != count as usize
+                || !canonical_set(selected_piece_keys)
+            {
+                return Err(M2ShapeViolation::Knowledge);
+            }
+        }
+    }
+    Ok(())
+}
+
 pub fn validate_m2_shape(
     current_revision: StateRevision,
     players: &BTreeSet<PlayerId>,
@@ -224,6 +274,21 @@ pub fn validate_m2_shape(
         }
         if continuation.stage_index != continuation.payload.stage_index() {
             return Err(M2ShapeViolation::ContinuationStage);
+        }
+        match &continuation.payload {
+            ContinuationPayloadV2::SyntheticM2Assembly {
+                stage,
+                selected_count,
+                selected_piece_keys,
+                ordered_piece_keys,
+            } => {
+                validate_synthetic_assembly(
+                    *stage,
+                    *selected_count,
+                    selected_piece_keys,
+                    ordered_piece_keys,
+                )?;
+            }
         }
     }
 
@@ -362,7 +427,7 @@ fn validate_knowledge(knowledge: &PlayerKnowledgeStateV2) -> Result<(), M2ShapeV
             return Err(M2ShapeViolation::Knowledge);
         }
         // INFORMATION_MODEL.md: retirement records an explicit invalidation
-        // reason *and visible sequence* — an unsequenced initial
+        // reason *and visible sequence* â€” an unsequenced initial
         // configuration cannot invalidate anything.
         if record.invalidation.provenance.observed_sequence().is_none() {
             return Err(M2ShapeViolation::Knowledge);
