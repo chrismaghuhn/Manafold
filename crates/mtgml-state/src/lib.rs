@@ -33,9 +33,9 @@ pub use knowledge::{
     KnowledgeInvalidationReason,
 };
 pub use lifecycle::{
-    apply_lifecycle_to_player, apply_perspective_lifecycle, IdentityMutationV1,
-    KnowledgeMutationV1, LifecycleApplicationError, PerspectiveLifecycleAuditV1,
-    PerspectiveLifecycleMutationV1,
+    advance_identity_record, apply_lifecycle_to_player, apply_perspective_lifecycle,
+    IdentityMutationV1, KnowledgeMutationV1, LifecycleApplicationError,
+    PerspectiveLifecycleAuditV1, PerspectiveLifecycleMutationV1,
 };
 pub use m2_shape::{
     AssemblyStageV2, ContinuationPayloadV2, ContinuationRecordV2, KnowledgeInvalidationV2,

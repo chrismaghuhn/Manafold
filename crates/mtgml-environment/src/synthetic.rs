@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 
 use base64::{engine::general_purpose::STANDARD, Engine as _};
@@ -172,7 +173,11 @@ impl SyntheticM1EnvironmentBackend {
         before_commit: F,
     ) -> Result<TransitionResult, ControllerError>
     where
-        F: FnOnce(&EnvironmentCheckpointV3, &TransitionResult) -> Result<(), ControllerError>,
+        F: FnOnce(
+            &EnvironmentCheckpointV3,
+            &TransitionResult,
+            &BTreeMap<PlayerId, Vec<ObservedEventEnvelopeV2>>,
+        ) -> Result<(), ControllerError>,
     {
         let before = self.current_checkpoint()?;
         let transition = self.kernel.apply(&before.state, actor, &response)?;
@@ -219,7 +224,17 @@ impl SyntheticM1EnvironmentBackend {
         let mut candidate_replay = self.replay.clone();
         candidate_replay.append(step)?;
         candidate_replay.export()?;
-        before_commit(&candidate, &transition)?;
+        // ADR-0040: every required per-perspective projection is validated
+        // against the candidate product BEFORE the atomic commit.
+        let occurrence_envelopes = crate::lifecycle_projection::project_occurrence_envelopes(
+            &before.state,
+            &transition.next_state,
+            &transition.events,
+        )
+        .map_err(|_| {
+            ControllerError::EnvironmentCommit(EnvironmentCommitError::PlayerProjectionInvalid)
+        })?;
+        before_commit(&candidate, &transition, &occurrence_envelopes)?;
 
         self.state = candidate.state;
         self.status = candidate.status;
@@ -442,7 +457,11 @@ impl EnvironmentBackend for SyntheticM1EnvironmentBackend {
         actor: PlayerId,
         response: DecisionResponseV2,
     ) -> Result<TransitionResult, ControllerError> {
-        self.execute_response(actor, response, |_candidate, _transition| Ok(()))
+        self.execute_response(
+            actor,
+            response,
+            |_candidate, _transition, _envelopes| Ok(()),
+        )
     }
 
     fn player_observation(
@@ -584,21 +603,30 @@ impl EnvironmentBackend for SyntheticM1EnvironmentBackend {
         // submission is an internal soundness failure, not player illegality.
         let mut projected_step = None;
         let transition = self
-            .execute_response(perspective, response, |candidate, transition| {
-                let step = Self::player_step_from_state(
-                    &candidate.state,
-                    perspective,
-                    transition.status.clone(),
-                    Submission::Accepted,
-                )
-                .map_err(|_| {
-                    ControllerError::EnvironmentCommit(
-                        EnvironmentCommitError::PlayerProjectionInvalid,
+            .execute_response(
+                perspective,
+                response,
+                |candidate, transition, occurrence_envelopes| {
+                    let step = Self::player_step_from_state(
+                        &candidate.state,
+                        perspective,
+                        transition.status.clone(),
+                        Submission::Accepted,
                     )
-                })?;
-                projected_step = Some(step);
-                Ok(())
-            })
+                    .map_err(|_| {
+                        ControllerError::EnvironmentCommit(
+                            EnvironmentCommitError::PlayerProjectionInvalid,
+                        )
+                    })?;
+                    let mut step = step;
+                    // Attach the per-perspective observed batch validated above.
+                    if let Some(envelopes) = occurrence_envelopes.get(&perspective) {
+                        step.observed_events = envelopes.clone();
+                    }
+                    projected_step = Some(step);
+                    Ok(())
+                },
+            )
             .map_err(|_| PlayerEndpointError::ServiceUnavailable)?;
         if !transition.accepted {
             return Err(PlayerEndpointError::ServiceUnavailable);

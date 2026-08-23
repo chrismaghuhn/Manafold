@@ -121,8 +121,7 @@ pub enum LifecycleApplicationError {
     AllocatorOverflow,
     #[error("visible sequence cursor overflow")]
     CursorOverflow,
-    #[error("occurrence carries no mutation and may not consume a sequence")]
-    EmptyMutation,
+
     #[error("live mapping does not match the declared identity mutation")]
     MappingMismatch,
     #[error("authoritative object is missing from the zones")]
@@ -353,4 +352,35 @@ pub fn apply_perspective_lifecycle(
         &|object| zones_objects.contains_key(&object),
         audit,
     )
+}
+
+/// Applies only the identity-mapping bookkeeping of one lifecycle audit to
+/// the given record (forward/reverse maps and retirement sets). Used by the
+/// semantic cursor replay and by projection walkers so every consumer sees
+/// identical sequential mapping semantics. No validation here.
+pub fn advance_identity_record(
+    record: &mut PerspectiveIdentityRecordV2,
+    mutation: &IdentityMutationV1,
+) {
+    match mutation {
+        IdentityMutationV1::None => {}
+        IdentityMutationV1::Allocate { opaque, object } => {
+            record.opaque_to_object.insert(*opaque, *object);
+            record.object_to_opaque.insert(*object, *opaque);
+        }
+        IdentityMutationV1::Remap {
+            opaque,
+            from_object,
+            to_object,
+        } => {
+            record.opaque_to_object.insert(*opaque, *to_object);
+            record.object_to_opaque.remove(from_object);
+            record.object_to_opaque.insert(*to_object, *opaque);
+        }
+        IdentityMutationV1::Retire { opaque, object } => {
+            record.opaque_to_object.remove(opaque);
+            record.object_to_opaque.remove(object);
+            record.retired_object_ids.insert(*opaque);
+        }
+    }
 }

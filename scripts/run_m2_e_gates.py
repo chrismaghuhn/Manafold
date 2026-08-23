@@ -115,11 +115,6 @@ GATE_TESTS: dict[str, tuple[EvidenceDefinition, ...]] = {
         ),
         rust(
             "mtgml-conformance",
-            "lifecycle::gate_evidence::reidentification_after_randomization_allocates_next_unused_never_reused",
-            "later visibility allocates the next deterministic unused opaque id",
-        ),
-        rust(
-            "mtgml-conformance",
             "lifecycle::gate_evidence::conceal_untrackable_retires_with_hidden_transition_reason",
             "untrackable hidden transition retires identity and knowledge",
         ),

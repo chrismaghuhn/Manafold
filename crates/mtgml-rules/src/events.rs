@@ -177,8 +177,14 @@ pub fn validate_occurrence_pairing(
     use PerspectiveObservationPolicyV1 as Policy;
     let mutation = &lifecycle.mutation;
 
-    // A completely empty occurrence must never consume a visible sequence.
-    if matches!(mutation.identity, IdentityMutationV1::None) && mutation.knowledge.is_none() {
+    // Envelope-less occurrences must carry at least one state-changing
+    // mutation: a no-op may not consume a visible sequence. Envelope-
+    // producing policies legitimately allow identity=None/knowledge=None
+    // because the perceived event itself justifies the sequence.
+    if matches!(observation, PerspectiveObservationPolicyV1::NoEnvelope)
+        && matches!(mutation.identity, IdentityMutationV1::None)
+        && mutation.knowledge.is_none()
+    {
         return Err(OccurrencePairingError::EmptyOccurrence);
     }
 

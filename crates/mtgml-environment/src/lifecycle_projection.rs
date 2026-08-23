@@ -11,7 +11,7 @@ use std::collections::BTreeMap;
 
 use mtgml_model::{OpaqueObjectId, PlayerId, VisibleSequence};
 use mtgml_rules::AuthoritativeRuleEventKind;
-use mtgml_state::{EngineState, IdentityMutationV1, PerspectiveIdentityRecordV2};
+use mtgml_state::{EngineState, PerspectiveIdentityRecordV2};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
 pub enum LifecycleProjectionError {
@@ -96,28 +96,7 @@ pub fn project_occurrence_envelopes(
             .ok_or(LifecycleProjectionError::UnknownPerspective)?
             .clone();
         let mut record_after = record_before.clone();
-        match &lifecycle.mutation.identity {
-            IdentityMutationV1::None => {}
-            IdentityMutationV1::Allocate { opaque, object } => {
-                record_after.opaque_to_object.insert(*opaque, *object);
-                record_after.object_to_opaque.insert(*object, *opaque);
-            }
-            IdentityMutationV1::Remap {
-                opaque,
-                from_object,
-                to_object,
-            } => {
-                record_after.opaque_to_object.insert(*opaque, *to_object);
-                record_after.object_to_opaque.remove(from_object);
-                record_after.object_to_opaque.insert(*to_object, *opaque);
-            }
-            IdentityMutationV1::Retire { opaque, object } => {
-                record_after.opaque_to_object.remove(opaque);
-                record_after.object_to_opaque.remove(object);
-                record_after.retired_object_ids.insert(*opaque);
-            }
-        }
-
+        mtgml_state::advance_identity_record(&mut record_after, &lifecycle.mutation.identity);
         use mtgml_rules::PerspectiveObservationPolicyV1 as Policy;
         let kind = match observation {
             Policy::MovedInSight {
