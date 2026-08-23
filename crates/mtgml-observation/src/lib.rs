@@ -539,6 +539,37 @@ impl ObservedEventEnvelopeV2 {
     }
 }
 
+/// Versioned closed codes for typed player submission rejections
+/// (ERROR_MODEL, layer B). Wire representation: snake_case strings.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PlayerSubmissionCodeV1 {
+    StaleDecision,
+    UnavailableDecision,
+    InvalidAnswer,
+    InvalidCandidate,
+    DuplicateAssignment,
+    InvalidCardinality,
+    InvalidNumber,
+    InvalidOrder,
+    EpisodeClosed,
+}
+
+/// Versioned closed service-failure code (ERROR_MODEL, layer C).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PlayerServiceErrorCodeV1 {
+    ServiceUnavailable,
+}
+
+/// Versioned submission outcome carried by `PlayerStepV2`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+pub enum PlayerStepSubmissionV1 {
+    Accepted,
+    Rejected { code: PlayerSubmissionCodeV1 },
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct PlayerStepV2 {
@@ -547,6 +578,7 @@ pub struct PlayerStepV2 {
     pub observed_events: Vec<ObservedEventEnvelopeV2>,
     pub next_decision: Option<PlayerDecisionRequestV2>,
     pub status: EpisodeStatus,
+    pub submission: PlayerStepSubmissionV1,
 }
 
 impl PlayerStepV2 {

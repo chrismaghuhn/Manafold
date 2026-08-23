@@ -27,20 +27,20 @@ pub trait EnvironmentBackend: Send {
     fn player_observation(
         &self,
         perspective: PlayerId,
-    ) -> Result<ObservationEnvelope, crate::endpoint::PlayerApiError>;
+    ) -> Result<ObservationEnvelope, crate::endpoint::PlayerEndpointError>;
     fn player_information_state(
         &self,
         perspective: PlayerId,
-    ) -> Result<PlayerInformationStateV2, crate::endpoint::PlayerApiError>;
+    ) -> Result<PlayerInformationStateV2, crate::endpoint::PlayerEndpointError>;
     fn player_visible_decision(
         &self,
         perspective: PlayerId,
-    ) -> Result<Option<PlayerDecisionRequestV2>, crate::endpoint::PlayerApiError>;
+    ) -> Result<Option<PlayerDecisionRequestV2>, crate::endpoint::PlayerEndpointError>;
     fn submit_player_response(
         &mut self,
         perspective: PlayerId,
         response: DecisionResponseV2,
-    ) -> Result<PlayerStepV2, crate::endpoint::PlayerApiError>;
+    ) -> Result<PlayerStepV2, crate::endpoint::PlayerEndpointError>;
 }
 
 pub(crate) type SharedBackend = Arc<Mutex<Box<dyn EnvironmentBackend>>>;

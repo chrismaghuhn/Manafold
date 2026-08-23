@@ -649,6 +649,44 @@ class ObservedEventEnvelopeV2:
         }
 
 
+PLAYER_SUBMISSION_CODES = frozenset(
+    {
+        "stale_decision",
+        "unavailable_decision",
+        "invalid_answer",
+        "invalid_candidate",
+        "duplicate_assignment",
+        "invalid_cardinality",
+        "invalid_number",
+        "invalid_order",
+        "episode_closed",
+    }
+)
+
+
+@dataclass(frozen=True, slots=True)
+class PlayerStepSubmissionV1:
+    kind: str
+    code: str | None = None
+
+    @classmethod
+    def from_wire(cls, value: object) -> PlayerStepSubmissionV1:
+        obj = require_exact_keys(value, {"kind"}, {"code"})
+        if obj.get("kind") == "accepted":
+            return cls("accepted")
+        if obj.get("kind") == "rejected":
+            code = obj.get("code")
+            if code not in PLAYER_SUBMISSION_CODES:
+                raise WireError("decode.invalid_json", "unknown submission code")
+            return cls("rejected", str(code))
+        raise WireError("decode.invalid_json", "unknown submission outcome")
+
+    def to_wire(self) -> dict[str, object]:
+        if self.kind == "accepted":
+            return {"kind": "accepted"}
+        return {"kind": "rejected", "code": self.code}
+
+
 @dataclass(frozen=True, slots=True)
 class PlayerStepV2:
     schema_version: str
@@ -656,12 +694,13 @@ class PlayerStepV2:
     observed_events: tuple[ObservedEventEnvelopeV2, ...]
     next_decision: PlayerDecisionRequestV2 | None
     status: EpisodeStatus
+    submission: PlayerStepSubmissionV1
 
     @classmethod
     def from_wire(cls, value: object) -> PlayerStepV2:
         obj = require_exact_keys(
             value,
-            {"schema_version", "information_state", "observed_events", "status"},
+            {"schema_version", "information_state", "observed_events", "status", "submission"},
             {"next_decision"},
         )
         if obj["schema_version"] != PLAYER_STEP_SCHEMA_V2 or not isinstance(
@@ -676,6 +715,7 @@ class PlayerStepV2:
             if obj.get("next_decision") is None
             else PlayerDecisionRequestV2.from_wire(obj["next_decision"]),
             EpisodeStatus.from_wire(obj["status"]),
+            PlayerStepSubmissionV1.from_wire(obj["submission"]),
         )
         result.validate()
         return result
@@ -700,6 +740,7 @@ class PlayerStepV2:
             "observed_events": [event.to_wire() for event in self.observed_events],
             "schema_version": PLAYER_STEP_SCHEMA_V2,
             "status": self.status.to_wire(),
+            "submission": self.submission.to_wire(),
         }
         if self.next_decision is not None:
             result["next_decision"] = self.next_decision.to_wire()

@@ -167,6 +167,12 @@
       "expected_error_code": "semantic.information_state",
       "expected_reject_layer": "rust-python-semantic-or-decode",
       "path": "information-v2-initial-invalidation.json"
+    },
+    {
+      "contract": "player-step.v2",
+      "expected_error_code": "decode.invalid_json",
+      "expected_reject_layer": "rust-python-semantic-or-decode",
+      "path": "player-step-v2-unknown-submission-code.json"
     }
   ]
 }

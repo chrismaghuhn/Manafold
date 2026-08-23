@@ -239,6 +239,8 @@ pub fn decode_canonical<T>(bytes: &[u8]) -> Result<T, WireError>
 where
     T: DeserializeOwned + Serialize + WireContract,
 {
+    // Preserved order for every pre-existing wire consumer: closed semantic
+    // validation precedes the canonical byte comparison.
     let value: T = serde_json::from_slice(bytes)
         .map_err(|error| WireError::new("decode.invalid_json", error.to_string()))?;
     value.validate_wire()?;
@@ -250,6 +252,70 @@ where
         ));
     }
     Ok(value)
+}
+
+/// Player-submission entry decode for `DecisionResponseV2`.
+///
+/// Layer A of the accepted boundary: malformed/noncanonical/wrong-schema
+/// bytes are rejected here with the closed wire code, while response-local
+/// semantics (variant/membership/uniqueness/canonical/bounds) deliberately
+/// remain the typed endpoint's responsibility.
+pub mod decision_response_v2 {
+    use super::*;
+
+    pub fn decode_submission(bytes: &[u8]) -> Result<DecisionResponseV2, WireError> {
+        let response = decode_canonical_shape::<DecisionResponseV2>(bytes)?;
+        if response.schema_version != mtgml_decision::DECISION_RESPONSE_V2_SCHEMA {
+            return Err(WireError::new(
+                "decode.unknown_schema",
+                "unsupported decision-response schema version",
+            ));
+        }
+        Ok(response)
+    }
+}
+
+/// Canonical shape decoding only: JSON parse, closed serde shape/types, and
+/// canonical byte comparison. Deliberately skips `WireContract` semantic
+/// validation so request-relative checks can run later at their owning
+/// layer. Not public API; the public submission entry composes this.
+fn decode_canonical_shape<T>(bytes: &[u8]) -> Result<T, WireError>
+where
+    T: DeserializeOwned + Serialize,
+{
+    let value: T = serde_json::from_slice(bytes)
+        .map_err(|error| WireError::new("decode.invalid_json", error.to_string()))?;
+    let canonical = encode_shape(&value)?;
+    if canonical != bytes {
+        return Err(WireError::new(
+            "decode.non_canonical_json",
+            "wire bytes are valid JSON but not the canonical representation",
+        ));
+    }
+    Ok(value)
+}
+
+/// Shape-only canonical encoding (no semantic validation), used exclusively
+/// by `decode_canonical_shape` for the byte-equality check.
+fn encode_shape<T: Serialize>(value: &T) -> Result<Vec<u8>, WireError> {
+    let value = serde_json::to_value(value)
+        .map_err(|error| WireError::new("encode.serialization", error.to_string()))?;
+    serde_json::to_vec(&canonicalize(value))
+        .map_err(|error| WireError::new("encode.serialization", error.to_string()))
+}
+
+/// Versioned public wire code family for player-boundary decode failures.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PlayerWireErrorCodeV1 {
+    MalformedResponse,
+}
+
+impl PlayerWireErrorCodeV1 {
+    pub fn code(self) -> &'static str {
+        match self {
+            Self::MalformedResponse => "malformed_response",
+        }
+    }
 }
 
 fn canonicalize(value: Value) -> Value {

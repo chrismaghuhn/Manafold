@@ -9,8 +9,8 @@ use mtgml_observation::{
     InformationStateDigestInputV2, ObservationEnvelope, ObservedEventEnvelopeV2,
     PlayerInformationStateV2, PlayerKnowledgeCauseV1, PlayerKnowledgeChannelV1,
     PlayerKnowledgeInvalidationReasonV1, PlayerKnowledgeProvenanceV1, PlayerKnownLocationFactV1,
-    PlayerKnownLocationV1, PlayerKnownObjectV1, PlayerStepV2, INFORMATION_STATE_SCHEMA_V2,
-    OBSERVATION_SCHEMA, PLAYER_STEP_SCHEMA_V2,
+    PlayerKnownLocationV1, PlayerKnownObjectV1, PlayerStepSubmissionV1, PlayerStepV2,
+    PlayerSubmissionCodeV1, INFORMATION_STATE_SCHEMA_V2, OBSERVATION_SCHEMA, PLAYER_STEP_SCHEMA_V2,
 };
 use mtgml_random::RootSeed256;
 use mtgml_replay::{
@@ -31,7 +31,7 @@ use crate::checkpoint::{
     CheckpointCodecIdentity, EnvironmentCheckpointV3, EnvironmentLimitCounters,
 };
 use crate::controller::EnvironmentBackend;
-use crate::endpoint::PlayerApiError;
+use crate::endpoint::PlayerEndpointError;
 use crate::errors::{ControllerError, EnvironmentCommitError};
 
 const SYNTHETIC_M2_OBSERVATION_CODEC: &str = "synthetic-m2-observation.v1";
@@ -228,19 +228,19 @@ impl SyntheticM1EnvironmentBackend {
         Ok(transition)
     }
 
-    fn require_player(&self, perspective: PlayerId) -> Result<(), PlayerApiError> {
+    fn require_player(&self, perspective: PlayerId) -> Result<(), PlayerEndpointError> {
         self.state
             .core
             .players
             .contains_key(&perspective)
             .then_some(())
-            .ok_or(PlayerApiError::Unavailable)
+            .ok_or(PlayerEndpointError::ServiceUnavailable)
     }
 
     fn synthetic_observation(
         perspective: PlayerId,
         revision: StateRevision,
-    ) -> Result<ObservationEnvelope, PlayerApiError> {
+    ) -> Result<ObservationEnvelope, PlayerEndpointError> {
         let payload = format!(
             "{SYNTHETIC_M2_OBSERVATION_CODEC}|perspective={}|state-revision={}",
             perspective.0, revision.0
@@ -256,7 +256,7 @@ impl SyntheticM1EnvironmentBackend {
         };
         observation
             .validate()
-            .map_err(|_| PlayerApiError::Unavailable)?;
+            .map_err(|_| PlayerEndpointError::ServiceUnavailable)?;
         Ok(observation)
     }
 
@@ -329,16 +329,16 @@ impl SyntheticM1EnvironmentBackend {
     fn player_information_state_from_state(
         state: &EngineState,
         perspective: PlayerId,
-    ) -> Result<PlayerInformationStateV2, PlayerApiError> {
+    ) -> Result<PlayerInformationStateV2, PlayerEndpointError> {
         if !state.core.players.contains_key(&perspective) {
-            return Err(PlayerApiError::Unavailable);
+            return Err(PlayerEndpointError::ServiceUnavailable);
         }
         let current_observation = Self::synthetic_observation(perspective, state.revision)?;
         let knowledge = state
             .knowledge
             .players
             .get(&perspective)
-            .ok_or(PlayerApiError::Unavailable)?;
+            .ok_or(PlayerEndpointError::ServiceUnavailable)?;
         // Canonical retained-knowledge order is ascending numeric OpaqueObjectId
         // across active and retired records (INFORMATION_MODEL.md).
         let mut retained_knowledge =
@@ -396,36 +396,12 @@ impl SyntheticM1EnvironmentBackend {
         };
         let input: InformationStateDigestInputV2 = information_state.digest_input();
         let (_, digest) = mtgml_wire::compute_information_state_digest_v2(&input)
-            .map_err(|_| PlayerApiError::Unavailable)?;
+            .map_err(|_| PlayerEndpointError::ServiceUnavailable)?;
         information_state.digest = digest;
         information_state
             .validate()
-            .map_err(|_| PlayerApiError::Unavailable)?;
+            .map_err(|_| PlayerEndpointError::ServiceUnavailable)?;
         Ok(information_state)
-    }
-
-    fn player_step_from_state(
-        state: &EngineState,
-        perspective: PlayerId,
-        status: EpisodeStatus,
-    ) -> Result<PlayerStepV2, PlayerApiError> {
-        let next_decision = state
-            .execution
-            .pending_decision
-            .as_ref()
-            .filter(|pending| pending.request.actor == perspective)
-            .map(|pending| pending.request.project_player_request())
-            .transpose()
-            .map_err(|_| PlayerApiError::Unavailable)?;
-        let step = PlayerStepV2 {
-            schema_version: PLAYER_STEP_SCHEMA_V2.into(),
-            information_state: Self::player_information_state_from_state(state, perspective)?,
-            observed_events: Vec::<ObservedEventEnvelopeV2>::new(),
-            next_decision,
-            status,
-        };
-        step.validate().map_err(|_| PlayerApiError::Unavailable)?;
-        Ok(step)
     }
 }
 
@@ -472,7 +448,7 @@ impl EnvironmentBackend for SyntheticM1EnvironmentBackend {
     fn player_observation(
         &self,
         perspective: PlayerId,
-    ) -> Result<ObservationEnvelope, PlayerApiError> {
+    ) -> Result<ObservationEnvelope, PlayerEndpointError> {
         self.require_player(perspective)?;
         Self::synthetic_observation(perspective, self.state.revision)
     }
@@ -480,7 +456,7 @@ impl EnvironmentBackend for SyntheticM1EnvironmentBackend {
     fn player_information_state(
         &self,
         perspective: PlayerId,
-    ) -> Result<PlayerInformationStateV2, PlayerApiError> {
+    ) -> Result<PlayerInformationStateV2, PlayerEndpointError> {
         self.require_player(perspective)?;
         Self::player_information_state_from_state(&self.state, perspective)
     }
@@ -488,7 +464,7 @@ impl EnvironmentBackend for SyntheticM1EnvironmentBackend {
     fn player_visible_decision(
         &self,
         perspective: PlayerId,
-    ) -> Result<Option<PlayerDecisionRequestV2>, PlayerApiError> {
+    ) -> Result<Option<PlayerDecisionRequestV2>, PlayerEndpointError> {
         self.require_player(perspective)?;
         let Some(pending) = self.state.execution.pending_decision.as_ref() else {
             return Ok(None);
@@ -500,37 +476,112 @@ impl EnvironmentBackend for SyntheticM1EnvironmentBackend {
             .request
             .project_player_request()
             .map(Some)
-            .map_err(|_| PlayerApiError::Unavailable)
+            .map_err(|_| PlayerEndpointError::ServiceUnavailable)
     }
 
+    /// Ordered typed-submission pipeline (DECISION_PROTOCOL validation
+    /// order). Layer-B rejections return `Ok` with a mirrored unchanged
+    /// product carrying only the closed rejected outcome; anything else maps
+    /// to the closed service failure.
     fn submit_player_response(
         &mut self,
         perspective: PlayerId,
         response: DecisionResponseV2,
-    ) -> Result<PlayerStepV2, PlayerApiError> {
+    ) -> Result<PlayerStepV2, PlayerEndpointError> {
+        use mtgml_observation::PlayerStepSubmissionV1 as Submission;
+
         self.require_player(perspective)?;
+        // 2. episode availability.
         if !matches!(&self.status, EpisodeStatus::Running) {
-            return Err(PlayerApiError::EpisodeComplete);
+            let step = Self::player_step_from_state(
+                &self.state,
+                perspective,
+                self.status.clone(),
+                Submission::Rejected {
+                    code: PlayerSubmissionCodeV1::EpisodeClosed,
+                },
+            )?;
+            step.validate()
+                .map_err(|_| PlayerEndpointError::ServiceUnavailable)?;
+            return Ok(step);
         }
+        // 3. request availability for this perspective (non-disclosing).
         let Some(pending) = self.state.execution.pending_decision.as_ref() else {
-            return Err(PlayerApiError::NoVisibleDecision);
+            let step = Self::player_step_from_state(
+                &self.state,
+                perspective,
+                self.status.clone(),
+                Submission::Rejected {
+                    code: PlayerSubmissionCodeV1::UnavailableDecision,
+                },
+            )?;
+            step.validate()
+                .map_err(|_| PlayerEndpointError::ServiceUnavailable)?;
+            return Ok(step);
         };
         if pending.request.actor != perspective {
-            return Err(PlayerApiError::NoVisibleDecision);
+            let step = Self::player_step_from_state(
+                &self.state,
+                perspective,
+                self.status.clone(),
+                Submission::Rejected {
+                    code: PlayerSubmissionCodeV1::UnavailableDecision,
+                },
+            )?;
+            step.validate()
+                .map_err(|_| PlayerEndpointError::ServiceUnavailable)?;
+            return Ok(step);
         }
+        // 4. visible request projection.
         let visible_request = pending
             .request
             .project_player_request()
-            .map_err(|_| PlayerApiError::Unavailable)?;
-        if response.validate_for(&visible_request).is_err() {
-            if response.state_revision != visible_request.state_revision
-                || response.player_decision_id != visible_request.player_decision_id
-            {
-                return Err(PlayerApiError::StaleResponse);
+            .map_err(|_| PlayerEndpointError::ServiceUnavailable)?;
+
+        // 5.-11. identity/revision/variant/membership/uniqueness/canonical/
+        // cardinality/numeric classification via the decision authority.
+        let code = match response.validate_for(&visible_request) {
+            Ok(()) => None,
+            Err(mtgml_decision::DecisionValidationError::DecisionIdentityMismatch)
+            | Err(mtgml_decision::DecisionValidationError::StateRevisionMismatch) => {
+                Some(PlayerSubmissionCodeV1::StaleDecision)
             }
-            return Err(PlayerApiError::InvalidSelection);
+            Err(mtgml_decision::DecisionValidationError::AnswerDomainMismatch) => {
+                Some(PlayerSubmissionCodeV1::InvalidAnswer)
+            }
+            Err(mtgml_decision::DecisionValidationError::UnknownCandidate) => {
+                Some(PlayerSubmissionCodeV1::InvalidCandidate)
+            }
+            Err(mtgml_decision::DecisionValidationError::DuplicateAnswerCandidate) => {
+                Some(PlayerSubmissionCodeV1::DuplicateAssignment)
+            }
+            Err(mtgml_decision::DecisionValidationError::NoncanonicalAnswer) => {
+                Some(PlayerSubmissionCodeV1::InvalidOrder)
+            }
+            Err(mtgml_decision::DecisionValidationError::AnswerCardinality) => {
+                Some(PlayerSubmissionCodeV1::InvalidCardinality)
+            }
+            Err(mtgml_decision::DecisionValidationError::NumericOutOfBounds) => {
+                Some(PlayerSubmissionCodeV1::InvalidNumber)
+            }
+            Err(_) => Some(PlayerSubmissionCodeV1::InvalidAnswer),
+        };
+        if let Some(code) = code {
+            // Layer B: mirror the unchanged committed product.
+            let step = Self::player_step_from_state(
+                &self.state,
+                perspective,
+                self.status.clone(),
+                Submission::Rejected { code },
+            )?;
+            step.validate()
+                .map_err(|_| PlayerEndpointError::ServiceUnavailable)?;
+            return Ok(step);
         }
 
+        // 12./13. trusted binding/context and kernel execution. A kernel that
+        // still reports `accepted=false` after a fully accepted public
+        // submission is an internal soundness failure, not player illegality.
         let mut projected_step = None;
         let transition = self
             .execute_response(perspective, response, |candidate, transition| {
@@ -538,6 +589,7 @@ impl EnvironmentBackend for SyntheticM1EnvironmentBackend {
                     &candidate.state,
                     perspective,
                     transition.status.clone(),
+                    Submission::Accepted,
                 )
                 .map_err(|_| {
                     ControllerError::EnvironmentCommit(
@@ -547,11 +599,40 @@ impl EnvironmentBackend for SyntheticM1EnvironmentBackend {
                 projected_step = Some(step);
                 Ok(())
             })
-            .map_err(|_| PlayerApiError::Unavailable)?;
+            .map_err(|_| PlayerEndpointError::ServiceUnavailable)?;
         if !transition.accepted {
-            return Err(PlayerApiError::InvalidSelection);
+            return Err(PlayerEndpointError::ServiceUnavailable);
         }
-        projected_step.ok_or(PlayerApiError::Unavailable)
+        projected_step.ok_or(PlayerEndpointError::ServiceUnavailable)
+    }
+}
+
+impl SyntheticM1EnvironmentBackend {
+    fn player_step_from_state(
+        state: &EngineState,
+        perspective: PlayerId,
+        status: EpisodeStatus,
+        submission: PlayerStepSubmissionV1,
+    ) -> Result<PlayerStepV2, PlayerEndpointError> {
+        let next_decision = state
+            .execution
+            .pending_decision
+            .as_ref()
+            .filter(|pending| pending.request.actor == perspective)
+            .map(|pending| pending.request.project_player_request())
+            .transpose()
+            .map_err(|_| PlayerEndpointError::ServiceUnavailable)?;
+        let step = PlayerStepV2 {
+            schema_version: PLAYER_STEP_SCHEMA_V2.into(),
+            information_state: Self::player_information_state_from_state(state, perspective)?,
+            observed_events: Vec::<ObservedEventEnvelopeV2>::new(),
+            next_decision,
+            status,
+            submission,
+        };
+        step.validate()
+            .map_err(|_| PlayerEndpointError::ServiceUnavailable)?;
+        Ok(step)
     }
 }
 
