@@ -56,12 +56,22 @@ impl FixtureTransition {
         })
     }
 
-    fn bind(&self, kind: AuthoritativeRuleEventKind) -> AuthoritativeRuleEvent {
-        AuthoritativeRuleEvent {
-            event_id: RuleEventId(self.before.allocators.next_rule_event_id.0 + self.offset),
+    fn bind(
+        &self,
+        kind: AuthoritativeRuleEventKind,
+    ) -> Result<AuthoritativeRuleEvent, KernelExecutionError> {
+        Ok(AuthoritativeRuleEvent {
+            event_id: RuleEventId(
+                self.before
+                    .allocators
+                    .next_rule_event_id
+                    .0
+                    .checked_add(self.offset)
+                    .ok_or(KernelExecutionError::RuleEventIdOverflow)?,
+            ),
             state_revision: self.workspace.revision,
             event: kind,
-        }
+        })
     }
 
     /// Authoritative zone movement creating a fresh incarnation (the frozen
@@ -139,7 +149,7 @@ impl FixtureTransition {
         let event = self.bind(AuthoritativeRuleEventKind::ZoneTransition {
             transition: Box::new(transition),
         });
-        self.events.push(event);
+        self.events.push(event?);
         self.offset += 1;
         Ok(new_object)
     }
@@ -161,6 +171,36 @@ impl FixtureTransition {
             lifecycle: planned.lifecycle,
             observation: planned.observation,
         });
+        self.events.push(event?);
+        self.offset += 1;
+        Ok(())
+    }
+
+    /// Records one authoritative hidden RNG sample (audited event, no
+    /// perspective occurrence): the trusted counterpart of a hidden
+    /// randomization step inside the fixture program.
+    pub fn record_hidden_random_sample(&mut self, bound: u64) -> Result<(), KernelExecutionError> {
+        let key = *self
+            .workspace
+            .random
+            .streams
+            .keys()
+            .next()
+            .ok_or(KernelExecutionError::UnsupportedStagePath)?;
+        let cursor_before = self.workspace.random.streams[&key].next_raw_u64;
+        let (value, consumed) = self
+            .workspace
+            .uniform_below_u64(&key, bound)
+            .map_err(|_| KernelExecutionError::UnsupportedStagePath)?;
+        let cursor_after = self.workspace.random.streams[&key].next_raw_u64;
+        let event = self.bind(AuthoritativeRuleEventKind::RandomValueSampled {
+            stream: key,
+            bound,
+            value,
+            raw_words_consumed: consumed,
+            cursor_before,
+            cursor_after,
+        })?;
         self.events.push(event);
         self.offset += 1;
         Ok(())

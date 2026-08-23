@@ -222,6 +222,11 @@ pub fn scenario_indistinguishability(
     reason: KnowledgeInvalidationReason,
 ) -> Result<TransitionResult, ConformanceFailure> {
     let mut transition = FixtureTransition::start(before).map_err(contract)?;
+    // Hidden randomization consumes authoritative randomness before every
+    // known correspondence is destroyed by the shared hidden-set move.
+    transition
+        .record_hidden_random_sample(1000)
+        .map_err(contract)?;
     let mut cursor = before.knowledge.players[&P1].next_visible_sequence.0;
     let identity_before = &before.perspective_identities.players[&P1];
     let known_pairs: Vec<(OpaqueObjectId, GameObjectId)> = identity_before
@@ -229,7 +234,42 @@ pub fn scenario_indistinguishability(
         .iter()
         .map(|(opaque, object)| (*opaque, *object))
         .collect();
+    let mut p2_cursor = before.knowledge.players[&P2].next_visible_sequence.0;
+    let p2_identity_before = &before.perspective_identities.players[&P2];
     for (opaque, object) in known_pairs {
+        // Physical truth: objects not yet inside the shared hidden set leave
+        // public sight into it; afterwards members are indistinguishable.
+        if before.zones.locations.get(&object) != Some(&hidden_hand(P2)) {
+            transition
+                .move_object_incarnation(object, hidden_hand(P2))
+                .map_err(contract)?;
+        }
+        // Every perspective that still retains the object loses it too.
+        let p2_opaque = p2_identity_before.object_to_opaque.get(&object).copied();
+        let p2_knows = p2_opquate_is_known(before, p2_opaque.as_ref());
+        if p2_knows {
+            transition
+                .apply_occurrence(occurrence(
+                    P2,
+                    p2_cursor,
+                    IdentityMutationV1::Retire {
+                        opaque: p2_opaque.unwrap(),
+                        object,
+                    },
+                    Some(KnowledgeMutationV1::Invalidate {
+                        opaque: p2_opaque.unwrap(),
+                        reason,
+                        invalidation_provenance: observed(
+                            p2_cursor,
+                            KnowledgeHistoryChannel::Public,
+                            KnowledgeAcquisitionCause::PublicEvent,
+                        ),
+                    }),
+                    mtgml_rules::PerspectiveObservationPolicyV1::NoEnvelope,
+                ))
+                .map_err(contract)?;
+            p2_cursor += 1;
+        }
         transition
             .apply_occurrence(occurrence(
                 P1,
@@ -472,6 +512,13 @@ pub fn assert_exact_transition_product(
     Ok(())
 }
 
+fn p2_opquate_is_known(before: &EngineState, opaque: Option<&OpaqueObjectId>) -> bool {
+    match opaque {
+        Some(opaque) => before.knowledge.players[&P2].active.contains_key(opaque),
+        None => false,
+    }
+}
+
 #[cfg(test)]
 mod gate_evidence {
     use super::*;
@@ -549,7 +596,7 @@ mod gate_evidence {
         assert!(identity.retired_object_ids.contains(&OpaqueObjectId(1)));
         assert!(identity.retired_object_ids.contains(&OpaqueObjectId(2)));
         assert!(!identity.retired_object_ids.contains(&next_before));
-        assert_eq!(identity.opaque_to_object.get(&next_before).is_some(), true);
+        assert!(identity.opaque_to_object.contains_key(&next_before));
         assert_eq!(
             identity.next_opaque_object_id,
             OpaqueObjectId(next_before.0 + 1)

@@ -1703,7 +1703,7 @@ fn request_existence_is_not_an_error_oracle() {
     );
 
     // Case B: a decision exists but belongs to P1 (paired foreign-request
-    // state) â€” same non-disclosing surface for P2.
+    // state) ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â same non-disclosing surface for P2.
     let other = TrustedEnvironmentController::new(backend());
     let other_p2 = other.bind_player(PlayerId(2)).unwrap();
     let foreign = other_p2.submit(response(0, 0)).unwrap();
@@ -2304,13 +2304,13 @@ fn unauthorized_fields_stay_absent_even_when_a_mapping_exists() {
 #[test]
 fn authorized_but_unresolvable_objects_fail_closed() {
     let before = m2e_fixture();
-    let mut transition = {
+    let transition = {
         use mtgml_rules::fixture_support::{FixtureTransition, PlannedOccurrence};
         let mut transition = FixtureTransition::start(&before).unwrap();
         transition
             .move_object_incarnation(GameObjectId(3), battlefield_location())
             .unwrap();
-        // P1's sight claims to reveal GO4, which has no mapping in P1's
+        // P1's sight claims to reveal GO3, which has no mapping in P1's
         // BEFORE snapshot: authorized field, unresolvable reference.
         transition
             .apply_occurrence(PlannedOccurrence {
@@ -2328,7 +2328,7 @@ fn authorized_but_unresolvable_objects_fail_closed() {
                 observation: mtgml_rules::PerspectiveObservationPolicyV1::MovedInSight {
                     from_zone: mtgml_model::ZoneKind::Exile,
                     to_zone: mtgml_model::ZoneKind::Battlefield,
-                    old_object: GameObjectId(4),
+                    old_object: GameObjectId(3),
                     new_object: GameObjectId(5),
                     reveals_old: true,
                     reveals_new: false,
@@ -2374,7 +2374,7 @@ fn repeated_projection_is_pure_and_stable() {
 
 #[test]
 fn checkpoint_restore_preserves_the_lifecycle_public_surface() {
-    let (before, mut result) = tracked_incarnation_product().unwrap();
+    let (_before, result) = tracked_incarnation_product().unwrap();
     let codec = CheckpointCodecIdentity {
         codec_id: "synthetic-m2-memory".into(),
         semantic_version: "3".into(),

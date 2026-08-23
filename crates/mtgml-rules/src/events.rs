@@ -1,7 +1,9 @@
 use mtgml_model::{DecisionId, GameObjectId, PlayerId, RuleEventId, StateRevision, ZoneKind};
 use mtgml_random::RandomStreamKeyV1;
 use mtgml_state::{
-    KnowledgeAcquisitionReason, PerspectiveLifecycleAuditV1, SemanticDeltaOperation, ZoneTransition,
+    IdentityMutationV1, KnowledgeAcquisitionCause, KnowledgeAcquisitionReason,
+    KnowledgeHistoryChannel, KnowledgeMutationV1, PerspectiveLifecycleAuditV1,
+    SemanticDeltaOperation, ZoneTransition,
 };
 use serde::{Deserialize, Serialize};
 
@@ -161,65 +163,118 @@ pub enum OccurrencePairingError {
     IdentityMismatch,
     #[error("observation policy does not match the knowledge mutation")]
     KnowledgeMismatch,
+    #[error("occurrence carries no state-changing mutation")]
+    EmptyOccurrence,
+    #[error("observation does not bind to any physical zone transition")]
+    ObjectBindingMismatch,
 }
 
 pub fn validate_occurrence_pairing(
     lifecycle: &PerspectiveLifecycleAuditV1,
     observation: &PerspectiveObservationPolicyV1,
+    transitions: &[ZoneTransition],
 ) -> Result<(), OccurrencePairingError> {
     use PerspectiveObservationPolicyV1 as Policy;
     let mutation = &lifecycle.mutation;
+
+    // A completely empty occurrence must never consume a visible sequence.
+    if matches!(mutation.identity, IdentityMutationV1::None) && mutation.knowledge.is_none() {
+        return Err(OccurrencePairingError::EmptyOccurrence);
+    }
+
+    // Sight policies must describe exactly one physical zone transition of
+    // this product (state/event/projection binding).
+    let bind_transition = |old_object: GameObjectId,
+                           new_object: GameObjectId,
+                           from_zone: ZoneKind,
+                           to_zone: ZoneKind|
+     -> Result<&ZoneTransition, OccurrencePairingError> {
+        transitions
+            .iter()
+            .find(|transition| {
+                transition.old_object == old_object
+                    && transition.new_object == new_object
+                    && transition.from.zone == from_zone
+                    && transition.to.zone == to_zone
+            })
+            .ok_or(OccurrencePairingError::ObjectBindingMismatch)
+    };
+
     match observation {
         Policy::MovedInSight {
+            from_zone,
+            to_zone,
+            old_object,
+            new_object,
             reveals_old,
             reveals_new,
-            ..
         } => {
             if !matches!(
                 mutation.identity,
-                mtgml_state::IdentityMutationV1::None
-                    | mtgml_state::IdentityMutationV1::Remap { .. }
-                    | mtgml_state::IdentityMutationV1::Retire { .. }
+                IdentityMutationV1::None
+                    | IdentityMutationV1::Remap { .. }
+                    | IdentityMutationV1::Retire { .. }
             ) {
                 return Err(OccurrencePairingError::IdentityMismatch);
             }
             if !matches!(
                 mutation.knowledge,
-                None | Some(mtgml_state::KnowledgeMutationV1::UpdateLocation { .. })
-                    | Some(mtgml_state::KnowledgeMutationV1::CurrentToHistory { .. })
-                    | Some(mtgml_state::KnowledgeMutationV1::Invalidate { .. })
+                None | Some(KnowledgeMutationV1::UpdateLocation { .. })
+                    | Some(KnowledgeMutationV1::CurrentToHistory { .. })
+                    | Some(KnowledgeMutationV1::Invalidate { .. })
             ) {
                 return Err(OccurrencePairingError::KnowledgeMismatch);
             }
             if !*reveals_old && !*reveals_new {
                 return Err(OccurrencePairingError::NothingRevealed);
             }
-            // Retiring identity requires the knowledge side to invalidate.
-            if matches!(
-                mutation.identity,
-                mtgml_state::IdentityMutationV1::Retire { .. }
-            ) && !matches!(
-                mutation.knowledge,
-                Some(mtgml_state::KnowledgeMutationV1::Invalidate { .. })
-            ) {
+            if matches!(mutation.identity, IdentityMutationV1::Retire { .. })
+                && !matches!(
+                    mutation.knowledge,
+                    Some(KnowledgeMutationV1::Invalidate { .. })
+                )
+            {
                 return Err(OccurrencePairingError::KnowledgeMismatch);
             }
+            let transition = bind_transition(*old_object, *new_object, *from_zone, *to_zone)?;
+            match &mutation.identity {
+                IdentityMutationV1::Remap {
+                    from_object,
+                    to_object,
+                    ..
+                } => {
+                    if *from_object != transition.old_object || *to_object != transition.new_object
+                    {
+                        return Err(OccurrencePairingError::IdentityMismatch);
+                    }
+                }
+                IdentityMutationV1::Retire { object, .. } => {
+                    if *object != transition.old_object {
+                        return Err(OccurrencePairingError::IdentityMismatch);
+                    }
+                }
+                IdentityMutationV1::None => {}
+                IdentityMutationV1::Allocate { .. } => {
+                    return Err(OccurrencePairingError::IdentityMismatch)
+                }
+            }
         }
-        Policy::Appeared { .. } => {
-            if !matches!(
-                mutation.identity,
-                mtgml_state::IdentityMutationV1::Allocate { .. }
-            ) {
+        Policy::Appeared {
+            from_zone,
+            to_zone,
+            new_object,
+        } => {
+            if !matches!(mutation.identity, IdentityMutationV1::Allocate { .. }) {
                 return Err(OccurrencePairingError::IdentityMismatch);
             }
             match &mutation.knowledge {
-                Some(mtgml_state::KnowledgeMutationV1::Acquire { acquisition, .. }) => {
+                Some(KnowledgeMutationV1::Acquire { acquisition, .. }) => {
                     if !matches!(
                         acquisition,
                         KnowledgeAcquisitionReason::Observed {
-                            channel: mtgml_state::KnowledgeHistoryChannel::Public,
-                            cause: mtgml_state::KnowledgeAcquisitionCause::ExplicitReveal
-                                | mtgml_state::KnowledgeAcquisitionCause::PublicEvent,
+                            channel: KnowledgeHistoryChannel::Public,
+                            cause: KnowledgeAcquisitionCause::ExplicitReveal
+                                | KnowledgeAcquisitionCause::PublicEvent,
                             ..
                         }
                     ) {
@@ -228,14 +283,45 @@ pub fn validate_occurrence_pairing(
                 }
                 _ => return Err(OccurrencePairingError::KnowledgeMismatch),
             }
+            let transition = transitions
+                .iter()
+                .find(|transition| {
+                    transition.new_object == *new_object
+                        && transition.from.zone == *from_zone
+                        && transition.to.zone == *to_zone
+                })
+                .ok_or(OccurrencePairingError::ObjectBindingMismatch)?;
+            if let IdentityMutationV1::Allocate { object, .. } = &mutation.identity {
+                if *object != transition.new_object {
+                    return Err(OccurrencePairingError::IdentityMismatch);
+                }
+            }
         }
         Policy::NoEnvelope => {
             // Envelope-less occurrences carry arbitrary authorized lifecycle
             // mutations (private looks, own-private identity, explicit
-            // forget, hidden randomization/shuffle retirement).
+            // forget, hidden randomization/shuffle retirement); emptiness is
+            // rejected above.
         }
-        Policy::SawRandomOutcome { .. } | Policy::AnnouncedOutcome { .. } => {
-            if !matches!(mutation.identity, mtgml_state::IdentityMutationV1::None)
+        Policy::SawRandomOutcome {
+            label,
+            exclusive_upper_bound,
+            value,
+        } => {
+            if label.is_empty() || *exclusive_upper_bound == 0 || value >= exclusive_upper_bound {
+                return Err(OccurrencePairingError::KnowledgeMismatch);
+            }
+            if !matches!(mutation.identity, IdentityMutationV1::None)
+                || mutation.knowledge.is_some()
+            {
+                return Err(OccurrencePairingError::IdentityMismatch);
+            }
+        }
+        Policy::AnnouncedOutcome { code } => {
+            if code.is_empty() {
+                return Err(OccurrencePairingError::KnowledgeMismatch);
+            }
+            if !matches!(mutation.identity, IdentityMutationV1::None)
                 || mutation.knowledge.is_some()
             {
                 return Err(OccurrencePairingError::IdentityMismatch);

@@ -1,5 +1,6 @@
+use crate::events::AuthoritativeRuleEventKind;
 use mtgml_model::EpisodeStatus;
-use mtgml_state::{validate_engine_state, EngineState};
+use mtgml_state::{validate_engine_state, EngineState, ZoneTransition};
 use std::collections::BTreeSet;
 use std::convert::TryFrom;
 
@@ -51,6 +52,16 @@ pub fn validate_transition_contract(
         }
     }
 
+    let transitions: Vec<ZoneTransition> = result
+        .events
+        .iter()
+        .filter_map(|event| match &event.event {
+            AuthoritativeRuleEventKind::ZoneTransition { transition } => {
+                Some((**transition).clone())
+            }
+            _ => None,
+        })
+        .collect();
     let event_audit: Vec<_> = result
         .events
         .iter()
@@ -81,7 +92,7 @@ pub fn validate_transition_contract(
             observation,
         } = &event.event
         {
-            crate::events::validate_occurrence_pairing(lifecycle, observation)
+            crate::events::validate_occurrence_pairing(lifecycle, observation, &transitions)
                 .map_err(|_| TransitionViolation::OccurrencePairing)?;
         }
         cursor.apply(&event.event)?;

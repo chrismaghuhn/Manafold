@@ -121,6 +121,8 @@ pub enum LifecycleApplicationError {
     AllocatorOverflow,
     #[error("visible sequence cursor overflow")]
     CursorOverflow,
+    #[error("occurrence carries no mutation and may not consume a sequence")]
+    EmptyMutation,
     #[error("live mapping does not match the declared identity mutation")]
     MappingMismatch,
     #[error("authoritative object is missing from the zones")]

@@ -4,9 +4,9 @@
 Owned gates:
 
 ```text
-VISIBLE_DECISION_CANONICAL_ORDER_AND_IDENTITY
-PLAYER_PROJECTION_PERSPECTIVE_COHERENCE
-PLAYER_SAFE_ERROR_MAPPING_AND_NONDISCLOSURE
+KNOWLEDGE_RETENTION_INVALIDATION_AND_HISTORY
+OPAQUE_ID_DISTINGUISHABILITY_LIFECYCLE
+OBSERVED_EVENT_REDACTION_AND_SEQUENCE
 ```
 
 The authoritative mode requires a clean source tree whose commit equals the
@@ -152,14 +152,34 @@ def check_no_runtime_lifecycle_channel() -> str:
     cargo_toml = (ROOT / "crates" / "mtgml-rules" / "Cargo.toml").read_text(encoding="utf-8")
     if "m2-conformance-fixtures = []" not in cargo_toml:
         raise AssertionError("rules crate lost the m2-conformance-fixtures feature gate")
-    for path in [
-        ROOT / "crates" / "mtgml-environment" / "src" / "synthetic.rs",
-        ROOT / "crates" / "mtgml-environment" / "src" / "controller.rs",
-        ROOT / "crates" / "mtgml-environment" / "src" / "boundary.rs",
-    ]:
+    runtime_sources = [
+        ROOT / "crates" / "mtgml-environment" / "src" / name
+        for name in [
+            "synthetic.rs",
+            "controller.rs",
+            "boundary.rs",
+            "endpoint.rs",
+            "replay.rs",
+            "checkpoint.rs",
+            "lifecycle_projection.rs",
+        ]
+    ]
+    for path in runtime_sources:
         if "fixture_support" in path.read_text(encoding="utf-8"):
             raise AssertionError(f"runtime source references fixture support: {path.name}")
-    return "fixture driver gated out of every runtime path"
+    env_lib = (ROOT / "crates" / "mtgml-environment" / "src" / "lib.rs").read_text(
+        encoding="utf-8"
+    )
+    if '#[cfg(test)]' not in env_lib or "mod tests;" not in env_lib:
+        raise AssertionError("environment test module lost its cfg(test) guard")
+    if env_lib.index("#[cfg(test)]") > env_lib.index("mod tests;"):
+        raise AssertionError("cfg(test) no longer guards the environment test module")
+    conformance_toml = (ROOT / "crates" / "mtgml-conformance" / "Cargo.toml").read_text(
+        encoding="utf-8"
+    )
+    if 'features = ["m2-conformance-fixtures"]' not in conformance_toml:
+        raise AssertionError("conformance no longer enables the fixture feature")
+    return "test module gated, fixture feature scoped, no runtime caller"
 
 
 def run_command(command: Sequence[str]) -> subprocess.CompletedProcess[str]:
