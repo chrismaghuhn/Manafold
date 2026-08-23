@@ -27,7 +27,7 @@ MAX_IDENTIFIER_BYTES = 255
 CHECKPOINT_DOMAIN = "mtgml.checkpoint-digest.v3"
 CHECKPOINT_INPUT_SCHEMA = "environment-checkpoint-digest-input.v3"
 
-PersistenceValue: TypeAlias = None | bool | int | bytes | str | list["PersistenceValue"]
+PersistenceValue: TypeAlias = bool | int | bytes | str | list["PersistenceValue"] | None
 
 
 class PersistenceError(ValueError):

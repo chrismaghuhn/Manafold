@@ -261,23 +261,29 @@ impl DecisionAnswerV2 {
     }
 }
 
+/// Normative answer-set precedence (DECISION_PROTOCOL steps 7-8):
+/// membership, then uniqueness, then canonical set/order representation.
 fn validate_selection_ids(
     candidate_ids: &[CandidateIdV1],
     available: &BTreeSet<CandidateIdV1>,
     require_ascending: bool,
 ) -> Result<(), DecisionValidationError> {
-    let mut seen = BTreeSet::new();
-    for window in candidate_ids.windows(2) {
-        if require_ascending && window[0] >= window[1] {
-            return Err(DecisionValidationError::NoncanonicalAnswer);
-        }
-    }
     for candidate_id in candidate_ids {
         if !available.contains(candidate_id) {
             return Err(DecisionValidationError::UnknownCandidate);
         }
+    }
+    let mut seen = BTreeSet::new();
+    for candidate_id in candidate_ids {
         if !seen.insert(*candidate_id) {
             return Err(DecisionValidationError::DuplicateAnswerCandidate);
+        }
+    }
+    if require_ascending {
+        for window in candidate_ids.windows(2) {
+            if window[0] >= window[1] {
+                return Err(DecisionValidationError::NoncanonicalAnswer);
+            }
         }
     }
     Ok(())
@@ -414,7 +420,17 @@ impl DecisionResponseV2 {
             return Err(DecisionValidationError::SchemaVersion);
         }
         match &self.answer {
+            // Standalone response-local semantics: uniqueness precedes the
+            // canonical set representation (request-relative membership is
+            // checked against a visible request by `validate_for`).
             DecisionAnswerV2::SelectMany { candidate_ids } => {
+                let mut seen = BTreeSet::new();
+                if candidate_ids
+                    .iter()
+                    .any(|candidate_id| !seen.insert(*candidate_id))
+                {
+                    return Err(DecisionValidationError::DuplicateAnswerCandidate);
+                }
                 if candidate_ids
                     .windows(2)
                     .any(|window| window[0] >= window[1])
@@ -436,18 +452,46 @@ impl DecisionResponseV2 {
         Ok(())
     }
 
+    /// Request-relative submission checks in normative order. Deliberately
+    /// does NOT run the standalone monolithic [`Self::validate`] first:
+    /// endpoint availability, visible-request identity, and revision must be
+    /// resolved before uniqueness/canonicality so compound failures classify
+    /// deterministically (stale beats duplicate/canonical defects).
+    /// Wire/schema shape identity is enforced separately at decode time.
     pub fn validate_for(
         &self,
         request: &PlayerDecisionRequestV2,
     ) -> Result<(), DecisionValidationError> {
-        self.validate()?;
+        if self.schema_version != DECISION_RESPONSE_V2_SCHEMA {
+            return Err(DecisionValidationError::SchemaVersion);
+        }
         if self.player_decision_id != request.player_decision_id {
             return Err(DecisionValidationError::DecisionIdentityMismatch);
         }
         if self.state_revision != request.state_revision {
             return Err(DecisionValidationError::StateRevisionMismatch);
         }
-        request.answer(&self.answer)
+        // Answer variant first, then membership/uniqueness/canonical/bounds.
+        if !matches!(
+            (&request.decision, &self.answer),
+            (
+                DecisionDomainV2::ChooseOne,
+                DecisionAnswerV2::SelectOne { .. }
+            ) | (
+                DecisionDomainV2::ChooseMany { .. },
+                DecisionAnswerV2::SelectMany { .. }
+            ) | (
+                DecisionDomainV2::ChooseNumber { .. },
+                DecisionAnswerV2::ChooseNumber { .. }
+            ) | (
+                DecisionDomainV2::Order { .. },
+                DecisionAnswerV2::Order { .. }
+            )
+        ) {
+            return Err(DecisionValidationError::AnswerDomainMismatch);
+        }
+        self.answer
+            .validate_for(&request.decision, &request.candidates)
     }
 }
 
@@ -816,6 +860,76 @@ mod tests {
         let mut noncanonical = request.clone();
         noncanonical.candidates.swap(0, 1);
         assert!(noncanonical.validate().is_err());
+    }
+
+    #[test]
+    fn submission_validation_precedence_matrix() {
+        let request = PlayerDecisionRequestV2 {
+            schema_version: PLAYER_DECISION_REQUEST_V2_SCHEMA.to_owned(),
+            player_decision_id: PlayerDecisionIdV1(7),
+            state_revision: StateRevision(3),
+            actor: PlayerId(1),
+            visibility: DecisionVisibility::Public,
+            decision: DecisionDomainV2::ChooseMany {
+                minimum: 2,
+                maximum: 2,
+            },
+            candidates: vec![
+                VisibleCandidateV2 {
+                    candidate_id: CandidateIdV1(0),
+                    intent: CandidateIntent::SelectMode { mode_index: 0 },
+                },
+                VisibleCandidateV2 {
+                    candidate_id: CandidateIdV1(1),
+                    intent: CandidateIntent::SelectMode { mode_index: 1 },
+                },
+            ],
+        };
+        let response = |player_decision: u64, revision: u64, ids: &[u32]| DecisionResponseV2 {
+            schema_version: DECISION_RESPONSE_V2_SCHEMA.into(),
+            player_decision_id: PlayerDecisionIdV1(player_decision),
+            state_revision: StateRevision(revision),
+            answer: DecisionAnswerV2::SelectMany {
+                candidate_ids: ids.iter().copied().map(CandidateIdV1).collect(),
+            },
+        };
+
+        // Compound: stale identity beats duplicate/canonical defects.
+        assert_eq!(
+            response(8, 3, &[0, 0]).validate_for(&request),
+            Err(DecisionValidationError::DecisionIdentityMismatch)
+        );
+        assert_eq!(
+            response(8, 3, &[1, 0]).validate_for(&request),
+            Err(DecisionValidationError::DecisionIdentityMismatch)
+        );
+        // Stale revision likewise precedes answer-set defects.
+        assert_eq!(
+            response(7, 9, &[0, 0]).validate_for(&request),
+            Err(DecisionValidationError::StateRevisionMismatch)
+        );
+        // Membership precedes canonical representation.
+        assert_eq!(
+            response(7, 3, &[9, 0]).validate_for(&request),
+            Err(DecisionValidationError::UnknownCandidate)
+        );
+        // Uniqueness precedes canonical representation.
+        assert_eq!(
+            response(7, 3, &[0, 0]).validate_for(&request),
+            Err(DecisionValidationError::DuplicateAnswerCandidate)
+        );
+        // Canonical representation for SelectMany sets.
+        assert_eq!(
+            response(7, 3, &[1, 0]).validate_for(&request),
+            Err(DecisionValidationError::NoncanonicalAnswer)
+        );
+        // Cardinality after representation checks pass.
+        assert_eq!(
+            response(7, 3, &[0]).validate_for(&request),
+            Err(DecisionValidationError::AnswerCardinality)
+        );
+        // The exact program answer remains accepted.
+        assert_eq!(response(7, 3, &[0, 1]).validate_for(&request), Ok(()));
     }
 
     #[test]

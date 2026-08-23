@@ -12,12 +12,17 @@
     "authoritative-replay.v1.schema.json",
     "authoritative-replay.v2.schema.json",
     "decision-response.v1.schema.json",
+    "decision-response.v2.schema.json",
     "episode-status.v1.schema.json",
     "information-state-envelope.v1.schema.json",
+    "information-state-envelope.v2.schema.json",
     "observation-envelope.v1.schema.json",
     "observed-event-envelope.v1.schema.json",
+    "observed-event-envelope.v2.schema.json",
     "player-decision-request.v1.schema.json",
+    "player-decision-request.v2.schema.json",
     "player-step.v1.schema.json",
+    "player-step.v2.schema.json",
     "replay-manifest.v1.schema.json",
     "replay-manifest.v2.schema.json"
   ]

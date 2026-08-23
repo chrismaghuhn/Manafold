@@ -87,6 +87,14 @@ M2 uses new versions where meaning changes:
 
 Old wire values retain their original meaning. A new reader may support multiple versions only through explicit per-version decode/validation; no enum/key value is repurposed.
 
+### Compatibility note (M2.D)
+
+`PlayerStepV2.submission` completes the previously incomplete
+M2 V2 freeze-candidate shape defined by `ML_ENVIRONMENT.md`/Issue #51.
+No historical V1 meaning is changed or reinterpreted. The field is required
+on all V2 player-step values; the closed code set is defined by
+`PlayerSubmissionCodeV1`.
+
 ## M2 digest and persistence ownership
 
 `mtgml-observation` owns the semantic `InformationStateDigestInputV2` view and

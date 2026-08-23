@@ -213,6 +213,8 @@ pub enum ObservationValidationError {
     VisibleSequence,
     #[error("information-state perspective or revision is inconsistent")]
     PerspectiveRevision,
+    #[error("submission outcome contradicts the step product")]
+    Submission,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -539,6 +541,37 @@ impl ObservedEventEnvelopeV2 {
     }
 }
 
+/// Versioned closed codes for typed player submission rejections
+/// (ERROR_MODEL, layer B). Wire representation: snake_case strings.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PlayerSubmissionCodeV1 {
+    StaleDecision,
+    UnavailableDecision,
+    InvalidAnswer,
+    InvalidCandidate,
+    DuplicateAssignment,
+    InvalidCardinality,
+    InvalidNumber,
+    InvalidOrder,
+    EpisodeClosed,
+}
+
+/// Versioned closed service-failure code (ERROR_MODEL, layer C).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PlayerServiceErrorCodeV1 {
+    ServiceUnavailable,
+}
+
+/// Versioned submission outcome carried by `PlayerStepV2`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+pub enum PlayerStepSubmissionV1 {
+    Accepted,
+    Rejected { code: PlayerSubmissionCodeV1 },
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct PlayerStepV2 {
@@ -547,6 +580,7 @@ pub struct PlayerStepV2 {
     pub observed_events: Vec<ObservedEventEnvelopeV2>,
     pub next_decision: Option<PlayerDecisionRequestV2>,
     pub status: EpisodeStatus,
+    pub submission: PlayerStepSubmissionV1,
 }
 
 impl PlayerStepV2 {
@@ -577,7 +611,33 @@ impl PlayerStepV2 {
         if !matches!(self.status, EpisodeStatus::Running) && self.next_decision.is_some() {
             return Err(ObservationValidationError::Decision);
         }
+        // ML_ENVIRONMENT.md: a typed semantic rejection mirrors the unchanged
+        // product with an empty event batch; only the outcome code differs.
+        if let PlayerStepSubmissionV1::Rejected { code } = &self.submission {
+            if !self.observed_events.is_empty() {
+                return Err(ObservationValidationError::Submission);
+            }
+            if *code == PlayerSubmissionCodeV1::EpisodeClosed {
+                // An episode_closed rejection requires a non-Running status.
+                if matches!(self.status, EpisodeStatus::Running) {
+                    return Err(ObservationValidationError::Submission);
+                }
+            } else if !matches!(self.status, EpisodeStatus::Running) {
+                // Every other typed rejection mirrors a live Running
+                // episode; a closed episode surfaces as episode_closed.
+                return Err(ObservationValidationError::Submission);
+            }
+        }
         Ok(())
+    }
+}
+
+impl PlayerServiceErrorCodeV1 {
+    /// Single versioned authority for the public service-failure string.
+    pub fn code(self) -> &'static str {
+        match self {
+            Self::ServiceUnavailable => "service_unavailable",
+        }
     }
 }
 

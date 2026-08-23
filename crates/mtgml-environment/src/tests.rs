@@ -340,9 +340,12 @@ fn stale_endpoint_response_is_rejected_without_mutation() {
     let controller = TrustedEnvironmentController::new(backend());
     let p1 = controller.bind_player(PlayerId(1)).unwrap();
     let before = controller.checkpoint().unwrap();
+    let rejected = p1.submit(response(0, 1)).unwrap();
     assert_eq!(
-        p1.submit(response(0, 1)).unwrap_err(),
-        PlayerApiError::StaleResponse
+        rejected.submission,
+        mtgml_observation::PlayerStepSubmissionV1::Rejected {
+            code: mtgml_observation::PlayerSubmissionCodeV1::StaleDecision,
+        }
     );
     assert_eq!(controller.checkpoint().unwrap(), before);
 }
@@ -654,10 +657,14 @@ fn multi_player_endpoints_remain_bound_through_visibility_and_submission() {
     let p2 = controller.bind_player(PlayerId(2)).unwrap();
     let before = controller.checkpoint().unwrap();
 
-    // Player 2 does not own the visible decision.
+    // Player 2 does not own the visible decision: non-disclosing
+    // unavailable_decision without any oracle difference.
+    let foreign = p2.submit(response(0, 0)).unwrap();
     assert_eq!(
-        p2.submit(response(0, 0)).unwrap_err(),
-        PlayerApiError::NoVisibleDecision
+        foreign.submission,
+        mtgml_observation::PlayerStepSubmissionV1::Rejected {
+            code: mtgml_observation::PlayerSubmissionCodeV1::UnavailableDecision,
+        }
     );
     assert!(p2.visible_decision().unwrap().is_none());
     assert_eq!(controller.checkpoint().unwrap(), before);
@@ -707,42 +714,37 @@ fn unknown_player_binding_is_rejected_without_backend_details() {
 fn player_api_errors_do_not_render_trusted_values() {
     let controller = TrustedEnvironmentController::new(backend());
     let p1 = controller.bind_player(PlayerId(1)).unwrap();
-    let errors = vec![
-        format!("{}", p1.submit(response(0, 5)).unwrap_err()),
-        format!("{}", p1.submit(response(1, 0)).unwrap_err()),
-        format!(
-            "{}",
-            match controller.bind_player(PlayerId(9)) {
-                Ok(_) => "bound".to_string(),
-                Err(error) => format!("{error}"),
-            }
-        ),
-        format!("{}", p2_error_text(&controller)),
-    ];
-    for message in errors {
-        // Evaluate to a bare boolean: no trusted-looking literal may reach a
-        // log/format sink here (cf. CodeQL cleartext-logging).
-        let renders_trusted_vocabulary = [
-            "seed",
-            "digest",
-            "checkpoint",
-            "continuation",
-            "GameObject",
-            "DecisionId",
-        ]
-        .iter()
-        .any(|vocabulary| message.contains(vocabulary));
+
+    // Typed rejections are Ok steps carrying only the closed code.
+    let stale = p1.submit(response(0, 9)).unwrap();
+    assert_eq!(
+        stale.submission,
+        mtgml_observation::PlayerStepSubmissionV1::Rejected {
+            code: mtgml_observation::PlayerSubmissionCodeV1::StaleDecision,
+        }
+    );
+
+    // Trusted controller errors stay inside orchestration; assert no
+    // trusted detail leaks through their rendering either.
+    let bind_failure = match controller.bind_player(PlayerId(9)) {
+        Ok(_) => "bound".to_string(),
+        Err(error) => format!("{error}"),
+    };
+    for vocabulary in ["seed", "digest", "checkpoint", "gameobject", "decisionid"] {
         assert!(
-            !renders_trusted_vocabulary,
-            "player API error must not render trusted values"
+            !bind_failure.to_lowercase().contains(vocabulary),
+            "leaked {vocabulary}"
         );
     }
-}
 
-fn p2_error_text(controller: &TrustedEnvironmentController) -> String {
-    match controller.bind_player(PlayerId(2)) {
-        Ok(endpoint) => format!("{}", endpoint.submit(response(0, 0)).unwrap_err()),
-        Err(error) => format!("{error}"),
+    // Serialized typed rejections must not carry trusted detail either.
+    let bytes = mtgml_wire::encode_canonical(&stale).unwrap();
+    let rendered = String::from_utf8(bytes).unwrap().to_lowercase();
+    for vocabulary in ["continuation", "binding", "gameobject", "decisionid"] {
+        assert!(
+            !rendered.contains(vocabulary),
+            "leaked {vocabulary} in public step"
+        );
     }
 }
 
@@ -1149,8 +1151,13 @@ fn continuation_replay_full_chain_parity() {
             state_revision: stale_request.state_revision,
             answer: members_answer(&[0]),
         })
-        .unwrap_err();
-    assert_eq!(wrong_cardinality, PlayerApiError::InvalidSelection);
+        .unwrap();
+    assert_eq!(
+        wrong_cardinality.submission,
+        mtgml_observation::PlayerStepSubmissionV1::Rejected {
+            code: mtgml_observation::PlayerSubmissionCodeV1::InvalidCardinality,
+        }
+    );
     assert_eq!(controller.export_replay().unwrap(), before_rejection);
     assert_eq!(controller.checkpoint().unwrap(), before_checkpoint);
 
@@ -1198,11 +1205,27 @@ fn stale_stage_response_is_rejected_without_any_mutation() {
     let advanced = controller.checkpoint().unwrap();
     let advanced_replay = controller.export_replay().unwrap();
 
-    // Resubmitting the earlier stage response is stale_decision: no mutation
-    // of state, counters, continuation, or replay history.
+    // Resubmitting the earlier stage response is stale_decision as a typed
+    // rejected step mirroring the unchanged product; nothing else mutates.
+    let rejected_step = p1.submit(stage0_response).unwrap();
+    rejected_step.validate().unwrap();
     assert_eq!(
-        p1.submit(stage0_response).unwrap_err(),
-        PlayerApiError::StaleResponse
+        rejected_step.submission,
+        mtgml_observation::PlayerStepSubmissionV1::Rejected {
+            code: mtgml_observation::PlayerSubmissionCodeV1::StaleDecision,
+        }
+    );
+    assert_eq!(
+        rejected_step.information_state.state_revision,
+        StateRevision(2)
+    );
+    assert_eq!(
+        rejected_step
+            .next_decision
+            .as_ref()
+            .unwrap()
+            .player_decision_id,
+        PlayerDecisionIdV1(3)
     );
     assert_eq!(controller.checkpoint().unwrap(), advanced);
     assert_eq!(controller.export_replay().unwrap(), advanced_replay);
@@ -1380,4 +1403,656 @@ fn unsupported_standalone_decisions_are_internal_kernel_failures() {
         ),
         Err(mtgml_rules::KernelExecutionError::UnsupportedStagePath)
     ));
+}
+
+fn public_fingerprint(controller: &TrustedEnvironmentController) -> Vec<u8> {
+    let checkpoint = controller.checkpoint().unwrap();
+    let mut bytes = Vec::new();
+    bytes.extend_from_slice(&checkpoint.state_digest.raw_bytes());
+    bytes.extend_from_slice(&checkpoint.checkpoint_digest.raw_bytes());
+    bytes.extend(serde_json::to_vec(&controller.export_replay().unwrap()).unwrap());
+    bytes
+}
+
+#[test]
+fn projection_reads_are_pure_and_order_independent() {
+    let controller = TrustedEnvironmentController::new(backend());
+    let p1 = controller.bind_player(PlayerId(1)).unwrap();
+
+    let observation_bytes = mtgml_wire::encode_canonical(&p1.observation().unwrap()).unwrap();
+    let information_bytes = mtgml_wire::encode_canonical(&p1.information_state().unwrap()).unwrap();
+    let decision_bytes =
+        mtgml_wire::encode_canonical(&p1.visible_decision().unwrap().unwrap()).unwrap();
+
+    let before = public_fingerprint(&controller);
+
+    // Out-of-order repeated reads.
+    for _ in 0..3 {
+        assert_eq!(
+            mtgml_wire::encode_canonical(&p1.visible_decision().unwrap().unwrap()).unwrap(),
+            decision_bytes
+        );
+        assert_eq!(
+            mtgml_wire::encode_canonical(&p1.observation().unwrap()).unwrap(),
+            observation_bytes
+        );
+        assert_eq!(
+            mtgml_wire::encode_canonical(&p1.information_state().unwrap()).unwrap(),
+            information_bytes
+        );
+        assert_eq!(public_fingerprint(&controller), before);
+    }
+}
+
+#[test]
+fn projection_perspective_and_revision_coherence_matrix() {
+    let controller = TrustedEnvironmentController::new(backend());
+    let p1 = controller.bind_player(PlayerId(1)).unwrap();
+    let p2 = controller.bind_player(PlayerId(2)).unwrap();
+
+    let observation = p1.observation().unwrap();
+    let information = p1.information_state().unwrap();
+    let decision = p1.visible_decision().unwrap().unwrap();
+
+    assert_eq!(observation.perspective, PlayerId(1));
+    assert_eq!(information.perspective, PlayerId(1));
+    assert_eq!(decision.actor, PlayerId(1));
+    assert_eq!(observation.state_revision, information.state_revision);
+    assert_eq!(decision.state_revision, information.state_revision);
+    // One canonical current observation.
+    assert_eq!(
+        mtgml_wire::encode_canonical(&observation).unwrap(),
+        mtgml_wire::encode_canonical(&information.current_observation).unwrap()
+    );
+
+    // The other perspective sees the same revision but its own surface.
+    let info2 = p2.information_state().unwrap();
+    assert_eq!(info2.perspective, PlayerId(2));
+    assert_eq!(info2.state_revision, information.state_revision);
+}
+
+#[test]
+fn episode_status_does_not_change_the_information_digest() {
+    use mtgml_model::EpisodeStatus;
+
+    // Drive the synthetic chain to completion: no pending decision remains,
+    // so both Running and Terminal statuses are valid environment contexts
+    // over the identical authoritative state.
+    let controller = TrustedEnvironmentController::new(backend());
+    let p1 = controller.bind_player(PlayerId(1)).unwrap();
+    let _ = submit_answer(&p1, order_entry_answer());
+    let _ = submit_answer(&p1, number_answer(2));
+    let _ = submit_answer(&p1, members_answer(&[0, 1]));
+    let _ = submit_answer(&p1, order_answer(&[1, 0]));
+    let final_state = controller.checkpoint().unwrap().state;
+
+    let codec = CheckpointCodecIdentity {
+        codec_id: "synthetic-m2-memory".into(),
+        semantic_version: "3".into(),
+    };
+    let running = EnvironmentCheckpointV3::new(
+        final_state.clone(),
+        EpisodeStatus::Running,
+        EnvironmentLimitCounters::default(),
+        codec.clone(),
+    )
+    .unwrap();
+    let terminal = EnvironmentCheckpointV3::new(
+        final_state.clone(),
+        EpisodeStatus::Terminal {
+            reason: TerminalReason::Concession,
+            players: vec![mtgml_model::PlayerOutcome {
+                player: PlayerId(1),
+                result: mtgml_model::PlayerResult::Loss,
+            }],
+        },
+        EnvironmentLimitCounters::default(),
+        codec.clone(),
+    )
+    .unwrap();
+
+    let running_env = TrustedEnvironmentController::new(
+        SyntheticM1EnvironmentBackend::from_checkpoint(running, config([PlayerId(1), PlayerId(2)]))
+            .unwrap(),
+    );
+    let terminal_env = TrustedEnvironmentController::new(
+        SyntheticM1EnvironmentBackend::from_checkpoint(
+            terminal,
+            config([PlayerId(1), PlayerId(2)]),
+        )
+        .unwrap(),
+    );
+    let running_p1 = running_env.bind_player(PlayerId(1)).unwrap();
+    let terminal_p1 = terminal_env.bind_player(PlayerId(1)).unwrap();
+
+    // Identical information products including digest identity.
+    assert_eq!(
+        running_p1.information_state().unwrap(),
+        terminal_p1.information_state().unwrap()
+    );
+    // Episode status itself differs on the step surface.
+    assert_ne!(
+        running_env.checkpoint().unwrap(),
+        terminal_env.checkpoint().unwrap()
+    );
+}
+
+#[test]
+fn malformed_wire_bytes_never_reach_the_semantic_endpoint() {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    use crate::endpoint::{PlayerEndpoint, PlayerEndpointError};
+
+    /// Seam probe: counts every semantic `submit` crossing the A/B split.
+    struct CountingEndpoint<'a> {
+        inner: &'a dyn PlayerEndpoint,
+        submit_calls: AtomicUsize,
+    }
+    impl PlayerEndpoint for CountingEndpoint<'_> {
+        fn perspective(&self) -> PlayerId {
+            self.inner.perspective()
+        }
+        fn observation(
+            &self,
+        ) -> Result<mtgml_observation::ObservationEnvelope, PlayerEndpointError> {
+            self.inner.observation()
+        }
+        fn information_state(
+            &self,
+        ) -> Result<mtgml_observation::PlayerInformationStateV2, PlayerEndpointError> {
+            self.inner.information_state()
+        }
+        fn visible_decision(
+            &self,
+        ) -> Result<Option<mtgml_decision::PlayerDecisionRequestV2>, PlayerEndpointError> {
+            self.inner.visible_decision()
+        }
+        fn submit(
+            &self,
+            response: DecisionResponseV2,
+        ) -> Result<PlayerStepV2, PlayerEndpointError> {
+            self.submit_calls.fetch_add(1, Ordering::SeqCst);
+            self.inner.submit(response)
+        }
+    }
+
+    let controller = TrustedEnvironmentController::new(backend());
+    let handle = controller.bind_player(PlayerId(1)).unwrap();
+    let endpoint = CountingEndpoint {
+        inner: &handle,
+        submit_calls: AtomicUsize::new(0),
+    };
+    let before = public_fingerprint(&controller);
+    let submit_count = |endpoint: &CountingEndpoint| endpoint.submit_calls.load(Ordering::SeqCst);
+
+    let malformed = b"{not json";
+    let boundary_error = crate::submit_response_bytes(&endpoint, malformed).unwrap_err();
+    assert_eq!(boundary_error.code(), "malformed_response");
+    assert_eq!(submit_count(&endpoint), 0, "malformed bytes reached submit");
+
+    // Noncanonical: valid JSON, wrong key order.
+    let canonical = mtgml_wire::encode_canonical(&response(0, 0)).unwrap();
+    let mut noncanonical = Vec::with_capacity(canonical.len() + 1);
+    noncanonical.push(b' ');
+    noncanonical.extend_from_slice(&canonical);
+    let boundary_error = crate::submit_response_bytes(&endpoint, &noncanonical).unwrap_err();
+    assert_eq!(boundary_error.code(), "malformed_response");
+    assert_eq!(
+        submit_count(&endpoint),
+        0,
+        "noncanonical bytes reached submit"
+    );
+
+    // Wrong schema version.
+    let wrong_schema = String::from_utf8(canonical.clone())
+        .unwrap()
+        .replace("decision-response.v2", "decision-response.v1")
+        .into_bytes();
+    let boundary_error = crate::submit_response_bytes(&endpoint, &wrong_schema).unwrap_err();
+    assert_eq!(boundary_error.code(), "malformed_response");
+    assert_eq!(
+        submit_count(&endpoint),
+        0,
+        "wrong-schema bytes reached submit"
+    );
+
+    // Positive seam control: canonical bytes carrying a semantically
+    // invalid answer do reach Layer B exactly once and return a typed
+    // rejected PlayerStep there.
+    let mut stale = response(0, 0);
+    stale.state_revision = StateRevision(9);
+    let stale_bytes = mtgml_wire::encode_canonical(&stale).unwrap();
+    let step = crate::submit_response_bytes(&endpoint, &stale_bytes).unwrap();
+    assert_eq!(
+        step.submission,
+        mtgml_observation::PlayerStepSubmissionV1::Rejected {
+            code: mtgml_observation::PlayerSubmissionCodeV1::StaleDecision,
+        }
+    );
+    assert_eq!(submit_count(&endpoint), 1);
+
+    // Zero mutation across both layers.
+    assert_eq!(public_fingerprint(&controller), before);
+}
+
+#[test]
+fn projection_bytes_survive_checkpoint_restore_and_equal_forks() {
+    let source = environment_at_members_stage();
+    let p1 = source.bind_player(PlayerId(1)).unwrap();
+
+    let observation_bytes = mtgml_wire::encode_canonical(&p1.observation().unwrap()).unwrap();
+    let information_bytes = mtgml_wire::encode_canonical(&p1.information_state().unwrap()).unwrap();
+    let decision_bytes =
+        mtgml_wire::encode_canonical(&p1.visible_decision().unwrap().unwrap()).unwrap();
+    let checkpoint_before = source.checkpoint().unwrap();
+
+    let restored = TrustedEnvironmentController::new(backend());
+    restored.restore(checkpoint_before.clone()).unwrap();
+    let restored_p1 = restored.bind_player(PlayerId(1)).unwrap();
+    assert_eq!(
+        mtgml_wire::encode_canonical(&restored_p1.observation().unwrap()).unwrap(),
+        observation_bytes
+    );
+    assert_eq!(
+        mtgml_wire::encode_canonical(&restored_p1.information_state().unwrap()).unwrap(),
+        information_bytes
+    );
+    assert_eq!(
+        mtgml_wire::encode_canonical(&restored_p1.visible_decision().unwrap().unwrap()).unwrap(),
+        decision_bytes
+    );
+
+    let fork = source.fork().unwrap();
+    let fork_p1 = fork.bind_player(PlayerId(1)).unwrap();
+    assert_eq!(
+        mtgml_wire::encode_canonical(&fork_p1.observation().unwrap()).unwrap(),
+        observation_bytes
+    );
+    assert_eq!(
+        mtgml_wire::encode_canonical(&fork_p1.information_state().unwrap()).unwrap(),
+        information_bytes
+    );
+    assert_eq!(
+        mtgml_wire::encode_canonical(&fork_p1.visible_decision().unwrap().unwrap()).unwrap(),
+        decision_bytes
+    );
+
+    // Projection calls do not mutate the checkpoint fingerprint.
+    assert_eq!(source.checkpoint().unwrap(), checkpoint_before);
+}
+
+#[test]
+fn request_existence_is_not_an_error_oracle() {
+    let controller = TrustedEnvironmentController::new(backend());
+    let p1 = controller.bind_player(PlayerId(1)).unwrap();
+    let p2 = controller.bind_player(PlayerId(2)).unwrap();
+
+    // Case A: no request exists at all. The continuation chain was fully
+    // completed, so pending_decision is None while the episode stays
+    // Running; P2 submits into a genuinely requestless state.
+    let _ = submit_answer(&p1, order_entry_answer());
+    let _ = submit_answer(&p1, number_answer(2));
+    let _ = submit_answer(&p1, members_answer(&[0, 1]));
+    let _ = submit_answer(&p1, order_answer(&[1, 0]));
+    let no_request = p2.submit(response(0, 0)).unwrap();
+    assert_eq!(
+        no_request.submission,
+        mtgml_observation::PlayerStepSubmissionV1::Rejected {
+            code: mtgml_observation::PlayerSubmissionCodeV1::UnavailableDecision,
+        }
+    );
+
+    // Case B: a decision exists but belongs to P1 (paired foreign-request
+    // state) — same non-disclosing surface for P2.
+    let other = TrustedEnvironmentController::new(backend());
+    let other_p2 = other.bind_player(PlayerId(2)).unwrap();
+    let foreign = other_p2.submit(response(0, 0)).unwrap();
+    assert_eq!(
+        foreign.submission,
+        mtgml_observation::PlayerStepSubmissionV1::Rejected {
+            code: mtgml_observation::PlayerSubmissionCodeV1::UnavailableDecision,
+        }
+    );
+
+    // The public rejection surface must not distinguish "no request
+    // exists" from "the request belongs to another perspective" by
+    // anything other than the legitimately changed environment product.
+    let foreign_information = mtgml_wire::encode_canonical(&foreign.information_state).unwrap();
+    let no_request_information =
+        mtgml_wire::encode_canonical(&no_request.information_state).unwrap();
+    assert_ne!(
+        foreign_information, no_request_information,
+        "states differ legitimately; the CODE must not"
+    );
+    let code_of = |submission: &mtgml_observation::PlayerStepSubmissionV1| match submission {
+        mtgml_observation::PlayerStepSubmissionV1::Rejected { code } => *code,
+        other => panic!("expected rejected submission, got {other:?}"),
+    };
+    assert_eq!(
+        code_of(&foreign.submission),
+        code_of(&no_request.submission),
+        "request existence leaked as a distinct code"
+    );
+}
+
+#[test]
+fn visible_decision_exposes_no_trusted_identities_or_internals() {
+    let controller = TrustedEnvironmentController::new(backend());
+    let p1 = controller.bind_player(PlayerId(1)).unwrap();
+    let request = p1.visible_decision().unwrap().unwrap();
+    let bytes = mtgml_wire::encode_canonical(&request).unwrap();
+    let rendered = String::from_utf8(bytes.clone()).unwrap();
+
+    // Structural forbidden-key checks over the serialized graph.
+    // `player_decision_id` is a legitimate public key; the forbidden keys
+    // are matched as exact quoted JSON keys.
+    for forbidden_key in [
+        "\"decision_id\"",
+        "\"continuation_id\"",
+        "\"game_object_id\"",
+        "\"physical_card_id\"",
+        "\"ability_instance_id\"",
+        "\"rule_event_id\"",
+        "\"trusted_binding\"",
+        "\"root_seed\"",
+        "\"checkpoint_digest\"",
+        "\"full_state_digest\"",
+        "\"stream_key\"",
+        "\"next_raw_u64\"",
+    ] {
+        assert!(
+            !rendered.contains(forbidden_key),
+            "visible decision leaked forbidden key {forbidden_key}"
+        );
+    }
+
+    // Paired states: unrelated trusted/global values must not move the
+    // public bytes.
+    let mut variant =
+        mtgml_state::construct_synthetic_engine_state(mtgml_state::SyntheticResetInputs {
+            players: [PlayerId(1), PlayerId(2)],
+            root_seed: seed(),
+        })
+        .unwrap();
+    variant.allocators.next_effect_id = mtgml_model::EffectInstanceId(500);
+    variant.allocators.next_trigger_id = mtgml_model::TriggerInstanceId(900);
+    let checkpoint = EnvironmentCheckpointV3::new(
+        variant,
+        EpisodeStatus::Running,
+        EnvironmentLimitCounters::default(),
+        CheckpointCodecIdentity {
+            codec_id: "synthetic-m2-memory".into(),
+            semantic_version: "3".into(),
+        },
+    )
+    .unwrap();
+    let other_controller = TrustedEnvironmentController::new(
+        SyntheticM1EnvironmentBackend::from_checkpoint(
+            checkpoint,
+            config([PlayerId(1), PlayerId(2)]),
+        )
+        .unwrap(),
+    );
+    let other_p1 = other_controller.bind_player(PlayerId(1)).unwrap();
+    let other_request = other_p1.visible_decision().unwrap().unwrap();
+    assert_eq!(
+        mtgml_wire::encode_canonical(&request).unwrap(),
+        mtgml_wire::encode_canonical(&other_request).unwrap(),
+        "unrelated trusted/global history changed the visible decision bytes"
+    );
+}
+
+#[test]
+fn observation_equals_information_state_current_observation_bytes() {
+    let controller = TrustedEnvironmentController::new(backend());
+    let p1 = controller.bind_player(PlayerId(1)).unwrap();
+    let observation = p1.observation().unwrap();
+    let information = p1.information_state().unwrap();
+    assert_eq!(
+        mtgml_wire::encode_canonical(&observation).unwrap(),
+        mtgml_wire::encode_canonical(&information.current_observation).unwrap()
+    );
+}
+
+#[test]
+fn typed_rejection_codes_matrix() {
+    let controller = TrustedEnvironmentController::new(backend());
+    let p1 = controller.bind_player(PlayerId(1)).unwrap();
+
+    let expected_code = |step: &PlayerStepV2| -> mtgml_observation::PlayerSubmissionCodeV1 {
+        match &step.submission {
+            mtgml_observation::PlayerStepSubmissionV1::Rejected { code } => *code,
+            other => panic!("expected rejected submission, got {other:?}"),
+        }
+    };
+
+    // Accept entry to reach stage 0 (ChooseCount).
+    let _ = submit_answer(&p1, order_entry_answer());
+
+    // stale_decision via revision mismatch.
+    let visible = p1.visible_decision().unwrap().unwrap();
+    let stale = p1
+        .submit(mtgml_decision::DecisionResponseV2 {
+            schema_version: DECISION_RESPONSE_V2_SCHEMA.into(),
+            player_decision_id: visible.player_decision_id,
+            state_revision: StateRevision(9),
+            answer: number_answer(1),
+        })
+        .unwrap();
+    assert_eq!(
+        expected_code(&stale),
+        mtgml_observation::PlayerSubmissionCodeV1::StaleDecision,
+        "stale"
+    );
+
+    // invalid_answer via Order variant against ChooseNumber domain.
+    let wrong_variant = p1
+        .submit(mtgml_decision::DecisionResponseV2 {
+            schema_version: DECISION_RESPONSE_V2_SCHEMA.into(),
+            player_decision_id: visible.player_decision_id,
+            state_revision: visible.state_revision,
+            answer: mtgml_decision::DecisionAnswerV2::Order {
+                candidate_ids: vec![],
+            },
+        })
+        .unwrap();
+    assert_eq!(
+        expected_code(&wrong_variant),
+        mtgml_observation::PlayerSubmissionCodeV1::InvalidAnswer,
+        "invalid_answer"
+    );
+
+    // Advance to ChooseMembers{2,2}.
+    let _ = submit_answer(&p1, number_answer(2));
+
+    // invalid_candidate.
+    let request = p1.visible_decision().unwrap().unwrap();
+    let unknown = p1
+        .submit(mtgml_decision::DecisionResponseV2 {
+            schema_version: DECISION_RESPONSE_V2_SCHEMA.into(),
+            player_decision_id: request.player_decision_id,
+            state_revision: request.state_revision,
+            answer: members_answer(&[7]),
+        })
+        .unwrap();
+    assert_eq!(
+        expected_code(&unknown),
+        mtgml_observation::PlayerSubmissionCodeV1::InvalidCandidate,
+        "invalid_candidate"
+    );
+
+    // duplicate_assignment.
+    let dup = p1
+        .submit(mtgml_decision::DecisionResponseV2 {
+            schema_version: DECISION_RESPONSE_V2_SCHEMA.into(),
+            player_decision_id: request.player_decision_id,
+            state_revision: request.state_revision,
+            answer: members_answer(&[0, 0]),
+        })
+        .unwrap();
+    assert_eq!(
+        expected_code(&dup),
+        mtgml_observation::PlayerSubmissionCodeV1::DuplicateAssignment,
+        "duplicate_assignment"
+    );
+
+    // invalid_cardinality.
+    let card = p1
+        .submit(mtgml_decision::DecisionResponseV2 {
+            schema_version: DECISION_RESPONSE_V2_SCHEMA.into(),
+            player_decision_id: request.player_decision_id,
+            state_revision: request.state_revision,
+            answer: members_answer(&[0]),
+        })
+        .unwrap();
+    assert_eq!(
+        expected_code(&card),
+        mtgml_observation::PlayerSubmissionCodeV1::InvalidCardinality,
+        "invalid_cardinality"
+    );
+
+    // invalid_order (noncanonical representation).
+    let order = p1
+        .submit(mtgml_decision::DecisionResponseV2 {
+            schema_version: DECISION_RESPONSE_V2_SCHEMA.into(),
+            player_decision_id: request.player_decision_id,
+            state_revision: request.state_revision,
+            answer: members_answer(&[1, 0]),
+        })
+        .unwrap();
+    assert_eq!(
+        expected_code(&order),
+        mtgml_observation::PlayerSubmissionCodeV1::InvalidOrder,
+        "invalid_order"
+    );
+
+    // Complete the continuation (clears pending_decision).
+    let _ = submit_answer(&p1, members_answer(&[0, 1]));
+    let _ = submit_answer(&p1, order_answer(&[1, 0]));
+
+    // Build a truncated checkpoint to drive episode_closed.
+    let completed_state = controller.checkpoint().unwrap().state;
+    let truncated_checkpoint = EnvironmentCheckpointV3::new(
+        completed_state,
+        EpisodeStatus::Truncated {
+            reason: TruncationReason::ExternalStop,
+            players: vec![],
+        },
+        EnvironmentLimitCounters::default(),
+        CheckpointCodecIdentity {
+            codec_id: "synthetic-m2-memory".into(),
+            semantic_version: "3".into(),
+        },
+    )
+    .unwrap();
+    let truncated_env = TrustedEnvironmentController::new(
+        SyntheticM1EnvironmentBackend::from_checkpoint(
+            truncated_checkpoint,
+            config([PlayerId(1), PlayerId(2)]),
+        )
+        .unwrap(),
+    );
+    let truncated_p1 = truncated_env.bind_player(PlayerId(1)).unwrap();
+    let closed = truncated_p1.submit(response(0, 99)).unwrap();
+    assert_eq!(
+        expected_code(&closed),
+        mtgml_observation::PlayerSubmissionCodeV1::EpisodeClosed,
+        "episode_closed"
+    );
+}
+
+#[test]
+fn internal_failures_surface_only_service_unavailable() {
+    use mtgml_state::PendingDecisionRecordV2;
+
+    // A structurally valid generic state with a standalone ChooseNumber
+    // pending request is not executable by the synthetic kernel; restore
+    // must reject it before any projection can expose it.
+    let mut state =
+        mtgml_state::construct_synthetic_engine_state(mtgml_state::SyntheticResetInputs {
+            players: [PlayerId(1), PlayerId(2)],
+            root_seed: seed(),
+        })
+        .unwrap();
+    state.execution.pending_decision = Some(PendingDecisionRecordV2 {
+        request: mtgml_decision::AuthoritativeDecisionRequestV2 {
+            decision_id: mtgml_model::DecisionId(1),
+            player_decision_id: PlayerDecisionIdV1(1),
+            state_revision: StateRevision(0),
+            actor: PlayerId(1),
+            visibility: mtgml_decision::DecisionVisibility::Public,
+            decision: mtgml_decision::DecisionDomainV2::ChooseNumber {
+                minimum: 0,
+                maximum: 3,
+            },
+            candidates: Vec::new(),
+            continuation_id: None,
+        },
+    });
+    let checkpoint = EnvironmentCheckpointV3::new(
+        state,
+        EpisodeStatus::Running,
+        EnvironmentLimitCounters::default(),
+        CheckpointCodecIdentity {
+            codec_id: "synthetic-m2-memory".into(),
+            semantic_version: "3".into(),
+        },
+    )
+    .unwrap();
+
+    let result = SyntheticM1EnvironmentBackend::from_checkpoint(
+        checkpoint.clone(),
+        config([PlayerId(1), PlayerId(2)]),
+    );
+    let error = match result {
+        Err(error) => error,
+        Ok(_) => panic!("unsupported state must be rejected"),
+    };
+    let rendered = format!("{error}");
+    for vocabulary in ["seed", "digest", "gameobject", "decisionid", "continuation"] {
+        assert!(
+            !rendered.to_lowercase().contains(vocabulary),
+            "leaked {vocabulary}"
+        );
+    }
+
+    // The same closed surface must hold across the public player boundary:
+    // an internal service defect driven through `PlayerEndpoint::submit`
+    // (here: authoritative limit-counter exhaustion while committing an
+    // otherwise fully accepted submission) may not disclose trusted detail
+    // and must map to exactly `service_unavailable`.
+    let players = [PlayerId(1), PlayerId(2)];
+    let fresh = backend().checkpoint().unwrap();
+    let exhausted_checkpoint = EnvironmentCheckpointV3::new(
+        fresh.state,
+        fresh.status.clone(),
+        EnvironmentLimitCounters {
+            decisions_submitted: u64::MAX,
+            ..fresh.limit_counters.clone()
+        },
+        fresh.codec.clone(),
+    )
+    .unwrap();
+    let exhausted_controller = TrustedEnvironmentController::new(
+        SyntheticM1EnvironmentBackend::from_checkpoint(exhausted_checkpoint, config(players))
+            .unwrap(),
+    );
+    let p1 = exhausted_controller.bind_player(PlayerId(1)).unwrap();
+    let before = public_fingerprint(&exhausted_controller);
+    let request = p1
+        .visible_decision()
+        .unwrap()
+        .expect("entry decision visible");
+    let bytes = mtgml_wire::encode_canonical(&DecisionResponseV2 {
+        schema_version: DECISION_RESPONSE_V2_SCHEMA.into(),
+        player_decision_id: request.player_decision_id,
+        state_revision: request.state_revision,
+        answer: order_entry_answer(),
+    })
+    .unwrap();
+    let boundary_error = crate::submit_response_bytes(&p1, &bytes).unwrap_err();
+    assert_eq!(boundary_error.code(), "service_unavailable");
+
+    // The failed internal commit must not have mutated anything.
+    assert_eq!(public_fingerprint(&exhausted_controller), before);
 }

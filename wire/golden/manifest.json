@@ -79,6 +79,10 @@
     {
       "contract": "authoritative-replay.v2",
       "path": "authoritative-replay-rejected-step.v2.json"
+    },
+    {
+      "contract": "player-step.v2",
+      "path": "player-step-v2-rejected.json"
     }
   ]
 }

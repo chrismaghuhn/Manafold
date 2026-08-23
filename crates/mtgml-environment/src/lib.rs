@@ -4,6 +4,7 @@
 //! `PlayerEndpointHandle` is permanently perspective-bound and exposes only
 //! projected information. Multiple player handles may coexist.
 
+mod boundary;
 mod checkpoint;
 mod controller;
 mod endpoint;
@@ -14,11 +15,12 @@ mod synthetic;
 #[cfg(test)]
 mod tests;
 
+pub use boundary::{submit_response_bytes, PlayerBoundaryError};
 pub use checkpoint::{
     CheckpointValidationError, EnvironmentCheckpointV3, ENVIRONMENT_CHECKPOINT_SCHEMA,
 };
 pub use controller::{EnvironmentBackend, TrustedEnvironmentController};
-pub use endpoint::{PlayerApiError, PlayerEndpoint, PlayerEndpointHandle};
+pub use endpoint::{PlayerEndpoint, PlayerEndpointError, PlayerEndpointHandle};
 pub use errors::ControllerError;
 pub use errors::ReplayExecutionError;
 pub use mtgml_model::{CheckpointCodecIdentity, EnvironmentLimitCounters};
