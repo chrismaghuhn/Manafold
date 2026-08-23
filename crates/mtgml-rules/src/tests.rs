@@ -373,7 +373,7 @@ fn deterministic_services_isolate_unrelated_stream_cursors() {
     let baseline_state = synthetic_state();
     let mut isolated_state = synthetic_state();
     isolated_state.random.streams.insert(
-        RandomStreamKeyV1::player_scoped(RandomStreamKindV1::SyntheticM1, 2),
+        mtgml_random::RandomStreamKeyV1::player_scoped(RandomStreamKindV1::SyntheticM1, 2),
         RandomStreamCursorV1 {
             next_raw_u64: 987_654_321,
         },
@@ -577,35 +577,19 @@ fn choose_number_stage_bounds_matrix() {
 
 #[test]
 fn choose_many_stage_cardinality_matrix() {
-    // A three-piece member set with widened bounds exercises every
-    // cardinality boundary independently.
-    let stage = {
-        let built = apply(&entry_stage0(), &number_response(2, 3, 1)).next_state;
-        let mut state = built;
-        if let Some(pending) = state.execution.pending_decision.as_mut() {
-            pending.request.decision = DecisionDomainV2::ChooseMany {
-                minimum: 1,
-                maximum: 2,
-            };
-        }
-        mtgml_state::validate_engine_state(&state).unwrap();
-        state
-    };
+    let stage = apply(&entry_stage0(), &number_response(2, 3, 1)).next_state;
+    mtgml_state::validate_engine_state(&stage).unwrap();
 
-    // Minimum boundary.
-    assert!(apply(&stage, &many_response(3, &[0], 2)).accepted);
-    // Maximum boundary.
-    assert!(apply(&stage, &many_response(3, &[0, 1], 2)).accepted);
+    // Exact cardinality boundary of the fixed program stage.
+    assert!(apply(&stage, &many_response(3, &[0, 1, 2], 2)).accepted);
 
     // Too few.
     assert!(!apply(&stage, &many_response(3, &[], 2)).accepted);
-    // Too many.
-    assert!(!apply(&stage, &many_response(3, &[0, 1, 2], 2)).accepted);
     // Duplicates violate the canonical set representation and are not
     // silently repaired.
     assert!(!apply(&stage, &many_response(3, &[1, 1], 2)).accepted);
     // Nonascending set syntax is rejected, never sorted.
-    assert!(!apply(&stage, &many_response(3, &[1, 0], 2)).accepted);
+    assert!(!apply(&stage, &many_response(3, &[2, 1], 2)).accepted);
     // Nonexistent candidate.
     assert!(!apply(&stage, &many_response(3, &[7], 2)).accepted);
     // Wrong answer variant.
@@ -613,7 +597,7 @@ fn choose_many_stage_cardinality_matrix() {
 
     // After every rejection the identical canonical answer still succeeds:
     // no partial execution or repair happened.
-    assert!(apply(&stage, &many_response(3, &[0, 1], 2)).accepted);
+    assert!(apply(&stage, &many_response(3, &[0, 1, 2], 2)).accepted);
 }
 
 #[test]
@@ -770,4 +754,90 @@ fn rejected_family_answers_preserve_the_complete_fingerprint() {
         assert!(!apply(&ordering, &response).accepted);
         assert_eq!(fingerprint(&ordering), before, "mutation on rejection");
     }
+}
+
+#[test]
+fn candidate_order_independent_of_global_allocator_history() {
+    // Two environments in the identical semantic situation that differ ONLY
+    // in unrelated global allocator history and unused RNG stream state.
+    let build = |allocator_history: u64, unused_cursor: u64| {
+        let after_entry = apply(&synthetic_state(), &select_one_response(0, 0)).next_state;
+        let mut state = apply(&after_entry, &number_response(2, 2, 1)).next_state;
+        state.allocators.next_effect_id = mtgml_model::EffectInstanceId(allocator_history);
+        state.allocators.next_trigger_id = mtgml_model::TriggerInstanceId(allocator_history);
+        state.allocators.next_stack_object_id = mtgml_model::StackObjectId(allocator_history);
+        state.random.streams.insert(
+            mtgml_random::RandomStreamKeyV1::player_scoped(
+                mtgml_random::RandomStreamKindV1::SyntheticM1,
+                2,
+            ),
+            mtgml_random::RandomStreamCursorV1 {
+                next_raw_u64: unused_cursor,
+            },
+        );
+        mtgml_state::validate_engine_state(&state).unwrap();
+        state
+    };
+
+    let history_x = build(40, 1);
+    let history_y = build(9_000, u64::from(u32::MAX));
+
+    // The visible candidate surface must be identical.
+    let visible = |state: &EngineState| {
+        state
+            .execution
+            .pending_decision
+            .as_ref()
+            .unwrap()
+            .request
+            .project_player_request()
+            .unwrap()
+    };
+    assert_eq!(visible(&history_x), visible(&history_y));
+
+    // The next-stage candidate generation must be identical as well.
+    let next_x = apply(&history_x, &many_response(3, &[0, 1], 2));
+    let next_y = apply(&history_y, &many_response(3, &[0, 1], 2));
+    let stage_request_x = next_x.next_decision.as_ref().unwrap();
+    let stage_request_y = next_y.next_decision.as_ref().unwrap();
+    assert_eq!(stage_request_x.candidates, stage_request_y.candidates);
+}
+
+#[test]
+fn completion_succeeds_when_stage_allocators_are_exhausted() {
+    // Completion consumes no fresh decision or visible identity: both
+    // cursors may sit at u64::MAX without blocking the legal final Order.
+    let stage = {
+        let after_entry = apply(&synthetic_state(), &select_one_response(0, 0)).next_state;
+        let after_count = apply(&after_entry, &number_response(2, 2, 1)).next_state;
+        let mut state = apply(&after_count, &many_response(3, &[0, 1], 2)).next_state;
+        state.allocators.next_decision_id = DecisionId(u64::MAX);
+        let identity = state
+            .perspective_identities
+            .players
+            .get_mut(&PlayerId(1))
+            .unwrap();
+        identity.next_player_decision_id = PlayerDecisionIdV1(u64::MAX);
+        mtgml_state::validate_engine_state(&state).unwrap();
+        state
+    };
+
+    let result = apply(&stage, &order_response(4, &[1, 0], 3));
+    assert!(result.accepted);
+    assert!(result.next_state.execution.continuations.is_empty());
+    assert!(result.next_state.execution.pending_decision.is_none());
+
+    // Stage advancement still fails closed under the same exhaustion.
+    let advanced_stage = {
+        let after_entry = apply(&synthetic_state(), &select_one_response(0, 0)).next_state;
+        let mut state = apply(&after_entry, &number_response(2, 2, 1)).next_state;
+        state.allocators.next_decision_id = DecisionId(u64::MAX);
+        mtgml_state::validate_engine_state(&state).unwrap();
+        state
+    };
+    let mut kernel = SyntheticM1RulesKernel;
+    assert!(matches!(
+        kernel.apply(&advanced_stage, PlayerId(1), &many_response(3, &[0, 1], 2)),
+        Err(KernelExecutionError::Exhaustion("decision"))
+    ));
 }

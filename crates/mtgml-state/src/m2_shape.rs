@@ -7,6 +7,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use mtgml_decision::AuthoritativeDecisionRequestV2;
+use mtgml_decision::CandidateIntent;
 use mtgml_model::{
     AbilityInstanceId, CardDefinitionId, ContinuationId, GameObjectId, OpaqueAbilityId,
     OpaqueObjectId, PhysicalCardId, PlayerDecisionIdV1, PlayerId, StateRevision, VisibleSequence,
@@ -321,6 +322,91 @@ pub fn validate_m2_shape(
                 return Err(M2ShapeViolation::ContinuationStage);
             }
         }
+    }
+    validate_program_coherence(pending, continuations)?;
+    Ok(())
+}
+
+/// The one linear M2 program binds an active continuation and its pending
+/// request into a single authoritative semantic unit: the pending request
+/// must express exactly the referenced stage's program, and an active
+/// continuation must always be resumable.
+fn validate_program_coherence(
+    pending: Option<&PendingDecisionRecordV2>,
+    continuations: &BTreeMap<ContinuationId, ContinuationRecordV2>,
+) -> Result<(), M2ShapeViolation> {
+    if continuations.len() > 1 {
+        return Err(M2ShapeViolation::ContinuationReference);
+    }
+    let Some(record) = continuations.values().next() else {
+        return Ok(());
+    };
+    let Some(pending) = pending else {
+        // An active continuation without its next stage request is not
+        // resumable and can never become checkpointable state.
+        return Err(M2ShapeViolation::ContinuationReference);
+    };
+    if pending.request.continuation_id != Some(record.id) {
+        return Err(M2ShapeViolation::ContinuationReference);
+    }
+    let ContinuationPayloadV2::SyntheticM2Assembly {
+        stage,
+        selected_count,
+        selected_piece_keys,
+        ..
+    } = &record.payload;
+    let candidates_express = |expected_pieces: &[u32]| -> bool {
+        pending.request.candidates.len() == expected_pieces.len()
+            && pending
+                .request
+                .candidates
+                .iter()
+                .enumerate()
+                .all(|(index, candidate)| {
+                    candidate.candidate_id.0 == index as u32
+                        && matches!(
+                            &candidate.visible_intent,
+                            CandidateIntent::SelectMode { mode_index }
+                                if *mode_index == expected_pieces[index]
+                        )
+                })
+    };
+    match (stage, &pending.request.decision) {
+        (
+            AssemblyStageV2::ChooseCount,
+            mtgml_decision::DecisionDomainV2::ChooseNumber { minimum, maximum },
+        ) => {
+            if minimum > maximum || !pending.request.candidates.is_empty() {
+                return Err(M2ShapeViolation::PendingDecision);
+            }
+        }
+        (
+            AssemblyStageV2::ChooseMembers,
+            mtgml_decision::DecisionDomainV2::ChooseMany { minimum, maximum },
+        ) => {
+            let count = selected_count.ok_or(M2ShapeViolation::Knowledge)?;
+            if *minimum != count || *maximum != count {
+                return Err(M2ShapeViolation::PendingDecision);
+            }
+            // Stage members are the fixed synthetic piece surface 0..count.
+            let expected: Vec<u32> = (0..count).collect();
+            if !candidates_express(&expected) {
+                return Err(M2ShapeViolation::PendingDecision);
+            }
+        }
+        (
+            AssemblyStageV2::OrderMembers,
+            mtgml_decision::DecisionDomainV2::Order { minimum, maximum },
+        ) => {
+            let count = selected_count.ok_or(M2ShapeViolation::Knowledge)?;
+            if *minimum != count || *maximum != count {
+                return Err(M2ShapeViolation::PendingDecision);
+            }
+            if !candidates_express(selected_piece_keys) {
+                return Err(M2ShapeViolation::PendingDecision);
+            }
+        }
+        _ => return Err(M2ShapeViolation::PendingDecision),
     }
     Ok(())
 }

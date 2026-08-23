@@ -397,6 +397,13 @@ fn m2_b_full_state_digest_v3_mutation_matrix() {
                 },
             );
             state.allocators.next_continuation_id = ContinuationId(2);
+            let pending = state.execution.pending_decision.as_mut().unwrap();
+            pending.request.decision = mtgml_decision::DecisionDomainV2::ChooseNumber {
+                minimum: 0,
+                maximum: 3,
+            };
+            pending.request.candidates.clear();
+            pending.request.continuation_id = Some(ContinuationId(1));
         }),
         ("pending_continuation_reference", |state| {
             state.execution.continuations.insert(
@@ -416,6 +423,11 @@ fn m2_b_full_state_digest_v3_mutation_matrix() {
             );
             state.allocators.next_continuation_id = ContinuationId(2);
             let pending = state.execution.pending_decision.as_mut().unwrap();
+            pending.request.decision = mtgml_decision::DecisionDomainV2::ChooseNumber {
+                minimum: 0,
+                maximum: 3,
+            };
+            pending.request.candidates.clear();
             pending.request.continuation_id = Some(ContinuationId(1));
         }),
         ("random_root_seed", |state| {
@@ -1496,9 +1508,90 @@ fn assembly_continuation(
     }
 }
 
+/// Builds the pending request that expresses exactly the given stage's
+/// program, so continuation + request stay one authoritative unit.
+fn matching_pending(record: &ContinuationRecordV2) -> PendingDecisionRecordV2 {
+    use mtgml_decision::{AuthoritativeCandidateV2, DecisionDomainV2};
+    let ContinuationPayloadV2::SyntheticM2Assembly {
+        stage,
+        selected_count,
+        selected_piece_keys,
+        ..
+    } = &record.payload;
+    let actor = record.actor;
+    let pieces: Vec<u32> = match stage {
+        AssemblyStageV2::ChooseCount => Vec::new(),
+        AssemblyStageV2::ChooseMembers => (0..selected_count.unwrap_or(0)).collect(),
+        AssemblyStageV2::OrderMembers => selected_piece_keys.clone(),
+    };
+    let candidates: Vec<AuthoritativeCandidateV2> = pieces
+        .iter()
+        .enumerate()
+        .map(|(index, piece)| AuthoritativeCandidateV2 {
+            candidate_id: mtgml_model::CandidateIdV1(index as u32),
+            visible_intent: mtgml_decision::CandidateIntent::SelectMode { mode_index: *piece },
+            trusted_binding: mtgml_decision::EngineCandidateBinding::SelectMode {
+                mode_index: *piece,
+            },
+        })
+        .collect();
+    let decision = match stage {
+        AssemblyStageV2::ChooseCount => DecisionDomainV2::ChooseNumber {
+            minimum: 0,
+            maximum: 3,
+        },
+        AssemblyStageV2::ChooseMembers => DecisionDomainV2::ChooseMany {
+            minimum: selected_count.unwrap_or(0),
+            maximum: selected_count.unwrap_or(0),
+        },
+        AssemblyStageV2::OrderMembers => {
+            let count = u32::try_from(selected_piece_keys.len()).unwrap_or(0);
+            DecisionDomainV2::Order {
+                minimum: count,
+                maximum: count,
+            }
+        }
+    };
+    PendingDecisionRecordV2 {
+        request: mtgml_decision::AuthoritativeDecisionRequestV2 {
+            decision_id: DecisionId(9),
+            player_decision_id: mtgml_model::PlayerDecisionIdV1(9),
+            state_revision: StateRevision(0),
+            actor,
+            visibility: mtgml_decision::DecisionVisibility::Public,
+            decision,
+            candidates,
+            continuation_id: Some(record.id),
+        },
+    }
+}
+
 fn state_with_continuation(record: ContinuationRecordV2) -> EngineState {
     let mut state = empty_shell();
+    // The perspective-local player-decision allocator must cover the issued
+    // visible identity of the attached pending request.
+    let identity = state
+        .perspective_identities
+        .players
+        .get_mut(&record.actor)
+        .unwrap();
+    identity.next_player_decision_id =
+        mtgml_model::PlayerDecisionIdV1(identity.next_player_decision_id.0.max(10));
+    state.allocators.next_decision_id = DecisionId(state.allocators.next_decision_id.0.max(10));
     state.execution.continuations.insert(record.id, record);
+    let pending_request = {
+        let record = state
+            .execution
+            .continuations
+            .get(&ContinuationId(1))
+            .unwrap();
+        matching_pending(record)
+    };
+    if let Some(pending) = state.execution.pending_decision.as_mut() {
+        *pending = pending_request;
+    } else {
+        state.execution.pending_decision = Some(pending_request);
+    }
     state.allocators.next_continuation_id = ContinuationId(2);
     state
 }

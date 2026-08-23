@@ -181,10 +181,12 @@ impl DecisionDomainV2 {
                 if minimum > maximum {
                     return Err(DecisionValidationError::InvertedBounds);
                 }
-                if usize::try_from(*minimum).unwrap_or(usize::MAX) > candidate_count
-                    || usize::try_from(*maximum).unwrap_or(usize::MAX) > candidate_count
-                {
-                    return Err(DecisionValidationError::ImpossibleMaximum);
+                // Only an unsatisfiable MINIMUM invalidates the request:
+                // the candidate set itself bounds how many distinct
+                // candidates are actually reachable, so a larger inclusive
+                // maximum still leaves legal answers.
+                if usize::try_from(*minimum).unwrap_or(usize::MAX) > candidate_count {
+                    return Err(DecisionValidationError::ImpossibleMinimum);
                 }
                 Ok(())
             }
@@ -632,8 +634,6 @@ pub enum DecisionValidationError {
     InvertedBounds,
     #[error("minimum selection cannot be satisfied by the candidate set")]
     ImpossibleMinimum,
-    #[error("maximum selection cannot be satisfied by the candidate set")]
-    ImpossibleMaximum,
     #[error("this decision domain does not accept candidates")]
     CandidatesNotAllowed,
     #[error("decision response contains the same candidate more than once")]
@@ -816,6 +816,84 @@ mod tests {
         let mut noncanonical = request.clone();
         noncanonical.candidates.swap(0, 1);
         assert!(noncanonical.validate().is_err());
+    }
+
+    #[test]
+    fn closed_family_domain_boundaries_matrix() {
+        // Two candidates: an inclusive maximum above the candidate count is
+        // still a valid request because the candidate set itself bounds the
+        // reachable cardinality; only an unsatisfiable minimum is invalid.
+        let two_candidates = |domain| PlayerDecisionRequestV2 {
+            schema_version: PLAYER_DECISION_REQUEST_V2_SCHEMA.to_owned(),
+            player_decision_id: PlayerDecisionIdV1(1),
+            state_revision: StateRevision(0),
+            actor: PlayerId(1),
+            visibility: DecisionVisibility::Public,
+            decision: domain,
+            candidates: vec![
+                VisibleCandidateV2 {
+                    candidate_id: CandidateIdV1(0),
+                    intent: CandidateIntent::SelectMode { mode_index: 0 },
+                },
+                VisibleCandidateV2 {
+                    candidate_id: CandidateIdV1(1),
+                    intent: CandidateIntent::SelectMode { mode_index: 1 },
+                },
+            ],
+        };
+
+        assert!(two_candidates(DecisionDomainV2::ChooseMany {
+            minimum: 1,
+            maximum: 3
+        })
+        .validate()
+        .is_ok());
+        assert!(two_candidates(DecisionDomainV2::Order {
+            minimum: 1,
+            maximum: 3
+        })
+        .validate()
+        .is_ok());
+        assert!(matches!(
+            two_candidates(DecisionDomainV2::ChooseMany {
+                minimum: 3,
+                maximum: 3
+            })
+            .validate(),
+            Err(DecisionValidationError::ImpossibleMinimum)
+        ));
+        assert!(matches!(
+            two_candidates(DecisionDomainV2::Order {
+                minimum: 3,
+                maximum: 3
+            })
+            .validate(),
+            Err(DecisionValidationError::ImpossibleMinimum)
+        ));
+
+        // Answer-side boundaries for a widened interval.
+        let request = two_candidates(DecisionDomainV2::ChooseMany {
+            minimum: 1,
+            maximum: 3,
+        });
+        let ids = |values: &[u32]| DecisionAnswerV2::SelectMany {
+            candidate_ids: values.iter().copied().map(CandidateIdV1).collect(),
+        };
+        assert_eq!(request.answer(&ids(&[0])), Ok(()));
+        assert_eq!(request.answer(&ids(&[0, 1])), Ok(()));
+        assert!(request.answer(&ids(&[])).is_err());
+        assert!(request.answer(&ids(&[0, 1, 0])).is_err());
+
+        let order_request = two_candidates(DecisionDomainV2::Order {
+            minimum: 1,
+            maximum: 3,
+        });
+        let order = |values: &[u32]| DecisionAnswerV2::Order {
+            candidate_ids: values.iter().copied().map(CandidateIdV1).collect(),
+        };
+        assert_eq!(order_request.answer(&order(&[1])), Ok(()));
+        assert_eq!(order_request.answer(&order(&[1, 0])), Ok(()));
+        assert!(order_request.answer(&order(&[])).is_err());
     }
 
     #[test]

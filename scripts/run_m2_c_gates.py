@@ -108,8 +108,18 @@ GATE_TESTS: dict[str, tuple[EvidenceDefinition, ...]] = {
         ),
         rust(
             "mtgml-decision",
+            "tests::closed_family_domain_boundaries_matrix",
+            "inclusive min/max boundaries incl. maximum above candidate count",
+        ),
+        rust(
+            "mtgml-decision",
             "tests::candidate_id_overflow_is_rejected",
             "CandidateId u32 overflow rejection",
+        ),
+        rust(
+            "mtgml-rules",
+            "tests::candidate_order_independent_of_global_allocator_history",
+            "candidate order independent of global allocator history and RNG state",
         ),
         rust(
             "mtgml-environment",
@@ -167,6 +177,11 @@ GATE_TESTS: dict[str, tuple[EvidenceDefinition, ...]] = {
             "mtgml-environment",
             "tests::stale_stage_response_is_rejected_without_any_mutation",
             "stale-stage response rejection preserves every identity value",
+        ),
+        rust(
+            "mtgml-environment",
+            "tests::order_permutations_bind_distinct_replay_identity",
+            "semantic order permutations bind distinct replay responses",
         ),
         rust(
             "mtgml-replay",

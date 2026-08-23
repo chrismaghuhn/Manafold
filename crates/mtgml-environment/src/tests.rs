@@ -1207,3 +1207,45 @@ fn stale_stage_response_is_rejected_without_any_mutation() {
     assert_eq!(controller.checkpoint().unwrap(), advanced);
     assert_eq!(controller.export_replay().unwrap(), advanced_replay);
 }
+
+#[test]
+fn order_permutations_bind_distinct_replay_identity() {
+    let run = |order: &[u32]| -> (AuthoritativeReplayV3, EnvironmentCheckpointV3) {
+        let controller = TrustedEnvironmentController::new(backend());
+        let p1 = controller.bind_player(PlayerId(1)).unwrap();
+        let _ = submit_answer(&p1, order_entry_answer());
+        let _ = submit_answer(&p1, number_answer(2));
+        let _ = submit_answer(&p1, members_answer(&[0, 1]));
+        let _ = submit_answer(&p1, order_answer(order));
+        (
+            controller.export_replay().unwrap(),
+            controller.checkpoint().unwrap(),
+        )
+    };
+
+    let (forward_replay, forward_checkpoint) = run(&[0, 1]);
+    let (reverse_replay, reverse_checkpoint) = run(&[1, 0]);
+
+    // The semantic order lives in the recorded authoritative response.
+    fn last(replay: &AuthoritativeReplayV3) -> &DecisionResponseV2 {
+        &replay.steps.last().unwrap().response
+    }
+    assert_eq!(
+        last(&forward_replay).answer,
+        mtgml_decision::DecisionAnswerV2::Order {
+            candidate_ids: vec![CandidateIdV1(0), CandidateIdV1(1)]
+        }
+    );
+    assert_eq!(
+        last(&reverse_replay).answer,
+        mtgml_decision::DecisionAnswerV2::Order {
+            candidate_ids: vec![CandidateIdV1(1), CandidateIdV1(0)]
+        }
+    );
+    // Neither order is repaired into the other: the recorded steps differ.
+    assert_ne!(forward_replay, reverse_replay);
+    assert_ne!(forward_replay.steps[3], reverse_replay.steps[3]);
+    // The final environment identity is legitimately identical because this
+    // synthetic domain persists no order; completion erases the sequence.
+    assert_eq!(forward_checkpoint.state, reverse_checkpoint.state);
+}

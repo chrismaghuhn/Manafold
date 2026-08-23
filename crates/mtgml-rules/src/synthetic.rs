@@ -95,19 +95,25 @@ struct StageIdentity {
     player_decision_id: PlayerDecisionIdV1,
 }
 
-/// Allocates every fresh identity up front: exhaustion must be detected
-/// before a workspace is created or mutated.
-fn fresh_stage_identity(
-    state: &EngineState,
-    actor: PlayerId,
-) -> Result<StageIdentity, KernelExecutionError> {
-    let revision = StateRevision(
+/// Advances only the authoritative revision; completion needs nothing else.
+fn next_revision(state: &EngineState) -> Result<StateRevision, KernelExecutionError> {
+    Ok(StateRevision(
         state
             .revision
             .0
             .checked_add(1)
             .ok_or(KernelExecutionError::RevisionOverflow)?,
-    );
+    ))
+}
+
+/// Allocates every fresh identity up front: exhaustion must be detected
+/// before a workspace is created or mutated. Only stages that actually
+/// expose a new decision may call this.
+fn fresh_stage_identity(
+    state: &EngineState,
+    actor: PlayerId,
+) -> Result<StageIdentity, KernelExecutionError> {
+    let revision = next_revision(state)?;
     let decision_id = state.allocators.next_decision_id;
     if state.allocators.next_decision_id.0 == u64::MAX {
         return Err(KernelExecutionError::Exhaustion("decision"));
@@ -453,7 +459,6 @@ impl SyntheticM1RulesKernel {
     ) -> Result<TransitionResult, KernelExecutionError> {
         let pending = state.execution.pending_decision.as_ref().expect("checked");
         let request = &pending.request;
-        let actor = request.actor;
         let continuation_id = match request.continuation_id {
             Some(id) => id,
             None => return rejected(state),
@@ -483,14 +488,12 @@ impl SyntheticM1RulesKernel {
             return rejected(state);
         }
 
-        let identity = fresh_stage_identity(state, actor)?;
+        // Completion consumes no fresh decision or visible identity: it must
+        // remain possible even when both allocator cursors are exhausted.
+        let revision = next_revision(state)?;
         let mut next = state.clone();
-        next.revision = identity.revision;
-        let events = vec![cleared_event(
-            state,
-            identity.revision,
-            request.decision_id,
-        )?];
+        next.revision = revision;
+        let events = vec![cleared_event(state, revision, request.decision_id)?];
 
         build_accepted_product(state, next, events, move |workspace| {
             workspace.execution.continuations.remove(&continuation_id);
