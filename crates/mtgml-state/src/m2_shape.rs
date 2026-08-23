@@ -420,6 +420,12 @@ fn validate_program_coherence(
             if count > SYNTHETIC_COUNT_MAX || *minimum != count || *maximum != count {
                 return Err(M2ShapeViolation::PendingDecision);
             }
+            // ChooseMembers offers exactly pieces 0..count and requires
+            // exactly count selections: the only reachable member set is the
+            // full prefix. Anything else is an unreachable history.
+            if *selected_piece_keys != (0..count).collect::<Vec<u32>>() {
+                return Err(M2ShapeViolation::Knowledge);
+            }
             if !candidates_express(selected_piece_keys) {
                 return Err(M2ShapeViolation::PendingDecision);
             }

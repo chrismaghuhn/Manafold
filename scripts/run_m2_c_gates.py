@@ -54,6 +54,10 @@ def rust(package: str, name: str, surface: str) -> EvidenceDefinition:
     return EvidenceDefinition("rust", name, surface, package)
 
 
+def source(name: str, surface: str) -> EvidenceDefinition:
+    return EvidenceDefinition("source", name, surface)
+
+
 GATE_TESTS: dict[str, tuple[EvidenceDefinition, ...]] = {
     GATE_FAMILY: (
         rust(
@@ -126,6 +130,10 @@ GATE_TESTS: dict[str, tuple[EvidenceDefinition, ...]] = {
             "tests::accepted_endpoint_submission_commits_v3_state_delta_and_replay",
             "endpoint chain commits delta/replay products atomically",
         ),
+        source(
+            "source_check::single_count_authority",
+            "single program-interval authority consumed by the kernel",
+        ),
     ),
     GATE_CONTINUATION: (
         rust(
@@ -192,6 +200,10 @@ GATE_TESTS: dict[str, tuple[EvidenceDefinition, ...]] = {
             "mtgml-replay",
             "tests::replay_v3_empty_accepted_rejected_identity_matrix",
             "ReplayV3 identity chaining remains intact under continuations",
+        ),
+        source(
+            "source_check::single_count_authority",
+            "single program-interval authority consumed by the kernel",
         ),
     ),
 }
@@ -325,6 +337,29 @@ def exact_rust_pass(output: str, returncode: int) -> bool:
     )
 
 
+def execute_source_check(definition: EvidenceDefinition, logs: Path, index: int) -> dict[str, Any]:
+    log_path = logs / f"{index:03d}-source-{definition.name.replace(':', '-')}.log"
+    evidence = {
+        "package": None,
+        "test": definition.name,
+        "surface": definition.surface,
+        "command": ["runner", definition.name],
+        "log": f"logs/{log_path.name}",
+    }
+    try:
+        result = SOURCE_CHECKS[definition.name]()
+    except AssertionError as error:
+        evidence.update({"status": "FAIL", "returncode": 1, "reason": str(error)})
+        log_path.write_text(str(error) + "\n", encoding="utf-8")
+    except (OSError, KeyError) as error:
+        evidence.update({"status": "BLOCKED", "reason": str(error)})
+        log_path.write_text(str(error) + "\n", encoding="utf-8")
+    else:
+        evidence.update({"status": "PASS", "returncode": 0, "reason": result})
+        log_path.write_text(result + "\n", encoding="utf-8")
+    return evidence
+
+
 def execute_test(definition: EvidenceDefinition, logs: Path, index: int) -> dict[str, Any]:
     assert definition.package is not None
     pinned = PINNED_TOOLCHAIN["channel"]
@@ -372,6 +407,30 @@ def execute_test(definition: EvidenceDefinition, logs: Path, index: int) -> dict
         }
     )
     return evidence
+
+
+def check_single_count_authority() -> str:
+    """The synthetic count interval has exactly one definition, in the state
+    authority beside the frozen payload; the rules kernel consumes it."""
+    state_source = (ROOT / "crates" / "mtgml-state" / "src" / "m2_shape.rs").read_text(
+        encoding="utf-8"
+    )
+    if "pub const SYNTHETIC_COUNT_MIN: u32 = 0;" not in state_source:
+        raise AssertionError("state authority lost the program interval definition")
+    rules_dir = ROOT / "crates" / "mtgml-rules" / "src"
+    for path in rules_dir.glob("*.rs"):
+        text = path.read_text(encoding="utf-8")
+        if "const SYNTHETIC_COUNT_M" in text:
+            raise AssertionError(f"rules crate redefined the program interval: {path.name}")
+    rules_lib = (rules_dir / "synthetic.rs").read_text(encoding="utf-8")
+    if "pub use mtgml_state::{SYNTHETIC_COUNT_MAX, SYNTHETIC_COUNT_MIN};" not in rules_lib:
+        raise AssertionError("rules kernel no longer consumes the state-owned interval")
+    return "program interval defined once in mtgml-state and consumed by the kernel"
+
+
+SOURCE_CHECKS = {
+    "source_check::single_count_authority": check_single_count_authority,
+}
 
 
 def aggregate(statuses: Iterable[str]) -> str:
@@ -423,7 +482,14 @@ def main() -> int:
     gates: list[dict[str, Any]] = []
     index = 1
     for gate_name, definitions in GATE_TESTS.items():
-        evidence = [execute_test(definition, logs, index) for definition in definitions]
+        evidence = [
+            (
+                execute_source_check(definition, logs, index)
+                if definition.kind == "source"
+                else execute_test(definition, logs, index)
+            )
+            for definition in definitions
+        ]
         for _ in definitions:
             index += 1
         underlying = aggregate(item["status"] for item in evidence)

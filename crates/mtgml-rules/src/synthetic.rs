@@ -33,9 +33,9 @@ use crate::events::{AuthoritativeRuleEvent, AuthoritativeRuleEventKind};
 use crate::transition::{RulesKernel, TransitionResult};
 use crate::validate_transition_contract;
 
-/// Inclusive numeric interval of the ChooseCount stage.
-pub const SYNTHETIC_COUNT_MIN: u32 = 0;
-pub const SYNTHETIC_COUNT_MAX: u32 = 3;
+// The inclusive ChooseCount interval has a single authority in the state
+// crate beside the frozen payload it governs; never redefine it locally.
+pub use mtgml_state::{SYNTHETIC_COUNT_MAX, SYNTHETIC_COUNT_MIN};
 
 fn global_stream() -> RandomStreamKeyV1 {
     RandomStreamKeyV1::global(RandomStreamKindV1::SyntheticM1)

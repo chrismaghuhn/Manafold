@@ -1793,8 +1793,9 @@ fn continuation_pending_program_coherence_matrix() {
     );
     assert!(validate_engine_state(&over_limit).is_err());
 
-    // OrderMembers with the wrong candidate surface is invalid even though
-    // cardinality matches.
+    // The only reachable OrderMembers member set is the full prefix 0..C:
+    // ChooseMembers offers exactly those C candidates and requires exactly C
+    // selections. An unreachable history such as [0,2] is invalid authority.
     let order_stage = |pieces: &[u32]| {
         let mut state = state_with_continuation(assembly_continuation(
             AssemblyStageV2::OrderMembers,
@@ -1810,11 +1811,16 @@ fn continuation_pending_program_coherence_matrix() {
             },
             pieces.to_vec(),
         );
-        validate_engine_state(&state).unwrap();
         state
     };
-    let _ = order_stage(&[0, 1]);
-    let mut wrong_surface = order_stage(&[0, 2]);
+    assert!(validate_engine_state(&order_stage(&[0, 1])).is_ok());
+    assert!(validate_engine_state(&order_stage(&[0])).is_ok());
+    assert!(validate_engine_state(&order_stage(&[0, 1, 2])).is_ok());
+
+    // Unreachable partial history.
+    assert!(validate_engine_state(&order_stage(&[0, 2])).is_err());
+    // Wrong candidate surface with matching cardinality stays invalid.
+    let mut wrong_surface = order_stage(&[0, 1]);
     set_pending_domain(
         &mut wrong_surface,
         mtgml_decision::DecisionDomainV2::Order {
@@ -1823,6 +1829,25 @@ fn continuation_pending_program_coherence_matrix() {
         },
         vec![0, 1],
     );
+    wrong_surface
+        .execution
+        .continuations
+        .get_mut(&ContinuationId(1))
+        .unwrap()
+        .payload = ContinuationPayloadV2::SyntheticM2Assembly {
+        stage: AssemblyStageV2::OrderMembers,
+        selected_count: Some(2),
+        selected_piece_keys: vec![0, 1],
+        ordered_piece_keys: Vec::new(),
+    };
+    // Rebuild a mismatched surface on the pending side only.
+    if let Some(pending) = wrong_surface.execution.pending_decision.as_mut() {
+        pending.request.candidates = vec![mtgml_decision::AuthoritativeCandidateV2 {
+            candidate_id: CandidateIdV1(0),
+            visible_intent: mtgml_decision::CandidateIntent::SelectMode { mode_index: 0 },
+            trusted_binding: mtgml_decision::EngineCandidateBinding::SelectMode { mode_index: 0 },
+        }];
+    }
     assert!(validate_engine_state(&wrong_surface).is_err());
 
     // An active continuation without a resuming pending request can never
