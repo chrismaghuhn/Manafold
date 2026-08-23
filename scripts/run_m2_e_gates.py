@@ -167,10 +167,8 @@ def check_no_runtime_lifecycle_channel() -> str:
     for path in runtime_sources:
         if "fixture_support" in path.read_text(encoding="utf-8"):
             raise AssertionError(f"runtime source references fixture support: {path.name}")
-    env_lib = (ROOT / "crates" / "mtgml-environment" / "src" / "lib.rs").read_text(
-        encoding="utf-8"
-    )
-    if '#[cfg(test)]' not in env_lib or "mod tests;" not in env_lib:
+    env_lib = (ROOT / "crates" / "mtgml-environment" / "src" / "lib.rs").read_text(encoding="utf-8")
+    if "#[cfg(test)]" not in env_lib or "mod tests;" not in env_lib:
         raise AssertionError("environment test module lost its cfg(test) guard")
     if env_lib.index("#[cfg(test)]") > env_lib.index("mod tests;"):
         raise AssertionError("cfg(test) no longer guards the environment test module")

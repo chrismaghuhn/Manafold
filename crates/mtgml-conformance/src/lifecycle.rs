@@ -14,8 +14,9 @@ use mtgml_rules::{AuthoritativeRuleEvent, TransitionResult};
 use mtgml_state::{
     construct_synthetic_engine_state, EngineState, IdentityMutationV1, KnowledgeAcquisitionCause,
     KnowledgeAcquisitionReason, KnowledgeHistoryChannel, KnowledgeInvalidationReason,
-    KnowledgeMutationV1, PerspectiveLifecycleAuditV1, PerspectiveLifecycleMutationV1,
-    SyntheticResetInputs, VisibilityPartition, ZoneLocation, ZonePosition,
+    KnowledgeMutationV1, KnownLocationFactV2, PerspectiveLifecycleAuditV1,
+    PerspectiveLifecycleMutationV1, SyntheticResetInputs, VisibilityPartition, ZoneLocation,
+    ZonePosition,
 };
 
 use crate::ConformanceFailure;
@@ -330,6 +331,123 @@ pub fn scenario_reidentification(
     transition.finish().map_err(contract)
 }
 
+/// Private look plus an accepted public return: exercises UpdateLocation
+/// transitions and ordered multi-update history on one retained record.
+pub fn scenario_private_look_and_history(
+    before: &EngineState,
+) -> Result<TransitionResult, ConformanceFailure> {
+    use mtgml_state::KnownLocationFactV2;
+    let mut transition = FixtureTransition::start(before).map_err(contract)?;
+    let revealed = transition
+        .move_object_incarnation(GameObjectId(3), battlefield())
+        .map_err(contract)?;
+    transition
+        .apply_occurrence(occurrence(
+            P1,
+            1,
+            IdentityMutationV1::Allocate {
+                opaque: OpaqueObjectId(2),
+                object: revealed,
+            },
+            Some(KnowledgeMutationV1::Acquire {
+                opaque: OpaqueObjectId(2),
+                definition: Some(CardDefinitionId(3)),
+                location: Some(battlefield()),
+                acquisition: observed(
+                    1,
+                    KnowledgeHistoryChannel::Public,
+                    KnowledgeAcquisitionCause::ExplicitReveal,
+                ),
+            }),
+            mtgml_rules::PerspectiveObservationPolicyV1::Appeared {
+                from_zone: ZoneKind::Exile,
+                to_zone: ZoneKind::Battlefield,
+                new_object: revealed,
+            },
+        ))
+        .map_err(contract)?;
+    let hidden = transition
+        .move_object_incarnation(revealed, hidden_hand(P2))
+        .map_err(contract)?;
+    transition
+        .apply_occurrence(occurrence(
+            P1,
+            2,
+            IdentityMutationV1::Remap {
+                opaque: OpaqueObjectId(2),
+                from_object: revealed,
+                to_object: hidden,
+            },
+            Some(KnowledgeMutationV1::CurrentToHistory {
+                opaque: OpaqueObjectId(2),
+                observed_definition: None,
+            }),
+            mtgml_rules::PerspectiveObservationPolicyV1::MovedInSight {
+                from_zone: ZoneKind::Battlefield,
+                to_zone: ZoneKind::Hand,
+                old_object: revealed,
+                new_object: hidden,
+                reveals_old: true,
+                reveals_new: false,
+            },
+        ))
+        .map_err(contract)?;
+    // Accepted UpdateLocation: the perspective looks at the object inside the
+    // hidden zone (private/private_look) without any envelope.
+    transition
+        .apply_occurrence(occurrence(
+            P1,
+            3,
+            IdentityMutationV1::None,
+            Some(KnowledgeMutationV1::UpdateLocation {
+                opaque: OpaqueObjectId(2),
+                fact: KnownLocationFactV2 {
+                    location: hidden_hand(P2),
+                    provenance: observed(
+                        3,
+                        KnowledgeHistoryChannel::Private,
+                        KnowledgeAcquisitionCause::PrivateLook,
+                    ),
+                },
+            }),
+            mtgml_rules::PerspectiveObservationPolicyV1::NoEnvelope,
+        ))
+        .map_err(contract)?;
+    let returned = transition
+        .move_object_incarnation(hidden, battlefield())
+        .map_err(contract)?;
+    transition
+        .apply_occurrence(occurrence(
+            P1,
+            4,
+            IdentityMutationV1::Remap {
+                opaque: OpaqueObjectId(2),
+                from_object: hidden,
+                to_object: returned,
+            },
+            Some(KnowledgeMutationV1::UpdateLocation {
+                opaque: OpaqueObjectId(2),
+                fact: KnownLocationFactV2 {
+                    location: battlefield(),
+                    provenance: observed(
+                        4,
+                        KnowledgeHistoryChannel::Public,
+                        KnowledgeAcquisitionCause::PublicEvent,
+                    ),
+                },
+            }),
+            mtgml_rules::PerspectiveObservationPolicyV1::MovedInSight {
+                from_zone: ZoneKind::Hand,
+                to_zone: ZoneKind::Battlefield,
+                old_object: hidden,
+                new_object: returned,
+                reveals_old: true,
+                reveals_new: true,
+            },
+        ))
+        .map_err(contract)?;
+    transition.finish().map_err(contract)
+}
 /// Public fan-out: one physical public occurrence authorized for both
 /// perspectives produces one occurrence record per perspective with that
 /// perspective's own next visible sequences (N/N+1 style independence).
@@ -660,5 +778,56 @@ mod gate_evidence {
         assert!(result.next_state.perspective_identities.players[&P1]
             .retired_object_ids
             .contains(&OpaqueObjectId(2)));
+    }
+}
+
+#[cfg(test)]
+mod gate_evidence_history {
+    use super::*;
+
+    #[test]
+    fn private_look_and_public_return_order_history_strictly() {
+        let before = lifecycle_fixture();
+        let result = scenario_private_look_and_history(&before).unwrap();
+        let record = &result.next_state.knowledge.players[&P1].active[&OpaqueObjectId(2)];
+        assert_eq!(record.historical_locations.len(), 2);
+        let sequences: Vec<u64> = record
+            .historical_locations
+            .iter()
+            .filter_map(|fact| fact.provenance.observed_sequence())
+            .map(|sequence| sequence.0)
+            .collect();
+        assert_eq!(sequences, vec![1, 3]);
+        assert_eq!(
+            record
+                .known_location
+                .as_ref()
+                .unwrap()
+                .provenance
+                .observed_sequence(),
+            Some(VisibleSequence(4))
+        );
+        assert_eq!(
+            result.next_state.knowledge.players[&P1].next_visible_sequence,
+            VisibleSequence(5)
+        );
+    }
+
+    #[test]
+    fn own_private_identity_acquisition_is_owned_gate_evidence() {
+        let before = lifecycle_fixture();
+        scenario_own_private_identity(&before).unwrap();
+    }
+
+    #[test]
+    fn public_fanout_is_owned_gate_evidence() {
+        let before = lifecycle_fixture();
+        let result = scenario_public_fanout_two_reveals(&before).unwrap();
+        assert_eq!(
+            result.next_state.perspective_identities.players[&P1]
+                .opaque_to_object
+                .len(),
+            3
+        );
     }
 }
