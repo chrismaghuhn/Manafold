@@ -119,9 +119,9 @@ GATE_TESTS: dict[str, tuple[EvidenceDefinition, ...]] = {
             "untrackable hidden transition retires identity and knowledge",
         ),
         rust(
-            "mtgml-environment",
-            "tests::authorized_but_unresolvable_objects_fail_closed",
-            "authorized unresolvable references abort the candidate transition",
+            "mtgml-conformance",
+            "lifecycle::gate_evidence::reidentification_of_a_randomized_card_uses_fresh_opaque_and_keeps_old_retired",
+            "same physical card reidentifies under a fresh unused opaque id",
         ),
         source(
             "source_check::no_runtime_lifecycle_channel",

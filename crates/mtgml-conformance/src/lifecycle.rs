@@ -246,7 +246,7 @@ pub fn scenario_indistinguishability(
         }
         // Every perspective that still retains the object loses it too.
         let p2_opaque = p2_identity_before.object_to_opaque.get(&object).copied();
-        let p2_knows = p2_opquate_is_known(before, p2_opaque.as_ref());
+        let p2_knows = p2_opaque_is_known(before, p2_opaque.as_ref());
         if p2_knows {
             transition
                 .apply_occurrence(occurrence(
@@ -293,10 +293,12 @@ pub fn scenario_indistinguishability(
 }
 
 /// Later re-identification after retirement allocates the next deterministic
-/// opaque id, which is never one of the retired ids.
+/// opaque id, which is never one of the retired ids. The revealed member is
+/// one of the actually randomized hidden-set objects; its authoritative
+/// physical/definition identity is carried through the same transition.
 pub fn scenario_reidentification(
     before: &EngineState,
-) -> Result<TransitionResult, ConformanceFailure> {
+) -> Result<(TransitionResult, PhysicalCardId), ConformanceFailure> {
     let mut transition = FixtureTransition::start(before).map_err(contract)?;
     // Reidentify a member of the actual randomized hidden set (Hand(P2)).
     let hidden_members: Vec<GameObjectId> = before
@@ -310,6 +312,10 @@ pub fn scenario_reidentification(
         .first()
         .copied()
         .ok_or_else(|| ConformanceFailure::Contract("hidden set is empty".into()))?;
+    // Bind the reveal to the authoritative identity of the hidden member.
+    let target_object = &before.zones.objects[&target];
+    let expected_physical = target_object.physical_card;
+    let expected_definition = target_object.card_definition;
     let next_opaque = before.perspective_identities.players[&P1].next_opaque_object_id;
     let seen = transition
         .move_object_incarnation(target, battlefield())
@@ -324,7 +330,7 @@ pub fn scenario_reidentification(
             },
             Some(KnowledgeMutationV1::Acquire {
                 opaque: next_opaque,
-                definition: Some(CardDefinitionId(4)),
+                definition: Some(expected_definition),
                 location: Some(battlefield()),
                 acquisition: observed(
                     before.knowledge.players[&P1].next_visible_sequence.0,
@@ -333,13 +339,22 @@ pub fn scenario_reidentification(
                 ),
             }),
             mtgml_rules::PerspectiveObservationPolicyV1::Appeared {
-                from_zone: ZoneKind::Exile,
+                from_zone: ZoneKind::Hand,
                 to_zone: ZoneKind::Battlefield,
                 new_object: seen,
             },
         ))
         .map_err(contract)?;
-    transition.finish().map_err(contract)
+    let result = transition.finish().map_err(contract)?;
+    // The new incarnation must still carry the same physical card.
+    assert_eq!(
+        result.next_state.zones.objects[&seen].physical_card,
+        expected_physical
+    );
+    Ok((
+        result,
+        expected_physical.expect("hidden member carries a physical card"),
+    ))
 }
 
 /// Private look plus an accepted public return: exercises UpdateLocation
@@ -641,7 +656,7 @@ pub fn assert_exact_transition_product(
     Ok(())
 }
 
-fn p2_opquate_is_known(before: &EngineState, opaque: Option<&OpaqueObjectId>) -> bool {
+fn p2_opaque_is_known(before: &EngineState, opaque: Option<&OpaqueObjectId>) -> bool {
     match opaque {
         Some(opaque) => before.knowledge.players[&P2].active.contains_key(opaque),
         None => false,
@@ -710,9 +725,8 @@ mod gate_evidence {
         }
     }
 
-    #[ignore = "reidentification cursor final-compare divergence under investigation"]
     #[test]
-    fn reidentification_after_randomization_allocates_next_unused_never_reused() {
+    fn reidentification_of_a_randomized_card_uses_fresh_opaque_and_keeps_old_retired() {
         let mut state = lifecycle_fixture();
         state = scenario_reveal_then_tracked_incarnation(&state)
             .unwrap()
@@ -721,16 +735,38 @@ mod gate_evidence {
             .unwrap()
             .next_state;
         let next_before = state.perspective_identities.players[&P1].next_opaque_object_id;
-        let result = scenario_reidentification(&state).unwrap();
+        let retired_before = state.perspective_identities.players[&P1]
+            .retired_object_ids
+            .clone();
+        let (result, physical) = scenario_reidentification(&state).unwrap();
         let identity = &result.next_state.perspective_identities.players[&P1];
-        assert!(identity.retired_object_ids.contains(&OpaqueObjectId(1)));
-        assert!(identity.retired_object_ids.contains(&OpaqueObjectId(2)));
-        assert!(!identity.retired_object_ids.contains(&next_before));
+        // The old opaque ids remain retired and are never reused.
+        for old in &retired_before {
+            assert!(identity.retired_object_ids.contains(old));
+            assert!(!identity.opaque_to_object.contains_key(old));
+        }
+        // The fresh id is exactly the previous allocator cursor.
         assert!(identity.opaque_to_object.contains_key(&next_before));
         assert_eq!(
             identity.next_opaque_object_id,
             OpaqueObjectId(next_before.0 + 1)
         );
+        // The revealed incarnation still carries the same physical card that
+        // went through visible -> hidden -> randomized -> visible.
+        let new_object = identity.opaque_to_object[&next_before];
+        assert_eq!(
+            result.next_state.zones.objects[&new_object].physical_card,
+            Some(physical)
+        );
+        let record = &result.next_state.knowledge.players[&P1].active[&next_before];
+        assert!(matches!(
+            record.acquisition,
+            KnowledgeAcquisitionReason::Observed {
+                channel: KnowledgeHistoryChannel::Public,
+                cause: KnowledgeAcquisitionCause::ExplicitReveal,
+                ..
+            }
+        ));
     }
 
     #[test]
