@@ -140,7 +140,6 @@ GATE_TESTS: dict[str, tuple[EvidenceDefinition, ...]] = {
             "opaque substitution resolves old fields before and new fields after",
         ),
         rust(
-        rust(
             "mtgml-environment",
             "tests::repeated_projection_is_pure_and_stable",
             "projection is read-only across repeated calls",
