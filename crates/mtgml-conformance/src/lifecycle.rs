@@ -14,9 +14,8 @@ use mtgml_rules::{AuthoritativeRuleEvent, TransitionResult};
 use mtgml_state::{
     construct_synthetic_engine_state, EngineState, IdentityMutationV1, KnowledgeAcquisitionCause,
     KnowledgeAcquisitionReason, KnowledgeHistoryChannel, KnowledgeInvalidationReason,
-    KnowledgeMutationV1, KnownLocationFactV2, PerspectiveLifecycleAuditV1,
-    PerspectiveLifecycleMutationV1, SyntheticResetInputs, VisibilityPartition, ZoneLocation,
-    ZonePosition,
+    KnowledgeMutationV1, PerspectiveLifecycleAuditV1, PerspectiveLifecycleMutationV1,
+    SyntheticResetInputs, VisibilityPartition, ZoneLocation, ZonePosition,
 };
 
 use crate::ConformanceFailure;
