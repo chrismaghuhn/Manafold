@@ -140,10 +140,6 @@ GATE_TESTS: dict[str, tuple[EvidenceDefinition, ...]] = {
             "opaque substitution resolves old fields before and new fields after",
         ),
         rust(
-            "mtgml-environment",
-            "tests::unauthorized_fields_stay_absent_even_when_a_mapping_exists",
-            "mapping existence never substitutes for authorization",
-        ),
         rust(
             "mtgml-environment",
             "tests::repeated_projection_is_pure_and_stable",
