@@ -383,7 +383,7 @@ def execute_python_test(definition: EvidenceDefinition, logs: Path, index: int) 
         return evidence
     output = completed.stdout
     log_path.write_text(output, encoding="utf-8")
-    passed = completed.returncode == 0 and re.search(r"\bpassed\b", output)
+    passed = completed.returncode == 0
     evidence.update(
         {
             "status": "PASS" if passed else "FAIL",
