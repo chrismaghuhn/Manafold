@@ -8,7 +8,11 @@ jobs:
   certification-smoke:
     runs-on: ubuntu-latest
     steps:
+      # Certification includes the integration checks, whose M2.B
+      # historical-fixture evidence resolves the starting SHA via git; a
+      # shallow checkout cannot run them.
       - uses: actions/checkout@v7
+        with: {fetch-depth: 0}
       - uses: actions/setup-python@v7
         with: {python-version-file: ".python-version"}
       - run: |

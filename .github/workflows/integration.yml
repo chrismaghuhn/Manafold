@@ -7,7 +7,10 @@ jobs:
   integration:
     runs-on: ubuntu-latest
     steps:
+      # The M2.B historical-fixture evidence resolves the starting SHA via
+      # git; a shallow checkout cannot run the integration suite.
       - uses: actions/checkout@v7
+        with: {fetch-depth: 0}
       - uses: actions/setup-python@v7
         with: {python-version-file: ".python-version"}
       - run: |
@@ -25,6 +28,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+        with: {fetch-depth: 0}
       - uses: actions/setup-python@v7
         with: {python-version: "${{ matrix.python }}"}
       - run: |
