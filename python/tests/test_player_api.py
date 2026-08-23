@@ -37,6 +37,7 @@ class PlayerApiTests(unittest.TestCase):
                 "observed_events",
                 "next_decision",
                 "status",
+                "submission",
             },
         )
         self.assertTrue(

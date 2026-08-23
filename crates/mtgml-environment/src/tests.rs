@@ -1627,7 +1627,6 @@ fn request_existence_is_not_an_error_oracle() {
             code: mtgml_observation::PlayerSubmissionCodeV1::UnavailableDecision,
         }
     );
-    let no_request_bytes = mtgml_wire::encode_canonical(&no_request).unwrap();
 
     // Case B: a decision exists but belongs to p1 (same non-disclosing
     // surface for p2).
