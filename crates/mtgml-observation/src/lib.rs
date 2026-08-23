@@ -592,10 +592,20 @@ impl PlayerStepV2 {
         self.status
             .validate()
             .map_err(|_| ObservationValidationError::EpisodeStatus)?;
-        for event in &self.observed_events {
+        for (index, event) in self.observed_events.iter().enumerate() {
             event.validate()?;
-            if event.state_revision > self.information_state.state_revision {
+            // One accepted transition owns exactly one revision: every
+            // observed envelope of a step belongs to that step's revision.
+            if event.state_revision != self.information_state.state_revision {
                 return Err(ObservationValidationError::FutureEvent);
+            }
+            // Perspective-local visible sequences are strictly increasing and
+            // never reach the step's own next-unused cursor.
+            if event.sequence.0 >= self.information_state.next_visible_sequence.0 {
+                return Err(ObservationValidationError::FutureEvent);
+            }
+            if index > 0 && event.sequence <= self.observed_events[index - 1].sequence {
+                return Err(ObservationValidationError::VisibleSequence);
             }
         }
         if let Some(decision) = &self.next_decision {
