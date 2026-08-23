@@ -671,20 +671,37 @@ class PlayerStepSubmissionV1:
 
     @classmethod
     def from_wire(cls, value: object) -> PlayerStepSubmissionV1:
-        obj = require_exact_keys(value, {"kind"}, {"code"})
-        if obj.get("kind") == "accepted":
+        if not isinstance(value, dict):
+            raise WireError("decode.invalid_json", "submission must be an object")
+        kind = value.get("kind")
+        if kind == "accepted":
+            require_exact_keys(value, {"kind"})
             return cls("accepted")
-        if obj.get("kind") == "rejected":
-            code = obj.get("code")
+        if kind == "rejected":
+            obj = require_exact_keys(value, {"kind", "code"})
+            code = obj["code"]
             if code not in PLAYER_SUBMISSION_CODES:
                 raise WireError("decode.invalid_json", "unknown submission code")
             return cls("rejected", str(code))
-        raise WireError("decode.invalid_json", "unknown submission outcome")
+        raise WireError("decode.invalid_json", "unknown submission outcome kind")
 
     def to_wire(self) -> dict[str, object]:
+        self.validate()
         if self.kind == "accepted":
             return {"kind": "accepted"}
         return {"kind": "rejected", "code": self.code}
+
+    def validate(self) -> None:
+        if self.kind == "accepted":
+            if self.code is not None:
+                raise WireError("encode.serialization", "accepted submission must not carry a code")
+        elif self.kind == "rejected":
+            if self.code is None or self.code not in PLAYER_SUBMISSION_CODES:
+                raise WireError(
+                    "encode.serialization", "rejected submission carries an invalid code"
+                )
+        else:
+            raise WireError("encode.serialization", "unknown submission kind")
 
 
 @dataclass(frozen=True, slots=True)
@@ -732,6 +749,25 @@ class PlayerStepV2:
             raise WireError("semantic.player_step", "next decision is not for this endpoint")
         if self.status.kind != "running" and self.next_decision is not None:
             raise WireError("semantic.player_step", "completed episode exposes a decision")
+        # ML_ENVIRONMENT.md rejection invariants.
+        self.submission.validate()
+        if self.submission.kind == "rejected":
+            if self.observed_events:
+                raise WireError(
+                    "semantic.player_step",
+                    "rejected submission must carry an empty event batch",
+                )
+            if self.submission.code == "episode_closed":
+                if self.status.kind == "running":
+                    raise WireError(
+                        "semantic.player_step",
+                        "episode_closed rejection requires a non-running status",
+                    )
+            elif self.status.kind != "running":
+                raise WireError(
+                    "semantic.player_step",
+                    "typed rejection requires a running episode",
+                )
 
     def to_wire(self) -> dict[str, object]:
         self.validate()

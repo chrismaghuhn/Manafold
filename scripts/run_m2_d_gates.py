@@ -268,7 +268,7 @@ def toolchain_snapshot() -> dict[str, Any]:
 def prepare_output(output: Path) -> Path:
     relative = output.relative_to(ROOT)
     if "dist" not in relative.parts or output == ROOT:
-        raise RuntimeError("M2.C verification output must remain below repository dist")
+        raise RuntimeError("M2.D verification output must remain below repository dist")
     if "verification" in relative.parts:
         raise RuntimeError("dist/verification is exclusively owned by release-candidate")
     if output.exists():
@@ -278,7 +278,7 @@ def prepare_output(output: Path) -> Path:
         shutil.rmtree(output)
     logs = output / "logs"
     logs.mkdir(parents=True, exist_ok=True)
-    (output / OUTPUT_MARKER).write_text("owned by scripts/run_m2_c_gates.py\n", encoding="utf-8")
+    (output / OUTPUT_MARKER).write_text("owned by scripts/run_m2_d_gates.py\n", encoding="utf-8")
     return logs
 
 
@@ -445,7 +445,7 @@ def render_markdown(report: dict[str, Any]) -> str:
     lines = [
         "# M2.D Gate Verification",
         "",
-        "Generated outside the reproducible source archive by `scripts/run_m2_c_gates.py`.",
+        "Generated outside the reproducible source archive by `scripts/run_m2_d_gates.py`.",
         "",
         f"- Mode: **{report['mode']}**",
         f"- Source commit: `{report.get('source_commit')}`",

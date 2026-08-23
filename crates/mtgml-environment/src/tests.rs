@@ -1539,31 +1539,99 @@ fn episode_status_does_not_change_the_information_digest() {
 
 #[test]
 fn malformed_wire_bytes_never_reach_the_semantic_endpoint() {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    use crate::endpoint::{PlayerEndpoint, PlayerEndpointError};
+
+    /// Seam probe: counts every semantic `submit` crossing the A/B split.
+    struct CountingEndpoint<'a> {
+        inner: &'a dyn PlayerEndpoint,
+        submit_calls: AtomicUsize,
+    }
+    impl PlayerEndpoint for CountingEndpoint<'_> {
+        fn perspective(&self) -> PlayerId {
+            self.inner.perspective()
+        }
+        fn observation(
+            &self,
+        ) -> Result<mtgml_observation::ObservationEnvelope, PlayerEndpointError> {
+            self.inner.observation()
+        }
+        fn information_state(
+            &self,
+        ) -> Result<mtgml_observation::PlayerInformationStateV2, PlayerEndpointError> {
+            self.inner.information_state()
+        }
+        fn visible_decision(
+            &self,
+        ) -> Result<Option<mtgml_decision::PlayerDecisionRequestV2>, PlayerEndpointError> {
+            self.inner.visible_decision()
+        }
+        fn submit(
+            &self,
+            response: DecisionResponseV2,
+        ) -> Result<PlayerStepV2, PlayerEndpointError> {
+            self.submit_calls.fetch_add(1, Ordering::SeqCst);
+            self.inner.submit(response)
+        }
+    }
+
     let controller = TrustedEnvironmentController::new(backend());
-    let p1 = controller.bind_player(PlayerId(1)).unwrap();
+    let handle = controller.bind_player(PlayerId(1)).unwrap();
+    let endpoint = CountingEndpoint {
+        inner: &handle,
+        submit_calls: AtomicUsize::new(0),
+    };
     let before = public_fingerprint(&controller);
+    let submit_count = |endpoint: &CountingEndpoint| endpoint.submit_calls.load(Ordering::SeqCst);
 
     let malformed = b"{not json";
-    let boundary_error = crate::submit_response_bytes(&p1, malformed).unwrap_err();
+    let boundary_error = crate::submit_response_bytes(&endpoint, malformed).unwrap_err();
     assert_eq!(boundary_error.code(), "malformed_response");
+    assert_eq!(submit_count(&endpoint), 0, "malformed bytes reached submit");
 
     // Noncanonical: valid JSON, wrong key order.
     let canonical = mtgml_wire::encode_canonical(&response(0, 0)).unwrap();
     let mut noncanonical = Vec::with_capacity(canonical.len() + 1);
     noncanonical.push(b' ');
     noncanonical.extend_from_slice(&canonical);
-    let boundary_error = crate::submit_response_bytes(&p1, &noncanonical).unwrap_err();
+    let boundary_error = crate::submit_response_bytes(&endpoint, &noncanonical).unwrap_err();
     assert_eq!(boundary_error.code(), "malformed_response");
+    assert_eq!(
+        submit_count(&endpoint),
+        0,
+        "noncanonical bytes reached submit"
+    );
 
     // Wrong schema version.
     let wrong_schema = String::from_utf8(canonical.clone())
         .unwrap()
         .replace("decision-response.v2", "decision-response.v1")
         .into_bytes();
-    let boundary_error = crate::submit_response_bytes(&p1, &wrong_schema).unwrap_err();
+    let boundary_error = crate::submit_response_bytes(&endpoint, &wrong_schema).unwrap_err();
     assert_eq!(boundary_error.code(), "malformed_response");
+    assert_eq!(
+        submit_count(&endpoint),
+        0,
+        "wrong-schema bytes reached submit"
+    );
 
-    // Zero semantic submissions, zero mutation.
+    // Positive seam control: canonical bytes carrying a semantically
+    // invalid answer do reach Layer B exactly once and return a typed
+    // rejected PlayerStep there.
+    let mut stale = response(0, 0);
+    stale.state_revision = StateRevision(9);
+    let stale_bytes = mtgml_wire::encode_canonical(&stale).unwrap();
+    let step = crate::submit_response_bytes(&endpoint, &stale_bytes).unwrap();
+    assert_eq!(
+        step.submission,
+        mtgml_observation::PlayerStepSubmissionV1::Rejected {
+            code: mtgml_observation::PlayerSubmissionCodeV1::StaleDecision,
+        }
+    );
+    assert_eq!(submit_count(&endpoint), 1);
+
+    // Zero mutation across both layers.
     assert_eq!(public_fingerprint(&controller), before);
 }
 
@@ -1619,7 +1687,13 @@ fn request_existence_is_not_an_error_oracle() {
     let p1 = controller.bind_player(PlayerId(1)).unwrap();
     let p2 = controller.bind_player(PlayerId(2)).unwrap();
 
-    // Case A: no visible decision for p2 (entry belongs to p1).
+    // Case A: no request exists at all. The continuation chain was fully
+    // completed, so pending_decision is None while the episode stays
+    // Running; P2 submits into a genuinely requestless state.
+    let _ = submit_answer(&p1, order_entry_answer());
+    let _ = submit_answer(&p1, number_answer(2));
+    let _ = submit_answer(&p1, members_answer(&[0, 1]));
+    let _ = submit_answer(&p1, order_answer(&[1, 0]));
     let no_request = p2.submit(response(0, 0)).unwrap();
     assert_eq!(
         no_request.submission,
@@ -1628,10 +1702,11 @@ fn request_existence_is_not_an_error_oracle() {
         }
     );
 
-    // Case B: a decision exists but belongs to p1 (same non-disclosing
-    // surface for p2).
-    let _ = p1.submit(response(0, 0)).unwrap();
-    let foreign = p2.submit(response(0, 1)).unwrap();
+    // Case B: a decision exists but belongs to P1 (paired foreign-request
+    // state) — same non-disclosing surface for P2.
+    let other = TrustedEnvironmentController::new(backend());
+    let other_p2 = other.bind_player(PlayerId(2)).unwrap();
+    let foreign = other_p2.submit(response(0, 0)).unwrap();
     assert_eq!(
         foreign.submission,
         mtgml_observation::PlayerStepSubmissionV1::Rejected {
@@ -1639,7 +1714,8 @@ fn request_existence_is_not_an_error_oracle() {
         }
     );
 
-    // The public rejection surface must not distinguish the two cases by
+    // The public rejection surface must not distinguish "no request
+    // exists" from "the request belongs to another perspective" by
     // anything other than the legitimately changed environment product.
     let foreign_information = mtgml_wire::encode_canonical(&foreign.information_state).unwrap();
     let no_request_information =
@@ -1939,4 +2015,44 @@ fn internal_failures_surface_only_service_unavailable() {
             "leaked {vocabulary}"
         );
     }
+
+    // The same closed surface must hold across the public player boundary:
+    // an internal service defect driven through `PlayerEndpoint::submit`
+    // (here: authoritative limit-counter exhaustion while committing an
+    // otherwise fully accepted submission) may not disclose trusted detail
+    // and must map to exactly `service_unavailable`.
+    let players = [PlayerId(1), PlayerId(2)];
+    let fresh = backend().checkpoint().unwrap();
+    let exhausted_checkpoint = EnvironmentCheckpointV3::new(
+        fresh.state,
+        fresh.status.clone(),
+        EnvironmentLimitCounters {
+            decisions_submitted: u64::MAX,
+            ..fresh.limit_counters.clone()
+        },
+        fresh.codec.clone(),
+    )
+    .unwrap();
+    let exhausted_controller = TrustedEnvironmentController::new(
+        SyntheticM1EnvironmentBackend::from_checkpoint(exhausted_checkpoint, config(players))
+            .unwrap(),
+    );
+    let p1 = exhausted_controller.bind_player(PlayerId(1)).unwrap();
+    let before = public_fingerprint(&exhausted_controller);
+    let request = p1
+        .visible_decision()
+        .unwrap()
+        .expect("entry decision visible");
+    let bytes = mtgml_wire::encode_canonical(&DecisionResponseV2 {
+        schema_version: DECISION_RESPONSE_V2_SCHEMA.into(),
+        player_decision_id: request.player_decision_id,
+        state_revision: request.state_revision,
+        answer: order_entry_answer(),
+    })
+    .unwrap();
+    let boundary_error = crate::submit_response_bytes(&p1, &bytes).unwrap_err();
+    assert_eq!(boundary_error.code(), "service_unavailable");
+
+    // The failed internal commit must not have mutated anything.
+    assert_eq!(public_fingerprint(&exhausted_controller), before);
 }

@@ -45,6 +45,101 @@ class PlayerApiTests(unittest.TestCase):
         )
 
 
+class PlayerStepSubmissionContractTests(unittest.TestCase):
+    """The submission outcome is a closed variant union: invalid domain
+    objects must never serialize as plausible wire data (WIRE_CONTRACT)."""
+
+    GOLDEN = ROOT / "wire" / "golden" / "player-step-v2-rejected.json"
+
+    def _golden_step(self) -> PlayerStepV2:
+        from mtgml.wire import decode_canonical
+
+        decoded = decode_canonical("player-step.v2", self.GOLDEN.read_bytes())
+        assert isinstance(decoded, PlayerStepV2)
+        return decoded
+
+    def test_unknown_kind_is_never_serialized_as_plausible_wire_data(self) -> None:
+        from mtgml.errors import WireError
+        from mtgml.observation import PlayerStepSubmissionV1
+
+        with self.assertRaises(WireError):
+            PlayerStepSubmissionV1("garbage", None).to_wire()
+        with self.assertRaises(WireError):
+            PlayerStepSubmissionV1("garbage", "stale_decision").to_wire()
+
+    def test_accepted_must_not_carry_a_code(self) -> None:
+        from mtgml.errors import WireError
+        from mtgml.observation import PlayerStepSubmissionV1
+
+        with self.assertRaises(WireError):
+            PlayerStepSubmissionV1.from_wire({"kind": "accepted", "code": "stale_decision"})
+        with self.assertRaises(WireError):
+            PlayerStepSubmissionV1("accepted", "stale_decision").to_wire()
+
+    def test_rejected_requires_a_closed_code(self) -> None:
+        from mtgml.errors import WireError
+        from mtgml.observation import PlayerStepSubmissionV1
+
+        with self.assertRaises(WireError):
+            PlayerStepSubmissionV1.from_wire({"kind": "rejected"})
+        with self.assertRaises(WireError):
+            PlayerStepSubmissionV1("rejected", None).to_wire()
+        with self.assertRaises(WireError):
+            PlayerStepSubmissionV1("rejected", "not_a_code").to_wire()
+
+    def test_valid_variants_round_trip_exactly(self) -> None:
+        from mtgml.observation import PlayerStepSubmissionV1
+
+        self.assertEqual(
+            PlayerStepSubmissionV1.from_wire({"kind": "accepted"}).to_wire(),
+            {"kind": "accepted"},
+        )
+        self.assertEqual(
+            PlayerStepSubmissionV1.from_wire(
+                {"kind": "rejected", "code": "stale_decision"}
+            ).to_wire(),
+            {"kind": "rejected", "code": "stale_decision"},
+        )
+
+    def test_step_level_rejection_invariants(self) -> None:
+        import dataclasses
+
+        from mtgml.episode import EpisodeStatus
+        from mtgml.errors import WireError
+        from mtgml.observation import ObservedEventEnvelopeV2, PlayerStepSubmissionV1
+
+        step = self._golden_step()
+        step.validate()
+
+        event = ObservedEventEnvelopeV2.from_wire(
+            {
+                "schema_version": "observed-event-envelope.v2",
+                "sequence": "1",
+                "state_revision": "0",
+                "event": {"kind": "public_outcome", "code": "synthetic"},
+            }
+        )
+        with_events = dataclasses.replace(step, observed_events=(event,))
+        with self.assertRaises(WireError):
+            with_events.validate()
+
+        closed_running = dataclasses.replace(
+            step,
+            submission=PlayerStepSubmissionV1("rejected", "episode_closed"),
+        )
+        with self.assertRaises(WireError):
+            closed_running.validate()
+
+        other_code_closed_episode = dataclasses.replace(
+            step,
+            status=EpisodeStatus.from_wire(
+                {"kind": "truncated", "reason": "external_stop", "players": []}
+            ),
+        )
+        with self.assertRaises(WireError):
+            other_code_closed_episode.validate()
+
+
 def test_v2_public_boundary_excludes_privileged_fields() -> None:
     test = PlayerApiTests("test_v2_public_boundary_excludes_privileged_fields")
     test.test_v2_public_boundary_excludes_privileged_fields()

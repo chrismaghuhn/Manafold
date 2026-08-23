@@ -213,6 +213,8 @@ pub enum ObservationValidationError {
     VisibleSequence,
     #[error("information-state perspective or revision is inconsistent")]
     PerspectiveRevision,
+    #[error("submission outcome contradicts the step product")]
+    Submission,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -609,7 +611,33 @@ impl PlayerStepV2 {
         if !matches!(self.status, EpisodeStatus::Running) && self.next_decision.is_some() {
             return Err(ObservationValidationError::Decision);
         }
+        // ML_ENVIRONMENT.md: a typed semantic rejection mirrors the unchanged
+        // product with an empty event batch; only the outcome code differs.
+        if let PlayerStepSubmissionV1::Rejected { code } = &self.submission {
+            if !self.observed_events.is_empty() {
+                return Err(ObservationValidationError::Submission);
+            }
+            if *code == PlayerSubmissionCodeV1::EpisodeClosed {
+                // An episode_closed rejection requires a non-Running status.
+                if matches!(self.status, EpisodeStatus::Running) {
+                    return Err(ObservationValidationError::Submission);
+                }
+            } else if !matches!(self.status, EpisodeStatus::Running) {
+                // Every other typed rejection mirrors a live Running
+                // episode; a closed episode surfaces as episode_closed.
+                return Err(ObservationValidationError::Submission);
+            }
+        }
         Ok(())
+    }
+}
+
+impl PlayerServiceErrorCodeV1 {
+    /// Single versioned authority for the public service-failure string.
+    pub fn code(self) -> &'static str {
+        match self {
+            Self::ServiceUnavailable => "service_unavailable",
+        }
     }
 }
 
