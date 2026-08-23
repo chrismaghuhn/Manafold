@@ -1,12 +1,13 @@
 //! Private, detached M2 state shapes prepared before the current-runtime cut.
 //!
 //! Nothing in this module is reachable through the current `EngineState` until
-//! the coordinated Tasks 7â€“11 cut. The types deliberately do not adapt or
+//! the coordinated Tasks 7Ã¢â‚¬â€œ11 cut. The types deliberately do not adapt or
 //! reinterpret any historical V1/V2 value.
 
 use std::collections::{BTreeMap, BTreeSet};
 
 use mtgml_decision::AuthoritativeDecisionRequestV2;
+use mtgml_decision::CandidateIntent;
 use mtgml_model::{
     AbilityInstanceId, CardDefinitionId, ContinuationId, GameObjectId, OpaqueAbilityId,
     OpaqueObjectId, PhysicalCardId, PlayerDecisionIdV1, PlayerId, StateRevision, VisibleSequence,
@@ -31,7 +32,7 @@ pub enum AssemblyStageV2 {
 }
 
 impl AssemblyStageV2 {
-    fn index(self) -> u16 {
+    pub fn stage_index(self) -> u16 {
         match self {
             Self::ChooseCount => 0,
             Self::ChooseMembers => 1,
@@ -52,9 +53,9 @@ pub enum ContinuationPayloadV2 {
 }
 
 impl ContinuationPayloadV2 {
-    fn stage_index(&self) -> u16 {
+    pub fn stage_index(&self) -> u16 {
         match self {
-            Self::SyntheticM2Assembly { stage, .. } => stage.index(),
+            Self::SyntheticM2Assembly { stage, .. } => stage.stage_index(),
         }
     }
 }
@@ -181,6 +182,70 @@ pub enum M2ShapeViolation {
     ContinuationStage,
 }
 
+/// Inclusive numeric interval of the synthetic assembly ChooseCount stage.
+///
+/// This is the single authority for the frozen M2.C program bound; the rules
+/// kernel consumes these values instead of restating them.
+pub const SYNTHETIC_COUNT_MIN: u32 = 0;
+pub const SYNTHETIC_COUNT_MAX: u32 = 3;
+
+/// Stage-payload invariants of the one frozen synthetic assembly payload.
+///
+/// Every reachable continuation state must have exactly one unambiguous
+/// semantic interpretation:
+///
+/// - `ChooseCount`: nothing decided yet;
+/// - `ChooseMembers`: the numeric count is decided, the member set is not;
+/// - `OrderMembers`: the member set is decided in canonical set form, the
+///   semantic order is not (it lives only in the pending stage answer).
+///
+/// Ordered partial data never persists: completion removes the continuation.
+fn validate_synthetic_assembly(
+    stage: AssemblyStageV2,
+    selected_count: Option<u32>,
+    selected_piece_keys: &[u32],
+    ordered_piece_keys: &[u32],
+) -> Result<(), M2ShapeViolation> {
+    let canonical_set = |values: &[u32]| values.windows(2).all(|window| window[0] < window[1]);
+    match stage {
+        AssemblyStageV2::ChooseCount => {
+            if selected_count.is_some()
+                || !selected_piece_keys.is_empty()
+                || !ordered_piece_keys.is_empty()
+            {
+                return Err(M2ShapeViolation::Knowledge);
+            }
+        }
+        AssemblyStageV2::ChooseMembers => {
+            if selected_count.is_none()
+                || !selected_piece_keys.is_empty()
+                || !ordered_piece_keys.is_empty()
+            {
+                return Err(M2ShapeViolation::Knowledge);
+            }
+        }
+        AssemblyStageV2::OrderMembers => {
+            let Some(count) = selected_count else {
+                return Err(M2ShapeViolation::Knowledge);
+            };
+            if !ordered_piece_keys.is_empty()
+                || selected_piece_keys.len() != count as usize
+                || !canonical_set(selected_piece_keys)
+            {
+                return Err(M2ShapeViolation::Knowledge);
+            }
+        }
+    }
+    // A decided count can only originate from the supported ChooseCount
+    // interval; anything else was never offered by this program.
+    if let Some(count) = selected_count {
+        if count > SYNTHETIC_COUNT_MAX {
+            return Err(M2ShapeViolation::Knowledge);
+        }
+    }
+    Ok(())
+}
+
 pub fn validate_m2_shape(
     current_revision: StateRevision,
     players: &BTreeSet<PlayerId>,
@@ -225,6 +290,21 @@ pub fn validate_m2_shape(
         if continuation.stage_index != continuation.payload.stage_index() {
             return Err(M2ShapeViolation::ContinuationStage);
         }
+        match &continuation.payload {
+            ContinuationPayloadV2::SyntheticM2Assembly {
+                stage,
+                selected_count,
+                selected_piece_keys,
+                ordered_piece_keys,
+            } => {
+                validate_synthetic_assembly(
+                    *stage,
+                    *selected_count,
+                    selected_piece_keys,
+                    ordered_piece_keys,
+                )?;
+            }
+        }
     }
 
     if let Some(pending) = pending {
@@ -256,6 +336,101 @@ pub fn validate_m2_shape(
                 return Err(M2ShapeViolation::ContinuationStage);
             }
         }
+    }
+    validate_program_coherence(pending, continuations)?;
+    Ok(())
+}
+
+/// The one linear M2 program binds an active continuation and its pending
+/// request into a single authoritative semantic unit: the pending request
+/// must express exactly the referenced stage's program, and an active
+/// continuation must always be resumable.
+fn validate_program_coherence(
+    pending: Option<&PendingDecisionRecordV2>,
+    continuations: &BTreeMap<ContinuationId, ContinuationRecordV2>,
+) -> Result<(), M2ShapeViolation> {
+    if continuations.len() > 1 {
+        return Err(M2ShapeViolation::ContinuationReference);
+    }
+    let Some(record) = continuations.values().next() else {
+        return Ok(());
+    };
+    let Some(pending) = pending else {
+        // An active continuation without its next stage request is not
+        // resumable and can never become checkpointable state.
+        return Err(M2ShapeViolation::ContinuationReference);
+    };
+    if pending.request.continuation_id != Some(record.id) {
+        return Err(M2ShapeViolation::ContinuationReference);
+    }
+    let ContinuationPayloadV2::SyntheticM2Assembly {
+        stage,
+        selected_count,
+        selected_piece_keys,
+        ..
+    } = &record.payload;
+    let candidates_express = |expected_pieces: &[u32]| -> bool {
+        pending.request.candidates.len() == expected_pieces.len()
+            && pending
+                .request
+                .candidates
+                .iter()
+                .enumerate()
+                .all(|(index, candidate)| {
+                    candidate.candidate_id.0 == index as u32
+                        && matches!(
+                            &candidate.visible_intent,
+                            CandidateIntent::SelectMode { mode_index }
+                                if *mode_index == expected_pieces[index]
+                        )
+                })
+    };
+    match (stage, &pending.request.decision) {
+        (
+            AssemblyStageV2::ChooseCount,
+            mtgml_decision::DecisionDomainV2::ChooseNumber { minimum, maximum },
+        ) => {
+            // The engine may offer exactly the supported program interval.
+            if *minimum != i64::from(SYNTHETIC_COUNT_MIN)
+                || *maximum != i64::from(SYNTHETIC_COUNT_MAX)
+                || !pending.request.candidates.is_empty()
+            {
+                return Err(M2ShapeViolation::PendingDecision);
+            }
+        }
+        (
+            AssemblyStageV2::ChooseMembers,
+            mtgml_decision::DecisionDomainV2::ChooseMany { minimum, maximum },
+        ) => {
+            let count = selected_count.ok_or(M2ShapeViolation::Knowledge)?;
+            if count > SYNTHETIC_COUNT_MAX || *minimum != count || *maximum != count {
+                return Err(M2ShapeViolation::PendingDecision);
+            }
+            // Stage members are the fixed synthetic piece surface 0..count.
+            let expected: Vec<u32> = (0..count).collect();
+            if !candidates_express(&expected) {
+                return Err(M2ShapeViolation::PendingDecision);
+            }
+        }
+        (
+            AssemblyStageV2::OrderMembers,
+            mtgml_decision::DecisionDomainV2::Order { minimum, maximum },
+        ) => {
+            let count = selected_count.ok_or(M2ShapeViolation::Knowledge)?;
+            if count > SYNTHETIC_COUNT_MAX || *minimum != count || *maximum != count {
+                return Err(M2ShapeViolation::PendingDecision);
+            }
+            // ChooseMembers offers exactly pieces 0..count and requires
+            // exactly count selections: the only reachable member set is the
+            // full prefix. Anything else is an unreachable history.
+            if *selected_piece_keys != (0..count).collect::<Vec<u32>>() {
+                return Err(M2ShapeViolation::Knowledge);
+            }
+            if !candidates_express(selected_piece_keys) {
+                return Err(M2ShapeViolation::PendingDecision);
+            }
+        }
+        _ => return Err(M2ShapeViolation::PendingDecision),
     }
     Ok(())
 }
@@ -362,7 +537,7 @@ fn validate_knowledge(knowledge: &PlayerKnowledgeStateV2) -> Result<(), M2ShapeV
             return Err(M2ShapeViolation::Knowledge);
         }
         // INFORMATION_MODEL.md: retirement records an explicit invalidation
-        // reason *and visible sequence* — an unsequenced initial
+        // reason *and visible sequence* â€” an unsequenced initial
         // configuration cannot invalidate anything.
         if record.invalidation.provenance.observed_sequence().is_none() {
             return Err(M2ShapeViolation::Knowledge);

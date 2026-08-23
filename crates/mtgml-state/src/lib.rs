@@ -35,7 +35,7 @@ pub use m2_shape::{
     AssemblyStageV2, ContinuationPayloadV2, ContinuationRecordV2, KnowledgeInvalidationV2,
     KnowledgeRecordV2, KnowledgeStateV2, KnownLocationFactV2, PendingDecisionRecordV2,
     PerspectiveIdentityRecordV2, PerspectiveIdentityStateV2, PlayerKnowledgeStateV2,
-    RetiredKnowledgeRecordV2,
+    RetiredKnowledgeRecordV2, SYNTHETIC_COUNT_MAX, SYNTHETIC_COUNT_MIN,
 };
 pub use validation::{validate_engine_state, EngineStateViolation};
 pub use zones::{
