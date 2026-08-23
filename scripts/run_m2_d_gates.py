@@ -158,6 +158,16 @@ GATE_TESTS: dict[str, tuple[EvidenceDefinition, ...]] = {
             "python/tests/test_player_api.py::PlayerApiTests::test_v2_public_boundary_excludes_privileged_fields",
             "Python player boundary excludes privileged fields",
         ),
+        python(
+            "python/tests/test_player_api.py::PlayerStepSubmissionContractTests::"
+            "test_step_level_rejection_invariants",
+            "Python step-level rejection invariants enforce the closed semantics",
+        ),
+        python(
+            "python/tests/test_wire_contracts.py::SharedFixtureTests::"
+            "test_every_negative_fixture_is_rejected_with_expected_code",
+            "Python rejects every shared negative fixture with the expected code",
+        ),
     ),
 }
 
@@ -290,6 +300,33 @@ def exact_rust_pass(output: str, returncode: int) -> bool:
     )
 
 
+_PYTHON_OUTCOME = re.compile(
+    r"(?<![\w-])(\d+)\s+(passed|failed|error|skipped|xfailed|xpassed|deselected|warnings?)\b"
+)
+
+
+def exact_python_pass(output: str, returncode: int, test_name: str) -> bool:
+    """Fail-closed PASS detection: exit 0 alone is never sufficient.  The
+    addressed test node must report PASSED, exactly one executed passing
+    test must appear in the statistics summary, and no substitute outcome
+    (skip/xfail/deselect/error/failure) may be counted."""
+    if returncode != 0:
+        return False
+    if not re.search(re.escape(test_name.rsplit("::", 1)[-1]) + r"\s+PASSED\b", output):
+        return False
+    summaries = [line for line in output.splitlines() if _PYTHON_OUTCOME.search(line)]
+    if len(summaries) != 1:
+        return False
+    passed = 0
+    substitutes = 0
+    for count, kind in _PYTHON_OUTCOME.findall(summaries[0]):
+        if kind == "passed":
+            passed += int(count)
+        elif kind not in ("warning", "warnings"):
+            substitutes += int(count)
+    return passed == 1 and substitutes == 0
+
+
 def execute_source_check(definition: EvidenceDefinition, logs: Path, index: int) -> dict[str, Any]:
     log_path = logs / f"{index:03d}-source-{definition.name.replace(':', '-')}.log"
     evidence = {
@@ -365,7 +402,11 @@ def execute_test(definition: EvidenceDefinition, logs: Path, index: int) -> dict
 
 
 def execute_python_test(definition: EvidenceDefinition, logs: Path, index: int) -> dict[str, Any]:
-    command = (sys.executable, "-m", "pytest", "-q", definition.name)
+    # Double verbosity: pytest.ini pins global `addopts = -q ...`, so a
+    # single -v only reaches net-default output where pytest 9 hides both
+    # the per-node status and the decorated statistics line;
+    # exact_python_pass needs both as executable evidence.
+    command = (sys.executable, "-m", "pytest", "-v", "-v", definition.name)
     log_name = f"{index:03d}-python-{definition.name.replace('/', '-').replace(':', '-')}.log"
     log_path = logs / log_name
     evidence: dict[str, Any] = {
@@ -383,13 +424,17 @@ def execute_python_test(definition: EvidenceDefinition, logs: Path, index: int) 
         return evidence
     output = completed.stdout
     log_path.write_text(output, encoding="utf-8")
-    passed = completed.returncode == 0
+    passed = exact_python_pass(output, completed.returncode, definition.name)
     evidence.update(
         {
             "status": "PASS" if passed else "FAIL",
             "returncode": completed.returncode,
-            "tests_observed": 1,
-            "reason": "python check passed" if passed else "python check failed",
+            "tests_observed": 1 if passed else 0,
+            "reason": (
+                "exact python test executed and passed"
+                if passed
+                else "exact python test did not execute and pass"
+            ),
         }
     )
     return evidence
