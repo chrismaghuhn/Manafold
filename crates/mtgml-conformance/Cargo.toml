@@ -8,6 +8,7 @@ rust-version.workspace = true
 mtgml-decision = { path = "../mtgml-decision" }
 mtgml-model = { path = "../mtgml-model" }
 mtgml-observation = { path = "../mtgml-observation" }
-mtgml-rules = { path = "../mtgml-rules" }
+mtgml-rules = { path = "../mtgml-rules", features = ["m2-conformance-fixtures"] }
 mtgml-state = { path = "../mtgml-state" }
+mtgml-random = { path = "../mtgml-random" }
 thiserror.workspace = true

@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::digest::StateDigestError;
 use crate::engine::{EngineState, EngineStateParts};
+use crate::lifecycle::PerspectiveLifecycleAuditV1;
 use crate::zones::ZoneTransition;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -41,6 +42,12 @@ pub enum SemanticDeltaOperation {
     },
     PublicOutcome {
         code: String,
+    },
+    /// Complete state-changing meaning of one perspective-visible occurrence
+    /// (M2.E). Carries perspective, consumed visible sequence, and the typed
+    /// identity/knowledge mutation as the single state-owned audit payload.
+    PerspectiveLifecycle {
+        lifecycle: PerspectiveLifecycleAuditV1,
     },
 }
 

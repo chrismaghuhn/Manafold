@@ -1,5 +1,8 @@
-use mtgml_model::EpisodeStatus;
-use mtgml_state::{validate_engine_state, EngineState};
+use crate::events::AuthoritativeRuleEventKind;
+use mtgml_model::{EpisodeStatus, PlayerId};
+use mtgml_state::PerspectiveIdentityRecordV2;
+use mtgml_state::{validate_engine_state, EngineState, ZoneTransition};
+use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 use std::convert::TryFrom;
 
@@ -51,6 +54,16 @@ pub fn validate_transition_contract(
         }
     }
 
+    let transitions: Vec<ZoneTransition> = result
+        .events
+        .iter()
+        .filter_map(|event| match &event.event {
+            AuthoritativeRuleEventKind::ZoneTransition { transition } => {
+                Some((**transition).clone())
+            }
+            _ => None,
+        })
+        .collect();
     let event_audit: Vec<_> = result
         .events
         .iter()
@@ -60,6 +73,8 @@ pub fn validate_transition_contract(
         return Err(TransitionViolation::EventDeltaMismatch);
     }
 
+    let mut running_identities: BTreeMap<PlayerId, PerspectiveIdentityRecordV2> =
+        before.perspective_identities.players.clone();
     let mut seen = BTreeSet::new();
     let mut cursor = SemanticValidationCursor::from_state(before)?;
     for (offset, event) in result.events.iter().enumerate() {
@@ -75,6 +90,88 @@ pub fn validate_transition_contract(
             || !seen.insert(event.event_id)
         {
             return Err(TransitionViolation::EventIdentity);
+        }
+        if let crate::events::AuthoritativeRuleEventKind::PerspectiveOccurrence {
+            lifecycle,
+            observation,
+        } = &event.event
+        {
+            crate::events::validate_occurrence_pairing(lifecycle, observation, &transitions)
+                .map_err(|_| TransitionViolation::OccurrencePairing)?;
+            // Causal knowledge binding against the SEQUENTIAL identity
+            // snapshot: old-side references resolve pre-occurrence, new-side
+            // post-occurrence.
+            let bound = match observation {
+                crate::events::PerspectiveObservationPolicyV1::MovedInSight {
+                    from_zone,
+                    to_zone,
+                    old_object,
+                    new_object,
+                    ..
+                } => transitions.iter().find(|transition| {
+                    transition.old_object == *old_object
+                        && transition.new_object == *new_object
+                        && transition.from.zone == *from_zone
+                        && transition.to.zone == *to_zone
+                }),
+                crate::events::PerspectiveObservationPolicyV1::Appeared {
+                    from_zone,
+                    to_zone,
+                    new_object,
+                } => transitions.iter().find(|transition| {
+                    transition.new_object == *new_object
+                        && transition.from.zone == *from_zone
+                        && transition.to.zone == *to_zone
+                }),
+                _ => None,
+            };
+            // The sequential identity snapshot ALWAYS advances for every
+            // perspective occurrence, even when no physical observation
+            // exists (NoEnvelope with Allocate/Remap/Retire).
+            let (record_pre, record_post) = {
+                let _ = lifecycle;
+                let pre = running_identities.get(&lifecycle.perspective).cloned();
+                let mut post = pre.clone().unwrap_or_default();
+                mtgml_state::advance_identity_record(&mut post, &lifecycle.mutation.identity);
+                running_identities.insert(lifecycle.perspective, post.clone());
+                (pre, post)
+            };
+            if let Some(transition) = bound {
+                use mtgml_state::KnowledgeMutationV1;
+                let resolves = |record: Option<PerspectiveIdentityRecordV2>,
+                                opaque: &mtgml_model::OpaqueObjectId,
+                                object: &mtgml_model::GameObjectId| {
+                    record
+                        .map(|record| record.opaque_to_object.get(opaque) == Some(object))
+                        .unwrap_or(false)
+                };
+                if let Some(knowledge) = &lifecycle.mutation.knowledge {
+                    let causally_bound = match knowledge {
+                        KnowledgeMutationV1::CurrentToHistory { opaque, .. } => {
+                            resolves(record_pre, opaque, &transition.old_object)
+                        }
+                        KnowledgeMutationV1::UpdateLocation { opaque, fact } => {
+                            resolves(Some(record_post.clone()), opaque, &transition.new_object)
+                                && fact.location == transition.to
+                        }
+                        KnowledgeMutationV1::Invalidate { opaque, .. } => {
+                            resolves(record_pre, opaque, &transition.old_object)
+                                || resolves(
+                                    Some(record_post.clone()),
+                                    opaque,
+                                    &transition.new_object,
+                                )
+                        }
+                        KnowledgeMutationV1::Acquire { opaque, .. } => {
+                            resolves(Some(record_post.clone()), opaque, &transition.new_object)
+                        }
+                    };
+                    if !causally_bound {
+                        return Err(TransitionViolation::OccurrencePairing);
+                    }
+                }
+                running_identities.insert(lifecycle.perspective, record_post);
+            }
         }
         cursor.apply(&event.event)?;
     }

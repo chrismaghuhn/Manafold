@@ -740,8 +740,23 @@ class PlayerStepV2:
     def validate(self) -> None:
         self.information_state.validate()
         revision = self.information_state.state_revision
-        if any(event.state_revision > revision for event in self.observed_events):
-            raise WireError("semantic.player_step", "event belongs to a future revision")
+        cursor = self.information_state.next_visible_sequence
+        previous_sequence = None
+        for event in self.observed_events:
+            # One accepted transition owns exactly one revision.
+            if event.state_revision != revision:
+                raise WireError("semantic.player_step", "event belongs to a different revision")
+            # Visible sequences never reach the step's own next-unused cursor.
+            if event.sequence >= cursor:
+                raise WireError(
+                    "semantic.player_step", "event sequence is not below the visible cursor"
+                )
+            if previous_sequence is not None and event.sequence <= previous_sequence:
+                raise WireError(
+                    "semantic.player_step",
+                    "event sequences must be strictly increasing",
+                )
+            previous_sequence = event.sequence
         if self.next_decision is not None and (
             self.next_decision.actor != self.information_state.perspective
             or self.next_decision.state_revision != revision

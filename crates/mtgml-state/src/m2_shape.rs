@@ -1,7 +1,7 @@
 //! Private, detached M2 state shapes prepared before the current-runtime cut.
 //!
 //! Nothing in this module is reachable through the current `EngineState` until
-//! the coordinated Tasks 7Ã¢â‚¬â€œ11 cut. The types deliberately do not adapt or
+//! the coordinated Tasks 7-11 cut. The types deliberately do not adapt or
 //! reinterpret any historical V1/V2 value.
 
 use std::collections::{BTreeMap, BTreeSet};

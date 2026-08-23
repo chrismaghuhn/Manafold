@@ -13,6 +13,7 @@ mod execution;
 mod format;
 mod identity;
 mod knowledge;
+mod lifecycle;
 mod m2_shape;
 mod validation;
 mod zones;
@@ -30,6 +31,11 @@ pub use identity::{IdentityAllocationError, IdentityAllocatorState};
 pub use knowledge::{
     KnowledgeAcquisitionCause, KnowledgeAcquisitionReason, KnowledgeHistoryChannel,
     KnowledgeInvalidationReason,
+};
+pub use lifecycle::{
+    advance_identity_record, apply_lifecycle_to_player, apply_perspective_lifecycle,
+    IdentityMutationV1, KnowledgeMutationV1, LifecycleApplicationError,
+    PerspectiveLifecycleAuditV1, PerspectiveLifecycleMutationV1,
 };
 pub use m2_shape::{
     AssemblyStageV2, ContinuationPayloadV2, ContinuationRecordV2, KnowledgeInvalidationV2,

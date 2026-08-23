@@ -95,6 +95,15 @@ No historical V1 meaning is changed or reinterpreted. The field is required
 on all V2 player-step values; the closed code set is defined by
 `PlayerSubmissionCodeV1`.
 
+### Compatibility note (M2.E)
+
+`PlayerStepV2.observed_events` semantic validation closes the already
+accepted V2 shape: envelopes must carry exactly the step revision, strictly
+increasing perspective-local sequences, and sequences below the step's own
+next unused `VisibleSequence`. No field, variant, or encoding changes; the
+stronger transition-level no-gap proof (against the before cursor) remains
+environment-owned because a single step cannot know its before cursor.
+
 ## M2 digest and persistence ownership
 
 `mtgml-observation` owns the semantic `InformationStateDigestInputV2` view and

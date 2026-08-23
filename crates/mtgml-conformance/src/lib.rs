@@ -12,6 +12,8 @@ use mtgml_state::{EngineState, SemanticDeltaOperation};
 use std::collections::BTreeMap;
 use thiserror::Error;
 
+pub mod lifecycle;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ExpectedResponseResult {
     Accepted,

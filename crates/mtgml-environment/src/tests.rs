@@ -1702,8 +1702,7 @@ fn request_existence_is_not_an_error_oracle() {
         }
     );
 
-    // Case B: a decision exists but belongs to P1 (paired foreign-request
-    // state) — same non-disclosing surface for P2.
+    // Case B: a decision exists but belongs to P1 (paired foreign-request state).
     let other = TrustedEnvironmentController::new(backend());
     let other_p2 = other.bind_player(PlayerId(2)).unwrap();
     let foreign = other_p2.submit(response(0, 0)).unwrap();
@@ -2055,4 +2054,384 @@ fn internal_failures_surface_only_service_unavailable() {
 
     // The failed internal commit must not have mutated anything.
     assert_eq!(public_fingerprint(&exhausted_controller), before);
+}
+
+// ---------------------------------------------------------------- M2.E projection
+
+use mtgml_model::{GameObjectId, OpaqueObjectId, VisibleSequence};
+use mtgml_rules::TransitionResult;
+use mtgml_state::{construct_synthetic_engine_state, EngineState};
+
+fn m2e_fixture() -> EngineState {
+    use mtgml_state::{GameObject, VisibilityPartition, ZoneLocation, ZonePosition};
+    let mut state = construct_synthetic_engine_state(mtgml_state::SyntheticResetInputs {
+        players: [PlayerId(1), PlayerId(2)],
+        root_seed: seed(),
+    })
+    .unwrap();
+    let exile = ZoneLocation {
+        zone: mtgml_model::ZoneKind::Exile,
+        player: None,
+        position: ZonePosition::Unordered,
+        visibility: VisibilityPartition::Public,
+        partition: None,
+    };
+    for index in 3..=4u64 {
+        let object = GameObjectId(index);
+        state.zones.objects.insert(
+            object,
+            GameObject {
+                id: object,
+                physical_card: Some(mtgml_model::PhysicalCardId(index)),
+                card_definition: mtgml_model::CardDefinitionId(index),
+                owner: PlayerId(1),
+                controller: PlayerId(1),
+                tapped: false,
+                face_down: false,
+            },
+        );
+        state.zones.locations.insert(object, exile.clone());
+    }
+    state.allocators.next_object_id = GameObjectId(5);
+    state.execution.pending_decision = None;
+    state.execution.continuations.clear();
+    state
+}
+
+fn battlefield_location() -> mtgml_state::ZoneLocation {
+    mtgml_state::ZoneLocation {
+        zone: mtgml_model::ZoneKind::Battlefield,
+        player: None,
+        position: mtgml_state::ZonePosition::Unordered,
+        visibility: mtgml_state::VisibilityPartition::Public,
+        partition: None,
+    }
+}
+
+fn hidden_hand(player: PlayerId) -> mtgml_state::ZoneLocation {
+    mtgml_state::ZoneLocation {
+        zone: mtgml_model::ZoneKind::Hand,
+        player: Some(player),
+        position: mtgml_state::ZonePosition::Unordered,
+        visibility: mtgml_state::VisibilityPartition::OwnerOnly,
+        partition: None,
+    }
+}
+
+/// Reveal GO3 to P1 (opaque 2) and then track it through an incarnation
+/// change into a hidden zone. Returns the product of the single transition.
+fn tracked_incarnation_product() -> Result<(EngineState, TransitionResult), ()> {
+    use mtgml_rules::fixture_support::{FixtureTransition, PlannedOccurrence};
+    let before = m2e_fixture();
+    let mut transition = FixtureTransition::start(&before).map_err(|_| ())?;
+    let revealed = transition
+        .move_object_incarnation(GameObjectId(3), battlefield_location())
+        .map_err(|_| ())?;
+    transition
+        .apply_occurrence(PlannedOccurrence {
+            lifecycle: mtgml_state::PerspectiveLifecycleAuditV1 {
+                perspective: PlayerId(1),
+                sequence: VisibleSequence(1),
+                mutation: mtgml_state::PerspectiveLifecycleMutationV1 {
+                    identity: mtgml_state::IdentityMutationV1::Allocate {
+                        opaque: OpaqueObjectId(2),
+                        object: revealed,
+                    },
+                    knowledge: Some(mtgml_state::KnowledgeMutationV1::Acquire {
+                        opaque: OpaqueObjectId(2),
+                        definition: Some(mtgml_model::CardDefinitionId(3)),
+                        location: Some(battlefield_location()),
+                        acquisition: mtgml_state::KnowledgeAcquisitionReason::Observed {
+                            channel: mtgml_state::KnowledgeHistoryChannel::Public,
+                            sequence: VisibleSequence(1),
+                            cause: mtgml_state::KnowledgeAcquisitionCause::ExplicitReveal,
+                        },
+                    }),
+                },
+            },
+            observation: mtgml_rules::PerspectiveObservationPolicyV1::Appeared {
+                from_zone: mtgml_model::ZoneKind::Exile,
+                to_zone: mtgml_model::ZoneKind::Battlefield,
+                new_object: revealed,
+            },
+        })
+        .map_err(|_| ())?;
+    let hidden = transition
+        .move_object_incarnation(revealed, hidden_hand(PlayerId(2)))
+        .map_err(|_| ())?;
+    transition
+        .apply_occurrence(PlannedOccurrence {
+            lifecycle: mtgml_state::PerspectiveLifecycleAuditV1 {
+                perspective: PlayerId(1),
+                sequence: VisibleSequence(2),
+                mutation: mtgml_state::PerspectiveLifecycleMutationV1 {
+                    identity: mtgml_state::IdentityMutationV1::Remap {
+                        opaque: OpaqueObjectId(2),
+                        from_object: revealed,
+                        to_object: hidden,
+                    },
+                    knowledge: Some(mtgml_state::KnowledgeMutationV1::CurrentToHistory {
+                        opaque: OpaqueObjectId(2),
+                        observed_definition: Some(mtgml_model::CardDefinitionId(3)),
+                    }),
+                },
+            },
+            observation: mtgml_rules::PerspectiveObservationPolicyV1::MovedInSight {
+                from_zone: mtgml_model::ZoneKind::Battlefield,
+                to_zone: mtgml_model::ZoneKind::Hand,
+                old_object: revealed,
+                new_object: hidden,
+                reveals_old: true,
+                reveals_new: false,
+            },
+        })
+        .map_err(|_| ())?;
+    let result = transition.finish().map_err(|_| ())?;
+    Ok((before, result))
+}
+
+#[test]
+fn occurrence_projection_resolves_old_via_before_and_new_via_after() {
+    let (before, result) = tracked_incarnation_product().unwrap();
+    let envelopes = crate::lifecycle_projection::project_occurrence_envelopes(
+        &before,
+        &result.next_state,
+        &result.events,
+    )
+    .unwrap();
+    let p1 = &envelopes[&PlayerId(1)];
+    assert_eq!(p1.len(), 2);
+    // Appearance: old unknown, new resolves through the AFTER mapping.
+    match &p1[0].event {
+        mtgml_observation::ObservedEventKindV2::ObjectMoved {
+            old_object: None,
+            new_object: Some(opaque),
+            ..
+        } => {
+            assert_eq!(*opaque, OpaqueObjectId(2));
+        }
+        other => panic!("unexpected first envelope {other:?}"),
+    }
+    // Tracked disappearance: old resolves through the BEFORE mapping even
+    // though the AFTER map no longer contains that incarnation.
+    match &p1[1].event {
+        mtgml_observation::ObservedEventKindV2::ObjectMoved {
+            old_object: Some(opaque),
+            new_object: None,
+            from,
+            to,
+        } => {
+            assert_eq!(*opaque, OpaqueObjectId(2));
+            assert_eq!(*from, mtgml_model::ZoneKind::Battlefield);
+            assert_eq!(*to, mtgml_model::ZoneKind::Hand);
+        }
+        other => panic!("unexpected second envelope {other:?}"),
+    }
+    assert_eq!(p1[0].sequence.0, 1);
+    assert_eq!(p1[1].sequence.0, 2);
+    assert_eq!(p1[0].state_revision, result.next_state.revision);
+}
+
+#[test]
+fn repeated_projection_is_pure_and_stable() {
+    let (before, result) = tracked_incarnation_product().unwrap();
+    let before_digest = before.digest().unwrap();
+    let after_digest = result.next_state.digest().unwrap();
+    let first = crate::lifecycle_projection::project_occurrence_envelopes(
+        &before,
+        &result.next_state,
+        &result.events,
+    )
+    .unwrap();
+    let second = crate::lifecycle_projection::project_occurrence_envelopes(
+        &before,
+        &result.next_state,
+        &result.events,
+    )
+    .unwrap();
+    assert_eq!(first, second);
+    assert_eq!(before.digest().unwrap(), before_digest);
+    assert_eq!(result.next_state.digest().unwrap(), after_digest);
+}
+
+#[test]
+fn checkpoint_restore_preserves_the_lifecycle_public_surface() {
+    let (_before, result) = tracked_incarnation_product().unwrap();
+    // Give the state a retired opaque id so authoritative closure covers
+    // retirement sets, not only active tracking.
+    let mut state = result.next_state.clone();
+    state.revision = mtgml_model::StateRevision(state.revision.0 + 1);
+    mtgml_state::apply_perspective_lifecycle(
+        &mut state,
+        &mtgml_state::PerspectiveLifecycleAuditV1 {
+            perspective: PlayerId(1),
+            sequence: VisibleSequence(3),
+            mutation: mtgml_state::PerspectiveLifecycleMutationV1 {
+                identity: mtgml_state::IdentityMutationV1::Retire {
+                    opaque: OpaqueObjectId(2),
+                    object: GameObjectId(6),
+                },
+                knowledge: Some(mtgml_state::KnowledgeMutationV1::Invalidate {
+                    opaque: OpaqueObjectId(2),
+                    reason: mtgml_state::KnowledgeInvalidationReason::ExplicitForget,
+                    invalidation_provenance: mtgml_state::KnowledgeAcquisitionReason::Observed {
+                        channel: mtgml_state::KnowledgeHistoryChannel::Public,
+                        sequence: VisibleSequence(3),
+                        cause: mtgml_state::KnowledgeAcquisitionCause::PublicEvent,
+                    },
+                }),
+            },
+        },
+    )
+    .unwrap();
+    let codec = CheckpointCodecIdentity {
+        codec_id: "synthetic-m2-memory".into(),
+        semantic_version: "3".into(),
+    };
+    let counters = EnvironmentLimitCounters::default();
+    let checkpoint = EnvironmentCheckpointV3::new(
+        state.clone(),
+        EpisodeStatus::Running,
+        counters.clone(),
+        codec.clone(),
+    )
+    .unwrap();
+    let original = TrustedEnvironmentController::new(
+        SyntheticM1EnvironmentBackend::from_checkpoint(
+            checkpoint.clone(),
+            config([PlayerId(1), PlayerId(2)]),
+        )
+        .unwrap(),
+    );
+    let restored = TrustedEnvironmentController::new(
+        SyntheticM1EnvironmentBackend::from_checkpoint(
+            checkpoint,
+            config([PlayerId(1), PlayerId(2)]),
+        )
+        .unwrap(),
+    );
+    restored.restore(original.checkpoint().unwrap()).unwrap();
+    let p1_bytes_original = mtgml_wire::encode_canonical(
+        &original
+            .bind_player(PlayerId(1))
+            .unwrap()
+            .information_state()
+            .unwrap(),
+    )
+    .unwrap();
+    let p1_bytes_restored = mtgml_wire::encode_canonical(
+        &restored
+            .bind_player(PlayerId(1))
+            .unwrap()
+            .information_state()
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(p1_bytes_original, p1_bytes_restored);
+    // Authoritative lifecycle closure: knowledge, provenance/history,
+    // mappings, retirement sets, allocators and the visible cursor are all
+    // bound by checkpoint identity, not only the public projection bytes.
+    assert_eq!(
+        restored.checkpoint().unwrap(),
+        original.checkpoint().unwrap()
+    );
+    assert_eq!(original.checkpoint().unwrap().state, state);
+}
+
+#[test]
+fn global_hidden_allocator_history_cannot_move_opaque_assignment() {
+    use mtgml_rules::fixture_support::{FixtureTransition, PlannedOccurrence};
+    let base = m2e_fixture();
+    let mut variant = base.clone();
+    // Hidden global allocation history differs wildly between the pair,
+    // including the risky global OBJECT allocator itself.
+    variant.allocators.next_effect_id = mtgml_model::EffectInstanceId(900);
+    variant.allocators.next_trigger_id = mtgml_model::TriggerInstanceId(700);
+    variant.allocators.next_object_id = GameObjectId(500);
+
+    let mut previous: Option<Vec<u8>> = None;
+    let mut collected_seen: Vec<u32> = Vec::new();
+    for state in [base, variant] {
+        let mut transition = FixtureTransition::start(&state).unwrap();
+        let seen = transition
+            .move_object_incarnation(GameObjectId(3), battlefield_location())
+            .unwrap();
+        transition
+            .apply_occurrence(PlannedOccurrence {
+                lifecycle: mtgml_state::PerspectiveLifecycleAuditV1 {
+                    perspective: PlayerId(1),
+                    sequence: VisibleSequence(1),
+                    mutation: mtgml_state::PerspectiveLifecycleMutationV1 {
+                        identity: mtgml_state::IdentityMutationV1::Allocate {
+                            opaque: OpaqueObjectId(2),
+                            object: seen,
+                        },
+                        knowledge: Some(mtgml_state::KnowledgeMutationV1::Acquire {
+                            opaque: OpaqueObjectId(2),
+                            definition: None,
+                            location: Some(battlefield_location()),
+                            acquisition: mtgml_state::KnowledgeAcquisitionReason::Observed {
+                                channel: mtgml_state::KnowledgeHistoryChannel::Public,
+                                sequence: VisibleSequence(1),
+                                cause: mtgml_state::KnowledgeAcquisitionCause::ExplicitReveal,
+                            },
+                        }),
+                    },
+                },
+                observation: mtgml_rules::PerspectiveObservationPolicyV1::Appeared {
+                    from_zone: mtgml_model::ZoneKind::Exile,
+                    to_zone: mtgml_model::ZoneKind::Battlefield,
+                    new_object: seen,
+                },
+            })
+            .unwrap();
+        let result = transition.finish().unwrap();
+        let identity = &result.next_state.perspective_identities.players[&PlayerId(1)];
+        assert_eq!(
+            identity.opaque_to_object.get(&OpaqueObjectId(2)),
+            Some(&GameObjectId(seen.0))
+        );
+        collected_seen.push(u32::try_from(seen.0).unwrap());
+        let knowledge_bytes =
+            serde_json::to_vec(&result.next_state.knowledge.players[&PlayerId(1)]).unwrap();
+        if let Some(previous_bytes) = previous.as_ref() {
+            assert_eq!(previous_bytes, &knowledge_bytes);
+        }
+        previous = Some(knowledge_bytes);
+    }
+    // The trusted incarnations must differ (hidden object-allocator history)
+    assert_ne!(collected_seen[0], collected_seen[1]);
+}
+
+#[test]
+fn equal_input_fork_reproduces_lifecycle_public_bytes() {
+    let (_before, result) = tracked_incarnation_product().unwrap();
+    let codec = CheckpointCodecIdentity {
+        codec_id: "synthetic-m2-memory".into(),
+        semantic_version: "3".into(),
+    };
+    let checkpoint = EnvironmentCheckpointV3::new(
+        result.next_state.clone(),
+        EpisodeStatus::Running,
+        EnvironmentLimitCounters::default(),
+        codec,
+    )
+    .unwrap();
+    let original = TrustedEnvironmentController::new(
+        SyntheticM1EnvironmentBackend::from_checkpoint(
+            checkpoint.clone(),
+            config([PlayerId(1), PlayerId(2)]),
+        )
+        .unwrap(),
+    );
+    let fork = original.fork().unwrap();
+    let p1_original = original.bind_player(PlayerId(1)).unwrap();
+    let p1_fork = fork.bind_player(PlayerId(1)).unwrap();
+    assert_eq!(
+        mtgml_wire::encode_canonical(&p1_original.information_state().unwrap()).unwrap(),
+        mtgml_wire::encode_canonical(&p1_fork.information_state().unwrap()).unwrap()
+    );
+    assert_eq!(original.checkpoint().unwrap(), checkpoint);
+    // Equal-input fork preserves the complete authoritative lifecycle state.
+    assert_eq!(fork.checkpoint().unwrap(), original.checkpoint().unwrap());
 }

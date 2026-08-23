@@ -1,6 +1,6 @@
 use mtgml_model::{DecisionId, GameObjectId, PlayerId};
 use mtgml_random::{RandomStreamCursorV1, RandomStreamKeyV1, RootSeed256};
-use mtgml_state::{EngineState, ObjectSnapshot};
+use mtgml_state::{EngineState, KnowledgeStateV2, ObjectSnapshot, PerspectiveIdentityStateV2};
 use std::collections::BTreeMap;
 
 use crate::validation::TransitionViolation;
@@ -12,6 +12,11 @@ pub(crate) struct SemanticValidationCursor {
     pending_decision: Option<DecisionId>,
     root_seed: RootSeed256,
     random_counters: BTreeMap<RandomStreamKeyV1, u64>,
+    /// M2.E lifecycle shadows: knowledge state and perspective identities are
+    /// replayed through the authoritative occurrence payloads so sequential
+    /// event parity covers every knowledge/identity/cursor mutation.
+    lifecycle_knowledge: KnowledgeStateV2,
+    lifecycle_identities: PerspectiveIdentityStateV2,
 }
 
 impl SemanticValidationCursor {
@@ -36,6 +41,8 @@ impl SemanticValidationCursor {
                 .iter()
                 .map(|(stream, value)| (*stream, value.next_raw_u64))
                 .collect(),
+            lifecycle_knowledge: state.knowledge.clone(),
+            lifecycle_identities: state.perspective_identities.clone(),
         })
     }
 
@@ -143,6 +150,29 @@ impl SemanticValidationCursor {
                     return Err(TransitionViolation::PublicOutcome);
                 }
             }
+            AuthoritativeRuleEventKind::PerspectiveOccurrence { lifecycle, .. } => {
+                let Self {
+                    objects,
+                    lifecycle_knowledge,
+                    lifecycle_identities,
+                    ..
+                } = self;
+                let knowledge = lifecycle_knowledge
+                    .players
+                    .get_mut(&lifecycle.perspective)
+                    .ok_or(TransitionViolation::OccurrencePairing)?;
+                let identity = lifecycle_identities
+                    .players
+                    .get_mut(&lifecycle.perspective)
+                    .ok_or(TransitionViolation::OccurrencePairing)?;
+                mtgml_state::apply_lifecycle_to_player(
+                    knowledge,
+                    identity,
+                    &|object| objects.contains_key(&object),
+                    lifecycle,
+                )
+                .map_err(|_| TransitionViolation::OccurrencePairing)?;
+            }
         }
         Ok(())
     }
@@ -183,6 +213,40 @@ impl SemanticValidationCursor {
         if self.random_counters != after_counters {
             return Err(TransitionViolation::Randomness);
         }
+        if self.lifecycle_knowledge != after.knowledge
+            || !lifecycle_identities_match(
+                &self.lifecycle_identities,
+                &after.perspective_identities,
+            )
+        {
+            return Err(TransitionViolation::OccurrencePairing);
+        }
         Ok(())
     }
+}
+
+/// Occurrence parity owns every identity component except
+/// `next_player_decision_id`, whose allocation is governed by the decision
+/// protocol (fresh stage identities) rather than by lifecycle occurrences.
+fn lifecycle_identities_match(
+    replayed: &PerspectiveIdentityStateV2,
+    after: &PerspectiveIdentityStateV2,
+) -> bool {
+    replayed.players.keys().count() == after.players.keys().count()
+        && replayed
+            .players
+            .iter()
+            .all(|(player, record)| match after.players.get(player) {
+                Some(other) => {
+                    record.opaque_to_object == other.opaque_to_object
+                        && record.opaque_to_ability == other.opaque_to_ability
+                        && record.object_to_opaque == other.object_to_opaque
+                        && record.ability_to_opaque == other.ability_to_opaque
+                        && record.next_opaque_object_id == other.next_opaque_object_id
+                        && record.next_opaque_ability_id == other.next_opaque_ability_id
+                        && record.retired_object_ids == other.retired_object_ids
+                        && record.retired_ability_ids == other.retired_ability_ids
+                }
+                None => false,
+            })
 }

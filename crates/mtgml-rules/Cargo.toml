@@ -11,3 +11,8 @@ mtgml-random = { path = "../mtgml-random" }
 mtgml-state = { path = "../mtgml-state" }
 serde.workspace = true
 thiserror.workspace = true
+
+[features]
+# Conformance/test-support entry for the M2.E lifecycle fixture driver. Never
+# enabled by runtime crates; no EnvironmentBackend/controller/replay caller.
+m2-conformance-fixtures = []

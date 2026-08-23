@@ -9,9 +9,9 @@ mod checkpoint;
 mod controller;
 mod endpoint;
 mod errors;
+pub mod lifecycle_projection;
 mod replay;
 mod synthetic;
-
 #[cfg(test)]
 mod tests;
 

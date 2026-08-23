@@ -178,6 +178,30 @@
       "contract": "player-step.v2",
       "expected_error_code": "semantic.player_step",
       "expected_reject_layer": "rust-python-semantic-or-decode",
+      "path": "player-step-v2-events-duplicate-sequence.json"
+    },
+    {
+      "contract": "player-step.v2",
+      "expected_error_code": "semantic.player_step",
+      "expected_reject_layer": "rust-python-semantic-or-decode",
+      "path": "player-step-v2-events-future-sequence.json"
+    },
+    {
+      "contract": "player-step.v2",
+      "expected_error_code": "semantic.player_step",
+      "expected_reject_layer": "rust-python-semantic-or-decode",
+      "path": "player-step-v2-events-nonincreasing-sequence.json"
+    },
+    {
+      "contract": "player-step.v2",
+      "expected_error_code": "semantic.player_step",
+      "expected_reject_layer": "rust-python-semantic-or-decode",
+      "path": "player-step-v2-events-stale-revision.json"
+    },
+    {
+      "contract": "player-step.v2",
+      "expected_error_code": "semantic.player_step",
+      "expected_reject_layer": "rust-python-semantic-or-decode",
       "path": "player-step-v2-rejection-carries-events.json"
     },
     {

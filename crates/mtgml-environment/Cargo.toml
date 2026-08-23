@@ -18,3 +18,8 @@ mtgml-wire = { path = "../mtgml-wire" }
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
+
+[dev-dependencies]
+# Test-only access to the M2.E lifecycle fixture driver; never enabled for
+# production builds of this crate.
+mtgml-rules = { path = "../mtgml-rules", features = ["m2-conformance-fixtures"] }

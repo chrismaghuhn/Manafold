@@ -21,6 +21,15 @@ There is no player-visible global event count and no independent public/private 
 
 The authoritative state stores the next unused sequence for each perspective.
 
+**Occurrence binding (M2.E).** One perspective-visible occurrence consumes
+exactly the next visible sequence of its perspective; every observed
+provenance created or updated by that same occurrence references exactly this
+value, and provenance never allocates a sequence independently. Hidden
+occurrences consume nothing and create no values, so no consumed number is
+ever attributable to a hidden event. A checkpoint may legitimately retain only
+a subset of past numbers as provenance: earlier numbers may belong to
+occurrences whose events were observed but not retained as knowledge.
+
 ## Knowledge facts
 
 M2 retained knowledge explicitly represents:
