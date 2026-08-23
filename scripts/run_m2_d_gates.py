@@ -77,7 +77,7 @@ GATE_TESTS: dict[str, tuple[EvidenceDefinition, ...]] = {
             "visible decision carries no trusted identities or internals",
         ),
         rust(
-            "mtgml-environment",
+            "mtgml-rules",
             "tests::candidate_order_independent_of_global_allocator_history",
             "visible surface independent of global allocator history",
         ),
@@ -146,7 +146,7 @@ GATE_TESTS: dict[str, tuple[EvidenceDefinition, ...]] = {
         ),
         rust(
             "mtgml-environment",
-            "tests::player_api_failures_stay_closed_and_free_of_trusted_detail",
+            "tests::player_api_errors_do_not_render_trusted_values",
             "public failure rendering stays closed without trusted detail",
         ),
         rust(
