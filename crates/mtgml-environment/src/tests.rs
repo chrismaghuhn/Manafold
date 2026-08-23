@@ -2382,6 +2382,7 @@ fn global_hidden_allocator_history_cannot_move_opaque_assignment() {
     variant.allocators.next_trigger_id = mtgml_model::TriggerInstanceId(700);
 
     let mut previous: Option<Vec<u8>> = None;
+    let mut collected_seen: Vec<u32> = Vec::new();
     for state in [base, variant] {
         let mut transition = FixtureTransition::start(&state).unwrap();
         let seen = transition
@@ -2422,11 +2423,13 @@ fn global_hidden_allocator_history_cannot_move_opaque_assignment() {
             identity.opaque_to_object.get(&OpaqueObjectId(2)),
             Some(&GameObjectId(seen.0))
         );
-        let bytes = serde_json::to_vec(&result.next_state.perspective_identities).unwrap();
-        if let Some(previous) = previous.as_ref() {
-            assert_eq!(previous, &bytes);
+        collected_seen.push(u32::try_from(seen.0).unwrap());
+        let knowledge_bytes =
+            serde_json::to_vec(&result.next_state.knowledge.players[&PlayerId(1)]).unwrap();
+        if let Some(previous_bytes) = previous.as_ref() {
+            assert_eq!(previous_bytes, &knowledge_bytes);
         }
-        previous = Some(bytes);
+        previous = Some(knowledge_bytes);
     }
 }
 

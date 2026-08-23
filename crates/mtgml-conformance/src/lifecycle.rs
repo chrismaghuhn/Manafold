@@ -711,7 +711,7 @@ mod gate_evidence {
     }
 
     #[ignore = "reidentification cursor final-compare divergence under investigation"]
-#[test]
+    #[test]
     fn reidentification_after_randomization_allocates_next_unused_never_reused() {
         let mut state = lifecycle_fixture();
         state = scenario_reveal_then_tracked_incarnation(&state)
