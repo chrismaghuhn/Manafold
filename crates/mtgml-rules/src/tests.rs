@@ -369,7 +369,7 @@ fn deterministic_services_repeat_exact_transition_result() {
 
 #[test]
 fn deterministic_services_isolate_unrelated_stream_cursors() {
-    use mtgml_random::{RandomStreamCursorV1, RandomStreamKeyV1, RandomStreamKindV1};
+    use mtgml_random::{RandomStreamCursorV1, RandomStreamKindV1};
     let baseline_state = synthetic_state();
     let mut isolated_state = synthetic_state();
     isolated_state.random.streams.insert(
