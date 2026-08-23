@@ -131,7 +131,7 @@ GATE_TESTS: dict[str, tuple[EvidenceDefinition, ...]] = {
             "endpoint chain commits delta/replay products atomically",
         ),
         rust(
-            "mtgml-rules",
+            "mtgml-environment",
             "tests::unsupported_standalone_decisions_are_internal_kernel_failures",
             "unsupported engine-offered standalone decisions fail closed internally",
         ),
