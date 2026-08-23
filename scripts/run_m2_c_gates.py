@@ -130,6 +130,16 @@ GATE_TESTS: dict[str, tuple[EvidenceDefinition, ...]] = {
             "tests::accepted_endpoint_submission_commits_v3_state_delta_and_replay",
             "endpoint chain commits delta/replay products atomically",
         ),
+        rust(
+            "mtgml-rules",
+            "tests::unsupported_standalone_decisions_are_internal_kernel_failures",
+            "unsupported engine-offered standalone decisions fail closed internally",
+        ),
+        rust(
+            "mtgml-environment",
+            "tests::from_checkpoint_rejects_states_the_kernel_cannot_execute",
+            "checkpoints the kernel cannot execute are rejected before projection",
+        ),
         source(
             "source_check::single_count_authority",
             "single program-interval authority consumed by the kernel",
@@ -425,6 +435,17 @@ def check_single_count_authority() -> str:
     rules_lib = (rules_dir / "synthetic.rs").read_text(encoding="utf-8")
     if "pub use mtgml_state::{SYNTHETIC_COUNT_MAX, SYNTHETIC_COUNT_MIN};" not in rules_lib:
         raise AssertionError("rules kernel no longer consumes the state-owned interval")
+    # Verify the actual consumer sites, not just the import: the stage
+    # request construction and the acceptance range check must reference
+    # the state-owned constants.
+    consumers = [
+        "minimum: i64::from(SYNTHETIC_COUNT_MIN)",
+        "maximum: i64::from(SYNTHETIC_COUNT_MAX)",
+        "(SYNTHETIC_COUNT_MIN..=SYNTHETIC_COUNT_MAX).contains",
+    ]
+    for site in consumers:
+        if site not in rules_lib:
+            raise AssertionError(f"kernel consumer site missing: {site}")
     return "program interval defined once in mtgml-state and consumed by the kernel"
 
 

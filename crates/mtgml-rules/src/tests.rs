@@ -334,18 +334,25 @@ fn synthetic_rejection_matrix_preserves_complete_nonmutation() {
     ];
 
     for case in &cases {
-        for state in [&state, &wrong_domain] {
-            let mut kernel = SyntheticM1RulesKernel;
-            let result = kernel.apply(state, PlayerId(1), case).unwrap();
-            assert!(!result.accepted);
-            assert_eq!(result.next_state, *state);
-            assert!(result.events.is_empty());
-            assert!(result.delta.audit.is_empty());
-            assert_eq!(result.delta.before_revision, result.delta.after_revision);
-            assert_eq!(result.delta.before_digest, result.delta.after_digest);
-            validate_transition_contract(state, &result).unwrap();
-        }
+        let mut kernel = SyntheticM1RulesKernel;
+        let result = kernel.apply(&state, PlayerId(1), case).unwrap();
+        assert!(!result.accepted);
+        assert_eq!(result.next_state, state);
+        assert!(result.events.is_empty());
+        assert!(result.delta.audit.is_empty());
+        assert_eq!(result.delta.before_revision, result.delta.after_revision);
+        assert_eq!(result.delta.before_digest, result.delta.after_digest);
+        validate_transition_contract(&state, &result).unwrap();
     }
+
+    // A standalone ChooseMany pending request is not part of the supported
+    // program: offering it is an internal soundness failure, not a player
+    // rejection.
+    let mut kernel = SyntheticM1RulesKernel;
+    assert!(matches!(
+        kernel.apply(&wrong_domain, PlayerId(1), &cases[0]),
+        Err(KernelExecutionError::UnsupportedStagePath)
+    ));
 }
 
 #[test]

@@ -63,6 +63,8 @@ pub enum ControllerError {
     ReplayExecution(#[from] ReplayExecutionError),
     #[error("checkpoint codec is not supported by this backend")]
     UnsupportedCheckpointCodec,
+    #[error("checkpoint state is not executable by the synthetic program")]
+    UnsupportedSyntheticState,
     #[error("environment counter {counter} would overflow")]
     CounterOverflow { counter: &'static str },
     #[error("replay identity does not match this backend")]

@@ -15,6 +15,6 @@ mod tests;
 pub use contract::validate_transition_contract;
 pub use errors::KernelExecutionError;
 pub use events::{AuthoritativeRuleEvent, AuthoritativeRuleEventKind};
-pub use synthetic::SyntheticM1RulesKernel;
+pub use synthetic::{validate_synthetic_runtime_state, SyntheticM1RulesKernel};
 pub use transition::{RulesKernel, TransitionResult};
 pub use validation::TransitionViolation;

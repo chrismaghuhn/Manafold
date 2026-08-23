@@ -1249,3 +1249,135 @@ fn order_permutations_bind_distinct_replay_identity() {
     // synthetic domain persists no order; completion erases the sequence.
     assert_eq!(forward_checkpoint.state, reverse_checkpoint.state);
 }
+
+#[test]
+fn from_checkpoint_rejects_states_the_kernel_cannot_execute() {
+    use mtgml_decision::{DecisionDomainV2, DecisionVisibility};
+    use mtgml_state::PendingDecisionRecordV2;
+
+    let codec = CheckpointCodecIdentity {
+        codec_id: "synthetic-m2-memory".into(),
+        semantic_version: "3".into(),
+    };
+    let base = mtgml_state::construct_synthetic_engine_state(mtgml_state::SyntheticResetInputs {
+        players: [PlayerId(1), PlayerId(2)],
+        root_seed: seed(),
+    })
+    .unwrap();
+
+    // A structurally valid generic EngineState with a standalone
+    // ChooseNumber pending request and no continuation.
+    let mut standalone_number = base.clone();
+    standalone_number.execution.pending_decision = Some(PendingDecisionRecordV2 {
+        request: mtgml_decision::AuthoritativeDecisionRequestV2 {
+            decision_id: mtgml_model::DecisionId(1),
+            player_decision_id: PlayerDecisionIdV1(1),
+            state_revision: StateRevision(0),
+            actor: PlayerId(1),
+            visibility: DecisionVisibility::Public,
+            decision: DecisionDomainV2::ChooseNumber {
+                minimum: 0,
+                maximum: 3,
+            },
+            candidates: Vec::new(),
+            continuation_id: None,
+        },
+    });
+    mtgml_state::validate_engine_state(&standalone_number).unwrap();
+    let checkpoint = EnvironmentCheckpointV3::new(
+        standalone_number.clone(),
+        EpisodeStatus::Running,
+        EnvironmentLimitCounters::default(),
+        codec.clone(),
+    )
+    .expect("generic validation passes");
+    assert!(matches!(
+        SyntheticM1EnvironmentBackend::from_checkpoint(
+            checkpoint.clone(),
+            config([PlayerId(1), PlayerId(2)])
+        ),
+        Err(ControllerError::UnsupportedSyntheticState)
+    ));
+    let controller = TrustedEnvironmentController::new(backend());
+    assert!(matches!(
+        controller.restore(checkpoint),
+        Err(ControllerError::UnsupportedSyntheticState)
+    ));
+
+    // A root ChooseOne whose kernel preconditions are violated (life not at
+    // the entry value) is equally unsupported.
+    let mut mismatched_entry = base;
+    mismatched_entry
+        .core
+        .players
+        .get_mut(&PlayerId(1))
+        .unwrap()
+        .life = 39;
+    let checkpoint = EnvironmentCheckpointV3::new(
+        mismatched_entry,
+        EpisodeStatus::Running,
+        EnvironmentLimitCounters::default(),
+        codec.clone(),
+    )
+    .unwrap();
+    assert!(matches!(
+        SyntheticM1EnvironmentBackend::from_checkpoint(
+            checkpoint.clone(),
+            config([PlayerId(1), PlayerId(2)])
+        ),
+        Err(ControllerError::UnsupportedSyntheticState)
+    ));
+
+    // The genuine program remains restorable.
+    let genuine_checkpoint = environment_at_members_stage().checkpoint().unwrap();
+    assert!(SyntheticM1EnvironmentBackend::from_checkpoint(
+        genuine_checkpoint,
+        config([PlayerId(1), PlayerId(2)])
+    )
+    .is_ok());
+}
+
+#[test]
+fn unsupported_standalone_decisions_are_internal_kernel_failures() {
+    use mtgml_decision::{DecisionDomainV2, DecisionVisibility};
+    use mtgml_state::PendingDecisionRecordV2;
+
+    let mut state =
+        mtgml_state::construct_synthetic_engine_state(mtgml_state::SyntheticResetInputs {
+            players: [PlayerId(1), PlayerId(2)],
+            root_seed: seed(),
+        })
+        .unwrap();
+    state.execution.pending_decision = Some(PendingDecisionRecordV2 {
+        request: mtgml_decision::AuthoritativeDecisionRequestV2 {
+            decision_id: mtgml_model::DecisionId(1),
+            player_decision_id: PlayerDecisionIdV1(1),
+            state_revision: StateRevision(0),
+            actor: PlayerId(1),
+            visibility: DecisionVisibility::Public,
+            decision: DecisionDomainV2::ChooseNumber {
+                minimum: 0,
+                maximum: 3,
+            },
+            candidates: Vec::new(),
+            continuation_id: None,
+        },
+    });
+    // Soundness boundary: the engine never turns its own unsupported offer
+    // into a player rejection; it is an internal failure before execution.
+    let mut kernel = mtgml_rules::SyntheticM1RulesKernel;
+    assert!(matches!(
+        mtgml_rules::RulesKernel::apply(
+            &mut kernel,
+            &state,
+            PlayerId(1),
+            &mtgml_decision::DecisionResponseV2 {
+                schema_version: DECISION_RESPONSE_V2_SCHEMA.into(),
+                player_decision_id: PlayerDecisionIdV1(1),
+                state_revision: StateRevision(0),
+                answer: number_answer(1),
+            }
+        ),
+        Err(mtgml_rules::KernelExecutionError::UnsupportedStagePath)
+    ));
+}

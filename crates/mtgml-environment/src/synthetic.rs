@@ -100,6 +100,11 @@ impl SyntheticM1EnvironmentBackend {
         if checkpoint.codec != config.codec {
             return Err(ControllerError::UnsupportedCheckpointCodec);
         }
+        // A structurally valid generic EngineState may still express
+        // decisions this synthetic kernel cannot execute; such checkpoints
+        // are rejected before any player projection can expose them.
+        mtgml_rules::validate_synthetic_runtime_state(&checkpoint.state)
+            .map_err(|_| ControllerError::UnsupportedSyntheticState)?;
         let replay = ReplayRecorderV3::new(build_manifest(&config, &checkpoint)?)?;
         Ok(Self {
             state: checkpoint.state,
