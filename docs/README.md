@@ -92,5 +92,6 @@ head. Hosted PR evidence and M2.Final closure remain separate.
 - [`maintenance/RELEASE_PROCESS.md`](maintenance/RELEASE_PROCESS.md)
 - [`maintenance/SCHEMA_EVOLUTION.md`](maintenance/SCHEMA_EVOLUTION.md)
 - [`adr/README.md`](adr/README.md)
+- [`ADR candidate: Capability-Oriented Semantic Domains and Explicit Semantic Ownership`](adr/candidates/capability-oriented-semantic-domains-and-explicit-semantic-ownership.md) — reviewed, `PROPOSED / NOT ACCEPTED`, acceptance deferred until after M2.Final.
 
-Accepted ADRs 0039 and 0040 contain the M2 decision and information/V3 compatibility architecture. ADRs record intent; executable M2 closure remains evidence-driven.
+Accepted ADRs 0039 and 0040 contain the M2 decision and information/V3 compatibility architecture. ADRs record intent; executable M2 closure remains evidence-driven. Reviewed candidates are informative until an explicit acceptance change assigns a permanent ADR number and updates affected contracts.
