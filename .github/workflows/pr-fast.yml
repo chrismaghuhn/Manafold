@@ -33,3 +33,9 @@ jobs:
           cargo +1.85.1 fmt --all -- --check
           cargo +1.85.1 check --workspace --all-targets --all-features --locked
       - run: python scripts/run_m2_b_contract_cut.py
+      - name: Assert clean source before M2.C gates
+        shell: bash
+        run: |
+          status="$(git status --porcelain=v1 --untracked-files=all)"
+          test -z "$status" || { printf '%s\n' "$status"; exit 1; }
+      - run: python scripts/run_m2_c_gates.py
