@@ -1,8 +1,6 @@
 use mtgml_model::{DecisionId, GameObjectId, PlayerId};
 use mtgml_random::{RandomStreamCursorV1, RandomStreamKeyV1, RootSeed256};
-use mtgml_state::{
-    EngineState, KnowledgeStateV2, ObjectSnapshot, PerspectiveIdentityStateV2,
-};
+use mtgml_state::{EngineState, KnowledgeStateV2, ObjectSnapshot, PerspectiveIdentityStateV2};
 use std::collections::BTreeMap;
 
 use crate::validation::TransitionViolation;
@@ -167,9 +165,12 @@ impl SemanticValidationCursor {
                     .players
                     .get_mut(&lifecycle.perspective)
                     .ok_or(TransitionViolation::OccurrencePairing)?;
-                mtgml_state::apply_lifecycle_to_player(knowledge, identity, &|object| {
-                    objects.contains_key(&object)
-                }, lifecycle)
+                mtgml_state::apply_lifecycle_to_player(
+                    knowledge,
+                    identity,
+                    &|object| objects.contains_key(&object),
+                    lifecycle,
+                )
                 .map_err(|_| TransitionViolation::OccurrencePairing)?;
             }
         }
@@ -232,8 +233,10 @@ fn lifecycle_identities_match(
     after: &PerspectiveIdentityStateV2,
 ) -> bool {
     replayed.players.keys().count() == after.players.keys().count()
-        && replayed.players.iter().all(|(player, record)| {
-            match after.players.get(player) {
+        && replayed
+            .players
+            .iter()
+            .all(|(player, record)| match after.players.get(player) {
                 Some(other) => {
                     record.opaque_to_object == other.opaque_to_object
                         && record.opaque_to_ability == other.opaque_to_ability
@@ -245,6 +248,5 @@ fn lifecycle_identities_match(
                         && record.retired_ability_ids == other.retired_ability_ids
                 }
                 None => false,
-            }
-        })
+            })
 }

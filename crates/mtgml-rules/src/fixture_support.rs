@@ -9,8 +9,8 @@
 
 use mtgml_model::{GameObjectId, RuleEventId, StateRevision};
 use mtgml_state::{
-    apply_perspective_lifecycle, EngineState, ObjectSnapshot, ZoneKey, ZoneLocation,
-    ZonePosition, ZoneTransition,
+    apply_perspective_lifecycle, EngineState, ObjectSnapshot, ZoneKey, ZoneLocation, ZonePosition,
+    ZoneTransition,
 };
 
 use crate::errors::KernelExecutionError;
@@ -78,11 +78,13 @@ impl FixtureTransition {
         }
         let snapshots = crate::snapshots::object_snapshots(&self.workspace)
             .map_err(|_| KernelExecutionError::UnsupportedStagePath)?;
-        let old_snapshot = snapshots.get(&object).cloned().ok_or(
-            KernelExecutionError::AfterState(
-                mtgml_state::EngineStateViolation::ObjectLocationMismatch,
-            ),
-        )?;
+        let old_snapshot =
+            snapshots
+                .get(&object)
+                .cloned()
+                .ok_or(KernelExecutionError::AfterState(
+                    mtgml_state::EngineStateViolation::ObjectLocationMismatch,
+                ))?;
         let from = old_snapshot.location.clone();
         if from == to {
             return Err(KernelExecutionError::UnsupportedStagePath);
@@ -103,7 +105,10 @@ impl FixtureTransition {
         moved.id = new_object;
         self.workspace.zones.objects.insert(new_object, moved);
         self.workspace.zones.locations.remove(&object);
-        self.workspace.zones.locations.insert(new_object, to.clone());
+        self.workspace
+            .zones
+            .locations
+            .insert(new_object, to.clone());
         if from.position != ZonePosition::Unordered {
             let key: ZoneKey = from.key();
             if let Some(entries) = self.workspace.zones.ordered_zones.get_mut(&key) {

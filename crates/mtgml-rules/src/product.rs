@@ -4,10 +4,10 @@
 use mtgml_model::{EpisodeStatus, RuleEventId};
 use mtgml_state::{validate_engine_state, EngineState, StateDelta};
 
+use crate::contract::validate_transition_contract;
 use crate::errors::KernelExecutionError;
 use crate::events::AuthoritativeRuleEvent;
 use crate::transition::TransitionResult;
-use crate::contract::validate_transition_contract;
 
 /// Shared accepted-product epilogue: applies the workspace mutation, closes
 /// the event cursor, builds the exact delta, and validates the complete

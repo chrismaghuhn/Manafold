@@ -24,13 +24,13 @@ use mtgml_model::{
 };
 use mtgml_random::{RandomStreamKeyV1, RandomStreamKindV1};
 use mtgml_state::{
-    AssemblyStageV2, ContinuationPayloadV2, ContinuationRecordV2,
-    EngineState, EngineStateViolation, PendingDecisionRecordV2, StateDelta,
+    AssemblyStageV2, ContinuationPayloadV2, ContinuationRecordV2, EngineState,
+    EngineStateViolation, PendingDecisionRecordV2, StateDelta,
 };
 
-use crate::product::build_accepted_product;
 use crate::errors::KernelExecutionError;
 use crate::events::{AuthoritativeRuleEvent, AuthoritativeRuleEventKind};
+use crate::product::build_accepted_product;
 use crate::transition::{RulesKernel, TransitionResult};
 use crate::validate_transition_contract;
 
@@ -667,8 +667,6 @@ fn advance_player_allocator(
     identity.next_player_decision_id = PlayerDecisionIdV1(issued.0 + 1);
     Ok(())
 }
-
-
 
 fn rejected(state: &EngineState) -> Result<TransitionResult, KernelExecutionError> {
     let result = TransitionResult {

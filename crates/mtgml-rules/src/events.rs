@@ -1,6 +1,8 @@
 use mtgml_model::{DecisionId, GameObjectId, PlayerId, RuleEventId, StateRevision, ZoneKind};
 use mtgml_random::RandomStreamKeyV1;
-use mtgml_state::{KnowledgeAcquisitionReason, PerspectiveLifecycleAuditV1, SemanticDeltaOperation, ZoneTransition};
+use mtgml_state::{
+    KnowledgeAcquisitionReason, PerspectiveLifecycleAuditV1, SemanticDeltaOperation, ZoneTransition,
+};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -119,7 +121,9 @@ pub struct AuthoritativeRuleEvent {
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum PerspectiveObservationPolicyV1 {
     /// A tracked movement perceived by the perspective. Field flags decide
-    /// which incarnations are authorized for opaque substitution.
+    /// which incarnations are authorized for opaque substitution. Revealing
+    /// only the old incarnation models a tracked disappearance; revealing
+    /// only the new one models an appearance of an already-tracked identity.
     MovedInSight {
         from_zone: ZoneKind,
         to_zone: ZoneKind,
@@ -133,12 +137,6 @@ pub enum PerspectiveObservationPolicyV1 {
         from_zone: ZoneKind,
         to_zone: ZoneKind,
         new_object: GameObjectId,
-    },
-    /// A known object leaves sight while staying distinguishable.
-    VanishedTracked {
-        from_zone: ZoneKind,
-        to_zone: ZoneKind,
-        old_object: GameObjectId,
     },
     /// Knowledge-only occurrence: no observed envelope is projected.
     NoEnvelope,
@@ -179,7 +177,9 @@ pub fn validate_occurrence_pairing(
         } => {
             if !matches!(
                 mutation.identity,
-                mtgml_state::IdentityMutationV1::None | mtgml_state::IdentityMutationV1::Remap { .. }
+                mtgml_state::IdentityMutationV1::None
+                    | mtgml_state::IdentityMutationV1::Remap { .. }
+                    | mtgml_state::IdentityMutationV1::Retire { .. }
             ) {
                 return Err(OccurrencePairingError::IdentityMismatch);
             }
@@ -187,11 +187,22 @@ pub fn validate_occurrence_pairing(
                 mutation.knowledge,
                 None | Some(mtgml_state::KnowledgeMutationV1::UpdateLocation { .. })
                     | Some(mtgml_state::KnowledgeMutationV1::CurrentToHistory { .. })
+                    | Some(mtgml_state::KnowledgeMutationV1::Invalidate { .. })
             ) {
                 return Err(OccurrencePairingError::KnowledgeMismatch);
             }
             if !*reveals_old && !*reveals_new {
                 return Err(OccurrencePairingError::NothingRevealed);
+            }
+            // Retiring identity requires the knowledge side to invalidate.
+            if matches!(
+                mutation.identity,
+                mtgml_state::IdentityMutationV1::Retire { .. }
+            ) && !matches!(
+                mutation.knowledge,
+                Some(mtgml_state::KnowledgeMutationV1::Invalidate { .. })
+            ) {
+                return Err(OccurrencePairingError::KnowledgeMismatch);
             }
         }
         Policy::Appeared { .. } => {
@@ -218,27 +229,10 @@ pub fn validate_occurrence_pairing(
                 _ => return Err(OccurrencePairingError::KnowledgeMismatch),
             }
         }
-        Policy::VanishedTracked { .. } => {
-            if !matches!(
-                mutation.identity,
-                mtgml_state::IdentityMutationV1::Retire { .. }
-            ) {
-                return Err(OccurrencePairingError::IdentityMismatch);
-            }
-            if !matches!(
-                mutation.knowledge,
-                None | Some(mtgml_state::KnowledgeMutationV1::CurrentToHistory { .. })
-            ) {
-                return Err(OccurrencePairingError::KnowledgeMismatch);
-            }
-        }
         Policy::NoEnvelope => {
-            if !matches!(mutation.identity, mtgml_state::IdentityMutationV1::None) {
-                return Err(OccurrencePairingError::IdentityMismatch);
-            }
-            if mutation.knowledge.is_none() {
-                return Err(OccurrencePairingError::KnowledgeMismatch);
-            }
+            // Envelope-less occurrences carry arbitrary authorized lifecycle
+            // mutations (private looks, own-private identity, explicit
+            // forget, hidden randomization/shuffle retirement).
         }
         Policy::SawRandomOutcome { .. } | Policy::AnnouncedOutcome { .. } => {
             if !matches!(mutation.identity, mtgml_state::IdentityMutationV1::None)
