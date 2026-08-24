@@ -9,6 +9,7 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "python" / "src"))
 
 from mtgml._generated_contract_vocab import (
+    OBSERVED_EVENT_KINDS,
     PlayerResult,
     TerminalReason,
     TruncationReason,
@@ -231,6 +232,10 @@ class ConstructiveObservedEventEnvelopeV2Tests(unittest.TestCase):
                     ObservedEventV2(kind, payload),
                 )
                 self.assertEqual(encode_canonical(envelope), golden_bytes(name))
+
+    def test_case_kinds_cover_generated_vocabulary(self) -> None:
+        """CASES must never silently lag the generated event-kind vocabulary."""
+        self.assertEqual({kind for _, _, kind, _ in self.CASES}, set(OBSERVED_EVENT_KINDS))
 
 
 def choose_one_request() -> PlayerDecisionRequestV2:

@@ -471,7 +471,7 @@ pub enum FixtureVerificationError {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use mtgml_model::{
         InformationStateDigestV2, ObservationDigest, PlayerId, StateRevision, VisibleSequence,
@@ -480,7 +480,7 @@ mod tests {
         InformationStateDigestInputV2, ObservationEnvelope, OBSERVATION_SCHEMA,
     };
 
-    fn repository_root() -> std::path::PathBuf {
+    pub(crate) fn repository_root() -> std::path::PathBuf {
         std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")
     }
 
@@ -561,8 +561,12 @@ mod constructive_producer_tests {
         "256b504fe8fc2b9cb41395986c74586ea5617cf192a8939f05e7373f25dd41ca";
 
     fn golden_fixture(name: &str) -> Vec<u8> {
-        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
-        std::fs::read(root.join("wire/golden").join(name)).expect("golden fixture is readable")
+        std::fs::read(
+            super::tests::repository_root()
+                .join("wire/golden")
+                .join(name),
+        )
+        .expect("golden fixture is readable")
     }
 
     fn observed_provenance(
