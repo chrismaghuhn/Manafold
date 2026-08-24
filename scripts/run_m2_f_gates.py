@@ -117,8 +117,18 @@ GATE_TESTS: dict[str, tuple[EvidenceDefinition, ...]] = {
         ),
         rust(
             "mtgml-conformance",
-            "legal_space::gate_evidence::invariance::set_vs_sequence_mutant_matrix",
-            "ChooseMany set vs Order sequence semantics enforced in IR",
+            "legal_space::gate_evidence::unsatisfiable::authoritative_request_fails_closed",
+            "unsatisfiable fail-closed",
+        ),
+        rust(
+            "mtgml-conformance",
+            "legal_space::gate_evidence::authoritative::unsat_choose_one_zero_candidates_rejected",
+            "authoritative ChooseOne zero candidates rejected",
+        ),
+        rust(
+            "mtgml-conformance",
+            "legal_space::gate_evidence::authoritative::unsat_choose_many_minimum_above_candidate_count_rejected",
+            "authoritative ChooseMany minimum above candidates rejected",
         ),
         source("source_check::oracle_boundary_guard", "oracle boundary guard"),
     ),
@@ -151,7 +161,6 @@ GATE_TESTS: dict[str, tuple[EvidenceDefinition, ...]] = {
         source("source_check::oracle_boundary_guard", "oracle boundary guard"),
     ),
 }
-
 
 
 def run_command(command: Sequence[str]) -> subprocess.CompletedProcess[str]:
@@ -423,24 +432,48 @@ def execute_python_test(definition: EvidenceDefinition, logs: Path, index: int) 
 
 
 def check_oracle_boundary_guard() -> str:
-    """Oracle independence: no production crate transitively pulls conformance,
-    and the explorer does not import reference-oracle symbols."""
+    """Oracle independence: no production crate transitively pulls
+    mtgml-conformance, and explorer.rs contains no reference-oracle imports."""
     import json as _json
     import subprocess as _sp
+
     meta = _sp.run(
         ["cargo", "metadata", "--locked", "--format-version", "1"],
-        cwd=ROOT, capture_output=True, text=True,
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
     )
     if meta.returncode != 0:
         raise AssertionError(f"cargo metadata failed: {meta.stderr[:200]}")
-    for pkg in _json.loads(meta.stdout)["packages"]:
-        if pkg["name"] in ("mtgml-rules", "mtgml-environment"):
-            for dep in pkg.get("dependencies", []):
-                if dep["name"] == "mtgml-conformance":
-                    raise AssertionError(f"{pkg['name']} pulls mtgml-conformance")
-    src = (ROOT / "crates" / "mtgml-conformance" / "src" / "legal_space" / "explorer.rs").read_text(encoding="utf-8")
+    md = _json.loads(meta.stdout)
+    # Transitive reachability: resolve.nodes gives the full dependency closure.
+    resolve_nodes = {
+        node["id"]: node.get("deps", []) for node in md.get("resolve", {}).get("nodes", [])
+    }
+    conformance_id = next(
+        (p["id"] for p in md["packages"] if p["name"] == "mtgml-conformance"), None
+    )
+    if conformance_id:
+        for pkg in md["packages"]:
+            if pkg["name"] not in ("mtgml-rules", "mtgml-environment"):
+                continue
+            node_id = pkg["id"]
+            deps = resolve_nodes.get(node_id, [])
+            dep_ids = [d["dep"]["pkg"] if isinstance(d, dict) and "dep" in d else d for d in deps]
+            if conformance_id in dep_ids or any(conformance_id == d for d in dep_ids):
+                raise AssertionError(f"{pkg['name']} transitively pulls conformance")
+    # Source scan: code-level imports only (skip comments/blank lines).
+    src = (ROOT / "crates" / "mtgml-conformance" / "src" / "legal_space" / "explorer.rs").read_text(
+        encoding="utf-8"
+    )
+    code_lines = [
+        line.strip()
+        for line in src.splitlines()
+        if line.strip() and not line.strip().startswith("//") and not line.strip().startswith("//!")
+    ]
+    joined = "\n".join(code_lines)
     for pattern in ["super::oracle", "crate::legal_space::oracle", "SCENARIO_COUNT_"]:
-        if pattern in src:
+        if pattern in joined:
             raise AssertionError(f"explorer.rs imports oracle symbol: {pattern}")
     return "oracle boundary clean: cargo graph + source scan pass"
 

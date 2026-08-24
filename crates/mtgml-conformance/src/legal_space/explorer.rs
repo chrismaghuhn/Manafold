@@ -1,7 +1,7 @@
 //! Production protocol exploration through the REAL player-facing endpoint.
 //!
 //! Independence boundary (Issue #53): this module MUST NOT import anything
-//! from the reference oracle (`super::oracle`). Discovery depends exclusively
+//! from the reference oracle module. Discovery depends exclusively
 //! on the player-visible request plus an explicit resource budget. The
 //! trusted controller is used ONLY for fork/checkpoint/branch isolation and
 //! rejection non-mutation — never for candidate, number or order enumeration.

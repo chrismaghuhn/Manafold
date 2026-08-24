@@ -112,7 +112,7 @@ impl ReferenceAutomaton {
                     .spec
                     .piece_iteration_order
                     .iter()
-                    .take(*count as usize)
+                    .filter(|piece| (**piece) < *count)
                     .map(|piece| SyntheticChoiceAtom::Piece(*piece))
                     .collect(),
             },
@@ -142,7 +142,7 @@ impl ReferenceAutomaton {
                     .spec
                     .piece_iteration_order
                     .iter()
-                    .take(*count as usize)
+                    .filter(|piece| (**piece) < *count)
                     .map(|piece| SyntheticChoiceAtom::Piece(*piece))
                     .collect();
                 vec![CanonicalStageChoice::Members(members)]
