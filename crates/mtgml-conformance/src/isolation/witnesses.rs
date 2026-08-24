@@ -92,50 +92,33 @@ pub struct TrustedRenamingBijection {
     pub abilities: BTreeMap<AbilityInstanceId, AbilityInstanceId>,
 }
 
-/// One perspective's complete witness for a state pair.
+/// State-independent witness policy for one perspective.
 ///
-/// The knowledge and decision relations are computed from states A/B at
-/// construction time; `bijection: None` authorizes no renaming, so any
-/// mapping-target difference is then unexplained.
+/// A witness carries only declared policy — whose perspective authorizes
+/// the pair, which renaming differences are explained, and which
+/// authoritative difference must hold. It never caches relation outcomes:
+/// `assert_witness` recomputes every relation from the actual pair at
+/// assertion time, so a stale witness can never accept a pair whose
+/// authorized surfaces changed after construction.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PairWitness {
     pub perspective: PlayerId,
-    pub knowledge_relation: RelationOutcome,
-    pub decision_relation: RelationOutcome,
     pub bijection: Option<TrustedRenamingBijection>,
     pub expected_difference: NonVacuityPredicate,
 }
 
 impl PairWitness {
-    /// Builds the witness for `perspective` from states A/B.
-    pub fn build(
+    /// Builds the state-independent witness policy for `perspective`.
+    pub fn new(
         perspective: PlayerId,
-        a: &EngineState,
-        b: &EngineState,
         bijection: Option<TrustedRenamingBijection>,
         expected_difference: NonVacuityPredicate,
-    ) -> Result<Self, WitnessViolation> {
-        let knowledge_a = a
-            .knowledge
-            .players
-            .get(&perspective)
-            .ok_or(WitnessViolation::MissingPerspective)?;
-        let knowledge_b = b
-            .knowledge
-            .players
-            .get(&perspective)
-            .ok_or(WitnessViolation::MissingPerspective)?;
-        Ok(Self {
+    ) -> Self {
+        Self {
             perspective,
-            knowledge_relation: relate_knowledge(knowledge_a, knowledge_b),
-            decision_relation: relate_decision(
-                perspective,
-                authorized_decision_view(pending_request(a), perspective),
-                authorized_decision_view(pending_request(b), perspective),
-            ),
             bijection,
             expected_difference,
-        })
+        }
     }
 }
 
@@ -469,25 +452,43 @@ fn is_injective<Key: Copy + Ord, Target: Copy + Ord>(mapping: &BTreeMap<Key, Tar
     targets.len() == mapping.len()
 }
 
-/// Runs the full witness assertion over a state pair: knowledge relation,
-/// decision relation, bijection explanation (with no renaming authorized
-/// when absent), then the non-vacuity predicate. A declared axis difference
-/// that does not hold is vacuous evidence and fails closed.
+/// Runs the full witness assertion over a state pair, recomputing every
+/// relation from the actual pair at assertion time: knowledge relation,
+/// decision relation over authorized views, bijection explanation (with no
+/// renaming authorized when absent), then the non-vacuity predicate. A
+/// declared axis difference that does not hold is vacuous evidence and
+/// fails closed. Because nothing is cached on the witness, a witness built
+/// for one pair can never accept a later pair whose authorized surfaces
+/// diverged.
 pub fn assert_witness(
     a: &EngineState,
     b: &EngineState,
     witness: &PairWitness,
 ) -> Result<(), WitnessViolation> {
-    match &witness.knowledge_relation {
+    let knowledge_a = a
+        .knowledge
+        .players
+        .get(&witness.perspective)
+        .ok_or(WitnessViolation::MissingPerspective)?;
+    let knowledge_b = b
+        .knowledge
+        .players
+        .get(&witness.perspective)
+        .ok_or(WitnessViolation::MissingPerspective)?;
+    match relate_knowledge(knowledge_a, knowledge_b) {
         RelationOutcome::Equal => {}
         RelationOutcome::Diverges { path } => {
-            return Err(WitnessViolation::KnowledgeDivergence { path: path.clone() });
+            return Err(WitnessViolation::KnowledgeDivergence { path });
         }
     }
-    match &witness.decision_relation {
+    match relate_decision(
+        witness.perspective,
+        authorized_decision_view(pending_request(a), witness.perspective),
+        authorized_decision_view(pending_request(b), witness.perspective),
+    ) {
         RelationOutcome::Equal => {}
         RelationOutcome::Diverges { path } => {
-            return Err(WitnessViolation::DecisionDivergence { path: path.clone() });
+            return Err(WitnessViolation::DecisionDivergence { path });
         }
     }
     let default_bijection = TrustedRenamingBijection::default();
@@ -682,8 +683,11 @@ fn global_cursor(state: &EngineState) -> Option<u64> {
         .map(|cursor| cursor.next_raw_u64)
 }
 
-/// A non-empty object bijection explains at least one actual mapping-target
-/// difference while every perspective keeps its opaque key sets.
+/// True when at least one perspective's object-mapping targets differ
+/// between sides exactly along the declared (non-empty) object bijection.
+/// Other players' private identity state may legitimately differ and
+/// imposes no equality constraint here; the witness perspective's opaque-key
+/// equality is enforced by `check_bijection`.
 fn renaming_difference_holds(
     a: &EngineState,
     b: &EngineState,
@@ -698,29 +702,24 @@ fn renaming_difference_holds(
     let mut renamed_instance = false;
     for (player, identity_a) in &a.perspective_identities.players {
         let Some(identity_b) = b.perspective_identities.players.get(player) else {
-            return false;
+            continue;
         };
-        if keys_of(&identity_a.opaque_to_object) != keys_of(&identity_b.opaque_to_object) {
-            return false;
-        }
         for (opaque, target_a) in &identity_a.opaque_to_object {
-            match identity_b.opaque_to_object.get(opaque) {
-                Some(target_b) if target_a != target_b => {
-                    if bijection.objects.get(target_a) != Some(target_b) {
-                        return false;
-                    }
+            if let Some(target_b) = identity_b.opaque_to_object.get(opaque) {
+                if target_a != target_b && bijection.objects.get(target_a) == Some(target_b) {
                     renamed_instance = true;
                 }
-                Some(_) => {}
-                None => return false,
             }
         }
     }
     renamed_instance
 }
 
-/// A non-empty ability bijection explains at least one actual instance
-/// difference behind an identical opaque ability key.
+/// True when at least one perspective's ability-mapping instances differ
+/// between sides behind an identical opaque key, explained by the declared
+/// (non-empty) ability bijection. Other players' private identity state may
+/// legitimately differ and imposes no equality constraint here; the witness
+/// perspective's opaque-key equality is enforced by `check_bijection`.
 fn ability_renaming_difference_holds(
     a: &EngineState,
     b: &EngineState,
@@ -735,21 +734,15 @@ fn ability_renaming_difference_holds(
     let mut renamed_instance = false;
     for (player, identity_a) in &a.perspective_identities.players {
         let Some(identity_b) = b.perspective_identities.players.get(player) else {
-            return false;
+            continue;
         };
-        if keys_of(&identity_a.opaque_to_ability) != keys_of(&identity_b.opaque_to_ability) {
-            return false;
-        }
         for (opaque, instance_a) in &identity_a.opaque_to_ability {
-            match identity_b.opaque_to_ability.get(opaque) {
-                Some(instance_b) if instance_a != instance_b => {
-                    if bijection.abilities.get(instance_a) != Some(instance_b) {
-                        return false;
-                    }
+            if let Some(instance_b) = identity_b.opaque_to_ability.get(opaque) {
+                if instance_a != instance_b
+                    && bijection.abilities.get(instance_a) == Some(instance_b)
+                {
                     renamed_instance = true;
                 }
-                Some(_) => {}
-                None => return false,
             }
         }
     }
@@ -817,13 +810,11 @@ mod tests {
             RelationOutcome::Equal
         );
 
-        let witness =
-            PairWitness::build(P2, &state, &clone, None, NonVacuityPredicate::None).unwrap();
+        let witness = PairWitness::new(P2, None, NonVacuityPredicate::None);
         assert_witness(&state, &clone, &witness).unwrap();
 
         // An identical clone cannot carry a declared difference.
-        let vacuous =
-            PairWitness::build(P2, &state, &clone, None, NonVacuityPredicate::Required).unwrap();
+        let vacuous = PairWitness::new(P2, None, NonVacuityPredicate::Required);
         assert_eq!(
             assert_witness(&state, &clone, &vacuous),
             Err(WitnessViolation::VacuousPair)
@@ -836,19 +827,14 @@ mod tests {
         let mut state_b = state_a.clone();
         rename_hidden_object(&mut state_b).unwrap();
 
-        let explained = PairWitness::build(
+        let explained = PairWitness::new(
             P2,
-            &state_a,
-            &state_b,
             Some(renaming_bijection()),
             NonVacuityPredicate::Required,
-        )
-        .unwrap();
+        );
         assert_witness(&state_a, &state_b, &explained).unwrap();
 
-        let unexplained =
-            PairWitness::build(P2, &state_a, &state_b, None, NonVacuityPredicate::Required)
-                .unwrap();
+        let unexplained = PairWitness::new(P2, None, NonVacuityPredicate::Required);
         assert!(matches!(
             assert_witness(&state_a, &state_b, &unexplained),
             Err(WitnessViolation::BijectionUnexplained { .. })
@@ -897,6 +883,34 @@ mod tests {
     }
 
     #[test]
+    fn stale_witness_must_fail_on_later_authorized_divergence() {
+        let state_a = base_pair_state(&"11".repeat(32)).unwrap();
+        let equal_b = state_a.clone();
+        // The witness is pure policy: it binds no relation outcomes.
+        let witness = PairWitness::new(P1, None, NonVacuityPredicate::None);
+        assert_witness(&state_a, &equal_b, &witness).unwrap();
+
+        // After the witness exists, B's P1-authorized knowledge diverges on
+        // the exact record path (the definition-known marker of P1's own
+        // public record). A cached-relation witness would still accept this
+        // pair; recomputation must reject it.
+        let mut mutated_b = equal_b;
+        mutated_b
+            .knowledge
+            .players
+            .get_mut(&P1)
+            .unwrap()
+            .active
+            .get_mut(&OpaqueObjectId(1))
+            .unwrap()
+            .card_definition = None;
+        assert!(matches!(
+            assert_witness(&state_a, &mutated_b, &witness),
+            Err(WitnessViolation::KnowledgeDivergence { .. })
+        ));
+    }
+
+    #[test]
     fn identity_equivalence_is_scoped_to_witness_perspective() {
         let state_a = base_pair_state(&"11".repeat(32)).unwrap();
         let mut state_b = state_a.clone();
@@ -910,9 +924,7 @@ mod tests {
             .next_player_decision_id
             .0 += 1;
         mtgml_state::validate_engine_state(&state_b).unwrap();
-        let witness =
-            PairWitness::build(P1, &state_a, &state_b, None, NonVacuityPredicate::Required)
-                .unwrap();
+        let witness = PairWitness::new(P1, None, NonVacuityPredicate::Required);
         assert_witness(&state_a, &state_b, &witness).unwrap();
 
         // Negative control: the same private-history difference on P1's OWN
@@ -926,8 +938,7 @@ mod tests {
             .next_player_decision_id
             .0 += 1;
         mtgml_state::validate_engine_state(&state_c).unwrap();
-        let own = PairWitness::build(P1, &state_a, &state_c, None, NonVacuityPredicate::Required)
-            .unwrap();
+        let own = PairWitness::new(P1, None, NonVacuityPredicate::Required);
         assert!(matches!(
             assert_witness(&state_a, &state_c, &own),
             Err(WitnessViolation::BijectionUnexplained { .. })
@@ -994,14 +1005,7 @@ mod tests {
                 path: "objects".to_owned()
             }
         );
-        let witness = PairWitness::build(
-            P2,
-            &state,
-            &clone,
-            Some(collapsing),
-            NonVacuityPredicate::ObjectRenaming,
-        )
-        .unwrap();
+        let witness = PairWitness::new(P2, Some(collapsing), NonVacuityPredicate::ObjectRenaming);
         assert_eq!(
             assert_witness(&state, &clone, &witness),
             Err(WitnessViolation::BijectionNotInjective {
@@ -1033,7 +1037,7 @@ mod tests {
                 }
                 _ => None,
             };
-            let witness = PairWitness::build(P2, &state, &clone, bijection, predicate).unwrap();
+            let witness = PairWitness::new(P2, bijection, predicate);
             assert_eq!(
                 assert_witness(&state, &clone, &witness),
                 Err(WitnessViolation::VacuousPair),

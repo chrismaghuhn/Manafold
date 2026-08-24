@@ -377,14 +377,11 @@ mod tests {
         let base = base_pair_state(&"11".repeat(32)).unwrap();
         let mut expected_b = base.clone();
         rename_hidden_object(&mut expected_b).unwrap();
-        let witness = crate::isolation::witnesses::PairWitness::build(
+        let witness = crate::isolation::witnesses::PairWitness::new(
             P2,
-            &base,
-            &expected_b,
             Some(renaming_bijection()),
             NonVacuityPredicate::Required,
-        )
-        .unwrap();
+        );
 
         fn unchanged(_state: &mut EngineState) -> Result<TransformReport, HarnessError> {
             Ok(TransformReport {
@@ -404,6 +401,7 @@ mod tests {
         assert_eq!(case.name, "hidden_object_renaming");
         assert_eq!(case.axis, AxisKind::ObjectRenaming);
         assert_eq!(case.perspective, P2);
+        assert_eq!(case.state_b, expected_b);
         assert_witness(&case.state_a, &case.state_b, &case.witness).unwrap();
     }
 

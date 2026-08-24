@@ -24,7 +24,7 @@ use mtgml_state::{
 
 use super::paired::{
     base_pair_state, build_case, spawn_environment, synthetic_environment_config, AxisKind,
-    PairedCase, TransformFn, TransformReport,
+    PairedCase, TransformReport,
 };
 use super::witnesses::{NonVacuityPredicate, PairWitness, TrustedRenamingBijection};
 use super::HarnessError;
@@ -643,101 +643,53 @@ fn transform_inject_foreign_history(
 
 // === case builders ==========================================================
 
-fn witnessed_pair(
-    base: &EngineState,
-    transform_a: TransformFn,
-    transform_b: TransformFn,
-    perspective: PlayerId,
-    predicate: NonVacuityPredicate,
-    bijection: Option<TrustedRenamingBijection>,
-) -> Result<PairWitness, HarnessError> {
-    let mut state_a = base.clone();
-    transform_a(&mut state_a)?;
-    validate_engine_state(&state_a).map_err(HarnessError::StateValidation)?;
-    let mut state_b = base.clone();
-    transform_b(&mut state_b)?;
-    validate_engine_state(&state_b).map_err(HarnessError::StateValidation)?;
-    PairWitness::build(perspective, &state_a, &state_b, bijection, predicate)
-        .map_err(HarnessError::Witness)
-}
-
+// Witnesses are pure policy (`PairWitness::new`); every relation gate runs
+// inside `build_case`'s pipeline and again at assertion time.
 fn build_opponent_hidden_definition() -> Result<PairedCase, HarnessError> {
     let base = base_pair_state(SEED_A_HEX)?;
-    let witness = witnessed_pair(
-        &base,
-        transform_et_only,
-        transform_et_with_definition_swap,
-        P1,
-        NonVacuityPredicate::OpponentHiddenDefinition,
-        None,
-    )?;
     build_case(
         NAME_01,
         AxisKind::OpponentHiddenDefinition,
         &base,
         transform_et_only,
         transform_et_with_definition_swap,
-        witness,
+        PairWitness::new(P1, None, NonVacuityPredicate::OpponentHiddenDefinition),
     )
 }
 
 fn build_hidden_concealed_ordering() -> Result<PairedCase, HarnessError> {
     let base = base_pair_state(SEED_A_HEX)?;
-    let witness = witnessed_pair(
-        &base,
-        transform_et_only,
-        transform_et_with_permutation,
-        P1,
-        NonVacuityPredicate::HiddenConcealedOrdering,
-        None,
-    )?;
     build_case(
         NAME_02,
         AxisKind::HiddenConcealedOrdering,
         &base,
         transform_et_only,
         transform_et_with_permutation,
-        witness,
+        PairWitness::new(P1, None, NonVacuityPredicate::HiddenConcealedOrdering),
     )
 }
 
 fn build_foreign_private_look() -> Result<PairedCase, HarnessError> {
     let base = base_pair_state(SEED_A_HEX)?;
-    let witness = witnessed_pair(
-        &base,
-        transform_add_unobserved_object,
-        transform_add_observed_object,
-        P1,
-        NonVacuityPredicate::ForeignPrivateLook,
-        None,
-    )?;
     build_case(
         NAME_03,
         AxisKind::ForeignPrivateLook,
         &base,
         transform_add_unobserved_object,
         transform_add_observed_object,
-        witness,
+        PairWitness::new(P1, None, NonVacuityPredicate::ForeignPrivateLook),
     )
 }
 
 fn build_face_down_identity() -> Result<PairedCase, HarnessError> {
     let base = base_pair_state(SEED_A_HEX)?;
-    let witness = witnessed_pair(
-        &base,
-        transform_et_only,
-        transform_et_with_physical_swap,
-        P1,
-        NonVacuityPredicate::FaceDownIdentity,
-        None,
-    )?;
     build_case(
         NAME_04,
         AxisKind::FaceDownIdentity,
         &base,
         transform_et_only,
         transform_et_with_physical_swap,
-        witness,
+        PairWitness::new(P1, None, NonVacuityPredicate::FaceDownIdentity),
     )
 }
 
@@ -752,14 +704,7 @@ fn build_root_seed_pre_auth() -> Result<PairedCase, HarnessError> {
     let config = synthetic_environment_config([P1, P2]);
     spawn_environment(state_a.clone(), &config)?;
     spawn_environment(state_b.clone(), &config)?;
-    let witness = PairWitness::build(
-        P1,
-        &state_a,
-        &state_b,
-        None,
-        NonVacuityPredicate::RootSeedPreAuth,
-    )
-    .map_err(HarnessError::Witness)?;
+    let witness = PairWitness::new(P1, None, NonVacuityPredicate::RootSeedPreAuth);
     Ok(PairedCase {
         name: NAME_05,
         axis: AxisKind::RootSeedPreAuth,
@@ -772,21 +717,13 @@ fn build_root_seed_pre_auth() -> Result<PairedCase, HarnessError> {
 
 fn build_hidden_rng_cursor() -> Result<PairedCase, HarnessError> {
     let base = base_pair_state(SEED_A_HEX)?;
-    let witness = witnessed_pair(
-        &base,
-        unchanged,
-        transform_bump_rng_cursor,
-        P1,
-        NonVacuityPredicate::HiddenRngCursor,
-        None,
-    )?;
     build_case(
         NAME_06,
         AxisKind::HiddenRngCursor,
         &base,
         unchanged,
         transform_bump_rng_cursor,
-        witness,
+        PairWitness::new(P1, None, NonVacuityPredicate::HiddenRngCursor),
     )
 }
 
@@ -799,21 +736,17 @@ fn object_renaming_bijection() -> TrustedRenamingBijection {
 
 fn build_object_renaming() -> Result<PairedCase, HarnessError> {
     let base = base_pair_state(SEED_A_HEX)?;
-    let witness = witnessed_pair(
-        &base,
-        transform_et_only,
-        transform_et_then_rename,
-        P2,
-        NonVacuityPredicate::ObjectRenaming,
-        Some(object_renaming_bijection()),
-    )?;
     build_case(
         NAME_07A,
         AxisKind::ObjectRenaming,
         &base,
         transform_et_only,
         transform_et_then_rename,
-        witness,
+        PairWitness::new(
+            P2,
+            Some(object_renaming_bijection()),
+            NonVacuityPredicate::ObjectRenaming,
+        ),
     )
 }
 
@@ -825,61 +758,37 @@ fn build_ability_renaming() -> Result<PairedCase, HarnessError> {
             .into_iter()
             .collect(),
     };
-    let witness = witnessed_pair(
-        &base,
-        transform_add_stack_ability_a,
-        transform_add_stack_ability_b,
-        P1,
-        NonVacuityPredicate::AbilityRenaming,
-        Some(abilities),
-    )?;
     build_case(
         NAME_07B,
         AxisKind::AbilityRenaming,
         &base,
         transform_add_stack_ability_a,
         transform_add_stack_ability_b,
-        witness,
+        PairWitness::new(P1, Some(abilities), NonVacuityPredicate::AbilityRenaming),
     )
 }
 
 fn build_global_allocator_history() -> Result<PairedCase, HarnessError> {
     let base = base_pair_state(SEED_A_HEX)?;
-    let witness = witnessed_pair(
-        &base,
-        transform_advance_effect_cursor,
-        transform_advance_unrelated_cursors,
-        P1,
-        NonVacuityPredicate::GlobalAllocatorHistory,
-        None,
-    )?;
     build_case(
         NAME_08,
         AxisKind::GlobalAllocatorHistory,
         &base,
         transform_advance_effect_cursor,
         transform_advance_unrelated_cursors,
-        witness,
+        PairWitness::new(P1, None, NonVacuityPredicate::GlobalAllocatorHistory),
     )
 }
 
 fn build_foreign_knowledge_history() -> Result<PairedCase, HarnessError> {
     let base = base_pair_state(SEED_A_HEX)?;
-    let witness = witnessed_pair(
-        &base,
-        unchanged,
-        transform_inject_foreign_history,
-        P1,
-        NonVacuityPredicate::ForeignKnowledgeHistory,
-        None,
-    )?;
     build_case(
         NAME_09,
         AxisKind::ForeignKnowledgeHistory,
         &base,
         unchanged,
         transform_inject_foreign_history,
-        witness,
+        PairWitness::new(P1, None, NonVacuityPredicate::ForeignKnowledgeHistory),
     )
 }
 
