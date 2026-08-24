@@ -15,5 +15,7 @@ mtgml-replay = { path = "../mtgml-replay" }
 mtgml-state = { path = "../mtgml-state" }
 mtgml-random = { path = "../mtgml-random" }
 mtgml-wire = { path = "../mtgml-wire" }
-serde_json.workspace = true
 thiserror.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true

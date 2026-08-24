@@ -6,6 +6,7 @@
 //! Production crates must never depend on this module; the oracle-boundary
 //! guard enforces that direction.
 
+mod endpoint_pair;
 mod fingerprint;
 mod mutants;
 mod paired;
@@ -67,6 +68,8 @@ pub enum HarnessError {
     BindFailed,
     #[error("conformance transform expected a declared fixture object that is absent")]
     TransformFixtureAbsent,
+    #[error("conformance transform precondition violated")]
+    TransformPreconditionViolated,
     #[error("pair witness construction failed: {0:?}")]
     Witness(WitnessViolation),
     #[error("semantic-state fingerprint group mismatched")]

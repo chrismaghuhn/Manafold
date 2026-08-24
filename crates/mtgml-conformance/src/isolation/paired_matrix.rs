@@ -89,7 +89,7 @@ fn require_concealed_members(
         .get(&p2_library_key())
         .ok_or(HarnessError::TransformFixtureAbsent)?;
     if members.len() < minimum {
-        return Err(HarnessError::TransformFixtureAbsent);
+        return Err(HarnessError::TransformPreconditionViolated);
     }
     Ok(members.clone())
 }
@@ -116,85 +116,62 @@ fn p2_knowledge_mut(
         .ok_or(HarnessError::TransformFixtureAbsent)
 }
 
-/// ET base: adds `count` additional face-down objects to P2's library with
-/// coherent objects, locations, ordered-zone membership, opaque identity
-/// mappings, owner knowledge records, and allocator heads. Declared fields:
-/// zones, allocators, perspective_identities, knowledge.
-fn et_add_concealed_objects(
+/// Shared concealed-incarnation minting: one face-down P2 library object
+/// with a coherent location, ordered-zone membership, opaque identity
+/// mappings, allocator heads, and — when `with_owner_record` is set — the
+/// owner's retained knowledge record for the fresh opaque key (knowledge-record
+/// presence as parameter). Fails closed on absent fixture structure and on
+/// arithmetic overflow; physical ids and zone offsets are derived from the
+/// live state so repeated mints stay identical to the previous per-loop
+/// formulations.
+fn mint_concealed_incarnation(
     state: &mut EngineState,
-    count: usize,
-) -> Result<TransformReport, HarnessError> {
-    let count_u64 = u64::try_from(count).map_err(|_| HarnessError::TransformFixtureAbsent)?;
-    let mut next_object = state.allocators.next_object_id;
-    let mut next_opaque = state
-        .perspective_identities
-        .players
-        .get(&P2)
-        .ok_or(HarnessError::TransformFixtureAbsent)?
-        .next_opaque_object_id;
-    let next_physical = state
-        .zones
-        .objects
-        .values()
-        .filter_map(|object| object.physical_card)
-        .map(|physical| physical.0)
-        .max()
-        .unwrap_or(0)
-        .checked_add(1)
-        .ok_or(HarnessError::TransformFixtureAbsent)?;
+    definition: CardDefinitionId,
+    with_owner_record: bool,
+) -> Result<GameObjectId, HarnessError> {
+    let object_id = state.allocators.next_object_id;
+    let physical = PhysicalCardId(
+        state
+            .zones
+            .objects
+            .values()
+            .filter_map(|object| object.physical_card)
+            .map(|physical| physical.0)
+            .max()
+            .unwrap_or(0)
+            .checked_add(1)
+            .ok_or(HarnessError::TransformPreconditionViolated)?,
+    );
     let existing_members = state
         .zones
         .ordered_zones
         .get(&p2_library_key())
         .map(Vec::len)
         .unwrap_or(0);
-    let zone_key = p2_library_key();
-
-    for index in 0..count_u64 {
-        let object_id = next_object;
-        let opaque = next_opaque;
-        let physical = PhysicalCardId(
-            next_physical
-                .checked_add(index)
-                .ok_or(HarnessError::TransformFixtureAbsent)?,
-        );
-        let definition = CardDefinitionId(
-            6u64.checked_add(index)
-                .ok_or(HarnessError::TransformFixtureAbsent)?,
-        );
-        let offset = u32::try_from(existing_members.saturating_add(index as usize))
-            .map_err(|_| HarnessError::TransformFixtureAbsent)?;
-        let location = ZoneLocation {
-            zone: ZoneKind::Library,
-            player: Some(P2),
-            position: ZonePosition::Top { offset },
-            visibility: VisibilityPartition::FaceDown,
-            partition: None,
-        };
-        state.zones.objects.insert(
-            object_id,
-            GameObject {
-                id: object_id,
-                physical_card: Some(physical),
-                card_definition: definition,
-                owner: P2,
-                controller: P2,
-                tapped: false,
-                face_down: true,
-            },
-        );
-        state.zones.locations.insert(object_id, location.clone());
-        state
-            .zones
-            .ordered_zones
-            .entry(zone_key.clone())
-            .or_default()
-            .push(object_id);
+    let offset =
+        u32::try_from(existing_members).map_err(|_| HarnessError::TransformPreconditionViolated)?;
+    let location = ZoneLocation {
+        zone: ZoneKind::Library,
+        player: Some(P2),
+        position: ZonePosition::Top { offset },
+        visibility: VisibilityPartition::FaceDown,
+        partition: None,
+    };
+    let identity = state
+        .perspective_identities
+        .players
+        .get_mut(&P2)
+        .ok_or(HarnessError::TransformFixtureAbsent)?;
+    let opaque = identity.next_opaque_object_id;
+    if with_owner_record {
         let knowledge = state
             .knowledge
             .players
             .get_mut(&P2)
             .ok_or(HarnessError::TransformFixtureAbsent)?;
+        if knowledge.active.contains_key(&opaque) {
+            return Err(HarnessError::TransformPreconditionViolated);
+        }
         knowledge.active.insert(
             opaque,
             KnowledgeRecordV2 {
@@ -209,91 +186,20 @@ fn et_add_concealed_objects(
                 historical_locations: Vec::new(),
             },
         );
-        let identity = state
-            .perspective_identities
-            .players
-            .get_mut(&P2)
-            .ok_or(HarnessError::TransformFixtureAbsent)?;
-        identity.opaque_to_object.insert(opaque, object_id);
-        identity.object_to_opaque.insert(object_id, opaque);
-        identity.next_opaque_object_id = OpaqueObjectId(
-            opaque
-                .0
-                .checked_add(1)
-                .ok_or(HarnessError::TransformFixtureAbsent)?,
-        );
-        next_object.0 = next_object
-            .0
-            .checked_add(1)
-            .ok_or(HarnessError::TransformFixtureAbsent)?;
-        next_opaque.0 = next_opaque
-            .0
-            .checked_add(1)
-            .ok_or(HarnessError::TransformFixtureAbsent)?;
     }
-    state.allocators.next_object_id = next_object;
-    Ok(TransformReport {
-        mutated_fields: &["zones", "allocators", "perspective_identities", "knowledge"],
-    })
-}
-
-/// Adds one concealed P2 incarnation WITHOUT any knowledge record (the
-/// owner has not looked at it): objects, locations, ordered-zone membership,
-/// opaque identity mappings, and allocator heads only. An identity mapping
-/// without a retained record mirrors the base shape (P1 holds no record for
-/// P2's hidden opening object).
-fn add_unobserved_concealed_object(
-    state: &mut EngineState,
-) -> Result<TransformReport, HarnessError> {
-    let mut next_object = state.allocators.next_object_id;
-    let next_opaque = state
-        .perspective_identities
-        .players
-        .get(&P2)
-        .ok_or(HarnessError::TransformFixtureAbsent)?
-        .next_opaque_object_id;
-    let physical = PhysicalCardId(
-        state
-            .zones
-            .objects
-            .values()
-            .filter_map(|object| object.physical_card)
-            .map(|physical| physical.0)
-            .max()
-            .unwrap_or(0)
-            .checked_add(1)
-            .ok_or(HarnessError::TransformFixtureAbsent)?,
-    );
-    let existing_members = state
-        .zones
-        .ordered_zones
-        .get(&p2_library_key())
-        .map(Vec::len)
-        .unwrap_or(0);
-    let offset =
-        u32::try_from(existing_members).map_err(|_| HarnessError::TransformFixtureAbsent)?;
-    let object_id = next_object;
-    let opaque = next_opaque;
-    let location = ZoneLocation {
-        zone: ZoneKind::Library,
-        player: Some(P2),
-        position: ZonePosition::Top { offset },
-        visibility: VisibilityPartition::FaceDown,
-        partition: None,
-    };
     state.zones.objects.insert(
         object_id,
         GameObject {
             id: object_id,
             physical_card: Some(physical),
-            card_definition: CardDefinitionId(8),
+            card_definition: definition,
             owner: P2,
             controller: P2,
             tapped: false,
             face_down: true,
         },
     );
-    state.zones.locations.insert(object_id, location);
+    state.zones.locations.insert(object_id, location.clone());
     state
         .zones
         .ordered_zones
@@ -311,13 +217,48 @@ fn add_unobserved_concealed_object(
         opaque
             .0
             .checked_add(1)
-            .ok_or(HarnessError::TransformFixtureAbsent)?,
+            .ok_or(HarnessError::TransformPreconditionViolated)?,
     );
-    next_object.0 = next_object
-        .0
-        .checked_add(1)
-        .ok_or(HarnessError::TransformFixtureAbsent)?;
-    state.allocators.next_object_id = next_object;
+    state.allocators.next_object_id = GameObjectId(
+        object_id
+            .0
+            .checked_add(1)
+            .ok_or(HarnessError::TransformPreconditionViolated)?,
+    );
+    Ok(object_id)
+}
+
+/// ET base: adds `count` additional face-down objects to P2's library with
+/// coherent objects, locations, ordered-zone membership, opaque identity
+/// mappings, owner knowledge records, and allocator heads. Declared fields:
+/// zones, allocators, perspective_identities, knowledge.
+fn et_add_concealed_objects(
+    state: &mut EngineState,
+    count: usize,
+) -> Result<TransformReport, HarnessError> {
+    let count_u64 =
+        u64::try_from(count).map_err(|_| HarnessError::TransformPreconditionViolated)?;
+    for index in 0..count_u64 {
+        let definition = CardDefinitionId(
+            6u64.checked_add(index)
+                .ok_or(HarnessError::TransformPreconditionViolated)?,
+        );
+        mint_concealed_incarnation(state, definition, true)?;
+    }
+    Ok(TransformReport {
+        mutated_fields: &["zones", "allocators", "perspective_identities", "knowledge"],
+    })
+}
+
+/// Adds one concealed P2 incarnation WITHOUT any knowledge record (the
+/// owner has not looked at it): objects, locations, ordered-zone membership,
+/// opaque identity mappings, and allocator heads only. An identity mapping
+/// without a retained record mirrors the base shape (P1 holds no record for
+/// P2's hidden opening object).
+fn add_unobserved_concealed_object(
+    state: &mut EngineState,
+) -> Result<TransformReport, HarnessError> {
+    mint_concealed_incarnation(state, CardDefinitionId(8), false)?;
     Ok(TransformReport {
         mutated_fields: &["zones", "allocators", "perspective_identities"],
     })
@@ -412,7 +353,7 @@ fn stamp_p2_private_look_record(state: &mut EngineState) -> Result<TransformRepo
         .get_mut(&P2)
         .ok_or(HarnessError::TransformFixtureAbsent)?;
     if knowledge.active.contains_key(&opaque) {
-        return Err(HarnessError::TransformFixtureAbsent);
+        return Err(HarnessError::TransformPreconditionViolated);
     }
     knowledge.active.insert(
         opaque,
@@ -504,7 +445,7 @@ fn bump_global_cursor(state: &mut EngineState, k: u64) -> Result<(), HarnessErro
     cursor.next_raw_u64 = cursor
         .next_raw_u64
         .checked_add(k)
-        .ok_or(HarnessError::TransformFixtureAbsent)?;
+        .ok_or(HarnessError::TransformPreconditionViolated)?;
     Ok(())
 }
 
@@ -516,7 +457,7 @@ fn add_stack_ability(
     ability: AbilityInstanceId,
 ) -> Result<TransformReport, HarnessError> {
     if !state.zones.stack_records.is_empty() || !state.zones.stack_order.is_empty() {
-        return Err(HarnessError::TransformFixtureAbsent);
+        return Err(HarnessError::TransformPreconditionViolated);
     }
     let stack_id = state.allocators.next_stack_object_id;
     state.zones.stack_records.insert(
@@ -533,13 +474,13 @@ fn add_stack_ability(
         stack_id
             .0
             .checked_add(1)
-            .ok_or(HarnessError::TransformFixtureAbsent)?,
+            .ok_or(HarnessError::TransformPreconditionViolated)?,
     );
     state.allocators.next_ability_id = AbilityInstanceId(
         ability
             .0
             .checked_add(1)
-            .ok_or(HarnessError::TransformFixtureAbsent)?,
+            .ok_or(HarnessError::TransformPreconditionViolated)?,
     );
     let identity = state
         .perspective_identities
@@ -550,7 +491,7 @@ fn add_stack_ability(
     if identity.opaque_to_ability.contains_key(&ability_opaque)
         || identity.ability_to_opaque.contains_key(&ability)
     {
-        return Err(HarnessError::TransformFixtureAbsent);
+        return Err(HarnessError::TransformPreconditionViolated);
     }
     identity.opaque_to_ability.insert(ability_opaque, ability);
     identity.ability_to_opaque.insert(ability, ability_opaque);
@@ -558,7 +499,7 @@ fn add_stack_ability(
         ability_opaque
             .0
             .checked_add(1)
-            .ok_or(HarnessError::TransformFixtureAbsent)?,
+            .ok_or(HarnessError::TransformPreconditionViolated)?,
     );
     Ok(TransformReport {
         mutated_fields: &["zones", "allocators", "perspective_identities"],
@@ -583,7 +524,7 @@ fn transform_advance_effect_cursor(
             .next_effect_id
             .0
             .checked_add(1)
-            .ok_or(HarnessError::TransformFixtureAbsent)?,
+            .ok_or(HarnessError::TransformPreconditionViolated)?,
     );
     Ok(TransformReport {
         mutated_fields: &["allocators"],
@@ -601,7 +542,7 @@ fn transform_advance_unrelated_cursors(
             .next_trigger_id
             .0
             .checked_add(4)
-            .ok_or(HarnessError::TransformFixtureAbsent)?,
+            .ok_or(HarnessError::TransformPreconditionViolated)?,
     );
     state.allocators.next_stack_object_id = StackObjectId(
         state
@@ -609,7 +550,7 @@ fn transform_advance_unrelated_cursors(
             .next_stack_object_id
             .0
             .checked_add(2)
-            .ok_or(HarnessError::TransformFixtureAbsent)?,
+            .ok_or(HarnessError::TransformPreconditionViolated)?,
     );
     state.allocators.next_rule_event_id = RuleEventId(
         state
@@ -617,7 +558,7 @@ fn transform_advance_unrelated_cursors(
             .next_rule_event_id
             .0
             .checked_add(5)
-            .ok_or(HarnessError::TransformFixtureAbsent)?,
+            .ok_or(HarnessError::TransformPreconditionViolated)?,
     );
     Ok(TransformReport {
         mutated_fields: &["allocators"],
@@ -675,53 +616,13 @@ fn transform_bump_rng_cursor(state: &mut EngineState) -> Result<TransformReport,
 
 /// Axis 07a B-side: renames the home hidden incarnation consistently across
 /// zones, ordered zones, and every perspective identity record.
+///
+/// Delegates to THE single shared fail-closed rename transform so both call
+/// sites can never drift again.
 fn transform_rename_hidden_object(
     state: &mut EngineState,
 ) -> Result<TransformReport, HarnessError> {
-    let Some(mut object) = state.zones.objects.remove(&RENAMED_FROM) else {
-        return Err(HarnessError::TransformFixtureAbsent);
-    };
-    object.id = RENAMED_TO;
-    state.zones.objects.insert(RENAMED_TO, object);
-    let Some(location) = state.zones.locations.remove(&RENAMED_FROM) else {
-        restore_renamed_object(state);
-        return Err(HarnessError::TransformFixtureAbsent);
-    };
-    let key = location.key();
-    state.zones.locations.insert(RENAMED_TO, location);
-    if let Some(members) = state.zones.ordered_zones.get_mut(&key) {
-        for member in members.iter_mut() {
-            if *member == RENAMED_FROM {
-                *member = RENAMED_TO;
-            }
-        }
-    }
-    for identity in state.perspective_identities.players.values_mut() {
-        for target in identity.opaque_to_object.values_mut() {
-            if *target == RENAMED_FROM {
-                *target = RENAMED_TO;
-            }
-        }
-        if let Some(opaque) = identity.object_to_opaque.remove(&RENAMED_FROM) {
-            identity.object_to_opaque.insert(RENAMED_TO, opaque);
-        }
-    }
-    state.allocators.next_object_id = GameObjectId(
-        RENAMED_TO
-            .0
-            .checked_add(1)
-            .ok_or(HarnessError::TransformFixtureAbsent)?,
-    );
-    Ok(TransformReport {
-        mutated_fields: &["zones", "allocators", "perspective_identities"],
-    })
-}
-
-fn restore_renamed_object(state: &mut EngineState) {
-    if let Some(mut restored) = state.zones.objects.remove(&RENAMED_TO) {
-        restored.id = RENAMED_FROM;
-        state.zones.objects.insert(RENAMED_FROM, restored);
-    }
+    crate::isolation::paired::rename_hidden_object(state)
 }
 
 fn transform_et_then_rename(state: &mut EngineState) -> Result<TransformReport, HarnessError> {
@@ -988,30 +889,10 @@ mod tests {
     use crate::isolation::fingerprint::{
         capture_snapshot, capture_transition_product, TransitionVisibleProduct,
     };
+    use crate::isolation::paired::test_support::{
+        accepted_entry_submission, endpoint_for, spawn_pair, SpawnedPair,
+    };
     use crate::isolation::witnesses::assert_witness;
-    use mtgml_decision::{DecisionAnswerV2, DecisionResponseV2, DECISION_RESPONSE_V2_SCHEMA};
-    use mtgml_environment::{PlayerEndpoint, PlayerEndpointHandle, TrustedEnvironmentController};
-    use mtgml_observation::PlayerStepV2;
-
-    type SpawnedPair = [(TrustedEnvironmentController, [PlayerEndpointHandle; 2]); 2];
-
-    fn spawn_pair(case: &PairedCase) -> Result<SpawnedPair, HarnessError> {
-        let config = synthetic_environment_config([P1, P2]);
-        Ok([
-            spawn_environment(case.state_a.clone(), &config)?,
-            spawn_environment(case.state_b.clone(), &config)?,
-        ])
-    }
-
-    fn handle(
-        endpoints: &[PlayerEndpointHandle; 2],
-        perspective: PlayerId,
-    ) -> Result<&PlayerEndpointHandle, HarnessError> {
-        endpoints
-            .iter()
-            .find(|endpoint| endpoint.perspective() == perspective)
-            .ok_or(HarnessError::BindFailed)
-    }
 
     /// Asserts byte-equality of EVERY captured snapshot field for the case's
     /// witness perspective across both runtime-accepted environments.
@@ -1019,8 +900,8 @@ mod tests {
         case: &PairedCase,
         pair: &SpawnedPair,
     ) -> Result<(), HarnessError> {
-        let snapshot_a = capture_snapshot(handle(&pair[0].1, case.perspective)?)?;
-        let snapshot_b = capture_snapshot(handle(&pair[1].1, case.perspective)?)?;
+        let snapshot_a = capture_snapshot(endpoint_for(&pair[0].1, case.perspective)?)?;
+        let snapshot_b = capture_snapshot(endpoint_for(&pair[1].1, case.perspective)?)?;
         assert_eq!(
             snapshot_a.perspective, snapshot_b.perspective,
             "axis {}: perspective identity",
@@ -1064,8 +945,8 @@ mod tests {
     /// `visible_decision()`) and asserts complete transition-product
     /// byte-equality.
     fn assert_transition_byte_equality(pair: &SpawnedPair) -> Result<(), HarnessError> {
-        let step_a = accepted_entry_submission(handle(&pair[0].1, P1)?)?;
-        let step_b = accepted_entry_submission(handle(&pair[1].1, P1)?)?;
+        let step_a = accepted_entry_submission(endpoint_for(&pair[0].1, P1)?)?;
+        let step_b = accepted_entry_submission(endpoint_for(&pair[1].1, P1)?)?;
         let product_a = capture_transition_product(Ok(step_a))?;
         let product_b = capture_transition_product(Ok(step_b))?;
         assert_products_byte_equal(&product_a, &product_b);
@@ -1079,32 +960,6 @@ mod tests {
         assert_eq!(a.wire_error_code, b.wire_error_code);
         assert_eq!(a.endpoint_error_code, b.endpoint_error_code);
         assert_eq!(a.protocol, b.protocol);
-    }
-
-    fn accepted_entry_submission(
-        handle: &PlayerEndpointHandle,
-    ) -> Result<PlayerStepV2, HarnessError> {
-        let request = handle
-            .visible_decision()
-            .map_err(|_| HarnessError::EndpointService)?
-            .ok_or(HarnessError::EndpointService)?;
-        let candidate = request
-            .candidates
-            .first()
-            .map(|candidate| candidate.candidate_id)
-            .ok_or(HarnessError::EndpointService)?;
-        let step = handle
-            .submit(DecisionResponseV2 {
-                schema_version: DECISION_RESPONSE_V2_SCHEMA.into(),
-                player_decision_id: request.player_decision_id,
-                state_revision: request.state_revision,
-                answer: DecisionAnswerV2::SelectOne {
-                    candidate_id: candidate,
-                },
-            })
-            .map_err(|_| HarnessError::EndpointService)?;
-        step.validate().map_err(|_| HarnessError::WireEncoding)?;
-        Ok(step)
     }
 
     fn assert_axis_byte_equality(

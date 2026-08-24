@@ -144,6 +144,9 @@ fn concealed_members(context: &EngineState) -> Vec<GameObjectId> {
         .unwrap_or_default()
 }
 
+/// The public position offset of one concealed incarnation. Exhaustive over
+/// `ZonePosition` so a new variant fails compilation here instead of silently
+/// hinting position 0.
 fn concealed_offset(context: &EngineState, object: GameObjectId) -> u32 {
     context
         .zones
@@ -151,7 +154,9 @@ fn concealed_offset(context: &EngineState, object: GameObjectId) -> u32 {
         .get(&object)
         .map(|location| match location.position {
             ZonePosition::Top { offset } => offset,
-            _ => 0,
+            ZonePosition::Bottom { offset } => offset,
+            ZonePosition::Index { index } => index,
+            ZonePosition::Unordered => 0,
         })
         .unwrap_or(0)
 }
@@ -272,6 +277,10 @@ fn foreign_active_count(context: &EngineState, perspective: PlayerId) -> usize {
 /// the sides. Pair 01 carries no mapping difference at all, so every
 /// mapping-derived stamp is equally dead there; its coverage is the pinned
 /// impossibility argument itself.
+///
+/// This fallback family is shared intentionally with M2: both literal
+/// channels are validator-pinned impossible, so both fold their trusted
+/// difference into the same visible-sequence-cursor carrier.
 pub fn m1_resort_retained_knowledge_by_trusted_order(
     mut outputs: RealOutputs,
     context: &EngineState,
@@ -309,6 +318,10 @@ pub fn m1_resort_retained_knowledge_by_trusted_order(
 /// live-incarnation identity/definition pairs into the visible-sequence
 /// cursor (`+2`, distinct from M1's shape). Pair 07a: the renamed incarnation
 /// changes the fold; pair 01 carries no trusted difference to carry.
+///
+/// This fallback family is shared intentionally with M1: both literal
+/// channels are validator-pinned impossible, so both fold their trusted
+/// difference into the same visible-sequence-cursor carrier.
 pub fn m2_candidate_ids_from_bindings(
     mut outputs: RealOutputs,
     context: &EngineState,
@@ -676,41 +689,24 @@ pub fn m12_payload_length_variation(
 mod tests {
     use super::*;
     use crate::isolation::fingerprint::capture_transition_product;
-    use crate::isolation::paired::{
-        spawn_environment, synthetic_environment_config, AxisKind, PairedCase,
+    use crate::isolation::paired::test_support::{
+        accepted_entry_submission, endpoint_for, spawn_pair,
     };
+    use crate::isolation::paired::AxisKind;
     use crate::isolation::paired_matrix::build_axis_case;
     use mtgml_decision::{
         DecisionAnswerV2, DecisionResponseV2, DecisionValidationError, DECISION_RESPONSE_V2_SCHEMA,
     };
-    use mtgml_environment::{PlayerEndpoint, PlayerEndpointHandle};
+    use mtgml_environment::PlayerEndpoint;
     use mtgml_model::CandidateIdV1;
-    use mtgml_wire::decode_canonical;
-
-    const P1: PlayerId = PlayerId(1);
-
-    fn spawned_pair(
-        case: &PairedCase,
-    ) -> Result<
-        [(
-            mtgml_environment::TrustedEnvironmentController,
-            [PlayerEndpointHandle; 2],
-        ); 2],
-        HarnessError,
-    > {
-        let config = synthetic_environment_config([P1, P2]);
-        Ok([
-            spawn_environment(case.state_a.clone(), &config)?,
-            spawn_environment(case.state_b.clone(), &config)?,
-        ])
-    }
+    use mtgml_wire::{decode_canonical, encode_canonical};
 
     /// Full three-part detection proof: clean outputs byte-equal across the
     /// pair, the deterministically applied mutant separates the sides, and
     /// both mutated outputs still pass canonical decode/validation.
     fn detect(axis: AxisKind, mutant: LeakMutant) -> Result<(), HarnessError> {
         let case = build_axis_case(axis)?;
-        let pair = spawned_pair(&case)?;
+        let pair = spawn_pair(&case)?;
         let clean_a = capture_real_outputs(&pair[0].1, case.perspective)?;
         let clean_b = capture_real_outputs(&pair[1].1, case.perspective)?;
 
@@ -745,13 +741,53 @@ mod tests {
         Ok(())
     }
 
+    /// Step-flavored counterpart of `detect`: submits ONE identical response
+    /// through the same submitting actor on both sides and runs the same
+    /// three-part proof over the transition products. Returns the two
+    /// mutated products' canonical bytes so a caller can pin exact
+    /// mutant-specific outcomes.
+    fn detect_step(
+        axis: AxisKind,
+        submitting_actor: PlayerId,
+        response: DecisionResponseV2,
+        mutant: StepLeakMutant,
+    ) -> Result<(Vec<u8>, Vec<u8>), HarnessError> {
+        let case = build_axis_case(axis)?;
+        let pair = spawn_pair(&case)?;
+        let step_a = endpoint_for(&pair[0].1, submitting_actor)?
+            .submit(response.clone())
+            .map_err(|_| HarnessError::EndpointService)?;
+        let step_b = endpoint_for(&pair[1].1, submitting_actor)?
+            .submit(response)
+            .map_err(|_| HarnessError::EndpointService)?;
+
+        // 1. clean products are byte-equal across A/B.
+        assert_eq!(
+            encode_canonical(&step_a).map_err(|_| HarnessError::WireEncoding)?,
+            encode_canonical(&step_b).map_err(|_| HarnessError::WireEncoding)?
+        );
+        // 2. the deterministically applied mutant separates the sides.
+        let mutated_a = mutant(step_a, &case.state_a, submitting_actor)?;
+        let mutated_b = mutant(step_b, &case.state_b, submitting_actor)?;
+        let bytes_a = encode_canonical(&mutated_a).map_err(|_| HarnessError::WireEncoding)?;
+        let bytes_b = encode_canonical(&mutated_b).map_err(|_| HarnessError::WireEncoding)?;
+        assert_ne!(
+            bytes_a, bytes_b,
+            "axis {axis:?}: step mutant did not separate the sides"
+        );
+        // 3. both mutated products remain valid canonical products.
+        decode_canonical::<PlayerStepV2>(&bytes_a).map_err(|_| HarnessError::WireEncoding)?;
+        decode_canonical::<PlayerStepV2>(&bytes_b).map_err(|_| HarnessError::WireEncoding)?;
+        Ok((bytes_a, bytes_b))
+    }
+
     #[test]
     fn detects_m1_resort_retained_knowledge() -> Result<(), HarnessError> {
         // Pin the literal channel's structural impossibility: a reordered
         // retained-knowledge array is rejected by validation.
         {
             let case = build_axis_case(AxisKind::ObjectRenaming)?;
-            let pair = spawned_pair(&case)?;
+            let pair = spawn_pair(&case)?;
             let outputs = capture_real_outputs(&pair[0].1, case.perspective)?;
             let mut reordered = outputs.information_state.clone();
             reordered.retained_knowledge.reverse();
@@ -772,7 +808,7 @@ mod tests {
         // binding-hash-derived candidate id breaks the dense-from-zero rule.
         {
             let case = build_axis_case(AxisKind::ObjectRenaming)?;
-            let pair = spawned_pair(&case)?;
+            let pair = spawn_pair(&case)?;
             let outputs = capture_real_outputs(&pair[0].1, PlayerId(1))?;
             let mut request = outputs.visible_decision.expect("entry decision present");
             request.candidates[0].candidate_id = CandidateIdV1(77);
@@ -799,8 +835,6 @@ mod tests {
         // on the provisional axis-03 pairing the wrong-actor product embeds
         // the private-look holder's own legitimately different information
         // state, so the clean-output premise fails there.
-        let case = build_axis_case(AxisKind::FaceDownIdentity)?;
-        let pair = spawned_pair(&case)?;
         let response = DecisionResponseV2 {
             schema_version: DECISION_RESPONSE_V2_SCHEMA.into(),
             player_decision_id: mtgml_model::PlayerDecisionIdV1(1),
@@ -810,32 +844,17 @@ mod tests {
             },
         };
         // Wrong-actor surface: P2 submits against P1's pending entry request.
-        let endpoint_a = pair[0]
-            .1
-            .iter()
-            .find(|endpoint| endpoint.perspective() == P2)
-            .unwrap();
-        let endpoint_b = pair[1]
-            .1
-            .iter()
-            .find(|endpoint| endpoint.perspective() == P2)
-            .unwrap();
-        let step_a = endpoint_a.submit(response.clone()).unwrap();
-        let step_b = endpoint_b.submit(response).unwrap();
-
-        // 1. clean products are byte-equal across A/B.
-        assert_eq!(
-            encode_canonical(&step_a).unwrap(),
-            encode_canonical(&step_b).unwrap()
-        );
-        // 2. the actor-dependent swap separates the sides.
-        let mutated_a = m4_submission_code_swap(step_a, &case.state_a, P2)?;
-        let mutated_b = m4_submission_code_swap(step_b, &case.state_b, P2)?;
-        assert_ne!(
-            encode_canonical(&mutated_a).unwrap(),
-            encode_canonical(&mutated_b).unwrap()
-        );
+        let (bytes_a, bytes_b) = detect_step(
+            AxisKind::FaceDownIdentity,
+            P2,
+            response,
+            m4_submission_code_swap,
+        )?;
         // The flip landed exactly where intended.
+        let mutated_a =
+            decode_canonical::<PlayerStepV2>(&bytes_a).map_err(|_| HarnessError::WireEncoding)?;
+        let mutated_b =
+            decode_canonical::<PlayerStepV2>(&bytes_b).map_err(|_| HarnessError::WireEncoding)?;
         assert_eq!(
             mutated_a.submission,
             PlayerStepSubmissionV1::Rejected {
@@ -848,9 +867,6 @@ mod tests {
                 code: PlayerSubmissionCodeV1::InvalidAnswer
             }
         );
-        // 3. both remain fully valid canonical products.
-        decode_canonical::<PlayerStepV2>(&encode_canonical(&mutated_a).unwrap()).unwrap();
-        decode_canonical::<PlayerStepV2>(&encode_canonical(&mutated_b).unwrap()).unwrap();
         Ok(())
     }
 
@@ -860,23 +876,10 @@ mod tests {
         // empty observed-event batch on this runtime path.
         {
             let case = build_axis_case(AxisKind::GlobalAllocatorHistory)?;
-            let pair = spawned_pair(&case)?;
+            let pair = spawn_pair(&case)?;
             for endpoints in [&pair[0].1, &pair[1].1] {
-                let handle = endpoints
-                    .iter()
-                    .find(|endpoint| endpoint.perspective() == PlayerId(1))
-                    .unwrap();
-                let request = handle.visible_decision().unwrap().unwrap();
-                let step = handle
-                    .submit(DecisionResponseV2 {
-                        schema_version: DECISION_RESPONSE_V2_SCHEMA.into(),
-                        player_decision_id: request.player_decision_id,
-                        state_revision: request.state_revision,
-                        answer: DecisionAnswerV2::SelectOne {
-                            candidate_id: request.candidates[0].candidate_id,
-                        },
-                    })
-                    .unwrap();
+                let step =
+                    accepted_entry_submission(endpoint_for(endpoints, PlayerId(1))?).unwrap();
                 let product = capture_transition_product(Ok(step)).unwrap();
                 assert!(product.observed_event_bytes.is_empty());
             }
@@ -952,7 +955,7 @@ mod tests {
     #[test]
     fn dead_mutant_guard_m8_clean_inputs_do_not_diverge() -> Result<(), HarnessError> {
         let case = build_axis_case(AxisKind::ForeignPrivateLook)?;
-        let pair = spawned_pair(&case)?;
+        let pair = spawn_pair(&case)?;
         let outputs = capture_real_outputs(&pair[0].1, case.perspective)?;
         let first = m8_insert_foreign_knowledge_record(outputs.clone(), &case.state_a)?;
         let second = m8_insert_foreign_knowledge_record(outputs, &case.state_a)?;

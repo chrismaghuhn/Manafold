@@ -9,7 +9,8 @@ use mtgml_environment::{
     SyntheticM1EnvironmentConfig, SyntheticM1ReplayConfig, TrustedEnvironmentController,
 };
 use mtgml_model::{
-    CheckpointCodecIdentity, ContentDigest, EnvironmentLimitCounters, EpisodeStatus, PlayerId,
+    CheckpointCodecIdentity, ContentDigest, EnvironmentLimitCounters, EpisodeStatus, GameObjectId,
+    PlayerId,
 };
 use mtgml_observation::{
     INFORMATION_STATE_SCHEMA_V2, OBSERVATION_SCHEMA, OBSERVED_EVENT_SCHEMA_V2,
@@ -26,6 +27,11 @@ use super::HarnessError;
 
 const P1: PlayerId = PlayerId(1);
 const P2: PlayerId = PlayerId(2);
+
+/// The established harness fixture identity of the one hidden object that
+/// the shared rename transform relocates.
+const RENAMED_FROM: GameObjectId = GameObjectId(2);
+const RENAMED_TO: GameObjectId = GameObjectId(9);
 
 /// The declared information-isolation axes of milestone M2.G.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -181,12 +187,68 @@ pub fn base_pair_state(seed_hex: &str) -> Result<EngineState, HarnessError> {
     .map_err(|_| HarnessError::SyntheticConstruction)
 }
 
+/// The single shared hidden-object rename transform: renames the one hidden
+/// fixture object consistently across zones, ordered zones, and every
+/// perspective identity record, raising the global object allocator to cover
+/// the fresh identity. Fails closed when the declared fixture object is
+/// absent or an allocator head would overflow; a failed application leaves no
+/// half-applied rename behind.
+pub(crate) fn rename_hidden_object(
+    state: &mut EngineState,
+) -> Result<TransformReport, HarnessError> {
+    let Some(mut object) = state.zones.objects.remove(&RENAMED_FROM) else {
+        return Err(HarnessError::TransformFixtureAbsent);
+    };
+    object.id = RENAMED_TO;
+    state.zones.objects.insert(RENAMED_TO, object);
+    let Some(location) = state.zones.locations.remove(&RENAMED_FROM) else {
+        // Restore the removed object so the failure leaves no half-applied
+        // transform behind.
+        let Some(mut restored) = state.zones.objects.remove(&RENAMED_TO) else {
+            return Err(HarnessError::TransformFixtureAbsent);
+        };
+        restored.id = RENAMED_FROM;
+        state.zones.objects.insert(RENAMED_FROM, restored);
+        return Err(HarnessError::TransformFixtureAbsent);
+    };
+    let key = location.key();
+    state.zones.locations.insert(RENAMED_TO, location);
+    if let Some(members) = state.zones.ordered_zones.get_mut(&key) {
+        for member in members.iter_mut() {
+            if *member == RENAMED_FROM {
+                *member = RENAMED_TO;
+            }
+        }
+    }
+    for identity in state.perspective_identities.players.values_mut() {
+        for target in identity.opaque_to_object.values_mut() {
+            if *target == RENAMED_FROM {
+                *target = RENAMED_TO;
+            }
+        }
+        if let Some(opaque) = identity.object_to_opaque.remove(&RENAMED_FROM) {
+            identity.object_to_opaque.insert(RENAMED_TO, opaque);
+        }
+    }
+    state.allocators.next_object_id = GameObjectId(
+        RENAMED_TO
+            .0
+            .checked_add(1)
+            .ok_or(HarnessError::TransformPreconditionViolated)?,
+    );
+    Ok(TransformReport {
+        mutated_fields: &["zones", "allocators", "perspective_identities"],
+    })
+}
+
 #[cfg(test)]
 pub(crate) mod test_support {
     use super::*;
     use crate::isolation::witnesses::TrustedRenamingBijection;
+    use mtgml_decision::{DecisionAnswerV2, DecisionResponseV2, DECISION_RESPONSE_V2_SCHEMA};
+    use mtgml_environment::PlayerEndpoint;
     use mtgml_model::{
-        GameObjectId, InformationStateDigestV2, ObservationDigest, StateRevision, VisibleSequence,
+        InformationStateDigestV2, ObservationDigest, StateRevision, VisibleSequence,
     };
     use mtgml_observation::{
         ObservationEnvelope, PlayerInformationStateV2, PlayerStepSubmissionV1, PlayerStepV2,
@@ -195,54 +257,61 @@ pub(crate) mod test_support {
     };
     use std::collections::BTreeMap;
 
-    pub const RENAMED_FROM: GameObjectId = GameObjectId(2);
-    pub const RENAMED_TO: GameObjectId = GameObjectId(9);
+    pub const RENAMED_FROM: GameObjectId = super::RENAMED_FROM;
+    pub const RENAMED_TO: GameObjectId = super::RENAMED_TO;
 
-    /// Renames the one hidden object consistently across zones, ordered
-    /// zones, and every perspective identity record, raising the global
-    /// object allocator to cover the fresh identity. Fails closed when the
-    /// declared fixture object is absent.
-    pub fn rename_hidden_object(state: &mut EngineState) -> Result<TransformReport, HarnessError> {
-        let Some(mut object) = state.zones.objects.remove(&RENAMED_FROM) else {
-            return Err(HarnessError::TransformFixtureAbsent);
-        };
-        object.id = RENAMED_TO;
-        state.zones.objects.insert(RENAMED_TO, object);
-        let Some(location) = state.zones.locations.remove(&RENAMED_FROM) else {
-            // Restore the removed object so the failure leaves no half-applied
-            // transform behind.
-            let mut restored = state
-                .zones
-                .objects
-                .remove(&RENAMED_TO)
-                .ok_or(HarnessError::TransformFixtureAbsent)?;
-            restored.id = RENAMED_FROM;
-            state.zones.objects.insert(RENAMED_FROM, restored);
-            return Err(HarnessError::TransformFixtureAbsent);
-        };
-        let key = location.key();
-        state.zones.locations.insert(RENAMED_TO, location);
-        if let Some(members) = state.zones.ordered_zones.get_mut(&key) {
-            for member in members.iter_mut() {
-                if *member == RENAMED_FROM {
-                    *member = RENAMED_TO;
-                }
-            }
-        }
-        for identity in state.perspective_identities.players.values_mut() {
-            for target in identity.opaque_to_object.values_mut() {
-                if *target == RENAMED_FROM {
-                    *target = RENAMED_TO;
-                }
-            }
-            if let Some(opaque) = identity.object_to_opaque.remove(&RENAMED_FROM) {
-                identity.object_to_opaque.insert(RENAMED_TO, opaque);
-            }
-        }
-        state.allocators.next_object_id = GameObjectId(RENAMED_TO.0 + 1);
-        Ok(TransformReport {
-            mutated_fields: &["zones", "allocators", "perspective_identities"],
-        })
+    pub(crate) use super::rename_hidden_object;
+
+    /// One spawned runtime-accepted environment pair of a `PairedCase`.
+    pub type SpawnedPair = [(TrustedEnvironmentController, [PlayerEndpointHandle; 2]); 2];
+
+    /// Spawns both sides of a paired case as independent live environments.
+    pub fn spawn_pair(case: &PairedCase) -> Result<SpawnedPair, HarnessError> {
+        let config = synthetic_environment_config([P1, P2]);
+        Ok([
+            spawn_environment(case.state_a.clone(), &config)?,
+            spawn_environment(case.state_b.clone(), &config)?,
+        ])
+    }
+
+    /// Finds the endpoint handle bound to `perspective`; fails closed when
+    /// no such binding exists.
+    pub fn endpoint_for(
+        endpoints: &[PlayerEndpointHandle; 2],
+        perspective: PlayerId,
+    ) -> Result<&PlayerEndpointHandle, HarnessError> {
+        endpoints
+            .iter()
+            .find(|endpoint| endpoint.perspective() == perspective)
+            .ok_or(HarnessError::BindFailed)
+    }
+
+    /// Drives ONE accepted entry-stage submission through the real actor
+    /// endpoint (candidate id read from the live `visible_decision()`).
+    pub fn accepted_entry_submission(
+        handle: &PlayerEndpointHandle,
+    ) -> Result<PlayerStepV2, HarnessError> {
+        let request = handle
+            .visible_decision()
+            .map_err(|_| HarnessError::EndpointService)?
+            .ok_or(HarnessError::EndpointService)?;
+        let candidate = request
+            .candidates
+            .first()
+            .map(|candidate| candidate.candidate_id)
+            .ok_or(HarnessError::EndpointService)?;
+        let step = handle
+            .submit(DecisionResponseV2 {
+                schema_version: DECISION_RESPONSE_V2_SCHEMA.into(),
+                player_decision_id: request.player_decision_id,
+                state_revision: request.state_revision,
+                answer: DecisionAnswerV2::SelectOne {
+                    candidate_id: candidate,
+                },
+            })
+            .map_err(|_| HarnessError::EndpointService)?;
+        step.validate().map_err(|_| HarnessError::WireEncoding)?;
+        Ok(step)
     }
 
     pub fn renaming_bijection() -> TrustedRenamingBijection {
