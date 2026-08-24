@@ -105,6 +105,21 @@ GATE_TESTS: dict[str, tuple[EvidenceDefinition, ...]] = {
             "legal_space::gate_evidence::unsatisfiable::authoritative_request_fails_closed",
             "unsatisfiable fail-closed",
         ),
+        rust(
+            "mtgml-conformance",
+            "legal_space::gate_evidence::soundness::detects_wrong_visible_candidate_semantics",
+            "wrong visible candidate semantics detected via mapper",
+        ),
+        rust(
+            "mtgml-conformance",
+            "legal_space::gate_evidence::budget::violations_fail_closed",
+            "exploration budget violations fail closed",
+        ),
+        rust(
+            "mtgml-conformance",
+            "legal_space::gate_evidence::invariance::set_vs_sequence_mutant_matrix",
+            "ChooseMany set vs Order sequence semantics enforced in IR",
+        ),
         source("source_check::oracle_boundary_guard", "oracle boundary guard"),
     ),
     GATE_COMPLETENESS: (
@@ -128,6 +143,11 @@ GATE_TESTS: dict[str, tuple[EvidenceDefinition, ...]] = {
             "legal_space::gate_evidence::completeness::detects_later_stage_omission",
             "later-stage omission detection",
         ),
+        rust(
+            "mtgml-conformance",
+            "legal_space::gate_evidence::invariance::insertion_order_does_not_change_reference_space",
+            "insertion order does not change canonical reference space",
+        ),
         source("source_check::oracle_boundary_guard", "oracle boundary guard"),
     ),
 }
@@ -135,9 +155,10 @@ GATE_TESTS: dict[str, tuple[EvidenceDefinition, ...]] = {
 
 def check_no_runtime_lifecycle_channel() -> str:
     """The fixture driver stays behind its feature gate with no runtime caller."""
-    cargo_toml = (ROOT / "crates" / "mtgml-rules" / "Cargo.toml").read_text(encoding="utf-8")
-    if "m2-conformance-fixtures = []" not in cargo_toml:
-        raise AssertionError("rules crate lost the m2-conformance-fixtures feature gate")
+    for crate_name in ["mtgml-rules", "mtgml-environment"]:
+        cargo_toml = (ROOT / "crates" / crate_name / "Cargo.toml").read_text(encoding="utf-8")
+        if "mtgml-conformance" in cargo_toml:
+            raise AssertionError(f"{crate_name} depends on mtgml-conformance")
     runtime_sources = [
         ROOT / "crates" / "mtgml-environment" / "src" / name
         for name in [

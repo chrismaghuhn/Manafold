@@ -229,11 +229,19 @@ pub fn generate_probes(
             // Boundary sentinels OUTSIDE the visible range: an accepted
             // sentinel proves a too-permissive numeric surface.
             probes.push(Probe {
-                shape: AnswerShape::Number(minimum.checked_sub(1).ok_or(ExplorationBoundError::NumericSpanExceeded)?),
+                shape: AnswerShape::Number(
+                    minimum
+                        .checked_sub(1)
+                        .ok_or(ExplorationBoundError::NumericSpanExceeded)?,
+                ),
                 advertised: false,
             });
             probes.push(Probe {
-                shape: AnswerShape::Number(maximum.checked_add(1).ok_or(ExplorationBoundError::NumericSpanExceeded)?),
+                shape: AnswerShape::Number(
+                    maximum
+                        .checked_add(1)
+                        .ok_or(ExplorationBoundError::NumericSpanExceeded)?,
+                ),
                 advertised: false,
             });
         }
