@@ -153,7 +153,6 @@ GATE_TESTS: dict[str, tuple[EvidenceDefinition, ...]] = {
             "insertion order does not change canonical reference space",
         ),
         source("source_check::oracle_boundary_guard", "oracle boundary guard"),
-
         rust(
             "mtgml-conformance",
             "legal_space::gate_evidence::invariance::set_vs_sequence_mutant_matrix",
@@ -444,7 +443,9 @@ def check_oracle_boundary_guard() -> str:
 
     meta = _sp.run(
         ["cargo", "metadata", "--locked", "--format-version", "1"],
-        cwd=ROOT, capture_output=True, text=True,
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
     )
     if meta.returncode != 0:
         raise AssertionError(f"cargo metadata failed: {meta.stderr[:200]}")
@@ -473,24 +474,18 @@ def check_oracle_boundary_guard() -> str:
         while queue:
             current = queue.pop(0)
             if current == conformance_id:
-                raise AssertionError(
-                    f"{start_name} transitively reaches mtgml-conformance"
-                )
+                raise AssertionError(f"{start_name} transitively reaches mtgml-conformance")
             for dep_id in resolve_nodes.get(current, set()):
                 if dep_id not in visited:
                     visited.add(dep_id)
                     queue.append(dep_id)
 
     # Source scan: code lines only (skip comments/doc comments).
-    src_path = (
-        ROOT / "crates" / "mtgml-conformance" / "src" / "legal_space" / "explorer.rs"
-    )
+    src_path = ROOT / "crates" / "mtgml-conformance" / "src" / "legal_space" / "explorer.rs"
     code_lines = [
         line.strip()
         for line in src_path.read_text(encoding="utf-8").splitlines()
-        if line.strip()
-        and not line.strip().startswith("//!")
-        and not line.strip().startswith("//")
+        if line.strip() and not line.strip().startswith("//!") and not line.strip().startswith("//")
     ]
     joined = "\n".join(code_lines)
     for pattern in ["super::oracle", "crate::legal_space::oracle", "SCENARIO_COUNT_"]:
@@ -498,8 +493,6 @@ def check_oracle_boundary_guard() -> str:
             raise AssertionError(f"explorer.rs imports oracle symbol: {pattern}")
 
     return "oracle boundary clean: cargo graph + source scan pass"
-
-
 
 
 SOURCE_CHECKS = {
