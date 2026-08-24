@@ -146,16 +146,28 @@ mod soundness {
 
     #[test]
     fn detects_wrong_visible_candidate_semantics() {
-        // Wrong mode_index must be detected.
+        // Isolated candidate semantics test: automaton is advanced to
+        // ChooseMembers{count:2} so stage/domain mismatches are excluded.
+        let mut automaton = ReferenceAutomaton::initial();
+        automaton.advance(&CanonicalStageChoice::Anchor);
+        automaton.advance(&CanonicalStageChoice::Number(2));
+        // Wrong candidate: Piece(9) instead of Piece(1) in the second position.
         let observed = ObservedRequest {
             domain: super::super::explorer::ObservedDomain::ChooseMany {
                 minimum: 2,
                 maximum: 2,
             },
-            candidate_atoms: vec![SyntheticChoiceAtom::Piece(9)],
+            candidate_atoms: vec![SyntheticChoiceAtom::Piece(0), SyntheticChoiceAtom::Piece(9)],
         };
-        let automaton = ReferenceAutomaton::initial();
-        let stages = vec![CanonicalStageChoice::Number(1)];
+        let stages = vec![
+            CanonicalStageChoice::Anchor,
+            CanonicalStageChoice::Number(2),
+            CanonicalStageChoice::Members(
+                [SyntheticChoiceAtom::Piece(0), SyntheticChoiceAtom::Piece(1)]
+                    .into_iter()
+                    .collect(),
+            ),
+        ];
         let defects = request_sequence_defects(&automaton, &stages, &[observed]);
         assert!(defects
             .iter()
@@ -310,6 +322,49 @@ mod unsatisfiable {
     }
 }
 
+mod authoritative {
+    use super::*;
+    use mtgml_decision::{AuthoritativeDecisionRequestV2, DecisionDomainV2};
+
+    #[test]
+    fn unsat_choose_one_zero_candidates_rejected() {
+        let request = AuthoritativeDecisionRequestV2 {
+            decision_id: mtgml_model::DecisionId(1),
+            player_decision_id: mtgml_model::PlayerDecisionIdV1(1),
+            state_revision: StateRevision(0),
+            actor: P1,
+            visibility: DecisionVisibility::Public,
+            decision: DecisionDomainV2::ChooseOne,
+            candidates: Vec::new(),
+            continuation_id: None,
+        };
+        assert!(request.validate().is_err());
+    }
+
+    #[test]
+    fn unsat_choose_many_minimum_above_candidate_count_rejected() {
+        let request = AuthoritativeDecisionRequestV2 {
+            decision_id: mtgml_model::DecisionId(1),
+            player_decision_id: mtgml_model::PlayerDecisionIdV1(1),
+            state_revision: StateRevision(0),
+            actor: P1,
+            visibility: DecisionVisibility::Public,
+            decision: DecisionDomainV2::ChooseMany {
+                minimum: 5,
+                maximum: 5,
+            },
+            candidates: vec![mtgml_decision::AuthoritativeCandidateV2 {
+                candidate_id: CandidateIdV1(0),
+                visible_intent: CandidateIntent::SelectMode { mode_index: 0 },
+                trusted_binding: mtgml_decision::EngineCandidateBinding::SelectMode {
+                    mode_index: 0,
+                },
+            }],
+            continuation_id: None,
+        };
+        assert!(request.validate().is_err());
+    }
+}
 mod budget {
     use super::*;
 
@@ -458,7 +513,19 @@ mod invariance {
         };
         let space_a = ReferenceAutomaton::new(spec_a).enumerate_complete_choices();
         let space_b = ReferenceAutomaton::new(spec_b).enumerate_complete_choices();
+        // Structural equivalence: same total count and same distribution by
+        // Number stage value. Piece atoms may differ because different specs
+        // select different physical pieces from the iteration order.
         assert_eq!(space_a.len(), space_b.len());
-        assert_eq!(space_a, space_b);
+        let count_by_number = |space: &[CanonicalCompleteChoice]| -> Vec<(i64, usize)> {
+            let mut out = std::collections::BTreeMap::new();
+            for choice in space {
+                if let Some(CanonicalStageChoice::Number(v)) = choice.0.get(1) {
+                    *out.entry(*v).or_insert(0) += 1;
+                }
+            }
+            out.into_iter().collect()
+        };
+        assert_eq!(count_by_number(&space_a), count_by_number(&space_b));
     }
 }

@@ -108,8 +108,13 @@ impl ReferenceAutomaton {
                     minimum: *count,
                     maximum: *count,
                 },
-                // Eligible pieces after choosing c are exactly 0..c.
-                candidate_atoms: (0..*count).map(SyntheticChoiceAtom::Piece).collect(),
+                candidate_atoms: self
+                    .spec
+                    .piece_iteration_order
+                    .iter()
+                    .take(*count as usize)
+                    .map(|piece| SyntheticChoiceAtom::Piece(*piece))
+                    .collect(),
             },
             ReferenceAssemblyState::OrderMembers { selected, .. } => ExpectedRequest {
                 domain: ExpectedDomain::Order {
@@ -133,8 +138,13 @@ impl ReferenceAutomaton {
                 .map(CanonicalStageChoice::Number)
                 .collect(),
             ReferenceAssemblyState::ChooseMembers { count } => {
-                let members: BTreeSet<SyntheticChoiceAtom> =
-                    (0..*count).map(SyntheticChoiceAtom::Piece).collect();
+                let members: BTreeSet<SyntheticChoiceAtom> = self
+                    .spec
+                    .piece_iteration_order
+                    .iter()
+                    .take(*count as usize)
+                    .map(|piece| SyntheticChoiceAtom::Piece(*piece))
+                    .collect();
                 vec![CanonicalStageChoice::Members(members)]
             }
             ReferenceAssemblyState::OrderMembers { selected, .. } => {

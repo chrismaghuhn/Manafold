@@ -153,39 +153,6 @@ GATE_TESTS: dict[str, tuple[EvidenceDefinition, ...]] = {
 }
 
 
-def check_no_runtime_lifecycle_channel() -> str:
-    """The fixture driver stays behind its feature gate with no runtime caller."""
-    for crate_name in ["mtgml-rules", "mtgml-environment"]:
-        cargo_toml = (ROOT / "crates" / crate_name / "Cargo.toml").read_text(encoding="utf-8")
-        if "mtgml-conformance" in cargo_toml:
-            raise AssertionError(f"{crate_name} depends on mtgml-conformance")
-    runtime_sources = [
-        ROOT / "crates" / "mtgml-environment" / "src" / name
-        for name in [
-            "synthetic.rs",
-            "controller.rs",
-            "boundary.rs",
-            "endpoint.rs",
-            "replay.rs",
-            "checkpoint.rs",
-            "lifecycle_projection.rs",
-        ]
-    ]
-    for path in runtime_sources:
-        if "fixture_support" in path.read_text(encoding="utf-8"):
-            raise AssertionError(f"runtime source references fixture support: {path.name}")
-    env_lib = (ROOT / "crates" / "mtgml-environment" / "src" / "lib.rs").read_text(encoding="utf-8")
-    if "#[cfg(test)]" not in env_lib or "mod tests;" not in env_lib:
-        raise AssertionError("environment test module lost its cfg(test) guard")
-    if env_lib.index("#[cfg(test)]") > env_lib.index("mod tests;"):
-        raise AssertionError("cfg(test) no longer guards the environment test module")
-    conformance_toml = (ROOT / "crates" / "mtgml-conformance" / "Cargo.toml").read_text(
-        encoding="utf-8"
-    )
-    if 'features = ["m2-conformance-fixtures"]' not in conformance_toml:
-        raise AssertionError("conformance no longer enables the fixture feature")
-    return "test module gated, fixture feature scoped, no runtime caller"
-
 
 def run_command(command: Sequence[str]) -> subprocess.CompletedProcess[str]:
     environment = dict(os.environ)
@@ -456,15 +423,26 @@ def execute_python_test(definition: EvidenceDefinition, logs: Path, index: int) 
 
 
 def check_oracle_boundary_guard() -> str:
-    """Oracle must live only in mtgml-conformance; no runtime import path."""
-    for crate_name in ["mtgml-rules", "mtgml-environment"]:
-        cargo_toml = (ROOT / "crates" / crate_name / "Cargo.toml").read_text(encoding="utf-8")
-        if "mtgml-conformance" in cargo_toml:
-            raise AssertionError(f"{crate_name} depends on mtgml-conformance")
-    legal_dir = ROOT / "crates" / "mtgml-conformance" / "src" / "legal_space"
-    if not legal_dir.is_dir():
-        raise AssertionError("legal_space module directory missing from conformance")
-    return "oracle boundary clean: no runtime dependency on conformance"
+    """Oracle independence: no production crate transitively pulls conformance,
+    and the explorer does not import reference-oracle symbols."""
+    import json as _json
+    import subprocess as _sp
+    meta = _sp.run(
+        ["cargo", "metadata", "--locked", "--format-version", "1"],
+        cwd=ROOT, capture_output=True, text=True,
+    )
+    if meta.returncode != 0:
+        raise AssertionError(f"cargo metadata failed: {meta.stderr[:200]}")
+    for pkg in _json.loads(meta.stdout)["packages"]:
+        if pkg["name"] in ("mtgml-rules", "mtgml-environment"):
+            for dep in pkg.get("dependencies", []):
+                if dep["name"] == "mtgml-conformance":
+                    raise AssertionError(f"{pkg['name']} pulls mtgml-conformance")
+    src = (ROOT / "crates" / "mtgml-conformance" / "src" / "legal_space" / "explorer.rs").read_text(encoding="utf-8")
+    for pattern in ["super::oracle", "crate::legal_space::oracle", "SCENARIO_COUNT_"]:
+        if pattern in src:
+            raise AssertionError(f"explorer.rs imports oracle symbol: {pattern}")
+    return "oracle boundary clean: cargo graph + source scan pass"
 
 
 SOURCE_CHECKS = {
@@ -487,7 +465,7 @@ def render_markdown(report: dict[str, Any]) -> str:
     lines = [
         "# M2.F Gate Verification",
         "",
-        "Generated outside the reproducible source archive by `scripts/run_m2_e_gates.py`.",
+        "Generated outside the reproducible source archive by `scripts/run_m2_f_gates.py`.",
         "",
         f"- Mode: **{report['mode']}**",
         f"- Source commit: `{report.get('source_commit')}`",
@@ -573,7 +551,7 @@ def main() -> int:
         "generated_at": datetime.now(UTC).isoformat(),
         "mode": "development" if args.development else "authoritative",
         "milestone": "M2.F",
-        "reporter": "scripts/run_m2_e_gates.py",
+        "reporter": "scripts/run_m2_f_gates.py",
         "source_commit": before.get("commit"),
         "expected_commit": args.expect_commit,
         "expected_commit_note": expected_commit_note,
