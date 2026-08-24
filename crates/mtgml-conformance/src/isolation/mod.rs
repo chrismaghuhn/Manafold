@@ -7,7 +7,9 @@
 //! guard enforces that direction.
 
 mod fingerprint;
+mod mutants;
 mod paired;
+mod paired_matrix;
 mod witnesses;
 
 pub use fingerprint::{
@@ -17,10 +19,19 @@ pub use fingerprint::{
     ReplayRecorderFingerprint, SemanticStateFingerprint, TransitionVisibleProduct,
     TrustedEnvironmentIdentitySurface,
 };
+pub use mutants::{
+    capture_real_outputs, m10_summary_count_inflation, m11_optional_presence_toggle,
+    m12_payload_length_variation, m1_resort_retained_knowledge_by_trusted_order,
+    m2_candidate_ids_from_bindings, m3_identity_ids_from_global_allocators,
+    m4_submission_code_swap, m5_stamp_global_event_count, m6_payload_definition_injection,
+    m7_position_hint_injection, m8_insert_foreign_knowledge_record,
+    m9_payload_secret_hex_injection, LeakMutant, RealOutputs, StepLeakMutant, SurfaceBytes,
+};
 pub use paired::{
     base_pair_state, build_case, spawn_environment, synthetic_environment_config, AxisKind,
     PairedCase, TransformFn, TransformReport,
 };
+pub use paired_matrix::build_axis_case;
 pub use witnesses::{
     assert_witness, check_bijection, relate_decision, relate_knowledge, BijectionOutcome,
     NonVacuityPredicate, PairWitness, RelationOutcome, TrustedRenamingBijection, WitnessViolation,
@@ -54,6 +65,10 @@ pub enum HarnessError {
     SyntheticBackendRejected,
     #[error("player binding failed")]
     BindFailed,
+    #[error("conformance transform expected a declared fixture object that is absent")]
+    TransformFixtureAbsent,
+    #[error("pair witness construction failed: {0:?}")]
+    Witness(WitnessViolation),
     #[error("semantic-state fingerprint group mismatched")]
     SemanticGroupMismatch,
     #[error("environment fingerprint group mismatched")]

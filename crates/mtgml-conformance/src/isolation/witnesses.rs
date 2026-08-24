@@ -31,6 +31,7 @@ pub enum RelationOutcome {
 pub enum BijectionOutcome {
     Holds,
     UnexplainedDifference { path: String },
+    NotInjective { path: String },
 }
 
 /// Closed violation vocabulary for one witness assertion; paths are precise
@@ -46,17 +47,36 @@ pub enum WitnessViolation {
     BijectionUnexplained {
         path: String,
     },
+    /// The declared renaming bijection maps two sources onto one target and
+    /// is therefore no renaming at all.
+    BijectionNotInjective {
+        path: String,
+    },
     /// The pair declared an authoritative difference that does not hold.
     VacuousPair,
     MissingPerspective,
 }
 
 /// Whether a pair declares an authoritative difference that must actually
-/// hold. A `Required` pair whose sides are equal is vacuous evidence.
+/// hold. `Required` demands whole-state inequality; every axis variant is an
+/// executable declared-difference predicate over the authoritative states
+/// (evaluated with the small composable helpers at the bottom of this
+/// module). A pair whose declared difference does not hold is vacuous
+/// evidence and must fail its axis test.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum NonVacuityPredicate {
     None,
     Required,
+    OpponentHiddenDefinition,
+    HiddenConcealedOrdering,
+    ForeignPrivateLook,
+    FaceDownIdentity,
+    RootSeedPreAuth,
+    HiddenRngCursor,
+    ObjectRenaming,
+    AbilityRenaming,
+    GlobalAllocatorHistory,
+    ForeignKnowledgeHistory,
 }
 
 /// The authorized object-renaming bijection between paired states: hidden
@@ -324,12 +344,25 @@ pub fn relate_decision(
 
 /// Checks that opaque keys, per-perspective allocators, and retired sets are
 /// equal between sides and that every mapping-target difference is explained
-/// by the bijection. Any unexplained difference is a violation.
+/// by the bijection. The bijection itself must be injective in both
+/// directions (sources are unique map keys; a duplicated target collapses
+/// two identities into one and is rejected). Any unexplained difference is a
+/// violation.
 pub fn check_bijection(
     a_state: &EngineState,
     b_state: &EngineState,
     bijection: &TrustedRenamingBijection,
 ) -> BijectionOutcome {
+    if !is_injective(&bijection.objects) {
+        return BijectionOutcome::NotInjective {
+            path: "objects".to_owned(),
+        };
+    }
+    if !is_injective(&bijection.abilities) {
+        return BijectionOutcome::NotInjective {
+            path: "abilities".to_owned(),
+        };
+    }
     let perspectives: BTreeSet<PlayerId> = a_state
         .perspective_identities
         .players
@@ -409,9 +442,15 @@ fn keys_of<Key: Copy + Ord, Value>(map: &BTreeMap<Key, Value>) -> BTreeSet<Key> 
     map.keys().copied().collect()
 }
 
+fn is_injective<Key: Copy + Ord, Target: Copy + Ord>(mapping: &BTreeMap<Key, Target>) -> bool {
+    let targets: BTreeSet<Target> = mapping.values().copied().collect();
+    targets.len() == mapping.len()
+}
+
 /// Runs the full witness assertion over a state pair: knowledge relation,
 /// decision relation, bijection explanation (with no renaming authorized
-/// when absent), then the non-vacuity predicate.
+/// when absent), then the non-vacuity predicate. A declared axis difference
+/// that does not hold is vacuous evidence and fails closed.
 pub fn assert_witness(
     a: &EngineState,
     b: &EngineState,
@@ -436,15 +475,289 @@ pub fn assert_witness(
         BijectionOutcome::UnexplainedDifference { path } => {
             return Err(WitnessViolation::BijectionUnexplained { path });
         }
-    }
-    match witness.expected_difference {
-        NonVacuityPredicate::None => {}
-        NonVacuityPredicate::Required if a == b => {
-            return Err(WitnessViolation::VacuousPair);
+        BijectionOutcome::NotInjective { path } => {
+            return Err(WitnessViolation::BijectionNotInjective { path });
         }
-        NonVacuityPredicate::Required => {}
+    }
+    let declared_difference_holds = match witness.expected_difference {
+        NonVacuityPredicate::None => true,
+        predicate => predicate.difference_holds(a, b, witness),
+    };
+    if !declared_difference_holds {
+        return Err(WitnessViolation::VacuousPair);
     }
     Ok(())
+}
+
+impl NonVacuityPredicate {
+    /// Evaluates the executable declared-difference predicate of this axis
+    /// over the two authoritative states. Every axis variant is composed
+    /// from the small helpers below; none uses reflection and all read only
+    /// authoritative fields.
+    pub fn difference_holds(self, a: &EngineState, b: &EngineState, witness: &PairWitness) -> bool {
+        match self {
+            Self::None => true,
+            Self::Required => a != b,
+            Self::OpponentHiddenDefinition => {
+                hidden_definition_multiset(a) != hidden_definition_multiset(b)
+                    && face_down_count(a) == face_down_count(b)
+                    && authorized_visible_counts_equal(a, b, witness.perspective)
+            }
+            Self::HiddenConcealedOrdering => concealed_order_diverges(a, b),
+            Self::ForeignPrivateLook => {
+                foreign_record_set_differs(a, b, witness.perspective)
+                    && authorized_visible_counts_equal(a, b, witness.perspective)
+            }
+            Self::FaceDownIdentity => face_down_physical_swap(a, b),
+            Self::RootSeedPreAuth => {
+                a.random.root_seed != b.random.root_seed
+                    && a.revision == b.revision
+                    && authorized_visible_counts_equal(a, b, witness.perspective)
+            }
+            Self::HiddenRngCursor => global_cursor(a) != global_cursor(b),
+            Self::ObjectRenaming => renaming_difference_holds(a, b, &witness.bijection),
+            Self::AbilityRenaming => ability_renaming_difference_holds(a, b, &witness.bijection),
+            Self::GlobalAllocatorHistory => {
+                a.allocators != b.allocators
+                    && a.perspective_identities.players.get(&witness.perspective)
+                        == b.perspective_identities.players.get(&witness.perspective)
+            }
+            Self::ForeignKnowledgeHistory => {
+                foreign_history_differs(a, b, witness.perspective)
+                    && authorized_visible_counts_equal(a, b, witness.perspective)
+            }
+        }
+    }
+}
+
+/// Multiset of card definitions over face-down objects (trusted side).
+fn hidden_definition_multiset(
+    state: &EngineState,
+) -> BTreeMap<mtgml_model::CardDefinitionId, usize> {
+    let mut multiset = BTreeMap::new();
+    for object in state
+        .zones
+        .objects
+        .values()
+        .filter(|object| object.face_down)
+    {
+        *multiset.entry(object.card_definition).or_default() += 1;
+    }
+    multiset
+}
+
+fn face_down_count(state: &EngineState) -> usize {
+    state
+        .zones
+        .objects
+        .values()
+        .filter(|object| object.face_down)
+        .count()
+}
+
+/// Authorized visible counts of `perspective`: opaque active-record keys and
+/// the next visible sequence must be equal between sides.
+fn authorized_visible_counts_equal(
+    a: &EngineState,
+    b: &EngineState,
+    perspective: PlayerId,
+) -> bool {
+    let knowledge_a = a.knowledge.players.get(&perspective);
+    let knowledge_b = b.knowledge.players.get(&perspective);
+    match (knowledge_a, knowledge_b) {
+        (Some(knowledge_a), Some(knowledge_b)) => {
+            keys_of(&knowledge_a.active) == keys_of(&knowledge_b.active)
+                && knowledge_a.next_visible_sequence == knowledge_b.next_visible_sequence
+        }
+        _ => false,
+    }
+}
+
+/// The concealed ordered-zone vectors differ between sides while each
+/// permuted vector preserves the other's member multiset and at least two
+/// objects are concealed.
+fn concealed_order_diverges(a: &EngineState, b: &EngineState) -> bool {
+    if face_down_count(a) < 2 || face_down_count(b) < 2 {
+        return false;
+    }
+    let mut diverges = false;
+    for (key, members_a) in &a.zones.ordered_zones {
+        if members_a.len() < 2 {
+            continue;
+        }
+        let Some(members_b) = b.zones.ordered_zones.get(key) else {
+            return false;
+        };
+        let mut sorted_a = members_a.clone();
+        let mut sorted_b = members_b.clone();
+        sorted_a.sort_unstable();
+        sorted_b.sort_unstable();
+        if sorted_a != sorted_b || members_a.len() != members_b.len() {
+            return false;
+        }
+        if members_a != members_b {
+            diverges = true;
+        }
+    }
+    diverges
+}
+
+/// The non-witness player's retained record set differs while both sides
+/// remain otherwise comparable (two-player M2 shape).
+fn foreign_record_set_differs(a: &EngineState, b: &EngineState, perspective: PlayerId) -> bool {
+    let mut differs = false;
+    for (player, knowledge_a) in &a.knowledge.players {
+        if *player == perspective {
+            continue;
+        }
+        let Some(knowledge_b) = b.knowledge.players.get(player) else {
+            return false;
+        };
+        if keys_of(&knowledge_a.active) != keys_of(&knowledge_b.active) {
+            differs = true;
+        }
+    }
+    differs && a.knowledge.players.len() == b.knowledge.players.len()
+}
+
+/// The assignment of physical cards to face-down incarnations differs while
+/// the physical-card multiset is preserved (a swap among at least two).
+fn face_down_physical_swap(a: &EngineState, b: &EngineState) -> bool {
+    let assignment =
+        |state: &EngineState| -> BTreeMap<GameObjectId, Option<mtgml_model::PhysicalCardId>> {
+            state
+                .zones
+                .objects
+                .values()
+                .filter(|object| object.face_down)
+                .map(|object| (object.id, object.physical_card))
+                .collect()
+        };
+    let assignment_a = assignment(a);
+    let assignment_b = assignment(b);
+    let multiset = |values: &BTreeMap<
+        GameObjectId,
+        Option<mtgml_model::PhysicalCardId>,
+    >| -> BTreeMap<Option<mtgml_model::PhysicalCardId>, usize> {
+        let mut multiset = BTreeMap::new();
+        for physical in values.values().copied() {
+            *multiset.entry(physical).or_default() += 1;
+        }
+        multiset
+    };
+    assignment_a.len() >= 2
+        && multiset(&assignment_a) == multiset(&assignment_b)
+        && assignment_a != assignment_b
+}
+
+fn global_cursor(state: &EngineState) -> Option<u64> {
+    state
+        .random
+        .lookup_stream(&mtgml_random::RandomStreamKeyV1::global(
+            mtgml_random::RandomStreamKindV1::SyntheticM1,
+        ))
+        .ok()
+        .map(|cursor| cursor.next_raw_u64)
+}
+
+/// A non-empty object bijection explains at least one actual mapping-target
+/// difference while every perspective keeps its opaque key sets.
+fn renaming_difference_holds(
+    a: &EngineState,
+    b: &EngineState,
+    bijection: &Option<TrustedRenamingBijection>,
+) -> bool {
+    let Some(bijection) = bijection else {
+        return false;
+    };
+    if bijection.objects.is_empty() {
+        return false;
+    }
+    let mut renamed_instance = false;
+    for (player, identity_a) in &a.perspective_identities.players {
+        let Some(identity_b) = b.perspective_identities.players.get(player) else {
+            return false;
+        };
+        if keys_of(&identity_a.opaque_to_object) != keys_of(&identity_b.opaque_to_object) {
+            return false;
+        }
+        for (opaque, target_a) in &identity_a.opaque_to_object {
+            match identity_b.opaque_to_object.get(opaque) {
+                Some(target_b) if target_a != target_b => {
+                    if bijection.objects.get(target_a) != Some(target_b) {
+                        return false;
+                    }
+                    renamed_instance = true;
+                }
+                Some(_) => {}
+                None => return false,
+            }
+        }
+    }
+    renamed_instance
+}
+
+/// A non-empty ability bijection explains at least one actual instance
+/// difference behind an identical opaque ability key.
+fn ability_renaming_difference_holds(
+    a: &EngineState,
+    b: &EngineState,
+    bijection: &Option<TrustedRenamingBijection>,
+) -> bool {
+    let Some(bijection) = bijection else {
+        return false;
+    };
+    if bijection.abilities.is_empty() {
+        return false;
+    }
+    let mut renamed_instance = false;
+    for (player, identity_a) in &a.perspective_identities.players {
+        let Some(identity_b) = b.perspective_identities.players.get(player) else {
+            return false;
+        };
+        if keys_of(&identity_a.opaque_to_ability) != keys_of(&identity_b.opaque_to_ability) {
+            return false;
+        }
+        for (opaque, instance_a) in &identity_a.opaque_to_ability {
+            match identity_b.opaque_to_ability.get(opaque) {
+                Some(instance_b) if instance_a != instance_b => {
+                    if bijection.abilities.get(instance_a) != Some(instance_b) {
+                        return false;
+                    }
+                    renamed_instance = true;
+                }
+                Some(_) => {}
+                None => return false,
+            }
+        }
+    }
+    renamed_instance
+}
+
+/// At least one non-witness record carries a different history-vector
+/// content between sides.
+fn foreign_history_differs(a: &EngineState, b: &EngineState, perspective: PlayerId) -> bool {
+    let mut differs = false;
+    for (player, knowledge_a) in &a.knowledge.players {
+        if *player == perspective {
+            continue;
+        }
+        let Some(knowledge_b) = b.knowledge.players.get(player) else {
+            return false;
+        };
+        for (opaque, record_a) in &knowledge_a.active {
+            match knowledge_b.active.get(opaque) {
+                Some(record_b)
+                    if record_a.historical_locations != record_b.historical_locations =>
+                {
+                    differs = true;
+                }
+                Some(_) => {}
+                None => return false,
+            }
+        }
+    }
+    differs && a.knowledge.players.len() == b.knowledge.players.len()
 }
 
 #[cfg(test)]
@@ -499,7 +812,7 @@ mod tests {
     fn renaming_bijection_accepts_target_differences() {
         let state_a = base_pair_state(&"11".repeat(32)).unwrap();
         let mut state_b = state_a.clone();
-        rename_hidden_object(&mut state_b);
+        rename_hidden_object(&mut state_b).unwrap();
 
         let explained = PairWitness::build(
             P2,
@@ -559,5 +872,70 @@ mod tests {
                 path: "presence".to_owned()
             }
         );
+    }
+
+    #[test]
+    fn duplicate_bijection_targets_are_not_injective() {
+        let state = base_pair_state(&"11".repeat(32)).unwrap();
+        let clone = state.clone();
+        let collapsing = TrustedRenamingBijection {
+            objects: BTreeMap::from([
+                (GameObjectId(1), GameObjectId(9)),
+                (GameObjectId(2), GameObjectId(9)),
+            ]),
+            abilities: BTreeMap::new(),
+        };
+        assert_eq!(
+            check_bijection(&state, &clone, &collapsing),
+            BijectionOutcome::NotInjective {
+                path: "objects".to_owned()
+            }
+        );
+        let witness = PairWitness::build(
+            P2,
+            &state,
+            &clone,
+            Some(collapsing),
+            NonVacuityPredicate::ObjectRenaming,
+        )
+        .unwrap();
+        assert_eq!(
+            assert_witness(&state, &clone, &witness),
+            Err(WitnessViolation::BijectionNotInjective {
+                path: "objects".to_owned()
+            })
+        );
+    }
+
+    #[test]
+    fn every_axis_predicate_fails_vacuous_identical_pairs() {
+        let axis_predicates = [
+            NonVacuityPredicate::OpponentHiddenDefinition,
+            NonVacuityPredicate::HiddenConcealedOrdering,
+            NonVacuityPredicate::ForeignPrivateLook,
+            NonVacuityPredicate::FaceDownIdentity,
+            NonVacuityPredicate::RootSeedPreAuth,
+            NonVacuityPredicate::HiddenRngCursor,
+            NonVacuityPredicate::ObjectRenaming,
+            NonVacuityPredicate::AbilityRenaming,
+            NonVacuityPredicate::GlobalAllocatorHistory,
+            NonVacuityPredicate::ForeignKnowledgeHistory,
+        ];
+        for predicate in axis_predicates {
+            let state = base_pair_state(&"11".repeat(32)).unwrap();
+            let clone = state.clone();
+            let bijection = match predicate {
+                NonVacuityPredicate::ObjectRenaming => {
+                    Some(crate::isolation::paired::test_support::renaming_bijection())
+                }
+                _ => None,
+            };
+            let witness = PairWitness::build(P2, &state, &clone, bijection, predicate).unwrap();
+            assert_eq!(
+                assert_witness(&state, &clone, &witness),
+                Err(WitnessViolation::VacuousPair),
+                "axis predicate {predicate:?} accepted an identical pair"
+            );
+        }
     }
 }

@@ -195,10 +195,10 @@ pub fn capture_transition_product(
             }
             let player_step_bytes =
                 encode_canonical(&step).map_err(|_| HarnessError::WireEncoding)?;
-            let semantic_submission_code = match step.submission {
-                PlayerStepSubmissionV1::Accepted => Some("accepted".to_owned()),
+            let semantic_submission_code = match &step.submission {
+                PlayerStepSubmissionV1::Accepted => Some(ACCEPTED_SUBMISSION_MARKER.to_owned()),
                 PlayerStepSubmissionV1::Rejected { code } => {
-                    Some(submission_code_string(code).to_owned())
+                    Some(submission_code_string(*code).to_owned())
                 }
             };
             let protocol = PlayerProtocolIdentitySurface {
@@ -257,6 +257,15 @@ fn submission_code_string(code: PlayerSubmissionCodeV1) -> &'static str {
         PlayerSubmissionCodeV1::EpisodeClosed => "episode_closed",
     }
 }
+
+/// Wire marker of the accepted submission outcome, mirroring the serde
+/// `snake_case` spelling of `PlayerStepSubmissionV1::Accepted` exactly like
+/// [`submission_code_string`] mirrors the rejection codes. The literal is
+/// defined once here and pinned against the real serde serialization by
+/// `accepted_submission_marker_matches_serde_wire_spelling`, so a renamed or
+/// re-spelled outcome variant fails a test instead of silently comparing
+/// under drifted bytes.
+const ACCEPTED_SUBMISSION_MARKER: &str = "accepted";
 
 /// Captures the complete four-group fingerprint of the controller's current
 /// instant plus both bound endpoints' snapshots.
@@ -427,5 +436,81 @@ mod tests {
             Some("service_unavailable")
         );
         assert!(service.semantic_submission_code.is_none());
+    }
+
+    #[test]
+    fn accepted_submission_marker_matches_serde_wire_spelling() {
+        let serialized = serde_json::to_value(PlayerStepSubmissionV1::Accepted).unwrap();
+        assert_eq!(
+            serialized,
+            serde_json::json!({ "kind": ACCEPTED_SUBMISSION_MARKER })
+        );
+        let rejection = serde_json::to_value(PlayerStepSubmissionV1::Rejected {
+            code: PlayerSubmissionCodeV1::InvalidAnswer,
+        })
+        .unwrap();
+        assert_ne!(rejection, serde_json::json!({ "kind": "accepted" }));
+    }
+
+    fn equal_complete_fingerprints() -> (CompleteM2Fingerprint, CompleteM2Fingerprint) {
+        let state = base_pair_state(&"11".repeat(32)).unwrap();
+        let config = synthetic_environment_config([P1, P2]);
+        let (controller, endpoints) = spawn_environment(state, &config).unwrap();
+        let before = capture_complete(&controller, &endpoints).unwrap();
+        let state_again = base_pair_state(&"11".repeat(32)).unwrap();
+        let (controller_again, endpoints_again) = spawn_environment(state_again, &config).unwrap();
+        let after = capture_complete(&controller_again, &endpoints_again).unwrap();
+        (before, after)
+    }
+
+    #[test]
+    fn policy_mismatch_detected_in_semantic_group() {
+        let (mut before, after) = equal_complete_fingerprints();
+        before.semantic.revision = mtgml_model::StateRevision(before.semantic.revision.0 + 1);
+        assert_eq!(
+            assert_fingerprint_policies(&before, &after, FingerprintComparison::All),
+            Err(HarnessError::SemanticGroupMismatch)
+        );
+    }
+
+    #[test]
+    fn policy_mismatch_detected_in_environment_group() {
+        let (mut before, after) = equal_complete_fingerprints();
+        before.environment.limit_counters.decisions_submitted += 1;
+        assert_eq!(
+            assert_fingerprint_policies(&before, &after, FingerprintComparison::All),
+            Err(HarnessError::EnvironmentGroupMismatch)
+        );
+    }
+
+    #[test]
+    fn policy_mismatch_detected_in_player_group() {
+        let (mut before, after) = equal_complete_fingerprints();
+        before.player.p1_snapshot.current_visible_sequence =
+            mtgml_model::VisibleSequence(before.player.p1_snapshot.current_visible_sequence.0 + 1);
+        assert_eq!(
+            assert_fingerprint_policies(&before, &after, FingerprintComparison::All),
+            Err(HarnessError::PlayerGroupMismatch)
+        );
+    }
+
+    #[test]
+    fn policy_mismatch_detected_in_replay_recorder_group() {
+        let (mut before, after) = equal_complete_fingerprints();
+        before.replay_recorder.exported_replay_bytes.push(b'x');
+        assert_eq!(
+            assert_fingerprint_policies(&before, &after, FingerprintComparison::All),
+            Err(HarnessError::ReplayRecorderGroupMismatch)
+        );
+        // The recorder group is deliberately outside the
+        // `ExcludeReplayRecorder` policy and must not fire there.
+        assert_eq!(
+            assert_fingerprint_policies(
+                &before,
+                &after,
+                FingerprintComparison::ExcludeReplayRecorder
+            ),
+            Ok(())
+        );
     }
 }

@@ -62,7 +62,11 @@ pub struct TransformReport {
 }
 
 /// Conformance-only mutation helper over a cloned authoritative state.
-pub type TransformFn = fn(&mut EngineState) -> TransformReport;
+///
+/// Transforms fail closed: a declared fixture object that is absent aborts
+/// the case build instead of panicking, so an out-of-date enrichment can
+/// never silently produce evidence from an unintended state.
+pub type TransformFn = fn(&mut EngineState) -> Result<TransformReport, HarnessError>;
 
 fn codec_identity() -> CheckpointCodecIdentity {
     CheckpointCodecIdentity {
@@ -149,10 +153,10 @@ pub fn build_case(
     witness: PairWitness,
 ) -> Result<PairedCase, HarnessError> {
     let mut state_a = base.clone();
-    transform_a(&mut state_a);
+    transform_a(&mut state_a)?;
     validate_engine_state(&state_a).map_err(HarnessError::StateValidation)?;
     let mut state_b = base.clone();
-    transform_b(&mut state_b);
+    transform_b(&mut state_b)?;
     validate_engine_state(&state_b).map_err(HarnessError::StateValidation)?;
     let config = synthetic_environment_config([P1, P2]);
     spawn_environment(state_a.clone(), &config)?;
@@ -196,20 +200,26 @@ pub(crate) mod test_support {
 
     /// Renames the one hidden object consistently across zones, ordered
     /// zones, and every perspective identity record, raising the global
-    /// object allocator to cover the fresh identity.
-    pub fn rename_hidden_object(state: &mut EngineState) -> TransformReport {
-        let mut object = state
-            .zones
-            .objects
-            .remove(&RENAMED_FROM)
-            .expect("hidden object present");
+    /// object allocator to cover the fresh identity. Fails closed when the
+    /// declared fixture object is absent.
+    pub fn rename_hidden_object(state: &mut EngineState) -> Result<TransformReport, HarnessError> {
+        let Some(mut object) = state.zones.objects.remove(&RENAMED_FROM) else {
+            return Err(HarnessError::TransformFixtureAbsent);
+        };
         object.id = RENAMED_TO;
         state.zones.objects.insert(RENAMED_TO, object);
-        let location = state
-            .zones
-            .locations
-            .remove(&RENAMED_FROM)
-            .expect("hidden location present");
+        let Some(location) = state.zones.locations.remove(&RENAMED_FROM) else {
+            // Restore the removed object so the failure leaves no half-applied
+            // transform behind.
+            let mut restored = state
+                .zones
+                .objects
+                .remove(&RENAMED_TO)
+                .ok_or(HarnessError::TransformFixtureAbsent)?;
+            restored.id = RENAMED_FROM;
+            state.zones.objects.insert(RENAMED_FROM, restored);
+            return Err(HarnessError::TransformFixtureAbsent);
+        };
         let key = location.key();
         state.zones.locations.insert(RENAMED_TO, location);
         if let Some(members) = state.zones.ordered_zones.get_mut(&key) {
@@ -230,9 +240,9 @@ pub(crate) mod test_support {
             }
         }
         state.allocators.next_object_id = GameObjectId(RENAMED_TO.0 + 1);
-        TransformReport {
+        Ok(TransformReport {
             mutated_fields: &["zones", "allocators", "perspective_identities"],
-        }
+        })
     }
 
     pub fn renaming_bijection() -> TrustedRenamingBijection {
@@ -281,7 +291,7 @@ pub(crate) mod test_support {
 
 #[cfg(test)]
 mod tests {
-    use super::test_support::{rename_hidden_object, renaming_bijection};
+    use super::test_support::{rename_hidden_object, renaming_bijection, RENAMED_FROM, RENAMED_TO};
     use super::*;
     use crate::isolation::witnesses::{assert_witness, NonVacuityPredicate};
 
@@ -297,7 +307,7 @@ mod tests {
     fn build_case_runtime_accepts_both_sides_and_preserves_witness() {
         let base = base_pair_state(&"11".repeat(32)).unwrap();
         let mut expected_b = base.clone();
-        rename_hidden_object(&mut expected_b);
+        rename_hidden_object(&mut expected_b).unwrap();
         let witness = crate::isolation::witnesses::PairWitness::build(
             P2,
             &base,
@@ -307,10 +317,10 @@ mod tests {
         )
         .unwrap();
 
-        fn unchanged(_state: &mut EngineState) -> TransformReport {
-            TransformReport {
+        fn unchanged(_state: &mut EngineState) -> Result<TransformReport, HarnessError> {
+            Ok(TransformReport {
                 mutated_fields: &[],
-            }
+            })
         }
 
         let case = build_case(
@@ -326,6 +336,20 @@ mod tests {
         assert_eq!(case.axis, AxisKind::ObjectRenaming);
         assert_eq!(case.perspective, P2);
         assert_witness(&case.state_a, &case.state_b, &case.witness).unwrap();
+    }
+
+    #[test]
+    fn missing_fixture_object_fails_closed() {
+        // A base state without the declared hidden fixture object must abort
+        // the transform instead of panicking.
+        let mut stripped = base_pair_state(&"11".repeat(32)).unwrap();
+        stripped.zones.objects.remove(&RENAMED_FROM);
+        assert_eq!(
+            rename_hidden_object(&mut stripped),
+            Err(HarnessError::TransformFixtureAbsent)
+        );
+        // The failed transform left no half-applied rename behind.
+        assert!(!stripped.zones.objects.contains_key(&RENAMED_TO));
     }
 
     #[test]

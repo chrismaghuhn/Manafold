@@ -131,6 +131,7 @@ dependencies = [
 name = "mtgml-conformance"
 version = "0.2.2"
 dependencies = [
+ "base64",
  "mtgml-decision",
  "mtgml-environment",
  "mtgml-model",
@@ -140,6 +141,7 @@ dependencies = [
  "mtgml-rules",
  "mtgml-state",
  "mtgml-wire",
+ "serde_json",
  "thiserror",
 ]
 

@@ -5,6 +5,7 @@ edition.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+base64.workspace = true
 mtgml-decision = { path = "../mtgml-decision" }
 mtgml-environment = { path = "../mtgml-environment" }
 mtgml-model = { path = "../mtgml-model" }
@@ -14,4 +15,5 @@ mtgml-replay = { path = "../mtgml-replay" }
 mtgml-state = { path = "../mtgml-state" }
 mtgml-random = { path = "../mtgml-random" }
 mtgml-wire = { path = "../mtgml-wire" }
+serde_json.workspace = true
 thiserror.workspace = true
