@@ -104,6 +104,17 @@ mod tests {
 
     type CorruptBytes = fn(canonical: &[u8]) -> Vec<u8>;
 
+    /// Shape sanity guard: every corruptor below assumes canonical
+    /// JSON-object bytes. If canonical encoding ever drifts away from that
+    /// shape, the mutation must fail loudly here instead of silently
+    /// producing a meaningless malformed class.
+    fn assert_canonical_object_shape(canonical: &[u8]) {
+        assert!(
+            canonical.first() == Some(&b'{') && canonical.last() == Some(&b'}'),
+            "canonical submission bytes are no longer a JSON object; corruptor shapes drifted"
+        );
+    }
+
     const MALFORMED_CLASSES: &[(&str, CorruptBytes)] = &[
         ("leading_whitespace_noncanonical", leading_whitespace),
         ("wrong_key_order_noncanonical", wrong_key_order),
@@ -114,6 +125,7 @@ mod tests {
     ];
 
     fn leading_whitespace(canonical: &[u8]) -> Vec<u8> {
+        assert_canonical_object_shape(canonical);
         let mut bytes = Vec::with_capacity(canonical.len() + 1);
         bytes.push(b' ');
         bytes.extend_from_slice(canonical);
@@ -123,6 +135,7 @@ mod tests {
     /// Canonical bytes sort object keys; re-emitting the same fields in a
     /// fixed non-sorted top-level order breaks the canonical comparison.
     fn wrong_key_order(canonical: &[u8]) -> Vec<u8> {
+        assert_canonical_object_shape(canonical);
         let value: serde_json::Value = serde_json::from_slice(canonical).unwrap();
         let fields = value.as_object().unwrap();
         let order = [
@@ -139,12 +152,14 @@ mod tests {
     }
 
     fn unknown_field_added(canonical: &[u8]) -> Vec<u8> {
+        assert_canonical_object_shape(canonical);
         let mut bytes = canonical[..canonical.len() - 1].to_vec();
         bytes.extend_from_slice(b",\"conformance_unknown_field\":1}");
         bytes
     }
 
     fn wrong_schema_version(canonical: &[u8]) -> Vec<u8> {
+        assert_canonical_object_shape(canonical);
         std::str::from_utf8(canonical)
             .unwrap()
             .replace(DECISION_RESPONSE_V2_SCHEMA, "decision-response.v9")
@@ -152,10 +167,12 @@ mod tests {
     }
 
     fn truncated_json(canonical: &[u8]) -> Vec<u8> {
+        assert_canonical_object_shape(canonical);
         canonical[..canonical.len() - 8].to_vec()
     }
 
     fn candidate_id_overflow(canonical: &[u8]) -> Vec<u8> {
+        assert_canonical_object_shape(canonical);
         std::str::from_utf8(canonical)
             .unwrap()
             .replace("\"candidate_id\":0", "\"candidate_id\":4294967296")

@@ -17,6 +17,12 @@
 //! evidence instead of asserting an outcome this program cannot produce.
 //! Every M2.G gate remains `NOT_RUN`; nothing here is a gate verdict.
 
+/// Coverage tags of the executed semantic-rejection matrix below.
+///
+/// This list MUST mirror `SEMANTIC_CASES` in the test module row for row:
+/// the coverage test fails closed when either side drifts apart, so a new
+/// executed case without a pinned tag (or vice versa) can never silently
+/// widen or shrink the declared evidence surface.
 pub const SEMANTIC_REJECTION_ROWS: &[&str] = &[
     "stale_player_decision_id",
     "stale_state_revision",

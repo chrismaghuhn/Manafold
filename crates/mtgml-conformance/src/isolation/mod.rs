@@ -6,8 +6,10 @@
 //! Production crates must never depend on this module; the oracle-boundary
 //! guard enforces that direction.
 
+mod checkpoint_parity;
 mod endpoint_pair;
 mod fingerprint;
+mod fork_parity;
 mod mutants;
 mod paired;
 mod paired_matrix;
@@ -63,6 +65,8 @@ pub enum HarnessError {
     SeedFormat,
     #[error("synthetic engine state construction failed")]
     SyntheticConstruction,
+    #[error("fixture lifecycle transition rejected by the rules kernel")]
+    FixtureTransitionRejected,
     #[error("engine state failed validation: {0:?}")]
     StateValidation(mtgml_state::EngineStateViolation),
     #[error("checkpoint creation or validation failed")]
