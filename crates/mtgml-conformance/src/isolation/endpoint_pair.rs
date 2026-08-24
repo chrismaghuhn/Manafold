@@ -7,6 +7,7 @@
 
 #[cfg(test)]
 mod tests {
+    use crate::isolation::checkpoint_parity::support;
     use crate::isolation::fingerprint::{
         assert_fingerprint_policies, capture_complete, capture_snapshot,
         capture_transition_product, FingerprintComparison,
@@ -18,10 +19,12 @@ mod tests {
     use crate::isolation::HarnessError;
     use mtgml_decision::{DecisionAnswerV2, DecisionResponseV2, DECISION_RESPONSE_V2_SCHEMA};
     use mtgml_environment::{PlayerEndpoint, PlayerEndpointHandle};
-    use mtgml_model::{CandidateIdV1, PlayerDecisionIdV1, PlayerId, StateRevision};
+    use mtgml_model::{
+        CandidateIdV1, OpaqueObjectId, PlayerDecisionIdV1, PlayerId, StateRevision, VisibleSequence,
+    };
     use mtgml_observation::PlayerStepSubmissionV1;
     use mtgml_replay::AuthoritativeReplayV3;
-    use mtgml_state::{validate_engine_state, EngineState};
+    use mtgml_state::{validate_engine_state, EngineState, KnowledgeAcquisitionCause};
 
     const P1: PlayerId = PlayerId(1);
     const P2: PlayerId = PlayerId(2);
@@ -176,6 +179,199 @@ mod tests {
             .map_err(|_| HarnessError::EndpointService)?;
         assert_eq!(observation_p1.payload_codec, observation_p2.payload_codec);
         assert_eq!(observation_p1.schema_version, observation_p2.schema_version);
+        Ok(())
+    }
+
+    /// Mixed-audience projection evidence for ONE shared authoritative
+    /// occurrence. In the information-rich composition the single reveal —
+    /// one `FixtureTransition::move_object_incarnation` moving the Exile
+    /// material onto the battlefield, projected per perspective as
+    /// occurrences 1+2 of the support builder — is asymmetric by contract:
+    /// P1's allocation record carries the true definition while P2's stays a
+    /// definition-free public-allocation view. Occurrences 3-5 then turn
+    /// P1's record into the remapped, history-bearing, finally retired view
+    /// plus ONE strictly P1-private look (occurrence 4), while occurrence 6
+    /// gives P2 only its own private hand accounting. Through real reads on
+    /// both bound endpoints this proves the gate's mixed-projection
+    /// requirement without any new production API: the public frame agrees
+    /// (one state revision, identical protocol surface, identical payload
+    /// codec and schema), the canonical information states diverge in exactly
+    /// the authorized directions (the private-look cause appears only under
+    /// P1, the own-private-identity cause only under P2, the retired-record
+    /// shape only under P1, the revealed definition only under P1), each
+    /// serialization carries exactly its own perspective's opaque-key set
+    /// with no literal exclusive to the other side, the digests differ, and
+    /// each visible-sequence cursor reflects exactly its own consumed
+    /// occurrences.
+    #[test]
+    fn case_mixed_audience_projection_split() -> Result<(), HarnessError> {
+        // Identify the per-perspective opaque keys of the shared occurrence
+        // from the deterministic composed state; the spawned runtime below
+        // replays the identical composition. P1's view of it is its unique
+        // retired record; P2's is its unique definition-free active record.
+        let composed = support::information_rich_state()?;
+        let p1_knowledge = &composed.knowledge.players[&P1];
+        let p2_knowledge = &composed.knowledge.players[&P2];
+        let mut p1_retired_keys = p1_knowledge.retired.keys().copied();
+        let p1_shared = p1_retired_keys
+            .next()
+            .ok_or(HarnessError::TransformPreconditionViolated)?;
+        assert!(
+            p1_retired_keys.next().is_none(),
+            "the composition must retire exactly one P1 opaque identity"
+        );
+        let mut definition_free = p2_knowledge
+            .active
+            .iter()
+            .filter(|(_, record)| record.card_definition.is_none())
+            .map(|(opaque, _)| *opaque);
+        let p2_shared = definition_free
+            .next()
+            .ok_or(HarnessError::TransformPreconditionViolated)?;
+        assert!(
+            definition_free.next().is_none(),
+            "the composition must leave exactly one definition-free P2 record"
+        );
+        let shared_public = p1_knowledge
+            .active
+            .keys()
+            .copied()
+            .find(|opaque| p2_knowledge.active.contains_key(opaque))
+            .ok_or(HarnessError::TransformPreconditionViolated)?;
+        let revealed_definition = p1_knowledge.retired[&p1_shared]
+            .card_definition
+            .ok_or(HarnessError::TransformPreconditionViolated)?;
+        assert_ne!(p1_shared, p2_shared);
+
+        // Per-perspective authorized opaque-key sets. Numeric namespaces
+        // legitimately overlap across perspectives (P1's retired reveal
+        // record and P2's initial hidden-library record both wear numeral 2
+        // while denoting different objects), so foreign-key absence is
+        // proven by exact key-set equality per serialization plus absence of
+        // every literal exclusive to the other side.
+        let authorized_keys = |knowledge: &mtgml_state::PlayerKnowledgeStateV2| {
+            knowledge
+                .active
+                .keys()
+                .chain(knowledge.retired.keys())
+                .map(|opaque| opaque.0)
+                .collect::<std::collections::BTreeSet<u64>>()
+        };
+        let p1_authorized_keys = authorized_keys(p1_knowledge);
+        let p2_authorized_keys = authorized_keys(p2_knowledge);
+
+        let opaque_key = |opaque: OpaqueObjectId| format!("\"opaque_object_id\":\"{}\"", opaque.0);
+        let definition_marker = format!("\"known_definition\":\"{}\"", revealed_definition.0);
+        let contains = |bytes: &[u8], marker: &str| {
+            bytes
+                .windows(marker.len())
+                .any(|window| window == marker.as_bytes())
+        };
+        let extract_opaque_keys = |bytes: &[u8]| -> std::collections::BTreeSet<u64> {
+            let needle = b"\"opaque_object_id\":\"";
+            let mut keys = std::collections::BTreeSet::new();
+            let mut cursor = 0;
+            while let Some(position) = bytes[cursor..]
+                .windows(needle.len())
+                .position(|window| window == needle)
+                .map(|offset| cursor + offset)
+            {
+                let start = position + needle.len();
+                let end = start
+                    + bytes[start..]
+                        .iter()
+                        .position(|byte| *byte == b'"')
+                        .expect("terminated opaque key literal");
+                keys.insert(
+                    std::str::from_utf8(&bytes[start..end])
+                        .expect("canonical decimal literal")
+                        .parse::<u64>()
+                        .expect("canonical decimal literal"),
+                );
+                cursor = end;
+            }
+            keys
+        };
+
+        // Runtime acceptance with both endpoints bound through the
+        // established pipeline.
+        let (_controller, endpoints) = support::information_rich_spawned()?;
+        let p1_snapshot = capture_snapshot(&endpoints[0])?;
+        let p2_snapshot = capture_snapshot(&endpoints[1])?;
+
+        // Shared public parts: one authoritative instant and identical
+        // protocol surfaces across both perspectives.
+        let information_p1 = endpoints[0]
+            .information_state()
+            .map_err(|_| HarnessError::EndpointService)?;
+        let information_p2 = endpoints[1]
+            .information_state()
+            .map_err(|_| HarnessError::EndpointService)?;
+        assert_eq!(
+            information_p1.state_revision, information_p2.state_revision,
+            "both perspectives must observe one shared state revision"
+        );
+        assert_eq!(p1_snapshot.protocol, p2_snapshot.protocol);
+        let observation_p1 = endpoints[0]
+            .observation()
+            .map_err(|_| HarnessError::EndpointService)?;
+        let observation_p2 = endpoints[1]
+            .observation()
+            .map_err(|_| HarnessError::EndpointService)?;
+        assert_eq!(observation_p1.payload_codec, observation_p2.payload_codec);
+        assert_eq!(observation_p1.schema_version, observation_p2.schema_version);
+
+        // Mixed-field split over the shared occurrence: projections diverge
+        // only in authorized directions while each cursor consumed exactly
+        // its own occurrences (construction default 1 plus four planned P1
+        // occurrences versus two planned P2 occurrences).
+        assert_ne!(
+            p1_snapshot.information_digest, p2_snapshot.information_digest,
+            "authorized divergence must produce distinct information digests"
+        );
+        assert_eq!(p1_snapshot.current_visible_sequence, VisibleSequence(5));
+        assert_eq!(p2_snapshot.current_visible_sequence, VisibleSequence(3));
+
+        let bytes_p1 = &p1_snapshot.information_state_bytes;
+        let bytes_p2 = &p2_snapshot.information_state_bytes;
+        // P1's private look (occurrence 4) is visible ONLY inside P1's bytes;
+        // P2's own-hand accounting (occurrence 6) only inside P2's.
+        let private_look = serde_json::to_string(&KnowledgeAcquisitionCause::PrivateLook)
+            .map_err(|_| HarnessError::WireEncoding)?;
+        assert!(contains(bytes_p1, &private_look));
+        assert!(!contains(bytes_p2, &private_look));
+        let own_private_identity =
+            serde_json::to_string(&KnowledgeAcquisitionCause::OwnPrivateIdentity)
+                .map_err(|_| HarnessError::WireEncoding)?;
+        assert!(contains(bytes_p2, &own_private_identity));
+        assert!(!contains(bytes_p1, &own_private_identity));
+        // The reveal stayed definition-public to P1 alone: P2 holds exactly
+        // the definition-free public-allocation view of the same occurrence.
+        assert!(contains(bytes_p1, &definition_marker));
+        assert!(!contains(bytes_p2, &definition_marker));
+        // Only P1 carries the remapped record's retired shape; the wire tag
+        // spelling mirrors the closed `PlayerKnownObjectV1` serde names.
+        assert!(contains(bytes_p1, "\"kind\":\"retired\""));
+        assert!(!contains(bytes_p2, "\"kind\":\"retired\""));
+        // Neither serialization contains any opaque key beyond its own
+        // authorized set, no literal exclusive to the other side appears,
+        // and each side carries its own mixed-occurrence key plus the
+        // shared public one. (P1's retired reveal record and P2's initial
+        // hidden-library record share numeral 2 across the per-perspective
+        // namespaces, so P1's numeric set is a subset of P2's; the reverse
+        // direction is carried by the exact-set equality itself.)
+        assert_eq!(extract_opaque_keys(bytes_p1), p1_authorized_keys);
+        assert_eq!(extract_opaque_keys(bytes_p2), p2_authorized_keys);
+        for foreign in p2_authorized_keys.difference(&p1_authorized_keys) {
+            assert!(!contains(bytes_p1, &opaque_key(OpaqueObjectId(*foreign))));
+        }
+        for foreign in p1_authorized_keys.difference(&p2_authorized_keys) {
+            assert!(!contains(bytes_p2, &opaque_key(OpaqueObjectId(*foreign))));
+        }
+        assert!(contains(bytes_p1, &opaque_key(p1_shared)));
+        assert!(contains(bytes_p2, &opaque_key(p2_shared)));
+        assert!(contains(bytes_p1, &opaque_key(shared_public)));
+        assert!(contains(bytes_p2, &opaque_key(shared_public)));
         Ok(())
     }
 

@@ -113,6 +113,7 @@ EXPECTED_EVIDENCE: dict[str, tuple[str, ...]] = {
     GATE_ENDPOINT: (
         "isolation::endpoint_pair::tests::case_coexist_binding_permanent",
         "isolation::endpoint_pair::tests::case_public_private_projection_agreement",
+        "isolation::endpoint_pair::tests::case_mixed_audience_projection_split",
         "isolation::endpoint_pair::tests::case_wrong_perspective_closed_surface",
         "isolation::endpoint_pair::tests::purity_read_order_matrix",
         "isolation::endpoint_pair::tests::restore_with_live_handles_and_rebinding",
@@ -193,6 +194,14 @@ REQUIRED_COVERAGE: dict[str, frozenset[str]] = {
             "isolation::checkpoint_parity::tests::restore_information_rich",
         }
     ),
+    # Mixed-audience endpoint evidence: the isolation gate must prove one
+    # shared occurrence whose authorized projections differ per perspective.
+    "endpoint_mixed_projection_nodes": frozenset(
+        {
+            "isolation::endpoint_pair::tests::case_public_private_projection_agreement",
+            "isolation::endpoint_pair::tests::case_mixed_audience_projection_split",
+        }
+    ),
     "fork_parity_classes": frozenset(
         {
             "isolation::fork_parity::tests::fork_decision_rich",
@@ -269,6 +278,7 @@ def _validate_required_coverage() -> None:
         | REQUIRED_COVERAGE["wire_rejection_classes"]
         | REQUIRED_COVERAGE["checkpoint_restore_classes"]
         | REQUIRED_COVERAGE["fork_parity_classes"]
+        | REQUIRED_COVERAGE["endpoint_mixed_projection_nodes"]
         | REQUIRED_COVERAGE["replay_nodes"]
         | REQUIRED_COVERAGE["paired_transition_nodes"]
         | REQUIRED_COVERAGE["paired_rejection_nodes"]
@@ -463,6 +473,11 @@ GATE_TESTS: dict[str, tuple[EvidenceDefinition, ...]] = {
             "mtgml-conformance",
             "isolation::endpoint_pair::tests::case_public_private_projection_agreement",
             "public and private projections agree",
+        ),
+        rust(
+            "mtgml-conformance",
+            "isolation::endpoint_pair::tests::case_mixed_audience_projection_split",
+            "mixed-audience projection split across paired endpoints",
         ),
         rust(
             "mtgml-conformance",

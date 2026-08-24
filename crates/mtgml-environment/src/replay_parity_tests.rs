@@ -9,7 +9,7 @@
 //! fail-closed executor rejection. Every M2.G gate remains `NOT_RUN`.
 
 use super::{SyntheticM1EnvironmentBackend, SyntheticM1EnvironmentConfig, SyntheticM1ReplayConfig};
-use crate::checkpoint::CheckpointCodecIdentity;
+use crate::checkpoint::{CheckpointCodecIdentity, EnvironmentCheckpointV3};
 use crate::controller::TrustedEnvironmentController;
 use crate::endpoint::{PlayerEndpoint, PlayerEndpointHandle};
 use crate::errors::{ControllerError, ReplayExecutionError};
@@ -115,6 +115,14 @@ fn members_answer(ids: &[u32]) -> mtgml_decision::DecisionAnswerV2 {
 struct PerspectiveBytes {
     information_bytes: Vec<u8>,
     observation_bytes: Vec<u8>,
+    visible_decision_bytes: Option<Vec<u8>>,
+}
+
+fn visible_decision_bytes(endpoint: &PlayerEndpointHandle) -> Option<Vec<u8>> {
+    endpoint
+        .visible_decision()
+        .unwrap()
+        .map(|request| mtgml_wire::encode_canonical(&request).unwrap())
 }
 
 fn snapshot_bytes(endpoint: &PlayerEndpointHandle) -> PerspectiveBytes {
@@ -122,6 +130,7 @@ fn snapshot_bytes(endpoint: &PlayerEndpointHandle) -> PerspectiveBytes {
         information_bytes: mtgml_wire::encode_canonical(&endpoint.information_state().unwrap())
             .unwrap(),
         observation_bytes: mtgml_wire::encode_canonical(&endpoint.observation().unwrap()).unwrap(),
+        visible_decision_bytes: visible_decision_bytes(endpoint),
     }
 }
 
@@ -259,7 +268,29 @@ fn historical_reprojection_byte_exact() {
             "rebuilt step {index} must be byte-exact with the live product"
         );
 
-        for (perspective, live_bytes) in [(PlayerId(1), live_p1), (PlayerId(2), live_p2)] {
+        // Rebuilt-endpoint surface for the visible-decision parity check:
+        // both perspectives read through REAL bound endpoints over the
+        // replayed after-state.
+        let step_config = config([PlayerId(1), PlayerId(2)]);
+        let step_checkpoint = EnvironmentCheckpointV3::new(
+            trace.after.state.clone(),
+            trace.after.status.clone(),
+            trace.after.limit_counters.clone(),
+            step_config.codec.clone(),
+        )
+        .unwrap();
+        let step_controller = TrustedEnvironmentController::new(
+            SyntheticM1EnvironmentBackend::from_checkpoint(step_checkpoint, step_config).unwrap(),
+        );
+        let step_endpoints = [
+            step_controller.bind_player(PlayerId(1)).unwrap(),
+            step_controller.bind_player(PlayerId(2)).unwrap(),
+        ];
+
+        for (step_endpoint, (perspective, live_bytes)) in step_endpoints
+            .iter()
+            .zip([(PlayerId(1), live_p1), (PlayerId(2), live_p2)])
+        {
             let information = SyntheticM1EnvironmentBackend::player_information_state_from_state(
                 &trace.after.state,
                 perspective,
@@ -277,6 +308,11 @@ fn historical_reprojection_byte_exact() {
             assert_eq!(
                 mtgml_wire::encode_canonical(&observation).unwrap(),
                 live_bytes.observation_bytes
+            );
+            assert_eq!(
+                visible_decision_bytes(step_endpoint),
+                live_bytes.visible_decision_bytes,
+                "rebuilt visible decision must match the live capture at step {index}"
             );
         }
     }
@@ -307,6 +343,11 @@ fn historical_reprojection_byte_exact() {
         assert_eq!(
             mtgml_wire::encode_canonical(&endpoint.observation().unwrap()).unwrap(),
             live_bytes.observation_bytes
+        );
+        assert_eq!(
+            visible_decision_bytes(endpoint),
+            live_bytes.visible_decision_bytes,
+            "rebuilt visible decision must match the live final capture"
         );
     }
 
