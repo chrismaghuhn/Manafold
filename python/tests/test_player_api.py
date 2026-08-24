@@ -5,7 +5,7 @@ import json
 import sys
 import unittest
 from pathlib import Path
-from typing import get_type_hints
+from typing import ClassVar, get_type_hints
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "python" / "src"))
@@ -292,3 +292,256 @@ class InitialConfigurationCursorParityTests(unittest.TestCase):
         )
         with self.assertRaises(WireError):
             information.validate()
+
+
+class ObservedEventV2CodecParityTests(unittest.TestCase):
+    """The Python ObservedEventEnvelopeV2 codec mirrors the deeply-typed Rust
+    ObservedEventKindV2 and its observed-event-envelope.v2 wire contract:
+    closed kinds, per-kind exact key sets, exact scalar representations, and
+    the single-event semantics validated by ObservedEventEnvelopeV2::validate.
+    """
+
+    SCHEMA = "observed-event-envelope.v2"
+
+    MINIMAL_EVENTS: ClassVar[list[dict]] = [
+        {
+            "kind": "object_moved",
+            "old_object": None,
+            "new_object": None,
+            "from": "battlefield",
+            "to": "graveyard",
+        },
+        {
+            "kind": "object_moved",
+            "old_object": "1",
+            "new_object": "2",
+            "from": "library",
+            "to": "hand",
+        },
+        {"kind": "object_ceased_to_exist", "object": "1"},
+        {"kind": "life_changed", "player": "1", "from": 40, "to": 39},
+        {"kind": "object_tapped", "object": "1", "tapped": True},
+        {"kind": "decision_available", "actor": "2"},
+        {
+            "kind": "random_outcome_visible",
+            "label": "die",
+            "exclusive_upper_bound": 6,
+            "value": 2,
+        },
+        {"kind": "public_outcome", "code": "draw"},
+    ]
+
+    def _envelope(self, event: dict) -> dict:
+        return {
+            "schema_version": self.SCHEMA,
+            "sequence": "3",
+            "state_revision": "7",
+            "event": event,
+        }
+
+    def _canonical_bytes(self, envelope: dict) -> bytes:
+        return json.dumps(envelope, separators=(",", ":"), sort_keys=True).encode("utf-8")
+
+    def test_each_of_the_seven_kinds_round_trips_byte_identically(self) -> None:
+        from mtgml.observation import ObservedEventEnvelopeV2
+        from mtgml.wire import decode_canonical, encode_canonical
+
+        seen_kinds = set()
+        for event in self.MINIMAL_EVENTS:
+            with self.subTest(kind=event["kind"]):
+                seen_kinds.add(event["kind"])
+                envelope = self._envelope(event)
+                payload = self._canonical_bytes(envelope)
+                decoded = decode_canonical(self.SCHEMA, payload)
+                assert isinstance(decoded, ObservedEventEnvelopeV2)
+                self.assertEqual(encode_canonical(decoded), payload)
+                self.assertEqual(decoded.event.kind, event["kind"])
+        self.assertEqual(
+            seen_kinds,
+            {
+                "object_moved",
+                "object_ceased_to_exist",
+                "life_changed",
+                "object_tapped",
+                "decision_available",
+                "random_outcome_visible",
+                "public_outcome",
+            },
+        )
+
+    def test_absent_optional_identities_re_encode_as_explicit_nulls(self) -> None:
+        from mtgml.errors import WireError
+        from mtgml.observation import ObservedEventEnvelopeV2
+        from mtgml.wire import decode_canonical
+
+        event = {"kind": "object_moved", "from": "battlefield", "to": "graveyard"}
+        decoded = ObservedEventEnvelopeV2.from_wire(self._envelope(event))
+        self.assertEqual(
+            decoded.to_wire()["event"],
+            {
+                "kind": "object_moved",
+                "old_object": None,
+                "new_object": None,
+                "from": "battlefield",
+                "to": "graveyard",
+            },
+        )
+        payload = self._canonical_bytes(self._envelope(event))
+        with self.assertRaises(WireError) as caught:
+            decode_canonical(self.SCHEMA, payload)
+        self.assertEqual(caught.exception.code, "decode.non_canonical_json")
+
+    def test_representative_rejections_carry_the_rust_wire_codes(self) -> None:
+        from mtgml.errors import WireError
+        from mtgml.observation import ObservedEventEnvelopeV2
+
+        rejections: list[tuple[str, dict, str]] = [
+            (
+                "unknown event field",
+                {"kind": "public_outcome", "code": "draw", "extra": 1},
+                "decode.invalid_json",
+            ),
+            (
+                "unknown envelope field",
+                {**self._envelope(self.MINIMAL_EVENTS[0]), "digest": "0" * 64},
+                "decode.invalid_json",
+            ),
+            ("unknown kind", {"kind": "shuffled"}, "decode.invalid_json"),
+            (
+                "missing required field",
+                {"kind": "decision_available"},
+                "decode.invalid_json",
+            ),
+            (
+                "i64 as string",
+                {"kind": "life_changed", "player": "1", "from": "40", "to": 39},
+                "decode.invalid_json",
+            ),
+            (
+                "tapped as int",
+                {"kind": "object_tapped", "object": "1", "tapped": 1},
+                "decode.invalid_json",
+            ),
+            (
+                "u64 as string",
+                {
+                    "kind": "random_outcome_visible",
+                    "label": "die",
+                    "exclusive_upper_bound": 6,
+                    "value": "2",
+                },
+                "decode.invalid_json",
+            ),
+            (
+                "non-canonical uint id",
+                {"kind": "object_ceased_to_exist", "object": "01"},
+                "decode.invalid_json",
+            ),
+            (
+                "uint id as json number",
+                {"kind": "object_ceased_to_exist", "object": 1},
+                "decode.invalid_json",
+            ),
+            (
+                "i64 overflow",
+                {"kind": "life_changed", "player": "1", "from": 2**63, "to": 0},
+                "decode.invalid_json",
+            ),
+            (
+                "u64 overflow",
+                {
+                    "kind": "random_outcome_visible",
+                    "label": "die",
+                    "exclusive_upper_bound": 2**64,
+                    "value": 0,
+                },
+                "decode.invalid_json",
+            ),
+            (
+                "negative u64",
+                {
+                    "kind": "random_outcome_visible",
+                    "label": "die",
+                    "exclusive_upper_bound": 6,
+                    "value": -1,
+                },
+                "decode.invalid_json",
+            ),
+            (
+                "unknown zone",
+                {
+                    "kind": "object_moved",
+                    "old_object": None,
+                    "new_object": None,
+                    "from": "limbo",
+                    "to": "graveyard",
+                },
+                "decode.invalid_json",
+            ),
+            (
+                "empty label",
+                {
+                    "kind": "random_outcome_visible",
+                    "label": "",
+                    "exclusive_upper_bound": 6,
+                    "value": 2,
+                },
+                "semantic.observed_event",
+            ),
+            (
+                "zero upper bound",
+                {
+                    "kind": "random_outcome_visible",
+                    "label": "die",
+                    "exclusive_upper_bound": 0,
+                    "value": 0,
+                },
+                "semantic.observed_event",
+            ),
+            (
+                "value outside declared range",
+                {
+                    "kind": "random_outcome_visible",
+                    "label": "die",
+                    "exclusive_upper_bound": 6,
+                    "value": 6,
+                },
+                "semantic.observed_event",
+            ),
+            ("empty code", {"kind": "public_outcome", "code": ""}, "semantic.observed_event"),
+        ]
+        for label, event, expected_code in rejections:
+            with self.subTest(case=label):
+                with self.assertRaises(WireError) as caught:
+                    ObservedEventEnvelopeV2.from_wire(self._envelope(event))
+                self.assertEqual(caught.exception.code, expected_code)
+
+    def test_null_and_uint_identities_are_equivalent_on_decode(self) -> None:
+        from mtgml.observation import ObservedEventEnvelopeV2
+
+        nulls = ObservedEventEnvelopeV2.from_wire(
+            self._envelope(
+                {
+                    "kind": "object_moved",
+                    "old_object": None,
+                    "new_object": None,
+                    "from": "hand",
+                    "to": "stack",
+                }
+            )
+        )
+        explicit = ObservedEventEnvelopeV2.from_wire(
+            self._envelope(
+                {
+                    "kind": "object_moved",
+                    "old_object": "4",
+                    "new_object": "5",
+                    "from": "hand",
+                    "to": "stack",
+                }
+            )
+        )
+        self.assertIs(dict(nulls.event.payload)["old_object"], None)
+        self.assertIs(dict(nulls.event.payload)["new_object"], None)
+        self.assertEqual(dict(explicit.event.payload)["old_object"], 4)
+        self.assertEqual(dict(explicit.event.payload)["new_object"], 5)
