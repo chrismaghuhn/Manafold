@@ -24,6 +24,7 @@ pub const SCENARIO_COUNT_MAX: i64 = 3;
 /// order only; enumeration output must be identical for any permutation
 /// (insertion-order invariance evidence I1).
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct ReferenceAssemblySpec {
     pub piece_iteration_order: Vec<u32>,
 }
@@ -66,6 +67,8 @@ pub struct ExpectedRequest {
 /// assembly scenario. It has no execution or commit authority whatsoever.
 #[derive(Debug, Clone)]
 pub struct ReferenceAutomaton {
+    #[allow(dead_code)]
+    #[allow(dead_code)]
     spec: ReferenceAssemblySpec,
     state: ReferenceAssemblyState,
 }
@@ -106,9 +109,7 @@ impl ReferenceAutomaton {
                     maximum: *count,
                 },
                 // Eligible pieces after choosing c are exactly 0..c.
-                candidate_atoms: (0..*count)
-                    .map(|piece| SyntheticChoiceAtom::Piece(piece))
-                    .collect(),
+                candidate_atoms: (0..*count).map(SyntheticChoiceAtom::Piece).collect(),
             },
             ReferenceAssemblyState::OrderMembers { selected, .. } => ExpectedRequest {
                 domain: ExpectedDomain::Order {
@@ -129,12 +130,11 @@ impl ReferenceAutomaton {
         match &self.state {
             ReferenceAssemblyState::Entry => vec![CanonicalStageChoice::Anchor],
             ReferenceAssemblyState::ChooseCount => (SCENARIO_COUNT_MIN..=SCENARIO_COUNT_MAX)
-                .map(|value| CanonicalStageChoice::Number(value))
+                .map(CanonicalStageChoice::Number)
                 .collect(),
             ReferenceAssemblyState::ChooseMembers { count } => {
-                let members: BTreeSet<SyntheticChoiceAtom> = (0..*count)
-                    .map(|piece| SyntheticChoiceAtom::Piece(piece))
-                    .collect();
+                let members: BTreeSet<SyntheticChoiceAtom> =
+                    (0..*count).map(SyntheticChoiceAtom::Piece).collect();
                 vec![CanonicalStageChoice::Members(members)]
             }
             ReferenceAssemblyState::OrderMembers { selected, .. } => {
@@ -195,9 +195,9 @@ impl ReferenceAutomaton {
                 let mut next_path = path.clone();
                 next_path.push(choice);
                 match next_automaton.state {
-                    ReferenceAssemblyState::Complete => out.push(
-                        CanonicalCompleteChoice(next_path),
-                    ),
+                    ReferenceAssemblyState::Complete => {
+                        out.push(CanonicalCompleteChoice(next_path))
+                    }
                     _ => stack.push((next_automaton, next_path)),
                 }
             }
@@ -210,22 +210,37 @@ impl ReferenceAutomaton {
 
 fn permutations(atoms: &BTreeSet<SyntheticChoiceAtom>) -> Vec<CanonicalStageChoice> {
     let items: Vec<SyntheticChoiceAtom> = atoms.iter().copied().collect();
-    if items.is_empty() {
-        return vec![CanonicalStageChoice::Order(Vec::new())];
-    }
     let mut out = Vec::new();
-    heap_permute(items.len(), items.clone(), &mut out);
+    permute_recursive(&items, 0, &mut out);
     out
 }
 
-fn heap_permute(k: usize, mut items: Vec<SyntheticChoiceAtom>, out: &mut Vec<CanonicalStageChoice>) {
-    if k == 1 {
-        out.push(CanonicalStageChoice::Order(items.clone()));
+fn permute_recursive(
+    items: &[SyntheticChoiceAtom],
+    start: usize,
+    out: &mut Vec<CanonicalStageChoice>,
+) {
+    if start == items.len() {
+        out.push(CanonicalStageChoice::Order(items.to_vec()));
         return;
     }
-    for index in 0..k {
-        heap_permute(k - 1, items.clone(), out);
-        let swap_with = if k % 2 == 0 { index } else { 0 };
-        items.swap(swap_with, k - 1);
+    for i in start..items.len() {
+        let mut permuted = items.to_vec();
+        permuted.swap(start, i);
+        permute_recursive(&permuted, start + 1, out);
+    }
+}
+
+#[cfg(test)]
+mod debug {
+    use super::*;
+    #[test]
+    fn debug_enumerate_count() {
+        let auto = ReferenceAutomaton::initial();
+        let all = auto.enumerate_complete_choices();
+        eprintln!("total: {}", all.len());
+        for (i, choice) in all.iter().enumerate() {
+            eprintln!("  [{i}] {choice:?}");
+        }
     }
 }

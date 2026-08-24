@@ -8,7 +8,10 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use mtgml_decision::{CandidateIntent, DecisionAnswerV2, DecisionDomainV2, DecisionResponseV2, PlayerDecisionRequestV2, DECISION_RESPONSE_V2_SCHEMA};
+use mtgml_decision::{
+    CandidateIntent, DecisionAnswerV2, DecisionDomainV2, DecisionResponseV2,
+    PlayerDecisionRequestV2, DECISION_RESPONSE_V2_SCHEMA,
+};
 use mtgml_environment::{PlayerEndpoint, TrustedEnvironmentController};
 use mtgml_model::{CandidateIdV1, OpaqueObjectId, PlayerId};
 
@@ -87,9 +90,7 @@ pub fn map_candidate(
     context: &ScenarioBindingContext,
 ) -> Result<SyntheticChoiceAtom, MapperError> {
     match intent {
-        CandidateIntent::SelectMode { mode_index } => {
-            Ok(SyntheticChoiceAtom::Piece(*mode_index))
-        }
+        CandidateIntent::SelectMode { mode_index } => Ok(SyntheticChoiceAtom::Piece(*mode_index)),
         CandidateIntent::SelectObject { object } => {
             if *object == context.entry_anchor_object {
                 Ok(SyntheticChoiceAtom::EntryAnchor)
@@ -133,6 +134,7 @@ pub struct Probe {
 }
 
 /// Grammar: which shapes does the VISIBLE request claim reachable?
+#[allow(dead_code)]
 fn is_advertised(request: &PlayerDecisionRequestV2, shape: &AnswerShape) -> bool {
     match (&request.decision, shape) {
         (DecisionDomainV2::ChooseOne, AnswerShape::SelectOne(_)) => true,
@@ -143,18 +145,12 @@ fn is_advertised(request: &PlayerDecisionRequestV2, shape: &AnswerShape) -> bool
             let length = candidate_ids.len() as u32;
             *minimum <= length && length <= *maximum
         }
-        (
-            DecisionDomainV2::ChooseNumber { minimum, maximum },
-            AnswerShape::Number(value),
-        ) => {
+        (DecisionDomainV2::ChooseNumber { minimum, maximum }, AnswerShape::Number(value)) => {
             let (minimum, maximum) = (*minimum, *maximum);
             let value = *value;
             minimum <= value && value <= maximum
         }
-        (
-            DecisionDomainV2::Order { minimum, maximum },
-            AnswerShape::Order(candidate_ids),
-        ) => {
+        (DecisionDomainV2::Order { minimum, maximum }, AnswerShape::Order(candidate_ids)) => {
             let length = candidate_ids.len() as u32;
             *minimum <= length && length <= *maximum
         }
@@ -179,6 +175,9 @@ pub fn generate_probes(
     let mut probes = Vec::new();
     match &request.decision {
         DecisionDomainV2::ChooseOne => {
+            if ids.is_empty() {
+                return Err(ExplorationBoundError::MalformedVisibleRequest);
+            }
             for id in ids {
                 probes.push(Probe {
                     shape: AnswerShape::SelectOne(id),
@@ -186,7 +185,10 @@ pub fn generate_probes(
                 });
             }
         }
-        DecisionDomainV2::ChooseMany { .. } => {
+        DecisionDomainV2::ChooseMany { minimum, .. } => {
+            if *minimum > candidate_count {
+                return Err(ExplorationBoundError::MalformedVisibleRequest);
+            }
             let subsets = 1u64
                 .checked_mul(1u64 << candidate_count.min(63))
                 .ok_or(ExplorationBoundError::GeneratedAnswersExceeded)?;
@@ -347,7 +349,7 @@ impl ProductionSpace {
 fn materialize_response(
     shape: &AnswerShape,
     request: &PlayerDecisionRequestV2,
-) -> mtgml_decision::DecisionResponseV2 {
+) -> DecisionResponseV2 {
     let id = |value: u32| CandidateIdV1(value);
     let answer = match shape {
         AnswerShape::SelectOne(candidate) => DecisionAnswerV2::SelectOne {
@@ -474,8 +476,12 @@ fn walk(
             ExplorationBoundError::TotalNodesExceeded,
         ));
     }
-    let endpoint = controller.bind_player(perspective).map_err(|_| ExplorationFailure::Internal)?;
-    let request = endpoint.visible_decision().map_err(|_| ExplorationFailure::Internal)?;
+    let endpoint = controller
+        .bind_player(perspective)
+        .map_err(|_| ExplorationFailure::Internal)?;
+    let request = endpoint
+        .visible_decision()
+        .map_err(|_| ExplorationFailure::Internal)?;
     let Some(request) = request else {
         // Terminal: continuation completed for this branch.
         space.record_terminal(path.clone(), observed);
@@ -491,9 +497,15 @@ fn walk(
             ));
         }
         let response = materialize_response(&probe.shape, &request);
-        let mut branch = controller.fork().map_err(|_| ExplorationFailure::Internal)?;
-        let branch_endpoint = branch.bind_player(perspective).map_err(|_| ExplorationFailure::Internal)?;
-        let step = branch_endpoint.submit(response).map_err(|_| ExplorationFailure::Internal)?;
+        let branch = controller
+            .fork()
+            .map_err(|_| ExplorationFailure::Internal)?;
+        let branch_endpoint = branch
+            .bind_player(perspective)
+            .map_err(|_| ExplorationFailure::Internal)?;
+        let step = branch_endpoint
+            .submit(response)
+            .map_err(|_| ExplorationFailure::Internal)?;
         match &step.submission {
             mtgml_observation::PlayerStepSubmissionV1::Accepted => {
                 if depth + 1 > budget.max_depth {

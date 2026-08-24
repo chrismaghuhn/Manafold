@@ -3,9 +3,7 @@
 
 use super::canonical::{CanonicalCompleteChoice, CanonicalStageChoice};
 use super::explorer::{ObservedRequest, ProductionSpace};
-use crate::legal_space::oracle::{
-    ExpectedDomain, ExpectedRequest, ReferenceAutomaton,
-};
+use crate::legal_space::oracle::{ExpectedDomain, ReferenceAutomaton};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SpaceDefect {
@@ -26,7 +24,10 @@ pub enum SpaceDefect {
     RequestShapeMismatch { index: usize, detail: String },
 }
 
-fn domains_match(expected: &ExpectedDomain, observed_domain: &super::explorer::ObservedDomain) -> bool {
+fn domains_match(
+    expected: &ExpectedDomain,
+    observed_domain: &super::explorer::ObservedDomain,
+) -> bool {
     use super::explorer::ObservedDomain as O;
     match (expected, observed_domain) {
         (ExpectedDomain::ChooseOne, O::ChooseOne) => true,
@@ -62,7 +63,11 @@ pub fn request_shape_mismatches(
     production: &ProductionSpace,
 ) -> Vec<SpaceDefect> {
     let mut out = Vec::new();
-    for record in production.complete_paths.values().flat_map(|paths| paths.iter()) {
+    for record in production
+        .complete_paths
+        .values()
+        .flat_map(|paths| paths.iter())
+    {
         out.extend(request_sequence_defects(
             automaton,
             &record.stages,
@@ -73,8 +78,6 @@ pub fn request_shape_mismatches(
     out.dedup();
     out
 }
-
-
 
 /// Request-soundness check for ONE protocol path.
 pub fn request_sequence_defects(

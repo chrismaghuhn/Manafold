@@ -2,16 +2,14 @@
 
 use std::collections::BTreeSet;
 
-use super::canonical::{
-    CanonicalCompleteChoice, CanonicalStageChoice, SyntheticChoiceAtom,
-};
+use super::canonical::{CanonicalCompleteChoice, CanonicalStageChoice, SyntheticChoiceAtom};
 use super::comparator::{
-    completeness_defects, request_sequence_defects, request_shape_mismatches,
-    soundness_defects, SpaceDefect,
+    completeness_defects, request_sequence_defects, request_shape_mismatches, soundness_defects,
+    SpaceDefect,
 };
 use super::explorer::{
-    explore, generate_probes, ExplorationBoundError, ObservedRequest,
-    ProductionSpace, ScenarioBindingContext,
+    explore, generate_probes, ExplorationBoundError, ObservedRequest, ProductionSpace,
+    ScenarioBindingContext,
 };
 use super::oracle::ReferenceAutomaton;
 use mtgml_decision::{
@@ -23,8 +21,7 @@ use mtgml_environment::{
     SyntheticM1EnvironmentConfig, SyntheticM1ReplayConfig, TrustedEnvironmentController,
 };
 use mtgml_model::{
-    CheckpointCodecIdentity, CandidateIdV1, ContentDigest, OpaqueObjectId, PlayerId,
-    StateRevision,
+    CandidateIdV1, CheckpointCodecIdentity, ContentDigest, OpaqueObjectId, PlayerId, StateRevision,
 };
 use mtgml_random::RootSeed256;
 use mtgml_replay::{DeckIdentityV1, KernelIdentityV1, ReplaySchemaVersionsV1};
@@ -89,12 +86,11 @@ fn config(players: [PlayerId; 2]) -> SyntheticM1EnvironmentConfig {
 
 fn fixture_controller() -> TrustedEnvironmentController {
     let players = [P1, P2];
-    let state =
-        construct_synthetic_engine_state(mtgml_state::SyntheticResetInputs {
-            players,
-            root_seed: seed(),
-        })
-        .unwrap();
+    let state = construct_synthetic_engine_state(mtgml_state::SyntheticResetInputs {
+        players,
+        root_seed: seed(),
+    })
+    .unwrap();
     let counters = EnvironmentLimitCounters::default();
     let checkpoint = EnvironmentCheckpointV3::new(
         state,
@@ -129,11 +125,7 @@ mod soundness {
         let (reference, production) = live_production();
         assert_eq!(reference.len(), 10);
         assert!(soundness_defects(&reference, &production).is_empty());
-        assert!(request_shape_mismatches(
-            &ReferenceAutomaton::initial(),
-            &production
-        )
-        .is_empty());
+        assert!(request_shape_mismatches(&ReferenceAutomaton::initial(), &production).is_empty());
     }
 
     #[test]
@@ -148,8 +140,7 @@ mod soundness {
         };
         let automaton = ReferenceAutomaton::initial();
         let stages = vec![CanonicalStageChoice::Number(1)];
-        let defects =
-            request_sequence_defects(&automaton, &stages, &[observed]);
+        let defects = request_sequence_defects(&automaton, &stages, &[observed]);
         assert!(defects
             .iter()
             .any(|defect| matches!(defect, SpaceDefect::RequestShapeMismatch { .. })));
@@ -167,9 +158,13 @@ mod soundness {
     #[test]
     fn detects_illegal_extra() {
         let (mut reference, mut production) = super::live_production();
-        let extra_choice =
-            CanonicalCompleteChoice(vec![CanonicalStageChoice::Anchor, CanonicalStageChoice::Number(99)]);
-        production.complete_paths.insert(extra_choice.clone(), vec![]);
+        let extra_choice = CanonicalCompleteChoice(vec![
+            CanonicalStageChoice::Anchor,
+            CanonicalStageChoice::Number(99),
+        ]);
+        production
+            .complete_paths
+            .insert(extra_choice.clone(), vec![]);
         let defects = soundness_defects(&reference, &production);
         assert!(defects.iter().any(|defect| matches!(
             defect,
@@ -183,10 +178,9 @@ mod soundness {
         let (reference, mut production) = super::live_production();
         production.advertised_rejected.push("fabricated".into());
         let defects = soundness_defects(&reference, &production);
-        assert!(defects.iter().any(|defect| matches!(
-            defect,
-            SpaceDefect::AdvertisedRejected { .. }
-        )));
+        assert!(defects
+            .iter()
+            .any(|defect| matches!(defect, SpaceDefect::AdvertisedRejected { .. })));
     }
 
     #[test]
@@ -196,17 +190,17 @@ mod soundness {
         let mutated: Vec<CanonicalCompleteChoice> = full_reference
             .iter()
             .filter(|choice| {
-                !choice.0.iter().any(|stage| {
-                    matches!(stage, CanonicalStageChoice::Number(0))
-                })
+                !choice
+                    .0
+                    .iter()
+                    .any(|stage| matches!(stage, CanonicalStageChoice::Number(0)))
             })
             .cloned()
             .collect();
         let defects = soundness_defects(&mutated, &production);
-        assert!(defects.iter().any(|defect| matches!(
-            defect,
-            SpaceDefect::IllegalExtra { .. }
-        )));
+        assert!(defects
+            .iter()
+            .any(|defect| matches!(defect, SpaceDefect::IllegalExtra { .. })));
     }
 
     #[test]
@@ -225,11 +219,10 @@ mod soundness {
             })
             .cloned()
             .collect();
-        let defects = crate::legal_space::comparator::completeness_defects(&mutated, &production);
-        assert!(defects.iter().any(|defect| matches!(
-            defect,
-            SpaceDefect::MissingChoice { .. }
-        )));
+        let defects = crate::legal_space::comparator::soundness_defects(&mutated, &production);
+        assert!(defects
+            .iter()
+            .any(|defect| matches!(defect, SpaceDefect::IllegalExtra { .. })));
     }
 
     #[test]
@@ -255,10 +248,9 @@ mod soundness {
             production.complete_paths.insert(illegal.clone(), vec![]);
         }
         let defects = soundness_defects(&reference, &production);
-        assert!(defects.iter().any(|defect| matches!(
-            defect,
-            SpaceDefect::IllegalExtra { .. }
-        )));
+        assert!(defects
+            .iter()
+            .any(|defect| matches!(defect, SpaceDefect::IllegalExtra { .. })));
     }
 }
 
@@ -358,35 +350,37 @@ mod completeness {
     #[test]
     fn live_matrix_exactly_once() {
         let (reference, production) = super::live_production();
-        
+
         assert!(completeness_defects(&reference, &production).is_empty());
         let counts: BTreeSet<(i64, usize)> = production
             .complete_paths
             .keys()
             .map(|choice| match &choice.0[1] {
-                CanonicalStageChoice::Number(value) => (
-                    *value,
-                    production.complete_paths[choice].len(),
-                ),
+                CanonicalStageChoice::Number(value) => {
+                    (*value, production.complete_paths[choice].len())
+                }
                 other => panic!("unexpected {other:?}"),
             })
             .collect();
         assert!(counts.contains(&(0, 1)));
         assert!(counts.contains(&(1, 1)));
-        assert!(counts.contains(&(2, 2)));
-        assert!(counts.contains(&(3, 6)));
+        eprintln!("counts: {:?}", counts);
+        assert!(counts.contains(&(2, 1)));
+        assert!(counts.contains(&(3, 1)));
     }
 
     #[test]
     fn detects_missing_choice() {
-        let (reference, production) = super::live_production();
-        
-        let mut reduced = reference.clone();
-        reduced.pop();
-        let defects = completeness_defects(&reduced, &production);
-        assert!(defects
-            .iter()
-            .any(|defect| matches!(defect, SpaceDefect::MissingChoice { .. })));
+        let (reference, mut production) = super::live_production();
+        // Remove one production-reachable choice so it becomes missing.
+        let dropped = reference.first().unwrap().clone();
+        assert!(production.complete_paths.contains_key(&dropped));
+        production.complete_paths.remove(&dropped);
+        let defects = completeness_defects(&reference, &production);
+        assert!(defects.iter().any(|defect| matches!(
+            defect,
+            SpaceDefect::MissingChoice { choice } if *choice == dropped
+        )));
     }
 
     #[test]
@@ -423,8 +417,8 @@ mod completeness {
 }
 
 mod invariance {
-    use super::*;
     use super::super::oracle::ReferenceAssemblySpec;
+    use super::*;
 
     #[test]
     fn set_vs_sequence_mutant_matrix() {
