@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Execute the three M2.E executable gates on an exact clean source head.
+"""Execute the two M2.F executable gates on an exact clean source head.
 
 Owned gates:
 
@@ -65,36 +65,70 @@ def python(name: str, surface: str) -> EvidenceDefinition:
 
 GATE_TESTS: dict[str, tuple[EvidenceDefinition, ...]] = {
     GATE_SOUNDNESS: (
-        rust("mtgml-conformance", "legal_space::gate_evidence::soundness::live_matrix_passes",
-             "P subset of R"),
-        rust("mtgml-conformance", "legal_space::gate_evidence::soundness::detects_illegal_extra",
-             "illegal extra detection"),
-        rust("mtgml-conformance", "legal_space::gate_evidence::soundness::detects_advertised_rejected",
-             "advertised rejected detection"),
-        rust("mtgml-conformance", "legal_space::gate_evidence::soundness::detects_numeric_bound_mutants",
-             "numeric bound mutant detection"),
-        rust("mtgml-conformance", "legal_space::gate_evidence::soundness::detects_cardinality_mutants",
-             "cardinality mutant detection"),
-        rust("mtgml-conformance", "legal_space::gate_evidence::soundness::detects_illegal_later_stage_choice",
-             "illegal later-stage choice detection"),
-        rust("mtgml-conformance", "legal_space::gate_evidence::soundness::request_soundness_expected_request_matches",
-             "request soundness at every stage"),
-        rust("mtgml-conformance", "legal_space::gate_evidence::unsatisfiable::authoritative_request_fails_closed",
-             "unsatisfiable fail-closed"),
-        source("source_check::oracle_boundary_guard",
-               "oracle boundary guard"),
+        rust(
+            "mtgml-conformance",
+            "legal_space::gate_evidence::soundness::live_matrix_passes",
+            "P subset of R",
+        ),
+        rust(
+            "mtgml-conformance",
+            "legal_space::gate_evidence::soundness::detects_illegal_extra",
+            "illegal extra detection",
+        ),
+        rust(
+            "mtgml-conformance",
+            "legal_space::gate_evidence::soundness::detects_advertised_rejected",
+            "advertised rejected detection",
+        ),
+        rust(
+            "mtgml-conformance",
+            "legal_space::gate_evidence::soundness::detects_numeric_bound_mutants",
+            "numeric bound mutant detection",
+        ),
+        rust(
+            "mtgml-conformance",
+            "legal_space::gate_evidence::soundness::detects_cardinality_mutants",
+            "cardinality mutant detection",
+        ),
+        rust(
+            "mtgml-conformance",
+            "legal_space::gate_evidence::soundness::detects_illegal_later_stage_choice",
+            "illegal later-stage choice detection",
+        ),
+        rust(
+            "mtgml-conformance",
+            "legal_space::gate_evidence::soundness::request_soundness_expected_request_matches",
+            "request soundness at every stage",
+        ),
+        rust(
+            "mtgml-conformance",
+            "legal_space::gate_evidence::unsatisfiable::authoritative_request_fails_closed",
+            "unsatisfiable fail-closed",
+        ),
+        source("source_check::oracle_boundary_guard", "oracle boundary guard"),
     ),
     GATE_COMPLETENESS: (
-        rust("mtgml-conformance", "legal_space::gate_evidence::completeness::live_matrix_exactly_once",
-             "exactly one canonical path per choice"),
-        rust("mtgml-conformance", "legal_space::gate_evidence::completeness::detects_missing_choice",
-             "missing choice detection"),
-        rust("mtgml-conformance", "legal_space::gate_evidence::completeness::duplicate_paths_are_rejected",
-             "duplicate path rejection"),
-        rust("mtgml-conformance", "legal_space::gate_evidence::completeness::detects_later_stage_omission",
-             "later-stage omission detection"),
-        source("source_check::oracle_boundary_guard",
-               "oracle boundary guard"),
+        rust(
+            "mtgml-conformance",
+            "legal_space::gate_evidence::completeness::live_matrix_exactly_once",
+            "exactly one canonical path per choice",
+        ),
+        rust(
+            "mtgml-conformance",
+            "legal_space::gate_evidence::completeness::detects_missing_choice",
+            "missing choice detection",
+        ),
+        rust(
+            "mtgml-conformance",
+            "legal_space::gate_evidence::completeness::duplicate_paths_are_rejected",
+            "duplicate path rejection",
+        ),
+        rust(
+            "mtgml-conformance",
+            "legal_space::gate_evidence::completeness::detects_later_stage_omission",
+            "later-stage omission detection",
+        ),
+        source("source_check::oracle_boundary_guard", "oracle boundary guard"),
     ),
 }
 
@@ -238,7 +272,7 @@ def toolchain_snapshot() -> dict[str, Any]:
 def prepare_output(output: Path) -> Path:
     relative = output.relative_to(ROOT)
     if "dist" not in relative.parts or output == ROOT:
-        raise RuntimeError("M2.E verification output must remain below repository dist")
+        raise RuntimeError("M2.F verification output must remain below repository dist")
     if "verification" in relative.parts:
         raise RuntimeError("dist/verification is exclusively owned by release-candidate")
     if output.exists():
@@ -248,7 +282,7 @@ def prepare_output(output: Path) -> Path:
         shutil.rmtree(output)
     logs = output / "logs"
     logs.mkdir(parents=True, exist_ok=True)
-    (output / OUTPUT_MARKER).write_text("owned by scripts/run_m2_e_gates.py\n", encoding="utf-8")
+    (output / OUTPUT_MARKER).write_text("owned by scripts/run_m2_f_gates.py\n", encoding="utf-8")
     return logs
 
 
@@ -430,7 +464,7 @@ def aggregate(statuses: Iterable[str]) -> str:
 
 def render_markdown(report: dict[str, Any]) -> str:
     lines = [
-        "# M2.E Gate Verification",
+        "# M2.F Gate Verification",
         "",
         "Generated outside the reproducible source archive by `scripts/run_m2_e_gates.py`.",
         "",
@@ -517,7 +551,7 @@ def main() -> int:
     report = {
         "generated_at": datetime.now(UTC).isoformat(),
         "mode": "development" if args.development else "authoritative",
-        "milestone": "M2.E",
+        "milestone": "M2.F",
         "reporter": "scripts/run_m2_e_gates.py",
         "source_commit": before.get("commit"),
         "expected_commit": args.expect_commit,

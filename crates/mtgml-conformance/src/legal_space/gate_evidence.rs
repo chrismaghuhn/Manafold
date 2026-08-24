@@ -380,7 +380,6 @@ mod completeness {
             .collect();
         assert!(counts.contains(&(0, 1)));
         assert!(counts.contains(&(1, 1)));
-        eprintln!("counts: {:?}", counts);
         assert!(counts.contains(&(2, 1)));
         assert!(counts.contains(&(3, 1)));
     }
