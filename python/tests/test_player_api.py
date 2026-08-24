@@ -140,6 +140,65 @@ class PlayerStepSubmissionContractTests(unittest.TestCase):
             other_code_closed_episode.validate()
 
 
+class PlayerStepV2NextDecisionSerializationTests(unittest.TestCase):
+    """PlayerStepV2 mirrors Rust Option serialization: a decision-less step
+    always carries an explicit "next_decision":null on the wire, so absent-key
+    input is rejected end-to-end as non-canonical exactly like Rust."""
+
+    GOLDEN = ROOT / "wire" / "golden" / "player-step-v2-rejected.json"
+
+    def _decisionless_step(self) -> PlayerStepV2:
+        import dataclasses
+
+        from mtgml.wire import decode_canonical
+
+        decoded = decode_canonical("player-step.v2", self.GOLDEN.read_bytes())
+        assert isinstance(decoded, PlayerStepV2)
+        step = dataclasses.replace(decoded, next_decision=None)
+        assert step.next_decision is None
+        return step
+
+    def test_to_wire_always_emits_next_decision_even_when_none(self) -> None:
+        from mtgml.canonical import canonical_json_bytes
+
+        wire = self._decisionless_step().to_wire()
+        self.assertIs(wire["next_decision"], None)
+        self.assertIn(b'"next_decision":null', canonical_json_bytes(wire))
+
+    def test_absent_key_decodes_but_is_rejected_as_non_canonical(self) -> None:
+        from mtgml.canonical import canonical_json_bytes
+        from mtgml.errors import WireError
+        from mtgml.wire import decode_canonical
+
+        step = self._decisionless_step()
+        canonical = canonical_json_bytes(step.to_wire())
+
+        # Absent-key input is accepted at the decoder boundary (absent == null).
+        absent = json.loads(canonical.decode("utf-8"))
+        del absent["next_decision"]
+        reparsed = PlayerStepV2.from_wire(absent)
+        self.assertIs(reparsed.next_decision, None)
+
+        # ...but end-to-end canonical decoding rejects it byte-exactly like Rust.
+        with self.assertRaises(WireError) as caught:
+            decode_canonical("player-step.v2", canonical_json_bytes(absent))
+        self.assertEqual(caught.exception.code, "decode.non_canonical_json")
+
+    def test_new_golden_fixtures_round_trip_decision_less_steps(self) -> None:
+        from mtgml.wire import decode_canonical, encode_canonical
+
+        for name in (
+            "player-step.v2-terminal-events.json",
+            "player-step.v2-episode-closed-rejected.json",
+        ):
+            with self.subTest(fixture=name):
+                payload = (ROOT / "wire" / "golden" / name).read_bytes()
+                decoded = decode_canonical("player-step.v2", payload)
+                assert isinstance(decoded, PlayerStepV2)
+                self.assertIs(decoded.next_decision, None)
+                self.assertEqual(encode_canonical(decoded), payload)
+
+
 def test_v2_public_boundary_excludes_privileged_fields() -> None:
     test = PlayerApiTests("test_v2_public_boundary_excludes_privileged_fields")
     test.test_v2_public_boundary_excludes_privileged_fields()
@@ -340,7 +399,9 @@ class ObservedEventV2CodecParityTests(unittest.TestCase):
         }
 
     def _canonical_bytes(self, envelope: dict) -> bytes:
-        return json.dumps(envelope, separators=(",", ":"), sort_keys=True).encode("utf-8")
+        from mtgml.canonical import canonical_json_bytes
+
+        return canonical_json_bytes(envelope)
 
     def test_each_of_the_seven_kinds_round_trips_byte_identically(self) -> None:
         from mtgml.observation import ObservedEventEnvelopeV2

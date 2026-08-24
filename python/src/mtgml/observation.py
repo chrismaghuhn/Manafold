@@ -857,13 +857,15 @@ class PlayerStepV2:
 
     def to_wire(self) -> dict[str, object]:
         self.validate()
-        result: dict[str, object] = {
+        return {
             "information_state": self.information_state.to_wire(),
+            # Mirrors Rust PlayerStepV2: Option serializes as an explicit null,
+            # so decision-less steps canonicalize identically in both languages.
+            "next_decision": None
+            if self.next_decision is None
+            else self.next_decision.to_wire(),
             "observed_events": [event.to_wire() for event in self.observed_events],
             "schema_version": PLAYER_STEP_SCHEMA_V2,
             "status": self.status.to_wire(),
             "submission": self.submission.to_wire(),
         }
-        if self.next_decision is not None:
-            result["next_decision"] = self.next_decision.to_wire()
-        return result

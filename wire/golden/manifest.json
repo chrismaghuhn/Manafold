@@ -101,6 +101,14 @@
       "path": "player-step.v2-events-running.json"
     },
     {
+      "contract": "player-step.v2",
+      "path": "player-step.v2-terminal-events.json"
+    },
+    {
+      "contract": "player-step.v2",
+      "path": "player-step.v2-episode-closed-rejected.json"
+    },
+    {
       "contract": "observation-envelope.v1",
       "path": "observation-envelope.v1.json"
     },
