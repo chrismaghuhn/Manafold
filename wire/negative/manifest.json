@@ -61,6 +61,12 @@
       "path": "player-step-privileged-extra-field.json"
     },
     {
+      "contract": "player-step.v2",
+      "expected_error_code": "decode.non_canonical_json",
+      "expected_reject_layer": "rust-python-semantic-or-decode",
+      "path": "player-step-v2-absent-next-decision.json"
+    },
+    {
       "contract": "authoritative-replay.v1",
       "expected_error_code": "semantic.replay",
       "expected_reject_layer": "rust-python-semantic-or-decode",
