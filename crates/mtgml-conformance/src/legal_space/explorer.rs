@@ -199,17 +199,9 @@ pub fn generate_probes(
                 let chosen: Vec<u32> = (0..candidate_count)
                     .filter(|index| mask & (1 << index) != 0)
                     .collect();
-                let advertised = match &request.decision {
-                    DecisionDomainV2::ChooseMany { minimum, maximum } => {
-                        let length = chosen.len() as u32;
-                        minimum <= &length && length <= *maximum
-                    }
-                    _ => false,
-                };
-                probes.push(Probe {
-                    shape: AnswerShape::SelectMany(chosen),
-                    advertised,
-                });
+                let shape = AnswerShape::SelectMany(chosen);
+                let advertised = is_advertised(request, &shape);
+                probes.push(Probe { shape, advertised });
             }
         }
         DecisionDomainV2::ChooseNumber { minimum, maximum } => {

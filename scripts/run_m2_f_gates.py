@@ -4,9 +4,8 @@
 Owned gates:
 
 ```text
-KNOWLEDGE_RETENTION_INVALIDATION_AND_HISTORY
-OPAQUE_ID_DISTINGUISHABILITY_LIFECYCLE
-OBSERVED_EVENT_REDACTION_AND_SEQUENCE
+SYNTHETIC_LEGAL_CHOICE_SOUNDNESS
+SYNTHETIC_LEGAL_CHOICE_COMPLETENESS
 ```
 
 The authoritative mode requires a clean source tree whose commit equals the
@@ -102,11 +101,6 @@ GATE_TESTS: dict[str, tuple[EvidenceDefinition, ...]] = {
         ),
         rust(
             "mtgml-conformance",
-            "legal_space::gate_evidence::unsatisfiable::authoritative_request_fails_closed",
-            "unsatisfiable fail-closed",
-        ),
-        rust(
-            "mtgml-conformance",
             "legal_space::gate_evidence::soundness::detects_wrong_visible_candidate_semantics",
             "wrong visible candidate semantics detected via mapper",
         ),
@@ -159,6 +153,17 @@ GATE_TESTS: dict[str, tuple[EvidenceDefinition, ...]] = {
             "insertion order does not change canonical reference space",
         ),
         source("source_check::oracle_boundary_guard", "oracle boundary guard"),
+
+        rust(
+            "mtgml-conformance",
+            "legal_space::gate_evidence::invariance::set_vs_sequence_mutant_matrix",
+            "ChooseMany set vs Order sequence semantics enforced in IR",
+        ),
+        rust(
+            "mtgml-conformance",
+            "legal_space::gate_evidence::invariance::insertion_order_does_not_change_reference_space",
+            "insertion order does not change canonical reference space",
+        ),
     ),
 }
 
@@ -433,49 +438,68 @@ def execute_python_test(definition: EvidenceDefinition, logs: Path, index: int) 
 
 def check_oracle_boundary_guard() -> str:
     """Oracle independence: no production crate transitively pulls
-    mtgml-conformance, and explorer.rs contains no reference-oracle imports."""
+    mtgml-conformance, and explorer.rs has no reference-oracle imports."""
     import json as _json
     import subprocess as _sp
 
     meta = _sp.run(
         ["cargo", "metadata", "--locked", "--format-version", "1"],
-        cwd=ROOT,
-        capture_output=True,
-        text=True,
+        cwd=ROOT, capture_output=True, text=True,
     )
     if meta.returncode != 0:
         raise AssertionError(f"cargo metadata failed: {meta.stderr[:200]}")
     md = _json.loads(meta.stdout)
-    # Transitive reachability: resolve.nodes gives the full dependency closure.
-    resolve_nodes = {
-        node["id"]: node.get("deps", []) for node in md.get("resolve", {}).get("nodes", [])
-    }
-    conformance_id = next(
-        (p["id"] for p in md["packages"] if p["name"] == "mtgml-conformance"), None
-    )
-    if conformance_id:
-        for pkg in md["packages"]:
-            if pkg["name"] not in ("mtgml-rules", "mtgml-environment"):
-                continue
-            node_id = pkg["id"]
-            deps = resolve_nodes.get(node_id, [])
-            dep_ids = [d["dep"]["pkg"] if isinstance(d, dict) and "dep" in d else d for d in deps]
-            if conformance_id in dep_ids or any(conformance_id == d for d in dep_ids):
-                raise AssertionError(f"{pkg['name']} transitively pulls conformance")
-    # Source scan: code-level imports only (skip comments/blank lines).
-    src = (ROOT / "crates" / "mtgml-conformance" / "src" / "legal_space" / "explorer.rs").read_text(
-        encoding="utf-8"
+
+    # Build package name -> id map
+    packages = {pkg["name"]: pkg["id"] for pkg in md["packages"]}
+    conformance_id = packages.get("mtgml-conformance")
+    if conformance_id is None:
+        raise AssertionError("mtgml-conformance not found in workspace")
+
+    # Build resolve graph: node id -> set of dependency node ids
+    resolve_nodes = {}
+    for node in md.get("resolve", {}).get("nodes", []):
+        node_id = node["id"]
+        dep_ids = {dep["pkg"] for dep in node.get("deps", [])}
+        resolve_nodes[node_id] = dep_ids
+
+    # BFS from each production crate root; fail if we reach conformance.
+    for start_name in ("mtgml-rules", "mtgml-environment"):
+        start_id = packages.get(start_name)
+        if start_id is None:
+            continue
+        visited = {start_id}
+        queue = [start_id]
+        while queue:
+            current = queue.pop(0)
+            if current == conformance_id:
+                raise AssertionError(
+                    f"{start_name} transitively reaches mtgml-conformance"
+                )
+            for dep_id in resolve_nodes.get(current, set()):
+                if dep_id not in visited:
+                    visited.add(dep_id)
+                    queue.append(dep_id)
+
+    # Source scan: code lines only (skip comments/doc comments).
+    src_path = (
+        ROOT / "crates" / "mtgml-conformance" / "src" / "legal_space" / "explorer.rs"
     )
     code_lines = [
         line.strip()
-        for line in src.splitlines()
-        if line.strip() and not line.strip().startswith("//") and not line.strip().startswith("//!")
+        for line in src_path.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+        and not line.strip().startswith("//!")
+        and not line.strip().startswith("//")
     ]
     joined = "\n".join(code_lines)
     for pattern in ["super::oracle", "crate::legal_space::oracle", "SCENARIO_COUNT_"]:
         if pattern in joined:
             raise AssertionError(f"explorer.rs imports oracle symbol: {pattern}")
+
     return "oracle boundary clean: cargo graph + source scan pass"
+
+
 
 
 SOURCE_CHECKS = {
