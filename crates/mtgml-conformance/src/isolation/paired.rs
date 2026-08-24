@@ -1,8 +1,9 @@
 //! Runtime-acceptance pair builder for paired-state isolation evidence.
 //!
-//! Every constructed state passes `validate_engine_state` and is then
-//! accepted into a live synthetic environment before it can appear inside a
-//! `PairedCase`; a state the runtime cannot accept never becomes evidence.
+//! Every constructed state passes `validate_engine_state`, the witness
+//! relations are enforced over both sides, and only then is either side
+//! accepted into a live synthetic environment; a state the runtime cannot
+//! accept — or a pair the witness cannot authorize — never becomes evidence.
 
 use mtgml_environment::{
     EnvironmentCheckpointV3, PlayerEndpointHandle, SyntheticM1EnvironmentBackend,
@@ -22,7 +23,7 @@ use mtgml_state::{
     construct_synthetic_engine_state, validate_engine_state, EngineState, SyntheticResetInputs,
 };
 
-use super::witnesses::PairWitness;
+use super::witnesses::{assert_witness, PairWitness};
 use super::HarnessError;
 
 const P1: PlayerId = PlayerId(1);
@@ -149,7 +150,14 @@ pub fn spawn_environment(
 }
 
 /// Builds a paired case: clone base, apply each transform, validate both
-/// sides, require runtime acceptance of both sides, and attach the witness.
+/// sides, enforce the witness relations over the pair, require runtime
+/// acceptance of both sides, and attach the witness.
+///
+/// The relation gate runs BEFORE runtime acceptance: a pair the witness
+/// cannot authorize fails closed here and never spawns an environment, so
+/// acceptance can never launder an unauthorized pair into evidence. Nothing
+/// is cached on `PairWitness`; later assertion-time checks recompute every
+/// relation from scratch.
 pub fn build_case(
     name: &'static str,
     axis: AxisKind,
@@ -164,6 +172,7 @@ pub fn build_case(
     let mut state_b = base.clone();
     transform_b(&mut state_b)?;
     validate_engine_state(&state_b).map_err(HarnessError::StateValidation)?;
+    assert_witness(&state_a, &state_b, &witness).map_err(HarnessError::Witness)?;
     let config = synthetic_environment_config([P1, P2]);
     spawn_environment(state_a.clone(), &config)?;
     spawn_environment(state_b.clone(), &config)?;

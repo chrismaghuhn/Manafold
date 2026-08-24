@@ -3,8 +3,9 @@
 //! transforms.
 //!
 //! Every builder produces a `PairedCase` whose two sides pass
-//! `validate_engine_state` AND the full synthetic runtime-acceptance
-//! pipeline; a state the runtime cannot execute never becomes evidence
+//! `validate_engine_state`, satisfy the witness relations, and clear the
+//! full synthetic runtime-acceptance pipeline; a state the runtime cannot
+//! execute — or a pair the witness cannot authorize — never becomes evidence
 //! (`build_case`). Every axis keeps each perspective's opaque key sets
 //! equal between sides, so the renaming-bijection explanation stays exact:
 //! asymmetries live in trusted VALUES (definitions, orderings, mappings,
@@ -26,7 +27,9 @@ use super::paired::{
     base_pair_state, build_case, spawn_environment, synthetic_environment_config, AxisKind,
     PairedCase, TransformReport,
 };
-use super::witnesses::{NonVacuityPredicate, PairWitness, TrustedRenamingBijection};
+use super::witnesses::{
+    assert_witness, NonVacuityPredicate, PairWitness, TrustedRenamingBijection,
+};
 use super::HarnessError;
 
 const P1: PlayerId = PlayerId(1);
@@ -695,16 +698,20 @@ fn build_face_down_identity() -> Result<PairedCase, HarnessError> {
 
 /// Axis 05 needs two INDEPENDENT constructions with different root seeds
 /// before any accepted RNG-consuming transition; it therefore bypasses the
-/// single-base `build_case` clone while keeping every other gate identical.
+/// single-base `build_case` clone while keeping every other gate identical,
+/// including the construction-time witness relation enforcement.
 fn build_root_seed_pre_auth() -> Result<PairedCase, HarnessError> {
     let state_a = base_pair_state(SEED_A_HEX)?;
     let state_b = base_pair_state(SEED_B_HEX)?;
     validate_engine_state(&state_a).map_err(HarnessError::StateValidation)?;
     validate_engine_state(&state_b).map_err(HarnessError::StateValidation)?;
+    let witness = PairWitness::new(P1, None, NonVacuityPredicate::RootSeedPreAuth);
+    // Same gate position as `build_case`: relations hold before either side
+    // is accepted into a live environment.
+    assert_witness(&state_a, &state_b, &witness).map_err(HarnessError::Witness)?;
     let config = synthetic_environment_config([P1, P2]);
     spawn_environment(state_a.clone(), &config)?;
     spawn_environment(state_b.clone(), &config)?;
-    let witness = PairWitness::new(P1, None, NonVacuityPredicate::RootSeedPreAuth);
     Ok(PairedCase {
         name: NAME_05,
         axis: AxisKind::RootSeedPreAuth,
@@ -857,15 +864,33 @@ mod tests {
 
     /// Drives ONE identical accepted entry-stage submission through each
     /// real actor endpoint (candidate id read from the live
-    /// `visible_decision()`) and asserts complete transition-product
-    /// byte-equality.
-    fn assert_transition_byte_equality(pair: &SpawnedPair) -> Result<(), HarnessError> {
+    /// `visible_decision()`), asserts complete transition-product
+    /// byte-equality, and then proves witness-perspective POST-TRANSITION
+    /// parity: both sides' snapshots are re-captured through real endpoint
+    /// reads AFTER the accepted authoritative transition and asserted
+    /// byte-equal across A/B (observation bytes, information-state bytes and
+    /// digest, visible-decision bytes, visible sequence, protocol surface).
+    ///
+    /// For witness==actor axes this adds snapshot-level post-state evidence
+    /// beyond the returned-step bytes. For axis 07a (witness P2, actor P1)
+    /// it is THE missing proof: trusted GameObjectId renaming behind P2's
+    /// opaque identity produces zero P2-visible drift even after an accepted
+    /// authoritative transition performed by the counterparty.
+    ///
+    /// Axes 05/06 qualify as well: their seed/cursor difference changes only
+    /// which raw words each side samples; entry acceptance emits no
+    /// PerspectiveOccurrences and every projected payload derives only from
+    /// perspective + revision, so witness snapshots must remain byte-equal.
+    fn assert_transition_byte_equality(
+        case: &PairedCase,
+        pair: &SpawnedPair,
+    ) -> Result<(), HarnessError> {
         let step_a = accepted_entry_submission(endpoint_for(&pair[0].1, P1)?)?;
         let step_b = accepted_entry_submission(endpoint_for(&pair[1].1, P1)?)?;
         let product_a = capture_transition_product(Ok(step_a))?;
         let product_b = capture_transition_product(Ok(step_b))?;
         assert_products_byte_equal(&product_a, &product_b);
-        Ok(())
+        assert_snapshot_byte_equality(case, pair)
     }
 
     fn assert_products_byte_equal(a: &TransitionVisibleProduct, b: &TransitionVisibleProduct) {
@@ -889,17 +914,17 @@ mod tests {
 
     #[test]
     fn axis_01_opponent_hidden_definition_byte_equality() -> Result<(), HarnessError> {
-        let (_case, pair) =
+        let (case, pair) =
             assert_axis_byte_equality(build_axis_case(AxisKind::OpponentHiddenDefinition)?)?;
-        assert_transition_byte_equality(&pair)?;
+        assert_transition_byte_equality(&case, &pair)?;
         Ok(())
     }
 
     #[test]
     fn axis_02_hidden_concealed_ordering_byte_equality() -> Result<(), HarnessError> {
-        let (_case, pair) =
+        let (case, pair) =
             assert_axis_byte_equality(build_axis_case(AxisKind::HiddenConcealedOrdering)?)?;
-        assert_transition_byte_equality(&pair)?;
+        assert_transition_byte_equality(&case, &pair)?;
         Ok(())
     }
 
@@ -927,10 +952,19 @@ mod tests {
         Ok(())
     }
 
+    /// Axis 07a: side B renames the home hidden incarnation (2 -> 9)
+    /// consistently across zones, ordered zones, and every perspective
+    /// identity record, behind P2's opaque keys. The witness is P2 while the
+    /// accepted entry submission is performed by the counterparty P1: the
+    /// transition-product equality proves P1's returned steps are unaffected,
+    /// and the post-transition witness-snapshot equality proves that trusted
+    /// GameObjectId renaming behind P2's opaque identity produces zero
+    /// P2-visible drift even AFTER an accepted authoritative transition
+    /// performed by the counterparty.
     #[test]
     fn axis_07a_object_renaming_byte_equality() -> Result<(), HarnessError> {
-        let (_case, pair) = assert_axis_byte_equality(build_axis_case(AxisKind::ObjectRenaming)?)?;
-        assert_transition_byte_equality(&pair)?;
+        let (case, pair) = assert_axis_byte_equality(build_axis_case(AxisKind::ObjectRenaming)?)?;
+        assert_transition_byte_equality(&case, &pair)?;
         Ok(())
     }
 
@@ -942,9 +976,9 @@ mod tests {
 
     #[test]
     fn axis_08_global_allocator_history_byte_equality() -> Result<(), HarnessError> {
-        let (_case, pair) =
+        let (case, pair) =
             assert_axis_byte_equality(build_axis_case(AxisKind::GlobalAllocatorHistory)?)?;
-        assert_transition_byte_equality(&pair)?;
+        assert_transition_byte_equality(&case, &pair)?;
         Ok(())
     }
 
@@ -967,9 +1001,9 @@ mod tests {
     /// of the P1 perspective must stay byte-equal across both endpoints.
     #[test]
     fn axis_03_foreign_private_look_transition_parity() -> Result<(), HarnessError> {
-        let (_case, pair) =
+        let (case, pair) =
             assert_axis_byte_equality(build_axis_case(AxisKind::ForeignPrivateLook)?)?;
-        assert_transition_byte_equality(&pair)?;
+        assert_transition_byte_equality(&case, &pair)?;
         Ok(())
     }
 
@@ -978,9 +1012,8 @@ mod tests {
     /// the accepted entry product must stay byte-equal across both endpoints.
     #[test]
     fn axis_04_face_down_identity_transition_parity() -> Result<(), HarnessError> {
-        let (_case, pair) =
-            assert_axis_byte_equality(build_axis_case(AxisKind::FaceDownIdentity)?)?;
-        assert_transition_byte_equality(&pair)?;
+        let (case, pair) = assert_axis_byte_equality(build_axis_case(AxisKind::FaceDownIdentity)?)?;
+        assert_transition_byte_equality(&case, &pair)?;
         Ok(())
     }
 
@@ -996,8 +1029,8 @@ mod tests {
     /// RNG internals.
     #[test]
     fn axis_05_root_seed_pre_auth_transition_parity() -> Result<(), HarnessError> {
-        let (_case, pair) = assert_axis_byte_equality(build_axis_case(AxisKind::RootSeedPreAuth)?)?;
-        assert_transition_byte_equality(&pair)?;
+        let (case, pair) = assert_axis_byte_equality(build_axis_case(AxisKind::RootSeedPreAuth)?)?;
+        assert_transition_byte_equality(&case, &pair)?;
         Ok(())
     }
 
@@ -1010,8 +1043,8 @@ mod tests {
     /// internals.
     #[test]
     fn axis_06_hidden_rng_cursor_transition_parity() -> Result<(), HarnessError> {
-        let (_case, pair) = assert_axis_byte_equality(build_axis_case(AxisKind::HiddenRngCursor)?)?;
-        assert_transition_byte_equality(&pair)?;
+        let (case, pair) = assert_axis_byte_equality(build_axis_case(AxisKind::HiddenRngCursor)?)?;
+        assert_transition_byte_equality(&case, &pair)?;
         Ok(())
     }
 
@@ -1021,8 +1054,8 @@ mod tests {
     /// stack nor ability mappings and its product must stay byte-equal.
     #[test]
     fn axis_07b_ability_renaming_transition_parity() -> Result<(), HarnessError> {
-        let (_case, pair) = assert_axis_byte_equality(build_axis_case(AxisKind::AbilityRenaming)?)?;
-        assert_transition_byte_equality(&pair)?;
+        let (case, pair) = assert_axis_byte_equality(build_axis_case(AxisKind::AbilityRenaming)?)?;
+        assert_transition_byte_equality(&case, &pair)?;
         Ok(())
     }
 
@@ -1031,9 +1064,9 @@ mod tests {
     /// entry product must stay byte-equal across both endpoints.
     #[test]
     fn axis_09_foreign_knowledge_history_transition_parity() -> Result<(), HarnessError> {
-        let (_case, pair) =
+        let (case, pair) =
             assert_axis_byte_equality(build_axis_case(AxisKind::ForeignKnowledgeHistory)?)?;
-        assert_transition_byte_equality(&pair)?;
+        assert_transition_byte_equality(&case, &pair)?;
         Ok(())
     }
 
@@ -1113,6 +1146,37 @@ mod tests {
         ))
     }
 
+    /// Class C: a well-formed response whose `player_decision_id` is aged by
+    /// exactly one past its current value, with everything else kept equal to
+    /// the live request (revision, well-formed first-candidate answer). The
+    /// identity mismatch is judged against EACH side's own live request: the
+    /// live visible-decision bytes are byte-equal across sides and rejections
+    /// do not mutate state, so one deterministically stale response is stale
+    /// on both sides. Fails closed on overflow instead of wrapping.
+    fn stale_decision_id(
+        request: &PlayerDecisionRequestV2,
+    ) -> Result<DecisionResponseV2, HarnessError> {
+        let first = request
+            .candidates
+            .first()
+            .map(|candidate| candidate.candidate_id)
+            .ok_or(HarnessError::TransformFixtureAbsent)?;
+        let mut stale = answered_from(
+            request,
+            DecisionAnswerV2::SelectOne {
+                candidate_id: first,
+            },
+        );
+        stale.player_decision_id = PlayerDecisionIdV1(
+            request
+                .player_decision_id
+                .0
+                .checked_add(1)
+                .ok_or(HarnessError::TransformPreconditionViolated)?,
+        );
+        Ok(stale)
+    }
+
     const PAIRED_REJECTION_CLASSES: &[PairedRejectionClass] = &[
         PairedRejectionClass {
             label: "select_one_unknown_candidate",
@@ -1123,6 +1187,11 @@ mod tests {
             label: "duplicate_select_many_on_choose_one",
             expected_available_code: "invalid_answer",
             build: duplicate_select_many_on_choose_one,
+        },
+        PairedRejectionClass {
+            label: "stale_decision_id",
+            expected_available_code: "stale_decision",
+            build: stale_decision_id,
         },
     ];
 
