@@ -11,7 +11,12 @@ mod fingerprint;
 mod mutants;
 mod paired;
 mod paired_matrix;
+mod rejection;
+mod wire_boundary;
 mod witnesses;
+
+pub use rejection::SEMANTIC_REJECTION_ROWS;
+pub use wire_boundary::WIRE_MALFORMED_CLASSES;
 
 pub use fingerprint::{
     assert_fingerprint_policies, capture_complete, capture_snapshot, capture_transition_product,
