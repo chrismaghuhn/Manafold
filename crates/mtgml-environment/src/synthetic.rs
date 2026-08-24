@@ -35,6 +35,13 @@ use crate::controller::EnvironmentBackend;
 use crate::endpoint::PlayerEndpointError;
 use crate::errors::{ControllerError, EnvironmentCommitError};
 
+// G.6 Node A: declared as a child module of this file so the historical
+// reprojection evidence reuses THE private production projection/step-
+// assembly functions instead of any second projector.
+#[cfg(test)]
+#[path = "replay_parity_tests.rs"]
+mod replay_parity_tests;
+
 const SYNTHETIC_M2_OBSERVATION_CODEC: &str = "synthetic-m2-observation.v1";
 
 #[derive(Debug, Clone, PartialEq, Eq)]

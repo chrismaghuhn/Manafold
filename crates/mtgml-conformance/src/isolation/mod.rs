@@ -14,6 +14,7 @@ mod mutants;
 mod paired;
 mod paired_matrix;
 mod rejection;
+mod replay_parity;
 mod wire_boundary;
 mod witnesses;
 

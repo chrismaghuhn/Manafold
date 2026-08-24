@@ -521,3 +521,72 @@ fn replay_v3_rejects_corrupt_accepted_progression() {
         Err(ReplayValidationError::RejectedMutation)
     );
 }
+
+#[test]
+fn diagnostic_step_preserves_complete_identity() {
+    // Direct-construction counterpart of the recorder-append path covered by
+    // `replay_v3_empty_accepted_rejected_identity_matrix`: one hand-built
+    // accepted:false step validates exactly because EVERY after-field
+    // preserves the preceding identity, so the final identity remains the
+    // initial one. Execution-side preservation is pinned in the environment
+    // crate (`diagnostic_rejected_step_executes_with_intact_identity_chain`).
+    let manifest = manifest_v3();
+    let initial = manifest.initial_identity.clone();
+    let step = ReplayStepV3 {
+        step_index: 0,
+        actor: PlayerId(1),
+        checkpoint_digest_before: initial.checkpoint_digest.clone(),
+        state_revision_before: initial.state_revision,
+        response: DecisionResponseV2 {
+            state_revision: initial.state_revision,
+            ..response_v3()
+        },
+        accepted: false,
+        state_revision_after: initial.state_revision,
+        full_state_digest_after: initial.full_state_digest.clone(),
+        episode_status_after: initial.episode_status.clone(),
+        environment_limit_counters_after: initial.environment_limit_counters.clone(),
+        checkpoint_digest_after: initial.checkpoint_digest.clone(),
+    };
+    let replay = AuthoritativeReplayV3 {
+        schema_version: crate::REPLAY_FILE_SCHEMA_V3.into(),
+        manifest,
+        steps: vec![step],
+        final_identity: initial,
+    };
+    replay.validate().unwrap();
+}
+
+#[test]
+fn inactive_counter_forward_progression_passes_structural_monotonicity() {
+    // Tamper-matrix coverage citations: overcounts of decisions_submitted /
+    // accepted_transitions and backward drift of rule_events_emitted /
+    // resource_units_consumed / wall_clock_elapsed_millis are already
+    // rejected by `replay_v3_rejects_corrupt_accepted_progression`, and
+    // rejected-step mutation by `replay_v3_empty_accepted_rejected_identity_matrix`.
+    // The uncovered class is FORWARD inflation of the host-independent
+    // counters: the structural contract pins monotonicity only, while exact
+    // carry-forward is enforced by the environment executor, pinned there as
+    // a fail-closed AfterDigestMismatch execution rejection
+    // (`recorded_inactive_counter_progression_fails_closed_without_live_mutation`).
+    let manifest = manifest_v3();
+    let initial = manifest.initial_identity.clone();
+    let inflated = v3_identity(
+        1,
+        1,
+        EnvironmentLimitCounters {
+            decisions_submitted: 1,
+            accepted_transitions: 1,
+            rule_events_emitted: 4,
+            resource_units_consumed: 7,
+            wall_clock_elapsed_millis: 1000,
+        },
+    );
+    let replay = AuthoritativeReplayV3 {
+        schema_version: crate::REPLAY_FILE_SCHEMA_V3.into(),
+        manifest,
+        steps: vec![accepted_v3_step(0, &initial, inflated.clone())],
+        final_identity: inflated,
+    };
+    replay.validate().unwrap();
+}
