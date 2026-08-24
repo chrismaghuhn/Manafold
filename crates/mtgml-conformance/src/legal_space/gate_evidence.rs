@@ -159,15 +159,13 @@ mod soundness {
             },
             candidate_atoms: vec![SyntheticChoiceAtom::Piece(0), SyntheticChoiceAtom::Piece(9)],
         };
-        let stages = vec![
-            CanonicalStageChoice::Anchor,
-            CanonicalStageChoice::Number(2),
-            CanonicalStageChoice::Members(
-                [SyntheticChoiceAtom::Piece(0), SyntheticChoiceAtom::Piece(1)]
-                    .into_iter()
-                    .collect(),
-            ),
-        ];
+        // Only pass the CURRENT stage step so candidate semantics is the
+        // sole defect source.
+        let stages = vec![CanonicalStageChoice::Members(
+            [SyntheticChoiceAtom::Piece(0), SyntheticChoiceAtom::Piece(1)]
+                .into_iter()
+                .collect(),
+        )];
         let defects = request_sequence_defects(&automaton, &stages, &[observed]);
         assert!(defects
             .iter()
@@ -513,19 +511,6 @@ mod invariance {
         };
         let space_a = ReferenceAutomaton::new(spec_a).enumerate_complete_choices();
         let space_b = ReferenceAutomaton::new(spec_b).enumerate_complete_choices();
-        // Structural equivalence: same total count and same distribution by
-        // Number stage value. Piece atoms may differ because different specs
-        // select different physical pieces from the iteration order.
-        assert_eq!(space_a.len(), space_b.len());
-        let count_by_number = |space: &[CanonicalCompleteChoice]| -> Vec<(i64, usize)> {
-            let mut out = std::collections::BTreeMap::new();
-            for choice in space {
-                if let Some(CanonicalStageChoice::Number(v)) = choice.0.get(1) {
-                    *out.entry(*v).or_insert(0) += 1;
-                }
-            }
-            out.into_iter().collect()
-        };
-        assert_eq!(count_by_number(&space_a), count_by_number(&space_b));
+        assert_eq!(space_a, space_b);
     }
 }

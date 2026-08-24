@@ -179,10 +179,9 @@ pub fn generate_probes(
                 return Err(ExplorationBoundError::MalformedVisibleRequest);
             }
             for id in ids {
-                probes.push(Probe {
-                    shape: AnswerShape::SelectOne(id),
-                    advertised: true,
-                });
+                let shape = AnswerShape::SelectOne(id);
+                let advertised = is_advertised(request, &shape);
+                probes.push(Probe { shape, advertised });
             }
         }
         DecisionDomainV2::ChooseMany { minimum, .. } => {
@@ -213,29 +212,21 @@ pub fn generate_probes(
                 return Err(ExplorationBoundError::NumericSpanExceeded);
             }
             for value in *minimum..=*maximum {
-                probes.push(Probe {
-                    shape: AnswerShape::Number(value),
-                    advertised: true,
-                });
+                let shape = AnswerShape::Number(value);
+                let advertised = is_advertised(request, &shape);
+                probes.push(Probe { shape, advertised });
             }
             // Boundary sentinels OUTSIDE the visible range: an accepted
             // sentinel proves a too-permissive numeric surface.
-            probes.push(Probe {
-                shape: AnswerShape::Number(
-                    minimum
-                        .checked_sub(1)
-                        .ok_or(ExplorationBoundError::NumericSpanExceeded)?,
-                ),
-                advertised: false,
-            });
-            probes.push(Probe {
-                shape: AnswerShape::Number(
-                    maximum
-                        .checked_add(1)
-                        .ok_or(ExplorationBoundError::NumericSpanExceeded)?,
-                ),
-                advertised: false,
-            });
+            for sentinel in [minimum.checked_sub(1), maximum.checked_add(1)]
+                .into_iter()
+                .flatten()
+            {
+                probes.push(Probe {
+                    shape: AnswerShape::Number(sentinel),
+                    advertised: false,
+                });
+            }
         }
         DecisionDomainV2::Order { minimum, maximum } => {
             if minimum > maximum {
@@ -251,12 +242,9 @@ pub fn generate_probes(
             }
             for length in *minimum..=*maximum {
                 for sequence in permutations_of(&ids, length as usize) {
-                    let len = sequence.len() as u32;
-                    let advertised = *minimum <= len && len <= *maximum;
-                    probes.push(Probe {
-                        shape: AnswerShape::Order(sequence),
-                        advertised,
-                    });
+                    let shape = AnswerShape::Order(sequence);
+                    let advertised = is_advertised(request, &shape);
+                    probes.push(Probe { shape, advertised });
                 }
             }
         }
