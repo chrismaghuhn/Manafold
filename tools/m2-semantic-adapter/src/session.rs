@@ -48,8 +48,10 @@ impl Session {
         }
     }
 
-    /// Replaces the live environment wholesale: a fresh backend plus an
-    /// emptied token registry at a bumped generation epoch.
+    /// Replaces the live environment wholesale on success: a fresh backend
+    /// plus a fresh, empty token registry. Replacement of the registry is
+    /// what invalidates every previously issued token; every route over the
+    /// old environment is dropped with it.
     pub fn reset_synthetic(
         &mut self,
         players: [PlayerId; 2],
@@ -58,8 +60,7 @@ impl Session {
         let config = synthetic_environment_config(players);
         let backend = SyntheticM1EnvironmentBackend::new(players, root_seed, config)?;
         let controller = TrustedEnvironmentController::new(backend);
-        let mut tokens = TokenRegistry::new();
-        tokens.invalidate_all();
+        let tokens = TokenRegistry::new();
         self.environment = Some(LiveEnvironment {
             controller,
             routes: HashMap::new(),

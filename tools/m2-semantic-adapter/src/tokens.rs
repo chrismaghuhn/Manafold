@@ -1,9 +1,10 @@
-//! Opaque player routing tokens and the generation-epoch registry.
+//! Opaque player routing tokens and their binding registry.
 //!
 //! Tokens are 128-bit values drawn from OS entropy (`getrandom`), issued
 //! once by `bind_player` and thereafter inbound-only: no response ever
-//! repeats one. A reset bumps the epoch and drops every binding, so stale
-//! tokens resolve uniformly to nothing.
+//! repeats one. Staleness safety comes from replacement, not counters: a
+//! reset builds a fresh, empty registry, so previously issued tokens can
+//! never resolve again and stale tokens uniformly resolve to nothing.
 
 use getrandom::getrandom;
 use mtgml_environment::PlayerEndpointHandle;
@@ -23,25 +24,12 @@ pub struct BoundEndpoint {
 
 #[derive(Default)]
 pub struct TokenRegistry {
-    epoch: u64,
     bindings: HashMap<String, BoundEndpoint>,
 }
 
 impl TokenRegistry {
     pub fn new() -> Self {
         Self::default()
-    }
-
-    pub fn epoch(&self) -> u64 {
-        self.epoch
-    }
-
-    /// Bumps the generation epoch and drops every binding; previously
-    /// issued tokens can never resolve again.
-    pub fn invalidate_all(&mut self) -> u64 {
-        self.epoch += 1;
-        self.bindings.clear();
-        self.epoch
     }
 
     pub fn insert(&mut self, endpoint: BoundEndpoint) -> Result<String, TokenEntropyError> {

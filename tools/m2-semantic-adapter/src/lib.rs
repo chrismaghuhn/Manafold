@@ -1,7 +1,7 @@
 //! Temporary M2.H semantic adapter: a JSON Lines subprocess shell around
 //! the authoritative player boundary.
 //!
-//! The adapter owns routing state only (token registry, generation epoch,
+//! The adapter owns routing state only (the token registry and
 //! bound-handle routes). It forwards exact canonical DTO bytes between a
 //! test orchestrator and the real player endpoints; it never pre-validates
 //! or synthesizes semantic payloads — submission bytes reach
@@ -20,7 +20,7 @@ pub mod protocol;
 pub mod session;
 pub mod tokens;
 
-use handlers::{Action, TRUSTED_COMMANDS};
+use handlers::{is_trusted_command, Action};
 use protocol::EnvelopeErrorCode;
 use protocol::FramedLine;
 use session::Session;
@@ -40,9 +40,7 @@ pub fn run(input: &mut dyn BufRead, output: &mut dyn Write, trusted_key: Option<
             Ok(FramedLine::Eof) => return protocol::EXIT_OK,
             Ok(FramedLine::Oversized) => {
                 let response = protocol::error_envelope(None, EnvelopeErrorCode::OversizedInput);
-                if emit(output, &response).is_err() {
-                    return protocol::EXIT_FATAL;
-                }
+                let _ = emit(output, &response);
                 return protocol::EXIT_FATAL;
             }
             Ok(FramedLine::Line(line)) => {
@@ -61,7 +59,7 @@ pub fn run(input: &mut dyn BufRead, output: &mut dyn Write, trusted_key: Option<
                 let trusted = raw
                     .get("cmd")
                     .and_then(serde_json::Value::as_str)
-                    .map(|cmd| TRUSTED_COMMANDS.contains(&cmd))
+                    .map(is_trusted_command)
                     .unwrap_or(false);
                 let outcome =
                     panic::catch_unwind(AssertUnwindSafe(|| handlers::handle(&mut session, &raw)));
@@ -71,6 +69,7 @@ pub fn run(input: &mut dyn BufRead, output: &mut dyn Write, trusted_key: Option<
                             return protocol::EXIT_FATAL;
                         }
                     }
+                    // Shutdown-ack emission is deliberately best-effort; all other fatal paths return EXIT_FATAL.
                     Ok(Action::Shutdown(response)) => {
                         let _ = emit(output, &response);
                         return protocol::EXIT_OK;
