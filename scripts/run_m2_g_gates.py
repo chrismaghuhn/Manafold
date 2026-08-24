@@ -85,6 +85,13 @@ EXPECTED_EVIDENCE: dict[str, tuple[str, ...]] = {
         f"{AXIS_PREFIX}07b_ability_renaming_byte_equality",
         f"{AXIS_PREFIX}08_global_allocator_history_byte_equality",
         f"{AXIS_PREFIX}09_foreign_knowledge_history_byte_equality",
+        f"{AXIS_PREFIX}03_foreign_private_look_transition_parity",
+        f"{AXIS_PREFIX}04_face_down_identity_transition_parity",
+        f"{AXIS_PREFIX}05_root_seed_pre_auth_transition_parity",
+        f"{AXIS_PREFIX}06_hidden_rng_cursor_transition_parity",
+        f"{AXIS_PREFIX}07b_ability_renaming_transition_parity",
+        f"{AXIS_PREFIX}09_foreign_knowledge_history_transition_parity",
+        "isolation::paired_matrix::tests::paired_rejection_parity_hidden_axes",
         f"{MUTANT_PREFIX}m1_resort_retained_knowledge",
         f"{MUTANT_PREFIX}m2_candidate_ids",
         f"{MUTANT_PREFIX}m3_allocator_ids",
@@ -144,6 +151,30 @@ EXPECTED_EVIDENCE: dict[str, tuple[str, ...]] = {
 
 REQUIRED_COVERAGE: dict[str, frozenset[str]] = {
     "axis_tags": frozenset({"01", "02", "03", "04", "05", "06", "07a", "07b", "08", "09"}),
+    # Every hidden axis slug must own accepted-submission transition
+    # evidence. Axes 01/02/07a/08 execute that comparison inside their
+    # `*_byte_equality` nodes; every other axis owns a dedicated
+    # `*_transition_parity` node.
+    "paired_transition_nodes": frozenset(
+        {
+            f"{AXIS_PREFIX}01_opponent_hidden_definition_byte_equality",
+            f"{AXIS_PREFIX}02_hidden_concealed_ordering_byte_equality",
+            f"{AXIS_PREFIX}03_foreign_private_look_transition_parity",
+            f"{AXIS_PREFIX}04_face_down_identity_transition_parity",
+            f"{AXIS_PREFIX}05_root_seed_pre_auth_transition_parity",
+            f"{AXIS_PREFIX}06_hidden_rng_cursor_transition_parity",
+            f"{AXIS_PREFIX}07a_object_renaming_byte_equality",
+            f"{AXIS_PREFIX}07b_ability_renaming_transition_parity",
+            f"{AXIS_PREFIX}08_global_allocator_history_byte_equality",
+            f"{AXIS_PREFIX}09_foreign_knowledge_history_transition_parity",
+        }
+    ),
+    # Shared paired rejection matrix: kills secret-dependent error
+    # classification (InvalidCandidate-vs-InvalidAnswer leak shape) for
+    # every hidden axis.
+    "paired_rejection_nodes": frozenset(
+        {"isolation::paired_matrix::tests::paired_rejection_parity_hidden_axes"}
+    ),
     "mutant_tags": frozenset({f"m{index}" for index in range(1, 13)}),
     "rejection_semantic_rows": frozenset(
         {
@@ -239,6 +270,8 @@ def _validate_required_coverage() -> None:
         | REQUIRED_COVERAGE["checkpoint_restore_classes"]
         | REQUIRED_COVERAGE["fork_parity_classes"]
         | REQUIRED_COVERAGE["replay_nodes"]
+        | REQUIRED_COVERAGE["paired_transition_nodes"]
+        | REQUIRED_COVERAGE["paired_rejection_nodes"]
     )
     unpinned = sorted(pinned - registered)
     if missing_axes or missing_mutants or unpinned:
@@ -299,6 +332,41 @@ GATE_TESTS: dict[str, tuple[EvidenceDefinition, ...]] = {
             "mtgml-conformance",
             f"{AXIS_PREFIX}09_foreign_knowledge_history_byte_equality",
             "axis 09 foreign knowledge history byte equality",
+        ),
+        rust(
+            "mtgml-conformance",
+            f"{AXIS_PREFIX}03_foreign_private_look_transition_parity",
+            "axis 03 foreign private look accepted-transition parity",
+        ),
+        rust(
+            "mtgml-conformance",
+            f"{AXIS_PREFIX}04_face_down_identity_transition_parity",
+            "axis 04 face-down identity accepted-transition parity",
+        ),
+        rust(
+            "mtgml-conformance",
+            f"{AXIS_PREFIX}05_root_seed_pre_auth_transition_parity",
+            "axis 05 root seed pre-authentication accepted-transition parity",
+        ),
+        rust(
+            "mtgml-conformance",
+            f"{AXIS_PREFIX}06_hidden_rng_cursor_transition_parity",
+            "axis 06 hidden RNG cursor accepted-transition parity",
+        ),
+        rust(
+            "mtgml-conformance",
+            f"{AXIS_PREFIX}07b_ability_renaming_transition_parity",
+            "axis 07b ability renaming accepted-transition parity",
+        ),
+        rust(
+            "mtgml-conformance",
+            f"{AXIS_PREFIX}09_foreign_knowledge_history_transition_parity",
+            "axis 09 foreign knowledge history accepted-transition parity",
+        ),
+        rust(
+            "mtgml-conformance",
+            "isolation::paired_matrix::tests::paired_rejection_parity_hidden_axes",
+            "paired rejection parity matrix across every hidden axis",
         ),
         rust(
             "mtgml-conformance",

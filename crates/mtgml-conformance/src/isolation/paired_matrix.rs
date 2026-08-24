@@ -796,12 +796,18 @@ fn build_foreign_knowledge_history() -> Result<PairedCase, HarnessError> {
 mod tests {
     use super::*;
     use crate::isolation::fingerprint::{
-        capture_snapshot, capture_transition_product, TransitionVisibleProduct,
+        assert_fingerprint_policies, capture_complete, capture_snapshot,
+        capture_transition_product, FingerprintComparison, TransitionVisibleProduct,
     };
     use crate::isolation::paired::test_support::{
         accepted_entry_submission, endpoint_for, spawn_pair, SpawnedPair,
     };
     use crate::isolation::witnesses::assert_witness;
+    use mtgml_decision::{
+        DecisionAnswerV2, DecisionResponseV2, PlayerDecisionRequestV2, DECISION_RESPONSE_V2_SCHEMA,
+    };
+    use mtgml_environment::PlayerEndpoint;
+    use mtgml_model::{CandidateIdV1, PlayerDecisionIdV1, StateRevision};
 
     /// Asserts byte-equality of EVERY captured snapshot field for the case's
     /// witness perspective across both runtime-accepted environments.
@@ -945,6 +951,301 @@ mod tests {
     #[test]
     fn axis_09_foreign_knowledge_history_byte_equality() -> Result<(), HarnessError> {
         assert_axis_byte_equality(build_axis_case(AxisKind::ForeignKnowledgeHistory)?)?;
+        Ok(())
+    }
+
+    // === accepted-transition parity for every remaining axis =================
+    //
+    // Each test executes ONE identical accepted entry-stage submission
+    // through BOTH real endpoints and asserts full TransitionVisibleProduct
+    // byte-equality (observed_event_bytes[], player_step_bytes,
+    // semantic_submission_code), exactly like the pre-existing axes 01/02/
+    // 07a/08 do inside their `*_byte_equality` nodes.
+
+    /// Axis 03: P2's private-look knowledge record differs between sides.
+    /// The record is owner-retained hidden state; the accepted entry product
+    /// of the P1 perspective must stay byte-equal across both endpoints.
+    #[test]
+    fn axis_03_foreign_private_look_transition_parity() -> Result<(), HarnessError> {
+        let (_case, pair) =
+            assert_axis_byte_equality(build_axis_case(AxisKind::ForeignPrivateLook)?)?;
+        assert_transition_byte_equality(&pair)?;
+        Ok(())
+    }
+
+    /// Axis 04: two concealed incarnations swap physical cards (with their
+    /// trusted knowledge markers). Physical identity is authoritative-only;
+    /// the accepted entry product must stay byte-equal across both endpoints.
+    #[test]
+    fn axis_04_face_down_identity_transition_parity() -> Result<(), HarnessError> {
+        let (_case, pair) =
+            assert_axis_byte_equality(build_axis_case(AxisKind::FaceDownIdentity)?)?;
+        assert_transition_byte_equality(&pair)?;
+        Ok(())
+    }
+
+    /// Axis 05 (RANDOM QUALIFICATION): the sides are built from DIFFERENT
+    /// root seeds, so the entry-stage kernel samples different raw words on
+    /// each side (`uniform_below_u64` under `RandomValueSampled`). The
+    /// sampled value, stream cursors, and event-log digests are trusted-only
+    /// state: the occurrence-only projector emits no envelope for a random
+    /// draw, so no sampled byte can reach any P1-visible surface. Every
+    /// rule-relevant acceptance product (life changes, stage identities, the
+    /// next ChooseNumber request) derives from allocator heads identical
+    /// across sides, so P-visible bytes MUST remain equal despite divergent
+    /// RNG internals.
+    #[test]
+    fn axis_05_root_seed_pre_auth_transition_parity() -> Result<(), HarnessError> {
+        let (_case, pair) = assert_axis_byte_equality(build_axis_case(AxisKind::RootSeedPreAuth)?)?;
+        assert_transition_byte_equality(&pair)?;
+        Ok(())
+    }
+
+    /// Axis 06 (RANDOM QUALIFICATION): side B's global synthetic stream
+    /// cursor is advanced by five raw words before any accepted transition,
+    /// so the entry-stage sample consumes different words per side. As in
+    /// axis 05, the sampled value stays hidden behind the occurrence-only
+    /// projector and every projected product derives from RNG-independent
+    /// state, so P-visible bytes MUST remain equal despite divergent RNG
+    /// internals.
+    #[test]
+    fn axis_06_hidden_rng_cursor_transition_parity() -> Result<(), HarnessError> {
+        let (_case, pair) = assert_axis_byte_equality(build_axis_case(AxisKind::HiddenRngCursor)?)?;
+        assert_transition_byte_equality(&pair)?;
+        Ok(())
+    }
+
+    /// Axis 07b: the live ability instance VALUE differs (1 vs 7) behind the
+    /// same opaque key. Ability identity is visible only through the declared
+    /// renaming bijection; the accepted entry transition touches neither the
+    /// stack nor ability mappings and its product must stay byte-equal.
+    #[test]
+    fn axis_07b_ability_renaming_transition_parity() -> Result<(), HarnessError> {
+        let (_case, pair) = assert_axis_byte_equality(build_axis_case(AxisKind::AbilityRenaming)?)?;
+        assert_transition_byte_equality(&pair)?;
+        Ok(())
+    }
+
+    /// Axis 09: P2's own incarnation carries one extra historical-location
+    /// fact on side B. History is owner-retained hidden state; the accepted
+    /// entry product must stay byte-equal across both endpoints.
+    #[test]
+    fn axis_09_foreign_knowledge_history_transition_parity() -> Result<(), HarnessError> {
+        let (_case, pair) =
+            assert_axis_byte_equality(build_axis_case(AxisKind::ForeignKnowledgeHistory)?)?;
+        assert_transition_byte_equality(&pair)?;
+        Ok(())
+    }
+
+    // === paired rejection matrix =============================================
+    //
+    // Snapshot and accepted-transition parity cannot observe a leak that
+    // hides inside ERROR CLASSIFICATION: a production endpoint like
+    // `if hidden_physical_card == X { InvalidCandidate } else {
+    // InvalidAnswer }` rejects both paired sides without ever moving a
+    // hidden value into a visible byte, keeping every equality gate green.
+    // This matrix kills that shape for EVERY hidden axis by driving one
+    // identical response of each pinned class through BOTH real endpoints
+    // and asserting cross-side code equality, the pinned class code, and
+    // byte-equal rejected steps.
+
+    /// Closed wire spelling mirrored from the authoritative submission-code
+    /// vocabulary for the unavailable-decision boundary.
+    const UNAVAILABLE_DECISION_CODE: &str = "unavailable_decision";
+
+    /// Probe id beyond any dense request surface; `select_one_unknown_candidate`
+    /// fails closed if it ever collides with a live candidate.
+    const UNKNOWN_PROBE_CANDIDATE: CandidateIdV1 = CandidateIdV1(99);
+
+    struct PairedRejectionClass {
+        label: &'static str,
+        /// Closed classification required whenever a decision IS available.
+        expected_available_code: &'static str,
+        build: fn(&PlayerDecisionRequestV2) -> Result<DecisionResponseV2, HarnessError>,
+    }
+
+    fn answered_from(
+        request: &PlayerDecisionRequestV2,
+        answer: DecisionAnswerV2,
+    ) -> DecisionResponseV2 {
+        DecisionResponseV2 {
+            schema_version: DECISION_RESPONSE_V2_SCHEMA.into(),
+            player_decision_id: request.player_decision_id,
+            state_revision: request.state_revision,
+            answer,
+        }
+    }
+
+    /// Class A: SelectOne with an unknown candidate id.
+    fn select_one_unknown_candidate(
+        request: &PlayerDecisionRequestV2,
+    ) -> Result<DecisionResponseV2, HarnessError> {
+        if request
+            .candidates
+            .iter()
+            .any(|candidate| candidate.candidate_id == UNKNOWN_PROBE_CANDIDATE)
+        {
+            return Err(HarnessError::TransformPreconditionViolated);
+        }
+        Ok(answered_from(
+            request,
+            DecisionAnswerV2::SelectOne {
+                candidate_id: UNKNOWN_PROBE_CANDIDATE,
+            },
+        ))
+    }
+
+    /// Class B: SelectMany duplicate-member payload against the ChooseOne
+    /// entry domain (domain mismatch classifies before membership).
+    fn duplicate_select_many_on_choose_one(
+        request: &PlayerDecisionRequestV2,
+    ) -> Result<DecisionResponseV2, HarnessError> {
+        let first = request
+            .candidates
+            .first()
+            .map(|candidate| candidate.candidate_id)
+            .ok_or(HarnessError::TransformFixtureAbsent)?;
+        Ok(answered_from(
+            request,
+            DecisionAnswerV2::SelectMany {
+                candidate_ids: vec![first, first],
+            },
+        ))
+    }
+
+    const PAIRED_REJECTION_CLASSES: &[PairedRejectionClass] = &[
+        PairedRejectionClass {
+            label: "select_one_unknown_candidate",
+            expected_available_code: "invalid_candidate",
+            build: select_one_unknown_candidate,
+        },
+        PairedRejectionClass {
+            label: "duplicate_select_many_on_choose_one",
+            expected_available_code: "invalid_answer",
+            build: duplicate_select_many_on_choose_one,
+        },
+    ];
+
+    /// Well-formed literal payload used only where NO decision is available:
+    /// the closed unavailable boundary rejects it identically on both sides
+    /// before classification could run.
+    fn plausible_literal_response() -> DecisionResponseV2 {
+        DecisionResponseV2 {
+            schema_version: DECISION_RESPONSE_V2_SCHEMA.into(),
+            player_decision_id: PlayerDecisionIdV1(1),
+            state_revision: StateRevision(0),
+            answer: DecisionAnswerV2::SelectOne {
+                candidate_id: CandidateIdV1(0),
+            },
+        }
+    }
+
+    /// Drives one identical rejected response of `class` through side
+    /// `side`'s real witness-perspective endpoint and returns the captured
+    /// product plus whether a decision was available to classify against.
+    fn submitted_rejection_product(
+        pair: &SpawnedPair,
+        side: usize,
+        perspective: PlayerId,
+        class: &PairedRejectionClass,
+    ) -> Result<(TransitionVisibleProduct, bool), HarnessError> {
+        let endpoint = endpoint_for(&pair[side].1, perspective)?;
+        let request = endpoint
+            .visible_decision()
+            .map_err(|_| HarnessError::EndpointService)?;
+        let response = match request.as_ref() {
+            Some(request) => (class.build)(request)?,
+            None => plausible_literal_response(),
+        };
+        let step = endpoint
+            .submit(response)
+            .map_err(|_| HarnessError::EndpointService)?;
+        Ok((capture_transition_product(Ok(step))?, request.is_some()))
+    }
+
+    /// Rejection parity for EVERY hidden axis: for each of the ten axis
+    /// pairs, each pinned response class is submitted through both real
+    /// endpoints of the witness perspective. Asserts per class: availability
+    /// agreement, semantic_submission_code equality across sides AND the
+    /// pinned class code whenever a decision is available, byte-equal
+    /// rejected steps, and — once per axis and side — a COMPLETE four-group
+    /// fingerprint unchanged by every rejection.
+    ///
+    /// Axis 07a's witness is P2 while the entry decision belongs to P1, so
+    /// its submissions land as `unavailable_decision` on both sides: the
+    /// classification path is unreachable without an available decision and
+    /// THAT closed-boundary equality is asserted instead.
+    #[test]
+    fn paired_rejection_parity_hidden_axes() -> Result<(), HarnessError> {
+        for axis in [
+            AxisKind::OpponentHiddenDefinition,
+            AxisKind::HiddenConcealedOrdering,
+            AxisKind::ForeignPrivateLook,
+            AxisKind::FaceDownIdentity,
+            AxisKind::RootSeedPreAuth,
+            AxisKind::HiddenRngCursor,
+            AxisKind::ObjectRenaming,
+            AxisKind::AbilityRenaming,
+            AxisKind::GlobalAllocatorHistory,
+            AxisKind::ForeignKnowledgeHistory,
+        ] {
+            let case = build_axis_case(axis)?;
+            assert_witness(&case.state_a, &case.state_b, &case.witness)
+                .map_err(HarnessError::Witness)?;
+            let pair = spawn_pair(&case)?;
+            let before_a = capture_complete(&pair[0].0, &pair[0].1)?;
+            let before_b = capture_complete(&pair[1].0, &pair[1].1)?;
+
+            for class in PAIRED_REJECTION_CLASSES {
+                let (product_a, available_a) =
+                    submitted_rejection_product(&pair, 0, case.perspective, class)?;
+                let (product_b, available_b) =
+                    submitted_rejection_product(&pair, 1, case.perspective, class)?;
+                assert_eq!(
+                    available_a, available_b,
+                    "axis {}: availability asymmetry for class {}",
+                    case.name, class.label
+                );
+                let expected_code = if available_a {
+                    class.expected_available_code
+                } else {
+                    UNAVAILABLE_DECISION_CODE
+                };
+                assert_eq!(
+                    product_a.semantic_submission_code.as_deref(),
+                    Some(expected_code),
+                    "axis {}: class {} side A closed code",
+                    case.name,
+                    class.label
+                );
+                assert_eq!(
+                    product_b.semantic_submission_code.as_deref(),
+                    Some(expected_code),
+                    "axis {}: class {} side B closed code",
+                    case.name,
+                    class.label
+                );
+                assert!(
+                    product_a.endpoint_error_code.is_none()
+                        && product_b.endpoint_error_code.is_none(),
+                    "axis {}: class {} must reject semantically, not service-level",
+                    case.name,
+                    class.label
+                );
+                assert_eq!(
+                    product_a.player_step_bytes, product_b.player_step_bytes,
+                    "axis {}: class {} rejected step bytes diverge across sides",
+                    case.name, class.label
+                );
+            }
+
+            let after_a = capture_complete(&pair[0].0, &pair[0].1)?;
+            let after_b = capture_complete(&pair[1].0, &pair[1].1)?;
+            assert_fingerprint_policies(&before_a, &after_a, FingerprintComparison::All)
+                .unwrap_or_else(|error| panic!("axis {} side A mutated: {error:?}", case.name));
+            assert_fingerprint_policies(&before_b, &after_b, FingerprintComparison::All)
+                .unwrap_or_else(|error| panic!("axis {} side B mutated: {error:?}", case.name));
+        }
         Ok(())
     }
 }
