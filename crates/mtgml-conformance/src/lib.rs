@@ -12,6 +12,7 @@ use mtgml_state::{EngineState, SemanticDeltaOperation};
 use std::collections::BTreeMap;
 use thiserror::Error;
 
+pub mod isolation;
 pub mod legal_space;
 pub mod lifecycle;
 
