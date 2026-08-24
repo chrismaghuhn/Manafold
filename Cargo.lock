@@ -139,6 +139,7 @@ dependencies = [
  "mtgml-replay",
  "mtgml-rules",
  "mtgml-state",
+ "mtgml-wire",
  "thiserror",
 ]
 
