@@ -5,6 +5,14 @@
       "path": "episode-status.v1.json"
     },
     {
+      "contract": "episode-status.v1",
+      "path": "episode-status-terminal-concession.v1.json"
+    },
+    {
+      "contract": "episode-status.v1",
+      "path": "episode-status-truncated-external-stop.v1.json"
+    },
+    {
       "contract": "observed-event-envelope.v1",
       "path": "observed-event-tapped.v1.json"
     },
@@ -25,8 +33,32 @@
       "path": "player-decision-request.v2.json"
     },
     {
+      "contract": "player-decision-request.v2",
+      "path": "player-decision-request.v2-choose-number.json"
+    },
+    {
+      "contract": "player-decision-request.v2",
+      "path": "player-decision-request.v2-choose-many.json"
+    },
+    {
+      "contract": "player-decision-request.v2",
+      "path": "player-decision-request.v2-order.json"
+    },
+    {
       "contract": "decision-response.v2",
       "path": "decision-response.v2-select-one.json"
+    },
+    {
+      "contract": "decision-response.v2",
+      "path": "decision-response.v2-select-many.json"
+    },
+    {
+      "contract": "decision-response.v2",
+      "path": "decision-response.v2-order.json"
+    },
+    {
+      "contract": "decision-response.v2",
+      "path": "decision-response.v2-choose-number.json"
     },
     {
       "contract": "information-state-envelope.v2",
@@ -37,8 +69,36 @@
       "path": "observed-event-envelope.v2.json"
     },
     {
+      "contract": "observed-event-envelope.v2",
+      "path": "observed-event-v2-object-moved.json"
+    },
+    {
+      "contract": "observed-event-envelope.v2",
+      "path": "observed-event-v2-object-ceased.json"
+    },
+    {
+      "contract": "observed-event-envelope.v2",
+      "path": "observed-event-v2-life-changed.json"
+    },
+    {
+      "contract": "observed-event-envelope.v2",
+      "path": "observed-event-v2-decision-available.json"
+    },
+    {
+      "contract": "observed-event-envelope.v2",
+      "path": "observed-event-v2-random-outcome.json"
+    },
+    {
+      "contract": "observed-event-envelope.v2",
+      "path": "observed-event-v2-public-outcome.json"
+    },
+    {
       "contract": "player-step.v2",
       "path": "player-step.v2.json"
+    },
+    {
+      "contract": "player-step.v2",
+      "path": "player-step.v2-events-running.json"
     },
     {
       "contract": "observation-envelope.v1",

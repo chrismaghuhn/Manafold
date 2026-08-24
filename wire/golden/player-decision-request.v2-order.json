@@ -1,0 +1,1 @@
+{"actor":"1","candidates":[{"candidate_id":0,"intent":{"kind":"select_player","player":"4"}},{"candidate_id":1,"intent":{"kind":"select_mode","mode_index":3}}],"decision":{"kind":"order","maximum":2,"minimum":1},"player_decision_id":"6","schema_version":"player-decision-request.v2","state_revision":"0","visibility":"acting_player_only"}
