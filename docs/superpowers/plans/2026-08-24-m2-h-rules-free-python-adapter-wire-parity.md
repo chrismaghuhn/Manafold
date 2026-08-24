@@ -28,7 +28,7 @@
 >   - MAJOR (co-drift) → new **below-JSONL handler transparency tests**: for every player
 >     operation, endpoint result → `encode_canonical()` must equal the handler's emitted
 >     payload bytes, so a shared adapter transformation bug cannot pass twin parity.
->   - MAJOR (raw bytes) → envelope payloads switched to **base64** (`*_wire_base64`),
+>   - MAJOR (raw bytes) → envelope payloads switched to **base64** (`*_wire_b64`),
 >     confining base64 to the temporary JSONL shell and making the true `&[u8]` boundary
 >     testable down to invalid UTF-8 / NUL / truncated multibyte / arbitrary garbage.
 >   - MAJOR (field drift) → per-contract **schema-shape identity** (canonical structural
@@ -279,7 +279,7 @@ Trusted setup/orchestration command failures:
 
 Service-redaction evidence uses a controlled test-only failing endpoint/backend seam, never induced panics. The player-visible error surface remains EXACTLY: `malformed_response` (wire), closed submission codes (semantic), `service_unavailable` (internal/service).
 
-**Framing (MAJOR raw-byte fix):** JSON Lines over stdin/stdout, UTF-8, strictly one request → one response, request ids echoed for correlation. Normative payloads travel as **base64 strings** (`observation_wire_base64`, `information_state_wire_base64`, `visible_decision_wire_base64`, `step_wire_base64`, `response_wire_base64`) — base64 belongs ONLY to the temporary non-normative JSONL envelope, so the exact original `&[u8]` reaches the Rust canonical decoder unmodified, including deliberately invalid bytes:
+**Framing (MAJOR raw-byte fix):** JSON Lines over stdin/stdout, UTF-8, strictly one request → one response, request ids echoed for correlation. Normative payloads travel as **base64 strings** (`observation_wire_b64`, `information_state_wire_b64`, `visible_decision_wire_b64`, `step_wire_b64`, `response_wire_b64`) — base64 belongs ONLY to the temporary non-normative JSONL envelope, so the exact original `&[u8]` reaches the Rust canonical decoder unmodified, including deliberately invalid bytes:
 
 ```text
 Python canonical bytes ─base64→ JSONL ─decode→ exact original &[u8] ─→ Rust boundary
@@ -292,14 +292,14 @@ Command sets:
 ```text
 trusted:   reset_synthetic {players:["1","2"], root_seed_hex}   # new epoch; old tokens dead
            bind_player {player} -> {token}                      # once per token
-           direct_call {op, player, response_wire_base64?}      # bound-handle route, oracle only
+           direct_call {op, player, response_wire_b64?}      # bound-handle route, oracle only
            shutdown {}                                          # clean process exit
-player:    observation          {token} -> {observation_wire_base64}
-           information_state    {token} -> {information_state_wire_base64}
-           visible_decision     {token} -> {visible_decision_wire_base64|null}
-           submit               {token, response_wire_base64}
-                                        -> {step_wire_base64}                     # Ok incl. typed rejection
-                                        | {boundary_error:{layer,code}}           # wire|service only
+player:    observation          {token} -> {observation_wire_b64}
+           information_state    {token} -> {information_state_wire_b64}
+           visible_decision     {token} -> {visible_decision_wire_b64|null}
+           submit               {token, response_wire_b64}
+                                        -> {step_wire_b64}            # Ok incl. typed rejection
+                                        | ok:false envelope error code malformed_response|service_unavailable
 ```
 
 Layer B arrives INSIDE the step (`submission.rejected`) per the existing Rust contract; `ok:false` boundary errors occur only for wire/service layers — mirroring `submit_response_bytes`.
@@ -670,7 +670,7 @@ Fresh `run_m2_h_gates.py` on the G skeleton (import-time exact-set manifest vali
 | BLOCKER | `episode_closed` unreachable: the synthetic kernel always emits `Running` on completion; forcing it would require a status-injection backchannel | Resolved: removed from the Gate-B runtime matrix; wire shapes stay Gate-A fixtures; semantics stay M2.D regression; one-row extension if the kernel ever terminates episodes natively (§H.5, §I) |
 | MAJOR | `selftest_roundtrip` impossible: `decode_named` is private and production wire stays unchanged | Resolved: subcommand dropped entirely; cross-language authority = constructive encoding against the SAME checked-in fixtures on both sides (§G.3); tool shrinks; zero production-API changes |
 | MAJOR | Twin token-vs-direct paths share the adapter handler → co-drift false-PASS possible | Resolved: mandatory below-JSONL handler-transparency tests for EVERY player operation (endpoint bytes == handler bytes, incl. counting-decorator zero-submit proof through the handler) (§H preamble, §J H.2) |
-| MAJOR | JSON-string carriers cannot represent arbitrary invalid bytes; raw-byte layer-A testing incomplete | Resolved: envelope payloads are base64 (`*_wire_base64`), confined to the temporary shell; exact `&[u8]` reaches the Rust decoder; new byte-level corruption classes (invalid UTF-8, NUL, truncated multibyte, garbage) (§D, §H.6-item) |
+| MAJOR | JSON-string carriers cannot represent arbitrary invalid bytes; raw-byte layer-A testing incomplete | Resolved: envelope payloads are base64 (`*_wire_b64`), confined to the temporary shell; exact `&[u8]` reaches the Rust decoder; new byte-level corruption classes (invalid UTF-8, NUL, truncated multibyte, garbage) (§D, §H.6-item) |
 | MAJOR | Surface closure missed DTO FIELD drift (e.g., new optional field tolerated by legacy fixtures) | Resolved: per-contract schema-shape structural digest (required/optional props, discriminators, `$ref` closure) pinned in the manifest; field change ⇒ FAIL ⇒ coherent manifest+fixture update; optional fields require presence-AND-absence coverage (§G.1, §Q) |
 | MINOR | Trusted key must live only in the child environment | Resolved: child-scoped `env={…}` only; guard test proves parent `os.environ` untouched; `AdapterPlayerClient` gets a restricted transport, never a generic command handle (§D, §E, §J H.3) |
 | MINOR | Determinism comparisons must exclude transport metadata | Resolved: global comparison-hygiene rule — payload bytes only; request ids/tokens/frame structure excluded everywhere (§H preamble, §O) |
