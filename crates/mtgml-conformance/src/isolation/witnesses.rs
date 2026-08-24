@@ -5,6 +5,11 @@
 //! functions and raw trusted structs are never used as comparison inputs:
 //! every ignored field below is invisible to a perspective by contract, not
 //! by omission of the comparator.
+//!
+//! All relations are scoped to one witness perspective: another player's
+//! private knowledge, identity mappings, allocators, and retirement history
+//! are unauthorized hidden state and may legitimately differ between paired
+//! states without affecting the relation outcome.
 
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
@@ -123,7 +128,11 @@ impl PairWitness {
         Ok(Self {
             perspective,
             knowledge_relation: relate_knowledge(knowledge_a, knowledge_b),
-            decision_relation: relate_decision(pending_request(a), pending_request(b)),
+            decision_relation: relate_decision(
+                perspective,
+                authorized_decision_view(pending_request(a), perspective),
+                authorized_decision_view(pending_request(b), perspective),
+            ),
             bijection,
             expected_difference,
         })
@@ -136,6 +145,17 @@ fn pending_request(state: &EngineState) -> Option<&AuthoritativeDecisionRequestV
         .pending_decision
         .as_ref()
         .map(|pending| &pending.request)
+}
+
+/// The decision surface `perspective` is authorized to compare. A pending
+/// request exists in the relation only when its actor is the perspective;
+/// a foreign-actor request is invisible to the relation, including the fact
+/// that it exists.
+fn authorized_decision_view(
+    request: Option<&AuthoritativeDecisionRequestV2>,
+    perspective: PlayerId,
+) -> Option<&AuthoritativeDecisionRequestV2> {
+    request.filter(|request| request.actor == perspective)
 }
 
 /// Public location part of a known-location fact: `{zone, player}` only.
@@ -290,19 +310,25 @@ fn retired_keys(state: &PlayerKnowledgeStateV2) -> BTreeSet<OpaqueObjectId> {
     state.retired.keys().copied().collect()
 }
 
-/// Relates two authoritative decision requests.
+/// Relates the decision surface of `perspective` between two authoritative
+/// states. Each side is first reduced to its authorized view: no pending
+/// request, or a request whose actor is `perspective`. A foreign-actor
+/// request therefore compares as absent — its existence is not P's knowledge.
 ///
-/// Equal-set: presence, `player_decision_id`, `state_revision`, actor,
-/// visibility, domain variant with bounds, and candidate count, order,
-/// `CandidateIdV1`s, and visible intent payloads.
+/// Equal-set for authorized views: presence, `player_decision_id`,
+/// `state_revision`, actor, visibility, domain variant with bounds, and
+/// candidate count, order, `CandidateIdV1`s, and visible intent payloads.
 ///
 /// Ignored by contract: `decision_id`, `continuation_id`, and trusted
 /// candidate bindings.
 pub fn relate_decision(
+    perspective: PlayerId,
     a: Option<&AuthoritativeDecisionRequestV2>,
     b: Option<&AuthoritativeDecisionRequestV2>,
 ) -> RelationOutcome {
-    match (a, b) {
+    let view_a = authorized_decision_view(a, perspective);
+    let view_b = authorized_decision_view(b, perspective);
+    match (view_a, view_b) {
         (None, None) => RelationOutcome::Equal,
         (Some(request_a), Some(request_b)) => {
             if request_a.player_decision_id != request_b.player_decision_id {
@@ -342,13 +368,18 @@ pub fn relate_decision(
     }
 }
 
-/// Checks that opaque keys, per-perspective allocators, and retired sets are
-/// equal between sides and that every mapping-target difference is explained
-/// by the bijection. The bijection itself must be injective in both
-/// directions (sources are unique map keys; a duplicated target collapses
-/// two identities into one and is rejected). Any unexplained difference is a
-/// violation.
+/// Checks — scoped to `perspective` — that the perspective's opaque keys,
+/// per-perspective allocators, and retired sets are equal between sides and
+/// that every mapping-target difference is explained by the bijection. The
+/// bijection itself must be injective in both directions (sources are unique
+/// map keys; a duplicated target collapses two identities into one and is
+/// rejected). Any unexplained difference is a violation.
+///
+/// Other players' private identity state is unauthorized hidden information:
+/// their mappings, allocators, and retirement history may differ freely
+/// between paired states and are deliberately not examined here.
 pub fn check_bijection(
+    perspective: PlayerId,
     a_state: &EngineState,
     b_state: &EngineState,
     bijection: &TrustedRenamingBijection,
@@ -363,76 +394,67 @@ pub fn check_bijection(
             path: "abilities".to_owned(),
         };
     }
-    let perspectives: BTreeSet<PlayerId> = a_state
-        .perspective_identities
-        .players
-        .keys()
-        .chain(b_state.perspective_identities.players.keys())
-        .copied()
-        .collect();
-    for perspective in perspectives {
-        let prefix = format!("perspectives[{perspective:?}]");
-        let Some(identity_a) = a_state.perspective_identities.players.get(&perspective) else {
+    let prefix = format!("perspectives[{perspective:?}]");
+    let Some(identity_a) = a_state.perspective_identities.players.get(&perspective) else {
+        return BijectionOutcome::UnexplainedDifference {
+            path: format!("{prefix}.missing_in_a"),
+        };
+    };
+    let Some(identity_b) = b_state.perspective_identities.players.get(&perspective) else {
+        return BijectionOutcome::UnexplainedDifference {
+            path: format!("{prefix}.missing_in_b"),
+        };
+    };
+    if keys_of(&identity_a.opaque_to_object) != keys_of(&identity_b.opaque_to_object) {
+        return BijectionOutcome::UnexplainedDifference {
+            path: format!("{prefix}.opaque_object_keys"),
+        };
+    }
+    if keys_of(&identity_a.opaque_to_ability) != keys_of(&identity_b.opaque_to_ability) {
+        return BijectionOutcome::UnexplainedDifference {
+            path: format!("{prefix}.opaque_ability_keys"),
+        };
+    }
+    if identity_a.retired_object_ids != identity_b.retired_object_ids {
+        return BijectionOutcome::UnexplainedDifference {
+            path: format!("{prefix}.retired_object_ids"),
+        };
+    }
+    if identity_a.retired_ability_ids != identity_b.retired_ability_ids {
+        return BijectionOutcome::UnexplainedDifference {
+            path: format!("{prefix}.retired_ability_ids"),
+        };
+    }
+    if identity_a.next_opaque_object_id != identity_b.next_opaque_object_id
+        || identity_a.next_opaque_ability_id != identity_b.next_opaque_ability_id
+        || identity_a.next_player_decision_id != identity_b.next_player_decision_id
+    {
+        return BijectionOutcome::UnexplainedDifference {
+            path: format!("{prefix}.allocators"),
+        };
+    }
+    for (opaque, target_a) in &identity_a.opaque_to_object {
+        let Some(target_b) = identity_b.opaque_to_object.get(opaque) else {
             return BijectionOutcome::UnexplainedDifference {
-                path: format!("{prefix}.missing_in_a"),
+                path: format!("{prefix}.object_mapping[{opaque:?}]"),
             };
         };
-        let Some(identity_b) = b_state.perspective_identities.players.get(&perspective) else {
+        if target_a != target_b && bijection.objects.get(target_a) != Some(target_b) {
             return BijectionOutcome::UnexplainedDifference {
-                path: format!("{prefix}.missing_in_b"),
+                path: format!("{prefix}.object_mapping[{opaque:?}]"),
+            };
+        }
+    }
+    for (opaque, target_a) in &identity_a.opaque_to_ability {
+        let Some(target_b) = identity_b.opaque_to_ability.get(opaque) else {
+            return BijectionOutcome::UnexplainedDifference {
+                path: format!("{prefix}.ability_mapping[{opaque:?}]"),
             };
         };
-        if keys_of(&identity_a.opaque_to_object) != keys_of(&identity_b.opaque_to_object) {
+        if target_a != target_b && bijection.abilities.get(target_a) != Some(target_b) {
             return BijectionOutcome::UnexplainedDifference {
-                path: format!("{prefix}.opaque_object_keys"),
+                path: format!("{prefix}.ability_mapping[{opaque:?}]"),
             };
-        }
-        if keys_of(&identity_a.opaque_to_ability) != keys_of(&identity_b.opaque_to_ability) {
-            return BijectionOutcome::UnexplainedDifference {
-                path: format!("{prefix}.opaque_ability_keys"),
-            };
-        }
-        if identity_a.retired_object_ids != identity_b.retired_object_ids {
-            return BijectionOutcome::UnexplainedDifference {
-                path: format!("{prefix}.retired_object_ids"),
-            };
-        }
-        if identity_a.retired_ability_ids != identity_b.retired_ability_ids {
-            return BijectionOutcome::UnexplainedDifference {
-                path: format!("{prefix}.retired_ability_ids"),
-            };
-        }
-        if identity_a.next_opaque_object_id != identity_b.next_opaque_object_id
-            || identity_a.next_opaque_ability_id != identity_b.next_opaque_ability_id
-            || identity_a.next_player_decision_id != identity_b.next_player_decision_id
-        {
-            return BijectionOutcome::UnexplainedDifference {
-                path: format!("{prefix}.allocators"),
-            };
-        }
-        for (opaque, target_a) in &identity_a.opaque_to_object {
-            let Some(target_b) = identity_b.opaque_to_object.get(opaque) else {
-                return BijectionOutcome::UnexplainedDifference {
-                    path: format!("{prefix}.object_mapping[{opaque:?}]"),
-                };
-            };
-            if target_a != target_b && bijection.objects.get(target_a) != Some(target_b) {
-                return BijectionOutcome::UnexplainedDifference {
-                    path: format!("{prefix}.object_mapping[{opaque:?}]"),
-                };
-            }
-        }
-        for (opaque, target_a) in &identity_a.opaque_to_ability {
-            let Some(target_b) = identity_b.opaque_to_ability.get(opaque) else {
-                return BijectionOutcome::UnexplainedDifference {
-                    path: format!("{prefix}.ability_mapping[{opaque:?}]"),
-                };
-            };
-            if target_a != target_b && bijection.abilities.get(target_a) != Some(target_b) {
-                return BijectionOutcome::UnexplainedDifference {
-                    path: format!("{prefix}.ability_mapping[{opaque:?}]"),
-                };
-            }
         }
     }
     BijectionOutcome::Holds
@@ -470,7 +492,7 @@ pub fn assert_witness(
     }
     let default_bijection = TrustedRenamingBijection::default();
     let bijection = witness.bijection.as_ref().unwrap_or(&default_bijection);
-    match check_bijection(a, b, bijection) {
+    match check_bijection(witness.perspective, a, b, bijection) {
         BijectionOutcome::Holds => {}
         BijectionOutcome::UnexplainedDifference { path } => {
             return Err(WitnessViolation::BijectionUnexplained { path });
@@ -791,7 +813,7 @@ mod tests {
             .as_ref()
             .map(|pending| &pending.request);
         assert_eq!(
-            relate_decision(pending_a, pending_b),
+            relate_decision(P2, pending_a, pending_b),
             RelationOutcome::Equal
         );
 
@@ -862,15 +884,96 @@ mod tests {
         rebound.candidates[0].trusted_binding =
             mtgml_decision::EngineCandidateBinding::PassPriority;
         assert_eq!(
-            relate_decision(Some(&request), Some(&rebound)),
+            relate_decision(P1, Some(&request), Some(&rebound)),
             RelationOutcome::Equal
         );
         // Presence divergence carries its own path.
         assert_eq!(
-            relate_decision(Some(&request), None),
+            relate_decision(P1, Some(&request), None),
             RelationOutcome::Diverges {
                 path: "presence".to_owned()
             }
+        );
+    }
+
+    #[test]
+    fn identity_equivalence_is_scoped_to_witness_perspective() {
+        let state_a = base_pair_state(&"11".repeat(32)).unwrap();
+        let mut state_b = state_a.clone();
+        // P2-private allocator history differs: hidden from P1, so the pair
+        // stays related even though the whole states are unequal.
+        state_b
+            .perspective_identities
+            .players
+            .get_mut(&P2)
+            .unwrap()
+            .next_player_decision_id
+            .0 += 1;
+        mtgml_state::validate_engine_state(&state_b).unwrap();
+        let witness =
+            PairWitness::build(P1, &state_a, &state_b, None, NonVacuityPredicate::Required)
+                .unwrap();
+        assert_witness(&state_a, &state_b, &witness).unwrap();
+
+        // Negative control: the same private-history difference on P1's OWN
+        // record is an unauthorized divergence the witness must flag.
+        let mut state_c = state_a.clone();
+        state_c
+            .perspective_identities
+            .players
+            .get_mut(&P1)
+            .unwrap()
+            .next_player_decision_id
+            .0 += 1;
+        mtgml_state::validate_engine_state(&state_c).unwrap();
+        let own = PairWitness::build(P1, &state_a, &state_c, None, NonVacuityPredicate::Required)
+            .unwrap();
+        assert!(matches!(
+            assert_witness(&state_a, &state_c, &own),
+            Err(WitnessViolation::BijectionUnexplained { .. })
+        ));
+    }
+
+    #[test]
+    fn decision_relation_hides_foreign_actor_requests() {
+        let state = base_pair_state(&"11".repeat(32)).unwrap();
+        let request = state
+            .execution
+            .pending_decision
+            .as_ref()
+            .unwrap()
+            .request
+            .clone();
+        let mut foreign = request.clone();
+        foreign.actor = P2;
+        let mut rebound = request.clone();
+        rebound.candidates[0].trusted_binding =
+            mtgml_decision::EngineCandidateBinding::PassPriority;
+        let mut foreign_rebound = foreign.clone();
+        foreign_rebound.candidates[0].trusted_binding =
+            mtgml_decision::EngineCandidateBinding::PassPriority;
+
+        // (i) A P-owned request's presence is authorized surface.
+        assert_eq!(
+            relate_decision(P1, Some(&request), None),
+            RelationOutcome::Diverges {
+                path: "presence".to_owned()
+            }
+        );
+        // (ii) A foreign-actor request is invisible to P1, existence included.
+        assert_eq!(
+            relate_decision(P1, Some(&foreign), None),
+            RelationOutcome::Equal
+        );
+        // (iii) Two foreign-actor requests never diverge on trusted detail.
+        assert_eq!(
+            relate_decision(P1, Some(&foreign), Some(&foreign_rebound)),
+            RelationOutcome::Equal
+        );
+        // (iv) P-owned requests ignore trusted binding changes.
+        assert_eq!(
+            relate_decision(P1, Some(&request), Some(&rebound)),
+            RelationOutcome::Equal
         );
     }
 
@@ -886,7 +989,7 @@ mod tests {
             abilities: BTreeMap::new(),
         };
         assert_eq!(
-            check_bijection(&state, &clone, &collapsing),
+            check_bijection(P2, &state, &clone, &collapsing),
             BijectionOutcome::NotInjective {
                 path: "objects".to_owned()
             }
