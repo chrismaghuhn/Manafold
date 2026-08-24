@@ -129,6 +129,22 @@ mod soundness {
     }
 
     #[test]
+    fn request_soundness_expected_request_matches() {
+        let controller = fixture_controller();
+        let space = explore(&controller, P1, &context(), Default::default()).unwrap();
+        let automaton = ReferenceAutomaton::initial();
+        // Check request soundness along every accepted path.
+        for record in space.complete_paths.values().flat_map(|paths| paths.iter()) {
+            let defects =
+                request_sequence_defects(&automaton, &record.stages, &record.observed_requests);
+            assert!(
+                defects.is_empty(),
+                "request soundness violated: {defects:?}"
+            );
+        }
+    }
+
+    #[test]
     fn detects_wrong_visible_candidate_semantics() {
         // Wrong mode_index must be detected.
         let observed = ObservedRequest {

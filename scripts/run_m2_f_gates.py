@@ -77,7 +77,7 @@ GATE_TESTS: dict[str, tuple[EvidenceDefinition, ...]] = {
              "cardinality mutant detection"),
         rust("mtgml-conformance", "legal_space::gate_evidence::soundness::detects_illegal_later_stage_choice",
              "illegal later-stage choice detection"),
-        rust("mtgml-conformance", "legal_space::gate_evidence::request_soundness_expected_request_matches",
+        rust("mtgml-conformance", "legal_space::gate_evidence::soundness::request_soundness_expected_request_matches",
              "request soundness at every stage"),
         rust("mtgml-conformance", "legal_space::gate_evidence::unsatisfiable::authoritative_request_fails_closed",
              "unsatisfiable fail-closed"),
@@ -400,8 +400,20 @@ def execute_python_test(definition: EvidenceDefinition, logs: Path, index: int) 
     return evidence
 
 
+def check_oracle_boundary_guard() -> str:
+    """Oracle must live only in mtgml-conformance; no runtime import path."""
+    for crate_name in ["mtgml-rules", "mtgml-environment"]:
+        cargo_toml = (ROOT / "crates" / crate_name / "Cargo.toml").read_text(encoding="utf-8")
+        if "mtgml-conformance" in cargo_toml:
+            raise AssertionError(f"{crate_name} depends on mtgml-conformance")
+    legal_dir = ROOT / "crates" / "mtgml-conformance" / "src" / "legal_space"
+    if not legal_dir.is_dir():
+        raise AssertionError("legal_space module directory missing from conformance")
+    return "oracle boundary clean: no runtime dependency on conformance"
+
+
 SOURCE_CHECKS = {
-    "source_check::no_runtime_lifecycle_channel": check_no_runtime_lifecycle_channel,
+    "source_check::oracle_boundary_guard": check_oracle_boundary_guard,
 }
 
 
