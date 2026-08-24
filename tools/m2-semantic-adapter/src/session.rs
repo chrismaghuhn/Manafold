@@ -8,12 +8,13 @@
 use crate::config::synthetic_environment_config;
 use crate::tokens::{BoundEndpoint, TokenRegistry};
 use mtgml_environment::{
-    ControllerError, PlayerEndpointHandle, SyntheticM1EnvironmentBackend,
+    ControllerError, PlayerEndpoint, PlayerEndpointHandle, SyntheticM1EnvironmentBackend,
     TrustedEnvironmentController,
 };
 use mtgml_model::PlayerId;
 use mtgml_random::RootSeed256;
 use std::collections::HashMap;
+use std::sync::Arc;
 
 #[derive(Debug)]
 pub enum BindError {
@@ -29,7 +30,7 @@ pub struct Session {
 
 struct LiveEnvironment {
     controller: TrustedEnvironmentController,
-    routes: HashMap<PlayerId, PlayerEndpointHandle>,
+    routes: HashMap<PlayerId, Arc<dyn PlayerEndpoint>>,
     tokens: TokenRegistry,
 }
 
@@ -71,13 +72,14 @@ impl Session {
 
     pub fn bind_player(&mut self, player: PlayerId) -> Result<String, BindError> {
         let environment = self.environment.as_mut().ok_or(BindError::NoEnvironment)?;
-        let endpoint = environment
+        let handle: PlayerEndpointHandle = environment
             .controller
             .bind_player(player)
             .map_err(|_| BindError::Rejected)?;
+        let endpoint: Arc<dyn PlayerEndpoint> = Arc::new(handle);
         let binding = BoundEndpoint {
             player,
-            endpoint: endpoint.clone(),
+            endpoint: Arc::clone(&endpoint),
         };
         let token = environment
             .tokens
@@ -87,12 +89,49 @@ impl Session {
         Ok(token)
     }
 
-    /// The direct-call route: the most recent bound handle for a player.
-    pub fn route(&self, player: PlayerId) -> Option<&PlayerEndpointHandle> {
-        self.environment.as_ref()?.routes.get(&player)
+    /// The direct-call route: the most recent bound endpoint for a player.
+    pub fn route(&self, player: PlayerId) -> Option<&dyn PlayerEndpoint> {
+        self.environment
+            .as_ref()?
+            .routes
+            .get(&player)
+            .map(|endpoint| endpoint.as_ref())
     }
 
     pub fn resolve_token(&self, token: &str) -> Option<&BoundEndpoint> {
         self.environment.as_ref()?.tokens.resolve(token)
+    }
+
+    /// Test-only seam (never compiled into production behavior): resolves
+    /// an UNREGISTERED controller view of the player's real endpoint
+    /// handle, purely for below-envelope comparison in transparency tests.
+    #[cfg(test)]
+    pub(crate) fn live_handle_for_test(&self, player: PlayerId) -> Option<PlayerEndpointHandle> {
+        let environment = self.environment.as_ref()?;
+        environment.controller.bind_player(player).ok()
+    }
+
+    /// Test-only seam (never compiled into production behavior): mirrors
+    /// [`Session::bind_player`] routing exactly — a fresh token plus the
+    /// direct route — but registers a caller-supplied endpoint
+    /// implementation (e.g. a counting wrapper or a controlled-failing
+    /// stub around the real handle). Production binding is unchanged.
+    #[cfg(test)]
+    pub(crate) fn bind_endpoint_for_test(
+        &mut self,
+        player: PlayerId,
+        endpoint: Arc<dyn PlayerEndpoint>,
+    ) -> Result<String, BindError> {
+        let environment = self.environment.as_mut().ok_or(BindError::NoEnvironment)?;
+        let binding = BoundEndpoint {
+            player,
+            endpoint: Arc::clone(&endpoint),
+        };
+        let token = environment
+            .tokens
+            .insert(binding)
+            .map_err(|_| BindError::TokenEntropy)?;
+        environment.routes.insert(player, endpoint);
+        Ok(token)
     }
 }

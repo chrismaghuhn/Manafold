@@ -9,7 +9,7 @@
 
 use crate::protocol::{self, decode_wire_bytes};
 use crate::session::Session;
-use mtgml_environment::{PlayerBoundaryError, PlayerEndpoint, PlayerEndpointHandle};
+use mtgml_environment::{PlayerBoundaryError, PlayerEndpoint};
 use mtgml_model::PlayerId;
 use mtgml_random::RootSeed256;
 use mtgml_wire::WireContract;
@@ -62,7 +62,7 @@ pub fn handle(session: &mut Session, raw: &Value) -> Action {
             .and_then(Value::as_str)
             .and_then(|token| session.resolve_token(token));
         match resolved {
-            Some(binding) => execute_op(&binding.endpoint, cmd, params, id),
+            Some(binding) => execute_op(binding.endpoint.as_ref(), cmd, params, id),
             None => reject(id, protocol::EnvelopeErrorCode::UnknownToken),
         }
     } else {
@@ -110,9 +110,10 @@ fn trusted_command(
 }
 
 /// The single executor behind both routes: token-scoped player commands
-/// and trusted direct calls invoke the identical endpoint operations.
+/// and trusted direct calls invoke the identical endpoint operations on
+/// the resolved [`PlayerEndpoint`].
 pub fn execute_op(
-    endpoint: &PlayerEndpointHandle,
+    endpoint: &dyn PlayerEndpoint,
     op: &str,
     params: &Map<String, Value>,
     id: Option<u64>,

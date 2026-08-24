@@ -20,6 +20,9 @@ pub mod protocol;
 pub mod session;
 pub mod tokens;
 
+#[cfg(test)]
+mod evidence_tests;
+
 use handlers::{is_trusted_command, Action};
 use protocol::EnvelopeErrorCode;
 use protocol::FramedLine;
@@ -27,6 +30,23 @@ use session::Session;
 use std::any::Any;
 use std::io::{BufRead, Write};
 use std::panic::{self, AssertUnwindSafe};
+
+/// The closed panic-classification policy for one serviced command whose
+/// handling panicked (§D failure policy): a panicked PLAYER command maps
+/// best-effort to the frozen layer-C `service_unavailable` surface; a
+/// panicked TRUSTED command maps to the adapter-internal `internal_error`
+/// class. The exit intent is always fatal termination. Deliberately pure
+/// so the policy is directly testable without inducing endpoint panics,
+/// and structurally incapable of carrying panic detail: the emitted line
+/// is exactly the closed error envelope.
+fn panic_envelope_and_exit(trusted: bool, id: Option<u64>) -> (String, i32) {
+    let code = if trusted {
+        EnvelopeErrorCode::InternalError
+    } else {
+        EnvelopeErrorCode::ServiceUnavailable
+    };
+    (protocol::error_envelope(id, code), protocol::EXIT_FATAL)
+}
 
 /// Serves one adapter session to completion and returns the process exit
 /// code: 0 for clean EOF/shutdown termination, nonzero fail-closed
@@ -76,16 +96,11 @@ pub fn run(input: &mut dyn BufRead, output: &mut dyn Write, trusted_key: Option<
                     }
                     Err(payload) => {
                         report_panic(&payload);
-                        let code = if trusted {
-                            EnvelopeErrorCode::InternalError
-                        } else {
-                            EnvelopeErrorCode::ServiceUnavailable
-                        };
-                        let response = protocol::error_envelope(id, code);
-                        if emit(output, &response).is_err() {
-                            return protocol::EXIT_FATAL;
-                        }
-                        return protocol::EXIT_FATAL;
+                        let (response, exit_code) = panic_envelope_and_exit(trusted, id);
+                        // Best-effort emission: a failed emit cannot change
+                        // the outcome, so termination is unconditional.
+                        let _ = emit(output, &response);
+                        return exit_code;
                     }
                 }
             }

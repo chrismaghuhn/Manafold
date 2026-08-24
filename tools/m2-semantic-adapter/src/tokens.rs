@@ -7,19 +7,24 @@
 //! never resolve again and stale tokens uniformly resolve to nothing.
 
 use getrandom::getrandom;
-use mtgml_environment::PlayerEndpointHandle;
+use mtgml_environment::PlayerEndpoint;
 use mtgml_model::PlayerId;
 use std::collections::HashMap;
+use std::sync::Arc;
 
 const TOKEN_BYTES: usize = 16;
 
 #[derive(Debug)]
 pub struct TokenEntropyError;
 
+/// A bound routing target. The endpoint is held as a shared
+/// [`PlayerEndpoint`] trait object so the session can serve either the real
+/// controller-bound handle or, under `cfg(test)`, an equivalent test-only
+/// wrapper installed around one; the player-facing behavior is identical.
 #[derive(Clone)]
 pub struct BoundEndpoint {
     pub player: PlayerId,
-    pub endpoint: PlayerEndpointHandle,
+    pub endpoint: Arc<dyn PlayerEndpoint>,
 }
 
 #[derive(Default)]
