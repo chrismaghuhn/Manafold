@@ -822,8 +822,8 @@ mod tests {
         case: &PairedCase,
         pair: &SpawnedPair,
     ) -> Result<(), HarnessError> {
-        let snapshot_a = capture_snapshot(endpoint_for(&pair[0].1, case.perspective)?)?;
-        let snapshot_b = capture_snapshot(endpoint_for(&pair[1].1, case.perspective)?)?;
+        let snapshot_a = capture_snapshot(endpoint_for(&pair[0].1, case.witness.perspective)?)?;
+        let snapshot_b = capture_snapshot(endpoint_for(&pair[1].1, case.witness.perspective)?)?;
         assert_eq!(
             snapshot_a.perspective, snapshot_b.perspective,
             "axis {}: perspective identity",
@@ -1267,9 +1267,9 @@ mod tests {
 
             for class in PAIRED_REJECTION_CLASSES {
                 let (product_a, available_a) =
-                    submitted_rejection_product(&pair, 0, case.perspective, class)?;
+                    submitted_rejection_product(&pair, 0, case.witness.perspective, class)?;
                 let (product_b, available_b) =
-                    submitted_rejection_product(&pair, 1, case.perspective, class)?;
+                    submitted_rejection_product(&pair, 1, case.witness.perspective, class)?;
                 assert_eq!(
                     available_a, available_b,
                     "axis {}: availability asymmetry for class {}",
