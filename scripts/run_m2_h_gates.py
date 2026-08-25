@@ -26,9 +26,11 @@ the following DELIBERATE fixes (plan §Q "deliberate deviations"):
 3. Per-node subprocess timeout: every spawned command carries an explicit
    timeout (default 600 seconds); expiry yields a BLOCKED evidence row with
    a reason instead of hanging the whole runner.
-4. Structured startup errors: configuration/validation drift raises
-   :class:`GateConfigurationError`, which ``main()`` converts into a short
-   diagnostic and exit code 2 instead of an interpreter traceback.
+4. Structured startup errors: configuration/validation drift discovered by
+   ``main()`` raises :class:`GateConfigurationError`, converted into a short
+   diagnostic and exit code 2 instead of an interpreter traceback; manifest
+   drift at IMPORT time instead aborts the module load itself with a
+   traceback and exit code 1.
 5. Single-invocation file-level pytest summaries: python evidence runs each
    whole file once with a single ``-v`` (the G skeleton ran one named test
    at a time under double verbosity) and requires exactly one terminal
