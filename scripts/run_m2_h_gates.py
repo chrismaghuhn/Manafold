@@ -175,8 +175,9 @@ EXPECTED_PYTHON_PASSED: dict[str, int] = {
 }
 
 # Expected whole-package cargo pass count measured on the H.6 head (lib +
-# bin + doc targets summed across every "test result:" line).
-EXPECTED_ADAPTER_PACKAGE_PASSED = 21
+# bin + doc targets summed across every "test result:" line); re-pinned 22
+# for the token-collision fail-closed seam test added to tokens.rs.
+EXPECTED_ADAPTER_PACKAGE_PASSED = 22
 
 
 GATE_TESTS: dict[str, tuple[EvidenceDefinition, ...]] = {
