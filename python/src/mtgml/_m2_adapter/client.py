@@ -11,7 +11,7 @@ choice-making logic.
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
-from typing import Self, cast
+from typing import TYPE_CHECKING, Self, cast
 
 from ..decision import (
     PLAYER_DECISION_REQUEST_V2_SCHEMA,
@@ -26,8 +26,11 @@ from ..observation import (
     PlayerInformationStateV2,
     PlayerStepV2,
 )
-from ..player_client import PlayerClient
 from ..wire import decode_canonical
+
+if TYPE_CHECKING:
+    from ..player_client import PlayerClient
+
 from .process import SubprocessTransport
 from .protocol import (
     CMD_BIND_PLAYER,
@@ -102,6 +105,9 @@ class SyntheticEnvironmentClient:
         return AdapterPlayerClient(self._transport, token)
 
     def shutdown(self) -> None:
+        """Idempotent, with fixed ordering: request the wire shutdown and
+        drain its reply through the transport first, record completion,
+        then release the subprocess via a graceful transport teardown."""
         if self._shutdown_done:
             return
         self._trusted_call(CMD_SHUTDOWN, {PARAM_TRUSTED_KEY: self._transport._trusted_key})
@@ -173,5 +179,7 @@ def _wire_payload(result: Mapping[str, object], field: str) -> bytes:
     return decode_wire_payload(value)
 
 
-def _protocol_witness(client: AdapterPlayerClient) -> PlayerClient:
-    return client
+if TYPE_CHECKING:
+
+    def _protocol_witness(client: AdapterPlayerClient) -> PlayerClient:
+        return client

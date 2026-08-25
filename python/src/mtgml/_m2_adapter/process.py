@@ -72,11 +72,22 @@ def _pump_stdout(stdout: BinaryIO, sink: queue.Queue[bytes | None]) -> None:
             if not line:
                 break
             sink.put(line)
+    except (OSError, ValueError):
+        pass
     finally:
         sink.put(None)
 
 
 class SubprocessTransport:
+    """Blocking single-channel transport to one adapter subprocess.
+
+    Concurrency contract: round trips serialize behind the instance lock,
+    and the lifecycle methods (``close``, ``_mark_shutdown``) take the
+    same lock, so teardown never interleaves with an in-flight call. A
+    lifecycle call issued while a request is outstanding waits for that
+    request to finish or fail first, bounded by the per-request timeout.
+    """
+
     def __init__(
         self,
         *,
@@ -112,10 +123,8 @@ class SubprocessTransport:
         return envelope.result
 
     def close(self) -> None:
-        self._terminate()
-        reader = self._reader
-        if reader is not None and reader.is_alive():
-            reader.join(timeout=TERMINATE_GRACE_SECONDS)
+        with self._lock:
+            self._teardown(graceful=False)
 
     def __enter__(self) -> SubprocessTransport:
         return self
@@ -136,15 +145,15 @@ class SubprocessTransport:
             stdin.write(line)
             stdin.flush()
         except (OSError, ValueError) as exc:
-            self._terminate()
+            self._teardown(graceful=False)
             raise AdapterError(TRANSPORT_CLOSED, "failed to write request") from exc
         try:
             item = self._responses.get(timeout=self._timeout)
         except queue.Empty:
-            self._terminate()
+            self._teardown(graceful=False)
             raise AdapterError(REQUEST_TIMEOUT, "adapter response timed out") from None
         if item is None:
-            self._terminate()
+            self._teardown(graceful=False)
             raise AdapterError(TRANSPORT_CLOSED, "adapter closed its output")
         return parse_response_frame(_strip_newline(item), request_id)
 
@@ -170,31 +179,56 @@ class SubprocessTransport:
         self._reader.start()
         return process
 
-    def _terminate(self) -> None:
+    def _teardown(self, *, graceful: bool) -> None:
+        """Single deterministic teardown sequence; caller holds ``_lock``.
+
+        Order: stop the child (graceful mode signals EOF on stdin first),
+        wait for it, join the reader thread, and only then close both
+        pipes. The reader owns stdout while alive, so stdout is closed
+        exclusively after the join; every path ends with both pipes
+        closed, including timeout, crash, and shutdown.
+        """
         self._closed = True
         process = self._process
-        if process is None or process.poll() is not None:
+        if process is not None:
+            stdin = process.stdin
+            if graceful and process.poll() is None and stdin is not None:
+                with contextlib.suppress(OSError, ValueError):
+                    stdin.close()
+                # Graceful mode signals EOF and gives the child time to exit
+                # cleanly before any terminate is considered.
+                with contextlib.suppress(subprocess.TimeoutExpired):
+                    process.wait(timeout=TERMINATE_GRACE_SECONDS)
+            self._stop_child(process)
+        self._join_reader()
+        if process is not None:
+            self._close_pipes(process)
+
+    def _stop_child(self, process: Popen[bytes]) -> None:
+        if process.poll() is not None:
             return
         process.terminate()
         try:
             process.wait(timeout=TERMINATE_GRACE_SECONDS)
         except subprocess.TimeoutExpired:
             process.kill()
-            process.wait(timeout=TERMINATE_GRACE_SECONDS)
+            with contextlib.suppress(subprocess.TimeoutExpired):
+                process.wait(timeout=TERMINATE_GRACE_SECONDS)
+
+    def _join_reader(self) -> None:
+        reader = self._reader
+        if reader is not None and reader.is_alive():
+            reader.join(timeout=TERMINATE_GRACE_SECONDS)
+
+    def _close_pipes(self, process: Popen[bytes]) -> None:
+        for pipe in (process.stdin, process.stdout):
+            if pipe is not None:
+                with contextlib.suppress(OSError, ValueError):
+                    pipe.close()
 
     def _mark_shutdown(self) -> None:
-        self._closed = True
-        process = self._process
-        if process is None:
-            return
-        stdin = process.stdin
-        if stdin is not None:
-            with contextlib.suppress(OSError):
-                stdin.close()
-        try:
-            process.wait(timeout=TERMINATE_GRACE_SECONDS)
-        except subprocess.TimeoutExpired:
-            self._terminate()
+        with self._lock:
+            self._teardown(graceful=True)
 
 
 def _strip_newline(raw: bytes) -> bytes:

@@ -8,6 +8,7 @@ against scripted in-memory transports.
 from __future__ import annotations
 
 import base64
+import gc
 import inspect
 import os
 import re
@@ -15,6 +16,7 @@ import sys
 import time
 import typing
 import unittest
+import warnings
 from pathlib import Path
 from types import FunctionType
 from typing import Any
@@ -335,6 +337,13 @@ class TimeoutAndCrashTests(unittest.TestCase):
             self.assertEqual(followup.exception.code, TRANSPORT_CLOSED)
         finally:
             transport.close()
+        process = transport._process
+        assert process is not None and process.stdin is not None and process.stdout is not None
+        self.assertTrue(process.stdin.closed)
+        self.assertTrue(process.stdout.closed)
+        reader = transport._reader
+        assert reader is not None
+        self.assertFalse(reader.is_alive())
 
 
 class BinaryResolutionTests(unittest.TestCase):
@@ -420,8 +429,42 @@ class PostShutdownTests(unittest.TestCase):
         self.assertEqual(ctx.exception.code, TRANSPORT_CLOSED)
         process = transport._process
         self.assertIsNotNone(process)
+        assert process is not None
         self.assertIsNotNone(process.poll())
         self.assertEqual(process.poll(), 0)
+        assert process.stdin is not None and process.stdout is not None
+        self.assertTrue(process.stdin.closed)
+        self.assertTrue(process.stdout.closed)
+
+
+class DeterministicTeardownTests(unittest.TestCase):
+    def test_full_spawn_use_teardown_emits_no_resource_warnings(self) -> None:
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", ResourceWarning)
+            transport = child_transport(CHILD_ECHO)
+            result = transport.call("observation", {"token": "t"})
+            transport.close()
+            process = transport._process
+            reader = transport._reader
+            del transport, process, reader
+            gc.collect()
+        self.assertEqual(result, {"echo_id": 1, "cmd": "observation"})
+
+    def test_close_closes_pipes_and_joins_reader_on_a_live_child(self) -> None:
+        transport = child_transport(CHILD_ECHO)
+        try:
+            transport.call("observation", {"token": "t"})
+        finally:
+            transport.close()
+        process = transport._process
+        assert process is not None
+        self.assertIsNotNone(process.poll())
+        assert process.stdin is not None and process.stdout is not None
+        self.assertTrue(process.stdin.closed)
+        self.assertTrue(process.stdout.closed)
+        reader = transport._reader
+        assert reader is not None
+        self.assertFalse(reader.is_alive())
 
 
 class ApiInventoryTests(unittest.TestCase):

@@ -81,7 +81,13 @@ FIELD_RESPONSE_WIRE_B64: Final = "response_wire_b64"
 
 
 class AdapterError(ValueError):
-    """Local failure carrying a closed adapter or local transport code."""
+    """Local failure carrying one closed-vocabulary code.
+
+    Codes arrive either verbatim from a validated response frame or are
+    synthesized locally: transport and client sites raise codes such as
+    ``TRANSPORT_CLOSED``, ``REQUEST_TIMEOUT``, and shape/decode
+    violations without any corresponding wire frame.
+    """
 
     def __init__(self, code: str, message: str) -> None:
         super().__init__(f"{code}: {message}")
