@@ -29,6 +29,11 @@ the following DELIBERATE fixes (plan §Q "deliberate deviations"):
 4. Structured startup errors: configuration/validation drift raises
    :class:`GateConfigurationError`, which ``main()`` converts into a short
    diagnostic and exit code 2 instead of an interpreter traceback.
+5. Single-invocation file-level pytest summaries: python evidence runs each
+   whole file once with a single ``-v`` (the G skeleton ran one named test
+   at a time under double verbosity) and requires exactly one terminal
+   summary line whose pass count equals the pinned expectation with zero
+   substitute outcomes.
 
 Startup completeness/drift authorities (all fail closed BEFORE any evidence
 executes): the exact-set evidence manifest, the mechanically extracted
@@ -215,7 +220,7 @@ GATE_TESTS: dict[str, tuple[EvidenceDefinition, ...]] = {
         check(
             CHECK_REGISTRY,
             "SUPPLEMENTAL: decoder registry relation rust == COMMON, "
-            "python == COMMON ∪ PYTHON_MECHANICAL_ONLY, schemas == COMMON",
+            "python == COMMON union PYTHON_MECHANICAL_ONLY, schemas == COMMON",
         ),
         check(
             CHECK_VARIANTS,
@@ -423,9 +428,7 @@ PINNED_TRUNCATION_REASONS = frozenset(
     }
 )
 
-PINNED_ANSWER_FAMILIES = frozenset(
-    {"select_one", "select_many", "order", "choose_number"}
-)
+PINNED_ANSWER_FAMILIES = frozenset({"select_one", "select_many", "order", "choose_number"})
 
 PINNED_SUBMISSION_CODES = frozenset(
     {
@@ -467,12 +470,18 @@ TOP_LEVEL_PLAYER_SCHEMAS: tuple[str, ...] = (
 
 SCHEMA_CONTRACT_DIGESTS: dict[str, str] = {
     "observation-envelope.v1": "b3494a12ab4cb036e0847ea9b1f37e26f2ec3b55d93c29c6ddf6dbf0acc580fc",
-    "information-state-envelope.v2": "5c4e009ee3e74041e51f48b1bbad66124acc73116fe4fbdbafbd71d41136bd20",
-    "player-decision-request.v2": "297dcf2fbb2dc2d5f16ba7d3c0c8bf0f573013f6c9b67834f8df00eade997568",
+    "information-state-envelope.v2": (
+        "5c4e009ee3e74041e51f48b1bbad66124acc73116fe4fbdbafbd71d41136bd20"
+    ),
+    "player-decision-request.v2": (
+        "297dcf2fbb2dc2d5f16ba7d3c0c8bf0f573013f6c9b67834f8df00eade997568"
+    ),
     "decision-response.v2": "364238d3ba62828eb7a56758ffbb5a99456b2858cd75a0b42b721dae5b5feb24",
     "player-step.v2": "1c92a74cf34d19c3588fe7a4e18f78c1867ea6832290d8a4c2194ce0ea8b26fa",
     "episode-status.v1": "b0cf9fc6ecc32d9615a2d3032f386a7e23580678ee40dbcd41195e3855fb9a7a",
-    "observed-event-envelope.v2": "d459d6802f2e3450d3501e0912d7a59a8c442c5455428d7e2ad38076c1d2700e",
+    "observed-event-envelope.v2": (
+        "d459d6802f2e3450d3501e0912d7a59a8c442c5455428d7e2ad38076c1d2700e"
+    ),
 }
 
 
@@ -508,9 +517,7 @@ def _resolve_pointer(document: dict[str, Any], pointer: str, context: str) -> An
                         f"unresolvable $ref pointer {pointer!r} ({context})"
                     )
             else:
-                raise GateConfigurationError(
-                    f"unresolvable $ref pointer {pointer!r} ({context})"
-                )
+                raise GateConfigurationError(f"unresolvable $ref pointer {pointer!r} ({context})")
     return node
 
 
@@ -533,9 +540,7 @@ def _normalize_schema_node(
         else:
             file_name, separator, pointer = ref.partition("#")
             if not file_name.endswith(".json"):
-                raise GateConfigurationError(
-                    f"unsupported $ref target {ref!r} in {source_name}"
-                )
+                raise GateConfigurationError(f"unsupported $ref target {ref!r} in {source_name}")
             target_document = _load_schema(file_name)
             pointer = pointer if separator else ""
             target_source = file_name
@@ -551,9 +556,7 @@ def _normalize_schema_node(
                 f"$ref with siblings resolved to a non-object in {source_name}: {ref!r}"
             )
         merged: dict[str, Any] = dict(normalized_target)
-        for key, value in _normalize_schema_node(
-            remainder, document, source_name, seen
-        ).items():
+        for key, value in _normalize_schema_node(remainder, document, source_name, seen).items():
             merged[key] = value
         return merged
     normalized: dict[str, Any] = {}
@@ -622,9 +625,7 @@ def extract_rust_trait_methods(origin: str) -> dict[str, dict[str, object]]:
                 continue
             param_name, separator, param_type = piece.partition(":")
             if not separator:
-                raise GateConfigurationError(
-                    f"{origin}: untyped parameter {piece!r} on {name}"
-                )
+                raise GateConfigurationError(f"{origin}: untyped parameter {piece!r} on {name}")
             params[param_name.strip()] = _norm_type(param_type)
         methods[name] = {"params": params, "returns": returns}
     if not methods:
@@ -658,7 +659,7 @@ def extract_python_protocol_methods(origin: str) -> dict[str, dict[str, object]]
         raise GateConfigurationError(f"{origin}: PlayerClient is not a Protocol")
     methods: dict[str, dict[str, object]] = {}
     for item in klass.body:
-        if not isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef)):
+        if not isinstance(item, ast.FunctionDef | ast.AsyncFunctionDef):
             continue
         params: dict[str, str] = {}
         for argument in item.args.args:
@@ -685,7 +686,7 @@ def extract_adapter_public_methods(origin: str) -> frozenset[str]:
     names = {
         item.name
         for item in klass.body
-        if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef))
+        if isinstance(item, ast.FunctionDef | ast.AsyncFunctionDef)
         and not item.name.startswith("_")
     }
     if not names:
@@ -732,7 +733,7 @@ def _extract_module_dict_keys(path: Path, variable: str, origin: str) -> frozens
                     if isinstance(key, ast.Constant) and isinstance(key.value, str)
                 ]
                 if not keys:
-                    break
+                    continue
                 return frozenset(keys)
     raise GateConfigurationError(f"{origin}: {variable} mapping not found")
 
@@ -740,13 +741,12 @@ def _extract_module_dict_keys(path: Path, variable: str, origin: str) -> frozens
 # Generated vocabulary + codec constants imported from python/src.
 sys.path.insert(0, str(ROOT / "python" / "src"))
 
-from mtgml._generated_contract_vocab import (  # noqa: E402
+from mtgml._generated_contract_vocab import (
     OBSERVED_EVENT_KINDS,
     TerminalReason,
     TruncationReason,
 )
-from mtgml.observation import PLAYER_SUBMISSION_CODES  # noqa: E402
-
+from mtgml.observation import PLAYER_SUBMISSION_CODES
 
 # ---------------------------------------------------------------------------
 # Startup validators (fail closed BEFORE any evidence executes).
@@ -873,7 +873,7 @@ def verify_registry_relation() -> str:
     expected_python = COMMON_NAMED_CONTRACTS | PYTHON_MECHANICAL_ONLY
     if python_decoders != expected_python:
         problems.append(
-            f"python _DECODERS != COMMON ∪ PYTHON_MECHANICAL_ONLY: "
+            f"python _DECODERS != COMMON union PYTHON_MECHANICAL_ONLY: "
             f"extra={sorted(python_decoders - expected_python)} "
             f"missing={sorted(expected_python - python_decoders)}"
         )
@@ -915,9 +915,7 @@ def _schema_kind_consts(alternatives: Any, source_name: str, label: str) -> froz
     kinds: set[str] = set()
     for kind, _ in rows:
         if not isinstance(kind, str):
-            raise GateConfigurationError(
-                f"{source_name}: {label} alternative lacks a const kind"
-            )
+            raise GateConfigurationError(f"{source_name}: {label} alternative lacks a const kind")
         kinds.add(kind)
     if len(kinds) != len(rows):
         raise GateConfigurationError(
@@ -934,7 +932,8 @@ def verify_variant_closures() -> str:
     event_defs = events.get("$defs")
     if not isinstance(event_defs, dict) or "event" not in event_defs:
         raise GateConfigurationError(f"{origin}: observed-event v2 lacks $defs.event")
-    event_one_of = event_defs["event"].get("oneOf") if isinstance(event_defs["event"], dict) else None
+    event_schema = event_defs["event"]
+    event_one_of = event_schema.get("oneOf") if isinstance(event_schema, dict) else None
     schema_event_kinds = _schema_kind_consts(event_one_of, "observed-event-envelope.v2", "event")
     if schema_event_kinds != PINNED_OBSERVED_EVENT_KINDS:
         problems.append(
@@ -993,9 +992,7 @@ def verify_variant_closures() -> str:
         else None
     )
     if schema_codes is None:
-        raise GateConfigurationError(
-            f"{origin}: player-step.v2 lacks $defs.submission_code.enum"
-        )
+        raise GateConfigurationError(f"{origin}: player-step.v2 lacks $defs.submission_code.enum")
     if schema_codes != PINNED_SUBMISSION_CODES:
         problems.append(
             f"submission codes != pinned: "
@@ -1063,7 +1060,7 @@ def command_available(command: Sequence[str]) -> bool:
 
 def git_value(arguments: Sequence[str]) -> str:
     completed = run_command(("git", *arguments))
-    if isinstance(completed, subprocess.TimeoutExpired) or isinstance(completed, OSError):
+    if isinstance(completed, subprocess.TimeoutExpired | OSError):
         raise RuntimeError(f"git command failed: {completed!r}")
     if completed.returncode != 0:
         raise RuntimeError(completed.stdout.strip() or "git command failed")
@@ -1124,13 +1121,9 @@ def toolchain_snapshot() -> dict[str, Any]:
             continue
         completed = run_command(command)
         output = (
-            completed.stdout.strip()
-            if isinstance(completed, subprocess.CompletedProcess)
-            else ""
+            completed.stdout.strip() if isinstance(completed, subprocess.CompletedProcess) else ""
         )
-        match = re.match(
-            rf"^{name}\s+(\d+\.\d+\.\d+)", output.splitlines()[0] if output else ""
-        )
+        match = re.match(rf"^{name}\s+(\d+\.\d+\.\d+)", output.splitlines()[0] if output else "")
         reported = match.group(1) if match else None
         rust_results[name] = {
             "reported": reported,
@@ -1140,13 +1133,10 @@ def toolchain_snapshot() -> dict[str, Any]:
         "PASS" if python_ok else "FAIL",
         *(item["status"] for item in rust_results.values()),
     ]
-    overall = (
-        "PASS"
-        if all(status == "PASS" for status in statuses)
-        else "BLOCKED"
-        if "BLOCKED" in statuses
-        else "FAIL"
-    )
+    # Statuses here only ever hold PASS, FAIL, or NOT_RUN (unavailable
+    # commands are recorded NOT_RUN and fail the snapshot closed), so a
+    # BLOCKED outcome cannot arise.
+    overall = "PASS" if all(status == "PASS" for status in statuses) else "FAIL"
     return {
         "status": overall,
         "python": {"version": python_version, "expected": expected_python},
@@ -1175,16 +1165,17 @@ def _slug(name: str) -> str:
     return re.sub(r"[^A-Za-z0-9._-]+", "-", name).strip("-")
 
 
-def _timeout_evidence(evidence: dict[str, Any], error: Any) -> None:
-    evidence["status"] = "BLOCKED"
-    evidence["reason"] = (
-        f"subprocess exceeded the {NODE_TIMEOUT_SECONDS}s per-node timeout"
-    )
+def _captured_timeout_output(error: Any) -> str:
     partial = getattr(error, "stdout", None)
     if isinstance(partial, bytes):
-        partial = partial.decode("utf-8", errors="replace")
-    evidence["timeout_partial_output_bytes"] = len(partial) if partial else 0
-    return partial or ""
+        return partial.decode("utf-8", errors="replace")
+    return partial if isinstance(partial, str) else ""
+
+
+def _apply_timeout_outcome(evidence: dict[str, Any], captured_output: str) -> None:
+    evidence["status"] = "BLOCKED"
+    evidence["reason"] = f"subprocess exceeded the {NODE_TIMEOUT_SECONDS}s per-node timeout"
+    evidence["timeout_partial_output_bytes"] = len(captured_output.encode("utf-8"))
 
 
 def execute_rust_exact(definition: EvidenceDefinition, log_path: Path) -> dict[str, Any]:
@@ -1212,8 +1203,9 @@ def execute_rust_exact(definition: EvidenceDefinition, log_path: Path) -> dict[s
         log_path.write_text("cargo not found\n", encoding="utf-8")
         return evidence
     completed = run_command(command)
-    if isinstance(completed, (subprocess.TimeoutExpired, OSError)):
-        output = _timeout_evidence(evidence, completed)
+    if isinstance(completed, subprocess.TimeoutExpired | OSError):
+        output = _captured_timeout_output(completed)
+        _apply_timeout_outcome(evidence, output)
     else:
         output = completed.stdout
         passed = bool(
@@ -1251,8 +1243,9 @@ def execute_rust_package(definition: EvidenceDefinition, log_path: Path) -> dict
         log_path.write_text("cargo not found\n", encoding="utf-8")
         return evidence
     completed = run_command(command)
-    if isinstance(completed, (subprocess.TimeoutExpired, OSError)):
-        output = _timeout_evidence(evidence, completed)
+    if isinstance(completed, subprocess.TimeoutExpired | OSError):
+        output = _captured_timeout_output(completed)
+        _apply_timeout_outcome(evidence, output)
         log_path.write_text(output, encoding="utf-8")
         return evidence
     output = completed.stdout
@@ -1297,6 +1290,12 @@ _PYTHON_OUTCOME = re.compile(
 def execute_python_file(definition: EvidenceDefinition, log_path: Path) -> dict[str, Any]:
     assert definition.expected_passed is not None
     relative = definition.name.removeprefix("pytest::")
+    # Skeleton deviation (plan §Q): whole-file pytest with a SINGLE -v. The
+    # G skeleton needed ``-v -v`` because its exact-name match required the
+    # per-node status lines that pytest 9 hides at net-default verbosity
+    # (pytest.ini pins global ``addopts = -q ...``); this validator instead
+    # demands exactly one terminal summary line whose pass count equals the
+    # pin with zero substitute outcomes, which survives net-default output.
     command = (sys.executable, "-m", "pytest", "-v", relative)
     evidence: dict[str, Any] = {
         "package": None,
@@ -1317,8 +1316,9 @@ def execute_python_file(definition: EvidenceDefinition, log_path: Path) -> dict[
             return evidence
         extra_env["MTGML_M2_ADAPTER_BIN"] = str(binary)
     completed = run_command(command, extra_env=extra_env or None)
-    if isinstance(completed, (subprocess.TimeoutExpired, OSError)):
-        output = _timeout_evidence(evidence, completed)
+    if isinstance(completed, subprocess.TimeoutExpired | OSError):
+        output = _captured_timeout_output(completed)
+        _apply_timeout_outcome(evidence, output)
         log_path.write_text(output, encoding="utf-8")
         return evidence
     output = completed.stdout
@@ -1376,8 +1376,9 @@ def execute_build(definition: EvidenceDefinition, log_path: Path) -> dict[str, A
         RUNTIME_CONTEXT["adapter_binary"] = None
         return evidence
     completed = run_command(command)
-    if isinstance(completed, (subprocess.TimeoutExpired, OSError)):
-        output = _timeout_evidence(evidence, completed)
+    if isinstance(completed, subprocess.TimeoutExpired | OSError):
+        output = _captured_timeout_output(completed)
+        _apply_timeout_outcome(evidence, output)
         log_path.write_text(output, encoding="utf-8")
         RUNTIME_CONTEXT["adapter_binary"] = None
         return evidence
@@ -1422,10 +1423,8 @@ def execute_check(definition: EvidenceDefinition, log_path: Path) -> dict[str, A
     except (OSError, KeyError) as error:
         evidence.update({"status": "BLOCKED", "reason": str(error)})
         log_path.write_text(str(error) + "\n", encoding="utf-8")
-    except Exception as error:  # noqa: BLE001 - fail closed on unexpected failures
-        evidence.update(
-            {"status": "FAIL", "returncode": 1, "reason": f"unexpected: {error!r}"}
-        )
+    except Exception as error:  # fail closed on unexpected failures
+        evidence.update({"status": "FAIL", "returncode": 1, "reason": f"unexpected: {error!r}"})
         log_path.write_text(repr(error) + "\n", encoding="utf-8")
     else:
         evidence.update({"status": "PASS", "returncode": 0, "reason": detail})
@@ -1433,9 +1432,7 @@ def execute_check(definition: EvidenceDefinition, log_path: Path) -> dict[str, A
     return evidence
 
 
-def execute_definition(
-    definition: EvidenceDefinition, logs: Path, index: int
-) -> dict[str, Any]:
+def execute_definition(definition: EvidenceDefinition, logs: Path, index: int) -> dict[str, Any]:
     log_path = logs / f"{index:03d}-{_slug(definition.name)}.log"
     if definition.kind == "rust":
         evidence = execute_rust_exact(definition, log_path)
@@ -1449,7 +1446,13 @@ def execute_definition(
         evidence = execute_check(definition, log_path)
     else:  # pragma: no cover - manifest validation forbids unknown kinds
         raise GateConfigurationError(f"unknown evidence kind {definition.kind!r}")
-    evidence.update({"kind": definition.kind, "surface": definition.surface, "log": f"logs/{log_path.name}"})
+    evidence.update(
+        {
+            "kind": definition.kind,
+            "surface": definition.surface,
+            "log": f"logs/{log_path.name}",
+        }
+    )
     return evidence
 
 
