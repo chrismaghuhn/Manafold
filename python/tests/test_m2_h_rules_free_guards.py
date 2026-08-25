@@ -71,7 +71,7 @@ import tomllib
 import unittest
 from collections.abc import Callable, Iterator
 from pathlib import Path
-from typing import Any, Final, cast
+from typing import Any, Final
 
 _PYTHON_DIR = Path(__file__).resolve().parents[1]
 _SRC_ROOT = _PYTHON_DIR / "src"
@@ -317,9 +317,12 @@ class RulesFreeStaticGuardsTests(unittest.TestCase):
         )
 
     def test_public_api_inventory_matches_the_pinned_witnesses(self) -> None:
-        unused_transport = cast(Any, object())  # clients only store the reference
-        player = AdapterPlayerClient(unused_transport, "inventory-witness")
-        environment = SyntheticEnvironmentClient(unused_transport)
+        # Inventory witnesses instantiated WITHOUT __init__: client
+        # constructors now eagerly assemble a real child process, and this
+        # guard is purely static (never spawns a process). Method
+        # resolution needs no instance state.
+        player = object.__new__(AdapterPlayerClient)
+        environment = object.__new__(SyntheticEnvironmentClient)
         self.assertEqual(
             harness.public_method_names(player),
             set(harness.PLAYER_CLIENT_PUBLIC_METHODS),

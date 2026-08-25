@@ -5,13 +5,14 @@ Stdlib-only; the Rust adapter remains the sole semantic authority.
 """
 
 from .client import AdapterPlayerClient, SyntheticEnvironmentClient
-from .process import RestrictedPlayerTransport, SubprocessTransport
+from .process import BoundPlayerTransport, ProcessCore, TrustedTransport
 from .protocol import AdapterError
 
 __all__ = [
     "AdapterError",
     "AdapterPlayerClient",
-    "RestrictedPlayerTransport",
-    "SubprocessTransport",
+    "BoundPlayerTransport",
+    "ProcessCore",
     "SyntheticEnvironmentClient",
+    "TrustedTransport",
 ]

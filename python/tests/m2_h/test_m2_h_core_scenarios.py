@@ -212,7 +212,7 @@ class TwinTeardownSafetyTests(unittest.TestCase):
             self.assertRaises(RuntimeError) as caught,
             harness.build_twin_clients(SEED_HEX) as twins,
         ):
-            child_a = twins.env_a._transport._process
+            child_a = twins.env_a._core._process
             assert child_a is not None, "reset must have spawned twin A's child"
             child_a.kill()
             child_a.wait()
@@ -225,9 +225,9 @@ class TwinTeardownSafetyTests(unittest.TestCase):
             "the original scenario error was masked by a transport error",
         )
         for label, environment in (("A", twins.env_a), ("B", twins.env_b)):
-            transport = environment._transport
-            self.assertTrue(transport._closed, f"twin {label} transport was left open")
-            child = transport._process
+            core = environment._core
+            self.assertTrue(core._closed, f"twin {label} transport was left open")
+            child = core._process
             self.assertIsNotNone(child)
             assert child is not None
             self.assertIsNotNone(child.poll(), f"twin {label} child was left running")

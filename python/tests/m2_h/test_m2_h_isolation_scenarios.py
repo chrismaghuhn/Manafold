@@ -44,12 +44,7 @@ import unittest
 from pathlib import Path
 from typing import Final
 
-from mtgml._m2_adapter import (
-    AdapterError,
-    AdapterPlayerClient,
-    RestrictedPlayerTransport,
-    SyntheticEnvironmentClient,
-)
+from mtgml._m2_adapter import AdapterError, AdapterPlayerClient
 from mtgml._m2_adapter.process import BINARY_ENV_VAR
 from mtgml._m2_adapter.protocol import (
     CMD_VISIBLE_DECISION,
@@ -114,10 +109,11 @@ class BindingPermanenceTests(unittest.TestCase):
                 )
                 self.assertIsInstance(client._token, str, context)
                 self.assertTrue(client._token, f"{context}: token slot is empty")
-                # The sole raw-byte seam beneath the client carries ONLY the
-                # submit operation and is bound to THIS token: any other
-                # token fails closed locally, without a single round trip.
-                seam = RestrictedPlayerTransport(client._transport, client._token)
+                # The client's own bound transport IS the sole raw-byte
+                # seam beneath it: it carries ONLY the submit operation and
+                # is bound to THIS token, so any other token fails closed
+                # locally, without a single round trip.
+                seam = client._transport
                 self.assertEqual(
                     {name for name in dir(seam) if "submit" in name.lower()},
                     set(harness.RESTRICTED_SEAM_SUBMIT_SURFACE),
@@ -564,8 +560,7 @@ class RestartDeterminismTests(unittest.TestCase):
         the sequence, and tokens are excluded by design (payload-only).
         Answers come ONLY from the live request data through the pinned
         stage drivers — no response object is ever carried across runs."""
-        transport = harness.RecordingTransport()
-        environment = SyntheticEnvironmentClient(transport)
+        environment = harness.RecordingEnvironment()
         pieces: list[bytes | None] = []
         try:
             environment.reset_synthetic(root_seed_hex=SEED_HEX_A)
@@ -596,12 +591,13 @@ class RestartDeterminismTests(unittest.TestCase):
             self.assertIsNone(client_p1.visible_decision())
         finally:
             environment.shutdown()
-            transport.close()
-        child = transport._process
+            environment._core.close()
+        core = environment._core
+        child = core._process
         self.assertIsNotNone(child, "the episode process never spawned")
         assert child is not None
         self.assertIsNotNone(child.poll(), "the child survived complete shutdown")
-        self.assertTrue(transport._closed, "the transport stayed open after close")
+        self.assertTrue(core._closed, "the core stayed open after close")
         return tuple(pieces)
 
     def test_relaunch_reproduces_concatenated_public_sequence(self) -> None:

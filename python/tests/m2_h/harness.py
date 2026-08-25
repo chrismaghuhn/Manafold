@@ -29,7 +29,7 @@ from typing import Any, Final, NamedTuple, cast
 sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "python" / "src"))
 
 from mtgml._m2_adapter import AdapterPlayerClient, SyntheticEnvironmentClient
-from mtgml._m2_adapter.process import SubprocessTransport
+from mtgml._m2_adapter.process import ProcessCore
 from mtgml._m2_adapter.protocol import (
     CMD_INFORMATION_STATE,
     CMD_SUBMIT,
@@ -66,12 +66,12 @@ TRUSTED_DIRECT_CALL_NAME: Final = "_trusted_direct_call"
 
 # S2 binding-permanence inventory: the ONLY attribute name on a bound player
 # client that may even mention binding/token/perspective is the single token
-# slot itself; the ONLY submit-bearing name below the client is the
-# package-private seam bound to that one token.
+# slot itself; the ONLY submit-bearing names below the client are the four-op
+# transport's public ``submit`` plus its package-private raw-byte seam.
 BINDING_SURFACE_MARKERS: Final[tuple[str, ...]] = ("bind", "token", "perspective")
 PLAYER_CLIENT_BINDING_INVENTORY: Final[frozenset[str]] = frozenset({"_token"})
 PLAYER_CLIENT_SLOT_INVENTORY: Final[frozenset[str]] = frozenset({"_transport", "_token"})
-RESTRICTED_SEAM_SUBMIT_SURFACE: Final[frozenset[str]] = frozenset({"_submit_wire_bytes"})
+RESTRICTED_SEAM_SUBMIT_SURFACE: Final[frozenset[str]] = frozenset({"submit", "_submit_wire_bytes"})
 
 EXPECTED_DECISION_KIND_SEQUENCE: Final[tuple[str, ...]] = (
     "choose_one",
@@ -88,17 +88,30 @@ PLAYER_TWO: Final = "2"
 _PAYLOAD_SUFFIX: Final = "_wire_b64"
 
 
-class RecordingTransport(SubprocessTransport):
-    """Transport that records the result mapping of every successful round trip."""
+class RecordingCore(ProcessCore):
+    """Core that records the result mapping of every successful round trip —
+    trusted commands AND token-scoped player commands alike, since both
+    share this single child channel."""
 
-    def __init__(self) -> None:
-        super().__init__()
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
         self.recorded_results: list[dict[str, object]] = []
 
-    def call(self, command: str, params: Mapping[str, object]) -> Mapping[str, object]:
-        result = super().call(command, params)
+    def round_trip(self, command: str, params: Mapping[str, object]) -> Mapping[str, object]:
+        result = super().round_trip(command, params)
         self.recorded_results.append(dict(result))
         return result
+
+
+class RecordingEnvironment(SyntheticEnvironmentClient):
+    """Production-assembled environment (eager core spawn + trusted
+    transport) whose shared core records every successful round trip for
+    audit windows."""
+
+    def _spawn_core(
+        self, argv: tuple[str, ...], child_env: dict[str, str], timeout: float
+    ) -> ProcessCore:
+        return RecordingCore(argv, child_env, timeout=timeout)
 
 
 class TwinClients(NamedTuple):
@@ -131,23 +144,21 @@ def build_twin_clients(seed_hex_a: str, seed_hex_b: str | None = None) -> Iterat
     seeds behind identical players and reset shapes.
 
     Teardown guarantee: BOTH twins always attempt their full teardown
-    sequence (environment shutdown, then transport close) even when the
+    sequence (environment shutdown, then core close) even when the
     scenario body or the first teardown step raised. The original error
     is never masked: when the body raised, every teardown failure stays
     suppressed with a stderr log line and the body error surfaces
     unchanged. When the body succeeded, the first real teardown error
     surfaces and any later one remains suppressed-with-logging.
     """
-    transport_a: RecordingTransport | None = None
-    transport_b: RecordingTransport | None = None
-    env_a: SyntheticEnvironmentClient | None = None
-    env_b: SyntheticEnvironmentClient | None = None
+    environment_a: RecordingEnvironment | None = None
+    environment_b: RecordingEnvironment | None = None
     body_error: BaseException | None = None
     try:
-        transport_a = RecordingTransport()
-        env_a = SyntheticEnvironmentClient(transport_a)
-        transport_b = RecordingTransport()
-        env_b = SyntheticEnvironmentClient(transport_b)
+        environment_a = RecordingEnvironment()
+        env_a = environment_a
+        environment_b = RecordingEnvironment()
+        env_b = environment_b
         env_a.reset_synthetic(root_seed_hex=seed_hex_a)
         env_b.reset_synthetic(root_seed_hex=seed_hex_b if seed_hex_b is not None else seed_hex_a)
         yield TwinClients(
@@ -163,16 +174,13 @@ def build_twin_clients(seed_hex_a: str, seed_hex_b: str | None = None) -> Iterat
         raise
     finally:
         errors: list[BaseException] = []
-        for label, environment, transport in (
-            ("A", env_a, transport_a),
-            ("B", env_b, transport_b),
-        ):
+        for label, environment in (("A", environment_a), ("B", environment_b)):
             if environment is not None:
                 _guarded_teardown_step(
                     f"twin {label} environment shutdown", environment.shutdown, errors
                 )
-            if transport is not None:
-                _guarded_teardown_step(f"twin {label} transport close", transport.close, errors)
+                core = environment._core
+                _guarded_teardown_step(f"twin {label} core close", core.close, errors)
         if errors and body_error is None:
             raise errors[0]
         if errors:
@@ -185,14 +193,12 @@ def build_twin_clients(seed_hex_a: str, seed_hex_b: str | None = None) -> Iterat
 
 @contextlib.contextmanager
 def build_single_client(seed_hex: str) -> Iterator[SyntheticEnvironmentClient]:
-    """One identically-reset environment on a ``RecordingTransport`` with the
-    same exception-safe teardown guarantee as :func:`build_twin_clients`."""
-    transport: RecordingTransport | None = None
-    environment: SyntheticEnvironmentClient | None = None
+    """One identically-reset environment on a ``RecordingEnvironment`` with
+    the same exception-safe teardown guarantee as :func:`build_twin_clients`."""
+    environment: RecordingEnvironment | None = None
     body_error: BaseException | None = None
     try:
-        transport = RecordingTransport()
-        environment = SyntheticEnvironmentClient(transport)
+        environment = RecordingEnvironment()
         environment.reset_synthetic(root_seed_hex=seed_hex)
         yield environment
     except BaseException as exc:
@@ -202,8 +208,8 @@ def build_single_client(seed_hex: str) -> Iterator[SyntheticEnvironmentClient]:
         errors: list[BaseException] = []
         if environment is not None:
             _guarded_teardown_step("environment shutdown", environment.shutdown, errors)
-        if transport is not None:
-            _guarded_teardown_step("transport close", transport.close, errors)
+            core = environment._core
+            _guarded_teardown_step("core close", core.close, errors)
         if errors and body_error is None:
             raise errors[0]
         if errors:
@@ -214,11 +220,9 @@ def build_single_client(seed_hex: str) -> Iterator[SyntheticEnvironmentClient]:
 
 
 def recorded_results(environment: SyntheticEnvironmentClient) -> list[dict[str, object]]:
-    transport = environment._transport
-    assert isinstance(transport, RecordingTransport), (
-        "twin environments must be built on RecordingTransports"
-    )
-    return transport.recorded_results
+    core = environment._core
+    assert isinstance(core, RecordingCore), "environments must be built on recording cores"
+    return core.recorded_results
 
 
 def payload_only(result: Mapping[str, object]) -> dict[str, object]:

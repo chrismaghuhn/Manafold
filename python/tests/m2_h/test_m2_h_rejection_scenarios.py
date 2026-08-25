@@ -23,7 +23,7 @@ Three scenario groups live here:
   the full local mtgml validator — proving the two layers diverge
   intentionally.
 - **S6 malformed raw-byte boundary** through the package-private
-  ``RestrictedPlayerTransport._submit_wire_bytes`` seam: document-level
+  ``BoundPlayerTransport._submit_wire_bytes`` seam: document-level
   and true byte-level corruption classes of canonical response bytes,
   each answered with ``malformed_response``, zero mutation, no step, and
   a healthy session afterwards.
@@ -41,7 +41,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Final, NamedTuple
 
-from mtgml._m2_adapter import AdapterError, RestrictedPlayerTransport
+from mtgml._m2_adapter import AdapterError
 from mtgml._m2_adapter.process import BINARY_ENV_VAR
 from mtgml._m2_adapter.protocol import MALFORMED_RESPONSE
 from mtgml._m2_adapter.submission import encode_decision_response_submission_v2
@@ -564,7 +564,8 @@ class MalformedRawByteBoundaryTests(unittest.TestCase):
     ) -> None:
         with harness.build_single_client(SEED_HEX) as environment:
             client = environment.bind_player(harness.PLAYER_ONE)
-            seam = RestrictedPlayerTransport(client._transport, client._token)
+            # The client's own bound transport IS the single raw-byte seam.
+            seam = client._transport
             for name, corruptor in classes:
                 request = client.visible_decision()
                 self.assertIsNotNone(request, f"{group}/{name}: live request vanished")

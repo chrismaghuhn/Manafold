@@ -1,13 +1,28 @@
-"""Subprocess transport for the M2 semantic adapter.
+"""Capability-separated subprocess transports for the M2 semantic adapter.
 
-Spawns the adapter binary located via ``MTGML_M2_ADAPTER_BIN`` (fail
-closed when unset or not an existing file), frames one JSONL request per
-line with monotonic request ids, and pairs responses under a per-request
-timeout. The generated trusted key exists only in the child's copied
-environment mapping; the parent ``os.environ`` is never mutated.
+Three classes share one child-process handle with strictly separated
+capabilities:
 
-``argv`` is a package-internal seam for fake-child unit tests; production
-callers rely on the environment variable.
+``ProcessCore`` owns ONLY the mechanics: it spawns the adapter binary
+located via ``MTGML_M2_ADAPTER_BIN`` (fail closed when unset or not an
+existing file) EAGERLY in ``__init__`` using the provided environment
+mapping exactly once and never retains that mapping afterwards, frames
+one JSONL request per line with monotonic request ids, pairs responses
+under a per-request timeout, and owns teardown/close/context-manager.
+It knows nothing about trusted keys or tokens.
+
+``TrustedTransport`` is the ONLY holder of the generated trusted key;
+it exposes exactly the four trusted command builders and is used
+exclusively by ``SyntheticEnvironmentClient``.
+
+``BoundPlayerTransport`` holds EXACTLY ONE token and exposes only the
+four typed player operations plus the package-private raw-byte submit
+seam. It carries no trusted key, no generic command builder, and no
+arbitrary-perspective operation, so no trusted secret exists anywhere
+in the object graph reachable from a bound player client.
+
+``argv``/``child_env`` are package-internal seams for fake-child unit
+tests; production callers rely on the environment variable.
 """
 
 from __future__ import annotations
@@ -24,10 +39,25 @@ from subprocess import Popen
 from typing import BinaryIO, Final
 
 from .protocol import (
+    CMD_BIND_PLAYER,
+    CMD_DIRECT_CALL,
+    CMD_INFORMATION_STATE,
+    CMD_OBSERVATION,
+    CMD_RESET_SYNTHETIC,
+    CMD_SHUTDOWN,
     CMD_SUBMIT,
+    CMD_VISIBLE_DECISION,
+    FIELD_INFORMATION_STATE_WIRE_B64,
+    FIELD_OBSERVATION_WIRE_B64,
     FIELD_RESPONSE_WIRE_B64,
     FIELD_STEP_WIRE_B64,
+    FIELD_VISIBLE_DECISION_WIRE_B64,
+    PARAM_OP,
+    PARAM_PLAYER,
+    PARAM_PLAYERS,
+    PARAM_ROOT_SEED_HEX,
     PARAM_TOKEN,
+    PARAM_TRUSTED_KEY,
     PARSE_ERROR,
     REQUEST_TIMEOUT,
     TRANSPORT_CLOSED,
@@ -78,8 +108,17 @@ def _pump_stdout(stdout: BinaryIO, sink: queue.Queue[bytes | None]) -> None:
         sink.put(None)
 
 
-class SubprocessTransport:
-    """Blocking single-channel transport to one adapter subprocess.
+def _strip_newline(raw: bytes) -> bytes:
+    return raw[:-1] if raw.endswith(b"\n") else raw
+
+
+class ProcessCore:
+    """Blocking single-channel round-trip core to one adapter subprocess.
+
+    Capability contract: spawn, framing, request-id pairing, timeouts,
+    and teardown ONLY — no trusted key or token ever passes through this
+    class, and the child environment mapping consumed at spawn time is
+    deliberately not retained.
 
     Concurrency contract: round trips serialize behind the instance lock,
     and the lifecycle methods (``close``, ``_mark_shutdown``) take the
@@ -90,30 +129,42 @@ class SubprocessTransport:
 
     def __init__(
         self,
+        argv: Sequence[str],
+        child_env: Mapping[str, str],
         *,
         timeout: float = DEFAULT_TIMEOUT_SECONDS,
-        argv: Sequence[str] | None = None,
     ) -> None:
         self._timeout = timeout
-        self._argv = tuple(argv) if argv is not None else resolve_binary_argv()
-        self._trusted_key_value = generate_trusted_key()
-        self._child_env = build_child_environment(self._trusted_key_value)
+        self._argv = tuple(argv)
         self._lock = threading.Lock()
-        self._process: Popen[bytes] | None = None
-        self._reader: threading.Thread | None = None
         self._responses: queue.Queue[bytes | None] = queue.Queue()
         self._next_id = 0
         self._closed = False
+        # Eager fail-fast spawn: the environment mapping is consumed here,
+        # exactly once, and intentionally NOT stored on the instance.
+        try:
+            process = Popen(
+                list(self._argv),
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=None,
+                env=dict(child_env),
+            )
+        except OSError as exc:
+            raise AdapterError(TRANSPORT_CLOSED, "failed to spawn adapter binary") from exc
+        stdout = process.stdout
+        assert stdout is not None
+        self._process: Popen[bytes] = process
+        self._reader = threading.Thread(
+            target=_pump_stdout, args=(stdout, self._responses), daemon=True
+        )
+        self._reader.start()
 
-    @property
-    def _trusted_key(self) -> str:
-        return self._trusted_key_value
+    def round_trip(self, command: str, params: Mapping[str, object]) -> Mapping[str, object]:
+        """Send one framed request and return its successful result.
 
-    @property
-    def _child_environment(self) -> Mapping[str, str]:
-        return dict(self._child_env)
-
-    def call(self, command: str, params: Mapping[str, object]) -> Mapping[str, object]:
+        ``ok:false`` envelopes surface verbatim as :class:`AdapterError`
+        carrying the adapter's closed error code."""
         with self._lock:
             envelope = self._round_trip(command, params)
         if not envelope.ok:
@@ -126,7 +177,7 @@ class SubprocessTransport:
         with self._lock:
             self._teardown(graceful=False)
 
-    def __enter__(self) -> SubprocessTransport:
+    def __enter__(self) -> ProcessCore:
         return self
 
     def __exit__(self, *exc_info: object) -> None:
@@ -134,8 +185,8 @@ class SubprocessTransport:
 
     def _round_trip(self, command: str, params: Mapping[str, object]) -> ResponseEnvelope:
         if self._closed:
-            raise AdapterError(TRANSPORT_CLOSED, "transport is closed")
-        process = self._ensure_spawned()
+            raise AdapterError(TRANSPORT_CLOSED, "core is closed")
+        process = self._process
         self._next_id += 1
         request_id = self._next_id
         line = encode_request_line(request_id, command, params) + b"\n"
@@ -157,28 +208,6 @@ class SubprocessTransport:
             raise AdapterError(TRANSPORT_CLOSED, "adapter closed its output")
         return parse_response_frame(_strip_newline(item), request_id)
 
-    def _ensure_spawned(self) -> Popen[bytes]:
-        if self._process is not None:
-            return self._process
-        try:
-            process = Popen(
-                list(self._argv),
-                stdin=subprocess.PIPE,
-                stdout=subprocess.PIPE,
-                stderr=None,
-                env=self._child_env,
-            )
-        except OSError as exc:
-            raise AdapterError(TRANSPORT_CLOSED, "failed to spawn adapter binary") from exc
-        stdout = process.stdout
-        assert stdout is not None
-        self._process = process
-        self._reader = threading.Thread(
-            target=_pump_stdout, args=(stdout, self._responses), daemon=True
-        )
-        self._reader.start()
-        return process
-
     def _teardown(self, *, graceful: bool) -> None:
         """Single deterministic teardown sequence; caller holds ``_lock``.
 
@@ -190,19 +219,18 @@ class SubprocessTransport:
         """
         self._closed = True
         process = self._process
-        if process is not None:
+        if graceful and process.poll() is None:
             stdin = process.stdin
-            if graceful and process.poll() is None and stdin is not None:
+            if stdin is not None:
                 with contextlib.suppress(OSError, ValueError):
                     stdin.close()
                 # Graceful mode signals EOF and gives the child time to exit
                 # cleanly before any terminate is considered.
                 with contextlib.suppress(subprocess.TimeoutExpired):
                     process.wait(timeout=TERMINATE_GRACE_SECONDS)
-            self._stop_child(process)
+        self._stop_child(process)
         self._join_reader()
-        if process is not None:
-            self._close_pipes(process)
+        self._close_pipes(process)
 
     def _stop_child(self, process: Popen[bytes]) -> None:
         if process.poll() is not None:
@@ -217,7 +245,7 @@ class SubprocessTransport:
 
     def _join_reader(self) -> None:
         reader = self._reader
-        if reader is not None and reader.is_alive():
+        if reader.is_alive():
             reader.join(timeout=TERMINATE_GRACE_SECONDS)
 
     def _close_pipes(self, process: Popen[bytes]) -> None:
@@ -231,23 +259,106 @@ class SubprocessTransport:
             self._teardown(graceful=True)
 
 
-def _strip_newline(raw: bytes) -> bytes:
-    return raw[:-1] if raw.endswith(b"\n") else raw
+class TrustedTransport:
+    """The ONLY capability holder for the generated trusted key.
+
+    Exposes exactly the four trusted orchestration builders
+    (reset_synthetic / bind_player / direct_call / shutdown) plus the
+    core-close delegation. Used exclusively by
+    ``SyntheticEnvironmentClient`` and never reachable from a bound
+    player client."""
+
+    def __init__(self, core: ProcessCore, trusted_key: str) -> None:
+        self._core = core
+        self._key = trusted_key
+
+    @property
+    def _trusted_key(self) -> str:
+        return self._key
+
+    def _invoke(self, command: str, params: Mapping[str, object]) -> Mapping[str, object]:
+        """Single send primitive shared by every trusted builder; also the
+        recording seam for test transports."""
+        return self._core.round_trip(command, params)
+
+    def _reset_synthetic(self, players: Sequence[str], root_seed_hex: str) -> Mapping[str, object]:
+        return self._invoke(
+            CMD_RESET_SYNTHETIC,
+            {
+                PARAM_TRUSTED_KEY: self._key,
+                PARAM_PLAYERS: list(players),
+                PARAM_ROOT_SEED_HEX: root_seed_hex,
+            },
+        )
+
+    def _bind_player(self, player: str) -> Mapping[str, object]:
+        return self._invoke(CMD_BIND_PLAYER, {PARAM_TRUSTED_KEY: self._key, PARAM_PLAYER: player})
+
+    def _direct_call(
+        self, op: str, player: str, response_wire: bytes | None
+    ) -> Mapping[str, object]:
+        params: dict[str, object] = {
+            PARAM_TRUSTED_KEY: self._key,
+            PARAM_OP: op,
+            PARAM_PLAYER: player,
+        }
+        if response_wire is not None:
+            params[FIELD_RESPONSE_WIRE_B64] = encode_wire_payload(response_wire)
+        return self._invoke(CMD_DIRECT_CALL, params)
+
+    def _shutdown(self) -> Mapping[str, object]:
+        return self._invoke(CMD_SHUTDOWN, {PARAM_TRUSTED_KEY: self._key})
+
+    def close(self) -> None:
+        self._core.close()
 
 
-class RestrictedPlayerTransport:
-    """Package-private seam bound to ONE token and the single player
-    submit operation: the sole raw-byte entry point beneath the client.
-    Carries zero trusted commands and no generic send surface."""
+def _result_payload(result: Mapping[str, object], field: str) -> bytes:
+    """Extract and base64-decode one wire-payload field from a result."""
+    if field not in result:
+        raise AdapterError(PARSE_ERROR, f"result lacks {field}")
+    value = result[field]
+    if not isinstance(value, str):
+        raise AdapterError(PARSE_ERROR, f"{field} is not a base64 string")
+    return decode_wire_payload(value)
 
-    def __init__(self, transport: SubprocessTransport, token: str) -> None:
-        self._transport = transport
+
+class BoundPlayerTransport:
+    """Package-private seam bound to ONE token: the four typed player
+    operations plus the sole raw-byte entry point beneath the client.
+    Carries zero trusted commands, no generic send surface, and no key:
+    no trusted secret exists anywhere in the graph reachable from here."""
+
+    def __init__(self, core: ProcessCore, token: str) -> None:
+        self._core = core
         self._token = token
+
+    def observation(self) -> bytes:
+        result = self._core.round_trip(CMD_OBSERVATION, {PARAM_TOKEN: self._token})
+        return _result_payload(result, FIELD_OBSERVATION_WIRE_B64)
+
+    def information_state(self) -> bytes:
+        result = self._core.round_trip(CMD_INFORMATION_STATE, {PARAM_TOKEN: self._token})
+        return _result_payload(result, FIELD_INFORMATION_STATE_WIRE_B64)
+
+    def visible_decision(self) -> bytes | None:
+        result = self._core.round_trip(CMD_VISIBLE_DECISION, {PARAM_TOKEN: self._token})
+        if FIELD_VISIBLE_DECISION_WIRE_B64 not in result:
+            raise AdapterError(PARSE_ERROR, "visible_decision result lacks its field")
+        value = result[FIELD_VISIBLE_DECISION_WIRE_B64]
+        if value is None:
+            return None
+        if not isinstance(value, str):
+            raise AdapterError(PARSE_ERROR, "visible_decision payload is not a string")
+        return decode_wire_payload(value)
+
+    def submit(self, response_wire: bytes) -> bytes:
+        return self._submit_wire_bytes(self._token, response_wire)
 
     def _submit_wire_bytes(self, token: str, raw_bytes: bytes) -> bytes:
         if token != self._token:
             raise AdapterError(UNKNOWN_TOKEN, "token does not match this binding")
-        result = self._transport.call(
+        result = self._core.round_trip(
             CMD_SUBMIT,
             {
                 PARAM_TOKEN: self._token,
