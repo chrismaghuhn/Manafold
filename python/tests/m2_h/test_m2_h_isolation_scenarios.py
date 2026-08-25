@@ -66,6 +66,11 @@ if _BINARY is None or not Path(_BINARY).is_file():
         "M2.H isolation scenarios require the adapter binary; set MTGML_M2_ADAPTER_BIN"
     )
 
+# Intentional same-literal roles: SEED_HEX_A is the general-purpose seed
+# shared by the S2/S7/S9 scenarios below, while SEED_PAIR_PRIMARY holds the
+# SAME literal BY DESIGN as the primary leg of the S8 paired-seed pair, whose
+# twin differs ONLY through SEED_PAIR_SECONDARY. The repeated "11"*32 is not
+# duplication drift; do not "deduplicate" these names.
 SEED_HEX_A: Final = "11" * 32
 SEED_PAIR_PRIMARY: Final = "11" * 32
 SEED_PAIR_SECONDARY: Final = "22" * 32
@@ -114,7 +119,7 @@ class BindingPermanenceTests(unittest.TestCase):
                 # token fails closed locally, without a single round trip.
                 seam = RestrictedPlayerTransport(client._transport, client._token)
                 self.assertEqual(
-                    {name for name in dir(seam) if "submit" in name},
+                    {name for name in dir(seam) if "submit" in name.lower()},
                     set(harness.RESTRICTED_SEAM_SUBMIT_SURFACE),
                     f"{context}: the restricted seam grew extra submit surfaces",
                 )
@@ -236,7 +241,11 @@ class WrongPerspectiveProbeTests(unittest.TestCase):
                 "P1's live request drifted across the probe",
             )
             state_p2 = twins.client_a2.information_state()
-            self.assertEqual(state_p2.perspective, int(harness.PLAYER_TWO))
+            self.assertEqual(
+                state_p2.perspective,
+                int(harness.PLAYER_TWO),
+                "the probed P2 client drifted off its perspective binding",
+            )
             harness.finish_lockstep_after(twins, self, STAGE_ENTRY)
 
     @staticmethod
@@ -282,8 +291,16 @@ class MultiEndpointIsolationTests(unittest.TestCase):
             )
             observation_p1 = client_p1.observation()
             observation_p2 = client_p2.observation()
-            self.assertEqual(observation_p1.schema_version, observation_p2.schema_version)
-            self.assertEqual(observation_p1.payload_codec, observation_p2.payload_codec)
+            self.assertEqual(
+                observation_p1.schema_version,
+                observation_p2.schema_version,
+                "the two perspectives disagree on the observation schema",
+            )
+            self.assertEqual(
+                observation_p1.payload_codec,
+                observation_p2.payload_codec,
+                "the two perspectives disagree on the observation payload codec",
+            )
             self.assertEqual(
                 observation_p1.state_revision,
                 observation_p2.state_revision,
@@ -349,12 +366,36 @@ class MultiEndpointIsolationTests(unittest.TestCase):
             blob_p1 = harness.wire_payload_bytes(state_p1)
             blob_p2 = harness.wire_payload_bytes(state_p2)
             opaque_marker = b'"opaque_object_id":"'
-            self.assertEqual(blob_p1.count(opaque_marker), 1)
-            self.assertEqual(blob_p2.count(opaque_marker), 2)
-            self.assertNotIn(b'"opaque_object_id":"2"', blob_p1)
-            self.assertIn(b'"opaque_object_id":"2"', blob_p2)
-            self.assertNotIn(b'"zone":"library"', blob_p1)
-            self.assertIn(b'"zone":"library"', blob_p2)
+            self.assertEqual(
+                blob_p1.count(opaque_marker),
+                1,
+                "P1's information state must carry exactly one opaque object marker",
+            )
+            self.assertEqual(
+                blob_p2.count(opaque_marker),
+                2,
+                "P2's information state must carry exactly two opaque object markers",
+            )
+            self.assertNotIn(
+                b'"opaque_object_id":"2"',
+                blob_p1,
+                "P1's bytes exposed the private second object id",
+            )
+            self.assertIn(
+                b'"opaque_object_id":"2"',
+                blob_p2,
+                "P2's own-library accounting lost the second object id",
+            )
+            self.assertNotIn(
+                b'"zone":"library"',
+                blob_p1,
+                "P1's bytes exposed a library-zone record",
+            )
+            self.assertIn(
+                b'"zone":"library"',
+                blob_p2,
+                "P2's bytes lost their library-zone accounting",
+            )
             # With the structural divergence established above, the payload
             # bytes being unequal now carries real evidence instead of just
             # reflecting the by-design perspective label.
@@ -386,12 +427,19 @@ class MultiEndpointIsolationTests(unittest.TestCase):
                 }
 
             baseline = full_capture()
-            self.assertIsNotNone(baseline[(harness.PLAYER_ONE, "visible_decision")])
-            self.assertIsNone(baseline[(harness.PLAYER_TWO, "visible_decision")])
+            self.assertIsNotNone(
+                baseline[(harness.PLAYER_ONE, "visible_decision")],
+                "the fresh baseline lost P1's entry decision",
+            )
+            self.assertIsNone(
+                baseline[(harness.PLAYER_TWO, "visible_decision")],
+                "the fresh baseline captured a decision for P2",
+            )
 
             for index in range(4):
-                rotated = READ_OPERATIONS[index % len(READ_OPERATIONS) :]
-                rotated += READ_OPERATIONS[: index % len(READ_OPERATIONS)]
+                offset = index % len(READ_OPERATIONS)
+                rotated = READ_OPERATIONS[offset:]
+                rotated += READ_OPERATIONS[:offset]
                 ordered_players = (
                     (harness.PLAYER_ONE, harness.PLAYER_TWO)
                     if index % 2 == 0
@@ -419,26 +467,7 @@ class PairedHiddenVariantTests(unittest.TestCase):
 
     def test_seed_pair_views_and_entry_product_stay_byte_equal(self) -> None:
         with harness.build_twin_clients(SEED_PAIR_PRIMARY, SEED_PAIR_SECONDARY) as twins:
-            for perspective, left, right in (
-                (harness.PLAYER_ONE, twins.client_a1, twins.client_b1),
-                (harness.PLAYER_TWO, twins.client_a2, twins.client_b2),
-            ):
-                context = f"seed-pair player {perspective}"
-                self.assertEqual(
-                    harness.wire_payload_bytes(left.observation()),
-                    harness.wire_payload_bytes(right.observation()),
-                    f"{context}: initial observations diverge across seeds",
-                )
-                self.assertEqual(
-                    harness.wire_payload_bytes(left.information_state()),
-                    harness.wire_payload_bytes(right.information_state()),
-                    f"{context}: initial information states diverge across seeds",
-                )
-                self.assertEqual(
-                    harness.optional_wire_payload_bytes(left.visible_decision()),
-                    harness.optional_wire_payload_bytes(right.visible_decision()),
-                    f"{context}: initial decisions diverge across seeds",
-                )
+            self._assert_views_byte_equal(twins, "initial")
 
             request_left = twins.client_a1.visible_decision()
             request_right = twins.client_b1.visible_decision()
@@ -496,26 +525,31 @@ class PairedHiddenVariantTests(unittest.TestCase):
                 harness.wire_payload_bytes(step_right),
                 "entry-step payloads diverge across seeds",
             )
-            for perspective, left, right in (
-                (harness.PLAYER_ONE, twins.client_a1, twins.client_b1),
-                (harness.PLAYER_TWO, twins.client_a2, twins.client_b2),
-            ):
-                context = f"post-step seed-pair player {perspective}"
-                self.assertEqual(
-                    harness.wire_payload_bytes(left.observation()),
-                    harness.wire_payload_bytes(right.observation()),
-                    f"{context}: refreshed observations diverge across seeds",
-                )
-                self.assertEqual(
-                    harness.wire_payload_bytes(left.information_state()),
-                    harness.wire_payload_bytes(right.information_state()),
-                    f"{context}: refreshed information states diverge across seeds",
-                )
-                self.assertEqual(
-                    harness.optional_wire_payload_bytes(left.visible_decision()),
-                    harness.optional_wire_payload_bytes(right.visible_decision()),
-                    f"{context}: refreshed decisions diverge across seeds",
-                )
+            self._assert_views_byte_equal(twins, "refreshed")
+
+    def _assert_views_byte_equal(self, twins: harness.TwinClients, context: str) -> None:
+        """The complete view triple of BOTH perspectives must stay byte-equal
+        across the paired-seed twins (see the axis-05 scope note above)."""
+        for perspective, left, right in (
+            (harness.PLAYER_ONE, twins.client_a1, twins.client_b1),
+            (harness.PLAYER_TWO, twins.client_a2, twins.client_b2),
+        ):
+            label = f"{context} seed-pair views (player {perspective})"
+            self.assertEqual(
+                harness.wire_payload_bytes(left.observation()),
+                harness.wire_payload_bytes(right.observation()),
+                f"{label}: observations diverge across seeds",
+            )
+            self.assertEqual(
+                harness.wire_payload_bytes(left.information_state()),
+                harness.wire_payload_bytes(right.information_state()),
+                f"{label}: information states diverge across seeds",
+            )
+            self.assertEqual(
+                harness.optional_wire_payload_bytes(left.visible_decision()),
+                harness.optional_wire_payload_bytes(right.visible_decision()),
+                f"{label}: decisions diverge across seeds",
+            )
 
 
 class RestartDeterminismTests(unittest.TestCase):
@@ -550,7 +584,11 @@ class RestartDeterminismTests(unittest.TestCase):
                 step = client_p1.submit(
                     harness.response_for(request, harness.ACCEPTED_STAGE_DRIVERS[kind](request))
                 )
-                self.assertEqual(step.submission.kind, "accepted")
+                self.assertEqual(
+                    step.submission.kind,
+                    "accepted",
+                    f"the {kind} stage submission was not accepted",
+                )
                 pieces.append(harness.wire_payload_bytes(step))
                 pieces.append(harness.wire_payload_bytes(client_p1.information_state()))
                 request = step.next_decision
@@ -571,18 +609,14 @@ class RestartDeterminismTests(unittest.TestCase):
         # Fresh process, IDENTICAL reset inputs, identical scripted choices
         # re-derived from the relaunched environment's own live requests.
         sequence_replayed = self._scripted_episode_sequence()
+        joined_original = b"".join(piece or b"" for piece in sequence_original)
+        self.assertGreater(len(joined_original), 0, "the captured public sequence is empty")
+        # The per-piece tuple equality subsumes any concatenated-bytes check;
+        # keeping only it avoids a logically dead duplicate assertion.
         self.assertEqual(
             sequence_original,
             sequence_replayed,
             "a per-piece public payload diverged between the original run and the restart",
-        )
-        joined_original = b"".join(piece or b"" for piece in sequence_original)
-        joined_replayed = b"".join(piece or b"" for piece in sequence_replayed)
-        self.assertGreater(len(joined_original), 0, "the captured public sequence is empty")
-        self.assertEqual(
-            joined_original,
-            joined_replayed,
-            "the concatenated public payload sequence diverged across the restart",
         )
 
 
