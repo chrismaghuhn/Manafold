@@ -34,6 +34,7 @@ if TYPE_CHECKING:
 from .process import SubprocessTransport
 from .protocol import (
     CMD_BIND_PLAYER,
+    CMD_DIRECT_CALL,
     CMD_INFORMATION_STATE,
     CMD_OBSERVATION,
     CMD_RESET_SYNTHETIC,
@@ -122,6 +123,25 @@ class SyntheticEnvironmentClient:
 
     def _trusted_call(self, command: str, params: dict[str, object]) -> Mapping[str, object]:
         return self._transport.call(command, params)
+
+    def _trusted_direct_call(
+        self, op: str, player: str, response_wire: bytes | None
+    ) -> Mapping[str, object]:
+        """Package-private passthrough to the trusted ``direct_call`` route.
+
+        Test-harness seam only: executes one player operation against
+        ``player`` without holding a token, carrying an already-encoded
+        decision-response payload when one is required. It adds no choosing
+        logic and stays invisible to the public API inventory.
+        """
+        params: dict[str, object] = {
+            PARAM_TRUSTED_KEY: self._transport._trusted_key,
+            "op": op,
+            PARAM_PLAYER: player,
+        }
+        if response_wire is not None:
+            params[FIELD_RESPONSE_WIRE_B64] = encode_wire_payload(response_wire)
+        return self._trusted_call(CMD_DIRECT_CALL, params)
 
 
 class AdapterPlayerClient:

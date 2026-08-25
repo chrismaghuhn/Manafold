@@ -17,6 +17,7 @@ import time
 import typing
 import unittest
 import warnings
+from collections.abc import Mapping
 from pathlib import Path
 from types import FunctionType
 from typing import Any
@@ -493,6 +494,22 @@ class ApiInventoryTests(unittest.TestCase):
         self.assertEqual(public, {"reset_synthetic", "bind_player", "shutdown"})
         self.assertTrue(callable(synthetic.__enter__))
         self.assertTrue(callable(synthetic.__exit__))
+
+    def test_synthetic_client_grows_only_the_underscore_private_direct_call(self) -> None:
+        _, synthetic = self._instances()
+        self.assertIn("_trusted_direct_call", dir(synthetic))
+        attribute = SyntheticEnvironmentClient.__dict__["_trusted_direct_call"]
+        self.assertIsInstance(attribute, FunctionType)
+        self.assertTrue(attribute.__name__.startswith("_"))
+        self.assertEqual(
+            list(inspect.signature(attribute).parameters),
+            ["self", "op", "player", "response_wire"],
+        )
+        hints = typing.get_type_hints(attribute)
+        self.assertEqual(hints["op"], str)
+        self.assertEqual(hints["player"], str)
+        self.assertEqual(hints["response_wire"], bytes | None)
+        self.assertEqual(hints["return"], Mapping[str, object])
 
     def test_no_generic_send_surface_on_either_client(self) -> None:
         player, synthetic = self._instances()
