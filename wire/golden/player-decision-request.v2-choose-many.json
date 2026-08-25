@@ -1,0 +1,1 @@
+{"actor":"1","candidates":[{"candidate_id":0,"intent":{"kind":"pass_priority"}},{"candidate_id":1,"intent":{"kind":"cast_spell","object":"9"}}],"decision":{"kind":"choose_many","maximum":2,"minimum":1},"player_decision_id":"5","schema_version":"player-decision-request.v2","state_revision":"0","visibility":"public"}

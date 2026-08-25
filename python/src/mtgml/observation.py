@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from itertools import pairwise
 
+from ._generated_contract_vocab import OBSERVED_EVENT_KINDS, ZONE_KINDS
 from .canonical import (
     parse_u64_number,
     parse_uint,
@@ -610,39 +611,109 @@ def _validate_provenance(
         )
 
 
+_EVENT_V2_REQUIRED_KEYS: dict[str, set[str]] = {
+    "object_moved": {"kind", "from", "to"},
+    "object_ceased_to_exist": {"kind", "object"},
+    "life_changed": {"kind", "player", "from", "to"},
+    "object_tapped": {"kind", "object", "tapped"},
+    "decision_available": {"kind", "actor"},
+    "random_outcome_visible": {"kind", "label", "exclusive_upper_bound", "value"},
+    "public_outcome": {"kind", "code"},
+}
+_EVENT_V2_UINT_KEYS = frozenset({"old_object", "new_object", "object", "player", "actor"})
+
+
+@dataclass(frozen=True, slots=True)
+class ObservedEventV2:
+    kind: str
+    payload: tuple[tuple[str, object], ...]
+
+    @classmethod
+    def from_wire(cls, value: object) -> ObservedEventV2:
+        if not isinstance(value, dict) or value.get("kind") not in OBSERVED_EVENT_KINDS:
+            raise WireError("decode.invalid_json", "unknown observed event V2 kind")
+        kind = str(value["kind"])
+        optional = {"old_object", "new_object"} if kind == "object_moved" else set()
+        obj = require_exact_keys(value, _EVENT_V2_REQUIRED_KEYS[kind], optional)
+        payload: dict[str, object] = {}
+        if kind == "object_moved":
+            if obj["from"] not in ZONE_KINDS or obj["to"] not in ZONE_KINDS:
+                raise WireError("decode.invalid_json", "unknown zone kind")
+            payload["from"] = str(obj["from"])
+            payload["to"] = str(obj["to"])
+            for key in ("old_object", "new_object"):
+                payload[key] = None if obj.get(key) is None else parse_uint(obj[key])
+        elif kind == "object_ceased_to_exist":
+            payload["object"] = parse_uint(obj["object"])
+        elif kind == "life_changed":
+            payload["player"] = parse_uint(obj["player"])
+            for key in ("from", "to"):
+                raw = obj[key]
+                if isinstance(raw, bool) or not isinstance(raw, int) or not -(2**63) <= raw < 2**63:
+                    raise WireError("decode.invalid_json", "life value is outside i64")
+                payload[key] = raw
+        elif kind == "object_tapped":
+            payload["object"] = parse_uint(obj["object"])
+            if not isinstance(obj["tapped"], bool):
+                raise WireError("decode.invalid_json", "tapped must be boolean")
+            payload["tapped"] = obj["tapped"]
+        elif kind == "decision_available":
+            payload["actor"] = parse_uint(obj["actor"])
+        elif kind == "random_outcome_visible":
+            label = obj["label"]
+            if not isinstance(label, str):
+                raise WireError("decode.invalid_json", "label must be a string")
+            upper = parse_u64_number(obj["exclusive_upper_bound"])
+            outcome = parse_u64_number(obj["value"])
+            if not label or upper == 0 or outcome >= upper:
+                raise WireError(
+                    "semantic.observed_event",
+                    "random outcome is outside its declared range",
+                )
+            payload.update(label=label, exclusive_upper_bound=upper, value=outcome)
+        else:
+            code = obj["code"]
+            if not isinstance(code, str):
+                raise WireError("decode.invalid_json", "code must be a string")
+            if not code:
+                raise WireError("semantic.observed_event", "observed event code is empty")
+            payload["code"] = code
+        return cls(kind, tuple(sorted(payload.items())))
+
+    def to_wire(self) -> dict[str, object]:
+        result: dict[str, object] = {"kind": self.kind}
+        for key, value in self.payload:
+            result[key] = (
+                uint_wire(value)  # type: ignore[arg-type]  # guaranteed int by wire contract
+                if key in _EVENT_V2_UINT_KEYS and value is not None
+                else value
+            )
+        ObservedEventV2.from_wire(result)
+        return result
+
+
 @dataclass(frozen=True, slots=True)
 class ObservedEventEnvelopeV2:
     schema_version: str
     sequence: int
     state_revision: int
-    event: dict[str, object]
+    event: ObservedEventV2
 
     @classmethod
     def from_wire(cls, value: object) -> ObservedEventEnvelopeV2:
         obj = require_exact_keys(value, {"schema_version", "sequence", "state_revision", "event"})
-        if obj["schema_version"] != OBSERVED_EVENT_SCHEMA_V2 or not isinstance(obj["event"], dict):
+        if obj["schema_version"] != OBSERVED_EVENT_SCHEMA_V2:
             raise WireError("decode.invalid_json", "unsupported observed event V2")
-        event = dict(obj["event"])
-        if event.get("kind") not in {
-            "object_moved",
-            "object_ceased_to_exist",
-            "life_changed",
-            "object_tapped",
-            "decision_available",
-            "random_outcome_visible",
-            "public_outcome",
-        }:
-            raise WireError("decode.invalid_json", "unknown observed event V2 kind")
         return cls(
             OBSERVED_EVENT_SCHEMA_V2,
             parse_uint(obj["sequence"]),
             parse_uint(obj["state_revision"]),
-            event,
+            ObservedEventV2.from_wire(obj["event"]),
         )
 
     def to_wire(self) -> dict[str, object]:
         return {
-            "event": self.event,
+            "event": self.event.to_wire(),
             "schema_version": OBSERVED_EVENT_SCHEMA_V2,
             "sequence": uint_wire(self.sequence),
             "state_revision": uint_wire(self.state_revision),
@@ -786,13 +857,13 @@ class PlayerStepV2:
 
     def to_wire(self) -> dict[str, object]:
         self.validate()
-        result: dict[str, object] = {
+        return {
             "information_state": self.information_state.to_wire(),
+            # Mirrors Rust PlayerStepV2: Option serializes as an explicit null,
+            # so decision-less steps canonicalize identically in both languages.
+            "next_decision": None if self.next_decision is None else self.next_decision.to_wire(),
             "observed_events": [event.to_wire() for event in self.observed_events],
             "schema_version": PLAYER_STEP_SCHEMA_V2,
             "status": self.status.to_wire(),
             "submission": self.submission.to_wire(),
         }
-        if self.next_decision is not None:
-            result["next_decision"] = self.next_decision.to_wire()
-        return result

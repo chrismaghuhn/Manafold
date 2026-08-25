@@ -420,6 +420,13 @@
       "stability": "provisional"
     },
     {
+      "change_process": "process-pr",
+      "owner_role": "maintainer",
+      "path": "docs/superpowers/plans/2026-08-24-m2-h-rules-free-python-adapter-wire-parity.md",
+      "role": "process",
+      "stability": "provisional"
+    },
+    {
       "change_process": "adr-and-fixtures",
       "owner_role": "state-maintainer",
       "path": "docs/STATE_HASHING.md",

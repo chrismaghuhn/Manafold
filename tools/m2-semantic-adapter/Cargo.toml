@@ -1,0 +1,19 @@
+[package]
+name = "m2-semantic-adapter"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish = false
+
+[dependencies]
+base64.workspace = true
+getrandom.workspace = true
+mtgml-decision = { path = "../../crates/mtgml-decision" }
+mtgml-environment = { path = "../../crates/mtgml-environment" }
+mtgml-model = { path = "../../crates/mtgml-model" }
+mtgml-observation = { path = "../../crates/mtgml-observation" }
+mtgml-random = { path = "../../crates/mtgml-random" }
+mtgml-replay = { path = "../../crates/mtgml-replay" }
+mtgml-wire = { path = "../../crates/mtgml-wire" }
+serde.workspace = true
+serde_json.workspace = true
