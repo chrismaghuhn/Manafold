@@ -64,6 +64,15 @@ SYNTHETIC_PUBLIC_METHODS: Final[frozenset[str]] = frozenset(
 )
 TRUSTED_DIRECT_CALL_NAME: Final = "_trusted_direct_call"
 
+# S2 binding-permanence inventory: the ONLY attribute name on a bound player
+# client that may even mention binding/token/perspective is the single token
+# slot itself; the ONLY submit-bearing name below the client is the
+# package-private seam bound to that one token.
+BINDING_SURFACE_MARKERS: Final[tuple[str, ...]] = ("bind", "token", "perspective")
+PLAYER_CLIENT_BINDING_INVENTORY: Final[frozenset[str]] = frozenset({"_token"})
+PLAYER_CLIENT_SLOT_INVENTORY: Final[frozenset[str]] = frozenset({"_transport", "_token"})
+RESTRICTED_SEAM_SUBMIT_SURFACE: Final[frozenset[str]] = frozenset({"_submit_wire_bytes"})
+
 EXPECTED_DECISION_KIND_SEQUENCE: Final[tuple[str, ...]] = (
     "choose_one",
     "choose_number",
@@ -113,8 +122,13 @@ def _guarded_teardown_step(
 
 
 @contextlib.contextmanager
-def build_twin_clients(seed_hex: str) -> Iterator[TwinClients]:
-    """Two identical-reset synthetic environments, each with P1+P2 bound.
+def build_twin_clients(seed_hex_a: str, seed_hex_b: str | None = None) -> Iterator[TwinClients]:
+    """Two identically-reset synthetic environments, each with P1+P2 bound.
+
+    ``seed_hex_b`` defaults to ``seed_hex_a``, yielding true twins on
+    identical trusted reset inputs (S1/S4/S5). Passing a DIFFERENT second
+    seed yields the S8 paired-hidden-variant pair: two independent trusted
+    seeds behind identical players and reset shapes.
 
     Teardown guarantee: BOTH twins always attempt their full teardown
     sequence (environment shutdown, then transport close) even when the
@@ -134,8 +148,8 @@ def build_twin_clients(seed_hex: str) -> Iterator[TwinClients]:
         env_a = SyntheticEnvironmentClient(transport_a)
         transport_b = RecordingTransport()
         env_b = SyntheticEnvironmentClient(transport_b)
-        env_a.reset_synthetic(root_seed_hex=seed_hex)
-        env_b.reset_synthetic(root_seed_hex=seed_hex)
+        env_a.reset_synthetic(root_seed_hex=seed_hex_a)
+        env_b.reset_synthetic(root_seed_hex=seed_hex_b if seed_hex_b is not None else seed_hex_a)
         yield TwinClients(
             env_a=env_a,
             client_a1=env_a.bind_player("1"),
@@ -340,6 +354,16 @@ def public_method_names(instance: object) -> set[str]:
     }
 
 
+def binding_surface_names(instance: object) -> set[str]:
+    """Every reachable attribute name (public AND private) that even
+    mentions binding, tokens, or perspective selection."""
+    return {
+        name
+        for name in dir(instance)
+        if any(marker in name.lower() for marker in BINDING_SURFACE_MARKERS)
+    }
+
+
 def assert_public_surface_unchanged(
     test: unittest.TestCase,
     player: AdapterPlayerClient,
@@ -408,6 +432,20 @@ def direct_view_bytes(
     return state, decision
 
 
+ViewSlot = tuple[bytes | None, bytes | None]
+
+
+def all_visible_views(twins: TwinClients) -> dict[tuple[str, str], ViewSlot]:
+    """Complete player-visible surface: information-state and visible-
+    decision payload bytes for BOTH players on BOTH routes."""
+    return {
+        (PLAYER_ONE, "token"): token_view_bytes(twins.client_a1),
+        (PLAYER_TWO, "token"): token_view_bytes(twins.client_a2),
+        (PLAYER_ONE, "direct"): direct_view_bytes(twins.env_b, PLAYER_ONE),
+        (PLAYER_TWO, "direct"): direct_view_bytes(twins.env_b, PLAYER_TWO),
+    }
+
+
 def assert_views_unchanged(
     test: unittest.TestCase,
     before: tuple[bytes | None, bytes | None],
@@ -452,7 +490,7 @@ def submit_response_both_routes(
     test.assertEqual(
         wire_payload_bytes(step_a),
         raw_step_b,
-        f"player {player}: rejected-step payloads diverge across routes",
+        f"player {player}: step payloads diverge across routes",
     )
     return step_a, step_b
 

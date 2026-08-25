@@ -71,10 +71,13 @@ STAGE_ORDER: Final = 3
 
 def _assert_dense_ids(request: PlayerDecisionRequestV2, expected: list[int]) -> None:
     actual = [candidate.candidate_id for candidate in request.candidates]
-    assert actual == expected, (
-        "synthetic program drift: candidate surface changed; "
-        f"expected dense ids {expected}, observed {actual}"
-    )
+    # Explicit raise, not an assert statement: this reality check must
+    # survive ``python -O`` or the rows below could produce vacuous evidence.
+    if actual != expected:
+        raise AssertionError(
+            "synthetic program drift: candidate surface changed; "
+            f"expected dense ids {expected}, observed {actual}"
+        )
 
 
 def _assert_assembly_bounds(request: PlayerDecisionRequestV2) -> None:
@@ -83,13 +86,20 @@ def _assert_assembly_bounds(request: PlayerDecisionRequestV2) -> None:
     dense candidates. This is what keeps below-minimum cardinality, member
     duplication, and noncanonical ordering reachable through public
     choices; if the engine ever offered a degenerate ``{0, 0}`` surface
-    these rows must fail loudly instead of producing vacuous evidence."""
-    assert request.decision.minimum == harness.MEMBER_COUNT, (
-        f"assembly minimum drifted: {request.decision.minimum!r}"
-    )
-    assert request.decision.maximum == harness.MEMBER_COUNT, (
-        f"assembly maximum drifted: {request.decision.maximum!r}"
-    )
+    these rows must fail loudly instead of producing vacuous evidence.
+    Guards are explicit raises (not ``assert``) so they survive ``-O``."""
+    if request.decision.minimum != harness.MEMBER_COUNT:
+        raise AssertionError(
+            "assembly minimum drifted: "
+            f"expected MEMBER_COUNT={harness.MEMBER_COUNT}, "
+            f"observed {request.decision.minimum!r}"
+        )
+    if request.decision.maximum != harness.MEMBER_COUNT:
+        raise AssertionError(
+            "assembly maximum drifted: "
+            f"expected MEMBER_COUNT={harness.MEMBER_COUNT}, "
+            f"observed {request.decision.maximum!r}"
+        )
     _assert_dense_ids(request, list(range(harness.MEMBER_COUNT)))
 
 
@@ -250,14 +260,8 @@ REACHABLE_REJECTION_CODES: Final[frozenset[str]] = frozenset(
 def _all_visible_views(
     twins: harness.TwinClients,
 ) -> dict[tuple[str, str], tuple[bytes | None, bytes | None]]:
-    """Complete player-visible surface: information-state and visible-
-    decision payload bytes for BOTH players on BOTH routes."""
-    return {
-        (harness.PLAYER_ONE, "token"): harness.token_view_bytes(twins.client_a1),
-        (harness.PLAYER_TWO, "token"): harness.token_view_bytes(twins.client_a2),
-        (harness.PLAYER_ONE, "direct"): harness.direct_view_bytes(twins.env_b, harness.PLAYER_ONE),
-        (harness.PLAYER_TWO, "direct"): harness.direct_view_bytes(twins.env_b, harness.PLAYER_TWO),
-    }
+    """Complete player-visible surface across both players and routes."""
+    return harness.all_visible_views(twins)
 
 
 def _drive_single_chain_to_stage(
@@ -472,7 +476,9 @@ def wrong_key_order(canonical: bytes) -> bytes:
     order = ("schema_version", "player_decision_id", "state_revision", "answer")
     pieces = [f'"{key}":{json.dumps(fields[key], separators=(",", ":"))}' for key in order]
     corrupted = ("{" + ",".join(pieces) + "}").encode("utf-8")
-    assert corrupted != canonical, "key-order corruptor became a no-op"
+    # No-op guard as an explicit raise so it survives ``python -O``.
+    if corrupted == canonical:
+        raise AssertionError("key-order corruptor became a no-op")
     return corrupted
 
 
@@ -486,19 +492,27 @@ def wrong_schema_version(canonical: bytes) -> bytes:
     corrupted = canonical.replace(
         DECISION_RESPONSE_V2_SCHEMA.encode("utf-8"), b"decision-response.v9"
     )
-    assert corrupted != canonical, "schema-version corruptor became a no-op"
+    # No-op guard as an explicit raise so it survives ``python -O``.
+    if corrupted == canonical:
+        raise AssertionError("schema-version corruptor became a no-op")
     return corrupted
 
 
 def truncated_json(canonical: bytes) -> bytes:
     _assert_canonical_object(canonical)
+    # The fixed-width [:-8] suffix strip is safe only because every caller
+    # first asserts the canonical document is longer than 8 bytes (the
+    # "implausibly small" guard in MalformedRawByteBoundaryTests), so this
+    # always yields a non-empty, genuinely truncated document.
     return canonical[:-8]
 
 
 def candidate_id_u32_overflow(canonical: bytes) -> bytes:
     _assert_canonical_object(canonical)
     corrupted = canonical.replace(b'"candidate_id":0', b'"candidate_id":4294967296')
-    assert b'"candidate_id":4294967296' in corrupted, "u32 overflow corruptor became a no-op"
+    # No-op guard as an explicit raise so it survives ``python -O``.
+    if b'"candidate_id":4294967296' not in corrupted:
+        raise AssertionError("u32 overflow corruptor became a no-op")
     return corrupted
 
 
