@@ -154,7 +154,8 @@ class CargoPackageParserTests(unittest.TestCase):
             return runner.execute_rust_package(definition, log)
 
     def test_multiple_ok_lines_sum_to_the_pinned_total(self) -> None:
-        evidence = self._evidence([("ok", 13, 0), ("ok", 8, 0)])
+        head = runner.EXPECTED_ADAPTER_PACKAGE_PASSED - 8
+        evidence = self._evidence([("ok", head, 0), ("ok", 8, 0)])
         self.assertEqual(evidence["status"], "PASS")
         self.assertEqual(evidence["tests_observed"], runner.EXPECTED_ADAPTER_PACKAGE_PASSED)
 
