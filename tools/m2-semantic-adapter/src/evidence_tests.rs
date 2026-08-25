@@ -13,6 +13,9 @@
 //!   `encode_canonical` of what the endpoint produced for every operation,
 //!   with accepted states never consumed twice (single-shot spy);
 //! - the closed panic-classification policy and its redaction;
+//! - the run-level panic path through the process loop: a production-bound
+//!   endpoint whose semantic submit panics emits EXACTLY the closed
+//!   `service_unavailable` envelope and terminates fatally, detail-free;
 //! - controlled service-failure redaction with continued service;
 //! - base64 fidelity of the protocol helpers;
 //! - promoted session/protocol negatives (EOF after shutdown, uniform
@@ -22,7 +25,7 @@
 
 use crate::handlers::{self, Action};
 use crate::protocol;
-use crate::session::Session;
+use crate::session::{arm_submit_panic, Session};
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 use mtgml_decision::{
     DecisionAnswerV2, DecisionResponseV2, PlayerDecisionRequestV2, DECISION_RESPONSE_V2_SCHEMA,
@@ -35,9 +38,11 @@ use mtgml_observation::{
 };
 use mtgml_wire::{decode_canonical, encode_canonical};
 use serde_json::{json, Map, Value};
-use std::io::Cursor;
+use std::cell::RefCell;
+use std::io::{BufRead, Cursor, Read, Write};
 use std::path::PathBuf;
 use std::process::Command;
+use std::rc::Rc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
@@ -120,6 +125,21 @@ fn bind_plain(session: &mut Session, id: u64, player: &str) -> String {
     );
     assert_eq!(response["ok"], true, "binding {player} must succeed");
     response["result"]["token"].as_str().unwrap().to_string()
+}
+
+/// Canonical-encodes a typed decision response and drives one submit
+/// through the handler (the shared submit-flow block every typed-response
+/// call site below reduces to; assertions stay at each site).
+fn submit_response(session: &mut Session, token: &str, response: &DecisionResponseV2) -> Value {
+    handle(
+        session,
+        None,
+        "submit",
+        json!({
+            "token": token,
+            "response_wire_b64": b64(&encode_canonical(response).unwrap()),
+        }),
+    )
 }
 
 // ---------------------------------------------------------------------------
@@ -469,13 +489,7 @@ fn stale_typed_submission_reaches_endpoint_exactly_once() {
     let (mut session, token, spy, _real_p1) = spawned_with_spy();
 
     let request = visible_request(&mut session, &token);
-    let stale = stale_answered(&request);
-    let response = handle(
-        &mut session,
-        None,
-        "submit",
-        json!({"token": token, "response_wire_b64": b64(&encode_canonical(&stale).unwrap())}),
-    );
+    let response = submit_response(&mut session, &token, &stale_answered(&request));
 
     assert_eq!(
         response["ok"], true,
@@ -519,12 +533,7 @@ fn foreign_actor_submission_reaches_its_endpoint_exactly_once() {
         .bind_endpoint_for_test(P2, Arc::clone(&spy_p2) as Arc<dyn PlayerEndpoint>)
         .unwrap();
 
-    let response = handle(
-        &mut session,
-        None,
-        "submit",
-        json!({"token": token_p2, "response_wire_b64": b64(&encode_canonical(&answer).unwrap())}),
-    );
+    let response = submit_response(&mut session, &token_p2, &answer);
 
     assert_eq!(response["ok"], true);
     let step: PlayerStepV2 = decode_canonical(&unb64(
@@ -556,12 +565,7 @@ fn accepted_submission_reaches_endpoint_exactly_once() {
             candidate_id: first_candidate(&request),
         },
     );
-    let response = handle(
-        &mut session,
-        None,
-        "submit",
-        json!({"token": token, "response_wire_b64": b64(&encode_canonical(&answer).unwrap())}),
-    );
+    let response = submit_response(&mut session, &token, &answer);
 
     assert_eq!(response["ok"], true);
     let step: PlayerStepV2 = decode_canonical(&unb64(
@@ -663,12 +667,7 @@ fn accepted_submit_single_shot_spy_matches_emitted_bytes() {
             candidate_id: first_candidate(&request),
         },
     );
-    let (_line, response) = handle_line(
-        &mut session,
-        None,
-        "submit",
-        json!({"token": token, "response_wire_b64": b64(&encode_canonical(&answer).unwrap())}),
-    );
+    let response = submit_response(&mut session, &token, &answer);
     assert_eq!(response["ok"], true);
     assert_eq!(
         spy.submit_calls(),
@@ -692,14 +691,8 @@ fn rejected_submit_same_instance_transparency() {
 
     let request = visible_request(&mut session, &token);
     let stale = stale_answered(&request);
-    let stale_bytes = encode_canonical(&stale).unwrap();
 
-    let (_, response) = handle_line(
-        &mut session,
-        None,
-        "submit",
-        json!({"token": token, "response_wire_b64": b64(&stale_bytes)}),
-    );
+    let response = submit_response(&mut session, &token, &stale);
     assert_eq!(response["ok"], true);
     assert_eq!(spy.submit_calls(), 1);
     let handler_bytes = unb64(response["result"]["step_wire_b64"].as_str().unwrap());
@@ -763,6 +756,188 @@ fn panic_classification_policy_is_closed_and_detail_free() {
                 "leaked {marker:?} to trusted surface"
             );
         }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// D2: run-level panic path through the process loop
+// ---------------------------------------------------------------------------
+
+/// Output sink shared between the process loop and the lazy input
+/// generators below: a generator sees everything emitted before its line
+/// is read, which is how the scripted submit picks up the entropy-minted
+/// token from the bind acknowledgment produced inside the loop's own
+/// session (a static `Cursor` script cannot know that token upfront).
+#[derive(Clone, Default)]
+struct SharedOutput(Rc<RefCell<Vec<u8>>>);
+
+impl Write for SharedOutput {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        self.0.borrow_mut().extend_from_slice(buf);
+        Ok(buf.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+/// Produces one input line from all output emitted so far.
+type GeneratedLine = Box<dyn Fn(&str) -> String>;
+
+/// Cursor-driven script whose lines are generated lazily at read time —
+/// the run-level analogue of the static cursor scripts for inputs only
+/// knowable mid-run. An exhausted script is a permanent EOF.
+struct ReactiveScript {
+    observed: SharedOutput,
+    generators: Vec<GeneratedLine>,
+    next_generator: usize,
+    current: Vec<u8>,
+    consumed: usize,
+}
+
+impl ReactiveScript {
+    fn new(observed: SharedOutput, generators: Vec<GeneratedLine>) -> Self {
+        Self {
+            observed,
+            generators,
+            next_generator: 0,
+            current: Vec::new(),
+            consumed: 0,
+        }
+    }
+
+    fn load_next_if_drained(&mut self) {
+        if self.consumed < self.current.len() {
+            return;
+        }
+        let Some(generator) = self.generators.get(self.next_generator) else {
+            self.current.clear();
+            self.consumed = 0;
+            return;
+        };
+        self.next_generator += 1;
+        let observed = String::from_utf8(self.observed.0.borrow().clone()).unwrap();
+        let mut line = generator(&observed).into_bytes();
+        line.push(b'\n');
+        self.current = line;
+        self.consumed = 0;
+    }
+}
+
+impl Read for ReactiveScript {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        self.load_next_if_drained();
+        let available = &self.current[self.consumed..];
+        let taken = available.len().min(buf.len());
+        buf[..taken].copy_from_slice(&available[..taken]);
+        self.consumed += taken;
+        Ok(taken)
+    }
+}
+
+impl BufRead for ReactiveScript {
+    fn fill_buf(&mut self) -> std::io::Result<&[u8]> {
+        self.load_next_if_drained();
+        Ok(&self.current[self.consumed..])
+    }
+
+    fn consume(&mut self, amount: usize) {
+        self.consumed += amount;
+    }
+}
+
+/// End-to-end panic-path proof through [`crate::run`]: with the test-only
+/// wrapper armed, PRODUCTION `bind_player` registers P1's endpoint as a
+/// submit-detonating decorator (reads stay functional); the scripted,
+/// well-formed player submit then panics inside the endpoint. The loop
+/// must emit EXACTLY the closed service_unavailable envelope for the
+/// panicking command and terminate fatally, with no panic detail anywhere
+/// in the emitted output.
+#[test]
+fn run_level_endpoint_panic_emits_closed_envelope_and_exits_fatal() {
+    const PANIC_MESSAGE: &str = "synthetic submit detonation";
+    let shared_output = SharedOutput::default();
+
+    // reset and bind are static; the submit line is generated lazily so it
+    // can carry the token minted inside the loop's own session.
+    let generators: Vec<GeneratedLine> = vec![
+        Box::new(|_| {
+            request(
+                Some(1),
+                "reset_synthetic",
+                json!({
+                    "trusted_key": TRUSTED_KEY,
+                    "players": ["1", "2"],
+                    "root_seed_hex": ROOT_SEED_HEX,
+                }),
+            )
+            .to_string()
+        }),
+        Box::new(|_| {
+            request(
+                Some(2),
+                "bind_player",
+                json!({"trusted_key": TRUSTED_KEY, "player": "1"}),
+            )
+            .to_string()
+        }),
+        Box::new(|observed| {
+            let token = observed
+                .lines()
+                .filter_map(|line| serde_json::from_str::<Value>(line).ok())
+                .find_map(|envelope| envelope["result"]["token"].as_str().map(str::to_string))
+                .expect("bind acknowledgment carrying the minted token");
+            request(
+                Some(3),
+                "submit",
+                json!({
+                    "token": token,
+                    "response_wire_b64": b64(&plausible_canonical_bytes()),
+                }),
+            )
+            .to_string()
+        }),
+    ];
+
+    let mut input = ReactiveScript::new(shared_output.clone(), generators);
+    let mut output = shared_output.clone();
+
+    arm_submit_panic(true);
+    let exit_code = crate::run(&mut input, &mut output, Some(TRUSTED_KEY.to_string()));
+    arm_submit_panic(false);
+
+    assert_eq!(
+        exit_code,
+        protocol::EXIT_FATAL,
+        "a panicked command must end the loop fatally"
+    );
+
+    let text = String::from_utf8(shared_output.0.borrow().clone()).unwrap();
+    let lines: Vec<&str> = text.lines().collect();
+    assert_eq!(
+        lines.len(),
+        3,
+        "exactly reset ack, bind ack, and the panic envelope may be emitted"
+    );
+
+    let reset_ack: Value = serde_json::from_str(lines[0]).unwrap();
+    assert_eq!(reset_ack["id"], 1);
+    assert_eq!(reset_ack["ok"], true);
+    let bind_ack: Value = serde_json::from_str(lines[1]).unwrap();
+    assert_eq!(bind_ack["id"], 2);
+    assert_eq!(bind_ack["ok"], true);
+
+    // THE assertion: the panicked PLAYER command surfaces EXACTLY the
+    // closed service_unavailable envelope — byte-closed shape, id echoed.
+    assert_closed_error_envelope(lines[2], Some(3), "service_unavailable");
+
+    // Redaction: no panic detail (nor any trusted material) in the output.
+    for marker in [PANIC_MESSAGE, "panic", TRUSTED_KEY, ROOT_SEED_HEX] {
+        assert!(
+            !text.contains(marker),
+            "panic detail leaked into stdout: {marker:?}"
+        );
     }
 }
 

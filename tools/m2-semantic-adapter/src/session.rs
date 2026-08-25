@@ -34,6 +34,31 @@ struct LiveEnvironment {
     tokens: TokenRegistry,
 }
 
+/// The single token-minting/route-installation path, shared by production
+/// binding ([`Session::bind_player`]) and the test-only registration seam
+/// ([`Session::bind_endpoint_for_test`]): a fresh token over `endpoint`
+/// plus installation of the direct route for `player`. Both callers riding
+/// one code path is what makes the seam's "mirrors production binding
+/// exactly" property structural rather than copy-duplicated.
+fn mint_token_and_route(
+    environment: &mut LiveEnvironment,
+    player: PlayerId,
+    endpoint: Arc<dyn PlayerEndpoint>,
+) -> Result<String, BindError> {
+    #[cfg(test)]
+    let endpoint = wrap_if_submit_panic_armed(endpoint);
+    let binding = BoundEndpoint {
+        player,
+        endpoint: Arc::clone(&endpoint),
+    };
+    let token = environment
+        .tokens
+        .insert(binding)
+        .map_err(|_| BindError::TokenEntropy)?;
+    environment.routes.insert(player, endpoint);
+    Ok(token)
+}
+
 impl Session {
     pub fn new(trusted_key: Option<String>) -> Self {
         Self {
@@ -76,17 +101,7 @@ impl Session {
             .controller
             .bind_player(player)
             .map_err(|_| BindError::Rejected)?;
-        let endpoint: Arc<dyn PlayerEndpoint> = Arc::new(handle);
-        let binding = BoundEndpoint {
-            player,
-            endpoint: Arc::clone(&endpoint),
-        };
-        let token = environment
-            .tokens
-            .insert(binding)
-            .map_err(|_| BindError::TokenEntropy)?;
-        environment.routes.insert(player, endpoint);
-        Ok(token)
+        mint_token_and_route(environment, player, Arc::new(handle))
     }
 
     /// The direct-call route: the most recent bound endpoint for a player.
@@ -111,11 +126,12 @@ impl Session {
         environment.controller.bind_player(player).ok()
     }
 
-    /// Test-only seam (never compiled into production behavior): mirrors
-    /// [`Session::bind_player`] routing exactly — a fresh token plus the
-    /// direct route — but registers a caller-supplied endpoint
-    /// implementation (e.g. a counting wrapper or a controlled-failing
-    /// stub around the real handle). Production binding is unchanged.
+    /// Test-only seam (never compiled into production behavior): registers
+    /// a caller-supplied endpoint implementation (e.g. a counting wrapper
+    /// or a controlled-failing stub around the real handle) through the
+    /// same [`mint_token_and_route`] path as [`Session::bind_player`], so
+    /// the observable binding effects — a fresh token plus the direct
+    /// route — are structurally identical to production binding.
     #[cfg(test)]
     pub(crate) fn bind_endpoint_for_test(
         &mut self,
@@ -123,15 +139,73 @@ impl Session {
         endpoint: Arc<dyn PlayerEndpoint>,
     ) -> Result<String, BindError> {
         let environment = self.environment.as_mut().ok_or(BindError::NoEnvironment)?;
-        let binding = BoundEndpoint {
-            player,
-            endpoint: Arc::clone(&endpoint),
-        };
-        let token = environment
-            .tokens
-            .insert(binding)
-            .map_err(|_| BindError::TokenEntropy)?;
-        environment.routes.insert(player, endpoint);
-        Ok(token)
+        mint_token_and_route(environment, player, endpoint)
     }
 }
+
+// ---------------------------------------------------------------------------
+// Test-only submit-panic injection (run-level failure-proof support)
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+thread_local! {
+    static SUBMIT_PANIC_ARMED: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// Arms (or disarms) the test-only wrapper below: while armed, EVERY
+/// endpoint registered through the shared binding path — including plain
+/// production `bind_player`, which is how the process loop binds — has its
+/// semantic submit replaced by a panic while every other operation keeps
+/// forwarding to the real handle. This lets the evidence suite prove the
+/// closed panic policy end-to-end through [`crate::run`] without touching
+/// any non-test build.
+#[cfg(test)]
+pub(crate) fn arm_submit_panic(armed: bool) {
+    SUBMIT_PANIC_ARMED.with(|cell| cell.set(armed));
+}
+
+#[cfg(test)]
+fn wrap_if_submit_panic_armed(endpoint: Arc<dyn PlayerEndpoint>) -> Arc<dyn PlayerEndpoint> {
+    if SUBMIT_PANIC_ARMED.with(std::cell::Cell::get) {
+        Arc::new(PanickingSubmit { inner: endpoint })
+    } else {
+        endpoint
+    }
+}
+
+/// Test-only decorator: every operation except `submit` forwards verbatim,
+/// so only the semantic submit detonates.
+#[cfg(test)]
+struct PanickingSubmit {
+    inner: Arc<dyn PlayerEndpoint>,
+}
+
+#[cfg(test)]
+impl PlayerEndpoint for PanickingSubmit {
+    fn perspective(&self) -> PlayerId {
+        self.inner.perspective()
+    }
+
+    fn observation(&self) -> Result<ObservationEnvelope, PlayerEndpointError> {
+        self.inner.observation()
+    }
+
+    fn information_state(&self) -> Result<PlayerInformationStateV2, PlayerEndpointError> {
+        self.inner.information_state()
+    }
+
+    fn visible_decision(&self) -> Result<Option<PlayerDecisionRequestV2>, PlayerEndpointError> {
+        self.inner.visible_decision()
+    }
+
+    fn submit(&self, _response: DecisionResponseV2) -> Result<PlayerStepV2, PlayerEndpointError> {
+        panic!("synthetic submit detonation")
+    }
+}
+
+#[cfg(test)]
+use mtgml_decision::{DecisionResponseV2, PlayerDecisionRequestV2};
+#[cfg(test)]
+use mtgml_environment::PlayerEndpointError;
+#[cfg(test)]
+use mtgml_observation::{ObservationEnvelope, PlayerInformationStateV2, PlayerStepV2};
