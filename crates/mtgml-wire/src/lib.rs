@@ -547,11 +547,12 @@ mod constructive_producer_tests {
         PlayerResult, StateRevision, TerminalReason, VisibleSequence, ZoneKind,
     };
     use mtgml_observation::{
-        ObservationEnvelope, PlayerInformationStateV2, PlayerKnowledgeCauseV1,
-        PlayerKnowledgeChannelV1, PlayerKnowledgeInvalidationReasonV1,
-        PlayerKnowledgeInvalidationV1, PlayerKnowledgeProvenanceV1, PlayerKnownLocationFactV1,
-        PlayerKnownLocationV1, PlayerKnownObjectV1, PlayerStepSubmissionV1, PlayerStepV2,
-        INFORMATION_STATE_SCHEMA_V2, OBSERVATION_SCHEMA, PLAYER_STEP_SCHEMA_V2,
+        ObservationEnvelope, ObservedEventEnvelopeV2, ObservedEventKindV2,
+        PlayerInformationStateV2, PlayerKnowledgeCauseV1, PlayerKnowledgeChannelV1,
+        PlayerKnowledgeInvalidationReasonV1, PlayerKnowledgeInvalidationV1,
+        PlayerKnowledgeProvenanceV1, PlayerKnownLocationFactV1, PlayerKnownLocationV1,
+        PlayerKnownObjectV1, PlayerStepSubmissionV1, PlayerStepV2, INFORMATION_STATE_SCHEMA_V2,
+        OBSERVATION_SCHEMA, OBSERVED_EVENT_SCHEMA_V2, PLAYER_STEP_SCHEMA_V2,
     };
 
     use crate::encode_canonical;
@@ -708,6 +709,25 @@ mod constructive_producer_tests {
         assert_eq!(
             encode_canonical(&value).unwrap(),
             golden_fixture("observation-envelope.v1.json")
+        );
+    }
+
+    #[test]
+    fn observed_event_envelope_v2_object_moved_constructs_the_golden_bytes() {
+        let value = ObservedEventEnvelopeV2 {
+            schema_version: OBSERVED_EVENT_SCHEMA_V2.to_owned(),
+            sequence: VisibleSequence(1),
+            state_revision: StateRevision(0),
+            event: ObservedEventKindV2::ObjectMoved {
+                old_object: Some(OpaqueObjectId(3)),
+                new_object: Some(OpaqueObjectId(11)),
+                from: ZoneKind::Hand,
+                to: ZoneKind::Battlefield,
+            },
+        };
+        assert_eq!(
+            encode_canonical(&value).unwrap(),
+            golden_fixture("observed-event-v2-object-moved.json")
         );
     }
 

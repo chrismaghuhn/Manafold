@@ -138,6 +138,7 @@ CONSTRUCTIVE_NODES: tuple[str, ...] = (
     f"{CONSTRUCTIVE_PREFIX}information_state_envelope_v2_constructs_the_golden_bytes",
     f"{CONSTRUCTIVE_PREFIX}player_decision_request_v2_constructs_the_golden_bytes",
     f"{CONSTRUCTIVE_PREFIX}observation_envelope_v1_constructs_the_golden_bytes",
+    f"{CONSTRUCTIVE_PREFIX}observed_event_envelope_v2_object_moved_constructs_the_golden_bytes",
     f"{CONSTRUCTIVE_PREFIX}decision_response_v2_select_one_constructs_the_golden_bytes",
     f"{CONSTRUCTIVE_PREFIX}player_step_v2_constructs_the_golden_bytes",
     f"{CONSTRUCTIVE_PREFIX}episode_status_terminal_concession_constructs_the_golden_bytes",
