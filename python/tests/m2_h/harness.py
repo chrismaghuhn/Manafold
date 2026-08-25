@@ -30,7 +30,15 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "python" / "src"))
 
 from mtgml._m2_adapter import AdapterPlayerClient, SyntheticEnvironmentClient
 from mtgml._m2_adapter.process import SubprocessTransport
-from mtgml._m2_adapter.protocol import decode_wire_payload
+from mtgml._m2_adapter.protocol import (
+    CMD_INFORMATION_STATE,
+    CMD_SUBMIT,
+    CMD_VISIBLE_DECISION,
+    FIELD_INFORMATION_STATE_WIRE_B64,
+    FIELD_STEP_WIRE_B64,
+    FIELD_VISIBLE_DECISION_WIRE_B64,
+    decode_wire_payload,
+)
 from mtgml._m2_adapter.submission import encode_decision_response_submission_v2
 from mtgml.canonical import canonical_json_bytes
 from mtgml.decision import (
@@ -64,6 +72,9 @@ EXPECTED_DECISION_KIND_SEQUENCE: Final[tuple[str, ...]] = (
 )
 
 SEED_ABSENCE_PROBE_KEY: Final = "root_seed"
+
+PLAYER_ONE: Final = "1"
+PLAYER_TWO: Final = "2"
 
 _PAYLOAD_SUFFIX: Final = "_wire_b64"
 
@@ -158,6 +169,36 @@ def build_twin_clients(seed_hex: str) -> Iterator[TwinClients]:
             )
 
 
+@contextlib.contextmanager
+def build_single_client(seed_hex: str) -> Iterator[SyntheticEnvironmentClient]:
+    """One identically-reset environment on a ``RecordingTransport`` with the
+    same exception-safe teardown guarantee as :func:`build_twin_clients`."""
+    transport: RecordingTransport | None = None
+    environment: SyntheticEnvironmentClient | None = None
+    body_error: BaseException | None = None
+    try:
+        transport = RecordingTransport()
+        environment = SyntheticEnvironmentClient(transport)
+        environment.reset_synthetic(root_seed_hex=seed_hex)
+        yield environment
+    except BaseException as exc:
+        body_error = exc
+        raise
+    finally:
+        errors: list[BaseException] = []
+        if environment is not None:
+            _guarded_teardown_step("environment shutdown", environment.shutdown, errors)
+        if transport is not None:
+            _guarded_teardown_step("transport close", transport.close, errors)
+        if errors and body_error is None:
+            raise errors[0]
+        if errors:
+            print(
+                "[m2_h] 1+ session teardown error(s) suppressed behind the original scenario error",
+                file=sys.stderr,
+            )
+
+
 def recorded_results(environment: SyntheticEnvironmentClient) -> list[dict[str, object]]:
     transport = environment._transport
     assert isinstance(transport, RecordingTransport), (
@@ -215,9 +256,32 @@ def order_reversed_offered(request: PlayerDecisionRequestV2) -> DecisionAnswerV2
     return DecisionAnswerV2("order", candidate_ids=tuple(reversed(offered)))
 
 
+MEMBER_COUNT: Final = 2
+
+
+def choose_number_member_count(request: PlayerDecisionRequestV2) -> DecisionAnswerV2:
+    """Stage-count driver fixing the member-set cardinality to ``MEMBER_COUNT``.
+
+    The synthetic ChooseCount surface spans ``{0, 3}``; answering the bare
+    minimum (``0``) would pin the following choose_many bounds to
+    ``{0, 0}`` and make below-minimum cardinality unreachable. Answering
+    ``2`` yields a ``{2, 2}`` surface with two dense candidates, which is
+    the reality check every rejection scenario asserts dynamically.
+    """
+    return DecisionAnswerV2("choose_number", value=MEMBER_COUNT)
+
+
 ANSWER_CONSTRUCTORS: Final[dict[str, Callable[[PlayerDecisionRequestV2], DecisionAnswerV2]]] = {
     "choose_one": select_one_first_offered,
     "choose_number": choose_number_spec_minimum,
+    "choose_many": select_many_first_minimum_offered,
+    "order": order_reversed_offered,
+}
+
+
+ACCEPTED_STAGE_DRIVERS: Final[dict[str, Callable[[PlayerDecisionRequestV2], DecisionAnswerV2]]] = {
+    "choose_one": select_one_first_offered,
+    "choose_number": choose_number_member_count,
     "choose_many": select_many_first_minimum_offered,
     "order": order_reversed_offered,
 }
@@ -284,3 +348,176 @@ def assert_public_surface_unchanged(
     test.assertEqual(public_method_names(player), set(PLAYER_CLIENT_PUBLIC_METHODS))
     test.assertEqual(public_method_names(environment), set(SYNTHETIC_PUBLIC_METHODS))
     test.assertIn(TRUSTED_DIRECT_CALL_NAME, dir(environment))
+
+
+def _bound_client(twins: TwinClients, player: str) -> AdapterPlayerClient:
+    if player == PLAYER_ONE:
+        return twins.client_a1
+    if player == PLAYER_TWO:
+        return twins.client_a2
+    raise AssertionError(f"twin pair binds no client for player {player!r}")
+
+
+def live_request_pair(
+    twins: TwinClients,
+    test: unittest.TestCase,
+) -> tuple[PlayerDecisionRequestV2 | None, PlayerDecisionRequestV2 | None]:
+    """Current P1 visible request from both routes, byte-compared.
+
+    Returns ``(token-route request, direct-route request)``; both ``None``
+    exactly when no decision is pending on either twin."""
+    request_a = twins.client_a1.visible_decision()
+    raw_b = payload_field(
+        direct_call_result(twins.env_b, CMD_VISIBLE_DECISION, PLAYER_ONE),
+        FIELD_VISIBLE_DECISION_WIRE_B64,
+    )
+    if request_a is None:
+        test.assertIsNone(
+            raw_b, "the trusted direct-call route exposes a decision the token route hides"
+        )
+        return None, None
+    test.assertIsNotNone(raw_b, "the trusted direct-call route lacks the pending decision")
+    assert raw_b is not None
+    test.assertEqual(
+        wire_payload_bytes(request_a),
+        raw_b,
+        "the two routes disagree on the live visible-decision payload",
+    )
+    return request_a, decode_request(raw_b)
+
+
+def token_view_bytes(client: AdapterPlayerClient) -> tuple[bytes, bytes | None]:
+    """Player-visible view of one bound client: (information state, decision)."""
+    state = client.information_state()
+    decision = client.visible_decision()
+    return wire_payload_bytes(state), optional_wire_payload_bytes(decision)
+
+
+def direct_view_bytes(
+    environment: SyntheticEnvironmentClient, player: str
+) -> tuple[bytes | None, bytes | None]:
+    """Trusted-route mirror of :func:`token_view_bytes` for one player."""
+    state = payload_field(
+        direct_call_result(environment, CMD_INFORMATION_STATE, player),
+        FIELD_INFORMATION_STATE_WIRE_B64,
+    )
+    decision = payload_field(
+        direct_call_result(environment, CMD_VISIBLE_DECISION, player),
+        FIELD_VISIBLE_DECISION_WIRE_B64,
+    )
+    return state, decision
+
+
+def assert_views_unchanged(
+    test: unittest.TestCase,
+    before: tuple[bytes | None, bytes | None],
+    after: tuple[bytes | None, bytes | None],
+    context: str,
+) -> None:
+    test.assertEqual(before[0], after[0], f"{context}: information-state payload mutated")
+    test.assertEqual(before[1], after[1], f"{context}: visible-decision payload mutated")
+
+
+def submit_response_both_routes(
+    twins: TwinClients,
+    test: unittest.TestCase,
+    request_a: PlayerDecisionRequestV2,
+    request_b: PlayerDecisionRequestV2,
+    answer: DecisionAnswerV2,
+    player: str = PLAYER_ONE,
+) -> tuple[PlayerStepV2, PlayerStepV2]:
+    """Encode ONE answer against each route's live request, prove the two
+    injections byte-identical, submit through the token route and the
+    trusted direct-call route, and return the decoded ``(step_a, step_b)``
+    after asserting their step payloads are byte-equal."""
+    response_a = response_for(request_a, answer)
+    response_b = response_for(request_b, answer)
+    raw_injection = submit_response_bytes(response_a)
+    test.assertEqual(
+        raw_injection,
+        submit_response_bytes(response_b),
+        "the two routes received diverging injections for the same answer",
+    )
+    step_a = _bound_client(twins, player).submit(response_a)
+    raw_step_b = payload_field(
+        direct_call_result(twins.env_b, CMD_SUBMIT, player, raw_injection),
+        FIELD_STEP_WIRE_B64,
+    )
+    test.assertIsNotNone(
+        raw_step_b,
+        f"player {player}: trusted direct-call submit result lacks its step payload",
+    )
+    assert raw_step_b is not None
+    step_b = decode_step(raw_step_b)
+    test.assertEqual(
+        wire_payload_bytes(step_a),
+        raw_step_b,
+        f"player {player}: rejected-step payloads diverge across routes",
+    )
+    return step_a, step_b
+
+
+def assert_submission_pair(
+    test: unittest.TestCase,
+    step_a: PlayerStepV2,
+    step_b: PlayerStepV2,
+    expected_kind: str,
+    expected_code: str | None,
+    context: str,
+) -> None:
+    for label, step in (("token route", step_a), ("direct route", step_b)):
+        test.assertEqual(
+            step.submission.kind,
+            expected_kind,
+            f"{context} ({label}): unexpected submission kind",
+        )
+        test.assertEqual(step.submission.code, expected_code, f"{context} ({label}): code")
+
+
+def advance_accepted_stage(
+    twins: TwinClients,
+    test: unittest.TestCase,
+    kind: str,
+) -> None:
+    """Drive ONE accepted transition through BOTH twins in lockstep."""
+    request_a, request_b = live_request_pair(twins, test)
+    assert request_a is not None and request_b is not None, f"no live request for stage {kind}"
+    test.assertEqual(request_a.decision.kind, kind, "stage driving met an unexpected family")
+    driver = ACCEPTED_STAGE_DRIVERS[kind]
+    answer = driver(request_a)
+    step_a, step_b = submit_response_both_routes(twins, test, request_a, request_b, answer)
+    assert_submission_pair(test, step_a, step_b, "accepted", None, f"accepted stage {kind}")
+
+
+def drive_twins_to_stage(
+    twins: TwinClients,
+    test: unittest.TestCase,
+    stage_index: int,
+) -> tuple[PlayerDecisionRequestV2, PlayerDecisionRequestV2]:
+    """Advance both twins through accepted stages until the live P1 request
+    is the one at ``EXPECTED_DECISION_KIND_SEQUENCE[stage_index]``."""
+    for index in range(stage_index):
+        advance_accepted_stage(twins, test, EXPECTED_DECISION_KIND_SEQUENCE[index])
+    request_a, request_b = live_request_pair(twins, test)
+    assert request_a is not None and request_b is not None, "stage has no live request"
+    test.assertEqual(
+        request_a.decision.kind,
+        EXPECTED_DECISION_KIND_SEQUENCE[stage_index],
+        "stage driving landed on the wrong family",
+    )
+    return request_a, request_b
+
+
+def finish_lockstep_after(
+    twins: TwinClients,
+    test: unittest.TestCase,
+    stage_index: int,
+) -> None:
+    """Continue lockstep from a rejected stage: a rejection leaves its own
+    request live, so accept that stage first, then every remaining one,
+    and prove both routes rest together with no pending decision."""
+    for index in range(stage_index, len(EXPECTED_DECISION_KIND_SEQUENCE)):
+        advance_accepted_stage(twins, test, EXPECTED_DECISION_KIND_SEQUENCE[index])
+    request_a, request_b = live_request_pair(twins, test)
+    test.assertIsNone(request_a, "a decision remained after completing the chain")
+    test.assertIsNone(request_b, "trusted route kept a decision after completing the chain")
