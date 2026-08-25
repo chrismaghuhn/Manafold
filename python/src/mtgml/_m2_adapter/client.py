@@ -47,6 +47,7 @@ from .protocol import (
     FIELD_STEP_WIRE_B64,
     FIELD_VISIBLE_DECISION_WIRE_B64,
     MALFORMED_RESPONSE,
+    PARAM_OP,
     PARAM_PLAYER,
     PARAM_PLAYERS,
     PARAM_ROOT_SEED_HEX,
@@ -136,7 +137,7 @@ class SyntheticEnvironmentClient:
         """
         params: dict[str, object] = {
             PARAM_TRUSTED_KEY: self._transport._trusted_key,
-            "op": op,
+            PARAM_OP: op,
             PARAM_PLAYER: player,
         }
         if response_wire is not None:

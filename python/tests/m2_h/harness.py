@@ -5,7 +5,9 @@ only provides:
 
 - ``build_twin_clients``: a context-managed pair of
   ``SyntheticEnvironmentClient`` instances built on identical trusted
-  reset inputs (default players ``("1", "2")`` plus one seed);
+  reset inputs (default players ``("1", "2")`` plus one seed), whose
+  teardown is exception-safe: both twins always attempt their full
+  teardown and a scenario error is never masked by a teardown failure;
 - payload-only comparison helpers that never surface envelope ids or
   tokens;
 - explicit answer constructors that read ONLY public request data.
@@ -24,7 +26,7 @@ from collections.abc import Callable, Iterator, Mapping
 from pathlib import Path
 from typing import Any, Final, NamedTuple, cast
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "python" / "src"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "python" / "src"))
 
 from mtgml._m2_adapter import AdapterPlayerClient, SyntheticEnvironmentClient
 from mtgml._m2_adapter.process import SubprocessTransport
@@ -67,7 +69,7 @@ _PAYLOAD_SUFFIX: Final = "_wire_b64"
 
 
 class RecordingTransport(SubprocessTransport):
-    """Transport that records the result mapping of every round trip."""
+    """Transport that records the result mapping of every successful round trip."""
 
     def __init__(self) -> None:
         super().__init__()
@@ -88,15 +90,39 @@ class TwinClients(NamedTuple):
     client_b2: AdapterPlayerClient
 
 
+def _guarded_teardown_step(
+    label: str, action: Callable[[], object], errors: list[BaseException]
+) -> None:
+    """Run one teardown step; record failures so later steps still run."""
+    try:
+        action()
+    except Exception as exc:
+        print(f"[m2_h] twin teardown error ({label}): {exc!r}", file=sys.stderr)
+        errors.append(exc)
+
+
 @contextlib.contextmanager
 def build_twin_clients(seed_hex: str) -> Iterator[TwinClients]:
-    """Two identical-reset synthetic environments, each with P1+P2 bound."""
-    with (
-        RecordingTransport() as transport_a,
-        RecordingTransport() as transport_b,
-        SyntheticEnvironmentClient(transport_a) as env_a,
-        SyntheticEnvironmentClient(transport_b) as env_b,
-    ):
+    """Two identical-reset synthetic environments, each with P1+P2 bound.
+
+    Teardown guarantee: BOTH twins always attempt their full teardown
+    sequence (environment shutdown, then transport close) even when the
+    scenario body or the first teardown step raised. The original error
+    is never masked: when the body raised, every teardown failure stays
+    suppressed with a stderr log line and the body error surfaces
+    unchanged. When the body succeeded, the first real teardown error
+    surfaces and any later one remains suppressed-with-logging.
+    """
+    transport_a: RecordingTransport | None = None
+    transport_b: RecordingTransport | None = None
+    env_a: SyntheticEnvironmentClient | None = None
+    env_b: SyntheticEnvironmentClient | None = None
+    body_error: BaseException | None = None
+    try:
+        transport_a = RecordingTransport()
+        env_a = SyntheticEnvironmentClient(transport_a)
+        transport_b = RecordingTransport()
+        env_b = SyntheticEnvironmentClient(transport_b)
         env_a.reset_synthetic(root_seed_hex=seed_hex)
         env_b.reset_synthetic(root_seed_hex=seed_hex)
         yield TwinClients(
@@ -107,6 +133,29 @@ def build_twin_clients(seed_hex: str) -> Iterator[TwinClients]:
             client_b1=env_b.bind_player("1"),
             client_b2=env_b.bind_player("2"),
         )
+    except BaseException as exc:
+        body_error = exc
+        raise
+    finally:
+        errors: list[BaseException] = []
+        for label, environment, transport in (
+            ("A", env_a, transport_a),
+            ("B", env_b, transport_b),
+        ):
+            if environment is not None:
+                _guarded_teardown_step(
+                    f"twin {label} environment shutdown", environment.shutdown, errors
+                )
+            if transport is not None:
+                _guarded_teardown_step(f"twin {label} transport close", transport.close, errors)
+        if errors and body_error is None:
+            raise errors[0]
+        if errors:
+            print(
+                f"[m2_h] {len(errors)} twin teardown error(s) suppressed "
+                "behind the original scenario error",
+                file=sys.stderr,
+            )
 
 
 def recorded_results(environment: SyntheticEnvironmentClient) -> list[dict[str, object]]:

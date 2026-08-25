@@ -71,6 +71,7 @@ PARAM_TOKEN: Final = "token"
 PARAM_PLAYER: Final = "player"
 PARAM_PLAYERS: Final = "players"
 PARAM_ROOT_SEED_HEX: Final = "root_seed_hex"
+PARAM_OP: Final = "op"
 RESULT_TOKEN: Final = "token"
 
 FIELD_OBSERVATION_WIRE_B64: Final = "observation_wire_b64"

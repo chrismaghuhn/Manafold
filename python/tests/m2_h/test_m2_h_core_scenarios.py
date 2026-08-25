@@ -12,12 +12,12 @@ data only; the client library carries no choosing logic.
 
 from __future__ import annotations
 
+import contextlib
+import io
 import os
 import unittest
 from pathlib import Path
 
-import harness
-from harness import ANSWER_CONSTRUCTORS, EXPECTED_DECISION_KIND_SEQUENCE
 from mtgml._m2_adapter.process import BINARY_ENV_VAR
 from mtgml._m2_adapter.protocol import (
     CMD_INFORMATION_STATE,
@@ -27,6 +27,8 @@ from mtgml._m2_adapter.protocol import (
     FIELD_STEP_WIRE_B64,
     FIELD_VISIBLE_DECISION_WIRE_B64,
 )
+
+from m2_h import harness
 
 _BINARY = os.environ.get(BINARY_ENV_VAR)
 if _BINARY is None or not Path(_BINARY).is_file():
@@ -100,17 +102,17 @@ class ExplicitDecisionChainTests(unittest.TestCase):
             observed_kinds: list[str] = []
             request = twins.client_a1.visible_decision()
             final_step = None
-            for expected_kind in EXPECTED_DECISION_KIND_SEQUENCE:
+            for expected_kind in harness.EXPECTED_DECISION_KIND_SEQUENCE:
                 self.assertIsNotNone(request)
                 actual_kind = request.decision.kind
                 self.assertEqual(actual_kind, expected_kind)
                 observed_kinds.append(actual_kind)
-                answer = ANSWER_CONSTRUCTORS[actual_kind](request)
+                answer = harness.ANSWER_CONSTRUCTORS[actual_kind](request)
                 step = twins.client_a1.submit(harness.response_for(request, answer))
                 self.assertEqual(step.submission.kind, "accepted")
                 final_step = step
                 request = step.next_decision
-            self.assertEqual(observed_kinds, list(EXPECTED_DECISION_KIND_SEQUENCE))
+            self.assertEqual(observed_kinds, list(harness.EXPECTED_DECISION_KIND_SEQUENCE))
             assert final_step is not None
             self.assertIsNone(final_step.next_decision)
             self.assertIsNone(twins.client_a1.visible_decision())
@@ -130,19 +132,30 @@ class AcceptedParityLockstepTests(unittest.TestCase):
                     FIELD_VISIBLE_DECISION_WIRE_B64,
                 )
                 if request_a is None:
-                    self.assertIsNone(raw_request_b)
+                    self.assertIsNone(
+                        raw_request_b,
+                        f"terminal stage {stages}: trusted direct-call route returned a "
+                        "visible decision while the token route ended",
+                    )
                     break
-                self.assertIsNotNone(raw_request_b)
+                self.assertIsNotNone(
+                    raw_request_b,
+                    f"stage {stages}: trusted direct-call route lacks its visible-decision payload",
+                )
                 kind = request_a.decision.kind
-                self.assertEqual(kind, EXPECTED_DECISION_KIND_SEQUENCE[stages])
+                self.assertEqual(kind, harness.EXPECTED_DECISION_KIND_SEQUENCE[stages])
                 self.assertEqual(
                     harness.optional_wire_payload_bytes(request_a),
                     raw_request_b,
                     f"stage {stages} ({kind}): visible-decision payloads diverge before submit",
                 )
                 request_b = harness.decode_request(raw_request_b)
-                response_a = harness.response_for(request_a, ANSWER_CONSTRUCTORS[kind](request_a))
-                response_b = harness.response_for(request_b, ANSWER_CONSTRUCTORS[kind](request_b))
+                response_a = harness.response_for(
+                    request_a, harness.ANSWER_CONSTRUCTORS[kind](request_a)
+                )
+                response_b = harness.response_for(
+                    request_b, harness.ANSWER_CONSTRUCTORS[kind](request_b)
+                )
                 step_a = twins.client_a1.submit(response_a)
                 raw_step_b = harness.payload_field(
                     harness.direct_call_result(
@@ -153,7 +166,11 @@ class AcceptedParityLockstepTests(unittest.TestCase):
                     ),
                     FIELD_STEP_WIRE_B64,
                 )
-                self.assertIsNotNone(raw_step_b)
+                self.assertIsNotNone(
+                    raw_step_b,
+                    f"stage {stages} ({kind}): trusted direct-call submit result lacks its "
+                    "step payload",
+                )
                 step_b = harness.decode_step(raw_step_b)
                 self.assertEqual(step_a.submission.kind, "accepted")
                 self.assertEqual(step_b.submission.kind, "accepted")
@@ -167,7 +184,11 @@ class AcceptedParityLockstepTests(unittest.TestCase):
                     harness.direct_call_result(twins.env_b, CMD_INFORMATION_STATE, PLAYER_ONE),
                     FIELD_INFORMATION_STATE_WIRE_B64,
                 )
-                self.assertIsNotNone(raw_state_b)
+                self.assertIsNotNone(
+                    raw_state_b,
+                    f"stage {stages} ({kind}): trusted direct-call information-state result "
+                    "lacks its payload",
+                )
                 state_b = harness.decode_information_state(raw_state_b)
                 self.assertEqual(
                     harness.wire_payload_bytes(state_a),
@@ -178,7 +199,41 @@ class AcceptedParityLockstepTests(unittest.TestCase):
                 self.assertEqual(step_a.status.to_wire(), step_b.status.to_wire())
                 request_a = step_a.next_decision
                 stages += 1
-            self.assertEqual(stages, len(EXPECTED_DECISION_KIND_SEQUENCE))
+            self.assertEqual(stages, len(harness.EXPECTED_DECISION_KIND_SEQUENCE))
+
+
+class TwinTeardownSafetyTests(unittest.TestCase):
+    """H.4-i regression: twin teardown can never mask a scenario error."""
+
+    def test_dead_child_surfaces_original_error_and_still_tears_down_both_twins(self) -> None:
+        stderr = io.StringIO()
+        with (
+            contextlib.redirect_stderr(stderr),
+            self.assertRaises(RuntimeError) as caught,
+            harness.build_twin_clients(SEED_HEX) as twins,
+        ):
+            child_a = twins.env_a._transport._process
+            assert child_a is not None, "reset must have spawned twin A's child"
+            child_a.kill()
+            child_a.wait()
+            raise RuntimeError("scenario failure")
+
+        original = caught.exception
+        self.assertEqual(str(original), "scenario failure")
+        self.assertIsNone(
+            getattr(original, "code", None),
+            "the original scenario error was masked by a transport error",
+        )
+        for label, environment in (("A", twins.env_a), ("B", twins.env_b)):
+            transport = environment._transport
+            self.assertTrue(transport._closed, f"twin {label} transport was left open")
+            child = transport._process
+            self.assertIsNotNone(child)
+            assert child is not None
+            self.assertIsNotNone(child.poll(), f"twin {label} child was left running")
+        stderr_text = stderr.getvalue()
+        self.assertIn("twin A environment shutdown", stderr_text)
+        self.assertNotIn("twin B", stderr_text)
 
 
 if __name__ == "__main__":
