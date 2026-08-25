@@ -256,7 +256,11 @@ def main() -> None:
         if token not in replay_tests:
             fail(f"Rust replay test evidence lacks {token}")
 
-    events_rust = (ROOT / "crates/mtgml-observation/src/lib.rs").read_text(encoding="utf-8")
+    # Issue #62: the event-kind authority moved from lib.rs to
+    # observed_event.rs (structural consolidation); same evidence, new path.
+    events_rust = (
+        ROOT / "crates/mtgml-observation/src/observed_event.rs"
+    ).read_text(encoding="utf-8")
     events_python = (ROOT / "python/src/mtgml/events.py").read_text(encoding="utf-8")
     events_schema = (ROOT / "schemas/observed-event-envelope.v1.schema.json").read_text(
         encoding="utf-8"
