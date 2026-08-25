@@ -2167,3 +2167,41 @@ fn retired_opaque_cannot_be_reallocated_even_by_cursor_accident() {
         LifecycleApplicationError::OpaqueRetired
     );
 }
+
+#[test]
+fn simultaneous_violations_preserve_the_existing_error_precedence() {
+    // Zones-segment violations win over a later random-state violation.
+    let mut state = synthetic_state();
+    let key = state.zones.locations.get(&GameObjectId(2)).unwrap().key();
+    state
+        .zones
+        .ordered_zones
+        .get_mut(&key)
+        .unwrap()
+        .push(GameObjectId(2));
+    state.random.streams.insert(
+        RandomStreamKeyV1::player_scoped(RandomStreamKindV1::SyntheticM1, 9),
+        RandomStreamCursorV1::default(),
+    );
+    assert!(matches!(
+        validate_engine_state(&state),
+        Err(EngineStateViolation::OrderedZoneMismatch)
+    ));
+
+    // M2-shape violations win over format-segment violations.
+    let mut state = synthetic_state();
+    state.revision = StateRevision(7);
+    state.format = FormatState::Commander {
+        state: CommanderState {
+            designations: BTreeMap::from([(PlayerId(2), vec![PhysicalCardId(1)])]),
+            cast_counts: BTreeMap::new(),
+            damage: BTreeMap::new(),
+        },
+    };
+    assert!(matches!(
+        validate_engine_state(&state),
+        Err(EngineStateViolation::M2Shape(
+            M2ShapeViolation::PendingDecision
+        ))
+    ));
+}
