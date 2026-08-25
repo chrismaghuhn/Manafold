@@ -16,7 +16,8 @@ diagnostics):
 1. ZERO-RUNTIME-DEPS: ``[project] dependencies`` in
    ``python/pyproject.toml`` must be exactly ``[]``, and
    ``[project.optional-dependencies]`` must not introduce any runtime
-   surface (when the table exists, every extra group must be empty).
+   surface (when present, the value must be a table and every extra
+   group in it must be empty).
    Current reality, documented: ``dependencies == []`` and no
    optional-dependencies table exists at all.
 2. IMPORT CONFINEMENT: every absolute ``import`` / ``from ... import``
@@ -58,6 +59,8 @@ diagnostics):
 
 All scans decode sources as UTF-8 with BOM tolerance (``utf-8-sig``);
 line endings (CRLF or LF) never affect matching or line accounting.
+Every reported ``file:line`` coordinate is a true on-disk line number,
+and decode/parse failures always name the offending file.
 """
 
 from __future__ import annotations
@@ -66,6 +69,7 @@ import ast
 import sys
 import tomllib
 import unittest
+from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import Any, Final, cast
 
@@ -125,7 +129,25 @@ def _package_sources() -> list[Path]:
 
 def _read_source(path: Path) -> str:
     """BOM-tolerant decode; universal newlines make CRLF/LF irrelevant."""
-    return path.read_bytes().decode("utf-8-sig")
+    try:
+        return path.read_bytes().decode("utf-8-sig")
+    except UnicodeDecodeError as decode_error:
+        raise UnicodeDecodeError(
+            decode_error.encoding,
+            decode_error.object,
+            decode_error.start,
+            decode_error.end,
+            f"{_relative(path)}: {decode_error.reason}",
+        ) from decode_error
+
+
+def _parse_source(path: Path, source: str) -> ast.Module:
+    """Parse scanned source; any SyntaxError names the on-disk file."""
+    try:
+        return ast.parse(source)
+    except SyntaxError as syntax_error:
+        syntax_error.filename = _relative(path)
+        raise
 
 
 def _relative(path: Path) -> str:
@@ -152,19 +174,43 @@ def _absolute_import_tops(tree: ast.Module) -> list[tuple[int, str]]:
     return sites
 
 
-def _source_without_class(source: str, tree: ast.Module, class_name: str) -> str:
-    """Source text with the named top-level class body removed."""
-    spans = [
+def _occurrences(source: str, marker: str) -> Iterator[int]:
+    """Every start offset of ``marker`` in ``source``."""
+    offset = source.find(marker)
+    while offset != -1:
+        yield offset
+        offset = source.find(marker, offset + 1)
+
+
+def _numbered_lines(_path: Path, source: str) -> list[tuple[int, str]]:
+    """(on-disk 1-based line number, text) for every line of ``source``."""
+    return list(enumerate(source.split("\n"), start=1))
+
+
+def _lines_outside_trusted_class(path: Path, source: str) -> list[tuple[int, str]]:
+    """``_numbered_lines`` minus the trusted plumbing class body.
+
+    Excluded lines are SKIPPED, never stripped-and-renumbered, so scan
+    coordinates stay true on-disk line numbers. Line-at-a-time scanning
+    is exact because no forbidden marker spans a line break.
+    """
+    tree = _parse_source(path, source)
+    excluded_spans = [
         (node.lineno, node.end_lineno)
         for node in tree.body
-        if isinstance(node, ast.ClassDef) and node.name == class_name
+        if isinstance(node, ast.ClassDef) and node.name == TRUSTED_PLUMBING_CLASS
     ]
-    kept = [
-        line
-        for number, line in enumerate(source.splitlines(), start=1)
-        if not any(start <= number <= end for start, end in spans)
+    return [
+        (number, line)
+        for number, line in _numbered_lines(path, source)
+        if not any(start <= number <= end for start, end in excluded_spans)
     ]
-    return "\n".join(kept)
+
+
+PLAYER_SURFACE_TRANSFORMS: Final[dict[str, Callable[[Path, str], list[tuple[int, str]]]]] = {
+    "client.py": _lines_outside_trusted_class,
+    "submission.py": _numbered_lines,
+}
 
 
 def _type_checking_names(tree: ast.Module) -> set[str]:
@@ -194,11 +240,16 @@ class RulesFreeStaticGuardsTests(unittest.TestCase):
             "Python contracts ship with zero runtime packages",
         )
         extras = project.get("optional-dependencies")
-        offending = (
-            {group: entries for group, entries in extras.items() if entries}
-            if isinstance(extras, dict)
-            else {}
-        )
+        offending: dict[str, Any] = {}
+        if extras is not None:
+            self.assertIsInstance(
+                extras,
+                dict,
+                "[project] optional-dependencies must be a table of extra "
+                "groups; anything else is malformed and fails closed",
+            )
+            assert isinstance(extras, dict)
+            offending = {group: entries for group, entries in extras.items() if entries}
         self.assertEqual(
             offending,
             {},
@@ -215,7 +266,7 @@ class RulesFreeStaticGuardsTests(unittest.TestCase):
             source = _read_source(path)
             relative = _relative(path)
             in_adapter_subtree = ADAPTER_SUBTREE_NAME in path.parts
-            for lineno, top in _absolute_import_tops(ast.parse(source)):
+            for lineno, top in _absolute_import_tops(_parse_source(path, source)):
                 where = f"{relative}:{lineno}"
                 if top in FORBIDDEN_TOP_LEVEL_MODULES:
                     violations.append(f"{where}: forbidden module {top!r}")
@@ -242,10 +293,8 @@ class RulesFreeStaticGuardsTests(unittest.TestCase):
             source = _read_source(path)
             relative = _relative(path)
             for symbol in FORBIDDEN_CHOICE_SYMBOLS:
-                offset = source.find(symbol)
-                while offset != -1:
+                for offset in _occurrences(source, symbol):
                     hits.append(f"{relative}:{_line_of(source, offset)}: {symbol!r}")
-                    offset = source.find(symbol, offset + 1)
         self.assertEqual(
             hits,
             [],
@@ -254,17 +303,13 @@ class RulesFreeStaticGuardsTests(unittest.TestCase):
 
     def test_player_facing_surface_carries_no_trusted_vocabulary(self) -> None:
         hits: list[str] = []
-        for name in ("client.py", "submission.py"):
+        for name, transform in PLAYER_SURFACE_TRANSFORMS.items():
             path = PACKAGE_ROOT / ADAPTER_SUBTREE_NAME / name
-            source = _read_source(path)
-            if name == "client.py":
-                source = _source_without_class(source, ast.parse(source), TRUSTED_PLUMBING_CLASS)
             relative = _relative(path)
-            for marker in FORBIDDEN_TRUSTED_VOCABULARY:
-                offset = source.find(marker)
-                while offset != -1:
-                    hits.append(f"{relative}:{_line_of(source, offset)}: {marker!r}")
-                    offset = source.find(marker, offset + 1)
+            for number, line in transform(path, _read_source(path)):
+                for marker in FORBIDDEN_TRUSTED_VOCABULARY:
+                    for _offset in _occurrences(line, marker):
+                        hits.append(f"{relative}:{number}: {marker!r}")
         self.assertEqual(
             hits,
             [],
@@ -286,7 +331,8 @@ class RulesFreeStaticGuardsTests(unittest.TestCase):
             "SyntheticEnvironmentClient's public method set drifted from the pinned inventory",
         )
 
-        protocol_tree = ast.parse(_read_source(PACKAGE_ROOT / "player_client.py"))
+        protocol_path = PACKAGE_ROOT / "player_client.py"
+        protocol_tree = _parse_source(protocol_path, _read_source(protocol_path))
         protocol_classes = [
             node
             for node in protocol_tree.body
@@ -305,8 +351,9 @@ class RulesFreeStaticGuardsTests(unittest.TestCase):
             "the PlayerClient protocol drifted from the pinned client inventory",
         )
 
-        client_source = _read_source(PACKAGE_ROOT / ADAPTER_SUBTREE_NAME / "client.py")
-        client_tree = ast.parse(client_source)
+        client_path = PACKAGE_ROOT / ADAPTER_SUBTREE_NAME / "client.py"
+        client_source = _read_source(client_path)
+        client_tree = _parse_source(client_path, client_source)
         self.assertIn(
             PROTOCOL_WITNESS_NAME,
             _type_checking_names(client_tree),
