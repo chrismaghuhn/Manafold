@@ -1,15 +1,19 @@
 {
-  "schema": "manafold.m2.5.a.negative-evidence-record.v1",
-  "executed_at": "2026-08-26T04:22:12Z",
+  "schema": "manafold.m2.5.a.negative-evidence-record.v2",
+  "executed_at": "2026-08-26T04:45:54Z",
   "command": "python scripts/check_m2_5_master_drift.py --negative-self-test",
   "exit_code": 0,
-  "claim": "Stale, mismatched, tampered, or missing repository identity cannot silently receive MASTER_DRIFT = PASS.",
+  "claim": "Stale, substituted-but-valid, mismatched, tampered, or missing repository identity cannot silently receive MASTER_DRIFT = PASS. Includes the review BLOCKER case: closure verified SHA replaced by a different syntactically valid 40-hex git SHA (the live HEAD) while IMPORT_PROVENANCE still pins 9eb5da3d.",
   "output": [
+    "NEGATIVE SUBSTITUTED_VALID_SHA_REJECTED: rejected (FAIL) - a substituted but syntactically valid verified SHA (current HEAD) must FAIL",
     "NEGATIVE STALE_HEAD_REJECTED: rejected (FAIL) - an unrelated HEAD must never receive PASS",
     "NEGATIVE NORMATIVE_DRIFT_REJECTED: rejected (FAIL) - post-verification commits touching normative paths must never receive PASS",
     "NEGATIVE NON_PASS_GRANT_REJECTED: rejected (FAIL) - a closure that does not grant PASS must never receive PASS",
-    "NEGATIVE TAMPERED_VERIFIED_SHA_REJECTED: rejected (FAIL) - an edited verified SHA must never receive PASS",
+    "NEGATIVE TAMPERED_VERIFIED_SHA_INVALID_REJECTED: rejected (FAIL) - a malformed verified SHA must never receive PASS",
+    "NEGATIVE TAMPERED_PROVENANCE_VERIFIED_SHA_REJECTED: rejected (FAIL) - editing the provenance-side verified master must contradict the closure and FAIL",
+    "NEGATIVE TAMPERED_BASELINE_SHA_REJECTED: rejected (FAIL) - rewriting the REV3 baseline SHA breaks recorded ancestry and must FAIL",
     "NEGATIVE WRONG_SCHEMA_REJECTED: rejected (FAIL) - an unrecognized closure schema must never receive PASS",
+    "NEGATIVE UNBOUND_SIBLING_EDIT_REJECTED: rejected (FAIL) - digest-bound siblings must be rejected on any edit without reclosure",
     "NEGATIVE UNRECORDED_IMPORT_REJECTED: rejected (FAIL) - every promoted evidence file must stay digest-recorded",
     "NEGATIVE MISSING_EVIDENCE_REJECTED: rejected (FAIL) - absent evidence must be rejected, never PASS",
     "NEGATIVE_SELF_TEST = PASS (no stale or mismatched identity can receive PASS)"

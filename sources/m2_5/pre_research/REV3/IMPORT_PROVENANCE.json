@@ -6,9 +6,21 @@
 
   "source_package": {
     "package_id": "Manafold_M2_5_Pre_Research_ALL_ARTIFACTS_REV3",
-    "zip_path_outside_repository": "C:/Users/chris/Documents/Codex/2026-08-23/files-mentioned-by-the-user-manafold/outputs/Manafold_M2_5_Pre_Research_ALL_ARTIFACTS_REV3.zip",
-    "zip_sha256": "99b33945a3e0c7b2982734e65f770715029ce6acd500104bde48e8466eed1a90",
+    "storage_class": "MAINTAINER_PRIVATE_ARCHIVE",
+    "logical_locator": "$MANAFOLD_SOURCE_ARCHIVE/m2_5/Manafold_M2_5_Pre_Research_ALL_ARTIFACTS_REV3.zip",
+    "sha256": "99b33945a3e0c7b2982734e65f770715029ce6acd500104bde48e8466eed1a90",
     "research_run_id": "Manafold-M2.5-Pre-Research-REV3-2026-08-23",
+    "retrieved_at": "2026-08-23",
+    "upstream_publication_identity": "offline REV3 acquisition run; see research_run_register_REV3.json and source/acquisition_manifest_REV3.json for authority URLs, retrieval timestamps, and per-artifact digests",
+    "usage_basis": "internal research baseline for M2.5 planning; redistribution pending rights review",
+    "redistribution": "NOT_DISTRIBUTED_PENDING_RIGHTS",
+    "required_for": [
+      "M2.5.B",
+      "M2.5.C",
+      "M2.5.D",
+      "M2.5.E"
+    ],
+    "preflight": "The resolved archive must exist and match sha256 exactly before any slice consumes excluded payload; python scripts/check_m2_5_master_drift.py --verify-archive enforces this and reports BLOCKED when MANAFOLD_SOURCE_ARCHIVE is unset.",
     "manifest_schema": "manafold.m2.5.rev3.package-manifest.v1",
     "manifest_entries_verified": 72,
     "manifest_verification": "Every ZIP entry was verified against the package manifest by exact path, byte length, and SHA-256 during import; see verification/import_structural_validation.json."
@@ -39,28 +51,28 @@
       "verification/import_ranking_validation.json": "2e3791fc492ec22c3c83f7954f0bf7865b5cde076e73d571a0dc24ea552adc42",
       "verification/import_negative_tests.json": "15b235d4383078d8ba21bd3caa7fa6518862185c50616d59efefc9d4df773a6f",
       "verification/import_determinism_comparison.json": "2e537f8af53e015339b59573cbf5820f70c7a0e655fd2b11d05c5ccb911d71b0",
-      "verification/import_master_drift_negative_self_test.json": "be65e05caed548de5a36066dc61b11854cfb5b65bf7cd2c22bcef1529eb20dd2"
+      "verification/import_master_drift_negative_self_test.json": "631b75fb6c230e783a45866d14b4d52525f289aeae7dde8d115a16ffec800db4"
     },
     "excluded_from_repository": [
       {
         "paths": ["source/raw/*"],
         "reason": "Unreviewed bulk card data (selected Scryfall JSONL subsets); sources/README.md forbids committing unreviewed bulk card data. Exact bytes remain pinned by source_record_index_REV3.csv offsets plus per-record SHA-256 domains recorded in source/acquisition_manifest_REV3.json inside the archived ZIP.",
-        "recoverable_from": "archived ZIP (SHA-256 above)"
+        "recoverable_from": "source_package archive contract (MAINTAINER_PRIVATE_ARCHIVE at source_package.logical_locator, SHA-256 pinned)"
       },
       {
         "paths": ["source/authorities/*"],
         "reason": "Official authority HTML/TXT snapshots are pinned by URL, retrieval time, and artifact hash in source/official_authority_register_REV3.json; not redistributed in git pending redistribution rights.",
-        "recoverable_from": "archived ZIP (SHA-256 above)"
+        "recoverable_from": "source_package archive contract (MAINTAINER_PRIVATE_ARCHIVE at source_package.logical_locator, SHA-256 pinned)"
       },
       {
         "paths": ["baseline/REV2/*"],
         "reason": "Prior-revision research payload retained in the archived ZIP; pinned by the package manifest. REV2 remains non-terminal for ranking purposes (REV2_REUSE_RATIO_REPRODUCIBLE stays BLOCKED).",
-        "recoverable_from": "archived ZIP (SHA-256 above)"
+        "recoverable_from": "source_package archive contract (MAINTAINER_PRIVATE_ARCHIVE at source_package.logical_locator, SHA-256 pinned)"
       },
       {
         "paths": ["derived/*", "tools/*", "validation/*", "inputs/card_semantic_classification_REV3.json", "inputs/oracle_semantic_evidence_REV3.json", "inputs/requirement_family_catalog_REV3.json", "inputs/deck_row_source_resolution_REV3.csv", "inputs/deck_row_classification_refs_REV3.csv"],
-        "reason": "Substantive research payload (classification authorities, census, validators) remains in the archived ZIP, byte-pinned by the imported package manifest; later M2.5 slices consume them from a verified extraction of that ZIP until redistribution rights or a dedicated storage decision exists.",
-        "recoverable_from": "archived ZIP (SHA-256 above)"
+        "reason": "Substantive research payload (classification authorities, census, validators) remains in the archived ZIP, byte-pinned by the imported package manifest; later M2.5 slices consume them from a preflight-verified extraction of that archive until redistribution rights or a dedicated storage decision exists.",
+        "recoverable_from": "source_package archive contract (MAINTAINER_PRIVATE_ARCHIVE at source_package.logical_locator, SHA-256 pinned)"
       }
     ]
   },
@@ -107,5 +119,9 @@
     "RANKING_UNCERTAINTY_PROPAGATION"
   ],
 
-  "reverification_command": "python scripts/check_m2_5_master_drift.py"
+  "reverification_commands": [
+    "python scripts/check_m2_5_master_drift.py",
+    "python scripts/check_m2_5_master_drift.py --negative-self-test",
+    "python scripts/check_m2_5_master_drift.py --verify-archive"
+  ]
 }

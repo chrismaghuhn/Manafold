@@ -11,6 +11,7 @@
 |---|---|---|
 | Input package | `Manafold_M2_5_Pre_Research_ALL_ARTIFACTS_REV3.zip` | SHA-256 computed at import |
 | Package SHA-256 | `99b33945a3e0c7b2982734e65f770715029ce6acd500104bde48e8466eed1a90` | matched expected value exactly |
+| Archive contract | `MAINTAINER_PRIVATE_ARCHIVE` at `$MANAFOLD_SOURCE_ARCHIVE/m2_5/…REV3.zip`; redistribution `NOT_DISTRIBUTED_PENDING_RIGHTS` | `IMPORT_PROVENANCE.json` → `source_package`; preflight via `check_m2_5_master_drift.py --verify-archive` (BLOCKED when the variable is unset) |
 | Manifest | 72 entries; every path/byte-length/SHA-256 re-verified during import | `verification/import_structural_validation.json`, gate `PACKAGE_MANIFEST` = PASS |
 | Expected artifacts (`expected_artifacts_REV3.json`) | all present in extracted package | independent cross-check during import |
 
@@ -111,10 +112,19 @@ This PR itself adds only non-normative provenance artifacts under `sources/` plu
 one standalone verification script; it modifies no normative contract, so it cannot
 itself reintroduce drift against these assumptions.
 
-Fail-closed property: `python scripts/check_m2_5_master_drift.py` grants PASS only
-while HEAD equals `9eb5da3d2cfa2c4612d22d208d658fd4132b7f6f` and the closure record
-is unmodified; its negative self-test proves stale/mismatched repository identity,
-tampered records, missing evidence, and wrong schemas all fail closed.
+Fail-closed property: `python scripts/check_m2_5_master_drift.py` grants PASS only while the
+closure record, `IMPORT_PROVENANCE.json`, and this report are **cross-consistent and
+digest-bound**: closure and provenance must agree exactly about the verified master SHA, the
+REV3 baseline SHA, the package digest, and the PASS grant itself; the REV3 baseline SHA must
+be a git ancestor of the verified master on every evaluation; HEAD must equal the verified
+master or differ only by commits touching the promoted provenance boundary; and every
+promoted evidence file must still match its recorded digest — `IMPORT_PROVENANCE.json` and
+this report are bound by digests inside the closure record itself, so any edit without a new
+reviewed closure fails. The closure record is the root of trust and is anchored by reviewed
+git history rather than by an in-repository digest. Its negative self-test proves rejection
+of substituted-but-valid verified SHAs (the current HEAD), stale heads, normative-path
+drift, non-PASS grants, malformed SHAs, provenance-side identity edits, rewritten baseline
+SHAs, wrong schemas, unbound sibling edits, unrecorded imports, and missing evidence.
 
 ## 6. State after M2.5.A
 

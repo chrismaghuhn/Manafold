@@ -24,6 +24,11 @@
   "rev3_evidence_reusable": true,
   "research_data_revalidation_required": false,
 
+  "bound_records": {
+    "IMPORT_PROVENANCE.json": "39b236bf8885d705c9580a1b5d223efe5e96d284341724bc6016252546d0b7d0",
+    "MASTER_DRIFT_REPORT.md": "e419a1e79733d9a4f3f43c1169e1f950bab129598a8727262888e7da0b93d56d"
+  },
+
   "drift_scope_examined": [
     "docs/ROADMAP.md M2.5 scope (unchanged in range)",
     "docs/adr/0041-capability-oriented-semantic-domains-and-explicit-semantic-ownership.md (newly accepted in range)",
@@ -49,7 +54,11 @@
 
   "reverification": {
     "checker_script": "scripts/check_m2_5_master_drift.py",
-    "command": "python scripts/check_m2_5_master_drift.py",
-    "contract": "PASS requires this record to exist unmodified with MASTER_DRIFT=PASS and verified sha equal to the current repository HEAD; any mismatch, mutation, or missing evidence fails closed."
+    "commands": [
+      "python scripts/check_m2_5_master_drift.py",
+      "python scripts/check_m2_5_master_drift.py --negative-self-test",
+      "python scripts/check_m2_5_master_drift.py --verify-archive"
+    ],
+    "contract": "PASS requires this record and IMPORT_PROVENANCE.json to agree exactly about the verified master SHA, the REV3 baseline SHA, the package digest, and the MASTER_DRIFT = PASS grant; requires the REV3 baseline to be a git ancestor of the verified master; requires HEAD to equal the verified master or differ only by commits inside the promoted provenance boundary; and enforces digest coverage over every promoted evidence file. IMPORT_PROVENANCE.json and MASTER_DRIFT_REPORT.md are digest-bound by this record's bound_records section; any edit without a new reviewed closure fails closed."
   }
 }

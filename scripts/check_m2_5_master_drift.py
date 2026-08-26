@@ -9,13 +9,19 @@ passing stale, mismatched, or tampered identities.
 PASS requires all of:
   - the closure record exists, parses, and carries the expected schema;
   - the closure grants MASTER_DRIFT = PASS;
-  - the verified SHA is syntactically valid and agrees with the import
-    provenance about the source package digest;
+  - the closure and IMPORT_PROVENANCE.json agree exactly about the verified
+    master SHA, the REV3 baseline repository SHA, the source package digest,
+    and the MASTER_DRIFT = PASS grant itself (a syntactically valid but
+    substituted SHA therefore fails);
+  - the verified SHA is a syntactically valid git object id and the REV3
+    baseline SHA is a git ancestor of it;
   - HEAD equals the verified SHA, or the verified SHA is an ancestor of HEAD
     and every commit since then touches only files inside the promoted
     provenance boundary (sources/m2_5/pre_research/REV3/) or this checker;
-  - every promoted evidence file is digest-covered by IMPORT_PROVENANCE.json
-    and still matches its recorded SHA-256.
+  - every promoted evidence file is digest-covered either by
+    IMPORT_PROVENANCE.json or by the closure's own bound_records section and
+    still matches its recorded SHA-256; only the closure record itself is
+    exempt (it is the root of trust anchored by reviewed git history).
 
 Anything else exits non-zero with a precise diagnostic (FAIL) or, when evidence
 cannot be evaluated at all, exits BLOCKED.
@@ -26,6 +32,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import re
 import subprocess
 import sys
@@ -47,6 +54,7 @@ ALLOWED_PATH_PREFIXES = (
     "sources/m2_5/pre_research/REV3/",
     "scripts/check_m2_5_master_drift.py",
 )
+ARCHIVE_ENV_VAR = "MANAFOLD_SOURCE_ARCHIVE"
 
 EXIT_PASS = 0
 EXIT_FAIL = 1
@@ -127,25 +135,67 @@ def evaluate_closure(
             "unexpected import provenance schema: "
             f"{provenance.get('schema')!r} != {EXPECTED_PROVENANCE_SCHEMA!r}",
         )
+
+    # The grant itself must agree on both records before anything else counts.
     if closure.get("MASTER_DRIFT") != "PASS":
         raise DriftCheckError(
             "FAIL",
             f"closure does not grant MASTER_DRIFT = PASS (found {closure.get('MASTER_DRIFT')!r})",
         )
+    baseline_identity = require_mapping(
+        provenance.get("baseline_identity"), "provenance.baseline_identity"
+    )
+    if baseline_identity.get("master_drift_gate") != "PASS":
+        raise DriftCheckError(
+            "FAIL",
+            "import provenance does not record MASTER_DRIFT = PASS "
+            f"(found {baseline_identity.get('master_drift_gate')!r})",
+        )
+    if closure.get("MASTER_DRIFT") != baseline_identity.get("master_drift_gate"):
+        raise DriftCheckError("FAIL", "closure and provenance disagree about the gate grant")
 
     verified_map = require_mapping(closure.get("verified_master"), "closure.verified_master")
     verified_sha = require_git_sha(verified_map.get("sha256"), "closure verified SHA")
+    provenance_verified = require_git_sha(
+        baseline_identity.get("verified_current_master_sha_at_import"),
+        "provenance verified current master SHA",
+    )
+    if verified_sha != provenance_verified:
+        raise DriftCheckError(
+            "FAIL",
+            "closure verified master "
+            f"{verified_sha} contradicts provenance verified master {provenance_verified}; "
+            "the closure identity has been substituted",
+        )
+
+    closure_baseline_map = require_mapping(closure.get("rev3_baseline"), "closure.rev3_baseline")
+    baseline_sha = require_git_sha(
+        closure_baseline_map.get("recorded_repository_sha"), "closure baseline SHA"
+    )
+    provenance_baseline = require_git_sha(
+        baseline_identity.get("rev3_recorded_repository_sha"),
+        "provenance REV3 baseline SHA",
+    )
+    if baseline_sha != provenance_baseline:
+        raise DriftCheckError(
+            "FAIL",
+            "closure baseline "
+            f"{baseline_sha} contradicts provenance baseline {provenance_baseline}",
+        )
 
     package_zip_map = require_mapping(provenance.get("source_package"), "provenance.source_package")
-    closure_baseline_map = require_mapping(closure.get("rev3_baseline"), "closure.rev3_baseline")
-    provenance_zip = package_zip_map.get("zip_sha256")
+    provenance_zip = package_zip_map.get("sha256")
     closure_zip = closure_baseline_map.get("package_zip_sha256")
     if not isinstance(provenance_zip, str) or provenance_zip != closure_zip:
         raise DriftCheckError(
             "FAIL",
             "closure and import provenance disagree about the source package digest",
         )
-    require_git_sha(closure_baseline_map.get("recorded_repository_sha"), "closure baseline SHA")
+    require_file_sha256(provenance_zip, "source package digest")
+
+    # Identity ancestry is a property of the two pinned commits themselves and
+    # is therefore checked on every evaluation, independent of HEAD.
+    git(["merge-base", "--is-ancestor", baseline_sha, verified_sha], failure_status="FAIL")
 
     if changed_paths is None:
         if head_sha != verified_sha:
@@ -174,7 +224,6 @@ def evaluate_closure(
         imported_map.get("imported_files"),
         "provenance.import_boundary.imported_files",
     )
-    self_recorded = {CLOSURE_FILENAME, PROVENANCE_FILENAME, REPORT_FILENAME}
     covered: set[str] = set()
     for relative, expected_digest in sorted(imported_files_map.items()):
         require_file_sha256(expected_digest, f"recorded digest for {relative!r}")
@@ -189,14 +238,33 @@ def evaluate_closure(
                 f"{relative} ({actual} != {expected_digest})",
             )
         covered.add(str(relative))
+
+    # The closure record binds its sibling top-level records by digest so the
+    # claim they are unmodified is enforced, not just asserted.
+    bound_records = require_mapping(closure.get("bound_records"), "closure.bound_records")
+    for relative in (PROVENANCE_FILENAME, REPORT_FILENAME):
+        expected = require_file_sha256(
+            bound_records.get(relative), f"closure bound record {relative}"
+        )
+        candidate = provenance_dir / relative
+        if not candidate.is_file():
+            raise DriftCheckError("FAIL", f"bound record missing: {candidate}")
+        actual = sha256_file(candidate)
+        if actual != expected:
+            raise DriftCheckError(
+                "FAIL",
+                f"bound record mutated since closure: {relative} ({actual} != {expected})",
+            )
+        covered.add(relative)
+
     for path in sorted(provenance_dir.rglob("*")):
         if not path.is_file():
             continue
         relative = path.relative_to(provenance_dir).as_posix()
-        if relative not in covered and relative not in self_recorded:
+        if relative not in covered and relative != CLOSURE_FILENAME:
             raise DriftCheckError(
                 "FAIL",
-                f"evidence file present but not digest-recorded in import provenance: {relative}",
+                f"evidence file present but not digest-recorded: {relative}",
             )
 
 
@@ -224,6 +292,45 @@ def run_check(provenance_dir: Path, expect_head: str | None) -> int:
     return EXIT_PASS
 
 
+def verify_archive(provenance_dir: Path) -> int:
+    """Preflight the private archive contract: exists AND exact SHA, else fail."""
+    provenance = require_mapping(
+        read_json(provenance_dir / PROVENANCE_FILENAME), PROVENANCE_FILENAME
+    )
+    package = require_mapping(provenance.get("source_package"), "provenance.source_package")
+    storage_class = package.get("storage_class")
+    if storage_class != "MAINTAINER_PRIVATE_ARCHIVE":
+        raise DriftCheckError("FAIL", f"unexpected archive storage class: {storage_class!r}")
+    locator_template = package.get("logical_locator")
+    if not isinstance(locator_template, str) or ARCHIVE_ENV_VAR not in locator_template:
+        raise DriftCheckError("FAIL", f"malformed logical locator: {locator_template!r}")
+    base = os.environ.get(ARCHIVE_ENV_VAR)
+    if not base:
+        raise DriftCheckError(
+            "BLOCKED",
+            f"environment variable {ARCHIVE_ENV_VAR} is unset; the maintainer-private "
+            "archive location is unknown and excluded payload cannot be located",
+        )
+    relative = locator_template.replace(f"${{{ARCHIVE_ENV_VAR}}}", "").replace(
+        f"${ARCHIVE_ENV_VAR}", ""
+    )
+    archive = Path(base) / relative.lstrip("/")
+    if not archive.is_file():
+        raise DriftCheckError(
+            "BLOCKED",
+            f"archive not found at resolved locator {archive}; consuming slices are BLOCKED",
+        )
+    expected = require_file_sha256(package.get("sha256"), "archive sha256")
+    actual = sha256_file(archive)
+    if actual != expected:
+        raise DriftCheckError(
+            "FAIL",
+            f"archive digest mismatch at {archive} ({actual} != {expected})",
+        )
+    print(f"ARCHIVE_PREFLIGHT = PASS ({archive})")
+    return EXIT_PASS
+
+
 def negative_self_test(provenance_dir: Path) -> int:
     """Prove stale/mismatched/tampered identities can never silently receive PASS."""
     closure = require_mapping(
@@ -233,12 +340,20 @@ def negative_self_test(provenance_dir: Path) -> int:
         json.loads((provenance_dir / PROVENANCE_FILENAME).read_text("utf-8")),
         PROVENANCE_FILENAME,
     )
-    verified_sha = require_git_sha(closure["verified_master"]["sha256"], "verified SHA")
     live_head = git(["rev-parse", "HEAD"])
-    cases: list[tuple[str, str, object]] = []
 
-    def expect_failure(case_id: str, reason: str, thunk: object) -> None:
-        cases.append((case_id, reason, thunk))
+    def tampered_closure(mutate) -> dict[str, object]:
+        value = json.loads(json.dumps(closure))
+        mutate(value)
+        return value
+
+    def substitute_valid_sha() -> None:
+        # A syntactically valid 40-hex SHA that is NOT the provenance-pinned
+        # verified master: the exact false-PASS shape this checker must reject.
+        substituted = tampered_closure(
+            lambda value: value["verified_master"].__setitem__("sha256", live_head)
+        )
+        evaluate_closure(substituted, provenance, live_head, [], provenance_dir)
 
     def stale_head() -> None:
         evaluate_closure(closure, provenance, "0" * 40, None, provenance_dir)
@@ -253,27 +368,62 @@ def negative_self_test(provenance_dir: Path) -> int:
         )
 
     def non_pass_grant() -> None:
-        tampered_pass = json.loads(json.dumps(closure))
-        tampered_pass["MASTER_DRIFT"] = "FAIL"
-        evaluate_closure(tampered_pass, provenance, verified_sha, [], provenance_dir)
+        downgraded = tampered_closure(lambda value: value.__setitem__("MASTER_DRIFT", "FAIL"))
+        evaluate_closure(downgraded, provenance, live_head, [], provenance_dir)
 
-    def tampered_verified_sha() -> None:
-        tampered = json.loads(json.dumps(closure))
-        tampered["verified_master"]["sha256"] = "f" * 64
-        evaluate_closure(tampered, provenance, "e" * 40 + "ff", None, provenance_dir)
+    def tampered_verified_sha_invalid() -> None:
+        malformed = tampered_closure(
+            lambda value: value["verified_master"].__setitem__("sha256", "f" * 64)
+        )
+        evaluate_closure(malformed, provenance, "e" * 40 + "ff", None, provenance_dir)
+
+    def tampered_provenance_verified_sha() -> None:
+        flipped = json.loads(json.dumps(provenance))
+        flipped["baseline_identity"]["verified_current_master_sha_at_import"] = "a" * 40
+        evaluate_closure(closure, flipped, live_head, [], provenance_dir)
+
+    def tampered_baseline_sha() -> None:
+        rewritten_history = tampered_closure(
+            lambda value: value["rev3_baseline"].__setitem__("recorded_repository_sha", "b" * 40)
+        )
+        evaluate_closure(rewritten_history, provenance, live_head, [], provenance_dir)
 
     def wrong_schema() -> None:
-        tampered_schema = json.loads(json.dumps(closure))
-        tampered_schema["schema"] = "manafold.m2.5.a.master-drift-closure.v0"
-        evaluate_closure(tampered_schema, provenance, verified_sha, [], provenance_dir)
+        old_schema = tampered_closure(
+            lambda value: value.__setitem__("schema", "manafold.m2.5.a.master-drift-closure.v0")
+        )
+        evaluate_closure(old_schema, provenance, live_head, [], provenance_dir)
+
+    def unbound_sibling_edit() -> None:
+        edited_report = provenance_dir / REPORT_FILENAME
+        original = edited_report.read_bytes()
+        try:
+            edited_report.write_bytes(original + b"<!-- tampered -->\n")
+            evaluate_closure(closure, provenance, live_head, [], provenance_dir)
+        finally:
+            edited_report.write_bytes(original)
 
     def unrecorded_import() -> None:
         stripped = json.loads(json.dumps(provenance))
         first_imported = next(iter(stripped["import_boundary"]["imported_files"]))
         del stripped["import_boundary"]["imported_files"][first_imported]
-        evaluate_closure(closure, stripped, verified_sha, [], provenance_dir)
+        evaluate_closure(closure, stripped, live_head, [], provenance_dir)
 
-    expect_failure("STALE_HEAD_REJECTED", "an unrelated HEAD must never receive PASS", stale_head)
+    cases: list[tuple[str, str, object]] = []
+
+    def expect_failure(case_id: str, reason: str, thunk: object) -> None:
+        cases.append((case_id, reason, thunk))
+
+    expect_failure(
+        "SUBSTITUTED_VALID_SHA_REJECTED",
+        "a substituted but syntactically valid verified SHA (current HEAD) must FAIL",
+        substitute_valid_sha,
+    )
+    expect_failure(
+        "STALE_HEAD_REJECTED",
+        "an unrelated HEAD must never receive PASS",
+        stale_head,
+    )
     expect_failure(
         "NORMATIVE_DRIFT_REJECTED",
         "post-verification commits touching normative paths must never receive PASS",
@@ -285,9 +435,19 @@ def negative_self_test(provenance_dir: Path) -> int:
         non_pass_grant,
     )
     expect_failure(
-        "TAMPERED_VERIFIED_SHA_REJECTED",
-        "an edited verified SHA must never receive PASS",
-        tampered_verified_sha,
+        "TAMPERED_VERIFIED_SHA_INVALID_REJECTED",
+        "a malformed verified SHA must never receive PASS",
+        tampered_verified_sha_invalid,
+    )
+    expect_failure(
+        "TAMPERED_PROVENANCE_VERIFIED_SHA_REJECTED",
+        "editing the provenance-side verified master must contradict the closure and FAIL",
+        tampered_provenance_verified_sha,
+    )
+    expect_failure(
+        "TAMPERED_BASELINE_SHA_REJECTED",
+        "rewriting the REV3 baseline SHA breaks recorded ancestry and must FAIL",
+        tampered_baseline_sha,
     )
     expect_failure(
         "WRONG_SCHEMA_REJECTED",
@@ -295,15 +455,19 @@ def negative_self_test(provenance_dir: Path) -> int:
         wrong_schema,
     )
     expect_failure(
+        "UNBOUND_SIBLING_EDIT_REJECTED",
+        "digest-bound siblings must be rejected on any edit without reclosure",
+        unbound_sibling_edit,
+    )
+    expect_failure(
         "UNRECORDED_IMPORT_REJECTED",
         "every promoted evidence file must stay digest-recorded",
         unrecorded_import,
     )
     with tempfile.TemporaryDirectory() as tmp:
-        empty_dir = Path(tmp)
 
         def missing_evidence() -> None:
-            evaluate_closure(closure, provenance, verified_sha, [], empty_dir)
+            evaluate_closure(closure, provenance, live_head, [], Path(tmp))
 
         expect_failure(
             "MISSING_EVIDENCE_REJECTED",
@@ -337,6 +501,15 @@ def main() -> int:
     )
     parser.add_argument("--expect-head", help="verify against this SHA instead of live HEAD")
     parser.add_argument(
+        "--verify-archive",
+        action="store_true",
+        help=(
+            "preflight the maintainer-private archive contract: resolve "
+            f"{ARCHIVE_ENV_VAR}, require the ZIP to exist and match its pinned "
+            "SHA-256 exactly; BLOCKED when the variable is unset"
+        ),
+    )
+    parser.add_argument(
         "--negative-self-test",
         action="store_true",
         help="execute adversarial negative fixtures against the real checker logic",
@@ -346,6 +519,8 @@ def main() -> int:
         resolved = args.provenance_dir.resolve()
         if args.negative_self_test:
             return negative_self_test(resolved)
+        if args.verify_archive:
+            return verify_archive(resolved)
         return run_check(resolved, args.expect_head)
     except DriftCheckError as exc:
         print(f"{exc.status}: {exc.message}")
