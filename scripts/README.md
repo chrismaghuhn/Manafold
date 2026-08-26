@@ -8,6 +8,7 @@
 - `run_python_tests.py` — Python contract suite;
 - `run_verification.py` — external authoritative gate report under `dist/verification/`;
 - `run_m1_closure.py` — external M1 ten-gate closure report under `dist/verification/m1/`;
+- `run_m2_final_closure.py` — external M2.Final twenty-gate closure report (M2.B-H runners plus M1 regression and the M2 scope guard) under `dist/m2-final-verification/`;
 - `build_source_archive.py` — deterministic source ZIP and checksum;
 - `verify_source_archive.py` — source/archive member and byte parity;
 - `verify_archive_reproducibility.py` — repeated deterministic build and ZIP safety;
