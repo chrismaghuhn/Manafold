@@ -22,9 +22,10 @@ import struct
 import subprocess
 import sys
 import zipfile
-from collections import Counter, defaultdict
+from collections import Counter
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable, NoReturn
+from typing import Any, NoReturn
 
 sys.dont_write_bytecode = True
 
@@ -35,19 +36,14 @@ if str(PYTHON_SRC) not in sys.path:
 
 from mtgml.persistence import encode_canonical, encode_envelope
 
-
 EXIT_PASS = 0
 EXIT_FAIL = 1
 EXIT_BLOCKED = 2
 
 B2_DIR = ROOT / "sources" / "m2_5" / "closures" / "B2"
 ARCHIVE_ENV_VAR = "MANAFOLD_SOURCE_ARCHIVE"
-ARCHIVE_RELATIVE_PATH = Path(
-    "m2_5/Manafold_M2_5_Pre_Research_ALL_ARTIFACTS_REV3.zip"
-)
-EXPECTED_ARCHIVE_SHA256 = (
-    "99b33945a3e0c7b2982734e65f770715029ce6acd500104bde48e8466eed1a90"
-)
+ARCHIVE_RELATIVE_PATH = Path("m2_5/Manafold_M2_5_Pre_Research_ALL_ARTIFACTS_REV3.zip")
+EXPECTED_ARCHIVE_SHA256 = "99b33945a3e0c7b2982734e65f770715029ce6acd500104bde48e8466eed1a90"
 
 CLASSIFICATION_SCHEMA = "manafold.m2.5.b2.card-semantic-classifications.v1"
 PROJECTION_SCHEMA = "manafold.m2.5.b2.deck-row-classification-refs.v1"
@@ -61,9 +57,7 @@ SOURCE_INPUT_SCHEMA = "manafold.m2.5.b2.source-identity-input.v1"
 REV3_DOMAIN = "manafold.m2.5.b2.rev3-classification-record-identity.v1"
 REV3_INPUT_SCHEMA = "manafold.m2.5.b2.rev3-classification-record-identity-input.v1"
 CLASSIFICATION_DOMAIN = "manafold.m2.5.b2.classification-record-identity.v1"
-CLASSIFICATION_INPUT_SCHEMA = (
-    "manafold.m2.5.b2.classification-record-identity-input.v1"
-)
+CLASSIFICATION_INPUT_SCHEMA = "manafold.m2.5.b2.classification-record-identity-input.v1"
 REVIEW_BASIS_SCHEMA = "manafold.m2.5.b2.review-basis.v1"
 PROVENANCE_SCHEMA = "manafold.m2.5.b2.provenance.v1"
 ORACLE_LOCATOR_SCHEMA = "manafold.m2.5.b2.oracle-field-locator.v1"
@@ -125,37 +119,79 @@ NEGATIVE_CASES = (
     ("MISSING_CLASSIFICATION_REJECTED", "Remove one of the 402 OSI classification records."),
     ("DUPLICATE_ORACLE_IDENTITY_REJECTED", "Duplicate one OSI classification identity."),
     ("UNKNOWN_ORACLE_IDENTITY_REJECTED", "Replace an OSI with an ID absent from pinned evidence."),
-    ("NONTERMINAL_CLASSIFICATION_REJECTED", "Change a terminal review status to a working/private status."),
+    (
+        "NONTERMINAL_CLASSIFICATION_REJECTED",
+        "Change a terminal review status to a working/private status.",
+    ),
     ("MISSING_DECK_ROW_REFERENCE_REJECTED", "Remove one of the 441 projection rows."),
     ("UNKNOWN_DECK_ROW_REFERENCE_REJECTED", "Add a row ID absent from pinned deck resolution."),
     ("DECK_ROW_OSI_REBIND_REJECTED", "Rebind an existing row to another valid OSI."),
     ("REUSED_ORACLE_IDENTITY_FORK_REJECTED", "Give one repeated OSI a different assignment set."),
-    ("SOURCE_DIGEST_MISMATCH_REJECTED", "Change a source binding without changing the pinned source."),
+    (
+        "SOURCE_DIGEST_MISMATCH_REJECTED",
+        "Change a source binding without changing the pinned source.",
+    ),
     ("SOURCE_EVIDENCE_LOCATOR_INVALID_REJECTED", "Point a locator to a wrong record or field."),
-    ("DISALLOWED_EVIDENCE_BASIS_REJECTED", "Use a basis absent from the assigned family allowlist."),
-    ("EVIDENCE_BASIS_LOCATOR_KIND_MISMATCH_REJECTED", "Use an incompatible locator kind for the declared basis."),
-    ("CARD_SIDE_EVIDENCE_MISSING_REJECTED", "Remove all card-side OracleFieldLocatorV1 values from an assignment."),
+    (
+        "DISALLOWED_EVIDENCE_BASIS_REJECTED",
+        "Use a basis absent from the assigned family allowlist.",
+    ),
+    (
+        "EVIDENCE_BASIS_LOCATOR_KIND_MISMATCH_REJECTED",
+        "Use an incompatible locator kind for the declared basis.",
+    ),
+    (
+        "CARD_SIDE_EVIDENCE_MISSING_REJECTED",
+        "Remove all card-side OracleFieldLocatorV1 values from an assignment.",
+    ),
     ("UNKNOWN_REQUIREMENT_FAMILY_REJECTED", "Add an ID absent from the catalog."),
     ("SUPERSEDED_FAMILY_ASSIGNED_REJECTED", "Assign a family with status SUPERSEDED."),
-    ("ACTIVE_UNASSIGNED_FAMILY_ASSIGNED_REJECTED", "Assign a family with status ACTIVE_UNASSIGNED."),
+    (
+        "ACTIVE_UNASSIGNED_FAMILY_ASSIGNED_REJECTED",
+        "Assign a family with status ACTIVE_UNASSIGNED.",
+    ),
     ("RETIRED_FAMILY_ASSIGNED_REJECTED", "Assign a family with status RETIRED."),
-    ("SUPERSEDED_WITHOUT_SUCCESSOR_REJECTED", "Remove every catalog-level target from a SUPERSEDED family."),
+    (
+        "SUPERSEDED_WITHOUT_SUCCESSOR_REJECTED",
+        "Remove every catalog-level target from a SUPERSEDED family.",
+    ),
     ("RETIRED_WITH_SUCCESSOR_REJECTED", "Add a target to a RETIRED family."),
     ("SUPERSESSION_UNKNOWN_TARGET_REJECTED", "Point superseded_by at an absent family ID."),
     ("SUPERSESSION_SELF_TARGET_REJECTED", "Point superseded_by at the same family ID."),
     ("SUPERSESSION_NONASSIGNABLE_TARGET_REJECTED", "Point superseded_by at SUPERSEDED or RETIRED."),
     ("HISTORICAL_FAMILY_MISSING_REJECTED", "Remove one of the 216 legacy records."),
-    ("HISTORICAL_REV3_BLOCK_TAMPER_REJECTED", "Change a preserved historical REV3 field or typed checksum."),
-    ("HISTORICAL_DEFINITION_PROJECTION_MISMATCH_REJECTED", "Change a recomputed historical definition projection."),
+    (
+        "HISTORICAL_REV3_BLOCK_TAMPER_REJECTED",
+        "Change a preserved historical REV3 field or typed checksum.",
+    ),
+    (
+        "HISTORICAL_DEFINITION_PROJECTION_MISMATCH_REJECTED",
+        "Change a recomputed historical definition projection.",
+    ),
     ("ACTIVE_WITH_ZERO_ASSIGNMENTS_REJECTED", "Leave a zero-usage family ACTIVE."),
-    ("SPECULATIVE_NEW_FAMILY_REJECTED", "Add a new family with no terminal use and no supersession-target need."),
-    ("SILENT_CLASSIFICATION_CHANGE_REJECTED", "Change an assignment while leaving changes[] unchanged."),
-    ("CORRECTION_WITHOUT_RATIONALE_REJECTED", "Remove rationale from an added, removed, or superseded change."),
+    (
+        "SPECULATIVE_NEW_FAMILY_REJECTED",
+        "Add a new family with no terminal use and no supersession-target need.",
+    ),
+    (
+        "SILENT_CLASSIFICATION_CHANGE_REJECTED",
+        "Change an assignment while leaving changes[] unchanged.",
+    ),
+    (
+        "CORRECTION_WITHOUT_RATIONALE_REJECTED",
+        "Remove rationale from an added, removed, or superseded change.",
+    ),
     ("CORRECTION_WITHOUT_EVIDENCE_REJECTED", "Remove evidence from a changed assignment/change."),
-    ("NEW_FAMILY_HISTORICAL_BLOCK_PRESENT_REJECTED", "Add historical_rev3 or historical_definition to a B2_NEW family."),
+    (
+        "NEW_FAMILY_HISTORICAL_BLOCK_PRESENT_REJECTED",
+        "Add historical_rev3 or historical_definition to a B2_NEW family.",
+    ),
     ("WRONG_CLASSIFICATION_SCHEMA_REJECTED", "Replace the classification schema ID."),
     ("WRONG_CLOSURE_SCHEMA_REJECTED", "Replace the closure schema ID."),
-    ("EVIDENCE_DIGEST_TAMPER_REJECTED", "Change a raw or normalized source digest without rebinding."),
+    (
+        "EVIDENCE_DIGEST_TAMPER_REJECTED",
+        "Change a raw or normalized source digest without rebinding.",
+    ),
     ("B2_FILE_INVENTORY_REJECTED", "Add an unrecognized file under closures/B2/."),
     ("OTHER_GATE_PROMOTION_REJECTED", "Promote interaction or citation status to PASS."),
     ("DECK_LOCK_PROMOTION_REJECTED", "Set DECK_PAIR_LOCKED to YES."),
@@ -163,9 +199,7 @@ NEGATIVE_CASES = (
 )
 
 HEX64_RE = re.compile(r"^[0-9a-f]{64}$")
-UUID_RE = re.compile(
-    r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
-)
+UUID_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
 
 
 class B2CheckError(Exception):
@@ -295,8 +329,12 @@ def digest_reference_cbor(reference: object, label: str) -> list[Any]:
         "INVALID_DIGEST_REFERENCE",
         f"{label}.payload_codec_id is not canonical CBOR",
     )
-    require_text(value.get("semantic_domain"), "INVALID_DIGEST_REFERENCE", f"{label}.semantic_domain")
-    require_text(value.get("input_schema_id"), "INVALID_DIGEST_REFERENCE", f"{label}.input_schema_id")
+    require_text(
+        value.get("semantic_domain"), "INVALID_DIGEST_REFERENCE", f"{label}.semantic_domain"
+    )
+    require_text(
+        value.get("input_schema_id"), "INVALID_DIGEST_REFERENCE", f"{label}.input_schema_id"
+    )
     digest = require_hex(value.get("digest_hex"), f"{label}.digest_hex")
     return [
         value["envelope_id"],
@@ -320,7 +358,9 @@ def digest_for_input(
 ) -> dict[str, str]:
     canonical_payload = encode_canonical(payload)
     envelope = encode_envelope(semantic_domain, input_schema_id, canonical_payload)
-    return digest_reference_json(semantic_domain, input_schema_id, hashlib.sha256(envelope).digest())
+    return digest_reference_json(
+        semantic_domain, input_schema_id, hashlib.sha256(envelope).digest()
+    )
 
 
 def field_value_digest(value: object) -> str:
@@ -389,7 +429,11 @@ def locator_to_cbor(locator: object, label: str) -> list[Any]:
             "json_pointer",
             "field_value_sha256",
         }
-        require(set(value) == expected, "SOURCE_EVIDENCE_LOCATOR_INVALID_REJECTED", f"{label} fields are closed")
+        require(
+            set(value) == expected,
+            "SOURCE_EVIDENCE_LOCATOR_INVALID_REJECTED",
+            f"{label} fields are closed",
+        )
         payload = [
             ORACLE_LOCATOR_SCHEMA,
             value["archive_artifact"],
@@ -407,7 +451,11 @@ def locator_to_cbor(locator: object, label: str) -> list[Any]:
             "byte_length",
             "fragment_sha256",
         }
-        require(set(value) == expected, "SOURCE_EVIDENCE_LOCATOR_INVALID_REJECTED", f"{label} fields are closed")
+        require(
+            set(value) == expected,
+            "SOURCE_EVIDENCE_LOCATOR_INVALID_REJECTED",
+            f"{label} fields are closed",
+        )
         payload = [
             AUTHORITY_LOCATOR_SCHEMA,
             value["archive_artifact"],
@@ -425,7 +473,11 @@ def locator_to_cbor(locator: object, label: str) -> list[Any]:
             "line_number",
             "line_sha256",
         }
-        require(set(value) == expected, "SOURCE_EVIDENCE_LOCATOR_INVALID_REJECTED", f"{label} fields are closed")
+        require(
+            set(value) == expected,
+            "SOURCE_EVIDENCE_LOCATOR_INVALID_REJECTED",
+            f"{label} fields are closed",
+        )
         payload = [
             RULE_LOCATOR_SCHEMA,
             value["archive_artifact"],
@@ -448,7 +500,10 @@ def normalize_locators(locators: object, label: str) -> list[dict[str, Any]]:
         fail("SOURCE_EVIDENCE_LOCATOR_INVALID_REJECTED", f"{label} contains duplicate locator keys")
     if keys != sorted(keys):
         fail("SOURCE_EVIDENCE_LOCATOR_INVALID_REJECTED", f"{label} is not canonically ordered")
-    return [require_mapping(value, "SOURCE_EVIDENCE_LOCATOR_INVALID_REJECTED", label) for value in values]
+    return [
+        require_mapping(value, "SOURCE_EVIDENCE_LOCATOR_INVALID_REJECTED", label)
+        for value in values
+    ]
 
 
 def source_identity_input(source: dict[str, Any]) -> list[Any]:
@@ -491,7 +546,10 @@ def assignment_input(assignment: dict[str, Any]) -> list[Any]:
     return [
         assignment["requirement_family_id"],
         evidence_basis_variant(assignment["evidence_basis"]),
-        [locator_to_cbor(x, "assignment.evidence_locators") for x in assignment["evidence_locators"]],
+        [
+            locator_to_cbor(x, "assignment.evidence_locators")
+            for x in assignment["evidence_locators"]
+        ],
         assignment["review_rationale"],
     ]
 
@@ -509,8 +567,12 @@ def change_input(change: dict[str, Any]) -> list[Any]:
 def classification_identity_input(record: dict[str, Any]) -> list[Any]:
     review_basis = require_mapping(record["review_basis"], "INVALID_REVIEW_BASIS", "review_basis")
     provenance = require_mapping(record["provenance"], "INVALID_PROVENANCE", "provenance")
-    review_locators = normalize_locators(review_basis.get("evidence_locators"), "review_basis.evidence_locators")
-    provenance_digest = bytes.fromhex(require_hex(provenance.get("source_package_sha256"), "provenance source package"))
+    review_locators = normalize_locators(
+        review_basis.get("evidence_locators"), "review_basis.evidence_locators"
+    )
+    provenance_digest = bytes.fromhex(
+        require_hex(provenance.get("source_package_sha256"), "provenance source package")
+    )
     return [
         CLASSIFICATION_INPUT_SCHEMA,
         record["oracle_semantic_identity"],
@@ -562,7 +624,10 @@ def json_pointer_get(record: object, pointer: str) -> object:
         elif isinstance(value, list) and part.isdigit() and int(part) < len(value):
             value = value[int(part)]
         else:
-            fail("SOURCE_EVIDENCE_LOCATOR_INVALID_REJECTED", f"JSON pointer does not resolve: {pointer}")
+            fail(
+                "SOURCE_EVIDENCE_LOCATOR_INVALID_REJECTED",
+                f"JSON pointer does not resolve: {pointer}",
+            )
     return value
 
 
@@ -643,12 +708,18 @@ def load_archive() -> ArchiveData:
                 fail("ARCHIVE_MEMBER_INVALID", "package manifest is absent")
             manifest = json.loads(archive.read(manifest_name).decode("utf-8"))
             data.manifest = require_mapping(manifest, "ARCHIVE_MEMBER_INVALID", "package manifest")
-            entries = require_list(data.manifest.get("entries"), "ARCHIVE_MEMBER_INVALID", "manifest.entries")
-            require(len(entries) == 72, "ARCHIVE_MEMBER_INVALID", "manifest must declare 72 entries")
+            entries = require_list(
+                data.manifest.get("entries"), "ARCHIVE_MEMBER_INVALID", "manifest.entries"
+            )
+            require(
+                len(entries) == 72, "ARCHIVE_MEMBER_INVALID", "manifest must declare 72 entries"
+            )
             declared: dict[str, dict[str, Any]] = {}
             for entry in entries:
                 record = require_mapping(entry, "ARCHIVE_MEMBER_INVALID", "manifest entry")
-                member = require_text(record.get("path"), "ARCHIVE_MEMBER_INVALID", "manifest entry path")
+                member = require_text(
+                    record.get("path"), "ARCHIVE_MEMBER_INVALID", "manifest entry path"
+                )
                 if member in declared:
                     fail("ARCHIVE_MEMBER_INVALID", f"duplicate manifest path {member}")
                 declared[member] = record
@@ -657,7 +728,11 @@ def load_archive() -> ArchiveData:
                 payload = archive.read(member)
                 expected_bytes = record.get("bytes")
                 expected_sha = record.get("sha256")
-                require(isinstance(expected_bytes, int), "ARCHIVE_MEMBER_INVALID", f"invalid bytes for {member}")
+                require(
+                    isinstance(expected_bytes, int),
+                    "ARCHIVE_MEMBER_INVALID",
+                    f"invalid bytes for {member}",
+                )
                 require_file_digest(expected_sha, f"manifest digest {member}")
                 if len(payload) != expected_bytes or sha256_bytes(payload) != expected_sha:
                     fail("ARCHIVE_MEMBER_INVALID", f"manifest digest mismatch for {member}")
@@ -668,7 +743,10 @@ def load_archive() -> ArchiveData:
             )
             expected_extras = {manifest_name, *[str(x) for x in excluded]}
             if set(names) - set(declared) != expected_extras:
-                fail("ARCHIVE_MEMBER_INVALID", "ZIP members outside the manifest are not exactly the declared exclusions")
+                fail(
+                    "ARCHIVE_MEMBER_INVALID",
+                    "ZIP members outside the manifest are not exactly the declared exclusions",
+                )
             for member in REQUIRED_ARCHIVE_MEMBERS:
                 if member not in names:
                     fail("ARCHIVE_MEMBER_INVALID", f"required archive member missing: {member}")
@@ -693,11 +771,19 @@ def load_archive() -> ArchiveData:
         if osi in data.evidence_by_osi:
             fail("ARCHIVE_MEMBER_INVALID", f"duplicate evidence OSI {osi}")
         data.evidence_by_osi[osi] = record
-    require(len(data.evidence) == 402, "ARCHIVE_UNIVERSE_MISMATCH", "pinned evidence must contain 402 OSIs")
+    require(
+        len(data.evidence) == 402,
+        "ARCHIVE_UNIVERSE_MISMATCH",
+        "pinned evidence must contain 402 OSIs",
+    )
 
     raw_bytes = data.member_bytes[RAW_ORACLE_ARTIFACT]
     lines = raw_bytes.splitlines(keepends=True)
-    require(len(lines) == 402 and raw_bytes.endswith(b"\n"), "ARCHIVE_MEMBER_INVALID", "raw Oracle JSONL must contain 402 newline-terminated records")
+    require(
+        len(lines) == 402 and raw_bytes.endswith(b"\n"),
+        "ARCHIVE_MEMBER_INVALID",
+        "raw Oracle JSONL must contain 402 newline-terminated records",
+    )
     for line in lines:
         if not line.endswith(b"\n"):
             fail("ARCHIVE_MEMBER_INVALID", "raw Oracle JSONL record is missing its final newline")
@@ -711,9 +797,14 @@ def load_archive() -> ArchiveData:
             fail("ARCHIVE_MEMBER_INVALID", f"duplicate raw Oracle record id {source_id}")
         data.raw_by_record_id[source_id] = (record, line, sha256_bytes(line))
     for evidence in data.evidence:
-        source_id = require_uuid(evidence.get("oracle_source_record_id"), "evidence source record id")
+        source_id = require_uuid(
+            evidence.get("oracle_source_record_id"), "evidence source record id"
+        )
         if source_id not in data.raw_by_record_id:
-            fail("ARCHIVE_MEMBER_INVALID", f"evidence source record missing from raw JSONL: {source_id}")
+            fail(
+                "ARCHIVE_MEMBER_INVALID",
+                f"evidence source record missing from raw JSONL: {source_id}",
+            )
         _, _, raw_digest = data.raw_by_record_id[source_id]
         if raw_digest != evidence.get("source_record_raw_sha256"):
             fail("ARCHIVE_MEMBER_INVALID", f"raw digest mismatch for source record {source_id}")
@@ -729,8 +820,16 @@ def load_archive() -> ArchiveData:
         if osi in data.rev3_by_osi:
             fail("ARCHIVE_MEMBER_INVALID", f"duplicate REV3 classification OSI {osi}")
         data.rev3_by_osi[osi] = record
-    require(len(data.rev3_classifications) == 402, "ARCHIVE_UNIVERSE_MISMATCH", "REV3 classifications must contain 402 OSIs")
-    require(set(data.rev3_by_osi) == set(data.evidence_by_osi), "ARCHIVE_UNIVERSE_MISMATCH", "evidence and REV3 classification OSI sets differ")
+    require(
+        len(data.rev3_classifications) == 402,
+        "ARCHIVE_UNIVERSE_MISMATCH",
+        "REV3 classifications must contain 402 OSIs",
+    )
+    require(
+        set(data.rev3_by_osi) == set(data.evidence_by_osi),
+        "ARCHIVE_UNIVERSE_MISMATCH",
+        "evidence and REV3 classification OSI sets differ",
+    )
 
     data.rev3_families = require_list(
         load_json_member(data, "inputs/requirement_family_catalog_REV3.json"),
@@ -743,19 +842,43 @@ def load_archive() -> ArchiveData:
         if family_id in data.rev3_family_by_id:
             fail("ARCHIVE_MEMBER_INVALID", f"duplicate REV3 family id {family_id}")
         data.rev3_family_by_id[family_id] = family
-    require(len(data.rev3_families) == 216, "ARCHIVE_UNIVERSE_MISMATCH", "REV3 catalog must contain 216 families")
+    require(
+        len(data.rev3_families) == 216,
+        "ARCHIVE_UNIVERSE_MISMATCH",
+        "REV3 catalog must contain 216 families",
+    )
 
     data.deck_rows = load_csv_member(data, "inputs/deck_row_source_resolution_REV3.csv")
     data.deck_rows_by_id = {row["deck_row_id"]: row for row in data.deck_rows}
-    require(len(data.deck_rows) == 441 and len(data.deck_rows_by_id) == 441, "ARCHIVE_UNIVERSE_MISMATCH", "pinned deck resolution must contain 441 unique rows")
+    require(
+        len(data.deck_rows) == 441 and len(data.deck_rows_by_id) == 441,
+        "ARCHIVE_UNIVERSE_MISMATCH",
+        "pinned deck resolution must contain 441 unique rows",
+    )
     data.deck_refs = load_csv_member(data, "inputs/deck_row_classification_refs_REV3.csv")
-    require(len(data.deck_refs) == 441, "ARCHIVE_UNIVERSE_MISMATCH", "pinned deck classification refs must contain 441 rows")
+    require(
+        len(data.deck_refs) == 441,
+        "ARCHIVE_UNIVERSE_MISMATCH",
+        "pinned deck classification refs must contain 441 rows",
+    )
     data.map_rows = load_csv_member(data, "derived/Card_Requirement_Map_REV3.csv")
-    require(len(data.map_rows) == 470, "ARCHIVE_UNIVERSE_MISMATCH", "pinned requirement map must contain 470 rows")
+    require(
+        len(data.map_rows) == 470,
+        "ARCHIVE_UNIVERSE_MISMATCH",
+        "pinned requirement map must contain 470 rows",
+    )
 
     repeated = Counter(row["oracle_semantic_identity"] for row in data.deck_rows)
-    require(sum(count > 1 for count in repeated.values()) == 23, "ARCHIVE_UNIVERSE_MISMATCH", "pinned deck rows must contain 23 reused OSIs")
-    require(sum(count - 1 for count in repeated.values() if count > 1) == 39, "ARCHIVE_UNIVERSE_MISMATCH", "pinned deck rows must contain 39 additional reused references")
+    require(
+        sum(count > 1 for count in repeated.values()) == 23,
+        "ARCHIVE_UNIVERSE_MISMATCH",
+        "pinned deck rows must contain 23 reused OSIs",
+    )
+    require(
+        sum(count - 1 for count in repeated.values() if count > 1) == 39,
+        "ARCHIVE_UNIVERSE_MISMATCH",
+        "pinned deck rows must contain 39 additional reused references",
+    )
     total_quantity = sum(int(row["quantity"]) for row in data.deck_rows)
     require(total_quantity == 600, "ARCHIVE_UNIVERSE_MISMATCH", "pinned deck quantity must be 600")
     return data
@@ -863,7 +986,13 @@ def expected_historical_block(
 def validate_typed_checksum(value: object, expected_value: object, schema: str, label: str) -> None:
     checksum = require_mapping(value, "HISTORICAL_REV3_BLOCK_TAMPER_REJECTED", label)
     expected_keys = {"checksum_kind", "algorithm_id", "input_schema_id", "digest_hex"}
-    if set(checksum) != expected_keys or checksum.get("checksum_kind") != "EVIDENCE_CHECKSUM" or checksum.get("algorithm_id") != "sha-256" or checksum.get("input_schema_id") != schema or checksum.get("digest_hex") != canonical_json_digest(expected_value):
+    if (
+        set(checksum) != expected_keys
+        or checksum.get("checksum_kind") != "EVIDENCE_CHECKSUM"
+        or checksum.get("algorithm_id") != "sha-256"
+        or checksum.get("input_schema_id") != schema
+        or checksum.get("digest_hex") != canonical_json_digest(expected_value)
+    ):
         fail("HISTORICAL_REV3_BLOCK_TAMPER_REJECTED", f"{label} is not the expected typed checksum")
 
 
@@ -873,9 +1002,21 @@ def validate_spec(data: ArchiveData, artifacts: dict[str, Any]) -> None:
         text = path.read_text(encoding="utf-8")
     except OSError as exc:
         fail("B2_FILE_INVENTORY_REJECTED", f"cannot read B2 design spec: {exc}")
-    require("DigestReferenceJsonV1" in text, "B2_FILE_INVENTORY_REJECTED", "B2 spec omits DigestReferenceJsonV1")
-    require("NEW_FAMILY_HISTORICAL_BLOCK_PRESENT_REJECTED" in text, "B2_FILE_INVENTORY_REJECTED", "B2 spec omits the executable new-family historical-block case")
-    require("LEGACY_FAMILY_REINTERPRETATION_REJECTED" not in text, "B2_FILE_INVENTORY_REJECTED", "B2 spec retains the non-executable legacy reinterpretation case")
+    require(
+        "DigestReferenceJsonV1" in text,
+        "B2_FILE_INVENTORY_REJECTED",
+        "B2 spec omits DigestReferenceJsonV1",
+    )
+    require(
+        "NEW_FAMILY_HISTORICAL_BLOCK_PRESENT_REJECTED" in text,
+        "B2_FILE_INVENTORY_REJECTED",
+        "B2 spec omits the executable new-family historical-block case",
+    )
+    require(
+        "LEGACY_FAMILY_REINTERPRETATION_REJECTED" not in text,
+        "B2_FILE_INVENTORY_REJECTED",
+        "B2 spec retains the non-executable legacy reinterpretation case",
+    )
     del artifacts
 
 
@@ -897,15 +1038,30 @@ def validate_locator(
             "json_pointer",
             "field_value_sha256",
         }
-        require(set(value) == expected_keys, "SOURCE_EVIDENCE_LOCATOR_INVALID_REJECTED", f"{label} fields are not closed")
-        if value.get("archive_artifact") != RAW_ORACLE_ARTIFACT or value.get("oracle_source_record_id") != source["oracle_source_record_id"]:
-            fail("SOURCE_EVIDENCE_LOCATOR_INVALID_REJECTED", f"{label} points to a different Oracle record")
+        require(
+            set(value) == expected_keys,
+            "SOURCE_EVIDENCE_LOCATOR_INVALID_REJECTED",
+            f"{label} fields are not closed",
+        )
+        if (
+            value.get("archive_artifact") != RAW_ORACLE_ARTIFACT
+            or value.get("oracle_source_record_id") != source["oracle_source_record_id"]
+        ):
+            fail(
+                "SOURCE_EVIDENCE_LOCATOR_INVALID_REJECTED",
+                f"{label} points to a different Oracle record",
+            )
         raw_digest = require_hex(value.get("raw_line_sha256"), f"{label}.raw_line_sha256")
         if raw_digest != source["source_record_raw_sha256"]:
-            fail("EVIDENCE_DIGEST_TAMPER_REJECTED", f"{label} raw-line digest does not match the pinned source")
+            fail(
+                "EVIDENCE_DIGEST_TAMPER_REJECTED",
+                f"{label} raw-line digest does not match the pinned source",
+            )
         pointer = value.get("json_pointer")
         if basis == "ORACLE_TEXT" and pointer != "/oracle_text":
-            fail("SOURCE_EVIDENCE_LOCATOR_INVALID_REJECTED", f"{label} is not an oracle_text locator")
+            fail(
+                "SOURCE_EVIDENCE_LOCATOR_INVALID_REJECTED", f"{label} is not an oracle_text locator"
+            )
         if basis == "TYPE_LINE" and pointer != "/type_line":
             fail("SOURCE_EVIDENCE_LOCATOR_INVALID_REJECTED", f"{label} is not a type_line locator")
         if basis == "CARD_FACE" and (
@@ -913,24 +1069,42 @@ def validate_locator(
         ):
             fail("SOURCE_EVIDENCE_LOCATOR_INVALID_REJECTED", f"{label} is not a card-face locator")
         selected = json_pointer_get(source["_raw_record"], pointer)
-        selected_digest = require_hex(value.get("field_value_sha256"), f"{label}.field_value_sha256")
+        selected_digest = require_hex(
+            value.get("field_value_sha256"), f"{label}.field_value_sha256"
+        )
         if selected_digest != field_value_digest(selected):
-            fail("EVIDENCE_DIGEST_TAMPER_REJECTED", f"{label} field-value digest does not match the pinned source")
+            fail(
+                "EVIDENCE_DIGEST_TAMPER_REJECTED",
+                f"{label} field-value digest does not match the pinned source",
+            )
         return kind
     artifact = value.get("archive_artifact")
     if not isinstance(artifact, str) or artifact not in data.member_bytes:
-        fail("SOURCE_EVIDENCE_LOCATOR_INVALID_REJECTED", f"{label} references an unknown authority artifact")
+        fail(
+            "SOURCE_EVIDENCE_LOCATOR_INVALID_REJECTED",
+            f"{label} references an unknown authority artifact",
+        )
     actual_artifact_digest = sha256_bytes(data.member_bytes[artifact])
     if value.get("artifact_sha256") != actual_artifact_digest:
         fail("EVIDENCE_DIGEST_TAMPER_REJECTED", f"{label} authority artifact digest is not pinned")
     if kind == "authority_byte_fragment":
         offset = value.get("byte_offset")
         length = value.get("byte_length")
-        if isinstance(offset, bool) or not isinstance(offset, int) or isinstance(length, bool) or not isinstance(length, int) or offset < 0 or length < 0:
+        if (
+            isinstance(offset, bool)
+            or not isinstance(offset, int)
+            or isinstance(length, bool)
+            or not isinstance(length, int)
+            or offset < 0
+            or length < 0
+        ):
             fail("SOURCE_EVIDENCE_LOCATOR_INVALID_REJECTED", f"{label} fragment bounds are invalid")
         fragment = data.member_bytes[artifact][offset : offset + length]
         if len(fragment) != length:
-            fail("SOURCE_EVIDENCE_LOCATOR_INVALID_REJECTED", f"{label} fragment is outside the authority artifact")
+            fail(
+                "SOURCE_EVIDENCE_LOCATOR_INVALID_REJECTED",
+                f"{label} fragment is outside the authority artifact",
+            )
         if value.get("fragment_sha256") != sha256_bytes(fragment):
             fail("EVIDENCE_DIGEST_TAMPER_REJECTED", f"{label} fragment digest does not match")
         return kind
@@ -939,13 +1113,19 @@ def validate_locator(
         fail("SOURCE_EVIDENCE_LOCATOR_INVALID_REJECTED", f"{label} rule line number is invalid")
     lines = data.member_bytes[artifact].splitlines()
     if line_number > len(lines):
-        fail("SOURCE_EVIDENCE_LOCATOR_INVALID_REJECTED", f"{label} rule line is outside the authority artifact")
+        fail(
+            "SOURCE_EVIDENCE_LOCATOR_INVALID_REJECTED",
+            f"{label} rule line is outside the authority artifact",
+        )
     line = lines[line_number - 1]
     if value.get("line_sha256") != sha256_bytes(line):
         fail("EVIDENCE_DIGEST_TAMPER_REJECTED", f"{label} rule line digest does not match")
     identifier = value.get("rule_identifier")
     if not isinstance(identifier, str) or identifier not in line.decode("utf-8", errors="replace"):
-        fail("SOURCE_EVIDENCE_LOCATOR_INVALID_REJECTED", f"{label} rule identifier does not resolve to the pinned line")
+        fail(
+            "SOURCE_EVIDENCE_LOCATOR_INVALID_REJECTED",
+            f"{label} rule identifier does not resolve to the pinned line",
+        )
     return kind
 
 
@@ -970,103 +1150,317 @@ def validate_locator_list(
     return normalized
 
 
-def validate_review_basis(data: ArchiveData, record: dict[str, Any], source: dict[str, Any]) -> None:
+def validate_review_basis(
+    data: ArchiveData, record: dict[str, Any], source: dict[str, Any]
+) -> None:
     value = require_mapping(record.get("review_basis"), "INVALID_REVIEW_BASIS", "review_basis")
-    require(set(value) == {"review_method", "evidence_locators"}, "INVALID_REVIEW_BASIS", "review_basis fields are not closed")
-    require(value.get("review_method") == "SOURCE_GROUNDED_CARD_REVIEW", "INVALID_REVIEW_BASIS", "review method is not source-grounded")
-    locators = validate_locator_list(data, value.get("evidence_locators"), source, None, "review_basis.evidence_locators")
-    if not any(locator_variant_id(locator, "review basis locator") == "oracle_field" for locator in locators):
+    require(
+        set(value) == {"review_method", "evidence_locators"},
+        "INVALID_REVIEW_BASIS",
+        "review_basis fields are not closed",
+    )
+    require(
+        value.get("review_method") == "SOURCE_GROUNDED_CARD_REVIEW",
+        "INVALID_REVIEW_BASIS",
+        "review method is not source-grounded",
+    )
+    locators = validate_locator_list(
+        data, value.get("evidence_locators"), source, None, "review_basis.evidence_locators"
+    )
+    if not any(
+        locator_variant_id(locator, "review basis locator") == "oracle_field"
+        for locator in locators
+    ):
         fail("CARD_SIDE_EVIDENCE_MISSING_REJECTED", "review_basis has no card-side locator")
 
 
 def validate_provenance(record: dict[str, Any]) -> None:
     value = require_mapping(record.get("provenance"), "INVALID_PROVENANCE", "provenance")
-    require(set(value) == {"source_package_sha256", "provenance_method"}, "INVALID_PROVENANCE", "provenance fields are not closed")
-    require(value.get("source_package_sha256") == EXPECTED_ARCHIVE_SHA256, "INVALID_PROVENANCE", "provenance package digest is not pinned")
-    require(value.get("provenance_method") == "SOURCE_GROUNDED_REVIEW_V1", "INVALID_PROVENANCE", "provenance method is not source-grounded")
+    require(
+        set(value) == {"source_package_sha256", "provenance_method"},
+        "INVALID_PROVENANCE",
+        "provenance fields are not closed",
+    )
+    require(
+        value.get("source_package_sha256") == EXPECTED_ARCHIVE_SHA256,
+        "INVALID_PROVENANCE",
+        "provenance package digest is not pinned",
+    )
+    require(
+        value.get("provenance_method") == "SOURCE_GROUNDED_REVIEW_V1",
+        "INVALID_PROVENANCE",
+        "provenance method is not source-grounded",
+    )
 
 
 def validate_catalog(data: ArchiveData, catalog: object) -> dict[str, dict[str, Any]]:
     value = require_mapping(catalog, "B2_FILE_INVENTORY_REJECTED", "requirement family catalog")
-    require(value.get("schema") == CATALOG_SCHEMA, "B2_FILE_INVENTORY_REJECTED", "catalog schema is wrong")
-    require(value.get("source_package_sha256") == EXPECTED_ARCHIVE_SHA256, "B2_FILE_INVENTORY_REJECTED", "catalog package digest is wrong")
-    require(value.get("rev3_catalog_sha256") == canonical_json_digest(data.rev3_families), "HISTORICAL_REV3_BLOCK_TAMPER_REJECTED", "REV3 catalog digest is wrong")
+    require(
+        value.get("schema") == CATALOG_SCHEMA,
+        "B2_FILE_INVENTORY_REJECTED",
+        "catalog schema is wrong",
+    )
+    require(
+        value.get("source_package_sha256") == EXPECTED_ARCHIVE_SHA256,
+        "B2_FILE_INVENTORY_REJECTED",
+        "catalog package digest is wrong",
+    )
+    require(
+        value.get("rev3_catalog_sha256") == canonical_json_digest(data.rev3_families),
+        "HISTORICAL_REV3_BLOCK_TAMPER_REJECTED",
+        "REV3 catalog digest is wrong",
+    )
     families = require_list(value.get("families"), "B2_FILE_INVENTORY_REJECTED", "catalog.families")
-    new_count = sum(1 for item in families if isinstance(item, dict) and item.get("family_origin") == "B2_NEW")
-    require(value.get("legacy_family_count") == 216, "HISTORICAL_FAMILY_MISSING_REJECTED", "legacy family count is not 216")
-    require(value.get("new_family_count") == new_count, "B2_FILE_INVENTORY_REJECTED", "new family count is inconsistent")
-    require(value.get("catalog_family_count") == 216 + new_count, "B2_FILE_INVENTORY_REJECTED", "catalog family count is inconsistent")
-    ids = [require_text(item.get("family_id"), "B2_FILE_INVENTORY_REJECTED", "catalog family id") for item in families if isinstance(item, dict)]
-    require(ids == sorted(ids, key=lambda item: encode_canonical(item)), "B2_FILE_INVENTORY_REJECTED", "catalog families are not canonically ordered")
+    new_count = sum(
+        1 for item in families if isinstance(item, dict) and item.get("family_origin") == "B2_NEW"
+    )
+    require(
+        value.get("legacy_family_count") == 216,
+        "HISTORICAL_FAMILY_MISSING_REJECTED",
+        "legacy family count is not 216",
+    )
+    require(
+        value.get("new_family_count") == new_count,
+        "B2_FILE_INVENTORY_REJECTED",
+        "new family count is inconsistent",
+    )
+    require(
+        value.get("catalog_family_count") == 216 + new_count,
+        "B2_FILE_INVENTORY_REJECTED",
+        "catalog family count is inconsistent",
+    )
+    ids = [
+        require_text(item.get("family_id"), "B2_FILE_INVENTORY_REJECTED", "catalog family id")
+        for item in families
+        if isinstance(item, dict)
+    ]
+    require(
+        ids == sorted(ids, key=lambda item: encode_canonical(item)),
+        "B2_FILE_INVENTORY_REJECTED",
+        "catalog families are not canonically ordered",
+    )
     catalog_by_id: dict[str, dict[str, Any]] = {}
     for family in families:
         family = require_mapping(family, "B2_FILE_INVENTORY_REJECTED", "catalog family")
-        family_id = require_text(family.get("family_id"), "B2_FILE_INVENTORY_REJECTED", "catalog family id")
+        family_id = require_text(
+            family.get("family_id"), "B2_FILE_INVENTORY_REJECTED", "catalog family id"
+        )
         if family_id in catalog_by_id:
             fail("B2_FILE_INVENTORY_REJECTED", f"duplicate catalog family {family_id}")
         catalog_by_id[family_id] = family
         origin = family.get("family_origin")
         status = family.get("status")
-        require(origin in {"REV3_LEGACY", "B2_NEW"}, "B2_FILE_INVENTORY_REJECTED", f"unknown family origin for {family_id}")
-        require(status in {"ACTIVE", "ACTIVE_UNASSIGNED", "SUPERSEDED", "RETIRED"}, "B2_FILE_INVENTORY_REJECTED", f"unknown lifecycle status for {family_id}")
-        require(isinstance(family.get("terminal_assignable"), bool), "B2_FILE_INVENTORY_REJECTED", f"terminal_assignable missing for {family_id}")
+        require(
+            origin in {"REV3_LEGACY", "B2_NEW"},
+            "B2_FILE_INVENTORY_REJECTED",
+            f"unknown family origin for {family_id}",
+        )
+        require(
+            status in {"ACTIVE", "ACTIVE_UNASSIGNED", "SUPERSEDED", "RETIRED"},
+            "B2_FILE_INVENTORY_REJECTED",
+            f"unknown lifecycle status for {family_id}",
+        )
+        require(
+            isinstance(family.get("terminal_assignable"), bool),
+            "B2_FILE_INVENTORY_REJECTED",
+            f"terminal_assignable missing for {family_id}",
+        )
         expected_assignable = status == "ACTIVE"
-        require(family["terminal_assignable"] == expected_assignable, "B2_FILE_INVENTORY_REJECTED", f"terminal_assignable disagrees with status for {family_id}")
-        targets = require_list(family.get("superseded_by"), "B2_FILE_INVENTORY_REJECTED", f"{family_id}.superseded_by")
+        require(
+            family["terminal_assignable"] == expected_assignable,
+            "B2_FILE_INVENTORY_REJECTED",
+            f"terminal_assignable disagrees with status for {family_id}",
+        )
+        targets = require_list(
+            family.get("superseded_by"), "B2_FILE_INVENTORY_REJECTED", f"{family_id}.superseded_by"
+        )
         assert_canonical_set(targets, f"{family_id}.superseded_by", "B2_FILE_INVENTORY_REJECTED")
         if status == "SUPERSEDED":
             if not targets:
-                fail("SUPERSEDED_WITHOUT_SUCCESSOR_REJECTED", f"{family_id} has no supersession target")
-            require_text(family.get("supersession_reason"), "B2_FILE_INVENTORY_REJECTED", f"{family_id}.supersession_reason")
+                fail(
+                    "SUPERSEDED_WITHOUT_SUCCESSOR_REJECTED",
+                    f"{family_id} has no supersession target",
+                )
+            require_text(
+                family.get("supersession_reason"),
+                "B2_FILE_INVENTORY_REJECTED",
+                f"{family_id}.supersession_reason",
+            )
         elif status == "RETIRED" and targets:
             fail("RETIRED_WITH_SUCCESSOR_REJECTED", f"{family_id} is RETIRED but has a target")
         else:
-            require(family.get("supersession_reason") in {None, ""}, "B2_FILE_INVENTORY_REJECTED", f"{family_id} has an unexpected supersession reason")
+            require(
+                family.get("supersession_reason") in {None, ""},
+                "B2_FILE_INVENTORY_REJECTED",
+                f"{family_id} has an unexpected supersession reason",
+            )
         if origin == "REV3_LEGACY":
-            require(family_id in data.rev3_family_by_id, "HISTORICAL_FAMILY_MISSING_REJECTED", f"unknown legacy family {family_id}")
-            historical = require_mapping(family.get("historical_rev3"), "HISTORICAL_REV3_BLOCK_TAMPER_REJECTED", f"{family_id}.historical_rev3")
+            require(
+                family_id in data.rev3_family_by_id,
+                "HISTORICAL_FAMILY_MISSING_REJECTED",
+                f"unknown legacy family {family_id}",
+            )
+            historical = require_mapping(
+                family.get("historical_rev3"),
+                "HISTORICAL_REV3_BLOCK_TAMPER_REJECTED",
+                f"{family_id}.historical_rev3",
+            )
             historical_record = historical.get("record")
-            require(historical_record == data.rev3_family_by_id[family_id], "HISTORICAL_REV3_BLOCK_TAMPER_REJECTED", f"historical record changed for {family_id}")
-            validate_typed_checksum(historical.get("record_sha256"), historical_record, "manafold.m2.5.b2.rev3-record-evidence.v1", f"{family_id}.historical_rev3.record_sha256")
+            require(
+                historical_record == data.rev3_family_by_id[family_id],
+                "HISTORICAL_REV3_BLOCK_TAMPER_REJECTED",
+                f"historical record changed for {family_id}",
+            )
+            validate_typed_checksum(
+                historical.get("record_sha256"),
+                historical_record,
+                "manafold.m2.5.b2.rev3-record-evidence.v1",
+                f"{family_id}.historical_rev3.record_sha256",
+            )
             member_osis = expected_member_osis(data, family_id)
-            require(historical.get("member_osi") == member_osis, "HISTORICAL_REV3_BLOCK_TAMPER_REJECTED", f"historical member OSI set changed for {family_id}")
-            expected_digests = expected_historical_block(data, data.rev3_family_by_id[family_id], member_osis)["assignment_record_digests"]
-            require(historical.get("assignment_record_digests") == expected_digests, "HISTORICAL_REV3_BLOCK_TAMPER_REJECTED", f"historical assignment digests changed for {family_id}")
-            definition = require_mapping(family.get("historical_definition"), "HISTORICAL_DEFINITION_PROJECTION_MISMATCH_REJECTED", f"{family_id}.historical_definition")
-            expected_definition = expected_historical_definition(data, data.rev3_family_by_id[family_id], member_osis)
-            require(definition == expected_definition, "HISTORICAL_DEFINITION_PROJECTION_MISMATCH_REJECTED", f"historical definition projection changed for {family_id}")
+            require(
+                historical.get("member_osi") == member_osis,
+                "HISTORICAL_REV3_BLOCK_TAMPER_REJECTED",
+                f"historical member OSI set changed for {family_id}",
+            )
+            expected_digests = expected_historical_block(
+                data, data.rev3_family_by_id[family_id], member_osis
+            )["assignment_record_digests"]
+            require(
+                historical.get("assignment_record_digests") == expected_digests,
+                "HISTORICAL_REV3_BLOCK_TAMPER_REJECTED",
+                f"historical assignment digests changed for {family_id}",
+            )
+            definition = require_mapping(
+                family.get("historical_definition"),
+                "HISTORICAL_DEFINITION_PROJECTION_MISMATCH_REJECTED",
+                f"{family_id}.historical_definition",
+            )
+            expected_definition = expected_historical_definition(
+                data, data.rev3_family_by_id[family_id], member_osis
+            )
+            require(
+                definition == expected_definition,
+                "HISTORICAL_DEFINITION_PROJECTION_MISMATCH_REJECTED",
+                f"historical definition projection changed for {family_id}",
+            )
             relation = family.get("lifecycle_relation")
-            expected_relation = {"ACTIVE": "ACTIVE_EQUIVALENT", "ACTIVE_UNASSIGNED": "ACTIVE_EQUIVALENT", "SUPERSEDED": "SUPERSEDED_BY_REPLACEMENT", "RETIRED": "RETIRED_NO_SUCCESSOR"}[status]
-            require(relation == expected_relation, "B2_FILE_INVENTORY_REJECTED", f"lifecycle relation disagrees for {family_id}")
+            expected_relation = {
+                "ACTIVE": "ACTIVE_EQUIVALENT",
+                "ACTIVE_UNASSIGNED": "ACTIVE_EQUIVALENT",
+                "SUPERSEDED": "SUPERSEDED_BY_REPLACEMENT",
+                "RETIRED": "RETIRED_NO_SUCCESSOR",
+            }[status]
+            require(
+                relation == expected_relation,
+                "B2_FILE_INVENTORY_REJECTED",
+                f"lifecycle relation disagrees for {family_id}",
+            )
         else:
-            require(re.fullmatch(r"req\.b2\.[a-z0-9]+(?:_[a-z0-9]+)*", family_id) is not None, "B2_FILE_INVENTORY_REJECTED", f"new family id is not in req.b2 namespace: {family_id}")
+            require(
+                re.fullmatch(r"req\.b2\.[a-z0-9]+(?:_[a-z0-9]+)*", family_id) is not None,
+                "B2_FILE_INVENTORY_REJECTED",
+                f"new family id is not in req.b2 namespace: {family_id}",
+            )
             if "historical_rev3" in family or "historical_definition" in family:
-                fail("NEW_FAMILY_HISTORICAL_BLOCK_PRESENT_REJECTED", f"B2_NEW family {family_id} contains a historical block")
-            require(family.get("lifecycle_relation") == "NEW_TERMINAL_CONCEPT", "B2_FILE_INVENTORY_REJECTED", f"new family {family_id} has wrong lifecycle relation")
-        allowed_basis = require_list(family.get("evidence_basis_allowed"), "B2_FILE_INVENTORY_REJECTED", f"{family_id}.evidence_basis_allowed")
-        assert_canonical_set(allowed_basis, f"{family_id}.evidence_basis_allowed", "B2_FILE_INVENTORY_REJECTED")
-        require(all(item in {"ORACLE_TEXT", "TYPE_LINE", "CARD_FACE", "STRUCTURAL_CARD_PROPERTY", "FORMAT_POLICY", "RULE_DERIVED"} for item in allowed_basis), "B2_FILE_INVENTORY_REJECTED", f"unknown evidence basis for {family_id}")
-        require_text(family.get("canonical_name"), "B2_FILE_INVENTORY_REJECTED", f"{family_id}.canonical_name")
-        require_text(family.get("precise_semantic_definition"), "B2_FILE_INVENTORY_REJECTED", f"{family_id}.precise_semantic_definition")
-        review = require_mapping(family.get("review_provenance"), "B2_FILE_INVENTORY_REJECTED", f"{family_id}.review_provenance")
-        require(review.get("review_status") in {"REVIEWED_CONFIRMED", "REVIEWED_CORRECTED"}, "B2_FILE_INVENTORY_REJECTED", f"{family_id} review status is not terminal")
-        require(review.get("review_basis") == "SOURCE_GROUNDED_CARD_REVIEW", "B2_FILE_INVENTORY_REJECTED", f"{family_id} review basis is not source-grounded")
-        review_locators = require_list(review.get("evidence_locators"), "B2_FILE_INVENTORY_REJECTED", f"{family_id}.review_provenance.evidence_locators")
+                fail(
+                    "NEW_FAMILY_HISTORICAL_BLOCK_PRESENT_REJECTED",
+                    f"B2_NEW family {family_id} contains a historical block",
+                )
+            require(
+                family.get("lifecycle_relation") == "NEW_TERMINAL_CONCEPT",
+                "B2_FILE_INVENTORY_REJECTED",
+                f"new family {family_id} has wrong lifecycle relation",
+            )
+        allowed_basis = require_list(
+            family.get("evidence_basis_allowed"),
+            "B2_FILE_INVENTORY_REJECTED",
+            f"{family_id}.evidence_basis_allowed",
+        )
+        assert_canonical_set(
+            allowed_basis, f"{family_id}.evidence_basis_allowed", "B2_FILE_INVENTORY_REJECTED"
+        )
+        require(
+            all(
+                item
+                in {
+                    "ORACLE_TEXT",
+                    "TYPE_LINE",
+                    "CARD_FACE",
+                    "STRUCTURAL_CARD_PROPERTY",
+                    "FORMAT_POLICY",
+                    "RULE_DERIVED",
+                }
+                for item in allowed_basis
+            ),
+            "B2_FILE_INVENTORY_REJECTED",
+            f"unknown evidence basis for {family_id}",
+        )
+        require_text(
+            family.get("canonical_name"),
+            "B2_FILE_INVENTORY_REJECTED",
+            f"{family_id}.canonical_name",
+        )
+        require_text(
+            family.get("precise_semantic_definition"),
+            "B2_FILE_INVENTORY_REJECTED",
+            f"{family_id}.precise_semantic_definition",
+        )
+        review = require_mapping(
+            family.get("review_provenance"),
+            "B2_FILE_INVENTORY_REJECTED",
+            f"{family_id}.review_provenance",
+        )
+        require(
+            review.get("review_status") in {"REVIEWED_CONFIRMED", "REVIEWED_CORRECTED"},
+            "B2_FILE_INVENTORY_REJECTED",
+            f"{family_id} review status is not terminal",
+        )
+        require(
+            review.get("review_basis") == "SOURCE_GROUNDED_CARD_REVIEW",
+            "B2_FILE_INVENTORY_REJECTED",
+            f"{family_id} review basis is not source-grounded",
+        )
+        review_locators = require_list(
+            review.get("evidence_locators"),
+            "B2_FILE_INVENTORY_REJECTED",
+            f"{family_id}.review_provenance.evidence_locators",
+        )
         if origin == "REV3_LEGACY":
             review_source = source_for_osi(data, expected_member_osis(data, family_id)[0])
-            validated_review_locators = validate_locator_list(data, review_locators, review_source, None, f"{family_id}.review_provenance.evidence_locators")
-            require(any(locator_variant_id(locator, "family review locator") == "oracle_field" for locator in validated_review_locators), "CARD_SIDE_EVIDENCE_MISSING_REJECTED", f"{family_id} review provenance has no card-side locator")
+            validated_review_locators = validate_locator_list(
+                data,
+                review_locators,
+                review_source,
+                None,
+                f"{family_id}.review_provenance.evidence_locators",
+            )
+            require(
+                any(
+                    locator_variant_id(locator, "family review locator") == "oracle_field"
+                    for locator in validated_review_locators
+                ),
+                "CARD_SIDE_EVIDENCE_MISSING_REJECTED",
+                f"{family_id} review provenance has no card-side locator",
+            )
     missing = sorted(set(data.rev3_family_by_id) - set(catalog_by_id))
     if missing:
         fail("HISTORICAL_FAMILY_MISSING_REJECTED", f"catalog omits historical family {missing[0]}")
     for family_id, family in catalog_by_id.items():
         for target in family["superseded_by"]:
             if target not in catalog_by_id:
-                fail("SUPERSESSION_UNKNOWN_TARGET_REJECTED", f"{family_id} targets unknown family {target}")
+                fail(
+                    "SUPERSESSION_UNKNOWN_TARGET_REJECTED",
+                    f"{family_id} targets unknown family {target}",
+                )
             if target == family_id:
                 fail("SUPERSESSION_SELF_TARGET_REJECTED", f"{family_id} targets itself")
             if catalog_by_id[target]["status"] not in {"ACTIVE", "ACTIVE_UNASSIGNED"}:
-                fail("SUPERSESSION_NONASSIGNABLE_TARGET_REJECTED", f"{family_id} targets nonassignable family {target}")
+                fail(
+                    "SUPERSESSION_NONASSIGNABLE_TARGET_REJECTED",
+                    f"{family_id} targets nonassignable family {target}",
+                )
+
     def visit(node: str, active: set[str], done: set[str]) -> None:
         if node in active:
             fail("B2_FILE_INVENTORY_REJECTED", f"supersession cycle at {node}")
@@ -1077,6 +1471,7 @@ def validate_catalog(data: ArchiveData, catalog: object) -> dict[str, dict[str, 
             visit(target, active, done)
         active.remove(node)
         done.add(node)
+
     done: set[str] = set()
     for family_id in catalog_by_id:
         visit(family_id, set(), done)
@@ -1097,27 +1492,61 @@ def validate_assignment(
         "evidence_locators",
         "review_rationale",
     }
-    require(set(value) == expected_keys, "SOURCE_EVIDENCE_LOCATOR_INVALID_REJECTED", f"{label} fields are not closed")
-    family_id = require_text(value.get("requirement_family_id"), "UNKNOWN_REQUIREMENT_FAMILY_REJECTED", f"{label}.requirement_family_id")
+    require(
+        set(value) == expected_keys,
+        "SOURCE_EVIDENCE_LOCATOR_INVALID_REJECTED",
+        f"{label} fields are not closed",
+    )
+    family_id = require_text(
+        value.get("requirement_family_id"),
+        "UNKNOWN_REQUIREMENT_FAMILY_REJECTED",
+        f"{label}.requirement_family_id",
+    )
     if family_id not in catalog:
-        fail("UNKNOWN_REQUIREMENT_FAMILY_REJECTED", f"{label} references unknown family {family_id}")
+        fail(
+            "UNKNOWN_REQUIREMENT_FAMILY_REJECTED", f"{label} references unknown family {family_id}"
+        )
     family = catalog[family_id]
     status = family.get("status")
     if status == "SUPERSEDED":
-        fail("SUPERSEDED_FAMILY_ASSIGNED_REJECTED", f"{label} assigns SUPERSEDED family {family_id}")
+        fail(
+            "SUPERSEDED_FAMILY_ASSIGNED_REJECTED", f"{label} assigns SUPERSEDED family {family_id}"
+        )
     if status == "ACTIVE_UNASSIGNED":
-        fail("ACTIVE_UNASSIGNED_FAMILY_ASSIGNED_REJECTED", f"{label} assigns ACTIVE_UNASSIGNED family {family_id}")
+        fail(
+            "ACTIVE_UNASSIGNED_FAMILY_ASSIGNED_REJECTED",
+            f"{label} assigns ACTIVE_UNASSIGNED family {family_id}",
+        )
     if status == "RETIRED":
         fail("RETIRED_FAMILY_ASSIGNED_REJECTED", f"{label} assigns RETIRED family {family_id}")
     basis = value.get("evidence_basis")
-    require(basis in {"ORACLE_TEXT", "TYPE_LINE", "CARD_FACE", "STRUCTURAL_CARD_PROPERTY", "FORMAT_POLICY", "RULE_DERIVED"}, "EVIDENCE_BASIS_LOCATOR_KIND_MISMATCH_REJECTED", f"{label} has unknown evidence basis")
+    require(
+        basis
+        in {
+            "ORACLE_TEXT",
+            "TYPE_LINE",
+            "CARD_FACE",
+            "STRUCTURAL_CARD_PROPERTY",
+            "FORMAT_POLICY",
+            "RULE_DERIVED",
+        },
+        "EVIDENCE_BASIS_LOCATOR_KIND_MISMATCH_REJECTED",
+        f"{label} has unknown evidence basis",
+    )
     allowed = family.get("evidence_basis_allowed", [])
     if basis not in allowed:
-        fail("DISALLOWED_EVIDENCE_BASIS_REJECTED", f"{label} basis {basis} is not allowed for {family_id}")
+        fail(
+            "DISALLOWED_EVIDENCE_BASIS_REJECTED",
+            f"{label} basis {basis} is not allowed for {family_id}",
+        )
     rationale = value.get("review_rationale")
     if not isinstance(rationale, str) or not rationale.strip():
         fail("CORRECTION_WITHOUT_RATIONALE_REJECTED", f"{label} has no review rationale")
-    locators = require_list(value.get("evidence_locators"), "CORRECTION_WITHOUT_EVIDENCE_REJECTED", f"{label}.evidence_locators")
+    locators = require_list(
+        value.get("evidence_locators"),
+        "CORRECTION_WITHOUT_EVIDENCE_REJECTED",
+        f"{label}.evidence_locators",
+    )
     if not locators:
         fail("CORRECTION_WITHOUT_EVIDENCE_REJECTED", f"{label} has no evidence locators")
     kinds = [
@@ -1126,37 +1555,56 @@ def validate_assignment(
     ]
     normalize_locators(locators, f"{label}.evidence_locators")
     if "oracle_field" not in kinds:
-        fail("CARD_SIDE_EVIDENCE_MISSING_REJECTED", f"{label} has no card-side OracleFieldLocatorV1")
+        fail(
+            "CARD_SIDE_EVIDENCE_MISSING_REJECTED", f"{label} has no card-side OracleFieldLocatorV1"
+        )
     if basis in {"ORACLE_TEXT", "TYPE_LINE", "CARD_FACE", "STRUCTURAL_CARD_PROPERTY"}:
         compatible = False
-        for locator, kind in zip(locators, kinds):
+        for locator, kind in zip(locators, kinds, strict=True):
             if kind != "oracle_field":
                 continue
             pointer = locator.get("json_pointer")
-            if basis == "ORACLE_TEXT" and pointer == "/oracle_text":
-                compatible = True
-            elif basis == "TYPE_LINE" and pointer == "/type_line":
-                compatible = True
-            elif basis == "CARD_FACE" and isinstance(pointer, str) and pointer.startswith("/oracle_faces/"):
-                compatible = True
-            elif basis == "STRUCTURAL_CARD_PROPERTY" and pointer in {
-                "/layout",
-                "/keywords",
-                "/mana_cost",
-                "/power",
-                "/toughness",
-                "/colors",
-                "/type_line",
-            }:
-                compatible = True
+            compatible = compatible or (
+                (basis == "ORACLE_TEXT" and pointer == "/oracle_text")
+                or (basis == "TYPE_LINE" and pointer == "/type_line")
+                or (
+                    basis == "CARD_FACE"
+                    and isinstance(pointer, str)
+                    and pointer.startswith("/oracle_faces/")
+                )
+                or (
+                    basis == "STRUCTURAL_CARD_PROPERTY"
+                    and pointer
+                    in {
+                        "/layout",
+                        "/keywords",
+                        "/mana_cost",
+                        "/power",
+                        "/toughness",
+                        "/colors",
+                        "/type_line",
+                    }
+                )
+            )
         if not compatible:
-            fail("EVIDENCE_BASIS_LOCATOR_KIND_MISMATCH_REJECTED", f"{label} has no compatible card-side locator")
+            fail(
+                "EVIDENCE_BASIS_LOCATOR_KIND_MISMATCH_REJECTED",
+                f"{label} has no compatible card-side locator",
+            )
     if basis == "FORMAT_POLICY" and "authority_byte_fragment" not in kinds:
         # A card-side locator remains mandatory, but a format basis must also
         # carry the typed format authority it claims to use.
-        fail("EVIDENCE_BASIS_LOCATOR_KIND_MISMATCH_REJECTED", f"{label} has no format-policy authority locator")
-    if basis == "RULE_DERIVED" and not ({"comprehensive_rule", "authority_byte_fragment"} & set(kinds)):
-        fail("EVIDENCE_BASIS_LOCATOR_KIND_MISMATCH_REJECTED", f"{label} has no rule authority locator")
+        fail(
+            "EVIDENCE_BASIS_LOCATOR_KIND_MISMATCH_REJECTED",
+            f"{label} has no format-policy authority locator",
+        )
+    if basis == "RULE_DERIVED" and not (
+        {"comprehensive_rule", "authority_byte_fragment"} & set(kinds)
+    ):
+        fail(
+            "EVIDENCE_BASIS_LOCATOR_KIND_MISMATCH_REJECTED",
+            f"{label} has no rule authority locator",
+        )
     return value
 
 
@@ -1195,37 +1643,79 @@ def validate_change(
     label: str,
 ) -> dict[str, Any]:
     value = require_mapping(change, "SILENT_CLASSIFICATION_CHANGE_REJECTED", label)
-    expected_keys = {"family_id", "change_kind", "replacement_family_ids", "rationale", "evidence_locators"}
-    require(set(value) == expected_keys, "SILENT_CLASSIFICATION_CHANGE_REJECTED", f"{label} fields are not closed")
-    family_id = require_text(value.get("family_id"), "SILENT_CLASSIFICATION_CHANGE_REJECTED", f"{label}.family_id")
+    expected_keys = {
+        "family_id",
+        "change_kind",
+        "replacement_family_ids",
+        "rationale",
+        "evidence_locators",
+    }
+    require(
+        set(value) == expected_keys,
+        "SILENT_CLASSIFICATION_CHANGE_REJECTED",
+        f"{label} fields are not closed",
+    )
+    family_id = require_text(
+        value.get("family_id"), "SILENT_CLASSIFICATION_CHANGE_REJECTED", f"{label}.family_id"
+    )
     if family_id not in catalog:
-        fail("UNKNOWN_REQUIREMENT_FAMILY_REJECTED", f"{label} references unknown family {family_id}")
+        fail(
+            "UNKNOWN_REQUIREMENT_FAMILY_REJECTED", f"{label} references unknown family {family_id}"
+        )
     if value.get("change_kind") != expected_kind:
-        fail("SILENT_CLASSIFICATION_CHANGE_REJECTED", f"{label} has {value.get('change_kind')!r}, expected {expected_kind!r}")
+        fail(
+            "SILENT_CLASSIFICATION_CHANGE_REJECTED",
+            f"{label} has {value.get('change_kind')!r}, expected {expected_kind!r}",
+        )
     rationale = value.get("rationale")
     if not isinstance(rationale, str) or not rationale.strip():
         fail("CORRECTION_WITHOUT_RATIONALE_REJECTED", f"{label} has no rationale")
-    locators = require_list(value.get("evidence_locators"), "CORRECTION_WITHOUT_EVIDENCE_REJECTED", f"{label}.evidence_locators")
+    locators = require_list(
+        value.get("evidence_locators"),
+        "CORRECTION_WITHOUT_EVIDENCE_REJECTED",
+        f"{label}.evidence_locators",
+    )
     if not locators:
         fail("CORRECTION_WITHOUT_EVIDENCE_REJECTED", f"{label} has no evidence")
     validate_locator_list(data, locators, source, None, f"{label}.evidence_locators")
-    replacements = require_list(value.get("replacement_family_ids"), "SILENT_CLASSIFICATION_CHANGE_REJECTED", f"{label}.replacement_family_ids")
-    assert_canonical_set(replacements, f"{label}.replacement_family_ids", "SILENT_CLASSIFICATION_CHANGE_REJECTED")
+    replacements = require_list(
+        value.get("replacement_family_ids"),
+        "SILENT_CLASSIFICATION_CHANGE_REJECTED",
+        f"{label}.replacement_family_ids",
+    )
+    assert_canonical_set(
+        replacements, f"{label}.replacement_family_ids", "SILENT_CLASSIFICATION_CHANGE_REJECTED"
+    )
     if expected_kind != "SUPERSEDED":
         if replacements:
-            fail("SILENT_CLASSIFICATION_CHANGE_REJECTED", f"{label} has replacements for {expected_kind}")
+            fail(
+                "SILENT_CLASSIFICATION_CHANGE_REJECTED",
+                f"{label} has replacements for {expected_kind}",
+            )
     else:
         family = catalog[family_id]
         if family.get("status") != "SUPERSEDED":
-            fail("SILENT_CLASSIFICATION_CHANGE_REJECTED", f"{label} supersedes a non-SUPERSEDED family")
+            fail(
+                "SILENT_CLASSIFICATION_CHANGE_REJECTED",
+                f"{label} supersedes a non-SUPERSEDED family",
+            )
         allowed = set(family.get("superseded_by", []))
         if not set(replacements).issubset(allowed):
-            fail("SILENT_CLASSIFICATION_CHANGE_REJECTED", f"{label} replacement is outside catalog superseded_by")
+            fail(
+                "SILENT_CLASSIFICATION_CHANGE_REJECTED",
+                f"{label} replacement is outside catalog superseded_by",
+            )
         if not replacements and not rationale.strip():
-            fail("SILENT_CLASSIFICATION_CHANGE_REJECTED", f"{label} empty replacement lacks explicit rationale")
+            fail(
+                "SILENT_CLASSIFICATION_CHANGE_REJECTED",
+                f"{label} empty replacement lacks explicit rationale",
+            )
         for replacement in replacements:
             if replacement not in terminal_ids or catalog[replacement].get("status") != "ACTIVE":
-                fail("SILENT_CLASSIFICATION_CHANGE_REJECTED", f"{label} replacement is not terminally assigned and ACTIVE")
+                fail(
+                    "SILENT_CLASSIFICATION_CHANGE_REJECTED",
+                    f"{label} replacement is not terminally assigned and ACTIVE",
+                )
     return value
 
 
@@ -1237,8 +1727,14 @@ def validate_classifications(
     records = require_list(classifications, "MISSING_CLASSIFICATION_REJECTED", "classifications")
     if len(records) != 402:
         if len(records) < 402:
-            fail("MISSING_CLASSIFICATION_REJECTED", f"expected 402 classifications, found {len(records)}")
-        fail("DUPLICATE_ORACLE_IDENTITY_REJECTED", f"expected 402 classifications, found {len(records)}")
+            fail(
+                "MISSING_CLASSIFICATION_REJECTED",
+                f"expected 402 classifications, found {len(records)}",
+            )
+        fail(
+            "DUPLICATE_ORACLE_IDENTITY_REJECTED",
+            f"expected 402 classifications, found {len(records)}",
+        )
     by_osi: dict[str, dict[str, Any]] = {}
     for record in records:
         record = require_mapping(record, "SILENT_CLASSIFICATION_CHANGE_REJECTED", "classification")
@@ -1246,14 +1742,36 @@ def validate_classifications(
         if osi in by_osi:
             fail("DUPLICATE_ORACLE_IDENTITY_REJECTED", f"duplicate classification OSI {osi}")
         by_osi[osi] = record
-    require(set(by_osi) == set(data.evidence_by_osi), "UNKNOWN_ORACLE_IDENTITY_REJECTED", "classification OSI set differs from pinned evidence")
+    require(
+        set(by_osi) == set(data.evidence_by_osi),
+        "UNKNOWN_ORACLE_IDENTITY_REJECTED",
+        "classification OSI set differs from pinned evidence",
+    )
     ordered = [record["oracle_semantic_identity"] for record in records]
-    require(ordered == sorted(ordered), "DUPLICATE_ORACLE_IDENTITY_REJECTED", "classifications are not sorted by OSI")
+    require(
+        ordered == sorted(ordered),
+        "DUPLICATE_ORACLE_IDENTITY_REJECTED",
+        "classifications are not sorted by OSI",
+    )
     usage: Counter[str] = Counter()
     for osi, record in by_osi.items():
         source = source_for_osi(data, osi)
-        source_value = require_mapping(record.get("source_identity"), "SOURCE_DIGEST_MISMATCH_REJECTED", f"{osi}.source_identity")
-        expected_source = {key: source[key] for key in ("archive_artifact", "oracle_semantic_identity", "oracle_source_record_id", "oracle_layout", "source_record_raw_sha256", "normalized_record_sha256")}
+        source_value = require_mapping(
+            record.get("source_identity"),
+            "SOURCE_DIGEST_MISMATCH_REJECTED",
+            f"{osi}.source_identity",
+        )
+        expected_source = {
+            key: source[key]
+            for key in (
+                "archive_artifact",
+                "oracle_semantic_identity",
+                "oracle_source_record_id",
+                "oracle_layout",
+                "source_record_raw_sha256",
+                "normalized_record_sha256",
+            )
+        }
         if source_value != expected_source:
             fail("SOURCE_DIGEST_MISMATCH_REJECTED", f"source identity differs for {osi}")
         source_ref = record.get("source_evidence_digest")
@@ -1262,38 +1780,77 @@ def validate_classifications(
         if source_ref != expected_source_ref:
             fail("EVIDENCE_DIGEST_TAMPER_REJECTED", f"source evidence digest differs for {osi}")
         previous = record.get("previous_rev3_classification_identity")
-        previous_value = digest_reference_cbor(previous, f"{osi}.previous_rev3_classification_identity")
-        require(previous.get("semantic_domain") == REV3_DOMAIN and previous.get("input_schema_id") == REV3_INPUT_SCHEMA, "SILENT_CLASSIFICATION_CHANGE_REJECTED", f"previous REV3 identity metadata is wrong for {osi}")
+        previous_value = digest_reference_cbor(
+            previous, f"{osi}.previous_rev3_classification_identity"
+        )
+        require(
+            previous.get("semantic_domain") == REV3_DOMAIN
+            and previous.get("input_schema_id") == REV3_INPUT_SCHEMA,
+            "SILENT_CLASSIFICATION_CHANGE_REJECTED",
+            f"previous REV3 identity metadata is wrong for {osi}",
+        )
         if previous != expected_rev3_digest(data.rev3_by_osi[osi]):
-            fail("SILENT_CLASSIFICATION_CHANGE_REJECTED", f"previous REV3 identity differs for {osi}")
+            fail(
+                "SILENT_CLASSIFICATION_CHANGE_REJECTED", f"previous REV3 identity differs for {osi}"
+            )
         del previous_value
         review_status = record.get("review_status")
         if review_status not in {"REVIEWED_CONFIRMED", "REVIEWED_CORRECTED"}:
             fail("NONTERMINAL_CLASSIFICATION_REJECTED", f"classification {osi} is not terminal")
         validate_review_basis(data, record, source)
         validate_provenance(record)
-        assignments = require_list(record.get("requirement_assignments"), "SILENT_CLASSIFICATION_CHANGE_REJECTED", f"{osi}.requirement_assignments")
+        assignments = require_list(
+            record.get("requirement_assignments"),
+            "SILENT_CLASSIFICATION_CHANGE_REJECTED",
+            f"{osi}.requirement_assignments",
+        )
         assignment_ids: list[str] = []
         for index, assignment in enumerate(assignments):
-            value = validate_assignment(data, assignment, catalog, source, f"{osi}.requirement_assignments[{index}]")
+            value = validate_assignment(
+                data, assignment, catalog, source, f"{osi}.requirement_assignments[{index}]"
+            )
             assignment_ids.append(value["requirement_family_id"])
             usage[value["requirement_family_id"]] += 1
-        assert_canonical_set(assignment_ids, f"{osi}.requirement_assignments", "SILENT_CLASSIFICATION_CHANGE_REJECTED")
+        assert_canonical_set(
+            assignment_ids,
+            f"{osi}.requirement_assignments",
+            "SILENT_CLASSIFICATION_CHANGE_REJECTED",
+        )
         if len(set(assignment_ids)) != len(assignment_ids):
             fail("SILENT_CLASSIFICATION_CHANGE_REJECTED", f"duplicate assignment for {osi}")
         rev3_ids = set(data.rev3_by_osi[osi].get("requirement_ids", []))
         terminal_ids = set(assignment_ids)
         summary = expected_summary_arrays(rev3_ids, terminal_ids, catalog)
-        delta = require_mapping(record.get("classification_delta"), "SILENT_CLASSIFICATION_CHANGE_REJECTED", f"{osi}.classification_delta")
+        delta = require_mapping(
+            record.get("classification_delta"),
+            "SILENT_CLASSIFICATION_CHANGE_REJECTED",
+            f"{osi}.classification_delta",
+        )
         for key in summary:
-            values = require_list(delta.get(key), "SILENT_CLASSIFICATION_CHANGE_REJECTED", f"{osi}.classification_delta.{key}")
-            assert_canonical_set(values, f"{osi}.classification_delta.{key}", "SILENT_CLASSIFICATION_CHANGE_REJECTED")
+            values = require_list(
+                delta.get(key),
+                "SILENT_CLASSIFICATION_CHANGE_REJECTED",
+                f"{osi}.classification_delta.{key}",
+            )
+            assert_canonical_set(
+                values, f"{osi}.classification_delta.{key}", "SILENT_CLASSIFICATION_CHANGE_REJECTED"
+            )
             if values != summary[key]:
-                fail("SILENT_CLASSIFICATION_CHANGE_REJECTED", f"derived delta summary differs for {osi}: {key}")
+                fail(
+                    "SILENT_CLASSIFICATION_CHANGE_REJECTED",
+                    f"derived delta summary differs for {osi}: {key}",
+                )
         union = rev3_ids | terminal_ids
-        changes = require_list(delta.get("changes"), "SILENT_CLASSIFICATION_CHANGE_REJECTED", f"{osi}.classification_delta.changes")
+        changes = require_list(
+            delta.get("changes"),
+            "SILENT_CLASSIFICATION_CHANGE_REJECTED",
+            f"{osi}.classification_delta.changes",
+        )
         if len(changes) != len(union):
-            fail("SILENT_CLASSIFICATION_CHANGE_REJECTED", f"classification {osi} does not have exactly one change per union family")
+            fail(
+                "SILENT_CLASSIFICATION_CHANGE_REJECTED",
+                f"classification {osi} does not have exactly one change per union family",
+            )
         change_ids: set[str] = set()
         expected_kinds: dict[str, str] = {}
         for family_id in union:
@@ -1306,54 +1863,127 @@ def validate_classifications(
             else:
                 expected_kinds[family_id] = "REMOVED"
         for index, change in enumerate(changes):
-            change_value = require_mapping(change, "SILENT_CLASSIFICATION_CHANGE_REJECTED", f"{osi}.classification_delta.changes[{index}]")
-            family_id = require_text(change_value.get("family_id"), "SILENT_CLASSIFICATION_CHANGE_REJECTED", f"{osi}.classification_delta.changes[{index}].family_id")
+            change_value = require_mapping(
+                change,
+                "SILENT_CLASSIFICATION_CHANGE_REJECTED",
+                f"{osi}.classification_delta.changes[{index}]",
+            )
+            family_id = require_text(
+                change_value.get("family_id"),
+                "SILENT_CLASSIFICATION_CHANGE_REJECTED",
+                f"{osi}.classification_delta.changes[{index}].family_id",
+            )
             if family_id in change_ids:
-                fail("SILENT_CLASSIFICATION_CHANGE_REJECTED", f"duplicate change family {family_id} for {osi}")
+                fail(
+                    "SILENT_CLASSIFICATION_CHANGE_REJECTED",
+                    f"duplicate change family {family_id} for {osi}",
+                )
             change_ids.add(family_id)
             if family_id not in expected_kinds:
-                fail("SILENT_CLASSIFICATION_CHANGE_REJECTED", f"change family {family_id} is outside the REV3/terminal union")
-            validate_change(data, change, expected_kinds[family_id], catalog, source, terminal_ids, f"{osi}.classification_delta.changes[{index}]")
+                fail(
+                    "SILENT_CLASSIFICATION_CHANGE_REJECTED",
+                    f"change family {family_id} is outside the REV3/terminal union",
+                )
+            validate_change(
+                data,
+                change,
+                expected_kinds[family_id],
+                catalog,
+                source,
+                terminal_ids,
+                f"{osi}.classification_delta.changes[{index}]",
+            )
         change_keys = [[change["family_id"], change["change_kind"]] for change in changes]
-        assert_canonical_set(change_keys, f"{osi}.classification_delta.changes", "SILENT_CLASSIFICATION_CHANGE_REJECTED")
+        assert_canonical_set(
+            change_keys,
+            f"{osi}.classification_delta.changes",
+            "SILENT_CLASSIFICATION_CHANGE_REJECTED",
+        )
         if change_ids != union:
             fail("SILENT_CLASSIFICATION_CHANGE_REJECTED", f"change family set differs for {osi}")
-        expected_status = "REVIEWED_CONFIRMED" if all(kind == "RETAINED" for kind in expected_kinds.values()) else "REVIEWED_CORRECTED"
+        expected_status = (
+            "REVIEWED_CONFIRMED"
+            if all(kind == "RETAINED" for kind in expected_kinds.values())
+            else "REVIEWED_CORRECTED"
+        )
         if review_status != expected_status:
-            fail("SILENT_CLASSIFICATION_CHANGE_REJECTED", f"review status/delta relation differs for {osi}")
+            fail(
+                "SILENT_CLASSIFICATION_CHANGE_REJECTED",
+                f"review status/delta relation differs for {osi}",
+            )
         expected_classification = expected_identity(record)
         if record.get("classification_identity") != expected_classification:
-            fail("SILENT_CLASSIFICATION_CHANGE_REJECTED", f"classification identity differs for {osi}")
+            fail(
+                "SILENT_CLASSIFICATION_CHANGE_REJECTED",
+                f"classification identity differs for {osi}",
+            )
     return by_osi, usage
 
 
 def validate_classification_artifact(value: object) -> list[Any]:
     artifact = require_mapping(value, "MISSING_CLASSIFICATION_REJECTED", "classification artifact")
-    require(artifact.get("schema") == CLASSIFICATION_SCHEMA, "WRONG_CLASSIFICATION_SCHEMA_REJECTED", "classification schema is wrong")
-    require(artifact.get("source_package_sha256") == EXPECTED_ARCHIVE_SHA256, "SOURCE_DIGEST_MISMATCH_REJECTED", "classification package digest is wrong")
-    require(artifact.get("input_oracle_identity_count") == 402, "MISSING_CLASSIFICATION_REJECTED", "classification input count is not 402")
-    return require_list(artifact.get("classifications"), "MISSING_CLASSIFICATION_REJECTED", "classification artifact classifications")
+    require(
+        artifact.get("schema") == CLASSIFICATION_SCHEMA,
+        "WRONG_CLASSIFICATION_SCHEMA_REJECTED",
+        "classification schema is wrong",
+    )
+    require(
+        artifact.get("source_package_sha256") == EXPECTED_ARCHIVE_SHA256,
+        "SOURCE_DIGEST_MISMATCH_REJECTED",
+        "classification package digest is wrong",
+    )
+    require(
+        artifact.get("input_oracle_identity_count") == 402,
+        "MISSING_CLASSIFICATION_REJECTED",
+        "classification input count is not 402",
+    )
+    return require_list(
+        artifact.get("classifications"),
+        "MISSING_CLASSIFICATION_REJECTED",
+        "classification artifact classifications",
+    )
 
 
-def validate_lifecycle_usage(catalog: dict[str, dict[str, Any]], usage: Counter[str]) -> dict[str, int]:
-    target_ids = {target for family in catalog.values() for target in family.get("superseded_by", [])}
+def validate_lifecycle_usage(
+    catalog: dict[str, dict[str, Any]], usage: Counter[str]
+) -> dict[str, int]:
+    target_ids = {
+        target for family in catalog.values() for target in family.get("superseded_by", [])
+    }
     counts: Counter[str] = Counter()
     for family_id, family in catalog.items():
         status = family["status"]
         count = usage.get(family_id, 0)
         counts[status] += 1
         if status == "ACTIVE" and count == 0:
-            fail("ACTIVE_WITH_ZERO_ASSIGNMENTS_REJECTED", f"ACTIVE family {family_id} has zero assignments")
+            fail(
+                "ACTIVE_WITH_ZERO_ASSIGNMENTS_REJECTED",
+                f"ACTIVE family {family_id} has zero assignments",
+            )
         if status == "ACTIVE_UNASSIGNED" and count != 0:
-            fail("ACTIVE_UNASSIGNED_FAMILY_ASSIGNED_REJECTED", f"ACTIVE_UNASSIGNED family {family_id} is assigned")
+            fail(
+                "ACTIVE_UNASSIGNED_FAMILY_ASSIGNED_REJECTED",
+                f"ACTIVE_UNASSIGNED family {family_id} is assigned",
+            )
         if status == "SUPERSEDED" and count != 0:
-            fail("SUPERSEDED_FAMILY_ASSIGNED_REJECTED", f"SUPERSEDED family {family_id} is assigned")
+            fail(
+                "SUPERSEDED_FAMILY_ASSIGNED_REJECTED", f"SUPERSEDED family {family_id} is assigned"
+            )
         if status == "RETIRED" and count != 0:
             fail("RETIRED_FAMILY_ASSIGNED_REJECTED", f"RETIRED family {family_id} is assigned")
         if family.get("family_origin") == "B2_NEW" and count == 0 and family_id not in target_ids:
-            fail("SPECULATIVE_NEW_FAMILY_REJECTED", f"new family {family_id} has no terminal use or supersession-target need")
-    counts["ACTIVE_ASSIGNED"] = sum(1 for family_id, family in catalog.items() if family["status"] == "ACTIVE" and usage.get(family_id, 0) > 0)
-    counts["ACTIVE_UNASSIGNED"] = sum(1 for family_id, family in catalog.items() if family["status"] == "ACTIVE_UNASSIGNED")
+            fail(
+                "SPECULATIVE_NEW_FAMILY_REJECTED",
+                f"new family {family_id} has no terminal use or supersession-target need",
+            )
+    counts["ACTIVE_ASSIGNED"] = sum(
+        1
+        for family_id, family in catalog.items()
+        if family["status"] == "ACTIVE" and usage.get(family_id, 0) > 0
+    )
+    counts["ACTIVE_UNASSIGNED"] = sum(
+        1 for family_id, family in catalog.items() if family["status"] == "ACTIVE_UNASSIGNED"
+    )
     return dict(counts)
 
 
@@ -1383,11 +2013,15 @@ def validate_projection(
 ) -> None:
     rows = parse_projection(projection)
     if len(rows) < 441:
-        fail("MISSING_DECK_ROW_REFERENCE_REJECTED", f"projection has {len(rows)} rows, expected 441")
+        fail(
+            "MISSING_DECK_ROW_REFERENCE_REJECTED", f"projection has {len(rows)} rows, expected 441"
+        )
     if len(rows) > 441:
-        fail("UNKNOWN_DECK_ROW_REFERENCE_REJECTED", f"projection has {len(rows)} rows, expected 441")
+        fail(
+            "UNKNOWN_DECK_ROW_REFERENCE_REJECTED", f"projection has {len(rows)} rows, expected 441"
+        )
     seen: set[str] = set()
-    for index, row in enumerate(rows):
+    for row in rows:
         row_id = row.get("deck_row_id")
         if not isinstance(row_id, str) or row_id not in data.deck_rows_by_id:
             fail("UNKNOWN_DECK_ROW_REFERENCE_REJECTED", f"projection row {row_id!r} is not pinned")
@@ -1400,29 +2034,46 @@ def validate_projection(
         expected_osi = pinned["oracle_semantic_identity"]
         if row.get("oracle_semantic_identity") != expected_osi:
             if row.get("oracle_semantic_identity") in classifications:
-                fail("DECK_ROW_OSI_REBIND_REJECTED", f"row {row_id} was rebound to a different valid OSI")
+                fail(
+                    "DECK_ROW_OSI_REBIND_REJECTED",
+                    f"row {row_id} was rebound to a different valid OSI",
+                )
             fail("UNKNOWN_ORACLE_IDENTITY_REJECTED", f"row {row_id} references an unknown OSI")
         if expected_osi not in classifications:
             fail("MISSING_CLASSIFICATION_REJECTED", f"row {row_id} resolves to an unclassified OSI")
         classification = classifications[expected_osi]
         expected_identity = classification["classification_identity"]["digest_hex"]
         if row.get("terminal_classification_identity") != expected_identity:
-            fail("REUSED_ORACLE_IDENTITY_FORK_REJECTED", f"row {row_id} has a forked classification identity")
+            fail(
+                "REUSED_ORACLE_IDENTITY_FORK_REJECTED",
+                f"row {row_id} has a forked classification identity",
+            )
         if row.get("classification_status") != classification["review_status"]:
-            fail("REUSED_ORACLE_IDENTITY_FORK_REJECTED", f"row {row_id} has a forked classification status")
+            fail(
+                "REUSED_ORACLE_IDENTITY_FORK_REJECTED",
+                f"row {row_id} has a forked classification status",
+            )
         try:
             requirement_ids = json.loads(row.get("terminal_requirement_ids", ""))
         except json.JSONDecodeError:
-            fail("REUSED_ORACLE_IDENTITY_FORK_REJECTED", f"row {row_id} has invalid terminal requirement JSON")
+            fail(
+                "REUSED_ORACLE_IDENTITY_FORK_REJECTED",
+                f"row {row_id} has invalid terminal requirement JSON",
+            )
         if requirement_ids != projection_requirement_ids(classification):
-            fail("REUSED_ORACLE_IDENTITY_FORK_REJECTED", f"row {row_id} has a forked assignment set")
+            fail(
+                "REUSED_ORACLE_IDENTITY_FORK_REJECTED", f"row {row_id} has a forked assignment set"
+            )
     expected_ids = [row["deck_row_id"] for row in data.deck_rows]
     actual_ids = [row["deck_row_id"] for row in rows]
     if actual_ids != expected_ids:
         missing = [row_id for row_id in expected_ids if row_id not in seen]
         if missing:
             fail("MISSING_DECK_ROW_REFERENCE_REJECTED", f"projection omits pinned row {missing[0]}")
-        fail("REUSED_ORACLE_IDENTITY_FORK_REJECTED", "projection row order differs from pinned source order")
+        fail(
+            "REUSED_ORACLE_IDENTITY_FORK_REJECTED",
+            "projection row order differs from pinned source order",
+        )
 
 
 def expected_gate_statuses() -> dict[str, str]:
@@ -1457,15 +2108,42 @@ def actual_inventory(extra_paths: set[str] | None = None) -> set[str]:
 
 def validate_matrix(matrix: object) -> None:
     value = require_mapping(matrix, "B2_FILE_INVENTORY_REJECTED", "negative matrix")
-    require(value.get("schema") == NEGATIVE_SCHEMA, "B2_FILE_INVENTORY_REJECTED", "negative matrix schema is wrong")
+    require(
+        value.get("schema") == NEGATIVE_SCHEMA,
+        "B2_FILE_INVENTORY_REJECTED",
+        "negative matrix schema is wrong",
+    )
     cases = require_list(value.get("cases"), "B2_FILE_INVENTORY_REJECTED", "negative matrix cases")
     actual: list[tuple[str, str]] = []
     for case in cases:
         item = require_mapping(case, "B2_FILE_INVENTORY_REJECTED", "negative matrix case")
-        actual.append((require_text(item.get("error_code"), "B2_FILE_INVENTORY_REJECTED", "negative matrix error code"), require_text(item.get("mutation"), "B2_FILE_INVENTORY_REJECTED", "negative matrix mutation")))
-    require(actual == list(NEGATIVE_CASES), "B2_FILE_INVENTORY_REJECTED", "negative matrix does not match the closed 38-case contract")
-    require(len({code for code, _ in actual}) == 38 and len(actual) == 38, "B2_FILE_INVENTORY_REJECTED", "negative matrix is not exactly 38 unique cases")
-    require("ALLOWLIST_NEAR_MISS_PATH_REJECTED" not in {code for code, _ in actual}, "B2_FILE_INVENTORY_REJECTED", "master-drift near-miss case leaked into B2 matrix")
+        actual.append(
+            (
+                require_text(
+                    item.get("error_code"),
+                    "B2_FILE_INVENTORY_REJECTED",
+                    "negative matrix error code",
+                ),
+                require_text(
+                    item.get("mutation"), "B2_FILE_INVENTORY_REJECTED", "negative matrix mutation"
+                ),
+            )
+        )
+    require(
+        actual == list(NEGATIVE_CASES),
+        "B2_FILE_INVENTORY_REJECTED",
+        "negative matrix does not match the closed 38-case contract",
+    )
+    require(
+        len({code for code, _ in actual}) == 38 and len(actual) == 38,
+        "B2_FILE_INVENTORY_REJECTED",
+        "negative matrix is not exactly 38 unique cases",
+    )
+    require(
+        "ALLOWLIST_NEAR_MISS_PATH_REJECTED" not in {code for code, _ in actual},
+        "B2_FILE_INVENTORY_REJECTED",
+        "master-drift near-miss case leaked into B2 matrix",
+    )
 
 
 def validate_closure(
@@ -1481,20 +2159,55 @@ def validate_closure(
     value = require_mapping(closure, "WRONG_CLOSURE_SCHEMA_REJECTED", "classification closure")
     if value.get("schema") != CLOSURE_SCHEMA:
         fail("WRONG_CLOSURE_SCHEMA_REJECTED", f"unexpected closure schema {value.get('schema')!r}")
-    require(value.get("source_package_sha256") == EXPECTED_ARCHIVE_SHA256, "WRONG_CLOSURE_SCHEMA_REJECTED", "closure package digest is wrong")
-    require(value.get("CLASSIFICATION_REFERENCE_CLOSURE") == "PASS", "OTHER_GATE_PROMOTION_REJECTED", "classification closure is not PASS")
-    statuses = require_mapping(value.get("gate_status"), "OTHER_GATE_PROMOTION_REJECTED", "closure.gate_status")
+    require(
+        value.get("source_package_sha256") == EXPECTED_ARCHIVE_SHA256,
+        "WRONG_CLOSURE_SCHEMA_REJECTED",
+        "closure package digest is wrong",
+    )
+    require(
+        value.get("CLASSIFICATION_REFERENCE_CLOSURE") == "PASS",
+        "OTHER_GATE_PROMOTION_REJECTED",
+        "classification closure is not PASS",
+    )
+    statuses = require_mapping(
+        value.get("gate_status"), "OTHER_GATE_PROMOTION_REJECTED", "closure.gate_status"
+    )
     expected_statuses = expected_gate_statuses()
     for key, expected in expected_statuses.items():
         actual = statuses.get(key)
-        if key in {"DECK_PAIR_LOCKED", "AUTHORITATIVE_RANKING_AVAILABLE", "M3_STARTED"} and actual != expected:
-            code = "DECK_LOCK_PROMOTION_REJECTED" if key == "DECK_PAIR_LOCKED" else "M3_PROMOTION_REJECTED" if key == "M3_STARTED" else "OTHER_GATE_PROMOTION_REJECTED"
+        if (
+            key in {"DECK_PAIR_LOCKED", "AUTHORITATIVE_RANKING_AVAILABLE", "M3_STARTED"}
+            and actual != expected
+        ):
+            code = (
+                "DECK_LOCK_PROMOTION_REJECTED"
+                if key == "DECK_PAIR_LOCKED"
+                else "M3_PROMOTION_REJECTED"
+                if key == "M3_STARTED"
+                else "OTHER_GATE_PROMOTION_REJECTED"
+            )
             fail(code, f"closure promotes {key} to {actual!r}")
-        if key not in {"DECK_PAIR_LOCKED", "AUTHORITATIVE_RANKING_AVAILABLE", "M3_STARTED"} and actual != expected:
-            fail("OTHER_GATE_PROMOTION_REJECTED", f"closure changes protected status {key} to {actual!r}")
-    require(value.get("OFFICIAL_RULE_CITATION_CLOSURE") == "BLOCKED", "OTHER_GATE_PROMOTION_REJECTED", "official citation closure is not BLOCKED")
-    require(value.get("block_reason") == "PENDING_B1_FINAL", "OTHER_GATE_PROMOTION_REJECTED", "citation block reason is not PENDING_B1_FINAL")
-    metrics = require_mapping(value.get("metrics"), "WRONG_CLOSURE_SCHEMA_REJECTED", "closure.metrics")
+        if (
+            key not in {"DECK_PAIR_LOCKED", "AUTHORITATIVE_RANKING_AVAILABLE", "M3_STARTED"}
+            and actual != expected
+        ):
+            fail(
+                "OTHER_GATE_PROMOTION_REJECTED",
+                f"closure changes protected status {key} to {actual!r}",
+            )
+    require(
+        value.get("OFFICIAL_RULE_CITATION_CLOSURE") == "BLOCKED",
+        "OTHER_GATE_PROMOTION_REJECTED",
+        "official citation closure is not BLOCKED",
+    )
+    require(
+        value.get("block_reason") == "PENDING_B1_FINAL",
+        "OTHER_GATE_PROMOTION_REJECTED",
+        "citation block reason is not PENDING_B1_FINAL",
+    )
+    metrics = require_mapping(
+        value.get("metrics"), "WRONG_CLOSURE_SCHEMA_REJECTED", "closure.metrics"
+    )
     expected_metrics = {
         "oracle_semantic_identity_count": 402,
         "deck_row_count": 441,
@@ -1507,24 +2220,47 @@ def validate_closure(
         "projection_row_count": len(projection),
         "terminal_assignment_edge_count": sum(usage.values()),
     }
-    require(metrics == expected_metrics, "WRONG_CLOSURE_SCHEMA_REJECTED", "closure metrics do not match the validated model")
-    bound = require_list(value.get("bound_artifacts"), "WRONG_CLOSURE_SCHEMA_REJECTED", "closure.bound_artifacts")
+    require(
+        metrics == expected_metrics,
+        "WRONG_CLOSURE_SCHEMA_REJECTED",
+        "closure metrics do not match the validated model",
+    )
+    bound = require_list(
+        value.get("bound_artifacts"), "WRONG_CLOSURE_SCHEMA_REJECTED", "closure.bound_artifacts"
+    )
     if len(bound) != len(CLOSURE_BOUND_FILES):
         fail("WRONG_CLOSURE_SCHEMA_REJECTED", "closure does not bind exactly six artifacts")
     seen: set[str] = set()
     for item in bound:
         entry = require_mapping(item, "WRONG_CLOSURE_SCHEMA_REJECTED", "closure bound artifact")
-        path = require_text(entry.get("path"), "WRONG_CLOSURE_SCHEMA_REJECTED", "closure bound path")
+        path = require_text(
+            entry.get("path"), "WRONG_CLOSURE_SCHEMA_REJECTED", "closure bound path"
+        )
         digest = require_file_digest(entry.get("raw_sha256"), f"closure bound digest {path}")
         if path in seen or path not in CLOSURE_BOUND_FILES:
-            fail("WRONG_CLOSURE_SCHEMA_REJECTED", f"closure has duplicate or unapproved bound path {path}")
+            fail(
+                "WRONG_CLOSURE_SCHEMA_REJECTED",
+                f"closure has duplicate or unapproved bound path {path}",
+            )
         seen.add(path)
         if validate_bound_files:
             candidate = B2_DIR / Path(path)
             if not candidate.is_file() or sha256_file(candidate) != digest:
-                fail("WRONG_CLOSURE_SCHEMA_REJECTED", f"closure bound artifact digest mismatch for {path}")
-    require(seen == set(CLOSURE_BOUND_FILES), "WRONG_CLOSURE_SCHEMA_REJECTED", "closure bound-artifact set is incomplete")
-    require("classification_closure.v1.json" not in seen and "verification/b2_verification_summary.v1.json" not in seen, "WRONG_CLOSURE_SCHEMA_REJECTED", "closure binds a root or summary record")
+                fail(
+                    "WRONG_CLOSURE_SCHEMA_REJECTED",
+                    f"closure bound artifact digest mismatch for {path}",
+                )
+    require(
+        seen == set(CLOSURE_BOUND_FILES),
+        "WRONG_CLOSURE_SCHEMA_REJECTED",
+        "closure bound-artifact set is incomplete",
+    )
+    require(
+        "classification_closure.v1.json" not in seen
+        and "verification/b2_verification_summary.v1.json" not in seen,
+        "WRONG_CLOSURE_SCHEMA_REJECTED",
+        "closure binds a root or summary record",
+    )
 
 
 def git_bytes(args: list[str], input_bytes: bytes | None = None) -> bytes:
@@ -1579,7 +2315,10 @@ def read_artifact_json(path: Path) -> Any:
     try:
         return json.loads(path.read_text(encoding="utf-8"))
     except FileNotFoundError:
-        fail("B2_FILE_INVENTORY_REJECTED", f"missing B2 artifact: {path.relative_to(B2_DIR).as_posix()}")
+        fail(
+            "B2_FILE_INVENTORY_REJECTED",
+            f"missing B2 artifact: {path.relative_to(B2_DIR).as_posix()}",
+        )
     except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
         fail("B2_FILE_INVENTORY_REJECTED", f"cannot read B2 artifact {path}: {exc}")
 
@@ -1587,7 +2326,9 @@ def read_artifact_json(path: Path) -> Any:
 def read_artifacts(*, extra_inventory: set[str] | None = None) -> dict[str, Any]:
     actual_inventory(extra_inventory)
     try:
-        projection_text = (B2_DIR / "deck_row_classification_refs.v1.csv").read_text(encoding="utf-8")
+        projection_text = (B2_DIR / "deck_row_classification_refs.v1.csv").read_text(
+            encoding="utf-8"
+        )
         projection = list(csv.DictReader(io.StringIO(projection_text)))
     except (OSError, UnicodeDecodeError) as exc:
         fail("MISSING_DECK_ROW_REFERENCE_REJECTED", f"cannot read B2 projection: {exc}")
@@ -1605,49 +2346,137 @@ def read_artifacts(*, extra_inventory: set[str] | None = None) -> dict[str, Any]
 
 def validate_summary(data: ArchiveData, summary: object, *, allow_staging: bool) -> str:
     value = require_mapping(summary, "B2_FILE_INVENTORY_REJECTED", "verification summary")
-    require(value.get("schema") == SUMMARY_SCHEMA, "B2_FILE_INVENTORY_REJECTED", "verification summary schema is wrong")
-    require(value.get("closure_file_sha256") == sha256_file(B2_DIR / "classification_closure.v1.json"), "B2_FILE_INVENTORY_REJECTED", "verification summary closure checksum is wrong")
-    identity = require_mapping(value.get("checker_version_and_identity"), "B2_FILE_INVENTORY_REJECTED", "verification summary checker identity")
-    require(identity.get("path") == "scripts/check_m2_5_b2_classifications.py", "B2_FILE_INVENTORY_REJECTED", "verification summary checker path is wrong")
+    require(
+        value.get("schema") == SUMMARY_SCHEMA,
+        "B2_FILE_INVENTORY_REJECTED",
+        "verification summary schema is wrong",
+    )
+    require(
+        value.get("closure_file_sha256") == sha256_file(B2_DIR / "classification_closure.v1.json"),
+        "B2_FILE_INVENTORY_REJECTED",
+        "verification summary closure checksum is wrong",
+    )
+    identity = require_mapping(
+        value.get("checker_version_and_identity"),
+        "B2_FILE_INVENTORY_REJECTED",
+        "verification summary checker identity",
+    )
+    require(
+        identity.get("path") == "scripts/check_m2_5_b2_classifications.py",
+        "B2_FILE_INVENTORY_REJECTED",
+        "verification summary checker path is wrong",
+    )
     require_hex(identity.get("raw_sha256"), "verification summary checker raw SHA")
-    commands = require_list(value.get("actual_commands"), "B2_FILE_INVENTORY_REJECTED", "verification summary commands")
-    require(len(commands) == len(REQUIRED_COMMANDS), "B2_FILE_INVENTORY_REJECTED", "verification summary command count is wrong")
+    commands = require_list(
+        value.get("actual_commands"), "B2_FILE_INVENTORY_REJECTED", "verification summary commands"
+    )
+    require(
+        len(commands) == len(REQUIRED_COMMANDS),
+        "B2_FILE_INVENTORY_REJECTED",
+        "verification summary command count is wrong",
+    )
     statuses: list[str] = []
-    for command, expected in zip(commands, REQUIRED_COMMANDS):
-        item = require_mapping(command, "B2_FILE_INVENTORY_REJECTED", "verification summary command")
-        require(item.get("command") == expected, "B2_FILE_INVENTORY_REJECTED", "verification summary command order differs")
+    for command, expected in zip(commands, REQUIRED_COMMANDS, strict=True):
+        item = require_mapping(
+            command, "B2_FILE_INVENTORY_REJECTED", "verification summary command"
+        )
+        require(
+            item.get("command") == expected,
+            "B2_FILE_INVENTORY_REJECTED",
+            "verification summary command order differs",
+        )
         status = item.get("status")
-        require(status in {"PASS", "FAIL", "NOT_RUN", "BLOCKED", "EXPERIMENTAL"}, "B2_FILE_INVENTORY_REJECTED", f"unknown verification command status {status!r}")
+        require(
+            status in {"PASS", "FAIL", "NOT_RUN", "BLOCKED", "EXPERIMENTAL"},
+            "B2_FILE_INVENTORY_REJECTED",
+            f"unknown verification command status {status!r}",
+        )
         statuses.append(status)
     execution_commit = value.get("execution_commit")
     before = value.get("source_tree_before_fingerprint")
     after = value.get("source_tree_after_fingerprint")
     if execution_commit is None:
-        if not allow_staging or any(status != "NOT_RUN" for status in statuses) or before is not None or after is not None:
-            fail("B2_FILE_INVENTORY_REJECTED", "verification summary is neither valid final evidence nor valid H_exec staging")
-        require(identity.get("raw_sha256") == sha256_file(ROOT / "scripts" / "check_m2_5_b2_classifications.py"), "B2_FILE_INVENTORY_REJECTED", "staging checker identity does not match the working tree")
+        if (
+            not allow_staging
+            or any(status != "NOT_RUN" for status in statuses)
+            or before is not None
+            or after is not None
+        ):
+            fail(
+                "B2_FILE_INVENTORY_REJECTED",
+                "verification summary is neither valid final evidence nor valid H_exec staging",
+            )
+        require(
+            identity.get("raw_sha256")
+            == sha256_file(ROOT / "scripts" / "check_m2_5_b2_classifications.py"),
+            "B2_FILE_INVENTORY_REJECTED",
+            "staging checker identity does not match the working tree",
+        )
         return "STAGING"
-    require(isinstance(execution_commit, str) and re.fullmatch(r"[0-9a-f]{40}", execution_commit) is not None, "B2_FILE_INVENTORY_REJECTED", "execution_commit is not a full lowercase Git SHA")
+    require(
+        isinstance(execution_commit, str)
+        and re.fullmatch(r"[0-9a-f]{40}", execution_commit) is not None,
+        "B2_FILE_INVENTORY_REJECTED",
+        "execution_commit is not a full lowercase Git SHA",
+    )
     head = git_bytes(["rev-parse", "HEAD"]).decode("ascii").strip()
     parent = git_bytes(["rev-parse", f"{head}^"]).decode("ascii").strip()
-    require(parent == execution_commit, "B2_FILE_INVENTORY_REJECTED", "H_evidence is not a direct child of execution_commit")
+    require(
+        parent == execution_commit,
+        "B2_FILE_INVENTORY_REJECTED",
+        "H_evidence is not a direct child of execution_commit",
+    )
     try:
-        subprocess.run(["git", "-C", str(ROOT), "merge-base", "--is-ancestor", execution_commit, head], check=True, capture_output=True)
+        subprocess.run(
+            ["git", "-C", str(ROOT), "merge-base", "--is-ancestor", execution_commit, head],
+            check=True,
+            capture_output=True,
+        )
     except (OSError, subprocess.CalledProcessError) as exc:
-        fail("B2_FILE_INVENTORY_REJECTED", f"execution_commit is not an ancestor of final HEAD: {exc}")
-    require(all(status == "PASS" for status in statuses), "B2_GATES_NOT_PASS", "final verification summary contains a non-PASS command status")
-    expected_checker_sha = sha256_bytes(git_bytes(["show", f"{execution_commit}:scripts/check_m2_5_b2_classifications.py"]))
-    require(identity.get("raw_sha256") == expected_checker_sha, "SUMMARY_CHECKER_IDENTITY_MISMATCH", "checker identity is not bound to H_exec")
+        fail(
+            "B2_FILE_INVENTORY_REJECTED",
+            f"execution_commit is not an ancestor of final HEAD: {exc}",
+        )
+    require(
+        all(status == "PASS" for status in statuses),
+        "B2_GATES_NOT_PASS",
+        "final verification summary contains a non-PASS command status",
+    )
+    expected_checker_sha = sha256_bytes(
+        git_bytes(["show", f"{execution_commit}:scripts/check_m2_5_b2_classifications.py"])
+    )
+    require(
+        identity.get("raw_sha256") == expected_checker_sha,
+        "SUMMARY_CHECKER_IDENTITY_MISMATCH",
+        "checker identity is not bound to H_exec",
+    )
     before_digest = require_hex(before, "source_tree_before_fingerprint")
     after_digest = require_hex(after, "source_tree_after_fingerprint")
     recomputed = tracked_source_fingerprint_of_commit(execution_commit)
-    require(before_digest == recomputed, "SUMMARY_FINGERPRINT_MISMATCH", "before fingerprint is not the tracked-source fingerprint of H_exec")
-    require(after_digest == recomputed, "SUMMARY_FINGERPRINT_MISMATCH", "after fingerprint is not the tracked-source fingerprint of H_exec")
-    require(before_digest == after_digest, "SUMMARY_FINGERPRINT_MISMATCH", "before/after execution fingerprints differ")
+    require(
+        before_digest == recomputed,
+        "SUMMARY_FINGERPRINT_MISMATCH",
+        "before fingerprint is not the tracked-source fingerprint of H_exec",
+    )
+    require(
+        after_digest == recomputed,
+        "SUMMARY_FINGERPRINT_MISMATCH",
+        "after fingerprint is not the tracked-source fingerprint of H_exec",
+    )
+    require(
+        before_digest == after_digest,
+        "SUMMARY_FINGERPRINT_MISMATCH",
+        "before/after execution fingerprints differ",
+    )
     return "FINAL"
 
 
-def validate_report(report: object, data: ArchiveData, classifications: dict[str, dict[str, Any]], catalog: dict[str, dict[str, Any]]) -> None:
+def validate_report(
+    report: object,
+    data: ArchiveData,
+    classifications: dict[str, dict[str, Any]],
+    catalog: dict[str, dict[str, Any]],
+) -> None:
     if not isinstance(report, str):
         fail("B2_FILE_INVENTORY_REJECTED", "classification report is not text")
     required_fragments = (
@@ -1663,7 +2492,10 @@ def validate_report(report: object, data: ArchiveData, classifications: dict[str
     )
     for fragment in required_fragments:
         if fragment not in report:
-            fail("B2_FILE_INVENTORY_REJECTED", f"classification report omits required evidence fragment {fragment!r}")
+            fail(
+                "B2_FILE_INVENTORY_REJECTED",
+                f"classification report omits required evidence fragment {fragment!r}",
+            )
     del data, classifications, catalog
 
 
@@ -1726,17 +2558,31 @@ def known_answer_test() -> None:
         ],
     ]
     canonical_payload = encode_canonical(payload)
-    envelope = encode_envelope(CLASSIFICATION_DOMAIN, CLASSIFICATION_INPUT_SCHEMA, canonical_payload)
+    envelope = encode_envelope(
+        CLASSIFICATION_DOMAIN, CLASSIFICATION_INPUT_SCHEMA, canonical_payload
+    )
     digest = hashlib.sha256(envelope).digest()
-    require(len(canonical_payload) == 572, "KNOWN_ANSWER_VECTOR_FAILED", f"KAT payload length is {len(canonical_payload)}")
-    require(len(envelope) == 773, "KNOWN_ANSWER_VECTOR_FAILED", f"KAT envelope length is {len(envelope)}")
+    require(
+        len(canonical_payload) == 572,
+        "KNOWN_ANSWER_VECTOR_FAILED",
+        f"KAT payload length is {len(canonical_payload)}",
+    )
+    require(
+        len(envelope) == 773,
+        "KNOWN_ANSWER_VECTOR_FAILED",
+        f"KAT envelope length is {len(envelope)}",
+    )
     require(
         digest.hex() == "9312ec114479f1872ce5aa1fc7bcad967a5faa470d0a66adbe9689841dcf6eac",
         "KNOWN_ANSWER_VECTOR_FAILED",
         f"KAT digest is {digest.hex()}",
     )
     reference = digest_reference_json(CLASSIFICATION_DOMAIN, CLASSIFICATION_INPUT_SCHEMA, digest)
-    require(digest_bytes(reference, "KAT DigestReferenceJsonV1") == digest, "KNOWN_ANSWER_VECTOR_FAILED", "JSON and CBOR digest reference bytes differ")
+    require(
+        digest_bytes(reference, "KAT DigestReferenceJsonV1") == digest,
+        "KNOWN_ANSWER_VECTOR_FAILED",
+        "JSON and CBOR digest reference bytes differ",
+    )
 
 
 def first_classification(artifacts: dict[str, Any], *, assigned: bool = False) -> dict[str, Any]:
@@ -1835,18 +2681,27 @@ def mutate_active_to_zero(artifacts: dict[str, Any]) -> None:
         if count == 1
         and any(
             any(
-                change.get("family_id") == family_id
-                and change.get("change_kind") == "RETAINED"
+                change.get("family_id") == family_id and change.get("change_kind") == "RETAINED"
                 for change in record.get("classification_delta", {}).get("changes", [])
             )
             for record in artifacts["classifications"]["classifications"]
         )
     )
     for record in artifacts["classifications"]["classifications"]:
-        if family_id not in {item["requirement_family_id"] for item in record["requirement_assignments"]}:
+        if family_id not in {
+            item["requirement_family_id"] for item in record["requirement_assignments"]
+        }:
             continue
-        removed = next(item for item in record["requirement_assignments"] if item["requirement_family_id"] == family_id)
-        record["requirement_assignments"] = [item for item in record["requirement_assignments"] if item["requirement_family_id"] != family_id]
+        removed = next(
+            item
+            for item in record["requirement_assignments"]
+            if item["requirement_family_id"] == family_id
+        )
+        record["requirement_assignments"] = [
+            item
+            for item in record["requirement_assignments"]
+            if item["requirement_family_id"] != family_id
+        ]
         record["review_status"] = "REVIEWED_CORRECTED"
         delta = record["classification_delta"]
         delta["changes"] = [item for item in delta["changes"] if item["family_id"] != family_id]
@@ -1859,7 +2714,12 @@ def mutate_active_to_zero(artifacts: dict[str, Any]) -> None:
                 "evidence_locators": removed["evidence_locators"],
             }
         )
-        delta["changes"].sort(key=lambda item: (encode_canonical(item["family_id"]), encode_canonical(item["change_kind"])))
+        delta["changes"].sort(
+            key=lambda item: (
+                encode_canonical(item["family_id"]),
+                encode_canonical(item["change_kind"]),
+            )
+        )
         delta["retained_family_ids"] = [
             item["family_id"] for item in delta["changes"] if item["change_kind"] == "RETAINED"
         ]
@@ -1884,51 +2744,121 @@ def negative_self_test() -> int:
     validate_model(data, base)
     cases: list[tuple[str, Callable[[dict[str, Any]], None], str | None]] = []
 
-    def case(code: str, mutation: Callable[[dict[str, Any]], None], extra: str | None = None) -> None:
+    def case(
+        code: str, mutation: Callable[[dict[str, Any]], None], extra: str | None = None
+    ) -> None:
         cases.append((code, mutation, extra))
 
     case("MISSING_CLASSIFICATION_REJECTED", lambda a: a["classifications"]["classifications"].pop())
-    case("DUPLICATE_ORACLE_IDENTITY_REJECTED", lambda a: a["classifications"]["classifications"].append(copy.deepcopy(a["classifications"]["classifications"][0])))
-    case("UNKNOWN_ORACLE_IDENTITY_REJECTED", lambda a: a["classifications"]["classifications"][0].__setitem__("oracle_semantic_identity", "00000000-0000-0000-0000-000000000000"))
-    case("NONTERMINAL_CLASSIFICATION_REJECTED", lambda a: first_classification(a).__setitem__("review_status", "IN_REVIEW"))
+    case(
+        "DUPLICATE_ORACLE_IDENTITY_REJECTED",
+        lambda a: a["classifications"]["classifications"].append(
+            copy.deepcopy(a["classifications"]["classifications"][0])
+        ),
+    )
+    case(
+        "UNKNOWN_ORACLE_IDENTITY_REJECTED",
+        lambda a: a["classifications"]["classifications"][0].__setitem__(
+            "oracle_semantic_identity", "00000000-0000-0000-0000-000000000000"
+        ),
+    )
+    case(
+        "NONTERMINAL_CLASSIFICATION_REJECTED",
+        lambda a: first_classification(a).__setitem__("review_status", "IN_REVIEW"),
+    )
     case("MISSING_DECK_ROW_REFERENCE_REJECTED", lambda a: a["projection"].pop())
-    case("UNKNOWN_DECK_ROW_REFERENCE_REJECTED", lambda a: a["projection"].append({**a["projection"][0], "deck_row_id": "unknown:row"}))
-    case("DECK_ROW_OSI_REBIND_REJECTED", lambda a: a["projection"][0].__setitem__("oracle_semantic_identity", next(osi for osi in [x["oracle_semantic_identity"] for x in a["classifications"]["classifications"]] if osi != a["projection"][0]["oracle_semantic_identity"])))
+    case(
+        "UNKNOWN_DECK_ROW_REFERENCE_REJECTED",
+        lambda a: a["projection"].append({**a["projection"][0], "deck_row_id": "unknown:row"}),
+    )
+    case(
+        "DECK_ROW_OSI_REBIND_REJECTED",
+        lambda a: a["projection"][0].__setitem__(
+            "oracle_semantic_identity",
+            next(
+                osi
+                for osi in [
+                    x["oracle_semantic_identity"] for x in a["classifications"]["classifications"]
+                ]
+                if osi != a["projection"][0]["oracle_semantic_identity"]
+            ),
+        ),
+    )
+
     def fork_reused(a: dict[str, Any]) -> None:
-        row = next(row for row in a["projection"] if sum(1 for candidate in a["projection"] if candidate["oracle_semantic_identity"] == row["oracle_semantic_identity"]) > 1)
-        row["terminal_requirement_ids"] = "[\"cap.activated_ability\"]"
+        row = next(
+            row
+            for row in a["projection"]
+            if sum(
+                1
+                for candidate in a["projection"]
+                if candidate["oracle_semantic_identity"] == row["oracle_semantic_identity"]
+            )
+            > 1
+        )
+        row["terminal_requirement_ids"] = '["cap.activated_ability"]'
+
     case("REUSED_ORACLE_IDENTITY_FORK_REJECTED", fork_reused)
-    case("SOURCE_DIGEST_MISMATCH_REJECTED", lambda a: first_classification(a, assigned=True)["source_identity"].__setitem__("oracle_source_record_id", "00000000-0000-0000-0000-000000000000"))
+    case(
+        "SOURCE_DIGEST_MISMATCH_REJECTED",
+        lambda a: first_classification(a, assigned=True)["source_identity"].__setitem__(
+            "oracle_source_record_id", "00000000-0000-0000-0000-000000000000"
+        ),
+    )
+
     def invalid_locator(a: dict[str, Any]) -> None:
         _, assignment = first_assignment_record(a)
         assignment["evidence_locators"][0]["json_pointer"] = "/missing_field"
+
     case("SOURCE_EVIDENCE_LOCATOR_INVALID_REJECTED", invalid_locator)
+
     def disallowed_basis(a: dict[str, Any]) -> None:
         _, assignment = first_assignment_record(a)
         assignment["evidence_basis"] = "FORMAT_POLICY"
+
     case("DISALLOWED_EVIDENCE_BASIS_REJECTED", disallowed_basis)
+
     def locator_kind_mismatch(a: dict[str, Any]) -> None:
         record, assignment = first_assignment_record(a)
         family = catalog_by_id_from_artifacts(a)[assignment["requirement_family_id"]]
-        family["evidence_basis_allowed"] = sorted([*family["evidence_basis_allowed"], "FORMAT_POLICY"], key=encode_canonical)
+        family["evidence_basis_allowed"] = sorted(
+            [*family["evidence_basis_allowed"], "FORMAT_POLICY"], key=encode_canonical
+        )
         assignment["evidence_basis"] = "FORMAT_POLICY"
         del record
+
     case("EVIDENCE_BASIS_LOCATOR_KIND_MISMATCH_REJECTED", locator_kind_mismatch)
+
     def no_card_evidence(a: dict[str, Any]) -> None:
         _, assignment = first_assignment_record(a)
         assignment["evidence_basis"] = "FORMAT_POLICY"
         family = catalog_by_id_from_artifacts(a)[assignment["requirement_family_id"]]
-        family["evidence_basis_allowed"] = sorted([*family["evidence_basis_allowed"], "FORMAT_POLICY"], key=encode_canonical)
+        family["evidence_basis_allowed"] = sorted(
+            [*family["evidence_basis_allowed"], "FORMAT_POLICY"], key=encode_canonical
+        )
         assignment["evidence_locators"] = [authority_locator_for_negative(data)]
+
     case("CARD_SIDE_EVIDENCE_MISSING_REJECTED", no_card_evidence)
-    case("UNKNOWN_REQUIREMENT_FAMILY_REJECTED", lambda a: first_assignment_record(a)[1].__setitem__("requirement_family_id", "cap.unknown"))
+    case(
+        "UNKNOWN_REQUIREMENT_FAMILY_REJECTED",
+        lambda a: first_assignment_record(a)[1].__setitem__("requirement_family_id", "cap.unknown"),
+    )
+
     def superseded_assigned(a: dict[str, Any]) -> None:
         ids = list(catalog_by_id_from_artifacts(a))
         mutate_superseded(a, [ids[1]])
+
     case("SUPERSEDED_FAMILY_ASSIGNED_REJECTED", superseded_assigned)
-    case("ACTIVE_UNASSIGNED_FAMILY_ASSIGNED_REJECTED", lambda a: mutate_status(a, "ACTIVE_UNASSIGNED", "ACTIVE_EQUIVALENT"))
-    case("RETIRED_FAMILY_ASSIGNED_REJECTED", lambda a: mutate_status(a, "RETIRED", "RETIRED_NO_SUCCESSOR"))
+    case(
+        "ACTIVE_UNASSIGNED_FAMILY_ASSIGNED_REJECTED",
+        lambda a: mutate_status(a, "ACTIVE_UNASSIGNED", "ACTIVE_EQUIVALENT"),
+    )
+    case(
+        "RETIRED_FAMILY_ASSIGNED_REJECTED",
+        lambda a: mutate_status(a, "RETIRED", "RETIRED_NO_SUCCESSOR"),
+    )
     case("SUPERSEDED_WITHOUT_SUCCESSOR_REJECTED", lambda a: mutate_superseded(a, []))
+
     def retired_with_successor(a: dict[str, Any]) -> None:
         ids = list(catalog_by_id_from_artifacts(a))
         family_id = first_active_family(a)
@@ -1937,12 +2867,16 @@ def negative_self_test() -> int:
         family["terminal_assignable"] = False
         family["lifecycle_relation"] = "RETIRED_NO_SUCCESSOR"
         family["superseded_by"] = [ids[1] if ids[1] != family_id else ids[2]]
+
     case("RETIRED_WITH_SUCCESSOR_REJECTED", retired_with_successor)
     case("SUPERSESSION_UNKNOWN_TARGET_REJECTED", lambda a: mutate_superseded(a, ["cap.unknown"]))
+
     def self_target(a: dict[str, Any]) -> None:
         family_id = first_active_family(a)
         mutate_superseded(a, [family_id])
+
     case("SUPERSESSION_SELF_TARGET_REJECTED", self_target)
+
     def nonassignable_target(a: dict[str, Any]) -> None:
         ids = list(catalog_by_id_from_artifacts(a))
         source_id = ids[0]
@@ -1960,17 +2894,26 @@ def negative_self_test() -> int:
         target["lifecycle_relation"] = "SUPERSEDED_BY_REPLACEMENT"
         target["supersession_reason"] = "synthetic"
         target["superseded_by"] = [other_id]
+
     case("SUPERSESSION_NONASSIGNABLE_TARGET_REJECTED", nonassignable_target)
     case("HISTORICAL_FAMILY_MISSING_REJECTED", lambda a: a["catalog"]["families"].pop())
+
     def historical_tamper(a: dict[str, Any]) -> None:
         family = a["catalog"]["families"][0]
         family["historical_rev3"]["record"]["name"] = "tampered"
+
     case("HISTORICAL_REV3_BLOCK_TAMPER_REJECTED", historical_tamper)
+
     def historical_projection(a: dict[str, Any]) -> None:
         a["catalog"]["families"][0]["historical_definition"]["rev3_name"] = "tampered"
+
     case("HISTORICAL_DEFINITION_PROJECTION_MISMATCH_REJECTED", historical_projection)
     case("ACTIVE_WITH_ZERO_ASSIGNMENTS_REJECTED", mutate_active_to_zero)
-    case("SPECULATIVE_NEW_FAMILY_REJECTED", lambda a: add_new_family(a, make_new_family("req.b2.speculative")))
+    case(
+        "SPECULATIVE_NEW_FAMILY_REJECTED",
+        lambda a: add_new_family(a, make_new_family("req.b2.speculative")),
+    )
+
     def silent_change(a: dict[str, Any]) -> None:
         _, assignment = first_assignment_record(a)
         current = assignment["requirement_family_id"]
@@ -1979,28 +2922,63 @@ def negative_self_test() -> int:
             for family_id, family in catalog_by_id_from_artifacts(a).items()
             if family_id != current and family.get("status") == "ACTIVE"
         )
+
     case("SILENT_CLASSIFICATION_CHANGE_REJECTED", silent_change)
-    case("CORRECTION_WITHOUT_RATIONALE_REJECTED", lambda a: first_classification(a, assigned=True)["classification_delta"]["changes"][0].__setitem__("rationale", ""))
-    case("CORRECTION_WITHOUT_EVIDENCE_REJECTED", lambda a: first_classification(a, assigned=True)["classification_delta"]["changes"][0].__setitem__("evidence_locators", []))
+    case(
+        "CORRECTION_WITHOUT_RATIONALE_REJECTED",
+        lambda a: first_classification(a, assigned=True)["classification_delta"]["changes"][
+            0
+        ].__setitem__("rationale", ""),
+    )
+    case(
+        "CORRECTION_WITHOUT_EVIDENCE_REJECTED",
+        lambda a: first_classification(a, assigned=True)["classification_delta"]["changes"][
+            0
+        ].__setitem__("evidence_locators", []),
+    )
+
     def new_historical(a: dict[str, Any]) -> None:
         family = make_new_family("req.b2.with_history", "ACTIVE")
         family["historical_rev3"] = {}
         add_new_family(a, family)
+
     case("NEW_FAMILY_HISTORICAL_BLOCK_PRESENT_REJECTED", new_historical)
-    case("WRONG_CLASSIFICATION_SCHEMA_REJECTED", lambda a: a["classifications"].__setitem__("schema", "wrong.v0"))
+    case(
+        "WRONG_CLASSIFICATION_SCHEMA_REJECTED",
+        lambda a: a["classifications"].__setitem__("schema", "wrong.v0"),
+    )
     case("WRONG_CLOSURE_SCHEMA_REJECTED", lambda a: a["closure"].__setitem__("schema", "wrong.v0"))
-    case("EVIDENCE_DIGEST_TAMPER_REJECTED", lambda a: first_classification(a, assigned=True)["source_evidence_digest"].__setitem__("digest_hex", "f" * 64))
+    case(
+        "EVIDENCE_DIGEST_TAMPER_REJECTED",
+        lambda a: first_classification(a, assigned=True)["source_evidence_digest"].__setitem__(
+            "digest_hex", "f" * 64
+        ),
+    )
     case("B2_FILE_INVENTORY_REJECTED", lambda a: None, "unexpected-extra.json")
-    case("OTHER_GATE_PROMOTION_REJECTED", lambda a: a["closure"].__setitem__("OFFICIAL_RULE_CITATION_CLOSURE", "PASS"))
-    case("DECK_LOCK_PROMOTION_REJECTED", lambda a: a["closure"]["gate_status"].__setitem__("DECK_PAIR_LOCKED", "YES"))
-    case("M3_PROMOTION_REJECTED", lambda a: a["closure"]["gate_status"].__setitem__("M3_STARTED", "YES"))
+    case(
+        "OTHER_GATE_PROMOTION_REJECTED",
+        lambda a: a["closure"].__setitem__("OFFICIAL_RULE_CITATION_CLOSURE", "PASS"),
+    )
+    case(
+        "DECK_LOCK_PROMOTION_REJECTED",
+        lambda a: a["closure"]["gate_status"].__setitem__("DECK_PAIR_LOCKED", "YES"),
+    )
+    case(
+        "M3_PROMOTION_REJECTED",
+        lambda a: a["closure"]["gate_status"].__setitem__("M3_STARTED", "YES"),
+    )
 
     failures: list[str] = []
     for expected_code, mutation, extra in cases:
         mutated = copy.deepcopy(base)
         mutation(mutated)
         try:
-            validate_model(data, mutated, extra_inventory={extra} if extra else None, validate_bound_files=False)
+            validate_model(
+                data,
+                mutated,
+                extra_inventory={extra} if extra else None,
+                validate_bound_files=False,
+            )
         except B2CheckError as exc:
             if exc.code != expected_code:
                 failures.append(f"{expected_code}: found {exc.code}")
@@ -2023,10 +3001,11 @@ def run_positive() -> int:
     known_answer_test()
     artifacts = read_artifacts()
     _, usage, summary_status = validate_model(data, artifacts)
-    if summary_status == "STAGING":
-        print(f"B2_VERIFIER = PASS (H_exec staging; 402 classifications, {sum(usage.values())} assignments)")
-    else:
-        print(f"B2_VERIFIER = PASS (final evidence; 402 classifications, {sum(usage.values())} assignments)")
+    evidence_stage = "H_exec staging" if summary_status == "STAGING" else "final evidence"
+    print(
+        f"B2_VERIFIER = PASS ({evidence_stage}; 402 classifications, "
+        f"{sum(usage.values())} assignments)"
+    )
     return EXIT_PASS
 
 

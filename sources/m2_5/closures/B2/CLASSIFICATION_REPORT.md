@@ -16,8 +16,8 @@ Source package SHA-256: `99b33945a3e0c7b2982734e65f770715029ce6acd500104bde48e84
 - ACTIVE_UNASSIGNED: 6
 - SUPERSEDED: 0
 - RETIRED: 0
-- Terminal assignment edges: 1482
-- Reviewed corrected authorities: 293; added edges: 1085; removed edges: 7
+- Terminal assignment edges: 1445
+- Reviewed corrected authorities: 293; added edges: 1048; removed edges: 7
 
 All 402 records were reviewed from the pinned card-side source. REV3 assignments are treated as historical proposals only; explicit card-side review rules retain, add, or remove edges without changing historical family meanings. This is a Codex source-grounded review record, not a HUMAN_REVIEWED authorship claim.
 
