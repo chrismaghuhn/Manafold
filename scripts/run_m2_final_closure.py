@@ -958,7 +958,18 @@ def check_card_and_deck_artifacts_unclaimed(root: Path) -> str:
     return "card/deck trees contain only the pre-existing maintainer examples (no real-card claim)"
 
 
-KERNEL_IMPL_PATTERN = re.compile(r"\bimpl\s+RulesKernel\s+for\s+([A-Za-z_][A-Za-z0-9_]*)")
+KERNEL_IMPL_PATTERN = re.compile(
+    r"\b(?:[A-Za-z_][A-Za-z0-9_]*\s*::\s*)*RulesKernel"
+    r"(?:\s*<(?:[^<>]|<[^<>]*>)*>)?"
+    r"\s+for\s+([A-Za-z_][A-Za-z0-9_]*)"
+)
+KERNEL_ALIAS_PATTERNS: tuple[re.Pattern[str], ...] = tuple(
+    re.compile(pattern)
+    for pattern in (
+        r"\buse\s+[\w:]*RulesKernel\b\s+as\s+[A-Za-z_][A-Za-z0-9_]*",
+        r"\buse\s+[\w:]*\{[^}]*\bRulesKernel\b\s+as\s+[A-Za-z_][A-Za-z0-9_]*[^}]*\}",
+    )
+)
 EXPECTED_KERNEL_IMPLEMENTATIONS: frozenset[str] = frozenset({"SyntheticM1RulesKernel"})
 
 
@@ -970,12 +981,46 @@ def _is_test_convention_path(relative_posix: str) -> bool:
     return name == "tests.rs" or name.endswith("_tests.rs")
 
 
+def _strip_rust_comments_and_strings(text: str) -> str:
+    """Remove line/block comments and double-quoted string literals so that
+    prose about the kernel cannot masquerade as an implementation."""
+    out: list[str] = []
+    index = 0
+    length = len(text)
+    while index < length:
+        char = text[index]
+        nxt = text[index + 1] if index + 1 < length else ""
+        if char == "/" and nxt == "/":
+            newline = text.find("\n", index)
+            index = length if newline == -1 else newline
+        elif char == "/" and nxt == "*":
+            close = text.find("*/", index + 2)
+            index = length if close == -1 else close + 2
+            out.append(" ")
+        elif char == '"':
+            index += 1
+            while index < length and text[index] != '"':
+                if text[index] == "\\":
+                    index += 1
+                index += 1
+            index += 1
+            out.append('""')
+        else:
+            out.append(char)
+            index += 1
+    return "".join(out)
+
+
 def check_rules_backend_inventory(root: Path) -> str:
     """The M2 runtime must own exactly one production RulesKernel
     implementation, the synthetic reference kernel.  Any second
     implementation (for example an optimized or alternate rules backend) is
-    unauthorized M3/scope expansion."""
+    unauthorized M3/scope expansion.  Detection accepts arbitrary qualified
+    trait paths and trait-side generics, and import aliasing of RulesKernel
+    is forbidden outright in production sources so aliases cannot evade the
+    implementation scan."""
     implementers: dict[str, list[str]] = {}
+    aliases: list[str] = []
     scanned = 0
     for relative in ("crates", "tools"):
         base = root / relative
@@ -987,26 +1032,36 @@ def check_rules_backend_inventory(root: Path) -> str:
                 continue
             scanned += 1
             try:
-                text = path.read_text(encoding="utf-8")
+                text = _strip_rust_comments_and_strings(path.read_text(encoding="utf-8"))
             except OSError as error:
                 raise RuntimeError(f"unreadable kernel-scan input {path}: {error}") from error
             for match in KERNEL_IMPL_PATTERN.finditer(text):
                 line = text.count("\n", 0, match.start()) + 1
                 implementers.setdefault(match.group(1), []).append(f"{relative_posix}:{line}")
+            for pattern in KERNEL_ALIAS_PATTERNS:
+                for match in pattern.finditer(text):
+                    line = text.count("\n", 0, match.start()) + 1
+                    aliases.append(f"{relative_posix}:{line}: {match.group(0)!r}")
+    problems: list[str] = []
     unexpected = sorted(set(implementers) - EXPECTED_KERNEL_IMPLEMENTATIONS)
     missing = sorted(EXPECTED_KERNEL_IMPLEMENTATIONS - set(implementers))
     if unexpected or missing:
-        detail = (
+        problems.append(
             f"production RulesKernel implementations drifted from the pinned M2 "
-            f"inventory (unexpected={unexpected}, missing={missing})"
+            f"inventory (unexpected={unexpected}, missing={missing}): "
+            + json.dumps({name: implementers[name] for name in unexpected}, sort_keys=True)
         )
-        found = {name: implementers[name] for name in unexpected if name in implementers}
-        if found:
-            detail += ": " + json.dumps(found, sort_keys=True)
-        raise ScopeCheckFailure(detail)
+    if aliases:
+        problems.append(
+            "RulesKernel import aliasing is forbidden in production sources "
+            "(aliases could evade the implementation inventory):\n" + "\n".join(aliases[:20])
+        )
+    if problems:
+        raise ScopeCheckFailure("\n".join(problems))
     return (
         "exactly one production RulesKernel implementation "
-        f"(SyntheticM1RulesKernel) across {scanned} production source files"
+        f"(SyntheticM1RulesKernel), no import aliasing, across {scanned} "
+        "production source files"
     )
 
 

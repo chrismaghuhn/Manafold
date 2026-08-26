@@ -400,6 +400,82 @@ class RulesBackendInventoryTests(unittest.TestCase):
             detail = final.check_rules_backend_inventory(base)
             self.assertIn("SyntheticM1RulesKernel", detail)
 
+    def test_qualified_trait_path_implementation_is_detected(self) -> None:
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            self.write_sole_kernel(base)
+            (base / "crates" / "mtgml-rules" / "src" / "fast.rs").write_text(
+                "impl crate::transition::RulesKernel for FastRulesKernel {}\n",
+                encoding="utf-8",
+            )
+            with self.assertRaises(final.ScopeCheckFailure) as caught:
+                final.check_rules_backend_inventory(base)
+            self.assertIn("FastRulesKernel", str(caught.exception))
+
+    def test_generic_qualified_trait_path_implementation_is_detected(self) -> None:
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            self.write_sole_kernel(base)
+            (base / "crates" / "mtgml-rules" / "src" / "fast.rs").write_text(
+                "impl<T> mtgml_rules::RulesKernel<A, B<C>> for FastRulesKernel<T> {}\n",
+                encoding="utf-8",
+            )
+            with self.assertRaises(final.ScopeCheckFailure) as caught:
+                final.check_rules_backend_inventory(base)
+            self.assertIn("FastRulesKernel", str(caught.exception))
+
+    def test_import_aliasing_of_rules_kernel_is_forbidden(self) -> None:
+        import tempfile
+
+        for snippet in (
+            "use mtgml_rules::RulesKernel as RK;\nimpl RK for FastRulesKernel {}\n",
+            "pub use mtgml_rules::transition::RulesKernel as KernelAlias;\n",
+            "use mtgml_rules::{RulesKernel as RK, Decision};\n",
+        ):
+            with tempfile.TemporaryDirectory() as tmp, self.subTest(snippet=snippet[:40]):
+                base = Path(tmp)
+                self.write_sole_kernel(base)
+                (base / "crates" / "mtgml-rules" / "src" / "fast.rs").write_text(
+                    snippet, encoding="utf-8"
+                )
+                with self.assertRaises(final.ScopeCheckFailure) as caught:
+                    final.check_rules_backend_inventory(base)
+                self.assertIn("alias", str(caught.exception))
+
+    def test_prose_comments_do_not_masquerade_as_implementations(self) -> None:
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            self.write_sole_kernel(base)
+            (base / "crates" / "mtgml-rules" / "src" / "docs.rs").write_text(
+                "// see RulesKernel for details\n"
+                'let s = "impl RulesKernel for NotReal";\n'
+                "/* impl RulesKernel for AlsoNotReal */\n",
+                encoding="utf-8",
+            )
+            detail = final.check_rules_backend_inventory(base)
+            self.assertIn("SyntheticM1RulesKernel", detail)
+
+    def test_strip_rust_comments_and_strings_preserves_code(self) -> None:
+        source = (
+            "a // line RulesKernel for Zed\n"
+            "b /* block RulesKernel for Yed */ c\n"
+            'd = "str RulesKernel for Xed";\n'
+            "e\n"
+        )
+        stripped = final._strip_rust_comments_and_strings(source)
+        self.assertNotIn("Zed", stripped)
+        self.assertNotIn("Yed", stripped)
+        self.assertNotIn("Xed", stripped)
+        self.assertIn("a", stripped)
+        self.assertIn("c", stripped)
+        self.assertIn("e", stripped)
+
 
 class CertificationProfileTests(unittest.TestCase):
     def run_profile_with(self, returncode: int, output: str) -> dict[str, object]:
