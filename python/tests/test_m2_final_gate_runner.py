@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import subprocess
 import sys
 import unittest
 from pathlib import Path
@@ -41,6 +42,10 @@ def passing_m1_regression() -> dict[str, object]:
     }
 
 
+def passing_certification() -> dict[str, object]:
+    return {"status": "PASS", "prerequisite": "scripts/run_checks.py certification"}
+
+
 def complete_report(**overrides: object) -> dict[str, object]:
     payload: dict[str, object] = {
         "mode": "authoritative",
@@ -49,6 +54,7 @@ def complete_report(**overrides: object) -> dict[str, object]:
         "child_runs": [],
         "gates": passing_gates(),
         "m1_regression": passing_m1_regression(),
+        "certification": passing_certification(),
         "expected_commit": COMMIT,
     }
     payload.update(overrides)
@@ -190,6 +196,14 @@ class BuildReportTests(unittest.TestCase):
                 report = complete_report(**overrides)
                 self.assertEqual(report["milestone_status"], "INCOMPLETE")
 
+    def test_non_pass_certification_prerequisite_blocks_completion(self) -> None:
+        for status in ("FAIL", "BLOCKED", "NOT_RUN"):
+            with self.subTest(status=status):
+                report = complete_report(certification={"status": status})
+                self.assertEqual(report["milestone_status"], "INCOMPLETE")
+                self.assertEqual(report["m2_5_status"], "BLOCKED")
+                self.assertEqual(report["overall"], "INCOMPLETE")
+
 
 class ValidateSliceReportTests(unittest.TestCase):
     def test_valid_authoritative_child_report_has_no_problems(self) -> None:
@@ -318,6 +332,114 @@ class ComputeM1MatrixStatusTests(unittest.TestCase):
     def test_failed_child_record_poisons_matrix_even_with_passing_gates(self) -> None:
         run = {"status": "FAIL", "gates": {name: "PASS" for name in M1_GATE_NAMES}}
         self.assertEqual(compute_m1_matrix_status(run), "FAIL")
+
+
+class ScopeRegistryTests(unittest.TestCase):
+    def test_executed_scope_registry_matches_the_pinned_literal(self) -> None:
+        self.assertIsNone(final.validate_scope_check_registry())
+        names = tuple(name for name, _ in final.SCOPE_CHECKS)
+        self.assertEqual(names, final.EXPECTED_SCOPE_CHECKS)
+        self.assertIn("scope::rules_backend_inventory", names)
+        self.assertEqual(len(names), len(set(names)))
+
+
+class RulesBackendInventoryTests(unittest.TestCase):
+    def write_sole_kernel(self, base: Path) -> None:
+        kernel = base / "crates" / "mtgml-rules" / "src"
+        kernel.mkdir(parents=True)
+        (kernel / "transition.rs").write_text("pub trait RulesKernel: Send {}\n", encoding="utf-8")
+        (kernel / "synthetic.rs").write_text(
+            "pub struct SyntheticM1RulesKernel;\nimpl RulesKernel for SyntheticM1RulesKernel {}\n",
+            encoding="utf-8",
+        )
+
+    def test_sole_synthetic_kernel_passes(self) -> None:
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            self.write_sole_kernel(base)
+            detail = final.check_rules_backend_inventory(base)
+            self.assertIn("SyntheticM1RulesKernel", detail)
+
+    def test_injected_alternate_backend_fails_closed(self) -> None:
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            self.write_sole_kernel(base)
+            (base / "crates" / "mtgml-rules" / "src" / "fast.rs").write_text(
+                "struct FastRulesKernel;\nimpl RulesKernel for FastRulesKernel {}\n",
+                encoding="utf-8",
+            )
+            with self.assertRaises(final.ScopeCheckFailure) as caught:
+                final.check_rules_backend_inventory(base)
+            message = str(caught.exception)
+            self.assertIn("FastRulesKernel", message)
+
+    def test_missing_kernel_implementation_fails_closed(self) -> None:
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            (base / "crates" / "mtgml-rules" / "src").mkdir(parents=True)
+            with self.assertRaises(final.ScopeCheckFailure):
+                final.check_rules_backend_inventory(base)
+
+    def test_test_convention_paths_are_excluded(self) -> None:
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            self.write_sole_kernel(base)
+            tests_dir = base / "crates" / "mtgml-rules" / "src" / "tests"
+            tests_dir.mkdir()
+            (tests_dir / "mock_kernel.rs").write_text(
+                "impl RulesKernel for MockKernel {}\n", encoding="utf-8"
+            )
+            detail = final.check_rules_backend_inventory(base)
+            self.assertIn("SyntheticM1RulesKernel", detail)
+
+
+class CertificationProfileTests(unittest.TestCase):
+    def run_profile_with(self, returncode: int, output: str) -> dict[str, object]:
+        from unittest.mock import patch
+
+        completed = subprocess.CompletedProcess(["cmd"], returncode, output, "")
+        with patch.object(final, "run_command", return_value=completed):
+            import tempfile
+
+            with tempfile.TemporaryDirectory() as tmp:
+                return final.execute_certification_profile(Path(tmp))
+
+    def test_successful_profile_passes(self) -> None:
+        record = self.run_profile_with(0, "all checks passed\n")
+        self.assertEqual(record["status"], "PASS")
+
+    def test_failed_profile_fails(self) -> None:
+        record = self.run_profile_with(1, "FAIL: something broke\n")
+        self.assertEqual(record["status"], "FAIL")
+
+    def test_missing_tool_blocks(self) -> None:
+        record = self.run_profile_with(2, "MISSING TOOL: cargo\n")
+        self.assertEqual(record["status"], "BLOCKED")
+
+    def test_command_targets_certification_profile(self) -> None:
+        from unittest.mock import patch
+
+        seen: list[list[str]] = []
+
+        def fake_run(command):
+            seen.append(list(command))
+            return subprocess.CompletedProcess(command, 0, "ok", "")
+
+        with patch.object(final, "run_command", side_effect=fake_run):
+            import tempfile
+
+            with tempfile.TemporaryDirectory() as tmp:
+                final.execute_certification_profile(Path(tmp))
+        self.assertTrue(seen[0][-2].endswith("run_checks.py"))
+        self.assertEqual(seen[0][-1], "certification")
 
 
 class ScopeScanTests(unittest.TestCase):

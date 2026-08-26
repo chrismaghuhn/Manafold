@@ -38,6 +38,16 @@ missing gate registration blocks M2 completion.  ``--development`` executes
 the same underlying children in their development modes diagnostically but
 can never report completion.
 
+Closure prerequisites: after the child gates and the scope guard, this
+runner executes the repository certification profile
+(``scripts/run_checks.py certification``), whose final command is the
+deterministic source-archive reproducibility gate.  A non-PASS
+certification result blocks ``COMPLETE`` exactly like a failed gate; the
+normative "archive/reproducibility gate last" ordering is preserved because
+the certification profile runs after every other verification step and is
+followed only by the final read-only source snapshot and report writing
+into gitignored ``dist/``.
+
 Reports and logs are written only below ``dist/m2-final-verification/``
 (never into the reproducible source archive).
 
@@ -46,10 +56,7 @@ Scope-guard notes: the vocabulary pattern scans deliberately cover only
 verification tooling itself (this script, sibling gate runners, and their
 tests) necessarily contains the literal forbidden vocabulary as detection
 patterns, so scanning it would be self-defeating; maintainer-tooling changes
-remain guarded by review and the pinned structural inventories.  The
-deterministic-archive/reproducibility gate is an external repository-level
-gate (``scripts/verify_archive_reproducibility.py``, last in the closure
-sequence) and is intentionally not re-owned here.
+remain guarded by review and the pinned structural inventories.
 """
 
 from __future__ import annotations
@@ -951,10 +958,63 @@ def check_card_and_deck_artifacts_unclaimed(root: Path) -> str:
     return "card/deck trees contain only the pre-existing maintainer examples (no real-card claim)"
 
 
+KERNEL_IMPL_PATTERN = re.compile(r"\bimpl\s+RulesKernel\s+for\s+([A-Za-z_][A-Za-z0-9_]*)")
+EXPECTED_KERNEL_IMPLEMENTATIONS: frozenset[str] = frozenset({"SyntheticM1RulesKernel"})
+
+
+def _is_test_convention_path(relative_posix: str) -> bool:
+    parts = relative_posix.split("/")
+    if any(part == "tests" for part in parts[:-1]):
+        return True
+    name = parts[-1]
+    return name == "tests.rs" or name.endswith("_tests.rs")
+
+
+def check_rules_backend_inventory(root: Path) -> str:
+    """The M2 runtime must own exactly one production RulesKernel
+    implementation, the synthetic reference kernel.  Any second
+    implementation (for example an optimized or alternate rules backend) is
+    unauthorized M3/scope expansion."""
+    implementers: dict[str, list[str]] = {}
+    scanned = 0
+    for relative in ("crates", "tools"):
+        base = root / relative
+        if not base.is_dir():
+            continue
+        for path in sorted(base.rglob("*.rs")):
+            relative_posix = path.relative_to(root).as_posix()
+            if _is_test_convention_path(relative_posix):
+                continue
+            scanned += 1
+            try:
+                text = path.read_text(encoding="utf-8")
+            except OSError as error:
+                raise RuntimeError(f"unreadable kernel-scan input {path}: {error}") from error
+            for match in KERNEL_IMPL_PATTERN.finditer(text):
+                line = text.count("\n", 0, match.start()) + 1
+                implementers.setdefault(match.group(1), []).append(f"{relative_posix}:{line}")
+    unexpected = sorted(set(implementers) - EXPECTED_KERNEL_IMPLEMENTATIONS)
+    missing = sorted(EXPECTED_KERNEL_IMPLEMENTATIONS - set(implementers))
+    if unexpected or missing:
+        detail = (
+            f"production RulesKernel implementations drifted from the pinned M2 "
+            f"inventory (unexpected={unexpected}, missing={missing})"
+        )
+        found = {name: implementers[name] for name in unexpected if name in implementers}
+        if found:
+            detail += ": " + json.dumps(found, sort_keys=True)
+        raise ScopeCheckFailure(detail)
+    return (
+        "exactly one production RulesKernel implementation "
+        f"(SyntheticM1RulesKernel) across {scanned} production source files"
+    )
+
+
 SCOPE_CHECKS: tuple[tuple[str, Callable[[Path], str]], ...] = (
     ("scope::workspace_inventory_pinned", check_workspace_inventory_pinned),
     ("scope::python_runtime_dependencies_empty", check_python_runtime_dependencies_empty),
     ("scope::member_dependency_sources_pinned", check_member_dependency_sources_pinned),
+    ("scope::rules_backend_inventory", check_rules_backend_inventory),
     ("scope::open_decisions_rows_still_open", check_open_decisions_rows),
     (
         "scope::transport_and_trajectory_docs_unchanged",
@@ -968,6 +1028,35 @@ SCOPE_CHECKS: tuple[tuple[str, Callable[[Path], str]], ...] = (
     ("scope::no_search_or_determinization", check_no_search_or_determinization),
     ("scope::no_vector_or_distributed_training", check_no_vector_or_distributed_training),
 )
+
+EXPECTED_SCOPE_CHECKS: tuple[str, ...] = (
+    "scope::workspace_inventory_pinned",
+    "scope::python_runtime_dependencies_empty",
+    "scope::member_dependency_sources_pinned",
+    "scope::rules_backend_inventory",
+    "scope::open_decisions_rows_still_open",
+    "scope::transport_and_trajectory_docs_unchanged",
+    "scope::adapter_remains_unpublished_test_tool",
+    "scope::schema_inventory_pinned",
+    "scope::card_and_deck_artifacts_unclaimed",
+    "scope::no_real_magic_sources",
+    "scope::no_hidden_heuristic_choices",
+    "scope::no_search_or_determinization",
+    "scope::no_vector_or_distributed_training",
+)
+
+
+def validate_scope_check_registry() -> str | None:
+    """Fail closed if the executed scope-check registry ever drifts from the
+    pinned inventory; a silently removed mandatory subcheck must not let the
+    remaining checks aggregate to PASS."""
+    actual = tuple(name for name, _ in SCOPE_CHECKS)
+    if actual != EXPECTED_SCOPE_CHECKS:
+        return (
+            f"scope check registry drift: expected {list(EXPECTED_SCOPE_CHECKS)}, "
+            f"found {list(actual)}"
+        )
+    return None
 
 
 def execute_scope_guard(logs: Path) -> list[dict[str, Any]]:
@@ -992,6 +1081,49 @@ def execute_scope_guard(logs: Path) -> list[dict[str, Any]]:
         entry["log"] = f"logs/{log_path.name}"
         results.append(entry)
     return results
+
+
+# ---------------------------------------------------------------------------
+# Certification profile prerequisite (archive/reproducibility gate last).
+# ---------------------------------------------------------------------------
+
+
+def execute_certification_profile(logs: Path) -> dict[str, Any]:
+    """Run the repository certification profile as a closure prerequisite.
+
+    ``scripts/run_checks.py certification`` executes the fast and integration
+    profiles plus the pinned Python toolchain verification and the
+    deterministic source-archive reproducibility gate, which is its final
+    command.  A non-PASS result blocks milestone completion.
+    """
+    command = [sys.executable, str(ROOT / "scripts" / "run_checks.py"), "certification"]
+    log_path = logs / "991-certification-profile.log"
+    record: dict[str, Any] = {
+        "prerequisite": "scripts/run_checks.py certification",
+        "command": command,
+        "log": f"logs/{log_path.name}",
+    }
+    try:
+        completed = run_command(command)
+    except OSError as error:
+        record.update({"status": "BLOCKED", "returncode": None, "reason": str(error)})
+        log_path.write_text(str(error) + "\n", encoding="utf-8")
+        return record
+    output = completed.stdout
+    log_path.write_text(output, encoding="utf-8")
+    record["returncode"] = completed.returncode
+    if completed.returncode == 0:
+        record["status"] = "PASS"
+        record["detail"] = (
+            "certification profile passed; deterministic archive reproducibility gate executed last"
+        )
+    elif "MISSING TOOL" in output:
+        record["status"] = "BLOCKED"
+        record["reason"] = "certification profile could not run: missing required tool"
+    else:
+        record["status"] = "FAIL"
+        record["reason"] = f"certification profile failed with exit code {completed.returncode}"
+    return record
 
 
 # ---------------------------------------------------------------------------
@@ -1056,6 +1188,7 @@ def build_report(
     child_runs: list[dict[str, Any]],
     gates: list[dict[str, Any]],
     m1_regression: dict[str, Any],
+    certification: dict[str, Any],
     expected_commit: str | None,
     generated_at: str | None = None,
 ) -> dict[str, Any]:
@@ -1068,6 +1201,7 @@ def build_report(
         and all_gates_pass
         and gate_names == EXPECTED_GATES
         and m1_regression.get("status") == "PASS"
+        and certification.get("status") == "PASS"
         and expected_commit is not None
         and source_identity.get("commit") == expected_commit
     )
@@ -1083,6 +1217,7 @@ def build_report(
         "child_runs": child_runs,
         "gates": gates,
         "m1_regression": m1_regression,
+        "certification_prerequisite": certification,
         "overall": "COMPLETE" if complete else "INCOMPLETE",
         "milestone_status": "COMPLETE" if complete else "INCOMPLETE",
         "m2_5_status": "UNBLOCKED" if complete else "BLOCKED",
@@ -1131,6 +1266,12 @@ def render_markdown(report: dict[str, Any]) -> str:
             "",
             f"- M1 regression (10 exact gates): **{regression.get('matrix_status')}**",
             f"- M2 scope guard: **{regression.get('scope_status')}**",
+            (
+                "- Certification profile (archive/reproducibility gate last): "
+                f"**{report['certification_prerequisite'].get('status')}**"
+                if "certification_prerequisite" in report
+                else ""
+            ),
             "",
             "| Scope check | Status |",
             "|---|---:|",
@@ -1211,6 +1352,13 @@ def render_blockers(report: dict[str, Any]) -> str:
                 check["status"],
                 str(check.get("reason", "")),
             )
+    certification = report.get("certification_prerequisite")
+    if certification is not None and certification.get("status") != "PASS":
+        add(
+            "certification profile",
+            str(certification.get("status")),
+            str(certification.get("reason", "certification prerequisite not PASS")),
+        )
     if not has_blocker:
         lines.append("| none | **PASS** | every required gate passed on the exact clean head |")
     lines.extend(["", f"M2 complete: **{report['milestone_status']}**", ""])
@@ -1260,6 +1408,7 @@ def not_executed_report(
             "scope_status": "NOT_RUN",
             "scope_checks": [],
         },
+        certification={"status": "NOT_RUN", "prerequisite": "scripts/run_checks.py certification"},
         expected_commit=expected_commit,
     )
 
@@ -1343,6 +1492,10 @@ def main() -> int:
         print(f"BLOCKED: {error}")
         return 2
 
+    registry_error = validate_scope_check_registry()
+    if registry_error is not None:
+        return blocked_exit(registry_error)
+
     child_runs: list[dict[str, Any]] = []
     m1_run: dict[str, Any] | None = None
     for index, child in enumerate((*CHILD_RUNNERS, M1_CHILD), start=1):
@@ -1361,6 +1514,7 @@ def main() -> int:
 
     scope_checks = execute_scope_guard(logs)
     scope_status = aggregate(check["status"] for check in scope_checks)
+    certification = execute_certification_profile(logs)
     m1_matrix_status = compute_m1_matrix_status(m1_run)
     m1_regression = {
         "status": aggregate((m1_matrix_status, scope_status)),
@@ -1410,6 +1564,7 @@ def main() -> int:
         child_runs=child_runs,
         gates=gates,
         m1_regression=m1_regression,
+        certification=certification,
         expected_commit=args.expect_commit,
     )
     write_reports(output, report)
@@ -1426,6 +1581,7 @@ def main() -> int:
                 "gates": {gate["name"]: gate["status"] for gate in gates},
                 "m1_matrix": m1_matrix_status,
                 "m2_scope_guard": scope_status,
+                "certification": certification.get("status"),
             },
             sort_keys=True,
         )
