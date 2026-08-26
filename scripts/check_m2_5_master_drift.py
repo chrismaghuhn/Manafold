@@ -77,9 +77,7 @@ class DriftCheckError(Exception):
 
 def path_is_allowed(path: str) -> bool:
     normalized = path.replace("\\", "/")
-    return normalized in ALLOWED_EXACT_PATHS or normalized.startswith(
-        ALLOWED_DIRECTORY_PREFIXES
-    )
+    return normalized in ALLOWED_EXACT_PATHS or normalized.startswith(ALLOWED_DIRECTORY_PREFIXES)
 
 
 def read_json(path: Path) -> object:
@@ -443,9 +441,7 @@ def negative_self_test(provenance_dir: Path) -> int:
     expect_failure(
         "ALLOWLIST_NEAR_MISS_B2_SUFFIX_REJECTED",
         "the exact B2 checker path must not receive an implicit suffix match",
-        lambda: near_miss_rejected(
-            "scripts/check_m2_5_b2_classifications.py.backup"
-        ),
+        lambda: near_miss_rejected("scripts/check_m2_5_b2_classifications.py.backup"),
         "ALLOWLIST_NEAR_MISS_PATH_REJECTED",
     )
     expect_failure(
@@ -522,9 +518,7 @@ def negative_self_test(provenance_dir: Path) -> int:
             thunk()  # type: ignore[operator]
         except DriftCheckError as exc:
             if expected_code is not None and exc.code != expected_code:
-                failures.append(
-                    f"{case_id}: expected code {expected_code}, found {exc.code}"
-                )
+                failures.append(f"{case_id}: expected code {expected_code}, found {exc.code}")
             else:
                 code_suffix = f" [{exc.code}]" if exc.code is not None else ""
                 print(f"NEGATIVE {case_id}: rejected ({exc.status}){code_suffix} - {reason}")
