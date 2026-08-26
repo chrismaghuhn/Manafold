@@ -17,6 +17,10 @@ from run_m2_final_closure import (
     aggregate,
     build_report,
     compute_m1_matrix_status,
+    finalize_source_identity,
+    merge_child_gate_statuses,
+    prepare_output,
+    read_child_report,
     validate_m1_report,
     validate_slice_report,
 )
@@ -117,6 +121,12 @@ class AggregationTests(unittest.TestCase):
         self.assertEqual(aggregate(["PASS", "NOT_RUN"]), "NOT_RUN")
         self.assertEqual(aggregate(["BLOCKED", "NOT_RUN"]), "BLOCKED")
         self.assertEqual(aggregate(["FAIL", "BLOCKED", "NOT_RUN"]), "FAIL")
+
+    def test_unknown_status_vocabulary_is_fail_not_pass(self) -> None:
+        for unknown in ("GREEN", "pass", "", "COMPLETE"):
+            with self.subTest(unknown=unknown):
+                self.assertEqual(aggregate([unknown]), "FAIL")
+                self.assertEqual(aggregate(["PASS", unknown]), "FAIL")
 
 
 class BuildReportTests(unittest.TestCase):
@@ -256,9 +266,9 @@ class ValidateSliceReportTests(unittest.TestCase):
         self.assertTrue(any("exited 3" in problem for problem in pass_problems))
         failing = slice_report(child, status="FAIL")
         _, fail_problems = validate_slice_report(failing, child, COMMIT, returncode=0, strict=True)
-        self.assertTrue(any("non-PASS gates" in problem for problem in fail_problems))
+        self.assertTrue(any("did not validate cleanly" in problem for problem in fail_problems))
         _, dev_problems = validate_slice_report(failing, child, COMMIT, returncode=0, strict=False)
-        self.assertFalse(any("non-PASS gates" in problem for problem in dev_problems))
+        self.assertFalse(any("validate cleanly" in problem for problem in dev_problems))
 
     def test_missing_gates_list_is_flagged(self) -> None:
         child = CHILD_RUNNERS[6]
@@ -365,6 +375,208 @@ class ChildCommandTests(unittest.TestCase):
         m1_command = final.child_command(M1_CHILD, output, COMMIT, development=False)
         self.assertNotIn("--expect-commit", m1_command)
         self.assertNotIn("--development", m1_command)
+
+
+class MergeChildGateStatusesTests(unittest.TestCase):
+    def test_healthy_records_merge_parsed_statuses(self) -> None:
+        runs = [
+            {
+                "status": "PASS",
+                "owned_gates": list(child.gates),
+                "gates": {name: "PASS" for name in child.gates},
+            }
+            for child in CHILD_RUNNERS
+        ]
+        merged = merge_child_gate_statuses(runs)
+        self.assertEqual(set(merged), set(EXPECTED_GATES) - {GATE_M1_REGRESSION})
+        self.assertEqual(set(merged.values()), {"PASS"})
+
+    def test_failed_record_poisons_all_gates_it_owns_even_when_parsed_pass(self) -> None:
+        child = CHILD_RUNNERS[2]
+        anomalous = {
+            "status": "FAIL",
+            "owned_gates": list(child.gates),
+            "gates": {name: "PASS" for name in child.gates},
+            "problems": ["child gate registration mismatch"],
+        }
+        healthy = {
+            "status": "PASS",
+            "owned_gates": list(CHILD_RUNNERS[0].gates),
+            "gates": {name: "PASS" for name in CHILD_RUNNERS[0].gates},
+        }
+        merged = merge_child_gate_statuses([healthy, anomalous])
+        self.assertEqual(merged[child.gates[0]], "FAIL")
+        self.assertEqual(merged[child.gates[-1]], "FAIL")
+        self.assertEqual(merged[CHILD_RUNNERS[0].gates[0]], "PASS")
+
+    def test_missing_parsed_gate_defaults_to_not_run(self) -> None:
+        run = {"status": "PASS", "owned_gates": ["X"], "gates": {}}
+        self.assertEqual(merge_child_gate_statuses([run])["X"], "NOT_RUN")
+
+
+class FinalizeSourceIdentityTests(unittest.TestCase):
+    def clean_snapshot(self) -> dict[str, object]:
+        return {
+            "status": "PASS",
+            "commit": COMMIT,
+            "tree": "t" * 40,
+            "clean": True,
+            "fingerprint": "f" * 64,
+        }
+
+    def test_clean_and_identical_snapshots_pass(self) -> None:
+        result = finalize_source_identity(self.clean_snapshot(), self.clean_snapshot())
+        self.assertEqual(result["status"], "PASS")
+
+    def test_dirty_before_blocks(self) -> None:
+        before = {**self.clean_snapshot(), "status": "BLOCKED", "clean": False}
+        result = finalize_source_identity(before, before)
+        self.assertEqual(result["status"], "BLOCKED")
+
+    def test_failed_after_fails(self) -> None:
+        after = {**self.clean_snapshot(), "status": "FAIL"}
+        result = finalize_source_identity(self.clean_snapshot(), after)
+        self.assertEqual(result["status"], "FAIL")
+
+    def test_fingerprint_drift_fails(self) -> None:
+        after = {**self.clean_snapshot(), "fingerprint": "0" * 64}
+        result = finalize_source_identity(self.clean_snapshot(), after)
+        self.assertEqual(result["status"], "FAIL")
+
+
+class PrepareOutputTests(unittest.TestCase):
+    def test_refuses_to_replace_unowned_directory(self) -> None:
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            (base / "payload.txt").write_text("precious\n", encoding="utf-8")
+            with self.assertRaises(RuntimeError):
+                prepare_output(base)
+            self.assertTrue((base / "payload.txt").is_file())
+
+    def test_owned_directory_is_recreated_with_marker(self) -> None:
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp) / "owned"
+            prepare_output(out)
+            marker = out / final.OUTPUT_MARKER
+            self.assertTrue(marker.is_file())
+            stale = out / "stale.json"
+            stale.write_text("{}", encoding="utf-8")
+            prepare_output(out)
+            self.assertFalse(stale.exists())
+            self.assertTrue(marker.is_file())
+
+
+class ReadChildReportTests(unittest.TestCase):
+    def test_unreadable_report_blocks(self) -> None:
+        record: dict[str, object] = {}
+        result = read_child_report(record, Path("Z:/definitely/missing/report.json"))
+        self.assertIsNone(result)
+        self.assertEqual(record["status"], "BLOCKED")
+
+    def test_non_object_report_blocks(self) -> None:
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "report.json"
+            path.write_text("[1, 2, 3]\n", encoding="utf-8")
+            record: dict[str, object] = {}
+            result = read_child_report(record, path)
+            self.assertIsNone(result)
+            self.assertEqual(record["status"], "BLOCKED")
+
+    def test_invalid_json_report_blocks(self) -> None:
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "report.json"
+            path.write_text("{truncated", encoding="utf-8")
+            record: dict[str, object] = {}
+            result = read_child_report(record, path)
+            self.assertIsNone(result)
+            self.assertEqual(record["status"], "BLOCKED")
+
+
+class ScopeInventoryNegativeTests(unittest.TestCase):
+    def member_manifest_tree(self, base: Path) -> None:
+        (base / "Cargo.toml").write_text(
+            '[workspace]\nmembers = ["crates/a"]\n[workspace.dependencies]\nserde = "=1"\n',
+            encoding="utf-8",
+        )
+        crate = base / "crates" / "a"
+        crate.mkdir(parents=True)
+
+    def test_direct_registry_dependency_in_member_manifest_fails(self) -> None:
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            self.member_manifest_tree(base)
+            (base / "crates" / "a" / "Cargo.toml").write_text(
+                '[package]\nname = "a"\n[dependencies]\nserde.workspace = true\ntokio = "1"\n',
+                encoding="utf-8",
+            )
+            with self.assertRaises(final.ScopeCheckFailure):
+                final.check_member_dependency_sources_pinned(base)
+
+    def test_path_and_workspace_dependencies_in_members_pass(self) -> None:
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            self.member_manifest_tree(base)
+            (base / "crates" / "a" / "Cargo.toml").write_text(
+                '[package]\nname = "a"\n[dependencies]\nserde.workspace = true\n'
+                'b = { path = "../b" }\n',
+                encoding="utf-8",
+            )
+            detail = final.check_member_dependency_sources_pinned(base)
+            self.assertIn("workspace", detail)
+
+    def test_python_dependency_group_fails(self) -> None:
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            package = base / "python"
+            package.mkdir()
+            (package / "pyproject.toml").write_text(
+                '[project]\nname = "x"\ndependencies = []\n'
+                '[dependency-groups]\ntorch = ["torch"]\n',
+                encoding="utf-8",
+            )
+            with self.assertRaises(final.ScopeCheckFailure):
+                final.check_python_runtime_dependencies_empty(base)
+
+    def test_nested_schema_addition_is_detected_by_recursive_scan(self) -> None:
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            nested = base / "schemas" / "future"
+            nested.mkdir(parents=True)
+            (nested / "trajectory.v1.schema.json").write_text("{}", encoding="utf-8")
+            with self.assertRaises(final.ScopeCheckFailure):
+                final.check_schema_inventory_pinned(base)
+
+    def test_deck_subdirectory_is_rejected(self) -> None:
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            decks = base / "cards" / "decks"
+            decks.mkdir(parents=True)
+            (decks / "example-deck-a.json").write_text("{}", encoding="utf-8")
+            (decks / "example-deck-b.json").write_text("{}", encoding="utf-8")
+            (decks / "commander-lock").mkdir()
+            definitions = base / "cards" / "definitions"
+            definitions.mkdir()
+            (base / "cards" / "generated").mkdir()
+            with self.assertRaises(final.ScopeCheckFailure):
+                final.check_card_and_deck_artifacts_unclaimed(base)
 
 
 if __name__ == "__main__":

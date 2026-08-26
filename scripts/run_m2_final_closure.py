@@ -40,6 +40,16 @@ can never report completion.
 
 Reports and logs are written only below ``dist/m2-final-verification/``
 (never into the reproducible source archive).
+
+Scope-guard notes: the vocabulary pattern scans deliberately cover only
+``crates/``, ``tools/``, and ``python/src`` production sources.  The
+verification tooling itself (this script, sibling gate runners, and their
+tests) necessarily contains the literal forbidden vocabulary as detection
+patterns, so scanning it would be self-defeating; maintainer-tooling changes
+remain guarded by review and the pinned structural inventories.  The
+deterministic-archive/reproducibility gate is an external repository-level
+gate (``scripts/verify_archive_reproducibility.py``, last in the closure
+sequence) and is intentionally not re-owned here.
 """
 
 from __future__ import annotations
@@ -257,9 +267,13 @@ def capture_source_snapshot() -> dict[str, Any]:
 
 
 def aggregate(statuses: Iterable[str]) -> str:
-    """FAIL-dominant aggregation: any failure blocks completion."""
+    """FAIL-dominant aggregation: any failure blocks completion.
+
+    Unrecognized status vocabulary is treated as FAIL rather than silently
+    accepted: only explicit PASS across every input can aggregate to PASS.
+    """
     values = set(statuses)
-    if "FAIL" in values:
+    if "FAIL" in values or values - VALID_STATUSES:
         return "FAIL"
     if "BLOCKED" in values:
         return "BLOCKED"
@@ -387,6 +401,7 @@ def execute_child(
     log_path = logs / f"{index:03d}-{child.slug}.log"
     record: dict[str, Any] = {
         "runner": child.script,
+        "owned_gates": list(child.gates),
         "command": command,
         "output_dir": str(child_output),
         "report_file": str(child_output / child.report_file),
@@ -399,8 +414,8 @@ def execute_child(
         log_path.write_text(str(error) + "\n", encoding="utf-8")
         return record
     log_path.write_text(completed.stdout, encoding="utf-8")
-    report = read_child_report(record, child_output / child.report_file)
     record["returncode"] = completed.returncode
+    report = read_child_report(record, child_output / child.report_file)
     if report is None:
         return record
     record["child_mode"] = report.get("mode")
@@ -425,6 +440,7 @@ def execute_child(
     record["gates"] = statuses
     record["problems"] = problems
     record["status"] = "FAIL" if problems else aggregate(statuses.values())
+    record["log"] = f"logs/{log_path.name}"
     return record
 
 
@@ -496,7 +512,8 @@ def validate_slice_report(
         )
     if strict and not reported_all_pass and returncode == 0:
         problems.append(
-            "child exited 0 while reporting non-PASS gates; ambiguous evidence fails closed"
+            "child exited 0 while its evidence did not validate cleanly "
+            "(non-PASS gate or validation problem); ambiguous evidence fails closed"
         )
     return statuses, problems
 
@@ -784,10 +801,62 @@ def check_workspace_inventory_pinned(root: Path) -> str:
 def check_python_runtime_dependencies_empty(root: Path) -> str:
     with (root / "python" / "pyproject.toml").open("rb") as handle:
         pyproject = tomllib.load(handle)
-    dependencies = pyproject.get("project", {}).get("dependencies", [])
-    if dependencies:
-        raise ScopeCheckFailure(f"python package gained runtime dependencies: {dependencies}")
-    return "python package declares no runtime dependencies (rules-free contracts only)"
+    project = pyproject.get("project", {})
+    dependencies = project.get("dependencies", [])
+    forbidden_sections = [
+        section
+        for section in ("dependency-groups", "optional-dependencies", "dev-dependencies")
+        if pyproject.get(section) or project.get(section)
+    ]
+    if dependencies or forbidden_sections:
+        raise ScopeCheckFailure(
+            f"python package gained dependency surfaces "
+            f"(dependencies={dependencies}, sections={forbidden_sections})"
+        )
+    return (
+        "python package declares no runtime, optional, or grouped dependencies "
+        "(rules-free contracts only)"
+    )
+
+
+def parse_workspace_members(root: Path) -> list[str]:
+    manifest = load_root_manifest(root)
+    members_raw = manifest.get("workspace", {}).get("members")
+    if not isinstance(members_raw, list) or not members_raw:
+        raise ScopeCheckFailure("root Cargo.toml has no [workspace].members list")
+    return sorted(str(member) for member in members_raw)
+
+
+def check_member_dependency_sources_pinned(root: Path) -> str:
+    """Every workspace-member dependency must come from the pinned
+    ``[workspace.dependencies]`` table or an in-repository path; direct
+    registry requirements in member manifests are scope expansion."""
+    violations: list[str] = []
+    for member in parse_workspace_members(root):
+        manifest_path = root / member / "Cargo.toml"
+        if not manifest_path.is_file():
+            violations.append(f"{member}: workspace member has no Cargo.toml")
+            continue
+        with manifest_path.open("rb") as handle:
+            manifest = tomllib.load(handle)
+        for table in ("dependencies", "dev-dependencies", "build-dependencies"):
+            entries = manifest.get(table, {})
+            if not isinstance(entries, dict):
+                violations.append(f"{member}: [{table}] is not a table")
+                continue
+            for dep_name, spec in entries.items():
+                if isinstance(spec, dict) and ("workspace" in spec or "path" in spec):
+                    continue
+                violations.append(
+                    f"{member}: [{table}] {dep_name!r} is a direct registry "
+                    f"dependency ({spec!r}); only workspace inheritance or "
+                    "in-repo path dependencies are allowed"
+                )
+    if violations:
+        raise ScopeCheckFailure(
+            "workspace members declare unpinned dependency sources:\n" + "\n".join(violations[:50])
+        )
+    return "all workspace-member dependencies inherit the workspace table or use repo paths"
 
 
 def check_open_decisions_rows(root: Path) -> str:
@@ -836,7 +905,7 @@ def check_adapter_remains_unpublished_test_tool(root: Path) -> str:
 
 
 def check_schema_inventory_pinned(root: Path) -> str:
-    schemas = sorted(path.name for path in (root / "schemas").glob("*.schema.json"))
+    schemas = sorted(path.name for path in (root / "schemas").rglob("*.schema.json"))
     unexpected = sorted(set(schemas) - SCHEMA_INVENTORY_ALLOWED)
     missing = sorted(SCHEMA_INVENTORY_ALLOWED - set(schemas))
     if unexpected or missing:
@@ -856,11 +925,18 @@ def check_schema_inventory_pinned(root: Path) -> str:
 
 
 def check_card_and_deck_artifacts_unclaimed(root: Path) -> str:
-    decks = {path.name for path in (root / "cards" / "decks").iterdir() if path.is_file()}
+    decks_dir = root / "cards" / "decks"
+    decks = {path.name for path in decks_dir.iterdir() if path.is_file()}
     if decks != DECK_FILES_ALLOWED:
         raise ScopeCheckFailure(
             f"cards/decks inventory drifted: {sorted(decks)} != {sorted(DECK_FILES_ALLOWED)}; "
             "M2.5 exact deck lock work is out of scope"
+        )
+    deck_directories = [path.name for path in decks_dir.iterdir() if path.is_dir()]
+    if deck_directories:
+        raise ScopeCheckFailure(
+            f"cards/decks contains subdirectories (possible M2.5 deck-lock work): "
+            f"{sorted(deck_directories)}"
         )
     definition_entries = {path.name for path in (root / "cards" / "definitions").iterdir()}
     if definition_entries - {"example", ".gitkeep"}:
@@ -878,6 +954,7 @@ def check_card_and_deck_artifacts_unclaimed(root: Path) -> str:
 SCOPE_CHECKS: tuple[tuple[str, Callable[[Path], str]], ...] = (
     ("scope::workspace_inventory_pinned", check_workspace_inventory_pinned),
     ("scope::python_runtime_dependencies_empty", check_python_runtime_dependencies_empty),
+    ("scope::member_dependency_sources_pinned", check_member_dependency_sources_pinned),
     ("scope::open_decisions_rows_still_open", check_open_decisions_rows),
     (
         "scope::transport_and_trajectory_docs_unchanged",
@@ -953,6 +1030,22 @@ def compute_m1_matrix_status(m1_run: dict[str, Any] | None) -> str:
     components = list(m1_run.get("gates", {}).values())
     components.append(m1_run.get("status", "NOT_RUN"))
     return aggregate(components)
+
+
+def merge_child_gate_statuses(child_runs: Sequence[dict[str, Any]]) -> dict[str, str]:
+    """Merge parsed child gate statuses into the canonical gate map.
+
+    A non-PASS child record poisons every gate that child owns: validation
+    problems such as duplicate, missing, extra, or malformed gate entries
+    block completion even when the canonical entries themselves look PASS.
+    """
+    merged: dict[str, str] = {}
+    for record in child_runs:
+        record_status = record.get("status", "NOT_RUN")
+        parsed = record.get("gates", {})
+        for name in record.get("owned_gates", []):
+            merged[name] = aggregate((parsed.get(name, "NOT_RUN"), record_status))
+    return merged
 
 
 def build_report(
@@ -1251,7 +1344,6 @@ def main() -> int:
         return 2
 
     child_runs: list[dict[str, Any]] = []
-    gate_statuses: dict[str, str] = {}
     m1_run: dict[str, Any] | None = None
     for index, child in enumerate((*CHILD_RUNNERS, M1_CHILD), start=1):
         record = execute_child(
@@ -1263,10 +1355,9 @@ def main() -> int:
             development=args.development,
         )
         child_runs.append(record)
-        for name, status in record.get("gates", {}).items():
-            gate_statuses[name] = status
         if child is M1_CHILD:
             m1_run = record
+    gate_statuses = merge_child_gate_statuses(child_runs)
 
     scope_checks = execute_scope_guard(logs)
     scope_status = aggregate(check["status"] for check in scope_checks)
@@ -1309,6 +1400,8 @@ def main() -> int:
             if gate["status"] == "PASS":
                 gate["status"] = "FAIL"
                 gate["reason"] = "source identity changed during verification"
+        if m1_regression["status"] == "PASS":
+            m1_regression["status"] = "FAIL"
 
     report = build_report(
         mode=mode,
