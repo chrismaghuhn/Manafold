@@ -167,21 +167,22 @@ def check_no_runtime_lifecycle_channel() -> str:
     cargo_toml = (ROOT / "crates" / "mtgml-rules" / "Cargo.toml").read_text(encoding="utf-8")
     if "m2-conformance-fixtures = []" not in cargo_toml:
         raise AssertionError("rules crate lost the m2-conformance-fixtures feature gate")
+    # Issue #62 review: environment runtime sources now also live below
+    # src/synthetic/ since the structural split; scan every production .rs
+    # recursively and keep test modules out of the "no runtime caller"
+    # surface.
+    env_src = ROOT / "crates" / "mtgml-environment" / "src"
     runtime_sources = [
-        ROOT / "crates" / "mtgml-environment" / "src" / name
-        for name in [
-            "synthetic.rs",
-            "controller.rs",
-            "boundary.rs",
-            "endpoint.rs",
-            "replay.rs",
-            "checkpoint.rs",
-            "lifecycle_projection.rs",
-        ]
+        path
+        for path in sorted(env_src.rglob("*.rs"))
+        if path.name not in {"tests.rs", "replay_parity_tests.rs"}
+        and path.relative_to(env_src).parts[0] != "tests"
     ]
     for path in runtime_sources:
         if "fixture_support" in path.read_text(encoding="utf-8"):
-            raise AssertionError(f"runtime source references fixture support: {path.name}")
+            raise AssertionError(
+                f"runtime source references fixture support: {path.relative_to(env_src).as_posix()}"
+            )
     env_lib = (ROOT / "crates" / "mtgml-environment" / "src" / "lib.rs").read_text(encoding="utf-8")
     if "#[cfg(test)]" not in env_lib or "mod tests;" not in env_lib:
         raise AssertionError("environment test module lost its cfg(test) guard")

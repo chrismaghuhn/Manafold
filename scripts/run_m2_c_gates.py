@@ -428,10 +428,17 @@ def check_single_count_authority() -> str:
     if "pub const SYNTHETIC_COUNT_MIN: u32 = 0;" not in state_source:
         raise AssertionError("state authority lost the program interval definition")
     rules_dir = ROOT / "crates" / "mtgml-rules" / "src"
-    for path in rules_dir.glob("*.rs"):
-        text = path.read_text(encoding="utf-8")
-        if "const SYNTHETIC_COUNT_M" in text:
-            raise AssertionError(f"rules crate redefined the program interval: {path.name}")
+    for path in sorted(rules_dir.rglob("*.rs")):
+        relative = path.relative_to(rules_dir)
+        # Issue #62 review: production sources also live below src/synthetic/
+        # since the structural split; test modules stay outside the
+        # single-authority surface.
+        if relative.parts[0] == "tests" or path.name == "tests.rs":
+            continue
+        if "const SYNTHETIC_COUNT_M" in path.read_text(encoding="utf-8"):
+            raise AssertionError(
+                f"rules crate redefined the program interval: {relative.as_posix()}"
+            )
     rules_lib = (rules_dir / "synthetic.rs").read_text(encoding="utf-8")
     if "pub use mtgml_state::{SYNTHETIC_COUNT_MAX, SYNTHETIC_COUNT_MIN};" not in rules_lib:
         raise AssertionError("rules kernel no longer consumes the state-owned interval")
