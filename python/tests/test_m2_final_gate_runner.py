@@ -220,6 +220,29 @@ class ValidateSliceReportTests(unittest.TestCase):
         self.assertTrue(any("registration mismatch" in problem for problem in strict_problems))
         self.assertTrue(any("registration mismatch" in problem for problem in dev_problems))
 
+    def test_m2_b_status_key_spelling_is_accepted(self) -> None:
+        child = CHILD_RUNNERS[0]
+        report = {
+            "mode": "authoritative",
+            "source_commit": COMMIT,
+            "source_tree_identity": {"status": "PASS"},
+            "gates": [{"name": child.gates[0], "status": "PASS"}],
+        }
+        statuses, problems = validate_slice_report(report, child, COMMIT, returncode=0, strict=True)
+        self.assertEqual(problems, [])
+        self.assertEqual(statuses[child.gates[0]], "PASS")
+
+    def test_conflicting_gate_status_fields_fail_closed(self) -> None:
+        child = CHILD_RUNNERS[0]
+        report = {
+            "mode": "authoritative",
+            "source_commit": COMMIT,
+            "source_tree_identity": {"status": "PASS"},
+            "gates": [{"name": child.gates[0], "gate_status": "PASS", "status": "FAIL"}],
+        }
+        _, problems = validate_slice_report(report, child, COMMIT, returncode=0, strict=True)
+        self.assertTrue(any("conflicting status fields" in problem for problem in problems))
+
     def test_invalid_gate_status_is_flagged(self) -> None:
         child = CHILD_RUNNERS[4]
         report = slice_report(child, status="GREEN")

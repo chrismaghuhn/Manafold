@@ -473,11 +473,18 @@ def validate_slice_report(
         if not isinstance(gate, dict):
             continue
         name = gate.get("name")
-        status = gate.get("gate_status")
+        # Slice runners differ: M2.B labels its single gate entry "status",
+        # M2.C-H label theirs "gate_status".  Accept either spelling but
+        # fail closed when both are present and disagree.
+        recorded = {key: gate.get(key) for key in ("gate_status", "status") if key in gate}
+        values = {value for value in recorded.values() if isinstance(value, str)}
+        if len(values) > 1:
+            problems.append(f"gate {name!r} has conflicting status fields {recorded!r}")
+        status = next(iter(sorted(values))) if values else None
         if name in child.gates and isinstance(status, str):
             statuses[name] = status
         if status not in VALID_STATUSES:
-            problems.append(f"gate {name!r} has invalid status {status!r}")
+            problems.append(f"gate {name!r} has invalid status {recorded!r}")
     for name in child.gates:
         statuses.setdefault(name, "NOT_RUN")
 
