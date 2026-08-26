@@ -1,4 +1,4 @@
-﻿//! Ownership: player-safe read-only projection. PerspectiveIdentityState
+//! Ownership: player-safe read-only projection. PerspectiveIdentityState
 //! stays the live mapping authority; knowledge stays retained memory; no
 //! second mapping authority is introduced here.
 

@@ -1,4 +1,4 @@
-﻿//! Ownership: environment transaction material. The operation sequence
+//! Ownership: environment transaction material. The operation sequence
 //! inside execute_response is FROZEN (ADR-0040): before checkpoint -> kernel
 //! apply -> transition-contract validation -> rejected nonmutation branch ->
 //! candidate counters/checkpoint -> candidate ReplayStep append/export ->
