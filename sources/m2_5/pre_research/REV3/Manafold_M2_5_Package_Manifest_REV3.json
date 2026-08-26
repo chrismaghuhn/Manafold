@@ -1,0 +1,376 @@
+{
+  "entries": [
+    {
+      "bytes": 2018,
+      "path": "baseline/REV2/Authority_Snapshots/Commander_policy_and_banlist_2026-08-23.json",
+      "sha256": "430a87db17fe2d8e8737da44befe9ca7d557b806826e126e712ce856f3cdfec9"
+    },
+    {
+      "bytes": 327,
+      "path": "baseline/REV2/Authority_Snapshots/Comprehensive_Rules_manifest_2026-08-19.json",
+      "sha256": "51245278b16ae4c84da32e78a8399ec82d26a7af0177e732e44425233b495254"
+    },
+    {
+      "bytes": 2845,
+      "path": "baseline/REV2/Authority_Snapshots/Critical_P1_semantic_evidence_2026-08-23.json",
+      "sha256": "c50900c9cf4d1cf04f85d596cf376a98c00a08fe2bb738f0e38054944e7e2e06"
+    },
+    {
+      "bytes": 376,
+      "path": "baseline/REV2/Authority_Snapshots/Scryfall_bulk_manifest_2026-08-21.json",
+      "sha256": "7b0ccc8491992085b90c1789329b945c02299057e93491e94f962078448d9798"
+    },
+    {
+      "bytes": 2687,
+      "path": "baseline/REV2/generate_manafold_m25_report_REV2.py",
+      "sha256": "da74b697d0395c034d35eeda8eee888da121ca2b41da029ce7ea8dd041da0448"
+    },
+    {
+      "bytes": 386174,
+      "path": "baseline/REV2/inputs/Manafold_M2_5_Base_Classification_REISSUE.csv",
+      "sha256": "66d3f75d297596e40de4b9cfe0e19d7fa40fc0a8e8dc9316436f1174a03a0f74"
+    },
+    {
+      "bytes": 7236,
+      "path": "baseline/REV2/inputs/rev2_overrides.json",
+      "sha256": "c5fd79d2405411924a21b8fa9de3e9f06acef99e38f2c9afba80f920ba6da468"
+    },
+    {
+      "bytes": 520235,
+      "path": "baseline/REV2/Manafold_M2_5_Finalist_Card_Classification_REV2_NON_NORMATIVE.csv",
+      "sha256": "c00ae753064dd3f717be9be46fdf98223e363e27dc1938da592593e2b293a941"
+    },
+    {
+      "bytes": 4146,
+      "path": "baseline/REV2/Manafold_M2_5_Package_Manifest_REV2.json",
+      "sha256": "7afe10df981779dac8bcef0d661138a8793270f25cf8473dc63b6c7dc107e5bf"
+    },
+    {
+      "bytes": 10773,
+      "path": "baseline/REV2/Manafold_M2_5_Pre_Research_V1_Deck_Pair_Selection_REV2.md",
+      "sha256": "3ff3317621d819dce01258f2fced52de043387e77e6ca2080e2c0a221e5e5b51"
+    },
+    {
+      "bytes": 934,
+      "path": "baseline/REV2/Manafold_M2_5_README_REV2.txt",
+      "sha256": "6224e793fdb4c3ee51e308577196bab7d7f1ece0db394c482b127c04d0c68901"
+    },
+    {
+      "bytes": 4755,
+      "path": "baseline/REV2/Manafold_M2_5_Research_Metrics_REV2_NON_NORMATIVE.json",
+      "sha256": "1d4ab8eaf5e53f4322da134dba90e0c7cdc765b1a2f83f782355ad99c13343ac"
+    },
+    {
+      "bytes": 2020,
+      "path": "baseline/REV2/Manafold_M2_5_Review_Closure_REV2.json",
+      "sha256": "7c58f0605735f07a7e5f0ca920fbfb745b2088aaf1700db6870e141af10a625d"
+    },
+    {
+      "bytes": 6822,
+      "path": "baseline/REV2/Manafold_M2_5_Source_Register_REV2_NON_NORMATIVE.json",
+      "sha256": "486a371de17fe43c840af0f10e14d1a80a0ee99e74213c848e59fcf659f439f8"
+    },
+    {
+      "bytes": 1664,
+      "path": "baseline/REV2/Manafold_M2_5_Source_Snapshots/Buckle_Up.txt",
+      "sha256": "121c39e230cc6ec40bf1b0468052c31c30d369136694745248a067aec489d569"
+    },
+    {
+      "bytes": 1563,
+      "path": "baseline/REV2/Manafold_M2_5_Source_Snapshots/Elven_Empire.txt",
+      "sha256": "2e42fe0b4429838d6b9bd8f597af73984195ca43fcdca631c0e593f766f0603f"
+    },
+    {
+      "bytes": 1531,
+      "path": "baseline/REV2/Manafold_M2_5_Source_Snapshots/Grave_Danger.txt",
+      "sha256": "9d25849aa38b0cc4a944449131e30ea20b7765053a8dbdc4f25e8c56160d6f7e"
+    },
+    {
+      "bytes": 1501,
+      "path": "baseline/REV2/Manafold_M2_5_Source_Snapshots/Phantom_Premonition.txt",
+      "sha256": "adaf77c934df6d90f1fca83f111620ba7977d2901bfcf19bea7a7297cbe3d952"
+    },
+    {
+      "bytes": 1574,
+      "path": "baseline/REV2/Manafold_M2_5_Source_Snapshots/Token_Triumph.txt",
+      "sha256": "70262cf149d80d36bd3e7651b637ffd5fc7c4380cbef6c65ffbc44b0a722a3a0"
+    },
+    {
+      "bytes": 1696,
+      "path": "baseline/REV2/Manafold_M2_5_Source_Snapshots/Upgrades_Unleashed.txt",
+      "sha256": "4d7a34d2daf1acd00ed39ffcefb6aaa81e2f9a626bd9b35eef39af6fef6881ea"
+    },
+    {
+      "bytes": 1476,
+      "path": "baseline/REV2/Manafold_M2_5_Validation_REV2.json",
+      "sha256": "986f71a47e0b8ed6a4a66365e43355fa9458e27e8eaefc4ba7768796d09976d3"
+    },
+    {
+      "bytes": 455453,
+      "path": "baseline/REV2/regenerated/Manafold_M2_5_Finalist_Card_Classification_REV2_REGENERATED.csv",
+      "sha256": "73a00587a601a19e1710fda32e7876cc87e68a31e9dc5c0a2d972d0f53ca781d"
+    },
+    {
+      "bytes": 259,
+      "path": "baseline/REV2/regenerated/regeneration_summary.json",
+      "sha256": "bb61ecbefade0b1bf722033603ccadd31ea23dbd6004c0c7f7e89f8d198cdceb"
+    },
+    {
+      "bytes": 548,
+      "path": "completion_status_REV3.json",
+      "sha256": "b5f7655ed03a91fe226a746234b1c71da4ecc61b980337557945eca791dc413b"
+    },
+    {
+      "bytes": 59171,
+      "path": "derived/Card_Requirement_Map_REV3.csv",
+      "sha256": "07af07fa0a45785cd497db616343569786212f58f6aa3e61e5f143fc1e23bfe7"
+    },
+    {
+      "bytes": 892,
+      "path": "derived/generation_summary_REV3.json",
+      "sha256": "6829191f7ff290435c6b11d9f15d1060ce973247332f4e216def80a5b3cb55eb"
+    },
+    {
+      "bytes": 747,
+      "path": "derived/Interaction_Model_Coverage_REV3.json",
+      "sha256": "daec273576a0985c5a16b0e05bea616d6c8de51fd8ac77e3e8a49f17a6dd0eff"
+    },
+    {
+      "bytes": 5385062,
+      "path": "derived/Pair_Interaction_Census_REV3.csv",
+      "sha256": "82f9312113bb1007ad6562d454c515f85dbc1e0d7a471f7b1c6793725aea45d4"
+    },
+    {
+      "bytes": 9108,
+      "path": "derived/Pair_Requirement_Aggregates_REV3.json",
+      "sha256": "9fec921f3a29548f9638c3708fffa37fb4900991fa88ec005c7232d3830e7f74"
+    },
+    {
+      "bytes": 5338,
+      "path": "derived/Ranking_Factors_REV3.json",
+      "sha256": "e48c186da786f6e7ffac3e7404f4e55eaad0b9d3ddb529e85dfd868b655ff1b6"
+    },
+    {
+      "bytes": 819,
+      "path": "derived/Ranking_Sensitivity_REV3.json",
+      "sha256": "8906ee5509923db7758c424a372a0b1b94b0173179d7cd6b3a08583cf5982751"
+    },
+    {
+      "bytes": 5397,
+      "path": "derived/Ranking_Uncertainty_Scenarios_REV3.json",
+      "sha256": "176152915e4c3d00dce6d48771e446d0accc3ea7a50712362bfc4b64d8ddcb79"
+    },
+    {
+      "bytes": 1813,
+      "path": "expected_artifacts_REV3.json",
+      "sha256": "22af842056f678f51ff0d86260516e5989372a83965536b04362119a693f209d"
+    },
+    {
+      "bytes": 55645,
+      "path": "generate_manafold_m25_report_REV3.py",
+      "sha256": "8aa8f93a79643b2e523e6dbb222fd7860f07d4742ecabae139b0357ef7ca4948"
+    },
+    {
+      "bytes": 415955,
+      "path": "inputs/card_semantic_classification_REV3.json",
+      "sha256": "7bc2c24b383b9c495a1377b0c2f3cc58faf08610708a273f5f384c7173a9b840"
+    },
+    {
+      "bytes": 98,
+      "path": "inputs/deck_context_requirement_overlays_REV3.csv",
+      "sha256": "ecf2e5ff59061acf47d1a64a51f61ea0a8290b2f323932242341feb393ffd0c4"
+    },
+    {
+      "bytes": 62971,
+      "path": "inputs/deck_row_classification_refs_REV3.csv",
+      "sha256": "5194dfe7cc1e592d62f2b8c21a087dc5ef4969fec2b0025bb83dc23a17817dba"
+    },
+    {
+      "bytes": 934670,
+      "path": "inputs/deck_row_source_resolution_REV3.csv",
+      "sha256": "611a5d1de9ee8560d52ef434666d02d6d0906d321e5c41974b4588d163e508da"
+    },
+    {
+      "bytes": 482,
+      "path": "inputs/interaction_model_v1.json",
+      "sha256": "f7a069df5040e9337719aadf0c1c4bde09a4b5dad0bb6489eada49d369a9bc8f"
+    },
+    {
+      "bytes": 1325,
+      "path": "inputs/oracle_candidate_policy_REV3.json",
+      "sha256": "0e6bffcac8a61cc30d157575d354b4632cca54c50ba0a2a914f5b87fcf27517e"
+    },
+    {
+      "bytes": 266337,
+      "path": "inputs/oracle_semantic_evidence_REV3.json",
+      "sha256": "d16f3eff2ab1164c2a8d19b6a3b05d4bd1b3e7de835a3db65f8e0c0d95e5a4fd"
+    },
+    {
+      "bytes": 3937,
+      "path": "inputs/ranking_formula_REV3.json",
+      "sha256": "2ce0522bf17fe8a6a067ecdae4f249fbe27c48b0c5234c80c6f8c3942f55740e"
+    },
+    {
+      "bytes": 110629,
+      "path": "inputs/requirement_family_catalog_REV3.json",
+      "sha256": "08d96aa855323b9e8677b7cc5d0aa8cf80b9f3a2a2e056393ade79592f133117"
+    },
+    {
+      "bytes": 2873,
+      "path": "inputs/review_corrections_REV3.json",
+      "sha256": "af1ef9940d769227a2bad3d15b42ef7802bb608fd607a099996bbeb0c608fcef"
+    },
+    {
+      "bytes": 3676,
+      "path": "Manafold_M2_5_Pre_Research_Report_REV3.md",
+      "sha256": "47765ee11a56333df7f51554ee04079e871a0faabc1cb7bd60c5a5e2d59b09c7"
+    },
+    {
+      "bytes": 720,
+      "path": "README_Manafold_M2_5_Pre_Research_REV3.txt",
+      "sha256": "2881e39edd8ef8978e428aa0841e8f90b2ae85a110ce2a5a466f95463d3e2a23"
+    },
+    {
+      "bytes": 1107,
+      "path": "research_run_register_REV3.json",
+      "sha256": "c420e826f36f81f5c4a77059a4aaf7fb28790b699bd8921f97c64dced405c7da"
+    },
+    {
+      "bytes": 7877,
+      "path": "source/acquisition_manifest_REV3.json",
+      "sha256": "6eb1a135d07a01f4593d5d05ed75b6c89171fa25003359cbf425b82a5d1979cf"
+    },
+    {
+      "bytes": 220085,
+      "path": "source/authorities/banned_restricted.html",
+      "sha256": "f9b69ee1e323674863c49ed9de443cce92375a7ddd5058c1dfe5e12477655284"
+    },
+    {
+      "bytes": 359768,
+      "path": "source/authorities/commander_1v1.html",
+      "sha256": "39f887277000eb5adf45555bf1ef010dfa56f367bc317eae508021a5b66dd236"
+    },
+    {
+      "bytes": 421461,
+      "path": "source/authorities/commander_general.html",
+      "sha256": "58b3d5c39a63d7f4e777f8776c7af67fffc6e763eb3705fc7a51888a0c9fa0b9"
+    },
+    {
+      "bytes": 736906,
+      "path": "source/authorities/commander_legends_release_notes.html",
+      "sha256": "155a4d067693b31896cd07f7d13d2f435ba37f113584d6f8080d40553c067938"
+    },
+    {
+      "bytes": 977822,
+      "path": "source/authorities/comprehensive_rules.txt",
+      "sha256": "4381ad1b39ab2c05f7d03633a20f711ed37277074d3266dcba5f38cbb527423f"
+    },
+    {
+      "bytes": 692479,
+      "path": "source/authorities/kaldheim_release_notes.html",
+      "sha256": "4afc8372f6638a9b2d37ffc1a2e99cd23b10cbe98c366f2b55069573dfb2d529"
+    },
+    {
+      "bytes": 3984,
+      "path": "source/official_authority_register_REV3.json",
+      "sha256": "4379c24ae89b72e7f250fcfe7e742a090029bc10c52c16be02de4e62bf1b5208"
+    },
+    {
+      "bytes": 44104989,
+      "path": "source/raw/default_cards_selected_REV3.jsonl",
+      "sha256": "db2413c1607b50c38e228e9d6796e1a3729bbded3f5a0516b748a73afa41dac7"
+    },
+    {
+      "bytes": 2064069,
+      "path": "source/raw/oracle_cards_selected_REV3.jsonl",
+      "sha256": "0392cf3d9c4f8c27fd1a12722889594dfb79e0f9f1b92764db8d577e98e08b2b"
+    },
+    {
+      "bytes": 2437038,
+      "path": "source/raw/source_record_index_REV3.csv",
+      "sha256": "328d2a76e16fff38fc421810f6e3322aa1c03be700c22ba57c6e46e2e21e2dc9"
+    },
+    {
+      "bytes": 3472,
+      "path": "source/scryfall_bulk_metadata_response.json",
+      "sha256": "e6c79f5e71f0fab3b65da13893312c9afe2025718fc2d4446ff16b6d29171780"
+    },
+    {
+      "bytes": 9253,
+      "path": "tools/acquire_manafold_m25_sources_REV3.py",
+      "sha256": "d936f2def541773f561af3247c63290fe95775c53132dba9613bbb51b032882a"
+    },
+    {
+      "bytes": 11708,
+      "path": "tools/build_final_manafold_m25_package_REV3.py",
+      "sha256": "2b28bc4916d443d9225a930cceb0a787bec2c5e194da2ef49973f41a6d2022e3"
+    },
+    {
+      "bytes": 1946,
+      "path": "tools/compare_manafold_m25_runs_REV3.py",
+      "sha256": "951c3e43da22fb3f1f267b9a2bd853af151e85a9dfe5bfa7c430a25829b45def"
+    },
+    {
+      "bytes": 12340,
+      "path": "tools/finalize_manafold_m25_package_REV3.py",
+      "sha256": "b82574ab9f44d2511046e0c20234fd29fa702a2924807a31d11b71dc6456c6a4"
+    },
+    {
+      "bytes": 55645,
+      "path": "tools/generate_manafold_m25_report_REV3.py",
+      "sha256": "8aa8f93a79643b2e523e6dbb222fd7860f07d4742ecabae139b0357ef7ca4948"
+    },
+    {
+      "bytes": 5030,
+      "path": "tools/package_manafold_m25_rev3.py",
+      "sha256": "efba74b8f8c8159c2476089b4e7e7edd991197463b6f5ef057c1b2c3c52c9b08"
+    },
+    {
+      "bytes": 15492,
+      "path": "tools/run_manafold_m25_negative_tests_REV3.py",
+      "sha256": "0e7b0d3366312125f7381cb335403bd6264ad4fb34d7ea59c2013f9e23daa0d7"
+    },
+    {
+      "bytes": 38787,
+      "path": "tools/validate_manafold_m25_package_REV3.py",
+      "sha256": "a06ed48920262b91beb5aaa3a9c8e0f4a277fe95043f25c0b02888cb7a791166"
+    },
+    {
+      "bytes": 6871,
+      "path": "tools/validate_manafold_m25_ranking_REV3.py",
+      "sha256": "4ba0f4d1fe8fda4368772e28ab2d0d3338380d07013f39d1a151edc3f803868e"
+    },
+    {
+      "bytes": 546,
+      "path": "validation/determinism_comparison_REV3.json",
+      "sha256": "ad3d8bf5c04bc51611bdbaed32171e49ba00041cedc5c0bbbe6042239be3b3f6"
+    },
+    {
+      "bytes": 5154,
+      "path": "validation/negative_test_matrix_REV3.json",
+      "sha256": "8f57bdaac65fb9417271c071e4b17637b743885f48d862995ea1c4330e74e6c0"
+    },
+    {
+      "bytes": 2559,
+      "path": "validation/ranking_validation_REV3.json",
+      "sha256": "e9ed9b858f569b3ccf4aeb8bb62f83b5b9751ca68b2b698e7a868d277835f98c"
+    },
+    {
+      "bytes": 8346,
+      "path": "validation/structural_validation_REV3.json",
+      "sha256": "2e619551185a092a0e82abc4b979fcd3a60676babde885980f64ae214a329c7d"
+    }
+  ],
+  "manifest_excluded_paths": [
+    "validation/final_package_validation_REV3.json"
+  ],
+  "manifest_excludes_self": true,
+  "schema": "manafold.m2.5.rev3.package-manifest.v1",
+  "zip_contract": {
+    "compression": "ZIP_STORED",
+    "create_system": 0,
+    "entry_order": "casefold lexicographic UTF-8 path order with original-path tie-break",
+    "external_attributes": 25165824,
+    "timestamp": "1980-01-01T00:00:00"
+  }
+}

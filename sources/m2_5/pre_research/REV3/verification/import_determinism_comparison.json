@@ -1,0 +1,9 @@
+{
+  "differences": [],
+  "first_file_count": 54,
+  "first_root": "C:\\Users\\chris\\AppData\\Local\\Temp\\opencode\\det_run_a",
+  "schema": "manafold.m2.5.rev3.determinism-comparison.v1",
+  "second_file_count": 54,
+  "second_root": "C:\\Users\\chris\\AppData\\Local\\Temp\\opencode\\det_run_b",
+  "status": "PASS"
+}

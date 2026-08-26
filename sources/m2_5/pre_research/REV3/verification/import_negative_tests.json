@@ -1,0 +1,119 @@
+{
+  "NEGATIVE_TEST_RUNNER_EXECUTION": "PASS",
+  "REQUIRED_ADVERSARIAL_NEGATIVE_FIXTURES": "PASS",
+  "case_count": 12,
+  "cases": [
+    {
+      "case_id": "CORRUPT_MANIFEST_REJECTED",
+      "description": "A real manifest byte/hash mutation must be rejected by PACKAGE_MANIFEST.",
+      "execution_mode": "MUTATE_REAL_PACKAGE_AND_RUN_VALIDATOR",
+      "expected_failure_gate": "PACKAGE_MANIFEST",
+      "observed_failure_gate_status": "FAIL",
+      "status": "PASS",
+      "validator_exit_code": 1
+    },
+    {
+      "case_id": "MISSING_ORACLE_EVIDENCE_REJECTED",
+      "description": "Removing one archived Oracle record must be rejected by source-byte evidence.",
+      "execution_mode": "MUTATE_REAL_PACKAGE_AND_RUN_VALIDATOR",
+      "expected_failure_gate": "SOURCE_RECORD_BYTE_EVIDENCE",
+      "observed_failure_gate_status": "FAIL",
+      "status": "PASS",
+      "validator_exit_code": 1
+    },
+    {
+      "case_id": "DUPLICATE_REQUIREMENT_ID_REJECTED",
+      "description": "A duplicate requirement-family ID in the real catalog must be rejected.",
+      "execution_mode": "MUTATE_REAL_PACKAGE_AND_RUN_VALIDATOR",
+      "expected_failure_gate": "REQUIREMENT_FAMILY_CATALOG",
+      "observed_failure_gate_status": "FAIL",
+      "status": "PASS",
+      "validator_exit_code": 1
+    },
+    {
+      "case_id": "BROKEN_REQUIREMENT_REFERENCE_REJECTED",
+      "description": "A derived requirement map reference not present in the catalog must be rejected.",
+      "execution_mode": "MUTATE_REAL_PACKAGE_AND_RUN_VALIDATOR",
+      "expected_failure_gate": "REQUIREMENT_FAMILY_CATALOG",
+      "observed_failure_gate_status": "FAIL",
+      "status": "PASS",
+      "validator_exit_code": 1
+    },
+    {
+      "case_id": "INVALID_FACE_NORMALIZATION_REJECTED",
+      "description": "A real resolution row with edited normalized face payload must be rejected.",
+      "execution_mode": "MUTATE_REAL_PACKAGE_AND_RUN_VALIDATOR",
+      "expected_failure_gate": "ORACLE_SEMANTIC_IDENTITY_PROVENANCE",
+      "observed_failure_gate_status": "FAIL",
+      "status": "PASS",
+      "validator_exit_code": 1
+    },
+    {
+      "case_id": "MANUALLY_EDITED_DERIVED_ARTIFACT_REJECTED",
+      "description": "Editing a real derived artifact without rebuilding its manifest must be rejected.",
+      "execution_mode": "MUTATE_REAL_PACKAGE_AND_RUN_VALIDATOR",
+      "expected_failure_gate": "PACKAGE_MANIFEST",
+      "observed_failure_gate_status": "FAIL",
+      "status": "PASS",
+      "validator_exit_code": 1
+    },
+    {
+      "case_id": "REPORT_METRIC_DRIFT_REJECTED",
+      "description": "Editing the report or its packaged metric source without rebuilding the package must be rejected.",
+      "execution_mode": "MUTATE_REAL_PACKAGE_AND_RUN_VALIDATOR",
+      "expected_failure_gate": "PACKAGE_MANIFEST",
+      "observed_failure_gate_status": "FAIL",
+      "status": "PASS",
+      "validator_exit_code": 1
+    },
+    {
+      "case_id": "REPORT_STATUS_SEMANTIC_CONTRADICTION_REJECTED",
+      "description": "A rehashed report contradiction must be rejected by semantic status coherence, not only by manifest tamper detection.",
+      "execution_mode": "MUTATE_REAL_PACKAGE_AND_RUN_VALIDATOR",
+      "expected_failure_gate": "REPORT_STATUS_COHERENCE",
+      "observed_failure_gate_status": "FAIL",
+      "status": "PASS",
+      "validator_exit_code": 1
+    },
+    {
+      "case_id": "ROW_REORDERING_REJECTED",
+      "description": "Reordering the real deck-row resolution must be rejected by identity closure.",
+      "execution_mode": "MUTATE_REAL_PACKAGE_AND_RUN_VALIDATOR",
+      "expected_failure_gate": "DECK_ROW_IDENTITY_CLOSURE",
+      "observed_failure_gate_status": "FAIL",
+      "status": "PASS",
+      "validator_exit_code": 1
+    },
+    {
+      "case_id": "WRONG_ZIP_PROFILE_REJECTED",
+      "description": "A real ZIP with the wrong codec/profile must be rejected by ZIP_CONTRACT.",
+      "execution_mode": "MUTATE_REAL_PACKAGE_AND_RUN_VALIDATOR",
+      "expected_failure_gate": "ZIP_CONTRACT",
+      "observed_failure_gate_status": "FAIL",
+      "status": "PASS",
+      "validator_exit_code": 1
+    },
+    {
+      "case_id": "NONDETERMINISTIC_REGENERATION_REJECTED",
+      "description": "The real two-run comparison must reject a changed generated artifact.",
+      "execution_mode": "MUTATE_SECOND_GENERATION_AND_RUN_REAL_COMPARISON",
+      "expected_failure_gate": "DETERMINISM_COMPARISON",
+      "observed_failure_gate_status": "FAIL",
+      "status": "PASS",
+      "validator_exit_code": 1
+    },
+    {
+      "case_id": "MISSING_GENERATOR_INPUT_REJECTED",
+      "description": "The offline generator must fail when a pinned source input is missing.",
+      "execution_mode": "REMOVE_REAL_GENERATOR_INPUT_AND_RUN_GENERATOR",
+      "expected_failure_gate": "OFFLINE_GENERATOR_INPUT",
+      "observed_failure_gate_status": "FAIL",
+      "status": "PASS",
+      "validator_exit_code": 1
+    }
+  ],
+  "failures": [],
+  "package_root": "C:\\Users\\chris\\AppData\\Local\\Temp\\opencode\\rev3",
+  "schema": "manafold.m2.5.rev3.negative-test-matrix.v3",
+  "status": "PASS"
+}

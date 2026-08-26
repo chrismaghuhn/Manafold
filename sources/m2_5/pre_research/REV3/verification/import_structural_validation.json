@@ -1,0 +1,251 @@
+{
+  "blocked_gates": [
+    "OFFICIAL_RULE_CITATION_CLOSURE",
+    "CLASSIFICATION_REFERENCE_CLOSURE",
+    "DECLARED_INTERACTION_MODEL_CLOSURE",
+    "REV2_REUSE_RATIO_REPRODUCIBLE",
+    "RANKING_UNCERTAINTY_PROPAGATION"
+  ],
+  "errors": [],
+  "gates": [
+    {
+      "detail": "All manifest entries match exact path, byte length, and SHA-256.",
+      "evidence": {
+        "deterministic_entry_order": true,
+        "entry_count": 72,
+        "manifest_excluded_paths": [
+          "validation/final_package_validation_REV3.json"
+        ]
+      },
+      "gate_id": "PACKAGE_MANIFEST",
+      "status": "PASS"
+    },
+    {
+      "detail": "ZIP entry set, codec, ordering, timestamp, and metadata match the pinned contract.",
+      "evidence": {
+        "failures": [],
+        "zip": "C:\\Users\\chris\\Documents\\Codex\\2026-08-23\\files-mentioned-by-the-user-manafold\\outputs\\Manafold_M2_5_Pre_Research_ALL_ARTIFACTS_REV3.zip"
+      },
+      "gate_id": "ZIP_CONTRACT",
+      "status": "PASS"
+    },
+    {
+      "detail": "REV2 baseline row, quantity, and deck cardinality contract.",
+      "evidence": {
+        "quantity": 600,
+        "quantity_by_deck": {
+          "Buckle Up": 100,
+          "Elven Empire": 100,
+          "Grave Danger": 100,
+          "Phantom Premonition": 100,
+          "Token Triumph": 100,
+          "Upgrades Unleashed": 100
+        },
+        "rows": 441,
+        "rows_by_deck": {
+          "Buckle Up": 72,
+          "Elven Empire": 73,
+          "Grave Danger": 71,
+          "Phantom Premonition": 77,
+          "Token Triumph": 73,
+          "Upgrades Unleashed": 75
+        }
+      },
+      "gate_id": "REV2_BASELINE_SHAPE",
+      "status": "PASS"
+    },
+    {
+      "detail": "DeckRowIdentity is unique by deck row and source row; OracleSemanticIdentity reuse is allowed.",
+      "evidence": {
+        "deterministic_order": true,
+        "duplicate_deck_row_ids": [],
+        "duplicate_deck_source_rows": [],
+        "rows": 441
+      },
+      "gate_id": "DECK_ROW_IDENTITY_CLOSURE",
+      "status": "PASS"
+    },
+    {
+      "detail": "Raw source records are deduplicated and their offsets refer to selected uncompressed JSONL bytes.",
+      "evidence": {
+        "bad_index": [],
+        "default_records": 9082,
+        "duplicate_index_keys": [],
+        "index_rows": 9484,
+        "oracle_records": 402
+      },
+      "gate_id": "SOURCE_RECORD_BYTE_EVIDENCE",
+      "status": "PASS"
+    },
+    {
+      "detail": "Resolved rows use source-provided card-level oracle_id; face IDs are separate and name ambiguity fails closed.",
+      "evidence": {
+        "failures": [],
+        "resolved": 441,
+        "reused_oracle_ids": 23,
+        "unique_oracle_ids": 402,
+        "unresolved": 0
+      },
+      "gate_id": "ORACLE_SEMANTIC_IDENTITY_PROVENANCE",
+      "status": "PASS"
+    },
+    {
+      "detail": "The same OracleSemanticIdentity appears in multiple deck rows without being treated as a global duplicate.",
+      "evidence": {
+        "repeated_oracle_id_count": 23
+      },
+      "gate_id": "ORACLE_ID_REUSE_IS_NOT_DUPLICATE_CENSUS_IDENTITY",
+      "status": "PASS"
+    },
+    {
+      "detail": "Bulk IDs, byte hash domains, and one start-of-run master SHA are pinned.",
+      "evidence": {
+        "bulk_sources": [
+          "default_cards",
+          "oracle_cards",
+          "rulings"
+        ],
+        "hash_domains": [
+          "bulk_compressed_sha256",
+          "bulk_uncompressed_sha256",
+          "normalized_record_sha256",
+          "source_record_raw_sha256"
+        ],
+        "repository_sha": "05bd341635ba2150d721659b15b62c5ad311637f"
+      },
+      "gate_id": "ACQUISITION_PINNING",
+      "status": "PASS"
+    },
+    {
+      "detail": "Official rules/policy artifacts carry URL, retrieval time, status, and exact artifact hash where available.",
+      "evidence": {
+        "authorities": 7,
+        "failures": [],
+        "hashed_artifacts": 6
+      },
+      "gate_id": "OFFICIAL_AUTHORITY_PINNING",
+      "status": "PASS"
+    },
+    {
+      "detail": "Exact rule identifiers remain a human-review obligation for ranking authority.",
+      "evidence": {
+        "authorities_pending_citation": 7
+      },
+      "gate_id": "OFFICIAL_RULE_CITATION_CLOSURE",
+      "status": "BLOCKED"
+    },
+    {
+      "detail": "One CardSemanticClassification authority exists per OracleSemanticIdentity; deck rows reference it.",
+      "evidence": {
+        "authorities": 402,
+        "duplicate_ids": [],
+        "invalid_ranking_authorities": []
+      },
+      "gate_id": "SHARED_CLASSIFICATION_AUTHORITY",
+      "status": "PASS"
+    },
+    {
+      "detail": "Every source-resolved row must reference a terminal shared classification authority before ranking.",
+      "evidence": {
+        "missing_references": [],
+        "nonterminal_authorities": 392
+      },
+      "gate_id": "CLASSIFICATION_REFERENCE_CLOSURE",
+      "status": "BLOCKED"
+    },
+    {
+      "detail": "Requirement IDs and derived row mappings are deterministic and catalog-backed.",
+      "evidence": {
+        "catalog_count": 216,
+        "invalid_ids": [],
+        "map_rows": 470
+      },
+      "gate_id": "REQUIREMENT_FAMILY_CATALOG",
+      "status": "PASS"
+    },
+    {
+      "detail": "Interaction completeness is declared relative to interaction-model.v1, not universal Magic N-way coverage.",
+      "evidence": {
+        "covers": [
+          "binary_family_relations",
+          "directional_binary_relations",
+          "explicit_reviewed_higher_order_interactions",
+          "unary_card_specific_declared_outliers"
+        ],
+        "model_id": "interaction-model.v1"
+      },
+      "gate_id": "INTERACTION_MODEL_SCOPE",
+      "status": "PASS"
+    },
+    {
+      "detail": "Every in-scope candidate requires a terminal disposition before ranking; current result is relative to model v1.",
+      "evidence": {
+        "candidates": 15679,
+        "declared_closure": false,
+        "deterministic_order": true,
+        "disposition_counts": {
+          "AMBIGUOUS_REQUIRES_REVIEW": 15679
+        },
+        "invalid_dispositions": []
+      },
+      "gate_id": "DECLARED_INTERACTION_MODEL_CLOSURE",
+      "status": "BLOCKED"
+    },
+    {
+      "detail": "No replacement reuse_ratio is introduced because the REV2 derivation is not reconstructable from packaged evidence.",
+      "evidence": {
+        "value": false
+      },
+      "gate_id": "REV2_REUSE_RATIO_REPRODUCIBLE",
+      "status": "BLOCKED"
+    },
+    {
+      "detail": "Fraction arithmetic is declared, but no authoritative score is persisted while upstream inputs are unresolved.",
+      "evidence": {
+        "authoritative_scores_present": false,
+        "numeric_representation": "Fraction"
+      },
+      "gate_id": "RANKING_FAIL_CLOSED",
+      "status": "PASS"
+    },
+    {
+      "detail": "Semantic and interaction ambiguity is represented as explicit scenarios; numeric intervals remain blocked until ranking inputs close.",
+      "evidence": {
+        "ambiguous_interactions": 15679,
+        "scenario_ids": [
+          "CONFIRMED_ONLY_LOWER_BOUND",
+          "ALL_PLAUSIBLE_UPPER_BOUND",
+          "PLAUSIBLE_ALTERNATIVES"
+        ],
+        "unresolved_semantic_rows": 0
+      },
+      "gate_id": "RANKING_UNCERTAINTY_PROPAGATION",
+      "status": "BLOCKED"
+    },
+    {
+      "detail": "No repository path supplied for final master drift check.",
+      "evidence": {
+        "start_sha": "05bd341635ba2150d721659b15b62c5ad311637f"
+      },
+      "gate_id": "MASTER_DRIFT",
+      "status": "NOT_RUN"
+    },
+    {
+      "detail": "Report, generation summary, completion status, and validator closure state agree mechanically.",
+      "evidence": {
+        "completion_present": true,
+        "failures": [],
+        "resolved_count": 441,
+        "unresolved_count": 0
+      },
+      "gate_id": "REPORT_STATUS_COHERENCE",
+      "status": "PASS"
+    }
+  ],
+  "package_root": "C:\\Users\\chris\\AppData\\Local\\Temp\\opencode\\rev3",
+  "pre_research_complete": false,
+  "research_status": "BLOCKED",
+  "schema": "manafold.m2.5.rev3.validation.v1",
+  "structural_failures": [],
+  "validation_status": "PASS"
+}

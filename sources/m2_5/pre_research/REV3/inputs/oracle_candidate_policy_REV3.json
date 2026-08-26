@@ -1,0 +1,25 @@
+{
+  "ambiguous_behavior": "if more than one supported card-level oracle_id remains, emit ORACLE_SEMANTIC_IDENTITY_UNRESOLVED and do not guess",
+  "candidate_filter": "provider records with NON_DECK_PROVIDER_LAYOUTS, NON_DECK_PROVIDER_SET_TYPES, or commander legality other than legal are excluded from semantic candidate uniqueness; their provider record ids remain in evidence",
+  "candidate_precedence": "exact top-level provider card-name match takes precedence over face-name aliases; face aliases are fallback candidates only when no top-level record exists for the requested name",
+  "commander_legality_required": "legal",
+  "excluded_provider_layouts": [
+    "art_series",
+    "augment",
+    "double_faced_token",
+    "emblem",
+    "funny",
+    "host",
+    "planar",
+    "scheme",
+    "token",
+    "vanguard"
+  ],
+  "excluded_provider_set_types": [
+    "memorabilia"
+  ],
+  "face_oracle_identity": "optional source-provided face oracle_id preserved separately; never combined into a synthetic identity",
+  "oracle_semantic_identity": "source-provided card-level oracle_id only",
+  "printing_identity": "only populated when the deck source row explicitly supplies set and collector number; name-only or set-only rows never receive a selected printing id",
+  "schema": "manafold.m2.5.rev3.oracle-candidate-policy.v2"
+}

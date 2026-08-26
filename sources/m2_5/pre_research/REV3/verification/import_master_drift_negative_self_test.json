@@ -1,0 +1,17 @@
+{
+  "schema": "manafold.m2.5.a.negative-evidence-record.v1",
+  "executed_at": "2026-08-26T04:22:12Z",
+  "command": "python scripts/check_m2_5_master_drift.py --negative-self-test",
+  "exit_code": 0,
+  "claim": "Stale, mismatched, tampered, or missing repository identity cannot silently receive MASTER_DRIFT = PASS.",
+  "output": [
+    "NEGATIVE STALE_HEAD_REJECTED: rejected (FAIL) - an unrelated HEAD must never receive PASS",
+    "NEGATIVE NORMATIVE_DRIFT_REJECTED: rejected (FAIL) - post-verification commits touching normative paths must never receive PASS",
+    "NEGATIVE NON_PASS_GRANT_REJECTED: rejected (FAIL) - a closure that does not grant PASS must never receive PASS",
+    "NEGATIVE TAMPERED_VERIFIED_SHA_REJECTED: rejected (FAIL) - an edited verified SHA must never receive PASS",
+    "NEGATIVE WRONG_SCHEMA_REJECTED: rejected (FAIL) - an unrecognized closure schema must never receive PASS",
+    "NEGATIVE UNRECORDED_IMPORT_REJECTED: rejected (FAIL) - every promoted evidence file must stay digest-recorded",
+    "NEGATIVE MISSING_EVIDENCE_REJECTED: rejected (FAIL) - absent evidence must be rejected, never PASS",
+    "NEGATIVE_SELF_TEST = PASS (no stale or mismatched identity can receive PASS)"
+  ]
+}
