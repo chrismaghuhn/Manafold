@@ -20,7 +20,7 @@ archive (`99b33945…1a90`), not from an ad-hoc extraction.
 
 | Authority | Role | Status | Anchor summary |
 |---|---|---|---|
-| comprehensive_rules | OFFICIAL_RULES_TEXT | CITED | 66 exact rule citations (sections and subrules such as CR 702.143a resolved at their own `702.143a …` line), each identifier-derived and pinned inside the artifact effective 2026-08-07 |
+| comprehensive_rules | OFFICIAL_RULES_TEXT | CITED | 67 exact rule citations (sections and subrules such as CR 702.143a resolved at their own `702.143a …` line; incl. newly added CR 702.11 Hexproof), each identifier-derived and pinned inside the artifact effective 2026-08-07 |
 | banned_restricted | OFFICIAL_LEGALITY_POLICY | CITED | page-lists root + Commander ban section; mechanically: 0 of 402 distinct resolved card names occur in that pinned section |
 | commander_general | OFFICIAL_FORMAT_POLICY | CITED | format identity + Play Rules/Modifiers + Command Zone sections |
 | commander_1v1 | OFFICIAL_FORMAT_POLICY | CITED | format identity + Play Rules/Modifiers sections |
@@ -28,9 +28,14 @@ archive (`99b33945…1a90`), not from an ad-hoc extraction.
 | commander_legends_release_notes | OFFICIAL_UPDATE_NOTES | CITED | Release Information + "Returning Keyword: Partner" (published 2020-11-06 per URL slug) |
 | magic_2013_release_notes | OFFICIAL_UPDATE_NOTES | NOT_REQUIRED_WITH_PROOF | resolution B via semantic dependency model; see §4 |
 
+Artifact file: official_authority_citations.v2.json
+(schema manafold.m2.5.b1.official-authority-citations.v2; both schema ids are
+validated fail-closed by the verifier).
+
 Every B1 record is cross-bound field-by-field to its REV3 register entry (URL,
 artifact path, artifact digest, retrieval time, availability, HTTP/error status);
-provenance swaps between real authorities are rejected by the verifier.
+provenance swaps between real authorities are rejected by the verifier
+(REGISTER_CROSS_BINDING).
 
 Locator scheme (mechanically re-executed against the pinned bytes):
 
@@ -65,24 +70,36 @@ The acquisition-time HTTP 404 is handled explicitly. Resolution A was not availa
 by an **explicit authority→semantic dependency model** (primary evidence), with the
 string scan demoted to a supplementary check:
 
-1. **Semantic coverage (primary).** All 216 catalog requirement families are
-   partitioned across the 66 CR citations plus the Commander-policy citations —
-   every family carries exactly one covering citation edge into a CITED authority.
+1. **Semantic coverage with lexical verification (primary).** All 216 catalog
+   requirement families are partitioned across the 67 CR citations plus the
+   Commander-policy citations — every family carries exactly one covering citation
+   edge into a CITED authority. **208 of the 216 edges are lexical**: the covering
+   citation declares `semantic_markers` (the rule's own concept vocabulary) and the
+   edge records the concrete marker that occurs in that family's member-card oracle
+   corpus, recomputed by the verifier from the pinned payload. The remaining 8 edges
+   are explicitly whitelisted structural groundings (basic-land zone/library-order
+   concepts and Modified-mechanic families whose defining text lives outside the
+   pinned authority set), each with a recorded rationale. The review itself caught
+   and fixed mis-edges — e.g. conditional_hexproof/temporary_protection moved from
+   flying/protection to CR 702.11 Hexproof, life_drain moved from Lifelink to
+   CR 119 direct loss/gain, delayed_sacrifice turned out to be delayed exile
+   (CR 406), countered_setup is counter-marker placement (CR 122).
    The ten oracle-text mechanic concepts detected in the resolved rows (foretell,
    partner, crew, equip, living weapon, reconfigure, convoke, amass, populate,
    saga) each carry explicit edges. `magic_2013_dependency_edge_count = 0` is not
-   asserted prose: the verifier recomputes the family partition from the pinned
-   catalog, re-detects mechanics from the pinned deck-row surface, resolves every
-   covering citation, and fails on any missing edge or any edge into
-   magic_2013_release_notes. Semantic dependence on the Kaldheim notes, by contrast,
-   is expressed exactly the same way (foretell edges), so the model cannot treat
-   name-absence as independence for one authority and semantics for another.
+   asserted prose: the verifier recomputes corpora, markers, the family partition,
+   mechanic detection, and every covering citation from the pinned bytes, failing
+   on absent markers, unwhitelisted structural edges, missing mechanic coverage,
+   or any edge into magic_2013_release_notes. Semantic dependence on the Kaldheim
+   notes is expressed through exactly the same marker mechanism (foretell), so the
+   model cannot treat name-absence as independence for one authority and semantics
+   for another.
 
 2. **Supplementary string scan.** Re-executed over the checker-pinned canonical
-   twelve-file surface catalog (`SURFACE_FILES` lives in the verifier, not in the
-   proof record): manifest path-set must equal the canonical set, digests must
-   match, and total hits must be zero. Omitting a manifest entry now fails via
-   catalog deviation even when counters are adjusted consistently.
+    twelve-file surface catalog (`SURFACE_FILES` lives in the verifier, not in the
+    proof record): manifest path-set must equal the canonical set, digests must
+    match, and total hits must be zero. Omitting a manifest entry fails via catalog
+    deviation even when counters are adjusted consistently.
 
 3. **Non-surface characterization.** The only `M13` bytes anywhere in the package
    are Scryfall printing candidates for basic lands and four cards inside
@@ -106,13 +123,18 @@ all seven; official role + Wizards-origin host enforcement; **field-exact cross-
 binding of every record to its pinned REV3 register entry** (swapped provenance
 between two real authorities fails); artifact digests resolved out of the verified
 ZIP; full locator re-resolution with identifier-derived CR bindings (a valid
-identifier over a foreign heading line fails); semantic dependency-model validation
-(complete family partition, detected-mechanic edges, zero magic_2013 edges);
-supplementary scan re-execution against the checker-pinned surface catalog
+identifier over a foreign heading line fails); **exact schema-id validation for both
+B1 documents** (`SCHEMA_MISMATCH`); semantic dependency-model validation with lexical
+marker recomputation over pinned payload corpora (complete family partition, marker
+presence, structural whitelist equality, detected-mechanic edges, zero magic_2013
+edges); supplementary scan re-execution against the checker-pinned surface catalog
 (omission fails even with self-consistent counters); closure agreement (counts,
 gate statuses, remaining gates BLOCKED, deck/ranking/M3 flags false); digest binding
-of citations file and this report. Negative self-test: positive control PASS plus 14
-adversarial fixtures, all rejected by real checker logic.
+of citations file and this report. Negative self-test asserts **stable error codes**
+per fixture (not merely any failure): positive control PASS plus 18 adversarial
+fixtures, all rejected with their expected code — including register-provenance
+swap, identifier/locator mismatch, surface-catalog omission, wrong schemas, and a
+tampered archive member.
 
 ## 7. State after B1
 

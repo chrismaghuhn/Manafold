@@ -17,225 +17,1324 @@
     "identity_separations_preserved": "source identity != citation identity != capability identity != semantic ownership != implementation != certification (ADR 0041)"
   },
   "semantic_dependency_model": {
-    "schema_note": "Explicit authority->semantic coverage model. Every catalog requirement family maps to exactly one covering citation of a CITED authority; detected oracle-text mechanics carry explicit edges; no edge references magic_2013_release_notes.",
+    "schema_note": "Explicit authority->semantic dependency model. Every catalog requirement family maps to exactly one covering citation edge of a CITED authority; lexical edges record the oracle-text marker matched against the family's member-card corpus; policy/structural edges carry an explicit whitelist rationale. No edge references magic_2013_release_notes.",
     "catalog_family_count": 216,
+    "lexical_edge_count": 208,
+    "structural_edge_whitelist": [
+      "cap.commander_noncreature",
+      "cap.commander_zone_choice",
+      "cap.each_player",
+      "cap.land_zone",
+      "cap.multiplayer_wording",
+      "cap.ordered_library_card",
+      "cap.owner_controller_separation",
+      "cap.tribal"
+    ],
     "family_coverage": {
-      "cap.artifact_permanent": "CR-110-permanents",
-      "cap.type_change": "CR-110-permanents",
-      "cap.new_incarnations": "CR-110-permanents",
-      "cap.conditional_modified_state": "CR-110-permanents",
-      "cap.token_creation": "CR-111-tokens",
-      "cap.scaled_token_creation": "CR-111-tokens",
-      "cap.attacking_token_creation": "CR-111-tokens",
-      "cap.pilot_token": "CR-111-tokens",
-      "cap.life_scaled_token_creation": "CR-111-tokens",
-      "cap.mass_token_creation": "CR-111-tokens",
-      "cap.populate_token_copy": "CR-111-tokens",
-      "cap.tapped_tokens": "CR-111-tokens",
-      "cap.token_exception": "CR-111-tokens",
-      "cap.token_or_counters": "CR-111-tokens",
-      "cap.target": "CR-115-targets",
-      "cap.multi_target": "CR-115-targets",
-      "cap.choose_two_targets": "CR-115-targets",
-      "cap.distinct_target_types": "CR-115-targets",
-      "cap.four_targets": "CR-115-targets",
-      "cap.target_restriction": "CR-115-targets",
-      "cap.subset_selection": "CR-115-targets",
-      "cap.flash": "CR-117-timing-priority",
-      "cap.chapter_timing": "CR-117-timing-priority",
-      "cap.per_turn_permission": "CR-117-timing-priority",
-      "cap.turn_scoped_permission": "CR-117-timing-priority",
-      "cap.multi_actor_staged_resolution": "CR-117-timing-priority",
-      "cap.cost_modification": "CR-118-costs",
-      "cap.life_additional_cost": "CR-118-costs",
-      "cap.life": "CR-119-life",
-      "cap.damage": "CR-120-damage",
-      "cap.damage_fanout": "CR-120-damage",
-      "cap.draw": "CR-121-drawing",
-      "cap.draw_discard": "CR-121-drawing",
-      "cap.counters": "CR-122-counters",
-      "cap.loyalty_counters": "CR-122-counters",
-      "cap.counter_or_haste": "CR-122-counters",
-      "cap.subtype_add_zombie": "CR-205-type-line",
-      "cap.subtype_addition": "CR-205-type-line",
-      "cap.choose_creature_type": "CR-205-type-line",
-      "cap.tribal": "CR-205-type-line",
-      "cap.tribal_permission": "CR-205-type-line",
-      "cap.improvise": "CR-301-artifacts",
-      "cap.treasure": "CR-301-artifacts",
-      "cap.artifact_animation": "CR-301-artifacts",
-      "cap.artifact_exception": "CR-301-artifacts",
-      "cap.base_pt": "CR-302-creatures",
-      "cap.aura": "CR-303-enchantments",
-      "cap.aura_curse": "CR-303-enchantments",
-      "cap.aura_token": "CR-303-enchantments",
-      "cap.planeswalker": "CR-306-planeswalkers",
-      "cap.loyalty": "CR-306-planeswalkers",
-      "cap.loyalty_activation_rules": "CR-306-planeswalkers",
-      "cap.ordered_library_card": "CR-401-library",
-      "cap.library_traversal": "CR-401-library",
-      "cap.mass_library_traversal": "CR-401-library",
-      "cap.library_graveyard_information": "CR-401-library",
-      "cap.bottom_order": "CR-401-library",
-      "cap.mass_bounce": "CR-402-hand",
-      "cap.return_to_hand_on_death": "CR-402-hand",
-      "cap.put_battlefield": "CR-403-battlefield",
-      "cap.mass_put_battlefield": "CR-403-battlefield",
-      "cap.land_zone": "CR-403-battlefield",
-      "cap.controller_assignment_on_zone_entry": "CR-403-battlefield",
-      "cap.graveyard": "CR-404-graveyard",
-      "cap.graveyard_cast_permission": "CR-404-graveyard",
-      "cap.graveyard_count": "CR-404-graveyard",
-      "cap.graveyard_return": "CR-404-graveyard",
-      "cap.graveyard_target": "CR-404-graveyard",
-      "cap.target_card_any_graveyard": "CR-404-graveyard",
-      "cap.multi_target_graveyard": "CR-404-graveyard",
-      "cap.reanimation": "CR-404-graveyard",
-      "cap.reanimation_tapped": "CR-404-graveyard",
-      "cap.reanimation_under_your_control": "CR-404-graveyard",
-      "cap.mass_cross_graveyard_reanimation": "CR-404-graveyard",
-      "cap.flashback": "CR-404-graveyard",
-      "cap.turn_scoped_graveyard_cast_permission": "CR-404-graveyard",
-      "cap.exile": "CR-406-exile",
-      "cap.self_exile": "CR-406-exile",
-      "cap.mass_exile": "CR-406-exile",
-      "cap.linked_exile_return": "CR-406-exile",
-      "cap.linked_return": "CR-406-exile",
-      "cap.cast_from_exile": "CR-406-exile",
-      "cap.conditional_exile": "CR-406-exile",
-      "cap.blink": "CR-406-exile",
-      "cap.delayed_return": "CR-406-exile",
-      "cap.mass_blink": "CR-406-exile",
-      "cap.graveyard_exile_link": "CR-406-exile",
-      "cap.exile_trigger": "CR-406-exile",
-      "cap.alternate_cast_zone": "CR-406-exile",
-      "cap.upkeep_trigger": "CR-503-upkeep-step",
-      "cap.attack_trigger": "CR-508-declare-attackers",
-      "cap.extra_combat": "CR-508-declare-attackers",
-      "cap.attack_counter": "CR-508-declare-attackers",
-      "cap.attack_mana": "CR-508-declare-attackers",
-      "cap.combat_damage_trigger": "CR-510-combat-damage-step",
-      "cap.end_step_trigger": "CR-513-end-step",
-      "cap.choice_number_x": "CR-601-casting-spells",
-      "cap.multi_category_selection": "CR-601-casting-spells",
-      "cap.open_vocabulary_domain": "CR-601-casting-spells",
-      "cap.sequential_choice_collection": "CR-601-casting-spells",
-      "cap.simultaneous_choice": "CR-601-casting-spells",
-      "cap.all_required": "CR-601-casting-spells",
-      "cap.activated_ability": "CR-602-activated-abilities",
-      "cap.activation": "CR-602-activated-abilities",
-      "cap.activation_cost": "CR-602-activated-abilities",
-      "cap.grant_activated_ability": "CR-602-activated-abilities",
-      "cap.dynamic_activated_ability_grant": "CR-602-activated-abilities",
-      "cap.trigger": "CR-603-triggered-abilities",
-      "cap.death_trigger": "CR-603-triggered-abilities",
-      "cap.damage_trigger": "CR-603-triggered-abilities",
-      "cap.combat_trigger": "CR-603-triggered-abilities",
-      "cap.draw_trigger": "CR-603-triggered-abilities",
-      "cap.linked_death_trigger": "CR-603-triggered-abilities",
-      "cap.delayed_trigger": "CR-603-triggered-abilities",
-      "cap.aura_equipment_etb_trigger": "CR-603-triggered-abilities",
-      "cap.landfall": "CR-603-triggered-abilities",
-      "cap.continuous_ability": "CR-604-static-abilities",
-      "cap.static_team_pt": "CR-604-static-abilities",
-      "cap.static_uncounterable": "CR-604-static-abilities",
-      "cap.modified": "CR-604-static-abilities",
-      "cap.modified_count_cost_reduction": "CR-604-static-abilities",
-      "cap.modified_predicate": "CR-604-static-abilities",
-      "cap.mana_ability": "CR-605-mana-abilities",
-      "cap.mana_production": "CR-605-mana-abilities",
-      "cap.mana_source": "CR-605-mana-abilities",
-      "cap.grant_mana_ability": "CR-605-mana-abilities",
-      "cap.continuous_layers": "CR-613-continuous-effects",
-      "cap.continuous_combat_modification": "CR-613-continuous-effects",
-      "cap.continuous_pt": "CR-613-continuous-effects",
-      "cap.type_layer": "CR-613-continuous-effects",
-      "cap.mass_type_change": "CR-613-continuous-effects",
-      "cap.type_transition": "CR-613-continuous-effects",
-      "cap.type_wide_state": "CR-613-continuous-effects",
-      "cap.loses_card_types": "CR-613-continuous-effects",
-      "cap.temporary_animation": "CR-613-continuous-effects",
-      "cap.dynamic_pt": "CR-613-continuous-effects",
-      "cap.selective_temporary_pt_modification": "CR-613-continuous-effects",
-      "cap.target_pt_modification": "CR-613-continuous-effects",
-      "cap.temporary_flying_double_strike": "CR-613-continuous-effects",
-      "cap.combat_granted_keywords": "CR-613-continuous-effects",
-      "cap.bounded_control_restoration": "CR-613-continuous-effects",
-      "cap.color_addition": "CR-613-continuous-effects",
-      "cap.color_set_black": "CR-613-continuous-effects",
-      "cap.replacement_effect": "CR-614-replacement-effects",
-      "cap.replacement_prevention": "CR-614-replacement-effects",
-      "cap.token_replacement": "CR-614-replacement-effects",
-      "cap.totem_armor_replacement": "CR-614-replacement-effects",
-      "cap.phase_insertion": "CR-700-general",
-      "cap.mode_choice": "CR-700-2-modes",
-      "cap.attachment": "CR-701-3-attach",
-      "cap.attach_to_new_object": "CR-701-3-attach",
-      "cap.opponent_attachment": "CR-701-3-attach",
-      "cap.countered_setup": "CR-701-6-counter",
-      "cap.counterspell": "CR-701-6-counter",
-      "cap.destroy": "CR-701-8-destroy",
-      "cap.target_destroy": "CR-701-8-destroy",
-      "cap.mass_destruction": "CR-701-8-destroy",
-      "cap.post_destruction_choice": "CR-701-8-destroy",
-      "cap.discard_cost": "CR-701-9-discard",
-      "cap.goad": "CR-701-15-goad",
-      "cap.mill": "CR-701-17a-mill",
-      "cap.amass": "CR-701-47a-amass",
-      "cap.mass_sacrifice": "CR-701-21-sacrifice",
-      "cap.simultaneous_sacrifice": "CR-701-21-sacrifice",
-      "cap.sacrifice_additional_cost": "CR-701-21-sacrifice",
-      "cap.additional_sacrifice_cost": "CR-701-21-sacrifice",
-      "cap.type_filtered_sacrifice": "CR-701-21-sacrifice",
-      "cap.delayed_sacrifice": "CR-701-21-sacrifice",
-      "cap.sacrifice_threshold": "CR-701-21-sacrifice",
-      "cap.scry": "CR-701-22a-scry",
-      "cap.search_library": "CR-701-23-search",
-      "cap.shuffle": "CR-701-24-shuffle",
-      "cap.shuffle_self": "CR-701-24-shuffle",
-      "cap.surveil": "CR-701-25-surveil",
-      "cap.tap_event": "CR-701-26-tap-untap",
-      "cap.tap_another_creature_cost": "CR-701-26-tap-untap",
-      "cap.tap_subset_cost": "CR-701-26-tap-untap",
-      "cap.tap_ten_cost": "CR-701-26-tap-untap",
-      "cap.count_tapped": "CR-701-26-tap-untap",
-      "cap.untap_lands": "CR-701-26-tap-untap",
-      "cap.mass_untap": "CR-701-26-tap-untap",
-      "cap.reveal": "CR-701-20-reveal",
-      "cap.deathtouch": "CR-702-2-deathtouch",
-      "cap.flying_grant": "CR-702-9-flying",
-      "cap.conditional_hexproof": "CR-702-9-flying",
-      "cap.indestructible_until_eot": "CR-702-12-indestructible",
-      "cap.temporary_protection": "CR-702-16-protection",
-      "cap.life_drain": "CR-702-15a-lifelink",
-      "cap.equipment": "CR-702-6a-equip",
-      "cap.commander_dependent_equip_cost": "CR-702-6a-equip",
-      "cap.kicker": "CR-702-33-kicker",
-      "cap.convoke": "CR-702-51a-convoke",
-      "cap.living_weapon": "CR-702-92a-living-weapon",
-      "cap.vehicle": "CR-702-122a-crew",
-      "cap.crew": "CR-702-122a-crew",
-      "cap.crew_alternative": "CR-702-122a-crew",
-      "cap.dynamic_crew_value": "CR-702-122a-crew",
-      "cap.riot_choice": "CR-702-136-riot",
-      "cap.foretell": "CR-702-143a-foretell",
-      "cap.grant_foretell": "CR-702-143a-foretell",
-      "cap.foretell_recursion": "CR-702-143a-foretell",
-      "cap.private_face_down_exile": "CR-702-143a-foretell",
-      "cap.reconfigure": "CR-702-151a-reconfigure",
-      "cap.state_based_actions": "CR-704-state-based-actions",
-      "cap.copiable_values": "CR-706-copiable-values",
-      "cap.copy": "CR-706-copiable-values",
-      "cap.copy_exception": "CR-706-copiable-values",
-      "cap.temporary_copy": "CR-706-copiable-values",
-      "cap.copiable_token_values": "CR-706-copiable-values",
-      "cap.copy_token_batch": "CR-706-copiable-values",
-      "cap.saga": "CR-714-saga-cards",
-      "cap.multiplayer_wording": "CG-PLAY-RULES",
-      "cap.each_player": "CG-PLAY-RULES",
-      "cap.commander_zone_choice": "CG-COMMAND-ZONE",
-      "cap.owner_controller_separation": "CG-COMMAND-ZONE",
-      "cap.commander_noncreature": "CG-COMMAND-ZONE"
+      "cap.activated_ability": {
+        "citation_id": "CR-602-activated-abilities",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": ": ",
+        "member_deck_rows": 1
+      },
+      "cap.activation": {
+        "citation_id": "CR-602-activated-abilities",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": ": ",
+        "member_deck_rows": 1
+      },
+      "cap.activation_cost": {
+        "citation_id": "CR-602-activated-abilities",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": ": ",
+        "member_deck_rows": 27
+      },
+      "cap.additional_sacrifice_cost": {
+        "citation_id": "CR-701-21-sacrifice",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "sacrific",
+        "member_deck_rows": 1
+      },
+      "cap.all_required": {
+        "citation_id": "CR-601-casting-spells",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "choice",
+        "member_deck_rows": 1
+      },
+      "cap.alternate_cast_zone": {
+        "citation_id": "CR-404-graveyard",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "graveyard",
+        "member_deck_rows": 1
+      },
+      "cap.amass": {
+        "citation_id": "CR-701-47a-amass",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "amass",
+        "member_deck_rows": 1
+      },
+      "cap.artifact_animation": {
+        "citation_id": "CR-301-artifacts",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "artifact",
+        "member_deck_rows": 1
+      },
+      "cap.artifact_exception": {
+        "citation_id": "CR-301-artifacts",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "artifact",
+        "member_deck_rows": 1
+      },
+      "cap.artifact_permanent": {
+        "citation_id": "CR-301-artifacts",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "artifact",
+        "member_deck_rows": 27
+      },
+      "cap.attach_to_new_object": {
+        "citation_id": "CR-701-3-attach",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "attach",
+        "member_deck_rows": 1
+      },
+      "cap.attachment": {
+        "citation_id": "CR-701-3-attach",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "attach",
+        "member_deck_rows": 2
+      },
+      "cap.attack_counter": {
+        "citation_id": "CR-508-declare-attackers",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "attack",
+        "member_deck_rows": 1
+      },
+      "cap.attack_mana": {
+        "citation_id": "CR-508-declare-attackers",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "attack",
+        "member_deck_rows": 1
+      },
+      "cap.attack_trigger": {
+        "citation_id": "CR-508-declare-attackers",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "attack",
+        "member_deck_rows": 5
+      },
+      "cap.attacking_token_creation": {
+        "citation_id": "CR-111-tokens",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "token",
+        "member_deck_rows": 1
+      },
+      "cap.aura": {
+        "citation_id": "CR-303-enchantments",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "enchant",
+        "member_deck_rows": 9
+      },
+      "cap.aura_curse": {
+        "citation_id": "CR-303-enchantments",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "enchant",
+        "member_deck_rows": 1
+      },
+      "cap.aura_equipment_etb_trigger": {
+        "citation_id": "CR-603-triggered-abilities",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "when",
+        "member_deck_rows": 1
+      },
+      "cap.aura_token": {
+        "citation_id": "CR-303-enchantments",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "enchant",
+        "member_deck_rows": 1
+      },
+      "cap.base_pt": {
+        "citation_id": "CR-302-creatures",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "creature",
+        "member_deck_rows": 3
+      },
+      "cap.blink": {
+        "citation_id": "CR-406-exile",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "exile",
+        "member_deck_rows": 3
+      },
+      "cap.bottom_order": {
+        "citation_id": "CR-401-library",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "library",
+        "member_deck_rows": 1
+      },
+      "cap.bounded_control_restoration": {
+        "citation_id": "CR-613-continuous-effects",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "gains",
+        "member_deck_rows": 1
+      },
+      "cap.cast_from_exile": {
+        "citation_id": "CR-406-exile",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "exile",
+        "member_deck_rows": 1
+      },
+      "cap.chapter_timing": {
+        "citation_id": "CR-117-timing-priority",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "cast",
+        "member_deck_rows": 2
+      },
+      "cap.choice_number_x": {
+        "citation_id": "CR-601-casting-spells",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": " x ",
+        "member_deck_rows": 7
+      },
+      "cap.choose_creature_type": {
+        "citation_id": "CR-205-type-line",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "type",
+        "member_deck_rows": 1
+      },
+      "cap.choose_two_targets": {
+        "citation_id": "CR-115-targets",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "target",
+        "member_deck_rows": 2
+      },
+      "cap.color_addition": {
+        "citation_id": "CR-613-continuous-effects",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "control",
+        "member_deck_rows": 1
+      },
+      "cap.color_set_black": {
+        "citation_id": "CR-613-continuous-effects",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "control",
+        "member_deck_rows": 1
+      },
+      "cap.combat_damage_trigger": {
+        "citation_id": "CR-510-combat-damage-step",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "combat damage",
+        "member_deck_rows": 5
+      },
+      "cap.combat_granted_keywords": {
+        "citation_id": "CR-613-continuous-effects",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "gains",
+        "member_deck_rows": 1
+      },
+      "cap.combat_trigger": {
+        "citation_id": "CR-603-triggered-abilities",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "when",
+        "member_deck_rows": 1
+      },
+      "cap.commander_dependent_equip_cost": {
+        "citation_id": "CR-702-6a-equip",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "equip",
+        "member_deck_rows": 1
+      },
+      "cap.commander_noncreature": {
+        "citation_id": "CG-COMMAND-ZONE",
+        "coverage_basis": "structural_grounding",
+        "matched_marker": null,
+        "rationale": "Policy-level grounding on the official Commander publication.",
+        "member_deck_rows": 1
+      },
+      "cap.commander_zone_choice": {
+        "citation_id": "CG-COMMAND-ZONE",
+        "coverage_basis": "structural_grounding",
+        "matched_marker": null,
+        "rationale": "Policy-level grounding on the official Commander publication.",
+        "member_deck_rows": 1
+      },
+      "cap.conditional_exile": {
+        "citation_id": "CR-406-exile",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "exile",
+        "member_deck_rows": 1
+      },
+      "cap.conditional_hexproof": {
+        "citation_id": "CR-702-11-hexproof",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "hexproof",
+        "member_deck_rows": 1
+      },
+      "cap.conditional_modified_state": {
+        "citation_id": "CR-604-static-abilities",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "as long as",
+        "member_deck_rows": 1
+      },
+      "cap.continuous_ability": {
+        "citation_id": "CR-604-static-abilities",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "get ",
+        "member_deck_rows": 2
+      },
+      "cap.continuous_combat_modification": {
+        "citation_id": "CR-613-continuous-effects",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "gets",
+        "member_deck_rows": 1
+      },
+      "cap.continuous_layers": {
+        "citation_id": "CR-613-continuous-effects",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "have ",
+        "member_deck_rows": 1
+      },
+      "cap.continuous_pt": {
+        "citation_id": "CR-613-continuous-effects",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "until end of turn",
+        "member_deck_rows": 1
+      },
+      "cap.controller_assignment_on_zone_entry": {
+        "citation_id": "CR-403-battlefield",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "battlefield",
+        "member_deck_rows": 1
+      },
+      "cap.convoke": {
+        "citation_id": "CR-702-51a-convoke",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "convoke",
+        "member_deck_rows": 4
+      },
+      "cap.copiable_token_values": {
+        "citation_id": "CR-706-copiable-values",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "copy",
+        "member_deck_rows": 1
+      },
+      "cap.copiable_values": {
+        "citation_id": "CR-706-copiable-values",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "copy",
+        "member_deck_rows": 2
+      },
+      "cap.copy": {
+        "citation_id": "CR-706-copiable-values",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "copy",
+        "member_deck_rows": 2
+      },
+      "cap.copy_exception": {
+        "citation_id": "CR-706-copiable-values",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "copy",
+        "member_deck_rows": 1
+      },
+      "cap.copy_token_batch": {
+        "citation_id": "CR-111-tokens",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "token",
+        "member_deck_rows": 1
+      },
+      "cap.cost_modification": {
+        "citation_id": "CR-118-costs",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "cost",
+        "member_deck_rows": 1
+      },
+      "cap.count_tapped": {
+        "citation_id": "CR-701-26-tap-untap",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "tap",
+        "member_deck_rows": 2
+      },
+      "cap.counter_or_haste": {
+        "citation_id": "CR-122-counters",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "counter",
+        "member_deck_rows": 1
+      },
+      "cap.countered_setup": {
+        "citation_id": "CR-122-counters",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "counter",
+        "member_deck_rows": 1
+      },
+      "cap.counters": {
+        "citation_id": "CR-122-counters",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "counter",
+        "member_deck_rows": 7
+      },
+      "cap.counterspell": {
+        "citation_id": "CR-701-6-counter",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "counter target",
+        "member_deck_rows": 2
+      },
+      "cap.crew": {
+        "citation_id": "CR-702-122a-crew",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "crew",
+        "member_deck_rows": 2
+      },
+      "cap.crew_alternative": {
+        "citation_id": "CR-301-artifacts",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "artifact",
+        "member_deck_rows": 1
+      },
+      "cap.damage": {
+        "citation_id": "CR-120-damage",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "damage",
+        "member_deck_rows": 1
+      },
+      "cap.damage_fanout": {
+        "citation_id": "CR-120-damage",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "damage",
+        "member_deck_rows": 1
+      },
+      "cap.damage_trigger": {
+        "citation_id": "CR-603-triggered-abilities",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "when",
+        "member_deck_rows": 1
+      },
+      "cap.death_trigger": {
+        "citation_id": "CR-603-triggered-abilities",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "when",
+        "member_deck_rows": 1
+      },
+      "cap.deathtouch": {
+        "citation_id": "CR-702-2-deathtouch",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "deathtouch",
+        "member_deck_rows": 1
+      },
+      "cap.delayed_return": {
+        "citation_id": "CR-406-exile",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "exile",
+        "member_deck_rows": 3
+      },
+      "cap.delayed_sacrifice": {
+        "citation_id": "CR-406-exile",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "exile",
+        "member_deck_rows": 1
+      },
+      "cap.delayed_trigger": {
+        "citation_id": "CR-603-triggered-abilities",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "when",
+        "member_deck_rows": 1
+      },
+      "cap.destroy": {
+        "citation_id": "CR-701-8-destroy",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "destroy",
+        "member_deck_rows": 1
+      },
+      "cap.discard_cost": {
+        "citation_id": "CR-701-9-discard",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "discard",
+        "member_deck_rows": 1
+      },
+      "cap.distinct_target_types": {
+        "citation_id": "CR-115-targets",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "target",
+        "member_deck_rows": 1
+      },
+      "cap.draw": {
+        "citation_id": "CR-121-drawing",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "draw",
+        "member_deck_rows": 4
+      },
+      "cap.draw_discard": {
+        "citation_id": "CR-121-drawing",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "draw",
+        "member_deck_rows": 1
+      },
+      "cap.draw_trigger": {
+        "citation_id": "CR-603-triggered-abilities",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "when",
+        "member_deck_rows": 1
+      },
+      "cap.dynamic_activated_ability_grant": {
+        "citation_id": "CR-602-activated-abilities",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": ": ",
+        "member_deck_rows": 1
+      },
+      "cap.dynamic_crew_value": {
+        "citation_id": "CR-702-122a-crew",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "crew",
+        "member_deck_rows": 1
+      },
+      "cap.dynamic_pt": {
+        "citation_id": "CR-613-continuous-effects",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "gets",
+        "member_deck_rows": 2
+      },
+      "cap.each_player": {
+        "citation_id": "CG-PLAY-RULES",
+        "coverage_basis": "structural_grounding",
+        "matched_marker": null,
+        "rationale": "Policy-level grounding on the official Commander publication.",
+        "member_deck_rows": 1
+      },
+      "cap.end_step_trigger": {
+        "citation_id": "CR-513-end-step",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "end step",
+        "member_deck_rows": 1
+      },
+      "cap.equipment": {
+        "citation_id": "CR-702-6a-equip",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "equip",
+        "member_deck_rows": 2
+      },
+      "cap.exile": {
+        "citation_id": "CR-406-exile",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "exile",
+        "member_deck_rows": 1
+      },
+      "cap.exile_trigger": {
+        "citation_id": "CR-406-exile",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "exile",
+        "member_deck_rows": 1
+      },
+      "cap.extra_combat": {
+        "citation_id": "CR-508-declare-attackers",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "attack",
+        "member_deck_rows": 1
+      },
+      "cap.flash": {
+        "citation_id": "CR-117-timing-priority",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "flash",
+        "member_deck_rows": 1
+      },
+      "cap.flashback": {
+        "citation_id": "CR-404-graveyard",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "graveyard",
+        "member_deck_rows": 3
+      },
+      "cap.flying_grant": {
+        "citation_id": "CR-702-9-flying",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "flying",
+        "member_deck_rows": 1
+      },
+      "cap.foretell": {
+        "citation_id": "CR-702-143a-foretell",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "foretell",
+        "member_deck_rows": 10
+      },
+      "cap.foretell_recursion": {
+        "citation_id": "CR-702-143a-foretell",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "foretell",
+        "member_deck_rows": 1
+      },
+      "cap.four_targets": {
+        "citation_id": "CR-115-targets",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "target",
+        "member_deck_rows": 1
+      },
+      "cap.goad": {
+        "citation_id": "CR-701-15-goad",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "goad",
+        "member_deck_rows": 2
+      },
+      "cap.grant_activated_ability": {
+        "citation_id": "CR-602-activated-abilities",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": ": ",
+        "member_deck_rows": 3
+      },
+      "cap.grant_foretell": {
+        "citation_id": "CR-702-143a-foretell",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "foretell",
+        "member_deck_rows": 1
+      },
+      "cap.grant_mana_ability": {
+        "citation_id": "CR-605-mana-abilities",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "add {",
+        "member_deck_rows": 2
+      },
+      "cap.graveyard": {
+        "citation_id": "CR-404-graveyard",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "graveyard",
+        "member_deck_rows": 1
+      },
+      "cap.graveyard_cast_permission": {
+        "citation_id": "CR-404-graveyard",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "graveyard",
+        "member_deck_rows": 2
+      },
+      "cap.graveyard_count": {
+        "citation_id": "CR-404-graveyard",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "graveyard",
+        "member_deck_rows": 2
+      },
+      "cap.graveyard_exile_link": {
+        "citation_id": "CR-406-exile",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "exile",
+        "member_deck_rows": 1
+      },
+      "cap.graveyard_return": {
+        "citation_id": "CR-404-graveyard",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "graveyard",
+        "member_deck_rows": 1
+      },
+      "cap.graveyard_target": {
+        "citation_id": "CR-404-graveyard",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "graveyard",
+        "member_deck_rows": 1
+      },
+      "cap.improvise": {
+        "citation_id": "CR-301-artifacts",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "artifact",
+        "member_deck_rows": 2
+      },
+      "cap.indestructible_until_eot": {
+        "citation_id": "CR-702-12-indestructible",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "indestructible",
+        "member_deck_rows": 1
+      },
+      "cap.kicker": {
+        "citation_id": "CR-702-33-kicker",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "kicker",
+        "member_deck_rows": 1
+      },
+      "cap.land_zone": {
+        "citation_id": "CR-403-battlefield",
+        "coverage_basis": "structural_grounding",
+        "matched_marker": null,
+        "rationale": "Basic lands exist on the battlefield zone; oracle text is only the mana ability.",
+        "member_deck_rows": 12
+      },
+      "cap.landfall": {
+        "citation_id": "CR-603-triggered-abilities",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "when",
+        "member_deck_rows": 1
+      },
+      "cap.library_graveyard_information": {
+        "citation_id": "CR-401-library",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "library",
+        "member_deck_rows": 1
+      },
+      "cap.library_traversal": {
+        "citation_id": "CR-401-library",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "library",
+        "member_deck_rows": 2
+      },
+      "cap.life": {
+        "citation_id": "CR-119-life",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "life",
+        "member_deck_rows": 1
+      },
+      "cap.life_additional_cost": {
+        "citation_id": "CR-118-costs",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "cost",
+        "member_deck_rows": 1
+      },
+      "cap.life_drain": {
+        "citation_id": "CR-119-life",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "life",
+        "member_deck_rows": 1
+      },
+      "cap.life_scaled_token_creation": {
+        "citation_id": "CR-111-tokens",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "token",
+        "member_deck_rows": 1
+      },
+      "cap.linked_death_trigger": {
+        "citation_id": "CR-603-triggered-abilities",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "when",
+        "member_deck_rows": 1
+      },
+      "cap.linked_exile_return": {
+        "citation_id": "CR-406-exile",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "exile",
+        "member_deck_rows": 2
+      },
+      "cap.linked_return": {
+        "citation_id": "CR-406-exile",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "exile",
+        "member_deck_rows": 1
+      },
+      "cap.living_weapon": {
+        "citation_id": "CR-702-92a-living-weapon",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "living weapon",
+        "member_deck_rows": 1
+      },
+      "cap.loses_card_types": {
+        "citation_id": "CR-613-continuous-effects",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "loses all other card types",
+        "member_deck_rows": 1
+      },
+      "cap.loyalty": {
+        "citation_id": "CR-306-planeswalkers",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "+1:",
+        "member_deck_rows": 1
+      },
+      "cap.loyalty_activation_rules": {
+        "citation_id": "CR-306-planeswalkers",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "+1:",
+        "member_deck_rows": 2
+      },
+      "cap.loyalty_counters": {
+        "citation_id": "CR-122-counters",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "counter",
+        "member_deck_rows": 2
+      },
+      "cap.mana_ability": {
+        "citation_id": "CR-605-mana-abilities",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "add {",
+        "member_deck_rows": 1
+      },
+      "cap.mana_production": {
+        "citation_id": "CR-605-mana-abilities",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "add {",
+        "member_deck_rows": 27
+      },
+      "cap.mana_source": {
+        "citation_id": "CR-605-mana-abilities",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "add {",
+        "member_deck_rows": 12
+      },
+      "cap.mass_blink": {
+        "citation_id": "CR-406-exile",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "exile",
+        "member_deck_rows": 2
+      },
+      "cap.mass_bounce": {
+        "citation_id": "CR-402-hand",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "hand",
+        "member_deck_rows": 1
+      },
+      "cap.mass_cross_graveyard_reanimation": {
+        "citation_id": "CR-404-graveyard",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "graveyard",
+        "member_deck_rows": 1
+      },
+      "cap.mass_destruction": {
+        "citation_id": "CR-701-8-destroy",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "destroy",
+        "member_deck_rows": 3
+      },
+      "cap.mass_exile": {
+        "citation_id": "CR-406-exile",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "exile",
+        "member_deck_rows": 2
+      },
+      "cap.mass_library_traversal": {
+        "citation_id": "CR-401-library",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "library",
+        "member_deck_rows": 1
+      },
+      "cap.mass_put_battlefield": {
+        "citation_id": "CR-403-battlefield",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "battlefield",
+        "member_deck_rows": 1
+      },
+      "cap.mass_sacrifice": {
+        "citation_id": "CR-701-21-sacrifice",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "sacrific",
+        "member_deck_rows": 2
+      },
+      "cap.mass_token_creation": {
+        "citation_id": "CR-111-tokens",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "token",
+        "member_deck_rows": 1
+      },
+      "cap.mass_type_change": {
+        "citation_id": "CR-613-continuous-effects",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "have ",
+        "member_deck_rows": 1
+      },
+      "cap.mass_untap": {
+        "citation_id": "CR-701-3-attach",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "attach",
+        "member_deck_rows": 1
+      },
+      "cap.mill": {
+        "citation_id": "CR-701-17a-mill",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "mill",
+        "member_deck_rows": 3
+      },
+      "cap.mode_choice": {
+        "citation_id": "CR-700-2-modes",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "choose one",
+        "member_deck_rows": 1
+      },
+      "cap.modified": {
+        "citation_id": "CR-604-static-abilities",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "+1/+1",
+        "member_deck_rows": 2
+      },
+      "cap.modified_count_cost_reduction": {
+        "citation_id": "CR-604-static-abilities",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "as long as",
+        "member_deck_rows": 1
+      },
+      "cap.modified_predicate": {
+        "citation_id": "CR-604-static-abilities",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "+1/+1",
+        "member_deck_rows": 2
+      },
+      "cap.multi_actor_staged_resolution": {
+        "citation_id": "CR-701-21-sacrifice",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "sacrific",
+        "member_deck_rows": 1
+      },
+      "cap.multi_category_selection": {
+        "citation_id": "CR-601-casting-spells",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "choose",
+        "member_deck_rows": 1
+      },
+      "cap.multi_target": {
+        "citation_id": "CR-115-targets",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "target",
+        "member_deck_rows": 5
+      },
+      "cap.multi_target_graveyard": {
+        "citation_id": "CR-404-graveyard",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "graveyard",
+        "member_deck_rows": 1
+      },
+      "cap.multiplayer_wording": {
+        "citation_id": "CG-PLAY-RULES",
+        "coverage_basis": "structural_grounding",
+        "matched_marker": null,
+        "rationale": "Policy-level grounding on the official Commander publication.",
+        "member_deck_rows": 1
+      },
+      "cap.new_incarnations": {
+        "citation_id": "CR-110-permanents",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "permanent",
+        "member_deck_rows": 3
+      },
+      "cap.open_vocabulary_domain": {
+        "citation_id": "CR-601-casting-spells",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "choose",
+        "member_deck_rows": 1
+      },
+      "cap.opponent_attachment": {
+        "citation_id": "CR-701-3-attach",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "enchant",
+        "member_deck_rows": 1
+      },
+      "cap.ordered_library_card": {
+        "citation_id": "CR-401-library",
+        "coverage_basis": "structural_grounding",
+        "matched_marker": null,
+        "rationale": "Library-ordering research concept over basic lands; no oracle vocabulary.",
+        "member_deck_rows": 12
+      },
+      "cap.owner_controller_separation": {
+        "citation_id": "CG-COMMAND-ZONE",
+        "coverage_basis": "structural_grounding",
+        "matched_marker": null,
+        "rationale": "Policy-level grounding on the official Commander publication.",
+        "member_deck_rows": 2
+      },
+      "cap.per_turn_permission": {
+        "citation_id": "CR-117-timing-priority",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "cast",
+        "member_deck_rows": 1
+      },
+      "cap.phase_insertion": {
+        "citation_id": "CR-700-general",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "additional combat phase",
+        "member_deck_rows": 1
+      },
+      "cap.pilot_token": {
+        "citation_id": "CR-111-tokens",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "token",
+        "member_deck_rows": 1
+      },
+      "cap.planeswalker": {
+        "citation_id": "CR-306-planeswalkers",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "+1:",
+        "member_deck_rows": 3
+      },
+      "cap.populate_token_copy": {
+        "citation_id": "CR-111-tokens",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "token",
+        "member_deck_rows": 1
+      },
+      "cap.post_destruction_choice": {
+        "citation_id": "CR-701-8-destroy",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "destroy",
+        "member_deck_rows": 1
+      },
+      "cap.private_face_down_exile": {
+        "citation_id": "CR-702-143a-foretell",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "foretell",
+        "member_deck_rows": 9
+      },
+      "cap.put_battlefield": {
+        "citation_id": "CR-403-battlefield",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "battlefield",
+        "member_deck_rows": 1
+      },
+      "cap.reanimation": {
+        "citation_id": "CR-404-graveyard",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "graveyard",
+        "member_deck_rows": 2
+      },
+      "cap.reanimation_tapped": {
+        "citation_id": "CR-404-graveyard",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "graveyard",
+        "member_deck_rows": 1
+      },
+      "cap.reanimation_under_your_control": {
+        "citation_id": "CR-404-graveyard",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "graveyard",
+        "member_deck_rows": 2
+      },
+      "cap.reconfigure": {
+        "citation_id": "CR-702-151a-reconfigure",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "reconfigure",
+        "member_deck_rows": 2
+      },
+      "cap.replacement_effect": {
+        "citation_id": "CR-614-replacement-effects",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "instead",
+        "member_deck_rows": 1
+      },
+      "cap.replacement_prevention": {
+        "citation_id": "CR-614-replacement-effects",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "would",
+        "member_deck_rows": 1
+      },
+      "cap.return_to_hand_on_death": {
+        "citation_id": "CR-402-hand",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "hand",
+        "member_deck_rows": 1
+      },
+      "cap.reveal": {
+        "citation_id": "CR-701-20-reveal",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "reveal",
+        "member_deck_rows": 2
+      },
+      "cap.riot_choice": {
+        "citation_id": "CR-702-136-riot",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "riot",
+        "member_deck_rows": 1
+      },
+      "cap.sacrifice_additional_cost": {
+        "citation_id": "CR-701-21-sacrifice",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "sacrific",
+        "member_deck_rows": 1
+      },
+      "cap.sacrifice_threshold": {
+        "citation_id": "CR-701-21-sacrifice",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "sacrific",
+        "member_deck_rows": 1
+      },
+      "cap.saga": {
+        "citation_id": "CR-714-saga-cards",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "saga",
+        "member_deck_rows": 2
+      },
+      "cap.scaled_token_creation": {
+        "citation_id": "CR-111-tokens",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "token",
+        "member_deck_rows": 5
+      },
+      "cap.scry": {
+        "citation_id": "CR-701-22a-scry",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "scry",
+        "member_deck_rows": 2
+      },
+      "cap.search_library": {
+        "citation_id": "CR-701-23-search",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "search",
+        "member_deck_rows": 4
+      },
+      "cap.selective_temporary_pt_modification": {
+        "citation_id": "CR-613-continuous-effects",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "until end of turn",
+        "member_deck_rows": 1
+      },
+      "cap.self_exile": {
+        "citation_id": "CR-406-exile",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "exile",
+        "member_deck_rows": 1
+      },
+      "cap.sequential_choice_collection": {
+        "citation_id": "CR-601-casting-spells",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "choice",
+        "member_deck_rows": 1
+      },
+      "cap.shuffle": {
+        "citation_id": "CR-701-24-shuffle",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "shuffle",
+        "member_deck_rows": 2
+      },
+      "cap.shuffle_self": {
+        "citation_id": "CR-701-24-shuffle",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "shuffle",
+        "member_deck_rows": 1
+      },
+      "cap.simultaneous_choice": {
+        "citation_id": "CR-601-casting-spells",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "choose",
+        "member_deck_rows": 1
+      },
+      "cap.simultaneous_sacrifice": {
+        "citation_id": "CR-701-21-sacrifice",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "sacrific",
+        "member_deck_rows": 1
+      },
+      "cap.state_based_actions": {
+        "citation_id": "CR-613-continuous-effects",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "until end of turn",
+        "member_deck_rows": 1
+      },
+      "cap.static_team_pt": {
+        "citation_id": "CR-604-static-abilities",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "get ",
+        "member_deck_rows": 1
+      },
+      "cap.static_uncounterable": {
+        "citation_id": "CR-604-static-abilities",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "+1/+1",
+        "member_deck_rows": 1
+      },
+      "cap.subset_selection": {
+        "citation_id": "CR-115-targets",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "target",
+        "member_deck_rows": 2
+      },
+      "cap.subtype_add_zombie": {
+        "citation_id": "CR-205-type-line",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "type",
+        "member_deck_rows": 1
+      },
+      "cap.subtype_addition": {
+        "citation_id": "CR-205-type-line",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "type",
+        "member_deck_rows": 1
+      },
+      "cap.surveil": {
+        "citation_id": "CR-701-25-surveil",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "surveil",
+        "member_deck_rows": 1
+      },
+      "cap.tap_another_creature_cost": {
+        "citation_id": "CR-701-26-tap-untap",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "tap",
+        "member_deck_rows": 1
+      },
+      "cap.tap_event": {
+        "citation_id": "CR-701-26-tap-untap",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "tap",
+        "member_deck_rows": 1
+      },
+      "cap.tap_subset_cost": {
+        "citation_id": "CR-701-26-tap-untap",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "tap",
+        "member_deck_rows": 1
+      },
+      "cap.tap_ten_cost": {
+        "citation_id": "CR-701-26-tap-untap",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "tap",
+        "member_deck_rows": 1
+      },
+      "cap.tapped_tokens": {
+        "citation_id": "CR-111-tokens",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "token",
+        "member_deck_rows": 1
+      },
+      "cap.target": {
+        "citation_id": "CR-115-targets",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "target",
+        "member_deck_rows": 6
+      },
+      "cap.target_card_any_graveyard": {
+        "citation_id": "CR-404-graveyard",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "graveyard",
+        "member_deck_rows": 1
+      },
+      "cap.target_destroy": {
+        "citation_id": "CR-701-8-destroy",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "destroy",
+        "member_deck_rows": 2
+      },
+      "cap.target_pt_modification": {
+        "citation_id": "CR-613-continuous-effects",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "gets",
+        "member_deck_rows": 1
+      },
+      "cap.target_restriction": {
+        "citation_id": "CR-115-targets",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "target",
+        "member_deck_rows": 1
+      },
+      "cap.temporary_animation": {
+        "citation_id": "CR-613-continuous-effects",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "becomes",
+        "member_deck_rows": 3
+      },
+      "cap.temporary_copy": {
+        "citation_id": "CR-706-copiable-values",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "copy",
+        "member_deck_rows": 1
+      },
+      "cap.temporary_flying_double_strike": {
+        "citation_id": "CR-613-continuous-effects",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "gains",
+        "member_deck_rows": 1
+      },
+      "cap.temporary_protection": {
+        "citation_id": "CR-702-11-hexproof",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "hexproof",
+        "member_deck_rows": 1
+      },
+      "cap.token_creation": {
+        "citation_id": "CR-111-tokens",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "token",
+        "member_deck_rows": 10
+      },
+      "cap.token_exception": {
+        "citation_id": "CR-111-tokens",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "token",
+        "member_deck_rows": 1
+      },
+      "cap.token_or_counters": {
+        "citation_id": "CR-111-tokens",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "token",
+        "member_deck_rows": 1
+      },
+      "cap.token_replacement": {
+        "citation_id": "CR-111-tokens",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "token",
+        "member_deck_rows": 1
+      },
+      "cap.totem_armor_replacement": {
+        "citation_id": "CR-614-replacement-effects",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "instead",
+        "member_deck_rows": 1
+      },
+      "cap.treasure": {
+        "citation_id": "CR-301-artifacts",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "treasure",
+        "member_deck_rows": 1
+      },
+      "cap.tribal": {
+        "citation_id": "CR-205-type-line",
+        "coverage_basis": "structural_grounding",
+        "matched_marker": null,
+        "rationale": "Creature-type-matters effect; oracle corpus is subtype-specific (elf/zombie) without generic type vocabulary.",
+        "member_deck_rows": 1
+      },
+      "cap.tribal_permission": {
+        "citation_id": "CR-406-exile",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "exile",
+        "member_deck_rows": 1
+      },
+      "cap.trigger": {
+        "citation_id": "CR-603-triggered-abilities",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "when",
+        "member_deck_rows": 1
+      },
+      "cap.turn_scoped_graveyard_cast_permission": {
+        "citation_id": "CR-404-graveyard",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "graveyard",
+        "member_deck_rows": 1
+      },
+      "cap.turn_scoped_permission": {
+        "citation_id": "CR-117-timing-priority",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "cast",
+        "member_deck_rows": 1
+      },
+      "cap.type_change": {
+        "citation_id": "CR-110-permanents",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "permanent",
+        "member_deck_rows": 3
+      },
+      "cap.type_filtered_sacrifice": {
+        "citation_id": "CR-701-21-sacrifice",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "sacrific",
+        "member_deck_rows": 1
+      },
+      "cap.type_layer": {
+        "citation_id": "CR-613-continuous-effects",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "becomes",
+        "member_deck_rows": 1
+      },
+      "cap.type_transition": {
+        "citation_id": "CR-613-continuous-effects",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "gets",
+        "member_deck_rows": 2
+      },
+      "cap.type_wide_state": {
+        "citation_id": "CR-613-continuous-effects",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "control",
+        "member_deck_rows": 1
+      },
+      "cap.untap_lands": {
+        "citation_id": "CR-701-26-tap-untap",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "tap",
+        "member_deck_rows": 1
+      },
+      "cap.upkeep_trigger": {
+        "citation_id": "CR-503-upkeep-step",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "upkeep",
+        "member_deck_rows": 3
+      },
+      "cap.vehicle": {
+        "citation_id": "CR-702-122a-crew",
+        "coverage_basis": "lexical_markers",
+        "matched_marker": "crew",
+        "member_deck_rows": 8
+      }
     },
     "mechanic_edges": {
       "foretell": [
@@ -302,7 +1401,11 @@
           },
           "why_required": "Object/ability framing for object-referencing effects.",
           "dependent_requirement_families": [],
-          "dependent_classification_or_interaction_inputs": []
+          "dependent_classification_or_interaction_inputs": [],
+          "coverage_basis": "lexical_markers",
+          "semantic_markers": [
+            "object"
+          ]
         },
         {
           "citation_id": "CR-110-permanents",
@@ -318,23 +1421,19 @@
           "why_required": "Permanent persistence.",
           "dependent_requirement_families": [
             {
-              "requirement_family_id": "cap.artifact_permanent",
-              "card_requirement_map_rows": 27
-            },
-            {
               "requirement_family_id": "cap.type_change",
               "card_requirement_map_rows": 3
             },
             {
               "requirement_family_id": "cap.new_incarnations",
               "card_requirement_map_rows": 3
-            },
-            {
-              "requirement_family_id": "cap.conditional_modified_state",
-              "card_requirement_map_rows": 1
             }
           ],
-          "dependent_classification_or_interaction_inputs": []
+          "dependent_classification_or_interaction_inputs": [],
+          "coverage_basis": "lexical_markers",
+          "semantic_markers": [
+            "permanent"
+          ]
         },
         {
           "citation_id": "CR-111-tokens",
@@ -347,7 +1446,7 @@
             "heading_line_sha256": "c9e76a1f57d03c7e1318d866cee9f3d4f92dc42ef1496cc28e1f80d57100e4ee",
             "heading_line_excerpt": "111. Tokens"
           },
-          "why_required": "Token creation cluster.",
+          "why_required": "Token creation/copy-batch cluster.",
           "dependent_requirement_families": [
             {
               "requirement_family_id": "cap.token_creation",
@@ -388,9 +1487,21 @@
             {
               "requirement_family_id": "cap.token_or_counters",
               "card_requirement_map_rows": 1
+            },
+            {
+              "requirement_family_id": "cap.copy_token_batch",
+              "card_requirement_map_rows": 1
+            },
+            {
+              "requirement_family_id": "cap.token_replacement",
+              "card_requirement_map_rows": 1
             }
           ],
-          "dependent_classification_or_interaction_inputs": []
+          "dependent_classification_or_interaction_inputs": [],
+          "coverage_basis": "lexical_markers",
+          "semantic_markers": [
+            "token"
+          ]
         },
         {
           "citation_id": "CR-115-targets",
@@ -434,7 +1545,11 @@
               "card_requirement_map_rows": 2
             }
           ],
-          "dependent_classification_or_interaction_inputs": []
+          "dependent_classification_or_interaction_inputs": [],
+          "coverage_basis": "lexical_markers",
+          "semantic_markers": [
+            "target"
+          ]
         },
         {
           "citation_id": "CR-117-timing-priority",
@@ -464,13 +1579,15 @@
             {
               "requirement_family_id": "cap.turn_scoped_permission",
               "card_requirement_map_rows": 1
-            },
-            {
-              "requirement_family_id": "cap.multi_actor_staged_resolution",
-              "card_requirement_map_rows": 1
             }
           ],
-          "dependent_classification_or_interaction_inputs": []
+          "dependent_classification_or_interaction_inputs": [],
+          "coverage_basis": "lexical_markers",
+          "semantic_markers": [
+            "flash",
+            "cast",
+            "activate"
+          ]
         },
         {
           "citation_id": "CR-118-costs",
@@ -494,7 +1611,11 @@
               "card_requirement_map_rows": 1
             }
           ],
-          "dependent_classification_or_interaction_inputs": []
+          "dependent_classification_or_interaction_inputs": [],
+          "coverage_basis": "lexical_markers",
+          "semantic_markers": [
+            "cost"
+          ]
         },
         {
           "citation_id": "CR-119-life",
@@ -507,14 +1628,22 @@
             "heading_line_sha256": "026b5f3e6fae087b23a44e3ab824833133fff5e51cc8176c22dbce2cf8ce4330",
             "heading_line_excerpt": "119. Life"
           },
-          "why_required": "Life totals/payment.",
+          "why_required": "Life totals, direct loss and gain.",
           "dependent_requirement_families": [
             {
               "requirement_family_id": "cap.life",
               "card_requirement_map_rows": 1
+            },
+            {
+              "requirement_family_id": "cap.life_drain",
+              "card_requirement_map_rows": 1
             }
           ],
-          "dependent_classification_or_interaction_inputs": []
+          "dependent_classification_or_interaction_inputs": [],
+          "coverage_basis": "lexical_markers",
+          "semantic_markers": [
+            "life"
+          ]
         },
         {
           "citation_id": "CR-120-damage",
@@ -538,7 +1667,11 @@
               "card_requirement_map_rows": 1
             }
           ],
-          "dependent_classification_or_interaction_inputs": []
+          "dependent_classification_or_interaction_inputs": [],
+          "coverage_basis": "lexical_markers",
+          "semantic_markers": [
+            "damage"
+          ]
         },
         {
           "citation_id": "CR-121-drawing",
@@ -562,7 +1695,11 @@
               "card_requirement_map_rows": 1
             }
           ],
-          "dependent_classification_or_interaction_inputs": []
+          "dependent_classification_or_interaction_inputs": [],
+          "coverage_basis": "lexical_markers",
+          "semantic_markers": [
+            "draw"
+          ]
         },
         {
           "citation_id": "CR-122-counters",
@@ -588,9 +1725,17 @@
             {
               "requirement_family_id": "cap.counter_or_haste",
               "card_requirement_map_rows": 1
+            },
+            {
+              "requirement_family_id": "cap.countered_setup",
+              "card_requirement_map_rows": 1
             }
           ],
-          "dependent_classification_or_interaction_inputs": []
+          "dependent_classification_or_interaction_inputs": [],
+          "coverage_basis": "lexical_markers",
+          "semantic_markers": [
+            "counter"
+          ]
         },
         {
           "citation_id": "CR-205-type-line",
@@ -620,13 +1765,13 @@
             {
               "requirement_family_id": "cap.tribal",
               "card_requirement_map_rows": 1
-            },
-            {
-              "requirement_family_id": "cap.tribal_permission",
-              "card_requirement_map_rows": 1
             }
           ],
-          "dependent_classification_or_interaction_inputs": []
+          "dependent_classification_or_interaction_inputs": [],
+          "coverage_basis": "lexical_markers",
+          "semantic_markers": [
+            "type"
+          ]
         },
         {
           "citation_id": "CR-301-artifacts",
@@ -656,9 +1801,24 @@
             {
               "requirement_family_id": "cap.artifact_exception",
               "card_requirement_map_rows": 1
+            },
+            {
+              "requirement_family_id": "cap.crew_alternative",
+              "card_requirement_map_rows": 1
+            },
+            {
+              "requirement_family_id": "cap.artifact_permanent",
+              "card_requirement_map_rows": 27
             }
           ],
-          "dependent_classification_or_interaction_inputs": []
+          "dependent_classification_or_interaction_inputs": [],
+          "coverage_basis": "lexical_markers",
+          "semantic_markers": [
+            "artifact",
+            "vehicle",
+            "equipment",
+            "treasure"
+          ]
         },
         {
           "citation_id": "CR-302-creatures",
@@ -678,7 +1838,11 @@
               "card_requirement_map_rows": 3
             }
           ],
-          "dependent_classification_or_interaction_inputs": []
+          "dependent_classification_or_interaction_inputs": [],
+          "coverage_basis": "lexical_markers",
+          "semantic_markers": [
+            "creature"
+          ]
         },
         {
           "citation_id": "CR-303-enchantments",
@@ -706,7 +1870,11 @@
               "card_requirement_map_rows": 1
             }
           ],
-          "dependent_classification_or_interaction_inputs": []
+          "dependent_classification_or_interaction_inputs": [],
+          "coverage_basis": "lexical_markers",
+          "semantic_markers": [
+            "enchant"
+          ]
         },
         {
           "citation_id": "CR-306-planeswalkers",
@@ -734,7 +1902,12 @@
               "card_requirement_map_rows": 2
             }
           ],
-          "dependent_classification_or_interaction_inputs": []
+          "dependent_classification_or_interaction_inputs": [],
+          "coverage_basis": "lexical_markers",
+          "semantic_markers": [
+            "+1:",
+            "loyalty"
+          ]
         },
         {
           "citation_id": "CR-401-library",
@@ -770,7 +1943,11 @@
               "card_requirement_map_rows": 1
             }
           ],
-          "dependent_classification_or_interaction_inputs": []
+          "dependent_classification_or_interaction_inputs": [],
+          "coverage_basis": "lexical_markers",
+          "semantic_markers": [
+            "library"
+          ]
         },
         {
           "citation_id": "CR-402-hand",
@@ -794,7 +1971,11 @@
               "card_requirement_map_rows": 1
             }
           ],
-          "dependent_classification_or_interaction_inputs": []
+          "dependent_classification_or_interaction_inputs": [],
+          "coverage_basis": "lexical_markers",
+          "semantic_markers": [
+            "hand"
+          ]
         },
         {
           "citation_id": "CR-403-battlefield",
@@ -826,7 +2007,11 @@
               "card_requirement_map_rows": 1
             }
           ],
-          "dependent_classification_or_interaction_inputs": []
+          "dependent_classification_or_interaction_inputs": [],
+          "coverage_basis": "lexical_markers",
+          "semantic_markers": [
+            "battlefield"
+          ]
         },
         {
           "citation_id": "CR-404-graveyard",
@@ -892,9 +2077,17 @@
             {
               "requirement_family_id": "cap.turn_scoped_graveyard_cast_permission",
               "card_requirement_map_rows": 1
+            },
+            {
+              "requirement_family_id": "cap.alternate_cast_zone",
+              "card_requirement_map_rows": 1
             }
           ],
-          "dependent_classification_or_interaction_inputs": []
+          "dependent_classification_or_interaction_inputs": [],
+          "coverage_basis": "lexical_markers",
+          "semantic_markers": [
+            "graveyard"
+          ]
         },
         {
           "citation_id": "CR-406-exile",
@@ -958,11 +2151,19 @@
               "card_requirement_map_rows": 1
             },
             {
-              "requirement_family_id": "cap.alternate_cast_zone",
+              "requirement_family_id": "cap.delayed_sacrifice",
+              "card_requirement_map_rows": 1
+            },
+            {
+              "requirement_family_id": "cap.tribal_permission",
               "card_requirement_map_rows": 1
             }
           ],
-          "dependent_classification_or_interaction_inputs": []
+          "dependent_classification_or_interaction_inputs": [],
+          "coverage_basis": "lexical_markers",
+          "semantic_markers": [
+            "exile"
+          ]
         },
         {
           "citation_id": "CR-503-upkeep-step",
@@ -982,7 +2183,11 @@
               "card_requirement_map_rows": 3
             }
           ],
-          "dependent_classification_or_interaction_inputs": []
+          "dependent_classification_or_interaction_inputs": [],
+          "coverage_basis": "lexical_markers",
+          "semantic_markers": [
+            "upkeep"
+          ]
         },
         {
           "citation_id": "CR-508-declare-attackers",
@@ -1014,7 +2219,11 @@
               "card_requirement_map_rows": 1
             }
           ],
-          "dependent_classification_or_interaction_inputs": []
+          "dependent_classification_or_interaction_inputs": [],
+          "coverage_basis": "lexical_markers",
+          "semantic_markers": [
+            "attack"
+          ]
         },
         {
           "citation_id": "CR-509-declare-blockers",
@@ -1029,7 +2238,11 @@
           },
           "why_required": "Block declaration interactions.",
           "dependent_requirement_families": [],
-          "dependent_classification_or_interaction_inputs": []
+          "dependent_classification_or_interaction_inputs": [],
+          "coverage_basis": "lexical_markers",
+          "semantic_markers": [
+            "block"
+          ]
         },
         {
           "citation_id": "CR-510-combat-damage-step",
@@ -1049,7 +2262,11 @@
               "card_requirement_map_rows": 5
             }
           ],
-          "dependent_classification_or_interaction_inputs": []
+          "dependent_classification_or_interaction_inputs": [],
+          "coverage_basis": "lexical_markers",
+          "semantic_markers": [
+            "combat damage"
+          ]
         },
         {
           "citation_id": "CR-513-end-step",
@@ -1069,7 +2286,11 @@
               "card_requirement_map_rows": 1
             }
           ],
-          "dependent_classification_or_interaction_inputs": []
+          "dependent_classification_or_interaction_inputs": [],
+          "coverage_basis": "lexical_markers",
+          "semantic_markers": [
+            "end step"
+          ]
         },
         {
           "citation_id": "CR-601-casting-spells",
@@ -1109,7 +2330,13 @@
               "card_requirement_map_rows": 1
             }
           ],
-          "dependent_classification_or_interaction_inputs": []
+          "dependent_classification_or_interaction_inputs": [],
+          "coverage_basis": "lexical_markers",
+          "semantic_markers": [
+            "choose",
+            "choice",
+            " x "
+          ]
         },
         {
           "citation_id": "CR-602-activated-abilities",
@@ -1145,7 +2372,12 @@
               "card_requirement_map_rows": 1
             }
           ],
-          "dependent_classification_or_interaction_inputs": []
+          "dependent_classification_or_interaction_inputs": [],
+          "coverage_basis": "lexical_markers",
+          "semantic_markers": [
+            ": ",
+            "{t}"
+          ]
         },
         {
           "citation_id": "CR-603-triggered-abilities",
@@ -1197,7 +2429,13 @@
               "card_requirement_map_rows": 1
             }
           ],
-          "dependent_classification_or_interaction_inputs": []
+          "dependent_classification_or_interaction_inputs": [],
+          "coverage_basis": "lexical_markers",
+          "semantic_markers": [
+            "when",
+            "whenever",
+            "at the beginning"
+          ]
         },
         {
           "citation_id": "CR-604-static-abilities",
@@ -1235,9 +2473,23 @@
             {
               "requirement_family_id": "cap.modified_predicate",
               "card_requirement_map_rows": 2
+            },
+            {
+              "requirement_family_id": "cap.conditional_modified_state",
+              "card_requirement_map_rows": 1
             }
           ],
-          "dependent_classification_or_interaction_inputs": []
+          "dependent_classification_or_interaction_inputs": [],
+          "coverage_basis": "lexical_markers",
+          "semantic_markers": [
+            "as long as",
+            "gets",
+            "get ",
+            "+1/+1",
+            "has \"",
+            "can't be",
+            "can't be countered"
+          ]
         },
         {
           "citation_id": "CR-605-mana-abilities",
@@ -1269,7 +2521,11 @@
               "card_requirement_map_rows": 2
             }
           ],
-          "dependent_classification_or_interaction_inputs": []
+          "dependent_classification_or_interaction_inputs": [],
+          "coverage_basis": "lexical_markers",
+          "semantic_markers": [
+            "add {"
+          ]
         },
         {
           "citation_id": "CR-613-continuous-effects",
@@ -1351,9 +2607,23 @@
             {
               "requirement_family_id": "cap.color_set_black",
               "card_requirement_map_rows": 1
+            },
+            {
+              "requirement_family_id": "cap.state_based_actions",
+              "card_requirement_map_rows": 1
             }
           ],
-          "dependent_classification_or_interaction_inputs": []
+          "dependent_classification_or_interaction_inputs": [],
+          "coverage_basis": "lexical_markers",
+          "semantic_markers": [
+            "gets",
+            "gains",
+            "have ",
+            "becomes",
+            "until end of turn",
+            "control",
+            "loses all other card types"
+          ]
         },
         {
           "citation_id": "CR-614-replacement-effects",
@@ -1377,15 +2647,17 @@
               "card_requirement_map_rows": 1
             },
             {
-              "requirement_family_id": "cap.token_replacement",
-              "card_requirement_map_rows": 1
-            },
-            {
               "requirement_family_id": "cap.totem_armor_replacement",
               "card_requirement_map_rows": 1
             }
           ],
-          "dependent_classification_or_interaction_inputs": []
+          "dependent_classification_or_interaction_inputs": [],
+          "coverage_basis": "lexical_markers",
+          "semantic_markers": [
+            "instead",
+            "would",
+            "prevent"
+          ]
         },
         {
           "citation_id": "CR-700-general",
@@ -1405,7 +2677,12 @@
               "card_requirement_map_rows": 1
             }
           ],
-          "dependent_classification_or_interaction_inputs": []
+          "dependent_classification_or_interaction_inputs": [],
+          "coverage_basis": "lexical_markers",
+          "semantic_markers": [
+            "each player",
+            "additional combat phase"
+          ]
         },
         {
           "citation_id": "CR-700-2-modes",
@@ -1425,7 +2702,12 @@
               "card_requirement_map_rows": 1
             }
           ],
-          "dependent_classification_or_interaction_inputs": []
+          "dependent_classification_or_interaction_inputs": [],
+          "coverage_basis": "lexical_markers",
+          "semantic_markers": [
+            "choose one",
+            "mode"
+          ]
         },
         {
           "citation_id": "CR-701-3-attach",
@@ -1451,9 +2733,20 @@
             {
               "requirement_family_id": "cap.opponent_attachment",
               "card_requirement_map_rows": 1
+            },
+            {
+              "requirement_family_id": "cap.mass_untap",
+              "card_requirement_map_rows": 1
             }
           ],
-          "dependent_classification_or_interaction_inputs": []
+          "dependent_classification_or_interaction_inputs": [],
+          "coverage_basis": "lexical_markers",
+          "semantic_markers": [
+            "attach",
+            "attached",
+            "equipment",
+            "enchant"
+          ]
         },
         {
           "citation_id": "CR-701-6-counter",
@@ -1469,15 +2762,16 @@
           "why_required": "Countering spells/abilities.",
           "dependent_requirement_families": [
             {
-              "requirement_family_id": "cap.countered_setup",
-              "card_requirement_map_rows": 1
-            },
-            {
               "requirement_family_id": "cap.counterspell",
               "card_requirement_map_rows": 2
             }
           ],
-          "dependent_classification_or_interaction_inputs": []
+          "dependent_classification_or_interaction_inputs": [],
+          "coverage_basis": "lexical_markers",
+          "semantic_markers": [
+            "counter target",
+            "can't be countered"
+          ]
         },
         {
           "citation_id": "CR-701-8-destroy",
@@ -1509,7 +2803,11 @@
               "card_requirement_map_rows": 1
             }
           ],
-          "dependent_classification_or_interaction_inputs": []
+          "dependent_classification_or_interaction_inputs": [],
+          "coverage_basis": "lexical_markers",
+          "semantic_markers": [
+            "destroy"
+          ]
         },
         {
           "citation_id": "CR-701-9-discard",
@@ -1529,7 +2827,11 @@
               "card_requirement_map_rows": 1
             }
           ],
-          "dependent_classification_or_interaction_inputs": []
+          "dependent_classification_or_interaction_inputs": [],
+          "coverage_basis": "lexical_markers",
+          "semantic_markers": [
+            "discard"
+          ]
         },
         {
           "citation_id": "CR-701-15-goad",
@@ -1549,7 +2851,11 @@
               "card_requirement_map_rows": 2
             }
           ],
-          "dependent_classification_or_interaction_inputs": []
+          "dependent_classification_or_interaction_inputs": [],
+          "coverage_basis": "lexical_markers",
+          "semantic_markers": [
+            "goad"
+          ]
         },
         {
           "citation_id": "CR-701-17a-mill",
@@ -1569,7 +2875,11 @@
               "card_requirement_map_rows": 3
             }
           ],
-          "dependent_classification_or_interaction_inputs": []
+          "dependent_classification_or_interaction_inputs": [],
+          "coverage_basis": "lexical_markers",
+          "semantic_markers": [
+            "mill"
+          ]
         },
         {
           "citation_id": "CR-701-36a-populate",
@@ -1584,7 +2894,11 @@
           },
           "why_required": "Populate copies tokens.",
           "dependent_requirement_families": [],
-          "dependent_classification_or_interaction_inputs": []
+          "dependent_classification_or_interaction_inputs": [],
+          "coverage_basis": "lexical_markers",
+          "semantic_markers": [
+            "populate"
+          ]
         },
         {
           "citation_id": "CR-701-47a-amass",
@@ -1604,7 +2918,11 @@
               "card_requirement_map_rows": 1
             }
           ],
-          "dependent_classification_or_interaction_inputs": []
+          "dependent_classification_or_interaction_inputs": [],
+          "coverage_basis": "lexical_markers",
+          "semantic_markers": [
+            "amass"
+          ]
         },
         {
           "citation_id": "CR-701-21-sacrifice",
@@ -1640,15 +2958,19 @@
               "card_requirement_map_rows": 1
             },
             {
-              "requirement_family_id": "cap.delayed_sacrifice",
+              "requirement_family_id": "cap.sacrifice_threshold",
               "card_requirement_map_rows": 1
             },
             {
-              "requirement_family_id": "cap.sacrifice_threshold",
+              "requirement_family_id": "cap.multi_actor_staged_resolution",
               "card_requirement_map_rows": 1
             }
           ],
-          "dependent_classification_or_interaction_inputs": []
+          "dependent_classification_or_interaction_inputs": [],
+          "coverage_basis": "lexical_markers",
+          "semantic_markers": [
+            "sacrific"
+          ]
         },
         {
           "citation_id": "CR-701-22a-scry",
@@ -1668,7 +2990,11 @@
               "card_requirement_map_rows": 2
             }
           ],
-          "dependent_classification_or_interaction_inputs": []
+          "dependent_classification_or_interaction_inputs": [],
+          "coverage_basis": "lexical_markers",
+          "semantic_markers": [
+            "scry"
+          ]
         },
         {
           "citation_id": "CR-701-23-search",
@@ -1688,7 +3014,11 @@
               "card_requirement_map_rows": 4
             }
           ],
-          "dependent_classification_or_interaction_inputs": []
+          "dependent_classification_or_interaction_inputs": [],
+          "coverage_basis": "lexical_markers",
+          "semantic_markers": [
+            "search"
+          ]
         },
         {
           "citation_id": "CR-701-24-shuffle",
@@ -1712,7 +3042,11 @@
               "card_requirement_map_rows": 1
             }
           ],
-          "dependent_classification_or_interaction_inputs": []
+          "dependent_classification_or_interaction_inputs": [],
+          "coverage_basis": "lexical_markers",
+          "semantic_markers": [
+            "shuffle"
+          ]
         },
         {
           "citation_id": "CR-701-25-surveil",
@@ -1732,7 +3066,11 @@
               "card_requirement_map_rows": 1
             }
           ],
-          "dependent_classification_or_interaction_inputs": []
+          "dependent_classification_or_interaction_inputs": [],
+          "coverage_basis": "lexical_markers",
+          "semantic_markers": [
+            "surveil"
+          ]
         },
         {
           "citation_id": "CR-701-26-tap-untap",
@@ -1770,13 +3108,14 @@
             {
               "requirement_family_id": "cap.untap_lands",
               "card_requirement_map_rows": 1
-            },
-            {
-              "requirement_family_id": "cap.mass_untap",
-              "card_requirement_map_rows": 1
             }
           ],
-          "dependent_classification_or_interaction_inputs": []
+          "dependent_classification_or_interaction_inputs": [],
+          "coverage_basis": "lexical_markers",
+          "semantic_markers": [
+            "tap",
+            "untap"
+          ]
         },
         {
           "citation_id": "CR-701-20-reveal",
@@ -1796,7 +3135,11 @@
               "card_requirement_map_rows": 2
             }
           ],
-          "dependent_classification_or_interaction_inputs": []
+          "dependent_classification_or_interaction_inputs": [],
+          "coverage_basis": "lexical_markers",
+          "semantic_markers": [
+            "reveal"
+          ]
         },
         {
           "citation_id": "CR-702-2-deathtouch",
@@ -1816,7 +3159,11 @@
               "card_requirement_map_rows": 1
             }
           ],
-          "dependent_classification_or_interaction_inputs": []
+          "dependent_classification_or_interaction_inputs": [],
+          "coverage_basis": "lexical_markers",
+          "semantic_markers": [
+            "deathtouch"
+          ]
         },
         {
           "citation_id": "CR-702-9-flying",
@@ -1834,13 +3181,41 @@
             {
               "requirement_family_id": "cap.flying_grant",
               "card_requirement_map_rows": 1
-            },
+            }
+          ],
+          "dependent_classification_or_interaction_inputs": [],
+          "coverage_basis": "lexical_markers",
+          "semantic_markers": [
+            "flying"
+          ]
+        },
+        {
+          "citation_id": "CR-702-11-hexproof",
+          "citation_kind": "CR_RULE_IDENTIFIER",
+          "rule_identifier": "CR 702.11",
+          "canonical_section_identity": "702.11. Hexproof",
+          "artifact_local_locator": {
+            "locator_kind": "RULE_HEADING_LINE",
+            "line_number_1based": 3987,
+            "heading_line_sha256": "3c8ed45954d4edbfb3062c8d017eba31db3c99dc772d9872b73b35826ce6e0e1",
+            "heading_line_excerpt": "702.11. Hexproof"
+          },
+          "why_required": "Hexproof grants (conditional/temporary).",
+          "dependent_requirement_families": [
             {
               "requirement_family_id": "cap.conditional_hexproof",
               "card_requirement_map_rows": 1
+            },
+            {
+              "requirement_family_id": "cap.temporary_protection",
+              "card_requirement_map_rows": 1
             }
           ],
-          "dependent_classification_or_interaction_inputs": []
+          "dependent_classification_or_interaction_inputs": [],
+          "coverage_basis": "lexical_markers",
+          "semantic_markers": [
+            "hexproof"
+          ]
         },
         {
           "citation_id": "CR-702-12-indestructible",
@@ -1860,7 +3235,11 @@
               "card_requirement_map_rows": 1
             }
           ],
-          "dependent_classification_or_interaction_inputs": []
+          "dependent_classification_or_interaction_inputs": [],
+          "coverage_basis": "lexical_markers",
+          "semantic_markers": [
+            "indestructible"
+          ]
         },
         {
           "citation_id": "CR-702-16-protection",
@@ -1874,13 +3253,12 @@
             "heading_line_excerpt": "702.16. Protection"
           },
           "why_required": "Protection effects.",
-          "dependent_requirement_families": [
-            {
-              "requirement_family_id": "cap.temporary_protection",
-              "card_requirement_map_rows": 1
-            }
-          ],
-          "dependent_classification_or_interaction_inputs": []
+          "dependent_requirement_families": [],
+          "dependent_classification_or_interaction_inputs": [],
+          "coverage_basis": "lexical_markers",
+          "semantic_markers": [
+            "protection"
+          ]
         },
         {
           "citation_id": "CR-702-15a-lifelink",
@@ -1893,14 +3271,13 @@
             "heading_line_sha256": "f25182d0a2a3af793d6ed9c36f3d1da1e2911bdd6fc83d6ad1b45d3ab61d7712",
             "heading_line_excerpt": "702.15a Lifelink is a static ability."
           },
-          "why_required": "Lifelink drain.",
-          "dependent_requirement_families": [
-            {
-              "requirement_family_id": "cap.life_drain",
-              "card_requirement_map_rows": 1
-            }
-          ],
-          "dependent_classification_or_interaction_inputs": []
+          "why_required": "Lifelink.",
+          "dependent_requirement_families": [],
+          "dependent_classification_or_interaction_inputs": [],
+          "coverage_basis": "lexical_markers",
+          "semantic_markers": [
+            "lifelink"
+          ]
         },
         {
           "citation_id": "CR-702-6a-equip",
@@ -1924,7 +3301,11 @@
               "card_requirement_map_rows": 1
             }
           ],
-          "dependent_classification_or_interaction_inputs": []
+          "dependent_classification_or_interaction_inputs": [],
+          "coverage_basis": "lexical_markers",
+          "semantic_markers": [
+            "equip"
+          ]
         },
         {
           "citation_id": "CR-702-33-kicker",
@@ -1944,7 +3325,11 @@
               "card_requirement_map_rows": 1
             }
           ],
-          "dependent_classification_or_interaction_inputs": []
+          "dependent_classification_or_interaction_inputs": [],
+          "coverage_basis": "lexical_markers",
+          "semantic_markers": [
+            "kicker"
+          ]
         },
         {
           "citation_id": "CR-702-51a-convoke",
@@ -1964,7 +3349,11 @@
               "card_requirement_map_rows": 4
             }
           ],
-          "dependent_classification_or_interaction_inputs": []
+          "dependent_classification_or_interaction_inputs": [],
+          "coverage_basis": "lexical_markers",
+          "semantic_markers": [
+            "convoke"
+          ]
         },
         {
           "citation_id": "CR-702-92a-living-weapon",
@@ -1984,7 +3373,11 @@
               "card_requirement_map_rows": 1
             }
           ],
-          "dependent_classification_or_interaction_inputs": []
+          "dependent_classification_or_interaction_inputs": [],
+          "coverage_basis": "lexical_markers",
+          "semantic_markers": [
+            "living weapon"
+          ]
         },
         {
           "citation_id": "CR-702-122a-crew",
@@ -2008,15 +3401,15 @@
               "card_requirement_map_rows": 2
             },
             {
-              "requirement_family_id": "cap.crew_alternative",
-              "card_requirement_map_rows": 1
-            },
-            {
               "requirement_family_id": "cap.dynamic_crew_value",
               "card_requirement_map_rows": 1
             }
           ],
-          "dependent_classification_or_interaction_inputs": []
+          "dependent_classification_or_interaction_inputs": [],
+          "coverage_basis": "lexical_markers",
+          "semantic_markers": [
+            "crew"
+          ]
         },
         {
           "citation_id": "CR-702-124-partner",
@@ -2031,7 +3424,11 @@
           },
           "why_required": "Partner designation.",
           "dependent_requirement_families": [],
-          "dependent_classification_or_interaction_inputs": []
+          "dependent_classification_or_interaction_inputs": [],
+          "coverage_basis": "lexical_markers",
+          "semantic_markers": [
+            "partner"
+          ]
         },
         {
           "citation_id": "CR-702-136-riot",
@@ -2051,7 +3448,11 @@
               "card_requirement_map_rows": 1
             }
           ],
-          "dependent_classification_or_interaction_inputs": []
+          "dependent_classification_or_interaction_inputs": [],
+          "coverage_basis": "lexical_markers",
+          "semantic_markers": [
+            "riot"
+          ]
         },
         {
           "citation_id": "CR-702-143a-foretell",
@@ -2083,7 +3484,11 @@
               "card_requirement_map_rows": 9
             }
           ],
-          "dependent_classification_or_interaction_inputs": []
+          "dependent_classification_or_interaction_inputs": [],
+          "coverage_basis": "lexical_markers",
+          "semantic_markers": [
+            "foretell"
+          ]
         },
         {
           "citation_id": "CR-702-151a-reconfigure",
@@ -2103,7 +3508,11 @@
               "card_requirement_map_rows": 2
             }
           ],
-          "dependent_classification_or_interaction_inputs": []
+          "dependent_classification_or_interaction_inputs": [],
+          "coverage_basis": "lexical_markers",
+          "semantic_markers": [
+            "reconfigure"
+          ]
         },
         {
           "citation_id": "CR-704-state-based-actions",
@@ -2117,13 +3526,14 @@
             "heading_line_excerpt": "704. State-Based Actions"
           },
           "why_required": "State-based actions.",
-          "dependent_requirement_families": [
-            {
-              "requirement_family_id": "cap.state_based_actions",
-              "card_requirement_map_rows": 1
-            }
-          ],
-          "dependent_classification_or_interaction_inputs": []
+          "dependent_requirement_families": [],
+          "dependent_classification_or_interaction_inputs": [],
+          "coverage_basis": "lexical_markers",
+          "semantic_markers": [
+            "state-based action",
+            "dies",
+            "put into"
+          ]
         },
         {
           "citation_id": "CR-706-copiable-values",
@@ -2157,13 +3567,13 @@
             {
               "requirement_family_id": "cap.copiable_token_values",
               "card_requirement_map_rows": 1
-            },
-            {
-              "requirement_family_id": "cap.copy_token_batch",
-              "card_requirement_map_rows": 1
             }
           ],
-          "dependent_classification_or_interaction_inputs": []
+          "dependent_classification_or_interaction_inputs": [],
+          "coverage_basis": "lexical_markers",
+          "semantic_markers": [
+            "copy"
+          ]
         },
         {
           "citation_id": "CR-714-saga-cards",
@@ -2183,7 +3593,12 @@
               "card_requirement_map_rows": 2
             }
           ],
-          "dependent_classification_or_interaction_inputs": []
+          "dependent_classification_or_interaction_inputs": [],
+          "coverage_basis": "lexical_markers",
+          "semantic_markers": [
+            "saga",
+            "chapter"
+          ]
         }
       ],
       "dependent_research_requirements": [
@@ -2226,7 +3641,8 @@
           },
           "why_required": "Official banned/restricted lists are the legality authority for any deck-pair evaluation over the locked REV3 rows.",
           "dependent_requirement_families": [],
-          "dependent_classification_or_interaction_inputs": []
+          "dependent_classification_or_interaction_inputs": [],
+          "coverage_basis": "policy_structural"
         },
         {
           "citation_id": "BRL-COMMANDER",
@@ -2248,7 +3664,8 @@
             "distinct_card_names_scanned": 402,
             "name_matches": [],
             "section_byte_length": 2617
-          }
+          },
+          "coverage_basis": "policy_structural"
         }
       ],
       "dependent_research_requirements": [
@@ -2291,7 +3708,8 @@
           },
           "why_required": "Identifies the pinned page as the official Commander format publication.",
           "dependent_requirement_families": [],
-          "dependent_classification_or_interaction_inputs": []
+          "dependent_classification_or_interaction_inputs": [],
+          "coverage_basis": "policy_structural"
         },
         {
           "citation_id": "CG-PLAY-RULES",
@@ -2316,7 +3734,8 @@
               "card_requirement_map_rows": 1
             }
           ],
-          "dependent_classification_or_interaction_inputs": []
+          "dependent_classification_or_interaction_inputs": [],
+          "coverage_basis": "policy_structural"
         },
         {
           "citation_id": "CG-COMMAND-ZONE",
@@ -2345,7 +3764,8 @@
               "card_requirement_map_rows": 1
             }
           ],
-          "dependent_classification_or_interaction_inputs": []
+          "dependent_classification_or_interaction_inputs": [],
+          "coverage_basis": "policy_structural"
         }
       ],
       "dependent_research_requirements": [
@@ -2388,7 +3808,8 @@
           },
           "why_required": "Official Commander 1v1 policy page; ROADMAP M2.5 scopes deck selection to official-Commander 1v1 decks, so this policy frames pair selection context.",
           "dependent_requirement_families": [],
-          "dependent_classification_or_interaction_inputs": []
+          "dependent_classification_or_interaction_inputs": [],
+          "coverage_basis": "policy_structural"
         },
         {
           "citation_id": "C1V1-PLAY-RULES",
@@ -2404,7 +3825,8 @@
           },
           "why_required": "1v1 play-rule modifiers; policy context only - carries no classification or interaction closure obligation in B1.",
           "dependent_requirement_families": [],
-          "dependent_classification_or_interaction_inputs": []
+          "dependent_classification_or_interaction_inputs": [],
+          "coverage_basis": "policy_structural"
         }
       ],
       "dependent_research_requirements": [
@@ -2447,7 +3869,8 @@
           },
           "why_required": "Anchors the pinned update-notes publication identity and date context.",
           "dependent_requirement_families": [],
-          "dependent_classification_or_interaction_inputs": []
+          "dependent_classification_or_interaction_inputs": [],
+          "coverage_basis": "policy_structural"
         },
         {
           "citation_id": "KHM-FORETELL",
@@ -2463,7 +3886,11 @@
           },
           "why_required": "Official clarifications for the Foretell mechanic; 33 oracle-text occurrences across resolved rows and commander Ranar the Ever-Watchful (Phantom Premonition) depend on these semantics (primary rule text cited at CR 702.143a).",
           "dependent_requirement_families": [],
-          "dependent_classification_or_interaction_inputs": []
+          "dependent_classification_or_interaction_inputs": [],
+          "coverage_basis": "lexical_markers",
+          "semantic_markers": [
+            "foretell"
+          ]
         }
       ],
       "dependent_research_requirements": [
@@ -2506,7 +3933,8 @@
           },
           "why_required": "Anchors the pinned update-notes publication identity and date context.",
           "dependent_requirement_families": [],
-          "dependent_classification_or_interaction_inputs": []
+          "dependent_classification_or_interaction_inputs": [],
+          "coverage_basis": "policy_structural"
         },
         {
           "citation_id": "CL-PARTNER",
@@ -2522,7 +3950,11 @@
           },
           "why_required": "Official clarifications for Partner; 4 oracle-text occurrences among resolved rows depend on partner designation semantics (primary rule text cited at CR 702.124).",
           "dependent_requirement_families": [],
-          "dependent_classification_or_interaction_inputs": []
+          "dependent_classification_or_interaction_inputs": [],
+          "coverage_basis": "lexical_markers",
+          "semantic_markers": [
+            "partner"
+          ]
         }
       ],
       "dependent_research_requirements": [
