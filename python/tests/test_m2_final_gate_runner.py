@@ -304,7 +304,7 @@ class ScopeScanTests(unittest.TestCase):
             source.mkdir(parents=True)
             (source / "lib.rs").write_text("// harmless\n", encoding="utf-8")
             (source / "search.rs").write_text(
-                "pub const STRATEGY: &str = \"MCTS\";\n", encoding="utf-8"
+                'pub const STRATEGY: &str = "MCTS";\n', encoding="utf-8"
             )
             with self.assertRaises(final.ScopeCheckFailure) as caught:
                 final.scan_for_patterns(base, final.SCOPE_SEARCH_PATTERNS, "search work")
