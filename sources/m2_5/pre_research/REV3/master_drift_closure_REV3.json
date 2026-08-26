@@ -1,0 +1,64 @@
+{
+  "schema": "manafold.m2.5.a.master-drift-closure.v1",
+  "slice": "M2.5.A",
+  "closed_at": "2026-08-26T04:11:59Z",
+
+  "rev3_baseline": {
+    "package_zip_sha256": "99b33945a3e0c7b2982734e65f770715029ce6acd500104bde48e8466eed1a90",
+    "research_run_id": "Manafold-M2.5-Pre-Research-REV3-2026-08-23",
+    "recorded_repository_sha": "05bd341635ba2150d721659b15b62c5ad311637f",
+    "recorded_repository_ref": "refs/heads/master",
+    "resolved_at": "2026-08-23T01:50:03.365151Z"
+  },
+
+  "verified_master": {
+    "sha256": "9eb5da3d2cfa2c4612d22d208d658fd4132b7f6f",
+    "ref": "refs/heads/master",
+    "remote_url": "https://github.com/chrismaghuhn/Manafold",
+    "baseline_is_ancestor": true,
+    "commits_between_baseline_and_verified_master": 10
+  },
+
+  "MASTER_DRIFT": "PASS",
+  "material_semantic_drift": false,
+  "rev3_evidence_reusable": true,
+  "research_data_revalidation_required": false,
+
+  "bound_records": {
+    "IMPORT_PROVENANCE.json": "39b236bf8885d705c9580a1b5d223efe5e96d284341724bc6016252546d0b7d0",
+    "MASTER_DRIFT_REPORT.md": "e419a1e79733d9a4f3f43c1169e1f950bab129598a8727262888e7da0b93d56d"
+  },
+
+  "drift_scope_examined": [
+    "docs/ROADMAP.md M2.5 scope (unchanged in range)",
+    "docs/adr/0041-capability-oriented-semantic-domains-and-explicit-semantic-ownership.md (newly accepted in range)",
+    "docs/cards/* capability model and certification contracts (unchanged in range)",
+    "cards/capabilities/registry.json and census tooling scripts/capability_census.py (unchanged in range)",
+    "docs/rules/AUTHORITY_POLICY.md authority/source policies (unchanged in range)",
+    "docs/adr/0037-derived-card-census-and-coverage-index.md census identity model (unchanged in range)",
+    "docs/INFORMATION_MODEL.md, docs/contracts/WIRE_CONTRACT.md, schemas/player-step.v2.schema.json (additive M2.D/M2.E completions; not consumed by REV3)"
+  ],
+
+  "impact_classification": {
+    "deck_pair_selection_research": "UNAFFECTED",
+    "oracle_identity_model": "UNAFFECTED",
+    "classification_authorities": "UNAFFECTED_NON_TERMINAL_AS_BEFORE",
+    "interaction_census": "UNAFFECTED_BLOCKED_AS_BEFORE",
+    "ranking_formula_status": "UNAFFECTED_FAIL_CLOSED_AS_BEFORE",
+    "m2_engine_interfaces": "CHANGED_BUT_NOT_CONSUMED_BY_REV3",
+    "semantic_ownership_architecture": "STRENGTHENS_REV3_IDENTITY_SEPARATIONS"
+  },
+
+  "pass_basis_summary": "Current master does not invalidate imported REV3 research assumptions: the only semantic-relevant drift is the acceptance of ADR 0041, which explicitly defers the semantic-domain inventory and ownership-graph representation to M2.5 and requires identity separations (card/source identity != capability identity != semantic ownership != implementation != certification) that REV3 already preserves; all other examined contract surfaces are byte-identical across the range. Fresh re-execution of all packaged validators on the current environment reproduced every structural claim.",
+  "full_report": "MASTER_DRIFT_REPORT.md",
+
+  "reverification": {
+    "checker_script": "scripts/check_m2_5_master_drift.py",
+    "commands": [
+      "python scripts/check_m2_5_master_drift.py",
+      "python scripts/check_m2_5_master_drift.py --negative-self-test",
+      "python scripts/check_m2_5_master_drift.py --verify-archive"
+    ],
+    "contract": "PASS requires this record and IMPORT_PROVENANCE.json to agree exactly about the verified master SHA, the REV3 baseline SHA, the package digest, and the MASTER_DRIFT = PASS grant; requires the REV3 baseline to be a git ancestor of the verified master; requires HEAD to equal the verified master or differ only by commits inside the promoted provenance boundary; and enforces digest coverage over every promoted evidence file. IMPORT_PROVENANCE.json and MASTER_DRIFT_REPORT.md are digest-bound by this record's bound_records section; any edit without a new reviewed closure fails closed."
+  }
+}

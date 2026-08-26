@@ -1,0 +1,165 @@
+{
+  "acquisition_finished_at": "2026-08-23T01:50:02.812834Z",
+  "acquisition_started_at": "2026-08-23T01:49:41.387662Z",
+  "authority_sources": {
+    "banned_restricted": {
+      "authority_id": "banned_restricted",
+      "bytes": 220085,
+      "http_status": 200,
+      "path": "source/authorities/banned_restricted.html",
+      "raw_artifact_available": true,
+      "retrieved_at": "2026-08-23T01:49:41.387662Z",
+      "sha256": "f9b69ee1e323674863c49ed9de443cce92375a7ddd5058c1dfe5e12477655284",
+      "source_url": "https://magic.wizards.com/en/banned-restricted-list"
+    },
+    "commander_1v1": {
+      "authority_id": "commander_1v1",
+      "bytes": 359768,
+      "http_status": 200,
+      "path": "source/authorities/commander_1v1.html",
+      "raw_artifact_available": true,
+      "retrieved_at": "2026-08-23T01:49:41.387662Z",
+      "sha256": "39f887277000eb5adf45555bf1ef010dfa56f367bc317eae508021a5b66dd236",
+      "source_url": "https://magic.wizards.com/en/formats/commander-1v1"
+    },
+    "commander_general": {
+      "authority_id": "commander_general",
+      "bytes": 421461,
+      "http_status": 200,
+      "path": "source/authorities/commander_general.html",
+      "raw_artifact_available": true,
+      "retrieved_at": "2026-08-23T01:49:41.387662Z",
+      "sha256": "58b3d5c39a63d7f4e777f8776c7af67fffc6e763eb3705fc7a51888a0c9fa0b9",
+      "source_url": "https://magic.wizards.com/en/formats/commander"
+    },
+    "commander_legends_release_notes": {
+      "authority_id": "commander_legends_release_notes",
+      "bytes": 736906,
+      "http_status": 200,
+      "path": "source/authorities/commander_legends_release_notes.html",
+      "raw_artifact_available": true,
+      "retrieved_at": "2026-08-23T01:49:41.387662Z",
+      "sha256": "155a4d067693b31896cd07f7d13d2f435ba37f113584d6f8080d40553c067938",
+      "source_url": "https://magic.wizards.com/en/news/feature/commander-legends-release-notes-2020-11-06"
+    },
+    "comprehensive_rules": {
+      "authority_id": "comprehensive_rules",
+      "bytes": 977822,
+      "http_status": 200,
+      "path": "source/authorities/comprehensive_rules.txt",
+      "raw_artifact_available": true,
+      "retrieved_at": "2026-08-23T01:49:41.387662Z",
+      "sha256": "4381ad1b39ab2c05f7d03633a20f711ed37277074d3266dcba5f38cbb527423f",
+      "source_url": "https://media.wizards.com/2026/downloads/MagicCompRules%2020260819.txt"
+    },
+    "kaldheim_release_notes": {
+      "authority_id": "kaldheim_release_notes",
+      "bytes": 692479,
+      "http_status": 200,
+      "path": "source/authorities/kaldheim_release_notes.html",
+      "raw_artifact_available": true,
+      "retrieved_at": "2026-08-23T01:49:41.387662Z",
+      "sha256": "4afc8372f6638a9b2d37ffc1a2e99cd23b10cbe98c366f2b55069573dfb2d529",
+      "source_url": "https://magic.wizards.com/en/news/feature/kaldheim-release-notes-2021-01-22"
+    },
+    "magic_2013_release_notes": {
+      "authority_id": "magic_2013_release_notes",
+      "error": "HTTP Error 404: Not Found",
+      "error_type": "HTTPError",
+      "raw_artifact_available": false,
+      "retrieved_at": "2026-08-23T01:49:41.387662Z",
+      "source_url": "https://magic.wizards.com/en/news/feature/magic-2013-update-bulletin-or-release-notes"
+    }
+  },
+  "bulk_sources": {
+    "default_cards": {
+      "bulk_compressed_sha256": "ff748844ee90a4bbf3c4a5bc05d45d90594b34d13af6c194c37e1e3f599bb36f",
+      "bulk_id": "e2ef41e3-5778-4bc2-af3f-78eca4dd9c23",
+      "bulk_type": "default_cards",
+      "bulk_uncompressed_sha256": "8f01c1acf287396f39da2a5770e13f8f7180cf78f15873a496f62696a3e4e68e",
+      "compressed_bytes": 77513858,
+      "compressed_path": "source/raw_full/default_cards.jsonl.gz",
+      "http_status": 200,
+      "jsonl_download_uri": "https://data.scryfall.io/default-cards/default-cards-20260822210538.jsonl.gz",
+      "provider": "scryfall",
+      "provider_compressed_size": 77513858,
+      "retrieved_at": "2026-08-23T01:49:41.387662Z",
+      "source_url": "https://api.scryfall.com/bulk-data/e2ef41e3-5778-4bc2-af3f-78eca4dd9c23",
+      "uncompressed_bytes": 623892619,
+      "uncompressed_path": "source/raw_full/default_cards.jsonl",
+      "updated_at": "2026-08-22T21:05:38.265+00:00"
+    },
+    "oracle_cards": {
+      "bulk_compressed_sha256": "efc6edf7af27e1443e3ede8b8e1e6f23ebd04e6fd7eeff3b670b85238b992c92",
+      "bulk_id": "27bf3214-1271-490b-bdfe-c0be6c23d02e",
+      "bulk_type": "oracle_cards",
+      "bulk_uncompressed_sha256": "bce528d12597a7f9a890e1ba36b1298a782127127c6c98629924ec79a913b2c7",
+      "compressed_bytes": 24531037,
+      "compressed_path": "source/raw_full/oracle_cards.jsonl.gz",
+      "http_status": 200,
+      "jsonl_download_uri": "https://data.scryfall.io/oracle-cards/oracle-cards-20260822210200.jsonl.gz",
+      "provider": "scryfall",
+      "provider_compressed_size": 24531037,
+      "retrieved_at": "2026-08-23T01:49:41.387662Z",
+      "source_url": "https://api.scryfall.com/bulk-data/27bf3214-1271-490b-bdfe-c0be6c23d02e",
+      "uncompressed_bytes": 202837083,
+      "uncompressed_path": "source/raw_full/oracle_cards.jsonl",
+      "updated_at": "2026-08-22T21:02:00.428+00:00"
+    },
+    "rulings": {
+      "bulk_compressed_sha256": "00a7f89daf9f928a740dd9329b8fcb2269352c3e947cdf8b8fc045c7e4ebec5d",
+      "bulk_id": "06f54c0b-ab9c-452d-b35a-8297db5eb940",
+      "bulk_type": "rulings",
+      "bulk_uncompressed_sha256": "e1306020789822e881404afc4badced15a8623e1e96563d10d82aa79eadc1cc4",
+      "compressed_bytes": 5366171,
+      "compressed_path": "source/raw_full/rulings.jsonl.gz",
+      "http_status": 200,
+      "jsonl_download_uri": "https://data.scryfall.io/rulings/rulings-20260822210035.jsonl.gz",
+      "provider": "scryfall",
+      "provider_compressed_size": 5366171,
+      "retrieved_at": "2026-08-23T01:49:41.387662Z",
+      "source_url": "https://api.scryfall.com/bulk-data/06f54c0b-ab9c-452d-b35a-8297db5eb940",
+      "uncompressed_bytes": 26121173,
+      "uncompressed_path": "source/raw_full/rulings.jsonl",
+      "updated_at": "2026-08-22T21:00:35.673+00:00"
+    }
+  },
+  "hash_domains": {
+    "bulk_compressed_sha256": "exact downloaded gzip bytes",
+    "bulk_uncompressed_sha256": "exact decompressed JSONL byte stream",
+    "normalized_record_sha256": "canonical REV3 normalized semantic payload, UTF-8 JSON with sorted keys, compact separators, and one final LF",
+    "source_record_raw_sha256": "exact original JSONL record bytes, including the record newline when present"
+  },
+  "offline_package_subset": {
+    "full_bulk_payloads_not_embedded": true,
+    "offset_reference": "uncompressed JSONL bytes; offsets and lengths include the exact raw JSONL line bytes, including its newline when present",
+    "raw_paths": [
+      "source/raw/default_cards_selected_REV3.jsonl",
+      "source/raw/oracle_cards_selected_REV3.jsonl"
+    ],
+    "record_count": 9484,
+    "record_index_path": "source/raw/source_record_index_REV3.csv",
+    "records_deduplicated": true
+  },
+  "repository_evidence": {
+    "local_checkout_branch": "chris/m2-c-closed-decisions-continuations",
+    "local_checkout_head": "2ae7b46c9b36204816372d80d88c26f81c5f8bee",
+    "repository_ref": "refs/heads/master",
+    "repository_sha": "05bd341635ba2150d721659b15b62c5ad311637f",
+    "repository_url": "https://github.com/chrismaghuhn/Manafold",
+    "resolved_at": "2026-08-23T01:50:03.365151Z"
+  },
+  "request_policy": {
+    "bulk_accept": "application/gzip, application/octet-stream;q=0.9, */*;q=0.1",
+    "metadata_accept": "application/json",
+    "user_agent": "Manafold-M2.5-PreResearch-REV3/1.0"
+  },
+  "schema": "manafold.m2.5.rev3.package-source-manifest.v1",
+  "scryfall_metadata": {
+    "bytes": 3472,
+    "http_status": 200,
+    "path": "source/scryfall_bulk_metadata_response.json",
+    "sha256": "e6c79f5e71f0fab3b65da13893312c9afe2025718fc2d4446ff16b6d29171780",
+    "url": "https://api.scryfall.com/bulk-data"
+  }
+}

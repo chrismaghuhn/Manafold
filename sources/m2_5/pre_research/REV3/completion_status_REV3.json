@@ -1,0 +1,18 @@
+{
+  "DECK_PAIR_LOCKED": "NO",
+  "M2_5_STARTED": "NO",
+  "M3_STARTED": "NO",
+  "PRE_RESEARCH_COMPLETE": "NO",
+  "authoritative_ranking_available": false,
+  "blocking_gates": [
+    "OFFICIAL_RULE_CITATION_CLOSURE",
+    "CLASSIFICATION_REFERENCE_CLOSURE",
+    "DECLARED_INTERACTION_MODEL_CLOSURE",
+    "REV2_REUSE_RATIO_REPRODUCIBLE",
+    "RANKING_UNCERTAINTY_PROPAGATION",
+    "MASTER_DRIFT"
+  ],
+  "deck_lock_written": false,
+  "overall_verdict": "BLOCKED_PENDING_REVIEW_AND_FORMULA_CLOSURE",
+  "schema": "manafold.m2.5.rev3.completion-status.v1"
+}

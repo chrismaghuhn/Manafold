@@ -1,0 +1,47 @@
+{
+  "derived": [
+    "derived/Card_Requirement_Map_REV3.csv",
+    "derived/Pair_Interaction_Census_REV3.csv",
+    "derived/Interaction_Model_Coverage_REV3.json",
+    "derived/Pair_Requirement_Aggregates_REV3.json",
+    "derived/Ranking_Factors_REV3.json",
+    "derived/Ranking_Sensitivity_REV3.json",
+    "derived/Ranking_Uncertainty_Scenarios_REV3.json",
+    "derived/generation_summary_REV3.json"
+  ],
+  "inputs": [
+    "inputs/deck_row_source_resolution_REV3.csv",
+    "inputs/oracle_candidate_policy_REV3.json",
+    "inputs/oracle_semantic_evidence_REV3.json",
+    "inputs/card_semantic_classification_REV3.json",
+    "inputs/requirement_family_catalog_REV3.json",
+    "inputs/interaction_model_v1.json",
+    "inputs/ranking_formula_REV3.json"
+  ],
+  "schema": "manafold.m2.5.rev3.expected-artifacts.v1",
+  "source": [
+    "source/acquisition_manifest_REV3.json",
+    "source/official_authority_register_REV3.json",
+    "source/raw/oracle_cards_selected_REV3.jsonl",
+    "source/raw/default_cards_selected_REV3.jsonl",
+    "source/raw/source_record_index_REV3.csv"
+  ],
+  "tools": [
+    "tools/acquire_manafold_m25_sources_REV3.py",
+    "tools/generate_manafold_m25_report_REV3.py",
+    "tools/validate_manafold_m25_package_REV3.py",
+    "tools/validate_manafold_m25_ranking_REV3.py",
+    "tools/run_manafold_m25_negative_tests_REV3.py",
+    "tools/compare_manafold_m25_runs_REV3.py",
+    "tools/package_manafold_m25_rev3.py",
+    "tools/finalize_manafold_m25_package_REV3.py",
+    "tools/build_final_manafold_m25_package_REV3.py"
+  ],
+  "validation": [
+    "validation/structural_validation_REV3.json",
+    "validation/ranking_validation_REV3.json",
+    "validation/negative_test_matrix_REV3.json",
+    "validation/determinism_comparison_REV3.json",
+    "validation/final_package_validation_REV3.json"
+  ]
+}

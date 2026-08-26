@@ -1,0 +1,21 @@
+{
+  "acquisition_finished_at": "2026-08-23T01:50:02.812834Z",
+  "acquisition_started_at": "2026-08-23T01:49:41.387662Z",
+  "generator_mode": "OFFLINE_ONLY_AFTER_ACQUISITION",
+  "generator_tool": "tools/generate_manafold_m25_report_REV3.py",
+  "network_tool": "tools/acquire_manafold_m25_sources_REV3.py",
+  "raw_offsets_reference": "uncompressed JSONL byte streams",
+  "repository_evidence": {
+    "local_checkout_branch": "chris/m2-c-closed-decisions-continuations",
+    "local_checkout_head": "2ae7b46c9b36204816372d80d88c26f81c5f8bee",
+    "repository_ref": "refs/heads/master",
+    "repository_sha": "05bd341635ba2150d721659b15b62c5ad311637f",
+    "repository_url": "https://github.com/chrismaghuhn/Manafold",
+    "resolved_at": "2026-08-23T01:50:03.365151Z"
+  },
+  "run_id": "Manafold-M2.5-Pre-Research-REV3-2026-08-23",
+  "schema": "manafold.m2.5.rev3.research-run-register.v1",
+  "source_subset_deduplicated": true,
+  "status": "BLOCKED",
+  "zip_codec_contract": "ZIP_STORED; fixed DOS timestamp; casefold-sorted UTF-8 paths with original-path tie-break; create_system=0; external_attr=0x01800000"
+}

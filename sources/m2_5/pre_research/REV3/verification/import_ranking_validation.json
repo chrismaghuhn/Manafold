@@ -1,0 +1,73 @@
+{
+  "blocked_gates": [
+    "REV2_FORMULA_CLOSURE",
+    "AUTHORITATIVE_RANKING_RECOMPUTATION"
+  ],
+  "failures": [],
+  "gates": [
+    {
+      "detail": "Ranking formula declares exact rational arithmetic and persists no binary floating-point values.",
+      "evidence": {
+        "legacy_non_authoritative_float_values_present": true,
+        "no_persisted_binary_float": true,
+        "numeric_representation": "Fraction"
+      },
+      "gate_id": "RANKING_NUMERIC_REPRESENTATION",
+      "status": "PASS"
+    },
+    {
+      "detail": "Independent Fraction fixtures prove exact normalization and explicit zero-denominator behavior.",
+      "evidence": {
+        "nonzero_result": "3/5",
+        "zero_denominator": true,
+        "zero_result": "0"
+      },
+      "gate_id": "FRACTION_ARITHMETIC_PRIMITIVES",
+      "status": "PASS"
+    },
+    {
+      "detail": "The authoritative ranking formula remains unavailable until the REV2 reuse-ratio meaning is reconstructable.",
+      "evidence": {
+        "full_formula_reproducible": false,
+        "reuse_ratio_reproducible": false
+      },
+      "gate_id": "REV2_FORMULA_CLOSURE",
+      "status": "BLOCKED"
+    },
+    {
+      "detail": "Unreconstructable REV2 arithmetic does not receive a silently invented replacement score.",
+      "evidence": {
+        "authoritative_scores_present": false,
+        "full_formula_reproducible": false,
+        "reuse_ratio_reproducible": false
+      },
+      "gate_id": "RANKING_FAIL_CLOSED_ARITHMETIC",
+      "status": "PASS"
+    },
+    {
+      "detail": "No authoritative pair-score recomputation is possible until the REV2 formula and upstream reviewed inputs close.",
+      "evidence": {
+        "authoritative_scores_present": false,
+        "pair_score_rows": null
+      },
+      "gate_id": "AUTHORITATIVE_RANKING_RECOMPUTATION",
+      "status": "BLOCKED"
+    },
+    {
+      "detail": "Lower/upper/plausible alternatives are explicit; no numeric interval is asserted before ranking closure.",
+      "evidence": {
+        "scenarios": [
+          "CONFIRMED_ONLY_LOWER_BOUND",
+          "ALL_PLAUSIBLE_UPPER_BOUND",
+          "PLAUSIBLE_ALTERNATIVES"
+        ]
+      },
+      "gate_id": "UNCERTAINTY_SCENARIO_CONTRACT",
+      "status": "PASS"
+    }
+  ],
+  "package_root": "C:\\Users\\chris\\AppData\\Local\\Temp\\opencode\\rev3",
+  "research_status": "BLOCKED",
+  "schema": "manafold.m2.5.rev3.ranking-validation.v1",
+  "validation_status": "PASS"
+}

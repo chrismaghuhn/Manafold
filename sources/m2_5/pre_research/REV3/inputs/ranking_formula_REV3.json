@@ -1,0 +1,128 @@
+{
+  "REV2_RANKING_FORMULA_FULLY_REPRODUCIBLE": false,
+  "REV2_REUSE_RATIO_REPRODUCIBLE": false,
+  "numeric_representation": "Fraction",
+  "reason": "No authoritative REV2 reuse-ratio derivation is packaged; no replacement is silently introduced.",
+  "replacement_formula": null,
+  "rounding": "presentation_only; ROUND_HALF_EVEN to four decimal places",
+  "schema": "manafold.m2.5.rev3.ranking-formula.v1",
+  "status": "REV2_COMPATIBILITY_PENDING",
+  "weights_preserved_from_REV2": {
+    "base_mix": "65% benefit + 35% inverted cost",
+    "benefit_weights": {
+      "core_reusable_families": 0.28,
+      "decision_families": 0.18,
+      "information_identity_families": 0.2,
+      "interaction_families": 0.18,
+      "reuse_ratio": 0.16
+    },
+    "cost_heavy_mix": "50% benefit + 50% inverted cost",
+    "cost_weights": {
+      "advanced_subsystems": 0.3,
+      "certification_proof_dimensions": 0.2,
+      "high_risk_outliers": 0.25,
+      "pathology_pressure": 0.1,
+      "very_high_outliers": 0.15
+    },
+    "coverage_heavy_mix": "85% benefit + 15% inverted cost",
+    "meaning": "Census-derived research comparison. Inputs are explicit counts/ratios; scores are not implementation evidence.",
+    "p1_cost_sensitivity": [
+      {
+        "leader": "P1",
+        "p1_base_score": 7.1139,
+        "p1_cost_multiplier": 1.0,
+        "p2_base_score": 6.9695
+      },
+      {
+        "leader": "P1",
+        "p1_base_score": 7.0357,
+        "p1_cost_multiplier": 1.05,
+        "p2_base_score": 6.9695
+      },
+      {
+        "leader": "P2",
+        "p1_base_score": 6.9576,
+        "p1_cost_multiplier": 1.1,
+        "p2_base_score": 6.9695
+      },
+      {
+        "leader": "P2",
+        "p1_base_score": 6.8794,
+        "p1_cost_multiplier": 1.15,
+        "p2_base_score": 6.9695
+      },
+      {
+        "leader": "P2",
+        "p1_base_score": 6.8012,
+        "p1_cost_multiplier": 1.2,
+        "p2_base_score": 6.9695
+      }
+    ],
+    "pairs": {
+      "P1": {
+        "advanced_subsystems": 8,
+        "base_score": 7.1139,
+        "benefit_index": 7.965,
+        "certification_proof_dimensions": 8,
+        "core_reusable_families": 27,
+        "cost_heavy_score": 6.7492,
+        "cost_index": 4.4667,
+        "coverage_heavy_score": 7.6002,
+        "decision_families": 9,
+        "high_risk_outliers": 7,
+        "information_identity_families": 7,
+        "interaction_families": 9,
+        "pair": [
+          "Token Triumph",
+          "Grave Danger"
+        ],
+        "pathology_pressure": 5,
+        "reuse_ratio": 0.86,
+        "very_high_outliers": 3
+      },
+      "P2": {
+        "advanced_subsystems": 10,
+        "base_score": 6.9695,
+        "benefit_index": 8.6313,
+        "certification_proof_dimensions": 11,
+        "core_reusable_families": 30,
+        "cost_heavy_score": 6.2573,
+        "cost_index": 6.1167,
+        "coverage_heavy_score": 7.9191,
+        "decision_families": 8,
+        "high_risk_outliers": 10,
+        "information_identity_families": 11,
+        "interaction_families": 9,
+        "pair": [
+          "Elven Empire",
+          "Phantom Premonition"
+        ],
+        "pathology_pressure": 7,
+        "reuse_ratio": 0.78,
+        "very_high_outliers": 5
+      },
+      "P3": {
+        "advanced_subsystems": 15,
+        "base_score": 5.7361,
+        "benefit_index": 8.8247,
+        "certification_proof_dimensions": 12,
+        "core_reusable_families": 34,
+        "cost_heavy_score": 4.4124,
+        "cost_index": 10.0,
+        "coverage_heavy_score": 7.501,
+        "decision_families": 10,
+        "high_risk_outliers": 30,
+        "information_identity_families": 7,
+        "interaction_families": 11,
+        "pair": [
+          "Buckle Up",
+          "Upgrades Unleashed"
+        ],
+        "pathology_pressure": 10,
+        "reuse_ratio": 0.72,
+        "very_high_outliers": 10
+      }
+    }
+  },
+  "zero_denominator": "normalized_value=0 with zero_denominator=true"
+}

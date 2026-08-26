@@ -1,0 +1,18 @@
+{
+  "covers": [
+    "unary_card_specific_declared_outliers",
+    "binary_family_relations",
+    "directional_binary_relations",
+    "explicit_reviewed_higher_order_interactions"
+  ],
+  "does_not_claim": [
+    "arbitrary_unbounded_n_way_magic_interaction_completeness"
+  ],
+  "model_id": "interaction-model.v1",
+  "terminal_dispositions": [
+    "NO_ADDITIONAL_INTERACTION",
+    "MAPS_TO_INTERACTION_REQUIREMENT",
+    "AMBIGUOUS_REQUIRES_REVIEW",
+    "OUT_OF_SCOPE_WITH_REASON"
+  ]
+}

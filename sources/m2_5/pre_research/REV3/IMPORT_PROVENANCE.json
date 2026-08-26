@@ -1,0 +1,127 @@
+{
+  "schema": "manafold.m2.5.a.import-provenance.v1",
+  "slice": "M2.5.A",
+  "imported_at": "2026-08-26T04:11:59Z",
+  "import_status": "RESEARCH_BASELINE_IMPORTED_NON_NORMATIVE",
+
+  "source_package": {
+    "package_id": "Manafold_M2_5_Pre_Research_ALL_ARTIFACTS_REV3",
+    "storage_class": "MAINTAINER_PRIVATE_ARCHIVE",
+    "logical_locator": "$MANAFOLD_SOURCE_ARCHIVE/m2_5/Manafold_M2_5_Pre_Research_ALL_ARTIFACTS_REV3.zip",
+    "sha256": "99b33945a3e0c7b2982734e65f770715029ce6acd500104bde48e8466eed1a90",
+    "research_run_id": "Manafold-M2.5-Pre-Research-REV3-2026-08-23",
+    "retrieved_at": "2026-08-23",
+    "upstream_publication_identity": "offline REV3 acquisition run; see research_run_register_REV3.json and source/acquisition_manifest_REV3.json for authority URLs, retrieval timestamps, and per-artifact digests",
+    "usage_basis": "internal research baseline for M2.5 planning; redistribution pending rights review",
+    "redistribution": "NOT_DISTRIBUTED_PENDING_RIGHTS",
+    "required_for": [
+      "M2.5.B",
+      "M2.5.C",
+      "M2.5.D",
+      "M2.5.E"
+    ],
+    "preflight": "The resolved archive must exist and match sha256 exactly before any slice consumes excluded payload; python scripts/check_m2_5_master_drift.py --verify-archive enforces this and reports BLOCKED when MANAFOLD_SOURCE_ARCHIVE is unset.",
+    "manifest_schema": "manafold.m2.5.rev3.package-manifest.v1",
+    "manifest_entries_verified": 72,
+    "manifest_verification": "Every ZIP entry was verified against the package manifest by exact path, byte length, and SHA-256 during import; see verification/import_structural_validation.json."
+  },
+
+  "baseline_identity": {
+    "rev3_recorded_repository_sha": "05bd341635ba2150d721659b15b62c5ad311637f",
+    "verified_current_master_sha_at_import": "9eb5da3d2cfa2c4612d22d208d658fd4132b7f6f",
+    "master_drift_gate": "PASS",
+    "drift_closure_record": "master_drift_closure_REV3.json"
+  },
+
+  "import_boundary": {
+    "principle": "Provenance-first deterministic boundary per sources/README.md; the repository archives provenance, hashes, policy inputs, status, and verification evidence only.",
+    "imported_files": {
+      "Manafold_M2_5_Package_Manifest_REV3.json": "7a5625770a62debce16b4d0a37c36df5d58243281a2ed1051ad93a0c0bec94fd",
+      "expected_artifacts_REV3.json": "22af842056f678f51ff0d86260516e5989372a83965536b04362119a693f209d",
+      "completion_status_REV3.json": "b5f7655ed03a91fe226a746234b1c71da4ecc61b980337557945eca791dc413b",
+      "research_run_register_REV3.json": "c420e826f36f81f5c4a77059a4aaf7fb28790b699bd8921f97c64dced405c7da",
+      "README_Manafold_M2_5_Pre_Research_REV3.txt": "2881e39edd8ef8978e428aa0841e8f90b2ae85a110ce2a5a466f95463d3e2a23",
+      "Manafold_M2_5_Pre_Research_Report_REV3.md": "47765ee11a56333df7f51554ee04079e871a0faabc1cb7bd60c5a5e2d59b09c7",
+      "inputs/interaction_model_v1.json": "f7a069df5040e9337719aadf0c1c4bde09a4b5dad0bb6489eada49d369a9bc8f",
+      "inputs/oracle_candidate_policy_REV3.json": "0e6bffcac8a61cc30d157575d354b4632cca54c50ba0a2a914f5b87fcf27517e",
+      "inputs/ranking_formula_REV3.json": "2ce0522bf17fe8a6a067ecdae4f249fbe27c48b0c5234c80c6f8c3942f55740e",
+      "source/acquisition_manifest_REV3.json": "6eb1a135d07a01f4593d5d05ed75b6c89171fa25003359cbf425b82a5d1979cf",
+      "source/official_authority_register_REV3.json": "4379c24ae89b72e7f250fcfe7e742a090029bc10c52c16be02de4e62bf1b5208",
+      "verification/import_structural_validation.json": "17feff9419cc66da5556278a6eb573ed9c997da4ba6e6949623b04d78c578157",
+      "verification/import_ranking_validation.json": "2e3791fc492ec22c3c83f7954f0bf7865b5cde076e73d571a0dc24ea552adc42",
+      "verification/import_negative_tests.json": "15b235d4383078d8ba21bd3caa7fa6518862185c50616d59efefc9d4df773a6f",
+      "verification/import_determinism_comparison.json": "2e537f8af53e015339b59573cbf5820f70c7a0e655fd2b11d05c5ccb911d71b0",
+      "verification/import_master_drift_negative_self_test.json": "631b75fb6c230e783a45866d14b4d52525f289aeae7dde8d115a16ffec800db4"
+    },
+    "excluded_from_repository": [
+      {
+        "paths": ["source/raw/*"],
+        "reason": "Unreviewed bulk card data (selected Scryfall JSONL subsets); sources/README.md forbids committing unreviewed bulk card data. Exact bytes remain pinned by source_record_index_REV3.csv offsets plus per-record SHA-256 domains recorded in source/acquisition_manifest_REV3.json inside the archived ZIP.",
+        "recoverable_from": "source_package archive contract (MAINTAINER_PRIVATE_ARCHIVE at source_package.logical_locator, SHA-256 pinned)"
+      },
+      {
+        "paths": ["source/authorities/*"],
+        "reason": "Official authority HTML/TXT snapshots are pinned by URL, retrieval time, and artifact hash in source/official_authority_register_REV3.json; not redistributed in git pending redistribution rights.",
+        "recoverable_from": "source_package archive contract (MAINTAINER_PRIVATE_ARCHIVE at source_package.logical_locator, SHA-256 pinned)"
+      },
+      {
+        "paths": ["baseline/REV2/*"],
+        "reason": "Prior-revision research payload retained in the archived ZIP; pinned by the package manifest. REV2 remains non-terminal for ranking purposes (REV2_REUSE_RATIO_REPRODUCIBLE stays BLOCKED).",
+        "recoverable_from": "source_package archive contract (MAINTAINER_PRIVATE_ARCHIVE at source_package.logical_locator, SHA-256 pinned)"
+      },
+      {
+        "paths": ["derived/*", "tools/*", "validation/*", "inputs/card_semantic_classification_REV3.json", "inputs/oracle_semantic_evidence_REV3.json", "inputs/requirement_family_catalog_REV3.json", "inputs/deck_row_source_resolution_REV3.csv", "inputs/deck_row_classification_refs_REV3.csv"],
+        "reason": "Substantive research payload (classification authorities, census, validators) remains in the archived ZIP, byte-pinned by the imported package manifest; later M2.5 slices consume them from a preflight-verified extraction of that archive until redistribution rights or a dedicated storage decision exists.",
+        "recoverable_from": "source_package archive contract (MAINTAINER_PRIVATE_ARCHIVE at source_package.logical_locator, SHA-256 pinned)"
+      }
+    ]
+  },
+
+  "fresh_verification_evidence": {
+    "note": "All records below were produced by executing the packaged tools during this import session on Python 3.14.5 against the extracted ZIP; packaged validation claims were not trusted without re-execution.",
+    "structural_validation": {
+      "record": "verification/import_structural_validation.json",
+      "status": "PASS",
+      "structural_failures": 0
+    },
+    "ranking_validation": {
+      "record": "verification/import_ranking_validation.json",
+      "status": "PASS",
+      "failures": 0
+    },
+    "negative_tests": {
+      "record": "verification/import_negative_tests.json",
+      "status": "PASS",
+      "case_count": 12,
+      "required_adversarial_fixtures": "PASS"
+    },
+    "determinism_comparison": {
+      "record": "verification/import_determinism_comparison.json",
+      "status": "PASS",
+      "two_offline_generator_runs_byte_identical_files": 54
+    }
+  },
+
+  "non_normative_status": {
+    "PRE_RESEARCH_COMPLETE": "NO",
+    "DECK_PAIR_LOCKED": "NO",
+    "AUTHORITATIVE_RANKING_AVAILABLE": false,
+    "M3_STARTED": "NO",
+    "imported_does_not_imply_supported": true,
+    "research_baseline_is_not_a_deck_lock": true
+  },
+
+  "remaining_blocking_gates": [
+    "OFFICIAL_RULE_CITATION_CLOSURE",
+    "CLASSIFICATION_REFERENCE_CLOSURE",
+    "DECLARED_INTERACTION_MODEL_CLOSURE",
+    "REV2_REUSE_RATIO_REPRODUCIBLE",
+    "RANKING_UNCERTAINTY_PROPAGATION"
+  ],
+
+  "reverification_commands": [
+    "python scripts/check_m2_5_master_drift.py",
+    "python scripts/check_m2_5_master_drift.py --negative-self-test",
+    "python scripts/check_m2_5_master_drift.py --verify-archive"
+  ]
+}
