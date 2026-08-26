@@ -370,14 +370,32 @@ def negative_self_test(provenance_dir: Path) -> int:
         evaluate_closure(closure, provenance, "0" * 40, None, provenance_dir)
 
     def normative_drift() -> None:
+        rejected_paths = []
         for controlled in NORMATIVE_DRIFT_CONTROL_PATHS:
-            evaluate_closure(
-                closure,
-                provenance,
-                live_head,
-                [controlled],
-                provenance_dir,
-            )
+            try:
+                evaluate_closure(
+                    closure,
+                    provenance,
+                    live_head,
+                    [controlled],
+                    provenance_dir,
+                )
+            except DriftCheckError:
+                rejected_paths.append(controlled)
+            else:
+                raise DriftCheckError(
+                    "FAIL",
+                    f"normative path {controlled!r} did not invalidate the closure",
+                )
+        if len(rejected_paths) != len(NORMATIVE_DRIFT_CONTROL_PATHS):
+            raise DriftCheckError("FAIL", "normative drift control coverage incomplete")
+        # Every controlled path was individually proven to break the closure;
+        # surface this to the harness as the fixture's expected rejection.
+        raise DriftCheckError(
+            "FAIL",
+            "expected rejection: all "
+            f"{len(rejected_paths)} normative control paths invalidated the closure",
+        )
 
     def non_pass_grant() -> None:
         downgraded = tampered_closure(lambda value: value.__setitem__("MASTER_DRIFT", "FAIL"))

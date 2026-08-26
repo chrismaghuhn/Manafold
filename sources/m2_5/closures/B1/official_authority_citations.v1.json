@@ -1,5 +1,5 @@
 {
-  "schema": "manafold.m2.5.b1.official-authority-citations.v1",
+  "schema": "manafold.m2.5.b1.official-authority-citations.v2",
   "slice": "M2.5.B1",
   "input_universe": {
     "source_register": "REV3 source/official_authority_register_REV3.json",
@@ -16,6 +16,263 @@
     "authority_count": 7,
     "identity_separations_preserved": "source identity != citation identity != capability identity != semantic ownership != implementation != certification (ADR 0041)"
   },
+  "semantic_dependency_model": {
+    "schema_note": "Explicit authority->semantic coverage model. Every catalog requirement family maps to exactly one covering citation of a CITED authority; detected oracle-text mechanics carry explicit edges; no edge references magic_2013_release_notes.",
+    "catalog_family_count": 216,
+    "family_coverage": {
+      "cap.artifact_permanent": "CR-110-permanents",
+      "cap.type_change": "CR-110-permanents",
+      "cap.new_incarnations": "CR-110-permanents",
+      "cap.conditional_modified_state": "CR-110-permanents",
+      "cap.token_creation": "CR-111-tokens",
+      "cap.scaled_token_creation": "CR-111-tokens",
+      "cap.attacking_token_creation": "CR-111-tokens",
+      "cap.pilot_token": "CR-111-tokens",
+      "cap.life_scaled_token_creation": "CR-111-tokens",
+      "cap.mass_token_creation": "CR-111-tokens",
+      "cap.populate_token_copy": "CR-111-tokens",
+      "cap.tapped_tokens": "CR-111-tokens",
+      "cap.token_exception": "CR-111-tokens",
+      "cap.token_or_counters": "CR-111-tokens",
+      "cap.target": "CR-115-targets",
+      "cap.multi_target": "CR-115-targets",
+      "cap.choose_two_targets": "CR-115-targets",
+      "cap.distinct_target_types": "CR-115-targets",
+      "cap.four_targets": "CR-115-targets",
+      "cap.target_restriction": "CR-115-targets",
+      "cap.subset_selection": "CR-115-targets",
+      "cap.flash": "CR-117-timing-priority",
+      "cap.chapter_timing": "CR-117-timing-priority",
+      "cap.per_turn_permission": "CR-117-timing-priority",
+      "cap.turn_scoped_permission": "CR-117-timing-priority",
+      "cap.multi_actor_staged_resolution": "CR-117-timing-priority",
+      "cap.cost_modification": "CR-118-costs",
+      "cap.life_additional_cost": "CR-118-costs",
+      "cap.life": "CR-119-life",
+      "cap.damage": "CR-120-damage",
+      "cap.damage_fanout": "CR-120-damage",
+      "cap.draw": "CR-121-drawing",
+      "cap.draw_discard": "CR-121-drawing",
+      "cap.counters": "CR-122-counters",
+      "cap.loyalty_counters": "CR-122-counters",
+      "cap.counter_or_haste": "CR-122-counters",
+      "cap.subtype_add_zombie": "CR-205-type-line",
+      "cap.subtype_addition": "CR-205-type-line",
+      "cap.choose_creature_type": "CR-205-type-line",
+      "cap.tribal": "CR-205-type-line",
+      "cap.tribal_permission": "CR-205-type-line",
+      "cap.improvise": "CR-301-artifacts",
+      "cap.treasure": "CR-301-artifacts",
+      "cap.artifact_animation": "CR-301-artifacts",
+      "cap.artifact_exception": "CR-301-artifacts",
+      "cap.base_pt": "CR-302-creatures",
+      "cap.aura": "CR-303-enchantments",
+      "cap.aura_curse": "CR-303-enchantments",
+      "cap.aura_token": "CR-303-enchantments",
+      "cap.planeswalker": "CR-306-planeswalkers",
+      "cap.loyalty": "CR-306-planeswalkers",
+      "cap.loyalty_activation_rules": "CR-306-planeswalkers",
+      "cap.ordered_library_card": "CR-401-library",
+      "cap.library_traversal": "CR-401-library",
+      "cap.mass_library_traversal": "CR-401-library",
+      "cap.library_graveyard_information": "CR-401-library",
+      "cap.bottom_order": "CR-401-library",
+      "cap.mass_bounce": "CR-402-hand",
+      "cap.return_to_hand_on_death": "CR-402-hand",
+      "cap.put_battlefield": "CR-403-battlefield",
+      "cap.mass_put_battlefield": "CR-403-battlefield",
+      "cap.land_zone": "CR-403-battlefield",
+      "cap.controller_assignment_on_zone_entry": "CR-403-battlefield",
+      "cap.graveyard": "CR-404-graveyard",
+      "cap.graveyard_cast_permission": "CR-404-graveyard",
+      "cap.graveyard_count": "CR-404-graveyard",
+      "cap.graveyard_return": "CR-404-graveyard",
+      "cap.graveyard_target": "CR-404-graveyard",
+      "cap.target_card_any_graveyard": "CR-404-graveyard",
+      "cap.multi_target_graveyard": "CR-404-graveyard",
+      "cap.reanimation": "CR-404-graveyard",
+      "cap.reanimation_tapped": "CR-404-graveyard",
+      "cap.reanimation_under_your_control": "CR-404-graveyard",
+      "cap.mass_cross_graveyard_reanimation": "CR-404-graveyard",
+      "cap.flashback": "CR-404-graveyard",
+      "cap.turn_scoped_graveyard_cast_permission": "CR-404-graveyard",
+      "cap.exile": "CR-406-exile",
+      "cap.self_exile": "CR-406-exile",
+      "cap.mass_exile": "CR-406-exile",
+      "cap.linked_exile_return": "CR-406-exile",
+      "cap.linked_return": "CR-406-exile",
+      "cap.cast_from_exile": "CR-406-exile",
+      "cap.conditional_exile": "CR-406-exile",
+      "cap.blink": "CR-406-exile",
+      "cap.delayed_return": "CR-406-exile",
+      "cap.mass_blink": "CR-406-exile",
+      "cap.graveyard_exile_link": "CR-406-exile",
+      "cap.exile_trigger": "CR-406-exile",
+      "cap.alternate_cast_zone": "CR-406-exile",
+      "cap.upkeep_trigger": "CR-503-upkeep-step",
+      "cap.attack_trigger": "CR-508-declare-attackers",
+      "cap.extra_combat": "CR-508-declare-attackers",
+      "cap.attack_counter": "CR-508-declare-attackers",
+      "cap.attack_mana": "CR-508-declare-attackers",
+      "cap.combat_damage_trigger": "CR-510-combat-damage-step",
+      "cap.end_step_trigger": "CR-513-end-step",
+      "cap.choice_number_x": "CR-601-casting-spells",
+      "cap.multi_category_selection": "CR-601-casting-spells",
+      "cap.open_vocabulary_domain": "CR-601-casting-spells",
+      "cap.sequential_choice_collection": "CR-601-casting-spells",
+      "cap.simultaneous_choice": "CR-601-casting-spells",
+      "cap.all_required": "CR-601-casting-spells",
+      "cap.activated_ability": "CR-602-activated-abilities",
+      "cap.activation": "CR-602-activated-abilities",
+      "cap.activation_cost": "CR-602-activated-abilities",
+      "cap.grant_activated_ability": "CR-602-activated-abilities",
+      "cap.dynamic_activated_ability_grant": "CR-602-activated-abilities",
+      "cap.trigger": "CR-603-triggered-abilities",
+      "cap.death_trigger": "CR-603-triggered-abilities",
+      "cap.damage_trigger": "CR-603-triggered-abilities",
+      "cap.combat_trigger": "CR-603-triggered-abilities",
+      "cap.draw_trigger": "CR-603-triggered-abilities",
+      "cap.linked_death_trigger": "CR-603-triggered-abilities",
+      "cap.delayed_trigger": "CR-603-triggered-abilities",
+      "cap.aura_equipment_etb_trigger": "CR-603-triggered-abilities",
+      "cap.landfall": "CR-603-triggered-abilities",
+      "cap.continuous_ability": "CR-604-static-abilities",
+      "cap.static_team_pt": "CR-604-static-abilities",
+      "cap.static_uncounterable": "CR-604-static-abilities",
+      "cap.modified": "CR-604-static-abilities",
+      "cap.modified_count_cost_reduction": "CR-604-static-abilities",
+      "cap.modified_predicate": "CR-604-static-abilities",
+      "cap.mana_ability": "CR-605-mana-abilities",
+      "cap.mana_production": "CR-605-mana-abilities",
+      "cap.mana_source": "CR-605-mana-abilities",
+      "cap.grant_mana_ability": "CR-605-mana-abilities",
+      "cap.continuous_layers": "CR-613-continuous-effects",
+      "cap.continuous_combat_modification": "CR-613-continuous-effects",
+      "cap.continuous_pt": "CR-613-continuous-effects",
+      "cap.type_layer": "CR-613-continuous-effects",
+      "cap.mass_type_change": "CR-613-continuous-effects",
+      "cap.type_transition": "CR-613-continuous-effects",
+      "cap.type_wide_state": "CR-613-continuous-effects",
+      "cap.loses_card_types": "CR-613-continuous-effects",
+      "cap.temporary_animation": "CR-613-continuous-effects",
+      "cap.dynamic_pt": "CR-613-continuous-effects",
+      "cap.selective_temporary_pt_modification": "CR-613-continuous-effects",
+      "cap.target_pt_modification": "CR-613-continuous-effects",
+      "cap.temporary_flying_double_strike": "CR-613-continuous-effects",
+      "cap.combat_granted_keywords": "CR-613-continuous-effects",
+      "cap.bounded_control_restoration": "CR-613-continuous-effects",
+      "cap.color_addition": "CR-613-continuous-effects",
+      "cap.color_set_black": "CR-613-continuous-effects",
+      "cap.replacement_effect": "CR-614-replacement-effects",
+      "cap.replacement_prevention": "CR-614-replacement-effects",
+      "cap.token_replacement": "CR-614-replacement-effects",
+      "cap.totem_armor_replacement": "CR-614-replacement-effects",
+      "cap.phase_insertion": "CR-700-general",
+      "cap.mode_choice": "CR-700-2-modes",
+      "cap.attachment": "CR-701-3-attach",
+      "cap.attach_to_new_object": "CR-701-3-attach",
+      "cap.opponent_attachment": "CR-701-3-attach",
+      "cap.countered_setup": "CR-701-6-counter",
+      "cap.counterspell": "CR-701-6-counter",
+      "cap.destroy": "CR-701-8-destroy",
+      "cap.target_destroy": "CR-701-8-destroy",
+      "cap.mass_destruction": "CR-701-8-destroy",
+      "cap.post_destruction_choice": "CR-701-8-destroy",
+      "cap.discard_cost": "CR-701-9-discard",
+      "cap.goad": "CR-701-15-goad",
+      "cap.mill": "CR-701-17a-mill",
+      "cap.amass": "CR-701-47a-amass",
+      "cap.mass_sacrifice": "CR-701-21-sacrifice",
+      "cap.simultaneous_sacrifice": "CR-701-21-sacrifice",
+      "cap.sacrifice_additional_cost": "CR-701-21-sacrifice",
+      "cap.additional_sacrifice_cost": "CR-701-21-sacrifice",
+      "cap.type_filtered_sacrifice": "CR-701-21-sacrifice",
+      "cap.delayed_sacrifice": "CR-701-21-sacrifice",
+      "cap.sacrifice_threshold": "CR-701-21-sacrifice",
+      "cap.scry": "CR-701-22a-scry",
+      "cap.search_library": "CR-701-23-search",
+      "cap.shuffle": "CR-701-24-shuffle",
+      "cap.shuffle_self": "CR-701-24-shuffle",
+      "cap.surveil": "CR-701-25-surveil",
+      "cap.tap_event": "CR-701-26-tap-untap",
+      "cap.tap_another_creature_cost": "CR-701-26-tap-untap",
+      "cap.tap_subset_cost": "CR-701-26-tap-untap",
+      "cap.tap_ten_cost": "CR-701-26-tap-untap",
+      "cap.count_tapped": "CR-701-26-tap-untap",
+      "cap.untap_lands": "CR-701-26-tap-untap",
+      "cap.mass_untap": "CR-701-26-tap-untap",
+      "cap.reveal": "CR-701-20-reveal",
+      "cap.deathtouch": "CR-702-2-deathtouch",
+      "cap.flying_grant": "CR-702-9-flying",
+      "cap.conditional_hexproof": "CR-702-9-flying",
+      "cap.indestructible_until_eot": "CR-702-12-indestructible",
+      "cap.temporary_protection": "CR-702-16-protection",
+      "cap.life_drain": "CR-702-15a-lifelink",
+      "cap.equipment": "CR-702-6a-equip",
+      "cap.commander_dependent_equip_cost": "CR-702-6a-equip",
+      "cap.kicker": "CR-702-33-kicker",
+      "cap.convoke": "CR-702-51a-convoke",
+      "cap.living_weapon": "CR-702-92a-living-weapon",
+      "cap.vehicle": "CR-702-122a-crew",
+      "cap.crew": "CR-702-122a-crew",
+      "cap.crew_alternative": "CR-702-122a-crew",
+      "cap.dynamic_crew_value": "CR-702-122a-crew",
+      "cap.riot_choice": "CR-702-136-riot",
+      "cap.foretell": "CR-702-143a-foretell",
+      "cap.grant_foretell": "CR-702-143a-foretell",
+      "cap.foretell_recursion": "CR-702-143a-foretell",
+      "cap.private_face_down_exile": "CR-702-143a-foretell",
+      "cap.reconfigure": "CR-702-151a-reconfigure",
+      "cap.state_based_actions": "CR-704-state-based-actions",
+      "cap.copiable_values": "CR-706-copiable-values",
+      "cap.copy": "CR-706-copiable-values",
+      "cap.copy_exception": "CR-706-copiable-values",
+      "cap.temporary_copy": "CR-706-copiable-values",
+      "cap.copiable_token_values": "CR-706-copiable-values",
+      "cap.copy_token_batch": "CR-706-copiable-values",
+      "cap.saga": "CR-714-saga-cards",
+      "cap.multiplayer_wording": "CG-PLAY-RULES",
+      "cap.each_player": "CG-PLAY-RULES",
+      "cap.commander_zone_choice": "CG-COMMAND-ZONE",
+      "cap.owner_controller_separation": "CG-COMMAND-ZONE",
+      "cap.commander_noncreature": "CG-COMMAND-ZONE"
+    },
+    "mechanic_edges": {
+      "foretell": [
+        "CR-702-143a-foretell",
+        "KHM-FORETELL"
+      ],
+      "partner": [
+        "CR-702-124-partner",
+        "CL-PARTNER"
+      ],
+      "crew": [
+        "CR-702-122a-crew"
+      ],
+      "equip": [
+        "CR-702-6a-equip"
+      ],
+      "living weapon": [
+        "CR-702-92a-living-weapon"
+      ],
+      "reconfigure": [
+        "CR-702-151a-reconfigure"
+      ],
+      "convoke": [
+        "CR-702-51a-convoke"
+      ],
+      "amass": [
+        "CR-701-47a-amass"
+      ],
+      "populate": [
+        "CR-701-36a-populate"
+      ],
+      "saga": [
+        "CR-714-saga-cards"
+      ]
+    },
+    "magic_2013_dependency_edge_count": 0
+  },
   "authorities": [
     {
       "authority_id": "comprehensive_rules",
@@ -25,48 +282,40 @@
         "artifact_path": "source/authorities/comprehensive_rules.txt",
         "artifact_sha256": "4381ad1b39ab2c05f7d03633a20f711ed37277074d3266dcba5f38cbb527423f",
         "retrieval_time": "2026-08-23T01:49:41.387662Z",
+        "raw_artifact_available": true,
+        "acquisition_http_status": 200,
+        "acquisition_error": null,
         "published_or_effective_version": "These rules are effective as of August 7, 2026."
       },
       "citation_status": "CITED",
       "citations": [
         {
-          "citation_id": "CR-109",
+          "citation_id": "CR-109-objects",
           "citation_kind": "CR_RULE_IDENTIFIER",
           "rule_identifier": "CR 109",
-          "canonical_section_identity": "CR 109 Objects",
+          "canonical_section_identity": "109. Objects",
           "artifact_local_locator": {
             "locator_kind": "RULE_HEADING_LINE",
             "line_number_1based": 578,
-            "expected_heading_prefix": "109.",
             "heading_line_sha256": "30e7709964c93e1cdabfb2c14051ed8edac85d2a89d833d29f3481783e176d62",
             "heading_line_excerpt": "109. Objects"
           },
-          "why_required": "Object/copy semantics underlie copiable-value and copy handling.",
-          "dependent_requirement_families": [
-            {
-              "requirement_family_id": "cap.copy",
-              "card_requirement_map_rows": 2
-            },
-            {
-              "requirement_family_id": "cap.copiable_values",
-              "card_requirement_map_rows": 2
-            }
-          ],
+          "why_required": "Object/ability framing for object-referencing effects.",
+          "dependent_requirement_families": [],
           "dependent_classification_or_interaction_inputs": []
         },
         {
-          "citation_id": "CR-110",
+          "citation_id": "CR-110-permanents",
           "citation_kind": "CR_RULE_IDENTIFIER",
           "rule_identifier": "CR 110",
-          "canonical_section_identity": "CR 110 Permanents",
+          "canonical_section_identity": "110. Permanents",
           "artifact_local_locator": {
             "locator_kind": "RULE_HEADING_LINE",
             "line_number_1based": 612,
-            "expected_heading_prefix": "110.",
             "heading_line_sha256": "e02e85cdf6f5ba05d6fbde0235e5e185660e1c55b8699c2a29169dc2037f24ef",
             "heading_line_excerpt": "110. Permanents"
           },
-          "why_required": "Permanent persistence underlies artifact permanence and type-change families.",
+          "why_required": "Permanent persistence.",
           "dependent_requirement_families": [
             {
               "requirement_family_id": "cap.artifact_permanent",
@@ -75,23 +324,30 @@
             {
               "requirement_family_id": "cap.type_change",
               "card_requirement_map_rows": 3
+            },
+            {
+              "requirement_family_id": "cap.new_incarnations",
+              "card_requirement_map_rows": 3
+            },
+            {
+              "requirement_family_id": "cap.conditional_modified_state",
+              "card_requirement_map_rows": 1
             }
           ],
           "dependent_classification_or_interaction_inputs": []
         },
         {
-          "citation_id": "CR-111",
+          "citation_id": "CR-111-tokens",
           "citation_kind": "CR_RULE_IDENTIFIER",
           "rule_identifier": "CR 111",
-          "canonical_section_identity": "CR 111 Tokens",
+          "canonical_section_identity": "111. Tokens",
           "artifact_local_locator": {
             "locator_kind": "RULE_HEADING_LINE",
             "line_number_1based": 643,
-            "expected_heading_prefix": "111.",
             "heading_line_sha256": "c9e76a1f57d03c7e1318d866cee9f3d4f92dc42ef1496cc28e1f80d57100e4ee",
             "heading_line_excerpt": "111. Tokens"
           },
-          "why_required": "Token creation is a top requirement-family concept across the six locked decks.",
+          "why_required": "Token creation cluster.",
           "dependent_requirement_families": [
             {
               "requirement_family_id": "cap.token_creation",
@@ -108,23 +364,46 @@
             {
               "requirement_family_id": "cap.pilot_token",
               "card_requirement_map_rows": 1
+            },
+            {
+              "requirement_family_id": "cap.life_scaled_token_creation",
+              "card_requirement_map_rows": 1
+            },
+            {
+              "requirement_family_id": "cap.mass_token_creation",
+              "card_requirement_map_rows": 1
+            },
+            {
+              "requirement_family_id": "cap.populate_token_copy",
+              "card_requirement_map_rows": 1
+            },
+            {
+              "requirement_family_id": "cap.tapped_tokens",
+              "card_requirement_map_rows": 1
+            },
+            {
+              "requirement_family_id": "cap.token_exception",
+              "card_requirement_map_rows": 1
+            },
+            {
+              "requirement_family_id": "cap.token_or_counters",
+              "card_requirement_map_rows": 1
             }
           ],
           "dependent_classification_or_interaction_inputs": []
         },
         {
-          "citation_id": "CR-115",
+          "citation_id": "CR-115-targets",
           "citation_kind": "CR_RULE_IDENTIFIER",
           "rule_identifier": "CR 115",
-          "canonical_section_identity": "CR 115 Targets",
+          "canonical_section_identity": "115. Targets",
           "artifact_local_locator": {
             "locator_kind": "RULE_HEADING_LINE",
             "line_number_1based": 836,
-            "expected_heading_prefix": "115.",
             "heading_line_sha256": "97a554d79c71f6a87247f3bf31cfd275176addf74c0fd6252ab70f37e7150b8f",
             "heading_line_excerpt": "115. Targets"
           },
-          "why_required": "Target selection underlies targeting requirement families.",
+          "why_required": "Target selection.",
           "dependent_requirement_families": [
             {
               "requirement_family_id": "cap.target",
@@ -133,23 +412,42 @@
             {
               "requirement_family_id": "cap.multi_target",
               "card_requirement_map_rows": 5
+            },
+            {
+              "requirement_family_id": "cap.choose_two_targets",
+              "card_requirement_map_rows": 2
+            },
+            {
+              "requirement_family_id": "cap.distinct_target_types",
+              "card_requirement_map_rows": 1
+            },
+            {
+              "requirement_family_id": "cap.four_targets",
+              "card_requirement_map_rows": 1
+            },
+            {
+              "requirement_family_id": "cap.target_restriction",
+              "card_requirement_map_rows": 1
+            },
+            {
+              "requirement_family_id": "cap.subset_selection",
+              "card_requirement_map_rows": 2
             }
           ],
           "dependent_classification_or_interaction_inputs": []
         },
         {
-          "citation_id": "CR-117",
+          "citation_id": "CR-117-timing-priority",
           "citation_kind": "CR_RULE_IDENTIFIER",
           "rule_identifier": "CR 117",
-          "canonical_section_identity": "CR 117 Timing and Priority",
+          "canonical_section_identity": "117. Timing and Priority",
           "artifact_local_locator": {
             "locator_kind": "RULE_HEADING_LINE",
             "line_number_1based": 924,
-            "expected_heading_prefix": "117.",
             "heading_line_sha256": "497dfdc5683c4e5d4a5a314d2fa8c398971115ea4f820f9f454b1cb094d8c146",
             "heading_line_excerpt": "117. Timing and Priority"
           },
-          "why_required": "Timing windows gate flash and chapter timing families.",
+          "why_required": "Timing windows and permissions.",
           "dependent_requirement_families": [
             {
               "requirement_family_id": "cap.flash",
@@ -158,23 +456,126 @@
             {
               "requirement_family_id": "cap.chapter_timing",
               "card_requirement_map_rows": 2
+            },
+            {
+              "requirement_family_id": "cap.per_turn_permission",
+              "card_requirement_map_rows": 1
+            },
+            {
+              "requirement_family_id": "cap.turn_scoped_permission",
+              "card_requirement_map_rows": 1
+            },
+            {
+              "requirement_family_id": "cap.multi_actor_staged_resolution",
+              "card_requirement_map_rows": 1
             }
           ],
           "dependent_classification_or_interaction_inputs": []
         },
         {
-          "citation_id": "CR-122",
+          "citation_id": "CR-118-costs",
+          "citation_kind": "CR_RULE_IDENTIFIER",
+          "rule_identifier": "CR 118",
+          "canonical_section_identity": "118. Costs",
+          "artifact_local_locator": {
+            "locator_kind": "RULE_HEADING_LINE",
+            "line_number_1based": 966,
+            "heading_line_sha256": "6b7d59590a7718638f7c93831dbfa03667ec2b508fa10758e4d30fef904b3f6b",
+            "heading_line_excerpt": "118. Costs"
+          },
+          "why_required": "Cost payment/modification frame.",
+          "dependent_requirement_families": [
+            {
+              "requirement_family_id": "cap.cost_modification",
+              "card_requirement_map_rows": 1
+            },
+            {
+              "requirement_family_id": "cap.life_additional_cost",
+              "card_requirement_map_rows": 1
+            }
+          ],
+          "dependent_classification_or_interaction_inputs": []
+        },
+        {
+          "citation_id": "CR-119-life",
+          "citation_kind": "CR_RULE_IDENTIFIER",
+          "rule_identifier": "CR 119",
+          "canonical_section_identity": "119. Life",
+          "artifact_local_locator": {
+            "locator_kind": "RULE_HEADING_LINE",
+            "line_number_1based": 1049,
+            "heading_line_sha256": "026b5f3e6fae087b23a44e3ab824833133fff5e51cc8176c22dbce2cf8ce4330",
+            "heading_line_excerpt": "119. Life"
+          },
+          "why_required": "Life totals/payment.",
+          "dependent_requirement_families": [
+            {
+              "requirement_family_id": "cap.life",
+              "card_requirement_map_rows": 1
+            }
+          ],
+          "dependent_classification_or_interaction_inputs": []
+        },
+        {
+          "citation_id": "CR-120-damage",
+          "citation_kind": "CR_RULE_IDENTIFIER",
+          "rule_identifier": "CR 120",
+          "canonical_section_identity": "120. Damage",
+          "artifact_local_locator": {
+            "locator_kind": "RULE_HEADING_LINE",
+            "line_number_1based": 1085,
+            "heading_line_sha256": "db863cb8a971ddee3daf9dcedcdaeeab0de550a2ad7877dbd11a9c21837efbcf",
+            "heading_line_excerpt": "120. Damage"
+          },
+          "why_required": "Damage application.",
+          "dependent_requirement_families": [
+            {
+              "requirement_family_id": "cap.damage",
+              "card_requirement_map_rows": 1
+            },
+            {
+              "requirement_family_id": "cap.damage_fanout",
+              "card_requirement_map_rows": 1
+            }
+          ],
+          "dependent_classification_or_interaction_inputs": []
+        },
+        {
+          "citation_id": "CR-121-drawing",
+          "citation_kind": "CR_RULE_IDENTIFIER",
+          "rule_identifier": "CR 121",
+          "canonical_section_identity": "121. Drawing a Card",
+          "artifact_local_locator": {
+            "locator_kind": "RULE_HEADING_LINE",
+            "line_number_1based": 1140,
+            "heading_line_sha256": "cd31e0369337a7561b18ca475ff3f3c2536afa769e066b452864e86ea16eb9e4",
+            "heading_line_excerpt": "121. Drawing a Card"
+          },
+          "why_required": "Card drawing.",
+          "dependent_requirement_families": [
+            {
+              "requirement_family_id": "cap.draw",
+              "card_requirement_map_rows": 4
+            },
+            {
+              "requirement_family_id": "cap.draw_discard",
+              "card_requirement_map_rows": 1
+            }
+          ],
+          "dependent_classification_or_interaction_inputs": []
+        },
+        {
+          "citation_id": "CR-122-counters",
           "citation_kind": "CR_RULE_IDENTIFIER",
           "rule_identifier": "CR 122",
-          "canonical_section_identity": "CR 122 Counters",
+          "canonical_section_identity": "122. Counters",
           "artifact_local_locator": {
             "locator_kind": "RULE_HEADING_LINE",
             "line_number_1based": 1176,
-            "expected_heading_prefix": "122.",
             "heading_line_sha256": "3eb7ec074d844fdad8c94b431a2ab423cb5193ed091403b17c3732e25eeec654",
             "heading_line_excerpt": "122. Counters"
           },
-          "why_required": "Counter placement incl. loyalty counters is an explicit requirement family.",
+          "why_required": "Counters incl. loyalty.",
           "dependent_requirement_families": [
             {
               "requirement_family_id": "cap.counters",
@@ -183,102 +584,705 @@
             {
               "requirement_family_id": "cap.loyalty_counters",
               "card_requirement_map_rows": 2
+            },
+            {
+              "requirement_family_id": "cap.counter_or_haste",
+              "card_requirement_map_rows": 1
             }
           ],
           "dependent_classification_or_interaction_inputs": []
         },
         {
-          "citation_id": "CR-301",
+          "citation_id": "CR-205-type-line",
+          "citation_kind": "CR_RULE_IDENTIFIER",
+          "rule_identifier": "CR 205",
+          "canonical_section_identity": "205. Type Line",
+          "artifact_local_locator": {
+            "locator_kind": "RULE_HEADING_LINE",
+            "line_number_1based": 1396,
+            "heading_line_sha256": "4f07e2b7b9e06b8b49c79a99a8178beb5261c8485941043e829abd61e35fab36",
+            "heading_line_excerpt": "205. Type Line"
+          },
+          "why_required": "Type/subtype vocabulary.",
+          "dependent_requirement_families": [
+            {
+              "requirement_family_id": "cap.subtype_add_zombie",
+              "card_requirement_map_rows": 1
+            },
+            {
+              "requirement_family_id": "cap.subtype_addition",
+              "card_requirement_map_rows": 1
+            },
+            {
+              "requirement_family_id": "cap.choose_creature_type",
+              "card_requirement_map_rows": 1
+            },
+            {
+              "requirement_family_id": "cap.tribal",
+              "card_requirement_map_rows": 1
+            },
+            {
+              "requirement_family_id": "cap.tribal_permission",
+              "card_requirement_map_rows": 1
+            }
+          ],
+          "dependent_classification_or_interaction_inputs": []
+        },
+        {
+          "citation_id": "CR-301-artifacts",
           "citation_kind": "CR_RULE_IDENTIFIER",
           "rule_identifier": "CR 301",
-          "canonical_section_identity": "CR 301 Artifacts",
+          "canonical_section_identity": "301. Artifacts",
           "artifact_local_locator": {
             "locator_kind": "RULE_HEADING_LINE",
             "line_number_1based": 1581,
-            "expected_heading_prefix": "301.",
             "heading_line_sha256": "39f64d708259a87b2d51dbaf6240e5b33a67aa785f1997b2d203538f548e40e1",
             "heading_line_excerpt": "301. Artifacts"
           },
-          "why_required": "Artifact rules underlie the largest artifact-family cluster (equipment/vehicles below).",
+          "why_required": "Artifact/vehicle frame.",
           "dependent_requirement_families": [
             {
-              "requirement_family_id": "cap.artifact_permanent",
-              "card_requirement_map_rows": 27
+              "requirement_family_id": "cap.improvise",
+              "card_requirement_map_rows": 2
+            },
+            {
+              "requirement_family_id": "cap.treasure",
+              "card_requirement_map_rows": 1
             },
             {
               "requirement_family_id": "cap.artifact_animation",
               "card_requirement_map_rows": 1
             },
             {
-              "requirement_family_id": "cap.improvise",
-              "card_requirement_map_rows": 2
-            }
-          ],
-          "dependent_classification_or_interaction_inputs": []
-        },
-        {
-          "citation_id": "CR-405",
-          "citation_kind": "CR_RULE_IDENTIFIER",
-          "rule_identifier": "CR 405",
-          "canonical_section_identity": "CR 405 Stack",
-          "artifact_local_locator": {
-            "locator_kind": "RULE_HEADING_LINE",
-            "line_number_1based": 2040,
-            "expected_heading_prefix": "405.",
-            "heading_line_sha256": "88e417ea4ee0194e87be5a883d4793d270896bcc29ba7bb6f272f1be208b56a0",
-            "heading_line_excerpt": "405. Stack"
-          },
-          "why_required": "Stack resolution underlies counter/setup and activated-ability cost families.",
-          "dependent_requirement_families": [
-            {
-              "requirement_family_id": "cap.counterspell",
-              "card_requirement_map_rows": 2
-            },
-            {
-              "requirement_family_id": "cap.activated_ability",
+              "requirement_family_id": "cap.artifact_exception",
               "card_requirement_map_rows": 1
             }
           ],
           "dependent_classification_or_interaction_inputs": []
         },
         {
-          "citation_id": "CR-510",
+          "citation_id": "CR-302-creatures",
+          "citation_kind": "CR_RULE_IDENTIFIER",
+          "rule_identifier": "CR 302",
+          "canonical_section_identity": "302. Creatures",
+          "artifact_local_locator": {
+            "locator_kind": "RULE_HEADING_LINE",
+            "line_number_1based": 1613,
+            "heading_line_sha256": "047809fcc680819c22fffa39cc8d416d668f283ac10dc8eb90b850e2bcecb5c7",
+            "heading_line_excerpt": "302. Creatures"
+          },
+          "why_required": "Creature power/toughness frame.",
+          "dependent_requirement_families": [
+            {
+              "requirement_family_id": "cap.base_pt",
+              "card_requirement_map_rows": 3
+            }
+          ],
+          "dependent_classification_or_interaction_inputs": []
+        },
+        {
+          "citation_id": "CR-303-enchantments",
+          "citation_kind": "CR_RULE_IDENTIFIER",
+          "rule_identifier": "CR 303",
+          "canonical_section_identity": "303. Enchantments",
+          "artifact_local_locator": {
+            "locator_kind": "RULE_HEADING_LINE",
+            "line_number_1based": 1636,
+            "heading_line_sha256": "8e7ac7c1d72227dfd26dd3cc492c2e71e369ff09bdf602dfc59b8a82fc8e8400",
+            "heading_line_excerpt": "303. Enchantments"
+          },
+          "why_required": "Aura/enchantment frame.",
+          "dependent_requirement_families": [
+            {
+              "requirement_family_id": "cap.aura",
+              "card_requirement_map_rows": 9
+            },
+            {
+              "requirement_family_id": "cap.aura_curse",
+              "card_requirement_map_rows": 1
+            },
+            {
+              "requirement_family_id": "cap.aura_token",
+              "card_requirement_map_rows": 1
+            }
+          ],
+          "dependent_classification_or_interaction_inputs": []
+        },
+        {
+          "citation_id": "CR-306-planeswalkers",
+          "citation_kind": "CR_RULE_IDENTIFIER",
+          "rule_identifier": "CR 306",
+          "canonical_section_identity": "306. Planeswalkers",
+          "artifact_local_locator": {
+            "locator_kind": "RULE_HEADING_LINE",
+            "line_number_1based": 1715,
+            "heading_line_sha256": "23059351f10e9cfc7e1c55adcd94b3efa9a49fe10f3f8f5c19eb0f89f0215196",
+            "heading_line_excerpt": "306. Planeswalkers"
+          },
+          "why_required": "Planeswalker frame and loyalty abilities.",
+          "dependent_requirement_families": [
+            {
+              "requirement_family_id": "cap.planeswalker",
+              "card_requirement_map_rows": 3
+            },
+            {
+              "requirement_family_id": "cap.loyalty",
+              "card_requirement_map_rows": 1
+            },
+            {
+              "requirement_family_id": "cap.loyalty_activation_rules",
+              "card_requirement_map_rows": 2
+            }
+          ],
+          "dependent_classification_or_interaction_inputs": []
+        },
+        {
+          "citation_id": "CR-401-library",
+          "citation_kind": "CR_RULE_IDENTIFIER",
+          "rule_identifier": "CR 401",
+          "canonical_section_identity": "401. Library",
+          "artifact_local_locator": {
+            "locator_kind": "RULE_HEADING_LINE",
+            "line_number_1based": 1996,
+            "heading_line_sha256": "e0853f52e31ec2b563acb0b0ee0370ca9a917e660b303b650d822df2edcc7591",
+            "heading_line_excerpt": "401. Library"
+          },
+          "why_required": "Library zone order/traversal.",
+          "dependent_requirement_families": [
+            {
+              "requirement_family_id": "cap.ordered_library_card",
+              "card_requirement_map_rows": 12
+            },
+            {
+              "requirement_family_id": "cap.library_traversal",
+              "card_requirement_map_rows": 2
+            },
+            {
+              "requirement_family_id": "cap.mass_library_traversal",
+              "card_requirement_map_rows": 1
+            },
+            {
+              "requirement_family_id": "cap.library_graveyard_information",
+              "card_requirement_map_rows": 1
+            },
+            {
+              "requirement_family_id": "cap.bottom_order",
+              "card_requirement_map_rows": 1
+            }
+          ],
+          "dependent_classification_or_interaction_inputs": []
+        },
+        {
+          "citation_id": "CR-402-hand",
+          "citation_kind": "CR_RULE_IDENTIFIER",
+          "rule_identifier": "CR 402",
+          "canonical_section_identity": "402. Hand",
+          "artifact_local_locator": {
+            "locator_kind": "RULE_HEADING_LINE",
+            "line_number_1based": 2012,
+            "heading_line_sha256": "9bb704058ce6a866ed5c988938b71e2cf92829c4b6406ca8fe8baab0870e5cfd",
+            "heading_line_excerpt": "402. Hand"
+          },
+          "why_required": "Hand zone returns.",
+          "dependent_requirement_families": [
+            {
+              "requirement_family_id": "cap.mass_bounce",
+              "card_requirement_map_rows": 1
+            },
+            {
+              "requirement_family_id": "cap.return_to_hand_on_death",
+              "card_requirement_map_rows": 1
+            }
+          ],
+          "dependent_classification_or_interaction_inputs": []
+        },
+        {
+          "citation_id": "CR-403-battlefield",
+          "citation_kind": "CR_RULE_IDENTIFIER",
+          "rule_identifier": "CR 403",
+          "canonical_section_identity": "403. Battlefield",
+          "artifact_local_locator": {
+            "locator_kind": "RULE_HEADING_LINE",
+            "line_number_1based": 2020,
+            "heading_line_sha256": "0b8671daa2078672bd3aff5f688ff21588f66e82f80ba6c9562f1568af930006",
+            "heading_line_excerpt": "403. Battlefield"
+          },
+          "why_required": "Battlefield entry.",
+          "dependent_requirement_families": [
+            {
+              "requirement_family_id": "cap.put_battlefield",
+              "card_requirement_map_rows": 1
+            },
+            {
+              "requirement_family_id": "cap.mass_put_battlefield",
+              "card_requirement_map_rows": 1
+            },
+            {
+              "requirement_family_id": "cap.land_zone",
+              "card_requirement_map_rows": 12
+            },
+            {
+              "requirement_family_id": "cap.controller_assignment_on_zone_entry",
+              "card_requirement_map_rows": 1
+            }
+          ],
+          "dependent_classification_or_interaction_inputs": []
+        },
+        {
+          "citation_id": "CR-404-graveyard",
+          "citation_kind": "CR_RULE_IDENTIFIER",
+          "rule_identifier": "CR 404",
+          "canonical_section_identity": "404. Graveyard",
+          "artifact_local_locator": {
+            "locator_kind": "RULE_HEADING_LINE",
+            "line_number_1based": 2032,
+            "heading_line_sha256": "029c31af3c197f72e571026f1ea20cc9a85cf3b7bbbacae04144266a4f68b1b0",
+            "heading_line_excerpt": "404. Graveyard"
+          },
+          "why_required": "Graveyard zone cluster.",
+          "dependent_requirement_families": [
+            {
+              "requirement_family_id": "cap.graveyard",
+              "card_requirement_map_rows": 1
+            },
+            {
+              "requirement_family_id": "cap.graveyard_cast_permission",
+              "card_requirement_map_rows": 2
+            },
+            {
+              "requirement_family_id": "cap.graveyard_count",
+              "card_requirement_map_rows": 2
+            },
+            {
+              "requirement_family_id": "cap.graveyard_return",
+              "card_requirement_map_rows": 1
+            },
+            {
+              "requirement_family_id": "cap.graveyard_target",
+              "card_requirement_map_rows": 1
+            },
+            {
+              "requirement_family_id": "cap.target_card_any_graveyard",
+              "card_requirement_map_rows": 1
+            },
+            {
+              "requirement_family_id": "cap.multi_target_graveyard",
+              "card_requirement_map_rows": 1
+            },
+            {
+              "requirement_family_id": "cap.reanimation",
+              "card_requirement_map_rows": 2
+            },
+            {
+              "requirement_family_id": "cap.reanimation_tapped",
+              "card_requirement_map_rows": 1
+            },
+            {
+              "requirement_family_id": "cap.reanimation_under_your_control",
+              "card_requirement_map_rows": 2
+            },
+            {
+              "requirement_family_id": "cap.mass_cross_graveyard_reanimation",
+              "card_requirement_map_rows": 1
+            },
+            {
+              "requirement_family_id": "cap.flashback",
+              "card_requirement_map_rows": 3
+            },
+            {
+              "requirement_family_id": "cap.turn_scoped_graveyard_cast_permission",
+              "card_requirement_map_rows": 1
+            }
+          ],
+          "dependent_classification_or_interaction_inputs": []
+        },
+        {
+          "citation_id": "CR-406-exile",
+          "citation_kind": "CR_RULE_IDENTIFIER",
+          "rule_identifier": "CR 406",
+          "canonical_section_identity": "406. Exile",
+          "artifact_local_locator": {
+            "locator_kind": "RULE_HEADING_LINE",
+            "line_number_1based": 2070,
+            "heading_line_sha256": "ab14e7166aaf296b95a2ee10cf52308f55d5b0508c30628168f6cf0017693616",
+            "heading_line_excerpt": "406. Exile"
+          },
+          "why_required": "Exile zone cluster.",
+          "dependent_requirement_families": [
+            {
+              "requirement_family_id": "cap.exile",
+              "card_requirement_map_rows": 1
+            },
+            {
+              "requirement_family_id": "cap.self_exile",
+              "card_requirement_map_rows": 1
+            },
+            {
+              "requirement_family_id": "cap.mass_exile",
+              "card_requirement_map_rows": 2
+            },
+            {
+              "requirement_family_id": "cap.linked_exile_return",
+              "card_requirement_map_rows": 2
+            },
+            {
+              "requirement_family_id": "cap.linked_return",
+              "card_requirement_map_rows": 1
+            },
+            {
+              "requirement_family_id": "cap.cast_from_exile",
+              "card_requirement_map_rows": 1
+            },
+            {
+              "requirement_family_id": "cap.conditional_exile",
+              "card_requirement_map_rows": 1
+            },
+            {
+              "requirement_family_id": "cap.blink",
+              "card_requirement_map_rows": 3
+            },
+            {
+              "requirement_family_id": "cap.delayed_return",
+              "card_requirement_map_rows": 3
+            },
+            {
+              "requirement_family_id": "cap.mass_blink",
+              "card_requirement_map_rows": 2
+            },
+            {
+              "requirement_family_id": "cap.graveyard_exile_link",
+              "card_requirement_map_rows": 1
+            },
+            {
+              "requirement_family_id": "cap.exile_trigger",
+              "card_requirement_map_rows": 1
+            },
+            {
+              "requirement_family_id": "cap.alternate_cast_zone",
+              "card_requirement_map_rows": 1
+            }
+          ],
+          "dependent_classification_or_interaction_inputs": []
+        },
+        {
+          "citation_id": "CR-503-upkeep-step",
+          "citation_kind": "CR_RULE_IDENTIFIER",
+          "rule_identifier": "CR 503",
+          "canonical_section_identity": "503. Upkeep Step",
+          "artifact_local_locator": {
+            "locator_kind": "RULE_HEADING_LINE",
+            "line_number_1based": 2162,
+            "heading_line_sha256": "9c390cafd21cd4e73c8aeb35291284008f7a452740f1333ceed68c65f434b5d9",
+            "heading_line_excerpt": "503. Upkeep Step"
+          },
+          "why_required": "Upkeep timing.",
+          "dependent_requirement_families": [
+            {
+              "requirement_family_id": "cap.upkeep_trigger",
+              "card_requirement_map_rows": 3
+            }
+          ],
+          "dependent_classification_or_interaction_inputs": []
+        },
+        {
+          "citation_id": "CR-508-declare-attackers",
+          "citation_kind": "CR_RULE_IDENTIFIER",
+          "rule_identifier": "CR 508",
+          "canonical_section_identity": "508. Declare Attackers Step",
+          "artifact_local_locator": {
+            "locator_kind": "RULE_HEADING_LINE",
+            "line_number_1based": 2262,
+            "heading_line_sha256": "92f5871beb7805a2cee37f52643b916ad351e7eb28fb5403dc6b1cffd9979e4b",
+            "heading_line_excerpt": "508. Declare Attackers Step"
+          },
+          "why_required": "Attack declaration.",
+          "dependent_requirement_families": [
+            {
+              "requirement_family_id": "cap.attack_trigger",
+              "card_requirement_map_rows": 5
+            },
+            {
+              "requirement_family_id": "cap.extra_combat",
+              "card_requirement_map_rows": 1
+            },
+            {
+              "requirement_family_id": "cap.attack_counter",
+              "card_requirement_map_rows": 1
+            },
+            {
+              "requirement_family_id": "cap.attack_mana",
+              "card_requirement_map_rows": 1
+            }
+          ],
+          "dependent_classification_or_interaction_inputs": []
+        },
+        {
+          "citation_id": "CR-509-declare-blockers",
+          "citation_kind": "CR_RULE_IDENTIFIER",
+          "rule_identifier": "CR 509",
+          "canonical_section_identity": "509. Declare Blockers Step",
+          "artifact_local_locator": {
+            "locator_kind": "RULE_HEADING_LINE",
+            "line_number_1based": 2343,
+            "heading_line_sha256": "b44583da7e82c6168c944563de57370e5c0487820b8fc73f21834a507c2e5347",
+            "heading_line_excerpt": "509. Declare Blockers Step"
+          },
+          "why_required": "Block declaration interactions.",
+          "dependent_requirement_families": [],
+          "dependent_classification_or_interaction_inputs": []
+        },
+        {
+          "citation_id": "CR-510-combat-damage-step",
           "citation_kind": "CR_RULE_IDENTIFIER",
           "rule_identifier": "CR 510",
-          "canonical_section_identity": "CR 510 Combat Damage Step",
+          "canonical_section_identity": "510. Combat Damage Step",
           "artifact_local_locator": {
             "locator_kind": "RULE_HEADING_LINE",
             "line_number_1based": 2395,
-            "expected_heading_prefix": "510.",
             "heading_line_sha256": "bd7d730592ac362116da3e49c07da051e6aae2355f484ed7ef6a341df031cd86",
             "heading_line_excerpt": "510. Combat Damage Step"
           },
-          "why_required": "Combat damage triggers are explicit requirement families.",
+          "why_required": "Combat damage triggers.",
           "dependent_requirement_families": [
             {
               "requirement_family_id": "cap.combat_damage_trigger",
               "card_requirement_map_rows": 5
-            },
+            }
+          ],
+          "dependent_classification_or_interaction_inputs": []
+        },
+        {
+          "citation_id": "CR-513-end-step",
+          "citation_kind": "CR_RULE_IDENTIFIER",
+          "rule_identifier": "CR 513",
+          "canonical_section_identity": "513. End Step",
+          "artifact_local_locator": {
+            "locator_kind": "RULE_HEADING_LINE",
+            "line_number_1based": 2430,
+            "heading_line_sha256": "2e0dfc7bac9c5585e5394223693c86aa94d87f2c4f4106c62c71590847ee582e",
+            "heading_line_excerpt": "513. End Step"
+          },
+          "why_required": "End-step triggers.",
+          "dependent_requirement_families": [
             {
-              "requirement_family_id": "cap.combat_granted_keywords",
+              "requirement_family_id": "cap.end_step_trigger",
               "card_requirement_map_rows": 1
             }
           ],
           "dependent_classification_or_interaction_inputs": []
         },
         {
-          "citation_id": "CR-613",
+          "citation_id": "CR-601-casting-spells",
+          "citation_kind": "CR_RULE_IDENTIFIER",
+          "rule_identifier": "CR 601",
+          "canonical_section_identity": "601. Casting Spells",
+          "artifact_local_locator": {
+            "locator_kind": "RULE_HEADING_LINE",
+            "line_number_1based": 2453,
+            "heading_line_sha256": "f8b110462e8b6708661e9b7a8d37f06ef5d72f0804c726431a3400613c9345ff",
+            "heading_line_excerpt": "601. Casting Spells"
+          },
+          "why_required": "Choice construction during casting.",
+          "dependent_requirement_families": [
+            {
+              "requirement_family_id": "cap.choice_number_x",
+              "card_requirement_map_rows": 7
+            },
+            {
+              "requirement_family_id": "cap.multi_category_selection",
+              "card_requirement_map_rows": 1
+            },
+            {
+              "requirement_family_id": "cap.open_vocabulary_domain",
+              "card_requirement_map_rows": 1
+            },
+            {
+              "requirement_family_id": "cap.sequential_choice_collection",
+              "card_requirement_map_rows": 1
+            },
+            {
+              "requirement_family_id": "cap.simultaneous_choice",
+              "card_requirement_map_rows": 1
+            },
+            {
+              "requirement_family_id": "cap.all_required",
+              "card_requirement_map_rows": 1
+            }
+          ],
+          "dependent_classification_or_interaction_inputs": []
+        },
+        {
+          "citation_id": "CR-602-activated-abilities",
+          "citation_kind": "CR_RULE_IDENTIFIER",
+          "rule_identifier": "CR 602",
+          "canonical_section_identity": "602. Activating Activated Abilities",
+          "artifact_local_locator": {
+            "locator_kind": "RULE_HEADING_LINE",
+            "line_number_1based": 2516,
+            "heading_line_sha256": "f1ea57af057aee4071301b5c6feba97597213387747cc1ea8aa97c40b44fe818",
+            "heading_line_excerpt": "602. Activating Activated Abilities"
+          },
+          "why_required": "Activated-ability cluster.",
+          "dependent_requirement_families": [
+            {
+              "requirement_family_id": "cap.activated_ability",
+              "card_requirement_map_rows": 1
+            },
+            {
+              "requirement_family_id": "cap.activation",
+              "card_requirement_map_rows": 1
+            },
+            {
+              "requirement_family_id": "cap.activation_cost",
+              "card_requirement_map_rows": 27
+            },
+            {
+              "requirement_family_id": "cap.grant_activated_ability",
+              "card_requirement_map_rows": 3
+            },
+            {
+              "requirement_family_id": "cap.dynamic_activated_ability_grant",
+              "card_requirement_map_rows": 1
+            }
+          ],
+          "dependent_classification_or_interaction_inputs": []
+        },
+        {
+          "citation_id": "CR-603-triggered-abilities",
+          "citation_kind": "CR_RULE_IDENTIFIER",
+          "rule_identifier": "CR 603",
+          "canonical_section_identity": "603. Handling Triggered Abilities",
+          "artifact_local_locator": {
+            "locator_kind": "RULE_HEADING_LINE",
+            "line_number_1based": 2557,
+            "heading_line_sha256": "91cda08afa8d2164aa084151072bf2a621095d9a97a8ddda85a77abe2d6d14d3",
+            "heading_line_excerpt": "603. Handling Triggered Abilities"
+          },
+          "why_required": "Triggered-ability cluster.",
+          "dependent_requirement_families": [
+            {
+              "requirement_family_id": "cap.trigger",
+              "card_requirement_map_rows": 1
+            },
+            {
+              "requirement_family_id": "cap.death_trigger",
+              "card_requirement_map_rows": 1
+            },
+            {
+              "requirement_family_id": "cap.damage_trigger",
+              "card_requirement_map_rows": 1
+            },
+            {
+              "requirement_family_id": "cap.combat_trigger",
+              "card_requirement_map_rows": 1
+            },
+            {
+              "requirement_family_id": "cap.draw_trigger",
+              "card_requirement_map_rows": 1
+            },
+            {
+              "requirement_family_id": "cap.linked_death_trigger",
+              "card_requirement_map_rows": 1
+            },
+            {
+              "requirement_family_id": "cap.delayed_trigger",
+              "card_requirement_map_rows": 1
+            },
+            {
+              "requirement_family_id": "cap.aura_equipment_etb_trigger",
+              "card_requirement_map_rows": 1
+            },
+            {
+              "requirement_family_id": "cap.landfall",
+              "card_requirement_map_rows": 1
+            }
+          ],
+          "dependent_classification_or_interaction_inputs": []
+        },
+        {
+          "citation_id": "CR-604-static-abilities",
+          "citation_kind": "CR_RULE_IDENTIFIER",
+          "rule_identifier": "CR 604",
+          "canonical_section_identity": "604. Handling Static Abilities",
+          "artifact_local_locator": {
+            "locator_kind": "RULE_HEADING_LINE",
+            "line_number_1based": 2665,
+            "heading_line_sha256": "f7a04371a9309c228efd766a924a91be7bb5d649eb53ea61feb22bfc33127d55",
+            "heading_line_excerpt": "604. Handling Static Abilities"
+          },
+          "why_required": "Static-ability/state evaluation.",
+          "dependent_requirement_families": [
+            {
+              "requirement_family_id": "cap.continuous_ability",
+              "card_requirement_map_rows": 2
+            },
+            {
+              "requirement_family_id": "cap.static_team_pt",
+              "card_requirement_map_rows": 1
+            },
+            {
+              "requirement_family_id": "cap.static_uncounterable",
+              "card_requirement_map_rows": 1
+            },
+            {
+              "requirement_family_id": "cap.modified",
+              "card_requirement_map_rows": 2
+            },
+            {
+              "requirement_family_id": "cap.modified_count_cost_reduction",
+              "card_requirement_map_rows": 1
+            },
+            {
+              "requirement_family_id": "cap.modified_predicate",
+              "card_requirement_map_rows": 2
+            }
+          ],
+          "dependent_classification_or_interaction_inputs": []
+        },
+        {
+          "citation_id": "CR-605-mana-abilities",
+          "citation_kind": "CR_RULE_IDENTIFIER",
+          "rule_identifier": "CR 605",
+          "canonical_section_identity": "605. Mana Abilities",
+          "artifact_local_locator": {
+            "locator_kind": "RULE_HEADING_LINE",
+            "line_number_1based": 2683,
+            "heading_line_sha256": "b62072265ca202c1e7a31d81287e7d9807a8ac37ba93d3efed61d7e6068e08fc",
+            "heading_line_excerpt": "605. Mana Abilities"
+          },
+          "why_required": "Mana ability cluster.",
+          "dependent_requirement_families": [
+            {
+              "requirement_family_id": "cap.mana_ability",
+              "card_requirement_map_rows": 1
+            },
+            {
+              "requirement_family_id": "cap.mana_production",
+              "card_requirement_map_rows": 27
+            },
+            {
+              "requirement_family_id": "cap.mana_source",
+              "card_requirement_map_rows": 12
+            },
+            {
+              "requirement_family_id": "cap.grant_mana_ability",
+              "card_requirement_map_rows": 2
+            }
+          ],
+          "dependent_classification_or_interaction_inputs": []
+        },
+        {
+          "citation_id": "CR-613-continuous-effects",
           "citation_kind": "CR_RULE_IDENTIFIER",
           "rule_identifier": "CR 613",
-          "canonical_section_identity": "CR 613 Interaction of Continuous Effects",
+          "canonical_section_identity": "613. Interaction of Continuous Effects",
           "artifact_local_locator": {
             "locator_kind": "RULE_HEADING_LINE",
             "line_number_1based": 2960,
-            "expected_heading_prefix": "613.",
             "heading_line_sha256": "6c3c9a8b6bb10d1f5fcc4f9c03ee5c96d89271dcbdbef872040035b030bd41f8",
             "heading_line_excerpt": "613. Interaction of Continuous Effects"
           },
-          "why_required": "Layer interaction underlies continuous-effect and type-layer families.",
+          "why_required": "Layer interaction cluster.",
           "dependent_requirement_families": [
             {
               "requirement_family_id": "cap.continuous_layers",
@@ -286,6 +1290,10 @@
             },
             {
               "requirement_family_id": "cap.continuous_combat_modification",
+              "card_requirement_map_rows": 1
+            },
+            {
+              "requirement_family_id": "cap.continuous_pt",
               "card_requirement_map_rows": 1
             },
             {
@@ -297,25 +1305,264 @@
               "card_requirement_map_rows": 1
             },
             {
+              "requirement_family_id": "cap.type_transition",
+              "card_requirement_map_rows": 2
+            },
+            {
+              "requirement_family_id": "cap.type_wide_state",
+              "card_requirement_map_rows": 1
+            },
+            {
+              "requirement_family_id": "cap.loses_card_types",
+              "card_requirement_map_rows": 1
+            },
+            {
               "requirement_family_id": "cap.temporary_animation",
               "card_requirement_map_rows": 3
+            },
+            {
+              "requirement_family_id": "cap.dynamic_pt",
+              "card_requirement_map_rows": 2
+            },
+            {
+              "requirement_family_id": "cap.selective_temporary_pt_modification",
+              "card_requirement_map_rows": 1
+            },
+            {
+              "requirement_family_id": "cap.target_pt_modification",
+              "card_requirement_map_rows": 1
+            },
+            {
+              "requirement_family_id": "cap.temporary_flying_double_strike",
+              "card_requirement_map_rows": 1
+            },
+            {
+              "requirement_family_id": "cap.combat_granted_keywords",
+              "card_requirement_map_rows": 1
+            },
+            {
+              "requirement_family_id": "cap.bounded_control_restoration",
+              "card_requirement_map_rows": 1
+            },
+            {
+              "requirement_family_id": "cap.color_addition",
+              "card_requirement_map_rows": 1
+            },
+            {
+              "requirement_family_id": "cap.color_set_black",
+              "card_requirement_map_rows": 1
             }
           ],
           "dependent_classification_or_interaction_inputs": []
         },
         {
-          "citation_id": "CR-701.17",
+          "citation_id": "CR-614-replacement-effects",
           "citation_kind": "CR_RULE_IDENTIFIER",
-          "rule_identifier": "CR 701.17a",
-          "canonical_section_identity": "CR 701.17a Mill",
+          "rule_identifier": "CR 614",
+          "canonical_section_identity": "614. Replacement Effects",
           "artifact_local_locator": {
             "locator_kind": "RULE_HEADING_LINE",
-            "line_number_1based": 3410,
-            "expected_heading_prefix": "701.17.",
-            "heading_line_sha256": "61d25dd6e8d6950516c58090f64245a23991a1ab93848456667147e8082a0f6c",
-            "heading_line_excerpt": "701.17. Mill"
+            "line_number_1based": 3056,
+            "heading_line_sha256": "3e3c2f5233caa5446ebb2add2a72340767dd07319e3c96566663e7dbcac36903",
+            "heading_line_excerpt": "614. Replacement Effects"
           },
-          "why_required": "Mill keyword action family.",
+          "why_required": "Replacement/prevention cluster.",
+          "dependent_requirement_families": [
+            {
+              "requirement_family_id": "cap.replacement_effect",
+              "card_requirement_map_rows": 1
+            },
+            {
+              "requirement_family_id": "cap.replacement_prevention",
+              "card_requirement_map_rows": 1
+            },
+            {
+              "requirement_family_id": "cap.token_replacement",
+              "card_requirement_map_rows": 1
+            },
+            {
+              "requirement_family_id": "cap.totem_armor_replacement",
+              "card_requirement_map_rows": 1
+            }
+          ],
+          "dependent_classification_or_interaction_inputs": []
+        },
+        {
+          "citation_id": "CR-700-general",
+          "citation_kind": "CR_RULE_IDENTIFIER",
+          "rule_identifier": "CR 700",
+          "canonical_section_identity": "700. General",
+          "artifact_local_locator": {
+            "locator_kind": "RULE_HEADING_LINE",
+            "line_number_1based": 3202,
+            "heading_line_sha256": "314b925e278f6657a1f3c248bfecf1c4c2f69bc12e654a194e48dcf7278339f8",
+            "heading_line_excerpt": "700. General"
+          },
+          "why_required": "General turn/phase mechanics.",
+          "dependent_requirement_families": [
+            {
+              "requirement_family_id": "cap.phase_insertion",
+              "card_requirement_map_rows": 1
+            }
+          ],
+          "dependent_classification_or_interaction_inputs": []
+        },
+        {
+          "citation_id": "CR-700-2-modes",
+          "citation_kind": "CR_RULE_IDENTIFIER",
+          "rule_identifier": "CR 700.2",
+          "canonical_section_identity": "700.2. A spell or ability is modal if it has two or more options in a bulleted list preced",
+          "artifact_local_locator": {
+            "locator_kind": "RULE_HEADING_LINE",
+            "line_number_1based": 3207,
+            "heading_line_sha256": "3ace2a9a1a7450b7a26c03157c786728c374d9236c2142505c5bd63dade2ab2d",
+            "heading_line_excerpt": "700.2. A spell or ability is modal if it has two or more options in a bulleted list preced"
+          },
+          "why_required": "Modal spells/abilities.",
+          "dependent_requirement_families": [
+            {
+              "requirement_family_id": "cap.mode_choice",
+              "card_requirement_map_rows": 1
+            }
+          ],
+          "dependent_classification_or_interaction_inputs": []
+        },
+        {
+          "citation_id": "CR-701-3-attach",
+          "citation_kind": "CR_RULE_IDENTIFIER",
+          "rule_identifier": "CR 701.3",
+          "canonical_section_identity": "701.3. Attach",
+          "artifact_local_locator": {
+            "locator_kind": "RULE_HEADING_LINE",
+            "line_number_1based": 3287,
+            "heading_line_sha256": "cee7808287efe2ef15f1a00975254541d72ff1939574046eeeefe49a7bf585c9",
+            "heading_line_excerpt": "701.3. Attach"
+          },
+          "why_required": "Attach action cluster.",
+          "dependent_requirement_families": [
+            {
+              "requirement_family_id": "cap.attachment",
+              "card_requirement_map_rows": 2
+            },
+            {
+              "requirement_family_id": "cap.attach_to_new_object",
+              "card_requirement_map_rows": 1
+            },
+            {
+              "requirement_family_id": "cap.opponent_attachment",
+              "card_requirement_map_rows": 1
+            }
+          ],
+          "dependent_classification_or_interaction_inputs": []
+        },
+        {
+          "citation_id": "CR-701-6-counter",
+          "citation_kind": "CR_RULE_IDENTIFIER",
+          "rule_identifier": "CR 701.6",
+          "canonical_section_identity": "701.6. Counter",
+          "artifact_local_locator": {
+            "locator_kind": "RULE_HEADING_LINE",
+            "line_number_1based": 3309,
+            "heading_line_sha256": "ace54bf854a7de990c42f67acf2a1a74b2fb6280a4bc4ba3d2684eb649f3f9d0",
+            "heading_line_excerpt": "701.6. Counter"
+          },
+          "why_required": "Countering spells/abilities.",
+          "dependent_requirement_families": [
+            {
+              "requirement_family_id": "cap.countered_setup",
+              "card_requirement_map_rows": 1
+            },
+            {
+              "requirement_family_id": "cap.counterspell",
+              "card_requirement_map_rows": 2
+            }
+          ],
+          "dependent_classification_or_interaction_inputs": []
+        },
+        {
+          "citation_id": "CR-701-8-destroy",
+          "citation_kind": "CR_RULE_IDENTIFIER",
+          "rule_identifier": "CR 701.8",
+          "canonical_section_identity": "701.8. Destroy",
+          "artifact_local_locator": {
+            "locator_kind": "RULE_HEADING_LINE",
+            "line_number_1based": 3323,
+            "heading_line_sha256": "1e5ebe078b515df188c9018c099d343a5504114ce4454bbede316e5117d874a7",
+            "heading_line_excerpt": "701.8. Destroy"
+          },
+          "why_required": "Destruction cluster.",
+          "dependent_requirement_families": [
+            {
+              "requirement_family_id": "cap.destroy",
+              "card_requirement_map_rows": 1
+            },
+            {
+              "requirement_family_id": "cap.target_destroy",
+              "card_requirement_map_rows": 2
+            },
+            {
+              "requirement_family_id": "cap.mass_destruction",
+              "card_requirement_map_rows": 3
+            },
+            {
+              "requirement_family_id": "cap.post_destruction_choice",
+              "card_requirement_map_rows": 1
+            }
+          ],
+          "dependent_classification_or_interaction_inputs": []
+        },
+        {
+          "citation_id": "CR-701-9-discard",
+          "citation_kind": "CR_RULE_IDENTIFIER",
+          "rule_identifier": "CR 701.9",
+          "canonical_section_identity": "701.9. Discard",
+          "artifact_local_locator": {
+            "locator_kind": "RULE_HEADING_LINE",
+            "line_number_1based": 3331,
+            "heading_line_sha256": "9d3e956210911397ffece90c6c37d926b10176ddcca99b718f42994ca09d0b60",
+            "heading_line_excerpt": "701.9. Discard"
+          },
+          "why_required": "Discard costs/effects.",
+          "dependent_requirement_families": [
+            {
+              "requirement_family_id": "cap.discard_cost",
+              "card_requirement_map_rows": 1
+            }
+          ],
+          "dependent_classification_or_interaction_inputs": []
+        },
+        {
+          "citation_id": "CR-701-15-goad",
+          "citation_kind": "CR_RULE_IDENTIFIER",
+          "rule_identifier": "CR 701.15",
+          "canonical_section_identity": "701.15. Goad",
+          "artifact_local_locator": {
+            "locator_kind": "RULE_HEADING_LINE",
+            "line_number_1based": 3396,
+            "heading_line_sha256": "40acc58ad7306ac6870e1619c95c188bd89df955596471c27350543905a3b160",
+            "heading_line_excerpt": "701.15. Goad"
+          },
+          "why_required": "Goad action.",
+          "dependent_requirement_families": [
+            {
+              "requirement_family_id": "cap.goad",
+              "card_requirement_map_rows": 2
+            }
+          ],
+          "dependent_classification_or_interaction_inputs": []
+        },
+        {
+          "citation_id": "CR-701-17a-mill",
+          "citation_kind": "CR_RULE_IDENTIFIER",
+          "rule_identifier": "CR 701.17a",
+          "canonical_section_identity": "701.17a For a player to mill a number of cards, that player puts that many cards from the ",
+          "artifact_local_locator": {
+            "locator_kind": "RULE_HEADING_LINE",
+            "line_number_1based": 3412,
+            "heading_line_sha256": "5ebf61fa3fb77ea38c285c347dd89c17bf4e6dca3bd937911463a44a8825c19c",
+            "heading_line_excerpt": "701.17a For a player to mill a number of cards, that player puts that many cards from the "
+          },
+          "why_required": "Mill action.",
           "dependent_requirement_families": [
             {
               "requirement_family_id": "cap.mill",
@@ -325,18 +1572,96 @@
           "dependent_classification_or_interaction_inputs": []
         },
         {
-          "citation_id": "CR-701.22",
+          "citation_id": "CR-701-36a-populate",
           "citation_kind": "CR_RULE_IDENTIFIER",
-          "rule_identifier": "CR 701.22a",
-          "canonical_section_identity": "CR 701.22a Scry",
+          "rule_identifier": "CR 701.36a",
+          "canonical_section_identity": "701.36a To populate means to choose a creature token you control and create a token that’s",
           "artifact_local_locator": {
             "locator_kind": "RULE_HEADING_LINE",
-            "line_number_1based": 3457,
-            "expected_heading_prefix": "701.22.",
-            "heading_line_sha256": "26f04035a1436d763545da1f76dbbe1565ceeba60da893a5b28941b29ba847c7",
-            "heading_line_excerpt": "701.22. Scry"
+            "line_number_1based": 3608,
+            "heading_line_sha256": "113b4aee26929f3cd27924e83ba41d2e56e5d63ca1f358a927a48f23920ba0bd",
+            "heading_line_excerpt": "701.36a To populate means to choose a creature token you control and create a token that’s"
           },
-          "why_required": "Scry keyword action family.",
+          "why_required": "Populate copies tokens.",
+          "dependent_requirement_families": [],
+          "dependent_classification_or_interaction_inputs": []
+        },
+        {
+          "citation_id": "CR-701-47a-amass",
+          "citation_kind": "CR_RULE_IDENTIFIER",
+          "rule_identifier": "CR 701.47a",
+          "canonical_section_identity": "701.47a To amass [subtype] N means “If you don’t control an Army creature, create a 0/0 bl",
+          "artifact_local_locator": {
+            "locator_kind": "RULE_HEADING_LINE",
+            "line_number_1based": 3695,
+            "heading_line_sha256": "256799a7d3a7c82f9b79dad772cd7c31ebcdb05ed6ac3ff4caa9bc2cfe9c5f08",
+            "heading_line_excerpt": "701.47a To amass [subtype] N means “If you don’t control an Army creature, create a 0/0 bl"
+          },
+          "why_required": "Amass creates/grows Army tokens.",
+          "dependent_requirement_families": [
+            {
+              "requirement_family_id": "cap.amass",
+              "card_requirement_map_rows": 1
+            }
+          ],
+          "dependent_classification_or_interaction_inputs": []
+        },
+        {
+          "citation_id": "CR-701-21-sacrifice",
+          "citation_kind": "CR_RULE_IDENTIFIER",
+          "rule_identifier": "CR 701.21",
+          "canonical_section_identity": "701.21. Sacrifice",
+          "artifact_local_locator": {
+            "locator_kind": "RULE_HEADING_LINE",
+            "line_number_1based": 3453,
+            "heading_line_sha256": "af5e4fb1212939bdbdcd55731c8efeb76d2d26005a6de516c1a55441736cebe2",
+            "heading_line_excerpt": "701.21. Sacrifice"
+          },
+          "why_required": "Sacrifice cluster.",
+          "dependent_requirement_families": [
+            {
+              "requirement_family_id": "cap.mass_sacrifice",
+              "card_requirement_map_rows": 2
+            },
+            {
+              "requirement_family_id": "cap.simultaneous_sacrifice",
+              "card_requirement_map_rows": 1
+            },
+            {
+              "requirement_family_id": "cap.sacrifice_additional_cost",
+              "card_requirement_map_rows": 1
+            },
+            {
+              "requirement_family_id": "cap.additional_sacrifice_cost",
+              "card_requirement_map_rows": 1
+            },
+            {
+              "requirement_family_id": "cap.type_filtered_sacrifice",
+              "card_requirement_map_rows": 1
+            },
+            {
+              "requirement_family_id": "cap.delayed_sacrifice",
+              "card_requirement_map_rows": 1
+            },
+            {
+              "requirement_family_id": "cap.sacrifice_threshold",
+              "card_requirement_map_rows": 1
+            }
+          ],
+          "dependent_classification_or_interaction_inputs": []
+        },
+        {
+          "citation_id": "CR-701-22a-scry",
+          "citation_kind": "CR_RULE_IDENTIFIER",
+          "rule_identifier": "CR 701.22a",
+          "canonical_section_identity": "701.22a To “scry N” means to look at the top N cards of your library, then put any number ",
+          "artifact_local_locator": {
+            "locator_kind": "RULE_HEADING_LINE",
+            "line_number_1based": 3459,
+            "heading_line_sha256": "d982368711a00d9d409e1d0ff8f9b89f66ae6197f53d6e4f6ec6a838c8cecaf6",
+            "heading_line_excerpt": "701.22a To “scry N” means to look at the top N cards of your library, then put any number "
+          },
+          "why_required": "Scry action.",
           "dependent_requirement_families": [
             {
               "requirement_family_id": "cap.scry",
@@ -346,60 +1671,249 @@
           "dependent_classification_or_interaction_inputs": []
         },
         {
-          "citation_id": "CR-701.36",
+          "citation_id": "CR-701-23-search",
           "citation_kind": "CR_RULE_IDENTIFIER",
-          "rule_identifier": "CR 701.36a",
-          "canonical_section_identity": "CR 701.36a Populate",
+          "rule_identifier": "CR 701.23",
+          "canonical_section_identity": "701.23. Search",
           "artifact_local_locator": {
             "locator_kind": "RULE_HEADING_LINE",
-            "line_number_1based": 3606,
-            "expected_heading_prefix": "701.36.",
-            "heading_line_sha256": "2a0d86bfb63c39cb51ab720acd5801cc888b78d30d6f331a1f84522fb5dbf9d2",
-            "heading_line_excerpt": "701.36. Populate"
+            "line_number_1based": 3467,
+            "heading_line_sha256": "765efa6dd31378e4a3c931f76ba0f635635a11ebc26fa4755fbafa484b933e81",
+            "heading_line_excerpt": "701.23. Search"
           },
-          "why_required": "Populate creates tokens; supports token_creation family.",
+          "why_required": "Library search.",
           "dependent_requirement_families": [
             {
-              "requirement_family_id": "cap.token_creation",
-              "card_requirement_map_rows": 10
+              "requirement_family_id": "cap.search_library",
+              "card_requirement_map_rows": 4
             }
           ],
           "dependent_classification_or_interaction_inputs": []
         },
         {
-          "citation_id": "CR-701.47",
+          "citation_id": "CR-701-24-shuffle",
           "citation_kind": "CR_RULE_IDENTIFIER",
-          "rule_identifier": "CR 701.47a",
-          "canonical_section_identity": "CR 701.47a Amass",
+          "rule_identifier": "CR 701.24",
+          "canonical_section_identity": "701.24. Shuffle",
           "artifact_local_locator": {
             "locator_kind": "RULE_HEADING_LINE",
-            "line_number_1based": 3693,
-            "expected_heading_prefix": "701.47.",
-            "heading_line_sha256": "f36864535d0f8323ad61668f86d2dce8c52d84b83d60202099fbe61f032cf7f1",
-            "heading_line_excerpt": "701.47. Amass"
+            "line_number_1based": 3492,
+            "heading_line_sha256": "3ed438465f0f5da51a5c532d814ca7b25e90c296a2ccab34b0b8f7b0a59ea2d5",
+            "heading_line_excerpt": "701.24. Shuffle"
           },
-          "why_required": "Amass creates/grows Army tokens; supports token families.",
+          "why_required": "Shuffle action.",
           "dependent_requirement_families": [
             {
-              "requirement_family_id": "cap.token_creation",
-              "card_requirement_map_rows": 10
+              "requirement_family_id": "cap.shuffle",
+              "card_requirement_map_rows": 2
+            },
+            {
+              "requirement_family_id": "cap.shuffle_self",
+              "card_requirement_map_rows": 1
             }
           ],
           "dependent_classification_or_interaction_inputs": []
         },
         {
-          "citation_id": "CR-702.6",
+          "citation_id": "CR-701-25-surveil",
+          "citation_kind": "CR_RULE_IDENTIFIER",
+          "rule_identifier": "CR 701.25",
+          "canonical_section_identity": "701.25. Surveil",
+          "artifact_local_locator": {
+            "locator_kind": "RULE_HEADING_LINE",
+            "line_number_1based": 3512,
+            "heading_line_sha256": "ad90f7f2194f39a7dfab4325b971d0ba92760cd081233268e1c0a1d41d2fd4a7",
+            "heading_line_excerpt": "701.25. Surveil"
+          },
+          "why_required": "Surveil action.",
+          "dependent_requirement_families": [
+            {
+              "requirement_family_id": "cap.surveil",
+              "card_requirement_map_rows": 1
+            }
+          ],
+          "dependent_classification_or_interaction_inputs": []
+        },
+        {
+          "citation_id": "CR-701-26-tap-untap",
+          "citation_kind": "CR_RULE_IDENTIFIER",
+          "rule_identifier": "CR 701.26",
+          "canonical_section_identity": "701.26. Tap and Untap",
+          "artifact_local_locator": {
+            "locator_kind": "RULE_HEADING_LINE",
+            "line_number_1based": 3522,
+            "heading_line_sha256": "b925b341203a7308f653ac30c05d129000ce3d15acd5183ccb365624845e81d0",
+            "heading_line_excerpt": "701.26. Tap and Untap"
+          },
+          "why_required": "Tap/untap cluster.",
+          "dependent_requirement_families": [
+            {
+              "requirement_family_id": "cap.tap_event",
+              "card_requirement_map_rows": 1
+            },
+            {
+              "requirement_family_id": "cap.tap_another_creature_cost",
+              "card_requirement_map_rows": 1
+            },
+            {
+              "requirement_family_id": "cap.tap_subset_cost",
+              "card_requirement_map_rows": 1
+            },
+            {
+              "requirement_family_id": "cap.tap_ten_cost",
+              "card_requirement_map_rows": 1
+            },
+            {
+              "requirement_family_id": "cap.count_tapped",
+              "card_requirement_map_rows": 2
+            },
+            {
+              "requirement_family_id": "cap.untap_lands",
+              "card_requirement_map_rows": 1
+            },
+            {
+              "requirement_family_id": "cap.mass_untap",
+              "card_requirement_map_rows": 1
+            }
+          ],
+          "dependent_classification_or_interaction_inputs": []
+        },
+        {
+          "citation_id": "CR-701-20-reveal",
+          "citation_kind": "CR_RULE_IDENTIFIER",
+          "rule_identifier": "CR 701.20",
+          "canonical_section_identity": "701.20. Reveal",
+          "artifact_local_locator": {
+            "locator_kind": "RULE_HEADING_LINE",
+            "line_number_1based": 3440,
+            "heading_line_sha256": "e7077c06d5f24722e44786096038bddac9dc5bb14be6d31ef9a9339feb942b87",
+            "heading_line_excerpt": "701.20. Reveal"
+          },
+          "why_required": "Reveal action.",
+          "dependent_requirement_families": [
+            {
+              "requirement_family_id": "cap.reveal",
+              "card_requirement_map_rows": 2
+            }
+          ],
+          "dependent_classification_or_interaction_inputs": []
+        },
+        {
+          "citation_id": "CR-702-2-deathtouch",
+          "citation_kind": "CR_RULE_IDENTIFIER",
+          "rule_identifier": "CR 702.2",
+          "canonical_section_identity": "702.2. Deathtouch",
+          "artifact_local_locator": {
+            "locator_kind": "RULE_HEADING_LINE",
+            "line_number_1based": 3897,
+            "heading_line_sha256": "b4ff2437336b3b8a20649a63ded9530d89bdac0498b52846128a6de1de394dfa",
+            "heading_line_excerpt": "702.2. Deathtouch"
+          },
+          "why_required": "Deathtouch.",
+          "dependent_requirement_families": [
+            {
+              "requirement_family_id": "cap.deathtouch",
+              "card_requirement_map_rows": 1
+            }
+          ],
+          "dependent_classification_or_interaction_inputs": []
+        },
+        {
+          "citation_id": "CR-702-9-flying",
+          "citation_kind": "CR_RULE_IDENTIFIER",
+          "rule_identifier": "CR 702.9",
+          "canonical_section_identity": "702.9. Flying",
+          "artifact_local_locator": {
+            "locator_kind": "RULE_HEADING_LINE",
+            "line_number_1based": 3969,
+            "heading_line_sha256": "1e7507163813bbefcf12de9164c54fc5d76657e6022e69c45d9fb9e4e89c2e96",
+            "heading_line_excerpt": "702.9. Flying"
+          },
+          "why_required": "Flying grants.",
+          "dependent_requirement_families": [
+            {
+              "requirement_family_id": "cap.flying_grant",
+              "card_requirement_map_rows": 1
+            },
+            {
+              "requirement_family_id": "cap.conditional_hexproof",
+              "card_requirement_map_rows": 1
+            }
+          ],
+          "dependent_classification_or_interaction_inputs": []
+        },
+        {
+          "citation_id": "CR-702-12-indestructible",
+          "citation_kind": "CR_RULE_IDENTIFIER",
+          "rule_identifier": "CR 702.12",
+          "canonical_section_identity": "702.12. Indestructible",
+          "artifact_local_locator": {
+            "locator_kind": "RULE_HEADING_LINE",
+            "line_number_1based": 4005,
+            "heading_line_sha256": "f7ec65aba174be68e1e0e1a2d1d8615ad88688350812eeb1c410cd41a00ad127",
+            "heading_line_excerpt": "702.12. Indestructible"
+          },
+          "why_required": "Indestructibility windows.",
+          "dependent_requirement_families": [
+            {
+              "requirement_family_id": "cap.indestructible_until_eot",
+              "card_requirement_map_rows": 1
+            }
+          ],
+          "dependent_classification_or_interaction_inputs": []
+        },
+        {
+          "citation_id": "CR-702-16-protection",
+          "citation_kind": "CR_RULE_IDENTIFIER",
+          "rule_identifier": "CR 702.16",
+          "canonical_section_identity": "702.16. Protection",
+          "artifact_local_locator": {
+            "locator_kind": "RULE_HEADING_LINE",
+            "line_number_1based": 4049,
+            "heading_line_sha256": "6b6aa9e7c9aaec2b13e62991e3a7356827d85615c5d0d0b4afb895a140d1ff84",
+            "heading_line_excerpt": "702.16. Protection"
+          },
+          "why_required": "Protection effects.",
+          "dependent_requirement_families": [
+            {
+              "requirement_family_id": "cap.temporary_protection",
+              "card_requirement_map_rows": 1
+            }
+          ],
+          "dependent_classification_or_interaction_inputs": []
+        },
+        {
+          "citation_id": "CR-702-15a-lifelink",
+          "citation_kind": "CR_RULE_IDENTIFIER",
+          "rule_identifier": "CR 702.15a",
+          "canonical_section_identity": "702.15a Lifelink is a static ability.",
+          "artifact_local_locator": {
+            "locator_kind": "RULE_HEADING_LINE",
+            "line_number_1based": 4036,
+            "heading_line_sha256": "f25182d0a2a3af793d6ed9c36f3d1da1e2911bdd6fc83d6ad1b45d3ab61d7712",
+            "heading_line_excerpt": "702.15a Lifelink is a static ability."
+          },
+          "why_required": "Lifelink drain.",
+          "dependent_requirement_families": [
+            {
+              "requirement_family_id": "cap.life_drain",
+              "card_requirement_map_rows": 1
+            }
+          ],
+          "dependent_classification_or_interaction_inputs": []
+        },
+        {
+          "citation_id": "CR-702-6a-equip",
           "citation_kind": "CR_RULE_IDENTIFIER",
           "rule_identifier": "CR 702.6a",
-          "canonical_section_identity": "CR 702.6a Equip",
+          "canonical_section_identity": "702.6a Equip is an activated ability of Equipment cards. “Equip [cost]” means “[Cost]: Att",
           "artifact_local_locator": {
             "locator_kind": "RULE_HEADING_LINE",
-            "line_number_1based": 3941,
-            "expected_heading_prefix": "702.6.",
-            "heading_line_sha256": "26dbd1f5686fd22faf03a246e5336d7fa8e3f0757cbe618544e5b6a23be38255",
-            "heading_line_excerpt": "702.6. Equip"
+            "line_number_1based": 3943,
+            "heading_line_sha256": "dd4e4d994afafde25114ae57c664125d48b19074083702e3d24fed6c594e8d7d",
+            "heading_line_excerpt": "702.6a Equip is an activated ability of Equipment cards. “Equip [cost]” means “[Cost]: Att"
           },
-          "why_required": "Equip underlies equipment clusters incl. commander-dependent equip costs.",
+          "why_required": "Equipment cluster.",
           "dependent_requirement_families": [
             {
               "requirement_family_id": "cap.equipment",
@@ -413,18 +1927,37 @@
           "dependent_classification_or_interaction_inputs": []
         },
         {
-          "citation_id": "CR-702.51",
+          "citation_id": "CR-702-33-kicker",
           "citation_kind": "CR_RULE_IDENTIFIER",
-          "rule_identifier": "CR 702.51a",
-          "canonical_section_identity": "CR 702.51a Convoke",
+          "rule_identifier": "CR 702.33",
+          "canonical_section_identity": "702.33. Kicker",
           "artifact_local_locator": {
             "locator_kind": "RULE_HEADING_LINE",
-            "line_number_1based": 4403,
-            "expected_heading_prefix": "702.51.",
-            "heading_line_sha256": "4954609a16ab63b81d9dbf4762296872f001b68a39e53284996e24c86b75ad44",
-            "heading_line_excerpt": "702.51. Convoke"
+            "line_number_1based": 4252,
+            "heading_line_sha256": "321298310d2747948ce0f7999752c67330809f93e1af82155381287a71bc305c",
+            "heading_line_excerpt": "702.33. Kicker"
           },
-          "why_required": "Convoke cost-reduction family.",
+          "why_required": "Kicker cost modifier.",
+          "dependent_requirement_families": [
+            {
+              "requirement_family_id": "cap.kicker",
+              "card_requirement_map_rows": 1
+            }
+          ],
+          "dependent_classification_or_interaction_inputs": []
+        },
+        {
+          "citation_id": "CR-702-51a-convoke",
+          "citation_kind": "CR_RULE_IDENTIFIER",
+          "rule_identifier": "CR 702.51a",
+          "canonical_section_identity": "702.51a Convoke is a static ability that functions while the spell with convoke is on the ",
+          "artifact_local_locator": {
+            "locator_kind": "RULE_HEADING_LINE",
+            "line_number_1based": 4405,
+            "heading_line_sha256": "427a3afdd9576e0e84e5375827e281defa9faa897a286c299a27935b457efd07",
+            "heading_line_excerpt": "702.51a Convoke is a static ability that functions while the spell with convoke is on the "
+          },
+          "why_required": "Convoke.",
           "dependent_requirement_families": [
             {
               "requirement_family_id": "cap.convoke",
@@ -434,43 +1967,37 @@
           "dependent_classification_or_interaction_inputs": []
         },
         {
-          "citation_id": "CR-702.92",
+          "citation_id": "CR-702-92a-living-weapon",
           "citation_kind": "CR_RULE_IDENTIFIER",
           "rule_identifier": "CR 702.92a",
-          "canonical_section_identity": "CR 702.92a Living Weapon",
+          "canonical_section_identity": "702.92a Living weapon is a triggered ability. “Living weapon” means “When this Equipment e",
           "artifact_local_locator": {
             "locator_kind": "RULE_HEADING_LINE",
-            "line_number_1based": 4680,
-            "expected_heading_prefix": "702.92.",
-            "heading_line_sha256": "c464a3949aaefc874a054e8fc5f4fb27a989a554f856af50ac0c05c3428a87c1",
-            "heading_line_excerpt": "702.92. Living Weapon"
+            "line_number_1based": 4682,
+            "heading_line_sha256": "806419ff440f273957bc05099911f433702c691d6e5d1a1f00c0c7890a6efd8d",
+            "heading_line_excerpt": "702.92a Living weapon is a triggered ability. “Living weapon” means “When this Equipment e"
           },
-          "why_required": "Living Weapon equipment enters with a Germ token.",
+          "why_required": "Living weapon.",
           "dependent_requirement_families": [
             {
-              "requirement_family_id": "cap.equipment",
-              "card_requirement_map_rows": 2
-            },
-            {
-              "requirement_family_id": "cap.token_creation",
-              "card_requirement_map_rows": 10
+              "requirement_family_id": "cap.living_weapon",
+              "card_requirement_map_rows": 1
             }
           ],
           "dependent_classification_or_interaction_inputs": []
         },
         {
-          "citation_id": "CR-702.122",
+          "citation_id": "CR-702-122a-crew",
           "citation_kind": "CR_RULE_IDENTIFIER",
           "rule_identifier": "CR 702.122a",
-          "canonical_section_identity": "CR 702.122a Crew",
+          "canonical_section_identity": "702.122a Crew is an activated ability of Vehicle cards. “Crew N” means “Tap any number of ",
           "artifact_local_locator": {
             "locator_kind": "RULE_HEADING_LINE",
-            "line_number_1based": 4888,
-            "expected_heading_prefix": "702.122.",
-            "heading_line_sha256": "c306855abde29ab4b9ca48c5412950ad17330bda5b50297bfc15550349d92042",
-            "heading_line_excerpt": "702.122. Crew"
+            "line_number_1based": 4890,
+            "heading_line_sha256": "92ee1099bf6f8657222170ffab307032fe9b175eeaa870085ac70b88a9f63085",
+            "heading_line_excerpt": "702.122a Crew is an activated ability of Vehicle cards. “Crew N” means “Tap any number of "
           },
-          "why_required": "Vehicles/crew are core to the Buckle Up deck cluster.",
+          "why_required": "Vehicles/crew cluster.",
           "dependent_requirement_families": [
             {
               "requirement_family_id": "cap.vehicle",
@@ -481,49 +2008,75 @@
               "card_requirement_map_rows": 2
             },
             {
-              "requirement_family_id": "cap.dynamic_crew_value",
+              "requirement_family_id": "cap.crew_alternative",
               "card_requirement_map_rows": 1
             },
             {
-              "requirement_family_id": "cap.tap_ten_cost",
+              "requirement_family_id": "cap.dynamic_crew_value",
               "card_requirement_map_rows": 1
             }
           ],
           "dependent_classification_or_interaction_inputs": []
         },
         {
-          "citation_id": "CR-702.124",
+          "citation_id": "CR-702-124-partner",
           "citation_kind": "CR_RULE_IDENTIFIER",
           "rule_identifier": "CR 702.124",
-          "canonical_section_identity": "CR 702.124 Partner",
+          "canonical_section_identity": "702.124. Partner",
           "artifact_local_locator": {
             "locator_kind": "RULE_HEADING_LINE",
             "line_number_1based": 4906,
-            "expected_heading_prefix": "702.124.",
             "heading_line_sha256": "e4e6eeaaa9bed82ad66f33510d1234a981c362c59dfe162a77cc41da94a380d8",
             "heading_line_excerpt": "702.124. Partner"
           },
-          "why_required": "Partner modifies commander designation; present in pinned oracle texts.",
+          "why_required": "Partner designation.",
           "dependent_requirement_families": [],
           "dependent_classification_or_interaction_inputs": []
         },
         {
-          "citation_id": "CR-702.143",
+          "citation_id": "CR-702-136-riot",
           "citation_kind": "CR_RULE_IDENTIFIER",
-          "rule_identifier": "CR 702.143a",
-          "canonical_section_identity": "CR 702.143a Foretell",
+          "rule_identifier": "CR 702.136",
+          "canonical_section_identity": "702.136. Riot",
           "artifact_local_locator": {
             "locator_kind": "RULE_HEADING_LINE",
-            "line_number_1based": 5056,
-            "expected_heading_prefix": "702.143.",
-            "heading_line_sha256": "e6443172a863f677b97e76725ad486ee992f4e5290c6f349319f4bf486f462ba",
-            "heading_line_excerpt": "702.143. Foretell"
+            "line_number_1based": 5002,
+            "heading_line_sha256": "dc0de5e5a3d513eeaf69402cfa3180c5dfd5c60a710359cdf9f0ba071d7becb1",
+            "heading_line_excerpt": "702.136. Riot"
           },
-          "why_required": "Foretell underlies the Phantom Premonition cluster and face-down exile handling.",
+          "why_required": "Riot choice.",
+          "dependent_requirement_families": [
+            {
+              "requirement_family_id": "cap.riot_choice",
+              "card_requirement_map_rows": 1
+            }
+          ],
+          "dependent_classification_or_interaction_inputs": []
+        },
+        {
+          "citation_id": "CR-702-143a-foretell",
+          "citation_kind": "CR_RULE_IDENTIFIER",
+          "rule_identifier": "CR 702.143a",
+          "canonical_section_identity": "702.143a Foretell is a keyword that functions while the card with foretell is in a player’",
+          "artifact_local_locator": {
+            "locator_kind": "RULE_HEADING_LINE",
+            "line_number_1based": 5058,
+            "heading_line_sha256": "3306a271d88ea89e87e592fcb17438622375980d2690012050975923c3299ea2",
+            "heading_line_excerpt": "702.143a Foretell is a keyword that functions while the card with foretell is in a player’"
+          },
+          "why_required": "Foretell cluster.",
           "dependent_requirement_families": [
             {
               "requirement_family_id": "cap.foretell",
               "card_requirement_map_rows": 10
+            },
+            {
+              "requirement_family_id": "cap.grant_foretell",
+              "card_requirement_map_rows": 1
+            },
+            {
+              "requirement_family_id": "cap.foretell_recursion",
+              "card_requirement_map_rows": 1
             },
             {
               "requirement_family_id": "cap.private_face_down_exile",
@@ -533,43 +2086,37 @@
           "dependent_classification_or_interaction_inputs": []
         },
         {
-          "citation_id": "CR-702.151",
+          "citation_id": "CR-702-151a-reconfigure",
           "citation_kind": "CR_RULE_IDENTIFIER",
           "rule_identifier": "CR 702.151a",
-          "canonical_section_identity": "CR 702.151a Reconfigure",
+          "canonical_section_identity": "702.151a Reconfigure represents two activated abilities. Reconfigure [cost] means “[Cost]:",
           "artifact_local_locator": {
             "locator_kind": "RULE_HEADING_LINE",
-            "line_number_1based": 5118,
-            "expected_heading_prefix": "702.151.",
-            "heading_line_sha256": "4b16cac6a0a7e1c5863014e85d9527082d170578e2ae57e312c74645951bc95c",
-            "heading_line_excerpt": "702.151. Reconfigure"
+            "line_number_1based": 5120,
+            "heading_line_sha256": "232706471780b5b0d4807f63b4f1b6bd3b0542badb50d99ffd78d2a5680bac9e",
+            "heading_line_excerpt": "702.151a Reconfigure represents two activated abilities. Reconfigure [cost] means “[Cost]:"
           },
-          "why_required": "Reconfigure bridges equipment and creature rules (Chishiro cluster).",
+          "why_required": "Reconfigure.",
           "dependent_requirement_families": [
             {
-              "requirement_family_id": "cap.equipment",
+              "requirement_family_id": "cap.reconfigure",
               "card_requirement_map_rows": 2
-            },
-            {
-              "requirement_family_id": "cap.temporary_animation",
-              "card_requirement_map_rows": 3
             }
           ],
           "dependent_classification_or_interaction_inputs": []
         },
         {
-          "citation_id": "CR-704",
+          "citation_id": "CR-704-state-based-actions",
           "citation_kind": "CR_RULE_IDENTIFIER",
           "rule_identifier": "CR 704",
-          "canonical_section_identity": "CR 704 State-Based Actions",
+          "canonical_section_identity": "704. State-Based Actions",
           "artifact_local_locator": {
             "locator_kind": "RULE_HEADING_LINE",
             "line_number_1based": 5493,
-            "expected_heading_prefix": "704.",
             "heading_line_sha256": "110a736e7fa4b75f7623b4411941fc0e43e5b03ea8a085d6b91fefc610b8aa0d",
             "heading_line_excerpt": "704. State-Based Actions"
           },
-          "why_required": "SBAs are an explicit family and background termination rules.",
+          "why_required": "State-based actions.",
           "dependent_requirement_families": [
             {
               "requirement_family_id": "cap.state_based_actions",
@@ -579,25 +2126,60 @@
           "dependent_classification_or_interaction_inputs": []
         },
         {
-          "citation_id": "CR-714",
+          "citation_id": "CR-706-copiable-values",
           "citation_kind": "CR_RULE_IDENTIFIER",
-          "rule_identifier": "CR 714",
-          "canonical_section_identity": "CR 714 Saga Cards",
+          "rule_identifier": "CR 706",
+          "canonical_section_identity": "706. Rolling a Die",
           "artifact_local_locator": {
             "locator_kind": "RULE_HEADING_LINE",
-            "line_number_1based": 5978,
-            "expected_heading_prefix": "714.",
-            "heading_line_sha256": "b12e4c7a6510fcbdba46fd4e3b816095f7cdbbd5c610cdcc580523160f4296d3",
-            "heading_line_excerpt": "714. Saga Cards"
+            "line_number_1based": 5586,
+            "heading_line_sha256": "0f6df7792158f719da28b1c741bfa39528f0c577e8ecab07c588bc52a3712fdd",
+            "heading_line_excerpt": "706. Rolling a Die"
           },
-          "why_required": "Saga chapter timing family.",
+          "why_required": "Copiable-value/copy cluster.",
           "dependent_requirement_families": [
             {
-              "requirement_family_id": "cap.saga",
+              "requirement_family_id": "cap.copiable_values",
               "card_requirement_map_rows": 2
             },
             {
-              "requirement_family_id": "cap.chapter_timing",
+              "requirement_family_id": "cap.copy",
+              "card_requirement_map_rows": 2
+            },
+            {
+              "requirement_family_id": "cap.copy_exception",
+              "card_requirement_map_rows": 1
+            },
+            {
+              "requirement_family_id": "cap.temporary_copy",
+              "card_requirement_map_rows": 1
+            },
+            {
+              "requirement_family_id": "cap.copiable_token_values",
+              "card_requirement_map_rows": 1
+            },
+            {
+              "requirement_family_id": "cap.copy_token_batch",
+              "card_requirement_map_rows": 1
+            }
+          ],
+          "dependent_classification_or_interaction_inputs": []
+        },
+        {
+          "citation_id": "CR-714-saga-cards",
+          "citation_kind": "CR_RULE_IDENTIFIER",
+          "rule_identifier": "CR 714",
+          "canonical_section_identity": "714. Saga Cards",
+          "artifact_local_locator": {
+            "locator_kind": "RULE_HEADING_LINE",
+            "line_number_1based": 5978,
+            "heading_line_sha256": "b12e4c7a6510fcbdba46fd4e3b816095f7cdbbd5c610cdcc580523160f4296d3",
+            "heading_line_excerpt": "714. Saga Cards"
+          },
+          "why_required": "Saga chapters.",
+          "dependent_requirement_families": [
+            {
+              "requirement_family_id": "cap.saga",
               "card_requirement_map_rows": 2
             }
           ],
@@ -623,6 +2205,9 @@
         "artifact_path": "source/authorities/banned_restricted.html",
         "artifact_sha256": "f9b69ee1e323674863c49ed9de443cce92375a7ddd5058c1dfe5e12477655284",
         "retrieval_time": "2026-08-23T01:49:41.387662Z",
+        "raw_artifact_available": true,
+        "acquisition_http_status": 200,
+        "acquisition_error": null,
         "published_or_effective_version": null
       },
       "citation_status": "CITED",
@@ -685,6 +2270,9 @@
         "artifact_path": "source/authorities/commander_general.html",
         "artifact_sha256": "58b3d5c39a63d7f4e777f8776c7af67fffc6e763eb3705fc7a51888a0c9fa0b9",
         "retrieval_time": "2026-08-23T01:49:41.387662Z",
+        "raw_artifact_available": true,
+        "acquisition_http_status": 200,
+        "acquisition_error": null,
         "published_or_effective_version": null
       },
       "citation_status": "CITED",
@@ -717,8 +2305,17 @@
             "fragment_sha256": "c23bc10c3523fbfd0ae450634e3dfac5b8dd12b0b4c5a9c546ed8628a383d58a",
             "section_heading_excerpt": "Play Rules/Modifiers"
           },
-          "why_required": "Official play-rule modifiers frame commander-zone ownership rules used by commander-dependent requirement families.",
-          "dependent_requirement_families": [],
+          "why_required": "Official play-rule modifiers frame commander ownership rules used by commander-dependent requirement families.",
+          "dependent_requirement_families": [
+            {
+              "requirement_family_id": "cap.multiplayer_wording",
+              "card_requirement_map_rows": 1
+            },
+            {
+              "requirement_family_id": "cap.each_player",
+              "card_requirement_map_rows": 1
+            }
+          ],
           "dependent_classification_or_interaction_inputs": []
         },
         {
@@ -734,25 +2331,21 @@
             "section_heading_excerpt": "Command Zone"
           },
           "why_required": "Command-zone rules underlie commander zone-choice and ownership-separation research requirements.",
-          "dependent_requirement_families": [],
-          "dependent_classification_or_interaction_inputs": [],
-          "evidence": {
-            "kind": "FAMILY_DEPENDENCIES",
-            "dependencies": [
-              {
-                "requirement_family_id": "cap.commander_zone_choice",
-                "card_requirement_map_rows": 1
-              },
-              {
-                "requirement_family_id": "cap.owner_controller_separation",
-                "card_requirement_map_rows": 2
-              },
-              {
-                "requirement_family_id": "cap.commander_noncreature",
-                "card_requirement_map_rows": 1
-              }
-            ]
-          }
+          "dependent_requirement_families": [
+            {
+              "requirement_family_id": "cap.commander_zone_choice",
+              "card_requirement_map_rows": 1
+            },
+            {
+              "requirement_family_id": "cap.owner_controller_separation",
+              "card_requirement_map_rows": 2
+            },
+            {
+              "requirement_family_id": "cap.commander_noncreature",
+              "card_requirement_map_rows": 1
+            }
+          ],
+          "dependent_classification_or_interaction_inputs": []
         }
       ],
       "dependent_research_requirements": [
@@ -774,6 +2367,9 @@
         "artifact_path": "source/authorities/commander_1v1.html",
         "artifact_sha256": "39f887277000eb5adf45555bf1ef010dfa56f367bc317eae508021a5b66dd236",
         "retrieval_time": "2026-08-23T01:49:41.387662Z",
+        "raw_artifact_available": true,
+        "acquisition_http_status": 200,
+        "acquisition_error": null,
         "published_or_effective_version": null
       },
       "citation_status": "CITED",
@@ -830,6 +2426,9 @@
         "artifact_path": "source/authorities/kaldheim_release_notes.html",
         "artifact_sha256": "4afc8372f6638a9b2d37ffc1a2e99cd23b10cbe98c366f2b55069573dfb2d529",
         "retrieval_time": "2026-08-23T01:49:41.387662Z",
+        "raw_artifact_available": true,
+        "acquisition_http_status": 200,
+        "acquisition_error": null,
         "published_or_effective_version": "2021-01-22 (publication date per official URL slug)"
       },
       "citation_status": "CITED",
@@ -862,22 +2461,9 @@
             "fragment_sha256": "7a220d36ec49bc5dda6ba7ec3fe55b547cc8a026d95a213fc96fdc8825d46c08",
             "section_heading_excerpt": "New Keyword: Foretell"
           },
-          "why_required": "Official clarifications for the Foretell mechanic; 33 oracle-text occurrences across resolved rows, commander Ranar the Ever-Watchful (Phantom Premonition), and 19 card-requirement map rows depend on these semantics.",
+          "why_required": "Official clarifications for the Foretell mechanic; 33 oracle-text occurrences across resolved rows and commander Ranar the Ever-Watchful (Phantom Premonition) depend on these semantics (primary rule text cited at CR 702.143a).",
           "dependent_requirement_families": [],
-          "dependent_classification_or_interaction_inputs": [],
-          "evidence": {
-            "kind": "FAMILY_DEPENDENCIES",
-            "dependencies": [
-              {
-                "requirement_family_id": "cap.foretell",
-                "card_requirement_map_rows": 10
-              },
-              {
-                "requirement_family_id": "cap.private_face_down_exile",
-                "card_requirement_map_rows": 9
-              }
-            ]
-          }
+          "dependent_classification_or_interaction_inputs": []
         }
       ],
       "dependent_research_requirements": [
@@ -899,6 +2485,9 @@
         "artifact_path": "source/authorities/commander_legends_release_notes.html",
         "artifact_sha256": "155a4d067693b31896cd07f7d13d2f435ba37f113584d6f8080d40553c067938",
         "retrieval_time": "2026-08-23T01:49:41.387662Z",
+        "raw_artifact_available": true,
+        "acquisition_http_status": 200,
+        "acquisition_error": null,
         "published_or_effective_version": "2020-11-06 (publication date per official URL slug)"
       },
       "citation_status": "CITED",
@@ -963,8 +2552,13 @@
       "citation_status": "NOT_REQUIRED_WITH_PROOF",
       "not_required_proof": {
         "resolution": "B_NOT_REQUIRED_FOR_REV3_CLOSURE",
-        "claim": "No currently relevant REV3 research dependency exists for this authority.",
-        "dependency_scan": {
+        "claim": "No currently relevant REV3 research dependency exists: the complete semantic dependency surface of the research is covered by the six CITED authorities alone, and no dependency edge references this authority.",
+        "primary_evidence": {
+          "kind": "AUTHORITY_SEMANTIC_DEPENDENCY_MODEL",
+          "description": "Every requirement family and every detected oracle-text mechanic concept carries at least one covering citation edge into a CITED authority; the model contains zero edges into magic_2013_release_notes. Coverage is recomputed mechanically.",
+          "model": "semantic_dependency_model"
+        },
+        "supplementary_string_scan": {
           "patterns": [
             "magic_2013",
             "magic-2013",
@@ -1131,8 +2725,7 @@
               "hits_total": 0
             }
           ]
-        },
-        "excluded_surfaces_note": "source/raw/* was deliberately not treated as a dependency surface: its 'M13' byte hits are Scryfall printing candidates for basic lands and a few cards (Ajani, Caller of the Pride; Acidic Slime; Elvish Archdruid; Murder) used for printing-identity candidate matching. Printing candidates do not consult release-note authority, and the raw subset is not one of the six dependency categories enumerated by the slice contract."
+        }
       },
       "citations": [],
       "dependent_research_requirements": [],

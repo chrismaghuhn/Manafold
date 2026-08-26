@@ -1,13 +1,13 @@
 {
   "schema": "manafold.m2.5.b1.checker-record.v1",
-  "executed_at": "2026-08-26T05:31:00Z",
+  "executed_at": "2026-08-26T06:09:40Z",
   "environment": "repository venv python; MANAFOLD_SOURCE_ARCHIVE resolved via the M2.5.A private-archive contract; REV3 payload consumed only after ARCHIVE_PREFLIGHT = PASS",
   "commands": {
     "drift_closure_check": {
       "command": "python scripts/check_m2_5_master_drift.py",
       "exit_code": 0,
       "output": [
-        "MASTER_DRIFT_CLOSURE_CHECK = PASS (head f59c462874a29e0f74194b203c6fa8cca69ef3c0)"
+        "MASTER_DRIFT_CLOSURE_CHECK = PASS (head 7306298f84544d9fff388f95b7922e261c2babea)"
       ]
     },
     "archive_preflight": {
@@ -35,13 +35,15 @@
         "NEGATIVE EMPTY_CITATION_REJECTED: rejected (FAIL)",
         "NEGATIVE WRONG_ARTIFACT_DIGEST_REJECTED: rejected (FAIL)",
         "NEGATIVE INVALID_ARTIFACT_LOCATOR_REJECTED: rejected (FAIL)",
+        "NEGATIVE SWAPPED_REGISTER_PROVENANCE_REJECTED: rejected (FAIL)",
         "NEGATIVE THIRD_PARTY_AS_AUTHORITY_REJECTED: rejected (FAIL)",
         "NEGATIVE UNRESOLVED_REQUIRED_AUTHORITY_REJECTED: rejected (FAIL)",
-        "NEGATIVE DEPENDENCY_SCAN_INCOMPLETE_REJECTED: rejected (FAIL)",
+        "NEGATIVE IDENTIFIER_LOCATOR_MISMATCH_REJECTED: rejected (FAIL)",
+        "NEGATIVE SURFACE_CATALOG_OMISSION_REJECTED: rejected (FAIL)",
         "NEGATIVE GATE_PROMOTION_WITH_NONTERMINAL_RECORD_REJECTED: rejected (FAIL)",
         "NEGATIVE OTHER_REV3_GATE_PROMOTION_REJECTED: rejected (FAIL)",
         "NEGATIVE FALSE_NOT_REQUIRED_REJECTED: rejected (FAIL)",
-        "B1_NEGATIVE_SELF_TEST = PASS (14 adversarial fixtures rejected; no corruption yields PASS)"
+        "B1_NEGATIVE_SELF_TEST = PASS (positive control PASS; 14/14 adversarial fixtures rejected)"
       ]
     }
   }
