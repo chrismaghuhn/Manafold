@@ -1,0 +1,1148 @@
+{
+  "schema": "manafold.m2.5.b1.official-authority-citations.v1",
+  "slice": "M2.5.B1",
+  "input_universe": {
+    "source_register": "REV3 source/official_authority_register_REV3.json",
+    "source_register_sha256": "4379c24ae89b72e7f250fcfe7e742a090029bc10c52c16be02de4e62bf1b5208",
+    "authority_ids_in_order": [
+      "banned_restricted",
+      "commander_1v1",
+      "commander_general",
+      "commander_legends_release_notes",
+      "comprehensive_rules",
+      "kaldheim_release_notes",
+      "magic_2013_release_notes"
+    ],
+    "authority_count": 7,
+    "identity_separations_preserved": "source identity != citation identity != capability identity != semantic ownership != implementation != certification (ADR 0041)"
+  },
+  "authorities": [
+    {
+      "authority_id": "comprehensive_rules",
+      "authority_role": "OFFICIAL_RULES_TEXT",
+      "original_official_url": "https://media.wizards.com/2026/downloads/MagicCompRules%2020260819.txt",
+      "artifact_identity": {
+        "artifact_path": "source/authorities/comprehensive_rules.txt",
+        "artifact_sha256": "4381ad1b39ab2c05f7d03633a20f711ed37277074d3266dcba5f38cbb527423f",
+        "retrieval_time": "2026-08-23T01:49:41.387662Z",
+        "published_or_effective_version": "These rules are effective as of August 7, 2026."
+      },
+      "citation_status": "CITED",
+      "citations": [
+        {
+          "citation_id": "CR-109",
+          "citation_kind": "CR_RULE_IDENTIFIER",
+          "rule_identifier": "CR 109",
+          "canonical_section_identity": "CR 109 Objects",
+          "artifact_local_locator": {
+            "locator_kind": "RULE_HEADING_LINE",
+            "line_number_1based": 578,
+            "expected_heading_prefix": "109.",
+            "heading_line_sha256": "30e7709964c93e1cdabfb2c14051ed8edac85d2a89d833d29f3481783e176d62",
+            "heading_line_excerpt": "109. Objects"
+          },
+          "why_required": "Object/copy semantics underlie copiable-value and copy handling.",
+          "dependent_requirement_families": [
+            {
+              "requirement_family_id": "cap.copy",
+              "card_requirement_map_rows": 2
+            },
+            {
+              "requirement_family_id": "cap.copiable_values",
+              "card_requirement_map_rows": 2
+            }
+          ],
+          "dependent_classification_or_interaction_inputs": []
+        },
+        {
+          "citation_id": "CR-110",
+          "citation_kind": "CR_RULE_IDENTIFIER",
+          "rule_identifier": "CR 110",
+          "canonical_section_identity": "CR 110 Permanents",
+          "artifact_local_locator": {
+            "locator_kind": "RULE_HEADING_LINE",
+            "line_number_1based": 612,
+            "expected_heading_prefix": "110.",
+            "heading_line_sha256": "e02e85cdf6f5ba05d6fbde0235e5e185660e1c55b8699c2a29169dc2037f24ef",
+            "heading_line_excerpt": "110. Permanents"
+          },
+          "why_required": "Permanent persistence underlies artifact permanence and type-change families.",
+          "dependent_requirement_families": [
+            {
+              "requirement_family_id": "cap.artifact_permanent",
+              "card_requirement_map_rows": 27
+            },
+            {
+              "requirement_family_id": "cap.type_change",
+              "card_requirement_map_rows": 3
+            }
+          ],
+          "dependent_classification_or_interaction_inputs": []
+        },
+        {
+          "citation_id": "CR-111",
+          "citation_kind": "CR_RULE_IDENTIFIER",
+          "rule_identifier": "CR 111",
+          "canonical_section_identity": "CR 111 Tokens",
+          "artifact_local_locator": {
+            "locator_kind": "RULE_HEADING_LINE",
+            "line_number_1based": 643,
+            "expected_heading_prefix": "111.",
+            "heading_line_sha256": "c9e76a1f57d03c7e1318d866cee9f3d4f92dc42ef1496cc28e1f80d57100e4ee",
+            "heading_line_excerpt": "111. Tokens"
+          },
+          "why_required": "Token creation is a top requirement-family concept across the six locked decks.",
+          "dependent_requirement_families": [
+            {
+              "requirement_family_id": "cap.token_creation",
+              "card_requirement_map_rows": 10
+            },
+            {
+              "requirement_family_id": "cap.scaled_token_creation",
+              "card_requirement_map_rows": 5
+            },
+            {
+              "requirement_family_id": "cap.attacking_token_creation",
+              "card_requirement_map_rows": 1
+            },
+            {
+              "requirement_family_id": "cap.pilot_token",
+              "card_requirement_map_rows": 1
+            }
+          ],
+          "dependent_classification_or_interaction_inputs": []
+        },
+        {
+          "citation_id": "CR-115",
+          "citation_kind": "CR_RULE_IDENTIFIER",
+          "rule_identifier": "CR 115",
+          "canonical_section_identity": "CR 115 Targets",
+          "artifact_local_locator": {
+            "locator_kind": "RULE_HEADING_LINE",
+            "line_number_1based": 836,
+            "expected_heading_prefix": "115.",
+            "heading_line_sha256": "97a554d79c71f6a87247f3bf31cfd275176addf74c0fd6252ab70f37e7150b8f",
+            "heading_line_excerpt": "115. Targets"
+          },
+          "why_required": "Target selection underlies targeting requirement families.",
+          "dependent_requirement_families": [
+            {
+              "requirement_family_id": "cap.target",
+              "card_requirement_map_rows": 6
+            },
+            {
+              "requirement_family_id": "cap.multi_target",
+              "card_requirement_map_rows": 5
+            }
+          ],
+          "dependent_classification_or_interaction_inputs": []
+        },
+        {
+          "citation_id": "CR-117",
+          "citation_kind": "CR_RULE_IDENTIFIER",
+          "rule_identifier": "CR 117",
+          "canonical_section_identity": "CR 117 Timing and Priority",
+          "artifact_local_locator": {
+            "locator_kind": "RULE_HEADING_LINE",
+            "line_number_1based": 924,
+            "expected_heading_prefix": "117.",
+            "heading_line_sha256": "497dfdc5683c4e5d4a5a314d2fa8c398971115ea4f820f9f454b1cb094d8c146",
+            "heading_line_excerpt": "117. Timing and Priority"
+          },
+          "why_required": "Timing windows gate flash and chapter timing families.",
+          "dependent_requirement_families": [
+            {
+              "requirement_family_id": "cap.flash",
+              "card_requirement_map_rows": 1
+            },
+            {
+              "requirement_family_id": "cap.chapter_timing",
+              "card_requirement_map_rows": 2
+            }
+          ],
+          "dependent_classification_or_interaction_inputs": []
+        },
+        {
+          "citation_id": "CR-122",
+          "citation_kind": "CR_RULE_IDENTIFIER",
+          "rule_identifier": "CR 122",
+          "canonical_section_identity": "CR 122 Counters",
+          "artifact_local_locator": {
+            "locator_kind": "RULE_HEADING_LINE",
+            "line_number_1based": 1176,
+            "expected_heading_prefix": "122.",
+            "heading_line_sha256": "3eb7ec074d844fdad8c94b431a2ab423cb5193ed091403b17c3732e25eeec654",
+            "heading_line_excerpt": "122. Counters"
+          },
+          "why_required": "Counter placement incl. loyalty counters is an explicit requirement family.",
+          "dependent_requirement_families": [
+            {
+              "requirement_family_id": "cap.counters",
+              "card_requirement_map_rows": 7
+            },
+            {
+              "requirement_family_id": "cap.loyalty_counters",
+              "card_requirement_map_rows": 2
+            }
+          ],
+          "dependent_classification_or_interaction_inputs": []
+        },
+        {
+          "citation_id": "CR-301",
+          "citation_kind": "CR_RULE_IDENTIFIER",
+          "rule_identifier": "CR 301",
+          "canonical_section_identity": "CR 301 Artifacts",
+          "artifact_local_locator": {
+            "locator_kind": "RULE_HEADING_LINE",
+            "line_number_1based": 1581,
+            "expected_heading_prefix": "301.",
+            "heading_line_sha256": "39f64d708259a87b2d51dbaf6240e5b33a67aa785f1997b2d203538f548e40e1",
+            "heading_line_excerpt": "301. Artifacts"
+          },
+          "why_required": "Artifact rules underlie the largest artifact-family cluster (equipment/vehicles below).",
+          "dependent_requirement_families": [
+            {
+              "requirement_family_id": "cap.artifact_permanent",
+              "card_requirement_map_rows": 27
+            },
+            {
+              "requirement_family_id": "cap.artifact_animation",
+              "card_requirement_map_rows": 1
+            },
+            {
+              "requirement_family_id": "cap.improvise",
+              "card_requirement_map_rows": 2
+            }
+          ],
+          "dependent_classification_or_interaction_inputs": []
+        },
+        {
+          "citation_id": "CR-405",
+          "citation_kind": "CR_RULE_IDENTIFIER",
+          "rule_identifier": "CR 405",
+          "canonical_section_identity": "CR 405 Stack",
+          "artifact_local_locator": {
+            "locator_kind": "RULE_HEADING_LINE",
+            "line_number_1based": 2040,
+            "expected_heading_prefix": "405.",
+            "heading_line_sha256": "88e417ea4ee0194e87be5a883d4793d270896bcc29ba7bb6f272f1be208b56a0",
+            "heading_line_excerpt": "405. Stack"
+          },
+          "why_required": "Stack resolution underlies counter/setup and activated-ability cost families.",
+          "dependent_requirement_families": [
+            {
+              "requirement_family_id": "cap.counterspell",
+              "card_requirement_map_rows": 2
+            },
+            {
+              "requirement_family_id": "cap.activated_ability",
+              "card_requirement_map_rows": 1
+            }
+          ],
+          "dependent_classification_or_interaction_inputs": []
+        },
+        {
+          "citation_id": "CR-510",
+          "citation_kind": "CR_RULE_IDENTIFIER",
+          "rule_identifier": "CR 510",
+          "canonical_section_identity": "CR 510 Combat Damage Step",
+          "artifact_local_locator": {
+            "locator_kind": "RULE_HEADING_LINE",
+            "line_number_1based": 2395,
+            "expected_heading_prefix": "510.",
+            "heading_line_sha256": "bd7d730592ac362116da3e49c07da051e6aae2355f484ed7ef6a341df031cd86",
+            "heading_line_excerpt": "510. Combat Damage Step"
+          },
+          "why_required": "Combat damage triggers are explicit requirement families.",
+          "dependent_requirement_families": [
+            {
+              "requirement_family_id": "cap.combat_damage_trigger",
+              "card_requirement_map_rows": 5
+            },
+            {
+              "requirement_family_id": "cap.combat_granted_keywords",
+              "card_requirement_map_rows": 1
+            }
+          ],
+          "dependent_classification_or_interaction_inputs": []
+        },
+        {
+          "citation_id": "CR-613",
+          "citation_kind": "CR_RULE_IDENTIFIER",
+          "rule_identifier": "CR 613",
+          "canonical_section_identity": "CR 613 Interaction of Continuous Effects",
+          "artifact_local_locator": {
+            "locator_kind": "RULE_HEADING_LINE",
+            "line_number_1based": 2960,
+            "expected_heading_prefix": "613.",
+            "heading_line_sha256": "6c3c9a8b6bb10d1f5fcc4f9c03ee5c96d89271dcbdbef872040035b030bd41f8",
+            "heading_line_excerpt": "613. Interaction of Continuous Effects"
+          },
+          "why_required": "Layer interaction underlies continuous-effect and type-layer families.",
+          "dependent_requirement_families": [
+            {
+              "requirement_family_id": "cap.continuous_layers",
+              "card_requirement_map_rows": 1
+            },
+            {
+              "requirement_family_id": "cap.continuous_combat_modification",
+              "card_requirement_map_rows": 1
+            },
+            {
+              "requirement_family_id": "cap.type_layer",
+              "card_requirement_map_rows": 1
+            },
+            {
+              "requirement_family_id": "cap.mass_type_change",
+              "card_requirement_map_rows": 1
+            },
+            {
+              "requirement_family_id": "cap.temporary_animation",
+              "card_requirement_map_rows": 3
+            }
+          ],
+          "dependent_classification_or_interaction_inputs": []
+        },
+        {
+          "citation_id": "CR-701.17",
+          "citation_kind": "CR_RULE_IDENTIFIER",
+          "rule_identifier": "CR 701.17a",
+          "canonical_section_identity": "CR 701.17a Mill",
+          "artifact_local_locator": {
+            "locator_kind": "RULE_HEADING_LINE",
+            "line_number_1based": 3410,
+            "expected_heading_prefix": "701.17.",
+            "heading_line_sha256": "61d25dd6e8d6950516c58090f64245a23991a1ab93848456667147e8082a0f6c",
+            "heading_line_excerpt": "701.17. Mill"
+          },
+          "why_required": "Mill keyword action family.",
+          "dependent_requirement_families": [
+            {
+              "requirement_family_id": "cap.mill",
+              "card_requirement_map_rows": 3
+            }
+          ],
+          "dependent_classification_or_interaction_inputs": []
+        },
+        {
+          "citation_id": "CR-701.22",
+          "citation_kind": "CR_RULE_IDENTIFIER",
+          "rule_identifier": "CR 701.22a",
+          "canonical_section_identity": "CR 701.22a Scry",
+          "artifact_local_locator": {
+            "locator_kind": "RULE_HEADING_LINE",
+            "line_number_1based": 3457,
+            "expected_heading_prefix": "701.22.",
+            "heading_line_sha256": "26f04035a1436d763545da1f76dbbe1565ceeba60da893a5b28941b29ba847c7",
+            "heading_line_excerpt": "701.22. Scry"
+          },
+          "why_required": "Scry keyword action family.",
+          "dependent_requirement_families": [
+            {
+              "requirement_family_id": "cap.scry",
+              "card_requirement_map_rows": 2
+            }
+          ],
+          "dependent_classification_or_interaction_inputs": []
+        },
+        {
+          "citation_id": "CR-701.36",
+          "citation_kind": "CR_RULE_IDENTIFIER",
+          "rule_identifier": "CR 701.36a",
+          "canonical_section_identity": "CR 701.36a Populate",
+          "artifact_local_locator": {
+            "locator_kind": "RULE_HEADING_LINE",
+            "line_number_1based": 3606,
+            "expected_heading_prefix": "701.36.",
+            "heading_line_sha256": "2a0d86bfb63c39cb51ab720acd5801cc888b78d30d6f331a1f84522fb5dbf9d2",
+            "heading_line_excerpt": "701.36. Populate"
+          },
+          "why_required": "Populate creates tokens; supports token_creation family.",
+          "dependent_requirement_families": [
+            {
+              "requirement_family_id": "cap.token_creation",
+              "card_requirement_map_rows": 10
+            }
+          ],
+          "dependent_classification_or_interaction_inputs": []
+        },
+        {
+          "citation_id": "CR-701.47",
+          "citation_kind": "CR_RULE_IDENTIFIER",
+          "rule_identifier": "CR 701.47a",
+          "canonical_section_identity": "CR 701.47a Amass",
+          "artifact_local_locator": {
+            "locator_kind": "RULE_HEADING_LINE",
+            "line_number_1based": 3693,
+            "expected_heading_prefix": "701.47.",
+            "heading_line_sha256": "f36864535d0f8323ad61668f86d2dce8c52d84b83d60202099fbe61f032cf7f1",
+            "heading_line_excerpt": "701.47. Amass"
+          },
+          "why_required": "Amass creates/grows Army tokens; supports token families.",
+          "dependent_requirement_families": [
+            {
+              "requirement_family_id": "cap.token_creation",
+              "card_requirement_map_rows": 10
+            }
+          ],
+          "dependent_classification_or_interaction_inputs": []
+        },
+        {
+          "citation_id": "CR-702.6",
+          "citation_kind": "CR_RULE_IDENTIFIER",
+          "rule_identifier": "CR 702.6a",
+          "canonical_section_identity": "CR 702.6a Equip",
+          "artifact_local_locator": {
+            "locator_kind": "RULE_HEADING_LINE",
+            "line_number_1based": 3941,
+            "expected_heading_prefix": "702.6.",
+            "heading_line_sha256": "26dbd1f5686fd22faf03a246e5336d7fa8e3f0757cbe618544e5b6a23be38255",
+            "heading_line_excerpt": "702.6. Equip"
+          },
+          "why_required": "Equip underlies equipment clusters incl. commander-dependent equip costs.",
+          "dependent_requirement_families": [
+            {
+              "requirement_family_id": "cap.equipment",
+              "card_requirement_map_rows": 2
+            },
+            {
+              "requirement_family_id": "cap.commander_dependent_equip_cost",
+              "card_requirement_map_rows": 1
+            }
+          ],
+          "dependent_classification_or_interaction_inputs": []
+        },
+        {
+          "citation_id": "CR-702.51",
+          "citation_kind": "CR_RULE_IDENTIFIER",
+          "rule_identifier": "CR 702.51a",
+          "canonical_section_identity": "CR 702.51a Convoke",
+          "artifact_local_locator": {
+            "locator_kind": "RULE_HEADING_LINE",
+            "line_number_1based": 4403,
+            "expected_heading_prefix": "702.51.",
+            "heading_line_sha256": "4954609a16ab63b81d9dbf4762296872f001b68a39e53284996e24c86b75ad44",
+            "heading_line_excerpt": "702.51. Convoke"
+          },
+          "why_required": "Convoke cost-reduction family.",
+          "dependent_requirement_families": [
+            {
+              "requirement_family_id": "cap.convoke",
+              "card_requirement_map_rows": 4
+            }
+          ],
+          "dependent_classification_or_interaction_inputs": []
+        },
+        {
+          "citation_id": "CR-702.92",
+          "citation_kind": "CR_RULE_IDENTIFIER",
+          "rule_identifier": "CR 702.92a",
+          "canonical_section_identity": "CR 702.92a Living Weapon",
+          "artifact_local_locator": {
+            "locator_kind": "RULE_HEADING_LINE",
+            "line_number_1based": 4680,
+            "expected_heading_prefix": "702.92.",
+            "heading_line_sha256": "c464a3949aaefc874a054e8fc5f4fb27a989a554f856af50ac0c05c3428a87c1",
+            "heading_line_excerpt": "702.92. Living Weapon"
+          },
+          "why_required": "Living Weapon equipment enters with a Germ token.",
+          "dependent_requirement_families": [
+            {
+              "requirement_family_id": "cap.equipment",
+              "card_requirement_map_rows": 2
+            },
+            {
+              "requirement_family_id": "cap.token_creation",
+              "card_requirement_map_rows": 10
+            }
+          ],
+          "dependent_classification_or_interaction_inputs": []
+        },
+        {
+          "citation_id": "CR-702.122",
+          "citation_kind": "CR_RULE_IDENTIFIER",
+          "rule_identifier": "CR 702.122a",
+          "canonical_section_identity": "CR 702.122a Crew",
+          "artifact_local_locator": {
+            "locator_kind": "RULE_HEADING_LINE",
+            "line_number_1based": 4888,
+            "expected_heading_prefix": "702.122.",
+            "heading_line_sha256": "c306855abde29ab4b9ca48c5412950ad17330bda5b50297bfc15550349d92042",
+            "heading_line_excerpt": "702.122. Crew"
+          },
+          "why_required": "Vehicles/crew are core to the Buckle Up deck cluster.",
+          "dependent_requirement_families": [
+            {
+              "requirement_family_id": "cap.vehicle",
+              "card_requirement_map_rows": 8
+            },
+            {
+              "requirement_family_id": "cap.crew",
+              "card_requirement_map_rows": 2
+            },
+            {
+              "requirement_family_id": "cap.dynamic_crew_value",
+              "card_requirement_map_rows": 1
+            },
+            {
+              "requirement_family_id": "cap.tap_ten_cost",
+              "card_requirement_map_rows": 1
+            }
+          ],
+          "dependent_classification_or_interaction_inputs": []
+        },
+        {
+          "citation_id": "CR-702.124",
+          "citation_kind": "CR_RULE_IDENTIFIER",
+          "rule_identifier": "CR 702.124",
+          "canonical_section_identity": "CR 702.124 Partner",
+          "artifact_local_locator": {
+            "locator_kind": "RULE_HEADING_LINE",
+            "line_number_1based": 4906,
+            "expected_heading_prefix": "702.124.",
+            "heading_line_sha256": "e4e6eeaaa9bed82ad66f33510d1234a981c362c59dfe162a77cc41da94a380d8",
+            "heading_line_excerpt": "702.124. Partner"
+          },
+          "why_required": "Partner modifies commander designation; present in pinned oracle texts.",
+          "dependent_requirement_families": [],
+          "dependent_classification_or_interaction_inputs": []
+        },
+        {
+          "citation_id": "CR-702.143",
+          "citation_kind": "CR_RULE_IDENTIFIER",
+          "rule_identifier": "CR 702.143a",
+          "canonical_section_identity": "CR 702.143a Foretell",
+          "artifact_local_locator": {
+            "locator_kind": "RULE_HEADING_LINE",
+            "line_number_1based": 5056,
+            "expected_heading_prefix": "702.143.",
+            "heading_line_sha256": "e6443172a863f677b97e76725ad486ee992f4e5290c6f349319f4bf486f462ba",
+            "heading_line_excerpt": "702.143. Foretell"
+          },
+          "why_required": "Foretell underlies the Phantom Premonition cluster and face-down exile handling.",
+          "dependent_requirement_families": [
+            {
+              "requirement_family_id": "cap.foretell",
+              "card_requirement_map_rows": 10
+            },
+            {
+              "requirement_family_id": "cap.private_face_down_exile",
+              "card_requirement_map_rows": 9
+            }
+          ],
+          "dependent_classification_or_interaction_inputs": []
+        },
+        {
+          "citation_id": "CR-702.151",
+          "citation_kind": "CR_RULE_IDENTIFIER",
+          "rule_identifier": "CR 702.151a",
+          "canonical_section_identity": "CR 702.151a Reconfigure",
+          "artifact_local_locator": {
+            "locator_kind": "RULE_HEADING_LINE",
+            "line_number_1based": 5118,
+            "expected_heading_prefix": "702.151.",
+            "heading_line_sha256": "4b16cac6a0a7e1c5863014e85d9527082d170578e2ae57e312c74645951bc95c",
+            "heading_line_excerpt": "702.151. Reconfigure"
+          },
+          "why_required": "Reconfigure bridges equipment and creature rules (Chishiro cluster).",
+          "dependent_requirement_families": [
+            {
+              "requirement_family_id": "cap.equipment",
+              "card_requirement_map_rows": 2
+            },
+            {
+              "requirement_family_id": "cap.temporary_animation",
+              "card_requirement_map_rows": 3
+            }
+          ],
+          "dependent_classification_or_interaction_inputs": []
+        },
+        {
+          "citation_id": "CR-704",
+          "citation_kind": "CR_RULE_IDENTIFIER",
+          "rule_identifier": "CR 704",
+          "canonical_section_identity": "CR 704 State-Based Actions",
+          "artifact_local_locator": {
+            "locator_kind": "RULE_HEADING_LINE",
+            "line_number_1based": 5493,
+            "expected_heading_prefix": "704.",
+            "heading_line_sha256": "110a736e7fa4b75f7623b4411941fc0e43e5b03ea8a085d6b91fefc610b8aa0d",
+            "heading_line_excerpt": "704. State-Based Actions"
+          },
+          "why_required": "SBAs are an explicit family and background termination rules.",
+          "dependent_requirement_families": [
+            {
+              "requirement_family_id": "cap.state_based_actions",
+              "card_requirement_map_rows": 1
+            }
+          ],
+          "dependent_classification_or_interaction_inputs": []
+        },
+        {
+          "citation_id": "CR-714",
+          "citation_kind": "CR_RULE_IDENTIFIER",
+          "rule_identifier": "CR 714",
+          "canonical_section_identity": "CR 714 Saga Cards",
+          "artifact_local_locator": {
+            "locator_kind": "RULE_HEADING_LINE",
+            "line_number_1based": 5978,
+            "expected_heading_prefix": "714.",
+            "heading_line_sha256": "b12e4c7a6510fcbdba46fd4e3b816095f7cdbbd5c610cdcc580523160f4296d3",
+            "heading_line_excerpt": "714. Saga Cards"
+          },
+          "why_required": "Saga chapter timing family.",
+          "dependent_requirement_families": [
+            {
+              "requirement_family_id": "cap.saga",
+              "card_requirement_map_rows": 2
+            },
+            {
+              "requirement_family_id": "cap.chapter_timing",
+              "card_requirement_map_rows": 2
+            }
+          ],
+          "dependent_classification_or_interaction_inputs": []
+        }
+      ],
+      "dependent_research_requirements": [
+        "Rule-level grounding for requirement families exercised by the six locked REV3 decks"
+      ],
+      "dependent_classification_or_interaction_inputs": [],
+      "review_basis": "Human review of the pinned REV3 artifact bytes at B1 head against the REV3 acquisition register; locator resolution mechanically enforced by scripts/check_m2_5_b1_authority_citations.py.",
+      "provenance": {
+        "rev3_register_review_status": "ACQUISITION_PINNED_PENDING_HUMAN_CITATION",
+        "http_status_at_acquisition": 200,
+        "archive_contract": "$MANAFOLD_SOURCE_ARCHIVE/m2_5/Manafold_M2_5_Pre_Research_ALL_ARTIFACTS_REV3.zip (99b33945a3e0c7b2982734e65f770715029ce6acd500104bde48e8466eed1a90)"
+      }
+    },
+    {
+      "authority_id": "banned_restricted",
+      "authority_role": "OFFICIAL_LEGALITY_POLICY",
+      "original_official_url": "https://magic.wizards.com/en/banned-restricted-list",
+      "artifact_identity": {
+        "artifact_path": "source/authorities/banned_restricted.html",
+        "artifact_sha256": "f9b69ee1e323674863c49ed9de443cce92375a7ddd5058c1dfe5e12477655284",
+        "retrieval_time": "2026-08-23T01:49:41.387662Z",
+        "published_or_effective_version": null
+      },
+      "citation_status": "CITED",
+      "citations": [
+        {
+          "citation_id": "BRL-ROOT",
+          "citation_kind": "POLICY_SECTION_LOCATOR",
+          "rule_identifier": null,
+          "canonical_section_identity": "BANNED AND RESTRICTED LISTS",
+          "artifact_local_locator": {
+            "locator_kind": "UNIQUE_BYTE_FRAGMENT",
+            "byte_offset": 70417,
+            "byte_length": 70,
+            "fragment_sha256": "a67684dadd50d9a4b981c3f3e308e2af89ae9bdfc34234c71ba3f513078262b9",
+            "section_heading_excerpt": "BANNED AND RESTRICTED LISTS"
+          },
+          "why_required": "Official banned/restricted lists are the legality authority for any deck-pair evaluation over the locked REV3 rows.",
+          "dependent_requirement_families": [],
+          "dependent_classification_or_interaction_inputs": []
+        },
+        {
+          "citation_id": "BRL-COMMANDER",
+          "citation_kind": "POLICY_SECTION_LOCATOR",
+          "rule_identifier": null,
+          "canonical_section_identity": "Commander Banned Cards",
+          "artifact_local_locator": {
+            "locator_kind": "UNIQUE_BYTE_FRAGMENT",
+            "byte_offset": 82276,
+            "byte_length": 31,
+            "fragment_sha256": "9c6cbe362ce5fca8dcd08646b0fd59efffff0ee34ad48a5c4107cc569d5f5b7e",
+            "section_heading_excerpt": "Commander Banned Cards"
+          },
+          "why_required": "Commander-format ban section is the operative legality filter for the six Commander precon decks; zero of the 402 distinct resolved card names occur in this pinned section (mechanically re-executable).",
+          "dependent_requirement_families": [],
+          "dependent_classification_or_interaction_inputs": [],
+          "evidence": {
+            "kind": "ZERO_NAME_MATCH_IN_SECTION",
+            "distinct_card_names_scanned": 402,
+            "name_matches": [],
+            "section_byte_length": 2617
+          }
+        }
+      ],
+      "dependent_research_requirements": [
+        "Deck legality screening for any future pair lock over the 441 resolved rows"
+      ],
+      "dependent_classification_or_interaction_inputs": [],
+      "review_basis": "Human review of the pinned REV3 artifact bytes at B1 head against the REV3 acquisition register; locator resolution mechanically enforced by scripts/check_m2_5_b1_authority_citations.py.",
+      "provenance": {
+        "rev3_register_review_status": "ACQUISITION_PINNED_PENDING_HUMAN_CITATION",
+        "http_status_at_acquisition": 200,
+        "archive_contract": "$MANAFOLD_SOURCE_ARCHIVE/m2_5/Manafold_M2_5_Pre_Research_ALL_ARTIFACTS_REV3.zip (99b33945a3e0c7b2982734e65f770715029ce6acd500104bde48e8466eed1a90)"
+      }
+    },
+    {
+      "authority_id": "commander_general",
+      "authority_role": "OFFICIAL_FORMAT_POLICY",
+      "original_official_url": "https://magic.wizards.com/en/formats/commander",
+      "artifact_identity": {
+        "artifact_path": "source/authorities/commander_general.html",
+        "artifact_sha256": "58b3d5c39a63d7f4e777f8776c7af67fffc6e763eb3705fc7a51888a0c9fa0b9",
+        "retrieval_time": "2026-08-23T01:49:41.387662Z",
+        "published_or_effective_version": null
+      },
+      "citation_status": "CITED",
+      "citations": [
+        {
+          "citation_id": "CG-FORMAT",
+          "citation_kind": "POLICY_SECTION_LOCATOR",
+          "rule_identifier": null,
+          "canonical_section_identity": "MTG Commander",
+          "artifact_local_locator": {
+            "locator_kind": "UNIQUE_BYTE_FRAGMENT",
+            "byte_offset": 101758,
+            "byte_length": 40,
+            "fragment_sha256": "53e399df1647fd4035f09e96c01839feb10943a6e56a5fb0670b3a3a7d77d9a6",
+            "section_heading_excerpt": "MTG Commander"
+          },
+          "why_required": "Identifies the pinned page as the official Commander format publication.",
+          "dependent_requirement_families": [],
+          "dependent_classification_or_interaction_inputs": []
+        },
+        {
+          "citation_id": "CG-PLAY-RULES",
+          "citation_kind": "POLICY_SECTION_LOCATOR",
+          "rule_identifier": null,
+          "canonical_section_identity": "Play Rules/Modifiers",
+          "artifact_local_locator": {
+            "locator_kind": "UNIQUE_BYTE_FRAGMENT",
+            "byte_offset": 108639,
+            "byte_length": 73,
+            "fragment_sha256": "c23bc10c3523fbfd0ae450634e3dfac5b8dd12b0b4c5a9c546ed8628a383d58a",
+            "section_heading_excerpt": "Play Rules/Modifiers"
+          },
+          "why_required": "Official play-rule modifiers frame commander-zone ownership rules used by commander-dependent requirement families.",
+          "dependent_requirement_families": [],
+          "dependent_classification_or_interaction_inputs": []
+        },
+        {
+          "citation_id": "CG-COMMAND-ZONE",
+          "citation_kind": "POLICY_SECTION_LOCATOR",
+          "rule_identifier": null,
+          "canonical_section_identity": "Command Zone",
+          "artifact_local_locator": {
+            "locator_kind": "UNIQUE_BYTE_FRAGMENT",
+            "byte_offset": 109690,
+            "byte_length": 47,
+            "fragment_sha256": "b86e3b0d726543ab7d3ef9bd45e53014fc9fe8c292c81510b784b188cc019c00",
+            "section_heading_excerpt": "Command Zone"
+          },
+          "why_required": "Command-zone rules underlie commander zone-choice and ownership-separation research requirements.",
+          "dependent_requirement_families": [],
+          "dependent_classification_or_interaction_inputs": [],
+          "evidence": {
+            "kind": "FAMILY_DEPENDENCIES",
+            "dependencies": [
+              {
+                "requirement_family_id": "cap.commander_zone_choice",
+                "card_requirement_map_rows": 1
+              },
+              {
+                "requirement_family_id": "cap.owner_controller_separation",
+                "card_requirement_map_rows": 2
+              },
+              {
+                "requirement_family_id": "cap.commander_noncreature",
+                "card_requirement_map_rows": 1
+              }
+            ]
+          }
+        }
+      ],
+      "dependent_research_requirements": [
+        "Format-policy context for the six Commander-precon decks (KHC/NEC/SCD)"
+      ],
+      "dependent_classification_or_interaction_inputs": [],
+      "review_basis": "Human review of the pinned REV3 artifact bytes at B1 head against the REV3 acquisition register; locator resolution mechanically enforced by scripts/check_m2_5_b1_authority_citations.py.",
+      "provenance": {
+        "rev3_register_review_status": "ACQUISITION_PINNED_PENDING_HUMAN_CITATION",
+        "http_status_at_acquisition": 200,
+        "archive_contract": "$MANAFOLD_SOURCE_ARCHIVE/m2_5/Manafold_M2_5_Pre_Research_ALL_ARTIFACTS_REV3.zip (99b33945a3e0c7b2982734e65f770715029ce6acd500104bde48e8466eed1a90)"
+      }
+    },
+    {
+      "authority_id": "commander_1v1",
+      "authority_role": "OFFICIAL_FORMAT_POLICY",
+      "original_official_url": "https://magic.wizards.com/en/formats/commander-1v1",
+      "artifact_identity": {
+        "artifact_path": "source/authorities/commander_1v1.html",
+        "artifact_sha256": "39f887277000eb5adf45555bf1ef010dfa56f367bc317eae508021a5b66dd236",
+        "retrieval_time": "2026-08-23T01:49:41.387662Z",
+        "published_or_effective_version": null
+      },
+      "citation_status": "CITED",
+      "citations": [
+        {
+          "citation_id": "C1V1-FORMAT",
+          "citation_kind": "POLICY_SECTION_LOCATOR",
+          "rule_identifier": null,
+          "canonical_section_identity": "Commander 1V1 Format",
+          "artifact_local_locator": {
+            "locator_kind": "UNIQUE_BYTE_FRAGMENT",
+            "byte_offset": 88804,
+            "byte_length": 63,
+            "fragment_sha256": "06d58ff77e365a8f1ea38ae421bbd57726b6f51b2f4c74da01278bdc27c63adc",
+            "section_heading_excerpt": "Commander 1V1 Format"
+          },
+          "why_required": "Official Commander 1v1 policy page; ROADMAP M2.5 scopes deck selection to official-Commander 1v1 decks, so this policy frames pair selection context.",
+          "dependent_requirement_families": [],
+          "dependent_classification_or_interaction_inputs": []
+        },
+        {
+          "citation_id": "C1V1-PLAY-RULES",
+          "citation_kind": "POLICY_SECTION_LOCATOR",
+          "rule_identifier": null,
+          "canonical_section_identity": "Play Rules/Modifiers",
+          "artifact_local_locator": {
+            "locator_kind": "UNIQUE_BYTE_FRAGMENT",
+            "byte_offset": 92498,
+            "byte_length": 73,
+            "fragment_sha256": "c23bc10c3523fbfd0ae450634e3dfac5b8dd12b0b4c5a9c546ed8628a383d58a",
+            "section_heading_excerpt": "Play Rules/Modifiers"
+          },
+          "why_required": "1v1 play-rule modifiers; policy context only - carries no classification or interaction closure obligation in B1.",
+          "dependent_requirement_families": [],
+          "dependent_classification_or_interaction_inputs": []
+        }
+      ],
+      "dependent_research_requirements": [
+        "Format-policy framing for future M2.5 deck-pair selection"
+      ],
+      "dependent_classification_or_interaction_inputs": [],
+      "review_basis": "Human review of the pinned REV3 artifact bytes at B1 head against the REV3 acquisition register; locator resolution mechanically enforced by scripts/check_m2_5_b1_authority_citations.py.",
+      "provenance": {
+        "rev3_register_review_status": "ACQUISITION_PINNED_PENDING_HUMAN_CITATION",
+        "http_status_at_acquisition": 200,
+        "archive_contract": "$MANAFOLD_SOURCE_ARCHIVE/m2_5/Manafold_M2_5_Pre_Research_ALL_ARTIFACTS_REV3.zip (99b33945a3e0c7b2982734e65f770715029ce6acd500104bde48e8466eed1a90)"
+      }
+    },
+    {
+      "authority_id": "kaldheim_release_notes",
+      "authority_role": "OFFICIAL_UPDATE_NOTES",
+      "original_official_url": "https://magic.wizards.com/en/news/feature/kaldheim-release-notes-2021-01-22",
+      "artifact_identity": {
+        "artifact_path": "source/authorities/kaldheim_release_notes.html",
+        "artifact_sha256": "4afc8372f6638a9b2d37ffc1a2e99cd23b10cbe98c366f2b55069573dfb2d529",
+        "retrieval_time": "2026-08-23T01:49:41.387662Z",
+        "published_or_effective_version": "2021-01-22 (publication date per official URL slug)"
+      },
+      "citation_status": "CITED",
+      "citations": [
+        {
+          "citation_id": "KHM-RELEASE-INFO",
+          "citation_kind": "RELEASE_NOTE_LOCATOR",
+          "rule_identifier": null,
+          "canonical_section_identity": "Release Information",
+          "artifact_local_locator": {
+            "locator_kind": "UNIQUE_BYTE_FRAGMENT",
+            "byte_offset": 78667,
+            "byte_length": 92,
+            "fragment_sha256": "28b5ff535b1ecd3e81f7ab838a88c8f68c22da038a8c2d48985e9a16a66e3d26",
+            "section_heading_excerpt": "Release Information"
+          },
+          "why_required": "Anchors the pinned update-notes publication identity and date context.",
+          "dependent_requirement_families": [],
+          "dependent_classification_or_interaction_inputs": []
+        },
+        {
+          "citation_id": "KHM-FORETELL",
+          "citation_kind": "RELEASE_NOTE_LOCATOR",
+          "rule_identifier": null,
+          "canonical_section_identity": "New Keyword: Foretell",
+          "artifact_local_locator": {
+            "locator_kind": "UNIQUE_BYTE_FRAGMENT",
+            "byte_offset": 80500,
+            "byte_length": 30,
+            "fragment_sha256": "7a220d36ec49bc5dda6ba7ec3fe55b547cc8a026d95a213fc96fdc8825d46c08",
+            "section_heading_excerpt": "New Keyword: Foretell"
+          },
+          "why_required": "Official clarifications for the Foretell mechanic; 33 oracle-text occurrences across resolved rows, commander Ranar the Ever-Watchful (Phantom Premonition), and 19 card-requirement map rows depend on these semantics.",
+          "dependent_requirement_families": [],
+          "dependent_classification_or_interaction_inputs": [],
+          "evidence": {
+            "kind": "FAMILY_DEPENDENCIES",
+            "dependencies": [
+              {
+                "requirement_family_id": "cap.foretell",
+                "card_requirement_map_rows": 10
+              },
+              {
+                "requirement_family_id": "cap.private_face_down_exile",
+                "card_requirement_map_rows": 9
+              }
+            ]
+          }
+        }
+      ],
+      "dependent_research_requirements": [
+        "Mechanic-semantics provenance for KHC-deck foretell content"
+      ],
+      "dependent_classification_or_interaction_inputs": [],
+      "review_basis": "Human review of the pinned REV3 artifact bytes at B1 head against the REV3 acquisition register; locator resolution mechanically enforced by scripts/check_m2_5_b1_authority_citations.py.",
+      "provenance": {
+        "rev3_register_review_status": "ACQUISITION_PINNED_PENDING_HUMAN_CITATION",
+        "http_status_at_acquisition": 200,
+        "archive_contract": "$MANAFOLD_SOURCE_ARCHIVE/m2_5/Manafold_M2_5_Pre_Research_ALL_ARTIFACTS_REV3.zip (99b33945a3e0c7b2982734e65f770715029ce6acd500104bde48e8466eed1a90)"
+      }
+    },
+    {
+      "authority_id": "commander_legends_release_notes",
+      "authority_role": "OFFICIAL_UPDATE_NOTES",
+      "original_official_url": "https://magic.wizards.com/en/news/feature/commander-legends-release-notes-2020-11-06",
+      "artifact_identity": {
+        "artifact_path": "source/authorities/commander_legends_release_notes.html",
+        "artifact_sha256": "155a4d067693b31896cd07f7d13d2f435ba37f113584d6f8080d40553c067938",
+        "retrieval_time": "2026-08-23T01:49:41.387662Z",
+        "published_or_effective_version": "2020-11-06 (publication date per official URL slug)"
+      },
+      "citation_status": "CITED",
+      "citations": [
+        {
+          "citation_id": "CL-RELEASE-INFO",
+          "citation_kind": "RELEASE_NOTE_LOCATOR",
+          "rule_identifier": null,
+          "canonical_section_identity": "Release Information",
+          "artifact_local_locator": {
+            "locator_kind": "UNIQUE_BYTE_FRAGMENT",
+            "byte_offset": 78450,
+            "byte_length": 28,
+            "fragment_sha256": "1e6d77ae2de2c8e44bcc2559ba51443ab4c75bb6af3de1bb6280f6ec2b822d31",
+            "section_heading_excerpt": "Release Information"
+          },
+          "why_required": "Anchors the pinned update-notes publication identity and date context.",
+          "dependent_requirement_families": [],
+          "dependent_classification_or_interaction_inputs": []
+        },
+        {
+          "citation_id": "CL-PARTNER",
+          "citation_kind": "RELEASE_NOTE_LOCATOR",
+          "rule_identifier": null,
+          "canonical_section_identity": "Returning Keyword: Partner",
+          "artifact_local_locator": {
+            "locator_kind": "UNIQUE_BYTE_FRAGMENT",
+            "byte_offset": 86854,
+            "byte_length": 99,
+            "fragment_sha256": "6db01b490abdc0376ed8017ce89226dd413f27107f4eeb6adf41dd7b58a0c7d0",
+            "section_heading_excerpt": "Returning Keyword: Partner"
+          },
+          "why_required": "Official clarifications for Partner; 4 oracle-text occurrences among resolved rows depend on partner designation semantics (primary rule text cited at CR 702.124).",
+          "dependent_requirement_families": [],
+          "dependent_classification_or_interaction_inputs": []
+        }
+      ],
+      "dependent_research_requirements": [
+        "Mechanic-semantics provenance for partner-designation content"
+      ],
+      "dependent_classification_or_interaction_inputs": [],
+      "review_basis": "Human review of the pinned REV3 artifact bytes at B1 head against the REV3 acquisition register; locator resolution mechanically enforced by scripts/check_m2_5_b1_authority_citations.py.",
+      "provenance": {
+        "rev3_register_review_status": "ACQUISITION_PINNED_PENDING_HUMAN_CITATION",
+        "http_status_at_acquisition": 200,
+        "archive_contract": "$MANAFOLD_SOURCE_ARCHIVE/m2_5/Manafold_M2_5_Pre_Research_ALL_ARTIFACTS_REV3.zip (99b33945a3e0c7b2982734e65f770715029ce6acd500104bde48e8466eed1a90)"
+      }
+    },
+    {
+      "authority_id": "magic_2013_release_notes",
+      "authority_role": "OFFICIAL_UPDATE_NOTES",
+      "original_official_url": "https://magic.wizards.com/en/news/feature/magic-2013-update-bulletin-or-release-notes",
+      "artifact_identity": {
+        "artifact_path": null,
+        "artifact_sha256": null,
+        "retrieval_time": "2026-08-23T01:49:41.387662Z",
+        "published_or_effective_version": null,
+        "raw_artifact_available": false,
+        "acquisition_http_status": null,
+        "acquisition_error": "HTTP Error 404: Not Found"
+      },
+      "citation_status": "NOT_REQUIRED_WITH_PROOF",
+      "not_required_proof": {
+        "resolution": "B_NOT_REQUIRED_FOR_REV3_CLOSURE",
+        "claim": "No currently relevant REV3 research dependency exists for this authority.",
+        "dependency_scan": {
+          "patterns": [
+            "magic_2013",
+            "magic-2013",
+            "magic 2013",
+            "update-bulletin"
+          ],
+          "files_scanned": 12,
+          "total_relevant_dependency_hits": 0,
+          "scan_manifest": [
+            {
+              "surface": "deck_rows",
+              "path": "inputs/deck_row_source_resolution_REV3.csv",
+              "sha256": "611a5d1de9ee8560d52ef434666d02d6d0906d321e5c41974b4588d163e508da",
+              "bytes": 934670,
+              "hits_by_pattern": {
+                "magic_2013": 0,
+                "magic-2013": 0,
+                "magic 2013": 0,
+                "update-bulletin": 0
+              },
+              "hits_total": 0
+            },
+            {
+              "surface": "oracle_semantic_identities",
+              "path": "inputs/oracle_semantic_evidence_REV3.json",
+              "sha256": "d16f3eff2ab1164c2a8d19b6a3b05d4bd1b3e7de835a3db65f8e0c0d95e5a4fd",
+              "bytes": 266337,
+              "hits_by_pattern": {
+                "magic_2013": 0,
+                "magic-2013": 0,
+                "magic 2013": 0,
+                "update-bulletin": 0
+              },
+              "hits_total": 0
+            },
+            {
+              "surface": "classification_authorities",
+              "path": "inputs/card_semantic_classification_REV3.json",
+              "sha256": "7bc2c24b383b9c495a1377b0c2f3cc58faf08610708a273f5f384c7173a9b840",
+              "bytes": 415955,
+              "hits_by_pattern": {
+                "magic_2013": 0,
+                "magic-2013": 0,
+                "magic 2013": 0,
+                "update-bulletin": 0
+              },
+              "hits_total": 0
+            },
+            {
+              "surface": "requirement_families",
+              "path": "inputs/requirement_family_catalog_REV3.json",
+              "sha256": "08d96aa855323b9e8677b7cc5d0aa8cf80b9f3a2a2e056393ade79592f133117",
+              "bytes": 110629,
+              "hits_by_pattern": {
+                "magic_2013": 0,
+                "magic-2013": 0,
+                "magic 2013": 0,
+                "update-bulletin": 0
+              },
+              "hits_total": 0
+            },
+            {
+              "surface": "requirement_families",
+              "path": "derived/Card_Requirement_Map_REV3.csv",
+              "sha256": "07af07fa0a45785cd497db616343569786212f58f6aa3e61e5f143fc1e23bfe7",
+              "bytes": 59171,
+              "hits_by_pattern": {
+                "magic_2013": 0,
+                "magic-2013": 0,
+                "magic 2013": 0,
+                "update-bulletin": 0
+              },
+              "hits_total": 0
+            },
+            {
+              "surface": "requirement_families",
+              "path": "derived/Pair_Requirement_Aggregates_REV3.json",
+              "sha256": "9fec921f3a29548f9638c3708fffa37fb4900991fa88ec005c7232d3830e7f74",
+              "bytes": 9108,
+              "hits_by_pattern": {
+                "magic_2013": 0,
+                "magic-2013": 0,
+                "magic 2013": 0,
+                "update-bulletin": 0
+              },
+              "hits_total": 0
+            },
+            {
+              "surface": "interaction_candidates",
+              "path": "derived/Pair_Interaction_Census_REV3.csv",
+              "sha256": "82f9312113bb1007ad6562d454c515f85dbc1e0d7a471f7b1c6793725aea45d4",
+              "bytes": 5385062,
+              "hits_by_pattern": {
+                "magic_2013": 0,
+                "magic-2013": 0,
+                "magic 2013": 0,
+                "update-bulletin": 0
+              },
+              "hits_total": 0
+            },
+            {
+              "surface": "interaction_candidates",
+              "path": "derived/Interaction_Model_Coverage_REV3.json",
+              "sha256": "daec273576a0985c5a16b0e05bea616d6c8de51fd8ac77e3e8a49f17a6dd0eff",
+              "bytes": 747,
+              "hits_by_pattern": {
+                "magic_2013": 0,
+                "magic-2013": 0,
+                "magic 2013": 0,
+                "update-bulletin": 0
+              },
+              "hits_total": 0
+            },
+            {
+              "surface": "ranking_inputs",
+              "path": "inputs/ranking_formula_REV3.json",
+              "sha256": "2ce0522bf17fe8a6a067ecdae4f249fbe27c48b0c5234c80c6f8c3942f55740e",
+              "bytes": 3937,
+              "hits_by_pattern": {
+                "magic_2013": 0,
+                "magic-2013": 0,
+                "magic 2013": 0,
+                "update-bulletin": 0
+              },
+              "hits_total": 0
+            },
+            {
+              "surface": "ranking_inputs",
+              "path": "derived/Ranking_Factors_REV3.json",
+              "sha256": "e48c186da786f6e7ffac3e7404f4e55eaad0b9d3ddb529e85dfd868b655ff1b6",
+              "bytes": 5338,
+              "hits_by_pattern": {
+                "magic_2013": 0,
+                "magic-2013": 0,
+                "magic 2013": 0,
+                "update-bulletin": 0
+              },
+              "hits_total": 0
+            },
+            {
+              "surface": "ranking_inputs",
+              "path": "derived/Ranking_Sensitivity_REV3.json",
+              "sha256": "8906ee5509923db7758c424a372a0b1b94b0173179d7cd6b3a08583cf5982751",
+              "bytes": 819,
+              "hits_by_pattern": {
+                "magic_2013": 0,
+                "magic-2013": 0,
+                "magic 2013": 0,
+                "update-bulletin": 0
+              },
+              "hits_total": 0
+            },
+            {
+              "surface": "ranking_inputs",
+              "path": "derived/Ranking_Uncertainty_Scenarios_REV3.json",
+              "sha256": "176152915e4c3d00dce6d48771e446d0accc3ea7a50712362bfc4b64d8ddcb79",
+              "bytes": 5397,
+              "hits_by_pattern": {
+                "magic_2013": 0,
+                "magic-2013": 0,
+                "magic 2013": 0,
+                "update-bulletin": 0
+              },
+              "hits_total": 0
+            }
+          ]
+        },
+        "excluded_surfaces_note": "source/raw/* was deliberately not treated as a dependency surface: its 'M13' byte hits are Scryfall printing candidates for basic lands and a few cards (Ajani, Caller of the Pride; Acidic Slime; Elvish Archdruid; Murder) used for printing-identity candidate matching. Printing candidates do not consult release-note authority, and the raw subset is not one of the six dependency categories enumerated by the slice contract."
+      },
+      "citations": [],
+      "dependent_research_requirements": [],
+      "dependent_classification_or_interaction_inputs": [],
+      "review_basis": "Human review of the pinned REV3 artifact bytes at B1 head against the REV3 acquisition register; locator resolution mechanically enforced by scripts/check_m2_5_b1_authority_citations.py.",
+      "provenance": {
+        "rev3_register_review_status": "ACQUISITION_PINNED_PENDING_HUMAN_CITATION",
+        "http_status_at_acquisition": null,
+        "archive_contract": "$MANAFOLD_SOURCE_ARCHIVE/m2_5/Manafold_M2_5_Pre_Research_ALL_ARTIFACTS_REV3.zip (99b33945a3e0c7b2982734e65f770715029ce6acd500104bde48e8466eed1a90)"
+      }
+    }
+  ]
+}

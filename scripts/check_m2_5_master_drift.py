@@ -52,7 +52,18 @@ GIT_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 ALLOWED_PATH_PREFIXES = (
     "sources/m2_5/pre_research/REV3/",
+    "sources/m2_5/closures/B1/",
     "scripts/check_m2_5_master_drift.py",
+    "scripts/check_m2_5_b1_authority_citations.py",
+)
+NORMATIVE_DRIFT_CONTROL_PATHS = (
+    "crates/mtgml-rules/src/lib.rs",
+    "python/src/mtgml/observation.py",
+    "schemas/player-step.v2.schema.json",
+    "wire/golden/manifest.json",
+    "docs/contracts/WIRE_CONTRACT.md",
+    "docs/adr/0041-capability-oriented-semantic-domains-and-explicit-semantic-ownership.md",
+    "cards/capabilities/registry.json",
 )
 ARCHIVE_ENV_VAR = "MANAFOLD_SOURCE_ARCHIVE"
 
@@ -359,13 +370,14 @@ def negative_self_test(provenance_dir: Path) -> int:
         evaluate_closure(closure, provenance, "0" * 40, None, provenance_dir)
 
     def normative_drift() -> None:
-        evaluate_closure(
-            closure,
-            provenance,
-            live_head,
-            ["crates/mtgml-rules/src/lib.rs"],
-            provenance_dir,
-        )
+        for controlled in NORMATIVE_DRIFT_CONTROL_PATHS:
+            evaluate_closure(
+                closure,
+                provenance,
+                live_head,
+                [controlled],
+                provenance_dir,
+            )
 
     def non_pass_grant() -> None:
         downgraded = tampered_closure(lambda value: value.__setitem__("MASTER_DRIFT", "FAIL"))
