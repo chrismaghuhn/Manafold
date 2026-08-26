@@ -32,7 +32,8 @@ pinned card evidence supports the assignment and the review records that evidenc
 B2 owns CLASSIFICATION_REFERENCE_CLOSURE only. It leaves these statuses outside its
 ownership:
 
-    OFFICIAL_RULE_CITATION_CLOSURE       = PENDING_B1_FINAL
+    OFFICIAL_RULE_CITATION_CLOSURE       = BLOCKED
+      block_reason                        = PENDING_B1_FINAL
     DECLARED_INTERACTION_MODEL_CLOSURE   = BLOCKED
     REV2_REUSE_RATIO_REPRODUCIBLE        = BLOCKED
     RANKING_UNCERTAINTY_PROPAGATION      = BLOCKED
@@ -91,6 +92,20 @@ and manifest-verifies these archive members:
     derived/Pair_Requirement_Aggregates_REV3.json
     Manafold_M2_5_Package_Manifest_REV3.json
 
+If a locator uses FORMAT_POLICY or RULE_DERIVED, its referenced authority member is
+also added to the consumed artifact set and bound by the package manifest. The
+available pinned authority members are:
+
+    source/authorities/comprehensive_rules.txt
+    source/authorities/commander_general.html
+    source/authorities/commander_1v1.html
+    source/authorities/banned_restricted.html
+    source/authorities/commander_legends_release_notes.html
+    source/authorities/kaldheim_release_notes.html
+
+The final closure lists the exact subset consumed by locators. No wildcard or live
+network source is accepted.
+
 The source package is a point-in-time input. Repository REV3 files remain historical
 evidence and are never replaced with terminal values.
 
@@ -104,6 +119,7 @@ check; B2 does not silently change its normalization policy.
     OracleSemanticIdentity values = 402
     DeckRowIdentity rows           = 441
     Reused OracleSemanticIdentity  = 23
+    Additional row references from reused OSIs = 39
     Total deck quantity             = 600
     Historical family IDs           = 216
 
@@ -118,9 +134,60 @@ The verifier proves:
 4. Every repeated OSI resolves to one byte-identical classification identity.
 5. A deck row cannot add or replace a shared semantic assignment.
 
-classification_identity is the SHA-256 of canonical UTF-8 JSON for the complete
-classification record. Canonical JSON uses sorted object keys, compact separators,
-and recursively sorted ID arrays. It is never deck-specific.
+classification_identity is a domain-separated SHA-256 digest. It is not part of its
+own preimage and is never deck-specific. The three B2 identity domains are:
+
+    manafold.m2.5.b2.classification-record-identity.v1
+    manafold.m2.5.b2.source-identity.v1
+    manafold.m2.5.b2.rev3-classification-record-identity.v1
+
+For every domain, the preimage is exactly:
+
+    UTF8(domain) || 0x00 || canonical_utf8_json(InputV1)
+
+The digest is unkeyed SHA-256 rendered as 64 lowercase hexadecimal characters.
+Each InputV1 has a fixed schema identifier and a closed field set. No digest field,
+classification_identity field, or unspecified extension field occurs in an input.
+
+The inputs are:
+
+    SourceIdentityInputV1
+      schema = manafold.m2.5.b2.source-identity-input.v1
+      archive_artifact
+      oracle_semantic_identity
+      oracle_source_record_id
+      oracle_layout
+      source_record_raw_sha256
+      normalized_record_sha256
+
+    Rev3ClassificationRecordIdentityInputV1
+      schema = manafold.m2.5.b2.rev3-classification-record-identity-input.v1
+      record = the exact parsed REV3 classification object
+
+    ClassificationRecordIdentityInputV1
+      schema = manafold.m2.5.b2.classification-record-identity-input.v1
+      oracle_semantic_identity
+      source_evidence_digest
+      review_status
+      previous_rev3_classification_identity
+      requirement_assignments
+      classification_delta.changes
+      review_basis
+      provenance
+
+canonical_utf8_json sorts object keys but does not recursively sort every array.
+Only fields declared as unordered sets are sorted: requirement IDs, family IDs,
+replacement IDs, assignment records, change records, evidence locators, and the
+historical member-OSI set. Semantic sequences preserve their declared order. String
+values retain exact valid UTF-8 bytes without Unicode normalization. The field-level
+canonicalization profile is versioned with each InputV1 and is part of the verifier.
+
+For the exact REV3 classification input, requirement_ids and source_deck_row_ids are
+unordered sets and are sorted by UTF-8 value; every other REV3 array preserves its
+declared source order. For B2 records, requirement_assignments, evidence_locators,
+changes, all four summary ID arrays, superseded_by, and historical member-OSI values
+are unordered sets with the field-specific order declared above. No other array is
+sorted implicitly.
 
 ## 5. Requirement-family catalog
 
@@ -132,14 +199,15 @@ different concept, or deleted.
 
 Every historical entry carries an immutable historical_rev3 block containing the exact
 REV3 family object, its canonical digest, its historical member OSIs and card names,
-and the original assignment-record digests for those members.
+and the original assignment-record digests for those members. This block is the only
+historical source of truth.
 
-Each historical entry also has a historical_definition object. It contains the exact
-REV3 description, classification criteria, family name, and assignment context that
-REV3 actually used for the ID, together with a digest of that object. The field is a
-historical record, not a B2 rewrite. Because REV3 descriptions are provisional, the
-member assignments and source-backed usage context are also retained. Preservation
-does not promote them to terminal truth.
+Each historical entry also has a historical_definition projection. It is generated
+deterministically from historical_rev3.record and the recorded assignment context;
+it is never independently authored. It exposes the exact REV3 description,
+classification criteria, family name, and effective historical usage together with a
+projection digest. Because REV3 descriptions are provisional, preservation does not
+promote them to terminal truth.
 
 ### 5.2 Lifecycle
 
@@ -176,9 +244,10 @@ Each record contains:
     family_id
     canonical_name
     historical_rev3 { record, record_sha256, member_osi, assignment_record_digests }
-    historical_definition { rev3_description, rev3_criteria, assignment_context, definition_sha256 }
-    precise_semantic_definition
-    definition_relation
+    historical_definition { rev3_name, rev3_description, rev3_criteria,
+                            assignment_context, projection_sha256 }
+precise_semantic_definition
+lifecycle_relation
     evidence_basis_allowed[]
     status
     terminal_assignable
@@ -187,15 +256,25 @@ Each record contains:
     review_provenance { review_status, review_basis, evidence_locators[] }
 
 precise_semantic_definition documents the reviewed concept. For ACTIVE and
-ACTIVE_UNASSIGNED, definition_relation must be
-SEMANTICALLY_EQUIVALENT_CLARIFICATION. For SUPERSEDED and RETIRED, it records the
-historical concept without making it assignable.
+ACTIVE_UNASSIGNED, lifecycle_relation must be ACTIVE_EQUIVALENT. For SUPERSEDED and
+RETIRED, it records the historical concept without making it assignable.
 
-The allowed definition_relation values are:
+The allowed lifecycle_relation values are:
 
-    SEMANTICALLY_EQUIVALENT_CLARIFICATION
-    MATERIALLY_CHANGED_SUPERSESSION
-    HISTORICAL_PRESERVATION_NO_SUCCESSOR
+    ACTIVE_EQUIVALENT
+    SUPERSEDED_BY_NEW_CONCEPT
+    RETIRED_NO_SUCCESSOR
+
+The status-to-relation mapping is closed:
+
+    ACTIVE or ACTIVE_UNASSIGNED -> ACTIVE_EQUIVALENT
+    SUPERSEDED                 -> SUPERSEDED_BY_NEW_CONCEPT
+    RETIRED                    -> RETIRED_NO_SUCCESSOR
+
+The verifier recomputes historical_definition from historical_rev3.record and the
+recorded assignment context and rejects any projection mismatch. A changed
+historical_rev3 block or projection digest is a closure failure, not a new
+interpretation of the old family.
 
 The catalog top level is:
 
@@ -204,7 +283,7 @@ The catalog top level is:
     rev3_catalog_sha256
     legacy_family_count = 216
     new_family_count
-    terminal_family_count = legacy_family_count + new_family_count
+    catalog_family_count = legacy_family_count + new_family_count
     families[]
 
 The catalog verifier requires exactly one record for each historical ID, unique new
@@ -286,16 +365,26 @@ replacement IDs, and each replacement assignment has independent evidence. For a
 merge, every preserved old family is SUPERSEDED and points to the same target.
 Neither operation deletes an old ID or rewrites its historical definition.
 
-A valid family with zero B2 usage becomes ACTIVE_UNASSIGNED, never RETIRED solely
-because its usage count is zero.
+An incorrect card assignment does not by itself supersede a family. If the family
+concept remains semantically valid, the assignment change is REMOVED and the family
+may become ACTIVE_UNASSIGNED. SUPERSEDED is reserved for a defect in the family's
+own semantic boundary, such as a historically conflated or materially wrong concept.
+
+A valid historical family with zero B2 usage becomes ACTIVE_UNASSIGNED, never RETIRED
+solely because its usage count is zero. A new B2 family may be created only when at
+least one terminal assignment uses it or when it is required as a superseded_by target
+of a preserved historical family. A speculative new family with neither use is
+invalid, even if its proposed definition is otherwise coherent.
 
 ## 8. Terminal classifications
 
 There is exactly one classification record per OSI. Each record contains:
 
     oracle_semantic_identity
-source_identity { oracle_source_record_id, layout, raw_sha256, normalized_sha256 }
-source_evidence_digest
+    source_identity { archive_artifact, oracle_semantic_identity, oracle_source_record_id,
+                      oracle_layout, source_record_raw_sha256, normalized_record_sha256 }
+    source_evidence_digest
+    classification_identity (output-only digest; excluded from its own preimage)
     review_status = REVIEWED_CONFIRMED | REVIEWED_CORRECTED
     previous_rev3_classification_identity
     requirement_assignments[]
@@ -323,10 +412,11 @@ Each assignment contains:
 Assignments are sorted, unique, and resolve to ACTIVE catalog entries. Every
 assignment has at least one valid locator and a nonempty rationale.
 
-source_evidence_digest is the SHA-256 of canonical UTF-8 JSON containing the complete
-source_identity object. classification_identity includes the complete classification
-record and therefore changes whenever its source binding, assignments, deltas, or
-provenance changes.
+source_evidence_digest is the SourceIdentityDigestV1: SHA-256 of the source-identity
+domain preimage containing the complete source_identity object. classification_identity
+uses the classification-record domain and its input contains classification_delta.changes,
+not the four derived summary arrays. It therefore changes whenever its source binding,
+assignments, changes, or provenance changes.
 
 previous_rev3_classification_identity is recomputed from the exact provisional REV3
 record, not trusted from a copied field. Working statuses such as
@@ -354,30 +444,89 @@ The final assignment set must equal:
     (REV3 requirement IDs - removed - superseded) + added
 
 Every changed record has a per-change rationale and evidence. REVIEWED_CONFIRMED
-requires an empty delta; REVIEWED_CORRECTED requires a nonempty correction delta.
+requires an empty non-retained delta; REVIEWED_CORRECTED requires a nonempty
+correction delta.
+
+The normative delta payload is classification_delta.changes[]. It contains exactly
+one item for each family ID in the union of the REV3 and terminal assignment sets:
+
+    family_id
+    change_kind = RETAINED | ADDED | REMOVED | SUPERSEDED
+    replacement_family_ids[]
+    rationale
+    evidence_locators[]
+
+The four ID arrays are derived summaries, not independent inputs:
+
+    retained   = REV3 ∩ terminal
+    added      = terminal - REV3
+    removed ∪ superseded = REV3 - terminal
+    removed ∩ superseded = ∅
+
+For RETAINED, ADDED, and REMOVED, replacement_family_ids is empty. For SUPERSEDED,
+it equals the catalog family's nonempty superseded_by list. A SUPERSEDED change is
+valid only when that catalog family itself has status SUPERSEDED. Every change has
+its own rationale and evidence, including REMOVED and SUPERSEDED changes. The
+assignment record repeats the evidence for RETAINED and ADDED items; removal and
+supersession evidence exists only in changes[].
+
+REVIEWED_CONFIRMED requires that every change is RETAINED and all three non-retained
+summary arrays are empty. REVIEWED_CORRECTED requires at least one non-RETAINED
+change.
 
 ## 10. Evidence locators
 
-Evidence is typed and bound to exact pinned bytes. A v1 locator contains:
+Evidence is typed and bound to exact pinned bytes. The locator field is a closed
+union, not one shape with optional fields.
 
-    locator_version = manafold.m2.5.b2.evidence-locator.v1
+OracleFieldLocatorV1 contains:
+
+    locator_version = manafold.m2.5.b2.oracle-field-locator.v1
     archive_artifact
-    record_id
-    field
-    face
-    line_sha256
+    oracle_source_record_id
+    raw_line_sha256
+    json_pointer
     field_value_sha256
+
+AuthorityByteFragmentLocatorV1 contains:
+
+    locator_version = manafold.m2.5.b2.authority-byte-fragment-locator.v1
+    archive_artifact
+    artifact_sha256
+    byte_offset
+    byte_length
+    fragment_sha256
+
+ComprehensiveRuleLocatorV1 contains:
+
+    locator_version = manafold.m2.5.b2.comprehensive-rule-locator.v1
+    archive_artifact
+    artifact_sha256
+    rule_identifier
+    line_number
+    line_sha256
 
 Allowed evidence bases are ORACLE_TEXT, TYPE_LINE, CARD_FACE,
 STRUCTURAL_CARD_PROPERTY, FORMAT_POLICY, and RULE_DERIVED.
 
-For raw Oracle records, field identifies an exact raw field such as oracle_text,
-type_line, layout, keywords, mana_cost, power, toughness, or colors. CARD_FACE is
-valid only when the pinned source contains that face. Policy and rule locators
-identify the exact pinned authority artifact and byte/offset location.
+For OracleFieldLocatorV1, json_pointer identifies an exact raw field such as
+oracle_text, type_line, layout, keywords, mana_cost, power, toughness, or colors.
+CARD_FACE uses a face-specific JSON pointer and is valid only when the pinned source
+contains that face. FORMAT_POLICY uses AuthorityByteFragmentLocatorV1. RULE_DERIVED
+uses ComprehensiveRuleLocatorV1 or the byte-fragment form for a pinned ruling.
 
-The verifier checks the record ID, full-line digest, field-value digest, and archive
-member digest. A valid-looking locator for another record or archive revision fails.
+field_value_sha256 is computed over exact UTF-8 bytes: strings use their exact bytes
+without Unicode normalization; numbers, booleans, null, arrays, and objects use
+canonical UTF-8 JSON under the field's declared array-order rule.
+
+Every OSI assignment must include at least one card-side OracleFieldLocatorV1. A
+RULE_DERIVED or FORMAT_POLICY locator may add rule authority, but neither can alone
+authorize a card assignment or introduce deck/format context into shared OSI
+semantics.
+
+The verifier checks the record ID, raw-line digest, JSON-pointer value digest,
+authority artifact digest, fragment offset/length, and archive member digest. A
+valid-looking locator for another record or archive revision fails.
 
 ## 11. 402-to-441 projection
 
@@ -404,11 +553,27 @@ rows. It rejects missing/unknown rows, unknown OSIs, changed arrays, and all
 deck-specific semantic forks. The CSV contains no family definition, rationale,
 evidence, or semantic override.
 
+The following deck context is projection metadata only and must not influence
+TerminalClassificationIdentity or terminal requirement assignments:
+
+    deck_id
+    quantity
+    is_commander
+    printing identity
+    deck position and deck-specific context
+
+Format- or deck-specific requirements belong to a later format/deck closure unless
+the card-side evidence itself establishes the requirement.
+
 ## 12. Closure artifact and criteria
 
 classification_closure.v1.json records the pinned package digest, measured input
 counts, family lifecycle counts, classification counts, correction metrics, bound
 artifact digests, and the exact downstream gate statuses from Section 1.
+
+Its input_universe object includes oracle_identity_count = 402,
+deck_row_count = 441, reused_oracle_identity_count = 23,
+reused_osi_additional_row_references = 39, and deck_quantity = 600.
 
 Its required top-level fields are:
 
@@ -430,6 +595,7 @@ CLASSIFICATION_REFERENCE_CLOSURE = PASS requires:
 
     402 input OSIs and 402 terminal classifications
     441 input rows and 441 valid projections
+    23 reused OSIs and 39 additional row references
     216 historical family IDs preserved exactly once
     zero unknown, missing, duplicate, or forked shared identities
     zero source digest or locator failures
@@ -443,12 +609,13 @@ The closure also reports:
 
     REV3_FAMILY_COUNT
     REV3_FAMILIES_PRESERVED
-    TERMINAL_FAMILY_COUNT = 216 + new family count
-    ACTIVE_ASSIGNED_COUNT
+    catalog_family_count = 216 + new family count
+    active_family_count
+    active_assigned_family_count
     terminal_assignment_count
-    ACTIVE_UNASSIGNED_COUNT
-    SUPERSEDED_COUNT
-    RETIRED_COUNT
+    active_unassigned_family_count
+    superseded_family_count
+    retired_family_count
     confirmed_authorities
     corrected_authorities
     families_added
@@ -456,10 +623,11 @@ The closure also reports:
     legacy_families_with_zero_terminal_usage
     new_terminal_families
 
-ACTIVE_ASSIGNED_COUNT is the number of catalog family IDs with at least one terminal
-assignment. terminal_assignment_count is the total number of assignment edges across
-the 402 classifications. ACTIVE_UNASSIGNED_COUNT counts valid catalog IDs with zero
-terminal assignments, regardless of whether they are historical or newly introduced.
+active_assigned_family_count is the number of catalog family IDs with at least one
+terminal assignment. terminal_assignment_count is the total number of assignment
+edges across the 402 classifications. active_unassigned_family_count counts valid
+catalog IDs with zero terminal assignments, regardless of whether they are historical
+or newly introduced.
 
 ## 13. Semantic review procedure
 
@@ -515,11 +683,23 @@ Required error codes are:
     NONTERMINAL_CLASSIFICATION_REJECTED
     MISSING_DECK_ROW_REFERENCE_REJECTED
     UNKNOWN_DECK_ROW_REFERENCE_REJECTED
+    DECK_ROW_OSI_REBIND_REJECTED
     REUSED_ORACLE_IDENTITY_FORK_REJECTED
     SOURCE_DIGEST_MISMATCH_REJECTED
     SOURCE_EVIDENCE_LOCATOR_INVALID_REJECTED
     UNKNOWN_REQUIREMENT_FAMILY_REJECTED
     SUPERSEDED_FAMILY_ASSIGNED_REJECTED
+    ACTIVE_UNASSIGNED_FAMILY_ASSIGNED_REJECTED
+    RETIRED_FAMILY_ASSIGNED_REJECTED
+    SUPERSEDED_WITHOUT_SUCCESSOR_REJECTED
+    RETIRED_WITH_SUCCESSOR_REJECTED
+    SUPERSESSION_UNKNOWN_TARGET_REJECTED
+    SUPERSESSION_SELF_TARGET_REJECTED
+    SUPERSESSION_NONASSIGNABLE_TARGET_REJECTED
+    HISTORICAL_FAMILY_MISSING_REJECTED
+    HISTORICAL_REV3_BLOCK_TAMPER_REJECTED
+    HISTORICAL_DEFINITION_PROJECTION_MISMATCH_REJECTED
+    SPECULATIVE_NEW_FAMILY_REJECTED
     SILENT_CLASSIFICATION_CHANGE_REJECTED
     CORRECTION_WITHOUT_RATIONALE_REJECTED
     CORRECTION_WITHOUT_EVIDENCE_REJECTED
@@ -527,6 +707,8 @@ Required error codes are:
     WRONG_CLASSIFICATION_SCHEMA_REJECTED
     WRONG_CLOSURE_SCHEMA_REJECTED
     EVIDENCE_DIGEST_TAMPER_REJECTED
+    B2_FILE_INVENTORY_REJECTED
+    ALLOWLIST_NEAR_MISS_PATH_REJECTED
     OTHER_GATE_PROMOTION_REJECTED
     DECK_LOCK_PROMOTION_REJECTED
     M3_PROMOTION_REJECTED
@@ -545,18 +727,32 @@ The negative-test matrix is:
 | NONTERMINAL_CLASSIFICATION_REJECTED | Set one terminal record to a working review status. |
 | MISSING_DECK_ROW_REFERENCE_REJECTED | Remove one of the 441 projected rows. |
 | UNKNOWN_DECK_ROW_REFERENCE_REJECTED | Add a row ID absent from pinned deck resolution. |
+| DECK_ROW_OSI_REBIND_REJECTED | Replace a valid row's OSI with another valid OSI. |
 | REUSED_ORACLE_IDENTITY_FORK_REJECTED | Change the assignment set for one repeated OSI row. |
 | SOURCE_DIGEST_MISMATCH_REJECTED | Change a source binding without changing the pinned source. |
 | SOURCE_EVIDENCE_LOCATOR_INVALID_REJECTED | Point an assignment locator at a wrong field or record. |
 | UNKNOWN_REQUIREMENT_FAMILY_REJECTED | Add an ID absent from the terminal catalog. |
 | SUPERSEDED_FAMILY_ASSIGNED_REJECTED | Assign a catalog family with status SUPERSEDED. |
-| SILENT_CLASSIFICATION_CHANGE_REJECTED | Change an assignment while leaving all delta arrays empty. |
+| ACTIVE_UNASSIGNED_FAMILY_ASSIGNED_REJECTED | Assign a catalog family with status ACTIVE_UNASSIGNED. |
+| RETIRED_FAMILY_ASSIGNED_REJECTED | Assign a catalog family with status RETIRED. |
+| SUPERSEDED_WITHOUT_SUCCESSOR_REJECTED | Remove all targets from a SUPERSEDED family. |
+| RETIRED_WITH_SUCCESSOR_REJECTED | Add a target to a RETIRED family. |
+| SUPERSESSION_UNKNOWN_TARGET_REJECTED | Point superseded_by at an absent family ID. |
+| SUPERSESSION_SELF_TARGET_REJECTED | Point superseded_by at the same family ID. |
+| SUPERSESSION_NONASSIGNABLE_TARGET_REJECTED | Point superseded_by at SUPERSEDED or RETIRED. |
+| HISTORICAL_FAMILY_MISSING_REJECTED | Remove one of the 216 historical family records. |
+| HISTORICAL_REV3_BLOCK_TAMPER_REJECTED | Change a preserved historical REV3 field or digest. |
+| HISTORICAL_DEFINITION_PROJECTION_MISMATCH_REJECTED | Change the derived historical_definition projection. |
+| SPECULATIVE_NEW_FAMILY_REJECTED | Add a new family with no terminal assignment and no supersession target. |
+| SILENT_CLASSIFICATION_CHANGE_REJECTED | Change an assignment while leaving changes[] unchanged. |
 | CORRECTION_WITHOUT_RATIONALE_REJECTED | Remove the rationale for an added, removed, or superseded ID. |
 | CORRECTION_WITHOUT_EVIDENCE_REJECTED | Remove the locator for a changed assignment. |
 | LEGACY_FAMILY_REINTERPRETATION_REJECTED | Change a historical family meaning while keeping it ACTIVE. |
 | WRONG_CLASSIFICATION_SCHEMA_REJECTED | Replace the classification schema identifier with another version. |
 | WRONG_CLOSURE_SCHEMA_REJECTED | Replace the closure schema identifier with another version. |
 | EVIDENCE_DIGEST_TAMPER_REJECTED | Change a raw or normalized source digest. |
+| B2_FILE_INVENTORY_REJECTED | Add an unrecognized file under closures/B2. |
+| ALLOWLIST_NEAR_MISS_PATH_REJECTED | Test a .backup checker path or B20 directory path. |
 | OTHER_GATE_PROMOTION_REJECTED | Set interaction or citation status to PASS in B2. |
 | DECK_LOCK_PROMOTION_REJECTED | Set DECK_PAIR_LOCKED to YES. |
 | M3_PROMOTION_REJECTED | Set M3_STARTED to YES. |
@@ -566,10 +762,39 @@ and the checker asserts the exact code in the first failing validation layer.
 
 ## 15. Master-drift boundary
 
-The only allowlist extension is:
+The existing checker must replace its broad startswith tuple with two explicit
+categories:
 
-    sources/m2_5/closures/B2/
-    scripts/check_m2_5_b2_classifications.py
+    ALLOWED_EXACT_PATHS:
+      scripts/check_m2_5_master_drift.py
+      scripts/check_m2_5_b2_classifications.py
+
+    ALLOWED_DIRECTORY_PREFIXES:
+      sources/m2_5/pre_research/REV3/
+      sources/m2_5/closures/B2/
+
+Directory entries include their trailing slash. A path is allowed when it equals an
+exact path or starts with a declared directory prefix. A checker backup such as
+scripts/check_m2_5_b2_classifications.py.backup and a near directory such as
+sources/m2_5/closures/B20/ are rejected. The B2 checker also enforces a closed file
+inventory containing exactly the declared B2 artifacts; an unknown extra file fails
+with B2_FILE_INVENTORY_REJECTED.
+
+The exact inventory is:
+
+    B2_DESIGN_SPEC.md
+    card_semantic_classifications.v1.json
+    deck_row_classification_refs.v1.csv
+    requirement_family_catalog.v1.json
+    classification_closure.v1.json
+    CLASSIFICATION_REPORT.md
+    verification/b2_negative_test_matrix.v1.json
+    verification/b2_verification_summary.v1.json
+
+Every inventory member except classification_closure.v1.json is listed in the
+closure's bound_artifacts array. classification_closure.v1.json is the single
+root record and is validated by the checker itself; a new closure is required to
+change it.
 
 The existing checker must continue rejecting changes under crates/, python/,
 schemas/, wire/, docs/contracts/, docs/adr/, and cards/. If B2 requires a change
