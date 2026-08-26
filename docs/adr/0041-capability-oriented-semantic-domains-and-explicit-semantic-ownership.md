@@ -243,8 +243,10 @@ compatibility, schema-evolution, fixture, migration, and API-lifecycle rules.
    (Done through `M2.Final`; no M2 slice changed semantics for this decision.)
 2. Use Issue #62 only for structural consolidation of existing M2 ownership.
    (Done; module splits preserved existing crate-level ownership.)
-3. Close M2.Final on one exact head.
-   (Done at `5c92e1abbdef70206c7fc7830c31f9a18e560ba7`.)
+3. Close M2.Final on one exact evidence head.
+   (Executable closure head `352cd80c2ef58a406c30bf7db1cb792109fafc3f`, the
+   `--expect-commit` head recorded by the M2.Final closure report; merged to
+   master afterwards as `5c92e1abbdef70206c7fc7830c31f9a18e560ba7`.)
 4. Re-review this candidate for drift, allocate the then-current ADR number,
    and accept the narrow ownership decision.
    (Done by this ADR; no material drift was found.)
@@ -280,9 +282,18 @@ ownership, Decision V2 identity, capability Registry V1 fields, and the Issue
 #62 structural consolidation), so the candidate was accepted without
 architectural rewriting.
 
+Two related heads are distinguished explicitly:
+
+```text
+M2.Final executable closure / evidence head:
+  352cd80c2ef58a406c30bf7db1cb792109fafc3f
+Merged master (PR #76 squash result) and drift-review base of this acceptance:
+  5c92e1abbdef70206c7fc7830c31f9a18e560ba7
+```
+
 ```text
 SEMANTIC OWNERSHIP ADR = ACCEPTED
-M2 = COMPLETE (closed at 5c92e1abbdef70206c7fc7830c31f9a18e560ba7)
+M2 = COMPLETE (executable closure head 352cd80c2ef58a406c30bf7db1cb792109fafc3f; merged master 5c92e1abbdef70206c7fc7830c31f9a18e560ba7)
 M2.5 = NOT STARTED
 M3 = NOT STARTED
 PRODUCTION SEMANTICS CHANGED BY THIS ADR = NO
