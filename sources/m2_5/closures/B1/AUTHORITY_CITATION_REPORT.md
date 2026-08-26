@@ -2,7 +2,7 @@
 
 - **Slice:** B1 (owns exactly `OFFICIAL_RULE_CITATION_CLOSURE`)
 - **Input universe:** the seven REV3 authority records, treated as closed
-- **Machine-readable evidence:** [`official_authority_citations.v1.json`](official_authority_citations.v1.json), [`official_authority_citation_closure.v1.json`](official_authority_citation_closure.v1.json)
+- **Machine-readable evidence:** [`official_authority_citations.v2.json`](official_authority_citations.v2.json), [`official_authority_citation_closure.v1.json`](official_authority_citation_closure.v1.json)
 - **Executable verifier:** `scripts/check_m2_5_b1_authority_citations.py` (+ `--negative-self-test`)
 
 ## 1. Preconditions executed
