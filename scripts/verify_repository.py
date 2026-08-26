@@ -256,7 +256,11 @@ def main() -> None:
         if token not in replay_tests:
             fail(f"Rust replay test evidence lacks {token}")
 
-    events_rust = (ROOT / "crates/mtgml-observation/src/lib.rs").read_text(encoding="utf-8")
+    # Issue #62: the event-kind authority moved from lib.rs to
+    # observed_event.rs (structural consolidation); same evidence, new path.
+    events_rust = (ROOT / "crates/mtgml-observation/src/observed_event.rs").read_text(
+        encoding="utf-8"
+    )
     events_python = (ROOT / "python/src/mtgml/events.py").read_text(encoding="utf-8")
     events_schema = (ROOT / "schemas/observed-event-envelope.v1.schema.json").read_text(
         encoding="utf-8"
@@ -283,14 +287,24 @@ def main() -> None:
     env_src = ROOT / "crates/mtgml-environment/src"
     env_prod = [p for p in sorted(env_src.glob("*.rs")) if p.name != "tests.rs"]
     env_rust = "\n".join(p.read_text(encoding="utf-8") for p in env_prod)
-    env_tests = (env_src / "tests.rs").read_text(encoding="utf-8")
+
+    # Issue #62: test modules may be split into lexical include! fragments
+    # under src/tests/; evidence tokens span the whole module text.
+    def _test_module_text(src_dir):
+        parts = [(src_dir / "tests.rs").read_text(encoding="utf-8")]
+        fragment_dir = src_dir / "tests"
+        if fragment_dir.is_dir():
+            parts.extend(p.read_text(encoding="utf-8") for p in sorted(fragment_dir.glob("*.rs")))
+        return "\n".join(parts)
+
+    env_tests = _test_module_text(env_src)
     if "Arc<Mutex" not in env_rust or re.search(r"fn\s+bind_player\s*\(\s*&self", env_rust) is None:
         fail("player endpoint handles still borrow the controller exclusively")
 
     state_src = ROOT / "crates/mtgml-state/src"
     production_files = [p for p in sorted(state_src.glob("*.rs")) if p.name != "tests.rs"]
     state_rust = "\n".join(p.read_text(encoding="utf-8") for p in production_files)
-    state_tests = (state_src / "tests.rs").read_text(encoding="utf-8")
+    state_tests = _test_module_text(state_src)
     for token in (
         "validate_engine_state",
         "EngineStateParts",
@@ -336,7 +350,7 @@ def main() -> None:
     rules_src = ROOT / "crates/mtgml-rules/src"
     rules_prod = [p for p in sorted(rules_src.glob("*.rs")) if p.name != "tests.rs"]
     rules_rust = "\n".join(p.read_text(encoding="utf-8") for p in rules_prod)
-    rules_tests = (rules_src / "tests.rs").read_text(encoding="utf-8")
+    rules_tests = _test_module_text(rules_src)
     for token in ("SemanticValidationCursor",):
         if token not in rules_rust:
             fail(f"compositional transition validation lacks {token}")
