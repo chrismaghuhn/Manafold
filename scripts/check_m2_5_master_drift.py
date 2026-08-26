@@ -50,9 +50,15 @@ EXPECTED_CLOSURE_SCHEMA = "manafold.m2.5.a.master-drift-closure.v1"
 EXPECTED_PROVENANCE_SCHEMA = "manafold.m2.5.a.import-provenance.v1"
 GIT_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
-ALLOWED_PATH_PREFIXES = (
+ALLOWED_EXACT_PATHS = frozenset(
+    {
+        "scripts/check_m2_5_master_drift.py",
+        "scripts/check_m2_5_b2_classifications.py",
+    }
+)
+ALLOWED_DIRECTORY_PREFIXES = (
     "sources/m2_5/pre_research/REV3/",
-    "scripts/check_m2_5_master_drift.py",
+    "sources/m2_5/closures/B2/",
 )
 ARCHIVE_ENV_VAR = "MANAFOLD_SOURCE_ARCHIVE"
 
@@ -62,10 +68,18 @@ EXIT_BLOCKED = 2
 
 
 class DriftCheckError(Exception):
-    def __init__(self, status: str, message: str) -> None:
+    def __init__(self, status: str, message: str, code: str | None = None) -> None:
         super().__init__(message)
         self.status = status
         self.message = message
+        self.code = code
+
+
+def path_is_allowed(path: str) -> bool:
+    normalized = path.replace("\\", "/")
+    return normalized in ALLOWED_EXACT_PATHS or normalized.startswith(
+        ALLOWED_DIRECTORY_PREFIXES
+    )
 
 
 def read_json(path: Path) -> object:
@@ -204,9 +218,7 @@ def evaluate_closure(
                 f"repository HEAD {head_sha} does not match verified master {verified_sha}",
             )
     else:
-        outside = sorted(
-            path for path in changed_paths if not path.startswith(ALLOWED_PATH_PREFIXES)
-        )
+        outside = sorted(path for path in changed_paths if not path_is_allowed(path))
         if outside:
             raise DriftCheckError(
                 "FAIL",
@@ -367,6 +379,15 @@ def negative_self_test(provenance_dir: Path) -> int:
             provenance_dir,
         )
 
+    def near_miss_rejected(path: str) -> None:
+        if path_is_allowed(path):
+            raise AssertionError(f"near-miss path was incorrectly allowed: {path}")
+        raise DriftCheckError(
+            "FAIL",
+            f"near-miss path correctly rejected by path_is_allowed: {path}",
+            code="ALLOWLIST_NEAR_MISS_PATH_REJECTED",
+        )
+
     def non_pass_grant() -> None:
         downgraded = tampered_closure(lambda value: value.__setitem__("MASTER_DRIFT", "FAIL"))
         evaluate_closure(downgraded, provenance, live_head, [], provenance_dir)
@@ -409,10 +430,30 @@ def negative_self_test(provenance_dir: Path) -> int:
         del stripped["import_boundary"]["imported_files"][first_imported]
         evaluate_closure(closure, stripped, live_head, [], provenance_dir)
 
-    cases: list[tuple[str, str, object]] = []
+    cases: list[tuple[str, str, object, str | None]] = []
 
-    def expect_failure(case_id: str, reason: str, thunk: object) -> None:
-        cases.append((case_id, reason, thunk))
+    def expect_failure(
+        case_id: str,
+        reason: str,
+        thunk: object,
+        expected_code: str | None = None,
+    ) -> None:
+        cases.append((case_id, reason, thunk, expected_code))
+
+    expect_failure(
+        "ALLOWLIST_NEAR_MISS_B2_SUFFIX_REJECTED",
+        "the exact B2 checker path must not receive an implicit suffix match",
+        lambda: near_miss_rejected(
+            "scripts/check_m2_5_b2_classifications.py.backup"
+        ),
+        "ALLOWLIST_NEAR_MISS_PATH_REJECTED",
+    )
+    expect_failure(
+        "ALLOWLIST_NEAR_MISS_REV3_PREFIX_REJECTED",
+        "the REV3 directory prefix must not match a sibling directory",
+        lambda: near_miss_rejected("sources/m2_5/closures/B20/foo"),
+        "ALLOWLIST_NEAR_MISS_PATH_REJECTED",
+    )
 
     expect_failure(
         "SUBSTITUTED_VALID_SHA_REJECTED",
@@ -476,11 +517,17 @@ def negative_self_test(provenance_dir: Path) -> int:
         )
 
     failures: list[str] = []
-    for case_id, reason, thunk in cases:
+    for case_id, reason, thunk, expected_code in cases:
         try:
             thunk()  # type: ignore[operator]
         except DriftCheckError as exc:
-            print(f"NEGATIVE {case_id}: rejected ({exc.status}) - {reason}")
+            if expected_code is not None and exc.code != expected_code:
+                failures.append(
+                    f"{case_id}: expected code {expected_code}, found {exc.code}"
+                )
+            else:
+                code_suffix = f" [{exc.code}]" if exc.code is not None else ""
+                print(f"NEGATIVE {case_id}: rejected ({exc.status}){code_suffix} - {reason}")
         else:
             failures.append(f"{case_id}: check unexpectedly PASSED")
     if failures:
