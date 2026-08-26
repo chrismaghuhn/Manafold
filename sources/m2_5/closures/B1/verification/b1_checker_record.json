@@ -1,13 +1,13 @@
 {
   "schema": "manafold.m2.5.b1.checker-record.v1",
-  "executed_at": "2026-08-26T07:30:52Z",
+  "executed_at": "2026-08-26T07:35:44Z",
   "environment": "repository venv python; MANAFOLD_SOURCE_ARCHIVE resolved via the M2.5.A private-archive contract; REV3 payload consumed only after ARCHIVE_PREFLIGHT = PASS",
   "commands": {
     "drift_closure_check": {
       "command": "python scripts/check_m2_5_master_drift.py",
       "exit_code": 0,
       "output": [
-        "MASTER_DRIFT_CLOSURE_CHECK = PASS (head c0aa128861aaab2815d72ad65ed51f368d544263)"
+        "MASTER_DRIFT_CLOSURE_CHECK = PASS (head 2b6966580af16703ba1fd55bc0c7e793333ef954)"
       ]
     },
     "archive_preflight": {
