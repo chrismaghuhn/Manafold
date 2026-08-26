@@ -12,19 +12,25 @@ Source package SHA-256: `99b33945a3e0c7b2982734e65f770715029ce6acd500104bde48e84
 
 ## Lifecycle
 
-- ACTIVE: 210
-- ACTIVE_UNASSIGNED: 6
+- ACTIVE: 208
+- ACTIVE_UNASSIGNED: 8
 - SUPERSEDED: 0
 - RETIRED: 0
-- Terminal assignment edges: 1445
-- Reviewed corrected authorities: 293; added edges: 1048; removed edges: 7
+- Terminal assignment edges: 1328
+- Reviewed corrected authorities: 302; added edges: 942; removed edges: 18
 
-All 402 records were reviewed from the pinned card-side source. REV3 assignments are treated as historical proposals only; explicit card-side review rules retain, add, or remove edges without changing historical family meanings. This is a Codex source-grounded review record, not a HUMAN_REVIEWED authorship claim.
+All 402 records were reviewed from the pinned card-side source. REV3 assignments are treated as historical proposals only; lexical scans are candidate generation and never terminal authority. Family-specific semantic predicates and reviewed correction decisions retain, add, or remove edges without changing historical family meanings. This is a Codex source-grounded review record, not a HUMAN_REVIEWED authorship claim.
+
+## Semantic review accounting
+
+- Lexical candidate edges inspected for empty-REV3 OSIs (non-authoritative): 1043
+- Lexical candidates rejected by semantic review: 120
+- Semantic edges admitted without a lexical candidate: 14
 
 ## Regression anchors
 
 - `cap.conditional_hexproof`: ACTIVE / REV3_LEGACY; historical members: 1; terminal usage: 1; card-side evidence is recorded for every assignment/change.
-- `cap.life_drain`: ACTIVE / REV3_LEGACY; historical members: 1; terminal usage: 4; card-side evidence is recorded for every assignment/change.
+- `cap.life_drain`: ACTIVE / REV3_LEGACY; historical members: 1; terminal usage: 3; card-side evidence is recorded for every assignment/change.
 - `cap.delayed_sacrifice`: ACTIVE_UNASSIGNED / REV3_LEGACY; historical members: 1; terminal usage: 0; card-side evidence is recorded for every assignment/change.
 - `cap.countered_setup`: ACTIVE_UNASSIGNED / REV3_LEGACY; historical members: 1; terminal usage: 0; card-side evidence is recorded for every assignment/change.
 - `cap.copy_token_batch`: ACTIVE_UNASSIGNED / REV3_LEGACY; historical members: 1; terminal usage: 0; card-side evidence is recorded for every assignment/change.
