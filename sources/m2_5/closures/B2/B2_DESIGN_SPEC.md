@@ -151,7 +151,7 @@ The envelope is exactly:
 where `frame(x)` is an unsigned 64-bit big-endian byte length followed by the exact
 bytes of `x`. The digest is SHA-256 of that envelope, rendered as 64 lowercase
 hexadecimal characters. No additional `domain || 0x00` prefix is applied. The
-transport representation of a digest is a closed DigestReferenceV1:
+normative transport representation of a digest is a closed DigestReferenceV1:
 
     envelope_id      = mtgml.digest-envelope.v1
     algorithm_id     = sha-256
@@ -159,6 +159,22 @@ transport representation of a digest is a closed DigestReferenceV1:
     semantic_domain
     input_schema_id
     digest_hex
+
+In persisted B2 JSON artifacts, the representation is named
+DigestReferenceJsonV1 and is only a JSON projection of the existing reference:
+
+    DigestReferenceV1
+      = [envelope_id, algorithm_id, semantic_domain,
+         payload_codec_id, input_schema_id, digest_bytes_32]
+      = existing normative canonical-CBOR/reference form; not redefined by B2
+
+    DigestReferenceJsonV1
+      = { envelope_id, algorithm_id, semantic_domain,
+          payload_codec_id, input_schema_id, digest_hex }
+
+    DigestReferenceJsonV1.digest_hex
+      = lowercase rendering of the exact same 32 bytes as
+        DigestReferenceV1.digest_bytes_32
 
 The three closed domain/schema pairs are:
 
@@ -473,8 +489,8 @@ There is exactly one classification record per OSI. Each record contains:
     oracle_semantic_identity
     source_identity { archive_artifact, oracle_semantic_identity, oracle_source_record_id,
                       oracle_layout, source_record_raw_sha256, normalized_record_sha256 }
-    source_evidence_digest (DigestReferenceV1; source-identity domain)
-    classification_identity (DigestReferenceV1; classification-record domain)
+    source_evidence_digest (DigestReferenceJsonV1; source-identity domain)
+    classification_identity (DigestReferenceJsonV1; classification-record domain)
     review_status = REVIEWED_CONFIRMED | REVIEWED_CORRECTED
     previous_rev3_classification_identity
     requirement_assignments[]
@@ -502,8 +518,8 @@ Each assignment contains:
 Assignments are sorted, unique, and resolve to ACTIVE catalog entries. Every
 assignment has at least one valid locator and a nonempty rationale.
 
-`source_evidence_digest` is the DigestReferenceV1 for the source-identity envelope
-over SourceIdentityInputV1. `classification_identity` is the DigestReferenceV1 for
+`source_evidence_digest` is the DigestReferenceJsonV1 for the source-identity envelope
+over SourceIdentityInputV1. `classification_identity` is the DigestReferenceJsonV1 for
 the classification-record envelope over ClassificationRecordIdentityInputV1. Its
 input contains `classification_delta.changes`, not the four derived summary arrays;
 it therefore changes whenever its source binding, assignments, changes, or
@@ -670,7 +686,7 @@ deck-specific semantic forks. The CSV contains no family definition, rationale,
 evidence, or semantic override.
 
 `terminal_classification_identity` is the `digest_hex` from the classification's
-DigestReferenceV1. The CSV schema fixes its semantic domain to
+DigestReferenceJsonV1. The CSV schema fixes its semantic domain to
 `manafold.m2.5.b2.classification-record-identity.v1` and its input schema to
 `manafold.m2.5.b2.classification-record-identity-input.v1`; the CSV value is a
 projection of the 402 authority records, never a separately computed digest.
@@ -861,7 +877,7 @@ Required error codes are:
     SILENT_CLASSIFICATION_CHANGE_REJECTED
     CORRECTION_WITHOUT_RATIONALE_REJECTED
     CORRECTION_WITHOUT_EVIDENCE_REJECTED
-    LEGACY_FAMILY_REINTERPRETATION_REJECTED
+    NEW_FAMILY_HISTORICAL_BLOCK_PRESENT_REJECTED
     WRONG_CLASSIFICATION_SCHEMA_REJECTED
     WRONG_CLOSURE_SCHEMA_REJECTED
     EVIDENCE_DIGEST_TAMPER_REJECTED
@@ -870,9 +886,11 @@ Required error codes are:
     DECK_LOCK_PROMOTION_REJECTED
     M3_PROMOTION_REJECTED
 
-The legacy reinterpretation test changes a historical definition's meaning without
-superseding it and must reject the mutation. Other gate-promotion tests prove that
-B2 cannot promote interaction, ranking, deck-lock, or M3 status.
+The executable matrix does not attempt to prove material semantic equivalence with
+a hidden second definition authority. That condition remains mandatory reviewed
+evidence in the report and external review. The executable replacement rejects a
+B2_NEW record that contains a historical block. Other gate-promotion tests prove
+that B2 cannot promote interaction, ranking, deck-lock, or M3 status.
 
 The negative-test matrix is:
 
@@ -908,7 +926,7 @@ The negative-test matrix is:
 | SILENT_CLASSIFICATION_CHANGE_REJECTED | Change an assignment while leaving changes[] unchanged. |
 | CORRECTION_WITHOUT_RATIONALE_REJECTED | Remove the rationale for an added, removed, or superseded ID. |
 | CORRECTION_WITHOUT_EVIDENCE_REJECTED | Remove the locator for a changed assignment. |
-| LEGACY_FAMILY_REINTERPRETATION_REJECTED | Change a historical family meaning while keeping it ACTIVE. |
+| NEW_FAMILY_HISTORICAL_BLOCK_PRESENT_REJECTED | Add historical_rev3 or historical_definition to a B2_NEW family. |
 | WRONG_CLASSIFICATION_SCHEMA_REJECTED | Replace the classification schema identifier with another version. |
 | WRONG_CLOSURE_SCHEMA_REJECTED | Replace the closure schema identifier with another version. |
 | EVIDENCE_DIGEST_TAMPER_REJECTED | Change a raw or normalized source digest. |
