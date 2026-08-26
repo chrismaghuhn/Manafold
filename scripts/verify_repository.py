@@ -258,9 +258,9 @@ def main() -> None:
 
     # Issue #62: the event-kind authority moved from lib.rs to
     # observed_event.rs (structural consolidation); same evidence, new path.
-    events_rust = (
-        ROOT / "crates/mtgml-observation/src/observed_event.rs"
-    ).read_text(encoding="utf-8")
+    events_rust = (ROOT / "crates/mtgml-observation/src/observed_event.rs").read_text(
+        encoding="utf-8"
+    )
     events_python = (ROOT / "python/src/mtgml/events.py").read_text(encoding="utf-8")
     events_schema = (ROOT / "schemas/observed-event-envelope.v1.schema.json").read_text(
         encoding="utf-8"
@@ -294,9 +294,7 @@ def main() -> None:
         parts = [(src_dir / "tests.rs").read_text(encoding="utf-8")]
         fragment_dir = src_dir / "tests"
         if fragment_dir.is_dir():
-            parts.extend(
-                p.read_text(encoding="utf-8") for p in sorted(fragment_dir.glob("*.rs"))
-            )
+            parts.extend(p.read_text(encoding="utf-8") for p in sorted(fragment_dir.glob("*.rs")))
         return "\n".join(parts)
 
     env_tests = _test_module_text(env_src)
