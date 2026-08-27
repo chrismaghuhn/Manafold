@@ -16,23 +16,23 @@ Source package SHA-256: `99b33945a3e0c7b2982734e65f770715029ce6acd500104bde48e84
 - ACTIVE_UNASSIGNED: 6
 - SUPERSEDED: 0
 - RETIRED: 0
-- Terminal assignment edges: 1894
-- Reviewed corrected authorities: 392; added edges: 1509; removed edges: 19
+- Terminal assignment edges: 1883
+- Reviewed corrected authorities: 391; added edges: 1498; removed edges: 19
 
 All 402 records were reviewed from the pinned card-side source. REV3 assignments are treated as historical proposals only; lexical scans are candidate generation and never terminal authority. Family-specific semantic predicates and reviewed correction decisions retain, add, or remove edges without changing historical family meanings. This is a Codex source-grounded review record, not a HUMAN_REVIEWED authorship claim.
 
 ## Semantic review accounting
 
 - Lexical candidate edges inspected for empty-REV3 OSIs (non-authoritative): 1048
-- Lexical candidates rejected by semantic review: 116
-- Semantic edges admitted without a lexical candidate: 198
+- Lexical candidates rejected by semantic review: 121
+- Semantic edges admitted without a lexical candidate: 197
 
 ## Committed semantic boundaries
 
 Every catalog family carries a family-specific B2_SEMANTIC_BOUNDARY_V1 definition with positive includes, relevant excludes, and the applicable §5.4 semantic dimensions. The catalog boundary is the terminal vocabulary authority; per-edge rationales explain how the pinned card-side evidence satisfies that boundary.
 
-- Boundary-linked terminal assignment rationales: 1894/1894
-- Boundary-linked delta rationales: 1913/1913
+- Boundary-linked terminal assignment rationales: 1883/1883
+- Boundary-linked delta rationales: 1902/1902
 
 Lexical scans and family-specific predicates are disposable candidate/review tooling only. They do not authorize a terminal edge and are not a second rules engine or a replacement for the committed family boundary.
 
@@ -41,8 +41,8 @@ Lexical scans and family-specific predicates are disposable candidate/review too
 Assignment policy: SEMANTIC_BOUNDARY_CLOSURE_V1 is additive. Every independently satisfied ACTIVE family boundary is assigned; a specialized family does not suppress a broader family, and a broader family does not suppress a specialized family. The target-destroy regression set requires cap.target, cap.destroy, and cap.target_destroy together when all three boundaries are satisfied.
 - Reviewed targeted-destruction overlap cards: 17
 - Additive saturation review scope: 210 ACTIVE family boundaries x 402 OSIs = 84,420 family/OSI pairs.
-- Explicit source-grounded saturation additions: 538
-- Confirmed semantic removals retained from the correction ledger: 8
+- Explicit source-grounded saturation additions: 528
+- Confirmed semantic removals retained from the correction ledger: 19
 
 ## Regression anchors
 
