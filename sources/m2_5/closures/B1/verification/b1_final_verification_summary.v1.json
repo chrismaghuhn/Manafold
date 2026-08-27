@@ -1,23 +1,45 @@
 {
   "schema": "manafold.m2.5.b1.final-verification-summary.v1",
-  "execution_commit": "NOT_SET_H_EXEC",
-  "source_tree_status": "PROVISIONAL_NOT_RUN",
-  "actual_commands": [],
+  "execution_commit": "d147a2cbae6340eea634a730e5de603df632ba06",
+  "execution_tree": "37a21d71a0ca215ad83a98a3d930543ba8f0d9eb",
+  "source_tree_status": "CLEAN_H_EXEC",
+  "actual_commands": [
+    "C:\\Python313\\python.exe scripts/check_m2_5_master_drift.py",
+    "C:\\Python313\\python.exe scripts/check_m2_5_master_drift.py --negative-self-test",
+    "C:\\Python313\\python.exe scripts/check_m2_5_master_drift.py --verify-archive",
+    "C:\\Python313\\python.exe scripts/check_m2_5_b1_authority_citations.py",
+    "C:\\Python313\\python.exe scripts/check_m2_5_b1_authority_citations.py --negative-self-test",
+    "C:\\Python313\\python.exe scripts/check_m2_5_b2_classifications.py",
+    "C:\\Python313\\python.exe scripts/check_m2_5_b2_classifications.py --negative-self-test",
+    "C:\\Python313\\python.exe scripts/check_m2_5_b1_final_authority_citations.py",
+    "C:\\Python313\\python.exe scripts/check_m2_5_b1_final_authority_citations.py --negative-self-test",
+    "C:\\Python313\\python.exe scripts/verify_repository.py",
+    "C:\\Python313\\python.exe scripts/run_checks.py integration",
+    "C:\\Python313\\python.exe scripts/run_checks.py certification",
+    "cargo fmt --all -- --check",
+    "cargo check --workspace --all-targets --all-features --locked",
+    "cargo clippy --workspace --all-targets --all-features --locked -- -D warnings",
+    "cargo test --workspace --all-features --locked"
+  ],
   "gate_results": {
-    "MASTER_DRIFT": "NOT_RUN",
-    "MASTER_DRIFT_NEGATIVE": "NOT_RUN",
-    "ARCHIVE_PREFLIGHT": "NOT_RUN",
-    "B1_INITIAL_CHECK": "NOT_RUN",
-    "B1_INITIAL_NEGATIVE": "NOT_RUN",
-    "B2_CHECK": "NOT_RUN",
-    "B2_NEGATIVE": "NOT_RUN",
-    "B1_FINAL_CHECK": "NOT_RUN",
-    "B1_FINAL_NEGATIVE": "NOT_RUN",
-    "REPOSITORY_VERIFY": "NOT_RUN",
-    "INTEGRATION": "NOT_RUN",
-    "RUST_FMT": "NOT_RUN",
-    "RUST_CHECK": "NOT_RUN",
-    "HOSTED_CI": "NOT_RUN"
+    "MASTER_DRIFT": "PASS",
+    "MASTER_DRIFT_NEGATIVE": "PASS",
+    "ARCHIVE_PREFLIGHT": "PASS",
+    "B1_INITIAL_CHECK": "PASS",
+    "B1_INITIAL_NEGATIVE": "PASS",
+    "B2_CHECK": "PASS",
+    "B2_NEGATIVE": "PASS",
+    "B1_FINAL_CHECK": "PASS",
+    "B1_FINAL_NEGATIVE": "PASS",
+    "REPOSITORY_VERIFY": "PASS",
+    "INTEGRATION": "PASS",
+    "RUST_FMT": "PASS",
+    "RUST_CHECK": "PASS",
+    "RUST_CLIPPY": "PASS",
+    "RUST_TEST": "PASS",
+    "CERTIFICATION": "PASS",
+    "HOSTED_CI": "NOT_RUN",
+    "SEMANTIC_REVIEW_EXPORT": "PASS"
   },
   "downstream_gate_status": {
     "CLASSIFICATION_REFERENCE_CLOSURE": "PASS",
@@ -32,7 +54,18 @@
     "M3_STARTED": false
   },
   "evidence_protocol": {
-    "phase": "H_EXEC_PROVISIONAL",
-    "H_evidence": "NOT_CREATED"
+    "phase": "H_EVIDENCE",
+    "H_exec": "d147a2cbae6340eea634a730e5de603df632ba06",
+    "parent_is_H_exec": true,
+    "modified_path": "sources/m2_5/closures/B1/verification/b1_final_verification_summary.v1.json",
+    "H_evidence": "direct_child_summary_only",
+    "review_export": {
+      "path": "C:\\Users\\chris\\AppData\\Local\\Temp\\manafold-m25-b1-final-review-export.v1.json",
+      "sha256": "764b4683193ea8c85efbf472830de9ebc8827223b87d3eaf3efa9cb790f5e3e1",
+      "family_count": 210,
+      "citation_record_count": 85,
+      "new_citation_count": 7,
+      "unresolved_citation_exports": 0
+    }
   }
 }
