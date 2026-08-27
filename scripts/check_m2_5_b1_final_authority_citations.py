@@ -593,7 +593,11 @@ EXPECTED_SEMANTIC_ANCHORS = {
     "cap.token_or_counters": {"CR-111-tokens", "CR-122-counters", "CR-700-2-modes"},
     "cap.tribal_permission": {"CR-205-type-line", "CR-601-casting-spells"},
     "cap.modified_predicate": {"CR-700-9-modified"},
-    "cap.continuous_ability": {"CR-604-static-abilities", "CR-611-continuous-effects", "CR-613-continuous-effects"},
+    "cap.continuous_ability": {
+        "CR-604-static-abilities",
+        "CR-611-continuous-effects",
+        "CR-613-continuous-effects",
+    },
     "cap.alternate_cast_zone": {"CR-601-casting-spells"},
     "cap.artifact_animation": {"CR-301-artifacts", "CR-613-continuous-effects"},
     "cap.flash": {"CR-702-8-flash"},
@@ -607,30 +611,54 @@ EXPECTED_SEMANTIC_ANCHORS = {
 
 def validate_semantic_review(model: dict, dep_by_family: dict) -> None:
     review = model.get("semantic_dependency_review")
-    if not isinstance(review, dict) or review.get("schema") != "manafold.m2.5.b1.semantic-dependency-review.v1":
+    if (
+        not isinstance(review, dict)
+        or review.get("schema") != "manafold.m2.5.b1.semantic-dependency-review.v1"
+    ):
         fail("SEMANTIC_REVIEW_MISSING", "B1.Final lacks the versioned semantic dependency review")
-    if review.get("review_status") != "ALL_REQUIRED_FAMILIES_REVIEWED" or review.get("lexical_scans_are_authority") is not False:
+    if (
+        review.get("review_status") != "ALL_REQUIRED_FAMILIES_REVIEWED"
+        or review.get("lexical_scans_are_authority") is not False
+    ):
         fail("SEMANTIC_REVIEW_STATUS", "semantic review is not closed without lexical authority")
     records = review.get("records")
     if not isinstance(records, list) or len(records) != len(dep_by_family):
-        fail("SEMANTIC_REVIEW_FAMILY_COUNT", "semantic review does not contain exactly one record per required family")
+        fail(
+            "SEMANTIC_REVIEW_FAMILY_COUNT",
+            "semantic review does not contain exactly one record per required family",
+        )
     record_by_family = {}
     for record in records:
         if not isinstance(record, dict) or record.get("family_id") in record_by_family:
-            fail("SEMANTIC_REVIEW_RECORD_INVALID", "semantic review records are malformed or duplicated")
+            fail(
+                "SEMANTIC_REVIEW_RECORD_INVALID",
+                "semantic review records are malformed or duplicated",
+            )
         fid = record.get("family_id")
         if fid not in dep_by_family:
-            fail("SEMANTIC_REVIEW_UNKNOWN_FAMILY", f"semantic review contains non-required family {fid}")
+            fail(
+                "SEMANTIC_REVIEW_UNKNOWN_FAMILY",
+                f"semantic review contains non-required family {fid}",
+            )
         record_by_family[fid] = record
         dep = dep_by_family[fid]
         if record.get("review_status") != "REVIEWED":
             fail("SEMANTIC_REVIEW_UNREVIEWED", f"family {fid} is not marked REVIEWED")
         if record.get("boundary_sha256") != dep["b2_boundary_binding"]["boundary_sha256"]:
-            fail("SEMANTIC_REVIEW_BOUNDARY_MISMATCH", f"semantic review boundary binding differs for {fid}")
+            fail(
+                "SEMANTIC_REVIEW_BOUNDARY_MISMATCH",
+                f"semantic review boundary binding differs for {fid}",
+            )
         if set(record.get("reviewed_boundary_fields", [])) != EXPECTED_REVIEW_FIELDS:
-            fail("SEMANTIC_REVIEW_FIELDS_INCOMPLETE", f"semantic review fields are incomplete for {fid}")
+            fail(
+                "SEMANTIC_REVIEW_FIELDS_INCOMPLETE",
+                f"semantic review fields are incomplete for {fid}",
+            )
         if record.get("required_citation_ids") != dep.get("required_citation_ids"):
-            fail("SEMANTIC_REVIEW_DEPENDENCY_MISMATCH", f"semantic review citation set differs for {fid}")
+            fail(
+                "SEMANTIC_REVIEW_DEPENDENCY_MISMATCH",
+                f"semantic review citation set differs for {fid}",
+            )
         removed = set(record.get("removed_or_replaced_v2_citation_ids", []))
         if removed & set(dep.get("required_citation_ids", [])):
             fail("INHERITED_UNRELATED_EDGE_RETAINED", f"family {fid} retains a removed V2 citation")
@@ -638,23 +666,39 @@ def validate_semantic_review(model: dict, dep_by_family: dict) -> None:
         domain_ids = {d.get("domain_id") for d in domains} if isinstance(domains, list) else set()
         required = set(dep.get("required_citation_ids", []))
         if domain_ids != required:
-            fail("SEMANTIC_DOMAIN_COVERAGE", f"material semantic domains do not match required edges for {fid}")
+            fail(
+                "SEMANTIC_DOMAIN_COVERAGE",
+                f"material semantic domains do not match required edges for {fid}",
+            )
         edge_domains = set()
         for edge in dep.get("authority_dependencies", []):
             covered = edge.get("covered_domain_ids")
             if not isinstance(covered, list) or not covered or not set(covered) <= required:
-                fail("SEMANTIC_EDGE_COVERAGE", f"citation edge lacks valid boundary-domain coverage for {fid}")
+                fail(
+                    "SEMANTIC_EDGE_COVERAGE",
+                    f"citation edge lacks valid boundary-domain coverage for {fid}",
+                )
             edge_domains.update(covered)
         if edge_domains != required:
             fail("SEMANTIC_DOMAIN_UNCOVERED", f"a material boundary domain is uncovered for {fid}")
     if set(record_by_family) != set(dep_by_family):
-        fail("SEMANTIC_REVIEW_FAMILY_COUNT", "semantic review family set differs from dependency graph")
+        fail(
+            "SEMANTIC_REVIEW_FAMILY_COUNT",
+            "semantic review family set differs from dependency graph",
+        )
     anchors = review.get("regression_anchors")
-    anchor_map = {x.get("family_id"): set(x.get("expected_required_citation_ids", [])) for x in anchors} if isinstance(anchors, list) else {}
+    anchor_map = (
+        {x.get("family_id"): set(x.get("expected_required_citation_ids", [])) for x in anchors}
+        if isinstance(anchors, list)
+        else {}
+    )
     if set(anchor_map) != set(EXPECTED_SEMANTIC_ANCHORS):
         fail("SEMANTIC_ANCHOR_SET", "semantic regression anchor set is incomplete")
     for fid, expected in EXPECTED_SEMANTIC_ANCHORS.items():
-        if anchor_map[fid] != expected or set(dep_by_family[fid]["required_citation_ids"]) != expected:
+        if (
+            anchor_map[fid] != expected
+            or set(dep_by_family[fid]["required_citation_ids"]) != expected
+        ):
             fail("SEMANTIC_ANCHOR_REGRESSION", f"fixed semantic anchor failed for {fid}")
 
 
