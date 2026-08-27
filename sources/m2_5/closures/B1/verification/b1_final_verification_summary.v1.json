@@ -1,7 +1,7 @@
 {
   "schema": "manafold.m2.5.b1.final-verification-summary.v1",
-  "execution_commit": "5b5876482ea9840c3591edde21bbd68c45b75c74",
-  "execution_tree": "601bf8d79dced16732994a6e93aab485ea9f2fa2",
+  "execution_commit": "2ec490b2c08268158d3891a65b4e4e980d27ef02",
+  "execution_tree": "21a68c1f15f76d73795b94667c1ab8d755406067",
   "source_tree_status": "CLEAN_H_EXEC",
   "actual_commands": [
     "C:\\Python313\\python.exe scripts/check_m2_5_master_drift.py",
@@ -55,16 +55,16 @@
   },
   "evidence_protocol": {
     "phase": "H_EVIDENCE",
-    "H_exec": "5b5876482ea9840c3591edde21bbd68c45b75c74",
+    "H_exec": "2ec490b2c08268158d3891a65b4e4e980d27ef02",
     "parent_is_H_exec": true,
     "modified_path": "sources/m2_5/closures/B1/verification/b1_final_verification_summary.v1.json",
     "H_evidence": "direct_child_summary_only",
     "review_export": {
       "path": "C:\\Users\\chris\\AppData\\Local\\Temp\\manafold-m25-b1-final-semantic-delta.v2.json",
-      "sha256": "1e47e060f38b13cb691f55632f8e734b91b706489d3e5893352eaf9517af0c28",
+      "sha256": "7e5dfa309f61e8b971ad520d29da815f99a09287480fbef21031bbb9dbbeb7a9",
       "family_count": 210,
-      "citation_record_count": 8,
-      "new_citation_count": 8,
+      "citation_record_count": 10,
+      "new_citation_count": 10,
       "unresolved_citation_exports": 0
     }
   }
