@@ -43,7 +43,8 @@ The implementation authorized by this specification will:
 5. bind every required class and instance to exact B2 semantic boundaries and
    the B1.Final official-citation graph;
 6. validate the resulting closure with a dedicated fail-closed checker;
-7. provide a 32-case negative-test matrix with stable failure reasons; and
+7. provide the mandatory 32-case negative-test baseline plus the supplemental
+   C-specific mutations, all with stable failure reasons; and
 8. record execution evidence through the H_exec to H_evidence protocol.
 
 ### 2.2 Out of scope
@@ -260,7 +261,7 @@ report / verification evidence
 
 `interaction_review_additions.v1.json` is an upstream, source-grounded
 authority for explicitly reviewed candidate proposals. It is allowed to be
-empty for a V1 snapshot, but a `TARGETED_HIGHER_ORDER_REVIEW` candidate is
+empty for a V1 snapshot, but a `targeted_higher_order_review` candidate is
 invalid unless its review record exists in this artifact. The candidate
 universe owns the resulting source-instance ledger; it does not own or hide
 the review records themselves.
@@ -274,6 +275,7 @@ The digest graph is deliberately acyclic:
 
 ```text
 model
+review additions
 candidate universe
 semantic classes
 classifications
@@ -308,6 +310,22 @@ semantic identity may hash JSON, Serde output, a language-native object, or an
 implementation-defined serialization.
 
 Unless a field is explicitly nullable below, it is required and non-null.
+
+The exact C JSON schema registry is closed and fixed before implementation:
+
+```text
+declared_interaction_model.v1.json   = manafold.m2.5.c.declared-interaction-model.v1
+interaction_review_additions.v1.json = manafold.m2.5.c.interaction-review-additions.v1
+interaction_candidate_universe.v1.json = manafold.m2.5.c.interaction-candidate-universe.v1
+interaction_semantic_classes.v1.json = manafold.m2.5.c.interaction-semantic-classes.v1
+interaction_classifications.v1.json  = manafold.m2.5.c.interaction-classifications.v1
+interaction_closure.v1.json          = manafold.m2.5.c.interaction-closure.v1
+verification/c_negative_test_matrix.v1.json = manafold.m2.5.c.negative-test-matrix.v1
+verification/c_verification_summary.v1.json = manafold.m2.5.c.verification-summary.v1
+```
+
+The checker requires the exact value for each path, rejects a missing or
+additional registry entry, and never generates a schema identifier at runtime.
 
 ### 7.0 Persisted identity and raw-byte contracts
 
@@ -400,10 +418,10 @@ All enum vocabularies and the permitted field-to-vocabulary grammar are
 declared in `declared_interaction_model.v1.json` below. A semantic value not
 present in that closed V1 vocabulary blocks the snapshot and requires a
 versioned spec amendment; it may not be represented as a new free-text
-synonym. The literal `NOT_APPLICABLE` is an exact unit variant, encoded as
-`["NOT_APPLICABLE", null]`, when a declared dimension is irrelevant. The
+synonym. The literal `not_applicable` is an exact unit variant, encoded as
+`["not_applicable", null]`, when a declared dimension is irrelevant. The
 source JSON must still carry the same field explicitly; omission is not
-equivalent to `NOT_APPLICABLE`.
+equivalent to `not_applicable`.
 
 #### 7.0.1 `CandidateIdentityV1`
 
@@ -434,7 +452,7 @@ The positions are numbered zero through five in the order shown. The source
 origin, scope, and relation slots are each `EnumV1 = [exact_variant_id, null]`
 for their declared unit variant. They use the exact ASCII identifiers declared
 by the C JSON contract, with no case folding. The source-origin values are the
-exact uppercase values in §7.3. `participant_refs_array` preserves semantic
+exact lowercase values in §7.3. `participant_refs_array` preserves semantic
 participant order. `supporting_requirement_ids_sorted_array` is sorted by
 canonical CBOR bytes and rejects duplicates. `source_binding_union` is the
 fixed discriminated union specified in §7.3. The candidate's terminal
@@ -442,19 +460,17 @@ disposition, review rationale, class ID, and reconciliation status are not in
 this identity; changing a review decision must not silently change source
 candidate identity.
 
-For an inherited REV3 candidate, the source binding includes the original
-candidate ID and every exact source-row value. For a new candidate, the source
-binding includes the exact B2 or targeted-review evidence that gives the
-candidate its identity. The original REV3 candidate ID is preserved as data;
-it is not rewritten to the digest-derived ID.
+For an inherited REV3 candidate, the normalized source-origin value is `rev3`,
+while the source binding includes the original candidate ID and every exact
+source-row value. For a new candidate, the source binding includes the exact
+targeted-review evidence that gives the candidate its identity. The original
+REV3 candidate ID and all historical REV3 source values are preserved as data;
+they are not rewritten or case-normalized.
 
 New candidate IDs are deterministic and namespaced:
 
 ```text
-B2_DERIVED:
-  c.v1/b2-derived/<CandidateIdentityV1.digest_hex>
-
-TARGETED_HIGHER_ORDER_REVIEW:
+targeted_higher_order_review:
   c.v1/targeted-higher-order-review/<CandidateIdentityV1.digest_hex>
 ```
 
@@ -466,6 +482,18 @@ with a candidate-identity collision. A duplicate ID with the same payload is
 also invalid unless it is represented as an explicit lineage merge of one
 candidate record, not as two current candidates. A new candidate ID must not
 collide with any preserved REV3 ID or with a different source-origin namespace.
+
+C V1 deliberately does not define a mechanical B2-terminal-data-to-interaction
+derivation. B2 terminal classifications and assignments are card-side
+capability evidence, not an interaction census, and there is no normative
+one-to-one mapping from a B2 record to a new interaction candidate. Therefore
+`b2_derived` is forbidden as a C V1 `source_origin` and `source_binding` kind;
+`new_b2_derived` MUST equal zero. B2 data may support an inherited REV3
+candidate or an explicitly reviewed targeted higher-order proposal, but it may
+not create a candidate by family co-occurrence, capability name, lexical rule,
+or any other inferred generator. A future need for B2-derived candidates
+requires a versioned C spec amendment defining the complete deterministic
+derivation, required set, and collision policy before implementation.
 
 #### 7.0.2 `InteractionClassIdentityV1`
 
@@ -544,28 +572,30 @@ temporal_value_vocabulary
 Required values include:
 
 ```text
+schema = "manafold.m2.5.c.declared-interaction-model.v1"
 model_id = "declared-interaction-model.v1"
-coverage_scope = "PAIRWISE_PLUS_REVIEW_OUTLIERS"
+coverage_scope = "pairwise_plus_review_outliers"
 terminal_dispositions includes:
-  REQUIRED_INTERACTION
-  NOT_AN_INTERACTION_WITH_PROOF
-  OUT_OF_DECLARED_SCOPE_WITH_REASON
+  required_interaction
+  not_an_interaction_with_proof
+  out_of_declared_scope_with_reason
 ```
 
-`OUT_OF_DECLARED_SCOPE_WITH_REASON` is permitted only where the candidate is
+`out_of_declared_scope_with_reason` is permitted only where the candidate is
 provably outside the declared model boundary and the record states the exact
 boundary and evidence. It is not a substitute for unresolved review. Every
 current candidate still requires a terminal disposition.
 
-The following are forbidden as terminal dispositions or status values:
+The following lowercase values are forbidden as terminal dispositions or
+status values:
 
 ```text
-AMBIGUOUS_REQUIRES_REVIEW
-REQUIRES_REVIEW
-UNKNOWN
-PROVISIONAL
-PENDING
-UNRESOLVED
+ambiguous_requires_review
+requires_review
+unknown
+provisional
+pending
+unresolved
 ```
 
 The model MUST explicitly preserve directionality, participant role, host
@@ -575,87 +605,99 @@ trigger/LKI context, information dependency, decision actor, and higher-order
 arity.
 
 The following closed V1 vocabularies are normative. The JSON model stores the
-exact uppercase ASCII identifiers; every identifier is a unit enum and is
+exact lowercase ASCII identifiers; every identifier is a unit enum and is
 encoded as `[identifier, null]` in a semantic preimage. The checker rejects
 unknown identifiers and rejects a value from the wrong vocabulary for a field.
+Uppercase labels used elsewhere for inherited REV3/B2 source values or for the
+accepted M2.5 gate vocabulary are external/raw contracts; they are not
+normalized C semantic enum values.
 
 ```text
 participant_kind_vocabulary =
-  ABILITY, CARD, COPIABLE_VALUE, DECK, EFFECT, EVENT, OBJECT, PERMANENT,
-  PLAYER, SOURCE_INSTANCE, SPELL, TOKEN, ZONE
+  ability, card, copiable_value, deck, effect, event, object, permanent,
+  player, source_instance, spell, token, zone
 
 participant_role_vocabulary =
-  AFFECTED, CONTROLLER, COPIED_SOURCE, COPY_RESULT, DECISION_ACTOR,
-  DESTINATION_ZONE, ORIGIN_ZONE, ORDERED_PARTICIPANT, OWNER,
-  REPLACEMENT_ACTOR, SOURCE, TARGET, TRIGGER_SOURCE
+  affected, controller, copied_source, copy_result, decision_actor,
+  destination_zone, origin_zone, ordered_participant, owner,
+  replacement_actor, source, target, trigger_source
 
 context_value_vocabulary =
   zone =
-    BATTLEFIELD, COMMAND_ZONE, EXILE, GRAVEYARD, HAND, LIBRARY, OUTSIDE_GAME,
-    STACK, ZONE_AGNOSTIC, NOT_APPLICABLE
+    battlefield, command_zone, exile, graveyard, hand, library, outside_game,
+    stack, zone_agnostic, not_applicable
   visibility =
-    CONTROLLER_ONLY, HIDDEN_TO_ACTOR, IDENTITY_HIDDEN, NOT_APPLICABLE, OWNER_ONLY,
-    PRIVATE, PUBLIC
+    controller_only, hidden_to_actor, identity_hidden, not_applicable, owner_only,
+    private, public
   timing =
-    ACTIVATION_TIME, CAST_TIME, COMBAT_TIME, CONTINUOUS_EFFECT, NOT_APPLICABLE,
-    RESOLUTION_TIME, STATE_BASED_CHECK, TRIGGER_TIME, TURN_BOUNDARY,
-    ZONE_CHANGE_TIME
+    activation_time, cast_time, combat_time, continuous_effect, not_applicable,
+    resolution_time, state_based_check, trigger_time, turn_boundary,
+    zone_change_time
   temporal_order =
-    AFTER, BEFORE, DURING, NOT_APPLICABLE, SEQUENTIAL, SIMULTANEOUS, UNTIL,
-    WHILE
+    after, before, during, not_applicable, sequential, simultaneous, until,
+    while
   source_affected_relation =
-    BOTH_AFFECTED, NO_EFFECT_RELATION, NOT_APPLICABLE, SOURCE_AFFECTED,
-    SOURCE_AFFECTS_OTHER
+    both_affected, no_effect_relation, not_applicable, source_affected,
+    source_affects_other
   control_ownership_relation =
-    CONTROL_CHANGES, CROSS_CONTROLLER, CROSS_OWNER, NOT_APPLICABLE,
-    OWNERSHIP_CHANGES, SAME_CONTROLLER, SAME_OWNER
+    control_changes, cross_controller, cross_owner, not_applicable,
+    ownership_changes, same_controller, same_owner
   replacement_layer_relation =
-    COPY_LAYER, CONTROL_LAYER, LAYER_DEPENDENCY, NO_REPLACEMENT_OR_LAYER,
-    NOT_APPLICABLE, PT_LAYER, REPLACEMENT_EFFECT, TYPE_LAYER,
-    ZONE_CHANGE_REPLACEMENT
+    copy_layer, control_layer, layer_dependency, no_replacement_or_layer,
+    not_applicable, pt_layer, replacement_effect, type_layer,
+    zone_change_replacement
   trigger_lki_relation =
-    INTERVENING_IF, LAST_KNOWN_INFORMATION, NO_TRIGGER_LKI, NOT_APPLICABLE,
-    TRIGGER_CONDITION, TRIGGERED_EVENT
+    intervening_if, last_known_information, no_trigger_lki, not_applicable,
+    trigger_condition, triggered_event
   information_relation =
-    HIDDEN_IDENTITY, KNOWN_TO_CONTROLLER, KNOWN_TO_OWNER, NO_INFORMATION_DEPENDENCY,
-    NOT_APPLICABLE, PRIVATE_LOOK, PUBLIC_IDENTITY, RANDOM_UNKNOWN
+    hidden_identity, known_to_controller, known_to_owner, no_information_dependency,
+    not_applicable, private_look, public_identity, random_unknown
   decision_actor_relation =
-    ACTIVE_PLAYER, CONTROLLER, NO_DECISION, NOT_APPLICABLE, OPPONENT, OWNER,
-    RULES_FORCED, TARGET_PLAYER
+    active_player, controller, no_decision, not_applicable, opponent, owner,
+    rules_forced, target_player
 
 temporal_value_vocabulary =
   dependency_order =
-    DEPENDENCY_ORDERED, NO_TEMPORAL_DEPENDENCY, NOT_APPLICABLE
+    dependency_ordered, no_temporal_dependency, not_applicable
   duration =
-    DURATION_LIMITED, INDEFINITE, NOT_APPLICABLE, UNTIL_EVENT
+    duration_limited, indefinite, not_applicable, until_event
   replacement_order =
-    AFTER_EFFECT, BEFORE_EFFECT, NO_TEMPORAL_DEPENDENCY, NOT_APPLICABLE,
-    SAME_EVENT
+    after_effect, before_effect, no_temporal_dependency, not_applicable,
+    same_event
   trigger_order =
-    DEFERRED, IMMEDIATE, NO_TEMPORAL_DEPENDENCY, NOT_APPLICABLE
+    deferred, immediate, no_temporal_dependency, not_applicable
 
 additional enum vocabularies used by the fixed records:
-  arity = UNARY, BINARY, HIGHER_ORDER
-  directionality = DIRECTED, NONE, SYMMETRIC
-  host_relationship = CROSS_HOST, NOT_APPLICABLE, SAME_HOST
-  authority_kind = B1_FINAL, B2, C_REVIEW, REV3
-  assignment_role = PRIMARY, SUPPORTING
-  lifecycle = ACTIVE, ACTIVE_UNASSIGNED
-  source_origin = B2_DERIVED, REV3, TARGETED_HIGHER_ORDER_REVIEW
-  scope = CROSS_DECK, INTRA_DECK, UNARY_OR_HIGHER_ORDER
-  relation = DECLARED_CARD_TRIGGER, DIRECTIONAL_BINARY, UNORDERED_BINARY
-  review_kind = TARGETED_HIGHER_ORDER_REVIEW
-  source_kind = B2_ASSIGNMENT, B2_CLASSIFICATION, REV3_ROW
+  coverage_scope = pairwise_plus_review_outliers
+  arity = unary, binary, higher_order
+  directionality = directed, none, symmetric
+  host_relationship = cross_host, not_applicable, same_host
+  authority_kind = b1_final, b2, c_review, rev3
+  assignment_role = primary, supporting
+  lifecycle = active, active_unassigned
+  source_origin = rev3, targeted_higher_order_review
+  scope = cross_deck, intra_deck, unary_or_higher_order
+  relation = declared_card_trigger, directional_binary, reviewed_higher_order,
+             unordered_binary
+  review_kind = targeted_higher_order_review
+  source_kind = b2_assignment, b2_classification, rev3_row
+  terminal_disposition = required_interaction, not_an_interaction_with_proof,
+                         out_of_declared_scope_with_reason
+  reconciliation_status = unchanged, stale_rev3_candidate,
+                          removed_not_interaction, merged_semantic_duplicate,
+                          new_targeted_higher_order_candidate
 ```
 
 The field grammar is closed as well: `participant_kind` uses
 `participant_kind_vocabulary`; `role` uses `participant_role_vocabulary`;
 the ten `context_dimensions` slots use the corresponding `context_value`
 vocabulary; and the four `temporal_semantics` slots use the corresponding
-`temporal_value` vocabulary. `semantic_ref` is not a semantic label: it is an
-exact resolvable source identifier from the pinned ledgers. If a needed value
-is absent, the snapshot is `BLOCKED` until this V1 model is amended; no free
-text or synonym is admitted.
+`temporal_value` vocabulary. `coverage_scope`, terminal dispositions,
+reconciliation statuses, and source binding kinds use their exact closed
+entries above. `semantic_ref` is not a semantic label: it is an exact
+resolvable source identifier from the pinned ledgers. If a needed value is
+absent, the snapshot is `BLOCKED` until this V1 model is amended; no free text
+or synonym is admitted.
 
 ### 7.2 `interaction_review_additions.v1.json`
 
@@ -663,6 +705,10 @@ This file is the upstream authority for C-reviewed candidate proposals that
 do not have a REV3 source row. It is created before candidate generation and
 is never generated from the candidate universe, classifications, closure,
 report, or verification summary. It contains exactly:
+
+```text
+schema = "manafold.m2.5.c.interaction-review-additions.v1"
+```
 
 ```text
 schema
@@ -682,7 +728,7 @@ review_evidence_refs
 review_rationale
 ```
 
-`review_kind` is exactly `TARGETED_HIGHER_ORDER_REVIEW`. The record ID is a
+`review_kind` is exactly `targeted_higher_order_review`. The record ID is a
 unique stable authority key within this artifact; it is preserved verbatim in
 the targeted source binding and is not a digest or a substitute for source
 evidence. `participant_source_refs` is an ordered, finite list of exact
@@ -703,7 +749,7 @@ declared_model_raw_sha256
 source_evidence_refs_sorted_array
 ```
 
-The source-evidence array contains the exact external REV3/B2 source
+The source-evidence array contains the exact external REV3/B2/B1.Final source
 identities used to review the additions, sorted by the canonical CBOR bytes of
 `EvidenceRefV1`. It must not contain any candidate, class, classification,
 closure, report, or verification-summary digest. The artifact's raw SHA-256 is
@@ -720,7 +766,7 @@ ID. Each `participant_source_refs` entry is the JSON projection of
 `ParticipantSourceRefV1`; the source kind and locator must resolve to one of
 the pinned REV3 rows or accepted B2 records.
 
-Every `TARGETED_HIGHER_ORDER_REVIEW` candidate must reference one and only one
+Every `targeted_higher_order_review` candidate must reference one and only one
 record in this artifact. Unknown, duplicate, orphan, or path-substituted review
 records are rejected. A review record cannot create a rules authority or
 replace a missing B1.Final citation; it can only propose a source-grounded C
@@ -729,6 +775,10 @@ candidate within the declared model.
 ### 7.3 `interaction_candidate_universe.v1.json`
 
 This file is the mechanically complete candidate ledger. It contains:
+
+```text
+schema = "manafold.m2.5.c.interaction-candidate-universe.v1"
+```
 
 ```text
 schema
@@ -772,22 +822,21 @@ for the original REV3 ID.
 `source_origin` is one of:
 
 ```text
-REV3
-B2_DERIVED
-TARGETED_HIGHER_ORDER_REVIEW
+rev3
+targeted_higher_order_review
 ```
 
 Every inherited REV3 candidate MUST appear exactly once with its original
 `candidate_id`. A newly derived candidate MUST have a deterministic new ID,
-an explicit source origin, and exact B2/source evidence. A candidate MUST NOT
-disappear because it is hard to review.
+the `targeted_higher_order_review` source origin, and exact review-additions
+evidence. A candidate MUST NOT disappear because it is hard to review.
 
 `source_binding` is a closed discriminated union. The JSON form has a required
 `kind` field and only the fields for that kind; the canonical identity form is
 the fixed-position enum `[kind, payload]`. It has these variants:
 
 ```text
-REV3 {
+rev3 {
   archive_member,
   archive_member_sha256,
   row_ordinal,
@@ -795,17 +844,7 @@ REV3 {
   source_values
 }
 
-B2_DERIVED {
-  classification_path,
-  classification_raw_sha256,
-  classification_identity,
-  oracle_semantic_identity,
-  assignment_refs,
-  catalog_path,
-  catalog_raw_sha256
-}
-
-TARGETED_HIGHER_ORDER_REVIEW {
+targeted_higher_order_review {
   additions_path,
   additions_raw_sha256,
   review_record_id,
@@ -820,40 +859,33 @@ order:
 
 ```text
 [
-  "REV3",
+  "rev3",
   [archive_member, archive_member_sha256, row_ordinal,
    source_columns_array, source_values_array]
 ]
 
 [
-  "B2_DERIVED",
-  [classification_path, classification_raw_sha256,
-   classification_identity_digest_reference_v1, oracle_semantic_identity,
-   assignment_refs_sorted_array, catalog_path, catalog_raw_sha256]
-]
-
-[
-  "TARGETED_HIGHER_ORDER_REVIEW",
+  "targeted_higher_order_review",
   [additions_path, additions_raw_sha256, review_record_id, review_kind_enum,
    participant_source_refs_ordered_array, review_evidence_refs_sorted_array]
 ]
 ```
 
-`classification_identity_digest_reference_v1` is the existing B2
-`DigestReferenceJsonV1` projection. The checker validates its exact persisted
-fields (`envelope_id`, `algorithm_id`, `semantic_domain`, `payload_codec_id`,
-`input_schema_id`, and `digest_hex`) against the accepted B2 identity and then
-converts those exact fields to the normative six-position `DigestReferenceV1`
-CBOR array from `docs/STATE_HASHING.md`; the sixth slot is the 32-byte digest
-obtained by decoding the validated lowercase `digest_hex`, not the hex text.
-It does not hash the JSON projection or invent/rederive a different identity.
-Each `assignment_refs_sorted_array` entry is the fixed array
+Where C records an accepted B2 classification identity, it uses the existing
+B2 `DigestReferenceJsonV1` projection. The checker validates its exact
+persisted fields (`envelope_id`, `algorithm_id`, `semantic_domain`,
+`payload_codec_id`, `input_schema_id`, and `digest_hex`) against the accepted
+B2 identity and then converts those exact fields to the normative six-position
+`DigestReferenceV1` CBOR array from `docs/STATE_HASHING.md`; the sixth slot is
+the 32-byte digest obtained by decoding the validated lowercase `digest_hex`,
+not the hex text. It does not hash the JSON projection or invent/rederive a
+different identity. Each B2 assignment reference is the fixed array
 `[family_id, assignment_ordinal, precise_semantic_definition]`, sorted by its
 canonical CBOR bytes. Each participant source reference is an exact pinned
-locator, and evidence references use `EvidenceRefV1`. These arrays are the
-only permitted `source_binding_union` preimage; JSON field order has no effect.
+locator, and evidence references use `EvidenceRefV1`. JSON field order has no
+effect on any of these conversions.
 
-For `REV3`, `archive_member` is exactly
+For the normalized `rev3` binding, `archive_member` is exactly
 `derived/Pair_Interaction_Census_REV3.csv`, `archive_member_sha256` is the
 raw SHA-256 of that pinned member, `row_ordinal` is the zero-based data-row
 ordinal after the single header row, `source_columns` is exactly:
@@ -868,32 +900,29 @@ ordinal after the single header row, `source_columns` is exactly:
 
 `source_values` preserves every cell as exact source text in that order. The
 supporting-requirement cell is preserved before parsing it into
-`supporting_requirement_ids`. There is no nullable REV3 row field on a
-non-REV3 candidate.
+`supporting_requirement_ids`. There is no nullable `rev3` row field on a
+non-`rev3` candidate.
 
-For `B2_DERIVED`, every classification and catalog path, raw file digest,
-accepted B2 classification identity, OSI, assignment reference, family, and
-boundary binding is required. `classification_path` is the exact repository
-path `sources/m2_5/closures/B2/card_semantic_classifications.v1.json` and
-`catalog_path` is the exact repository path
-`sources/m2_5/closures/B2/requirement_family_catalog.v1.json`.
-`assignment_ordinal` is the zero-based position in the exact B2
-`requirement_assignments` array for the referenced classification record.
-`classification_identity` uses the existing B2 digest-reference contract; C
-does not rederive or rename it.
+C V1 has no `b2_derived` source binding. B2 classification, assignment, and
+boundary records remain accepted evidence references for inherited or
+targeted-review candidates, but no B2 terminal record mechanically creates a
+new candidate. Any attempted `b2_derived` record is rejected with
+`B2_DERIVED_FORBIDDEN_V1`; a nonzero `new_b2_derived` count is invalid.
 
-For `TARGETED_HIGHER_ORDER_REVIEW`, `additions_path` is exactly
+For `targeted_higher_order_review`, `additions_path` is exactly
 `sources/m2_5/closures/C/interaction_review_additions.v1.json`,
 `additions_raw_sha256` is its exact raw file digest, and `review_record_id`
 must resolve to exactly one record in that artifact. `review_kind` is the
-unit enum `TARGETED_HIGHER_ORDER_REVIEW`; the ordered participant references
+unit enum `targeted_higher_order_review`; the ordered participant references
 and sorted evidence references must equal the resolved review record. This
 variant is the complete source binding for the candidate and does not pretend
 to have a REV3 row.
 
-The source union is mutually exclusive: a record with `kind = REV3` cannot
-carry B2-derived or targeted-review fields, and a new variant cannot carry
-REV3 fields. Unknown kinds and unknown variant fields are rejected.
+The source union is mutually exclusive: a record with `kind = rev3` cannot
+carry targeted-review fields, and a targeted variant cannot carry REV3 fields.
+Unknown kinds and unknown variant fields are rejected. Historical uppercase
+REV3 values are permitted only inside the exact `source_values` array and are
+never used as normalized C enum identifiers.
 
 The candidate universe also owns the authoritative source-instance ledger:
 
@@ -910,7 +939,7 @@ Every source instance belongs to exactly one candidate. The ledger is
 source-grounded: its `source_binding` is one of the candidate union variants,
 its ordered `participant_bindings` resolve to the candidate's participant
 references, and its `source_context` contains every context dimension required
-by the declared model, using `NOT_APPLICABLE` explicitly where appropriate.
+by the declared model, using `not_applicable` explicitly where appropriate.
 There is no source-instance authority outside this ledger.
 
 The canonical forms used for the ledger's deterministic ordering are
@@ -931,40 +960,52 @@ si.v1/<base64url-no-padding(UTF8(candidate_id))>/<instance_index-decimal>
 The Base64 encoding is RFC 4648 URL-safe encoding without `=` padding and the
 index is an unpadded base-ten integer. The full candidate ID and index are
 included; no truncation or normalization is allowed. The verifier recomputes
-these keys, rejects duplicates, rejects an instance whose candidate is absent,
-and rejects any classification reference not present in this ledger.
+these keys. Before assigning an index, it rejects duplicate canonical source
+instance tuples within a candidate; identical tuples may not become distinct
+instances merely because they receive indexes `0` and `1`. It also rejects
+duplicate IDs, an instance whose candidate is absent, and any classification
+reference not present in this ledger.
 
 `reconciliation_status` is an accounting field, not a terminal semantic
 disposition. The allowed values are:
 
 ```text
-UNCHANGED
-STALE_REV3_CANDIDATE
-REMOVED_NOT_INTERACTION
-MERGED_SEMANTIC_DUPLICATE
-NEW_B2_DERIVED_CANDIDATE
-NEW_TARGETED_HIGHER_ORDER_CANDIDATE
+unchanged
+stale_rev3_candidate
+removed_not_interaction
+merged_semantic_duplicate
+new_targeted_higher_order_candidate
 ```
 
 The status is accompanied by a source-grounded reason. A stale, removed, or
 merged row still receives a record in `interaction_classifications` and a
 terminal disposition; accounting status never permits silent omission.
 
-The candidate universe MUST preserve the three REV3 relation shapes:
+The candidate universe MUST preserve these normalized relation shapes for
+inherited REV3 rows:
 
 ```text
-UNORDERED_BINARY
-DIRECTIONAL_BINARY
-DECLARED_CARD_TRIGGER
+unordered_binary
+directional_binary
+declared_card_trigger
 ```
 
-It MUST also be able to represent explicitly reviewed higher-order candidates
-with an ordered participant list and arity greater than two.
+It MUST also represent explicitly reviewed higher-order candidates with the
+closed combination `scope = unary_or_higher_order`,
+`relation = reviewed_higher_order`, and an ordered participant list whose
+derived finite count is greater than two. It MUST reject using
+`declared_card_trigger`, `directional_binary`, or `unordered_binary` for such a
+candidate unless the actual reviewed semantics independently satisfy that
+relation.
 
 ### 7.4 `interaction_semantic_classes.v1.json`
 
 This file contains one canonical definition for each reusable terminal
 semantic class. It contains:
+
+```text
+schema = "manafold.m2.5.c.interaction-semantic-classes.v1"
+```
 
 ```text
 schema
@@ -1000,25 +1041,25 @@ evidence. This makes the authority edge
 `interaction_classifications.v1.json` separately binds
 `semantic_classes_raw_sha256`.
 
-Allowed `arity` values are `UNARY`, `BINARY`, and `HIGHER_ORDER`. A
-`HIGHER_ORDER` class MUST state the exact finite participant count by the
+Allowed `arity` values are `unary`, `binary`, and `higher_order`. A
+`higher_order` class MUST state the exact finite participant count by the
 normative derived rule `participant_count := len(participant_roles)` and must
 provide ordered participant roles. The count is not a second free field in the
 class identity; the checker recomputes it from the closed role array and
 exposes it in class metrics and the report. The arity/count relation is closed:
-`UNARY` requires count `1`, `BINARY` requires count `2`, and `HIGHER_ORDER`
+`unary` requires count `1`, `binary` requires count `2`, and `higher_order`
 requires count greater than `2`. A higher-order class is not an unbounded
 N-way claim.
 
 Allowed `directionality` values are:
 
 ```text
-NONE
-SYMMETRIC
-DIRECTED
+none
+symmetric
+directed
 ```
 
-`DIRECTED` classes MUST identify source and affected roles and preserve the
+`directed` classes MUST identify source and affected roles and preserve the
 edge direction. Reversing the edge, collapsing it to an unordered pair, or
 removing a role is a validation failure.
 
@@ -1039,22 +1080,22 @@ vocabulary, C is blocked pending a versioned model amendment.
 `host_relationship` is one of:
 
 ```text
-SAME_HOST
-CROSS_HOST
-NOT_APPLICABLE
+same_host
+cross_host
+not_applicable
 ```
 
 The value is semantic: it is not a display label derived from deck names.
 Context dimensions MUST state the relevant zone, visibility, timing/phase or
 event order, information identity, control/ownership, replacement/layer, and
 decision context. If a dimension is not relevant, the class says
-`NOT_APPLICABLE`; it must not omit the field.
+`not_applicable`; it must not omit the field.
 
 `b2_family_refs[]` and `b2_boundary_refs[]` identify exact current B2 families
 and their exact `precise_semantic_definition` strings. Each required family
 reference states its lifecycle and assignment role. A card-derived class may
-reference only a valid terminal assignment to an `ACTIVE` family. An
-`ACTIVE_UNASSIGNED` family is rejected in that position.
+reference only a valid terminal assignment to an `active` family. An
+`active_unassigned` family is rejected in that position.
 
 `b1_final_citation_refs[]` identify nodes in the accepted B1.Final citation
 graph. Every normative rule claim supporting a required class MUST resolve to
@@ -1074,6 +1115,10 @@ definition; they are bound by candidate classification records.
 
 This file contains one record for every candidate in the candidate universe.
 It contains:
+
+```text
+schema = "manafold.m2.5.c.interaction-classifications.v1"
+```
 
 ```text
 schema
@@ -1101,9 +1146,9 @@ review_rationale
 evidence_refs
 ```
 
-`interaction_class_id` is required for `REQUIRED_INTERACTION` and must be null
-for `NOT_AN_INTERACTION_WITH_PROOF` and
-`OUT_OF_DECLARED_SCOPE_WITH_REASON`.
+`interaction_class_id` is required for `required_interaction` and must be null
+for `not_an_interaction_with_proof` and
+`out_of_declared_scope_with_reason`.
 
 `source_instance_context_mappings[]` binds the candidate to concrete source
 instances and exact participant/context values. Each mapping contains:
@@ -1138,6 +1183,10 @@ class ID and the concrete binding to that class.
 ### 7.6 `interaction_closure.v1.json`
 
 This is the sole semantic C closure artifact. It contains:
+
+```text
+schema = "manafold.m2.5.c.interaction-closure.v1"
+```
 
 ```text
 schema
@@ -1184,6 +1233,13 @@ new_b2_derived
 new_targeted_higher_order
 current_total
 ```
+
+`new_b2_derived` is required to equal `0` in every C V1 closure because
+`b2_derived` is forbidden by the V1 source-origin contract. The checker
+recomputes this value from the candidate ledger and rejects every attempted
+B2-derived candidate as invalid V1 data. The required B2-derived set is empty
+in this version, so no missing required B2-derived candidate can exist; a
+future non-empty set requires the versioned amendment described in §7.0.1.
 
 `terminal_disposition_metrics` MUST report:
 
@@ -1242,7 +1298,12 @@ digests, the checker treats it as derived documentation.
 ### 7.8 `c_negative_test_matrix.v1.json`
 
 This file is a fixed verification contract, not a semantic input. It contains
-exactly 32 cases, each with:
+the exact mandatory 32-case baseline plus the supplemental C-specific cases
+listed in §11.1, each with:
+
+```text
+schema = "manafold.m2.5.c.negative-test-matrix.v1"
+```
 
 ```text
 case_id
@@ -1260,6 +1321,10 @@ bound into the closure digest.
 This file is an evidence record and remains fully outside the closure. It may
 be provisional at H_exec with commands marked `NOT_RUN`; it becomes the
 post-execution summary only in Phase C.
+
+```text
+schema = "manafold.m2.5.c.verification-summary.v1"
+```
 
 The final summary MUST record:
 
@@ -1325,9 +1390,9 @@ checking proves that the pinned input changed; in that event C is blocked.
 The following source shapes are preserved:
 
 ```text
-INTRA_DECK + UNORDERED_BINARY
-CROSS_DECK + DIRECTIONAL_BINARY
-UNARY_OR_HIGHER_ORDER + DECLARED_CARD_TRIGGER
+intra_deck + unordered_binary
+cross_deck + directional_binary
+unary_or_higher_order + declared_card_trigger
 ```
 
 The 18 unary/card-specific records remain individually identifiable by their
@@ -1359,7 +1424,6 @@ unchanged REV3 candidate
 stale REV3 candidate
 removed because review proves no interaction
 merged semantic duplicate
-new B2-derived candidate
 new targeted higher-order candidate
 ```
 
@@ -1367,7 +1431,7 @@ The categories are mutually exclusive per candidate lineage. A merged
 duplicate is not deleted: its original candidate record remains, its
 classification points to the canonical class, and the merge relationship is
 recorded. A removed/non-interaction candidate remains in the ledger and gets
-`NOT_AN_INTERACTION_WITH_PROOF`; “removed” is accounting language, not silent
+`not_an_interaction_with_proof`; “removed” is accounting language, not silent
 disappearance.
 
 The count equation MUST hold:
@@ -1375,13 +1439,14 @@ The count equation MUST hold:
 ```text
 current_total
   = rev3_total
-  + new_b2_derived
   + new_targeted_higher_order
 ```
 
-with the REV3 delta categories partitioning the inherited rows. The checker
-also recomputes the partition from candidate lineage instead of trusting the
-equation alone.
+`new_b2_derived` is always zero under C V1 and is included in the closure
+metrics only as an explicit proof that the forbidden category was not emitted.
+The equation is evaluated with the REV3 delta categories partitioning the
+inherited rows. The checker also recomputes the partition from candidate
+lineage instead of trusting the equation alone.
 
 ## 9. Semantic review protocol
 
@@ -1390,23 +1455,23 @@ equation alone.
 Each candidate is reviewed to exactly one of:
 
 ```text
-REQUIRED_INTERACTION
-NOT_AN_INTERACTION_WITH_PROOF
-OUT_OF_DECLARED_SCOPE_WITH_REASON
+required_interaction
+not_an_interaction_with_proof
+out_of_declared_scope_with_reason
 ```
 
 No candidate may remain ambiguous, provisional, unresolved, or pending in a
-closure that claims `PASS`. `UNRESOLVED = 0` is a hard gate.
+closure that claims `PASS`. `unresolved = 0` is a hard gate.
 
-`REQUIRED_INTERACTION` means the cited source and exact semantic boundaries
+`required_interaction` means the cited source and exact semantic boundaries
 demonstrate a reusable interaction relation within the declared model.
 
-`NOT_AN_INTERACTION_WITH_PROOF` means the reviewed source and boundaries
+`not_an_interaction_with_proof` means the reviewed source and boundaries
 demonstrate that the candidate is only co-occurrence, independently composable,
 or otherwise lacks the declared interaction relation. The rationale must name
 the reviewed participants and the boundary distinction.
 
-`OUT_OF_DECLARED_SCOPE_WITH_REASON` means the candidate is explicitly outside
+`out_of_declared_scope_with_reason` means the candidate is explicitly outside
 the finite declared model boundary. It requires a precise model-boundary
 reference and cannot conceal missing review.
 
@@ -1475,8 +1540,9 @@ fetch live rules during generation, or silently downgrade the requirement.
 and semantic-boundary verifier. It MUST be deterministic and fail closed.
 
 The default invocation MUST verify the current C source and prerequisite
-identities. `--negative-self-test` MUST run the exact 32 mutations from the
-negative matrix and require every mutation to be rejected with its expected
+identities. `--negative-self-test` MUST run every mutation in the V1 negative
+matrix: the exact mandatory C-001 through C-032 baseline and the supplemental
+C-033 through C-041 cases. Every mutation must be rejected with its expected
 reason code.
 
 The checker MUST perform all of the following checks:
@@ -1484,8 +1550,8 @@ The checker MUST perform all of the following checks:
 1. Resolve the exact repository root, C paths, archive root, and archive
    member identities.
 2. Validate the C JSON schemas, closed vocabularies, deterministic ordering,
-   and exact ten-file C inventory, including `C_DESIGN_SPEC.md` and the
-   upstream review-additions artifact.
+   the exact schema registry in §7, and the exact ten-file C inventory,
+   including `C_DESIGN_SPEC.md` and the upstream review-additions artifact.
 3. Execute or consume the current B1, B1.Final, B2, and master-drift gate
    results, rejecting any prerequisite that is not `PASS`.
 4. Verify the exact REV3 archive and candidate source digests.
@@ -1585,6 +1651,31 @@ inputs remain otherwise valid. Case C-031 proves the direct-child evidence
 boundary. Case C-032 proves that the summary is outside the closure but still
 must accurately report evidence identities.
 
+### 11.1 Supplemental C-specific mutations
+
+The mandatory baseline above remains byte-for-byte part of every V1 matrix.
+The V1 matrix additionally contains exactly these nine cases, for a total of
+41 cases:
+
+| Case | Mutation | Target artifact | Expected status | Expected reason code |
+| --- | --- | --- | --- | --- |
+| C-033 | Replace a normalized semantic enum with an uppercase/noncanonical variant | `sources/m2_5/closures/C/interaction_candidate_universe.v1.json` | `FAIL` | `NONCANONICAL_ENUM_VARIANT` |
+| C-034 | Add an unknown participant/context/temporal vocabulary variant | `sources/m2_5/closures/C/declared_interaction_model.v1.json` | `FAIL` | `VOCABULARY_VARIANT_UNKNOWN` |
+| C-035 | Remove the targeted review record named by a candidate | `sources/m2_5/closures/C/interaction_candidate_universe.v1.json` | `FAIL` | `TARGETED_REVIEW_RECORD_MISSING` |
+| C-036 | Reference an unknown targeted review record | `sources/m2_5/closures/C/interaction_candidate_universe.v1.json` | `FAIL` | `TARGETED_REVIEW_RECORD_UNKNOWN` |
+| C-037 | Tamper with the review-additions raw binding | `sources/m2_5/closures/C/interaction_candidate_universe.v1.json` | `FAIL` | `REVIEW_ADDITIONS_DIGEST_MISMATCH` |
+| C-038 | Inject a `b2_derived` candidate into a valid V1 snapshot | `sources/m2_5/closures/C/interaction_candidate_universe.v1.json` | `FAIL` | `B2_DERIVED_FORBIDDEN_V1` |
+| C-039 | Tamper with a `CandidateIdentityV1` preimage or digest | `sources/m2_5/closures/C/interaction_candidate_universe.v1.json` | `FAIL` | `CANDIDATE_IDENTITY_MISMATCH` |
+| C-040 | Tamper with a recorded C or master-drift checker identity | `sources/m2_5/closures/C/verification/c_verification_summary.v1.json` | `FAIL` | `CHECKER_IDENTITY_MISMATCH` |
+| C-041 | Duplicate a canonical source-instance tuple within one candidate | `sources/m2_5/closures/C/interaction_candidate_universe.v1.json` | `FAIL` | `DUPLICATE_SOURCE_INSTANCE_TUPLE` |
+
+Because C V1 forbids `b2_derived`, its required generated set is empty and
+`new_b2_derived` must be zero. C-038 therefore proves that an extra B2-derived
+candidate is rejected; no separate “missing required B2-derived candidate”
+case exists in this version. If B2-derived generation is later proposed, the
+spec amendment must define both the complete derived set and its missing/extra
+mutations before enabling the source origin.
+
 ## 12. Master-drift allowlist integration
 
 The existing master-drift verifier MUST remain narrow. C may extend its exact
@@ -1610,8 +1701,8 @@ paths such as `scripts/check_m2_5_c_interactions.py.backup`,
 `sources/m2_5/closures/C/C_DESIGN_SPEC.md.backup`, and an unlisted file under
 the C directory must be rejected. The existing master-drift negative
 self-test MUST retain an exact near-miss checker-path case. This is a
-master-drift integration self-test outside the 32 semantic C mutations and
-does not change the exact count of `c_negative_test_matrix.v1.json`.
+master-drift integration self-test outside the 41 semantic C mutations and
+does not change the mandatory 32-case baseline or the exact V1 matrix count.
 
 C source is additive and must not modify historical B1/B2/REV3 artifacts.
 
@@ -1812,18 +1903,19 @@ C is accepted only when all of the following are true:
 1. The live exact-head and archive preflight are verified.
 2. All B1, B1.Final, B2, and master-drift prerequisites are `PASS`.
 3. The REV3 candidate universe is complete and every lineage is reconciled.
-4. The model scope is finite and matches `PAIRWISE_PLUS_REVIEW_OUTLIERS`.
+4. The model scope is finite and matches `pairwise_plus_review_outliers`.
 5. Semantic classes are separately authoritative and deduplicated.
 6. Candidate classifications contain no copied class definitions.
 7. Every candidate has exactly one terminal disposition.
-8. `UNRESOLVED = 0`.
+8. `unresolved = 0`.
 9. Every required class has exact B2 boundary and B1.Final citation bindings.
 10. All required context, direction, role, host, timing, ordering, and arity
     information is explicit.
 11. The closure binds only its five semantic C inputs and is acyclic with
     respect to the design spec, report, negative matrix, and verification
     evidence.
-12. The 32 negative tests pass with their exact reason codes.
+12. All 41 V1 negative tests pass with their exact reason codes, including the
+    mandatory C-001 through C-032 baseline.
 13. H_exec and H_evidence satisfy the direct-child summary-only rule.
 14. Required repository and language gates execute successfully.
 15. The exact M2.5 gate/flag values in §7.6 remain preserved; no later gate is
