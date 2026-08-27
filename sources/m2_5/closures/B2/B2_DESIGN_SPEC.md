@@ -2,7 +2,7 @@
 
 **Status:** proposed implementation specification
 
-**Base:** master at f59c462874a29e0f74194b203c6fa8cca69ef3c0
+**Base:** post-B1 master at 5cacdbf8f9e3194b92f1770f38e2704a0a2dad82
 
 **Pinned input:** Manafold_M2_5_Pre_Research_ALL_ARTIFACTS_REV3.zip
 
