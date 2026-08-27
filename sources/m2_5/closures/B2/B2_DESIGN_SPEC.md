@@ -624,6 +624,30 @@ REVIEWED_CONFIRMED requires that every change is RETAINED and all three non-reta
 summary arrays are empty. REVIEWED_CORRECTED requires at least one non-RETAINED
 change.
 
+### 9.1 Overlap and subsumption policy
+
+B2 uses the additive `SEMANTIC_BOUNDARY_CLOSURE_V1` assignment policy. For every
+OracleSemanticIdentity, each ACTIVE family whose complete committed boundary is
+satisfied by the reviewed card semantics receives an assignment. Families are
+independent requirement dimensions: a more specific family does not suppress a
+broader family, and a broader family does not suppress a more specific family.
+An assignment is never authorized by a family-name marker, a lexical hit, or a
+historical edge that fails the boundary.
+
+The regression form is targeted destruction. When the card-side instruction both
+uses the rules-defined target designation and destroys that target, the terminal
+assignment set contains `cap.target`, `cap.destroy`, and `cap.target_destroy` when
+those three ACTIVE boundaries are satisfied. For example, a card whose Oracle
+text says `Destroy target permanent` receives all three independent requirements;
+the composite family does not replace either component. Quoted ability text,
+reminder text, and unrelated occurrences remain excluded by the respective family
+boundaries.
+
+`ACTIVE_UNASSIGNED` therefore means that the reviewed corpus contains no card whose
+card-side semantics satisfy that family's complete boundary, not merely that no
+lexical candidate was emitted. Any later exception to this additive policy
+requires a new versioned B2 contract rather than an implicit generator preference.
+
 ## 10. Evidence locators
 
 Evidence is typed and bound to exact pinned bytes. The locator field is a closed
