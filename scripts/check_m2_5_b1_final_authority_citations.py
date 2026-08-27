@@ -606,6 +606,18 @@ EXPECTED_SEMANTIC_ANCHORS = {
     "cap.mass_untap": {"CR-701-26-tap-untap"},
     "cap.attack_mana": {"CR-508-declare-attackers", "CR-605-mana-abilities"},
     "cap.copy": {"CR-111-tokens", "CR-707-copying-objects"},
+    "cap.loyalty": {
+        "CR-122-counters",
+        "CR-306-planeswalkers",
+        "CR-602-activated-abilities",
+        "CR-606-loyalty-abilities",
+    },
+    "cap.loyalty_activation_rules": {
+        "CR-117-timing-priority",
+        "CR-306-planeswalkers",
+        "CR-602-activated-abilities",
+        "CR-606-3-loyalty-activation",
+    },
 }
 
 
@@ -899,7 +911,7 @@ def negative_self_test() -> int:
                 next(
                     i
                     for i, d in enumerate(c["semantic_dependency_model"]["family_dependencies"])
-                    if d["family_id"] == "cap.target_destroy"
+                    if d["family_id"] == "cap.loyalty_activation_rules"
                 )
             ]["authority_dependencies"].pop(),
             "UNKNOWN_CITATION": lambda c, cl: c["semantic_dependency_model"]["family_dependencies"][

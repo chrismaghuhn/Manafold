@@ -50,7 +50,7 @@
     {
       "case_id": "COMPOSITE_EDGE_REMOVED",
       "expected_error_code": "COMPOSITE_DEPENDENCY_INCOMPLETE",
-      "description": "Adversarial B1.Final mutation must fail for this stable reason."
+      "description": "Removing the CR-606.3 loyalty-activation edge must fail closed; general timing and activation rules alone do not close the boundary."
     },
     {
       "case_id": "UNKNOWN_CITATION",

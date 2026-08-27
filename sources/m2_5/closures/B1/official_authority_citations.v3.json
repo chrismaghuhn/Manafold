@@ -890,7 +890,8 @@
         "required_citation_ids": [
           "CR-122-counters",
           "CR-602-activated-abilities",
-          "CR-306-planeswalkers"
+          "CR-306-planeswalkers",
+          "CR-606-loyalty-abilities"
         ],
         "authority_dependencies": [
           {
@@ -933,6 +934,20 @@
             ],
             "covered_domain_ids": [
               "CR-306-planeswalkers"
+            ]
+          },
+          {
+            "authority_id": "comprehensive_rules",
+            "citation_id": "CR-606-loyalty-abilities",
+            "semantic_role": "B2-boundary-rule-domain",
+            "rationale": "The exact committed B2 boundary for cap.loyalty includes the material domain CR-606-loyalty-abilities. The cited official rule section is required by the boundary's includes/excludes and rule_dependency fields; it is not inferred from a family name, keyword, or card-text scan.",
+            "covered_boundary_fields": [
+              "includes",
+              "excludes",
+              "rule_dependency"
+            ],
+            "covered_domain_ids": [
+              "CR-606-loyalty-abilities"
             ]
           }
         ]
@@ -8060,7 +8075,8 @@
         "required_citation_ids": [
           "CR-117-timing-priority",
           "CR-602-activated-abilities",
-          "CR-306-planeswalkers"
+          "CR-306-planeswalkers",
+          "CR-606-3-loyalty-activation"
         ],
         "authority_dependencies": [
           {
@@ -8103,6 +8119,20 @@
             ],
             "covered_domain_ids": [
               "CR-306-planeswalkers"
+            ]
+          },
+          {
+            "authority_id": "comprehensive_rules",
+            "citation_id": "CR-606-3-loyalty-activation",
+            "semantic_role": "B2-boundary-rule-domain",
+            "rationale": "The exact committed B2 boundary for cap.loyalty_activation_rules includes the material domain CR-606-3-loyalty-activation. The cited official rule section is required by the boundary's includes/excludes and rule_dependency fields; it is not inferred from a family name, keyword, or card-text scan.",
+            "covered_boundary_fields": [
+              "includes",
+              "excludes",
+              "rule_dependency"
+            ],
+            "covered_domain_ids": [
+              "CR-606-3-loyalty-activation"
             ]
           }
         ]
@@ -10713,16 +10743,23 @@
               "domain_id": "CR-306-planeswalkers",
               "citation_id": "CR-306-planeswalkers",
               "semantic_role": "B2-boundary-rule-domain"
+            },
+            {
+              "domain_id": "CR-606-loyalty-abilities",
+              "citation_id": "CR-606-loyalty-abilities",
+              "semantic_role": "B2-boundary-rule-domain"
             }
           ],
           "required_citation_ids": [
             "CR-122-counters",
             "CR-602-activated-abilities",
-            "CR-306-planeswalkers"
+            "CR-306-planeswalkers",
+            "CR-606-loyalty-abilities"
           ],
           "newly_required_citation_ids": [
             "CR-122-counters",
-            "CR-602-activated-abilities"
+            "CR-602-activated-abilities",
+            "CR-606-loyalty-abilities"
           ],
           "removed_or_replaced_v2_citation_ids": []
         },
@@ -17686,16 +17723,23 @@
               "domain_id": "CR-306-planeswalkers",
               "citation_id": "CR-306-planeswalkers",
               "semantic_role": "B2-boundary-rule-domain"
+            },
+            {
+              "domain_id": "CR-606-3-loyalty-activation",
+              "citation_id": "CR-606-3-loyalty-activation",
+              "semantic_role": "B2-boundary-rule-domain"
             }
           ],
           "required_citation_ids": [
             "CR-117-timing-priority",
             "CR-602-activated-abilities",
-            "CR-306-planeswalkers"
+            "CR-306-planeswalkers",
+            "CR-606-3-loyalty-activation"
           ],
           "newly_required_citation_ids": [
             "CR-117-timing-priority",
-            "CR-602-activated-abilities"
+            "CR-602-activated-abilities",
+            "CR-606-3-loyalty-activation"
           ],
           "removed_or_replaced_v2_citation_ids": []
         },
@@ -18840,6 +18884,24 @@
           ]
         },
         {
+          "family_id": "cap.loyalty",
+          "expected_required_citation_ids": [
+            "CR-122-counters",
+            "CR-306-planeswalkers",
+            "CR-602-activated-abilities",
+            "CR-606-loyalty-abilities"
+          ]
+        },
+        {
+          "family_id": "cap.loyalty_activation_rules",
+          "expected_required_citation_ids": [
+            "CR-117-timing-priority",
+            "CR-306-planeswalkers",
+            "CR-602-activated-abilities",
+            "CR-606-3-loyalty-activation"
+          ]
+        },
+        {
           "family_id": "cap.token_or_counters",
           "expected_required_citation_ids": [
             "CR-111-tokens",
@@ -18856,7 +18918,7 @@
         }
       ],
       "removed_or_replaced_edge_count": 18,
-      "newly_required_edge_count": 186
+      "newly_required_edge_count": 188
     }
   },
   "authorities": [
@@ -20661,6 +20723,48 @@
             {
               "requirement_family_id": "cap.grant_mana_ability",
               "card_requirement_map_rows": 1
+            }
+          ],
+          "dependent_classification_or_interaction_inputs": [],
+          "coverage_basis": "B2_BOUNDARY_REVIEW"
+        },
+        {
+          "citation_id": "CR-606-loyalty-abilities",
+          "citation_kind": "CR_RULE_IDENTIFIER",
+          "rule_identifier": "CR 606",
+          "canonical_section_identity": "606. Loyalty Abilities",
+          "artifact_local_locator": {
+            "locator_kind": "RULE_HEADING_LINE",
+            "line_number_1based": 2713,
+            "heading_line_sha256": "8a807e0dd17545c78b726ef5b13e4ce91ad6509c8581ecb78ae272816fe9a0ba",
+            "heading_line_excerpt": "606. Loyalty Abilities"
+          },
+          "why_required": "Loyalty-ability definition, special rules, and loyalty-cost semantics.",
+          "dependent_requirement_families": [
+            {
+              "requirement_family_id": "cap.loyalty",
+              "card_requirement_map_rows": 1
+            }
+          ],
+          "dependent_classification_or_interaction_inputs": [],
+          "coverage_basis": "B2_BOUNDARY_REVIEW"
+        },
+        {
+          "citation_id": "CR-606-3-loyalty-activation",
+          "citation_kind": "CR_RULE_IDENTIFIER",
+          "rule_identifier": "CR 606.3",
+          "canonical_section_identity": null,
+          "artifact_local_locator": {
+            "locator_kind": "RULE_HEADING_LINE",
+            "line_number_1based": 2719,
+            "heading_line_sha256": "6a42f010cbbce20694993ac4bfddd46ed66958afdd84782d1be393eb58edbdbe",
+            "heading_line_excerpt": "606.3. A player may activate a loyalty ability of a permanent they control any time they have priority and the stack is empty during a main phase of their turn, but only if no player has previously activated a loyalty ability of that permanent that turn."
+          },
+          "why_required": "Loyalty-specific activation timing, priority, empty-stack, and once-per-permanent-per-turn restrictions.",
+          "dependent_requirement_families": [
+            {
+              "requirement_family_id": "cap.loyalty_activation_rules",
+              "card_requirement_map_rows": 2
             }
           ],
           "dependent_classification_or_interaction_inputs": [],

@@ -8,9 +8,9 @@ This additive B1.Final report preserves historical B1 V2/V1 meaning and binds th
 - Review basis: every committed B2 boundary field (`includes`, `excludes`, objects, action/event, timing, visibility, eligibility/duration, choices, ownership/control, numeric/counter effects, identity effects, and rule dependency).
 - Lexical markers and scans are candidate/audit diagnostics only and are not authority proof.
 - Families changed relative to inherited B1 V2 mapping: **138**.
-- Required family-level citation edges after review: **378**.
+- Required family-level citation edges after review: **380**.
 - Multi-citation families: **125**.
-- New/re-required citation edges relative to V2: **186**.
+- New/re-required citation edges relative to V2: **188**.
 - Removed/replaced inherited V2 edges: **18**.
 
 ## Fixed semantic regression anchors
@@ -23,6 +23,8 @@ This additive B1.Final report preserves historical B1 V2/V1 meaning and binds th
 - `cap.flash` → CR-702-8-flash
 - `cap.flashback` → CR-404-graveyard, CR-601-casting-spells, CR-702-34-flashback
 - `cap.improvise` → CR-702-126-improvise
+- `cap.loyalty` → CR-122-counters, CR-306-planeswalkers, CR-602-activated-abilities, CR-606-loyalty-abilities
+- `cap.loyalty_activation_rules` → CR-117-timing-priority, CR-306-planeswalkers, CR-602-activated-abilities, CR-606-3-loyalty-activation
 - `cap.mass_untap` → CR-701-26-tap-untap
 - `cap.modified_predicate` → CR-700-9-modified
 - `cap.token_or_counters` → CR-111-tokens, CR-122-counters, CR-700-2-modes
@@ -30,7 +32,7 @@ This additive B1.Final report preserves historical B1 V2/V1 meaning and binds th
 
 ## Citation changes
 
-New official CR citations relative to the previous V3 authority register: **CR-105-colors, CR-500-general, CR-611-continuous-effects, CR-700-9-modified, CR-702-8-flash, CR-702-34-flashback, CR-702-126-improvise, CR-707-copying-objects**.
+New official CR citations relative to the previous V3 authority register: **CR-105-colors, CR-500-general, CR-606-loyalty-abilities, CR-606-3-loyalty-activation, CR-611-continuous-effects, CR-700-9-modified, CR-702-8-flash, CR-702-34-flashback, CR-702-126-improvise, CR-707-copying-objects**.
 Replaced/removed inherited citation IDs: CR-115-targets, CR-117-timing-priority, CR-301-artifacts, CR-404-graveyard, CR-406-exile, CR-604-static-abilities, CR-700-general, CR-701-3-attach, CR-702-143a-foretell, CR-706-copiable-values.
 The inherited `CR-706-copiable-values` record was removed from V3 because its locator identified `706. Rolling a Die`; copy dependencies now bind `CR 707. Copying Objects`.
 
