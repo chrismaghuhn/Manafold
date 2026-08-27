@@ -1,4 +1,4 @@
-# M2.5.C — Declared Interaction Model Closure
+# M2.5.C — Declared Interaction Model Closure Specification
 
 Status: approved design specification; implementation not authorized in this phase.
 
@@ -208,6 +208,7 @@ C owns exactly these source artifacts:
 
 ```text
 sources/m2_5/closures/C/
+  C_DESIGN_SPEC.md
   declared_interaction_model.v1.json
   interaction_candidate_universe.v1.json
   interaction_semantic_classes.v1.json
@@ -224,6 +225,11 @@ The dedicated checker is:
 ```text
 scripts/check_m2_5_c_interactions.py
 ```
+
+`C_DESIGN_SPEC.md` is an exact-inventory, non-semantic C artifact. It is
+inside the later C master-drift boundary so that the reviewed contract travels
+with the C snapshot, but it is not a semantic C input and is never included in
+`interaction_closure.v1.json`'s bound input set.
 
 The C source authority graph is:
 
@@ -295,10 +301,199 @@ Neither is therefore a closure input.
 
 ## 7. File contracts
 
-All JSON artifacts MUST be UTF-8, canonicalized with the repository's existing
-canonical JSON/CBOR identity procedure, and emitted with deterministic key and
-array ordering. Unknown top-level keys are rejected. Unless a field is
-explicitly nullable below, it is required and non-null.
+All JSON artifacts MUST be UTF-8, emitted with deterministic key and array
+ordering, and validated as closed objects. Unknown top-level keys are rejected.
+The JSON representation is a wire/document representation only. No persisted
+semantic identity may hash JSON, Serde output, a language-native object, or an
+implementation-defined serialization.
+
+Unless a field is explicitly nullable below, it is required and non-null.
+
+### 7.0 Persisted identity and raw-byte contracts
+
+The only new C semantic identity digests are `CandidateIdentityV1` and
+`InteractionClassIdentityV1`. Their digest envelopes and preimages are fixed
+here. An implementation MUST not choose alternate field order, omit optional
+slots, hash a JSON projection, or derive a preimage from a schema library.
+
+The persisted JSON form of each identity is the repository-accepted closed
+digest-reference object:
+
+```text
+{
+  "envelope_id": "mtgml.digest-envelope.v1",
+  "algorithm_id": "sha-256",
+  "semantic_domain": <exact domain below>,
+  "payload_codec_id": "mtgml.canonical-cbor.v1",
+  "input_schema_id": <exact schema ID below>,
+  "digest_hex": <64 lowercase hexadecimal characters>
+}
+```
+
+The digest bytes are computed exactly as required by the existing ADR-0038
+envelope:
+
+```text
+envelope_bytes =
+  ASCII("mtgml.digest-envelope.v1")
+  || 0x00
+  || frame(ASCII("sha-256"))
+  || frame(ASCII(semantic_domain))
+  || frame(ASCII("mtgml.canonical-cbor.v1"))
+  || frame(ASCII(input_schema_id))
+  || frame(canonical_payload)
+
+frame(x) = u64_be(byte_length(x)) || x
+digest_bytes = SHA256(envelope_bytes)
+digest_hex = lowercase hexadecimal(digest_bytes)
+```
+
+The identity payload is canonical CBOR V1. It contains only the allowed
+deterministic-CBOR forms from `docs/STATE_HASHING.md`: fixed-position arrays,
+unsigned integers, byte strings, exact UTF-8 text, `false`, `true`, and
+`null`. It contains no CBOR maps, floats, tags, bignums, indefinite-length
+values, or trailing values. Optional semantic positions are always present as
+`null`. Enum values are fixed arrays `[variant_id, payload]`, with `null` for a
+unit variant. Unordered reference sets are arrays sorted by the unsigned
+lexicographic bytes of each entry's canonical CBOR key.
+
+The following nested V1 values are fixed-position arrays:
+
+```text
+ParticipantRefV1 = [participant_kind, semantic_ref]
+ParticipantRoleV1 = [position, role, participant_kind, semantic_ref]
+ContextDimensionsV1 = [
+  zone,
+  visibility,
+  timing,
+  temporal_order,
+  source_affected_relation,
+  control_ownership_relation,
+  replacement_layer_relation,
+  trigger_lki_relation,
+  information_relation,
+  decision_actor_relation
+]
+TemporalSemanticsV1 = [trigger_order, dependency_order, duration, replacement_order]
+B2FamilyRefV1 = [family_id, lifecycle, assignment_role]
+B2BoundaryRefV1 = [family_id, precise_semantic_definition]
+EvidenceRefV1 = [authority_kind, path, locator, raw_sha256]
+```
+
+Each text slot preserves exact UTF-8 bytes and uses the literal
+`NOT_APPLICABLE` when the declared dimension is irrelevant. The source JSON
+must still carry the same field explicitly; omission is not equivalent to
+`NOT_APPLICABLE`.
+
+#### 7.0.1 `CandidateIdentityV1`
+
+The exact identity metadata is:
+
+```text
+semantic_domain = "manafold.m2.5.c.candidate-identity.v1"
+input_schema_id = "manafold.m2.5.c.candidate-identity-input.v1"
+payload_codec_id = "mtgml.canonical-cbor.v1"
+algorithm_id = "sha-256"
+envelope_id = "mtgml.digest-envelope.v1"
+```
+
+The canonical payload is this fixed-position `CandidateIdentityInputV1`:
+
+```text
+[
+  source_origin_enum,
+  scope_enum,
+  relation_enum,
+  participant_refs_array,
+  supporting_requirement_ids_sorted_array,
+  source_binding_union
+]
+```
+
+The positions are numbered zero through five in the order shown. The source
+origin, scope, and relation slots use the exact ASCII enum identifiers declared
+by the C JSON contract, with no case folding. The source-origin values are the
+exact uppercase values in §7.2. `participant_refs_array` preserves semantic
+participant order. `supporting_requirement_ids_sorted_array` is sorted by
+canonical CBOR bytes and rejects duplicates. `source_binding_union` is the
+fixed discriminated union specified in §7.2. The candidate's terminal
+disposition, review rationale, class ID, and reconciliation status are not in
+this identity; changing a review decision must not silently change source
+candidate identity.
+
+For an inherited REV3 candidate, the source binding includes the original
+candidate ID and every exact source-row value. For a new candidate, the source
+binding includes the exact B2 or targeted-review evidence that gives the
+candidate its identity. The original REV3 candidate ID is preserved as data;
+it is not rewritten to the digest-derived ID.
+
+New candidate IDs are deterministic and namespaced:
+
+```text
+B2_DERIVED:
+  c.v1/b2-derived/<CandidateIdentityV1.digest_hex>
+
+TARGETED_HIGHER_ORDER_REVIEW:
+  c.v1/targeted-higher-order-review/<CandidateIdentityV1.digest_hex>
+```
+
+The complete 64-character digest is used without truncation. The prefix and
+variant spelling are exact, lowercase ASCII, and use `/` separators. Two new
+candidates with the same ID must have byte-identical `CandidateIdentityV1`
+payloads and identical source-binding evidence; otherwise the checker fails
+with a candidate-identity collision. A duplicate ID with the same payload is
+also invalid unless it is represented as an explicit lineage merge of one
+candidate record, not as two current candidates. A new candidate ID must not
+collide with any preserved REV3 ID or with a different source-origin namespace.
+
+#### 7.0.2 `InteractionClassIdentityV1`
+
+The exact identity metadata is:
+
+```text
+semantic_domain = "manafold.m2.5.c.interaction-class-identity.v1"
+input_schema_id = "manafold.m2.5.c.interaction-class-identity-input.v1"
+payload_codec_id = "mtgml.canonical-cbor.v1"
+algorithm_id = "sha-256"
+envelope_id = "mtgml.digest-envelope.v1"
+```
+
+The canonical payload is this fixed-position `InteractionClassIdentityInputV1`:
+
+```text
+[
+  arity_enum,
+  directionality_enum,
+  participant_roles_array,
+  host_relationship_enum,
+  context_dimensions_v1,
+  temporal_semantics_v1,
+  b2_family_refs_sorted_array,
+  b2_boundary_refs_sorted_array,
+  b1_final_citation_refs_sorted_array,
+  semantic_rationale_text,
+  source_evidence_refs_sorted_array
+]
+```
+
+The positions are numbered zero through ten in the order shown. The class ID
+is the full lowercase `digest_hex` namespaced as:
+
+```text
+ic.v1/<InteractionClassIdentityV1.digest_hex>
+```
+
+Class identity includes all reusable semantic fields and class-level source
+evidence listed above. It never includes candidate IDs or source-instance
+IDs. Concrete instances therefore reuse one class without copying its
+definition or changing its identity.
+
+These two identity contracts are the only new C semantic digest preimages.
+Artifact bindings use raw SHA-256 of exact file bytes, and source-tree
+fingerprints use the accepted B2 algorithm in §13.
+Any additional semantic identity field, closure identity, or ad-hoc
+source-tree identity may be persisted only after this specification is amended
+with its complete envelope and fixed preimage.
 
 ### 7.1 `declared_interaction_model.v1.json`
 
@@ -374,15 +569,15 @@ scope
 relation
 participant_refs
 supporting_requirement_ids
-rev3_source_row
-rev3_source_row_sha256
+source_binding
 reconciliation_status
 reconciliation_reason
 ```
 
 `candidate_id`, `scope`, `relation`, `participant_refs`, and source fields are
-preserved from REV3. `candidate_identity` is a digest over the canonical
-source-row identity and is not a replacement for the original ID.
+preserved from REV3 when the candidate is inherited. `candidate_identity` is
+the exact `CandidateIdentityV1` reference from §7.0.1 and is not a replacement
+for the original REV3 ID.
 
 `source_origin` is one of:
 
@@ -396,6 +591,148 @@ Every inherited REV3 candidate MUST appear exactly once with its original
 `candidate_id`. A newly derived candidate MUST have a deterministic new ID,
 an explicit source origin, and exact B2/source evidence. A candidate MUST NOT
 disappear because it is hard to review.
+
+`source_binding` is a closed discriminated union. The JSON form has a required
+`kind` field and only the fields for that kind; the canonical identity form is
+the fixed-position enum `[kind, payload]`. It has these variants:
+
+```text
+REV3 {
+  archive_member,
+  archive_member_sha256,
+  row_ordinal,
+  source_columns,
+  source_values
+}
+
+B2_DERIVED {
+  classification_path,
+  classification_raw_sha256,
+  classification_identity,
+  oracle_semantic_identity,
+  assignment_refs,
+  catalog_path,
+  catalog_raw_sha256
+}
+
+TARGETED_HIGHER_ORDER_REVIEW {
+  review_record_path,
+  review_record_raw_sha256,
+  review_record_id,
+  participant_source_refs,
+  review_evidence_refs
+}
+```
+
+Their canonical `SourceBindingV1` payloads are fixed arrays in exactly this
+order:
+
+```text
+[
+  "REV3",
+  [archive_member, archive_member_sha256, row_ordinal,
+   source_columns_array, source_values_array]
+]
+
+[
+  "B2_DERIVED",
+  [classification_path, classification_raw_sha256,
+   classification_identity_digest_reference_v1, oracle_semantic_identity,
+   assignment_refs_sorted_array, catalog_path, catalog_raw_sha256]
+]
+
+[
+  "TARGETED_HIGHER_ORDER_REVIEW",
+  [review_record_path, review_record_raw_sha256, review_record_id,
+   participant_source_refs_ordered_array, review_evidence_refs_sorted_array]
+]
+```
+
+`classification_identity_digest_reference_v1` is the existing B2
+`DigestReferenceV1` represented as its fixed six-position CBOR array from
+`docs/STATE_HASHING.md`; it is not reconstructed from the B2 JSON object.
+Each `assignment_refs_sorted_array` entry is the fixed array
+`[family_id, assignment_ordinal, precise_semantic_definition]`, sorted by its
+canonical CBOR bytes. Each participant source reference is an exact pinned
+locator, and evidence references use `EvidenceRefV1`. These arrays are the
+only permitted `source_binding_union` preimage; JSON field order has no effect.
+
+For `REV3`, `archive_member` is exactly
+`derived/Pair_Interaction_Census_REV3.csv`, `archive_member_sha256` is the
+raw SHA-256 of that pinned member, `row_ordinal` is the zero-based data-row
+ordinal after the single header row, `source_columns` is exactly:
+
+```text
+[
+  "candidate_id", "model_id", "scope", "pair_id", "left_family_id",
+  "right_family_id", "relation", "disposition", "disposition_reason",
+  "supporting_requirement_ids"
+]
+```
+
+`source_values` preserves every cell as exact source text in that order. The
+supporting-requirement cell is preserved before parsing it into
+`supporting_requirement_ids`. There is no nullable REV3 row field on a
+non-REV3 candidate.
+
+For `B2_DERIVED`, every classification and catalog path, raw file digest,
+accepted B2 classification identity, OSI, assignment reference, family, and
+boundary binding is required. `classification_path` is the exact repository
+path `sources/m2_5/closures/B2/card_semantic_classifications.v1.json` and
+`catalog_path` is the exact repository path
+`sources/m2_5/closures/B2/requirement_family_catalog.v1.json`.
+`assignment_ordinal` is the zero-based position in the exact B2
+`requirement_assignments` array for the referenced classification record.
+`classification_identity` uses the existing B2 digest-reference contract; C
+does not rederive or rename it.
+
+For `TARGETED_HIGHER_ORDER_REVIEW`, the review record, its raw file digest,
+stable review-record ID, ordered participant source references, and evidence
+references are required. This variant is the complete source binding for the
+candidate and does not pretend to have a REV3 row.
+
+The source union is mutually exclusive: a record with `kind = REV3` cannot
+carry B2-derived or targeted-review fields, and a new variant cannot carry
+REV3 fields. Unknown kinds and unknown variant fields are rejected.
+
+The candidate universe also owns the authoritative source-instance ledger:
+
+```text
+source_instances[]
+  source_instance_id
+  candidate_id
+  source_binding
+  participant_bindings
+  source_context
+```
+
+Every source instance belongs to exactly one candidate. The ledger is
+source-grounded: its `source_binding` is one of the candidate union variants,
+its ordered `participant_bindings` resolve to the candidate's participant
+references, and its `source_context` contains every context dimension required
+by the declared model, using `NOT_APPLICABLE` explicitly where appropriate.
+There is no source-instance authority outside this ledger.
+
+The canonical forms used for the ledger's deterministic ordering are
+`ParticipantBindingV1 = [role, participant_ref]` and
+`SourceContextV1 = ContextDimensionsV1`. The JSON ledger may expose named
+fields, but the checker converts them to these fixed arrays before comparing or
+ordering them.
+
+`source_instance_id` is a deterministic ledger key, not a new semantic digest.
+For the zero-based `instance_index` assigned after sorting a candidate's
+source-instance tuples by the canonical CBOR bytes of the fixed tuple
+`[source_binding, participant_bindings, source_context]`, it is:
+
+```text
+si.v1/<base64url-no-padding(UTF8(candidate_id))>/<instance_index-decimal>
+```
+
+The Base64 encoding is RFC 4648 URL-safe encoding without `=` padding and the
+index is an unpadded base-ten integer. The full candidate ID and index are
+included; no truncation or normalization is allowed. The verifier recomputes
+these keys, rejects duplicates, rejects an instance whose candidate is absent,
+and rejects any classification reference not present in this ledger.
 
 `reconciliation_status` is an accounting field, not a terminal semantic
 disposition. The allowed values are:
@@ -500,10 +837,10 @@ decision context. If a dimension is not relevant, the class says
 `NOT_APPLICABLE`; it must not omit the field.
 
 `b2_family_refs[]` and `b2_boundary_refs[]` identify exact current B2 families
-and boundary digests. Each required family reference states its lifecycle and
-assignment role. A card-derived class may reference only a valid terminal
-assignment to an `ACTIVE` family. An `ACTIVE_UNASSIGNED` family is rejected in
-that position.
+and their exact `precise_semantic_definition` strings. Each required family
+reference states its lifecycle and assignment role. A card-derived class may
+reference only a valid terminal assignment to an `ACTIVE` family. An
+`ACTIVE_UNASSIGNED` family is rejected in that position.
 
 `b1_final_citation_refs[]` identify nodes in the accepted B1.Final citation
 graph. Every normative rule claim supporting a required class MUST resolve to
@@ -513,8 +850,9 @@ official domain with a URL, prose, or live search result.
 `class_identity` is computed from the canonical class meaning, including
 arity, directionality, roles, host relationship, context, temporal semantics,
 B2 boundary references, B1.Final citation references, and rationale evidence.
-Source instances are not copied into the class definition; they are bound by
-candidate classification records.
+It is the `InteractionClassIdentityV1` digest from §7.0.2, not a digest of the
+JSON object. Source instances are not copied into the class definition; they
+are bound by candidate classification records.
 
 ### 7.4 `interaction_classifications.v1.json`
 
@@ -524,11 +862,15 @@ It contains:
 ```text
 schema
 model_id
-candidate_universe_sha256
-semantic_classes_sha256
+candidate_universe_raw_sha256
+semantic_classes_raw_sha256
 classification_count
 candidate_classifications
 ```
+
+The two input bindings above are raw SHA-256 values of the exact UTF-8 JSON
+bytes of the named C files. They are artifact bindings, not semantic identity
+digests; no JSON serialization is used as a semantic preimage.
 
 Each `candidate_classifications[]` object contains only candidate-level
 semantic facts and provenance:
@@ -563,6 +905,12 @@ instances or boundary evidence exist; a non-interaction result must show what
 was reviewed and why the interaction relation is disproved. A mapping may not
 invent an instance not present in the source ledger.
 
+The verifier resolves every `source_instance_id` against the candidate
+universe ledger, requires the ledger's `candidate_id` to match, and compares
+the mapping's participant bindings and context binding with the authoritative
+ledger values. Unknown, duplicate, or orphan instances are rejected before a
+terminal disposition is accepted.
+
 `reconciliation` records the candidate-universe status, original REV3 ID when
 applicable, and any merged/new/stale/removal linkage. `review_rationale` is a
 specific source-grounded explanation, not a keyword or co-occurrence claim.
@@ -577,7 +925,6 @@ This is the sole semantic C closure artifact. It contains:
 
 ```text
 schema
-closure_id
 model_id
 bound_semantic_inputs
 external_prerequisite_identities
@@ -586,13 +933,22 @@ semantic_class_metrics
 terminal_disposition_metrics
 source_instance_metrics
 gate_status
-downstream_status
 flags
 ```
 
-`bound_semantic_inputs` contains exactly four entries, one for each semantic C
-input named in §6. Each entry records path, schema, raw SHA-256, canonical
-identity digest, and record count. The closure does not include a self-digest.
+`bound_semantic_inputs` contains exactly these four entries and no others:
+
+```text
+declared_interaction_model.v1.json
+interaction_candidate_universe.v1.json
+interaction_semantic_classes.v1.json
+interaction_classifications.v1.json
+```
+
+Each entry records path, schema, raw SHA-256 of the exact file bytes, and
+record count. `C_DESIGN_SPEC.md`, the report, the negative matrix, and the
+verification summary are not closure inputs. The closure does not include a
+self-digest or a new closure identity.
 
 `external_prerequisite_identities` records the exact REV3 archive/member,
 B2 catalog/classification/boundary/assignment closure, and B1.Final authority
@@ -625,15 +981,28 @@ unresolved
 by the checker from the source artifacts; hand-entered aggregates cannot make
 the gate pass.
 
-`downstream_status` MUST preserve:
+`gate_status` MUST preserve the existing M2.5 vocabulary exactly. On a C PASS,
+the required values are:
 
 ```text
-RANKING_REUSE: BLOCKED
-DECK_LOCK: BLOCKED
-M3_CONFORMANCE: BLOCKED
+CLASSIFICATION_REFERENCE_CLOSURE        = PASS
+OFFICIAL_RULE_CITATION_CLOSURE          = PASS
+DECLARED_INTERACTION_MODEL_CLOSURE      = PASS
+REV2_REUSE_RATIO_REPRODUCIBLE           = BLOCKED
+RANKING_UNCERTAINTY_PROPAGATION         = BLOCKED
 ```
 
-The closure MUST carry no flag that promotes these states.
+The closure MUST also carry these exact flags:
+
+```text
+DECK_PAIR_LOCKED                    = false
+AUTHORITATIVE_RANKING_AVAILABLE     = false
+M3_STARTED                          = false
+```
+
+There is no parallel C gate or flag vocabulary. C owns only the transition of
+`DECLARED_INTERACTION_MODEL_CLOSURE`; the other values are inherited or remain
+blocked as shown above.
 
 ### 7.6 `INTERACTION_MODEL_REPORT.md`
 
@@ -646,8 +1015,8 @@ The report is a human-readable projection of the C artifacts. It MUST include:
 - terminal disposition totals and unresolved count;
 - high-risk review-set coverage;
 - B2 and B1.Final binding summary;
-- closure status and closure digest, when available;
-- downstream blocked statuses; and
+- closure status and its raw artifact SHA-256, when available;
+- the exact `gate_status` values and boolean flags from §7.5; and
 - exact commands and their actual statuses.
 
 The report MUST NOT be a closure input. If it repeats closure results or
@@ -680,23 +1049,34 @@ The final summary MUST record:
 ```text
 schema
 execution_commit
-source_commit
-source_tree_sha256
+source_tree_before_fingerprint
+source_tree_after_fingerprint
 prerequisite_results
 c_result
 negative_test_result
 repository_gate_results
 artifact_digests
-report_digest
-negative_matrix_digest
-closure_digest
+evidence_protocol
 evidence_export
 ```
 
-`artifact_digests` records the digests of model, candidate universe, semantic
+`execution_commit` is H_exec. `artifact_digests` records raw SHA-256 values of
+the exact bytes of `C_DESIGN_SPEC.md`, model, candidate universe, semantic
 classes, classifications, closure, report, and negative matrix. The summary
 does not record or bind its own digest. The final summary must never claim
 `PASS` for an unexecuted command.
+
+`evidence_protocol` has the fixed fields:
+
+```text
+H_exec
+modified_path
+H_evidence_relation = "direct_child_summary_only"
+```
+
+It does not embed a self-referential H_evidence commit digest; the verifier
+derives the unique evidence commit from ancestry and proves the relation in
+§13.2.
 
 ## 8. Candidate generation and reconciliation
 
@@ -726,7 +1106,7 @@ For every candidate that relies on a B2 card classification, C MUST resolve:
 2. the B2 classification record and review status;
 3. every referenced requirement assignment;
 4. the current family ID and lifecycle;
-5. the exact B2 semantic boundary digest; and
+5. the exact B2 `precise_semantic_definition` boundary value; and
 6. the assignment provenance and review evidence.
 
 An unknown OSI, unknown family, missing assignment, invalid assignment, stale
@@ -860,19 +1240,21 @@ The checker MUST perform all of the following checks:
 1. Resolve the exact repository root, C paths, archive root, and archive
    member identities.
 2. Validate the C JSON schemas, closed vocabularies, deterministic ordering,
-   and exact file inventory.
+   and exact nine-file C inventory, including `C_DESIGN_SPEC.md`.
 3. Execute or consume the current B1, B1.Final, B2, and master-drift gate
    results, rejecting any prerequisite that is not `PASS`.
 4. Verify the exact REV3 archive and candidate source digests.
 5. Verify the declared model scope and its finite higher-order boundary.
 6. Recompute the complete candidate universe and reject a missing, duplicate,
-   renamed, or extra inherited candidate.
+   renamed, or extra inherited candidate; validate the closed source-binding
+   union for every candidate.
 7. Verify every current candidate has exactly one classification record.
 8. Verify candidate IDs, class IDs, source-instance IDs, and mapping IDs are
-   unique where required.
-9. Verify every classification's reconciliation lineage and source row.
-10. Verify every required mapping has exact OSI, family, assignment, boundary,
-    lifecycle, and provenance bindings.
+   unique where required; verify digest-derived candidate-ID namespaces and
+   reject identity collisions.
+9. Verify every classification's reconciliation lineage and source binding.
+10. Verify the complete candidate-universe source-instance ledger and every
+    classification mapping against its owning candidate.
 11. Reject an unknown OSI, family, assignment, or citation reference.
 12. Reject a card-derived use of `ACTIVE_UNASSIGNED`.
 13. Verify arity, participant count, role names, direction, edge orientation,
@@ -881,11 +1263,17 @@ The checker MUST perform all of the following checks:
 14. Reject orphan source instances and duplicate or unbound mappings.
 15. Verify every required class resolves to B1.Final citation graph nodes.
 16. Recompute all candidate, class, reconciliation, and terminal counts.
-17. Verify exact bound-input digests and closure identity fields.
-18. Verify that report and verification evidence are not closure inputs.
-19. Verify downstream statuses remain blocked and no later gate is promoted.
-20. Verify the negative-test matrix inventory and expected reason codes.
-21. Validate the staging/evidence state against the H_exec/H_evidence protocol.
+17. Recompute `CandidateIdentityV1` and `InteractionClassIdentityV1` from their
+    prescribed fixed-position CBOR payloads and exact envelope metadata.
+18. Verify raw file bindings and exact bound-input identities; reject any
+    JSON/Serde-derived semantic digest or unbound identity.
+19. Verify that the report, negative matrix, verification summary, and design
+    spec are not closure inputs.
+20. Verify the exact existing gate/flag vocabulary, downstream blocked states,
+    and absence of any later-gate promotion.
+21. Verify the negative-test matrix inventory and expected reason codes.
+22. Validate both evidence-creation and historical-descendant evidence modes
+    against the H_exec/H_evidence protocol.
 
 The checker MUST contain no semantic rule that maps a keyword or capability
 name directly to an interaction disposition.
@@ -954,19 +1342,72 @@ must accurately report evidence identities.
 ## 12. Master-drift allowlist integration
 
 The existing master-drift verifier MUST remain narrow. C may extend its exact
-allowlist only with:
+allowlist only with these exact paths:
 
 ```text
 scripts/check_m2_5_c_interactions.py
-sources/m2_5/closures/C/
+sources/m2_5/closures/C/C_DESIGN_SPEC.md
+sources/m2_5/closures/C/declared_interaction_model.v1.json
+sources/m2_5/closures/C/interaction_candidate_universe.v1.json
+sources/m2_5/closures/C/interaction_semantic_classes.v1.json
+sources/m2_5/closures/C/interaction_classifications.v1.json
+sources/m2_5/closures/C/interaction_closure.v1.json
+sources/m2_5/closures/C/INTERACTION_MODEL_REPORT.md
+sources/m2_5/closures/C/verification/c_negative_test_matrix.v1.json
+sources/m2_5/closures/C/verification/c_verification_summary.v1.json
 ```
 
-It must not allow the broad `scripts/` directory or broad `sources/m2_5/`
-prefix. Near-miss paths such as a backup copy of the C checker must be
-rejected. C source is additive and must not modify historical B1/B2/REV3
-artifacts.
+It must not allow the broad `scripts/` directory, a broad `sources/m2_5/`
+prefix, or a C-directory prefix as a substitute for this exact list. Near-miss
+paths such as `scripts/check_m2_5_c_interactions.py.backup`,
+`sources/m2_5/closures/C/C_DESIGN_SPEC.md.backup`, and an unlisted file under
+the C directory must be rejected. The existing master-drift negative
+self-test MUST retain an exact near-miss checker-path case. This is a
+master-drift integration self-test outside the 32 semantic C mutations and
+does not change the exact count of `c_negative_test_matrix.v1.json`.
+
+C source is additive and must not modify historical B1/B2/REV3 artifacts.
 
 ## 13. H_exec and H_evidence protocol
+
+### 13.1 Raw artifact bindings and tracked-source fingerprint
+
+Every `*_raw_sha256` field in C is a raw file binding:
+
+```text
+SHA256(exact bytes read from the named repository or archive member)
+```
+
+It is not a semantic identity and is never substituted for
+`CandidateIdentityV1` or `InteractionClassIdentityV1`.
+
+The summary fields `source_tree_before_fingerprint` and
+`source_tree_after_fingerprint` reuse the accepted B2 tracked-source
+fingerprint algorithm exactly. The implementation MUST NOT introduce a new
+tree-hash interpretation. For a commit fingerprint, the algorithm is:
+
+```text
+paths = the exact NUL-delimited output order of:
+        git ls-tree -r -z --name-only <commit>
+
+fingerprint_bytes = concatenation, for each non-empty path_bytes in paths:
+  u64_be(byte_length(path_bytes)) || path_bytes
+  || u64_be(byte_length(payload_bytes)) || payload_bytes
+
+payload_bytes = exact bytes returned by:
+               git show <commit>:<UTF-8-decoded path>
+
+tracked_source_fingerprint = lowercase_hex(SHA256(fingerprint_bytes))
+```
+
+For the working-tree form used only while creating H_exec, the accepted B2
+algorithm uses the exact NUL-delimited output order of `git ls-files -z` and
+reads each tracked path's exact working-tree bytes. Empty path entries are
+skipped. Path bytes are the exact UTF-8 bytes returned by Git; no path
+normalization, case folding, sorting, JSON encoding, or line-ending rewrite is
+permitted. Both before and after execution fingerprints in the final summary
+MUST equal the commit fingerprint of H_exec, exactly as in the accepted B2
+evidence contract.
 
 ### Phase A — H_exec source snapshot
 
@@ -982,7 +1423,20 @@ in the isolated worktree. The source commit is H_exec. Before recording H_exec:
   introduced in the spec-review phase.
 
 The provisional summary records `execution_commit = null` and does not claim
-the execution gates passed.
+the execution gates passed. It records the exact raw digest of
+`C_DESIGN_SPEC.md` in the non-semantic artifact inventory but does not bind the
+spec into the closure.
+
+The creation invariant is:
+
+```text
+H_evidence^ == H_exec
+diff(H_exec, H_evidence)
+  == {sources/m2_5/closures/C/verification/c_verification_summary.v1.json}
+```
+
+The diff comparison is exact: no other path, file mode, rename, or source
+content change is permitted.
 
 ### Phase B — execute against exact H_exec
 
@@ -1015,8 +1469,9 @@ After Phase B, the only permitted source change is:
 sources/m2_5/closures/C/verification/c_verification_summary.v1.json
 ```
 
-That change records H_exec, the exact execution commit, source-tree identity,
-all command results, and all seven requested artifact digests:
+That change records H_exec as `execution_commit`, the exact source-tree
+fingerprints, all command results, and raw digests for the eight non-summary C
+files. The seven semantic/derived artifact digests are:
 
 ```text
 model
@@ -1028,12 +1483,50 @@ report
 negative matrix
 ```
 
+The eighth digest is the raw SHA-256 of `C_DESIGN_SPEC.md`. It is retained for
+inventory/evidence integrity but is not a closure input.
+
 The Phase C commit MUST be a direct child of H_exec. Its diff MUST contain
 exactly the verification summary. Any other diff is a failed evidence cycle,
 not a minor warning.
 
 Raw logs, the independent semantic-review export, and other generated
 verification output remain outside the reproducible source archive.
+
+### 13.2 Historical descendant validation
+
+The verifier has a separate historical-descendant mode for a later branch or
+master. In this mode, the current `HEAD` may be any descendant of H_evidence;
+it is not required to equal H_evidence, and its parent is not required to be
+H_exec.
+
+The verifier MUST:
+
+1. read the summary from the unique reachable evidence commit that records
+   `execution_commit = H_exec` and the H_evidence summary-only relation;
+2. prove `H_evidence` is an ancestor of the current `HEAD`;
+3. prove H_evidence has exactly one parent and that
+   `parent(H_evidence) = H_exec`;
+4. recompute `git diff --name-status H_exec..H_evidence` and require exactly
+   `sources/m2_5/closures/C/verification/c_verification_summary.v1.json`,
+   including its mode and content, with no other path or mode change;
+5. read the recorded artifact digests from that historical summary and compare
+   them with the current exact bytes of every C inventory file, including the
+   non-semantic design spec, report, and negative matrix;
+6. recompute the four semantic C input bindings and both V1 semantic identity
+   preimages from the current artifacts; and
+7. require the current C semantic closure and all recorded prerequisite
+   identities to remain equal to the historical evidence snapshot.
+
+If more than one reachable candidate satisfies the evidence relation, if none
+does, if the direct-parent proof fails, or if any recorded current artifact
+digest differs, the result is `FAIL` or `BLOCKED` according to whether the
+contradiction is in source data or unavailable history. The verifier may not
+silently select the newest candidate.
+
+This historical mode is the post-merge contract. It must not require
+`HEAD == H_evidence` or `HEAD^ == H_exec`; only the ancestry and historical
+summary-only proofs above are normative.
 
 ## 14. Independent review export
 
@@ -1069,11 +1562,13 @@ C is accepted only when all of the following are true:
 10. All required context, direction, role, host, timing, ordering, and arity
     information is explicit.
 11. The closure binds only its four semantic C inputs and is acyclic with
-    respect to report and verification evidence.
+    respect to the design spec, report, negative matrix, and verification
+    evidence.
 12. The 32 negative tests pass with their exact reason codes.
 13. H_exec and H_evidence satisfy the direct-child summary-only rule.
 14. Required repository and language gates execute successfully.
-15. Ranking/reuse, deck lock, and M3 remain `BLOCKED`.
+15. The exact M2.5 gate/flag values in §7.5 remain preserved; no later gate is
+    promoted.
 16. The independent review export is available for human review.
 17. The implementation branch and PR, if later requested, remain unmerged
     until the semantic C spec and resulting evidence have been independently
