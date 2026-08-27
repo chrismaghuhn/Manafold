@@ -27,6 +27,15 @@ All 402 records were reviewed from the pinned card-side source. REV3 assignments
 - Lexical candidates rejected by semantic review: 120
 - Semantic edges admitted without a lexical candidate: 14
 
+## Committed semantic boundaries
+
+Every catalog family carries a family-specific B2_SEMANTIC_BOUNDARY_V1 definition with positive includes, relevant excludes, and the applicable §5.4 semantic dimensions. The catalog boundary is the terminal vocabulary authority; per-edge rationales explain how the pinned card-side evidence satisfies that boundary.
+
+- Boundary-linked terminal assignment rationales: 1328/1328
+- Boundary-linked delta rationales: 1346/1346
+
+Lexical scans and family-specific predicates are disposable candidate/review tooling only. They do not authorize a terminal edge and are not a second rules engine or a replacement for the committed family boundary.
+
 ## Regression anchors
 
 - `cap.conditional_hexproof`: ACTIVE / REV3_LEGACY; historical members: 1; terminal usage: 1; card-side evidence is recorded for every assignment/change.

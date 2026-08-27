@@ -415,6 +415,42 @@ Equivalence is a reviewed, evidence-backed relation; it is not claimed to be pro
 by string comparison. The verifier enforces the declaration, historical digest,
 status, evidence, and regression anchors. The report records the review basis.
 
+The `precise_semantic_definition` field is the versioned terminal boundary for the
+family. It is not a family-name label and it must not use tautological wording such
+as "covers the explicitly evidenced X concept". Every catalog entry uses the closed
+`B2_SEMANTIC_BOUNDARY_V1` text form with these fields in this order:
+
+    B2_SEMANTIC_BOUNDARY_V1
+    family_id
+    includes
+    excludes
+    objects
+    action_or_event
+    timing
+    zone_visibility
+    eligibility_condition_duration
+    targets_choices
+    ownership_control
+    numeric_scaling_counters
+    information_identity_effect
+    rule_dependency
+
+The serialized form is a single UTF-8 string whose fields are separated by `|` and
+whose field assignments use the first `=` character. Field values are nonempty and
+must not contain `|`. `includes` states the positive semantic boundary for this
+family; `excludes` names the relevant adjacent concepts that are not in the family.
+The remaining fields state the applicable §5.4 dimensions, or explicitly state why
+the dimension is not material. `family_id` must equal the enclosing catalog record's
+ID. All 216 historical records must carry a family-specific boundary in this form;
+a canonical-name substitution or a generic "no unstated semantics" disclaimer is
+not sufficient.
+
+The verifier checks this versioned shape, field closure, and record binding. It does
+not attempt to prove Magic semantics. Candidate scans and private semantic
+predicates may locate or filter review candidates, but they are disposable tooling,
+not classification authority. A terminal edge is accepted only by the reviewed
+card-side rationale and evidence locator against the committed family boundary.
+
 ## 6. Lifecycle transitions
 
 B2 materializes one terminal snapshot and never mutates a previous B2 version. The

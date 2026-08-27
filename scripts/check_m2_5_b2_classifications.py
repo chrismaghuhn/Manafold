@@ -63,6 +63,22 @@ PROVENANCE_SCHEMA = "manafold.m2.5.b2.provenance.v1"
 ORACLE_LOCATOR_SCHEMA = "manafold.m2.5.b2.oracle-field-locator.v1"
 AUTHORITY_LOCATOR_SCHEMA = "manafold.m2.5.b2.authority-byte-fragment-locator.v1"
 RULE_LOCATOR_SCHEMA = "manafold.m2.5.b2.comprehensive-rule-locator.v1"
+SEMANTIC_BOUNDARY_PREFIX = "B2_SEMANTIC_BOUNDARY_V1"
+SEMANTIC_BOUNDARY_FIELDS = (
+    "family_id",
+    "includes",
+    "excludes",
+    "objects",
+    "action_or_event",
+    "timing",
+    "zone_visibility",
+    "eligibility_condition_duration",
+    "targets_choices",
+    "ownership_control",
+    "numeric_scaling_counters",
+    "information_identity_effect",
+    "rule_dependency",
+)
 
 RAW_ORACLE_ARTIFACT = "source/raw/oracle_cards_selected_REV3.jsonl"
 REQUIRED_ARCHIVE_MEMBERS = (
@@ -1193,6 +1209,45 @@ def validate_provenance(record: dict[str, Any]) -> None:
     )
 
 
+def validate_semantic_boundary(value: object, family_id: str) -> None:
+    definition = require_text(
+        value,
+        "B2_FILE_INVENTORY_REJECTED",
+        f"{family_id}.precise_semantic_definition",
+    )
+    parts = definition.split("|")
+    require(
+        len(parts) == len(SEMANTIC_BOUNDARY_FIELDS) + 1 and parts[0] == SEMANTIC_BOUNDARY_PREFIX,
+        "B2_FILE_INVENTORY_REJECTED",
+        f"{family_id}.precise_semantic_definition is not B2_SEMANTIC_BOUNDARY_V1",
+    )
+    parsed: dict[str, str] = {}
+    for expected_field, part in zip(SEMANTIC_BOUNDARY_FIELDS, parts[1:], strict=True):
+        key, separator, field_value = part.partition("=")
+        require(
+            separator == "=" and key == expected_field and field_value,
+            "B2_FILE_INVENTORY_REJECTED",
+            f"{family_id}.precise_semantic_definition field order or value is invalid",
+        )
+        require(
+            key not in parsed,
+            "B2_FILE_INVENTORY_REJECTED",
+            f"{family_id}.precise_semantic_definition repeats {key}",
+        )
+        parsed[key] = field_value
+    require(
+        parsed["family_id"] == family_id,
+        "B2_FILE_INVENTORY_REJECTED",
+        f"{family_id}.precise_semantic_definition binds another family",
+    )
+    require(
+        "covers the explicitly evidenced" not in definition
+        and "no unstated object, timing, zone" not in definition,
+        "B2_FILE_INVENTORY_REJECTED",
+        f"{family_id}.precise_semantic_definition is tautological",
+    )
+
+
 def validate_catalog(data: ArchiveData, catalog: object) -> dict[str, dict[str, Any]]:
     value = require_mapping(catalog, "B2_FILE_INVENTORY_REJECTED", "requirement family catalog")
     require(
@@ -1401,11 +1456,7 @@ def validate_catalog(data: ArchiveData, catalog: object) -> dict[str, dict[str, 
             "B2_FILE_INVENTORY_REJECTED",
             f"{family_id}.canonical_name",
         )
-        require_text(
-            family.get("precise_semantic_definition"),
-            "B2_FILE_INVENTORY_REJECTED",
-            f"{family_id}.precise_semantic_definition",
-        )
+        validate_semantic_boundary(family.get("precise_semantic_definition"), family_id)
         review = require_mapping(
             family.get("review_provenance"),
             "B2_FILE_INVENTORY_REJECTED",
@@ -2486,6 +2537,8 @@ def validate_report(
         "441/441",
         "23",
         "39",
+        "B2_SEMANTIC_BOUNDARY_V1",
+        "disposable candidate/review tooling only",
         "OFFICIAL_RULE_CITATION_CLOSURE = BLOCKED",
         "DECK_PAIR_LOCKED = NO",
         "M3_STARTED = NO",
@@ -2634,7 +2687,17 @@ def make_new_family(family_id: str, status: str = "ACTIVE_UNASSIGNED") -> dict[s
     return {
         "family_id": family_id,
         "canonical_name": "synthetic B2 family",
-        "precise_semantic_definition": "synthetic negative fixture family",
+        "precise_semantic_definition": (
+            "B2_SEMANTIC_BOUNDARY_V1|family_id="
+            f"{family_id}|includes=synthetic fixture concept|excludes=unrelated concepts|"
+            "objects=synthetic fixture object|action_or_event=synthetic fixture action|"
+            "timing=synthetic fixture timing|zone_visibility=synthetic fixture visibility|"
+            "eligibility_condition_duration=synthetic fixture condition and duration|"
+            "targets_choices=synthetic fixture choices|ownership_control=synthetic fixture control|"
+            "numeric_scaling_counters=synthetic fixture numeric boundary|"
+            "information_identity_effect=synthetic fixture information effect|"
+            "rule_dependency=synthetic fixture rule dependency"
+        ),
         "evidence_basis_allowed": sorted(["ORACLE_TEXT"], key=encode_canonical),
         "status": status,
         "terminal_assignable": status == "ACTIVE",
