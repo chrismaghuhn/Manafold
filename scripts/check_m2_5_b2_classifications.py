@@ -21,6 +21,7 @@ import re
 import struct
 import subprocess
 import sys
+import tempfile
 import zipfile
 from collections import Counter
 from collections.abc import Callable
@@ -111,6 +112,9 @@ EXACT_B2_FILES = (
     "verification/b2_negative_test_matrix.v1.json",
     "verification/b2_verification_summary.v1.json",
 )
+B2_GIT_RELATIVE_ROOT = Path("sources/m2_5/closures/B2")
+B2_SUMMARY_GIT_PATH = B2_GIT_RELATIVE_ROOT / "verification/b2_verification_summary.v1.json"
+B2_GIT_FILES = tuple(B2_GIT_RELATIVE_ROOT / relative for relative in EXACT_B2_FILES)
 CLOSURE_BOUND_FILES = (
     "B2_DESIGN_SPEC.md",
     "card_semantic_classifications.v1.json",
@@ -2314,10 +2318,12 @@ def validate_closure(
     )
 
 
-def git_bytes(args: list[str], input_bytes: bytes | None = None) -> bytes:
+def git_bytes(
+    args: list[str], input_bytes: bytes | None = None, *, repo_root: Path = ROOT
+) -> bytes:
     try:
         result = subprocess.run(
-            ["git", "-C", str(ROOT), *args],
+            ["git", "-C", str(repo_root), *args],
             input=input_bytes,
             capture_output=True,
             check=True,
@@ -2325,6 +2331,196 @@ def git_bytes(args: list[str], input_bytes: bytes | None = None) -> bytes:
     except (OSError, subprocess.CalledProcessError) as exc:
         blocked("GIT_EVIDENCE_UNAVAILABLE", f"git {' '.join(args)} failed: {exc}")
     return result.stdout
+
+
+def git_try_bytes(args: list[str], *, repo_root: Path = ROOT) -> bytes | None:
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(repo_root), *args],
+            capture_output=True,
+            check=False,
+        )
+    except OSError as exc:
+        blocked("GIT_EVIDENCE_UNAVAILABLE", f"git {' '.join(args)} failed: {exc}")
+    if result.returncode != 0:
+        return None
+    return result.stdout
+
+
+def git_is_ancestor(ancestor: str, descendant: str, *, repo_root: Path = ROOT) -> bool:
+    try:
+        result = subprocess.run(
+            [
+                "git",
+                "-C",
+                str(repo_root),
+                "merge-base",
+                "--is-ancestor",
+                ancestor,
+                descendant,
+            ],
+            capture_output=True,
+            check=False,
+        )
+    except OSError as exc:
+        blocked("GIT_EVIDENCE_UNAVAILABLE", f"git merge-base failed: {exc}")
+    return result.returncode == 0
+
+
+def resolve_historical_evidence(
+    execution_commit: str,
+    *,
+    repo_root: Path = ROOT,
+    current_b2_dir: Path = B2_DIR,
+) -> str:
+    """Resolve the unique final evidence commit for a recorded H_exec."""
+    current_head = git_bytes(["rev-parse", "HEAD"], repo_root=repo_root).decode("ascii").strip()
+    if not git_is_ancestor(execution_commit, current_head, repo_root=repo_root):
+        fail(
+            "EXECUTION_COMMIT_NOT_ANCESTOR_REJECTED",
+            "execution_commit "
+            f"{execution_commit} is not an ancestor of current HEAD {current_head}",
+        )
+
+    parent_rows = (
+        git_bytes(["rev-list", "--parents", current_head], repo_root=repo_root)
+        .decode("ascii")
+        .splitlines()
+    )
+    direct_children = []
+    for row in parent_rows:
+        parts = row.split()
+        if len(parts) == 2 and parts[1] == execution_commit:
+            direct_children.append(parts[0])
+    direct_children.sort()
+    rejected: list[tuple[str, str, str]] = []
+    valid: list[str] = []
+
+    for candidate in direct_children:
+        diff_raw = git_bytes(
+            ["diff", "--name-only", "--no-renames", execution_commit, candidate, "--"],
+            repo_root=repo_root,
+        )
+        diff_files = [line for line in diff_raw.decode("utf-8").splitlines() if line]
+        if B2_SUMMARY_GIT_PATH.as_posix() not in diff_files:
+            continue
+        if diff_files != [B2_SUMMARY_GIT_PATH.as_posix()]:
+            rejected.append(
+                (
+                    candidate,
+                    "HISTORICAL_EVIDENCE_DIFF_REJECTED",
+                    "candidate changes "
+                    f"{diff_files!r}, expected only {B2_SUMMARY_GIT_PATH.as_posix()!r}",
+                )
+            )
+            continue
+
+        historical_summary_oid = git_try_bytes(
+            ["rev-parse", f"{candidate}:{B2_SUMMARY_GIT_PATH.as_posix()}"],
+            repo_root=repo_root,
+        )
+        current_summary_oid = git_try_bytes(
+            ["rev-parse", f"{current_head}:{B2_SUMMARY_GIT_PATH.as_posix()}"],
+            repo_root=repo_root,
+        )
+        if (
+            historical_summary_oid is None
+            or current_summary_oid is None
+            or historical_summary_oid.strip() != current_summary_oid.strip()
+        ):
+            rejected.append(
+                (
+                    candidate,
+                    "HISTORICAL_SUMMARY_BLOB_MISMATCH_REJECTED",
+                    "historical H_evidence summary blob differs from current HEAD",
+                )
+            )
+            continue
+
+        artifact_drift = False
+        for git_path in B2_GIT_FILES:
+            historical_oid = git_try_bytes(
+                ["rev-parse", f"{candidate}:{git_path.as_posix()}"],
+                repo_root=repo_root,
+            )
+            current_oid = git_try_bytes(
+                ["rev-parse", f"{current_head}:{git_path.as_posix()}"],
+                repo_root=repo_root,
+            )
+            if (
+                historical_oid is None
+                or current_oid is None
+                or historical_oid.strip() != current_oid.strip()
+            ):
+                rejected.append(
+                    (
+                        candidate,
+                        "B2_ARTIFACT_DRIFT_REJECTED",
+                        "B2 artifact "
+                        f"{git_path.as_posix()} differs between H_evidence and current HEAD",
+                    )
+                )
+                artifact_drift = True
+                break
+            historical_bytes = git_try_bytes(
+                ["show", f"{candidate}:{git_path.as_posix()}"], repo_root=repo_root
+            )
+            relative = git_path.relative_to(B2_GIT_RELATIVE_ROOT)
+            try:
+                current_bytes = (current_b2_dir / relative).read_bytes()
+            except OSError as exc:
+                fail(
+                    "B2_FILE_INVENTORY_REJECTED",
+                    f"cannot read current B2 artifact {relative.as_posix()}: {exc}",
+                )
+            if historical_bytes is None or historical_bytes != current_bytes:
+                rejected.append(
+                    (
+                        candidate,
+                        "B2_ARTIFACT_DRIFT_REJECTED",
+                        f"current B2 artifact {relative.as_posix()} differs from H_evidence",
+                    )
+                )
+                artifact_drift = True
+                break
+        if artifact_drift:
+            continue
+
+        if not git_is_ancestor(execution_commit, candidate, repo_root=repo_root):
+            rejected.append(
+                (
+                    candidate,
+                    "HISTORICAL_EVIDENCE_PARENT_REJECTED",
+                    "candidate evidence commit is not descended from execution_commit",
+                )
+            )
+            continue
+        if not git_is_ancestor(candidate, current_head, repo_root=repo_root):
+            rejected.append(
+                (
+                    candidate,
+                    "HISTORICAL_EVIDENCE_NOT_REACHABLE_REJECTED",
+                    "candidate evidence commit is not reachable from current HEAD",
+                )
+            )
+            continue
+        valid.append(candidate)
+
+    if len(valid) > 1:
+        fail(
+            "HISTORICAL_EVIDENCE_AMBIGUOUS_REJECTED",
+            f"multiple valid historical evidence commits: {valid}",
+        )
+    if not valid:
+        if rejected:
+            _, code, message = sorted(rejected)[0]
+            fail(code, message)
+        fail(
+            "HISTORICAL_EVIDENCE_NOT_FOUND_REJECTED",
+            "no valid summary-only evidence child of execution_commit "
+            f"{execution_commit} is reachable from {current_head}",
+        )
+    return valid[0]
 
 
 def tracked_source_fingerprint() -> str:
@@ -2470,24 +2666,7 @@ def validate_summary(data: ArchiveData, summary: object, *, allow_staging: bool)
         "B2_FILE_INVENTORY_REJECTED",
         "execution_commit is not a full lowercase Git SHA",
     )
-    head = git_bytes(["rev-parse", "HEAD"]).decode("ascii").strip()
-    parent = git_bytes(["rev-parse", f"{head}^"]).decode("ascii").strip()
-    require(
-        parent == execution_commit,
-        "B2_FILE_INVENTORY_REJECTED",
-        "H_evidence is not a direct child of execution_commit",
-    )
-    try:
-        subprocess.run(
-            ["git", "-C", str(ROOT), "merge-base", "--is-ancestor", execution_commit, head],
-            check=True,
-            capture_output=True,
-        )
-    except (OSError, subprocess.CalledProcessError) as exc:
-        fail(
-            "B2_FILE_INVENTORY_REJECTED",
-            f"execution_commit is not an ancestor of final HEAD: {exc}",
-        )
+    resolve_historical_evidence(execution_commit)
     require(
         all(status == "PASS" for status in statuses),
         "B2_GATES_NOT_PASS",
@@ -2800,11 +2979,274 @@ def mutate_active_to_zero(artifacts: dict[str, Any]) -> None:
     fail("NEGATIVE_FIXTURE_FAILED", "could not find a singleton family assignment")
 
 
+TEST_B2_RELATIVE_ROOT = Path("sources/m2_5/closures/B2")
+TEST_B2_SUMMARY_PATH = TEST_B2_RELATIVE_ROOT / "verification" / "b2_verification_summary.v1.json"
+
+
+def test_git(repo: Path, *args: str) -> str:
+    env = os.environ.copy()
+    env.update(
+        {
+            "GIT_AUTHOR_NAME": "Manafold B2 verifier test",
+            "GIT_AUTHOR_EMAIL": "b2-verifier@example.invalid",
+            "GIT_COMMITTER_NAME": "Manafold B2 verifier test",
+            "GIT_COMMITTER_EMAIL": "b2-verifier@example.invalid",
+        }
+    )
+    result = subprocess.run(
+        ["git", "-C", str(repo), *args],
+        check=True,
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+    if args and args[0] == "commit":
+        result = subprocess.run(
+            ["git", "-C", str(repo), "rev-parse", "HEAD"],
+            check=True,
+            capture_output=True,
+            text=True,
+            env=env,
+        )
+    return result.stdout.strip()
+
+
+def write_test_file(repo: Path, relative: Path, content: bytes) -> None:
+    path = repo / relative
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(content)
+
+
+def make_git_evidence_fixture(base: Path) -> tuple[Path, str, str]:
+    repo = base / "repo"
+    repo.mkdir()
+    test_git(repo, "init", "-b", "master")
+    test_git(repo, "config", "core.autocrlf", "false")
+    for relative in EXACT_B2_FILES:
+        write_test_file(
+            repo,
+            TEST_B2_RELATIVE_ROOT / relative,
+            f"initial:{relative}\n".encode(),
+        )
+    write_test_file(repo, TEST_B2_SUMMARY_PATH, b"summary:staging\n")
+    test_git(repo, "add", ".")
+    h_exec = test_git(repo, "commit", "-m", "H_exec")
+    write_test_file(repo, TEST_B2_SUMMARY_PATH, b"summary:final\n")
+    test_git(repo, "add", str(TEST_B2_SUMMARY_PATH))
+    h_evidence = test_git(repo, "commit", "-m", "H_evidence")
+    return repo, h_exec, h_evidence
+
+
+def resolve_test_fixture(repo: Path, execution_commit: str) -> str:
+    return resolve_historical_evidence(
+        execution_commit,
+        repo_root=repo,
+        current_b2_dir=repo / TEST_B2_RELATIVE_ROOT,
+    )
+
+
+def git_evidence_regression_self_test() -> int:
+    failures: list[str] = []
+
+    def expect_pass(label: str, setup: Callable[[Path, str, str], None]) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo, h_exec, h_evidence = make_git_evidence_fixture(Path(tmp))
+            setup(repo, h_exec, h_evidence)
+            try:
+                actual = resolve_test_fixture(repo, h_exec)
+            except B2CheckError as exc:
+                failures.append(f"{label}: unexpected {exc.code}")
+            else:
+                if actual != h_evidence:
+                    failures.append(f"{label}: resolved {actual}, expected {h_evidence}")
+
+    def expect_fail(
+        label: str,
+        expected_code: str,
+        setup: Callable[[Path, str, str], str],
+    ) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo, h_exec, h_evidence = make_git_evidence_fixture(Path(tmp))
+            execution_commit = setup(repo, h_exec, h_evidence)
+            try:
+                resolve_test_fixture(repo, execution_commit)
+            except B2CheckError as exc:
+                if exc.code != expected_code:
+                    failures.append(f"{label}: found {exc.code}, expected {expected_code}")
+            else:
+                failures.append(f"{label}: unexpectedly passed")
+
+    expect_pass("EVIDENCE_HEAD", lambda repo, _exec, _evidence: None)
+
+    def ordinary_descendant(repo: Path, _exec: str, _evidence: str) -> None:
+        write_test_file(repo, Path("unrelated.txt"), b"ordinary descendant\n")
+        test_git(repo, "add", "unrelated.txt")
+        test_git(repo, "commit", "-m", "unrelated descendant")
+
+    expect_pass("ORDINARY_DESCENDANT", ordinary_descendant)
+
+    def merge_descendant(repo: Path, h_exec: str, h_evidence: str) -> None:
+        test_git(repo, "switch", "--detach", h_exec)
+        write_test_file(repo, Path("side.txt"), b"side branch\n")
+        test_git(repo, "add", "side.txt")
+        side = test_git(repo, "commit", "-m", "side branch")
+        test_git(repo, "switch", "--detach", side)
+        test_git(repo, "merge", "--no-ff", h_evidence, "-m", "merge evidence as second parent")
+
+    expect_pass("MERGE_DESCENDANT", merge_descendant)
+
+    def execution_not_ancestor(repo: Path, h_exec: str, _evidence: str) -> str:
+        test_git(repo, "switch", "--detach", h_exec)
+        write_test_file(repo, Path("outsider.txt"), b"outsider\n")
+        test_git(repo, "add", "outsider.txt")
+        outsider = test_git(repo, "commit", "-m", "outsider execution")
+        test_git(repo, "switch", "--detach", h_exec)
+        return outsider
+
+    expect_fail(
+        "EXECUTION_NOT_ANCESTOR",
+        "EXECUTION_COMMIT_NOT_ANCESTOR_REJECTED",
+        execution_not_ancestor,
+    )
+
+    def wrong_parent(repo: Path, h_exec: str, _evidence: str) -> str:
+        test_git(repo, "switch", "--detach", h_exec)
+        write_test_file(repo, Path("intermediate.txt"), b"intermediate\n")
+        test_git(repo, "add", "intermediate.txt")
+        test_git(repo, "commit", "-m", "intermediate")
+        write_test_file(repo, TEST_B2_SUMMARY_PATH, b"summary:final\n")
+        test_git(repo, "add", str(TEST_B2_SUMMARY_PATH))
+        test_git(repo, "commit", "-m", "wrong parent evidence")
+        return h_exec
+
+    expect_fail("WRONG_PARENT", "HISTORICAL_EVIDENCE_NOT_FOUND_REJECTED", wrong_parent)
+
+    def additional_diff(repo: Path, h_exec: str, _evidence: str) -> str:
+        test_git(repo, "switch", "--detach", h_exec)
+        write_test_file(repo, TEST_B2_SUMMARY_PATH, b"summary:final\n")
+        write_test_file(repo, Path("extra.txt"), b"extra evidence change\n")
+        test_git(repo, "add", ".")
+        test_git(repo, "commit", "-m", "summary plus extra file")
+        return h_exec
+
+    expect_fail(
+        "ADDITIONAL_DIFF",
+        "HISTORICAL_EVIDENCE_DIFF_REJECTED",
+        additional_diff,
+    )
+
+    def current_summary_drift(repo: Path, _h_exec: str, h_evidence: str) -> str:
+        test_git(repo, "switch", "--detach", h_evidence)
+        write_test_file(repo, TEST_B2_SUMMARY_PATH, b"summary:changed-after-evidence\n")
+        test_git(repo, "add", str(TEST_B2_SUMMARY_PATH))
+        test_git(repo, "commit", "-m", "tamper current summary")
+        return _h_exec
+
+    expect_fail(
+        "CURRENT_SUMMARY_DRIFT",
+        "HISTORICAL_SUMMARY_BLOB_MISMATCH_REJECTED",
+        current_summary_drift,
+    )
+
+    def artifact_drift(relative: str) -> Callable[[Path, str, str], str]:
+        def mutate(repo: Path, _h_exec: str, h_evidence: str) -> str:
+            test_git(repo, "switch", "--detach", h_evidence)
+            write_test_file(repo, TEST_B2_RELATIVE_ROOT / relative, b"artifact drift\n")
+            test_git(repo, "add", str(TEST_B2_RELATIVE_ROOT / relative))
+            test_git(repo, "commit", "-m", f"tamper {relative}")
+            return _h_exec
+
+        return mutate
+
+    for label, relative in (
+        ("CLASSIFICATION_DRIFT", "card_semantic_classifications.v1.json"),
+        ("CATALOG_DRIFT", "requirement_family_catalog.v1.json"),
+        ("BOUNDARY_DRIFT", "B2_DESIGN_SPEC.md"),
+        ("PROJECTION_DRIFT", "deck_row_classification_refs.v1.csv"),
+    ):
+        expect_fail(label, "B2_ARTIFACT_DRIFT_REJECTED", artifact_drift(relative))
+
+    def unreachable_evidence(repo: Path, h_exec: str, _h_evidence: str) -> str:
+        test_git(repo, "switch", "--detach", h_exec)
+        write_test_file(repo, Path("unrelated.txt"), b"no evidence ancestor\n")
+        test_git(repo, "add", "unrelated.txt")
+        test_git(repo, "commit", "-m", "unrelated branch")
+        return h_exec
+
+    expect_fail(
+        "UNREACHABLE_EVIDENCE",
+        "HISTORICAL_EVIDENCE_NOT_FOUND_REJECTED",
+        unreachable_evidence,
+    )
+
+    def ambiguous_evidence(repo: Path, h_exec: str, _h_evidence: str) -> str:
+        test_git(repo, "switch", "--detach", h_exec)
+        write_test_file(repo, TEST_B2_SUMMARY_PATH, b"summary:final\n")
+        test_git(repo, "add", str(TEST_B2_SUMMARY_PATH))
+        first = test_git(repo, "commit", "-m", "evidence candidate one")
+        test_git(repo, "switch", "--detach", h_exec)
+        write_test_file(repo, TEST_B2_SUMMARY_PATH, b"summary:final\n")
+        test_git(repo, "add", str(TEST_B2_SUMMARY_PATH))
+        second = test_git(repo, "commit", "-m", "evidence candidate two")
+        test_git(repo, "switch", "--detach", first)
+        test_git(repo, "merge", "--no-ff", second, "-m", "ambiguous evidence candidates")
+        return h_exec
+
+    expect_fail(
+        "AMBIGUOUS_EVIDENCE",
+        "HISTORICAL_EVIDENCE_AMBIGUOUS_REJECTED",
+        ambiguous_evidence,
+    )
+
+    if failures:
+        for failure in failures:
+            print(f"GIT_EVIDENCE {failure}")
+        return EXIT_FAIL
+    print("GIT_EVIDENCE_SELF_TEST = PASS (3 positive; 10 negative history fixtures)")
+    return EXIT_PASS
+
+
+def summary_binding_regression_self_test(data: ArchiveData, summary: object) -> int:
+    cases: tuple[tuple[str, Callable[[dict[str, Any]], None], str], ...] = (
+        (
+            "CHECKER_IDENTITY_TAMPER",
+            lambda value: value["checker_version_and_identity"].__setitem__("raw_sha256", "0" * 64),
+            "SUMMARY_CHECKER_IDENTITY_MISMATCH",
+        ),
+        (
+            "EXECUTION_FINGERPRINT_TAMPER",
+            lambda value: value.__setitem__("source_tree_before_fingerprint", "0" * 64),
+            "SUMMARY_FINGERPRINT_MISMATCH",
+        ),
+    )
+    failures: list[str] = []
+    for label, mutation, expected_code in cases:
+        mutated = copy.deepcopy(summary)
+        mutation(mutated)
+        try:
+            validate_summary(data, mutated, allow_staging=False)
+        except B2CheckError as exc:
+            if exc.code != expected_code:
+                failures.append(f"{label}: found {exc.code}, expected {expected_code}")
+        else:
+            failures.append(f"{label}: unexpectedly passed")
+    if failures:
+        for failure in failures:
+            print(f"SUMMARY_BINDING {failure}")
+        return EXIT_FAIL
+    print("SUMMARY_BINDING_SELF_TEST = PASS (2 negative metadata fixtures)")
+    return EXIT_PASS
+
+
 def negative_self_test() -> int:
+    if git_evidence_regression_self_test() != EXIT_PASS:
+        return EXIT_FAIL
     data = load_archive()
     known_answer_test()
     base = read_artifacts()
     validate_model(data, base)
+    if summary_binding_regression_self_test(data, base["summary"]) != EXIT_PASS:
+        return EXIT_FAIL
     cases: list[tuple[str, Callable[[dict[str, Any]], None], str | None]] = []
 
     def case(
