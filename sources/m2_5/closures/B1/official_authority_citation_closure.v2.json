@@ -1,0 +1,24 @@
+{
+  "schema": "manafold.m2.5.b1.official-authority-citation-closure.v2",
+  "gate_status": {
+    "CLASSIFICATION_REFERENCE_CLOSURE": "PASS",
+    "OFFICIAL_RULE_CITATION_CLOSURE": "PASS",
+    "DECLARED_INTERACTION_MODEL_CLOSURE": "BLOCKED",
+    "REV2_REUSE_RATIO_REPRODUCIBLE": "BLOCKED",
+    "RANKING_UNCERTAINTY_PROPAGATION": "BLOCKED"
+  },
+  "AUTHORITY_INPUT_COUNT": 7,
+  "AUTHORITY_TERMINAL_COUNT": 7,
+  "REQUIRED_B2_FAMILY_COUNT": 210,
+  "unresolved_authority_dependencies": [],
+  "flags": {
+    "DECK_PAIR_LOCKED": false,
+    "AUTHORITATIVE_RANKING_AVAILABLE": false,
+    "M3_STARTED": false
+  },
+  "b2_source_package_sha256": "99b33945a3e0c7b2982734e65f770715029ce6acd500104bde48e8466eed1a90",
+  "bound_evidence": {
+    "official_authority_citations.v3.json": "aaf684335be10255843f4b5debd6fed71835043eef9e585c5fa024109248a25a",
+    "AUTHORITY_CITATION_FINAL_REPORT.md": "1d353a36822bbcd5ee8088096f32db63280f0132da7944b5ebc0e51aff897dc2"
+  }
+}

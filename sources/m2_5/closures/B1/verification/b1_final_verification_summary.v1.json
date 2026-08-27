@@ -1,0 +1,71 @@
+{
+  "schema": "manafold.m2.5.b1.final-verification-summary.v1",
+  "execution_commit": "2ec490b2c08268158d3891a65b4e4e980d27ef02",
+  "execution_tree": "21a68c1f15f76d73795b94667c1ab8d755406067",
+  "source_tree_status": "CLEAN_H_EXEC",
+  "actual_commands": [
+    "C:\\Python313\\python.exe scripts/check_m2_5_master_drift.py",
+    "C:\\Python313\\python.exe scripts/check_m2_5_master_drift.py --negative-self-test",
+    "C:\\Python313\\python.exe scripts/check_m2_5_master_drift.py --verify-archive",
+    "C:\\Python313\\python.exe scripts/check_m2_5_b1_authority_citations.py",
+    "C:\\Python313\\python.exe scripts/check_m2_5_b1_authority_citations.py --negative-self-test",
+    "C:\\Python313\\python.exe scripts/check_m2_5_b2_classifications.py",
+    "C:\\Python313\\python.exe scripts/check_m2_5_b2_classifications.py --negative-self-test",
+    "C:\\Python313\\python.exe scripts/check_m2_5_b1_final_authority_citations.py",
+    "C:\\Python313\\python.exe scripts/check_m2_5_b1_final_authority_citations.py --negative-self-test",
+    "C:\\Python313\\python.exe scripts/verify_repository.py",
+    "C:\\Python313\\python.exe scripts/run_checks.py integration",
+    "C:\\Python313\\python.exe scripts/run_checks.py certification",
+    "cargo fmt --all -- --check",
+    "cargo check --workspace --all-targets --all-features --locked",
+    "cargo clippy --workspace --all-targets --all-features --locked -- -D warnings",
+    "cargo test --workspace --all-features --locked"
+  ],
+  "gate_results": {
+    "MASTER_DRIFT": "PASS",
+    "MASTER_DRIFT_NEGATIVE": "PASS",
+    "ARCHIVE_PREFLIGHT": "PASS",
+    "B1_INITIAL_CHECK": "PASS",
+    "B1_INITIAL_NEGATIVE": "PASS",
+    "B2_CHECK": "PASS",
+    "B2_NEGATIVE": "PASS",
+    "B1_FINAL_CHECK": "PASS",
+    "B1_FINAL_NEGATIVE": "PASS",
+    "REPOSITORY_VERIFY": "PASS",
+    "INTEGRATION": "PASS",
+    "RUST_FMT": "PASS",
+    "RUST_CHECK": "PASS",
+    "RUST_CLIPPY": "PASS",
+    "RUST_TEST": "PASS",
+    "CERTIFICATION": "PASS",
+    "HOSTED_CI": "NOT_RUN",
+    "SEMANTIC_REVIEW_EXPORT": "PASS"
+  },
+  "downstream_gate_status": {
+    "CLASSIFICATION_REFERENCE_CLOSURE": "PASS",
+    "OFFICIAL_RULE_CITATION_CLOSURE": "PASS",
+    "DECLARED_INTERACTION_MODEL_CLOSURE": "BLOCKED",
+    "REV2_REUSE_RATIO_REPRODUCIBLE": "BLOCKED",
+    "RANKING_UNCERTAINTY_PROPAGATION": "BLOCKED"
+  },
+  "flags": {
+    "DECK_PAIR_LOCKED": false,
+    "AUTHORITATIVE_RANKING_AVAILABLE": false,
+    "M3_STARTED": false
+  },
+  "evidence_protocol": {
+    "phase": "H_EVIDENCE",
+    "H_exec": "2ec490b2c08268158d3891a65b4e4e980d27ef02",
+    "parent_is_H_exec": true,
+    "modified_path": "sources/m2_5/closures/B1/verification/b1_final_verification_summary.v1.json",
+    "H_evidence": "direct_child_summary_only",
+    "review_export": {
+      "path": "C:\\Users\\chris\\AppData\\Local\\Temp\\manafold-m25-b1-final-semantic-delta.v2.json",
+      "sha256": "7e5dfa309f61e8b971ad520d29da815f99a09287480fbef21031bbb9dbbeb7a9",
+      "family_count": 210,
+      "citation_record_count": 10,
+      "new_citation_count": 10,
+      "unresolved_citation_exports": 0
+    }
+  }
+}
