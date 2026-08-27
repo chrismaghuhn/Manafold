@@ -1,0 +1,54 @@
+{
+  "schema": "manafold.m2.5.b1.checker-record.v1",
+  "executed_at": "2026-08-26T07:35:44Z",
+  "environment": "repository venv python; MANAFOLD_SOURCE_ARCHIVE resolved via the M2.5.A private-archive contract; REV3 payload consumed only after ARCHIVE_PREFLIGHT = PASS",
+  "commands": {
+    "drift_closure_check": {
+      "command": "python scripts/check_m2_5_master_drift.py",
+      "exit_code": 0,
+      "output": [
+        "MASTER_DRIFT_CLOSURE_CHECK = PASS (head 2b6966580af16703ba1fd55bc0c7e793333ef954)"
+      ]
+    },
+    "archive_preflight": {
+      "command": "python scripts/check_m2_5_master_drift.py --verify-archive",
+      "exit_code": 0,
+      "output": [
+        "ARCHIVE_PREFLIGHT = PASS (C:\\Users\\chris\\AppData\\Local\\Temp\\opencode\\archive_root\\m2_5\\Manafold_M2_5_Pre_Research_ALL_ARTIFACTS_REV3.zip)"
+      ]
+    },
+    "b1_citation_check": {
+      "command": "python scripts/check_m2_5_b1_authority_citations.py",
+      "exit_code": 0,
+      "output": [
+        "B1_AUTHORITY_CITATION_CLOSURE_CHECK = PASS (authorities=7 terminal=7 unresolved=0)"
+      ]
+    },
+    "b1_negative_self_test": {
+      "command": "python scripts/check_m2_5_b1_authority_citations.py --negative-self-test",
+      "exit_code": 0,
+      "output": [
+        "POSITIVE synthetic baseline fixture: PASS",
+        "NEGATIVE MISSING_AUTHORITY_REJECTED: rejected (FAIL/AUTHORITY_UNIVERSE_INCOMPLETE)",
+        "NEGATIVE DUPLICATE_AUTHORITY_REJECTED: rejected (FAIL/AUTHORITY_DUPLICATE)",
+        "NEGATIVE UNKNOWN_AUTHORITY_REJECTED: rejected (FAIL/AUTHORITY_UNKNOWN)",
+        "NEGATIVE EMPTY_CITATION_REJECTED: rejected (FAIL/EMPTY_CITATIONS)",
+        "NEGATIVE WRONG_ARTIFACT_DIGEST_REJECTED: rejected (FAIL/REGISTER_CROSS_BINDING)",
+        "NEGATIVE INVALID_ARTIFACT_LOCATOR_REJECTED: rejected (FAIL/IDENTIFIER_LOCATOR_BINDING)",
+        "NEGATIVE SWAPPED_REGISTER_PROVENANCE_REJECTED: rejected (FAIL/REGISTER_CROSS_BINDING)",
+        "NEGATIVE THIRD_PARTY_AS_AUTHORITY_REJECTED: rejected (FAIL/AUTHORITY_NOT_OFFICIAL)",
+        "NEGATIVE UNRESOLVED_REQUIRED_AUTHORITY_REJECTED: rejected (FAIL/CITED_RECORD_INCOMPLETE)",
+        "NEGATIVE IDENTIFIER_LOCATOR_MISMATCH_REJECTED: rejected (FAIL/IDENTIFIER_LOCATOR_BINDING)",
+        "NEGATIVE SURFACE_CATALOG_OMISSION_REJECTED: rejected (FAIL/SURFACE_CATALOG_DEVIATION)",
+        "NEGATIVE GATE_PROMOTION_WITH_NONTERMINAL_RECORD_REJECTED: rejected (FAIL/NON_TERMINAL_STATUS)",
+        "NEGATIVE OTHER_REV3_GATE_PROMOTION_REJECTED: rejected (FAIL/GATE_PROMOTION_FORBIDDEN)",
+        "NEGATIVE WRONG_CITATIONS_SCHEMA_REJECTED: rejected (FAIL/SCHEMA_MISMATCH)",
+        "NEGATIVE WRONG_CLOSURE_SCHEMA_REJECTED: rejected (FAIL/SCHEMA_MISMATCH)",
+        "NEGATIVE DIGEST_BINDING_TAMPER_REJECTED: rejected (FAIL/EVIDENCE_DIGEST_MISMATCH)",
+        "NEGATIVE TAMPERED_ARCHIVE_MEMBER_REJECTED: rejected (FAIL/ARTIFACT_DIGEST_MISMATCH)",
+        "NEGATIVE FALSE_NOT_REQUIRED_REJECTED: rejected (FAIL/DEPENDENCY_HIT_FOUND)",
+        "B1_NEGATIVE_SELF_TEST = PASS (positive control PASS; 18/18 adversarial fixtures rejected)"
+      ]
+    }
+  }
+}

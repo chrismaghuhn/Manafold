@@ -52,7 +52,18 @@ GIT_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 ALLOWED_PATH_PREFIXES = (
     "sources/m2_5/pre_research/REV3/",
+    "sources/m2_5/closures/B1/",
     "scripts/check_m2_5_master_drift.py",
+    "scripts/check_m2_5_b1_authority_citations.py",
+)
+NORMATIVE_DRIFT_CONTROL_PATHS = (
+    "crates/mtgml-rules/src/lib.rs",
+    "python/src/mtgml/observation.py",
+    "schemas/player-step.v2.schema.json",
+    "wire/golden/manifest.json",
+    "docs/contracts/WIRE_CONTRACT.md",
+    "docs/adr/0041-capability-oriented-semantic-domains-and-explicit-semantic-ownership.md",
+    "cards/capabilities/registry.json",
 )
 ARCHIVE_ENV_VAR = "MANAFOLD_SOURCE_ARCHIVE"
 
@@ -359,12 +370,31 @@ def negative_self_test(provenance_dir: Path) -> int:
         evaluate_closure(closure, provenance, "0" * 40, None, provenance_dir)
 
     def normative_drift() -> None:
-        evaluate_closure(
-            closure,
-            provenance,
-            live_head,
-            ["crates/mtgml-rules/src/lib.rs"],
-            provenance_dir,
+        rejected_paths = []
+        for controlled in NORMATIVE_DRIFT_CONTROL_PATHS:
+            try:
+                evaluate_closure(
+                    closure,
+                    provenance,
+                    live_head,
+                    [controlled],
+                    provenance_dir,
+                )
+            except DriftCheckError:
+                rejected_paths.append(controlled)
+            else:
+                raise DriftCheckError(
+                    "FAIL",
+                    f"normative path {controlled!r} did not invalidate the closure",
+                )
+        if len(rejected_paths) != len(NORMATIVE_DRIFT_CONTROL_PATHS):
+            raise DriftCheckError("FAIL", "normative drift control coverage incomplete")
+        # Every controlled path was individually proven to break the closure;
+        # surface this to the harness as the fixture's expected rejection.
+        raise DriftCheckError(
+            "FAIL",
+            "expected rejection: all "
+            f"{len(rejected_paths)} normative control paths invalidated the closure",
         )
 
     def non_pass_grant() -> None:
