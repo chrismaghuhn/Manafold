@@ -1,0 +1,136 @@
+{
+  "schema": "manafold.m2.5.b1.final-negative-test-matrix.v1",
+  "case_count": 26,
+  "cases": [
+    {
+      "case_id": "B2_CLOSURE_NOT_PASS",
+      "expected_error_code": "B2_CLOSURE_STATUS",
+      "description": "Adversarial B1.Final mutation must fail for this stable reason."
+    },
+    {
+      "case_id": "B2_CATALOG_DIGEST_CHANGED",
+      "expected_error_code": "B2_INPUT_DIGEST_MISMATCH",
+      "description": "Adversarial B1.Final mutation must fail for this stable reason."
+    },
+    {
+      "case_id": "B2_CLASSIFICATION_DIGEST_CHANGED",
+      "expected_error_code": "B2_INPUT_DIGEST_MISMATCH",
+      "description": "Adversarial B1.Final mutation must fail for this stable reason."
+    },
+    {
+      "case_id": "B2_FAMILY_BOUNDARY_CHANGED",
+      "expected_error_code": "B2_BOUNDARY_BINDING",
+      "description": "Adversarial B1.Final mutation must fail for this stable reason."
+    },
+    {
+      "case_id": "OMITTED_TERMINAL_FAMILY",
+      "expected_error_code": "DEPENDENCY_FAMILY_SET",
+      "description": "Adversarial B1.Final mutation must fail for this stable reason."
+    },
+    {
+      "case_id": "UNKNOWN_FAMILY_INJECTED",
+      "expected_error_code": "DEPENDENCY_FAMILY_UNKNOWN",
+      "description": "Adversarial B1.Final mutation must fail for this stable reason."
+    },
+    {
+      "case_id": "ACTIVE_UNASSIGNED_FALSE_REQUIRED",
+      "expected_error_code": "ACTIVE_UNASSIGNED_REQUIRED",
+      "description": "Adversarial B1.Final mutation must fail for this stable reason."
+    },
+    {
+      "case_id": "ASSIGNED_FAMILY_MARKED_UNREQUIRED",
+      "expected_error_code": "DEPENDENCY_FAMILY_SET",
+      "description": "Adversarial B1.Final mutation must fail for this stable reason."
+    },
+    {
+      "case_id": "MISSING_REQUIRED_CITATION_EDGE",
+      "expected_error_code": "MISSING_AUTHORITY_DEPENDENCY",
+      "description": "Adversarial B1.Final mutation must fail for this stable reason."
+    },
+    {
+      "case_id": "COMPOSITE_EDGE_REMOVED",
+      "expected_error_code": "COMPOSITE_DEPENDENCY_INCOMPLETE",
+      "description": "Adversarial B1.Final mutation must fail for this stable reason."
+    },
+    {
+      "case_id": "UNKNOWN_CITATION",
+      "expected_error_code": "CITATION_UNKNOWN",
+      "description": "Adversarial B1.Final mutation must fail for this stable reason."
+    },
+    {
+      "case_id": "MAGIC_2013_EDGE",
+      "expected_error_code": "NOT_REQUIRED_AUTHORITY_EDGE",
+      "description": "Adversarial B1.Final mutation must fail for this stable reason."
+    },
+    {
+      "case_id": "CITATION_DIFFERENT_RULE",
+      "expected_error_code": "IDENTIFIER_LOCATOR_BINDING",
+      "description": "Adversarial B1.Final mutation must fail for this stable reason."
+    },
+    {
+      "case_id": "CITATION_WRONG_LINE",
+      "expected_error_code": "IDENTIFIER_LOCATOR_BINDING",
+      "description": "Adversarial B1.Final mutation must fail for this stable reason."
+    },
+    {
+      "case_id": "THIRD_PARTY_AUTHORITY",
+      "expected_error_code": "AUTHORITY_NOT_OFFICIAL",
+      "description": "Adversarial B1.Final mutation must fail for this stable reason."
+    },
+    {
+      "case_id": "PROVENANCE_SWAP",
+      "expected_error_code": "REGISTER_CROSS_BINDING",
+      "description": "Adversarial B1.Final mutation must fail for this stable reason."
+    },
+    {
+      "case_id": "AUTHORITY_ARTIFACT_DIGEST",
+      "expected_error_code": "REGISTER_CROSS_BINDING",
+      "description": "Adversarial B1.Final mutation must fail for this stable reason."
+    },
+    {
+      "case_id": "WRONG_CITATIONS_SCHEMA",
+      "expected_error_code": "SCHEMA_MISMATCH",
+      "description": "Adversarial B1.Final mutation must fail for this stable reason."
+    },
+    {
+      "case_id": "WRONG_CLOSURE_SCHEMA",
+      "expected_error_code": "SCHEMA_MISMATCH",
+      "description": "Adversarial B1.Final mutation must fail for this stable reason."
+    },
+    {
+      "case_id": "CLOSURE_PROMOTES_WITH_UNRESOLVED",
+      "expected_error_code": "DEPENDENCY_FAMILY_SET",
+      "description": "Adversarial B1.Final mutation must fail for this stable reason."
+    },
+    {
+      "case_id": "LATER_GATE_PROMOTION",
+      "expected_error_code": "GATE_PROMOTION_FORBIDDEN",
+      "description": "Adversarial B1.Final mutation must fail for this stable reason."
+    },
+    {
+      "case_id": "DECK_LOCK_PROMOTION",
+      "expected_error_code": "DOWNSTREAM_PROMOTION_FORBIDDEN",
+      "description": "Adversarial B1.Final mutation must fail for this stable reason."
+    },
+    {
+      "case_id": "RANKING_PROMOTION",
+      "expected_error_code": "DOWNSTREAM_PROMOTION_FORBIDDEN",
+      "description": "Adversarial B1.Final mutation must fail for this stable reason."
+    },
+    {
+      "case_id": "M3_PROMOTION",
+      "expected_error_code": "DOWNSTREAM_PROMOTION_FORBIDDEN",
+      "description": "Adversarial B1.Final mutation must fail for this stable reason."
+    },
+    {
+      "case_id": "EVIDENCE_DIGEST_TAMPER",
+      "expected_error_code": "EVIDENCE_DIGEST_MISMATCH",
+      "description": "Adversarial B1.Final mutation must fail for this stable reason."
+    },
+    {
+      "case_id": "STALE_B2_IDENTITY",
+      "expected_error_code": "B2_SOURCE_PACKAGE_MISMATCH",
+      "description": "Adversarial B1.Final mutation must fail for this stable reason."
+    }
+  ]
+}

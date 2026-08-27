@@ -1,0 +1,38 @@
+{
+  "schema": "manafold.m2.5.b1.final-verification-summary.v1",
+  "execution_commit": "NOT_SET_H_EXEC",
+  "source_tree_status": "PROVISIONAL_NOT_RUN",
+  "actual_commands": [],
+  "gate_results": {
+    "MASTER_DRIFT": "NOT_RUN",
+    "MASTER_DRIFT_NEGATIVE": "NOT_RUN",
+    "ARCHIVE_PREFLIGHT": "NOT_RUN",
+    "B1_INITIAL_CHECK": "NOT_RUN",
+    "B1_INITIAL_NEGATIVE": "NOT_RUN",
+    "B2_CHECK": "NOT_RUN",
+    "B2_NEGATIVE": "NOT_RUN",
+    "B1_FINAL_CHECK": "NOT_RUN",
+    "B1_FINAL_NEGATIVE": "NOT_RUN",
+    "REPOSITORY_VERIFY": "NOT_RUN",
+    "INTEGRATION": "NOT_RUN",
+    "RUST_FMT": "NOT_RUN",
+    "RUST_CHECK": "NOT_RUN",
+    "HOSTED_CI": "NOT_RUN"
+  },
+  "downstream_gate_status": {
+    "CLASSIFICATION_REFERENCE_CLOSURE": "PASS",
+    "OFFICIAL_RULE_CITATION_CLOSURE": "PASS",
+    "DECLARED_INTERACTION_MODEL_CLOSURE": "BLOCKED",
+    "REV2_REUSE_RATIO_REPRODUCIBLE": "BLOCKED",
+    "RANKING_UNCERTAINTY_PROPAGATION": "BLOCKED"
+  },
+  "flags": {
+    "DECK_PAIR_LOCKED": false,
+    "AUTHORITATIVE_RANKING_AVAILABLE": false,
+    "M3_STARTED": false
+  },
+  "evidence_protocol": {
+    "phase": "H_EXEC_PROVISIONAL",
+    "H_evidence": "NOT_CREATED"
+  }
+}

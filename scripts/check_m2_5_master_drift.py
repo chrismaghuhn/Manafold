@@ -54,6 +54,7 @@ ALLOWED_EXACT_PATHS = frozenset(
     {
         "scripts/check_m2_5_master_drift.py",
         "scripts/check_m2_5_b1_authority_citations.py",
+        "scripts/check_m2_5_b1_final_authority_citations.py",
         "scripts/check_m2_5_b2_classifications.py",
     }
 )
@@ -478,6 +479,12 @@ def negative_self_test(provenance_dir: Path) -> int:
         "ALLOWLIST_NEAR_MISS_B1_SUFFIX_REJECTED",
         "the exact B1 checker path must not receive an implicit suffix match",
         lambda: near_miss_rejected("scripts/check_m2_5_b1_authority_citations.py.backup"),
+        "ALLOWLIST_NEAR_MISS_PATH_REJECTED",
+    )
+    expect_failure(
+        "ALLOWLIST_NEAR_MISS_B1_FINAL_SUFFIX_REJECTED",
+        "the exact B1.Final checker path must not receive an implicit suffix match",
+        lambda: near_miss_rejected("scripts/check_m2_5_b1_final_authority_citations.py.backup"),
         "ALLOWLIST_NEAR_MISS_PATH_REJECTED",
     )
     expect_failure(
