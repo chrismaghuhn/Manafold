@@ -1,0 +1,103 @@
+{
+  "schema": "manafold.m2.5.a.master-drift-revalidation.v1",
+  "revalidation_id": "m2.5.a.master-drift-revalidation.1a1e504",
+  "historical_identity": {
+    "original_rev3_recorded_repository_sha": "05bd341635ba2150d721659b15b62c5ad311637f",
+    "original_import_verified_master_sha": "9eb5da3d2cfa2c4612d22d208d658fd4132b7f6f",
+    "original_closure": {
+      "path": "sources/m2_5/pre_research/REV3/master_drift_closure_REV3.json",
+      "raw_sha256": "0bc7d190233214a7ca75f7aad590eda71afd43128b41b58a3a2f1606e7e10708"
+    },
+    "original_import_provenance": {
+      "path": "sources/m2_5/pre_research/REV3/IMPORT_PROVENANCE.json",
+      "raw_sha256": "39b236bf8885d705c9580a1b5d223efe5e96d284341724bc6016252546d0b7d0"
+    },
+    "original_report": {
+      "path": "sources/m2_5/pre_research/REV3/MASTER_DRIFT_REPORT.md",
+      "raw_sha256": "e419a1e79733d9a4f3f43c1169e1f950bab129598a8727262888e7da0b93d56d"
+    },
+    "rev3_package": {
+      "logical_locator": "$MANAFOLD_SOURCE_ARCHIVE/m2_5/Manafold_M2_5_Pre_Research_ALL_ARTIFACTS_REV3.zip",
+      "raw_sha256": "99b33945a3e0c7b2982734e65f770715029ce6acd500104bde48e8466eed1a90"
+    }
+  },
+  "reviewed_range": {
+    "previous_effective_passing_head": "df3d760de2c6b22403764725e0ef707161bbce13",
+    "new_revalidated_master": "1a1e504cf2e6232d5b8da47bdfb989980aa41884",
+    "merge_commit": "1a1e504cf2e6232d5b8da47bdfb989980aa41884",
+    "merge_parents": [
+      "df3d760de2c6b22403764725e0ef707161bbce13",
+      "34e23c57203b775d43e06e7946766566e4002a99"
+    ],
+    "repair_head": "34e23c57203b775d43e06e7946766566e4002a99",
+    "repair_parent": "b9765aa45321cb36a2a6531aa613bcb2788b1d26",
+    "reviewed_commit_range": "df3d760de2c6b22403764725e0ef707161bbce13..1a1e504cf2e6232d5b8da47bdfb989980aa41884",
+    "reviewed_commit_shas": [
+      "b9765aa45321cb36a2a6531aa613bcb2788b1d26",
+      "34e23c57203b775d43e06e7946766566e4002a99",
+      "1a1e504cf2e6232d5b8da47bdfb989980aa41884"
+    ],
+    "changed_paths": [
+      "pytest.ini",
+      "python/tests/test_m2_h_gate_runner.py",
+      "scripts/run_python_tests.py"
+    ]
+  },
+  "normative_drift_review": {
+    "control_paths": [
+      "crates/mtgml-rules/src/lib.rs",
+      "python/src/mtgml/observation.py",
+      "schemas/player-step.v2.schema.json",
+      "wire/golden/manifest.json",
+      "docs/contracts/WIRE_CONTRACT.md",
+      "docs/adr/0041-capability-oriented-semantic-domains-and-explicit-semantic-ownership.md",
+      "cards/capabilities/registry.json"
+    ],
+    "unchanged_paths": [
+      "crates/mtgml-rules/src/lib.rs",
+      "python/src/mtgml/observation.py",
+      "schemas/player-step.v2.schema.json",
+      "wire/golden/manifest.json",
+      "docs/contracts/WIRE_CONTRACT.md",
+      "docs/adr/0041-capability-oriented-semantic-domains-and-explicit-semantic-ownership.md",
+      "cards/capabilities/registry.json"
+    ]
+  },
+  "semantic_impact_review": {
+    "material_semantic_drift": false,
+    "impact_classification": "TEST_INFRASTRUCTURE_ONLY",
+    "surface_results": {
+      "magic_rules": "UNAFFECTED",
+      "authoritative_rust_game_semantics": "UNAFFECTED",
+      "state": "UNAFFECTED",
+      "rng": "UNAFFECTED",
+      "decisions": "UNAFFECTED",
+      "observations": "UNAFFECTED",
+      "information_state": "UNAFFECTED",
+      "replay_checkpoints": "UNAFFECTED",
+      "card_ir": "UNAFFECTED",
+      "capability_definitions": "UNAFFECTED",
+      "b1_authority": "UNAFFECTED",
+      "b1_final_authority": "UNAFFECTED",
+      "b2_classification_family_semantics": "UNAFFECTED",
+      "rev3_candidate_universe": "UNAFFECTED",
+      "interaction_model_input": "UNAFFECTED",
+      "ranking_formula_input": "UNAFFECTED",
+      "deck_pair_status": "UNAFFECTED",
+      "m3_status": "UNAFFECTED",
+      "python_test_infrastructure": "AFFECTED_REVIEWED"
+    }
+  },
+  "outcome": {
+    "MASTER_DRIFT": "PASS",
+    "rev3_evidence_reusable": true,
+    "research_data_revalidation_required": false,
+    "effective_descendant_anchor": "1a1e504cf2e6232d5b8da47bdfb989980aa41884"
+  },
+  "bound_evidence": {
+    "revalidation_report": {
+      "path": "sources/m2_5/pre_research/REV3/MASTER_DRIFT_REVALIDATION_1A1E504.md",
+      "raw_sha256": "92710a580c0ec4392d4087c5045191be5371444d69088ca3b546349244140994"
+    }
+  }
+}
