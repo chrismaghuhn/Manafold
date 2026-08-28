@@ -139,15 +139,46 @@ class PythonTestRunnerBootstrapTests(unittest.TestCase):
 
     _PROBE_ENV = "MANAFOLD_RUNNER_IMPORT_BOOTSTRAP_PROBE"
 
-    def test_runner_bootstraps_source_layout_for_m2_h_modules(self) -> None:
+    def test_runner_bootstraps_source_layout_before_discovery(self) -> None:
         if os.environ.get(self._PROBE_ENV) == "1":
             self.skipTest("nested runner invocation")
 
         environment = dict(os.environ)
         environment.pop("PYTHONPATH", None)
         environment[self._PROBE_ENV] = "1"
+        scripts = ROOT / "scripts"
+        source_root = ROOT / "python" / "src"
+        tests_root = ROOT / "python" / "tests"
+        probe = f"""
+import sys
+from unittest import mock
+
+sys.path.insert(0, {str(scripts)!r})
+try:
+    import run_python_tests
+except SystemExit as exc:
+    raise AssertionError("run_python_tests executed during import") from exc
+
+expected_source = {str(source_root)!r}
+expected_tests = {str(tests_root)!r}
+observed = []
+
+def fake_discover(start_dir):
+    observed.append((sys.path[0], start_dir))
+    return run_python_tests.unittest.TestSuite()
+
+with mock.patch.object(
+    run_python_tests.unittest.defaultTestLoader,
+    "discover",
+    side_effect=fake_discover,
+):
+    result = run_python_tests.main()
+
+assert result == 0, result
+assert observed == [(expected_source, expected_tests)], observed
+"""
         completed = subprocess.run(
-            [sys.executable, "scripts/run_python_tests.py"],
+            [sys.executable, "-c", probe],
             cwd=ROOT,
             env=environment,
             text=True,
@@ -158,9 +189,50 @@ class PythonTestRunnerBootstrapTests(unittest.TestCase):
 
         self.assertEqual(completed.returncode, 0, completed.stdout)
 
+    def test_pytest_config_bootstraps_source_layout_independently_of_install(
+        self,
+    ) -> None:
+        source_root = ROOT / "python" / "src"
+        with tempfile.TemporaryDirectory(prefix="m2-h-source-probe-", dir=ROOT) as tmp:
+            probe_path = Path(tmp) / "test_source_layout_probe.py"
+            probe_path.write_text(
+                f"""
+import os
+import sys
+from pathlib import Path
+
+
+def test_source_layout_is_bootstrapped():
+    expected = Path({str(source_root)!r}).resolve()
+    assert any(Path(entry).resolve() == expected for entry in sys.path if entry), sys.path
+    assert "MTGML_M2_ADAPTER_BIN" not in os.environ
+
+    import mtgml
+
+    assert Path(mtgml.__file__).resolve().is_relative_to(expected / "mtgml")
+""",
+                encoding="utf-8",
+            )
+            environment = dict(os.environ)
+            environment.pop("PYTHONPATH", None)
+            environment.pop("MTGML_M2_ADAPTER_BIN", None)
+            environment["PYTHONDONTWRITEBYTECODE"] = "1"
+            completed = subprocess.run(
+                [sys.executable, "-m", "pytest", "-q", str(probe_path)],
+                cwd=ROOT,
+                env=environment,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                check=False,
+            )
+
+        self.assertEqual(completed.returncode, 0, completed.stdout)
+
     def test_pytest_bootstraps_source_layout_for_m2_h_modules(self) -> None:
         environment = dict(os.environ)
         environment.pop("PYTHONPATH", None)
+        environment.pop("MTGML_M2_ADAPTER_BIN", None)
         environment["PYTHONDONTWRITEBYTECODE"] = "1"
         completed = subprocess.run(
             [
