@@ -16,10 +16,12 @@ Covered groups:
 6. decoder-registry set-relation validator directions,
 7. FAIL-dominant status aggregation,
 8. source-head snapshot and tracked-source fingerprint stability.
+9. source-layout import bootstrap for the unittest and pytest runners.
 """
 
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 import tempfile
@@ -130,6 +132,58 @@ class PythonSummaryParserTests(unittest.TestCase):
     def test_nonzero_returncode_is_rejected_despite_clean_summary(self) -> None:
         evidence, _ = self._evidence(2, "2 passed in 0.06s\n", returncode=1)
         self.assertEqual(evidence["status"], "FAIL")
+
+
+class PythonTestRunnerBootstrapTests(unittest.TestCase):
+    """The repository Python test runners must expose the source layout."""
+
+    _PROBE_ENV = "MANAFOLD_RUNNER_IMPORT_BOOTSTRAP_PROBE"
+
+    def test_runner_bootstraps_source_layout_for_m2_h_modules(self) -> None:
+        if os.environ.get(self._PROBE_ENV) == "1":
+            self.skipTest("nested runner invocation")
+
+        environment = dict(os.environ)
+        environment.pop("PYTHONPATH", None)
+        environment[self._PROBE_ENV] = "1"
+        completed = subprocess.run(
+            [sys.executable, "scripts/run_python_tests.py"],
+            cwd=ROOT,
+            env=environment,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            check=False,
+        )
+
+        self.assertEqual(completed.returncode, 0, completed.stdout)
+
+    def test_pytest_bootstraps_source_layout_for_m2_h_modules(self) -> None:
+        environment = dict(os.environ)
+        environment.pop("PYTHONPATH", None)
+        environment["PYTHONDONTWRITEBYTECODE"] = "1"
+        completed = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "pytest",
+                "-v",
+                "python/tests/m2_h/test_m2_h_core_scenarios.py",
+                "python/tests/m2_h/test_m2_h_isolation_scenarios.py",
+                "python/tests/m2_h/test_m2_h_rejection_scenarios.py",
+            ],
+            cwd=ROOT,
+            env=environment,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            check=False,
+        )
+
+        # With no adapter binary, pytest reports collection-only skips using
+        # its non-success empty-suite exit code; the import must still succeed.
+        self.assertIn("3 skipped", completed.stdout)
+        self.assertNotIn("ModuleNotFoundError: No module named 'mtgml'", completed.stdout)
 
 
 class CargoPackageParserTests(unittest.TestCase):
