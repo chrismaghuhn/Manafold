@@ -840,7 +840,7 @@ def publishability_preflight(
             checked_commit,
             "--",
             MIGRATION_SOURCE_CLASSIFICATIONS_PATH,
-        ]
+        ],
     ).splitlines()
     forbidden = [MIGRATION_SOURCE_CLASSIFICATIONS_PATH] if legacy_commits else []
     result = "PASS" if not oversized and not forbidden else "FAIL"
@@ -2009,9 +2009,10 @@ def migration_source_classifications() -> tuple[bytes, list[dict[str, Any]]]:
         "MIGRATION_SOURCE_INVALID",
         "V2 migration source schema",
     )
-    records = [mapping(item, "V2 classification record") for item in list_value(
-        value["candidate_classifications"], "V2 classification records"
-    )]
+    records = [
+        mapping(item, "V2 classification record")
+        for item in list_value(value["candidate_classifications"], "V2 classification records")
+    ]
     require(
         value["classification_count"] == len(records) == EXPECTED_REV3_CANDIDATE_COUNT,
         "MIGRATION_SOURCE_INVALID",
@@ -4791,9 +4792,7 @@ def validate_summary(snapshot: Snapshot) -> None:
         "SOURCE_CHANGED_AFTER_H_EXEC",
         "review export is missing or has a different digest",
     )
-    actual_publishability = publishability_preflight(
-        execution_commit, EXPECTED_PREVIOUS_MASTER
-    )
+    actual_publishability = publishability_preflight(execution_commit, EXPECTED_PREVIOUS_MASTER)
     require(
         actual_publishability == summary["publishability_preflight"],
         "PUBLISHABILITY_PRECHECK_INVALID",
@@ -4921,9 +4920,7 @@ def validate_snapshot(snapshot: Snapshot, run_prereqs: bool = True) -> None:
     validate_closure_early(closure, snapshot, reader)
     expected, instance_lookup = validate_universe(snapshot, reader, catalog, model_raw, review_raw)
     classes_by_id = validate_classes(snapshot, classes, catalog, b1, b2_classification_map())
-    classifications = validate_classification_bundle(
-        snapshot, classifications_root, expected
-    )
+    classifications = validate_classification_bundle(snapshot, classifications_root, expected)
     terminal = validate_classifications(
         snapshot, classifications, expected, instance_lookup, classes_by_id, catalog, b1
     )
@@ -5405,9 +5402,7 @@ def classification_layout_regression_cases(snapshot: Snapshot) -> dict[str, Call
 
     def wrong_record_count() -> None:
         validate_bundle(
-            mutated_snapshot(
-                SHARD_NAMES[0], lambda shard: shard.__setitem__("record_count", 999)
-            )
+            mutated_snapshot(SHARD_NAMES[0], lambda shard: shard.__setitem__("record_count", 999))
         )
 
     def wrong_shard_candidate() -> None:
@@ -5517,12 +5512,9 @@ def publishability_history_regression() -> None:
         run_git("commit", "--quiet", "-m", "safe publishing change")
         safe_checked = run_git("rev-parse", "HEAD")
 
-        deleted_result = publishability_preflight(
-            checked_with_deleted_blob, base, repo=repo
-        )
+        deleted_result = publishability_preflight(checked_with_deleted_blob, base, repo=repo)
         if deleted_result["result"] != "FAIL" or not any(
-            item["size"] > HOSTING_HARD_LIMIT_BYTES
-            for item in deleted_result["oversized_blobs"]
+            item["size"] > HOSTING_HARD_LIMIT_BYTES for item in deleted_result["oversized_blobs"]
         ):
             raise AssertionError(
                 "deleted oversized blob was not rejected by publishability preflight"
@@ -5708,9 +5700,7 @@ def negative_self_test() -> int:
             else:
                 print(f"SUPPLEMENTAL {name}: rejected (FAIL) [{exc.code}]")
         except Exception as exc:
-            migration_failures.append(
-                f"{name}: unexpected exception {type(exc).__name__}: {exc}"
-            )
+            migration_failures.append(f"{name}: unexpected exception {type(exc).__name__}: {exc}")
         else:
             migration_failures.append(f"{name}: mutation unexpectedly passed")
     if migration_failures:
@@ -5738,9 +5728,7 @@ def main() -> int:
         help="scan H_exec or H_evidence Git objects relative to the verified base",
     )
     parser.add_argument("--checked-commit", help="commit to scan for publishability")
-    parser.add_argument(
-        "--verified-base-commit", default=EXPECTED_PREVIOUS_MASTER
-    )
+    parser.add_argument("--verified-base-commit", default=EXPECTED_PREVIOUS_MASTER)
     parser.add_argument(
         "--require-origin-master",
         action="store_true",
