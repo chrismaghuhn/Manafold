@@ -407,6 +407,21 @@ B1FinalCitationRefV1 = [authority_id, citation_id]
 EvidenceRefV1 = [authority_kind_enum, path, locator, raw_sha256]
 ```
 
+Every SHA-256 scalar that occurs inside a semantic CBOR preimage is a
+`Sha256BytesV1` value. Its JSON projection is a string matching exactly
+`[0-9a-f]{64}`: lowercase ASCII, exactly 64 hexadecimal characters, with no
+whitespace, prefix, or alternate spelling. Before semantic encoding, the
+checker decodes that validated JSON string into exactly 32 bytes and encodes
+those bytes as one definite CBOR byte string (`0x58 0x20` followed by the 32
+digest bytes). It never encodes the 64-character text as a CBOR text string.
+This rule applies to `archive_member_sha256`, `additions_raw_sha256`, and
+`raw_sha256`, including the `raw_sha256` slot of `EvidenceRefV1`, and to a
+persisted `digest_hex` when a `DigestReferenceJsonV1` is embedded in a
+semantic preimage. A malformed, uppercase, non-64-character, or non-hex value
+is rejected before CBOR conversion. Raw artifact JSON retains the readable
+lowercase hexadecimal projection; that projection is not an alternative
+semantic preimage.
+
 `B1FinalCitationRefV1` entries are sorted by the unsigned lexicographic bytes
 of their canonical CBOR two-element array. The JSON representation uses the
 closed object `{ "authority_id": ..., "citation_id": ... }`, and the checker
@@ -452,9 +467,12 @@ The positions are numbered zero through five in the order shown. The source
 origin, scope, and relation slots are each `EnumV1 = [exact_variant_id, null]`
 for their declared unit variant. They use the exact ASCII identifiers declared
 by the C JSON contract, with no case folding. The source-origin values are the
-exact lowercase values in §7.3. `participant_refs_array` preserves semantic
-participant order. `supporting_requirement_ids_sorted_array` is sorted by
-canonical CBOR bytes and rejects duplicates. `source_binding_union` is the
+exact lowercase values in §7.3. `participant_refs_array` uses the exact
+relation-shape rules in §8.1: unordered REV3 pairs are canonically ordered,
+directional REV3 pairs preserve the source left-to-right order, and
+card-trigger rows have their pinned unary card reference.
+`supporting_requirement_ids_sorted_array` is sorted by canonical CBOR bytes
+and rejects duplicates. `source_binding_union` is the
 fixed discriminated union specified in §7.3. The candidate's terminal
 disposition, review rationale, class ID, and reconciliation status are not in
 this identity; changing a review decision must not silently change source
@@ -615,7 +633,7 @@ normalized C semantic enum values.
 ```text
 participant_kind_vocabulary =
   ability, card, copiable_value, deck, effect, event, object, permanent,
-  player, source_instance, spell, token, zone
+  player, requirement_family, source_instance, spell, token, zone
 
 participant_role_vocabulary =
   affected, controller, copied_source, copy_result, decision_actor,
@@ -1395,6 +1413,110 @@ cross_deck + directional_binary
 unary_or_higher_order + declared_card_trigger
 ```
 
+For inherited rows, the source-to-C normalization is a closed, exact mapping.
+The left column is the required historical ASCII value in the pinned REV3
+cell; the right column is the normalized lowercase C value. The checker must
+compare the source cell byte-for-byte with the left column and emit only the
+right column. It must not implement this as `lower()`, case folding, Unicode
+normalization, synonym lookup, or any other generic transformation.
+
+| Census column | REV3 source cell | normalized C value |
+| --- | --- | --- |
+| `scope` | `INTRA_DECK` | `intra_deck` |
+| `scope` | `CROSS_DECK` | `cross_deck` |
+| `scope` | `UNARY_OR_HIGHER_ORDER` | `unary_or_higher_order` |
+| `relation` | `UNORDERED_BINARY` | `unordered_binary` |
+| `relation` | `DIRECTIONAL_BINARY` | `directional_binary` |
+| `relation` | `DECLARED_CARD_TRIGGER` | `declared_card_trigger` |
+
+The exact inherited `participant_refs` derivation is also closed. The
+`participant_kind` vocabulary includes `requirement_family` for the two
+family columns; a family reference is therefore the fixed semantic value
+
+```text
+ParticipantRefV1(family_id) =
+  [["requirement_family", null], family_id]
+```
+
+where `family_id` is the exact UTF-8 text of a member of the accepted B2
+`families[].family_id` set. It is never represented as an `object`, `effect`,
+`card`, or other participant kind merely because of a family name.
+
+For each inherited row the checker requires the exact source scope/relation
+pair from the table above and applies these shape rules:
+
+1. For `INTRA_DECK` + `UNORDERED_BINARY`, read `left_family_id` and
+   `right_family_id` exactly as source cells, validate both against the B2
+   family set, and construct the two family references in source left/right
+   order. The normalized `participant_refs` array is the same two references
+   sorted by the unsigned lexicographic bytes of each complete canonical CBOR
+   `ParticipantRefV1`. Equal family IDs retain both entries; multiplicity is
+   part of the binary arity and is not deduplicated. The pinned REV3 census
+   additionally requires `left_family_id` to be no greater than
+   `right_family_id` by unsigned UTF-8 source bytes; the checker validates
+   that source invariant, but does not use that text comparison as a
+   substitute for the canonical-CBOR ordering of the normalized array.
+2. For `CROSS_DECK` + `DIRECTIONAL_BINARY`, read the exact
+   `left_family_id` and `right_family_id`, validate both against the B2 family
+   set, and emit the two references in exactly that source order. Do not sort
+   or swap them. The REV3 census provides an ordered left-to-right relation,
+   but has no source/affected columns or equivalent authoritative direction
+   labels. Consequently C preserves `left_family_id -> right_family_id` as
+   the only supported directional orientation and MUST NOT reinterpret it as
+   `source -> affected` (or the reverse). A directed semantic class that
+   requires `source` and `affected` roles may use this candidate only when
+   pinned review evidence independently establishes those roles; C may not
+   infer them from the words `left` and `right`.
+3. For `UNARY_OR_HIGHER_ORDER` + `DECLARED_CARD_TRIGGER`, require
+   `pair_id == left_family_id == right_family_id` byte-for-byte. Let that
+   value be `oracle_semantic_identity`. Select exactly one row in the pinned
+   `inputs/deck_row_source_resolution_REV3.csv` whose
+   `oracle_semantic_identity` equals that value. The selected row is required
+   to provide the exact `deck_row_id`, `source_row_id`,
+   `source_snapshot_file`, `source_line_number`, and
+   `oracle_source_record_id` locator fields, and its
+   `oracle_source_record_id` must join exactly once to
+   `source/raw/source_record_index_REV3.csv` by
+   `(oracle_semantic_identity, source_record_id)`. The participant reference
+   is exactly one unary card reference:
+
+   ```text
+   participant_refs =
+     [[["card", null], oracle_semantic_identity]]
+   ```
+
+   The `oracle_semantic_identity` field from that pinned resolution join is
+   the card/OSI identity. It is not parsed from `candidate_id`, a card name,
+   a family name, or any other text. The source-record ID and raw source
+   record digest are locator/evidence fields, not a replacement for the card
+   participant identity. The current pinned census has exactly 18 such rows
+   and exactly one resolution row and one raw-record-index row for each
+   identity; any missing, duplicate, or mismatched join blocks the snapshot.
+
+The raw `supporting_requirement_ids` CSV cell is parsed by one relation-aware
+rule. The cell is the exact UTF-8 text obtained from the pinned CSV parser;
+its raw spelling remains in `source_values`. The only accepted syntax is a
+top-level JSON array whose members are JSON strings. `[]` is the only valid
+empty form. An empty CSV field, whitespace-only field, `null`, a non-array,
+non-string members, an empty member, or a member with surrounding text that
+would require trimming is rejected. JSON parsing does not authorize case
+folding, Unicode normalization, or whitespace trimming of an ID. Exact
+duplicate strings are rejected before ordering.
+
+For binary rows, every parsed member must be an exact member of the accepted
+B2 `families[].family_id` set; this is the 216-entry B2 family ID authority.
+For the 18 declared-card-trigger rows, the cell must contain exactly one
+member and that member must equal the joined `oracle_semantic_identity`
+above (and therefore also `pair_id`, `left_family_id`, and `right_family_id`).
+No other ID grammar is accepted. After validation and duplicate rejection,
+the semantic `supporting_requirement_ids_sorted_array` is the parsed set in
+ascending unsigned lexicographic order of each member's complete canonical
+CBOR text-string encoding. This ordering is applied to the exact parsed
+strings, not to their JSON spelling; the raw source cell is not reserialized
+or hashed as the semantic value. The checker recomputes the array directly
+from the pinned REV3 row and rejects any candidate whose normalized fields do
+not equal this result.
+
 The 18 unary/card-specific records remain individually identifiable by their
 source OSI identity. Pair IDs, family IDs, relation, source scope, and
 supporting requirement IDs remain traceable to their exact source row.
@@ -1542,7 +1664,7 @@ and semantic-boundary verifier. It MUST be deterministic and fail closed.
 The default invocation MUST verify the current C source and prerequisite
 identities. `--negative-self-test` MUST run every mutation in the V1 negative
 matrix: the exact mandatory C-001 through C-032 baseline and the supplemental
-C-033 through C-041 cases. Every mutation must be rejected with its expected
+C-033 through C-042 cases. Every mutation must be rejected with its expected
 reason code.
 
 The checker MUST perform all of the following checks:
@@ -1576,15 +1698,20 @@ The checker MUST perform all of the following checks:
 16. Recompute all candidate, class, reconciliation, and terminal counts.
 17. Recompute `CandidateIdentityV1` and `InteractionClassIdentityV1` from their
     prescribed fixed-position CBOR payloads and exact envelope metadata.
-18. Verify raw file bindings and exact bound-input identities; reject any
+18. Recompute every inherited REV3 candidate's normalized scope, relation,
+    participant references, and supporting-requirement array from its exact
+    pinned census row using §8.1; reject alternate casing, inferred
+    participant kinds, source/affected inference, malformed trigger locators,
+    and noncanonical source-cell parses.
+19. Verify raw file bindings and exact bound-input identities; reject any
     JSON/Serde-derived semantic digest or unbound identity.
-19. Verify the upstream review-additions authority and its raw binding, and
+20. Verify the upstream review-additions authority and its raw binding, and
     verify that the report, negative matrix, verification summary, and design
     spec are not closure inputs.
-20. Verify the exact existing gate/flag vocabulary, downstream blocked states,
+21. Verify the exact existing gate/flag vocabulary, downstream blocked states,
     and absence of any later-gate promotion.
-21. Verify the negative-test matrix inventory and expected reason codes.
-22. Validate both evidence-creation and historical-descendant evidence modes
+22. Verify the negative-test matrix inventory and expected reason codes.
+23. Validate both evidence-creation and historical-descendant evidence modes
     against the H_exec/H_evidence protocol.
 
 The checker MUST contain no semantic rule that maps a keyword or capability
@@ -1654,8 +1781,8 @@ must accurately report evidence identities.
 ### 11.1 Supplemental C-specific mutations
 
 The mandatory baseline above remains byte-for-byte part of every V1 matrix.
-The V1 matrix additionally contains exactly these nine cases, for a total of
-41 cases:
+The V1 matrix additionally contains exactly these ten cases, for a total of
+42 cases:
 
 | Case | Mutation | Target artifact | Expected status | Expected reason code |
 | --- | --- | --- | --- | --- |
@@ -1668,6 +1795,7 @@ The V1 matrix additionally contains exactly these nine cases, for a total of
 | C-039 | Tamper with a `CandidateIdentityV1` preimage or digest | `sources/m2_5/closures/C/interaction_candidate_universe.v1.json` | `FAIL` | `CANDIDATE_IDENTITY_MISMATCH` |
 | C-040 | Tamper with a recorded C or master-drift checker identity | `sources/m2_5/closures/C/verification/c_verification_summary.v1.json` | `FAIL` | `CHECKER_IDENTITY_MISMATCH` |
 | C-041 | Duplicate a canonical source-instance tuple within one candidate | `sources/m2_5/closures/C/interaction_candidate_universe.v1.json` | `FAIL` | `DUPLICATE_SOURCE_INSTANCE_TUPLE` |
+| C-042 | Replace `archive_member_sha256` with a 63-character lowercase hexadecimal value | `sources/m2_5/closures/C/interaction_candidate_universe.v1.json` | `FAIL` | `SHA256_SCALAR_ENCODING_INVALID` |
 
 Because C V1 forbids `b2_derived`, its required generated set is empty and
 `new_b2_derived` must be zero. C-038 therefore proves that an extra B2-derived
@@ -1701,7 +1829,7 @@ paths such as `scripts/check_m2_5_c_interactions.py.backup`,
 `sources/m2_5/closures/C/C_DESIGN_SPEC.md.backup`, and an unlisted file under
 the C directory must be rejected. The existing master-drift negative
 self-test MUST retain an exact near-miss checker-path case. This is a
-master-drift integration self-test outside the 41 semantic C mutations and
+master-drift integration self-test outside the 42 semantic C mutations and
 does not change the mandatory 32-case baseline or the exact V1 matrix count.
 
 C source is additive and must not modify historical B1/B2/REV3 artifacts.
@@ -1914,7 +2042,7 @@ C is accepted only when all of the following are true:
 11. The closure binds only its five semantic C inputs and is acyclic with
     respect to the design spec, report, negative matrix, and verification
     evidence.
-12. All 41 V1 negative tests pass with their exact reason codes, including the
+12. All 42 V1 negative tests pass with their exact reason codes, including the
     mandatory C-001 through C-032 baseline.
 13. H_exec and H_evidence satisfy the direct-child summary-only rule.
 14. Required repository and language gates execute successfully.
