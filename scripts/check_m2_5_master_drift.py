@@ -148,6 +148,17 @@ ALLOWED_EXACT_PATHS = frozenset(
         "scripts/check_m2_5_b1_authority_citations.py",
         "scripts/check_m2_5_b1_final_authority_citations.py",
         "scripts/check_m2_5_b2_classifications.py",
+        "scripts/check_m2_5_c_interactions.py",
+        "sources/m2_5/closures/C/C_DESIGN_SPEC.md",
+        "sources/m2_5/closures/C/declared_interaction_model.v1.json",
+        "sources/m2_5/closures/C/interaction_review_additions.v1.json",
+        "sources/m2_5/closures/C/interaction_candidate_universe.v1.json",
+        "sources/m2_5/closures/C/interaction_semantic_classes.v1.json",
+        "sources/m2_5/closures/C/interaction_classifications.v1.json",
+        "sources/m2_5/closures/C/interaction_closure.v1.json",
+        "sources/m2_5/closures/C/INTERACTION_MODEL_REPORT.md",
+        "sources/m2_5/closures/C/verification/c_negative_test_matrix.v1.json",
+        "sources/m2_5/closures/C/verification/c_verification_summary.v1.json",
     }
 )
 ALLOWED_DIRECTORY_PREFIXES = (
