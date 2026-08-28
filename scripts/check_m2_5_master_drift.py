@@ -15,9 +15,10 @@ PASS requires all of:
     substituted SHA therefore fails);
   - the verified SHA is a syntactically valid git object id and the REV3
     baseline SHA is a git ancestor of it;
-  - HEAD equals the verified SHA, or the verified SHA is an ancestor of HEAD
-    and every commit since then touches only files inside the promoted
-    provenance boundary (sources/m2_5/pre_research/REV3/) or this checker;
+  - the original verified SHA is first validated through the historical
+    descendant range to the previous effective passing head;
+  - the additive revalidation advances that effective anchor to the reviewed
+    post-#83 master, after which ordinary descendant drift checking applies;
   - every promoted evidence file is digest-covered either by
     IMPORT_PROVENANCE.json or by the closure's own bound_records section and
     still matches its recorded SHA-256; only the closure record itself is
@@ -692,12 +693,30 @@ def collect_changed_paths(verified_sha: str, head_sha: str = "HEAD") -> list[str
     return [line for line in output.splitlines() if line.strip()]
 
 
+def validate_historical_chain(
+    closure: dict[str, object], provenance: dict[str, object], provenance_dir: Path
+) -> str:
+    """Validate the original closure through the previous effective head."""
+    historical_anchor = validate_historical_records(closure, provenance, provenance_dir)
+    previous_changed_paths = collect_changed_paths(
+        historical_anchor, EXPECTED_PREVIOUS_EFFECTIVE_HEAD
+    )
+    evaluate_closure(
+        closure,
+        provenance,
+        EXPECTED_PREVIOUS_EFFECTIVE_HEAD,
+        previous_changed_paths,
+        provenance_dir,
+    )
+    return historical_anchor
+
+
 def run_check(provenance_dir: Path, expect_head: str | None) -> int:
     closure = require_mapping(read_json(provenance_dir / CLOSURE_FILENAME), CLOSURE_FILENAME)
     provenance = require_mapping(
         read_json(provenance_dir / PROVENANCE_FILENAME), PROVENANCE_FILENAME
     )
-    validate_historical_records(closure, provenance, provenance_dir)
+    validate_historical_chain(closure, provenance, provenance_dir)
     revalidation = load_revalidation(provenance_dir)
     effective_anchor = validate_revalidation(revalidation, closure, provenance, provenance_dir)
     head_sha = require_git_sha(
@@ -719,7 +738,7 @@ def verify_archive(provenance_dir: Path) -> int:
         read_json(provenance_dir / PROVENANCE_FILENAME), PROVENANCE_FILENAME
     )
     closure = require_mapping(read_json(provenance_dir / CLOSURE_FILENAME), CLOSURE_FILENAME)
-    validate_historical_records(closure, provenance, provenance_dir)
+    validate_historical_chain(closure, provenance, provenance_dir)
     validate_revalidation(load_revalidation(provenance_dir), closure, provenance, provenance_dir)
     package = require_mapping(provenance.get("source_package"), "provenance.source_package")
     storage_class = package.get("storage_class")
@@ -871,8 +890,19 @@ def negative_self_test(provenance_dir: Path) -> int:
         return value
 
     def validate_additive(candidate: dict[str, object]) -> None:
-        validate_historical_records(closure, provenance, provenance_dir)
+        validate_historical_chain(closure, provenance, provenance_dir)
         validate_revalidation(candidate, closure, provenance, provenance_dir)
+
+    def previous_effective_bridge_rejects_unallowed_path() -> None:
+        original_collect_changed_paths = globals().get("collect_changed_paths")
+        try:
+            globals()["collect_changed_paths"] = lambda _verified_sha, _head_sha: ["pytest.ini"]
+            validate_historical_chain(closure, provenance, provenance_dir)
+        finally:
+            if original_collect_changed_paths is None:
+                globals().pop("collect_changed_paths", None)
+            else:
+                globals()["collect_changed_paths"] = original_collect_changed_paths
 
     def original_import_time_sha_substitution() -> None:
         substituted = clone_mapping(provenance, PROVENANCE_FILENAME)
@@ -1067,6 +1097,11 @@ def negative_self_test(provenance_dir: Path) -> int:
         "REVALIDATION_PREVIOUS_EFFECTIVE_HEAD_SUBSTITUTION_REJECTED",
         "the revalidation must name the exact previous effective passing head",
         previous_effective_head_substitution,
+    )
+    expect_failure(
+        "HISTORICAL_TO_PREVIOUS_EFFECTIVE_BRIDGE_REJECTED",
+        "the historical closure must reject an unallowed path before the additive revalidation",
+        previous_effective_bridge_rejects_unallowed_path,
     )
     expect_failure(
         "REVALIDATION_NEW_MASTER_SUBSTITUTION_REJECTED",
