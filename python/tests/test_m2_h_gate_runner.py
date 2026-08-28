@@ -16,10 +16,12 @@ Covered groups:
 6. decoder-registry set-relation validator directions,
 7. FAIL-dominant status aggregation,
 8. source-head snapshot and tracked-source fingerprint stability.
+9. source-layout import bootstrap for the unittest and pytest runners.
 """
 
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 import tempfile
@@ -130,6 +132,130 @@ class PythonSummaryParserTests(unittest.TestCase):
     def test_nonzero_returncode_is_rejected_despite_clean_summary(self) -> None:
         evidence, _ = self._evidence(2, "2 passed in 0.06s\n", returncode=1)
         self.assertEqual(evidence["status"], "FAIL")
+
+
+class PythonTestRunnerBootstrapTests(unittest.TestCase):
+    """The repository Python test runners must expose the source layout."""
+
+    _PROBE_ENV = "MANAFOLD_RUNNER_IMPORT_BOOTSTRAP_PROBE"
+
+    def test_runner_bootstraps_source_layout_before_discovery(self) -> None:
+        if os.environ.get(self._PROBE_ENV) == "1":
+            self.skipTest("nested runner invocation")
+
+        environment = dict(os.environ)
+        environment.pop("PYTHONPATH", None)
+        environment[self._PROBE_ENV] = "1"
+        scripts = ROOT / "scripts"
+        source_root = ROOT / "python" / "src"
+        tests_root = ROOT / "python" / "tests"
+        probe = f"""
+import sys
+from unittest import mock
+
+sys.path.insert(0, {str(scripts)!r})
+try:
+    import run_python_tests
+except SystemExit as exc:
+    raise AssertionError("run_python_tests executed during import") from exc
+
+expected_source = {str(source_root)!r}
+expected_tests = {str(tests_root)!r}
+observed = []
+
+def fake_discover(start_dir):
+    observed.append((sys.path[0], start_dir))
+    return run_python_tests.unittest.TestSuite()
+
+with mock.patch.object(
+    run_python_tests.unittest.defaultTestLoader,
+    "discover",
+    side_effect=fake_discover,
+):
+    result = run_python_tests.main()
+
+assert result == 0, result
+assert observed == [(expected_source, expected_tests)], observed
+"""
+        completed = subprocess.run(
+            [sys.executable, "-c", probe],
+            cwd=ROOT,
+            env=environment,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            check=False,
+        )
+
+        self.assertEqual(completed.returncode, 0, completed.stdout)
+
+    def test_pytest_config_bootstraps_source_layout_independently_of_install(
+        self,
+    ) -> None:
+        source_root = ROOT / "python" / "src"
+        with tempfile.TemporaryDirectory(prefix="m2-h-source-probe-", dir=ROOT) as tmp:
+            probe_path = Path(tmp) / "test_source_layout_probe.py"
+            probe_path.write_text(
+                f"""
+import os
+import sys
+from pathlib import Path
+
+
+def test_source_layout_is_bootstrapped():
+    expected = Path({str(source_root)!r}).resolve()
+    assert any(Path(entry).resolve() == expected for entry in sys.path if entry), sys.path
+    assert "MTGML_M2_ADAPTER_BIN" not in os.environ
+
+    import mtgml
+
+    assert Path(mtgml.__file__).resolve().is_relative_to(expected / "mtgml")
+""",
+                encoding="utf-8",
+            )
+            environment = dict(os.environ)
+            environment.pop("PYTHONPATH", None)
+            environment.pop("MTGML_M2_ADAPTER_BIN", None)
+            environment["PYTHONDONTWRITEBYTECODE"] = "1"
+            completed = subprocess.run(
+                [sys.executable, "-m", "pytest", "-q", str(probe_path)],
+                cwd=ROOT,
+                env=environment,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                check=False,
+            )
+
+        self.assertEqual(completed.returncode, 0, completed.stdout)
+
+    def test_pytest_bootstraps_source_layout_for_m2_h_modules(self) -> None:
+        environment = dict(os.environ)
+        environment.pop("PYTHONPATH", None)
+        environment.pop("MTGML_M2_ADAPTER_BIN", None)
+        environment["PYTHONDONTWRITEBYTECODE"] = "1"
+        completed = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "pytest",
+                "-v",
+                "python/tests/m2_h/test_m2_h_core_scenarios.py",
+                "python/tests/m2_h/test_m2_h_isolation_scenarios.py",
+                "python/tests/m2_h/test_m2_h_rejection_scenarios.py",
+            ],
+            cwd=ROOT,
+            env=environment,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            check=False,
+        )
+
+        # With no adapter binary, pytest reports collection-only skips using
+        # its non-success empty-suite exit code; the import must still succeed.
+        self.assertIn("3 skipped", completed.stdout)
+        self.assertNotIn("ModuleNotFoundError: No module named 'mtgml'", completed.stdout)
 
 
 class CargoPackageParserTests(unittest.TestCase):
