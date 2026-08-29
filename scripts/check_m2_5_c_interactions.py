@@ -32,7 +32,7 @@ import tempfile
 import zipfile
 from collections import Counter
 from collections.abc import Callable
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 from typing import Any, NoReturn, cast
 
 sys.dont_write_bytecode = True
@@ -4659,6 +4659,30 @@ def validate_publishability_summary(summary: dict[str, Any]) -> None:
     )
 
 
+def evidence_export_path_is_in_repository(path_text: str) -> bool:
+    """Check repository containment without requiring a recorded export file."""
+    if re.match(r"^(?:[A-Za-z]:[\\/]|\\\\|//)", path_text):
+        candidate = PureWindowsPath(path_text)
+        repository = PureWindowsPath(str(ROOT))
+        try:
+            candidate.relative_to(repository)
+        except ValueError:
+            return False
+        return True
+    candidate = Path(path_text)
+    resolved = (candidate if candidate.is_absolute() else ROOT / candidate).resolve()
+    try:
+        resolved.relative_to(ROOT.resolve())
+    except ValueError:
+        return False
+    return True
+
+
+def require_external_evidence_export_path(path_text: str) -> None:
+    if evidence_export_path_is_in_repository(path_text):
+        fail("EVIDENCE_EXPORT_IN_REPOSITORY", "review export must remain outside the repository")
+
+
 def validate_recorded_evidence_export(value: object) -> dict[str, Any]:
     """Validate recorded export provenance without requiring the creator's file."""
     export = mapping(value, "verification summary.evidence_export")
@@ -4668,7 +4692,8 @@ def validate_recorded_evidence_export(value: object) -> dict[str, Any]:
         "SOURCE_CHANGED_AFTER_H_EXEC",
         "review export is not PASS",
     )
-    nonempty_string(export["path"], "evidence export path")
+    export_path = nonempty_string(export["path"], "evidence export path")
+    require_external_evidence_export_path(export_path)
     hex64(export["sha256"], "evidence export sha256")
     return export
 
@@ -4678,12 +4703,7 @@ def validate_creation_evidence_export(export_path: Path) -> str:
     if not export_path.is_file():
         blocked("EVIDENCE_EXPORT_UNAVAILABLE", f"review export not found: {export_path}")
     resolved = export_path.resolve()
-    try:
-        resolved.relative_to(ROOT)
-    except ValueError:
-        pass
-    else:
-        fail("EVIDENCE_EXPORT_IN_REPOSITORY", "review export must remain outside the repository")
+    require_external_evidence_export_path(str(resolved))
     return sha256_bytes(export_path.read_bytes())
 
 
@@ -5633,16 +5653,24 @@ def evidence_export_portability_regression(snapshot: Snapshot) -> None:
         else:
             raise AssertionError("finalize_summary accepted a missing review export")
 
-        tampered = copy.deepcopy(summary)
+        tampered = copy.deepcopy(validation_summary)
         tampered_export = mapping(tampered["evidence_export"], "tampered evidence export")
-        tampered_export["path"] = str(missing_export)
-        tampered_export["sha256"] = "0" * 64
+        tampered_export["path"] = str(C_DIR / "forbidden-review-export.tar")
+        tampered_export["sha256"] = export["sha256"]
+        tampered_values = copy.deepcopy(validation_values)
+        tampered_values[SUMMARY_NAME] = tampered
+        tampered_raw = dict(validation_raw)
+        tampered_raw[SUMMARY_NAME] = json_bytes(tampered)
         try:
-            validate_historical_evidence_chain(tampered, json_bytes(tampered))
-        except CCheckError:
-            pass
+            validate_summary(Snapshot(tampered_values, tampered_raw))
+        except CCheckError as exc:
+            if exc.code != "EVIDENCE_EXPORT_IN_REPOSITORY":
+                raise AssertionError(
+                    "tampered export metadata returned the wrong rejection: "
+                    f"{exc.status} {exc.code}: {exc.message}"
+                ) from exc
         else:
-            raise AssertionError("historical validation accepted tampered export metadata")
+            raise AssertionError("historical validation accepted an in-repository export path")
 
 
 def negative_self_test() -> int:
