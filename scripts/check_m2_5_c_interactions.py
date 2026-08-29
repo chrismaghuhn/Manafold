@@ -5701,16 +5701,8 @@ def validate_summary(snapshot: Snapshot) -> None:
     validate_historical_evidence_chain(summary, snapshot.raw[SUMMARY_NAME])
 
 
-def finalize_summary(execution_commit: str, results_path: Path, export_path: Path) -> None:
-    """Write the one permitted post-H_exec summary projection."""
-    if not re.fullmatch(r"[0-9a-f]{40}", execution_commit):
-        blocked("EVIDENCE_EXECUTION_SHA_INVALID", f"invalid H_exec {execution_commit!r}")
-    export_sha256 = validate_creation_evidence_export(export_path)
-    try:
-        results = parse_json(results_path.read_bytes(), "execution results")
-    except OSError as exc:
-        blocked("EVIDENCE_RESULTS_UNAVAILABLE", str(exc))
-    result = mapping(results, "execution results")
+def validate_execution_results(result: dict[str, Any]) -> None:
+    """Validate the external execution record before projecting it into V4."""
     exact_keys(
         result,
         {
@@ -5723,25 +5715,27 @@ def finalize_summary(execution_commit: str, results_path: Path, export_path: Pat
         },
         "execution results",
     )
-    for key in ("prerequisite_results", "negative_test_result", "repository_gate_results"):
+    for key in ("prerequisite_results", "repository_gate_results"):
         section = mapping(result[key], f"execution results.{key}")
         if section.get("status") != "PASS":
             fail("EVIDENCE_RESULTS_NOT_PASS", f"execution results.{key} is not PASS")
     c_result = mapping(result["c_result"], "execution results.c_result")
     if c_result.get("status") not in {"PASS", "BLOCKED"}:
         fail("EVIDENCE_RESULTS_NOT_PASS", "execution results.c_result is neither PASS nor BLOCKED")
-    negative = mapping(result["negative_test_result"], "execution results.negative_test_result")
-    require(
-        negative.get("fixed_case_ids") == list(FIXED_CASE_IDS)
-        and negative.get("fixed_case_count") == len(FIXED_CASE_IDS)
-        and negative.get("supplemental_case_ids") == list(SUPPLEMENTAL_CASE_IDS)
-        and negative.get("supplemental_case_count") == len(SUPPLEMENTAL_CASE_IDS)
-        and negative.get("fixed_case_result") == "PASS"
-        and negative.get("supplemental_case_result") == "PASS"
-        and negative.get("result") == "PASS",
-        "EVIDENCE_RESULTS_NOT_PASS",
-        "execution results do not contain the complete passing V4 negative suites",
-    )
+    validate_negative_test_result(result["negative_test_result"], final=True)
+
+
+def finalize_summary(execution_commit: str, results_path: Path, export_path: Path) -> None:
+    """Write the one permitted post-H_exec summary projection."""
+    if not re.fullmatch(r"[0-9a-f]{40}", execution_commit):
+        blocked("EVIDENCE_EXECUTION_SHA_INVALID", f"invalid H_exec {execution_commit!r}")
+    export_sha256 = validate_creation_evidence_export(export_path)
+    try:
+        results = parse_json(results_path.read_bytes(), "execution results")
+    except OSError as exc:
+        blocked("EVIDENCE_RESULTS_UNAVAILABLE", str(exc))
+    result = mapping(results, "execution results")
+    validate_execution_results(result)
     snapshot = load_snapshot()
     summary = get_artifact(snapshot, SUMMARY_NAME)
     summary["execution_commit"] = execution_commit
