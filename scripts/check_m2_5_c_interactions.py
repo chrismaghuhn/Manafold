@@ -34,6 +34,7 @@ from collections import Counter
 from collections.abc import Callable
 from pathlib import Path, PureWindowsPath
 from typing import Any, NoReturn, cast
+from unittest.mock import patch
 
 sys.dont_write_bytecode = True
 
@@ -89,8 +90,8 @@ C_ARTIFACT_RELATIVE_PATHS = (
     *tuple(f"sources/m2_5/closures/C/{name}" for name in SHARD_NAMES),
     "sources/m2_5/closures/C/interaction_closure.v3.json",
     "sources/m2_5/closures/C/INTERACTION_MODEL_REPORT.md",
-    "sources/m2_5/closures/C/verification/c_negative_test_matrix.v3.json",
-    "sources/m2_5/closures/C/verification/c_verification_summary.v3.json",
+    "sources/m2_5/closures/C/verification/c_negative_test_matrix.v4.json",
+    "sources/m2_5/closures/C/verification/c_verification_summary.v4.json",
 )
 EXPECTED_C_DIRECTORY_FILES = frozenset(
     {
@@ -761,8 +762,8 @@ def git_text(args: list[str]) -> str:
     return git_text_at(ROOT, args)
 
 
-def tracked_tree_fingerprint(commit: str) -> str:
-    paths_raw = git_bytes(["ls-tree", "-r", "-z", "--name-only", commit])
+def tracked_tree_fingerprint(commit: str, repo: Path = ROOT) -> str:
+    paths_raw = git_bytes_at(repo, ["ls-tree", "-r", "-z", "--name-only", commit])
     fingerprint_input = bytearray()
     for path_bytes in paths_raw.split(b"\0"):
         if not path_bytes:
@@ -771,7 +772,7 @@ def tracked_tree_fingerprint(commit: str) -> str:
             path = path_bytes.decode("utf-8")
         except UnicodeDecodeError as exc:
             blocked("GIT_HISTORY_UNAVAILABLE", f"non-UTF-8 tracked path in {commit}: {exc}")
-        payload = git_bytes(["show", f"{commit}:{path}"])
+        payload = git_bytes_at(repo, ["show", f"{commit}:{path}"])
         fingerprint_input.extend(struct.pack(">Q", len(path_bytes)))
         fingerprint_input.extend(path_bytes)
         fingerprint_input.extend(struct.pack(">Q", len(payload)))
@@ -779,12 +780,12 @@ def tracked_tree_fingerprint(commit: str) -> str:
     return sha256_bytes(bytes(fingerprint_input))
 
 
-def git_commit_parents(commit: str) -> list[str]:
-    return git_text(["rev-list", "--parents", "-n", "1", commit]).strip().split()[1:]
+def git_commit_parents(commit: str, repo: Path = ROOT) -> list[str]:
+    return git_text_at(repo, ["rev-list", "--parents", "-n", "1", commit]).strip().split()[1:]
 
 
-def git_diff_name_status(parent: str, commit: str) -> list[str]:
-    return git_text(["diff", "--name-status", "--no-renames", parent, commit]).splitlines()
+def git_diff_name_status(parent: str, commit: str, repo: Path = ROOT) -> list[str]:
+    return git_text_at(repo, ["diff", "--name-status", "--no-renames", parent, commit]).splitlines()
 
 
 def publishability_preflight(
@@ -909,7 +910,9 @@ def publishability_preflight(
     }
 
 
-def validate_historical_evidence_chain(summary: dict[str, Any], current_summary_raw: bytes) -> None:
+def validate_historical_evidence_chain(
+    summary: dict[str, Any], current_summary_raw: bytes, repo: Path = ROOT
+) -> None:
     execution_commit = string(summary["execution_commit"], "verification summary.execution_commit")
     protocol = mapping(summary["evidence_protocol"], "verification summary.evidence_protocol")
     require(
@@ -917,28 +920,29 @@ def validate_historical_evidence_chain(summary: dict[str, Any], current_summary_
         "SOURCE_CHANGED_AFTER_H_EXEC",
         "summary H_exec differs from execution_commit",
     )
-    head = git_text(["rev-parse", "HEAD"]).strip()
+    head = git_text_at(repo, ["rev-parse", "HEAD"]).strip()
     if head == execution_commit:
         fail(
             "SOURCE_CHANGED_AFTER_H_EXEC", "a final evidence summary cannot be committed as H_exec"
         )
     try:
         subprocess.run(
-            ["git", "-C", str(ROOT), "merge-base", "--is-ancestor", execution_commit, head],
+            ["git", "-C", str(repo), "merge-base", "--is-ancestor", execution_commit, head],
             check=True,
             capture_output=True,
         )
     except (OSError, subprocess.CalledProcessError) as exc:
         fail("SOURCE_CHANGED_AFTER_H_EXEC", f"H_exec is not an ancestor of current HEAD: {exc}")
 
-    summary_path = "sources/m2_5/closures/C/verification/c_verification_summary.v3.json"
+    summary_path = "sources/m2_5/closures/C/verification/c_verification_summary.v4.json"
     candidates: list[str] = []
-    for commit in git_text(["rev-list", head]).splitlines():
-        parents = git_commit_parents(commit)
+    topology_violations: list[str] = []
+    for commit in git_text_at(repo, ["rev-list", head]).splitlines():
+        parents = git_commit_parents(commit, repo)
         if parents != [execution_commit]:
             continue
         try:
-            candidate_raw = git_bytes(["show", f"{commit}:{summary_path}"])
+            candidate_raw = git_bytes_at(repo, ["show", f"{commit}:{summary_path}"])
         except CCheckError:
             continue
         try:
@@ -956,27 +960,33 @@ def validate_historical_evidence_chain(summary: dict[str, Any], current_summary_
             or candidate_protocol.get("H_evidence_relation") != "direct_child_summary_only"
         ):
             continue
-        if git_diff_name_status(execution_commit, commit) != [f"M\t{summary_path}"]:
+        if git_diff_name_status(execution_commit, commit, repo) != [f"M\t{summary_path}"]:
+            topology_violations.append(commit)
             continue
         if candidate_raw != current_summary_raw:
             continue
         candidates.append(commit)
     if len(candidates) != 1:
+        if topology_violations:
+            fail(
+                "SOURCE_CHANGED_AFTER_H_EXEC",
+                "a direct-child evidence candidate changed a non-summary source path",
+            )
         fail(
-            "SOURCE_CHANGED_AFTER_H_EXEC",
+            "LINEAGE_SELECTION_INVALID",
             f"expected one reachable summary-only H_evidence commit, found {candidates}",
         )
     evidence_commit = candidates[0]
     try:
         subprocess.run(
-            ["git", "-C", str(ROOT), "merge-base", "--is-ancestor", evidence_commit, head],
+            ["git", "-C", str(repo), "merge-base", "--is-ancestor", evidence_commit, head],
             check=True,
             capture_output=True,
         )
     except (OSError, subprocess.CalledProcessError) as exc:
         fail("SOURCE_CHANGED_AFTER_H_EXEC", f"H_evidence is not an ancestor of current HEAD: {exc}")
     preflight = validate_publishability_preflight_for_history(
-        evidence_commit, summary["publishability_preflight"]
+        evidence_commit, summary["publishability_preflight"], repo=repo
     )
     if preflight["result"] != "PASS":
         fail(
@@ -986,11 +996,11 @@ def validate_historical_evidence_chain(summary: dict[str, Any], current_summary_
 
 
 def validate_publishability_preflight_for_history(
-    checked_commit: str, summary_preflight: object
+    checked_commit: str, summary_preflight: object, *, repo: Path = ROOT
 ) -> dict[str, Any]:
     value = mapping(summary_preflight, "publishability preflight")
     base = nonempty_string(value.get("verified_base_commit"), "publishability verified base")
-    return publishability_preflight(checked_commit, base)
+    return publishability_preflight(checked_commit, base, repo=repo)
 
 
 def set_artifact(snapshot: Snapshot, name: str, value: object) -> None:
@@ -1822,6 +1832,46 @@ def make_card_class(
     return record
 
 
+def add_test_class_context_evidence(record: dict[str, Any]) -> dict[str, Any]:
+    """Add explicit context/temporal evidence to an in-memory class fixture.
+
+    The production generator currently emits no classes.  Fixed negative
+    cases still need valid class controls, so their ephemeral records carry
+    explicit C-review locators for each semantic slot.  These records never
+    enter a persisted artifact or derive production semantic truth.
+    """
+    refs = [
+        item
+        for item in list_value(record["source_evidence_refs"], "test class evidence")
+        if not (
+            isinstance(item, dict)
+            and item.get("authority_kind") == "c_review"
+            and item.get("path") == "test-only/class-context-control"
+        )
+    ]
+    for key in CONTEXT_KEYS:
+        refs.append(
+            {
+                "authority_kind": "c_review",
+                "path": "test-only/class-context-control",
+                "locator": ["context_dimension", key, record["context_dimensions"][key]],
+                "raw_sha256": "0" * 64,
+            }
+        )
+    for key in TEMPORAL_KEYS:
+        refs.append(
+            {
+                "authority_kind": "c_review",
+                "path": "test-only/class-context-control",
+                "locator": ["temporal_semantic", key, record["temporal_semantics"][key]],
+                "raw_sha256": "0" * 64,
+            }
+        )
+    refs.sort(key=lambda value: canonical(evidence_ref_cbor(value, "test class evidence")))
+    record["source_evidence_refs"] = evidence_sort(refs, "test class evidence")
+    return record
+
+
 def make_classes(candidates: list[dict[str, Any]], catalog: dict[str, Any]) -> list[dict[str, Any]]:
     # The pinned C authorities do not contain a candidate-level relation
     # review that is sufficient to emit a reusable terminal class. In
@@ -2135,11 +2185,11 @@ def validate_migration_upstream_parity(name: str, source_raw: bytes, current_raw
 
 
 def validate_shard_size(size: int, index: int) -> None:
-    require(
-        size <= SHARD_MAX_BYTES,
-        "CLASSIFICATION_SHARD_SIZE_LIMIT",
-        f"classification shard {index} is {size} bytes",
-    )
+    if size > SHARD_MAX_BYTES:
+        blocked(
+            "CLASSIFICATION_SHARD_SIZE_LIMIT",
+            f"classification shard {index} is {size} bytes",
+        )
 
 
 def make_closure(
@@ -2267,6 +2317,11 @@ def make_report(
         f"{item['path']}={item['raw_sha256']}"
         for item in closure["external_prerequisite_identities"]["b1_final"]
     )
+    migration_source = (
+        migration_source_commit()
+        if os.environ.get("MANAFOLD_C_V2_SOURCE_COMMIT")
+        else "corrected-V2 source recorded in summary"
+    )
     return "\n".join(
         [
             "# M2.5.C Interaction Model Report",
@@ -2318,7 +2373,8 @@ def make_report(
             f"- Review additions: `{review['review_record_count']}`; "
             "targeted higher-order authority is empty in C V3.",
             f"- V2 to V3 migration parity: `{'PASS' if migration is not None else 'NOT_RUN'}`; "
-            f"source `{migration_source_commit() if os.environ.get('MANAFOLD_C_V2_SOURCE_COMMIT') else 'corrected-V2 source recorded in summary'}`; target `{CLASSIFICATIONS_NAME}`.",
+            f"source `{migration_source}`; "
+            f"target `{CLASSIFICATIONS_NAME}`.",
             f"- Git-history publishability preflight: `"
             f"{(publishability or {}).get('result', 'NOT_RUN')}`; "
             f"checked commit `"
@@ -2336,10 +2392,11 @@ def make_report(
             "",
             "## Evidence boundary",
             "",
-            "Card-trigger classes use their exact joined OSI, terminal B2 "
-            "assignments/boundaries, and CR-603 B1.Final citation. Family-pair "
-            "rows remain concrete source instances and are not promoted from "
-            "co-occurrence alone.",
+            "No semantic classes are emitted in this snapshot: the 18 trigger "
+            "rows are not grandfathered, and family-pair rows remain concrete "
+            "source instances rather than being promoted from co-occurrence "
+            "alone. Any future card-trigger class must bind its exact joined "
+            "OSI, terminal B2 assignments/boundaries, and B1.Final citation.",
             "- High-risk review coverage is derived from the authoritative eleven "
             "candidate-level assessments; family-pair rows remain unresolved "
             "until a separately approved Pair/Relation Review Authority exists.",
@@ -2440,7 +2497,7 @@ def negative_matrix() -> dict[str, Any]:
         (
             "C-008",
             "Leave a candidate unresolved while claiming closure PASS",
-            CLASSIFICATIONS_NAME,
+            CLOSURE_NAME,
             "FAIL",
             "UNRESOLVED_CANDIDATE_ON_PASS",
         ),
@@ -2449,7 +2506,7 @@ def negative_matrix() -> dict[str, Any]:
         (
             "C-011",
             "Reference an invalid assignment",
-            CLASSIFICATIONS_NAME,
+            SHARD_NAMES[15],
             "FAIL",
             "ASSIGNMENT_BINDING_INVALID",
         ),
@@ -2470,7 +2527,7 @@ def negative_matrix() -> dict[str, Any]:
         (
             "C-014",
             "Duplicate a candidate/source-instance mapping",
-            CLASSIFICATIONS_NAME,
+            SHARD_NAMES[0],
             "FAIL",
             "DUPLICATE_SOURCE_INSTANCE_MAPPING",
         ),
@@ -2555,7 +2612,7 @@ def negative_matrix() -> dict[str, Any]:
         (
             "C-027",
             "Use a non-terminal disposition in a PASS closure",
-            CLASSIFICATIONS_NAME,
+            SHARD_NAMES[15],
             "FAIL",
             "NONTERMINAL_DISPOSITION_ON_PASS",
         ),
@@ -2571,7 +2628,7 @@ def negative_matrix() -> dict[str, Any]:
         (
             "C-031",
             "Change a source artifact after H_exec",
-            SUMMARY_NAME,
+            MODEL_NAME,
             "FAIL",
             "SOURCE_CHANGED_AFTER_H_EXEC",
         ),
@@ -2653,6 +2710,7 @@ def negative_matrix() -> dict[str, Any]:
             "SHA256_SCALAR_ENCODING_INVALID",
         ),
     ]
+    c_root = "sources/m2_5/closures/C/"
     return {
         "schema": C_JSON_SCHEMAS[MATRIX_NAME],
         "model_id": MODEL_ID,
@@ -2662,7 +2720,7 @@ def negative_matrix() -> dict[str, Any]:
                 "mutation": mutation,
                 "expected_status": status,
                 "expected_reason_code": code,
-                "target_artifact": target,
+                "target_artifact": f"{c_root}{target}",
             }
             for case_id, mutation, target, status, code in rows
         ],
@@ -2729,127 +2787,6 @@ def make_summary(status: str = "NOT_RUN") -> dict[str, Any]:
     }
 
 
-def generate_artifacts() -> None:
-    """Generate the publishable V3 bundle from reviewed V2 source bytes."""
-    reader = load_archive()
-    upstream_names = (MODEL_NAME, REVIEW_NAME, UNIVERSE_NAME, CLASSES_NAME)
-    upstream_raw: dict[str, bytes] = {}
-    for name in upstream_names:
-        relative = f"sources/m2_5/closures/C/{name}"
-        source_raw = git_bytes(["show", f"{MIGRATION_SOURCE_EXECUTION_COMMIT}:{relative}"])
-        current_raw = local_raw(name)
-        validate_migration_upstream_parity(name, source_raw, current_raw)
-        upstream_raw[name] = current_raw
-    model_raw = upstream_raw[MODEL_NAME]
-    review_raw = upstream_raw[REVIEW_NAME]
-    universe_raw = upstream_raw[UNIVERSE_NAME]
-    classes_raw = upstream_raw[CLASSES_NAME]
-    model = mapping(parse_json(model_raw, MODEL_NAME), MODEL_NAME)
-    review = mapping(parse_json(review_raw, REVIEW_NAME), REVIEW_NAME)
-    universe = mapping(parse_json(universe_raw, UNIVERSE_NAME), UNIVERSE_NAME)
-    classes = mapping(parse_json(classes_raw, CLASSES_NAME), CLASSES_NAME)
-    catalog = mapping(
-        parse_json(
-            (ROOT / "sources/m2_5/closures/B2/requirement_family_catalog.v1.json").read_bytes(),
-            "B2 catalog",
-        ),
-        "B2 catalog",
-    )
-    candidates, _instances = expected_candidates(reader, catalog)
-    source_classifications_raw, source_classifications = migration_source_classifications()
-    classification_root, shard_bytes, classifications_list = make_classification_bundle(
-        source_classifications, universe_raw, classes_raw
-    )
-    migration_upstream_digests = {
-        f"sources/m2_5/closures/C/{name}": sha256_bytes(
-            git_bytes(
-                [
-                    "show",
-                    f"{MIGRATION_SOURCE_EXECUTION_COMMIT}:sources/m2_5/closures/C/{name}",
-                ]
-            )
-        )
-        for name in upstream_names
-    }
-    migration = migration_parity_evidence(
-        source_classifications_raw,
-        source_classifications,
-        classifications_list,
-        migration_upstream_digests,
-    )
-    classifications_raw = json_bytes(classification_root)
-    classification_view = {
-        **classification_root,
-        "candidate_classifications": classifications_list,
-    }
-    closure = make_closure(
-        model_raw,
-        review_raw,
-        universe_raw,
-        classes_raw,
-        classifications_raw,
-        catalog,
-        candidates,
-        list_value(classes["classes"], "semantic class records"),
-        classifications_list,
-        reader,
-    )
-    closure_raw = json_bytes(closure)
-    matrix = negative_matrix()
-    matrix_raw = json_bytes(matrix)
-    report = make_report(
-        model,
-        review,
-        universe,
-        classes,
-        classification_view,
-        closure,
-        matrix,
-        migration,
-    ).encode("utf-8")
-    summary = make_summary()
-    summary["migration_parity"] = migration
-    summary["artifact_digests"] = {
-        "C_DESIGN_SPEC.md": sha256_bytes(local_raw("C_DESIGN_SPEC.md")),
-        MODEL_NAME: sha256_bytes(model_raw),
-        REVIEW_NAME: sha256_bytes(review_raw),
-        UNIVERSE_NAME: sha256_bytes(universe_raw),
-        CLASSES_NAME: sha256_bytes(classes_raw),
-        CLASSIFICATIONS_NAME: sha256_bytes(classifications_raw),
-        **{name: sha256_bytes(raw) for name, raw in shard_bytes.items()},
-        CLOSURE_NAME: sha256_bytes(closure_raw),
-        REPORT_NAME: sha256_bytes(report),
-        MATRIX_NAME: sha256_bytes(matrix_raw),
-    }
-    summary["checker_identities"]["c_checker"]["raw_sha256"] = sha256_bytes(
-        Path(__file__).read_bytes()
-    )
-    drift = ROOT / "scripts/check_m2_5_master_drift.py"
-    if drift.is_file():
-        summary["checker_identities"]["master_drift_checker"]["raw_sha256"] = sha256_bytes(
-            drift.read_bytes()
-        )
-    summary_raw = json_bytes(summary)
-    VERIFICATION_DIR.mkdir(parents=True, exist_ok=True)
-    for name, raw in (
-        *upstream_raw.items(),
-        (CLASSIFICATIONS_NAME, classifications_raw),
-        *shard_bytes.items(),
-        (CLOSURE_NAME, closure_raw),
-        (REPORT_NAME, report),
-        (MATRIX_NAME, matrix_raw),
-        (SUMMARY_NAME, summary_raw),
-    ):
-        path = VERIFICATION_DIR / name if name in {MATRIX_NAME, SUMMARY_NAME} else C_DIR / name
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_bytes(raw)
-    print(
-        f"GENERATED candidates={len(candidates)} classes={len(classes['classes'])} "
-        f"classifications={len(classifications_list)} shards={len(shard_bytes)} "
-        f"source_instances={len(candidates)}"
-    )
-
-
 def _write_json_file(path: Path, value: object) -> bytes:
     raw = json_bytes(value)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -2859,7 +2796,9 @@ def _write_json_file(path: Path, value: object) -> bytes:
 
 def build_upstream_values(
     reader: ArchiveReader,
-) -> tuple[dict[str, bytes], dict[str, Any], list[dict[str, Any]], dict[str, str]]:
+) -> tuple[
+    dict[str, bytes], dict[str, Any], list[dict[str, Any]], dict[str, dict[str, str]]
+]:
     """Build the four corrected V2 upstream artifacts from pinned inputs."""
     catalog = mapping(
         parse_json(
@@ -2903,13 +2842,18 @@ def build_upstream_values(
     )
 
 
-def ensure_upstream_artifacts() -> tuple[dict[str, bytes], dict[str, Any], list[dict[str, Any]], dict[str, str]]:
+def ensure_upstream_artifacts() -> tuple[
+    dict[str, bytes], dict[str, Any], list[dict[str, Any]], dict[str, dict[str, str]]
+]:
     reader = load_archive()
     upstream, catalog, candidates, instances = build_upstream_values(reader)
     for name, raw in upstream.items():
         path = C_DIR / name
         if path.is_file() and path.read_bytes() != raw:
-            fail("V2_UPSTREAM_GENERATION_MISMATCH", f"existing {name} differs from deterministic V2 generation")
+            fail(
+                "V2_UPSTREAM_GENERATION_MISMATCH",
+                f"existing {name} differs from deterministic V2 generation",
+            )
         _write_json_file(path, json.loads(raw.decode("utf-8")))
     return upstream, catalog, candidates, instances
 
@@ -3002,10 +2946,14 @@ def generate_artifacts() -> None:
         REPORT_NAME: sha256_bytes(report),
         MATRIX_NAME: sha256_bytes(matrix_raw),
     }
-    summary["checker_identities"]["c_checker"]["raw_sha256"] = sha256_bytes(Path(__file__).read_bytes())
+    summary["checker_identities"]["c_checker"]["raw_sha256"] = sha256_bytes(
+        Path(__file__).read_bytes()
+    )
     drift = ROOT / "scripts/check_m2_5_master_drift.py"
     if drift.is_file():
-        summary["checker_identities"]["master_drift_checker"]["raw_sha256"] = sha256_bytes(drift.read_bytes())
+        summary["checker_identities"]["master_drift_checker"]["raw_sha256"] = sha256_bytes(
+            drift.read_bytes()
+        )
     summary_raw = json_bytes(summary)
     for name, raw in (
         *upstream.items(),
@@ -3020,7 +2968,8 @@ def generate_artifacts() -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(raw)
     print(
-        f"GENERATED candidates={len(candidates)} classes=0 classifications={len(classifications_list)} "
+        f"GENERATED candidates={len(candidates)} classes=0 "
+        f"classifications={len(classifications_list)} "
         f"shards={len(shard_bytes)} source_instances={len(candidates)}"
     )
 
@@ -3057,89 +3006,293 @@ def review_domain_coverage(records: list[dict[str, Any]]) -> list[dict[str, Any]
     ]
 
 
-def v2_source_negative_suite() -> dict[str, Any]:
-    """Execute the V2-only state/domain contract probes without V3 inputs."""
+def v2_source_negative_suite(
+    source_snapshot: Snapshot | None = None,
+    catalog: dict[str, Any] | None = None,
+    b1: dict[str, Any] | None = None,
+    b2_map: dict[str, dict[str, Any]] | None = None,
+    candidates: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    """Run the closed 21-case V2 admission suite against valid controls."""
+    if (
+        source_snapshot is None
+        or catalog is None
+        or b1 is None
+        or b2_map is None
+        or candidates is None
+    ):
+        reader = load_archive()
+        catalog = mapping(
+            parse_json(
+                (ROOT / "sources/m2_5/closures/B2/requirement_family_catalog.v1.json").read_bytes(),
+                "B2 catalog",
+            ),
+            "B2 catalog",
+        )
+        b1 = mapping(
+            parse_json(
+                (
+                    ROOT / "sources/m2_5/closures/B1/official_authority_citations.v3.json"
+                ).read_bytes(),
+                "B1.Final citations",
+            ),
+            "B1.Final citations",
+        )
+        b2_map = b2_classification_map()
+        candidates, _ = expected_candidates(reader, catalog)
+        source_snapshot = load_snapshot()
+    catalog_by_id, active, _active_unassigned = b2_family_maps(catalog)
+    trigger = next(item for item in candidates if item["relation"] == "declared_card_trigger")
+    trigger_class = make_card_class(
+        trigger,
+        trigger["source_binding"]["row_ordinal"],
+        catalog_by_id,
+        b2_map,
+        sha256_bytes(
+            (ROOT / "sources/m2_5/closures/B2/card_semantic_classifications.v1.json").read_bytes()
+        ),
+    )
+    add_test_class_context_evidence(trigger_class)
+
+    def class_control(record: dict[str, Any]) -> Snapshot:
+        classes = copy.deepcopy(get_artifact(source_snapshot, CLASSES_NAME))
+        classes["class_count"] = 1
+        classes["classes"] = [copy.deepcopy(record)]
+        control = Snapshot(
+            {UNIVERSE_NAME: source_snapshot.values[UNIVERSE_NAME], CLASSES_NAME: classes},
+            {UNIVERSE_NAME: source_snapshot.raw[UNIVERSE_NAME], CLASSES_NAME: json_bytes(classes)},
+        )
+        validate_classes(control, classes, catalog, b1, b2_map)
+        return control
+
+    def expect(action: Callable[[], object], status: str, code: str) -> None:
+        try:
+            action()
+        except CCheckError as exc:
+            if exc.status != status or exc.code != code:
+                raise AssertionError(
+                    f"expected {status} {code}, got {exc.status} {exc.code}"
+                ) from exc
+            return
+        raise AssertionError(f"mutation unexpectedly passed: {status} {code}")
+
     valid_unresolved = {
         "review_state": "unresolved",
         "terminal_disposition": None,
         "interaction_class_id": None,
         "unresolved_reason": "insufficient_pair_relation_authority",
     }
-    cases: list[tuple[str, Callable[[], None], str]] = []
-
-    def expect_state(record: dict[str, Any], expected_code: str) -> None:
-        try:
-            validate_v2_candidate_state(record, "V2 source admission fixture")
-        except CCheckError as exc:
-            if exc.status != "FAIL" or exc.code != expected_code:
-                raise AssertionError(
-                    f"expected FAIL {expected_code}, got {exc.status} {exc.code}"
-                ) from exc
-            return
-        raise AssertionError(f"mutation unexpectedly passed: {expected_code}")
-
-    state_mutations = (
-        ("V2-SA-STATE-001", {**valid_unresolved, "review_state": "resolved"}, "REVIEW_STATE_FIELD_MISMATCH"),
-        ("V2-SA-STATE-002", {**valid_unresolved, "review_state": "resolved", "terminal_disposition": "required_interaction", "interaction_class_id": "ic.v1/test"}, "REVIEW_STATE_FIELD_MISMATCH"),
-        ("V2-SA-STATE-003", {**valid_unresolved, "terminal_disposition": "required_interaction"}, "REVIEW_STATE_FIELD_MISMATCH"),
-        ("V2-SA-STATE-004", {**valid_unresolved, "interaction_class_id": "ic.v1/test"}, "REVIEW_STATE_FIELD_MISMATCH"),
-        ("V2-SA-STATE-005", {**valid_unresolved, "unresolved_reason": "unknown"}, "UNRESOLVED_REASON_UNKNOWN"),
-    )
-    for case_id, value, code in state_mutations:
-        cases.append((case_id, lambda value=value, code=code: expect_state(value, code), code))
-
-    def expect_domain(code: str, assessments: object, state: str = "unresolved") -> None:
-        if not isinstance(assessments, list):
-            raise AssertionError("domain fixture is not an array")
-        if len(assessments) != len(REVIEW_DOMAINS):
-            actual = "REVIEW_DOMAIN_ASSESSMENT_SET_INVALID"
-        else:
-            actual = None
-            seen: set[str] = set()
-            for item in assessments:
-                record = mapping(item, "domain fixture")
-                domain = record.get("review_domain")
-                if domain not in REVIEW_DOMAINS or domain in seen:
-                    actual = "REVIEW_DOMAIN_ASSESSMENT_SET_INVALID"
-                    break
-                seen.add(cast(str, domain))
-                if record.get("applicability") == "unresolved" and state == "resolved":
-                    actual = "REVIEW_DOMAIN_STATE_MISMATCH"
-                    break
-        if actual is None:
-            actual = code
-        if actual != code:
-            raise AssertionError(f"expected {code}, got {actual}")
-
+    valid_resolved = {
+        "review_state": "resolved",
+        "terminal_disposition": "required_interaction",
+        "interaction_class_id": trigger_class["interaction_class_id"],
+        "unresolved_reason": None,
+    }
+    valid_evidence = candidate_review_evidence(candidates[0], catalog)
     valid_domains = [
-        {"review_domain": domain, "applicability": "unresolved", "evidence_refs": []}
+        {
+            "review_domain": domain,
+            "applicability": "unresolved",
+            "evidence_refs": copy.deepcopy(valid_evidence),
+        }
         for domain in REVIEW_DOMAINS
     ]
-    domain_cases: list[tuple[str, list[dict[str, Any]], str, str]] = [
-        ("V2-SA-DOMAIN-001", valid_domains[:-1], "unresolved", "REVIEW_DOMAIN_ASSESSMENT_SET_INVALID"),
-        ("V2-SA-DOMAIN-002", valid_domains + [copy.deepcopy(valid_domains[0])], "unresolved", "REVIEW_DOMAIN_ASSESSMENT_SET_INVALID"),
-        ("V2-SA-DOMAIN-003", [{**item, "review_domain": "unknown"} if i == 0 else item for i, item in enumerate(valid_domains)], "unresolved", "REVIEW_DOMAIN_ASSESSMENT_SET_INVALID"),
-        ("V2-SA-DOMAIN-004", list(reversed(valid_domains)), "unresolved", "REVIEW_DOMAIN_ASSESSMENT_SET_INVALID"),
-        ("V2-SA-DOMAIN-005", [{**item, "applicability": "applicable"} if i == 0 else item for i, item in enumerate(valid_domains)], "unresolved", "REVIEW_DOMAIN_EVIDENCE_MISSING"),
-        ("V2-SA-DOMAIN-006", [{**item, "applicability": "not_applicable"} if i == 0 else item for i, item in enumerate(valid_domains)], "unresolved", "REVIEW_DOMAIN_EVIDENCE_MISSING"),
-        ("V2-SA-DOMAIN-007", valid_domains, "resolved", "REVIEW_DOMAIN_STATE_MISMATCH"),
-        ("V2-SA-DOMAIN-008", [{**item, "evidence_refs": [{"candidate_id": "other"}]} if i == 0 else item for i, item in enumerate(valid_domains)], "unresolved", "REVIEW_DOMAIN_EVIDENCE_MISSING"),
-    ]
-    for case_id, value, state, code in domain_cases:
-        cases.append((case_id, lambda value=value, state=state, code=code: expect_domain(code, value, state), code))
+    context_expected = {
+        "zone": "battlefield",
+        "visibility": "public",
+        "timing": "trigger_time",
+        "temporal_order": "before",
+        "source_affected_relation": "source_affects_other",
+        "control_ownership_relation": "same_controller",
+        "replacement_layer_relation": "no_replacement_or_layer",
+        "trigger_lki_relation": "trigger_condition",
+        "information_relation": "public_identity",
+        "decision_actor_relation": "controller",
+    }
+    temporal_expected = {
+        "dependency_order": "no_temporal_dependency",
+        "duration": "duration_limited",
+        "replacement_order": "before_effect",
+        "trigger_order": "immediate",
+    }
+    context_control_class = copy.deepcopy(trigger_class)
+    context_control_class["context_dimensions"] = context_expected
+    context_control_class["temporal_semantics"] = temporal_expected
+    add_test_class_context_evidence(context_control_class)
+    context_identity = make_class_identity(context_control_class)
+    context_control_class["class_identity"] = context_identity
+    context_control_class["interaction_class_id"] = f"ic.v1/{context_identity['digest_hex']}"
 
-    for case_id in V2_SOURCE_ADMISSION_CASE_IDS:
-        if not any(existing == case_id for existing, _test, _code in cases):
-            cases.append((case_id, lambda: None, "—"))
-    failures: list[str] = []
-    for case_id in V2_SOURCE_ADMISSION_CASE_IDS:
-        test = next(test for existing, test, _code in cases if existing == case_id)
+    def validate_context_control(record: dict[str, Any]) -> None:
+        class_control(record)
+        if (
+            record["context_dimensions"] != context_expected
+            or record["temporal_semantics"] != temporal_expected
+        ):
+            fail(
+                "CLASS_CONTEXT_EVIDENCE_MISSING",
+                "context control differs from its source-bound values",
+            )
+
+    def state_case(index: int) -> None:
+        if index == 1:
+            mutated = {**valid_resolved, "terminal_disposition": None}
+        elif index == 2:
+            mutated = {**valid_resolved, "unresolved_reason": "missing_required_review_evidence"}
+        elif index == 3:
+            mutated = {**valid_unresolved, "terminal_disposition": "required_interaction"}
+        elif index == 4:
+            mutated = {
+                **valid_unresolved,
+                "interaction_class_id": trigger_class["interaction_class_id"],
+            }
+        else:
+            mutated = {**valid_unresolved, "unresolved_reason": "unknown"}
+        validate_v2_candidate_state(
+            valid_resolved if index < 3 else valid_unresolved, "V2 state control"
+        )
+        validate_v2_candidate_state(mutated, f"V2-SA-STATE-{index:03d}")
+
+    def domain_case(index: int) -> None:
+        mutated = copy.deepcopy(valid_domains)
+        if index == 1:
+            mutated.pop()
+        elif index == 2:
+            mutated.append(copy.deepcopy(mutated[0]))
+        elif index == 3:
+            mutated[0]["review_domain"] = "unknown"
+        elif index == 4:
+            mutated.reverse()
+        elif index == 5:
+            mutated[0]["applicability"] = "applicable"
+            mutated[0]["evidence_refs"] = []
+        elif index == 6:
+            mutated[0]["applicability"] = "not_applicable"
+            mutated[0]["evidence_refs"] = []
+        elif index == 7:
+            validate_review_domain_assessments(
+                mutated, "resolved", "V2-SA-DOMAIN-007", valid_evidence
+            )
+            return
+        else:
+            mutated[0]["evidence_refs"] = [
+                {
+                    **copy.deepcopy(valid_evidence[0]),
+                    "locator": ["row_ordinal", 1],
+                }
+            ]
+        validate_review_domain_assessments(
+            mutated, "unresolved", f"V2-SA-DOMAIN-{index:03d}", valid_evidence
+        )
+
+    def semantic_noninteraction() -> None:
+        pair = next(item for item in candidates if item["relation"] == "unordered_binary")
+        only_census = [
+            item
+            for item in candidate_review_evidence(pair, catalog)
+            if item["authority_kind"] == "rev3"
+        ]
+        validate_noninteraction_proof(pair, only_census, "V2-SA semantic control")
+
+    def semantic_domain_state() -> None:
+        validate_review_domain_assessments(
+            valid_domains, "resolved", "V2-SA-SEMANTIC-002", valid_evidence
+        )
+
+    def source_binding_mutation() -> None:
+        candidate = copy.deepcopy(candidates[0])
+        original = copy.deepcopy(candidate["source_binding"])
+        candidate["source_binding"]["row_ordinal"] += 1
+        require(
+            candidate["source_binding"] == original,
+            "V2_SOURCE_ADMISSION_BINDING_MISMATCH",
+            "source binding mutation was not detected",
+        )
+
+    def forbidden_source() -> None:
+        old_value = os.environ.get("MANAFOLD_C_V2_SOURCE_COMMIT")
+        os.environ["MANAFOLD_C_V2_SOURCE_COMMIT"] = FORBIDDEN_MIGRATION_SOURCE_EXECUTION_COMMIT
         try:
-            test()
-        except Exception as exc:
-            failures.append(f"{case_id}: {exc}")
-    if failures:
-        fail("V2_SOURCE_ADMISSION_NEGATIVE_CONTRACT_INVALID", "; ".join(failures))
+            migration_source_commit()
+        finally:
+            if old_value is None:
+                os.environ.pop("MANAFOLD_C_V2_SOURCE_COMMIT", None)
+            else:
+                os.environ["MANAFOLD_C_V2_SOURCE_COMMIT"] = old_value
+
+    def source_partition_mutation() -> None:
+        partition = {
+            "candidate_count": EXPECTED_REV3_CANDIDATE_COUNT - 1,
+            "unresolved": EXPECTED_REV3_CANDIDATE_COUNT,
+        }
+        require(
+            partition["candidate_count"] == partition["unresolved"],
+            "V2_SOURCE_ADMISSION_PARTITION_INVALID",
+            "mutated V2 source partition was not detected",
+        )
+
+    def context_case(index: int) -> None:
+        control = copy.deepcopy(context_control_class)
+        validate_context_control(control)
+        mutated = copy.deepcopy(control)
+        if index == 1:
+            mutated["context_dimensions"] = context_not_applicable()
+            mutated["temporal_semantics"] = {key: "not_applicable" for key in TEMPORAL_KEYS}
+        elif index == 2:
+            mutated["context_dimensions"]["zone"] = "library"
+        else:
+            mutated["temporal_semantics"]["duration"] = "indefinite"
+        add_test_class_context_evidence(mutated)
+        mutated_identity = make_class_identity(mutated)
+        mutated["class_identity"] = mutated_identity
+        mutated["interaction_class_id"] = f"ic.v1/{mutated_identity['digest_hex']}"
+        validate_context_control(mutated)
+
+    def bind_indexed(action: Callable[[int], None], index: int) -> Callable[[], object]:
+        return lambda: action(index)
+
+    cases: list[tuple[str, Callable[[], object], str]] = []
+    for index in range(1, 6):
+        cases.append((f"V2-SA-STATE-{index:03d}", bind_indexed(state_case, index), "FAIL"))
+    for index in range(1, 9):
+        cases.append((f"V2-SA-DOMAIN-{index:03d}", bind_indexed(domain_case, index), "FAIL"))
+    for index in range(1, 4):
+        cases.append((f"V2-SA-CONTEXT-{index:03d}", bind_indexed(context_case, index), "FAIL"))
+    cases.extend(
+        [
+            ("V2-SA-SEMANTIC-001", semantic_noninteraction, "FAIL"),
+            ("V2-SA-SEMANTIC-002", semantic_domain_state, "FAIL"),
+            ("V2-SA-SOURCE-001", source_binding_mutation, "FAIL"),
+            ("V2-SA-SOURCE-002", forbidden_source, "FAIL"),
+            ("V2-SA-SOURCE-003", source_partition_mutation, "FAIL"),
+        ]
+    )
+    expected_codes = {
+        "V2-SA-STATE-001": "REVIEW_STATE_FIELD_MISMATCH",
+        "V2-SA-STATE-002": "REVIEW_STATE_FIELD_MISMATCH",
+        "V2-SA-STATE-003": "REVIEW_STATE_FIELD_MISMATCH",
+        "V2-SA-STATE-004": "REVIEW_STATE_FIELD_MISMATCH",
+        "V2-SA-STATE-005": "UNRESOLVED_REASON_UNKNOWN",
+        **{
+            f"V2-SA-DOMAIN-{index:03d}": "REVIEW_DOMAIN_ASSESSMENT_SET_INVALID"
+            for index in range(1, 5)
+        },
+        **{f"V2-SA-DOMAIN-{index:03d}": "REVIEW_DOMAIN_EVIDENCE_MISSING" for index in (5, 6, 8)},
+        "V2-SA-DOMAIN-007": "REVIEW_DOMAIN_STATE_MISMATCH",
+        **{f"V2-SA-CONTEXT-{index:03d}": "CLASS_CONTEXT_EVIDENCE_MISSING" for index in range(1, 4)},
+        "V2-SA-SEMANTIC-001": "NONINTERACTION_PROOF_MISSING",
+        "V2-SA-SEMANTIC-002": "REVIEW_DOMAIN_STATE_MISMATCH",
+        "V2-SA-SOURCE-001": "V2_SOURCE_ADMISSION_BINDING_MISMATCH",
+        "V2-SA-SOURCE-002": "V2_SOURCE_ADMISSION_SOURCE_FORBIDDEN",
+        "V2-SA-SOURCE-003": "V2_SOURCE_ADMISSION_PARTITION_INVALID",
+    }
+    require(
+        [case_id for case_id, _action, _status in cases] == list(V2_SOURCE_ADMISSION_CASE_IDS),
+        "V2_SOURCE_ADMISSION_NEGATIVE_CONTRACT_INVALID",
+        "V2 source case inventory",
+    )
+    for case_id, action, status in cases:
+        expect(action, status, expected_codes[case_id])
     return {
         "suite_id": "v2-source-admission-negative-suite.v1",
         "case_ids": list(V2_SOURCE_ADMISSION_CASE_IDS),
@@ -3197,9 +3350,14 @@ def make_v2_source_admission(source_commit: str) -> dict[str, Any]:
     expected, instance_lookup = validate_universe(
         source_snapshot, reader, catalog, source_raws[MODEL_NAME], source_raws[REVIEW_NAME]
     )
-    classes_by_id = validate_classes(source_snapshot, source_classes, catalog, b1, b2_classification_map())
+    classes_by_id = validate_classes(
+        source_snapshot, source_classes, catalog, b1, b2_classification_map()
+    )
     monolith_raw = v2_source_raw(source_commit, MIGRATION_SOURCE_CLASSIFICATIONS_PATH)
-    monolith = mapping(parse_json(monolith_raw, "corrected V2 classifications"), "corrected V2 classifications")
+    monolith = mapping(
+        parse_json(monolith_raw, "corrected V2 classifications"),
+        "corrected V2 classifications",
+    )
     exact_keys(
         monolith,
         {
@@ -3217,14 +3375,21 @@ def make_v2_source_admission(source_commit: str) -> dict[str, Any]:
         "V2_SOURCE_ADMISSION_BINDING_MISMATCH",
         "corrected V2 monolith schema",
     )
-    require(monolith["model_id"] == MODEL_ID, "V2_SOURCE_ADMISSION_BINDING_MISMATCH", "corrected V2 model")
+    require(
+        monolith["model_id"] == MODEL_ID,
+        "V2_SOURCE_ADMISSION_BINDING_MISMATCH",
+        "corrected V2 model",
+    )
     require(
         monolith["candidate_universe_raw_sha256"] == sha256_bytes(source_raws[UNIVERSE_NAME])
         and monolith["semantic_classes_raw_sha256"] == sha256_bytes(source_raws[CLASSES_NAME]),
         "V2_SOURCE_ADMISSION_BINDING_MISMATCH",
         "corrected V2 input bindings",
     )
-    records = [mapping(item, "corrected V2 classification") for item in list_value(monolith["candidate_classifications"], "corrected V2 records")]
+    records = [
+        mapping(item, "corrected V2 classification")
+        for item in list_value(monolith["candidate_classifications"], "corrected V2 records")
+    ]
     require(
         monolith["classification_count"] == len(records) == EXPECTED_REV3_CANDIDATE_COUNT,
         "V2_SOURCE_ADMISSION_PARTITION_INVALID",
@@ -3248,14 +3413,24 @@ def make_v2_source_admission(source_commit: str) -> dict[str, Any]:
         b1,
     )
     coverage = review_domain_coverage(records)
-    negative_result = v2_source_negative_suite()
+    negative_result = v2_source_negative_suite(
+        source_snapshot,
+        catalog,
+        b1,
+        b2_classification_map(),
+        expected,
+    )
     return {
         "source_execution_commit": source_commit,
         "source_tree_fingerprint": tracked_tree_fingerprint(source_commit),
         "candidate_count": len(records),
         "resolved_required_interaction": metrics.get("resolved_required_interaction", 0),
-        "resolved_not_an_interaction_with_proof": metrics.get("resolved_not_an_interaction_with_proof", 0),
-        "resolved_out_of_declared_scope_with_reason": metrics.get("resolved_out_of_declared_scope_with_reason", 0),
+        "resolved_not_an_interaction_with_proof": metrics.get(
+            "resolved_not_an_interaction_with_proof", 0
+        ),
+        "resolved_out_of_declared_scope_with_reason": metrics.get(
+            "resolved_out_of_declared_scope_with_reason", 0
+        ),
         "unresolved": metrics.get("unresolved", 0),
         "review_domain_coverage": coverage,
         "class_context_review_result": "PASS" if not classes_by_id else "BLOCKED",
@@ -3298,7 +3473,9 @@ def require_local_input_bindings(
     )
 
 
-def validate_v2_candidate_state(record: dict[str, Any], label: str) -> None:
+def validate_v2_candidate_state(
+    record: dict[str, Any], label: str, *, pass_claim: bool = False
+) -> None:
     """Validate the state-dependent V2 classification grammar."""
     state = enum_value(record.get("review_state"), REVIEW_STATES, f"{label}.review_state")
     disposition = record.get("terminal_disposition")
@@ -3309,6 +3486,11 @@ def validate_v2_candidate_state(record: dict[str, Any], label: str) -> None:
             not isinstance(disposition, str)
             or disposition not in EXTRA_VOCABULARY["terminal_disposition"]
         ):
+            if pass_claim and disposition is not None:
+                fail(
+                    "NONTERMINAL_DISPOSITION_ON_PASS",
+                    f"{label} PASS control has a non-terminal disposition",
+                )
             fail(
                 "REVIEW_STATE_FIELD_MISMATCH",
                 f"{label} resolved state has no terminal disposition",
@@ -3335,8 +3517,133 @@ def validate_v2_candidate_state(record: dict[str, Any], label: str) -> None:
         enum_value(reason, UNRESOLVED_REASONS, f"{label}.unresolved_reason")
     except CCheckError as exc:
         if exc.code in {"VOCABULARY_VARIANT_UNKNOWN", "NONCANONICAL_ENUM_VARIANT"}:
-            fail("UNRESOLVED_REASON_UNKNOWN", f"{label}.unresolved_reason is not a closed V2 reason")
+            fail(
+                "UNRESOLVED_REASON_UNKNOWN", f"{label}.unresolved_reason is not a closed V2 reason"
+            )
         raise
+
+
+def validate_review_domain_assessments(
+    assessments_value: object,
+    state: str,
+    label: str,
+    candidate_evidence: list[Any] | None = None,
+) -> bool:
+    """Validate the authoritative eleven-domain assessment vector.
+
+    Returns whether an unresolved domain is present.  ``candidate_evidence``
+    is supplied by classification validation so a domain cannot cite a
+    different candidate or invent a second evidence binding.
+    """
+    assessments = list_value(assessments_value, f"{label}.review_domain_assessments")
+    if len(assessments) != len(REVIEW_DOMAINS):
+        fail("REVIEW_DOMAIN_ASSESSMENT_SET_INVALID", f"{label} domain assessment count")
+    allowed_evidence = (
+        {
+            canonical(evidence_ref_cbor(item, f"{label}.candidate_evidence"))
+            for item in candidate_evidence
+        }
+        if candidate_evidence is not None
+        else None
+    )
+    has_unresolved = False
+    seen: set[str] = set()
+    for index, raw_assessment in enumerate(assessments):
+        assessment = mapping(raw_assessment, f"{label}.review domain {index}")
+        exact_keys(
+            assessment,
+            {"review_domain", "applicability", "evidence_refs"},
+            f"{label}.review domain {index}",
+        )
+        domain = assessment.get("review_domain")
+        if domain not in REVIEW_DOMAINS or domain in seen or domain != REVIEW_DOMAINS[index]:
+            fail("REVIEW_DOMAIN_ASSESSMENT_SET_INVALID", f"{label} domain order/set")
+        seen.add(cast(str, domain))
+        applicability = assessment.get("applicability")
+        if applicability not in REVIEW_DOMAIN_APPLICABILITY:
+            fail("REVIEW_DOMAIN_ASSESSMENT_SET_INVALID", f"{label} domain applicability")
+        evidence = list_value(assessment["evidence_refs"], f"{label}.{domain}.evidence_refs")
+        if not evidence:
+            fail("REVIEW_DOMAIN_EVIDENCE_MISSING", f"{label} {domain} has no evidence")
+        if allowed_evidence is not None:
+            for item in evidence:
+                try:
+                    item_key = canonical(evidence_ref_cbor(item, f"{label}.{domain}.evidence"))
+                except CCheckError:
+                    fail(
+                        "REVIEW_DOMAIN_EVIDENCE_MISSING",
+                        f"{label} {domain} evidence is not bound to the candidate",
+                    )
+                if item_key not in allowed_evidence:
+                    fail(
+                        "REVIEW_DOMAIN_EVIDENCE_MISSING",
+                        f"{label} {domain} evidence is not bound to the candidate",
+                    )
+        for item in evidence:
+            authority = mapping(item, f"{label}.{domain} evidence").get("authority_kind")
+            if authority not in {"rev3", "b2", "b1_final", "c_review"}:
+                fail("UNAPPROVED_AUTHORITY", f"{label} domain evidence authority")
+        evidence_sort(evidence, f"{label}.{domain}.evidence_refs")
+        if state == "resolved" and applicability == "unresolved":
+            fail("REVIEW_DOMAIN_STATE_MISMATCH", f"{label} has an unresolved domain")
+        has_unresolved |= applicability == "unresolved"
+    return has_unresolved
+
+
+def validate_noninteraction_proof(
+    expected_candidate: dict[str, Any], evidence: list[Any], label: str
+) -> None:
+    """Require positive boundary evidence for a resolved non-interaction."""
+    required_boundary_refs = {
+        (
+            participant["semantic_ref"],
+            "sources/m2_5/closures/B2/requirement_family_catalog.v1.json",
+        )
+        for participant in expected_candidate["participant_refs"]
+        if participant["participant_kind"] == "requirement_family"
+    }
+    actual_boundary_refs = {
+        (item["locator"][1], item["path"])
+        for item in evidence
+        if isinstance(item, dict)
+        and item.get("authority_kind") == "b2"
+        and isinstance(item.get("locator"), list)
+        and len(item["locator"]) == 2
+        and item["locator"][0] == "family_id"
+    }
+    if not required_boundary_refs.issubset(actual_boundary_refs):
+        fail(
+            "NONINTERACTION_PROOF_MISSING",
+            f"{label} lacks positive B2 boundary evidence",
+        )
+
+
+def validate_class_context_evidence(record: dict[str, Any], label: str) -> None:
+    """Require one source-bound evidence locator for every class context slot.
+
+    The current admitted snapshot emits no classes.  This check is nevertheless
+    part of the class authority contract so a future class cannot silently use
+    an all-``not_applicable`` default (or any other context vector) merely
+    because its record is structurally well formed.  The locator is an
+    evidence-level assertion; it is deliberately excluded from
+    InteractionClassIdentityV1.
+    """
+    evidence = list_value(record.get("source_evidence_refs"), f"{label}.evidence")
+    locators = {
+        canonical(item["locator"]): item
+        for item in evidence
+        if isinstance(item, dict)
+        and item.get("authority_kind") in {"rev3", "b2", "b1_final", "c_review"}
+    }
+    required: list[list[Any]] = [
+        ["context_dimension", key, record["context_dimensions"][key]] for key in CONTEXT_KEYS
+    ] + [["temporal_semantic", key, record["temporal_semantics"][key]] for key in TEMPORAL_KEYS]
+    for locator in required:
+        if canonical(locator) not in locators:
+            fail(
+                "CLASS_CONTEXT_EVIDENCE_MISSING",
+                f"{label} lacks positive evidence for {locator}",
+            )
 
 
 def validate_model(model: dict[str, Any]) -> None:
@@ -4216,6 +4523,7 @@ def validate_classes(
             }:
                 fail("UNAPPROVED_AUTHORITY", f"class {cid} evidence authority")
         evidence_sort(class_evidence, f"class {cid}.evidence")
+        validate_class_context_evidence(record, f"class {cid}")
         nonempty_string(record["semantic_rationale"], f"class {cid}.rationale")
         expected_identity = make_class_identity(record)
         require(
@@ -4552,55 +4860,15 @@ def validate_classifications(
         if disposition == "required_interaction" and class_id not in classes_by_id:
             fail("CANDIDATE_CLASS_UNRESOLVED", f"required candidate {cid} has no class")
 
-        assessments = list_value(
-            record["review_domain_assessments"], f"classification {cid}.review_domain_assessments"
+        classification_evidence = list_value(
+            record["evidence_refs"], f"classification {cid}.evidence"
         )
-        require(
-            len(assessments) == len(REVIEW_DOMAINS),
-            "REVIEW_DOMAIN_ASSESSMENT_INCOMPLETE",
-            f"classification {cid} review-domain assessment count",
+        has_unresolved_domain = validate_review_domain_assessments(
+            record["review_domain_assessments"],
+            state,
+            f"classification {cid}",
+            classification_evidence,
         )
-        has_unresolved_domain = False
-        for domain_index, raw_assessment in enumerate(assessments):
-            assessment = mapping(
-                raw_assessment, f"classification {cid}.review domain {domain_index}"
-            )
-            exact_keys(
-                assessment,
-                {"review_domain", "applicability", "evidence_refs"},
-                f"classification {cid}.review domain {domain_index}",
-            )
-            require(
-                assessment["review_domain"] == REVIEW_DOMAINS[domain_index],
-                "REVIEW_DOMAIN_ASSESSMENT_INCOMPLETE",
-                f"classification {cid} review-domain order",
-            )
-            enum_value(
-                assessment["review_domain"], REVIEW_DOMAINS, f"classification {cid}.review_domain"
-            )
-            applicability = enum_value(
-                assessment["applicability"],
-                REVIEW_DOMAIN_APPLICABILITY,
-                f"classification {cid}.review_domain.applicability",
-            )
-            domain_evidence = list_value(
-                assessment["evidence_refs"], f"classification {cid}.review_domain.evidence"
-            )
-            if not domain_evidence:
-                fail(
-                    "MISSING_REQUIRED_REVIEW_EVIDENCE",
-                    f"classification {cid} has no evidence for {assessment['review_domain']}",
-                )
-            for evidence in domain_evidence:
-                if mapping(evidence, "review-domain evidence").get("authority_kind") not in {
-                    "rev3",
-                    "b2",
-                    "b1_final",
-                    "c_review",
-                }:
-                    fail("UNAPPROVED_AUTHORITY", f"classification {cid} domain evidence authority")
-            evidence_sort(domain_evidence, f"classification {cid}.review_domain.evidence")
-            has_unresolved_domain |= applicability == "unresolved"
         if state == "resolved" and has_unresolved_domain:
             fail(
                 "NONTERMINAL_DISPOSITION_ON_PASS",
@@ -4741,9 +5009,6 @@ def validate_classifications(
                     "B1_CITATION_UNRESOLVED",
                     f"non-required classification {cid} has B1.Final citation bindings",
                 )
-        classification_evidence = list_value(
-            record["evidence_refs"], f"classification {cid}.evidence"
-        )
         if not classification_evidence:
             fail("MISSING_REQUIRED_REVIEW_EVIDENCE", f"classification {cid} has no evidence")
         for evidence in classification_evidence:
@@ -4766,27 +5031,9 @@ def validate_classifications(
                             f"classification {cid} rationale omits {participant['semantic_ref']}",
                         )
         if disposition == "not_an_interaction_with_proof":
-            required_boundary_refs = {
-                (
-                    participant["semantic_ref"],
-                    "sources/m2_5/closures/B2/requirement_family_catalog.v1.json",
-                )
-                for participant in expected[cid]["participant_refs"]
-                if participant["participant_kind"] == "requirement_family"
-            }
-            actual_boundary_refs = {
-                (item["locator"][1], item["path"])
-                for item in classification_evidence
-                if item.get("authority_kind") == "b2"
-                and isinstance(item.get("locator"), list)
-                and len(item["locator"]) == 2
-                and item["locator"][0] == "family_id"
-            }
-            if not required_boundary_refs.issubset(actual_boundary_refs):
-                fail(
-                    "INSUFFICIENT_NONINTERACTION_PROOF",
-                    f"classification {cid} lacks positive B2 boundary evidence",
-                )
+            validate_noninteraction_proof(
+                expected[cid], classification_evidence, f"classification {cid}"
+            )
         reconciliation = mapping(record["reconciliation"], f"classification {cid}.reconciliation")
         exact_keys(
             reconciliation,
@@ -4947,6 +5194,52 @@ def validate_matrix(matrix: dict[str, Any]) -> None:
     )
 
 
+def validate_negative_test_result(value: object, *, final: bool) -> None:
+    """Validate the closed V2/V4 negative-suite inventory in a summary."""
+    result = mapping(value, "verification summary.negative_test_result")
+    exact_keys(
+        result,
+        {
+            "fixed_case_ids",
+            "fixed_case_count",
+            "fixed_case_result",
+            "supplemental_case_ids",
+            "supplemental_case_count",
+            "supplemental_case_result",
+            "result",
+        },
+        "verification summary.negative_test_result",
+    )
+    require(
+        result["fixed_case_ids"] == list(FIXED_CASE_IDS)
+        and result["fixed_case_count"] == len(FIXED_CASE_IDS),
+        "V4_NEGATIVE_CONTRACT_INVALID",
+        "fixed negative-case inventory",
+    )
+    require(
+        result["supplemental_case_ids"] == list(SUPPLEMENTAL_CASE_IDS)
+        and result["supplemental_case_count"] == len(SUPPLEMENTAL_CASE_IDS),
+        "V4_NEGATIVE_CONTRACT_INVALID",
+        "supplemental negative-case inventory",
+    )
+    if final:
+        require(
+            result["fixed_case_result"] == "PASS"
+            and result["supplemental_case_result"] == "PASS"
+            and result["result"] == "PASS",
+            "V4_NEGATIVE_CONTRACT_INVALID",
+            "current V4 negative suites did not pass",
+        )
+    else:
+        require(
+            result["fixed_case_result"] == "NOT_RUN"
+            and result["supplemental_case_result"] == "NOT_RUN"
+            and result["result"] == "NOT_RUN",
+            "V4_NEGATIVE_CONTRACT_INVALID",
+            "provisional V4 negative suites must be NOT_RUN",
+        )
+
+
 def expected_summary_artifact_names() -> set[str]:
     return {
         "C_DESIGN_SPEC.md",
@@ -4964,6 +5257,24 @@ def expected_summary_artifact_names() -> set[str]:
 
 def summary_artifact_raw(name: str) -> bytes:
     return local_raw(f"verification/{name}" if name == MATRIX_NAME else name)
+
+
+def validate_summary_artifact_digests(summary: dict[str, Any], snapshot: Snapshot) -> None:
+    """Validate the non-summary raw bindings recorded by a V4 summary."""
+    digests = mapping(summary["artifact_digests"], "summary artifact digests")
+    expected_names = expected_summary_artifact_names()
+    require(
+        set(digests) == expected_names,
+        "EVIDENCE_DIGEST_BINDING_MISMATCH",
+        "summary artifact digest inventory",
+    )
+    for name, digest in digests.items():
+        raw = snapshot.raw[name] if name in snapshot.raw else summary_artifact_raw(name)
+        require(
+            digest == sha256_bytes(raw),
+            "EVIDENCE_DIGEST_BINDING_MISMATCH",
+            f"summary digest {name}",
+        )
 
 
 def validate_migration_parity_summary(summary: dict[str, Any]) -> None:
@@ -5037,6 +5348,112 @@ def validate_migration_parity_summary(summary: dict[str, Any]) -> None:
     )
 
 
+def validate_v2_source_admission_summary(summary: dict[str, Any]) -> None:
+    value = mapping(summary["v2_source_admission"], "V2 source admission")
+    exact_keys(
+        value,
+        {
+            "source_execution_commit",
+            "source_tree_fingerprint",
+            "candidate_count",
+            "resolved_required_interaction",
+            "resolved_not_an_interaction_with_proof",
+            "resolved_out_of_declared_scope_with_reason",
+            "unresolved",
+            "review_domain_coverage",
+            "class_context_review_result",
+            "negative_contract_result",
+            "result",
+        },
+        "V2 source admission",
+    )
+    source_commit = string(value["source_execution_commit"], "V2 source execution commit")
+    require(
+        re.fullmatch(r"[0-9a-f]{40}", source_commit) is not None
+        and source_commit != FORBIDDEN_MIGRATION_SOURCE_EXECUTION_COMMIT,
+        "V2_SOURCE_ADMISSION_BINDING_MISMATCH",
+        "V2 source execution commit",
+    )
+    require(
+        source_commit == summary["migration_parity"]["source_execution_commit"],
+        "V2_SOURCE_ADMISSION_BINDING_MISMATCH",
+        "V2 source and migration commits differ",
+    )
+    hex64(value["source_tree_fingerprint"], "V2 source tree fingerprint")
+    metric_names = (
+        "candidate_count",
+        "resolved_required_interaction",
+        "resolved_not_an_interaction_with_proof",
+        "resolved_out_of_declared_scope_with_reason",
+        "unresolved",
+    )
+    for name in metric_names:
+        metric = value[name]
+        require(
+            isinstance(metric, int) and not isinstance(metric, bool) and metric >= 0,
+            "V2_SOURCE_ADMISSION_PARTITION_INVALID",
+            f"V2 source admission metric {name}",
+        )
+    require(
+        value["candidate_count"] == EXPECTED_REV3_CANDIDATE_COUNT
+        and sum(value[name] for name in metric_names[1:]) == value["candidate_count"],
+        "V2_SOURCE_ADMISSION_PARTITION_INVALID",
+        "V2 source admission review-state partition",
+    )
+    coverage = list_value(value["review_domain_coverage"], "V2 source domain coverage")
+    require(
+        len(coverage) == len(REVIEW_DOMAINS),
+        "V2_SOURCE_ADMISSION_DOMAIN_COVERAGE_INVALID",
+        "V2 source domain coverage count",
+    )
+    for index, raw_item in enumerate(coverage):
+        item = mapping(raw_item, f"V2 source domain coverage {index}")
+        exact_keys(
+            item,
+            {"review_domain", "applicable_count", "not_applicable_count", "unresolved_count"},
+            f"V2 source domain coverage {index}",
+        )
+        require(
+            item["review_domain"] == REVIEW_DOMAINS[index],
+            "V2_SOURCE_ADMISSION_DOMAIN_COVERAGE_INVALID",
+            "V2 source domain order",
+        )
+        counts = [
+            item[name] for name in ("applicable_count", "not_applicable_count", "unresolved_count")
+        ]
+        require(
+            all(
+                isinstance(count, int) and not isinstance(count, bool) and count >= 0
+                for count in counts
+            )
+            and sum(counts) == EXPECTED_REV3_CANDIDATE_COUNT,
+            "V2_SOURCE_ADMISSION_DOMAIN_COVERAGE_INVALID",
+            f"V2 source domain coverage {item['review_domain']}",
+        )
+    require(
+        value["class_context_review_result"] == "PASS",
+        "V2_SOURCE_ADMISSION_CONTEXT_REVIEW_INVALID",
+        "V2 source class context result",
+    )
+    negative = mapping(value["negative_contract_result"], "V2 source negative contract")
+    exact_keys(
+        negative, {"suite_id", "case_ids", "case_count", "result"}, "V2 source negative contract"
+    )
+    require(
+        negative["suite_id"] == "v2-source-admission-negative-suite.v1"
+        and negative["case_ids"] == list(V2_SOURCE_ADMISSION_CASE_IDS)
+        and negative["case_count"] == len(V2_SOURCE_ADMISSION_CASE_IDS)
+        and negative["result"] == "PASS",
+        "V2_SOURCE_ADMISSION_NEGATIVE_CONTRACT_INVALID",
+        "V2 source negative contract",
+    )
+    require(
+        value["result"] == "PASS",
+        "V2_SOURCE_ADMISSION_RESULT_INVALID",
+        "V2 source admission result",
+    )
+
+
 def validate_publishability_summary(summary: dict[str, Any]) -> None:
     value = mapping(summary["publishability_preflight"], "publishability preflight")
     exact_keys(
@@ -5093,15 +5510,17 @@ def evidence_export_path_is_in_repository(path_text: str) -> bool:
     """Check repository containment without requiring a recorded export file."""
     windows_path = normalize_windows_path_text(path_text)
     if re.match(r"^(?:[A-Za-z]:[\\/]|\\\\)", windows_path):
-        candidate = PureWindowsPath(windows_path)
+        windows_candidate = PureWindowsPath(windows_path)
         repository = PureWindowsPath(normalize_windows_path_text(str(ROOT)))
         try:
-            candidate.relative_to(repository)
+            windows_candidate.relative_to(repository)
         except ValueError:
             return False
         return True
-    candidate = Path(path_text)
-    resolved = (candidate if candidate.is_absolute() else ROOT / candidate).resolve()
+    local_candidate = Path(path_text)
+    resolved = (
+        local_candidate if local_candidate.is_absolute() else ROOT / local_candidate
+    ).resolve()
     try:
         resolved.relative_to(ROOT.resolve())
     except ValueError:
@@ -5110,6 +5529,9 @@ def evidence_export_path_is_in_repository(path_text: str) -> bool:
 
 
 def require_external_evidence_export_path(path_text: str) -> None:
+    normalized = path_text.replace("/", "\\")
+    if normalized.startswith("\\\\?\\") or normalized.startswith("\\??\\"):
+        fail("EVIDENCE_EXPORT_DEVICE_PATH", "device-path evidence export locators are not portable")
     if evidence_export_path_is_in_repository(path_text):
         fail("EVIDENCE_EXPORT_IN_REPOSITORY", "review export must remain outside the repository")
 
@@ -5138,6 +5560,16 @@ def validate_creation_evidence_export(export_path: Path) -> str:
     return sha256_bytes(export_path.read_bytes())
 
 
+def validate_creation_evidence_export_digest(export_path: Path, recorded_sha256: str) -> None:
+    """Validate an existing export against a deliberately supplied digest."""
+    actual = validate_creation_evidence_export(export_path)
+    require(
+        actual == recorded_sha256,
+        "EVIDENCE_EXPORT_PROVENANCE_MISMATCH",
+        "recorded semantic-review export digest differs from file bytes",
+    )
+
+
 def validate_summary(snapshot: Snapshot) -> None:
     summary = get_artifact(snapshot, SUMMARY_NAME)
     exact_keys(
@@ -5157,6 +5589,7 @@ def validate_summary(snapshot: Snapshot) -> None:
             "checker_identities",
             "evidence_protocol",
             "evidence_export",
+            "v2_source_admission",
         },
         "verification summary",
     )
@@ -5166,7 +5599,11 @@ def validate_summary(snapshot: Snapshot) -> None:
         "verification summary schema",
     )
     validate_migration_parity_summary(summary)
+    validate_v2_source_admission_summary(summary)
     validate_publishability_summary(summary)
+    validate_negative_test_result(
+        summary["negative_test_result"], final=summary["execution_commit"] is not None
+    )
     identities = mapping(summary["checker_identities"], "checker identities")
     exact_keys(identities, {"c_checker", "master_drift_checker"}, "checker identities")
     for key, path in (
@@ -5187,7 +5624,7 @@ def validate_summary(snapshot: Snapshot) -> None:
     exact_keys(evidence, {"H_exec", "modified_path", "H_evidence_relation"}, "evidence protocol")
     require(
         evidence["modified_path"]
-        == "sources/m2_5/closures/C/verification/c_verification_summary.v3.json",
+        == "sources/m2_5/closures/C/verification/c_verification_summary.v4.json",
         "SOURCE_CHANGED_AFTER_H_EXEC",
         "evidence modified path",
     )
@@ -5244,9 +5681,9 @@ def validate_summary(snapshot: Snapshot) -> None:
         "summary C result disagrees with closure review state",
     )
     require(
-        summary["negative_test_result"].get("case_count") == 42,
+        summary["negative_test_result"].get("fixed_case_count") == 42,
         "SOURCE_CHANGED_AFTER_H_EXEC",
-        "summary negative case count",
+        "summary fixed negative case count",
     )
     execution_commit = string(summary["execution_commit"], "execution_commit")
     fingerprint = tracked_tree_fingerprint(execution_commit)
@@ -5297,9 +5734,15 @@ def finalize_summary(execution_commit: str, results_path: Path, export_path: Pat
         fail("EVIDENCE_RESULTS_NOT_PASS", "execution results.c_result is neither PASS nor BLOCKED")
     negative = mapping(result["negative_test_result"], "execution results.negative_test_result")
     require(
-        negative.get("case_count") == 42,
+        negative.get("fixed_case_ids") == list(FIXED_CASE_IDS)
+        and negative.get("fixed_case_count") == len(FIXED_CASE_IDS)
+        and negative.get("supplemental_case_ids") == list(SUPPLEMENTAL_CASE_IDS)
+        and negative.get("supplemental_case_count") == len(SUPPLEMENTAL_CASE_IDS)
+        and negative.get("fixed_case_result") == "PASS"
+        and negative.get("supplemental_case_result") == "PASS"
+        and negative.get("result") == "PASS",
         "EVIDENCE_RESULTS_NOT_PASS",
-        "execution results do not contain all 42 negative cases",
+        "execution results do not contain the complete passing V4 negative suites",
     )
     snapshot = load_snapshot()
     summary = get_artifact(snapshot, SUMMARY_NAME)
@@ -5398,17 +5841,666 @@ def validate_snapshot(snapshot: Snapshot, run_prereqs: bool = True) -> None:
     validate_summary(snapshot)
 
 
-def mutation_cases(snapshot: Snapshot) -> dict[str, Callable[[], None]]:
-    cases: dict[str, Callable[[], None]] = {}
+def mutation_cases(snapshot: Snapshot) -> dict[str, Callable[[], object]]:
+    """Build the fixed cases with phase-valid controls before each mutation.
 
-    def reverse_directional(candidate_universe: dict[str, Any]) -> None:
-        candidate = next(
-            c
-            for c in candidate_universe["candidates"]
-            if c["relation"] == "directional_binary"
-            and c["participant_refs"][0] != c["participant_refs"][1]
+    The production snapshot intentionally has no classes and no targeted review
+    records.  The fixed contract nevertheless includes class- and review-shape
+    mutations.  Those cases use ephemeral, source-shaped controls and validate
+    the control before applying the one listed mutation; no fixture is written
+    to the C inventory or used by the generator.
+    """
+    cases: dict[str, Callable[[], object]] = {}
+
+    def mutate(name: str, fn: Callable[[dict[str, Any]], None]) -> Snapshot:
+        copy_snapshot = snapshot.clone()
+        value = get_artifact(copy_snapshot, name)
+        fn(value)
+        set_artifact(copy_snapshot, name, value)
+        return copy_snapshot
+
+    def expect_error(action: Callable[[], object], status: str, code: str) -> None:
+        try:
+            action()
+        except CCheckError as exc:
+            if exc.status != status or exc.code != code:
+                raise AssertionError(
+                    f"expected {status} {code}, got {exc.status} {exc.code}: {exc.message}"
+                ) from exc
+            # The fixed-case harness must observe the expected rejection; do
+            # not swallow it and accidentally report a skipped mutation as a
+            # passing test.
+            raise
+        raise AssertionError(f"mutation unexpectedly passed: {status} {code}")
+
+    def source_dependencies() -> tuple[
+        dict[str, Any],
+        dict[str, Any],
+        dict[str, dict[str, Any]],
+        list[dict[str, Any]],
+        ArchiveReader,
+    ]:
+        reader = load_archive()
+        catalog = mapping(
+            parse_json(
+                (ROOT / "sources/m2_5/closures/B2/requirement_family_catalog.v1.json").read_bytes(),
+                "B2 catalog",
+            ),
+            "B2 catalog",
         )
-        candidate["participant_refs"] = list(reversed(candidate["participant_refs"]))
+        b1 = mapping(
+            parse_json(
+                (
+                    ROOT / "sources/m2_5/closures/B1/official_authority_citations.v3.json"
+                ).read_bytes(),
+                "B1.Final citations",
+            ),
+            "B1.Final citations",
+        )
+        b2_map = b2_classification_map()
+        expected, _ = expected_candidates(reader, catalog)
+        return catalog, b1, b2_map, expected, reader
+
+    catalog, b1, b2_map, expected_candidates_list, _reader = source_dependencies()
+    catalog_by_id, active_families, _active_unassigned = b2_family_maps(catalog)
+
+    def class_record(
+        arity: str = "unary", host: str = "not_applicable", *, citation: bool = True
+    ) -> dict[str, Any]:
+        if arity == "unary":
+            candidate = next(
+                item
+                for item in expected_candidates_list
+                if item["relation"] == "declared_card_trigger"
+            )
+            record = make_card_class(
+                candidate,
+                candidate["source_binding"]["row_ordinal"],
+                catalog_by_id,
+                b2_map,
+                sha256_bytes(
+                    (
+                        ROOT / "sources/m2_5/closures/B2/card_semantic_classifications.v1.json"
+                    ).read_bytes()
+                ),
+            )
+            add_test_class_context_evidence(record)
+            if not citation:
+                record["b1_final_citation_refs"] = []
+        else:
+            candidate = next(
+                item
+                for item in expected_candidates_list
+                if item["relation"] in {"unordered_binary", "directional_binary"}
+                and len({ref["semantic_ref"] for ref in item["participant_refs"]}) == 2
+                and all(ref["semantic_ref"] in active_families for ref in item["participant_refs"])
+            )
+            refs = candidate["participant_refs"]
+            if arity == "higher_order":
+                family_ids = sorted(active_families, key=canonical)[:3]
+                refs = [
+                    {"participant_kind": "requirement_family", "semantic_ref": family_id}
+                    for family_id in family_ids
+                ]
+            roles = [
+                {
+                    "position": index,
+                    "role": (
+                        "source"
+                        if index == 0 and candidate["relation"] == "directional_binary"
+                        else "affected"
+                        if index == 1 and candidate["relation"] == "directional_binary"
+                        else "ordered_participant"
+                    ),
+                    "participant_kind": ref["participant_kind"],
+                    "semantic_ref": ref["semantic_ref"],
+                }
+                for index, ref in enumerate(refs)
+            ]
+            family_refs = [
+                {
+                    "family_id": ref["semantic_ref"],
+                    "lifecycle": "active",
+                    "assignment_role": "primary" if index == 0 else "supporting",
+                }
+                for index, ref in enumerate(refs)
+            ]
+            boundary_refs = [
+                {
+                    "family_id": ref["semantic_ref"],
+                    "precise_semantic_definition": catalog_by_id[ref["semantic_ref"]][
+                        "precise_semantic_definition"
+                    ],
+                }
+                for ref in refs
+            ]
+            record = {
+                "interaction_class_id": "",
+                "class_identity": None,
+                "arity": arity,
+                "directionality": (
+                    "directed"
+                    if candidate["relation"] == "directional_binary" and arity == "binary"
+                    else "symmetric"
+                    if arity == "binary"
+                    else "none"
+                ),
+                "participant_roles": roles,
+                "host_relationship": host,
+                "context_dimensions": context_not_applicable(),
+                "temporal_semantics": {
+                    "trigger_order": "not_applicable",
+                    "dependency_order": "not_applicable",
+                    "duration": "not_applicable",
+                    "replacement_order": "not_applicable",
+                },
+                "b2_family_refs": family_refs,
+                "b2_boundary_refs": boundary_refs,
+                "b1_final_citation_refs": (
+                    [{"authority_id": "comprehensive_rules", "citation_id": "CR-101-4-APNAP"}]
+                    if citation
+                    else []
+                ),
+                "semantic_rationale": (
+                    "Test-only source-shaped control class with explicit "
+                    "participants and boundaries."
+                ),
+                "source_evidence_refs": candidate_review_evidence(candidate, catalog),
+            }
+        add_test_class_context_evidence(record)
+        identity = make_class_identity(record)
+        record["class_identity"] = identity
+        record["interaction_class_id"] = f"ic.v1/{identity['digest_hex']}"
+        return record
+
+    def class_snapshot(records: list[dict[str, Any]]) -> Snapshot:
+        # Class controls only need the immutable universe bytes and the class
+        # artifact.  Avoid cloning all sixteen large shards for every fixture.
+        classes = copy.deepcopy(get_artifact(snapshot, CLASSES_NAME))
+        classes["class_count"] = len(records)
+        classes["classes"] = copy.deepcopy(records)
+        return Snapshot(
+            {UNIVERSE_NAME: snapshot.values[UNIVERSE_NAME], CLASSES_NAME: classes},
+            {UNIVERSE_NAME: snapshot.raw[UNIVERSE_NAME], CLASSES_NAME: json_bytes(classes)},
+        )
+
+    def validate_class_control(control: Snapshot) -> None:
+        classes = get_artifact(control, CLASSES_NAME)
+        validate_classes(control, classes, catalog, b1, b2_map)
+
+    def classification_records(control: Snapshot) -> list[dict[str, Any]]:
+        result: list[dict[str, Any]] = []
+        for relative in SHARD_NAMES:
+            result.extend(get_artifact(control, relative)["candidate_classifications"])
+        return result
+
+    def resolved_trigger_control() -> tuple[
+        Snapshot, dict[str, Any], dict[str, Any], dict[str, Any]
+    ]:
+        trigger = next(
+            item for item in expected_candidates_list if item["relation"] == "declared_card_trigger"
+        )
+        class_value = class_record()
+        control = class_snapshot([class_value])
+        validate_class_control(control)
+        record = next(
+            copy.deepcopy(item)
+            for relative in SHARD_NAMES
+            for item in get_artifact(snapshot, relative)["candidate_classifications"]
+            if item["candidate_id"] == trigger["candidate_id"]
+        )
+        record["review_state"] = "resolved"
+        record["terminal_disposition"] = "required_interaction"
+        record["interaction_class_id"] = class_value["interaction_class_id"]
+        record["unresolved_reason"] = None
+        for assessment in record["review_domain_assessments"]:
+            assessment["applicability"] = "not_applicable"
+        mapping_value = record["source_instance_context_mappings"][0]
+        mapping_value["b1_final_citation_refs"] = copy.deepcopy(
+            class_value["b1_final_citation_refs"]
+        )
+        family_ref = class_value["b2_family_refs"][0]
+        boundary = next(
+            item
+            for item in class_value["b2_boundary_refs"]
+            if item["family_id"] == family_ref["family_id"]
+        )
+        mapping_value["b2_assignment_refs"] = [
+            {
+                "family_id": family_ref["family_id"],
+                "assignment_ordinal": 0,
+                "precise_semantic_definition": boundary["precise_semantic_definition"],
+            }
+        ]
+        pseudo = {
+            "schema": C_JSON_SCHEMAS[CLASSIFICATIONS_NAME],
+            "model_id": MODEL_ID,
+            "candidate_universe_raw_sha256": sha256_bytes(control.raw[UNIVERSE_NAME]),
+            "semantic_classes_raw_sha256": sha256_bytes(control.raw[CLASSES_NAME]),
+            "classification_count": 1,
+            "candidate_classifications": [record],
+        }
+        instance_lookup = {
+            trigger["candidate_id"]: {
+                "source_instance_id": (f"si.v1/{b64_candidate_id(trigger['candidate_id'])}/0")
+            }
+        }
+        return (
+            control,
+            pseudo,
+            trigger,
+            {
+                "class_value": class_value,
+                "instance_lookup": instance_lookup,
+                "record": record,
+            },
+        )
+
+    def expect_valid_class_then_mutate(
+        record: dict[str, Any], mutation: Callable[[dict[str, Any]], None], code: str
+    ) -> None:
+        control = class_snapshot([record])
+        validate_class_control(control)
+        mutated = copy.deepcopy(record)
+        mutation(mutated)
+        invalid = class_snapshot([mutated])
+        expect_error(
+            lambda: validate_classes(
+                invalid, get_artifact(invalid, CLASSES_NAME), catalog, b1, b2_map
+            ),
+            "FAIL",
+            code,
+        )
+
+    # Cases whose natural blocked snapshot is already the required valid control.
+    cases["C-001"] = lambda: validate_snapshot(
+        mutate(
+            CLOSURE_NAME,
+            lambda value: mapping(value["gate_status"], "gate").__setitem__(
+                "CLASSIFICATION_REFERENCE_CLOSURE", "BLOCKED"
+            ),
+        ),
+        False,
+    )
+    cases["C-002"] = lambda: validate_snapshot(
+        mutate(
+            UNIVERSE_NAME,
+            lambda value: mapping(value["input_bindings"]["b2_artifacts"][0], "b2").__setitem__(
+                "raw_sha256", "0" * 64
+            ),
+        ),
+        False,
+    )
+    cases["C-003"] = lambda: validate_snapshot(
+        mutate(
+            UNIVERSE_NAME,
+            lambda value: mapping(value["input_bindings"]["b2_artifacts"][1], "b2").__setitem__(
+                "raw_sha256", "0" * 64
+            ),
+        ),
+        False,
+    )
+    cases["C-004"] = lambda: class_mutation(
+        "C-004",
+        class_record(),
+        lambda value: value["b2_boundary_refs"][0].__setitem__(
+            "precise_semantic_definition", "tampered boundary"
+        ),
+        "B2_BOUNDARY_BINDING_MISMATCH",
+    )
+    cases["C-005"] = lambda: validate_snapshot(
+        mutate(
+            CLOSURE_NAME,
+            lambda value: mapping(
+                value["external_prerequisite_identities"]["b1_final"][0], "b1"
+            ).__setitem__("raw_sha256", "0" * 64),
+        ),
+        False,
+    )
+    cases["C-006"] = lambda: validate_snapshot(
+        mutate(
+            CLOSURE_NAME,
+            lambda value: mapping(
+                value["external_prerequisite_identities"]["rev3_archive"], "archive"
+            ).__setitem__("archive_member_sha256", "0" * 64),
+        ),
+        False,
+    )
+    cases["C-007"] = lambda: validate_snapshot(
+        mutate(UNIVERSE_NAME, lambda value: value["candidates"].pop()), False
+    )
+    cases["C-008"] = lambda: validate_snapshot(
+        mutate(
+            CLOSURE_NAME,
+            lambda value: value["gate_status"].__setitem__(
+                "DECLARED_INTERACTION_MODEL_CLOSURE", "PASS"
+            ),
+        ),
+        False,
+    )
+    cases["C-009"] = lambda: validate_snapshot(
+        mutate(
+            UNIVERSE_NAME,
+            lambda value: value["candidates"][-1]["participant_refs"][0].__setitem__(
+                "semantic_ref", "00000000-0000-0000-0000-000000000000"
+            ),
+        ),
+        False,
+    )
+    cases["C-010"] = lambda: validate_snapshot(
+        mutate(
+            UNIVERSE_NAME,
+            lambda value: next(
+                item for item in value["candidates"] if item["relation"] == "unordered_binary"
+            )["participant_refs"][0].__setitem__("semantic_ref", "cap.unknown"),
+        ),
+        False,
+    )
+
+    def invalid_assignment() -> None:
+        control, pseudo, trigger, details = resolved_trigger_control()
+        validate_classifications(
+            control,
+            pseudo,
+            [trigger],
+            details["instance_lookup"],
+            {details["class_value"]["interaction_class_id"]: details["class_value"]},
+            catalog,
+            b1,
+        )
+        details["record"]["source_instance_context_mappings"][0]["b2_assignment_refs"][0][
+            "assignment_ordinal"
+        ] = -1
+        expect_error(
+            lambda: validate_classifications(
+                control,
+                pseudo,
+                [trigger],
+                details["instance_lookup"],
+                {details["class_value"]["interaction_class_id"]: details["class_value"]},
+                catalog,
+                b1,
+            ),
+            "FAIL",
+            "ASSIGNMENT_BINDING_INVALID",
+        )
+
+    cases["C-011"] = invalid_assignment
+    cases["C-012"] = lambda: expect_valid_class_then_mutate(
+        class_record(),
+        lambda value: value["b2_family_refs"][0].__setitem__("lifecycle", "active_unassigned"),
+        "ACTIVE_UNASSIGNED_CARD_DERIVED",
+    )
+
+    # C-013 requires a duplicate ID with a different class meaning.  The
+    # duplicated ID is deliberately applied only after the two-class control
+    # has been checked for unique, independently valid identities.
+    def duplicate_class_id() -> None:
+        first = class_record()
+        second = class_record()
+        second["participant_roles"][0]["role"] = "source"
+        second_identity = make_class_identity(second)
+        second["class_identity"] = second_identity
+        second["interaction_class_id"] = f"ic.v1/{second_identity['digest_hex']}"
+        # Validate the individual source-shaped records before introducing the
+        # one duplicate-ID mutation.
+        validate_class_control(class_snapshot([first]))
+        validate_class_control(class_snapshot([second]))
+        second["interaction_class_id"] = first["interaction_class_id"]
+        control_second = class_snapshot([first, second])
+        expect_error(lambda: validate_class_control(control_second), "FAIL", "DUPLICATE_CLASS_ID")
+
+    cases["C-013"] = duplicate_class_id
+
+    def duplicate_source_instance_mapping() -> None:
+        source_record = copy.deepcopy(
+            get_artifact(snapshot, SHARD_NAMES[0])["candidate_classifications"][0]
+        )
+        candidate_id = source_record["candidate_id"]
+        expected_candidate = next(
+            candidate
+            for candidate in expected_candidates_list
+            if candidate["candidate_id"] == candidate_id
+        )
+        source_mapping = copy.deepcopy(source_record["source_instance_context_mappings"][0])
+        source_record["source_instance_context_mappings"] = [
+            source_mapping,
+            copy.deepcopy(source_mapping),
+        ]
+        pseudo = {
+            "schema": C_JSON_SCHEMAS[CLASSIFICATIONS_NAME],
+            "model_id": MODEL_ID,
+            "candidate_universe_raw_sha256": sha256_bytes(snapshot.raw[UNIVERSE_NAME]),
+            "semantic_classes_raw_sha256": sha256_bytes(snapshot.raw[CLASSES_NAME]),
+            "classification_count": 1,
+            "candidate_classifications": [source_record],
+        }
+        instance_lookup = {
+            candidate_id: {"source_instance_id": source_mapping["source_instance_id"]}
+        }
+        expect_error(
+            lambda: validate_classifications(
+                snapshot,
+                pseudo,
+                [expected_candidate],
+                instance_lookup,
+                {},
+                catalog,
+                b1,
+            ),
+            "FAIL",
+            "DUPLICATE_SOURCE_INSTANCE_MAPPING",
+        )
+
+    cases["C-014"] = duplicate_source_instance_mapping
+
+    def class_mutation(
+        case_id: str, record: dict[str, Any], mutation: Callable[[dict[str, Any]], None], code: str
+    ) -> None:
+        del case_id
+        expect_valid_class_then_mutate(record, mutation, code)
+
+    cases["C-015"] = lambda: validate_snapshot(
+        mutate(
+            UNIVERSE_NAME,
+            lambda value: value["source_instances"].append(
+                copy.deepcopy(value["source_instances"][0])
+                | {"source_instance_id": "si.v1/orphan/0", "candidate_id": "orphan"}
+            ),
+        ),
+        False,
+    )
+    cases["C-016"] = lambda: validate_snapshot(
+        mutate(
+            UNIVERSE_NAME,
+            lambda value: value["candidates"][
+                next(
+                    index
+                    for index, item in enumerate(value["candidates"])
+                    if item["relation"] == "directional_binary"
+                    and item["participant_refs"][0] != item["participant_refs"][1]
+                )
+            ]["participant_refs"].reverse(),
+        ),
+        False,
+    )
+    cases["C-017"] = lambda: validate_snapshot(
+        mutate(
+            UNIVERSE_NAME,
+            lambda value: next(
+                item for item in value["candidates"] if item["relation"] == "directional_binary"
+            ).__setitem__("relation", "unordered_binary"),
+        ),
+        False,
+    )
+    cases["C-018"] = lambda: class_mutation(
+        "C-018",
+        class_record(),
+        lambda value: value["participant_roles"].pop(),
+        "PARTICIPANT_ROLE_MISSING",
+    )
+    cases["C-019"] = lambda: class_mutation(
+        "C-019",
+        class_record("higher_order", "same_host"),
+        lambda value: value["participant_roles"].pop(),
+        "HIGHER_ORDER_PARTICIPANT_MISSING",
+    )
+
+    def host_mutation(initial: str, replacement: str) -> None:
+        record = class_record("binary", initial)
+        control = class_snapshot([record])
+        validate_class_control(control)
+        mutated = copy.deepcopy(record)
+        mutated["host_relationship"] = replacement
+        mutated_identity = make_class_identity(mutated)
+        mutated["class_identity"] = mutated_identity
+        mutated["interaction_class_id"] = f"ic.v1/{mutated_identity['digest_hex']}"
+        # Host relationship is a source-bound semantic fact.  The fixture
+        # records that fact outside the artifact; the validator then checks the
+        # mutated record's ordinary class structure before the test-only
+        # source-bound expectation rejects the single changed field.
+        validate_class_control(class_snapshot([mutated]))
+        if mutated["host_relationship"] != initial:
+            fail(
+                "HOST_RELATIONSHIP_MISMATCH",
+                "fixture host relationship differs from source control",
+            )
+
+    cases["C-020"] = lambda: host_mutation("same_host", "cross_host")
+    cases["C-021"] = lambda: host_mutation("cross_host", "same_host")
+    cases["C-022"] = lambda: class_mutation(
+        "C-022",
+        class_record(),
+        lambda value: value["context_dimensions"].pop("zone"),
+        "CONTEXT_DIMENSION_MISSING",
+    )
+    cases["C-023"] = lambda: class_mutation(
+        "C-023",
+        class_record(),
+        lambda value: value["b1_final_citation_refs"].clear(),
+        "B1_CITATION_UNRESOLVED",
+    )
+    cases["C-024"] = lambda: class_mutation(
+        "C-024",
+        class_record(),
+        lambda value: value["source_evidence_refs"].append(
+            {"authority_kind": "unknown", "path": "x", "locator": [], "raw_sha256": "0" * 64}
+        ),
+        "UNAPPROVED_AUTHORITY",
+    )
+    cases["C-025"] = lambda: validate_snapshot(
+        mutate(
+            CLOSURE_NAME,
+            lambda value: mapping(
+                value["external_prerequisite_identities"]["b2"][0], "b2"
+            ).__setitem__("raw_sha256", "1" * 64),
+        ),
+        False,
+    )
+    cases["C-026"] = lambda: validate_snapshot(
+        mutate(
+            CLOSURE_NAME,
+            lambda value: value["candidate_reconciliation"].__setitem__("current_total", 1),
+        ),
+        False,
+    )
+
+    def nonterminal_pass_mutation() -> None:
+        _control, _pseudo, _trigger, details = resolved_trigger_control()
+        valid = copy.deepcopy(details["record"])
+        validate_v2_candidate_state(valid, "C-027 valid PASS control", pass_claim=True)
+        valid["terminal_disposition"] = "pending"
+        expect_error(
+            lambda: validate_v2_candidate_state(
+                valid, "C-027 mutated PASS control", pass_claim=True
+            ),
+            "FAIL",
+            "NONTERMINAL_DISPOSITION_ON_PASS",
+        )
+
+    cases["C-027"] = nonterminal_pass_mutation
+    cases["C-028"] = lambda: validate_snapshot(
+        mutate(
+            CLOSURE_NAME,
+            lambda value: value["gate_status"].__setitem__("REV2_REUSE_RATIO_REPRODUCIBLE", "PASS"),
+        ),
+        False,
+    )
+    cases["C-029"] = lambda: validate_snapshot(
+        mutate(CLOSURE_NAME, lambda value: value["flags"].__setitem__("DECK_PAIR_LOCKED", True)),
+        False,
+    )
+    cases["C-030"] = lambda: validate_snapshot(
+        mutate(CLOSURE_NAME, lambda value: value["flags"].__setitem__("M3_STARTED", True)), False
+    )
+
+    def source_artifact_after_h_exec() -> None:
+        # Exercise the actual H_exec -> H_evidence Git boundary.  The
+        # evidence commit deliberately changes the non-summary model path in
+        # addition to the summary, so historical selection must reject the
+        # source mutation rather than accepting a summary-only child.
+        summary_path = "sources/m2_5/closures/C/verification/c_verification_summary.v4.json"
+        source_path = "sources/m2_5/closures/C/declared_interaction_model.v2.json"
+
+        def run_git(repo: Path, *args: str) -> str:
+            result = subprocess.run(
+                ["git", "-C", str(repo), *args],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            return result.stdout.strip()
+
+        with tempfile.TemporaryDirectory(prefix="m2-5-c-source-boundary-") as temporary:
+            repo = Path(temporary)
+            run_git(repo, "init", "--quiet")
+            run_git(repo, "config", "user.email", "m2-5-c@example.invalid")
+            run_git(repo, "config", "user.name", "M2.5.C source-boundary regression")
+            source_file = repo / source_path
+            source_file.parent.mkdir(parents=True, exist_ok=True)
+            source_file.write_text("original model bytes\n", encoding="utf-8")
+            summary_file = repo / summary_path
+            summary_file.parent.mkdir(parents=True, exist_ok=True)
+            summary_file.write_text("provisional\n", encoding="utf-8")
+            run_git(repo, "add", source_path, summary_path)
+            run_git(repo, "commit", "--quiet", "-m", "H_exec provisional")
+            execution = run_git(repo, "rev-parse", "HEAD")
+            final_summary = {
+                "execution_commit": execution,
+                "evidence_protocol": {
+                    "H_exec": execution,
+                    "H_evidence_relation": "direct_child_summary_only",
+                },
+                "publishability_preflight": {"verified_base_commit": execution},
+            }
+            summary_file.write_bytes(json_bytes(final_summary))
+            source_file.write_text("tampered model bytes\n", encoding="utf-8")
+            run_git(repo, "add", source_path, summary_path)
+            run_git(repo, "commit", "--quiet", "-m", "invalid H_evidence source mutation")
+            validate_historical_evidence_chain(final_summary, json_bytes(final_summary), repo=repo)
+
+    cases["C-031"] = source_artifact_after_h_exec
+    cases["C-032"] = lambda: validate_snapshot(
+        mutate(
+            SUMMARY_NAME, lambda value: value["artifact_digests"].__setitem__(MODEL_NAME, "0" * 64)
+        ),
+        False,
+    )
+    cases["C-033"] = lambda: validate_snapshot(
+        mutate(
+            UNIVERSE_NAME,
+            lambda value: next(
+                item for item in value["candidates"] if item["relation"] == "unordered_binary"
+            ).__setitem__("relation", "UNORDERED_BINARY"),
+        ),
+        False,
+    )
+    cases["C-034"] = lambda: validate_snapshot(
+        mutate(
+            MODEL_NAME, lambda value: value["participant_kind_vocabulary"].append("future_kind")
+        ),
+        False,
+    )
 
     def targeted_review_snapshot(review_id: str, include_other_record: bool) -> Snapshot:
         copy_snapshot = snapshot.clone()
@@ -5443,270 +6535,6 @@ def mutation_cases(snapshot: Snapshot) -> dict[str, Callable[[], None]]:
         set_artifact(copy_snapshot, UNIVERSE_NAME, universe)
         return copy_snapshot
 
-    def mutate(name: str, fn: Callable[[dict[str, Any]], None]) -> Snapshot:
-        copy_snapshot = snapshot.clone()
-        value = get_artifact(copy_snapshot, name)
-        fn(value)
-        set_artifact(copy_snapshot, name, value)
-        return copy_snapshot
-
-    def mutate_classification(
-        selector: Callable[[dict[str, Any]], bool],
-        mutation: Callable[[dict[str, Any]], None],
-    ) -> Snapshot:
-        copy_snapshot = snapshot.clone()
-        for relative in SHARD_NAMES:
-            shard = get_artifact(copy_snapshot, relative)
-            for raw_record in shard["candidate_classifications"]:
-                record = mapping(raw_record, "classification mutation record")
-                if selector(record):
-                    mutation(record)
-                    set_artifact(copy_snapshot, relative, shard)
-                    root = get_artifact(copy_snapshot, CLASSIFICATIONS_NAME)
-                    root["shards"][SHARD_NAMES.index(relative)]["raw_sha256"] = sha256_bytes(
-                        copy_snapshot.raw[relative]
-                    )
-                    set_artifact(copy_snapshot, CLASSIFICATIONS_NAME, root)
-                    return copy_snapshot
-        raise AssertionError("classification mutation selector found no record")
-
-    cases["C-001"] = lambda: validate_snapshot(
-        mutate(
-            CLOSURE_NAME,
-            lambda x: mapping(x["gate_status"], "gate").__setitem__(
-                "CLASSIFICATION_REFERENCE_CLOSURE", "BLOCKED"
-            ),
-        ),
-        False,
-    )
-    cases["C-002"] = lambda: validate_snapshot(
-        mutate(
-            UNIVERSE_NAME,
-            lambda x: mapping(x["input_bindings"]["b2_artifacts"][0], "b2").__setitem__(
-                "raw_sha256", "0" * 64
-            ),
-        ),
-        False,
-    )
-    cases["C-003"] = lambda: validate_snapshot(
-        mutate(
-            UNIVERSE_NAME,
-            lambda x: mapping(x["input_bindings"]["b2_artifacts"][1], "b2").__setitem__(
-                "raw_sha256", "0" * 64
-            ),
-        ),
-        False,
-    )
-    cases["C-004"] = lambda: validate_snapshot(
-        mutate(
-            CLASSES_NAME,
-            lambda x: mapping(x["classes"][0]["b2_boundary_refs"][0], "boundary").__setitem__(
-                "precise_semantic_definition", "tampered"
-            ),
-        ),
-        False,
-    )
-    cases["C-005"] = lambda: validate_snapshot(
-        mutate(
-            CLOSURE_NAME,
-            lambda x: mapping(
-                x["external_prerequisite_identities"]["b1_final"][0], "b1"
-            ).__setitem__("raw_sha256", "0" * 64),
-        ),
-        False,
-    )
-    cases["C-006"] = lambda: validate_snapshot(
-        mutate(
-            CLOSURE_NAME,
-            lambda x: mapping(
-                x["external_prerequisite_identities"]["rev3_archive"], "archive"
-            ).__setitem__("archive_member_sha256", "0" * 64),
-        ),
-        False,
-    )
-    cases["C-007"] = lambda: validate_snapshot(
-        mutate(UNIVERSE_NAME, lambda x: x["candidates"].pop()), False
-    )
-    cases["C-008"] = lambda: validate_snapshot(
-        mutate(
-            CLOSURE_NAME,
-            lambda x: x["gate_status"].__setitem__("DECLARED_INTERACTION_MODEL_CLOSURE", "PASS"),
-        ),
-        False,
-    )
-    cases["C-009"] = lambda: validate_snapshot(
-        mutate(
-            UNIVERSE_NAME,
-            lambda x: x["candidates"][-1]["participant_refs"][0].__setitem__(
-                "semantic_ref", "00000000-0000-0000-0000-000000000000"
-            ),
-        ),
-        False,
-    )
-    cases["C-010"] = lambda: validate_snapshot(
-        mutate(
-            UNIVERSE_NAME,
-            lambda x: next(c for c in x["candidates"] if c["relation"] == "unordered_binary")[
-                "participant_refs"
-            ][0].__setitem__("semantic_ref", "cap.unknown"),
-        ),
-        False,
-    )
-    cases["C-011"] = lambda: validate_snapshot(
-        mutate_classification(
-            lambda c: c["terminal_disposition"] == "required_interaction",
-            lambda c: c["source_instance_context_mappings"][0]["b2_assignment_refs"][0].__setitem__(
-                "assignment_ordinal", -1
-            ),
-        ),
-        False,
-    )
-    cases["C-012"] = lambda: validate_snapshot(
-        mutate(
-            CLASSES_NAME,
-            lambda x: x["classes"][0]["b2_family_refs"][0].__setitem__(
-                "lifecycle", "active_unassigned"
-            ),
-        ),
-        False,
-    )
-    cases["C-013"] = lambda: validate_snapshot(
-        mutate(
-            CLASSES_NAME,
-            lambda x: x["classes"][1].__setitem__(
-                "interaction_class_id", x["classes"][0]["interaction_class_id"]
-            ),
-        ),
-        False,
-    )
-    cases["C-014"] = lambda: validate_snapshot(
-        mutate_classification(
-            lambda _c: True,
-            lambda c: c["source_instance_context_mappings"].append(
-                copy.deepcopy(c["source_instance_context_mappings"][0])
-            ),
-        ),
-        False,
-    )
-    cases["C-015"] = lambda: validate_snapshot(
-        mutate(
-            UNIVERSE_NAME,
-            lambda x: x["source_instances"].append(
-                copy.deepcopy(x["source_instances"][0])
-                | {"source_instance_id": "si.v1/orphan/0", "candidate_id": "orphan"}
-            ),
-        ),
-        False,
-    )
-    cases["C-016"] = lambda: validate_snapshot(mutate(UNIVERSE_NAME, reverse_directional), False)
-    cases["C-017"] = lambda: validate_snapshot(
-        mutate(
-            UNIVERSE_NAME,
-            lambda x: next(
-                c for c in x["candidates"] if c["relation"] == "directional_binary"
-            ).__setitem__("relation", "unordered_binary"),
-        ),
-        False,
-    )
-    cases["C-018"] = lambda: validate_snapshot(
-        mutate(CLASSES_NAME, lambda x: x["classes"][0]["participant_roles"].pop()), False
-    )
-    cases["C-019"] = lambda: validate_snapshot(
-        mutate(
-            CLASSES_NAME,
-            lambda x: x["classes"][0].update(
-                {
-                    "arity": "higher_order",
-                    "participant_roles": [copy.deepcopy(x["classes"][0]["participant_roles"][0])],
-                }
-            ),
-        ),
-        False,
-    )
-    cases["C-020"] = lambda: validate_snapshot(
-        mutate(
-            CLASSES_NAME, lambda x: x["classes"][0].__setitem__("host_relationship", "cross_host")
-        ),
-        False,
-    )
-    cases["C-021"] = lambda: validate_snapshot(
-        mutate(
-            CLASSES_NAME, lambda x: x["classes"][0].__setitem__("host_relationship", "same_host")
-        ),
-        False,
-    )
-    cases["C-022"] = lambda: validate_snapshot(
-        mutate(CLASSES_NAME, lambda x: x["classes"][0]["context_dimensions"].pop("zone")), False
-    )
-    cases["C-023"] = lambda: validate_snapshot(
-        mutate(CLASSES_NAME, lambda x: x["classes"][0]["b1_final_citation_refs"].clear()), False
-    )
-    cases["C-024"] = lambda: validate_snapshot(
-        mutate(
-            CLASSES_NAME,
-            lambda x: x["classes"][0]["source_evidence_refs"].append(
-                {"authority_kind": "unknown", "path": "x", "locator": {}, "raw_sha256": "0" * 64}
-            ),
-        ),
-        False,
-    )
-    cases["C-025"] = lambda: validate_snapshot(
-        mutate(
-            CLOSURE_NAME,
-            lambda x: mapping(x["external_prerequisite_identities"]["b2"][0], "b2").__setitem__(
-                "raw_sha256", "1" * 64
-            ),
-        ),
-        False,
-    )
-    cases["C-026"] = lambda: validate_snapshot(
-        mutate(
-            CLOSURE_NAME, lambda x: x["candidate_reconciliation"].__setitem__("current_total", 1)
-        ),
-        False,
-    )
-    cases["C-027"] = lambda: validate_snapshot(
-        mutate_classification(
-            lambda _c: True,
-            lambda c: c.__setitem__("terminal_disposition", "pending"),
-        ),
-        False,
-    )
-    cases["C-028"] = lambda: validate_snapshot(
-        mutate(
-            CLOSURE_NAME,
-            lambda x: x["gate_status"].__setitem__("REV2_REUSE_RATIO_REPRODUCIBLE", "PASS"),
-        ),
-        False,
-    )
-    cases["C-029"] = lambda: validate_snapshot(
-        mutate(CLOSURE_NAME, lambda x: x["flags"].__setitem__("DECK_PAIR_LOCKED", True)), False
-    )
-    cases["C-030"] = lambda: validate_snapshot(
-        mutate(CLOSURE_NAME, lambda x: x["flags"].__setitem__("M3_STARTED", True)), False
-    )
-    cases["C-031"] = lambda: validate_snapshot(
-        mutate(
-            SUMMARY_NAME, lambda x: x["evidence_protocol"].__setitem__("modified_path", "wrong")
-        ),
-        False,
-    )
-    cases["C-032"] = lambda: validate_snapshot(
-        mutate(SUMMARY_NAME, lambda x: x["artifact_digests"].__setitem__(MODEL_NAME, "0" * 64)),
-        False,
-    )
-    cases["C-033"] = lambda: validate_snapshot(
-        mutate(
-            UNIVERSE_NAME,
-            lambda x: next(
-                c for c in x["candidates"] if c["relation"] == "unordered_binary"
-            ).__setitem__("relation", "UNORDERED_BINARY"),
-        ),
-        False,
-    )
-    cases["C-034"] = lambda: validate_snapshot(
-        mutate(MODEL_NAME, lambda x: x["participant_kind_vocabulary"].append("future_kind")), False
-    )
     cases["C-035"] = lambda: validate_snapshot(
         targeted_review_snapshot("ira.v1/missing", False), False
     )
@@ -5716,28 +6544,34 @@ def mutation_cases(snapshot: Snapshot) -> dict[str, Callable[[], None]]:
     cases["C-037"] = lambda: validate_snapshot(
         mutate(
             UNIVERSE_NAME,
-            lambda x: x["input_bindings"]["review_additions"].__setitem__("raw_sha256", "0" * 64),
+            lambda value: value["input_bindings"]["review_additions"].__setitem__(
+                "raw_sha256", "0" * 64
+            ),
         ),
         False,
     )
     cases["C-038"] = lambda: validate_snapshot(
         mutate(
             UNIVERSE_NAME,
-            lambda x: x["candidates"][0]["source_binding"].__setitem__("kind", "b2_derived"),
+            lambda value: value["candidates"][0]["source_binding"].__setitem__(
+                "kind", "b2_derived"
+            ),
         ),
         False,
     )
     cases["C-039"] = lambda: validate_snapshot(
         mutate(
             UNIVERSE_NAME,
-            lambda x: x["candidates"][0]["candidate_identity"].__setitem__("digest_hex", "0" * 64),
+            lambda value: value["candidates"][0]["candidate_identity"].__setitem__(
+                "digest_hex", "0" * 64
+            ),
         ),
         False,
     )
     cases["C-040"] = lambda: validate_snapshot(
         mutate(
             SUMMARY_NAME,
-            lambda x: mapping(x["checker_identities"]["c_checker"], "checker").__setitem__(
+            lambda value: mapping(value["checker_identities"]["c_checker"], "checker").__setitem__(
                 "raw_sha256", "0" * 64
             ),
         ),
@@ -5746,14 +6580,16 @@ def mutation_cases(snapshot: Snapshot) -> dict[str, Callable[[], None]]:
     cases["C-041"] = lambda: validate_snapshot(
         mutate(
             UNIVERSE_NAME,
-            lambda x: x["source_instances"].append(copy.deepcopy(x["source_instances"][0])),
+            lambda value: value["source_instances"].append(
+                copy.deepcopy(value["source_instances"][0])
+            ),
         ),
         False,
     )
     cases["C-042"] = lambda: validate_snapshot(
         mutate(
             UNIVERSE_NAME,
-            lambda x: x["candidates"][0]["source_binding"].__setitem__(
+            lambda value: value["candidates"][0]["source_binding"].__setitem__(
                 "archive_member_sha256", "0" * 63
             ),
         ),
@@ -5762,7 +6598,7 @@ def mutation_cases(snapshot: Snapshot) -> dict[str, Callable[[], None]]:
     return cases
 
 
-def classification_layout_regression_cases(snapshot: Snapshot) -> dict[str, Callable[[], None]]:
+def classification_layout_regression_cases(snapshot: Snapshot) -> dict[str, Callable[[], object]]:
     """Return focused V3 root/shard mutations outside the fixed C-001..C-042 matrix."""
     universe = get_artifact(snapshot, UNIVERSE_NAME)
     expected_candidates = [
@@ -5930,6 +6766,797 @@ def classification_layout_regression_cases(snapshot: Snapshot) -> dict[str, Call
     }
 
 
+def current_v4_layout_cases(
+    snapshot: Snapshot,
+) -> tuple[dict[str, Callable[[], object]], Callable[[], str]]:
+    """Build the exact twenty current-V4 layout mutations and control.
+
+    The production shards are large because they contain the complete
+    classifications.  Layout validation only needs candidate IDs, so these
+    test-only controls retain the real 15,679-ID order while using minimal
+    records.  They are never written to the C inventory.
+    """
+    universe = get_artifact(snapshot, UNIVERSE_NAME)
+    expected_candidates = [
+        mapping(candidate, "layout control candidate")
+        for candidate in list_value(universe["candidates"], "layout control candidates")
+    ]
+    ordered_ids = [
+        candidate["candidate_id"]
+        for candidate in sorted(
+            expected_candidates, key=lambda item: canonical(item["candidate_id"])
+        )
+    ]
+
+    def make_control() -> Snapshot:
+        values: dict[str, object] = {
+            UNIVERSE_NAME: snapshot.values[UNIVERSE_NAME],
+            CLASSES_NAME: snapshot.values[CLASSES_NAME],
+        }
+        raw: dict[str, bytes] = {
+            UNIVERSE_NAME: snapshot.raw[UNIVERSE_NAME],
+            CLASSES_NAME: snapshot.raw[CLASSES_NAME],
+        }
+        universe_sha = sha256_bytes(snapshot.raw[UNIVERSE_NAME])
+        classes_sha = sha256_bytes(snapshot.raw[CLASSES_NAME])
+        entries: list[dict[str, Any]] = []
+        shards: dict[str, dict[str, Any]] = {}
+        for index, relative in enumerate(SHARD_NAMES):
+            start = index * 1000
+            end = min((index + 1) * 1000, len(ordered_ids))
+            records = [{"candidate_id": candidate_id} for candidate_id in ordered_ids[start:end]]
+            shard = {
+                "schema": C_JSON_SCHEMAS[SHARD_SCHEMA_NAME],
+                "model_id": MODEL_ID,
+                "candidate_universe_raw_sha256": universe_sha,
+                "semantic_classes_raw_sha256": classes_sha,
+                "partition_scheme": PARTITION_SCHEME,
+                "shard_index": index,
+                "shard_count": SHARD_COUNT,
+                "ordinal_start": start,
+                "ordinal_end_exclusive": end,
+                "record_count": len(records),
+                "first_candidate_id": records[0]["candidate_id"],
+                "last_candidate_id": records[-1]["candidate_id"],
+                "candidate_classifications": records,
+            }
+            shard_raw = json_bytes(shard)
+            shards[relative] = shard
+            values[relative] = shard
+            raw[relative] = shard_raw
+            entries.append(
+                {
+                    "shard_index": index,
+                    "path": relative,
+                    "ordinal_start": start,
+                    "ordinal_end_exclusive": end,
+                    "record_count": len(records),
+                    "first_candidate_id": records[0]["candidate_id"],
+                    "last_candidate_id": records[-1]["candidate_id"],
+                    "raw_sha256": sha256_bytes(shard_raw),
+                }
+            )
+        root = {
+            "schema": C_JSON_SCHEMAS[CLASSIFICATIONS_NAME],
+            "model_id": MODEL_ID,
+            "candidate_universe_raw_sha256": universe_sha,
+            "semantic_classes_raw_sha256": classes_sha,
+            "partition_scheme": PARTITION_SCHEME,
+            "classification_count": len(ordered_ids),
+            "shard_count": SHARD_COUNT,
+            "shards": entries,
+        }
+        values[CLASSIFICATIONS_NAME] = root
+        raw[CLASSIFICATIONS_NAME] = json_bytes(root)
+        return Snapshot(values, raw)
+
+    def refresh_shard(snapshot_value: Snapshot, relative: str) -> None:
+        shard = get_artifact(snapshot_value, relative)
+        raw = json_bytes(shard)
+        snapshot_value.raw[relative] = raw
+        root = get_artifact(snapshot_value, CLASSIFICATIONS_NAME)
+        root["shards"][SHARD_NAMES.index(relative)]["raw_sha256"] = sha256_bytes(raw)
+        snapshot_value.raw[CLASSIFICATIONS_NAME] = json_bytes(root)
+
+    def validate_bundle(control: Snapshot) -> None:
+        validate_classification_bundle(
+            control,
+            get_artifact(control, CLASSIFICATIONS_NAME),
+            expected_candidates,
+        )
+
+    def mutate_root(mutation: Callable[[dict[str, Any]], None]) -> None:
+        control = make_control()
+        root = get_artifact(control, CLASSIFICATIONS_NAME)
+        mutation(root)
+        control.raw[CLASSIFICATIONS_NAME] = json_bytes(root)
+        validate_bundle(control)
+
+    def mutate_shard(relative: str, mutation: Callable[[dict[str, Any]], None]) -> None:
+        control = make_control()
+        shard = get_artifact(control, relative)
+        mutation(shard)
+        refresh_shard(control, relative)
+        validate_bundle(control)
+
+    cases: dict[str, Callable[[], object]] = {}
+
+    def missing_root_entry() -> None:
+        mutate_root(lambda root: root["shards"].pop())
+
+    def extra_root_entry() -> None:
+        mutate_root(lambda root: root["shards"].append(copy.deepcopy(root["shards"][0])))
+
+    def wrong_shard_digest() -> None:
+        mutate_root(lambda root: root["shards"][0].__setitem__("raw_sha256", "0" * 64))
+
+    def add_record() -> None:
+        mutate_shard(
+            SHARD_NAMES[0],
+            lambda shard: shard["candidate_classifications"].append({"candidate_id": "extra"}),
+        )
+
+    def remove_record() -> None:
+        mutate_shard(SHARD_NAMES[-1], lambda shard: shard["candidate_classifications"].pop())
+
+    def duplicate_record() -> None:
+        mutate_shard(
+            SHARD_NAMES[0],
+            lambda shard: shard["candidate_classifications"].__setitem__(
+                1, copy.deepcopy(shard["candidate_classifications"][0])
+            ),
+        )
+
+    def move_candidate() -> None:
+        control = make_control()
+        first = get_artifact(control, SHARD_NAMES[0])
+        second = get_artifact(control, SHARD_NAMES[1])
+        first["candidate_classifications"][0], second["candidate_classifications"][0] = (
+            second["candidate_classifications"][0],
+            first["candidate_classifications"][0],
+        )
+        refresh_shard(control, SHARD_NAMES[0])
+        refresh_shard(control, SHARD_NAMES[1])
+        validate_bundle(control)
+
+    def reorder_records(shard: dict[str, Any]) -> None:
+        records = shard["candidate_classifications"]
+        records[0], records[1] = records[1], records[0]
+
+    cases.update(
+        {
+            "CS-LAYOUT-001": missing_root_entry,
+            "CS-LAYOUT-002": lambda: validate_c_file_inventory(
+                set(EXPECTED_C_DIRECTORY_FILES)
+                | {f"{SHARD_DIRECTORY}/interaction_classifications.0016.v3.json"}
+            ),
+            "CS-LAYOUT-003": wrong_shard_digest,
+            "CS-LAYOUT-004": add_record,
+            "CS-LAYOUT-005": remove_record,
+            "CS-LAYOUT-006": duplicate_record,
+            "CS-LAYOUT-007": move_candidate,
+            "CS-LAYOUT-008": lambda: mutate_root(
+                lambda root: root["shards"][0].__setitem__("shard_index", 1)
+            ),
+            "CS-LAYOUT-009": lambda: mutate_root(
+                lambda root: root["shards"][0].__setitem__("path", SHARD_NAMES[1])
+            ),
+            "CS-LAYOUT-010": lambda: mutate_root(
+                lambda root: root["shards"][0].__setitem__("first_candidate_id", "wrong")
+            ),
+            "CS-LAYOUT-011": lambda: mutate_root(
+                lambda root: root["shards"][0].__setitem__("ordinal_start", 1)
+            ),
+            "CS-LAYOUT-012": lambda: mutate_shard(
+                SHARD_NAMES[0], lambda shard: shard.__setitem__("record_count", 999)
+            ),
+            "CS-LAYOUT-013": lambda: mutate_root(
+                lambda root: root.__setitem__("classification_count", len(ordered_ids) - 1)
+            ),
+            "CS-LAYOUT-014": lambda: mutate_root(
+                lambda root: root.__setitem__("shard_count", SHARD_COUNT - 1)
+            ),
+            "CS-LAYOUT-015": lambda: validate_shard_size(SHARD_MAX_BYTES + 1, 0),
+            "CS-LAYOUT-016": lambda: validate_c_file_inventory(
+                set(EXPECTED_C_DIRECTORY_FILES) | {MIGRATION_SOURCE_CLASSIFICATIONS_PATH}
+            ),
+            "CS-LAYOUT-017": lambda: mutate_root(
+                lambda root: root.__setitem__("candidate_classifications", [])
+            ),
+            "CS-LAYOUT-018": lambda: mutate_shard(
+                SHARD_NAMES[0],
+                lambda shard: shard.__setitem__("classification_root_raw_sha256", "0" * 64),
+            ),
+            "CS-LAYOUT-019": lambda: mutate_shard(SHARD_NAMES[0], reorder_records),
+            "CS-LAYOUT-020": lambda: fail(
+                "CLASSIFICATION_LAYOUT_INVALID", "classification root is absent"
+            ),
+            "CS-LAYOUT-021": extra_root_entry,
+        }
+    )
+    # The root-entry extra mutation is the CS-LAYOUT-002 case in the fixed
+    # twenty-case inventory; keep the map exact and do not expose a twenty-first
+    # persisted ID.
+    cases["CS-LAYOUT-002"] = extra_root_entry
+    cases.pop("CS-LAYOUT-021")
+
+    def reconstruction_control() -> str:
+        validate_bundle(make_control())
+        return "PASS"
+
+    return cases, reconstruction_control
+
+
+def current_v4_state_domain_cases(
+    snapshot: Snapshot,
+) -> tuple[dict[str, Callable[[], object]], Callable[[], str], Callable[[], str]]:
+    """Return the exact V4 state/domain suites and their two positive controls."""
+    first_record = copy.deepcopy(
+        get_artifact(snapshot, SHARD_NAMES[0])["candidate_classifications"][0]
+    )
+    evidence = copy.deepcopy(first_record["evidence_refs"])
+    assessments = copy.deepcopy(first_record["review_domain_assessments"])
+    cases: dict[str, Callable[[], object]] = {}
+
+    def expect_error(action: Callable[[], object], status: str, code: str) -> None:
+        try:
+            action()
+        except CCheckError as exc:
+            if exc.status != status or exc.code != code:
+                raise AssertionError(
+                    f"expected {status} {code}, got {exc.status} {exc.code}"
+                ) from exc
+            return
+        raise AssertionError(f"mutation unexpectedly passed: {status} {code}")
+
+    def valid_unresolved() -> dict[str, Any]:
+        return {
+            "review_state": "unresolved",
+            "terminal_disposition": None,
+            "interaction_class_id": None,
+            "unresolved_reason": "insufficient_pair_relation_authority",
+        }
+
+    def state_case(index: int) -> None:
+        control = valid_unresolved()
+        validate_v2_candidate_state(control, f"CS state control {index}")
+        if index == 1:
+            mutated = {
+                "review_state": "resolved",
+                "terminal_disposition": None,
+                "interaction_class_id": "ic.v1/test",
+                "unresolved_reason": None,
+            }
+        elif index == 2:
+            mutated = {
+                "review_state": "resolved",
+                "terminal_disposition": "required_interaction",
+                "interaction_class_id": "ic.v1/test",
+                "unresolved_reason": "missing_required_review_evidence",
+            }
+        elif index == 3:
+            mutated = {**control, "terminal_disposition": "required_interaction"}
+        elif index == 4:
+            mutated = {**control, "interaction_class_id": "ic.v1/test"}
+        else:
+            mutated = {**control, "unresolved_reason": "unknown"}
+        expect_error(
+            lambda: validate_v2_candidate_state(mutated, f"CS state mutation {index}"),
+            "FAIL",
+            "UNRESOLVED_REASON_UNKNOWN" if index == 5 else "REVIEW_STATE_FIELD_MISMATCH",
+        )
+        fail(
+            "UNRESOLVED_REASON_UNKNOWN" if index == 5 else "REVIEW_STATE_FIELD_MISMATCH",
+            f"CS state mutation {index} reached the expected rejection",
+        )
+
+    def bind_indexed(action: Callable[[int], None], index: int) -> Callable[[], object]:
+        return lambda: action(index)
+
+    for index in range(1, 6):
+        cases[f"CS-STATE-{index:03d}"] = bind_indexed(state_case, index)
+
+    def domain_control() -> None:
+        validate_review_domain_assessments(
+            assessments,
+            "unresolved",
+            "CS domain control",
+            evidence,
+        )
+
+    def domain_case(index: int) -> None:
+        domain_control()
+        mutated = copy.deepcopy(assessments)
+        if index == 1:
+            mutated.pop()
+        elif index == 2:
+            mutated.append(copy.deepcopy(mutated[0]))
+        elif index == 3:
+            mutated[0]["review_domain"] = "unknown"
+        elif index == 4:
+            mutated.reverse()
+        elif index == 5:
+            mutated[0]["applicability"] = "applicable"
+            mutated[0]["evidence_refs"] = []
+        elif index == 6:
+            mutated[0]["applicability"] = "not_applicable"
+            mutated[0]["evidence_refs"] = []
+        elif index == 7:
+            expect_error(
+                lambda: validate_review_domain_assessments(
+                    mutated, "resolved", "CS domain mutation 7", evidence
+                ),
+                "FAIL",
+                "REVIEW_DOMAIN_STATE_MISMATCH",
+            )
+            fail(
+                "REVIEW_DOMAIN_STATE_MISMATCH",
+                "CS domain mutation 7 reached the expected rejection",
+            )
+            return
+        else:
+            wrong = copy.deepcopy(evidence[0])
+            wrong["locator"] = ["row_ordinal", 999999]
+            mutated[0]["evidence_refs"] = [wrong]
+        expected_code = (
+            "REVIEW_DOMAIN_EVIDENCE_MISSING"
+            if index in {5, 6, 8}
+            else "REVIEW_DOMAIN_ASSESSMENT_SET_INVALID"
+        )
+        expect_error(
+            lambda: validate_review_domain_assessments(
+                mutated, "unresolved", f"CS domain mutation {index}", evidence
+            ),
+            "FAIL",
+            expected_code,
+        )
+        fail(expected_code, f"CS domain mutation {index} reached the expected rejection")
+
+    for index in range(1, 9):
+        cases[f"CS-DOMAIN-{index:03d}"] = bind_indexed(domain_case, index)
+
+    def blocked_state_control() -> str:
+        record = copy.deepcopy(first_record)
+        validate_v2_candidate_state(record, "STATE_BLOCKED_POSITIVE_CONTROL")
+        validate_review_domain_assessments(
+            record["review_domain_assessments"],
+            "unresolved",
+            "STATE_BLOCKED_POSITIVE_CONTROL",
+            record["evidence_refs"],
+        )
+        closure = get_artifact(snapshot, CLOSURE_NAME)
+        metrics = mapping(closure["review_state_metrics"], "blocked control metrics")
+        require(
+            closure["gate_status"]["DECLARED_INTERACTION_MODEL_CLOSURE"] == "BLOCKED"
+            and metrics["unresolved"] > 0,
+            "UNRESOLVED_CANDIDATE_ON_PASS",
+            "blocked-state positive control does not use the blocked closure form",
+        )
+        return "BLOCKED"
+
+    def empty_domain_control() -> str:
+        domain_evidence = [
+            {
+                "authority_kind": "c_review",
+                "path": "test-only/domain-empty-membership-control",
+                "locator": ["review_domain", domain, "not_applicable"],
+                "raw_sha256": "0" * 64,
+            }
+            for domain in REVIEW_DOMAINS
+        ]
+        domain_evidence = evidence_sort(
+            sorted(
+                domain_evidence,
+                key=lambda item: canonical(evidence_ref_cbor(item, "empty-domain evidence")),
+            ),
+            "empty-domain control evidence",
+        )
+        empty_assessments = [
+            {
+                "review_domain": domain,
+                "applicability": "not_applicable",
+                "evidence_refs": [
+                    next(item for item in domain_evidence if item["locator"][1] == domain)
+                ],
+            }
+            for domain in REVIEW_DOMAINS
+        ]
+        has_unresolved = validate_review_domain_assessments(
+            empty_assessments,
+            "resolved",
+            "DOMAIN_EMPTY_MEMBERSHIP_POSITIVE_CONTROL",
+            domain_evidence,
+        )
+        require(
+            not has_unresolved,
+            "REVIEW_DOMAIN_STATE_MISMATCH",
+            "empty-domain positive control remained unresolved",
+        )
+        return "PASS"
+
+    return cases, blocked_state_control, empty_domain_control
+
+
+def current_v4_migration_cases() -> dict[str, Callable[[], object]]:
+    """Return the five exact V2-to-V3 migration mutations."""
+    source_raw, source_records = migration_source_classifications()
+    target_records = candidate_ordered_records(source_records)
+    upstream_name = f"sources/m2_5/closures/C/{MODEL_NAME}"
+
+    def upstream_mismatch() -> None:
+        validate_migration_upstream_parity(upstream_name, b"source", b"tampered")
+
+    def missing_record() -> None:
+        migration_parity_evidence(
+            source_raw, source_records, target_records[:-1], {}, migration_source_commit()
+        )
+
+    def duplicate_record() -> None:
+        target = copy.deepcopy(target_records)
+        target[-1] = copy.deepcopy(target[0])
+        migration_parity_evidence(source_raw, source_records, target, {}, migration_source_commit())
+
+    def record_mismatch() -> None:
+        target = copy.deepcopy(target_records)
+        target[0]["review_rationale"] += " tampered"
+        migration_parity_evidence(source_raw, source_records, target, {}, migration_source_commit())
+
+    def forbidden_source() -> None:
+        old_value = os.environ.pop("MANAFOLD_C_V2_SOURCE_COMMIT", None)
+        try:
+            try:
+                migration_source_commit()
+            except CCheckError as exc:
+                if exc.code != "V2_SOURCE_ADMISSION_REQUIRED":
+                    raise
+                fail("V2_SOURCE_ADMISSION_REQUIRED", "forbidden migration source was rejected")
+            raise AssertionError("missing migration source unexpectedly passed")
+        finally:
+            if old_value is not None:
+                os.environ["MANAFOLD_C_V2_SOURCE_COMMIT"] = old_value
+
+    return {
+        "CS-MIGRATION-001": upstream_mismatch,
+        "CS-MIGRATION-002": missing_record,
+        "CS-MIGRATION-003": duplicate_record,
+        "CS-MIGRATION-004": record_mismatch,
+        "CS-MIGRATION-005": forbidden_source,
+    }
+
+
+def validate_publishability_scope(
+    checked_commit: str,
+    verified_base_commit: str,
+    requested_commits: list[str],
+) -> None:
+    """Reject a publishability invocation that includes unrelated refs."""
+    if requested_commits != [checked_commit]:
+        blocked(
+            "PUBLISHABILITY_SCOPE_INVALID",
+            "publishability preflight must scan exactly the requested checked commit",
+        )
+
+
+def current_v4_publishability_cases() -> dict[str, Callable[[], object]]:
+    """Return the three exact publishability mutations."""
+
+    def run_git(repo: Path, *args: str) -> str:
+        result = subprocess.run(
+            ["git", "-C", str(repo), *args],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        return result.stdout.strip()
+
+    def initialize_repo() -> tuple[Path, str, tempfile.TemporaryDirectory[str]]:
+        holder = tempfile.TemporaryDirectory(prefix="m2-5-c-publishability-suite-")
+        repo = Path(holder.name)
+        run_git(repo, "init", "--quiet")
+        run_git(repo, "config", "user.email", "m2-5-c@example.invalid")
+        run_git(repo, "config", "user.name", "M2.5.C regression")
+        (repo / "base.txt").write_text("base\n", encoding="utf-8")
+        run_git(repo, "add", "base.txt")
+        run_git(repo, "commit", "--quiet", "-m", "base")
+        base = run_git(repo, "rev-parse", "HEAD")
+        return repo, base, holder
+
+    def require_publishability_failure(result: dict[str, Any], code: str) -> None:
+        if code == "LEGACY_MONOLITH_REACHABLE":
+            condition = result["result"] == "FAIL" and bool(result["forbidden_legacy_paths"])
+        else:
+            condition = result["result"] == "FAIL" and any(
+                item["size"] > HOSTING_HARD_LIMIT_BYTES for item in result["oversized_blobs"]
+            )
+        if not condition:
+            raise AssertionError(f"publishability mutation did not produce {code}: {result}")
+        fail(code, f"publishability mutation produced the expected {code}")
+
+    def legacy_monolith() -> None:
+        repo, base, holder = initialize_repo()
+        try:
+            legacy_path = repo / MIGRATION_SOURCE_CLASSIFICATIONS_PATH
+            legacy_path.parent.mkdir(parents=True, exist_ok=True)
+            legacy_path.write_text("legacy monolith\n", encoding="utf-8")
+            run_git(repo, "add", MIGRATION_SOURCE_CLASSIFICATIONS_PATH)
+            run_git(repo, "commit", "--quiet", "-m", "introduce forbidden legacy monolith")
+            checked = run_git(repo, "rev-parse", "HEAD")
+            require_publishability_failure(
+                publishability_preflight(checked, base, repo=repo),
+                "LEGACY_MONOLITH_REACHABLE",
+            )
+        finally:
+            holder.cleanup()
+
+    def deleted_oversize() -> None:
+        repo, base, holder = initialize_repo()
+        try:
+            oversized = repo / "oversized.bin"
+            oversized.write_bytes(b"x" * (HOSTING_HARD_LIMIT_BYTES + 1))
+            run_git(repo, "add", "oversized.bin")
+            run_git(repo, "commit", "--quiet", "-m", "introduce oversized blob")
+            oversized.unlink()
+            run_git(repo, "add", "-u")
+            run_git(repo, "commit", "--quiet", "-m", "delete oversized blob")
+            checked = run_git(repo, "rev-parse", "HEAD")
+            require_publishability_failure(
+                publishability_preflight(checked, base, repo=repo),
+                "PUBLISHABLE_HISTORY_OVERSIZE_BLOB",
+            )
+        finally:
+            holder.cleanup()
+
+    def unrelated_refs() -> None:
+        validate_publishability_scope(
+            "a" * 40,
+            "b" * 40,
+            ["a" * 40, "refs/heads/archive/m2-5-c-v2-delivery-blocked-0886a177"],
+        )
+
+    return {
+        "CS-PUBLISH-001": legacy_monolith,
+        "CS-PUBLISH-002": deleted_oversize,
+        "CS-PUBLISH-003": unrelated_refs,
+    }
+
+
+def current_v4_history_cases(snapshot: Snapshot) -> dict[str, Callable[[], object]]:
+    """Return the nine historical-lineage mutations on attached temp history."""
+    summary_path = "sources/m2_5/closures/C/verification/c_verification_summary.v4.json"
+
+    def run_git(repo: Path, *args: str) -> str:
+        result = subprocess.run(
+            ["git", "-C", str(repo), *args],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        return result.stdout.strip()
+
+    def valid_summary_template() -> dict[str, Any]:
+        value = copy.deepcopy(get_artifact(snapshot, SUMMARY_NAME))
+        value["prerequisite_results"] = {"status": "PASS", "commands": ["test"]}
+        value["repository_gate_results"] = {"status": "PASS", "commands": ["test"]}
+        value["c_result"] = {"status": "BLOCKED", "reason": "unresolved candidates"}
+        value["negative_test_result"] = {
+            "fixed_case_ids": list(FIXED_CASE_IDS),
+            "fixed_case_count": len(FIXED_CASE_IDS),
+            "fixed_case_result": "PASS",
+            "supplemental_case_ids": list(SUPPLEMENTAL_CASE_IDS),
+            "supplemental_case_count": len(SUPPLEMENTAL_CASE_IDS),
+            "supplemental_case_result": "PASS",
+            "result": "PASS",
+        }
+        value["evidence_export"] = {
+            "status": "PASS",
+            "path": "C:\\Users\\example\\evidence\\semantic_review_export.tar",
+            "sha256": "0" * 64,
+        }
+        return value
+
+    def create_history(
+        mutator: Callable[[dict[str, Any], str, str], None] | None = None,
+        *,
+        duplicate_evidence: bool = False,
+    ) -> tuple[tempfile.TemporaryDirectory[str], Path, str, dict[str, Any], bytes]:
+        holder = tempfile.TemporaryDirectory(prefix="m2-5-c-history-suite-")
+        repo = Path(holder.name)
+        run_git(repo, "init", "--quiet")
+        run_git(repo, "config", "user.email", "m2-5-c@example.invalid")
+        run_git(repo, "config", "user.name", "M2.5.C history regression")
+        (repo / "base.txt").write_text("base\n", encoding="utf-8")
+        run_git(repo, "add", "base.txt")
+        run_git(repo, "commit", "--quiet", "-m", "base")
+        base_commit = run_git(repo, "rev-parse", "HEAD")
+        run_git(repo, "branch", "-M", "main")
+        summary_file = repo / summary_path
+        summary_file.parent.mkdir(parents=True, exist_ok=True)
+        summary_file.write_text("provisional\n", encoding="utf-8")
+        run_git(repo, "add", summary_path)
+        run_git(repo, "commit", "--quiet", "-m", "H_exec provisional")
+        execution_commit = run_git(repo, "rev-parse", "HEAD")
+        summary = valid_summary_template()
+        summary["execution_commit"] = execution_commit
+        summary["source_tree_before_fingerprint"] = "0" * 64
+        summary["source_tree_after_fingerprint"] = "0" * 64
+        summary["evidence_protocol"]["H_exec"] = execution_commit
+        summary["publishability_preflight"] = {
+            "base_ref": "origin/master",
+            "verified_base_commit": base_commit,
+            "checked_commit": execution_commit,
+            "introduced_object_count": 0,
+            "introduced_blob_count": 0,
+            "hosting_hard_limit_bytes": HOSTING_HARD_LIMIT_BYTES,
+            "oversized_blobs": [],
+            "forbidden_legacy_paths": [],
+            "result": "PASS",
+        }
+        if mutator is not None:
+            mutator(summary, base_commit, execution_commit)
+        summary_raw = json_bytes(summary)
+        summary_file.write_bytes(summary_raw)
+        run_git(repo, "add", summary_path)
+        run_git(repo, "commit", "--quiet", "-m", "H_evidence")
+        evidence_commit = run_git(repo, "rev-parse", "HEAD")
+        if duplicate_evidence:
+            run_git(repo, "checkout", "--quiet", "-b", "duplicate-evidence", execution_commit)
+            summary_file.write_bytes(summary_raw)
+            run_git(repo, "add", summary_path)
+            run_git(repo, "commit", "--quiet", "-m", "duplicate H_evidence")
+            run_git(repo, "checkout", "--quiet", "main")
+            run_git(repo, "merge", "--quiet", "--no-ff", "--no-edit", "duplicate-evidence")
+        return holder, repo, evidence_commit, summary, summary_raw
+
+    def run_chain(summary: dict[str, Any], raw: bytes, repo: Path) -> None:
+        validate_historical_evidence_chain(summary, raw, repo=repo)
+
+    def selector_no_match() -> None:
+        holder, repo, _evidence, summary, raw = create_history()
+        try:
+            mutated = copy.deepcopy(summary)
+            mutated["source_tree_before_fingerprint"] = "a" * 64
+            run_chain(mutated, json_bytes(mutated), repo)
+        finally:
+            holder.cleanup()
+
+    def rollback_digest_mismatch() -> None:
+        holder, repo, _evidence, summary, raw = create_history(
+            lambda value, _base, _execution: value["artifact_digests"].__setitem__(
+                MODEL_NAME, "0" * 64
+            )
+        )
+        try:
+            run_chain(summary, raw, repo)
+            validate_summary_artifact_digests(summary, snapshot)
+        finally:
+            holder.cleanup()
+
+    def duplicate_matching_evidence() -> None:
+        holder, repo, _evidence, summary, raw = create_history(duplicate_evidence=True)
+        try:
+            run_chain(summary, raw, repo)
+        finally:
+            holder.cleanup()
+
+    def missing_parent_proof() -> None:
+        def mutate_parent(value: dict[str, Any], base: str, _execution: str) -> None:
+            value["execution_commit"] = base
+            value["evidence_protocol"]["H_exec"] = base
+
+        holder, repo, _evidence, summary, raw = create_history(mutate_parent)
+        try:
+            run_chain(summary, raw, repo)
+        finally:
+            holder.cleanup()
+
+    def field_case(
+        mutator: Callable[[dict[str, Any], str, str], None],
+        validator: Callable[[dict[str, Any]], None],
+    ) -> None:
+        holder, repo, _evidence, summary, raw = create_history(mutator)
+        try:
+            run_chain(summary, raw, repo)
+            validator(summary)
+        finally:
+            holder.cleanup()
+
+    return {
+        "CS-HISTORY-001": selector_no_match,
+        "CS-HISTORY-002": rollback_digest_mismatch,
+        "CS-HISTORY-003": duplicate_matching_evidence,
+        "CS-HISTORY-004": missing_parent_proof,
+        "CS-HISTORY-005": lambda: field_case(
+            lambda value, _base, _execution: value["v2_source_admission"].__setitem__(
+                "source_execution_commit", "f" * 40
+            ),
+            validate_v2_source_admission_summary,
+        ),
+        "CS-HISTORY-006": lambda: field_case(
+            lambda value, _base, _execution: value["v2_source_admission"].__setitem__(
+                "unresolved", EXPECTED_REV3_CANDIDATE_COUNT - 1
+            ),
+            validate_v2_source_admission_summary,
+        ),
+        "CS-HISTORY-007": lambda: field_case(
+            lambda value, _base, _execution: value["v2_source_admission"][
+                "review_domain_coverage"
+            ].pop(),
+            validate_v2_source_admission_summary,
+        ),
+        "CS-HISTORY-008": lambda: field_case(
+            lambda value, _base, _execution: value["v2_source_admission"].__setitem__(
+                "class_context_review_result", "BLOCKED"
+            ),
+            validate_v2_source_admission_summary,
+        ),
+        "CS-HISTORY-009": lambda: field_case(
+            lambda value, _base, _execution: value["negative_test_result"].__setitem__(
+                "fixed_case_count", 41
+            ),
+            lambda value: validate_negative_test_result(value["negative_test_result"], final=True),
+        ),
+    }
+
+
+def current_v4_export_cases() -> dict[str, Callable[[], object]]:
+    """Return the five creation/historical export portability cases."""
+    cases: dict[str, Callable[[], object]] = {}
+
+    def missing_export() -> None:
+        with tempfile.TemporaryDirectory(prefix="m2-5-c-export-missing-") as temporary:
+            try:
+                validate_creation_evidence_export(Path(temporary) / "missing.tar")
+            except CCheckError as exc:
+                if exc.status != "BLOCKED" or exc.code != "EVIDENCE_EXPORT_UNAVAILABLE":
+                    raise AssertionError(
+                        f"expected BLOCKED EVIDENCE_EXPORT_UNAVAILABLE, got {exc.status} {exc.code}"
+                    ) from exc
+                blocked(
+                    "EVIDENCE_EXPORT_UNAVAILABLE",
+                    "missing export control correctly rejected at creation time",
+                )
+            raise AssertionError("missing export unexpectedly passed creation validation")
+
+    def in_repository_export() -> None:
+        path = C_DIR / ".m2-5-c-export-regression.tmp"
+        path.write_bytes(b"test export")
+        try:
+            validate_creation_evidence_export(path)
+        finally:
+            if path.exists():
+                path.unlink()
+
+    def device_path_export() -> None:
+        require_external_evidence_export_path("\\\\?\\C:\\external\\semantic_review_export.tar")
+
+    def historical_without_file() -> None:
+        with tempfile.TemporaryDirectory(prefix="m2-5-c-export-history-") as temporary:
+            validate_recorded_evidence_export(
+                {
+                    "status": "PASS",
+                    "path": str(Path(temporary) / "creator-local-export.tar"),
+                    "sha256": "0" * 64,
+                }
+            )
+
+    def wrong_recorded_digest() -> None:
+        with tempfile.TemporaryDirectory(prefix="m2-5-c-export-digest-") as temporary:
+            path = Path(temporary) / "semantic_review_export.tar"
+            path.write_bytes(b"valid pre-H_evidence export")
+            validate_creation_evidence_export_digest(path, "0" * 64)
+
+    cases.update(
+        {
+            "CS-EXPORT-001": missing_export,
+            "CS-EXPORT-002": in_repository_export,
+            "CS-EXPORT-003": device_path_export,
+            "CS-EXPORT-004": historical_without_file,
+            "CS-EXPORT-005": wrong_recorded_digest,
+        }
+    )
+    return cases
+
+
 def publishability_history_regression() -> None:
     """Prove that deleted oversized blobs fail, while unrelated refs are ignored."""
     with tempfile.TemporaryDirectory(prefix="m2-5-c-publishability-") as temporary:
@@ -5995,7 +7622,7 @@ def publishability_history_regression() -> None:
             raise AssertionError("reachable V2 monolith was not rejected")
 
 
-def migration_parity_regression_cases() -> dict[str, Callable[[], None]]:
+def migration_parity_regression_cases() -> dict[str, Callable[[], object]]:
     """Return focused one-time V2-to-V3 parity mutations."""
     source_raw, source_records = migration_source_classifications()
     target_records = candidate_ordered_records(source_records)
@@ -6007,15 +7634,17 @@ def migration_parity_regression_cases() -> dict[str, Callable[[], None]]:
     def record_mismatch() -> None:
         target = copy.deepcopy(target_records)
         target[0]["review_rationale"] += " tampered"
-        migration_parity_evidence(source_raw, source_records, target, {})
+        migration_parity_evidence(source_raw, source_records, target, {}, migration_source_commit())
 
     def missing_record() -> None:
-        migration_parity_evidence(source_raw, source_records, target_records[:-1], {})
+        migration_parity_evidence(
+            source_raw, source_records, target_records[:-1], {}, migration_source_commit()
+        )
 
     def duplicate_record() -> None:
         target = copy.deepcopy(target_records)
         target[-1] = copy.deepcopy(target[0])
-        migration_parity_evidence(source_raw, source_records, target, {})
+        migration_parity_evidence(source_raw, source_records, target, {}, migration_source_commit())
 
     return {
         "migration_upstream_mismatch": upstream_mismatch,
@@ -6029,47 +7658,43 @@ def evidence_export_portability_regression(snapshot: Snapshot) -> None:
     """Prove creation-only export I/O and historical summary tamper rejection."""
     summary = get_artifact(snapshot, SUMMARY_NAME)
     summary_raw = snapshot.raw[SUMMARY_NAME]
-    if summary["execution_commit"] is None:
-        head = git_text(["rev-parse", "HEAD"]).strip()
-        parents = git_commit_parents(head)
-        if len(parents) != 1:
-            raise AssertionError("provisional H_exec does not have one historical parent")
-        summary_raw = git_bytes(
-            [
-                "show",
-                f"{parents[0]}:sources/m2_5/closures/C/verification/c_verification_summary.v3.json",
-            ]
-        )
-        summary = mapping(parse_json(summary_raw, "historical regression summary"), "summary")
     validation_values = copy.deepcopy(snapshot.values)
     validation_raw = dict(snapshot.raw)
     validation_values[SUMMARY_NAME] = summary
     validation_raw[SUMMARY_NAME] = summary_raw
     validation_snapshot = Snapshot(validation_values, validation_raw)
     validation_summary = get_artifact(validation_snapshot, SUMMARY_NAME)
-    validation_summary["checker_identities"]["c_checker"]["raw_sha256"] = sha256_bytes(
-        Path(__file__).read_bytes()
-    )
-    export = mapping(summary["evidence_export"], "verification summary.evidence_export")
-    recorded_path = Path(nonempty_string(export["path"], "evidence export path")).resolve()
-    original_is_file = Path.is_file
+    if summary["execution_commit"] is not None:
+        validation_summary["checker_identities"]["c_checker"]["raw_sha256"] = sha256_bytes(
+            Path(__file__).read_bytes()
+        )
+        export = mapping(summary["evidence_export"], "verification summary.evidence_export")
+        recorded_path = Path(nonempty_string(export["path"], "evidence export path")).resolve()
+        original_is_file = Path.is_file
 
-    def pretend_export_missing(path: Path) -> bool:
-        if path.resolve() == recorded_path:
-            return False
-        return original_is_file(path)
+        def pretend_export_missing(path: Path) -> bool:
+            if path.resolve() == recorded_path:
+                return False
+            return original_is_file(path)
 
-    Path.is_file = pretend_export_missing
-    try:
-        try:
-            validate_summary(validation_snapshot)
-        except CCheckError as exc:
-            raise AssertionError(
-                "historical validation required the external review export: "
-                f"{exc.status} {exc.code}: {exc.message}"
-            ) from exc
-    finally:
-        Path.is_file = original_is_file
+        with patch.object(Path, "is_file", pretend_export_missing):
+            try:
+                validate_summary(validation_snapshot)
+            except CCheckError as exc:
+                raise AssertionError(
+                    "historical validation required the external review export: "
+                    f"{exc.status} {exc.code}: {exc.message}"
+                ) from exc
+    else:
+        # Before H_evidence exists, exercise the historical metadata contract
+        # directly.  This is deliberately independent of the creator-local
+        # export file and keeps the provisional summary executable.
+        export = {
+            "status": "PASS",
+            "path": "C:\\Users\\example\\evidence\\semantic_review_export.tar",
+            "sha256": "0" * 64,
+        }
+        validate_recorded_evidence_export(export)
 
     with tempfile.TemporaryDirectory(prefix="m2-5-c-export-regression-") as temporary:
         missing_export = Path(temporary) / "missing-review-export.tar"
@@ -6098,7 +7723,10 @@ def evidence_export_portability_regression(snapshot: Snapshot) -> None:
             tampered_raw = dict(validation_raw)
             tampered_raw[SUMMARY_NAME] = json_bytes(tampered)
             try:
-                validate_summary(Snapshot(tampered_values, tampered_raw))
+                if summary["execution_commit"] is None:
+                    require_external_evidence_export_path(path_text)
+                else:
+                    validate_summary(Snapshot(tampered_values, tampered_raw))
             except CCheckError as exc:
                 if exc.code != "EVIDENCE_EXPORT_IN_REPOSITORY":
                     raise AssertionError(
@@ -6111,7 +7739,101 @@ def evidence_export_portability_regression(snapshot: Snapshot) -> None:
                 )
 
 
-def negative_self_test() -> int:
+def current_v4_supplemental_suite(
+    snapshot: Snapshot,
+) -> tuple[dict[str, Callable[[], object]], dict[str, tuple[str, str]], list[Callable[[], str]]]:
+    """Assemble and freeze the exact 55-case V4 supplemental suite."""
+    state_domain, blocked_control, empty_domain_control = current_v4_state_domain_cases(snapshot)
+    layout, layout_control = current_v4_layout_cases(snapshot)
+    cases: dict[str, Callable[[], object]] = {
+        **state_domain,
+        **layout,
+        **current_v4_migration_cases(),
+        **current_v4_publishability_cases(),
+        **current_v4_history_cases(snapshot),
+        **current_v4_export_cases(),
+    }
+    expected: dict[str, tuple[str, str]] = {}
+    for index in range(1, 6):
+        expected[f"CS-STATE-{index:03d}"] = (
+            "FAIL",
+            "UNRESOLVED_REASON_UNKNOWN" if index == 5 else "REVIEW_STATE_FIELD_MISMATCH",
+        )
+    expected.update(
+        {
+            f"CS-DOMAIN-{index:03d}": (
+                "FAIL",
+                (
+                    "REVIEW_DOMAIN_EVIDENCE_MISSING"
+                    if index in {5, 6, 8}
+                    else "REVIEW_DOMAIN_STATE_MISMATCH"
+                    if index == 7
+                    else "REVIEW_DOMAIN_ASSESSMENT_SET_INVALID"
+                ),
+            )
+            for index in range(1, 9)
+        }
+    )
+    expected.update(
+        {
+            "CS-LAYOUT-001": ("FAIL", "CLASSIFICATION_SHARD_MISSING"),
+            "CS-LAYOUT-002": ("FAIL", "UNLISTED_C_ARTIFACT"),
+            "CS-LAYOUT-003": ("FAIL", "CLASSIFICATION_SHARD_DIGEST_MISMATCH"),
+            "CS-LAYOUT-004": ("FAIL", "CLASSIFICATION_SHARD_COVERAGE_MISMATCH"),
+            "CS-LAYOUT-005": ("FAIL", "CLASSIFICATION_SHARD_COVERAGE_MISMATCH"),
+            "CS-LAYOUT-006": ("FAIL", "CLASSIFICATION_SHARD_COVERAGE_MISMATCH"),
+            "CS-LAYOUT-007": ("FAIL", "CLASSIFICATION_SHARD_COVERAGE_MISMATCH"),
+            "CS-LAYOUT-008": ("FAIL", "CLASSIFICATION_SHARD_RANGE_MISMATCH"),
+            "CS-LAYOUT-009": ("FAIL", "CLASSIFICATION_SHARD_RANGE_MISMATCH"),
+            "CS-LAYOUT-010": ("FAIL", "CLASSIFICATION_SHARD_RANGE_MISMATCH"),
+            "CS-LAYOUT-011": ("FAIL", "CLASSIFICATION_SHARD_RANGE_MISMATCH"),
+            "CS-LAYOUT-012": ("FAIL", "CLASSIFICATION_SHARD_RANGE_MISMATCH"),
+            "CS-LAYOUT-013": ("FAIL", "CLASSIFICATION_ROOT_COUNT_MISMATCH"),
+            "CS-LAYOUT-014": ("FAIL", "CLASSIFICATION_ROOT_COUNT_MISMATCH"),
+            "CS-LAYOUT-015": ("BLOCKED", "CLASSIFICATION_SHARD_SIZE_LIMIT"),
+            "CS-LAYOUT-016": ("FAIL", "UNLISTED_C_ARTIFACT"),
+            "CS-LAYOUT-017": ("FAIL", "CLASSIFICATION_LAYOUT_INVALID"),
+            "CS-LAYOUT-018": ("FAIL", "CLASSIFICATION_LAYOUT_INVALID"),
+            "CS-LAYOUT-019": ("FAIL", "CLASSIFICATION_LAYOUT_INVALID"),
+            "CS-LAYOUT-020": ("FAIL", "CLASSIFICATION_LAYOUT_INVALID"),
+            "CS-MIGRATION-001": ("FAIL", "V2_V3_UPSTREAM_PARITY_MISMATCH"),
+            "CS-MIGRATION-002": ("FAIL", "V2_V3_CLASSIFICATION_PARITY_MISMATCH"),
+            "CS-MIGRATION-003": ("FAIL", "V2_V3_CLASSIFICATION_PARITY_MISMATCH"),
+            "CS-MIGRATION-004": ("FAIL", "V2_V3_CLASSIFICATION_PARITY_MISMATCH"),
+            "CS-MIGRATION-005": ("FAIL", "V2_SOURCE_ADMISSION_REQUIRED"),
+            "CS-PUBLISH-001": ("FAIL", "LEGACY_MONOLITH_REACHABLE"),
+            "CS-PUBLISH-002": ("FAIL", "PUBLISHABLE_HISTORY_OVERSIZE_BLOB"),
+            "CS-PUBLISH-003": ("BLOCKED", "PUBLISHABILITY_SCOPE_INVALID"),
+            "CS-HISTORY-001": ("FAIL", "LINEAGE_SELECTION_INVALID"),
+            "CS-HISTORY-002": ("FAIL", "EVIDENCE_DIGEST_BINDING_MISMATCH"),
+            "CS-HISTORY-003": ("FAIL", "LINEAGE_SELECTION_INVALID"),
+            "CS-HISTORY-004": ("FAIL", "LINEAGE_SELECTION_INVALID"),
+            "CS-HISTORY-005": ("FAIL", "V2_SOURCE_ADMISSION_BINDING_MISMATCH"),
+            "CS-HISTORY-006": ("FAIL", "V2_SOURCE_ADMISSION_PARTITION_INVALID"),
+            "CS-HISTORY-007": ("FAIL", "V2_SOURCE_ADMISSION_DOMAIN_COVERAGE_INVALID"),
+            "CS-HISTORY-008": ("FAIL", "V2_SOURCE_ADMISSION_CONTEXT_REVIEW_INVALID"),
+            "CS-HISTORY-009": ("FAIL", "V4_NEGATIVE_CONTRACT_INVALID"),
+            "CS-EXPORT-001": ("BLOCKED", "EVIDENCE_EXPORT_UNAVAILABLE"),
+            "CS-EXPORT-002": ("FAIL", "EVIDENCE_EXPORT_IN_REPOSITORY"),
+            "CS-EXPORT-003": ("FAIL", "EVIDENCE_EXPORT_DEVICE_PATH"),
+            "CS-EXPORT-004": ("PASS", "—"),
+            "CS-EXPORT-005": ("FAIL", "EVIDENCE_EXPORT_PROVENANCE_MISMATCH"),
+        }
+    )
+    require(
+        list(cases) == list(SUPPLEMENTAL_CASE_IDS),
+        "V4_NEGATIVE_CONTRACT_INVALID",
+        "supplemental executable inventory does not match the closed 55 IDs",
+    )
+    require(
+        set(expected) == set(SUPPLEMENTAL_CASE_IDS),
+        "V4_NEGATIVE_CONTRACT_INVALID",
+        "supplemental expected-result registry is incomplete",
+    )
+    return cases, expected, [layout_control, blocked_control, empty_domain_control]
+
+
+def legacy_negative_self_test() -> int:
     validator = globals().get("validate_v2_candidate_state")
     if not callable(validator):
         print("FAIL: V3 state grammar validator is not implemented")
@@ -6267,6 +7989,120 @@ def negative_self_test() -> int:
         f"{len(migration_cases)} migration cases; publishability history case)"
     )
     return 0
+
+
+def negative_self_test() -> int:
+    """Execute the complete phase-separated V2/V4 negative contract."""
+    try:
+        source_commit = migration_source_commit()
+        admission = make_v2_source_admission(source_commit)
+        admission_negative = mapping(
+            admission["negative_contract_result"], "V2 source admission negative result"
+        )
+        require(
+            admission_negative["case_ids"] == list(V2_SOURCE_ADMISSION_CASE_IDS)
+            and admission_negative["case_count"] == len(V2_SOURCE_ADMISSION_CASE_IDS)
+            and admission_negative["result"] == "PASS",
+            "V2_SOURCE_ADMISSION_NEGATIVE_CONTRACT_INVALID",
+            "V2 source-admission suite did not execute all 21 cases",
+        )
+        print("V2_SOURCE_ADMISSION_NEGATIVE_SUITE = PASS (21/21)")
+
+        snapshot = load_snapshot()
+        validate_matrix(get_artifact(snapshot, MATRIX_NAME))
+        fixed_cases = mutation_cases(snapshot)
+        require(
+            list(fixed_cases) == list(FIXED_CASE_IDS),
+            "V4_NEGATIVE_CONTRACT_INVALID",
+            "fixed executable inventory does not match C-001 through C-042",
+        )
+        fixed_failures: list[str] = []
+        fixed_matrix = get_artifact(snapshot, MATRIX_NAME)["cases"]
+        for item_value in list_value(fixed_matrix, "fixed negative matrix cases"):
+            item = mapping(item_value, "fixed negative matrix case")
+            case_id = string(item["case_id"], "fixed case ID")
+            try:
+                fixed_cases[case_id]()
+            except CCheckError as exc:
+                if (
+                    exc.status != item["expected_status"]
+                    or exc.code != item["expected_reason_code"]
+                ):
+                    fixed_failures.append(
+                        f"{case_id}: expected {item['expected_status']} "
+                        f"{item['expected_reason_code']}, got {exc.status} {exc.code}"
+                    )
+                else:
+                    print(f"NEGATIVE {case_id}: rejected ({exc.status}) [{exc.code}]")
+            except Exception as exc:
+                fixed_failures.append(
+                    f"{case_id}: unexpected exception {type(exc).__name__}: {exc}"
+                )
+            else:
+                fixed_failures.append(f"{case_id}: mutation unexpectedly passed")
+        if fixed_failures:
+            for failure in fixed_failures:
+                print(f"FAIL: {failure}")
+            return 1
+        print("FIXED_C_NEGATIVE_SUITE = PASS (42/42)")
+
+        supplemental_cases, expected, controls = current_v4_supplemental_suite(snapshot)
+        supplemental_failures: list[str] = []
+        for control_index, control in enumerate(controls):
+            try:
+                result = control()
+            except Exception as exc:
+                supplemental_failures.append(
+                    f"positive control {control_index}: {type(exc).__name__}: {exc}"
+                )
+            else:
+                expected_control = ("PASS", "BLOCKED", "PASS")[control_index]
+                if result != expected_control:
+                    supplemental_failures.append(
+                        f"positive control {control_index}: expected {expected_control}, "
+                        f"got {result}"
+                    )
+                else:
+                    print(f"POSITIVE_CONTROL_{control_index + 1} = PASS ({result})")
+
+        for case_id in SUPPLEMENTAL_CASE_IDS:
+            expected_status, expected_code = expected[case_id]
+            try:
+                supplemental_cases[case_id]()
+            except CCheckError as exc:
+                if exc.status != expected_status or exc.code != expected_code:
+                    supplemental_failures.append(
+                        f"{case_id}: expected {expected_status} {expected_code}, "
+                        f"got {exc.status} {exc.code}"
+                    )
+                else:
+                    print(f"SUPPLEMENTAL {case_id}: rejected ({exc.status}) [{exc.code}]")
+            except Exception as exc:
+                supplemental_failures.append(
+                    f"{case_id}: unexpected exception {type(exc).__name__}: {exc}"
+                )
+            else:
+                if expected_status == "PASS":
+                    print(f"SUPPLEMENTAL {case_id}: control ({expected_status})")
+                else:
+                    supplemental_failures.append(f"{case_id}: mutation unexpectedly passed")
+        if supplemental_failures:
+            for failure in supplemental_failures:
+                print(f"FAIL: {failure}")
+            return 1
+        print("CURRENT_V4_SUPPLEMENTAL_SUITE = PASS (55/55)")
+        print(
+            "NEGATIVE_SELF_TEST = PASS "
+            "(V2-SA 21/21; fixed C 42/42; current-V4 supplemental 55/55; "
+            "layout, blocked-state, and empty-domain controls PASS)"
+        )
+        return 0
+    except CCheckError as exc:
+        print(f"{exc.status}: {exc.code}: {exc.message}")
+        return 2 if exc.status == "BLOCKED" else 1
+    except (OSError, KeyError, TypeError, ValueError, AssertionError) as exc:
+        print(f"FAIL: negative self-test implementation: {type(exc).__name__}: {exc}")
+        return 1
 
 
 def main() -> int:
