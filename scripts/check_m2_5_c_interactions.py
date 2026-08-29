@@ -4659,11 +4659,24 @@ def validate_publishability_summary(summary: dict[str, Any]) -> None:
     )
 
 
+def normalize_windows_path_text(path_text: str) -> str:
+    """Remove Windows device-path spelling before repository containment checks."""
+    normalized = path_text.replace("/", "\\")
+    for prefix in ("\\\\?\\", "\\??\\"):
+        if normalized.casefold().startswith(prefix.casefold()):
+            normalized = normalized[len(prefix) :]
+            if normalized.casefold().startswith("unc\\"):
+                normalized = "\\\\" + normalized[4:]
+            break
+    return normalized
+
+
 def evidence_export_path_is_in_repository(path_text: str) -> bool:
     """Check repository containment without requiring a recorded export file."""
-    if re.match(r"^(?:[A-Za-z]:[\\/]|\\\\|//)", path_text):
-        candidate = PureWindowsPath(path_text)
-        repository = PureWindowsPath(str(ROOT))
+    windows_path = normalize_windows_path_text(path_text)
+    if re.match(r"^(?:[A-Za-z]:[\\/]|\\\\)", windows_path):
+        candidate = PureWindowsPath(windows_path)
+        repository = PureWindowsPath(normalize_windows_path_text(str(ROOT)))
         try:
             candidate.relative_to(repository)
         except ValueError:
@@ -5653,24 +5666,31 @@ def evidence_export_portability_regression(snapshot: Snapshot) -> None:
         else:
             raise AssertionError("finalize_summary accepted a missing review export")
 
-        tampered = copy.deepcopy(validation_summary)
-        tampered_export = mapping(tampered["evidence_export"], "tampered evidence export")
-        tampered_export["path"] = str(C_DIR / "forbidden-review-export.tar")
-        tampered_export["sha256"] = export["sha256"]
-        tampered_values = copy.deepcopy(validation_values)
-        tampered_values[SUMMARY_NAME] = tampered
-        tampered_raw = dict(validation_raw)
-        tampered_raw[SUMMARY_NAME] = json_bytes(tampered)
-        try:
-            validate_summary(Snapshot(tampered_values, tampered_raw))
-        except CCheckError as exc:
-            if exc.code != "EVIDENCE_EXPORT_IN_REPOSITORY":
+        for path_text in (
+            str(C_DIR / "forbidden-review-export.tar"),
+            "\\\\?\\" + str(C_DIR / "forbidden-review-export.tar"),
+            "//?/" + str(C_DIR / "forbidden-review-export.tar").replace("\\", "/"),
+        ):
+            tampered = copy.deepcopy(validation_summary)
+            tampered_export = mapping(tampered["evidence_export"], "tampered evidence export")
+            tampered_export["path"] = path_text
+            tampered_export["sha256"] = export["sha256"]
+            tampered_values = copy.deepcopy(validation_values)
+            tampered_values[SUMMARY_NAME] = tampered
+            tampered_raw = dict(validation_raw)
+            tampered_raw[SUMMARY_NAME] = json_bytes(tampered)
+            try:
+                validate_summary(Snapshot(tampered_values, tampered_raw))
+            except CCheckError as exc:
+                if exc.code != "EVIDENCE_EXPORT_IN_REPOSITORY":
+                    raise AssertionError(
+                        "tampered export metadata returned the wrong rejection: "
+                        f"{exc.status} {exc.code}: {exc.message}"
+                    ) from exc
+            else:
                 raise AssertionError(
-                    "tampered export metadata returned the wrong rejection: "
-                    f"{exc.status} {exc.code}: {exc.message}"
-                ) from exc
-        else:
-            raise AssertionError("historical validation accepted an in-repository export path")
+                    f"historical validation accepted an in-repository export path: {path_text}"
+                )
 
 
 def negative_self_test() -> int:
