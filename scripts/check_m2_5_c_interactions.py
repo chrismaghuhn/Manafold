@@ -5656,13 +5656,21 @@ def validate_summary(snapshot: Snapshot) -> None:
     validate_recorded_evidence_export(export)
     if not re.fullmatch(r"[0-9a-f]{40}", string(summary["execution_commit"], "execution_commit")):
         fail("SOURCE_CHANGED_AFTER_H_EXEC", "execution_commit is not a Git SHA")
-    for key in ("prerequisite_results", "negative_test_result", "repository_gate_results"):
+    for key in ("prerequisite_results", "repository_gate_results"):
         section = mapping(summary[key], f"verification summary.{key}")
         require(
             section.get("status") == "PASS",
             "SOURCE_CHANGED_AFTER_H_EXEC",
             f"{key} is not PASS",
         )
+    negative_test_result = mapping(
+        summary["negative_test_result"], "verification summary.negative_test_result"
+    )
+    require(
+        negative_test_result["result"] == "PASS",
+        "SOURCE_CHANGED_AFTER_H_EXEC",
+        "negative_test_result is not PASS",
+    )
     c_result = mapping(summary["c_result"], "verification summary.c_result")
     require(
         c_result.get("status") in {"PASS", "BLOCKED"},
