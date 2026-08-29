@@ -4659,6 +4659,34 @@ def validate_publishability_summary(summary: dict[str, Any]) -> None:
     )
 
 
+def validate_recorded_evidence_export(value: object) -> dict[str, Any]:
+    """Validate recorded export provenance without requiring the creator's file."""
+    export = mapping(value, "verification summary.evidence_export")
+    exact_keys(export, {"status", "path", "sha256"}, "verification summary.evidence_export")
+    require(
+        export["status"] == "PASS",
+        "SOURCE_CHANGED_AFTER_H_EXEC",
+        "review export is not PASS",
+    )
+    nonempty_string(export["path"], "evidence export path")
+    hex64(export["sha256"], "evidence export sha256")
+    return export
+
+
+def validate_creation_evidence_export(export_path: Path) -> str:
+    """Require and hash the external export while finalizing H_evidence."""
+    if not export_path.is_file():
+        blocked("EVIDENCE_EXPORT_UNAVAILABLE", f"review export not found: {export_path}")
+    resolved = export_path.resolve()
+    try:
+        resolved.relative_to(ROOT)
+    except ValueError:
+        pass
+    else:
+        fail("EVIDENCE_EXPORT_IN_REPOSITORY", "review export must remain outside the repository")
+    return sha256_bytes(export_path.read_bytes())
+
+
 def validate_summary(snapshot: Snapshot) -> None:
     summary = get_artifact(snapshot, SUMMARY_NAME)
     exact_keys(
@@ -4739,6 +4767,7 @@ def validate_summary(snapshot: Snapshot) -> None:
             "provisional evidence export",
         )
         return
+    validate_recorded_evidence_export(export)
     if not re.fullmatch(r"[0-9a-f]{40}", string(summary["execution_commit"], "execution_commit")):
         fail("SOURCE_CHANGED_AFTER_H_EXEC", "execution_commit is not a Git SHA")
     for key in ("prerequisite_results", "negative_test_result", "repository_gate_results"):
@@ -4777,21 +4806,6 @@ def validate_summary(snapshot: Snapshot) -> None:
         "SOURCE_CHANGED_AFTER_H_EXEC",
         "source-tree fingerprint does not match H_exec",
     )
-    require(export["status"] == "PASS", "SOURCE_CHANGED_AFTER_H_EXEC", "review export is not PASS")
-    export_path = Path(nonempty_string(export["path"], "evidence export path")).resolve()
-    try:
-        export_path.relative_to(ROOT)
-    except ValueError:
-        pass
-    else:
-        fail("SOURCE_CHANGED_AFTER_H_EXEC", "review export must be outside the repository")
-    require(
-        export_path.is_file()
-        and sha256_bytes(export_path.read_bytes())
-        == hex64(export["sha256"], "evidence export sha256"),
-        "SOURCE_CHANGED_AFTER_H_EXEC",
-        "review export is missing or has a different digest",
-    )
     actual_publishability = publishability_preflight(execution_commit, EXPECTED_PREVIOUS_MASTER)
     require(
         actual_publishability == summary["publishability_preflight"],
@@ -4805,14 +4819,7 @@ def finalize_summary(execution_commit: str, results_path: Path, export_path: Pat
     """Write the one permitted post-H_exec summary projection."""
     if not re.fullmatch(r"[0-9a-f]{40}", execution_commit):
         blocked("EVIDENCE_EXECUTION_SHA_INVALID", f"invalid H_exec {execution_commit!r}")
-    if not export_path.is_file():
-        blocked("EVIDENCE_EXPORT_UNAVAILABLE", f"review export not found: {export_path}")
-    try:
-        export_path.resolve().relative_to(ROOT)
-    except ValueError:
-        pass
-    else:
-        fail("EVIDENCE_EXPORT_IN_REPOSITORY", "review export must remain outside the repository")
+    export_sha256 = validate_creation_evidence_export(export_path)
     try:
         results = parse_json(results_path.read_bytes(), "execution results")
     except OSError as exc:
@@ -4872,7 +4879,7 @@ def finalize_summary(execution_commit: str, results_path: Path, export_path: Pat
     summary["evidence_export"] = {
         "status": "PASS",
         "path": str(export_path.resolve()),
-        "sha256": sha256_bytes(export_path.read_bytes()),
+        "sha256": export_sha256,
     }
     (C_DIR / "verification" / SUMMARY_NAME).write_bytes(json_bytes(summary))
     print(
@@ -5567,6 +5574,77 @@ def migration_parity_regression_cases() -> dict[str, Callable[[], None]]:
     }
 
 
+def evidence_export_portability_regression(snapshot: Snapshot) -> None:
+    """Prove creation-only export I/O and historical summary tamper rejection."""
+    summary = get_artifact(snapshot, SUMMARY_NAME)
+    summary_raw = snapshot.raw[SUMMARY_NAME]
+    if summary["execution_commit"] is None:
+        head = git_text(["rev-parse", "HEAD"]).strip()
+        parents = git_commit_parents(head)
+        if len(parents) != 1:
+            raise AssertionError("provisional H_exec does not have one historical parent")
+        summary_raw = git_bytes(
+            [
+                "show",
+                f"{parents[0]}:sources/m2_5/closures/C/verification/c_verification_summary.v3.json",
+            ]
+        )
+        summary = mapping(parse_json(summary_raw, "historical regression summary"), "summary")
+    validation_values = copy.deepcopy(snapshot.values)
+    validation_raw = dict(snapshot.raw)
+    validation_values[SUMMARY_NAME] = summary
+    validation_raw[SUMMARY_NAME] = summary_raw
+    validation_snapshot = Snapshot(validation_values, validation_raw)
+    validation_summary = get_artifact(validation_snapshot, SUMMARY_NAME)
+    validation_summary["checker_identities"]["c_checker"]["raw_sha256"] = sha256_bytes(
+        Path(__file__).read_bytes()
+    )
+    export = mapping(summary["evidence_export"], "verification summary.evidence_export")
+    recorded_path = Path(nonempty_string(export["path"], "evidence export path")).resolve()
+    original_is_file = Path.is_file
+
+    def pretend_export_missing(path: Path) -> bool:
+        if path.resolve() == recorded_path:
+            return False
+        return original_is_file(path)
+
+    Path.is_file = pretend_export_missing
+    try:
+        try:
+            validate_summary(validation_snapshot)
+        except CCheckError as exc:
+            raise AssertionError(
+                "historical validation required the external review export: "
+                f"{exc.status} {exc.code}: {exc.message}"
+            ) from exc
+    finally:
+        Path.is_file = original_is_file
+
+    with tempfile.TemporaryDirectory(prefix="m2-5-c-export-regression-") as temporary:
+        missing_export = Path(temporary) / "missing-review-export.tar"
+        try:
+            finalize_summary("0" * 40, Path(temporary) / "missing-results.json", missing_export)
+        except CCheckError as exc:
+            if exc.status != "BLOCKED" or exc.code != "EVIDENCE_EXPORT_UNAVAILABLE":
+                raise AssertionError(
+                    "missing creation-time export returned the wrong result: "
+                    f"{exc.status} {exc.code}"
+                ) from exc
+        else:
+            raise AssertionError("finalize_summary accepted a missing review export")
+
+        tampered = copy.deepcopy(summary)
+        tampered_export = mapping(tampered["evidence_export"], "tampered evidence export")
+        tampered_export["path"] = str(missing_export)
+        tampered_export["sha256"] = "0" * 64
+        try:
+            validate_historical_evidence_chain(tampered, json_bytes(tampered))
+        except CCheckError:
+            pass
+        else:
+            raise AssertionError("historical validation accepted tampered export metadata")
+
+
 def negative_self_test() -> int:
     validator = globals().get("validate_v2_candidate_state")
     if not callable(validator):
@@ -5609,6 +5687,15 @@ def negative_self_test() -> int:
         return 1
     print("V3_STATE_GRAMMAR_REGRESSION = PASS")
     snapshot = load_snapshot()
+    try:
+        evidence_export_portability_regression(snapshot)
+    except Exception as exc:
+        print(f"FAIL: evidence export portability regression: {type(exc).__name__}: {exc}")
+        return 1
+    print(
+        "EVIDENCE_EXPORT_PORTABILITY_REGRESSION = PASS "
+        "(creation requires export; historical validation is path-independent; tamper rejected)"
+    )
     matrix = get_artifact(snapshot, MATRIX_NAME)
     validate_matrix(matrix)
     cases = mutation_cases(snapshot)
