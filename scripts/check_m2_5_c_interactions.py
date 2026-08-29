@@ -2796,9 +2796,7 @@ def _write_json_file(path: Path, value: object) -> bytes:
 
 def build_upstream_values(
     reader: ArchiveReader,
-) -> tuple[
-    dict[str, bytes], dict[str, Any], list[dict[str, Any]], dict[str, dict[str, str]]
-]:
+) -> tuple[dict[str, bytes], dict[str, Any], list[dict[str, Any]], dict[str, dict[str, str]]]:
     """Build the four corrected V2 upstream artifacts from pinned inputs."""
     catalog = mapping(
         parse_json(
