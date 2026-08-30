@@ -8,6 +8,8 @@ authority records.
 
 from __future__ import annotations
 
+import base64
+import csv
 import hashlib
 import io
 import json
@@ -19,6 +21,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
+from types import MappingProxyType
 from typing import Literal, NoReturn, TypeAlias, cast
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -40,6 +43,14 @@ from mtgml.authority import (
     ReviewMode,
     SourceBindingDigestV1,
 )
+from mtgml.persistence import (
+    CANONICAL_CBOR_ID,
+    DIGEST_ENVELOPE_ID,
+    SHA256_ID,
+    encode_canonical,
+    encode_envelope,
+    hash_envelope,
+)
 
 REV3_ARCHIVE_ENV_VAR = "MANAFOLD_SOURCE_ARCHIVE"
 REV3_ARCHIVE_RELATIVE_PATH = Path("m2_5/Manafold_M2_5_Pre_Research_ALL_ARTIFACTS_REV3.zip")
@@ -47,10 +58,165 @@ EXPECTED_REV3_ARCHIVE_SHA256 = "99b33945a3e0c7b2982734e65f770715029ce6acd500104b
 REV3_PACKAGE_MANIFEST_MEMBER = "Manafold_M2_5_Package_Manifest_REV3.json"
 REV3_PACKAGE_MANIFEST_SCHEMA = "manafold.m2.5.rev3.package-manifest.v1"
 REV3_CENSUS_MEMBER = "derived/Pair_Interaction_Census_REV3.csv"
+CANDIDATE_UNIVERSE_PATH = "sources/m2_5/closures/C/interaction_candidate_universe.v2.json"
+CANDIDATE_UNIVERSE_SCHEMA = "manafold.m2.5.c.interaction-candidate-universe.v2"
+CANDIDATE_UNIVERSE_MODEL_ID = "declared-interaction-model.v2"
+DECLARED_MODEL_SCHEMA = "manafold.m2.5.c.declared-interaction-model.v2"
+CANDIDATE_IDENTITY_DOMAIN = "manafold.m2.5.c.candidate-identity.v1"
+CANDIDATE_IDENTITY_SCHEMA = "manafold.m2.5.c.candidate-identity-input.v1"
+REV3_MODEL_ID = "interaction-model.v1"
+REV3_RESOLUTION_MEMBER = "inputs/deck_row_source_resolution_REV3.csv"
+REV3_SOURCE_INDEX_MEMBER = "source/raw/source_record_index_REV3.csv"
+REV3_SCOPE_MAP = {
+    "INTRA_DECK": "intra_deck",
+    "CROSS_DECK": "cross_deck",
+    "UNARY_OR_HIGHER_ORDER": "unary_or_higher_order",
+}
+REV3_RELATION_MAP = {
+    "UNORDERED_BINARY": "unordered_binary",
+    "DIRECTIONAL_BINARY": "directional_binary",
+    "DECLARED_CARD_TRIGGER": "declared_card_trigger",
+}
+REV3_SHAPES = frozenset(
+    {
+        ("INTRA_DECK", "UNORDERED_BINARY"),
+        ("CROSS_DECK", "DIRECTIONAL_BINARY"),
+        ("UNARY_OR_HIGHER_ORDER", "DECLARED_CARD_TRIGGER"),
+    }
+)
+_LOWERCASE_UUID_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
+
+REV3_SOURCE_COLUMNS = (
+    "candidate_id",
+    "model_id",
+    "scope",
+    "pair_id",
+    "left_family_id",
+    "right_family_id",
+    "relation",
+    "disposition",
+    "disposition_reason",
+    "supporting_requirement_ids",
+)
+SOURCE_CONTEXT_KEYS = (
+    "zone",
+    "visibility",
+    "timing",
+    "temporal_order",
+    "source_affected_relation",
+    "control_ownership_relation",
+    "replacement_layer_relation",
+    "trigger_lki_relation",
+    "information_relation",
+    "decision_actor_relation",
+)
+CANDIDATE_SCOPES = frozenset({"cross_deck", "intra_deck", "unary_or_higher_order"})
+CANDIDATE_RELATIONS = frozenset(
+    {
+        "declared_card_trigger",
+        "directional_binary",
+        "reviewed_higher_order",
+        "unordered_binary",
+    }
+)
+CANDIDATE_SOURCE_ORIGINS = frozenset({"rev3", "targeted_higher_order_review"})
+RECONCILIATION_STATUSES = frozenset(
+    {
+        "unchanged",
+        "stale_rev3_candidate",
+        "removed_not_interaction",
+        "merged_semantic_duplicate",
+        "new_targeted_higher_order_candidate",
+    }
+)
+RECONCILIATION_COUNT_KEYS = frozenset(
+    {
+        "unchanged",
+        "stale_rev3_candidate",
+        "removed_not_interaction",
+        "merged_semantic_duplicate",
+        "new_targeted_higher_order_candidate",
+        "new_b2_derived",
+    }
+)
+CANDIDATE_IDENTITY_KEYS = frozenset(
+    {
+        "envelope_id",
+        "algorithm_id",
+        "semantic_domain",
+        "payload_codec_id",
+        "input_schema_id",
+        "digest_hex",
+    }
+)
+CANDIDATE_RECORD_KEYS = frozenset(
+    {
+        "candidate_id",
+        "candidate_identity",
+        "source_origin",
+        "scope",
+        "relation",
+        "participant_refs",
+        "supporting_requirement_ids",
+        "source_binding",
+        "reconciliation_status",
+        "reconciliation_reason",
+    }
+)
+SOURCE_INSTANCE_RECORD_KEYS = frozenset(
+    {
+        "source_instance_id",
+        "candidate_id",
+        "source_binding",
+        "participant_bindings",
+        "source_context",
+    }
+)
+REV3_SOURCE_BINDING_KEYS = frozenset(
+    {
+        "kind",
+        "archive_member",
+        "archive_member_sha256",
+        "row_ordinal",
+        "source_columns",
+        "source_values",
+    }
+)
+REV3_INPUT_BINDING_KEYS = frozenset(
+    {"archive_member", "archive_member_sha256", "source_package_sha256"}
+)
+RAW_ARTIFACT_BINDING_KEYS = frozenset({"path", "raw_sha256"})
+INPUT_BINDING_KEYS = frozenset(
+    {
+        "declared_model",
+        "review_additions",
+        "rev3_candidate_source",
+        "b2_artifacts",
+        "b1_final_artifacts",
+    }
+)
+EXPECTED_STATIC_INPUT_PATHS = {
+    "declared_model": "sources/m2_5/closures/C/declared_interaction_model.v2.json",
+    "review_additions": "sources/m2_5/closures/C/interaction_review_additions.v2.json",
+    "b2_artifacts": (
+        "sources/m2_5/closures/B2/requirement_family_catalog.v1.json",
+        "sources/m2_5/closures/B2/card_semantic_classifications.v1.json",
+        "sources/m2_5/closures/B2/classification_closure.v1.json",
+    ),
+    "b1_final_artifacts": (
+        "sources/m2_5/closures/B1/official_authority_citations.v3.json",
+        "sources/m2_5/closures/B1/official_authority_citation_closure.v2.json",
+    ),
+}
 
 SourceKind: TypeAlias = Literal["repository", "rev3_archive"]
 Locator: TypeAlias = tuple[str, str | int | None]
 DigestInput: TypeAlias = str | bytes
+ModelVocabularies: TypeAlias = tuple[
+    frozenset[str],
+    frozenset[str],
+    Mapping[str, frozenset[str]],
+]
 
 _HEX64_RE = re.compile(r"^[0-9a-f]{64}$")
 _EVENT_ID_RE = re.compile(r"^ae\.v1/[0-9a-f]{64}$")
@@ -58,6 +224,7 @@ _EVENT_LEAF_PATH_RE = re.compile(
     r"^sources/m2_5/authorities/review_acceptance_events/v1/[0-9a-f]{64}\.json$"
 )
 _VERIFIED_ARTIFACT_TOKEN = object()
+_VERIFIED_CANDIDATE_TOKEN = object()
 
 
 class ResolutionStatus(str, Enum):
@@ -91,6 +258,41 @@ class ResolvedLocator:
     artifact: ResolvedArtifact
     locator: Locator
     value: object
+
+
+@dataclass(frozen=True)
+class ResolvedCandidate:
+    """An exact, source-bound candidate record with no semantic conclusion."""
+
+    candidate_id: str
+    candidate_identity: Mapping[str, object]
+    candidate_universe: ResolvedArtifact
+    candidate_universe_binding: SourceBindingDigestV1
+    candidate_record: Mapping[str, object]
+    source_binding: Mapping[str, object]
+    _verification_token: object = field(default=None, repr=False, compare=False)
+
+
+@dataclass(frozen=True)
+class ResolvedSourceInstance:
+    """An exact candidate/source-instance join after REV3 row verification."""
+
+    candidate: ResolvedCandidate
+    source_instance_id: str
+    source_instance_record: Mapping[str, object]
+    source_binding: Mapping[str, object]
+    source_artifact: ResolvedArtifact
+
+
+@dataclass(frozen=True)
+class _CandidateUniverseIndex:
+    artifact: ResolvedArtifact
+    rev3_input_binding: Mapping[str, object]
+    candidates_by_id: Mapping[str, Mapping[str, object]]
+    candidate_identities_by_digest: Mapping[str, Mapping[str, object]]
+    candidate_bindings_by_id: Mapping[str, Mapping[str, object]]
+    instances_by_id: Mapping[str, Mapping[str, object]]
+    instances_by_candidate_id: Mapping[str, tuple[Mapping[str, object], ...]]
 
 
 def _fail(code: str, message: str) -> NoReturn:
@@ -250,6 +452,737 @@ def _exact_keys(value: Mapping[str, object], expected: set[str], label: str) -> 
         _fail("SCHEMA_MISMATCH", f"{label} fields are not exactly {sorted(expected)!r}")
 
 
+def _freeze_json(value: object) -> object:
+    if isinstance(value, dict):
+        return MappingProxyType({key: _freeze_json(item) for key, item in value.items()})
+    if isinstance(value, list):
+        return tuple(_freeze_json(item) for item in value)
+    return value
+
+
+def _frozen_mapping(value: Mapping[str, object]) -> Mapping[str, object]:
+    return cast(Mapping[str, object], _freeze_json(dict(value)))
+
+
+def _candidate_identity_reference(value: object, label: str) -> dict[str, object]:
+    record = _json_object(value, label)
+    _exact_keys(record, set(CANDIDATE_IDENTITY_KEYS), label)
+    expected_text = {
+        "algorithm_id": "sha-256",
+        "envelope_id": "mtgml.digest-envelope.v1",
+        "input_schema_id": "manafold.m2.5.c.candidate-identity-input.v1",
+        "payload_codec_id": "mtgml.canonical-cbor.v1",
+        "semantic_domain": "manafold.m2.5.c.candidate-identity.v1",
+    }
+    for key, expected in expected_text.items():
+        if record.get(key) != expected:
+            _fail("CANDIDATE_IDENTITY_INVALID", f"{label}.{key} is not the V1 value")
+    _json_digest(record.get("digest_hex"), f"{label}.digest_hex")
+    return dict(record)
+
+
+def _model_vocabularies(value: object) -> ModelVocabularies:
+    model = _json_object(value, "declared interaction model")
+    if model.get("schema") != DECLARED_MODEL_SCHEMA:
+        _fail("MODEL_SCHEMA_MISMATCH", "declared interaction model schema is not V2")
+    if model.get("model_id") != CANDIDATE_UNIVERSE_MODEL_ID:
+        _fail("MODEL_IDENTITY_MISMATCH", "declared interaction model is not the C model")
+
+    def string_set(field: str) -> frozenset[str]:
+        raw = model.get(field)
+        if (
+            not isinstance(raw, list)
+            or not raw
+            or any(not isinstance(item, str) or not item for item in raw)
+        ):
+            _fail("MODEL_VOCABULARY_INVALID", f"declared interaction model {field} is invalid")
+        values = [cast(str, item) for item in raw]
+        if len(set(values)) != len(values):
+            _fail(
+                "MODEL_VOCABULARY_INVALID",
+                f"declared interaction model {field} contains duplicates",
+            )
+        return frozenset(values)
+
+    participant_kinds = string_set("participant_kind_vocabulary")
+    participant_roles = string_set("participant_role_vocabulary")
+    dimensions = model.get("context_dimensions")
+    if dimensions != list(SOURCE_CONTEXT_KEYS):
+        _fail(
+            "MODEL_VOCABULARY_INVALID",
+            "declared interaction model context dimensions differ from C V1",
+        )
+    raw_context = model.get("context_value_vocabulary")
+    if not isinstance(raw_context, dict) or set(raw_context) != set(SOURCE_CONTEXT_KEYS):
+        _fail(
+            "MODEL_VOCABULARY_INVALID",
+            "declared interaction model context vocabulary is incomplete",
+        )
+    context_values: dict[str, frozenset[str]] = {}
+    for dimension in SOURCE_CONTEXT_KEYS:
+        raw_values = raw_context.get(dimension)
+        if (
+            not isinstance(raw_values, list)
+            or not raw_values
+            or any(not isinstance(item, str) or not item for item in raw_values)
+        ):
+            _fail(
+                "MODEL_VOCABULARY_INVALID",
+                f"declared interaction model {dimension} vocabulary is invalid",
+            )
+        values = [cast(str, item) for item in raw_values]
+        if len(set(values)) != len(values):
+            _fail(
+                "MODEL_VOCABULARY_INVALID",
+                f"declared interaction model {dimension} vocabulary has duplicates",
+            )
+        context_values[dimension] = frozenset(values)
+    return participant_kinds, participant_roles, context_values
+
+
+def _participant_ref(
+    value: object, label: str, participant_kinds: frozenset[str]
+) -> dict[str, str]:
+    record = _json_object(value, label)
+    _exact_keys(record, {"participant_kind", "semantic_ref"}, label)
+    participant_kind = _json_text(record.get("participant_kind"), f"{label}.participant_kind")
+    if participant_kind not in participant_kinds:
+        _fail("PARTICIPANT_BINDING_INVALID", f"{label}.participant_kind is not a V1 value")
+    return {
+        "participant_kind": participant_kind,
+        "semantic_ref": _json_text(record.get("semantic_ref"), f"{label}.semantic_ref"),
+    }
+
+
+def _rev3_source_binding(value: object, label: str) -> dict[str, object]:
+    record = _json_object(value, label)
+    _exact_keys(record, set(REV3_SOURCE_BINDING_KEYS), label)
+    if record.get("kind") != "rev3":
+        _fail("SOURCE_KIND_UNSUPPORTED", f"{label}.kind is not the supported REV3 kind")
+    archive_member = _json_text(record.get("archive_member"), f"{label}.archive_member")
+    if archive_member != REV3_CENSUS_MEMBER:
+        _fail("SOURCE_MEMBER_MISMATCH", f"{label}.archive_member is not the C census member")
+    archive_member_sha256 = _json_digest(
+        record.get("archive_member_sha256"), f"{label}.archive_member_sha256"
+    ).hex()
+    row_ordinal = record.get("row_ordinal")
+    if isinstance(row_ordinal, bool) or not isinstance(row_ordinal, int) or row_ordinal < 0:
+        _fail("REV3_ROW_ORDINAL_INVALID", f"{label}.row_ordinal must be a nonnegative integer")
+    raw_columns = record.get("source_columns")
+    if not isinstance(raw_columns, list) or any(not isinstance(item, str) for item in raw_columns):
+        _fail("REV3_SOURCE_COLUMNS_MISMATCH", f"{label}.source_columns must be a text array")
+    source_columns = [cast(str, item) for item in raw_columns]
+    if source_columns != list(REV3_SOURCE_COLUMNS):
+        _fail("REV3_SOURCE_COLUMNS_MISMATCH", f"{label}.source_columns differs from the C contract")
+    raw_values = record.get("source_values")
+    if not isinstance(raw_values, list) or any(not isinstance(item, str) for item in raw_values):
+        _fail("REV3_SOURCE_VALUES_INVALID", f"{label}.source_values must be a text array")
+    source_values = [cast(str, item) for item in raw_values]
+    if len(source_values) != len(source_columns):
+        _fail("REV3_SOURCE_VALUES_INVALID", f"{label}.source_values length differs from columns")
+    return {
+        "kind": "rev3",
+        "archive_member": archive_member,
+        "archive_member_sha256": archive_member_sha256,
+        "row_ordinal": row_ordinal,
+        "source_columns": source_columns,
+        "source_values": source_values,
+    }
+
+
+def _candidate_identity_for_record(candidate: Mapping[str, object]) -> dict[str, str]:
+    binding = cast(Mapping[str, object], candidate["source_binding"])
+    participant_payload = []
+    for ref in cast(list[Mapping[str, str]], candidate["participant_refs"]):
+        participant_payload.append(
+            [
+                [ref["participant_kind"], None],
+                ref["semantic_ref"],
+            ]
+        )
+    payload = [
+        [candidate["source_origin"], None],
+        [candidate["scope"], None],
+        [candidate["relation"], None],
+        participant_payload,
+        list(cast(list[str], candidate["supporting_requirement_ids"])),
+        [
+            ["rev3", None],
+            [
+                binding["archive_member"],
+                bytes.fromhex(cast(str, binding["archive_member_sha256"])),
+                binding["row_ordinal"],
+                list(cast(list[str], binding["source_columns"])),
+                list(cast(list[str], binding["source_values"])),
+            ],
+        ],
+    ]
+    digest_bytes = hash_envelope(
+        encode_envelope(
+            CANDIDATE_IDENTITY_DOMAIN,
+            CANDIDATE_IDENTITY_SCHEMA,
+            encode_canonical(cast(list[object], payload)),
+        )
+    )
+    return {
+        "envelope_id": DIGEST_ENVELOPE_ID,
+        "algorithm_id": SHA256_ID,
+        "semantic_domain": CANDIDATE_IDENTITY_DOMAIN,
+        "payload_codec_id": CANONICAL_CBOR_ID,
+        "input_schema_id": CANDIDATE_IDENTITY_SCHEMA,
+        "digest_hex": digest_bytes.hex(),
+    }
+
+
+def _candidate_record(
+    value: object, label: str, participant_kinds: frozenset[str]
+) -> dict[str, object]:
+    record = _json_object(value, label)
+    _exact_keys(record, set(CANDIDATE_RECORD_KEYS), label)
+    candidate_id = _json_text(record.get("candidate_id"), f"{label}.candidate_id")
+    identity = _candidate_identity_reference(
+        record.get("candidate_identity"), f"{label}.candidate_identity"
+    )
+    source_origin = _json_text(record.get("source_origin"), f"{label}.source_origin")
+    if source_origin not in CANDIDATE_SOURCE_ORIGINS:
+        _fail("CANDIDATE_SOURCE_ORIGIN_INVALID", f"{label}.source_origin is not a V1 value")
+    if source_origin != "rev3":
+        _fail("SOURCE_KIND_UNSUPPORTED", f"{label} is not a REV3-backed candidate")
+    scope = _json_text(record.get("scope"), f"{label}.scope")
+    if scope not in CANDIDATE_SCOPES:
+        _fail("CANDIDATE_SHAPE_INVALID", f"{label}.scope is not a V1 value")
+    relation = _json_text(record.get("relation"), f"{label}.relation")
+    if relation not in CANDIDATE_RELATIONS:
+        _fail("CANDIDATE_SHAPE_INVALID", f"{label}.relation is not a V1 value")
+    raw_participants = record.get("participant_refs")
+    if not isinstance(raw_participants, list):
+        _fail("PARTICIPANT_BINDING_INVALID", f"{label}.participant_refs must be an array")
+    participants = [
+        _participant_ref(item, f"{label}.participant_refs[{index}]", participant_kinds)
+        for index, item in enumerate(raw_participants)
+    ]
+    raw_supporting_ids = record.get("supporting_requirement_ids")
+    if not isinstance(raw_supporting_ids, list) or any(
+        not isinstance(item, str) or not item for item in raw_supporting_ids
+    ):
+        _fail("CANDIDATE_SUPPORTING_IDS_INVALID", f"{label}.supporting_requirement_ids is invalid")
+    supporting_ids = [cast(str, item) for item in raw_supporting_ids]
+    supporting_keys = [encode_canonical(item) for item in supporting_ids]
+    if len(set(supporting_keys)) != len(supporting_keys):
+        _fail(
+            "CANDIDATE_SUPPORTING_IDS_DUPLICATE",
+            f"{label}.supporting_requirement_ids has duplicates",
+        )
+    if supporting_keys != sorted(supporting_keys):
+        _fail(
+            "CANDIDATE_SUPPORTING_IDS_ORDER_INVALID",
+            f"{label}.supporting_requirement_ids is not canonical",
+        )
+    source_binding = _rev3_source_binding(record.get("source_binding"), f"{label}.source_binding")
+    source_values = cast(list[str], source_binding["source_values"])
+    if source_values[0] != candidate_id:
+        _fail("CANDIDATE_SOURCE_BINDING_MISMATCH", f"{label}.source_values[0] is not candidate_id")
+    reconciliation_status = _json_text(
+        record.get("reconciliation_status"), f"{label}.reconciliation_status"
+    )
+    if reconciliation_status not in RECONCILIATION_STATUSES:
+        _fail("RECONCILIATION_STATUS_INVALID", f"{label}.reconciliation_status is not a V1 value")
+    return {
+        "candidate_id": candidate_id,
+        "candidate_identity": identity,
+        "source_origin": source_origin,
+        "scope": scope,
+        "relation": relation,
+        "participant_refs": participants,
+        "supporting_requirement_ids": supporting_ids,
+        "source_binding": source_binding,
+        "reconciliation_status": reconciliation_status,
+        "reconciliation_reason": _json_text(
+            record.get("reconciliation_reason"), f"{label}.reconciliation_reason"
+        ),
+    }
+
+
+def _source_instance_record(
+    value: object,
+    label: str,
+    participant_kinds: frozenset[str],
+    participant_roles: frozenset[str],
+    context_values: Mapping[str, frozenset[str]],
+) -> dict[str, object]:
+    record = _json_object(value, label)
+    _exact_keys(record, set(SOURCE_INSTANCE_RECORD_KEYS), label)
+    source_instance_id = _json_text(record.get("source_instance_id"), f"{label}.source_instance_id")
+    candidate_id = _json_text(record.get("candidate_id"), f"{label}.candidate_id")
+    source_binding = _rev3_source_binding(record.get("source_binding"), f"{label}.source_binding")
+    raw_participants = record.get("participant_bindings")
+    if not isinstance(raw_participants, list):
+        _fail("PARTICIPANT_BINDING_INVALID", f"{label}.participant_bindings must be an array")
+    participant_bindings: list[dict[str, object]] = []
+    for index, item in enumerate(raw_participants):
+        binding = _json_object(item, f"{label}.participant_bindings[{index}]")
+        _exact_keys(binding, {"role", "participant_ref"}, f"{label}.participant_bindings[{index}]")
+        role = _json_text(binding.get("role"), f"{label}.participant_bindings[{index}].role")
+        if role not in participant_roles:
+            _fail(
+                "PARTICIPANT_BINDING_INVALID",
+                f"{label}.participant_bindings[{index}].role is invalid",
+            )
+        participant_bindings.append(
+            {
+                "role": role,
+                "participant_ref": _participant_ref(
+                    binding.get("participant_ref"),
+                    f"{label}.participant_bindings[{index}].participant_ref",
+                    participant_kinds,
+                ),
+            }
+        )
+    source_context = _json_object(record.get("source_context"), f"{label}.source_context")
+    _exact_keys(source_context, set(SOURCE_CONTEXT_KEYS), f"{label}.source_context")
+    context: dict[str, str] = {}
+    for key in SOURCE_CONTEXT_KEYS:
+        context_value = _json_text(source_context.get(key), f"{label}.source_context.{key}")
+        if context_value not in context_values[key]:
+            _fail(
+                "SOURCE_CONTEXT_VALUE_INVALID",
+                f"{label}.source_context.{key} is not in the declared model vocabulary",
+            )
+        context[key] = context_value
+    return {
+        "source_instance_id": source_instance_id,
+        "candidate_id": candidate_id,
+        "source_binding": source_binding,
+        "participant_bindings": participant_bindings,
+        "source_context": context,
+    }
+
+
+def _source_binding_key(binding: Mapping[str, object]) -> tuple[object, ...]:
+    return (
+        binding["kind"],
+        binding["archive_member"],
+        binding["archive_member_sha256"],
+        binding["row_ordinal"],
+        tuple(cast(list[str], binding["source_columns"])),
+        tuple(cast(list[str], binding["source_values"])),
+    )
+
+
+def _source_instance_tuple_bytes(record: Mapping[str, object]) -> bytes:
+    binding = cast(Mapping[str, object], record["source_binding"])
+    binding_payload = [
+        ["rev3", None],
+        [
+            binding["archive_member"],
+            bytes.fromhex(cast(str, binding["archive_member_sha256"])),
+            binding["row_ordinal"],
+            list(cast(list[str], binding["source_columns"])),
+            list(cast(list[str], binding["source_values"])),
+        ],
+    ]
+    participant_payload = []
+    for item in cast(list[dict[str, object]], record["participant_bindings"]):
+        participant_ref = cast(Mapping[str, str], item["participant_ref"])
+        participant_payload.append(
+            [
+                [item["role"], None],
+                [[participant_ref["participant_kind"], None], participant_ref["semantic_ref"]],
+            ]
+        )
+    context = cast(Mapping[str, str], record["source_context"])
+    context_payload = [[context[key], None] for key in SOURCE_CONTEXT_KEYS]
+    return encode_canonical([binding_payload, participant_payload, context_payload])
+
+
+def _source_instance_id(candidate_id: str, index: int) -> str:
+    encoded = base64.urlsafe_b64encode(candidate_id.encode("utf-8")).decode("ascii").rstrip("=")
+    return f"si.v1/{encoded}/{index}"
+
+
+def _raw_artifact_binding(value: object, label: str, expected_path: str) -> dict[str, str]:
+    record = _json_object(value, label)
+    _exact_keys(record, set(RAW_ARTIFACT_BINDING_KEYS), label)
+    path = _json_text(record.get("path"), f"{label}.path")
+    if path != expected_path:
+        _fail("CANDIDATE_UNIVERSE_INPUT_BINDING_MISMATCH", f"{label}.path is not the admitted path")
+    return {
+        "path": path,
+        "raw_sha256": _json_digest(record.get("raw_sha256"), f"{label}.raw_sha256").hex(),
+    }
+
+
+def _candidate_universe_input_bindings(value: object) -> dict[str, object]:
+    inputs = _json_object(value, "candidate universe input_bindings")
+    _exact_keys(inputs, set(INPUT_BINDING_KEYS), "candidate universe input_bindings")
+    declared_model = _raw_artifact_binding(
+        inputs.get("declared_model"),
+        "candidate universe declared_model",
+        EXPECTED_STATIC_INPUT_PATHS["declared_model"],
+    )
+    review_additions = _raw_artifact_binding(
+        inputs.get("review_additions"),
+        "candidate universe review_additions",
+        EXPECTED_STATIC_INPUT_PATHS["review_additions"],
+    )
+    rev3_record = _json_object(inputs.get("rev3_candidate_source"), "candidate universe rev3 input")
+    _exact_keys(rev3_record, set(REV3_INPUT_BINDING_KEYS), "candidate universe rev3 input")
+    if rev3_record.get("archive_member") != REV3_CENSUS_MEMBER:
+        _fail(
+            "CANDIDATE_UNIVERSE_INPUT_BINDING_MISMATCH",
+            "candidate universe REV3 member is not the C census",
+        )
+    rev3_binding = {
+        "archive_member": REV3_CENSUS_MEMBER,
+        "archive_member_sha256": _json_digest(
+            rev3_record.get("archive_member_sha256"), "candidate universe REV3 member digest"
+        ).hex(),
+        "source_package_sha256": _json_digest(
+            rev3_record.get("source_package_sha256"), "candidate universe REV3 package digest"
+        ).hex(),
+    }
+    result: dict[str, object] = {
+        "declared_model": declared_model,
+        "review_additions": review_additions,
+        "rev3_candidate_source": rev3_binding,
+    }
+    for key in ("b2_artifacts", "b1_final_artifacts"):
+        raw_items = inputs.get(key)
+        if not isinstance(raw_items, list):
+            _fail("CANDIDATE_UNIVERSE_INPUT_BINDING_INVALID", f"{key} must be an array")
+        expected_paths = cast(tuple[str, ...], EXPECTED_STATIC_INPUT_PATHS[key])
+        if len(raw_items) != len(expected_paths):
+            _fail(
+                "CANDIDATE_UNIVERSE_INPUT_BINDING_INVALID", f"{key} does not cover its fixed inputs"
+            )
+        result[key] = [
+            _raw_artifact_binding(item, f"candidate universe {key}[{index}]", expected_paths[index])
+            for index, item in enumerate(raw_items)
+        ]
+    return result
+
+
+def _candidate_reconciliation_counts(candidates: list[Mapping[str, object]], value: object) -> None:
+    counts = _json_object(value, "candidate reconciliation counts")
+    _exact_keys(counts, set(RECONCILIATION_COUNT_KEYS), "candidate reconciliation counts")
+    actual: dict[str, int] = {key: 0 for key in RECONCILIATION_COUNT_KEYS}
+    for item in candidates:
+        status = cast(str, item["reconciliation_status"])
+        actual[status] += 1
+    actual["new_b2_derived"] = 0
+    expected = {
+        key: counts[key]
+        for key in RECONCILIATION_COUNT_KEYS
+        if isinstance(counts[key], int) and not isinstance(counts[key], bool)
+    }
+    if len(expected) != len(RECONCILIATION_COUNT_KEYS) or expected != actual:
+        _fail(
+            "CANDIDATE_RECONCILIATION_COUNT_MISMATCH",
+            "candidate reconciliation counts are not recomputed",
+        )
+
+
+def _candidate_universe_index(
+    artifact: ResolvedArtifact, model_vocabularies: ModelVocabularies
+) -> _CandidateUniverseIndex:
+    universe = _json_object(artifact.json_value, "candidate universe")
+    _exact_keys(
+        universe,
+        {
+            "schema",
+            "model_id",
+            "input_bindings",
+            "candidate_count",
+            "candidate_reconciliation_counts",
+            "source_instance_count",
+            "candidates",
+            "source_instances",
+        },
+        "candidate universe",
+    )
+    if universe.get("schema") != CANDIDATE_UNIVERSE_SCHEMA:
+        _fail("SCHEMA_MISMATCH", "candidate universe schema is not V2")
+    if universe.get("model_id") != CANDIDATE_UNIVERSE_MODEL_ID:
+        _fail("MODEL_IDENTITY_MISMATCH", "candidate universe model is not the declared C model")
+    rev3_input = _candidate_universe_input_bindings(universe.get("input_bindings"))
+    participant_kinds, participant_roles, context_values = model_vocabularies
+    raw_candidates = universe.get("candidates")
+    if not isinstance(raw_candidates, list):
+        _fail("CANDIDATE_UNIVERSE_INVALID", "candidate universe candidates must be an array")
+    candidates_by_id: dict[str, Mapping[str, object]] = {}
+    identities_by_digest: dict[str, Mapping[str, object]] = {}
+    bindings_by_id: dict[str, Mapping[str, object]] = {}
+    for index, raw_candidate in enumerate(raw_candidates):
+        candidate = _candidate_record(raw_candidate, f"candidate[{index}]", participant_kinds)
+        if _candidate_identity_for_record(candidate) != cast(
+            dict[str, str], candidate["candidate_identity"]
+        ):
+            _fail(
+                "CANDIDATE_IDENTITY_MISMATCH",
+                f"candidate[{index}] identity does not match its fixed C preimage",
+            )
+        candidate_id = cast(str, candidate["candidate_id"])
+        if candidate_id in candidates_by_id:
+            _fail("DUPLICATE_CANDIDATE_ID", f"candidate {candidate_id!r} appears more than once")
+        identity = cast(Mapping[str, object], candidate["candidate_identity"])
+        digest_hex = cast(str, identity["digest_hex"])
+        if digest_hex in identities_by_digest:
+            _fail(
+                "DUPLICATE_CANDIDATE_IDENTITY",
+                f"candidate identity {digest_hex!r} appears more than once",
+            )
+        frozen_candidate = _frozen_mapping(candidate)
+        candidates_by_id[candidate_id] = frozen_candidate
+        identities_by_digest[digest_hex] = cast(
+            Mapping[str, object], _frozen_mapping(dict(identity))
+        )
+        bindings_by_id[candidate_id] = cast(
+            Mapping[str, object],
+            _frozen_mapping(cast(Mapping[str, object], candidate["source_binding"])),
+        )
+    candidate_count = universe.get("candidate_count")
+    if (
+        isinstance(candidate_count, bool)
+        or not isinstance(candidate_count, int)
+        or candidate_count != len(candidates_by_id)
+    ):
+        _fail("CANDIDATE_COUNT_MISMATCH", "candidate_count does not match candidates")
+    _candidate_reconciliation_counts(
+        list(candidates_by_id.values()), universe.get("candidate_reconciliation_counts")
+    )
+
+    raw_instances = universe.get("source_instances")
+    if not isinstance(raw_instances, list):
+        _fail("SOURCE_INSTANCE_LEDGER_INVALID", "source_instances must be an array")
+    instances_by_id: dict[str, Mapping[str, object]] = {}
+    instances_by_candidate: dict[str, list[Mapping[str, object]]] = {}
+    for index, raw_instance in enumerate(raw_instances):
+        instance = _source_instance_record(
+            raw_instance,
+            f"source_instance[{index}]",
+            participant_kinds,
+            participant_roles,
+            context_values,
+        )
+        instance_id = cast(str, instance["source_instance_id"])
+        if instance_id in instances_by_id:
+            _fail(
+                "DUPLICATE_SOURCE_INSTANCE_ID",
+                f"source instance {instance_id!r} appears more than once",
+            )
+        candidate_id = cast(str, instance["candidate_id"])
+        if candidate_id not in candidates_by_id:
+            _fail(
+                "SOURCE_INSTANCE_CANDIDATE_MISMATCH",
+                f"source instance {instance_id!r} has no candidate",
+            )
+        candidate = candidates_by_id[candidate_id]
+        candidate_binding = cast(Mapping[str, object], candidate["source_binding"])
+        instance_binding = cast(Mapping[str, object], instance["source_binding"])
+        if _source_binding_key(candidate_binding) != _source_binding_key(instance_binding):
+            _fail(
+                "CANDIDATE_SOURCE_BINDING_MISMATCH",
+                f"source instance {instance_id!r} binding differs from candidate",
+            )
+        candidate_refs = list(cast(tuple[Mapping[str, str], ...], candidate["participant_refs"]))
+        instance_refs = [
+            cast(Mapping[str, str], cast(Mapping[str, object], item)["participant_ref"])
+            for item in cast(list[Mapping[str, object]], instance["participant_bindings"])
+        ]
+        if instance_refs != candidate_refs:
+            _fail(
+                "PARTICIPANT_BINDING_MISMATCH",
+                f"source instance {instance_id!r} participants differ from candidate",
+            )
+        frozen_instance = _frozen_mapping(instance)
+        instances_by_id[instance_id] = frozen_instance
+        instances_by_candidate.setdefault(candidate_id, []).append(frozen_instance)
+
+    for candidate_id in candidates_by_id:
+        instances = instances_by_candidate.get(candidate_id, [])
+        if not instances:
+            _fail(
+                "SOURCE_INSTANCE_COVERAGE_MISMATCH",
+                f"candidate {candidate_id!r} has no source instance",
+            )
+        tuple_keys = [_source_instance_tuple_bytes(instance) for instance in instances]
+        if len(set(tuple_keys)) != len(tuple_keys):
+            _fail(
+                "DUPLICATE_SOURCE_INSTANCE_TUPLE",
+                f"candidate {candidate_id!r} has duplicate source tuples",
+            )
+        for index, tuple_key in enumerate(sorted(tuple_keys)):
+            instance = instances[tuple_keys.index(tuple_key)]
+            expected_id = _source_instance_id(candidate_id, index)
+            if instance["source_instance_id"] != expected_id:
+                _fail(
+                    "SOURCE_INSTANCE_ID_MISMATCH",
+                    f"source instance ID is not deterministic for {candidate_id!r}",
+                )
+    source_instance_count = universe.get("source_instance_count")
+    if (
+        isinstance(source_instance_count, bool)
+        or not isinstance(source_instance_count, int)
+        or source_instance_count != len(instances_by_id)
+    ):
+        _fail(
+            "SOURCE_INSTANCE_COUNT_MISMATCH",
+            "source_instance_count does not match source_instances",
+        )
+    return _CandidateUniverseIndex(
+        artifact=artifact,
+        rev3_input_binding=cast(
+            Mapping[str, object],
+            _frozen_mapping(cast(Mapping[str, object], rev3_input["rev3_candidate_source"])),
+        ),
+        candidates_by_id=candidates_by_id,
+        candidate_identities_by_digest=identities_by_digest,
+        candidate_bindings_by_id=bindings_by_id,
+        instances_by_id=instances_by_id,
+        instances_by_candidate_id={
+            candidate_id: tuple(instances)
+            for candidate_id, instances in instances_by_candidate.items()
+        },
+    )
+
+
+def _parse_rev3_rows(raw: bytes, path: str) -> list[list[str]]:
+    try:
+        text = raw.decode("utf-8")
+        rows = list(csv.reader(io.StringIO(text, newline=""), strict=True))
+    except (UnicodeDecodeError, csv.Error) as exc:
+        _fail("REV3_SOURCE_INVALID", f"{path} is not a strict UTF-8 CSV: {exc}")
+    if not rows or rows[0] != list(REV3_SOURCE_COLUMNS):
+        _fail("REV3_SOURCE_COLUMNS_MISMATCH", f"{path} has unexpected header columns")
+    data_rows = rows[1:]
+    for ordinal, row in enumerate(data_rows):
+        if len(row) != len(REV3_SOURCE_COLUMNS):
+            _fail(
+                "REV3_SOURCE_COLUMNS_MISMATCH", f"{path} row {ordinal} has the wrong column count"
+            )
+    return data_rows
+
+
+def _parse_keyed_csv(
+    raw: bytes, path: str, required_columns: frozenset[str]
+) -> list[dict[str, str]]:
+    try:
+        text = raw.decode("utf-8")
+        rows = list(csv.reader(io.StringIO(text, newline=""), strict=True))
+    except (UnicodeDecodeError, csv.Error) as exc:
+        _fail("REV3_SOURCE_INVALID", f"{path} is not a strict UTF-8 CSV: {exc}")
+    if not rows:
+        _fail("REV3_SOURCE_COLUMNS_MISMATCH", f"{path} has no header")
+    header = rows[0]
+    if len(header) != len(set(header)) or not required_columns.issubset(header):
+        _fail("REV3_SOURCE_COLUMNS_MISMATCH", f"{path} lacks required join columns")
+    records: list[dict[str, str]] = []
+    for ordinal, row in enumerate(rows[1:]):
+        if len(row) != len(header):
+            _fail(
+                "REV3_SOURCE_COLUMNS_MISMATCH", f"{path} row {ordinal} has the wrong column count"
+            )
+        records.append(dict(zip(header, row, strict=True)))
+    return records
+
+
+def _reject_duplicate_json_keys(pairs: list[tuple[str, object]]) -> dict[str, object]:
+    result: dict[str, object] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError(f"duplicate JSON key {key!r}")
+        result[key] = value
+    return result
+
+
+def _parse_supporting_requirement_ids(value: str, label: str) -> list[str]:
+    if value.strip() != value:
+        _fail("REV3_SUPPORTING_IDS_INVALID", f"{label} has surrounding whitespace")
+    try:
+        parsed = json.loads(value, object_pairs_hook=_reject_duplicate_json_keys)
+    except (json.JSONDecodeError, ValueError) as exc:
+        _fail("REV3_SUPPORTING_IDS_INVALID", f"{label} is not exact JSON: {exc}")
+    if not isinstance(parsed, list) or any(
+        not isinstance(item, str) or not item for item in parsed
+    ):
+        _fail("REV3_SUPPORTING_IDS_INVALID", f"{label} must be a non-empty text array")
+    ids = [cast(str, item) for item in parsed]
+    keys = [encode_canonical(item) for item in ids]
+    if len(set(keys)) != len(keys):
+        _fail("REV3_SUPPORTING_IDS_INVALID", f"{label} contains duplicate IDs")
+    return sorted(ids, key=encode_canonical)
+
+
+def _normalized_candidate_fields(row: Mapping[str, str]) -> dict[str, object]:
+    if row.get("model_id") != REV3_MODEL_ID:
+        _fail("REV3_MODEL_ID_MISMATCH", "REV3 candidate row model ID is not interaction-model.v1")
+    raw_scope = row.get("scope")
+    raw_relation = row.get("relation")
+    if raw_scope not in REV3_SCOPE_MAP or raw_relation not in REV3_RELATION_MAP:
+        _fail("REV3_SHAPE_MISMATCH", "REV3 candidate row has an unknown scope or relation")
+    shape = (cast(str, raw_scope), cast(str, raw_relation))
+    if shape not in REV3_SHAPES:
+        _fail("REV3_SHAPE_MISMATCH", "REV3 candidate row has an unsupported scope/relation pair")
+    candidate_id = row.get("candidate_id")
+    pair_id = row.get("pair_id")
+    left_family_id = row.get("left_family_id")
+    right_family_id = row.get("right_family_id")
+    supporting_requirement_ids = row.get("supporting_requirement_ids")
+    if any(
+        value is None or not value
+        for value in (
+            candidate_id,
+            pair_id,
+            left_family_id,
+            right_family_id,
+            supporting_requirement_ids,
+        )
+    ):
+        _fail("REV3_SOURCE_NORMALIZATION_INVALID", "REV3 candidate row has an empty identity cell")
+    candidate_id = cast(str, candidate_id)
+    pair_id = cast(str, pair_id)
+    left_family_id = cast(str, left_family_id)
+    right_family_id = cast(str, right_family_id)
+    if raw_relation == "DECLARED_CARD_TRIGGER":
+        if pair_id != left_family_id or pair_id != right_family_id:
+            _fail("REV3_TRIGGER_JOIN_INVALID", "card-trigger row participant cells differ")
+        if _LOWERCASE_UUID_RE.fullmatch(pair_id) is None:
+            _fail(
+                "REV3_TRIGGER_JOIN_INVALID",
+                "card-trigger row does not name a lowercase OSI UUID",
+            )
+        participants = [{"participant_kind": "card", "semantic_ref": pair_id}]
+    else:
+        participants = [
+            {"participant_kind": "requirement_family", "semantic_ref": left_family_id},
+            {"participant_kind": "requirement_family", "semantic_ref": right_family_id},
+        ]
+        if raw_relation == "UNORDERED_BINARY":
+            if left_family_id.encode("utf-8") > right_family_id.encode("utf-8"):
+                _fail(
+                    "REV3_SOURCE_ROW_ORDER_INVALID",
+                    "unordered REV3 family order is not canonical",
+                )
+            participants.sort(
+                key=lambda item: encode_canonical(
+                    [[item["participant_kind"], None], item["semantic_ref"]]
+                )
+            )
+    supporting_ids = _parse_supporting_requirement_ids(
+        cast(str, supporting_requirement_ids),
+        "REV3 supporting_requirement_ids",
+    )
+    if raw_relation == "DECLARED_CARD_TRIGGER" and supporting_ids != [pair_id]:
+        _fail("REV3_TRIGGER_JOIN_INVALID", "card-trigger supporting IDs do not equal the OSI")
+    return {
+        "candidate_id": candidate_id,
+        "scope": REV3_SCOPE_MAP[cast(str, raw_scope)],
+        "relation": REV3_RELATION_MAP[cast(str, raw_relation)],
+        "participant_refs": participants,
+        "supporting_requirement_ids": supporting_ids,
+    }
+
+
 class Rev3ArchiveStore:
     """Verified access to members of the pinned, non-extracted REV3 ZIP."""
 
@@ -262,6 +1195,10 @@ class Rev3ArchiveStore:
         self._raw = raw
         self._archive = archive
         self._manifest_entries = manifest_entries
+
+    @property
+    def archive_sha256(self) -> str:
+        return hashlib.sha256(self._raw).hexdigest()
 
     @classmethod
     def from_root(
@@ -377,6 +1314,13 @@ class Rev3ArchiveStore:
                     f"REV3 member {path!r} has {actual_sha}, expected {expected_sha}",
                 )
         return cls(raw, archive, manifest_entries)
+
+    def expected_member_sha256(self, member_path: str) -> str:
+        path = _relative_path(member_path, "REV3 member path")
+        entry = self._manifest_entries.get(path)
+        if entry is None:
+            _fail("REV3_MEMBER_MISSING", f"REV3 member {path!r} is not in the manifest")
+        return entry[1]
 
     def resolve_member(
         self,
@@ -498,6 +1442,284 @@ class AuthoritySourceResolver:
         return self.resolve_repository_artifact(
             binding.path, binding.raw_sha256, binding.schema_or_null
         )
+
+    def _candidate_universe(self, binding: SourceBindingDigestV1) -> _CandidateUniverseIndex:
+        if binding.artifact_role != "candidate_universe":
+            _fail(
+                "CANDIDATE_UNIVERSE_BINDING_INVALID",
+                "candidate resolution requires a candidate_universe binding",
+            )
+        if (
+            binding.path != CANDIDATE_UNIVERSE_PATH
+            or binding.schema_or_null != CANDIDATE_UNIVERSE_SCHEMA
+        ):
+            _fail(
+                "CANDIDATE_UNIVERSE_BINDING_INVALID",
+                "candidate resolution requires the admitted candidate-universe path and schema",
+            )
+        artifact = self.resolve_source_binding(binding)
+        universe = _json_object(artifact.json_value, "candidate universe")
+        inputs = _candidate_universe_input_bindings(universe.get("input_bindings"))
+        declared_model = cast(Mapping[str, str], inputs["declared_model"])
+        model_binding = SourceBindingDigestV1(
+            artifact_role="declared_model",
+            path=declared_model["path"],
+            schema_or_null=DECLARED_MODEL_SCHEMA,
+            raw_sha256=bytes.fromhex(declared_model["raw_sha256"]),
+        )
+        model_artifact = self.resolve_source_binding(model_binding)
+        model_vocabularies = _model_vocabularies(model_artifact.json_value)
+        return _candidate_universe_index(artifact, model_vocabularies)
+
+    def resolve_candidate(
+        self,
+        candidate_id: str,
+        candidate_identity: Mapping[str, object],
+        candidate_universe_binding: SourceBindingDigestV1,
+    ) -> ResolvedCandidate:
+        """Resolve one exact candidate from the verified C candidate ledger."""
+
+        requested_candidate_id = _json_text(candidate_id, "candidate_id")
+        requested_identity = _candidate_identity_reference(candidate_identity, "candidate_identity")
+        index = self._candidate_universe(candidate_universe_binding)
+        record = index.candidates_by_id.get(requested_candidate_id)
+        if record is None:
+            _fail(
+                "CANDIDATE_BINDING_MISMATCH",
+                f"candidate {requested_candidate_id!r} is not in the candidate universe",
+            )
+        persisted_identity = cast(Mapping[str, object], record["candidate_identity"])
+        if dict(persisted_identity) != requested_identity:
+            _fail(
+                "CANDIDATE_IDENTITY_MISMATCH",
+                f"candidate {requested_candidate_id!r} identity differs from the ledger",
+            )
+        source_binding = index.candidate_bindings_by_id[requested_candidate_id]
+        return ResolvedCandidate(
+            candidate_id=requested_candidate_id,
+            candidate_identity=_frozen_mapping(requested_identity),
+            candidate_universe=index.artifact,
+            candidate_universe_binding=candidate_universe_binding,
+            candidate_record=record,
+            source_binding=source_binding,
+            _verification_token=_VERIFIED_CANDIDATE_TOKEN,
+        )
+
+    def _verify_declared_card_trigger_join(
+        self, archive: Rev3ArchiveStore, oracle_semantic_identity: str
+    ) -> None:
+        resolution_path = REV3_RESOLUTION_MEMBER
+        resolution_artifact = self.resolve_rev3_member(
+            resolution_path, archive.expected_member_sha256(resolution_path)
+        )
+        resolutions = _parse_keyed_csv(
+            resolution_artifact.raw_bytes,
+            resolution_path,
+            frozenset(
+                {
+                    "oracle_semantic_identity",
+                    "deck_row_id",
+                    "source_row_id",
+                    "source_snapshot_file",
+                    "source_line_number",
+                    "oracle_source_record_id",
+                }
+            ),
+        )
+        selected = [
+            row
+            for row in resolutions
+            if row["oracle_semantic_identity"] == oracle_semantic_identity
+        ]
+        if len(selected) != 1 or any(
+            not selected[0][column]
+            for column in (
+                "deck_row_id",
+                "source_row_id",
+                "source_snapshot_file",
+                "source_line_number",
+                "oracle_source_record_id",
+            )
+        ):
+            _fail(
+                "REV3_TRIGGER_JOIN_INVALID",
+                f"OSI {oracle_semantic_identity!r} does not resolve exactly once",
+            )
+        source_record_id = selected[0]["oracle_source_record_id"]
+        index_path = REV3_SOURCE_INDEX_MEMBER
+        index_artifact = self.resolve_rev3_member(
+            index_path, archive.expected_member_sha256(index_path)
+        )
+        index_rows = _parse_keyed_csv(
+            index_artifact.raw_bytes,
+            index_path,
+            frozenset({"oracle_semantic_identity", "source_record_id"}),
+        )
+        matches = [
+            row
+            for row in index_rows
+            if row["oracle_semantic_identity"] == oracle_semantic_identity
+            and row["source_record_id"] == source_record_id
+        ]
+        if len(matches) != 1:
+            _fail(
+                "REV3_TRIGGER_JOIN_INVALID",
+                f"OSI {oracle_semantic_identity!r} raw source join is not unique",
+            )
+
+    def _verify_candidate_normalization(
+        self,
+        candidate: Mapping[str, object],
+        source_artifact: ResolvedArtifact,
+        rows: list[list[str]],
+        row_ordinal: int,
+        archive: Rev3ArchiveStore,
+    ) -> None:
+        row = dict(zip(REV3_SOURCE_COLUMNS, rows[row_ordinal], strict=True))
+        normalized = _normalized_candidate_fields(row)
+        if normalized["relation"] == "declared_card_trigger":
+            self._verify_declared_card_trigger_join(archive, cast(str, row["pair_id"]))
+        if candidate["candidate_id"] != normalized["candidate_id"]:
+            _fail(
+                "REV3_CANDIDATE_NORMALIZATION_MISMATCH",
+                f"{source_artifact.path} row {row_ordinal} has a different candidate_id",
+            )
+        if candidate["scope"] != normalized["scope"]:
+            _fail(
+                "REV3_CANDIDATE_NORMALIZATION_MISMATCH",
+                f"{source_artifact.path} row {row_ordinal} has a different scope",
+            )
+        if candidate["relation"] != normalized["relation"]:
+            _fail(
+                "REV3_CANDIDATE_NORMALIZATION_MISMATCH",
+                f"{source_artifact.path} row {row_ordinal} has a different relation",
+            )
+        candidate_participants = list(
+            cast(tuple[Mapping[str, str], ...], candidate["participant_refs"])
+        )
+        if candidate_participants != normalized["participant_refs"]:
+            _fail(
+                "REV3_CANDIDATE_NORMALIZATION_MISMATCH",
+                f"{source_artifact.path} row {row_ordinal} has different participants",
+            )
+        candidate_supporting_ids = list(
+            cast(tuple[str, ...], candidate["supporting_requirement_ids"])
+        )
+        if candidate_supporting_ids != normalized["supporting_requirement_ids"]:
+            _fail(
+                "REV3_CANDIDATE_NORMALIZATION_MISMATCH",
+                f"{source_artifact.path} row {row_ordinal} has different supporting IDs",
+            )
+
+    def resolve_source_instance(
+        self,
+        candidate: ResolvedCandidate,
+        source_instance_id: str,
+    ) -> ResolvedSourceInstance:
+        """Resolve one exact REV3 source instance owned by ``candidate``."""
+
+        if (
+            not isinstance(candidate, ResolvedCandidate)
+            or candidate._verification_token is not _VERIFIED_CANDIDATE_TOKEN
+        ):
+            _fail(
+                "CANDIDATE_UNVERIFIED",
+                "source-instance resolution requires a resolver-verified candidate",
+            )
+        requested_instance_id = _json_text(source_instance_id, "source_instance_id")
+        index = self._candidate_universe(candidate.candidate_universe_binding)
+        persisted_candidate = index.candidates_by_id.get(candidate.candidate_id)
+        if persisted_candidate is None:
+            _fail(
+                "CANDIDATE_BINDING_MISMATCH",
+                f"candidate {candidate.candidate_id!r} disappeared from the candidate universe",
+            )
+        if dict(cast(Mapping[str, object], persisted_candidate["candidate_identity"])) != dict(
+            candidate.candidate_identity
+        ):
+            _fail(
+                "CANDIDATE_IDENTITY_MISMATCH",
+                f"candidate {candidate.candidate_id!r} identity changed after resolution",
+            )
+        instance = index.instances_by_id.get(requested_instance_id)
+        if instance is None:
+            _fail(
+                "SOURCE_INSTANCE_BINDING_MISMATCH",
+                f"source instance {requested_instance_id!r} is not in the candidate universe",
+            )
+        if instance["candidate_id"] != candidate.candidate_id:
+            _fail(
+                "SOURCE_INSTANCE_CANDIDATE_MISMATCH",
+                f"source instance {requested_instance_id!r} belongs to another candidate",
+            )
+        candidate_binding = cast(Mapping[str, object], persisted_candidate["source_binding"])
+        instance_binding = cast(Mapping[str, object], instance["source_binding"])
+        if _source_binding_key(candidate_binding) != _source_binding_key(instance_binding):
+            _fail(
+                "CANDIDATE_SOURCE_BINDING_MISMATCH",
+                f"source instance {requested_instance_id!r} does not copy the candidate binding",
+            )
+        rev3_input = index.rev3_input_binding
+        if (
+            rev3_input["archive_member"] != candidate_binding["archive_member"]
+            or rev3_input["archive_member_sha256"] != candidate_binding["archive_member_sha256"]
+        ):
+            _fail(
+                "CANDIDATE_SOURCE_BINDING_MISMATCH",
+                "candidate binding differs from the candidate-universe REV3 input binding",
+            )
+        archive = self._archive()
+        if archive.archive_sha256 != rev3_input["source_package_sha256"]:
+            _fail(
+                "REV3_ARCHIVE_BINDING_MISMATCH",
+                "configured REV3 archive differs from the candidate-universe package binding",
+            )
+        source_artifact = self.resolve_rev3_member(
+            cast(str, instance_binding["archive_member"]),
+            cast(str, instance_binding["archive_member_sha256"]),
+        )
+        rows = _parse_rev3_rows(source_artifact.raw_bytes, source_artifact.path)
+        row_ordinal = cast(int, instance_binding["row_ordinal"])
+        if row_ordinal >= len(rows):
+            _fail(
+                "REV3_ROW_ORDINAL_OUT_OF_RANGE",
+                f"REV3 row ordinal {row_ordinal} is outside {len(rows)} rows",
+            )
+        expected_values = list(cast(tuple[str, ...], instance_binding["source_values"]))
+        actual_values = rows[row_ordinal]
+        if actual_values != expected_values:
+            _fail(
+                "REV3_SOURCE_ROW_MISMATCH",
+                f"REV3 row {row_ordinal} does not match the persisted source values",
+            )
+        self._verify_candidate_normalization(
+            persisted_candidate,
+            source_artifact,
+            rows,
+            row_ordinal,
+            archive,
+        )
+        return ResolvedSourceInstance(
+            candidate=candidate,
+            source_instance_id=requested_instance_id,
+            source_instance_record=instance,
+            source_binding=instance_binding,
+            source_artifact=source_artifact,
+        )
+
+    def resolve_candidate_source_instance(
+        self,
+        candidate_id: str,
+        candidate_identity: Mapping[str, object],
+        source_instance_id: str,
+        candidate_universe_binding: SourceBindingDigestV1,
+    ) -> ResolvedSourceInstance:
+        """Resolve and join one candidate with its exact REV3 source instance."""
+
+        candidate = self.resolve_candidate(
+            candidate_id, candidate_identity, candidate_universe_binding
+        )
+        return self.resolve_source_instance(candidate, source_instance_id)
 
     def resolve_locator(self, artifact: ResolvedArtifact, locator: Locator) -> ResolvedLocator:
         artifact = self._reverify_artifact(artifact)
@@ -716,10 +1938,15 @@ class AuthoritySourceResolver:
 
 __all__ = [
     "ACCEPTANCE_EVENT_SCHEMA_V1",
+    "CANDIDATE_UNIVERSE_PATH",
+    "CANDIDATE_UNIVERSE_SCHEMA",
     "EXPECTED_REV3_ARCHIVE_SHA256",
     "REV3_CENSUS_MEMBER",
+    "REV3_SOURCE_COLUMNS",
     "AuthoritySourceResolver",
     "ResolutionError",
     "ResolutionStatus",
+    "ResolvedCandidate",
+    "ResolvedSourceInstance",
     "Rev3ArchiveStore",
 ]
