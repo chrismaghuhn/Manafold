@@ -318,28 +318,31 @@ Every positive relation theorem must establish all applicable obligations:
 ### 5.2 Causal-chain representation
 
 The semantic proof payload is a closed structured value, not a prose-only
-claim. Its normalized form is:
+claim. Its normalized form is the fixed CausalChainEdgeV1 array:
 
 ~~~
 causal_chain = [
-  {
-    ordinal,
-    from_role_position,
-    operation,
-    through_boundary_refs,
-    event_or_effect_role_position_or_null,
-    to_role_position_or_null,
-    b1_final_citation_refs
-  }, ...
+  CausalChainEdgeV1, ...
 ]
 ~~~
 
-ordinal is the complete edge identity in V1. It is an unsigned u32 and the
-chain must contain exactly 0, 1, ..., n-1 in order. V1 defines no edge_id and
-does not permit a second edge identity. Applications bind this chain through
-the exact causal_chain_ordinals value defined in §12.4 and §12.10.
+CausalChainEdgeV1 is exactly:
 
-operation is a closed vocabulary owned by this future authority schema:
+~~~
+[ordinal_u32, from_role_position_u32, operation_enum,
+ through_boundary_refs_sorted, event_or_effect_role_position_or_null,
+ to_role_position_or_null, b1_final_citation_refs_sorted]
+~~~
+
+ordinal_u32 is the complete edge identity in V1. The chain must contain
+exactly 0, 1, ..., n-1 in order. through_boundary_refs_sorted contains
+B2BoundaryRefV1 values sorted by canonical CBOR bytes, and
+b1_final_citation_refs_sorted contains B1FinalCitationRefV1 values in their
+canonical order. V1 defines no second edge identity. Applications bind this
+chain through the exact causal_chain_ordinals value defined in §12.4 and
+§12.10.
+
+operation_enum is a closed enum owned by this future authority schema:
 
 ~~~
 reads
@@ -356,6 +359,26 @@ triggers_ability
 orders_event
 supplies_choice
 ~~~
+
+The exact relation-channel vocabulary is:
+
+~~~
+participant_boundary
+event_or_effect_causality
+target_or_choice
+zone_or_object_identity
+control_or_ownership
+replacement_or_layer
+trigger_or_lki
+information_or_visibility
+ordering_or_temporal
+decision_actor
+format_and_declared_scope
+~~~
+
+RequiredRelationChannelsV1 is a duplicate-free array of these enum values in
+the order shown. Its empty form is allowed when the causal chain has no
+additional relation-channel obligation; it is still a present field.
 
 If a required operation is not representable, the authority cannot be
 accepted. It does not add an other escape hatch; a versioned authority-model
@@ -389,13 +412,7 @@ separation_kind =
   | independent_effect_separation
 
 separation_obligations = [
-  {
-    channel,
-    required_conclusion = separated | not_relevant,
-    required_boundary_fact_shape,
-    required_evidence_kinds,
-    rationale
-  }, ...
+  SeparationObligationV1, ...
 ]
 ~~~
 
@@ -415,11 +432,11 @@ decision_actor
 format_and_declared_scope
 ~~~
 
-The theorem must contain exactly one obligation for every channel in the
-vocabulary, in that order. The obligation fixes whether each member must
-prove separated or not_relevant. The relation application records and proves
-that exact conclusion for every member. An omitted, unknown, or unresolved
-channel is not separation proof.
+The theorem must contain exactly one SeparationObligationV1 for every channel
+in the vocabulary, in that order. The obligation fixes whether each member
+must prove separated or not_relevant. The relation application records and
+proves that exact conclusion for every member. An omitted, unknown, or
+unresolved channel is not separation proof.
 
 not_applicable in a domain assessment does not itself prove separation. It
 only proves that the domain is irrelevant to the separate domain review.
@@ -733,6 +750,15 @@ manafold.m2.5.c.interaction-review-authority.v1
 The artifact has no self-digest field. Its raw SHA-256 is bound by a future C
 closure input record. It cannot cite itself as semantic evidence.
 
+source_bindings is the exact complete set of ArtifactBindingV1 values needed
+by every theorem, application, supersession, acceptance event, and model in
+this artifact. It is sorted by the canonical CBOR bytes of the complete
+binding tuple, duplicate-free, and contains no unused binding. It includes
+acceptance-event leaves and reviewer-roster leaves for resolution, but this
+root-level set is not part of any theorem, application, or supersession
+identity. Adding a later record may change this root set without changing
+existing leaf-event bytes or existing accepted record IDs.
+
 ### 12.2 Common binding types
 
 ArtifactBindingV1 has exactly:
@@ -740,10 +766,41 @@ ArtifactBindingV1 has exactly:
 ~~~
 authority_kind
 path
-schema
+schema_or_null
 raw_sha256
 artifact_role
 ~~~
+
+authority_kind is exactly model, rev3, b2, b1_final, c_candidate,
+reviewer_roster, or acceptance_event. schema_or_null is null only for one of
+these exact raw REV3 members:
+
+~~~
+derived/Pair_Interaction_Census_REV3.csv
+inputs/deck_row_source_resolution_REV3.csv
+source/raw/source_record_index_REV3.csv
+source/raw/oracle_cards_selected_REV3.jsonl
+~~~
+
+For every other admitted path, schema_or_null is the exact logical schema
+identifier listed below; null is not a substitute for a missing schema:
+
+| Artifact role | Exact schema_or_null rule |
+| --- | --- |
+| declared_model | manafold.m2.5.c.declared-interaction-model.v2 |
+| rev3_source with inputs/interaction_model_v1.json | interaction-model.v1 |
+| b2_catalog | manafold.m2.5.b2.requirement-family-catalog.v1 |
+| b2_classifications | manafold.m2.5.b2.card-semantic-classifications.v1 |
+| b2_closure | manafold.m2.5.b2.classification-closure.v1 |
+| b1_final_citations | manafold.m2.5.b1.official-authority-citations.v3 |
+| b1_final_closure | manafold.m2.5.b1.official-authority-citation-closure.v2 |
+| candidate_universe | manafold.m2.5.c.interaction-candidate-universe.v2 |
+| acceptance_event_leaf | manafold.m2.5.c.review-acceptance-event.v1 |
+| reviewer_roster_leaf | manafold.m2.5.c.reviewer-roster.v1 |
+
+An unlisted path, role, or schema combination fails source-binding validation.
+The raw REV3 member list is closed; a future raw member requires a versioned
+authority amendment rather than a null by extension.
 
 artifact_role is one of:
 
@@ -867,7 +924,7 @@ source_binding_digests_sorted, review_evidence_refs]
 SourceBindingDigestV1 has exactly:
 
 ~~~
-[artifact_role, path, schema, raw_sha256_bytes]
+[artifact_role, path, schema_or_null, raw_sha256_bytes]
 ~~~
 
 ReviewerRoleBindingV1 has exactly [reviewer_id, roles_sorted], and
@@ -940,8 +997,8 @@ rules_authority_maintainer role. A schema or cross-artifact acceptance also
 requires architecture_maintainer. A proof that asserts hidden-information or
 player-visible consequences requires information_safety_reviewer. A final
 evidence/negative-contract acceptance requires conformance_maintainer. The
-project_owner may exercise a missing steward role only when governance records
-that appointment in the same immutable review event. In solo mode,
+project_owner is valid only when the bound roster assigns that role. No
+event-local role override or appointment field exists. In solo mode,
 review_mode = solo_separate_self_review requires the complete separate
 self-review checklist; it does not waive any role or evidence requirement.
 
@@ -1011,26 +1068,18 @@ instance IDs. For unordered_binary, participant references use canonical order.
 For directional_binary, role position and edge direction are preserved. A role
 cannot be inferred from its position.
 
-proof_payload is one closed variant:
+proof_payload is exactly one RelationProofPayloadV1 variant:
 
 ~~~
-positive_interaction {
-  causal_chain[]
-  required_relation_channels[]
-  class_projection_template_or_null
-}
-
-positive_separation {
-  separation_kind
-  separation_obligations[]
-}
-
-model_bound_scope {
-  model_boundary_ref
-  reason_code
-  observed_candidate_shape
-  positive_boundary_evidence_refs[]
-}
+RelationProofPayloadV1 =
+  ["positive_interaction",
+   [CausalChainV1, RequiredRelationChannelsV1,
+    class_projection_template_or_null]]
+  | ["positive_separation",
+     [separation_kind, SeparationObligationsV1]]
+  | ["model_bound_scope",
+     [ModelBoundaryRefV1, reason_code, observed_candidate_shape,
+      positive_boundary_evidence_refs]]
 ~~~
 
 preconditions is an ordered, unique array. It is a tagged union, not a
@@ -1147,7 +1196,7 @@ An application member cannot inherit channel coverage from the batch or from
 another member. For positive_interaction, causal_chain_ordinals must equal
 the theorem's complete ordered ordinal sequence. If a class is emitted, the
 theorem must carry a non-null class_projection_template and the member's
-class_projection_equivalence must be the structured value defined in §12.10.
+class_projection_equivalence must be the structured value defined in §12.11.
 Null is allowed only for a non-class disposition.
 
 ### 12.5 DomainProofV1 and DomainApplicationV1
@@ -1260,12 +1309,23 @@ SupersessionRecordV1 has exactly:
 supersession_id
 superseded_record_id
 replacement_record_id
+superseded_record_kind
+replacement_record_kind
 reason_code
 source_evidence_refs
 acceptance
 ~~~
 
-replacement_record_id may be null only for a revocation. The allowed reason
+The record-kind vocabulary is exactly relation_theorem_record,
+relation_application_record, domain_theorem_record, domain_application_record,
+context_theorem_record, or context_application_record. replacement_record_id
+and replacement_record_kind are both null only for a revocation. Otherwise
+both are required, and replacement_record_kind must equal
+superseded_record_kind. The validator resolves both IDs and independently
+checks that their prefixes and record payload kinds agree with that field. A
+RelationProof record cannot be replaced by a DomainApplication record.
+
+The allowed reason
 codes are:
 
 ~~~
@@ -1305,9 +1365,9 @@ proposed V1 schema, not implementation advice.
 | supersession | lineage | required only in a SupersessionRecordV1; replacement may be explicit null for revocation | one current replacement or one revocation; no cycles or competing successors | old records remain readable; current derivation rejects superseded records |
 
 Nullability is closed. Optional semantic values use explicit null only where
-this document says so: replacement_record_id in a revocation, optional
-context-dependent B2/B1 reference arrays represented as empty arrays, and no
-other record field. Missing and null are not equivalent.
+this document says so: replacement_record_id and replacement_record_kind in a
+revocation, optional context-dependent B2/B1 reference arrays represented as
+empty arrays, and no other record field. Missing and null are not equivalent.
 
 ### 12.9 Closed precondition and evidence shapes
 
@@ -1362,7 +1422,7 @@ the exact role/participant tuple and requires the corresponding candidate,
 REV3, or B2 locator. b2_boundary requires the exact B2 catalog boundary and,
 for a card-derived assignment, the exact B2 assignment/classification
 locator. class_projection requires the complete ClassProjectionV1 value and
-the structured proof in §12.10. These evidence-kind rules are selected by the
+the structured proof in §12.11. These evidence-kind rules are selected by the
 tag; a record cannot override them with an open required_evidence_ref_kinds
 list.
 
@@ -1410,7 +1470,105 @@ converts them to these fixed semantic arrays before identity or ordering. An
 unrecognized clause, evidence shape, channel, or comparison is a schema
 failure, not a reason to accept free text.
 
-### 12.10 Structured class-projection and separation coverage
+### 12.10 Closed nested semantic types
+
+The nested values included in the application preimages use these exact
+arrays:
+
+~~~
+CandidateUniverseBindingV1 = [path, schema, raw_sha256_bytes]
+
+ParticipantBindingV1 = [position_u32, role_enum,
+                         participant_kind_enum, semantic_ref_utf8]
+
+RelationBindingV1 = [scope_enum, relation_enum, directionality_enum,
+                     host_relationship_enum, participant_bindings]
+
+DomainBindingV1 = [review_domain_enum, applicability_enum]
+
+ContextBindingV1 = [arity_enum, directionality_enum, participant_roles,
+                    host_relationship_enum]
+
+PreconditionAttestationV1 = [precondition_id, observed_payload,
+                             member_evidence_refs_sorted,
+                             equivalence_rationale]
+
+RelationApplicationMemberV1 = [
+  candidate_id_utf8, candidate_identity_digest_reference,
+  source_instance_id_utf8, candidate_universe_binding, relation_binding,
+  precondition_attestations, member_evidence_refs_sorted,
+  member_proof_attestation
+]
+
+DomainApplicationMemberV1 = [
+  candidate_id_utf8, candidate_identity_digest_reference,
+  source_instance_id_utf8, candidate_universe_binding, domain_binding,
+  precondition_attestations, member_evidence_refs_sorted,
+  domain_member_attestation
+]
+
+ContextApplicationMemberV1 = [
+  candidate_id_utf8, candidate_identity_digest_reference,
+  source_instance_id_utf8, candidate_universe_binding, context_binding,
+  precondition_attestations, member_evidence_refs_sorted,
+  context_member_attestation
+]
+~~~
+
+candidate_identity_digest_reference is the existing six-position
+DigestReferenceV1, not its JSON object projection. CandidateUniverseBindingV1
+must resolve to the exact current candidate-universe path, schema, and raw
+digest. ParticipantBindingV1 preserves position and role; relation bindings
+use canonical participant order for unordered relations and source order for
+directional relations. DomainBindingV1 is the exact domain/applicability pair.
+ContextBindingV1 is the exact theorem subject shape.
+
+The three member types are not interchangeable. Their member arrays are
+sorted by the unsigned canonical-CBOR bytes of
+[candidate_identity_digest_bytes, source_instance_id_utf8] and reject
+duplicates. The application preimages in §13.2 use the corresponding member
+type, so every nested attestation and binding is hashed after this exact
+conversion.
+
+PositiveBoundaryFactV1 is the closed union:
+
+~~~
+["b2_boundary", [family_id, lifecycle, assignment_role,
+                  precise_semantic_definition]]
+["rev3_locator", [path, raw_sha256_bytes, locator]]
+["b2_locator", [path, raw_sha256_bytes, locator]]
+["b1_citation", [authority_id, citation_id]]
+["context_slot", [slot_kind, slot_name, observed_value]]
+["model_boundary", [model_id, model_version, model_boundary_locator]]
+~~~
+
+PositiveBoundaryFactV1 arrays are non-empty, duplicate-free, and sorted by
+canonical CBOR bytes. The tag fixes the payload type and the allowed source
+authority. A fact cannot be represented by an untyped object or a rationale
+string.
+
+RelationChannelV1 is the exact enum vocabulary in §6.1.
+RequiredRelationChannelsV1 is a duplicate-free array of RelationChannelV1 in
+that vocabulary order. SeparationObligationV1 is exactly:
+
+~~~
+[relation_channel_enum, required_conclusion_enum]
+~~~
+
+where required_conclusion_enum is separated or not_relevant. The
+SeparationObligationsV1 array contains exactly one obligation for every
+RelationChannelV1, in channel order.
+
+ModelBoundaryRefV1 is exactly:
+
+~~~
+[path, schema, raw_sha256_bytes, locator]
+~~~
+
+It must resolve to the declared interaction-model.v2 artifact and its exact
+model boundary field. ScopeBoundaryAttestationV1 uses this same type.
+
+### 12.11 Structured class-projection and separation coverage
 
 Class projection is a structured proof. It is not a boolean field. Its exact
 payload is:
@@ -1642,12 +1800,13 @@ ContextApplicationRecordInputV1 = [
 
 SupersessionRecordInputV1 = [
   schema_id, superseded_record_id_bytes, replacement_record_id_bytes_or_null,
-  reason_code, source_evidence_refs, review_event_ref
+  superseded_record_kind, replacement_record_kind_or_null, reason_code,
+  source_evidence_refs, review_event_ref
 ]
 ~~~
 
 For every theorem/application preimage, nested arrays use the field order
-defined in §§12.3–12.10. The semantic theorem or application ID is computed
+defined in §§12.3–12.11. The semantic theorem or application ID is computed
 first. The accepted theorem/application record ID then hashes that semantic
 ID, the exact accepted source evidence, the complete immutable ReviewEventRefV1
 (leaf path, event identity, locator, and raw digest), and required rationale
@@ -1753,8 +1912,9 @@ relation_application_record = [relation_application_id_bytes]
 domain_application_record = [domain_application_id_bytes]
 context_application_record = [context_application_id_bytes]
 supersession_record = [superseded_record_id_bytes,
-                       replacement_record_id_bytes_or_null, reason_code,
-                       source_evidence_refs]
+                       replacement_record_id_bytes_or_null,
+                       superseded_record_kind, replacement_record_kind_or_null,
+                       reason_code, source_evidence_refs]
 ~~~
 
 The accepted theorem record ID includes the event ID and raw event digest;
@@ -1768,8 +1928,8 @@ accepted maintainer-roster snapshot and every required role is present. The
 minimum required role is rules_authority_maintainer for all semantic proofs.
 Architecture, information-safety, and conformance roles are additionally
 required when the event covers their respective surfaces, as specified in
-§12.2. A project owner may exercise an unassigned steward role only when the
-appointment is recorded in the same immutable governance-bound event. The
+§12.2. A project_owner may be listed only when the bound roster assigns that
+role; the event cannot override the roster. The
 current repository has no named public roster; therefore future production
 acceptance is BLOCKED until that portable identity binding exists.
 
@@ -1786,7 +1946,7 @@ The following matrix is normative for future C derivation:
 | Terminal disposition | Required accepted authority | Not required unless proof depends on it | Class allowed |
 | --- | --- | --- | --- |
 | required_interaction | positive relation application; all eleven terminal domain applications; required B2 boundary refs; required B1.Final citations; context application with positive evidence for every emitted slot; class-projection completeness | no unrelated context theorem or irrelevant citation | yes, exactly one valid InteractionClassIdentityV1 |
-| not_an_interaction_with_proof | positive separation application; all eleven terminal domain applications; complete participant and relation coverage; every separation channel marked positively separated | context application only when the separation theorem has context preconditions; B1 refs only where the separation proof makes rule claims | no |
+| not_an_interaction_with_proof | positive separation application; all eleven terminal domain applications; complete participant and relation coverage; every channel has positively evidenced separated or not_relevant matching the theorem obligation | context application only when the separation theorem has context preconditions; B1 refs only where the separation proof makes rule claims | no |
 | out_of_declared_scope_with_reason | model-bound scope application; all eleven terminal domain applications required by the existing C contract; exact model boundary and positive scope evidence | context only when scope proof depends on it; B2/B1 refs only where used by the boundary proof | no |
 | unresolved | no terminal authority closure | any retained source evidence may remain as provenance | no; class and terminal disposition are null |
 
