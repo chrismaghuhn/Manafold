@@ -486,7 +486,7 @@ model_id
 model_version
 model_boundary_locator
 reason_code
-observed_candidate_shape
+observed_candidate_shape = CandidateShapeV1
 positive_boundary_evidence_refs
 ~~~
 
@@ -648,7 +648,7 @@ b1_final_citation_refs
 
 The future authority validator must require an explicit structured
 ClassProjectionEquivalenceV1 proof, not a boolean. V1 class sharing is
-strict: the relation theorem semantic ID must be identical for every member
+strict: the same theorem semantic ID must be identical for every member
 of one class. The proof must also contain identical values for all nine class
 positions and an accepted explanation that no non-provenance semantic field
 remains unrepresented. Different theorem semantic IDs, including different
@@ -977,10 +977,31 @@ AcceptanceEvidenceRefV1 has exactly:
 [path, raw_sha256_bytes, locator]
 ~~~
 
-Its path is a committed repository path or a normalized portable external
-review-export locator. It is not semantic proof and cannot be a creator-local
-path. Acceptance evidence references are sorted by their canonical CBOR bytes
-and are part of event identity.
+V1 accepts only a committed repository-relative path. The path is a
+slash-separated non-empty UTF-8 string with no leading slash, drive prefix,
+UNC/device prefix, backslash, URL scheme, empty segment, dot segment, or
+parent segment. The normalized path is the exact path string stored in the
+repository; no case folding, Unicode normalization, or filesystem-dependent
+resolution is performed. A creator-local, absolute, network, or external
+review-export path is rejected in V1.
+
+locator is exactly one tagged variant:
+
+~~~
+["whole_artifact", null]
+["json_pointer", json_pointer_utf8]
+["archive_member", member_path_utf8]
+~~~
+
+json_pointer_utf8 uses the exact RFC 6901 JSON Pointer grammar, including its
+empty root form and ~0/~1 token escaping. member_path_utf8 is a normalized
+slash-separated archive member path under the same no-absolute/no-dot/no-parent
+rules as path. The locator must resolve inside the bound repository file or
+archive bytes and must identify the exact evidence fragment. A locator value
+is never an arbitrary canonical-CBOR value. Acceptance evidence references are
+sorted by their canonical CBOR bytes, are duplicate-free, and are part of
+event identity. A future external review export requires a new versioned,
+tagged locator contract; V1 does not admit one.
 
 The accepted role vocabulary is exactly:
 
@@ -1021,10 +1042,10 @@ includes the event_id and event raw digest, but the event never contains the
 final record identity. This one-way binding prevents a digest cycle while
 binding the human decision to the exact reviewed bytes.
 
-The acceptance-event leaf is a committed, versioned source input or a portable
-review export whose exact bytes are included in the accepted evidence package.
-A creator-local path, mutable branch, live GitHub state, or bare
-human_accepted flag is not a trust anchor.
+The acceptance-event leaf is a committed, versioned repository-relative source
+input whose exact bytes are included in the accepted evidence package. A
+creator-local path, mutable branch, live GitHub state, or bare human_accepted
+flag is not a trust anchor.
 
 ### 12.3 RelationProofV1
 
@@ -1478,8 +1499,22 @@ arrays:
 ~~~
 CandidateUniverseBindingV1 = [path, schema, raw_sha256_bytes]
 
+B2FamilyRefV1 = [family_id, lifecycle_enum, assignment_role_enum]
+B2BoundaryRefV1 = [family_id, precise_semantic_definition]
+B1FinalCitationRefV1 = [authority_id, citation_id]
+EvidenceRefV1 = [authority_kind_enum, path, locator, raw_sha256_bytes]
+ParticipantRoleV1 = [position_u32, role_enum,
+                      participant_kind_enum, semantic_ref_utf8]
+
+CandidateShapeV1 = [scope_enum, relation_enum, arity_enum,
+                    directionality_enum, participant_count_u32]
+
 ParticipantBindingV1 = [position_u32, role_enum,
                          participant_kind_enum, semantic_ref_utf8]
+
+ParticipantRoleV1 and ParticipantBindingV1 use the same four-position
+representation; their names distinguish theorem class roles from concrete
+application bindings.
 
 RelationBindingV1 = [scope_enum, relation_enum, directionality_enum,
                      host_relationship_enum, participant_bindings]
@@ -1547,6 +1582,11 @@ canonical CBOR bytes. The tag fixes the payload type and the allowed source
 authority. A fact cannot be represented by an untyped object or a rationale
 string.
 
+SeparationKindV1 is exactly boundary_disjointness,
+closed_channel_exclusion, or independent_effect_separation. RequiredConclusionV1
+is exactly separated or not_relevant. Both are unit enums encoded by the
+existing [variant_id, null] rule.
+
 RelationChannelV1 is the exact enum vocabulary in §6.1.
 RequiredRelationChannelsV1 is a duplicate-free array of RelationChannelV1 in
 that vocabulary order. SeparationObligationV1 is exactly:
@@ -1555,7 +1595,7 @@ that vocabulary order. SeparationObligationV1 is exactly:
 [relation_channel_enum, required_conclusion_enum]
 ~~~
 
-where required_conclusion_enum is separated or not_relevant. The
+where required_conclusion_enum is RequiredConclusionV1. The
 SeparationObligationsV1 array contains exactly one obligation for every
 RelationChannelV1, in channel order.
 
@@ -1644,7 +1684,8 @@ ContextMemberAttestationV1 = [slot_attestations]
 ~~~
 
 causal_chain_ordinals must equal the exact array 0, 1, ..., n-1 from the
-theorem's causal chain. model_boundary_ref is
+theorem's causal chain. observed_candidate_shape uses CandidateShapeV1.
+model_boundary_ref is
 [path, schema, raw_sha256_bytes, locator] and must resolve to the exact
 declared model. The scope reason and observed shape must equal the theorem's
 scope payload.
@@ -2300,6 +2341,9 @@ failure.
 | IRA-064 | Omit or add one required SourceBindingDigestV1 entry | FAIL | ACCEPTANCE_SOURCE_BINDING_SET_INVALID |
 | IRA-065 | Include the acceptance-event leaf in its own source-binding set | FAIL | ACCEPTANCE_SOURCE_BINDING_SELF_REFERENCE |
 | IRA-066 | Change the acceptance subject payload without changing its event digest | FAIL | ACCEPTANCE_SUBJECT_DIGEST_MISMATCH |
+| IRA-067 | Use an absolute, URL, device, UNC, or parent-segment acceptance-evidence path | FAIL | ACCEPTANCE_EVIDENCE_PATH_INVALID |
+| IRA-068 | Use an untagged or malformed acceptance-evidence locator | FAIL | ACCEPTANCE_EVIDENCE_LOCATOR_INVALID |
+| IRA-069 | Replace a record with a different theorem/application kind | FAIL | SUPERSESSION_RECORD_KIND_MISMATCH |
 
 Positive controls are also mandatory:
 
@@ -2314,6 +2358,7 @@ IRA-POS-007  finite higher-order application with exact ordered participants
 IRA-POS-008  unary card-trigger application with exact OSI/source binding
 IRA-POS-009  immutable supersession from one accepted record to one replacement
 IRA-POS-010  two independent acceptance-event leaves with the first record binding unchanged
+IRA-POS-011  repository-relative acceptance evidence using each admitted locator variant
 ~~~
 
 Every positive control must pass before its single mutation is applied. A
