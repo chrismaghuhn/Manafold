@@ -1137,6 +1137,13 @@ def _evidence_authority_index() -> dict[str, Any]:
         nonempty_string(item.get("oracle_semantic_identity"), "B2 oracle identity")
         for item in list_value(classifications.get("classifications"), "B2 classifications")
     }
+    assignment_families_by_osi = {
+        nonempty_string(item.get("oracle_semantic_identity"), "B2 oracle identity"): {
+            nonempty_string(assignment.get("requirement_family_id"), "B2 assignment family ID")
+            for assignment in list_value(item.get("requirement_assignments"), "B2 assignments")
+        }
+        for item in list_value(classifications.get("classifications"), "B2 classifications")
+    }
 
     projection_path = "sources/m2_5/closures/B2/deck_row_classification_refs.v1.csv"
     projection_raw = local_bytes(projection_path)
@@ -1180,6 +1187,7 @@ def _evidence_authority_index() -> dict[str, Any]:
             classifications_path: {
                 "raw_sha256": sha256_bytes(classifications_raw),
                 "oracle_ids": oracle_ids,
+                "assignment_families_by_osi": assignment_families_by_osi,
             },
             projection_path: {
                 "raw_sha256": sha256_bytes(projection_raw),
@@ -1422,6 +1430,56 @@ def participant_source_ref_cbor(value: object, label: str) -> list[Any]:
         enum(kind, ("b2_assignment", "b2_classification", "rev3_row"), f"{label}.source_kind"),
         item["source_locator"],
     ]
+
+
+def validate_participant_source_ref(value: object, label: str) -> None:
+    """Resolve a ParticipantSourceRefV1 to one pinned REV3/B2 record."""
+    item = mapping(value, label)
+    participant_source_ref_cbor(item, label)
+    kind = enum_value(
+        item["source_kind"],
+        ("b2_assignment", "b2_classification", "rev3_row"),
+        f"{label}.source_kind",
+    )
+    locator = item["source_locator"]
+    if not isinstance(locator, list):
+        fail("PARTICIPANT_SOURCE_REF_UNRESOLVED", f"{label}.source_locator is not an array")
+    authority_index = _evidence_authority_index()
+
+    if kind == "rev3_row":
+        target = authority_index["rev3"][EXPECTED_REV3_CENSUS_MEMBER]
+        valid = (
+            len(locator) == 2
+            and locator[0] == "row_ordinal"
+            and isinstance(locator[1], int)
+            and not isinstance(locator[1], bool)
+            and 0 <= locator[1] < target["row_count"]
+        )
+    elif kind == "b2_classification":
+        target = authority_index["b2"][
+            "sources/m2_5/closures/B2/card_semantic_classifications.v1.json"
+        ]
+        valid = (
+            len(locator) == 2
+            and locator[0] == "oracle_semantic_identity"
+            and locator[1] in target["oracle_ids"]
+        )
+    else:
+        target = authority_index["b2"][
+            "sources/m2_5/closures/B2/card_semantic_classifications.v1.json"
+        ]
+        valid = (
+            len(locator) == 4
+            and locator[0] == "oracle_semantic_identity"
+            and locator[1] in target["assignment_families_by_osi"]
+            and locator[2] == "requirement_family_id"
+            and locator[3] in target["assignment_families_by_osi"][locator[1]]
+        )
+    if not valid:
+        fail(
+            "PARTICIPANT_SOURCE_REF_UNRESOLVED",
+            f"{label} does not resolve to a pinned {kind} record",
+        )
 
 
 def candidate_identity_payload(candidate: dict[str, Any]) -> list[Any]:
@@ -4172,6 +4230,7 @@ def validate_review(review: dict[str, Any], model_raw: bytes) -> None:
         "review record count",
     )
     seen: set[str] = set()
+    record_evidence_by_key: dict[bytes, dict[str, Any]] = {}
     for i, record in enumerate(records):
         item = mapping(record, f"review record {i}")
         exact_keys(
@@ -4194,11 +4253,30 @@ def validate_review(review: dict[str, Any], model_raw: bytes) -> None:
         require(rid not in seen, "TARGETED_REVIEW_RECORD_UNKNOWN", f"duplicate review record {rid}")
         seen.add(rid)
         enum(item["review_kind"], EXTRA_VOCABULARY["review_kind"], f"review record {i}.review_kind")
+        participant_sources = list_value(
+            item["participant_source_refs"], f"review record {i}.participant_source_refs"
+        )
+        for participant_index, participant in enumerate(participant_sources):
+            validate_participant_source_ref(
+                participant, f"review record {i}.participant_source_refs[{participant_index}]"
+            )
         record_evidence = list_value(item["review_evidence_refs"], f"review record {i}.evidence")
         for evidence_index, evidence in enumerate(record_evidence):
             validate_evidence_authority(evidence, f"review record {i} evidence {evidence_index}")
+            key = canonical(
+                evidence_ref_cbor(evidence, f"review record {i} evidence {evidence_index}")
+            )
+            record_evidence_by_key.setdefault(key, evidence)
         evidence_sort(record_evidence, f"review record {i}.evidence")
         nonempty_string(item["review_rationale"], f"review record {i}.rationale")
+    expected_review_evidence = [
+        record_evidence_by_key[key] for key in sorted(record_evidence_by_key)
+    ]
+    require(
+        review_input_evidence == expected_review_evidence,
+        "REVIEW_ADDITIONS_EVIDENCE_BINDING_MISMATCH",
+        "review input evidence does not equal the record evidence union",
+    )
 
 
 def validate_external_prereqs(
@@ -4322,6 +4400,10 @@ def validate_targeted_review_bindings(
         )
         for participant_index, participant in enumerate(participant_sources):
             participant_source_ref_cbor(
+                participant,
+                f"{label}.review record {index}.participant_source_refs[{participant_index}]",
+            )
+            validate_participant_source_ref(
                 participant,
                 f"{label}.review record {index}.participant_source_refs[{participant_index}]",
             )
@@ -7027,15 +7109,39 @@ def mutation_cases(snapshot: Snapshot) -> dict[str, Callable[[], object]]:
         source_candidate = next(
             item for item in expected_candidates_list if item["relation"] == "unordered_binary"
         )
-        family_ids = sorted(active_families, key=canonical)[:3]
+        control_osi, control_classification = next(
+            (
+                osi,
+                classification,
+            )
+            for osi, classification in b2_map.items()
+            if len(
+                {
+                    assignment["requirement_family_id"]
+                    for assignment in classification["requirement_assignments"]
+                    if assignment["requirement_family_id"] in active_families
+                }
+            )
+            >= 3
+        )
+        family_ids = [
+            assignment["requirement_family_id"]
+            for assignment in control_classification["requirement_assignments"]
+            if assignment["requirement_family_id"] in active_families
+        ][:3]
         participant_refs = [
             {"participant_kind": "requirement_family", "semantic_ref": family_id}
             for family_id in family_ids
         ]
         participant_source_refs = [
             {
-                "source_kind": "b2_classification",
-                "source_locator": ["family_id", family_id],
+                "source_kind": "b2_assignment",
+                "source_locator": [
+                    "oracle_semantic_identity",
+                    control_osi,
+                    "requirement_family_id",
+                    family_id,
+                ],
             }
             for family_id in family_ids
         ]
@@ -8470,6 +8576,81 @@ def checker_repair_regressions() -> None:
         raise AssertionError("mutated V2 source partition unexpectedly passed")
 
 
+def participant_source_regressions() -> None:
+    """Exercise ParticipantSourceRef resolution and review evidence closure."""
+    resolver = globals().get("validate_participant_source_ref")
+    if not callable(resolver):
+        raise AssertionError("the ParticipantSourceRef resolver is missing")
+
+    valid_assignment = {
+        "source_kind": "b2_assignment",
+        "source_locator": [
+            "oracle_semantic_identity",
+            "006f4a62-8590-4ca0-9f51-3aea26cd1a54",
+            "requirement_family_id",
+            "cap.aura",
+        ],
+    }
+    resolver(valid_assignment, "ParticipantSourceRef valid control")
+    invalid_shape = {
+        "source_kind": "b2_classification",
+        "source_locator": ["family_id", "cap.aura"],
+    }
+    try:
+        resolver(invalid_shape, "ParticipantSourceRef invalid control")
+    except CCheckError as exc:
+        if exc.status != "FAIL" or exc.code != "PARTICIPANT_SOURCE_REF_UNRESOLVED":
+            raise AssertionError(
+                "invalid ParticipantSourceRef returned the wrong rejection: "
+                f"{exc.status} {exc.code}"
+            ) from exc
+    else:
+        raise AssertionError("invalid ParticipantSourceRef unexpectedly passed")
+
+    snapshot = load_snapshot()
+    model_raw = snapshot.raw[MODEL_NAME]
+    review = copy.deepcopy(get_artifact(snapshot, REVIEW_NAME))
+    candidate = get_artifact(snapshot, UNIVERSE_NAME)["candidates"][0]
+    catalog = mapping(
+        parse_json(
+            (ROOT / "sources/m2_5/closures/B2/requirement_family_catalog.v1.json").read_bytes(),
+            "B2 catalog",
+        ),
+        "B2 catalog",
+    )
+    families = ("cap.aura", "cap.flash", "cap.trigger")
+    review["review_records"] = [
+        {
+            "review_record_id": "ira.v1/provenance-control",
+            "review_kind": "targeted_higher_order_review",
+            "participant_source_refs": [
+                {
+                    "source_kind": "b2_assignment",
+                    "source_locator": [
+                        "oracle_semantic_identity",
+                        "006f4a62-8590-4ca0-9f51-3aea26cd1a54",
+                        "requirement_family_id",
+                        family,
+                    ],
+                }
+                for family in families
+            ],
+            "review_evidence_refs": candidate_review_evidence(candidate, catalog),
+            "review_rationale": "source-grounded targeted review control",
+        }
+    ]
+    review["review_record_count"] = 1
+    try:
+        validate_review(review, model_raw)
+    except CCheckError as exc:
+        if exc.status != "FAIL" or exc.code != "REVIEW_ADDITIONS_EVIDENCE_BINDING_MISMATCH":
+            raise AssertionError(
+                f"unbound review evidence returned the wrong rejection: {exc.status} {exc.code}"
+            ) from exc
+    else:
+        raise AssertionError("unbound review evidence unexpectedly passed")
+
+
 def legacy_negative_self_test() -> int:
     validator = globals().get("validate_v2_candidate_state")
     if not callable(validator):
@@ -8631,6 +8812,8 @@ def legacy_negative_self_test() -> int:
 def negative_self_test() -> int:
     """Execute the complete phase-separated V2/V4 negative contract."""
     try:
+        participant_source_regressions()
+        print("PARTICIPANT_SOURCE_REGRESSIONS = PASS (locator resolution; review evidence closure)")
         checker_repair_regressions()
         print("CHECKER_REPAIR_REGRESSIONS = PASS (evidence resolver; V2 partition validator)")
         source_commit = migration_source_commit()
