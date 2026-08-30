@@ -18,10 +18,10 @@ fn authority_relation_identity_matches_cross_language_known_answer() {
             cbor::Value::Text("unary".to_owned()),
             cbor::Value::Text("reviewed_relation".to_owned()),
             cbor::Value::Text("directional".to_owned()),
-            cbor::Value::Text("same_subject".to_owned()),
+            cbor::Value::Text("same_host".to_owned()),
             cbor::Value::Array(vec![cbor::Value::Array(vec![
                 cbor::Value::Unsigned(0),
-                cbor::Value::Text("subject".to_owned()),
+                cbor::Value::Text("ordered_participant".to_owned()),
                 cbor::Value::Text("card".to_owned()),
                 cbor::Value::Text("subject-ref".to_owned()),
             ])]),
@@ -50,7 +50,7 @@ fn authority_relation_identity_matches_cross_language_known_answer() {
 
     assert_eq!(
         identity.as_text(),
-        "rp.v1/54258c0c781bf5c32a38a57b9cd7f9b01aa756048083380d095c048a1a232ee4"
+        "rp.v1/0868a972b7bc61f34d306292269e788244c30641b52f18416151067d7c3cadb6"
     );
     assert_eq!(
         identity.semantic_domain(),

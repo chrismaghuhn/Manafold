@@ -302,6 +302,43 @@ impl SourceBindingDigestV1 {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct B2FamilyRefV1 {
+    pub family_id: String,
+    pub lifecycle: String,
+    pub assignment_role: String,
+}
+
+impl B2FamilyRefV1 {
+    pub fn new(
+        family_id: impl Into<String>,
+        lifecycle: impl Into<String>,
+        assignment_role: impl Into<String>,
+    ) -> Result<Self, PersistenceDecodeErrorV1> {
+        let family_id = family_id.into();
+        let lifecycle = lifecycle.into();
+        let assignment_role = assignment_role.into();
+        if family_id.is_empty() {
+            return Err(PersistenceDecodeErrorV1::SemanticValidation);
+        }
+        validate_member(&B2_LIFECYCLES, &lifecycle)?;
+        validate_member(&B2_ASSIGNMENT_ROLES, &assignment_role)?;
+        Ok(Self {
+            family_id,
+            lifecycle,
+            assignment_role,
+        })
+    }
+
+    pub fn to_cbor(&self) -> cbor::Value {
+        cbor::Value::Array(vec![
+            cbor::Value::Text(self.family_id.clone()),
+            cbor::Value::Text(self.lifecycle.clone()),
+            cbor::Value::Text(self.assignment_role.clone()),
+        ])
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum EvidenceLocatorV1 {
     WholeArtifact,
     JsonPointer(String),
@@ -1248,6 +1285,7 @@ const ARITIES: [&str; 4] = [
     "higher_order",
 ];
 const DIRECTIONALITIES: [&str; 2] = ["unordered", "directional"];
+const HOST_RELATIONSHIPS: [&str; 3] = ["cross_host", "not_applicable", "same_host"];
 const OPERATIONS: [&str; 13] = [
     "reads",
     "changes_characteristic",
@@ -1326,6 +1364,210 @@ const SUBJECT_KINDS: [&str; 7] = [
     "context_application_record",
     "supersession_record",
 ];
+const PARTICIPANT_ROLES: [&str; 13] = [
+    "affected",
+    "controller",
+    "copied_source",
+    "copy_result",
+    "decision_actor",
+    "destination_zone",
+    "origin_zone",
+    "ordered_participant",
+    "owner",
+    "replacement_actor",
+    "source",
+    "target",
+    "trigger_source",
+];
+const PARTICIPANT_KINDS: [&str; 14] = [
+    "ability",
+    "card",
+    "copiable_value",
+    "deck",
+    "effect",
+    "event",
+    "object",
+    "permanent",
+    "player",
+    "requirement_family",
+    "source_instance",
+    "spell",
+    "token",
+    "zone",
+];
+const CONTEXT_DIMENSIONS: [&str; 10] = [
+    "zone",
+    "visibility",
+    "timing",
+    "temporal_order",
+    "source_affected_relation",
+    "control_ownership_relation",
+    "replacement_layer_relation",
+    "trigger_lki_relation",
+    "information_relation",
+    "decision_actor_relation",
+];
+const TEMPORAL_SEMANTICS: [&str; 4] = [
+    "trigger_order",
+    "dependency_order",
+    "duration",
+    "replacement_order",
+];
+const B2_LIFECYCLES: [&str; 2] = ["active", "active_unassigned"];
+const B2_ASSIGNMENT_ROLES: [&str; 2] = ["primary", "supporting"];
+const CLASS_PROJECTION_POSITIONS: [&str; 9] = [
+    "arity",
+    "directionality",
+    "participant_roles",
+    "host_relationship",
+    "context_dimensions",
+    "temporal_semantics",
+    "b2_family_refs",
+    "b2_boundary_refs",
+    "b1_final_citation_refs",
+];
+const ZONE_VALUES: [&str; 10] = [
+    "battlefield",
+    "command_zone",
+    "exile",
+    "graveyard",
+    "hand",
+    "library",
+    "outside_game",
+    "stack",
+    "zone_agnostic",
+    "not_applicable",
+];
+const VISIBILITY_VALUES: [&str; 7] = [
+    "controller_only",
+    "hidden_to_actor",
+    "identity_hidden",
+    "not_applicable",
+    "owner_only",
+    "private",
+    "public",
+];
+const TIMING_VALUES: [&str; 10] = [
+    "activation_time",
+    "cast_time",
+    "combat_time",
+    "continuous_effect",
+    "not_applicable",
+    "resolution_time",
+    "state_based_check",
+    "trigger_time",
+    "turn_boundary",
+    "zone_change_time",
+];
+const TEMPORAL_ORDER_VALUES: [&str; 8] = [
+    "after",
+    "before",
+    "during",
+    "not_applicable",
+    "sequential",
+    "simultaneous",
+    "until",
+    "while",
+];
+const SOURCE_AFFECTED_VALUES: [&str; 5] = [
+    "both_affected",
+    "no_effect_relation",
+    "not_applicable",
+    "source_affected",
+    "source_affects_other",
+];
+const CONTROL_OWNERSHIP_VALUES: [&str; 7] = [
+    "control_changes",
+    "cross_controller",
+    "cross_owner",
+    "not_applicable",
+    "ownership_changes",
+    "same_controller",
+    "same_owner",
+];
+const REPLACEMENT_LAYER_VALUES: [&str; 9] = [
+    "copy_layer",
+    "control_layer",
+    "layer_dependency",
+    "no_replacement_or_layer",
+    "not_applicable",
+    "pt_layer",
+    concat!("replacement_", "effect"),
+    "type_layer",
+    "zone_change_replacement",
+];
+const TRIGGER_LKI_VALUES: [&str; 6] = [
+    "intervening_if",
+    "last_known_information",
+    "no_trigger_lki",
+    "not_applicable",
+    "trigger_condition",
+    "triggered_event",
+];
+const INFORMATION_VALUES: [&str; 8] = [
+    "hidden_identity",
+    "known_to_controller",
+    "known_to_owner",
+    "no_information_dependency",
+    "not_applicable",
+    "private_look",
+    "public_identity",
+    "random_unknown",
+];
+const DECISION_ACTOR_VALUES: [&str; 8] = [
+    "active_player",
+    "controller",
+    "no_decision",
+    "not_applicable",
+    "opponent",
+    "owner",
+    "rules_forced",
+    "target_player",
+];
+const TRIGGER_ORDER_VALUES: [&str; 4] = [
+    "deferred",
+    "immediate",
+    "no_temporal_dependency",
+    "not_applicable",
+];
+const DEPENDENCY_ORDER_VALUES: [&str; 3] = [
+    "dependency_ordered",
+    "no_temporal_dependency",
+    "not_applicable",
+];
+const DURATION_VALUES: [&str; 4] = [
+    "duration_limited",
+    "indefinite",
+    "not_applicable",
+    "until_event",
+];
+const REPLACEMENT_ORDER_VALUES: [&str; 5] = [
+    "after_effect",
+    "before_effect",
+    "no_temporal_dependency",
+    "not_applicable",
+    "same_event",
+];
+
+fn context_value_vocabulary(slot_name: &str) -> Option<&'static [&'static str]> {
+    match slot_name {
+        "zone" => Some(&ZONE_VALUES),
+        "visibility" => Some(&VISIBILITY_VALUES),
+        "timing" => Some(&TIMING_VALUES),
+        "temporal_order" => Some(&TEMPORAL_ORDER_VALUES),
+        "source_affected_relation" => Some(&SOURCE_AFFECTED_VALUES),
+        "control_ownership_relation" => Some(&CONTROL_OWNERSHIP_VALUES),
+        "replacement_layer_relation" => Some(&REPLACEMENT_LAYER_VALUES),
+        "trigger_lki_relation" => Some(&TRIGGER_LKI_VALUES),
+        "information_relation" => Some(&INFORMATION_VALUES),
+        "decision_actor_relation" => Some(&DECISION_ACTOR_VALUES),
+        "trigger_order" => Some(&TRIGGER_ORDER_VALUES),
+        "dependency_order" => Some(&DEPENDENCY_ORDER_VALUES),
+        "duration" => Some(&DURATION_VALUES),
+        "replacement_order" => Some(&REPLACEMENT_ORDER_VALUES),
+        _ => None,
+    }
+}
 
 fn value_array(
     value: &cbor::Value,
@@ -1437,6 +1679,32 @@ fn validate_ordered_enum(
         .collect();
     if seen.iter().map(String::as_str).collect::<Vec<_>>() != expected {
         return Err(PersistenceDecodeErrorV1::NoncanonicalOrder);
+    }
+    Ok(())
+}
+
+fn validate_exact_ordered_enum(
+    value: &cbor::Value,
+    allowed: &[&str],
+) -> Result<(), PersistenceDecodeErrorV1> {
+    let values = value_array(value, Some(allowed.len()))?;
+    for (value, expected) in values.iter().zip(allowed.iter()) {
+        if enum_text(value, allowed)? != *expected {
+            return Err(PersistenceDecodeErrorV1::NoncanonicalOrder);
+        }
+    }
+    Ok(())
+}
+
+fn validate_slot_value_vector(
+    value: &cbor::Value,
+    slot_names: &[&str],
+) -> Result<(), PersistenceDecodeErrorV1> {
+    let values = value_array(value, Some(slot_names.len()))?;
+    for (slot_name, observed_value) in slot_names.iter().zip(values.iter()) {
+        let allowed =
+            context_value_vocabulary(slot_name).ok_or(PersistenceDecodeErrorV1::UnknownVariant)?;
+        enum_text(observed_value, allowed)?;
     }
     Ok(())
 }
@@ -1564,9 +1832,9 @@ fn validate_reviewer_roles(value: &cbor::Value) -> Result<(), PersistenceDecodeE
 fn validate_participant_role(value: &cbor::Value) -> Result<(), PersistenceDecodeErrorV1> {
     let fields = value_array(value, Some(4))?;
     value_uint32(&fields[0])?;
-    for field in &fields[1..] {
-        value_text(field)?;
-    }
+    enum_text(&fields[1], &PARTICIPANT_ROLES)?;
+    enum_text(&fields[2], &PARTICIPANT_KINDS)?;
+    value_text(&fields[3])?;
     Ok(())
 }
 
@@ -1597,6 +1865,19 @@ fn validate_b2_boundary_refs(value: &cbor::Value) -> Result<(), PersistenceDecod
     validate_canonical_values(refs, validate_b2_boundary_ref)
 }
 
+fn validate_b2_family_ref(value: &cbor::Value) -> Result<(), PersistenceDecodeErrorV1> {
+    let fields = value_array(value, Some(3))?;
+    value_text(&fields[0])?;
+    enum_text(&fields[1], &B2_LIFECYCLES)?;
+    enum_text(&fields[2], &B2_ASSIGNMENT_ROLES)?;
+    Ok(())
+}
+
+fn validate_b2_family_refs(value: &cbor::Value) -> Result<(), PersistenceDecodeErrorV1> {
+    let refs = value_array(value, None)?;
+    validate_canonical_values(refs, validate_b2_family_ref)
+}
+
 fn validate_b1_citation_ref(value: &cbor::Value) -> Result<(), PersistenceDecodeErrorV1> {
     let fields = value_array(value, Some(2))?;
     value_text(&fields[0])?;
@@ -1607,6 +1888,40 @@ fn validate_b1_citation_ref(value: &cbor::Value) -> Result<(), PersistenceDecode
 fn validate_b1_citation_refs(value: &cbor::Value) -> Result<(), PersistenceDecodeErrorV1> {
     let refs = value_array(value, None)?;
     validate_canonical_values(refs, validate_b1_citation_ref)
+}
+
+fn validate_context_slot_value(
+    slot_kind: &cbor::Value,
+    slot_name: &cbor::Value,
+    observed_value: &cbor::Value,
+) -> Result<(), PersistenceDecodeErrorV1> {
+    let kind = enum_text(slot_kind, &SLOT_KINDS)?;
+    let name = if kind == "context_dimension" {
+        enum_text(slot_name, &CONTEXT_DIMENSIONS)?
+    } else {
+        enum_text(slot_name, &TEMPORAL_SEMANTICS)?
+    };
+    let allowed = context_value_vocabulary(name).ok_or(PersistenceDecodeErrorV1::UnknownVariant)?;
+    enum_text(observed_value, allowed)?;
+    Ok(())
+}
+
+fn validate_context_slot_attestation(
+    value: &cbor::Value,
+    expected: Option<(&str, &str)>,
+) -> Result<(), PersistenceDecodeErrorV1> {
+    let fields = value_array(value, Some(5))?;
+    validate_context_slot_value(&fields[0], &fields[1], &fields[2])?;
+    if let Some((expected_kind, expected_name)) = expected {
+        let actual_kind = value_text(&fields[0])?;
+        let actual_name = value_text(&fields[1])?;
+        if actual_kind != expected_kind || actual_name != expected_name {
+            return Err(PersistenceDecodeErrorV1::NoncanonicalOrder);
+        }
+    }
+    validate_evidence_refs(&fields[3])?;
+    value_text(&fields[4])?;
+    Ok(())
 }
 
 fn validate_model_boundary_locator(value: &cbor::Value) -> Result<(), PersistenceDecodeErrorV1> {
@@ -1647,9 +1962,7 @@ fn validate_positive_boundary_fact(value: &cbor::Value) -> Result<(), Persistenc
             if payload.len() != 3 {
                 return Err(PersistenceDecodeErrorV1::WrongRecordLength);
             }
-            value_text(&payload[0])?;
-            value_text(&payload[1])?;
-            validate_cbor_value(&payload[2])
+            validate_context_slot_value(&payload[0], &payload[1], &payload[2])
         }
         "model_boundary" => {
             if payload.len() != 3 {
@@ -1676,13 +1989,10 @@ fn validate_class_projection(value: &cbor::Value) -> Result<(), PersistenceDecod
     enum_text(&fields[0], &ARITIES)?;
     enum_text(&fields[1], &DIRECTIONALITIES)?;
     validate_participant_roles(&fields[2])?;
-    value_text(&fields[3])?;
-    for field in &fields[4..7] {
-        let values = value_array(field, None)?;
-        for value in values {
-            value_text(value)?;
-        }
-    }
+    enum_text(&fields[3], &HOST_RELATIONSHIPS)?;
+    validate_slot_value_vector(&fields[4], &CONTEXT_DIMENSIONS)?;
+    validate_slot_value_vector(&fields[5], &TEMPORAL_SEMANTICS)?;
+    validate_b2_family_refs(&fields[6])?;
     validate_b2_boundary_refs(&fields[7])?;
     validate_b1_citation_refs(&fields[8])
 }
@@ -1716,9 +2026,10 @@ fn validate_precondition_payload(
             if fields.len() != 4 {
                 return Err(PersistenceDecodeErrorV1::WrongRecordLength);
             }
-            for field in fields {
-                value_text(field)?;
-            }
+            value_text(&fields[0])?;
+            value_text(&fields[1])?;
+            enum_text(&fields[2], &DIRECTIONALITIES)?;
+            enum_text(&fields[3], &HOST_RELATIONSHIPS)?;
             Ok(())
         }
         "participant_binding" => {
@@ -1744,8 +2055,15 @@ fn validate_precondition_payload(
             if fields.len() != 2 {
                 return Err(PersistenceDecodeErrorV1::WrongRecordLength);
             }
-            value_text(&fields[0])?;
-            validate_cbor_value(&fields[1])
+            validate_context_slot_value(
+                &cbor::Value::Text(if kind == "source_context" {
+                    "context_dimension".to_owned()
+                } else {
+                    "temporal_semantic".to_owned()
+                }),
+                &fields[0],
+                &fields[1],
+            )
         }
         "class_projection" => validate_class_projection(payload),
         _ => Err(PersistenceDecodeErrorV1::UnknownVariant),
@@ -1850,7 +2168,7 @@ fn validate_relation_binding(value: &cbor::Value) -> Result<(), PersistenceDecod
     value_text(&fields[0])?;
     value_text(&fields[1])?;
     enum_text(&fields[2], &DIRECTIONALITIES)?;
-    value_text(&fields[3])?;
+    enum_text(&fields[3], &HOST_RELATIONSHIPS)?;
     validate_participant_roles(&fields[4])
 }
 
@@ -1875,7 +2193,7 @@ fn validate_context_binding(value: &cbor::Value) -> Result<(), PersistenceDecode
     enum_text(&fields[0], &ARITIES)?;
     enum_text(&fields[1], &DIRECTIONALITIES)?;
     validate_participant_roles(&fields[2])?;
-    value_text(&fields[3])?;
+    enum_text(&fields[3], &HOST_RELATIONSHIPS)?;
     Ok(())
 }
 
@@ -1897,13 +2215,12 @@ fn validate_class_projection_equivalence(
     let fields = value_array(value, Some(6))?;
     validate_class_projection(&fields[0])?;
     validate_class_projection(&fields[1])?;
-    let equal_positions = value_array(&fields[2], None)?;
-    for position in equal_positions {
-        value_text(position)?;
-    }
-    if value_text(&fields[3])? != "same_theorem_semantic_id" {
+    validate_exact_ordered_enum(&fields[2], &CLASS_PROJECTION_POSITIONS)?;
+    let semantic_claim = value_array(&fields[3], Some(2))?;
+    if value_text(&semantic_claim[0])? != "same_theorem_semantic_id" {
         return Err(PersistenceDecodeErrorV1::UnknownVariant);
     }
+    value_bytes32(&semantic_claim[1])?;
     validate_evidence_refs(&fields[4])?;
     value_text(&fields[5])?;
     Ok(())
@@ -2098,13 +2415,16 @@ fn validate_context_member(value: &cbor::Value) -> Result<(), PersistenceDecodeE
     validate_evidence_refs(&fields[6])?;
     let attestation = value_array(&fields[7], Some(1))?;
     let slots = value_array(&attestation[0], Some(14))?;
-    for slot in slots {
-        let fields = value_array(slot, Some(5))?;
-        enum_text(&fields[0], &SLOT_KINDS)?;
-        value_text(&fields[1])?;
-        validate_cbor_value(&fields[2])?;
-        validate_evidence_refs(&fields[3])?;
-        value_text(&fields[4])?;
+    for (index, slot) in slots.iter().enumerate() {
+        let expected = if index < CONTEXT_DIMENSIONS.len() {
+            ("context_dimension", CONTEXT_DIMENSIONS[index])
+        } else {
+            (
+                "temporal_semantic",
+                TEMPORAL_SEMANTICS[index - CONTEXT_DIMENSIONS.len()],
+            )
+        };
+        validate_context_slot_attestation(slot, Some(expected))?;
     }
     Ok(())
 }
@@ -2299,7 +2619,7 @@ fn validate_identity_payload(
             enum_text(&fields[3], &ARITIES)?;
             value_text(&fields[4])?;
             enum_text(&fields[5], &DIRECTIONALITIES)?;
-            value_text(&fields[6])?;
+            enum_text(&fields[6], &HOST_RELATIONSHIPS)?;
             validate_participant_roles(&fields[7])?;
             validate_preconditions(&fields[8])?;
             validate_relation_proof_payload(&fields[9])?;
@@ -2318,11 +2638,8 @@ fn validate_identity_payload(
         AuthorityIdentityKind::ContextTheorem => {
             value_text(&fields[1])?;
             validate_context_binding(&fields[2])?;
-            let dimensions = value_array(&fields[3], Some(10))?;
-            let temporal = value_array(&fields[4], Some(4))?;
-            for value in dimensions.iter().chain(temporal.iter()) {
-                value_text(value)?;
-            }
+            validate_exact_ordered_enum(&fields[3], &CONTEXT_DIMENSIONS)?;
+            validate_exact_ordered_enum(&fields[4], &TEMPORAL_SEMANTICS)?;
             validate_preconditions(&fields[5])?;
             validate_b2_boundary_refs(&fields[6])?;
             validate_b1_citation_refs(&fields[7])

@@ -44,8 +44,8 @@ class AuthorityIdentityTests(unittest.TestCase):
                 "unary",
                 "reviewed_relation",
                 "directional",
-                "same_subject",
-                [[0, "subject", "card", "subject-ref"]],
+                "same_host",
+                [[0, "ordered_participant", "card", "subject-ref"]],
                 [],
                 [
                     "positive_interaction",
@@ -62,7 +62,7 @@ class AuthorityIdentityTests(unittest.TestCase):
 
         self.assertEqual(
             identity.as_text(),
-            "rp.v1/54258c0c781bf5c32a38a57b9cd7f9b01aa756048083380d095c048a1a232ee4",
+            "rp.v1/0868a972b7bc61f34d306292269e788244c30641b52f18416151067d7c3cadb6",
         )
         self.assertEqual(identity.semantic_domain, "manafold.m2.5.c.relation-proof.v1")
         self.assertEqual(
@@ -338,6 +338,84 @@ class AuthoritySchemaTests(unittest.TestCase):
         with self.assertRaises(jsonschema.ValidationError):
             jsonschema.Draft202012Validator(schema).validate(fixture)
 
+    def test_nested_authority_schema_closes_projection_and_context_values(self) -> None:
+        schema = json.loads(
+            (ROOT / "schemas/interaction-review-authority.v1.schema.json").read_text(
+                encoding="utf-8"
+            )
+        )
+
+        def validate_definition(name: str, value: object) -> None:
+            probe = {
+                "$schema": schema["$schema"],
+                "$defs": schema["$defs"],
+                "$ref": f"#/$defs/{name}",
+            }
+            jsonschema.Draft202012Validator(probe).validate(value)
+
+        participant = {
+            "position": 0,
+            "role": "ordered_participant",
+            "participant_kind": "card",
+            "semantic_ref": "subject-ref",
+        }
+        family = {
+            "family_id": "cap.fixture",
+            "lifecycle": "active",
+            "assignment_role": "primary",
+        }
+        projection = {
+            "arity": "unary",
+            "directionality": "directional",
+            "participant_roles": [participant],
+            "host_relationship": "same_host",
+            "context_dimensions": ["not_applicable"] * 10,
+            "temporal_semantics": ["not_applicable"] * 4,
+            "b2_family_refs": [family],
+            "b2_boundary_refs": [],
+            "b1_final_citation_refs": [],
+        }
+
+        validate_definition("participant_role", participant)
+        validate_definition("b2_family_ref", family)
+        validate_definition("class_projection", projection)
+        validate_definition(
+            "semantic_claim_relation",
+            {
+                "kind": "same_theorem_semantic_id",
+                "theorem_semantic_digest": "00" * 32,
+            },
+        )
+        validate_definition(
+            "context_slot_attestation",
+            {
+                "slot_kind": "context_dimension",
+                "slot_name": "zone",
+                "observed_value": "not_applicable",
+                "evidence_refs": [],
+                "equivalence_rationale": "fixture",
+            },
+        )
+
+        invalid_participant = dict(participant, role="not_a_role")
+        with self.assertRaises(jsonschema.ValidationError):
+            validate_definition("participant_role", invalid_participant)
+        invalid_family = dict(family, lifecycle="retired")
+        with self.assertRaises(jsonschema.ValidationError):
+            validate_definition("b2_family_ref", invalid_family)
+        invalid_claim = {"kind": "same_theorem_semantic_id"}
+        with self.assertRaises(jsonschema.ValidationError):
+            validate_definition("semantic_claim_relation", invalid_claim)
+        invalid_slot = {
+            "slot_kind": "context_dimension",
+            "slot_name": "zone",
+            "observed_value": "not_a_zone_value",
+            "evidence_refs": [],
+            "equivalence_rationale": "fixture",
+        }
+        with self.assertRaises(jsonschema.ValidationError):
+            validate_definition("context_slot_attestation", invalid_slot)
+
 
 class AuthorityIdentityMatrixTests(unittest.TestCase):
     def test_all_identity_kinds_match_the_shared_golden_matrix(self) -> None:
@@ -347,6 +425,8 @@ class AuthorityIdentityMatrixTests(unittest.TestCase):
             )
         )
         self.assertEqual(len(matrix["identities"]), len(AuthorityIdentityKind))
+        equivalence_cases = 0
+        context_cases = 0
         for entry in matrix["identities"]:
             with self.subTest(kind=entry["kind"]):
                 kind = AuthorityIdentityKind(entry["kind"])
@@ -357,6 +437,16 @@ class AuthorityIdentityMatrixTests(unittest.TestCase):
                 self.assertEqual(identity.input_schema_id, entry["input_schema_id"])
                 self.assertEqual(len(payload), entry["arity"])
                 self.assertEqual(identity.as_text(), entry["identity"])
+                if kind is AuthorityIdentityKind.RELATION_APPLICATION:
+                    equivalence = payload[3][0][7][1][1]
+                    self.assertEqual(equivalence[3][0], "same_theorem_semantic_id")
+                    self.assertEqual(len(equivalence[3][1]), 32)
+                    equivalence_cases += 1
+                if kind is AuthorityIdentityKind.CONTEXT_APPLICATION:
+                    self.assertEqual(len(payload[2][0][7][0]), 14)
+                    context_cases += 1
+        self.assertGreaterEqual(equivalence_cases, 1)
+        self.assertGreaterEqual(context_cases, 1)
 
     def test_identity_producer_rejects_untyped_relation_and_subject_payloads(self) -> None:
         with self.assertRaises(AuthorityContractError):
@@ -386,3 +476,102 @@ class AuthorityIdentityMatrixTests(unittest.TestCase):
                     [],
                 ],
             )
+
+    def test_class_projection_uses_typed_b2_family_refs(self) -> None:
+        matrix = json.loads(
+            (ROOT / "conformance/fixtures/authority/identity_golden_matrix.v1.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        entry = next(item for item in matrix["identities"] if item["kind"] == "relation_theorem")
+        payload = decode_canonical(bytes.fromhex(entry["payload_cbor_hex"]))
+        payload[9][1][2] = [
+            "unary",
+            "directional",
+            [[0, "ordered_participant", "card", "subject-ref"]],
+            "same_host",
+            ["not_applicable"] * 10,
+            ["not_applicable"] * 4,
+            [["cap.fixture", "active", "primary"]],
+            [],
+            [],
+        ]
+
+        identity = compute_authority_identity(AuthorityIdentityKind.RELATION_THEOREM, payload)
+        self.assertTrue(identity.as_text().startswith("rp.v1/"))
+
+    def test_class_projection_equivalence_binds_theorem_digest_and_all_positions(self) -> None:
+        matrix = json.loads(
+            (ROOT / "conformance/fixtures/authority/identity_golden_matrix.v1.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        entry = next(
+            item for item in matrix["identities"] if item["kind"] == "relation_application"
+        )
+        payload = decode_canonical(bytes.fromhex(entry["payload_cbor_hex"]))
+        projection = [
+            "unary",
+            "directional",
+            [[0, "ordered_participant", "card", "subject-ref"]],
+            "same_host",
+            ["not_applicable"] * 10,
+            ["not_applicable"] * 4,
+            [],
+            [],
+            [],
+        ]
+        payload[3][0][4][4][0][1] = "ordered_participant"
+        payload[3][0][4][3] = "same_host"
+        payload[3][0][7][1][1] = [
+            projection,
+            projection,
+            [
+                "arity",
+                "directionality",
+                "participant_roles",
+                "host_relationship",
+                "context_dimensions",
+                "temporal_semantics",
+                "b2_family_refs",
+                "b2_boundary_refs",
+                "b1_final_citation_refs",
+            ],
+            ["same_theorem_semantic_id", bytes(32)],
+            payload[3][0][6],
+            "fixture equivalence",
+        ]
+
+        identity = compute_authority_identity(AuthorityIdentityKind.RELATION_APPLICATION, payload)
+        self.assertTrue(identity.as_text().startswith("rpa.v1/"))
+
+    def test_context_and_participant_vocabularies_are_closed(self) -> None:
+        matrix = json.loads(
+            (ROOT / "conformance/fixtures/authority/identity_golden_matrix.v1.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        entry = next(item for item in matrix["identities"] if item["kind"] == "context_application")
+        payload_bytes = bytes.fromhex(entry["payload_cbor_hex"])
+        valid_payload = decode_canonical(payload_bytes)
+        identity = compute_authority_identity(
+            AuthorityIdentityKind.CONTEXT_APPLICATION, valid_payload
+        )
+        self.assertTrue(identity.as_text().startswith("cpa.v1/"))
+
+        invalid_payloads = []
+        invalid_participant = decode_canonical(payload_bytes)
+        invalid_participant[2][0][4][2][0][1] = "not_a_participant_role"
+        invalid_payloads.append(invalid_participant)
+        invalid_slot = decode_canonical(payload_bytes)
+        invalid_slot[2][0][7][0][0][1] = "not_a_context_slot"
+        invalid_payloads.append(invalid_slot)
+        invalid_value = decode_canonical(payload_bytes)
+        invalid_value[2][0][7][0][0][2] = "not_a_zone_value"
+        invalid_payloads.append(invalid_value)
+
+        for invalid_payload in invalid_payloads:
+            with self.subTest(payload=invalid_payload), self.assertRaises(AuthorityContractError):
+                compute_authority_identity(
+                    AuthorityIdentityKind.CONTEXT_APPLICATION, invalid_payload
+                )

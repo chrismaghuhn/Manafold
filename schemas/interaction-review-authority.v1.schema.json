@@ -86,6 +86,374 @@
       "type": "string",
       "minLength": 1
     },
+    "participant_role_name": {
+      "type": "string",
+      "enum": [
+        "affected",
+        "controller",
+        "copied_source",
+        "copy_result",
+        "decision_actor",
+        "destination_zone",
+        "origin_zone",
+        "ordered_participant",
+        "owner",
+        "replacement_actor",
+        "source",
+        "target",
+        "trigger_source"
+      ]
+    },
+    "participant_kind": {
+      "type": "string",
+      "enum": [
+        "ability",
+        "card",
+        "copiable_value",
+        "deck",
+        "effect",
+        "event",
+        "object",
+        "permanent",
+        "player",
+        "requirement_family",
+        "source_instance",
+        "spell",
+        "token",
+        "zone"
+      ]
+    },
+    "context_dimensions": {
+      "type": "array",
+      "prefixItems": [
+        {
+          "const": "zone"
+        },
+        {
+          "const": "visibility"
+        },
+        {
+          "const": "timing"
+        },
+        {
+          "const": "temporal_order"
+        },
+        {
+          "const": "source_affected_relation"
+        },
+        {
+          "const": "control_ownership_relation"
+        },
+        {
+          "const": "replacement_layer_relation"
+        },
+        {
+          "const": "trigger_lki_relation"
+        },
+        {
+          "const": "information_relation"
+        },
+        {
+          "const": "decision_actor_relation"
+        }
+      ],
+      "items": false,
+      "minItems": 10,
+      "maxItems": 10
+    },
+    "temporal_semantics": {
+      "type": "array",
+      "prefixItems": [
+        {
+          "const": "trigger_order"
+        },
+        {
+          "const": "dependency_order"
+        },
+        {
+          "const": "duration"
+        },
+        {
+          "const": "replacement_order"
+        }
+      ],
+      "items": false,
+      "minItems": 4,
+      "maxItems": 4
+    },
+    "context_dimension_values": {
+      "type": "array",
+      "prefixItems": [
+        {
+          "type": "string",
+          "enum": [
+            "battlefield",
+            "command_zone",
+            "exile",
+            "graveyard",
+            "hand",
+            "library",
+            "outside_game",
+            "stack",
+            "zone_agnostic",
+            "not_applicable"
+          ]
+        },
+        {
+          "type": "string",
+          "enum": [
+            "controller_only",
+            "hidden_to_actor",
+            "identity_hidden",
+            "not_applicable",
+            "owner_only",
+            "private",
+            "public"
+          ]
+        },
+        {
+          "type": "string",
+          "enum": [
+            "activation_time",
+            "cast_time",
+            "combat_time",
+            "continuous_effect",
+            "not_applicable",
+            "resolution_time",
+            "state_based_check",
+            "trigger_time",
+            "turn_boundary",
+            "zone_change_time"
+          ]
+        },
+        {
+          "type": "string",
+          "enum": [
+            "after",
+            "before",
+            "during",
+            "not_applicable",
+            "sequential",
+            "simultaneous",
+            "until",
+            "while"
+          ]
+        },
+        {
+          "type": "string",
+          "enum": [
+            "both_affected",
+            "no_effect_relation",
+            "not_applicable",
+            "source_affected",
+            "source_affects_other"
+          ]
+        },
+        {
+          "type": "string",
+          "enum": [
+            "control_changes",
+            "cross_controller",
+            "cross_owner",
+            "not_applicable",
+            "ownership_changes",
+            "same_controller",
+            "same_owner"
+          ]
+        },
+        {
+          "type": "string",
+          "enum": [
+            "copy_layer",
+            "control_layer",
+            "layer_dependency",
+            "no_replacement_or_layer",
+            "not_applicable",
+            "pt_layer",
+            "replacement_effect",
+            "type_layer",
+            "zone_change_replacement"
+          ]
+        },
+        {
+          "type": "string",
+          "enum": [
+            "intervening_if",
+            "last_known_information",
+            "no_trigger_lki",
+            "not_applicable",
+            "trigger_condition",
+            "triggered_event"
+          ]
+        },
+        {
+          "type": "string",
+          "enum": [
+            "hidden_identity",
+            "known_to_controller",
+            "known_to_owner",
+            "no_information_dependency",
+            "not_applicable",
+            "private_look",
+            "public_identity",
+            "random_unknown"
+          ]
+        },
+        {
+          "type": "string",
+          "enum": [
+            "active_player",
+            "controller",
+            "no_decision",
+            "not_applicable",
+            "opponent",
+            "owner",
+            "rules_forced",
+            "target_player"
+          ]
+        }
+      ],
+      "items": false,
+      "minItems": 10,
+      "maxItems": 10
+    },
+    "temporal_semantic_values": {
+      "type": "array",
+      "prefixItems": [
+        {
+          "type": "string",
+          "enum": [
+            "deferred",
+            "immediate",
+            "no_temporal_dependency",
+            "not_applicable"
+          ]
+        },
+        {
+          "type": "string",
+          "enum": [
+            "dependency_ordered",
+            "no_temporal_dependency",
+            "not_applicable"
+          ]
+        },
+        {
+          "type": "string",
+          "enum": [
+            "duration_limited",
+            "indefinite",
+            "not_applicable",
+            "until_event"
+          ]
+        },
+        {
+          "type": "string",
+          "enum": [
+            "after_effect",
+            "before_effect",
+            "no_temporal_dependency",
+            "not_applicable",
+            "same_event"
+          ]
+        }
+      ],
+      "items": false,
+      "minItems": 4,
+      "maxItems": 4
+    },
+    "b2_lifecycle": {
+      "type": "string",
+      "enum": [
+        "active",
+        "active_unassigned"
+      ]
+    },
+    "b2_assignment_role": {
+      "type": "string",
+      "enum": [
+        "primary",
+        "supporting"
+      ]
+    },
+    "host_relationship": {
+      "type": "string",
+      "enum": [
+        "cross_host",
+        "not_applicable",
+        "same_host"
+      ]
+    },
+    "b2_family_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "family_id": {
+          "$ref": "#/$defs/non_empty_string"
+        },
+        "lifecycle": {
+          "$ref": "#/$defs/b2_lifecycle"
+        },
+        "assignment_role": {
+          "$ref": "#/$defs/b2_assignment_role"
+        }
+      },
+      "required": [
+        "family_id",
+        "lifecycle",
+        "assignment_role"
+      ]
+    },
+    "class_projection_positions": {
+      "type": "array",
+      "prefixItems": [
+        {
+          "const": "arity"
+        },
+        {
+          "const": "directionality"
+        },
+        {
+          "const": "participant_roles"
+        },
+        {
+          "const": "host_relationship"
+        },
+        {
+          "const": "context_dimensions"
+        },
+        {
+          "const": "temporal_semantics"
+        },
+        {
+          "const": "b2_family_refs"
+        },
+        {
+          "const": "b2_boundary_refs"
+        },
+        {
+          "const": "b1_final_citation_refs"
+        }
+      ],
+      "items": false,
+      "minItems": 9,
+      "maxItems": 9
+    },
+    "semantic_claim_relation": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "same_theorem_semantic_id"
+        },
+        "theorem_semantic_digest": {
+          "$ref": "#/$defs/digest"
+        }
+      },
+      "required": [
+        "kind",
+        "theorem_semantic_digest"
+      ]
+    },
     "cbor_value": {
       "oneOf": [
         {
@@ -574,10 +942,10 @@
               "$ref": "#/$defs/non_empty_string"
             },
             "lifecycle": {
-              "$ref": "#/$defs/non_empty_string"
+              "$ref": "#/$defs/b2_lifecycle"
             },
             "assignment_role": {
-              "$ref": "#/$defs/non_empty_string"
+              "$ref": "#/$defs/b2_assignment_role"
             },
             "precise_semantic_definition": {
               "$ref": "#/$defs/non_empty_string"
@@ -715,10 +1083,10 @@
           "maximum": 4294967295
         },
         "role": {
-          "$ref": "#/$defs/non_empty_string"
+          "$ref": "#/$defs/participant_role_name"
         },
         "participant_kind": {
-          "$ref": "#/$defs/non_empty_string"
+          "$ref": "#/$defs/participant_kind"
         },
         "semantic_ref": {
           "$ref": "#/$defs/non_empty_string"
@@ -763,7 +1131,7 @@
           "minItems": 1
         },
         "host_relationship": {
-          "$ref": "#/$defs/non_empty_string"
+          "$ref": "#/$defs/host_relationship"
         }
       },
       "required": [
@@ -893,24 +1261,18 @@
           }
         },
         "host_relationship": {
-          "$ref": "#/$defs/non_empty_string"
+          "$ref": "#/$defs/host_relationship"
         },
         "context_dimensions": {
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/non_empty_string"
-          }
+          "$ref": "#/$defs/context_dimension_values"
         },
         "temporal_semantics": {
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/non_empty_string"
-          }
+          "$ref": "#/$defs/temporal_semantic_values"
         },
         "b2_family_refs": {
           "type": "array",
           "items": {
-            "$ref": "#/$defs/non_empty_string"
+            "$ref": "#/$defs/b2_family_ref"
           }
         },
         "b2_boundary_refs": {
@@ -1237,7 +1599,7 @@
           "$ref": "#/$defs/non_empty_string"
         },
         "host_relationship": {
-          "$ref": "#/$defs/non_empty_string"
+          "$ref": "#/$defs/host_relationship"
         },
         "participant_bindings": {
           "type": "array",
@@ -1289,13 +1651,10 @@
           "$ref": "#/$defs/class_projection"
         },
         "equal_positions": {
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/non_empty_string"
-          }
+          "$ref": "#/$defs/class_projection_positions"
         },
         "semantic_claim_relation": {
-          "const": "same_theorem_semantic_id"
+          "$ref": "#/$defs/semantic_claim_relation"
         },
         "evidence_refs": {
           "$ref": "#/$defs/evidence_refs"
@@ -1862,16 +2221,10 @@
           "$ref": "#/$defs/subject"
         },
         "context_dimensions": {
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/non_empty_string"
-          }
+          "$ref": "#/$defs/context_dimensions"
         },
         "temporal_semantics": {
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/non_empty_string"
-          }
+          "$ref": "#/$defs/temporal_semantics"
         },
         "preconditions": {
           "type": "array",
@@ -1932,7 +2285,7 @@
           }
         },
         "host_relationship": {
-          "$ref": "#/$defs/non_empty_string"
+          "$ref": "#/$defs/host_relationship"
         }
       },
       "required": [
@@ -1954,10 +2307,26 @@
           ]
         },
         "slot_name": {
-          "$ref": "#/$defs/non_empty_string"
+          "type": "string",
+          "enum": [
+            "zone",
+            "visibility",
+            "timing",
+            "temporal_order",
+            "source_affected_relation",
+            "control_ownership_relation",
+            "replacement_layer_relation",
+            "trigger_lki_relation",
+            "information_relation",
+            "decision_actor_relation",
+            "trigger_order",
+            "dependency_order",
+            "duration",
+            "replacement_order"
+          ]
         },
         "observed_value": {
-          "$ref": "#/$defs/cbor_value"
+          "type": "string"
         },
         "evidence_refs": {
           "$ref": "#/$defs/evidence_refs"
@@ -1972,6 +2341,438 @@
         "observed_value",
         "evidence_refs",
         "equivalence_rationale"
+      ],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "slot_kind": {
+                "const": "context_dimension"
+              },
+              "slot_name": {
+                "const": "zone"
+              }
+            },
+            "required": [
+              "slot_kind",
+              "slot_name"
+            ]
+          },
+          "then": {
+            "properties": {
+              "observed_value": {
+                "enum": [
+                  "battlefield",
+                  "command_zone",
+                  "exile",
+                  "graveyard",
+                  "hand",
+                  "library",
+                  "outside_game",
+                  "stack",
+                  "zone_agnostic",
+                  "not_applicable"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "slot_kind": {
+                "const": "context_dimension"
+              },
+              "slot_name": {
+                "const": "visibility"
+              }
+            },
+            "required": [
+              "slot_kind",
+              "slot_name"
+            ]
+          },
+          "then": {
+            "properties": {
+              "observed_value": {
+                "enum": [
+                  "controller_only",
+                  "hidden_to_actor",
+                  "identity_hidden",
+                  "not_applicable",
+                  "owner_only",
+                  "private",
+                  "public"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "slot_kind": {
+                "const": "context_dimension"
+              },
+              "slot_name": {
+                "const": "timing"
+              }
+            },
+            "required": [
+              "slot_kind",
+              "slot_name"
+            ]
+          },
+          "then": {
+            "properties": {
+              "observed_value": {
+                "enum": [
+                  "activation_time",
+                  "cast_time",
+                  "combat_time",
+                  "continuous_effect",
+                  "not_applicable",
+                  "resolution_time",
+                  "state_based_check",
+                  "trigger_time",
+                  "turn_boundary",
+                  "zone_change_time"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "slot_kind": {
+                "const": "context_dimension"
+              },
+              "slot_name": {
+                "const": "temporal_order"
+              }
+            },
+            "required": [
+              "slot_kind",
+              "slot_name"
+            ]
+          },
+          "then": {
+            "properties": {
+              "observed_value": {
+                "enum": [
+                  "after",
+                  "before",
+                  "during",
+                  "not_applicable",
+                  "sequential",
+                  "simultaneous",
+                  "until",
+                  "while"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "slot_kind": {
+                "const": "context_dimension"
+              },
+              "slot_name": {
+                "const": "source_affected_relation"
+              }
+            },
+            "required": [
+              "slot_kind",
+              "slot_name"
+            ]
+          },
+          "then": {
+            "properties": {
+              "observed_value": {
+                "enum": [
+                  "both_affected",
+                  "no_effect_relation",
+                  "not_applicable",
+                  "source_affected",
+                  "source_affects_other"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "slot_kind": {
+                "const": "context_dimension"
+              },
+              "slot_name": {
+                "const": "control_ownership_relation"
+              }
+            },
+            "required": [
+              "slot_kind",
+              "slot_name"
+            ]
+          },
+          "then": {
+            "properties": {
+              "observed_value": {
+                "enum": [
+                  "control_changes",
+                  "cross_controller",
+                  "cross_owner",
+                  "not_applicable",
+                  "ownership_changes",
+                  "same_controller",
+                  "same_owner"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "slot_kind": {
+                "const": "context_dimension"
+              },
+              "slot_name": {
+                "const": "replacement_layer_relation"
+              }
+            },
+            "required": [
+              "slot_kind",
+              "slot_name"
+            ]
+          },
+          "then": {
+            "properties": {
+              "observed_value": {
+                "enum": [
+                  "copy_layer",
+                  "control_layer",
+                  "layer_dependency",
+                  "no_replacement_or_layer",
+                  "not_applicable",
+                  "pt_layer",
+                  "replacement_effect",
+                  "type_layer",
+                  "zone_change_replacement"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "slot_kind": {
+                "const": "context_dimension"
+              },
+              "slot_name": {
+                "const": "trigger_lki_relation"
+              }
+            },
+            "required": [
+              "slot_kind",
+              "slot_name"
+            ]
+          },
+          "then": {
+            "properties": {
+              "observed_value": {
+                "enum": [
+                  "intervening_if",
+                  "last_known_information",
+                  "no_trigger_lki",
+                  "not_applicable",
+                  "trigger_condition",
+                  "triggered_event"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "slot_kind": {
+                "const": "context_dimension"
+              },
+              "slot_name": {
+                "const": "information_relation"
+              }
+            },
+            "required": [
+              "slot_kind",
+              "slot_name"
+            ]
+          },
+          "then": {
+            "properties": {
+              "observed_value": {
+                "enum": [
+                  "hidden_identity",
+                  "known_to_controller",
+                  "known_to_owner",
+                  "no_information_dependency",
+                  "not_applicable",
+                  "private_look",
+                  "public_identity",
+                  "random_unknown"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "slot_kind": {
+                "const": "context_dimension"
+              },
+              "slot_name": {
+                "const": "decision_actor_relation"
+              }
+            },
+            "required": [
+              "slot_kind",
+              "slot_name"
+            ]
+          },
+          "then": {
+            "properties": {
+              "observed_value": {
+                "enum": [
+                  "active_player",
+                  "controller",
+                  "no_decision",
+                  "not_applicable",
+                  "opponent",
+                  "owner",
+                  "rules_forced",
+                  "target_player"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "slot_kind": {
+                "const": "temporal_semantic"
+              },
+              "slot_name": {
+                "const": "trigger_order"
+              }
+            },
+            "required": [
+              "slot_kind",
+              "slot_name"
+            ]
+          },
+          "then": {
+            "properties": {
+              "observed_value": {
+                "enum": [
+                  "deferred",
+                  "immediate",
+                  "no_temporal_dependency",
+                  "not_applicable"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "slot_kind": {
+                "const": "temporal_semantic"
+              },
+              "slot_name": {
+                "const": "dependency_order"
+              }
+            },
+            "required": [
+              "slot_kind",
+              "slot_name"
+            ]
+          },
+          "then": {
+            "properties": {
+              "observed_value": {
+                "enum": [
+                  "dependency_ordered",
+                  "no_temporal_dependency",
+                  "not_applicable"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "slot_kind": {
+                "const": "temporal_semantic"
+              },
+              "slot_name": {
+                "const": "duration"
+              }
+            },
+            "required": [
+              "slot_kind",
+              "slot_name"
+            ]
+          },
+          "then": {
+            "properties": {
+              "observed_value": {
+                "enum": [
+                  "duration_limited",
+                  "indefinite",
+                  "not_applicable",
+                  "until_event"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "slot_kind": {
+                "const": "temporal_semantic"
+              },
+              "slot_name": {
+                "const": "replacement_order"
+              }
+            },
+            "required": [
+              "slot_kind",
+              "slot_name"
+            ]
+          },
+          "then": {
+            "properties": {
+              "observed_value": {
+                "enum": [
+                  "after_effect",
+                  "before_effect",
+                  "no_temporal_dependency",
+                  "not_applicable",
+                  "same_event"
+                ]
+              }
+            }
+          }
+        }
       ]
     },
     "context_member": {
@@ -2010,7 +2811,9 @@
               "type": "array",
               "items": {
                 "$ref": "#/$defs/context_slot_attestation"
-              }
+              },
+              "minItems": 14,
+              "maxItems": 14
             }
           },
           "required": [

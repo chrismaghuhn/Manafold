@@ -444,6 +444,24 @@ class SourceBindingDigestV1:
 
 
 @dataclass(frozen=True)
+class B2FamilyRefV1:
+    family_id: str
+    lifecycle: str
+    assignment_role: str
+
+    def __post_init__(self) -> None:
+        if not self.family_id:
+            raise AuthorityContractError("B2 family ID must be non-empty")
+        if self.lifecycle not in _B2_LIFECYCLES:
+            raise AuthorityContractError("B2 family lifecycle is not closed in V1")
+        if self.assignment_role not in _B2_ASSIGNMENT_ROLES:
+            raise AuthorityContractError("B2 family assignment role is not closed in V1")
+
+    def to_cbor(self) -> list[AuthorityValue]:
+        return [self.family_id, self.lifecycle, self.assignment_role]
+
+
+@dataclass(frozen=True)
 class EvidenceRefV1:
     authority_kind: str
     path: str
@@ -871,6 +889,7 @@ _RELATION_CHANNELS: Final = (
 )
 _ARITIES: Final = ("unary", "unordered_binary", "directional_binary", "higher_order")
 _DIRECTIONALITIES: Final = ("unordered", "directional")
+_HOST_RELATIONSHIPS: Final = ("cross_host", "not_applicable", "same_host")
 _OPERATIONS: Final = (
     "reads",
     "changes_characteristic",
@@ -934,6 +953,188 @@ _REQUIRED_CONCLUSIONS: Final = ("separated", "not_relevant")
 _RECORD_KINDS: Final = tuple(kind.value for kind in RecordKind)
 _SUBJECT_KINDS: Final = tuple(kind.value for kind in AcceptanceSubjectKind)
 _SLOT_KINDS: Final = ("context_dimension", "temporal_semantic")
+_PARTICIPANT_ROLES: Final = (
+    "affected",
+    "controller",
+    "copied_source",
+    "copy_result",
+    "decision_actor",
+    "destination_zone",
+    "origin_zone",
+    "ordered_participant",
+    "owner",
+    "replacement_actor",
+    "source",
+    "target",
+    "trigger_source",
+)
+_PARTICIPANT_KINDS: Final = (
+    "ability",
+    "card",
+    "copiable_value",
+    "deck",
+    "effect",
+    "event",
+    "object",
+    "permanent",
+    "player",
+    "requirement_family",
+    "source_instance",
+    "spell",
+    "token",
+    "zone",
+)
+_CONTEXT_DIMENSIONS: Final = (
+    "zone",
+    "visibility",
+    "timing",
+    "temporal_order",
+    "source_affected_relation",
+    "control_ownership_relation",
+    "replacement_layer_relation",
+    "trigger_lki_relation",
+    "information_relation",
+    "decision_actor_relation",
+)
+_TEMPORAL_SEMANTICS: Final = (
+    "trigger_order",
+    "dependency_order",
+    "duration",
+    "replacement_order",
+)
+_CONTEXT_VALUES: Final[dict[str, tuple[str, ...]]] = {
+    "zone": (
+        "battlefield",
+        "command_zone",
+        "exile",
+        "graveyard",
+        "hand",
+        "library",
+        "outside_game",
+        "stack",
+        "zone_agnostic",
+        "not_applicable",
+    ),
+    "visibility": (
+        "controller_only",
+        "hidden_to_actor",
+        "identity_hidden",
+        "not_applicable",
+        "owner_only",
+        "private",
+        "public",
+    ),
+    "timing": (
+        "activation_time",
+        "cast_time",
+        "combat_time",
+        "continuous_effect",
+        "not_applicable",
+        "resolution_time",
+        "state_based_check",
+        "trigger_time",
+        "turn_boundary",
+        "zone_change_time",
+    ),
+    "temporal_order": (
+        "after",
+        "before",
+        "during",
+        "not_applicable",
+        "sequential",
+        "simultaneous",
+        "until",
+        "while",
+    ),
+    "source_affected_relation": (
+        "both_affected",
+        "no_effect_relation",
+        "not_applicable",
+        "source_affected",
+        "source_affects_other",
+    ),
+    "control_ownership_relation": (
+        "control_changes",
+        "cross_controller",
+        "cross_owner",
+        "not_applicable",
+        "ownership_changes",
+        "same_controller",
+        "same_owner",
+    ),
+    "replacement_layer_relation": (
+        "copy_layer",
+        "control_layer",
+        "layer_dependency",
+        "no_replacement_or_layer",
+        "not_applicable",
+        "pt_layer",
+        "replacement_" + "effect",
+        "type_layer",
+        "zone_change_replacement",
+    ),
+    "trigger_lki_relation": (
+        "intervening_if",
+        "last_known_information",
+        "no_trigger_lki",
+        "not_applicable",
+        "trigger_condition",
+        "triggered_event",
+    ),
+    "information_relation": (
+        "hidden_identity",
+        "known_to_controller",
+        "known_to_owner",
+        "no_information_dependency",
+        "not_applicable",
+        "private_look",
+        "public_identity",
+        "random_unknown",
+    ),
+    "decision_actor_relation": (
+        "active_player",
+        "controller",
+        "no_decision",
+        "not_applicable",
+        "opponent",
+        "owner",
+        "rules_forced",
+        "target_player",
+    ),
+}
+_TEMPORAL_VALUES: Final[dict[str, tuple[str, ...]]] = {
+    "trigger_order": ("deferred", "immediate", "no_temporal_dependency", "not_applicable"),
+    "dependency_order": (
+        "dependency_ordered",
+        "no_temporal_dependency",
+        "not_applicable",
+    ),
+    "duration": ("duration_limited", "indefinite", "not_applicable", "until_event"),
+    "replacement_order": (
+        "after_effect",
+        "before_effect",
+        "no_temporal_dependency",
+        "not_applicable",
+        "same_event",
+    ),
+}
+_B2_LIFECYCLES: Final = ("active", "active_unassigned")
+_B2_ASSIGNMENT_ROLES: Final = ("primary", "supporting")
+_CLASS_PROJECTION_POSITIONS: Final = (
+    "arity",
+    "directionality",
+    "participant_roles",
+    "host_relationship",
+    "context_dimensions",
+    "temporal_semantics",
+    "b2_family_refs",
+    "b2_boundary_refs",
+    "b1_final_citation_refs",
+)
+_CONTEXT_SLOT_SEQUENCE: Final = tuple(
+    [("context_dimension", name) for name in _CONTEXT_DIMENSIONS]
+    + [("temporal_semantic", name) for name in _TEMPORAL_SEMANTICS]
+)
 
 
 def _fail(message: str) -> None:
@@ -1003,6 +1204,28 @@ def _ordered_enum_array(
         _fail(f"{label} must be duplicate-free")
     if seen != [value for value in allowed if value in seen]:
         _fail(f"{label} must preserve the closed vocabulary order")
+
+
+def _exact_ordered_enum_array(
+    value: object,
+    allowed: tuple[str, ...],
+    label: str,
+) -> None:
+    values = _array(value, label, len(allowed))
+    actual = [_enum(item, allowed, label) for item in values]
+    if actual != list(allowed):
+        _fail(f"{label} must contain the complete closed vocabulary in order")
+
+
+def _validate_slot_value_vector(
+    value: object,
+    slot_names: tuple[str, ...],
+    vocabularies: dict[str, tuple[str, ...]],
+    label: str,
+) -> None:
+    values = _array(value, label, len(slot_names))
+    for name, observed in zip(slot_names, values, strict=True):
+        _enum(observed, vocabularies[name], f"{label}.{name}")
 
 
 def _validate_cbor_value(value: object, label: str = "value") -> None:
@@ -1129,8 +1352,8 @@ def _validate_role_binding(value: object) -> None:
 def _validate_participant_role(value: object, label: str = "participant role") -> None:
     role = _array(value, label, 4)
     _uint32(role[0], f"{label} position")
-    _text(role[1], f"{label} role")
-    _text(role[2], f"{label} participant kind")
+    _enum(role[1], _PARTICIPANT_ROLES, f"{label} role")
+    _enum(role[2], _PARTICIPANT_KINDS, f"{label} participant kind")
     _text(role[3], f"{label} semantic reference")
 
 
@@ -1155,6 +1378,18 @@ def _validate_b2_boundary_refs(value: object) -> None:
     _canonical_array(refs, _validate_b2_boundary_ref, "B2 boundary references")
 
 
+def _validate_b2_family_ref(value: object) -> None:
+    family = _array(value, "B2 family reference", 3)
+    _text(family[0], "B2 family ID")
+    _enum(family[1], _B2_LIFECYCLES, "B2 family lifecycle")
+    _enum(family[2], _B2_ASSIGNMENT_ROLES, "B2 family assignment role")
+
+
+def _validate_b2_family_refs(value: object) -> None:
+    refs = _array(value, "B2 family references")
+    _canonical_array(refs, _validate_b2_family_ref, "B2 family references")
+
+
 def _validate_b1_citation_ref(value: object) -> None:
     citation = _array(value, "B1.Final citation reference", 2)
     _text(citation[0], "B1 authority ID")
@@ -1164,6 +1399,32 @@ def _validate_b1_citation_ref(value: object) -> None:
 def _validate_b1_citation_refs(value: object) -> None:
     refs = _array(value, "B1.Final citation references")
     _canonical_array(refs, _validate_b1_citation_ref, "B1.Final citation references")
+
+
+def _validate_context_slot_value(
+    slot_kind: object,
+    slot_name: object,
+    observed_value: object,
+) -> None:
+    kind = _enum(slot_kind, _SLOT_KINDS, "context slot kind")
+    if kind == "context_dimension":
+        name = _enum(slot_name, _CONTEXT_DIMENSIONS, "context slot name")
+        _enum(observed_value, _CONTEXT_VALUES[name], "context slot value")
+    else:
+        name = _enum(slot_name, _TEMPORAL_SEMANTICS, "temporal slot name")
+        _enum(observed_value, _TEMPORAL_VALUES[name], "temporal slot value")
+
+
+def _validate_context_slot_attestation(
+    value: object,
+    expected: tuple[str, str] | None = None,
+) -> None:
+    fields = _array(value, "context slot attestation", 5)
+    _validate_context_slot_value(fields[0], fields[1], fields[2])
+    if expected is not None and (fields[0], fields[1]) != expected:
+        _fail("context slot attestations must use the fixed slot order")
+    _validate_evidence_refs(fields[3], "context slot evidence")
+    _text(fields[4], "context slot rationale")
 
 
 def _validate_model_boundary_locator(value: object) -> None:
@@ -1197,9 +1458,7 @@ def _validate_positive_boundary_fact(value: object) -> None:
     elif kind == "context_slot":
         if len(payload) != 3:
             _fail("context positive boundary fact must contain three fields")
-        _text(payload[0], "context slot kind")
-        _text(payload[1], "context slot name")
-        _validate_cbor_value(payload[2], "context slot value")
+        _validate_context_slot_value(payload[0], payload[1], payload[2])
     elif kind == "model_boundary":
         if len(payload) != 3:
             _fail("model positive boundary fact must contain three fields")
@@ -1222,13 +1481,14 @@ def _validate_class_projection(value: object) -> None:
     _enum(projection[0], _ARITIES, "class arity")
     _enum(projection[1], _DIRECTIONALITIES, "class directionality")
     _validate_participant_roles(projection[2])
-    _text(projection[3], "class host relationship")
-    for index, label in enumerate(
-        ("context dimensions", "temporal semantics", "B2 family references"), start=4
-    ):
-        values = _array(projection[index], label)
-        for value in values:
-            _text(value, label)
+    _enum(projection[3], _HOST_RELATIONSHIPS, "class host relationship")
+    _validate_slot_value_vector(
+        projection[4], _CONTEXT_DIMENSIONS, _CONTEXT_VALUES, "context dimension values"
+    )
+    _validate_slot_value_vector(
+        projection[5], _TEMPORAL_SEMANTICS, _TEMPORAL_VALUES, "temporal semantic values"
+    )
+    _validate_b2_family_refs(projection[6])
     _validate_b2_boundary_refs(projection[7])
     _validate_b1_citation_refs(projection[8])
 
@@ -1254,14 +1514,17 @@ def _validate_precondition_payload(kind: str, payload: object) -> None:
     if kind == "candidate_relation_shape":
         if len(values) != 4:
             _fail("candidate relation shape precondition must contain four fields")
-        for index, label in enumerate(("scope", "relation", "directionality", "host relationship")):
+        for index, label in enumerate(("scope", "relation")):
             _text(values[index], label)
+        _enum(values[2], _DIRECTIONALITIES, "candidate relation directionality")
+        _enum(values[3], _HOST_RELATIONSHIPS, "candidate relation host relationship")
     elif kind == "participant_binding":
         if len(values) != 4:
             _fail("participant binding precondition must contain four fields")
         _uint32(values[0], "participant binding position")
-        for index, label in enumerate(("role", "participant kind", "semantic reference"), start=1):
-            _text(values[index], label)
+        _enum(values[1], _PARTICIPANT_ROLES, "participant binding role")
+        _enum(values[2], _PARTICIPANT_KINDS, "participant binding participant kind")
+        _text(values[3], "participant binding semantic reference")
     elif kind == "b2_boundary":
         if len(values) != 4:
             _fail("B2 boundary precondition must contain four fields")
@@ -1272,8 +1535,12 @@ def _validate_precondition_payload(kind: str, payload: object) -> None:
     elif kind in {"source_context", "temporal_semantic"}:
         if len(values) != 2:
             _fail(f"{kind} precondition must contain two fields")
-        _text(values[0], f"{kind} dimension")
-        _validate_cbor_value(values[1], f"{kind} value")
+        if kind == "source_context":
+            dimension = _enum(values[0], _CONTEXT_DIMENSIONS, "source context dimension")
+            _enum(values[1], _CONTEXT_VALUES[dimension], "source context value")
+        else:
+            dimension = _enum(values[0], _TEMPORAL_SEMANTICS, "temporal semantic dimension")
+            _enum(values[1], _TEMPORAL_VALUES[dimension], "temporal semantic value")
     elif kind == "class_projection":
         _validate_class_projection(values)
 
@@ -1364,7 +1631,7 @@ def _validate_relation_binding(value: object) -> None:
     _text(fields[0], "relation scope")
     _text(fields[1], "relation name")
     _enum(fields[2], _DIRECTIONALITIES, "relation directionality")
-    _text(fields[3], "relation host relationship")
+    _enum(fields[3], _HOST_RELATIONSHIPS, "relation host relationship")
     _validate_participant_roles(fields[4])
 
 
@@ -1386,7 +1653,7 @@ def _validate_context_binding(value: object) -> None:
     _enum(fields[0], _ARITIES, "context arity")
     _enum(fields[1], _DIRECTIONALITIES, "context directionality")
     _validate_participant_roles(fields[2])
-    _text(fields[3], "context host relationship")
+    _enum(fields[3], _HOST_RELATIONSHIPS, "context host relationship")
 
 
 def _validate_precondition_attestations(value: object) -> None:
@@ -1403,11 +1670,11 @@ def _validate_class_projection_equivalence(value: object) -> None:
     fields = _array(value, "class projection equivalence", 6)
     _validate_class_projection(fields[0])
     _validate_class_projection(fields[1])
-    equal_positions = _array(fields[2], "equal class positions")
-    for position in equal_positions:
-        _text(position, "equal class position")
-    if fields[3] != "same_theorem_semantic_id":
+    _exact_ordered_enum_array(fields[2], _CLASS_PROJECTION_POSITIONS, "equal class positions")
+    semantic_claim = _array(fields[3], "semantic claim relation", 2)
+    if semantic_claim[0] != "same_theorem_semantic_id":
         _fail("class semantic claim relation is not closed")
+    _bytes32(semantic_claim[1], "theorem semantic digest")
     _validate_evidence_refs(fields[4], "class equivalence evidence")
     _text(fields[5], "class equivalence rationale")
 
@@ -1582,16 +1849,9 @@ def _validate_context_member(value: object) -> None:
     _validate_precondition_attestations(fields[5])
     _validate_evidence_refs(fields[6], "member evidence references")
     attestation = _array(fields[7], "context member attestation", 1)
-    slots = _array(attestation[0], "context slot attestations")
-    if len(slots) != 14:
-        _fail("context member attestation must cover exactly fourteen slots")
-    for slot in slots:
-        slot_fields = _array(slot, "context slot attestation", 5)
-        _enum(slot_fields[0], _SLOT_KINDS, "context slot kind")
-        _text(slot_fields[1], "context slot name")
-        _validate_cbor_value(slot_fields[2], "context slot observed value")
-        _validate_evidence_refs(slot_fields[3], "context slot evidence")
-        _text(slot_fields[4], "context slot rationale")
+    slots = _array(attestation[0], "context slot attestations", len(_CONTEXT_SLOT_SEQUENCE))
+    for slot, expected in zip(slots, _CONTEXT_SLOT_SEQUENCE, strict=True):
+        _validate_context_slot_attestation(slot, expected)
 
 
 def _validate_record_input(value: list[object], *, application: bool) -> None:
@@ -1743,7 +2003,7 @@ def _validate_kind_payload(kind: AuthorityIdentityKind, fields: list[AuthorityVa
         _enum(values[3], _ARITIES, "arity")
         _text(values[4], "relation")
         _enum(values[5], _DIRECTIONALITIES, "directionality")
-        _text(values[6], "host relationship")
+        _enum(values[6], _HOST_RELATIONSHIPS, "host relationship")
         _validate_participant_roles(values[7])
         _validate_preconditions(values[8])
         _validate_relation_proof_payload(values[9])
@@ -1760,14 +2020,8 @@ def _validate_kind_payload(kind: AuthorityIdentityKind, fields: list[AuthorityVa
     elif kind is AuthorityIdentityKind.CONTEXT_THEOREM:
         _text(values[1], "context model ID")
         _validate_context_binding(values[2])
-        dimensions = _array(values[3], "context dimensions")
-        temporals = _array(values[4], "temporal semantics")
-        if len(dimensions) != 10 or len(temporals) != 4:
-            _fail("context theorem must contain ten context and four temporal slots")
-        for dimension in dimensions:
-            _text(dimension, "context dimension")
-        for temporal in temporals:
-            _text(temporal, "temporal semantic")
+        _exact_ordered_enum_array(values[3], _CONTEXT_DIMENSIONS, "context dimensions")
+        _exact_ordered_enum_array(values[4], _TEMPORAL_SEMANTICS, "temporal semantics")
         _validate_preconditions(values[5])
         _validate_b2_boundary_refs(values[6])
         _validate_b1_citation_refs(values[7])
