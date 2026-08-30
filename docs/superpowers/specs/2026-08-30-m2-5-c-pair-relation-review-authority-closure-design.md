@@ -468,7 +468,17 @@ storage location for difficult, expensive, or currently unsupported review.
 
 ### 7.1 Closed scope reasons
 
-The first implementation may use only these reason codes:
+The first implementation may use only these `ScopeReasonV1` values:
+
+~~~
+ScopeReasonV1 =
+  unbounded_n_way_not_representable
+  | undeclared_participant_kind
+  | undeclared_relation_shape
+  | undeclared_outcome_surface
+~~~
+
+The corresponding unit-enum values are:
 
 ~~~
 unbounded_n_way_not_representable
@@ -1095,12 +1105,13 @@ proof_payload is exactly one RelationProofPayloadV1 variant:
 RelationProofPayloadV1 =
   ["positive_interaction",
    [CausalChainV1, RequiredRelationChannelsV1,
-    class_projection_template_or_null]]
+    class_projection_template_or_null: ClassProjectionV1 | null]]
   | ["positive_separation",
      [separation_kind, SeparationObligationsV1]]
   | ["model_bound_scope",
-     [ModelBoundaryRefV1, reason_code, observed_candidate_shape,
-      positive_boundary_evidence_refs]]
+     [ModelBoundaryRefV1, reason_code: ScopeReasonV1,
+      observed_candidate_shape: CandidateShapeV1,
+      positive_boundary_evidence_refs: EvidenceRefV1[]]]
 ~~~
 
 preconditions is an ordered, unique array. It is a tagged union, not a
@@ -1385,10 +1396,26 @@ proposed V1 schema, not implementation advice.
 | acceptance | every accepted record | required; exactly human_accepted plus immutable review-event reference | review-event reference is provenance only and is included in record identity | absent or unresolvable acceptance means EXPERIMENTAL, never production authority |
 | supersession | lineage | required only in a SupersessionRecordV1; replacement may be explicit null for revocation | one current replacement or one revocation; no cycles or competing successors | old records remain readable; current derivation rejects superseded records |
 
-Nullability is closed. Optional semantic values use explicit null only where
-this document says so: replacement_record_id and replacement_record_kind in a
-revocation, optional context-dependent B2/B1 reference arrays represented as
-empty arrays, and no other record field. Missing and null are not equivalent.
+Nullability is closed. The following is the complete set of semantic slots whose
+canonical value may be null; every other semantic slot is non-nullable. Missing
+and null are not equivalent.
+
+| Slot | Null is valid exactly when | Non-null value |
+| --- | --- | --- |
+| `event_or_effect_role_position_or_null` | The causal edge has no intermediate event/effect role. | The exact `u32` role position of that intermediate event/effect role. |
+| `to_role_position_or_null` | The causal edge has no distinct destination participant role. | The exact `u32` destination participant role position; an edge asserting participant-to-participant impact must use this form. |
+| `class_projection_template_or_null` | The theorem is explicitly non-class-producing; such a theorem cannot satisfy `required_interaction`. | `ClassProjectionV1`. An accepted application selected for `required_interaction` must use this form. |
+| `class_projection_equivalence_or_null` | The application member's terminal disposition is not `required_interaction`. | The complete `ClassProjectionEquivalenceV1` proof for a `required_interaction` member. |
+| `replacement_record_id_or_null` | The `SupersessionRecordV1` is a revocation. | The accepted record ID being replaced. |
+| `replacement_record_kind_or_null` | `replacement_record_id_or_null` is null. | The same accepted-record kind/family as `superseded_record_kind`. |
+
+The source-binding field `schema_or_null` is a separately specified closed
+source-artifact union in §12.2; it is not an additional open semantic nullable
+slot. Optional B2/B1 reference collections use explicit empty arrays, never
+null. For a supersession, the two replacement fields are null together or
+non-null together. For a causal edge, the two role-position slots are evaluated
+independently under the exact conditions above; neither null value may be used
+as an omitted or unknown placeholder.
 
 ### 12.9 Closed precondition and evidence shapes
 
@@ -1450,11 +1477,67 @@ list.
 DomainProofV1.criterion is an ordered array of the following closed variants:
 
 ~~~
-["channel_implicated", [channel, positive_boundary_fact]]
-["channel_excluded", [channel, positive_boundary_fact]]
-["rule_domain_required", [authority_id, citation_id, covered_boundary_fields]]
-["rule_domain_excluded", [excluded_domain_id, positive_boundary_fact]]
+DomainCriterionV1 =
+  ["channel_implicated", [RelationChannelV1, PositiveBoundaryFactV1]]
+  | ["channel_excluded", [RelationChannelV1, PositiveBoundaryFactV1]]
+  | ["rule_domain_required",
+     [B1FinalCitationRefV1, covered_boundary_fields: BoundaryFieldNameV1[]]]
+  | ["rule_domain_excluded",
+     [excluded_domain_id: ExcludedRuleDomainIdV1, PositiveBoundaryFactV1]]
 ~~~
+
+`covered_boundary_fields` is a non-empty, duplicate-free
+`BoundaryFieldNameV1[]` encoded in the fixed order below. It is an ordered
+subsequence of the closed vocabulary; arbitrary strings, reordered aliases, and
+open object keys are not valid criterion values.
+
+~~~
+BoundaryFieldNameV1, in canonical order:
+includes
+excludes
+objects
+action_or_event
+timing
+zone_visibility
+eligibility_condition_duration
+targets_choices
+ownership_control
+numeric_scaling_counters
+information_identity_effect
+rule_dependency
+~~~
+
+`BoundaryFieldNameV1` uses the existing unit-enum canonical-CBOR
+representation (`[variant_id, null]`). `ExcludedRuleDomainIdV1` is a closed
+tagged union; its payload is never a free-form domain string:
+
+~~~
+ExcludedRuleDomainIdV1 =
+  ["b1_final_citation", B1FinalCitationRefV1]
+  | ["review_domain", ReviewDomainIdV1]
+~~~
+
+`ReviewDomainIdV1` is the closed unit enum:
+
+~~~
+ReviewDomainIdV1 =
+  triggers_and_lki
+  | replacement_layers_and_dependency
+  | copy_and_token_creation
+  | target_legality_protection_and_identity
+  | control_and_ownership
+  | commander_and_format
+  | hidden_information_and_visibility
+  | ordering_and_temporal_dependencies
+  | source_versus_affected_identity
+  | controller_owner_and_decision_actor
+  | higher_order_interactions
+~~~
+
+Its variants and order are identical to the eleven `review_domain` values in
+§8. The `criterion` array itself is ordered by criterion index; its order is
+part of the `DomainProofSemanticInputV1` preimage and is not normalized by
+sorting.
 
 The channel vocabulary is exactly:
 
@@ -1602,11 +1685,24 @@ RelationChannelV1, in channel order.
 ModelBoundaryRefV1 is exactly:
 
 ~~~
-[path, schema, raw_sha256_bytes, locator]
+[path, schema, raw_sha256_bytes, locator: ModelBoundaryLocatorV1]
 ~~~
 
-It must resolve to the declared interaction-model.v2 artifact and its exact
-model boundary field. ScopeBoundaryAttestationV1 uses this same type.
+ModelBoundaryLocatorV1 is exactly one of these two tagged values:
+
+~~~
+["coverage_scope", null]
+["excluded_claim", index_u32]
+~~~
+
+The first value resolves to the RFC 6901 JSON Pointer `/coverage_scope`. The
+second resolves to `/excluded_claims/<index_u32>`, where `index_u32` is the
+zero-based index of an existing member of the model's `excluded_claims` array.
+No other pointer, path, field alias, or locator grammar is admitted. The
+locator must resolve to the exact field named by the scope reason. It must
+resolve to the declared `interaction-model.v2` artifact, whose `path`,
+schema, and raw digest are also bound by the enclosing `ModelBoundaryRefV1`.
+ScopeBoundaryAttestationV1 uses this same type.
 
 ### 12.11 Structured class-projection and separation coverage
 
@@ -1685,10 +1781,11 @@ ContextMemberAttestationV1 = [slot_attestations]
 
 causal_chain_ordinals must equal the exact array 0, 1, ..., n-1 from the
 theorem's causal chain. observed_candidate_shape uses CandidateShapeV1.
-model_boundary_ref is
-[path, schema, raw_sha256_bytes, locator] and must resolve to the exact
-declared model. The scope reason and observed shape must equal the theorem's
-scope payload.
+`positive_boundary_evidence_refs` is a non-empty `EvidenceRefV1[]`, sorted
+by canonical CBOR bytes and duplicate-free; every reference must resolve to the
+positive boundary evidence for this exact member. `model_boundary_ref` is
+`ModelBoundaryRefV1` and must resolve to the exact declared model boundary.
+The scope reason and observed shape must equal the theorem's scope payload.
 
 criterion_attestations must contain exactly one entry for every criterion
 clause, in clause order, with criterion_index equal to its zero-based index.
