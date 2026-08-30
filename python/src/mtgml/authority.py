@@ -8,14 +8,16 @@ candidates, or derive interaction classes.
 from __future__ import annotations
 
 import re
+from collections.abc import Callable
 from dataclasses import dataclass
 from enum import Enum
-from typing import Final, Protocol, TypeAlias
+from typing import Final, Protocol, TypeAlias, cast
 
 from .persistence import (
     CANONICAL_CBOR_ID,
     DIGEST_ENVELOPE_ID,
     SHA256_ID,
+    PersistenceValue,
     encode_canonical,
     encode_envelope,
     hash_envelope,
@@ -80,7 +82,7 @@ REVIEWER_ROLES: Final = (
 )
 _REVIEWER_ROLE_SET: Final = frozenset(REVIEWER_ROLES)
 
-AuthorityValue: TypeAlias = bool | int | bytes | str | list["AuthorityValue"] | None
+AuthorityValue: TypeAlias = PersistenceValue
 LocatorV1: TypeAlias = tuple[str, str | int | None]
 
 
@@ -321,6 +323,7 @@ def canonical_identity_input(
         )
     if fields[0] != _IDENTITY_SPECS[kind].input_schema_id:
         raise AuthorityContractError("identity preimage schema field does not match its kind")
+    _validate_kind_payload(kind, fields)
     return fields
 
 
@@ -394,6 +397,14 @@ def _require_canonical_sequence(values: tuple[_CborConvertible, ...], label: str
         raise AuthorityContractError(f"{label} must be duplicate-free")
 
 
+def _locator_to_wire(locator: LocatorV1) -> dict[str, object]:
+    kind, payload = locator
+    wire: dict[str, object] = {"kind": kind}
+    if payload is not None:
+        wire["value"] = payload
+    return wire
+
+
 @dataclass(frozen=True)
 class SourceBindingDigestV1:
     artifact_role: str
@@ -423,6 +434,14 @@ class SourceBindingDigestV1:
     def to_cbor(self) -> list[AuthorityValue]:
         return [self.artifact_role, self.path, self.schema_or_null, self.raw_sha256]
 
+    def to_wire(self) -> dict[str, object]:
+        return {
+            "artifact_role": self.artifact_role,
+            "path": self.path,
+            "schema_or_null": self.schema_or_null,
+            "raw_sha256": self.raw_sha256.hex(),
+        }
+
 
 @dataclass(frozen=True)
 class EvidenceRefV1:
@@ -441,6 +460,14 @@ class EvidenceRefV1:
     def to_cbor(self) -> list[AuthorityValue]:
         return [self.authority_kind, self.path, list(self.locator), self.raw_sha256]
 
+    def to_wire(self) -> dict[str, object]:
+        return {
+            "authority_kind": self.authority_kind,
+            "path": self.path,
+            "locator": _locator_to_wire(self.locator),
+            "raw_sha256": self.raw_sha256.hex(),
+        }
+
 
 @dataclass(frozen=True)
 class AcceptanceEvidenceRefV1:
@@ -455,6 +482,13 @@ class AcceptanceEvidenceRefV1:
 
     def to_cbor(self) -> list[AuthorityValue]:
         return [self.path, self.raw_sha256, list(self.locator)]
+
+    def to_wire(self) -> dict[str, object]:
+        return {
+            "path": self.path,
+            "raw_sha256": self.raw_sha256.hex(),
+            "locator": _locator_to_wire(self.locator),
+        }
 
 
 @dataclass(frozen=True)
@@ -478,6 +512,13 @@ class ReviewEventRefV1:
 
     def to_cbor(self) -> list[AuthorityValue]:
         return [self.path, self.raw_sha256, ["event_id", self.event_id]]
+
+    def to_wire(self) -> dict[str, object]:
+        return {
+            "path": self.path,
+            "raw_sha256": self.raw_sha256.hex(),
+            "locator": {"kind": "event_id", "value": self.event_id},
+        }
 
 
 @dataclass(frozen=True)
@@ -508,6 +549,13 @@ class ReviewerRosterRefV1:
     def to_cbor(self) -> list[AuthorityValue]:
         return [self.path, self.schema, self.raw_sha256]
 
+    def to_wire(self) -> dict[str, object]:
+        return {
+            "path": self.path,
+            "schema": self.schema,
+            "raw_sha256": self.raw_sha256.hex(),
+        }
+
 
 @dataclass(frozen=True)
 class ReviewerRoleBindingV1:
@@ -526,6 +574,9 @@ class ReviewerRoleBindingV1:
 
     def to_cbor(self) -> list[AuthorityValue]:
         return [self.reviewer_id, list(self.roles)]
+
+    def to_wire(self) -> dict[str, object]:
+        return {"reviewer_id": self.reviewer_id, "roles": list(self.roles)}
 
 
 @dataclass(frozen=True)
@@ -568,7 +619,7 @@ class ReviewerRosterV1:
 
 
 @dataclass(frozen=True)
-class ReviewAcceptanceEventV1:
+class ReviewAcceptanceEventInputV1:
     subject_kind: AcceptanceSubjectKind
     subject_payload_digest: bytes
     reviewer_roster_ref: ReviewerRosterRefV1
@@ -634,6 +685,78 @@ class ReviewAcceptanceEventV1:
 
     def to_cbor(self) -> list[AuthorityValue]:
         return self.semantic_input()
+
+
+@dataclass(frozen=True)
+class ReviewAcceptanceEventLeafV1:
+    event_id: AuthorityIdentityV1
+    subject_kind: AcceptanceSubjectKind
+    subject_payload_digest: bytes
+    decision: str
+    reviewer_roster_ref: ReviewerRosterRefV1
+    reviewer_role_bindings: tuple[ReviewerRoleBindingV1, ...]
+    review_mode: ReviewMode
+    checklist_id: str
+    source_binding_digests: tuple[SourceBindingDigestV1, ...]
+    review_evidence_refs: tuple[AcceptanceEvidenceRefV1, ...]
+
+    @classmethod
+    def from_input(cls, event: ReviewAcceptanceEventInputV1) -> ReviewAcceptanceEventLeafV1:
+        return cls(
+            event_id=event.identity(),
+            subject_kind=event.subject_kind,
+            subject_payload_digest=event.subject_payload_digest,
+            decision="human_accepted",
+            reviewer_roster_ref=event.reviewer_roster_ref,
+            reviewer_role_bindings=event.reviewer_role_bindings,
+            review_mode=event.review_mode,
+            checklist_id=ACCEPTANCE_CHECKLIST_V1,
+            source_binding_digests=event.source_binding_digests,
+            review_evidence_refs=event.review_evidence_refs,
+        )
+
+    def __post_init__(self) -> None:
+        if self.event_id.kind is not AuthorityIdentityKind.REVIEW_ACCEPTANCE_EVENT:
+            raise AuthorityContractError("acceptance leaf ID has the wrong identity kind")
+        if self.decision != "human_accepted":
+            raise AuthorityContractError("acceptance leaf decision is not human_accepted")
+        if self.checklist_id != ACCEPTANCE_CHECKLIST_V1:
+            raise AuthorityContractError("acceptance leaf checklist is not the V1 contract")
+        if self.as_input().identity() != self.event_id:
+            raise AuthorityContractError("acceptance leaf event ID does not match its input")
+
+    def as_input(self) -> ReviewAcceptanceEventInputV1:
+        return ReviewAcceptanceEventInputV1(
+            subject_kind=self.subject_kind,
+            subject_payload_digest=self.subject_payload_digest,
+            reviewer_roster_ref=self.reviewer_roster_ref,
+            reviewer_role_bindings=self.reviewer_role_bindings,
+            review_mode=self.review_mode,
+            source_binding_digests=self.source_binding_digests,
+            review_evidence_refs=self.review_evidence_refs,
+        )
+
+    def to_wire(self) -> dict[str, object]:
+        return {
+            "event_id": self.event_id.as_text(),
+            "schema": ACCEPTANCE_EVENT_SCHEMA_V1,
+            "subject_kind": self.subject_kind.value,
+            "subject_payload_digest": self.subject_payload_digest.hex(),
+            "decision": self.decision,
+            "reviewer_roster_ref": self.reviewer_roster_ref.to_wire(),
+            "reviewer_role_bindings": [
+                binding.to_wire() for binding in self.reviewer_role_bindings
+            ],
+            "review_mode": self.review_mode.value,
+            "checklist_id": self.checklist_id,
+            "source_binding_digests": [
+                binding.to_wire() for binding in self.source_binding_digests
+            ],
+            "review_evidence_refs": [evidence.to_wire() for evidence in self.review_evidence_refs],
+        }
+
+    def to_cbor(self) -> list[AuthorityValue]:
+        return self.as_input().semantic_input()
 
 
 class RecordKind(str, Enum):
@@ -731,3 +854,958 @@ def _record_identity_kind(kind: RecordKind) -> AuthorityIdentityKind:
         RecordKind.CONTEXT_APPLICATION_RECORD: AuthorityIdentityKind.CONTEXT_APPLICATION_RECORD,
     }
     return mapping[kind]
+
+
+_RELATION_CHANNELS: Final = (
+    "participant_boundary",
+    "event_or_effect_causality",
+    "target_or_choice",
+    "zone_or_object_identity",
+    "control_or_ownership",
+    "replacement_or_layer",
+    "trigger_or_lki",
+    "information_or_visibility",
+    "ordering_or_temporal",
+    "decision_actor",
+    "format_and_declared_scope",
+)
+_ARITIES: Final = ("unary", "unordered_binary", "directional_binary", "higher_order")
+_DIRECTIONALITIES: Final = ("unordered", "directional")
+_OPERATIONS: Final = (
+    "reads",
+    "changes_characteristic",
+    "changes_eligibility",
+    "changes_target_legality",
+    "changes_controller",
+    "changes_ownership",
+    "changes_zone",
+    "creates_object",
+    "copies_value",
+    "replaces_event",
+    "triggers_ability",
+    "orders_event",
+    "supplies_choice",
+)
+_PROOF_KINDS: Final = (
+    "positive_interaction",
+    "positive_separation",
+    "model_bound_scope",
+)
+_SCOPE_REASONS: Final = (
+    "unbounded_n_way_not_representable",
+    "undeclared_participant_kind",
+    "undeclared_relation_shape",
+    "undeclared_outcome_surface",
+)
+_REVIEW_DOMAINS: Final = (
+    "triggers_and_lki",
+    "replacement_layers_and_dependency",
+    "copy_and_token_creation",
+    "target_legality_protection_and_identity",
+    "control_and_ownership",
+    "commander_and_format",
+    "hidden_information_and_visibility",
+    "ordering_and_temporal_dependencies",
+    "source_versus_affected_identity",
+    "controller_owner_and_decision_actor",
+    "higher_order_interactions",
+)
+_APPLICABILITY: Final = ("applicable", "not_applicable")
+_TERMINAL_DISPOSITIONS: Final = (
+    "required_interaction",
+    "not_an_interaction_with_proof",
+    "out_of_declared_scope_with_reason",
+    "unresolved",
+)
+_PRECONDITION_KINDS: Final = (
+    "candidate_relation_shape",
+    "participant_binding",
+    "b2_boundary",
+    "source_context",
+    "temporal_semantic",
+    "class_projection",
+)
+_SEPARATION_KINDS: Final = (
+    "boundary_disjointness",
+    "closed_channel_exclusion",
+    "independent_effect_separation",
+)
+_REQUIRED_CONCLUSIONS: Final = ("separated", "not_relevant")
+_RECORD_KINDS: Final = tuple(kind.value for kind in RecordKind)
+_SUBJECT_KINDS: Final = tuple(kind.value for kind in AcceptanceSubjectKind)
+_SLOT_KINDS: Final = ("context_dimension", "temporal_semantic")
+
+
+def _fail(message: str) -> None:
+    raise AuthorityContractError(message)
+
+
+def _array(value: object, label: str, length: int | None = None) -> list[object]:
+    if not isinstance(value, list):
+        _fail(f"{label} must be an array")
+    result = cast(list[object], value)
+    if length is not None and len(result) != length:
+        _fail(f"{label} must contain exactly {length} fields")
+    return result
+
+
+def _text(value: object, label: str) -> str:
+    if not isinstance(value, str) or not value:
+        _fail(f"{label} must be non-empty text")
+    return value
+
+
+def _any_text(value: object, label: str) -> str:
+    if not isinstance(value, str):
+        _fail(f"{label} must be text")
+    return value
+
+
+def _uint32(value: object, label: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or not 0 <= value <= 2**32 - 1:
+        _fail(f"{label} must be a u32")
+    return value
+
+
+def _bytes32(value: object, label: str) -> bytes:
+    return _require_digest_bytes(value, label)
+
+
+def _enum(value: object, allowed: tuple[str, ...], label: str) -> str:
+    value = _any_text(value, label)
+    if value not in allowed:
+        _fail(f"{label} is not a closed V1 value")
+    return value
+
+
+def _canonical_array(
+    values: list[object],
+    validator: Callable[[object], None],
+    label: str,
+) -> None:
+    encoded: list[bytes] = []
+    for value in values:
+        validator(value)
+        encoded.append(encode_canonical(cast(PersistenceValue, value)))
+    if encoded != sorted(encoded):
+        _fail(f"{label} must be in canonical order")
+    if len(set(encoded)) != len(encoded):
+        _fail(f"{label} must be duplicate-free")
+
+
+def _ordered_enum_array(
+    values: list[object],
+    allowed: tuple[str, ...],
+    label: str,
+) -> None:
+    seen = [_enum(value, allowed, label) for value in values]
+    if len(set(seen)) != len(seen):
+        _fail(f"{label} must be duplicate-free")
+    if seen != [value for value in allowed if value in seen]:
+        _fail(f"{label} must preserve the closed vocabulary order")
+
+
+def _validate_cbor_value(value: object, label: str = "value") -> None:
+    if value is None or isinstance(value, bool | int | bytes | str):
+        return
+    if isinstance(value, list):
+        for index, child in enumerate(value):
+            _validate_cbor_value(child, f"{label}[{index}]")
+        return
+    _fail(f"{label} uses a forbidden value form")
+
+
+def _validate_locator_array(value: object, *, acceptance: bool) -> None:
+    locator = _array(value, "locator", 2)
+    kind = _any_text(locator[0], "locator kind")
+    payload = locator[1]
+    if kind == "whole_artifact":
+        if payload is not None:
+            _fail("whole_artifact locator payload must be null")
+    elif kind == "json_pointer":
+        _require_locator(("json_pointer", payload), acceptance=acceptance)
+    elif kind == "archive_member":
+        _require_locator(("archive_member", payload), acceptance=acceptance)
+    elif kind == "event_id":
+        _require_locator(("event_id", payload), acceptance=acceptance)
+    else:
+        _fail("locator variant is not closed in V1")
+
+
+def _validate_digest_reference(value: object, label: str = "digest reference") -> None:
+    reference = _array(value, label, 6)
+    _any_text(reference[0], f"{label} envelope")
+    _any_text(reference[1], f"{label} algorithm")
+    _any_text(reference[2], f"{label} domain")
+    _any_text(reference[3], f"{label} codec")
+    _any_text(reference[4], f"{label} schema")
+    _bytes32(reference[5], f"{label} digest")
+
+
+def _validate_source_binding_array(value: object) -> None:
+    binding = _array(value, "source binding", 4)
+    role = _any_text(binding[0], "source binding artifact role")
+    path = _any_text(binding[1], "source binding path")
+    schema = binding[2]
+    digest = _bytes32(binding[3], "source binding digest")
+    if not isinstance(schema, str | None):
+        _fail("source binding schema_or_null must be text or null")
+    SourceBindingDigestV1(role, path, schema, digest)
+
+
+def _validate_evidence_ref_array(value: object) -> None:
+    reference = _array(value, "evidence reference", 4)
+    authority_kind = _any_text(reference[0], "evidence authority kind")
+    path = _any_text(reference[1], "evidence path")
+    locator = _array(reference[2], "evidence locator", 2)
+    _validate_locator_array(locator, acceptance=False)
+    _bytes32(reference[3], "evidence digest")
+    EvidenceRefV1(
+        authority_kind,
+        path,
+        (cast(str, locator[0]), cast(str | int | None, locator[1])),
+        cast(bytes, reference[3]),
+    )
+
+
+def _validate_evidence_refs(value: object, label: str = "evidence references") -> None:
+    refs = _array(value, label)
+    _canonical_array(refs, _validate_evidence_ref_array, label)
+
+
+def _validate_acceptance_evidence_ref_array(value: object) -> None:
+    reference = _array(value, "acceptance evidence reference", 3)
+    path = _any_text(reference[0], "acceptance evidence path")
+    digest = _bytes32(reference[1], "acceptance evidence digest")
+    locator = _array(reference[2], "acceptance evidence locator", 2)
+    _validate_locator_array(locator, acceptance=True)
+    AcceptanceEvidenceRefV1(
+        path,
+        digest,
+        (cast(str, locator[0]), cast(str | int | None, locator[1])),
+    )
+
+
+def _validate_acceptance_evidence_refs(value: object) -> None:
+    refs = _array(value, "review evidence references")
+    if not refs:
+        _fail("review evidence references must be non-empty")
+    _canonical_array(refs, _validate_acceptance_evidence_ref_array, "review evidence references")
+
+
+def _validate_review_event_ref_array(value: object) -> None:
+    reference = _array(value, "review event reference", 3)
+    path = _any_text(reference[0], "review event path")
+    digest = _bytes32(reference[1], "review event digest")
+    locator = _array(reference[2], "review event locator", 2)
+    if locator[0] != "event_id":
+        _fail("review event locator must be event_id")
+    event_id = _any_text(locator[1], "review event ID")
+    ReviewEventRefV1(path, digest, event_id)
+
+
+def _validate_roster_ref_array(value: object) -> None:
+    reference = _array(value, "reviewer roster reference", 3)
+    ReviewerRosterRefV1(
+        _any_text(reference[0], "reviewer roster path"),
+        _any_text(reference[1], "reviewer roster schema"),
+        _bytes32(reference[2], "reviewer roster digest"),
+    )
+
+
+def _validate_roles(value: object, label: str = "roles") -> None:
+    roles = _array(value, label)
+    values = [_enum(role, REVIEWER_ROLES, label) for role in roles]
+    if values != sorted(values) or len(set(values)) != len(values):
+        _fail(f"{label} must be sorted and duplicate-free")
+
+
+def _validate_role_binding(value: object) -> None:
+    binding = _array(value, "reviewer role binding", 2)
+    _text(binding[0], "reviewer ID")
+    _validate_roles(binding[1])
+
+
+def _validate_participant_role(value: object, label: str = "participant role") -> None:
+    role = _array(value, label, 4)
+    _uint32(role[0], f"{label} position")
+    _text(role[1], f"{label} role")
+    _text(role[2], f"{label} participant kind")
+    _text(role[3], f"{label} semantic reference")
+
+
+def _validate_participant_roles(value: object) -> None:
+    roles = _array(value, "participant roles")
+    if not roles:
+        _fail("participant roles must be non-empty")
+    for index, role in enumerate(roles):
+        _validate_participant_role(role)
+        if cast(list[object], role)[0] != index:
+            _fail("participant role positions must be the ordered 0..n-1 sequence")
+
+
+def _validate_b2_boundary_ref(value: object) -> None:
+    boundary = _array(value, "B2 boundary reference", 2)
+    _text(boundary[0], "B2 family ID")
+    _text(boundary[1], "B2 semantic definition")
+
+
+def _validate_b2_boundary_refs(value: object) -> None:
+    refs = _array(value, "B2 boundary references")
+    _canonical_array(refs, _validate_b2_boundary_ref, "B2 boundary references")
+
+
+def _validate_b1_citation_ref(value: object) -> None:
+    citation = _array(value, "B1.Final citation reference", 2)
+    _text(citation[0], "B1 authority ID")
+    _text(citation[1], "B1 citation ID")
+
+
+def _validate_b1_citation_refs(value: object) -> None:
+    refs = _array(value, "B1.Final citation references")
+    _canonical_array(refs, _validate_b1_citation_ref, "B1.Final citation references")
+
+
+def _validate_model_boundary_locator(value: object) -> None:
+    locator = _array(value, "model boundary locator", 2)
+    if locator[0] == "coverage_scope":
+        if locator[1] is not None:
+            _fail("coverage_scope locator payload must be null")
+    elif locator[0] == "excluded_claim":
+        _uint32(locator[1], "excluded claim index")
+    else:
+        _fail("model boundary locator variant is not closed")
+
+
+def _validate_positive_boundary_fact(value: object) -> None:
+    tagged = _array(value, "positive boundary fact", 2)
+    kind = _any_text(tagged[0], "positive boundary fact kind")
+    payload = _array(tagged[1], "positive boundary fact payload")
+    if kind == "b2_boundary":
+        if len(payload) != 4:
+            _fail("B2 positive boundary fact must contain four fields")
+        for field in payload:
+            _text(field, "B2 positive boundary fact field")
+    elif kind in {"rev3_locator", "b2_locator"}:
+        if len(payload) != 3:
+            _fail("source positive boundary fact must contain three fields")
+        _text(payload[0], "source positive boundary path")
+        _bytes32(payload[1], "source positive boundary digest")
+        _validate_locator_array(payload[2], acceptance=False)
+    elif kind == "b1_citation":
+        _validate_b1_citation_ref(payload)
+    elif kind == "context_slot":
+        if len(payload) != 3:
+            _fail("context positive boundary fact must contain three fields")
+        _text(payload[0], "context slot kind")
+        _text(payload[1], "context slot name")
+        _validate_cbor_value(payload[2], "context slot value")
+    elif kind == "model_boundary":
+        if len(payload) != 3:
+            _fail("model positive boundary fact must contain three fields")
+        _text(payload[0], "boundary model ID")
+        _text(payload[1], "boundary model version")
+        _validate_model_boundary_locator(payload[2])
+    else:
+        _fail("positive boundary fact variant is not closed")
+
+
+def _validate_positive_boundary_facts(value: object, label: str) -> None:
+    facts = _array(value, label)
+    if not facts:
+        _fail(f"{label} must be non-empty")
+    _canonical_array(facts, _validate_positive_boundary_fact, label)
+
+
+def _validate_class_projection(value: object) -> None:
+    projection = _array(value, "class projection", 9)
+    _enum(projection[0], _ARITIES, "class arity")
+    _enum(projection[1], _DIRECTIONALITIES, "class directionality")
+    _validate_participant_roles(projection[2])
+    _text(projection[3], "class host relationship")
+    for index, label in enumerate(
+        ("context dimensions", "temporal semantics", "B2 family references"), start=4
+    ):
+        values = _array(projection[index], label)
+        for value in values:
+            _text(value, label)
+    _validate_b2_boundary_refs(projection[7])
+    _validate_b1_citation_refs(projection[8])
+
+
+def _validate_candidate_shape(value: object) -> None:
+    shape = _array(value, "candidate shape", 5)
+    for index, label in enumerate(("scope", "relation", "arity", "directionality")):
+        _text(shape[index], label)
+    _uint32(shape[4], "participant count")
+
+
+def _validate_model_boundary_ref(value: object) -> None:
+    reference = _array(value, "model boundary reference", 4)
+    _text(reference[0], "model boundary path")
+    if reference[1] != "manafold.m2.5.c.declared-interaction-model.v2":
+        _fail("model boundary schema is not the declared model V2 contract")
+    _bytes32(reference[2], "model boundary digest")
+    _validate_model_boundary_locator(reference[3])
+
+
+def _validate_precondition_payload(kind: str, payload: object) -> None:
+    values = _array(payload, f"{kind} precondition payload")
+    if kind == "candidate_relation_shape":
+        if len(values) != 4:
+            _fail("candidate relation shape precondition must contain four fields")
+        for index, label in enumerate(("scope", "relation", "directionality", "host relationship")):
+            _text(values[index], label)
+    elif kind == "participant_binding":
+        if len(values) != 4:
+            _fail("participant binding precondition must contain four fields")
+        _uint32(values[0], "participant binding position")
+        for index, label in enumerate(("role", "participant kind", "semantic reference"), start=1):
+            _text(values[index], label)
+    elif kind == "b2_boundary":
+        if len(values) != 4:
+            _fail("B2 boundary precondition must contain four fields")
+        for index, label in enumerate(
+            ("B2 family ID", "B2 lifecycle", "B2 assignment role", "B2 definition")
+        ):
+            _text(values[index], label)
+    elif kind in {"source_context", "temporal_semantic"}:
+        if len(values) != 2:
+            _fail(f"{kind} precondition must contain two fields")
+        _text(values[0], f"{kind} dimension")
+        _validate_cbor_value(values[1], f"{kind} value")
+    elif kind == "class_projection":
+        _validate_class_projection(values)
+
+
+def _validate_preconditions(value: object) -> None:
+    preconditions = _array(value, "preconditions")
+    seen: set[str] = set()
+    for precondition in preconditions:
+        fields = _array(precondition, "precondition", 2)
+        precondition_id = _text(fields[0], "precondition ID")
+        if precondition_id in seen:
+            _fail("precondition IDs must be unique")
+        seen.add(precondition_id)
+        tagged = _array(fields[1], "precondition tagged payload", 2)
+        kind = _enum(tagged[0], _PRECONDITION_KINDS, "precondition kind")
+        _validate_precondition_payload(kind, tagged[1])
+
+
+def _validate_causal_chain(value: object) -> None:
+    chain = _array(value, "causal chain")
+    if not chain:
+        _fail("causal chain must be non-empty")
+    for ordinal, edge in enumerate(chain):
+        fields = _array(edge, "causal chain edge", 7)
+        if _uint32(fields[0], "causal edge ordinal") != ordinal:
+            _fail("causal edge ordinals must be exactly 0..n-1")
+        _uint32(fields[1], "causal edge source role position")
+        _enum(fields[2], _OPERATIONS, "causal edge operation")
+        _validate_b2_boundary_refs(fields[3])
+        _validate_optional_uint32(fields[4], "causal edge event/effect role position")
+        _validate_optional_uint32(fields[5], "causal edge destination role position")
+        _validate_b1_citation_refs(fields[6])
+
+
+def _validate_optional_uint32(value: object, label: str) -> None:
+    if value is not None:
+        _uint32(value, label)
+
+
+def _validate_required_channels(value: object) -> None:
+    _ordered_enum_array(
+        _array(value, "required relation channels"),
+        _RELATION_CHANNELS,
+        "required relation channels",
+    )
+
+
+def _validate_separation_obligations(value: object) -> None:
+    obligations = _array(value, "separation obligations", len(_RELATION_CHANNELS))
+    channels: list[str] = []
+    for obligation in obligations:
+        fields = _array(obligation, "separation obligation", 2)
+        channels.append(_enum(fields[0], _RELATION_CHANNELS, "separation channel"))
+        _enum(fields[1], _REQUIRED_CONCLUSIONS, "required separation conclusion")
+    if channels != list(_RELATION_CHANNELS):
+        _fail("separation obligations must cover every channel in order")
+
+
+def _validate_relation_proof_payload(value: object) -> None:
+    tagged = _array(value, "relation proof payload", 2)
+    kind = _enum(tagged[0], _PROOF_KINDS, "relation proof kind")
+    fields = _array(tagged[1], f"{kind} proof payload")
+    if kind == "positive_interaction":
+        if len(fields) != 3:
+            _fail("positive interaction payload must contain three fields")
+        _validate_causal_chain(fields[0])
+        _validate_required_channels(fields[1])
+        if fields[2] is not None:
+            _validate_class_projection(fields[2])
+    elif kind == "positive_separation":
+        if len(fields) != 2:
+            _fail("positive separation payload must contain two fields")
+        _enum(fields[0], _SEPARATION_KINDS, "separation kind")
+        _validate_separation_obligations(fields[1])
+    else:
+        if len(fields) != 4:
+            _fail("model-bound scope payload must contain four fields")
+        _validate_model_boundary_ref(fields[0])
+        _enum(fields[1], _SCOPE_REASONS, "scope reason")
+        _validate_candidate_shape(fields[2])
+        _validate_evidence_refs(fields[3], "positive boundary evidence references")
+        if not _array(fields[3], "positive boundary evidence references"):
+            _fail("positive boundary evidence references must be non-empty")
+
+
+def _validate_relation_binding(value: object) -> None:
+    fields = _array(value, "relation binding", 5)
+    _text(fields[0], "relation scope")
+    _text(fields[1], "relation name")
+    _enum(fields[2], _DIRECTIONALITIES, "relation directionality")
+    _text(fields[3], "relation host relationship")
+    _validate_participant_roles(fields[4])
+
+
+def _validate_candidate_universe_binding(value: object) -> None:
+    fields = _array(value, "candidate universe binding", 3)
+    _text(fields[0], "candidate universe path")
+    _text(fields[1], "candidate universe schema")
+    _bytes32(fields[2], "candidate universe digest")
+
+
+def _validate_domain_binding(value: object) -> None:
+    fields = _array(value, "domain binding", 2)
+    _enum(fields[0], _REVIEW_DOMAINS, "review domain")
+    _enum(fields[1], _APPLICABILITY, "applicability")
+
+
+def _validate_context_binding(value: object) -> None:
+    fields = _array(value, "context binding", 4)
+    _enum(fields[0], _ARITIES, "context arity")
+    _enum(fields[1], _DIRECTIONALITIES, "context directionality")
+    _validate_participant_roles(fields[2])
+    _text(fields[3], "context host relationship")
+
+
+def _validate_precondition_attestations(value: object) -> None:
+    attestations = _array(value, "precondition attestations")
+    for attestation in attestations:
+        fields = _array(attestation, "precondition attestation", 4)
+        _text(fields[0], "attestation precondition ID")
+        _validate_cbor_value(fields[1], "observed precondition payload")
+        _validate_evidence_refs(fields[2], "member evidence references")
+        _text(fields[3], "precondition equivalence rationale")
+
+
+def _validate_class_projection_equivalence(value: object) -> None:
+    fields = _array(value, "class projection equivalence", 6)
+    _validate_class_projection(fields[0])
+    _validate_class_projection(fields[1])
+    equal_positions = _array(fields[2], "equal class positions")
+    for position in equal_positions:
+        _text(position, "equal class position")
+    if fields[3] != "same_theorem_semantic_id":
+        _fail("class semantic claim relation is not closed")
+    _validate_evidence_refs(fields[4], "class equivalence evidence")
+    _text(fields[5], "class equivalence rationale")
+
+
+def _validate_channel_coverage(value: object) -> None:
+    fields = _array(value, "channel coverage", 6)
+    _enum(fields[0], _RELATION_CHANNELS, "covered channel")
+    _enum(fields[1], _REQUIRED_CONCLUSIONS, "channel coverage conclusion")
+    _validate_positive_boundary_facts(fields[2], "positive boundary facts")
+    _validate_evidence_refs(fields[3], "channel source evidence")
+    _validate_b1_citation_refs(fields[4])
+    _text(fields[5], "channel coverage rationale")
+
+
+def _validate_channel_coverages(value: object) -> None:
+    coverages = _array(value, "channel coverages", len(_RELATION_CHANNELS))
+    channels: list[str] = []
+    for coverage in coverages:
+        _validate_channel_coverage(coverage)
+        channels.append(cast(str, _array(coverage, "channel coverage")[0]))
+    if channels != list(_RELATION_CHANNELS):
+        _fail("channel coverages must cover every relation channel in order")
+
+
+def _validate_scope_attestation(value: object) -> None:
+    fields = _array(value, "scope boundary attestation", 6)
+    _text(fields[0], "scope model ID")
+    _text(fields[1], "scope model version")
+    _validate_model_boundary_ref(fields[2])
+    _enum(fields[3], _SCOPE_REASONS, "scope reason")
+    _validate_candidate_shape(fields[4])
+    _validate_evidence_refs(fields[5], "positive boundary evidence references")
+    if not cast(list[object], fields[5]):
+        _fail("positive boundary evidence references must be non-empty")
+
+
+def _validate_member_proof_attestation(value: object) -> None:
+    tagged = _array(value, "member proof attestation", 2)
+    kind = _enum(tagged[0], _PROOF_KINDS, "member proof kind")
+    fields = _array(tagged[1], f"{kind} member proof")
+    if kind == "positive_interaction":
+        if len(fields) != 2:
+            _fail("positive interaction member proof must contain two fields")
+        ordinals = _array(fields[0], "causal chain ordinals")
+        for ordinal, value in enumerate(ordinals):
+            if _uint32(value, "causal chain ordinal") != ordinal:
+                _fail("causal chain ordinals must be exactly 0..n-1")
+        if fields[1] is not None:
+            _validate_class_projection_equivalence(fields[1])
+    elif kind == "positive_separation":
+        if len(fields) != 1:
+            _fail("positive separation member proof must contain one field")
+        _validate_channel_coverages(fields[0])
+    else:
+        if len(fields) != 1:
+            _fail("scope member proof must contain one field")
+        _validate_scope_attestation(fields[0])
+
+
+def _validate_relation_member(value: object) -> None:
+    fields = _array(value, "relation application member", 8)
+    _text(fields[0], "candidate ID")
+    _validate_digest_reference(fields[1], "candidate identity")
+    _text(fields[2], "source instance ID")
+    _validate_candidate_universe_binding(fields[3])
+    _validate_relation_binding(fields[4])
+    _validate_precondition_attestations(fields[5])
+    _validate_evidence_refs(fields[6], "member evidence references")
+    _validate_member_proof_attestation(fields[7])
+
+
+def _validate_domain_criterion(value: object) -> None:
+    fields = _array(value, "domain criterion", 2)
+    kind = _any_text(fields[0], "domain criterion kind")
+    payload = _array(fields[1], "domain criterion payload")
+    if kind in {"channel_implicated", "channel_excluded"}:
+        if len(payload) != 2:
+            _fail("channel domain criterion must contain two fields")
+        _enum(payload[0], _RELATION_CHANNELS, "domain criterion channel")
+        _validate_positive_boundary_fact(payload[1])
+    elif kind == "rule_domain_required":
+        if len(payload) != 2:
+            _fail("required rule-domain criterion must contain two fields")
+        _validate_b1_citation_ref(payload[0])
+        covered = _array(payload[1], "covered boundary fields")
+        fields = [
+            _enum(
+                field,
+                (
+                    "includes",
+                    "excludes",
+                    "objects",
+                    "action_or_event",
+                    "timing",
+                    "zone_visibility",
+                    "eligibility_condition_duration",
+                    "targets_choices",
+                    "ownership_control",
+                    "numeric_scaling_counters",
+                    "information_identity_effect",
+                    "rule_dependency",
+                ),
+                "covered boundary field",
+            )
+            for field in covered
+        ]
+        if not fields or fields != sorted(
+            fields,
+            key=lambda field: (
+                "includes",
+                "excludes",
+                "objects",
+                "action_or_event",
+                "timing",
+                "zone_visibility",
+                "eligibility_condition_duration",
+                "targets_choices",
+                "ownership_control",
+                "numeric_scaling_counters",
+                "information_identity_effect",
+                "rule_dependency",
+            ).index,
+        ):
+            _fail("covered boundary fields must be a non-empty ordered subsequence")
+    elif kind == "rule_domain_excluded":
+        if len(payload) != 2:
+            _fail("excluded rule-domain criterion must contain two fields")
+        excluded = _array(payload[0], "excluded rule-domain ID", 2)
+        if excluded[0] == "b1_final_citation":
+            _validate_b1_citation_ref(excluded[1])
+        elif excluded[0] == "review_domain":
+            _enum(excluded[1], _REVIEW_DOMAINS, "excluded review domain")
+        else:
+            _fail("excluded rule-domain ID variant is not closed")
+        _validate_positive_boundary_fact(payload[1])
+    else:
+        _fail("domain criterion variant is not closed")
+
+
+def _validate_domain_criterion_array(value: object) -> None:
+    criteria = _array(value, "domain criteria")
+    for criterion in criteria:
+        _validate_domain_criterion(criterion)
+
+
+def _validate_domain_member(value: object) -> None:
+    fields = _array(value, "domain application member", 8)
+    _text(fields[0], "candidate ID")
+    _validate_digest_reference(fields[1], "candidate identity")
+    _text(fields[2], "source instance ID")
+    _validate_candidate_universe_binding(fields[3])
+    _validate_domain_binding(fields[4])
+    _validate_precondition_attestations(fields[5])
+    _validate_evidence_refs(fields[6], "member evidence references")
+    attestation = _array(fields[7], "domain member attestation", 1)
+    criteria = _array(attestation[0], "criterion attestations")
+    for criterion in criteria:
+        criterion_fields = _array(criterion, "criterion attestation", 4)
+        _uint32(criterion_fields[0], "criterion index")
+        _validate_domain_criterion(criterion_fields[1])
+        _validate_evidence_refs(criterion_fields[2], "criterion evidence")
+        _text(criterion_fields[3], "criterion equivalence rationale")
+
+
+def _validate_context_member(value: object) -> None:
+    fields = _array(value, "context application member", 8)
+    _text(fields[0], "candidate ID")
+    _validate_digest_reference(fields[1], "candidate identity")
+    _text(fields[2], "source instance ID")
+    _validate_candidate_universe_binding(fields[3])
+    _validate_context_binding(fields[4])
+    _validate_precondition_attestations(fields[5])
+    _validate_evidence_refs(fields[6], "member evidence references")
+    attestation = _array(fields[7], "context member attestation", 1)
+    slots = _array(attestation[0], "context slot attestations")
+    if len(slots) != 14:
+        _fail("context member attestation must cover exactly fourteen slots")
+    for slot in slots:
+        slot_fields = _array(slot, "context slot attestation", 5)
+        _enum(slot_fields[0], _SLOT_KINDS, "context slot kind")
+        _text(slot_fields[1], "context slot name")
+        _validate_cbor_value(slot_fields[2], "context slot observed value")
+        _validate_evidence_refs(slot_fields[3], "context slot evidence")
+        _text(slot_fields[4], "context slot rationale")
+
+
+def _validate_record_input(value: list[object], *, application: bool) -> None:
+    if application:
+        if len(value) != 3:
+            _fail("application record input must contain three fields")
+        _text(value[0], "application record schema")
+        _bytes32(value[1], "application ID")
+        _validate_review_event_ref_array(value[2])
+    else:
+        if len(value) != 5:
+            _fail("theorem record input must contain five fields")
+        _text(value[0], "theorem record schema")
+        _bytes32(value[1], "theorem ID")
+        _validate_evidence_refs(value[2], "theorem source evidence")
+        _validate_review_event_ref_array(value[3])
+        _text(value[4], "theorem semantic rationale")
+
+
+def _validate_supersession_input(value: list[object]) -> None:
+    if len(value) != 8:
+        _fail("supersession input must contain eight fields")
+    _text(value[0], "supersession schema")
+    _bytes32(value[1], "superseded record ID")
+    replacement = value[2]
+    if replacement is not None:
+        _bytes32(replacement, "replacement record ID")
+    kind = _enum(value[3], _RECORD_KINDS, "superseded record kind")
+    replacement_kind = value[4]
+    if replacement is None:
+        if replacement_kind is not None or value[5] != "authority_revocation":
+            _fail("revocation supersession must null both replacement fields")
+    else:
+        if _enum(replacement_kind, _RECORD_KINDS, "replacement record kind") != kind:
+            _fail("supersession replacement kind must match")
+        if value[5] == "authority_revocation":
+            _fail("authority_revocation cannot carry a replacement")
+    _enum(
+        value[5],
+        (
+            "semantic_correction",
+            "source_revision",
+            "model_revision",
+            "authority_revocation",
+        ),
+        "supersession reason",
+    )
+    _validate_evidence_refs(value[6], "supersession source evidence")
+    _validate_review_event_ref_array(value[7])
+
+
+def _validate_acceptance_subject_input(value: list[object]) -> None:
+    if len(value) != 3:
+        _fail("acceptance subject input must contain three fields")
+    _text(value[0], "acceptance subject schema")
+    kind = _enum(value[1], _SUBJECT_KINDS, "acceptance subject kind")
+    payload = _array(value[2], "acceptance subject payload")
+    if kind.endswith("_theorem_record"):
+        if len(payload) != 3:
+            _fail("theorem-record subject payload must contain three fields")
+        _bytes32(payload[0], "subject theorem ID")
+        _validate_evidence_refs(payload[1], "subject source evidence")
+        _text(payload[2], "subject semantic rationale")
+    elif kind.endswith("_application_record"):
+        if len(payload) != 1:
+            _fail("application-record subject payload must contain one field")
+        _bytes32(payload[0], "subject application ID")
+    else:
+        if len(payload) != 6:
+            _fail("supersession subject payload must contain six fields")
+        _bytes32(payload[0], "subject superseded ID")
+        if payload[1] is not None:
+            _bytes32(payload[1], "subject replacement ID")
+        kind_value = _enum(payload[2], _RECORD_KINDS, "subject superseded kind")
+        replacement_kind = payload[3]
+        if payload[1] is None:
+            if replacement_kind is not None:
+                _fail("subject revocation must null replacement kind")
+        elif _enum(replacement_kind, _RECORD_KINDS, "subject replacement kind") != kind_value:
+            _fail("subject replacement kind must match")
+        _enum(
+            payload[4],
+            (
+                "semantic_correction",
+                "source_revision",
+                "model_revision",
+                "authority_revocation",
+            ),
+            "subject supersession reason",
+        )
+        _validate_evidence_refs(payload[5], "subject supersession evidence")
+
+
+def _validate_acceptance_event_input(value: list[object]) -> None:
+    if len(value) != 10:
+        _fail("acceptance event input must contain ten fields")
+    _text(value[0], "acceptance event schema")
+    _enum(value[1], _SUBJECT_KINDS, "acceptance event subject kind")
+    _bytes32(value[2], "acceptance event subject digest")
+    if value[3] != "human_accepted":
+        _fail("acceptance event decision must be human_accepted")
+    _validate_roster_ref_array(value[4])
+    bindings = _array(value[5], "reviewer role bindings")
+    if not bindings:
+        _fail("reviewer role bindings must be non-empty")
+    for binding in bindings:
+        _validate_role_binding(binding)
+    reviewer_ids = [cast(str, _array(binding, "reviewer role binding")[0]) for binding in bindings]
+    if reviewer_ids != sorted(reviewer_ids) or len(set(reviewer_ids)) != len(reviewer_ids):
+        _fail("reviewer role bindings must be sorted and duplicate-free")
+    _enum(value[6], ("multi_reviewer", "solo_separate_self_review"), "review mode")
+    if value[7] != ACCEPTANCE_CHECKLIST_V1:
+        _fail("acceptance checklist is not the V1 contract")
+    source_bindings = _array(value[8], "acceptance source bindings")
+    if not source_bindings:
+        _fail("acceptance source bindings must be non-empty")
+    for binding in source_bindings:
+        _validate_source_binding_array(binding)
+    if any(
+        cast(str, _array(binding, "source binding")[0]) == "acceptance_event_leaf"
+        for binding in source_bindings
+    ):
+        _fail("acceptance event cannot bind its own leaf")
+    if not any(
+        cast(str, _array(binding, "source binding")[0]) == "declared_model"
+        for binding in source_bindings
+    ):
+        _fail("acceptance event must bind the declared model")
+    roster_ref = _array(value[4], "reviewer roster reference", 3)
+    expected_roster = [
+        "reviewer_roster_leaf",
+        roster_ref[0],
+        roster_ref[1],
+        roster_ref[2],
+    ]
+    if not any(
+        _array(binding, "source binding", 4) == expected_roster for binding in source_bindings
+    ):
+        _fail("acceptance event must bind its reviewer roster leaf")
+    _canonical_array(source_bindings, _validate_source_binding_array, "acceptance source bindings")
+    _validate_acceptance_evidence_refs(value[9])
+
+
+def _validate_kind_payload(kind: AuthorityIdentityKind, fields: list[AuthorityValue]) -> None:
+    values = cast(list[object], fields)
+    if kind is AuthorityIdentityKind.RELATION_THEOREM:
+        _text(values[1], "model ID")
+        _enum(values[2], _PROOF_KINDS, "proof kind")
+        _enum(values[3], _ARITIES, "arity")
+        _text(values[4], "relation")
+        _enum(values[5], _DIRECTIONALITIES, "directionality")
+        _text(values[6], "host relationship")
+        _validate_participant_roles(values[7])
+        _validate_preconditions(values[8])
+        _validate_relation_proof_payload(values[9])
+        _validate_b2_boundary_refs(values[10])
+        _validate_b1_citation_refs(values[11])
+    elif kind is AuthorityIdentityKind.DOMAIN_THEOREM:
+        _text(values[1], "domain model ID")
+        _enum(values[2], _REVIEW_DOMAINS, "review domain")
+        _enum(values[3], _APPLICABILITY, "applicability")
+        _validate_domain_criterion_array(values[4])
+        _validate_preconditions(values[5])
+        _validate_b2_boundary_refs(values[6])
+        _validate_b1_citation_refs(values[7])
+    elif kind is AuthorityIdentityKind.CONTEXT_THEOREM:
+        _text(values[1], "context model ID")
+        _validate_context_binding(values[2])
+        dimensions = _array(values[3], "context dimensions")
+        temporals = _array(values[4], "temporal semantics")
+        if len(dimensions) != 10 or len(temporals) != 4:
+            _fail("context theorem must contain ten context and four temporal slots")
+        for dimension in dimensions:
+            _text(dimension, "context dimension")
+        for temporal in temporals:
+            _text(temporal, "temporal semantic")
+        _validate_preconditions(values[5])
+        _validate_b2_boundary_refs(values[6])
+        _validate_b1_citation_refs(values[7])
+    elif kind in {
+        AuthorityIdentityKind.RELATION_THEOREM_RECORD,
+        AuthorityIdentityKind.DOMAIN_THEOREM_RECORD,
+        AuthorityIdentityKind.CONTEXT_THEOREM_RECORD,
+    }:
+        _validate_record_input(values, application=False)
+    elif kind is AuthorityIdentityKind.RELATION_APPLICATION:
+        _bytes32(values[1], "relation theorem record ID")
+        _enum(values[2], _TERMINAL_DISPOSITIONS, "terminal disposition")
+        members = _array(values[3], "relation application members")
+        for member in members:
+            _validate_relation_member(member)
+    elif kind is AuthorityIdentityKind.DOMAIN_APPLICATION:
+        _bytes32(values[1], "domain theorem record ID")
+        _enum(values[2], _REVIEW_DOMAINS, "review domain")
+        _enum(values[3], _APPLICABILITY, "applicability")
+        for member in _array(values[4], "domain application members"):
+            _validate_domain_member(member)
+    elif kind is AuthorityIdentityKind.CONTEXT_APPLICATION:
+        _bytes32(values[1], "context theorem record ID")
+        for member in _array(values[2], "context application members"):
+            _validate_context_member(member)
+    elif kind in {
+        AuthorityIdentityKind.RELATION_APPLICATION_RECORD,
+        AuthorityIdentityKind.DOMAIN_APPLICATION_RECORD,
+        AuthorityIdentityKind.CONTEXT_APPLICATION_RECORD,
+    }:
+        _validate_record_input(values, application=True)
+    elif kind in {
+        AuthorityIdentityKind.RELATION_SUPERSESSION,
+        AuthorityIdentityKind.DOMAIN_SUPERSESSION,
+        AuthorityIdentityKind.CONTEXT_SUPERSESSION,
+    }:
+        _validate_supersession_input(values)
+    elif kind is AuthorityIdentityKind.ACCEPTANCE_SUBJECT:
+        _validate_acceptance_subject_input(values)
+    elif kind is AuthorityIdentityKind.REVIEW_ACCEPTANCE_EVENT:
+        _validate_acceptance_event_input(values)

@@ -2,8 +2,8 @@ use super::{authority, cbor, checkpoint_digest, envelope, PersistenceDecodeError
 use authority::{
     canonical_identity_input, AcceptanceEvidenceRefV1, AcceptanceSubjectKind,
     AcceptanceSubjectPayloadV1, AcceptanceV1, AuthorityIdentityKind, EvidenceLocatorV1,
-    ReviewAcceptanceEventV1, ReviewEventRefV1, ReviewMode, ReviewerRoleBindingV1,
-    ReviewerRosterRefV1, SourceBindingDigestV1,
+    ReviewAcceptanceEventInputV1, ReviewAcceptanceEventLeafV1, ReviewEventRefV1, ReviewMode,
+    ReviewerRoleBindingV1, ReviewerRosterRefV1, SourceBindingDigestV1,
 };
 use mtgml_model::{CheckpointCodecIdentity, EnvironmentLimitCounters, EpisodeStatus};
 
@@ -18,10 +18,30 @@ fn authority_relation_identity_matches_cross_language_known_answer() {
             cbor::Value::Text("unary".to_owned()),
             cbor::Value::Text("reviewed_relation".to_owned()),
             cbor::Value::Text("directional".to_owned()),
+            cbor::Value::Text("same_subject".to_owned()),
+            cbor::Value::Array(vec![cbor::Value::Array(vec![
+                cbor::Value::Unsigned(0),
+                cbor::Value::Text("subject".to_owned()),
+                cbor::Value::Text("card".to_owned()),
+                cbor::Value::Text("subject-ref".to_owned()),
+            ])]),
             cbor::Value::Array(vec![]),
-            cbor::Value::Array(vec![]),
-            cbor::Value::Array(vec![]),
-            cbor::Value::Array(vec![]),
+            cbor::Value::Array(vec![
+                cbor::Value::Text("positive_interaction".to_owned()),
+                cbor::Value::Array(vec![
+                    cbor::Value::Array(vec![cbor::Value::Array(vec![
+                        cbor::Value::Unsigned(0),
+                        cbor::Value::Unsigned(0),
+                        cbor::Value::Text("reads".to_owned()),
+                        cbor::Value::Array(vec![]),
+                        cbor::Value::Null,
+                        cbor::Value::Null,
+                        cbor::Value::Array(vec![]),
+                    ])]),
+                    cbor::Value::Array(vec![]),
+                    cbor::Value::Null,
+                ]),
+            ]),
             cbor::Value::Array(vec![]),
             cbor::Value::Array(vec![]),
         ]),
@@ -30,7 +50,7 @@ fn authority_relation_identity_matches_cross_language_known_answer() {
 
     assert_eq!(
         identity.as_text(),
-        "rp.v1/ee825744da7449979aa620ecee9ec1703b3ee13d49ee1378491734d2038776c2"
+        "rp.v1/54258c0c781bf5c32a38a57b9cd7f9b01aa756048083380d095c048a1a232ee4"
     );
     assert_eq!(
         identity.semantic_domain(),
@@ -45,6 +65,34 @@ fn authority_relation_identity_matches_cross_language_known_answer() {
         identity.input_schema_id(),
         "manafold.m2.5.c.relation-proof-input.v1"
     );
+    let invalid_relation = cbor::Value::Array(vec![
+        cbor::Value::Text("manafold.m2.5.c.relation-proof-input.v1".to_owned()),
+        cbor::Value::Text("model".to_owned()),
+        cbor::Value::Text("positive_interaction".to_owned()),
+        cbor::Value::Text("unary".to_owned()),
+        cbor::Value::Text("reviewed_relation".to_owned()),
+        cbor::Value::Text("directional".to_owned()),
+        cbor::Value::Text("same_subject".to_owned()),
+        cbor::Value::Array(vec![]),
+        cbor::Value::Array(vec![]),
+        cbor::Value::Array(vec![]),
+        cbor::Value::Array(vec![]),
+        cbor::Value::Array(vec![]),
+    ]);
+    assert!(authority::AuthorityIdentityV1::compute(
+        AuthorityIdentityKind::RelationTheorem,
+        invalid_relation,
+    )
+    .is_err());
+    assert!(authority::AuthorityIdentityV1::compute(
+        AuthorityIdentityKind::AcceptanceSubject,
+        cbor::Value::Array(vec![
+            cbor::Value::Text("manafold.m2.5.c.acceptance-subject-payload-input.v1".to_owned()),
+            cbor::Value::Text("relation_theorem_record".to_owned()),
+            cbor::Value::Array(vec![]),
+        ]),
+    )
+    .is_err());
 }
 
 #[test]
@@ -133,7 +181,7 @@ fn authority_acceptance_event_identity_matches_cross_language_known_answer() {
         EvidenceLocatorV1::WholeArtifact,
     )
     .unwrap();
-    let event = ReviewAcceptanceEventV1::new(
+    let event = ReviewAcceptanceEventInputV1::new(
         AcceptanceSubjectKind::RelationTheoremRecord,
         [0u8; 32],
         roster_ref,
@@ -144,10 +192,18 @@ fn authority_acceptance_event_identity_matches_cross_language_known_answer() {
     )
     .unwrap();
 
+    let leaf = ReviewAcceptanceEventLeafV1::from_input(event.clone()).unwrap();
+    let wire = leaf.to_wire().unwrap();
+    let fixture: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../conformance/fixtures/authority/review_acceptance_event.v1.json"
+    ))
+    .unwrap();
+    assert_eq!(wire, fixture);
     assert_eq!(
-        event.identity().unwrap().as_text(),
-        "ae.v1/605cc0fcb6020f5066896ddc238bc7594e39a7bf731c33a72d88ab7a7acc8013"
+        wire["event_id"],
+        serde_json::json!("ae.v1/605cc0fcb6020f5066896ddc238bc7594e39a7bf731c33a72d88ab7a7acc8013")
     );
+    assert_eq!(leaf.to_cbor().unwrap(), event.semantic_input().unwrap());
 }
 
 #[test]
@@ -171,6 +227,80 @@ fn authority_acceptance_binding_has_fixed_cbor_preimage() {
             event_ref.to_cbor(),
         ])
     );
+}
+
+#[test]
+fn all_authority_identity_kinds_match_the_shared_golden_matrix() {
+    let matrix: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../conformance/fixtures/authority/identity_golden_matrix.v1.json"
+    ))
+    .unwrap();
+    let identities = matrix["identities"].as_array().unwrap();
+    assert_eq!(identities.len(), 17);
+
+    for entry in identities {
+        let kind = authority_kind(entry["kind"].as_str().unwrap());
+        let payload_bytes = decode_hex(entry["payload_cbor_hex"].as_str().unwrap());
+        let payload = cbor::decode_canonical(&payload_bytes).unwrap();
+        assert_eq!(
+            payload_array_len(&payload),
+            entry["arity"].as_u64().unwrap() as usize
+        );
+        let identity = authority::AuthorityIdentityV1::compute(kind, payload).unwrap();
+        assert_eq!(identity.as_text(), entry["identity"].as_str().unwrap());
+        assert_eq!(
+            identity.semantic_domain(),
+            entry["semantic_domain"].as_str().unwrap()
+        );
+        assert_eq!(
+            identity.input_schema_id(),
+            entry["input_schema_id"].as_str().unwrap()
+        );
+        assert_eq!(identity.kind().prefix(), entry["prefix"].as_str().unwrap());
+    }
+}
+
+fn payload_array_len(value: &cbor::Value) -> usize {
+    match value {
+        cbor::Value::Array(values) => values.len(),
+        other => panic!("identity matrix payload is not an array: {other:?}"),
+    }
+}
+
+fn authority_kind(value: &str) -> AuthorityIdentityKind {
+    match value {
+        "relation_theorem" => AuthorityIdentityKind::RelationTheorem,
+        "relation_theorem_record" => AuthorityIdentityKind::RelationTheoremRecord,
+        "relation_application" => AuthorityIdentityKind::RelationApplication,
+        "relation_application_record" => AuthorityIdentityKind::RelationApplicationRecord,
+        "relation_supersession" => AuthorityIdentityKind::RelationSupersession,
+        "domain_theorem" => AuthorityIdentityKind::DomainTheorem,
+        "domain_theorem_record" => AuthorityIdentityKind::DomainTheoremRecord,
+        "domain_application" => AuthorityIdentityKind::DomainApplication,
+        "domain_application_record" => AuthorityIdentityKind::DomainApplicationRecord,
+        "domain_supersession" => AuthorityIdentityKind::DomainSupersession,
+        "context_theorem" => AuthorityIdentityKind::ContextTheorem,
+        "context_theorem_record" => AuthorityIdentityKind::ContextTheoremRecord,
+        "context_application" => AuthorityIdentityKind::ContextApplication,
+        "context_application_record" => AuthorityIdentityKind::ContextApplicationRecord,
+        "context_supersession" => AuthorityIdentityKind::ContextSupersession,
+        "acceptance_subject" => AuthorityIdentityKind::AcceptanceSubject,
+        "review_acceptance_event" => AuthorityIdentityKind::ReviewAcceptanceEvent,
+        other => panic!("unknown authority identity kind: {other}"),
+    }
+}
+
+fn decode_hex(value: &str) -> Vec<u8> {
+    assert_eq!(value.len() % 2, 0);
+    value
+        .as_bytes()
+        .chunks_exact(2)
+        .map(|pair| {
+            let high = (pair[0] as char).to_digit(16).unwrap();
+            let low = (pair[1] as char).to_digit(16).unwrap();
+            ((high << 4) | low) as u8
+        })
+        .collect()
 }
 
 #[test]

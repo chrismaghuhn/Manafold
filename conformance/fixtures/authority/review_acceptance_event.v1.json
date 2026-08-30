@@ -1,4 +1,5 @@
 {
+  "event_id": "ae.v1/605cc0fcb6020f5066896ddc238bc7594e39a7bf731c33a72d88ab7a7acc8013",
   "schema": "manafold.m2.5.c.review-acceptance-event.v1",
   "subject_kind": "relation_theorem_record",
   "subject_payload_digest": "0000000000000000000000000000000000000000000000000000000000000000",
@@ -10,7 +11,7 @@
   },
   "reviewer_role_bindings": [
     {
-      "reviewer_id": "fixture.alice",
+      "reviewer_id": "alice",
       "roles": [
         "architecture_maintainer",
         "rules_authority_maintainer"
@@ -35,7 +36,7 @@
   ],
   "review_evidence_refs": [
     {
-      "path": "docs/review/authority-review.md",
+      "path": "docs/review/authority.md",
       "raw_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
       "locator": {
         "kind": "whole_artifact"

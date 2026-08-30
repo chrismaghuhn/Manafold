@@ -244,6 +244,7 @@ pub fn canonical_identity_input(
     if values.first() != Some(&cbor::Value::Text(kind.input_schema_id().to_owned())) {
         return Err(PersistenceDecodeErrorV1::SchemaIdentityMismatch);
     }
+    validate_identity_payload(kind, &values)?;
     Ok(cbor::Value::Array(values))
 }
 
@@ -713,7 +714,7 @@ impl ReviewerRosterV1 {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ReviewAcceptanceEventV1 {
+pub struct ReviewAcceptanceEventInputV1 {
     pub subject_kind: AcceptanceSubjectKind,
     pub subject_payload_digest: [u8; 32],
     pub reviewer_roster_ref: ReviewerRosterRefV1,
@@ -723,7 +724,7 @@ pub struct ReviewAcceptanceEventV1 {
     pub review_evidence_refs: Vec<AcceptanceEvidenceRefV1>,
 }
 
-impl ReviewAcceptanceEventV1 {
+impl ReviewAcceptanceEventInputV1 {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         subject_kind: AcceptanceSubjectKind,
@@ -829,6 +830,136 @@ impl ReviewAcceptanceEventV1 {
     pub fn to_cbor(&self) -> Result<cbor::Value, PersistenceDecodeErrorV1> {
         self.semantic_input()
     }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ReviewAcceptanceEventLeafV1 {
+    pub event_id: AuthorityIdentityV1,
+    pub subject_kind: AcceptanceSubjectKind,
+    pub subject_payload_digest: [u8; 32],
+    pub decision: String,
+    pub reviewer_roster_ref: ReviewerRosterRefV1,
+    pub reviewer_role_bindings: Vec<ReviewerRoleBindingV1>,
+    pub review_mode: ReviewMode,
+    pub checklist_id: String,
+    pub source_binding_digests: Vec<SourceBindingDigestV1>,
+    pub review_evidence_refs: Vec<AcceptanceEvidenceRefV1>,
+}
+
+impl ReviewAcceptanceEventLeafV1 {
+    pub fn from_input(
+        input: ReviewAcceptanceEventInputV1,
+    ) -> Result<Self, PersistenceDecodeErrorV1> {
+        let event_id = input.identity()?;
+        Ok(Self {
+            event_id,
+            subject_kind: input.subject_kind,
+            subject_payload_digest: input.subject_payload_digest,
+            decision: "human_accepted".to_owned(),
+            reviewer_roster_ref: input.reviewer_roster_ref,
+            reviewer_role_bindings: input.reviewer_role_bindings,
+            review_mode: input.review_mode,
+            checklist_id: ACCEPTANCE_CHECKLIST_V1.to_owned(),
+            source_binding_digests: input.source_binding_digests,
+            review_evidence_refs: input.review_evidence_refs,
+        })
+    }
+
+    pub fn as_input(&self) -> Result<ReviewAcceptanceEventInputV1, PersistenceDecodeErrorV1> {
+        if self.event_id.kind() != AuthorityIdentityKind::ReviewAcceptanceEvent {
+            return Err(PersistenceDecodeErrorV1::SchemaIdentityMismatch);
+        }
+        if self.decision != "human_accepted" || self.checklist_id != ACCEPTANCE_CHECKLIST_V1 {
+            return Err(PersistenceDecodeErrorV1::SemanticValidation);
+        }
+        let input = ReviewAcceptanceEventInputV1::new(
+            self.subject_kind,
+            self.subject_payload_digest,
+            self.reviewer_roster_ref.clone(),
+            self.reviewer_role_bindings.clone(),
+            self.review_mode,
+            self.source_binding_digests.clone(),
+            self.review_evidence_refs.clone(),
+        )?;
+        if input.identity()? != self.event_id {
+            return Err(PersistenceDecodeErrorV1::DigestMismatch);
+        }
+        Ok(input)
+    }
+
+    pub fn to_cbor(&self) -> Result<cbor::Value, PersistenceDecodeErrorV1> {
+        self.as_input()?.semantic_input()
+    }
+
+    pub fn to_wire(&self) -> Result<serde_json::Value, PersistenceDecodeErrorV1> {
+        self.as_input()?;
+        Ok(serde_json::json!({
+            "event_id": self.event_id.as_text(),
+            "schema": ACCEPTANCE_EVENT_SCHEMA_V1,
+            "subject_kind": self.subject_kind.as_str(),
+            "subject_payload_digest": hex_encode(&self.subject_payload_digest),
+            "decision": self.decision,
+            "reviewer_roster_ref": reviewer_roster_ref_to_wire(&self.reviewer_roster_ref),
+            "reviewer_role_bindings": self.reviewer_role_bindings.iter()
+                .map(reviewer_role_binding_to_wire)
+                .collect::<Vec<_>>(),
+            "review_mode": self.review_mode.as_str(),
+            "checklist_id": self.checklist_id,
+            "source_binding_digests": self.source_binding_digests.iter()
+                .map(source_binding_to_wire)
+                .collect::<Vec<_>>(),
+            "review_evidence_refs": self.review_evidence_refs.iter()
+                .map(acceptance_evidence_to_wire)
+                .collect::<Vec<_>>(),
+        }))
+    }
+}
+
+fn locator_to_wire(locator: &EvidenceLocatorV1) -> serde_json::Value {
+    match locator {
+        EvidenceLocatorV1::WholeArtifact => serde_json::json!({"kind": "whole_artifact"}),
+        EvidenceLocatorV1::JsonPointer(pointer) => {
+            serde_json::json!({"kind": "json_pointer", "value": pointer})
+        }
+        EvidenceLocatorV1::ArchiveMember(path) => {
+            serde_json::json!({"kind": "archive_member", "value": path})
+        }
+        EvidenceLocatorV1::EventId(event_id) => {
+            serde_json::json!({"kind": "event_id", "value": event_id})
+        }
+    }
+}
+
+fn source_binding_to_wire(binding: &SourceBindingDigestV1) -> serde_json::Value {
+    serde_json::json!({
+        "artifact_role": binding.artifact_role,
+        "path": binding.path,
+        "schema_or_null": binding.schema_or_null,
+        "raw_sha256": hex_encode(&binding.raw_sha256),
+    })
+}
+
+fn acceptance_evidence_to_wire(evidence: &AcceptanceEvidenceRefV1) -> serde_json::Value {
+    serde_json::json!({
+        "path": evidence.path,
+        "raw_sha256": hex_encode(&evidence.raw_sha256),
+        "locator": locator_to_wire(&evidence.locator),
+    })
+}
+
+fn reviewer_roster_ref_to_wire(reference: &ReviewerRosterRefV1) -> serde_json::Value {
+    serde_json::json!({
+        "path": reference.path,
+        "schema": reference.schema,
+        "raw_sha256": hex_encode(&reference.raw_sha256),
+    })
+}
+
+fn reviewer_role_binding_to_wire(binding: &ReviewerRoleBindingV1) -> serde_json::Value {
+    serde_json::json!({
+        "reviewer_id": binding.reviewer_id,
+        "roles": binding.roles,
+    })
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1095,4 +1226,1141 @@ fn hex_encode(bytes: &[u8; 32]) -> String {
         output.push(HEX[(byte & 0x0f) as usize] as char);
     }
     output
+}
+
+const RELATION_CHANNELS: [&str; 11] = [
+    "participant_boundary",
+    "event_or_effect_causality",
+    "target_or_choice",
+    "zone_or_object_identity",
+    "control_or_ownership",
+    "replacement_or_layer",
+    "trigger_or_lki",
+    "information_or_visibility",
+    "ordering_or_temporal",
+    "decision_actor",
+    "format_and_declared_scope",
+];
+const ARITIES: [&str; 4] = [
+    "unary",
+    "unordered_binary",
+    "directional_binary",
+    "higher_order",
+];
+const DIRECTIONALITIES: [&str; 2] = ["unordered", "directional"];
+const OPERATIONS: [&str; 13] = [
+    "reads",
+    "changes_characteristic",
+    "changes_eligibility",
+    "changes_target_legality",
+    "changes_controller",
+    "changes_ownership",
+    "changes_zone",
+    "creates_object",
+    "copies_value",
+    "replaces_event",
+    "triggers_ability",
+    "orders_event",
+    "supplies_choice",
+];
+const PROOF_KINDS: [&str; 3] = [
+    "positive_interaction",
+    "positive_separation",
+    "model_bound_scope",
+];
+const SCOPE_REASONS: [&str; 4] = [
+    "unbounded_n_way_not_representable",
+    "undeclared_participant_kind",
+    "undeclared_relation_shape",
+    "undeclared_outcome_surface",
+];
+const REVIEW_DOMAINS: [&str; 11] = [
+    "triggers_and_lki",
+    "replacement_layers_and_dependency",
+    "copy_and_token_creation",
+    "target_legality_protection_and_identity",
+    "control_and_ownership",
+    "commander_and_format",
+    "hidden_information_and_visibility",
+    "ordering_and_temporal_dependencies",
+    "source_versus_affected_identity",
+    "controller_owner_and_decision_actor",
+    "higher_order_interactions",
+];
+const APPLICABILITY: [&str; 2] = ["applicable", "not_applicable"];
+const TERMINAL_DISPOSITIONS: [&str; 4] = [
+    "required_interaction",
+    "not_an_interaction_with_proof",
+    "out_of_declared_scope_with_reason",
+    "unresolved",
+];
+const PRECONDITION_KINDS: [&str; 6] = [
+    "candidate_relation_shape",
+    "participant_binding",
+    "b2_boundary",
+    "source_context",
+    "temporal_semantic",
+    "class_projection",
+];
+const SEPARATION_KINDS: [&str; 3] = [
+    "boundary_disjointness",
+    "closed_channel_exclusion",
+    "independent_effect_separation",
+];
+const REQUIRED_CONCLUSIONS: [&str; 2] = ["separated", "not_relevant"];
+const SLOT_KINDS: [&str; 2] = ["context_dimension", "temporal_semantic"];
+const RECORD_KINDS: [&str; 6] = [
+    "relation_theorem_record",
+    "relation_application_record",
+    "domain_theorem_record",
+    "domain_application_record",
+    "context_theorem_record",
+    "context_application_record",
+];
+const SUBJECT_KINDS: [&str; 7] = [
+    "relation_theorem_record",
+    "domain_theorem_record",
+    "context_theorem_record",
+    "relation_application_record",
+    "domain_application_record",
+    "context_application_record",
+    "supersession_record",
+];
+
+fn value_array(
+    value: &cbor::Value,
+    expected_len: Option<usize>,
+) -> Result<&[cbor::Value], PersistenceDecodeErrorV1> {
+    let values = match value {
+        cbor::Value::Array(values) => values.as_slice(),
+        _ => return Err(PersistenceDecodeErrorV1::SemanticValidation),
+    };
+    if expected_len.is_some_and(|expected| values.len() != expected) {
+        return Err(PersistenceDecodeErrorV1::WrongRecordLength);
+    }
+    Ok(values)
+}
+
+fn value_text(value: &cbor::Value) -> Result<&str, PersistenceDecodeErrorV1> {
+    match value {
+        cbor::Value::Text(value) if !value.is_empty() => Ok(value),
+        _ => Err(PersistenceDecodeErrorV1::SemanticValidation),
+    }
+}
+
+fn value_uint32(value: &cbor::Value) -> Result<u32, PersistenceDecodeErrorV1> {
+    match value {
+        cbor::Value::Unsigned(value) if *value <= u64::from(u32::MAX) => Ok(*value as u32),
+        _ => Err(PersistenceDecodeErrorV1::ValueOutOfRange),
+    }
+}
+
+fn value_bytes32(value: &cbor::Value) -> Result<(), PersistenceDecodeErrorV1> {
+    match value {
+        cbor::Value::Bytes(value) if value.len() == 32 => Ok(()),
+        _ => Err(PersistenceDecodeErrorV1::SemanticValidation),
+    }
+}
+
+fn enum_text<'a>(
+    value: &'a cbor::Value,
+    allowed: &[&str],
+) -> Result<&'a str, PersistenceDecodeErrorV1> {
+    let value = value_text(value)?;
+    validate_member(allowed, value)?;
+    Ok(value)
+}
+
+fn optional_uint32(value: &cbor::Value) -> Result<(), PersistenceDecodeErrorV1> {
+    if !matches!(value, cbor::Value::Null) {
+        value_uint32(value)?;
+    }
+    Ok(())
+}
+
+fn validate_cbor_value(value: &cbor::Value) -> Result<(), PersistenceDecodeErrorV1> {
+    match value {
+        cbor::Value::Null
+        | cbor::Value::Bool(_)
+        | cbor::Value::Unsigned(_)
+        | cbor::Value::Signed(_)
+        | cbor::Value::Bytes(_)
+        | cbor::Value::Text(_) => Ok(()),
+        cbor::Value::Array(values) => {
+            for value in values {
+                validate_cbor_value(value)?;
+            }
+            Ok(())
+        }
+    }
+}
+
+fn validate_canonical_values(
+    values: &[cbor::Value],
+    validator: fn(&cbor::Value) -> Result<(), PersistenceDecodeErrorV1>,
+) -> Result<(), PersistenceDecodeErrorV1> {
+    let mut previous: Option<Vec<u8>> = None;
+    for value in values {
+        validator(value)?;
+        let encoded = cbor::encode_canonical(value)?;
+        if let Some(previous) = &previous {
+            match encoded.as_slice().cmp(previous.as_slice()) {
+                std::cmp::Ordering::Less => {
+                    return Err(PersistenceDecodeErrorV1::NoncanonicalOrder)
+                }
+                std::cmp::Ordering::Equal => {
+                    return Err(PersistenceDecodeErrorV1::DuplicateSemanticKey)
+                }
+                std::cmp::Ordering::Greater => {}
+            }
+        }
+        previous = Some(encoded);
+    }
+    Ok(())
+}
+
+fn validate_ordered_enum(
+    values: &[cbor::Value],
+    allowed: &[&str],
+) -> Result<(), PersistenceDecodeErrorV1> {
+    let mut seen = Vec::with_capacity(values.len());
+    for value in values {
+        seen.push(enum_text(value, allowed)?.to_owned());
+    }
+    if seen.windows(2).any(|pair| pair[0] >= pair[1]) {
+        return Err(PersistenceDecodeErrorV1::NoncanonicalOrder);
+    }
+    let expected: Vec<&str> = allowed
+        .iter()
+        .copied()
+        .filter(|value| seen.iter().any(|seen| seen == value))
+        .collect();
+    if seen.iter().map(String::as_str).collect::<Vec<_>>() != expected {
+        return Err(PersistenceDecodeErrorV1::NoncanonicalOrder);
+    }
+    Ok(())
+}
+
+fn validate_digest_reference(value: &cbor::Value) -> Result<(), PersistenceDecodeErrorV1> {
+    let fields = value_array(value, Some(6))?;
+    for field in &fields[..5] {
+        value_text(field)?;
+    }
+    value_bytes32(&fields[5])
+}
+
+fn validate_locator_array(
+    value: &cbor::Value,
+    acceptance: bool,
+) -> Result<(), PersistenceDecodeErrorV1> {
+    let fields = value_array(value, Some(2))?;
+    let kind = value_text(&fields[0])?;
+    match kind {
+        "whole_artifact" if matches!(fields[1], cbor::Value::Null) => Ok(()),
+        "json_pointer" => match &fields[1] {
+            cbor::Value::Text(pointer) if is_valid_json_pointer(pointer) => Ok(()),
+            _ => Err(PersistenceDecodeErrorV1::SemanticValidation),
+        },
+        "archive_member" => match &fields[1] {
+            cbor::Value::Text(path) => validate_repo_relative_path(path),
+            _ => Err(PersistenceDecodeErrorV1::SemanticValidation),
+        },
+        "event_id" if !acceptance => match &fields[1] {
+            cbor::Value::Text(event_id) if is_namespaced_digest(event_id, "ae.v1/") => Ok(()),
+            _ => Err(PersistenceDecodeErrorV1::SemanticValidation),
+        },
+        _ => Err(PersistenceDecodeErrorV1::UnknownVariant),
+    }
+}
+
+fn validate_source_binding_array(value: &cbor::Value) -> Result<(), PersistenceDecodeErrorV1> {
+    let fields = value_array(value, Some(4))?;
+    let role = value_text(&fields[0])?;
+    let path = value_text(&fields[1])?;
+    let schema = match &fields[2] {
+        cbor::Value::Null => None,
+        cbor::Value::Text(value) => Some(value.as_str()),
+        _ => return Err(PersistenceDecodeErrorV1::SchemaIdentityMismatch),
+    };
+    let raw_sha256 = match &fields[3] {
+        cbor::Value::Bytes(value) if value.len() == 32 => {
+            let mut digest = [0u8; 32];
+            digest.copy_from_slice(value);
+            digest
+        }
+        _ => return Err(PersistenceDecodeErrorV1::SemanticValidation),
+    };
+    SourceBindingDigestV1::new(role, path, schema, raw_sha256).map(|_| ())
+}
+
+fn validate_evidence_ref_array(value: &cbor::Value) -> Result<(), PersistenceDecodeErrorV1> {
+    let fields = value_array(value, Some(4))?;
+    validate_member(&AUTHORITY_KINDS, value_text(&fields[0])?)?;
+    validate_repo_relative_path(value_text(&fields[1])?)?;
+    validate_locator_array(&fields[2], false)?;
+    value_bytes32(&fields[3])
+}
+
+fn validate_evidence_refs(value: &cbor::Value) -> Result<(), PersistenceDecodeErrorV1> {
+    let refs = value_array(value, None)?;
+    validate_canonical_values(refs, validate_evidence_ref_array)
+}
+
+fn validate_acceptance_evidence_ref_array(
+    value: &cbor::Value,
+) -> Result<(), PersistenceDecodeErrorV1> {
+    let fields = value_array(value, Some(3))?;
+    validate_repo_relative_path(value_text(&fields[0])?)?;
+    value_bytes32(&fields[1])?;
+    validate_locator_array(&fields[2], true)
+}
+
+fn validate_acceptance_evidence_refs(value: &cbor::Value) -> Result<(), PersistenceDecodeErrorV1> {
+    let refs = value_array(value, None)?;
+    if refs.is_empty() {
+        return Err(PersistenceDecodeErrorV1::SemanticValidation);
+    }
+    validate_canonical_values(refs, validate_acceptance_evidence_ref_array)
+}
+
+fn validate_review_event_ref_array(value: &cbor::Value) -> Result<(), PersistenceDecodeErrorV1> {
+    let fields = value_array(value, Some(3))?;
+    let path = value_text(&fields[0])?;
+    value_bytes32(&fields[1])?;
+    let locator = value_array(&fields[2], Some(2))?;
+    if value_text(&locator[0])? != "event_id" {
+        return Err(PersistenceDecodeErrorV1::UnknownVariant);
+    }
+    let event_id = value_text(&locator[1])?;
+    ReviewEventRefV1::new(path, [0u8; 32], event_id).map(|_| ())
+}
+
+fn validate_roster_ref_array(value: &cbor::Value) -> Result<(), PersistenceDecodeErrorV1> {
+    let fields = value_array(value, Some(3))?;
+    let digest = match &fields[2] {
+        cbor::Value::Bytes(value) if value.len() == 32 => {
+            let mut digest = [0u8; 32];
+            digest.copy_from_slice(value);
+            digest
+        }
+        _ => return Err(PersistenceDecodeErrorV1::SemanticValidation),
+    };
+    ReviewerRosterRefV1::new(value_text(&fields[0])?, value_text(&fields[1])?, digest).map(|_| ())
+}
+
+fn validate_reviewer_roles(value: &cbor::Value) -> Result<(), PersistenceDecodeErrorV1> {
+    let roles = value_array(value, None)?;
+    let mut previous: Option<&str> = None;
+    for role in roles {
+        let role = enum_text(role, &REVIEWER_ROLES)?;
+        if previous.is_some_and(|previous| previous >= role) {
+            return Err(PersistenceDecodeErrorV1::NoncanonicalOrder);
+        }
+        previous = Some(role);
+    }
+    Ok(())
+}
+
+fn validate_participant_role(value: &cbor::Value) -> Result<(), PersistenceDecodeErrorV1> {
+    let fields = value_array(value, Some(4))?;
+    value_uint32(&fields[0])?;
+    for field in &fields[1..] {
+        value_text(field)?;
+    }
+    Ok(())
+}
+
+fn validate_participant_roles(value: &cbor::Value) -> Result<(), PersistenceDecodeErrorV1> {
+    let roles = value_array(value, None)?;
+    if roles.is_empty() {
+        return Err(PersistenceDecodeErrorV1::SemanticValidation);
+    }
+    for (index, role) in roles.iter().enumerate() {
+        let fields = value_array(role, Some(4))?;
+        if value_uint32(&fields[0])? != index as u32 {
+            return Err(PersistenceDecodeErrorV1::NoncanonicalOrder);
+        }
+        validate_participant_role(role)?;
+    }
+    Ok(())
+}
+
+fn validate_b2_boundary_ref(value: &cbor::Value) -> Result<(), PersistenceDecodeErrorV1> {
+    let fields = value_array(value, Some(2))?;
+    value_text(&fields[0])?;
+    value_text(&fields[1])?;
+    Ok(())
+}
+
+fn validate_b2_boundary_refs(value: &cbor::Value) -> Result<(), PersistenceDecodeErrorV1> {
+    let refs = value_array(value, None)?;
+    validate_canonical_values(refs, validate_b2_boundary_ref)
+}
+
+fn validate_b1_citation_ref(value: &cbor::Value) -> Result<(), PersistenceDecodeErrorV1> {
+    let fields = value_array(value, Some(2))?;
+    value_text(&fields[0])?;
+    value_text(&fields[1])?;
+    Ok(())
+}
+
+fn validate_b1_citation_refs(value: &cbor::Value) -> Result<(), PersistenceDecodeErrorV1> {
+    let refs = value_array(value, None)?;
+    validate_canonical_values(refs, validate_b1_citation_ref)
+}
+
+fn validate_model_boundary_locator(value: &cbor::Value) -> Result<(), PersistenceDecodeErrorV1> {
+    let fields = value_array(value, Some(2))?;
+    match value_text(&fields[0])? {
+        "coverage_scope" if matches!(fields[1], cbor::Value::Null) => Ok(()),
+        "excluded_claim" => {
+            value_uint32(&fields[1])?;
+            Ok(())
+        }
+        _ => Err(PersistenceDecodeErrorV1::UnknownVariant),
+    }
+}
+
+fn validate_positive_boundary_fact(value: &cbor::Value) -> Result<(), PersistenceDecodeErrorV1> {
+    let tagged = value_array(value, Some(2))?;
+    let payload = value_array(&tagged[1], None)?;
+    match value_text(&tagged[0])? {
+        "b2_boundary" => {
+            if payload.len() != 4 {
+                return Err(PersistenceDecodeErrorV1::WrongRecordLength);
+            }
+            for field in payload {
+                value_text(field)?;
+            }
+            Ok(())
+        }
+        "rev3_locator" | "b2_locator" => {
+            if payload.len() != 3 {
+                return Err(PersistenceDecodeErrorV1::WrongRecordLength);
+            }
+            value_text(&payload[0])?;
+            value_bytes32(&payload[1])?;
+            validate_locator_array(&payload[2], false)
+        }
+        "b1_citation" => validate_b1_citation_ref(&tagged[1]),
+        "context_slot" => {
+            if payload.len() != 3 {
+                return Err(PersistenceDecodeErrorV1::WrongRecordLength);
+            }
+            value_text(&payload[0])?;
+            value_text(&payload[1])?;
+            validate_cbor_value(&payload[2])
+        }
+        "model_boundary" => {
+            if payload.len() != 3 {
+                return Err(PersistenceDecodeErrorV1::WrongRecordLength);
+            }
+            value_text(&payload[0])?;
+            value_text(&payload[1])?;
+            validate_model_boundary_locator(&payload[2])
+        }
+        _ => Err(PersistenceDecodeErrorV1::UnknownVariant),
+    }
+}
+
+fn validate_positive_boundary_facts(value: &cbor::Value) -> Result<(), PersistenceDecodeErrorV1> {
+    let facts = value_array(value, None)?;
+    if facts.is_empty() {
+        return Err(PersistenceDecodeErrorV1::SemanticValidation);
+    }
+    validate_canonical_values(facts, validate_positive_boundary_fact)
+}
+
+fn validate_class_projection(value: &cbor::Value) -> Result<(), PersistenceDecodeErrorV1> {
+    let fields = value_array(value, Some(9))?;
+    enum_text(&fields[0], &ARITIES)?;
+    enum_text(&fields[1], &DIRECTIONALITIES)?;
+    validate_participant_roles(&fields[2])?;
+    value_text(&fields[3])?;
+    for field in &fields[4..7] {
+        let values = value_array(field, None)?;
+        for value in values {
+            value_text(value)?;
+        }
+    }
+    validate_b2_boundary_refs(&fields[7])?;
+    validate_b1_citation_refs(&fields[8])
+}
+
+fn validate_candidate_shape(value: &cbor::Value) -> Result<(), PersistenceDecodeErrorV1> {
+    let fields = value_array(value, Some(5))?;
+    for field in &fields[..4] {
+        value_text(field)?;
+    }
+    value_uint32(&fields[4])?;
+    Ok(())
+}
+
+fn validate_model_boundary_ref(value: &cbor::Value) -> Result<(), PersistenceDecodeErrorV1> {
+    let fields = value_array(value, Some(4))?;
+    value_text(&fields[0])?;
+    if value_text(&fields[1])? != "manafold.m2.5.c.declared-interaction-model.v2" {
+        return Err(PersistenceDecodeErrorV1::SchemaIdentityMismatch);
+    }
+    value_bytes32(&fields[2])?;
+    validate_model_boundary_locator(&fields[3])
+}
+
+fn validate_precondition_payload(
+    kind: &str,
+    payload: &cbor::Value,
+) -> Result<(), PersistenceDecodeErrorV1> {
+    let fields = value_array(payload, None)?;
+    match kind {
+        "candidate_relation_shape" => {
+            if fields.len() != 4 {
+                return Err(PersistenceDecodeErrorV1::WrongRecordLength);
+            }
+            for field in fields {
+                value_text(field)?;
+            }
+            Ok(())
+        }
+        "participant_binding" => {
+            if fields.len() != 4 {
+                return Err(PersistenceDecodeErrorV1::WrongRecordLength);
+            }
+            value_uint32(&fields[0])?;
+            for field in &fields[1..] {
+                value_text(field)?;
+            }
+            Ok(())
+        }
+        "b2_boundary" => {
+            if fields.len() != 4 {
+                return Err(PersistenceDecodeErrorV1::WrongRecordLength);
+            }
+            for field in fields {
+                value_text(field)?;
+            }
+            Ok(())
+        }
+        "source_context" | "temporal_semantic" => {
+            if fields.len() != 2 {
+                return Err(PersistenceDecodeErrorV1::WrongRecordLength);
+            }
+            value_text(&fields[0])?;
+            validate_cbor_value(&fields[1])
+        }
+        "class_projection" => validate_class_projection(payload),
+        _ => Err(PersistenceDecodeErrorV1::UnknownVariant),
+    }
+}
+
+fn validate_preconditions(value: &cbor::Value) -> Result<(), PersistenceDecodeErrorV1> {
+    let preconditions = value_array(value, None)?;
+    let mut ids = std::collections::BTreeSet::new();
+    for precondition in preconditions {
+        let fields = value_array(precondition, Some(2))?;
+        let id = value_text(&fields[0])?;
+        if !ids.insert(id) {
+            return Err(PersistenceDecodeErrorV1::DuplicateSemanticKey);
+        }
+        let tagged = value_array(&fields[1], Some(2))?;
+        let kind = enum_text(&tagged[0], &PRECONDITION_KINDS)?;
+        validate_precondition_payload(kind, &tagged[1])?;
+    }
+    Ok(())
+}
+
+fn validate_causal_chain(value: &cbor::Value) -> Result<(), PersistenceDecodeErrorV1> {
+    let chain = value_array(value, None)?;
+    if chain.is_empty() {
+        return Err(PersistenceDecodeErrorV1::SemanticValidation);
+    }
+    for (ordinal, edge) in chain.iter().enumerate() {
+        let fields = value_array(edge, Some(7))?;
+        if value_uint32(&fields[0])? != ordinal as u32 {
+            return Err(PersistenceDecodeErrorV1::NoncanonicalOrder);
+        }
+        value_uint32(&fields[1])?;
+        enum_text(&fields[2], &OPERATIONS)?;
+        validate_b2_boundary_refs(&fields[3])?;
+        optional_uint32(&fields[4])?;
+        optional_uint32(&fields[5])?;
+        validate_b1_citation_refs(&fields[6])?;
+    }
+    Ok(())
+}
+
+fn validate_required_channels(value: &cbor::Value) -> Result<(), PersistenceDecodeErrorV1> {
+    let fields = value_array(value, None)?;
+    validate_ordered_enum(fields, &RELATION_CHANNELS)
+}
+
+fn validate_separation_obligations(value: &cbor::Value) -> Result<(), PersistenceDecodeErrorV1> {
+    let obligations = value_array(value, Some(RELATION_CHANNELS.len()))?;
+    for (index, obligation) in obligations.iter().enumerate() {
+        let fields = value_array(obligation, Some(2))?;
+        if enum_text(&fields[0], &RELATION_CHANNELS)? != RELATION_CHANNELS[index] {
+            return Err(PersistenceDecodeErrorV1::NoncanonicalOrder);
+        }
+        enum_text(&fields[1], &REQUIRED_CONCLUSIONS)?;
+    }
+    Ok(())
+}
+
+fn validate_relation_proof_payload(value: &cbor::Value) -> Result<(), PersistenceDecodeErrorV1> {
+    let tagged = value_array(value, Some(2))?;
+    let kind = enum_text(&tagged[0], &PROOF_KINDS)?;
+    let fields = value_array(&tagged[1], None)?;
+    match kind {
+        "positive_interaction" => {
+            if fields.len() != 3 {
+                return Err(PersistenceDecodeErrorV1::WrongRecordLength);
+            }
+            validate_causal_chain(&fields[0])?;
+            validate_required_channels(&fields[1])?;
+            if !matches!(fields[2], cbor::Value::Null) {
+                validate_class_projection(&fields[2])?;
+            }
+            Ok(())
+        }
+        "positive_separation" => {
+            if fields.len() != 2 {
+                return Err(PersistenceDecodeErrorV1::WrongRecordLength);
+            }
+            enum_text(&fields[0], &SEPARATION_KINDS)?;
+            validate_separation_obligations(&fields[1])
+        }
+        "model_bound_scope" => {
+            if fields.len() != 4 {
+                return Err(PersistenceDecodeErrorV1::WrongRecordLength);
+            }
+            validate_model_boundary_ref(&fields[0])?;
+            enum_text(&fields[1], &SCOPE_REASONS)?;
+            validate_candidate_shape(&fields[2])?;
+            let evidence = value_array(&fields[3], None)?;
+            if evidence.is_empty() {
+                return Err(PersistenceDecodeErrorV1::SemanticValidation);
+            }
+            validate_evidence_refs(&fields[3])
+        }
+        _ => Err(PersistenceDecodeErrorV1::UnknownVariant),
+    }
+}
+
+fn validate_relation_binding(value: &cbor::Value) -> Result<(), PersistenceDecodeErrorV1> {
+    let fields = value_array(value, Some(5))?;
+    value_text(&fields[0])?;
+    value_text(&fields[1])?;
+    enum_text(&fields[2], &DIRECTIONALITIES)?;
+    value_text(&fields[3])?;
+    validate_participant_roles(&fields[4])
+}
+
+fn validate_candidate_universe_binding(
+    value: &cbor::Value,
+) -> Result<(), PersistenceDecodeErrorV1> {
+    let fields = value_array(value, Some(3))?;
+    value_text(&fields[0])?;
+    value_text(&fields[1])?;
+    value_bytes32(&fields[2])
+}
+
+fn validate_domain_binding(value: &cbor::Value) -> Result<(), PersistenceDecodeErrorV1> {
+    let fields = value_array(value, Some(2))?;
+    enum_text(&fields[0], &REVIEW_DOMAINS)?;
+    enum_text(&fields[1], &APPLICABILITY)?;
+    Ok(())
+}
+
+fn validate_context_binding(value: &cbor::Value) -> Result<(), PersistenceDecodeErrorV1> {
+    let fields = value_array(value, Some(4))?;
+    enum_text(&fields[0], &ARITIES)?;
+    enum_text(&fields[1], &DIRECTIONALITIES)?;
+    validate_participant_roles(&fields[2])?;
+    value_text(&fields[3])?;
+    Ok(())
+}
+
+fn validate_precondition_attestations(value: &cbor::Value) -> Result<(), PersistenceDecodeErrorV1> {
+    let attestations = value_array(value, None)?;
+    for attestation in attestations {
+        let fields = value_array(attestation, Some(4))?;
+        value_text(&fields[0])?;
+        validate_cbor_value(&fields[1])?;
+        validate_evidence_refs(&fields[2])?;
+        value_text(&fields[3])?;
+    }
+    Ok(())
+}
+
+fn validate_class_projection_equivalence(
+    value: &cbor::Value,
+) -> Result<(), PersistenceDecodeErrorV1> {
+    let fields = value_array(value, Some(6))?;
+    validate_class_projection(&fields[0])?;
+    validate_class_projection(&fields[1])?;
+    let equal_positions = value_array(&fields[2], None)?;
+    for position in equal_positions {
+        value_text(position)?;
+    }
+    if value_text(&fields[3])? != "same_theorem_semantic_id" {
+        return Err(PersistenceDecodeErrorV1::UnknownVariant);
+    }
+    validate_evidence_refs(&fields[4])?;
+    value_text(&fields[5])?;
+    Ok(())
+}
+
+fn validate_channel_coverage(value: &cbor::Value) -> Result<(), PersistenceDecodeErrorV1> {
+    let fields = value_array(value, Some(6))?;
+    enum_text(&fields[0], &RELATION_CHANNELS)?;
+    enum_text(&fields[1], &REQUIRED_CONCLUSIONS)?;
+    validate_positive_boundary_facts(&fields[2])?;
+    validate_evidence_refs(&fields[3])?;
+    validate_b1_citation_refs(&fields[4])?;
+    value_text(&fields[5])?;
+    Ok(())
+}
+
+fn validate_channel_coverages(value: &cbor::Value) -> Result<(), PersistenceDecodeErrorV1> {
+    let coverages = value_array(value, Some(RELATION_CHANNELS.len()))?;
+    for (index, coverage) in coverages.iter().enumerate() {
+        validate_channel_coverage(coverage)?;
+        let channel = value_array(coverage, Some(6))?;
+        if enum_text(&channel[0], &RELATION_CHANNELS)? != RELATION_CHANNELS[index] {
+            return Err(PersistenceDecodeErrorV1::NoncanonicalOrder);
+        }
+    }
+    Ok(())
+}
+
+fn validate_scope_attestation(value: &cbor::Value) -> Result<(), PersistenceDecodeErrorV1> {
+    let fields = value_array(value, Some(6))?;
+    value_text(&fields[0])?;
+    value_text(&fields[1])?;
+    validate_model_boundary_ref(&fields[2])?;
+    enum_text(&fields[3], &SCOPE_REASONS)?;
+    validate_candidate_shape(&fields[4])?;
+    let evidence = value_array(&fields[5], None)?;
+    if evidence.is_empty() {
+        return Err(PersistenceDecodeErrorV1::SemanticValidation);
+    }
+    validate_evidence_refs(&fields[5])
+}
+
+fn validate_member_proof_attestation(value: &cbor::Value) -> Result<(), PersistenceDecodeErrorV1> {
+    let tagged = value_array(value, Some(2))?;
+    let kind = enum_text(&tagged[0], &PROOF_KINDS)?;
+    let fields = value_array(&tagged[1], None)?;
+    match kind {
+        "positive_interaction" => {
+            if fields.len() != 2 {
+                return Err(PersistenceDecodeErrorV1::WrongRecordLength);
+            }
+            let ordinals = value_array(&fields[0], None)?;
+            for (index, ordinal) in ordinals.iter().enumerate() {
+                if value_uint32(ordinal)? != index as u32 {
+                    return Err(PersistenceDecodeErrorV1::NoncanonicalOrder);
+                }
+            }
+            if !matches!(fields[1], cbor::Value::Null) {
+                validate_class_projection_equivalence(&fields[1])?;
+            }
+            Ok(())
+        }
+        "positive_separation" => {
+            if fields.len() != 1 {
+                return Err(PersistenceDecodeErrorV1::WrongRecordLength);
+            }
+            validate_channel_coverages(&fields[0])
+        }
+        "model_bound_scope" => {
+            if fields.len() != 1 {
+                return Err(PersistenceDecodeErrorV1::WrongRecordLength);
+            }
+            validate_scope_attestation(&fields[0])
+        }
+        _ => Err(PersistenceDecodeErrorV1::UnknownVariant),
+    }
+}
+
+fn validate_relation_member(value: &cbor::Value) -> Result<(), PersistenceDecodeErrorV1> {
+    let fields = value_array(value, Some(8))?;
+    value_text(&fields[0])?;
+    validate_digest_reference(&fields[1])?;
+    value_text(&fields[2])?;
+    validate_candidate_universe_binding(&fields[3])?;
+    validate_relation_binding(&fields[4])?;
+    validate_precondition_attestations(&fields[5])?;
+    validate_evidence_refs(&fields[6])?;
+    validate_member_proof_attestation(&fields[7])
+}
+
+fn validate_domain_criterion(value: &cbor::Value) -> Result<(), PersistenceDecodeErrorV1> {
+    let fields = value_array(value, Some(2))?;
+    let kind = value_text(&fields[0])?;
+    let payload = value_array(&fields[1], None)?;
+    match kind {
+        "channel_implicated" | "channel_excluded" => {
+            if payload.len() != 2 {
+                return Err(PersistenceDecodeErrorV1::WrongRecordLength);
+            }
+            enum_text(&payload[0], &RELATION_CHANNELS)?;
+            validate_positive_boundary_fact(&payload[1])
+        }
+        "rule_domain_required" => {
+            if payload.len() != 2 {
+                return Err(PersistenceDecodeErrorV1::WrongRecordLength);
+            }
+            validate_b1_citation_ref(&payload[0])?;
+            validate_boundary_field_names(&payload[1])
+        }
+        "rule_domain_excluded" => {
+            if payload.len() != 2 {
+                return Err(PersistenceDecodeErrorV1::WrongRecordLength);
+            }
+            validate_excluded_rule_domain_id(&payload[0])?;
+            validate_positive_boundary_fact(&payload[1])
+        }
+        _ => Err(PersistenceDecodeErrorV1::UnknownVariant),
+    }
+}
+
+fn validate_domain_criteria(value: &cbor::Value) -> Result<(), PersistenceDecodeErrorV1> {
+    let criteria = value_array(value, None)?;
+    for criterion in criteria {
+        validate_domain_criterion(criterion)?;
+    }
+    Ok(())
+}
+
+fn validate_boundary_field_names(value: &cbor::Value) -> Result<(), PersistenceDecodeErrorV1> {
+    const FIELDS: [&str; 12] = [
+        "includes",
+        "excludes",
+        "objects",
+        "action_or_event",
+        "timing",
+        "zone_visibility",
+        "eligibility_condition_duration",
+        "targets_choices",
+        "ownership_control",
+        "numeric_scaling_counters",
+        "information_identity_effect",
+        "rule_dependency",
+    ];
+    let values = value_array(value, None)?;
+    if values.is_empty() {
+        return Err(PersistenceDecodeErrorV1::SemanticValidation);
+    }
+    validate_ordered_enum(values, &FIELDS)
+}
+
+fn validate_excluded_rule_domain_id(value: &cbor::Value) -> Result<(), PersistenceDecodeErrorV1> {
+    let fields = value_array(value, Some(2))?;
+    match value_text(&fields[0])? {
+        "b1_final_citation" => validate_b1_citation_ref(&fields[1]),
+        "review_domain" => {
+            enum_text(&fields[1], &REVIEW_DOMAINS)?;
+            Ok(())
+        }
+        _ => Err(PersistenceDecodeErrorV1::UnknownVariant),
+    }
+}
+
+fn validate_domain_member(value: &cbor::Value) -> Result<(), PersistenceDecodeErrorV1> {
+    let fields = value_array(value, Some(8))?;
+    value_text(&fields[0])?;
+    validate_digest_reference(&fields[1])?;
+    value_text(&fields[2])?;
+    validate_candidate_universe_binding(&fields[3])?;
+    validate_domain_binding(&fields[4])?;
+    validate_precondition_attestations(&fields[5])?;
+    validate_evidence_refs(&fields[6])?;
+    let attestation = value_array(&fields[7], Some(1))?;
+    let criteria = value_array(&attestation[0], None)?;
+    for criterion in criteria {
+        let fields = value_array(criterion, Some(4))?;
+        value_uint32(&fields[0])?;
+        validate_domain_criterion(&fields[1])?;
+        validate_evidence_refs(&fields[2])?;
+        value_text(&fields[3])?;
+    }
+    Ok(())
+}
+
+fn validate_context_member(value: &cbor::Value) -> Result<(), PersistenceDecodeErrorV1> {
+    let fields = value_array(value, Some(8))?;
+    value_text(&fields[0])?;
+    validate_digest_reference(&fields[1])?;
+    value_text(&fields[2])?;
+    validate_candidate_universe_binding(&fields[3])?;
+    validate_context_binding(&fields[4])?;
+    validate_precondition_attestations(&fields[5])?;
+    validate_evidence_refs(&fields[6])?;
+    let attestation = value_array(&fields[7], Some(1))?;
+    let slots = value_array(&attestation[0], Some(14))?;
+    for slot in slots {
+        let fields = value_array(slot, Some(5))?;
+        enum_text(&fields[0], &SLOT_KINDS)?;
+        value_text(&fields[1])?;
+        validate_cbor_value(&fields[2])?;
+        validate_evidence_refs(&fields[3])?;
+        value_text(&fields[4])?;
+    }
+    Ok(())
+}
+
+fn validate_record_input(
+    fields: &[cbor::Value],
+    application: bool,
+) -> Result<(), PersistenceDecodeErrorV1> {
+    if application {
+        if fields.len() != 3 {
+            return Err(PersistenceDecodeErrorV1::WrongRecordLength);
+        }
+        value_text(&fields[0])?;
+        value_bytes32(&fields[1])?;
+        validate_review_event_ref_array(&fields[2])
+    } else {
+        if fields.len() != 5 {
+            return Err(PersistenceDecodeErrorV1::WrongRecordLength);
+        }
+        value_text(&fields[0])?;
+        value_bytes32(&fields[1])?;
+        validate_evidence_refs(&fields[2])?;
+        validate_review_event_ref_array(&fields[3])?;
+        value_text(&fields[4])?;
+        Ok(())
+    }
+}
+
+fn validate_supersession_input(fields: &[cbor::Value]) -> Result<(), PersistenceDecodeErrorV1> {
+    if fields.len() != 8 {
+        return Err(PersistenceDecodeErrorV1::WrongRecordLength);
+    }
+    value_text(&fields[0])?;
+    value_bytes32(&fields[1])?;
+    let replacement = !matches!(fields[2], cbor::Value::Null);
+    if replacement {
+        value_bytes32(&fields[2])?;
+    }
+    let superseded_kind = enum_text(&fields[3], &RECORD_KINDS)?;
+    let replacement_kind_is_null = matches!(fields[4], cbor::Value::Null);
+    if replacement {
+        if replacement_kind_is_null
+            || enum_text(&fields[4], &RECORD_KINDS)? != superseded_kind
+            || value_text(&fields[5])? == "authority_revocation"
+        {
+            return Err(PersistenceDecodeErrorV1::SchemaIdentityMismatch);
+        }
+    } else if !replacement_kind_is_null || value_text(&fields[5])? != "authority_revocation" {
+        return Err(PersistenceDecodeErrorV1::SemanticValidation);
+    }
+    enum_text(
+        &fields[5],
+        &[
+            "semantic_correction",
+            "source_revision",
+            "model_revision",
+            "authority_revocation",
+        ],
+    )?;
+    validate_evidence_refs(&fields[6])?;
+    validate_review_event_ref_array(&fields[7])
+}
+
+fn validate_acceptance_subject_input(
+    fields: &[cbor::Value],
+) -> Result<(), PersistenceDecodeErrorV1> {
+    if fields.len() != 3 {
+        return Err(PersistenceDecodeErrorV1::WrongRecordLength);
+    }
+    value_text(&fields[0])?;
+    let kind = enum_text(&fields[1], &SUBJECT_KINDS)?;
+    let payload = value_array(&fields[2], None)?;
+    if kind.ends_with("_theorem_record") {
+        if payload.len() != 3 {
+            return Err(PersistenceDecodeErrorV1::WrongRecordLength);
+        }
+        value_bytes32(&payload[0])?;
+        validate_evidence_refs(&payload[1])?;
+        value_text(&payload[2])?;
+    } else if kind.ends_with("_application_record") {
+        if payload.len() != 1 {
+            return Err(PersistenceDecodeErrorV1::WrongRecordLength);
+        }
+        value_bytes32(&payload[0])?;
+    } else {
+        if payload.len() != 6 {
+            return Err(PersistenceDecodeErrorV1::WrongRecordLength);
+        }
+        value_bytes32(&payload[0])?;
+        let replacement = !matches!(payload[1], cbor::Value::Null);
+        if replacement {
+            value_bytes32(&payload[1])?;
+        }
+        let superseded_kind = enum_text(&payload[2], &RECORD_KINDS)?;
+        if replacement {
+            if enum_text(&payload[3], &RECORD_KINDS)? != superseded_kind {
+                return Err(PersistenceDecodeErrorV1::SchemaIdentityMismatch);
+            }
+        } else if !matches!(payload[3], cbor::Value::Null) {
+            return Err(PersistenceDecodeErrorV1::SemanticValidation);
+        }
+        enum_text(
+            &payload[4],
+            &[
+                "semantic_correction",
+                "source_revision",
+                "model_revision",
+                "authority_revocation",
+            ],
+        )?;
+        validate_evidence_refs(&payload[5])?;
+    }
+    Ok(())
+}
+
+fn validate_acceptance_event_input(fields: &[cbor::Value]) -> Result<(), PersistenceDecodeErrorV1> {
+    if fields.len() != 10 {
+        return Err(PersistenceDecodeErrorV1::WrongRecordLength);
+    }
+    value_text(&fields[0])?;
+    enum_text(&fields[1], &SUBJECT_KINDS)?;
+    value_bytes32(&fields[2])?;
+    if value_text(&fields[3])? != "human_accepted" {
+        return Err(PersistenceDecodeErrorV1::UnknownVariant);
+    }
+    validate_roster_ref_array(&fields[4])?;
+    let bindings = value_array(&fields[5], None)?;
+    if bindings.is_empty() {
+        return Err(PersistenceDecodeErrorV1::SemanticValidation);
+    }
+    let mut reviewer_ids = Vec::with_capacity(bindings.len());
+    for binding in bindings {
+        let fields = value_array(binding, Some(2))?;
+        let reviewer_id = value_text(&fields[0])?;
+        validate_reviewer_roles(&fields[1])?;
+        reviewer_ids.push(reviewer_id);
+    }
+    if reviewer_ids.windows(2).any(|pair| pair[0] >= pair[1]) {
+        return Err(PersistenceDecodeErrorV1::NoncanonicalOrder);
+    }
+    enum_text(&fields[6], &["multi_reviewer", "solo_separate_self_review"])?;
+    if value_text(&fields[7])? != ACCEPTANCE_CHECKLIST_V1 {
+        return Err(PersistenceDecodeErrorV1::SchemaIdentityMismatch);
+    }
+    let source_bindings = value_array(&fields[8], None)?;
+    if source_bindings.is_empty() {
+        return Err(PersistenceDecodeErrorV1::SemanticValidation);
+    }
+    for binding in source_bindings {
+        validate_source_binding_array(binding)?;
+    }
+    if source_bindings.iter().any(|binding| {
+        value_array(binding, Some(4))
+            .ok()
+            .and_then(|fields| value_text(&fields[0]).ok())
+            == Some("acceptance_event_leaf")
+    }) {
+        return Err(PersistenceDecodeErrorV1::SemanticValidation);
+    }
+    if !source_bindings.iter().any(|binding| {
+        value_array(binding, Some(4))
+            .ok()
+            .and_then(|fields| value_text(&fields[0]).ok())
+            == Some("declared_model")
+    }) {
+        return Err(PersistenceDecodeErrorV1::SemanticValidation);
+    }
+    let roster = value_array(&fields[4], Some(3))?;
+    let has_roster = source_bindings.iter().any(|binding| {
+        value_array(binding, Some(4)).is_ok_and(|binding| {
+            binding[0] == cbor::Value::Text("reviewer_roster_leaf".to_owned())
+                && binding[1] == roster[0]
+                && binding[2] == roster[1]
+                && binding[3] == roster[2]
+        })
+    });
+    if !has_roster {
+        return Err(PersistenceDecodeErrorV1::SemanticValidation);
+    }
+    validate_canonical_values(source_bindings, validate_source_binding_array)?;
+    validate_acceptance_evidence_refs(&fields[9])
+}
+
+fn validate_identity_payload(
+    kind: AuthorityIdentityKind,
+    fields: &[cbor::Value],
+) -> Result<(), PersistenceDecodeErrorV1> {
+    match kind {
+        AuthorityIdentityKind::RelationTheorem => {
+            value_text(&fields[1])?;
+            enum_text(&fields[2], &PROOF_KINDS)?;
+            enum_text(&fields[3], &ARITIES)?;
+            value_text(&fields[4])?;
+            enum_text(&fields[5], &DIRECTIONALITIES)?;
+            value_text(&fields[6])?;
+            validate_participant_roles(&fields[7])?;
+            validate_preconditions(&fields[8])?;
+            validate_relation_proof_payload(&fields[9])?;
+            validate_b2_boundary_refs(&fields[10])?;
+            validate_b1_citation_refs(&fields[11])
+        }
+        AuthorityIdentityKind::DomainTheorem => {
+            value_text(&fields[1])?;
+            enum_text(&fields[2], &REVIEW_DOMAINS)?;
+            enum_text(&fields[3], &APPLICABILITY)?;
+            validate_domain_criteria(&fields[4])?;
+            validate_preconditions(&fields[5])?;
+            validate_b2_boundary_refs(&fields[6])?;
+            validate_b1_citation_refs(&fields[7])
+        }
+        AuthorityIdentityKind::ContextTheorem => {
+            value_text(&fields[1])?;
+            validate_context_binding(&fields[2])?;
+            let dimensions = value_array(&fields[3], Some(10))?;
+            let temporal = value_array(&fields[4], Some(4))?;
+            for value in dimensions.iter().chain(temporal.iter()) {
+                value_text(value)?;
+            }
+            validate_preconditions(&fields[5])?;
+            validate_b2_boundary_refs(&fields[6])?;
+            validate_b1_citation_refs(&fields[7])
+        }
+        AuthorityIdentityKind::RelationTheoremRecord
+        | AuthorityIdentityKind::DomainTheoremRecord
+        | AuthorityIdentityKind::ContextTheoremRecord => validate_record_input(fields, false),
+        AuthorityIdentityKind::RelationApplication => {
+            value_bytes32(&fields[1])?;
+            enum_text(&fields[2], &TERMINAL_DISPOSITIONS)?;
+            for member in value_array(&fields[3], None)? {
+                validate_relation_member(member)?;
+            }
+            Ok(())
+        }
+        AuthorityIdentityKind::DomainApplication => {
+            value_bytes32(&fields[1])?;
+            enum_text(&fields[2], &REVIEW_DOMAINS)?;
+            enum_text(&fields[3], &APPLICABILITY)?;
+            for member in value_array(&fields[4], None)? {
+                validate_domain_member(member)?;
+            }
+            Ok(())
+        }
+        AuthorityIdentityKind::ContextApplication => {
+            value_bytes32(&fields[1])?;
+            for member in value_array(&fields[2], None)? {
+                validate_context_member(member)?;
+            }
+            Ok(())
+        }
+        AuthorityIdentityKind::RelationApplicationRecord
+        | AuthorityIdentityKind::DomainApplicationRecord
+        | AuthorityIdentityKind::ContextApplicationRecord => validate_record_input(fields, true),
+        AuthorityIdentityKind::RelationSupersession
+        | AuthorityIdentityKind::DomainSupersession
+        | AuthorityIdentityKind::ContextSupersession => validate_supersession_input(fields),
+        AuthorityIdentityKind::AcceptanceSubject => validate_acceptance_subject_input(fields),
+        AuthorityIdentityKind::ReviewAcceptanceEvent => validate_acceptance_event_input(fields),
+    }
 }

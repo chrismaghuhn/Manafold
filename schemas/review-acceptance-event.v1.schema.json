@@ -5,6 +5,10 @@
   "type": "object",
   "additionalProperties": false,
   "properties": {
+    "event_id": {
+      "type": "string",
+      "pattern": "^ae\\.v1/[0-9a-f]{64}$"
+    },
     "schema": {
       "const": "manafold.m2.5.c.review-acceptance-event.v1"
     },
@@ -90,6 +94,7 @@
     }
   },
   "required": [
+    "event_id",
     "schema",
     "subject_kind",
     "subject_payload_digest",

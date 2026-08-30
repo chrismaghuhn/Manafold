@@ -14,7 +14,8 @@ from mtgml.authority import (
     AuthorityIdentityKind,
     EvidenceRefV1,
     RecordKind,
-    ReviewAcceptanceEventV1,
+    ReviewAcceptanceEventInputV1,
+    ReviewAcceptanceEventLeafV1,
     ReviewerRoleBindingV1,
     ReviewerRosterRefV1,
     ReviewerRosterV1,
@@ -27,6 +28,7 @@ from mtgml.authority import (
     canonical_identity_input,
     compute_authority_identity,
 )
+from mtgml.persistence import decode_canonical
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -42,10 +44,17 @@ class AuthorityIdentityTests(unittest.TestCase):
                 "unary",
                 "reviewed_relation",
                 "directional",
+                "same_subject",
+                [[0, "subject", "card", "subject-ref"]],
                 [],
-                [],
-                [],
-                [],
+                [
+                    "positive_interaction",
+                    [
+                        [[0, 0, "reads", [], None, None, []]],
+                        [],
+                        None,
+                    ],
+                ],
                 [],
                 [],
             ],
@@ -53,7 +62,7 @@ class AuthorityIdentityTests(unittest.TestCase):
 
         self.assertEqual(
             identity.as_text(),
-            "rp.v1/ee825744da7449979aa620ecee9ec1703b3ee13d49ee1378491734d2038776c2",
+            "rp.v1/54258c0c781bf5c32a38a57b9cd7f9b01aa756048083380d095c048a1a232ee4",
         )
         self.assertEqual(identity.semantic_domain, "manafold.m2.5.c.relation-proof.v1")
         self.assertEqual(
@@ -215,7 +224,7 @@ class AuthorityIdentityTests(unittest.TestCase):
             schema="manafold.m2.5.c.reviewer-roster.v1",
             raw_sha256=bytes(32),
         )
-        event = ReviewAcceptanceEventV1(
+        event = ReviewAcceptanceEventInputV1(
             subject_kind=AcceptanceSubjectKind.RELATION_THEOREM_RECORD,
             subject_payload_digest=bytes(32),
             reviewer_roster_ref=roster_ref,
@@ -263,6 +272,13 @@ class AuthorityIdentityTests(unittest.TestCase):
             event.identity().as_text(),
             "ae.v1/605cc0fcb6020f5066896ddc238bc7594e39a7bf731c33a72d88ab7a7acc8013",
         )
+        leaf = ReviewAcceptanceEventLeafV1.from_input(event)
+        fixture = json.loads(
+            (ROOT / "conformance/fixtures/authority/review_acceptance_event.v1.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        self.assertEqual(leaf.to_wire(), fixture)
         self_binding = SourceBindingDigestV1(
             artifact_role="acceptance_event_leaf",
             path=event.identity().as_text(),
@@ -270,7 +286,7 @@ class AuthorityIdentityTests(unittest.TestCase):
             raw_sha256=bytes(32),
         )
         with self.assertRaises(AuthorityContractError):
-            ReviewAcceptanceEventV1(
+            ReviewAcceptanceEventInputV1(
                 subject_kind=event.subject_kind,
                 subject_payload_digest=event.subject_payload_digest,
                 reviewer_roster_ref=event.reviewer_roster_ref,
@@ -321,3 +337,52 @@ class AuthoritySchemaTests(unittest.TestCase):
         fixture["unexpected"] = True
         with self.assertRaises(jsonschema.ValidationError):
             jsonschema.Draft202012Validator(schema).validate(fixture)
+
+
+class AuthorityIdentityMatrixTests(unittest.TestCase):
+    def test_all_identity_kinds_match_the_shared_golden_matrix(self) -> None:
+        matrix = json.loads(
+            (ROOT / "conformance/fixtures/authority/identity_golden_matrix.v1.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        self.assertEqual(len(matrix["identities"]), len(AuthorityIdentityKind))
+        for entry in matrix["identities"]:
+            with self.subTest(kind=entry["kind"]):
+                kind = AuthorityIdentityKind(entry["kind"])
+                payload = decode_canonical(bytes.fromhex(entry["payload_cbor_hex"]))
+                identity = compute_authority_identity(kind, payload)
+                self.assertEqual(identity.prefix, entry["prefix"])
+                self.assertEqual(identity.semantic_domain, entry["semantic_domain"])
+                self.assertEqual(identity.input_schema_id, entry["input_schema_id"])
+                self.assertEqual(len(payload), entry["arity"])
+                self.assertEqual(identity.as_text(), entry["identity"])
+
+    def test_identity_producer_rejects_untyped_relation_and_subject_payloads(self) -> None:
+        with self.assertRaises(AuthorityContractError):
+            compute_authority_identity(
+                AuthorityIdentityKind.RELATION_THEOREM,
+                [
+                    "manafold.m2.5.c.relation-proof-input.v1",
+                    "model",
+                    "positive_interaction",
+                    "unary",
+                    "reviewed_relation",
+                    "directional",
+                    [],
+                    [],
+                    [],
+                    [],
+                    [],
+                    [],
+                ],
+            )
+        with self.assertRaises(AuthorityContractError):
+            compute_authority_identity(
+                AuthorityIdentityKind.ACCEPTANCE_SUBJECT,
+                [
+                    "manafold.m2.5.c.acceptance-subject-payload-input.v1",
+                    "relation_theorem_record",
+                    [],
+                ],
+            )
