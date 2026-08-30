@@ -1110,9 +1110,7 @@ def _parse_supporting_requirement_ids(value: str, label: str) -> list[str]:
     keys = [encode_canonical(item) for item in ids]
     if len(set(keys)) != len(keys):
         _fail("REV3_SUPPORTING_IDS_INVALID", f"{label} contains duplicate IDs")
-    if keys != sorted(keys):
-        _fail("REV3_SUPPORTING_IDS_INVALID", f"{label} is not canonically ordered")
-    return ids
+    return sorted(ids, key=encode_canonical)
 
 
 def _normalized_candidate_fields(row: Mapping[str, str]) -> dict[str, object]:

@@ -465,6 +465,32 @@ class AuthoritySourceResolverTests(unittest.TestCase):
         with self.assertRaises(TypeError):
             cast(dict[str, object], resolved.source_instance_record)["candidate_id"] = "mutated"
 
+    def test_raw_supporting_ids_are_normalized_after_parsing(self) -> None:
+        raw_values = self._source_values()
+        raw_values[-1] = '["cap.activation_cost", "cap.amass"]'
+        resolver, binding, candidate, instance = self._synthetic_binding_fixture(
+            rows=[raw_values],
+            candidate_overrides={
+                "supporting_requirement_ids": ["cap.amass", "cap.activation_cost"]
+            },
+        )
+
+        resolved = resolver.resolve_candidate_source_instance(
+            cast(str, candidate["candidate_id"]),
+            cast(dict[str, object], candidate["candidate_identity"]),
+            cast(str, instance["source_instance_id"]),
+            binding,
+        )
+
+        self.assertEqual(
+            resolved.candidate.candidate_record["supporting_requirement_ids"],
+            ("cap.amass", "cap.activation_cost"),
+        )
+        self.assertEqual(
+            resolved.source_binding["source_values"][-1],
+            '["cap.activation_cost", "cap.amass"]',
+        )
+
     def test_rev3_normalization_must_match_candidate_fields(self) -> None:
         resolver, binding, candidate, instance = self._synthetic_binding_fixture()
         universe_path = self.repo / Path(*CANDIDATE_UNIVERSE_PATH.split("/"))
