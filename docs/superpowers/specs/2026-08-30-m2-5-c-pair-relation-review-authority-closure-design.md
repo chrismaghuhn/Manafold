@@ -334,6 +334,11 @@ causal_chain = [
 ]
 ~~~
 
+ordinal is the complete edge identity in V1. It is an unsigned u32 and the
+chain must contain exactly 0, 1, ..., n-1 in order. V1 defines no edge_id and
+does not permit a second edge identity. Applications bind this chain through
+the exact causal_chain_ordinals value defined in §12.4 and §12.10.
+
 operation is a closed vocabulary owned by this future authority schema:
 
 ~~~
@@ -625,10 +630,14 @@ b1_final_citation_refs
 ~~~
 
 The future authority validator must require an explicit structured
-ClassProjectionEquivalenceV1 proof, not a class_projection_complete boolean.
-Two different relation mechanisms may share one class only when that proof
-contains identical values for all nine positions and an accepted explanation
-that no non-provenance semantic field remains unrepresented.
+ClassProjectionEquivalenceV1 proof, not a boolean. V1 class sharing is
+strict: the relation theorem semantic ID must be identical for every member
+of one class. The proof must also contain identical values for all nine class
+positions and an accepted explanation that no non-provenance semantic field
+remains unrepresented. Different theorem semantic IDs, including different
+relation mechanisms, cannot share a V1 class even when their nine projected
+positions happen to compare equal. Cross-theorem class equivalence requires a
+new versioned class-identity contract.
 If that proof cannot be made, the candidate remains unresolved until a
 versioned amendment defines a new class identity preimage. No relation
 mechanism may be silently dropped from a class identity for deduplication.
@@ -747,7 +756,8 @@ b2_closure
 b1_final_citations
 b1_final_closure
 candidate_universe
-acceptance_events
+acceptance_event_leaf
+reviewer_roster_leaf
 ~~~
 
 model_binding has exactly:
@@ -769,8 +779,8 @@ decision
 review_event_ref
 ~~~
 
-decision is exactly human_accepted. review_event_ref resolves to one record in
-the separately bound acceptance-events artifact. The event record has exactly:
+decision is exactly human_accepted. review_event_ref resolves to one immutable
+event leaf. The event record has exactly:
 
 ~~~
 event_id
@@ -778,8 +788,8 @@ schema
 subject_kind
 subject_payload_digest
 decision
-reviewer_ids
-reviewer_roles
+reviewer_roster_ref
+reviewer_role_bindings
 review_mode
 checklist_id
 source_binding_digests
@@ -789,8 +799,8 @@ review_evidence_refs
 review_event_ref has exactly:
 
 ~~~
-path = sources/m2_5/authorities/review_acceptance_events.v1.json
-raw_sha256 = exact raw digest of that artifact
+path = sources/m2_5/authorities/review_acceptance_events/v1/<event_digest_hex>.json
+raw_sha256 = exact raw digest of this immutable leaf artifact
 locator = ["event_id", event_id]
 ~~~
 
@@ -803,6 +813,13 @@ The event schema is exactly:
 ~~~
 manafold.m2.5.c.review-acceptance-event.v1
 ~~~
+
+The immutable event leaf has no events array and no appendable aggregate
+container. Its top-level fields are exactly the event fields listed above. A
+new event creates a new leaf path derived from its own event digest; it cannot
+change the bytes or raw digest of an existing leaf. A separate manifest may
+enumerate event leaves for discovery, but no accepted record identity may
+depend on that mutable manifest root.
 
 subject_kind is exactly one of:
 
@@ -818,10 +835,19 @@ supersession_record
 
 decision is exactly human_accepted. review_mode is exactly
 multi_reviewer or solo_separate_self_review. checklist_id is exactly
-interaction-authority-review-checklist.v1. reviewer_ids are stable IDs from
-the accepted maintainer roster, sorted by canonical UTF-8 bytes. The event
-must contain the role set required for the referenced subject kind; the role
-requirements are the ones stated below and in the ownership model.
+interaction-authority-review-checklist.v1. reviewer_role_bindings is sorted
+by reviewer_id and has exactly:
+
+~~~
+[reviewer_id, roles_sorted]
+~~~
+
+Each reviewer_id must resolve in reviewer_roster_ref. The listed roles must
+equal the complete role array for that exact reviewer in the bound roster.
+The union of all roles in reviewer_role_bindings is therefore deterministically
+the union of roles held by the selected reviewer IDs. The event must contain the role set required for the
+referenced subject kind; the role requirements are the ones stated below and
+in the ownership model.
 
 The event identity uses the exact envelope with:
 
@@ -834,9 +860,70 @@ and the fixed payload:
 
 ~~~
 [schema_id, subject_kind, subject_payload_digest_bytes, decision,
- reviewer_ids_sorted, reviewer_roles_sorted, review_mode, checklist_id,
- source_binding_digests_sorted, review_evidence_refs]
+reviewer_roster_ref, reviewer_role_bindings_sorted, review_mode, checklist_id,
+source_binding_digests_sorted, review_evidence_refs]
 ~~~
+
+SourceBindingDigestV1 has exactly:
+
+~~~
+[artifact_role, path, schema, raw_sha256_bytes]
+~~~
+
+ReviewerRoleBindingV1 has exactly [reviewer_id, roles_sorted], and
+ReviewerRosterRefV1 has exactly [path, schema, raw_sha256_bytes].
+
+artifact_role is one of declared_model, rev3_source, b2_catalog,
+b2_classifications, b2_closure, b1_final_citations, b1_final_closure,
+candidate_universe, or reviewer_roster_leaf. The event's
+source_binding_digests is the exact sorted union defined by this closed rule:
+
+~~~
+subject source set =
+  { declared model binding }
+  + { every raw artifact named by a source_evidence_ref,
+      B2 boundary ref, B1.Final citation ref, candidate-universe binding,
+      or member_evidence_ref in the subject record }
+  + { reviewer roster binding }
+~~~
+
+The subject source set is de-duplicated by the complete
+SourceBindingDigestV1 tuple and sorted by its canonical CBOR bytes. A theorem
+subject therefore includes the model, its proof-evidence artifacts, its B2
+and B1.Final artifacts, and the roster when those are present. An application
+subject additionally includes the candidate-universe artifact and every
+member-evidence artifact. A supersession subject includes the model and every
+source artifact named by its evidence. The acceptance-event leaf itself, the
+review-authority aggregate, and any mutable discovery manifest are always
+excluded. This inclusion set is recomputed and is not caller-selected.
+
+The evidence-kind to artifact-role mapping is fixed:
+
+| Referenced fact | Required source-binding roles |
+| --- | --- |
+| declared model | declared_model |
+| REV3 row, archive member, or source record | rev3_source |
+| B2 family boundary | b2_catalog, b2_closure |
+| B2 assignment or classification | b2_classifications, b2_catalog, b2_closure |
+| B1.Final citation | b1_final_citations, b1_final_closure |
+| candidate or source instance | candidate_universe |
+| reviewer identity/role | reviewer_roster_leaf |
+
+The resolver adds exactly the listed roles for each referenced fact and then
+de-duplicates them. It never adds a role merely because an artifact happens to
+exist. AcceptanceEvidenceRefV1 values are bound separately in the event and
+are not semantic source bindings.
+
+AcceptanceEvidenceRefV1 has exactly:
+
+~~~
+[path, raw_sha256_bytes, locator]
+~~~
+
+Its path is a committed repository path or a normalized portable external
+review-export locator. It is not semantic proof and cannot be a creator-local
+path. Acceptance evidence references are sorted by their canonical CBOR bytes
+and are part of event identity.
 
 The accepted role vocabulary is exactly:
 
@@ -858,9 +945,18 @@ that appointment in the same immutable review event. In solo mode,
 review_mode = solo_separate_self_review requires the complete separate
 self-review checklist; it does not waive any role or evidence requirement.
 
-reviewer_ids must resolve to a named maintainer in an accepted roster snapshot
-or to an immutable external review identity with exact digest and locator. The
-current repository has no named public roster, so a future production
+reviewer_roster_ref has exactly [path, schema, raw_sha256_bytes] and resolves
+to an immutable roster leaf at:
+
+~~~
+sources/m2_5/authorities/reviewer_rosters/v1/<roster_digest_hex>.json
+~~~
+
+The roster schema is exactly manafold.m2.5.c.reviewer-roster.v1. The leaf has
+exactly schema and reviewers. Each reviewer entry has exactly reviewer_id and
+roles, with reviewers sorted by reviewer_id and roles sorted and
+duplicate-free. The path basename is the raw SHA-256 of the exact roster leaf
+bytes. The current repository has no named public roster, so a future production
 acceptance is BLOCKED until a portable roster/review identity is admitted.
 The event's subject_payload_digest is the digest of the exact record payload
 before acceptance metadata. The accepted theorem/application record identity
@@ -868,9 +964,9 @@ includes the event_id and event raw digest, but the event never contains the
 final record identity. This one-way binding prevents a digest cycle while
 binding the human decision to the exact reviewed bytes.
 
-The acceptance-events artifact is a committed, versioned source input or a
-portable review export whose exact bytes are included in the accepted evidence
-package. A creator-local path, mutable branch, live GitHub state, or bare
+The acceptance-event leaf is a committed, versioned source input or a portable
+review export whose exact bytes are included in the accepted evidence package.
+A creator-local path, mutable branch, live GitHub state, or bare
 human_accepted flag is not a trust anchor.
 
 ### 12.3 RelationProofV1
@@ -1028,18 +1124,19 @@ fallback. A different semantic fact requires a different theorem/application.
 member_proof_attestation is required and is selected by the theorem proof kind:
 
 ~~~
-positive_interaction = [causal_chain_edge_ids,
-                        class_projection_equivalence_or_null]
-positive_separation = [channel_coverages]
-model_bound_scope = [scope_boundary_attestation]
+["positive_interaction", [causal_chain_ordinals,
+                           class_projection_equivalence_or_null]]
+["positive_separation", [channel_coverages]]
+["model_bound_scope", [scope_boundary_attestation]]
 ~~~
 
-For positive_separation, channel_coverages contains exactly one entry for each
-channel declared relevant by the theorem and each entry has exactly:
+For positive_separation, channel_coverages contains exactly one entry for every
+channel in §6.1, in the fixed channel order. Each entry must match the
+theorem's required_conclusion and has exactly:
 
 ~~~
 channel
-conclusion = separated
+coverage = separated | not_relevant
 positive_boundary_facts
 source_evidence_refs
 b1_final_citation_refs
@@ -1047,8 +1144,8 @@ rationale
 ~~~
 
 An application member cannot inherit channel coverage from the batch or from
-another member. For positive_interaction, the causal_chain_edge_ids must
-resolve to the theorem's complete ordered chain. If a class is emitted, the
+another member. For positive_interaction, causal_chain_ordinals must equal
+the theorem's complete ordered ordinal sequence. If a class is emitted, the
 theorem must carry a non-null class_projection_template and the member's
 class_projection_equivalence must be the structured value defined in §12.10.
 Null is allowed only for a non-class disposition.
@@ -1088,8 +1185,23 @@ acceptance
 ~~~
 
 Its members use the same exact subject and precondition-attestation shape as
-relation applications. The application must not mix domains or applicability
-values.
+relation applications and add exactly one DomainMemberAttestationV1 per
+member. Each member has exactly:
+
+~~~
+candidate_id
+candidate_identity
+source_instance_id
+candidate_universe_binding
+domain_binding
+precondition_attestations
+member_evidence_refs
+domain_member_attestation
+~~~
+
+domain_binding repeats review_domain and applicability. The application must
+not mix domains or applicability values. A domain member without 1:1
+criterion attestations in domain_member_attestation is not an application.
 
 ### 12.6 ContextProofV1 and ContextApplicationV1
 
@@ -1123,9 +1235,22 @@ members
 acceptance
 ~~~
 
-Every member has exact candidate/source-instance identity, all precondition
-attestations, and all slot-specific evidence. The list is not sufficient by
-itself.
+Every member has exactly:
+
+~~~
+candidate_id
+candidate_identity
+source_instance_id
+candidate_universe_binding
+context_binding
+precondition_attestations
+member_evidence_refs
+context_member_attestation
+~~~
+
+context_binding repeats the exact theorem subject shape. Every member has
+exactly one ContextMemberAttestationV1 covering every context and temporal
+slot. The list is not sufficient by itself.
 
 ### 12.7 Supersession records
 
@@ -1337,6 +1462,57 @@ absence marker. No channel may be omitted, duplicated, or marked unresolved.
 This per-member structure is the equivalence proof for a reused separation
 theorem; the membership list alone has no authority.
 
+The remaining member attestation types are:
+
+~~~
+CausalChainOrdinalAttestationV1 = [causal_chain_ordinals]
+
+ScopeBoundaryAttestationV1 = [
+  model_id, model_version, model_boundary_ref, reason_code,
+  observed_candidate_shape, positive_boundary_evidence_refs
+]
+
+CriterionAttestationV1 = [
+  criterion_index, observed_criterion, evidence_refs, equivalence_rationale
+]
+
+DomainMemberAttestationV1 = [criterion_attestations]
+
+ContextSlotAttestationV1 = [
+  slot_kind, slot_name, observed_value, evidence_refs, equivalence_rationale
+]
+
+ContextMemberAttestationV1 = [slot_attestations]
+~~~
+
+causal_chain_ordinals must equal the exact array 0, 1, ..., n-1 from the
+theorem's causal chain. model_boundary_ref is
+[path, schema, raw_sha256_bytes, locator] and must resolve to the exact
+declared model. The scope reason and observed shape must equal the theorem's
+scope payload.
+
+criterion_attestations must contain exactly one entry for every criterion
+clause, in clause order, with criterion_index equal to its zero-based index.
+observed_criterion must equal the corresponding tagged DomainCriterionV1
+clause after canonicalization, and its evidence must prove that clause for
+the exact candidate/member.
+
+slot_attestations must contain exactly these fourteen entries, in this order:
+
+~~~
+context_dimension: zone, visibility, timing, temporal_order,
+                   source_affected_relation, control_ownership_relation,
+                   replacement_layer_relation, trigger_lki_relation,
+                   information_relation, decision_actor_relation
+temporal_semantic: trigger_order, dependency_order, duration, replacement_order
+~~~
+
+slot_name selects the exact closed value vocabulary for observed_value.
+ContextSlotAttestationV1 compares observed_value to the corresponding theorem
+slot by exact equality and requires positive evidence for every slot,
+including not_applicable. Missing, duplicated, reordered, or cross-member
+attestations fail validation.
+
 ## 13. Persistent identity and digest contract
 
 The review authority requires stable semantic identities and separate accepted
@@ -1416,8 +1592,7 @@ RelationProofSemanticInputV1 = [
 
 RelationProofRecordInputV1 = [
   schema_id, theorem_id_bytes, source_evidence_refs,
-  acceptance_event_id_bytes, acceptance_event_raw_sha256_bytes,
-  semantic_rationale
+  review_event_ref, semantic_rationale
 ]
 
 RelationApplicationInputV1 = [
@@ -1425,8 +1600,7 @@ RelationApplicationInputV1 = [
 ]
 
 RelationApplicationRecordInputV1 = [
-  schema_id, application_id_bytes, acceptance_event_id_bytes,
-  acceptance_event_raw_sha256_bytes
+  schema_id, application_id_bytes, review_event_ref
 ]
 
 DomainProofSemanticInputV1 = [
@@ -1436,8 +1610,7 @@ DomainProofSemanticInputV1 = [
 
 DomainProofRecordInputV1 = [
   schema_id, theorem_id_bytes, source_evidence_refs,
-  acceptance_event_id_bytes, acceptance_event_raw_sha256_bytes,
-  semantic_rationale
+  review_event_ref, semantic_rationale
 ]
 
 DomainApplicationInputV1 = [
@@ -1445,8 +1618,7 @@ DomainApplicationInputV1 = [
 ]
 
 DomainApplicationRecordInputV1 = [
-  schema_id, application_id_bytes, acceptance_event_id_bytes,
-  acceptance_event_raw_sha256_bytes
+  schema_id, application_id_bytes, review_event_ref
 ]
 
 ContextProofSemanticInputV1 = [
@@ -1457,8 +1629,7 @@ ContextProofSemanticInputV1 = [
 
 ContextProofRecordInputV1 = [
   schema_id, theorem_id_bytes, source_evidence_refs,
-  acceptance_event_id_bytes, acceptance_event_raw_sha256_bytes,
-  semantic_rationale
+  review_event_ref, semantic_rationale
 ]
 
 ContextApplicationInputV1 = [
@@ -1466,22 +1637,21 @@ ContextApplicationInputV1 = [
 ]
 
 ContextApplicationRecordInputV1 = [
-  schema_id, application_id_bytes, acceptance_event_id_bytes,
-  acceptance_event_raw_sha256_bytes
+  schema_id, application_id_bytes, review_event_ref
 ]
 
 SupersessionRecordInputV1 = [
   schema_id, superseded_record_id_bytes, replacement_record_id_bytes_or_null,
-  reason_code, source_evidence_refs, acceptance_event_id_bytes,
-  acceptance_event_raw_sha256_bytes
+  reason_code, source_evidence_refs, review_event_ref
 ]
 ~~~
 
 For every theorem/application preimage, nested arrays use the field order
 defined in §§12.3–12.10. The semantic theorem or application ID is computed
 first. The accepted theorem/application record ID then hashes that semantic
-ID, the exact accepted source evidence, the acceptance event identity/raw
-digest, and required rationale where the record has it. No accepted record
+ID, the exact accepted source evidence, the complete immutable ReviewEventRefV1
+(leaf path, event identity, locator, and raw digest), and required rationale
+where the record has it. No accepted record
 preimage contains a predecessor field. The application ID hashes its exact
 member set and observed values. This ordering prevents self-reference and
 makes source-instance identity an application property rather than a theorem
@@ -1516,7 +1686,7 @@ alternate spellings are forbidden.
 | acceptance subject payload ID | asp.v1/ | manafold.m2.5.c.acceptance-subject-payload.v1 | manafold.m2.5.c.acceptance-subject-payload-input.v1 | AcceptanceSubjectPayloadV1 |
 | review acceptance event ID | ae.v1/ | manafold.m2.5.c.review-acceptance-event.v1 | manafold.m2.5.c.review-acceptance-event-input.v1 | AcceptanceEventInputV1 |
 
-The five theorem/application families therefore have separate semantic and
+The three theorem/application families therefore have separate semantic and
 accepted-record domains. The supersession prefix is selected by the record
 kind; its payload is otherwise shared and its schema/domain remain distinct.
 Every JSON identity projection uses exactly the existing
@@ -1542,21 +1712,35 @@ meaning or a changed preimage requires a new registry row and version.
 Acceptance events are stored in the future, separately bound artifact:
 
 ~~~
-sources/m2_5/authorities/review_acceptance_events.v1.json
+sources/m2_5/authorities/review_acceptance_events/v1/<event_digest_hex>.json
 ~~~
 
-Its top-level object has exactly schema and events, with schema
-manafold.m2.5.c.review-acceptance-events.v1. Each event has the exact fields
-listed in §12.2. The event ID is computed from AcceptanceEventInputV1:
+Each leaf's top-level object has schema
+manafold.m2.5.c.review-acceptance-event.v1 and exactly the event fields listed
+in §12.2. There is no appendable aggregate review_acceptance_events.v1.json
+artifact. The event ID is computed from
+AcceptanceEventInputV1:
 
 ~~~
 [schema_id, subject_kind, subject_payload_digest_bytes, decision,
- reviewer_ids_sorted, reviewer_roles_sorted, review_mode, checklist_id,
- source_binding_digests_sorted, review_evidence_refs]
+reviewer_roster_ref, reviewer_role_bindings_sorted, review_mode, checklist_id,
+source_binding_digests_sorted, review_evidence_refs]
 ~~~
 
+The leaf path basename is exactly the event digest rendered in lowercase
+hexadecimal. Adding a second event creates a second leaf and leaves every
+previous leaf path, byte sequence, raw digest, and accepted record binding
+unchanged. A manifest or current-event index is discovery metadata only and
+is never included in ReviewEventRefV1 or any accepted record identity.
+
 subject_payload_digest is the AcceptanceSubjectPayloadV1 identity of the
-record content before acceptance metadata. Its closed variants are:
+record content before acceptance metadata. Its exact wrapper is
+
+~~~
+AcceptanceSubjectPayloadV1 = [subject_kind, subject_payload]
+~~~
+
+Its closed subject_payload variants are:
 
 ~~~
 relation_theorem_record = [relation_theorem_id_bytes,
@@ -1948,7 +2132,14 @@ failure.
 | IRA-056 | Orphan a ParticipantSourceRefV1 | FAIL | PARTICIPANT_SOURCE_UNRESOLVED |
 | IRA-057 | Promote a card-trigger row solely from its relation label | FAIL | POSITIVE_RELATION_PROOF_MISSING |
 | IRA-058 | Add a new C authority reference without a versioned C schema/input binding | FAIL | C_AUTHORITY_INPUT_UNBOUND |
-| IRA-059 | Remove the externally required acceptance-events artifact | BLOCKED | ACCEPTANCE_ARTIFACT_UNAVAILABLE |
+| IRA-059 | Remove the externally required acceptance-event leaf | BLOCKED | ACCEPTANCE_ARTIFACT_UNAVAILABLE |
+| IRA-060 | Replace an immutable acceptance-event leaf while retaining its event ID | FAIL | ACCEPTANCE_LEAF_MUTATED |
+| IRA-061 | Add an appendable aggregate acceptance-event container | FAIL | ACCEPTANCE_CONTAINER_FORBIDDEN |
+| IRA-062 | Bind a reviewer to a role not held in the bound roster | FAIL | ACCEPTANCE_REVIEWER_ROLE_MISMATCH |
+| IRA-063 | Make the reviewer-role union differ from the exact roster-derived union | FAIL | ACCEPTANCE_REVIEWER_ROLE_MISMATCH |
+| IRA-064 | Omit or add one required SourceBindingDigestV1 entry | FAIL | ACCEPTANCE_SOURCE_BINDING_SET_INVALID |
+| IRA-065 | Include the acceptance-event leaf in its own source-binding set | FAIL | ACCEPTANCE_SOURCE_BINDING_SELF_REFERENCE |
+| IRA-066 | Change the acceptance subject payload without changing its event digest | FAIL | ACCEPTANCE_SUBJECT_DIGEST_MISMATCH |
 
 Positive controls are also mandatory:
 
@@ -1962,6 +2153,7 @@ IRA-POS-006  one required-interaction context profile with evidence for every sl
 IRA-POS-007  finite higher-order application with exact ordered participants
 IRA-POS-008  unary card-trigger application with exact OSI/source binding
 IRA-POS-009  immutable supersession from one accepted record to one replacement
+IRA-POS-010  two independent acceptance-event leaves with the first record binding unchanged
 ~~~
 
 Every positive control must pass before its single mutation is applied. A
@@ -2156,9 +2348,12 @@ actually executed successfully on one exact source identity:
 2. **Authority-schema gate:** canonical shape, closed vocabularies, CBOR
    preimages, digest recomputation, duplicate/order checks, and resource
    bounds pass.
-3. **Acceptance gate:** every used theorem/application has human acceptance
-   provenance; supersession graph is unambiguous; no proposal or superseded
-   record is used.
+3. **Acceptance gate:** every used theorem/application has an immutable
+   acceptance-event leaf; its event identity, subject payload, leaf path/raw
+   digest, reviewer-roster binding, reviewer-to-role mapping, required role
+   union, and exact SourceBindingDigestV1 set recompute successfully.
+   Supersession graph is unambiguous; no proposal, mutable aggregate event
+   container, or superseded record is used.
 4. **Relation coverage gate:** every current candidate has exactly one valid
    relation application or remains explicitly unresolved; all resolved
    relation applications pass participant, direction, and per-member
