@@ -71,6 +71,19 @@ SHARD_COUNT = 16
 PARTITION_SCHEME = "candidate-order-fixed-chunk-1000-v1"
 SHARD_MAX_BYTES = 50 * 1024 * 1024
 HOSTING_HARD_LIMIT_BYTES = 100 * 1024 * 1024
+PRODUCTION_EVIDENCE_AUTHORITIES = frozenset({"rev3", "b2", "b1_final"})
+TEST_FIXTURE_AUTHORITY = "c_review"
+TEST_FIXTURE_PATH_PREFIX = "test-only/"
+# No persisted candidate/domain or class-context review authority is admitted
+# by the current C V4 snapshot.  These sets are intentionally empty: an
+# exact-looking locator in a generic REV3/B2/B1.Final ref is not, by itself,
+# proof of applicability or context semantics.
+DOMAIN_REVIEW_AUTHORITY_PATHS: frozenset[str] = frozenset()
+CLASS_CONTEXT_AUTHORITY_PATHS: frozenset[str] = frozenset()
+# C V4 has no admitted Pair/Relation Review Authority.  Keeping this set
+# explicit makes that absence executable: B2 family boundaries and REV3
+# co-occurrence can never satisfy a resolved non-interaction proof.
+PAIR_RELATION_AUTHORITY_PATHS: frozenset[str] = frozenset()
 FORBIDDEN_MIGRATION_SOURCE_EXECUTION_COMMIT = "43bf3ccc6ff639c900914947ee0883b4731b8409"
 MIGRATION_SOURCE_CLASSIFICATIONS_PATH = (
     "sources/m2_5/closures/C/interaction_classifications.v2.json"
@@ -1088,6 +1101,31 @@ def evidence_ref_cbor(value: object, label: str) -> list[Any]:
     ]
 
 
+def validate_evidence_authority(
+    value: object, label: str, *, allow_test_fixture_authority: bool = False
+) -> None:
+    """Accept only admitted source authorities on production validation paths.
+
+    ``c_review`` is intentionally test-only in the current V4 implementation.
+    A fixture may opt in explicitly, but an arbitrary persisted locator must
+    never become semantic authority merely because it names a context slot.
+    """
+    item = mapping(value, label)
+    authority = item.get("authority_kind")
+    if authority in PRODUCTION_EVIDENCE_AUTHORITIES:
+        evidence_ref_cbor(item, label)
+        return
+    if (
+        authority == TEST_FIXTURE_AUTHORITY
+        and allow_test_fixture_authority
+        and isinstance(item.get("path"), str)
+        and item["path"].startswith(TEST_FIXTURE_PATH_PREFIX)
+    ):
+        evidence_ref_cbor(item, label)
+        return
+    fail("UNAPPROVED_AUTHORITY", f"{label} uses an unapproved evidence authority")
+
+
 def evidence_sort(values: list[Any], label: str) -> list[Any]:
     keys = [canonical(evidence_ref_cbor(value, f"{label}[{i}]")) for i, value in enumerate(values)]
     if len(set(keys)) != len(keys):
@@ -1869,6 +1907,41 @@ def add_test_class_context_evidence(record: dict[str, Any]) -> dict[str, Any]:
         )
     refs.sort(key=lambda value: canonical(evidence_ref_cbor(value, "test class evidence")))
     record["source_evidence_refs"] = evidence_sort(refs, "test class evidence")
+    return record
+
+
+def add_test_review_domain_evidence(
+    record: dict[str, Any], applicability: str = "not_applicable"
+) -> dict[str, Any]:
+    """Add explicit domain applicability evidence to an in-memory fixture.
+
+    This helper is only used by negative/positive controls.  Production C
+    artifacts have no admitted candidate/domain authority, so the production
+    validator rejects these ``c_review`` refs unless its caller explicitly
+    opts into a test-only fixture.
+    """
+    refs = list_value(record["evidence_refs"], "test domain evidence")
+    assessments = list_value(record["review_domain_assessments"], "test domain assessments")
+    for assessment in assessments:
+        domain = nonempty_string(assessment["review_domain"], "test review domain")
+        ref = {
+            "authority_kind": TEST_FIXTURE_AUTHORITY,
+            "path": "test-only/domain-assessment-control",
+            "locator": ["review_domain", domain, applicability],
+            "raw_sha256": "0" * 64,
+        }
+        refs.append(copy.deepcopy(ref))
+        assessment["evidence_refs"] = evidence_sort(
+            sorted(
+                [*list_value(assessment["evidence_refs"], "test domain assessment evidence"), ref],
+                key=lambda value: canonical(evidence_ref_cbor(value, "test domain evidence")),
+            ),
+            f"test domain assessment {domain} evidence",
+        )
+    record["evidence_refs"] = evidence_sort(
+        sorted(refs, key=lambda value: canonical(evidence_ref_cbor(value, "test domain evidence"))),
+        "test domain evidence",
+    )
     return record
 
 
@@ -2711,6 +2784,12 @@ def negative_matrix() -> dict[str, Any]:
         ),
     ]
     c_root = "sources/m2_5/closures/C/"
+
+    def target_path(target: str) -> str:
+        if target in {MATRIX_NAME, SUMMARY_NAME}:
+            return f"{c_root}verification/{target}"
+        return f"{c_root}{target}"
+
     return {
         "schema": C_JSON_SCHEMAS[MATRIX_NAME],
         "model_id": MODEL_ID,
@@ -2720,7 +2799,7 @@ def negative_matrix() -> dict[str, Any]:
                 "mutation": mutation,
                 "expected_status": status,
                 "expected_reason_code": code,
-                "target_artifact": f"{c_root}{target}",
+                "target_artifact": target_path(target),
             }
             for case_id, mutation, target, status, code in rows
         ],
@@ -3052,7 +3131,9 @@ def v2_source_negative_suite(
     )
     add_test_class_context_evidence(trigger_class)
 
-    def class_control(record: dict[str, Any]) -> Snapshot:
+    def class_control(
+        record: dict[str, Any], expected_fields: dict[str, Any] | None = None
+    ) -> Snapshot:
         classes = copy.deepcopy(get_artifact(source_snapshot, CLASSES_NAME))
         classes["class_count"] = 1
         classes["classes"] = [copy.deepcopy(record)]
@@ -3060,7 +3141,15 @@ def v2_source_negative_suite(
             {UNIVERSE_NAME: source_snapshot.values[UNIVERSE_NAME], CLASSES_NAME: classes},
             {UNIVERSE_NAME: source_snapshot.raw[UNIVERSE_NAME], CLASSES_NAME: json_bytes(classes)},
         )
-        validate_classes(control, classes, catalog, b1, b2_map)
+        validate_classes(
+            control,
+            classes,
+            catalog,
+            b1,
+            b2_map,
+            allow_test_fixture_authority=True,
+            test_fixture_expected_fields=expected_fields,
+        )
         return control
 
     def expect(action: Callable[[], object], status: str, code: str) -> None:
@@ -3122,15 +3211,13 @@ def v2_source_negative_suite(
     context_control_class["interaction_class_id"] = f"ic.v1/{context_identity['digest_hex']}"
 
     def validate_context_control(record: dict[str, Any]) -> None:
-        class_control(record)
-        if (
-            record["context_dimensions"] != context_expected
-            or record["temporal_semantics"] != temporal_expected
-        ):
-            fail(
-                "CLASS_CONTEXT_EVIDENCE_MISSING",
-                "context control differs from its source-bound values",
-            )
+        class_control(
+            record,
+            {
+                "context_dimensions": context_expected,
+                "temporal_semantics": temporal_expected,
+            },
+        )
 
     def state_case(index: int) -> None:
         if index == 1:
@@ -3185,26 +3272,53 @@ def v2_source_negative_suite(
 
     def semantic_noninteraction() -> None:
         pair = next(item for item in candidates if item["relation"] == "unordered_binary")
-        only_census = [
-            item
-            for item in candidate_review_evidence(pair, catalog)
-            if item["authority_kind"] == "rev3"
-        ]
-        validate_noninteraction_proof(pair, only_census, "V2-SA semantic control")
+        # The full currently available evidence is deliberately used here:
+        # REV3 census plus independent B2 family boundaries must still not be
+        # mistaken for a positive Pair/Relation separation proof.
+        validate_noninteraction_proof(
+            pair, candidate_review_evidence(pair, catalog), "V2-SA semantic control"
+        )
 
     def semantic_domain_state() -> None:
         validate_review_domain_assessments(
             valid_domains, "resolved", "V2-SA-SEMANTIC-002", valid_evidence
         )
 
+    def semantic_domain_specificity() -> None:
+        # Generic candidate evidence cannot positively establish that every
+        # review domain is not applicable to a resolved candidate.
+        non_applicable = copy.deepcopy(valid_domains)
+        for assessment in non_applicable:
+            assessment["applicability"] = "not_applicable"
+        validate_review_domain_assessments(
+            non_applicable,
+            "resolved",
+            "V2-SA semantic domain control",
+            valid_evidence,
+        )
+
+    def production_rejects_test_fixture_authority() -> None:
+        # ``c_review`` is reserved for explicit in-memory test fixtures; it is
+        # not a production source authority in the current V4 snapshot.
+        validate_class_context_evidence(context_control_class, "V2-SA production authority control")
+
     def source_binding_mutation() -> None:
-        candidate = copy.deepcopy(candidates[0])
-        original = copy.deepcopy(candidate["source_binding"])
+        mutated = source_snapshot.clone()
+        universe = get_artifact(mutated, UNIVERSE_NAME)
+        candidate = next(
+            item
+            for item in universe["candidates"]
+            if item["candidate_id"] == candidates[0]["candidate_id"]
+        )
         candidate["source_binding"]["row_ordinal"] += 1
-        require(
-            candidate["source_binding"] == original,
-            "V2_SOURCE_ADMISSION_BINDING_MISMATCH",
-            "source binding mutation was not detected",
+        set_artifact(mutated, UNIVERSE_NAME, universe)
+        validate_universe(
+            mutated,
+            load_archive(),
+            catalog,
+            mutated.raw[MODEL_NAME],
+            mutated.raw[REVIEW_NAME],
+            source_admission=True,
         )
 
     def forbidden_source() -> None:
@@ -3291,6 +3405,8 @@ def v2_source_negative_suite(
     )
     for case_id, action, status in cases:
         expect(action, status, expected_codes[case_id])
+    expect(semantic_domain_specificity, "FAIL", "REVIEW_DOMAIN_EVIDENCE_MISSING")
+    expect(production_rejects_test_fixture_authority, "FAIL", "UNAPPROVED_AUTHORITY")
     return {
         "suite_id": "v2-source-admission-negative-suite.v1",
         "case_ids": list(V2_SOURCE_ADMISSION_CASE_IDS),
@@ -3346,7 +3462,12 @@ def make_v2_source_admission(source_commit: str) -> dict[str, Any]:
     )
     validate_external_prereqs(reader, catalog, b2, b1)
     expected, instance_lookup = validate_universe(
-        source_snapshot, reader, catalog, source_raws[MODEL_NAME], source_raws[REVIEW_NAME]
+        source_snapshot,
+        reader,
+        catalog,
+        source_raws[MODEL_NAME],
+        source_raws[REVIEW_NAME],
+        source_admission=True,
     )
     classes_by_id = validate_classes(
         source_snapshot, source_classes, catalog, b1, b2_classification_map()
@@ -3526,6 +3647,8 @@ def validate_review_domain_assessments(
     state: str,
     label: str,
     candidate_evidence: list[Any] | None = None,
+    *,
+    allow_test_fixture_authority: bool = False,
 ) -> bool:
     """Validate the authoritative eleven-domain assessment vector.
 
@@ -3578,9 +3701,36 @@ def validate_review_domain_assessments(
                         f"{label} {domain} evidence is not bound to the candidate",
                     )
         for item in evidence:
-            authority = mapping(item, f"{label}.{domain} evidence").get("authority_kind")
-            if authority not in {"rev3", "b2", "b1_final", "c_review"}:
-                fail("UNAPPROVED_AUTHORITY", f"{label} domain evidence authority")
+            validate_evidence_authority(
+                item,
+                f"{label}.{domain} evidence",
+                allow_test_fixture_authority=allow_test_fixture_authority,
+            )
+        if applicability in {"applicable", "not_applicable"}:
+            expected_locator = ["review_domain", domain, applicability]
+            positive_evidence = next(
+                (
+                    item
+                    for item in evidence
+                    if canonical(mapping(item, f"{label}.{domain} evidence")["locator"])
+                    == canonical(expected_locator)
+                ),
+                None,
+            )
+            if positive_evidence is None:
+                fail(
+                    "REVIEW_DOMAIN_EVIDENCE_MISSING",
+                    f"{label} {domain} lacks positive applicability evidence",
+                )
+            if (
+                not allow_test_fixture_authority
+                and mapping(positive_evidence, f"{label}.{domain} positive evidence")["path"]
+                not in DOMAIN_REVIEW_AUTHORITY_PATHS
+            ):
+                fail(
+                    "REVIEW_DOMAIN_EVIDENCE_MISSING",
+                    f"{label} {domain} has no admitted domain-review authority",
+                )
         evidence_sort(evidence, f"{label}.{domain}.evidence_refs")
         if state == "resolved" and applicability == "unresolved":
             fail("REVIEW_DOMAIN_STATE_MISMATCH", f"{label} has an unresolved domain")
@@ -3591,32 +3741,30 @@ def validate_review_domain_assessments(
 def validate_noninteraction_proof(
     expected_candidate: dict[str, Any], evidence: list[Any], label: str
 ) -> None:
-    """Require positive boundary evidence for a resolved non-interaction."""
-    required_boundary_refs = {
-        (
-            participant["semantic_ref"],
-            "sources/m2_5/closures/B2/requirement_family_catalog.v1.json",
-        )
-        for participant in expected_candidate["participant_refs"]
-        if participant["participant_kind"] == "requirement_family"
-    }
-    actual_boundary_refs = {
-        (item["locator"][1], item["path"])
+    """Require an admitted Pair/Relation authority for a non-interaction.
+
+    The current C V4 source inventory has no such authority.  In particular,
+    REV3 co-occurrence plus independent B2 family-boundary records describes
+    the candidate's inputs but does not prove that the relation is absent.
+    """
+    del expected_candidate
+    for index, item in enumerate(evidence):
+        validate_evidence_authority(item, f"{label}.evidence[{index}]")
+    if not any(
+        isinstance(item, dict)
+        and item.get("authority_kind") == TEST_FIXTURE_AUTHORITY
+        and item.get("path") in PAIR_RELATION_AUTHORITY_PATHS
         for item in evidence
-        if isinstance(item, dict)
-        and item.get("authority_kind") == "b2"
-        and isinstance(item.get("locator"), list)
-        and len(item["locator"]) == 2
-        and item["locator"][0] == "family_id"
-    }
-    if not required_boundary_refs.issubset(actual_boundary_refs):
+    ):
         fail(
             "NONINTERACTION_PROOF_MISSING",
-            f"{label} lacks positive B2 boundary evidence",
+            f"{label} has no admitted Pair/Relation separation authority",
         )
 
 
-def validate_class_context_evidence(record: dict[str, Any], label: str) -> None:
+def validate_class_context_evidence(
+    record: dict[str, Any], label: str, *, allow_test_fixture_authority: bool = False
+) -> None:
     """Require one source-bound evidence locator for every class context slot.
 
     The current admitted snapshot emits no classes.  This check is nevertheless
@@ -3627,20 +3775,32 @@ def validate_class_context_evidence(record: dict[str, Any], label: str) -> None:
     InteractionClassIdentityV1.
     """
     evidence = list_value(record.get("source_evidence_refs"), f"{label}.evidence")
-    locators = {
-        canonical(item["locator"]): item
-        for item in evidence
-        if isinstance(item, dict)
-        and item.get("authority_kind") in {"rev3", "b2", "b1_final", "c_review"}
-    }
+    locators: dict[bytes, Any] = {}
+    for index, item in enumerate(evidence):
+        validate_evidence_authority(
+            item,
+            f"{label}.evidence[{index}]",
+            allow_test_fixture_authority=allow_test_fixture_authority,
+        )
+        locators[canonical(mapping(item, f"{label}.evidence[{index}]")["locator"])] = item
     required: list[list[Any]] = [
         ["context_dimension", key, record["context_dimensions"][key]] for key in CONTEXT_KEYS
     ] + [["temporal_semantic", key, record["temporal_semantics"][key]] for key in TEMPORAL_KEYS]
     for locator in required:
-        if canonical(locator) not in locators:
+        evidence_item = locators.get(canonical(locator))
+        if evidence_item is None:
             fail(
                 "CLASS_CONTEXT_EVIDENCE_MISSING",
                 f"{label} lacks positive evidence for {locator}",
+            )
+        if (
+            not allow_test_fixture_authority
+            and mapping(evidence_item, f"{label} context evidence")["path"]
+            not in CLASS_CONTEXT_AUTHORITY_PATHS
+        ):
+            fail(
+                "CLASS_CONTEXT_EVIDENCE_MISSING",
+                f"{label} lacks an admitted class-context authority for {locator}",
             )
 
 
@@ -3924,6 +4084,109 @@ def validate_external_prereqs(
     )
 
 
+def validate_targeted_review_bindings(
+    review: dict[str, Any], candidates: list[Any], label: str = "candidate universe"
+) -> None:
+    """Validate the review-record authority for targeted candidates.
+
+    The current persisted snapshot has no targeted additions, but this
+    validator is also exercised by test-only higher-order controls.  The
+    control must be valid before its record is removed or its referenced ID is
+    changed; neither mutation is represented by an injected error.
+    """
+    records = list_value(review.get("review_records"), f"{label}.review_records")
+    by_id: dict[str, dict[str, Any]] = {}
+    for index, raw_record in enumerate(records):
+        record = mapping(raw_record, f"{label}.review record {index}")
+        exact_keys(
+            record,
+            {
+                "review_record_id",
+                "review_kind",
+                "participant_source_refs",
+                "review_evidence_refs",
+                "review_rationale",
+            },
+            f"{label}.review record {index}",
+        )
+        record_id = nonempty_string(
+            record.get("review_record_id"), f"{label}.review record {index}.id"
+        )
+        if REVIEW_ID_RE.fullmatch(record_id) is None:
+            fail("TARGETED_REVIEW_RECORD_UNKNOWN", f"invalid targeted review record {record_id}")
+        require(
+            enum_value(
+                record.get("review_kind"),
+                EXTRA_VOCABULARY["review_kind"],
+                f"{label}.review record {index}.kind",
+            )
+            == "targeted_higher_order_review",
+            "TARGETED_REVIEW_RECORD_BINDING_MISMATCH",
+            f"{label}.review record {index} is not a higher-order review",
+        )
+        participant_sources = list_value(
+            record["participant_source_refs"],
+            f"{label}.review record {index}.participant_source_refs",
+        )
+        for participant_index, participant in enumerate(participant_sources):
+            participant_source_ref_cbor(
+                participant,
+                f"{label}.review record {index}.participant_source_refs[{participant_index}]",
+            )
+        require(
+            len(participant_sources) > 2,
+            "TARGETED_REVIEW_RECORD_BINDING_MISMATCH",
+            f"{label}.review record {index} has no finite higher-order participant set",
+        )
+        record_evidence = list_value(
+            record["review_evidence_refs"],
+            f"{label}.review record {index}.review_evidence_refs",
+        )
+        evidence_sort(record_evidence, f"{label}.review record {index}.review_evidence_refs")
+        for evidence_index, evidence in enumerate(record_evidence):
+            validate_evidence_authority(
+                evidence,
+                f"{label}.review record {index}.review_evidence_refs[{evidence_index}]",
+            )
+        nonempty_string(record["review_rationale"], f"{label}.review record {index}.rationale")
+        if record_id in by_id:
+            fail("TARGETED_REVIEW_RECORD_UNKNOWN", f"duplicate targeted review record {record_id}")
+        by_id[record_id] = record
+
+    for index, raw_candidate in enumerate(candidates):
+        candidate = mapping(raw_candidate, f"{label}.candidate {index}")
+        if candidate.get("source_origin") != "targeted_higher_order_review":
+            continue
+        binding = mapping(candidate.get("source_binding"), f"{label}.targeted source binding")
+        review_id = binding.get("review_record_id")
+        if review_id not in by_id:
+            if not by_id:
+                fail(
+                    "TARGETED_REVIEW_RECORD_MISSING",
+                    f"targeted candidate references {review_id!r} but no review record exists",
+                )
+            fail(
+                "TARGETED_REVIEW_RECORD_UNKNOWN",
+                f"targeted candidate references unknown review record {review_id!r}",
+            )
+        record = by_id[cast(str, review_id)]
+        source_binding_cbor(binding, f"{label}.targeted source binding")
+        require(
+            candidate.get("scope") == "unary_or_higher_order"
+            and candidate.get("relation") == "reviewed_higher_order"
+            and len(list_value(candidate.get("participant_refs"), "targeted participants")) > 2,
+            "TARGETED_REVIEW_RECORD_BINDING_MISMATCH",
+            "targeted candidate is not a finite reviewed higher-order relation",
+        )
+        require(
+            binding.get("review_kind") == record.get("review_kind")
+            and binding.get("participant_source_refs") == record.get("participant_source_refs")
+            and binding.get("review_evidence_refs") == record.get("review_evidence_refs"),
+            "TARGETED_REVIEW_RECORD_BINDING_MISMATCH",
+            f"targeted candidate does not bind review record {review_id}",
+        )
+
+
 def validate_b2_and_b1_bindings(
     value: dict[str, Any], label: str, b2_code: str, b1_code: str
 ) -> None:
@@ -4056,6 +4319,8 @@ def validate_universe(
     catalog: dict[str, Any],
     model_raw: bytes,
     review_raw: bytes,
+    *,
+    source_admission: bool = False,
 ) -> tuple[list[dict[str, Any]], dict[str, dict[str, str]]]:
     universe = get_artifact(snapshot, UNIVERSE_NAME)
     exact_keys(
@@ -4112,32 +4377,9 @@ def validate_universe(
     expected, instance_lookup = expected_candidates(reader, catalog)
     known_osis = set(b2_classification_map())
     actual = list_value(universe["candidates"], "candidate universe candidates")
-    review_records = {
-        mapping(record, "targeted review record")["review_record_id"]: mapping(
-            record, "targeted review record"
-        )
-        for record in list_value(
-            get_artifact(snapshot, REVIEW_NAME)["review_records"], "targeted review records"
-        )
-    }
-    for raw_candidate in actual:
-        candidate_origin = mapping(raw_candidate, "candidate").get("source_origin")
-        if candidate_origin == "targeted_higher_order_review":
-            binding = mapping(
-                mapping(raw_candidate, "targeted candidate").get("source_binding"),
-                "targeted candidate source binding",
-            )
-            review_id = binding.get("review_record_id")
-            if review_id not in review_records:
-                if not review_records:
-                    fail(
-                        "TARGETED_REVIEW_RECORD_MISSING",
-                        f"targeted candidate references {review_id!r} but no review record exists",
-                    )
-                fail(
-                    "TARGETED_REVIEW_RECORD_UNKNOWN",
-                    f"targeted candidate references unknown review record {review_id!r}",
-                )
+    validate_targeted_review_bindings(
+        get_artifact(snapshot, REVIEW_NAME), actual, "candidate universe"
+    )
     if len(actual) != len(expected) or {
         mapping(x, "candidate").get("candidate_id") for x in actual
     } != {x["candidate_id"] for x in expected}:
@@ -4230,7 +4472,12 @@ def validate_universe(
             fail("SHA256_SCALAR_ENCODING_INVALID", f"candidate {cid}.archive_member_sha256")
         source_binding_cbor(binding, f"candidate {cid}.source_binding")
         if binding != expected_candidate["source_binding"]:
-            fail("SOURCE_BINDING_INVALID", f"candidate {cid}.source_binding")
+            fail(
+                "V2_SOURCE_ADMISSION_BINDING_MISMATCH"
+                if source_admission
+                else "SOURCE_BINDING_INVALID",
+                f"candidate {cid}.source_binding",
+            )
         validate_digest_ref(candidate["candidate_identity"], f"candidate {cid}.candidate_identity")
         expected_identity = expected_candidate["candidate_identity"]
         if candidate["candidate_identity"] != expected_identity:
@@ -4343,7 +4590,16 @@ def validate_classes(
     catalog: dict[str, Any],
     b1: dict[str, Any],
     b2_by_osi: dict[str, dict[str, Any]],
+    *,
+    allow_test_fixture_authority: bool = False,
+    test_fixture_expected_fields: dict[str, Any] | None = None,
+    test_fixture_expected_reason: str = "CLASS_CONTEXT_EVIDENCE_MISSING",
 ) -> dict[str, dict[str, Any]]:
+    if test_fixture_expected_fields is not None and not allow_test_fixture_authority:
+        fail(
+            "UNAPPROVED_AUTHORITY",
+            "test-fixture expectations are only valid for explicit in-memory controls",
+        )
     exact_keys(
         classes,
         {"schema", "model_id", "input_bindings", "class_count", "classes"},
@@ -4512,16 +4768,18 @@ def validate_classes(
             if authority_id not in citations or pair["citation_id"] not in citations[authority_id]:
                 fail("B1_CITATION_UNRESOLVED", f"class {cid} cites unknown B1.Final node")
         class_evidence = list_value(record["source_evidence_refs"], f"class {cid}.evidence")
-        for evidence in class_evidence:
-            if mapping(evidence, "class evidence")["authority_kind"] not in {
-                "rev3",
-                "b2",
-                "b1_final",
-                "c_review",
-            }:
-                fail("UNAPPROVED_AUTHORITY", f"class {cid} evidence authority")
+        for evidence_index, evidence in enumerate(class_evidence):
+            validate_evidence_authority(
+                evidence,
+                f"class {cid}.evidence[{evidence_index}]",
+                allow_test_fixture_authority=allow_test_fixture_authority,
+            )
         evidence_sort(class_evidence, f"class {cid}.evidence")
-        validate_class_context_evidence(record, f"class {cid}")
+        validate_class_context_evidence(
+            record,
+            f"class {cid}",
+            allow_test_fixture_authority=allow_test_fixture_authority,
+        )
         nonempty_string(record["semantic_rationale"], f"class {cid}.rationale")
         expected_identity = make_class_identity(record)
         require(
@@ -4534,6 +4792,13 @@ def validate_classes(
             "CANDIDATE_IDENTITY_MISMATCH",
             f"class {cid} digest",
         )
+        if test_fixture_expected_fields is not None:
+            for field, expected_value in test_fixture_expected_fields.items():
+                require(
+                    record.get(field) == expected_value,
+                    test_fixture_expected_reason,
+                    f"class {cid} differs from its test-only source expectation for {field}",
+                )
         result[cid] = record
     # Classes are reusable terminal semantic authority, not a mandatory
     # projection of every REV3 row. The corrected snapshot may legitimately
@@ -4544,10 +4809,16 @@ def validate_classes(
 
 def validate_classification_bundle(
     snapshot: Snapshot,
-    root: dict[str, Any],
+    root: dict[str, Any] | None,
     expected_candidates_list: list[dict[str, Any]],
 ) -> dict[str, Any]:
     """Validate the V3 root/shard authority and return its ordered records."""
+    if (
+        root is None
+        or CLASSIFICATIONS_NAME not in snapshot.values
+        or CLASSIFICATIONS_NAME not in snapshot.raw
+    ):
+        fail("CLASSIFICATION_LAYOUT_INVALID", "classification root is absent")
     if "candidate_classifications" in root or "classification_root_raw_sha256" in root:
         fail(
             "CLASSIFICATION_LAYOUT_INVALID",
@@ -4773,6 +5044,8 @@ def validate_classifications(
     classes_by_id: dict[str, dict[str, Any]],
     catalog: dict[str, Any],
     b1: dict[str, Any],
+    *,
+    allow_test_fixture_authority: bool = False,
 ) -> Counter[str]:
     exact_keys(
         classifications,
@@ -4866,6 +5139,7 @@ def validate_classifications(
             state,
             f"classification {cid}",
             classification_evidence,
+            allow_test_fixture_authority=allow_test_fixture_authority,
         )
         if state == "resolved" and has_unresolved_domain:
             fail(
@@ -5009,10 +5283,12 @@ def validate_classifications(
                 )
         if not classification_evidence:
             fail("MISSING_REQUIRED_REVIEW_EVIDENCE", f"classification {cid} has no evidence")
-        for evidence in classification_evidence:
-            authority = mapping(evidence, "classification evidence")["authority_kind"]
-            if authority not in {"rev3", "b2", "b1_final", "c_review"}:
-                fail("UNAPPROVED_AUTHORITY", f"classification {cid} evidence authority")
+        for evidence_index, evidence in enumerate(classification_evidence):
+            validate_evidence_authority(
+                evidence,
+                f"classification {cid}.evidence[{evidence_index}]",
+                allow_test_fixture_authority=allow_test_fixture_authority,
+            )
         evidence_sort(classification_evidence, f"classification {cid}.evidence")
         rationale = nonempty_string(record["review_rationale"], f"classification {cid}.rationale")
         if state == "unresolved":
@@ -5527,10 +5803,20 @@ def evidence_export_path_is_in_repository(path_text: str) -> bool:
 
 
 def require_external_evidence_export_path(path_text: str) -> None:
-    normalized = path_text.replace("/", "\\")
-    if normalized.startswith("\\\\?\\") or normalized.startswith("\\??\\"):
+    slash_path = path_text.replace("\\", "/")
+    if (
+        path_text.startswith("\\\\?\\")
+        or path_text.startswith("\\??\\")
+        or slash_path.startswith("//?/")
+        or slash_path.startswith("/??/")
+    ):
         fail("EVIDENCE_EXPORT_DEVICE_PATH", "device-path evidence export locators are not portable")
-    if evidence_export_path_is_in_repository(path_text):
+    if "\\" in path_text or re.fullmatch(r"[A-Za-z]:/.+", path_text) is None:
+        fail(
+            "EVIDENCE_EXPORT_LOCATOR_INVALID",
+            "evidence export locator must be a slash-separated absolute Windows path",
+        )
+    if evidence_export_path_is_in_repository(slash_path):
         fail("EVIDENCE_EXPORT_IN_REPOSITORY", "review export must remain outside the repository")
 
 
@@ -5554,7 +5840,7 @@ def validate_creation_evidence_export(export_path: Path) -> str:
     if not export_path.is_file():
         blocked("EVIDENCE_EXPORT_UNAVAILABLE", f"review export not found: {export_path}")
     resolved = export_path.resolve()
-    require_external_evidence_export_path(str(resolved))
+    require_external_evidence_export_path(str(resolved).replace("\\", "/"))
     return sha256_bytes(export_path.read_bytes())
 
 
@@ -5772,7 +6058,7 @@ def finalize_summary(execution_commit: str, results_path: Path, export_path: Pat
     summary["evidence_protocol"]["H_exec"] = execution_commit
     summary["evidence_export"] = {
         "status": "PASS",
-        "path": str(export_path.resolve()),
+        "path": str(export_path.resolve()).replace("\\", "/"),
         "sha256": export_sha256,
     }
     (C_DIR / "verification" / SUMMARY_NAME).write_bytes(json_bytes(summary))
@@ -6024,9 +6310,22 @@ def mutation_cases(snapshot: Snapshot) -> dict[str, Callable[[], object]]:
             {UNIVERSE_NAME: snapshot.raw[UNIVERSE_NAME], CLASSES_NAME: json_bytes(classes)},
         )
 
-    def validate_class_control(control: Snapshot) -> None:
+    def validate_class_control(
+        control: Snapshot,
+        expected_fields: dict[str, Any] | None = None,
+        expected_reason: str = "CLASS_CONTEXT_EVIDENCE_MISSING",
+    ) -> None:
         classes = get_artifact(control, CLASSES_NAME)
-        validate_classes(control, classes, catalog, b1, b2_map)
+        validate_classes(
+            control,
+            classes,
+            catalog,
+            b1,
+            b2_map,
+            allow_test_fixture_authority=True,
+            test_fixture_expected_fields=expected_fields,
+            test_fixture_expected_reason=expected_reason,
+        )
 
     def classification_records(control: Snapshot) -> list[dict[str, Any]]:
         result: list[dict[str, Any]] = []
@@ -6055,6 +6354,7 @@ def mutation_cases(snapshot: Snapshot) -> dict[str, Callable[[], object]]:
         record["unresolved_reason"] = None
         for assessment in record["review_domain_assessments"]:
             assessment["applicability"] = "not_applicable"
+        add_test_review_domain_evidence(record, "not_applicable")
         mapping_value = record["source_instance_context_mappings"][0]
         mapping_value["b1_final_citation_refs"] = copy.deepcopy(
             class_value["b1_final_citation_refs"]
@@ -6106,7 +6406,12 @@ def mutation_cases(snapshot: Snapshot) -> dict[str, Callable[[], object]]:
         invalid = class_snapshot([mutated])
         expect_error(
             lambda: validate_classes(
-                invalid, get_artifact(invalid, CLASSES_NAME), catalog, b1, b2_map
+                invalid,
+                get_artifact(invalid, CLASSES_NAME),
+                catalog,
+                b1,
+                b2_map,
+                allow_test_fixture_authority=True,
             ),
             "FAIL",
             code,
@@ -6207,6 +6512,7 @@ def mutation_cases(snapshot: Snapshot) -> dict[str, Callable[[], object]]:
             {details["class_value"]["interaction_class_id"]: details["class_value"]},
             catalog,
             b1,
+            allow_test_fixture_authority=True,
         )
         details["record"]["source_instance_context_mappings"][0]["b2_assignment_refs"][0][
             "assignment_ordinal"
@@ -6220,6 +6526,7 @@ def mutation_cases(snapshot: Snapshot) -> dict[str, Callable[[], object]]:
                 {details["class_value"]["interaction_class_id"]: details["class_value"]},
                 catalog,
                 b1,
+                allow_test_fixture_authority=True,
             ),
             "FAIL",
             "ASSIGNMENT_BINDING_INVALID",
@@ -6359,12 +6666,11 @@ def mutation_cases(snapshot: Snapshot) -> dict[str, Callable[[], object]]:
         # records that fact outside the artifact; the validator then checks the
         # mutated record's ordinary class structure before the test-only
         # source-bound expectation rejects the single changed field.
-        validate_class_control(class_snapshot([mutated]))
-        if mutated["host_relationship"] != initial:
-            fail(
-                "HOST_RELATIONSHIP_MISMATCH",
-                "fixture host relationship differs from source control",
-            )
+        validate_class_control(
+            class_snapshot([mutated]),
+            {"host_relationship": initial},
+            "HOST_RELATIONSHIP_MISMATCH",
+        )
 
     cases["C-020"] = lambda: host_mutation("same_host", "cross_host")
     cases["C-021"] = lambda: host_mutation("cross_host", "same_host")
@@ -6502,45 +6808,86 @@ def mutation_cases(snapshot: Snapshot) -> dict[str, Callable[[], object]]:
         False,
     )
 
-    def targeted_review_snapshot(review_id: str, include_other_record: bool) -> Snapshot:
-        copy_snapshot = snapshot.clone()
-        if include_other_record:
-            review = get_artifact(copy_snapshot, REVIEW_NAME)
-            review["review_records"] = [
-                {
-                    "review_record_id": "ira.v1/other",
-                    "review_kind": "targeted_higher_order_review",
-                    "participant_source_refs": [],
-                    "review_evidence_refs": [],
-                    "review_rationale": "Synthetic negative-test record only.",
-                }
-            ]
-            review["review_record_count"] = 1
-            set_artifact(copy_snapshot, REVIEW_NAME, review)
-        universe = get_artifact(copy_snapshot, UNIVERSE_NAME)
-        candidate = universe["candidates"][0]
-        candidate["source_origin"] = "targeted_higher_order_review"
-        candidate["source_binding"] = {
+    def targeted_review_control() -> tuple[dict[str, Any], dict[str, Any]]:
+        source_candidate = next(
+            item for item in expected_candidates_list if item["relation"] == "unordered_binary"
+        )
+        family_ids = sorted(active_families, key=canonical)[:3]
+        participant_refs = [
+            {"participant_kind": "requirement_family", "semantic_ref": family_id}
+            for family_id in family_ids
+        ]
+        participant_source_refs = [
+            {
+                "source_kind": "b2_classification",
+                "source_locator": ["family_id", family_id],
+            }
+            for family_id in family_ids
+        ]
+        review_evidence_refs = candidate_review_evidence(source_candidate, catalog)
+        review_record = {
+            "review_record_id": "ira.v1/test-targeted-control",
+            "review_kind": "targeted_higher_order_review",
+            "participant_source_refs": participant_source_refs,
+            "review_evidence_refs": copy.deepcopy(review_evidence_refs),
+            "review_rationale": (
+                "Test-only higher-order control with three finite participants and "
+                "pinned source evidence."
+            ),
+        }
+        review = empty_review(snapshot.raw[MODEL_NAME])
+        review["review_records"] = [review_record]
+        review["review_record_count"] = 1
+        review["input_bindings"]["source_evidence_refs_sorted_array"] = copy.deepcopy(
+            review_evidence_refs
+        )
+        review_raw = json_bytes(review)
+        binding = {
             "kind": "targeted_higher_order_review",
             "additions_path": "sources/m2_5/closures/C/interaction_review_additions.v2.json",
-            "additions_raw_sha256": sha256_bytes(copy_snapshot.raw[REVIEW_NAME]),
-            "review_record_id": review_id,
-            "review_kind": "targeted_higher_order_review",
-            "participant_source_refs": [],
-            "review_evidence_refs": [],
+            "additions_raw_sha256": sha256_bytes(review_raw),
+            "review_record_id": review_record["review_record_id"],
+            "review_kind": review_record["review_kind"],
+            "participant_source_refs": copy.deepcopy(participant_source_refs),
+            "review_evidence_refs": copy.deepcopy(review_evidence_refs),
         }
-        universe["input_bindings"]["review_additions"]["raw_sha256"] = sha256_bytes(
-            copy_snapshot.raw[REVIEW_NAME]
-        )
-        set_artifact(copy_snapshot, UNIVERSE_NAME, universe)
-        return copy_snapshot
+        candidate = {
+            "candidate_id": "c.v1/test-targeted-higher-order-control",
+            "candidate_identity": None,
+            "source_origin": "targeted_higher_order_review",
+            "scope": "unary_or_higher_order",
+            "relation": "reviewed_higher_order",
+            "participant_refs": participant_refs,
+            "supporting_requirement_ids": [],
+            "source_binding": binding,
+            "reconciliation_status": "new_targeted_higher_order_candidate",
+            "reconciliation_reason": "Test-only targeted review control.",
+        }
+        candidate["candidate_identity"] = make_candidate_identity(candidate)
+        return review, candidate
 
-    cases["C-035"] = lambda: validate_snapshot(
-        targeted_review_snapshot("ira.v1/missing", False), False
-    )
-    cases["C-036"] = lambda: validate_snapshot(
-        targeted_review_snapshot("ira.v1/unknown", True), False
-    )
+    def targeted_review_missing() -> None:
+        review, candidate = targeted_review_control()
+        validate_targeted_review_bindings(review, [candidate], "C-035 control")
+        review["review_records"] = []
+        expect_error(
+            lambda: validate_targeted_review_bindings(review, [candidate], "C-035 mutation"),
+            "FAIL",
+            "TARGETED_REVIEW_RECORD_MISSING",
+        )
+
+    def targeted_review_unknown() -> None:
+        review, candidate = targeted_review_control()
+        validate_targeted_review_bindings(review, [candidate], "C-036 control")
+        candidate["source_binding"]["review_record_id"] = "ira.v1/unknown"
+        expect_error(
+            lambda: validate_targeted_review_bindings(review, [candidate], "C-036 mutation"),
+            "FAIL",
+            "TARGETED_REVIEW_RECORD_UNKNOWN",
+        )
+
+    cases["C-035"] = targeted_review_missing
+    cases["C-036"] = targeted_review_unknown
     cases["C-037"] = lambda: validate_snapshot(
         mutate(
             UNIVERSE_NAME,
@@ -6879,6 +7226,12 @@ def current_v4_layout_cases(
         refresh_shard(control, relative)
         validate_bundle(control)
 
+    def missing_root() -> None:
+        control = make_control()
+        control.values.pop(CLASSIFICATIONS_NAME)
+        control.raw.pop(CLASSIFICATIONS_NAME)
+        validate_classification_bundle(control, None, expected_candidates)
+
     cases: dict[str, Callable[[], object]] = {}
 
     def missing_root_entry() -> None:
@@ -6968,9 +7321,7 @@ def current_v4_layout_cases(
                 lambda shard: shard.__setitem__("classification_root_raw_sha256", "0" * 64),
             ),
             "CS-LAYOUT-019": lambda: mutate_shard(SHARD_NAMES[0], reorder_records),
-            "CS-LAYOUT-020": lambda: fail(
-                "CLASSIFICATION_LAYOUT_INVALID", "classification root is absent"
-            ),
+            "CS-LAYOUT-020": missing_root,
             "CS-LAYOUT-021": extra_root_entry,
         }
     )
@@ -7166,6 +7517,7 @@ def current_v4_state_domain_cases(
             "resolved",
             "DOMAIN_EMPTY_MEMBERSHIP_POSITIVE_CONTROL",
             domain_evidence,
+            allow_test_fixture_authority=True,
         )
         require(
             not has_unresolved,
@@ -7534,7 +7886,7 @@ def current_v4_export_cases() -> dict[str, Callable[[], object]]:
             validate_recorded_evidence_export(
                 {
                     "status": "PASS",
-                    "path": str(Path(temporary) / "creator-local-export.tar"),
+                    "path": str(Path(temporary) / "creator-local-export.tar").replace("\\", "/"),
                     "sha256": "0" * 64,
                 }
             )
@@ -7691,7 +8043,7 @@ def evidence_export_portability_regression(snapshot: Snapshot) -> None:
         # export file and keeps the provisional summary executable.
         export = {
             "status": "PASS",
-            "path": "C:\\Users\\example\\evidence\\semantic_review_export.tar",
+            "path": "C:/Users/example/evidence/semantic_review_export.tar",
             "sha256": "0" * 64,
         }
         validate_recorded_evidence_export(export)
@@ -7709,10 +8061,16 @@ def evidence_export_portability_regression(snapshot: Snapshot) -> None:
         else:
             raise AssertionError("finalize_summary accepted a missing review export")
 
-        for path_text in (
-            str(C_DIR / "forbidden-review-export.tar"),
-            "\\\\?\\" + str(C_DIR / "forbidden-review-export.tar"),
-            "//?/" + str(C_DIR / "forbidden-review-export.tar").replace("\\", "/"),
+        for path_text, expected_code in (
+            (
+                str(C_DIR / "forbidden-review-export.tar").replace("\\", "/"),
+                "EVIDENCE_EXPORT_IN_REPOSITORY",
+            ),
+            ("\\\\?\\" + str(C_DIR / "forbidden-review-export.tar"), "EVIDENCE_EXPORT_DEVICE_PATH"),
+            (
+                "//?/" + str(C_DIR / "forbidden-review-export.tar").replace("\\", "/"),
+                "EVIDENCE_EXPORT_DEVICE_PATH",
+            ),
         ):
             tampered = copy.deepcopy(validation_summary)
             tampered_export = mapping(tampered["evidence_export"], "tampered evidence export")
@@ -7728,7 +8086,7 @@ def evidence_export_portability_regression(snapshot: Snapshot) -> None:
                 else:
                     validate_summary(Snapshot(tampered_values, tampered_raw))
             except CCheckError as exc:
-                if exc.code != "EVIDENCE_EXPORT_IN_REPOSITORY":
+                if exc.code != expected_code:
                     raise AssertionError(
                         "tampered export metadata returned the wrong rejection: "
                         f"{exc.status} {exc.code}: {exc.message}"
@@ -7737,6 +8095,19 @@ def evidence_export_portability_regression(snapshot: Snapshot) -> None:
                 raise AssertionError(
                     f"historical validation accepted an in-repository export path: {path_text}"
                 )
+
+        try:
+            require_external_evidence_export_path(
+                "C:\\Users\\example\\evidence\\semantic_review_export.tar"
+            )
+        except CCheckError as exc:
+            if exc.code != "EVIDENCE_EXPORT_LOCATOR_INVALID":
+                raise AssertionError(
+                    "noncanonical backslash export locator returned the wrong rejection: "
+                    f"{exc.status} {exc.code}"
+                ) from exc
+        else:
+            raise AssertionError("noncanonical backslash export locator unexpectedly passed")
 
 
 def current_v4_supplemental_suite(
