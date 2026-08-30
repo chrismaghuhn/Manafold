@@ -407,6 +407,8 @@ else:
     _PERSISTENCE_IMPORT_ERROR = None
 
 _EXPECTED_CANDIDATES_CACHE: tuple[list[dict[str, Any]], dict[str, dict[str, str]]] | None = None
+_EVIDENCE_AUTHORITY_INDEX: dict[str, Any] | None = None
+_RESOLVED_PRODUCTION_EVIDENCE: set[bytes] = set()
 
 
 def migration_source_commit() -> str:
@@ -1101,6 +1103,170 @@ def evidence_ref_cbor(value: object, label: str) -> list[Any]:
     ]
 
 
+def _evidence_authority_index() -> dict[str, Any]:
+    """Build the closed locator index for the pinned production authorities."""
+    global _EVIDENCE_AUTHORITY_INDEX
+    if _EVIDENCE_AUTHORITY_INDEX is not None:
+        return _EVIDENCE_AUTHORITY_INDEX
+
+    reader = load_archive()
+
+    def local_bytes(relative: str) -> bytes:
+        path = ROOT / relative
+        if not path.is_file():
+            blocked("EVIDENCE_AUTHORITY_UNAVAILABLE", f"authority artifact not found: {relative}")
+        return path.read_bytes()
+
+    census_raw = reader.read_verified(EXPECTED_REV3_CENSUS_MEMBER)
+    census_rows = load_csv(census_raw, "REV3 census")
+
+    catalog_path = "sources/m2_5/closures/B2/requirement_family_catalog.v1.json"
+    catalog_raw = local_bytes(catalog_path)
+    catalog = mapping(parse_json(catalog_raw, "B2 catalog"), "B2 catalog")
+    family_ids = {
+        nonempty_string(item.get("family_id"), "B2 family_id")
+        for item in list_value(catalog.get("families"), "B2 families")
+    }
+
+    classifications_path = "sources/m2_5/closures/B2/card_semantic_classifications.v1.json"
+    classifications_raw = local_bytes(classifications_path)
+    classifications = mapping(
+        parse_json(classifications_raw, "B2 classifications"), "B2 classifications"
+    )
+    oracle_ids = {
+        nonempty_string(item.get("oracle_semantic_identity"), "B2 oracle identity")
+        for item in list_value(classifications.get("classifications"), "B2 classifications")
+    }
+
+    projection_path = "sources/m2_5/closures/B2/deck_row_classification_refs.v1.csv"
+    projection_raw = local_bytes(projection_path)
+    projection_rows = load_csv(projection_raw, "B2 deck-row projection")
+
+    closure_path = "sources/m2_5/closures/B2/classification_closure.v1.json"
+    closure_raw = local_bytes(closure_path)
+    b2_closure = mapping(parse_json(closure_raw, "B2 classification closure"), "B2 closure")
+
+    citations_path = "sources/m2_5/closures/B1/official_authority_citations.v3.json"
+    citations_raw = local_bytes(citations_path)
+    citations = mapping(parse_json(citations_raw, "B1.Final citations"), "B1.Final citations")
+    authority_ids: set[str] = set()
+    citation_ids: set[tuple[str, str]] = set()
+    for raw_authority in list_value(citations.get("authorities"), "B1.Final authorities"):
+        authority = mapping(raw_authority, "B1.Final authority")
+        authority_id = nonempty_string(authority.get("authority_id"), "B1 authority_id")
+        authority_ids.add(authority_id)
+        for raw_citation in list_value(authority.get("citations"), "B1 citations"):
+            citation = mapping(raw_citation, "B1 citation")
+            citation_ids.add(
+                (authority_id, nonempty_string(citation.get("citation_id"), "B1 citation_id"))
+            )
+
+    b1_closure_path = "sources/m2_5/closures/B1/official_authority_citation_closure.v2.json"
+    b1_closure_raw = local_bytes(b1_closure_path)
+    b1_closure = mapping(
+        parse_json(b1_closure_raw, "B1.Final citation closure"),
+        "B1.Final citation closure",
+    )
+
+    _EVIDENCE_AUTHORITY_INDEX = {
+        "rev3": {
+            EXPECTED_REV3_CENSUS_MEMBER: {
+                "raw_sha256": reader.entry_sha[EXPECTED_REV3_CENSUS_MEMBER],
+                "row_count": len(census_rows),
+            }
+        },
+        "b2": {
+            catalog_path: {"raw_sha256": sha256_bytes(catalog_raw), "family_ids": family_ids},
+            classifications_path: {
+                "raw_sha256": sha256_bytes(classifications_raw),
+                "oracle_ids": oracle_ids,
+            },
+            projection_path: {
+                "raw_sha256": sha256_bytes(projection_raw),
+                "row_count": len(projection_rows),
+            },
+            closure_path: {"raw_sha256": sha256_bytes(closure_raw), "fields": set(b2_closure)},
+        },
+        "b1_final": {
+            citations_path: {
+                "raw_sha256": sha256_bytes(citations_raw),
+                "authority_ids": authority_ids,
+                "citation_ids": citation_ids,
+            },
+            b1_closure_path: {
+                "raw_sha256": sha256_bytes(b1_closure_raw),
+                "fields": set(b1_closure),
+            },
+        },
+    }
+    return _EVIDENCE_AUTHORITY_INDEX
+
+
+def _resolve_production_evidence_ref(value: object, label: str) -> None:
+    """Resolve a production EvidenceRefV1 to an exact pinned artifact locator."""
+    item = mapping(value, label)
+    authority = enum_value(
+        item.get("authority_kind"),
+        EXTRA_VOCABULARY["authority_kind"],
+        f"{label}.authority_kind",
+    )
+    path = nonempty_string(item.get("path"), f"{label}.path")
+    raw_sha256 = hex64(item.get("raw_sha256"), f"{label}.raw_sha256")
+    authority_index = _evidence_authority_index().get(authority, {})
+    target = authority_index.get(path)
+    if target is None or raw_sha256 != target["raw_sha256"]:
+        fail(
+            "EVIDENCE_PROVENANCE_MISMATCH",
+            f"{label} does not bind the exact pinned {authority} artifact",
+        )
+    locator = item.get("locator")
+    if not isinstance(locator, list):
+        fail("EVIDENCE_PROVENANCE_MISMATCH", f"{label}.locator is not a resolved array")
+
+    def row_ordinal_resolves(row_count: int) -> bool:
+        return (
+            len(locator) == 2
+            and locator[0] == "row_ordinal"
+            and isinstance(locator[1], int)
+            and not isinstance(locator[1], bool)
+            and 0 <= locator[1] < row_count
+        )
+
+    if authority == "rev3":
+        valid = row_ordinal_resolves(target["row_count"])
+    elif authority == "b2" and path.endswith("requirement_family_catalog.v1.json"):
+        valid = (
+            len(locator) == 2 and locator[0] == "family_id" and locator[1] in target["family_ids"]
+        )
+    elif authority == "b2" and path.endswith("card_semantic_classifications.v1.json"):
+        valid = (
+            len(locator) == 2
+            and locator[0] == "oracle_semantic_identity"
+            and locator[1] in target["oracle_ids"]
+        )
+    elif authority == "b2" and path.endswith("deck_row_classification_refs.v1.csv"):
+        valid = row_ordinal_resolves(target["row_count"])
+    elif authority in {"b2", "b1_final"} and len(locator) == 2 and locator[0] == "field":
+        valid = locator[1] in target["fields"]
+    elif authority == "b1_final" and path.endswith("official_authority_citations.v3.json"):
+        valid = (
+            len(locator) == 2
+            and locator[0] == "authority_id"
+            and locator[1] in target["authority_ids"]
+        ) or (
+            len(locator) == 3
+            and locator[0] == "citation_id"
+            and (locator[1], locator[2]) in target["citation_ids"]
+        )
+    else:
+        valid = False
+    if not valid:
+        fail(
+            "EVIDENCE_PROVENANCE_MISMATCH",
+            f"{label}.locator does not resolve to the pinned {authority} record",
+        )
+
+
 def validate_evidence_authority(
     value: object, label: str, *, allow_test_fixture_authority: bool = False
 ) -> None:
@@ -1113,7 +1279,10 @@ def validate_evidence_authority(
     item = mapping(value, label)
     authority = item.get("authority_kind")
     if authority in PRODUCTION_EVIDENCE_AUTHORITIES:
-        evidence_ref_cbor(item, label)
+        key = canonical(evidence_ref_cbor(item, label))
+        if key not in _RESOLVED_PRODUCTION_EVIDENCE:
+            _resolve_production_evidence_ref(item, label)
+            _RESOLVED_PRODUCTION_EVIDENCE.add(key)
         return
     if (
         authority == TEST_FIXTURE_AUTHORITY
@@ -1992,6 +2161,30 @@ def candidate_review_evidence(
         refs, key=lambda item: canonical(evidence_ref_cbor(item, "candidate evidence"))
     )
     return evidence_sort(ordered, f"candidate {candidate['candidate_id']} review evidence")
+
+
+def expected_candidate_review_evidence(
+    snapshot: Snapshot, candidate: dict[str, Any], catalog: dict[str, Any]
+) -> list[dict[str, Any]]:
+    """Return the source-derived evidence that a candidate is allowed to bind."""
+    if candidate["source_origin"] == "rev3":
+        return candidate_review_evidence(candidate, catalog)
+    binding = mapping(candidate["source_binding"], "targeted candidate source binding")
+    review = get_artifact(snapshot, REVIEW_NAME)
+    review_id = nonempty_string(binding.get("review_record_id"), "targeted review record ID")
+    for raw_record in list_value(review["review_records"], "targeted review records"):
+        record = mapping(raw_record, "targeted review record")
+        if record.get("review_record_id") == review_id:
+            return copy.deepcopy(
+                evidence_sort(
+                    list_value(record["review_evidence_refs"], "targeted review evidence"),
+                    f"targeted review {review_id} evidence",
+                )
+            )
+    fail(
+        "EVIDENCE_PROVENANCE_MISMATCH",
+        f"candidate {candidate['candidate_id']} has no resolvable review evidence record",
+    )
 
 
 def make_review_domain_assessments(
@@ -3333,15 +3526,17 @@ def v2_source_negative_suite(
                 os.environ["MANAFOLD_C_V2_SOURCE_COMMIT"] = old_value
 
     def source_partition_mutation() -> None:
-        partition = {
-            "candidate_count": EXPECTED_REV3_CANDIDATE_COUNT - 1,
-            "unresolved": EXPECTED_REV3_CANDIDATE_COUNT,
+        valid_partition = {
+            "candidate_count": len(candidates),
+            "resolved_required_interaction": 0,
+            "resolved_not_an_interaction_with_proof": 0,
+            "resolved_out_of_declared_scope_with_reason": 0,
+            "unresolved": len(candidates),
         }
-        require(
-            partition["candidate_count"] == partition["unresolved"],
-            "V2_SOURCE_ADMISSION_PARTITION_INVALID",
-            "mutated V2 source partition was not detected",
-        )
+        validate_v2_source_partition(**valid_partition)
+        mutated_partition = dict(valid_partition)
+        mutated_partition["candidate_count"] -= 1
+        validate_v2_source_partition(**mutated_partition)
 
     def context_case(index: int) -> None:
         control = copy.deepcopy(context_control_class)
@@ -3530,6 +3725,13 @@ def make_v2_source_admission(source_commit: str) -> dict[str, Any]:
         classes_by_id,
         catalog,
         b1,
+    )
+    validate_v2_source_partition(
+        len(records),
+        metrics.get("resolved_required_interaction", 0),
+        metrics.get("resolved_not_an_interaction_with_proof", 0),
+        metrics.get("resolved_out_of_declared_scope_with_reason", 0),
+        metrics.get("unresolved", 0),
     )
     coverage = review_domain_coverage(records)
     negative_result = v2_source_negative_suite(
@@ -3960,13 +4162,8 @@ def validate_review(review: dict[str, Any], model_raw: bytes) -> None:
     review_input_evidence = list_value(
         bindings["source_evidence_refs_sorted_array"], "review evidence"
     )
-    for evidence in review_input_evidence:
-        if mapping(evidence, "review input evidence").get("authority_kind") not in {
-            "rev3",
-            "b2",
-            "b1_final",
-        }:
-            fail("UNAPPROVED_AUTHORITY", "review input evidence authority")
+    for evidence_index, evidence in enumerate(review_input_evidence):
+        validate_evidence_authority(evidence, f"review input evidence {evidence_index}")
     evidence_sort(review_input_evidence, "review evidence")
     records = list_value(review["review_records"], "review records")
     require(
@@ -3998,13 +4195,8 @@ def validate_review(review: dict[str, Any], model_raw: bytes) -> None:
         seen.add(rid)
         enum(item["review_kind"], EXTRA_VOCABULARY["review_kind"], f"review record {i}.review_kind")
         record_evidence = list_value(item["review_evidence_refs"], f"review record {i}.evidence")
-        for evidence in record_evidence:
-            if mapping(evidence, "review record evidence").get("authority_kind") not in {
-                "rev3",
-                "b2",
-                "b1_final",
-            }:
-                fail("UNAPPROVED_AUTHORITY", f"review record {i} evidence authority")
+        for evidence_index, evidence in enumerate(record_evidence):
+            validate_evidence_authority(evidence, f"review record {i} evidence {evidence_index}")
         evidence_sort(record_evidence, f"review record {i}.evidence")
         nonempty_string(item["review_rationale"], f"review record {i}.rationale")
 
@@ -5134,6 +5326,13 @@ def validate_classifications(
         classification_evidence = list_value(
             record["evidence_refs"], f"classification {cid}.evidence"
         )
+        if not allow_test_fixture_authority:
+            expected_evidence = expected_candidate_review_evidence(snapshot, expected[cid], catalog)
+            if classification_evidence != expected_evidence:
+                fail(
+                    "EVIDENCE_PROVENANCE_MISMATCH",
+                    f"classification {cid} evidence does not match its source-derived refs",
+                )
         has_unresolved_domain = validate_review_domain_assessments(
             record["review_domain_assessments"],
             state,
@@ -5622,6 +5821,35 @@ def validate_migration_parity_summary(summary: dict[str, Any]) -> None:
     )
 
 
+def validate_v2_source_partition(
+    candidate_count: int,
+    resolved_required_interaction: int,
+    resolved_not_an_interaction_with_proof: int,
+    resolved_out_of_declared_scope_with_reason: int,
+    unresolved: int,
+) -> None:
+    """Validate the corrected-V2 review-state partition used by source admission."""
+    metrics = {
+        "candidate_count": candidate_count,
+        "resolved_required_interaction": resolved_required_interaction,
+        "resolved_not_an_interaction_with_proof": resolved_not_an_interaction_with_proof,
+        "resolved_out_of_declared_scope_with_reason": resolved_out_of_declared_scope_with_reason,
+        "unresolved": unresolved,
+    }
+    for name, value in metrics.items():
+        require(
+            isinstance(value, int) and not isinstance(value, bool) and value >= 0,
+            "V2_SOURCE_ADMISSION_PARTITION_INVALID",
+            f"V2 source admission metric {name}",
+        )
+    require(
+        candidate_count == EXPECTED_REV3_CANDIDATE_COUNT
+        and sum(metrics[name] for name in metrics if name != "candidate_count") == candidate_count,
+        "V2_SOURCE_ADMISSION_PARTITION_INVALID",
+        "V2 source admission review-state partition",
+    )
+
+
 def validate_v2_source_admission_summary(summary: dict[str, Any]) -> None:
     value = mapping(summary["v2_source_admission"], "V2 source admission")
     exact_keys(
@@ -5654,25 +5882,12 @@ def validate_v2_source_admission_summary(summary: dict[str, Any]) -> None:
         "V2 source and migration commits differ",
     )
     hex64(value["source_tree_fingerprint"], "V2 source tree fingerprint")
-    metric_names = (
-        "candidate_count",
-        "resolved_required_interaction",
-        "resolved_not_an_interaction_with_proof",
-        "resolved_out_of_declared_scope_with_reason",
-        "unresolved",
-    )
-    for name in metric_names:
-        metric = value[name]
-        require(
-            isinstance(metric, int) and not isinstance(metric, bool) and metric >= 0,
-            "V2_SOURCE_ADMISSION_PARTITION_INVALID",
-            f"V2 source admission metric {name}",
-        )
-    require(
-        value["candidate_count"] == EXPECTED_REV3_CANDIDATE_COUNT
-        and sum(value[name] for name in metric_names[1:]) == value["candidate_count"],
-        "V2_SOURCE_ADMISSION_PARTITION_INVALID",
-        "V2 source admission review-state partition",
+    validate_v2_source_partition(
+        value["candidate_count"],
+        value["resolved_required_interaction"],
+        value["resolved_not_an_interaction_with_proof"],
+        value["resolved_out_of_declared_scope_with_reason"],
+        value["unresolved"],
     )
     coverage = list_value(value["review_domain_coverage"], "V2 source domain coverage")
     require(
@@ -8204,6 +8419,57 @@ def current_v4_supplemental_suite(
     return cases, expected, [layout_control, blocked_control, empty_domain_control]
 
 
+def checker_repair_regressions() -> None:
+    """Exercise the two review repairs outside the frozen case inventories."""
+    valid_evidence = {
+        "authority_kind": "rev3",
+        "path": EXPECTED_REV3_CENSUS_MEMBER,
+        "locator": ["row_ordinal", 0],
+        "raw_sha256": EXPECTED_REV3_CENSUS_SHA256,
+    }
+    validate_evidence_authority(valid_evidence, "production evidence provenance control")
+    for field, value in (
+        ("path", "invented/path.csv"),
+        ("locator", ["row_ordinal", EXPECTED_REV3_CANDIDATE_COUNT]),
+        ("raw_sha256", "0" * 64),
+    ):
+        mutated = dict(valid_evidence)
+        mutated[field] = value
+        try:
+            validate_evidence_authority(mutated, f"production evidence provenance {field}")
+        except CCheckError as exc:
+            if exc.status != "FAIL" or exc.code != "EVIDENCE_PROVENANCE_MISMATCH":
+                raise AssertionError(
+                    f"fake production evidence {field} returned the wrong rejection: "
+                    f"{exc.status} {exc.code}"
+                ) from exc
+        else:
+            raise AssertionError(f"fake production evidence {field} unexpectedly passed")
+
+    partition_validator = globals().get("validate_v2_source_partition")
+    if not callable(partition_validator):
+        raise AssertionError("the shared V2 source partition validator is missing")
+    valid_partition = {
+        "candidate_count": EXPECTED_REV3_CANDIDATE_COUNT,
+        "resolved_required_interaction": 0,
+        "resolved_not_an_interaction_with_proof": 0,
+        "resolved_out_of_declared_scope_with_reason": 0,
+        "unresolved": EXPECTED_REV3_CANDIDATE_COUNT,
+    }
+    partition_validator(**valid_partition)
+    mutated_partition = dict(valid_partition)
+    mutated_partition["candidate_count"] -= 1
+    try:
+        partition_validator(**mutated_partition)
+    except CCheckError as exc:
+        if exc.status != "FAIL" or exc.code != "V2_SOURCE_ADMISSION_PARTITION_INVALID":
+            raise AssertionError(
+                f"mutated V2 source partition returned the wrong rejection: {exc.status} {exc.code}"
+            ) from exc
+    else:
+        raise AssertionError("mutated V2 source partition unexpectedly passed")
+
+
 def legacy_negative_self_test() -> int:
     validator = globals().get("validate_v2_candidate_state")
     if not callable(validator):
@@ -8365,6 +8631,8 @@ def legacy_negative_self_test() -> int:
 def negative_self_test() -> int:
     """Execute the complete phase-separated V2/V4 negative contract."""
     try:
+        checker_repair_regressions()
+        print("CHECKER_REPAIR_REGRESSIONS = PASS (evidence resolver; V2 partition validator)")
         source_commit = migration_source_commit()
         admission = make_v2_source_admission(source_commit)
         admission_negative = mapping(
