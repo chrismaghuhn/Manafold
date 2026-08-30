@@ -32,6 +32,14 @@ from mtgml.authority import (
     ReviewEventRefV1,
     SourceBindingDigestV1,
 )
+from mtgml.persistence import (
+    CANONICAL_CBOR_ID,
+    DIGEST_ENVELOPE_ID,
+    SHA256_ID,
+    encode_canonical,
+    encode_envelope,
+    hash_envelope,
+)
 
 CANDIDATE_UNIVERSE_PATH = "sources/m2_5/closures/C/interaction_candidate_universe.v2.json"
 CANDIDATE_UNIVERSE_SCHEMA = "manafold.m2.5.c.interaction-candidate-universe.v2"
@@ -141,6 +149,51 @@ class AuthoritySourceResolverTests(unittest.TestCase):
             '["family.a", "family.b"]',
         ]
 
+    def _candidate_identity_for_test(self, candidate: dict[str, object]) -> dict[str, str]:
+        binding = cast(dict[str, object], candidate["source_binding"])
+        participant_payload = [
+            [
+                [
+                    cast(str, cast(dict[str, str], ref)["participant_kind"]),
+                    None,
+                ],
+                cast(str, cast(dict[str, str], ref)["semantic_ref"]),
+            ]
+            for ref in cast(list[dict[str, str]], candidate["participant_refs"])
+        ]
+        payload = [
+            [cast(str, candidate["source_origin"]), None],
+            [cast(str, candidate["scope"]), None],
+            [cast(str, candidate["relation"]), None],
+            participant_payload,
+            list(cast(list[str], candidate["supporting_requirement_ids"])),
+            [
+                ["rev3", None],
+                [
+                    cast(str, binding["archive_member"]),
+                    bytes.fromhex(cast(str, binding["archive_member_sha256"])),
+                    cast(int, binding["row_ordinal"]),
+                    list(cast(list[str], binding["source_columns"])),
+                    list(cast(list[str], binding["source_values"])),
+                ],
+            ],
+        ]
+        digest_bytes = hash_envelope(
+            encode_envelope(
+                "manafold.m2.5.c.candidate-identity.v1",
+                "manafold.m2.5.c.candidate-identity-input.v1",
+                encode_canonical(payload),
+            )
+        )
+        return {
+            "algorithm_id": SHA256_ID,
+            "digest_hex": digest_bytes.hex(),
+            "envelope_id": DIGEST_ENVELOPE_ID,
+            "input_schema_id": "manafold.m2.5.c.candidate-identity-input.v1",
+            "payload_codec_id": CANONICAL_CBOR_ID,
+            "semantic_domain": "manafold.m2.5.c.candidate-identity.v1",
+        }
+
     def _census_bytes(self, rows: list[list[str]]) -> bytes:
         buffer = io.StringIO(newline="")
         writer = csv.writer(buffer, lineterminator="\n")
@@ -217,6 +270,7 @@ class AuthoritySourceResolverTests(unittest.TestCase):
         candidate_binding_overrides: dict[str, object] | None = None,
         instance_binding_overrides: dict[str, object] | None = None,
         candidate_overrides: dict[str, object] | None = None,
+        candidate_identity_override: dict[str, str] | None = None,
         instance_overrides: dict[str, object] | None = None,
         rev3_input_overrides: dict[str, str] | None = None,
         extra_candidates: list[dict[str, object]] | None = None,
@@ -246,6 +300,9 @@ class AuthoritySourceResolverTests(unittest.TestCase):
         candidate = self._candidate_record(source_binding=source_binding)
         if candidate_overrides:
             candidate.update(candidate_overrides)
+        candidate["candidate_identity"] = deepcopy(
+            candidate_identity_override or self._candidate_identity_for_test(candidate)
+        )
 
         instance_binding = deepcopy(source_binding)
         if instance_binding_overrides:
@@ -254,7 +311,12 @@ class AuthoritySourceResolverTests(unittest.TestCase):
         if instance_overrides:
             instance.update(instance_overrides)
 
-        candidates = [candidate, *(extra_candidates or [])]
+        candidates = [candidate, *(deepcopy(extra_candidates or []))]
+        for extra_candidate in candidates[1:]:
+            if extra_candidate.get("candidate_identity") == self.CANDIDATE_IDENTITY:
+                extra_candidate["candidate_identity"] = self._candidate_identity_for_test(
+                    extra_candidate
+                )
         instances = [instance, *(extra_instances or [])]
         model_value = {
             "schema": "manafold.m2.5.c.declared-interaction-model.v2",
@@ -375,7 +437,10 @@ class AuthoritySourceResolverTests(unittest.TestCase):
         )
 
         self.assertEqual(resolved.candidate_id, self.CANDIDATE_ID)
-        self.assertEqual(resolved.candidate_identity["digest_hex"], "11" * 32)
+        self.assertEqual(
+            resolved.candidate_identity["digest_hex"],
+            cast(dict[str, str], candidate["candidate_identity"])["digest_hex"],
+        )
         self.assertEqual(resolved.candidate_record["candidate_id"], self.CANDIDATE_ID)
         with self.assertRaises(TypeError):
             cast(dict[str, object], resolved.candidate_record)["candidate_id"] = "mutated"
@@ -399,6 +464,35 @@ class AuthoritySourceResolverTests(unittest.TestCase):
         )
         with self.assertRaises(TypeError):
             cast(dict[str, object], resolved.source_instance_record)["candidate_id"] = "mutated"
+
+    def test_rev3_normalization_must_match_candidate_fields(self) -> None:
+        resolver, binding, candidate, instance = self._synthetic_binding_fixture()
+        universe_path = self.repo / Path(*CANDIDATE_UNIVERSE_PATH.split("/"))
+        universe = cast(dict[str, object], json.loads(universe_path.read_text(encoding="utf-8")))
+        persisted_candidate = cast(list[dict[str, object]], universe["candidates"])[0]
+        persisted_candidate["scope"] = "intra_deck"
+        persisted_candidate["candidate_identity"] = self._candidate_identity_for_test(
+            persisted_candidate
+        )
+        raw = json_bytes(universe)
+        self.write_repo(CANDIDATE_UNIVERSE_PATH, raw)
+        mutated_binding = SourceBindingDigestV1(
+            artifact_role="candidate_universe",
+            path=CANDIDATE_UNIVERSE_PATH,
+            schema_or_null=CANDIDATE_UNIVERSE_SCHEMA,
+            raw_sha256=bytes.fromhex(digest(raw)),
+        )
+
+        self.assert_resolution_error(
+            lambda: resolver.resolve_candidate_source_instance(
+                cast(str, candidate["candidate_id"]),
+                cast(dict[str, object], persisted_candidate["candidate_identity"]),
+                cast(str, instance["source_instance_id"]),
+                mutated_binding,
+            ),
+            ResolutionStatus.FAIL,
+            "REV3_CANDIDATE_NORMALIZATION_MISMATCH",
+        )
 
     def test_candidate_and_source_instance_convenience_resolution(self) -> None:
         resolver, binding, candidate, instance = self._synthetic_binding_fixture()
@@ -424,12 +518,14 @@ class AuthoritySourceResolverTests(unittest.TestCase):
         )
 
     def test_candidate_identity_mismatch_fails_closed(self) -> None:
-        resolver, binding, candidate, _ = self._synthetic_binding_fixture()
-        wrong_identity = deepcopy(cast(dict[str, object], candidate["candidate_identity"]))
-        wrong_identity["digest_hex"] = "22" * 32
+        resolver, binding, candidate, _ = self._synthetic_binding_fixture(
+            candidate_identity_override=self.CANDIDATE_IDENTITY
+        )
         self.assert_resolution_error(
             lambda: resolver.resolve_candidate(
-                cast(str, candidate["candidate_id"]), wrong_identity, binding
+                cast(str, candidate["candidate_id"]),
+                cast(dict[str, object], candidate["candidate_identity"]),
+                binding,
             ),
             ResolutionStatus.FAIL,
             "CANDIDATE_IDENTITY_MISMATCH",
@@ -489,33 +585,6 @@ class AuthoritySourceResolverTests(unittest.TestCase):
             ),
             ResolutionStatus.FAIL,
             "DUPLICATE_CANDIDATE_ID",
-        )
-
-    def test_duplicate_candidate_identity_fails_closed(self) -> None:
-        duplicate_id = "CROSS_DECK|P1|family.c|family.d|DIRECTIONAL_BINARY"
-        duplicate_values = self._source_values(duplicate_id)
-        duplicate = self._candidate_record(
-            candidate_id=duplicate_id,
-            source_binding={
-                "kind": "rev3",
-                "archive_member": REV3_CENSUS_MEMBER,
-                "archive_member_sha256": "00" * 32,
-                "row_ordinal": 0,
-                "source_columns": list(REV3_SOURCE_COLUMNS),
-                "source_values": duplicate_values,
-            },
-        )
-        resolver, binding, candidate, _ = self._synthetic_binding_fixture(
-            extra_candidates=[duplicate]
-        )
-        self.assert_resolution_error(
-            lambda: resolver.resolve_candidate(
-                cast(str, candidate["candidate_id"]),
-                cast(dict[str, object], candidate["candidate_identity"]),
-                binding,
-            ),
-            ResolutionStatus.FAIL,
-            "DUPLICATE_CANDIDATE_IDENTITY",
         )
 
     def test_wrong_source_instance_id_fails_closed(self) -> None:

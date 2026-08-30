@@ -43,7 +43,14 @@ from mtgml.authority import (
     ReviewMode,
     SourceBindingDigestV1,
 )
-from mtgml.persistence import encode_canonical
+from mtgml.persistence import (
+    CANONICAL_CBOR_ID,
+    DIGEST_ENVELOPE_ID,
+    SHA256_ID,
+    encode_canonical,
+    encode_envelope,
+    hash_envelope,
+)
 
 REV3_ARCHIVE_ENV_VAR = "MANAFOLD_SOURCE_ARCHIVE"
 REV3_ARCHIVE_RELATIVE_PATH = Path("m2_5/Manafold_M2_5_Pre_Research_ALL_ARTIFACTS_REV3.zip")
@@ -55,6 +62,29 @@ CANDIDATE_UNIVERSE_PATH = "sources/m2_5/closures/C/interaction_candidate_univers
 CANDIDATE_UNIVERSE_SCHEMA = "manafold.m2.5.c.interaction-candidate-universe.v2"
 CANDIDATE_UNIVERSE_MODEL_ID = "declared-interaction-model.v2"
 DECLARED_MODEL_SCHEMA = "manafold.m2.5.c.declared-interaction-model.v2"
+CANDIDATE_IDENTITY_DOMAIN = "manafold.m2.5.c.candidate-identity.v1"
+CANDIDATE_IDENTITY_SCHEMA = "manafold.m2.5.c.candidate-identity-input.v1"
+REV3_MODEL_ID = "interaction-model.v1"
+REV3_RESOLUTION_MEMBER = "inputs/deck_row_source_resolution_REV3.csv"
+REV3_SOURCE_INDEX_MEMBER = "source/raw/source_record_index_REV3.csv"
+REV3_SCOPE_MAP = {
+    "INTRA_DECK": "intra_deck",
+    "CROSS_DECK": "cross_deck",
+    "UNARY_OR_HIGHER_ORDER": "unary_or_higher_order",
+}
+REV3_RELATION_MAP = {
+    "UNORDERED_BINARY": "unordered_binary",
+    "DIRECTIONAL_BINARY": "directional_binary",
+    "DECLARED_CARD_TRIGGER": "declared_card_trigger",
+}
+REV3_SHAPES = frozenset(
+    {
+        ("INTRA_DECK", "UNORDERED_BINARY"),
+        ("CROSS_DECK", "DIRECTIONAL_BINARY"),
+        ("UNARY_OR_HIGHER_ORDER", "DECLARED_CARD_TRIGGER"),
+    }
+)
+_LOWERCASE_UUID_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
 
 REV3_SOURCE_COLUMNS = (
     "candidate_id",
@@ -434,7 +464,7 @@ def _frozen_mapping(value: Mapping[str, object]) -> Mapping[str, object]:
     return cast(Mapping[str, object], _freeze_json(dict(value)))
 
 
-def _candidate_identity(value: object, label: str) -> dict[str, object]:
+def _candidate_identity_reference(value: object, label: str) -> dict[str, object]:
     record = _json_object(value, label)
     _exact_keys(record, set(CANDIDATE_IDENTITY_KEYS), label)
     expected_text = {
@@ -560,13 +590,59 @@ def _rev3_source_binding(value: object, label: str) -> dict[str, object]:
     }
 
 
+def _candidate_identity_for_record(candidate: Mapping[str, object]) -> dict[str, str]:
+    binding = cast(Mapping[str, object], candidate["source_binding"])
+    participant_payload = []
+    for ref in cast(list[Mapping[str, str]], candidate["participant_refs"]):
+        participant_payload.append(
+            [
+                [ref["participant_kind"], None],
+                ref["semantic_ref"],
+            ]
+        )
+    payload = [
+        [candidate["source_origin"], None],
+        [candidate["scope"], None],
+        [candidate["relation"], None],
+        participant_payload,
+        list(cast(list[str], candidate["supporting_requirement_ids"])),
+        [
+            ["rev3", None],
+            [
+                binding["archive_member"],
+                bytes.fromhex(cast(str, binding["archive_member_sha256"])),
+                binding["row_ordinal"],
+                list(cast(list[str], binding["source_columns"])),
+                list(cast(list[str], binding["source_values"])),
+            ],
+        ],
+    ]
+    digest_bytes = hash_envelope(
+        encode_envelope(
+            CANDIDATE_IDENTITY_DOMAIN,
+            CANDIDATE_IDENTITY_SCHEMA,
+            encode_canonical(cast(list[object], payload)),
+        )
+    )
+    return {
+        "envelope_id": DIGEST_ENVELOPE_ID,
+        "algorithm_id": SHA256_ID,
+        "semantic_domain": CANDIDATE_IDENTITY_DOMAIN,
+        "payload_codec_id": CANONICAL_CBOR_ID,
+        "input_schema_id": CANDIDATE_IDENTITY_SCHEMA,
+        "digest_hex": digest_bytes.hex(),
+    }
+
+
 def _candidate_record(
     value: object, label: str, participant_kinds: frozenset[str]
 ) -> dict[str, object]:
     record = _json_object(value, label)
     _exact_keys(record, set(CANDIDATE_RECORD_KEYS), label)
     candidate_id = _json_text(record.get("candidate_id"), f"{label}.candidate_id")
-    identity = _candidate_identity(record.get("candidate_identity"), f"{label}.candidate_identity")
+    identity = _candidate_identity_reference(
+        record.get("candidate_identity"), f"{label}.candidate_identity"
+    )
     source_origin = _json_text(record.get("source_origin"), f"{label}.source_origin")
     if source_origin not in CANDIDATE_SOURCE_ORIGINS:
         _fail("CANDIDATE_SOURCE_ORIGIN_INVALID", f"{label}.source_origin is not a V1 value")
@@ -838,6 +914,13 @@ def _candidate_universe_index(
     bindings_by_id: dict[str, Mapping[str, object]] = {}
     for index, raw_candidate in enumerate(raw_candidates):
         candidate = _candidate_record(raw_candidate, f"candidate[{index}]", participant_kinds)
+        if _candidate_identity_for_record(candidate) != cast(
+            dict[str, str], candidate["candidate_identity"]
+        ):
+            _fail(
+                "CANDIDATE_IDENTITY_MISMATCH",
+                f"candidate[{index}] identity does not match its fixed C preimage",
+            )
         candidate_id = cast(str, candidate["candidate_id"])
         if candidate_id in candidates_by_id:
             _fail("DUPLICATE_CANDIDATE_ID", f"candidate {candidate_id!r} appears more than once")
@@ -980,6 +1063,128 @@ def _parse_rev3_rows(raw: bytes, path: str) -> list[list[str]]:
     return data_rows
 
 
+def _parse_keyed_csv(
+    raw: bytes, path: str, required_columns: frozenset[str]
+) -> list[dict[str, str]]:
+    try:
+        text = raw.decode("utf-8")
+        rows = list(csv.reader(io.StringIO(text, newline=""), strict=True))
+    except (UnicodeDecodeError, csv.Error) as exc:
+        _fail("REV3_SOURCE_INVALID", f"{path} is not a strict UTF-8 CSV: {exc}")
+    if not rows:
+        _fail("REV3_SOURCE_COLUMNS_MISMATCH", f"{path} has no header")
+    header = rows[0]
+    if len(header) != len(set(header)) or not required_columns.issubset(header):
+        _fail("REV3_SOURCE_COLUMNS_MISMATCH", f"{path} lacks required join columns")
+    records: list[dict[str, str]] = []
+    for ordinal, row in enumerate(rows[1:]):
+        if len(row) != len(header):
+            _fail(
+                "REV3_SOURCE_COLUMNS_MISMATCH", f"{path} row {ordinal} has the wrong column count"
+            )
+        records.append(dict(zip(header, row, strict=True)))
+    return records
+
+
+def _reject_duplicate_json_keys(pairs: list[tuple[str, object]]) -> dict[str, object]:
+    result: dict[str, object] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError(f"duplicate JSON key {key!r}")
+        result[key] = value
+    return result
+
+
+def _parse_supporting_requirement_ids(value: str, label: str) -> list[str]:
+    if value.strip() != value:
+        _fail("REV3_SUPPORTING_IDS_INVALID", f"{label} has surrounding whitespace")
+    try:
+        parsed = json.loads(value, object_pairs_hook=_reject_duplicate_json_keys)
+    except (json.JSONDecodeError, ValueError) as exc:
+        _fail("REV3_SUPPORTING_IDS_INVALID", f"{label} is not exact JSON: {exc}")
+    if not isinstance(parsed, list) or any(
+        not isinstance(item, str) or not item for item in parsed
+    ):
+        _fail("REV3_SUPPORTING_IDS_INVALID", f"{label} must be a non-empty text array")
+    ids = [cast(str, item) for item in parsed]
+    keys = [encode_canonical(item) for item in ids]
+    if len(set(keys)) != len(keys):
+        _fail("REV3_SUPPORTING_IDS_INVALID", f"{label} contains duplicate IDs")
+    if keys != sorted(keys):
+        _fail("REV3_SUPPORTING_IDS_INVALID", f"{label} is not canonically ordered")
+    return ids
+
+
+def _normalized_candidate_fields(row: Mapping[str, str]) -> dict[str, object]:
+    if row.get("model_id") != REV3_MODEL_ID:
+        _fail("REV3_MODEL_ID_MISMATCH", "REV3 candidate row model ID is not interaction-model.v1")
+    raw_scope = row.get("scope")
+    raw_relation = row.get("relation")
+    if raw_scope not in REV3_SCOPE_MAP or raw_relation not in REV3_RELATION_MAP:
+        _fail("REV3_SHAPE_MISMATCH", "REV3 candidate row has an unknown scope or relation")
+    shape = (cast(str, raw_scope), cast(str, raw_relation))
+    if shape not in REV3_SHAPES:
+        _fail("REV3_SHAPE_MISMATCH", "REV3 candidate row has an unsupported scope/relation pair")
+    candidate_id = row.get("candidate_id")
+    pair_id = row.get("pair_id")
+    left_family_id = row.get("left_family_id")
+    right_family_id = row.get("right_family_id")
+    supporting_requirement_ids = row.get("supporting_requirement_ids")
+    if any(
+        value is None or not value
+        for value in (
+            candidate_id,
+            pair_id,
+            left_family_id,
+            right_family_id,
+            supporting_requirement_ids,
+        )
+    ):
+        _fail("REV3_SOURCE_NORMALIZATION_INVALID", "REV3 candidate row has an empty identity cell")
+    candidate_id = cast(str, candidate_id)
+    pair_id = cast(str, pair_id)
+    left_family_id = cast(str, left_family_id)
+    right_family_id = cast(str, right_family_id)
+    if raw_relation == "DECLARED_CARD_TRIGGER":
+        if pair_id != left_family_id or pair_id != right_family_id:
+            _fail("REV3_TRIGGER_JOIN_INVALID", "card-trigger row participant cells differ")
+        if _LOWERCASE_UUID_RE.fullmatch(pair_id) is None:
+            _fail(
+                "REV3_TRIGGER_JOIN_INVALID",
+                "card-trigger row does not name a lowercase OSI UUID",
+            )
+        participants = [{"participant_kind": "card", "semantic_ref": pair_id}]
+    else:
+        participants = [
+            {"participant_kind": "requirement_family", "semantic_ref": left_family_id},
+            {"participant_kind": "requirement_family", "semantic_ref": right_family_id},
+        ]
+        if raw_relation == "UNORDERED_BINARY":
+            if left_family_id.encode("utf-8") > right_family_id.encode("utf-8"):
+                _fail(
+                    "REV3_SOURCE_ROW_ORDER_INVALID",
+                    "unordered REV3 family order is not canonical",
+                )
+            participants.sort(
+                key=lambda item: encode_canonical(
+                    [[item["participant_kind"], None], item["semantic_ref"]]
+                )
+            )
+    supporting_ids = _parse_supporting_requirement_ids(
+        cast(str, supporting_requirement_ids),
+        "REV3 supporting_requirement_ids",
+    )
+    if raw_relation == "DECLARED_CARD_TRIGGER" and supporting_ids != [pair_id]:
+        _fail("REV3_TRIGGER_JOIN_INVALID", "card-trigger supporting IDs do not equal the OSI")
+    return {
+        "candidate_id": candidate_id,
+        "scope": REV3_SCOPE_MAP[cast(str, raw_scope)],
+        "relation": REV3_RELATION_MAP[cast(str, raw_relation)],
+        "participant_refs": participants,
+        "supporting_requirement_ids": supporting_ids,
+    }
+
+
 class Rev3ArchiveStore:
     """Verified access to members of the pinned, non-extracted REV3 ZIP."""
 
@@ -1111,6 +1316,13 @@ class Rev3ArchiveStore:
                     f"REV3 member {path!r} has {actual_sha}, expected {expected_sha}",
                 )
         return cls(raw, archive, manifest_entries)
+
+    def expected_member_sha256(self, member_path: str) -> str:
+        path = _relative_path(member_path, "REV3 member path")
+        entry = self._manifest_entries.get(path)
+        if entry is None:
+            _fail("REV3_MEMBER_MISSING", f"REV3 member {path!r} is not in the manifest")
+        return entry[1]
 
     def resolve_member(
         self,
@@ -1270,7 +1482,7 @@ class AuthoritySourceResolver:
         """Resolve one exact candidate from the verified C candidate ledger."""
 
         requested_candidate_id = _json_text(candidate_id, "candidate_id")
-        requested_identity = _candidate_identity(candidate_identity, "candidate_identity")
+        requested_identity = _candidate_identity_reference(candidate_identity, "candidate_identity")
         index = self._candidate_universe(candidate_universe_binding)
         record = index.candidates_by_id.get(requested_candidate_id)
         if record is None:
@@ -1294,6 +1506,112 @@ class AuthoritySourceResolver:
             source_binding=source_binding,
             _verification_token=_VERIFIED_CANDIDATE_TOKEN,
         )
+
+    def _verify_declared_card_trigger_join(
+        self, archive: Rev3ArchiveStore, oracle_semantic_identity: str
+    ) -> None:
+        resolution_path = REV3_RESOLUTION_MEMBER
+        resolution_artifact = self.resolve_rev3_member(
+            resolution_path, archive.expected_member_sha256(resolution_path)
+        )
+        resolutions = _parse_keyed_csv(
+            resolution_artifact.raw_bytes,
+            resolution_path,
+            frozenset(
+                {
+                    "oracle_semantic_identity",
+                    "deck_row_id",
+                    "source_row_id",
+                    "source_snapshot_file",
+                    "source_line_number",
+                    "oracle_source_record_id",
+                }
+            ),
+        )
+        selected = [
+            row
+            for row in resolutions
+            if row["oracle_semantic_identity"] == oracle_semantic_identity
+        ]
+        if len(selected) != 1 or any(
+            not selected[0][column]
+            for column in (
+                "deck_row_id",
+                "source_row_id",
+                "source_snapshot_file",
+                "source_line_number",
+                "oracle_source_record_id",
+            )
+        ):
+            _fail(
+                "REV3_TRIGGER_JOIN_INVALID",
+                f"OSI {oracle_semantic_identity!r} does not resolve exactly once",
+            )
+        source_record_id = selected[0]["oracle_source_record_id"]
+        index_path = REV3_SOURCE_INDEX_MEMBER
+        index_artifact = self.resolve_rev3_member(
+            index_path, archive.expected_member_sha256(index_path)
+        )
+        index_rows = _parse_keyed_csv(
+            index_artifact.raw_bytes,
+            index_path,
+            frozenset({"oracle_semantic_identity", "source_record_id"}),
+        )
+        matches = [
+            row
+            for row in index_rows
+            if row["oracle_semantic_identity"] == oracle_semantic_identity
+            and row["source_record_id"] == source_record_id
+        ]
+        if len(matches) != 1:
+            _fail(
+                "REV3_TRIGGER_JOIN_INVALID",
+                f"OSI {oracle_semantic_identity!r} raw source join is not unique",
+            )
+
+    def _verify_candidate_normalization(
+        self,
+        candidate: Mapping[str, object],
+        source_artifact: ResolvedArtifact,
+        rows: list[list[str]],
+        row_ordinal: int,
+        archive: Rev3ArchiveStore,
+    ) -> None:
+        row = dict(zip(REV3_SOURCE_COLUMNS, rows[row_ordinal], strict=True))
+        normalized = _normalized_candidate_fields(row)
+        if normalized["relation"] == "declared_card_trigger":
+            self._verify_declared_card_trigger_join(archive, cast(str, row["pair_id"]))
+        if candidate["candidate_id"] != normalized["candidate_id"]:
+            _fail(
+                "REV3_CANDIDATE_NORMALIZATION_MISMATCH",
+                f"{source_artifact.path} row {row_ordinal} has a different candidate_id",
+            )
+        if candidate["scope"] != normalized["scope"]:
+            _fail(
+                "REV3_CANDIDATE_NORMALIZATION_MISMATCH",
+                f"{source_artifact.path} row {row_ordinal} has a different scope",
+            )
+        if candidate["relation"] != normalized["relation"]:
+            _fail(
+                "REV3_CANDIDATE_NORMALIZATION_MISMATCH",
+                f"{source_artifact.path} row {row_ordinal} has a different relation",
+            )
+        candidate_participants = list(
+            cast(tuple[Mapping[str, str], ...], candidate["participant_refs"])
+        )
+        if candidate_participants != normalized["participant_refs"]:
+            _fail(
+                "REV3_CANDIDATE_NORMALIZATION_MISMATCH",
+                f"{source_artifact.path} row {row_ordinal} has different participants",
+            )
+        candidate_supporting_ids = list(
+            cast(tuple[str, ...], candidate["supporting_requirement_ids"])
+        )
+        if candidate_supporting_ids != normalized["supporting_requirement_ids"]:
+            _fail(
+                "REV3_CANDIDATE_NORMALIZATION_MISMATCH",
+                f"{source_artifact.path} row {row_ordinal} has different supporting IDs",
+            )
 
     def resolve_source_instance(
         self,
@@ -1376,6 +1694,13 @@ class AuthoritySourceResolver:
                 "REV3_SOURCE_ROW_MISMATCH",
                 f"REV3 row {row_ordinal} does not match the persisted source values",
             )
+        self._verify_candidate_normalization(
+            persisted_candidate,
+            source_artifact,
+            rows,
+            row_ordinal,
+            archive,
+        )
         return ResolvedSourceInstance(
             candidate=candidate,
             source_instance_id=requested_instance_id,
