@@ -257,6 +257,204 @@
         "path",
         "schema_or_null",
         "raw_sha256"
+      ],
+      "allOf": [
+        {
+          "$ref": "#/$defs/source_binding_digest_contract"
+        }
+      ]
+    },
+    "source_binding_digest_contract": {
+      "oneOf": [
+        {
+          "properties": {
+            "artifact_role": {
+              "const": "declared_model"
+            },
+            "path": {
+              "const": "sources/m2_5/closures/C/declared_interaction_model.v2.json"
+            },
+            "schema_or_null": {
+              "const": "manafold.m2.5.c.declared-interaction-model.v2"
+            }
+          },
+          "required": [
+            "artifact_role",
+            "path",
+            "schema_or_null"
+          ]
+        },
+        {
+          "properties": {
+            "artifact_role": {
+              "const": "b2_catalog"
+            },
+            "path": {
+              "const": "sources/m2_5/closures/B2/requirement_family_catalog.v1.json"
+            },
+            "schema_or_null": {
+              "const": "manafold.m2.5.b2.requirement-family-catalog.v1"
+            }
+          },
+          "required": [
+            "artifact_role",
+            "path",
+            "schema_or_null"
+          ]
+        },
+        {
+          "properties": {
+            "artifact_role": {
+              "const": "b2_classifications"
+            },
+            "path": {
+              "const": "sources/m2_5/closures/B2/card_semantic_classifications.v1.json"
+            },
+            "schema_or_null": {
+              "const": "manafold.m2.5.b2.card-semantic-classifications.v1"
+            }
+          },
+          "required": [
+            "artifact_role",
+            "path",
+            "schema_or_null"
+          ]
+        },
+        {
+          "properties": {
+            "artifact_role": {
+              "const": "b2_closure"
+            },
+            "path": {
+              "const": "sources/m2_5/closures/B2/classification_closure.v1.json"
+            },
+            "schema_or_null": {
+              "const": "manafold.m2.5.b2.classification-closure.v1"
+            }
+          },
+          "required": [
+            "artifact_role",
+            "path",
+            "schema_or_null"
+          ]
+        },
+        {
+          "properties": {
+            "artifact_role": {
+              "const": "b1_final_citations"
+            },
+            "path": {
+              "const": "sources/m2_5/closures/B1/official_authority_citations.v3.json"
+            },
+            "schema_or_null": {
+              "const": "manafold.m2.5.b1.official-authority-citations.v3"
+            }
+          },
+          "required": [
+            "artifact_role",
+            "path",
+            "schema_or_null"
+          ]
+        },
+        {
+          "properties": {
+            "artifact_role": {
+              "const": "b1_final_closure"
+            },
+            "path": {
+              "const": "sources/m2_5/closures/B1/official_authority_citation_closure.v2.json"
+            },
+            "schema_or_null": {
+              "const": "manafold.m2.5.b1.official-authority-citation-closure.v2"
+            }
+          },
+          "required": [
+            "artifact_role",
+            "path",
+            "schema_or_null"
+          ]
+        },
+        {
+          "properties": {
+            "artifact_role": {
+              "const": "candidate_universe"
+            },
+            "path": {
+              "const": "sources/m2_5/closures/C/interaction_candidate_universe.v2.json"
+            },
+            "schema_or_null": {
+              "const": "manafold.m2.5.c.interaction-candidate-universe.v2"
+            }
+          },
+          "required": [
+            "artifact_role",
+            "path",
+            "schema_or_null"
+          ]
+        },
+        {
+          "properties": {
+            "artifact_role": {
+              "const": "reviewer_roster_leaf"
+            },
+            "path": {
+              "pattern": "^sources/m2_5/authorities/reviewer_rosters/v1/[0-9a-f]{64}\\.json$"
+            },
+            "schema_or_null": {
+              "const": "manafold.m2.5.c.reviewer-roster.v1"
+            }
+          },
+          "required": [
+            "artifact_role",
+            "path",
+            "schema_or_null"
+          ]
+        },
+        {
+          "properties": {
+            "artifact_role": {
+              "const": "rev3_source"
+            }
+          },
+          "required": [
+            "artifact_role"
+          ],
+          "oneOf": [
+            {
+              "properties": {
+                "path": {
+                  "enum": [
+                    "derived/Pair_Interaction_Census_REV3.csv",
+                    "inputs/deck_row_source_resolution_REV3.csv",
+                    "source/raw/source_record_index_REV3.csv",
+                    "source/raw/oracle_cards_selected_REV3.jsonl"
+                  ]
+                },
+                "schema_or_null": {
+                  "type": "null"
+                }
+              },
+              "required": [
+                "path",
+                "schema_or_null"
+              ]
+            },
+            {
+              "properties": {
+                "path": {
+                  "const": "inputs/interaction_model_v1.json"
+                },
+                "schema_or_null": {
+                  "const": "interaction-model.v1"
+                }
+              },
+              "required": [
+                "path",
+                "schema_or_null"
+              ]
+            }
+          ]
+        }
       ]
     },
     "acceptance_evidence_ref": {

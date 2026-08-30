@@ -155,12 +155,18 @@ class AuthorityIdentityTests(unittest.TestCase):
             )
 
     def test_supersession_rejects_cross_family_replacement(self) -> None:
+        source = EvidenceRefV1(
+            authority_kind="model",
+            path="sources/model.json",
+            locator=("whole_artifact", None),
+            raw_sha256=bytes(32),
+        )
         superseded = compute_authority_identity(
             AuthorityIdentityKind.RELATION_THEOREM_RECORD,
             [
                 "manafold.m2.5.c.relation-proof-record-input.v1",
                 bytes(32),
-                [],
+                [source.to_cbor()],
                 [
                     "sources/m2_5/authorities/review_acceptance_events/v1/" + "00" * 32 + ".json",
                     bytes(32),
@@ -174,7 +180,7 @@ class AuthorityIdentityTests(unittest.TestCase):
             [
                 "manafold.m2.5.c.domain-proof-record-input.v1",
                 bytes(32),
-                [],
+                [source.to_cbor()],
                 [
                     "sources/m2_5/authorities/review_acceptance_events/v1/" + "00" * 32 + ".json",
                     bytes(32),
@@ -182,12 +188,6 @@ class AuthorityIdentityTests(unittest.TestCase):
                 ],
                 "fixture rationale",
             ],
-        )
-        source = EvidenceRefV1(
-            authority_kind="model",
-            path="sources/model.json",
-            locator=("whole_artifact", None),
-            raw_sha256=bytes(32),
         )
         with self.assertRaises(AuthorityContractError):
             SupersessionRecordV1(
@@ -207,9 +207,15 @@ class AuthorityIdentityTests(unittest.TestCase):
             )
 
     def test_acceptance_event_and_roster_have_fixed_identity_inputs(self) -> None:
+        subject_evidence = EvidenceRefV1(
+            authority_kind="model",
+            path="sources/model.json",
+            locator=("whole_artifact", None),
+            raw_sha256=bytes(32),
+        )
         subject = AcceptanceSubjectPayloadV1(
             subject_kind=AcceptanceSubjectKind.RELATION_THEOREM_RECORD,
-            subject_payload=[bytes(32), [], "fixture rationale"],
+            subject_payload=[bytes(32), [subject_evidence.to_cbor()], "fixture rationale"],
         )
         roster = ReviewerRosterV1(
             reviewers=(
@@ -260,7 +266,10 @@ class AuthorityIdentityTests(unittest.TestCase):
 
         self.assertEqual(
             subject.to_cbor(),
-            ["relation_theorem_record", [bytes(32), [], "fixture rationale"]],
+            [
+                "relation_theorem_record",
+                [bytes(32), [subject_evidence.to_cbor()], "fixture rationale"],
+            ],
         )
         self.assertTrue(subject.identity().as_text().startswith("asp.v1/"))
         self.assertEqual(roster.to_cbor()[0], "manafold.m2.5.c.reviewer-roster.v1")
@@ -281,7 +290,11 @@ class AuthorityIdentityTests(unittest.TestCase):
         self.assertEqual(leaf.to_wire(), fixture)
         self_binding = SourceBindingDigestV1(
             artifact_role="acceptance_event_leaf",
-            path=event.identity().as_text(),
+            path=(
+                "sources/m2_5/authorities/review_acceptance_events/v1/"
+                + event.identity().as_text().split("/", maxsplit=1)[1]
+                + ".json"
+            ),
             schema_or_null="manafold.m2.5.c.review-acceptance-event.v1",
             raw_sha256=bytes(32),
         )
@@ -337,6 +350,50 @@ class AuthoritySchemaTests(unittest.TestCase):
         fixture["unexpected"] = True
         with self.assertRaises(jsonschema.ValidationError):
             jsonschema.Draft202012Validator(schema).validate(fixture)
+
+    def test_source_binding_schema_pins_static_role_paths(self) -> None:
+        authority_schema = json.loads(
+            (ROOT / "schemas/interaction-review-authority.v1.schema.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        authority_fixture = json.loads(
+            (
+                ROOT / "conformance/fixtures/authority/interaction_review_authority.v1.json"
+            ).read_text(encoding="utf-8")
+        )
+        authority_fixture["source_bindings"] = [
+            {
+                "authority_kind": "model",
+                "path": "sources/m2_5/closures/C/declared_interaction_model.v2.json",
+                "schema_or_null": "manafold.m2.5.c.declared-interaction-model.v2",
+                "raw_sha256": "00" * 32,
+                "artifact_role": "declared_model",
+            }
+        ]
+        authority_validator = jsonschema.Draft202012Validator(authority_schema)
+        authority_validator.validate(authority_fixture)
+        authority_fixture["source_bindings"][0]["path"] = (
+            "sources/m2_5/closures/C/not-the-declared-model.json"
+        )
+        with self.assertRaises(jsonschema.ValidationError):
+            authority_validator.validate(authority_fixture)
+
+        event_schema = json.loads(
+            (ROOT / "schemas/review-acceptance-event.v1.schema.json").read_text(encoding="utf-8")
+        )
+        event_fixture = json.loads(
+            (ROOT / "conformance/fixtures/authority/review_acceptance_event.v1.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        event_validator = jsonschema.Draft202012Validator(event_schema)
+        event_validator.validate(event_fixture)
+        event_fixture["source_binding_digests"][0]["path"] = (
+            "sources/m2_5/closures/C/not-the-declared-model.json"
+        )
+        with self.assertRaises(jsonschema.ValidationError):
+            event_validator.validate(event_fixture)
 
     def test_nested_authority_schema_closes_projection_and_context_values(self) -> None:
         schema = json.loads(
@@ -589,3 +646,29 @@ class AuthorityIdentityMatrixTests(unittest.TestCase):
                 payload = decode_canonical(bytes.fromhex(case["payload_cbor_hex"]))
                 with self.assertRaises(AuthorityContractError):
                     compute_authority_identity(AuthorityIdentityKind(case["kind"]), payload)
+
+    def test_contract_matrix_positive_controls_are_accepted(self) -> None:
+        matrix = json.loads(
+            (
+                ROOT / "conformance/fixtures/authority/identity_contract_negative_matrix.v1.json"
+            ).read_text(encoding="utf-8")
+        )
+        self.assertGreaterEqual(len(matrix["positive_controls"]), 1)
+        for control in matrix["positive_controls"]:
+            with self.subTest(control_id=control["control_id"]):
+                self.assertEqual(control["expected"], "accept")
+                payload = decode_canonical(bytes.fromhex(control["payload_cbor_hex"]))
+                compute_authority_identity(AuthorityIdentityKind(control["kind"]), payload)
+
+    def test_required_relation_channels_use_declared_vocabulary_order(self) -> None:
+        matrix = json.loads(
+            (ROOT / "conformance/fixtures/authority/identity_golden_matrix.v1.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        entry = next(item for item in matrix["identities"] if item["kind"] == "relation_theorem")
+        payload = decode_canonical(bytes.fromhex(entry["payload_cbor_hex"]))
+        payload[9][1][1] = ["participant_boundary", "event_or_effect_causality"]
+
+        identity = compute_authority_identity(AuthorityIdentityKind.RELATION_THEOREM, payload)
+        self.assertTrue(identity.as_text().startswith("rp.v1/"))

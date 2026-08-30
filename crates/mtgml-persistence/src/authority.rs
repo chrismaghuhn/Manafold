@@ -281,6 +281,7 @@ impl SourceBindingDigestV1 {
         } else if schema_or_null.as_deref() != expected_schema_for_artifact_role(&artifact_role) {
             return Err(PersistenceDecodeErrorV1::SchemaIdentityMismatch);
         }
+        validate_source_binding_path(&artifact_role, &path)?;
         Ok(Self {
             artifact_role,
             path,
@@ -1186,6 +1187,59 @@ fn expected_schema_for_artifact_role(role: &str) -> Option<&'static str> {
     }
 }
 
+fn expected_static_path_for_artifact_role(role: &str) -> Option<&'static str> {
+    match role {
+        "declared_model" => Some("sources/m2_5/closures/C/declared_interaction_model.v2.json"),
+        "b2_catalog" => Some("sources/m2_5/closures/B2/requirement_family_catalog.v1.json"),
+        "b2_classifications" => {
+            Some("sources/m2_5/closures/B2/card_semantic_classifications.v1.json")
+        }
+        "b2_closure" => Some("sources/m2_5/closures/B2/classification_closure.v1.json"),
+        "b1_final_citations" => {
+            Some("sources/m2_5/closures/B1/official_authority_citations.v3.json")
+        }
+        "b1_final_closure" => {
+            Some("sources/m2_5/closures/B1/official_authority_citation_closure.v2.json")
+        }
+        "candidate_universe" => {
+            Some("sources/m2_5/closures/C/interaction_candidate_universe.v2.json")
+        }
+        _ => None,
+    }
+}
+
+fn is_authority_leaf_path(path: &str, prefix: &str) -> bool {
+    path.strip_prefix(prefix)
+        .and_then(|value| value.strip_suffix(".json"))
+        .is_some_and(|digest| digest.len() == 64 && digest.bytes().all(is_lower_hex))
+}
+
+fn validate_source_binding_path(role: &str, path: &str) -> Result<(), PersistenceDecodeErrorV1> {
+    if let Some(expected) = expected_static_path_for_artifact_role(role) {
+        if path != expected {
+            return Err(PersistenceDecodeErrorV1::SchemaIdentityMismatch);
+        }
+        return Ok(());
+    }
+    match role {
+        "acceptance_event_leaf"
+            if is_authority_leaf_path(
+                path,
+                "sources/m2_5/authorities/review_acceptance_events/v1/",
+            ) =>
+        {
+            Ok(())
+        }
+        "reviewer_roster_leaf"
+            if is_authority_leaf_path(path, "sources/m2_5/authorities/reviewer_rosters/v1/") =>
+        {
+            Ok(())
+        }
+        "rev3_source" => Ok(()),
+        _ => Err(PersistenceDecodeErrorV1::SchemaIdentityMismatch),
+    }
+}
+
 fn is_valid_json_pointer(pointer: &str) -> bool {
     if pointer.is_empty() {
         return true;
@@ -1683,9 +1737,6 @@ fn validate_ordered_enum(
     for value in values {
         seen.push(enum_text(value, allowed)?.to_owned());
     }
-    if seen.windows(2).any(|pair| pair[0] >= pair[1]) {
-        return Err(PersistenceDecodeErrorV1::NoncanonicalOrder);
-    }
     let expected: Vec<&str> = allowed
         .iter()
         .copied()
@@ -1785,6 +1836,14 @@ fn validate_evidence_ref_array(value: &cbor::Value) -> Result<(), PersistenceDec
 
 fn validate_evidence_refs(value: &cbor::Value) -> Result<(), PersistenceDecodeErrorV1> {
     let refs = value_array(value, None)?;
+    validate_canonical_values(refs, validate_evidence_ref_array)
+}
+
+fn validate_nonempty_evidence_refs(value: &cbor::Value) -> Result<(), PersistenceDecodeErrorV1> {
+    let refs = value_array(value, None)?;
+    if refs.is_empty() {
+        return Err(PersistenceDecodeErrorV1::SemanticValidation);
+    }
     validate_canonical_values(refs, validate_evidence_ref_array)
 }
 
@@ -1966,7 +2025,7 @@ fn validate_context_slot_attestation(
             return Err(PersistenceDecodeErrorV1::NoncanonicalOrder);
         }
     }
-    validate_evidence_refs(&fields[3])?;
+    validate_nonempty_evidence_refs(&fields[3])?;
     value_text(&fields[4])?;
     Ok(())
 }
@@ -1991,9 +2050,10 @@ fn validate_positive_boundary_fact(value: &cbor::Value) -> Result<(), Persistenc
             if payload.len() != 4 {
                 return Err(PersistenceDecodeErrorV1::WrongRecordLength);
             }
-            for field in payload {
-                value_text(field)?;
-            }
+            value_text(&payload[0])?;
+            enum_text(&payload[1], &B2_LIFECYCLES)?;
+            enum_text(&payload[2], &B2_ASSIGNMENT_ROLES)?;
+            value_text(&payload[3])?;
             Ok(())
         }
         "rev3_locator" | "b2_locator" => {
@@ -2085,18 +2145,19 @@ fn validate_precondition_payload(
                 return Err(PersistenceDecodeErrorV1::WrongRecordLength);
             }
             value_uint32(&fields[0])?;
-            for field in &fields[1..] {
-                value_text(field)?;
-            }
+            enum_text(&fields[1], &PARTICIPANT_ROLES)?;
+            enum_text(&fields[2], &PARTICIPANT_KINDS)?;
+            value_text(&fields[3])?;
             Ok(())
         }
         "b2_boundary" => {
             if fields.len() != 4 {
                 return Err(PersistenceDecodeErrorV1::WrongRecordLength);
             }
-            for field in fields {
-                value_text(field)?;
-            }
+            value_text(&fields[0])?;
+            enum_text(&fields[1], &B2_LIFECYCLES)?;
+            enum_text(&fields[2], &B2_ASSIGNMENT_ROLES)?;
+            value_text(&fields[3])?;
             Ok(())
         }
         "source_context" | "temporal_semantic" => {
@@ -2255,7 +2316,7 @@ fn validate_precondition_attestations(value: &cbor::Value) -> Result<(), Persist
         let id = value_text(&fields[0])?;
         ordering_keys.push(cbor::encode_canonical(&cbor::Value::Text(id.to_owned()))?);
         validate_cbor_value(&fields[1])?;
-        validate_evidence_refs(&fields[2])?;
+        validate_nonempty_evidence_refs(&fields[2])?;
         value_text(&fields[3])?;
     }
     validate_sorted_unique_keys(&ordering_keys)
@@ -2276,7 +2337,7 @@ fn validate_class_projection_equivalence(
         return Err(PersistenceDecodeErrorV1::UnknownVariant);
     }
     value_bytes32(&semantic_claim[1])?;
-    validate_evidence_refs(&fields[4])?;
+    validate_nonempty_evidence_refs(&fields[4])?;
     value_text(&fields[5])?;
     Ok(())
 }
@@ -2286,7 +2347,7 @@ fn validate_channel_coverage(value: &cbor::Value) -> Result<(), PersistenceDecod
     enum_text(&fields[0], &RELATION_CHANNELS)?;
     enum_text(&fields[1], &REQUIRED_CONCLUSIONS)?;
     validate_positive_boundary_facts(&fields[2])?;
-    validate_evidence_refs(&fields[3])?;
+    validate_nonempty_evidence_refs(&fields[3])?;
     validate_b1_citation_refs(&fields[4])?;
     value_text(&fields[5])?;
     Ok(())
@@ -2362,7 +2423,7 @@ fn validate_relation_member(value: &cbor::Value) -> Result<(), PersistenceDecode
     validate_candidate_universe_binding(&fields[3])?;
     validate_relation_binding(&fields[4])?;
     validate_precondition_attestations(&fields[5])?;
-    validate_evidence_refs(&fields[6])?;
+    validate_nonempty_evidence_refs(&fields[6])?;
     validate_member_proof_attestation(&fields[7])
 }
 
@@ -2398,8 +2459,20 @@ fn validate_domain_criterion(value: &cbor::Value) -> Result<(), PersistenceDecod
 
 fn validate_domain_criteria(value: &cbor::Value) -> Result<(), PersistenceDecodeErrorV1> {
     let criteria = value_array(value, None)?;
+    let mut channels = std::collections::BTreeSet::new();
     for criterion in criteria {
         validate_domain_criterion(criterion)?;
+        let fields = value_array(criterion, Some(2))?;
+        if matches!(
+            value_text(&fields[0])?,
+            "channel_implicated" | "channel_excluded"
+        ) {
+            let payload = value_array(&fields[1], Some(2))?;
+            let channel = value_text(&payload[0])?;
+            if !channels.insert(channel) {
+                return Err(PersistenceDecodeErrorV1::DuplicateSemanticKey);
+            }
+        }
     }
     Ok(())
 }
@@ -2446,14 +2519,16 @@ fn validate_domain_member(value: &cbor::Value) -> Result<(), PersistenceDecodeEr
     validate_candidate_universe_binding(&fields[3])?;
     validate_domain_binding(&fields[4])?;
     validate_precondition_attestations(&fields[5])?;
-    validate_evidence_refs(&fields[6])?;
+    validate_nonempty_evidence_refs(&fields[6])?;
     let attestation = value_array(&fields[7], Some(1))?;
     let criteria = value_array(&attestation[0], None)?;
-    for criterion in criteria {
+    for (index, criterion) in criteria.iter().enumerate() {
         let fields = value_array(criterion, Some(4))?;
-        value_uint32(&fields[0])?;
+        if value_uint32(&fields[0])? != index as u32 {
+            return Err(PersistenceDecodeErrorV1::NoncanonicalOrder);
+        }
         validate_domain_criterion(&fields[1])?;
-        validate_evidence_refs(&fields[2])?;
+        validate_nonempty_evidence_refs(&fields[2])?;
         value_text(&fields[3])?;
     }
     Ok(())
@@ -2467,7 +2542,7 @@ fn validate_context_member(value: &cbor::Value) -> Result<(), PersistenceDecodeE
     validate_candidate_universe_binding(&fields[3])?;
     validate_context_binding(&fields[4])?;
     validate_precondition_attestations(&fields[5])?;
-    validate_evidence_refs(&fields[6])?;
+    validate_nonempty_evidence_refs(&fields[6])?;
     let attestation = value_array(&fields[7], Some(1))?;
     let slots = value_array(&attestation[0], Some(14))?;
     for (index, slot) in slots.iter().enumerate() {
@@ -2521,7 +2596,7 @@ fn validate_record_input(
         }
         value_text(&fields[0])?;
         value_bytes32(&fields[1])?;
-        validate_evidence_refs(&fields[2])?;
+        validate_nonempty_evidence_refs(&fields[2])?;
         validate_review_event_ref_array(&fields[3])?;
         value_text(&fields[4])?;
         Ok(())
@@ -2559,7 +2634,7 @@ fn validate_supersession_input(fields: &[cbor::Value]) -> Result<(), Persistence
             "authority_revocation",
         ],
     )?;
-    validate_evidence_refs(&fields[6])?;
+    validate_nonempty_evidence_refs(&fields[6])?;
     validate_review_event_ref_array(&fields[7])
 }
 
@@ -2577,7 +2652,7 @@ fn validate_acceptance_subject_input(
             return Err(PersistenceDecodeErrorV1::WrongRecordLength);
         }
         value_bytes32(&payload[0])?;
-        validate_evidence_refs(&payload[1])?;
+        validate_nonempty_evidence_refs(&payload[1])?;
         value_text(&payload[2])?;
     } else if kind.ends_with("_application_record") {
         if payload.len() != 1 {
@@ -2610,7 +2685,7 @@ fn validate_acceptance_subject_input(
                 "authority_revocation",
             ],
         )?;
-        validate_evidence_refs(&payload[5])?;
+        validate_nonempty_evidence_refs(&payload[5])?;
     }
     Ok(())
 }

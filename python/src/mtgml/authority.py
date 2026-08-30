@@ -62,6 +62,15 @@ _EXPECTED_SCHEMA_BY_ROLE: Final = {
     "acceptance_event_leaf": ACCEPTANCE_EVENT_SCHEMA_V1,
     "reviewer_roster_leaf": REVIEWER_ROSTER_SCHEMA_V1,
 }
+_EXPECTED_STATIC_PATH_BY_ROLE: Final = {
+    "declared_model": "sources/m2_5/closures/C/declared_interaction_model.v2.json",
+    "b2_catalog": "sources/m2_5/closures/B2/requirement_family_catalog.v1.json",
+    "b2_classifications": "sources/m2_5/closures/B2/card_semantic_classifications.v1.json",
+    "b2_closure": "sources/m2_5/closures/B2/classification_closure.v1.json",
+    "b1_final_citations": "sources/m2_5/closures/B1/official_authority_citations.v3.json",
+    "b1_final_closure": ("sources/m2_5/closures/B1/official_authority_citation_closure.v2.json"),
+    "candidate_universe": "sources/m2_5/closures/C/interaction_candidate_universe.v2.json",
+}
 _AUTHORITY_KINDS: Final = frozenset(
     {
         "model",
@@ -429,6 +438,27 @@ class SourceBindingDigestV1:
                 raise AuthorityContractError("REV3 source binding path/schema is not admitted")
         elif self.schema_or_null != _EXPECTED_SCHEMA_BY_ROLE.get(self.artifact_role):
             raise AuthorityContractError("source binding schema does not match its artifact role")
+        expected_path = _EXPECTED_STATIC_PATH_BY_ROLE.get(self.artifact_role)
+        if expected_path is not None and self.path != expected_path:
+            raise AuthorityContractError("source binding path does not match its artifact role")
+        if (
+            self.artifact_role == "acceptance_event_leaf"
+            and re.fullmatch(
+                r"sources/m2_5/authorities/review_acceptance_events/v1/[0-9a-f]{64}\.json",
+                self.path,
+            )
+            is None
+        ):
+            raise AuthorityContractError("acceptance event leaf path is not a V1 leaf path")
+        if (
+            self.artifact_role == "reviewer_roster_leaf"
+            and re.fullmatch(
+                r"sources/m2_5/authorities/reviewer_rosters/v1/[0-9a-f]{64}\.json",
+                self.path,
+            )
+            is None
+        ):
+            raise AuthorityContractError("reviewer roster leaf path is not a V1 leaf path")
         _require_digest_bytes(self.raw_sha256, "source binding digest")
 
     def to_cbor(self) -> list[AuthorityValue]:
@@ -1302,6 +1332,16 @@ def _validate_evidence_refs(value: object, label: str = "evidence references") -
     _canonical_array(refs, _validate_evidence_ref_array, label)
 
 
+def _validate_nonempty_evidence_refs(
+    value: object,
+    label: str = "evidence references",
+) -> None:
+    refs = _array(value, label)
+    if not refs:
+        _fail(f"{label} must be non-empty")
+    _canonical_array(refs, _validate_evidence_ref_array, label)
+
+
 def _validate_acceptance_evidence_ref_array(value: object) -> None:
     reference = _array(value, "acceptance evidence reference", 3)
     path = _any_text(reference[0], "acceptance evidence path")
@@ -1441,7 +1481,7 @@ def _validate_context_slot_attestation(
     _validate_context_slot_value(fields[0], fields[1], fields[2])
     if expected is not None and (fields[0], fields[1]) != expected:
         _fail("context slot attestations must use the fixed slot order")
-    _validate_evidence_refs(fields[3], "context slot evidence")
+    _validate_nonempty_evidence_refs(fields[3], "context slot evidence")
     _text(fields[4], "context slot rationale")
 
 
@@ -1463,8 +1503,10 @@ def _validate_positive_boundary_fact(value: object) -> None:
     if kind == "b2_boundary":
         if len(payload) != 4:
             _fail("B2 positive boundary fact must contain four fields")
-        for field in payload:
-            _text(field, "B2 positive boundary fact field")
+        _text(payload[0], "B2 positive boundary family ID")
+        _enum(payload[1], _B2_LIFECYCLES, "B2 positive boundary lifecycle")
+        _enum(payload[2], _B2_ASSIGNMENT_ROLES, "B2 positive boundary assignment role")
+        _text(payload[3], "B2 positive boundary definition")
     elif kind in {"rev3_locator", "b2_locator"}:
         if len(payload) != 3:
             _fail("source positive boundary fact must contain three fields")
@@ -1548,10 +1590,10 @@ def _validate_precondition_payload(kind: str, payload: object) -> None:
     elif kind == "b2_boundary":
         if len(values) != 4:
             _fail("B2 boundary precondition must contain four fields")
-        for index, label in enumerate(
-            ("B2 family ID", "B2 lifecycle", "B2 assignment role", "B2 definition")
-        ):
-            _text(values[index], label)
+        _text(values[0], "B2 family ID")
+        _enum(values[1], _B2_LIFECYCLES, "B2 lifecycle")
+        _enum(values[2], _B2_ASSIGNMENT_ROLES, "B2 assignment role")
+        _text(values[3], "B2 definition")
     elif kind in {"source_context", "temporal_semantic"}:
         if len(values) != 2:
             _fail(f"{kind} precondition must contain two fields")
@@ -1688,7 +1730,7 @@ def _validate_precondition_attestations(value: object) -> None:
         precondition_id = _text(fields[0], "attestation precondition ID")
         ordering_keys.append(encode_canonical(precondition_id))
         _validate_cbor_value(fields[1], "observed precondition payload")
-        _validate_evidence_refs(fields[2], "member evidence references")
+        _validate_nonempty_evidence_refs(fields[2], "member evidence references")
         _text(fields[3], "precondition equivalence rationale")
     if ordering_keys != sorted(ordering_keys):
         _fail("precondition IDs must be in canonical order")
@@ -1729,7 +1771,7 @@ def _validate_class_projection_equivalence(value: object) -> None:
     if semantic_claim[0] != "same_theorem_semantic_id":
         _fail("class semantic claim relation is not closed")
     _bytes32(semantic_claim[1], "theorem semantic digest")
-    _validate_evidence_refs(fields[4], "class equivalence evidence")
+    _validate_nonempty_evidence_refs(fields[4], "class equivalence evidence")
     _text(fields[5], "class equivalence rationale")
 
 
@@ -1738,7 +1780,7 @@ def _validate_channel_coverage(value: object) -> None:
     _enum(fields[0], _RELATION_CHANNELS, "covered channel")
     _enum(fields[1], _REQUIRED_CONCLUSIONS, "channel coverage conclusion")
     _validate_positive_boundary_facts(fields[2], "positive boundary facts")
-    _validate_evidence_refs(fields[3], "channel source evidence")
+    _validate_nonempty_evidence_refs(fields[3], "channel source evidence")
     _validate_b1_citation_refs(fields[4])
     _text(fields[5], "channel coverage rationale")
 
@@ -1796,7 +1838,7 @@ def _validate_relation_member(value: object) -> None:
     _validate_candidate_universe_binding(fields[3])
     _validate_relation_binding(fields[4])
     _validate_precondition_attestations(fields[5])
-    _validate_evidence_refs(fields[6], "member evidence references")
+    _validate_nonempty_evidence_refs(fields[6], "member evidence references")
     _validate_member_proof_attestation(fields[7])
 
 
@@ -1870,8 +1912,16 @@ def _validate_domain_criterion(value: object) -> None:
 
 def _validate_domain_criterion_array(value: object) -> None:
     criteria = _array(value, "domain criteria")
+    channel_names: set[str] = set()
     for criterion in criteria:
         _validate_domain_criterion(criterion)
+        fields = _array(criterion, "domain criterion", 2)
+        if fields[0] in {"channel_implicated", "channel_excluded"}:
+            payload = _array(fields[1], "domain criterion payload", 2)
+            channel = cast(str, payload[0])
+            if channel in channel_names:
+                _fail("domain criterion channels must be unique")
+            channel_names.add(channel)
 
 
 def _validate_domain_member(value: object) -> None:
@@ -1882,14 +1932,15 @@ def _validate_domain_member(value: object) -> None:
     _validate_candidate_universe_binding(fields[3])
     _validate_domain_binding(fields[4])
     _validate_precondition_attestations(fields[5])
-    _validate_evidence_refs(fields[6], "member evidence references")
+    _validate_nonempty_evidence_refs(fields[6], "member evidence references")
     attestation = _array(fields[7], "domain member attestation", 1)
     criteria = _array(attestation[0], "criterion attestations")
-    for criterion in criteria:
+    for index, criterion in enumerate(criteria):
         criterion_fields = _array(criterion, "criterion attestation", 4)
-        _uint32(criterion_fields[0], "criterion index")
+        if _uint32(criterion_fields[0], "criterion index") != index:
+            _fail("criterion attestations must use the contiguous theorem order")
         _validate_domain_criterion(criterion_fields[1])
-        _validate_evidence_refs(criterion_fields[2], "criterion evidence")
+        _validate_nonempty_evidence_refs(criterion_fields[2], "criterion evidence")
         _text(criterion_fields[3], "criterion equivalence rationale")
 
 
@@ -1901,7 +1952,7 @@ def _validate_context_member(value: object) -> None:
     _validate_candidate_universe_binding(fields[3])
     _validate_context_binding(fields[4])
     _validate_precondition_attestations(fields[5])
-    _validate_evidence_refs(fields[6], "member evidence references")
+    _validate_nonempty_evidence_refs(fields[6], "member evidence references")
     attestation = _array(fields[7], "context member attestation", 1)
     slots = _array(attestation[0], "context slot attestations", len(_CONTEXT_SLOT_SEQUENCE))
     for slot, expected in zip(slots, _CONTEXT_SLOT_SEQUENCE, strict=True):
@@ -1920,7 +1971,7 @@ def _validate_record_input(value: list[object], *, application: bool) -> None:
             _fail("theorem record input must contain five fields")
         _text(value[0], "theorem record schema")
         _bytes32(value[1], "theorem ID")
-        _validate_evidence_refs(value[2], "theorem source evidence")
+        _validate_nonempty_evidence_refs(value[2], "theorem source evidence")
         _validate_review_event_ref_array(value[3])
         _text(value[4], "theorem semantic rationale")
 
@@ -1953,7 +2004,7 @@ def _validate_supersession_input(value: list[object]) -> None:
         ),
         "supersession reason",
     )
-    _validate_evidence_refs(value[6], "supersession source evidence")
+    _validate_nonempty_evidence_refs(value[6], "supersession source evidence")
     _validate_review_event_ref_array(value[7])
 
 
@@ -1967,7 +2018,7 @@ def _validate_acceptance_subject_input(value: list[object]) -> None:
         if len(payload) != 3:
             _fail("theorem-record subject payload must contain three fields")
         _bytes32(payload[0], "subject theorem ID")
-        _validate_evidence_refs(payload[1], "subject source evidence")
+        _validate_nonempty_evidence_refs(payload[1], "subject source evidence")
         _text(payload[2], "subject semantic rationale")
     elif kind.endswith("_application_record"):
         if len(payload) != 1:
@@ -1996,7 +2047,7 @@ def _validate_acceptance_subject_input(value: list[object]) -> None:
             ),
             "subject supersession reason",
         )
-        _validate_evidence_refs(payload[5], "subject supersession evidence")
+        _validate_nonempty_evidence_refs(payload[5], "subject supersession evidence")
 
 
 def _validate_acceptance_event_input(value: list[object]) -> None:

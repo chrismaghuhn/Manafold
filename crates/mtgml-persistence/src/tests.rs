@@ -137,7 +137,15 @@ fn authority_acceptance_event_identity_matches_cross_language_known_answer() {
         AcceptanceSubjectKind::RelationTheoremRecord,
         cbor::Value::Array(vec![
             cbor::Value::Bytes(vec![0u8; 32]),
-            cbor::Value::Array(vec![]),
+            cbor::Value::Array(vec![cbor::Value::Array(vec![
+                cbor::Value::Text("model".to_owned()),
+                cbor::Value::Text("sources/model.json".to_owned()),
+                cbor::Value::Array(vec![
+                    cbor::Value::Text("whole_artifact".to_owned()),
+                    cbor::Value::Null,
+                ]),
+                cbor::Value::Bytes(vec![0u8; 32]),
+            ])]),
             cbor::Value::Text("fixture rationale".to_owned()),
         ]),
     )
@@ -281,6 +289,66 @@ fn authority_contract_negative_matrix_rejects_every_case() {
             case["case_id"].as_str().unwrap()
         );
     }
+}
+
+#[test]
+fn authority_contract_matrix_positive_controls_are_accepted() {
+    let matrix: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../conformance/fixtures/authority/identity_contract_negative_matrix.v1.json"
+    ))
+    .unwrap();
+    let controls = matrix["positive_controls"].as_array().unwrap();
+    assert!(!controls.is_empty());
+
+    for control in controls {
+        assert_eq!(control["expected"], serde_json::json!("accept"));
+        let kind = authority_kind(control["kind"].as_str().unwrap());
+        let payload =
+            cbor::decode_canonical(&decode_hex(control["payload_cbor_hex"].as_str().unwrap()))
+                .unwrap();
+        assert!(
+            authority::AuthorityIdentityV1::compute(kind, payload).is_ok(),
+            "positive authority control was rejected: {}",
+            control["control_id"].as_str().unwrap()
+        );
+    }
+}
+
+#[test]
+fn required_relation_channels_use_declared_vocabulary_order() {
+    let matrix: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../conformance/fixtures/authority/identity_golden_matrix.v1.json"
+    ))
+    .unwrap();
+    let entry = matrix["identities"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|entry| entry["kind"] == serde_json::json!("relation_theorem"))
+        .unwrap();
+    let mut payload =
+        cbor::decode_canonical(&decode_hex(entry["payload_cbor_hex"].as_str().unwrap())).unwrap();
+    let fields = match &mut payload {
+        cbor::Value::Array(fields) => fields,
+        _ => panic!("relation theorem matrix payload is not an array"),
+    };
+    let proof_payload = match &mut fields[9] {
+        cbor::Value::Array(values) => values,
+        _ => panic!("relation proof payload is not an array"),
+    };
+    let positive_fields = match &mut proof_payload[1] {
+        cbor::Value::Array(values) => values,
+        _ => panic!("positive relation payload is not an array"),
+    };
+    positive_fields[1] = cbor::Value::Array(vec![
+        cbor::Value::Text("participant_boundary".to_owned()),
+        cbor::Value::Text("event_or_effect_causality".to_owned()),
+    ]);
+    assert!(authority::AuthorityIdentityV1::compute(
+        AuthorityIdentityKind::RelationTheorem,
+        payload
+    )
+    .is_ok());
 }
 
 fn payload_array_len(value: &cbor::Value) -> usize {
