@@ -1,0 +1,56 @@
+{
+  "$id": "reviewer-roster.v1.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Manafold M2.5.C Reviewer Roster V1",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "schema": {
+      "const": "manafold.m2.5.c.reviewer-roster.v1"
+    },
+    "reviewers": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/reviewer"
+      },
+      "minItems": 1
+    }
+  },
+  "required": [
+    "schema",
+    "reviewers"
+  ],
+  "$defs": {
+    "reviewer_role": {
+      "type": "string",
+      "enum": [
+        "project_owner",
+        "architecture_maintainer",
+        "rules_authority_maintainer",
+        "information_safety_reviewer",
+        "conformance_maintainer"
+      ]
+    },
+    "reviewer": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "reviewer_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "roles": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/reviewer_role"
+          },
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "reviewer_id",
+        "roles"
+      ]
+    }
+  }
+}

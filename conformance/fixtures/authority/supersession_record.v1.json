@@ -1,0 +1,51 @@
+{
+  "schema": "manafold.m2.5.c.supersession-record.v1",
+  "supersession_id": {
+    "envelope_id": "mtgml.digest-envelope.v1",
+    "algorithm_id": "sha-256",
+    "semantic_domain": "manafold.m2.5.c.relation-supersession.v1",
+    "payload_codec_id": "mtgml.canonical-cbor.v1",
+    "input_schema_id": "manafold.m2.5.c.relation-supersession-input.v1",
+    "digest_hex": "0000000000000000000000000000000000000000000000000000000000000000"
+  },
+  "superseded_record_id": {
+    "envelope_id": "mtgml.digest-envelope.v1",
+    "algorithm_id": "sha-256",
+    "semantic_domain": "manafold.m2.5.c.relation-proof-record.v1",
+    "payload_codec_id": "mtgml.canonical-cbor.v1",
+    "input_schema_id": "manafold.m2.5.c.relation-proof-record-input.v1",
+    "digest_hex": "1111111111111111111111111111111111111111111111111111111111111111"
+  },
+  "replacement_record_id": {
+    "envelope_id": "mtgml.digest-envelope.v1",
+    "algorithm_id": "sha-256",
+    "semantic_domain": "manafold.m2.5.c.relation-proof-record.v1",
+    "payload_codec_id": "mtgml.canonical-cbor.v1",
+    "input_schema_id": "manafold.m2.5.c.relation-proof-record-input.v1",
+    "digest_hex": "2222222222222222222222222222222222222222222222222222222222222222"
+  },
+  "superseded_record_kind": "relation_theorem_record",
+  "replacement_record_kind": "relation_theorem_record",
+  "reason_code": "semantic_correction",
+  "source_evidence_refs": [
+    {
+      "authority_kind": "model",
+      "path": "sources/m2_5/closures/C/declared_interaction_model.v2.json",
+      "locator": {
+        "kind": "whole_artifact"
+      },
+      "raw_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    }
+  ],
+  "acceptance": {
+    "decision": "human_accepted",
+    "review_event_ref": {
+      "path": "sources/m2_5/authorities/review_acceptance_events/v1/0000000000000000000000000000000000000000000000000000000000000000.json",
+      "raw_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "locator": {
+        "kind": "event_id",
+        "value": "ae.v1/0000000000000000000000000000000000000000000000000000000000000000"
+      }
+    }
+  }
+}

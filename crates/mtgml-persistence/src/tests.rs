@@ -1,5 +1,177 @@
-use super::{cbor, checkpoint_digest, envelope, PersistenceDecodeErrorV1};
+use super::{authority, cbor, checkpoint_digest, envelope, PersistenceDecodeErrorV1};
+use authority::{
+    canonical_identity_input, AcceptanceEvidenceRefV1, AcceptanceSubjectKind,
+    AcceptanceSubjectPayloadV1, AcceptanceV1, AuthorityIdentityKind, EvidenceLocatorV1,
+    ReviewAcceptanceEventV1, ReviewEventRefV1, ReviewMode, ReviewerRoleBindingV1,
+    ReviewerRosterRefV1, SourceBindingDigestV1,
+};
 use mtgml_model::{CheckpointCodecIdentity, EnvironmentLimitCounters, EpisodeStatus};
+
+#[test]
+fn authority_relation_identity_matches_cross_language_known_answer() {
+    let identity = authority::AuthorityIdentityV1::compute(
+        AuthorityIdentityKind::RelationTheorem,
+        cbor::Value::Array(vec![
+            cbor::Value::Text("manafold.m2.5.c.relation-proof-input.v1".to_owned()),
+            cbor::Value::Text("model".to_owned()),
+            cbor::Value::Text("positive_interaction".to_owned()),
+            cbor::Value::Text("unary".to_owned()),
+            cbor::Value::Text("reviewed_relation".to_owned()),
+            cbor::Value::Text("directional".to_owned()),
+            cbor::Value::Array(vec![]),
+            cbor::Value::Array(vec![]),
+            cbor::Value::Array(vec![]),
+            cbor::Value::Array(vec![]),
+            cbor::Value::Array(vec![]),
+            cbor::Value::Array(vec![]),
+        ]),
+    )
+    .unwrap();
+
+    assert_eq!(
+        identity.as_text(),
+        "rp.v1/ee825744da7449979aa620ecee9ec1703b3ee13d49ee1378491734d2038776c2"
+    );
+    assert_eq!(
+        identity.semantic_domain(),
+        "manafold.m2.5.c.relation-proof.v1"
+    );
+    assert!(canonical_identity_input(
+        AuthorityIdentityKind::RelationTheorem,
+        cbor::Value::Array(vec![cbor::Value::Text("wrong-schema".to_owned())]),
+    )
+    .is_err());
+    assert_eq!(
+        identity.input_schema_id(),
+        "manafold.m2.5.c.relation-proof-input.v1"
+    );
+}
+
+#[test]
+fn authority_source_binding_has_fixed_cbor_preimage() {
+    let binding = SourceBindingDigestV1::new(
+        "declared_model",
+        "sources/m2_5/closures/C/declared_interaction_model.v2.json",
+        Some("manafold.m2.5.c.declared-interaction-model.v2"),
+        [0u8; 32],
+    )
+    .unwrap();
+
+    assert_eq!(
+        binding.to_cbor(),
+        cbor::Value::Array(vec![
+            cbor::Value::Text("declared_model".to_owned()),
+            cbor::Value::Text(
+                "sources/m2_5/closures/C/declared_interaction_model.v2.json".to_owned()
+            ),
+            cbor::Value::Text("manafold.m2.5.c.declared-interaction-model.v2".to_owned()),
+            cbor::Value::Bytes(vec![0u8; 32]),
+        ])
+    );
+    assert!(SourceBindingDigestV1::new(
+        "declared_model",
+        "derived/Pair_Interaction_Census_REV3.csv",
+        None,
+        [0u8; 32],
+    )
+    .is_err());
+    assert!(AcceptanceEvidenceRefV1::new(
+        "docs/review/authority.md",
+        [0u8; 32],
+        EvidenceLocatorV1::JsonPointer("/review~2".to_owned()),
+    )
+    .is_err());
+}
+
+#[test]
+fn authority_acceptance_event_identity_matches_cross_language_known_answer() {
+    let subject = AcceptanceSubjectPayloadV1::new(
+        AcceptanceSubjectKind::RelationTheoremRecord,
+        cbor::Value::Array(vec![
+            cbor::Value::Bytes(vec![0u8; 32]),
+            cbor::Value::Array(vec![]),
+            cbor::Value::Text("fixture rationale".to_owned()),
+        ]),
+    )
+    .unwrap();
+    assert!(subject.identity().unwrap().as_text().starts_with("asp.v1/"));
+
+    let roster_ref = ReviewerRosterRefV1::new(
+        format!(
+            "sources/m2_5/authorities/reviewer_rosters/v1/{}.json",
+            "00".repeat(32)
+        ),
+        authority::REVIEWER_ROSTER_SCHEMA_V1,
+        [0u8; 32],
+    )
+    .unwrap();
+    let reviewer = ReviewerRoleBindingV1::new(
+        "alice",
+        vec![
+            "architecture_maintainer".to_owned(),
+            "rules_authority_maintainer".to_owned(),
+        ],
+    )
+    .unwrap();
+    let source = SourceBindingDigestV1::new(
+        "declared_model",
+        "sources/m2_5/closures/C/declared_interaction_model.v2.json",
+        Some("manafold.m2.5.c.declared-interaction-model.v2"),
+        [0u8; 32],
+    )
+    .unwrap();
+    let roster_source = SourceBindingDigestV1::new(
+        "reviewer_roster_leaf",
+        roster_ref.path.clone(),
+        Some(authority::REVIEWER_ROSTER_SCHEMA_V1),
+        [0u8; 32],
+    )
+    .unwrap();
+    let review_evidence = AcceptanceEvidenceRefV1::new(
+        "docs/review/authority.md",
+        [0u8; 32],
+        EvidenceLocatorV1::WholeArtifact,
+    )
+    .unwrap();
+    let event = ReviewAcceptanceEventV1::new(
+        AcceptanceSubjectKind::RelationTheoremRecord,
+        [0u8; 32],
+        roster_ref,
+        vec![reviewer],
+        ReviewMode::SoloSeparateSelfReview,
+        vec![source, roster_source],
+        vec![review_evidence],
+    )
+    .unwrap();
+
+    assert_eq!(
+        event.identity().unwrap().as_text(),
+        "ae.v1/605cc0fcb6020f5066896ddc238bc7594e39a7bf731c33a72d88ab7a7acc8013"
+    );
+}
+
+#[test]
+fn authority_acceptance_binding_has_fixed_cbor_preimage() {
+    let event_ref = ReviewEventRefV1::new(
+        format!(
+            "sources/m2_5/authorities/review_acceptance_events/v1/{}.json",
+            "00".repeat(32)
+        ),
+        [0u8; 32],
+        format!("ae.v1/{}", "00".repeat(32)),
+    )
+    .unwrap();
+    let acceptance = AcceptanceV1 {
+        review_event_ref: event_ref.clone(),
+    };
+    assert_eq!(
+        acceptance.to_cbor(),
+        cbor::Value::Array(vec![
+            cbor::Value::Text("human_accepted".to_owned()),
+            event_ref.to_cbor(),
+        ])
+    );
+}
 
 #[test]
 fn canonical_cbor_v1_complete_profile_matrix() {
