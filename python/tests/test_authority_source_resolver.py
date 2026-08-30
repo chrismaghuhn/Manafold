@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import base64
+import csv
 import hashlib
 import io
 import json
@@ -9,8 +11,9 @@ import unittest
 import warnings
 import zipfile
 from collections.abc import Callable
+from copy import deepcopy
 from pathlib import Path
-from typing import cast
+from typing import ClassVar, cast
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
@@ -28,6 +31,21 @@ from mtgml.authority import (
     ReviewerRosterRefV1,
     ReviewEventRefV1,
     SourceBindingDigestV1,
+)
+
+CANDIDATE_UNIVERSE_PATH = "sources/m2_5/closures/C/interaction_candidate_universe.v2.json"
+CANDIDATE_UNIVERSE_SCHEMA = "manafold.m2.5.c.interaction-candidate-universe.v2"
+REV3_SOURCE_COLUMNS = (
+    "candidate_id",
+    "model_id",
+    "scope",
+    "pair_id",
+    "left_family_id",
+    "right_family_id",
+    "relation",
+    "disposition",
+    "disposition_reason",
+    "supporting_requirement_ids",
 )
 
 
@@ -69,6 +87,21 @@ def archive_bytes(
 
 
 class AuthoritySourceResolverTests(unittest.TestCase):
+    CANDIDATE_ID = "CROSS_DECK|P1|family.a|family.b|DIRECTIONAL_BINARY"
+    SOURCE_INSTANCE_ID = (
+        "si.v1/"
+        + base64.urlsafe_b64encode(CANDIDATE_ID.encode("utf-8")).decode("ascii").rstrip("=")
+        + "/0"
+    )
+    CANDIDATE_IDENTITY: ClassVar[dict[str, str]] = {
+        "algorithm_id": "sha-256",
+        "digest_hex": "11" * 32,
+        "envelope_id": "mtgml.digest-envelope.v1",
+        "input_schema_id": "manafold.m2.5.c.candidate-identity-input.v1",
+        "payload_codec_id": "mtgml.canonical-cbor.v1",
+        "semantic_domain": "manafold.m2.5.c.candidate-identity.v1",
+    }
+
     def setUp(self) -> None:
         self.tempdir = tempfile.TemporaryDirectory()
         self.repo = Path(self.tempdir.name) / "repo"
@@ -93,6 +126,592 @@ class AuthoritySourceResolverTests(unittest.TestCase):
             operation()
         self.assertEqual(context.exception.status, status)
         self.assertEqual(context.exception.code, code)
+
+    def _source_values(self, candidate_id: str | None = None) -> list[str]:
+        return [
+            candidate_id or self.CANDIDATE_ID,
+            "interaction-model.v1",
+            "CROSS_DECK",
+            "P1",
+            "family.a",
+            "family.b",
+            "DIRECTIONAL_BINARY",
+            "AMBIGUOUS_REQUIRES_REVIEW",
+            "candidate classification authority or interaction trigger is not terminally reviewed",
+            '["family.a", "family.b"]',
+        ]
+
+    def _census_bytes(self, rows: list[list[str]]) -> bytes:
+        buffer = io.StringIO(newline="")
+        writer = csv.writer(buffer, lineterminator="\n")
+        writer.writerow(REV3_SOURCE_COLUMNS)
+        writer.writerows(rows)
+        return buffer.getvalue().encode("utf-8")
+
+    def _candidate_record(
+        self,
+        *,
+        candidate_id: str | None = None,
+        source_binding: dict[str, object],
+        candidate_identity: dict[str, str] | None = None,
+    ) -> dict[str, object]:
+        actual_candidate_id = candidate_id or self.CANDIDATE_ID
+        return {
+            "candidate_id": actual_candidate_id,
+            "candidate_identity": deepcopy(candidate_identity or self.CANDIDATE_IDENTITY),
+            "source_origin": "rev3",
+            "scope": "cross_deck",
+            "relation": "directional_binary",
+            "participant_refs": [
+                {"participant_kind": "requirement_family", "semantic_ref": "family.a"},
+                {"participant_kind": "requirement_family", "semantic_ref": "family.b"},
+            ],
+            "supporting_requirement_ids": ["family.a", "family.b"],
+            "source_binding": source_binding,
+            "reconciliation_status": "unchanged",
+            "reconciliation_reason": "synthetic source-binding control",
+        }
+
+    def _source_instance_record(
+        self,
+        *,
+        candidate_id: str | None = None,
+        source_instance_id: str | None = None,
+        source_binding: dict[str, object],
+        participant_refs: list[dict[str, str]] | None = None,
+    ) -> dict[str, object]:
+        actual_candidate_id = candidate_id or self.CANDIDATE_ID
+        return {
+            "source_instance_id": source_instance_id or self.SOURCE_INSTANCE_ID,
+            "candidate_id": actual_candidate_id,
+            "source_binding": source_binding,
+            "participant_bindings": [
+                {
+                    "role": "ordered_participant",
+                    "participant_ref": ref,
+                }
+                for ref in participant_refs
+                or [
+                    {"participant_kind": "requirement_family", "semantic_ref": "family.a"},
+                    {"participant_kind": "requirement_family", "semantic_ref": "family.b"},
+                ]
+            ],
+            "source_context": {
+                "zone": "not_applicable",
+                "visibility": "not_applicable",
+                "timing": "not_applicable",
+                "temporal_order": "not_applicable",
+                "source_affected_relation": "not_applicable",
+                "control_ownership_relation": "not_applicable",
+                "replacement_layer_relation": "not_applicable",
+                "trigger_lki_relation": "not_applicable",
+                "information_relation": "not_applicable",
+                "decision_actor_relation": "not_applicable",
+            },
+        }
+
+    def _synthetic_binding_fixture(
+        self,
+        *,
+        rows: list[list[str]] | None = None,
+        candidate_binding_overrides: dict[str, object] | None = None,
+        instance_binding_overrides: dict[str, object] | None = None,
+        candidate_overrides: dict[str, object] | None = None,
+        instance_overrides: dict[str, object] | None = None,
+        rev3_input_overrides: dict[str, str] | None = None,
+        extra_candidates: list[dict[str, object]] | None = None,
+        extra_instances: list[dict[str, object]] | None = None,
+    ) -> tuple[
+        AuthoritySourceResolver,
+        SourceBindingDigestV1,
+        dict[str, object],
+        dict[str, object],
+    ]:
+        census_rows = rows or [self._source_values()]
+        member_raw = self._census_bytes(census_rows)
+        member_sha = digest(member_raw)
+        archive_raw = archive_bytes({REV3_CENSUS_MEMBER: member_raw})
+        archive = Rev3ArchiveStore.from_bytes(archive_raw, digest(archive_raw))
+
+        source_binding: dict[str, object] = {
+            "kind": "rev3",
+            "archive_member": REV3_CENSUS_MEMBER,
+            "archive_member_sha256": member_sha,
+            "row_ordinal": 0,
+            "source_columns": list(REV3_SOURCE_COLUMNS),
+            "source_values": list(census_rows[0]),
+        }
+        if candidate_binding_overrides:
+            source_binding.update(candidate_binding_overrides)
+        candidate = self._candidate_record(source_binding=source_binding)
+        if candidate_overrides:
+            candidate.update(candidate_overrides)
+
+        instance_binding = deepcopy(source_binding)
+        if instance_binding_overrides:
+            instance_binding.update(instance_binding_overrides)
+        instance = self._source_instance_record(source_binding=instance_binding)
+        if instance_overrides:
+            instance.update(instance_overrides)
+
+        candidates = [candidate, *(extra_candidates or [])]
+        instances = [instance, *(extra_instances or [])]
+        model_value = {
+            "schema": "manafold.m2.5.c.declared-interaction-model.v2",
+            "model_id": "declared-interaction-model.v2",
+            "participant_kind_vocabulary": ["requirement_family"],
+            "participant_role_vocabulary": ["ordered_participant"],
+            "context_dimensions": [
+                "zone",
+                "visibility",
+                "timing",
+                "temporal_order",
+                "source_affected_relation",
+                "control_ownership_relation",
+                "replacement_layer_relation",
+                "trigger_lki_relation",
+                "information_relation",
+                "decision_actor_relation",
+            ],
+            "context_value_vocabulary": {
+                key: ["not_applicable"]
+                for key in (
+                    "zone",
+                    "visibility",
+                    "timing",
+                    "temporal_order",
+                    "source_affected_relation",
+                    "control_ownership_relation",
+                    "replacement_layer_relation",
+                    "trigger_lki_relation",
+                    "information_relation",
+                    "decision_actor_relation",
+                )
+            },
+        }
+        model_raw = json_bytes(model_value)
+        self.write_repo("sources/m2_5/closures/C/declared_interaction_model.v2.json", model_raw)
+        rev3_input = {
+            "archive_member": REV3_CENSUS_MEMBER,
+            "archive_member_sha256": member_sha,
+            "source_package_sha256": digest(archive_raw),
+        }
+        if rev3_input_overrides:
+            rev3_input.update(rev3_input_overrides)
+        universe = {
+            "schema": CANDIDATE_UNIVERSE_SCHEMA,
+            "model_id": "declared-interaction-model.v2",
+            "input_bindings": {
+                "declared_model": {
+                    "path": "sources/m2_5/closures/C/declared_interaction_model.v2.json",
+                    "raw_sha256": digest(model_raw),
+                },
+                "review_additions": {
+                    "path": "sources/m2_5/closures/C/interaction_review_additions.v2.json",
+                    "raw_sha256": "11" * 32,
+                },
+                "rev3_candidate_source": rev3_input,
+                "b2_artifacts": [
+                    {
+                        "path": "sources/m2_5/closures/B2/requirement_family_catalog.v1.json",
+                        "raw_sha256": "22" * 32,
+                    },
+                    {
+                        "path": "sources/m2_5/closures/B2/card_semantic_classifications.v1.json",
+                        "raw_sha256": "33" * 32,
+                    },
+                    {
+                        "path": "sources/m2_5/closures/B2/classification_closure.v1.json",
+                        "raw_sha256": "44" * 32,
+                    },
+                ],
+                "b1_final_artifacts": [
+                    {
+                        "path": "sources/m2_5/closures/B1/official_authority_citations.v3.json",
+                        "raw_sha256": "55" * 32,
+                    },
+                    {
+                        "path": (
+                            "sources/m2_5/closures/B1/official_authority_citation_closure.v2.json"
+                        ),
+                        "raw_sha256": "66" * 32,
+                    },
+                ],
+            },
+            "candidate_count": len(candidates),
+            "candidate_reconciliation_counts": {
+                "unchanged": len(candidates),
+                "stale_rev3_candidate": 0,
+                "removed_not_interaction": 0,
+                "merged_semantic_duplicate": 0,
+                "new_targeted_higher_order_candidate": 0,
+                "new_b2_derived": 0,
+            },
+            "source_instance_count": len(instances),
+            "candidates": candidates,
+            "source_instances": instances,
+        }
+        self.write_repo(CANDIDATE_UNIVERSE_PATH, json_bytes(universe))
+        binding = SourceBindingDigestV1(
+            artifact_role="candidate_universe",
+            path=CANDIDATE_UNIVERSE_PATH,
+            schema_or_null=CANDIDATE_UNIVERSE_SCHEMA,
+            raw_sha256=bytes.fromhex(digest(json_bytes(universe))),
+        )
+        return (
+            AuthoritySourceResolver(self.repo, rev3_archive=archive),
+            binding,
+            candidate,
+            instance,
+        )
+
+    def test_exact_candidate_resolution_returns_immutable_record(self) -> None:
+        resolver, binding, candidate, _ = self._synthetic_binding_fixture()
+
+        resolved = resolver.resolve_candidate(
+            candidate["candidate_id"],
+            cast(dict[str, object], candidate["candidate_identity"]),
+            binding,
+        )
+
+        self.assertEqual(resolved.candidate_id, self.CANDIDATE_ID)
+        self.assertEqual(resolved.candidate_identity["digest_hex"], "11" * 32)
+        self.assertEqual(resolved.candidate_record["candidate_id"], self.CANDIDATE_ID)
+        with self.assertRaises(TypeError):
+            cast(dict[str, object], resolved.candidate_record)["candidate_id"] = "mutated"
+
+    def test_exact_source_instance_resolution_verifies_the_rev3_row(self) -> None:
+        resolver, binding, candidate, instance = self._synthetic_binding_fixture()
+        resolved_candidate = resolver.resolve_candidate(
+            candidate["candidate_id"],
+            cast(dict[str, object], candidate["candidate_identity"]),
+            binding,
+        )
+
+        resolved = resolver.resolve_source_instance(
+            resolved_candidate, cast(str, instance["source_instance_id"])
+        )
+
+        self.assertEqual(resolved.source_instance_id, self.SOURCE_INSTANCE_ID)
+        self.assertEqual(
+            resolved.source_artifact.raw_bytes.splitlines()[1].split(b",", 1)[0],
+            self.CANDIDATE_ID.encode(),
+        )
+        with self.assertRaises(TypeError):
+            cast(dict[str, object], resolved.source_instance_record)["candidate_id"] = "mutated"
+
+    def test_candidate_and_source_instance_convenience_resolution(self) -> None:
+        resolver, binding, candidate, instance = self._synthetic_binding_fixture()
+
+        resolved = resolver.resolve_candidate_source_instance(
+            cast(str, candidate["candidate_id"]),
+            cast(dict[str, object], candidate["candidate_identity"]),
+            cast(str, instance["source_instance_id"]),
+            binding,
+        )
+
+        self.assertEqual(resolved.candidate.candidate_id, self.CANDIDATE_ID)
+        self.assertEqual(resolved.source_instance_id, self.SOURCE_INSTANCE_ID)
+
+    def test_unknown_candidate_fails_closed(self) -> None:
+        resolver, binding, candidate, _ = self._synthetic_binding_fixture()
+        self.assert_resolution_error(
+            lambda: resolver.resolve_candidate(
+                "unknown", cast(dict[str, object], candidate["candidate_identity"]), binding
+            ),
+            ResolutionStatus.FAIL,
+            "CANDIDATE_BINDING_MISMATCH",
+        )
+
+    def test_candidate_identity_mismatch_fails_closed(self) -> None:
+        resolver, binding, candidate, _ = self._synthetic_binding_fixture()
+        wrong_identity = deepcopy(cast(dict[str, object], candidate["candidate_identity"]))
+        wrong_identity["digest_hex"] = "22" * 32
+        self.assert_resolution_error(
+            lambda: resolver.resolve_candidate(
+                cast(str, candidate["candidate_id"]), wrong_identity, binding
+            ),
+            ResolutionStatus.FAIL,
+            "CANDIDATE_IDENTITY_MISMATCH",
+        )
+
+    def test_candidate_universe_digest_mismatch_fails_closed(self) -> None:
+        resolver, binding, candidate, _ = self._synthetic_binding_fixture()
+        wrong_binding = SourceBindingDigestV1(
+            artifact_role="candidate_universe",
+            path=binding.path,
+            schema_or_null=binding.schema_or_null,
+            raw_sha256=bytes.fromhex("00" * 32),
+        )
+        self.assert_resolution_error(
+            lambda: resolver.resolve_candidate(
+                cast(str, candidate["candidate_id"]),
+                cast(dict[str, object], candidate["candidate_identity"]),
+                wrong_binding,
+            ),
+            ResolutionStatus.FAIL,
+            "SOURCE_DIGEST_MISMATCH",
+        )
+
+    def test_unsupported_candidate_source_kind_fails_closed(self) -> None:
+        resolver, binding, candidate, _ = self._synthetic_binding_fixture(
+            candidate_overrides={"source_origin": "targeted_higher_order_review"},
+        )
+        self.assert_resolution_error(
+            lambda: resolver.resolve_candidate(
+                cast(str, candidate["candidate_id"]),
+                cast(dict[str, object], candidate["candidate_identity"]),
+                binding,
+            ),
+            ResolutionStatus.FAIL,
+            "SOURCE_KIND_UNSUPPORTED",
+        )
+
+    def test_duplicate_candidate_id_fails_closed(self) -> None:
+        duplicate = self._candidate_record(
+            source_binding={
+                "kind": "rev3",
+                "archive_member": REV3_CENSUS_MEMBER,
+                "archive_member_sha256": "00" * 32,
+                "row_ordinal": 0,
+                "source_columns": list(REV3_SOURCE_COLUMNS),
+                "source_values": self._source_values(),
+            }
+        )
+        resolver, binding, candidate, instance = self._synthetic_binding_fixture(
+            extra_candidates=[duplicate],
+        )
+        self.assert_resolution_error(
+            lambda: resolver.resolve_candidate(
+                cast(str, candidate["candidate_id"]),
+                cast(dict[str, object], candidate["candidate_identity"]),
+                binding,
+            ),
+            ResolutionStatus.FAIL,
+            "DUPLICATE_CANDIDATE_ID",
+        )
+
+    def test_duplicate_candidate_identity_fails_closed(self) -> None:
+        duplicate_id = "CROSS_DECK|P1|family.c|family.d|DIRECTIONAL_BINARY"
+        duplicate_values = self._source_values(duplicate_id)
+        duplicate = self._candidate_record(
+            candidate_id=duplicate_id,
+            source_binding={
+                "kind": "rev3",
+                "archive_member": REV3_CENSUS_MEMBER,
+                "archive_member_sha256": "00" * 32,
+                "row_ordinal": 0,
+                "source_columns": list(REV3_SOURCE_COLUMNS),
+                "source_values": duplicate_values,
+            },
+        )
+        resolver, binding, candidate, _ = self._synthetic_binding_fixture(
+            extra_candidates=[duplicate]
+        )
+        self.assert_resolution_error(
+            lambda: resolver.resolve_candidate(
+                cast(str, candidate["candidate_id"]),
+                cast(dict[str, object], candidate["candidate_identity"]),
+                binding,
+            ),
+            ResolutionStatus.FAIL,
+            "DUPLICATE_CANDIDATE_IDENTITY",
+        )
+
+    def test_wrong_source_instance_id_fails_closed(self) -> None:
+        resolver, binding, candidate, _ = self._synthetic_binding_fixture()
+        resolved_candidate = resolver.resolve_candidate(
+            cast(str, candidate["candidate_id"]),
+            cast(dict[str, object], candidate["candidate_identity"]),
+            binding,
+        )
+        self.assert_resolution_error(
+            lambda: resolver.resolve_source_instance(resolved_candidate, "si.v1/wrong/0"),
+            ResolutionStatus.FAIL,
+            "SOURCE_INSTANCE_BINDING_MISMATCH",
+        )
+
+    def test_wrong_rev3_row_ordinal_fails_closed(self) -> None:
+        resolver, binding, candidate, instance = self._synthetic_binding_fixture(
+            candidate_binding_overrides={"row_ordinal": 1},
+            instance_binding_overrides={"row_ordinal": 1},
+        )
+        resolved_candidate = resolver.resolve_candidate(
+            cast(str, candidate["candidate_id"]),
+            cast(dict[str, object], candidate["candidate_identity"]),
+            binding,
+        )
+        self.assert_resolution_error(
+            lambda: resolver.resolve_source_instance(
+                resolved_candidate, cast(str, instance["source_instance_id"])
+            ),
+            ResolutionStatus.FAIL,
+            "REV3_ROW_ORDINAL_OUT_OF_RANGE",
+        )
+
+    def test_in_range_ordinal_pointing_to_wrong_row_fails_closed(self) -> None:
+        second_row = self._source_values("CROSS_DECK|P2|family.a|family.b|DIRECTIONAL_BINARY")
+        resolver, binding, candidate, instance = self._synthetic_binding_fixture(
+            rows=[self._source_values(), second_row],
+            candidate_binding_overrides={"row_ordinal": 1},
+            instance_binding_overrides={"row_ordinal": 1},
+        )
+        resolved_candidate = resolver.resolve_candidate(
+            cast(str, candidate["candidate_id"]),
+            cast(dict[str, object], candidate["candidate_identity"]),
+            binding,
+        )
+        self.assert_resolution_error(
+            lambda: resolver.resolve_source_instance(
+                resolved_candidate, cast(str, instance["source_instance_id"])
+            ),
+            ResolutionStatus.FAIL,
+            "REV3_SOURCE_ROW_MISMATCH",
+        )
+
+    def test_wrong_source_columns_fail_closed(self) -> None:
+        resolver, binding, candidate, _ = self._synthetic_binding_fixture(
+            instance_binding_overrides={"source_columns": [*REV3_SOURCE_COLUMNS[:-1], "wrong"]},
+        )
+        self.assert_resolution_error(
+            lambda: resolver.resolve_candidate(
+                cast(str, candidate["candidate_id"]),
+                cast(dict[str, object], candidate["candidate_identity"]),
+                binding,
+            ),
+            ResolutionStatus.FAIL,
+            "REV3_SOURCE_COLUMNS_MISMATCH",
+        )
+
+    def test_wrong_source_values_fail_closed(self) -> None:
+        changed_values = self._source_values()
+        changed_values[8] = "tampered source value"
+        resolver, binding, candidate, instance = self._synthetic_binding_fixture(
+            candidate_binding_overrides={"source_values": changed_values},
+            instance_binding_overrides={"source_values": changed_values},
+        )
+        resolved_candidate = resolver.resolve_candidate(
+            cast(str, candidate["candidate_id"]),
+            cast(dict[str, object], candidate["candidate_identity"]),
+            binding,
+        )
+        self.assert_resolution_error(
+            lambda: resolver.resolve_source_instance(
+                resolved_candidate, cast(str, instance["source_instance_id"])
+            ),
+            ResolutionStatus.FAIL,
+            "REV3_SOURCE_ROW_MISMATCH",
+        )
+
+    def test_wrong_archive_member_digest_fails_closed(self) -> None:
+        resolver, binding, candidate, instance = self._synthetic_binding_fixture(
+            candidate_binding_overrides={"archive_member_sha256": "00" * 32},
+            instance_binding_overrides={"archive_member_sha256": "00" * 32},
+            rev3_input_overrides={"archive_member_sha256": "00" * 32},
+        )
+        resolved_candidate = resolver.resolve_candidate(
+            cast(str, candidate["candidate_id"]),
+            cast(dict[str, object], candidate["candidate_identity"]),
+            binding,
+        )
+        self.assert_resolution_error(
+            lambda: resolver.resolve_source_instance(
+                resolved_candidate, cast(str, instance["source_instance_id"])
+            ),
+            ResolutionStatus.FAIL,
+            "SOURCE_DIGEST_MISMATCH",
+        )
+
+    def test_wrong_archive_member_fails_closed(self) -> None:
+        resolver, binding, candidate, _ = self._synthetic_binding_fixture(
+            candidate_binding_overrides={"archive_member": "derived/wrong.csv"},
+            instance_binding_overrides={"archive_member": "derived/wrong.csv"},
+        )
+        self.assert_resolution_error(
+            lambda: resolver.resolve_candidate(
+                cast(str, candidate["candidate_id"]),
+                cast(dict[str, object], candidate["candidate_identity"]),
+                binding,
+            ),
+            ResolutionStatus.FAIL,
+            "SOURCE_MEMBER_MISMATCH",
+        )
+
+    def test_candidate_source_instance_cross_binding_mismatch_fails_closed(self) -> None:
+        resolver, binding, candidate, _ = self._synthetic_binding_fixture(
+            instance_overrides={"candidate_id": "CROSS_DECK|P9|foreign|foreign|DIRECTIONAL_BINARY"},
+        )
+        self.assert_resolution_error(
+            lambda: resolver.resolve_candidate(
+                cast(str, candidate["candidate_id"]),
+                cast(dict[str, object], candidate["candidate_identity"]),
+                binding,
+            ),
+            ResolutionStatus.FAIL,
+            "SOURCE_INSTANCE_CANDIDATE_MISMATCH",
+        )
+
+    def test_missing_external_rev3_archive_is_blocked(self) -> None:
+        resolver, binding, candidate, instance = self._synthetic_binding_fixture()
+        resolver = AuthoritySourceResolver(self.repo, rev3_archive_root=self.repo / "missing")
+        resolved_candidate = resolver.resolve_candidate(
+            cast(str, candidate["candidate_id"]),
+            cast(dict[str, object], candidate["candidate_identity"]),
+            binding,
+        )
+        self.assert_resolution_error(
+            lambda: resolver.resolve_source_instance(
+                resolved_candidate, cast(str, instance["source_instance_id"])
+            ),
+            ResolutionStatus.BLOCKED,
+            "REV3_ARCHIVE_SOURCE_UNAVAILABLE",
+        )
+
+    def test_missing_repository_candidate_ledger_is_fail(self) -> None:
+        resolver = AuthoritySourceResolver(self.repo)
+        binding = SourceBindingDigestV1(
+            artifact_role="candidate_universe",
+            path=CANDIDATE_UNIVERSE_PATH,
+            schema_or_null=CANDIDATE_UNIVERSE_SCHEMA,
+            raw_sha256=bytes(32),
+        )
+        self.assert_resolution_error(
+            lambda: resolver.resolve_candidate("candidate", self.CANDIDATE_IDENTITY, binding),
+            ResolutionStatus.FAIL,
+            "REPOSITORY_SOURCE_MISSING",
+        )
+
+    def test_real_candidate_ledger_probe_resolves_candidate_before_external_rev3(self) -> None:
+        source = ROOT / "sources/m2_5/closures/C/interaction_candidate_universe.v2.json"
+        raw = source.read_bytes()
+        document = cast(dict[str, object], json.loads(raw.decode("utf-8")))
+        candidates = cast(list[dict[str, object]], document["candidates"])
+        instances = cast(list[dict[str, object]], document["source_instances"])
+        first = candidates[0]
+        first_instance = instances[0]
+        resolver = AuthoritySourceResolver(ROOT, rev3_archive_root=ROOT / "missing")
+        binding = SourceBindingDigestV1(
+            artifact_role="candidate_universe",
+            path=CANDIDATE_UNIVERSE_PATH,
+            schema_or_null=CANDIDATE_UNIVERSE_SCHEMA,
+            raw_sha256=bytes.fromhex(digest(raw)),
+        )
+
+        resolved = resolver.resolve_candidate(
+            cast(str, first["candidate_id"]),
+            cast(dict[str, object], first["candidate_identity"]),
+            binding,
+        )
+
+        self.assertEqual(resolved.candidate_record["candidate_id"], first["candidate_id"])
+        self.assertEqual(resolved.candidate_universe.raw_sha256, digest(raw))
+        self.assert_resolution_error(
+            lambda: resolver.resolve_source_instance(
+                resolved, cast(str, first_instance["source_instance_id"])
+            ),
+            ResolutionStatus.BLOCKED,
+            "REV3_ARCHIVE_SOURCE_UNAVAILABLE",
+        )
 
     def test_repository_verifies_digest_before_json_parsing(self) -> None:
         resolver = AuthoritySourceResolver(self.repo)

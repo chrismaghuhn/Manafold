@@ -21,7 +21,7 @@ Generated logs and status reports must not be written into the archived source s
 The verification runner marks directories it owns and refuses to replace an existing unmarked output directory.
 
 - `generate_contracts.py` — single-source generation/check for mechanical Rust/Python/schema vocabulary;
-- `authority_source_resolver.py` — rules-neutral, byte-first repository/REV3 source and locator resolution;
+- `authority_source_resolver.py` — rules-neutral, byte-first repository/REV3 source, locator, candidate, and source-instance resolution;
 - `run_checks.py` — fast/integration/certification maintainer profiles;
 - `bootstrap.py` — prepares `.venv` only and never mutates contracts or lockfiles;
 - `validate_golden_path.py` — verifies the synthetic vertical path fails closed at certification;
