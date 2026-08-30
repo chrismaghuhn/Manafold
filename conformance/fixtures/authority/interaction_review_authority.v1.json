@@ -1,0 +1,17 @@
+{
+  "schema": "manafold.m2.5.c.interaction-review-authority.v1",
+  "model_binding": {
+    "path": "sources/m2_5/closures/C/declared_interaction_model.v2.json",
+    "raw_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+    "model_id": "declared-interaction-model",
+    "model_version": "v2"
+  },
+  "source_bindings": [],
+  "relation_proofs": [],
+  "relation_applications": [],
+  "domain_proofs": [],
+  "domain_applications": [],
+  "context_proofs": [],
+  "context_applications": [],
+  "supersession_records": []
+}

@@ -58,6 +58,24 @@ ARTIFACT_CASES = [
     ),
     ("golden-path-index.v1.schema.json", "examples/golden-path/index.json"),
 ]
+AUTHORITY_ARTIFACT_CASES = [
+    (
+        "interaction-review-authority.v1.schema.json",
+        "conformance/fixtures/authority/interaction_review_authority.v1.json",
+    ),
+    (
+        "review-acceptance-event.v1.schema.json",
+        "conformance/fixtures/authority/review_acceptance_event.v1.json",
+    ),
+    (
+        "reviewer-roster.v1.schema.json",
+        "conformance/fixtures/authority/reviewer_roster.v1.json",
+    ),
+    (
+        "supersession-record.v1.schema.json",
+        "conformance/fixtures/authority/supersession_record.v1.json",
+    ),
+]
 
 
 def load(path: Path) -> object:
@@ -76,9 +94,14 @@ def main() -> None:
         jsonschema.Draft202012Validator(load(ROOT / "schemas" / schema_rel)).validate(
             load(ROOT / value_rel)
         )
+    for schema_rel, value_rel in AUTHORITY_ARTIFACT_CASES:
+        jsonschema.Draft202012Validator(load(ROOT / "schemas" / schema_rel)).validate(
+            load(ROOT / value_rel)
+        )
     print(
         f"PASS: {len(fixtures)} wire fixtures and"
-        f" {len(ARTIFACT_CASES)} maintainer artifacts validated against schemas"
+        f" {len(ARTIFACT_CASES) + len(AUTHORITY_ARTIFACT_CASES)} maintainer artifacts"
+        " validated against schemas"
     )
 
 

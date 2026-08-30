@@ -1,0 +1,277 @@
+{
+  "$id": "supersession-record.v1.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Manafold M2.5.C Supersession Record V1",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "schema": {
+      "const": "manafold.m2.5.c.supersession-record.v1"
+    },
+    "supersession_id": {
+      "$ref": "#/$defs/identity_ref"
+    },
+    "superseded_record_id": {
+      "$ref": "#/$defs/identity_ref"
+    },
+    "replacement_record_id": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/identity_ref"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "superseded_record_kind": {
+      "$ref": "#/$defs/record_kind"
+    },
+    "replacement_record_kind": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/record_kind"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "reason_code": {
+      "type": "string",
+      "enum": [
+        "semantic_correction",
+        "source_revision",
+        "model_revision",
+        "authority_revocation"
+      ]
+    },
+    "source_evidence_refs": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/evidence_ref"
+      },
+      "minItems": 1
+    },
+    "acceptance": {
+      "$ref": "#/$defs/acceptance"
+    }
+  },
+  "required": [
+    "schema",
+    "supersession_id",
+    "superseded_record_id",
+    "replacement_record_id",
+    "superseded_record_kind",
+    "replacement_record_kind",
+    "reason_code",
+    "source_evidence_refs",
+    "acceptance"
+  ],
+  "$defs": {
+    "digest": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "relative_path": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^(?!/)(?!.*\\\\)(?!.*://)(?![A-Za-z]:)[^\\r\\n]+$"
+    },
+    "identity_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "envelope_id": {
+          "const": "mtgml.digest-envelope.v1"
+        },
+        "algorithm_id": {
+          "const": "sha-256"
+        },
+        "semantic_domain": {
+          "type": "string",
+          "pattern": "^manafold\\.m2\\.5\\.c\\.[a-z0-9-]+\\.v1$"
+        },
+        "payload_codec_id": {
+          "const": "mtgml.canonical-cbor.v1"
+        },
+        "input_schema_id": {
+          "type": "string",
+          "pattern": "^manafold\\.m2\\.5\\.c\\.[a-z0-9-]+-input\\.v1$"
+        },
+        "digest_hex": {
+          "$ref": "#/$defs/digest"
+        }
+      },
+      "required": [
+        "envelope_id",
+        "algorithm_id",
+        "semantic_domain",
+        "payload_codec_id",
+        "input_schema_id",
+        "digest_hex"
+      ]
+    },
+    "record_kind": {
+      "type": "string",
+      "enum": [
+        "relation_theorem_record",
+        "relation_application_record",
+        "domain_theorem_record",
+        "domain_application_record",
+        "context_theorem_record",
+        "context_application_record"
+      ]
+    },
+    "evidence_locator": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "whole_artifact"
+            }
+          },
+          "required": [
+            "kind"
+          ]
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "json_pointer"
+            },
+            "value": {
+              "type": "string",
+              "pattern": "^(/([^~/]|~0|~1)*)*$"
+            }
+          },
+          "required": [
+            "kind",
+            "value"
+          ]
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "archive_member"
+            },
+            "value": {
+              "$ref": "#/$defs/relative_path"
+            }
+          },
+          "required": [
+            "kind",
+            "value"
+          ]
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "event_id"
+            },
+            "value": {
+              "type": "string",
+              "pattern": "^ae\\.v1/[0-9a-f]{64}$"
+            }
+          },
+          "required": [
+            "kind",
+            "value"
+          ]
+        }
+      ]
+    },
+    "evidence_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "authority_kind": {
+          "type": "string",
+          "enum": [
+            "model",
+            "rev3",
+            "b2",
+            "b1_final",
+            "c_candidate",
+            "reviewer_roster",
+            "acceptance_event"
+          ]
+        },
+        "path": {
+          "$ref": "#/$defs/relative_path"
+        },
+        "locator": {
+          "$ref": "#/$defs/evidence_locator"
+        },
+        "raw_sha256": {
+          "$ref": "#/$defs/digest"
+        }
+      },
+      "required": [
+        "authority_kind",
+        "path",
+        "locator",
+        "raw_sha256"
+      ]
+    },
+    "review_event_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "type": "string",
+          "pattern": "^sources/m2_5/authorities/review_acceptance_events/v1/[0-9a-f]{64}\\.json$"
+        },
+        "raw_sha256": {
+          "$ref": "#/$defs/digest"
+        },
+        "locator": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "event_id"
+            },
+            "value": {
+              "type": "string",
+              "pattern": "^ae\\.v1/[0-9a-f]{64}$"
+            }
+          },
+          "required": [
+            "kind",
+            "value"
+          ]
+        }
+      },
+      "required": [
+        "path",
+        "raw_sha256",
+        "locator"
+      ]
+    },
+    "acceptance": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "decision": {
+          "const": "human_accepted"
+        },
+        "review_event_ref": {
+          "$ref": "#/$defs/review_event_ref"
+        }
+      },
+      "required": [
+        "decision",
+        "review_event_ref"
+      ]
+    }
+  }
+}

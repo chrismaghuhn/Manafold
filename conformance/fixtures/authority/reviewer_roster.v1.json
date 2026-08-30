@@ -1,0 +1,12 @@
+{
+  "schema": "manafold.m2.5.c.reviewer-roster.v1",
+  "reviewers": [
+    {
+      "reviewer_id": "alice",
+      "roles": [
+        "architecture_maintainer",
+        "rules_authority_maintainer"
+      ]
+    }
+  ]
+}

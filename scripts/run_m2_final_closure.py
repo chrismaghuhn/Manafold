@@ -697,6 +697,7 @@ SCHEMA_INVENTORY_ALLOWED: frozenset[str] = frozenset(
         "golden-path-index.v1.schema.json",
         "information-state-envelope.v1.schema.json",
         "information-state-envelope.v2.schema.json",
+        "interaction-review-authority.v1.schema.json",
         "normative-document-register.v1.schema.json",
         "observation-envelope.v1.schema.json",
         "observed-event-envelope.v1.schema.json",
@@ -708,7 +709,10 @@ SCHEMA_INVENTORY_ALLOWED: frozenset[str] = frozenset(
         "replay-manifest.v1.schema.json",
         "replay-manifest.v2.schema.json",
         "replay-manifest.v3.schema.json",
+        "review-acceptance-event.v1.schema.json",
+        "reviewer-roster.v1.schema.json",
         "scope-impact-report.v1.schema.json",
+        "supersession-record.v1.schema.json",
     }
 )
 
@@ -918,8 +922,8 @@ def check_schema_inventory_pinned(root: Path) -> str:
     if unexpected or missing:
         raise ScopeCheckFailure(
             "schema inventory drifted from the pinned M2 inventory "
-            f"(unexpected={unexpected}, missing={missing}); new trajectory/"
-            "deck-lock/census schemas require explicit review"
+            f"(unexpected={unexpected}, missing={missing}); new schema "
+            "artifacts require explicit review"
         )
     forbidden = [
         name

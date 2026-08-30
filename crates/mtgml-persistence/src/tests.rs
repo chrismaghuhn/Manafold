@@ -1,5 +1,398 @@
-use super::{cbor, checkpoint_digest, envelope, PersistenceDecodeErrorV1};
+use super::{authority, cbor, checkpoint_digest, envelope, PersistenceDecodeErrorV1};
+use authority::{
+    canonical_identity_input, AcceptanceEvidenceRefV1, AcceptanceSubjectKind,
+    AcceptanceSubjectPayloadV1, AcceptanceV1, AuthorityIdentityKind, EvidenceLocatorV1,
+    ReviewAcceptanceEventInputV1, ReviewAcceptanceEventLeafV1, ReviewEventRefV1, ReviewMode,
+    ReviewerRoleBindingV1, ReviewerRosterRefV1, SourceBindingDigestV1,
+};
 use mtgml_model::{CheckpointCodecIdentity, EnvironmentLimitCounters, EpisodeStatus};
+
+#[test]
+fn authority_relation_identity_matches_cross_language_known_answer() {
+    let identity = authority::AuthorityIdentityV1::compute(
+        AuthorityIdentityKind::RelationTheorem,
+        cbor::Value::Array(vec![
+            cbor::Value::Text("manafold.m2.5.c.relation-proof-input.v1".to_owned()),
+            cbor::Value::Text("model".to_owned()),
+            cbor::Value::Text("positive_interaction".to_owned()),
+            cbor::Value::Text("unary".to_owned()),
+            cbor::Value::Text("declared_card_trigger".to_owned()),
+            cbor::Value::Text("none".to_owned()),
+            cbor::Value::Text("not_applicable".to_owned()),
+            cbor::Value::Array(vec![cbor::Value::Array(vec![
+                cbor::Value::Unsigned(0),
+                cbor::Value::Text("ordered_participant".to_owned()),
+                cbor::Value::Text("card".to_owned()),
+                cbor::Value::Text("subject-ref".to_owned()),
+            ])]),
+            cbor::Value::Array(vec![]),
+            cbor::Value::Array(vec![
+                cbor::Value::Text("positive_interaction".to_owned()),
+                cbor::Value::Array(vec![
+                    cbor::Value::Array(vec![cbor::Value::Array(vec![
+                        cbor::Value::Unsigned(0),
+                        cbor::Value::Unsigned(0),
+                        cbor::Value::Text("reads".to_owned()),
+                        cbor::Value::Array(vec![]),
+                        cbor::Value::Null,
+                        cbor::Value::Null,
+                        cbor::Value::Array(vec![]),
+                    ])]),
+                    cbor::Value::Array(vec![]),
+                    cbor::Value::Null,
+                ]),
+            ]),
+            cbor::Value::Array(vec![]),
+            cbor::Value::Array(vec![]),
+        ]),
+    )
+    .unwrap();
+
+    assert_eq!(
+        identity.as_text(),
+        "rp.v1/06dd852fa6a19b5e86d819955ee17cbfaef25d2efa563e1ee67db1368093fddc"
+    );
+    assert_eq!(
+        identity.semantic_domain(),
+        "manafold.m2.5.c.relation-proof.v1"
+    );
+    assert!(canonical_identity_input(
+        AuthorityIdentityKind::RelationTheorem,
+        cbor::Value::Array(vec![cbor::Value::Text("wrong-schema".to_owned())]),
+    )
+    .is_err());
+    assert_eq!(
+        identity.input_schema_id(),
+        "manafold.m2.5.c.relation-proof-input.v1"
+    );
+    let invalid_relation = cbor::Value::Array(vec![
+        cbor::Value::Text("manafold.m2.5.c.relation-proof-input.v1".to_owned()),
+        cbor::Value::Text("model".to_owned()),
+        cbor::Value::Text("positive_interaction".to_owned()),
+        cbor::Value::Text("unary".to_owned()),
+        cbor::Value::Text("reviewed_relation".to_owned()),
+        cbor::Value::Text("directional".to_owned()),
+        cbor::Value::Text("same_subject".to_owned()),
+        cbor::Value::Array(vec![]),
+        cbor::Value::Array(vec![]),
+        cbor::Value::Array(vec![]),
+        cbor::Value::Array(vec![]),
+        cbor::Value::Array(vec![]),
+    ]);
+    assert!(authority::AuthorityIdentityV1::compute(
+        AuthorityIdentityKind::RelationTheorem,
+        invalid_relation,
+    )
+    .is_err());
+    assert!(authority::AuthorityIdentityV1::compute(
+        AuthorityIdentityKind::AcceptanceSubject,
+        cbor::Value::Array(vec![
+            cbor::Value::Text("manafold.m2.5.c.acceptance-subject-payload-input.v1".to_owned()),
+            cbor::Value::Text("relation_theorem_record".to_owned()),
+            cbor::Value::Array(vec![]),
+        ]),
+    )
+    .is_err());
+}
+
+#[test]
+fn authority_source_binding_has_fixed_cbor_preimage() {
+    let binding = SourceBindingDigestV1::new(
+        "declared_model",
+        "sources/m2_5/closures/C/declared_interaction_model.v2.json",
+        Some("manafold.m2.5.c.declared-interaction-model.v2"),
+        [0u8; 32],
+    )
+    .unwrap();
+
+    assert_eq!(
+        binding.to_cbor(),
+        cbor::Value::Array(vec![
+            cbor::Value::Text("declared_model".to_owned()),
+            cbor::Value::Text(
+                "sources/m2_5/closures/C/declared_interaction_model.v2.json".to_owned()
+            ),
+            cbor::Value::Text("manafold.m2.5.c.declared-interaction-model.v2".to_owned()),
+            cbor::Value::Bytes(vec![0u8; 32]),
+        ])
+    );
+    assert!(SourceBindingDigestV1::new(
+        "declared_model",
+        "derived/Pair_Interaction_Census_REV3.csv",
+        None,
+        [0u8; 32],
+    )
+    .is_err());
+    assert!(AcceptanceEvidenceRefV1::new(
+        "docs/review/authority.md",
+        [0u8; 32],
+        EvidenceLocatorV1::JsonPointer("/review~2".to_owned()),
+    )
+    .is_err());
+}
+
+#[test]
+fn authority_acceptance_event_identity_matches_cross_language_known_answer() {
+    let subject = AcceptanceSubjectPayloadV1::new(
+        AcceptanceSubjectKind::RelationTheoremRecord,
+        cbor::Value::Array(vec![
+            cbor::Value::Bytes(vec![0u8; 32]),
+            cbor::Value::Array(vec![cbor::Value::Array(vec![
+                cbor::Value::Text("model".to_owned()),
+                cbor::Value::Text("sources/model.json".to_owned()),
+                cbor::Value::Array(vec![
+                    cbor::Value::Text("whole_artifact".to_owned()),
+                    cbor::Value::Null,
+                ]),
+                cbor::Value::Bytes(vec![0u8; 32]),
+            ])]),
+            cbor::Value::Text("fixture rationale".to_owned()),
+        ]),
+    )
+    .unwrap();
+    assert!(subject.identity().unwrap().as_text().starts_with("asp.v1/"));
+
+    let roster_ref = ReviewerRosterRefV1::new(
+        format!(
+            "sources/m2_5/authorities/reviewer_rosters/v1/{}.json",
+            "00".repeat(32)
+        ),
+        authority::REVIEWER_ROSTER_SCHEMA_V1,
+        [0u8; 32],
+    )
+    .unwrap();
+    let reviewer = ReviewerRoleBindingV1::new(
+        "alice",
+        vec![
+            "architecture_maintainer".to_owned(),
+            "rules_authority_maintainer".to_owned(),
+        ],
+    )
+    .unwrap();
+    let source = SourceBindingDigestV1::new(
+        "declared_model",
+        "sources/m2_5/closures/C/declared_interaction_model.v2.json",
+        Some("manafold.m2.5.c.declared-interaction-model.v2"),
+        [0u8; 32],
+    )
+    .unwrap();
+    let roster_source = SourceBindingDigestV1::new(
+        "reviewer_roster_leaf",
+        roster_ref.path.clone(),
+        Some(authority::REVIEWER_ROSTER_SCHEMA_V1),
+        [0u8; 32],
+    )
+    .unwrap();
+    let review_evidence = AcceptanceEvidenceRefV1::new(
+        "docs/review/authority.md",
+        [0u8; 32],
+        EvidenceLocatorV1::WholeArtifact,
+    )
+    .unwrap();
+    let event = ReviewAcceptanceEventInputV1::new(
+        AcceptanceSubjectKind::RelationTheoremRecord,
+        [0u8; 32],
+        roster_ref,
+        vec![reviewer],
+        ReviewMode::SoloSeparateSelfReview,
+        vec![source, roster_source],
+        vec![review_evidence],
+    )
+    .unwrap();
+
+    let leaf = ReviewAcceptanceEventLeafV1::from_input(event.clone()).unwrap();
+    let wire = leaf.to_wire().unwrap();
+    let fixture: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../conformance/fixtures/authority/review_acceptance_event.v1.json"
+    ))
+    .unwrap();
+    assert_eq!(wire, fixture);
+    assert_eq!(
+        wire["event_id"],
+        serde_json::json!("ae.v1/605cc0fcb6020f5066896ddc238bc7594e39a7bf731c33a72d88ab7a7acc8013")
+    );
+    assert_eq!(leaf.to_cbor().unwrap(), event.semantic_input().unwrap());
+}
+
+#[test]
+fn authority_acceptance_binding_has_fixed_cbor_preimage() {
+    let event_ref = ReviewEventRefV1::new(
+        format!(
+            "sources/m2_5/authorities/review_acceptance_events/v1/{}.json",
+            "00".repeat(32)
+        ),
+        [0u8; 32],
+        format!("ae.v1/{}", "00".repeat(32)),
+    )
+    .unwrap();
+    let acceptance = AcceptanceV1 {
+        review_event_ref: event_ref.clone(),
+    };
+    assert_eq!(
+        acceptance.to_cbor(),
+        cbor::Value::Array(vec![
+            cbor::Value::Text("human_accepted".to_owned()),
+            event_ref.to_cbor(),
+        ])
+    );
+}
+
+#[test]
+fn all_authority_identity_kinds_match_the_shared_golden_matrix() {
+    let matrix: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../conformance/fixtures/authority/identity_golden_matrix.v1.json"
+    ))
+    .unwrap();
+    let identities = matrix["identities"].as_array().unwrap();
+    assert_eq!(identities.len(), 17);
+
+    for entry in identities {
+        let kind = authority_kind(entry["kind"].as_str().unwrap());
+        let payload_bytes = decode_hex(entry["payload_cbor_hex"].as_str().unwrap());
+        let payload = cbor::decode_canonical(&payload_bytes).unwrap();
+        assert_eq!(
+            payload_array_len(&payload),
+            entry["arity"].as_u64().unwrap() as usize
+        );
+        let identity = authority::AuthorityIdentityV1::compute(kind, payload).unwrap();
+        assert_eq!(identity.as_text(), entry["identity"].as_str().unwrap());
+        assert_eq!(
+            identity.semantic_domain(),
+            entry["semantic_domain"].as_str().unwrap()
+        );
+        assert_eq!(
+            identity.input_schema_id(),
+            entry["input_schema_id"].as_str().unwrap()
+        );
+        assert_eq!(identity.kind().prefix(), entry["prefix"].as_str().unwrap());
+    }
+}
+
+#[test]
+fn authority_contract_negative_matrix_rejects_every_case() {
+    let matrix: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../conformance/fixtures/authority/identity_contract_negative_matrix.v1.json"
+    ))
+    .unwrap();
+    let cases = matrix["cases"].as_array().unwrap();
+    assert!(cases.len() >= 10);
+
+    for case in cases {
+        assert_eq!(case["expected"], serde_json::json!("reject"));
+        let kind = authority_kind(case["kind"].as_str().unwrap());
+        let payload =
+            cbor::decode_canonical(&decode_hex(case["payload_cbor_hex"].as_str().unwrap()))
+                .unwrap();
+        assert!(
+            authority::AuthorityIdentityV1::compute(kind, payload).is_err(),
+            "negative authority case was accepted: {}",
+            case["case_id"].as_str().unwrap()
+        );
+    }
+}
+
+#[test]
+fn authority_contract_matrix_positive_controls_are_accepted() {
+    let matrix: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../conformance/fixtures/authority/identity_contract_negative_matrix.v1.json"
+    ))
+    .unwrap();
+    let controls = matrix["positive_controls"].as_array().unwrap();
+    assert!(!controls.is_empty());
+
+    for control in controls {
+        assert_eq!(control["expected"], serde_json::json!("accept"));
+        let kind = authority_kind(control["kind"].as_str().unwrap());
+        let payload =
+            cbor::decode_canonical(&decode_hex(control["payload_cbor_hex"].as_str().unwrap()))
+                .unwrap();
+        assert!(
+            authority::AuthorityIdentityV1::compute(kind, payload).is_ok(),
+            "positive authority control was rejected: {}",
+            control["control_id"].as_str().unwrap()
+        );
+    }
+}
+
+#[test]
+fn required_relation_channels_use_declared_vocabulary_order() {
+    let matrix: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../conformance/fixtures/authority/identity_golden_matrix.v1.json"
+    ))
+    .unwrap();
+    let entry = matrix["identities"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|entry| entry["kind"] == serde_json::json!("relation_theorem"))
+        .unwrap();
+    let mut payload =
+        cbor::decode_canonical(&decode_hex(entry["payload_cbor_hex"].as_str().unwrap())).unwrap();
+    let fields = match &mut payload {
+        cbor::Value::Array(fields) => fields,
+        _ => panic!("relation theorem matrix payload is not an array"),
+    };
+    let proof_payload = match &mut fields[9] {
+        cbor::Value::Array(values) => values,
+        _ => panic!("relation proof payload is not an array"),
+    };
+    let positive_fields = match &mut proof_payload[1] {
+        cbor::Value::Array(values) => values,
+        _ => panic!("positive relation payload is not an array"),
+    };
+    positive_fields[1] = cbor::Value::Array(vec![
+        cbor::Value::Text("participant_boundary".to_owned()),
+        cbor::Value::Text("event_or_effect_causality".to_owned()),
+    ]);
+    assert!(authority::AuthorityIdentityV1::compute(
+        AuthorityIdentityKind::RelationTheorem,
+        payload
+    )
+    .is_ok());
+}
+
+fn payload_array_len(value: &cbor::Value) -> usize {
+    match value {
+        cbor::Value::Array(values) => values.len(),
+        other => panic!("identity matrix payload is not an array: {other:?}"),
+    }
+}
+
+fn authority_kind(value: &str) -> AuthorityIdentityKind {
+    match value {
+        "relation_theorem" => AuthorityIdentityKind::RelationTheorem,
+        "relation_theorem_record" => AuthorityIdentityKind::RelationTheoremRecord,
+        "relation_application" => AuthorityIdentityKind::RelationApplication,
+        "relation_application_record" => AuthorityIdentityKind::RelationApplicationRecord,
+        "relation_supersession" => AuthorityIdentityKind::RelationSupersession,
+        "domain_theorem" => AuthorityIdentityKind::DomainTheorem,
+        "domain_theorem_record" => AuthorityIdentityKind::DomainTheoremRecord,
+        "domain_application" => AuthorityIdentityKind::DomainApplication,
+        "domain_application_record" => AuthorityIdentityKind::DomainApplicationRecord,
+        "domain_supersession" => AuthorityIdentityKind::DomainSupersession,
+        "context_theorem" => AuthorityIdentityKind::ContextTheorem,
+        "context_theorem_record" => AuthorityIdentityKind::ContextTheoremRecord,
+        "context_application" => AuthorityIdentityKind::ContextApplication,
+        "context_application_record" => AuthorityIdentityKind::ContextApplicationRecord,
+        "context_supersession" => AuthorityIdentityKind::ContextSupersession,
+        "acceptance_subject" => AuthorityIdentityKind::AcceptanceSubject,
+        "review_acceptance_event" => AuthorityIdentityKind::ReviewAcceptanceEvent,
+        other => panic!("unknown authority identity kind: {other}"),
+    }
+}
+
+fn decode_hex(value: &str) -> Vec<u8> {
+    assert_eq!(value.len() % 2, 0);
+    value
+        .as_bytes()
+        .chunks_exact(2)
+        .map(|pair| {
+            let high = (pair[0] as char).to_digit(16).unwrap();
+            let low = (pair[1] as char).to_digit(16).unwrap();
+            ((high << 4) | low) as u8
+        })
+        .collect()
+}
 
 #[test]
 fn canonical_cbor_v1_complete_profile_matrix() {
