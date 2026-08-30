@@ -34,6 +34,28 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 class AuthorityIdentityTests(unittest.TestCase):
+    def test_domain_criterion_accepts_ordered_boundary_fields(self) -> None:
+        payload = [
+            "manafold.m2.5.c.domain-proof-input.v1",
+            "declared-interaction-model.v2",
+            "triggers_and_lki",
+            "applicable",
+            [
+                [
+                    "rule_domain_required",
+                    [["authority-1", "citation-1"], ["includes", "timing"]],
+                ]
+            ],
+            [],
+            [],
+            [],
+        ]
+
+        self.assertEqual(
+            canonical_identity_input(AuthorityIdentityKind.DOMAIN_THEOREM, payload),
+            payload,
+        )
+
     def test_relation_identity_matches_cross_language_known_answer(self) -> None:
         identity = compute_authority_identity(
             AuthorityIdentityKind.RELATION_THEOREM,

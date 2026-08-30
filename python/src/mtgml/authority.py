@@ -11,7 +11,7 @@ import re
 from collections.abc import Callable
 from dataclasses import dataclass
 from enum import Enum
-from typing import Final, Protocol, TypeAlias, cast
+from typing import Final, NoReturn, Protocol, TypeAlias, cast
 
 from .persistence import (
     CANONICAL_CBOR_ID,
@@ -1167,13 +1167,27 @@ _CLASS_PROJECTION_POSITIONS: Final = (
     "b2_boundary_refs",
     "b1_final_citation_refs",
 )
+_DOMAIN_BOUNDARY_FIELDS: Final = (
+    "includes",
+    "excludes",
+    "objects",
+    "action_or_event",
+    "timing",
+    "zone_visibility",
+    "eligibility_condition_duration",
+    "targets_choices",
+    "ownership_control",
+    "numeric_scaling_counters",
+    "information_identity_effect",
+    "rule_dependency",
+)
 _CONTEXT_SLOT_SEQUENCE: Final = tuple(
     [("context_dimension", name) for name in _CONTEXT_DIMENSIONS]
     + [("temporal_semantic", name) for name in _TEMPORAL_SEMANTICS]
 )
 
 
-def _fail(message: str) -> None:
+def _fail(message: str) -> NoReturn:
     raise AuthorityContractError(message)
 
 
@@ -1859,40 +1873,14 @@ def _validate_domain_criterion(value: object) -> None:
         fields = [
             _enum(
                 field,
-                (
-                    "includes",
-                    "excludes",
-                    "objects",
-                    "action_or_event",
-                    "timing",
-                    "zone_visibility",
-                    "eligibility_condition_duration",
-                    "targets_choices",
-                    "ownership_control",
-                    "numeric_scaling_counters",
-                    "information_identity_effect",
-                    "rule_dependency",
-                ),
+                _DOMAIN_BOUNDARY_FIELDS,
                 "covered boundary field",
             )
             for field in covered
         ]
         if not fields or fields != sorted(
             fields,
-            key=lambda field: (
-                "includes",
-                "excludes",
-                "objects",
-                "action_or_event",
-                "timing",
-                "zone_visibility",
-                "eligibility_condition_duration",
-                "targets_choices",
-                "ownership_control",
-                "numeric_scaling_counters",
-                "information_identity_effect",
-                "rule_dependency",
-            ).index,
+            key=lambda field: _DOMAIN_BOUNDARY_FIELDS.index(field),
         ):
             _fail("covered boundary fields must be a non-empty ordered subsequence")
     elif kind == "rule_domain_excluded":
