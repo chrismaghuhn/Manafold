@@ -16,9 +16,9 @@ fn authority_relation_identity_matches_cross_language_known_answer() {
             cbor::Value::Text("model".to_owned()),
             cbor::Value::Text("positive_interaction".to_owned()),
             cbor::Value::Text("unary".to_owned()),
-            cbor::Value::Text("reviewed_relation".to_owned()),
-            cbor::Value::Text("directional".to_owned()),
-            cbor::Value::Text("same_host".to_owned()),
+            cbor::Value::Text("declared_card_trigger".to_owned()),
+            cbor::Value::Text("none".to_owned()),
+            cbor::Value::Text("not_applicable".to_owned()),
             cbor::Value::Array(vec![cbor::Value::Array(vec![
                 cbor::Value::Unsigned(0),
                 cbor::Value::Text("ordered_participant".to_owned()),
@@ -50,7 +50,7 @@ fn authority_relation_identity_matches_cross_language_known_answer() {
 
     assert_eq!(
         identity.as_text(),
-        "rp.v1/0868a972b7bc61f34d306292269e788244c30641b52f18416151067d7c3cadb6"
+        "rp.v1/06dd852fa6a19b5e86d819955ee17cbfaef25d2efa563e1ee67db1368093fddc"
     );
     assert_eq!(
         identity.semantic_domain(),
@@ -257,6 +257,29 @@ fn all_authority_identity_kinds_match_the_shared_golden_matrix() {
             entry["input_schema_id"].as_str().unwrap()
         );
         assert_eq!(identity.kind().prefix(), entry["prefix"].as_str().unwrap());
+    }
+}
+
+#[test]
+fn authority_contract_negative_matrix_rejects_every_case() {
+    let matrix: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../conformance/fixtures/authority/identity_contract_negative_matrix.v1.json"
+    ))
+    .unwrap();
+    let cases = matrix["cases"].as_array().unwrap();
+    assert!(cases.len() >= 10);
+
+    for case in cases {
+        assert_eq!(case["expected"], serde_json::json!("reject"));
+        let kind = authority_kind(case["kind"].as_str().unwrap());
+        let payload =
+            cbor::decode_canonical(&decode_hex(case["payload_cbor_hex"].as_str().unwrap()))
+                .unwrap();
+        assert!(
+            authority::AuthorityIdentityV1::compute(kind, payload).is_err(),
+            "negative authority case was accepted: {}",
+            case["case_id"].as_str().unwrap()
+        );
     }
 }
 

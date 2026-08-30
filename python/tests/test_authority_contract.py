@@ -42,9 +42,9 @@ class AuthorityIdentityTests(unittest.TestCase):
                 "model",
                 "positive_interaction",
                 "unary",
-                "reviewed_relation",
-                "directional",
-                "same_host",
+                "declared_card_trigger",
+                "none",
+                "not_applicable",
                 [[0, "ordered_participant", "card", "subject-ref"]],
                 [],
                 [
@@ -62,7 +62,7 @@ class AuthorityIdentityTests(unittest.TestCase):
 
         self.assertEqual(
             identity.as_text(),
-            "rp.v1/0868a972b7bc61f34d306292269e788244c30641b52f18416151067d7c3cadb6",
+            "rp.v1/06dd852fa6a19b5e86d819955ee17cbfaef25d2efa563e1ee67db1368093fddc",
         )
         self.assertEqual(identity.semantic_domain, "manafold.m2.5.c.relation-proof.v1")
         self.assertEqual(
@@ -366,9 +366,9 @@ class AuthoritySchemaTests(unittest.TestCase):
         }
         projection = {
             "arity": "unary",
-            "directionality": "directional",
+            "directionality": "none",
             "participant_roles": [participant],
-            "host_relationship": "same_host",
+            "host_relationship": "not_applicable",
             "context_dimensions": ["not_applicable"] * 10,
             "temporal_semantics": ["not_applicable"] * 4,
             "b2_family_refs": [family],
@@ -487,9 +487,9 @@ class AuthorityIdentityMatrixTests(unittest.TestCase):
         payload = decode_canonical(bytes.fromhex(entry["payload_cbor_hex"]))
         payload[9][1][2] = [
             "unary",
-            "directional",
+            "none",
             [[0, "ordered_participant", "card", "subject-ref"]],
-            "same_host",
+            "not_applicable",
             ["not_applicable"] * 10,
             ["not_applicable"] * 4,
             [["cap.fixture", "active", "primary"]],
@@ -512,9 +512,9 @@ class AuthorityIdentityMatrixTests(unittest.TestCase):
         payload = decode_canonical(bytes.fromhex(entry["payload_cbor_hex"]))
         projection = [
             "unary",
-            "directional",
+            "none",
             [[0, "ordered_participant", "card", "subject-ref"]],
-            "same_host",
+            "not_applicable",
             ["not_applicable"] * 10,
             ["not_applicable"] * 4,
             [],
@@ -522,7 +522,7 @@ class AuthorityIdentityMatrixTests(unittest.TestCase):
             [],
         ]
         payload[3][0][4][4][0][1] = "ordered_participant"
-        payload[3][0][4][3] = "same_host"
+        payload[3][0][4][3] = "not_applicable"
         payload[3][0][7][1][1] = [
             projection,
             projection,
@@ -575,3 +575,17 @@ class AuthorityIdentityMatrixTests(unittest.TestCase):
                 compute_authority_identity(
                     AuthorityIdentityKind.CONTEXT_APPLICATION, invalid_payload
                 )
+
+    def test_contract_negative_matrix_rejects_every_case(self) -> None:
+        matrix = json.loads(
+            (
+                ROOT / "conformance/fixtures/authority/identity_contract_negative_matrix.v1.json"
+            ).read_text(encoding="utf-8")
+        )
+        self.assertGreaterEqual(len(matrix["cases"]), 10)
+        for case in matrix["cases"]:
+            with self.subTest(case_id=case["case_id"]):
+                self.assertEqual(case["expected"], "reject")
+                payload = decode_canonical(bytes.fromhex(case["payload_cbor_hex"]))
+                with self.assertRaises(AuthorityContractError):
+                    compute_authority_identity(AuthorityIdentityKind(case["kind"]), payload)

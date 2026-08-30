@@ -887,9 +887,16 @@ _RELATION_CHANNELS: Final = (
     "decision_actor",
     "format_and_declared_scope",
 )
-_ARITIES: Final = ("unary", "unordered_binary", "directional_binary", "higher_order")
-_DIRECTIONALITIES: Final = ("unordered", "directional")
+_ARITIES: Final = ("unary", "binary", "higher_order")
+_DIRECTIONALITIES: Final = ("directed", "none", "symmetric")
 _HOST_RELATIONSHIPS: Final = ("cross_host", "not_applicable", "same_host")
+_SCOPES: Final = ("cross_deck", "intra_deck", "unary_or_higher_order")
+_RELATIONS: Final = (
+    "declared_card_trigger",
+    "directional_binary",
+    "reviewed_higher_order",
+    "unordered_binary",
+)
 _OPERATIONS: Final = (
     "reads",
     "changes_characteristic",
@@ -934,7 +941,6 @@ _TERMINAL_DISPOSITIONS: Final = (
     "required_interaction",
     "not_an_interaction_with_proof",
     "out_of_declared_scope_with_reason",
-    "unresolved",
 )
 _PRECONDITION_KINDS: Final = (
     "candidate_relation_shape",
@@ -1357,14 +1363,26 @@ def _validate_participant_role(value: object, label: str = "participant role") -
     _text(role[3], f"{label} semantic reference")
 
 
-def _validate_participant_roles(value: object) -> None:
+def _validate_participant_roles(
+    value: object,
+    directionality: str | None = None,
+) -> None:
     roles = _array(value, "participant roles")
     if not roles:
         _fail("participant roles must be non-empty")
+    keys: list[bytes] = []
     for index, role in enumerate(roles):
         _validate_participant_role(role)
-        if cast(list[object], role)[0] != index:
+        fields = cast(list[object], role)
+        if fields[0] != index:
             _fail("participant role positions must be the ordered 0..n-1 sequence")
+        if directionality == "symmetric":
+            keys.append(encode_canonical(cast(PersistenceValue, [fields[2], fields[3], fields[1]])))
+    if directionality == "symmetric":
+        if keys != sorted(keys):
+            _fail("symmetric participant roles must be in canonical order")
+        if len(set(keys)) != len(keys):
+            _fail("symmetric participant roles must be duplicate-free")
 
 
 def _validate_b2_boundary_ref(value: object) -> None:
@@ -1479,8 +1497,8 @@ def _validate_positive_boundary_facts(value: object, label: str) -> None:
 def _validate_class_projection(value: object) -> None:
     projection = _array(value, "class projection", 9)
     _enum(projection[0], _ARITIES, "class arity")
-    _enum(projection[1], _DIRECTIONALITIES, "class directionality")
-    _validate_participant_roles(projection[2])
+    directionality = _enum(projection[1], _DIRECTIONALITIES, "class directionality")
+    _validate_participant_roles(projection[2], directionality)
     _enum(projection[3], _HOST_RELATIONSHIPS, "class host relationship")
     _validate_slot_value_vector(
         projection[4], _CONTEXT_DIMENSIONS, _CONTEXT_VALUES, "context dimension values"
@@ -1495,8 +1513,10 @@ def _validate_class_projection(value: object) -> None:
 
 def _validate_candidate_shape(value: object) -> None:
     shape = _array(value, "candidate shape", 5)
-    for index, label in enumerate(("scope", "relation", "arity", "directionality")):
-        _text(shape[index], label)
+    _enum(shape[0], _SCOPES, "candidate scope")
+    _enum(shape[1], _RELATIONS, "candidate relation")
+    _enum(shape[2], _ARITIES, "candidate arity")
+    _enum(shape[3], _DIRECTIONALITIES, "candidate directionality")
     _uint32(shape[4], "participant count")
 
 
@@ -1514,8 +1534,8 @@ def _validate_precondition_payload(kind: str, payload: object) -> None:
     if kind == "candidate_relation_shape":
         if len(values) != 4:
             _fail("candidate relation shape precondition must contain four fields")
-        for index, label in enumerate(("scope", "relation")):
-            _text(values[index], label)
+        _enum(values[0], _SCOPES, "candidate relation scope")
+        _enum(values[1], _RELATIONS, "candidate relation")
         _enum(values[2], _DIRECTIONALITIES, "candidate relation directionality")
         _enum(values[3], _HOST_RELATIONSHIPS, "candidate relation host relationship")
     elif kind == "participant_binding":
@@ -1548,15 +1568,19 @@ def _validate_precondition_payload(kind: str, payload: object) -> None:
 def _validate_preconditions(value: object) -> None:
     preconditions = _array(value, "preconditions")
     seen: set[str] = set()
+    ordering_keys: list[bytes] = []
     for precondition in preconditions:
         fields = _array(precondition, "precondition", 2)
         precondition_id = _text(fields[0], "precondition ID")
         if precondition_id in seen:
             _fail("precondition IDs must be unique")
         seen.add(precondition_id)
+        ordering_keys.append(encode_canonical(precondition_id))
         tagged = _array(fields[1], "precondition tagged payload", 2)
         kind = _enum(tagged[0], _PRECONDITION_KINDS, "precondition kind")
         _validate_precondition_payload(kind, tagged[1])
+    if ordering_keys != sorted(ordering_keys):
+        _fail("precondition IDs must be in canonical order")
 
 
 def _validate_causal_chain(value: object) -> None:
@@ -1628,11 +1652,11 @@ def _validate_relation_proof_payload(value: object) -> None:
 
 def _validate_relation_binding(value: object) -> None:
     fields = _array(value, "relation binding", 5)
-    _text(fields[0], "relation scope")
-    _text(fields[1], "relation name")
-    _enum(fields[2], _DIRECTIONALITIES, "relation directionality")
+    directionality = _enum(fields[2], _DIRECTIONALITIES, "relation directionality")
+    _enum(fields[0], _SCOPES, "relation scope")
+    _enum(fields[1], _RELATIONS, "relation name")
     _enum(fields[3], _HOST_RELATIONSHIPS, "relation host relationship")
-    _validate_participant_roles(fields[4])
+    _validate_participant_roles(fields[4], directionality)
 
 
 def _validate_candidate_universe_binding(value: object) -> None:
@@ -1651,25 +1675,55 @@ def _validate_domain_binding(value: object) -> None:
 def _validate_context_binding(value: object) -> None:
     fields = _array(value, "context binding", 4)
     _enum(fields[0], _ARITIES, "context arity")
-    _enum(fields[1], _DIRECTIONALITIES, "context directionality")
-    _validate_participant_roles(fields[2])
+    directionality = _enum(fields[1], _DIRECTIONALITIES, "context directionality")
+    _validate_participant_roles(fields[2], directionality)
     _enum(fields[3], _HOST_RELATIONSHIPS, "context host relationship")
 
 
 def _validate_precondition_attestations(value: object) -> None:
     attestations = _array(value, "precondition attestations")
+    ordering_keys: list[bytes] = []
     for attestation in attestations:
         fields = _array(attestation, "precondition attestation", 4)
-        _text(fields[0], "attestation precondition ID")
+        precondition_id = _text(fields[0], "attestation precondition ID")
+        ordering_keys.append(encode_canonical(precondition_id))
         _validate_cbor_value(fields[1], "observed precondition payload")
         _validate_evidence_refs(fields[2], "member evidence references")
         _text(fields[3], "precondition equivalence rationale")
+    if ordering_keys != sorted(ordering_keys):
+        _fail("precondition IDs must be in canonical order")
+    if len(set(ordering_keys)) != len(ordering_keys):
+        _fail("precondition attestations must be duplicate-free")
+
+
+def _validate_application_members(
+    value: object,
+    validator: Callable[[object], None],
+    label: str,
+) -> None:
+    members = _array(value, label)
+    ordering_keys: list[bytes] = []
+    for member in members:
+        validator(member)
+        fields = _array(member, f"{label} member")
+        identity = _array(fields[1], f"{label} member candidate identity", 6)
+        digest = _bytes32(identity[5], f"{label} member candidate digest")
+        source_instance_id = _text(fields[2], f"{label} member source instance ID")
+        ordering_keys.append(encode_canonical([digest, source_instance_id]))
+    if ordering_keys != sorted(ordering_keys):
+        _fail(f"{label} must be sorted by candidate digest and source instance ID")
+    if len(set(ordering_keys)) != len(ordering_keys):
+        _fail(f"{label} must be duplicate-free")
 
 
 def _validate_class_projection_equivalence(value: object) -> None:
     fields = _array(value, "class projection equivalence", 6)
     _validate_class_projection(fields[0])
     _validate_class_projection(fields[1])
+    if encode_canonical(cast(PersistenceValue, fields[0])) != encode_canonical(
+        cast(PersistenceValue, fields[1])
+    ):
+        _fail("theorem and member class projections must be identical")
     _exact_ordered_enum_array(fields[2], _CLASS_PROJECTION_POSITIONS, "equal class positions")
     semantic_claim = _array(fields[3], "semantic claim relation", 2)
     if semantic_claim[0] != "same_theorem_semantic_id":
@@ -2001,10 +2055,10 @@ def _validate_kind_payload(kind: AuthorityIdentityKind, fields: list[AuthorityVa
         _text(values[1], "model ID")
         _enum(values[2], _PROOF_KINDS, "proof kind")
         _enum(values[3], _ARITIES, "arity")
-        _text(values[4], "relation")
-        _enum(values[5], _DIRECTIONALITIES, "directionality")
+        _enum(values[4], _RELATIONS, "relation")
+        directionality = _enum(values[5], _DIRECTIONALITIES, "directionality")
         _enum(values[6], _HOST_RELATIONSHIPS, "host relationship")
-        _validate_participant_roles(values[7])
+        _validate_participant_roles(values[7], directionality)
         _validate_preconditions(values[8])
         _validate_relation_proof_payload(values[9])
         _validate_b2_boundary_refs(values[10])
@@ -2020,8 +2074,12 @@ def _validate_kind_payload(kind: AuthorityIdentityKind, fields: list[AuthorityVa
     elif kind is AuthorityIdentityKind.CONTEXT_THEOREM:
         _text(values[1], "context model ID")
         _validate_context_binding(values[2])
-        _exact_ordered_enum_array(values[3], _CONTEXT_DIMENSIONS, "context dimensions")
-        _exact_ordered_enum_array(values[4], _TEMPORAL_SEMANTICS, "temporal semantics")
+        _validate_slot_value_vector(
+            values[3], _CONTEXT_DIMENSIONS, _CONTEXT_VALUES, "context dimension values"
+        )
+        _validate_slot_value_vector(
+            values[4], _TEMPORAL_SEMANTICS, _TEMPORAL_VALUES, "temporal semantic values"
+        )
         _validate_preconditions(values[5])
         _validate_b2_boundary_refs(values[6])
         _validate_b1_citation_refs(values[7])
@@ -2034,19 +2092,21 @@ def _validate_kind_payload(kind: AuthorityIdentityKind, fields: list[AuthorityVa
     elif kind is AuthorityIdentityKind.RELATION_APPLICATION:
         _bytes32(values[1], "relation theorem record ID")
         _enum(values[2], _TERMINAL_DISPOSITIONS, "terminal disposition")
-        members = _array(values[3], "relation application members")
-        for member in members:
-            _validate_relation_member(member)
+        _validate_application_members(
+            values[3], _validate_relation_member, "relation application members"
+        )
     elif kind is AuthorityIdentityKind.DOMAIN_APPLICATION:
         _bytes32(values[1], "domain theorem record ID")
         _enum(values[2], _REVIEW_DOMAINS, "review domain")
         _enum(values[3], _APPLICABILITY, "applicability")
-        for member in _array(values[4], "domain application members"):
-            _validate_domain_member(member)
+        _validate_application_members(
+            values[4], _validate_domain_member, "domain application members"
+        )
     elif kind is AuthorityIdentityKind.CONTEXT_APPLICATION:
         _bytes32(values[1], "context theorem record ID")
-        for member in _array(values[2], "context application members"):
-            _validate_context_member(member)
+        _validate_application_members(
+            values[2], _validate_context_member, "context application members"
+        )
     elif kind in {
         AuthorityIdentityKind.RELATION_APPLICATION_RECORD,
         AuthorityIdentityKind.DOMAIN_APPLICATION_RECORD,

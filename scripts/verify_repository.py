@@ -100,6 +100,7 @@ def main() -> None:
         "examples/golden-path/index.json",
         "conformance/fixtures/authority/interaction_review_authority.v1.json",
         "conformance/fixtures/authority/identity_golden_matrix.v1.json",
+        "conformance/fixtures/authority/identity_contract_negative_matrix.v1.json",
         "conformance/fixtures/authority/review_acceptance_event.v1.json",
         "conformance/fixtures/authority/reviewer_roster.v1.json",
         "conformance/fixtures/authority/supersession_record.v1.json",

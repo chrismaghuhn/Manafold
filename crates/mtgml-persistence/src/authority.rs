@@ -1278,14 +1278,16 @@ const RELATION_CHANNELS: [&str; 11] = [
     "decision_actor",
     "format_and_declared_scope",
 ];
-const ARITIES: [&str; 4] = [
-    "unary",
-    "unordered_binary",
-    "directional_binary",
-    "higher_order",
-];
-const DIRECTIONALITIES: [&str; 2] = ["unordered", "directional"];
+const ARITIES: [&str; 3] = ["unary", "binary", "higher_order"];
+const DIRECTIONALITIES: [&str; 3] = ["directed", "none", "symmetric"];
 const HOST_RELATIONSHIPS: [&str; 3] = ["cross_host", "not_applicable", "same_host"];
+const SCOPES: [&str; 3] = ["cross_deck", "intra_deck", "unary_or_higher_order"];
+const RELATIONS: [&str; 4] = [
+    "declared_card_trigger",
+    "directional_binary",
+    "reviewed_higher_order",
+    "unordered_binary",
+];
 const OPERATIONS: [&str; 13] = [
     "reads",
     "changes_characteristic",
@@ -1326,11 +1328,10 @@ const REVIEW_DOMAINS: [&str; 11] = [
     "higher_order_interactions",
 ];
 const APPLICABILITY: [&str; 2] = ["applicable", "not_applicable"];
-const TERMINAL_DISPOSITIONS: [&str; 4] = [
+const TERMINAL_DISPOSITIONS: [&str; 3] = [
     "required_interaction",
     "not_an_interaction_with_proof",
     "out_of_declared_scope_with_reason",
-    "unresolved",
 ];
 const PRECONDITION_KINDS: [&str; 6] = [
     "candidate_relation_shape",
@@ -1661,6 +1662,19 @@ fn validate_canonical_values(
     Ok(())
 }
 
+fn validate_sorted_unique_keys(keys: &[Vec<u8>]) -> Result<(), PersistenceDecodeErrorV1> {
+    for pair in keys.windows(2) {
+        match pair[1].as_slice().cmp(pair[0].as_slice()) {
+            std::cmp::Ordering::Less => return Err(PersistenceDecodeErrorV1::NoncanonicalOrder),
+            std::cmp::Ordering::Equal => {
+                return Err(PersistenceDecodeErrorV1::DuplicateSemanticKey)
+            }
+            std::cmp::Ordering::Greater => {}
+        }
+    }
+    Ok(())
+}
+
 fn validate_ordered_enum(
     values: &[cbor::Value],
     allowed: &[&str],
@@ -1853,6 +1867,39 @@ fn validate_participant_roles(value: &cbor::Value) -> Result<(), PersistenceDeco
     Ok(())
 }
 
+fn validate_participant_roles_for_direction(
+    value: &cbor::Value,
+    directionality: &str,
+) -> Result<(), PersistenceDecodeErrorV1> {
+    validate_participant_roles(value)?;
+    if directionality != "symmetric" {
+        return Ok(());
+    }
+    let roles = value_array(value, None)?;
+    let mut previous: Option<Vec<u8>> = None;
+    for role in roles {
+        let fields = value_array(role, Some(4))?;
+        let key = cbor::encode_canonical(&cbor::Value::Array(vec![
+            fields[2].clone(),
+            fields[3].clone(),
+            fields[1].clone(),
+        ]))?;
+        if let Some(previous) = &previous {
+            match key.as_slice().cmp(previous.as_slice()) {
+                std::cmp::Ordering::Less => {
+                    return Err(PersistenceDecodeErrorV1::NoncanonicalOrder)
+                }
+                std::cmp::Ordering::Equal => {
+                    return Err(PersistenceDecodeErrorV1::DuplicateSemanticKey)
+                }
+                std::cmp::Ordering::Greater => {}
+            }
+        }
+        previous = Some(key);
+    }
+    Ok(())
+}
+
 fn validate_b2_boundary_ref(value: &cbor::Value) -> Result<(), PersistenceDecodeErrorV1> {
     let fields = value_array(value, Some(2))?;
     value_text(&fields[0])?;
@@ -1987,8 +2034,8 @@ fn validate_positive_boundary_facts(value: &cbor::Value) -> Result<(), Persisten
 fn validate_class_projection(value: &cbor::Value) -> Result<(), PersistenceDecodeErrorV1> {
     let fields = value_array(value, Some(9))?;
     enum_text(&fields[0], &ARITIES)?;
-    enum_text(&fields[1], &DIRECTIONALITIES)?;
-    validate_participant_roles(&fields[2])?;
+    let directionality = enum_text(&fields[1], &DIRECTIONALITIES)?;
+    validate_participant_roles_for_direction(&fields[2], directionality)?;
     enum_text(&fields[3], &HOST_RELATIONSHIPS)?;
     validate_slot_value_vector(&fields[4], &CONTEXT_DIMENSIONS)?;
     validate_slot_value_vector(&fields[5], &TEMPORAL_SEMANTICS)?;
@@ -1999,9 +2046,10 @@ fn validate_class_projection(value: &cbor::Value) -> Result<(), PersistenceDecod
 
 fn validate_candidate_shape(value: &cbor::Value) -> Result<(), PersistenceDecodeErrorV1> {
     let fields = value_array(value, Some(5))?;
-    for field in &fields[..4] {
-        value_text(field)?;
-    }
+    enum_text(&fields[0], &SCOPES)?;
+    enum_text(&fields[1], &RELATIONS)?;
+    enum_text(&fields[2], &ARITIES)?;
+    enum_text(&fields[3], &DIRECTIONALITIES)?;
     value_uint32(&fields[4])?;
     Ok(())
 }
@@ -2026,8 +2074,8 @@ fn validate_precondition_payload(
             if fields.len() != 4 {
                 return Err(PersistenceDecodeErrorV1::WrongRecordLength);
             }
-            value_text(&fields[0])?;
-            value_text(&fields[1])?;
+            enum_text(&fields[0], &SCOPES)?;
+            enum_text(&fields[1], &RELATIONS)?;
             enum_text(&fields[2], &DIRECTIONALITIES)?;
             enum_text(&fields[3], &HOST_RELATIONSHIPS)?;
             Ok(())
@@ -2073,17 +2121,19 @@ fn validate_precondition_payload(
 fn validate_preconditions(value: &cbor::Value) -> Result<(), PersistenceDecodeErrorV1> {
     let preconditions = value_array(value, None)?;
     let mut ids = std::collections::BTreeSet::new();
+    let mut ordering_keys = Vec::with_capacity(preconditions.len());
     for precondition in preconditions {
         let fields = value_array(precondition, Some(2))?;
         let id = value_text(&fields[0])?;
         if !ids.insert(id) {
             return Err(PersistenceDecodeErrorV1::DuplicateSemanticKey);
         }
+        ordering_keys.push(cbor::encode_canonical(&cbor::Value::Text(id.to_owned()))?);
         let tagged = value_array(&fields[1], Some(2))?;
         let kind = enum_text(&tagged[0], &PRECONDITION_KINDS)?;
         validate_precondition_payload(kind, &tagged[1])?;
     }
-    Ok(())
+    validate_sorted_unique_keys(&ordering_keys)
 }
 
 fn validate_causal_chain(value: &cbor::Value) -> Result<(), PersistenceDecodeErrorV1> {
@@ -2165,11 +2215,11 @@ fn validate_relation_proof_payload(value: &cbor::Value) -> Result<(), Persistenc
 
 fn validate_relation_binding(value: &cbor::Value) -> Result<(), PersistenceDecodeErrorV1> {
     let fields = value_array(value, Some(5))?;
-    value_text(&fields[0])?;
-    value_text(&fields[1])?;
-    enum_text(&fields[2], &DIRECTIONALITIES)?;
+    enum_text(&fields[0], &SCOPES)?;
+    enum_text(&fields[1], &RELATIONS)?;
+    let directionality = enum_text(&fields[2], &DIRECTIONALITIES)?;
     enum_text(&fields[3], &HOST_RELATIONSHIPS)?;
-    validate_participant_roles(&fields[4])
+    validate_participant_roles_for_direction(&fields[4], directionality)
 }
 
 fn validate_candidate_universe_binding(
@@ -2191,22 +2241,24 @@ fn validate_domain_binding(value: &cbor::Value) -> Result<(), PersistenceDecodeE
 fn validate_context_binding(value: &cbor::Value) -> Result<(), PersistenceDecodeErrorV1> {
     let fields = value_array(value, Some(4))?;
     enum_text(&fields[0], &ARITIES)?;
-    enum_text(&fields[1], &DIRECTIONALITIES)?;
-    validate_participant_roles(&fields[2])?;
+    let directionality = enum_text(&fields[1], &DIRECTIONALITIES)?;
+    validate_participant_roles_for_direction(&fields[2], directionality)?;
     enum_text(&fields[3], &HOST_RELATIONSHIPS)?;
     Ok(())
 }
 
 fn validate_precondition_attestations(value: &cbor::Value) -> Result<(), PersistenceDecodeErrorV1> {
     let attestations = value_array(value, None)?;
+    let mut ordering_keys = Vec::with_capacity(attestations.len());
     for attestation in attestations {
         let fields = value_array(attestation, Some(4))?;
-        value_text(&fields[0])?;
+        let id = value_text(&fields[0])?;
+        ordering_keys.push(cbor::encode_canonical(&cbor::Value::Text(id.to_owned()))?);
         validate_cbor_value(&fields[1])?;
         validate_evidence_refs(&fields[2])?;
         value_text(&fields[3])?;
     }
-    Ok(())
+    validate_sorted_unique_keys(&ordering_keys)
 }
 
 fn validate_class_projection_equivalence(
@@ -2215,6 +2267,9 @@ fn validate_class_projection_equivalence(
     let fields = value_array(value, Some(6))?;
     validate_class_projection(&fields[0])?;
     validate_class_projection(&fields[1])?;
+    if cbor::encode_canonical(&fields[0])? != cbor::encode_canonical(&fields[1])? {
+        return Err(PersistenceDecodeErrorV1::SemanticValidation);
+    }
     validate_exact_ordered_enum(&fields[2], &CLASS_PROJECTION_POSITIONS)?;
     let semantic_claim = value_array(&fields[3], Some(2))?;
     if value_text(&semantic_claim[0])? != "same_theorem_semantic_id" {
@@ -2429,6 +2484,26 @@ fn validate_context_member(value: &cbor::Value) -> Result<(), PersistenceDecodeE
     Ok(())
 }
 
+fn validate_application_members(
+    value: &cbor::Value,
+    validator: fn(&cbor::Value) -> Result<(), PersistenceDecodeErrorV1>,
+) -> Result<(), PersistenceDecodeErrorV1> {
+    let members = value_array(value, None)?;
+    let mut ordering_keys = Vec::with_capacity(members.len());
+    for member in members {
+        validator(member)?;
+        let fields = value_array(member, None)?;
+        let identity = value_array(&fields[1], Some(6))?;
+        value_bytes32(&identity[5])?;
+        let source_instance_id = value_text(&fields[2])?;
+        ordering_keys.push(cbor::encode_canonical(&cbor::Value::Array(vec![
+            identity[5].clone(),
+            cbor::Value::Text(source_instance_id.to_owned()),
+        ]))?);
+    }
+    validate_sorted_unique_keys(&ordering_keys)
+}
+
 fn validate_record_input(
     fields: &[cbor::Value],
     application: bool,
@@ -2617,10 +2692,10 @@ fn validate_identity_payload(
             value_text(&fields[1])?;
             enum_text(&fields[2], &PROOF_KINDS)?;
             enum_text(&fields[3], &ARITIES)?;
-            value_text(&fields[4])?;
-            enum_text(&fields[5], &DIRECTIONALITIES)?;
+            enum_text(&fields[4], &RELATIONS)?;
+            let directionality = enum_text(&fields[5], &DIRECTIONALITIES)?;
             enum_text(&fields[6], &HOST_RELATIONSHIPS)?;
-            validate_participant_roles(&fields[7])?;
+            validate_participant_roles_for_direction(&fields[7], directionality)?;
             validate_preconditions(&fields[8])?;
             validate_relation_proof_payload(&fields[9])?;
             validate_b2_boundary_refs(&fields[10])?;
@@ -2638,8 +2713,8 @@ fn validate_identity_payload(
         AuthorityIdentityKind::ContextTheorem => {
             value_text(&fields[1])?;
             validate_context_binding(&fields[2])?;
-            validate_exact_ordered_enum(&fields[3], &CONTEXT_DIMENSIONS)?;
-            validate_exact_ordered_enum(&fields[4], &TEMPORAL_SEMANTICS)?;
+            validate_slot_value_vector(&fields[3], &CONTEXT_DIMENSIONS)?;
+            validate_slot_value_vector(&fields[4], &TEMPORAL_SEMANTICS)?;
             validate_preconditions(&fields[5])?;
             validate_b2_boundary_refs(&fields[6])?;
             validate_b1_citation_refs(&fields[7])
@@ -2650,26 +2725,17 @@ fn validate_identity_payload(
         AuthorityIdentityKind::RelationApplication => {
             value_bytes32(&fields[1])?;
             enum_text(&fields[2], &TERMINAL_DISPOSITIONS)?;
-            for member in value_array(&fields[3], None)? {
-                validate_relation_member(member)?;
-            }
-            Ok(())
+            validate_application_members(&fields[3], validate_relation_member)
         }
         AuthorityIdentityKind::DomainApplication => {
             value_bytes32(&fields[1])?;
             enum_text(&fields[2], &REVIEW_DOMAINS)?;
             enum_text(&fields[3], &APPLICABILITY)?;
-            for member in value_array(&fields[4], None)? {
-                validate_domain_member(member)?;
-            }
-            Ok(())
+            validate_application_members(&fields[4], validate_domain_member)
         }
         AuthorityIdentityKind::ContextApplication => {
             value_bytes32(&fields[1])?;
-            for member in value_array(&fields[2], None)? {
-                validate_context_member(member)?;
-            }
-            Ok(())
+            validate_application_members(&fields[2], validate_context_member)
         }
         AuthorityIdentityKind::RelationApplicationRecord
         | AuthorityIdentityKind::DomainApplicationRecord
