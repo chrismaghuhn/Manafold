@@ -16,7 +16,7 @@ import re
 import sys
 import zipfile
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
 from typing import Literal, NoReturn, TypeAlias, cast
@@ -57,6 +57,7 @@ _EVENT_ID_RE = re.compile(r"^ae\.v1/[0-9a-f]{64}$")
 _EVENT_LEAF_PATH_RE = re.compile(
     r"^sources/m2_5/authorities/review_acceptance_events/v1/[0-9a-f]{64}\.json$"
 )
+_VERIFIED_ARTIFACT_TOKEN = object()
 
 
 class ResolutionStatus(str, Enum):
@@ -82,6 +83,7 @@ class ResolvedArtifact:
     raw_sha256: str
     schema_or_null: str | None
     json_value: object | None
+    _verification_token: object = field(default=None, repr=False, compare=False)
 
 
 @dataclass(frozen=True)
@@ -169,7 +171,15 @@ def _resolved_artifact(
     if actual != expected:
         _fail("SOURCE_DIGEST_MISMATCH", f"{path} has {actual}, expected {expected}")
     json_value = _verify_json_schema(raw, schema_or_null, path)
-    return ResolvedArtifact(source_kind, path, raw, actual, schema_or_null, json_value)
+    return ResolvedArtifact(
+        source_kind,
+        path,
+        raw,
+        actual,
+        schema_or_null,
+        json_value,
+        _VERIFIED_ARTIFACT_TOKEN,
+    )
 
 
 def _json_pointer_token(raw_token: str) -> str:
@@ -203,7 +213,7 @@ def _json_pointer(value: object, pointer: object) -> object:
         elif isinstance(current, list):
             if token == "0":
                 index = 0
-            elif token.isdigit() and not token.startswith("0"):
+            elif re.fullmatch(r"[1-9][0-9]*", token) is not None:
                 index = int(token)
             else:
                 _fail("LOCATOR_UNRESOLVED", f"JSON Pointer array index {token!r} is invalid")
@@ -439,12 +449,12 @@ class AuthoritySourceResolver:
                 f"repository path escapes the configured root: {relative}",
             )
         if not candidate.is_file():
-            _blocked("REPOSITORY_SOURCE_UNAVAILABLE", f"repository source is missing: {relative}")
+            _fail("REPOSITORY_SOURCE_MISSING", f"repository source is missing: {relative}")
         try:
             raw = candidate.read_bytes()
         except OSError as exc:
-            _blocked(
-                "REPOSITORY_SOURCE_UNAVAILABLE", f"cannot read repository source {relative}: {exc}"
+            _fail(
+                "REPOSITORY_SOURCE_READ_FAILED", f"cannot read repository source {relative}: {exc}"
             )
         return _resolved_artifact("repository", relative, raw, expected_raw_sha256, schema_or_null)
 
@@ -490,6 +500,7 @@ class AuthoritySourceResolver:
         )
 
     def resolve_locator(self, artifact: ResolvedArtifact, locator: Locator) -> ResolvedLocator:
+        artifact = self._reverify_artifact(artifact)
         kind, payload = _locator(locator)
         if kind == "whole_artifact":
             value = artifact.json_value if artifact.json_value is not None else artifact.raw_bytes
@@ -603,57 +614,54 @@ class AuthoritySourceResolver:
             raw_bindings = event.get("reviewer_role_bindings")
             if not isinstance(raw_bindings, list):
                 raise ValueError("reviewer role bindings must be an array")
+            role_binding_records = []
+            for item in raw_bindings:
+                record = _json_object(item, "reviewer role binding")
+                _exact_keys(record, {"reviewer_id", "roles"}, "reviewer role binding")
+                role_binding_records.append(record)
             role_bindings = tuple(
                 ReviewerRoleBindingV1(
-                    reviewer_id=_json_text(
-                        _json_object(item, "reviewer role binding").get("reviewer_id"),
-                        "reviewer ID",
-                    ),
-                    roles=tuple(
-                        cast(list[str], _json_object(item, "reviewer role binding").get("roles"))
-                    ),
+                    reviewer_id=_json_text(record.get("reviewer_id"), "reviewer ID"),
+                    roles=tuple(cast(list[str], record.get("roles"))),
                 )
-                for item in raw_bindings
+                for record in role_binding_records
             )
             raw_sources = event.get("source_binding_digests")
             if not isinstance(raw_sources, list):
                 raise ValueError("source binding digests must be an array")
+            source_binding_records = []
+            for item in raw_sources:
+                record = _json_object(item, "source binding")
+                _exact_keys(
+                    record,
+                    {"artifact_role", "path", "schema_or_null", "raw_sha256"},
+                    "source binding",
+                )
+                source_binding_records.append(record)
             source_bindings = tuple(
                 SourceBindingDigestV1(
-                    artifact_role=_json_text(
-                        _json_object(item, "source binding").get("artifact_role"), "artifact role"
-                    ),
-                    path=_json_text(
-                        _json_object(item, "source binding").get("path"), "source binding path"
-                    ),
-                    schema_or_null=cast(
-                        str | None, _json_object(item, "source binding").get("schema_or_null")
-                    ),
-                    raw_sha256=_json_digest(
-                        _json_object(item, "source binding").get("raw_sha256"),
-                        "source binding digest",
-                    ),
+                    artifact_role=_json_text(record.get("artifact_role"), "artifact role"),
+                    path=_json_text(record.get("path"), "source binding path"),
+                    schema_or_null=cast(str | None, record.get("schema_or_null")),
+                    raw_sha256=_json_digest(record.get("raw_sha256"), "source binding digest"),
                 )
-                for item in raw_sources
+                for record in source_binding_records
             )
             raw_evidence = event.get("review_evidence_refs")
             if not isinstance(raw_evidence, list):
                 raise ValueError("review evidence references must be an array")
+            evidence_records = []
+            for item in raw_evidence:
+                record = _json_object(item, "acceptance evidence")
+                _exact_keys(record, {"path", "raw_sha256", "locator"}, "acceptance evidence")
+                evidence_records.append(record)
             evidence = tuple(
                 AcceptanceEvidenceRefV1(
-                    path=_json_text(
-                        _json_object(item, "acceptance evidence").get("path"),
-                        "acceptance evidence path",
-                    ),
-                    raw_sha256=_json_digest(
-                        _json_object(item, "acceptance evidence").get("raw_sha256"),
-                        "acceptance evidence digest",
-                    ),
-                    locator=self._wire_locator(
-                        _json_object(item, "acceptance evidence").get("locator")
-                    ),
+                    path=_json_text(record.get("path"), "acceptance evidence path"),
+                    raw_sha256=_json_digest(record.get("raw_sha256"), "acceptance evidence digest"),
+                    locator=self._wire_locator(record.get("locator")),
                 )
-                for item in raw_evidence
+                for record in evidence_records
             )
             candidate = ReviewAcceptanceEventInputV1(
                 subject_kind=AcceptanceSubjectKind(
@@ -669,6 +677,8 @@ class AuthoritySourceResolver:
                 review_evidence_refs=evidence,
             )
             actual_event_id = candidate.identity().as_text()
+        except ResolutionError as exc:
+            _fail("ACCEPTANCE_EVENT_INVALID", exc.message)
         except (TypeError, ValueError) as exc:
             _fail("ACCEPTANCE_EVENT_INVALID", str(exc))
         if actual_event_id != expected_event_id:
@@ -680,10 +690,28 @@ class AuthoritySourceResolver:
     @staticmethod
     def _wire_locator(value: object) -> Locator:
         record = _json_object(value, "locator")
-        _exact_keys(record, {"kind"} | ({"value"} if "value" in record else set()), "locator")
         kind = _json_text(record.get("kind"), "locator kind")
-        payload = record.get("value")
+        if kind == "whole_artifact":
+            expected_keys = {"kind"}
+        elif kind in {"json_pointer", "archive_member", "event_id"}:
+            expected_keys = {"kind", "value"}
+        else:
+            _fail("LOCATOR_INVALID", f"unknown locator variant {kind!r}")
+        _exact_keys(record, expected_keys, "locator")
+        payload = record.get("value") if "value" in record else None
         return _locator((kind, cast(str | int | None, payload)))
+
+    @staticmethod
+    def _reverify_artifact(artifact: ResolvedArtifact) -> ResolvedArtifact:
+        if artifact._verification_token is not _VERIFIED_ARTIFACT_TOKEN:
+            _fail("ARTIFACT_UNVERIFIED", "locator resolution requires a resolver-verified artifact")
+        return _resolved_artifact(
+            artifact.source_kind,
+            artifact.path,
+            artifact.raw_bytes,
+            artifact.raw_sha256,
+            artifact.schema_or_null,
+        )
 
 
 __all__ = [
@@ -693,7 +721,5 @@ __all__ = [
     "AuthoritySourceResolver",
     "ResolutionError",
     "ResolutionStatus",
-    "ResolvedArtifact",
-    "ResolvedLocator",
     "Rev3ArchiveStore",
 ]

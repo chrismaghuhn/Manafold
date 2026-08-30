@@ -21,6 +21,7 @@ from authority_source_resolver import (
     AuthoritySourceResolver,
     ResolutionError,
     ResolutionStatus,
+    ResolvedArtifact,
     Rev3ArchiveStore,
 )
 from mtgml.authority import (
@@ -115,6 +116,16 @@ class AuthoritySourceResolverTests(unittest.TestCase):
         self.assertEqual(resolved.raw_sha256, digest(valid))
         self.assertEqual(resolved.json_value, {"schema": "example.schema.v1", "value": 7})
 
+    def test_missing_repository_source_is_fail_not_blocked(self) -> None:
+        resolver = AuthoritySourceResolver(self.repo)
+        self.assert_resolution_error(
+            lambda: resolver.resolve_repository_artifact(
+                "missing.json", "00" * 32, "example.schema.v1"
+            ),
+            ResolutionStatus.FAIL,
+            "REPOSITORY_SOURCE_MISSING",
+        )
+
     def test_repository_paths_are_confined_and_normalized(self) -> None:
         resolver = AuthoritySourceResolver(self.repo)
         for relative in ("../outside.json", "/absolute.json", "C:/outside.json", "a\\b.json"):
@@ -163,6 +174,46 @@ class AuthoritySourceResolverTests(unittest.TestCase):
             lambda: resolver.resolve_locator(artifact, ("json_pointer", "/array/01")),
             ResolutionStatus.FAIL,
             "LOCATOR_UNRESOLVED",
+        )
+        self.assert_resolution_error(
+            lambda: resolver.resolve_locator(artifact, ("json_pointer", "/array/" + "\u0661")),
+            ResolutionStatus.FAIL,
+            "LOCATOR_UNRESOLVED",
+        )
+
+    def test_locator_revalidates_raw_bytes_and_rejects_unverified_artifacts(self) -> None:
+        value = {"schema": "example.schema.v1", "nested": {"value": "original"}}
+        raw = json_bytes(value)
+        self.write_repo("artifact.json", raw)
+        resolver = AuthoritySourceResolver(self.repo)
+        artifact = resolver.resolve_repository_artifact(
+            "artifact.json", digest(raw), "example.schema.v1"
+        )
+        cast(dict[str, object], cast(dict[str, object], artifact.json_value)["nested"])["value"] = (
+            "mutated"
+        )
+
+        self.assertEqual(
+            resolver.resolve_locator(artifact, ("json_pointer", "/nested/value")).value,
+            "original",
+        )
+        self.assertEqual(
+            resolver.resolve_locator(artifact, ("whole_artifact", None)).value,
+            value,
+        )
+
+        forged = ResolvedArtifact(
+            source_kind="repository",
+            path="artifact.json",
+            raw_bytes=raw,
+            raw_sha256=digest(raw),
+            schema_or_null="example.schema.v1",
+            json_value=value,
+        )
+        self.assert_resolution_error(
+            lambda: resolver.resolve_locator(forged, ("whole_artifact", None)),
+            ResolutionStatus.FAIL,
+            "ARTIFACT_UNVERIFIED",
         )
 
     def test_archive_reads_only_manifest_verified_members(self) -> None:
@@ -318,6 +369,49 @@ class AuthoritySourceResolverTests(unittest.TestCase):
         )
         resolved_roster = resolver.resolve_reviewer_roster_leaf(roster_ref)
         self.assertEqual(resolved_roster.json_value["schema"], roster_ref.schema)
+
+        for field, nested in (
+            ("reviewer_role_bindings", {"extra": True}),
+            ("source_binding_digests", {"extra": True}),
+            ("review_evidence_refs", {"extra": True}),
+        ):
+            with self.subTest(field=field):
+                changed = dict(event)
+                changed_items = [dict(item, **nested) for item in event[field]]
+                changed[field] = changed_items
+                changed_raw = json_bytes(changed)
+                self.write_repo(event_relative, changed_raw)
+                changed_ref = ReviewEventRefV1(
+                    path=event_relative,
+                    raw_sha256=bytes.fromhex(digest(changed_raw)),
+                    event_id=event_id,
+                )
+                self.assert_resolution_error(
+                    lambda changed_ref=changed_ref: resolver.resolve_acceptance_event_leaf(
+                        changed_ref
+                    ),
+                    ResolutionStatus.FAIL,
+                    "ACCEPTANCE_EVENT_INVALID",
+                )
+
+        changed = dict(event)
+        changed["review_evidence_refs"] = [
+            dict(
+                event["review_evidence_refs"][0], locator={"kind": "whole_artifact", "value": None}
+            )
+        ]
+        changed_raw = json_bytes(changed)
+        self.write_repo(event_relative, changed_raw)
+        changed_ref = ReviewEventRefV1(
+            path=event_relative,
+            raw_sha256=bytes.fromhex(digest(changed_raw)),
+            event_id=event_id,
+        )
+        self.assert_resolution_error(
+            lambda: resolver.resolve_acceptance_event_leaf(changed_ref),
+            ResolutionStatus.FAIL,
+            "ACCEPTANCE_EVENT_INVALID",
+        )
 
         tampered = dict(event)
         tampered["event_id"] = "ae.v1/" + "11" * 32
