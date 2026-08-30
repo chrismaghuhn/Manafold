@@ -441,6 +441,22 @@ When evidence has not been produced, say so.
 
 ---
 
+# 16. Context-compaction recovery
+
+Conversation context is advisory. Repository specifications and implementation plans are authoritative.
+
+After every context compaction, before continuing any edit, the agent MUST:
+
+1. Re-read the authoritative specification or specifications for the active task.
+2. Re-read the active implementation plan.
+3. Inspect the current Git status and both the unstaged and staged diffs.
+4. Restate internally the active invariants and acceptance gates.
+5. Continue editing only after all five checks are complete.
+
+If the active implementation plan cannot be located, report the missing plan as `NOT_RUN` or `BLOCKED` and resolve that gap before editing.
+
+---
+
 ## Agent skills
 
 ### Issue tracker
