@@ -1,0 +1,15 @@
+{
+  "schema": "manafold.m2.5.c.reviewer-roster.v1",
+  "reviewers": [
+    {
+      "reviewer_id": "chrismaghuhn",
+      "roles": [
+        "architecture_maintainer",
+        "conformance_maintainer",
+        "information_safety_reviewer",
+        "project_owner",
+        "rules_authority_maintainer"
+      ]
+    }
+  ]
+}
