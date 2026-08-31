@@ -136,6 +136,22 @@ class ReviewAdmissionFoundationTests(unittest.TestCase):
             with self.subTest(phrase=phrase):
                 self.assertIn(phrase, lowered)
 
+    def test_checklist_v1_historical_meaning_is_immutable(self) -> None:
+        checklist = (ROOT / Path(*CHECKLIST_PATH.split("/"))).read_text(encoding="utf-8")
+        lowered = checklist.lower()
+        for phrase in (
+            "versioning and historical meaning",
+            "semantic obligations of interaction-authority-review-checklist.v1",
+            "immutable once admitted",
+            "material changes require a new checklist identifier/version",
+            "v1 retains its historical meaning",
+            "editorial changes to the v1 document must not add, remove, weaken, "
+            "or reinterpret review obligations",
+            "a future v2 receives its own versioned definition",
+        ):
+            with self.subTest(phrase=phrase):
+                self.assertIn(phrase, lowered)
+
     def test_roster_source_has_no_runtime_identity_dependency(self) -> None:
         reference = self._roster_ref()
         with self.assertRaises(AttributeError):

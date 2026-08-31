@@ -43,6 +43,16 @@ For `solo_separate_self_review`, the reviewer must:
 - Record portable review evidence for that pass.
 - Keep all required roles and evidence mandatory; solo mode does not weaken semantic or information-safety review.
 
+## Versioning and historical meaning
+
+The semantic obligations of interaction-authority-review-checklist.v1 are immutable once admitted.
+
+Material changes require a new checklist identifier/version. V1 retains its historical meaning.
+
+Editorial changes to the V1 document must not add, remove, weaken, or reinterpret review obligations.
+
+A future V2 receives its own versioned definition; V1 is never overwritten or repurposed.
+
 ## Outcome
 
 Record the reviewed subject, exact source identities, required reviewer roles,
