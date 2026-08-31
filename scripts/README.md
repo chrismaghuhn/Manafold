@@ -22,6 +22,7 @@ The verification runner marks directories it owns and refuses to replace an exis
 
 - `generate_contracts.py` — single-source generation/check for mechanical Rust/Python/schema vocabulary;
 - `authority_source_resolver.py` — rules-neutral, byte-first repository/REV3 source, locator, candidate, and source-instance resolution;
+- `authority_validator.py` — fail-closed validation of the persisted M2.5.C authority graph;
 - `run_checks.py` — fast/integration/certification maintainer profiles;
 - `bootstrap.py` — prepares `.venv` only and never mutates contracts or lockfiles;
 - `validate_golden_path.py` — verifies the synthetic vertical path fails closed at certification;
