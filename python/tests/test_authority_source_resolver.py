@@ -5,6 +5,7 @@ import csv
 import hashlib
 import io
 import json
+import shutil
 import sys
 import tempfile
 import unittest
@@ -20,8 +21,16 @@ sys.path.insert(0, str(ROOT / "scripts"))
 
 from authority_source_resolver import (
     ACCEPTANCE_EVENT_SCHEMA_V1,
+    B2_CATALOG_PATH,
+    B2_CATALOG_SCHEMA,
+    B2_CLASSIFICATION_PATH,
+    B2_CLASSIFICATION_SCHEMA,
+    B2_CLOSURE_PATH,
+    B2_CLOSURE_SCHEMA,
     REV3_CENSUS_MEMBER,
     AuthoritySourceResolver,
+    B2ArtifactBindingsV1,
+    B2BoundaryReferenceV1,
     ResolutionError,
     ResolutionStatus,
     ResolvedArtifact,
@@ -1140,6 +1149,342 @@ class AuthoritySourceResolverTests(unittest.TestCase):
             lambda: resolver.resolve_acceptance_event_leaf(tampered_ref),
             ResolutionStatus.FAIL,
             "ACCEPTANCE_EVENT_ID_MISMATCH",
+        )
+
+
+class B2SourceResolverTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.tempdir = tempfile.TemporaryDirectory()
+        self.repo = Path(self.tempdir.name) / "repo"
+        self.repo.mkdir()
+        source = ROOT / "sources/m2_5/closures/B2"
+        target = self.repo / "sources/m2_5/closures/B2"
+        shutil.copytree(source, target)
+
+    def tearDown(self) -> None:
+        self.tempdir.cleanup()
+
+    def assert_resolution_error(
+        self,
+        operation: Callable[[], object],
+        status: ResolutionStatus,
+        code: str,
+    ) -> None:
+        with self.assertRaises(ResolutionError) as context:
+            operation()
+        self.assertEqual(context.exception.status, status)
+        self.assertEqual(context.exception.code, code)
+
+    def _binding(
+        self, role: str, path: str, schema: str, root: Path | None = None
+    ) -> SourceBindingDigestV1:
+        source_root = root or self.repo
+        raw = (source_root / Path(*path.split("/"))).read_bytes()
+        return SourceBindingDigestV1(
+            artifact_role=role,
+            path=path,
+            schema_or_null=schema,
+            raw_sha256=bytes.fromhex(digest(raw)),
+        )
+
+    def _bindings(self, root: Path | None = None) -> B2ArtifactBindingsV1:
+        return B2ArtifactBindingsV1(
+            catalog=self._binding("b2_catalog", B2_CATALOG_PATH, B2_CATALOG_SCHEMA, root),
+            classifications=self._binding(
+                "b2_classifications", B2_CLASSIFICATION_PATH, B2_CLASSIFICATION_SCHEMA, root
+            ),
+            closure=self._binding("b2_closure", B2_CLOSURE_PATH, B2_CLOSURE_SCHEMA, root),
+        )
+
+    def _rewrite_json(self, path: str, mutate: Callable[[dict[str, object]], None]) -> None:
+        file_path = self.repo / Path(*path.split("/"))
+        document = cast(dict[str, object], json.loads(file_path.read_text(encoding="utf-8")))
+        mutate(document)
+        file_path.write_bytes(json_bytes(document))
+
+    def _rebind_closure(self, artifact_name: str) -> None:
+        closure_path = self.repo / Path(*B2_CLOSURE_PATH.split("/"))
+        closure = cast(dict[str, object], json.loads(closure_path.read_text(encoding="utf-8")))
+        artifact_path = self.repo / Path("sources/m2_5/closures/B2", *artifact_name.split("/"))
+        artifact_digest = digest(artifact_path.read_bytes())
+        for item in cast(list[dict[str, object]], closure["bound_artifacts"]):
+            if item["path"] == artifact_name:
+                item["raw_sha256"] = artifact_digest
+        closure_path.write_bytes(json_bytes(closure))
+
+    def _real_first_records(self, root: Path | None = None) -> tuple[str, dict[str, object], str]:
+        source_root = root or self.repo
+        document = cast(
+            dict[str, object],
+            json.loads(
+                (source_root / Path(*B2_CLASSIFICATION_PATH.split("/"))).read_text(encoding="utf-8")
+            ),
+        )
+        classification = cast(list[dict[str, object]], document["classifications"])[0]
+        family_id = cast(
+            str,
+            cast(list[dict[str, object]], classification["requirement_assignments"])[0][
+                "requirement_family_id"
+            ],
+        )
+        return cast(str, classification["oracle_semantic_identity"]), classification, family_id
+
+    def test_real_b2_family_classification_assignment_and_boundary_resolve(self) -> None:
+        resolver = AuthoritySourceResolver(ROOT)
+        bindings = self._bindings(ROOT)
+        classification_document = json.loads(
+            (ROOT / Path(*B2_CLASSIFICATION_PATH.split("/"))).read_text(encoding="utf-8")
+        )
+        classification = classification_document["classifications"][0]
+        family_id = classification["requirement_assignments"][0]["requirement_family_id"]
+
+        family = resolver.resolve_b2_requirement_family(family_id, bindings)
+        resolved_classification = resolver.resolve_b2_classification(
+            classification["oracle_semantic_identity"],
+            classification["classification_identity"],
+            bindings,
+        )
+        assignment = resolver.resolve_b2_assignment(
+            resolved_classification,
+            family_id,
+            bindings,
+        )
+        boundary = resolver.resolve_b2_boundary(
+            family,
+            B2BoundaryReferenceV1(
+                family_id=family_id,
+                precise_semantic_definition=cast(str, family.record["precise_semantic_definition"]),
+            ),
+            assignment,
+        )
+
+        self.assertEqual(family.family_id, family_id)
+        self.assertEqual(
+            resolved_classification.oracle_semantic_identity,
+            classification["oracle_semantic_identity"],
+        )
+        self.assertEqual(assignment.assignment["requirement_family_id"], family_id)
+        self.assertEqual(boundary.boundary_ref.family_id, family_id)
+        self.assertFalse(hasattr(assignment, "assignment_role"))
+        with self.assertRaises(TypeError):
+            cast(dict[str, object], family.record)["family_id"] = "mutated"
+        with self.assertRaises(TypeError):
+            cast(dict[str, object], family.artifact.json_value)["families"] = ()
+
+    def test_checked_in_b2_artifacts_are_read_only_probe_inputs(self) -> None:
+        resolver = AuthoritySourceResolver(ROOT)
+        bindings = self._bindings(ROOT)
+        osi, classification, family_id = self._real_first_records(ROOT)
+
+        family = resolver.resolve_b2_requirement_family(family_id, bindings)
+        resolved_classification = resolver.resolve_b2_classification(
+            osi, classification["classification_identity"], bindings
+        )
+        assignment = resolver.resolve_b2_assignment(resolved_classification, family_id, bindings)
+        resolved = resolver.resolve_b2_boundary(
+            family,
+            B2BoundaryReferenceV1(
+                family_id=family_id,
+                precise_semantic_definition=cast(str, family.record["precise_semantic_definition"]),
+            ),
+            assignment,
+        )
+
+        self.assertEqual(resolved.family.artifact.path, B2_CATALOG_PATH)
+        self.assertEqual(resolved.assignment.classification.artifact.path, B2_CLASSIFICATION_PATH)
+
+    def test_unknown_b2_family_fails_closed(self) -> None:
+        resolver = AuthoritySourceResolver(ROOT)
+        self.assertRaises(
+            ResolutionError,
+            resolver.resolve_b2_requirement_family,
+            "cap.not_present",
+            self._bindings(),
+        )
+
+    def test_wrong_b2_classification_identity_fails_closed(self) -> None:
+        resolver = AuthoritySourceResolver(self.repo)
+        osi, classification, _ = self._real_first_records()
+        identity = deepcopy(cast(dict[str, object], classification["classification_identity"]))
+        identity["digest_hex"] = "00" * 32
+        self.assert_resolution_error(
+            lambda: resolver.resolve_b2_classification(osi, identity, self._bindings()),
+            ResolutionStatus.FAIL,
+            "B2_CLASSIFICATION_IDENTITY_MISMATCH",
+        )
+
+    def test_missing_b2_artifact_is_repository_fail(self) -> None:
+        bindings = self._bindings()
+        (self.repo / Path(*B2_CATALOG_PATH.split("/"))).unlink()
+        resolver = AuthoritySourceResolver(self.repo)
+        self.assert_resolution_error(
+            lambda: resolver.resolve_b2_requirement_family("cap.aura", bindings),
+            ResolutionStatus.FAIL,
+            "REPOSITORY_SOURCE_MISSING",
+        )
+
+    def test_b2_catalog_duplicate_family_is_ambiguous(self) -> None:
+        def duplicate(document: dict[str, object]) -> None:
+            families = cast(list[object], document["families"])
+            families.append(deepcopy(families[0]))
+            document["catalog_family_count"] = 217
+
+        self._rewrite_json(B2_CATALOG_PATH, duplicate)
+        self._rebind_closure("requirement_family_catalog.v1.json")
+        resolver = AuthoritySourceResolver(self.repo)
+        self.assert_resolution_error(
+            lambda: resolver.resolve_b2_requirement_family("cap.aura", self._bindings()),
+            ResolutionStatus.FAIL,
+            "B2_FAMILY_AMBIGUOUS",
+        )
+
+    def test_b2_classification_duplicate_osi_is_ambiguous(self) -> None:
+        def duplicate(document: dict[str, object]) -> None:
+            records = cast(list[object], document["classifications"])
+            records[-1] = deepcopy(records[0])
+
+        self._rewrite_json(B2_CLASSIFICATION_PATH, duplicate)
+        self._rebind_closure("card_semantic_classifications.v1.json")
+        resolver = AuthoritySourceResolver(self.repo)
+        osi, classification, _ = self._real_first_records()
+        self.assert_resolution_error(
+            lambda: resolver.resolve_b2_classification(
+                osi, classification["classification_identity"], self._bindings()
+            ),
+            ResolutionStatus.FAIL,
+            "B2_CLASSIFICATION_AMBIGUOUS",
+        )
+
+    def test_b2_assignment_and_boundary_cross_binding_fail_closed(self) -> None:
+        resolver = AuthoritySourceResolver(self.repo)
+        bindings = self._bindings()
+        osi, classification, family_id = self._real_first_records()
+        resolved_classification = resolver.resolve_b2_classification(
+            osi, classification["classification_identity"], bindings
+        )
+        assignment = resolver.resolve_b2_assignment(resolved_classification, family_id, bindings)
+        family = resolver.resolve_b2_requirement_family(family_id, bindings)
+        self.assert_resolution_error(
+            lambda: resolver.resolve_b2_assignment(
+                resolved_classification, "cap.not_present", bindings
+            ),
+            ResolutionStatus.FAIL,
+            "B2_ASSIGNMENT_NOT_FOUND",
+        )
+        wrong_definition = cast(str, family.record["precise_semantic_definition"]) + "|tampered"
+        self.assert_resolution_error(
+            lambda: resolver.resolve_b2_boundary(
+                family,
+                B2BoundaryReferenceV1(
+                    family_id=family_id, precise_semantic_definition=wrong_definition
+                ),
+                assignment,
+            ),
+            ResolutionStatus.FAIL,
+            "B2_BOUNDARY_BINDING_MISMATCH",
+        )
+        other_family_id = "cap.copy"
+        other_family = resolver.resolve_b2_requirement_family(other_family_id, bindings)
+        self.assert_resolution_error(
+            lambda: resolver.resolve_b2_boundary(
+                other_family,
+                B2BoundaryReferenceV1(
+                    family_id=other_family_id,
+                    precise_semantic_definition=cast(
+                        str, other_family.record["precise_semantic_definition"]
+                    ),
+                ),
+                assignment,
+            ),
+            ResolutionStatus.FAIL,
+            "B2_BOUNDARY_BINDING_MISMATCH",
+        )
+
+    def test_b2_boundary_rejects_same_id_assignment_from_another_catalog_snapshot(self) -> None:
+        resolver_a = AuthoritySourceResolver(self.repo)
+        bindings_a = self._bindings()
+        osi, classification, family_id = self._real_first_records()
+        classification_a = resolver_a.resolve_b2_classification(
+            osi, classification["classification_identity"], bindings_a
+        )
+        assignment_a = resolver_a.resolve_b2_assignment(classification_a, family_id, bindings_a)
+
+        with tempfile.TemporaryDirectory() as directory:
+            repo_b = Path(directory) / "repo"
+            repo_b.mkdir()
+            shutil.copytree(
+                self.repo / "sources/m2_5/closures/B2",
+                repo_b / "sources/m2_5/closures/B2",
+            )
+            catalog_path = repo_b / Path(*B2_CATALOG_PATH.split("/"))
+            catalog = cast(dict[str, object], json.loads(catalog_path.read_text(encoding="utf-8")))
+            family = cast(list[dict[str, object]], catalog["families"])[0]
+            family["precise_semantic_definition"] = cast(
+                str, family["precise_semantic_definition"]
+            ).replace("includes=an attached Aura permanent", "includes=a changed boundary", 1)
+            catalog_path.write_bytes(json_bytes(catalog))
+            closure_path = repo_b / Path(*B2_CLOSURE_PATH.split("/"))
+            closure = cast(dict[str, object], json.loads(closure_path.read_text(encoding="utf-8")))
+            for item in cast(list[dict[str, object]], closure["bound_artifacts"]):
+                if item["path"] == "requirement_family_catalog.v1.json":
+                    item["raw_sha256"] = digest(catalog_path.read_bytes())
+            closure_path.write_bytes(json_bytes(closure))
+
+            resolver_b = AuthoritySourceResolver(repo_b)
+            bindings_b = self._bindings(repo_b)
+            family_b = resolver_b.resolve_b2_requirement_family(family_id, bindings_b)
+            boundary_b = B2BoundaryReferenceV1(
+                family_id=family_id,
+                precise_semantic_definition=cast(
+                    str, family_b.record["precise_semantic_definition"]
+                ),
+            )
+            self.assert_resolution_error(
+                lambda: resolver_b.resolve_b2_boundary(family_b, boundary_b, assignment_a),
+                ResolutionStatus.FAIL,
+                "B2_BOUNDARY_BINDING_MISMATCH",
+            )
+
+    def test_b2_closure_digest_binding_is_verified(self) -> None:
+        closure_path = self.repo / Path(*B2_CLOSURE_PATH.split("/"))
+        closure = cast(dict[str, object], json.loads(closure_path.read_text(encoding="utf-8")))
+        for item in cast(list[dict[str, object]], closure["bound_artifacts"]):
+            if item["path"] == "requirement_family_catalog.v1.json":
+                item["raw_sha256"] = "00" * 32
+        closure_path.write_bytes(json_bytes(closure))
+        resolver = AuthoritySourceResolver(self.repo)
+        self.assert_resolution_error(
+            lambda: resolver.resolve_b2_requirement_family("cap.aura", self._bindings()),
+            ResolutionStatus.FAIL,
+            "B2_CLOSURE_BINDING_MISMATCH",
+        )
+
+    def test_b2_source_resolver_does_not_certify_closure_gate_metadata(self) -> None:
+        closure_path = self.repo / Path(*B2_CLOSURE_PATH.split("/"))
+        closure = cast(dict[str, object], json.loads(closure_path.read_text(encoding="utf-8")))
+        gate_status = cast(dict[str, object], closure["gate_status"])
+        gate_status["M3_STARTED"] = "YES"
+        metrics = cast(dict[str, object], closure["metrics"])
+        metrics["catalog_family_count"] = 0
+        closure_path.write_bytes(json_bytes(closure))
+
+        resolver = AuthoritySourceResolver(self.repo)
+        resolved = resolver.resolve_b2_requirement_family("cap.aura", self._bindings())
+
+        self.assertEqual(resolved.family_id, "cap.aura")
+
+    def test_b2_unsupported_family_shape_fails_closed(self) -> None:
+        def add_field(document: dict[str, object]) -> None:
+            family = cast(list[dict[str, object]], document["families"])[0]
+            family["unsupported"] = True
+
+        self._rewrite_json(B2_CATALOG_PATH, add_field)
+        self._rebind_closure("requirement_family_catalog.v1.json")
+        resolver = AuthoritySourceResolver(self.repo)
+        self.assert_resolution_error(
+            lambda: resolver.resolve_b2_requirement_family("cap.aura", self._bindings()),
+            ResolutionStatus.FAIL,
+            "SCHEMA_MISMATCH",
         )
 
 

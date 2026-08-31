@@ -2,8 +2,8 @@
 
 This module verifies bytes and source identity before parsing or interpreting
 them. It resolves repository artifacts and the externally configured REV3
-package only; it does not classify candidates, derive C semantics, or accept
-authority records.
+package, including exact B2 source records; it does not classify candidates,
+derive C semantics, or accept authority records.
 """
 
 from __future__ import annotations
@@ -47,6 +47,7 @@ from mtgml.persistence import (
     CANONICAL_CBOR_ID,
     DIGEST_ENVELOPE_ID,
     SHA256_ID,
+    PersistenceValue,
     encode_canonical,
     encode_envelope,
     hash_envelope,
@@ -64,6 +65,50 @@ CANDIDATE_UNIVERSE_MODEL_ID = "declared-interaction-model.v2"
 DECLARED_MODEL_SCHEMA = "manafold.m2.5.c.declared-interaction-model.v2"
 CANDIDATE_IDENTITY_DOMAIN = "manafold.m2.5.c.candidate-identity.v1"
 CANDIDATE_IDENTITY_SCHEMA = "manafold.m2.5.c.candidate-identity-input.v1"
+B2_CATALOG_PATH = "sources/m2_5/closures/B2/requirement_family_catalog.v1.json"
+B2_CATALOG_SCHEMA = "manafold.m2.5.b2.requirement-family-catalog.v1"
+B2_CLASSIFICATION_PATH = "sources/m2_5/closures/B2/card_semantic_classifications.v1.json"
+B2_CLASSIFICATION_SCHEMA = "manafold.m2.5.b2.card-semantic-classifications.v1"
+B2_CLOSURE_PATH = "sources/m2_5/closures/B2/classification_closure.v1.json"
+B2_CLOSURE_SCHEMA = "manafold.m2.5.b2.classification-closure.v1"
+B2_SOURCE_DOMAIN = "manafold.m2.5.b2.source-identity.v1"
+B2_SOURCE_INPUT_SCHEMA = "manafold.m2.5.b2.source-identity-input.v1"
+B2_REV3_CLASSIFICATION_DOMAIN = "manafold.m2.5.b2.rev3-classification-record-identity.v1"
+B2_REV3_CLASSIFICATION_SCHEMA = "manafold.m2.5.b2.rev3-classification-record-identity-input.v1"
+B2_CLASSIFICATION_DOMAIN = "manafold.m2.5.b2.classification-record-identity.v1"
+B2_CLASSIFICATION_INPUT_SCHEMA = "manafold.m2.5.b2.classification-record-identity-input.v1"
+B2_REVIEW_BASIS_SCHEMA = "manafold.m2.5.b2.review-basis.v1"
+B2_PROVENANCE_SCHEMA = "manafold.m2.5.b2.provenance.v1"
+B2_ORACLE_LOCATOR_SCHEMA = "manafold.m2.5.b2.oracle-field-locator.v1"
+B2_AUTHORITY_LOCATOR_SCHEMA = "manafold.m2.5.b2.authority-byte-fragment-locator.v1"
+B2_RULE_LOCATOR_SCHEMA = "manafold.m2.5.b2.comprehensive-rule-locator.v1"
+B2_SEMANTIC_BOUNDARY_PREFIX = "B2_SEMANTIC_BOUNDARY_V1"
+B2_SEMANTIC_BOUNDARY_FIELDS = (
+    "family_id",
+    "includes",
+    "excludes",
+    "objects",
+    "action_or_event",
+    "timing",
+    "zone_visibility",
+    "eligibility_condition_duration",
+    "targets_choices",
+    "ownership_control",
+    "numeric_scaling_counters",
+    "information_identity_effect",
+    "rule_dependency",
+)
+_B2_EVIDENCE_BASES = (
+    "ORACLE_TEXT",
+    "TYPE_LINE",
+    "CARD_FACE",
+    "STRUCTURAL_CARD_PROPERTY",
+    "FORMAT_POLICY",
+    "RULE_DERIVED",
+)
+_B2_CHANGE_KINDS = ("RETAINED", "ADDED", "REMOVED", "SUPERSEDED")
+_B2_REVIEW_STATUSES = ("REVIEWED_CONFIRMED", "REVIEWED_CORRECTED")
+_B2_BOUND_ARTIFACT_KEYS = {"path", "raw_sha256"}
 REV3_MODEL_ID = "interaction-model.v1"
 REV3_RESOLUTION_MEMBER = "inputs/deck_row_source_resolution_REV3.csv"
 REV3_SOURCE_INDEX_MEMBER = "source/raw/source_record_index_REV3.csv"
@@ -225,6 +270,10 @@ _EVENT_LEAF_PATH_RE = re.compile(
 )
 _VERIFIED_ARTIFACT_TOKEN = object()
 _VERIFIED_CANDIDATE_TOKEN = object()
+_VERIFIED_B2_FAMILY_TOKEN = object()
+_VERIFIED_B2_CLASSIFICATION_TOKEN = object()
+_VERIFIED_B2_ASSIGNMENT_TOKEN = object()
+_VERIFIED_B2_BOUNDARY_TOKEN = object()
 
 
 class ResolutionStatus(str, Enum):
@@ -282,6 +331,77 @@ class ResolvedSourceInstance:
     source_instance_record: Mapping[str, object]
     source_binding: Mapping[str, object]
     source_artifact: ResolvedArtifact
+
+
+@dataclass(frozen=True)
+class B2ArtifactBindingsV1:
+    """The exact three-file B2 snapshot binding used by source resolution."""
+
+    catalog: SourceBindingDigestV1
+    classifications: SourceBindingDigestV1
+    closure: SourceBindingDigestV1
+
+
+@dataclass(frozen=True)
+class ResolvedB2RequirementFamily:
+    """One immutable family record from the digest-bound B2 catalog."""
+
+    family_id: str
+    artifact: ResolvedArtifact
+    source_binding: SourceBindingDigestV1
+    record: Mapping[str, object]
+    boundary_fields: Mapping[str, str]
+    _verification_token: object = field(default=None, repr=False, compare=False)
+
+
+@dataclass(frozen=True)
+class ResolvedB2Classification:
+    """One immutable card classification from the digest-bound B2 artifact."""
+
+    oracle_semantic_identity: str
+    artifact: ResolvedArtifact
+    source_binding: SourceBindingDigestV1
+    record: Mapping[str, object]
+    classification_identity: Mapping[str, object]
+    _verification_token: object = field(default=None, repr=False, compare=False)
+
+
+@dataclass(frozen=True)
+class ResolvedB2Assignment:
+    """One exact classification-to-family assignment edge."""
+
+    classification: ResolvedB2Classification
+    family: ResolvedB2RequirementFamily
+    assignment: Mapping[str, object]
+    _verification_token: object = field(default=None, repr=False, compare=False)
+
+
+@dataclass(frozen=True)
+class B2BoundaryReferenceV1:
+    """The source-bound two-field B2 boundary reference."""
+
+    family_id: str
+    precise_semantic_definition: str
+
+
+@dataclass(frozen=True)
+class ResolvedB2Boundary:
+    """One exact B2 family boundary, optionally joined to a classification edge."""
+
+    family: ResolvedB2RequirementFamily
+    boundary_ref: B2BoundaryReferenceV1
+    assignment: ResolvedB2Assignment | None
+    _verification_token: object = field(default=None, repr=False, compare=False)
+
+
+@dataclass(frozen=True)
+class _B2Snapshot:
+    catalog_artifact: ResolvedArtifact
+    classification_artifact: ResolvedArtifact
+    closure_artifact: ResolvedArtifact
+    families_by_id: Mapping[str, Mapping[str, object]]
+    family_boundaries_by_id: Mapping[str, Mapping[str, str]]
+    classifications_by_osi: Mapping[str, Mapping[str, object]]
 
 
 @dataclass(frozen=True)
@@ -462,6 +582,781 @@ def _freeze_json(value: object) -> object:
 
 def _frozen_mapping(value: Mapping[str, object]) -> Mapping[str, object]:
     return cast(Mapping[str, object], _freeze_json(dict(value)))
+
+
+def _b2_verified_json_document(
+    artifact: ResolvedArtifact, label: str
+) -> tuple[ResolvedArtifact, dict[str, object]]:
+    if artifact._verification_token is not _VERIFIED_ARTIFACT_TOKEN:
+        _fail("ARTIFACT_UNVERIFIED", f"{label} requires a resolver-verified artifact")
+    verified = _resolved_artifact(
+        artifact.source_kind,
+        artifact.path,
+        artifact.raw_bytes,
+        artifact.raw_sha256,
+        artifact.schema_or_null,
+    )
+    value = _verify_json_schema(verified.raw_bytes, verified.schema_or_null, verified.path)
+    document = _json_object(value, label)
+    immutable = ResolvedArtifact(
+        verified.source_kind,
+        verified.path,
+        verified.raw_bytes,
+        verified.raw_sha256,
+        verified.schema_or_null,
+        _freeze_json(value),
+        _VERIFIED_ARTIFACT_TOKEN,
+    )
+    return immutable, document
+
+
+def _b2_digest_reference(
+    value: object, label: str, semantic_domain: str, input_schema_id: str
+) -> dict[str, object]:
+    record = _json_object(value, label)
+    _exact_keys(
+        record,
+        {
+            "envelope_id",
+            "algorithm_id",
+            "semantic_domain",
+            "payload_codec_id",
+            "input_schema_id",
+            "digest_hex",
+        },
+        label,
+    )
+    expected = {
+        "envelope_id": DIGEST_ENVELOPE_ID,
+        "algorithm_id": SHA256_ID,
+        "semantic_domain": semantic_domain,
+        "payload_codec_id": CANONICAL_CBOR_ID,
+        "input_schema_id": input_schema_id,
+    }
+    for key, expected_value in expected.items():
+        if record.get(key) != expected_value:
+            _fail("B2_IDENTITY_INVALID", f"{label}.{key} is not the accepted V1 value")
+    _json_digest(record.get("digest_hex"), f"{label}.digest_hex")
+    return dict(record)
+
+
+def _b2_digest_for_payload(
+    semantic_domain: str, input_schema_id: str, payload: list[object]
+) -> bytes:
+    return hash_envelope(
+        encode_envelope(
+            semantic_domain,
+            input_schema_id,
+            encode_canonical(cast(PersistenceValue, payload)),
+        )
+    )
+
+
+def _b2_lower_variant(value: object, label: str) -> list[object]:
+    return [_json_text(value, label).lower(), None]
+
+
+def _b2_json_pointer_grammar(value: object, label: str) -> str:
+    pointer = _json_text(value, label)
+    if not pointer.startswith("/"):
+        _fail("B2_LOCATOR_INVALID", f"{label} must begin with '/'")
+    for token in pointer[1:].split("/"):
+        _json_pointer_token(token)
+    return pointer
+
+
+def _b2_locator_to_cbor(value: object, label: str) -> list[object]:
+    record = _json_object(value, label)
+    version = _json_text(record.get("locator_version"), f"{label}.locator_version")
+    if version == B2_ORACLE_LOCATOR_SCHEMA:
+        _exact_keys(
+            record,
+            {
+                "locator_version",
+                "archive_artifact",
+                "oracle_source_record_id",
+                "raw_line_sha256",
+                "json_pointer",
+                "field_value_sha256",
+            },
+            label,
+        )
+        archive_artifact = _relative_path(
+            record.get("archive_artifact"), f"{label}.archive_artifact"
+        )
+        source_id = _json_text(
+            record.get("oracle_source_record_id"), f"{label}.oracle_source_record_id"
+        )
+        if _LOWERCASE_UUID_RE.fullmatch(source_id) is None:
+            _fail("B2_LOCATOR_INVALID", f"{label}.oracle_source_record_id is not a lowercase UUID")
+        pointer = _b2_json_pointer_grammar(record.get("json_pointer"), f"{label}.json_pointer")
+        return [
+            "oracle_field",
+            [
+                version,
+                archive_artifact,
+                source_id,
+                _json_digest(record.get("raw_line_sha256"), f"{label}.raw_line_sha256"),
+                pointer,
+                _json_digest(record.get("field_value_sha256"), f"{label}.field_value_sha256"),
+            ],
+        ]
+    if version == B2_AUTHORITY_LOCATOR_SCHEMA:
+        _exact_keys(
+            record,
+            {
+                "locator_version",
+                "archive_artifact",
+                "artifact_sha256",
+                "byte_offset",
+                "byte_length",
+                "fragment_sha256",
+            },
+            label,
+        )
+        offset = record.get("byte_offset")
+        length = record.get("byte_length")
+        if (
+            isinstance(offset, bool)
+            or not isinstance(offset, int)
+            or offset < 0
+            or isinstance(length, bool)
+            or not isinstance(length, int)
+            or length <= 0
+        ):
+            _fail("B2_LOCATOR_INVALID", f"{label} byte range is invalid")
+        return [
+            "authority_byte_fragment",
+            [
+                version,
+                _relative_path(record.get("archive_artifact"), f"{label}.archive_artifact"),
+                _json_digest(record.get("artifact_sha256"), f"{label}.artifact_sha256"),
+                offset,
+                length,
+                _json_digest(record.get("fragment_sha256"), f"{label}.fragment_sha256"),
+            ],
+        ]
+    if version == B2_RULE_LOCATOR_SCHEMA:
+        _exact_keys(
+            record,
+            {
+                "locator_version",
+                "archive_artifact",
+                "artifact_sha256",
+                "rule_identifier",
+                "line_number",
+                "line_sha256",
+            },
+            label,
+        )
+        line_number = record.get("line_number")
+        if isinstance(line_number, bool) or not isinstance(line_number, int) or line_number <= 0:
+            _fail("B2_LOCATOR_INVALID", f"{label}.line_number is invalid")
+        return [
+            "comprehensive_rule",
+            [
+                version,
+                _relative_path(record.get("archive_artifact"), f"{label}.archive_artifact"),
+                _json_digest(record.get("artifact_sha256"), f"{label}.artifact_sha256"),
+                _json_text(record.get("rule_identifier"), f"{label}.rule_identifier"),
+                line_number,
+                _json_digest(record.get("line_sha256"), f"{label}.line_sha256"),
+            ],
+        ]
+    _fail("B2_LOCATOR_INVALID", f"{label} has an unsupported locator version")
+
+
+def _b2_locator_list(value: object, label: str, *, nonempty: bool) -> list[dict[str, object]]:
+    raw = value
+    if not isinstance(raw, list):
+        _fail("B2_LOCATOR_INVALID", f"{label} must be an array")
+    if nonempty and not raw:
+        _fail("B2_LOCATOR_INVALID", f"{label} must be non-empty")
+    locators = [
+        _json_object(item, f"{label}[{index}]")
+        for index, item in enumerate(cast(list[object], raw))
+    ]
+    keys = [_b2_locator_to_cbor(item, f"{label}[{index}]") for index, item in enumerate(locators)]
+    encoded = [encode_canonical(cast(PersistenceValue, key)) for key in keys]
+    if len(set(encoded)) != len(encoded) or encoded != sorted(encoded):
+        _fail("B2_LOCATOR_ORDER_INVALID", f"{label} must be canonical and duplicate-free")
+    return locators
+
+
+def _b2_evidence_checksum(value: object, label: str) -> dict[str, object]:
+    record = _json_object(value, label)
+    _exact_keys(record, {"algorithm_id", "checksum_kind", "digest_hex", "input_schema_id"}, label)
+    if (
+        record.get("algorithm_id") != SHA256_ID
+        or record.get("checksum_kind") != "EVIDENCE_CHECKSUM"
+    ):
+        _fail("B2_CHECKSUM_INVALID", f"{label} is not an evidence checksum")
+    _json_text(record.get("input_schema_id"), f"{label}.input_schema_id")
+    _json_digest(record.get("digest_hex"), f"{label}.digest_hex")
+    return dict(record)
+
+
+def _b2_validate_source_identity(value: object, label: str) -> dict[str, object]:
+    record = _json_object(value, label)
+    _exact_keys(
+        record,
+        {
+            "archive_artifact",
+            "normalized_record_sha256",
+            "oracle_layout",
+            "oracle_semantic_identity",
+            "oracle_source_record_id",
+            "source_record_raw_sha256",
+        },
+        label,
+    )
+    if record.get("archive_artifact") != "source/raw/oracle_cards_selected_REV3.jsonl":
+        _fail(
+            "B2_SOURCE_BINDING_INVALID",
+            f"{label}.archive_artifact is not the admitted Oracle source",
+        )
+    for key in ("oracle_semantic_identity", "oracle_source_record_id"):
+        identity = _json_text(record.get(key), f"{label}.{key}")
+        if _LOWERCASE_UUID_RE.fullmatch(identity) is None:
+            _fail("B2_SOURCE_BINDING_INVALID", f"{label}.{key} is not a lowercase UUID")
+    _json_text(record.get("oracle_layout"), f"{label}.oracle_layout")
+    _json_digest(record.get("source_record_raw_sha256"), f"{label}.source_record_raw_sha256")
+    _json_digest(record.get("normalized_record_sha256"), f"{label}.normalized_record_sha256")
+    return dict(record)
+
+
+def _b2_source_identity_input(source: Mapping[str, object]) -> list[object]:
+    return [
+        B2_SOURCE_INPUT_SCHEMA,
+        source["archive_artifact"],
+        source["oracle_semantic_identity"],
+        source["oracle_source_record_id"],
+        source["oracle_layout"],
+        bytes.fromhex(cast(str, source["source_record_raw_sha256"])),
+        bytes.fromhex(cast(str, source["normalized_record_sha256"])),
+    ]
+
+
+def _b2_assignment_input(assignment: Mapping[str, object]) -> list[object]:
+    return [
+        assignment["requirement_family_id"],
+        _b2_lower_variant(assignment["evidence_basis"], "assignment.evidence_basis"),
+        [
+            _b2_locator_to_cbor(locator, "assignment.evidence_locators")
+            for locator in cast(list[Mapping[str, object]], assignment["evidence_locators"])
+        ],
+        assignment["review_rationale"],
+    ]
+
+
+def _b2_change_input(change: Mapping[str, object]) -> list[object]:
+    return [
+        change["family_id"],
+        _b2_lower_variant(change["change_kind"], "classification change kind"),
+        list(cast(tuple[str, ...], change["replacement_family_ids"])),
+        change["rationale"],
+        [
+            _b2_locator_to_cbor(locator, "classification change evidence_locators")
+            for locator in cast(list[Mapping[str, object]], change["evidence_locators"])
+        ],
+    ]
+
+
+def _b2_validate_assignment(value: object, label: str) -> dict[str, object]:
+    record = _json_object(value, label)
+    _exact_keys(
+        record,
+        {"requirement_family_id", "evidence_basis", "evidence_locators", "review_rationale"},
+        label,
+    )
+    _json_text(record.get("requirement_family_id"), f"{label}.requirement_family_id")
+    if (
+        _json_text(record.get("evidence_basis"), f"{label}.evidence_basis")
+        not in _B2_EVIDENCE_BASES
+    ):
+        _fail("B2_ASSIGNMENT_INVALID", f"{label}.evidence_basis is not a closed V1 value")
+    locators = _b2_locator_list(
+        record.get("evidence_locators"), f"{label}.evidence_locators", nonempty=True
+    )
+    _json_text(record.get("review_rationale"), f"{label}.review_rationale")
+    result = dict(record)
+    result["evidence_locators"] = locators
+    return result
+
+
+def _b2_validate_change(value: object, label: str) -> dict[str, object]:
+    record = _json_object(value, label)
+    _exact_keys(
+        record,
+        {"family_id", "change_kind", "replacement_family_ids", "rationale", "evidence_locators"},
+        label,
+    )
+    _json_text(record.get("family_id"), f"{label}.family_id")
+    if _json_text(record.get("change_kind"), f"{label}.change_kind") not in _B2_CHANGE_KINDS:
+        _fail("B2_CLASSIFICATION_INVALID", f"{label}.change_kind is not a closed V1 value")
+    replacements = record.get("replacement_family_ids")
+    if not isinstance(replacements, list) or any(
+        not isinstance(item, str) or not item for item in replacements
+    ):
+        _fail("B2_CLASSIFICATION_INVALID", f"{label}.replacement_family_ids is invalid")
+    replacement_values = [cast(str, item) for item in replacements]
+    replacement_keys = [encode_canonical(item) for item in replacement_values]
+    if len(set(replacement_keys)) != len(replacement_keys) or replacement_keys != sorted(
+        replacement_keys
+    ):
+        _fail("B2_CLASSIFICATION_INVALID", f"{label}.replacement_family_ids is not canonical")
+    _json_text(record.get("rationale"), f"{label}.rationale")
+    locators = _b2_locator_list(
+        record.get("evidence_locators"), f"{label}.evidence_locators", nonempty=True
+    )
+    result = dict(record)
+    result["replacement_family_ids"] = replacement_values
+    result["evidence_locators"] = locators
+    return result
+
+
+def _b2_validate_classification_record(value: object, label: str) -> dict[str, object]:
+    record = _json_object(value, label)
+    _exact_keys(
+        record,
+        {
+            "classification_delta",
+            "classification_identity",
+            "oracle_semantic_identity",
+            "previous_rev3_classification_identity",
+            "provenance",
+            "requirement_assignments",
+            "review_basis",
+            "review_status",
+            "source_evidence_digest",
+            "source_identity",
+        },
+        label,
+    )
+    osi = _json_text(record.get("oracle_semantic_identity"), f"{label}.oracle_semantic_identity")
+    if _LOWERCASE_UUID_RE.fullmatch(osi) is None:
+        _fail(
+            "B2_CLASSIFICATION_INVALID", f"{label}.oracle_semantic_identity is not a lowercase UUID"
+        )
+    source = _b2_validate_source_identity(record.get("source_identity"), f"{label}.source_identity")
+    if source["oracle_semantic_identity"] != osi:
+        _fail("B2_SOURCE_BINDING_INVALID", f"{label}.source_identity binds another OSI")
+    source_evidence = _b2_digest_reference(
+        record.get("source_evidence_digest"),
+        f"{label}.source_evidence_digest",
+        B2_SOURCE_DOMAIN,
+        B2_SOURCE_INPUT_SCHEMA,
+    )
+    expected_source_evidence = _b2_digest_for_payload(
+        B2_SOURCE_DOMAIN,
+        B2_SOURCE_INPUT_SCHEMA,
+        _b2_source_identity_input(source),
+    )
+    if source_evidence["digest_hex"] != expected_source_evidence.hex():
+        _fail(
+            "B2_IDENTITY_MISMATCH", f"{label}.source_evidence_digest does not match source identity"
+        )
+    previous = _b2_digest_reference(
+        record.get("previous_rev3_classification_identity"),
+        f"{label}.previous_rev3_classification_identity",
+        B2_REV3_CLASSIFICATION_DOMAIN,
+        B2_REV3_CLASSIFICATION_SCHEMA,
+    )
+    review_status = _json_text(record.get("review_status"), f"{label}.review_status")
+    if review_status not in _B2_REVIEW_STATUSES:
+        _fail("B2_CLASSIFICATION_INVALID", f"{label}.review_status is not terminal")
+    raw_assignments = record.get("requirement_assignments")
+    if not isinstance(raw_assignments, list):
+        _fail("B2_ASSIGNMENT_INVALID", f"{label}.requirement_assignments must be an array")
+    assignments = [
+        _b2_validate_assignment(item, f"{label}.requirement_assignments[{index}]")
+        for index, item in enumerate(cast(list[object], raw_assignments))
+    ]
+    assignment_ids = [cast(str, item["requirement_family_id"]) for item in assignments]
+    assignment_keys = [encode_canonical(item) for item in assignment_ids]
+    if len(set(assignment_keys)) != len(assignment_keys) or assignment_keys != sorted(
+        assignment_keys
+    ):
+        _fail("B2_ASSIGNMENT_ORDER_INVALID", f"{label}.requirement_assignments is not canonical")
+
+    delta = _json_object(record.get("classification_delta"), f"{label}.classification_delta")
+    _exact_keys(
+        delta,
+        {
+            "added_family_ids",
+            "changes",
+            "removed_family_ids",
+            "retained_family_ids",
+            "superseded_family_ids",
+        },
+        f"{label}.classification_delta",
+    )
+    delta_result: dict[str, object] = {}
+    for key in (
+        "added_family_ids",
+        "removed_family_ids",
+        "retained_family_ids",
+        "superseded_family_ids",
+    ):
+        values = delta.get(key)
+        if not isinstance(values, list) or any(
+            not isinstance(item, str) or not item for item in values
+        ):
+            _fail("B2_CLASSIFICATION_INVALID", f"{label}.classification_delta.{key} is invalid")
+        texts = [cast(str, item) for item in values]
+        keys = [encode_canonical(item) for item in texts]
+        if len(set(keys)) != len(keys) or keys != sorted(keys):
+            _fail(
+                "B2_CLASSIFICATION_INVALID", f"{label}.classification_delta.{key} is not canonical"
+            )
+        delta_result[key] = texts
+    raw_changes = delta.get("changes")
+    if not isinstance(raw_changes, list):
+        _fail("B2_CLASSIFICATION_INVALID", f"{label}.classification_delta.changes must be an array")
+    changes = [
+        _b2_validate_change(item, f"{label}.classification_delta.changes[{index}]")
+        for index, item in enumerate(cast(list[object], raw_changes))
+    ]
+    change_keys = [
+        encode_canonical(cast(PersistenceValue, [item["family_id"], item["change_kind"]]))
+        for item in changes
+    ]
+    if len(set(change_keys)) != len(change_keys) or change_keys != sorted(change_keys):
+        _fail("B2_CLASSIFICATION_INVALID", f"{label}.classification_delta.changes is not canonical")
+    delta_result["changes"] = changes
+
+    review_basis = _json_object(record.get("review_basis"), f"{label}.review_basis")
+    _exact_keys(review_basis, {"evidence_locators", "review_method"}, f"{label}.review_basis")
+    review_method = _json_text(
+        review_basis.get("review_method"), f"{label}.review_basis.review_method"
+    )
+    if review_method != "SOURCE_GROUNDED_CARD_REVIEW":
+        _fail("B2_CLASSIFICATION_INVALID", f"{label}.review_basis is not source-grounded")
+    review_locators = _b2_locator_list(
+        review_basis.get("evidence_locators"),
+        f"{label}.review_basis.evidence_locators",
+        nonempty=True,
+    )
+    if not any(
+        _b2_locator_to_cbor(item, f"{label}.review_basis.evidence_locators")[0] == "oracle_field"
+        for item in review_locators
+    ):
+        _fail("B2_CLASSIFICATION_INVALID", f"{label}.review_basis has no card-side locator")
+    provenance = _json_object(record.get("provenance"), f"{label}.provenance")
+    _exact_keys(provenance, {"provenance_method", "source_package_sha256"}, f"{label}.provenance")
+    provenance_method = _json_text(
+        provenance.get("provenance_method"), f"{label}.provenance.provenance_method"
+    )
+    if provenance_method != "SOURCE_GROUNDED_REVIEW_V1":
+        _fail(
+            "B2_CLASSIFICATION_INVALID",
+            f"{label}.provenance.provenance_method is not source-grounded",
+        )
+    if (
+        _json_digest(
+            provenance.get("source_package_sha256"), f"{label}.provenance.source_package_sha256"
+        ).hex()
+        != EXPECTED_REV3_ARCHIVE_SHA256
+    ):
+        _fail(
+            "B2_SOURCE_BINDING_INVALID",
+            f"{label}.provenance source package differs from the pinned package",
+        )
+
+    expected_classification = _b2_digest_for_payload(
+        B2_CLASSIFICATION_DOMAIN,
+        B2_CLASSIFICATION_INPUT_SCHEMA,
+        [
+            B2_CLASSIFICATION_INPUT_SCHEMA,
+            osi,
+            bytes.fromhex(cast(str, source_evidence["digest_hex"])),
+            _b2_lower_variant(review_status, f"{label}.review_status"),
+            bytes.fromhex(cast(str, previous["digest_hex"])),
+            [_b2_assignment_input(item) for item in assignments],
+            [_b2_change_input(item) for item in changes],
+            [
+                B2_REVIEW_BASIS_SCHEMA,
+                _b2_lower_variant(review_method, f"{label}.review_basis.review_method"),
+                [
+                    _b2_locator_to_cbor(item, f"{label}.review_basis.evidence_locators")
+                    for item in review_locators
+                ],
+            ],
+            [
+                B2_PROVENANCE_SCHEMA,
+                bytes.fromhex(EXPECTED_REV3_ARCHIVE_SHA256),
+                _b2_lower_variant(provenance_method, f"{label}.provenance.provenance_method"),
+            ],
+        ],
+    )
+    classification_identity = _b2_digest_reference(
+        record.get("classification_identity"),
+        f"{label}.classification_identity",
+        B2_CLASSIFICATION_DOMAIN,
+        B2_CLASSIFICATION_INPUT_SCHEMA,
+    )
+    if classification_identity["digest_hex"] != expected_classification.hex():
+        _fail("B2_IDENTITY_MISMATCH", f"{label}.classification_identity does not match its record")
+    result = dict(record)
+    result["source_identity"] = source
+    result["requirement_assignments"] = assignments
+    result["classification_delta"] = delta_result
+    result["review_basis"] = {"evidence_locators": review_locators, "review_method": review_method}
+    result["provenance"] = {
+        "provenance_method": provenance_method,
+        "source_package_sha256": EXPECTED_REV3_ARCHIVE_SHA256,
+    }
+    result["classification_identity"] = classification_identity
+    result["source_evidence_digest"] = source_evidence
+    result["previous_rev3_classification_identity"] = previous
+    return result
+
+
+def _b2_semantic_boundary(value: object, family_id: str, label: str) -> dict[str, str]:
+    definition = _json_text(value, label)
+    parts = definition.split("|")
+    if (
+        len(parts) != len(B2_SEMANTIC_BOUNDARY_FIELDS) + 1
+        or parts[0] != B2_SEMANTIC_BOUNDARY_PREFIX
+    ):
+        _fail("B2_BOUNDARY_INVALID", f"{label} is not B2_SEMANTIC_BOUNDARY_V1")
+    fields: dict[str, str] = {}
+    for name, part in zip(B2_SEMANTIC_BOUNDARY_FIELDS, parts[1:], strict=True):
+        key, separator, text = part.partition("=")
+        if separator != "=" or key != name or not text or name in fields:
+            _fail("B2_BOUNDARY_INVALID", f"{label} has an invalid field order or value")
+        fields[name] = text
+    if fields["family_id"] != family_id:
+        _fail("B2_BOUNDARY_BINDING_MISMATCH", f"{label} binds family {fields['family_id']!r}")
+    return fields
+
+
+def _b2_validate_family_record(
+    value: object, label: str
+) -> tuple[dict[str, object], dict[str, str]]:
+    """Validate only the typed family projection needed by source binding."""
+
+    record = _json_object(value, label)
+    common = {
+        "canonical_name",
+        "evidence_basis_allowed",
+        "family_id",
+        "family_origin",
+        "lifecycle_relation",
+        "precise_semantic_definition",
+        "review_provenance",
+        "status",
+        "superseded_by",
+        "supersession_reason",
+        "terminal_assignable",
+    }
+    origin = _json_text(record.get("family_origin"), f"{label}.family_origin")
+    if origin == "REV3_LEGACY":
+        expected_keys = common | {"historical_definition", "historical_rev3"}
+    elif origin == "B2_NEW":
+        expected_keys = common
+    else:
+        _fail("B2_FAMILY_INVALID", f"{label}.family_origin is not closed")
+    _exact_keys(record, expected_keys, label)
+
+    family_id = _json_text(record.get("family_id"), f"{label}.family_id")
+    _json_text(record.get("canonical_name"), f"{label}.canonical_name")
+    boundary = _b2_semantic_boundary(
+        record.get("precise_semantic_definition"),
+        family_id,
+        f"{label}.precise_semantic_definition",
+    )
+    allowed_basis = record.get("evidence_basis_allowed")
+    if not isinstance(allowed_basis, list) or any(
+        not isinstance(item, str) or not item for item in allowed_basis
+    ):
+        _fail("B2_FAMILY_INVALID", f"{label}.evidence_basis_allowed is not a text array")
+    basis_keys = [encode_canonical(item) for item in allowed_basis]
+    if len(set(basis_keys)) != len(basis_keys) or basis_keys != sorted(basis_keys):
+        _fail("B2_FAMILY_INVALID", f"{label}.evidence_basis_allowed is not canonical")
+
+    status = _json_text(record.get("status"), f"{label}.status")
+    if status not in {"ACTIVE", "ACTIVE_UNASSIGNED", "SUPERSEDED", "RETIRED"}:
+        _fail("B2_FAMILY_INVALID", f"{label}.status is not closed")
+    assignable = record.get("terminal_assignable")
+    if not isinstance(assignable, bool) or assignable != (status == "ACTIVE"):
+        _fail("B2_FAMILY_INVALID", f"{label}.terminal_assignable disagrees with status")
+    successors = record.get("superseded_by")
+    if not isinstance(successors, list) or any(
+        not isinstance(item, str) or not item for item in successors
+    ):
+        _fail("B2_FAMILY_INVALID", f"{label}.superseded_by is invalid")
+    successor_keys = [encode_canonical(item) for item in successors]
+    if len(set(successor_keys)) != len(successor_keys) or successor_keys != sorted(successor_keys):
+        _fail("B2_FAMILY_INVALID", f"{label}.superseded_by is not canonical")
+    reason = record.get("supersession_reason")
+    if reason is not None and (not isinstance(reason, str) or not reason):
+        _fail("B2_FAMILY_INVALID", f"{label}.supersession_reason is invalid")
+    _json_text(record.get("lifecycle_relation"), f"{label}.lifecycle_relation")
+
+    review = _json_object(record.get("review_provenance"), f"{label}.review_provenance")
+    _exact_keys(
+        review,
+        {"evidence_locators", "review_basis", "review_status"},
+        f"{label}.review_provenance",
+    )
+    _json_text(review.get("review_basis"), f"{label}.review_provenance.review_basis")
+    _json_text(review.get("review_status"), f"{label}.review_provenance.review_status")
+    evidence_locators = review.get("evidence_locators")
+    if not isinstance(evidence_locators, list):
+        _fail("B2_FAMILY_INVALID", f"{label}.review_provenance.evidence_locators is not an array")
+
+    if origin == "REV3_LEGACY":
+        _json_object(record.get("historical_rev3"), f"{label}.historical_rev3")
+        _json_object(record.get("historical_definition"), f"{label}.historical_definition")
+
+    result = dict(record)
+    result["evidence_basis_allowed"] = [
+        cast(str, item) for item in cast(list[object], allowed_basis)
+    ]
+    result["superseded_by"] = [cast(str, item) for item in cast(list[object], successors)]
+    return result, boundary
+
+
+def _b2_validate_catalog(
+    value: object,
+) -> dict[str, tuple[dict[str, object], dict[str, str]]]:
+    """Index the B2 catalog; B2 semantic certification remains another gate."""
+
+    catalog = _json_object(value, "B2 requirement family catalog")
+    _exact_keys(
+        catalog,
+        {
+            "catalog_family_count",
+            "families",
+            "legacy_family_count",
+            "new_family_count",
+            "rev3_catalog_sha256",
+            "schema",
+            "source_package_sha256",
+        },
+        "B2 requirement family catalog",
+    )
+    if (
+        catalog.get("schema") != B2_CATALOG_SCHEMA
+        or catalog.get("source_package_sha256") != EXPECTED_REV3_ARCHIVE_SHA256
+    ):
+        _fail(
+            "B2_CATALOG_BINDING_INVALID",
+            "B2 catalog schema or source package is not the accepted V1 value",
+        )
+    _json_digest(catalog.get("rev3_catalog_sha256"), "B2 catalog REV3 digest")
+    raw_families = catalog.get("families")
+    if not isinstance(raw_families, list):
+        _fail("B2_CATALOG_INVALID", "B2 catalog families must be an array")
+    if catalog.get("legacy_family_count") != 216:
+        _fail("B2_CATALOG_INVALID", "B2 catalog legacy family count is not 216")
+    if catalog.get("catalog_family_count") != len(raw_families):
+        _fail("B2_CATALOG_INVALID", "B2 catalog family count is not closed")
+
+    families: dict[str, tuple[dict[str, object], dict[str, str]]] = {}
+    ids: list[str] = []
+    for index, item in enumerate(cast(list[object], raw_families)):
+        family, boundary = _b2_validate_family_record(item, f"B2 family[{index}]")
+        family_id = cast(str, family["family_id"])
+        if family_id in families:
+            _fail("B2_FAMILY_AMBIGUOUS", f"B2 family {family_id!r} appears more than once")
+        families[family_id] = (family, boundary)
+        ids.append(family_id)
+    if ids != sorted(ids, key=encode_canonical):
+        _fail("B2_CATALOG_ORDER_INVALID", "B2 catalog families are not canonically ordered")
+    new_count = sum(1 for family, _ in families.values() if family["family_origin"] == "B2_NEW")
+    if (
+        catalog.get("new_family_count") != new_count
+        or catalog.get("catalog_family_count") != 216 + new_count
+    ):
+        _fail("B2_CATALOG_INVALID", "B2 catalog new-family counts are not closed")
+    return families
+
+
+def _b2_verify_closure_bindings(
+    resolver: AuthoritySourceResolver,
+    value: object,
+    bindings: B2ArtifactBindingsV1,
+) -> None:
+    """Verify only closure-to-artifact bindings, never B2 certification state.
+
+    Gate status and aggregate metrics are owned by the existing B2 verifier.
+    This resolver deliberately does not reinterpret them.
+    """
+
+    closure = _json_object(value, "B2 classification closure")
+    if (
+        closure.get("schema") != B2_CLOSURE_SCHEMA
+        or closure.get("source_package_sha256") != EXPECTED_REV3_ARCHIVE_SHA256
+    ):
+        _fail(
+            "B2_CLOSURE_BINDING_INVALID",
+            "B2 closure schema or source package is not the accepted V1 value",
+        )
+    bound = closure.get("bound_artifacts")
+    if not isinstance(bound, list):
+        _fail("B2_CLOSURE_INVALID", "B2 closure bound_artifacts must be an array")
+
+    by_path: dict[str, str] = {}
+    for index, item in enumerate(cast(list[object], bound)):
+        record = _json_object(item, f"B2 closure bound_artifacts[{index}]")
+        _exact_keys(record, _B2_BOUND_ARTIFACT_KEYS, f"B2 closure bound_artifacts[{index}]")
+        path = _relative_path(record.get("path"), "B2 closure bound artifact path")
+        if path in by_path:
+            _fail("B2_CLOSURE_INVALID", f"B2 closure repeats bound artifact {path!r}")
+        digest = _json_digest(record.get("raw_sha256"), f"B2 closure {path} digest").hex()
+        by_path[path] = digest
+
+    expected = {
+        "requirement_family_catalog.v1.json": bindings.catalog.raw_sha256.hex(),
+        "card_semantic_classifications.v1.json": bindings.classifications.raw_sha256.hex(),
+    }
+    for path, expected_digest in expected.items():
+        if by_path.get(path) != expected_digest:
+            _fail("B2_CLOSURE_BINDING_MISMATCH", f"B2 closure does not bind {path} bytes")
+        resolver.resolve_repository_artifact(
+            f"sources/m2_5/closures/B2/{path}",
+            expected_digest,
+            B2_CATALOG_SCHEMA
+            if path.startswith("requirement_family_catalog")
+            else B2_CLASSIFICATION_SCHEMA,
+        )
+
+
+def _b2_require_binding(
+    binding: SourceBindingDigestV1, role: str, path: str, schema: str, label: str
+) -> None:
+    if not isinstance(binding, SourceBindingDigestV1):
+        _fail("B2_SOURCE_BINDING_INVALID", f"{label} is not a SourceBindingDigestV1")
+    if binding.artifact_role != role or binding.path != path or binding.schema_or_null != schema:
+        _fail("B2_SOURCE_BINDING_INVALID", f"{label} does not use the admitted role/path/schema")
+
+
+def _b2_require_bindings(bindings: B2ArtifactBindingsV1) -> None:
+    if not isinstance(bindings, B2ArtifactBindingsV1):
+        _fail("B2_SOURCE_BINDING_INVALID", "B2 resolution requires B2ArtifactBindingsV1")
+    _b2_require_binding(
+        bindings.catalog,
+        "b2_catalog",
+        B2_CATALOG_PATH,
+        B2_CATALOG_SCHEMA,
+        "B2 catalog binding",
+    )
+    _b2_require_binding(
+        bindings.classifications,
+        "b2_classifications",
+        B2_CLASSIFICATION_PATH,
+        B2_CLASSIFICATION_SCHEMA,
+        "B2 classification binding",
+    )
+    _b2_require_binding(
+        bindings.closure,
+        "b2_closure",
+        B2_CLOSURE_PATH,
+        B2_CLOSURE_SCHEMA,
+        "B2 closure binding",
+    )
 
 
 def _candidate_identity_reference(value: object, label: str) -> dict[str, object]:
@@ -1443,6 +2338,275 @@ class AuthoritySourceResolver:
             binding.path, binding.raw_sha256, binding.schema_or_null
         )
 
+    def _b2_snapshot(self, bindings: B2ArtifactBindingsV1) -> _B2Snapshot:
+        _b2_require_bindings(bindings)
+        raw_catalog = self.resolve_source_binding(bindings.catalog)
+        raw_classifications = self.resolve_source_binding(bindings.classifications)
+        raw_closure = self.resolve_source_binding(bindings.closure)
+        catalog_artifact, catalog_document = _b2_verified_json_document(
+            raw_catalog, "B2 requirement family catalog"
+        )
+        classification_artifact, classification_document = _b2_verified_json_document(
+            raw_classifications, "B2 card semantic classifications"
+        )
+        closure_artifact, closure_document = _b2_verified_json_document(
+            raw_closure, "B2 classification closure"
+        )
+        _b2_verify_closure_bindings(self, closure_document, bindings)
+        family_values = _b2_validate_catalog(catalog_document)
+        if classification_document.get("schema") != B2_CLASSIFICATION_SCHEMA:
+            _fail("B2_CLASSIFICATION_BINDING_INVALID", "B2 classification schema is not V1")
+        if classification_document.get("source_package_sha256") != EXPECTED_REV3_ARCHIVE_SHA256:
+            _fail("B2_CLASSIFICATION_BINDING_INVALID", "B2 classification package is not pinned")
+        if classification_document.get("input_oracle_identity_count") != 402:
+            _fail("B2_CLASSIFICATION_INVALID", "B2 classification identity count is not 402")
+        raw_records = classification_document.get("classifications")
+        if not isinstance(raw_records, list) or len(raw_records) != 402:
+            _fail("B2_CLASSIFICATION_INVALID", "B2 classification record count is not 402")
+        classifications: dict[str, Mapping[str, object]] = {}
+        osi_order: list[str] = []
+        for index, item in enumerate(cast(list[object], raw_records)):
+            record = _b2_validate_classification_record(item, f"B2 classification[{index}]")
+            osi = cast(str, record["oracle_semantic_identity"])
+            if osi in classifications:
+                _fail(
+                    "B2_CLASSIFICATION_AMBIGUOUS",
+                    f"B2 classification {osi!r} appears more than once",
+                )
+            classifications[osi] = _frozen_mapping(record)
+            osi_order.append(osi)
+        if osi_order != sorted(osi_order):
+            _fail("B2_CLASSIFICATION_ORDER_INVALID", "B2 classifications are not sorted by OSI")
+        for osi, classification in classifications.items():
+            assignments = classification["requirement_assignments"]
+            for assignment in cast(tuple[Mapping[str, object], ...], assignments):
+                family_id = cast(str, assignment["requirement_family_id"])
+                family_entry = family_values.get(family_id)
+                if family_entry is None:
+                    _fail(
+                        "B2_ASSIGNMENT_FAMILY_MISMATCH",
+                        f"B2 classification {osi!r} references unknown family {family_id!r}",
+                    )
+                family = family_entry[0]
+                if family["status"] != "ACTIVE" or family["terminal_assignable"] is not True:
+                    _fail(
+                        "B2_ASSIGNMENT_FAMILY_MISMATCH",
+                        f"B2 classification {osi!r} references non-active family {family_id!r}",
+                    )
+        frozen_families = {
+            family_id: _frozen_mapping(family) for family_id, (family, _) in family_values.items()
+        }
+        frozen_boundaries = {
+            family_id: cast(Mapping[str, str], _frozen_mapping(boundary))
+            for family_id, (_, boundary) in family_values.items()
+        }
+        return _B2Snapshot(
+            catalog_artifact=catalog_artifact,
+            classification_artifact=classification_artifact,
+            closure_artifact=closure_artifact,
+            families_by_id=frozen_families,
+            family_boundaries_by_id=frozen_boundaries,
+            classifications_by_osi=classifications,
+        )
+
+    def resolve_b2_requirement_family(
+        self, family_id: str, bindings: B2ArtifactBindingsV1
+    ) -> ResolvedB2RequirementFamily:
+        """Resolve one exact family record without interpreting its meaning."""
+
+        requested_family_id = _json_text(family_id, "B2 family ID")
+        snapshot = self._b2_snapshot(bindings)
+        record = snapshot.families_by_id.get(requested_family_id)
+        if record is None:
+            _fail(
+                "B2_FAMILY_NOT_FOUND",
+                f"B2 family {requested_family_id!r} is not in the catalog",
+            )
+        boundary = snapshot.family_boundaries_by_id[requested_family_id]
+        return ResolvedB2RequirementFamily(
+            family_id=requested_family_id,
+            artifact=snapshot.catalog_artifact,
+            source_binding=bindings.catalog,
+            record=record,
+            boundary_fields=boundary,
+            _verification_token=_VERIFIED_B2_FAMILY_TOKEN,
+        )
+
+    def resolve_b2_classification(
+        self,
+        oracle_semantic_identity: str,
+        classification_identity: Mapping[str, object],
+        bindings: B2ArtifactBindingsV1,
+    ) -> ResolvedB2Classification:
+        """Resolve one exact card classification and its persisted identity."""
+
+        requested_osi = _json_text(oracle_semantic_identity, "B2 Oracle semantic identity")
+        if _LOWERCASE_UUID_RE.fullmatch(requested_osi) is None:
+            _fail(
+                "B2_CLASSIFICATION_BINDING_INVALID",
+                "B2 Oracle semantic identity is not a lowercase UUID",
+            )
+        requested_identity = _b2_digest_reference(
+            classification_identity,
+            "B2 classification identity",
+            B2_CLASSIFICATION_DOMAIN,
+            B2_CLASSIFICATION_INPUT_SCHEMA,
+        )
+        snapshot = self._b2_snapshot(bindings)
+        record = snapshot.classifications_by_osi.get(requested_osi)
+        if record is None:
+            _fail(
+                "B2_CLASSIFICATION_NOT_FOUND",
+                f"B2 classification {requested_osi!r} is not in the artifact",
+            )
+        persisted_identity = cast(Mapping[str, object], record["classification_identity"])
+        if dict(persisted_identity) != requested_identity:
+            _fail(
+                "B2_CLASSIFICATION_IDENTITY_MISMATCH",
+                f"B2 classification {requested_osi!r} identity differs from the artifact",
+            )
+        return ResolvedB2Classification(
+            oracle_semantic_identity=requested_osi,
+            artifact=snapshot.classification_artifact,
+            source_binding=bindings.classifications,
+            record=record,
+            classification_identity=_frozen_mapping(requested_identity),
+            _verification_token=_VERIFIED_B2_CLASSIFICATION_TOKEN,
+        )
+
+    def resolve_b2_assignment(
+        self,
+        classification: ResolvedB2Classification,
+        family_id: str,
+        bindings: B2ArtifactBindingsV1,
+    ) -> ResolvedB2Assignment:
+        """Resolve one exact classification-to-family assignment edge."""
+
+        if (
+            not isinstance(classification, ResolvedB2Classification)
+            or classification._verification_token is not _VERIFIED_B2_CLASSIFICATION_TOKEN
+        ):
+            _fail(
+                "B2_CLASSIFICATION_UNVERIFIED",
+                "B2 assignment requires a resolver-verified classification",
+            )
+        _b2_require_bindings(bindings)
+        if classification.source_binding != bindings.classifications:
+            _fail(
+                "B2_CLASSIFICATION_BINDING_MISMATCH",
+                "classification uses another B2 artifact binding",
+            )
+        snapshot = self._b2_snapshot(bindings)
+        persisted = snapshot.classifications_by_osi.get(classification.oracle_semantic_identity)
+        if persisted is None:
+            _fail("B2_CLASSIFICATION_NOT_FOUND", "classification is no longer in the B2 artifact")
+        if dict(cast(Mapping[str, object], persisted["classification_identity"])) != dict(
+            classification.classification_identity
+        ):
+            _fail(
+                "B2_CLASSIFICATION_IDENTITY_MISMATCH",
+                "classification identity changed after resolution",
+            )
+        requested_family_id = _json_text(family_id, "B2 assignment family ID")
+        raw_assignments = cast(
+            tuple[Mapping[str, object], ...], persisted["requirement_assignments"]
+        )
+        matches = [
+            (index, assignment)
+            for index, assignment in enumerate(raw_assignments)
+            if assignment["requirement_family_id"] == requested_family_id
+        ]
+        if not matches:
+            _fail(
+                "B2_ASSIGNMENT_NOT_FOUND",
+                f"B2 classification {classification.oracle_semantic_identity!r} has no "
+                f"{requested_family_id!r} assignment",
+            )
+        if len(matches) != 1:
+            _fail(
+                "B2_ASSIGNMENT_AMBIGUOUS",
+                f"B2 classification {classification.oracle_semantic_identity!r} has multiple "
+                f"{requested_family_id!r} assignments",
+            )
+        _, assignment = matches[0]
+        family_record = snapshot.families_by_id.get(requested_family_id)
+        if family_record is None:
+            _fail(
+                "B2_ASSIGNMENT_FAMILY_MISMATCH", "B2 assignment family is absent from the catalog"
+            )
+        if family_record["status"] != "ACTIVE" or family_record["terminal_assignable"] is not True:
+            _fail(
+                "B2_ASSIGNMENT_FAMILY_MISMATCH", "B2 assignment family is not terminally assignable"
+            )
+        family = ResolvedB2RequirementFamily(
+            family_id=requested_family_id,
+            artifact=snapshot.catalog_artifact,
+            source_binding=bindings.catalog,
+            record=family_record,
+            boundary_fields=snapshot.family_boundaries_by_id[requested_family_id],
+            _verification_token=_VERIFIED_B2_FAMILY_TOKEN,
+        )
+        return ResolvedB2Assignment(
+            classification=classification,
+            family=family,
+            assignment=_frozen_mapping(dict(assignment)),
+            _verification_token=_VERIFIED_B2_ASSIGNMENT_TOKEN,
+        )
+
+    def resolve_b2_boundary(
+        self,
+        family: ResolvedB2RequirementFamily,
+        boundary_ref: B2BoundaryReferenceV1,
+        assignment: ResolvedB2Assignment | None = None,
+    ) -> ResolvedB2Boundary:
+        """Resolve an exact B2 boundary reference and optional assignment join."""
+
+        if (
+            not isinstance(family, ResolvedB2RequirementFamily)
+            or family._verification_token is not _VERIFIED_B2_FAMILY_TOKEN
+        ):
+            _fail("B2_FAMILY_UNVERIFIED", "B2 boundary requires a resolver-verified family")
+        if not isinstance(boundary_ref, B2BoundaryReferenceV1):
+            _fail("B2_BOUNDARY_INVALID", "B2 boundary requires B2BoundaryReferenceV1")
+        if boundary_ref.family_id != family.family_id:
+            _fail(
+                "B2_BOUNDARY_BINDING_MISMATCH",
+                "B2 boundary family ID differs from the catalog record",
+            )
+        definition = _json_text(
+            boundary_ref.precise_semantic_definition,
+            "B2 precise semantic definition",
+        )
+        if definition != family.record["precise_semantic_definition"]:
+            _fail(
+                "B2_BOUNDARY_BINDING_MISMATCH",
+                "B2 boundary definition differs from the catalog record",
+            )
+        if assignment is not None:
+            if (
+                not isinstance(assignment, ResolvedB2Assignment)
+                or assignment._verification_token is not _VERIFIED_B2_ASSIGNMENT_TOKEN
+            ):
+                _fail("B2_ASSIGNMENT_UNVERIFIED", "B2 boundary assignment is not resolver-verified")
+            if assignment.family.family_id != family.family_id:
+                _fail(
+                    "B2_BOUNDARY_BINDING_MISMATCH",
+                    "B2 boundary is joined to another assignment family",
+                )
+            if assignment.family.source_binding != family.source_binding:
+                _fail(
+                    "B2_BOUNDARY_BINDING_MISMATCH",
+                    "B2 boundary and assignment use different catalog snapshots",
+                )
+            if family.record["status"] != "ACTIVE":
+                _fail("B2_BOUNDARY_BINDING_MISMATCH", "a card-derived B2 boundary must be active")
+        return ResolvedB2Boundary(
+            family=family,
+            boundary_ref=boundary_ref,
+            assignment=assignment,
+            _verification_token=_VERIFIED_B2_BOUNDARY_TOKEN,
+        )
+
     def _candidate_universe(self, binding: SourceBindingDigestV1) -> _CandidateUniverseIndex:
         if binding.artifact_role != "candidate_universe":
             _fail(
@@ -1938,14 +3102,26 @@ class AuthoritySourceResolver:
 
 __all__ = [
     "ACCEPTANCE_EVENT_SCHEMA_V1",
+    "B2_CATALOG_PATH",
+    "B2_CATALOG_SCHEMA",
+    "B2_CLASSIFICATION_PATH",
+    "B2_CLASSIFICATION_SCHEMA",
+    "B2_CLOSURE_PATH",
+    "B2_CLOSURE_SCHEMA",
     "CANDIDATE_UNIVERSE_PATH",
     "CANDIDATE_UNIVERSE_SCHEMA",
     "EXPECTED_REV3_ARCHIVE_SHA256",
     "REV3_CENSUS_MEMBER",
     "REV3_SOURCE_COLUMNS",
     "AuthoritySourceResolver",
+    "B2ArtifactBindingsV1",
+    "B2BoundaryReferenceV1",
     "ResolutionError",
     "ResolutionStatus",
+    "ResolvedB2Assignment",
+    "ResolvedB2Boundary",
+    "ResolvedB2Classification",
+    "ResolvedB2RequirementFamily",
     "ResolvedCandidate",
     "ResolvedSourceInstance",
     "Rev3ArchiveStore",
