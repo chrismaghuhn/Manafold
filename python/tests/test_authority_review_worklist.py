@@ -9,10 +9,13 @@ from copy import deepcopy
 from dataclasses import replace
 from pathlib import Path
 from typing import cast
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
 
+import build_m2_5_c_authority_review_worklist as worklist_builder
+import scaffold_m2_5_c_authority_review as proposal_builder
 from authority_source_resolver import (
     AuthoritySourceResolver,
     ResolutionError,
@@ -32,6 +35,38 @@ from scaffold_m2_5_c_authority_review import (
 
 WORKLIST_NAME = "review_worklist.v1.jsonl"
 SUMMARY_NAME = "REVIEW_WORKLIST_SUMMARY.md"
+
+
+class ReviewWorklistBoundaryTests(unittest.TestCase):
+    def test_tracked_generator_source_drift_fails_closed(self) -> None:
+        path = ROOT / "scripts" / "README.md"
+        original = path.read_bytes()
+        try:
+            path.write_bytes(original + b"\n")
+            with self.assertRaises(ReviewWorklistError) as context:
+                load_review_inputs(ROOT)
+        finally:
+            path.write_bytes(original)
+        self.assertEqual(context.exception.code, "SOURCE_TREE_DIRTY")
+
+    def test_cli_rejects_output_directory_override(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            for module, entrypoint in (
+                (worklist_builder, "build_worklist"),
+                (proposal_builder, "scaffold_review_proposal"),
+            ):
+                with self.subTest(module=module.__name__):
+                    arguments = [module.__file__]
+                    if entrypoint == "scaffold_review_proposal":
+                        arguments.extend(["--candidate-id", "synthetic-candidate"])
+                    arguments.extend(["--output-dir", temporary])
+                    with (
+                        patch.object(sys, "argv", arguments),
+                        patch.object(module, entrypoint, return_value=Path(module.__file__)),
+                        self.assertRaises(SystemExit) as context,
+                    ):
+                        module.main()
+                    self.assertNotEqual(context.exception.code, 0)
 
 
 class AuthorityReviewWorklistTests(unittest.TestCase):

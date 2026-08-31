@@ -214,19 +214,21 @@ def _git_head(repo_root: Path) -> str:
     return head
 
 
-def _ensure_source_paths_clean(repo_root: Path, paths: Sequence[str]) -> None:
-    for path in paths:
-        for cached in (False, True):
-            command = ["git", "diff"]
-            if cached:
-                command.append("--cached")
-            command.extend(["--quiet", "HEAD", "--", path])
-            try:
-                result = subprocess.run(command, cwd=repo_root, check=False)
-            except OSError as exc:
-                _fail("SOURCE_STATUS_UNAVAILABLE", f"cannot inspect {path}: {exc}")
-            if result.returncode != 0:
-                _fail("SOURCE_TREE_DIRTY", f"bound source path is not committed: {path}")
+def _ensure_worktree_clean(repo_root: Path) -> None:
+    """Require every tracked file to be committed before binding provenance."""
+
+    try:
+        result = subprocess.run(
+            ["git", "status", "--porcelain=v1", "--untracked-files=no"],
+            cwd=repo_root,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    except (OSError, subprocess.CalledProcessError) as exc:
+        _fail("SOURCE_STATUS_UNAVAILABLE", f"cannot inspect the tracked worktree: {exc}")
+    if result.stdout:
+        _fail("SOURCE_TREE_DIRTY", "tracked source or generator files are not committed")
 
 
 def _read_json(
@@ -321,6 +323,7 @@ def _production_roster(
 
 
 def _load_inputs(repo_root: Path) -> LoadedReviewInputs:
+    _ensure_worktree_clean(repo_root)
     resolver = AuthoritySourceResolver(repo_root)
     source_commit = _git_head(repo_root)
     closure_sha, closure = _local_json(
@@ -345,7 +348,6 @@ def _load_inputs(repo_root: Path) -> LoadedReviewInputs:
     for path in required_paths:
         if path not in bindings:
             _fail("SOURCE_BINDING_MISSING", f"C closure does not bind {path}")
-    source_paths = [CLOSURE_PATH, *required_paths]
     classification_root_sha = _digest(
         bindings[CLASSIFICATION_ROOT_PATH]["raw_sha256"], "classification root digest"
     )
@@ -371,8 +373,6 @@ def _load_inputs(repo_root: Path) -> LoadedReviewInputs:
     if classification_schema != CLASSIFICATION_ROOT_SCHEMA:
         _fail("SOURCE_BINDING_MISMATCH", "C closure classification schema is not V3")
     roster_ref, roster_path = _production_roster(repo_root, resolver)
-    source_paths.append(roster_path)
-    _ensure_source_paths_clean(repo_root, source_paths)
     model = _read_json(resolver, MODEL_PATH, model_sha, model_schema, "declared model")
     candidate_binding = SourceBindingDigestV1(
         "candidate_universe",
@@ -429,8 +429,6 @@ def _load_inputs(repo_root: Path) -> LoadedReviewInputs:
             )
         )
         shard_bindings.append(_binding(shard_path, CLASSIFICATION_SHARD_SCHEMA, shard_sha))
-        source_paths.append(shard_path)
-    _ensure_source_paths_clean(repo_root, source_paths)
     source_instance_records = tuple(
         _plain_object(cast(Mapping[str, object], item))
         for item in candidate_index.instances_by_id.values()
@@ -841,6 +839,8 @@ def build_worklist(
 ) -> Path:
     """Write a deterministic JSONL worklist and deterministic summary."""
 
+    if inputs is not None:
+        _ensure_worktree_clean(repo_root)
     loaded = inputs or _load_inputs(repo_root)
     validate_review_inputs(loaded)
     candidate_by_id = {
@@ -901,15 +901,9 @@ def load_review_inputs(repo_root: Path = ROOT) -> LoadedReviewInputs:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument(
-        "--output-dir",
-        type=Path,
-        default=None,
-        help="test/output override; defaults to dist/m2-5-c-authority-review",
-    )
-    args = parser.parse_args()
+    parser.parse_args()
     try:
-        path = build_worklist(ROOT, args.output_dir)
+        path = build_worklist(ROOT)
     except ReviewWorklistError as exc:
         print(f"{exc.status}: {exc.code}: {exc.message}", file=sys.stderr)
         return 2 if exc.status == "BLOCKED" else 1

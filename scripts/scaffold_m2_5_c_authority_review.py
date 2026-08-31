@@ -11,6 +11,7 @@ from build_m2_5_c_authority_review_worklist import (
     ROOT,
     LoadedReviewInputs,
     ReviewWorklistError,
+    _ensure_worktree_clean,
     _json_bytes,
     _plain,
     _review_obligations,
@@ -31,6 +32,8 @@ def scaffold_review_proposal(
 ) -> Path:
     """Write one proposal skeleton without creating any semantic authority."""
 
+    if inputs is not None:
+        _ensure_worktree_clean(repo_root)
     loaded = inputs or load_review_inputs(repo_root)
     validate_review_inputs(loaded)
     candidates = {
@@ -109,10 +112,9 @@ def scaffold_review_proposal(
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--candidate-id", required=True)
-    parser.add_argument("--output-dir", type=Path, default=None)
     args = parser.parse_args()
     try:
-        path = scaffold_review_proposal(ROOT, args.candidate_id, args.output_dir)
+        path = scaffold_review_proposal(ROOT, args.candidate_id)
     except ReviewWorklistError as exc:
         print(f"{exc.status}: {exc.code}: {exc.message}", file=sys.stderr)
         return 2 if exc.status == "BLOCKED" else 1
