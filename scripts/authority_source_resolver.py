@@ -109,6 +109,26 @@ _B2_EVIDENCE_BASES = (
 _B2_CHANGE_KINDS = ("RETAINED", "ADDED", "REMOVED", "SUPERSEDED")
 _B2_REVIEW_STATUSES = ("REVIEWED_CONFIRMED", "REVIEWED_CORRECTED")
 _B2_BOUND_ARTIFACT_KEYS = {"path", "raw_sha256"}
+B1_FINAL_CITATIONS_PATH = "sources/m2_5/closures/B1/official_authority_citations.v3.json"
+B1_FINAL_CITATIONS_SCHEMA = "manafold.m2.5.b1.official-authority-citations.v3"
+B1_FINAL_CLOSURE_PATH = "sources/m2_5/closures/B1/official_authority_citation_closure.v2.json"
+B1_FINAL_CLOSURE_SCHEMA = "manafold.m2.5.b1.official-authority-citation-closure.v2"
+REV3_OFFICIAL_AUTHORITY_REGISTER_MEMBER = "source/official_authority_register_REV3.json"
+B1_FINAL_AUTHORITY_IDS = (
+    "banned_restricted",
+    "commander_1v1",
+    "commander_general",
+    "commander_legends_release_notes",
+    "comprehensive_rules",
+    "kaldheim_release_notes",
+    "magic_2013_release_notes",
+)
+_B1_FINAL_CITATION_KINDS = (
+    "CR_RULE_IDENTIFIER",
+    "POLICY_SECTION_LOCATOR",
+    "RELEASE_NOTE_LOCATOR",
+)
+_CR_RULE_IDENTIFIER_RE = re.compile(r"^CR ([0-9]{3})(\.[0-9]+[a-z]?)?$")
 REV3_MODEL_ID = "interaction-model.v1"
 REV3_RESOLUTION_MEMBER = "inputs/deck_row_source_resolution_REV3.csv"
 REV3_SOURCE_INDEX_MEMBER = "source/raw/source_record_index_REV3.csv"
@@ -274,6 +294,9 @@ _VERIFIED_B2_FAMILY_TOKEN = object()
 _VERIFIED_B2_CLASSIFICATION_TOKEN = object()
 _VERIFIED_B2_ASSIGNMENT_TOKEN = object()
 _VERIFIED_B2_BOUNDARY_TOKEN = object()
+_VERIFIED_B1_AUTHORITY_TOKEN = object()
+_VERIFIED_B1_CITATION_TOKEN = object()
+_VERIFIED_B1_LOCATOR_TOKEN = object()
 
 
 class ResolutionStatus(str, Enum):
@@ -392,6 +415,58 @@ class ResolvedB2Boundary:
     boundary_ref: B2BoundaryReferenceV1
     assignment: ResolvedB2Assignment | None
     _verification_token: object = field(default=None, repr=False, compare=False)
+
+
+@dataclass(frozen=True)
+class B1FinalArtifactBindingsV1:
+    """The exact repository bindings for the B1.Final snapshot."""
+
+    citations: SourceBindingDigestV1
+    closure: SourceBindingDigestV1
+
+
+@dataclass(frozen=True)
+class ResolvedB1FinalOfficialLocator:
+    """The exact bytes selected by one B1.Final artifact-local locator."""
+
+    artifact: ResolvedArtifact
+    citation_kind: str
+    locator: Mapping[str, object]
+    resolved_bytes: bytes
+    _verification_token: object = field(default=None, repr=False, compare=False)
+
+
+@dataclass(frozen=True)
+class ResolvedB1FinalAuthority:
+    """One exact B1.Final authority record and its official source artifact."""
+
+    authority_id: str
+    artifact: ResolvedArtifact
+    source_binding: SourceBindingDigestV1
+    record: Mapping[str, object]
+    official_artifact: ResolvedArtifact | None
+    artifact_identity: Mapping[str, object]
+    _verification_token: object = field(default=None, repr=False, compare=False)
+
+
+@dataclass(frozen=True)
+class ResolvedB1FinalCitation:
+    """One exact B1.Final citation and its verified official fragment."""
+
+    authority: ResolvedB1FinalAuthority
+    citation_id: str
+    citation: Mapping[str, object]
+    official_locator: ResolvedB1FinalOfficialLocator
+    _verification_token: object = field(default=None, repr=False, compare=False)
+
+
+@dataclass(frozen=True)
+class _B1FinalSnapshot:
+    citations_artifact: ResolvedArtifact
+    closure_artifact: ResolvedArtifact
+    authorities_by_id: Mapping[str, Mapping[str, object]]
+    citations_by_id: Mapping[str, tuple[str, Mapping[str, object]]]
+    official_artifacts_by_id: Mapping[str, ResolvedArtifact | None]
 
 
 @dataclass(frozen=True)
@@ -1356,6 +1431,222 @@ def _b2_require_bindings(bindings: B2ArtifactBindingsV1) -> None:
         B2_CLOSURE_PATH,
         B2_CLOSURE_SCHEMA,
         "B2 closure binding",
+    )
+
+
+def _verified_json_value(artifact: ResolvedArtifact, label: str) -> tuple[ResolvedArtifact, object]:
+    """Revalidate and parse bytes from a resolver-issued artifact."""
+
+    if artifact._verification_token is not _VERIFIED_ARTIFACT_TOKEN:
+        _fail("ARTIFACT_UNVERIFIED", f"{label} requires a resolver-verified artifact")
+    verified = _resolved_artifact(
+        artifact.source_kind,
+        artifact.path,
+        artifact.raw_bytes,
+        artifact.raw_sha256,
+        artifact.schema_or_null,
+    )
+    try:
+        value = json.loads(verified.raw_bytes.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        _fail("JSON_INVALID", f"{label} is not valid UTF-8 JSON: {exc}")
+    return verified, value
+
+
+def _b1_verified_json_document(
+    artifact: ResolvedArtifact, label: str
+) -> tuple[ResolvedArtifact, dict[str, object]]:
+    verified, value = _verified_json_value(artifact, label)
+    document = _json_object(value, label)
+    immutable = ResolvedArtifact(
+        verified.source_kind,
+        verified.path,
+        verified.raw_bytes,
+        verified.raw_sha256,
+        verified.schema_or_null,
+        _freeze_json(value),
+        _VERIFIED_ARTIFACT_TOKEN,
+    )
+    return immutable, document
+
+
+def _b1_require_binding(
+    binding: SourceBindingDigestV1, role: str, path: str, schema: str, label: str
+) -> None:
+    if not isinstance(binding, SourceBindingDigestV1):
+        _fail("B1_SOURCE_BINDING_INVALID", f"{label} is not a SourceBindingDigestV1")
+    if binding.artifact_role != role or binding.path != path or binding.schema_or_null != schema:
+        _fail("B1_SOURCE_BINDING_INVALID", f"{label} does not use the admitted role/path/schema")
+
+
+def _b1_require_bindings(bindings: B1FinalArtifactBindingsV1) -> None:
+    if not isinstance(bindings, B1FinalArtifactBindingsV1):
+        _fail("B1_SOURCE_BINDING_INVALID", "B1.Final resolution requires B1FinalArtifactBindingsV1")
+    _b1_require_binding(
+        bindings.citations,
+        "b1_final_citations",
+        B1_FINAL_CITATIONS_PATH,
+        B1_FINAL_CITATIONS_SCHEMA,
+        "B1.Final citations binding",
+    )
+    _b1_require_binding(
+        bindings.closure,
+        "b1_final_closure",
+        B1_FINAL_CLOSURE_PATH,
+        B1_FINAL_CLOSURE_SCHEMA,
+        "B1.Final closure binding",
+    )
+
+
+def _b1_artifact_identity(value: object, label: str) -> dict[str, object]:
+    record = _json_object(value, label)
+    for key in ("artifact_path", "artifact_sha256"):
+        if key not in record:
+            _fail("B1_AUTHORITY_INVALID", f"{label}.{key} is missing")
+    path = record.get("artifact_path")
+    digest = record.get("artifact_sha256")
+    if path is None and digest is None:
+        return dict(record)
+    if path is None or digest is None:
+        _fail("B1_AUTHORITY_INVALID", f"{label} has only one half of its source identity")
+    normalized = dict(record)
+    normalized["artifact_path"] = _relative_path(path, f"{label}.artifact_path")
+    normalized["artifact_sha256"] = _json_digest(digest, f"{label}.artifact_sha256").hex()
+    return normalized
+
+
+def _b1_register_index(value: object) -> dict[str, Mapping[str, object]]:
+    if not isinstance(value, list):
+        _fail("B1_REGISTER_INVALID", "REV3 official-authority register must be an array")
+    result: dict[str, Mapping[str, object]] = {}
+    for index, item in enumerate(cast(list[object], value)):
+        record = _json_object(item, f"REV3 authority register[{index}]")
+        authority_id = _json_text(record.get("authority_id"), "REV3 authority ID")
+        for key in ("artifact_path", "artifact_sha256"):
+            if key not in record:
+                _fail("B1_REGISTER_INVALID", f"REV3 authority register lacks {key}")
+        if authority_id in result:
+            _fail("B1_REGISTER_AMBIGUOUS", f"REV3 authority register repeats {authority_id!r}")
+        result[authority_id] = record
+    if set(result) != set(B1_FINAL_AUTHORITY_IDS):
+        _fail(
+            "B1_REGISTER_INVALID", "REV3 authority register universe is not the B1.Final universe"
+        )
+    return result
+
+
+def _b1_validate_locator_shape(value: object, citation_kind: str, label: str) -> dict[str, object]:
+    locator = _json_object(value, label)
+    if citation_kind == "CR_RULE_IDENTIFIER":
+        allowed = {
+            "locator_kind",
+            "line_number_1based",
+            "heading_line_sha256",
+            "heading_line_excerpt",
+        }
+        required = {"locator_kind", "line_number_1based", "heading_line_sha256"}
+        if set(locator) not in (required, allowed):
+            _fail("B1_LOCATOR_INVALID", f"{label} fields are not the admitted CR locator shape")
+        if locator.get("locator_kind") != "RULE_HEADING_LINE":
+            _fail("B1_LOCATOR_INVALID", f"{label}.locator_kind is not RULE_HEADING_LINE")
+        line_number = locator.get("line_number_1based")
+        if isinstance(line_number, bool) or not isinstance(line_number, int) or line_number < 1:
+            _fail("B1_LOCATOR_INVALID", f"{label}.line_number_1based is invalid")
+        _json_digest(locator.get("heading_line_sha256"), f"{label}.heading_line_sha256")
+        if "heading_line_excerpt" in locator:
+            _json_text(locator.get("heading_line_excerpt"), f"{label}.heading_line_excerpt")
+    else:
+        allowed = {
+            "locator_kind",
+            "byte_offset",
+            "byte_length",
+            "fragment_sha256",
+            "section_heading_excerpt",
+        }
+        required = {"locator_kind", "byte_offset", "byte_length", "fragment_sha256"}
+        if set(locator) not in (required, allowed):
+            _fail("B1_LOCATOR_INVALID", f"{label} fields are not the admitted fragment shape")
+        if locator.get("locator_kind") != "UNIQUE_BYTE_FRAGMENT":
+            _fail("B1_LOCATOR_INVALID", f"{label}.locator_kind is not UNIQUE_BYTE_FRAGMENT")
+        offset = locator.get("byte_offset")
+        length = locator.get("byte_length")
+        if (
+            isinstance(offset, bool)
+            or not isinstance(offset, int)
+            or offset < 0
+            or isinstance(length, bool)
+            or not isinstance(length, int)
+            or length <= 0
+        ):
+            _fail("B1_LOCATOR_INVALID", f"{label} byte range is invalid")
+        _json_digest(locator.get("fragment_sha256"), f"{label}.fragment_sha256")
+        if "section_heading_excerpt" in locator:
+            _json_text(locator.get("section_heading_excerpt"), f"{label}.section_heading_excerpt")
+    return dict(locator)
+
+
+def _b1_validate_citation(value: object, label: str) -> dict[str, object]:
+    citation = _json_object(value, label)
+    for key in (
+        "citation_id",
+        "citation_kind",
+        "rule_identifier",
+        "artifact_local_locator",
+        "why_required",
+    ):
+        if key not in citation:
+            _fail("B1_CITATION_INVALID", f"{label}.{key} is missing")
+    citation_id = _json_text(citation.get("citation_id"), f"{label}.citation_id")
+    citation_kind = _json_text(citation.get("citation_kind"), f"{label}.citation_kind")
+    if citation_kind not in _B1_FINAL_CITATION_KINDS:
+        _fail("B1_CITATION_INVALID", f"{label}.citation_kind is not closed")
+    rule_identifier = citation.get("rule_identifier")
+    if citation_kind == "CR_RULE_IDENTIFIER":
+        if (
+            not isinstance(rule_identifier, str)
+            or _CR_RULE_IDENTIFIER_RE.fullmatch(rule_identifier) is None
+        ):
+            _fail("B1_CITATION_INVALID", f"{label}.rule_identifier is not canonical")
+    elif rule_identifier is not None:
+        _fail("B1_CITATION_INVALID", f"{label} policy/release citation has a rule identifier")
+    _json_text(citation.get("why_required"), f"{label}.why_required")
+    locator = _b1_validate_locator_shape(
+        citation.get("artifact_local_locator"), citation_kind, f"{label}.artifact_local_locator"
+    )
+    result = dict(citation)
+    result["citation_id"] = citation_id
+    result["citation_kind"] = citation_kind
+    result["artifact_local_locator"] = locator
+    return result
+
+
+def _b1_verify_closure_binding(value: object, citations_artifact: ResolvedArtifact) -> None:
+    closure = _json_object(value, "B1.Final citation closure")
+    if closure.get("schema") != B1_FINAL_CLOSURE_SCHEMA:
+        _fail("B1_CLOSURE_BINDING_INVALID", "B1.Final closure schema is not V2")
+    bound = _json_object(closure.get("bound_evidence"), "B1.Final closure bound_evidence")
+    citations_digest = bound.get("official_authority_citations.v3.json")
+    if not isinstance(citations_digest, str) or citations_digest != citations_artifact.raw_sha256:
+        _fail(
+            "B1_CLOSURE_BINDING_MISMATCH", "B1.Final closure does not bind citation artifact bytes"
+        )
+
+
+def _b1_expected_register_identity(
+    authority_id: str, register: Mapping[str, object]
+) -> tuple[str | None, str | None]:
+    register_id = _json_text(register.get("authority_id"), "REV3 register authority ID")
+    if register_id != authority_id:
+        _fail("B1_REGISTER_BINDING_MISMATCH", "REV3 register authority ID differs")
+    path = register.get("artifact_path")
+    digest = register.get("artifact_sha256")
+    if path is None and digest is None:
+        return None, None
+    if path is None or digest is None:
+        _fail("B1_REGISTER_INVALID", f"REV3 register entry for {authority_id!r} is incomplete")
+    return (
+        _relative_path(path, "REV3 registered artifact path"),
+        _json_digest(digest, "REV3 registered artifact digest").hex(),
     )
 
 
@@ -2338,6 +2629,336 @@ class AuthoritySourceResolver:
             binding.path, binding.raw_sha256, binding.schema_or_null
         )
 
+    def _b1_snapshot(self, bindings: B1FinalArtifactBindingsV1) -> _B1FinalSnapshot:
+        _b1_require_bindings(bindings)
+        raw_citations = self.resolve_source_binding(bindings.citations)
+        raw_closure = self.resolve_source_binding(bindings.closure)
+        citations_artifact, citations_document = _b1_verified_json_document(
+            raw_citations, "B1.Final citation artifact"
+        )
+        closure_artifact, closure_document = _b1_verified_json_document(
+            raw_closure, "B1.Final citation closure"
+        )
+        _b1_verify_closure_binding(closure_document, citations_artifact)
+
+        archive = self._archive()
+        register_path = REV3_OFFICIAL_AUTHORITY_REGISTER_MEMBER
+        register_artifact = self.resolve_rev3_member(
+            register_path, archive.expected_member_sha256(register_path)
+        )
+        _, register_value = _verified_json_value(
+            register_artifact, "REV3 official authority register"
+        )
+        register = _b1_register_index(register_value)
+
+        if citations_document.get("schema") != B1_FINAL_CITATIONS_SCHEMA:
+            _fail("B1_CITATIONS_BINDING_INVALID", "B1.Final citation schema is not V3")
+        if citations_document.get("slice") != "B1_FINAL":
+            _fail("B1_CITATIONS_BINDING_INVALID", "B1.Final citation slice marker is not V1")
+        universe = _json_object(
+            citations_document.get("input_universe"), "B1.Final citation input universe"
+        )
+        if universe.get("source_register") != register_path:
+            _fail("B1_REGISTER_BINDING_MISMATCH", "B1.Final register path is not the REV3 register")
+        if (
+            _json_digest(universe.get("source_register_sha256"), "B1.Final register digest").hex()
+            != register_artifact.raw_sha256
+        ):
+            _fail(
+                "B1_REGISTER_BINDING_MISMATCH", "B1.Final register digest differs from REV3 bytes"
+            )
+        if (
+            _json_digest(universe.get("archive_sha256"), "B1.Final archive digest").hex()
+            != archive.archive_sha256
+        ):
+            _fail(
+                "B1_ARCHIVE_BINDING_MISMATCH",
+                "B1.Final archive binding differs from verified REV3 archive",
+            )
+        authority_ids = universe.get("authority_ids_in_order")
+        if authority_ids != list(B1_FINAL_AUTHORITY_IDS) or universe.get("authority_count") != len(
+            B1_FINAL_AUTHORITY_IDS
+        ):
+            _fail(
+                "B1_AUTHORITY_UNIVERSE_INVALID",
+                "B1.Final authority universe is not the closed V1 set",
+            )
+
+        raw_authorities = citations_document.get("authorities")
+        if not isinstance(raw_authorities, list) or len(raw_authorities) != len(
+            B1_FINAL_AUTHORITY_IDS
+        ):
+            _fail("B1_AUTHORITY_UNIVERSE_INVALID", "B1.Final authority record count is not seven")
+        authorities: dict[str, Mapping[str, object]] = {}
+        citations: dict[str, tuple[str, Mapping[str, object]]] = {}
+        official_artifacts: dict[str, ResolvedArtifact | None] = {}
+        for index, raw_authority in enumerate(cast(list[object], raw_authorities)):
+            record = _json_object(raw_authority, f"B1.Final authority[{index}]")
+            authority_id = _json_text(record.get("authority_id"), "B1.Final authority ID")
+            if authority_id not in B1_FINAL_AUTHORITY_IDS:
+                _fail("B1_AUTHORITY_INVALID", f"unknown B1.Final authority {authority_id!r}")
+            if authority_id in authorities:
+                _fail(
+                    "B1_AUTHORITY_AMBIGUOUS",
+                    f"B1.Final authority {authority_id!r} appears more than once",
+                )
+            register_entry = register.get(authority_id)
+            if register_entry is None:
+                _fail(
+                    "B1_REGISTER_BINDING_MISMATCH",
+                    f"authority {authority_id!r} is absent from the REV3 register",
+                )
+            identity = _b1_artifact_identity(
+                record.get("artifact_identity"),
+                f"B1.Final authority {authority_id}.artifact_identity",
+            )
+            status = _json_text(
+                record.get("citation_status"), f"B1.Final authority {authority_id}.citation_status"
+            )
+            expected_path, expected_digest = _b1_expected_register_identity(
+                authority_id, register_entry
+            )
+            actual_path = cast(str | None, identity.get("artifact_path"))
+            actual_digest = cast(str | None, identity.get("artifact_sha256"))
+            if actual_path != expected_path or actual_digest != expected_digest:
+                _fail(
+                    "B1_REGISTER_BINDING_MISMATCH",
+                    f"authority {authority_id!r} differs from its REV3 register identity",
+                )
+            if status == "CITED":
+                if actual_path is None or actual_digest is None:
+                    _fail(
+                        "B1_AUTHORITY_INVALID",
+                        f"CITED authority {authority_id!r} lacks an official artifact",
+                    )
+                if register_entry.get("raw_artifact_available") is not True:
+                    _fail(
+                        "B1_REGISTER_BINDING_MISMATCH",
+                        f"CITED authority {authority_id!r} is not register-available",
+                    )
+                official = self.resolve_rev3_member(actual_path, actual_digest)
+                raw_citations = record.get("citations")
+                if not isinstance(raw_citations, list) or not raw_citations:
+                    _fail(
+                        "B1_AUTHORITY_INVALID", f"CITED authority {authority_id!r} has no citations"
+                    )
+                for citation_index, raw_citation in enumerate(cast(list[object], raw_citations)):
+                    citation = _b1_validate_citation(
+                        raw_citation,
+                        f"B1.Final authority {authority_id}.citation[{citation_index}]",
+                    )
+                    citation_id = cast(str, citation["citation_id"])
+                    if citation_id in citations:
+                        _fail(
+                            "B1_CITATION_AMBIGUOUS",
+                            f"B1.Final citation {citation_id!r} appears more than once",
+                        )
+                    citations[citation_id] = (
+                        authority_id,
+                        cast(Mapping[str, object], _frozen_mapping(citation)),
+                    )
+                official_artifacts[authority_id] = official
+            elif status == "NOT_REQUIRED_WITH_PROOF":
+                if actual_path is not None or actual_digest is not None:
+                    _fail(
+                        "B1_AUTHORITY_INVALID",
+                        f"non-cited authority {authority_id!r} carries an official artifact",
+                    )
+                raw_citations = record.get("citations")
+                if not isinstance(raw_citations, list) or raw_citations:
+                    _fail(
+                        "B1_AUTHORITY_INVALID",
+                        f"non-cited authority {authority_id!r} carries citation nodes",
+                    )
+                official_artifacts[authority_id] = None
+            else:
+                _fail(
+                    "B1_AUTHORITY_INVALID",
+                    f"authority {authority_id!r} has an unsupported citation status",
+                )
+            normalized = dict(record)
+            normalized["authority_id"] = authority_id
+            normalized["artifact_identity"] = identity
+            normalized["citations"] = record.get("citations")
+            authorities[authority_id] = _frozen_mapping(normalized)
+
+        if set(authorities) != set(B1_FINAL_AUTHORITY_IDS):
+            _fail("B1_AUTHORITY_UNIVERSE_INVALID", "B1.Final authority set is incomplete")
+        return _B1FinalSnapshot(
+            citations_artifact=citations_artifact,
+            closure_artifact=closure_artifact,
+            authorities_by_id=authorities,
+            citations_by_id=citations,
+            official_artifacts_by_id=official_artifacts,
+        )
+
+    def resolve_b1_final_authority(
+        self, authority_id: str, bindings: B1FinalArtifactBindingsV1
+    ) -> ResolvedB1FinalAuthority:
+        """Resolve one exact B1.Final authority record and source artifact."""
+
+        requested_authority_id = _json_text(authority_id, "B1.Final authority ID")
+        snapshot = self._b1_snapshot(bindings)
+        record = snapshot.authorities_by_id.get(requested_authority_id)
+        if record is None:
+            _fail(
+                "B1_AUTHORITY_NOT_FOUND",
+                f"B1.Final authority {requested_authority_id!r} is not in the artifact",
+            )
+        identity = cast(Mapping[str, object], record["artifact_identity"])
+        return ResolvedB1FinalAuthority(
+            authority_id=requested_authority_id,
+            artifact=snapshot.citations_artifact,
+            source_binding=bindings.citations,
+            record=record,
+            official_artifact=snapshot.official_artifacts_by_id[requested_authority_id],
+            artifact_identity=identity,
+            _verification_token=_VERIFIED_B1_AUTHORITY_TOKEN,
+        )
+
+    def resolve_b1_final_citation(
+        self,
+        authority: ResolvedB1FinalAuthority,
+        citation_id: str,
+        bindings: B1FinalArtifactBindingsV1,
+    ) -> ResolvedB1FinalCitation:
+        """Resolve one exact citation under one resolver-verified authority."""
+
+        if (
+            not isinstance(authority, ResolvedB1FinalAuthority)
+            or authority._verification_token is not _VERIFIED_B1_AUTHORITY_TOKEN
+        ):
+            _fail(
+                "B1_AUTHORITY_UNVERIFIED",
+                "B1.Final citation requires a resolver-verified authority",
+            )
+        _b1_require_bindings(bindings)
+        if authority.source_binding != bindings.citations:
+            _fail(
+                "B1_AUTHORITY_BINDING_MISMATCH", "authority uses another B1.Final citation snapshot"
+            )
+        snapshot = self._b1_snapshot(bindings)
+        persisted_authority = snapshot.authorities_by_id.get(authority.authority_id)
+        if persisted_authority is None or dict(persisted_authority) != dict(authority.record):
+            _fail("B1_AUTHORITY_BINDING_MISMATCH", "authority record changed after resolution")
+        requested_citation_id = _json_text(citation_id, "B1.Final citation ID")
+        resolved = snapshot.citations_by_id.get(requested_citation_id)
+        if resolved is None:
+            _fail(
+                "B1_CITATION_NOT_FOUND",
+                f"B1.Final citation {requested_citation_id!r} is not in the artifact",
+            )
+        owner, citation = resolved
+        if owner != authority.authority_id:
+            _fail(
+                "B1_CITATION_AUTHORITY_MISMATCH",
+                f"B1.Final citation {requested_citation_id!r} belongs to {owner!r}",
+            )
+        official = snapshot.official_artifacts_by_id[owner]
+        if official is None:
+            _fail(
+                "B1_CITATION_ARTIFACT_UNAVAILABLE",
+                "B1.Final citation has no official source artifact",
+            )
+        official_locator = self._resolve_b1_final_official_locator(
+            owner, requested_citation_id, citation, official
+        )
+        return ResolvedB1FinalCitation(
+            authority=authority,
+            citation_id=requested_citation_id,
+            citation=citation,
+            official_locator=official_locator,
+            _verification_token=_VERIFIED_B1_CITATION_TOKEN,
+        )
+
+    def resolve_b1_final_authority_citation(
+        self,
+        authority_id: str,
+        citation_id: str,
+        bindings: B1FinalArtifactBindingsV1,
+    ) -> ResolvedB1FinalCitation:
+        """Resolve an authority and one of its citations in one exact join."""
+
+        authority = self.resolve_b1_final_authority(authority_id, bindings)
+        return self.resolve_b1_final_citation(authority, citation_id, bindings)
+
+    def _resolve_b1_final_official_locator(
+        self,
+        authority_id: str,
+        citation_id: str,
+        citation: Mapping[str, object],
+        artifact: ResolvedArtifact,
+    ) -> ResolvedB1FinalOfficialLocator:
+        citation_kind = cast(str, citation["citation_kind"])
+        locator = cast(Mapping[str, object], citation["artifact_local_locator"])
+        if citation_kind == "CR_RULE_IDENTIFIER":
+            identifier = cast(str, citation["rule_identifier"])
+            match = _CR_RULE_IDENTIFIER_RE.fullmatch(identifier)
+            if match is None:
+                _fail(
+                    "B1_CITATION_INVALID",
+                    f"citation {citation_id!r} has a non-canonical CR identifier",
+                )
+            number = match.group(1) + (match.group(2) or "")
+            try:
+                lines = artifact.raw_bytes.decode("utf-8-sig").split("\n")
+            except UnicodeDecodeError as exc:
+                _fail("B1_OFFICIAL_ARTIFACT_INVALID", f"official CR artifact is not UTF-8: {exc}")
+            line_number = cast(int, locator["line_number_1based"])
+            if line_number > len(lines):
+                _fail("B1_LOCATOR_UNRESOLVED", f"CR line {line_number} is outside {artifact.path}")
+            stripped = lines[line_number - 1].strip()
+            if number[-1:].isalpha():
+                if not stripped.split()[0:1] or stripped.split()[0] != number:
+                    _fail(
+                        "B1_LOCATOR_BINDING_MISMATCH",
+                        f"CR identifier {identifier!r} is not at line {line_number}",
+                    )
+            elif not stripped or stripped.split(maxsplit=1)[0].rstrip(".") != number:
+                _fail(
+                    "B1_LOCATOR_BINDING_MISMATCH",
+                    f"CR identifier {identifier!r} is not at line {line_number}",
+                )
+            actual_digest = hashlib.sha256(stripped.encode("utf-8")).hexdigest()
+            if actual_digest != cast(str, locator["heading_line_sha256"]):
+                _fail(
+                    "B1_LOCATOR_DIGEST_MISMATCH", f"CR heading digest differs at line {line_number}"
+                )
+            return ResolvedB1FinalOfficialLocator(
+                artifact=artifact,
+                citation_kind=citation_kind,
+                locator=_frozen_mapping(dict(locator)),
+                resolved_bytes=stripped.encode("utf-8"),
+                _verification_token=_VERIFIED_B1_LOCATOR_TOKEN,
+            )
+
+        offset = cast(int, locator["byte_offset"])
+        length = cast(int, locator["byte_length"])
+        if offset + length > len(artifact.raw_bytes):
+            _fail(
+                "B1_LOCATOR_UNRESOLVED",
+                f"byte fragment for {authority_id}/{citation_id} is out of range",
+            )
+        fragment = artifact.raw_bytes[offset : offset + length]
+        if hashlib.sha256(fragment).hexdigest() != cast(str, locator["fragment_sha256"]):
+            _fail(
+                "B1_LOCATOR_DIGEST_MISMATCH",
+                f"byte fragment digest differs for {authority_id}/{citation_id}",
+            )
+        occurrences = artifact.raw_bytes.count(fragment)
+        if occurrences != 1:
+            _fail(
+                "B1_LOCATOR_AMBIGUOUS",
+                f"byte fragment for {authority_id}/{citation_id} occurs {occurrences} times",
+            )
+        return ResolvedB1FinalOfficialLocator(
+            artifact=artifact,
+            citation_kind=citation_kind,
+            locator=_frozen_mapping(dict(locator)),
+            resolved_bytes=fragment,
+            _verification_token=_VERIFIED_B1_LOCATOR_TOKEN,
+        )
+
     def _b2_snapshot(self, bindings: B2ArtifactBindingsV1) -> _B2Snapshot:
         _b2_require_bindings(bindings)
         raw_catalog = self.resolve_source_binding(bindings.catalog)
@@ -3102,6 +3723,10 @@ class AuthoritySourceResolver:
 
 __all__ = [
     "ACCEPTANCE_EVENT_SCHEMA_V1",
+    "B1_FINAL_CITATIONS_PATH",
+    "B1_FINAL_CITATIONS_SCHEMA",
+    "B1_FINAL_CLOSURE_PATH",
+    "B1_FINAL_CLOSURE_SCHEMA",
     "B2_CATALOG_PATH",
     "B2_CATALOG_SCHEMA",
     "B2_CLASSIFICATION_PATH",
@@ -3112,12 +3737,17 @@ __all__ = [
     "CANDIDATE_UNIVERSE_SCHEMA",
     "EXPECTED_REV3_ARCHIVE_SHA256",
     "REV3_CENSUS_MEMBER",
+    "REV3_OFFICIAL_AUTHORITY_REGISTER_MEMBER",
     "REV3_SOURCE_COLUMNS",
     "AuthoritySourceResolver",
+    "B1FinalArtifactBindingsV1",
     "B2ArtifactBindingsV1",
     "B2BoundaryReferenceV1",
     "ResolutionError",
     "ResolutionStatus",
+    "ResolvedB1FinalAuthority",
+    "ResolvedB1FinalCitation",
+    "ResolvedB1FinalOfficialLocator",
     "ResolvedB2Assignment",
     "ResolvedB2Boundary",
     "ResolvedB2Classification",

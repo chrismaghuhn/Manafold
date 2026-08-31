@@ -21,6 +21,10 @@ sys.path.insert(0, str(ROOT / "scripts"))
 
 from authority_source_resolver import (
     ACCEPTANCE_EVENT_SCHEMA_V1,
+    B1_FINAL_CITATIONS_PATH,
+    B1_FINAL_CITATIONS_SCHEMA,
+    B1_FINAL_CLOSURE_PATH,
+    B1_FINAL_CLOSURE_SCHEMA,
     B2_CATALOG_PATH,
     B2_CATALOG_SCHEMA,
     B2_CLASSIFICATION_PATH,
@@ -29,6 +33,7 @@ from authority_source_resolver import (
     B2_CLOSURE_SCHEMA,
     REV3_CENSUS_MEMBER,
     AuthoritySourceResolver,
+    B1FinalArtifactBindingsV1,
     B2ArtifactBindingsV1,
     B2BoundaryReferenceV1,
     ResolutionError,
@@ -1486,6 +1491,582 @@ class B2SourceResolverTests(unittest.TestCase):
             ResolutionStatus.FAIL,
             "SCHEMA_MISMATCH",
         )
+
+
+class B1FinalSourceResolverTests(unittest.TestCase):
+    AUTHORITY_IDS = (
+        "banned_restricted",
+        "commander_1v1",
+        "commander_general",
+        "commander_legends_release_notes",
+        "comprehensive_rules",
+        "kaldheim_release_notes",
+        "magic_2013_release_notes",
+    )
+    REGISTER_MEMBER = "source/official_authority_register_REV3.json"
+
+    def setUp(self) -> None:
+        self.tempdir = tempfile.TemporaryDirectory()
+        self.repo = Path(self.tempdir.name) / "repo"
+        self.repo.mkdir()
+
+    def tearDown(self) -> None:
+        self.tempdir.cleanup()
+
+    def assert_resolution_error(
+        self,
+        operation: Callable[[], object],
+        status: ResolutionStatus,
+        code: str,
+    ) -> None:
+        with self.assertRaises(ResolutionError) as context:
+            operation()
+        self.assertEqual(context.exception.status, status)
+        self.assertEqual(context.exception.code, code)
+
+    def _write_repo(self, path: str, raw: bytes) -> None:
+        target = self.repo / Path(*path.split("/"))
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(raw)
+
+    def _binding(
+        self, role: str, path: str, schema: str, root: Path | None = None
+    ) -> SourceBindingDigestV1:
+        source_root = root or self.repo
+        raw = (source_root / Path(*path.split("/"))).read_bytes()
+        return SourceBindingDigestV1(
+            artifact_role=role,
+            path=path,
+            schema_or_null=schema,
+            raw_sha256=bytes.fromhex(digest(raw)),
+        )
+
+    def _fixture(
+        self,
+        *,
+        mutate_citations: Callable[[dict[str, object]], None] | None = None,
+        commander_general_raw: bytes | None = None,
+    ) -> tuple[AuthoritySourceResolver, B1FinalArtifactBindingsV1, dict[str, object]]:
+        official = {
+            "banned_restricted": b"BRL-ROOT\nrest\n",
+            "commander_1v1": b"C1V1-FORMAT\nrest\n",
+            "commander_general": b"CG-FORMAT\nrest\n",
+            "commander_legends_release_notes": b"CL-RELEASE\nrest\n",
+            "comprehensive_rules": b"header\n101. Rules\n101.4. APNAP\n",
+            "kaldheim_release_notes": b"KHM-RELEASE\nrest\n",
+        }
+        if commander_general_raw is not None:
+            official["commander_general"] = commander_general_raw
+        paths = {
+            authority_id: f"source/authorities/{authority_id}.txt" for authority_id in official
+        }
+        register = []
+        for authority_id in self.AUTHORITY_IDS:
+            if authority_id == "magic_2013_release_notes":
+                register.append(
+                    {
+                        "authority_id": authority_id,
+                        "artifact_path": None,
+                        "artifact_sha256": None,
+                        "retrieved_at": "synthetic",
+                        "raw_artifact_available": False,
+                        "http_status": None,
+                        "error": "missing",
+                        "source_url": "https://magic.wizards.com/synthetic",
+                    }
+                )
+                continue
+            raw = official[authority_id]
+            register.append(
+                {
+                    "authority_id": authority_id,
+                    "artifact_path": paths[authority_id],
+                    "artifact_sha256": digest(raw),
+                    "retrieved_at": "synthetic",
+                    "raw_artifact_available": True,
+                    "http_status": 200,
+                    "error": None,
+                    "source_url": "https://magic.wizards.com/synthetic",
+                }
+            )
+        register_raw = json_bytes(register)
+        archive_entries = {self.REGISTER_MEMBER: register_raw}
+        archive_entries.update({paths[authority_id]: raw for authority_id, raw in official.items()})
+        archive_raw = archive_bytes(archive_entries)
+        archive = Rev3ArchiveStore.from_bytes(archive_raw, digest(archive_raw))
+
+        def fragment_locator(raw: bytes) -> dict[str, object]:
+            fragment = raw.splitlines()[0]
+            return {
+                "locator_kind": "UNIQUE_BYTE_FRAGMENT",
+                "byte_offset": 0,
+                "byte_length": len(fragment),
+                "fragment_sha256": digest(fragment),
+                "section_heading_excerpt": fragment.decode("utf-8"),
+            }
+
+        authorities: list[dict[str, object]] = []
+        for authority_id in self.AUTHORITY_IDS:
+            if authority_id == "magic_2013_release_notes":
+                authorities.append(
+                    {
+                        "authority_id": authority_id,
+                        "authority_role": "OFFICIAL_UPDATE_NOTES",
+                        "artifact_identity": {
+                            "artifact_path": None,
+                            "artifact_sha256": None,
+                        },
+                        "citation_status": "NOT_REQUIRED_WITH_PROOF",
+                        "citations": [],
+                    }
+                )
+                continue
+            raw = official[authority_id]
+            if authority_id == "comprehensive_rules":
+                citation = {
+                    "citation_id": "CR-101",
+                    "citation_kind": "CR_RULE_IDENTIFIER",
+                    "rule_identifier": "CR 101",
+                    "artifact_local_locator": {
+                        "locator_kind": "RULE_HEADING_LINE",
+                        "line_number_1based": 2,
+                        "heading_line_sha256": digest(b"101. Rules"),
+                    },
+                    "why_required": "synthetic CR control",
+                }
+            else:
+                citation = {
+                    "citation_id": f"{authority_id}-ROOT",
+                    "citation_kind": "POLICY_SECTION_LOCATOR",
+                    "rule_identifier": None,
+                    "artifact_local_locator": fragment_locator(raw),
+                    "why_required": "synthetic policy control",
+                }
+            authorities.append(
+                {
+                    "authority_id": authority_id,
+                    "authority_role": "OFFICIAL_TEST",
+                    "artifact_identity": {
+                        "artifact_path": paths[authority_id],
+                        "artifact_sha256": digest(raw),
+                    },
+                    "citation_status": "CITED",
+                    "citations": [citation],
+                }
+            )
+        citations = {
+            "schema": B1_FINAL_CITATIONS_SCHEMA,
+            "slice": "B1_FINAL",
+            "input_universe": {
+                "source_register": self.REGISTER_MEMBER,
+                "source_register_sha256": digest(register_raw),
+                "authority_ids_in_order": list(self.AUTHORITY_IDS),
+                "authority_count": len(self.AUTHORITY_IDS),
+                "archive_sha256": digest(archive_raw),
+            },
+            "semantic_dependency_model": {},
+            "authorities": authorities,
+        }
+        if mutate_citations is not None:
+            mutate_citations(citations)
+        citations_raw = json_bytes(citations)
+        closure_raw = json_bytes(
+            {
+                "schema": B1_FINAL_CLOSURE_SCHEMA,
+                "bound_evidence": {"official_authority_citations.v3.json": digest(citations_raw)},
+            }
+        )
+        self._write_repo(B1_FINAL_CITATIONS_PATH, citations_raw)
+        self._write_repo(B1_FINAL_CLOSURE_PATH, closure_raw)
+        bindings = B1FinalArtifactBindingsV1(
+            citations=self._binding(
+                "b1_final_citations", B1_FINAL_CITATIONS_PATH, B1_FINAL_CITATIONS_SCHEMA
+            ),
+            closure=self._binding(
+                "b1_final_closure", B1_FINAL_CLOSURE_PATH, B1_FINAL_CLOSURE_SCHEMA
+            ),
+        )
+        return AuthoritySourceResolver(self.repo, rev3_archive=archive), bindings, citations
+
+    def _rewrite_citations(
+        self, citations: dict[str, object], mutate: Callable[[dict[str, object]], None]
+    ) -> B1FinalArtifactBindingsV1:
+        mutate(citations)
+        citations_raw = json_bytes(citations)
+        self._write_repo(B1_FINAL_CITATIONS_PATH, citations_raw)
+        closure = {
+            "schema": B1_FINAL_CLOSURE_SCHEMA,
+            "bound_evidence": {"official_authority_citations.v3.json": digest(citations_raw)},
+        }
+        closure_raw = json_bytes(closure)
+        self._write_repo(B1_FINAL_CLOSURE_PATH, closure_raw)
+        return B1FinalArtifactBindingsV1(
+            citations=self._binding(
+                "b1_final_citations", B1_FINAL_CITATIONS_PATH, B1_FINAL_CITATIONS_SCHEMA
+            ),
+            closure=self._binding(
+                "b1_final_closure", B1_FINAL_CLOSURE_PATH, B1_FINAL_CLOSURE_SCHEMA
+            ),
+        )
+
+    def _real_bindings(self) -> B1FinalArtifactBindingsV1:
+        def binding(role: str, path: str, schema: str) -> SourceBindingDigestV1:
+            raw = (ROOT / Path(*path.split("/"))).read_bytes()
+            return SourceBindingDigestV1(
+                artifact_role=role,
+                path=path,
+                schema_or_null=schema,
+                raw_sha256=bytes.fromhex(digest(raw)),
+            )
+
+        return B1FinalArtifactBindingsV1(
+            citations=binding(
+                "b1_final_citations", B1_FINAL_CITATIONS_PATH, B1_FINAL_CITATIONS_SCHEMA
+            ),
+            closure=binding("b1_final_closure", B1_FINAL_CLOSURE_PATH, B1_FINAL_CLOSURE_SCHEMA),
+        )
+
+    def test_synthetic_cr_and_byte_fragment_resolution(self) -> None:
+        resolver, bindings, citations = self._fixture()
+        cr_authority = resolver.resolve_b1_final_authority("comprehensive_rules", bindings)
+        cr_citation = resolver.resolve_b1_final_citation(cr_authority, "CR-101", bindings)
+        policy_authority = resolver.resolve_b1_final_authority("commander_general", bindings)
+        policy_citation = resolver.resolve_b1_final_citation(
+            policy_authority, "commander_general-ROOT", bindings
+        )
+
+        self.assertEqual(cr_citation.citation_id, "CR-101")
+        self.assertEqual(cr_citation.official_locator.resolved_bytes, b"101. Rules")
+        self.assertEqual(
+            policy_citation.official_locator.resolved_bytes,
+            b"CG-FORMAT",
+        )
+        self.assertEqual(
+            cr_authority.record["authority_id"], citations["authorities"][4]["authority_id"]
+        )
+
+    def test_unknown_authority_id_fails_closed(self) -> None:
+        resolver, bindings, _ = self._fixture()
+        self.assert_resolution_error(
+            lambda: resolver.resolve_b1_final_authority("unknown", bindings),
+            ResolutionStatus.FAIL,
+            "B1_AUTHORITY_NOT_FOUND",
+        )
+
+    def test_duplicate_authority_id_fails_closed(self) -> None:
+        def duplicate(document: dict[str, object]) -> None:
+            authorities = cast(list[dict[str, object]], document["authorities"])
+            authorities[1]["authority_id"] = authorities[0]["authority_id"]
+
+        resolver, bindings, _ = self._fixture(mutate_citations=duplicate)
+        self.assert_resolution_error(
+            lambda: resolver.resolve_b1_final_authority("comprehensive_rules", bindings),
+            ResolutionStatus.FAIL,
+            "B1_AUTHORITY_AMBIGUOUS",
+        )
+
+    def test_unknown_citation_id_fails_closed(self) -> None:
+        resolver, bindings, _ = self._fixture()
+        authority = resolver.resolve_b1_final_authority("comprehensive_rules", bindings)
+        self.assert_resolution_error(
+            lambda: resolver.resolve_b1_final_citation(authority, "unknown", bindings),
+            ResolutionStatus.FAIL,
+            "B1_CITATION_NOT_FOUND",
+        )
+
+    def test_duplicate_citation_id_fails_closed(self) -> None:
+        def duplicate(document: dict[str, object]) -> None:
+            authorities = cast(list[dict[str, object]], document["authorities"])
+            authorities[2]["citations"][0]["citation_id"] = "CR-101"
+
+        resolver, bindings, _ = self._fixture(mutate_citations=duplicate)
+        self.assert_resolution_error(
+            lambda: resolver.resolve_b1_final_authority("comprehensive_rules", bindings),
+            ResolutionStatus.FAIL,
+            "B1_CITATION_AMBIGUOUS",
+        )
+
+    def test_citation_bound_to_wrong_authority_fails_closed(self) -> None:
+        resolver, bindings, _ = self._fixture()
+        authority = resolver.resolve_b1_final_authority("comprehensive_rules", bindings)
+        self.assert_resolution_error(
+            lambda: resolver.resolve_b1_final_citation(
+                authority, "commander_general-ROOT", bindings
+            ),
+            ResolutionStatus.FAIL,
+            "B1_CITATION_AUTHORITY_MISMATCH",
+        )
+
+    def test_wrong_citations_artifact_digest_fails_closed(self) -> None:
+        resolver, bindings, _ = self._fixture()
+        bad_bindings = B1FinalArtifactBindingsV1(
+            citations=SourceBindingDigestV1(
+                artifact_role="b1_final_citations",
+                path=B1_FINAL_CITATIONS_PATH,
+                schema_or_null=B1_FINAL_CITATIONS_SCHEMA,
+                raw_sha256=bytes(32),
+            ),
+            closure=bindings.closure,
+        )
+        self.assert_resolution_error(
+            lambda: resolver.resolve_b1_final_authority("comprehensive_rules", bad_bindings),
+            ResolutionStatus.FAIL,
+            "SOURCE_DIGEST_MISMATCH",
+        )
+
+    def test_wrong_closure_binding_fails_closed(self) -> None:
+        resolver, bindings, _ = self._fixture()
+        closure_path = self.repo / Path(*B1_FINAL_CLOSURE_PATH.split("/"))
+        closure = cast(dict[str, object], json.loads(closure_path.read_text(encoding="utf-8")))
+        bound = cast(dict[str, object], closure["bound_evidence"])
+        bound["official_authority_citations.v3.json"] = "00" * 32
+        closure_path.write_bytes(json_bytes(closure))
+        bad_bindings = B1FinalArtifactBindingsV1(
+            citations=bindings.citations,
+            closure=self._binding(
+                "b1_final_closure", B1_FINAL_CLOSURE_PATH, B1_FINAL_CLOSURE_SCHEMA
+            ),
+        )
+        self.assert_resolution_error(
+            lambda: resolver.resolve_b1_final_authority("comprehensive_rules", bad_bindings),
+            ResolutionStatus.FAIL,
+            "B1_CLOSURE_BINDING_MISMATCH",
+        )
+
+    def test_wrong_official_archive_member_fails_closed(self) -> None:
+        def mutate(document: dict[str, object]) -> None:
+            authorities = cast(list[dict[str, object]], document["authorities"])
+            identity = cast(dict[str, object], authorities[4]["artifact_identity"])
+            other = cast(dict[str, object], authorities[2]["artifact_identity"])
+            identity["artifact_path"] = other["artifact_path"]
+            identity["artifact_sha256"] = other["artifact_sha256"]
+
+        resolver, bindings, _ = self._fixture(mutate_citations=mutate)
+        self.assert_resolution_error(
+            lambda: resolver.resolve_b1_final_authority("comprehensive_rules", bindings),
+            ResolutionStatus.FAIL,
+            "B1_REGISTER_BINDING_MISMATCH",
+        )
+
+    def test_wrong_official_member_digest_fails_closed(self) -> None:
+        def mutate(document: dict[str, object]) -> None:
+            authorities = cast(list[dict[str, object]], document["authorities"])
+            cast(dict[str, object], authorities[4]["artifact_identity"])["artifact_sha256"] = (
+                "00" * 32
+            )
+
+        resolver, bindings, _ = self._fixture(mutate_citations=mutate)
+        self.assert_resolution_error(
+            lambda: resolver.resolve_b1_final_authority("comprehensive_rules", bindings),
+            ResolutionStatus.FAIL,
+            "B1_REGISTER_BINDING_MISMATCH",
+        )
+
+    def test_locator_from_another_authority_artifact_fails_closed(self) -> None:
+        def mutate(document: dict[str, object]) -> None:
+            authorities = cast(list[dict[str, object]], document["authorities"])
+            locator = cast(
+                dict[str, object],
+                cast(dict[str, object], authorities[4]["citations"][0])["artifact_local_locator"],
+            )
+            locator["heading_line_sha256"] = digest(b"CG-FORMAT")
+
+        resolver, bindings, _ = self._fixture(mutate_citations=mutate)
+        authority = resolver.resolve_b1_final_authority("comprehensive_rules", bindings)
+        self.assert_resolution_error(
+            lambda: resolver.resolve_b1_final_citation(authority, "CR-101", bindings),
+            ResolutionStatus.FAIL,
+            "B1_LOCATOR_DIGEST_MISMATCH",
+        )
+
+    def test_wrong_locator_kind_fails_closed(self) -> None:
+        def mutate(document: dict[str, object]) -> None:
+            authorities = cast(list[dict[str, object]], document["authorities"])
+            locator = cast(
+                dict[str, object],
+                cast(dict[str, object], authorities[4]["citations"][0])["artifact_local_locator"],
+            )
+            locator["locator_kind"] = "UNIQUE_BYTE_FRAGMENT"
+
+        resolver, bindings, _ = self._fixture(mutate_citations=mutate)
+        self.assert_resolution_error(
+            lambda: resolver.resolve_b1_final_authority("comprehensive_rules", bindings),
+            ResolutionStatus.FAIL,
+            "B1_LOCATOR_INVALID",
+        )
+
+    def test_invalid_cr_identifier_fails_closed(self) -> None:
+        def mutate(document: dict[str, object]) -> None:
+            authorities = cast(list[dict[str, object]], document["authorities"])
+            cast(dict[str, object], authorities[4]["citations"][0])["rule_identifier"] = "CR 1"
+
+        resolver, bindings, _ = self._fixture(mutate_citations=mutate)
+        self.assert_resolution_error(
+            lambda: resolver.resolve_b1_final_authority("comprehensive_rules", bindings),
+            ResolutionStatus.FAIL,
+            "B1_CITATION_INVALID",
+        )
+
+    def test_wrong_cr_line_number_fails_closed(self) -> None:
+        def mutate(document: dict[str, object]) -> None:
+            authorities = cast(list[dict[str, object]], document["authorities"])
+            locator = cast(
+                dict[str, object],
+                cast(dict[str, object], authorities[4]["citations"][0])["artifact_local_locator"],
+            )
+            locator["line_number_1based"] = 3
+
+        resolver, bindings, _ = self._fixture(mutate_citations=mutate)
+        authority = resolver.resolve_b1_final_authority("comprehensive_rules", bindings)
+        self.assert_resolution_error(
+            lambda: resolver.resolve_b1_final_citation(authority, "CR-101", bindings),
+            ResolutionStatus.FAIL,
+            "B1_LOCATOR_BINDING_MISMATCH",
+        )
+
+    def test_cr_identifier_and_heading_mismatch_fails_closed(self) -> None:
+        def mutate(document: dict[str, object]) -> None:
+            authorities = cast(list[dict[str, object]], document["authorities"])
+            citation = cast(dict[str, object], authorities[4]["citations"][0])
+            citation["rule_identifier"] = "CR 101.4"
+
+        resolver, bindings, _ = self._fixture(mutate_citations=mutate)
+        authority = resolver.resolve_b1_final_authority("comprehensive_rules", bindings)
+        self.assert_resolution_error(
+            lambda: resolver.resolve_b1_final_citation(authority, "CR-101", bindings),
+            ResolutionStatus.FAIL,
+            "B1_LOCATOR_BINDING_MISMATCH",
+        )
+
+    def test_wrong_cr_heading_digest_fails_closed(self) -> None:
+        def mutate(document: dict[str, object]) -> None:
+            authorities = cast(list[dict[str, object]], document["authorities"])
+            locator = cast(
+                dict[str, object],
+                cast(dict[str, object], authorities[4]["citations"][0])["artifact_local_locator"],
+            )
+            locator["heading_line_sha256"] = "00" * 32
+
+        resolver, bindings, _ = self._fixture(mutate_citations=mutate)
+        authority = resolver.resolve_b1_final_authority("comprehensive_rules", bindings)
+        self.assert_resolution_error(
+            lambda: resolver.resolve_b1_final_citation(authority, "CR-101", bindings),
+            ResolutionStatus.FAIL,
+            "B1_LOCATOR_DIGEST_MISMATCH",
+        )
+
+    def test_fragment_range_out_of_bounds_fails_closed(self) -> None:
+        def mutate(document: dict[str, object]) -> None:
+            authorities = cast(list[dict[str, object]], document["authorities"])
+            locator = cast(
+                dict[str, object],
+                cast(dict[str, object], authorities[2]["citations"][0])["artifact_local_locator"],
+            )
+            locator["byte_offset"] = 999
+
+        resolver, bindings, _ = self._fixture(mutate_citations=mutate)
+        authority = resolver.resolve_b1_final_authority("commander_general", bindings)
+        self.assert_resolution_error(
+            lambda: resolver.resolve_b1_final_citation(
+                authority, "commander_general-ROOT", bindings
+            ),
+            ResolutionStatus.FAIL,
+            "B1_LOCATOR_UNRESOLVED",
+        )
+
+    def test_wrong_fragment_digest_fails_closed(self) -> None:
+        def mutate(document: dict[str, object]) -> None:
+            authorities = cast(list[dict[str, object]], document["authorities"])
+            locator = cast(
+                dict[str, object],
+                cast(dict[str, object], authorities[2]["citations"][0])["artifact_local_locator"],
+            )
+            locator["fragment_sha256"] = "00" * 32
+
+        resolver, bindings, _ = self._fixture(mutate_citations=mutate)
+        authority = resolver.resolve_b1_final_authority("commander_general", bindings)
+        self.assert_resolution_error(
+            lambda: resolver.resolve_b1_final_citation(
+                authority, "commander_general-ROOT", bindings
+            ),
+            ResolutionStatus.FAIL,
+            "B1_LOCATOR_DIGEST_MISMATCH",
+        )
+
+    def test_non_unique_fragment_fails_closed(self) -> None:
+        resolver, bindings, _ = self._fixture(commander_general_raw=b"CG-FORMAT\nCG-FORMAT\n")
+        authority = resolver.resolve_b1_final_authority("commander_general", bindings)
+        self.assert_resolution_error(
+            lambda: resolver.resolve_b1_final_citation(
+                authority, "commander_general-ROOT", bindings
+            ),
+            ResolutionStatus.FAIL,
+            "B1_LOCATOR_AMBIGUOUS",
+        )
+
+    def test_missing_rev3_archive_blocks_real_checked_in_b1_probe(self) -> None:
+        resolver = AuthoritySourceResolver(ROOT, rev3_archive_root=ROOT / "missing-rev3-for-slice4")
+        bindings = self._real_bindings()
+        self.assert_resolution_error(
+            lambda: resolver.resolve_b1_final_authority("comprehensive_rules", bindings),
+            ResolutionStatus.BLOCKED,
+            "REV3_ARCHIVE_SOURCE_UNAVAILABLE",
+        )
+
+    def test_missing_repository_b1_artifact_fails_closed(self) -> None:
+        resolver, bindings, _ = self._fixture()
+        (self.repo / Path(*B1_FINAL_CITATIONS_PATH.split("/"))).unlink()
+        self.assert_resolution_error(
+            lambda: resolver.resolve_b1_final_authority("comprehensive_rules", bindings),
+            ResolutionStatus.FAIL,
+            "REPOSITORY_SOURCE_MISSING",
+        )
+
+    def test_same_id_citation_from_another_b1_snapshot_fails_closed(self) -> None:
+        resolver_a, bindings_a, _ = self._fixture()
+        authority_a = resolver_a.resolve_b1_final_authority("comprehensive_rules", bindings_a)
+        with tempfile.TemporaryDirectory() as directory:
+            repo_b = Path(directory) / "repo"
+            shutil.copytree(
+                self.repo / "sources/m2_5/closures/B1",
+                repo_b / "sources/m2_5/closures/B1",
+            )
+            citations_path = repo_b / Path(*B1_FINAL_CITATIONS_PATH.split("/"))
+            citations = cast(
+                dict[str, object], json.loads(citations_path.read_text(encoding="utf-8"))
+            )
+            authorities = cast(list[dict[str, object]], citations["authorities"])
+            cast(dict[str, object], authorities[4]["citations"][0])["why_required"] = (
+                "other snapshot"
+            )
+            citations_raw = json_bytes(citations)
+            citations_path.write_bytes(citations_raw)
+            closure_path = repo_b / Path(*B1_FINAL_CLOSURE_PATH.split("/"))
+            closure = {
+                "schema": B1_FINAL_CLOSURE_SCHEMA,
+                "bound_evidence": {"official_authority_citations.v3.json": digest(citations_raw)},
+            }
+            closure_path.write_bytes(json_bytes(closure))
+            bindings_b = B1FinalArtifactBindingsV1(
+                citations=self._binding(
+                    "b1_final_citations",
+                    B1_FINAL_CITATIONS_PATH,
+                    B1_FINAL_CITATIONS_SCHEMA,
+                    repo_b,
+                ),
+                closure=self._binding(
+                    "b1_final_closure",
+                    B1_FINAL_CLOSURE_PATH,
+                    B1_FINAL_CLOSURE_SCHEMA,
+                    repo_b,
+                ),
+            )
+            resolver_b = AuthoritySourceResolver(repo_b, rev3_archive=resolver_a._archive())
+            self.assert_resolution_error(
+                lambda: resolver_b.resolve_b1_final_citation(authority_a, "CR-101", bindings_b),
+                ResolutionStatus.FAIL,
+                "B1_AUTHORITY_BINDING_MISMATCH",
+            )
 
 
 if __name__ == "__main__":
