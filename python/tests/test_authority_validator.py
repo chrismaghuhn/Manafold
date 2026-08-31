@@ -1082,6 +1082,134 @@ class AuthorityValidatorTests(unittest.TestCase):
         self.assertNotIn(encode_canonical(b1_citations.to_cbor()), source_set)
         self.assertNotIn(encode_canonical(b1_closure.to_cbor()), source_set)
 
+    def test_information_sensitive_records_require_information_safety_reviewer(self) -> None:
+        from authority_validator import AuthorityValidator
+
+        records = [
+            {"review_domain": "hidden_information_and_visibility"},
+            {
+                "proof_payload": {
+                    "kind": "positive_interaction",
+                    "required_relation_channels": ["information_or_visibility"],
+                }
+            },
+            {
+                "preconditions": [
+                    {
+                        "precondition_kind": "source_context",
+                        "payload": ["visibility", "private"],
+                    }
+                ]
+            },
+            {
+                "preconditions": [
+                    {
+                        "precondition_kind": "source_context",
+                        "payload": ["information_relation", "hidden_identity"],
+                    }
+                ]
+            },
+        ]
+        validator = AuthorityValidator(self.resolver)
+        for record in records:
+            with self.subTest(record=record):
+                self.assertIn(
+                    "information_safety_reviewer",
+                    validator._required_roles(record),
+                )
+
+    def test_b2_boundary_precondition_lifecycle_is_bound_to_catalog(self) -> None:
+        from authority_source_resolver import (
+            B2_CATALOG_PATH,
+            B2_CATALOG_SCHEMA,
+            B2_CLASSIFICATION_PATH,
+            B2_CLASSIFICATION_SCHEMA,
+            B2_CLOSURE_PATH,
+            B2_CLOSURE_SCHEMA,
+        )
+        from authority_validator import AuthorityValidator, _SourceRegistry
+
+        source_root = ROOT / "sources/m2_5/closures/B2"
+        shutil.copytree(source_root, self.repo / "sources/m2_5/closures/B2")
+        catalog = cast(
+            dict[str, object],
+            json.loads((self.repo / Path(*B2_CATALOG_PATH.split("/"))).read_text(encoding="utf-8")),
+        )
+        family = cast(dict[str, object], cast(list[object], catalog["families"])[0])
+        family_id = cast(str, family["family_id"])
+        definition = cast(str, family["precise_semantic_definition"])
+        source_status = cast(str, family["status"]).lower()
+        wrong_status = "active_unassigned" if source_status == "active" else "active"
+
+        def binding(role: str, path: str, schema: str) -> SourceBindingDigestV1:
+            raw = (self.repo / Path(*path.split("/"))).read_bytes()
+            return SourceBindingDigestV1(role, path, schema, bytes.fromhex(digest(raw)))
+
+        bindings = (
+            binding("b2_catalog", B2_CATALOG_PATH, B2_CATALOG_SCHEMA),
+            binding("b2_classifications", B2_CLASSIFICATION_PATH, B2_CLASSIFICATION_SCHEMA),
+            binding("b2_closure", B2_CLOSURE_PATH, B2_CLOSURE_SCHEMA),
+        )
+        validator = AuthorityValidator(AuthoritySourceResolver(self.repo))
+        validator._root_bindings = _SourceRegistry(
+            MappingProxyType({encode_canonical(item.to_cbor()): item for item in bindings})
+        )
+        with self.assertRaises(ResolutionError) as context:
+            validator._resolve_precondition_sources(
+                [
+                    {
+                        "precondition_kind": "b2_boundary",
+                        "payload": [family_id, wrong_status, "primary", definition],
+                    }
+                ],
+                "theorem.preconditions",
+            )
+        self.assertEqual(context.exception.code, "B2_PRECONDITION_LIFECYCLE_MISMATCH")
+
+    def test_class_projection_precondition_requires_structured_equivalence(self) -> None:
+        from authority_validator import AuthorityValidator
+
+        resolver, candidate_binding, candidate, instance = self._synthetic_candidate_source()
+        resolved = resolver.resolve_candidate_source_instance(
+            cast(str, candidate["candidate_id"]),
+            cast(dict[str, object], candidate["candidate_identity"]),
+            cast(str, instance["source_instance_id"]),
+            candidate_binding,
+        )
+        projection = [
+            "binary",
+            "directed",
+            [],
+            "cross_host",
+            ["not_applicable"] * 10,
+            ["not_applicable"] * 4,
+            [],
+            [],
+            [],
+        ]
+        member = {
+            "precondition_attestations": [
+                {
+                    "precondition_id": "class-projection",
+                    "observed_value": projection,
+                }
+            ]
+        }
+        theorem = {
+            "preconditions": [
+                {
+                    "precondition_id": "class-projection",
+                    "precondition_kind": "class_projection",
+                    "payload": projection,
+                }
+            ]
+        }
+        with self.assertRaises(ResolutionError) as context:
+            AuthorityValidator(resolver)._validate_precondition_match(
+                member, theorem, "domain member", resolved
+            )
+        self.assertEqual(context.exception.code, "CLASS_PROJECTION_PRECONDITION_PROOF_MISSING")
+
     def test_missing_rev3_archive_member_evidence_fails_closed(self) -> None:
         from authority_validator import AuthorityValidator, _SourceRegistry
 

@@ -161,6 +161,9 @@ _RECORD_KIND_TO_SUPERSESSION_KIND: Final = {
 _REQUIRED_ROLE_BY_RECORD_KIND: Final = frozenset(
     {"architecture_maintainer", "rules_authority_maintainer"}
 )
+_INFORMATION_SAFETY_REVIEWER: Final = "information_safety_reviewer"
+_INFORMATION_CHANNEL: Final = "information_or_visibility"
+_INFORMATION_CONTEXT_DIMENSIONS: Final = frozenset({"visibility", "information_relation"})
 
 
 @dataclass(frozen=True)
@@ -1784,30 +1787,155 @@ class AuthorityValidator:
         except (TypeError, ValueError) as exc:
             _fail("REVIEWER_ROSTER_INVALID", str(exc))
 
-    def _required_roles(self, record: Mapping[str, object]) -> set[str]:
+    def _required_roles(
+        self, record: Mapping[str, object], *related_records: Mapping[str, object]
+    ) -> set[str]:
         required = set(_REQUIRED_ROLE_BY_RECORD_KIND)
-        if self._contains_information_dependency(record):
-            required.add("information_safety_reviewer")
+        if any(
+            self._record_requires_information_safety(candidate)
+            for candidate in (record, *related_records)
+        ):
+            required.add(_INFORMATION_SAFETY_REVIEWER)
         return required
 
-    def _contains_information_dependency(self, value: object, key: str | None = None) -> bool:
-        if key == "precondition_kind" and value in {"source_context", "temporal_semantic"}:
+    @staticmethod
+    def _information_context_vector(value: object) -> bool:
+        return (
+            isinstance(value, list)
+            and len(value) == 10
+            and (value[1] != "not_applicable" or value[8] != "not_applicable")
+        )
+
+    @staticmethod
+    def _information_boundary_fact(value: object) -> bool:
+        if not isinstance(value, Mapping) or value.get("kind") != "context_slot":
             return False
-        if key == "slot_name" and value in {"visibility", "information_relation"}:
-            return True
-        if key == "context_dimensions" and isinstance(value, list):
-            return len(value) >= 9 and (
-                value[1] != "not_applicable" or value[8] != "not_applicable"
-            )
-        if isinstance(value, Mapping):
-            return any(
-                self._contains_information_dependency(child, child_key)
-                for child_key, child in value.items()
-                if child_key not in {"semantic_rationale", "rationale", "why_required"}
-            )
-        if isinstance(value, list):
-            return any(self._contains_information_dependency(child, key) for child in value)
+        slot_name = value.get("slot_name")
+        return (
+            isinstance(slot_name, str)
+            and slot_name in _INFORMATION_CONTEXT_DIMENSIONS
+            and value.get("observed_value") != "not_applicable"
+        )
+
+    def _information_preconditions(self, value: object) -> bool:
+        if not isinstance(value, list):
+            return False
+        for item in value:
+            if not isinstance(item, Mapping):
+                continue
+            kind = item.get("precondition_kind")
+            payload = item.get("payload")
+            if kind == "source_context" and isinstance(payload, list) and len(payload) == 2:
+                dimension = payload[0]
+                if (
+                    isinstance(dimension, str)
+                    and dimension in _INFORMATION_CONTEXT_DIMENSIONS
+                    and payload[1] != "not_applicable"
+                ):
+                    return True
+            elif kind == "class_projection" and isinstance(payload, list) and len(payload) == 9:
+                if self._information_context_vector(payload[4]):
+                    return True
         return False
+
+    def _information_proof_payload(self, value: object) -> bool:
+        if not isinstance(value, Mapping):
+            return False
+        kind = value.get("kind")
+        if kind == "positive_interaction":
+            channels = value.get("required_relation_channels")
+            if isinstance(channels, list) and _INFORMATION_CHANNEL in channels:
+                return True
+            return self._information_projection(value.get("class_projection_template"))
+        if kind == "positive_separation":
+            obligations = value.get("separation_obligations")
+            if isinstance(obligations, list):
+                return any(
+                    isinstance(item, Mapping) and item.get("channel") == _INFORMATION_CHANNEL
+                    for item in obligations
+                )
+        return False
+
+    def _information_criteria(self, value: object) -> bool:
+        if not isinstance(value, list):
+            return False
+        for item in value:
+            if not isinstance(item, Mapping):
+                continue
+            kind = item.get("kind")
+            if (
+                kind in {"channel_implicated", "channel_excluded"}
+                and item.get("channel") == _INFORMATION_CHANNEL
+            ):
+                return True
+            if self._information_boundary_fact(item.get("positive_boundary_fact")):
+                return True
+        return False
+
+    def _information_projection(self, value: object) -> bool:
+        if isinstance(value, list) and len(value) == 9:
+            return self._information_context_vector(value[4])
+        if not isinstance(value, Mapping):
+            return False
+        if self._information_context_vector(value.get("context_dimensions")):
+            return True
+        for key in ("theorem_projection", "member_projection"):
+            if self._information_projection(value.get(key)):
+                return True
+        return False
+
+    def _information_members(self, value: object) -> bool:
+        if not isinstance(value, list):
+            return False
+        for item in value:
+            if not isinstance(item, Mapping):
+                continue
+            proof = item.get("member_proof_attestation")
+            if isinstance(proof, Mapping):
+                kind = proof.get("kind")
+                if kind == "positive_separation":
+                    coverages = proof.get("channel_coverages")
+                    if isinstance(coverages, list) and any(
+                        isinstance(coverage, Mapping)
+                        and coverage.get("channel") == _INFORMATION_CHANNEL
+                        for coverage in coverages
+                    ):
+                        return True
+                elif kind == "positive_interaction" and self._information_projection(
+                    proof.get("class_projection_equivalence")
+                ):
+                    return True
+            context_attestation = item.get("context_member_attestation")
+            if isinstance(context_attestation, Mapping):
+                slots = context_attestation.get("slot_attestations")
+                if isinstance(slots, list) and any(
+                    isinstance(slot, Mapping)
+                    and slot.get("slot_name") in _INFORMATION_CONTEXT_DIMENSIONS
+                    and slot.get("observed_value") != "not_applicable"
+                    for slot in slots
+                ):
+                    return True
+            domain_attestation = item.get("domain_member_attestation")
+            if isinstance(domain_attestation, Mapping) and self._information_criteria(
+                domain_attestation.get("criterion_attestations")
+            ):
+                return True
+        return False
+
+    def _record_requires_information_safety(self, record: Mapping[str, object]) -> bool:
+        if record.get("review_domain") == "hidden_information_and_visibility":
+            return True
+        if self._information_preconditions(record.get("preconditions")):
+            return True
+        if self._information_proof_payload(record.get("proof_payload")):
+            return True
+        if self._information_criteria(record.get("criterion")):
+            return True
+        if self._information_context_vector(record.get("context_dimensions")):
+            return True
+        if self._information_projection(record.get("class_projection_template")):
+            return True
+        return self._information_members(record.get("members"))
 
     def _subject_bindings(
         self,
@@ -1945,6 +2073,8 @@ class AuthorityValidator:
         subject_kind: AcceptanceSubjectKind,
         subject_payload: list[CborValue],
         label: str,
+        *,
+        related_records: Sequence[Mapping[str, object]] = (),
     ) -> ReviewEventRefV1:
         acceptance_ref, _ = _acceptance(record.get("acceptance"), f"{label}.acceptance")
         event_artifact = self._resolver.resolve_acceptance_event_leaf(acceptance_ref)
@@ -1990,7 +2120,7 @@ class AuthorityValidator:
         roster = self._parse_roster(roster_ref)
         bindings = self._event_role_bindings(event, roster)
         roles = {role for binding in bindings for role in binding.roles}
-        if not self._required_roles(record).issubset(roles):
+        if not self._required_roles(record, *related_records).issubset(roles):
             _fail("REVIEWER_ROLE_UNAUTHORIZED", "acceptance event lacks a required roster role")
 
         model_binding, _ = self._require_model()
@@ -2498,6 +2628,7 @@ class AuthorityValidator:
             AcceptanceSubjectKind.RELATION_APPLICATION_RECORD,
             [application_id.digest_bytes],
             label,
+            related_records=(theorem.record,),
         )
         expected_record = compute_authority_identity(
             AuthorityIdentityKind.RELATION_APPLICATION_RECORD,
@@ -2581,6 +2712,7 @@ class AuthorityValidator:
             AcceptanceSubjectKind.DOMAIN_APPLICATION_RECORD,
             [application_id.digest_bytes],
             label,
+            related_records=(theorem.record,),
         )
         expected_record = compute_authority_identity(
             AuthorityIdentityKind.DOMAIN_APPLICATION_RECORD,
@@ -2649,6 +2781,7 @@ class AuthorityValidator:
             AcceptanceSubjectKind.CONTEXT_APPLICATION_RECORD,
             [application_id.digest_bytes],
             label,
+            related_records=(theorem.record,),
         )
         expected_record = compute_authority_identity(
             AuthorityIdentityKind.CONTEXT_APPLICATION_RECORD,
@@ -3228,20 +3361,29 @@ class AuthorityValidator:
                         "PRECONDITION_SOURCE_MISMATCH",
                         f"{label} source context differs from theorem expectation",
                     )
-            elif kind == "class_projection" and "member_proof_attestation" in member:
+            elif kind == "class_projection":
+                if "member_proof_attestation" not in member:
+                    _fail(
+                        "CLASS_PROJECTION_PRECONDITION_PROOF_MISSING",
+                        f"{label} class projection precondition has no equivalence proof",
+                    )
                 member_proof = _object(member.get("member_proof_attestation"), "member proof")
                 equivalence = member_proof.get("class_projection_equivalence")
-                if equivalence is not None:
-                    equivalence_record = _object(equivalence, "class projection equivalence")
-                    member_projection = _class_projection(
-                        equivalence_record.get("member_projection"),
-                        "member class projection",
+                if equivalence is None:
+                    _fail(
+                        "CLASS_PROJECTION_PRECONDITION_PROOF_MISSING",
+                        f"{label} class projection precondition has no equivalence proof",
                     )
-                    if member_projection != theorem_expected:
-                        _fail(
-                            "PRECONDITION_SOURCE_MISMATCH",
-                            f"{label} member class projection differs from theorem expectation",
-                        )
+                equivalence_record = _object(equivalence, "class projection equivalence")
+                member_projection = _class_projection(
+                    equivalence_record.get("member_projection"),
+                    "member class projection",
+                )
+                if member_projection != theorem_expected:
+                    _fail(
+                        "PRECONDITION_SOURCE_MISMATCH",
+                        f"{label} member class projection differs from theorem expectation",
+                    )
 
     def _resolve_precondition_sources(self, value: object, label: str) -> None:
         for index, item in enumerate(_array(value, label)):
@@ -3250,15 +3392,29 @@ class AuthorityValidator:
             payload = _cbor_value(precondition.get("payload"), "precondition payload")
             if kind == "b2_boundary":
                 fields = _array(payload, "B2 boundary precondition", 4)
-                self._resolve_b2_refs(
-                    [
-                        {
-                            "family_id": fields[0],
-                            "precise_semantic_definition": fields[3],
-                        }
-                    ],
-                    f"{label}[{index}].B2 boundary",
+                family_id = _text(fields[0], f"{label}[{index}].B2 family ID")
+                lifecycle = _text(fields[1], f"{label}[{index}].B2 lifecycle")
+                _text(fields[2], f"{label}[{index}].B2 assignment role")
+                definition = _text(fields[3], f"{label}[{index}].B2 definition")
+                bindings = self._b2_bindings()
+                family = self._resolver.resolve_b2_requirement_family(family_id, bindings)
+                source_lifecycle = _text(
+                    family.record.get("status"), f"{label}[{index}].source B2 lifecycle"
+                ).lower()
+                if source_lifecycle != lifecycle:
+                    _fail(
+                        "B2_PRECONDITION_LIFECYCLE_MISMATCH",
+                        f"{label}[{index}] lifecycle differs from the B2 family record",
+                    )
+                self._resolver.resolve_b2_boundary(
+                    family,
+                    B2BoundaryReferenceV1(
+                        family_id=family_id,
+                        precise_semantic_definition=definition,
+                    ),
                 )
+                for binding in (bindings.catalog, bindings.classifications, bindings.closure):
+                    self._used_bindings.add(encode_canonical(binding.to_cbor()))
             elif kind == "class_projection":
                 projection = _array(payload, "class projection precondition", 9)
                 self._resolve_b2_family_arrays(
