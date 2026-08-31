@@ -25,6 +25,7 @@ The verification runner marks directories it owns and refuses to replace an exis
 - `authority_validator.py` — fail-closed validation of the persisted M2.5.C authority graph;
 - `build_m2_5_c_authority_review_worklist.py` — deterministic, non-authoritative M2.5.C review worklist generation;
 - `scaffold_m2_5_c_authority_review.py` — quarantined single-candidate review proposal scaffolding;
+- `build_m2_5_c_canary_review_packet.py` — single-candidate source inventory and human-review worksheet packet;
 - `run_checks.py` — fast/integration/certification maintainer profiles;
 - `bootstrap.py` — prepares `.venv` only and never mutates contracts or lockfiles;
 - `validate_golden_path.py` — verifies the synthetic vertical path fails closed at certification;
