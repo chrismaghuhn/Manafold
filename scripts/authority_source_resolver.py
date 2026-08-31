@@ -113,6 +113,8 @@ B1_FINAL_CITATIONS_PATH = "sources/m2_5/closures/B1/official_authority_citations
 B1_FINAL_CITATIONS_SCHEMA = "manafold.m2.5.b1.official-authority-citations.v3"
 B1_FINAL_CLOSURE_PATH = "sources/m2_5/closures/B1/official_authority_citation_closure.v2.json"
 B1_FINAL_CLOSURE_SCHEMA = "manafold.m2.5.b1.official-authority-citation-closure.v2"
+B1_FINAL_SLICE = "M2.5.B1.Final"
+B1_FINAL_SOURCE_REGISTER_LABEL = "REV3 source/official_authority_register_REV3.json"
 REV3_OFFICIAL_AUTHORITY_REGISTER_MEMBER = "source/official_authority_register_REV3.json"
 B1_FINAL_AUTHORITY_IDS = (
     "banned_restricted",
@@ -1632,6 +1634,48 @@ def _b1_verify_closure_binding(value: object, citations_artifact: ResolvedArtifa
         )
 
 
+def _b1_validate_header(value: Mapping[str, object]) -> dict[str, object]:
+    if value.get("schema") != B1_FINAL_CITATIONS_SCHEMA:
+        _fail("B1_CITATIONS_BINDING_INVALID", "B1.Final citation schema is not V3")
+    if value.get("slice") != B1_FINAL_SLICE:
+        _fail("B1_CITATIONS_BINDING_INVALID", "B1.Final citation slice marker is not V1")
+    universe = _json_object(value.get("input_universe"), "B1.Final citation input universe")
+    _exact_keys(
+        universe,
+        {
+            "source_register",
+            "source_register_sha256",
+            "authority_ids_in_order",
+            "authority_count",
+            "archive_sha256",
+        },
+        "B1.Final citation input universe",
+    )
+    if universe.get("source_register") != B1_FINAL_SOURCE_REGISTER_LABEL:
+        _fail(
+            "B1_REGISTER_BINDING_MISMATCH", "B1.Final register label is not the persisted V3 value"
+        )
+    _json_digest(universe.get("source_register_sha256"), "B1.Final register digest")
+    _json_digest(universe.get("archive_sha256"), "B1.Final archive digest")
+    authority_ids = universe.get("authority_ids_in_order")
+    if not isinstance(authority_ids, list) or any(
+        not isinstance(authority_id, str) for authority_id in authority_ids
+    ):
+        _fail("B1_AUTHORITY_UNIVERSE_INVALID", "B1.Final authority IDs are not a string array")
+    if authority_ids != list(B1_FINAL_AUTHORITY_IDS):
+        _fail(
+            "B1_AUTHORITY_UNIVERSE_INVALID", "B1.Final authority universe is not the closed V1 set"
+        )
+    authority_count = universe.get("authority_count")
+    if (
+        isinstance(authority_count, bool)
+        or not isinstance(authority_count, int)
+        or authority_count != len(B1_FINAL_AUTHORITY_IDS)
+    ):
+        _fail("B1_AUTHORITY_UNIVERSE_INVALID", "B1.Final authority count is not seven")
+    return universe
+
+
 def _b1_expected_register_identity(
     authority_id: str, register: Mapping[str, object]
 ) -> tuple[str | None, str | None]:
@@ -2640,6 +2684,7 @@ class AuthoritySourceResolver:
             raw_closure, "B1.Final citation closure"
         )
         _b1_verify_closure_binding(closure_document, citations_artifact)
+        universe = _b1_validate_header(citations_document)
 
         archive = self._archive()
         register_path = REV3_OFFICIAL_AUTHORITY_REGISTER_MEMBER
@@ -2651,14 +2696,7 @@ class AuthoritySourceResolver:
         )
         register = _b1_register_index(register_value)
 
-        if citations_document.get("schema") != B1_FINAL_CITATIONS_SCHEMA:
-            _fail("B1_CITATIONS_BINDING_INVALID", "B1.Final citation schema is not V3")
-        if citations_document.get("slice") != "B1_FINAL":
-            _fail("B1_CITATIONS_BINDING_INVALID", "B1.Final citation slice marker is not V1")
-        universe = _json_object(
-            citations_document.get("input_universe"), "B1.Final citation input universe"
-        )
-        if universe.get("source_register") != register_path:
+        if universe.get("source_register") != B1_FINAL_SOURCE_REGISTER_LABEL:
             _fail("B1_REGISTER_BINDING_MISMATCH", "B1.Final register path is not the REV3 register")
         if (
             _json_digest(universe.get("source_register_sha256"), "B1.Final register digest").hex()
@@ -3727,6 +3765,8 @@ __all__ = [
     "B1_FINAL_CITATIONS_SCHEMA",
     "B1_FINAL_CLOSURE_PATH",
     "B1_FINAL_CLOSURE_SCHEMA",
+    "B1_FINAL_SLICE",
+    "B1_FINAL_SOURCE_REGISTER_LABEL",
     "B2_CATALOG_PATH",
     "B2_CATALOG_SCHEMA",
     "B2_CLASSIFICATION_PATH",

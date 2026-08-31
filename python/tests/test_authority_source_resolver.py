@@ -1656,9 +1656,9 @@ class B1FinalSourceResolverTests(unittest.TestCase):
             )
         citations = {
             "schema": B1_FINAL_CITATIONS_SCHEMA,
-            "slice": "B1_FINAL",
+            "slice": "M2.5.B1.Final",
             "input_universe": {
-                "source_register": self.REGISTER_MEMBER,
+                "source_register": "REV3 source/official_authority_register_REV3.json",
                 "source_register_sha256": digest(register_raw),
                 "authority_ids_in_order": list(self.AUTHORITY_IDS),
                 "authority_count": len(self.AUTHORITY_IDS),
@@ -2012,6 +2012,58 @@ class B1FinalSourceResolverTests(unittest.TestCase):
             ResolutionStatus.BLOCKED,
             "REV3_ARCHIVE_SOURCE_UNAVAILABLE",
         )
+
+    def test_checked_in_b1_v3_header_matches_persisted_contract(self) -> None:
+        path = ROOT / Path(*B1_FINAL_CITATIONS_PATH.split("/"))
+        document = cast(dict[str, object], json.loads(path.read_text(encoding="utf-8")))
+        input_universe = cast(dict[str, object], document["input_universe"])
+        self.assertEqual(document["slice"], "M2.5.B1.Final")
+        self.assertEqual(
+            input_universe["source_register"],
+            "REV3 source/official_authority_register_REV3.json",
+        )
+
+    def test_invalid_b1_header_fails_before_missing_rev3_archive(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            repo = Path(directory) / "repo"
+            shutil.copytree(
+                ROOT / "sources/m2_5/closures/B1",
+                repo / "sources/m2_5/closures/B1",
+            )
+            citations_path = repo / Path(*B1_FINAL_CITATIONS_PATH.split("/"))
+            citations = cast(
+                dict[str, object], json.loads(citations_path.read_text(encoding="utf-8"))
+            )
+            citations["slice"] = "B1_FINAL"
+            citations_raw = json_bytes(citations)
+            citations_path.write_bytes(citations_raw)
+            closure_path = repo / Path(*B1_FINAL_CLOSURE_PATH.split("/"))
+            closure = cast(dict[str, object], json.loads(closure_path.read_text(encoding="utf-8")))
+            bound = cast(dict[str, object], closure["bound_evidence"])
+            bound["official_authority_citations.v3.json"] = digest(citations_raw)
+            closure_path.write_bytes(json_bytes(closure))
+            bindings = B1FinalArtifactBindingsV1(
+                citations=self._binding(
+                    "b1_final_citations",
+                    B1_FINAL_CITATIONS_PATH,
+                    B1_FINAL_CITATIONS_SCHEMA,
+                    repo,
+                ),
+                closure=self._binding(
+                    "b1_final_closure",
+                    B1_FINAL_CLOSURE_PATH,
+                    B1_FINAL_CLOSURE_SCHEMA,
+                    repo,
+                ),
+            )
+            resolver = AuthoritySourceResolver(
+                repo, rev3_archive_root=repo / "missing-rev3-for-slice4"
+            )
+            self.assert_resolution_error(
+                lambda: resolver.resolve_b1_final_authority("comprehensive_rules", bindings),
+                ResolutionStatus.FAIL,
+                "B1_CITATIONS_BINDING_INVALID",
+            )
 
     def test_missing_repository_b1_artifact_fails_closed(self) -> None:
         resolver, bindings, _ = self._fixture()
