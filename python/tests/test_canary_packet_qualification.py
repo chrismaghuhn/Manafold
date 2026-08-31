@@ -121,6 +121,16 @@ class CanaryPacketQualificationTests(unittest.TestCase):
                 qualify_packet(result.packet_dir, inputs=self.inputs)
             self.assertIn("PACKET_SOURCE_FACT_MISMATCH", str(raised.exception))
 
+    def test_qualifier_rejects_rendered_packet_mutation(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            result = build_canary_packet(ROOT, Path(temporary), inputs=self.inputs)
+            markdown_path = result.packet_dir / "REVIEW_PACKET.md"
+            markdown_path.write_bytes(markdown_path.read_bytes() + b"\n\nhuman_accepted\n")
+
+            with self.assertRaises(ValueError) as raised:
+                qualify_packet(result.packet_dir, inputs=self.inputs)
+            self.assertIn("PACKET_RENDERING_MISMATCH", str(raised.exception))
+
 
 if __name__ == "__main__":
     unittest.main()

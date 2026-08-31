@@ -1032,6 +1032,15 @@ def _qualify_machine_files(
             "WORKSHEET_SOURCE_BINDING_MISMATCH",
             "worksheet differs from the canonical accepted-model worksheet",
         )
+    try:
+        actual_markdown = (packet_dir / "REVIEW_PACKET.md").read_bytes()
+    except OSError as exc:
+        _fail("PACKET_INVALID", f"cannot read rendered packet: {exc}")
+    if actual_markdown != _markdown(manifest, inventory):
+        _fail(
+            "PACKET_RENDERING_MISMATCH",
+            "REVIEW_PACKET.md differs from the canonical packet rendering",
+        )
     if manifest.get("source_bindings") != _expected_packet_bindings(loaded):
         _fail(
             "PACKET_SOURCE_BINDING_MISMATCH",
