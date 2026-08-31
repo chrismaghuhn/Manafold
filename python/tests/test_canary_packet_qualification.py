@@ -50,7 +50,8 @@ class CanaryPacketQualificationTests(unittest.TestCase):
             )
             inventory["inventory_status"] = "READY_FOR_HUMAN_REVIEW"
             inventory_path.write_bytes(_json_bytes(inventory))
-            self.assertNotEqual(qualify_packet(result.packet_dir), "READY_FOR_HUMAN_REVIEW")
+            with self.assertRaises(ValueError):
+                qualify_packet(result.packet_dir)
 
     def test_qualifier_rejects_canary_identity_mutation(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -70,6 +71,55 @@ class CanaryPacketQualificationTests(unittest.TestCase):
             worksheet_path.write_bytes(_json_bytes(worksheet))
             with self.assertRaises(ValueError):
                 qualify_packet(result.packet_dir)
+
+    def test_qualifier_rejects_review_domain_not_from_model(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            result = build_canary_packet(ROOT, Path(temporary), inputs=self.inputs)
+            worksheet_path = result.packet_dir / "review_worksheet.v1.json"
+            worksheet = cast(
+                dict[str, object], json.loads(worksheet_path.read_text(encoding="utf-8"))
+            )
+            decisions = cast(dict[str, object], worksheet["reviewer_decisions"])
+            domains = cast(list[object], decisions["domain_reviews"])
+            first_domain = cast(dict[str, object], domains[0])
+            first_domain["review_domain"] = "fabricated-review-domain"
+            worksheet_path.write_bytes(_json_bytes(worksheet))
+
+            with self.assertRaises(ValueError) as raised:
+                qualify_packet(result.packet_dir, inputs=self.inputs)
+            self.assertIn("WORKSHEET_SOURCE_BINDING_MISMATCH", str(raised.exception))
+
+    def test_qualifier_rejects_non_reviewer_decision_worksheet_kind(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            result = build_canary_packet(ROOT, Path(temporary), inputs=self.inputs)
+            worksheet_path = result.packet_dir / "review_worksheet.v1.json"
+            worksheet = cast(
+                dict[str, object], json.loads(worksheet_path.read_text(encoding="utf-8"))
+            )
+            decisions = cast(dict[str, object], worksheet["reviewer_decisions"])
+            relation = cast(dict[str, object], decisions["relation_review"])
+            relation["kind"] = "SOURCE_FACT"
+            worksheet_path.write_bytes(_json_bytes(worksheet))
+
+            with self.assertRaises(ValueError) as raised:
+                qualify_packet(result.packet_dir, inputs=self.inputs)
+            self.assertIn("WORKSHEET_SOURCE_BINDING_MISMATCH", str(raised.exception))
+
+    def test_qualifier_rejects_source_inventory_kind_mutation(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            result = build_canary_packet(ROOT, Path(temporary), inputs=self.inputs)
+            inventory_path = result.packet_dir / "source_inventory.v1.json"
+            inventory = cast(
+                dict[str, object], json.loads(inventory_path.read_text(encoding="utf-8"))
+            )
+            facts = cast(dict[str, object], inventory["facts"])
+            candidate_fact = cast(dict[str, object], facts["candidate"])
+            candidate_fact["kind"] = "REVIEWER_DECISION"
+            inventory_path.write_bytes(_json_bytes(inventory))
+
+            with self.assertRaises(ValueError) as raised:
+                qualify_packet(result.packet_dir, inputs=self.inputs)
+            self.assertIn("PACKET_SOURCE_FACT_MISMATCH", str(raised.exception))
 
 
 if __name__ == "__main__":

@@ -1027,6 +1027,11 @@ def _qualify_machine_files(
             "PACKET_SOURCE_BINDING_MISMATCH",
             "packet canary differs from accepted source facts",
         )
+    if worksheet != _worksheet(loaded, manifest):
+        _fail(
+            "WORKSHEET_SOURCE_BINDING_MISMATCH",
+            "worksheet differs from the canonical accepted-model worksheet",
+        )
     if manifest.get("source_bindings") != _expected_packet_bindings(loaded):
         _fail(
             "PACKET_SOURCE_BINDING_MISMATCH",
@@ -1058,14 +1063,19 @@ def _qualify_machine_files(
     actual_rev3, actual_b2, actual_b1, actual_status, actual_resolution = _revalidate_sources(
         loaded, source_resolver
     )
-    if facts.get("rev3") != actual_rev3:
-        _fail("PACKET_SOURCE_FACT_MISMATCH", "packet REV3 source fact differs from resolver output")
-    if facts.get("b2") != actual_b2:
-        _fail("PACKET_SOURCE_FACT_MISMATCH", "packet B2 source fact differs from resolver output")
-    if facts.get("b1_final") != actual_b1:
+    expected_inventory = _source_inventory(
+        candidate,
+        instance,
+        classification,
+        actual_rev3,
+        actual_b2,
+        actual_b1,
+        actual_status,
+    )
+    if inventory != expected_inventory:
         _fail(
             "PACKET_SOURCE_FACT_MISMATCH",
-            "packet B1.Final source fact differs from resolver output",
+            "source inventory differs from the canonical verified inventory",
         )
     if manifest.get("source_resolution") != actual_resolution:
         _fail(
