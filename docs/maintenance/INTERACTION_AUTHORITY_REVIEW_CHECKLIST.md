@@ -1,0 +1,37 @@
+# Interaction Authority Review Checklist V1
+
+**Status:** accepted V1 checklist definition
+
+**Stability:** accepted
+**Checklist ID:** `interaction-authority-review-checklist.v1`
+
+This document defines the review procedure named by the V1 acceptance-event
+contract. It is a checklist definition only: it is not a review record,
+acceptance evidence, semantic proof, candidate classification, or human
+acceptance event.
+
+## Required review
+
+- Source and locator verification: verify every source binding, raw digest,
+  schema, path, and locator from raw bytes before interpreting the referenced
+  record.
+- Verify exact theorem/application identity, theorem/application binding, finite
+  membership, and all per-member preconditions.
+- Verify the exact Candidate, SourceInstance, B2, and B1.Final evidence needed
+  by the record; do not substitute names, co-occurrence, or presence.
+- Verify information-safety review for hidden-information or player-visible
+  consequences, with the required reviewer role present in the bound roster.
+- Reject lexical inference, capability-name inference, co-occurrence
+  inference, and absence-of-evidence inference. Missing proof remains
+  unresolved or blocked.
+- Recompute the exact source-binding closure and reject unused, missing,
+  duplicate, stale, or cross-snapshot bindings.
+- Verify immutable accepted-record provenance and same-kind supersession;
+  never mutate an accepted record or silently replace its authority.
+
+## Outcome
+
+Record the reviewed subject, exact source identities, required reviewer roles,
+evidence, and any unresolved or blocked prerequisite. This checklist does not
+itself create `human_accepted` authority; an immutable acceptance-event leaf
+and its bound production roster are required by the V1 contract.

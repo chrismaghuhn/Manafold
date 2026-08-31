@@ -623,6 +623,13 @@
       "stability": "accepted"
     },
     {
+      "change_process": "governance-pr",
+      "owner_role": "project-governance",
+      "path": "docs/maintenance/INTERACTION_AUTHORITY_REVIEW_CHECKLIST.md",
+      "role": "process",
+      "stability": "accepted"
+    },
+    {
       "change_process": "process-pr",
       "owner_role": "release-maintainer",
       "path": "docs/maintenance/RELEASE_PROCESS.md",
