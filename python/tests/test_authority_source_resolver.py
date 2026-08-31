@@ -1400,6 +1400,51 @@ class B2SourceResolverTests(unittest.TestCase):
             "B2_BOUNDARY_BINDING_MISMATCH",
         )
 
+    def test_b2_boundary_rejects_same_id_assignment_from_another_catalog_snapshot(self) -> None:
+        resolver_a = AuthoritySourceResolver(self.repo)
+        bindings_a = self._bindings()
+        osi, classification, family_id = self._real_first_records()
+        classification_a = resolver_a.resolve_b2_classification(
+            osi, classification["classification_identity"], bindings_a
+        )
+        assignment_a = resolver_a.resolve_b2_assignment(classification_a, family_id, bindings_a)
+
+        with tempfile.TemporaryDirectory() as directory:
+            repo_b = Path(directory) / "repo"
+            repo_b.mkdir()
+            shutil.copytree(
+                self.repo / "sources/m2_5/closures/B2",
+                repo_b / "sources/m2_5/closures/B2",
+            )
+            catalog_path = repo_b / Path(*B2_CATALOG_PATH.split("/"))
+            catalog = cast(dict[str, object], json.loads(catalog_path.read_text(encoding="utf-8")))
+            family = cast(list[dict[str, object]], catalog["families"])[0]
+            family["precise_semantic_definition"] = cast(
+                str, family["precise_semantic_definition"]
+            ).replace("includes=an attached Aura permanent", "includes=a changed boundary", 1)
+            catalog_path.write_bytes(json_bytes(catalog))
+            closure_path = repo_b / Path(*B2_CLOSURE_PATH.split("/"))
+            closure = cast(dict[str, object], json.loads(closure_path.read_text(encoding="utf-8")))
+            for item in cast(list[dict[str, object]], closure["bound_artifacts"]):
+                if item["path"] == "requirement_family_catalog.v1.json":
+                    item["raw_sha256"] = digest(catalog_path.read_bytes())
+            closure_path.write_bytes(json_bytes(closure))
+
+            resolver_b = AuthoritySourceResolver(repo_b)
+            bindings_b = self._bindings(repo_b)
+            family_b = resolver_b.resolve_b2_requirement_family(family_id, bindings_b)
+            boundary_b = B2BoundaryReferenceV1(
+                family_id=family_id,
+                precise_semantic_definition=cast(
+                    str, family_b.record["precise_semantic_definition"]
+                ),
+            )
+            self.assert_resolution_error(
+                lambda: resolver_b.resolve_b2_boundary(family_b, boundary_b, assignment_a),
+                ResolutionStatus.FAIL,
+                "B2_BOUNDARY_BINDING_MISMATCH",
+            )
+
     def test_b2_closure_digest_binding_is_verified(self) -> None:
         closure_path = self.repo / Path(*B2_CLOSURE_PATH.split("/"))
         closure = cast(dict[str, object], json.loads(closure_path.read_text(encoding="utf-8")))

@@ -1359,33 +1359,6 @@ def _b2_require_bindings(bindings: B2ArtifactBindingsV1) -> None:
     )
 
 
-def _b2_require_binding(
-    binding: SourceBindingDigestV1, role: str, path: str, schema: str, label: str
-) -> None:
-    if not isinstance(binding, SourceBindingDigestV1):
-        _fail("B2_SOURCE_BINDING_INVALID", f"{label} is not a SourceBindingDigestV1")
-    if binding.artifact_role != role or binding.path != path or binding.schema_or_null != schema:
-        _fail("B2_SOURCE_BINDING_INVALID", f"{label} does not use the admitted role/path/schema")
-
-
-def _b2_require_bindings(bindings: B2ArtifactBindingsV1) -> None:
-    if not isinstance(bindings, B2ArtifactBindingsV1):
-        _fail("B2_SOURCE_BINDING_INVALID", "B2 resolution requires B2ArtifactBindingsV1")
-    _b2_require_binding(
-        bindings.catalog, "b2_catalog", B2_CATALOG_PATH, B2_CATALOG_SCHEMA, "B2 catalog binding"
-    )
-    _b2_require_binding(
-        bindings.classifications,
-        "b2_classifications",
-        B2_CLASSIFICATION_PATH,
-        B2_CLASSIFICATION_SCHEMA,
-        "B2 classification binding",
-    )
-    _b2_require_binding(
-        bindings.closure, "b2_closure", B2_CLOSURE_PATH, B2_CLOSURE_SCHEMA, "B2 closure binding"
-    )
-
-
 def _candidate_identity_reference(value: object, label: str) -> dict[str, object]:
     record = _json_object(value, label)
     _exact_keys(record, set(CANDIDATE_IDENTITY_KEYS), label)
@@ -2619,6 +2592,11 @@ class AuthoritySourceResolver:
                 _fail(
                     "B2_BOUNDARY_BINDING_MISMATCH",
                     "B2 boundary is joined to another assignment family",
+                )
+            if assignment.family.source_binding != family.source_binding:
+                _fail(
+                    "B2_BOUNDARY_BINDING_MISMATCH",
+                    "B2 boundary and assignment use different catalog snapshots",
                 )
             if family.record["status"] != "ACTIVE":
                 _fail("B2_BOUNDARY_BINDING_MISMATCH", "a card-derived B2 boundary must be active")
