@@ -120,6 +120,22 @@ class ReviewAdmissionFoundationTests(unittest.TestCase):
         registered_paths = [item["path"] for item in register["documents"]]
         self.assertIn(CHECKLIST_PATH, registered_paths)
 
+    def test_checklist_defines_solo_separate_self_review(self) -> None:
+        checklist = (ROOT / Path(*CHECKLIST_PATH.split("/"))).read_text(encoding="utf-8")
+        lowered = checklist.lower()
+        self.assertIn("solo separate self-review", lowered)
+        for phrase in (
+            "separate review pass after proposal/artifact generation",
+            "frozen exact bytes/identities/source bindings",
+            "no semantic edits during the acceptance pass",
+            "requires a fresh pass",
+            "complete checklist again",
+            "portable review evidence",
+            "solo mode does not weaken semantic or information-safety review",
+        ):
+            with self.subTest(phrase=phrase):
+                self.assertIn(phrase, lowered)
+
     def test_roster_source_has_no_runtime_identity_dependency(self) -> None:
         reference = self._roster_ref()
         with self.assertRaises(AttributeError):

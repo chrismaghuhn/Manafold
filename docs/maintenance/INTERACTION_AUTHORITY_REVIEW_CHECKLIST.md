@@ -29,6 +29,20 @@ acceptance event.
 - Verify immutable accepted-record provenance and same-kind supersession;
   never mutate an accepted record or silently replace its authority.
 
+## Solo separate self-review
+
+For `solo_separate_self_review`, the reviewer must:
+
+- Perform a separate review pass after proposal/artifact generation is
+  complete.
+- Review the frozen exact bytes/identities/source bindings, independently of
+  the authoring pass.
+- Make no semantic edits during the acceptance pass. Any required edit
+  invalidates that review and requires a fresh pass.
+- Execute the complete checklist again in the separate pass.
+- Record portable review evidence for that pass.
+- Keep all required roles and evidence mandatory; solo mode does not weaken semantic or information-safety review.
+
 ## Outcome
 
 Record the reviewed subject, exact source identities, required reviewer roles,
