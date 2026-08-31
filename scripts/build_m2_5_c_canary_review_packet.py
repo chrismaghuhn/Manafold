@@ -41,11 +41,16 @@ from authority_source_resolver import (
     _parse_rev3_rows,
 )
 from build_m2_5_c_authority_review_worklist import (
+    WORKLIST_FORMAT,
     LoadedReviewInputs,
     _json_bytes,
     _plain,
+    _work_item,
     build_worklist,
     load_review_inputs,
+)
+from build_m2_5_c_authority_review_worklist import (
+    _manifest as _worklist_manifest,
 )
 from mtgml.authority import SourceBindingDigestV1
 
@@ -280,6 +285,32 @@ def _read_worklist_canary(
     if item.get("source_instance_binding") != instance.get("source_binding"):
         _fail("CANARY_BINDING_MISMATCH", "worklist instance binding differs from the C ledger")
     return dict(manifest), dict(item), hashlib.sha256(raw).hexdigest()
+
+
+def _expected_worklist_bytes(inputs: LoadedReviewInputs) -> bytes:
+    candidates = {
+        _text(record.get("candidate_id"), "candidate ID"): record
+        for record in inputs.candidate_records
+    }
+    instances = {
+        _text(record.get("candidate_id"), "source-instance candidate ID"): record
+        for record in inputs.source_instance_records
+    }
+    lines = [_json_bytes(_worklist_manifest(inputs))]
+    for ordinal, classification in enumerate(inputs.classification_records):
+        candidate_id = _text(classification.get("candidate_id"), "classification candidate ID")
+        lines.append(
+            _json_bytes(
+                _work_item(
+                    ordinal,
+                    candidates[candidate_id],
+                    instances[candidate_id],
+                    classification,
+                    inputs.review_domains,
+                )
+            )
+        )
+    return b"".join(lines)
 
 
 def _classification_fact(classification: Mapping[str, object]) -> JsonObject:
@@ -770,7 +801,89 @@ def _reject_forbidden(value: object, label: str) -> None:
             _reject_forbidden(child, f"{label}[{index}]")
 
 
-def _qualify_machine_files(packet_dir: Path) -> str:
+def _canary_records(
+    inputs: LoadedReviewInputs,
+) -> tuple[Mapping[str, object], Mapping[str, object], Mapping[str, object]]:
+    classification = inputs.classification_records[CANARY_ORDINAL]
+    candidate_id = _text(classification.get("candidate_id"), "canary candidate ID")
+    candidate = next(
+        record for record in inputs.candidate_records if record.get("candidate_id") == candidate_id
+    )
+    instance = next(
+        record
+        for record in inputs.source_instance_records
+        if record.get("candidate_id") == candidate_id
+    )
+    return candidate, instance, classification
+
+
+def _expected_packet_canary(inputs: LoadedReviewInputs) -> JsonObject:
+    candidate, instance, _ = _canary_records(inputs)
+    return {
+        "ordinal": CANARY_ORDINAL,
+        "candidate_id": candidate["candidate_id"],
+        "candidate_identity": _plain(candidate["candidate_identity"]),
+        "source_instance_id": instance["source_instance_id"],
+        "scope": candidate["scope"],
+        "relation": candidate["relation"],
+    }
+
+
+def _expected_packet_bindings(inputs: LoadedReviewInputs) -> JsonObject:
+    raw_inputs = _object(
+        inputs.candidate_universe.get("input_bindings"), "candidate input bindings"
+    )
+    return {
+        "declared_model": _plain(inputs.model_binding),
+        "candidate_universe": _plain(inputs.candidate_universe_binding),
+        "classification_root": _plain(inputs.classification_root_binding),
+        "classification_shard": _plain(inputs.classification_shard_bindings[0]),
+        "classification_shards": _plain(inputs.classification_shard_bindings),
+        "semantic_classes": _plain(inputs.semantic_classes_binding),
+        "current_c_closure": _plain(inputs.current_c_closure_binding),
+        "reviewer_roster": _plain(inputs.reviewer_roster_ref),
+        "b2_artifacts": _plain(raw_inputs["b2_artifacts"]),
+        "b1_final_artifacts": _plain(raw_inputs["b1_final_artifacts"]),
+    }
+
+
+def _b1_status(inventory: Mapping[str, object]) -> str:
+    official = _object(
+        inventory.get("official_source_resolution", {"status": "PASS"}),
+        "B1 official source resolution",
+    )
+    return _text(official.get("status"), "B1 resolution status")
+
+
+def _revalidate_sources(
+    inputs: LoadedReviewInputs,
+    resolver: AuthoritySourceResolver,
+) -> tuple[JsonObject, JsonObject, JsonObject, str, JsonObject]:
+    candidate, instance, classification = _canary_records(inputs)
+    resolved_source, rev3_fact = _resolve_rev3(resolver, inputs, candidate, instance)
+    b2_fact = _resolve_b2_inventory(resolver, inputs, candidate, classification)
+    b1_fact = _b1_inventory(resolver, inputs)
+    rev3_status = _text(rev3_fact.get("status"), "REV3 resolution status")
+    b1_status = _b1_status(b1_fact)
+    status = (
+        READY_FOR_HUMAN_REVIEW
+        if resolved_source is not None and rev3_status == "PASS" and b1_status == "PASS"
+        else BLOCKED
+    )
+    source_resolution = {
+        "rev3": rev3_status,
+        "b2": b2_fact["status"],
+        "b1_final": b1_status,
+    }
+    return rev3_fact, b2_fact, b1_fact, status, source_resolution
+
+
+def _qualify_machine_files(
+    packet_dir: Path,
+    repo_root: Path,
+    inputs: LoadedReviewInputs | None,
+    resolver: AuthoritySourceResolver | None,
+) -> str:
     try:
         entries = {entry.name for entry in packet_dir.iterdir()}
     except OSError as exc:
@@ -903,13 +1016,79 @@ def _qualify_machine_files(packet_dir: Path) -> str:
     for key in ("status", "model_boundary", "reason", "evidence_selection"):
         if scope.get(key) != AWAITING_HUMAN_REVIEW:
             _fail("WORKSHEET_INVALID", f"scope slot {key!r} is not awaiting human review")
-    return status
+    loaded = inputs or load_review_inputs(repo_root)
+    if manifest.get("source_commit") != loaded.source_commit:
+        _fail("PACKET_SOURCE_BINDING_MISMATCH", "packet source commit differs from the repository")
+    if manifest.get("review_checklist_id") != CHECKLIST_ID:
+        _fail("PACKET_INVALID", "packet checklist identifier is not the accepted V1 checklist")
+    expected_canary = _expected_packet_canary(loaded)
+    if canary != expected_canary:
+        _fail(
+            "PACKET_SOURCE_BINDING_MISMATCH",
+            "packet canary differs from accepted source facts",
+        )
+    if manifest.get("source_bindings") != _expected_packet_bindings(loaded):
+        _fail(
+            "PACKET_SOURCE_BINDING_MISMATCH",
+            "packet source bindings differ from accepted inputs",
+        )
+    worklist = _object(manifest.get("worklist"), "packet worklist")
+    expected_worklist_sha = hashlib.sha256(_expected_worklist_bytes(loaded)).hexdigest()
+    if worklist != {
+        "format": WORKLIST_FORMAT,
+        "path": "dist/m2-5-c-authority-review/review_worklist.v1.jsonl",
+        "raw_sha256": expected_worklist_sha,
+        "ordinal": CANARY_ORDINAL,
+    }:
+        _fail(
+            "PACKET_SOURCE_BINDING_MISMATCH",
+            "packet worklist is not the accepted source snapshot",
+        )
+    candidate, instance, classification = _canary_records(loaded)
+    facts = _object(inventory.get("facts"), "source inventory facts")
+    candidate_fact = _object(facts.get("candidate"), "candidate source fact")
+    instance_fact = _object(facts.get("source_instance"), "source-instance source fact")
+    if (
+        candidate_fact.get("record") != _plain(candidate)
+        or instance_fact.get("record") != _plain(instance)
+        or facts.get("current_unresolved_classification") != _classification_fact(classification)
+    ):
+        _fail("PACKET_SOURCE_FACT_MISMATCH", "packet C source facts differ from accepted inputs")
+    source_resolver = resolver or AuthoritySourceResolver(repo_root)
+    actual_rev3, actual_b2, actual_b1, actual_status, actual_resolution = _revalidate_sources(
+        loaded, source_resolver
+    )
+    if facts.get("rev3") != actual_rev3:
+        _fail("PACKET_SOURCE_FACT_MISMATCH", "packet REV3 source fact differs from resolver output")
+    if facts.get("b2") != actual_b2:
+        _fail("PACKET_SOURCE_FACT_MISMATCH", "packet B2 source fact differs from resolver output")
+    if facts.get("b1_final") != actual_b1:
+        _fail(
+            "PACKET_SOURCE_FACT_MISMATCH",
+            "packet B1.Final source fact differs from resolver output",
+        )
+    if manifest.get("source_resolution") != actual_resolution:
+        _fail(
+            "PACKET_SOURCE_RESOLUTION_MISMATCH",
+            "packet source-resolution statuses differ from resolver output",
+        )
+    if actual_status == BLOCKED:
+        return BLOCKED
+    if status != actual_status:
+        _fail("PACKET_STATUS_MISMATCH", "packet status differs from verified source resolution")
+    return actual_status
 
 
-def qualify_packet(packet_dir: Path) -> str:
+def qualify_packet(
+    packet_dir: Path,
+    repo_root: Path = ROOT,
+    *,
+    inputs: LoadedReviewInputs | None = None,
+    resolver: AuthoritySourceResolver | None = None,
+) -> str:
     """Return structural qualification without assigning semantic authority."""
 
-    return _qualify_machine_files(packet_dir)
+    return _qualify_machine_files(packet_dir, repo_root, inputs, resolver)
 
 
 def build_canary_packet(
@@ -935,22 +1114,9 @@ def build_canary_packet(
     )
     classification = loaded.classification_records[CANARY_ORDINAL]
     source_resolver = resolver or AuthoritySourceResolver(repo_root)
-    resolved_source, rev3_fact = _resolve_rev3(source_resolver, loaded, candidate, instance)
-    b2_fact = _resolve_b2_inventory(source_resolver, loaded, candidate, classification)
-    b1_fact = _b1_inventory(source_resolver, loaded)
-    rev3_status = _text(rev3_fact.get("status"), "REV3 resolution status")
-    b1_inventory = _object(b1_fact, "B1 inventory")
-    official_source_resolution = _object(
-        b1_inventory.get("official_source_resolution", {"status": "PASS"}),
-        "B1 official source resolution",
+    rev3_fact, b2_fact, b1_fact, status, source_resolution = _revalidate_sources(
+        loaded, source_resolver
     )
-    b1_status = _text(official_source_resolution.get("status"), "B1 resolution status")
-    status = (
-        READY_FOR_HUMAN_REVIEW
-        if resolved_source is not None and rev3_status == "PASS" and b1_status == "PASS"
-        else BLOCKED
-    )
-    source_resolution = {"rev3": rev3_status, "b2": b2_fact["status"], "b1_final": b1_status}
     manifest = _manifest(
         worklist_manifest, worklist_sha256, worklist_item, loaded, status, source_resolution
     )
@@ -969,7 +1135,7 @@ def build_canary_packet(
     ):
         (target_dir / name).write_bytes(_json_bytes(value))
     (target_dir / "REVIEW_PACKET.md").write_bytes(_markdown(manifest, inventory))
-    qualified = qualify_packet(target_dir)
+    qualified = qualify_packet(target_dir, repo_root, inputs=loaded, resolver=source_resolver)
     if qualified != status:
         _fail("PACKET_STATUS_MISMATCH", "packet status differs from structural qualification")
     return CanaryPacketResult(
