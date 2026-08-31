@@ -12,6 +12,7 @@ import unittest
 import zipfile
 from copy import deepcopy
 from pathlib import Path
+from types import MappingProxyType
 from typing import cast
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -657,6 +658,231 @@ class AuthorityValidatorTests(unittest.TestCase):
 
         result = validator.validate(self.document)
         self.assertTrue(result.valid)
+
+    def test_relation_member_binds_source_instance_participant_roles(self) -> None:
+        from authority_validator import AuthorityValidator
+
+        resolver, candidate_binding, candidate, instance = self._synthetic_candidate_source()
+        resolved = resolver.resolve_candidate_source_instance(
+            cast(str, candidate["candidate_id"]),
+            cast(dict[str, object], candidate["candidate_identity"]),
+            cast(str, instance["source_instance_id"]),
+            candidate_binding,
+        )
+        participant_roles = [
+            {
+                "position": 0,
+                "role": "source",
+                "participant_kind": "requirement_family",
+                "semantic_ref": "family.a",
+            },
+            {
+                "position": 1,
+                "role": "ordered_participant",
+                "participant_kind": "requirement_family",
+                "semantic_ref": "family.b",
+            },
+        ]
+        subject = {
+            "arity": "binary",
+            "relation": "directional_binary",
+            "directionality": "directed",
+            "participant_roles": participant_roles,
+            "host_relationship": "cross_host",
+        }
+        member = {
+            "relation_binding": {
+                "scope": "cross_deck",
+                "relation": "directional_binary",
+                "directionality": "directed",
+                "host_relationship": "cross_host",
+                "participant_bindings": participant_roles,
+            },
+            "member_proof_attestation": {"kind": "positive_separation"},
+        }
+        with self.assertRaises(ResolutionError) as context:
+            AuthorityValidator(resolver)._validate_relation_member_binding(
+                member, {"subject": subject}, resolved, "relation member"
+            )
+        self.assertEqual(context.exception.code, "MEMBER_SOURCE_PARTICIPANT_BINDING_MISMATCH")
+
+    def test_relation_member_rejects_source_direction_reversal(self) -> None:
+        from authority_validator import AuthorityValidator
+
+        resolver, candidate_binding, candidate, instance = self._synthetic_candidate_source()
+        resolved = resolver.resolve_candidate_source_instance(
+            cast(str, candidate["candidate_id"]),
+            cast(dict[str, object], candidate["candidate_identity"]),
+            cast(str, instance["source_instance_id"]),
+            candidate_binding,
+        )
+        participant_roles = [
+            {
+                "position": 0,
+                "role": "ordered_participant",
+                "participant_kind": "requirement_family",
+                "semantic_ref": "family.a",
+            },
+            {
+                "position": 1,
+                "role": "ordered_participant",
+                "participant_kind": "requirement_family",
+                "semantic_ref": "family.b",
+            },
+        ]
+        subject = {
+            "arity": "binary",
+            "relation": "directional_binary",
+            "directionality": "symmetric",
+            "participant_roles": participant_roles,
+            "host_relationship": "cross_host",
+        }
+        member = {
+            "relation_binding": {
+                "scope": "cross_deck",
+                "relation": "directional_binary",
+                "directionality": "symmetric",
+                "host_relationship": "cross_host",
+                "participant_bindings": participant_roles,
+            },
+            "member_proof_attestation": {"kind": "positive_separation"},
+        }
+        with self.assertRaises(ResolutionError) as context:
+            AuthorityValidator(resolver)._validate_relation_member_binding(
+                member, {"subject": subject}, resolved, "relation member"
+            )
+        self.assertEqual(context.exception.code, "MEMBER_SOURCE_SHAPE_MISMATCH")
+
+    def test_context_member_binds_all_source_context_values(self) -> None:
+        from authority_validator import AuthorityValidator
+
+        resolver, candidate_binding, candidate, instance = self._synthetic_candidate_source()
+        resolved = resolver.resolve_candidate_source_instance(
+            cast(str, candidate["candidate_id"]),
+            cast(dict[str, object], candidate["candidate_identity"]),
+            cast(str, instance["source_instance_id"]),
+            candidate_binding,
+        )
+        participant_roles = [
+            {
+                "position": 0,
+                "role": "ordered_participant",
+                "participant_kind": "requirement_family",
+                "semantic_ref": "family.a",
+            },
+            {
+                "position": 1,
+                "role": "ordered_participant",
+                "participant_kind": "requirement_family",
+                "semantic_ref": "family.b",
+            },
+        ]
+        binding = {
+            "arity": "binary",
+            "directionality": "directed",
+            "participant_roles": participant_roles,
+            "host_relationship": "cross_host",
+        }
+        member = {"context_binding": binding}
+        theorem = {"subject_shape": binding}
+        validator = AuthorityValidator(resolver)
+        validator._validate_context_member_binding(member, theorem, resolved, "context member")
+        with self.assertRaises(ResolutionError) as context:
+            validator._validate_context_values_against_source(
+                ["battlefield"] + ["not_applicable"] * 9,
+                resolved,
+                "context member",
+            )
+        self.assertEqual(context.exception.code, "MEMBER_SOURCE_CONTEXT_MISMATCH")
+
+    def test_domain_criterion_attestation_evidence_must_resolve(self) -> None:
+        from authority_validator import AuthorityValidator, _SourceRegistry
+
+        model_binding = self._model_binding()
+        registry = _SourceRegistry(
+            MappingProxyType({encode_canonical(model_binding.to_cbor()): model_binding})
+        )
+        validator = AuthorityValidator(self.resolver)
+        validator._root_bindings = registry
+        model_raw = (self.repo / Path(*MODEL_PATH.split("/"))).read_bytes()
+        missing_pointer = {
+            "authority_kind": "model",
+            "path": MODEL_PATH,
+            "locator": {"kind": "json_pointer", "value": "/missing-criterion"},
+            "raw_sha256": digest(model_raw),
+        }
+        with self.assertRaises(ResolutionError) as context:
+            validator._resolve_evidence_wire_list([missing_pointer], "criterion evidence")
+        self.assertEqual(context.exception.code, "EVIDENCE_LOCATOR_UNRESOLVED")
+
+    def test_boundary_acceptance_source_set_excludes_operational_b2_classifications(self) -> None:
+        from authority_validator import AuthorityValidator, _SourceRegistry
+
+        model_binding = self._model_binding()
+        roster_binding = SourceBindingDigestV1(
+            "reviewer_roster_leaf",
+            "sources/m2_5/authorities/reviewer_rosters/v1/" + "00" * 32 + ".json",
+            REVIEWER_ROSTER_SCHEMA_V1,
+            bytes(32),
+        )
+        catalog = SourceBindingDigestV1(
+            "b2_catalog",
+            "sources/m2_5/closures/B2/requirement_family_catalog.v1.json",
+            "manafold.m2.5.b2.requirement-family-catalog.v1",
+            bytes.fromhex("11" * 32),
+        )
+        classifications = SourceBindingDigestV1(
+            "b2_classifications",
+            "sources/m2_5/closures/B2/card_semantic_classifications.v1.json",
+            "manafold.m2.5.b2.card-semantic-classifications.v1",
+            bytes.fromhex("22" * 32),
+        )
+        closure = SourceBindingDigestV1(
+            "b2_closure",
+            "sources/m2_5/closures/B2/classification_closure.v1.json",
+            "manafold.m2.5.b2.classification-closure.v1",
+            bytes.fromhex("33" * 32),
+        )
+        bindings = (model_binding, roster_binding, catalog, classifications, closure)
+        validator = AuthorityValidator(self.resolver)
+        validator._root_bindings = _SourceRegistry(
+            MappingProxyType({encode_canonical(binding.to_cbor()): binding for binding in bindings})
+        )
+        source_set = validator._subject_bindings(
+            {
+                "b2_boundary_refs": [
+                    {
+                        "family_id": "cap.synthetic",
+                        "precise_semantic_definition": "synthetic boundary",
+                    }
+                ]
+            },
+            model_binding,
+            roster_binding,
+        )
+        self.assertIn(encode_canonical(catalog.to_cbor()), source_set)
+        self.assertIn(encode_canonical(closure.to_cbor()), source_set)
+        self.assertNotIn(encode_canonical(classifications.to_cbor()), source_set)
+
+    def test_missing_rev3_archive_member_evidence_fails_closed(self) -> None:
+        from authority_validator import AuthorityValidator, _SourceRegistry
+
+        resolver, _, _, _ = self._synthetic_candidate_source()
+        member_path = "inputs/deck_row_source_resolution_REV3.csv"
+        binding = SourceBindingDigestV1("rev3_source", member_path, None, bytes(32))
+        validator = AuthorityValidator(resolver)
+        validator._root_bindings = _SourceRegistry(
+            MappingProxyType({encode_canonical(binding.to_cbor()): binding})
+        )
+        evidence = {
+            "authority_kind": "rev3",
+            "path": member_path,
+            "locator": {"kind": "archive_member", "value": member_path},
+            "raw_sha256": "00" * 32,
+        }
+        with self.assertRaises(ResolutionError) as context:
+            validator._resolve_evidence_wire_list([evidence], "criterion evidence")
+        self.assertEqual(context.exception.code, "REV3_MEMBER_MISSING")
 
     def test_missing_model_source_binding_fails_closed(self) -> None:
         from authority_validator import AuthorityValidator

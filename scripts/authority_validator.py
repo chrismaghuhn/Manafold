@@ -117,6 +117,23 @@ _RAW_REV3_PATHS: Final = frozenset(
         "source/raw/oracle_cards_selected_REV3.jsonl",
     }
 )
+_SOURCE_CONTEXT_KEYS: Final = (
+    "zone",
+    "visibility",
+    "timing",
+    "temporal_order",
+    "source_affected_relation",
+    "control_ownership_relation",
+    "replacement_layer_relation",
+    "trigger_lki_relation",
+    "information_relation",
+    "decision_actor_relation",
+)
+_SOURCE_RELATION_SHAPES: Final = {
+    "declared_card_trigger": ("unary", "none"),
+    "directional_binary": ("binary", "directed"),
+    "unordered_binary": ("binary", "symmetric"),
+}
 _RECORD_KIND_TO_RECORD_ID_KIND: Final = {
     RecordKind.RELATION_THEOREM_RECORD: AuthorityIdentityKind.RELATION_THEOREM_RECORD,
     RecordKind.RELATION_APPLICATION_RECORD: AuthorityIdentityKind.RELATION_APPLICATION_RECORD,
@@ -1824,10 +1841,10 @@ class AuthorityValidator:
                     kind = _text(precondition.get("precondition_kind"), "precondition kind")
                     payload = _cbor_value(precondition.get("payload"), "precondition payload")
                     if kind == "b2_boundary":
-                        self._add_all_b2_bindings(result)
+                        self._add_b2_boundary_bindings(result)
                     elif kind == "class_projection":
                         _array(payload, "class projection precondition payload", 9)
-                        self._add_all_b2_bindings(result)
+                        self._add_b2_boundary_bindings(result)
                         self._add_all_b1_bindings(result)
                 return
             if key == "candidate_universe_binding":
@@ -1846,17 +1863,17 @@ class AuthorityValidator:
                     ref = _object(item, key)
                     definition = _text(ref.get("precise_semantic_definition"), "B2 definition")
                     del definition
-                    self._add_all_b2_bindings(result)
+                    self._add_b2_boundary_bindings(result)
                 return
             if key == "b2_family_refs":
                 for item in _array(value, key):
                     _b2_family_ref(item, key)
-                    self._add_all_b2_bindings(result)
+                    self._add_b2_boundary_bindings(result)
                 return
             if key == "through_boundary_refs":
                 for item in _array(value, key):
                     _b2_boundary_ref(item, key)
-                    self._add_all_b2_bindings(result)
+                    self._add_b2_boundary_bindings(result)
                 return
             if key == "b1_final_citation_refs":
                 for _ in _array(value, key):
@@ -1879,7 +1896,7 @@ class AuthorityValidator:
                     fact_record = _object(fact, f"{key}[{index}]")
                     fact_kind = _text(fact_record.get("kind"), "positive fact kind")
                     if fact_kind == "b2_boundary":
-                        self._add_all_b2_bindings(result)
+                        self._add_b2_boundary_bindings(result)
                     elif fact_kind == "b1_citation":
                         self._add_all_b1_bindings(result)
                     elif fact_kind in {"rev3_locator", "b2_locator"}:
@@ -1906,9 +1923,9 @@ class AuthorityValidator:
         walk(record)
         return result
 
-    def _add_all_b2_bindings(self, target: set[bytes]) -> None:
+    def _add_b2_boundary_bindings(self, target: set[bytes]) -> None:
         for binding in self._require_root().by_key.values():
-            if binding.artifact_role in {"b2_catalog", "b2_classifications", "b2_closure"}:
+            if binding.artifact_role in {"b2_catalog", "b2_closure"}:
                 target.add(encode_canonical(binding.to_cbor()))
 
     def _add_all_b1_bindings(self, target: set[bytes]) -> None:
@@ -2685,6 +2702,55 @@ class AuthorityValidator:
             )
         return record
 
+    def _source_instance_shape(
+        self, resolved: ResolvedSourceInstance, label: str
+    ) -> tuple[str, str, list[list[CborValue]]]:
+        candidate = resolved.candidate.candidate_record
+        relation = _text(candidate.get("relation"), f"{label}.candidate.relation")
+        shape = _SOURCE_RELATION_SHAPES.get(relation)
+        if shape is None:
+            _fail(
+                "SOURCE_RELATION_SHAPE_UNSUPPORTED",
+                f"{label} candidate relation has no admitted C shape",
+            )
+        arity, directionality = shape
+        participants: list[list[CborValue]] = []
+        raw_participants = resolved.source_instance_record.get("participant_bindings")
+        source_participants = (
+            list(raw_participants)
+            if isinstance(raw_participants, tuple)
+            else _array(
+                raw_participants,
+                f"{label}.source_instance.participant_bindings",
+            )
+        )
+        for index, item in enumerate(source_participants):
+            binding = _exact(
+                item,
+                {"role", "participant_ref"},
+                f"{label}.source_instance.participant_bindings[{index}]",
+            )
+            participant_ref = _exact(
+                binding.get("participant_ref"),
+                {"participant_kind", "semantic_ref"},
+                f"{label}.source_instance.participant_bindings[{index}].participant_ref",
+            )
+            participants.append(
+                [
+                    index,
+                    _text(binding.get("role"), "source participant role"),
+                    _text(participant_ref.get("participant_kind"), "source participant kind"),
+                    _text(participant_ref.get("semantic_ref"), "source participant reference"),
+                ]
+            )
+        expected_count = 1 if arity == "unary" else 2
+        if len(participants) != expected_count:
+            _fail(
+                "SOURCE_RELATION_SHAPE_MISMATCH",
+                f"{label} source instance has the wrong participant count for its C shape",
+            )
+        return arity, directionality, participants
+
     def _validate_relation_member_binding(
         self,
         member: Mapping[str, object],
@@ -2706,6 +2772,14 @@ class AuthorityValidator:
                 "MEMBER_SUBJECT_MISMATCH", f"{label} relation binding differs from theorem subject"
             )
         candidate = resolved.candidate.candidate_record
+        source_arity, source_directionality, source_participants = self._source_instance_shape(
+            resolved, label
+        )
+        if subject_values[0] != source_arity or subject_values[2] != source_directionality:
+            _fail(
+                "MEMBER_SOURCE_SHAPE_MISMATCH",
+                f"{label} theorem direction/arity differs from the source-instance C shape",
+            )
         if relation_values[0] != candidate["scope"] or relation_values[1] != candidate["relation"]:
             _fail(
                 "MEMBER_SOURCE_BINDING_MISMATCH",
@@ -2726,6 +2800,11 @@ class AuthorityValidator:
             _fail(
                 "MEMBER_SOURCE_BINDING_MISMATCH",
                 f"{label} participants differ from candidate source",
+            )
+        if relation_values[4] != source_participants:
+            _fail(
+                "MEMBER_SOURCE_PARTICIPANT_BINDING_MISMATCH",
+                f"{label} participant roles or positions differ from the source instance",
             )
         member_proof = _object(member.get("member_proof_attestation"), f"{label}.member proof")
         equivalence = member_proof.get("class_projection_equivalence")
@@ -2757,12 +2836,46 @@ class AuthorityValidator:
             _fail("MEMBER_SUBJECT_MISMATCH", f"{label} domain binding differs from theorem")
 
     def _validate_context_member_binding(
-        self, member: Mapping[str, object], theorem: Mapping[str, object], label: str
+        self,
+        member: Mapping[str, object],
+        theorem: Mapping[str, object],
+        resolved: ResolvedSourceInstance,
+        label: str,
     ) -> None:
         binding = _context_binding(member.get("context_binding"), f"{label}.context_binding")
         expected = _context_binding(theorem.get("subject_shape"), "context theorem subject shape")
         if binding != expected:
             _fail("MEMBER_SUBJECT_MISMATCH", f"{label} context binding differs from theorem")
+        source_arity, source_directionality, source_participants = self._source_instance_shape(
+            resolved, label
+        )
+        if binding[0] != source_arity or binding[1] != source_directionality:
+            _fail(
+                "MEMBER_SOURCE_SHAPE_MISMATCH",
+                f"{label} context binding differs from the source-instance C shape",
+            )
+        if binding[2] != source_participants:
+            _fail(
+                "MEMBER_SOURCE_PARTICIPANT_BINDING_MISMATCH",
+                f"{label} context participant roles or positions differ from the source instance",
+            )
+
+    def _validate_context_values_against_source(
+        self,
+        context_values: Sequence[object],
+        resolved: ResolvedSourceInstance,
+        label: str,
+    ) -> None:
+        source_context = _object(
+            resolved.source_instance_record.get("source_context"),
+            f"{label}.source_instance.source_context",
+        )
+        for dimension, expected_value in zip(_SOURCE_CONTEXT_KEYS, context_values, strict=True):
+            if source_context.get(dimension) != expected_value:
+                _fail(
+                    "MEMBER_SOURCE_CONTEXT_MISMATCH",
+                    f"{label} context dimension {dimension!r} differs from source instance",
+                )
 
     def _validate_member_proof_against_theorem(
         self, member: Mapping[str, object], theorem: Mapping[str, object], label: str
@@ -2920,6 +3033,11 @@ class AuthorityValidator:
                         "DOMAIN_CRITERION_MISMATCH",
                         "domain member criterion does not match theorem clause",
                     )
+                self._resolve_evidence_wire_list(
+                    criterion_record.get("evidence_refs"),
+                    f"{label}.members[{index}].criterion_attestations[{criterion_index}]"
+                    ".evidence_refs",
+                )
                 self._resolve_criterion_sources(
                     criterion_record.get("observed_criterion"), "criterion"
                 )
@@ -2959,7 +3077,9 @@ class AuthorityValidator:
         expected_values = context_values + temporal_values
         for index, member in enumerate(members):
             resolved = self._resolve_application_member(member, f"{label}.members[{index}]")
-            self._validate_context_member_binding(member, theorem, f"{label}.members[{index}]")
+            member_label = f"{label}.members[{index}]"
+            self._validate_context_member_binding(member, theorem, resolved, member_label)
+            self._validate_context_values_against_source(context_values, resolved, member_label)
             self._resolve_member_evidence(member, f"{label}.members[{index}]")
             attestation = _object(member.get("context_member_attestation"), "context attestation")
             slots = _array(attestation.get("slot_attestations"), "slot attestations")
