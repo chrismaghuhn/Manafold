@@ -30,13 +30,13 @@ from authority_source_resolver import (
     REV3_CENSUS_MEMBER,
     AuthoritySourceResolver,
     B2ArtifactBindingsV1,
+    B2BoundaryReferenceV1,
     ResolutionError,
     ResolutionStatus,
     ResolvedArtifact,
     Rev3ArchiveStore,
 )
 from mtgml.authority import (
-    B2FamilyRefV1,
     ReviewerRosterRefV1,
     ReviewEventRefV1,
     SourceBindingDigestV1,
@@ -1251,12 +1251,10 @@ class B2SourceResolverTests(unittest.TestCase):
         )
         boundary = resolver.resolve_b2_boundary(
             family,
-            B2FamilyRefV1(
+            B2BoundaryReferenceV1(
                 family_id=family_id,
-                lifecycle="active",
-                assignment_role="primary",
+                precise_semantic_definition=cast(str, family.record["precise_semantic_definition"]),
             ),
-            cast(str, family.record["precise_semantic_definition"]),
             assignment,
         )
 
@@ -1266,7 +1264,8 @@ class B2SourceResolverTests(unittest.TestCase):
             classification["oracle_semantic_identity"],
         )
         self.assertEqual(assignment.assignment["requirement_family_id"], family_id)
-        self.assertEqual(boundary.family_ref.family_id, family_id)
+        self.assertEqual(boundary.boundary_ref.family_id, family_id)
+        self.assertFalse(hasattr(assignment, "assignment_role"))
         with self.assertRaises(TypeError):
             cast(dict[str, object], family.record)["family_id"] = "mutated"
         with self.assertRaises(TypeError):
@@ -1284,8 +1283,10 @@ class B2SourceResolverTests(unittest.TestCase):
         assignment = resolver.resolve_b2_assignment(resolved_classification, family_id, bindings)
         resolved = resolver.resolve_b2_boundary(
             family,
-            B2FamilyRefV1(family_id=family_id, lifecycle="active", assignment_role="primary"),
-            cast(str, family.record["precise_semantic_definition"]),
+            B2BoundaryReferenceV1(
+                family_id=family_id,
+                precise_semantic_definition=cast(str, family.record["precise_semantic_definition"]),
+            ),
             assignment,
         )
 
@@ -1374,8 +1375,9 @@ class B2SourceResolverTests(unittest.TestCase):
         self.assert_resolution_error(
             lambda: resolver.resolve_b2_boundary(
                 family,
-                B2FamilyRefV1(family_id=family_id, lifecycle="active", assignment_role="primary"),
-                wrong_definition,
+                B2BoundaryReferenceV1(
+                    family_id=family_id, precise_semantic_definition=wrong_definition
+                ),
                 assignment,
             ),
             ResolutionStatus.FAIL,
@@ -1386,10 +1388,12 @@ class B2SourceResolverTests(unittest.TestCase):
         self.assert_resolution_error(
             lambda: resolver.resolve_b2_boundary(
                 other_family,
-                B2FamilyRefV1(
-                    family_id=other_family_id, lifecycle="active", assignment_role="primary"
+                B2BoundaryReferenceV1(
+                    family_id=other_family_id,
+                    precise_semantic_definition=cast(
+                        str, other_family.record["precise_semantic_definition"]
+                    ),
                 ),
-                cast(str, other_family.record["precise_semantic_definition"]),
                 assignment,
             ),
             ResolutionStatus.FAIL,
@@ -1407,8 +1411,22 @@ class B2SourceResolverTests(unittest.TestCase):
         self.assert_resolution_error(
             lambda: resolver.resolve_b2_requirement_family("cap.aura", self._bindings()),
             ResolutionStatus.FAIL,
-            "SOURCE_DIGEST_MISMATCH",
+            "B2_CLOSURE_BINDING_MISMATCH",
         )
+
+    def test_b2_source_resolver_does_not_certify_closure_gate_metadata(self) -> None:
+        closure_path = self.repo / Path(*B2_CLOSURE_PATH.split("/"))
+        closure = cast(dict[str, object], json.loads(closure_path.read_text(encoding="utf-8")))
+        gate_status = cast(dict[str, object], closure["gate_status"])
+        gate_status["M3_STARTED"] = "YES"
+        metrics = cast(dict[str, object], closure["metrics"])
+        metrics["catalog_family_count"] = 0
+        closure_path.write_bytes(json_bytes(closure))
+
+        resolver = AuthoritySourceResolver(self.repo)
+        resolved = resolver.resolve_b2_requirement_family("cap.aura", self._bindings())
+
+        self.assertEqual(resolved.family_id, "cap.aura")
 
     def test_b2_unsupported_family_shape_fails_closed(self) -> None:
         def add_field(document: dict[str, object]) -> None:
