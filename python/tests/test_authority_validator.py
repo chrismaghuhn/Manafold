@@ -1118,6 +1118,74 @@ class AuthorityValidatorTests(unittest.TestCase):
                     validator._required_roles(record),
                 )
 
+    def test_information_sensitive_domain_criteria_require_information_safety_reviewer(
+        self,
+    ) -> None:
+        from authority_validator import AuthorityValidator
+
+        records = [
+            {
+                "criterion": [
+                    {
+                        "kind": "rule_domain_required",
+                        "covered_boundary_fields": ["information_identity_effect"],
+                    }
+                ]
+            },
+            {
+                "criterion": [
+                    {
+                        "kind": "rule_domain_excluded",
+                        "excluded_domain_id": {
+                            "kind": "review_domain",
+                            "value": "hidden_information_and_visibility",
+                        },
+                    }
+                ]
+            },
+        ]
+        validator = AuthorityValidator(self.resolver)
+        for record in records:
+            with self.subTest(record=record):
+                self.assertIn(
+                    "information_safety_reviewer",
+                    validator._required_roles(record),
+                )
+
+    def test_domain_member_candidate_shape_precondition_binds_source(self) -> None:
+        from authority_validator import AuthorityValidator
+
+        resolver, candidate_binding, candidate, instance = self._synthetic_candidate_source()
+        resolved = resolver.resolve_candidate_source_instance(
+            cast(str, candidate["candidate_id"]),
+            cast(dict[str, object], candidate["candidate_identity"]),
+            cast(str, instance["source_instance_id"]),
+            candidate_binding,
+        )
+        theorem_shape = ["intra_deck", "unordered_binary", "symmetric", "cross_host"]
+        member = {
+            "precondition_attestations": [
+                {
+                    "precondition_id": "candidate-shape",
+                    "observed_value": theorem_shape,
+                }
+            ]
+        }
+        theorem = {
+            "preconditions": [
+                {
+                    "precondition_id": "candidate-shape",
+                    "precondition_kind": "candidate_relation_shape",
+                    "payload": theorem_shape,
+                }
+            ]
+        }
+        with self.assertRaises(ResolutionError) as context:
+            AuthorityValidator(resolver)._validate_precondition_match(
+                member, theorem, "domain member", resolved
+            )
+        self.assertEqual(context.exception.code, "PRECONDITION_SOURCE_MISMATCH")
+
     def test_b2_boundary_precondition_lifecycle_is_bound_to_catalog(self) -> None:
         from authority_source_resolver import (
             B2_CATALOG_PATH,

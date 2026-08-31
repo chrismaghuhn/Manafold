@@ -164,6 +164,8 @@ _REQUIRED_ROLE_BY_RECORD_KIND: Final = frozenset(
 _INFORMATION_SAFETY_REVIEWER: Final = "information_safety_reviewer"
 _INFORMATION_CHANNEL: Final = "information_or_visibility"
 _INFORMATION_CONTEXT_DIMENSIONS: Final = frozenset({"visibility", "information_relation"})
+_INFORMATION_BOUNDARY_FIELDS: Final = frozenset({"information_identity_effect", "zone_visibility"})
+_INFORMATION_REVIEW_DOMAIN: Final = "hidden_information_and_visibility"
 
 
 @dataclass(frozen=True)
@@ -1868,6 +1870,20 @@ class AuthorityValidator:
                 and item.get("channel") == _INFORMATION_CHANNEL
             ):
                 return True
+            if kind == "rule_domain_required":
+                fields = item.get("covered_boundary_fields")
+                if isinstance(fields, list) and any(
+                    field in _INFORMATION_BOUNDARY_FIELDS for field in fields
+                ):
+                    return True
+            elif kind == "rule_domain_excluded":
+                excluded = item.get("excluded_domain_id")
+                if (
+                    isinstance(excluded, Mapping)
+                    and excluded.get("kind") == "review_domain"
+                    and excluded.get("value") == _INFORMATION_REVIEW_DOMAIN
+                ):
+                    return True
             if self._information_boundary_fact(item.get("positive_boundary_fact")):
                 return True
         return False
@@ -1923,7 +1939,7 @@ class AuthorityValidator:
         return False
 
     def _record_requires_information_safety(self, record: Mapping[str, object]) -> bool:
-        if record.get("review_domain") == "hidden_information_and_visibility":
+        if record.get("review_domain") == _INFORMATION_REVIEW_DOMAIN:
             return True
         if self._information_preconditions(record.get("preconditions")):
             return True
@@ -2895,7 +2911,7 @@ class AuthorityValidator:
         member: Mapping[str, object],
         resolved: ResolvedSourceInstance,
         label: str,
-    ) -> list[CborValue] | None:
+    ) -> list[CborValue]:
         candidate = resolved.candidate.candidate_record
         _, source_directionality, _ = self._source_instance_shape(resolved, label)
         if "relation_binding" in member:
@@ -2905,7 +2921,10 @@ class AuthorityValidator:
             binding = _context_binding(member.get("context_binding"), f"{label}.context_binding")
             host_relationship = binding[3]
         else:
-            return None
+            _fail(
+                "PRECONDITION_SOURCE_MISMATCH",
+                f"{label} candidate relation shape has no bound host relationship",
+            )
         return [
             _text(candidate.get("scope"), f"{label}.candidate.scope"),
             _text(candidate.get("relation"), f"{label}.candidate.relation"),
@@ -3323,7 +3342,7 @@ class AuthorityValidator:
                 )
             if kind == "candidate_relation_shape":
                 source_shape = self._source_relation_shape_for_precondition(member, resolved, label)
-                if source_shape is not None and source_shape != theorem_expected:
+                if source_shape != theorem_expected:
                     _fail(
                         "PRECONDITION_SOURCE_MISMATCH",
                         f"{label} source relation shape differs from theorem expectation",
