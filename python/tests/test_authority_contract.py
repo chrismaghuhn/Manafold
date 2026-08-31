@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import unittest
+from copy import deepcopy
 from pathlib import Path
 
 import jsonschema
@@ -333,6 +334,72 @@ class AuthorityIdentityTests(unittest.TestCase):
 
 
 class AuthoritySchemaTests(unittest.TestCase):
+    def test_context_proof_subject_shape_uses_four_field_context_binding(self) -> None:
+        schema = json.loads(
+            (ROOT / "schemas/interaction-review-authority.v1.schema.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        fixture = json.loads(
+            (
+                ROOT / "conformance/fixtures/authority/interaction_review_authority.v1.json"
+            ).read_text(encoding="utf-8")
+        )
+        identity = {
+            "envelope_id": "mtgml.digest-envelope.v1",
+            "algorithm_id": "sha-256",
+            "semantic_domain": "manafold.m2.5.c.context-proof.v1",
+            "payload_codec_id": "mtgml.canonical-cbor.v1",
+            "input_schema_id": "manafold.m2.5.c.context-proof-input.v1",
+            "digest_hex": "00" * 32,
+        }
+        record_identity = dict(identity)
+        record_identity["semantic_domain"] = "manafold.m2.5.c.context-proof-record.v1"
+        record_identity["input_schema_id"] = "manafold.m2.5.c.context-proof-record-input.v1"
+        fixture["context_proofs"] = [
+            {
+                "theorem_id": identity,
+                "record_id": record_identity,
+                "subject_shape": {
+                    "arity": "unary",
+                    "directionality": "none",
+                    "participant_roles": [
+                        {
+                            "position": 0,
+                            "role": "ordered_participant",
+                            "participant_kind": "card",
+                            "semantic_ref": "subject-ref",
+                        }
+                    ],
+                    "host_relationship": "not_applicable",
+                },
+                "context_dimensions": ["not_applicable"] * 10,
+                "temporal_semantics": ["not_applicable"] * 4,
+                "preconditions": [],
+                "b2_boundary_refs": [],
+                "b1_final_citation_refs": [],
+                "source_evidence_refs": [],
+                "semantic_rationale": "fixture",
+                "acceptance": {
+                    "decision": "human_accepted",
+                    "review_event_ref": {
+                        "path": "sources/m2_5/authorities/review_acceptance_events/v1/"
+                        + "00" * 32
+                        + ".json",
+                        "raw_sha256": "00" * 32,
+                        "locator": {"kind": "event_id", "value": "ae.v1/" + "00" * 32},
+                    },
+                },
+            }
+        ]
+
+        jsonschema.Draft202012Validator(schema).validate(fixture)
+
+        invalid_fixture = deepcopy(fixture)
+        invalid_fixture["context_proofs"][0]["subject_shape"]["relation"] = "declared_card_trigger"
+        with self.assertRaises(jsonschema.ValidationError):
+            jsonschema.Draft202012Validator(schema).validate(invalid_fixture)
+
     def test_versioned_authority_schemas_validate_structural_fixtures(self) -> None:
         cases = (
             (
