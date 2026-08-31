@@ -795,6 +795,151 @@ class AuthorityValidatorTests(unittest.TestCase):
             )
         self.assertEqual(context.exception.code, "MEMBER_SOURCE_CONTEXT_MISMATCH")
 
+    def test_precondition_attestation_must_match_theorem_before_source_fact(self) -> None:
+        from authority_validator import AuthorityValidator
+
+        resolver, candidate_binding, candidate, instance = self._synthetic_candidate_source()
+        resolved = resolver.resolve_candidate_source_instance(
+            cast(str, candidate["candidate_id"]),
+            cast(dict[str, object], candidate["candidate_identity"]),
+            cast(str, instance["source_instance_id"]),
+            candidate_binding,
+        )
+        participant_bindings = [
+            {
+                "position": 0,
+                "role": "ordered_participant",
+                "participant_kind": "requirement_family",
+                "semantic_ref": "family.a",
+            },
+            {
+                "position": 1,
+                "role": "ordered_participant",
+                "participant_kind": "requirement_family",
+                "semantic_ref": "family.b",
+            },
+        ]
+        relation_binding = {
+            "scope": "cross_deck",
+            "relation": "directional_binary",
+            "directionality": "directed",
+            "host_relationship": "cross_host",
+            "participant_bindings": participant_bindings,
+        }
+        class_projection = {
+            "arity": "binary",
+            "directionality": "directed",
+            "participant_roles": participant_bindings,
+            "host_relationship": "cross_host",
+            "context_dimensions": ["not_applicable"] * 10,
+            "temporal_semantics": ["not_applicable"] * 4,
+            "b2_family_refs": [],
+            "b2_boundary_refs": [],
+            "b1_final_citation_refs": [],
+        }
+        actual_projection = [
+            "binary",
+            "directed",
+            [
+                [
+                    item["position"],
+                    item["role"],
+                    item["participant_kind"],
+                    item["semantic_ref"],
+                ]
+                for item in participant_bindings
+            ],
+            "cross_host",
+            ["not_applicable"] * 10,
+            ["not_applicable"] * 4,
+            [],
+            [],
+            [],
+        ]
+        cases = [
+            (
+                "candidate_relation_shape",
+                ["cross_deck", "directional_binary", "symmetric", "cross_host"],
+                ["cross_deck", "directional_binary", "directed", "cross_host"],
+                {"relation_binding": relation_binding},
+            ),
+            (
+                "participant_binding",
+                [0, "source", "requirement_family", "family.a"],
+                [0, "ordered_participant", "requirement_family", "family.a"],
+                {"relation_binding": relation_binding},
+            ),
+            (
+                "source_context",
+                ["zone", "battlefield"],
+                ["zone", "not_applicable"],
+                {},
+            ),
+            (
+                "class_projection",
+                [
+                    "binary",
+                    "directed",
+                    actual_projection[2],
+                    "cross_host",
+                    ["battlefield"] + ["not_applicable"] * 9,
+                    ["not_applicable"] * 4,
+                    [],
+                    [],
+                    [],
+                ],
+                actual_projection,
+                {
+                    "member_proof_attestation": {
+                        "class_projection_equivalence": {
+                            "member_projection": class_projection,
+                        }
+                    }
+                },
+            ),
+        ]
+        validator = AuthorityValidator(resolver)
+        for kind, theorem_value, observed_value, member_fields in cases:
+            theorem = {
+                "preconditions": [
+                    {
+                        "precondition_id": "precondition-0",
+                        "precondition_kind": kind,
+                        "payload": theorem_value,
+                    }
+                ]
+            }
+            with self.subTest(precondition_kind=kind, mismatch="attestation"):
+                member = {
+                    **member_fields,
+                    "precondition_attestations": [
+                        {
+                            "precondition_id": "precondition-0",
+                            "observed_value": observed_value,
+                        }
+                    ],
+                }
+                with self.assertRaises(ResolutionError) as context:
+                    validator._validate_precondition_match(
+                        member, theorem, f"{kind} member", resolved
+                    )
+                self.assertEqual(context.exception.code, "PRECONDITION_MISMATCH")
+            with self.subTest(precondition_kind=kind, mismatch="source"):
+                member = {
+                    **member_fields,
+                    "precondition_attestations": [
+                        {
+                            "precondition_id": "precondition-0",
+                            "observed_value": theorem_value,
+                        }
+                    ],
+                }
+                with self.assertRaises(ResolutionError) as context:
+                    validator._validate_precondition_match(
+                        member, theorem, f"{kind} member", resolved
+                    )
+                self.assertEqual(context.exception.code, "PRECONDITION_SOURCE_MISMATCH")
+
     def test_domain_criterion_attestation_evidence_must_resolve(self) -> None:
         from authority_validator import AuthorityValidator, _SourceRegistry
 
@@ -863,6 +1008,79 @@ class AuthorityValidatorTests(unittest.TestCase):
         self.assertIn(encode_canonical(catalog.to_cbor()), source_set)
         self.assertIn(encode_canonical(closure.to_cbor()), source_set)
         self.assertNotIn(encode_canonical(classifications.to_cbor()), source_set)
+
+    def test_empty_class_projection_precondition_does_not_inherit_global_sources(self) -> None:
+        from authority_validator import AuthorityValidator, _SourceRegistry
+
+        model_binding = self._model_binding()
+        roster_binding = SourceBindingDigestV1(
+            "reviewer_roster_leaf",
+            "sources/m2_5/authorities/reviewer_rosters/v1/" + "00" * 32 + ".json",
+            REVIEWER_ROSTER_SCHEMA_V1,
+            bytes(32),
+        )
+        b2_catalog = SourceBindingDigestV1(
+            "b2_catalog",
+            "sources/m2_5/closures/B2/requirement_family_catalog.v1.json",
+            "manafold.m2.5.b2.requirement-family-catalog.v1",
+            bytes.fromhex("11" * 32),
+        )
+        b2_classifications = SourceBindingDigestV1(
+            "b2_classifications",
+            "sources/m2_5/closures/B2/card_semantic_classifications.v1.json",
+            "manafold.m2.5.b2.card-semantic-classifications.v1",
+            bytes.fromhex("22" * 32),
+        )
+        b2_closure = SourceBindingDigestV1(
+            "b2_closure",
+            "sources/m2_5/closures/B2/classification_closure.v1.json",
+            "manafold.m2.5.b2.classification-closure.v1",
+            bytes.fromhex("33" * 32),
+        )
+        b1_citations = SourceBindingDigestV1(
+            "b1_final_citations",
+            "sources/m2_5/closures/B1/official_authority_citations.v3.json",
+            "manafold.m2.5.b1.official-authority-citations.v3",
+            bytes.fromhex("44" * 32),
+        )
+        b1_closure = SourceBindingDigestV1(
+            "b1_final_closure",
+            "sources/m2_5/closures/B1/official_authority_citation_closure.v2.json",
+            "manafold.m2.5.b1.official-authority-citation-closure.v2",
+            bytes.fromhex("55" * 32),
+        )
+        bindings = (
+            model_binding,
+            roster_binding,
+            b2_catalog,
+            b2_classifications,
+            b2_closure,
+            b1_citations,
+            b1_closure,
+        )
+        validator = AuthorityValidator(self.resolver)
+        validator._root_bindings = _SourceRegistry(
+            MappingProxyType({encode_canonical(binding.to_cbor()): binding for binding in bindings})
+        )
+        projection = ["binary", "directed", [], "cross_host", [], [], [], [], []]
+        source_set = validator._subject_bindings(
+            {
+                "preconditions": [
+                    {
+                        "precondition_id": "class-projection",
+                        "precondition_kind": "class_projection",
+                        "payload": projection,
+                    }
+                ]
+            },
+            model_binding,
+            roster_binding,
+        )
+        self.assertNotIn(encode_canonical(b2_catalog.to_cbor()), source_set)
+        self.assertNotIn(encode_canonical(b2_classifications.to_cbor()), source_set)
+        self.assertNotIn(encode_canonical(b2_closure.to_cbor()), source_set)
+        self.assertNotIn(encode_canonical(b1_citations.to_cbor()), source_set)
+        self.assertNotIn(encode_canonical(b1_closure.to_cbor()), source_set)
 
     def test_missing_rev3_archive_member_evidence_fails_closed(self) -> None:
         from authority_validator import AuthorityValidator, _SourceRegistry

@@ -1843,9 +1843,15 @@ class AuthorityValidator:
                     if kind == "b2_boundary":
                         self._add_b2_boundary_bindings(result)
                     elif kind == "class_projection":
-                        _array(payload, "class projection precondition payload", 9)
-                        self._add_b2_boundary_bindings(result)
-                        self._add_all_b1_bindings(result)
+                        projection = _array(payload, "class projection precondition payload", 9)
+                        if _array(
+                            projection[6], "class projection precondition B2 family refs"
+                        ) or _array(
+                            projection[7], "class projection precondition B2 boundary refs"
+                        ):
+                            self._add_b2_boundary_bindings(result)
+                        if _array(projection[8], "class projection precondition B1 citation refs"):
+                            self._add_all_b1_bindings(result)
                 return
             if key == "candidate_universe_binding":
                 source = _exact(value, {"path", "schema", "raw_sha256"}, key)
@@ -2751,6 +2757,29 @@ class AuthorityValidator:
             )
         return arity, directionality, participants
 
+    def _source_relation_shape_for_precondition(
+        self,
+        member: Mapping[str, object],
+        resolved: ResolvedSourceInstance,
+        label: str,
+    ) -> list[CborValue] | None:
+        candidate = resolved.candidate.candidate_record
+        _, source_directionality, _ = self._source_instance_shape(resolved, label)
+        if "relation_binding" in member:
+            binding = _relation_binding(member.get("relation_binding"), f"{label}.relation_binding")
+            host_relationship = binding[3]
+        elif "context_binding" in member:
+            binding = _context_binding(member.get("context_binding"), f"{label}.context_binding")
+            host_relationship = binding[3]
+        else:
+            return None
+        return [
+            _text(candidate.get("scope"), f"{label}.candidate.scope"),
+            _text(candidate.get("relation"), f"{label}.candidate.relation"),
+            source_directionality,
+            host_relationship,
+        ]
+
     def _validate_relation_member_binding(
         self,
         member: Mapping[str, object],
@@ -3150,54 +3179,69 @@ class AuthorityValidator:
                     "PRECONDITION_MISMATCH", f"{label} precondition {index} is out of theorem order"
                 )
             kind = cast(str, theorem_array[1][0])
-            expected = cast(list[CborValue], theorem_array[1][1])
-            if kind == "candidate_relation_shape" and "relation_binding" in member:
-                relation = _relation_binding(member.get("relation_binding"), "relation binding")
-                expected = relation[:4]
-            elif kind == "participant_binding" and "relation_binding" in member:
-                payload = cast(list[CborValue], expected)
-                position = cast(int, payload[0])
-                relation_record = _object(member.get("relation_binding"), "relation binding")
-                participants = _array(
-                    relation_record.get("participant_bindings"), "participant bindings"
+            theorem_expected = cast(list[CborValue], theorem_array[1][1])
+            observed = _cbor_value(
+                attestation_record.get("observed_value"), "observed precondition"
+            )
+            if observed != theorem_expected:
+                _fail(
+                    "PRECONDITION_MISMATCH",
+                    f"{label} observed precondition differs from theorem expectation",
                 )
-                matches = [
-                    _participant(item, "participant binding")
-                    for item in participants
-                    if _object(item, "participant binding").get("position") == position
-                ]
+            if kind == "candidate_relation_shape":
+                source_shape = self._source_relation_shape_for_precondition(member, resolved, label)
+                if source_shape is not None and source_shape != theorem_expected:
+                    _fail(
+                        "PRECONDITION_SOURCE_MISMATCH",
+                        f"{label} source relation shape differs from theorem expectation",
+                    )
+            elif kind == "participant_binding":
+                source_participants = self._source_instance_shape(resolved, label)[2]
+                payload = _array(theorem_expected, f"{label}.participant precondition", 4)
+                position = _uint32(payload[0], f"{label}.participant precondition position")
+                matches = [item for item in source_participants if item[0] == position]
                 if len(matches) != 1:
                     _fail(
-                        "PRECONDITION_MISMATCH",
-                        f"{label} participant precondition has no unique member binding",
+                        "PRECONDITION_SOURCE_MISMATCH",
+                        f"{label} participant precondition has no unique source binding",
                     )
-                expected = matches[0]
+                if matches[0] != theorem_expected:
+                    _fail(
+                        "PRECONDITION_SOURCE_MISMATCH",
+                        f"{label} source participant differs from theorem expectation",
+                    )
             elif kind == "source_context":
-                dimension = cast(str, expected[0])
+                payload = _array(theorem_expected, f"{label}.source context precondition", 2)
+                dimension = _text(payload[0], f"{label}.source context dimension")
                 source_context = _object(
                     resolved.source_instance_record.get("source_context"),
-                    "source instance context",
+                    f"{label}.source instance context",
                 )
                 if dimension not in source_context:
-                    _fail("PRECONDITION_MISMATCH", f"{label} source context dimension is absent")
-                expected = [dimension, source_context[dimension]]
+                    _fail(
+                        "PRECONDITION_SOURCE_MISMATCH",
+                        f"{label} source context dimension is absent",
+                    )
+                source_fact = [dimension, _cbor_value(source_context[dimension], "source context")]
+                if source_fact != theorem_expected:
+                    _fail(
+                        "PRECONDITION_SOURCE_MISMATCH",
+                        f"{label} source context differs from theorem expectation",
+                    )
             elif kind == "class_projection" and "member_proof_attestation" in member:
                 member_proof = _object(member.get("member_proof_attestation"), "member proof")
                 equivalence = member_proof.get("class_projection_equivalence")
                 if equivalence is not None:
                     equivalence_record = _object(equivalence, "class projection equivalence")
-                    expected = _class_projection(
+                    member_projection = _class_projection(
                         equivalence_record.get("member_projection"),
                         "member class projection",
                     )
-            if (
-                _cbor_value(attestation_record.get("observed_value"), "observed precondition")
-                != expected
-            ):
-                _fail(
-                    "PRECONDITION_MISMATCH",
-                    f"{label} observed precondition differs from theorem expectation",
-                )
+                    if member_projection != theorem_expected:
+                        _fail(
+                            "PRECONDITION_SOURCE_MISMATCH",
+                            f"{label} member class projection differs from theorem expectation",
+                        )
 
     def _resolve_precondition_sources(self, value: object, label: str) -> None:
         for index, item in enumerate(_array(value, label)):
