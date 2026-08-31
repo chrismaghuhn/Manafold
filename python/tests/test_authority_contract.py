@@ -395,6 +395,12 @@ class AuthoritySchemaTests(unittest.TestCase):
 
         jsonschema.Draft202012Validator(schema).validate(fixture)
 
+        self.assertNotIn("context_subject_shape", schema["$defs"])
+        self.assertEqual(
+            schema["$defs"]["context_proof"]["properties"]["subject_shape"],
+            {"$ref": "#/$defs/context_binding"},
+        )
+
         invalid_fixture = deepcopy(fixture)
         invalid_fixture["context_proofs"][0]["subject_shape"]["relation"] = "declared_card_trigger"
         with self.assertRaises(jsonschema.ValidationError):

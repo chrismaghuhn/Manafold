@@ -2495,7 +2495,7 @@
           "$ref": "#/$defs/identity_ref"
         },
         "subject_shape": {
-          "$ref": "#/$defs/context_subject_shape"
+          "$ref": "#/$defs/context_binding"
         },
         "context_dimensions": {
           "$ref": "#/$defs/context_dimension_values"
@@ -2543,33 +2543,6 @@
         "source_evidence_refs",
         "semantic_rationale",
         "acceptance"
-      ]
-    },
-    "context_subject_shape": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "arity": {
-          "$ref": "#/$defs/authority_arity"
-        },
-        "directionality": {
-          "$ref": "#/$defs/authority_directionality"
-        },
-        "participant_roles": {
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/participant_role"
-          }
-        },
-        "host_relationship": {
-          "$ref": "#/$defs/host_relationship"
-        }
-      },
-      "required": [
-        "arity",
-        "directionality",
-        "participant_roles",
-        "host_relationship"
       ]
     },
     "context_binding": {
