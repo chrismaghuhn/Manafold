@@ -1,0 +1,41 @@
+{
+  "event_id": "ae.v2/0000000000000000000000000000000000000000000000000000000000000000",
+  "schema": "manafold.m2.5.c.review-acceptance-event.v2",
+  "subject_kind": "cross_deck_host_binding_claim_record_v1",
+  "subject_payload_digest": "0000000000000000000000000000000000000000000000000000000000000000",
+  "decision": "human_accepted",
+  "reviewer_roster_ref": {
+    "path": "sources/m2_5/authorities/reviewer_rosters/v1/0000000000000000000000000000000000000000000000000000000000000000.json",
+    "schema": "manafold.m2.5.c.reviewer-roster.v1",
+    "raw_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+  },
+  "reviewer_role_bindings": [
+    {
+      "reviewer_id": "alice",
+      "roles": ["project_owner"]
+    }
+  ],
+  "review_mode": "solo_separate_self_review",
+  "checklist_id": "cross-deck-host-binding-review-checklist.v1",
+  "source_binding_digests": [
+    {
+      "artifact_role": "declared_model",
+      "path": "sources/m2_5/closures/C/declared_interaction_model.v2.json",
+      "schema_or_null": "manafold.m2.5.c.declared-interaction-model.v2",
+      "raw_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "artifact_role": "reviewer_roster_leaf",
+      "path": "sources/m2_5/authorities/reviewer_rosters/v1/0000000000000000000000000000000000000000000000000000000000000000.json",
+      "schema_or_null": "manafold.m2.5.c.reviewer-roster.v1",
+      "raw_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    }
+  ],
+  "review_evidence_refs": [
+    {
+      "path": "docs/review/host-binding.md",
+      "raw_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "locator": {"kind": "whole_artifact"}
+    }
+  ]
+}

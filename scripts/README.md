@@ -23,6 +23,8 @@ The verification runner marks directories it owns and refuses to replace an exis
 - `generate_contracts.py` — single-source generation/check for mechanical Rust/Python/schema vocabulary;
 - `authority_source_resolver.py` — rules-neutral, byte-first repository/REV3 source, locator, candidate, and source-instance resolution;
 - `authority_validator.py` — fail-closed validation of the persisted M2.5.C authority graph;
+- `authority_host_binding.py` — source-bound, rules-neutral correlated REV3/B2 host-realization resolution;
+- `authority_v2_validator.py` — V2 host-binding closure around an exact V1 authority graph;
 - `build_m2_5_c_authority_review_worklist.py` — deterministic, non-authoritative M2.5.C review worklist generation;
 - `scaffold_m2_5_c_authority_review.py` — quarantined single-candidate review proposal scaffolding;
 - `build_m2_5_c_canary_review_packet.py` — single-candidate source inventory and human-review worksheet packet;
