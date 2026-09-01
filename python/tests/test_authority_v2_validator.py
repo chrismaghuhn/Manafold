@@ -199,6 +199,46 @@ class AuthorityV2ClosureTests(unittest.TestCase):
                 {application_id: "same_host"},
             )
 
+    def test_non_cross_deck_applications_do_not_require_host_links(self) -> None:
+        host_application_id = "rpa.v1/" + "09" * 32
+        non_host_application_id = "dpa.v1/" + "0a" * 32
+        link = ApplicationHostBindingV1(
+            "relation_application",
+            host_application_id,
+            (self.claim_a.identity().as_text(),),
+        )
+
+        validate_application_host_closure(
+            (self.claim_a,),
+            (link,),
+            {
+                host_application_id: (self.member_a,),
+                non_host_application_id: (self.member_b,),
+            },
+            {host_application_id: "same_host"},
+            {host_application_id},
+        )
+
+    def test_v2_does_not_replace_v1_member_order_with_member_key_order(self) -> None:
+        first = ApplicationMemberKeyV1("candidate-z", bytes([1]) * 32, "si/z")
+        second = ApplicationMemberKeyV1("candidate-a", bytes([2]) * 32, "si/a")
+        claim_first = _claim(first, "Token Triumph", 1)
+        claim_second = _claim(second, "Grave Danger", 2)
+        application_id = "rpa.v1/" + "0b" * 32
+        link = ApplicationHostBindingV1(
+            "relation_application",
+            application_id,
+            tuple(sorted((claim_first.identity().as_text(), claim_second.identity().as_text()))),
+        )
+
+        validate_application_host_closure(
+            (claim_first, claim_second),
+            (link,),
+            {application_id: (first, second)},
+            {application_id: "same_host"},
+            {application_id},
+        )
+
     def test_same_member_cannot_use_two_current_claims(self) -> None:
         alternate = _claim(self.member_a, "Grave Danger", 3)
         links = (

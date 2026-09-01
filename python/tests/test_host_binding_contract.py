@@ -372,6 +372,12 @@ class HostBindingContractTests(unittest.TestCase):
             schema_or_null="manafold.m2.5.c.reviewer-roster.v1",
             raw_sha256=bytes(32),
         )
+        deck_binding = HostBindingSourceBindingV2(
+            artifact_role="rev3_deck_row_source_resolution",
+            path="inputs/deck_row_source_resolution_REV3.csv",
+            schema_or_null=None,
+            raw_sha256=bytes(32),
+        )
         event_input = HostBindingAcceptanceEventInputV2(
             subject_kind="cross_deck_host_binding_claim_record_v1",
             subject_payload_digest=bytes(32),
@@ -383,7 +389,7 @@ class HostBindingContractTests(unittest.TestCase):
             reviewer_role_bindings=(ReviewerRoleBindingV1("alice", ("project_owner",)),),
             review_mode=ReviewMode.SOLO_SEPARATE_SELF_REVIEW,
             checklist_id="cross-deck-host-binding-review-checklist.v1",
-            source_binding_digests=(model_binding, roster_binding),
+            source_binding_digests=(model_binding, roster_binding, deck_binding),
             review_evidence_refs=(
                 AcceptanceEvidenceRefV1(
                     "docs/review/host-binding.md",
@@ -396,7 +402,7 @@ class HostBindingContractTests(unittest.TestCase):
 
         self.assertEqual(
             leaf.event_id.as_text(),
-            "ae.v2/62558db71a1d639b4d7f4467f8ca92096ce82fae56a9ace3442439ef3258532b",
+            "ae.v2/f6abfd98ab68cd735ea27d0e25a71049609c29a085e2cd99c656ce24eaaa114f",
         )
         self.assertEqual(leaf.to_wire()["schema"], "manafold.m2.5.c.review-acceptance-event.v2")
         event_schema = json.loads(

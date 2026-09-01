@@ -25,6 +25,12 @@
       "raw_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
     },
     {
+      "artifact_role": "rev3_deck_row_source_resolution",
+      "path": "inputs/deck_row_source_resolution_REV3.csv",
+      "schema_or_null": null,
+      "raw_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
       "artifact_role": "reviewer_roster_leaf",
       "path": "sources/m2_5/authorities/reviewer_rosters/v1/0000000000000000000000000000000000000000000000000000000000000000.json",
       "schema_or_null": "manafold.m2.5.c.reviewer-roster.v1",

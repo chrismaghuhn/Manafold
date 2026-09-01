@@ -144,6 +144,7 @@ def validate_application_host_closure(
     application_links: Sequence[ApplicationHostBindingV1],
     application_members: Mapping[str, Sequence[ApplicationMemberKeyV1]],
     expected_host_relationships: Mapping[str, str],
+    host_binding_application_ids: set[str] | None = None,
 ) -> None:
     """Validate member coverage and cross-layer host expectations.
 
@@ -183,15 +184,26 @@ def validate_application_host_closure(
             )
         links_by_application[application_id] = link
 
-    if set(links_by_application) != set(application_members):
-        missing = sorted(set(application_members) - set(links_by_application))
-        extra = sorted(set(links_by_application) - set(application_members))
+    required_application_ids = (
+        set(application_members)
+        if host_binding_application_ids is None
+        else set(host_binding_application_ids)
+    )
+    if not required_application_ids.issubset(application_members):
+        unknown = sorted(required_application_ids - set(application_members))
         raise AuthorityV2ValidationError(
-            f"V2 host-binding links do not close the V1 application set; "
+            f"V2 host-binding requirement names unknown applications: {unknown!r}"
+        )
+    if set(links_by_application) != required_application_ids:
+        missing = sorted(required_application_ids - set(links_by_application))
+        extra = sorted(set(links_by_application) - required_application_ids)
+        raise AuthorityV2ValidationError(
+            f"V2 host-binding links do not close the required V1 application set; "
             f"missing={missing!r}, extra={extra!r}"
         )
 
-    for application_id, members in application_members.items():
+    for application_id in required_application_ids:
+        members = application_members[application_id]
         link = links_by_application[application_id]
         expected_relationship = expected_host_relationships.get(application_id)
 
@@ -199,10 +211,6 @@ def validate_application_host_closure(
         if len(set(member_keys)) != len(member_keys):
             raise AuthorityV2ValidationError(
                 f"application {application_id!r} contains duplicate members"
-            )
-        if member_keys != sorted(member_keys):
-            raise AuthorityV2ValidationError(
-                f"application {application_id!r} members are not canonical"
             )
 
         linked_claims: list[CrossDeckHostBindingClaimV1] = []
@@ -465,6 +473,7 @@ class AuthorityV2Validator:
             links,
             application_members,
             expected_hosts,
+            self._host_binding_application_ids(application_members, member_sources),
         )
         pair_binding = next(
             (
@@ -475,6 +484,8 @@ class AuthorityV2Validator:
             None,
         )
         for link in links:
+            if pair_binding is not None:
+                used_bindings.add(encode_canonical(pair_binding.to_cbor()))
             for claim_id in link.host_binding_claim_ids:
                 claim = next(
                     (
@@ -642,6 +653,34 @@ class AuthorityV2Validator:
                 )
             )
         return expected
+
+    def _host_binding_application_ids(
+        self,
+        application_members: Mapping[str, Sequence[ApplicationMemberKeyV1]],
+        member_sources: Mapping[bytes, tuple[Mapping[str, object], SourceBindingDigestV1]],
+    ) -> set[str]:
+        required: set[str] = set()
+        for application_id, members in application_members.items():
+            for member in members:
+                source = member_sources.get(_member_key_bytes(member))
+                if source is None:
+                    raise AuthorityV2ValidationError(
+                        f"application {application_id!r} lacks a candidate source binding"
+                    )
+                identity, binding = source
+                candidate = self._resolver.resolve_candidate(
+                    member.candidate_id,
+                    identity,
+                    binding,
+                )
+                record = candidate.candidate_record
+                if (
+                    record.get("scope") == "cross_deck"
+                    and record.get("relation") == "directional_binary"
+                ):
+                    required.add(application_id)
+                    break
+        return required
 
     def _resolve_v2_source_binding(self, binding: HostBindingSourceBindingV2) -> None:
         if binding.artifact_role.startswith("rev3_"):
