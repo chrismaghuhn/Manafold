@@ -144,7 +144,7 @@ def validate_application_host_closure(
     application_links: Sequence[ApplicationHostBindingV1],
     application_members: Mapping[str, Sequence[ApplicationMemberKeyV1]],
     expected_host_relationships: Mapping[str, str],
-    host_binding_application_ids: set[str] | None = None,
+    required_host_members: Mapping[str, Sequence[ApplicationMemberKeyV1]] | None = None,
 ) -> None:
     """Validate member coverage and cross-layer host expectations.
 
@@ -184,11 +184,15 @@ def validate_application_host_closure(
             )
         links_by_application[application_id] = link
 
-    required_application_ids = (
-        set(application_members)
-        if host_binding_application_ids is None
-        else set(host_binding_application_ids)
+    required_members_by_application = (
+        {application_id: tuple(members) for application_id, members in application_members.items()}
+        if required_host_members is None
+        else {
+            application_id: tuple(members)
+            for application_id, members in required_host_members.items()
+        }
     )
+    required_application_ids = set(required_members_by_application)
     if not required_application_ids.issubset(application_members):
         unknown = sorted(required_application_ids - set(application_members))
         raise AuthorityV2ValidationError(
@@ -203,7 +207,11 @@ def validate_application_host_closure(
         )
 
     for application_id in required_application_ids:
-        members = application_members[application_id]
+        members = required_members_by_application[application_id]
+        if not members:
+            raise AuthorityV2ValidationError(
+                f"application {application_id!r} has an empty required host member set"
+            )
         link = links_by_application[application_id]
         expected_relationship = expected_host_relationships.get(application_id)
 
@@ -329,13 +337,37 @@ class AuthorityV2Validator:
                 "V2 accepted host-binding records require exactly one declared-model binding"
             )
         model_binding = model_bindings[0] if model_bindings else None
+        candidate_bindings = [
+            binding for binding in source_bindings if binding.artifact_role == "candidate_universe"
+        ]
+        pair_bindings = [
+            binding
+            for binding in source_bindings
+            if binding.artifact_role == "rev3_pair_aggregates"
+        ]
+        if claim_records and len(candidate_bindings) != 1:
+            raise AuthorityV2ValidationError(
+                "V2 host-binding claims require exactly one candidate-universe binding"
+            )
+        if claim_records and len(pair_bindings) != 1:
+            raise AuthorityV2ValidationError(
+                "V2 host-binding claims require exactly one REV3 pair-aggregate binding"
+            )
+        candidate_binding = candidate_bindings[0] if candidate_bindings else None
+        pair_binding = pair_bindings[0] if pair_bindings else None
         used_bindings = {
             encode_canonical(base_binding.to_cbor()),
         }
         for claim in claims:
-            self._host_resolver.resolve_claim(
-                claim.discovery_bindings,
-                claim.participant_host_realizations,
+            if candidate_binding is None or pair_binding is None:
+                raise AuthorityV2ValidationError(
+                    "V2 host-binding claim lacks its candidate or pair source binding"
+                )
+            self._host_resolver.resolve_claim_for_member(
+                claim,
+                claim.member_key.candidate_identity_digest,
+                candidate_binding,
+                pair_binding,
             )
 
         for record in claim_records:
@@ -351,6 +383,8 @@ class AuthorityV2Validator:
                 model_binding,
                 self._claim_evidence(record.claim),
                 b2_bindings,
+                candidate_binding,
+                pair_binding,
             )
             actual_event_sources = {
                 encode_canonical(binding.to_cbor()) for binding in event.source_binding_digests
@@ -413,11 +447,20 @@ class AuthorityV2Validator:
             )
             if model_binding is None:
                 raise AuthorityV2ValidationError("V2 supersession event lacks its model binding")
+            supersession_uses_b2 = any(
+                getattr(evidence, "artifact_role", None)
+                in {"b2_catalog", "b2_classifications", "b2_closure"}
+                for evidence in supersession.source_evidence_refs
+            )
+            if supersession_uses_b2 and b2_bindings is None:
+                raise AuthorityV2ValidationError(
+                    "B2 supersession evidence requires the complete B2 source closure"
+                )
             expected_event_sources = self._expected_acceptance_sources(
                 event,
                 model_binding,
                 supersession.source_evidence_refs,
-                None,
+                b2_bindings if supersession_uses_b2 else None,
             )
             actual_event_sources = {
                 encode_canonical(binding.to_cbor()) for binding in event.source_binding_digests
@@ -473,15 +516,7 @@ class AuthorityV2Validator:
             links,
             application_members,
             expected_hosts,
-            self._host_binding_application_ids(application_members, member_sources),
-        )
-        pair_binding = next(
-            (
-                binding
-                for binding in source_bindings
-                if binding.artifact_role == "rev3_pair_aggregates"
-            ),
-            None,
+            self._host_binding_application_members(application_members, member_sources),
         )
         for link in links:
             if pair_binding is not None:
@@ -502,19 +537,17 @@ class AuthorityV2Validator:
                     raise AuthorityV2ValidationError(
                         "linked host claim lacks candidate or pair source binding"
                     )
-                candidate_identity, candidate_binding = member_source
-                candidate_binding_v2 = HostBindingSourceBindingV2(
+                _, member_candidate_binding = member_source
+                expected_candidate_binding = HostBindingSourceBindingV2(
                     "candidate_universe",
-                    candidate_binding.path,
-                    candidate_binding.schema_or_null,
-                    candidate_binding.raw_sha256,
+                    member_candidate_binding.path,
+                    member_candidate_binding.schema_or_null,
+                    member_candidate_binding.raw_sha256,
                 )
-                self._host_resolver.resolve_claim_for_member(
-                    claim,
-                    bytes.fromhex(cast(str, candidate_identity["digest_hex"])),
-                    candidate_binding_v2,
-                    pair_binding,
-                )
+                if candidate_binding != expected_candidate_binding:
+                    raise AuthorityV2ValidationError(
+                        "V1 application member uses another candidate-universe snapshot"
+                    )
 
         actual_bindings = {encode_canonical(binding.to_cbor()) for binding in source_bindings}
         if actual_bindings != used_bindings:
@@ -612,6 +645,8 @@ class AuthorityV2Validator:
         model_binding: HostBindingSourceBindingV2,
         evidence: Sequence[object],
         b2_bindings: B2ArtifactBindingsV1 | None,
+        candidate_binding: HostBindingSourceBindingV2 | None = None,
+        pair_binding: HostBindingSourceBindingV2 | None = None,
     ) -> set[bytes]:
         expected = {
             encode_canonical(model_binding.to_cbor()),
@@ -628,6 +663,10 @@ class AuthorityV2Validator:
             encode_canonical(AuthorityV2Validator._binding_from_evidence(reference).to_cbor())
             for reference in evidence
         )
+        if candidate_binding is not None:
+            expected.add(encode_canonical(candidate_binding.to_cbor()))
+        if pair_binding is not None:
+            expected.add(encode_canonical(pair_binding.to_cbor()))
         if b2_bindings is not None:
             expected.update(
                 encode_canonical(binding.to_cbor())
@@ -654,13 +693,14 @@ class AuthorityV2Validator:
             )
         return expected
 
-    def _host_binding_application_ids(
+    def _host_binding_application_members(
         self,
         application_members: Mapping[str, Sequence[ApplicationMemberKeyV1]],
         member_sources: Mapping[bytes, tuple[Mapping[str, object], SourceBindingDigestV1]],
-    ) -> set[str]:
-        required: set[str] = set()
+    ) -> dict[str, tuple[ApplicationMemberKeyV1, ...]]:
+        required: dict[str, tuple[ApplicationMemberKeyV1, ...]] = {}
         for application_id, members in application_members.items():
+            required_members: list[ApplicationMemberKeyV1] = []
             for member in members:
                 source = member_sources.get(_member_key_bytes(member))
                 if source is None:
@@ -678,8 +718,9 @@ class AuthorityV2Validator:
                     record.get("scope") == "cross_deck"
                     and record.get("relation") == "directional_binary"
                 ):
-                    required.add(application_id)
-                    break
+                    required_members.append(member)
+            if required_members:
+                required[application_id] = tuple(required_members)
         return required
 
     def _resolve_v2_source_binding(self, binding: HostBindingSourceBindingV2) -> None:
