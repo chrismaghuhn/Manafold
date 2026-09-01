@@ -42,6 +42,7 @@ from mtgml.host_binding import (
 from mtgml.persistence import encode_canonical, encode_envelope, hash_envelope
 
 MAP_PATH = "derived/Card_Requirement_Map_REV3.csv"
+DECK_PATH = "inputs/deck_row_source_resolution_REV3.csv"
 OSI_PATH = "source/raw/oracle_cards_selected_REV3.jsonl"
 B2_PATH = "sources/m2_5/closures/B2/card_semantic_classifications.v1.json"
 B2_SCHEMA = "manafold.m2.5.b2.card-semantic-classifications.v1"
@@ -83,13 +84,20 @@ class AuthorityHostBindingSourceTests(unittest.TestCase):
             b"token:line-1,Token Triumph,osi-a,cap.aura,INHERITED_REV2_CANDIDATE,False\n"
             b"grave:line-2,Grave Danger,osi-b,cap.draw,INHERITED_REV2_CANDIDATE,False\n"
         )
+        self.deck_raw = (
+            b"deck_row_id,deck_id,oracle_semantic_identity,card,quantity,oracle_top_level_text,oracle_faces\n"
+            b"token:line-1,Token Triumph,osi-a,Token Aura,1,,\n"
+            b"grave:line-2,Grave Danger,osi-b,Grave Draw,1,,\n"
+        )
         self.osi_raw = (
             json.dumps({"oracle_id": "osi-a", "name": "Token Aura"})
             + "\n"
             + json.dumps({"oracle_id": "osi-b", "name": "Grave Draw"})
             + "\n"
         ).encode("utf-8")
-        archive_raw = _zip_bytes({MAP_PATH: self.map_raw, OSI_PATH: self.osi_raw})
+        archive_raw = _zip_bytes(
+            {MAP_PATH: self.map_raw, DECK_PATH: self.deck_raw, OSI_PATH: self.osi_raw}
+        )
         self.archive = Rev3ArchiveStore.from_bytes(
             archive_raw,
             hashlib.sha256(archive_raw).hexdigest(),
@@ -159,7 +167,7 @@ class AuthorityHostBindingSourceTests(unittest.TestCase):
                 "rev3_card_requirement_map", MAP_PATH, self.map_raw, ("csv_row", row)
             ),
             deck_row_ref=self._ref(
-                "rev3_card_requirement_map", MAP_PATH, self.map_raw, ("csv_row", row)
+                "rev3_deck_row_source_resolution", DECK_PATH, self.deck_raw, ("csv_row", row)
             ),
             osi_ref=self._ref(
                 "rev3_osi_source_records", OSI_PATH, self.osi_raw, ("jsonl_line", osi_line)
@@ -206,6 +214,61 @@ class AuthorityHostBindingSourceTests(unittest.TestCase):
 
         with self.assertRaises(HostBindingSourceError):
             self.resolver.resolve_participant_realization(binding, realization)
+
+    def test_discovery_mapping_must_cover_every_matching_map_row(self) -> None:
+        map_raw = (
+            b"deck_row_id,deck_id,oracle_semantic_identity,requirement_id,provenance,ranking_eligible\n"
+            b"token:line-1,Token Triumph,osi-a,cap.aura,INHERITED_REV2_CANDIDATE,False\n"
+            b"token:line-2,Token Triumph,osi-a,cap.aura,INHERITED_REV2_CANDIDATE,False\n"
+        )
+        deck_raw = (
+            b"deck_row_id,deck_id,oracle_semantic_identity,card,quantity,oracle_top_level_text,oracle_faces\n"
+            b"token:line-1,Token Triumph,osi-a,Token Aura,1,,\n"
+            b"token:line-2,Token Triumph,osi-a,Token Aura 2,1,,\n"
+        )
+        archive_raw = _zip_bytes({MAP_PATH: map_raw, DECK_PATH: deck_raw, OSI_PATH: self.osi_raw})
+        resolver = HostBindingSourceResolver(
+            AuthoritySourceResolver(
+                self.repo,
+                rev3_archive=Rev3ArchiveStore.from_bytes(
+                    archive_raw, hashlib.sha256(archive_raw).hexdigest()
+                ),
+            )
+        )
+        mapping = self._ref("rev3_card_requirement_map", MAP_PATH, map_raw, ("csv_row", 0))
+        deck = self._ref("rev3_deck_row_source_resolution", DECK_PATH, deck_raw, ("csv_row", 0))
+        witness = HostRealizationWitnessV1(
+            discovery_mapping_ref=mapping,
+            deck_row_ref=deck,
+            osi_ref=self._ref("rev3_osi_source_records", OSI_PATH, self.osi_raw, ("jsonl_line", 0)),
+            b2_assignment_refs=(
+                self._ref(
+                    "b2_classifications",
+                    B2_PATH,
+                    (self.repo / Path(*B2_PATH.split("/"))).read_bytes(),
+                    ("json_pointer", "/classifications/0"),
+                    B2_SCHEMA,
+                ),
+            ),
+        )
+        binding = CrossDeckParticipantDiscoveryHostBindingV1(
+            member_key=self.member,
+            participant_position=0,
+            participant_ref="cap.aura",
+            discovery_side="rev3_left_family",
+            discovery_host=DiscoveryHostRefV1("rev3_deck", "Token Triumph"),
+            mapping_evidence_refs=(mapping,),
+        )
+        realization = ParticipantHostRealizationV1(
+            member_key=self.member,
+            participant_position=0,
+            participant_ref="cap.aura",
+            host=DiscoveryHostRefV1("rev3_deck", "Token Triumph"),
+            witnesses=(witness,),
+        )
+
+        with self.assertRaises(HostBindingSourceError):
+            resolver.resolve_participant_realization(binding, realization)
 
     def test_witness_with_wrong_osi_or_b2_assignment_fails_closed(self) -> None:
         binding = self._binding(0, "cap.aura", "Token Triumph", 0)
@@ -254,7 +317,10 @@ class AuthorityHostBindingSourceTests(unittest.TestCase):
             ("json_pointer", "/classifications/0"),
             B2_SCHEMA,
         )
-        witness = HostRealizationWitnessV1(map_ref, map_ref, osi_ref, (b2_ref,))
+        deck_ref = self._ref(
+            "rev3_deck_row_source_resolution", DECK_PATH, self.deck_raw, ("csv_row", 0)
+        )
+        witness = HostRealizationWitnessV1(map_ref, deck_ref, osi_ref, (b2_ref,))
         realization = ParticipantHostRealizationV1(
             self.member,
             0,
@@ -299,6 +365,7 @@ class AuthorityHostBindingSourceTests(unittest.TestCase):
             {
                 census_path: census_raw,
                 MAP_PATH: self.map_raw,
+                DECK_PATH: self.deck_raw,
                 OSI_PATH: self.osi_raw,
                 pair_path: pair_raw,
             }
@@ -487,6 +554,12 @@ class AuthorityHostBindingSourceTests(unittest.TestCase):
         map_b = HostBindingEvidenceRefV2(
             "rev3_card_requirement_map", MAP_PATH, None, _sha(self.map_raw), ("csv_row", 1)
         )
+        deck_a = HostBindingEvidenceRefV2(
+            "rev3_deck_row_source_resolution", DECK_PATH, None, _sha(self.deck_raw), ("csv_row", 0)
+        )
+        deck_b = HostBindingEvidenceRefV2(
+            "rev3_deck_row_source_resolution", DECK_PATH, None, _sha(self.deck_raw), ("csv_row", 1)
+        )
         osi_a = HostBindingEvidenceRefV2(
             "rev3_osi_source_records", OSI_PATH, None, _sha(self.osi_raw), ("jsonl_line", 0)
         )
@@ -536,14 +609,14 @@ class AuthorityHostBindingSourceTests(unittest.TestCase):
                     0,
                     "cap.aura",
                     token,
-                    (HostRealizationWitnessV1(map_a, map_a, osi_a, (b2_a,)),),
+                    (HostRealizationWitnessV1(map_a, deck_a, osi_a, (b2_a,)),),
                 ),
                 ParticipantHostRealizationV1(
                     m,
                     1,
                     "cap.draw",
                     grave,
-                    (HostRealizationWitnessV1(map_b, map_b, osi_b, (b2_b,)),),
+                    (HostRealizationWitnessV1(map_b, deck_b, osi_b, (b2_b,)),),
                 ),
             ),
             "cross_host",

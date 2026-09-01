@@ -170,18 +170,30 @@ def validate_application_host_closure(
             )
         claim_by_member[member_key] = claim_id
 
+    links_by_application: dict[str, ApplicationHostBindingV1] = {}
     for link in application_links:
         application_id = link.application_semantic_id
-        members = application_members.get(application_id)
-        if members is None:
+        if application_id in links_by_application:
+            raise AuthorityV2ValidationError(
+                f"application {application_id!r} has duplicate host-binding links"
+            )
+        if application_id not in application_members:
             raise AuthorityV2ValidationError(
                 f"application {application_id!r} is absent from the V1 authority graph"
             )
+        links_by_application[application_id] = link
+
+    if set(links_by_application) != set(application_members):
+        missing = sorted(set(application_members) - set(links_by_application))
+        extra = sorted(set(links_by_application) - set(application_members))
+        raise AuthorityV2ValidationError(
+            f"V2 host-binding links do not close the V1 application set; "
+            f"missing={missing!r}, extra={extra!r}"
+        )
+
+    for application_id, members in application_members.items():
+        link = links_by_application[application_id]
         expected_relationship = expected_host_relationships.get(application_id)
-        if expected_relationship is None:
-            raise AuthorityV2ValidationError(
-                f"application {application_id!r} has no theorem host expectation"
-            )
 
         member_keys = [_member_key_bytes(member) for member in members]
         if len(set(member_keys)) != len(member_keys):
@@ -203,7 +215,10 @@ def validate_application_host_closure(
                 )
             linked_claims.append(claim)
             linked_member_keys.append(_member_key_bytes(claim.member_key))
-            if claim.observed_host_relationship != expected_relationship:
+            if (
+                expected_relationship is not None
+                and claim.observed_host_relationship != expected_relationship
+            ):
                 raise AuthorityV2ValidationError(
                     f"host claim {claim_id!r} differs from the theorem host expectation"
                 )
@@ -287,9 +302,25 @@ class AuthorityV2Validator:
             raise AuthorityV2ValidationError("V2 claim records must be an array")
         claim_records = tuple(host_binding_claim_record_from_wire(item) for item in raw_records)
         claims = tuple(record.claim for record in claim_records)
+        record_ids = [record.record_identity().as_text() for record in claim_records]
+        if len(set(record_ids)) != len(record_ids):
+            raise AuthorityV2ValidationError("V2 claim record identities must be unique")
         claim_ids = [claim.identity().as_text() for claim in claims]
-        if len(set(claim_ids)) != len(claim_ids):
-            raise AuthorityV2ValidationError("V2 claim IDs must be unique")
+        if claim_records and b2_bindings is None:
+            raise AuthorityV2ValidationError(
+                "V2 host-binding claims require the complete B2 catalog/classification/closure set"
+            )
+        model_bindings = [
+            binding for binding in source_bindings if binding.artifact_role == "declared_model"
+        ]
+        raw_supersessions = document["cross_deck_host_binding_claim_supersession_records"]
+        if not isinstance(raw_supersessions, list):
+            raise AuthorityV2ValidationError("V2 claim supersessions must be an array")
+        if (claim_records or raw_supersessions) and len(model_bindings) != 1:
+            raise AuthorityV2ValidationError(
+                "V2 accepted host-binding records require exactly one declared-model binding"
+            )
+        model_binding = model_bindings[0] if model_bindings else None
         used_bindings = {
             encode_canonical(base_binding.to_cbor()),
         }
@@ -305,37 +336,14 @@ class AuthorityV2Validator:
                 "cross_deck_host_binding_claim_record_v1",
                 record.claim.identity().digest_bytes,
             )
-            expected_event_sources = {
-                encode_canonical(binding.to_cbor()) for binding in event.source_binding_digests
-            }
-            expected_event_sources.update(
-                encode_canonical(self._binding_from_evidence(reference).to_cbor())
-                for reference in self._claim_evidence(record.claim)
+            if model_binding is None:
+                raise AuthorityV2ValidationError("V2 claim event lacks its model binding")
+            expected_event_sources = self._expected_acceptance_sources(
+                event,
+                model_binding,
+                self._claim_evidence(record.claim),
+                b2_bindings,
             )
-            if b2_bindings is not None:
-                expected_event_sources.update(
-                    encode_canonical(binding.to_cbor())
-                    for binding in (
-                        HostBindingSourceBindingV2(
-                            "b2_catalog",
-                            b2_bindings.catalog.path,
-                            b2_bindings.catalog.schema_or_null,
-                            b2_bindings.catalog.raw_sha256,
-                        ),
-                        HostBindingSourceBindingV2(
-                            "b2_classifications",
-                            b2_bindings.classifications.path,
-                            b2_bindings.classifications.schema_or_null,
-                            b2_bindings.classifications.raw_sha256,
-                        ),
-                        HostBindingSourceBindingV2(
-                            "b2_closure",
-                            b2_bindings.closure.path,
-                            b2_bindings.closure.schema_or_null,
-                            b2_bindings.closure.raw_sha256,
-                        ),
-                    )
-                )
             actual_event_sources = {
                 encode_canonical(binding.to_cbor()) for binding in event.source_binding_digests
             }
@@ -366,9 +374,6 @@ class AuthorityV2Validator:
                         f"application link references unknown claim {claim_id!r}"
                     )
 
-        raw_supersessions = document["cross_deck_host_binding_claim_supersession_records"]
-        if not isinstance(raw_supersessions, list):
-            raise AuthorityV2ValidationError("V2 claim supersessions must be an array")
         supersessions: list[CrossDeckHostBindingClaimSupersessionV1] = []
         superseded_record_ids: set[str] = set()
         known_record_ids = {record.record_identity().as_text() for record in claim_records}
@@ -398,9 +403,22 @@ class AuthorityV2Validator:
                 "cross_deck_host_binding_claim_supersession_v1",
                 supersession.identity().digest_bytes,
             )
-            used_bindings.update(
-                encode_canonical(binding.to_cbor()) for binding in event.source_binding_digests
+            if model_binding is None:
+                raise AuthorityV2ValidationError("V2 supersession event lacks its model binding")
+            expected_event_sources = self._expected_acceptance_sources(
+                event,
+                model_binding,
+                supersession.source_evidence_refs,
+                None,
             )
+            actual_event_sources = {
+                encode_canonical(binding.to_cbor()) for binding in event.source_binding_digests
+            }
+            if actual_event_sources != expected_event_sources:
+                raise AuthorityV2ValidationError(
+                    "V2 supersession acceptance source bindings are not the exact closure"
+                )
+            used_bindings.update(actual_event_sources)
             used_bindings.add(
                 encode_canonical(
                     HostBindingSourceBindingV2(
@@ -424,11 +442,20 @@ class AuthorityV2Validator:
                     break
                 current = next_record
 
-        current_claims = tuple(
-            record.claim
+        current_records = tuple(
+            record
             for record in claim_records
             if record.record_identity().as_text() not in superseded_record_ids
         )
+        current_claim_by_id: dict[str, CrossDeckHostBindingClaimV1] = {}
+        for record in current_records:
+            claim_id = record.claim.identity().as_text()
+            if claim_id in current_claim_by_id:
+                raise AuthorityV2ValidationError(
+                    "multiple current record revisions exist for one host-binding claim"
+                )
+            current_claim_by_id[claim_id] = record.claim
+        current_claims = tuple(current_claim_by_id.values())
         application_members, expected_hosts, member_sources = self._v1_application_facts(
             dict(base_document),
             superseded_record_ids,
@@ -545,6 +572,12 @@ class AuthorityV2Validator:
             raise AuthorityV2ValidationError(
                 "V2 reviewer role bindings differ from the bound roster"
             )
+        if "architecture_maintainer" not in {
+            role for roles in event_roles.values() for role in roles
+        }:
+            raise AuthorityV2ValidationError(
+                "V2 cross-artifact acceptance requires architecture_maintainer"
+            )
 
         expected_roster_binding = HostBindingSourceBindingV2(
             "reviewer_roster_leaf",
@@ -561,6 +594,54 @@ class AuthorityV2Validator:
         for evidence in event.review_evidence_refs:
             self._resolve_acceptance_evidence(evidence)
         return event
+
+    @staticmethod
+    def _expected_acceptance_sources(
+        event: HostBindingAcceptanceEventInputV2,
+        model_binding: HostBindingSourceBindingV2,
+        evidence: Sequence[object],
+        b2_bindings: B2ArtifactBindingsV1 | None,
+    ) -> set[bytes]:
+        expected = {
+            encode_canonical(model_binding.to_cbor()),
+            encode_canonical(
+                HostBindingSourceBindingV2(
+                    "reviewer_roster_leaf",
+                    event.reviewer_roster_ref.path,
+                    event.reviewer_roster_ref.schema,
+                    event.reviewer_roster_ref.raw_sha256,
+                ).to_cbor()
+            ),
+        }
+        expected.update(
+            encode_canonical(AuthorityV2Validator._binding_from_evidence(reference).to_cbor())
+            for reference in evidence
+        )
+        if b2_bindings is not None:
+            expected.update(
+                encode_canonical(binding.to_cbor())
+                for binding in (
+                    HostBindingSourceBindingV2(
+                        "b2_catalog",
+                        b2_bindings.catalog.path,
+                        b2_bindings.catalog.schema_or_null,
+                        b2_bindings.catalog.raw_sha256,
+                    ),
+                    HostBindingSourceBindingV2(
+                        "b2_classifications",
+                        b2_bindings.classifications.path,
+                        b2_bindings.classifications.schema_or_null,
+                        b2_bindings.classifications.raw_sha256,
+                    ),
+                    HostBindingSourceBindingV2(
+                        "b2_closure",
+                        b2_bindings.closure.path,
+                        b2_bindings.closure.schema_or_null,
+                        b2_bindings.closure.raw_sha256,
+                    ),
+                )
+            )
+        return expected
 
     def _resolve_v2_source_binding(self, binding: HostBindingSourceBindingV2) -> None:
         if binding.artifact_role.startswith("rev3_"):
@@ -791,11 +872,15 @@ class AuthorityV2Validator:
     def _b2_bindings(
         source_bindings: Sequence[object],
     ) -> B2ArtifactBindingsV1 | None:
-        by_role = {
-            binding.artifact_role: binding
-            for binding in source_bindings
-            if isinstance(binding, HostBindingSourceBindingV2)
-        }
+        by_role: dict[str, HostBindingSourceBindingV2] = {}
+        for binding in source_bindings:
+            if not isinstance(binding, HostBindingSourceBindingV2):
+                continue
+            if binding.artifact_role in by_role:
+                raise AuthorityV2ValidationError(
+                    f"V2 source role {binding.artifact_role!r} is duplicated"
+                )
+            by_role[binding.artifact_role] = binding
         if not {"b2_catalog", "b2_classifications", "b2_closure"}.issubset(by_role):
             return None
         try:

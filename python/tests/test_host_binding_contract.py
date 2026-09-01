@@ -62,8 +62,8 @@ def _witness(row: int) -> HostRealizationWitnessV1:
             row,
         ),
         deck_row_ref=_ref(
-            "rev3_card_requirement_map",
-            "derived/Card_Requirement_Map_REV3.csv",
+            "rev3_deck_row_source_resolution",
+            "inputs/deck_row_source_resolution_REV3.csv",
             row,
         ),
         osi_ref=_ref(
@@ -132,9 +132,31 @@ class HostBindingContractTests(unittest.TestCase):
         witness = _witness(4)
 
         self.assertEqual(len(witness.to_cbor()), 4)
-        self.assertEqual(witness.to_cbor()[0], witness.to_cbor()[1])
+        self.assertNotEqual(witness.to_cbor()[0], witness.to_cbor()[1])
+        self.assertEqual(witness.to_cbor()[0][0], "rev3_card_requirement_map")
+        self.assertEqual(witness.to_cbor()[1][0], "rev3_deck_row_source_resolution")
         self.assertEqual(witness.to_cbor()[2][0], "rev3_osi_source_records")
         self.assertEqual(witness.to_cbor()[3][0][0], "b2_classifications")
+
+    def test_deck_row_evidence_cannot_reuse_discovery_mapping_role(self) -> None:
+        mapping = _ref(
+            "rev3_card_requirement_map",
+            "derived/Card_Requirement_Map_REV3.csv",
+            1,
+        )
+        osi = _ref(
+            "rev3_osi_source_records",
+            "source/raw/oracle_cards_selected_REV3.jsonl",
+            1,
+        )
+        b2 = _ref(
+            "b2_classifications",
+            "sources/m2_5/closures/B2/card_semantic_classifications.v1.json",
+            1,
+        )
+
+        with self.assertRaises(HostBindingContractError):
+            HostRealizationWitnessV1(mapping, mapping, osi, (b2,))
 
     def test_witnesses_must_be_nonempty_canonical_and_duplicate_free(self) -> None:
         member = _member()
@@ -275,7 +297,7 @@ class HostBindingContractTests(unittest.TestCase):
         self.assertEqual(claim.to_cbor()[0], member.to_cbor())
         self.assertEqual(
             claim.identity().as_text(),
-            "hbc.v1/d335169c2727aaa13ac1a370b817c867606ab407999470cc124bdc0b58989a16",
+            "hbc.v1/0cc97a67b98c685c1715a79e9c54243d9739883fc2dd24a7de25dc4f4892139b",
         )
 
     def test_application_link_targets_semantic_id_not_record_id(self) -> None:
@@ -390,13 +412,18 @@ class HostBindingContractTests(unittest.TestCase):
 
     def test_claim_record_and_supersession_use_separate_same_family_identities(self) -> None:
         claim = _single_member_claim()
-        event_ref = HostBindingAcceptanceEventRefV2(
+        first_event_ref = HostBindingAcceptanceEventRefV2(
             path="sources/m2_5/authorities/review_acceptance_events/v2/" + "04" * 32 + ".json",
             raw_sha256=bytes(32),
             event_id="ae.v2/" + "04" * 32,
         )
-        record = CrossDeckHostBindingClaimRecordV1(claim, event_ref)
-        supersession = CrossDeckHostBindingClaimSupersessionV1(
+        second_event_ref = HostBindingAcceptanceEventRefV2(
+            path="sources/m2_5/authorities/review_acceptance_events/v2/" + "05" * 32 + ".json",
+            raw_sha256=bytes(32),
+            event_id="ae.v2/" + "05" * 32,
+        )
+        record = CrossDeckHostBindingClaimRecordV1(claim, first_event_ref)
+        first_supersession = CrossDeckHostBindingClaimSupersessionV1(
             superseded_record_id=record.record_identity(),
             replacement_record_id=None,
             reason_code="authority_revocation",
@@ -407,11 +434,27 @@ class HostBindingContractTests(unittest.TestCase):
                     1,
                 ),
             ),
-            acceptance_event_ref=event_ref,
+            acceptance_event_ref=first_event_ref,
+        )
+        second_supersession = CrossDeckHostBindingClaimSupersessionV1(
+            superseded_record_id=record.record_identity(),
+            replacement_record_id=None,
+            reason_code="authority_revocation",
+            source_evidence_refs=(
+                _ref(
+                    "rev3_card_requirement_map",
+                    "derived/Card_Requirement_Map_REV3.csv",
+                    1,
+                ),
+            ),
+            acceptance_event_ref=second_event_ref,
         )
 
         self.assertTrue(record.record_identity().as_text().startswith("hbcr.v1/"))
-        self.assertTrue(supersession.identity().as_text().startswith("hbcs.v1/"))
+        self.assertTrue(first_supersession.identity().as_text().startswith("hbcs.v1/"))
+        self.assertEqual(first_supersession.identity(), second_supersession.identity())
+        second_record = CrossDeckHostBindingClaimRecordV1(claim, second_event_ref)
+        self.assertNotEqual(record.record_identity(), second_record.record_identity())
 
 
 class HostBindingSchemaTests(unittest.TestCase):

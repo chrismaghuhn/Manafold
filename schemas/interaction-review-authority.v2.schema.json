@@ -67,6 +67,7 @@
         "rev3_candidate_census",
         "rev3_pair_aggregates",
         "rev3_card_requirement_map",
+        "rev3_deck_row_source_resolution",
         "rev3_osi_source_records",
         "rev3_source_index",
         "b2_catalog",

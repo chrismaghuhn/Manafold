@@ -105,6 +105,8 @@ class HostBindingSourceResolver:
         if mapping_keys != witness_keys:
             self._fail("witness mapping references do not exactly cover discovery mappings")
 
+        self._verify_discovery_mapping_completeness(discovery)
+
         resolved: list[ResolvedHostRealizationWitness] = []
         for witness in realization.witnesses:
             resolved.append(self._resolve_witness(discovery, realization, witness))
@@ -232,6 +234,8 @@ class HostBindingSourceResolver:
                 self._fail("discovery binding does not match the candidate source row")
             if binding.discovery_host.host_id not in pair_hosts:
                 self._fail("discovery host is not one of the candidate pair hosts")
+        if {binding.discovery_host.host_id for binding in ordered_discovery} != pair_hosts:
+            self._fail("discovery bindings do not cover both hosts of the cross-deck pair")
 
         return self.resolve_claim(
             claim.discovery_bindings,
@@ -314,6 +318,43 @@ class HostBindingSourceResolver:
             b2_assignments=tuple(b2_assignments),
         )
 
+    def _verify_discovery_mapping_completeness(
+        self,
+        discovery: CrossDeckParticipantDiscoveryHostBindingV1,
+    ) -> None:
+        references = discovery.mapping_evidence_refs
+        source_keys = {(reference.path, reference.raw_sha256) for reference in references}
+        if len(source_keys) != 1:
+            self._fail("discovery mapping references use multiple REV3 snapshots")
+        reference = references[0]
+        if any(
+            reference.locator[0] != "csv_row" or not isinstance(reference.locator[1], int)
+            for reference in references
+        ):
+            self._fail("discovery mapping reference is not a CSV row locator")
+        artifact = self._resolver.resolve_rev3_member(
+            reference.path,
+            reference.raw_sha256,
+            reference.schema_or_null,
+        )
+        rows = self._csv_rows(artifact.raw_bytes, reference.path)
+        expected = {
+            index
+            for index, row in enumerate(rows)
+            if row.get("deck_id") == discovery.discovery_host.host_id
+            and row.get("requirement_id") == discovery.participant_ref
+        }
+        actual = {
+            cast(int, cast(tuple[str, str | int | None], item.locator)[1])
+            for item in references
+            if cast(tuple[str, str | int | None], item.locator)[0] == "csv_row"
+            and isinstance(cast(tuple[str, str | int | None], item.locator)[1], int)
+        }
+        if not expected:
+            self._fail("discovery mapping has no rows for the bound host and participant")
+        if actual != expected:
+            self._fail("discovery mappings do not cover every matching REV3 map row")
+
     def _resolve_ref(self, reference: HostBindingEvidenceRefV2) -> tuple[ResolvedArtifact, object]:
         if reference.artifact_role.startswith("rev3_"):
             artifact = self._resolver.resolve_rev3_member(
@@ -344,20 +385,27 @@ class HostBindingSourceResolver:
         self._fail(f"unsupported host-binding locator {kind!r}")
 
     @staticmethod
-    def _csv_row(raw: bytes, index: int, path: str) -> Mapping[str, str]:
+    def _csv_rows(raw: bytes, path: str) -> tuple[dict[str, str], ...]:
         try:
             rows = list(csv.reader(io.StringIO(raw.decode("utf-8"), newline=""), strict=True))
         except (UnicodeDecodeError, csv.Error) as exc:
             raise HostBindingSourceError(f"{path} is not strict UTF-8 CSV: {exc}") from exc
         if not rows or len(rows[0]) != len(set(rows[0])):
             raise HostBindingSourceError(f"{path} has no unique CSV header")
+        header = rows[0]
         data = rows[1:]
-        if index >= len(data):
+        if any(not field for field in header):
+            raise HostBindingSourceError(f"{path} has an empty CSV header field")
+        if any(len(row) != len(header) for row in data):
+            raise HostBindingSourceError(f"{path} contains a row with the wrong width")
+        return tuple(dict(zip(header, row, strict=True)) for row in data)
+
+    @classmethod
+    def _csv_row(cls, raw: bytes, index: int, path: str) -> Mapping[str, str]:
+        rows = cls._csv_rows(raw, path)
+        if index >= len(rows):
             raise HostBindingSourceError(f"{path} CSV row {index} is out of range")
-        row = data[index]
-        if len(row) != len(rows[0]):
-            raise HostBindingSourceError(f"{path} CSV row {index} has the wrong width")
-        return dict(zip(rows[0], row, strict=True))
+        return rows[index]
 
     @staticmethod
     def _jsonl_value(
@@ -464,7 +512,9 @@ class HostBindingSourceResolver:
 
     @staticmethod
     def _compare_map_rows(discovery_row: Mapping[str, str], deck_row: Mapping[str, str]) -> None:
-        fields = ("deck_row_id", "deck_id", "oracle_semantic_identity", "requirement_id")
+        fields = ("deck_row_id", "deck_id", "oracle_semantic_identity")
+        if any(field not in discovery_row or field not in deck_row for field in fields):
+            raise HostBindingSourceError("discovery mapping and deck row fields are incomplete")
         if any(discovery_row.get(field) != deck_row.get(field) for field in fields):
             raise HostBindingSourceError("discovery mapping and deck row do not form one join")
 

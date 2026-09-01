@@ -12,7 +12,7 @@
   "reviewer_role_bindings": [
     {
       "reviewer_id": "alice",
-      "roles": ["project_owner"]
+      "roles": ["architecture_maintainer", "project_owner"]
     }
   ],
   "review_mode": "solo_separate_self_review",

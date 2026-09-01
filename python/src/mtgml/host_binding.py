@@ -67,6 +67,7 @@ V2_SOURCE_ROLES: Final = (
     "rev3_candidate_census",
     "rev3_pair_aggregates",
     "rev3_card_requirement_map",
+    "rev3_deck_row_source_resolution",
     "rev3_osi_source_records",
     "rev3_source_index",
     "b2_catalog",
@@ -93,6 +94,7 @@ _SOURCE_ROLE_PATHS: Final[dict[str, tuple[str, str | None]]] = {
     "rev3_candidate_census": ("derived/Pair_Interaction_Census_REV3.csv", None),
     "rev3_pair_aggregates": ("derived/Pair_Requirement_Aggregates_REV3.json", None),
     "rev3_card_requirement_map": ("derived/Card_Requirement_Map_REV3.csv", None),
+    "rev3_deck_row_source_resolution": ("inputs/deck_row_source_resolution_REV3.csv", None),
     "rev3_osi_source_records": ("source/raw/oracle_cards_selected_REV3.jsonl", None),
     "rev3_source_index": ("source/raw/source_record_index_REV3.csv", None),
     "b2_catalog": (
@@ -259,7 +261,7 @@ def _identity_from_payload(
     expected_arity = {
         HostBindingIdentityKind.CROSS_DECK_HOST_BINDING_CLAIM: 5,
         HostBindingIdentityKind.CROSS_DECK_HOST_BINDING_CLAIM_RECORD: 3,
-        HostBindingIdentityKind.CROSS_DECK_HOST_BINDING_SUPERSESSION: 8,
+        HostBindingIdentityKind.CROSS_DECK_HOST_BINDING_SUPERSESSION: 7,
         HostBindingIdentityKind.REVIEW_ACCEPTANCE_EVENT_V2: 10,
     }[kind]
     if len(payload) != expected_arity:
@@ -445,7 +447,7 @@ class HostRealizationWitnessV1:
     def __post_init__(self) -> None:
         if self.discovery_mapping_ref.artifact_role != "rev3_card_requirement_map":
             raise HostBindingContractError("witness discovery mapping role is invalid")
-        if self.deck_row_ref.artifact_role != "rev3_card_requirement_map":
+        if self.deck_row_ref.artifact_role != "rev3_deck_row_source_resolution":
             raise HostBindingContractError("witness deck row role is invalid")
         if self.osi_ref.artifact_role != "rev3_osi_source_records":
             raise HostBindingContractError("witness OSI role is invalid")
@@ -945,7 +947,6 @@ class CrossDeckHostBindingClaimSupersessionV1:
             ),
             self.reason_code,
             [reference.to_cbor() for reference in self.source_evidence_refs],
-            self.acceptance_event_ref.to_cbor(),
         ]
 
     def identity(self) -> HostBindingIdentityV1:

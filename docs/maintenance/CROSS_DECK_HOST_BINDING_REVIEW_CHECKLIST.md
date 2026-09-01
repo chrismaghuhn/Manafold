@@ -14,10 +14,16 @@ interaction proof, an application record, or a human acceptance event.
 - Verify the exact member key and `hbc.v1` claim identity.
 - Verify every discovery binding against the exact Candidate/SourceInstance
   snapshot and the historical REV3 discovery mapping.
+- Reconstruct the complete set of matching historical mapping rows for the
+  bound discovery host and participant; omitted matching rows are invalid.
 - Verify every `ParticipantHostRealizationV1` has exactly one participant
   position and non-empty correlated Witness records.
 - Verify every Witness join atomically: discovery mapping, deck row, OSI, and
   the exact current B2 assignment refer to the same participant and host.
+- The deck-row witness must come from the independent REV3 deck-row source
+  resolution artifact; it is not another locator into the discovery map.
+- Require the complete B2 catalog, classification, and closure snapshot for
+  every B2 assignment witness.
 - Verify the realization host equals the discovery host for that participant.
 - Recompute `observed_host_relationship` from the selected realizations and
   compare it with the expected theorem subject value.
@@ -26,9 +32,16 @@ interaction proof, an application record, or a human acceptance event.
   ordering, capability names, or co-occurrence.
 - Verify the claim is linked to semantic V1 Application IDs, not accepted
   Application Record IDs, and that member-atomic claims cover the exact
-  application member set.
+  application member set. Every current V1 Relation, Domain, and Context
+  Application requires exactly one such host-binding link.
 - Verify the current claim/supersession graph and reject revoked,
   superseded, duplicate, or cross-snapshot claims.
+- A supersession identity is computed from its payload before acceptance
+  metadata; its acceptance event must not participate in its own subject
+  digest. Re-accepted revisions of one semantic claim use distinct record
+  identities and only one current record may remain after supersession.
+- Cross-artifact host-binding acceptance requires the `architecture_maintainer`
+  role; solo review does not waive that role.
 
 ## Evidence boundary
 
