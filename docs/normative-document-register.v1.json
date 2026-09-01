@@ -429,6 +429,13 @@
     {
       "change_process": "process-pr",
       "owner_role": "maintainer",
+      "path": "docs/superpowers/plans/2026-09-01-m2-5-c-cross-deck-host-binding.md",
+      "role": "process",
+      "stability": "provisional"
+    },
+    {
+      "change_process": "process-pr",
+      "owner_role": "maintainer",
       "path": "docs/superpowers/specs/2026-08-30-m2-5-c-pair-relation-review-authority-closure-design.md",
       "role": "process",
       "stability": "provisional"
@@ -628,6 +635,13 @@
       "path": "docs/maintenance/INTERACTION_AUTHORITY_REVIEW_CHECKLIST.md",
       "role": "process",
       "stability": "accepted"
+    },
+    {
+      "change_process": "governance-pr",
+      "owner_role": "project-governance",
+      "path": "docs/maintenance/CROSS_DECK_HOST_BINDING_REVIEW_CHECKLIST.md",
+      "role": "process",
+      "stability": "provisional"
     },
     {
       "change_process": "process-pr",

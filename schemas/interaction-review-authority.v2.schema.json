@@ -1,0 +1,512 @@
+{
+  "$id": "interaction-review-authority.v2.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Manafold M2.5.C Interaction Review Authority V2",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "schema": {
+      "const": "manafold.m2.5.c.interaction-review-authority.v2"
+    },
+    "base_authority_v1_binding": {
+      "$ref": "#/$defs/source_binding"
+    },
+    "source_bindings": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/source_binding"
+      }
+    },
+    "cross_deck_host_binding_claim_records": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/claim_record"
+      }
+    },
+    "cross_deck_host_binding_claim_supersession_records": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/claim_supersession_record"
+      }
+    },
+    "application_host_bindings": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/application_host_binding"
+      }
+    }
+  },
+  "required": [
+    "schema",
+    "base_authority_v1_binding",
+    "source_bindings",
+    "cross_deck_host_binding_claim_records",
+    "cross_deck_host_binding_claim_supersession_records",
+    "application_host_bindings"
+  ],
+  "$defs": {
+    "digest": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "relative_path": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^(?!/)(?!.*\\\\)(?!.*://)(?![A-Za-z]:)[^\\r\\n]+$"
+    },
+    "non_empty_string": {
+      "type": "string",
+      "minLength": 1
+    },
+    "source_role": {
+      "type": "string",
+      "enum": [
+        "base_authority_v1",
+        "candidate_universe",
+        "declared_model",
+        "rev3_candidate_census",
+        "rev3_pair_aggregates",
+        "rev3_card_requirement_map",
+        "rev3_deck_row_source_resolution",
+        "rev3_osi_source_records",
+        "rev3_source_index",
+        "b2_catalog",
+        "b2_classifications",
+        "b2_closure",
+        "reviewer_roster_leaf",
+        "acceptance_event_leaf_v2",
+        "host_binding_claim_record"
+      ]
+    },
+    "source_binding": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "artifact_role": {
+          "$ref": "#/$defs/source_role"
+        },
+        "path": {
+          "$ref": "#/$defs/relative_path"
+        },
+        "schema_or_null": {
+          "type": ["string", "null"]
+        },
+        "raw_sha256": {
+          "$ref": "#/$defs/digest"
+        }
+      },
+      "required": ["artifact_role", "path", "schema_or_null", "raw_sha256"]
+    },
+    "identity_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "envelope_id": {
+          "const": "mtgml.digest-envelope.v1"
+        },
+        "algorithm_id": {
+          "const": "sha-256"
+        },
+        "semantic_domain": {
+          "$ref": "#/$defs/non_empty_string"
+        },
+        "payload_codec_id": {
+          "const": "mtgml.canonical-cbor.v1"
+        },
+        "input_schema_id": {
+          "$ref": "#/$defs/non_empty_string"
+        },
+        "digest_hex": {
+          "$ref": "#/$defs/digest"
+        }
+      },
+      "required": [
+        "envelope_id",
+        "algorithm_id",
+        "semantic_domain",
+        "payload_codec_id",
+        "input_schema_id",
+        "digest_hex"
+      ]
+    },
+    "member_key": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "candidate_id": {
+          "$ref": "#/$defs/non_empty_string"
+        },
+        "candidate_identity_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "source_instance_id": {
+          "$ref": "#/$defs/non_empty_string"
+        }
+      },
+      "required": ["candidate_id", "candidate_identity_digest", "source_instance_id"]
+    },
+    "host_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "host_kind": {
+          "const": "rev3_deck"
+        },
+        "host_id": {
+          "$ref": "#/$defs/non_empty_string"
+        }
+      },
+      "required": ["host_kind", "host_id"]
+    },
+    "locator": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "kind": {"const": "whole_artifact"}
+          },
+          "required": ["kind"]
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "kind": {"const": "csv_row"},
+            "value": {"type": "integer", "minimum": 0}
+          },
+          "required": ["kind", "value"]
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "kind": {"const": "jsonl_line"},
+            "value": {"type": "integer", "minimum": 0}
+          },
+          "required": ["kind", "value"]
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "kind": {"const": "jsonl_record"},
+            "value": {"$ref": "#/$defs/non_empty_string"}
+          },
+          "required": ["kind", "value"]
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "kind": {"const": "json_pointer"},
+            "value": {
+              "type": "string",
+              "pattern": "^/"
+            }
+          },
+          "required": ["kind", "value"]
+        }
+      ]
+    },
+    "evidence_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "artifact_role": {
+          "$ref": "#/$defs/source_role"
+        },
+        "path": {
+          "$ref": "#/$defs/relative_path"
+        },
+        "schema_or_null": {
+          "type": ["string", "null"]
+        },
+        "raw_sha256": {
+          "$ref": "#/$defs/digest"
+        },
+        "locator": {
+          "$ref": "#/$defs/locator"
+        }
+      },
+      "required": [
+        "artifact_role",
+        "path",
+        "schema_or_null",
+        "raw_sha256",
+        "locator"
+      ]
+    },
+    "discovery_binding": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "member_key": {
+          "$ref": "#/$defs/member_key"
+        },
+        "participant_position": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "participant_ref": {
+          "$ref": "#/$defs/non_empty_string"
+        },
+        "discovery_side": {
+          "type": "string",
+          "enum": ["rev3_left_family", "rev3_right_family"]
+        },
+        "discovery_host": {
+          "$ref": "#/$defs/host_ref"
+        },
+        "mapping_evidence_refs": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/evidence_ref"
+          }
+        }
+      },
+      "required": [
+        "member_key",
+        "participant_position",
+        "participant_ref",
+        "discovery_side",
+        "discovery_host",
+        "mapping_evidence_refs"
+      ]
+    },
+    "witness": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "discovery_mapping_ref": {
+          "$ref": "#/$defs/evidence_ref"
+        },
+        "deck_row_ref": {
+          "$ref": "#/$defs/evidence_ref"
+        },
+        "osi_ref": {
+          "$ref": "#/$defs/evidence_ref"
+        },
+        "b2_assignment_refs": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/evidence_ref"
+          }
+        }
+      },
+      "required": [
+        "discovery_mapping_ref",
+        "deck_row_ref",
+        "osi_ref",
+        "b2_assignment_refs"
+      ]
+    },
+    "participant_realization": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "member_key": {
+          "$ref": "#/$defs/member_key"
+        },
+        "participant_position": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "participant_ref": {
+          "$ref": "#/$defs/non_empty_string"
+        },
+        "host": {
+          "$ref": "#/$defs/host_ref"
+        },
+        "witnesses": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/witness"
+          }
+        }
+      },
+      "required": [
+        "member_key",
+        "participant_position",
+        "participant_ref",
+        "host",
+        "witnesses"
+      ]
+    },
+    "claim": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "claim_id": {
+          "type": "string",
+          "pattern": "^hbc\\.v1/[0-9a-f]{64}$"
+        },
+        "member_key": {
+          "$ref": "#/$defs/member_key"
+        },
+        "discovery_bindings": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/discovery_binding"
+          }
+        },
+        "participant_host_realizations": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/participant_realization"
+          }
+        },
+        "observed_host_relationship": {
+          "type": "string",
+          "enum": ["same_host", "cross_host"]
+        }
+      },
+      "required": [
+        "claim_id",
+        "member_key",
+        "discovery_bindings",
+        "participant_host_realizations",
+        "observed_host_relationship"
+      ]
+    },
+    "event_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "$ref": "#/$defs/relative_path"
+        },
+        "raw_sha256": {
+          "$ref": "#/$defs/digest"
+        },
+        "event_id": {
+          "type": "string",
+          "pattern": "^ae\\.v2/[0-9a-f]{64}$"
+        }
+      },
+      "required": ["path", "raw_sha256", "event_id"]
+    },
+    "acceptance": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "decision": {
+          "const": "human_accepted"
+        },
+        "review_event_ref": {
+          "$ref": "#/$defs/event_ref"
+        }
+      },
+      "required": ["decision", "review_event_ref"]
+    },
+    "claim_record": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "record_kind": {
+          "const": "cross_deck_host_binding_claim_record_v1"
+        },
+        "record_id": {
+          "$ref": "#/$defs/identity_ref"
+        },
+        "claim_id": {
+          "$ref": "#/$defs/identity_ref"
+        },
+        "claim": {
+          "$ref": "#/$defs/claim"
+        },
+        "acceptance": {
+          "$ref": "#/$defs/acceptance"
+        }
+      },
+      "required": ["record_kind", "record_id", "claim_id", "claim", "acceptance"]
+    },
+    "claim_supersession_record": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "supersession_id": {
+          "$ref": "#/$defs/identity_ref"
+        },
+        "superseded_record_id": {
+          "$ref": "#/$defs/identity_ref"
+        },
+        "replacement_record_id": {
+          "oneOf": [
+            {"$ref": "#/$defs/identity_ref"},
+            {"type": "null"}
+          ]
+        },
+        "superseded_record_kind": {
+          "const": "cross_deck_host_binding_claim_record_v1"
+        },
+        "replacement_record_kind": {
+          "oneOf": [
+            {"const": "cross_deck_host_binding_claim_record_v1"},
+            {"type": "null"}
+          ]
+        },
+        "reason_code": {
+          "type": "string",
+          "enum": ["semantic_correction", "source_revision", "authority_revocation"]
+        },
+        "source_evidence_refs": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/evidence_ref"
+          }
+        },
+        "acceptance": {
+          "$ref": "#/$defs/acceptance"
+        }
+      },
+      "required": [
+        "supersession_id",
+        "superseded_record_id",
+        "replacement_record_id",
+        "superseded_record_kind",
+        "replacement_record_kind",
+        "reason_code",
+        "source_evidence_refs",
+        "acceptance"
+      ]
+    },
+    "application_host_binding": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "application_kind": {
+          "type": "string",
+          "enum": [
+            "relation_application",
+            "domain_application",
+            "context_application"
+          ]
+        },
+        "application_semantic_id": {
+          "type": "string",
+          "pattern": "^(rpa|dpa|cpa)\\.v1/[0-9a-f]{64}$"
+        },
+        "host_binding_claim_ids": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "pattern": "^hbc\\.v1/[0-9a-f]{64}$"
+          }
+        }
+      },
+      "required": [
+        "application_kind",
+        "application_semantic_id",
+        "host_binding_claim_ids"
+      ]
+    }
+  }
+}

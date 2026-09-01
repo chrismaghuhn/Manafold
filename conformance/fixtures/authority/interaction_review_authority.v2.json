@@ -1,0 +1,20 @@
+{
+  "schema": "manafold.m2.5.c.interaction-review-authority.v2",
+  "base_authority_v1_binding": {
+    "artifact_role": "base_authority_v1",
+    "path": "sources/m2_5/authorities/interaction_review_authority.v1.json",
+    "schema_or_null": "manafold.m2.5.c.interaction-review-authority.v1",
+    "raw_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+  },
+  "source_bindings": [
+    {
+      "artifact_role": "base_authority_v1",
+      "path": "sources/m2_5/authorities/interaction_review_authority.v1.json",
+      "schema_or_null": "manafold.m2.5.c.interaction-review-authority.v1",
+      "raw_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    }
+  ],
+  "cross_deck_host_binding_claim_records": [],
+  "cross_deck_host_binding_claim_supersession_records": [],
+  "application_host_bindings": []
+}
