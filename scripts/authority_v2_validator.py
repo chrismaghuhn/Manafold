@@ -670,28 +670,48 @@ class AuthorityV2Validator:
         if b2_bindings is not None:
             expected.update(
                 encode_canonical(binding.to_cbor())
-                for binding in (
-                    HostBindingSourceBindingV2(
-                        "b2_catalog",
-                        b2_bindings.catalog.path,
-                        b2_bindings.catalog.schema_or_null,
-                        b2_bindings.catalog.raw_sha256,
-                    ),
-                    HostBindingSourceBindingV2(
-                        "b2_classifications",
-                        b2_bindings.classifications.path,
-                        b2_bindings.classifications.schema_or_null,
-                        b2_bindings.classifications.raw_sha256,
-                    ),
-                    HostBindingSourceBindingV2(
-                        "b2_closure",
-                        b2_bindings.closure.path,
-                        b2_bindings.closure.schema_or_null,
-                        b2_bindings.closure.raw_sha256,
-                    ),
-                )
+                for binding in AuthorityV2Validator._b2_acceptance_bindings(evidence, b2_bindings)
             )
         return expected
+
+    @staticmethod
+    def _b2_acceptance_bindings(
+        evidence: Sequence[object],
+        b2_bindings: B2ArtifactBindingsV1,
+    ) -> tuple[HostBindingSourceBindingV2, ...]:
+        """Expand B2 evidence to the exact source closure it requires."""
+
+        roles = {getattr(reference, "artifact_role", None) for reference in evidence}
+        if "b2_classifications" in roles:
+            required_roles = ("b2_catalog", "b2_classifications", "b2_closure")
+        elif "b2_catalog" in roles:
+            required_roles = ("b2_catalog", "b2_closure")
+        elif "b2_closure" in roles:
+            required_roles = ("b2_closure",)
+        else:
+            return ()
+
+        source_bindings = {
+            "b2_catalog": HostBindingSourceBindingV2(
+                "b2_catalog",
+                b2_bindings.catalog.path,
+                b2_bindings.catalog.schema_or_null,
+                b2_bindings.catalog.raw_sha256,
+            ),
+            "b2_classifications": HostBindingSourceBindingV2(
+                "b2_classifications",
+                b2_bindings.classifications.path,
+                b2_bindings.classifications.schema_or_null,
+                b2_bindings.classifications.raw_sha256,
+            ),
+            "b2_closure": HostBindingSourceBindingV2(
+                "b2_closure",
+                b2_bindings.closure.path,
+                b2_bindings.closure.schema_or_null,
+                b2_bindings.closure.raw_sha256,
+            ),
+        }
+        return tuple(source_bindings[role] for role in required_roles)
 
     def _host_binding_application_members(
         self,
@@ -952,9 +972,12 @@ class AuthorityV2Validator:
     def _b2_bindings(
         source_bindings: Sequence[object],
     ) -> B2ArtifactBindingsV1 | None:
+        singleton_roles = {"b2_catalog", "b2_classifications", "b2_closure"}
         by_role: dict[str, HostBindingSourceBindingV2] = {}
         for binding in source_bindings:
             if not isinstance(binding, HostBindingSourceBindingV2):
+                continue
+            if binding.artifact_role not in singleton_roles:
                 continue
             if binding.artifact_role in by_role:
                 raise AuthorityV2ValidationError(

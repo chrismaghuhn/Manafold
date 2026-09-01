@@ -497,48 +497,72 @@ class AuthorityV2DocumentTests(unittest.TestCase):
                 bytes([6]) * 32,
             ),
         )
-        b2_evidence = HostBindingEvidenceRefV2(
-            "b2_classifications",
-            b2_bindings.classifications.path,
-            b2_bindings.classifications.schema_or_null,
-            b2_bindings.classifications.raw_sha256,
-            ("json_pointer", "/classifications/0"),
+        b2_source_bindings = {
+            "b2_catalog": HostBindingSourceBindingV2(
+                "b2_catalog",
+                b2_bindings.catalog.path,
+                b2_bindings.catalog.schema_or_null,
+                b2_bindings.catalog.raw_sha256,
+            ),
+            "b2_classifications": HostBindingSourceBindingV2(
+                "b2_classifications",
+                b2_bindings.classifications.path,
+                b2_bindings.classifications.schema_or_null,
+                b2_bindings.classifications.raw_sha256,
+            ),
+            "b2_closure": HostBindingSourceBindingV2(
+                "b2_closure",
+                b2_bindings.closure.path,
+                b2_bindings.closure.schema_or_null,
+                b2_bindings.closure.raw_sha256,
+            ),
+        }
+        expected_common = (model_binding, roster_binding)
+        for artifact_role, expected_roles in (
+            ("b2_classifications", set(b2_source_bindings)),
+            ("b2_catalog", {"b2_catalog", "b2_closure"}),
+            ("b2_closure", {"b2_closure"}),
+        ):
+            b2_evidence = HostBindingEvidenceRefV2(
+                artifact_role,
+                b2_source_bindings[artifact_role].path,
+                b2_source_bindings[artifact_role].schema_or_null,
+                b2_source_bindings[artifact_role].raw_sha256,
+                ("json_pointer", "/classifications/0"),
+            )
+            expected = AuthorityV2Validator._expected_acceptance_sources(
+                event,
+                model_binding,
+                (b2_evidence,),
+                b2_bindings,
+            )
+            expected_bindings = [
+                *expected_common,
+                *(b2_source_bindings[role] for role in expected_roles),
+            ]
+            self.assertEqual(
+                expected,
+                {encode_canonical(binding.to_cbor()) for binding in expected_bindings},
+            )
+
+    def test_content_addressed_acceptance_event_roles_may_repeat(self) -> None:
+        schema = "manafold.m2.5.c.review-acceptance-event.v2"
+        bindings = (
+            HostBindingSourceBindingV2(
+                "acceptance_event_leaf_v2",
+                "sources/m2_5/authorities/review_acceptance_events/v2/" + "01" * 32 + ".json",
+                schema,
+                bytes([1]) * 32,
+            ),
+            HostBindingSourceBindingV2(
+                "acceptance_event_leaf_v2",
+                "sources/m2_5/authorities/review_acceptance_events/v2/" + "02" * 32 + ".json",
+                schema,
+                bytes([2]) * 32,
+            ),
         )
 
-        expected = AuthorityV2Validator._expected_acceptance_sources(
-            event,
-            model_binding,
-            (b2_evidence,),
-            b2_bindings,
-        )
-        self.assertEqual(
-            expected,
-            {
-                encode_canonical(binding.to_cbor())
-                for binding in (
-                    model_binding,
-                    roster_binding,
-                    HostBindingSourceBindingV2(
-                        "b2_catalog",
-                        b2_bindings.catalog.path,
-                        b2_bindings.catalog.schema_or_null,
-                        b2_bindings.catalog.raw_sha256,
-                    ),
-                    HostBindingSourceBindingV2(
-                        "b2_classifications",
-                        b2_bindings.classifications.path,
-                        b2_bindings.classifications.schema_or_null,
-                        b2_bindings.classifications.raw_sha256,
-                    ),
-                    HostBindingSourceBindingV2(
-                        "b2_closure",
-                        b2_bindings.closure.path,
-                        b2_bindings.closure.schema_or_null,
-                        b2_bindings.closure.raw_sha256,
-                    ),
-                )
-            },
-        )
+        self.assertIsNone(AuthorityV2Validator._b2_bindings(bindings))
 
     def test_v2_acceptance_event_resolves_its_bound_roster_and_identity(self) -> None:
         from mtgml.authority import (
@@ -728,6 +752,7 @@ class AuthorityV2DocumentTests(unittest.TestCase):
         from mtgml.host_binding import (
             ApplicationMemberKeyV1,
             CrossDeckHostBindingClaimRecordV1,
+            CrossDeckHostBindingClaimSupersessionV1,
             CrossDeckHostBindingClaimV1,
             CrossDeckParticipantDiscoveryHostBindingV1,
             DiscoveryHostRefV1,
@@ -811,6 +836,9 @@ class AuthorityV2DocumentTests(unittest.TestCase):
             json.dumps([family_id, second_family_id], separators=(",", ":")),
         ]
         census_writer.writerow(census_row)
+        second_census_row = list(census_row)
+        second_census_row[0] = "candidate-2"
+        census_writer.writerow(second_census_row)
         census_raw = census_buffer.getvalue().encode("utf-8")
         pair_raw = b'{"pairs":{"P1":{"pair":["Token Triumph","Grave Danger"]}}}\n'
         archive_raw = _archive_bytes(
@@ -843,6 +871,14 @@ class AuthorityV2DocumentTests(unittest.TestCase):
             "row_ordinal": 0,
             "source_columns": list(REV3_SOURCE_COLUMNS),
             "source_values": census_row,
+        }
+        second_candidate_source_binding = {
+            "kind": "rev3",
+            "archive_member": census_path,
+            "archive_member_sha256": hashlib.sha256(census_raw).hexdigest(),
+            "row_ordinal": 1,
+            "source_columns": list(REV3_SOURCE_COLUMNS),
+            "source_values": second_census_row,
         }
         participant_refs = [
             {"participant_kind": "requirement_family", "semantic_ref": family_id},
@@ -910,6 +946,44 @@ class AuthorityV2DocumentTests(unittest.TestCase):
             "reconciliation_status": "unchanged",
             "reconciliation_reason": "synthetic host-binding candidate",
         }
+        second_candidate_identity_payload = [
+            ["rev3", None],
+            ["cross_deck", None],
+            ["directional_binary", None],
+            participant_payload,
+            sorted([family_id, second_family_id]),
+            [
+                ["rev3", None],
+                [
+                    census_path,
+                    hashlib.sha256(census_raw).digest(),
+                    1,
+                    list(REV3_SOURCE_COLUMNS),
+                    second_census_row,
+                ],
+            ],
+        ]
+        second_candidate_identity_digest = hash_envelope(
+            encode_envelope(
+                CANDIDATE_IDENTITY_DOMAIN,
+                CANDIDATE_IDENTITY_SCHEMA,
+                encode_canonical(second_candidate_identity_payload),
+            )
+        )
+        second_candidate_identity = {
+            "algorithm_id": "sha-256",
+            "digest_hex": second_candidate_identity_digest.hex(),
+            "envelope_id": "mtgml.digest-envelope.v1",
+            "input_schema_id": CANDIDATE_IDENTITY_SCHEMA,
+            "payload_codec_id": "mtgml.canonical-cbor.v1",
+            "semantic_domain": CANDIDATE_IDENTITY_DOMAIN,
+        }
+        second_candidate = {
+            **candidate,
+            "candidate_id": "candidate-2",
+            "candidate_identity": second_candidate_identity,
+            "source_binding": second_candidate_source_binding,
+        }
         source_instance_id = (
             "si.v1/" + base64.urlsafe_b64encode(b"candidate").decode("ascii").rstrip("=") + "/0"
         )
@@ -922,6 +996,15 @@ class AuthorityV2DocumentTests(unittest.TestCase):
                 for item in participant_refs
             ],
             "source_context": source_context,
+        }
+        second_source_instance_id = (
+            "si.v1/" + base64.urlsafe_b64encode(b"candidate-2").decode("ascii").rstrip("=") + "/0"
+        )
+        second_source_instance = {
+            **source_instance,
+            "source_instance_id": second_source_instance_id,
+            "candidate_id": "candidate-2",
+            "source_binding": second_candidate_source_binding,
         }
         model_file = self.repo / Path(*MODEL_PATH.split("/"))
         b2_catalog_file = self.repo / Path(*b2_catalog_path.split("/"))
@@ -970,18 +1053,18 @@ class AuthorityV2DocumentTests(unittest.TestCase):
                     },
                 ],
             },
-            "candidate_count": 1,
+            "candidate_count": 2,
             "candidate_reconciliation_counts": {
-                "unchanged": 1,
+                "unchanged": 2,
                 "stale_rev3_candidate": 0,
                 "removed_not_interaction": 0,
                 "merged_semantic_duplicate": 0,
                 "new_targeted_higher_order_candidate": 0,
                 "new_b2_derived": 0,
             },
-            "source_instance_count": 1,
-            "candidates": [candidate],
-            "source_instances": [source_instance],
+            "source_instance_count": 2,
+            "candidates": [candidate, second_candidate],
+            "source_instances": [source_instance, second_source_instance],
         }
         universe_raw = (json.dumps(universe, separators=(",", ":")) + "\n").encode("utf-8")
         universe_file = self.repo / Path(*CANDIDATE_UNIVERSE_PATH.split("/"))
@@ -1000,6 +1083,9 @@ class AuthorityV2DocumentTests(unittest.TestCase):
             hashlib.sha256(pair_raw).digest(),
         )
         member = ApplicationMemberKeyV1("candidate", candidate_identity_digest, source_instance_id)
+        second_member = ApplicationMemberKeyV1(
+            "candidate-2", second_candidate_identity_digest, second_source_instance_id
+        )
         map_ref = HostBindingEvidenceRefV2(
             "rev3_card_requirement_map",
             map_path,
@@ -1042,15 +1128,6 @@ class AuthorityV2DocumentTests(unittest.TestCase):
             hashlib.sha256(b2_raw).digest(),
             ("json_pointer", "/classifications/1"),
         )
-        host = DiscoveryHostRefV1("rev3_deck", "Token Triumph")
-        discovery = CrossDeckParticipantDiscoveryHostBindingV1(
-            member,
-            0,
-            family_id,
-            "rev3_left_family",
-            host,
-            (map_ref,),
-        )
         deck_ref = HostBindingEvidenceRefV2(
             "rev3_deck_row_source_resolution",
             deck_path,
@@ -1065,29 +1142,45 @@ class AuthorityV2DocumentTests(unittest.TestCase):
             hashlib.sha256(deck_raw).digest(),
             ("csv_row", 1),
         )
-        witness = HostRealizationWitnessV1(map_ref, deck_ref, osi_ref, (b2_ref,))
-        second_host = DiscoveryHostRefV1("rev3_deck", "Grave Danger")
-        second_discovery = CrossDeckParticipantDiscoveryHostBindingV1(
-            member,
-            1,
-            second_family_id,
-            "rev3_right_family",
-            second_host,
-            (second_map_ref,),
-        )
-        second_witness = HostRealizationWitnessV1(
-            second_map_ref, second_deck_ref, second_osi_ref, (second_b2_ref,)
-        )
-        realization = ParticipantHostRealizationV1(member, 0, family_id, host, (witness,))
-        second_realization = ParticipantHostRealizationV1(
-            member, 1, second_family_id, second_host, (second_witness,)
-        )
-        claim = CrossDeckHostBindingClaimV1(
-            member,
-            (discovery, second_discovery),
-            (realization, second_realization),
-            "cross_host",
-        )
+
+        def claim_for(member_key: ApplicationMemberKeyV1) -> CrossDeckHostBindingClaimV1:
+            first_host = DiscoveryHostRefV1("rev3_deck", "Token Triumph")
+            first_discovery = CrossDeckParticipantDiscoveryHostBindingV1(
+                member_key,
+                0,
+                family_id,
+                "rev3_left_family",
+                first_host,
+                (map_ref,),
+            )
+            first_witness = HostRealizationWitnessV1(map_ref, deck_ref, osi_ref, (b2_ref,))
+            second_host = DiscoveryHostRefV1("rev3_deck", "Grave Danger")
+            second_discovery = CrossDeckParticipantDiscoveryHostBindingV1(
+                member_key,
+                1,
+                second_family_id,
+                "rev3_right_family",
+                second_host,
+                (second_map_ref,),
+            )
+            second_witness = HostRealizationWitnessV1(
+                second_map_ref, second_deck_ref, second_osi_ref, (second_b2_ref,)
+            )
+            first_realization = ParticipantHostRealizationV1(
+                member_key, 0, family_id, first_host, (first_witness,)
+            )
+            second_realization = ParticipantHostRealizationV1(
+                member_key, 1, second_family_id, second_host, (second_witness,)
+            )
+            return CrossDeckHostBindingClaimV1(
+                member_key,
+                (first_discovery, second_discovery),
+                (first_realization, second_realization),
+                "cross_host",
+            )
+
+        claim = claim_for(member)
+        second_claim = claim_for(second_member)
 
         roster_document = {
             "schema": "manafold.m2.5.c.reviewer-roster.v1",
@@ -1169,55 +1262,64 @@ class AuthorityV2DocumentTests(unittest.TestCase):
                 key=lambda binding: encode_canonical(binding.to_cbor()),
             )
         )
-        event_input = HostBindingAcceptanceEventInputV2(
-            "cross_deck_host_binding_claim_record_v1",
-            claim.identity().digest_bytes,
-            ReviewerRosterRefV1(roster_path, roster_binding.schema_or_null, roster_digest),
-            (ReviewerRoleBindingV1("alice", ("architecture_maintainer", "project_owner")),),
-            ReviewMode.SOLO_SEPARATE_SELF_REVIEW,
-            "cross-deck-host-binding-review-checklist.v1",
-            event_sources,
-            (
-                AcceptanceEvidenceRefV1(
-                    "docs/review/host-binding.md",
-                    hashlib.sha256(evidence_raw).digest(),
-                    ("whole_artifact", None),
+
+        def accepted_record(
+            claim_value: CrossDeckHostBindingClaimV1,
+        ) -> tuple[CrossDeckHostBindingClaimRecordV1, HostBindingSourceBindingV2]:
+            event_input = HostBindingAcceptanceEventInputV2(
+                "cross_deck_host_binding_claim_record_v1",
+                claim_value.identity().digest_bytes,
+                ReviewerRosterRefV1(roster_path, roster_binding.schema_or_null, roster_digest),
+                (ReviewerRoleBindingV1("alice", ("architecture_maintainer", "project_owner")),),
+                ReviewMode.SOLO_SEPARATE_SELF_REVIEW,
+                "cross-deck-host-binding-review-checklist.v1",
+                event_sources,
+                (
+                    AcceptanceEvidenceRefV1(
+                        "docs/review/host-binding.md",
+                        hashlib.sha256(evidence_raw).digest(),
+                        ("whole_artifact", None),
+                    ),
                 ),
-            ),
-        )
-        leaf = HostBindingAcceptanceEventLeafV2.from_input(event_input)
-        event_raw = (json.dumps(leaf.to_wire(), separators=(",", ":")) + "\n").encode("utf-8")
-        event_path = (
-            "sources/m2_5/authorities/review_acceptance_events/v2/"
-            + leaf.event_id.as_text().removeprefix("ae.v2/")
-            + ".json"
-        )
-        event_file = self.repo / Path(*event_path.split("/"))
-        event_file.parent.mkdir(parents=True, exist_ok=True)
-        event_file.write_bytes(event_raw)
-        record = CrossDeckHostBindingClaimRecordV1(
-            claim,
-            HostBindingAcceptanceEventRefV2(
-                event_path,
-                hashlib.sha256(event_raw).digest(),
-                leaf.event_id.as_text(),
-            ),
-        )
+            )
+            leaf = HostBindingAcceptanceEventLeafV2.from_input(event_input)
+            event_raw = (json.dumps(leaf.to_wire(), separators=(",", ":")) + "\n").encode("utf-8")
+            event_path = (
+                "sources/m2_5/authorities/review_acceptance_events/v2/"
+                + leaf.event_id.as_text().removeprefix("ae.v2/")
+                + ".json"
+            )
+            event_file = self.repo / Path(*event_path.split("/"))
+            event_file.parent.mkdir(parents=True, exist_ok=True)
+            event_file.write_bytes(event_raw)
+            return (
+                CrossDeckHostBindingClaimRecordV1(
+                    claim_value,
+                    HostBindingAcceptanceEventRefV2(
+                        event_path,
+                        hashlib.sha256(event_raw).digest(),
+                        leaf.event_id.as_text(),
+                    ),
+                ),
+                HostBindingSourceBindingV2(
+                    "acceptance_event_leaf_v2",
+                    event_path,
+                    "manafold.m2.5.c.review-acceptance-event.v2",
+                    hashlib.sha256(event_raw).digest(),
+                ),
+            )
+
+        record, event_binding = accepted_record(claim)
+        second_record, second_event_binding = accepted_record(second_claim)
         base_binding = HostBindingSourceBindingV2(
             "base_authority_v1",
             BASE_PATH,
             BASE_SCHEMA,
             hashlib.sha256((self.repo / Path(*BASE_PATH.split("/"))).read_bytes()).digest(),
         )
-        event_binding = HostBindingSourceBindingV2(
-            "acceptance_event_leaf_v2",
-            event_path,
-            "manafold.m2.5.c.review-acceptance-event.v2",
-            hashlib.sha256(event_raw).digest(),
-        )
         root_sources = tuple(
             sorted(
-                (base_binding, event_binding, *event_sources),
+                (base_binding, event_binding, second_event_binding, *event_sources),
                 key=lambda binding: encode_canonical(binding.to_cbor()),
             )
         )
@@ -1225,7 +1327,10 @@ class AuthorityV2DocumentTests(unittest.TestCase):
             "schema": HOST_BINDING_AUTHORITY_SCHEMA_V2,
             "base_authority_v1_binding": base_binding.to_wire(),
             "source_bindings": [binding.to_wire() for binding in root_sources],
-            "cross_deck_host_binding_claim_records": [record.to_wire()],
+            "cross_deck_host_binding_claim_records": [
+                record.to_wire(),
+                second_record.to_wire(),
+            ],
             "cross_deck_host_binding_claim_supersession_records": [],
             "application_host_bindings": [],
         }
@@ -1234,7 +1339,108 @@ class AuthorityV2DocumentTests(unittest.TestCase):
         result = validator.validate(document)
 
         self.assertTrue(result.valid)
-        self.assertEqual(result.counts["cross_deck_host_binding_claim_records"], 1)
+        self.assertEqual(result.counts["cross_deck_host_binding_claim_records"], 2)
+
+        supersession_event_sources = tuple(
+            binding
+            for binding in event_sources
+            if binding.artifact_role
+            in {
+                "declared_model",
+                "reviewer_roster_leaf",
+                "b2_catalog",
+                "b2_classifications",
+                "b2_closure",
+            }
+        )
+        placeholder_event_id = "ae.v2/" + "00" * 32
+        placeholder_event_path = (
+            "sources/m2_5/authorities/review_acceptance_events/v2/" + "00" * 32 + ".json"
+        )
+        placeholder_event_ref = HostBindingAcceptanceEventRefV2(
+            placeholder_event_path,
+            bytes(32),
+            placeholder_event_id,
+        )
+        provisional_supersession = CrossDeckHostBindingClaimSupersessionV1(
+            record.record_identity(),
+            None,
+            "authority_revocation",
+            (b2_ref,),
+            placeholder_event_ref,
+        )
+        supersession_event_input = HostBindingAcceptanceEventInputV2(
+            "cross_deck_host_binding_claim_supersession_v1",
+            provisional_supersession.identity().digest_bytes,
+            ReviewerRosterRefV1(roster_path, roster_binding.schema_or_null, roster_digest),
+            (ReviewerRoleBindingV1("alice", ("architecture_maintainer", "project_owner")),),
+            ReviewMode.SOLO_SEPARATE_SELF_REVIEW,
+            "cross-deck-host-binding-review-checklist.v1",
+            supersession_event_sources,
+            (
+                AcceptanceEvidenceRefV1(
+                    "docs/review/host-binding.md",
+                    hashlib.sha256(evidence_raw).digest(),
+                    ("whole_artifact", None),
+                ),
+            ),
+        )
+        supersession_leaf = HostBindingAcceptanceEventLeafV2.from_input(supersession_event_input)
+        supersession_event_raw = (
+            json.dumps(supersession_leaf.to_wire(), separators=(",", ":")) + "\n"
+        ).encode("utf-8")
+        supersession_event_path = (
+            "sources/m2_5/authorities/review_acceptance_events/v2/"
+            + supersession_leaf.event_id.as_text().removeprefix("ae.v2/")
+            + ".json"
+        )
+        supersession_event_file = self.repo / Path(*supersession_event_path.split("/"))
+        supersession_event_file.parent.mkdir(parents=True, exist_ok=True)
+        supersession_event_file.write_bytes(supersession_event_raw)
+        supersession_event_ref = HostBindingAcceptanceEventRefV2(
+            supersession_event_path,
+            hashlib.sha256(supersession_event_raw).digest(),
+            supersession_leaf.event_id.as_text(),
+        )
+        supersession = CrossDeckHostBindingClaimSupersessionV1(
+            record.record_identity(),
+            None,
+            "authority_revocation",
+            (b2_ref,),
+            supersession_event_ref,
+        )
+        self.assertEqual(supersession.identity(), provisional_supersession.identity())
+        supersession_event_binding = HostBindingSourceBindingV2(
+            "acceptance_event_leaf_v2",
+            supersession_event_path,
+            "manafold.m2.5.c.review-acceptance-event.v2",
+            hashlib.sha256(supersession_event_raw).digest(),
+        )
+        root_source_by_bytes = {
+            encode_canonical(binding.to_cbor()): binding
+            for binding in (base_binding, event_binding, supersession_event_binding, *event_sources)
+        }
+        supersession_document = {
+            "schema": HOST_BINDING_AUTHORITY_SCHEMA_V2,
+            "base_authority_v1_binding": base_binding.to_wire(),
+            "source_bindings": [
+                binding.to_wire()
+                for binding in sorted(
+                    root_source_by_bytes.values(),
+                    key=lambda binding: encode_canonical(binding.to_cbor()),
+                )
+            ],
+            "cross_deck_host_binding_claim_records": [record.to_wire()],
+            "cross_deck_host_binding_claim_supersession_records": [supersession.to_wire()],
+            "application_host_bindings": [],
+        }
+        supersession_result = validator.validate(supersession_document)
+        self.assertTrue(supersession_result.valid)
+        self.assertEqual(supersession_result.counts["cross_deck_host_binding_claim_records"], 1)
+        self.assertEqual(
+            supersession_result.counts["cross_deck_host_binding_claim_supersession_records"],
+            1,
+        )
 
         missing_candidate_binding = dict(document)
         missing_candidate_binding["source_bindings"] = [
