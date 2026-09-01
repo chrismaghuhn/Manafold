@@ -545,6 +545,24 @@ class AuthorityV2DocumentTests(unittest.TestCase):
                 {encode_canonical(binding.to_cbor()) for binding in expected_bindings},
             )
 
+        missing_closure_evidence = HostBindingEvidenceRefV2(
+            "b2_catalog",
+            b2_source_bindings["b2_catalog"].path,
+            b2_source_bindings["b2_catalog"].schema_or_null,
+            b2_source_bindings["b2_catalog"].raw_sha256,
+            ("json_pointer", "/families/0"),
+        )
+        with self.assertRaises(AuthorityV2ValidationError):
+            AuthorityV2Validator._expected_acceptance_sources(
+                event,
+                model_binding,
+                (missing_closure_evidence,),
+                None,
+                available_b2_bindings={
+                    "b2_catalog": b2_source_bindings["b2_catalog"],
+                },
+            )
+
     def test_content_addressed_acceptance_event_roles_may_repeat(self) -> None:
         schema = "manafold.m2.5.c.review-acceptance-event.v2"
         bindings = (
@@ -1341,106 +1359,139 @@ class AuthorityV2DocumentTests(unittest.TestCase):
         self.assertTrue(result.valid)
         self.assertEqual(result.counts["cross_deck_host_binding_claim_records"], 2)
 
-        supersession_event_sources = tuple(
-            binding
-            for binding in event_sources
-            if binding.artifact_role
-            in {
-                "declared_model",
-                "reviewer_roster_leaf",
+        b2_evidence_by_role = {
+            "b2_classifications": b2_ref,
+            "b2_catalog": HostBindingEvidenceRefV2(
                 "b2_catalog",
-                "b2_classifications",
-                "b2_closure",
-            }
-        )
-        placeholder_event_id = "ae.v2/" + "00" * 32
-        placeholder_event_path = (
-            "sources/m2_5/authorities/review_acceptance_events/v2/" + "00" * 32 + ".json"
-        )
-        placeholder_event_ref = HostBindingAcceptanceEventRefV2(
-            placeholder_event_path,
-            bytes(32),
-            placeholder_event_id,
-        )
-        provisional_supersession = CrossDeckHostBindingClaimSupersessionV1(
-            record.record_identity(),
-            None,
-            "authority_revocation",
-            (b2_ref,),
-            placeholder_event_ref,
-        )
-        supersession_event_input = HostBindingAcceptanceEventInputV2(
-            "cross_deck_host_binding_claim_supersession_v1",
-            provisional_supersession.identity().digest_bytes,
-            ReviewerRosterRefV1(roster_path, roster_binding.schema_or_null, roster_digest),
-            (ReviewerRoleBindingV1("alice", ("architecture_maintainer", "project_owner")),),
-            ReviewMode.SOLO_SEPARATE_SELF_REVIEW,
-            "cross-deck-host-binding-review-checklist.v1",
-            supersession_event_sources,
-            (
-                AcceptanceEvidenceRefV1(
-                    "docs/review/host-binding.md",
-                    hashlib.sha256(evidence_raw).digest(),
-                    ("whole_artifact", None),
-                ),
+                b2_catalog_path,
+                "manafold.m2.5.b2.requirement-family-catalog.v1",
+                hashlib.sha256(
+                    (self.repo / Path(*b2_catalog_path.split("/"))).read_bytes()
+                ).digest(),
+                ("whole_artifact", None),
             ),
-        )
-        supersession_leaf = HostBindingAcceptanceEventLeafV2.from_input(supersession_event_input)
-        supersession_event_raw = (
-            json.dumps(supersession_leaf.to_wire(), separators=(",", ":")) + "\n"
-        ).encode("utf-8")
-        supersession_event_path = (
-            "sources/m2_5/authorities/review_acceptance_events/v2/"
-            + supersession_leaf.event_id.as_text().removeprefix("ae.v2/")
-            + ".json"
-        )
-        supersession_event_file = self.repo / Path(*supersession_event_path.split("/"))
-        supersession_event_file.parent.mkdir(parents=True, exist_ok=True)
-        supersession_event_file.write_bytes(supersession_event_raw)
-        supersession_event_ref = HostBindingAcceptanceEventRefV2(
-            supersession_event_path,
-            hashlib.sha256(supersession_event_raw).digest(),
-            supersession_leaf.event_id.as_text(),
-        )
-        supersession = CrossDeckHostBindingClaimSupersessionV1(
-            record.record_identity(),
-            None,
-            "authority_revocation",
-            (b2_ref,),
-            supersession_event_ref,
-        )
-        self.assertEqual(supersession.identity(), provisional_supersession.identity())
-        supersession_event_binding = HostBindingSourceBindingV2(
-            "acceptance_event_leaf_v2",
-            supersession_event_path,
-            "manafold.m2.5.c.review-acceptance-event.v2",
-            hashlib.sha256(supersession_event_raw).digest(),
-        )
-        root_source_by_bytes = {
-            encode_canonical(binding.to_cbor()): binding
-            for binding in (base_binding, event_binding, supersession_event_binding, *event_sources)
+            "b2_closure": HostBindingEvidenceRefV2(
+                "b2_closure",
+                b2_closure_path,
+                "manafold.m2.5.b2.classification-closure.v1",
+                hashlib.sha256(
+                    (self.repo / Path(*b2_closure_path.split("/"))).read_bytes()
+                ).digest(),
+                ("whole_artifact", None),
+            ),
         }
-        supersession_document = {
-            "schema": HOST_BINDING_AUTHORITY_SCHEMA_V2,
-            "base_authority_v1_binding": base_binding.to_wire(),
-            "source_bindings": [
-                binding.to_wire()
-                for binding in sorted(
-                    root_source_by_bytes.values(),
-                    key=lambda binding: encode_canonical(binding.to_cbor()),
+
+        def validate_supersession_for_role(
+            artifact_role: str,
+            expected_b2_roles: set[str],
+        ) -> None:
+            evidence = b2_evidence_by_role[artifact_role]
+            source_roles = {"declared_model", "reviewer_roster_leaf"} | expected_b2_roles
+            supersession_event_sources = tuple(
+                binding for binding in event_sources if binding.artifact_role in source_roles
+            )
+            placeholder_event_id = "ae.v2/" + "00" * 32
+            placeholder_event_path = (
+                "sources/m2_5/authorities/review_acceptance_events/v2/" + "00" * 32 + ".json"
+            )
+            placeholder_event_ref = HostBindingAcceptanceEventRefV2(
+                placeholder_event_path,
+                bytes(32),
+                placeholder_event_id,
+            )
+            provisional_supersession = CrossDeckHostBindingClaimSupersessionV1(
+                record.record_identity(),
+                None,
+                "authority_revocation",
+                (evidence,),
+                placeholder_event_ref,
+            )
+            supersession_event_input = HostBindingAcceptanceEventInputV2(
+                "cross_deck_host_binding_claim_supersession_v1",
+                provisional_supersession.identity().digest_bytes,
+                ReviewerRosterRefV1(roster_path, roster_binding.schema_or_null, roster_digest),
+                (ReviewerRoleBindingV1("alice", ("architecture_maintainer", "project_owner")),),
+                ReviewMode.SOLO_SEPARATE_SELF_REVIEW,
+                "cross-deck-host-binding-review-checklist.v1",
+                supersession_event_sources,
+                (
+                    AcceptanceEvidenceRefV1(
+                        "docs/review/host-binding.md",
+                        hashlib.sha256(evidence_raw).digest(),
+                        ("whole_artifact", None),
+                    ),
+                ),
+            )
+            supersession_leaf = HostBindingAcceptanceEventLeafV2.from_input(
+                supersession_event_input
+            )
+            supersession_event_raw = (
+                json.dumps(supersession_leaf.to_wire(), separators=(",", ":")) + "\n"
+            ).encode("utf-8")
+            supersession_event_path = (
+                "sources/m2_5/authorities/review_acceptance_events/v2/"
+                + supersession_leaf.event_id.as_text().removeprefix("ae.v2/")
+                + ".json"
+            )
+            supersession_event_file = self.repo / Path(*supersession_event_path.split("/"))
+            supersession_event_file.parent.mkdir(parents=True, exist_ok=True)
+            supersession_event_file.write_bytes(supersession_event_raw)
+            supersession_event_ref = HostBindingAcceptanceEventRefV2(
+                supersession_event_path,
+                hashlib.sha256(supersession_event_raw).digest(),
+                supersession_leaf.event_id.as_text(),
+            )
+            supersession = CrossDeckHostBindingClaimSupersessionV1(
+                record.record_identity(),
+                None,
+                "authority_revocation",
+                (evidence,),
+                supersession_event_ref,
+            )
+            self.assertEqual(supersession.identity(), provisional_supersession.identity())
+            supersession_event_binding = HostBindingSourceBindingV2(
+                "acceptance_event_leaf_v2",
+                supersession_event_path,
+                "manafold.m2.5.c.review-acceptance-event.v2",
+                hashlib.sha256(supersession_event_raw).digest(),
+            )
+            root_source_by_bytes = {
+                encode_canonical(binding.to_cbor()): binding
+                for binding in (
+                    base_binding,
+                    event_binding,
+                    supersession_event_binding,
+                    *event_sources,
                 )
-            ],
-            "cross_deck_host_binding_claim_records": [record.to_wire()],
-            "cross_deck_host_binding_claim_supersession_records": [supersession.to_wire()],
-            "application_host_bindings": [],
-        }
-        supersession_result = validator.validate(supersession_document)
-        self.assertTrue(supersession_result.valid)
-        self.assertEqual(supersession_result.counts["cross_deck_host_binding_claim_records"], 1)
-        self.assertEqual(
-            supersession_result.counts["cross_deck_host_binding_claim_supersession_records"],
-            1,
-        )
+            }
+            supersession_document = {
+                "schema": HOST_BINDING_AUTHORITY_SCHEMA_V2,
+                "base_authority_v1_binding": base_binding.to_wire(),
+                "source_bindings": [
+                    binding.to_wire()
+                    for binding in sorted(
+                        root_source_by_bytes.values(),
+                        key=lambda binding: encode_canonical(binding.to_cbor()),
+                    )
+                ],
+                "cross_deck_host_binding_claim_records": [record.to_wire()],
+                "cross_deck_host_binding_claim_supersession_records": [supersession.to_wire()],
+                "application_host_bindings": [],
+            }
+            supersession_result = validator.validate(supersession_document)
+            self.assertTrue(supersession_result.valid)
+            self.assertEqual(supersession_result.counts["cross_deck_host_binding_claim_records"], 1)
+            self.assertEqual(
+                supersession_result.counts["cross_deck_host_binding_claim_supersession_records"],
+                1,
+            )
+
+        for artifact_role, expected_b2_roles in (
+            ("b2_classifications", {"b2_catalog", "b2_classifications", "b2_closure"}),
+            ("b2_catalog", {"b2_catalog", "b2_closure"}),
+            ("b2_closure", {"b2_closure"}),
+        ):
+            validate_supersession_for_role(artifact_role, expected_b2_roles)
 
         missing_candidate_binding = dict(document)
         missing_candidate_binding["source_bindings"] = [
