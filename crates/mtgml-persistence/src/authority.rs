@@ -28,6 +28,8 @@ pub const ACCEPTANCE_EVENT_SCHEMA_V3: &str = "manafold.m2.5.c.review-acceptance-
 pub const ACCEPTANCE_EVENT_INPUT_SCHEMA_V3: &str =
     "manafold.m2.5.c.review-acceptance-event-input.v3";
 pub const ACCEPTANCE_CHECKLIST_V2: &str = "interaction-authority-review-checklist.v2";
+pub const CANDIDATE_IDENTITY_DOMAIN: &str = "manafold.m2.5.c.candidate-identity.v1";
+pub const CANDIDATE_IDENTITY_INPUT_SCHEMA: &str = "manafold.m2.5.c.candidate-identity-input.v1";
 
 const RAW_REV3_PATHS: [&str; 4] = [
     "derived/Pair_Interaction_Census_REV3.csv",
@@ -3236,6 +3238,12 @@ impl ContextApplicationMemberV2 {
         if candidate_id.is_empty() || source_instance_id.is_empty() {
             return Err(PersistenceDecodeErrorV1::SemanticValidation);
         }
+        if candidate_identity_digest_reference.semantic_domain != CANDIDATE_IDENTITY_DOMAIN
+            || candidate_identity_digest_reference.input_schema_id
+                != CANDIDATE_IDENTITY_INPUT_SCHEMA
+        {
+            return Err(PersistenceDecodeErrorV1::SchemaIdentityMismatch);
+        }
         validate_digest_reference_v1(&digest_reference_to_cbor(
             &candidate_identity_digest_reference,
         ))?;
@@ -3916,12 +3924,11 @@ impl ReviewAcceptanceEventInputV3 {
         {
             return Err(PersistenceDecodeErrorV1::SchemaIdentityMismatch);
         }
-        if reviewer_role_bindings
-            .windows(2)
-            .any(|pair| pair[0].reviewer_id >= pair[1].reviewer_id)
-        {
-            return Err(PersistenceDecodeErrorV1::NoncanonicalOrder);
-        }
+        let reviewer_values: Vec<cbor::Value> = reviewer_role_bindings
+            .iter()
+            .map(ReviewerRoleBindingV1::to_cbor)
+            .collect();
+        validate_canonical_order(&reviewer_values)?;
         let source_values: Vec<cbor::Value> = source_binding_digests
             .iter()
             .map(ContextAuthoritySourceBindingV2::to_cbor)
@@ -4303,6 +4310,19 @@ fn validate_digest_reference_v1(value: &cbor::Value) -> Result<(), PersistenceDe
     value_bytes32(&fields[5])
 }
 
+fn validate_candidate_identity_digest_reference_v1(
+    value: &cbor::Value,
+) -> Result<(), PersistenceDecodeErrorV1> {
+    validate_digest_reference_v1(value)?;
+    let fields = value_array(value, Some(6))?;
+    if value_text(&fields[2])? != CANDIDATE_IDENTITY_DOMAIN
+        || value_text(&fields[4])? != CANDIDATE_IDENTITY_INPUT_SCHEMA
+    {
+        return Err(PersistenceDecodeErrorV1::SchemaIdentityMismatch);
+    }
+    Ok(())
+}
+
 fn validate_context_slot_bridge_attestation(
     value: &cbor::Value,
     expected_slot: &str,
@@ -4356,7 +4376,7 @@ fn validate_context_application_member_v2(
 ) -> Result<(), PersistenceDecodeErrorV1> {
     let fields = value_array(value, Some(8))?;
     value_text(&fields[0])?;
-    validate_digest_reference_v1(&fields[1])?;
+    validate_candidate_identity_digest_reference_v1(&fields[1])?;
     value_text(&fields[2])?;
     validate_candidate_universe_binding(&fields[3])?;
     validate_context_binding(&fields[4])?;
@@ -4562,7 +4582,9 @@ fn validate_acceptance_subject_v3_input(
             return Err(PersistenceDecodeErrorV1::SchemaIdentityMismatch);
         }
         if matches!(&payload[3], cbor::Value::Null) {
-            if !matches!(&payload[5], cbor::Value::Null) {
+            if !matches!(&payload[5], cbor::Value::Null)
+                || value_text(&payload[6])? != SupersessionReason::AuthorityRevocation.as_str()
+            {
                 return Err(PersistenceDecodeErrorV1::SchemaIdentityMismatch);
             }
         } else if value_text(&payload[5])? != "context_application_v2_record"
@@ -4608,15 +4630,12 @@ fn validate_acceptance_event_v3_input(
     if reviewer_bindings.is_empty() {
         return Err(PersistenceDecodeErrorV1::SemanticValidation);
     }
-    let mut reviewer_ids = Vec::with_capacity(reviewer_bindings.len());
     for binding in reviewer_bindings {
         let binding_fields = value_array(binding, Some(2))?;
-        reviewer_ids.push(value_text(&binding_fields[0])?);
+        value_text(&binding_fields[0])?;
         validate_reviewer_roles(&binding_fields[1])?;
     }
-    if reviewer_ids.windows(2).any(|pair| pair[0] >= pair[1]) {
-        return Err(PersistenceDecodeErrorV1::NoncanonicalOrder);
-    }
+    validate_canonical_order(reviewer_bindings)?;
     enum_text(&fields[6], &["multi_reviewer", "solo_separate_self_review"])?;
     if value_text(&fields[7])? != ACCEPTANCE_CHECKLIST_V2 {
         return Err(PersistenceDecodeErrorV1::SchemaIdentityMismatch);

@@ -29,8 +29,8 @@
   ],
   "context_application_v2_records": [
     {
-      "record_id": "cpar.v2/6ba2c25d6a0ff7ff6eeda9587cbb0255c2de4a08789706c3c252712ea92f3e40",
-      "application_id": "cpa.v2/c8bbf6b00bd8de322582f15a8c40b78116c262efc3d070be12e2d9cf7f2d9351",
+      "record_id": "cpar.v2/bb810eeead6a65d8c95d13ec224db848c0ff4f54bef7e333a33d2cb10f2d3a2f",
+      "application_id": "cpa.v2/62eb15a0d78af3294bcec1f3946f8edd12ecddf5c63c5aa307e9953d8f79bdfe",
       "theorem_record_id": "cpr.v1/0000000000000000000000000000000000000000000000000000000000000000",
       "members": [
         {
@@ -38,9 +38,9 @@
           "candidate_identity": {
             "envelope_id": "mtgml.digest-envelope.v1",
             "algorithm_id": "sha-256",
-            "semantic_domain": "d",
+            "semantic_domain": "manafold.m2.5.c.candidate-identity.v1",
             "payload_codec_id": "mtgml.canonical-cbor.v1",
-            "input_schema_id": "i",
+            "input_schema_id": "manafold.m2.5.c.candidate-identity-input.v1",
             "digest_hex": "0000000000000000000000000000000000000000000000000000000000000000"
           },
           "source_instance_id": "s",

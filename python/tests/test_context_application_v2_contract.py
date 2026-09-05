@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 import json
 import unittest
 from dataclasses import replace
@@ -60,9 +61,20 @@ def digest_reference() -> DigestReferenceV1:
     return DigestReferenceV1(
         envelope_id=DIGEST_ENVELOPE_ID,
         algorithm_id=SHA256_ID,
-        semantic_domain="d",
+        semantic_domain="manafold.m2.5.c.candidate-identity.v1",
         payload_codec_id=CANONICAL_CBOR_ID,
-        input_schema_id="i",
+        input_schema_id="manafold.m2.5.c.candidate-identity-input.v1",
+        digest_bytes=ZERO,
+    )
+
+
+def subject_digest_reference() -> DigestReferenceV1:
+    return DigestReferenceV1(
+        envelope_id=DIGEST_ENVELOPE_ID,
+        algorithm_id=SHA256_ID,
+        semantic_domain=ACCEPTANCE_SUBJECT_INPUT_SCHEMA_V3.replace("-input", ""),
+        payload_codec_id=CANONICAL_CBOR_ID,
+        input_schema_id=ACCEPTANCE_SUBJECT_INPUT_SCHEMA_V3,
         digest_bytes=ZERO,
     )
 
@@ -192,9 +204,9 @@ class ContextApplicationV2ContractTests(unittest.TestCase):
             [
                 DIGEST_ENVELOPE_ID,
                 SHA256_ID,
-                "d",
+                "manafold.m2.5.c.candidate-identity.v1",
                 CANONICAL_CBOR_ID,
-                "i",
+                "manafold.m2.5.c.candidate-identity-input.v1",
                 ZERO,
             ],
         )
@@ -274,7 +286,9 @@ class ContextApplicationV2ContractTests(unittest.TestCase):
         with self.assertRaises(AuthorityContractError):
             ContextApplicationMemberV2(
                 candidate_id="synthetic-candidate",
-                candidate_identity_digest_reference=ZERO,  # type: ignore[arg-type]
+                candidate_identity_digest_reference=replace(
+                    digest_reference(), semantic_domain="not-candidate-identity"
+                ),
                 source_instance_id="si.v1/synthetic/0",
                 candidate_universe_binding=member().candidate_universe_binding,
                 context_binding_v1=member().context_binding_v1,
@@ -311,6 +325,104 @@ class ContextApplicationV2ContractTests(unittest.TestCase):
         with self.assertRaises(AuthorityContractError):
             ContextApplicationV2InputV1(ZERO, (member(), member()))
 
+    def test_v3_revocation_subject_is_valid_and_requires_null_replacement(self) -> None:
+        revocation_payload = [
+            AcceptanceSubjectKindV3.CONTEXT_APPLICATION_V2_SUPERSESSION_RECORD.value,
+            ZERO,
+            ZERO,
+            None,
+            "context_application_v2_record",
+            None,
+            "authority_revocation",
+            [evidence().to_cbor()],
+        ]
+        subject = AcceptanceSubjectPayloadV3(
+            subject_kind=AcceptanceSubjectKindV3.CONTEXT_APPLICATION_V2_SUPERSESSION_RECORD,
+            subject_payload=revocation_payload,
+        )
+        self.assertTrue(subject.identity().as_text().startswith("asp.v3/"))
+
+        invalid_payload = list(revocation_payload)
+        invalid_payload[6] = "semantic_correction"
+        with self.assertRaises(AuthorityContractError):
+            AcceptanceSubjectPayloadV3(
+                subject_kind=AcceptanceSubjectKindV3.CONTEXT_APPLICATION_V2_SUPERSESSION_RECORD,
+                subject_payload=invalid_payload,
+            ).identity()
+
+    def test_v3_reviewer_bindings_use_full_canonical_cbor_order(self) -> None:
+        roster_ref = ReviewerRosterRefV1(
+            path="sources/m2_5/authorities/reviewer_rosters/v1/" + "00" * 32 + ".json",
+            schema=REVIEWER_ROSTER_SCHEMA_V1,
+            raw_sha256=ZERO,
+        )
+        base = ContextAuthoritySourceBindingV2(
+            artifact_role="base_authority_v1",
+            path="sources/m2_5/authorities/interaction_review_authority.v1.json",
+            schema="manafold.m2.5.c.interaction-review-authority.v1",
+            raw_sha256=ZERO,
+        )
+        roster = ContextAuthoritySourceBindingV2(
+            artifact_role="reviewer_roster_leaf",
+            path=roster_ref.path,
+            schema=roster_ref.schema,
+            raw_sha256=ZERO,
+        )
+        event = ReviewAcceptanceEventInputV3(
+            subject_kind=AcceptanceSubjectKindV3.CONTEXT_APPLICATION_V2_RECORD,
+            subject_payload_digest_reference=subject_digest_reference(),
+            reviewer_roster_ref=roster_ref,
+            reviewer_role_bindings=(
+                ReviewerRoleBindingV1(
+                    reviewer_id="b",
+                    roles=("architecture_maintainer", "rules_authority_maintainer"),
+                ),
+                ReviewerRoleBindingV1(
+                    reviewer_id="aa",
+                    roles=("architecture_maintainer", "rules_authority_maintainer"),
+                ),
+            ),
+            review_mode=ReviewMode.MULTI_REVIEWER,
+            source_binding_digests=tuple(
+                sorted((base, roster), key=lambda item: encode_canonical(item.to_cbor()))
+            ),
+            review_evidence_refs=(
+                AcceptanceEvidenceRefV1(
+                    path="a",
+                    raw_sha256=ZERO,
+                    locator=("whole_artifact", None),
+                ),
+            ),
+        )
+        self.assertEqual(len(event.identity().digest_bytes), 32)
+
+    def test_shared_matrix_covers_both_v3_acceptance_subject_kinds(self) -> None:
+        matrix = json.loads(
+            (
+                ROOT
+                / "conformance/fixtures/authority/"
+                / "context_application_v2_identity_golden_matrix.v1.json"
+            ).read_text(encoding="utf-8")
+        )
+        subject_entries = [
+            entry for entry in matrix["identities"] if entry["kind"] == "acceptance_subject_v3"
+        ]
+        variants = {entry["subject_kind"] for entry in subject_entries}
+        self.assertEqual(
+            variants,
+            {
+                "context_application_v2_record",
+                "context_application_v2_supersession_record",
+            },
+        )
+        for entry in subject_entries:
+            with self.subTest(subject_kind=entry["subject_kind"]):
+                identity = compute_authority_identity(
+                    AuthorityIdentityKind.ACCEPTANCE_SUBJECT_V3,
+                    decode_canonical(bytes.fromhex(entry["payload_cbor_hex"])),
+                )
+                self.assertEqual(identity.as_text(), entry["identity"])
+
     def test_new_wire_schema_fixture_is_closed(self) -> None:
         schema = json.loads(
             (ROOT / "schemas/context-application-authority.v2.schema.json").read_text(
@@ -327,6 +439,13 @@ class ContextApplicationV2ContractTests(unittest.TestCase):
         invalid["unexpected"] = True
         with self.assertRaises(jsonschema.ValidationError):
             jsonschema.Draft202012Validator(schema).validate(invalid)
+
+        invalid_candidate = copy.deepcopy(fixture)
+        invalid_candidate["context_application_v2_records"][0]["members"][0]["candidate_identity"][
+            "semantic_domain"
+        ] = "not-candidate-identity"
+        with self.assertRaises(jsonschema.ValidationError):
+            jsonschema.Draft202012Validator(schema).validate(invalid_candidate)
 
         event_schema = json.loads(
             (ROOT / "schemas/review-acceptance-event.v3.schema.json").read_text(encoding="utf-8")

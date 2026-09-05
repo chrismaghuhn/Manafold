@@ -321,7 +321,7 @@ fn context_application_v2_identity_vectors_match_shared_matrix() {
     ))
     .unwrap();
     let identities = matrix["identities"].as_array().unwrap();
-    assert_eq!(identities.len(), 6);
+    assert_eq!(identities.len(), 7);
     for entry in identities {
         let kind = match entry["kind"].as_str().unwrap() {
             "context_application_v2" => AuthorityIdentityKind::ContextApplicationV2,
@@ -400,14 +400,47 @@ fn context_application_v2_rust_dtos_emit_the_shared_member_payload() {
     })
     .collect();
     let bridge = authority::ContextMemberBridgeAttestationV2::new(context, temporal).unwrap();
+    let invalid_candidate_identity = authority::DigestReferenceV1 {
+        envelope_version: envelope::DIGEST_ENVELOPE_ID.to_owned(),
+        algorithm_id: envelope::SHA256_ID.to_owned(),
+        semantic_domain: "d".to_owned(),
+        payload_codec_id: envelope::CANONICAL_CBOR_ID.to_owned(),
+        input_schema_id: "i".to_owned(),
+        digest_bytes: [0; 32],
+    };
+    assert!(authority::ContextApplicationMemberV2::new(
+        "c",
+        invalid_candidate_identity,
+        "s",
+        cbor::Value::Array(vec![
+            cbor::Value::Text("u".to_owned()),
+            cbor::Value::Text("manafold.m2.5.c.interaction-candidate-universe.v2".to_owned()),
+            cbor::Value::Bytes(vec![0; 32]),
+        ]),
+        cbor::Value::Array(vec![
+            cbor::Value::Text("binary".to_owned()),
+            cbor::Value::Text("symmetric".to_owned()),
+            cbor::Value::Array(vec![cbor::Value::Array(vec![
+                cbor::Value::Unsigned(0),
+                cbor::Value::Text("ordered_participant".to_owned()),
+                cbor::Value::Text("card".to_owned()),
+                cbor::Value::Text("draw".to_owned()),
+            ])]),
+            cbor::Value::Text("same_host".to_owned()),
+        ]),
+        cbor::Value::Array(Vec::new()),
+        vec![evidence.clone()],
+        bridge.clone(),
+    )
+    .is_err());
     let member = authority::ContextApplicationMemberV2::new(
         "c",
         authority::DigestReferenceV1 {
             envelope_version: envelope::DIGEST_ENVELOPE_ID.to_owned(),
             algorithm_id: envelope::SHA256_ID.to_owned(),
-            semantic_domain: "d".to_owned(),
+            semantic_domain: "manafold.m2.5.c.candidate-identity.v1".to_owned(),
             payload_codec_id: envelope::CANONICAL_CBOR_ID.to_owned(),
-            input_schema_id: "i".to_owned(),
+            input_schema_id: "manafold.m2.5.c.candidate-identity-input.v1".to_owned(),
             digest_bytes: [0; 32],
         },
         "s",
@@ -613,6 +646,129 @@ fn context_application_v2_preimage_dtos_cover_all_remaining_families() {
         host_fields[0],
         cbor::Value::Text("context_application".to_owned())
     );
+}
+
+#[test]
+fn context_application_v2_v3_subject_and_reviewer_order_contracts_are_closed() {
+    let evidence = authority::EvidenceRefV1::new(
+        "model",
+        "a",
+        authority::EvidenceLocatorV1::WholeArtifact,
+        [0; 32],
+    )
+    .unwrap();
+    let revocation_supersession = authority::ContextApplicationV2SupersessionInputV2::new(
+        [0; 32],
+        None,
+        None,
+        authority::SupersessionReason::AuthorityRevocation,
+        vec![evidence.clone()],
+    )
+    .unwrap();
+    let revocation_supersession_id = revocation_supersession.identity().unwrap().digest_bytes();
+    let revocation_subject = authority::AcceptanceSubjectPayloadV3::new(
+        authority::AcceptanceSubjectKindV3::ContextApplicationV2SupersessionRecord,
+        cbor::Value::Array(vec![
+            cbor::Value::Text("context_application_v2_supersession_record".to_owned()),
+            cbor::Value::Bytes(revocation_supersession_id.to_vec()),
+            cbor::Value::Bytes(vec![0; 32]),
+            cbor::Value::Null,
+            cbor::Value::Text("context_application_v2_record".to_owned()),
+            cbor::Value::Null,
+            cbor::Value::Text("authority_revocation".to_owned()),
+            cbor::Value::Array(vec![evidence.to_cbor()]),
+        ]),
+    )
+    .unwrap();
+    let matrix: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../conformance/fixtures/authority/context_application_v2_identity_golden_matrix.v1.json"
+    ))
+    .unwrap();
+    let revocation_entry = matrix["identities"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|entry| {
+            entry["kind"] == serde_json::json!("acceptance_subject_v3")
+                && entry["subject_kind"]
+                    == serde_json::json!("context_application_v2_supersession_record")
+        })
+        .unwrap();
+    let revocation_identity = revocation_subject.identity().unwrap();
+    assert_eq!(
+        revocation_identity.as_text(),
+        revocation_entry["identity"].as_str().unwrap()
+    );
+
+    let invalid_subject = authority::AcceptanceSubjectPayloadV3::new(
+        authority::AcceptanceSubjectKindV3::ContextApplicationV2SupersessionRecord,
+        cbor::Value::Array(vec![
+            cbor::Value::Text("context_application_v2_supersession_record".to_owned()),
+            cbor::Value::Bytes(vec![0; 32]),
+            cbor::Value::Bytes(vec![0; 32]),
+            cbor::Value::Null,
+            cbor::Value::Text("context_application_v2_record".to_owned()),
+            cbor::Value::Null,
+            cbor::Value::Text("semantic_correction".to_owned()),
+            cbor::Value::Array(vec![authority::EvidenceRefV1::new(
+                "model",
+                "a",
+                authority::EvidenceLocatorV1::WholeArtifact,
+                [0; 32],
+            )
+            .unwrap()
+            .to_cbor()]),
+        ]),
+    )
+    .unwrap();
+    assert!(invalid_subject.identity().is_err());
+
+    let roster_ref = authority::ReviewerRosterRefV1::new(
+        "sources/m2_5/authorities/reviewer_rosters/v1/".to_owned() + &"00".repeat(32) + ".json",
+        authority::REVIEWER_ROSTER_SCHEMA_V1.to_owned(),
+        [0; 32],
+    )
+    .unwrap();
+    let base = authority::ContextAuthoritySourceBindingV2::new(
+        "base_authority_v1",
+        "sources/m2_5/authorities/interaction_review_authority.v1.json",
+        Some("manafold.m2.5.c.interaction-review-authority.v1"),
+        [0; 32],
+    )
+    .unwrap();
+    let roster = authority::ContextAuthoritySourceBindingV2::new(
+        "reviewer_roster_leaf",
+        roster_ref.path.clone(),
+        Some(authority::REVIEWER_ROSTER_SCHEMA_V1),
+        [0; 32],
+    )
+    .unwrap();
+    let mut source_bindings = vec![base, roster];
+    source_bindings.sort_by_key(|binding| {
+        cbor::encode_canonical(&binding.to_cbor()).expect("source binding is encodable")
+    });
+    let roles = vec![
+        "architecture_maintainer".to_owned(),
+        "rules_authority_maintainer".to_owned(),
+    ];
+    let event = authority::ReviewAcceptanceEventInputV3::new(
+        authority::AcceptanceSubjectKindV3::ContextApplicationV2SupersessionRecord,
+        revocation_subject.identity().unwrap().as_digest_reference(),
+        roster_ref,
+        vec![
+            authority::ReviewerRoleBindingV1::new("b", roles.clone()).unwrap(),
+            authority::ReviewerRoleBindingV1::new("aa", roles).unwrap(),
+        ],
+        authority::ReviewMode::MultiReviewer,
+        source_bindings,
+        vec![authority::AcceptanceEvidenceRefV1::new(
+            "a",
+            [0; 32],
+            authority::EvidenceLocatorV1::WholeArtifact,
+        )
+        .unwrap()],
+    );
+    assert!(event.is_ok());
 }
 
 #[test]

@@ -45,6 +45,8 @@ ACCEPTANCE_SUBJECT_INPUT_SCHEMA_V3: Final = "manafold.m2.5.c.acceptance-subject-
 ACCEPTANCE_EVENT_SCHEMA_V3: Final = "manafold.m2.5.c.review-acceptance-event.v3"
 ACCEPTANCE_EVENT_INPUT_SCHEMA_V3: Final = "manafold.m2.5.c.review-acceptance-event-input.v3"
 ACCEPTANCE_CHECKLIST_V2: Final = "interaction-authority-review-checklist.v2"
+CANDIDATE_IDENTITY_DOMAIN: Final = "manafold.m2.5.c.candidate-identity.v1"
+CANDIDATE_IDENTITY_INPUT_SCHEMA: Final = "manafold.m2.5.c.candidate-identity-input.v1"
 
 _RAW_REV3_PATHS: Final = frozenset(
     {
@@ -2397,6 +2399,16 @@ class DigestReferenceV1:
         }
 
 
+def _validate_candidate_identity_reference(value: object) -> DigestReferenceV1:
+    if not isinstance(value, DigestReferenceV1):
+        raise AuthorityContractError("candidate identity must be a full DigestReferenceV1")
+    if value.semantic_domain != CANDIDATE_IDENTITY_DOMAIN:
+        raise AuthorityContractError("candidate identity has the wrong semantic domain")
+    if value.input_schema_id != CANDIDATE_IDENTITY_INPUT_SCHEMA:
+        raise AuthorityContractError("candidate identity has the wrong input schema")
+    return value
+
+
 def _identity_to_wire(identity: AuthorityIdentityV1) -> dict[str, object]:
     return DigestReferenceV1.from_identity(identity).to_wire()
 
@@ -2571,8 +2583,7 @@ class ContextApplicationMemberV2:
 
     def __post_init__(self) -> None:
         _text(self.candidate_id, "candidate ID")
-        if not isinstance(self.candidate_identity_digest_reference, DigestReferenceV1):
-            raise AuthorityContractError("candidate identity must be a full DigestReferenceV1")
+        _validate_candidate_identity_reference(self.candidate_identity_digest_reference)
         _text(self.source_instance_id, "source instance ID")
         _validate_candidate_universe_binding(self.candidate_universe_binding)
         _validate_context_binding(self.context_binding_v1)
@@ -2667,7 +2678,7 @@ def _validate_context_member_bridge_v2(value: object) -> None:
 def _validate_context_application_member_v2(value: object) -> None:
     fields = _array(value, "V2 context application member", 8)
     _text(fields[0], "V2 candidate ID")
-    DigestReferenceV1.from_cbor(fields[1])
+    _validate_candidate_identity_reference(DigestReferenceV1.from_cbor(fields[1]))
     _text(fields[2], "V2 source instance ID")
     _validate_candidate_universe_binding(fields[3])
     _validate_context_binding(fields[4])
@@ -3244,11 +3255,14 @@ def _validate_acceptance_subject_v3_input(values: list[object]) -> None:
         if payload[4] != "context_application_v2_record":
             _fail("V3 subject superseded kind is not closed")
         if payload[3] is None:
-            if payload[5] is not None:
-                _fail("V3 revocation subject replacement kind must be null")
+            if (
+                payload[5] is not None
+                or payload[6] != SupersessionReason.AUTHORITY_REVOCATION.value
+            ):
+                _fail("V3 revocation subject replacement fields are inconsistent")
         elif payload[5] != "context_application_v2_record":
             _fail("V3 subject replacement kind must match")
-        if payload[6] == SupersessionReason.AUTHORITY_REVOCATION.value:
+        elif payload[6] == SupersessionReason.AUTHORITY_REVOCATION.value:
             _fail("V3 revocation cannot carry a replacement")
         _enum(payload[6], tuple(reason.value for reason in SupersessionReason), "V3 subject reason")
         _validate_nonempty_evidence_refs(payload[7], "V3 subject supersession evidence")
@@ -3281,11 +3295,11 @@ class ReviewAcceptanceEventInputV3:
             for binding in self.reviewer_role_bindings
         ):
             raise AuthorityContractError("V3 reviewer role binding is not V1")
-        reviewer_ids = tuple(binding.reviewer_id for binding in self.reviewer_role_bindings)
-        if reviewer_ids != tuple(sorted(reviewer_ids)) or len(set(reviewer_ids)) != len(
-            reviewer_ids
-        ):
-            raise AuthorityContractError("V3 reviewer bindings must be sorted and duplicate-free")
+        _typed_canonical_items(
+            self.reviewer_role_bindings,
+            "V3 reviewer bindings",
+            allow_empty=False,
+        )
         if not self.source_binding_digests:
             raise AuthorityContractError("V3 acceptance requires source bindings")
         if any(
@@ -3350,12 +3364,7 @@ def _validate_acceptance_event_v3_input(values: list[object]) -> None:
     bindings = _array(values[5], "V3 reviewer role bindings")
     if not bindings:
         _fail("V3 reviewer role bindings must be non-empty")
-    reviewer_ids: list[str] = []
-    for binding in bindings:
-        _validate_role_binding(binding)
-        reviewer_ids.append(cast(str, _array(binding, "V3 reviewer role binding")[0]))
-    if reviewer_ids != sorted(reviewer_ids) or len(set(reviewer_ids)) != len(reviewer_ids):
-        _fail("V3 reviewer role bindings must be sorted and duplicate-free")
+    _canonical_array(bindings, _validate_role_binding, "V3 reviewer role bindings")
     _enum(values[6], ("multi_reviewer", "solo_separate_self_review"), "V3 review mode")
     if values[7] != ACCEPTANCE_CHECKLIST_V2:
         _fail("V3 acceptance checklist is not the V2 contract")
