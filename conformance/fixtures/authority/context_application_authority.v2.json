@@ -29,8 +29,8 @@
   ],
   "context_application_v2_records": [
     {
-      "record_id": "cpar.v2/7217a09ac830e2d882770270d1cc4def2c76f467896d14483a8d33d3e8540205",
-      "application_id": "cpa.v2/a5f8da03618f9be949a73b8b9c64c0cf3f4fdb78238a6db480b79715da6ad6d2",
+      "record_id": "cpar.v2/6ba2c25d6a0ff7ff6eeda9587cbb0255c2de4a08789706c3c252712ea92f3e40",
+      "application_id": "cpa.v2/c8bbf6b00bd8de322582f15a8c40b78116c262efc3d070be12e2d9cf7f2d9351",
       "theorem_record_id": "cpr.v1/0000000000000000000000000000000000000000000000000000000000000000",
       "members": [
         {
@@ -80,7 +80,16 @@
                 "source_value": "not_applicable",
                 "reviewed_value": "not_applicable",
                 "relation": "exact_match",
-                "evidence_refs": [],
+                "evidence_refs": [
+                  {
+                    "authority_kind": "model",
+                    "path": "a",
+                    "locator": {
+                      "kind": "whole_artifact"
+                    },
+                    "raw_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+                  }
+                ],
                 "rationale": "x"
               },
               {
@@ -88,7 +97,16 @@
                 "source_value": "not_applicable",
                 "reviewed_value": "not_applicable",
                 "relation": "exact_match",
-                "evidence_refs": [],
+                "evidence_refs": [
+                  {
+                    "authority_kind": "model",
+                    "path": "a",
+                    "locator": {
+                      "kind": "whole_artifact"
+                    },
+                    "raw_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+                  }
+                ],
                 "rationale": "x"
               },
               {
@@ -96,7 +114,16 @@
                 "source_value": "not_applicable",
                 "reviewed_value": "not_applicable",
                 "relation": "exact_match",
-                "evidence_refs": [],
+                "evidence_refs": [
+                  {
+                    "authority_kind": "model",
+                    "path": "a",
+                    "locator": {
+                      "kind": "whole_artifact"
+                    },
+                    "raw_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+                  }
+                ],
                 "rationale": "x"
               },
               {
@@ -104,7 +131,16 @@
                 "source_value": "not_applicable",
                 "reviewed_value": "not_applicable",
                 "relation": "exact_match",
-                "evidence_refs": [],
+                "evidence_refs": [
+                  {
+                    "authority_kind": "model",
+                    "path": "a",
+                    "locator": {
+                      "kind": "whole_artifact"
+                    },
+                    "raw_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+                  }
+                ],
                 "rationale": "x"
               },
               {
@@ -112,7 +148,16 @@
                 "source_value": "not_applicable",
                 "reviewed_value": "not_applicable",
                 "relation": "exact_match",
-                "evidence_refs": [],
+                "evidence_refs": [
+                  {
+                    "authority_kind": "model",
+                    "path": "a",
+                    "locator": {
+                      "kind": "whole_artifact"
+                    },
+                    "raw_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+                  }
+                ],
                 "rationale": "x"
               },
               {
@@ -120,7 +165,16 @@
                 "source_value": "not_applicable",
                 "reviewed_value": "not_applicable",
                 "relation": "exact_match",
-                "evidence_refs": [],
+                "evidence_refs": [
+                  {
+                    "authority_kind": "model",
+                    "path": "a",
+                    "locator": {
+                      "kind": "whole_artifact"
+                    },
+                    "raw_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+                  }
+                ],
                 "rationale": "x"
               },
               {
@@ -128,7 +182,16 @@
                 "source_value": "not_applicable",
                 "reviewed_value": "not_applicable",
                 "relation": "exact_match",
-                "evidence_refs": [],
+                "evidence_refs": [
+                  {
+                    "authority_kind": "model",
+                    "path": "a",
+                    "locator": {
+                      "kind": "whole_artifact"
+                    },
+                    "raw_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+                  }
+                ],
                 "rationale": "x"
               },
               {
@@ -136,7 +199,16 @@
                 "source_value": "not_applicable",
                 "reviewed_value": "not_applicable",
                 "relation": "exact_match",
-                "evidence_refs": [],
+                "evidence_refs": [
+                  {
+                    "authority_kind": "model",
+                    "path": "a",
+                    "locator": {
+                      "kind": "whole_artifact"
+                    },
+                    "raw_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+                  }
+                ],
                 "rationale": "x"
               },
               {
@@ -144,7 +216,16 @@
                 "source_value": "not_applicable",
                 "reviewed_value": "not_applicable",
                 "relation": "exact_match",
-                "evidence_refs": [],
+                "evidence_refs": [
+                  {
+                    "authority_kind": "model",
+                    "path": "a",
+                    "locator": {
+                      "kind": "whole_artifact"
+                    },
+                    "raw_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+                  }
+                ],
                 "rationale": "x"
               },
               {
@@ -152,7 +233,16 @@
                 "source_value": "not_applicable",
                 "reviewed_value": "not_applicable",
                 "relation": "exact_match",
-                "evidence_refs": [],
+                "evidence_refs": [
+                  {
+                    "authority_kind": "model",
+                    "path": "a",
+                    "locator": {
+                      "kind": "whole_artifact"
+                    },
+                    "raw_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+                  }
+                ],
                 "rationale": "x"
               }
             ],
@@ -160,25 +250,61 @@
               {
                 "slot_name": "trigger_order",
                 "reviewed_value": "not_applicable",
-                "evidence_refs": [],
+                "evidence_refs": [
+                  {
+                    "authority_kind": "model",
+                    "path": "a",
+                    "locator": {
+                      "kind": "whole_artifact"
+                    },
+                    "raw_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+                  }
+                ],
                 "rationale": "x"
               },
               {
                 "slot_name": "dependency_order",
                 "reviewed_value": "not_applicable",
-                "evidence_refs": [],
+                "evidence_refs": [
+                  {
+                    "authority_kind": "model",
+                    "path": "a",
+                    "locator": {
+                      "kind": "whole_artifact"
+                    },
+                    "raw_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+                  }
+                ],
                 "rationale": "x"
               },
               {
                 "slot_name": "duration",
                 "reviewed_value": "not_applicable",
-                "evidence_refs": [],
+                "evidence_refs": [
+                  {
+                    "authority_kind": "model",
+                    "path": "a",
+                    "locator": {
+                      "kind": "whole_artifact"
+                    },
+                    "raw_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+                  }
+                ],
                 "rationale": "x"
               },
               {
                 "slot_name": "replacement_order",
                 "reviewed_value": "not_applicable",
-                "evidence_refs": [],
+                "evidence_refs": [
+                  {
+                    "authority_kind": "model",
+                    "path": "a",
+                    "locator": {
+                      "kind": "whole_artifact"
+                    },
+                    "raw_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+                  }
+                ],
                 "rationale": "x"
               }
             ]
@@ -199,7 +325,7 @@
   "application_host_bindings_v2": [
     {
       "application_kind": "context_application",
-      "application_semantic_id": "cpa.v2/a5f8da03618f9be949a73b8b9c64c0cf3f4fdb78238a6db480b79715da6ad6d2",
+      "application_semantic_id": "cpa.v2/c8bbf6b00bd8de322582f15a8c40b78116c262efc3d070be12e2d9cf7f2d9351",
       "host_binding_claim_ids": [
         "hbc.v1/0000000000000000000000000000000000000000000000000000000000000000"
       ]

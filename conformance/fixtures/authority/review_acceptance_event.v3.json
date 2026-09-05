@@ -1,5 +1,5 @@
 {
-  "event_id": "ae.v3/07ada6fabe654361c6a068902b0919a14694ff4b496e57949fdf7ec9d6f6db9f",
+  "event_id": "ae.v3/57f9670186a50c4d7e785f41b68bb52f39f6fac76542afc045dfe5d19c5d1571",
   "schema": "manafold.m2.5.c.review-acceptance-event.v3",
   "subject_kind": "context_application_v2_record",
   "subject_payload_digest": {
@@ -8,7 +8,7 @@
     "semantic_domain": "manafold.m2.5.c.acceptance-subject-payload.v3",
     "payload_codec_id": "mtgml.canonical-cbor.v1",
     "input_schema_id": "manafold.m2.5.c.acceptance-subject-payload-input.v3",
-    "digest_hex": "0b91f32838c732100a2bc842376dbe7bf61d1163cdbc11cb308ca2276d0e2e18"
+    "digest_hex": "b57e62c35889e514d37e476cda73bff3a0947b8ed1ceaa588427efc74a5c3921"
   },
   "decision": "human_accepted",
   "reviewer_roster_ref": {

@@ -2473,7 +2473,7 @@ class ContextSlotBridgeAttestationV2:
         _validate_context_slot_value("context_dimension", self.slot_name, self.reviewed_value)
         if not isinstance(self.relation, ContextBridgeRelationV2):
             raise AuthorityContractError("context bridge relation is not closed in V2")
-        _require_evidence_tuple(self.evidence_refs, "context slot evidence")
+        _require_evidence_tuple(self.evidence_refs, "context slot evidence", allow_empty=False)
         _text(self.rationale, "context slot rationale")
 
     def to_cbor(self) -> list[AuthorityValue]:
@@ -2506,7 +2506,7 @@ class TemporalSlotAttestationV2:
 
     def __post_init__(self) -> None:
         _validate_context_slot_value("temporal_semantic", self.slot_name, self.reviewed_value)
-        _require_evidence_tuple(self.evidence_refs, "temporal slot evidence")
+        _require_evidence_tuple(self.evidence_refs, "temporal slot evidence", allow_empty=False)
         _text(self.rationale, "temporal slot rationale")
 
     def to_cbor(self) -> list[AuthorityValue]:
@@ -2637,7 +2637,7 @@ def _validate_context_slot_bridge_attestation(value: object, expected: str) -> N
     )
     if fields[0] != expected:
         _fail("V2 context slots must use the V1 canonical order")
-    _validate_evidence_refs(fields[4], "V2 context slot evidence")
+    _validate_nonempty_evidence_refs(fields[4], "V2 context slot evidence")
     _text(fields[5], "V2 context slot rationale")
 
 
@@ -2646,7 +2646,7 @@ def _validate_temporal_slot_attestation(value: object, expected: str) -> None:
     _validate_context_slot_value("temporal_semantic", fields[0], fields[1])
     if fields[0] != expected:
         _fail("V2 temporal slots must use the V1 canonical order")
-    _validate_evidence_refs(fields[2], "V2 temporal slot evidence")
+    _validate_nonempty_evidence_refs(fields[2], "V2 temporal slot evidence")
     _text(fields[3], "V2 temporal slot rationale")
 
 
@@ -2898,6 +2898,15 @@ class ContextApplicationV2Record:
             [member.to_cbor() for member in self.members],
         ]
 
+    def to_cbor(self) -> list[AuthorityValue]:
+        return [
+            self.record_id.to_cbor(),
+            self.application_id.to_cbor(),
+            self.theorem_record_id.to_cbor(),
+            [member.to_cbor() for member in self.members],
+            ["human_accepted", self.review_event_ref_v3.to_cbor()],
+        ]
+
     def to_wire(self) -> dict[str, object]:
         return {
             "record_id": self.record_id.as_text(),
@@ -3129,6 +3138,19 @@ class ContextApplicationV2SupersessionRecord:
         ).identity()
         if expected != self.record_id:
             raise AuthorityContractError("V2 supersession record ID does not match its input")
+
+    def to_cbor(self) -> list[AuthorityValue]:
+        return [
+            self.record_id.to_cbor(),
+            self.supersession_id.to_cbor(),
+            self.superseded_record_id.to_cbor(),
+            (None if self.replacement_record_id is None else self.replacement_record_id.to_cbor()),
+            "context_application_v2_record",
+            (None if self.replacement_record_id is None else "context_application_v2_record"),
+            self.reason_code.value,
+            [reference.to_cbor() for reference in self.source_evidence_refs],
+            ["human_accepted", self.review_event_ref_v3.to_cbor()],
+        ]
 
     def to_wire(self) -> dict[str, object]:
         return {
@@ -3480,6 +3502,16 @@ class ContextApplicationAuthorityV2:
             for binding in self.application_host_bindings_v2
         ):
             raise AuthorityContractError("V2 application host binding has the wrong type")
+        _typed_canonical_items(
+            self.context_application_v2_records, "V2 authority application records"
+        )
+        _typed_canonical_items(
+            self.context_application_v2_supersession_records,
+            "V2 authority supersession records",
+        )
+        _typed_canonical_items(
+            self.application_host_bindings_v2, "V2 authority application host bindings"
+        )
 
     def to_wire(self) -> dict[str, object]:
         return {

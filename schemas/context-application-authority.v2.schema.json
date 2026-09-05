@@ -327,6 +327,13 @@
         "$ref": "#/$defs/evidence_ref"
       }
     },
+    "nonempty_evidence_refs": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/evidence_ref"
+      }
+    },
     "source_binding": {
       "type": "object",
       "additionalProperties": false,
@@ -908,7 +915,7 @@
           ]
         },
         "evidence_refs": {
-          "$ref": "#/$defs/evidence_refs"
+          "$ref": "#/$defs/nonempty_evidence_refs"
         },
         "rationale": {
           "type": "string",
@@ -954,7 +961,7 @@
           ]
         },
         "evidence_refs": {
-          "$ref": "#/$defs/evidence_refs"
+          "$ref": "#/$defs/nonempty_evidence_refs"
         },
         "rationale": {
           "type": "string",

@@ -376,7 +376,7 @@ fn context_application_v2_rust_dtos_emit_the_shared_member_payload() {
             "not_applicable",
             "not_applicable",
             authority::ContextBridgeRelationV2::ExactMatch,
-            Vec::new(),
+            vec![evidence.clone()],
             "x",
         )
         .unwrap()
@@ -390,7 +390,13 @@ fn context_application_v2_rust_dtos_emit_the_shared_member_payload() {
     ]
     .into_iter()
     .map(|slot| {
-        authority::TemporalSlotAttestationV2::new(slot, "not_applicable", Vec::new(), "x").unwrap()
+        authority::TemporalSlotAttestationV2::new(
+            slot,
+            "not_applicable",
+            vec![evidence.clone()],
+            "x",
+        )
+        .unwrap()
     })
     .collect();
     let bridge = authority::ContextMemberBridgeAttestationV2::new(context, temporal).unwrap();

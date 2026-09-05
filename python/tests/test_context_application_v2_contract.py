@@ -83,7 +83,7 @@ def bridge() -> ContextMemberBridgeAttestationV2:
             source_value="not_applicable",
             reviewed_value="not_applicable",
             relation=ContextBridgeRelationV2.EXACT_MATCH,
-            evidence_refs=(),
+            evidence_refs=(evidence(),),
             rationale="x",
         )
         for name in (
@@ -103,7 +103,7 @@ def bridge() -> ContextMemberBridgeAttestationV2:
         TemporalSlotAttestationV2(
             slot_name=name,
             reviewed_value="not_applicable",
-            evidence_refs=(),
+            evidence_refs=(evidence(),),
             rationale="x",
         )
         for name in (
@@ -206,6 +206,22 @@ class ContextApplicationV2ContractTests(unittest.TestCase):
     def test_context_bridge_and_temporal_slots_are_closed_and_ordered(self) -> None:
         self.assertEqual(len(bridge().to_cbor()[0]), 10)
         self.assertEqual(len(bridge().to_cbor()[1]), 4)
+        with self.assertRaises(AuthorityContractError):
+            ContextSlotBridgeAttestationV2(
+                slot_name="zone",
+                source_value="not_applicable",
+                reviewed_value="not_applicable",
+                relation=ContextBridgeRelationV2.EXACT_MATCH,
+                evidence_refs=(),
+                rationale="missing evidence",
+            )
+        with self.assertRaises(AuthorityContractError):
+            TemporalSlotAttestationV2(
+                slot_name="trigger_order",
+                reviewed_value="not_applicable",
+                evidence_refs=(),
+                rationale="missing evidence",
+            )
         with self.assertRaises(AuthorityContractError):
             ContextSlotBridgeAttestationV2(
                 slot_name="timing",
@@ -452,6 +468,26 @@ class ContextApplicationV2ContractTests(unittest.TestCase):
         self.assertEqual(leaf.to_wire()["schema"], ACCEPTANCE_EVENT_SCHEMA_V3)
         self.assertEqual(host.to_cbor()[0], "context_application")
         self.assertEqual(authority.to_wire()["schema"], CONTEXT_AUTHORITY_SCHEMA_V2)
+        with self.assertRaises(AuthorityContractError):
+            ContextApplicationAuthorityV2(
+                base_authority_v1_binding=base,
+                host_binding_authority_v2_binding=None,
+                candidate_universe_binding=authority.candidate_universe_binding,
+                source_bindings=(base,),
+                context_application_v2_records=(record, record),
+                context_application_v2_supersession_records=(),
+                application_host_bindings_v2=(host,),
+            )
+        with self.assertRaises(AuthorityContractError):
+            ContextApplicationAuthorityV2(
+                base_authority_v1_binding=base,
+                host_binding_authority_v2_binding=None,
+                candidate_universe_binding=authority.candidate_universe_binding,
+                source_bindings=(base,),
+                context_application_v2_records=(record,),
+                context_application_v2_supersession_records=(),
+                application_host_bindings_v2=(host, host),
+            )
 
     def test_reviewed_divergence_is_a_closed_structural_relation(self) -> None:
         attestation = ContextSlotBridgeAttestationV2(
@@ -459,7 +495,7 @@ class ContextApplicationV2ContractTests(unittest.TestCase):
             source_value="not_applicable",
             reviewed_value="trigger_time",
             relation=ContextBridgeRelationV2.REVIEWED_DIVERGENCE,
-            evidence_refs=(),
+            evidence_refs=(evidence(),),
             rationale="synthetic divergence shape",
         )
         self.assertEqual(attestation.to_cbor()[3], "reviewed_divergence")

@@ -3055,6 +3055,9 @@ impl ContextSlotBridgeAttestationV2 {
         if rationale.is_empty() {
             return Err(PersistenceDecodeErrorV1::SemanticValidation);
         }
+        if evidence_refs.is_empty() {
+            return Err(PersistenceDecodeErrorV1::SemanticValidation);
+        }
         validate_evidence_values(&evidence_refs)?;
         Ok(Self {
             slot_name,
@@ -3114,6 +3117,9 @@ impl TemporalSlotAttestationV2 {
         let rationale = rationale.into();
         validate_context_value("temporal_semantic", &slot_name, &reviewed_value)?;
         if rationale.is_empty() {
+            return Err(PersistenceDecodeErrorV1::SemanticValidation);
+        }
+        if evidence_refs.is_empty() {
             return Err(PersistenceDecodeErrorV1::SemanticValidation);
         }
         validate_evidence_values(&evidence_refs)?;
@@ -3631,6 +3637,24 @@ impl ContextApplicationV2Record {
         ])
     }
 
+    pub fn to_cbor(&self) -> cbor::Value {
+        cbor::Value::Array(vec![
+            self.record_id.to_cbor(),
+            self.application_id.to_cbor(),
+            self.theorem_record_id.to_cbor(),
+            cbor::Value::Array(
+                self.members
+                    .iter()
+                    .map(ContextApplicationMemberV2::to_cbor)
+                    .collect(),
+            ),
+            cbor::Value::Array(vec![
+                cbor::Value::Text("human_accepted".to_owned()),
+                self.review_event_ref_v3.to_cbor(),
+            ]),
+        ])
+    }
+
     pub fn to_wire(&self) -> serde_json::Value {
         serde_json::json!({
             "record_id": self.record_id.as_text(),
@@ -3769,6 +3793,34 @@ impl ContextApplicationV2SupersessionRecord {
                     .map(EvidenceRefV1::to_cbor)
                     .collect(),
             ),
+        ])
+    }
+
+    pub fn to_cbor(&self) -> cbor::Value {
+        cbor::Value::Array(vec![
+            self.record_id.to_cbor(),
+            self.supersession_id.to_cbor(),
+            self.superseded_record_id.to_cbor(),
+            self.replacement_record_id
+                .as_ref()
+                .map_or(cbor::Value::Null, AuthorityIdentityV1::to_cbor),
+            cbor::Value::Text("context_application_v2_record".to_owned()),
+            self.replacement_record_id
+                .as_ref()
+                .map_or(cbor::Value::Null, |_| {
+                    cbor::Value::Text("context_application_v2_record".to_owned())
+                }),
+            cbor::Value::Text(self.reason_code.as_str().to_owned()),
+            cbor::Value::Array(
+                self.source_evidence_refs
+                    .iter()
+                    .map(EvidenceRefV1::to_cbor)
+                    .collect(),
+            ),
+            cbor::Value::Array(vec![
+                cbor::Value::Text("human_accepted".to_owned()),
+                self.review_event_ref_v3.to_cbor(),
+            ]),
         ])
     }
 
@@ -4073,6 +4125,47 @@ pub struct ContextApplicationAuthorityV2 {
 }
 
 impl ContextApplicationAuthorityV2 {
+    #[allow(clippy::too_many_arguments)]
+    pub fn new(
+        base_authority_v1_binding: ContextAuthoritySourceBindingV2,
+        host_binding_authority_v2_binding: Option<ContextAuthoritySourceBindingV2>,
+        candidate_universe_binding: ContextAuthoritySourceBindingV2,
+        source_bindings: Vec<ContextAuthoritySourceBindingV2>,
+        context_application_v2_records: Vec<ContextApplicationV2Record>,
+        context_application_v2_supersession_records: Vec<ContextApplicationV2SupersessionRecord>,
+        application_host_bindings_v2: Vec<ApplicationHostBindingV2>,
+    ) -> Result<Self, PersistenceDecodeErrorV1> {
+        let source_values: Vec<cbor::Value> = source_bindings
+            .iter()
+            .map(ContextAuthoritySourceBindingV2::to_cbor)
+            .collect();
+        validate_context_source_bindings(&cbor::Value::Array(source_values))?;
+        let record_values: Vec<cbor::Value> = context_application_v2_records
+            .iter()
+            .map(ContextApplicationV2Record::to_cbor)
+            .collect();
+        validate_canonical_order(&record_values)?;
+        let supersession_values: Vec<cbor::Value> = context_application_v2_supersession_records
+            .iter()
+            .map(ContextApplicationV2SupersessionRecord::to_cbor)
+            .collect();
+        validate_canonical_order(&supersession_values)?;
+        let host_values: Vec<cbor::Value> = application_host_bindings_v2
+            .iter()
+            .map(ApplicationHostBindingV2::to_cbor)
+            .collect();
+        validate_canonical_order(&host_values)?;
+        Ok(Self {
+            base_authority_v1_binding,
+            host_binding_authority_v2_binding,
+            candidate_universe_binding,
+            source_bindings,
+            context_application_v2_records,
+            context_application_v2_supersession_records,
+            application_host_bindings_v2,
+        })
+    }
+
     pub fn to_wire(&self) -> serde_json::Value {
         serde_json::json!({
             "schema": CONTEXT_AUTHORITY_SCHEMA_V2,
@@ -4224,7 +4317,7 @@ fn validate_context_slot_bridge_attestation(
     validate_context_value("context_dimension", slot, source)?;
     validate_context_value("context_dimension", slot, reviewed)?;
     enum_text(&fields[3], &["exact_match", "reviewed_divergence"])?;
-    validate_evidence_refs(&fields[4])?;
+    validate_nonempty_evidence_refs(&fields[4])?;
     value_text(&fields[5])?;
     Ok(())
 }
@@ -4240,7 +4333,7 @@ fn validate_temporal_slot_attestation(
     }
     let reviewed = value_text(&fields[1])?;
     validate_context_value("temporal_semantic", slot, reviewed)?;
-    validate_evidence_refs(&fields[2])?;
+    validate_nonempty_evidence_refs(&fields[2])?;
     value_text(&fields[3])?;
     Ok(())
 }
