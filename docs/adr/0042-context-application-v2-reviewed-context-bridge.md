@@ -1,10 +1,12 @@
-# Manafold — ContextApplicationV2 Bridge
+# ADR 0042: ContextApplicationV2 Reviewed-Context Bridge
 
-## ADR / implementation-ready contract specification
-
-Status: `FREEZE_CANDIDATE`
-
-Reviewed baseline: `faf63a2711a3a8f682b277195f99dbb204be3f64`
+- **Status:** accepted
+- **Date:** 2026-09-05
+- **Supersedes:** none
+- **Superseded by:** none
+- **Review provenance:** independently reviewed ContextApplicationV2 freeze candidate, candidate SHA-256 `7771008d06d3d120a8880454ed7fdf89b4c0b545ec7ca9ba858b6c1a93f76637`, accepted after final adversarial review found `0 BLOCKER / 0 MAJOR`; permanent number allocated at acceptance according to `docs/adr/README.md`
+- **Implementation evidence:** `NOT_RUN`; this ADR freezes the implementation direction only and does not establish an executable Frozen Contract
+- **Reviewed baseline:** `faf63a2711a3a8f682b277195f99dbb204be3f64`
 
 This document is a design and contract decision only. It does not authorize
 implementation, human acceptance, production Authority records, Acceptance
@@ -1159,11 +1161,14 @@ closed role registry in §7.2.
 ## Final status
 
 ~~~text
-CONTEXT_APPLICATION_V2_ADR       = FREEZE_CANDIDATE
+CONTEXT_APPLICATION_V2_ADR       = ACCEPTED
 CONTRACT_GAPS_REMAINING          = 0
+IMPLEMENTATION_DIRECTION         = FROZEN
+FROZEN_CONTRACT                  = NO
 IMPLEMENTATION_AUTHORIZED        = NO
 HUMAN_ACCEPTANCE                  = BLOCKED
 TASK_5_SLICE_3B                  = BLOCKED
+M3                               = BLOCKED
 ~~~
 
 The Buckle-Up semantic values remain undecided. No Acceptance Event, Authority
