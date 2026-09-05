@@ -326,6 +326,24 @@ class ContextApplicationV2ContractTests(unittest.TestCase):
         with self.assertRaises(jsonschema.ValidationError):
             jsonschema.Draft202012Validator(event_schema).validate(invalid_event)
 
+    def test_schema_keeps_the_complete_context_value_vocabulary(self) -> None:
+        schema = json.loads(
+            (ROOT / "schemas/context-application-authority.v2.schema.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        fixture = json.loads(
+            (
+                ROOT / "conformance/fixtures/authority/context_application_authority.v2.json"
+            ).read_text(encoding="utf-8")
+        )
+        trigger_slot = fixture["context_application_v2_records"][0]["members"][0][
+            "context_member_attestation"
+        ]["context_slot_attestations"][7]
+        trigger_slot["source_value"] = "triggered_event"
+        trigger_slot["reviewed_value"] = "triggered_event"
+        jsonschema.Draft202012Validator(schema).validate(fixture)
+
     def test_source_role_registry_is_closed(self) -> None:
         self.assertIn("base_authority_v1", CONTEXT_AUTHORITY_SOURCE_ROLES_V2)
         self.assertIn("acceptance_event_leaf_v3", CONTEXT_AUTHORITY_SOURCE_ROLES_V2)
