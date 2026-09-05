@@ -3362,6 +3362,172 @@ impl ContextAuthoritySourceBindingV2 {
     }
 }
 
+fn context_closure_insert(
+    values: &mut Vec<ContextAuthoritySourceBindingV2>,
+    binding: &ContextAuthoritySourceBindingV2,
+    reject_duplicate: bool,
+) -> Result<(), PersistenceDecodeErrorV1> {
+    let key = (&binding.artifact_role, &binding.path);
+    if let Some(existing) = values
+        .iter()
+        .find(|item| (&item.artifact_role, &item.path) == key)
+    {
+        if existing != binding {
+            return Err(PersistenceDecodeErrorV1::SchemaIdentityMismatch);
+        }
+        if reject_duplicate {
+            return Err(PersistenceDecodeErrorV1::DuplicateSemanticKey);
+        }
+        return Ok(());
+    }
+    values.push(binding.clone());
+    Ok(())
+}
+
+fn context_closure_canonicalize(
+    values: &[ContextAuthoritySourceBindingV2],
+    reject_duplicate: bool,
+) -> Result<Vec<ContextAuthoritySourceBindingV2>, PersistenceDecodeErrorV1> {
+    let mut unique = Vec::new();
+    for binding in values {
+        context_closure_insert(&mut unique, binding, reject_duplicate)?;
+    }
+    unique.sort_by_key(|binding| {
+        cbor::encode_canonical(&binding.to_cbor()).expect("validated source binding is encodable")
+    });
+    Ok(unique)
+}
+
+fn context_closure_find_role<'a>(
+    values: &'a [ContextAuthoritySourceBindingV2],
+    role: &str,
+) -> Result<&'a ContextAuthoritySourceBindingV2, PersistenceDecodeErrorV1> {
+    let matches: Vec<&ContextAuthoritySourceBindingV2> = values
+        .iter()
+        .filter(|binding| binding.artifact_role == role)
+        .collect();
+    if matches.len() != 1 {
+        return Err(PersistenceDecodeErrorV1::SemanticValidation);
+    }
+    Ok(matches[0])
+}
+
+fn context_closure_reject_event_cycle(
+    values: &[ContextAuthoritySourceBindingV2],
+) -> Result<(), PersistenceDecodeErrorV1> {
+    if values.iter().any(|binding| {
+        matches!(
+            binding.artifact_role.as_str(),
+            "acceptance_event_leaf_v3" | "context_application_authority_v2"
+        )
+    }) {
+        return Err(PersistenceDecodeErrorV1::SemanticValidation);
+    }
+    Ok(())
+}
+
+/// Pure V2 event source-closure reconstruction shared with the Python algebra.
+pub fn reconstruct_event_source_closure_v2(
+    fixed_bindings: &[ContextAuthoritySourceBindingV2],
+    direct_bindings: &[ContextAuthoritySourceBindingV2],
+    available_bindings: &[ContextAuthoritySourceBindingV2],
+    b2_evidence_roles: &[&str],
+    b1_citation: bool,
+    host_bindings: &[ContextAuthoritySourceBindingV2],
+) -> Result<Vec<ContextAuthoritySourceBindingV2>, PersistenceDecodeErrorV1> {
+    let mut seed = Vec::new();
+    seed.extend_from_slice(fixed_bindings);
+    seed.extend_from_slice(direct_bindings);
+    seed.extend_from_slice(host_bindings);
+    context_closure_reject_event_cycle(&seed)?;
+    let mut pool = seed.clone();
+    pool.extend_from_slice(available_bindings);
+    let pool = context_closure_canonicalize(&pool, false)?;
+
+    let mut required_b2 = Vec::new();
+    let has_catalog = b2_evidence_roles.contains(&"b2_catalog");
+    let has_classifications = b2_evidence_roles.contains(&"b2_classifications");
+    let has_closure = b2_evidence_roles.contains(&"b2_closure");
+    if b2_evidence_roles
+        .iter()
+        .any(|role| !matches!(*role, "b2_catalog" | "b2_classifications" | "b2_closure"))
+    {
+        return Err(PersistenceDecodeErrorV1::UnknownVariant);
+    }
+    if has_classifications {
+        required_b2.extend(["b2_catalog", "b2_classifications", "b2_closure"]);
+    } else if has_catalog {
+        required_b2.extend(["b2_catalog", "b2_closure"]);
+    } else if has_closure {
+        required_b2.push("b2_closure");
+    }
+
+    let mut result = seed;
+    for role in required_b2 {
+        result.push(context_closure_find_role(&pool, role)?.clone());
+    }
+    if b1_citation {
+        result.push(context_closure_find_role(&pool, "b1_final_citations")?.clone());
+        result.push(context_closure_find_role(&pool, "b1_final_closure")?.clone());
+    }
+    context_closure_canonicalize(&result, false)
+}
+
+/// Pure V2 container source-closure reconstruction shared with the Python algebra.
+pub fn reconstruct_container_source_closure_v2(
+    static_bindings: &[ContextAuthoritySourceBindingV2],
+    event_leaf_bindings: &[ContextAuthoritySourceBindingV2],
+    event_closures: &[Vec<ContextAuthoritySourceBindingV2>],
+    host_bindings: &[ContextAuthoritySourceBindingV2],
+) -> Result<Vec<ContextAuthoritySourceBindingV2>, PersistenceDecodeErrorV1> {
+    if static_bindings
+        .iter()
+        .chain(host_bindings.iter())
+        .any(|binding| binding.artifact_role == "context_application_authority_v2")
+    {
+        return Err(PersistenceDecodeErrorV1::SemanticValidation);
+    }
+    if event_leaf_bindings
+        .iter()
+        .any(|binding| binding.artifact_role != "acceptance_event_leaf_v3")
+    {
+        return Err(PersistenceDecodeErrorV1::SchemaIdentityMismatch);
+    }
+    if event_closures.iter().flatten().any(|binding| {
+        matches!(
+            binding.artifact_role.as_str(),
+            "acceptance_event_leaf_v3" | "context_application_authority_v2"
+        )
+    }) {
+        return Err(PersistenceDecodeErrorV1::SemanticValidation);
+    }
+    let mut values = Vec::new();
+    values.extend_from_slice(static_bindings);
+    values.extend_from_slice(event_leaf_bindings);
+    for closure in event_closures {
+        values.extend_from_slice(closure);
+    }
+    values.extend_from_slice(host_bindings);
+    context_closure_canonicalize(&values, false)
+}
+
+/// Compare actual and expected V2 source lists as complete canonical tuples.
+pub fn require_exact_context_source_set_v2(
+    actual: &[ContextAuthoritySourceBindingV2],
+    expected: &[ContextAuthoritySourceBindingV2],
+) -> Result<(), PersistenceDecodeErrorV1> {
+    let actual_canonical = context_closure_canonicalize(actual, true)?;
+    if actual != actual_canonical.as_slice() {
+        return Err(PersistenceDecodeErrorV1::NoncanonicalOrder);
+    }
+    let actual = actual_canonical;
+    let expected = context_closure_canonicalize(expected, false)?;
+    if actual != expected {
+        return Err(PersistenceDecodeErrorV1::SemanticValidation);
+    }
+    Ok(())
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ContextApplicationV2InputV1 {
     pub theorem_record_id_bytes: [u8; 32],

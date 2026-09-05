@@ -1,0 +1,579 @@
+{
+  "schema": "manafold.m2.5.c.context-application-v2-closure-golden-matrix.v1",
+  "event_cases": [
+    {
+      "case_id": "minimal_application",
+      "fixed_bindings": [
+        {
+          "artifact_role": "base_authority_v1",
+          "path": "sources/m2_5/authorities/interaction_review_authority.v1.json",
+          "schema": "manafold.m2.5.c.interaction-review-authority.v1",
+          "raw_sha256": "0101010101010101010101010101010101010101010101010101010101010101"
+        },
+        {
+          "artifact_role": "declared_model",
+          "path": "sources/m2_5/closures/C/declared_interaction_model.v2.json",
+          "schema": "manafold.m2.5.c.declared-interaction-model.v2",
+          "raw_sha256": "0202020202020202020202020202020202020202020202020202020202020202"
+        },
+        {
+          "artifact_role": "reviewer_roster_leaf",
+          "path": "sources/m2_5/authorities/reviewer_rosters/v1/0404040404040404040404040404040404040404040404040404040404040404.json",
+          "schema": "manafold.m2.5.c.reviewer-roster.v1",
+          "raw_sha256": "0404040404040404040404040404040404040404040404040404040404040404"
+        }
+      ],
+      "direct_bindings": [
+        {
+          "artifact_role": "candidate_universe",
+          "path": "sources/m2_5/closures/C/interaction_candidate_universe.v2.json",
+          "schema": "manafold.m2.5.c.interaction-candidate-universe.v2",
+          "raw_sha256": "0303030303030303030303030303030303030303030303030303030303030303"
+        }
+      ],
+      "available_bindings": [],
+      "b2_evidence_roles": [],
+      "b1_citation": false,
+      "host_bindings": [],
+      "expected_source_bindings": [
+        {
+          "artifact_role": "declared_model",
+          "path": "sources/m2_5/closures/C/declared_interaction_model.v2.json",
+          "schema": "manafold.m2.5.c.declared-interaction-model.v2",
+          "raw_sha256": "0202020202020202020202020202020202020202020202020202020202020202"
+        },
+        {
+          "artifact_role": "base_authority_v1",
+          "path": "sources/m2_5/authorities/interaction_review_authority.v1.json",
+          "schema": "manafold.m2.5.c.interaction-review-authority.v1",
+          "raw_sha256": "0101010101010101010101010101010101010101010101010101010101010101"
+        },
+        {
+          "artifact_role": "candidate_universe",
+          "path": "sources/m2_5/closures/C/interaction_candidate_universe.v2.json",
+          "schema": "manafold.m2.5.c.interaction-candidate-universe.v2",
+          "raw_sha256": "0303030303030303030303030303030303030303030303030303030303030303"
+        },
+        {
+          "artifact_role": "reviewer_roster_leaf",
+          "path": "sources/m2_5/authorities/reviewer_rosters/v1/0404040404040404040404040404040404040404040404040404040404040404.json",
+          "schema": "manafold.m2.5.c.reviewer-roster.v1",
+          "raw_sha256": "0404040404040404040404040404040404040404040404040404040404040404"
+        }
+      ]
+    },
+    {
+      "case_id": "b2_classification_and_b1_final_expansion",
+      "fixed_bindings": [
+        {
+          "artifact_role": "base_authority_v1",
+          "path": "sources/m2_5/authorities/interaction_review_authority.v1.json",
+          "schema": "manafold.m2.5.c.interaction-review-authority.v1",
+          "raw_sha256": "0101010101010101010101010101010101010101010101010101010101010101"
+        },
+        {
+          "artifact_role": "declared_model",
+          "path": "sources/m2_5/closures/C/declared_interaction_model.v2.json",
+          "schema": "manafold.m2.5.c.declared-interaction-model.v2",
+          "raw_sha256": "0202020202020202020202020202020202020202020202020202020202020202"
+        },
+        {
+          "artifact_role": "reviewer_roster_leaf",
+          "path": "sources/m2_5/authorities/reviewer_rosters/v1/0404040404040404040404040404040404040404040404040404040404040404.json",
+          "schema": "manafold.m2.5.c.reviewer-roster.v1",
+          "raw_sha256": "0404040404040404040404040404040404040404040404040404040404040404"
+        }
+      ],
+      "direct_bindings": [
+        {
+          "artifact_role": "candidate_universe",
+          "path": "sources/m2_5/closures/C/interaction_candidate_universe.v2.json",
+          "schema": "manafold.m2.5.c.interaction-candidate-universe.v2",
+          "raw_sha256": "0303030303030303030303030303030303030303030303030303030303030303"
+        },
+        {
+          "artifact_role": "b2_catalog",
+          "path": "sources/m2_5/closures/B2/requirement_family_catalog.v1.json",
+          "schema": "manafold.m2.5.b2.requirement-family-catalog.v1",
+          "raw_sha256": "0505050505050505050505050505050505050505050505050505050505050505"
+        },
+        {
+          "artifact_role": "b2_classifications",
+          "path": "sources/m2_5/closures/B2/card_semantic_classifications.v1.json",
+          "schema": "manafold.m2.5.b2.card-semantic-classifications.v1",
+          "raw_sha256": "0606060606060606060606060606060606060606060606060606060606060606"
+        },
+        {
+          "artifact_role": "b2_closure",
+          "path": "sources/m2_5/closures/B2/classification_closure.v1.json",
+          "schema": "manafold.m2.5.b2.classification-closure.v1",
+          "raw_sha256": "0707070707070707070707070707070707070707070707070707070707070707"
+        },
+        {
+          "artifact_role": "b1_final_citations",
+          "path": "sources/m2_5/closures/B1/official_authority_citations.v3.json",
+          "schema": "manafold.m2.5.b1.official-authority-citations.v3",
+          "raw_sha256": "0808080808080808080808080808080808080808080808080808080808080808"
+        },
+        {
+          "artifact_role": "b1_final_closure",
+          "path": "sources/m2_5/closures/B1/official_authority_citation_closure.v2.json",
+          "schema": "manafold.m2.5.b1.official-authority-citation-closure.v2",
+          "raw_sha256": "0909090909090909090909090909090909090909090909090909090909090909"
+        }
+      ],
+      "available_bindings": [],
+      "b2_evidence_roles": [
+        "b2_classifications"
+      ],
+      "b1_citation": true,
+      "host_bindings": [],
+      "expected_source_bindings": [
+        {
+          "artifact_role": "b2_catalog",
+          "path": "sources/m2_5/closures/B2/requirement_family_catalog.v1.json",
+          "schema": "manafold.m2.5.b2.requirement-family-catalog.v1",
+          "raw_sha256": "0505050505050505050505050505050505050505050505050505050505050505"
+        },
+        {
+          "artifact_role": "b2_closure",
+          "path": "sources/m2_5/closures/B2/classification_closure.v1.json",
+          "schema": "manafold.m2.5.b2.classification-closure.v1",
+          "raw_sha256": "0707070707070707070707070707070707070707070707070707070707070707"
+        },
+        {
+          "artifact_role": "declared_model",
+          "path": "sources/m2_5/closures/C/declared_interaction_model.v2.json",
+          "schema": "manafold.m2.5.c.declared-interaction-model.v2",
+          "raw_sha256": "0202020202020202020202020202020202020202020202020202020202020202"
+        },
+        {
+          "artifact_role": "b1_final_closure",
+          "path": "sources/m2_5/closures/B1/official_authority_citation_closure.v2.json",
+          "schema": "manafold.m2.5.b1.official-authority-citation-closure.v2",
+          "raw_sha256": "0909090909090909090909090909090909090909090909090909090909090909"
+        },
+        {
+          "artifact_role": "base_authority_v1",
+          "path": "sources/m2_5/authorities/interaction_review_authority.v1.json",
+          "schema": "manafold.m2.5.c.interaction-review-authority.v1",
+          "raw_sha256": "0101010101010101010101010101010101010101010101010101010101010101"
+        },
+        {
+          "artifact_role": "b1_final_citations",
+          "path": "sources/m2_5/closures/B1/official_authority_citations.v3.json",
+          "schema": "manafold.m2.5.b1.official-authority-citations.v3",
+          "raw_sha256": "0808080808080808080808080808080808080808080808080808080808080808"
+        },
+        {
+          "artifact_role": "b2_classifications",
+          "path": "sources/m2_5/closures/B2/card_semantic_classifications.v1.json",
+          "schema": "manafold.m2.5.b2.card-semantic-classifications.v1",
+          "raw_sha256": "0606060606060606060606060606060606060606060606060606060606060606"
+        },
+        {
+          "artifact_role": "candidate_universe",
+          "path": "sources/m2_5/closures/C/interaction_candidate_universe.v2.json",
+          "schema": "manafold.m2.5.c.interaction-candidate-universe.v2",
+          "raw_sha256": "0303030303030303030303030303030303030303030303030303030303030303"
+        },
+        {
+          "artifact_role": "reviewer_roster_leaf",
+          "path": "sources/m2_5/authorities/reviewer_rosters/v1/0404040404040404040404040404040404040404040404040404040404040404.json",
+          "schema": "manafold.m2.5.c.reviewer-roster.v1",
+          "raw_sha256": "0404040404040404040404040404040404040404040404040404040404040404"
+        }
+      ]
+    },
+    {
+      "case_id": "optional_host_sources",
+      "fixed_bindings": [
+        {
+          "artifact_role": "base_authority_v1",
+          "path": "sources/m2_5/authorities/interaction_review_authority.v1.json",
+          "schema": "manafold.m2.5.c.interaction-review-authority.v1",
+          "raw_sha256": "0101010101010101010101010101010101010101010101010101010101010101"
+        },
+        {
+          "artifact_role": "declared_model",
+          "path": "sources/m2_5/closures/C/declared_interaction_model.v2.json",
+          "schema": "manafold.m2.5.c.declared-interaction-model.v2",
+          "raw_sha256": "0202020202020202020202020202020202020202020202020202020202020202"
+        },
+        {
+          "artifact_role": "reviewer_roster_leaf",
+          "path": "sources/m2_5/authorities/reviewer_rosters/v1/0404040404040404040404040404040404040404040404040404040404040404.json",
+          "schema": "manafold.m2.5.c.reviewer-roster.v1",
+          "raw_sha256": "0404040404040404040404040404040404040404040404040404040404040404"
+        }
+      ],
+      "direct_bindings": [],
+      "available_bindings": [],
+      "b2_evidence_roles": [],
+      "b1_citation": false,
+      "host_bindings": [
+        {
+          "artifact_role": "host_binding_authority_v2",
+          "path": "sources/m2_5/authorities/interaction_review_authority.v2.json",
+          "schema": "manafold.m2.5.c.interaction-review-authority.v2",
+          "raw_sha256": "0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b"
+        },
+        {
+          "artifact_role": "host_binding_claim_record",
+          "path": "sources/m2_5/authorities/cross_deck_host_binding_claims/v1/0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c.json",
+          "schema": "manafold.m2.5.c.cross-deck-host-binding-claim-record.v1",
+          "raw_sha256": "0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d"
+        }
+      ],
+      "expected_source_bindings": [
+        {
+          "artifact_role": "declared_model",
+          "path": "sources/m2_5/closures/C/declared_interaction_model.v2.json",
+          "schema": "manafold.m2.5.c.declared-interaction-model.v2",
+          "raw_sha256": "0202020202020202020202020202020202020202020202020202020202020202"
+        },
+        {
+          "artifact_role": "base_authority_v1",
+          "path": "sources/m2_5/authorities/interaction_review_authority.v1.json",
+          "schema": "manafold.m2.5.c.interaction-review-authority.v1",
+          "raw_sha256": "0101010101010101010101010101010101010101010101010101010101010101"
+        },
+        {
+          "artifact_role": "reviewer_roster_leaf",
+          "path": "sources/m2_5/authorities/reviewer_rosters/v1/0404040404040404040404040404040404040404040404040404040404040404.json",
+          "schema": "manafold.m2.5.c.reviewer-roster.v1",
+          "raw_sha256": "0404040404040404040404040404040404040404040404040404040404040404"
+        },
+        {
+          "artifact_role": "host_binding_authority_v2",
+          "path": "sources/m2_5/authorities/interaction_review_authority.v2.json",
+          "schema": "manafold.m2.5.c.interaction-review-authority.v2",
+          "raw_sha256": "0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b"
+        },
+        {
+          "artifact_role": "host_binding_claim_record",
+          "path": "sources/m2_5/authorities/cross_deck_host_binding_claims/v1/0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c.json",
+          "schema": "manafold.m2.5.c.cross-deck-host-binding-claim-record.v1",
+          "raw_sha256": "0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d"
+        }
+      ]
+    }
+  ],
+  "container_cases": [
+    {
+      "case_id": "one_application_event",
+      "static_bindings": [
+        {
+          "artifact_role": "base_authority_v1",
+          "path": "sources/m2_5/authorities/interaction_review_authority.v1.json",
+          "schema": "manafold.m2.5.c.interaction-review-authority.v1",
+          "raw_sha256": "0101010101010101010101010101010101010101010101010101010101010101"
+        },
+        {
+          "artifact_role": "candidate_universe",
+          "path": "sources/m2_5/closures/C/interaction_candidate_universe.v2.json",
+          "schema": "manafold.m2.5.c.interaction-candidate-universe.v2",
+          "raw_sha256": "0303030303030303030303030303030303030303030303030303030303030303"
+        }
+      ],
+      "event_leaf_bindings": [
+        {
+          "artifact_role": "acceptance_event_leaf_v3",
+          "path": "sources/m2_5/authorities/review_acceptance_events/v3/0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a.json",
+          "schema": "manafold.m2.5.c.review-acceptance-event.v3",
+          "raw_sha256": "0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e"
+        }
+      ],
+      "event_closures": [
+        [
+          {
+            "artifact_role": "declared_model",
+            "path": "sources/m2_5/closures/C/declared_interaction_model.v2.json",
+            "schema": "manafold.m2.5.c.declared-interaction-model.v2",
+            "raw_sha256": "0202020202020202020202020202020202020202020202020202020202020202"
+          },
+          {
+            "artifact_role": "base_authority_v1",
+            "path": "sources/m2_5/authorities/interaction_review_authority.v1.json",
+            "schema": "manafold.m2.5.c.interaction-review-authority.v1",
+            "raw_sha256": "0101010101010101010101010101010101010101010101010101010101010101"
+          },
+          {
+            "artifact_role": "candidate_universe",
+            "path": "sources/m2_5/closures/C/interaction_candidate_universe.v2.json",
+            "schema": "manafold.m2.5.c.interaction-candidate-universe.v2",
+            "raw_sha256": "0303030303030303030303030303030303030303030303030303030303030303"
+          },
+          {
+            "artifact_role": "reviewer_roster_leaf",
+            "path": "sources/m2_5/authorities/reviewer_rosters/v1/0404040404040404040404040404040404040404040404040404040404040404.json",
+            "schema": "manafold.m2.5.c.reviewer-roster.v1",
+            "raw_sha256": "0404040404040404040404040404040404040404040404040404040404040404"
+          }
+        ]
+      ],
+      "host_bindings": [],
+      "expected_source_bindings": [
+        {
+          "artifact_role": "declared_model",
+          "path": "sources/m2_5/closures/C/declared_interaction_model.v2.json",
+          "schema": "manafold.m2.5.c.declared-interaction-model.v2",
+          "raw_sha256": "0202020202020202020202020202020202020202020202020202020202020202"
+        },
+        {
+          "artifact_role": "base_authority_v1",
+          "path": "sources/m2_5/authorities/interaction_review_authority.v1.json",
+          "schema": "manafold.m2.5.c.interaction-review-authority.v1",
+          "raw_sha256": "0101010101010101010101010101010101010101010101010101010101010101"
+        },
+        {
+          "artifact_role": "candidate_universe",
+          "path": "sources/m2_5/closures/C/interaction_candidate_universe.v2.json",
+          "schema": "manafold.m2.5.c.interaction-candidate-universe.v2",
+          "raw_sha256": "0303030303030303030303030303030303030303030303030303030303030303"
+        },
+        {
+          "artifact_role": "reviewer_roster_leaf",
+          "path": "sources/m2_5/authorities/reviewer_rosters/v1/0404040404040404040404040404040404040404040404040404040404040404.json",
+          "schema": "manafold.m2.5.c.reviewer-roster.v1",
+          "raw_sha256": "0404040404040404040404040404040404040404040404040404040404040404"
+        },
+        {
+          "artifact_role": "acceptance_event_leaf_v3",
+          "path": "sources/m2_5/authorities/review_acceptance_events/v3/0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a.json",
+          "schema": "manafold.m2.5.c.review-acceptance-event.v3",
+          "raw_sha256": "0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e"
+        }
+      ]
+    },
+    {
+      "case_id": "application_and_supersession_events_share_static_sources",
+      "static_bindings": [
+        {
+          "artifact_role": "base_authority_v1",
+          "path": "sources/m2_5/authorities/interaction_review_authority.v1.json",
+          "schema": "manafold.m2.5.c.interaction-review-authority.v1",
+          "raw_sha256": "0101010101010101010101010101010101010101010101010101010101010101"
+        },
+        {
+          "artifact_role": "candidate_universe",
+          "path": "sources/m2_5/closures/C/interaction_candidate_universe.v2.json",
+          "schema": "manafold.m2.5.c.interaction-candidate-universe.v2",
+          "raw_sha256": "0303030303030303030303030303030303030303030303030303030303030303"
+        }
+      ],
+      "event_leaf_bindings": [
+        {
+          "artifact_role": "acceptance_event_leaf_v3",
+          "path": "sources/m2_5/authorities/review_acceptance_events/v3/0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a.json",
+          "schema": "manafold.m2.5.c.review-acceptance-event.v3",
+          "raw_sha256": "0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e"
+        },
+        {
+          "artifact_role": "acceptance_event_leaf_v3",
+          "path": "sources/m2_5/authorities/review_acceptance_events/v3/0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f.json",
+          "schema": "manafold.m2.5.c.review-acceptance-event.v3",
+          "raw_sha256": "1010101010101010101010101010101010101010101010101010101010101010"
+        }
+      ],
+      "event_closures": [
+        [
+          {
+            "artifact_role": "declared_model",
+            "path": "sources/m2_5/closures/C/declared_interaction_model.v2.json",
+            "schema": "manafold.m2.5.c.declared-interaction-model.v2",
+            "raw_sha256": "0202020202020202020202020202020202020202020202020202020202020202"
+          },
+          {
+            "artifact_role": "base_authority_v1",
+            "path": "sources/m2_5/authorities/interaction_review_authority.v1.json",
+            "schema": "manafold.m2.5.c.interaction-review-authority.v1",
+            "raw_sha256": "0101010101010101010101010101010101010101010101010101010101010101"
+          },
+          {
+            "artifact_role": "candidate_universe",
+            "path": "sources/m2_5/closures/C/interaction_candidate_universe.v2.json",
+            "schema": "manafold.m2.5.c.interaction-candidate-universe.v2",
+            "raw_sha256": "0303030303030303030303030303030303030303030303030303030303030303"
+          },
+          {
+            "artifact_role": "reviewer_roster_leaf",
+            "path": "sources/m2_5/authorities/reviewer_rosters/v1/0404040404040404040404040404040404040404040404040404040404040404.json",
+            "schema": "manafold.m2.5.c.reviewer-roster.v1",
+            "raw_sha256": "0404040404040404040404040404040404040404040404040404040404040404"
+          }
+        ],
+        [
+          {
+            "artifact_role": "base_authority_v1",
+            "path": "sources/m2_5/authorities/interaction_review_authority.v1.json",
+            "schema": "manafold.m2.5.c.interaction-review-authority.v1",
+            "raw_sha256": "0101010101010101010101010101010101010101010101010101010101010101"
+          },
+          {
+            "artifact_role": "declared_model",
+            "path": "sources/m2_5/closures/C/declared_interaction_model.v2.json",
+            "schema": "manafold.m2.5.c.declared-interaction-model.v2",
+            "raw_sha256": "0202020202020202020202020202020202020202020202020202020202020202"
+          },
+          {
+            "artifact_role": "reviewer_roster_leaf",
+            "path": "sources/m2_5/authorities/reviewer_rosters/v1/0404040404040404040404040404040404040404040404040404040404040404.json",
+            "schema": "manafold.m2.5.c.reviewer-roster.v1",
+            "raw_sha256": "0404040404040404040404040404040404040404040404040404040404040404"
+          }
+        ]
+      ],
+      "host_bindings": [],
+      "expected_source_bindings": [
+        {
+          "artifact_role": "declared_model",
+          "path": "sources/m2_5/closures/C/declared_interaction_model.v2.json",
+          "schema": "manafold.m2.5.c.declared-interaction-model.v2",
+          "raw_sha256": "0202020202020202020202020202020202020202020202020202020202020202"
+        },
+        {
+          "artifact_role": "base_authority_v1",
+          "path": "sources/m2_5/authorities/interaction_review_authority.v1.json",
+          "schema": "manafold.m2.5.c.interaction-review-authority.v1",
+          "raw_sha256": "0101010101010101010101010101010101010101010101010101010101010101"
+        },
+        {
+          "artifact_role": "candidate_universe",
+          "path": "sources/m2_5/closures/C/interaction_candidate_universe.v2.json",
+          "schema": "manafold.m2.5.c.interaction-candidate-universe.v2",
+          "raw_sha256": "0303030303030303030303030303030303030303030303030303030303030303"
+        },
+        {
+          "artifact_role": "reviewer_roster_leaf",
+          "path": "sources/m2_5/authorities/reviewer_rosters/v1/0404040404040404040404040404040404040404040404040404040404040404.json",
+          "schema": "manafold.m2.5.c.reviewer-roster.v1",
+          "raw_sha256": "0404040404040404040404040404040404040404040404040404040404040404"
+        },
+        {
+          "artifact_role": "acceptance_event_leaf_v3",
+          "path": "sources/m2_5/authorities/review_acceptance_events/v3/0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a.json",
+          "schema": "manafold.m2.5.c.review-acceptance-event.v3",
+          "raw_sha256": "0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e"
+        },
+        {
+          "artifact_role": "acceptance_event_leaf_v3",
+          "path": "sources/m2_5/authorities/review_acceptance_events/v3/0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f.json",
+          "schema": "manafold.m2.5.c.review-acceptance-event.v3",
+          "raw_sha256": "1010101010101010101010101010101010101010101010101010101010101010"
+        }
+      ]
+    },
+    {
+      "case_id": "container_with_optional_host_sources",
+      "static_bindings": [
+        {
+          "artifact_role": "base_authority_v1",
+          "path": "sources/m2_5/authorities/interaction_review_authority.v1.json",
+          "schema": "manafold.m2.5.c.interaction-review-authority.v1",
+          "raw_sha256": "0101010101010101010101010101010101010101010101010101010101010101"
+        },
+        {
+          "artifact_role": "candidate_universe",
+          "path": "sources/m2_5/closures/C/interaction_candidate_universe.v2.json",
+          "schema": "manafold.m2.5.c.interaction-candidate-universe.v2",
+          "raw_sha256": "0303030303030303030303030303030303030303030303030303030303030303"
+        }
+      ],
+      "event_leaf_bindings": [
+        {
+          "artifact_role": "acceptance_event_leaf_v3",
+          "path": "sources/m2_5/authorities/review_acceptance_events/v3/0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a.json",
+          "schema": "manafold.m2.5.c.review-acceptance-event.v3",
+          "raw_sha256": "0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e"
+        }
+      ],
+      "event_closures": [
+        [
+          {
+            "artifact_role": "declared_model",
+            "path": "sources/m2_5/closures/C/declared_interaction_model.v2.json",
+            "schema": "manafold.m2.5.c.declared-interaction-model.v2",
+            "raw_sha256": "0202020202020202020202020202020202020202020202020202020202020202"
+          },
+          {
+            "artifact_role": "base_authority_v1",
+            "path": "sources/m2_5/authorities/interaction_review_authority.v1.json",
+            "schema": "manafold.m2.5.c.interaction-review-authority.v1",
+            "raw_sha256": "0101010101010101010101010101010101010101010101010101010101010101"
+          },
+          {
+            "artifact_role": "candidate_universe",
+            "path": "sources/m2_5/closures/C/interaction_candidate_universe.v2.json",
+            "schema": "manafold.m2.5.c.interaction-candidate-universe.v2",
+            "raw_sha256": "0303030303030303030303030303030303030303030303030303030303030303"
+          },
+          {
+            "artifact_role": "reviewer_roster_leaf",
+            "path": "sources/m2_5/authorities/reviewer_rosters/v1/0404040404040404040404040404040404040404040404040404040404040404.json",
+            "schema": "manafold.m2.5.c.reviewer-roster.v1",
+            "raw_sha256": "0404040404040404040404040404040404040404040404040404040404040404"
+          }
+        ]
+      ],
+      "host_bindings": [
+        {
+          "artifact_role": "host_binding_authority_v2",
+          "path": "sources/m2_5/authorities/interaction_review_authority.v2.json",
+          "schema": "manafold.m2.5.c.interaction-review-authority.v2",
+          "raw_sha256": "0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b"
+        },
+        {
+          "artifact_role": "host_binding_claim_record",
+          "path": "sources/m2_5/authorities/cross_deck_host_binding_claims/v1/0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c.json",
+          "schema": "manafold.m2.5.c.cross-deck-host-binding-claim-record.v1",
+          "raw_sha256": "0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d"
+        }
+      ],
+      "expected_source_bindings": [
+        {
+          "artifact_role": "declared_model",
+          "path": "sources/m2_5/closures/C/declared_interaction_model.v2.json",
+          "schema": "manafold.m2.5.c.declared-interaction-model.v2",
+          "raw_sha256": "0202020202020202020202020202020202020202020202020202020202020202"
+        },
+        {
+          "artifact_role": "base_authority_v1",
+          "path": "sources/m2_5/authorities/interaction_review_authority.v1.json",
+          "schema": "manafold.m2.5.c.interaction-review-authority.v1",
+          "raw_sha256": "0101010101010101010101010101010101010101010101010101010101010101"
+        },
+        {
+          "artifact_role": "candidate_universe",
+          "path": "sources/m2_5/closures/C/interaction_candidate_universe.v2.json",
+          "schema": "manafold.m2.5.c.interaction-candidate-universe.v2",
+          "raw_sha256": "0303030303030303030303030303030303030303030303030303030303030303"
+        },
+        {
+          "artifact_role": "reviewer_roster_leaf",
+          "path": "sources/m2_5/authorities/reviewer_rosters/v1/0404040404040404040404040404040404040404040404040404040404040404.json",
+          "schema": "manafold.m2.5.c.reviewer-roster.v1",
+          "raw_sha256": "0404040404040404040404040404040404040404040404040404040404040404"
+        },
+        {
+          "artifact_role": "acceptance_event_leaf_v3",
+          "path": "sources/m2_5/authorities/review_acceptance_events/v3/0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a.json",
+          "schema": "manafold.m2.5.c.review-acceptance-event.v3",
+          "raw_sha256": "0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e"
+        },
+        {
+          "artifact_role": "host_binding_authority_v2",
+          "path": "sources/m2_5/authorities/interaction_review_authority.v2.json",
+          "schema": "manafold.m2.5.c.interaction-review-authority.v2",
+          "raw_sha256": "0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b"
+        },
+        {
+          "artifact_role": "host_binding_claim_record",
+          "path": "sources/m2_5/authorities/cross_deck_host_binding_claims/v1/0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c.json",
+          "schema": "manafold.m2.5.c.cross-deck-host-binding-claim-record.v1",
+          "raw_sha256": "0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d"
+        }
+      ]
+    }
+  ]
+}
