@@ -1,0 +1,1263 @@
+{
+  "$id": "context-application-authority.v2.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Manafold M2.5.C ContextApplication Authority V2",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "schema": {
+      "const": "manafold.m2.5.c.context-application-authority.v2"
+    },
+    "base_authority_v1_binding": {
+      "$ref": "#/$defs/source_binding"
+    },
+    "host_binding_authority_v2_binding": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/source_binding"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "candidate_universe_binding": {
+      "$ref": "#/$defs/source_binding"
+    },
+    "source_bindings": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/source_binding"
+      }
+    },
+    "context_application_v2_records": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/record"
+      }
+    },
+    "context_application_v2_supersession_records": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/supersession_record"
+      }
+    },
+    "application_host_bindings_v2": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/application_host_binding"
+      }
+    }
+  },
+  "required": [
+    "schema",
+    "base_authority_v1_binding",
+    "host_binding_authority_v2_binding",
+    "candidate_universe_binding",
+    "source_bindings",
+    "context_application_v2_records",
+    "context_application_v2_supersession_records",
+    "application_host_bindings_v2"
+  ],
+  "$defs": {
+    "digest": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "relative_path": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^(?!/)(?!.*\\\\)(?!.*://)(?![A-Za-z]:)[^\\r\\n]+$"
+    },
+    "identity_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "envelope_id": {
+          "const": "mtgml.digest-envelope.v1"
+        },
+        "algorithm_id": {
+          "const": "sha-256"
+        },
+        "semantic_domain": {
+          "type": "string",
+          "minLength": 1
+        },
+        "payload_codec_id": {
+          "const": "mtgml.canonical-cbor.v1"
+        },
+        "input_schema_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "digest_hex": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      },
+      "required": [
+        "envelope_id",
+        "algorithm_id",
+        "semantic_domain",
+        "payload_codec_id",
+        "input_schema_id",
+        "digest_hex"
+      ]
+    },
+    "candidate_identity_ref": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/identity_ref"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "semantic_domain": {
+              "const": "manafold.m2.5.c.candidate-identity.v1"
+            },
+            "input_schema_id": {
+              "const": "manafold.m2.5.c.candidate-identity-input.v1"
+            }
+          },
+          "required": [
+            "semantic_domain",
+            "input_schema_id"
+          ]
+        }
+      ]
+    },
+    "cbor_value": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "integer"
+        },
+        {
+          "type": "string"
+        },
+        {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/cbor_value"
+          }
+        }
+      ]
+    },
+    "participant_role": {
+      "type": "array",
+      "prefixItems": [
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 4294967295
+        },
+        {
+          "type": "string",
+          "enum": [
+            "affected",
+            "controller",
+            "copied_source",
+            "copy_result",
+            "decision_actor",
+            "destination_zone",
+            "origin_zone",
+            "ordered_participant",
+            "owner",
+            "replacement_actor",
+            "source",
+            "target",
+            "trigger_source"
+          ]
+        },
+        {
+          "type": "string",
+          "enum": [
+            "ability",
+            "card",
+            "copiable_value",
+            "deck",
+            "effect",
+            "event",
+            "object",
+            "permanent",
+            "player",
+            "requirement_family",
+            "source_instance",
+            "spell",
+            "token",
+            "zone"
+          ]
+        },
+        {
+          "type": "string",
+          "minLength": 1
+        }
+      ],
+      "items": false,
+      "minItems": 4,
+      "maxItems": 4
+    },
+    "context_binding": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "arity": {
+          "type": "string",
+          "enum": [
+            "unary",
+            "binary",
+            "higher_order"
+          ]
+        },
+        "directionality": {
+          "type": "string",
+          "enum": [
+            "directed",
+            "none",
+            "symmetric"
+          ]
+        },
+        "participant_roles": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/participant_role"
+          }
+        },
+        "host_relationship": {
+          "type": "string",
+          "enum": [
+            "cross_host",
+            "not_applicable",
+            "same_host"
+          ]
+        }
+      },
+      "required": [
+        "arity",
+        "directionality",
+        "participant_roles",
+        "host_relationship"
+      ]
+    },
+    "evidence_locator": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "whole_artifact"
+            }
+          },
+          "required": [
+            "kind"
+          ]
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "json_pointer"
+            },
+            "value": {
+              "type": "string",
+              "pattern": "^(/([^~/]|~0|~1)*)*$"
+            }
+          },
+          "required": [
+            "kind",
+            "value"
+          ]
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "archive_member"
+            },
+            "value": {
+              "$ref": "#/$defs/relative_path"
+            }
+          },
+          "required": [
+            "kind",
+            "value"
+          ]
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "event_id"
+            },
+            "value": {
+              "type": "string",
+              "pattern": "^ae\\.v1/[0-9a-f]{64}$"
+            }
+          },
+          "required": [
+            "kind",
+            "value"
+          ]
+        }
+      ]
+    },
+    "evidence_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "authority_kind": {
+          "type": "string",
+          "enum": [
+            "model",
+            "rev3",
+            "b2",
+            "b1_final",
+            "c_candidate",
+            "reviewer_roster",
+            "acceptance_event"
+          ]
+        },
+        "path": {
+          "$ref": "#/$defs/relative_path"
+        },
+        "locator": {
+          "$ref": "#/$defs/evidence_locator"
+        },
+        "raw_sha256": {
+          "$ref": "#/$defs/digest"
+        }
+      },
+      "required": [
+        "authority_kind",
+        "path",
+        "locator",
+        "raw_sha256"
+      ]
+    },
+    "evidence_refs": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/evidence_ref"
+      }
+    },
+    "nonempty_evidence_refs": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/evidence_ref"
+      }
+    },
+    "source_binding": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "artifact_role": {
+          "type": "string",
+          "enum": [
+            "base_authority_v1",
+            "declared_model",
+            "candidate_universe",
+            "rev3_candidate_census",
+            "rev3_pair_aggregates",
+            "rev3_card_requirement_map",
+            "rev3_deck_row_source_resolution",
+            "rev3_osi_source_records",
+            "rev3_source_index",
+            "b2_catalog",
+            "b2_classifications",
+            "b2_closure",
+            "b1_final_citations",
+            "b1_final_closure",
+            "reviewer_roster_leaf",
+            "acceptance_event_leaf_v3",
+            "host_binding_authority_v2",
+            "host_binding_claim_record"
+          ]
+        },
+        "path": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^(?!/)(?!.*\\\\)(?!.*://)(?![A-Za-z]:)[^\\r\\n]+$"
+        },
+        "schema": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "raw_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      },
+      "required": [
+        "artifact_role",
+        "path",
+        "schema",
+        "raw_sha256"
+      ],
+      "allOf": [
+        {
+          "oneOf": [
+            {
+              "properties": {
+                "artifact_role": {
+                  "const": "base_authority_v1"
+                },
+                "path": {
+                  "const": "sources/m2_5/authorities/interaction_review_authority.v1.json"
+                },
+                "schema": {
+                  "const": "manafold.m2.5.c.interaction-review-authority.v1"
+                }
+              },
+              "required": [
+                "artifact_role",
+                "path",
+                "schema"
+              ]
+            },
+            {
+              "properties": {
+                "artifact_role": {
+                  "const": "declared_model"
+                },
+                "path": {
+                  "const": "sources/m2_5/closures/C/declared_interaction_model.v2.json"
+                },
+                "schema": {
+                  "const": "manafold.m2.5.c.declared-interaction-model.v2"
+                }
+              },
+              "required": [
+                "artifact_role",
+                "path",
+                "schema"
+              ]
+            },
+            {
+              "properties": {
+                "artifact_role": {
+                  "const": "candidate_universe"
+                },
+                "path": {
+                  "const": "sources/m2_5/closures/C/interaction_candidate_universe.v2.json"
+                },
+                "schema": {
+                  "const": "manafold.m2.5.c.interaction-candidate-universe.v2"
+                }
+              },
+              "required": [
+                "artifact_role",
+                "path",
+                "schema"
+              ]
+            },
+            {
+              "properties": {
+                "artifact_role": {
+                  "const": "rev3_candidate_census"
+                },
+                "path": {
+                  "const": "derived/Pair_Interaction_Census_REV3.csv"
+                },
+                "schema": {
+                  "type": "null"
+                }
+              },
+              "required": [
+                "artifact_role",
+                "path",
+                "schema"
+              ]
+            },
+            {
+              "properties": {
+                "artifact_role": {
+                  "const": "rev3_pair_aggregates"
+                },
+                "path": {
+                  "const": "derived/Pair_Requirement_Aggregates_REV3.json"
+                },
+                "schema": {
+                  "type": "null"
+                }
+              },
+              "required": [
+                "artifact_role",
+                "path",
+                "schema"
+              ]
+            },
+            {
+              "properties": {
+                "artifact_role": {
+                  "const": "rev3_card_requirement_map"
+                },
+                "path": {
+                  "const": "derived/Card_Requirement_Map_REV3.csv"
+                },
+                "schema": {
+                  "type": "null"
+                }
+              },
+              "required": [
+                "artifact_role",
+                "path",
+                "schema"
+              ]
+            },
+            {
+              "properties": {
+                "artifact_role": {
+                  "const": "rev3_deck_row_source_resolution"
+                },
+                "path": {
+                  "const": "inputs/deck_row_source_resolution_REV3.csv"
+                },
+                "schema": {
+                  "type": "null"
+                }
+              },
+              "required": [
+                "artifact_role",
+                "path",
+                "schema"
+              ]
+            },
+            {
+              "properties": {
+                "artifact_role": {
+                  "const": "rev3_osi_source_records"
+                },
+                "path": {
+                  "const": "source/raw/oracle_cards_selected_REV3.jsonl"
+                },
+                "schema": {
+                  "type": "null"
+                }
+              },
+              "required": [
+                "artifact_role",
+                "path",
+                "schema"
+              ]
+            },
+            {
+              "properties": {
+                "artifact_role": {
+                  "const": "rev3_source_index"
+                },
+                "path": {
+                  "const": "source/raw/source_record_index_REV3.csv"
+                },
+                "schema": {
+                  "type": "null"
+                }
+              },
+              "required": [
+                "artifact_role",
+                "path",
+                "schema"
+              ]
+            },
+            {
+              "properties": {
+                "artifact_role": {
+                  "const": "b2_catalog"
+                },
+                "path": {
+                  "const": "sources/m2_5/closures/B2/requirement_family_catalog.v1.json"
+                },
+                "schema": {
+                  "const": "manafold.m2.5.b2.requirement-family-catalog.v1"
+                }
+              },
+              "required": [
+                "artifact_role",
+                "path",
+                "schema"
+              ]
+            },
+            {
+              "properties": {
+                "artifact_role": {
+                  "const": "b2_classifications"
+                },
+                "path": {
+                  "const": "sources/m2_5/closures/B2/card_semantic_classifications.v1.json"
+                },
+                "schema": {
+                  "const": "manafold.m2.5.b2.card-semantic-classifications.v1"
+                }
+              },
+              "required": [
+                "artifact_role",
+                "path",
+                "schema"
+              ]
+            },
+            {
+              "properties": {
+                "artifact_role": {
+                  "const": "b2_closure"
+                },
+                "path": {
+                  "const": "sources/m2_5/closures/B2/classification_closure.v1.json"
+                },
+                "schema": {
+                  "const": "manafold.m2.5.b2.classification-closure.v1"
+                }
+              },
+              "required": [
+                "artifact_role",
+                "path",
+                "schema"
+              ]
+            },
+            {
+              "properties": {
+                "artifact_role": {
+                  "const": "b1_final_citations"
+                },
+                "path": {
+                  "const": "sources/m2_5/closures/B1/official_authority_citations.v3.json"
+                },
+                "schema": {
+                  "const": "manafold.m2.5.b1.official-authority-citations.v3"
+                }
+              },
+              "required": [
+                "artifact_role",
+                "path",
+                "schema"
+              ]
+            },
+            {
+              "properties": {
+                "artifact_role": {
+                  "const": "b1_final_closure"
+                },
+                "path": {
+                  "const": "sources/m2_5/closures/B1/official_authority_citation_closure.v2.json"
+                },
+                "schema": {
+                  "const": "manafold.m2.5.b1.official-authority-citation-closure.v2"
+                }
+              },
+              "required": [
+                "artifact_role",
+                "path",
+                "schema"
+              ]
+            },
+            {
+              "properties": {
+                "artifact_role": {
+                  "const": "reviewer_roster_leaf"
+                },
+                "path": {
+                  "pattern": "^sources/m2_5/authorities/reviewer_rosters/v1/[0-9a-f]{64}\\.json$"
+                },
+                "schema": {
+                  "const": "manafold.m2.5.c.reviewer-roster.v1"
+                }
+              },
+              "required": [
+                "artifact_role",
+                "path",
+                "schema"
+              ]
+            },
+            {
+              "properties": {
+                "artifact_role": {
+                  "const": "acceptance_event_leaf_v3"
+                },
+                "path": {
+                  "pattern": "^sources/m2_5/authorities/review_acceptance_events/v3/[0-9a-f]{64}\\.json$"
+                },
+                "schema": {
+                  "const": "manafold.m2.5.c.review-acceptance-event.v3"
+                }
+              },
+              "required": [
+                "artifact_role",
+                "path",
+                "schema"
+              ]
+            },
+            {
+              "properties": {
+                "artifact_role": {
+                  "const": "host_binding_authority_v2"
+                },
+                "path": {
+                  "const": "sources/m2_5/authorities/interaction_review_authority.v2.json"
+                },
+                "schema": {
+                  "const": "manafold.m2.5.c.interaction-review-authority.v2"
+                }
+              },
+              "required": [
+                "artifact_role",
+                "path",
+                "schema"
+              ]
+            },
+            {
+              "properties": {
+                "artifact_role": {
+                  "const": "host_binding_claim_record"
+                },
+                "path": {
+                  "pattern": "^sources/m2_5/authorities/cross_deck_host_binding_claims/v1/[0-9a-f]{64}\\.json$"
+                },
+                "schema": {
+                  "const": "manafold.m2.5.c.cross-deck-host-binding-claim-record.v1"
+                }
+              },
+              "required": [
+                "artifact_role",
+                "path",
+                "schema"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "precondition": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "precondition_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "observed_value": {
+          "$ref": "#/$defs/cbor_value"
+        },
+        "evidence_refs": {
+          "$ref": "#/$defs/evidence_refs"
+        },
+        "equivalence_rationale": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "precondition_id",
+        "observed_value",
+        "evidence_refs",
+        "equivalence_rationale"
+      ]
+    },
+    "context_slot_bridge": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "slot_name": {
+          "type": "string",
+          "enum": [
+            "zone",
+            "visibility",
+            "timing",
+            "temporal_order",
+            "source_affected_relation",
+            "control_ownership_relation",
+            "replacement_layer_relation",
+            "trigger_lki_relation",
+            "information_relation",
+            "decision_actor_relation"
+          ]
+        },
+        "source_value": {
+          "type": "string",
+          "enum": [
+            "battlefield",
+            "command_zone",
+            "exile",
+            "graveyard",
+            "hand",
+            "library",
+            "outside_game",
+            "stack",
+            "zone_agnostic",
+            "not_applicable",
+            "controller_only",
+            "hidden_to_actor",
+            "identity_hidden",
+            "owner_only",
+            "private",
+            "public",
+            "activation_time",
+            "cast_time",
+            "combat_time",
+            "continuous_effect",
+            "resolution_time",
+            "state_based_check",
+            "trigger_time",
+            "turn_boundary",
+            "zone_change_time",
+            "after",
+            "before",
+            "during",
+            "sequential",
+            "simultaneous",
+            "until",
+            "while",
+            "both_affected",
+            "no_effect_relation",
+            "source_affects_other",
+            "source_affected",
+            "control_changes",
+            "cross_controller",
+            "cross_owner",
+            "ownership_changes",
+            "same_controller",
+            "same_owner",
+            "copy_layer",
+            "control_layer",
+            "layer_dependency",
+            "no_replacement_or_layer",
+            "pt_layer",
+            "replacement_effect",
+            "type_layer",
+            "zone_change_replacement",
+            "intervening_if",
+            "last_known_information",
+            "no_trigger_lki",
+            "trigger_condition",
+            "triggered_event",
+            "hidden_identity",
+            "known_to_controller",
+            "known_to_owner",
+            "no_information_dependency",
+            "private_look",
+            "public_identity",
+            "random_unknown",
+            "active_player",
+            "controller",
+            "no_decision",
+            "opponent",
+            "owner",
+            "rules_forced",
+            "target_player"
+          ]
+        },
+        "reviewed_value": {
+          "type": "string",
+          "enum": [
+            "battlefield",
+            "command_zone",
+            "exile",
+            "graveyard",
+            "hand",
+            "library",
+            "outside_game",
+            "stack",
+            "zone_agnostic",
+            "not_applicable",
+            "controller_only",
+            "hidden_to_actor",
+            "identity_hidden",
+            "owner_only",
+            "private",
+            "public",
+            "activation_time",
+            "cast_time",
+            "combat_time",
+            "continuous_effect",
+            "resolution_time",
+            "state_based_check",
+            "trigger_time",
+            "turn_boundary",
+            "zone_change_time",
+            "after",
+            "before",
+            "during",
+            "sequential",
+            "simultaneous",
+            "until",
+            "while",
+            "both_affected",
+            "no_effect_relation",
+            "source_affects_other",
+            "source_affected",
+            "control_changes",
+            "cross_controller",
+            "cross_owner",
+            "ownership_changes",
+            "same_controller",
+            "same_owner",
+            "copy_layer",
+            "control_layer",
+            "layer_dependency",
+            "no_replacement_or_layer",
+            "pt_layer",
+            "replacement_effect",
+            "type_layer",
+            "zone_change_replacement",
+            "intervening_if",
+            "last_known_information",
+            "no_trigger_lki",
+            "trigger_condition",
+            "triggered_event",
+            "hidden_identity",
+            "known_to_controller",
+            "known_to_owner",
+            "no_information_dependency",
+            "private_look",
+            "public_identity",
+            "random_unknown",
+            "active_player",
+            "controller",
+            "no_decision",
+            "opponent",
+            "owner",
+            "rules_forced",
+            "target_player"
+          ]
+        },
+        "relation": {
+          "type": "string",
+          "enum": [
+            "exact_match",
+            "reviewed_divergence"
+          ]
+        },
+        "evidence_refs": {
+          "$ref": "#/$defs/nonempty_evidence_refs"
+        },
+        "rationale": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "slot_name",
+        "source_value",
+        "reviewed_value",
+        "relation",
+        "evidence_refs",
+        "rationale"
+      ]
+    },
+    "temporal_slot_bridge": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "slot_name": {
+          "type": "string",
+          "enum": [
+            "trigger_order",
+            "dependency_order",
+            "duration",
+            "replacement_order"
+          ]
+        },
+        "reviewed_value": {
+          "type": "string",
+          "enum": [
+            "deferred",
+            "immediate",
+            "no_temporal_dependency",
+            "dependency_ordered",
+            "duration_limited",
+            "indefinite",
+            "until_event",
+            "after_effect",
+            "before_effect",
+            "same_event",
+            "not_applicable"
+          ]
+        },
+        "evidence_refs": {
+          "$ref": "#/$defs/nonempty_evidence_refs"
+        },
+        "rationale": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "slot_name",
+        "reviewed_value",
+        "evidence_refs",
+        "rationale"
+      ]
+    },
+    "context_member_bridge": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "context_slot_attestations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/context_slot_bridge"
+          },
+          "minItems": 10,
+          "maxItems": 10
+        },
+        "temporal_slot_attestations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/temporal_slot_bridge"
+          },
+          "minItems": 4,
+          "maxItems": 4
+        }
+      },
+      "required": [
+        "context_slot_attestations",
+        "temporal_slot_attestations"
+      ]
+    },
+    "candidate_universe_binding": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "$ref": "#/$defs/relative_path"
+        },
+        "schema": {
+          "const": "manafold.m2.5.c.interaction-candidate-universe.v2"
+        },
+        "raw_sha256": {
+          "$ref": "#/$defs/digest"
+        }
+      },
+      "required": [
+        "path",
+        "schema",
+        "raw_sha256"
+      ]
+    },
+    "context_member": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "candidate_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "candidate_identity": {
+          "$ref": "#/$defs/candidate_identity_ref"
+        },
+        "source_instance_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "candidate_universe_binding": {
+          "$ref": "#/$defs/candidate_universe_binding"
+        },
+        "context_binding": {
+          "$ref": "#/$defs/context_binding"
+        },
+        "precondition_attestations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/precondition"
+          }
+        },
+        "member_evidence_refs": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/evidence_ref"
+          }
+        },
+        "context_member_attestation": {
+          "$ref": "#/$defs/context_member_bridge"
+        }
+      },
+      "required": [
+        "candidate_id",
+        "candidate_identity",
+        "source_instance_id",
+        "candidate_universe_binding",
+        "context_binding",
+        "precondition_attestations",
+        "member_evidence_refs",
+        "context_member_attestation"
+      ]
+    },
+    "event_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "event_id": {
+          "type": "string",
+          "pattern": "^ae\\.v3/[0-9a-f]{64}$"
+        },
+        "path": {
+          "type": "string",
+          "pattern": "^sources/m2_5/authorities/review_acceptance_events/v3/[0-9a-f]{64}\\.json$"
+        },
+        "raw_sha256": {
+          "$ref": "#/$defs/digest"
+        }
+      },
+      "required": [
+        "event_id",
+        "path",
+        "raw_sha256"
+      ]
+    },
+    "acceptance": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "decision": {
+          "const": "human_accepted"
+        },
+        "review_event_ref": {
+          "$ref": "#/$defs/event_ref"
+        }
+      },
+      "required": [
+        "decision",
+        "review_event_ref"
+      ]
+    },
+    "record": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "record_id": {
+          "type": "string",
+          "pattern": "^cpar\\.v2/[0-9a-f]{64}$"
+        },
+        "application_id": {
+          "type": "string",
+          "pattern": "^cpa\\.v2/[0-9a-f]{64}$"
+        },
+        "theorem_record_id": {
+          "type": "string",
+          "pattern": "^cpr\\.v1/[0-9a-f]{64}$"
+        },
+        "members": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/context_member"
+          }
+        },
+        "acceptance": {
+          "$ref": "#/$defs/acceptance"
+        }
+      },
+      "required": [
+        "record_id",
+        "application_id",
+        "theorem_record_id",
+        "members",
+        "acceptance"
+      ]
+    },
+    "supersession_record": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "record_id": {
+          "type": "string",
+          "pattern": "^cpsr\\.v2/[0-9a-f]{64}$"
+        },
+        "supersession_id": {
+          "type": "string",
+          "pattern": "^cps\\.v2/[0-9a-f]{64}$"
+        },
+        "superseded_record_id": {
+          "type": "string",
+          "pattern": "^cpar\\.v2/[0-9a-f]{64}$"
+        },
+        "replacement_record_id": {
+          "oneOf": [
+            {
+              "type": "string",
+              "pattern": "^cpar\\.v2/[0-9a-f]{64}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "superseded_record_kind": {
+          "const": "context_application_v2_record"
+        },
+        "replacement_record_kind": {
+          "oneOf": [
+            {
+              "const": "context_application_v2_record"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "reason_code": {
+          "type": "string",
+          "enum": [
+            "semantic_correction",
+            "source_revision",
+            "model_revision",
+            "authority_revocation"
+          ]
+        },
+        "source_evidence_refs": {
+          "$ref": "#/$defs/evidence_refs"
+        },
+        "acceptance": {
+          "$ref": "#/$defs/acceptance"
+        }
+      },
+      "required": [
+        "record_id",
+        "supersession_id",
+        "superseded_record_id",
+        "replacement_record_id",
+        "superseded_record_kind",
+        "replacement_record_kind",
+        "reason_code",
+        "source_evidence_refs",
+        "acceptance"
+      ]
+    },
+    "application_host_binding": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "application_kind": {
+          "const": "context_application"
+        },
+        "application_semantic_id": {
+          "type": "string",
+          "pattern": "^cpa\\.v2/[0-9a-f]{64}$"
+        },
+        "host_binding_claim_ids": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "pattern": "^hbc\\.v1/[0-9a-f]{64}$"
+          }
+        }
+      },
+      "required": [
+        "application_kind",
+        "application_semantic_id",
+        "host_binding_claim_ids"
+      ]
+    }
+  }
+}
