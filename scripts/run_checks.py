@@ -19,9 +19,10 @@ FAST = [
     [sys.executable, "scripts/check_documentation.py"],
     [sys.executable, "scripts/validate_schemas.py"],
     [sys.executable, "scripts/validate_golden_path.py"],
-    [sys.executable, "scripts/run_python_tests.py"],
+    [sys.executable, "scripts/run_python_tests.py", "--profile", "smoke"],
 ]
 INTEGRATION_EXTRA = [
+    [sys.executable, "scripts/run_python_tests.py", "--profile", "full"],
     ["ruff", "format", "--check", "python", "scripts"],
     ["ruff", "check", "python", "scripts"],
     ["mypy", "--config-file", "python/pyproject.toml"],

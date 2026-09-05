@@ -8,7 +8,7 @@ ADR 0041 accepts the reviewed capability-oriented semantic-ownership candidate a
 
 ## Reviewed candidates awaiting acceptance
 
-Reviewed ADR candidates may be stored under `docs/adr/candidates/` without allocating a permanent ADR number. They are informative until a later acceptance change assigns the then-current number and changes the record to `Accepted`. There is currently no open reviewed candidate.
+Reviewed ADR candidates may be stored under `docs/adr/candidates/` without allocating a permanent ADR number. They are informative until a later acceptance change assigns the then-current number and changes the record to `Accepted`. The current open reviewed candidate is [ContextApplicationV2 reviewed-context bridge](candidates/context-application-v2-reviewed-context-bridge.md), whose document status remains `FREEZE_CANDIDATE`. It is not accepted architecture and does not authorize implementation.
 
 A candidate must not be cited as accepted architecture, used to claim executable support, or used to begin a later milestone before its explicit acceptance change. Candidate numbering shown inside research material is provisional only.
 
