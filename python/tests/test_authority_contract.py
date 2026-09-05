@@ -576,7 +576,17 @@ class AuthorityIdentityMatrixTests(unittest.TestCase):
                 encoding="utf-8"
             )
         )
-        self.assertEqual(len(matrix["identities"]), len(AuthorityIdentityKind))
+        new_context_kinds = {
+            AuthorityIdentityKind.CONTEXT_APPLICATION_V2,
+            AuthorityIdentityKind.CONTEXT_APPLICATION_RECORD_V2,
+            AuthorityIdentityKind.CONTEXT_SUPERSESSION_V2,
+            AuthorityIdentityKind.CONTEXT_SUPERSESSION_RECORD_V2,
+            AuthorityIdentityKind.ACCEPTANCE_SUBJECT_V3,
+            AuthorityIdentityKind.REVIEW_ACCEPTANCE_EVENT_V3,
+        }
+        self.assertEqual(
+            len(matrix["identities"]), len(AuthorityIdentityKind) - len(new_context_kinds)
+        )
         equivalence_cases = 0
         context_cases = 0
         for entry in matrix["identities"]:

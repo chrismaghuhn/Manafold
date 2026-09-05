@@ -1,6 +1,7 @@
 """Rules-neutral M2.5.C authority contract and identity primitives.
 
-This module owns only the fixed V1 persistence shapes needed by the authority
+This module owns the fixed V1 persistence shapes and the additive structural
+V2/V3 context-application contract vocabulary needed by the authority
 boundary. It does not resolve sources, validate Magic semantics, classify C
 candidates, or derive interaction classes.
 """
@@ -28,6 +29,22 @@ ACCEPTANCE_EVENT_SCHEMA_V1: Final = "manafold.m2.5.c.review-acceptance-event.v1"
 REVIEWER_ROSTER_SCHEMA_V1: Final = "manafold.m2.5.c.reviewer-roster.v1"
 ACCEPTANCE_CHECKLIST_V1: Final = "interaction-authority-review-checklist.v1"
 SUPERSESSION_RECORD_SCHEMA_V1: Final = "manafold.m2.5.c.supersession-record.v1"
+CONTEXT_AUTHORITY_SCHEMA_V2: Final = "manafold.m2.5.c.context-application-authority.v2"
+CONTEXT_APPLICATION_INPUT_SCHEMA_V2: Final = "manafold.m2.5.c.context-application-input.v2"
+CONTEXT_APPLICATION_RECORD_INPUT_SCHEMA_V2: Final = (
+    "manafold.m2.5.c.context-application-record-input.v2"
+)
+CONTEXT_SUPERSESSION_INPUT_SCHEMA_V2: Final = (
+    "manafold.m2.5.c.context-application-v2-supersession-input.v2"
+)
+CONTEXT_SUPERSESSION_RECORD_INPUT_SCHEMA_V2: Final = (
+    "manafold.m2.5.c.context-application-supersession-record-input.v2"
+)
+ACCEPTANCE_SUBJECT_SCHEMA_V3: Final = "manafold.m2.5.c.acceptance-subject-payload.v3"
+ACCEPTANCE_SUBJECT_INPUT_SCHEMA_V3: Final = "manafold.m2.5.c.acceptance-subject-payload-input.v3"
+ACCEPTANCE_EVENT_SCHEMA_V3: Final = "manafold.m2.5.c.review-acceptance-event.v3"
+ACCEPTANCE_EVENT_INPUT_SCHEMA_V3: Final = "manafold.m2.5.c.review-acceptance-event-input.v3"
+ACCEPTANCE_CHECKLIST_V2: Final = "interaction-authority-review-checklist.v2"
 
 _RAW_REV3_PATHS: Final = frozenset(
     {
@@ -70,6 +87,64 @@ _EXPECTED_STATIC_PATH_BY_ROLE: Final = {
     "b1_final_citations": "sources/m2_5/closures/B1/official_authority_citations.v3.json",
     "b1_final_closure": ("sources/m2_5/closures/B1/official_authority_citation_closure.v2.json"),
     "candidate_universe": "sources/m2_5/closures/C/interaction_candidate_universe.v2.json",
+}
+_CONTEXT_AUTHORITY_STATIC_BINDING_REGISTRY_V2: Final = {
+    "base_authority_v1": (
+        "sources/m2_5/authorities/interaction_review_authority.v1.json",
+        "manafold.m2.5.c.interaction-review-authority.v1",
+    ),
+    "declared_model": (
+        "sources/m2_5/closures/C/declared_interaction_model.v2.json",
+        "manafold.m2.5.c.declared-interaction-model.v2",
+    ),
+    "candidate_universe": (
+        "sources/m2_5/closures/C/interaction_candidate_universe.v2.json",
+        "manafold.m2.5.c.interaction-candidate-universe.v2",
+    ),
+    "rev3_candidate_census": ("derived/Pair_Interaction_Census_REV3.csv", None),
+    "rev3_pair_aggregates": ("derived/Pair_Requirement_Aggregates_REV3.json", None),
+    "rev3_card_requirement_map": ("derived/Card_Requirement_Map_REV3.csv", None),
+    "rev3_deck_row_source_resolution": ("inputs/deck_row_source_resolution_REV3.csv", None),
+    "rev3_osi_source_records": ("source/raw/oracle_cards_selected_REV3.jsonl", None),
+    "rev3_source_index": ("source/raw/source_record_index_REV3.csv", None),
+    "b2_catalog": (
+        "sources/m2_5/closures/B2/requirement_family_catalog.v1.json",
+        "manafold.m2.5.b2.requirement-family-catalog.v1",
+    ),
+    "b2_classifications": (
+        "sources/m2_5/closures/B2/card_semantic_classifications.v1.json",
+        "manafold.m2.5.b2.card-semantic-classifications.v1",
+    ),
+    "b2_closure": (
+        "sources/m2_5/closures/B2/classification_closure.v1.json",
+        "manafold.m2.5.b2.classification-closure.v1",
+    ),
+    "b1_final_citations": (
+        "sources/m2_5/closures/B1/official_authority_citations.v3.json",
+        "manafold.m2.5.b1.official-authority-citations.v3",
+    ),
+    "b1_final_closure": (
+        "sources/m2_5/closures/B1/official_authority_citation_closure.v2.json",
+        "manafold.m2.5.b1.official-authority-citation-closure.v2",
+    ),
+    "host_binding_authority_v2": (
+        "sources/m2_5/authorities/interaction_review_authority.v2.json",
+        "manafold.m2.5.c.interaction-review-authority.v2",
+    ),
+}
+_CONTEXT_AUTHORITY_LEAF_BINDING_REGISTRY_V2: Final = {
+    "reviewer_roster_leaf": (
+        r"sources/m2_5/authorities/reviewer_rosters/v1/[0-9a-f]{64}\.json",
+        REVIEWER_ROSTER_SCHEMA_V1,
+    ),
+    "acceptance_event_leaf_v3": (
+        r"sources/m2_5/authorities/review_acceptance_events/v3/[0-9a-f]{64}\.json",
+        ACCEPTANCE_EVENT_SCHEMA_V3,
+    ),
+    "host_binding_claim_record": (
+        r"sources/m2_5/authorities/cross_deck_host_binding_claims/v1/[0-9a-f]{64}\.json",
+        "manafold.m2.5.c.cross-deck-host-binding-claim-record.v1",
+    ),
 }
 _AUTHORITY_KINDS: Final = frozenset(
     {
@@ -121,6 +196,48 @@ class AuthorityIdentityKind(str, Enum):
     CONTEXT_SUPERSESSION = "context_supersession"
     ACCEPTANCE_SUBJECT = "acceptance_subject"
     REVIEW_ACCEPTANCE_EVENT = "review_acceptance_event"
+    CONTEXT_APPLICATION_V2 = "context_application_v2"
+    CONTEXT_APPLICATION_RECORD_V2 = "context_application_record_v2"
+    CONTEXT_SUPERSESSION_V2 = "context_supersession_v2"
+    CONTEXT_SUPERSESSION_RECORD_V2 = "context_supersession_record_v2"
+    ACCEPTANCE_SUBJECT_V3 = "acceptance_subject_v3"
+    REVIEW_ACCEPTANCE_EVENT_V3 = "review_acceptance_event_v3"
+
+
+class ContextBridgeRelationV2(str, Enum):
+    EXACT_MATCH = "exact_match"
+    REVIEWED_DIVERGENCE = "reviewed_divergence"
+
+
+class AcceptanceSubjectKindV3(str, Enum):
+    CONTEXT_APPLICATION_V2_RECORD = "context_application_v2_record"
+    CONTEXT_APPLICATION_V2_SUPERSESSION_RECORD = "context_application_v2_supersession_record"
+
+
+class ContextAuthorityArtifactRoleV2(str, Enum):
+    BASE_AUTHORITY_V1 = "base_authority_v1"
+    DECLARED_MODEL = "declared_model"
+    CANDIDATE_UNIVERSE = "candidate_universe"
+    REV3_CANDIDATE_CENSUS = "rev3_candidate_census"
+    REV3_PAIR_AGGREGATES = "rev3_pair_aggregates"
+    REV3_CARD_REQUIREMENT_MAP = "rev3_card_requirement_map"
+    REV3_DECK_ROW_SOURCE_RESOLUTION = "rev3_deck_row_source_resolution"
+    REV3_OSI_SOURCE_RECORDS = "rev3_osi_source_records"
+    REV3_SOURCE_INDEX = "rev3_source_index"
+    B2_CATALOG = "b2_catalog"
+    B2_CLASSIFICATIONS = "b2_classifications"
+    B2_CLOSURE = "b2_closure"
+    B1_FINAL_CITATIONS = "b1_final_citations"
+    B1_FINAL_CLOSURE = "b1_final_closure"
+    REVIEWER_ROSTER_LEAF = "reviewer_roster_leaf"
+    ACCEPTANCE_EVENT_LEAF_V3 = "acceptance_event_leaf_v3"
+    HOST_BINDING_AUTHORITY_V2 = "host_binding_authority_v2"
+    HOST_BINDING_CLAIM_RECORD = "host_binding_claim_record"
+
+
+CONTEXT_AUTHORITY_SOURCE_ROLES_V2: Final = tuple(
+    role.value for role in ContextAuthorityArtifactRoleV2
+)
 
 
 class AcceptanceSubjectKind(str, Enum):
@@ -259,6 +376,36 @@ _IDENTITY_SPECS: Final[dict[AuthorityIdentityKind, _IdentitySpec]] = {
         "manafold.m2.5.c.review-acceptance-event.v1",
         "manafold.m2.5.c.review-acceptance-event-input.v1",
     ),
+    AuthorityIdentityKind.CONTEXT_APPLICATION_V2: _IdentitySpec(
+        "cpa.v2/",
+        "manafold.m2.5.c.context-application.v2",
+        CONTEXT_APPLICATION_INPUT_SCHEMA_V2,
+    ),
+    AuthorityIdentityKind.CONTEXT_APPLICATION_RECORD_V2: _IdentitySpec(
+        "cpar.v2/",
+        "manafold.m2.5.c.context-application-record.v2",
+        CONTEXT_APPLICATION_RECORD_INPUT_SCHEMA_V2,
+    ),
+    AuthorityIdentityKind.CONTEXT_SUPERSESSION_V2: _IdentitySpec(
+        "cps.v2/",
+        "manafold.m2.5.c.context-application-supersession.v2",
+        CONTEXT_SUPERSESSION_INPUT_SCHEMA_V2,
+    ),
+    AuthorityIdentityKind.CONTEXT_SUPERSESSION_RECORD_V2: _IdentitySpec(
+        "cpsr.v2/",
+        "manafold.m2.5.c.context-application-supersession-record.v2",
+        CONTEXT_SUPERSESSION_RECORD_INPUT_SCHEMA_V2,
+    ),
+    AuthorityIdentityKind.ACCEPTANCE_SUBJECT_V3: _IdentitySpec(
+        "asp.v3/",
+        ACCEPTANCE_SUBJECT_SCHEMA_V3,
+        ACCEPTANCE_SUBJECT_INPUT_SCHEMA_V3,
+    ),
+    AuthorityIdentityKind.REVIEW_ACCEPTANCE_EVENT_V3: _IdentitySpec(
+        "ae.v3/",
+        ACCEPTANCE_EVENT_SCHEMA_V3,
+        ACCEPTANCE_EVENT_INPUT_SCHEMA_V3,
+    ),
 }
 _IDENTITY_ARITIES: Final[dict[AuthorityIdentityKind, int]] = {
     AuthorityIdentityKind.RELATION_THEOREM: 12,
@@ -278,6 +425,12 @@ _IDENTITY_ARITIES: Final[dict[AuthorityIdentityKind, int]] = {
     AuthorityIdentityKind.CONTEXT_SUPERSESSION: 8,
     AuthorityIdentityKind.ACCEPTANCE_SUBJECT: 3,
     AuthorityIdentityKind.REVIEW_ACCEPTANCE_EVENT: 10,
+    AuthorityIdentityKind.CONTEXT_APPLICATION_V2: 3,
+    AuthorityIdentityKind.CONTEXT_APPLICATION_RECORD_V2: 3,
+    AuthorityIdentityKind.CONTEXT_SUPERSESSION_V2: 7,
+    AuthorityIdentityKind.CONTEXT_SUPERSESSION_RECORD_V2: 3,
+    AuthorityIdentityKind.ACCEPTANCE_SUBJECT_V3: 3,
+    AuthorityIdentityKind.REVIEW_ACCEPTANCE_EVENT_V3: 10,
 }
 
 
@@ -2162,3 +2315,1190 @@ def _validate_kind_payload(kind: AuthorityIdentityKind, fields: list[AuthorityVa
         _validate_acceptance_subject_input(values)
     elif kind is AuthorityIdentityKind.REVIEW_ACCEPTANCE_EVENT:
         _validate_acceptance_event_input(values)
+    elif kind is AuthorityIdentityKind.CONTEXT_APPLICATION_V2:
+        _validate_context_application_v2_input(values)
+    elif kind is AuthorityIdentityKind.CONTEXT_APPLICATION_RECORD_V2:
+        _validate_context_application_record_v2_input(values)
+    elif kind is AuthorityIdentityKind.CONTEXT_SUPERSESSION_V2:
+        _validate_context_supersession_v2_input(values)
+    elif kind is AuthorityIdentityKind.CONTEXT_SUPERSESSION_RECORD_V2:
+        _validate_context_supersession_record_v2_input(values)
+    elif kind is AuthorityIdentityKind.ACCEPTANCE_SUBJECT_V3:
+        _validate_acceptance_subject_v3_input(values)
+    elif kind is AuthorityIdentityKind.REVIEW_ACCEPTANCE_EVENT_V3:
+        _validate_acceptance_event_v3_input(values)
+
+
+@dataclass(frozen=True)
+class DigestReferenceV1:
+    """The complete six-field digest-envelope reference used by V2 inputs."""
+
+    envelope_id: str
+    algorithm_id: str
+    semantic_domain: str
+    payload_codec_id: str
+    input_schema_id: str
+    digest_bytes: bytes
+
+    def __post_init__(self) -> None:
+        if self.envelope_id != DIGEST_ENVELOPE_ID:
+            raise AuthorityContractError("digest reference envelope is not V1")
+        if self.algorithm_id != SHA256_ID:
+            raise AuthorityContractError("digest reference algorithm is not sha-256")
+        if self.payload_codec_id != CANONICAL_CBOR_ID:
+            raise AuthorityContractError("digest reference codec is not canonical CBOR V1")
+        if not isinstance(self.semantic_domain, str) or not self.semantic_domain:
+            raise AuthorityContractError("digest reference semantic domain must be non-empty")
+        if not isinstance(self.input_schema_id, str) or not self.input_schema_id:
+            raise AuthorityContractError("digest reference input schema must be non-empty")
+        _require_digest_bytes(self.digest_bytes, "digest reference digest")
+
+    @classmethod
+    def from_identity(cls, identity: AuthorityIdentityV1) -> DigestReferenceV1:
+        return cls(
+            envelope_id=DIGEST_ENVELOPE_ID,
+            algorithm_id=SHA256_ID,
+            semantic_domain=identity.semantic_domain,
+            payload_codec_id=CANONICAL_CBOR_ID,
+            input_schema_id=identity.input_schema_id,
+            digest_bytes=identity.digest_bytes,
+        )
+
+    @classmethod
+    def from_cbor(cls, value: object) -> DigestReferenceV1:
+        fields = _array(value, "digest reference", 6)
+        return cls(
+            envelope_id=_any_text(fields[0], "digest reference envelope"),
+            algorithm_id=_any_text(fields[1], "digest reference algorithm"),
+            semantic_domain=_any_text(fields[2], "digest reference semantic domain"),
+            payload_codec_id=_any_text(fields[3], "digest reference codec"),
+            input_schema_id=_any_text(fields[4], "digest reference input schema"),
+            digest_bytes=_bytes32(fields[5], "digest reference digest"),
+        )
+
+    def to_cbor(self) -> list[AuthorityValue]:
+        return [
+            self.envelope_id,
+            self.algorithm_id,
+            self.semantic_domain,
+            self.payload_codec_id,
+            self.input_schema_id,
+            self.digest_bytes,
+        ]
+
+    def to_wire(self) -> dict[str, object]:
+        return {
+            "envelope_id": self.envelope_id,
+            "algorithm_id": self.algorithm_id,
+            "semantic_domain": self.semantic_domain,
+            "payload_codec_id": self.payload_codec_id,
+            "input_schema_id": self.input_schema_id,
+            "digest_hex": self.digest_bytes.hex(),
+        }
+
+
+def _identity_to_wire(identity: AuthorityIdentityV1) -> dict[str, object]:
+    return DigestReferenceV1.from_identity(identity).to_wire()
+
+
+def _persistence_value_to_wire(value: AuthorityValue) -> object:
+    if isinstance(value, bytes):
+        return value.hex()
+    if isinstance(value, list):
+        return [_persistence_value_to_wire(child) for child in value]
+    return value
+
+
+def _precondition_to_wire(value: AuthorityValue) -> dict[str, object]:
+    fields = _array(value, "V1 precondition attestation", 4)
+    return {
+        "precondition_id": _text(fields[0], "V1 precondition ID"),
+        "observed_value": _persistence_value_to_wire(cast(AuthorityValue, fields[1])),
+        "evidence_refs": [
+            EvidenceRefV1(
+                authority_kind=cast(str, _array(ref, "V1 evidence reference", 4)[0]),
+                path=cast(str, _array(ref, "V1 evidence reference", 4)[1]),
+                locator=(
+                    cast(str, _array(_array(ref, "V1 evidence reference", 4)[2], "locator", 2)[0]),
+                    cast(
+                        str | int | None,
+                        _array(_array(ref, "V1 evidence reference", 4)[2], "locator", 2)[1],
+                    ),
+                ),
+                raw_sha256=cast(bytes, _array(ref, "V1 evidence reference", 4)[3]),
+            ).to_wire()
+            for ref in _array(fields[2], "V1 precondition evidence")
+        ],
+        "equivalence_rationale": _text(fields[3], "V1 precondition rationale"),
+    }
+
+
+def _typed_canonical_items(
+    values: tuple[_CborConvertible, ...],
+    label: str,
+    *,
+    allow_empty: bool = True,
+) -> None:
+    if not allow_empty and not values:
+        raise AuthorityContractError(f"{label} must be non-empty")
+    encoded = [encode_canonical(value.to_cbor()) for value in values]
+    if encoded != sorted(encoded):
+        raise AuthorityContractError(f"{label} must be in canonical order")
+    if len(set(encoded)) != len(encoded):
+        raise AuthorityContractError(f"{label} must be duplicate-free")
+
+
+def _require_evidence_tuple(
+    values: tuple[EvidenceRefV1, ...],
+    label: str,
+    *,
+    allow_empty: bool = True,
+) -> None:
+    if any(not isinstance(value, EvidenceRefV1) for value in values):
+        raise AuthorityContractError(f"{label} contains a non-V1 evidence reference")
+    _typed_canonical_items(values, label, allow_empty=allow_empty)
+
+
+@dataclass(frozen=True)
+class ContextSlotBridgeAttestationV2:
+    slot_name: str
+    source_value: str
+    reviewed_value: str
+    relation: ContextBridgeRelationV2
+    evidence_refs: tuple[EvidenceRefV1, ...]
+    rationale: str
+
+    def __post_init__(self) -> None:
+        _validate_context_slot_value("context_dimension", self.slot_name, self.source_value)
+        _validate_context_slot_value("context_dimension", self.slot_name, self.reviewed_value)
+        if not isinstance(self.relation, ContextBridgeRelationV2):
+            raise AuthorityContractError("context bridge relation is not closed in V2")
+        _require_evidence_tuple(self.evidence_refs, "context slot evidence")
+        _text(self.rationale, "context slot rationale")
+
+    def to_cbor(self) -> list[AuthorityValue]:
+        return [
+            self.slot_name,
+            self.source_value,
+            self.reviewed_value,
+            self.relation.value,
+            [reference.to_cbor() for reference in self.evidence_refs],
+            self.rationale,
+        ]
+
+    def to_wire(self) -> dict[str, object]:
+        return {
+            "slot_name": self.slot_name,
+            "source_value": self.source_value,
+            "reviewed_value": self.reviewed_value,
+            "relation": self.relation.value,
+            "evidence_refs": [reference.to_wire() for reference in self.evidence_refs],
+            "rationale": self.rationale,
+        }
+
+
+@dataclass(frozen=True)
+class TemporalSlotAttestationV2:
+    slot_name: str
+    reviewed_value: str
+    evidence_refs: tuple[EvidenceRefV1, ...]
+    rationale: str
+
+    def __post_init__(self) -> None:
+        _validate_context_slot_value("temporal_semantic", self.slot_name, self.reviewed_value)
+        _require_evidence_tuple(self.evidence_refs, "temporal slot evidence")
+        _text(self.rationale, "temporal slot rationale")
+
+    def to_cbor(self) -> list[AuthorityValue]:
+        return [
+            self.slot_name,
+            self.reviewed_value,
+            [reference.to_cbor() for reference in self.evidence_refs],
+            self.rationale,
+        ]
+
+    def to_wire(self) -> dict[str, object]:
+        return {
+            "slot_name": self.slot_name,
+            "reviewed_value": self.reviewed_value,
+            "evidence_refs": [reference.to_wire() for reference in self.evidence_refs],
+            "rationale": self.rationale,
+        }
+
+
+@dataclass(frozen=True)
+class ContextMemberBridgeAttestationV2:
+    context: tuple[ContextSlotBridgeAttestationV2, ...]
+    temporal: tuple[TemporalSlotAttestationV2, ...]
+
+    def __post_init__(self) -> None:
+        if len(self.context) != len(_CONTEXT_DIMENSIONS):
+            raise AuthorityContractError("V2 bridge must contain exactly ten context slots")
+        if len(self.temporal) != len(_TEMPORAL_SEMANTICS):
+            raise AuthorityContractError("V2 bridge must contain exactly four temporal slots")
+        if any(not isinstance(slot, ContextSlotBridgeAttestationV2) for slot in self.context):
+            raise AuthorityContractError("V2 context bridge contains an invalid slot")
+        if any(not isinstance(slot, TemporalSlotAttestationV2) for slot in self.temporal):
+            raise AuthorityContractError("V2 temporal bridge contains an invalid slot")
+        if tuple(slot.slot_name for slot in self.context) != _CONTEXT_DIMENSIONS:
+            raise AuthorityContractError("V2 context slots must use the V1 canonical order")
+        if tuple(slot.slot_name for slot in self.temporal) != _TEMPORAL_SEMANTICS:
+            raise AuthorityContractError("V2 temporal slots must use the V1 canonical order")
+
+    def to_cbor(self) -> list[AuthorityValue]:
+        return [
+            [slot.to_cbor() for slot in self.context],
+            [slot.to_cbor() for slot in self.temporal],
+        ]
+
+    def to_wire(self) -> dict[str, object]:
+        return {
+            "context_slot_attestations": [slot.to_wire() for slot in self.context],
+            "temporal_slot_attestations": [slot.to_wire() for slot in self.temporal],
+        }
+
+
+@dataclass(frozen=True)
+class ContextApplicationMemberV2:
+    candidate_id: str
+    candidate_identity_digest_reference: DigestReferenceV1
+    source_instance_id: str
+    candidate_universe_binding: list[AuthorityValue]
+    context_binding_v1: list[AuthorityValue]
+    precondition_attestations_v1: list[AuthorityValue]
+    member_evidence_refs: tuple[EvidenceRefV1, ...]
+    context_member_bridge_attestation_v2: ContextMemberBridgeAttestationV2
+
+    def __post_init__(self) -> None:
+        _text(self.candidate_id, "candidate ID")
+        if not isinstance(self.candidate_identity_digest_reference, DigestReferenceV1):
+            raise AuthorityContractError("candidate identity must be a full DigestReferenceV1")
+        _text(self.source_instance_id, "source instance ID")
+        _validate_candidate_universe_binding(self.candidate_universe_binding)
+        _validate_context_binding(self.context_binding_v1)
+        _validate_precondition_attestations(self.precondition_attestations_v1)
+        _require_evidence_tuple(self.member_evidence_refs, "member evidence", allow_empty=False)
+        if not isinstance(
+            self.context_member_bridge_attestation_v2,
+            ContextMemberBridgeAttestationV2,
+        ):
+            raise AuthorityContractError("member bridge attestation is not V2")
+
+    def to_cbor(self) -> list[AuthorityValue]:
+        return [
+            self.candidate_id,
+            self.candidate_identity_digest_reference.to_cbor(),
+            self.source_instance_id,
+            self.candidate_universe_binding,
+            self.context_binding_v1,
+            self.precondition_attestations_v1,
+            [reference.to_cbor() for reference in self.member_evidence_refs],
+            self.context_member_bridge_attestation_v2.to_cbor(),
+        ]
+
+    def to_wire(self) -> dict[str, object]:
+        return {
+            "candidate_id": self.candidate_id,
+            "candidate_identity": self.candidate_identity_digest_reference.to_wire(),
+            "source_instance_id": self.source_instance_id,
+            "candidate_universe_binding": {
+                "path": self.candidate_universe_binding[0],
+                "schema": self.candidate_universe_binding[1],
+                "raw_sha256": cast(bytes, self.candidate_universe_binding[2]).hex(),
+            },
+            "context_binding": {
+                "arity": self.context_binding_v1[0],
+                "directionality": self.context_binding_v1[1],
+                "participant_roles": self.context_binding_v1[2],
+                "host_relationship": self.context_binding_v1[3],
+            },
+            "precondition_attestations": [
+                _precondition_to_wire(precondition)
+                for precondition in self.precondition_attestations_v1
+            ],
+            "member_evidence_refs": [
+                reference.to_wire() for reference in self.member_evidence_refs
+            ],
+            "context_member_attestation": self.context_member_bridge_attestation_v2.to_wire(),
+        }
+
+
+def _validate_context_slot_bridge_attestation(value: object, expected: str) -> None:
+    fields = _array(value, "V2 context slot bridge attestation", 6)
+    _validate_context_slot_value("context_dimension", fields[0], fields[1])
+    _validate_context_slot_value("context_dimension", fields[0], fields[2])
+    _enum(
+        fields[3],
+        (
+            ContextBridgeRelationV2.EXACT_MATCH.value,
+            ContextBridgeRelationV2.REVIEWED_DIVERGENCE.value,
+        ),
+        "V2 context bridge relation",
+    )
+    if fields[0] != expected:
+        _fail("V2 context slots must use the V1 canonical order")
+    _validate_evidence_refs(fields[4], "V2 context slot evidence")
+    _text(fields[5], "V2 context slot rationale")
+
+
+def _validate_temporal_slot_attestation(value: object, expected: str) -> None:
+    fields = _array(value, "V2 temporal slot attestation", 4)
+    _validate_context_slot_value("temporal_semantic", fields[0], fields[1])
+    if fields[0] != expected:
+        _fail("V2 temporal slots must use the V1 canonical order")
+    _validate_evidence_refs(fields[2], "V2 temporal slot evidence")
+    _text(fields[3], "V2 temporal slot rationale")
+
+
+def _validate_context_member_bridge_v2(value: object) -> None:
+    fields = _array(value, "V2 member bridge", 2)
+    context = _array(fields[0], "V2 context slot bridge", len(_CONTEXT_DIMENSIONS))
+    for slot, expected in zip(
+        context,
+        _CONTEXT_DIMENSIONS,
+        strict=True,
+    ):
+        _validate_context_slot_bridge_attestation(slot, expected)
+    temporal = _array(fields[1], "V2 temporal slot bridge", len(_TEMPORAL_SEMANTICS))
+    for slot, expected in zip(temporal, _TEMPORAL_SEMANTICS, strict=True):
+        _validate_temporal_slot_attestation(slot, expected)
+
+
+def _validate_context_application_member_v2(value: object) -> None:
+    fields = _array(value, "V2 context application member", 8)
+    _text(fields[0], "V2 candidate ID")
+    DigestReferenceV1.from_cbor(fields[1])
+    _text(fields[2], "V2 source instance ID")
+    _validate_candidate_universe_binding(fields[3])
+    _validate_context_binding(fields[4])
+    _validate_precondition_attestations(fields[5])
+    _validate_nonempty_evidence_refs(fields[6], "V2 member evidence references")
+    _validate_context_member_bridge_v2(fields[7])
+
+
+def _validate_context_application_members_v2(value: object) -> None:
+    members = _array(value, "V2 context application members")
+    if not members:
+        _fail("V2 context application members must be non-empty")
+    ordering_keys: list[bytes] = []
+    for member in members:
+        _validate_context_application_member_v2(member)
+        fields = _array(member, "V2 context application member", 8)
+        identity = DigestReferenceV1.from_cbor(fields[1])
+        ordering_keys.append(encode_canonical([identity.digest_bytes, fields[2]]))
+    if ordering_keys != sorted(ordering_keys):
+        _fail("V2 context application members must use the V1 digest/source order")
+    if len(set(ordering_keys)) != len(ordering_keys):
+        _fail("V2 context application members must be duplicate-free")
+
+
+@dataclass(frozen=True)
+class ContextAuthoritySourceBindingV2:
+    artifact_role: str
+    path: str
+    schema: str | None
+    raw_sha256: bytes
+
+    def __post_init__(self) -> None:
+        if self.artifact_role not in CONTEXT_AUTHORITY_SOURCE_ROLES_V2:
+            raise AuthorityContractError("context authority source role is not closed in V2")
+        _require_repo_relative_path(self.path, "context authority source path")
+        if self.artifact_role in _CONTEXT_AUTHORITY_STATIC_BINDING_REGISTRY_V2:
+            expected_path, expected_schema = _CONTEXT_AUTHORITY_STATIC_BINDING_REGISTRY_V2[
+                self.artifact_role
+            ]
+            if self.path != expected_path or self.schema != expected_schema:
+                raise AuthorityContractError("context authority source role/path/schema mismatch")
+        else:
+            pattern, expected_schema = _CONTEXT_AUTHORITY_LEAF_BINDING_REGISTRY_V2[
+                self.artifact_role
+            ]
+            if re.fullmatch(pattern, self.path) is None or self.schema != expected_schema:
+                raise AuthorityContractError("context authority leaf path/schema mismatch")
+        _require_digest_bytes(self.raw_sha256, "context authority source digest")
+
+    def to_cbor(self) -> list[AuthorityValue]:
+        return [self.artifact_role, self.path, self.schema, self.raw_sha256]
+
+    def to_wire(self) -> dict[str, object]:
+        return {
+            "artifact_role": self.artifact_role,
+            "path": self.path,
+            "schema": self.schema,
+            "raw_sha256": self.raw_sha256.hex(),
+        }
+
+
+def _validate_context_source_binding_array(value: object) -> None:
+    fields = _array(value, "V2 context authority source binding", 4)
+    schema = fields[2]
+    if not isinstance(schema, str | None):
+        _fail("V2 context authority source schema must be text or null")
+    ContextAuthoritySourceBindingV2(
+        artifact_role=_any_text(fields[0], "V2 context authority source role"),
+        path=_any_text(fields[1], "V2 context authority source path"),
+        schema=schema,
+        raw_sha256=_bytes32(fields[3], "V2 context authority source digest"),
+    )
+
+
+def _validate_context_source_bindings(value: object, label: str) -> None:
+    bindings = _array(value, label)
+    _canonical_array(bindings, _validate_context_source_binding_array, label)
+    keys: list[tuple[str, str]] = []
+    for binding in bindings:
+        fields = _array(binding, label + " binding", 4)
+        key = (cast(str, fields[0]), cast(str, fields[1]))
+        if key in keys:
+            _fail(f"{label} must not duplicate a role/path pair")
+        keys.append(key)
+
+
+@dataclass(frozen=True)
+class ReviewEventRefV3:
+    path: str
+    raw_sha256: bytes
+    event_id: str
+
+    def __post_init__(self) -> None:
+        _require_repo_relative_path(self.path, "V3 review event path")
+        _require_digest_bytes(self.raw_sha256, "V3 review event raw digest")
+        if re.fullmatch(r"ae\.v3/[0-9a-f]{64}", self.event_id) is None:
+            raise AuthorityContractError("V3 review event ID has the wrong namespace")
+        expected_path = (
+            "sources/m2_5/authorities/review_acceptance_events/v3/"
+            + self.event_id.removeprefix("ae.v3/")
+            + ".json"
+        )
+        if self.path != expected_path:
+            raise AuthorityContractError("V3 review event path is not bound to its event ID")
+
+    def to_cbor(self) -> list[AuthorityValue]:
+        return [self.path, self.raw_sha256, ["event_id", self.event_id]]
+
+    def to_wire(self) -> dict[str, object]:
+        return {
+            "event_id": self.event_id,
+            "path": self.path,
+            "raw_sha256": self.raw_sha256.hex(),
+        }
+
+
+def _validate_review_event_ref_v3_array(value: object) -> None:
+    fields = _array(value, "V3 review event reference", 3)
+    locator = _array(fields[2], "V3 review event locator", 2)
+    if locator[0] != "event_id":
+        _fail("V3 review event locator must be event_id")
+    ReviewEventRefV3(
+        path=_any_text(fields[0], "V3 review event path"),
+        raw_sha256=_bytes32(fields[1], "V3 review event raw digest"),
+        event_id=_any_text(locator[1], "V3 review event ID"),
+    )
+
+
+@dataclass(frozen=True)
+class ContextApplicationV2InputV1:
+    theorem_record_id_bytes: bytes
+    members: tuple[ContextApplicationMemberV2, ...]
+
+    def __post_init__(self) -> None:
+        _require_digest_bytes(self.theorem_record_id_bytes, "V2 theorem record ID")
+        if not self.members:
+            raise AuthorityContractError("V2 application input must contain members")
+        _validate_context_application_members_v2([member.to_cbor() for member in self.members])
+
+    def semantic_input(self) -> list[AuthorityValue]:
+        return [
+            CONTEXT_APPLICATION_INPUT_SCHEMA_V2,
+            self.theorem_record_id_bytes,
+            [member.to_cbor() for member in self.members],
+        ]
+
+    def identity(self) -> AuthorityIdentityV1:
+        return compute_authority_identity(
+            AuthorityIdentityKind.CONTEXT_APPLICATION_V2,
+            self.semantic_input(),
+        )
+
+    def to_cbor(self) -> list[AuthorityValue]:
+        return self.semantic_input()
+
+
+@dataclass(frozen=True)
+class ContextApplicationV2RecordInputV1:
+    context_application_id_bytes: bytes
+    review_event_ref_v3: ReviewEventRefV3
+
+    def __post_init__(self) -> None:
+        _require_digest_bytes(self.context_application_id_bytes, "V2 application ID")
+        if not isinstance(self.review_event_ref_v3, ReviewEventRefV3):
+            raise AuthorityContractError("V3 review event reference is required")
+
+    def semantic_input(self) -> list[AuthorityValue]:
+        return [
+            CONTEXT_APPLICATION_RECORD_INPUT_SCHEMA_V2,
+            self.context_application_id_bytes,
+            self.review_event_ref_v3.to_cbor(),
+        ]
+
+    def identity(self) -> AuthorityIdentityV1:
+        return compute_authority_identity(
+            AuthorityIdentityKind.CONTEXT_APPLICATION_RECORD_V2,
+            self.semantic_input(),
+        )
+
+    def to_cbor(self) -> list[AuthorityValue]:
+        return self.semantic_input()
+
+
+@dataclass(frozen=True)
+class ContextApplicationV2Record:
+    record_id: AuthorityIdentityV1
+    application_id: AuthorityIdentityV1
+    theorem_record_id: AuthorityIdentityV1
+    members: tuple[ContextApplicationMemberV2, ...]
+    review_event_ref_v3: ReviewEventRefV3
+
+    @classmethod
+    def from_parts(
+        cls,
+        application_id: AuthorityIdentityV1,
+        theorem_record_id: AuthorityIdentityV1,
+        members: tuple[ContextApplicationMemberV2, ...],
+        review_event_ref_v3: ReviewEventRefV3,
+    ) -> ContextApplicationV2Record:
+        record_id = ContextApplicationV2RecordInputV1(
+            context_application_id_bytes=application_id.digest_bytes,
+            review_event_ref_v3=review_event_ref_v3,
+        ).identity()
+        return cls(record_id, application_id, theorem_record_id, members, review_event_ref_v3)
+
+    def __post_init__(self) -> None:
+        if self.record_id.kind is not AuthorityIdentityKind.CONTEXT_APPLICATION_RECORD_V2:
+            raise AuthorityContractError("V2 application record ID has the wrong kind")
+        if self.application_id.kind is not AuthorityIdentityKind.CONTEXT_APPLICATION_V2:
+            raise AuthorityContractError("V2 application ID has the wrong kind")
+        if self.theorem_record_id.kind is not AuthorityIdentityKind.CONTEXT_THEOREM_RECORD:
+            raise AuthorityContractError("V1 context theorem record ID has the wrong kind")
+        if not self.members:
+            raise AuthorityContractError("V2 application record must contain members")
+        _validate_context_application_members_v2([member.to_cbor() for member in self.members])
+        expected = ContextApplicationV2RecordInputV1(
+            self.application_id.digest_bytes,
+            self.review_event_ref_v3,
+        ).identity()
+        if expected != self.record_id:
+            raise AuthorityContractError("V2 application record ID does not match its input")
+
+    def acceptance_free_subject_payload(self) -> list[AuthorityValue]:
+        return [
+            AcceptanceSubjectKindV3.CONTEXT_APPLICATION_V2_RECORD.value,
+            self.application_id.digest_bytes,
+            self.theorem_record_id.digest_bytes,
+            [member.to_cbor() for member in self.members],
+        ]
+
+    def to_wire(self) -> dict[str, object]:
+        return {
+            "record_id": self.record_id.as_text(),
+            "application_id": self.application_id.as_text(),
+            "theorem_record_id": self.theorem_record_id.as_text(),
+            "members": [member.to_wire() for member in self.members],
+            "acceptance": {
+                "decision": "human_accepted",
+                "review_event_ref": self.review_event_ref_v3.to_wire(),
+            },
+        }
+
+
+def _validate_context_application_v2_input(values: list[object]) -> None:
+    if len(values) != 3:
+        _fail("V2 context application input must contain three fields")
+    _text(values[0], "V2 context application schema")
+    _bytes32(values[1], "V2 theorem record ID")
+    _validate_context_application_members_v2(values[2])
+
+
+def _validate_context_application_record_v2_input(values: list[object]) -> None:
+    if len(values) != 3:
+        _fail("V2 application record input must contain three fields")
+    _text(values[0], "V2 application record schema")
+    _bytes32(values[1], "V2 application ID")
+    _validate_review_event_ref_v3_array(values[2])
+
+
+@dataclass(frozen=True)
+class ContextApplicationV2SupersessionInputV2:
+    superseded_record_id_bytes: bytes
+    replacement_record_id_bytes: bytes | None
+    replacement_record_kind: str | None
+    reason_code: SupersessionReason
+    source_evidence_refs: tuple[EvidenceRefV1, ...]
+
+    def __post_init__(self) -> None:
+        _require_digest_bytes(self.superseded_record_id_bytes, "superseded V2 record ID")
+        if self.replacement_record_id_bytes is not None:
+            _require_digest_bytes(self.replacement_record_id_bytes, "replacement V2 record ID")
+        if self.replacement_record_id_bytes is None:
+            if self.replacement_record_kind is not None:
+                raise AuthorityContractError("V2 revocation replacement kind must be null")
+            if self.reason_code is not SupersessionReason.AUTHORITY_REVOCATION:
+                raise AuthorityContractError("V2 null replacement requires revocation")
+        else:
+            if self.replacement_record_kind != "context_application_v2_record":
+                raise AuthorityContractError("V2 replacement kind must be the same record kind")
+            if self.reason_code is SupersessionReason.AUTHORITY_REVOCATION:
+                raise AuthorityContractError("V2 revocation cannot carry a replacement")
+        if not isinstance(self.reason_code, SupersessionReason):
+            raise AuthorityContractError("V2 supersession reason is not closed")
+        _require_evidence_tuple(
+            self.source_evidence_refs, "V2 supersession evidence", allow_empty=False
+        )
+
+    def semantic_input(self) -> list[AuthorityValue]:
+        return [
+            CONTEXT_SUPERSESSION_INPUT_SCHEMA_V2,
+            self.superseded_record_id_bytes,
+            self.replacement_record_id_bytes,
+            "context_application_v2_record",
+            self.replacement_record_kind,
+            self.reason_code.value,
+            [reference.to_cbor() for reference in self.source_evidence_refs],
+        ]
+
+    def identity(self) -> AuthorityIdentityV1:
+        return compute_authority_identity(
+            AuthorityIdentityKind.CONTEXT_SUPERSESSION_V2,
+            self.semantic_input(),
+        )
+
+    def to_cbor(self) -> list[AuthorityValue]:
+        return self.semantic_input()
+
+    def acceptance_free_subject_payload(self) -> list[AuthorityValue]:
+        return [
+            AcceptanceSubjectKindV3.CONTEXT_APPLICATION_V2_SUPERSESSION_RECORD.value,
+            self.identity().digest_bytes,
+            self.superseded_record_id_bytes,
+            self.replacement_record_id_bytes,
+            "context_application_v2_record",
+            self.replacement_record_kind,
+            self.reason_code.value,
+            [reference.to_cbor() for reference in self.source_evidence_refs],
+        ]
+
+
+def _validate_context_supersession_v2_input(values: list[object]) -> None:
+    if len(values) != 7:
+        _fail("V2 supersession input must contain seven fields")
+    _text(values[0], "V2 supersession schema")
+    _bytes32(values[1], "superseded V2 record ID")
+    replacement = values[2]
+    if replacement is not None:
+        _bytes32(replacement, "replacement V2 record ID")
+    if values[3] != "context_application_v2_record":
+        _fail("V2 supersession record kind is not closed")
+    replacement_kind = values[4]
+    if replacement is None:
+        if (
+            replacement_kind is not None
+            or values[5] != SupersessionReason.AUTHORITY_REVOCATION.value
+        ):
+            _fail("V2 revocation replacement fields are inconsistent")
+    elif replacement_kind != "context_application_v2_record":
+        _fail("V2 supersession replacement kind must match")
+    elif values[5] == SupersessionReason.AUTHORITY_REVOCATION.value:
+        _fail("V2 revocation cannot carry a replacement")
+    _enum(values[5], tuple(reason.value for reason in SupersessionReason), "V2 supersession reason")
+    _validate_nonempty_evidence_refs(values[6], "V2 supersession source evidence")
+
+
+@dataclass(frozen=True)
+class ContextApplicationV2SupersessionRecordInputV1:
+    supersession_id_bytes: bytes
+    review_event_ref_v3: ReviewEventRefV3
+
+    def __post_init__(self) -> None:
+        _require_digest_bytes(self.supersession_id_bytes, "V2 supersession ID")
+        if not isinstance(self.review_event_ref_v3, ReviewEventRefV3):
+            raise AuthorityContractError("V3 review event reference is required")
+
+    def semantic_input(self) -> list[AuthorityValue]:
+        return [
+            CONTEXT_SUPERSESSION_RECORD_INPUT_SCHEMA_V2,
+            self.supersession_id_bytes,
+            self.review_event_ref_v3.to_cbor(),
+        ]
+
+    def identity(self) -> AuthorityIdentityV1:
+        return compute_authority_identity(
+            AuthorityIdentityKind.CONTEXT_SUPERSESSION_RECORD_V2,
+            self.semantic_input(),
+        )
+
+    def to_cbor(self) -> list[AuthorityValue]:
+        return self.semantic_input()
+
+
+def _validate_context_supersession_record_v2_input(values: list[object]) -> None:
+    if len(values) != 3:
+        _fail("V2 supersession record input must contain three fields")
+    _text(values[0], "V2 supersession record schema")
+    _bytes32(values[1], "V2 supersession ID")
+    _validate_review_event_ref_v3_array(values[2])
+
+
+@dataclass(frozen=True)
+class ContextApplicationV2SupersessionRecord:
+    record_id: AuthorityIdentityV1
+    supersession_id: AuthorityIdentityV1
+    superseded_record_id: AuthorityIdentityV1
+    replacement_record_id: AuthorityIdentityV1 | None
+    reason_code: SupersessionReason
+    source_evidence_refs: tuple[EvidenceRefV1, ...]
+    review_event_ref_v3: ReviewEventRefV3
+
+    @classmethod
+    def from_parts(
+        cls,
+        supersession_id: AuthorityIdentityV1,
+        superseded_record_id: AuthorityIdentityV1,
+        replacement_record_id: AuthorityIdentityV1 | None,
+        reason_code: SupersessionReason,
+        source_evidence_refs: tuple[EvidenceRefV1, ...],
+        review_event_ref_v3: ReviewEventRefV3,
+    ) -> ContextApplicationV2SupersessionRecord:
+        record_id = ContextApplicationV2SupersessionRecordInputV1(
+            supersession_id_bytes=supersession_id.digest_bytes,
+            review_event_ref_v3=review_event_ref_v3,
+        ).identity()
+        return cls(
+            record_id=record_id,
+            supersession_id=supersession_id,
+            superseded_record_id=superseded_record_id,
+            replacement_record_id=replacement_record_id,
+            reason_code=reason_code,
+            source_evidence_refs=source_evidence_refs,
+            review_event_ref_v3=review_event_ref_v3,
+        )
+
+    def __post_init__(self) -> None:
+        if self.record_id.kind is not AuthorityIdentityKind.CONTEXT_SUPERSESSION_RECORD_V2:
+            raise AuthorityContractError("V2 supersession record ID has the wrong kind")
+        if self.supersession_id.kind is not AuthorityIdentityKind.CONTEXT_SUPERSESSION_V2:
+            raise AuthorityContractError("V2 supersession ID has the wrong kind")
+        if (
+            self.superseded_record_id.kind
+            is not AuthorityIdentityKind.CONTEXT_APPLICATION_RECORD_V2
+        ):
+            raise AuthorityContractError("superseded V2 record ID has the wrong kind")
+        if (
+            self.replacement_record_id is not None
+            and self.replacement_record_id.kind
+            is not AuthorityIdentityKind.CONTEXT_APPLICATION_RECORD_V2
+        ):
+            raise AuthorityContractError("replacement V2 record ID has the wrong kind")
+        if self.replacement_record_id is None:
+            if self.reason_code is not SupersessionReason.AUTHORITY_REVOCATION:
+                raise AuthorityContractError("V2 null replacement requires revocation")
+        elif self.reason_code is SupersessionReason.AUTHORITY_REVOCATION:
+            raise AuthorityContractError("V2 revocation cannot carry a replacement")
+        if not isinstance(self.reason_code, SupersessionReason):
+            raise AuthorityContractError("V2 supersession reason is not closed")
+        _require_evidence_tuple(
+            self.source_evidence_refs, "V2 supersession evidence", allow_empty=False
+        )
+        expected_supersession = ContextApplicationV2SupersessionInputV2(
+            superseded_record_id_bytes=self.superseded_record_id.digest_bytes,
+            replacement_record_id_bytes=(
+                None
+                if self.replacement_record_id is None
+                else self.replacement_record_id.digest_bytes
+            ),
+            replacement_record_kind=(
+                None if self.replacement_record_id is None else "context_application_v2_record"
+            ),
+            reason_code=self.reason_code,
+            source_evidence_refs=self.source_evidence_refs,
+        ).identity()
+        if expected_supersession != self.supersession_id:
+            raise AuthorityContractError("V2 supersession ID does not match its input")
+        expected = ContextApplicationV2SupersessionRecordInputV1(
+            self.supersession_id.digest_bytes,
+            self.review_event_ref_v3,
+        ).identity()
+        if expected != self.record_id:
+            raise AuthorityContractError("V2 supersession record ID does not match its input")
+
+    def to_wire(self) -> dict[str, object]:
+        return {
+            "record_id": self.record_id.as_text(),
+            "supersession_id": self.supersession_id.as_text(),
+            "superseded_record_id": self.superseded_record_id.as_text(),
+            "replacement_record_id": (
+                None if self.replacement_record_id is None else self.replacement_record_id.as_text()
+            ),
+            "superseded_record_kind": "context_application_v2_record",
+            "replacement_record_kind": (
+                None if self.replacement_record_id is None else "context_application_v2_record"
+            ),
+            "reason_code": self.reason_code.value,
+            "source_evidence_refs": [
+                reference.to_wire() for reference in self.source_evidence_refs
+            ],
+            "acceptance": {
+                "decision": "human_accepted",
+                "review_event_ref": self.review_event_ref_v3.to_wire(),
+            },
+        }
+
+    def acceptance_free_subject_payload(self) -> list[AuthorityValue]:
+        return [
+            AcceptanceSubjectKindV3.CONTEXT_APPLICATION_V2_SUPERSESSION_RECORD.value,
+            self.supersession_id.digest_bytes,
+            self.superseded_record_id.digest_bytes,
+            (
+                None
+                if self.replacement_record_id is None
+                else self.replacement_record_id.digest_bytes
+            ),
+            "context_application_v2_record",
+            (None if self.replacement_record_id is None else "context_application_v2_record"),
+            self.reason_code.value,
+            [reference.to_cbor() for reference in self.source_evidence_refs],
+        ]
+
+
+@dataclass(frozen=True)
+class AcceptanceSubjectPayloadV3:
+    subject_kind: AcceptanceSubjectKindV3
+    subject_payload: list[AuthorityValue]
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.subject_kind, AcceptanceSubjectKindV3):
+            raise AuthorityContractError("V3 acceptance subject kind is not closed")
+        _array(self.subject_payload, "V3 acceptance subject payload")
+
+    def semantic_input(self) -> list[AuthorityValue]:
+        return [ACCEPTANCE_SUBJECT_INPUT_SCHEMA_V3, self.subject_kind.value, self.subject_payload]
+
+    def identity(self) -> AuthorityIdentityV1:
+        return compute_authority_identity(
+            AuthorityIdentityKind.ACCEPTANCE_SUBJECT_V3,
+            self.semantic_input(),
+        )
+
+    def to_cbor(self) -> list[AuthorityValue]:
+        return [self.subject_kind.value, self.subject_payload]
+
+
+def _validate_acceptance_subject_v3_input(values: list[object]) -> None:
+    if len(values) != 3:
+        _fail("V3 acceptance subject input must contain three fields")
+    _text(values[0], "V3 acceptance subject schema")
+    subject_kind = _enum(
+        values[1],
+        tuple(kind.value for kind in AcceptanceSubjectKindV3),
+        "V3 acceptance subject kind",
+    )
+    payload = _array(values[2], "V3 acceptance subject payload")
+    if subject_kind == AcceptanceSubjectKindV3.CONTEXT_APPLICATION_V2_RECORD.value:
+        if len(payload) != 4:
+            _fail("V3 record subject payload must contain four fields")
+        if payload[0] != subject_kind:
+            _fail("V3 record subject kind marker is inconsistent")
+        _bytes32(payload[1], "V3 subject application ID")
+        _bytes32(payload[2], "V3 subject theorem record ID")
+        _validate_context_application_members_v2(payload[3])
+    else:
+        if len(payload) != 8:
+            _fail("V3 supersession subject payload must contain eight fields")
+        if payload[0] != subject_kind:
+            _fail("V3 supersession subject kind marker is inconsistent")
+        _bytes32(payload[1], "V3 subject supersession ID")
+        _bytes32(payload[2], "V3 subject superseded record ID")
+        if payload[3] is not None:
+            _bytes32(payload[3], "V3 subject replacement record ID")
+        if payload[4] != "context_application_v2_record":
+            _fail("V3 subject superseded kind is not closed")
+        if payload[3] is None:
+            if payload[5] is not None:
+                _fail("V3 revocation subject replacement kind must be null")
+        elif payload[5] != "context_application_v2_record":
+            _fail("V3 subject replacement kind must match")
+        if payload[6] == SupersessionReason.AUTHORITY_REVOCATION.value:
+            _fail("V3 revocation cannot carry a replacement")
+        _enum(payload[6], tuple(reason.value for reason in SupersessionReason), "V3 subject reason")
+        _validate_nonempty_evidence_refs(payload[7], "V3 subject supersession evidence")
+
+
+@dataclass(frozen=True)
+class ReviewAcceptanceEventInputV3:
+    subject_kind: AcceptanceSubjectKindV3
+    subject_payload_digest_reference: DigestReferenceV1
+    reviewer_roster_ref: ReviewerRosterRefV1
+    reviewer_role_bindings: tuple[ReviewerRoleBindingV1, ...]
+    review_mode: ReviewMode
+    source_binding_digests: tuple[ContextAuthoritySourceBindingV2, ...]
+    review_evidence_refs: tuple[AcceptanceEvidenceRefV1, ...]
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.subject_kind, AcceptanceSubjectKindV3):
+            raise AuthorityContractError("V3 acceptance subject kind is not closed")
+        if self.subject_payload_digest_reference.semantic_domain != ACCEPTANCE_SUBJECT_SCHEMA_V3:
+            raise AuthorityContractError("V3 subject digest has the wrong semantic domain")
+        if (
+            self.subject_payload_digest_reference.input_schema_id
+            != ACCEPTANCE_SUBJECT_INPUT_SCHEMA_V3
+        ):
+            raise AuthorityContractError("V3 subject digest has the wrong input schema")
+        if not self.reviewer_role_bindings:
+            raise AuthorityContractError("V3 acceptance requires reviewer role bindings")
+        if any(
+            not isinstance(binding, ReviewerRoleBindingV1)
+            for binding in self.reviewer_role_bindings
+        ):
+            raise AuthorityContractError("V3 reviewer role binding is not V1")
+        reviewer_ids = tuple(binding.reviewer_id for binding in self.reviewer_role_bindings)
+        if reviewer_ids != tuple(sorted(reviewer_ids)) or len(set(reviewer_ids)) != len(
+            reviewer_ids
+        ):
+            raise AuthorityContractError("V3 reviewer bindings must be sorted and duplicate-free")
+        if not self.source_binding_digests:
+            raise AuthorityContractError("V3 acceptance requires source bindings")
+        if any(
+            not isinstance(binding, ContextAuthoritySourceBindingV2)
+            for binding in self.source_binding_digests
+        ):
+            raise AuthorityContractError("V3 source binding is not the V2 type")
+        _typed_canonical_items(self.source_binding_digests, "V3 source bindings", allow_empty=False)
+        source_keys = [
+            (binding.artifact_role, binding.path) for binding in self.source_binding_digests
+        ]
+        if len(set(source_keys)) != len(source_keys):
+            raise AuthorityContractError("V3 source bindings must not duplicate a role/path pair")
+        if any(
+            not isinstance(evidence, AcceptanceEvidenceRefV1)
+            for evidence in self.review_evidence_refs
+        ):
+            raise AuthorityContractError("V3 review evidence is not a V1 acceptance reference")
+        _typed_canonical_items(self.review_evidence_refs, "V3 review evidence", allow_empty=False)
+
+    def semantic_input(self) -> list[AuthorityValue]:
+        return [
+            ACCEPTANCE_EVENT_INPUT_SCHEMA_V3,
+            self.subject_kind.value,
+            self.subject_payload_digest_reference.to_cbor(),
+            "human_accepted",
+            self.reviewer_roster_ref.to_cbor(),
+            [binding.to_cbor() for binding in self.reviewer_role_bindings],
+            self.review_mode.value,
+            ACCEPTANCE_CHECKLIST_V2,
+            [binding.to_cbor() for binding in self.source_binding_digests],
+            [evidence.to_cbor() for evidence in self.review_evidence_refs],
+        ]
+
+    def identity(self) -> AuthorityIdentityV1:
+        return compute_authority_identity(
+            AuthorityIdentityKind.REVIEW_ACCEPTANCE_EVENT_V3,
+            self.semantic_input(),
+        )
+
+    def to_cbor(self) -> list[AuthorityValue]:
+        return self.semantic_input()
+
+
+def _validate_acceptance_event_v3_input(values: list[object]) -> None:
+    if len(values) != 10:
+        _fail("V3 acceptance event input must contain ten fields")
+    _text(values[0], "V3 acceptance event schema")
+    _enum(
+        values[1],
+        tuple(kind.value for kind in AcceptanceSubjectKindV3),
+        "V3 acceptance event subject kind",
+    )
+    subject_reference = DigestReferenceV1.from_cbor(values[2])
+    if subject_reference.semantic_domain != ACCEPTANCE_SUBJECT_SCHEMA_V3:
+        _fail("V3 acceptance event subject digest has the wrong domain")
+    if subject_reference.input_schema_id != ACCEPTANCE_SUBJECT_INPUT_SCHEMA_V3:
+        _fail("V3 acceptance event subject digest has the wrong schema")
+    if values[3] != "human_accepted":
+        _fail("V3 acceptance event decision is not human_accepted")
+    _validate_roster_ref_array(values[4])
+    bindings = _array(values[5], "V3 reviewer role bindings")
+    if not bindings:
+        _fail("V3 reviewer role bindings must be non-empty")
+    reviewer_ids: list[str] = []
+    for binding in bindings:
+        _validate_role_binding(binding)
+        reviewer_ids.append(cast(str, _array(binding, "V3 reviewer role binding")[0]))
+    if reviewer_ids != sorted(reviewer_ids) or len(set(reviewer_ids)) != len(reviewer_ids):
+        _fail("V3 reviewer role bindings must be sorted and duplicate-free")
+    _enum(values[6], ("multi_reviewer", "solo_separate_self_review"), "V3 review mode")
+    if values[7] != ACCEPTANCE_CHECKLIST_V2:
+        _fail("V3 acceptance checklist is not the V2 contract")
+    _validate_context_source_bindings(values[8], "V3 acceptance source bindings")
+    if not _array(values[8], "V3 acceptance source bindings"):
+        _fail("V3 acceptance source bindings must be non-empty")
+    _validate_acceptance_evidence_refs(values[9])
+
+
+@dataclass(frozen=True)
+class ReviewAcceptanceEventLeafV3:
+    event_id: AuthorityIdentityV1
+    subject_kind: AcceptanceSubjectKindV3
+    subject_payload_digest_reference: DigestReferenceV1
+    reviewer_roster_ref: ReviewerRosterRefV1
+    reviewer_role_bindings: tuple[ReviewerRoleBindingV1, ...]
+    review_mode: ReviewMode
+    source_binding_digests: tuple[ContextAuthoritySourceBindingV2, ...]
+    review_evidence_refs: tuple[AcceptanceEvidenceRefV1, ...]
+
+    @classmethod
+    def from_input(cls, event: ReviewAcceptanceEventInputV3) -> ReviewAcceptanceEventLeafV3:
+        return cls(
+            event_id=event.identity(),
+            subject_kind=event.subject_kind,
+            subject_payload_digest_reference=event.subject_payload_digest_reference,
+            reviewer_roster_ref=event.reviewer_roster_ref,
+            reviewer_role_bindings=event.reviewer_role_bindings,
+            review_mode=event.review_mode,
+            source_binding_digests=event.source_binding_digests,
+            review_evidence_refs=event.review_evidence_refs,
+        )
+
+    def __post_init__(self) -> None:
+        if self.event_id.kind is not AuthorityIdentityKind.REVIEW_ACCEPTANCE_EVENT_V3:
+            raise AuthorityContractError("V3 acceptance event ID has the wrong kind")
+        if self.as_input().identity() != self.event_id:
+            raise AuthorityContractError("V3 acceptance event ID does not match its input")
+
+    def as_input(self) -> ReviewAcceptanceEventInputV3:
+        return ReviewAcceptanceEventInputV3(
+            subject_kind=self.subject_kind,
+            subject_payload_digest_reference=self.subject_payload_digest_reference,
+            reviewer_roster_ref=self.reviewer_roster_ref,
+            reviewer_role_bindings=self.reviewer_role_bindings,
+            review_mode=self.review_mode,
+            source_binding_digests=self.source_binding_digests,
+            review_evidence_refs=self.review_evidence_refs,
+        )
+
+    def to_cbor(self) -> list[AuthorityValue]:
+        return self.as_input().semantic_input()
+
+    def to_wire(self) -> dict[str, object]:
+        event = self.as_input()
+        return {
+            "event_id": self.event_id.as_text(),
+            "schema": ACCEPTANCE_EVENT_SCHEMA_V3,
+            "subject_kind": event.subject_kind.value,
+            "subject_payload_digest": event.subject_payload_digest_reference.to_wire(),
+            "decision": "human_accepted",
+            "reviewer_roster_ref": event.reviewer_roster_ref.to_wire(),
+            "reviewer_role_bindings": [
+                binding.to_wire() for binding in event.reviewer_role_bindings
+            ],
+            "review_mode": event.review_mode.value,
+            "checklist_id": ACCEPTANCE_CHECKLIST_V2,
+            "source_binding_digests": [
+                binding.to_wire() for binding in event.source_binding_digests
+            ],
+            "review_evidence_refs": [evidence.to_wire() for evidence in event.review_evidence_refs],
+        }
+
+
+@dataclass(frozen=True)
+class ApplicationHostBindingV2:
+    application_kind: str
+    application_semantic_id: AuthorityIdentityV1
+    host_binding_claim_ids: tuple[str, ...]
+
+    def __post_init__(self) -> None:
+        if self.application_kind != "context_application":
+            raise AuthorityContractError("V2 application host binding kind is not closed")
+        if self.application_semantic_id.kind is not AuthorityIdentityKind.CONTEXT_APPLICATION_V2:
+            raise AuthorityContractError("V2 application host binding ID has the wrong kind")
+        if not self.host_binding_claim_ids:
+            raise AuthorityContractError("V2 application host binding claims must be non-empty")
+        if any(
+            re.fullmatch(r"hbc\.v1/[0-9a-f]{64}", claim) is None
+            for claim in self.host_binding_claim_ids
+        ):
+            raise AuthorityContractError("V2 host binding claim ID is not a V1 identity")
+        encoded = [encode_canonical(claim) for claim in self.host_binding_claim_ids]
+        if encoded != sorted(encoded) or len(set(encoded)) != len(encoded):
+            raise AuthorityContractError("V2 host binding claims must be sorted and duplicate-free")
+
+    def to_cbor(self) -> list[AuthorityValue]:
+        return [
+            self.application_kind,
+            self.application_semantic_id.as_text(),
+            list(self.host_binding_claim_ids),
+        ]
+
+    def to_wire(self) -> dict[str, object]:
+        return {
+            "application_kind": self.application_kind,
+            "application_semantic_id": self.application_semantic_id.as_text(),
+            "host_binding_claim_ids": list(self.host_binding_claim_ids),
+        }
+
+
+@dataclass(frozen=True)
+class ContextApplicationAuthorityV2:
+    base_authority_v1_binding: ContextAuthoritySourceBindingV2
+    host_binding_authority_v2_binding: ContextAuthoritySourceBindingV2 | None
+    candidate_universe_binding: ContextAuthoritySourceBindingV2
+    source_bindings: tuple[ContextAuthoritySourceBindingV2, ...]
+    context_application_v2_records: tuple[ContextApplicationV2Record, ...]
+    context_application_v2_supersession_records: tuple[ContextApplicationV2SupersessionRecord, ...]
+    application_host_bindings_v2: tuple[ApplicationHostBindingV2, ...]
+
+    def __post_init__(self) -> None:
+        if any(
+            not isinstance(binding, ContextAuthoritySourceBindingV2)
+            for binding in self.source_bindings
+        ):
+            raise AuthorityContractError("V2 authority source binding has the wrong type")
+        _typed_canonical_items(self.source_bindings, "V2 authority source bindings")
+        keys = [(binding.artifact_role, binding.path) for binding in self.source_bindings]
+        if len(set(keys)) != len(keys):
+            raise AuthorityContractError("V2 authority source bindings must be unique")
+        if any(
+            not isinstance(record, ContextApplicationV2Record)
+            for record in self.context_application_v2_records
+        ):
+            raise AuthorityContractError("V2 authority application record has the wrong type")
+        if any(
+            not isinstance(record, ContextApplicationV2SupersessionRecord)
+            for record in self.context_application_v2_supersession_records
+        ):
+            raise AuthorityContractError("V2 authority supersession record has the wrong type")
+        if any(
+            not isinstance(binding, ApplicationHostBindingV2)
+            for binding in self.application_host_bindings_v2
+        ):
+            raise AuthorityContractError("V2 application host binding has the wrong type")
+
+    def to_wire(self) -> dict[str, object]:
+        return {
+            "schema": CONTEXT_AUTHORITY_SCHEMA_V2,
+            "base_authority_v1_binding": self.base_authority_v1_binding.to_wire(),
+            "host_binding_authority_v2_binding": (
+                None
+                if self.host_binding_authority_v2_binding is None
+                else self.host_binding_authority_v2_binding.to_wire()
+            ),
+            "candidate_universe_binding": self.candidate_universe_binding.to_wire(),
+            "source_bindings": [binding.to_wire() for binding in self.source_bindings],
+            "context_application_v2_records": [
+                record.to_wire() for record in self.context_application_v2_records
+            ],
+            "context_application_v2_supersession_records": [
+                record.to_wire() for record in self.context_application_v2_supersession_records
+            ],
+            "application_host_bindings_v2": [
+                binding.to_wire() for binding in self.application_host_bindings_v2
+            ],
+        }

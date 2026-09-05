@@ -1,0 +1,208 @@
+{
+  "schema": "manafold.m2.5.c.context-application-authority.v2",
+  "base_authority_v1_binding": {
+    "artifact_role": "base_authority_v1",
+    "path": "sources/m2_5/authorities/interaction_review_authority.v1.json",
+    "schema": "manafold.m2.5.c.interaction-review-authority.v1",
+    "raw_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+  },
+  "host_binding_authority_v2_binding": null,
+  "candidate_universe_binding": {
+    "artifact_role": "candidate_universe",
+    "path": "sources/m2_5/closures/C/interaction_candidate_universe.v2.json",
+    "schema": "manafold.m2.5.c.interaction-candidate-universe.v2",
+    "raw_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+  },
+  "source_bindings": [
+    {
+      "artifact_role": "base_authority_v1",
+      "path": "sources/m2_5/authorities/interaction_review_authority.v1.json",
+      "schema": "manafold.m2.5.c.interaction-review-authority.v1",
+      "raw_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "artifact_role": "candidate_universe",
+      "path": "sources/m2_5/closures/C/interaction_candidate_universe.v2.json",
+      "schema": "manafold.m2.5.c.interaction-candidate-universe.v2",
+      "raw_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    }
+  ],
+  "context_application_v2_records": [
+    {
+      "record_id": "cpar.v2/7217a09ac830e2d882770270d1cc4def2c76f467896d14483a8d33d3e8540205",
+      "application_id": "cpa.v2/a5f8da03618f9be949a73b8b9c64c0cf3f4fdb78238a6db480b79715da6ad6d2",
+      "theorem_record_id": "cpr.v1/0000000000000000000000000000000000000000000000000000000000000000",
+      "members": [
+        {
+          "candidate_id": "c",
+          "candidate_identity": {
+            "envelope_id": "mtgml.digest-envelope.v1",
+            "algorithm_id": "sha-256",
+            "semantic_domain": "d",
+            "payload_codec_id": "mtgml.canonical-cbor.v1",
+            "input_schema_id": "i",
+            "digest_hex": "0000000000000000000000000000000000000000000000000000000000000000"
+          },
+          "source_instance_id": "s",
+          "candidate_universe_binding": {
+            "path": "u",
+            "schema": "manafold.m2.5.c.interaction-candidate-universe.v2",
+            "raw_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          },
+          "context_binding": {
+            "arity": "binary",
+            "directionality": "symmetric",
+            "participant_roles": [
+              [
+                0,
+                "ordered_participant",
+                "card",
+                "draw"
+              ]
+            ],
+            "host_relationship": "same_host"
+          },
+          "precondition_attestations": [],
+          "member_evidence_refs": [
+            {
+              "authority_kind": "model",
+              "path": "a",
+              "locator": {
+                "kind": "whole_artifact"
+              },
+              "raw_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+            }
+          ],
+          "context_member_attestation": {
+            "context_slot_attestations": [
+              {
+                "slot_name": "zone",
+                "source_value": "not_applicable",
+                "reviewed_value": "not_applicable",
+                "relation": "exact_match",
+                "evidence_refs": [],
+                "rationale": "x"
+              },
+              {
+                "slot_name": "visibility",
+                "source_value": "not_applicable",
+                "reviewed_value": "not_applicable",
+                "relation": "exact_match",
+                "evidence_refs": [],
+                "rationale": "x"
+              },
+              {
+                "slot_name": "timing",
+                "source_value": "not_applicable",
+                "reviewed_value": "not_applicable",
+                "relation": "exact_match",
+                "evidence_refs": [],
+                "rationale": "x"
+              },
+              {
+                "slot_name": "temporal_order",
+                "source_value": "not_applicable",
+                "reviewed_value": "not_applicable",
+                "relation": "exact_match",
+                "evidence_refs": [],
+                "rationale": "x"
+              },
+              {
+                "slot_name": "source_affected_relation",
+                "source_value": "not_applicable",
+                "reviewed_value": "not_applicable",
+                "relation": "exact_match",
+                "evidence_refs": [],
+                "rationale": "x"
+              },
+              {
+                "slot_name": "control_ownership_relation",
+                "source_value": "not_applicable",
+                "reviewed_value": "not_applicable",
+                "relation": "exact_match",
+                "evidence_refs": [],
+                "rationale": "x"
+              },
+              {
+                "slot_name": "replacement_layer_relation",
+                "source_value": "not_applicable",
+                "reviewed_value": "not_applicable",
+                "relation": "exact_match",
+                "evidence_refs": [],
+                "rationale": "x"
+              },
+              {
+                "slot_name": "trigger_lki_relation",
+                "source_value": "not_applicable",
+                "reviewed_value": "not_applicable",
+                "relation": "exact_match",
+                "evidence_refs": [],
+                "rationale": "x"
+              },
+              {
+                "slot_name": "information_relation",
+                "source_value": "not_applicable",
+                "reviewed_value": "not_applicable",
+                "relation": "exact_match",
+                "evidence_refs": [],
+                "rationale": "x"
+              },
+              {
+                "slot_name": "decision_actor_relation",
+                "source_value": "not_applicable",
+                "reviewed_value": "not_applicable",
+                "relation": "exact_match",
+                "evidence_refs": [],
+                "rationale": "x"
+              }
+            ],
+            "temporal_slot_attestations": [
+              {
+                "slot_name": "trigger_order",
+                "reviewed_value": "not_applicable",
+                "evidence_refs": [],
+                "rationale": "x"
+              },
+              {
+                "slot_name": "dependency_order",
+                "reviewed_value": "not_applicable",
+                "evidence_refs": [],
+                "rationale": "x"
+              },
+              {
+                "slot_name": "duration",
+                "reviewed_value": "not_applicable",
+                "evidence_refs": [],
+                "rationale": "x"
+              },
+              {
+                "slot_name": "replacement_order",
+                "reviewed_value": "not_applicable",
+                "evidence_refs": [],
+                "rationale": "x"
+              }
+            ]
+          }
+        }
+      ],
+      "acceptance": {
+        "decision": "human_accepted",
+        "review_event_ref": {
+          "event_id": "ae.v3/0000000000000000000000000000000000000000000000000000000000000000",
+          "path": "sources/m2_5/authorities/review_acceptance_events/v3/0000000000000000000000000000000000000000000000000000000000000000.json",
+          "raw_sha256": "2222222222222222222222222222222222222222222222222222222222222222"
+        }
+      }
+    }
+  ],
+  "context_application_v2_supersession_records": [],
+  "application_host_bindings_v2": [
+    {
+      "application_kind": "context_application",
+      "application_semantic_id": "cpa.v2/a5f8da03618f9be949a73b8b9c64c0cf3f4fdb78238a6db480b79715da6ad6d2",
+      "host_binding_claim_ids": [
+        "hbc.v1/0000000000000000000000000000000000000000000000000000000000000000"
+      ]
+    }
+  ]
+}

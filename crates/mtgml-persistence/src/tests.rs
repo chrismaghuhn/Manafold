@@ -315,6 +315,139 @@ fn authority_contract_matrix_positive_controls_are_accepted() {
 }
 
 #[test]
+fn context_application_v2_identity_vectors_match_shared_matrix() {
+    let matrix: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../conformance/fixtures/authority/context_application_v2_identity_golden_matrix.v1.json"
+    ))
+    .unwrap();
+    let identities = matrix["identities"].as_array().unwrap();
+    assert_eq!(identities.len(), 6);
+    for entry in identities {
+        let kind = match entry["kind"].as_str().unwrap() {
+            "context_application_v2" => AuthorityIdentityKind::ContextApplicationV2,
+            "context_application_record_v2" => AuthorityIdentityKind::ContextApplicationRecordV2,
+            "context_supersession_v2" => AuthorityIdentityKind::ContextSupersessionV2,
+            "context_supersession_record_v2" => AuthorityIdentityKind::ContextSupersessionRecordV2,
+            "acceptance_subject_v3" => AuthorityIdentityKind::AcceptanceSubjectV3,
+            "review_acceptance_event_v3" => AuthorityIdentityKind::ReviewAcceptanceEventV3,
+            other => panic!("unknown context application identity kind: {other}"),
+        };
+        let payload =
+            cbor::decode_canonical(&decode_hex(entry["payload_cbor_hex"].as_str().unwrap()))
+                .unwrap();
+        let identity = authority::AuthorityIdentityV1::compute(kind, payload).unwrap();
+        assert_eq!(identity.as_text(), entry["identity"].as_str().unwrap());
+        assert_eq!(
+            hex(&identity.digest_bytes()),
+            entry["digest_hex"].as_str().unwrap()
+        );
+        assert_eq!(
+            hex(&cbor::encode_canonical(&identity.to_cbor()).unwrap()),
+            entry["identity_cbor_hex"].as_str().unwrap()
+        );
+    }
+}
+
+#[test]
+fn context_application_v2_rust_dtos_emit_the_shared_member_payload() {
+    let evidence = authority::EvidenceRefV1::new(
+        "model",
+        "a",
+        authority::EvidenceLocatorV1::WholeArtifact,
+        [0; 32],
+    )
+    .unwrap();
+    let context = [
+        "zone",
+        "visibility",
+        "timing",
+        "temporal_order",
+        "source_affected_relation",
+        "control_ownership_relation",
+        "replacement_layer_relation",
+        "trigger_lki_relation",
+        "information_relation",
+        "decision_actor_relation",
+    ]
+    .into_iter()
+    .map(|slot| {
+        authority::ContextSlotBridgeAttestationV2::new(
+            slot,
+            "not_applicable",
+            "not_applicable",
+            authority::ContextBridgeRelationV2::ExactMatch,
+            Vec::new(),
+            "x",
+        )
+        .unwrap()
+    })
+    .collect();
+    let temporal = [
+        "trigger_order",
+        "dependency_order",
+        "duration",
+        "replacement_order",
+    ]
+    .into_iter()
+    .map(|slot| {
+        authority::TemporalSlotAttestationV2::new(slot, "not_applicable", Vec::new(), "x").unwrap()
+    })
+    .collect();
+    let bridge = authority::ContextMemberBridgeAttestationV2::new(context, temporal).unwrap();
+    let member = authority::ContextApplicationMemberV2::new(
+        "c",
+        authority::DigestReferenceV1 {
+            envelope_version: envelope::DIGEST_ENVELOPE_ID.to_owned(),
+            algorithm_id: envelope::SHA256_ID.to_owned(),
+            semantic_domain: "d".to_owned(),
+            payload_codec_id: envelope::CANONICAL_CBOR_ID.to_owned(),
+            input_schema_id: "i".to_owned(),
+            digest_bytes: [0; 32],
+        },
+        "s",
+        cbor::Value::Array(vec![
+            cbor::Value::Text("u".to_owned()),
+            cbor::Value::Text("manafold.m2.5.c.interaction-candidate-universe.v2".to_owned()),
+            cbor::Value::Bytes(vec![0; 32]),
+        ]),
+        cbor::Value::Array(vec![
+            cbor::Value::Text("binary".to_owned()),
+            cbor::Value::Text("symmetric".to_owned()),
+            cbor::Value::Array(vec![cbor::Value::Array(vec![
+                cbor::Value::Unsigned(0),
+                cbor::Value::Text("ordered_participant".to_owned()),
+                cbor::Value::Text("card".to_owned()),
+                cbor::Value::Text("draw".to_owned()),
+            ])]),
+            cbor::Value::Text("same_host".to_owned()),
+        ]),
+        cbor::Value::Array(Vec::new()),
+        vec![evidence],
+        bridge,
+    )
+    .unwrap();
+    let input = authority::ContextApplicationV2InputV1::new([0; 32], vec![member]).unwrap();
+    let matrix: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../conformance/fixtures/authority/context_application_v2_identity_golden_matrix.v1.json"
+    ))
+    .unwrap();
+    let entry = matrix["identities"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|entry| entry["kind"] == serde_json::json!("context_application_v2"))
+        .unwrap();
+    assert_eq!(
+        hex(&cbor::encode_canonical(&input.to_cbor()).unwrap()),
+        entry["payload_cbor_hex"].as_str().unwrap()
+    );
+    assert_eq!(
+        input.identity().unwrap().as_text(),
+        entry["identity"].as_str().unwrap()
+    );
+}
+
+#[test]
 fn required_relation_channels_use_declared_vocabulary_order() {
     let matrix: serde_json::Value = serde_json::from_str(include_str!(
         "../../../conformance/fixtures/authority/identity_golden_matrix.v1.json"

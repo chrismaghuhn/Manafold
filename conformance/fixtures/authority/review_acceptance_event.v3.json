@@ -1,0 +1,53 @@
+{
+  "event_id": "ae.v3/07ada6fabe654361c6a068902b0919a14694ff4b496e57949fdf7ec9d6f6db9f",
+  "schema": "manafold.m2.5.c.review-acceptance-event.v3",
+  "subject_kind": "context_application_v2_record",
+  "subject_payload_digest": {
+    "envelope_id": "mtgml.digest-envelope.v1",
+    "algorithm_id": "sha-256",
+    "semantic_domain": "manafold.m2.5.c.acceptance-subject-payload.v3",
+    "payload_codec_id": "mtgml.canonical-cbor.v1",
+    "input_schema_id": "manafold.m2.5.c.acceptance-subject-payload-input.v3",
+    "digest_hex": "0b91f32838c732100a2bc842376dbe7bf61d1163cdbc11cb308ca2276d0e2e18"
+  },
+  "decision": "human_accepted",
+  "reviewer_roster_ref": {
+    "path": "sources/m2_5/authorities/reviewer_rosters/v1/0000000000000000000000000000000000000000000000000000000000000000.json",
+    "schema": "manafold.m2.5.c.reviewer-roster.v1",
+    "raw_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+  },
+  "reviewer_role_bindings": [
+    {
+      "reviewer_id": "alice",
+      "roles": [
+        "architecture_maintainer",
+        "rules_authority_maintainer"
+      ]
+    }
+  ],
+  "review_mode": "multi_reviewer",
+  "checklist_id": "interaction-authority-review-checklist.v2",
+  "source_binding_digests": [
+    {
+      "artifact_role": "base_authority_v1",
+      "path": "sources/m2_5/authorities/interaction_review_authority.v1.json",
+      "schema": "manafold.m2.5.c.interaction-review-authority.v1",
+      "raw_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "artifact_role": "reviewer_roster_leaf",
+      "path": "sources/m2_5/authorities/reviewer_rosters/v1/0000000000000000000000000000000000000000000000000000000000000000.json",
+      "schema": "manafold.m2.5.c.reviewer-roster.v1",
+      "raw_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    }
+  ],
+  "review_evidence_refs": [
+    {
+      "path": "a",
+      "raw_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "locator": {
+        "kind": "whole_artifact"
+      }
+    }
+  ]
+}
