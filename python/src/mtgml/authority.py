@@ -2696,7 +2696,8 @@ def _validate_context_application_members_v2(value: object) -> None:
         _validate_context_application_member_v2(member)
         fields = _array(member, "V2 context application member", 8)
         identity = DigestReferenceV1.from_cbor(fields[1])
-        ordering_keys.append(encode_canonical([identity.digest_bytes, fields[2]]))
+        source_instance_id = _text(fields[2], "V2 source instance ID")
+        ordering_keys.append(encode_canonical([identity.digest_bytes, source_instance_id]))
     if ordering_keys != sorted(ordering_keys):
         _fail("V2 context application members must use the V1 digest/source order")
     if len(set(ordering_keys)) != len(ordering_keys):
