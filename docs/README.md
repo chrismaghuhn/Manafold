@@ -93,4 +93,4 @@ head. Hosted PR evidence and M2.Final closure remain separate.
 - [`maintenance/SCHEMA_EVOLUTION.md`](maintenance/SCHEMA_EVOLUTION.md)
 - [`adr/README.md`](adr/README.md)
 
-Accepted ADRs 0039 and 0040 contain the M2 decision and information/V3 compatibility architecture; accepted ADR 0041 records the post-`M2.Final` capability-oriented semantic-ownership decision. ADRs record intent; executable M2 closure remains evidence-driven.
+Accepted ADRs 0039 and 0040 contain the M2 decision and information/V3 compatibility architecture; accepted ADR 0041 records the post-`M2.Final` capability-oriented semantic-ownership decision; accepted ADR 0042 records the ContextApplicationV2 reviewed-context bridge architecture. ADRs record intent; executable M2 closure remains evidence-driven.
