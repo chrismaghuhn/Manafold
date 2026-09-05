@@ -5,7 +5,8 @@
 - `check_documentation.py` — document register, ADR numbering, and local links;
 - `validate_schemas.py` — JSON Schemas and examples;
 - `validate_maintainer_artifacts.py` — capability, card, bundle, and certification semantics;
-- `run_python_tests.py` — Python contract suite;
+- `run_python_tests.py` — Python contract suite (`--profile full` is the default;
+  `--profile smoke` is the explicit small development allowlist);
 - `run_verification.py` — external authoritative gate report under `dist/verification/`;
 - `run_m1_closure.py` — external M1 ten-gate closure report under `dist/verification/m1/`;
 - `run_m2_final_closure.py` — external M2.Final twenty-gate closure report (M2.B-H runners plus M1 regression and the M2 scope guard) under `dist/m2-final-verification/`;
@@ -28,6 +29,7 @@ The verification runner marks directories it owns and refuses to replace an exis
 - `build_m2_5_c_authority_review_worklist.py` — deterministic, non-authoritative M2.5.C review worklist generation;
 - `scaffold_m2_5_c_authority_review.py` — quarantined single-candidate review proposal scaffolding;
 - `build_m2_5_c_canary_review_packet.py` — single-candidate source inventory and human-review worksheet packet;
-- `run_checks.py` — fast/integration/certification maintainer profiles;
+- `run_checks.py` — fast (Smoke), integration (Smoke + Full), and certification
+  maintainer profiles;
 - `bootstrap.py` — prepares `.venv` only and never mutates contracts or lockfiles;
 - `validate_golden_path.py` — verifies the synthetic vertical path fails closed at certification;
