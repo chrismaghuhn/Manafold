@@ -132,7 +132,9 @@ The helper must never reuse an old event_id for a self-consistent mutation.
 | checklist marker mismatch | CHECKLIST_V2_MISMATCH |
 | invalid closed review mode | REVIEW_MODE_INVALID |
 | JSON event ID differs from the reference identity | V3_EVENT_IDENTITY_INVALID |
-| missing roster binding or self-leaf source | V3_EVENT_SOURCE_INVALID |
+| missing exact reviewer-roster binding | V3_EVENT_SOURCE_INVALID |
+| malicious self-leaf wire in integrated event path | V3_EVENT_IDENTITY_INVALID |
+| self-leaf rejected by direct closure/cycle algebra | V3_EVENT_SOURCE_INVALID |
 | malformed or empty review evidence | REVIEW_EVIDENCE_INVALID or REVIEW_EVIDENCE_MISSING |
 | wrong reference type | V3_EVENT_REFERENCE_INVALID |
 
@@ -179,7 +181,8 @@ Apply the same fallback pattern at the existing evidence-resolution catch.
     wrong checklist -> CHECKLIST_V2_MISMATCH
     invalid ReviewMode -> REVIEW_MODE_INVALID
     event identity failure -> V3_EVENT_IDENTITY_INVALID
-    source-list, roster-binding, or self-leaf failure -> V3_EVENT_SOURCE_INVALID
+    source-list or roster-binding failure -> V3_EVENT_SOURCE_INVALID
+    self-leaf failure in direct closure/cycle algebra -> V3_EVENT_SOURCE_INVALID
     empty review evidence -> REVIEW_EVIDENCE_MISSING
     malformed/unresolvable review evidence owned by this resolver -> REVIEW_EVIDENCE_INVALID
 
@@ -367,17 +370,12 @@ class ContextApplicationV2InformationSensitivityInventory:
 
 
 def collect_information_sensitivity_facts(
-    *,
-    historical_source_values: Sequence[str],
-    bridge_source_values: Sequence[str],
-    bridge_reviewed_values: Sequence[str],
-    theorem_context_values: Sequence[str],
-    theorem_preconditions: Sequence[ContextPreconditionValueV1],
+    value: ContextApplicationV2SemanticInput,
 ) -> ContextApplicationV2InformationSensitivityInventory:
     """Record only typed visibility/information facts in canonical order."""
 ~~~
 
-The helper consumes only ContextPreconditionValueV1.precondition_id and the existing typed value shape. It recognizes the fixed source_context and class_projection payload forms already produced by Slice 3 and emits no fact for unknown shapes. It never reads card/capability names, theorem JSON mappings, rationale, evidence prose, filenames, or natural-language values. The unconditional information-safety role remains unchanged.
+The helper consumes only the already-typed ContextApplicationV2SemanticInput, including ContextPreconditionValueV1.precondition_id and value. The precondition ID is a fact label only; source_context versus class_projection recognition comes exclusively from the known typed value shapes. It emits no fact for unknown shapes. It never reads card/capability names, theorem JSON mappings, rationale, evidence prose, filenames, or natural-language values. The unconditional information-safety role remains unchanged.
 
 - [ ] Step 2: Implement the constructor with source resolver and base authority binding. Instantiate ContextApplicationV2Resolver and ContextApplicationV2SemanticValidator with the same base binding. Reject non-record input before filesystem access.
 
@@ -398,9 +396,9 @@ The helper consumes only ContextPreconditionValueV1.precondition_id and the exis
     13. consume resolver-verified mode/evidence postconditions
     14. return the frozen result
 
-The roster step must call resolve_reviewer_roster, not a private AuthorityValidator method. The shared helper owns raw path/schema/digest/JSON parsing; AuthorityValidator delegates to it and maps its failures back to the existing V1 diagnostics.
+The roster step must call resolve_reviewer_roster, not a private AuthorityValidator method. AuthoritySourceResolver.resolve_reviewer_roster_leaf is the sole raw/path/schema/digest/closed-shape owner. The helper calls it exactly once and materializes typed ReviewerV1/ReviewerRosterV1 values from its verified artifact.json_value projection; it never parses raw bytes. AuthorityValidator delegates to the helper and maps its failures back to the existing V1 diagnostics.
 
-After Slice-3 validation succeeds, collect a frozen diagnostic-only typed information-sensitivity inventory from the already typed V2 facts. The inventory must record deterministic fact paths for non-not_applicable visibility and information_relation values in historical source values, reviewed bridge source/reviewed values, theorem context values, source_context preconditions, and class_projection precondition context vectors. It must not change the unconditional role policy, inspect names/rationale/evidence prose, or perform a second semantic validation.
+The admission module does not re-resolve sources or theorem records to compute the inventory. The pure helper is exercised directly against the ContextApplicationV2SemanticInput already constructed by Slice 3; its result is diagnostic-only and does not participate in admission or role selection. Do not expand ContextApplicationV2ValidationResult with inventory data. The inventory records deterministic fact paths for non-not_applicable visibility and information_relation values in historical source values, reviewed bridge source/reviewed values, theorem context values, source_context precondition value shapes, and class_projection precondition context vectors.
 
 - [ ] Step 4: Map errors through an explicit table and never match message text:
 
@@ -599,11 +597,19 @@ Do not expect application_id mutation to reach the subject comparison; Slice-3 i
 
 - [ ] Step 3: Add closure mutations and assert:
 
-    missing/extra/stale binding -> V3_SOURCE_CLOSURE_MISMATCH
-    wrong digest/schema/role/path -> V3_SOURCE_CLOSURE_MISMATCH
-    duplicate role/path -> V3_SOURCE_CLOSURE_MISMATCH
-    self-leaf/context-container source -> V3_SOURCE_CLOSURE_MISMATCH or V3_EVENT_SOURCE_INVALID
-    unauthorized host-binding source -> V3_SOURCE_CLOSURE_MISMATCH
+    unknown role -> V3_EVENT_SOURCE_INVALID
+    role/path/schema mismatch -> V3_EVENT_SOURCE_INVALID
+    duplicate role/path -> V3_EVENT_SOURCE_INVALID
+    noncanonical source-binding sequence -> V3_EVENT_SOURCE_INVALID
+    context_application_authority_v2 forbidden role -> V3_EVENT_SOURCE_INVALID
+    missing otherwise-valid expected binding -> V3_SOURCE_CLOSURE_MISMATCH
+    extra otherwise-valid binding -> V3_SOURCE_CLOSURE_MISMATCH
+    same valid role/path/schema with stale or wrong digest -> V3_SOURCE_CLOSURE_MISMATCH
+    extra valid HostBinding role -> V3_SOURCE_CLOSURE_MISMATCH
+    missing exact reviewer-roster binding -> V3_EVENT_SOURCE_INVALID
+    malicious self-leaf event wire in integrated admission -> V3_EVENT_IDENTITY_INVALID
+
+Test the existing self-leaf/container cycle rule separately through the direct closure/cycle helper and expect V3_EVENT_SOURCE_INVALID there. Do not alter resolver order to force the integrated event test to reach that later check.
 
 - [ ] Step 4: Add roster and role mutations:
 
@@ -623,7 +629,7 @@ Use a table-driven precedence test and require architecture, then rules, then co
     solo mode cannot waive a role or evidence
     no result claims temporal separation, reviewer independence, or prose sufficiency
 
-- [ ] Step 6: Add typed information-sensitivity inventory tests. Assert that visibility and information_relation facts are recorded for historical source values, bridge source/reviewed values, theorem context values, source_context preconditions, and class_projection context vectors. Mutating card names, capability names, rationale, filenames, or evidence prose must not add or remove inventory facts. The test must also assert that the inventory does not change the always-required information-safety role policy.
+- [ ] Step 6: Add direct pure-helper tests using ContextApplicationV2SemanticInput and ContextPreconditionValueV1. Assert that visibility and information_relation facts are recorded for historical source values, bridge source/reviewed values, theorem context values, source_context value shapes, and class_projection context vectors. The test must assert that precondition_id is only a fact label and that unknown typed value shapes produce no fact. Mutating card names, capability names, rationale, filenames, or evidence prose must not add or remove inventory facts. The admission validator must not re-resolve sources/theorem for this diagnostic. The test must also assert that the inventory does not change the always-required information-safety role policy.
 
 - [ ] Step 7: Add mutation-safety snapshots for the record, members, event reference, resolver DTOs, source files, candidate universe, base authority, event files, evidence, and C. Every rejected admission must preserve the snapshots and create no accepted record.
 
