@@ -13,11 +13,12 @@ import re
 import zipfile
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
-from typing import cast
+from typing import Final, cast
 
 from authority_source_resolver import (
     AuthoritySourceResolver,
     Locator,
+    ResolutionError,
     ResolvedArtifact,
     ResolvedSourceInstance,
 )
@@ -43,9 +44,34 @@ from mtgml.authority import (
 )
 from mtgml.persistence import encode_canonical
 
+V3_RESOLUTION_CODES: Final = frozenset(
+    {
+        "V3_EVENT_REFERENCE_INVALID",
+        "V3_EVENT_SCHEMA_INVALID",
+        "V3_EVENT_DECISION_INVALID",
+        "CHECKLIST_V2_MISMATCH",
+        "REVIEW_MODE_INVALID",
+        "REVIEW_EVIDENCE_MISSING",
+        "REVIEW_EVIDENCE_INVALID",
+        "V3_EVENT_IDENTITY_INVALID",
+        "V3_EVENT_SOURCE_INVALID",
+    }
+)
+
 
 class ContextApplicationV2ResolutionError(ValueError):
     """Raised when a V2 source or exact closure is not resolvable."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        code: str | None = None,
+        cause_code: str | None = None,
+    ) -> None:
+        self.code = code
+        self.cause_code = cause_code
+        super().__init__(message)
 
 
 @dataclass(frozen=True)
@@ -64,8 +90,19 @@ class ResolvedReviewAcceptanceEventV3:
     event: ReviewAcceptanceEventInputV3
 
 
-def _fail(message: str) -> ContextApplicationV2ResolutionError:
-    return ContextApplicationV2ResolutionError(message)
+def _fail(
+    message: str,
+    *,
+    code: str | None = None,
+    cause_code: str | None = None,
+) -> ContextApplicationV2ResolutionError:
+    if code is not None and code not in V3_RESOLUTION_CODES:
+        raise ValueError(f"unknown V3 resolver diagnostic code: {code}")
+    return ContextApplicationV2ResolutionError(
+        message,
+        code=code,
+        cause_code=cause_code,
+    )
 
 
 def _binding_key(binding: ContextAuthoritySourceBindingV2) -> tuple[str, str]:
@@ -132,7 +169,10 @@ def _reject_event_cycle(bindings: Iterable[ContextAuthoritySourceBindingV2]) -> 
             "acceptance_event_leaf_v3",
             "context_application_authority_v2",
         }:
-            raise _fail(f"event closure contains forbidden role {binding.artifact_role!r}")
+            raise _fail(
+                f"event closure contains forbidden role {binding.artifact_role!r}",
+                code="V3_EVENT_SOURCE_INVALID",
+            )
 
 
 def _require_role(
@@ -351,23 +391,38 @@ class ContextApplicationV2Resolver:
         if pointer == "":
             return value
         if not pointer.startswith("/"):
-            raise _fail("acceptance JSON Pointer must begin with '/'")
+            raise _fail(
+                "acceptance JSON Pointer must begin with '/'",
+                code="REVIEW_EVIDENCE_INVALID",
+            )
         current = value
         for raw_token in pointer[1:].split("/"):
             token = raw_token.replace("~1", "/").replace("~0", "~")
             if isinstance(current, Mapping):
                 if token not in current:
-                    raise _fail("acceptance JSON Pointer token is absent")
+                    raise _fail(
+                        "acceptance JSON Pointer token is absent",
+                        code="REVIEW_EVIDENCE_INVALID",
+                    )
                 current = current[token]
             elif isinstance(current, list):
                 if not token.isdigit() or (token != "0" and token.startswith("0")):
-                    raise _fail("acceptance JSON Pointer array index is invalid")
+                    raise _fail(
+                        "acceptance JSON Pointer array index is invalid",
+                        code="REVIEW_EVIDENCE_INVALID",
+                    )
                 index = int(token)
                 if index >= len(current):
-                    raise _fail("acceptance JSON Pointer index is out of range")
+                    raise _fail(
+                        "acceptance JSON Pointer index is out of range",
+                        code="REVIEW_EVIDENCE_INVALID",
+                    )
                 current = current[index]
             else:
-                raise _fail("acceptance JSON Pointer traverses a scalar")
+                raise _fail(
+                    "acceptance JSON Pointer traverses a scalar",
+                    code="REVIEW_EVIDENCE_INVALID",
+                )
         return current
 
     def resolve_acceptance_evidence(
@@ -376,7 +431,10 @@ class ContextApplicationV2Resolver:
         """Resolve review evidence without promoting it to a source binding."""
 
         if not isinstance(evidence, AcceptanceEvidenceRefV1):
-            raise _fail("acceptance evidence resolution requires AcceptanceEvidenceRefV1")
+            raise _fail(
+                "acceptance evidence resolution requires AcceptanceEvidenceRefV1",
+                code="REVIEW_EVIDENCE_INVALID",
+            )
         artifact = self._resolver.resolve_repository_artifact(
             evidence.path, evidence.raw_sha256, None
         )
@@ -387,36 +445,48 @@ class ContextApplicationV2Resolver:
             try:
                 parsed = json.loads(artifact.raw_bytes.decode("utf-8"))
             except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-                raise _fail(f"acceptance evidence is not UTF-8 JSON: {exc}") from exc
+                raise _fail(
+                    f"acceptance evidence is not UTF-8 JSON: {exc}",
+                    code="REVIEW_EVIDENCE_INVALID",
+                ) from exc
             value = self._acceptance_json_pointer(parsed, cast(str, payload))
         elif kind == "archive_member":
             try:
                 with zipfile.ZipFile(io.BytesIO(artifact.raw_bytes)) as archive:
                     member = cast(str, payload)
                     if member not in archive.namelist():
-                        raise _fail("acceptance evidence archive member is missing")
+                        raise _fail(
+                            "acceptance evidence archive member is missing",
+                            code="REVIEW_EVIDENCE_INVALID",
+                        )
                     value = archive.read(member)
             except (OSError, zipfile.BadZipFile) as exc:
-                raise _fail(f"acceptance evidence archive member is unreadable: {exc}") from exc
+                raise _fail(
+                    f"acceptance evidence archive member is unreadable: {exc}",
+                    code="REVIEW_EVIDENCE_INVALID",
+                ) from exc
         else:
-            raise _fail(f"unsupported acceptance evidence locator kind: {kind!r}")
+            raise _fail(
+                f"unsupported acceptance evidence locator kind: {kind!r}",
+                code="REVIEW_EVIDENCE_INVALID",
+            )
         return ResolvedContextEvidence(None, artifact, evidence.locator, value)
 
     @staticmethod
     def _digest_reference(value: object) -> DigestReferenceV1:
-        record = _exact(
-            value,
-            {
-                "envelope_id",
-                "algorithm_id",
-                "semantic_domain",
-                "payload_codec_id",
-                "input_schema_id",
-                "digest_hex",
-            },
-            "V3 subject payload digest",
-        )
         try:
+            record = _exact(
+                value,
+                {
+                    "envelope_id",
+                    "algorithm_id",
+                    "semantic_domain",
+                    "payload_codec_id",
+                    "input_schema_id",
+                    "digest_hex",
+                },
+                "V3 subject payload digest",
+            )
             return DigestReferenceV1(
                 envelope_id=cast(str, record["envelope_id"]),
                 algorithm_id=cast(str, record["algorithm_id"]),
@@ -426,7 +496,7 @@ class ContextApplicationV2Resolver:
                 digest_bytes=_hex_digest(record["digest_hex"], "subject payload digest"),
             )
         except (TypeError, ValueError) as exc:
-            raise _fail(str(exc)) from exc
+            raise _fail(str(exc), code="V3_EVENT_SCHEMA_INVALID") from exc
 
     @staticmethod
     def _locator(value: object) -> Locator:
@@ -439,15 +509,59 @@ class ContextApplicationV2Resolver:
     @staticmethod
     def _acceptance_locator(value: object) -> Locator:
         if not isinstance(value, Mapping):
-            raise _fail("acceptance locator must be an object")
+            raise _fail(
+                "acceptance locator must be an object",
+                code="REVIEW_EVIDENCE_INVALID",
+            )
         kind = value.get("kind")
         if kind == "whole_artifact":
             if set(value) != {"kind"}:
-                raise _fail("whole_artifact locator has an unexpected value")
+                raise _fail(
+                    "whole_artifact locator has an unexpected value",
+                    code="REVIEW_EVIDENCE_INVALID",
+                )
             return ("whole_artifact", None)
         if kind in {"json_pointer", "archive_member"} and set(value) == {"kind", "value"}:
             return cast(Locator, (kind, value["value"]))
-        raise _fail("V3 acceptance locator is not closed")
+        raise _fail(
+            "V3 acceptance locator is not closed",
+            code="REVIEW_EVIDENCE_INVALID",
+        )
+
+    def _resolve_v3_event_source(
+        self,
+        binding: ContextAuthoritySourceBindingV2,
+    ) -> ResolvedArtifact:
+        try:
+            return self.resolve_source_binding(binding)
+        except ResolutionError as exc:
+            code = (
+                "V3_EVENT_SCHEMA_INVALID"
+                if exc.code in {"JSON_INVALID", "JSON_OBJECT_REQUIRED", "SCHEMA_MISMATCH"}
+                else "V3_EVENT_SOURCE_INVALID"
+            )
+            raise _fail(str(exc), code=code, cause_code=exc.code) from exc
+
+    def _resolve_v3_review_evidence(
+        self,
+        evidence: AcceptanceEvidenceRefV1,
+    ) -> ResolvedContextEvidence:
+        try:
+            return self.resolve_acceptance_evidence(evidence)
+        except ContextApplicationV2ResolutionError as exc:
+            if exc.code in {"REVIEW_EVIDENCE_INVALID", "REVIEW_EVIDENCE_MISSING"}:
+                raise
+            raise _fail(
+                str(exc),
+                code="REVIEW_EVIDENCE_INVALID",
+                cause_code=exc.code,
+            ) from exc
+        except ResolutionError as exc:
+            raise _fail(
+                str(exc),
+                code="REVIEW_EVIDENCE_INVALID",
+                cause_code=exc.code,
+            ) from exc
 
     def resolve_review_event_leaf_v3(
         self, reference: ReviewEventRefV3
@@ -455,41 +569,92 @@ class ContextApplicationV2Resolver:
         """Resolve only the raw/structural V3 leaf required by container closure."""
 
         if not isinstance(reference, ReviewEventRefV3):
-            raise _fail("V3 review event reference has the wrong type")
+            raise _fail(
+                "V3 review event reference has the wrong type",
+                code="V3_EVENT_REFERENCE_INVALID",
+            )
         binding = ContextAuthoritySourceBindingV2(
             "acceptance_event_leaf_v3",
             reference.path,
             ACCEPTANCE_EVENT_SCHEMA_V3,
             reference.raw_sha256,
         )
-        artifact = self.resolve_source_binding(binding)
+        artifact = self._resolve_v3_event_source(binding)
         if artifact.json_value is None or not isinstance(artifact.json_value, Mapping):
-            raise _fail("V3 acceptance event leaf is not a JSON object")
-        record = _exact(
-            artifact.json_value,
-            {
-                "event_id",
-                "schema",
-                "subject_kind",
-                "subject_payload_digest",
-                "decision",
-                "reviewer_roster_ref",
-                "reviewer_role_bindings",
-                "review_mode",
-                "checklist_id",
-                "source_binding_digests",
-                "review_evidence_refs",
-            },
-            "V3 acceptance event leaf",
-        )
+            raise _fail(
+                "V3 acceptance event leaf is not a JSON object",
+                code="V3_EVENT_SCHEMA_INVALID",
+            )
+        try:
+            record = _exact(
+                artifact.json_value,
+                {
+                    "event_id",
+                    "schema",
+                    "subject_kind",
+                    "subject_payload_digest",
+                    "decision",
+                    "reviewer_roster_ref",
+                    "reviewer_role_bindings",
+                    "review_mode",
+                    "checklist_id",
+                    "source_binding_digests",
+                    "review_evidence_refs",
+                },
+                "V3 acceptance event leaf",
+            )
+        except ContextApplicationV2ResolutionError as exc:
+            raise _fail(str(exc), code="V3_EVENT_SCHEMA_INVALID") from exc
         if record["event_id"] != reference.event_id:
-            raise _fail("V3 acceptance event ID differs from its reference")
+            raise _fail(
+                "V3 acceptance event ID differs from its reference",
+                code="V3_EVENT_IDENTITY_INVALID",
+            )
         if record["schema"] != ACCEPTANCE_EVENT_SCHEMA_V3:
-            raise _fail("V3 acceptance event schema is not V3")
+            raise _fail(
+                "V3 acceptance event schema is not V3",
+                code="V3_EVENT_SCHEMA_INVALID",
+            )
         if record["decision"] != "human_accepted":
-            raise _fail("V3 acceptance event decision is not human_accepted")
+            raise _fail(
+                "V3 acceptance event decision is not human_accepted",
+                code="V3_EVENT_DECISION_INVALID",
+            )
         if record["checklist_id"] != "interaction-authority-review-checklist.v2":
-            raise _fail("V3 acceptance event checklist is not V2")
+            raise _fail(
+                "V3 acceptance event checklist is not V2",
+                code="CHECKLIST_V2_MISMATCH",
+            )
+        raw_review_mode = record["review_mode"]
+        try:
+            review_mode = ReviewMode(cast(str, raw_review_mode))
+        except (TypeError, ValueError) as exc:
+            raise _fail(
+                f"V3 acceptance event structural fields are invalid: {exc}",
+                code="REVIEW_MODE_INVALID",
+            ) from exc
+
+        raw_sources = record["source_binding_digests"]
+        if not isinstance(raw_sources, list):
+            raise _fail(
+                "V3 acceptance event structural fields are invalid: "
+                "V3 source binding digests must be an array",
+                code="V3_EVENT_SOURCE_INVALID",
+            )
+        raw_evidence = record["review_evidence_refs"]
+        if not isinstance(raw_evidence, list):
+            raise _fail(
+                "V3 acceptance event structural fields are invalid: "
+                "V3 review evidence refs must be an array",
+                code="REVIEW_EVIDENCE_INVALID",
+            )
+        if not raw_evidence:
+            raise _fail(
+                "V3 acceptance event structural fields are invalid: "
+                "V3 review evidence must be non-empty",
+                code="REVIEW_EVIDENCE_MISSING",
+            )
+
         try:
             subject_kind = AcceptanceSubjectKindV3(cast(str, record["subject_kind"]))
             subject_digest = self._digest_reference(record["subject_payload_digest"])
@@ -513,55 +678,102 @@ class ContextApplicationV2Resolver:
                 )
                 for item in raw_roles
             )
-            raw_sources = record["source_binding_digests"]
-            if not isinstance(raw_sources, list):
-                raise ValueError("V3 source binding digests must be an array")
-            sources = tuple(context_source_binding_from_wire(item) for item in raw_sources)
-            raw_evidence = record["review_evidence_refs"]
-            if not isinstance(raw_evidence, list):
-                raise ValueError("V3 review evidence refs must be an array")
-            evidence = tuple(
-                AcceptanceEvidenceRefV1(
-                    path=cast(str, cast(Mapping[str, object], item)["path"]),
-                    raw_sha256=_hex_digest(
-                        cast(Mapping[str, object], item)["raw_sha256"],
-                        "review evidence digest",
-                    ),
-                    locator=self._acceptance_locator(cast(Mapping[str, object], item)["locator"]),
+            try:
+                sources = tuple(context_source_binding_from_wire(item) for item in raw_sources)
+            except ContextApplicationV2ResolutionError as exc:
+                raise _fail(
+                    f"V3 acceptance event structural fields are invalid: {exc}",
+                    code="V3_EVENT_SOURCE_INVALID",
+                ) from exc
+            source_keys = [(item.artifact_role, item.path) for item in sources]
+            if len(source_keys) != len(set(source_keys)):
+                raise _fail(
+                    "V3 source bindings must not duplicate a role/path pair",
+                    code="V3_EVENT_SOURCE_INVALID",
                 )
-                for item in raw_evidence
-            )
+            source_order = [encode_canonical(item.to_cbor()) for item in sources]
+            if source_order != sorted(source_order):
+                raise _fail(
+                    "V3 source bindings are not in canonical order",
+                    code="V3_EVENT_SOURCE_INVALID",
+                )
+            try:
+                evidence = tuple(
+                    AcceptanceEvidenceRefV1(
+                        path=cast(str, cast(Mapping[str, object], item)["path"]),
+                        raw_sha256=_hex_digest(
+                            cast(Mapping[str, object], item)["raw_sha256"],
+                            "review evidence digest",
+                        ),
+                        locator=self._acceptance_locator(
+                            cast(Mapping[str, object], item)["locator"]
+                        ),
+                    )
+                    for item in raw_evidence
+                )
+            except ContextApplicationV2ResolutionError as exc:
+                raise _fail(
+                    f"V3 acceptance event structural fields are invalid: {exc}",
+                    code="REVIEW_EVIDENCE_INVALID",
+                    cause_code=exc.code,
+                ) from exc
+            except (TypeError, ValueError) as exc:
+                raise _fail(
+                    f"V3 acceptance event structural fields are invalid: {exc}",
+                    code="REVIEW_EVIDENCE_INVALID",
+                ) from exc
             event = ReviewAcceptanceEventInputV3(
                 subject_kind=subject_kind,
                 subject_payload_digest_reference=subject_digest,
                 reviewer_roster_ref=roster_ref,
                 reviewer_role_bindings=role_bindings,
-                review_mode=ReviewMode(cast(str, record["review_mode"])),
+                review_mode=review_mode,
                 source_binding_digests=sources,
                 review_evidence_refs=evidence,
             )
+        except ContextApplicationV2ResolutionError as exc:
+            raise _fail(
+                f"V3 acceptance event structural fields are invalid: {exc}",
+                code=exc.code or "V3_EVENT_SCHEMA_INVALID",
+                cause_code=exc.cause_code,
+            ) from exc
         except (TypeError, ValueError) as exc:
-            raise _fail(f"V3 acceptance event structural fields are invalid: {exc}") from exc
+            raise _fail(
+                f"V3 acceptance event structural fields are invalid: {exc}",
+                code="V3_EVENT_SCHEMA_INVALID",
+            ) from exc
 
         try:
             recomputed_event_id = event.identity().as_text()
         except (TypeError, ValueError) as exc:
-            raise _fail(f"V3 acceptance event identity cannot be recomputed: {exc}") from exc
+            raise _fail(
+                f"V3 acceptance event identity cannot be recomputed: {exc}",
+                code="V3_EVENT_IDENTITY_INVALID",
+            ) from exc
         if recomputed_event_id != reference.event_id:
-            raise _fail("V3 acceptance event semantic ID differs from its reference")
+            raise _fail(
+                "V3 acceptance event semantic ID differs from its reference",
+                code="V3_EVENT_IDENTITY_INVALID",
+            )
 
         roster_binding = ContextAuthoritySourceBindingV2(
             "reviewer_roster_leaf", roster_ref.path, roster_ref.schema, roster_ref.raw_sha256
         )
         if roster_binding not in event.source_binding_digests:
-            raise _fail("V3 event does not bind its exact reviewer roster leaf")
+            raise _fail(
+                "V3 event does not bind its exact reviewer roster leaf",
+                code="V3_EVENT_SOURCE_INVALID",
+            )
         if any(
             item.artifact_role == "acceptance_event_leaf_v3" and item.path == reference.path
             for item in event.source_binding_digests
         ):
-            raise _fail("V3 event source list contains its own acceptance leaf")
+            raise _fail(
+                "V3 event source list contains its own acceptance leaf",
+                code="V3_EVENT_SOURCE_INVALID",
+            )
         for evidence in event.review_evidence_refs:
-            self.resolve_acceptance_evidence(evidence)
+            self._resolve_v3_review_evidence(evidence)
         return ResolvedReviewAcceptanceEventV3(
             reference=reference,
             artifact=artifact,

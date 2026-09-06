@@ -7,6 +7,7 @@ import json
 import sys
 import tempfile
 import unittest
+from collections.abc import Callable
 from dataclasses import replace
 from pathlib import Path
 from typing import cast
@@ -186,11 +187,12 @@ class ContextApplicationV2ResolverTests(unittest.TestCase):
         self.assertEqual(encoded, sorted(encoded))
 
     def test_event_closure_rejects_acceptance_leaf_and_container_role(self) -> None:
-        with self.assertRaises(ContextApplicationV2ResolutionError):
+        with self.assertRaises(ContextApplicationV2ResolutionError) as caught:
             reconstruct_event_source_closure(
                 fixed_bindings=(BASE, MODEL, ROSTER),
                 direct_bindings=(EVENT_LEAF,),
             )
+        self.assertEqual(caught.exception.code, "V3_EVENT_SOURCE_INVALID")
 
         with self.assertRaises(ValueError):
             ContextAuthoritySourceBindingV2(
@@ -476,6 +478,184 @@ class ContextApplicationV2ResolverTests(unittest.TestCase):
                 {binding.path for binding in resolved.event.source_binding_digests},
             )
 
+            def assert_old_identity_mutation(
+                mutation: Callable[[dict[str, object]], None],
+                expected_code: str,
+                expected_message: str,
+            ) -> None:
+                mutated = copy.deepcopy(event_wire)
+                mutation(mutated)
+                mutated_raw = (json.dumps(mutated, separators=(",", ":")) + "\n").encode("utf-8")
+                event_file.write_bytes(mutated_raw)
+                mutated_reference = ReviewEventRefV3(
+                    event_path,
+                    digest(mutated_raw),
+                    event_id,
+                )
+                with self.assertRaises(ContextApplicationV2ResolutionError) as caught:
+                    resolver.resolve_review_event_leaf_v3(mutated_reference)
+                self.assertEqual(caught.exception.code, expected_code)
+                self.assertEqual(str(caught.exception), expected_message)
+
+            assert_old_identity_mutation(
+                lambda value: cast(dict[str, object], value).__setitem__("decision", "draft"),
+                "V3_EVENT_DECISION_INVALID",
+                "V3 acceptance event decision is not human_accepted",
+            )
+            assert_old_identity_mutation(
+                lambda value: cast(dict[str, object], value).__setitem__(
+                    "checklist_id", "interaction-authority-review-checklist.v1"
+                ),
+                "CHECKLIST_V2_MISMATCH",
+                "V3 acceptance event checklist is not V2",
+            )
+
+            mutated_schema = copy.deepcopy(event_wire)
+            mutated_schema["schema"] = "wrong"
+            mutated_schema_raw = (json.dumps(mutated_schema, separators=(",", ":")) + "\n").encode(
+                "utf-8"
+            )
+            event_file.write_bytes(mutated_schema_raw)
+            mutated_schema_reference = ReviewEventRefV3(
+                event_path,
+                digest(mutated_schema_raw),
+                event_id,
+            )
+            with self.assertRaises(ContextApplicationV2ResolutionError) as caught:
+                resolver.resolve_review_event_leaf_v3(mutated_schema_reference)
+            self.assertEqual(caught.exception.code, "V3_EVENT_SCHEMA_INVALID")
+            self.assertEqual(caught.exception.cause_code, "SCHEMA_MISMATCH")
+
+            tampered_event_id = copy.deepcopy(event_wire)
+            tampered_event_id["event_id"] = "ae.v3/" + "01" * 32
+            tampered_event_id_raw = (
+                json.dumps(tampered_event_id, separators=(",", ":")) + "\n"
+            ).encode("utf-8")
+            event_file.write_bytes(tampered_event_id_raw)
+            tampered_event_id_reference = ReviewEventRefV3(
+                event_path,
+                digest(tampered_event_id_raw),
+                event_id,
+            )
+            with self.assertRaises(ContextApplicationV2ResolutionError) as caught:
+                resolver.resolve_review_event_leaf_v3(tampered_event_id_reference)
+            self.assertEqual(caught.exception.code, "V3_EVENT_IDENTITY_INVALID")
+            self.assertEqual(
+                str(caught.exception),
+                "V3 acceptance event ID differs from its reference",
+            )
+
+            assert_old_identity_mutation(
+                lambda value: cast(dict[str, object], value).__setitem__(
+                    "review_mode", "invalid_review_mode"
+                ),
+                "REVIEW_MODE_INVALID",
+                (
+                    "V3 acceptance event structural fields are invalid: "
+                    "'invalid_review_mode' is not a valid ReviewMode"
+                ),
+            )
+
+            missing_roster_input = ReviewAcceptanceEventInputV3(
+                subject_kind=event_input.subject_kind,
+                subject_payload_digest_reference=event_input.subject_payload_digest_reference,
+                reviewer_roster_ref=event_input.reviewer_roster_ref,
+                reviewer_role_bindings=event_input.reviewer_role_bindings,
+                review_mode=event_input.review_mode,
+                source_binding_digests=(base_binding,),
+                review_evidence_refs=event_input.review_evidence_refs,
+            )
+            missing_roster_wire = ReviewAcceptanceEventLeafV3.from_input(
+                missing_roster_input
+            ).to_wire()
+            missing_roster_raw = (
+                json.dumps(missing_roster_wire, separators=(",", ":")) + "\n"
+            ).encode("utf-8")
+            missing_roster_id = cast(str, missing_roster_wire["event_id"])
+            missing_roster_path = (
+                "sources/m2_5/authorities/review_acceptance_events/v3/"
+                + missing_roster_id.removeprefix("ae.v3/")
+                + ".json"
+            )
+            missing_roster_file = repo / Path(*missing_roster_path.split("/"))
+            missing_roster_file.parent.mkdir(parents=True, exist_ok=True)
+            missing_roster_file.write_bytes(missing_roster_raw)
+            missing_roster_reference = ReviewEventRefV3(
+                missing_roster_path,
+                digest(missing_roster_raw),
+                missing_roster_id,
+            )
+            with self.assertRaises(ContextApplicationV2ResolutionError) as caught:
+                resolver.resolve_review_event_leaf_v3(missing_roster_reference)
+            self.assertEqual(caught.exception.code, "V3_EVENT_SOURCE_INVALID")
+
+            missing_evidence_input = ReviewAcceptanceEventInputV3(
+                subject_kind=event_input.subject_kind,
+                subject_payload_digest_reference=event_input.subject_payload_digest_reference,
+                reviewer_roster_ref=event_input.reviewer_roster_ref,
+                reviewer_role_bindings=event_input.reviewer_role_bindings,
+                review_mode=event_input.review_mode,
+                source_binding_digests=event_input.source_binding_digests,
+                review_evidence_refs=(
+                    AcceptanceEvidenceRefV1(
+                        "docs/review/missing-slice4-evidence.md",
+                        bytes(32),
+                        ("whole_artifact", None),
+                    ),
+                ),
+            )
+            missing_evidence_wire = ReviewAcceptanceEventLeafV3.from_input(
+                missing_evidence_input
+            ).to_wire()
+            missing_evidence_raw = (
+                json.dumps(missing_evidence_wire, separators=(",", ":")) + "\n"
+            ).encode("utf-8")
+            missing_evidence_id = cast(str, missing_evidence_wire["event_id"])
+            missing_evidence_path = (
+                "sources/m2_5/authorities/review_acceptance_events/v3/"
+                + missing_evidence_id.removeprefix("ae.v3/")
+                + ".json"
+            )
+            missing_evidence_file = repo / Path(*missing_evidence_path.split("/"))
+            missing_evidence_file.parent.mkdir(parents=True, exist_ok=True)
+            missing_evidence_file.write_bytes(missing_evidence_raw)
+            missing_evidence_reference = ReviewEventRefV3(
+                missing_evidence_path,
+                digest(missing_evidence_raw),
+                missing_evidence_id,
+            )
+            with self.assertRaises(ContextApplicationV2ResolutionError) as caught:
+                resolver.resolve_review_event_leaf_v3(missing_evidence_reference)
+            self.assertEqual(caught.exception.code, "REVIEW_EVIDENCE_INVALID")
+            self.assertEqual(caught.exception.cause_code, "REPOSITORY_SOURCE_MISSING")
+
+            assert_old_identity_mutation(
+                lambda value: cast(dict[str, object], value).__setitem__(
+                    "review_evidence_refs", []
+                ),
+                "REVIEW_EVIDENCE_MISSING",
+                "V3 acceptance event structural fields are invalid: "
+                "V3 review evidence must be non-empty",
+            )
+
+            malformed_evidence = copy.deepcopy(event_wire)
+            malformed_refs = cast(
+                list[dict[str, object]], malformed_evidence["review_evidence_refs"]
+            )
+            malformed_refs[0]["raw_sha256"] = "not-a-digest"
+            malformed_evidence_raw = (
+                json.dumps(malformed_evidence, separators=(",", ":")) + "\n"
+            ).encode("utf-8")
+            event_file.write_bytes(malformed_evidence_raw)
+            malformed_evidence_reference = ReviewEventRefV3(
+                event_path,
+                digest(malformed_evidence_raw),
+                event_id,
+            )
+            with self.assertRaises(ContextApplicationV2ResolutionError) as caught:
+                resolver.resolve_review_event_leaf_v3(malformed_evidence_reference)
+            self.assertEqual(caught.exception.code, "REVIEW_EVIDENCE_INVALID")
+
             tampered_semantics = copy.deepcopy(event_wire)
             tampered_semantics["review_mode"] = "solo_separate_self_review"
             tampered_semantics_raw = (json.dumps(tampered_semantics) + "\n").encode("utf-8")
@@ -492,8 +672,10 @@ class ContextApplicationV2ResolverTests(unittest.TestCase):
             tampered = copy.deepcopy(event_wire)
             tampered["event_id"] = "ae.v3/" + "01" * 32
             event_file.write_bytes((json.dumps(tampered) + "\n").encode("utf-8"))
-            with self.assertRaises(ResolutionError):
+            with self.assertRaises(ContextApplicationV2ResolutionError) as caught:
                 resolver.resolve_review_event_leaf_v3(reference)
+            self.assertEqual(caught.exception.code, "V3_EVENT_SOURCE_INVALID")
+            self.assertEqual(caught.exception.cause_code, "SOURCE_DIGEST_MISMATCH")
 
     def test_supersession_event_closure_reconstructs_from_base_and_evidence(self) -> None:
         with tempfile.TemporaryDirectory() as raw_temp:
