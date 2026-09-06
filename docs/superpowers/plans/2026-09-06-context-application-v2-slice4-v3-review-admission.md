@@ -20,6 +20,10 @@ Approved design head before this plan:
 
     65997ea9a47cba38a671f867138f0c037fc5c1b6
 
+Implementation-plan head before code execution:
+
+    the exact final plan-only HEAD reported at this plan-review handoff
+
 The implementation must preserve:
 
     V1 checklist, V1 event identity, V1 event schema, and accepted V1 records unchanged
@@ -48,15 +52,16 @@ The first missing role wins. Missing information safety returns INFORMATION_SAFE
 | File | Responsibility |
 |---|---|
 | scripts/context_application_v2_resolver.py | Additive V3 resolver diagnostic codes; retain event, checklist, mode, and evidence ownership. |
-| scripts/context_application_v2_validator.py | Preserve Slice-3 fallback semantic codes when the resolver gains an optional diagnostic code. |
-| scripts/reviewer_role_binding.py | Typed seam for exact reviewer existence and complete roster-role equality. |
+| scripts/context_application_v2_validator.py | Preserve Slice-3 fallback semantic codes and expose the pure typed information-sensitivity inventory seam. |
+| scripts/reviewer_role_binding.py | Single owner for content-addressed roster parsing and the typed exact reviewer existence/complete-role seam; no ordering policy. |
 | scripts/authority_validator.py | Delegate the existing V1 role-binding comparison through the typed seam without changing V1 diagnostics. |
 | scripts/context_application_v2_review_admission.py | New admission module, stable errors, frozen result, semantic composition, event binding, closure, roster, and role policy. |
 | docs/maintenance/INTERACTION_AUTHORITY_REVIEW_CHECKLIST_V2.md | New immutable V2 checklist definition. |
 | docs/normative-document-register.v1.json | Checklist and process-artifact registration. |
 | python/tests/test_context_application_v2_resolver.py | Resolver diagnostic and legacy compatibility tests. |
 | python/tests/test_context_application_v2_validator.py | Slice-3 resolver-code fallback regression tests. |
-| python/tests/test_authority_validator.py | V1 roster/role and shared-seam regression tests. |
+| python/tests/test_authority_validator.py | V1 roster/role and shared-seam regression tests, including V1 reviewer-ID ordering. |
+| python/tests/test_context_application_v2_contract.py | V3 full-CBOR reviewer-binding ordering regression. |
 | python/tests/test_context_application_v2_review_admission.py | New positive, negative, precedence, mutation, determinism, and result-surface tests. |
 | python/tests/test_review_admission_foundation.py | V1/V2 checklist registration and immutability assertions. |
 | scripts/run_python_tests.py | Add the new admission module to the explicit smoke profile. |
@@ -69,7 +74,7 @@ No schema, Rust authority DTO, production fixture, production event, or producti
 
 **Files:** None modified.
 
-- [ ] Step 1: Confirm branch, base, tracked state, and unrelated untracked state.
+- [ ] Step 1: Confirm branch, plan head, design/base identity, tracked state, and unrelated untracked state.
 
 Run:
 
@@ -82,9 +87,9 @@ git diff --name-only origin/master..HEAD
 
 Expected:
 
-    HEAD = 65997ea9a47cba38a671f867138f0c037fc5c1b6
+    PLAN_HEAD = the exact final plan-only HEAD reported at this plan-review handoff
     origin/master = 0dfd646fc6b8b7e09fef69a9721eba8487425a46
-    origin/master..HEAD contains only the approved design file
+    origin/master..HEAD contains the approved design file and implementation plan
     docs/superpowers/plans/2026-08-26-m2-5-b2-terminal-card-classification-closure.md remains untracked and unstaged
 
 - [ ] Step 2: Re-read the approved design, ADR 0042, the Slice-2 resolver, the Slice-3 validator, and the V1 AuthorityValidator before editing.
@@ -99,7 +104,23 @@ Expected:
 - Modify: python/tests/test_context_application_v2_resolver.py
 - Modify: python/tests/test_context_application_v2_validator.py
 
-- [ ] Step 1: Extend the existing temporary V3 event fixture with a helper that rewrites event JSON, recomputes the raw digest, and constructs a matching ReviewEventRefV3 using the original event ID. The helper must write only inside TemporaryDirectory.
+- [ ] Step 1: Extend the existing temporary V3 event fixture with a two-mode helper that rewrites event JSON and writes only inside TemporaryDirectory.
+
+The helper must expose these modes:
+
+    IDENTITY_MISMATCH:
+        mutate the wire, recompute raw SHA-256, keep the old event_id/path
+        and construct a ReviewEventRefV3 with that old identity
+        -> reaches V3_EVENT_IDENTITY_INVALID
+
+    SELF_CONSISTENT_MUTATION:
+        mutate the typed ReviewAcceptanceEventInputV3 fields
+        recompute the new ae.v3 identity
+        update event_id and content-addressed path
+        serialize the new leaf, recompute raw SHA-256, and build a new ref
+        -> reaches downstream roster/source/evidence/closure checks
+
+The helper must never reuse an old event_id for a self-consistent mutation.
 
 - [ ] Step 2: Add resolver code assertions for these mutations:
 
@@ -187,12 +208,15 @@ git commit -m "refactor: add coded V3 resolver diagnostics"
 - Create: scripts/reviewer_role_binding.py
 - Modify: scripts/authority_validator.py
 - Modify: python/tests/test_authority_validator.py
+- Test: python/tests/test_context_application_v2_contract.py
 
-- [ ] Step 1: Add RED tests for exact reviewer existence, complete roster-role equality, duplicate reviewer IDs, and noncanonical ordering. Add V1 regression cases preserving:
+- [ ] Step 1: Add RED tests for the single-owner roster parser, exact reviewer existence, complete roster-role equality, and the separate V1/V3 ordering rules. Add V1 regression cases preserving:
 
     unknown reviewer or role mismatch -> REVIEWER_ROLE_BINDING_MISMATCH
     empty bindings -> REVIEWER_ROLE_BINDING_INVALID
-    duplicate or unsorted IDs -> NONCANONICAL_REVIEWERS
+    duplicate or unsorted V1 IDs -> NONCANONICAL_REVIEWERS
+
+Keep the existing V3 regression that proves full canonical-CBOR ordering of complete ReviewerRoleBinding tuples. The new shared helper must not sort, normalize, or reject based on either V1 ID ordering or V3 full-CBOR ordering.
 
 - [ ] Step 2: Create a typed helper with this interface:
 
@@ -200,13 +224,17 @@ git commit -m "refactor: add coded V3 resolver diagnostics"
 @dataclass(frozen=True)
 class ReviewerRoleBindingValidationError(ValueError):
     reason: Literal[
-        "empty",
         "not_in_roster",
         "role_mismatch",
-        "duplicate_reviewer_id",
-        "noncanonical_order",
     ]
     reviewer_id: str | None = None
+
+
+def resolve_reviewer_roster(
+    source_resolver: AuthoritySourceResolver,
+    reference: ReviewerRosterRefV1,
+) -> ReviewerRosterV1:
+    """Resolve exact raw roster bytes and parse the closed V1 roster shape."""
 
 
 def validate_reviewer_binding_against_roster(
@@ -214,22 +242,17 @@ def validate_reviewer_binding_against_roster(
     roster: ReviewerRosterV1,
 ) -> None:
     """Raise ReviewerRoleBindingValidationError unless the binding is exact."""
-
-
-def validate_reviewer_binding_sequence(
-    bindings: Sequence[ReviewerRoleBindingV1],
-) -> tuple[ReviewerRoleBindingV1, ...]:
-    """Return the canonical bindings or raise a structured validation error."""
 ~~~
 
-The helper must reuse ReviewerRosterV1 and ReviewerRoleBindingV1 invariants. It must not add role vocabulary, subset semantics, role escalation, reviewer-count rules, or project-owner requirements.
+The helper must reuse ReviewerRosterV1 and ReviewerRoleBindingV1 invariants. The roster parser owns raw digest/schema/JSON parsing. The exact-role helper owns only reviewer existence and complete role-tuple equality. It must not add role vocabulary, subset semantics, role escalation, reviewer-count rules, project-owner requirements, or ordering.
 
-- [ ] Step 3: Keep raw V1 JSON parsing and validation order in AuthorityValidator._event_role_bindings. Call the typed helper at the existing exact-role check and map structured reasons back to the current V1 codes/messages. The V2 module will map the same reasons to REVIEWER_BINDING_NOT_IN_ROSTER, REVIEWER_BINDING_INVALID, REVIEWER_DUPLICATE, or REVIEWER_ROLE_MISSING as appropriate.
+- [ ] Step 3: Extract the current AuthorityValidator._parse_roster body into resolve_reviewer_roster and make AuthorityValidator delegate to it while preserving its current V1 error codes/messages. Keep AuthorityValidator._event_role_bindings as the V1 owner of reviewer-ID ordering and existing diagnostics. Slice 4 calls resolve_reviewer_roster and validate_reviewer_binding_against_roster, then explicitly rejects duplicate reviewer IDs while leaving V3 full-CBOR ordering to ReviewAcceptanceEventInputV3.
 
 - [ ] Step 4: Run:
 
 ~~~powershell
 python -m unittest discover -s python/tests -p test_authority_validator.py -v
+python -m unittest discover -s python/tests -p test_context_application_v2_contract.py -v
 ~~~
 
 Expected: PASS with existing V1 role and conditional information-safety behavior unchanged.
@@ -250,7 +273,7 @@ git commit -m "refactor: share exact reviewer role binding checks"
 
 - [ ] Step 1: Build a temporary-repository fixture using the existing Slice-3 synthetic source pattern and AuthoritySourceResolverTests helpers. Return a source resolver, base binding, semantically valid ContextApplicationV2Record, embedded V3 event reference, event wire, and raw-file digest snapshot. Write all artifacts only under TemporaryDirectory.
 
-- [ ] Step 2: Construct the V3 event from ReviewAcceptanceEventInputV3 and ReviewAcceptanceEventLeafV3, write its exact content-addressed path, and set the record review_event_ref_v3 to the actual raw digest and event ID. The default fixture must pass Slice-3 semantic validation and exact Slice-2 event closure.
+- [ ] Step 2: Construct the V3 event from ReviewAcceptanceEventInputV3 and ReviewAcceptanceEventLeafV3, write its exact content-addressed path, and set the record review_event_ref_v3 to the actual raw digest and event ID. The default fixture must pass Slice-3 semantic validation and exact Slice-2 event closure. All downstream negative tests must use the SELF_CONSISTENT_MUTATION mode when they need to reach roster, source, evidence, or closure validation.
 
 - [ ] Step 3: Add RED tests for the four positive controls:
 
@@ -313,7 +336,38 @@ class ContextApplicationV2ReviewAdmissionResult:
     review_mode: ReviewMode
 ~~~
 
-Define ContextApplicationV2ReviewAdmissionError with code, location, optional cause_code, and a stable message derived only from those fields. Do not expose ResolvedReviewAcceptanceEventV3, ResolvedArtifact, raw JSON, or mutable mappings in the result.
+Define ContextApplicationV2ReviewAdmissionError with this structured surface:
+
+~~~python
+class ContextApplicationV2ReviewAdmissionError(ValueError):
+    code: str
+    location: str
+    cause_code: str | None
+    missing_role: str | None
+~~~
+
+The public code APPLICATION_INPUT_INVALID has highest precedence for a non-record input and must occur before Slice-3 or filesystem access. Do not expose ResolvedReviewAcceptanceEventV3, ResolvedArtifact, raw JSON, or mutable mappings in the result.
+
+Add the diagnostic-only typed inventory in scripts/context_application_v2_validator.py:
+
+~~~python
+@dataclass(frozen=True)
+class ContextApplicationV2InformationSensitivityInventory:
+    fact_paths: tuple[str, ...]
+
+
+def collect_information_sensitivity_facts(
+    *,
+    historical_source_values: Sequence[str],
+    bridge_source_values: Sequence[str],
+    bridge_reviewed_values: Sequence[str],
+    theorem_context_values: Sequence[str],
+    theorem_preconditions: Sequence[Mapping[str, object]],
+) -> ContextApplicationV2InformationSensitivityInventory:
+    """Record only typed visibility/information facts in canonical order."""
+~~~
+
+The helper records fixed-slot paths only; it never reads card/capability names, rationale, evidence prose, filenames, or natural-language values. The unconditional information-safety role remains unchanged.
 
 - [ ] Step 2: Implement the constructor with source resolver and base authority binding. Instantiate ContextApplicationV2Resolver and ContextApplicationV2SemanticValidator with the same base binding. Reject non-record input before filesystem access.
 
@@ -322,18 +376,25 @@ Define ContextApplicationV2ReviewAdmissionError with code, location, optional ca
     1. validate record type
     2. run ContextApplicationV2SemanticValidator.validate
     3. resolve record.review_event_ref_v3 through resolve_review_event_leaf_v3
-    4. recompute AcceptanceSubjectPayloadV3 for context_application_v2_record
-    5. compare the complete DigestReferenceV1
-    6. reconstruct expected_acceptance_source_closure_v3 with no host bindings
-    7. require exact source-set equality
-    8. resolve the exact reviewer roster through existing AuthorityValidator._parse_roster
-    9. validate typed binding existence, complete roles, duplicates, and canonical order
-    10. enforce REQUIRED_V2_ROLES in tuple order
-    11. consume resolver-verified mode/evidence postconditions
-    12. return the frozen result
+    4. require event.subject_kind == context_application_v2_record
+    5. recompute AcceptanceSubjectPayloadV3 for context_application_v2_record
+    6. compare the complete DigestReferenceV1
+    7. reconstruct expected_acceptance_source_closure_v3 with no host bindings
+    8. require exact source-set equality
+    9. resolve the exact reviewer roster through resolve_reviewer_roster
+    10. validate typed binding existence and complete roles
+    11. explicitly reject duplicate reviewer IDs; leave V3 full-CBOR ordering to the V3 DTO
+    12. enforce REQUIRED_V2_ROLES in tuple order
+    13. consume resolver-verified mode/evidence postconditions
+    14. return the frozen result
+
+The roster step must call resolve_reviewer_roster, not a private AuthorityValidator method. The shared helper owns raw path/schema/digest/JSON parsing; AuthorityValidator delegates to it and maps its failures back to the existing V1 diagnostics.
+
+After Slice-3 validation succeeds, collect a frozen diagnostic-only typed information-sensitivity inventory from the already typed V2 facts. The inventory must record deterministic fact paths for non-not_applicable visibility and information_relation values in historical source values, reviewed bridge source/reviewed values, theorem context values, source_context preconditions, and class_projection precondition context vectors. It must not change the unconditional role policy, inspect names/rationale/evidence prose, or perform a second semantic validation.
 
 - [ ] Step 4: Map errors through an explicit table and never match message text:
 
+    non-record public input -> APPLICATION_INPUT_INVALID
     Slice-3 semantic error -> SEMANTIC_VALIDATION_FAILED
     resolver-owned V3 code -> identical public code
     delegated event-leaf ResolutionError -> V3_EVENT_SOURCE_INVALID with cause_code
@@ -347,7 +408,22 @@ Define ContextApplicationV2ReviewAdmissionError with code, location, optional ca
     first missing mandatory role other than information safety -> REVIEWER_ROLE_MISSING
     missing information role -> INFORMATION_SAFETY_REVIEWER_REQUIRED
 
-- [ ] Step 5: Compare the full subject reference:
+- [ ] Step 5: Enforce the subject-kind binding before any digest comparison:
+
+~~~python
+if (
+    resolved_event.event.subject_kind
+    is not AcceptanceSubjectKindV3.CONTEXT_APPLICATION_V2_RECORD
+):
+    raise ContextApplicationV2ReviewAdmissionError(
+        "V3_SUBJECT_KIND_MISMATCH",
+        "event.subject_kind",
+    )
+~~~
+
+The test for this case must create a semantically self-consistent new ae.v3 whose subject kind is context_application_v2_supersession_record, recompute its event identity/path/raw digest, and then pass that embedded reference through the application admission path.
+
+- [ ] Step 6: Compare the full subject reference:
 
 ~~~python
 subject = AcceptanceSubjectPayloadV3(
@@ -362,7 +438,7 @@ if expected_subject_reference != resolved_event.event.subject_payload_digest_ref
     )
 ~~~
 
-- [ ] Step 6: Reuse closure ownership exactly:
+- [ ] Step 7: Reuse closure ownership exactly:
 
 ~~~python
 expected_closure = self._resolver.expected_acceptance_source_closure_v3(
@@ -377,7 +453,7 @@ require_exact_source_set(
 
 Do not pass caller-selected host bindings and do not reimplement event/container closure walking.
 
-- [ ] Step 7: Enforce the fixed role precedence:
+- [ ] Step 8: Enforce the fixed role precedence:
 
 ~~~python
 role_union = frozenset(
@@ -394,11 +470,12 @@ for role in REQUIRED_V2_ROLES:
         )
         raise ContextApplicationV2ReviewAdmissionError(
             code,
-            "reviewer_role_bindings",
+            "reviewer_role_bindings." + role,
+            missing_role=role,
         )
 ~~~
 
-- [ ] Step 8: Return only typed/frozen references and tuples:
+- [ ] Step 9: Return only typed/frozen references and tuples:
 
 ~~~python
 return ContextApplicationV2ReviewAdmissionResult(
@@ -414,7 +491,7 @@ return ContextApplicationV2ReviewAdmissionResult(
 )
 ~~~
 
-- [ ] Step 9: Run the positive tests:
+- [ ] Step 10: Run the positive tests:
 
 ~~~powershell
 python -m unittest discover -s python/tests -p test_context_application_v2_review_admission.py -v
@@ -422,7 +499,7 @@ python -m unittest discover -s python/tests -p test_context_application_v2_revie
 
 Expected: all positive controls and result-surface assertions PASS.
 
-- [ ] Step 10: Commit:
+- [ ] Step 11: Commit:
 
 ~~~powershell
 git add scripts/context_application_v2_review_admission.py python/tests/test_context_application_v2_review_admission.py
@@ -488,23 +565,27 @@ git commit -m "docs: add interaction authority review checklist V2"
 - Modify: python/tests/test_context_application_v2_resolver.py
 - Modify: python/tests/test_authority_validator.py
 
-- [ ] Step 1: Add event/reference mutations and assert:
+- [ ] Step 1: Add event/reference mutations using the two fixture modes and assert:
 
     wrong ReviewEventRefV3 -> V3_EVENT_REFERENCE_INVALID
     wrong event raw digest -> delegated SOURCE_DIGEST_MISMATCH cause
-    wrong path basename/event ID -> V3_EVENT_IDENTITY_INVALID
+    raw event JSON event_id differs from a valid reference -> V3_EVENT_IDENTITY_INVALID
+    malformed ReviewEventRefV3 path/basename -> structural DTO/input rejection before admission
     wrong schema -> V3_EVENT_SCHEMA_INVALID
     wrong decision -> V3_EVENT_DECISION_INVALID
     wrong checklist -> CHECKLIST_V2_MISMATCH
     invalid mode -> REVIEW_MODE_INVALID
-    empty/stale/malformed/unresolved evidence -> REVIEW_EVIDENCE_MISSING/INVALID
+    SELF_CONSISTENT_MUTATION empty/stale/malformed/unresolved evidence -> REVIEW_EVIDENCE_MISSING/INVALID
 
-- [ ] Step 2: Add subject mutations and assert:
+- [ ] Step 2: Add subject mutations with actual validation-precedence coverage and assert:
 
-    wrong subject kind -> V3_SUBJECT_KIND_MISMATCH
-    wrong envelope/algorithm/domain/codec/schema -> V3_SUBJECT_DIGEST_MISMATCH
-    wrong digest bytes -> V3_SUBJECT_DIGEST_MISMATCH
-    wrong application ID/theorem ID/member set -> V3_SUBJECT_DIGEST_MISMATCH
+    self-consistent supersession subject kind in an ae.v3 -> V3_SUBJECT_KIND_MISMATCH at event.subject_kind
+    malformed envelope/algorithm/codec/domain/input schema -> resolver-owned V3 structural category before Slice-4 digest comparison
+    semantically invalid application/theorem/member mutation -> SEMANTIC_VALIDATION_FAILED
+    structurally valid asp.v3 metadata with digest bytes for another valid subject -> V3_SUBJECT_DIGEST_MISMATCH
+    second semantically valid V2 record with correctly recomputed cpa.v2/cpar.v2 but the first record's event -> V3_SUBJECT_DIGEST_MISMATCH
+
+Do not expect application_id mutation to reach the subject comparison; Slice-3 identity validation has precedence.
 
 - [ ] Step 3: Add closure mutations and assert:
 
@@ -532,11 +613,13 @@ Use a table-driven precedence test and require architecture, then rules, then co
     solo mode cannot waive a role or evidence
     no result claims temporal separation, reviewer independence, or prose sufficiency
 
-- [ ] Step 6: Add mutation-safety snapshots for the record, members, event reference, resolver DTOs, source files, candidate universe, base authority, event files, evidence, and C. Every rejected admission must preserve the snapshots and create no accepted record.
+- [ ] Step 6: Add typed information-sensitivity inventory tests. Assert that visibility and information_relation facts are recorded for historical source values, bridge source/reviewed values, theorem context values, source_context preconditions, and class_projection context vectors. Mutating card names, capability names, rationale, filenames, or evidence prose must not add or remove inventory facts. The test must also assert that the inventory does not change the always-required information-safety role policy.
 
-- [ ] Step 7: Add deterministic repeatability tests. Identical inputs must produce identical result values or identical code/location/cause_code/message tuples. No clock, username, network, absolute path, random value, or filesystem enumeration may influence the result.
+- [ ] Step 7: Add mutation-safety snapshots for the record, members, event reference, resolver DTOs, source files, candidate universe, base authority, event files, evidence, and C. Every rejected admission must preserve the snapshots and create no accepted record.
 
-- [ ] Step 8: Run:
+- [ ] Step 8: Add deterministic repeatability tests. Identical inputs must produce identical result values or identical code/location/cause_code/missing_role/message tuples. No clock, username, network, absolute path, random value, or filesystem enumeration may influence the result.
+
+- [ ] Step 9: Run:
 
 ~~~powershell
 python -m unittest discover -s python/tests -p test_context_application_v2_review_admission.py -v
@@ -546,7 +629,7 @@ python -m unittest discover -s python/tests -p test_authority_validator.py -v
 
 Expected: PASS for all positive, negative, precedence, mutation, and deterministic cases.
 
-- [ ] Step 9: Commit:
+- [ ] Step 10: Commit:
 
 ~~~powershell
 git add python/tests/test_context_application_v2_review_admission.py python/tests/test_context_application_v2_resolver.py python/tests/test_authority_validator.py
@@ -657,17 +740,19 @@ git status --short --branch
 
 Report every executed gate with PASS, FAIL, NOT_RUN, or BLOCKED and identify the exact head used.
 
-- [ ] Step 2: After independent implementation review approval, push only:
+- [ ] Step 2: After all local implementation gates PASS, audit current master/base drift and push the final exact commit:
 
     chris/context-application-v2-slice4-v3-review-admission
 
-The eventual PR title is:
+Run git fetch origin master, inspect git diff origin/master..HEAD, and record the actual current origin/master before creating the PR. Do not silently rebase over semantic changes.
+
+Create the PR against current master with title:
 
     M2.5.C: implement ContextApplicationV2 review admission slice 4
 
 The PR body begins with SLICE 4 ONLY, lists implemented behavior, and lists production acceptance, production events/records, supersession currentness, HostBinding semantics, C, Slice 3B, and M3 as not implemented. Do not merge.
 
-- [ ] Step 3: Stop for exact-head hosted CI and independent review. Do not authorize Slice 5, Slice 6, Task 5 Slice 3B, M3, production acceptance, or contract freeze from local tests alone.
+- [ ] Step 3: Wait for PR Fast and CodeQL, verify that the PR head equals the exact local commit, and report workflow run IDs and job conclusions. Then stop for independent ChatGPT implementation review. Do not merge and do not authorize Slice 5, Slice 6, Task 5 Slice 3B, M3, production acceptance, or contract freeze from local tests alone.
 
 ## Plan self-review checklist
 
@@ -675,11 +760,17 @@ The PR body begins with SLICE 4 ONLY, lists implemented behavior, and lists prod
 - [ ] V3 resolver parsing, checklist, mode, and evidence ownership remains in the existing resolver.
 - [ ] Slice-3 semantic validation is composed, not duplicated.
 - [ ] Full DigestReferenceV1 equality is tested.
+- [ ] Event subject_kind is checked before subject digest comparison.
 - [ ] Role failure precedence is an ordered tuple.
+- [ ] V1 reviewer-ID ordering and V3 full-CBOR ordering remain separate owners.
 - [ ] The result contains no ResolvedArtifact or JSON graph.
 - [ ] V1 roster, role, checklist, and conditional information-safety behavior has regression coverage.
 - [ ] Exact-match, reviewed-divergence, information-sensitive, and solo positive controls exist.
 - [ ] The required negative matrix, mutation safety, and deterministic repeatability exist.
+- [ ] Identity-mismatch and self-consistent event mutation fixtures are distinct.
+- [ ] Subject-error tests respect resolver and Slice-3 validation precedence.
+- [ ] The typed information-sensitivity inventory is exercised without lexical/prose inputs.
 - [ ] Checklist V2 registration metadata is exact.
+- [ ] PR creation precedes hosted Fast/CodeQL verification and independent implementation review.
 - [ ] No production authority/event/record creation or Slice-5/6/M3 work is included.
 - [ ] No incomplete or underspecified step remains in this plan.
