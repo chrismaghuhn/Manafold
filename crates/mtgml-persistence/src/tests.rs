@@ -394,16 +394,16 @@ fn context_application_v2_semantic_golden_matrix_matches_python_contract() {
             theorem_temporal_values: strings(case, "theorem_temporal_values"),
             bridge_temporal_values: strings(case, "bridge_temporal_values"),
             theorem_preconditions: preconditions(case, "theorem_preconditions", "payload"),
-            member_preconditions: preconditions(
-                case,
-                "member_preconditions",
-                "observed_value",
-            ),
+            member_preconditions: preconditions(case, "member_preconditions", "observed_value"),
         };
         let actual = authority::validate_context_application_v2_semantics(&input);
         let expected = &case["expected"];
         if expected["valid"].as_bool().unwrap() {
-            assert!(actual.is_ok(), "case {} failed: {actual:?}", case["case_id"]);
+            assert!(
+                actual.is_ok(),
+                "case {} failed: {actual:?}",
+                case["case_id"]
+            );
         } else {
             let error = actual.unwrap_err();
             assert_eq!(

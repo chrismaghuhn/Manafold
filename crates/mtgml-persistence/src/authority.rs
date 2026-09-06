@@ -2905,12 +2905,14 @@ impl ContextBridgeRelationV2 {
     }
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ContextPreconditionValueV1 {
     pub precondition_id: String,
     pub value: cbor::Value,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ContextApplicationV2SemanticInput {
     pub theorem_subject_shape: cbor::Value,
@@ -2926,12 +2928,14 @@ pub(crate) struct ContextApplicationV2SemanticInput {
     pub member_preconditions: Vec<ContextPreconditionValueV1>,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ContextApplicationV2SemanticError {
     pub code: &'static str,
     pub location: String,
 }
 
+#[allow(dead_code)]
 pub(crate) fn validate_context_application_v2_semantics(
     input: &ContextApplicationV2SemanticInput,
 ) -> Result<(), ContextApplicationV2SemanticError> {
@@ -2968,8 +2972,7 @@ pub(crate) fn validate_context_application_v2_semantics(
                 &format!("context[{index}]"),
             ));
         }
-        let expected = if input.bridge_source_values[index] == input.bridge_reviewed_values[index]
-        {
+        let expected = if input.bridge_source_values[index] == input.bridge_reviewed_values[index] {
             ContextBridgeRelationV2::ExactMatch
         } else {
             ContextBridgeRelationV2::ReviewedDivergence
