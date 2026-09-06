@@ -315,6 +315,108 @@ fn authority_contract_matrix_positive_controls_are_accepted() {
 }
 
 #[test]
+fn context_application_v2_semantic_golden_matrix_matches_python_contract() {
+    fn json_to_cbor(value: &serde_json::Value) -> cbor::Value {
+        match value {
+            serde_json::Value::Null => cbor::Value::Null,
+            serde_json::Value::Bool(value) => cbor::Value::Bool(*value),
+            serde_json::Value::Number(value) => {
+                if let Some(value) = value.as_i64() {
+                    cbor::Value::Signed(value)
+                } else {
+                    panic!("matrix number is outside the signed integer range")
+                }
+            }
+            serde_json::Value::String(value) => cbor::Value::Text(value.clone()),
+            serde_json::Value::Array(values) => {
+                cbor::Value::Array(values.iter().map(json_to_cbor).collect())
+            }
+            serde_json::Value::Object(_) => panic!("semantic matrix values must not be objects"),
+        }
+    }
+
+    fn strings(case: &serde_json::Value, field: &str) -> Vec<String> {
+        case[field]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|value| value.as_str().unwrap().to_owned())
+            .collect()
+    }
+
+    fn relation(value: &str) -> authority::ContextBridgeRelationV2 {
+        match value {
+            "exact_match" => authority::ContextBridgeRelationV2::ExactMatch,
+            "reviewed_divergence" => authority::ContextBridgeRelationV2::ReviewedDivergence,
+            other => panic!("unknown relation {other}"),
+        }
+    }
+
+    fn preconditions(
+        case: &serde_json::Value,
+        field: &str,
+        value_field: &str,
+    ) -> Vec<authority::ContextPreconditionValueV1> {
+        case[field]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|value| authority::ContextPreconditionValueV1 {
+                precondition_id: value["precondition_id"].as_str().unwrap().to_owned(),
+                value: json_to_cbor(&value[value_field]),
+            })
+            .collect()
+    }
+
+    let matrix: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../conformance/fixtures/authority/context_application_v2_semantic_golden_matrix.v1.json"
+    ))
+    .unwrap();
+    assert_eq!(
+        matrix["schema"],
+        serde_json::json!("manafold.m2.5.c.context-application-v2-semantic-golden-matrix.v1")
+    );
+
+    for case in matrix["cases"].as_array().unwrap() {
+        let input = authority::ContextApplicationV2SemanticInput {
+            theorem_subject_shape: json_to_cbor(&case["theorem_subject_shape"]),
+            member_context_binding: json_to_cbor(&case["member_context_binding"]),
+            historical_source_values: strings(case, "historical_source_values"),
+            bridge_source_values: strings(case, "bridge_source_values"),
+            theorem_context_values: strings(case, "theorem_context_values"),
+            bridge_reviewed_values: strings(case, "bridge_reviewed_values"),
+            bridge_relations: case["bridge_relations"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|value| relation(value.as_str().unwrap()))
+                .collect(),
+            theorem_temporal_values: strings(case, "theorem_temporal_values"),
+            bridge_temporal_values: strings(case, "bridge_temporal_values"),
+            theorem_preconditions: preconditions(case, "theorem_preconditions", "payload"),
+            member_preconditions: preconditions(
+                case,
+                "member_preconditions",
+                "observed_value",
+            ),
+        };
+        let actual = authority::validate_context_application_v2_semantics(&input);
+        let expected = &case["expected"];
+        if expected["valid"].as_bool().unwrap() {
+            assert!(actual.is_ok(), "case {} failed: {actual:?}", case["case_id"]);
+        } else {
+            let error = actual.unwrap_err();
+            assert_eq!(
+                Some(error.code),
+                expected["error_code"].as_str(),
+                "case {}",
+                case["case_id"]
+            );
+        }
+    }
+}
+
+#[test]
 fn context_application_v2_identity_vectors_match_shared_matrix() {
     let matrix: serde_json::Value = serde_json::from_str(include_str!(
         "../../../conformance/fixtures/authority/context_application_v2_identity_golden_matrix.v1.json"
