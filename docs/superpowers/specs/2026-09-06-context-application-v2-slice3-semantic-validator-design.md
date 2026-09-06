@@ -78,9 +78,11 @@ Python core and compare the expected validity and error category.
 ### Python integration validator
 
 `scripts/context_application_v2_validator.py` will own the filesystem-aware
-composition. Its public validator will accept a structurally valid in-memory
-`ContextApplicationV2Record` or equivalent V2 input, a V2 base-authority
-binding, and the existing resolver dependencies. It will:
+composition. Its primary semantic-validation entry point will accept a
+structurally valid in-memory `ContextApplicationV2Record`, a V2
+base-authority binding, and the existing resolver dependencies. A separate pure
+input entry point may accept `ContextApplicationV2InputV1`; no duck-typed or
+informal third input shape will be supported. It will:
 
 1. resolve the exact base authority through `ContextApplicationV2Resolver`;
 2. validate the complete base document with `AuthorityValidator`;
@@ -88,12 +90,21 @@ binding, and the existing resolver dependencies. It will:
    record kind and identity;
 4. resolve every member through the existing candidate-universe and
    SourceInstance resolver;
-5. apply the shared V1 source/member and precondition contract;
-6. run the pure bridge comparisons against the exact theorem and source
+5. recompute `ContextApplicationV2InputV1(theorem_record_id, members).identity()`
+   and require exact equality with the supplied `cpa.v2` application identity;
+6. for a `ContextApplicationV2Record`, recompute
+   `ContextApplicationV2RecordInputV1(application_id, review_event_ref_v3).identity()`
+   and require exact equality with its supplied `cpar.v2` record identity;
+7. apply the shared V1 source/member and precondition contract;
+8. run the pure bridge comparisons against the exact theorem and source
    values;
-7. resolve member, precondition, context-slot, and temporal-slot evidence
+9. resolve member, precondition, context-slot, and temporal-slot evidence
    through the existing V2 evidence resolver; and
-8. return success only after every member passes.
+10. return success only after every member passes.
+
+The record-identity recomputation uses `review_event_ref_v3` only as the
+existing Slice 1 structural value in the `cpar.v2` preimage. It does not load
+the event or evaluate reviewer, checklist, or acceptance semantics.
 
 The validator will inspect only fields already present in the accepted V2
 contract. It will not require a V3 review event, process acceptance, select a
@@ -114,13 +125,28 @@ V1 and V2. The operation will validate the common source/member contract:
   semantic references;
 - member evidence resolution;
 - exact precondition count, order, IDs, and observed payloads;
-- candidate-relation-shape, participant-binding, source-context, temporal,
-  B2, and class-projection source checks; and
 - precondition evidence resolution.
 
-The shared operation will accept an evidence-resolution callback or equivalent
-narrow adapter so V1 keeps its existing resolver and V2 can use the Slice 2
-V2 resolver without copying filesystem logic. It will not perform the V1-only
+The shared operation will preserve the existing behavior of each
+`precondition_kind` independently. It will not generalize all preconditions
+into SourceInstance checks:
+
+- `candidate_relation_shape` keeps the exact source-shape comparison;
+- `participant_binding` keeps the exact source-participant comparison;
+- `source_context` keeps the exact historical
+  `SourceInstanceV1.source_context` comparison;
+- `b2_boundary` keeps the existing bound-B2 resolution and validation;
+- `temporal_semantic` keeps the existing V1 theorem/attestation behavior and
+  introduces no SourceInstance-derived temporal fact; and
+- `class_projection` keeps the existing V1 fail-closed proof requirement.
+
+The V2 member shape has no `member_proof_attestation`, so the V2 adapter will
+not invent a class-projection proof shortcut or a new member field. A V2
+class-projection precondition follows the existing missing-proof failure path.
+
+The shared operation will accept a narrow injected evidence resolver so V1
+keeps its existing resolver and V2 can use the Slice 2 V2 resolver without
+copying filesystem logic. It will not perform the V1-only
 theorem-context/source-context vector equality.
 
 The existing V1 context path will call the shared operation, then retain its
@@ -141,6 +167,11 @@ snapshot, valid locator, and source artifact. Candidate- or SourceInstance-
 specific substitution will be rejected only when the existing locator
 contract mechanically encodes enough ownership information to prove it. Global
 evidence remains valid when the contract does not make it candidate-local.
+
+Successful evidence resolution proves binding and integrity only. It does not
+establish that the evidence is substantively sufficient to justify the
+reviewed semantic value; that remains part of the later V3 human-review and
+checklist admission.
 
 Before completion, the implementation will explicitly audit every evidence
 form used by the fixtures. If an exercised form cannot prove the required
