@@ -21,10 +21,12 @@ sys.path.insert(0, str(ROOT / "python" / "tests"))
 
 from authority_source_resolver import ResolutionError
 from context_application_v2_validator import (
+    ContextApplicationV2InformationSensitivityInventory,
     ContextApplicationV2SemanticInput,
     ContextApplicationV2SemanticValidationError,
     ContextApplicationV2SemanticValidator,
     ContextPreconditionValueV1,
+    collect_information_sensitivity_facts,
     validate_context_application_v2_semantics,
 )
 from mtgml.authority import (
@@ -60,6 +62,70 @@ from mtgml.persistence import PersistenceValue, encode_canonical
 
 
 class ContextApplicationV2SemanticCoreTests(unittest.TestCase):
+    def test_information_sensitivity_inventory_uses_only_typed_values(self) -> None:
+        base = self._case("exact_match")
+        class_projection = [
+            "binary",
+            "directed",
+            [],
+            "cross_host",
+            ["not_applicable", "private"] + ["not_applicable"] * 8,
+            ["not_applicable"] * 4,
+            [],
+            [],
+            [],
+        ]
+        typed = replace(
+            base,
+            historical_source_values=(
+                "not_applicable",
+                "private",
+                *base.historical_source_values[2:],
+            ),
+            bridge_source_values=(
+                "not_applicable",
+                "private",
+                *base.bridge_source_values[2:],
+            ),
+            bridge_reviewed_values=(
+                "not_applicable",
+                "private",
+                *base.bridge_reviewed_values[2:],
+            ),
+            theorem_context_values=(
+                "not_applicable",
+                "private",
+                *base.theorem_context_values[2:],
+            ),
+            theorem_preconditions=(
+                ContextPreconditionValueV1(
+                    "free-label",
+                    ["visibility", "private"],
+                ),
+                ContextPreconditionValueV1("another-label", class_projection),
+            ),
+        )
+        inventory = collect_information_sensitivity_facts(typed)
+        self.assertIsInstance(inventory, ContextApplicationV2InformationSensitivityInventory)
+        self.assertIn("historical_source.visibility", inventory.fact_paths)
+        self.assertIn("bridge.reviewed.visibility", inventory.fact_paths)
+        self.assertIn("theorem.context.visibility", inventory.fact_paths)
+        self.assertIn("precondition[free-label].source_context.visibility", inventory.fact_paths)
+        self.assertIn(
+            "precondition[another-label].class_projection.visibility",
+            inventory.fact_paths,
+        )
+
+        relabeled = replace(
+            typed,
+            theorem_preconditions=(
+                ContextPreconditionValueV1("card-name", ["visibility", "private"]),
+                ContextPreconditionValueV1("rationale-text", class_projection),
+            ),
+        )
+        relabeled_inventory = collect_information_sensitivity_facts(relabeled)
+        self.assertEqual(len(relabeled_inventory.fact_paths), len(inventory.fact_paths))
+
     def test_exact_match_control_is_accepted(self) -> None:
         result = validate_context_application_v2_semantics(self._case("exact_match"))
         self.assertTrue(result.valid)
@@ -806,6 +872,8 @@ class ContextApplicationV2IntegrationTests(unittest.TestCase):
         *,
         source_timing: str,
         reviewed_timing: str,
+        source_visibility: str = "not_applicable",
+        reviewed_visibility: str | None = None,
         precondition_value: str | None = None,
         precondition_kind: str = "source_context",
         precondition_id: str = "timing-source",
@@ -840,6 +908,7 @@ class ContextApplicationV2IntegrationTests(unittest.TestCase):
             )
         }
         source_context["timing"] = source_timing
+        source_context["visibility"] = source_visibility
         rows: list[list[str]] | None = None
         extra_candidates: list[dict[str, object]] = []
         extra_instances: list[dict[str, object]] = []
@@ -911,16 +980,21 @@ class ContextApplicationV2IntegrationTests(unittest.TestCase):
             MODEL_SCHEMA,
             bytes.fromhex(digest(model_raw)),
         )
+        reviewer_roles = (
+            "architecture_maintainer",
+            "information_safety_reviewer",
+            "rules_authority_maintainer",
+        ) if source_visibility != "not_applicable" else (
+            "architecture_maintainer",
+            "rules_authority_maintainer",
+        )
         roster_raw = json_bytes(
             {
                 "schema": REVIEWER_ROSTER_SCHEMA_V1,
                 "reviewers": [
                     {
                         "reviewer_id": "alice",
-                        "roles": [
-                            "architecture_maintainer",
-                            "rules_authority_maintainer",
-                        ],
+                        "roles": list(reviewer_roles),
                     }
                 ],
             }
@@ -968,6 +1042,9 @@ class ContextApplicationV2IntegrationTests(unittest.TestCase):
         ]
         subject_shape = ["binary", "directed", participant_arrays, "cross_host"]
         context_values = ["not_applicable"] * 10
+        context_values[1] = (
+            source_visibility if reviewed_visibility is None else reviewed_visibility
+        )
         context_values[2] = reviewed_timing
         temporal_values = ["not_applicable"] * 4
         precondition_arrays: list[list[object]] = []
@@ -1022,7 +1099,7 @@ class ContextApplicationV2IntegrationTests(unittest.TestCase):
             reviewer_role_bindings=(
                 ReviewerRoleBindingV1(
                     "alice",
-                    ("architecture_maintainer", "rules_authority_maintainer"),
+                    reviewer_roles,
                 ),
             ),
             review_mode=ReviewMode.SOLO_SEPARATE_SELF_REVIEW,

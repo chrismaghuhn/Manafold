@@ -80,6 +80,55 @@ class ContextApplicationV2SemanticInput:
     member_preconditions: tuple[ContextPreconditionValueV1, ...]
 
 
+@dataclass(frozen=True)
+class ContextApplicationV2InformationSensitivityInventory:
+    fact_paths: tuple[str, ...]
+
+
+def collect_information_sensitivity_facts(
+    value: ContextApplicationV2SemanticInput,
+) -> ContextApplicationV2InformationSensitivityInventory:
+    """Collect typed visibility/information facts without validating semantics."""
+
+    fact_paths: list[str] = []
+    information_indexes = ((1, "visibility"), (8, "information_relation"))
+
+    for index, name in information_indexes:
+        if value.historical_source_values[index] != "not_applicable":
+            fact_paths.append(f"historical_source.{name}")
+        if value.bridge_source_values[index] != "not_applicable":
+            fact_paths.append(f"bridge.source.{name}")
+        if value.bridge_reviewed_values[index] != "not_applicable":
+            fact_paths.append(f"bridge.reviewed.{name}")
+        if value.theorem_context_values[index] != "not_applicable":
+            fact_paths.append(f"theorem.context.{name}")
+
+    for precondition in value.theorem_preconditions:
+        payload = precondition.value
+        if (
+            isinstance(payload, list)
+            and len(payload) == 2
+            and payload[0] in {"visibility", "information_relation"}
+            and payload[1] != "not_applicable"
+        ):
+            fact_paths.append(
+                f"precondition[{precondition.precondition_id}].source_context.{payload[0]}"
+            )
+            continue
+        if not isinstance(payload, list) or len(payload) != 9:
+            continue
+        context_values = payload[4]
+        if not isinstance(context_values, list) or len(context_values) != len(CONTEXT_DIMENSIONS):
+            continue
+        for index, name in information_indexes:
+            if context_values[index] != "not_applicable":
+                fact_paths.append(
+                    f"precondition[{precondition.precondition_id}].class_projection.{name}"
+                )
+
+    return ContextApplicationV2InformationSensitivityInventory(tuple(fact_paths))
+
+
 def validate_context_application_v2_semantics(
     value: ContextApplicationV2SemanticInput,
 ) -> ContextApplicationV2SemanticValidationResult:
@@ -631,6 +680,8 @@ __all__ = [
     "ContextApplicationV2SemanticValidationError",
     "ContextApplicationV2SemanticValidationResult",
     "ContextApplicationV2SemanticValidator",
+    "ContextApplicationV2InformationSensitivityInventory",
     "ContextPreconditionValueV1",
+    "collect_information_sensitivity_facts",
     "validate_context_application_v2_semantics",
 ]
