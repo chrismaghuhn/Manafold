@@ -27,7 +27,7 @@ Follow [`rules/ADDING_RULES_AND_MECHANICS.md`](rules/ADDING_RULES_AND_MECHANICS.
 
 ## Adding a card
 
-Follow [`cards/ADDING_CARDS.md`](cards/ADDING_CARDS.md). Use `scripts/scaffold_card.py`, pin provenance, review generated IR, declare capabilities, test decisions/information/interactions, and certify only through a locked bundle.
+Follow [`cards/ADDING_CARDS.md`](cards/ADDING_CARDS.md). The current implementation uses `scripts/scaffold_card.py`; the long-term golden path is intended to converge on a one-command scaffold and capability-gap analysis workflow described in the card guide. Pin provenance, review generated IR, declare capabilities, test decisions/information/interactions, and certify only through a locked bundle.
 
 ## Changing a deck or bundle
 
