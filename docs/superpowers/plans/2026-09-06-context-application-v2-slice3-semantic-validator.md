@@ -15,7 +15,7 @@
 
 ## Starting state and invariants
 
-Implementation starts from branch `chris/context-application-v2-slice3-semantic-validator` at the implementation base `9a42c3424e61e54565ff0cd17b3f2f2780f78562`, plus the already committed design documents `63f059c`, `b8c585e`, and `6fc43c4`. The untracked plan in the original checkout is outside this worktree and must remain untouched.
+Implementation starts from branch `chris/context-application-v2-slice3-semantic-validator` with `SLICE_3_BASE=63e214f1ab1c8f5665d7b347d44a11606d0288b2`, the current `origin/master`. The already approved design and plan documents are carried on this branch. The untracked plan in the original checkout is outside this worktree and must remain untouched.
 
 The following contracts must remain true throughout the plan:
 
@@ -174,7 +174,7 @@ vectors; only the named field differs from the exact-match control.
 | `exact_match` | all historical, source, theorem, and reviewed context values are `not_applicable`; all relations are `exact_match` | valid |
 | `reviewed_divergence` | context slot `timing`: historical/source `not_applicable`, theorem/reviewed `activation_time`, relation `reviewed_divergence` | valid |
 | `member_shape_mismatch` | member host relationship `same_host`, theorem host relationship `cross_host` | `MEMBER_SUBJECT_MISMATCH` |
-| `source_value_mismatch` | bridge source `timing` is `battlefield`, historical source is `not_applicable` | `MEMBER_SOURCE_CONTEXT_MISMATCH` |
+| `source_value_mismatch` | bridge source `timing` is `activation_time`, historical source is `not_applicable` | `MEMBER_SOURCE_CONTEXT_MISMATCH` |
 | `reviewed_context_mismatch` | bridge reviewed `timing` is `activation_time`, theorem value is `not_applicable` | `MEMBER_REVIEWED_CONTEXT_MISMATCH` |
 | `reviewed_temporal_mismatch` | bridge `trigger_order` is `immediate`, theorem value is `not_applicable` | `MEMBER_TEMPORAL_MISMATCH` |
 | `relation_mismatch` | source/reviewed timing differ but relation is `exact_match` | `BRIDGE_RELATION_MISMATCH` |
@@ -1520,7 +1520,7 @@ Fetch the current remote base before the final delivery decision:
 ~~~powershell
 git fetch origin master
 git rev-parse origin/master
-git diff 9a42c3424e61e54565ff0cd17b3f2f2780f78562..origin/master --stat
+git diff 63e214f1ab1c8f5665d7b347d44a11606d0288b2..origin/master --stat
 ~~~
 
 If `origin/master` differs from the authorized base, inspect the complete
