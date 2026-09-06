@@ -51,7 +51,7 @@ does not gain that field.
 | `scripts/context_application_v2_resolver.py` | Thin typed member-to-candidate/source-instance helper; no semantic rules or second filesystem resolver. |
 | `python/tests/test_context_application_v2_validator.py` | Python pure-core matrix tests, synthetic integration fixtures, identity checks, evidence checks, negative matrix, and repeatability. |
 | `conformance/fixtures/authority/context_application_v2_semantic_golden_matrix.v1.json` | Shared pure-semantic input and expected result/error categories for Python and Rust. |
-| `crates/mtgml-persistence/src/authority.rs` | Rust pure semantic input/error types and exact bridge/precondition comparison function. |
+| `crates/mtgml-persistence/src/authority.rs` | Crate-private Rust pure semantic input/error types and exact bridge/precondition comparison function. |
 | `crates/mtgml-persistence/src/tests.rs` | Rust execution of the shared semantic matrix and direct relation/precondition controls. |
 | `scripts/run_python_tests.py` | Add the new validator test module to the explicit smoke profile. |
 | `scripts/verify_repository.py` | Require the new semantic golden fixture as a repository contract artifact. |
@@ -436,17 +436,17 @@ exist.
 
 - [ ] **Step 2: Add exact Rust semantic types.**
 
-Add these public types to `crates/mtgml-persistence/src/authority.rs`:
+Add these crate-private types to `crates/mtgml-persistence/src/authority.rs`:
 
 ~~~rust
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ContextPreconditionValueV1 {
+pub(crate) struct ContextPreconditionValueV1 {
     pub precondition_id: String,
     pub value: cbor::Value,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ContextApplicationV2SemanticInput {
+pub(crate) struct ContextApplicationV2SemanticInput {
     pub theorem_subject_shape: cbor::Value,
     pub member_context_binding: cbor::Value,
     pub historical_source_values: Vec<String>,
@@ -461,7 +461,7 @@ pub struct ContextApplicationV2SemanticInput {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ContextApplicationV2SemanticError {
+pub(crate) struct ContextApplicationV2SemanticError {
     pub code: &'static str,
     pub location: String,
 }
@@ -469,10 +469,10 @@ pub struct ContextApplicationV2SemanticError {
 
 - [ ] **Step 3: Add the Rust exact-comparison function.**
 
-Implement:
+Implement the crate-private function:
 
 ~~~rust
-pub fn validate_context_application_v2_semantics(
+pub(crate) fn validate_context_application_v2_semantics(
     input: &ContextApplicationV2SemanticInput,
 ) -> Result<(), ContextApplicationV2SemanticError>
 ~~~
@@ -481,7 +481,7 @@ Implement the function with this body. Use the existing private
 `CONTEXT_DIMENSIONS` and `TEMPORAL_SEMANTICS` arrays for length checks:
 
 ~~~rust
-pub fn validate_context_application_v2_semantics(
+pub(crate) fn validate_context_application_v2_semantics(
     input: &ContextApplicationV2SemanticInput,
 ) -> Result<(), ContextApplicationV2SemanticError> {
     let error = |code: &'static str, location: &str| ContextApplicationV2SemanticError {
@@ -576,7 +576,7 @@ git commit -m "feat: add Rust ContextApplicationV2 semantic parity"
 - [ ] **Step 1: Write the seam RED test.**
 
 Add a test that calls the wished-for method
-`validate_context_member_source_contract_v1` with a source timing of
+`_validate_context_member_source_contract_v1` with a source timing of
 `activation_time`, theorem context timing `not_applicable`, empty
 preconditions, and a no-op evidence callback. The common seam must pass because
 it does not apply the V1-only theorem/source context-vector equality. Then call
@@ -610,6 +610,12 @@ member = {
 Set `instance["source_context"]["timing"]` to `"activation_time"` and use a
 theorem with ten `not_applicable` context values. `context_slots` contains the
 fourteen existing V1 slots and uses the theorem values.
+
+Add a second RED assertion that first validates a document with one valid
+relation theorem followed by an invalid context theorem, so `_records` is
+partially populated before the failure. Calling
+`require_validated_record` afterward must raise `AUTHORITY_NOT_VALIDATED`, not
+return the already registered theorem.
 
 Run:
 
@@ -646,10 +652,31 @@ member and precondition diagnostic labels.
 
 - [ ] **Step 3: Add the shared seam and exact validated-record lookup.**
 
-Add these methods to `AuthorityValidator`:
+Add these methods to `AuthorityValidator`. The source/member method remains
+internal and is not an alternative raw-wire parser.
+
+Add `self._validation_complete = False` in `__init__`.
+
+Change `validate` to clear the flag before every attempt, leave it clear on
+every failure, and set it only after `_validate_document` returns:
 
 ~~~python
-def validate_context_member_source_contract_v1(
+def validate(self, value: object) -> AuthorityValidationResult:
+    self._validation_complete = False
+    try:
+        result = self._validate_document(value)
+    except ResolutionError:
+        self._validation_complete = False
+        raise
+    except (AuthorityContractError, TypeError, ValueError) as exc:
+        self._validation_complete = False
+        _fail("AUTHORITY_CONTRACT_INVALID", str(exc))
+    self._validation_complete = True
+    return result
+~~~
+
+~~~python
+def _validate_context_member_source_contract_v1(
     self,
     member: Mapping[str, object],
     theorem: Mapping[str, object],
@@ -658,6 +685,11 @@ def validate_context_member_source_contract_v1(
     *,
     evidence_resolver: EvidenceResolver | None = None,
 ) -> None:
+    """Validate the common semantic portion after structural parsing.
+
+    The caller must have passed the owning V1 structural parser or project a
+    valid typed V2 member into this V1-shaped mapping.
+    """
     self._validate_context_member_binding(member, theorem, resolved, label)
     self._resolve_member_evidence(
         member,
@@ -672,7 +704,7 @@ def require_validated_record(
     kind: RecordKind,
     label: str,
 ) -> Mapping[str, object]:
-    if not self._records:
+    if not self._validation_complete:
         _fail("AUTHORITY_NOT_VALIDATED", "authority must be validated before record lookup")
     record = self._records.get(identity.as_text())
     if record is None or record.kind is not kind:
@@ -701,7 +733,7 @@ In `_validate_context_members`, replace the direct binding, member-evidence,
 and precondition calls with:
 
 ~~~python
-self.validate_context_member_source_contract_v1(
+self._validate_context_member_source_contract_v1(
     member,
     theorem,
     resolved,
@@ -722,7 +754,8 @@ git commit -m "refactor: share V1 context member validation"
 ~~~
 
 Expected: all existing V1 tests pass, the common seam accepts the isolated
-theorem/source context mismatch, and the V1 context path still rejects it.
+theorem/source context mismatch, the V1 context path still rejects it, and a
+partially populated validator cannot return a record after a late failure.
 
 ---
 
@@ -748,6 +781,10 @@ member and synthetic universe. Replace each of the candidate ID, identity
 digest, SourceInstance ID, and candidate-universe raw digest and assert that the
 existing resolver rejects the mutation.
 
+Also exercise `expected_acceptance_source_closure_v3` with the same typed
+member. Its `_candidate_provenance` path must reach the same helper; the test
+must not create a second member-resolution fixture.
+
 Run:
 
 ~~~powershell
@@ -756,9 +793,18 @@ python -m unittest python.tests.test_context_application_v2_resolver.ContextAppl
 
 Expected: `ERROR` because the typed helper does not exist.
 
-- [ ] **Step 2: Implement the thin helper.**
+- [ ] **Step 2: Extract the single member-resolution helper.**
 
-Add this method to `ContextApplicationV2Resolver`:
+Move the existing raw binding validation, `SourceBindingDigestV1` construction,
+and `self._resolver.resolve_candidate_source_instance(...)` call out of
+`_candidate_provenance` into this method. Do not copy that code. Replace the
+old block inside `_candidate_provenance` with exactly:
+
+~~~python
+resolved = self.resolve_member_source_instance(member)
+~~~
+
+Then add this method to `ContextApplicationV2Resolver`:
 
 ~~~python
 def resolve_member_source_instance(
@@ -795,7 +841,8 @@ Add `ResolvedSourceInstance` to the existing imports from
 `authority_source_resolver`; keep `SourceBindingDigestV1` from
 `mtgml.authority`. Do not change the resolver's public closure functions.
 
-Do not add candidate indexing or source parsing here; the existing
+The Slice-2 closure path and the Slice-3 validator must both call this one
+helper. Do not add candidate indexing or source parsing here; the existing
 `AuthoritySourceResolver` remains the sole source resolver.
 
 - [ ] **Step 3: Run the helper test and commit.**
@@ -984,6 +1031,53 @@ not resolve the event. The input branch must use only
 
 Implement `_validate_member` with these exact operations:
 
+First add this fail-closed adapter. It converts the already validated V1 wire
+object to the canonical four-field CBOR-array representation used by both
+pure cores:
+
+~~~python
+def _context_binding_from_v1_wire(
+    value: object,
+    label: str,
+) -> PersistenceValue:
+    if not isinstance(value, Mapping) or set(value) != {
+        "arity",
+        "directionality",
+        "participant_roles",
+        "host_relationship",
+    }:
+        raise ContextApplicationV2SemanticValidationError(
+            "MEMBER_SUBJECT_MISMATCH", label
+        )
+    participant_values: list[PersistenceValue] = []
+    for index, participant in enumerate(
+        _required_array(value.get("participant_roles"), f"{label}.participant_roles")
+    ):
+        if not isinstance(participant, Mapping) or set(participant) != {
+            "position",
+            "role",
+            "participant_kind",
+            "semantic_ref",
+        }:
+            raise ContextApplicationV2SemanticValidationError(
+                "MEMBER_SUBJECT_MISMATCH", f"{label}.participant_roles[{index}]"
+            )
+        participant_values.append(
+            [
+                cast(PersistenceValue, participant["position"]),
+                cast(PersistenceValue, participant["role"]),
+                cast(PersistenceValue, participant["participant_kind"]),
+                cast(PersistenceValue, participant["semantic_ref"]),
+            ]
+        )
+    return [
+        cast(PersistenceValue, value["arity"]),
+        cast(PersistenceValue, value["directionality"]),
+        participant_values,
+        cast(PersistenceValue, value["host_relationship"]),
+    ]
+~~~
+
 ~~~python
 def _validate_member(
     self,
@@ -994,7 +1088,7 @@ def _validate_member(
     label: str,
 ) -> None:
     member_wire = member.to_wire()
-    v1_validator.validate_context_member_source_contract_v1(
+    v1_validator._validate_context_member_source_contract_v1(
         member_wire,
         theorem,
         resolved,
@@ -1026,8 +1120,10 @@ def _validate_member(
     )
     bridge = member.context_member_bridge_attestation_v2
     semantic_input = ContextApplicationV2SemanticInput(
-        theorem_subject_shape=cast(PersistenceValue, theorem["subject_shape"]),
-        member_context_binding=cast(PersistenceValue, member_wire["context_binding"]),
+        theorem_subject_shape=_context_binding_from_v1_wire(
+            theorem.get("subject_shape"), f"{label}.theorem.subject_shape"
+        ),
+        member_context_binding=cast(PersistenceValue, member.context_binding_v1),
         historical_source_values=source_values,
         bridge_source_values=tuple(slot.source_value for slot in bridge.context),
         theorem_context_values=theorem_context_values,
@@ -1119,35 +1215,41 @@ cause. After resolution, apply only these mechanically encoded candidate-local
 checks for the exact candidate-universe JSON path:
 
 ~~~python
-_CANDIDATE_ID_POINTER = re.compile(r"^/candidates/[0-9]+/candidate_id$")
-_CANDIDATE_DIGEST_POINTER = re.compile(
-    r"^/candidates/[0-9]+/candidate_identity/digest_hex$"
-)
-_SOURCE_INSTANCE_ID_POINTER = re.compile(
-    r"^/source_instances/[0-9]+/source_instance_id$"
-)
-_SOURCE_INSTANCE_CANDIDATE_POINTER = re.compile(
-    r"^/source_instances/[0-9]+/candidate_id$"
-)
+_CANDIDATE_POINTER_ROOT = re.compile(r"^/candidates/([0-9]+)(?:/.*)?$")
+_SOURCE_INSTANCE_POINTER_ROOT = re.compile(r"^/source_instances/([0-9]+)(?:/.*)?$")
 ~~~
 
-For a `c_candidate` reference to the exact candidate-universe path:
+For every `c_candidate` JSON pointer under the exact candidate-universe path,
+select the parent record from the resolved artifact and compare its complete
+identity fields before accepting the leaf value:
 
-- `_CANDIDATE_ID_POINTER` must resolve to `member.candidate_id`;
-- `_CANDIDATE_DIGEST_POINTER` must resolve to
-  `member.candidate_identity_digest_reference.digest_bytes.hex()`;
-- `_SOURCE_INSTANCE_ID_POINTER` must resolve to `member.source_instance_id`; and
-- `_SOURCE_INSTANCE_CANDIDATE_POINTER` must resolve to `member.candidate_id`.
+- `/candidates/<N>/...` requires the selected parent record's `candidate_id`
+  to equal `member.candidate_id` and its complete `candidate_identity` mapping
+  to equal `member.candidate_identity_digest_reference.to_wire()`;
+- `/source_instances/<N>/...` requires the selected parent record's
+  `source_instance_id` to equal `member.source_instance_id` and its
+  `candidate_id` to equal `member.candidate_id`.
 
-Any mismatch raises `EVIDENCE_SOURCE_SUBSTITUTION`. The numeric path component
-selects a JSON record for resolution; it never serves as identity. Whole
-artifact references, model references, B1/B2 references, and unknown locator
-forms remain global evidence when the accepted locator contract does not encode
-candidate ownership. Do not inspect prose or search source text.
+The parent-record lookup must require the resolved artifact to be a mapping
+with the corresponding array, require `<N>` to be an in-range integer, and
+require the selected parent to contain the identity fields above. A pointer
+under either root that cannot produce these parent checks raises
+`EVIDENCE_RESOLUTION_FAILURE`; it does not fall back to global evidence.
+The numeric path component selects a JSON record for resolution; it never
+serves as identity.
+
+Any mismatch raises `EVIDENCE_SOURCE_SUBSTITUTION`. Whole-artifact references,
+model references, B1/B2 references, and locator forms
+outside these candidate-universe roots remain global evidence when the accepted
+locator contract does not encode candidate ownership. Do not inspect prose or
+search source text.
 
 Add a two-candidate/two-SourceInstance test that changes the pointer from index
-zero to index one and asserts `EVIDENCE_SOURCE_SUBSTITUTION`. Add a global
-model whole-artifact evidence test that passes.
+zero to index one for both `/candidates/N/...` and
+`/source_instances/N/source_context/timing`; assert
+`EVIDENCE_SOURCE_SUBSTITUTION` in both cases. Add a global model whole-artifact
+evidence test that passes, and an out-of-range root pointer test that returns
+`EVIDENCE_RESOLUTION_FAILURE` rather than being treated as global.
 
 - [ ] **Step 6: Run integrated positive tests.**
 
@@ -1177,7 +1279,7 @@ after construction. Assert these outcomes:
 | Mutation | Expected code |
 | --- | --- |
 | unknown or wrong-kind theorem record | `THEOREM_REFERENCE_INVALID` |
-| wrong `candidate_id` | existing candidate binding failure wrapped as `MEMBER_SOURCE_BINDING_MISMATCH` |
+| wrong `candidate_id` | existing `CANDIDATE_BINDING_MISMATCH` resolver code |
 | wrong full CandidateIdentity digest | existing `CANDIDATE_IDENTITY_MISMATCH` |
 | wrong SourceInstance ID | existing `SOURCE_INSTANCE_BINDING_MISMATCH` |
 | SourceInstance owned by another candidate | existing `SOURCE_INSTANCE_CANDIDATE_MISMATCH` |
@@ -1227,7 +1329,9 @@ stale temporal-slot digest           -> EVIDENCE_RESOLUTION_FAILURE
 unresolved JSON pointer               -> EVIDENCE_RESOLUTION_FAILURE
 wrong source snapshot                 -> EVIDENCE_RESOLUTION_FAILURE
 cross-candidate candidate_id pointer  -> EVIDENCE_SOURCE_SUBSTITUTION
+cross-candidate nested-field pointer  -> EVIDENCE_SOURCE_SUBSTITUTION
 cross-SourceInstance ID pointer       -> EVIDENCE_SOURCE_SUBSTITUTION
+cross-SourceInstance nested-field     -> EVIDENCE_SOURCE_SUBSTITUTION
 ~~~
 
 Keep one exact global whole-artifact model reference in every positive case so
@@ -1397,12 +1501,12 @@ actually executed. Do not infer compatibility from the local default Python.
 
 ---
 
-### Task 10: Diff audit and delivery checkpoint
+### Task 10: Diff audit, PR delivery, and exact-head CI checkpoint
 
 **Files:**
 - No source edits unless the audit finds an implementation defect; fix defects with a new RED test first.
 
-- [ ] **Step 1: Audit exact scope.**
+- [ ] **Step 1: Audit exact scope and current master drift.**
 
 ~~~powershell
 git diff master --stat
@@ -1410,6 +1514,19 @@ git diff master --name-only
 git diff master --check
 git status --short
 ~~~
+
+Fetch the current remote base before the final delivery decision:
+
+~~~powershell
+git fetch origin master
+git rev-parse origin/master
+git diff 9a42c3424e61e54565ff0cd17b3f2f2780f78562..origin/master --stat
+~~~
+
+If `origin/master` differs from the authorized base, inspect the complete
+delta, confirm that ADR 0042 and Slice 1/Slice 2 behavior remain current, and
+record the actual base SHA in the final report. Do not silently rebase or merge
+the implementation branch.
 
 The implementation portion of the diff is limited to the files in the file map
 plus the new semantic fixture. The only other branch changes are the approved
@@ -1430,23 +1547,59 @@ git diff master -- conformance/fixtures/authority/identity_golden_matrix.v1.json
 
 Expected: no output for all five commands.
 
-- [ ] **Step 3: Keep the delivery checkpoint unmerged.**
+- [ ] **Step 3: Commit the final exact source state.**
 
 ~~~powershell
 git status --short
 git log -5 --oneline
+git diff --check
+git rev-parse HEAD
 ~~~
 
-Keep the branch unmerged. If the user requests a PR after independent review,
-push the exact branch and create a PR against `master`; report the exact HEAD
-SHA, workflow run ID, and job conclusion after exact-head CI completes. The PR
-description must begin with `SLICE 3 ONLY` and list the implemented theorem,
-member, historical bridge, reviewed theorem, temporal, relation, evidence, and
-Rust/Python parity checks. It must list as not implemented V3 reviewer/checklist
-admission, production human acceptance, supersession currentness, HostBinding
-semantic integration, production authority records, Buckle-Up review, C
-changes, Task 5 Slice 3B, and M3. Do not create production acceptance or human
-acceptance state.
+If the audit leaves tracked changes, commit the exact intended files with:
+
+~~~powershell
+git add scripts/context_application_v2_validator.py scripts/authority_validator.py scripts/context_application_v2_resolver.py python/tests/test_context_application_v2_validator.py python/tests/test_authority_validator.py python/tests/test_context_application_v2_resolver.py crates/mtgml-persistence/src/authority.rs crates/mtgml-persistence/src/tests.rs conformance/fixtures/authority/context_application_v2_semantic_golden_matrix.v1.json scripts/run_python_tests.py scripts/verify_repository.py docs/normative-document-register.v1.json
+git commit -m "feat: validate ContextApplicationV2 bridge semantics"
+~~~
+
+Do not amend earlier commits and do not alter the original checkout.
+
+- [ ] **Step 4: Push and create the authorized PR without an additional approval gate.**
+
+~~~powershell
+$head = (git rev-parse HEAD).Trim()
+git push --set-upstream origin chris/context-application-v2-slice3-semantic-validator
+$pr_url = gh pr create --base master --head chris/context-application-v2-slice3-semantic-validator --title "M2.5.C: implement ContextApplicationV2 semantic slice 3" --body "SLICE 3 ONLY`n`nImplemented:`n- exact ContextProofRecordV1 binding`n- exact Candidate/SourceInstance member resolution`n- preserved V1 source/member and precondition behavior`n- historical SourceContext bridge validation`n- reviewed theorem context and temporal validation`n- mechanical exact_match/reviewed_divergence validation`n- source-bound bridge/member/precondition evidence resolution`n- Rust/Python pure semantic parity`n`nNot implemented:`n- V3 reviewer/checklist admission`n- production human acceptance`n- supersession current-record logic`n- HostBinding semantic integration`n- production Authority records`n- Buckle-Up review`n- C changes`n- Task 5 Slice 3B`n- M3"
+$pr_number = (gh pr view $pr_url --json number --jq .number).Trim()
+~~~
+
+The PR creation is part of the authorized Slice-3 delivery. Do not merge it.
+
+- [ ] **Step 5: Assert the exact PR head and wait for triggered hosted CI.**
+
+~~~powershell
+$pr_head = (gh api "repos/chrismaghuhn/Manafold/pulls/$pr_number" --jq .head.sha).Trim()
+if ($pr_head -ne $head) { throw "Assert exact pull request head failed: $pr_head != $head" }
+gh pr checks $pr_number --watch --fail-fast
+$runs = gh run list --limit 30 --json databaseId,headSha,status,conclusion,workflowName,url | ConvertFrom-Json
+$matching_runs = @($runs | Where-Object { $_.headSha -eq $head })
+if ($matching_runs.Count -eq 0) { throw "No hosted CI run found for exact head $head" }
+foreach ($run in $matching_runs) {
+    gh run view $run.databaseId --json databaseId,headSha,conclusion,jobs,workflowName,url
+    if ($run.conclusion -ne "success") { throw "Hosted CI did not pass for run $($run.databaseId)" }
+}
+~~~
+
+Report the exact PR head SHA, every matching workflow run ID, workflow name,
+job conclusion, and result URL. Set `HOSTED_EXACT_HEAD_CI=PASS` only when the
+exact-head assertion and all currently triggered required checks pass. Keep the
+branch unmerged.
+
+- [ ] **Step 6: Stop for independent review.**
+
+Do not merge, create human acceptance, materialize production authority, or
+start Slice 4 after hosted CI. The final state remains a review checkpoint.
 
 ## Completion report requirements
 
