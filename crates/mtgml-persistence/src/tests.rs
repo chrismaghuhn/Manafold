@@ -321,10 +321,12 @@ fn context_application_v2_semantic_golden_matrix_matches_python_contract() {
             serde_json::Value::Null => cbor::Value::Null,
             serde_json::Value::Bool(value) => cbor::Value::Bool(*value),
             serde_json::Value::Number(value) => {
-                if let Some(value) = value.as_i64() {
+                if let Some(value) = value.as_u64() {
+                    cbor::Value::Unsigned(value)
+                } else if let Some(value) = value.as_i64() {
                     cbor::Value::Signed(value)
                 } else {
-                    panic!("matrix number is outside the signed integer range")
+                    panic!("matrix number is outside the supported integer range")
                 }
             }
             serde_json::Value::String(value) => cbor::Value::Text(value.clone()),
@@ -396,6 +398,26 @@ fn context_application_v2_semantic_golden_matrix_matches_python_contract() {
             theorem_preconditions: preconditions(case, "theorem_preconditions", "payload"),
             member_preconditions: preconditions(case, "member_preconditions", "observed_value"),
         };
+        if case["case_id"] == serde_json::json!("exact_match") {
+            let subject = match &input.theorem_subject_shape {
+                cbor::Value::Array(values) => values,
+                other => panic!("expected subject array, got {other:?}"),
+            };
+            let participants = match &subject[2] {
+                cbor::Value::Array(values) => values,
+                other => panic!("expected participant array, got {other:?}"),
+            };
+            let first_position = match &participants[0] {
+                cbor::Value::Array(values) => &values[0],
+                other => panic!("expected first participant array, got {other:?}"),
+            };
+            let second_position = match &participants[1] {
+                cbor::Value::Array(values) => &values[0],
+                other => panic!("expected second participant array, got {other:?}"),
+            };
+            assert_eq!(first_position, &cbor::Value::Unsigned(0));
+            assert_eq!(second_position, &cbor::Value::Unsigned(1));
+        }
         let actual = authority::validate_context_application_v2_semantics(&input);
         let expected = &case["expected"];
         if expected["valid"].as_bool().unwrap() {

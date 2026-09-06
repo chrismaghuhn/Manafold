@@ -310,6 +310,17 @@ class ContextApplicationV2ValidationResult:
 
 _CANDIDATE_POINTER_ROOT = re.compile(r"^/candidates/([0-9]+)(?:/.*)?$")
 _SOURCE_INSTANCE_POINTER_ROOT = re.compile(r"^/source_instances/([0-9]+)(?:/.*)?$")
+_CANDIDATE_IDENTITY_FIELDS = frozenset(
+    {
+        "algorithm_id",
+        "digest_hex",
+        "envelope_id",
+        "input_schema_id",
+        "payload_codec_id",
+        "semantic_domain",
+    }
+)
+_CANDIDATE_DIGEST_HEX = re.compile(r"^[0-9a-f]{64}$")
 
 
 class ContextApplicationV2SemanticValidator:
@@ -556,6 +567,7 @@ class ContextApplicationV2SemanticValidator:
             index = int(candidate_match.group(1))
             records = resolved.artifact.json_value.get("candidates")
             parent = self._parent_record(records, index, label)
+            self._require_candidate_parent_identity(parent, label)
             if (
                 parent.get("candidate_id") != member.candidate_id
                 or parent.get("candidate_identity")
@@ -568,11 +580,37 @@ class ContextApplicationV2SemanticValidator:
         index = int(source_match.group(1))
         records = resolved.artifact.json_value.get("source_instances")
         parent = self._parent_record(records, index, label)
+        self._require_source_instance_parent_identity(parent, label)
         if (
             parent.get("source_instance_id") != member.source_instance_id
             or parent.get("candidate_id") != member.candidate_id
         ):
             raise ContextApplicationV2SemanticValidationError("EVIDENCE_SOURCE_SUBSTITUTION", label)
+
+    @staticmethod
+    def _require_candidate_parent_identity(parent: Mapping[str, object], label: str) -> None:
+        candidate_id = parent.get("candidate_id")
+        candidate_identity = parent.get("candidate_identity")
+        if not isinstance(candidate_id, str) or not candidate_id:
+            raise ContextApplicationV2SemanticValidationError("EVIDENCE_RESOLUTION_FAILURE", label)
+        if not isinstance(candidate_identity, Mapping):
+            raise ContextApplicationV2SemanticValidationError("EVIDENCE_RESOLUTION_FAILURE", label)
+        if set(candidate_identity) != _CANDIDATE_IDENTITY_FIELDS:
+            raise ContextApplicationV2SemanticValidationError("EVIDENCE_RESOLUTION_FAILURE", label)
+        values = tuple(candidate_identity.values())
+        if any(not isinstance(value, str) or not value for value in values):
+            raise ContextApplicationV2SemanticValidationError("EVIDENCE_RESOLUTION_FAILURE", label)
+        if not _CANDIDATE_DIGEST_HEX.fullmatch(cast(str, candidate_identity["digest_hex"])):
+            raise ContextApplicationV2SemanticValidationError("EVIDENCE_RESOLUTION_FAILURE", label)
+
+    @staticmethod
+    def _require_source_instance_parent_identity(parent: Mapping[str, object], label: str) -> None:
+        for field in ("source_instance_id", "candidate_id"):
+            value = parent.get(field)
+            if not isinstance(value, str) or not value:
+                raise ContextApplicationV2SemanticValidationError(
+                    "EVIDENCE_RESOLUTION_FAILURE", label
+                )
 
     @staticmethod
     def _parent_record(value: object, index: int, label: str) -> Mapping[str, object]:

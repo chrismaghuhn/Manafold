@@ -5,7 +5,7 @@ import hashlib
 import json
 import sys
 import unittest
-from copy import copy
+from copy import copy, deepcopy
 from dataclasses import replace
 from pathlib import Path
 from typing import cast
@@ -151,6 +151,43 @@ class ContextApplicationV2IntegrationTests(unittest.TestCase):
         result = validator.validate(case["record"])
         self.assertTrue(result.valid)
         self.assertEqual(result.member_count, 1)
+
+    def test_temporal_semantic_precondition_passes_without_source_temporal_fact(self) -> None:
+        case = self._synthetic_case(
+            source_timing="not_applicable",
+            reviewed_timing="not_applicable",
+            precondition_kind="temporal_semantic",
+            precondition_id="temporal-source",
+            precondition_payload=["trigger_order", "not_applicable"],
+        )
+        result = self._validator_for(case).validate(case["record"])
+        self.assertTrue(result.valid)
+
+    def test_class_projection_precondition_keeps_v2_member_fail_closed_without_proof(self) -> None:
+        projection = [
+            "binary",
+            "directed",
+            [
+                [0, "ordered_participant", "requirement_family", "family.a"],
+                [1, "ordered_participant", "requirement_family", "family.b"],
+            ],
+            "cross_host",
+            ["not_applicable"] * 10,
+            ["not_applicable"] * 4,
+            [],
+            [],
+            [],
+        ]
+        case = self._synthetic_case(
+            source_timing="not_applicable",
+            reviewed_timing="not_applicable",
+            precondition_kind="class_projection",
+            precondition_id="class-projection",
+            precondition_payload=projection,
+        )
+        with self.assertRaises(ResolutionError) as error:
+            self._validator_for(case).validate(case["record"])
+        self.assertEqual(error.exception.code, "CLASS_PROJECTION_PRECONDITION_PROOF_MISSING")
 
     def test_input_entrypoint_validates_without_v3_record_wrapper(self) -> None:
         case = self._synthetic_case(
@@ -316,6 +353,58 @@ class ContextApplicationV2IntegrationTests(unittest.TestCase):
                 with self.assertRaises(ContextApplicationV2SemanticValidationError) as error:
                     validator.validate(record)
                 self.assertEqual(error.exception.code, "EVIDENCE_SOURCE_SUBSTITUTION")
+
+    def test_malformed_local_parent_identity_is_evidence_resolution_failure(self) -> None:
+        case = self._synthetic_case(
+            source_timing="not_applicable",
+            reviewed_timing="not_applicable",
+        )
+        validator = self._validator_for(case)
+        raw = (case["fixture"].repo / Path(*CANDIDATE_PATH.split("/"))).read_bytes()
+        candidate_reference = EvidenceRefV1(
+            "c_candidate",
+            CANDIDATE_PATH,
+            ("json_pointer", "/candidates/0/candidate_id"),
+            hashlib.sha256(raw).digest(),
+        )
+        source_reference = EvidenceRefV1(
+            "c_candidate",
+            CANDIDATE_PATH,
+            ("json_pointer", "/source_instances/0/source_context/timing"),
+            hashlib.sha256(raw).digest(),
+        )
+        mutations = (
+            ("candidate missing identity", candidate_reference, "candidates", "candidate_identity"),
+            (
+                "candidate malformed identity",
+                candidate_reference,
+                "candidates",
+                "candidate_identity",
+            ),
+            ("source missing identity", source_reference, "source_instances", "source_instance_id"),
+            ("source malformed identity", source_reference, "source_instances", "candidate_id"),
+        )
+        for name, reference, root, field in mutations:
+            with self.subTest(mutation=name):
+                resolved = validator._v2_resolver.resolve_evidence(reference)
+                universe = deepcopy(resolved.artifact.json_value)
+                parent = universe[root][0]
+                if name.endswith("missing identity"):
+                    parent.pop(field)
+                elif root == "candidates":
+                    parent[field] = "malformed"
+                else:
+                    parent[field] = 7
+                malformed_artifact = replace(resolved.artifact, json_value=universe)
+                malformed_evidence = replace(resolved, artifact=malformed_artifact)
+                with self.assertRaises(ContextApplicationV2SemanticValidationError) as error:
+                    validator._validate_evidence_parent_owner(
+                        reference,
+                        malformed_evidence,
+                        case["member"],
+                        "members[0].evidence",
+                    )
+                self.assertEqual(error.exception.code, "EVIDENCE_RESOLUTION_FAILURE")
 
     def _record_for_member(
         self,
@@ -581,12 +670,147 @@ class ContextApplicationV2IntegrationTests(unittest.TestCase):
             self._validator_for(case).validate(self._record_for_member(case, unresolved_member))
         self.assertEqual(error.exception.code, "EVIDENCE_RESOLUTION_FAILURE")
 
+    def test_rejected_v2_applications_preserve_inputs_and_source_files(self) -> None:
+        base = self._synthetic_case(
+            source_timing="not_applicable",
+            reviewed_timing="not_applicable",
+        )
+        bridge = base["member"].context_member_bridge_attestation_v2
+        timing_slot = bridge.context[2]
+        bridge_mismatch = replace(
+            bridge,
+            context=(
+                bridge.context[0],
+                bridge.context[1],
+                replace(
+                    timing_slot,
+                    reviewed_value="activation_time",
+                    relation=ContextBridgeRelationV2.REVIEWED_DIVERGENCE,
+                ),
+                *bridge.context[3:],
+            ),
+        )
+        precondition_case = self._synthetic_case(
+            source_timing="not_applicable",
+            reviewed_timing="activation_time",
+            precondition_value="not_applicable",
+        )
+        bad_precondition = replace(
+            precondition_case["member"],
+            precondition_attestations_v1=[
+                [
+                    "timing-source",
+                    ["timing", "activation_time"],
+                    [precondition_case["member"].member_evidence_refs[0].to_cbor()],
+                    "mutated",
+                ]
+            ],
+        )
+        evidence_case = self._synthetic_case(
+            source_timing="not_applicable",
+            reviewed_timing="not_applicable",
+        )
+        stale_evidence = replace(
+            evidence_case["member"].member_evidence_refs[0],
+            raw_sha256=bytes.fromhex("12" * 32),
+        )
+        substitution_case = self._synthetic_case(
+            source_timing="not_applicable",
+            reviewed_timing="not_applicable",
+            two_candidates=True,
+        )
+        substitution_raw = (
+            substitution_case["fixture"].repo / Path(*CANDIDATE_PATH.split("/"))
+        ).read_bytes()
+        substitution_evidence = EvidenceRefV1(
+            "c_candidate",
+            CANDIDATE_PATH,
+            ("json_pointer", "/candidates/1/candidate_id"),
+            hashlib.sha256(substitution_raw).digest(),
+        )
+        identity_case = self._synthetic_case(
+            source_timing="not_applicable",
+            reviewed_timing="not_applicable",
+        )
+        wrong_application_id = copy(identity_case["record"])
+        object.__setattr__(
+            wrong_application_id,
+            "application_id",
+            AuthorityIdentityV1(
+                AuthorityIdentityKind.CONTEXT_APPLICATION_V2,
+                bytes.fromhex("99" * 32),
+            ),
+        )
+        rejected = (
+            (
+                base,
+                self._record_for_member(base, replace(base["member"], candidate_id="unknown")),
+                "CANDIDATE_BINDING_MISMATCH",
+            ),
+            (
+                base,
+                self._record_for_member(
+                    base,
+                    replace(base["member"], context_member_bridge_attestation_v2=bridge_mismatch),
+                ),
+                "MEMBER_REVIEWED_CONTEXT_MISMATCH",
+            ),
+            (
+                precondition_case,
+                self._record_for_member(precondition_case, bad_precondition),
+                "PRECONDITION_MISMATCH",
+            ),
+            (
+                evidence_case,
+                self._record_for_member(
+                    evidence_case,
+                    replace(evidence_case["member"], member_evidence_refs=(stale_evidence,)),
+                ),
+                "EVIDENCE_RESOLUTION_FAILURE",
+            ),
+            (
+                substitution_case,
+                self._record_for_member(
+                    substitution_case,
+                    replace(
+                        substitution_case["member"], member_evidence_refs=(substitution_evidence,)
+                    ),
+                ),
+                "EVIDENCE_SOURCE_SUBSTITUTION",
+            ),
+            (identity_case, wrong_application_id, "APPLICATION_IDENTITY_MISMATCH"),
+        )
+        for index, (case, record, expected_code) in enumerate(rejected):
+            with self.subTest(rejection=index):
+                before = deepcopy(record)
+                before_files = self._file_digests(case["fixture"])
+                with self.assertRaises(
+                    (ContextApplicationV2SemanticValidationError, ResolutionError)
+                ) as error:
+                    self._validator_for(case).validate(record)
+                self.assertEqual(error.exception.code, expected_code)
+                self.assertEqual(record, before)
+                self.assertEqual(self._file_digests(case["fixture"]), before_files)
+
+    @staticmethod
+    def _file_digests(fixture: object) -> dict[str, str]:
+        repo = cast(Path, fixture.repo)
+        return {
+            path.relative_to(repo).as_posix(): hashlib.sha256(path.read_bytes()).hexdigest()
+            for path in repo.rglob("*")
+            if path.is_file()
+        }
+
     def _synthetic_case(
         self,
         *,
         source_timing: str,
         reviewed_timing: str,
         precondition_value: str | None = None,
+        precondition_kind: str = "source_context",
+        precondition_id: str = "timing-source",
+        precondition_payload: list[object] | None = None,
+        precondition_observed_value: list[object] | None = None,
         two_candidates: bool = False,
     ) -> dict[str, object]:
         from test_authority_source_resolver import (
@@ -749,26 +973,28 @@ class ContextApplicationV2IntegrationTests(unittest.TestCase):
         precondition_arrays: list[list[object]] = []
         precondition_wire: list[dict[str, object]] = []
         member_preconditions: list[list[object]] = []
-        if precondition_value is not None:
+        if precondition_value is not None or precondition_payload is not None:
+            payload = precondition_payload or ["timing", precondition_value]
+            observed_value = precondition_observed_value or payload
             precondition_arrays = [
                 [
-                    "timing-source",
-                    ["source_context", ["timing", precondition_value]],
+                    precondition_id,
+                    [precondition_kind, payload],
                 ]
             ]
             precondition_wire = [
                 {
-                    "precondition_id": "timing-source",
-                    "precondition_kind": "source_context",
-                    "payload": ["timing", precondition_value],
+                    "precondition_id": precondition_id,
+                    "precondition_kind": precondition_kind,
+                    "payload": payload,
                 }
             ]
             member_preconditions = [
                 [
-                    "timing-source",
-                    ["timing", precondition_value],
+                    precondition_id,
+                    observed_value,
                     [source_evidence.to_cbor()],
-                    "synthetic source-context precondition",
+                    f"synthetic {precondition_kind} precondition",
                 ]
             ]
         theorem_id = compute_authority_identity(
