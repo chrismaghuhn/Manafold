@@ -905,7 +905,7 @@ class ContextApplicationV2Resolver:
             )
         return tuple(result)
 
-    def expected_acceptance_source_closure_v3(
+    def _expected_acceptance_source_closure_v3(
         self,
         subject: ContextApplicationV2Record | ContextApplicationV2SupersessionRecord,
         reviewer_roster_ref: ReviewerRosterRefV1,
@@ -971,6 +971,21 @@ class ContextApplicationV2Resolver:
         for binding in expected:
             self.resolve_source_binding(binding)
         return expected
+
+    def expected_acceptance_source_closure_v3(
+        self,
+        subject: ContextApplicationV2Record | ContextApplicationV2SupersessionRecord,
+        reviewer_roster_ref: ReviewerRosterRefV1,
+        *,
+        base_authority_binding: ContextAuthoritySourceBindingV2 | None = None,
+    ) -> tuple[ContextAuthoritySourceBindingV2, ...]:
+        """Reconstruct a standalone event closure without caller-selected host sources."""
+
+        return self._expected_acceptance_source_closure_v3(
+            subject,
+            reviewer_roster_ref,
+            base_authority_binding=base_authority_binding,
+        )
 
     @staticmethod
     def _validate_container_projections(
@@ -1130,7 +1145,7 @@ class ContextApplicationV2Resolver:
                 if isinstance(record, ContextApplicationV2Record)
                 else ()
             )
-            expected_event = self.expected_acceptance_source_closure_v3(
+            expected_event = self._expected_acceptance_source_closure_v3(
                 record,
                 resolved_event.event.reviewer_roster_ref,
                 base_authority_binding=container.base_authority_v1_binding,
@@ -1159,13 +1174,11 @@ class ContextApplicationV2Resolver:
         event: ResolvedReviewAcceptanceEventV3,
         *,
         base_authority_binding: ContextAuthoritySourceBindingV2 | None = None,
-        host_bindings: Sequence[ContextAuthoritySourceBindingV2] = (),
     ) -> tuple[ContextAuthoritySourceBindingV2, ...]:
         expected = self.expected_acceptance_source_closure_v3(
             subject,
             event.event.reviewer_roster_ref,
             base_authority_binding=base_authority_binding,
-            host_bindings=host_bindings,
         )
         require_exact_source_set(event.event.source_binding_digests, expected)
         return expected

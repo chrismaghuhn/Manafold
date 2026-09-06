@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import copy
 import hashlib
+import inspect
 import json
 import sys
 import tempfile
@@ -34,6 +35,7 @@ from mtgml.authority import (
     AcceptanceSubjectKind,
     AcceptanceSubjectKindV3,
     AcceptanceSubjectPayloadV1,
+    AcceptanceSubjectPayloadV3,
     ApplicationHostBindingV2,
     AuthorityIdentityKind,
     AuthorityIdentityV1,
@@ -330,6 +332,11 @@ class ContextApplicationV2ResolverTests(unittest.TestCase):
                 ROSTER.schema,
                 digest(roster_raw),
             )
+            review_relative = "docs/review/host-binding.md"
+            review_raw = b"accepted host-binding evidence\n"
+            review_path = repo / Path(*review_relative.split("/"))
+            review_path.parent.mkdir(parents=True, exist_ok=True)
+            review_path.write_bytes(review_raw)
 
             base_raw = json.dumps({"schema": BASE.schema}).encode("utf-8")
             base_path = repo / Path(*BASE.path.split("/"))
@@ -364,8 +371,8 @@ class ContextApplicationV2ResolverTests(unittest.TestCase):
                 source_binding_digests=(base_binding, roster_binding),
                 review_evidence_refs=(
                     AcceptanceEvidenceRefV1(
-                        MODEL.path,
-                        digest(model_raw),
+                        review_relative,
+                        digest(review_raw),
                         ("whole_artifact", None),
                     ),
                 ),
@@ -387,7 +394,15 @@ class ContextApplicationV2ResolverTests(unittest.TestCase):
             resolved = resolver.resolve_review_event_leaf_v3(reference)
             self.assertEqual(resolved.event_id, event_id)
             self.assertEqual(resolved.event.source_binding_digests, (base_binding, roster_binding))
-            self.assertEqual(resolved.event.review_evidence_refs[0].path, MODEL.path)
+            self.assertEqual(resolved.event.review_evidence_refs[0].path, review_relative)
+            resolved_review_evidence = resolver.resolve_acceptance_evidence(
+                resolved.event.review_evidence_refs[0]
+            )
+            self.assertIsNone(resolved_review_evidence.binding)
+            self.assertNotIn(
+                review_relative,
+                {binding.path for binding in resolved.event.source_binding_digests},
+            )
 
             tampered = copy.deepcopy(event_wire)
             tampered["event_id"] = "ae.v3/" + "01" * 32
@@ -822,6 +837,153 @@ class ContextApplicationV2ResolverTests(unittest.TestCase):
                 sum(item.artifact_role == "candidate_universe" for item in actual),
                 1,
             )
+
+            host_authority_path = "sources/m2_5/authorities/interaction_review_authority.v2.json"
+            host_authority_schema = "manafold.m2.5.c.interaction-review-authority.v2"
+            host_authority_raw = json.dumps({"schema": host_authority_schema}).encode("utf-8")
+            host_authority_file = fixture.repo / Path(*host_authority_path.split("/"))
+            host_authority_file.parent.mkdir(parents=True, exist_ok=True)
+            host_authority_file.write_bytes(host_authority_raw)
+            host_authority_binding = ContextAuthoritySourceBindingV2(
+                "host_binding_authority_v2",
+                host_authority_path,
+                host_authority_schema,
+                digest(host_authority_raw),
+            )
+            claim_a_id = "hbc.v1/" + "a1" * 32
+            claim_b_id = "hbc.v1/" + "b2" * 32
+            claim_bindings: dict[str, ContextAuthoritySourceBindingV2] = {}
+            for claim_id in (claim_a_id, claim_b_id):
+                claim_path = (
+                    "sources/m2_5/authorities/cross_deck_host_binding_claims/v1/"
+                    + claim_id.removeprefix("hbc.v1/")
+                    + ".json"
+                )
+                claim_schema = "manafold.m2.5.c.cross-deck-host-binding-claim-record.v1"
+                claim_raw = json.dumps({"schema": claim_schema, "claim_id": claim_id}).encode(
+                    "utf-8"
+                )
+                claim_file = fixture.repo / Path(*claim_path.split("/"))
+                claim_file.parent.mkdir(parents=True, exist_ok=True)
+                claim_file.write_bytes(claim_raw)
+                claim_bindings[claim_id] = ContextAuthoritySourceBindingV2(
+                    "host_binding_claim_record",
+                    claim_path,
+                    claim_schema,
+                    digest(claim_raw),
+                )
+
+            candidate_v2_binding = ContextAuthoritySourceBindingV2(
+                "candidate_universe",
+                CANDIDATE.path,
+                CANDIDATE.schema,
+                candidate_binding.raw_sha256,
+            )
+            event_expected_a = resolver._expected_acceptance_source_closure_v3(
+                subject,
+                roster_ref,
+                base_authority_binding=base_binding,
+                host_bindings=(host_authority_binding, claim_bindings[claim_a_id]),
+            )
+            acceptance_subject = AcceptanceSubjectPayloadV3(
+                AcceptanceSubjectKindV3.CONTEXT_APPLICATION_V2_RECORD,
+                subject.acceptance_free_subject_payload(),
+            )
+            event_input_v3 = ReviewAcceptanceEventInputV3(
+                subject_kind=AcceptanceSubjectKindV3.CONTEXT_APPLICATION_V2_RECORD,
+                subject_payload_digest_reference=DigestReferenceV1(
+                    DIGEST_ENVELOPE_ID,
+                    SHA256_ID,
+                    "manafold.m2.5.c.acceptance-subject-payload.v3",
+                    CANONICAL_CBOR_ID,
+                    "manafold.m2.5.c.acceptance-subject-payload-input.v3",
+                    acceptance_subject.identity().digest_bytes,
+                ),
+                reviewer_roster_ref=roster_ref,
+                reviewer_role_bindings=(
+                    ReviewerRoleBindingV1(
+                        "alice", ("architecture_maintainer", "rules_authority_maintainer")
+                    ),
+                ),
+                review_mode=ReviewMode.MULTI_REVIEWER,
+                source_binding_digests=event_expected_a,
+                review_evidence_refs=(review_evidence,),
+            )
+            event_wire_v3 = ReviewAcceptanceEventLeafV3.from_input(event_input_v3).to_wire()
+            event_id_v3 = cast(str, event_wire_v3["event_id"])
+            event_path_v3 = (
+                "sources/m2_5/authorities/review_acceptance_events/v3/"
+                + event_id_v3.removeprefix("ae.v3/")
+                + ".json"
+            )
+            event_raw_v3 = (json.dumps(event_wire_v3) + "\n").encode("utf-8")
+            event_file_v3 = fixture.repo / Path(*event_path_v3.split("/"))
+            event_file_v3.parent.mkdir(parents=True, exist_ok=True)
+            event_file_v3.write_bytes(event_raw_v3)
+            event_ref_v3 = ReviewEventRefV3(event_path_v3, digest(event_raw_v3), event_id_v3)
+            record_a = ContextApplicationV2Record.from_parts(
+                application_id=application_id,
+                theorem_record_id=theorem_record_id,
+                members=(member,),
+                review_event_ref_v3=event_ref_v3,
+            )
+            link_a = ApplicationHostBindingV2(
+                "context_application",
+                application_id,
+                (claim_a_id,),
+            )
+            link_b = ApplicationHostBindingV2(
+                "context_application",
+                AuthorityIdentityV1(AuthorityIdentityKind.CONTEXT_APPLICATION_V2, b"b" * 32),
+                (claim_b_id,),
+            )
+            event_leaf_binding = ContextAuthoritySourceBindingV2(
+                "acceptance_event_leaf_v3",
+                event_path_v3,
+                ACCEPTANCE_EVENT_SCHEMA_V3,
+                digest(event_raw_v3),
+            )
+            container_a = ContextApplicationAuthorityV2(
+                base_authority_v1_binding=base_binding,
+                host_binding_authority_v2_binding=host_authority_binding,
+                candidate_universe_binding=candidate_v2_binding,
+                source_bindings=canonical_source_bindings(
+                    (
+                        base_binding,
+                        candidate_v2_binding,
+                        *event_expected_a,
+                        event_leaf_binding,
+                    )
+                ),
+                context_application_v2_records=(record_a,),
+                context_application_v2_supersession_records=(),
+                application_host_bindings_v2=(link_a,),
+            )
+            expected_container_a = resolver.expected_container_source_closure_v2(container_a)
+            container_ab = replace(
+                container_a,
+                source_bindings=canonical_source_bindings(
+                    (*container_a.source_bindings, claim_bindings[claim_b_id])
+                ),
+                application_host_bindings_v2=tuple(
+                    sorted((link_a, link_b), key=lambda item: encode_canonical(item.to_cbor()))
+                ),
+            )
+            expected_container_ab = resolver.expected_container_source_closure_v2(container_ab)
+            resolved_event = resolver.resolve_review_event_leaf_v3(event_ref_v3)
+            self.assertEqual(resolved_event.event.source_binding_digests, event_expected_a)
+            self.assertEqual(
+                expected_container_a,
+                tuple(
+                    binding
+                    for binding in expected_container_ab
+                    if binding != claim_bindings[claim_b_id]
+                ),
+            )
+            self.assertIn(claim_bindings[claim_b_id], expected_container_ab)
+            self.assertNotIn(
+                claim_bindings[claim_b_id], resolved_event.event.source_binding_digests
+            )
         finally:
             fixture.tearDown()
 
@@ -949,12 +1111,53 @@ class ContextApplicationV2ResolverTests(unittest.TestCase):
                 source_evidence_refs=(evidence,),
                 review_event_ref_v3=event_ref,
             )
+            host_authority_path = "sources/m2_5/authorities/interaction_review_authority.v2.json"
+            host_authority_schema = "manafold.m2.5.c.interaction-review-authority.v2"
+            host_authority_raw = json.dumps({"schema": host_authority_schema}).encode("utf-8")
+            host_authority_file = repo / Path(*host_authority_path.split("/"))
+            host_authority_file.parent.mkdir(parents=True, exist_ok=True)
+            host_authority_file.write_bytes(host_authority_raw)
+            host_authority_binding = ContextAuthoritySourceBindingV2(
+                "host_binding_authority_v2",
+                host_authority_path,
+                host_authority_schema,
+                digest(host_authority_raw),
+            )
+            claim_id = "hbc.v1/" + "c3" * 32
+            claim_path = (
+                "sources/m2_5/authorities/cross_deck_host_binding_claims/v1/"
+                + claim_id.removeprefix("hbc.v1/")
+                + ".json"
+            )
+            claim_schema = "manafold.m2.5.c.cross-deck-host-binding-claim-record.v1"
+            claim_raw = json.dumps({"schema": claim_schema, "claim_id": claim_id}).encode("utf-8")
+            claim_file = repo / Path(*claim_path.split("/"))
+            claim_file.parent.mkdir(parents=True, exist_ok=True)
+            claim_file.write_bytes(claim_raw)
+            claim_binding = ContextAuthoritySourceBindingV2(
+                "host_binding_claim_record",
+                claim_path,
+                claim_schema,
+                digest(claim_raw),
+            )
+            host_link = ApplicationHostBindingV2(
+                "context_application",
+                AuthorityIdentityV1(AuthorityIdentityKind.CONTEXT_APPLICATION_V2, b"c" * 32),
+                (claim_id,),
+            )
             container_sources = canonical_source_bindings(
-                (base_binding, candidate_binding, model_binding, roster_binding)
+                (
+                    base_binding,
+                    candidate_binding,
+                    model_binding,
+                    roster_binding,
+                    host_authority_binding,
+                    claim_binding,
+                )
             )
             container = ContextApplicationAuthorityV2(
                 base_authority_v1_binding=base_binding,
-                host_binding_authority_v2_binding=None,
+                host_binding_authority_v2_binding=host_authority_binding,
                 candidate_universe_binding=candidate_binding,
                 source_bindings=canonical_source_bindings(
                     (
@@ -969,7 +1172,7 @@ class ContextApplicationV2ResolverTests(unittest.TestCase):
                 ),
                 context_application_v2_records=(),
                 context_application_v2_supersession_records=(subject,),
-                application_host_bindings_v2=(),
+                application_host_bindings_v2=(host_link,),
             )
             resolver = ContextApplicationV2Resolver(
                 AuthoritySourceResolver(repo), base_authority_binding=base_binding
@@ -982,6 +1185,8 @@ class ContextApplicationV2ResolverTests(unittest.TestCase):
                     "candidate_universe",
                     "declared_model",
                     "reviewer_roster_leaf",
+                    "host_binding_authority_v2",
+                    "host_binding_claim_record",
                     "acceptance_event_leaf_v3",
                 },
             )
@@ -989,6 +1194,9 @@ class ContextApplicationV2ResolverTests(unittest.TestCase):
                 sum(item.artifact_role == "acceptance_event_leaf_v3" for item in expected),
                 1,
             )
+            resolved_event = resolver.resolve_review_event_leaf_v3(event_ref)
+            self.assertNotIn(claim_binding, resolved_event.event.source_binding_digests)
+            self.assertEqual(resolver.validate_container_source_closure_v2(container), expected)
             with self.assertRaises(ContextApplicationV2ResolutionError):
                 resolver.expected_container_source_closure_v2(
                     replace(
@@ -1144,6 +1352,17 @@ class ContextApplicationV2ResolverTests(unittest.TestCase):
         self.assertEqual(
             resolver._container_host_bindings(container, container.source_bindings),
             canonical_source_bindings((host_authority, claim_binding_a, claim_binding_b)),
+        )
+
+    def test_event_resolver_does_not_accept_caller_selected_host_bindings(self) -> None:
+        resolver = ContextApplicationV2Resolver(AuthoritySourceResolver(Path.cwd()))
+        self.assertNotIn(
+            "host_bindings",
+            inspect.signature(resolver.expected_acceptance_source_closure_v3).parameters,
+        )
+        self.assertNotIn(
+            "host_bindings",
+            inspect.signature(resolver.validate_event_source_closure_v3).parameters,
         )
 
     def test_base_authority_is_v1_validated_before_dependency_walk(self) -> None:
