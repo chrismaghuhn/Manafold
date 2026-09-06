@@ -1,10 +1,10 @@
 from __future__ import annotations
 
+import base64
+import hashlib
 import json
 import sys
 import unittest
-import base64
-import hashlib
 from copy import copy
 from dataclasses import replace
 from pathlib import Path
@@ -21,9 +21,9 @@ sys.path.insert(0, str(ROOT / "python" / "tests"))
 
 from authority_source_resolver import ResolutionError
 from context_application_v2_validator import (
-    ContextApplicationV2SemanticValidator,
     ContextApplicationV2SemanticInput,
     ContextApplicationV2SemanticValidationError,
+    ContextApplicationV2SemanticValidator,
     ContextPreconditionValueV1,
     validate_context_application_v2_semantics,
 )
@@ -47,8 +47,8 @@ from mtgml.authority import (
     EvidenceRefV1,
     ReviewAcceptanceEventInputV1,
     ReviewAcceptanceEventLeafV1,
-    ReviewerRosterRefV1,
     ReviewerRoleBindingV1,
+    ReviewerRosterRefV1,
     ReviewEventRefV1,
     ReviewEventRefV3,
     ReviewMode,
@@ -66,9 +66,7 @@ class ContextApplicationV2SemanticCoreTests(unittest.TestCase):
         self.assertIsNone(result.error_code)
 
     def test_reviewed_divergence_control_is_accepted_without_v1_source_equality(self) -> None:
-        result = validate_context_application_v2_semantics(
-            self._case("reviewed_divergence")
-        )
+        result = validate_context_application_v2_semantics(self._case("reviewed_divergence"))
         self.assertTrue(result.valid)
         self.assertIsNone(result.error_code)
 
@@ -79,9 +77,7 @@ class ContextApplicationV2SemanticCoreTests(unittest.TestCase):
                 continue
             with self.subTest(case_id=raw["case_id"]):
                 with self.assertRaises(ContextApplicationV2SemanticValidationError) as error:
-                    validate_context_application_v2_semantics(
-                        self._case(cast(str, raw["case_id"]))
-                    )
+                    validate_context_application_v2_semantics(self._case(cast(str, raw["case_id"])))
                 self.assertEqual(error.exception.code, expected["error_code"])
 
     def _matrix(self) -> dict[str, object]:
@@ -107,8 +103,7 @@ class ContextApplicationV2SemanticCoreTests(unittest.TestCase):
             theorem_context_values=tuple(cast(list[str], raw["theorem_context_values"])),
             bridge_reviewed_values=tuple(cast(list[str], raw["bridge_reviewed_values"])),
             bridge_relations=tuple(
-                ContextBridgeRelationV2(value)
-                for value in cast(list[str], raw["bridge_relations"])
+                ContextBridgeRelationV2(value) for value in cast(list[str], raw["bridge_relations"])
             ),
             theorem_temporal_values=tuple(cast(list[str], raw["theorem_temporal_values"])),
             bridge_temporal_values=tuple(cast(list[str], raw["bridge_temporal_values"])),
@@ -363,10 +358,12 @@ class ContextApplicationV2IntegrationTests(unittest.TestCase):
                 bytes.fromhex("77" * 32),
             ),
         )
-        with self.subTest(mutation="wrong theorem record"):
-            with self.assertRaises(ResolutionError) as error:
-                validator.validate(tampered_theorem)
-                self.assertEqual(error.exception.code, "THEOREM_REFERENCE_INVALID")
+        with (
+            self.subTest(mutation="wrong theorem record"),
+            self.assertRaises(ResolutionError) as error,
+        ):
+            validator.validate(tampered_theorem)
+            self.assertEqual(error.exception.code, "THEOREM_REFERENCE_INVALID")
 
         mutations = [
             (
@@ -418,7 +415,9 @@ class ContextApplicationV2IntegrationTests(unittest.TestCase):
         ]
         for name, mutated_member, expected_code in mutations:
             with self.subTest(mutation=name):
-                with self.assertRaises((ContextApplicationV2SemanticValidationError, ResolutionError)) as error:
+                with self.assertRaises(
+                    (ContextApplicationV2SemanticValidationError, ResolutionError)
+                ) as error:
                     validator.validate(self._record_for_member(case, mutated_member))
                 self.assertEqual(error.exception.code, expected_code)
 
@@ -436,11 +435,15 @@ class ContextApplicationV2IntegrationTests(unittest.TestCase):
         with self.subTest(mutation="reviewed context mismatch"):
             with self.assertRaises(ContextApplicationV2SemanticValidationError) as error:
                 validator.validate(
-                    self._record_for_member(case, replace(member, context_member_bridge_attestation_v2=reviewed_bridge))
+                    self._record_for_member(
+                        case, replace(member, context_member_bridge_attestation_v2=reviewed_bridge)
+                    )
                 )
             self.assertEqual(error.exception.code, "MEMBER_REVIEWED_CONTEXT_MISMATCH")
 
-        relation_mismatch = replace(timing_slot, relation=ContextBridgeRelationV2.REVIEWED_DIVERGENCE)
+        relation_mismatch = replace(
+            timing_slot, relation=ContextBridgeRelationV2.REVIEWED_DIVERGENCE
+        )
         relation_bridge = replace(
             bridge,
             context=(bridge.context[0], bridge.context[1], relation_mismatch, *bridge.context[3:]),
@@ -448,7 +451,9 @@ class ContextApplicationV2IntegrationTests(unittest.TestCase):
         with self.subTest(mutation="equal values with reviewed divergence"):
             with self.assertRaises(ContextApplicationV2SemanticValidationError) as error:
                 validator.validate(
-                    self._record_for_member(case, replace(member, context_member_bridge_attestation_v2=relation_bridge))
+                    self._record_for_member(
+                        case, replace(member, context_member_bridge_attestation_v2=relation_bridge)
+                    )
                 )
             self.assertEqual(error.exception.code, "BRIDGE_RELATION_MISMATCH")
 
@@ -467,9 +472,7 @@ class ContextApplicationV2IntegrationTests(unittest.TestCase):
                 "wrong id",
                 replace(
                     member,
-                    precondition_attestations_v1=[
-                        ["wrong-id", *original_attestation[1:]]
-                    ],
+                    precondition_attestations_v1=[["wrong-id", *original_attestation[1:]]],
                 ),
                 "PRECONDITION_MISMATCH",
             ),
@@ -478,7 +481,11 @@ class ContextApplicationV2IntegrationTests(unittest.TestCase):
                 replace(
                     member,
                     precondition_attestations_v1=[
-                        [original_attestation[0], ["timing", "activation_time"], *original_attestation[2:]]
+                        [
+                            original_attestation[0],
+                            ["timing", "activation_time"],
+                            *original_attestation[2:],
+                        ]
                     ],
                 ),
                 "PRECONDITION_MISMATCH",
@@ -545,9 +552,7 @@ class ContextApplicationV2IntegrationTests(unittest.TestCase):
             context_member_bridge_attestation_v2=stale_context_bridge,
         )
         with self.assertRaises(ContextApplicationV2SemanticValidationError) as error:
-            self._validator_for(case).validate(
-                self._record_for_member(case, stale_context_member)
-            )
+            self._validator_for(case).validate(self._record_for_member(case, stale_context_member))
         self.assertEqual(error.exception.code, "EVIDENCE_RESOLUTION_FAILURE")
 
         stale_temporal_ref = replace(
@@ -564,9 +569,7 @@ class ContextApplicationV2IntegrationTests(unittest.TestCase):
             context_member_bridge_attestation_v2=stale_temporal_bridge,
         )
         with self.assertRaises(ContextApplicationV2SemanticValidationError) as error:
-            self._validator_for(case).validate(
-                self._record_for_member(case, stale_temporal_member)
-            )
+            self._validator_for(case).validate(self._record_for_member(case, stale_temporal_member))
         self.assertEqual(error.exception.code, "EVIDENCE_RESOLUTION_FAILURE")
 
         unresolved_ref = replace(
@@ -575,9 +578,7 @@ class ContextApplicationV2IntegrationTests(unittest.TestCase):
         )
         unresolved_member = replace(member, member_evidence_refs=(unresolved_ref,))
         with self.assertRaises(ContextApplicationV2SemanticValidationError) as error:
-            self._validator_for(case).validate(
-                self._record_for_member(case, unresolved_member)
-            )
+            self._validator_for(case).validate(self._record_for_member(case, unresolved_member))
         self.assertEqual(error.exception.code, "EVIDENCE_RESOLUTION_FAILURE")
 
     def _synthetic_case(
@@ -664,7 +665,7 @@ class ContextApplicationV2IntegrationTests(unittest.TestCase):
         model_raw = (ROOT / MODEL_PATH).read_bytes()
         fixture.write_repo(MODEL_PATH, model_raw)
         universe_path = fixture.repo / Path(
-            *"sources/m2_5/closures/C/interaction_candidate_universe.v2.json".split("/")
+            *["sources", "m2_5", "closures", "C", "interaction_candidate_universe.v2.json"]
         )
         universe = cast(dict[str, object], json.loads(universe_path.read_text(encoding="utf-8")))
         input_bindings = cast(dict[str, object], universe["input_bindings"])
@@ -701,9 +702,7 @@ class ContextApplicationV2IntegrationTests(unittest.TestCase):
             }
         )
         roster_path_text = (
-            "sources/m2_5/authorities/reviewer_rosters/v1/"
-            + digest(roster_raw)
-            + ".json"
+            "sources/m2_5/authorities/reviewer_rosters/v1/" + digest(roster_raw) + ".json"
         )
         fixture.write_repo(roster_path_text, roster_raw)
         roster_digest = bytes.fromhex(digest(roster_raw))
@@ -1007,9 +1006,7 @@ class ContextApplicationV2IntegrationTests(unittest.TestCase):
             members=(member,),
         ).identity()
         event_ref_v3 = ReviewEventRefV3(
-            "sources/m2_5/authorities/review_acceptance_events/v3/"
-            + "00" * 32
-            + ".json",
+            "sources/m2_5/authorities/review_acceptance_events/v3/" + "00" * 32 + ".json",
             bytes(32),
             "ae.v3/" + "00" * 32,
         )

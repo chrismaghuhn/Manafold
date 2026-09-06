@@ -7,10 +7,10 @@ source resolvers without becoming a rules engine.
 
 from __future__ import annotations
 
-import sys
-from dataclasses import dataclass
 import re
+import sys
 from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Final, cast
 
@@ -161,16 +161,11 @@ def validate_context_application_v2_semantics(
             )
 
     if len(value.theorem_preconditions) != len(value.member_preconditions):
-        raise ContextApplicationV2SemanticValidationError(
-            "PRECONDITION_COVERAGE", "preconditions"
-        )
+        raise ContextApplicationV2SemanticValidationError("PRECONDITION_COVERAGE", "preconditions")
     for index, (theorem, member) in enumerate(
         zip(value.theorem_preconditions, value.member_preconditions, strict=True)
     ):
-        if (
-            theorem.precondition_id != member.precondition_id
-            or theorem.value != member.value
-        ):
+        if theorem.precondition_id != member.precondition_id or theorem.value != member.value:
             raise ContextApplicationV2SemanticValidationError(
                 "PRECONDITION_MISMATCH", f"preconditions[{index}]"
             )
@@ -180,17 +175,13 @@ def validate_context_application_v2_semantics(
 
 def _required_array(value: object, label: str) -> list[object]:
     if not isinstance(value, list):
-        raise ContextApplicationV2SemanticValidationError(
-            "PRECONDITION_MISMATCH", label
-        )
+        raise ContextApplicationV2SemanticValidationError("PRECONDITION_MISMATCH", label)
     return value
 
 
 def _required_text(value: object, label: str) -> str:
     if not isinstance(value, str) or not value:
-        raise ContextApplicationV2SemanticValidationError(
-            "THEOREM_REFERENCE_INVALID", label
-        )
+        raise ContextApplicationV2SemanticValidationError("THEOREM_REFERENCE_INVALID", label)
     return value
 
 
@@ -204,9 +195,7 @@ def _context_binding_from_v1_wire(
         "participant_roles",
         "host_relationship",
     }:
-        raise ContextApplicationV2SemanticValidationError(
-            "MEMBER_SUBJECT_MISMATCH", label
-        )
+        raise ContextApplicationV2SemanticValidationError("MEMBER_SUBJECT_MISMATCH", label)
     participant_values: list[PersistenceValue] = []
     for index, participant in enumerate(
         _required_array(value.get("participant_roles"), f"{label}.participant_roles")
@@ -241,9 +230,7 @@ def _context_binding_to_v1_wire(
     label: str,
 ) -> dict[str, object]:
     if not isinstance(value, list) or len(value) != 4:
-        raise ContextApplicationV2SemanticValidationError(
-            "MEMBER_SUBJECT_MISMATCH", label
-        )
+        raise ContextApplicationV2SemanticValidationError("MEMBER_SUBJECT_MISMATCH", label)
     raw_participants = value[2]
     if not isinstance(raw_participants, list):
         raise ContextApplicationV2SemanticValidationError(
@@ -292,9 +279,7 @@ def _theorem_preconditions(
     return tuple(result)
 
 
-def _member_preconditions(
-    member: object, label: str
-) -> tuple[ContextPreconditionValueV1, ...]:
+def _member_preconditions(member: object, label: str) -> tuple[ContextPreconditionValueV1, ...]:
     raw_attestations = getattr(member, "precondition_attestations_v1", None)
     if not isinstance(raw_attestations, list):
         raise ContextApplicationV2SemanticValidationError(
@@ -366,7 +351,7 @@ class ContextApplicationV2SemanticValidator:
             RecordKind,
         )
 
-        if not isinstance(application, (ContextApplicationV2Record, ContextApplicationV2InputV1)):
+        if not isinstance(application, ContextApplicationV2Record | ContextApplicationV2InputV1):
             raise ContextApplicationV2SemanticValidationError(
                 "APPLICATION_INPUT_INVALID", "application"
             )
@@ -405,9 +390,7 @@ class ContextApplicationV2SemanticValidator:
         resolved_members: list[ResolvedSourceInstance] = []
         for index, member in enumerate(members):
             try:
-                resolved_members.append(
-                    self._v2_resolver.resolve_member_source_instance(member)
-                )
+                resolved_members.append(self._v2_resolver.resolve_member_source_instance(member))
             except (ContextApplicationV2ResolutionError, ResolutionError) as exc:
                 raise ContextApplicationV2SemanticValidationError(
                     getattr(exc, "code", "MEMBER_SOURCE_BINDING_MISMATCH"),
@@ -454,12 +437,12 @@ class ContextApplicationV2SemanticValidator:
         from authority_validator import AuthorityValidator
         from mtgml.authority import ContextApplicationMemberV2
 
-        if not isinstance(member, ContextApplicationMemberV2) or not isinstance(
-            resolved, ResolvedSourceInstance
-        ) or not isinstance(v1_validator, AuthorityValidator):
-            raise ContextApplicationV2SemanticValidationError(
-                "APPLICATION_INPUT_INVALID", label
-            )
+        if (
+            not isinstance(member, ContextApplicationMemberV2)
+            or not isinstance(resolved, ResolvedSourceInstance)
+            or not isinstance(v1_validator, AuthorityValidator)
+        ):
+            raise ContextApplicationV2SemanticValidationError("APPLICATION_INPUT_INVALID", label)
         member_wire = member.to_wire()
         member_wire["context_binding"] = _context_binding_to_v1_wire(
             member.context_binding_v1,
@@ -485,15 +468,11 @@ class ContextApplicationV2SemanticValidator:
         )
         theorem_context_values = tuple(
             _required_text(value, f"{label}.theorem.context_dimensions[{index}]")
-            for index, value in enumerate(
-                _required_array(theorem.get("context_dimensions"), label)
-            )
+            for index, value in enumerate(_required_array(theorem.get("context_dimensions"), label))
         )
         theorem_temporal_values = tuple(
             _required_text(value, f"{label}.theorem.temporal_semantics[{index}]")
-            for index, value in enumerate(
-                _required_array(theorem.get("temporal_semantics"), label)
-            )
+            for index, value in enumerate(_required_array(theorem.get("temporal_semantics"), label))
         )
         bridge = member.context_member_bridge_attestation_v2
         semantic_input = ContextApplicationV2SemanticInput(
@@ -530,9 +509,7 @@ class ContextApplicationV2SemanticValidator:
         from mtgml.authority import ContextApplicationMemberV2, EvidenceRefV1
 
         if not isinstance(member, ContextApplicationMemberV2):
-            raise ContextApplicationV2SemanticValidationError(
-                "APPLICATION_INPUT_INVALID", label
-            )
+            raise ContextApplicationV2SemanticValidationError("APPLICATION_INPUT_INVALID", label)
         for index, reference in enumerate(references):
             if not isinstance(reference, EvidenceRefV1):
                 raise ContextApplicationV2SemanticValidationError(
@@ -556,12 +533,12 @@ class ContextApplicationV2SemanticValidator:
         from context_application_v2_resolver import ResolvedContextEvidence
         from mtgml.authority import ContextApplicationMemberV2, EvidenceRefV1
 
-        if not isinstance(reference, EvidenceRefV1) or not isinstance(
-            resolved, ResolvedContextEvidence
-        ) or not isinstance(member, ContextApplicationMemberV2):
-            raise ContextApplicationV2SemanticValidationError(
-                "EVIDENCE_RESOLUTION_FAILURE", label
-            )
+        if (
+            not isinstance(reference, EvidenceRefV1)
+            or not isinstance(resolved, ResolvedContextEvidence)
+            or not isinstance(member, ContextApplicationMemberV2)
+        ):
+            raise ContextApplicationV2SemanticValidationError("EVIDENCE_RESOLUTION_FAILURE", label)
         if reference.authority_kind != "c_candidate":
             return
         locator_kind, locator_value = reference.locator
@@ -574,9 +551,7 @@ class ContextApplicationV2SemanticValidator:
         if candidate_match is None and source_match is None:
             return
         if not isinstance(resolved.artifact.json_value, Mapping):
-            raise ContextApplicationV2SemanticValidationError(
-                "EVIDENCE_RESOLUTION_FAILURE", label
-            )
+            raise ContextApplicationV2SemanticValidationError("EVIDENCE_RESOLUTION_FAILURE", label)
         if candidate_match is not None:
             index = int(candidate_match.group(1))
             records = resolved.artifact.json_value.get("candidates")
@@ -597,33 +572,27 @@ class ContextApplicationV2SemanticValidator:
             parent.get("source_instance_id") != member.source_instance_id
             or parent.get("candidate_id") != member.candidate_id
         ):
-            raise ContextApplicationV2SemanticValidationError(
-                "EVIDENCE_SOURCE_SUBSTITUTION", label
-            )
+            raise ContextApplicationV2SemanticValidationError("EVIDENCE_SOURCE_SUBSTITUTION", label)
 
     @staticmethod
     def _parent_record(value: object, index: int, label: str) -> Mapping[str, object]:
         if not isinstance(value, list) or index < 0 or index >= len(value):
-            raise ContextApplicationV2SemanticValidationError(
-                "EVIDENCE_RESOLUTION_FAILURE", label
-            )
+            raise ContextApplicationV2SemanticValidationError("EVIDENCE_RESOLUTION_FAILURE", label)
         parent = value[index]
         if not isinstance(parent, Mapping):
-            raise ContextApplicationV2SemanticValidationError(
-                "EVIDENCE_RESOLUTION_FAILURE", label
-            )
+            raise ContextApplicationV2SemanticValidationError("EVIDENCE_RESOLUTION_FAILURE", label)
         return parent
 
 
 __all__ = [
     "CONTEXT_DIMENSIONS",
     "CONTEXT_SLOT_COUNT",
-    "ContextApplicationV2SemanticInput",
-    "ContextApplicationV2SemanticValidator",
-    "ContextApplicationV2SemanticValidationError",
-    "ContextApplicationV2SemanticValidationResult",
-    "ContextPreconditionValueV1",
     "TEMPORAL_SEMANTICS",
     "TEMPORAL_SLOT_COUNT",
+    "ContextApplicationV2SemanticInput",
+    "ContextApplicationV2SemanticValidationError",
+    "ContextApplicationV2SemanticValidationResult",
+    "ContextApplicationV2SemanticValidator",
+    "ContextPreconditionValueV1",
     "validate_context_application_v2_semantics",
 ]
