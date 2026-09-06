@@ -70,6 +70,25 @@ class ReviewAdmissionFoundationTests(unittest.TestCase):
         self.assertEqual(roster.reviewers[0].reviewer_id, "chrismaghuhn")
         self.assertEqual(roster.reviewers[0].roles, EXPECTED_ROLES)
 
+    def test_shared_roster_helper_calls_verified_leaf_once(self) -> None:
+        from unittest.mock import patch
+
+        from reviewer_role_binding import resolve_reviewer_roster
+
+        resolver = AuthoritySourceResolver(ROOT)
+        with patch.object(
+            resolver,
+            "resolve_reviewer_roster_leaf",
+            wraps=resolver.resolve_reviewer_roster_leaf,
+        ) as resolve_leaf:
+            roster = resolve_reviewer_roster(resolver, self._roster_ref())
+        self.assertEqual(resolve_leaf.call_count, 1)
+        self.assertEqual(roster.reviewers[0].reviewer_id, "chrismaghuhn")
+        helper_source = (ROOT / "scripts" / "reviewer_role_binding.py").read_text(
+            encoding="utf-8"
+        )
+        self.assertNotIn("json.loads", helper_source)
+
     def test_tampered_production_roster_bytes_fail_closed(self) -> None:
         source = ROOT / Path(*ROSTER_PATH.split("/"))
         with tempfile.TemporaryDirectory() as temporary:

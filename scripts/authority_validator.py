@@ -64,6 +64,11 @@ from mtgml.authority import (
     compute_authority_identity,
 )
 from mtgml.persistence import PersistenceValue, encode_canonical
+from reviewer_role_binding import (
+    ReviewerRoleBindingValidationError,
+    resolve_reviewer_roster,
+    validate_reviewer_binding_against_roster,
+)
 
 JsonObject: TypeAlias = dict[str, object]
 CborValue: TypeAlias = PersistenceValue
@@ -1756,7 +1761,6 @@ class AuthorityValidator:
         self, event: Mapping[str, object], roster: ReviewerRosterV1
     ) -> tuple[ReviewerRoleBindingV1, ...]:
         bindings: list[ReviewerRoleBindingV1] = []
-        roster_by_id = {reviewer.reviewer_id: reviewer for reviewer in roster.reviewers}
         for index, item in enumerate(
             _array(event.get("reviewer_role_bindings"), "reviewer role bindings")
         ):
@@ -1770,8 +1774,9 @@ class AuthorityValidator:
                 binding = ReviewerRoleBindingV1(reviewer_id, roles)
             except (TypeError, ValueError) as exc:
                 _fail("REVIEWER_ROLE_BINDING_INVALID", str(exc))
-            reviewer = roster_by_id.get(reviewer_id)
-            if reviewer is None or tuple(reviewer.roles) != binding.roles:
+            try:
+                validate_reviewer_binding_against_roster(binding, roster)
+            except ReviewerRoleBindingValidationError:
                 _fail(
                     "REVIEWER_ROLE_BINDING_MISMATCH",
                     f"reviewer {reviewer_id!r} roles differ from roster",
@@ -1785,29 +1790,8 @@ class AuthorityValidator:
         return tuple(bindings)
 
     def _parse_roster(self, reference: ReviewerRosterRefV1) -> ReviewerRosterV1:
-        artifact = self._resolver.resolve_reviewer_roster_leaf(reference)
         try:
-            value = json.loads(artifact.raw_bytes.decode("utf-8"))
-        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-            _fail("REVIEWER_ROSTER_INVALID", str(exc))
-        record = _exact(value, {"schema", "reviewers"}, "reviewer roster leaf")
-        reviewers: list[ReviewerV1] = []
-        for index, item in enumerate(_array(record.get("reviewers"), "roster reviewers")):
-            reviewer = _exact(item, {"reviewer_id", "roles"}, f"roster reviewers[{index}]")
-            try:
-                reviewers.append(
-                    ReviewerV1(
-                        _text(reviewer.get("reviewer_id"), "roster reviewer ID"),
-                        tuple(
-                            _text(role, "roster role")
-                            for role in _array(reviewer.get("roles"), "roster roles")
-                        ),
-                    )
-                )
-            except (TypeError, ValueError) as exc:
-                _fail("REVIEWER_ROSTER_INVALID", str(exc))
-        try:
-            return ReviewerRosterV1(tuple(reviewers))
+            return resolve_reviewer_roster(self._resolver, reference)
         except (TypeError, ValueError) as exc:
             _fail("REVIEWER_ROSTER_INVALID", str(exc))
 

@@ -1292,6 +1292,40 @@ class AuthorityValidatorTests(unittest.TestCase):
                     validator._required_roles(record),
                 )
 
+    def test_shared_reviewer_binding_seam_requires_exact_roster_roles(self) -> None:
+        from reviewer_role_binding import (
+            ReviewerRoleBindingValidationError,
+            validate_reviewer_binding_against_roster,
+        )
+
+        roster = ReviewerRosterV1(
+            (
+                ReviewerV1(
+                    "alice",
+                    ("architecture_maintainer", "rules_authority_maintainer"),
+                ),
+            )
+        )
+        validate_reviewer_binding_against_roster(
+            ReviewerRoleBindingV1(
+                "alice",
+                ("architecture_maintainer", "rules_authority_maintainer"),
+            ),
+            roster,
+        )
+        with self.assertRaises(ReviewerRoleBindingValidationError) as missing:
+            validate_reviewer_binding_against_roster(
+                ReviewerRoleBindingV1("bob", ("architecture_maintainer",)),
+                roster,
+            )
+        self.assertEqual(missing.exception.reason, "not_in_roster")
+        with self.assertRaises(ReviewerRoleBindingValidationError) as mismatch:
+            validate_reviewer_binding_against_roster(
+                ReviewerRoleBindingV1("alice", ("architecture_maintainer",)),
+                roster,
+            )
+        self.assertEqual(mismatch.exception.reason, "role_mismatch")
+
     def test_domain_member_candidate_shape_precondition_binds_source(self) -> None:
         from authority_validator import AuthorityValidator
 
