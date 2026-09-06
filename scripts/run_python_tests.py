@@ -18,6 +18,7 @@ DEFAULT_PROFILE = "full"
 SMOKE_TESTS = (
     "test_authority_contract",
     "test_context_application_v2_contract",
+    "test_context_application_v2_resolver",
     "test_constructive_producers",
     "test_m2_b_staging_fixtures",
     "test_persistence_codec",

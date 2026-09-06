@@ -2656,6 +2656,20 @@ class AuthoritySourceResolver:
     ) -> ResolvedArtifact:
         return self._archive().resolve_member(member_path, expected_raw_sha256, schema_or_null)
 
+    def resolve_rev3_member_from_manifest(
+        self,
+        member_path: str,
+        schema_or_null: str | None = None,
+    ) -> ResolvedArtifact:
+        """Resolve a pinned REV3 member using its verified manifest digest."""
+
+        archive = self._archive()
+        return self.resolve_rev3_member(
+            member_path,
+            archive.expected_member_sha256(member_path),
+            schema_or_null,
+        )
+
     def resolve_rev3_locator(
         self,
         locator: Locator,

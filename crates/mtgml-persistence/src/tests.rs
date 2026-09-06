@@ -808,6 +808,98 @@ fn required_relation_channels_use_declared_vocabulary_order() {
     .is_ok());
 }
 
+#[test]
+fn context_application_v2_closure_golden_matrix_matches_rust_algebra() {
+    fn source_binding(value: &serde_json::Value) -> authority::ContextAuthoritySourceBindingV2 {
+        let role = value["artifact_role"].as_str().unwrap();
+        let path = value["path"].as_str().unwrap();
+        let schema = value["schema"].as_str();
+        let digest: [u8; 32] = decode_hex(value["raw_sha256"].as_str().unwrap())
+            .try_into()
+            .unwrap();
+        authority::ContextAuthoritySourceBindingV2::new(role, path, schema, digest).unwrap()
+    }
+
+    fn source_bindings(
+        value: &serde_json::Value,
+    ) -> Vec<authority::ContextAuthoritySourceBindingV2> {
+        value
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(source_binding)
+            .collect()
+    }
+
+    let matrix: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../conformance/fixtures/authority/context_application_v2_closure_golden_matrix.v1.json"
+    ))
+    .unwrap();
+    assert_eq!(
+        matrix["schema"],
+        serde_json::json!("manafold.m2.5.c.context-application-v2-closure-golden-matrix.v1")
+    );
+
+    for case in matrix["event_cases"].as_array().unwrap() {
+        let fixed = source_bindings(&case["fixed_bindings"]);
+        let direct = source_bindings(&case["direct_bindings"]);
+        let available = source_bindings(&case["available_bindings"]);
+        let hosts = source_bindings(&case["host_bindings"]);
+        let roles: Vec<&str> = case["b2_evidence_roles"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|value| value.as_str().unwrap())
+            .collect();
+        let actual = authority::reconstruct_event_source_closure_v2(
+            &fixed,
+            &direct,
+            &available,
+            &roles,
+            case["b1_citation"].as_bool().unwrap(),
+            &hosts,
+        )
+        .unwrap();
+        let expected = source_bindings(&case["expected_source_bindings"]);
+        assert_eq!(actual, expected, "event case {}", case["case_id"]);
+        authority::require_exact_context_source_set_v2(&actual, &expected).unwrap();
+    }
+
+    for case in matrix["container_cases"].as_array().unwrap() {
+        let static_bindings = source_bindings(&case["static_bindings"]);
+        let event_leaf_bindings = source_bindings(&case["event_leaf_bindings"]);
+        let event_closures: Vec<Vec<authority::ContextAuthoritySourceBindingV2>> = case
+            ["event_closures"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(source_bindings)
+            .collect();
+        let hosts = source_bindings(&case["host_bindings"]);
+        let actual = authority::reconstruct_container_source_closure_v2(
+            &static_bindings,
+            &event_leaf_bindings,
+            &event_closures,
+            &hosts,
+        )
+        .unwrap();
+        let expected = source_bindings(&case["expected_source_bindings"]);
+        assert_eq!(actual, expected, "container case {}", case["case_id"]);
+    }
+
+    let matrix_case = &matrix["event_cases"][0];
+    let fixed = source_bindings(&matrix_case["fixed_bindings"]);
+    let expected = source_bindings(&matrix_case["expected_source_bindings"]);
+    let mut noncanonical = expected.clone();
+    noncanonical.swap(0, 1);
+    assert!(authority::require_exact_context_source_set_v2(&noncanonical, &expected).is_err());
+    assert!(authority::require_exact_context_source_set_v2(
+        &[fixed[0].clone(), fixed[0].clone()],
+        &expected,
+    )
+    .is_err());
+}
+
 fn payload_array_len(value: &cbor::Value) -> usize {
     match value {
         cbor::Value::Array(values) => values.len(),

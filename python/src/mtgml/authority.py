@@ -242,6 +242,52 @@ CONTEXT_AUTHORITY_SOURCE_ROLES_V2: Final = tuple(
 )
 
 
+@dataclass(frozen=True)
+class ContextAuthoritySourceRegistryEntryV2:
+    """Mechanical V2 source-role metadata shared by resolution code."""
+
+    path_pattern: str
+    schema: str | None
+    source_kind: str
+    content_addressed: bool
+
+
+def context_authority_source_registry_v2() -> tuple[
+    tuple[str, ContextAuthoritySourceRegistryEntryV2], ...
+]:
+    """Return the closed V2 role/path/schema registry without exposing mutability."""
+
+    entries: list[tuple[str, ContextAuthoritySourceRegistryEntryV2]] = []
+    for role in CONTEXT_AUTHORITY_SOURCE_ROLES_V2:
+        if role in _CONTEXT_AUTHORITY_STATIC_BINDING_REGISTRY_V2:
+            path, schema = _CONTEXT_AUTHORITY_STATIC_BINDING_REGISTRY_V2[role]
+            entries.append(
+                (
+                    role,
+                    ContextAuthoritySourceRegistryEntryV2(
+                        path_pattern=re.escape(path),
+                        schema=schema,
+                        source_kind=("rev3_archive" if role.startswith("rev3_") else "repository"),
+                        content_addressed=False,
+                    ),
+                )
+            )
+            continue
+        path_pattern, schema = _CONTEXT_AUTHORITY_LEAF_BINDING_REGISTRY_V2[role]
+        entries.append(
+            (
+                role,
+                ContextAuthoritySourceRegistryEntryV2(
+                    path_pattern=path_pattern,
+                    schema=schema,
+                    source_kind="repository",
+                    content_addressed=True,
+                ),
+            )
+        )
+    return tuple(entries)
+
+
 class AcceptanceSubjectKind(str, Enum):
     RELATION_THEOREM_RECORD = "relation_theorem_record"
     DOMAIN_THEOREM_RECORD = "domain_theorem_record"
