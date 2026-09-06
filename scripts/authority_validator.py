@@ -13,7 +13,7 @@ import json
 import re
 import sys
 import zipfile
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from types import MappingProxyType
@@ -67,6 +67,7 @@ from mtgml.persistence import PersistenceValue, encode_canonical
 
 JsonObject: TypeAlias = dict[str, object]
 CborValue: TypeAlias = PersistenceValue
+EvidenceResolver: TypeAlias = Callable[[Sequence[EvidenceRefV1], str], None]
 
 _HEX64_RE: Final = re.compile(r"^[0-9a-f]{64}$")
 _EVENT_ID_RE: Final = re.compile(r"^ae\.v1/[0-9a-f]{64}$")
@@ -1209,14 +1210,20 @@ class AuthorityValidator:
         self._superseded_record_ids: set[str] = set()
         self._supersession_ids: set[str] = set()
         self._used_bindings: set[bytes] = set()
+        self._validation_complete = False
 
     def validate(self, value: object) -> AuthorityValidationResult:
+        self._validation_complete = False
         try:
-            return self._validate_document(value)
+            result = self._validate_document(value)
         except ResolutionError:
+            self._validation_complete = False
             raise
         except (AuthorityContractError, TypeError, ValueError) as exc:
+            self._validation_complete = False
             _fail("AUTHORITY_CONTRACT_INVALID", str(exc))
+        self._validation_complete = True
+        return result
 
     def _validate_document(self, value: object) -> AuthorityValidationResult:
         self._root_bindings = None
@@ -1718,17 +1725,32 @@ class AuthorityValidator:
         else:
             _fail("AUTHORITY_VALUE_INVALID", f"{label}.kind is not closed")
 
-    def _resolve_member_evidence(self, record: Mapping[str, object], label: str) -> None:
-        self._resolve_evidence_wire_list(
-            record.get("member_evidence_refs"), f"{label}.member_evidence_refs"
+    def _resolve_member_evidence(
+        self,
+        record: Mapping[str, object],
+        label: str,
+        *,
+        evidence_resolver: EvidenceResolver | None = None,
+    ) -> None:
+        resolve = self._resolve_evidence_refs if evidence_resolver is None else evidence_resolver
+        member_references = tuple(
+            _evidence_ref(item, f"{label}.member_evidence_refs[{index}]")[0]
+            for index, item in enumerate(
+                _array(record.get("member_evidence_refs"), f"{label}.member_evidence_refs")
+            )
         )
+        resolve(member_references, f"{label}.member_evidence_refs")
         for index, attestation in enumerate(
             _array(record.get("precondition_attestations"), "precondition attestations")
         ):
             attestation_record = _object(attestation, f"{label}.precondition_attestations[{index}]")
-            self._resolve_evidence_wire_list(
-                attestation_record.get("evidence_refs"), "precondition evidence"
+            references = tuple(
+                _evidence_ref(item, f"precondition evidence[{reference_index}]")[0]
+                for reference_index, item in enumerate(
+                    _array(attestation_record.get("evidence_refs"), "precondition evidence")
+                )
             )
+            resolve(references, f"{label}.precondition_attestations[{index}].evidence_refs")
 
     def _event_role_bindings(
         self, event: Mapping[str, object], roster: ReviewerRosterV1
@@ -2857,6 +2879,25 @@ class AuthorityValidator:
             )
         return record
 
+    def require_validated_record(
+        self,
+        identity: AuthorityIdentityV1,
+        kind: RecordKind,
+        label: str,
+    ) -> Mapping[str, object]:
+        if not self._validation_complete:
+            _fail(
+                "AUTHORITY_NOT_VALIDATED",
+                "authority must be validated before record lookup",
+            )
+        record = self._records.get(identity.as_text())
+        if record is None or record.kind is not kind:
+            _fail(
+                "THEOREM_REFERENCE_INVALID",
+                f"{label} references an unknown or wrong-kind record",
+            )
+        return record.record
+
     def _source_instance_shape(
         self, resolved: ResolvedSourceInstance, label: str
     ) -> tuple[str, str, list[list[CborValue]]]:
@@ -3040,6 +3081,29 @@ class AuthorityValidator:
                 "MEMBER_SOURCE_PARTICIPANT_BINDING_MISMATCH",
                 f"{label} context participant roles or positions differ from the source instance",
             )
+
+    def _validate_context_member_source_contract_v1(
+        self,
+        member: Mapping[str, object],
+        theorem: Mapping[str, object],
+        resolved: ResolvedSourceInstance,
+        label: str,
+        *,
+        evidence_resolver: EvidenceResolver | None = None,
+    ) -> None:
+        """Validate the common semantic portion after structural parsing.
+
+        The caller must have passed the owning V1 structural parser or project
+        a valid typed V2 member into this V1-shaped mapping.
+        """
+
+        self._validate_context_member_binding(member, theorem, resolved, label)
+        self._resolve_member_evidence(
+            member,
+            label,
+            evidence_resolver=evidence_resolver,
+        )
+        self._validate_precondition_match(member, theorem, label, resolved)
 
     def _validate_context_values_against_source(
         self,
@@ -3259,9 +3323,13 @@ class AuthorityValidator:
         for index, member in enumerate(members):
             resolved = self._resolve_application_member(member, f"{label}.members[{index}]")
             member_label = f"{label}.members[{index}]"
-            self._validate_context_member_binding(member, theorem, resolved, member_label)
+            self._validate_context_member_source_contract_v1(
+                member,
+                theorem,
+                resolved,
+                member_label,
+            )
             self._validate_context_values_against_source(context_values, resolved, member_label)
-            self._resolve_member_evidence(member, f"{label}.members[{index}]")
             attestation = _object(member.get("context_member_attestation"), "context attestation")
             slots = _array(attestation.get("slot_attestations"), "slot attestations")
             if len(slots) != len(expected_slots):
@@ -3275,9 +3343,6 @@ class AuthorityValidator:
                 self._resolve_evidence_wire_list(
                     slot_record.get("evidence_refs"), "context slot evidence"
                 )
-            self._validate_precondition_match(
-                member, theorem, f"{label}.members[{index}]", resolved
-            )
 
     def _resolve_application_member(
         self, member: Mapping[str, object], label: str
