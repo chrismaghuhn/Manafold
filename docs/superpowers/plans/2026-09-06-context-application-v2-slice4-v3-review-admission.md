@@ -53,7 +53,8 @@ The first missing role wins. Missing information safety returns INFORMATION_SAFE
 |---|---|
 | scripts/context_application_v2_resolver.py | Additive V3 resolver diagnostic codes; retain event, checklist, mode, and evidence ownership. |
 | scripts/context_application_v2_validator.py | Preserve Slice-3 fallback semantic codes and expose the pure typed information-sensitivity inventory seam. |
-| scripts/reviewer_role_binding.py | Single owner for content-addressed roster parsing and the typed exact reviewer existence/complete-role seam; no ordering policy. |
+| scripts/authority_source_resolver.py | Existing owner of raw roster bytes, digest/schema/path checks, closed JSON shape, and source-level ReviewerV1/ReviewerRosterV1 validation; no new implementation is planned here. |
+| scripts/reviewer_role_binding.py | Calls the existing roster-leaf resolver exactly once, materializes typed values from its already-verified artifact projection, and owns only exact reviewer existence/complete-role equality; no raw parsing or ordering policy. |
 | scripts/authority_validator.py | Delegate the existing V1 role-binding comparison through the typed seam without changing V1 diagnostics. |
 | scripts/context_application_v2_review_admission.py | New admission module, stable errors, frozen result, semantic composition, event binding, closure, roster, and role policy. |
 | docs/maintenance/INTERACTION_AUTHORITY_REVIEW_CHECKLIST_V2.md | New immutable V2 checklist definition. |
@@ -210,7 +211,7 @@ git commit -m "refactor: add coded V3 resolver diagnostics"
 - Modify: python/tests/test_authority_validator.py
 - Test: python/tests/test_context_application_v2_contract.py
 
-- [ ] Step 1: Add RED tests for the single-owner roster parser, exact reviewer existence, complete roster-role equality, and the separate V1/V3 ordering rules. Add V1 regression cases preserving:
+- [ ] Step 1: Add RED tests for the single-owner roster parser, exact reviewer existence, complete roster-role equality, and the separate V1/V3 ordering rules. Spy on resolve_reviewer_roster_leaf and assert resolve_reviewer_roster calls it exactly once and consumes the verified artifact projection without a second raw-byte JSON parse. Add V1 regression cases preserving:
 
     unknown reviewer or role mismatch -> REVIEWER_ROLE_BINDING_MISMATCH
     empty bindings -> REVIEWER_ROLE_BINDING_INVALID
@@ -234,7 +235,7 @@ def resolve_reviewer_roster(
     source_resolver: AuthoritySourceResolver,
     reference: ReviewerRosterRefV1,
 ) -> ReviewerRosterV1:
-    """Resolve exact raw roster bytes and parse the closed V1 roster shape."""
+    """Call resolve_reviewer_roster_leaf once and materialize its verified value."""
 
 
 def validate_reviewer_binding_against_roster(
@@ -244,9 +245,9 @@ def validate_reviewer_binding_against_roster(
     """Raise ReviewerRoleBindingValidationError unless the binding is exact."""
 ~~~
 
-The helper must reuse ReviewerRosterV1 and ReviewerRoleBindingV1 invariants. The roster parser owns raw digest/schema/JSON parsing. The exact-role helper owns only reviewer existence and complete role-tuple equality. It must not add role vocabulary, subset semantics, role escalation, reviewer-count rules, project-owner requirements, or ordering.
+The implementation must call source_resolver.resolve_reviewer_roster_leaf(reference) exactly once, use its already-verified artifact.json_value projection, and never call json.loads(artifact.raw_bytes). It must not duplicate raw digest/schema/path/closed-shape validation. It may materialize ReviewerV1 and ReviewerRosterV1 from the verified projection. The exact-role helper owns only reviewer existence and complete role-tuple equality. It must not add role vocabulary, subset semantics, role escalation, reviewer-count rules, project-owner requirements, or ordering.
 
-- [ ] Step 3: Extract the current AuthorityValidator._parse_roster body into resolve_reviewer_roster and make AuthorityValidator delegate to it while preserving its current V1 error codes/messages. Keep AuthorityValidator._event_role_bindings as the V1 owner of reviewer-ID ordering and existing diagnostics. Slice 4 calls resolve_reviewer_roster and validate_reviewer_binding_against_roster, then explicitly rejects duplicate reviewer IDs while leaving V3 full-CBOR ordering to ReviewAcceptanceEventInputV3.
+- [ ] Step 3: Replace AuthorityValidator._parse_roster raw JSON parsing with a delegation to resolve_reviewer_roster and preserve its current V1 error codes/messages. The raw source owner remains AuthoritySourceResolver.resolve_reviewer_roster_leaf; neither AuthorityValidator nor reviewer_role_binding.py calls json.loads on raw roster bytes. Keep AuthorityValidator._event_role_bindings as the V1 owner of reviewer-ID ordering and existing diagnostics. Slice 4 calls resolve_reviewer_roster and validate_reviewer_binding_against_roster, then explicitly rejects duplicate reviewer IDs while leaving V3 full-CBOR ordering to ReviewAcceptanceEventInputV3.
 
 - [ ] Step 4: Run:
 
@@ -344,6 +345,15 @@ class ContextApplicationV2ReviewAdmissionError(ValueError):
     location: str
     cause_code: str | None
     missing_role: str | None
+    message: str
+
+    def __init__(self, code: str, location: str, *, cause_code: str | None = None, missing_role: str | None = None) -> None:
+        self.code = code
+        self.location = location
+        self.cause_code = cause_code
+        self.missing_role = missing_role
+        self.message = f"{code} at {location}"
+        super().__init__(self.message)
 ~~~
 
 The public code APPLICATION_INPUT_INVALID has highest precedence for a non-record input and must occur before Slice-3 or filesystem access. Do not expose ResolvedReviewAcceptanceEventV3, ResolvedArtifact, raw JSON, or mutable mappings in the result.
@@ -362,12 +372,12 @@ def collect_information_sensitivity_facts(
     bridge_source_values: Sequence[str],
     bridge_reviewed_values: Sequence[str],
     theorem_context_values: Sequence[str],
-    theorem_preconditions: Sequence[Mapping[str, object]],
+    theorem_preconditions: Sequence[ContextPreconditionValueV1],
 ) -> ContextApplicationV2InformationSensitivityInventory:
     """Record only typed visibility/information facts in canonical order."""
 ~~~
 
-The helper records fixed-slot paths only; it never reads card/capability names, rationale, evidence prose, filenames, or natural-language values. The unconditional information-safety role remains unchanged.
+The helper consumes only ContextPreconditionValueV1.precondition_id and the existing typed value shape. It recognizes the fixed source_context and class_projection payload forms already produced by Slice 3 and emits no fact for unknown shapes. It never reads card/capability names, theorem JSON mappings, rationale, evidence prose, filenames, or natural-language values. The unconditional information-safety role remains unchanged.
 
 - [ ] Step 2: Implement the constructor with source resolver and base authority binding. Instantiate ContextApplicationV2Resolver and ContextApplicationV2SemanticValidator with the same base binding. Reject non-record input before filesystem access.
 
@@ -421,7 +431,7 @@ if (
     )
 ~~~
 
-The test for this case must create a semantically self-consistent new ae.v3 whose subject kind is context_application_v2_supersession_record, recompute its event identity/path/raw digest, and then pass that embedded reference through the application admission path.
+The test for this case must create a semantically self-consistent new ae.v3 whose subject kind is context_application_v2_supersession_record, recompute its event identity/path/raw digest, build a new ReviewEventRefV3, rebuild the ContextApplicationV2Record with ContextApplicationV2Record.from_parts using that new ref, recompute cpar.v2 record_id, and then pass the rebound record through the application admission path. Otherwise Slice 3 would correctly stop at RECORD_IDENTITY_MISMATCH before the SubjectKind check.
 
 - [ ] Step 6: Compare the full subject reference:
 
