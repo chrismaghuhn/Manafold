@@ -175,7 +175,7 @@ class ContextApplicationV2ReviewAdmissionValidator:
             raise ContextApplicationV2ReviewAdmissionError(
                 exc.code or "V3_EVENT_REFERENCE_INVALID",
                 "review_event",
-                cause_code=exc.code,
+                cause_code=exc.cause_code or exc.code,
             ) from exc
         except ResolutionError as exc:
             raise ContextApplicationV2ReviewAdmissionError(

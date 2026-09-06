@@ -187,11 +187,12 @@ class ContextApplicationV2ResolverTests(unittest.TestCase):
         self.assertEqual(encoded, sorted(encoded))
 
     def test_event_closure_rejects_acceptance_leaf_and_container_role(self) -> None:
-        with self.assertRaises(ContextApplicationV2ResolutionError):
+        with self.assertRaises(ContextApplicationV2ResolutionError) as caught:
             reconstruct_event_source_closure(
                 fixed_bindings=(BASE, MODEL, ROSTER),
                 direct_bindings=(EVENT_LEAF,),
             )
+        self.assertEqual(caught.exception.code, "V3_EVENT_SOURCE_INVALID")
 
         with self.assertRaises(ValueError):
             ContextAuthoritySourceBindingV2(
@@ -520,9 +521,10 @@ class ContextApplicationV2ResolverTests(unittest.TestCase):
                 digest(mutated_schema_raw),
                 event_id,
             )
-            with self.assertRaises(ResolutionError) as caught:
+            with self.assertRaises(ContextApplicationV2ResolutionError) as caught:
                 resolver.resolve_review_event_leaf_v3(mutated_schema_reference)
-            self.assertEqual(caught.exception.code, "SCHEMA_MISMATCH")
+            self.assertEqual(caught.exception.code, "V3_EVENT_SCHEMA_INVALID")
+            self.assertEqual(caught.exception.cause_code, "SCHEMA_MISMATCH")
 
             tampered_event_id = copy.deepcopy(event_wire)
             tampered_event_id["event_id"] = "ae.v3/" + "01" * 32
@@ -587,6 +589,73 @@ class ContextApplicationV2ResolverTests(unittest.TestCase):
                 resolver.resolve_review_event_leaf_v3(missing_roster_reference)
             self.assertEqual(caught.exception.code, "V3_EVENT_SOURCE_INVALID")
 
+            missing_evidence_input = ReviewAcceptanceEventInputV3(
+                subject_kind=event_input.subject_kind,
+                subject_payload_digest_reference=event_input.subject_payload_digest_reference,
+                reviewer_roster_ref=event_input.reviewer_roster_ref,
+                reviewer_role_bindings=event_input.reviewer_role_bindings,
+                review_mode=event_input.review_mode,
+                source_binding_digests=event_input.source_binding_digests,
+                review_evidence_refs=(
+                    AcceptanceEvidenceRefV1(
+                        "docs/review/missing-slice4-evidence.md",
+                        bytes(32),
+                        ("whole_artifact", None),
+                    ),
+                ),
+            )
+            missing_evidence_wire = ReviewAcceptanceEventLeafV3.from_input(
+                missing_evidence_input
+            ).to_wire()
+            missing_evidence_raw = (
+                json.dumps(missing_evidence_wire, separators=(",", ":")) + "\n"
+            ).encode("utf-8")
+            missing_evidence_id = cast(str, missing_evidence_wire["event_id"])
+            missing_evidence_path = (
+                "sources/m2_5/authorities/review_acceptance_events/v3/"
+                + missing_evidence_id.removeprefix("ae.v3/")
+                + ".json"
+            )
+            missing_evidence_file = repo / Path(*missing_evidence_path.split("/"))
+            missing_evidence_file.parent.mkdir(parents=True, exist_ok=True)
+            missing_evidence_file.write_bytes(missing_evidence_raw)
+            missing_evidence_reference = ReviewEventRefV3(
+                missing_evidence_path,
+                digest(missing_evidence_raw),
+                missing_evidence_id,
+            )
+            with self.assertRaises(ContextApplicationV2ResolutionError) as caught:
+                resolver.resolve_review_event_leaf_v3(missing_evidence_reference)
+            self.assertEqual(caught.exception.code, "REVIEW_EVIDENCE_INVALID")
+            self.assertEqual(caught.exception.cause_code, "REPOSITORY_SOURCE_MISSING")
+
+            assert_old_identity_mutation(
+                lambda value: cast(dict[str, object], value).__setitem__(
+                    "review_evidence_refs", []
+                ),
+                "REVIEW_EVIDENCE_MISSING",
+                "V3 acceptance event structural fields are invalid: "
+                "V3 review evidence must be non-empty",
+            )
+
+            malformed_evidence = copy.deepcopy(event_wire)
+            malformed_refs = cast(
+                list[dict[str, object]], malformed_evidence["review_evidence_refs"]
+            )
+            malformed_refs[0]["raw_sha256"] = "not-a-digest"
+            malformed_evidence_raw = (
+                json.dumps(malformed_evidence, separators=(",", ":")) + "\n"
+            ).encode("utf-8")
+            event_file.write_bytes(malformed_evidence_raw)
+            malformed_evidence_reference = ReviewEventRefV3(
+                event_path,
+                digest(malformed_evidence_raw),
+                event_id,
+            )
+            with self.assertRaises(ContextApplicationV2ResolutionError) as caught:
+                resolver.resolve_review_event_leaf_v3(malformed_evidence_reference)
+            self.assertEqual(caught.exception.code, "REVIEW_EVIDENCE_INVALID")
+
             tampered_semantics = copy.deepcopy(event_wire)
             tampered_semantics["review_mode"] = "solo_separate_self_review"
             tampered_semantics_raw = (json.dumps(tampered_semantics) + "\n").encode("utf-8")
@@ -603,8 +672,10 @@ class ContextApplicationV2ResolverTests(unittest.TestCase):
             tampered = copy.deepcopy(event_wire)
             tampered["event_id"] = "ae.v3/" + "01" * 32
             event_file.write_bytes((json.dumps(tampered) + "\n").encode("utf-8"))
-            with self.assertRaises(ResolutionError):
+            with self.assertRaises(ContextApplicationV2ResolutionError) as caught:
                 resolver.resolve_review_event_leaf_v3(reference)
+            self.assertEqual(caught.exception.code, "V3_EVENT_SOURCE_INVALID")
+            self.assertEqual(caught.exception.cause_code, "SOURCE_DIGEST_MISMATCH")
 
     def test_supersession_event_closure_reconstructs_from_base_and_evidence(self) -> None:
         with tempfile.TemporaryDirectory() as raw_temp:

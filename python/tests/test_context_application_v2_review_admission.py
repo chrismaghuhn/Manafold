@@ -21,6 +21,8 @@ from mtgml.authority import (
     AcceptanceSubjectKindV3,
     AcceptanceSubjectPayloadV3,
     ContextApplicationV2Record,
+    ContextApplicationV2SupersessionInputV2,
+    ContextApplicationV2SupersessionRecord,
     ContextAuthoritySourceBindingV2,
     DigestReferenceV1,
     ReviewAcceptanceEventInputV3,
@@ -29,6 +31,7 @@ from mtgml.authority import (
     ReviewerRosterRefV1,
     ReviewEventRefV3,
     ReviewMode,
+    SupersessionReason,
 )
 from mtgml.persistence import encode_canonical
 
@@ -457,6 +460,139 @@ class ContextApplicationV2ReviewAdmissionTests(unittest.TestCase):
                 base_authority_binding=case["base_binding"],
             ).admit(missing_roster_record)
         self.assertEqual(caught.exception.code, "V3_EVENT_SOURCE_INVALID")
+
+    def test_reviewer_binding_and_subject_digest_negatives_reach_admission(self) -> None:
+        from context_application_v2_review_admission import (
+            ContextApplicationV2ReviewAdmissionError,
+            ContextApplicationV2ReviewAdmissionValidator,
+        )
+
+        case = self._synthetic_case()
+        source_resolver, record, event_wire = self._record_with_v3_event(case)
+        validator = ContextApplicationV2ReviewAdmissionValidator(
+            source_resolver,
+            base_authority_binding=case["base_binding"],
+        )
+
+        unknown_reviewer = copy.deepcopy(event_wire)
+        unknown_reviewer["reviewer_role_bindings"][0]["reviewer_id"] = "bob"
+        unknown_record = self._write_rebound_event(case, record, unknown_reviewer)
+        with self.assertRaises(ContextApplicationV2ReviewAdmissionError) as caught:
+            validator.admit(unknown_record)
+        self.assertEqual(caught.exception.code, "REVIEWER_BINDING_NOT_IN_ROSTER")
+
+        role_mismatch = copy.deepcopy(event_wire)
+        role_mismatch["reviewer_role_bindings"][0]["roles"] = ["architecture_maintainer"]
+        role_mismatch_record = self._write_rebound_event(case, record, role_mismatch)
+        with self.assertRaises(ContextApplicationV2ReviewAdmissionError) as caught:
+            validator.admit(role_mismatch_record)
+        self.assertEqual(caught.exception.code, "REVIEWER_BINDING_INVALID")
+
+        duplicate_reviewer = copy.deepcopy(event_wire)
+        duplicate_reviewer["reviewer_role_bindings"].append(
+            {"reviewer_id": "alice", "roles": ["architecture_maintainer"]}
+        )
+        duplicate_reviewer["reviewer_role_bindings"] = sorted(
+            duplicate_reviewer["reviewer_role_bindings"],
+            key=lambda item: encode_canonical([item["reviewer_id"], item["roles"]]),
+        )
+        duplicate_record = self._write_rebound_event(case, record, duplicate_reviewer)
+        with self.assertRaises(ContextApplicationV2ReviewAdmissionError) as caught:
+            validator.admit(duplicate_record)
+        self.assertEqual(caught.exception.code, "REVIEWER_DUPLICATE")
+
+        supersession_input = ContextApplicationV2SupersessionInputV2(
+            superseded_record_id_bytes=record.record_id.digest_bytes,
+            replacement_record_id_bytes=None,
+            replacement_record_kind=None,
+            reason_code=SupersessionReason.AUTHORITY_REVOCATION,
+            source_evidence_refs=(case["member"].member_evidence_refs[0],),
+        )
+        supersession_record = ContextApplicationV2SupersessionRecord.from_parts(
+            supersession_id=supersession_input.identity(),
+            superseded_record_id=record.record_id,
+            replacement_record_id=None,
+            reason_code=SupersessionReason.AUTHORITY_REVOCATION,
+            source_evidence_refs=supersession_input.source_evidence_refs,
+            review_event_ref_v3=record.review_event_ref_v3,
+        )
+        other_subject = AcceptanceSubjectPayloadV3(
+            subject_kind=AcceptanceSubjectKindV3.CONTEXT_APPLICATION_V2_SUPERSESSION_RECORD,
+            subject_payload=supersession_record.acceptance_free_subject_payload(),
+        )
+        wrong_subject_digest = copy.deepcopy(event_wire)
+        wrong_subject_digest["subject_payload_digest"] = DigestReferenceV1.from_identity(
+            other_subject.identity()
+        ).to_wire()
+        wrong_digest_record = self._write_rebound_event(case, record, wrong_subject_digest)
+        with self.assertRaises(ContextApplicationV2ReviewAdmissionError) as caught:
+            validator.admit(wrong_digest_record)
+        self.assertEqual(caught.exception.code, "V3_SUBJECT_DIGEST_MISMATCH")
+
+    def test_review_evidence_missing_and_invalid_are_stable_admission_errors(self) -> None:
+        from context_application_v2_review_admission import (
+            ContextApplicationV2ReviewAdmissionError,
+            ContextApplicationV2ReviewAdmissionValidator,
+        )
+
+        case = self._synthetic_case()
+        source_resolver, record, event_wire = self._record_with_v3_event(case)
+        validator = ContextApplicationV2ReviewAdmissionValidator(
+            source_resolver,
+            base_authority_binding=case["base_binding"],
+        )
+
+        wrong_schema = copy.deepcopy(event_wire)
+        wrong_schema["schema"] = "wrong"
+        schema_raw = (json.dumps(wrong_schema, separators=(",", ":")) + "\n").encode("utf-8")
+        schema_path = record.review_event_ref_v3.path
+        schema_file = cast(Path, case["fixture"].repo) / Path(*schema_path.split("/"))
+        schema_file.write_bytes(schema_raw)
+        wrong_schema_record = ContextApplicationV2Record.from_parts(
+            application_id=record.application_id,
+            theorem_record_id=record.theorem_record_id,
+            members=record.members,
+            review_event_ref_v3=ReviewEventRefV3(
+                schema_path,
+                hashlib.sha256(schema_raw).digest(),
+                record.review_event_ref_v3.event_id,
+            ),
+        )
+        with self.assertRaises(ContextApplicationV2ReviewAdmissionError) as caught:
+            validator.admit(wrong_schema_record)
+        self.assertEqual(caught.exception.code, "V3_EVENT_SCHEMA_INVALID")
+        self.assertEqual(caught.exception.cause_code, "SCHEMA_MISMATCH")
+
+        missing_file = copy.deepcopy(event_wire)
+        missing_file["review_evidence_refs"][0]["path"] = (
+            "docs/review/missing-admission-evidence.md"
+        )
+        missing_file["review_evidence_refs"][0]["raw_sha256"] = "00" * 32
+        missing_file_record = self._write_rebound_event(case, record, missing_file)
+        with self.assertRaises(ContextApplicationV2ReviewAdmissionError) as caught:
+            validator.admit(missing_file_record)
+        self.assertEqual(caught.exception.code, "REVIEW_EVIDENCE_INVALID")
+        self.assertEqual(caught.exception.cause_code, "REPOSITORY_SOURCE_MISSING")
+
+        missing_refs = copy.deepcopy(event_wire)
+        missing_refs["review_evidence_refs"] = []
+        raw = (json.dumps(missing_refs, separators=(",", ":")) + "\n").encode("utf-8")
+        event_path = record.review_event_ref_v3.path
+        event_file = cast(Path, case["fixture"].repo) / Path(*event_path.split("/"))
+        event_file.write_bytes(raw)
+        missing_refs_record = ContextApplicationV2Record.from_parts(
+            application_id=record.application_id,
+            theorem_record_id=record.theorem_record_id,
+            members=record.members,
+            review_event_ref_v3=ReviewEventRefV3(
+                event_path,
+                hashlib.sha256(raw).digest(),
+                record.review_event_ref_v3.event_id,
+            ),
+        )
+        with self.assertRaises(ContextApplicationV2ReviewAdmissionError) as caught:
+            validator.admit(missing_refs_record)
+        self.assertEqual(caught.exception.code, "REVIEW_EVIDENCE_MISSING")
 
     def test_structural_source_binding_mutations_fail_at_event_source_boundary(self) -> None:
         from context_application_v2_resolver import ContextApplicationV2ResolutionError
