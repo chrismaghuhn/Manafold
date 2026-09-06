@@ -26,6 +26,7 @@ from mtgml.authority import (
 ROSTER_DIGEST = "6238d8ff880460adddacc8f1c79ae972d0db150ae19b5ea636431d3f4e90cd36"
 ROSTER_PATH = "sources/m2_5/authorities/reviewer_rosters/v1/" + ROSTER_DIGEST + ".json"
 CHECKLIST_PATH = "docs/maintenance/INTERACTION_AUTHORITY_REVIEW_CHECKLIST.md"
+CHECKLIST_V2_PATH = "docs/maintenance/INTERACTION_AUTHORITY_REVIEW_CHECKLIST_V2.md"
 EXPECTED_ROLES = (
     "architecture_maintainer",
     "conformance_maintainer",
@@ -170,6 +171,48 @@ class ReviewAdmissionFoundationTests(unittest.TestCase):
         ):
             with self.subTest(phrase=phrase):
                 self.assertIn(phrase, lowered)
+
+    def test_checklist_v2_is_registered_and_contains_v2_obligations(self) -> None:
+        checklist = (ROOT / Path(*CHECKLIST_V2_PATH.split("/"))).read_text(encoding="utf-8")
+        lowered = checklist.lower()
+        for phrase in (
+            "interaction-authority-review-checklist.v2",
+            "all ten context slots",
+            "all four temporal slots",
+            "source_value",
+            "reviewed_value",
+            "exact_match",
+            "reviewed_divergence",
+            "not_applicable",
+            "sourcecontext",
+            "candidate",
+            "sourceinstance",
+            "supersession",
+            "revocation",
+        ):
+            with self.subTest(phrase=phrase):
+                self.assertIn(phrase, lowered)
+
+        register = json.loads(
+            (ROOT / "docs" / "normative-document-register.v1.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        entries = [
+            item for item in register["documents"] if item["path"] == CHECKLIST_V2_PATH
+        ]
+        self.assertEqual(
+            entries,
+            [
+                {
+                    "change_process": "governance-pr",
+                    "owner_role": "project-governance",
+                    "path": CHECKLIST_V2_PATH,
+                    "role": "process",
+                    "stability": "accepted",
+                }
+            ],
+        )
 
     def test_roster_source_has_no_runtime_identity_dependency(self) -> None:
         reference = self._roster_ref()

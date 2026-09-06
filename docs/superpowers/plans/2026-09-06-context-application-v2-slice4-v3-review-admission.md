@@ -1,5 +1,7 @@
 # ContextApplicationV2 Slice 4 — V3 Review Admission Implementation Plan
 
+**Status:** provisional implementation plan; implementation not started at plan admission
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox syntax for tracking.
 
 **Goal:** Implement read-only, fail-closed V3 review admission for a semantically valid ContextApplicationV2Record without changing V1/V2/V3 schema or identity contracts and without creating production authority artifacts.
@@ -127,7 +129,7 @@ The helper must never reuse an old event_id for a self-consistent mutation.
 
 | Mutation | Expected code |
 |---|---|
-| top-level event shape or schema | V3_EVENT_SCHEMA_INVALID |
+| top-level event schema/JSON shape rejected by AuthoritySourceResolver | delegated ResolutionError code such as SCHEMA_MISMATCH or JSON_INVALID |
 | decision other than human_accepted | V3_EVENT_DECISION_INVALID |
 | checklist marker mismatch | CHECKLIST_V2_MISMATCH |
 | invalid closed review mode | REVIEW_MODE_INVALID |
@@ -176,7 +178,8 @@ Apply the same fallback pattern at the existing evidence-resolution catch.
 - [ ] Step 2: Keep every existing resolver message unchanged and add code only at the owning V3 checks. Use this mapping:
 
     wrong reference type -> V3_EVENT_REFERENCE_INVALID
-    wrong event shape/schema -> V3_EVENT_SCHEMA_INVALID
+    source-level event schema/JSON failure -> delegated ResolutionError code
+    V3-owned typed structural failure after source resolution -> V3_EVENT_SCHEMA_INVALID
     wrong decision -> V3_EVENT_DECISION_INVALID
     wrong checklist -> CHECKLIST_V2_MISMATCH
     invalid ReviewMode -> REVIEW_MODE_INVALID
