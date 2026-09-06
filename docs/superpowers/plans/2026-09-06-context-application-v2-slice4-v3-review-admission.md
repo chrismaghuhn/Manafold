@@ -682,4 +682,4 @@ The PR body begins with SLICE 4 ONLY, lists implemented behavior, and lists prod
 - [ ] The required negative matrix, mutation safety, and deterministic repeatability exist.
 - [ ] Checklist V2 registration metadata is exact.
 - [ ] No production authority/event/record creation or Slice-5/6/M3 work is included.
-- [ ] No unresolved placeholder or underspecified step remains in this plan.
+- [ ] No incomplete or underspecified step remains in this plan.
