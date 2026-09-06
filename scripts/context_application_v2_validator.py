@@ -404,7 +404,7 @@ class ContextApplicationV2SemanticValidator:
                 resolved_members.append(self._v2_resolver.resolve_member_source_instance(member))
             except (ContextApplicationV2ResolutionError, ResolutionError) as exc:
                 raise ContextApplicationV2SemanticValidationError(
-                    getattr(exc, "code", "MEMBER_SOURCE_BINDING_MISMATCH"),
+                    getattr(exc, "code", None) or "MEMBER_SOURCE_BINDING_MISMATCH",
                     f"members[{index}].source_binding",
                 ) from exc
 

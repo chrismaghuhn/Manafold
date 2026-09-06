@@ -9,7 +9,7 @@ import tempfile
 import unittest
 from dataclasses import replace
 from pathlib import Path
-from typing import cast
+from typing import Callable, cast
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
@@ -475,6 +475,115 @@ class ContextApplicationV2ResolverTests(unittest.TestCase):
                 review_relative,
                 {binding.path for binding in resolved.event.source_binding_digests},
             )
+
+            def assert_old_identity_mutation(
+                mutation: Callable[[dict[str, object]], None],
+                expected_code: str,
+                expected_message: str,
+            ) -> None:
+                mutated = copy.deepcopy(event_wire)
+                mutation(mutated)
+                mutated_raw = (json.dumps(mutated, separators=(",", ":")) + "\n").encode(
+                    "utf-8"
+                )
+                event_file.write_bytes(mutated_raw)
+                mutated_reference = ReviewEventRefV3(
+                    event_path,
+                    digest(mutated_raw),
+                    event_id,
+                )
+                with self.assertRaises(ContextApplicationV2ResolutionError) as caught:
+                    resolver.resolve_review_event_leaf_v3(mutated_reference)
+                self.assertEqual(caught.exception.code, expected_code)
+                self.assertEqual(str(caught.exception), expected_message)
+
+            assert_old_identity_mutation(
+                lambda value: cast(dict[str, object], value).__setitem__("decision", "draft"),
+                "V3_EVENT_DECISION_INVALID",
+                "V3 acceptance event decision is not human_accepted",
+            )
+            assert_old_identity_mutation(
+                lambda value: cast(dict[str, object], value).__setitem__(
+                    "checklist_id", "interaction-authority-review-checklist.v1"
+                ),
+                "CHECKLIST_V2_MISMATCH",
+                "V3 acceptance event checklist is not V2",
+            )
+
+            mutated_schema = copy.deepcopy(event_wire)
+            mutated_schema["schema"] = "wrong"
+            mutated_schema_raw = (
+                json.dumps(mutated_schema, separators=(",", ":")) + "\n"
+            ).encode("utf-8")
+            event_file.write_bytes(mutated_schema_raw)
+            mutated_schema_reference = ReviewEventRefV3(
+                event_path,
+                digest(mutated_schema_raw),
+                event_id,
+            )
+            with self.assertRaises(ResolutionError) as caught:
+                resolver.resolve_review_event_leaf_v3(mutated_schema_reference)
+            self.assertEqual(caught.exception.code, "SCHEMA_MISMATCH")
+
+            tampered_event_id = copy.deepcopy(event_wire)
+            tampered_event_id["event_id"] = "ae.v3/" + "01" * 32
+            tampered_event_id_raw = (
+                json.dumps(tampered_event_id, separators=(",", ":")) + "\n"
+            ).encode("utf-8")
+            event_file.write_bytes(tampered_event_id_raw)
+            tampered_event_id_reference = ReviewEventRefV3(
+                event_path,
+                digest(tampered_event_id_raw),
+                event_id,
+            )
+            with self.assertRaises(ContextApplicationV2ResolutionError) as caught:
+                resolver.resolve_review_event_leaf_v3(tampered_event_id_reference)
+            self.assertEqual(caught.exception.code, "V3_EVENT_IDENTITY_INVALID")
+            self.assertEqual(
+                str(caught.exception),
+                "V3 acceptance event ID differs from its reference",
+            )
+
+            assert_old_identity_mutation(
+                lambda value: cast(dict[str, object], value).__setitem__(
+                    "review_mode", "invalid_review_mode"
+                ),
+                "REVIEW_MODE_INVALID",
+                "V3 acceptance event structural fields are invalid: 'invalid_review_mode' is not a valid ReviewMode",
+            )
+
+            missing_roster_input = ReviewAcceptanceEventInputV3(
+                subject_kind=event_input.subject_kind,
+                subject_payload_digest_reference=event_input.subject_payload_digest_reference,
+                reviewer_roster_ref=event_input.reviewer_roster_ref,
+                reviewer_role_bindings=event_input.reviewer_role_bindings,
+                review_mode=event_input.review_mode,
+                source_binding_digests=(base_binding,),
+                review_evidence_refs=event_input.review_evidence_refs,
+            )
+            missing_roster_wire = ReviewAcceptanceEventLeafV3.from_input(
+                missing_roster_input
+            ).to_wire()
+            missing_roster_raw = (
+                json.dumps(missing_roster_wire, separators=(",", ":")) + "\n"
+            ).encode("utf-8")
+            missing_roster_id = cast(str, missing_roster_wire["event_id"])
+            missing_roster_path = (
+                "sources/m2_5/authorities/review_acceptance_events/v3/"
+                + missing_roster_id.removeprefix("ae.v3/")
+                + ".json"
+            )
+            missing_roster_file = repo / Path(*missing_roster_path.split("/"))
+            missing_roster_file.parent.mkdir(parents=True, exist_ok=True)
+            missing_roster_file.write_bytes(missing_roster_raw)
+            missing_roster_reference = ReviewEventRefV3(
+                missing_roster_path,
+                digest(missing_roster_raw),
+                missing_roster_id,
+            )
+            with self.assertRaises(ContextApplicationV2ResolutionError) as caught:
+                resolver.resolve_review_event_leaf_v3(missing_roster_reference)
+            self.assertEqual(caught.exception.code, "V3_EVENT_SOURCE_INVALID")
 
             tampered_semantics = copy.deepcopy(event_wire)
             tampered_semantics["review_mode"] = "solo_separate_self_review"
