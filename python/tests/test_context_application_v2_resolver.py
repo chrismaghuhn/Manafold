@@ -7,9 +7,10 @@ import json
 import sys
 import tempfile
 import unittest
+from collections.abc import Callable
 from dataclasses import replace
 from pathlib import Path
-from typing import Callable, cast
+from typing import cast
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
@@ -483,9 +484,7 @@ class ContextApplicationV2ResolverTests(unittest.TestCase):
             ) -> None:
                 mutated = copy.deepcopy(event_wire)
                 mutation(mutated)
-                mutated_raw = (json.dumps(mutated, separators=(",", ":")) + "\n").encode(
-                    "utf-8"
-                )
+                mutated_raw = (json.dumps(mutated, separators=(",", ":")) + "\n").encode("utf-8")
                 event_file.write_bytes(mutated_raw)
                 mutated_reference = ReviewEventRefV3(
                     event_path,
@@ -512,9 +511,9 @@ class ContextApplicationV2ResolverTests(unittest.TestCase):
 
             mutated_schema = copy.deepcopy(event_wire)
             mutated_schema["schema"] = "wrong"
-            mutated_schema_raw = (
-                json.dumps(mutated_schema, separators=(",", ":")) + "\n"
-            ).encode("utf-8")
+            mutated_schema_raw = (json.dumps(mutated_schema, separators=(",", ":")) + "\n").encode(
+                "utf-8"
+            )
             event_file.write_bytes(mutated_schema_raw)
             mutated_schema_reference = ReviewEventRefV3(
                 event_path,
@@ -549,7 +548,10 @@ class ContextApplicationV2ResolverTests(unittest.TestCase):
                     "review_mode", "invalid_review_mode"
                 ),
                 "REVIEW_MODE_INVALID",
-                "V3 acceptance event structural fields are invalid: 'invalid_review_mode' is not a valid ReviewMode",
+                (
+                    "V3 acceptance event structural fields are invalid: "
+                    "'invalid_review_mode' is not a valid ReviewMode"
+                ),
             )
 
             missing_roster_input = ReviewAcceptanceEventInputV3(

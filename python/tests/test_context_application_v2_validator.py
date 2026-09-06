@@ -981,12 +981,16 @@ class ContextApplicationV2IntegrationTests(unittest.TestCase):
             bytes.fromhex(digest(model_raw)),
         )
         reviewer_roles = (
-            "architecture_maintainer",
-            "information_safety_reviewer",
-            "rules_authority_maintainer",
-        ) if source_visibility != "not_applicable" else (
-            "architecture_maintainer",
-            "rules_authority_maintainer",
+            (
+                "architecture_maintainer",
+                "information_safety_reviewer",
+                "rules_authority_maintainer",
+            )
+            if source_visibility != "not_applicable"
+            else (
+                "architecture_maintainer",
+                "rules_authority_maintainer",
+            )
         )
         roster_raw = json_bytes(
             {

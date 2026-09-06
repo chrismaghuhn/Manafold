@@ -56,7 +56,6 @@ from mtgml.authority import (
     ReviewerRoleBindingV1,
     ReviewerRosterRefV1,
     ReviewerRosterV1,
-    ReviewerV1,
     ReviewEventRefV1,
     SourceBindingDigestV1,
     SupersessionReason,

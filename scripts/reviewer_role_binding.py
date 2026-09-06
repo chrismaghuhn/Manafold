@@ -38,9 +38,7 @@ def resolve_reviewer_roster(
     reviewers = tuple(
         ReviewerV1(
             cast(str, cast(Mapping[str, object], raw_reviewer)["reviewer_id"]),
-            tuple(
-                cast(list[str], cast(Mapping[str, object], raw_reviewer)["roles"])
-            ),
+            tuple(cast(list[str], cast(Mapping[str, object], raw_reviewer)["roles"])),
         )
         for raw_reviewer in raw_reviewers
     )

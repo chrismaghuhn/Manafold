@@ -69,7 +69,6 @@ class ContextApplicationV2ReviewAdmissionTests(unittest.TestCase):
     ) -> tuple[object, ContextApplicationV2Record, dict[str, object]]:
         reviewer_roles = tuple(sorted(reviewer_roles))
         fixture = case["fixture"]
-        repo = cast(Path, fixture.repo)
         source_resolver = cast(object, case["source_resolver"])
         base_binding = case["base_binding"]
         initial_record = cast(ContextApplicationV2Record, case["record"])
@@ -88,9 +87,7 @@ class ContextApplicationV2ReviewAdmissionTests(unittest.TestCase):
         ).encode("utf-8")
         roster_digest = hashlib.sha256(roster_raw).digest()
         roster_path = (
-            "sources/m2_5/authorities/reviewer_rosters/v1/"
-            + roster_digest.hex()
-            + ".json"
+            "sources/m2_5/authorities/reviewer_rosters/v1/" + roster_digest.hex() + ".json"
         )
         fixture.write_repo(roster_path, roster_raw)
         roster_ref = ReviewerRosterRefV1(
@@ -117,9 +114,7 @@ class ContextApplicationV2ReviewAdmissionTests(unittest.TestCase):
             theorem_record_id=initial_record.theorem_record_id,
             members=initial_record.members,
             review_event_ref_v3=ReviewEventRefV3(
-                "sources/m2_5/authorities/review_acceptance_events/v3/"
-                + "00" * 32
-                + ".json",
+                "sources/m2_5/authorities/review_acceptance_events/v3/" + "00" * 32 + ".json",
                 bytes(32),
                 "ae.v3/" + "00" * 32,
             ),
@@ -191,7 +186,9 @@ class ContextApplicationV2ReviewAdmissionTests(unittest.TestCase):
             AcceptanceEvidenceRefV1(
                 cast(str, cast(dict[str, object], item)["path"]),
                 bytes.fromhex(cast(str, cast(dict[str, object], item)["raw_sha256"])),
-                cls._acceptance_locator(cast(dict[str, object], cast(dict[str, object], item)["locator"])),
+                cls._acceptance_locator(
+                    cast(dict[str, object], cast(dict[str, object], item)["locator"])
+                ),
             )
             for item in cast(list[object], wire["review_evidence_refs"])
         )
@@ -334,17 +331,29 @@ class ContextApplicationV2ReviewAdmissionTests(unittest.TestCase):
 
         cases = (
             (
-                ("rules_authority_maintainer", "conformance_maintainer", "information_safety_reviewer"),
+                (
+                    "rules_authority_maintainer",
+                    "conformance_maintainer",
+                    "information_safety_reviewer",
+                ),
                 "architecture_maintainer",
                 "REVIEWER_ROLE_MISSING",
             ),
             (
-                ("architecture_maintainer", "conformance_maintainer", "information_safety_reviewer"),
+                (
+                    "architecture_maintainer",
+                    "conformance_maintainer",
+                    "information_safety_reviewer",
+                ),
                 "rules_authority_maintainer",
                 "REVIEWER_ROLE_MISSING",
             ),
             (
-                ("architecture_maintainer", "rules_authority_maintainer", "information_safety_reviewer"),
+                (
+                    "architecture_maintainer",
+                    "rules_authority_maintainer",
+                    "information_safety_reviewer",
+                ),
                 "conformance_maintainer",
                 "REVIEWER_ROLE_MISSING",
             ),
@@ -426,9 +435,7 @@ class ContextApplicationV2ReviewAdmissionTests(unittest.TestCase):
             item
             for item in sorted(
                 [*valid_sources, host_binding.to_wire()],
-                key=lambda item: encode_canonical(
-                    context_source_binding_from_wire(item).to_cbor()
-                ),
+                key=lambda item: encode_canonical(context_source_binding_from_wire(item).to_cbor()),
             )
         ]
         extra_record = self._write_rebound_event(case, record, mutated)
@@ -441,9 +448,7 @@ class ContextApplicationV2ReviewAdmissionTests(unittest.TestCase):
 
         mutated = copy.deepcopy(event_wire)
         mutated["source_binding_digests"] = [
-            item
-            for item in valid_sources
-            if item["artifact_role"] != "reviewer_roster_leaf"
+            item for item in valid_sources if item["artifact_role"] != "reviewer_roster_leaf"
         ]
         missing_roster_record = self._write_rebound_event(case, record, mutated)
         with self.assertRaises(ContextApplicationV2ReviewAdmissionError) as caught:

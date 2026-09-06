@@ -85,9 +85,7 @@ class ReviewAdmissionFoundationTests(unittest.TestCase):
             roster = resolve_reviewer_roster(resolver, self._roster_ref())
         self.assertEqual(resolve_leaf.call_count, 1)
         self.assertEqual(roster.reviewers[0].reviewer_id, "chrismaghuhn")
-        helper_source = (ROOT / "scripts" / "reviewer_role_binding.py").read_text(
-            encoding="utf-8"
-        )
+        helper_source = (ROOT / "scripts" / "reviewer_role_binding.py").read_text(encoding="utf-8")
         self.assertNotIn("json.loads", helper_source)
 
     def test_tampered_production_roster_bytes_fail_closed(self) -> None:
@@ -194,13 +192,9 @@ class ReviewAdmissionFoundationTests(unittest.TestCase):
                 self.assertIn(phrase, lowered)
 
         register = json.loads(
-            (ROOT / "docs" / "normative-document-register.v1.json").read_text(
-                encoding="utf-8"
-            )
+            (ROOT / "docs" / "normative-document-register.v1.json").read_text(encoding="utf-8")
         )
-        entries = [
-            item for item in register["documents"] if item["path"] == CHECKLIST_V2_PATH
-        ]
+        entries = [item for item in register["documents"] if item["path"] == CHECKLIST_V2_PATH]
         self.assertEqual(
             entries,
             [

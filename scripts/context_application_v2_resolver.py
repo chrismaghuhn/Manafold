@@ -43,7 +43,6 @@ from mtgml.authority import (
 )
 from mtgml.persistence import encode_canonical
 
-
 V3_RESOLUTION_CODES: Final = frozenset(
     {
         "V3_EVENT_REFERENCE_INVALID",
@@ -587,18 +586,21 @@ class ContextApplicationV2Resolver:
         raw_sources = record["source_binding_digests"]
         if not isinstance(raw_sources, list):
             raise _fail(
-                "V3 acceptance event structural fields are invalid: V3 source binding digests must be an array",
+                "V3 acceptance event structural fields are invalid: "
+                "V3 source binding digests must be an array",
                 code="V3_EVENT_SOURCE_INVALID",
             )
         raw_evidence = record["review_evidence_refs"]
         if not isinstance(raw_evidence, list):
             raise _fail(
-                "V3 acceptance event structural fields are invalid: V3 review evidence refs must be an array",
+                "V3 acceptance event structural fields are invalid: "
+                "V3 review evidence refs must be an array",
                 code="REVIEW_EVIDENCE_INVALID",
             )
         if not raw_evidence:
             raise _fail(
-                "V3 acceptance event structural fields are invalid: V3 review evidence must be non-empty",
+                "V3 acceptance event structural fields are invalid: "
+                "V3 review evidence must be non-empty",
                 code="REVIEW_EVIDENCE_MISSING",
             )
 

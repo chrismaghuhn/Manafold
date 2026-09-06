@@ -13,7 +13,6 @@ if str(PYTHON_SRC) not in sys.path:
     sys.path.insert(0, str(PYTHON_SRC))
 
 from authority_source_resolver import AuthoritySourceResolver, ResolutionError
-from authority_validator import AuthorityValidator
 from context_application_v2_resolver import (
     ContextApplicationV2ResolutionError,
     ContextApplicationV2Resolver,
@@ -41,7 +40,6 @@ from reviewer_role_binding import (
     resolve_reviewer_roster,
     validate_reviewer_binding_against_roster,
 )
-
 
 REQUIRED_V2_ROLES: Final = (
     "architecture_maintainer",
@@ -129,7 +127,10 @@ class ContextApplicationV2ReviewAdmissionValidator:
             ) from exc
 
         resolved_event = self._resolve_event(record.review_event_ref_v3)
-        if resolved_event.event.subject_kind is not AcceptanceSubjectKindV3.CONTEXT_APPLICATION_V2_RECORD:
+        if (
+            resolved_event.event.subject_kind
+            is not AcceptanceSubjectKindV3.CONTEXT_APPLICATION_V2_RECORD
+        ):
             raise ContextApplicationV2ReviewAdmissionError(
                 "V3_SUBJECT_KIND_MISMATCH",
                 "event.subject_kind",
@@ -251,11 +252,7 @@ class ContextApplicationV2ReviewAdmissionValidator:
                 f"event.reviewer_role_bindings.{exc.reviewer_id}",
             ) from exc
 
-        role_union = frozenset(
-            role
-            for binding in bindings
-            for role in binding.roles
-        )
+        role_union = frozenset(role for binding in bindings for role in binding.roles)
         for role in REQUIRED_V2_ROLES:
             if role not in role_union:
                 code = (
@@ -271,8 +268,8 @@ class ContextApplicationV2ReviewAdmissionValidator:
 
 
 __all__ = [
+    "REQUIRED_V2_ROLES",
     "ContextApplicationV2ReviewAdmissionError",
     "ContextApplicationV2ReviewAdmissionResult",
     "ContextApplicationV2ReviewAdmissionValidator",
-    "REQUIRED_V2_ROLES",
 ]
