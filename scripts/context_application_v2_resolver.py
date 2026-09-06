@@ -19,6 +19,7 @@ from authority_source_resolver import (
     AuthoritySourceResolver,
     Locator,
     ResolvedArtifact,
+    ResolvedSourceInstance,
 )
 from authority_validator import AuthorityValidator
 from mtgml.authority import (
@@ -813,31 +814,46 @@ class ContextApplicationV2Resolver:
                 )
         return canonical_source_bindings(result)
 
+    def resolve_member_source_instance(
+        self,
+        member: ContextApplicationMemberV2,
+    ) -> ResolvedSourceInstance:
+        """Resolve one V2 member through the authoritative Slice-2 path."""
+
+        if not isinstance(member, ContextApplicationMemberV2):
+            raise _fail("V2 member source resolution requires ContextApplicationMemberV2")
+        binding_values = member.candidate_universe_binding
+        if not isinstance(binding_values, list) or len(binding_values) != 3:
+            raise _fail("V2 member candidate-universe binding is malformed")
+        raw_path, raw_schema, raw_digest = binding_values
+        if (
+            not isinstance(raw_path, str)
+            or not isinstance(raw_schema, str)
+            or not isinstance(raw_digest, bytes)
+            or len(raw_digest) != 32
+        ):
+            raise _fail("V2 member candidate-universe binding has invalid fields")
+        binding = SourceBindingDigestV1(
+            "candidate_universe",
+            raw_path,
+            raw_schema,
+            raw_digest,
+        )
+        return self._resolver.resolve_candidate_source_instance(
+            member.candidate_id,
+            member.candidate_identity_digest_reference.to_wire(),
+            member.source_instance_id,
+            binding,
+        )
+
     def _candidate_provenance(
         self, member: ContextApplicationMemberV2
     ) -> tuple[
         tuple[ContextAuthoritySourceBindingV2, ...],
         tuple[ContextAuthoritySourceBindingV2, ...],
     ]:
-        raw_binding = member.candidate_universe_binding
-        if not isinstance(raw_binding, list) or len(raw_binding) != 3:
-            raise _fail("V2 member candidate_universe_binding is malformed")
-        if not isinstance(raw_binding[0], str) or not isinstance(raw_binding[1], str):
-            raise _fail("V2 member candidate_universe_binding path/schema is malformed")
-        if not isinstance(raw_binding[2], bytes) or len(raw_binding[2]) != 32:
-            raise _fail("V2 member candidate_universe_binding digest is malformed")
-        candidate_binding_v1 = SourceBindingDigestV1(
-            "candidate_universe",
-            raw_binding[0],
-            raw_binding[1],
-            raw_binding[2],
-        )
-        resolved = self._resolver.resolve_candidate_source_instance(
-            member.candidate_id,
-            member.candidate_identity_digest_reference.to_wire(),
-            member.source_instance_id,
-            candidate_binding_v1,
-        )
+        resolved = self.resolve_member_source_instance(member)
+        candidate_binding_v1 = resolved.candidate.candidate_universe_binding
         candidate_binding = ContextAuthoritySourceBindingV2(
             "candidate_universe",
             candidate_binding_v1.path,

@@ -246,6 +246,78 @@ class ContextApplicationV2ResolverTests(unittest.TestCase):
                 }
             )
 
+    def test_member_source_helper_uses_all_v2_member_identity_fields(self) -> None:
+        evidence = EvidenceRefV1(
+            "model",
+            MODEL.path,
+            ("whole_artifact", None),
+            bytes(32),
+        )
+        context = tuple(
+            ContextSlotBridgeAttestationV2(
+                slot_name=slot,
+                source_value="not_applicable",
+                reviewed_value="not_applicable",
+                relation=ContextBridgeRelationV2.EXACT_MATCH,
+                evidence_refs=(evidence,),
+                rationale="synthetic",
+            )
+            for slot in (
+                "zone",
+                "visibility",
+                "timing",
+                "temporal_order",
+                "source_affected_relation",
+                "control_ownership_relation",
+                "replacement_layer_relation",
+                "trigger_lki_relation",
+                "information_relation",
+                "decision_actor_relation",
+            )
+        )
+        temporal = tuple(
+            TemporalSlotAttestationV2(
+                slot_name=slot,
+                reviewed_value="not_applicable",
+                evidence_refs=(evidence,),
+                rationale="synthetic",
+            )
+            for slot in (
+                "trigger_order",
+                "dependency_order",
+                "duration",
+                "replacement_order",
+            )
+        )
+        member = ContextApplicationMemberV2(
+            candidate_id="synthetic-candidate",
+            candidate_identity_digest_reference=DigestReferenceV1(
+                DIGEST_ENVELOPE_ID,
+                SHA256_ID,
+                "manafold.m2.5.c.candidate-identity.v1",
+                CANONICAL_CBOR_ID,
+                "manafold.m2.5.c.candidate-identity-input.v1",
+                bytes(32),
+            ),
+            source_instance_id="si.v1/synthetic/0",
+            candidate_universe_binding=[CANDIDATE.path, CANDIDATE.schema, CANDIDATE.raw_sha256],
+            context_binding_v1=[
+                "binary",
+                "symmetric",
+                [[0, "ordered_participant", "requirement_family", "family.a"]],
+                "same_host",
+            ],
+            precondition_attestations_v1=[],
+            member_evidence_refs=(evidence,),
+            context_member_bridge_attestation_v2=ContextMemberBridgeAttestationV2(
+                context=context,
+                temporal=temporal,
+            ),
+        )
+        resolver = ContextApplicationV2Resolver(AuthoritySourceResolver(Path.cwd()))
+        with self.assertRaises(ResolutionError):
+            resolver.resolve_member_source_instance(member)
+
     def test_repository_source_resolution_verifies_bytes_and_schema(self) -> None:
         with tempfile.TemporaryDirectory() as raw_temp:
             repo = Path(raw_temp)
