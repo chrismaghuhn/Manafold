@@ -25,12 +25,16 @@ from context_application_v2_resolver import (
 )
 from mtgml.authority import (
     ACCEPTANCE_EVENT_SCHEMA_V3,
+    AUTHORITY_SCHEMA_V1,
     CANONICAL_CBOR_ID,
     CONTEXT_AUTHORITY_SOURCE_ROLES_V2,
     DIGEST_ENVELOPE_ID,
     SHA256_ID,
     AcceptanceEvidenceRefV1,
+    AcceptanceSubjectKind,
     AcceptanceSubjectKindV3,
+    AcceptanceSubjectPayloadV1,
+    ApplicationHostBindingV2,
     AuthorityIdentityKind,
     AuthorityIdentityV1,
     ContextApplicationAuthorityV2,
@@ -46,20 +50,36 @@ from mtgml.authority import (
     ContextSlotBridgeAttestationV2,
     DigestReferenceV1,
     EvidenceRefV1,
+    ReviewAcceptanceEventInputV1,
     ReviewAcceptanceEventInputV3,
+    ReviewAcceptanceEventLeafV1,
     ReviewAcceptanceEventLeafV3,
     ReviewerRoleBindingV1,
     ReviewerRosterRefV1,
+    ReviewEventRefV1,
     ReviewEventRefV3,
     ReviewMode,
+    SourceBindingDigestV1,
     SupersessionReason,
     TemporalSlotAttestationV2,
+    compute_authority_identity,
 )
 from mtgml.persistence import encode_canonical
 
 
 def digest(value: bytes) -> bytes:
     return hashlib.sha256(value).digest()
+
+
+def identity_wire(identity: AuthorityIdentityV1) -> dict[str, object]:
+    return {
+        "envelope_id": "mtgml.digest-envelope.v1",
+        "algorithm_id": "sha-256",
+        "semantic_domain": identity.semantic_domain,
+        "payload_codec_id": "mtgml.canonical-cbor.v1",
+        "input_schema_id": identity.input_schema_id,
+        "digest_hex": identity.digest_bytes.hex(),
+    }
 
 
 def binding(
@@ -279,9 +299,7 @@ class ContextApplicationV2ResolverTests(unittest.TestCase):
     def test_v3_event_leaf_resolves_structurally_and_verifies_raw_bytes(self) -> None:
         with tempfile.TemporaryDirectory() as raw_temp:
             repo = Path(raw_temp)
-            model_raw = json.dumps(
-                {"schema": MODEL.schema, "model_id": "declared-interaction-model"}
-            ).encode("utf-8")
+            model_raw = (ROOT / Path(*MODEL.path.split("/"))).read_bytes()
             model_path = repo / Path(*MODEL.path.split("/"))
             model_path.parent.mkdir(parents=True)
             model_path.write_bytes(model_raw)
@@ -292,7 +310,10 @@ class ContextApplicationV2ResolverTests(unittest.TestCase):
                     "reviewers": [
                         {
                             "reviewer_id": "alice",
-                            "roles": ["architecture_maintainer"],
+                            "roles": [
+                                "architecture_maintainer",
+                                "rules_authority_maintainer",
+                            ],
                         }
                     ],
                 }
@@ -377,9 +398,8 @@ class ContextApplicationV2ResolverTests(unittest.TestCase):
     def test_supersession_event_closure_reconstructs_from_base_and_evidence(self) -> None:
         with tempfile.TemporaryDirectory() as raw_temp:
             repo = Path(raw_temp)
-            model_raw = json.dumps(
-                {"schema": MODEL.schema, "model_id": "declared-interaction-model"}
-            ).encode("utf-8")
+            model_raw = (ROOT / Path(*MODEL.path.split("/"))).read_bytes()
+            model_document = cast(dict[str, object], json.loads(model_raw.decode("utf-8")))
             model_relative = MODEL.path
             model_path = repo / Path(*model_relative.split("/"))
             model_path.parent.mkdir(parents=True)
@@ -391,7 +411,10 @@ class ContextApplicationV2ResolverTests(unittest.TestCase):
                     "reviewers": [
                         {
                             "reviewer_id": "alice",
-                            "roles": ["architecture_maintainer"],
+                            "roles": [
+                                "architecture_maintainer",
+                                "rules_authority_maintainer",
+                            ],
                         }
                     ],
                 }
@@ -404,43 +427,22 @@ class ContextApplicationV2ResolverTests(unittest.TestCase):
             roster_path.write_bytes(roster_raw)
             roster_ref = ReviewerRosterRefV1(roster_relative, ROSTER.schema, digest(roster_raw))
 
-            b1_citations_raw = json.dumps({"schema": B1_CITATIONS.schema}).encode("utf-8")
-            b1_closure_raw = json.dumps({"schema": B1_CLOSURE.schema}).encode("utf-8")
-            for source_binding, raw in (
-                (B1_CITATIONS, b1_citations_raw),
-                (B1_CLOSURE, b1_closure_raw),
-            ):
-                file_path = repo / Path(*source_binding.path.split("/"))
-                file_path.parent.mkdir(parents=True, exist_ok=True)
-                file_path.write_bytes(raw)
-            citation_binding = ContextAuthoritySourceBindingV2(
-                B1_CITATIONS.artifact_role,
-                B1_CITATIONS.path,
-                B1_CITATIONS.schema,
-                digest(b1_citations_raw),
-            )
-            closure_binding = ContextAuthoritySourceBindingV2(
-                B1_CLOSURE.artifact_role,
-                B1_CLOSURE.path,
-                B1_CLOSURE.schema,
-                digest(b1_closure_raw),
-            )
             base_raw = json.dumps(
                 {
                     "schema": BASE.schema,
                     "model_binding": {
                         "path": MODEL.path,
                         "raw_sha256": digest(model_raw).hex(),
-                        "model_id": "declared-interaction-model",
-                        "model_version": "v2",
+                        "model_id": model_document["model_id"],
+                        "model_version": model_document["model_version"],
                     },
                     "source_bindings": [
                         {
-                            "authority_kind": "b1_final",
-                            "artifact_role": B1_CLOSURE.artifact_role,
-                            "path": B1_CLOSURE.path,
-                            "schema_or_null": B1_CLOSURE.schema,
-                            "raw_sha256": digest(b1_closure_raw).hex(),
+                            "authority_kind": "model",
+                            "artifact_role": MODEL.artifact_role,
+                            "path": MODEL.path,
+                            "schema_or_null": MODEL.schema,
+                            "raw_sha256": digest(model_raw).hex(),
                         }
                     ],
                     "relation_proofs": [],
@@ -460,10 +462,7 @@ class ContextApplicationV2ResolverTests(unittest.TestCase):
             )
 
             evidence = EvidenceRefV1(
-                "b1_final",
-                B1_CITATIONS.path,
-                ("whole_artifact", None),
-                digest(b1_citations_raw),
+                "model", MODEL.path, ("whole_artifact", None), digest(model_raw)
             )
             supersession_input = ContextApplicationV2SupersessionInputV2(
                 superseded_record_id_bytes=bytes(32),
@@ -503,12 +502,8 @@ class ContextApplicationV2ResolverTests(unittest.TestCase):
                     "base_authority_v1",
                     "declared_model",
                     "reviewer_roster_leaf",
-                    "b1_final_citations",
-                    "b1_final_closure",
                 },
             )
-            self.assertIn(citation_binding, actual)
-            self.assertIn(closure_binding, actual)
 
     def test_application_closure_includes_exact_candidate_and_rev3_provenance(self) -> None:
         sys.path.insert(0, str(ROOT / "python" / "tests"))
@@ -521,14 +516,34 @@ class ContextApplicationV2ResolverTests(unittest.TestCase):
                 fixture._synthetic_binding_fixture()
             )
             model_path = fixture.repo / Path(*MODEL.path.split("/"))
-            model_raw = model_path.read_bytes()
+            model_raw = (ROOT / Path(*MODEL.path.split("/"))).read_bytes()
+            model_document = cast(dict[str, object], json.loads(model_raw.decode("utf-8")))
+            model_path.write_bytes(model_raw)
+            universe_path = fixture.repo / Path(*CANDIDATE.path.split("/"))
+            universe_document = cast(
+                dict[str, object], json.loads(universe_path.read_text(encoding="utf-8"))
+            )
+            input_bindings = cast(dict[str, object], universe_document["input_bindings"])
+            declared_model_input = cast(dict[str, object], input_bindings["declared_model"])
+            declared_model_input["raw_sha256"] = digest(model_raw).hex()
+            universe_raw = (json.dumps(universe_document, indent=2) + "\n").encode("utf-8")
+            universe_path.write_bytes(universe_raw)
+            candidate_binding = SourceBindingDigestV1(
+                "candidate_universe",
+                CANDIDATE.path,
+                CANDIDATE.schema,
+                digest(universe_raw),
+            )
             roster_raw = json.dumps(
                 {
                     "schema": ROSTER.schema,
                     "reviewers": [
                         {
                             "reviewer_id": "alice",
-                            "roles": ["architecture_maintainer"],
+                            "roles": [
+                                "architecture_maintainer",
+                                "rules_authority_maintainer",
+                            ],
                         }
                     ],
                 }
@@ -541,20 +556,161 @@ class ContextApplicationV2ResolverTests(unittest.TestCase):
             roster_path.write_bytes(roster_raw)
             roster_ref = ReviewerRosterRefV1(roster_relative, ROSTER.schema, digest(roster_raw))
 
+            model_binding_v1 = SourceBindingDigestV1(
+                "declared_model", MODEL.path, MODEL.schema, digest(model_raw)
+            )
+            roster_binding_v1 = SourceBindingDigestV1(
+                "reviewer_roster_leaf", roster_relative, ROSTER.schema, digest(roster_raw)
+            )
+            review_relative = "docs/review/context-theorem.md"
+            review_raw = b"accepted context theorem evidence\n"
+            review_path = fixture.repo / Path(*review_relative.split("/"))
+            review_path.parent.mkdir(parents=True, exist_ok=True)
+            review_path.write_bytes(review_raw)
+            review_evidence = AcceptanceEvidenceRefV1(
+                review_relative, digest(review_raw), ("whole_artifact", None)
+            )
+            source_evidence = EvidenceRefV1(
+                "model", MODEL.path, ("whole_artifact", None), digest(model_raw)
+            )
+            subject_shape = {
+                "arity": "unary",
+                "directionality": "none",
+                "participant_roles": [
+                    {
+                        "position": 0,
+                        "role": "source",
+                        "participant_kind": "card",
+                        "semantic_ref": "card.synthetic",
+                    }
+                ],
+                "host_relationship": "not_applicable",
+            }
+            theorem_id = compute_authority_identity(
+                AuthorityIdentityKind.CONTEXT_THEOREM,
+                [
+                    "manafold.m2.5.c.context-proof-input.v1",
+                    cast(str, model_document["model_id"]),
+                    [
+                        "unary",
+                        "none",
+                        [[0, "source", "card", "card.synthetic"]],
+                        "not_applicable",
+                    ],
+                    ["not_applicable"] * 10,
+                    ["not_applicable"] * 4,
+                    [],
+                    [],
+                    [],
+                ],
+            )
+            rationale = "synthetic accepted context theorem"
+            acceptance_subject = AcceptanceSubjectPayloadV1(
+                AcceptanceSubjectKind.CONTEXT_THEOREM_RECORD,
+                [theorem_id.digest_bytes, [source_evidence.to_cbor()], rationale],
+            )
+            event_input_v1 = ReviewAcceptanceEventInputV1(
+                subject_kind=AcceptanceSubjectKind.CONTEXT_THEOREM_RECORD,
+                subject_payload_digest=acceptance_subject.identity().digest_bytes,
+                reviewer_roster_ref=roster_ref,
+                reviewer_role_bindings=(
+                    ReviewerRoleBindingV1(
+                        "alice",
+                        ("architecture_maintainer", "rules_authority_maintainer"),
+                    ),
+                ),
+                review_mode=ReviewMode.SOLO_SEPARATE_SELF_REVIEW,
+                source_binding_digests=tuple(
+                    sorted(
+                        (model_binding_v1, roster_binding_v1),
+                        key=lambda item: encode_canonical(item.to_cbor()),
+                    )
+                ),
+                review_evidence_refs=(review_evidence,),
+            )
+            event_leaf_v1 = ReviewAcceptanceEventLeafV1.from_input(event_input_v1)
+            event_raw_v1 = (json.dumps(event_leaf_v1.to_wire(), indent=2) + "\n").encode("utf-8")
+            event_relative_v1 = (
+                "sources/m2_5/authorities/review_acceptance_events/v1/"
+                + event_leaf_v1.event_id.as_text().removeprefix("ae.v1/")
+                + ".json"
+            )
+            event_path_v1 = fixture.repo / Path(*event_relative_v1.split("/"))
+            event_path_v1.parent.mkdir(parents=True, exist_ok=True)
+            event_path_v1.write_bytes(event_raw_v1)
+            event_ref_v1 = ReviewEventRefV1(
+                event_relative_v1, digest(event_raw_v1), event_leaf_v1.event_id.as_text()
+            )
+            event_binding_v1 = SourceBindingDigestV1(
+                "acceptance_event_leaf",
+                event_relative_v1,
+                "manafold.m2.5.c.review-acceptance-event.v1",
+                digest(event_raw_v1),
+            )
+            theorem_record_id = compute_authority_identity(
+                AuthorityIdentityKind.CONTEXT_THEOREM_RECORD,
+                [
+                    "manafold.m2.5.c.context-proof-record-input.v1",
+                    theorem_id.digest_bytes,
+                    [source_evidence.to_cbor()],
+                    event_ref_v1.to_cbor(),
+                    rationale,
+                ],
+            )
+            theorem = {
+                "theorem_id": identity_wire(theorem_id),
+                "record_id": identity_wire(theorem_record_id),
+                "subject_shape": subject_shape,
+                "context_dimensions": ["not_applicable"] * 10,
+                "temporal_semantics": ["not_applicable"] * 4,
+                "preconditions": [],
+                "b2_boundary_refs": [],
+                "b1_final_citation_refs": [],
+                "source_evidence_refs": [source_evidence.to_wire()],
+                "semantic_rationale": rationale,
+                "acceptance": {
+                    "decision": "human_accepted",
+                    "review_event_ref": event_ref_v1.to_wire(),
+                },
+            }
             base_document = {
-                "schema": BASE.schema,
+                "schema": AUTHORITY_SCHEMA_V1,
                 "model_binding": {
                     "path": MODEL.path,
                     "raw_sha256": digest(model_raw).hex(),
-                    "model_id": "declared-interaction-model.v2",
-                    "model_version": "v2",
+                    "model_id": model_document["model_id"],
+                    "model_version": model_document["model_version"],
                 },
-                "source_bindings": [],
-                "context_proofs": [
+                "source_bindings": [
                     {
-                        "record_id": {"digest_hex": "00" * 32},
-                    }
+                        "authority_kind": "model",
+                        "artifact_role": model_binding_v1.artifact_role,
+                        "path": model_binding_v1.path,
+                        "schema_or_null": model_binding_v1.schema_or_null,
+                        "raw_sha256": model_binding_v1.raw_sha256.hex(),
+                    },
+                    {
+                        "authority_kind": "reviewer_roster",
+                        "artifact_role": roster_binding_v1.artifact_role,
+                        "path": roster_binding_v1.path,
+                        "schema_or_null": roster_binding_v1.schema_or_null,
+                        "raw_sha256": roster_binding_v1.raw_sha256.hex(),
+                    },
+                    {
+                        "authority_kind": "acceptance_event",
+                        "artifact_role": event_binding_v1.artifact_role,
+                        "path": event_binding_v1.path,
+                        "schema_or_null": event_binding_v1.schema_or_null,
+                        "raw_sha256": event_binding_v1.raw_sha256.hex(),
+                    },
                 ],
+                "relation_proofs": [],
+                "relation_applications": [],
+                "domain_proofs": [],
+                "domain_applications": [],
+                "context_proofs": [theorem],
+                "context_applications": [],
+                "supersession_records": [],
             }
             base_raw = (json.dumps(base_document) + "\n").encode("utf-8")
             base_path = fixture.repo / Path(*BASE.path.split("/"))
@@ -633,9 +789,6 @@ class ContextApplicationV2ResolverTests(unittest.TestCase):
                     temporal=temporal,
                 ),
             )
-            theorem_record_id = AuthorityIdentityV1(
-                AuthorityIdentityKind.CONTEXT_THEOREM_RECORD, bytes(32)
-            )
             application_id = ContextApplicationV2InputV1(
                 theorem_record_id_bytes=theorem_record_id.digest_bytes,
                 members=(member,),
@@ -675,7 +828,8 @@ class ContextApplicationV2ResolverTests(unittest.TestCase):
     def test_container_closure_adds_event_leaf_and_checks_top_level_projections(self) -> None:
         with tempfile.TemporaryDirectory() as raw_temp:
             repo = Path(raw_temp)
-            model_raw = json.dumps({"schema": MODEL.schema}).encode("utf-8")
+            model_raw = (ROOT / Path(*MODEL.path.split("/"))).read_bytes()
+            model_document = cast(dict[str, object], json.loads(model_raw.decode("utf-8")))
             model_path = repo / Path(*MODEL.path.split("/"))
             model_path.parent.mkdir(parents=True)
             model_path.write_bytes(model_raw)
@@ -710,18 +864,35 @@ class ContextApplicationV2ResolverTests(unittest.TestCase):
             candidate_binding = ContextAuthoritySourceBindingV2(
                 CANDIDATE.artifact_role, CANDIDATE.path, CANDIDATE.schema, digest(candidate_raw)
             )
-            base_raw = json.dumps(
-                {
-                    "schema": BASE.schema,
-                    "model_binding": {
-                        "path": MODEL.path,
-                        "raw_sha256": digest(model_raw).hex(),
-                        "model_id": "declared-interaction-model",
-                        "model_version": "v2",
-                    },
-                    "source_bindings": [],
-                    "context_proofs": [],
-                }
+            base_raw = (
+                json.dumps(
+                    {
+                        "schema": BASE.schema,
+                        "model_binding": {
+                            "path": MODEL.path,
+                            "raw_sha256": digest(model_raw).hex(),
+                            "model_id": model_document["model_id"],
+                            "model_version": model_document["model_version"],
+                        },
+                        "source_bindings": [
+                            {
+                                "authority_kind": "model",
+                                "artifact_role": MODEL.artifact_role,
+                                "path": MODEL.path,
+                                "schema_or_null": MODEL.schema,
+                                "raw_sha256": digest(model_raw).hex(),
+                            }
+                        ],
+                        "relation_proofs": [],
+                        "relation_applications": [],
+                        "domain_proofs": [],
+                        "domain_applications": [],
+                        "context_proofs": [],
+                        "context_applications": [],
+                        "supersession_records": [],
+                    }
+                )
+                + "\n"
             ).encode("utf-8")
             base_file = repo / Path(*BASE.path.split("/"))
             base_file.parent.mkdir(parents=True, exist_ok=True)
@@ -864,6 +1035,7 @@ class ContextApplicationV2ResolverTests(unittest.TestCase):
                 self.assertEqual(
                     [item.to_wire() for item in actual], case["expected_source_bindings"]
                 )
+
         for case in matrix["container_cases"]:
             with self.subTest(case=case["case_id"]):
                 actual = reconstruct_container_source_closure(
@@ -885,6 +1057,141 @@ class ContextApplicationV2ResolverTests(unittest.TestCase):
                 self.assertEqual(
                     [item.to_wire() for item in actual], case["expected_source_bindings"]
                 )
+
+    def test_acceptance_evidence_resolves_without_v2_source_role(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_temp:
+            repo = Path(raw_temp)
+            relative = "docs/review/host-binding.md"
+            raw = b"accepted host-binding evidence\n"
+            path = repo / Path(*relative.split("/"))
+            path.parent.mkdir(parents=True)
+            path.write_bytes(raw)
+            evidence = AcceptanceEvidenceRefV1(
+                relative,
+                digest(raw),
+                ("whole_artifact", None),
+            )
+            resolver = ContextApplicationV2Resolver(AuthoritySourceResolver(repo))
+            resolved = resolver.resolve_acceptance_evidence(evidence)
+            self.assertEqual(resolved.artifact.raw_bytes, raw)
+
+            model_evidence = AcceptanceEvidenceRefV1(
+                MODEL.path,
+                bytes(32),
+                ("whole_artifact", None),
+            )
+            with self.assertRaises(ContextApplicationV2ResolutionError):
+                resolver.source_binding_for_evidence(model_evidence)  # type: ignore[arg-type]
+
+    def test_host_bindings_are_subject_specific_not_container_global(self) -> None:
+        app_a = AuthorityIdentityV1(AuthorityIdentityKind.CONTEXT_APPLICATION_V2, b"a" * 32)
+        app_b = AuthorityIdentityV1(AuthorityIdentityKind.CONTEXT_APPLICATION_V2, b"b" * 32)
+        claim_a = "hbc.v1/" + "a1" * 32
+        claim_b = "hbc.v1/" + "b2" * 32
+        link_a = ApplicationHostBindingV2("context_application", app_a, (claim_a,))
+        link_b = ApplicationHostBindingV2("context_application", app_b, (claim_b,))
+        host_authority = binding(
+            "host_binding_authority_v2",
+            "sources/m2_5/authorities/interaction_review_authority.v2.json",
+            "manafold.m2.5.c.interaction-review-authority.v2",
+            11,
+        )
+        claim_binding_a = binding(
+            "host_binding_claim_record",
+            "sources/m2_5/authorities/cross_deck_host_binding_claims/v1/" + "a1" * 32 + ".json",
+            "manafold.m2.5.c.cross-deck-host-binding-claim-record.v1",
+            12,
+        )
+        claim_binding_b = binding(
+            "host_binding_claim_record",
+            "sources/m2_5/authorities/cross_deck_host_binding_claims/v1/" + "b2" * 32 + ".json",
+            "manafold.m2.5.c.cross-deck-host-binding-claim-record.v1",
+            13,
+        )
+        container = ContextApplicationAuthorityV2(
+            base_authority_v1_binding=BASE,
+            host_binding_authority_v2_binding=host_authority,
+            candidate_universe_binding=CANDIDATE,
+            source_bindings=canonical_source_bindings(
+                (BASE, CANDIDATE, host_authority, claim_binding_a, claim_binding_b)
+            ),
+            context_application_v2_records=(),
+            context_application_v2_supersession_records=(),
+            application_host_bindings_v2=(link_a, link_b),
+        )
+        resolver = ContextApplicationV2Resolver(AuthoritySourceResolver(Path.cwd()))
+        container_without_b = replace(
+            container,
+            source_bindings=canonical_source_bindings(
+                (BASE, CANDIDATE, host_authority, claim_binding_a)
+            ),
+            application_host_bindings_v2=(link_a,),
+        )
+        subject_a_without_b = resolver._container_host_bindings_for_application(
+            container_without_b, app_a.as_text(), container_without_b.source_bindings
+        )
+        subject_a = resolver._container_host_bindings_for_application(
+            container, app_a.as_text(), container.source_bindings
+        )
+        subject_b = resolver._container_host_bindings_for_application(
+            container, app_b.as_text(), container.source_bindings
+        )
+        self.assertEqual(subject_a_without_b, subject_a)
+        self.assertEqual(subject_a, (host_authority, claim_binding_a))
+        self.assertEqual(subject_b, (host_authority, claim_binding_b))
+        self.assertNotIn(claim_binding_b, subject_a)
+        self.assertNotIn(claim_binding_a, subject_b)
+        self.assertEqual(
+            resolver._container_host_bindings(container, container.source_bindings),
+            canonical_source_bindings((host_authority, claim_binding_a, claim_binding_b)),
+        )
+
+    def test_base_authority_is_v1_validated_before_dependency_walk(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_temp:
+            repo = Path(raw_temp)
+            model_relative = MODEL.path
+            model_path = repo / Path(*model_relative.split("/"))
+            model_path.parent.mkdir(parents=True)
+            model_raw = (ROOT / Path(*model_relative.split("/"))).read_bytes()
+            model_path.write_bytes(model_raw)
+            model_digest = digest(model_raw)
+            base_document = {
+                "schema": BASE.schema,
+                "model_binding": {
+                    "path": model_relative,
+                    "raw_sha256": model_digest.hex(),
+                    "model_id": "declared-interaction-model.v2",
+                    "model_version": "v2",
+                },
+                "source_bindings": [
+                    {
+                        "authority_kind": "model",
+                        "artifact_role": "declared_model",
+                        "path": model_relative,
+                        "schema_or_null": MODEL.schema,
+                        "raw_sha256": model_digest.hex(),
+                    }
+                ],
+                "relation_proofs": [],
+                "relation_applications": [],
+                "domain_proofs": [],
+                "domain_applications": [],
+                "context_proofs": [{"record_id": {"digest_hex": "00" * 32}}],
+                "context_applications": [],
+                "supersession_records": [],
+            }
+            base_raw = (json.dumps(base_document) + "\n").encode("utf-8")
+            base_path = repo / Path(*BASE.path.split("/"))
+            base_path.parent.mkdir(parents=True)
+            base_path.write_bytes(base_raw)
+            base_binding = ContextAuthoritySourceBindingV2(
+                BASE.artifact_role, BASE.path, BASE.schema, digest(base_raw)
+            )
+            resolver = ContextApplicationV2Resolver(
+                AuthoritySourceResolver(repo), base_authority_binding=base_binding
+            )
+            with self.assertRaises(ResolutionError):
+                resolver._base_context(None)
 
 
 if __name__ == "__main__":

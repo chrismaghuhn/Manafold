@@ -7,7 +7,10 @@ human acceptance are semantically correct.
 
 from __future__ import annotations
 
+import io
+import json
 import re
+import zipfile
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import cast
@@ -17,6 +20,7 @@ from authority_source_resolver import (
     Locator,
     ResolvedArtifact,
 )
+from authority_validator import AuthorityValidator
 from mtgml.authority import (
     ACCEPTANCE_EVENT_SCHEMA_V3,
     AcceptanceEvidenceRefV1,
@@ -45,7 +49,7 @@ class ContextApplicationV2ResolutionError(ValueError):
 
 @dataclass(frozen=True)
 class ResolvedContextEvidence:
-    binding: ContextAuthoritySourceBindingV2
+    binding: ContextAuthoritySourceBindingV2 | None
     artifact: ResolvedArtifact
     locator: Locator
     value: object
@@ -267,10 +271,12 @@ class ContextApplicationV2Resolver:
         self._base_authority_binding = base_authority_binding
 
     def source_binding_for_evidence(
-        self, reference: EvidenceRefV1 | AcceptanceEvidenceRefV1
+        self, reference: EvidenceRefV1
     ) -> ContextAuthoritySourceBindingV2:
+        if not isinstance(reference, EvidenceRefV1):
+            raise _fail("V2 source-binding mapping requires EvidenceRefV1")
         path = reference.path
-        authority_kind = getattr(reference, "authority_kind", None)
+        authority_kind = reference.authority_kind
         candidates: list[tuple[str, ContextAuthoritySourceRegistryEntryV2]] = []
         for role, entry in _registry().items():
             if re.fullmatch(entry.path_pattern, path) is not None:
@@ -315,9 +321,7 @@ class ContextApplicationV2Resolver:
             binding.path, binding.raw_sha256, binding.schema
         )
 
-    def resolve_evidence(
-        self, reference: EvidenceRefV1 | AcceptanceEvidenceRefV1
-    ) -> ResolvedContextEvidence:
+    def resolve_evidence(self, reference: EvidenceRefV1) -> ResolvedContextEvidence:
         binding = self.source_binding_for_evidence(reference)
         artifact = self.resolve_source_binding(binding)
         locator = reference.locator
@@ -340,6 +344,62 @@ class ContextApplicationV2Resolver:
             value = artifact.json_value if artifact.json_value is not None else artifact.raw_bytes
             return ResolvedContextEvidence(binding, artifact, locator, value)
         raise _fail(f"unsupported evidence locator kind: {kind!r}")
+
+    @staticmethod
+    def _acceptance_json_pointer(value: object, pointer: str) -> object:
+        if pointer == "":
+            return value
+        if not pointer.startswith("/"):
+            raise _fail("acceptance JSON Pointer must begin with '/'")
+        current = value
+        for raw_token in pointer[1:].split("/"):
+            token = raw_token.replace("~1", "/").replace("~0", "~")
+            if isinstance(current, Mapping):
+                if token not in current:
+                    raise _fail("acceptance JSON Pointer token is absent")
+                current = current[token]
+            elif isinstance(current, list):
+                if not token.isdigit() or (token != "0" and token.startswith("0")):
+                    raise _fail("acceptance JSON Pointer array index is invalid")
+                index = int(token)
+                if index >= len(current):
+                    raise _fail("acceptance JSON Pointer index is out of range")
+                current = current[index]
+            else:
+                raise _fail("acceptance JSON Pointer traverses a scalar")
+        return current
+
+    def resolve_acceptance_evidence(
+        self, evidence: AcceptanceEvidenceRefV1
+    ) -> ResolvedContextEvidence:
+        """Resolve review evidence without promoting it to a source binding."""
+
+        if not isinstance(evidence, AcceptanceEvidenceRefV1):
+            raise _fail("acceptance evidence resolution requires AcceptanceEvidenceRefV1")
+        artifact = self._resolver.resolve_repository_artifact(
+            evidence.path, evidence.raw_sha256, None
+        )
+        kind, payload = evidence.locator
+        if kind == "whole_artifact":
+            value = artifact.raw_bytes
+        elif kind == "json_pointer":
+            try:
+                parsed = json.loads(artifact.raw_bytes.decode("utf-8"))
+            except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+                raise _fail(f"acceptance evidence is not UTF-8 JSON: {exc}") from exc
+            value = self._acceptance_json_pointer(parsed, cast(str, payload))
+        elif kind == "archive_member":
+            try:
+                with zipfile.ZipFile(io.BytesIO(artifact.raw_bytes)) as archive:
+                    member = cast(str, payload)
+                    if member not in archive.namelist():
+                        raise _fail("acceptance evidence archive member is missing")
+                    value = archive.read(member)
+            except (OSError, zipfile.BadZipFile) as exc:
+                raise _fail(f"acceptance evidence archive member is unreadable: {exc}") from exc
+        else:
+            raise _fail(f"unsupported acceptance evidence locator kind: {kind!r}")
+        return ResolvedContextEvidence(None, artifact, evidence.locator, value)
 
     @staticmethod
     def _digest_reference(value: object) -> DigestReferenceV1:
@@ -493,7 +553,7 @@ class ContextApplicationV2Resolver:
         ):
             raise _fail("V3 event source list contains its own acceptance leaf")
         for evidence in event.review_evidence_refs:
-            self.resolve_evidence(evidence)
+            self.resolve_acceptance_evidence(evidence)
         return ResolvedReviewAcceptanceEventV3(
             reference=reference,
             artifact=artifact,
@@ -524,6 +584,7 @@ class ContextApplicationV2Resolver:
         artifact = self.resolve_source_binding(base_binding)
         if not isinstance(artifact.json_value, Mapping):
             raise _fail("base authority V1 source is not a JSON object")
+        AuthorityValidator(self._resolver).validate(dict(artifact.json_value))
         model_record = _exact(
             artifact.json_value.get("model_binding"),
             {"path", "raw_sha256", "model_id", "model_version"},
@@ -959,27 +1020,17 @@ class ContextApplicationV2Resolver:
         return source_bindings
 
     @staticmethod
-    def _container_host_bindings(
-        container: object,
+    def _host_bindings_for_claim_ids(
+        claim_ids: Iterable[str],
+        host_authority: ContextAuthoritySourceBindingV2 | None,
         source_bindings: Sequence[ContextAuthoritySourceBindingV2],
     ) -> tuple[ContextAuthoritySourceBindingV2, ...]:
-        host_authority = cast(
-            ContextAuthoritySourceBindingV2 | None,
-            container.host_binding_authority_v2_binding,
-        )
-        links = cast(tuple[object, ...], container.application_host_bindings_v2)
-        if links and host_authority is None:
+        if claim_ids and host_authority is None:
             raise _fail("host-binding application links require host_binding_authority_v2")
         required: list[ContextAuthoritySourceBindingV2] = []
-        if host_authority is not None:
+        if host_authority is not None and claim_ids:
             required.append(host_authority)
-        claim_ids: set[str] = set()
-        for link in links:
-            raw_claim_ids = getattr(link, "host_binding_claim_ids", None)
-            if not isinstance(raw_claim_ids, tuple):
-                raise _fail("V2 host-binding claim projection is malformed")
-            claim_ids.update(cast(tuple[str, ...], raw_claim_ids))
-        for claim_id in sorted(claim_ids):
+        for claim_id in sorted(set(claim_ids)):
             if re.fullmatch(r"hbc\.v1/[0-9a-f]{64}", claim_id) is None:
                 raise _fail("V2 host-binding claim ID is not closed")
             claim_path = (
@@ -997,6 +1048,57 @@ class ContextApplicationV2Resolver:
                 raise _fail(f"missing host-binding claim source: {claim_path}")
             required.append(matches[0])
         return canonical_source_bindings(required)
+
+    @classmethod
+    def _container_host_bindings(
+        cls,
+        container: object,
+        source_bindings: Sequence[ContextAuthoritySourceBindingV2],
+    ) -> tuple[ContextAuthoritySourceBindingV2, ...]:
+        host_authority = cast(
+            ContextAuthoritySourceBindingV2 | None,
+            container.host_binding_authority_v2_binding,
+        )
+        links = cast(tuple[object, ...], container.application_host_bindings_v2)
+        if links and host_authority is None:
+            raise _fail("host-binding application links require host_binding_authority_v2")
+        if not links and host_authority is not None:
+            return (host_authority,)
+        claim_ids: set[str] = set()
+        for link in links:
+            raw_claim_ids = getattr(link, "host_binding_claim_ids", None)
+            if not isinstance(raw_claim_ids, tuple):
+                raise _fail("V2 host-binding claim projection is malformed")
+            claim_ids.update(cast(tuple[str, ...], raw_claim_ids))
+        return cls._host_bindings_for_claim_ids(claim_ids, host_authority, source_bindings)
+
+    @classmethod
+    def _container_host_bindings_for_application(
+        cls,
+        container: object,
+        application_semantic_id: str,
+        source_bindings: Sequence[ContextAuthoritySourceBindingV2],
+    ) -> tuple[ContextAuthoritySourceBindingV2, ...]:
+        links = tuple(
+            link
+            for link in cast(tuple[object, ...], container.application_host_bindings_v2)
+            if getattr(getattr(link, "application_semantic_id", None), "as_text", lambda: None)()
+            == application_semantic_id
+        )
+        claim_ids: list[str] = []
+        for link in links:
+            raw_claim_ids = getattr(link, "host_binding_claim_ids", None)
+            if not isinstance(raw_claim_ids, tuple):
+                raise _fail("V2 host-binding claim projection is malformed")
+            claim_ids.extend(cast(tuple[str, ...], raw_claim_ids))
+        return cls._host_bindings_for_claim_ids(
+            claim_ids,
+            cast(
+                ContextAuthoritySourceBindingV2 | None,
+                container.host_binding_authority_v2_binding,
+            ),
+            source_bindings,
+        )
 
     def expected_container_source_closure_v2(
         self, container: object
@@ -1019,11 +1121,20 @@ class ContextApplicationV2Resolver:
                 reference.raw_sha256,
             )
             resolved_event = self.resolve_review_event_leaf_v3(reference)
+            event_host_bindings = (
+                self._container_host_bindings_for_application(
+                    container,
+                    record.application_id.as_text(),
+                    source_bindings,
+                )
+                if isinstance(record, ContextApplicationV2Record)
+                else ()
+            )
             expected_event = self.expected_acceptance_source_closure_v3(
                 record,
                 resolved_event.event.reviewer_roster_ref,
                 base_authority_binding=container.base_authority_v1_binding,
-                host_bindings=host_bindings,
+                host_bindings=event_host_bindings,
             )
             require_exact_source_set(resolved_event.event.source_binding_digests, expected_event)
             event_leaf_bindings.append(event_leaf)
