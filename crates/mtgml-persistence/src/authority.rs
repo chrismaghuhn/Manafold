@@ -2905,6 +2905,114 @@ impl ContextBridgeRelationV2 {
     }
 }
 
+#[allow(dead_code)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ContextPreconditionValueV1 {
+    pub precondition_id: String,
+    pub value: cbor::Value,
+}
+
+#[allow(dead_code)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ContextApplicationV2SemanticInput {
+    pub theorem_subject_shape: cbor::Value,
+    pub member_context_binding: cbor::Value,
+    pub historical_source_values: Vec<String>,
+    pub bridge_source_values: Vec<String>,
+    pub theorem_context_values: Vec<String>,
+    pub bridge_reviewed_values: Vec<String>,
+    pub bridge_relations: Vec<ContextBridgeRelationV2>,
+    pub theorem_temporal_values: Vec<String>,
+    pub bridge_temporal_values: Vec<String>,
+    pub theorem_preconditions: Vec<ContextPreconditionValueV1>,
+    pub member_preconditions: Vec<ContextPreconditionValueV1>,
+}
+
+#[allow(dead_code)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ContextApplicationV2SemanticError {
+    pub code: &'static str,
+    pub location: String,
+}
+
+#[allow(dead_code)]
+pub(crate) fn validate_context_application_v2_semantics(
+    input: &ContextApplicationV2SemanticInput,
+) -> Result<(), ContextApplicationV2SemanticError> {
+    let error = |code: &'static str, location: &str| ContextApplicationV2SemanticError {
+        code,
+        location: location.to_owned(),
+    };
+    if input.member_context_binding != input.theorem_subject_shape {
+        return Err(error("MEMBER_SUBJECT_MISMATCH", "member_context_binding"));
+    }
+    if input.historical_source_values.len() != CONTEXT_DIMENSIONS.len()
+        || input.bridge_source_values.len() != CONTEXT_DIMENSIONS.len()
+    {
+        return Err(error("MEMBER_SOURCE_CONTEXT_MISMATCH", "context_values"));
+    }
+    if input.theorem_context_values.len() != CONTEXT_DIMENSIONS.len()
+        || input.bridge_reviewed_values.len() != CONTEXT_DIMENSIONS.len()
+    {
+        return Err(error("MEMBER_REVIEWED_CONTEXT_MISMATCH", "context_bridge"));
+    }
+    if input.bridge_relations.len() != CONTEXT_DIMENSIONS.len() {
+        return Err(error("BRIDGE_RELATION_MISMATCH", "bridge_relations"));
+    }
+    for index in 0..CONTEXT_DIMENSIONS.len() {
+        if input.historical_source_values[index] != input.bridge_source_values[index] {
+            return Err(error(
+                "MEMBER_SOURCE_CONTEXT_MISMATCH",
+                &format!("context[{index}]"),
+            ));
+        }
+        if input.theorem_context_values[index] != input.bridge_reviewed_values[index] {
+            return Err(error(
+                "MEMBER_REVIEWED_CONTEXT_MISMATCH",
+                &format!("context[{index}]"),
+            ));
+        }
+        let expected = if input.bridge_source_values[index] == input.bridge_reviewed_values[index] {
+            ContextBridgeRelationV2::ExactMatch
+        } else {
+            ContextBridgeRelationV2::ReviewedDivergence
+        };
+        if input.bridge_relations[index] != expected {
+            return Err(error(
+                "BRIDGE_RELATION_MISMATCH",
+                &format!("context[{index}]"),
+            ));
+        }
+    }
+    if input.theorem_temporal_values.len() != TEMPORAL_SEMANTICS.len()
+        || input.bridge_temporal_values.len() != TEMPORAL_SEMANTICS.len()
+    {
+        return Err(error("MEMBER_TEMPORAL_MISMATCH", "temporal_values"));
+    }
+    for index in 0..TEMPORAL_SEMANTICS.len() {
+        if input.theorem_temporal_values[index] != input.bridge_temporal_values[index] {
+            return Err(error(
+                "MEMBER_TEMPORAL_MISMATCH",
+                &format!("temporal[{index}]"),
+            ));
+        }
+    }
+    if input.theorem_preconditions.len() != input.member_preconditions.len() {
+        return Err(error("PRECONDITION_COVERAGE", "preconditions"));
+    }
+    for index in 0..input.theorem_preconditions.len() {
+        let theorem = &input.theorem_preconditions[index];
+        let member = &input.member_preconditions[index];
+        if theorem.precondition_id != member.precondition_id || theorem.value != member.value {
+            return Err(error(
+                "PRECONDITION_MISMATCH",
+                &format!("preconditions[{index}]"),
+            ));
+        }
+    }
+    Ok(())
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AcceptanceSubjectKindV3 {
     ContextApplicationV2Record,

@@ -210,6 +210,8 @@ class AuthorityValidatorTests(unittest.TestCase):
 
     def _synthetic_candidate_source(
         self,
+        *,
+        source_context_timing: str = "not_applicable",
     ) -> tuple[
         AuthoritySourceResolver, SourceBindingDigestV1, dict[str, object], dict[str, object]
     ]:
@@ -345,6 +347,7 @@ class AuthorityValidatorTests(unittest.TestCase):
                 )
             },
         }
+        cast(dict[str, object], instance["source_context"])["timing"] = source_context_timing
         model_raw = (self.repo / Path(*MODEL_PATH.split("/"))).read_bytes()
         universe = {
             "schema": "manafold.m2.5.c.interaction-candidate-universe.v2",
@@ -794,6 +797,143 @@ class AuthorityValidatorTests(unittest.TestCase):
                 "context member",
             )
         self.assertEqual(context.exception.code, "MEMBER_SOURCE_CONTEXT_MISMATCH")
+
+    def test_context_common_seam_does_not_apply_v1_context_equality(self) -> None:
+        from authority_validator import AuthorityValidator, _SourceRegistry
+
+        resolver, candidate_binding, candidate, instance = self._synthetic_candidate_source(
+            source_context_timing="activation_time"
+        )
+        resolved = resolver.resolve_candidate_source_instance(
+            cast(str, candidate["candidate_id"]),
+            cast(dict[str, object], candidate["candidate_identity"]),
+            cast(str, instance["source_instance_id"]),
+            candidate_binding,
+        )
+        model_binding = self._model_binding()
+        model_raw = (self.repo / Path(*MODEL_PATH.split("/"))).read_bytes()
+        model_evidence = EvidenceRefV1(
+            "model",
+            MODEL_PATH,
+            ("whole_artifact", None),
+            bytes.fromhex(digest(model_raw)),
+        )
+        participant_roles = []
+        for index, raw in enumerate(
+            cast(list[dict[str, object]], instance["participant_bindings"])
+        ):
+            participant_ref = cast(dict[str, str], raw["participant_ref"])
+            participant_roles.append(
+                {
+                    "position": index,
+                    "role": raw["role"],
+                    "participant_kind": participant_ref["participant_kind"],
+                    "semantic_ref": participant_ref["semantic_ref"],
+                }
+            )
+        context_binding = {
+            "arity": "binary",
+            "directionality": "directed",
+            "participant_roles": participant_roles,
+            "host_relationship": "cross_host",
+        }
+        slot_specs = [
+            ("context_dimension", name)
+            for name in (
+                "zone",
+                "visibility",
+                "timing",
+                "temporal_order",
+                "source_affected_relation",
+                "control_ownership_relation",
+                "replacement_layer_relation",
+                "trigger_lki_relation",
+                "information_relation",
+                "decision_actor_relation",
+            )
+        ] + [
+            ("temporal_semantic", name)
+            for name in (
+                "trigger_order",
+                "dependency_order",
+                "duration",
+                "replacement_order",
+            )
+        ]
+        context_slots = [
+            {
+                "slot_kind": kind,
+                "slot_name": name,
+                "observed_value": "not_applicable",
+                "evidence_refs": [model_evidence.to_wire()],
+                "equivalence_rationale": "synthetic context slot",
+            }
+            for kind, name in slot_specs
+        ]
+        member = {
+            "candidate_id": candidate["candidate_id"],
+            "candidate_identity": candidate["candidate_identity"],
+            "source_instance_id": instance["source_instance_id"],
+            "candidate_universe_binding": {
+                "path": candidate_binding.path,
+                "schema": candidate_binding.schema_or_null,
+                "raw_sha256": candidate_binding.raw_sha256.hex(),
+            },
+            "context_binding": context_binding,
+            "precondition_attestations": [],
+            "member_evidence_refs": [model_evidence.to_wire()],
+            "context_member_attestation": {"slot_attestations": context_slots},
+        }
+        theorem = {
+            "subject_shape": context_binding,
+            "context_dimensions": ["not_applicable"] * 10,
+            "temporal_semantics": ["not_applicable"] * 4,
+            "preconditions": [],
+        }
+        validator = AuthorityValidator(resolver)
+        validator._root_bindings = _SourceRegistry(
+            MappingProxyType(
+                {
+                    encode_canonical(model_binding.to_cbor()): model_binding,
+                    encode_canonical(candidate_binding.to_cbor()): candidate_binding,
+                }
+            )
+        )
+        called: list[str] = []
+        validator._validate_context_member_source_contract_v1(
+            member,
+            theorem,
+            resolved,
+            "context member",
+            evidence_resolver=lambda _references, label: called.append(label),
+        )
+        self.assertEqual(called, ["context member.member_evidence_refs"])
+
+        with self.assertRaises(ResolutionError) as context:
+            validator._validate_context_members([member], theorem, "context application")
+        self.assertEqual(context.exception.code, "MEMBER_SOURCE_CONTEXT_MISMATCH")
+
+    def test_require_validated_record_rejects_partial_state_after_late_failure(self) -> None:
+        from authority_validator import AuthorityValidator
+
+        invalid = deepcopy(self.document)
+        invalid["context_proofs"] = [{}]
+        validator = AuthorityValidator(self.resolver)
+        with self.assertRaises(ResolutionError):
+            validator.validate(invalid)
+        relation_theorem = cast(list[dict[str, object]], self.document["relation_proofs"])[0]
+        relation_record_id = cast(dict[str, object], relation_theorem["record_id"])
+        identity = AuthorityIdentityV1(
+            AuthorityIdentityKind.RELATION_THEOREM_RECORD,
+            bytes.fromhex(cast(str, relation_record_id["digest_hex"])),
+        )
+        with self.assertRaises(ResolutionError) as context:
+            validator.require_validated_record(
+                identity,
+                RecordKind.RELATION_THEOREM_RECORD,
+                "partial authority",
+            )
+        self.assertEqual(context.exception.code, "AUTHORITY_NOT_VALIDATED")
 
     def test_precondition_attestation_must_match_theorem_before_source_fact(self) -> None:
         from authority_validator import AuthorityValidator
@@ -1277,6 +1417,40 @@ class AuthorityValidatorTests(unittest.TestCase):
                 member, theorem, "domain member", resolved
             )
         self.assertEqual(context.exception.code, "CLASS_PROJECTION_PRECONDITION_PROOF_MISSING")
+
+    def test_temporal_semantic_precondition_has_no_source_instance_check(self) -> None:
+        from authority_validator import AuthorityValidator
+
+        resolver, candidate_binding, candidate, instance = self._synthetic_candidate_source()
+        resolved = resolver.resolve_candidate_source_instance(
+            cast(str, candidate["candidate_id"]),
+            cast(dict[str, object], candidate["candidate_identity"]),
+            cast(str, instance["source_instance_id"]),
+            candidate_binding,
+        )
+        theorem = {
+            "preconditions": [
+                {
+                    "precondition_id": "temporal",
+                    "precondition_kind": "temporal_semantic",
+                    "payload": ["trigger_order", "immediate"],
+                }
+            ]
+        }
+        member = {
+            "precondition_attestations": [
+                {
+                    "precondition_id": "temporal",
+                    "observed_value": ["trigger_order", "immediate"],
+                }
+            ]
+        }
+        AuthorityValidator(resolver)._validate_precondition_match(
+            member,
+            theorem,
+            "temporal member",
+            resolved,
+        )
 
     def test_missing_rev3_archive_member_evidence_fails_closed(self) -> None:
         from authority_validator import AuthorityValidator, _SourceRegistry
