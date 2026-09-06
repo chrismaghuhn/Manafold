@@ -269,8 +269,18 @@ the sole owner of:
 - exact review-evidence locator resolution.
 
 Slice 4 must not create a second event parser or raw-file resolver. Structural
-resolver failures map into the stable Slice-4 error categories without
-changing the resolver's ownership.
+resolver failures map into stable Slice-4 error categories without changing
+the resolver's ownership. Slice 4 may make one narrowly additive diagnostic
+change to `ContextApplicationV2ResolutionError` and the V3 event-resolution
+path: the exception exposes a closed machine-readable `code` alongside its
+existing human-readable message. Existing message text, exception type, and
+resolver behavior remain compatible for current callers. The code field is
+populated only for resolver-owned V3 event/evidence failures; legacy V2
+source/closure failures retain their current observable error shape. Existing
+Slice-3 callers retain their current fallback semantic categories when they
+handle legacy resolver failures. The Slice-4 validator maps these codes, never
+exception-message text. No checklist, review-mode, or evidence validation
+moves out of the resolver.
 
 ## 13. Exact event source closure
 
@@ -323,10 +333,27 @@ ContextApplicationV2ReviewAdmissionValidator.admit(
 ) -> ContextApplicationV2ReviewAdmissionResult
 ```
 
-The result is an immutable mechanical-admission envelope containing the typed
-record identity, recomputed subject digest reference, resolved V3 event,
-exact event closure, resolved roster identity, required role set, and review
-mode. It contains no currentness or human-sufficiency claim.
+The result is a frozen mechanical-admission DTO with exactly these fields:
+
+```text
+record_id: AuthorityIdentityV1
+application_id: AuthorityIdentityV1
+subject_digest_reference: DigestReferenceV1
+review_event_ref: ReviewEventRefV3
+event_id: str
+exact_event_closure: tuple[ContextAuthoritySourceBindingV2, ...]
+reviewer_roster_ref: ReviewerRosterRefV1
+required_roles: tuple[str, ...]
+review_mode: ReviewMode
+```
+
+`reviewer_roster_ref` is the resolved content-addressed roster reference; it
+is not a separate `AuthorityIdentityV1` family. The result does not expose the
+resolver's `ResolvedReviewAcceptanceEventV3` or its `ResolvedArtifact`, JSON
+projection, or raw artifact graph. The typed frozen
+`ReviewAcceptanceEventInputV3` may remain an internal value; if a later caller
+needs it, it may be added only as a frozen DTO, never as a resolved artifact
+wrapper. The result contains no currentness or human-sufficiency claim.
 
 Internally, the module uses one reusable V3 binding seam that accepts a typed
 subject kind, acceptance-free subject payload, and the subject's embedded
@@ -344,7 +371,8 @@ The validation order is fixed:
 6. reconstruct and compare the exact event source closure with no host path;
 7. resolve the exact reviewer roster;
 8. validate reviewer existence, exact role tuples, and duplicate identities;
-9. compute and enforce the required V2 role set;
+9. compute and enforce the required V2 role set using the fixed precedence in
+   Section 17;
 10. validate the closed review mode without inventing count or timing rules;
 11. confirm non-empty evidence resolution; and
 12. return the immutable mechanical-admission result.
@@ -364,16 +392,44 @@ The internal V3 binding seam may accept
 binding in a future caller. That reusable result remains agnostic to graph
 validity. Supersession validation belongs to Slice 5.
 
-## 17. Stable error model
+## 17. Stable error model and precedence
 
 The new module exposes a typed fail-closed error carrying a stable category,
 location, and optional wrapped source/semantic diagnostic. It preserves the
 existing validators' detailed causes while giving callers deterministic
-categories. The minimum category set is:
+categories. The resolver's additive V3 diagnostic seam has this closed code
+vocabulary:
+
+```text
+V3_EVENT_REFERENCE_INVALID
+V3_EVENT_SCHEMA_INVALID
+V3_EVENT_DECISION_INVALID
+CHECKLIST_V2_MISMATCH
+REVIEW_MODE_INVALID
+REVIEW_EVIDENCE_MISSING
+REVIEW_EVIDENCE_INVALID
+V3_EVENT_IDENTITY_INVALID
+V3_EVENT_SOURCE_INVALID
+```
+
+The resolver assigns these codes at the owning checks. It preserves the
+existing message text and does not require callers to parse it. Delegated raw
+source failures retain their existing exception type, message, and
+machine-readable source-resolver code; the V3 boundary maps them through an
+explicit code table, never by matching message text. The Slice-4 validator
+maps resolver codes to its public admission categories through an explicit
+table. A resolver-owned specific code is never collapsed into
+`V3_EVENT_REFERENCE_INVALID` merely because it is convenient.
+
+The public admission category set is:
 
 ```text
 SEMANTIC_VALIDATION_FAILED
 V3_EVENT_REFERENCE_INVALID
+V3_EVENT_SCHEMA_INVALID
+V3_EVENT_DECISION_INVALID
+V3_EVENT_IDENTITY_INVALID
+V3_EVENT_SOURCE_INVALID
 V3_SUBJECT_KIND_MISMATCH
 V3_SUBJECT_DIGEST_MISMATCH
 V3_SOURCE_CLOSURE_MISMATCH
@@ -389,8 +445,42 @@ REVIEW_EVIDENCE_INVALID
 CHECKLIST_V2_MISMATCH
 ```
 
+The mapping at the Slice-4 seam is explicit:
+
+| failure raised by | admission category |
+|---|---|
+| resolver-owned V3 code | the identical named category |
+| delegated `ResolutionError` while loading the event leaf | `V3_EVENT_SOURCE_INVALID` |
+| delegated `ResolutionError` while resolving review evidence | `REVIEW_EVIDENCE_INVALID` |
+| Slice-3 semantic validator | `SEMANTIC_VALIDATION_FAILED` |
+| full subject digest-reference comparison | `V3_SUBJECT_DIGEST_MISMATCH` |
+| exact closure comparison | `V3_SOURCE_CLOSURE_MISMATCH` |
+
+The original delegated resolver code remains available as structured cause
+metadata. No mapping branch examines exception text.
+
 The stable category is part of deterministic admission behavior. A rejection
 must never collapse into a bare `False` or a message-only exception.
+
+After roster parsing and exact role-binding validation succeed, required-role
+selection uses this ordered tuple, never a set iteration:
+
+```text
+(
+    architecture_maintainer,
+    rules_authority_maintainer,
+    conformance_maintainer,
+    information_safety_reviewer,
+)
+```
+
+The first missing role determines the result. Missing
+`information_safety_reviewer` returns `INFORMATION_SAFETY_REVIEWER_REQUIRED`.
+Missing any of the other three roles returns `REVIEWER_ROLE_MISSING`. Thus a
+record missing several roles has one stable, process-independent diagnostic.
+Earlier validation failures, such as an invalid roster or duplicate reviewer
+ID, take precedence over role coverage because role coverage is not evaluated
+until the roster binding is valid.
 
 ## 18. Mutation safety and determinism
 
@@ -461,6 +551,7 @@ implementation plan, the expected implementation change set is:
 docs/maintenance/INTERACTION_AUTHORITY_REVIEW_CHECKLIST_V2.md
 docs/normative-document-register.v1.json
 scripts/context_application_v2_review_admission.py
+scripts/context_application_v2_resolver.py
 ```
 
 If extraction is required to preserve V1 reuse without coupling the new module
@@ -470,9 +561,14 @@ The likely tests are:
 
 ```text
 python/tests/test_context_application_v2_review_admission.py
+python/tests/test_context_application_v2_resolver.py
 python/tests/test_authority_validator.py
 python/tests/test_review_admission_foundation.py
 ```
+
+The resolver test additions must prove the new diagnostic codes are stable,
+that existing exception messages remain unchanged, and that no caller parses
+message text.
 
 The implementation must not change:
 
