@@ -1418,6 +1418,40 @@ class AuthorityValidatorTests(unittest.TestCase):
             )
         self.assertEqual(context.exception.code, "CLASS_PROJECTION_PRECONDITION_PROOF_MISSING")
 
+    def test_temporal_semantic_precondition_has_no_source_instance_check(self) -> None:
+        from authority_validator import AuthorityValidator
+
+        resolver, candidate_binding, candidate, instance = self._synthetic_candidate_source()
+        resolved = resolver.resolve_candidate_source_instance(
+            cast(str, candidate["candidate_id"]),
+            cast(dict[str, object], candidate["candidate_identity"]),
+            cast(str, instance["source_instance_id"]),
+            candidate_binding,
+        )
+        theorem = {
+            "preconditions": [
+                {
+                    "precondition_id": "temporal",
+                    "precondition_kind": "temporal_semantic",
+                    "payload": ["trigger_order", "immediate"],
+                }
+            ]
+        }
+        member = {
+            "precondition_attestations": [
+                {
+                    "precondition_id": "temporal",
+                    "observed_value": ["trigger_order", "immediate"],
+                }
+            ]
+        }
+        AuthorityValidator(resolver)._validate_precondition_match(
+            member,
+            theorem,
+            "temporal member",
+            resolved,
+        )
+
     def test_missing_rev3_archive_member_evidence_fails_closed(self) -> None:
         from authority_validator import AuthorityValidator, _SourceRegistry
 
