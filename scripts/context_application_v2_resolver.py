@@ -542,6 +542,13 @@ class ContextApplicationV2Resolver:
         except (TypeError, ValueError) as exc:
             raise _fail(f"V3 acceptance event structural fields are invalid: {exc}") from exc
 
+        try:
+            recomputed_event_id = event.identity().as_text()
+        except (TypeError, ValueError) as exc:
+            raise _fail(f"V3 acceptance event identity cannot be recomputed: {exc}") from exc
+        if recomputed_event_id != reference.event_id:
+            raise _fail("V3 acceptance event semantic ID differs from its reference")
+
         roster_binding = ContextAuthoritySourceBindingV2(
             "reviewer_roster_leaf", roster_ref.path, roster_ref.schema, roster_ref.raw_sha256
         )

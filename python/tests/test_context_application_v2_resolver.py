@@ -404,6 +404,19 @@ class ContextApplicationV2ResolverTests(unittest.TestCase):
                 {binding.path for binding in resolved.event.source_binding_digests},
             )
 
+            tampered_semantics = copy.deepcopy(event_wire)
+            tampered_semantics["review_mode"] = "solo_separate_self_review"
+            tampered_semantics_raw = (json.dumps(tampered_semantics) + "\n").encode("utf-8")
+            event_file.write_bytes(tampered_semantics_raw)
+            tampered_semantics_reference = ReviewEventRefV3(
+                event_path,
+                digest(tampered_semantics_raw),
+                event_id,
+            )
+            with self.assertRaises(ContextApplicationV2ResolutionError):
+                resolver.resolve_review_event_leaf_v3(tampered_semantics_reference)
+
+            event_file.write_bytes(event_raw)
             tampered = copy.deepcopy(event_wire)
             tampered["event_id"] = "ae.v3/" + "01" * 32
             event_file.write_bytes((json.dumps(tampered) + "\n").encode("utf-8"))
