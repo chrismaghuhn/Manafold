@@ -632,6 +632,18 @@ class ContextApplicationV2Resolver:
                     f"V3 acceptance event structural fields are invalid: {exc}",
                     code="V3_EVENT_SOURCE_INVALID",
                 ) from exc
+            source_keys = [(item.artifact_role, item.path) for item in sources]
+            if len(source_keys) != len(set(source_keys)):
+                raise _fail(
+                    "V3 source bindings must not duplicate a role/path pair",
+                    code="V3_EVENT_SOURCE_INVALID",
+                )
+            source_order = [encode_canonical(item.to_cbor()) for item in sources]
+            if source_order != sorted(source_order):
+                raise _fail(
+                    "V3 source bindings are not in canonical order",
+                    code="V3_EVENT_SOURCE_INVALID",
+                )
             evidence = tuple(
                 AcceptanceEvidenceRefV1(
                     path=cast(str, cast(Mapping[str, object], item)["path"]),
