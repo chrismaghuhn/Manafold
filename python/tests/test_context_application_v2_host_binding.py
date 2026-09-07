@@ -1891,6 +1891,64 @@ class ContextApplicationV2HostBindingEvaluatorTests(unittest.TestCase):
         valid_read_model = self._read_model_for_case(case, claim)
         wrong_member = ApplicationMemberKeyV1("other", bytes([8]) * 32, "si/other")
         wrong_claim = _cross_host_claim(wrong_member)
+        stale_container = self._container_with_link(case, record, claim.identity().as_text())
+        stale_evaluator = self._evaluator_with_read_model(
+            source_resolver,
+            self._read_model_for_case(
+                case,
+                claim,
+                current=False,
+                status=HostBindingClaimRecordStatus.SUPERSEDED,
+            ),
+        )
+        historical_input = ContextApplicationV2SupersessionInputV2(
+            superseded_record_id_bytes=record.record_id.digest_bytes,
+            replacement_record_id_bytes=None,
+            replacement_record_kind=None,
+            reason_code=SupersessionReason.AUTHORITY_REVOCATION,
+            source_evidence_refs=(record.members[0].member_evidence_refs[0],),
+        )
+        _, historical_supersession, _ = build_supersession_with_v3_event(
+            self, case, historical_input
+        )
+        historical_container = self._container_with_link(
+            case,
+            record,
+            claim.identity().as_text(),
+            supersessions=(historical_supersession,),
+        )
+        unknown_historical_evaluator = self._evaluator_with_read_model(
+            source_resolver,
+            replace(
+                valid_read_model,
+                admitted_claims_by_id=(),
+                current_claims_by_id=(),
+                current_claims_by_member=(),
+                claim_record_status_by_record_id=(),
+                claim_record_ids_by_claim_id=(),
+            ),
+        )
+        wrong_relationship_claim = _claim(self._member_key_for_record(record), "Token Triumph", 77)
+        wrong_relationship_evaluator = self._evaluator_with_read_model(
+            source_resolver,
+            self._read_model_for_case(case, wrong_relationship_claim),
+        )
+        no_link_container = replace(
+            self._container_with_link(case, record, claim.identity().as_text()),
+            application_host_bindings_v2=(),
+        )
+        forged = object.__new__(ContextApplicationAuthorityV2)
+        valid_empty = _empty_container()
+        for field_name in (
+            "base_authority_v1_binding",
+            "host_binding_authority_v2_binding",
+            "candidate_universe_binding",
+            "source_bindings",
+            "context_application_v2_records",
+            "context_application_v2_supersession_records",
+        ):
+            object.__setattr__(forged, field_name, getattr(valid_empty, field_name))
+        object.__setattr__(forged, "application_host_bindings_v2", [])
         cases = (
             (
                 "duplicate-link",
@@ -1937,6 +1995,44 @@ class ContextApplicationV2HostBindingEvaluatorTests(unittest.TestCase):
                 ),
                 self._container_with_link(case, record, wrong_claim.identity().as_text()),
                 "HOST_MEMBER_SET_MISMATCH",
+            ),
+            (
+                "stale-current-claim",
+                stale_evaluator,
+                stale_container,
+                "HOST_CLAIM_NOT_CURRENT",
+            ),
+            (
+                "unknown-historical-claim",
+                unknown_historical_evaluator,
+                historical_container,
+                "HOST_CLAIM_UNKNOWN",
+            ),
+            (
+                "relationship-mismatch",
+                wrong_relationship_evaluator,
+                self._container_with_link(
+                    case, record, wrong_relationship_claim.identity().as_text()
+                ),
+                "HOST_RELATIONSHIP_MISMATCH",
+            ),
+            (
+                "missing-current-link",
+                self._evaluator(source_resolver),
+                no_link_container,
+                "APPLICATION_HOST_BINDING_INVALID",
+            ),
+            (
+                "source-closure-mismatch",
+                self._evaluator(source_resolver),
+                _empty_container(),
+                "HOST_SOURCE_CLOSURE_MISMATCH",
+            ),
+            (
+                "forged-container-input",
+                self._evaluator(source_resolver),
+                forged,
+                "HOST_INTEGRATION_INPUT_INVALID",
             ),
         )
         for name, evaluator, container, expected_code in cases:
