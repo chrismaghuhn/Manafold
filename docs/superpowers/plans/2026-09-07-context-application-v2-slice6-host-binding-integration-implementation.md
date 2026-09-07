@@ -13,6 +13,12 @@
 
 **Plan baseline:** 20fb8d92cdac27fc0dc61060223ffd7d7fa00cb5
 
+**Plan review base:** d2033223f73e84c7b3d3d49b0984ffbf0888a5a5
+
+**Implementation base rule:** the implementation branch starts from the exact
+final plan commit reviewed after this amendment. It must not start from the
+contract head or the pre-amendment plan review base.
+
 **Master baseline:** d647e63d7687bd2c022393feaee5bac6736e84ca
 
 **Contract authority:** ADR 0042, ADR 0043, accepted ADR 0044, and the final Slice-6 design document.
@@ -146,6 +152,13 @@ python/tests/test_context_application_v2_resolver.py
 
 python/tests/test_context_application_v2_review_admission.py
     Add or retain explicit host-source rejection at the public Slice-4 seam.
+
+scripts/run_python_tests.py
+    Add the new Slice-6 integration test module to the intentional smoke
+    allowlist.
+
+python/tests/test_python_test_profiles.py
+    Update the closed smoke-profile expectations for that allowlist addition.
 `
 
 ### Files that must remain unchanged
@@ -222,6 +235,24 @@ class HostBindingAuthorityV2ReadModel:
     used_source_bindings: tuple[HostBindingSourceBindingV2, ...]
 `
 
+The reusable validator seam returns both the existing compatibility result and
+the frozen read model from one validation/source-resolution traversal:
+
+`
+@dataclass(frozen=True)
+class AuthorityV2AdmissionResult:
+    validation_result: AuthorityV2ValidationResult
+    read_model: HostBindingAuthorityV2ReadModel
+
+
+class AuthorityV2Validator:
+    def admit(self, value: object) -> AuthorityV2AdmissionResult:
+        return self._admit_document_with_read_model(value)
+
+    def validate(self, value: object) -> AuthorityV2ValidationResult:
+        return self.admit(value).validation_result
+`
+
 The public evaluator must be:
 
 `
@@ -275,7 +306,10 @@ git ls-files --others --exclude-standard
 Expected at plan review baseline:
 
 `
-HEAD                 = 20fb8d92cdac27fc0dc61060223ffd7d7fa00cb5
+CONTRACT_HEAD        = 20fb8d92cdac27fc0dc61060223ffd7d7fa00cb5
+PLAN_REVIEW_BASE     = d2033223f73e84c7b3d3d49b0984ffbf0888a5a5
+PLAN_HEAD            = final reviewed plan branch tip
+HEAD                 = PLAN_HEAD
 origin/master        = d647e63d7687bd2c022393feaee5bac6736e84ca
 worktree             = clean except explicitly preserved user files
 `
@@ -313,6 +347,7 @@ No source, schema, fixture, or production-artifact edit occurs in Task 0.
 ## 5. Task 1 — RED tests for the G1 closure split
 
 **Files:**
+- Modify: scripts/context_application_v2_resolver.py
 - Modify: python/tests/test_context_application_v2_resolver.py
 - Modify: python/tests/test_context_application_v2_review_admission.py
 
@@ -374,6 +409,67 @@ Expected: the new assertions fail against the current private container
 behavior, while existing host-free Slice-4 tests continue to pass. Do not
 modify production code in this task before the RED result is observed.
 
+- [ ] **Step 5: Remove the ContextApplication-specific HostBinding event seam.**
+
+Change ContextApplicationV2Resolver so that
+_expected_acceptance_source_closure_v3 has no host_bindings parameter. Keep
+the public expected_acceptance_source_closure_v3 and validate_event_source_closure_v3
+host-free. Leave the generic reconstruct_event_source_closure helper's
+host_bindings parameter untouched because the existing closure algebra and
+cross-language parity tests cover that generic helper.
+
+- [ ] **Step 6: Keep HostBinding provenance at container level only.**
+
+In expected_container_source_closure_v2, reconstruct every event closure with
+the host-free ContextApplication path, then pass HostBinding bindings only to
+reconstruct_container_source_closure:
+
+@@
+expected_event = self._expected_acceptance_source_closure_v3(
+    record,
+    resolved_event.event.reviewer_roster_ref,
+    base_authority_binding=container.base_authority_v1_binding,
+)
+require_exact_source_set(
+    resolved_event.event.source_binding_digests,
+    expected_event,
+)
+
+expected = reconstruct_container_source_closure(
+    static_bindings=(
+        container.base_authority_v1_binding,
+        container.candidate_universe_binding,
+    ),
+    event_leaf_bindings=tuple(event_leaf_bindings),
+    event_closures=tuple(event_closures),
+    host_bindings=host_bindings,
+)
+@@
+No ContextApplication-specific private path may inject HostBinding into an
+ae.v3 source list after this task.
+
+- [ ] **Step 7: Run the G1 GREEN tests immediately after the RED tests.**
+
+@@
+$env:PYTHONPATH = "python/src;python/tests"
+python -m unittest test_context_application_v2_resolver test_context_application_v2_review_admission -v
+Remove-Item Env:PYTHONPATH
+@@
+
+Expected: event source bindings remain host-free, container source bindings
+include HostBinding provenance separately, and extra HostBinding event sources
+fail closed.
+
+- [ ] **Step 8: Commit the isolated G1 change.**
+
+@@
+git add scripts/context_application_v2_resolver.py python/tests/test_context_application_v2_resolver.py python/tests/test_context_application_v2_review_admission.py
+git diff --cached --check
+git commit -m "fix: keep Slice 6 HostBinding provenance out of ae.v3 closures"
+@@
+
+The commit must contain only the G1 resolver/test changes.
+
 ## 6. Task 2 — RED/GREEN extraction of the HostBinding read model
 
 **Files:**
@@ -395,6 +491,11 @@ base_authority_v1_binding
 candidate_universe_binding
 used_source_bindings
 `
+
+Add AuthorityV2AdmissionResult with validation_result and read_model. The
+public compatibility validate() method must remain a projection over admit(),
+so Slice 6 consumes the same successful admission without a second source
+resolution or lifecycle traversal.
 
 All mappings are represented as canonical tuples. No mutable dictionaries are
 returned and no new persisted DTO is added.
@@ -440,14 +541,16 @@ yet exist. Existing validator behavior remains the compatibility baseline.
 
 - [ ] **Step 4: Extract the existing lifecycle result without duplicating it.**
 
-Refactor the existing AuthorityV2Validator implementation behind a private
-admission routine that returns the frozen read model after all existing checks
-pass. Keep the public compatibility method:
+Refactor the existing AuthorityV2Validator implementation behind an internal
+typed admission seam that returns AuthorityV2AdmissionResult after all
+existing checks pass. Keep the public compatibility method:
 
 `
+def admit(self, value: object) -> AuthorityV2AdmissionResult:
+    return self._admit_document_with_read_model(value)
+
 def validate(self, value: object) -> AuthorityV2ValidationResult:
-    read_model = self._validate_document_with_read_model(value)
-    return read_model.validation_result
+    return self.admit(value).validation_result
 `
 
 The extraction must continue to use the existing successor_by_record,
@@ -470,89 +573,47 @@ When multiple records carry one hbc semantic claim, retain every record ID in
 claim_record_ids_by_claim_id; only the existing validator's current-record
 rules determine current_claims_by_id.
 
-- [ ] **Step 5: Run the GREEN HostBinding suite.**
+- [ ] **Step 5: Add typed validator error causes before Slice-6 consumption.**
+
+Extend AuthorityV2ValidationError with a stable code, location, and structured
+subject fields while preserving existing human-readable message text. Use a
+single internal error constructor/helper so existing validation branches do
+not classify by message text. At minimum expose:
 
 `
-python scripts/run_python_tests.py --profile smoke
+AUTHORITY_V2_INVALID
+HOST_BINDING_AMBIGUOUS
+HOST_CLAIM_RECORD_INVALID
+HOST_SOURCE_INVALID
+HOST_SOURCE_CLOSURE_MISMATCH
 `
 
-Expected: all smoke tests pass, including the unchanged existing HostBinding
-tests and the new record-level status tests. Do not claim Slice-6 behavior;
-this only proves the reusable HostBinding seam.
+The existing multiple-current-claim/member path must raise
+HOST_BINDING_AMBIGUOUS with the exact member key and claim IDs. General root,
+source, schema, and closure failures must carry typed causes that Slice 6 can
+map to HOST_AUTHORITY_INVALID or HOST_SOURCE_CLOSURE_MISMATCH without parsing
+exception messages.
 
-## 7. Task 3 — GREEN the G1 resolver closure split
-
-**Files:**
-- Modify: scripts/context_application_v2_resolver.py
-- Modify: python/tests/test_context_application_v2_resolver.py
-
-- [ ] **Step 1: Make container event closures host-free.**
-
-In expected_container_source_closure_v2, reconstruct each application and
-supersession event with the existing host-free call:
-
-`
-expected_event = self._expected_acceptance_source_closure_v3(
-    record,
-    resolved_event.event.reviewer_roster_ref,
-    base_authority_binding=container.base_authority_v1_binding,
-    host_bindings=(),
-)
-require_exact_source_set(
-    resolved_event.event.source_binding_digests,
-    expected_event,
-)
-`
-
-Do not add HostBinding bindings to resolved_event.event.source_binding_digests.
-
-- [ ] **Step 2: Keep HostBinding provenance at container level.**
-
-Pass the independently derived HostBinding bindings only to
-reconstruct_container_source_closure:
-
-`
-expected = reconstruct_container_source_closure(
-    static_bindings=(
-        container.base_authority_v1_binding,
-        container.candidate_universe_binding,
-    ),
-    event_leaf_bindings=tuple(event_leaf_bindings),
-    event_closures=tuple(event_closures),
-    host_bindings=host_bindings,
-)
-`
-
-Preserve exact source-set equality, role/path/schema/digest validation,
-container-cycle rejection, and the existing supersession host-free path.
-
-- [ ] **Step 3: Run the G1 regression tests.**
+- [ ] **Step 6: Run the GREEN HostBinding suite.**
 
 `
 $env:PYTHONPATH = "python/src;python/tests"
-python -m unittest test_context_application_v2_resolver test_context_application_v2_review_admission -v
+python -m unittest test_authority_v2_validator -v
 Remove-Item Env:PYTHONPATH
 `
 
-Expected: event source bindings remain host-free, container source bindings
-include HostBinding provenance, and extra HostBinding event sources fail
-closed.
+Expected: the HostBinding validator tests pass, including the new record-level
+status tests. Do not claim Slice-6 behavior; this only proves the reusable
+HostBinding seam. The repository smoke profile is not run here because the G1
+RED test must remain failing until the immediately following G1 GREEN task.
 
-- [ ] **Step 4: Commit the isolated G1 extraction.**
-
-`
-git add scripts/context_application_v2_resolver.py python/tests/test_context_application_v2_resolver.py python/tests/test_context_application_v2_review_admission.py
-git diff --cached --check
-git commit -m "fix: keep Slice 6 HostBinding provenance out of ae.v3 closures"
-`
-
-The commit must contain only the G1 resolver/test changes.
-
-## 8. Task 4 — Build the Slice-6 typed composition seam
+## 7. Task 3 — Build the Slice-6 typed composition seam
 
 **Files:**
 - Create: scripts/context_application_v2_host_binding.py
 - Test: python/tests/test_context_application_v2_host_binding.py
+- Modify: scripts/run_python_tests.py
+- Modify: python/tests/test_python_test_profiles.py
 
 - [ ] **Step 1: Add RED structural-entrypoint tests.**
 
@@ -599,10 +660,11 @@ Do not create a second ContextApplication or HostBinding validator.
 
 - [ ] **Step 3: Add currentness-first tests.**
 
-Build a graph with A -> B plus a malformed/unknown HostBinding source. Assert
-that Slice-5 currentness failure is returned before HostBinding source access.
-Use a resolver spy or temporary-repository file snapshot to prove the HostBinding
-authority and claim files were not read.
+Build a real Slice-5-invalid graph, such as A -> B and B -> A, plus a
+malformed/unknown HostBinding source. Assert that the Slice-5 cycle failure is
+returned before HostBinding source access. Use a resolver spy or
+temporary-repository file snapshot to prove the HostBinding authority and claim
+files were not read.
 
 - [ ] **Step 4: Run the focused structural suite.**
 
@@ -614,7 +676,24 @@ Remove-Item Env:PYTHONPATH
 
 Expected: GREEN for the structural and currentness-first tests.
 
-## 9. Task 5 — Implement verified applicability and member-key closure
+- [ ] **Step 5: Add the new Slice-6 test module to the smoke allowlist.**
+
+Add test_context_application_v2_host_binding to SMOKE_TESTS in
+scripts/run_python_tests.py and update the explicit profile expectations in
+python/tests/test_python_test_profiles.py. Do not add the new test module to
+the allowlist before it exists.
+
+- [ ] **Step 6: Run the smoke profile after the new module is present.**
+
+`
+python scripts/run_python_tests.py --profile smoke
+`
+
+Expected: the smoke profile includes test_context_application_v2_host_binding
+and reports zero failures. The test profile remains an intentional closed
+allowlist; adding this module is an explicit Slice-6 maintainer decision.
+
+## 8. Task 4 — Implement verified applicability and member-key closure
 
 **Files:**
 - Modify: scripts/context_application_v2_host_binding.py
@@ -696,7 +775,7 @@ Remove-Item Env:PYTHONPATH
 Expected: current and historical mixed-member tests pass with identical
 required subsets and distinct authority qualification statuses.
 
-## 10. Task 6 — Compose current/historical HostBinding claim status
+## 9. Task 5 — Compose current/historical HostBinding claim status
 
 **Files:**
 - Modify: scripts/context_application_v2_host_binding.py
@@ -791,15 +870,17 @@ Remove-Item Env:PYTHONPATH
 Expected: all G3 current/historical tests pass, with no production artifact
 creation.
 
-## 11. Task 7 — Determinism, mutation safety, and full negative matrix
+## 10. Task 6 — Determinism, mutation safety, and full negative matrix
 
 **Files:**
 - Modify: python/tests/test_context_application_v2_host_binding.py
 - Modify: python/tests/test_context_application_v2_resolver.py
 - Modify: python/tests/test_authority_v2_validator.py
 
-- [ ] **Step 1: Add input-permutation tests.**
+- [ ] **Step 1: Separate canonical-construction permutations from invalid input.**
 
+For valid typed inputs, construct equivalent containers from different upstream
+insertion orders and canonicalize them before constructing the frozen DTO.
 Permute independently:
 
 `
@@ -808,11 +889,18 @@ context_application_v2_supersession_records
 application_host_bindings_v2
 HostBinding claim records
 HostBinding supersession records
-claim IDs within links
+claim IDs within links when rebuilding the canonical ApplicationHostBindingV2
+value
 `
 
-Assert byte/value-identical results and identical error fingerprints. Sorting
-must use complete canonical CBOR identity bytes.
+Assert byte/value-identical results. Sorting must use complete canonical CBOR
+identity bytes.
+
+Add a separate negative matrix for deliberately noncanonical wire values and
+test-only forged typed objects. The frozen DTO constructors/parser must reject
+noncanonical arrays; a forged object reaching the evaluator must fail with
+HOST_INTEGRATION_INPUT_INVALID. Never sort a noncanonical input inside Slice 6
+and accept it as if it had been canonical at the contract boundary.
 
 - [ ] **Step 2: Add failure-atomicity snapshots.**
 
@@ -859,7 +947,7 @@ Remove-Item Env:PYTHONPATH
 Expected: zero failures and zero errors. This command is implementation
 evidence only after the implementation tasks are authorized and executed.
 
-## 12. Task 8 — Integration gates and stop boundary
+## 11. Task 7 — Integration gates and stop boundary
 
 **Files:** none beyond the files listed above.
 
@@ -871,7 +959,29 @@ python scripts/run_python_tests.py --profile smoke
 
 Expected: OK; report the actual test count and failures.
 
-- [ ] **Step 2: Run documentation and maintainer checks.**
+- [ ] **Step 2: Run the mandatory fast and integration profiles.**
+
+Run both repository profiles at the final implementation head:
+
+`
+just check-fast
+just check
+`
+
+These profiles are mandatory evidence. The integration profile must include
+the repository's Ruff format check, Ruff lint, Mypy, Cargo fmt, Cargo check,
+Cargo clippy, and Cargo test sub-gates. If the just wrapper is unavailable,
+run the exact equivalent profiles:
+
+`
+python scripts/run_checks.py fast
+python scripts/run_checks.py integration
+`
+
+Record each sub-gate as PASS, FAIL, NOT_RUN, or BLOCKED; do not promote a
+partial direct command to a just-profile PASS.
+
+- [ ] **Step 3: Run documentation and maintainer checks.**
 
 `
 python scripts/check_documentation.py
@@ -881,7 +991,7 @@ git diff --check
 
 Expected: all commands exit 0. Report each status separately.
 
-- [ ] **Step 3: Run the applicable broader repository profile.**
+- [ ] **Step 4: Run the applicable broader repository profile.**
 
 Because Slice 6 changes Python authority tooling and closure semantics, run:
 
@@ -891,19 +1001,23 @@ python scripts/validate_schemas.py
 python scripts/verify_repository.py
 `
 
-Run Rust checks only if a later implementation unexpectedly touches Rust; such
-a touch is a STOP condition under this plan and requires separate review.
+The just integration profile already owns the required Rust, Ruff, and Mypy
+checks. Run the certification profile only if the release/certification scope
+is separately authorized; Slice 6 does not claim certification by default.
 
-- [ ] **Step 4: Inspect final scope and forbidden surfaces.**
+- [ ] **Step 5: Inspect final scope and forbidden surfaces.**
 
 `
-git diff --name-only 20fb8d92cdac27fc0dc61060223ffd7d7fa00cb5 HEAD
+git diff --name-only d2033223f73e84c7b3d3d49b0984ffbf0888a5a5 HEAD
+git diff --name-only d647e63d7687bd2c022393feaee5bac6736e84ca HEAD
 git ls-files --others --exclude-standard
 git status --short --branch
 `
 
-The implementation diff may contain only the planned Python modules/tests and
-the resolver compatibility tests. It must not contain:
+The first range is the implementation-only scope. The second range includes
+the accepted ADR, reviewed plan, and implementation. The implementation diff
+may contain only the planned Python modules/tests and resolver compatibility
+tests. It must not contain:
 
 `
 schemas/
@@ -915,13 +1029,13 @@ C artifacts
 player APIs or trajectory schemas
 `
 
-- [ ] **Step 5: Stop for independent implementation review.**
+- [ ] **Step 6: Stop for independent implementation review.**
 
 Do not create production authority artifacts, run Buckle-Up, modify C, start
 Task 5 Slice 3B, begin M3, or claim Slice-6 implementation acceptance until a
 separate exact-head review approves the implementation.
 
-## 13. Acceptance checklist for the future implementation
+## 12. Acceptance checklist for the future implementation
 
 Before any future implementation claim, verify all of the following with fresh
 evidence:
