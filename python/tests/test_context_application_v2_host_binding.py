@@ -1769,6 +1769,36 @@ class ContextApplicationV2HostBindingEvaluatorTests(unittest.TestCase):
                 (_claim_id(36),),
             )
 
+    def test_forged_child_invariants_are_revalidated_at_evaluator_boundary(self) -> None:
+        case = self._synthetic_case()
+        source_resolver, record, _ = build_application_with_v3_event(self, case)
+        claim = _cross_host_claim(self._member_key_for_record(record))
+        valid_link = ApplicationHostBindingV2(
+            "context_application",
+            record.application_id,
+            (claim.identity().as_text(),),
+        )
+        forged = object.__new__(ApplicationHostBindingV2)
+        for field_name in (
+            "application_kind",
+            "application_semantic_id",
+            "host_binding_claim_ids",
+        ):
+            object.__setattr__(forged, field_name, getattr(valid_link, field_name))
+        object.__setattr__(forged, "application_kind", "relation_application")
+        container = self._container_with_link(case, record, claim.identity().as_text())
+        object.__setattr__(container, "application_host_bindings_v2", (forged,))
+
+        with self.assertRaises(ContextApplicationV2HostBindingError) as caught:
+            self._evaluator_with_read_model(
+                source_resolver,
+                self._read_model_for_case(case, claim),
+            ).evaluate(container)
+        self.assertIn(
+            caught.exception.code,
+            {"HOST_INTEGRATION_INPUT_INVALID", "APPLICATION_HOST_BINDING_INVALID"},
+        )
+
     def test_member_identity_mutations_fail_closed_independently(self) -> None:
         case = self._synthetic_case()
         member = cast(ContextApplicationV2Record, case["record"]).members[0]
