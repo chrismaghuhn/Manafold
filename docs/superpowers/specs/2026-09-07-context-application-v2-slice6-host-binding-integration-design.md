@@ -63,7 +63,7 @@ admission and current-claim derivation. Slice 6 only composes their typed
 read models.
 
 The design is intentionally blocked before implementation. Repository
-inspection found two connected normative gaps:
+inspection found three connected normative gaps:
 
 1. ADR 0042 §10.1 permits optional HostBinding sources in an
    `ExpectedAcceptanceSourceClosureV3`, while the accepted Slice-4 design and
@@ -73,6 +73,9 @@ inspection found two connected normative gaps:
    requires a link, while the executable HostBinding validator and tests
    require links only for verified `cross_deck` + `directional_binary`
    members. ADR 0042 does not define the V2 required-member rule.
+3. The accepted contracts do not define the policy for unused HostBinding
+   authority or links targeting known cpa groups without a current cpar record,
+   including links whose hbc claim later became superseded or revoked.
 
 The recommended resolution is an ADR candidate that preserves the existing
 host-free V3 admission surface, defines HostBinding applicability from the
@@ -197,7 +200,7 @@ two incompatible interpretations.
   atomicity;
 - a frozen derived read model;
 - adversarial, permutation, and mutation-safety test design;
-- an ADR-candidate recommendation for the two identified contract gaps.
+- an ADR-candidate recommendation for the three identified contract gaps.
 
 ### Out of scope
 

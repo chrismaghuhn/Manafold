@@ -12,7 +12,7 @@ ADR 0043 accepts the ContextApplicationV2 supersession lineage, revocation, and 
 
 ## Reviewed candidates awaiting acceptance
 
-Reviewed ADR candidates may be stored under `docs/adr/candidates/` without allocating a permanent ADR number. They are informative until a later acceptance change assigns the then-current number and changes the record to `Accepted`. There is currently no open reviewed candidate.
+Reviewed ADR candidates may be stored under `docs/adr/candidates/` without allocating a permanent ADR number. They are informative until a later acceptance change assigns the then-current number and changes the record to `Accepted`. The current open reviewed candidate is [`ADR 0044: ContextApplicationV2 Slice 6 Host-Binding Integration`](candidates/0044-context-application-v2-slice6-host-binding-integration.md).
 
 A candidate must not be cited as accepted architecture, used to claim executable support, or used to begin a later milestone before its explicit acceptance change. Candidate numbering shown inside research material is provisional only.
 
