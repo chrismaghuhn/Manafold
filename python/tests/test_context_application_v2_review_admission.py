@@ -162,9 +162,7 @@ class ContextApplicationV2ReviewAdmissionTests(unittest.TestCase):
         sources = cast(list[dict[str, object]], mutated["source_binding_digests"])
         mutated["source_binding_digests"] = sorted(
             [*sources, host_binding.to_wire()],
-            key=lambda item: encode_canonical(
-                context_source_binding_from_wire(item).to_cbor()
-            ),
+            key=lambda item: encode_canonical(context_source_binding_from_wire(item).to_cbor()),
         )
         rebound = rebind_supersession_event(case, supersession, mutated)
 
