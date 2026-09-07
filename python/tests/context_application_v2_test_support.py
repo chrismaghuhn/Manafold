@@ -245,6 +245,22 @@ def build_application_with_v3_event(
 ) -> tuple[AuthoritySourceResolver, ContextApplicationV2Record, dict[str, object]]:
     del test_case
     initial_record = cast(ContextApplicationV2Record, case["record"])
+    return build_application_record_with_v3_event(
+        case,
+        initial_record,
+        review_mode=review_mode,
+        reviewer_roles=reviewer_roles,
+    )
+
+
+def build_application_record_with_v3_event(
+    case: Mapping[str, object],
+    application_record: ContextApplicationV2Record,
+    *,
+    review_mode: ReviewMode = ReviewMode.MULTI_REVIEWER,
+    reviewer_roles: tuple[str, ...] = DEFAULT_REVIEWER_ROLES,
+) -> tuple[AuthoritySourceResolver, ContextApplicationV2Record, dict[str, object]]:
+    initial_record = application_record
     zero_ref = ReviewEventRefV3(
         "sources/m2_5/authorities/review_acceptance_events/v3/" + "00" * 32 + ".json",
         bytes(32),
@@ -386,6 +402,7 @@ def build_supersession_with_v3_event(
 
 __all__ = [
     "DEFAULT_REVIEWER_ROLES",
+    "build_application_record_with_v3_event",
     "build_application_variant_with_v3_event",
     "build_application_with_v3_event",
     "build_supersession_with_v3_event",

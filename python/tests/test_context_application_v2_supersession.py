@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import copy
 import dataclasses
+import hashlib
 import sys
 import unittest
 from pathlib import Path
@@ -12,6 +13,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 
 from context_application_v2_test_support import (
     DEFAULT_REVIEWER_ROLES,
+    build_application_record_with_v3_event,
     build_application_variant_with_v3_event,
     build_application_with_v3_event,
     build_supersession_with_v3_event,
@@ -96,13 +98,14 @@ class ContextApplicationV2SupersessionAdmissionTests(unittest.TestCase):
 
         case = self._synthetic_case()
         source_resolver, application, _ = build_application_with_v3_event(self, case)
-        replacement_record_id = AuthorityIdentityV1(
-            AuthorityIdentityKind.CONTEXT_APPLICATION_RECORD_V2,
-            bytes.fromhex("11" * 32),
+        _, replacement_application, _ = build_application_variant_with_v3_event(
+            self,
+            case,
+            "replacement-application",
         )
         semantic_input = ContextApplicationV2SupersessionInputV2(
             superseded_record_id_bytes=application.record_id.digest_bytes,
-            replacement_record_id_bytes=replacement_record_id.digest_bytes,
+            replacement_record_id_bytes=replacement_application.record_id.digest_bytes,
             replacement_record_kind="context_application_v2_record",
             reason_code=SupersessionReason.SEMANTIC_CORRECTION,
             source_evidence_refs=(case["member"].member_evidence_refs[0],),
@@ -117,9 +120,9 @@ class ContextApplicationV2SupersessionAdmissionTests(unittest.TestCase):
             base_authority_binding=case["base_binding"],
         ).admit(supersession)
 
-        self.assertEqual(result.replacement_record_id, replacement_record_id)
+        self.assertEqual(result.replacement_record_id, replacement_application.record_id)
         self.assertEqual(result.reason_code, SupersessionReason.SEMANTIC_CORRECTION)
-        self.assertNotEqual(application.application_id, replacement_record_id)
+        self.assertNotEqual(application.application_id, replacement_application.application_id)
 
     def test_identity_and_structural_failures_have_stable_categories(self) -> None:
         from context_application_v2_supersession import (
@@ -343,6 +346,15 @@ class ContextApplicationV2CurrentnessGraphTests(unittest.TestCase):
             base_authority_binding=case["base_binding"],
         ).evaluate(applications, supersessions)
 
+    @staticmethod
+    def _file_digests(case: dict[str, object]) -> dict[str, str]:
+        repo = cast(Path, case["fixture"].repo)
+        return {
+            path.relative_to(repo).as_posix(): hashlib.sha256(path.read_bytes()).hexdigest()
+            for path in repo.rglob("*")
+            if path.is_file()
+        }
+
     def test_positive_currentness_scenarios(self) -> None:
         from context_application_v2_supersession import (
             ContextApplicationV2CurrentnessResult,
@@ -409,10 +421,12 @@ class ContextApplicationV2CurrentnessGraphTests(unittest.TestCase):
     def _same_application_revision(
         self,
         case: dict[str, object],
+        application_record: ContextApplicationV2Record | None = None,
     ) -> ContextApplicationV2Record:
-        _, revision, _ = build_application_with_v3_event(
-            self,
+        target = application_record or cast(ContextApplicationV2Record, case["record"])
+        _, revision, _ = build_application_record_with_v3_event(
             case,
+            target,
             reviewer_roles=(*DEFAULT_REVIEWER_ROLES, "project_owner"),
         )
         return revision
@@ -437,6 +451,87 @@ class ContextApplicationV2CurrentnessGraphTests(unittest.TestCase):
         self.assertEqual(
             set(result.current_record_ids),
             {b.record_id, c.record_id},
+        )
+
+    def test_revocation_scope_is_application_wide_but_not_lineage_wide(self) -> None:
+        case, resolver, a, b, _ = self._application_records()
+        a_revision = self._same_application_revision(case, a)
+        a_to_b = self._supersession(
+            case,
+            a,
+            b,
+            SupersessionReason.SOURCE_REVISION,
+        )
+        x_revocation = self._supersession(
+            case,
+            a_revision,
+            None,
+            SupersessionReason.AUTHORITY_REVOCATION,
+        )
+        result = self._evaluate(
+            case,
+            resolver,
+            (a, a_revision, b),
+            (a_to_b, x_revocation),
+        )
+        self.assertEqual(result.current_record_ids, (b.record_id,))
+        self.assertEqual(
+            set(result.revoked_record_ids),
+            {a.record_id, a_revision.record_id},
+        )
+        self.assertNotIn(b.record_id, result.revoked_record_ids)
+        self.assertTrue(
+            any(
+                edge.superseded_record_id == a.record_id
+                and edge.replacement_record_id == b.record_id
+                for edge in result.successor_edges
+            )
+        )
+
+        b_revision = self._same_application_revision(case, b)
+        y_revocation = self._supersession(
+            case,
+            b_revision,
+            None,
+            SupersessionReason.AUTHORITY_REVOCATION,
+        )
+        result = self._evaluate(
+            case,
+            resolver,
+            (a, b, b_revision),
+            (a_to_b, y_revocation),
+        )
+        self.assertEqual(result.current_record_ids, ())
+        self.assertNotIn(a.record_id, result.revoked_record_ids)
+        self.assertEqual(
+            set(result.revoked_record_ids),
+            {b.record_id, b_revision.record_id},
+        )
+        self.assertTrue(
+            any(
+                edge.superseded_record_id == a.record_id
+                and edge.replacement_record_id == b.record_id
+                for edge in result.successor_edges
+            )
+        )
+
+        result = self._evaluate(
+            case,
+            resolver,
+            (a, a_revision),
+            (
+                self._supersession(
+                    case,
+                    a,
+                    None,
+                    SupersessionReason.AUTHORITY_REVOCATION,
+                ),
+            ),
+        )
+        self.assertEqual(result.current_record_ids, ())
+        self.assertEqual(
+            set(result.revoked_record_ids),
+            {a.record_id, a_revision.record_id},
         )
 
     def test_duplicate_cpsr_revisions_materialize_one_edge_with_all_provenance(self) -> None:
@@ -470,6 +565,63 @@ class ContextApplicationV2CurrentnessGraphTests(unittest.TestCase):
         first = self._evaluate(case, resolver, (a, b, c), edges)
         second = self._evaluate(case, resolver, (c, a, b), tuple(reversed(edges)))
         self.assertEqual(first, second)
+
+    def test_duplicate_ids_are_rejected_before_admission_and_are_order_independent(
+        self,
+    ) -> None:
+        from context_application_v2_supersession import ContextApplicationV2CurrentnessError
+
+        case, resolver, a, b, _ = self._application_records()
+        malformed_application = copy.copy(a)
+        object.__setattr__(malformed_application, "members", ())
+        fingerprints: list[tuple[object, ...]] = []
+        for applications in ((a, malformed_application), (malformed_application, a)):
+            with self.assertRaises(ContextApplicationV2CurrentnessError) as caught:
+                self._evaluate(case, resolver, applications, ())
+            error = caught.exception
+            self.assertEqual(error.code, "DUPLICATE_RECORD_ID")
+            fingerprints.append(
+                (
+                    error.code,
+                    error.location,
+                    error.record_id,
+                    error.supersession_id,
+                    error.subject_record_ids,
+                )
+            )
+        self.assertEqual(fingerprints[0], fingerprints[1])
+
+        valid_supersession = self._supersession(
+            case,
+            a,
+            b,
+            SupersessionReason.SOURCE_REVISION,
+        )
+        malformed_supersession = copy.copy(valid_supersession)
+        object.__setattr__(
+            malformed_supersession,
+            "reason_code",
+            SupersessionReason.AUTHORITY_REVOCATION,
+        )
+        fingerprints = []
+        for supersessions in (
+            (valid_supersession, malformed_supersession),
+            (malformed_supersession, valid_supersession),
+        ):
+            with self.assertRaises(ContextApplicationV2CurrentnessError) as caught:
+                self._evaluate(case, resolver, (a, b), supersessions)
+            error = caught.exception
+            self.assertEqual(error.code, "DUPLICATE_RECORD_ID")
+            fingerprints.append(
+                (
+                    error.code,
+                    error.location,
+                    error.record_id,
+                    error.supersession_id,
+                    error.subject_record_ids,
+                )
+            )
+        self.assertEqual(fingerprints[0], fingerprints[1])
 
     def test_distinct_successors_fail_even_when_target_is_equal(self) -> None:
         from context_application_v2_supersession import ContextApplicationV2CurrentnessError
@@ -626,6 +778,32 @@ class ContextApplicationV2CurrentnessGraphTests(unittest.TestCase):
                 )
             )
         self.assertEqual(errors[0], errors[1])
+
+    def test_graph_rejection_preserves_inputs_and_temporary_files(self) -> None:
+        from context_application_v2_supersession import ContextApplicationV2CurrentnessError
+
+        case, resolver, a, b, c = self._application_records()
+        first = self._supersession(case, a, b, SupersessionReason.SOURCE_REVISION)
+        second = self._supersession(case, a, c, SupersessionReason.MODEL_REVISION)
+        applications_before = tuple(record.to_cbor() for record in (a, b, c))
+        supersessions_before = tuple(record.to_cbor() for record in (first, second))
+        files_before = self._file_digests(case)
+
+        for applications, supersessions in (
+            ((a, b, c), (first, second)),
+            ((c, b, a), (second, first)),
+        ):
+            with self.assertRaises(ContextApplicationV2CurrentnessError):
+                self._evaluate(case, resolver, applications, supersessions)
+            self.assertEqual(
+                tuple(record.to_cbor() for record in (a, b, c)),
+                applications_before,
+            )
+            self.assertEqual(
+                tuple(record.to_cbor() for record in (first, second)),
+                supersessions_before,
+            )
+            self.assertEqual(self._file_digests(case), files_before)
 
 
 if __name__ == "__main__":

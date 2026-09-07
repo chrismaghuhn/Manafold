@@ -378,6 +378,35 @@ class ContextApplicationV2CurrentnessEvaluator:
         self._source_resolver = source_resolver
         self._base_binding = base_authority_binding
 
+    @staticmethod
+    def _reject_duplicate_record_ids(
+        records: tuple[
+            ContextApplicationV2Record | ContextApplicationV2SupersessionRecord,
+            ...,
+        ],
+        location: str,
+    ) -> None:
+        ordered = sorted(
+            records,
+            key=lambda record: _identity_key(record.record_id),
+        )
+        previous_key: bytes | None = None
+        for record in ordered:
+            record_key = _identity_key(record.record_id)
+            if record_key == previous_key:
+                raise ContextApplicationV2CurrentnessError(
+                    "DUPLICATE_RECORD_ID",
+                    location,
+                    record_id=record.record_id,
+                    supersession_id=(
+                        record.supersession_id
+                        if isinstance(record, ContextApplicationV2SupersessionRecord)
+                        else None
+                    ),
+                    subject_record_ids=(record.record_id,),
+                )
+            previous_key = record_key
+
     def _admit_application_records(
         self,
         records: tuple[ContextApplicationV2Record, ...],
@@ -389,13 +418,6 @@ class ContextApplicationV2CurrentnessEvaluator:
         admitted: dict[bytes, ContextApplicationV2Record] = {}
         for record in sorted(records, key=_record_key):
             key = _record_key(record)
-            if key in admitted:
-                raise ContextApplicationV2CurrentnessError(
-                    "DUPLICATE_RECORD_ID",
-                    "application_records.record_id",
-                    record_id=record.record_id,
-                    subject_record_ids=(record.record_id,),
-                )
             try:
                 validator.admit(record)
             except ContextApplicationV2ReviewAdmissionError as exc:
@@ -420,19 +442,8 @@ class ContextApplicationV2CurrentnessEvaluator:
             base_authority_binding=self._base_binding,
         )
         ordered = tuple(sorted(records, key=lambda record: _identity_key(record.record_id)))
-        seen_record_ids: set[bytes] = set()
         results: list[ContextApplicationV2SupersessionAdmissionResult] = []
         for record in ordered:
-            record_key = _identity_key(record.record_id)
-            if record_key in seen_record_ids:
-                raise ContextApplicationV2CurrentnessError(
-                    "DUPLICATE_RECORD_ID",
-                    "supersession_records.record_id",
-                    record_id=record.record_id,
-                    supersession_id=record.supersession_id,
-                    subject_record_ids=(record.record_id,),
-                )
-            seen_record_ids.add(record_key)
             try:
                 results.append(validator.admit(record))
             except ContextApplicationV2SupersessionError as exc:
@@ -607,6 +618,11 @@ class ContextApplicationV2CurrentnessEvaluator:
         applications = tuple(cast(ContextApplicationV2Record, item) for item in raw_applications)
         supersessions = tuple(
             cast(ContextApplicationV2SupersessionRecord, item) for item in raw_supersessions
+        )
+        self._reject_duplicate_record_ids(applications, "application_records.record_id")
+        self._reject_duplicate_record_ids(
+            supersessions,
+            "supersession_records.record_id",
         )
         application_by_id = self._admit_application_records(applications)
         admissions = self._admit_supersession_records(supersessions)
