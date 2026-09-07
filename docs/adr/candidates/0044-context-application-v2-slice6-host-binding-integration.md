@@ -148,6 +148,12 @@ empty required set is represented by no link, not by an empty link.
 This clarification preserves the existing executable HostBinding behavior and
 does not add a persisted applicability field.
 
+The same applicability predicate applies to historical-only links. A link's
+claim/member union must equal the verified required subset of the exact
+admitted cpa member set, not the full member set. Current versus historical-only
+status controls whether the link may qualify authority; it does not change the
+member closure that the link must satisfy.
+
 ### 3. Define unused and historical link policy
 
 The following closed policy applies to `ApplicationHostBindingV2` and the
@@ -177,14 +183,17 @@ The HostBinding admission seam therefore exposes a derived, non-persisted
 read model containing:
 
 ```text
-admitted_claims_by_id
-current_claims_by_member
-claim_status_by_id = current | superseded | revoked
+admitted_claims_by_id: hbc.v1 -> claim
+current_claims_by_id: hbc.v1 -> claim
+current_claims_by_member: member -> hbc.v1
+claim_record_status_by_record_id: hbcr.v1 -> current | superseded | revoked
+claim_record_ids_by_claim_id: hbc.v1 -> tuple[hbcr.v1, ...]
 ```
 
 Current cpa links consult `current_claims_by_member`. Historical-only links
-consult `admitted_claims_by_id` and retain `claim_status_by_id` in the derived
-result.
+consult `admitted_claims_by_id` and retain the status of each exact referenced
+claim record in the derived result. Status is never aggregated ambiguously
+from multiple hbcr records onto the hbc semantic identity.
 
 ## Composition invariants
 

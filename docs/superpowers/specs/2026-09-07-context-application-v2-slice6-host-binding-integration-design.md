@@ -352,11 +352,14 @@ HostBindingAuthorityV2ReadModel {
     base_authority_v1_binding: HostBindingSourceBindingV2
     candidate_universe_binding: HostBindingSourceBindingV2 | None
     admitted_claims_by_id: tuple[(str, CrossDeckHostBindingClaimV1), ...]
-    current_claims: tuple[CrossDeckHostBindingClaimV1, ...]
+    current_claims_by_id: tuple[(str, CrossDeckHostBindingClaimV1), ...]
     current_claims_by_member: tuple[
         (ApplicationMemberKeyV1, HostBindingIdentityV1), ...
     ]
-    claim_status_by_id: tuple[(str, "current" | "superseded" | "revoked"), ...]
+    claim_record_status_by_record_id: tuple[
+        (str, "current" | "superseded" | "revoked"), ...
+    ]
+    claim_record_ids_by_claim_id: tuple[(str, tuple[str, ...]), ...]
     used_source_bindings: tuple[HostBindingSourceBindingV2, ...]
 }
 ```
@@ -445,10 +448,17 @@ For each current cpa group:
 | any | duplicate cpa link | reject |
 | any | unknown claim, duplicate member, missing member, or extra member | reject |
 
+The same verified applicability predicate applies to historical-only links. A
+historical link's claim/member union equals the required subset derived from
+the exact admitted cpa member set; it does not expand to all cpa members.
+Current versus historical-only status controls whether the link may qualify
+authority, not which member closure the link must satisfy.
+
 For a known cpa group with no current cpar, a link is `historical_only` and
 does not satisfy or create a current application. Its hbc IDs are still
-checked against the current HostBinding read model and its member union is
-checked against the admitted cpa member shape.
+checked against the admitted/current HostBinding read model appropriate to its
+status, and its member union is
+checked against the same applicability-derived required subset.
 
 ## 10. Reviewed host semantic expectation
 
@@ -518,9 +528,12 @@ Every link is validated mechanically and semantically in this order:
     target uses a known admitted claim and preserves its derived historical
     status;
 11. claim-member union equals the required member set for current targets;
-12. historical-only targets use the admitted cpa member shape but never qualify;
+12. historical-only targets use the same applicability-derived required subset
+    from the admitted cpa member shape but never qualify;
 13. every observed relationship equals the member's reviewed host expectation;
-14. no superseded/revoked/ambiguous claim is accepted;
+14. no superseded/revoked/ambiguous claim qualifies a current cpa; an admitted
+    superseded or revoked claim may be retained only for historical-only
+    linkage;
 15. no automatic x-to-y transfer is performed.
 
 Unknown target cpa IDs, duplicate links, noncanonical IDs, unknown claims,
@@ -571,7 +584,9 @@ The future evaluator must use this closed order:
    cpa-link closure;
 7. derive whether HostBinding authority is required, optional, or unexpected;
 8. resolve/admit the exact HostBinding authority and compare shared snapshots;
-9. validate links and claim IDs in canonical link/claim order;
+9. validate links and claim IDs/status in canonical link/claim order, using
+   current claim indexes for current targets and admitted claim records for
+   historical-only targets;
 10. verify exact claim/member union and reviewed host relationship;
 11. verify the separate exact container source closure;
 12. materialize and canonicalize the frozen result.
