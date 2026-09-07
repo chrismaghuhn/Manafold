@@ -529,7 +529,7 @@ class ContextApplicationV2HostBindingEvaluatorTests(unittest.TestCase):
                 record,
                 cast(ContextAuthoritySourceBindingV2, case["base_binding"]),
             )
-        self.assertEqual(caught.exception.code, "HOST_MEMBER_APPLICABILITY_INVALID")
+        self.assertEqual(caught.exception.code, "HOST_INTEGRATION_INPUT_INVALID")
         self.assertEqual(caught.exception.cause_code, "SYNTHETIC_MEMBER_SOURCE_FAILURE")
 
     def test_exact_member_union_and_reviewed_host_relationship_are_validated(self) -> None:

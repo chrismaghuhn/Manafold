@@ -51,7 +51,6 @@ APPLICATION_HOST_BINDING_INVALID: Final = "APPLICATION_HOST_BINDING_INVALID"
 HOST_MEMBER_SET_MISMATCH: Final = "HOST_MEMBER_SET_MISMATCH"
 HOST_RELATIONSHIP_MISMATCH: Final = "HOST_RELATIONSHIP_MISMATCH"
 HOST_CLAIM_UNKNOWN: Final = "HOST_CLAIM_UNKNOWN"
-HOST_MEMBER_APPLICABILITY_INVALID: Final = "HOST_MEMBER_APPLICABILITY_INVALID"
 
 
 class ApplicationHostBindingStatus(StrEnum):
@@ -309,7 +308,7 @@ class ContextApplicationV2HostBindingEvaluator:
                 resolved = resolver.resolve_member_source_instance(member)
             except (ContextApplicationV2ResolutionError, ResolutionError) as exc:
                 raise _error(
-                    HOST_MEMBER_APPLICABILITY_INVALID,
+                    HOST_INTEGRATION_INPUT_INVALID,
                     "context_application_v2_records.members",
                     cause_code=exc.code,
                     application_id=record.application_id,
@@ -587,7 +586,6 @@ __all__ = [
     "APPLICATION_HOST_BINDING_UNKNOWN_APPLICATION",
     "HOST_CLAIM_UNKNOWN",
     "HOST_INTEGRATION_INPUT_INVALID",
-    "HOST_MEMBER_APPLICABILITY_INVALID",
     "HOST_MEMBER_SET_MISMATCH",
     "HOST_RELATIONSHIP_MISMATCH",
     "ApplicationHostBindingResult",
