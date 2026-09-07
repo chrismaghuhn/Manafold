@@ -212,6 +212,33 @@ def rebind_application_event(
     )
 
 
+def rebind_supersession_event(
+    case: Mapping[str, object],
+    record: ContextApplicationV2SupersessionRecord,
+    wire: dict[str, object],
+) -> ContextApplicationV2SupersessionRecord:
+    fixture = cast(Any, case["fixture"])
+    event_input = _event_input_from_wire(wire)
+    event_wire = ReviewAcceptanceEventLeafV3.from_input(event_input).to_wire()
+    raw = json.dumps(event_wire, separators=(",", ":")).encode("utf-8") + bytes([10])
+    event_id = cast(str, event_wire["event_id"])
+    event_path = (
+        "sources/m2_5/authorities/review_acceptance_events/v3/"
+        + event_id.removeprefix("ae.v3/")
+        + ".json"
+    )
+    fixture.write_repo(event_path, raw)
+    event_ref = ReviewEventRefV3(event_path, hashlib.sha256(raw).digest(), event_id)
+    return ContextApplicationV2SupersessionRecord.from_parts(
+        supersession_id=record.supersession_id,
+        superseded_record_id=record.superseded_record_id,
+        replacement_record_id=record.replacement_record_id,
+        reason_code=record.reason_code,
+        source_evidence_refs=record.source_evidence_refs,
+        review_event_ref_v3=event_ref,
+    )
+
+
 def build_application_with_v3_event(
     test_case: object,
     case: Mapping[str, object],
@@ -308,4 +335,6 @@ __all__ = [
     "DEFAULT_REVIEWER_ROLES",
     "build_application_with_v3_event",
     "build_supersession_with_v3_event",
+    "rebind_application_event",
+    "rebind_supersession_event",
 ]
