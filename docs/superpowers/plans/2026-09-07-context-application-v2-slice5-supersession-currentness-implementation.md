@@ -12,9 +12,19 @@
 
 **Plan status:** provisional implementation plan; implementation not started
 
-**Implementation base:** `193493c610424bbf19bef30a25de14746c21dff5`
+**Integration base (`BASE`):** `193493c610424bbf19bef30a25de14746c21dff5`
 
-**Plan branch:** `chris/context-application-v2-slice5-implementation-plan`
+**Reviewed plan head before this amendment (`REVIEWED_PLAN_HEAD`):**
+`9f2e6de07e66edb302cfdb1ba140e55f5857b085`
+
+The latest accepted docs-only commit on
+`chris/context-application-v2-slice5-implementation-plan` is the
+`PLAN_HEAD` for implementation. The amendment commit containing this
+correction becomes the next plan-head candidate and must be independently
+reviewed before implementation authorization. Do not substitute `BASE` for
+`PLAN_HEAD`.
+
+**Implementation branch:** `chris/context-application-v2-slice5-supersession-currentness`
 
 **Plan authorization:** `YES`
 
@@ -22,8 +32,10 @@
 
 ## Approved inputs and non-negotiable invariants
 
-Implementation starts only after plan approval from the exact `origin/master`
-base above. The authoritative inputs are:
+Implementation starts only after plan approval from the exact accepted
+`PLAN_HEAD`, with `origin/master` still at `BASE`. The implementation
+branch is created from `PLAN_HEAD`; the plan and register commit therefore
+remain in the final PR diff. The authoritative inputs are:
 
 ```text
 docs/adr/0042-context-application-v2-reviewed-context-bridge.md
@@ -84,6 +96,7 @@ production artifacts.
 | `python/tests/test_context_application_v2_review_admission.py` | Modify | Reuse the shared fixture helper and add public-behavior equivalence assertions; retain every existing Slice 4 test. |
 | `python/tests/test_context_application_v2_supersession.py` | Create | RED/GREEN tests for supersession admission, graph invariants, revocation, currentness, determinism, and mutation safety. |
 | `scripts/run_python_tests.py` | Modify | Add the new supersession test module to the explicit smoke profile. |
+| `python/tests/test_python_test_profiles.py` | Modify | Assert one smoke-profile entry for the new supersession module and preserve unfiltered full-profile discovery. |
 | `docs/normative-document-register.v1.json` | Modify in the plan-only commit | Register this provisional implementation plan as `process / provisional / process-pr / maintainer`, following the existing Slice 3/4 plan convention. |
 
 Do not modify:
@@ -144,35 +157,47 @@ class ContextApplicationV2CurrentnessEvaluator:
 It accepts only typed sequences and performs Slice 4/Slice 5 admission itself.
 There is no `already_validated`, `accepted`, `trusted`, or boolean bypass.
 
-## Task 0: Verify the exact implementation base
+## Task 0: Verify the exact implementation base and plan head
 
 **Files:** None modified.
 
-- [ ] **Step 1: Fetch and record the live integration base.**
+- [ ] **Step 1: Resolve `BASE` and `PLAN_HEAD`, then create the implementation branch.**
 
 Run:
 
 ```powershell
 git fetch origin master
+git fetch origin chris/context-application-v2-slice5-implementation-plan
+$base = git rev-parse origin/master
+$planHead = git rev-parse origin/chris/context-application-v2-slice5-implementation-plan
+if ($base -ne "193493c610424bbf19bef30a25de14746c21dff5") { throw "BASE drift" }
+git switch --create chris/context-application-v2-slice5-supersession-currentness $planHead
 git rev-parse HEAD
-git rev-parse origin/master
 git branch --show-current
 git status --short --branch
-git diff --name-only origin/master
+git diff --name-only "$base..HEAD"
+git diff --name-only HEAD
 ```
 
 Expected:
 
 ```text
-HEAD = 193493c610424bbf19bef30a25de14746c21dff5
-origin/master = 193493c610424bbf19bef30a25de14746c21dff5
-branch = chris/context-application-v2-slice5-implementation-plan
-tracked diff = empty
+BASE = 193493c610424bbf19bef30a25de14746c21dff5
+PLAN_HEAD = exact tip of origin/chris/context-application-v2-slice5-implementation-plan
+HEAD = PLAN_HEAD
+origin/master = BASE
+branch = chris/context-application-v2-slice5-supersession-currentness
+BASE..HEAD = the approved plan and register documents
+working-tree diff from HEAD = empty
 ```
 
 The known untracked
 `docs/superpowers/plans/2026-08-26-m2-5-b2-terminal-card-classification-closure.md`
 is preserved and is not staged.
+
+If the resolved `PLAN_HEAD` is not the independently approved docs-only
+plan/amendment tip, or if `origin/master` differs from `BASE`, stop and
+record the exact discrepancy before touching implementation files.
 
 - [ ] **Step 2: Re-read the accepted contract and implementation seams.**
 
@@ -182,11 +207,11 @@ authority DTOs, and all existing ContextApplicationV2 tests. Confirm that the
 V3 resolver already accepts a typed supersession subject and that no resolver,
 schema, or identity extension is needed.
 
-- [ ] **Step 3: Stop if the base or scope differs.**
+- [ ] **Step 3: Stop if the base, plan head, branch, or scope differs.**
 
-Do not edit, stash, reset, clean, rebase, or delete anything when the expected
-base or unrelated untracked state differs. Record the exact discrepancy for
-review.
+Do not edit, stash, reset, clean, rebase, or delete anything when `BASE`,
+`PLAN_HEAD`, the implementation branch, or unrelated untracked state differs.
+Record the exact discrepancy for review.
 
 - [ ] **Step 4: Commit no implementation work.**
 
@@ -858,9 +883,12 @@ or insertion order.
 
 Create two valid supersession records with the same source and replacement but
 different `source_evidence_refs`, so their recomputed `cps.v2` IDs differ.
-Assert `MULTIPLE_SUCCESSORS`. Create two different accepted V3 events for one
-unchanged semantic `cps.v2`; assert one edge and a canonical tuple containing
-both `cpsr.v2` IDs. Repeat the same `cpsr.v2` object; assert
+Assert `MULTIPLE_SUCCESSORS`. Then construct the distinct semantic edges
+`A --semantic_correction--> B` and `A --authority_revocation--> null` and
+assert the same `MULTIPLE_SUCCESSORS` failure; the revocation edge must not be
+excluded from successor validation. Create two different accepted V3 events
+for one unchanged semantic `cps.v2`; assert one edge and a canonical tuple
+containing both `cpsr.v2` IDs. Repeat the same `cpsr.v2` object; assert
 `DUPLICATE_RECORD_ID`.
 
 - [ ] **Step 5: Add currentness ambiguity and graph-negative controls.**
@@ -875,10 +903,17 @@ two distinct successors             -> MULTIPLE_SUCCESSORS
 A -> B -> A                         -> SUPERSESSION_CYCLE
 A -> B -> C -> A                    -> SUPERSESSION_CYCLE
 two eligible records in one cpa     -> CURRENTNESS_AMBIGUOUS
+invalid admitted supersession       -> SUPERSESSION_ADMISSION_FAILED
 ```
 
 The ambiguity case must contain two individually admitted records with the
 same exact `application_id` and no effective edge removing either candidate.
+For `CURRENTNESS_AMBIGUOUS`, set `application_id` to the group key and
+`subject_record_ids` to the sorted candidate IDs; leave
+`supersession_id` and `subject_supersession_ids` empty.
+For `SUPERSESSION_ADMISSION_FAILED`, assert the stable outer code and
+location, the inner `cause_code` and `cause_location`, and the exact
+`record_id`/`supersession_id` fields without inspecting exception text.
 
 - [ ] **Step 6: Add deterministic error and mutation tests.**
 
@@ -890,10 +925,12 @@ and assert the same error fingerprint:
     error.code,
     error.location,
     error.cause_code,
+    error.cause_location,
     error.record_id,
     error.supersession_id,
     error.application_id,
     error.subject_record_ids,
+    error.subject_supersession_ids,
     error.cycle_path,
 )
 ```
@@ -954,15 +991,23 @@ class ContextApplicationV2CurrentnessError(ValueError):
         location: str,
         *,
         cause_code: str | None = None,
+        cause_location: str | None = None,
+        record_id: AuthorityIdentityV1 | None = None,
+        supersession_id: AuthorityIdentityV1 | None = None,
         application_id: AuthorityIdentityV1 | None = None,
         subject_record_ids: tuple[AuthorityIdentityV1, ...] = (),
+        subject_supersession_ids: tuple[AuthorityIdentityV1, ...] = (),
         cycle_path: tuple[AuthorityIdentityV1, ...] = (),
     ) -> None:
         self.code = code
         self.location = location
         self.cause_code = cause_code
+        self.cause_location = cause_location
+        self.record_id = record_id
+        self.supersession_id = supersession_id
         self.application_id = application_id
         self.subject_record_ids = subject_record_ids
+        self.subject_supersession_ids = subject_supersession_ids
         self.cycle_path = cycle_path
         super().__init__(f"{code} at {location}")
 ```
@@ -1000,7 +1045,28 @@ cause data.
 
 Then call `ContextApplicationV2SupersessionAdmissionValidator.admit` for every
 supersession record in canonical `cpsr.v2` record-ID order. Do not accept a
-caller-provided admitted flag or prevalidated wrapper as the public input.
+caller-provided admitted flag or prevalidated wrapper as the public input. Wrap
+any `ContextApplicationV2SupersessionError` as one
+`ContextApplicationV2CurrentnessError` with:
+
+```python
+raise ContextApplicationV2CurrentnessError(
+    "SUPERSESSION_ADMISSION_FAILED",
+    "supersession_record",
+    cause_code=exc.code,
+    cause_location=exc.location,
+    record_id=record.record_id,
+    supersession_id=record.supersession_id,
+    subject_record_ids=(
+        record.record_id,
+        record.superseded_record_id,
+    ),
+) from exc
+```
+
+Preserve the inner code and location only in these structured fields; never
+parse exception text. The outer code, location, and identity fields are stable
+for every permutation of the same invalid input.
 
 - [ ] **Step 4: Group equal `cps.v2` revisions and construct one edge.**
 
@@ -1033,7 +1099,10 @@ if edge.superseded_record_id not in application_by_id:
     raise ContextApplicationV2CurrentnessError(
         "SUPERSEDED_RECORD_UNKNOWN",
         "supersession_edge.superseded_record_id",
+        record_id=edge.superseded_record_id,
+        supersession_id=edge.supersession_id,
         subject_record_ids=(edge.superseded_record_id,),
+        subject_supersession_ids=(edge.supersession_id,),
     )
 if edge.replacement_record_id is not None and (
     edge.replacement_record_id not in application_by_id
@@ -1041,22 +1110,33 @@ if edge.replacement_record_id is not None and (
     raise ContextApplicationV2CurrentnessError(
         "REPLACEMENT_RECORD_UNKNOWN",
         "supersession_edge.replacement_record_id",
+        record_id=edge.replacement_record_id,
+        supersession_id=edge.supersession_id,
         subject_record_ids=(edge.replacement_record_id,),
+        subject_supersession_ids=(edge.supersession_id,),
     )
 if edge.replacement_record_id == edge.superseded_record_id:
     raise ContextApplicationV2CurrentnessError(
         "SELF_SUPERSESSION",
         "supersession_edge.replacement_record_id",
+        record_id=edge.superseded_record_id,
+        supersession_id=edge.supersession_id,
         subject_record_ids=(edge.superseded_record_id,),
+        subject_supersession_ids=(edge.supersession_id,),
     )
 ```
 
 Insert only one distinct semantic edge per source. If a source already maps to
-a different `cps.v2`, raise `MULTIPLE_SUCCESSORS` with the source and sorted
-semantic IDs, including the case where replacement IDs are equal. After this
-check, follow the canonical successor map. Normalize each cycle by its
-smallest canonical rotation and report the smallest normalized cycle as
-`SUPERSESSION_CYCLE`.
+a different `cps.v2`, raise `MULTIPLE_SUCCESSORS` with
+`record_id=source_record_id`, `subject_record_ids=(source_record_id,)`, and
+`subject_supersession_ids` containing the sorted complete semantic IDs. Set
+`supersession_id` to the canonical smallest conflicting semantic ID. This
+includes the case where replacement IDs are equal and the case where one edge
+is a revocation edge. After this check, follow the canonical successor map.
+Normalize each cycle by its smallest canonical rotation, report the smallest
+normalized cycle as `SUPERSESSION_CYCLE`, set `cycle_path` and
+`subject_record_ids` to that normalized path, and set
+`subject_supersession_ids` to the sorted semantic IDs on the cycle.
 
 - [ ] **Step 6: Derive application-wide revocation and currentness.**
 
@@ -1241,6 +1321,8 @@ git status --short --branch
 Expected tracked implementation files are limited to:
 
 ```text
+docs/normative-document-register.v1.json
+docs/superpowers/plans/2026-09-07-context-application-v2-slice5-supersession-currentness-implementation.md
 scripts/context_application_v2_review_binding.py
 scripts/context_application_v2_review_admission.py
 scripts/context_application_v2_supersession.py
@@ -1275,8 +1357,10 @@ git diff --name-only origin/master...HEAD
 ```
 
 Record the final commit, exact base, all changed files, every executed command,
-and every `PASS`, `FAIL`, `NOT_RUN`, `SKIPPED`, or `BLOCKED` status. Do not call
-the implementation complete while a required gate is unknown.
+and every `PASS`, `FAIL`, `NOT_RUN`, `SKIPPED`, or `BLOCKED` status. The
+changed-file list must include the approved plan and register documents carried
+from `PLAN_HEAD` in addition to the Slice 5 implementation files. Do not
+call the implementation complete while a required gate is unknown.
 
 - [ ] **Step 2: Re-fetch master and inspect semantic drift before delivery.**
 
@@ -1391,7 +1475,9 @@ existing modules.
 ## Plan-only status
 
 ```text
-MASTER_BASE=193493c610424bbf19bef30a25de14746c21dff5
+BASE=193493c610424bbf19bef30a25de14746c21dff5
+REVIEWED_PLAN_HEAD=9f2e6de07e66edb302cfdb1ba140e55f5857b085
+PLAN_HEAD=latest independently accepted docs-only plan/amendment tip
 PLAN_ONLY=YES
 IMPLEMENTATION_PLAN_CREATED=YES
 IMPLEMENTATION_STARTED=NO
