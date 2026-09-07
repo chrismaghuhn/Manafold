@@ -13,7 +13,9 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
 
 from context_application_v2_test_support import (
+    DEFAULT_REVIEWER_ROLES,
     build_application_with_v3_event,
+    build_application_variant_with_v3_event,
     build_supersession_with_v3_event,
     rebind_supersession_event,
 )
@@ -25,8 +27,10 @@ from mtgml.authority import (
     ContextApplicationV2SupersessionInputV2,
     ContextApplicationV2SupersessionRecord,
     DigestReferenceV1,
+    ReviewMode,
     SupersessionReason,
 )
+from mtgml.persistence import encode_canonical
 
 
 class ContextApplicationV2SupersessionAdmissionTests(unittest.TestCase):
@@ -261,6 +265,371 @@ class ContextApplicationV2SupersessionAdmissionTests(unittest.TestCase):
             )
             validator.admit(invalid)
         self.assertEqual(supersession.to_cbor(), before)
+
+
+class ContextApplicationV2CurrentnessGraphTests(unittest.TestCase):
+    def _synthetic_case(self) -> dict[str, object]:
+        from test_context_application_v2_validator import ContextApplicationV2IntegrationTests
+
+        base = ContextApplicationV2IntegrationTests()
+        base.setUp()
+        self.addCleanup(base.doCleanups)
+        self.addCleanup(base.tearDown)
+        return base._synthetic_case(
+            source_timing="not_applicable",
+            reviewed_timing="not_applicable",
+        )
+
+    def _application_records(
+        self,
+    ) -> tuple[
+        dict[str, object],
+        object,
+        ContextApplicationV2Record,
+        ContextApplicationV2Record,
+        ContextApplicationV2Record,
+    ]:
+        case = self._synthetic_case()
+        source_resolver, application_a, _ = build_application_with_v3_event(self, case)
+        _, application_b, _ = build_application_variant_with_v3_event(
+            self,
+            case,
+            "variant-b",
+        )
+        _, application_c, _ = build_application_variant_with_v3_event(
+            self,
+            case,
+            "variant-c",
+        )
+        return case, source_resolver, application_a, application_b, application_c
+
+    def _supersession(
+        self,
+        case: dict[str, object],
+        source: ContextApplicationV2Record,
+        replacement: ContextApplicationV2Record | None,
+        reason: SupersessionReason,
+        *,
+        reviewer_roles: tuple[str, ...] = DEFAULT_REVIEWER_ROLES,
+    ) -> ContextApplicationV2SupersessionRecord:
+        semantic_input = ContextApplicationV2SupersessionInputV2(
+            superseded_record_id_bytes=source.record_id.digest_bytes,
+            replacement_record_id_bytes=(
+                None if replacement is None else replacement.record_id.digest_bytes
+            ),
+            replacement_record_kind=(
+                None if replacement is None else "context_application_v2_record"
+            ),
+            reason_code=reason,
+            source_evidence_refs=(case["member"].member_evidence_refs[0],),
+        )
+        _, record, _ = build_supersession_with_v3_event(
+            self,
+            case,
+            semantic_input,
+            reviewer_roles=reviewer_roles,
+        )
+        return record
+
+    def _evaluate(
+        self,
+        case: dict[str, object],
+        source_resolver: object,
+        applications: tuple[ContextApplicationV2Record, ...],
+        supersessions: tuple[ContextApplicationV2SupersessionRecord, ...],
+    ) -> object:
+        from context_application_v2_supersession import (
+            ContextApplicationV2CurrentnessEvaluator,
+        )
+
+        return ContextApplicationV2CurrentnessEvaluator(
+            source_resolver,
+            base_authority_binding=case["base_binding"],
+        ).evaluate(applications, supersessions)
+
+    def test_positive_currentness_scenarios(self) -> None:
+        from context_application_v2_supersession import (
+            ContextApplicationV2CurrentnessResult,
+        )
+
+        case, resolver, a, b, c = self._application_records()
+        scenarios = (
+            ("a-only", (a,), (), (a.record_id,)),
+            (
+                "a-to-b-cross-application",
+                (a, b),
+                (self._supersession(case, a, b, SupersessionReason.SOURCE_REVISION),),
+                (b.record_id,),
+            ),
+            (
+                "a-to-b-to-c",
+                (a, b, c),
+                (
+                    self._supersession(case, a, b, SupersessionReason.SOURCE_REVISION),
+                    self._supersession(case, b, c, SupersessionReason.MODEL_REVISION),
+                ),
+                (c.record_id,),
+            ),
+            (
+                "a-revoked",
+                (a,),
+                (
+                    self._supersession(
+                        case,
+                        a,
+                        None,
+                        SupersessionReason.AUTHORITY_REVOCATION,
+                    ),
+                ),
+                (),
+            ),
+        )
+        for name, applications, supersessions, expected_current in scenarios:
+            with self.subTest(name=name):
+                result = self._evaluate(case, resolver, applications, supersessions)
+                self.assertIsInstance(result, ContextApplicationV2CurrentnessResult)
+                if expected_current is not None:
+                    self.assertEqual(result.current_record_ids, expected_current)
+
+        b_revoked = self._supersession(
+            case,
+            b,
+            None,
+            SupersessionReason.AUTHORITY_REVOCATION,
+        )
+        result = self._evaluate(
+            case,
+            resolver,
+            (a, b),
+            (
+                self._supersession(case, a, b, SupersessionReason.SOURCE_REVISION),
+                b_revoked,
+            ),
+        )
+        self.assertEqual(result.current_record_ids, ())
+        self.assertEqual(result.superseded_record_ids, (a.record_id,))
+        self.assertIn(b.record_id, result.revoked_record_ids)
+
+    def _same_application_revision(
+        self,
+        case: dict[str, object],
+    ) -> ContextApplicationV2Record:
+        _, revision, _ = build_application_with_v3_event(
+            self,
+            case,
+            reviewer_roles=DEFAULT_REVIEWER_ROLES + ("project_owner",),
+        )
+        return revision
+
+    def test_independent_groups_and_linked_history(self) -> None:
+        case, resolver, a, b, c = self._application_records()
+        a_revision = self._same_application_revision(case)
+        result = self._evaluate(
+            case,
+            resolver,
+            (a, a_revision),
+            (self._supersession(case, a, a_revision, SupersessionReason.SOURCE_REVISION),),
+        )
+        self.assertEqual(result.current_record_ids, (a_revision.record_id,))
+
+        result = self._evaluate(
+            case,
+            resolver,
+            (a, b, c),
+            (self._supersession(case, a, b, SupersessionReason.SOURCE_REVISION),),
+        )
+        self.assertEqual(
+            set(result.current_record_ids),
+            {b.record_id, c.record_id},
+        )
+
+    def test_duplicate_cpsr_revisions_materialize_one_edge_with_all_provenance(self) -> None:
+        case, resolver, a, b, _ = self._application_records()
+        first = self._supersession(case, a, b, SupersessionReason.SOURCE_REVISION)
+        second = self._supersession(
+            case,
+            a,
+            b,
+            SupersessionReason.SOURCE_REVISION,
+            reviewer_roles=DEFAULT_REVIEWER_ROLES + ("project_owner",),
+        )
+        result = self._evaluate(case, resolver, (a, b), (first, second))
+        self.assertEqual(len(result.successor_edges), 1)
+        self.assertEqual(
+            result.successor_edges[0].accepted_record_ids,
+            tuple(
+                sorted(
+                    (first.record_id, second.record_id),
+                    key=lambda item: encode_canonical(item.to_cbor()),
+                )
+            ),
+        )
+
+    def test_input_permutations_produce_equal_results(self) -> None:
+        case, resolver, a, b, c = self._application_records()
+        edges = (
+            self._supersession(case, a, b, SupersessionReason.SOURCE_REVISION),
+            self._supersession(case, b, c, SupersessionReason.MODEL_REVISION),
+        )
+        first = self._evaluate(case, resolver, (a, b, c), edges)
+        second = self._evaluate(case, resolver, (c, a, b), tuple(reversed(edges)))
+        self.assertEqual(first, second)
+
+    def test_distinct_successors_fail_even_when_target_is_equal(self) -> None:
+        from context_application_v2_supersession import ContextApplicationV2CurrentnessError
+
+        case, resolver, a, b, _ = self._application_records()
+        first = self._supersession(case, a, b, SupersessionReason.SOURCE_REVISION)
+        second = self._supersession(case, a, b, SupersessionReason.MODEL_REVISION)
+        with self.assertRaises(ContextApplicationV2CurrentnessError) as caught:
+            self._evaluate(case, resolver, (a, b), (first, second))
+        self.assertEqual(caught.exception.code, "MULTIPLE_SUCCESSORS")
+        self.assertEqual(caught.exception.record_id, a.record_id)
+        self.assertEqual(
+            caught.exception.subject_supersession_ids,
+            tuple(
+                sorted(
+                    (first.supersession_id, second.supersession_id),
+                    key=lambda item: encode_canonical(item.to_cbor()),
+                )
+            ),
+        )
+
+    def test_revocation_and_replacement_from_one_source_fail_as_multiple_successors(self) -> None:
+        from context_application_v2_supersession import ContextApplicationV2CurrentnessError
+
+        case, resolver, a, b, _ = self._application_records()
+        replacement = self._supersession(case, a, b, SupersessionReason.SEMANTIC_CORRECTION)
+        revocation = self._supersession(
+            case,
+            a,
+            None,
+            SupersessionReason.AUTHORITY_REVOCATION,
+        )
+        with self.assertRaises(ContextApplicationV2CurrentnessError) as caught:
+            self._evaluate(case, resolver, (a, b), (replacement, revocation))
+        self.assertEqual(caught.exception.code, "MULTIPLE_SUCCESSORS")
+
+    def test_graph_negative_categories_and_ambiguous_currentness(self) -> None:
+        from context_application_v2_supersession import ContextApplicationV2CurrentnessError
+
+        case, resolver, a, b, c = self._application_records()
+        unknown = AuthorityIdentityV1(
+            AuthorityIdentityKind.CONTEXT_APPLICATION_RECORD_V2,
+            bytes.fromhex("66" * 32),
+        )
+        unknown_input = ContextApplicationV2SupersessionInputV2(
+            superseded_record_id_bytes=unknown.digest_bytes,
+            replacement_record_id_bytes=b.record_id.digest_bytes,
+            replacement_record_kind="context_application_v2_record",
+            reason_code=SupersessionReason.SOURCE_REVISION,
+            source_evidence_refs=(case["member"].member_evidence_refs[0],),
+        )
+        _, unknown_source, _ = build_supersession_with_v3_event(
+            self,
+            case,
+            unknown_input,
+        )
+        with self.assertRaises(ContextApplicationV2CurrentnessError) as caught:
+            self._evaluate(case, resolver, (a, b), (unknown_source,))
+        self.assertEqual(caught.exception.code, "SUPERSEDED_RECORD_UNKNOWN")
+
+        self_edge = self._supersession(case, a, a, SupersessionReason.SOURCE_REVISION)
+        with self.assertRaises(ContextApplicationV2CurrentnessError) as caught:
+            self._evaluate(case, resolver, (a,), (self_edge,))
+        self.assertEqual(caught.exception.code, "SELF_SUPERSESSION")
+
+        cycle_ab = self._supersession(case, a, b, SupersessionReason.SOURCE_REVISION)
+        cycle_ba = self._supersession(case, b, a, SupersessionReason.SOURCE_REVISION)
+        with self.assertRaises(ContextApplicationV2CurrentnessError) as caught:
+            self._evaluate(case, resolver, (a, b), (cycle_ab, cycle_ba))
+        self.assertEqual(caught.exception.code, "SUPERSESSION_CYCLE")
+
+        a_revision = self._same_application_revision(case)
+        with self.assertRaises(ContextApplicationV2CurrentnessError) as caught:
+            self._evaluate(case, resolver, (a, a_revision), ())
+        self.assertEqual(caught.exception.code, "CURRENTNESS_AMBIGUOUS")
+        self.assertEqual(caught.exception.application_id, a.application_id)
+        self.assertEqual(
+            caught.exception.subject_record_ids,
+            tuple(
+                sorted(
+                    (a.record_id, a_revision.record_id),
+                    key=lambda item: encode_canonical(item.to_cbor()),
+                )
+            ),
+        )
+
+        with self.assertRaises(ContextApplicationV2CurrentnessError) as caught:
+            self._evaluate(case, resolver, (a, a), ())
+        self.assertEqual(caught.exception.code, "DUPLICATE_RECORD_ID")
+
+        long_cycle_ab = self._supersession(case, a, b, SupersessionReason.SOURCE_REVISION)
+        long_cycle_bc = self._supersession(case, b, c, SupersessionReason.MODEL_REVISION)
+        long_cycle_ca = self._supersession(case, c, a, SupersessionReason.SEMANTIC_CORRECTION)
+        with self.assertRaises(ContextApplicationV2CurrentnessError) as caught:
+            self._evaluate(
+                case,
+                resolver,
+                (a, b, c),
+                (long_cycle_ab, long_cycle_bc, long_cycle_ca),
+            )
+        self.assertEqual(caught.exception.code, "SUPERSESSION_CYCLE")
+
+    def test_supersession_admission_error_is_wrapped_with_structured_cause(self) -> None:
+        from context_application_v2_supersession import ContextApplicationV2CurrentnessError
+
+        case, resolver, a, _, _ = self._application_records()
+        invalid = self._supersession(
+            case,
+            a,
+            None,
+            SupersessionReason.AUTHORITY_REVOCATION,
+        )
+        object.__setattr__(
+            invalid,
+            "record_id",
+            AuthorityIdentityV1(
+                AuthorityIdentityKind.CONTEXT_SUPERSESSION_RECORD_V2,
+                bytes.fromhex("77" * 32),
+            ),
+        )
+        with self.assertRaises(ContextApplicationV2CurrentnessError) as caught:
+            self._evaluate(case, resolver, (a,), (invalid,))
+        self.assertEqual(caught.exception.code, "SUPERSESSION_ADMISSION_FAILED")
+        self.assertEqual(caught.exception.cause_code, "SUPERSESSION_RECORD_IDENTITY_MISMATCH")
+        self.assertEqual(caught.exception.cause_location, "record_id")
+        self.assertEqual(caught.exception.record_id, invalid.record_id)
+
+    def test_graph_error_fingerprint_is_input_order_independent(self) -> None:
+        from context_application_v2_supersession import ContextApplicationV2CurrentnessError
+
+        case, resolver, a, b, c = self._application_records()
+        first = self._supersession(case, a, b, SupersessionReason.SOURCE_REVISION)
+        second = self._supersession(case, a, c, SupersessionReason.MODEL_REVISION)
+        errors: list[tuple[object, ...]] = []
+        for applications, supersessions in (
+            ((a, b, c), (first, second)),
+            ((c, a, b), (second, first)),
+        ):
+            with self.assertRaises(ContextApplicationV2CurrentnessError) as caught:
+                self._evaluate(case, resolver, applications, supersessions)
+            error = caught.exception
+            errors.append(
+                (
+                    error.code,
+                    error.location,
+                    error.cause_code,
+                    error.cause_location,
+                    error.record_id,
+                    error.supersession_id,
+                    error.application_id,
+                    error.subject_record_ids,
+                    error.subject_supersession_ids,
+                    error.cycle_path,
+                )
+            )
+        self.assertEqual(errors[0], errors[1])
 
 
 if __name__ == "__main__":

@@ -4,6 +4,7 @@ import hashlib
 import json
 import sys
 from collections.abc import Mapping
+from dataclasses import replace
 from pathlib import Path
 from typing import Any, cast
 
@@ -23,6 +24,7 @@ from mtgml.authority import (
     AuthorityIdentityKind,
     AuthorityIdentityV1,
     ContextApplicationV2Record,
+    ContextApplicationV2InputV1,
     ContextApplicationV2SupersessionInputV2,
     ContextApplicationV2SupersessionRecord,
     DigestReferenceV1,
@@ -275,6 +277,64 @@ def build_application_with_v3_event(
     return cast(AuthoritySourceResolver, case["source_resolver"]), record, event_wire
 
 
+def build_application_variant_with_v3_event(
+    test_case: object,
+    case: Mapping[str, object],
+    variant_tag: str,
+    *,
+    review_mode: ReviewMode = ReviewMode.MULTI_REVIEWER,
+    reviewer_roles: tuple[str, ...] = DEFAULT_REVIEWER_ROLES,
+) -> tuple[AuthoritySourceResolver, ContextApplicationV2Record, dict[str, object]]:
+    del test_case
+    initial_record = cast(ContextApplicationV2Record, case["record"])
+    member = initial_record.members[0]
+    bridge = member.context_member_bridge_attestation_v2
+    variant_bridge = replace(
+        bridge,
+        context=tuple(
+            replace(slot, rationale=f"{slot.rationale} {variant_tag}")
+            for slot in bridge.context
+        ),
+        temporal=tuple(
+            replace(slot, rationale=f"{slot.rationale} {variant_tag}")
+            for slot in bridge.temporal
+        ),
+    )
+    variant_member = replace(
+        member,
+        context_member_bridge_attestation_v2=variant_bridge,
+    )
+    application_id = ContextApplicationV2InputV1(
+        theorem_record_id_bytes=initial_record.theorem_record_id.digest_bytes,
+        members=(variant_member,),
+    ).identity()
+    zero_ref = ReviewEventRefV3(
+        "sources/m2_5/authorities/review_acceptance_events/v3/" + "00" * 32 + ".json",
+        bytes(32),
+        "ae.v3/" + "00" * 32,
+    )
+    provisional = ContextApplicationV2Record.from_parts(
+        application_id=application_id,
+        theorem_record_id=initial_record.theorem_record_id,
+        members=(variant_member,),
+        review_event_ref_v3=zero_ref,
+    )
+    event_ref, event_wire = _write_event_for_subject(
+        case,
+        provisional,
+        subject_kind=AcceptanceSubjectKindV3.CONTEXT_APPLICATION_V2_RECORD,
+        review_mode=review_mode,
+        reviewer_roles=reviewer_roles,
+    )
+    record = ContextApplicationV2Record.from_parts(
+        application_id=application_id,
+        theorem_record_id=initial_record.theorem_record_id,
+        members=(variant_member,),
+        review_event_ref_v3=event_ref,
+    )
+    return cast(AuthoritySourceResolver, case["source_resolver"]), record, event_wire
+
+
 def build_supersession_with_v3_event(
     test_case: object,
     case: Mapping[str, object],
@@ -334,6 +394,7 @@ def build_supersession_with_v3_event(
 __all__ = [
     "DEFAULT_REVIEWER_ROLES",
     "build_application_with_v3_event",
+    "build_application_variant_with_v3_event",
     "build_supersession_with_v3_event",
     "rebind_application_event",
     "rebind_supersession_event",
