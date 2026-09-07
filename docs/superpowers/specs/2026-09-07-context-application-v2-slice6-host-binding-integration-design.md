@@ -335,9 +335,9 @@ revoked group current. Unknown cpa targets are rejected; they cannot become
 historical by being placed in the container.
 
 Historical links still must be structurally exact and may reference only
-currently valid hbc claim IDs. A superseded or revoked hbc claim is not made
-valid merely because its cpa link is historical. No historical input is
-deleted or rewritten.
+admitted hbc claim IDs. A superseded or revoked hbc claim remains historical
+with its exact status; it is not made current merely because its cpa link is
+historical. No historical input is deleted or rewritten.
 
 ## 7. HostBinding current-claim reuse
 
@@ -351,10 +351,12 @@ the same validator, conceptually:
 HostBindingAuthorityV2ReadModel {
     base_authority_v1_binding: HostBindingSourceBindingV2
     candidate_universe_binding: HostBindingSourceBindingV2 | None
+    admitted_claims_by_id: tuple[(str, CrossDeckHostBindingClaimV1), ...]
     current_claims: tuple[CrossDeckHostBindingClaimV1, ...]
     current_claims_by_member: tuple[
         (ApplicationMemberKeyV1, HostBindingIdentityV1), ...
     ]
+    claim_status_by_id: tuple[(str, "current" | "superseded" | "revoked"), ...]
     used_source_bindings: tuple[HostBindingSourceBindingV2, ...]
 }
 ```
@@ -512,7 +514,9 @@ Every link is validated mechanically and semantically in this order:
 7. target currentness status is derived from Slice 5, never caller-supplied;
 8. every claim ID exists in the HostBinding read model;
 9. every claim has the exact expected member key;
-10. every claim is a currently valid hbc claim;
+10. a current target uses a currently valid hbc claim, while a historical-only
+    target uses a known admitted claim and preserves its derived historical
+    status;
 11. claim-member union equals the required member set for current targets;
 12. historical-only targets use the admitted cpa member shape but never qualify;
 13. every observed relationship equals the member's reviewed host expectation;
@@ -618,6 +622,11 @@ HOST_MEMBER_APPLICABILITY_INVALID
 HOST_SOURCE_CLOSURE_MISMATCH
 ```
 
+`HOST_CLAIM_NOT_CURRENT` applies to a current cpa target. A historical-only
+target may reference an admitted superseded or revoked claim; the evaluator
+retains that claim's status and does not qualify the cpa. `HOST_CLAIM_UNKNOWN`
+still applies when the historical link names no admitted claim.
+
 `APPLICATION_HOST_BINDING_NONCURRENT_APPLICATION` is not emitted for a known
 historical-only cpa link under the recommended policy; that status is a valid
 derived result, not an error. It remains an implementation-time negative case
@@ -698,6 +707,7 @@ The later implementation suite must include at least:
 | P9 | reviewed-divergence context whose member host expectation is the reviewed theorem binding | `PASS`; historical SourceContext is not used as override |
 | P10 | host-free V3 review admission followed by container-level HostBinding composition | V3 admission unchanged; Slice 6 result qualifies |
 | P11 | known revoked/no-current cpa with a mechanically valid historical link | `PASS`; historical-only result, zero qualified record |
+| P12 | historical-only cpa link references a known superseded or revoked hbc claim | `PASS`; exact historical identity/status retained, zero qualification |
 
 ## 19. Negative test matrix
 
@@ -712,8 +722,8 @@ At minimum:
 | N5 | noncanonical claim IDs | typed input failure |
 | N6 | duplicate claim IDs | typed input failure |
 | N7 | unknown hbc ID | `HOST_CLAIM_UNKNOWN` |
-| N8 | superseded hbc claim | `HOST_CLAIM_NOT_CURRENT` |
-| N9 | revoked hbc claim | `HOST_CLAIM_NOT_CURRENT` |
+| N8 | current cpa link references a superseded hbc claim | `HOST_CLAIM_NOT_CURRENT` |
+| N9 | current cpa link references a revoked hbc claim | `HOST_CLAIM_NOT_CURRENT` |
 | N10 | two current hbc claims for one member | `HOST_BINDING_AMBIGUOUS` |
 | N11 | missing required member claim | `HOST_MEMBER_SET_MISMATCH` |
 | N12 | extra non-required member claim | `HOST_MEMBER_SET_MISMATCH` |
@@ -725,7 +735,7 @@ At minimum:
 | N18 | wrong host authority path/schema/digest | `HOST_AUTHORITY_INVALID` |
 | N19 | host authority present with no link or requirement | `HOST_AUTHORITY_BINDING_UNEXPECTED` |
 | N20 | link for revoked cpa with an invalid/unknown target | unknown-target failure; no current qualification |
-| N21 | link for a known no-current cpa with an invalid claim | claim/source failure; no silent acceptance |
+| N21 | historical-only link for a known no-current cpa references an unknown or unadmitted claim | `HOST_CLAIM_UNKNOWN`; no silent acceptance |
 | N22 | stale x link after cross-app x -> y | historical-only x; no automatic current qualification |
 | N23 | automatic hbc transfer x -> y | no transfer; missing y closure or claim-key failure |
 | N24 | HostBinding source inserted into V3 event closure | Slice-4 exact-closure failure |
@@ -1050,9 +1060,11 @@ historical-only. Slice 6 needs this distinction for exact closure and audit.
 
 **Recommendation:** allow a known no-current cpa link only as a mechanically
 validated `historical_only` result; require HostBinding authority whenever any
-link exists; reject a non-null authority binding when no current requirement
-and no link exists. Codify these statuses in the same ADR candidate. Do not
-delete historical links or silently accept unknown targets.
+link exists; require current hbc claims for current cpa links but only an
+admitted exact hbc identity plus its derived status for historical-only links;
+reject a non-null authority binding when no current requirement and no link
+exists. Codify these statuses in the same ADR candidate. Do not delete
+historical links, rewrite their claim IDs, or silently accept unknown targets.
 
 ### Gap status
 

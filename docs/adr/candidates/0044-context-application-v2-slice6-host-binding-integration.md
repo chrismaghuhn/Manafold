@@ -156,8 +156,11 @@ top-level HostBinding authority binding:
 | Situation | Decision |
 | --- | --- |
 | A known cpa group has no current cpar record and has a mechanically valid link | retain as `historical_only`; it never qualifies current authority |
-| A historical-only link references an unknown hbc claim | reject `HOST_CLAIM_UNKNOWN` |
-| A historical-only link references a superseded or revoked hbc claim | reject `HOST_CLAIM_NOT_CURRENT`; historical cpa status does not revive a stale claim |
+| A current cpa link references an unknown hbc claim | reject `HOST_CLAIM_UNKNOWN` |
+| A current cpa link references a superseded or revoked hbc claim | reject `HOST_CLAIM_NOT_CURRENT` |
+| A historical-only link references an unknown or unadmitted hbc claim | reject `HOST_CLAIM_UNKNOWN` |
+| A historical-only link references a known superseded or revoked hbc claim | retain `historical_only`; preserve the exact historical hbc identity and status; do not qualify current authority |
+| A historical-only link references a known current hbc claim | retain `historical_only`; do not qualify current authority |
 | Any current or historical link exists | `host_binding_authority_v2_binding` is required |
 | HostBinding authority is present, but no link and no current cpa has a required member | reject `HOST_AUTHORITY_BINDING_UNEXPECTED` |
 | A current cpa has a non-empty required member set but no link | reject the application host-binding closure |
@@ -166,7 +169,22 @@ top-level HostBinding authority binding:
 
 Historical links remain inspectable input. They do not enter
 `qualified_current_application_record_ids` or `current_host_claim_ids`.
-No historical link or claim is deleted or rewritten.
+Every historical link still requires exact cpa identity, member-key union,
+observed host relationship, and source/snapshot provenance. No historical link
+or claim is deleted, rewritten, or revived as current authority.
+
+The HostBinding admission seam therefore exposes a derived, non-persisted
+read model containing:
+
+```text
+admitted_claims_by_id
+current_claims_by_member
+claim_status_by_id = current | superseded | revoked
+```
+
+Current cpa links consult `current_claims_by_member`. Historical-only links
+consult `admitted_claims_by_id` and retain `claim_status_by_id` in the derived
+result.
 
 ## Composition invariants
 
@@ -317,10 +335,12 @@ Rejected. Immutable authority history remains inspectable, and cpa-level links
 are not cpar-level currentness records. The closed historical-only status
 preserves auditability while preventing authority qualification.
 
-### Allow stale hbc claims for historical links
+### Discard or rewrite stale hbc claims on historical links
 
-Rejected. A superseded or revoked hbc claim is not current HostBinding
-authority. Historical cpa status cannot revive it.
+Rejected. A historical link must preserve the exact hbc identity that it
+actually referenced. Discarding the link loses audit history; rewriting it to
+a later hbc claim invents a historical relationship. The claim remains
+historical-only and cannot qualify current authority.
 
 ## Evidence and follow-up
 
@@ -345,7 +365,7 @@ Acceptance of this candidate must be a separate change that:
 
 1. assigns the then-current permanent ADR number;
 2. records independent review evidence with G1, G2, and G3 closed;
-3. updates the provisional HostBinding checklist wording if required;
+3. updates the provisional HostBinding checklist wording;
 4. preserves ADR 0042 identities and schemas; and
 5. explicitly authorizes a later Slice-6 implementation plan only after
    acceptance.
