@@ -1541,6 +1541,96 @@ class ContextApplicationV2HostBindingEvaluatorTests(unittest.TestCase):
         )
         self.assertEqual(result.current_host_claim_ids, (claim.identity().as_text(),))
 
+    def test_canonicalized_container_permutations_have_identical_results(self) -> None:
+        case, source_resolver, record, claim, host_binding, claim_bindings = (
+            self._full_linked_case()
+        )
+        base_binding = cast(ContextAuthoritySourceBindingV2, case["base_binding"])
+        member = record.members[0]
+        candidate_binding = ContextAuthoritySourceBindingV2(
+            "candidate_universe",
+            cast(str, member.candidate_universe_binding[0]),
+            cast(str, member.candidate_universe_binding[1]),
+            cast(bytes, member.candidate_universe_binding[2]),
+        )
+        link = ApplicationHostBindingV2(
+            "context_application",
+            record.application_id,
+            (claim.identity().as_text(),),
+        )
+        provisional = ContextApplicationAuthorityV2(
+            base_authority_v1_binding=base_binding,
+            host_binding_authority_v2_binding=host_binding,
+            candidate_universe_binding=candidate_binding,
+            source_bindings=canonical_source_bindings(
+                (base_binding, candidate_binding, host_binding, *claim_bindings)
+            ),
+            context_application_v2_records=(record,),
+            context_application_v2_supersession_records=(),
+            application_host_bindings_v2=(link,),
+        )
+        context_resolver = ContextApplicationV2Resolver(
+            source_resolver,
+            base_authority_binding=base_binding,
+        )
+        complete = context_resolver.expected_container_source_closure_v2(provisional)
+        canonical_container = replace(provisional, source_bindings=complete)
+        rebuilt_from_permuted_upstream = replace(
+            provisional,
+            source_bindings=canonical_source_bindings(tuple(reversed(complete))),
+        )
+        evaluator = ContextApplicationV2HostBindingEvaluator(source_resolver)
+        self.assertEqual(
+            evaluator.evaluate(canonical_container),
+            evaluator.evaluate(rebuilt_from_permuted_upstream),
+        )
+
+    def test_rejection_is_failure_atomic_and_fingerprint_stable(self) -> None:
+        case = self._synthetic_case()
+        source_resolver, record, _ = build_application_with_v3_event(self, case)
+        claim = _cross_host_claim(self._member_key_for_record(record))
+        read_model = self._read_model_for_case(
+            case, claim, current=False, status=HostBindingClaimRecordStatus.SUPERSEDED
+        )
+        container = self._container_with_link(case, record, claim.identity().as_text())
+        evaluator = self._evaluator_with_read_model(source_resolver, read_model)
+        before = (
+            container.to_wire(),
+            tuple(item.to_cbor() for item in container.context_application_v2_records),
+            tuple(item.to_cbor() for item in container.context_application_v2_supersession_records),
+            _file_digests(case["fixture"].repo),
+        )
+        fingerprints = []
+        for _ in range(2):
+            with self.assertRaises(ContextApplicationV2HostBindingError) as caught:
+                evaluator.evaluate(container)
+            error = caught.exception
+            fingerprints.append(
+                (
+                    error.code,
+                    error.location,
+                    error.cause_code,
+                    error.application_id,
+                    error.record_id,
+                    error.claim_id,
+                    error.member_key,
+                    error.subject_ids,
+                )
+            )
+            self.assertEqual(
+                (
+                    container.to_wire(),
+                    tuple(item.to_cbor() for item in container.context_application_v2_records),
+                    tuple(
+                        item.to_cbor()
+                        for item in container.context_application_v2_supersession_records
+                    ),
+                    _file_digests(case["fixture"].repo),
+                ),
+                before,
+            )
+        self.assertEqual(fingerprints[0], fingerprints[1])
+
     def test_historical_noncurrent_claims_are_retained_without_current_qualification(self) -> None:
         case = self._synthetic_case()
         source_resolver, record, _ = build_application_with_v3_event(self, case)

@@ -416,6 +416,28 @@ class AuthorityV2DocumentTests(unittest.TestCase):
         self.assertTrue(result.valid)
         self.assertEqual(result.counts["cross_deck_host_binding_claim_records"], 0)
 
+    def test_rejected_authority_admission_is_repeatable_and_does_not_mutate_input(self) -> None:
+        import copy
+
+        document = copy.deepcopy(self.document)
+        document["source_bindings"] = []
+        before = copy.deepcopy(document)
+        fingerprints = []
+        for _ in range(2):
+            with self.assertRaises(AuthorityV2ValidationError) as caught:
+                self.validator.admit(document)
+            fingerprints.append(
+                (
+                    caught.exception.code,
+                    caught.exception.location,
+                    caught.exception.record_ids,
+                    caught.exception.claim_ids,
+                    caught.exception.member_key,
+                )
+            )
+            self.assertEqual(document, before)
+        self.assertEqual(fingerprints[0], fingerprints[1])
+
     def test_v1_root_cannot_be_validated_as_v2(self) -> None:
         document = dict(self.document)
         document["schema"] = "manafold.m2.5.c.interaction-review-authority.v1"

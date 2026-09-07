@@ -345,6 +345,11 @@ class ContextApplicationV2ResolverTests(unittest.TestCase):
                     )
                 )
 
+    def test_noncanonical_source_set_is_rejected_not_normalized(self) -> None:
+        expected = canonical_source_bindings((BASE, MODEL))
+        with self.assertRaises(ContextApplicationV2ResolutionError):
+            require_exact_source_set(tuple(reversed(expected)), expected)
+
     def test_model_evidence_maps_to_exact_v2_binding(self) -> None:
         evidence = EvidenceRefV1(
             authority_kind="model",
