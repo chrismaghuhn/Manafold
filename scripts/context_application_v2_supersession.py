@@ -336,7 +336,7 @@ def _record_key(record: ContextApplicationV2Record) -> bytes:
 
 
 def _require_sequence(value: object, location: str) -> tuple[object, ...]:
-    if isinstance(value, (str, bytes, bytearray, Mapping)) or not isinstance(value, Sequence):
+    if isinstance(value, str | bytes | bytearray | Mapping) or not isinstance(value, Sequence):
         raise ContextApplicationV2CurrentnessError(
             "CURRENTNESS_INPUT_INVALID",
             location,
