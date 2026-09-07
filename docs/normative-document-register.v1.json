@@ -469,6 +469,20 @@
       "stability": "provisional"
     },
     {
+      "change_process": "process-pr",
+      "owner_role": "maintainer",
+      "path": "docs/superpowers/specs/2026-09-07-context-application-v2-slice5-contract-gap-resolution-design.md",
+      "role": "process",
+      "stability": "provisional"
+    },
+    {
+      "change_process": "process-pr",
+      "owner_role": "maintainer",
+      "path": "docs/superpowers/specs/2026-09-07-context-application-v2-slice5-supersession-currentness-design.md",
+      "role": "process",
+      "stability": "provisional"
+    },
+    {
       "change_process": "adr-and-fixtures",
       "owner_role": "state-maintainer",
       "path": "docs/STATE_HASHING.md",
