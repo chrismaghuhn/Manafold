@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import sys
 from dataclasses import dataclass
+from collections.abc import Mapping, Sequence
 from pathlib import Path
-from typing import Final
+from typing import Final, cast
 
 ROOT = Path(__file__).resolve().parents[1]
 PYTHON_SRC = ROOT / "python" / "src"
@@ -17,9 +18,14 @@ from context_application_v2_review_binding import (
     ContextApplicationV2V3ReviewBindingError,
     admit_v3_review_binding,
 )
+from context_application_v2_review_admission import (
+    ContextApplicationV2ReviewAdmissionError,
+    ContextApplicationV2ReviewAdmissionValidator,
+)
 from mtgml.authority import (
     AuthorityIdentityKind,
     AuthorityIdentityV1,
+    ContextApplicationV2Record,
     ContextApplicationV2SupersessionInputV2,
     ContextApplicationV2SupersessionRecord,
     ContextApplicationV2SupersessionRecordInputV1,
@@ -277,8 +283,405 @@ class ContextApplicationV2SupersessionAdmissionValidator:
         )
 
 
+@dataclass(frozen=True)
+class ContextApplicationV2SupersessionEdge:
+    supersession_id: AuthorityIdentityV1
+    accepted_record_ids: tuple[AuthorityIdentityV1, ...]
+    superseded_record_id: AuthorityIdentityV1
+    replacement_record_id: AuthorityIdentityV1 | None
+    reason_code: SupersessionReason
+
+
+@dataclass(frozen=True)
+class ContextApplicationV2CurrentnessResult:
+    current_record_ids: tuple[AuthorityIdentityV1, ...]
+    superseded_record_ids: tuple[AuthorityIdentityV1, ...]
+    revoked_record_ids: tuple[AuthorityIdentityV1, ...]
+    successor_edges: tuple[ContextApplicationV2SupersessionEdge, ...]
+
+
+class ContextApplicationV2CurrentnessError(ValueError):
+    """Stable, structured failure from graph admission or currentness."""
+
+    def __init__(
+        self,
+        code: str,
+        location: str,
+        *,
+        cause_code: str | None = None,
+        cause_location: str | None = None,
+        record_id: AuthorityIdentityV1 | None = None,
+        supersession_id: AuthorityIdentityV1 | None = None,
+        application_id: AuthorityIdentityV1 | None = None,
+        subject_record_ids: tuple[AuthorityIdentityV1, ...] = (),
+        subject_supersession_ids: tuple[AuthorityIdentityV1, ...] = (),
+        cycle_path: tuple[AuthorityIdentityV1, ...] = (),
+    ) -> None:
+        self.code = code
+        self.location = location
+        self.cause_code = cause_code
+        self.cause_location = cause_location
+        self.record_id = record_id
+        self.supersession_id = supersession_id
+        self.application_id = application_id
+        self.subject_record_ids = subject_record_ids
+        self.subject_supersession_ids = subject_supersession_ids
+        self.cycle_path = cycle_path
+        super().__init__(f"{code} at {location}")
+
+
+def _identity_key(identity: AuthorityIdentityV1) -> bytes:
+    return encode_canonical(identity.to_cbor())
+
+
+def _record_key(record: ContextApplicationV2Record) -> bytes:
+    return _identity_key(record.record_id)
+
+
+def _require_sequence(value: object, location: str) -> tuple[object, ...]:
+    if isinstance(value, (str, bytes, bytearray, Mapping)) or not isinstance(value, Sequence):
+        raise ContextApplicationV2CurrentnessError(
+            "CURRENTNESS_INPUT_INVALID",
+            location,
+        )
+    return tuple(value)
+
+
+def _sorted_ids(values: Sequence[AuthorityIdentityV1]) -> tuple[AuthorityIdentityV1, ...]:
+    return tuple(sorted(values, key=_identity_key))
+
+
+def _edge_key(
+    edge: ContextApplicationV2SupersessionEdge,
+) -> tuple[bytes, bytes, bytes, bytes]:
+    return (
+        _identity_key(edge.superseded_record_id),
+        b"" if edge.replacement_record_id is None else _identity_key(edge.replacement_record_id),
+        edge.reason_code.value.encode("utf-8"),
+        _identity_key(edge.supersession_id),
+    )
+
+
+def _normalize_cycle(
+    cycle: tuple[AuthorityIdentityV1, ...],
+) -> tuple[AuthorityIdentityV1, ...]:
+    rotations = tuple(cycle[index:] + cycle[:index] for index in range(len(cycle)))
+    return min(rotations, key=lambda path: tuple(_identity_key(item) for item in path))
+
+
+class ContextApplicationV2CurrentnessEvaluator:
+    """Admit immutable records, validate their graph, and derive currentness."""
+
+    def __init__(
+        self,
+        source_resolver: AuthoritySourceResolver,
+        *,
+        base_authority_binding: ContextAuthoritySourceBindingV2,
+    ) -> None:
+        self._source_resolver = source_resolver
+        self._base_binding = base_authority_binding
+
+    def _admit_application_records(
+        self,
+        records: tuple[ContextApplicationV2Record, ...],
+    ) -> dict[bytes, ContextApplicationV2Record]:
+        validator = ContextApplicationV2ReviewAdmissionValidator(
+            self._source_resolver,
+            base_authority_binding=self._base_binding,
+        )
+        admitted: dict[bytes, ContextApplicationV2Record] = {}
+        for record in sorted(records, key=_record_key):
+            key = _record_key(record)
+            if key in admitted:
+                raise ContextApplicationV2CurrentnessError(
+                    "DUPLICATE_RECORD_ID",
+                    "application_records.record_id",
+                    record_id=record.record_id,
+                    subject_record_ids=(record.record_id,),
+                )
+            try:
+                validator.admit(record)
+            except ContextApplicationV2ReviewAdmissionError as exc:
+                raise ContextApplicationV2CurrentnessError(
+                    "APPLICATION_REVIEW_ADMISSION_FAILED",
+                    "application_record",
+                    cause_code=exc.code,
+                    cause_location=exc.location,
+                    record_id=record.record_id,
+                    application_id=record.application_id,
+                    subject_record_ids=(record.record_id,),
+                ) from exc
+            admitted[key] = record
+        return admitted
+
+    def _admit_supersession_records(
+        self,
+        records: tuple[ContextApplicationV2SupersessionRecord, ...],
+    ) -> tuple[ContextApplicationV2SupersessionAdmissionResult, ...]:
+        validator = ContextApplicationV2SupersessionAdmissionValidator(
+            self._source_resolver,
+            base_authority_binding=self._base_binding,
+        )
+        ordered = tuple(sorted(records, key=lambda record: _identity_key(record.record_id)))
+        seen_record_ids: set[bytes] = set()
+        results: list[ContextApplicationV2SupersessionAdmissionResult] = []
+        for record in ordered:
+            record_key = _identity_key(record.record_id)
+            if record_key in seen_record_ids:
+                raise ContextApplicationV2CurrentnessError(
+                    "DUPLICATE_RECORD_ID",
+                    "supersession_records.record_id",
+                    record_id=record.record_id,
+                    supersession_id=record.supersession_id,
+                    subject_record_ids=(record.record_id,),
+                )
+            seen_record_ids.add(record_key)
+            try:
+                results.append(validator.admit(record))
+            except ContextApplicationV2SupersessionError as exc:
+                raise ContextApplicationV2CurrentnessError(
+                    "SUPERSESSION_ADMISSION_FAILED",
+                    "supersession_record",
+                    cause_code=exc.code,
+                    cause_location=exc.location,
+                    record_id=record.record_id,
+                    supersession_id=record.supersession_id,
+                    subject_record_ids=(
+                        record.record_id,
+                        record.superseded_record_id,
+                    ),
+                ) from exc
+        return tuple(results)
+
+    @staticmethod
+    def _group_edges(
+        admissions: tuple[ContextApplicationV2SupersessionAdmissionResult, ...],
+    ) -> tuple[ContextApplicationV2SupersessionEdge, ...]:
+        groups: dict[bytes, list[ContextApplicationV2SupersessionAdmissionResult]] = {}
+        for admission in admissions:
+            groups.setdefault(_identity_key(admission.supersession_id), []).append(admission)
+        edges: list[ContextApplicationV2SupersessionEdge] = []
+        for group in groups.values():
+            ordered = tuple(sorted(group, key=lambda item: _identity_key(item.record_id)))
+            first = ordered[0]
+            edges.append(
+                ContextApplicationV2SupersessionEdge(
+                    supersession_id=first.supersession_id,
+                    accepted_record_ids=tuple(
+                        item.record_id for item in ordered
+                    ),
+                    superseded_record_id=first.superseded_record_id,
+                    replacement_record_id=first.replacement_record_id,
+                    reason_code=first.reason_code,
+                )
+            )
+        return tuple(sorted(edges, key=_edge_key))
+
+    @staticmethod
+    def _validate_edges(
+        edges: tuple[ContextApplicationV2SupersessionEdge, ...],
+        application_by_id: dict[bytes, ContextApplicationV2Record],
+    ) -> tuple[set[bytes], dict[bytes, ContextApplicationV2SupersessionEdge]]:
+        successor_edges: dict[bytes, ContextApplicationV2SupersessionEdge] = {}
+        replacement_sources: set[bytes] = set()
+        for edge in edges:
+            source_key = _identity_key(edge.superseded_record_id)
+            if source_key not in application_by_id:
+                raise ContextApplicationV2CurrentnessError(
+                    "SUPERSEDED_RECORD_UNKNOWN",
+                    "supersession_edge.superseded_record_id",
+                    record_id=edge.superseded_record_id,
+                    supersession_id=edge.supersession_id,
+                    subject_record_ids=(edge.superseded_record_id,),
+                    subject_supersession_ids=(edge.supersession_id,),
+                )
+            if edge.replacement_record_id is not None:
+                replacement_key = _identity_key(edge.replacement_record_id)
+                if replacement_key not in application_by_id:
+                    raise ContextApplicationV2CurrentnessError(
+                        "REPLACEMENT_RECORD_UNKNOWN",
+                        "supersession_edge.replacement_record_id",
+                        record_id=edge.replacement_record_id,
+                        supersession_id=edge.supersession_id,
+                        subject_record_ids=(edge.replacement_record_id,),
+                        subject_supersession_ids=(edge.supersession_id,),
+                    )
+                if replacement_key == source_key:
+                    raise ContextApplicationV2CurrentnessError(
+                        "SELF_SUPERSESSION",
+                        "supersession_edge.replacement_record_id",
+                        record_id=edge.superseded_record_id,
+                        supersession_id=edge.supersession_id,
+                        subject_record_ids=(edge.superseded_record_id,),
+                        subject_supersession_ids=(edge.supersession_id,),
+                    )
+                replacement_sources.add(source_key)
+
+            existing = successor_edges.get(source_key)
+            if existing is not None:
+                subject_supersession_ids = tuple(
+                    sorted(
+                        (existing.supersession_id, edge.supersession_id),
+                        key=_identity_key,
+                    )
+                )
+                raise ContextApplicationV2CurrentnessError(
+                    "MULTIPLE_SUCCESSORS",
+                    "supersession_edge.superseded_record_id",
+                    record_id=edge.superseded_record_id,
+                    supersession_id=subject_supersession_ids[0],
+                    subject_record_ids=(edge.superseded_record_id,),
+                    subject_supersession_ids=subject_supersession_ids,
+                )
+            successor_edges[source_key] = edge
+        return replacement_sources, successor_edges
+
+    @staticmethod
+    def _validate_cycles(
+        successor_edges: dict[bytes, ContextApplicationV2SupersessionEdge],
+    ) -> None:
+        successor_map = {
+            source_key: edge.replacement_record_id
+            for source_key, edge in successor_edges.items()
+            if edge.replacement_record_id is not None
+        }
+        nodes = tuple(
+            sorted(
+                (
+                    edge.superseded_record_id
+                    for edge in successor_edges.values()
+                    if edge.replacement_record_id is not None
+                ),
+                key=_identity_key,
+            )
+        )
+        cycles: list[tuple[AuthorityIdentityV1, ...]] = []
+        for start in nodes:
+            path: list[AuthorityIdentityV1] = []
+            positions: dict[bytes, int] = {}
+            current = start
+            while _identity_key(current) in successor_map:
+                current_key = _identity_key(current)
+                if current_key in positions:
+                    cycles.append(_normalize_cycle(tuple(path[positions[current_key] :])))
+                    break
+                positions[current_key] = len(path)
+                path.append(current)
+                current = successor_map[current_key]  # type: ignore[assignment]
+        if not cycles:
+            return
+        cycle = min(cycles, key=lambda path: tuple(_identity_key(item) for item in path))
+        cycle_edges = tuple(
+            successor_edges[_identity_key(record_id)] for record_id in cycle
+        )
+        subject_supersession_ids = tuple(
+            sorted((edge.supersession_id for edge in cycle_edges), key=_identity_key)
+        )
+        raise ContextApplicationV2CurrentnessError(
+            "SUPERSESSION_CYCLE",
+            "supersession_graph",
+            record_id=cycle[0],
+            supersession_id=subject_supersession_ids[0],
+            subject_record_ids=cycle,
+            subject_supersession_ids=subject_supersession_ids,
+            cycle_path=cycle,
+        )
+
+    def evaluate(
+        self,
+        application_records: Sequence[ContextApplicationV2Record],
+        supersession_records: Sequence[ContextApplicationV2SupersessionRecord],
+    ) -> ContextApplicationV2CurrentnessResult:
+        raw_applications = _require_sequence(application_records, "application_records")
+        raw_supersessions = _require_sequence(
+            supersession_records,
+            "supersession_records",
+        )
+        if any(not isinstance(record, ContextApplicationV2Record) for record in raw_applications):
+            raise ContextApplicationV2CurrentnessError(
+                "CURRENTNESS_INPUT_INVALID",
+                "application_records",
+            )
+        if any(
+            not isinstance(record, ContextApplicationV2SupersessionRecord)
+            for record in raw_supersessions
+        ):
+            raise ContextApplicationV2CurrentnessError(
+                "CURRENTNESS_INPUT_INVALID",
+                "supersession_records",
+            )
+
+        applications = tuple(cast(ContextApplicationV2Record, item) for item in raw_applications)
+        supersessions = tuple(
+            cast(ContextApplicationV2SupersessionRecord, item) for item in raw_supersessions
+        )
+        application_by_id = self._admit_application_records(applications)
+        admissions = self._admit_supersession_records(supersessions)
+        edges = self._group_edges(admissions)
+        replacement_sources, successor_edges = self._validate_edges(edges, application_by_id)
+        self._validate_cycles(successor_edges)
+
+        revoked_application_ids = {
+            application_by_id[_identity_key(edge.superseded_record_id)].application_id
+            for edge in edges
+            if edge.reason_code is SupersessionReason.AUTHORITY_REVOCATION
+        }
+        revoked_application_keys = {
+            _identity_key(application_id) for application_id in revoked_application_ids
+        }
+        revoked_record_ids = {
+            _identity_key(record.record_id)
+            for record in applications
+            if _identity_key(record.application_id) in revoked_application_keys
+        }
+        groups: dict[bytes, list[ContextApplicationV2Record]] = {}
+        for record in sorted(applications, key=_record_key):
+            groups.setdefault(_identity_key(record.application_id), []).append(record)
+
+        current_record_ids: list[AuthorityIdentityV1] = []
+        for application_key in sorted(groups):
+            group = groups[application_key]
+            if application_key in revoked_application_keys:
+                candidates: tuple[ContextApplicationV2Record, ...] = ()
+            else:
+                candidates = tuple(
+                    record
+                    for record in group
+                    if _identity_key(record.record_id) not in replacement_sources
+                )
+            if len(candidates) > 1:
+                candidate_ids = _sorted_ids(tuple(record.record_id for record in candidates))
+                raise ContextApplicationV2CurrentnessError(
+                    "CURRENTNESS_AMBIGUOUS",
+                    "application_records.application_id",
+                    application_id=group[0].application_id,
+                    subject_record_ids=candidate_ids,
+                )
+            if candidates:
+                current_record_ids.append(candidates[0].record_id)
+
+        return ContextApplicationV2CurrentnessResult(
+            current_record_ids=_sorted_ids(tuple(current_record_ids)),
+            superseded_record_ids=_sorted_ids(
+                tuple(
+                    record.record_id
+                    for record in applications
+                    if _identity_key(record.record_id) in replacement_sources
+                )
+            ),
+            revoked_record_ids=_sorted_ids(
+                tuple(record.record_id for record in applications if _identity_key(record.record_id) in revoked_record_ids)
+            ),
+            successor_edges=tuple(sorted(edges, key=_edge_key)),
+        )
+
+
 __all__ = [
     "ContextApplicationV2SupersessionAdmissionResult",
     "ContextApplicationV2SupersessionAdmissionValidator",
     "ContextApplicationV2SupersessionError",
+    "ContextApplicationV2SupersessionEdge",
+    "ContextApplicationV2CurrentnessResult",
+    "ContextApplicationV2CurrentnessError",
+    "ContextApplicationV2CurrentnessEvaluator",
 ]
