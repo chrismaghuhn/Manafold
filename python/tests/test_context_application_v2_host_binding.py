@@ -995,6 +995,48 @@ class ContextApplicationV2HostBindingEvaluatorTests(unittest.TestCase):
 
         self.assertIn(host_binding, closure)
 
+    def test_linked_container_requires_claim_record_provenance(self) -> None:
+        from test_authority_v2_validator import AuthorityV2DocumentTests
+
+        case = self._synthetic_case()
+        authority_case = AuthorityV2DocumentTests()
+        authority_case.setUp()
+        self.addCleanup(authority_case.tearDown)
+        host_path = "sources/m2_5/authorities/interaction_review_authority.v2.json"
+        host_raw = (json.dumps(authority_case.document, separators=(",", ":")) + "\n").encode()
+        host_file = case["fixture"].repo / Path(*host_path.split("/"))
+        host_file.parent.mkdir(parents=True, exist_ok=True)
+        host_file.write_bytes(host_raw)
+        host_binding = ContextAuthoritySourceBindingV2(
+            "host_binding_authority_v2",
+            host_path,
+            "manafold.m2.5.c.interaction-review-authority.v2",
+            hashlib.sha256(host_raw).digest(),
+        )
+        base_binding = cast(ContextAuthoritySourceBindingV2, case["base_binding"])
+        member = cast(ContextApplicationV2Record, case["record"]).members[0]
+        candidate_binding = ContextAuthoritySourceBindingV2(
+            "candidate_universe",
+            cast(str, member.candidate_universe_binding[0]),
+            cast(str, member.candidate_universe_binding[1]),
+            cast(bytes, member.candidate_universe_binding[2]),
+        )
+        container = ContextApplicationAuthorityV2(
+            base_authority_v1_binding=base_binding,
+            host_binding_authority_v2_binding=host_binding,
+            candidate_universe_binding=candidate_binding,
+            source_bindings=canonical_source_bindings(
+                (base_binding, candidate_binding, host_binding)
+            ),
+            context_application_v2_records=(),
+            context_application_v2_supersession_records=(),
+            application_host_bindings_v2=(_link(31, 24),),
+        )
+
+        with self.assertRaises(ContextApplicationV2HostBindingError) as caught:
+            self._evaluator(case["source_resolver"])._validate_container_source_closure(container)
+        self.assertEqual(caught.exception.code, "HOST_SOURCE_CLOSURE_MISMATCH")
+
     def test_real_authority_v2_admission_path_returns_read_model(self) -> None:
         from test_authority_v2_validator import AuthorityV2DocumentTests
 
