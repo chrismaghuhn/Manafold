@@ -50,6 +50,10 @@ class PythonTestProfileTests(unittest.TestCase):
             loaded.count("test_context_application_v2_supersession"),
             1,
         )
+        self.assertEqual(
+            loaded.count("test_context_application_v2_host_binding"),
+            1,
+        )
         discover.assert_not_called()
         self.assertNotIn("test_authority_review_worklist", loaded)
         self.assertNotIn("test_canary_review_packet", loaded)

@@ -1,0 +1,273 @@
+from __future__ import annotations
+
+import hashlib
+import sys
+import unittest
+from dataclasses import FrozenInstanceError
+from pathlib import Path
+from typing import cast
+
+ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT / "scripts"))
+
+from authority_source_resolver import AuthoritySourceResolver
+from context_application_v2_host_binding import (
+    ContextApplicationV2HostBindingError,
+    ContextApplicationV2HostBindingEvaluationResult,
+    ContextApplicationV2HostBindingEvaluator,
+)
+from context_application_v2_test_support import (
+    build_application_variant_with_v3_event,
+    build_application_with_v3_event,
+    build_supersession_with_v3_event,
+)
+from mtgml.authority import (
+    ApplicationHostBindingV2,
+    AuthorityContractError,
+    AuthorityIdentityKind,
+    AuthorityIdentityV1,
+    ContextApplicationAuthorityV2,
+    ContextApplicationV2Record,
+    ContextApplicationV2SupersessionInputV2,
+    ContextApplicationV2SupersessionRecord,
+    ContextAuthoritySourceBindingV2,
+    SupersessionReason,
+)
+from mtgml.persistence import encode_canonical
+
+BASE_BINDING = ContextAuthoritySourceBindingV2(
+    "base_authority_v1",
+    "sources/m2_5/authorities/interaction_review_authority.v1.json",
+    "manafold.m2.5.c.interaction-review-authority.v1",
+    bytes([1]) * 32,
+)
+CANDIDATE_BINDING = ContextAuthoritySourceBindingV2(
+    "candidate_universe",
+    "sources/m2_5/closures/C/interaction_candidate_universe.v2.json",
+    "manafold.m2.5.c.interaction-candidate-universe.v2",
+    bytes([2]) * 32,
+)
+HOST_BINDING = ContextAuthoritySourceBindingV2(
+    "host_binding_authority_v2",
+    "sources/m2_5/authorities/interaction_review_authority.v2.json",
+    "manafold.m2.5.c.interaction-review-authority.v2",
+    bytes([3]) * 32,
+)
+
+
+def _application_id(marker: int) -> AuthorityIdentityV1:
+    return AuthorityIdentityV1(
+        AuthorityIdentityKind.CONTEXT_APPLICATION_V2,
+        bytes([marker]) * 32,
+    )
+
+
+def _claim_id(marker: int) -> str:
+    return "hbc.v1/" + f"{marker:02x}" * 32
+
+
+def _link(marker: int, claim_marker: int) -> ApplicationHostBindingV2:
+    return ApplicationHostBindingV2(
+        "context_application",
+        _application_id(marker),
+        (_claim_id(claim_marker),),
+    )
+
+
+def _empty_container(
+    *,
+    links: tuple[ApplicationHostBindingV2, ...] = (),
+    host_binding: ContextAuthoritySourceBindingV2 | None = None,
+) -> ContextApplicationAuthorityV2:
+    return ContextApplicationAuthorityV2(
+        base_authority_v1_binding=BASE_BINDING,
+        host_binding_authority_v2_binding=host_binding,
+        candidate_universe_binding=CANDIDATE_BINDING,
+        source_bindings=(),
+        context_application_v2_records=(),
+        context_application_v2_supersession_records=(),
+        application_host_bindings_v2=links,
+    )
+
+
+def _file_digests(repo: Path) -> dict[str, str]:
+    return {
+        path.relative_to(repo).as_posix(): hashlib.sha256(path.read_bytes()).hexdigest()
+        for path in repo.rglob("*")
+        if path.is_file()
+    }
+
+
+class ContextApplicationV2HostBindingEvaluatorTests(unittest.TestCase):
+    def _evaluator(
+        self,
+        source_resolver: AuthoritySourceResolver | object | None = None,
+    ) -> ContextApplicationV2HostBindingEvaluator:
+        if source_resolver is None:
+            source_resolver = AuthoritySourceResolver(ROOT)
+        return ContextApplicationV2HostBindingEvaluator(source_resolver)
+
+    def test_non_context_authority_input_is_rejected_with_frozen_error(self) -> None:
+        evaluator = self._evaluator()
+
+        with self.assertRaises(ContextApplicationV2HostBindingError) as caught:
+            evaluator.evaluate(object())
+
+        error = caught.exception
+        self.assertEqual(error.code, "HOST_INTEGRATION_INPUT_INVALID")
+        self.assertEqual(error.location, "container")
+        self.assertIsNone(error.application_id)
+        self.assertEqual(error.subject_ids, ())
+        with self.assertRaises(FrozenInstanceError):
+            error.code = "changed"
+
+    def test_duplicate_application_host_binding_targets_are_rejected(self) -> None:
+        links = tuple(
+            sorted(
+                (_link(7, 1), _link(7, 2)),
+                key=lambda link: encode_canonical(link.to_cbor()),
+            )
+        )
+        container = _empty_container(links=links)
+
+        with self.assertRaises(ContextApplicationV2HostBindingError) as caught:
+            self._evaluator().evaluate(container)
+
+        self.assertEqual(caught.exception.code, "APPLICATION_HOST_BINDING_DUPLICATE")
+        self.assertEqual(caught.exception.application_id, _application_id(7))
+
+    def test_unknown_application_host_binding_target_is_rejected(self) -> None:
+        container = _empty_container(links=(_link(8, 1),))
+
+        with self.assertRaises(ContextApplicationV2HostBindingError) as caught:
+            self._evaluator().evaluate(container)
+
+        self.assertEqual(
+            caught.exception.code,
+            "APPLICATION_HOST_BINDING_UNKNOWN_APPLICATION",
+        )
+        self.assertEqual(caught.exception.application_id, _application_id(8))
+
+    def test_caller_cannot_supply_trusted_currentness_or_claim_inputs(self) -> None:
+        evaluator = self._evaluator()
+        container = _empty_container()
+
+        with self.assertRaises(TypeError):
+            evaluator.evaluate(container, trusted_current=True)
+        with self.assertRaises(TypeError):
+            evaluator.evaluate(container, admitted_claims_by_id={})
+
+    def test_structural_result_is_frozen_and_currentness_owned(self) -> None:
+        result = self._evaluator().evaluate(_empty_container())
+
+        self.assertIsInstance(result, ContextApplicationV2HostBindingEvaluationResult)
+        self.assertEqual(result.qualified_current_application_record_ids, ())
+        self.assertEqual(result.application_host_binding_results, ())
+        self.assertEqual(result.current_host_claim_ids, ())
+        with self.assertRaises(FrozenInstanceError):
+            result.current_host_claim_ids = ("hbc.v1/" + "00" * 32,)
+
+    def test_noncanonical_link_order_is_rejected_at_constructor_boundary(self) -> None:
+        first, second = _link(9, 1), _link(10, 2)
+        ordered = tuple(sorted((first, second), key=lambda link: encode_canonical(link.to_cbor())))
+        noncanonical = tuple(reversed(ordered))
+
+        with self.assertRaises(AuthorityContractError):
+            _empty_container(links=noncanonical)
+
+    def test_forged_typed_noncanonical_container_fails_at_evaluator_boundary(self) -> None:
+        valid = _empty_container()
+        forged = object.__new__(ContextApplicationAuthorityV2)
+        for field_name in (
+            "base_authority_v1_binding",
+            "host_binding_authority_v2_binding",
+            "candidate_universe_binding",
+            "source_bindings",
+            "context_application_v2_records",
+            "context_application_v2_supersession_records",
+        ):
+            object.__setattr__(forged, field_name, getattr(valid, field_name))
+        object.__setattr__(forged, "application_host_bindings_v2", [_link(11, 1)])
+
+        with self.assertRaises(ContextApplicationV2HostBindingError) as caught:
+            self._evaluator().evaluate(forged)
+
+        self.assertEqual(caught.exception.code, "HOST_INTEGRATION_INPUT_INVALID")
+        self.assertEqual(caught.exception.location, "application_host_bindings_v2")
+
+    def test_currentness_failure_precedes_host_binding_source_access(self) -> None:
+        from test_context_application_v2_validator import ContextApplicationV2IntegrationTests
+
+        base = ContextApplicationV2IntegrationTests()
+        base.setUp()
+        self.addCleanup(base.doCleanups)
+        self.addCleanup(base.tearDown)
+        case = base._synthetic_case(
+            source_timing="not_applicable",
+            reviewed_timing="not_applicable",
+        )
+        source_resolver, application_a, _ = build_application_with_v3_event(self, case)
+        _, application_b, _ = build_application_variant_with_v3_event(
+            self,
+            case,
+            "cycle-b",
+        )
+
+        def supersession(
+            source: ContextApplicationV2Record,
+            replacement: ContextApplicationV2Record,
+        ) -> ContextApplicationV2SupersessionRecord:
+            semantic_input = ContextApplicationV2SupersessionInputV2(
+                superseded_record_id_bytes=source.record_id.digest_bytes,
+                replacement_record_id_bytes=replacement.record_id.digest_bytes,
+                replacement_record_kind="context_application_v2_record",
+                reason_code=SupersessionReason.SOURCE_REVISION,
+                source_evidence_refs=(case["member"].member_evidence_refs[0],),
+            )
+            _, record, _ = build_supersession_with_v3_event(
+                self,
+                case,
+                semantic_input,
+            )
+            return record
+
+        a_to_b = supersession(application_a, application_b)
+        b_to_a = supersession(application_b, application_a)
+        records = tuple(
+            sorted(
+                (application_a, application_b),
+                key=lambda record: encode_canonical(record.to_cbor()),
+            )
+        )
+        supersessions = tuple(
+            sorted(
+                (a_to_b, b_to_a),
+                key=lambda record: encode_canonical(record.to_cbor()),
+            )
+        )
+        container = ContextApplicationAuthorityV2(
+            base_authority_v1_binding=cast(
+                ContextAuthoritySourceBindingV2,
+                case["base_binding"],
+            ),
+            host_binding_authority_v2_binding=HOST_BINDING,
+            candidate_universe_binding=CANDIDATE_BINDING,
+            source_bindings=(),
+            context_application_v2_records=records,
+            context_application_v2_supersession_records=supersessions,
+            application_host_bindings_v2=(),
+        )
+        fixture = case["fixture"]
+        before = _file_digests(fixture.repo)
+
+        with self.assertRaises(ContextApplicationV2HostBindingError) as caught:
+            self._evaluator(source_resolver).evaluate(container)
+
+        error = caught.exception
+        self.assertEqual(error.code, "APPLICATION_CURRENTNESS_FAILED")
+        self.assertEqual(error.cause_code, "SUPERSESSION_CYCLE")
+        self.assertEqual(_file_digests(fixture.repo), before)
+
+
+if __name__ == "__main__":
+    unittest.main()
