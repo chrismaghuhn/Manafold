@@ -19,6 +19,7 @@ from context_application_v2_test_support import (
     build_application_with_v3_event,
     build_supersession_with_v3_event,
     rebind_application_event,
+    rebind_supersession_event,
 )
 from mtgml.authority import (
     AcceptanceSubjectKindV3,
@@ -130,6 +131,50 @@ class ContextApplicationV2ReviewAdmissionTests(unittest.TestCase):
         self.assertFalse(hasattr(supersession_binding, "event"))
         self.assertFalse(hasattr(supersession_binding, "artifact"))
         self.assertNotIsInstance(supersession_binding, dict)
+
+    def test_supersession_event_rejects_host_binding_source(self) -> None:
+        from context_application_v2_review_binding import (
+            ContextApplicationV2V3ReviewBindingError,
+            admit_v3_review_binding,
+        )
+
+        case = self._synthetic_case()
+        source_resolver, application, _ = self._record_with_v3_event(case)
+        supersession_input = ContextApplicationV2SupersessionInputV2(
+            superseded_record_id_bytes=application.record_id.digest_bytes,
+            replacement_record_id_bytes=None,
+            replacement_record_kind=None,
+            reason_code=SupersessionReason.AUTHORITY_REVOCATION,
+            source_evidence_refs=(case["member"].member_evidence_refs[0],),
+        )
+        source_resolver, supersession, event_wire = build_supersession_with_v3_event(
+            self,
+            case,
+            supersession_input,
+        )
+        host_binding = ContextAuthoritySourceBindingV2(
+            "host_binding_authority_v2",
+            "sources/m2_5/authorities/interaction_review_authority.v2.json",
+            "manafold.m2.5.c.interaction-review-authority.v2",
+            bytes.fromhex("77" * 32),
+        )
+        mutated = copy.deepcopy(event_wire)
+        sources = cast(list[dict[str, object]], mutated["source_binding_digests"])
+        mutated["source_binding_digests"] = sorted(
+            [*sources, host_binding.to_wire()],
+            key=lambda item: encode_canonical(
+                context_source_binding_from_wire(item).to_cbor()
+            ),
+        )
+        rebound = rebind_supersession_event(case, supersession, mutated)
+
+        with self.assertRaises(ContextApplicationV2V3ReviewBindingError) as caught:
+            admit_v3_review_binding(
+                rebound,
+                source_resolver,
+                base_authority_binding=case["base_binding"],
+            )
+        self.assertEqual(caught.exception.code, "V3_SOURCE_CLOSURE_MISMATCH")
 
     def test_exact_match_application_is_admitted(self) -> None:
         from context_application_v2_review_admission import (
