@@ -7,11 +7,14 @@ import sys
 import unittest
 from dataclasses import FrozenInstanceError, replace
 from pathlib import Path
+from types import SimpleNamespace
 from typing import cast
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
 
+from authority_host_binding import HostBindingSourceError
 from authority_source_resolver import (
     AuthoritySourceResolver,
     ResolutionError,
@@ -19,6 +22,7 @@ from authority_source_resolver import (
     Rev3ArchiveStore,
 )
 from authority_v2_validator import (
+    AuthorityV2Validator,
     HostBindingAuthorityV2ReadModel,
     HostBindingClaimRecordStatus,
 )
@@ -28,6 +32,10 @@ from context_application_v2_host_binding import (
     ContextApplicationV2HostBindingEvaluator,
     _ResolvedApplicationMember,
     _validate_link_member_union,
+)
+from context_application_v2_resolver import (
+    ContextApplicationV2Resolver,
+    canonical_source_bindings,
 )
 from context_application_v2_test_support import (
     build_application_variant_with_v3_event,
@@ -471,6 +479,13 @@ class ContextApplicationV2HostBindingEvaluatorTests(unittest.TestCase):
                 del container
                 return read_model
 
+            def _validate_container_source_closure(
+                self,
+                container: ContextApplicationAuthorityV2,
+            ) -> tuple[ContextAuthoritySourceBindingV2, ...]:
+                del container
+                return ()
+
         return AdmittedEvaluator(source_resolver)
 
     def test_non_context_authority_input_is_rejected_with_frozen_error(self) -> None:
@@ -524,7 +539,15 @@ class ContextApplicationV2HostBindingEvaluatorTests(unittest.TestCase):
             evaluator.evaluate(container, admitted_claims_by_id={})
 
     def test_structural_result_is_frozen_and_currentness_owned(self) -> None:
-        result = self._evaluator().evaluate(_empty_container())
+        class BoundaryEvaluator(ContextApplicationV2HostBindingEvaluator):
+            def _validate_container_source_closure(
+                self,
+                container: ContextApplicationAuthorityV2,
+            ) -> tuple[ContextAuthoritySourceBindingV2, ...]:
+                del container
+                return ()
+
+        result = BoundaryEvaluator(AuthoritySourceResolver(ROOT)).evaluate(_empty_container())
 
         self.assertIsInstance(result, ContextApplicationV2HostBindingEvaluationResult)
         self.assertEqual(result.qualified_current_application_record_ids, ())
@@ -729,6 +752,30 @@ class ContextApplicationV2HostBindingEvaluatorTests(unittest.TestCase):
         )
         self.assertEqual(result.current_host_claim_ids, (claim.identity().as_text(),))
 
+    def test_current_composition_consumes_record_level_hbc_read_model(self) -> None:
+        case = self._synthetic_case()
+        source_resolver, record, _ = build_application_with_v3_event(self, case)
+        claim = _cross_host_claim(self._member_key_for_record(record))
+        read_model = self._read_model_for_case(case, claim)
+        claim_id = claim.identity().as_text()
+        old_record_id = "hbcr.v1/" + "31" * 32
+        current_record_id = "hbcr.v1/" + "32" * 32
+        read_model = replace(
+            read_model,
+            claim_record_status_by_record_id=(
+                (old_record_id, HostBindingClaimRecordStatus.SUPERSEDED),
+                (current_record_id, HostBindingClaimRecordStatus.CURRENT),
+            ),
+            claim_record_ids_by_claim_id=((claim_id, (old_record_id, current_record_id)),),
+        )
+        container = self._container_with_link(case, record, claim_id)
+
+        result = self._evaluator_with_read_model(source_resolver, read_model).evaluate(container)
+
+        self.assertEqual(result.qualified_current_application_record_ids, (record.record_id,))
+        self.assertEqual(result.current_host_claim_ids, (claim_id,))
+        self.assertEqual(tuple(dict(read_model.current_claims_by_id)), (claim_id,))
+
     def test_historical_noncurrent_claims_are_retained_without_current_qualification(self) -> None:
         case = self._synthetic_case()
         source_resolver, record, _ = build_application_with_v3_event(self, case)
@@ -864,6 +911,146 @@ class ContextApplicationV2HostBindingEvaluatorTests(unittest.TestCase):
         with self.assertRaises(ContextApplicationV2HostBindingError) as caught:
             self._evaluator_with_read_model(source_resolver, read_model).evaluate(container)
         self.assertEqual(caught.exception.code, "HOST_AUTHORITY_CROSS_SNAPSHOT_MISMATCH")
+
+    def test_container_source_closure_is_reused_before_result(self) -> None:
+        case = self._synthetic_case()
+        base_binding = cast(ContextAuthoritySourceBindingV2, case["base_binding"])
+        member = cast(ContextApplicationV2Record, case["record"]).members[0]
+        candidate_binding = ContextAuthoritySourceBindingV2(
+            "candidate_universe",
+            cast(str, member.candidate_universe_binding[0]),
+            cast(str, member.candidate_universe_binding[1]),
+            cast(bytes, member.candidate_universe_binding[2]),
+        )
+        container = ContextApplicationAuthorityV2(
+            base_authority_v1_binding=base_binding,
+            host_binding_authority_v2_binding=None,
+            candidate_universe_binding=candidate_binding,
+            source_bindings=canonical_source_bindings((base_binding, candidate_binding)),
+            context_application_v2_records=(),
+            context_application_v2_supersession_records=(),
+            application_host_bindings_v2=(),
+        )
+
+        result = self._evaluator(case["source_resolver"]).evaluate(container)
+
+        self.assertEqual(result.qualified_current_application_record_ids, ())
+        with self.assertRaises(ContextApplicationV2HostBindingError) as missing:
+            self._evaluator(case["source_resolver"]).evaluate(
+                replace(container, source_bindings=())
+            )
+        self.assertEqual(missing.exception.code, "HOST_SOURCE_CLOSURE_MISMATCH")
+        with self.assertRaises(ContextApplicationV2HostBindingError) as extra:
+            self._evaluator(case["source_resolver"]).evaluate(
+                replace(
+                    container,
+                    source_bindings=canonical_source_bindings(
+                        (base_binding, candidate_binding, HOST_BINDING)
+                    ),
+                )
+            )
+        self.assertEqual(extra.exception.code, "HOST_SOURCE_CLOSURE_MISMATCH")
+
+    def test_container_closure_accepts_additive_host_authority_provenance(self) -> None:
+        from test_authority_v2_validator import AuthorityV2DocumentTests
+
+        case = self._synthetic_case()
+        authority_case = AuthorityV2DocumentTests()
+        authority_case.setUp()
+        self.addCleanup(authority_case.tearDown)
+        host_path = "sources/m2_5/authorities/interaction_review_authority.v2.json"
+        host_raw = (json.dumps(authority_case.document, separators=(",", ":")) + "\n").encode()
+        host_file = case["fixture"].repo / Path(*host_path.split("/"))
+        host_file.parent.mkdir(parents=True, exist_ok=True)
+        host_file.write_bytes(host_raw)
+        host_binding = ContextAuthoritySourceBindingV2(
+            "host_binding_authority_v2",
+            host_path,
+            "manafold.m2.5.c.interaction-review-authority.v2",
+            hashlib.sha256(host_raw).digest(),
+        )
+        base_binding = cast(ContextAuthoritySourceBindingV2, case["base_binding"])
+        member = cast(ContextApplicationV2Record, case["record"]).members[0]
+        candidate_binding = ContextAuthoritySourceBindingV2(
+            "candidate_universe",
+            cast(str, member.candidate_universe_binding[0]),
+            cast(str, member.candidate_universe_binding[1]),
+            cast(bytes, member.candidate_universe_binding[2]),
+        )
+        container = ContextApplicationAuthorityV2(
+            base_authority_v1_binding=base_binding,
+            host_binding_authority_v2_binding=host_binding,
+            candidate_universe_binding=candidate_binding,
+            source_bindings=canonical_source_bindings(
+                (base_binding, candidate_binding, host_binding)
+            ),
+            context_application_v2_records=(),
+            context_application_v2_supersession_records=(),
+            application_host_bindings_v2=(),
+        )
+
+        closure = self._evaluator(case["source_resolver"])._validate_container_source_closure(
+            container
+        )
+
+        self.assertIn(host_binding, closure)
+
+    def test_real_authority_v2_admission_path_returns_read_model(self) -> None:
+        from test_authority_v2_validator import AuthorityV2DocumentTests
+
+        authority_case = AuthorityV2DocumentTests()
+        authority_case.setUp()
+        self.addCleanup(authority_case.tearDown)
+        host_path = "sources/m2_5/authorities/interaction_review_authority.v2.json"
+        host_raw = (json.dumps(authority_case.document, separators=(",", ":")) + "\n").encode()
+        host_file = authority_case.repo / Path(*host_path.split("/"))
+        host_file.parent.mkdir(parents=True, exist_ok=True)
+        host_file.write_bytes(host_raw)
+        host_binding = ContextAuthoritySourceBindingV2(
+            "host_binding_authority_v2",
+            host_path,
+            "manafold.m2.5.c.interaction-review-authority.v2",
+            hashlib.sha256(host_raw).digest(),
+        )
+        container = _empty_container(host_binding=host_binding)
+        evaluator = self._evaluator(AuthoritySourceResolver(authority_case.repo))
+
+        read_model = evaluator._admit_host_binding(container)
+
+        self.assertEqual(read_model.admitted_claims_by_id, ())
+        self.assertEqual(read_model.current_claims_by_id, ())
+
+    def test_nested_authority_source_errors_stay_inside_slice6_boundary(self) -> None:
+        container = _empty_container(host_binding=HOST_BINDING)
+        evaluator = self._evaluator()
+        for nested_error in (
+            HostBindingSourceError("synthetic host join failure"),
+            ResolutionError(ResolutionStatus.FAIL, "NESTED_RESOLUTION_FAILURE", "synthetic"),
+        ):
+            with self.subTest(error=type(nested_error).__name__):
+                with (
+                    patch.object(
+                        ContextApplicationV2Resolver,
+                        "resolve_source_binding",
+                        return_value=SimpleNamespace(json_value={}),
+                    ),
+                    patch.object(
+                        AuthorityV2Validator,
+                        "admit",
+                        side_effect=nested_error,
+                    ),
+                    self.assertRaises(ContextApplicationV2HostBindingError) as caught,
+                ):
+                    evaluator._admit_host_binding(container)
+                self.assertEqual(caught.exception.code, "HOST_AUTHORITY_INVALID")
+                self.assertEqual(
+                    caught.exception.cause_code,
+                    (
+                        "HOST_SOURCE_INVALID"
+                        if isinstance(nested_error, HostBindingSourceError)
+                        else "NESTED_RESOLUTION_FAILURE"
+                    ),
+                )
 
     def test_member_source_resolution_errors_are_wrapped_with_typed_boundary(self) -> None:
         case = self._synthetic_case()

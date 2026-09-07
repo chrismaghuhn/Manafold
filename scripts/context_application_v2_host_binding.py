@@ -20,6 +20,7 @@ PYTHON_SRC = ROOT / "python" / "src"
 if str(PYTHON_SRC) not in sys.path:
     sys.path.insert(0, str(PYTHON_SRC))
 
+from authority_host_binding import HostBindingSourceError
 from authority_source_resolver import AuthoritySourceResolver, ResolutionError
 from authority_v2_validator import (
     AuthorityV2ValidationError,
@@ -404,20 +405,51 @@ class ContextApplicationV2HostBindingEvaluator:
             ) from exc
         try:
             admission = AuthorityV2Validator(self._source_resolver).admit(artifact.json_value)
-        except AuthorityV2ValidationError as exc:
+        except (AuthorityV2ValidationError, ResolutionError, HostBindingSourceError) as exc:
+            cause_code = getattr(exc, "code", None)
+            if isinstance(exc, HostBindingSourceError):
+                cause_code = "HOST_SOURCE_INVALID"
             passthrough_codes = {
                 HOST_BINDING_AMBIGUOUS,
                 HOST_CLAIM_UNKNOWN,
                 HOST_CLAIM_NOT_CURRENT,
                 HOST_SOURCE_CLOSURE_MISMATCH,
             }
-            code = exc.code if exc.code in passthrough_codes else HOST_AUTHORITY_INVALID
+            code = (
+                cause_code
+                if isinstance(cause_code, str) and cause_code in passthrough_codes
+                else HOST_AUTHORITY_INVALID
+            )
             raise _error(
                 code,
                 "host_binding_authority_v2_binding",
-                cause_code=exc.code,
+                cause_code=cause_code,
             ) from exc
         return admission.read_model
+
+    def _validate_container_source_closure(
+        self,
+        container: ContextApplicationAuthorityV2,
+    ) -> tuple[ContextAuthoritySourceBindingV2, ...]:
+        resolver = ContextApplicationV2Resolver(
+            self._source_resolver,
+            base_authority_binding=container.base_authority_v1_binding,
+        )
+        try:
+            return resolver.validate_container_source_closure_v2(container)
+        except (
+            ContextApplicationV2ResolutionError,
+            ResolutionError,
+            HostBindingSourceError,
+        ) as exc:
+            cause_code = getattr(exc, "code", None)
+            if isinstance(exc, HostBindingSourceError):
+                cause_code = "HOST_SOURCE_INVALID"
+            raise _error(
+                HOST_SOURCE_CLOSURE_MISMATCH,
+                "source_bindings",
+                cause_code=cause_code,
+            ) from exc
 
     @staticmethod
     def _compare_host_snapshots(
@@ -739,6 +771,8 @@ class ContextApplicationV2HostBindingEvaluator:
                     host_binding_claim_ids=link.host_binding_claim_ids,
                 )
             )
+
+        self._validate_container_source_closure(container)
 
         return ContextApplicationV2HostBindingEvaluationResult(
             currentness=currentness,
