@@ -604,8 +604,10 @@ Remove-Item Env:PYTHONPATH
 
 Expected: the HostBinding validator tests pass, including the new record-level
 status tests. Do not claim Slice-6 behavior; this only proves the reusable
-HostBinding seam. The repository smoke profile is not run here because the G1
-RED test must remain failing until the immediately following G1 GREEN task.
+HostBinding seam. The repository smoke profile is not evidence for these new
+read-model tests because test_authority_v2_validator is not in the smoke
+allowlist; the focused validator suite is the Task-2 evidence. Broader smoke
+and integration gates run after the Slice-6 test module is added.
 
 ## 7. Task 3 — Build the Slice-6 typed composition seam
 
@@ -621,11 +623,23 @@ Test that the public evaluator rejects:
 
 `
 non-ContextApplicationAuthorityV2 input
-noncanonical records, supersessions, links, or source bindings
 duplicate cpar.v2/cpsr.v2/link identities
 caller-provided trusted/current booleans (the interface has no such argument)
 unknown application_host_binding target cpa
 `
+
+Test noncanonical values at the correct boundary:
+
+`
+noncanonical wire/constructor input
+    -> AuthorityContractError before evaluator entry
+
+test-only forged typed container bypassing construction
+    -> HOST_INTEGRATION_INPUT_INVALID at evaluator entry
+`
+
+Do not claim that a normally constructed frozen container can contain a
+noncanonical collection; its constructor already rejects that state.
 
 Assert stable HOST_INTEGRATION_INPUT_INVALID,
 APPLICATION_HOST_BINDING_DUPLICATE, or
@@ -1008,16 +1022,23 @@ is separately authorized; Slice 6 does not claim certification by default.
 - [ ] **Step 5: Inspect final scope and forbidden surfaces.**
 
 `
-git diff --name-only d2033223f73e84c7b3d3d49b0984ffbf0888a5a5 HEAD
-git diff --name-only d647e63d7687bd2c022393feaee5bac6736e84ca HEAD
+$planHead = $env:MANAFOLD_SLICE6_PLAN_HEAD
+if ([string]::IsNullOrWhiteSpace($planHead)) { throw "MANAFOLD_SLICE6_PLAN_HEAD is required" }
+if ((git cat-file -t "$planHead^{commit}").Trim() -ne "commit") { throw "PLAN_HEAD is not a commit" }
+$contractHead = "20fb8d92cdac27fc0dc61060223ffd7d7fa00cb5"
+if ((git rev-parse "$planHead^{commit}").Trim() -eq $contractHead) { throw "PLAN_HEAD must include the reviewed plan commit" }
+git diff --name-only "$planHead..HEAD"
+git diff --name-only "d647e63d7687bd2c022393feaee5bac6736e84ca..HEAD"
 git ls-files --others --exclude-standard
 git status --short --branch
 `
 
-The first range is the implementation-only scope. The second range includes
-the accepted ADR, reviewed plan, and implementation. The implementation diff
-may contain only the planned Python modules/tests and resolver compatibility
-tests. It must not contain:
+MANAFOLD_SLICE6_PLAN_HEAD is the exact final plan commit recorded by the
+independent plan review before implementation starts. The first range is the
+implementation-only scope. The second range includes the accepted ADR,
+reviewed plan, and implementation. The implementation diff may contain only
+the planned Python modules/tests and resolver compatibility tests. It must not
+contain:
 
 `
 schemas/
