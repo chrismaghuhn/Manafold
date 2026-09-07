@@ -590,6 +590,7 @@ class ContextApplicationV2CurrentnessGraphTests(unittest.TestCase):
                 )
             )
         self.assertEqual(fingerprints[0], fingerprints[1])
+        self.assertIsNone(fingerprints[0][3])
 
         valid_supersession = self._supersession(
             case,
@@ -602,6 +603,14 @@ class ContextApplicationV2CurrentnessGraphTests(unittest.TestCase):
             malformed_supersession,
             "reason_code",
             SupersessionReason.AUTHORITY_REVOCATION,
+        )
+        object.__setattr__(
+            malformed_supersession,
+            "supersession_id",
+            AuthorityIdentityV1(
+                AuthorityIdentityKind.CONTEXT_SUPERSESSION_V2,
+                bytes.fromhex("88" * 32),
+            ),
         )
         fingerprints = []
         for supersessions in (
@@ -622,6 +631,13 @@ class ContextApplicationV2CurrentnessGraphTests(unittest.TestCase):
                 )
             )
         self.assertEqual(fingerprints[0], fingerprints[1])
+        self.assertIsNone(fingerprints[0][3])
+
+        malformed_record_id = copy.copy(a)
+        object.__setattr__(malformed_record_id, "record_id", "not-an-identity")
+        with self.assertRaises(ContextApplicationV2CurrentnessError) as caught:
+            self._evaluate(case, resolver, (malformed_record_id,), ())
+        self.assertEqual(caught.exception.code, "CURRENTNESS_INPUT_INVALID")
 
     def test_distinct_successors_fail_even_when_target_is_equal(self) -> None:
         from context_application_v2_supersession import ContextApplicationV2CurrentnessError

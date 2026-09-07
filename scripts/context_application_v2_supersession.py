@@ -386,6 +386,12 @@ class ContextApplicationV2CurrentnessEvaluator:
         ],
         location: str,
     ) -> None:
+        for record in records:
+            if not isinstance(record.record_id, AuthorityIdentityV1):
+                raise ContextApplicationV2CurrentnessError(
+                    "CURRENTNESS_INPUT_INVALID",
+                    location,
+                )
         ordered = sorted(
             records,
             key=lambda record: _identity_key(record.record_id),
@@ -398,11 +404,7 @@ class ContextApplicationV2CurrentnessEvaluator:
                     "DUPLICATE_RECORD_ID",
                     location,
                     record_id=record.record_id,
-                    supersession_id=(
-                        record.supersession_id
-                        if isinstance(record, ContextApplicationV2SupersessionRecord)
-                        else None
-                    ),
+                    supersession_id=None,
                     subject_record_ids=(record.record_id,),
                 )
             previous_key = record_key
