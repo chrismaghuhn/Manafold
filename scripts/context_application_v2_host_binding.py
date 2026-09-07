@@ -20,7 +20,7 @@ PYTHON_SRC = ROOT / "python" / "src"
 if str(PYTHON_SRC) not in sys.path:
     sys.path.insert(0, str(PYTHON_SRC))
 
-from authority_source_resolver import AuthoritySourceResolver
+from authority_source_resolver import AuthoritySourceResolver, ResolutionError
 from authority_v2_validator import HostBindingClaimRecordStatus
 from context_application_v2_resolver import (
     ContextApplicationV2ResolutionError,
@@ -51,6 +51,7 @@ APPLICATION_HOST_BINDING_INVALID: Final = "APPLICATION_HOST_BINDING_INVALID"
 HOST_MEMBER_SET_MISMATCH: Final = "HOST_MEMBER_SET_MISMATCH"
 HOST_RELATIONSHIP_MISMATCH: Final = "HOST_RELATIONSHIP_MISMATCH"
 HOST_CLAIM_UNKNOWN: Final = "HOST_CLAIM_UNKNOWN"
+HOST_MEMBER_APPLICABILITY_INVALID: Final = "HOST_MEMBER_APPLICABILITY_INVALID"
 
 
 class ApplicationHostBindingStatus(StrEnum):
@@ -306,9 +307,9 @@ class ContextApplicationV2HostBindingEvaluator:
             )
             try:
                 resolved = resolver.resolve_member_source_instance(member)
-            except ContextApplicationV2ResolutionError as exc:
+            except (ContextApplicationV2ResolutionError, ResolutionError) as exc:
                 raise _error(
-                    HOST_INTEGRATION_INPUT_INVALID,
+                    HOST_MEMBER_APPLICABILITY_INVALID,
                     "context_application_v2_records.members",
                     cause_code=exc.code,
                     application_id=record.application_id,
@@ -559,17 +560,9 @@ class ContextApplicationV2HostBindingEvaluator:
                     record_id=closure.record_id,
                     subject_ids=tuple(link.host_binding_claim_ids),
                 )
-            application_results.append(
-                ApplicationHostBindingResult(
-                    application_id=closure.application_id,
-                    status=(
-                        ApplicationHostBindingStatus.QUALIFIED_CURRENT
-                        if closure.current
-                        else ApplicationHostBindingStatus.HISTORICAL_ONLY
-                    ),
-                    host_binding_claim_ids=link.host_binding_claim_ids,
-                )
-            )
+            # Task 4 proves the G2 link shape only.  A required link is not
+            # qualified until Task 5 supplies the admitted HBC claim index and
+            # the exact claim/member closure has passed.
 
         return ContextApplicationV2HostBindingEvaluationResult(
             currentness=currentness,
@@ -594,6 +587,7 @@ __all__ = [
     "APPLICATION_HOST_BINDING_UNKNOWN_APPLICATION",
     "HOST_CLAIM_UNKNOWN",
     "HOST_INTEGRATION_INPUT_INVALID",
+    "HOST_MEMBER_APPLICABILITY_INVALID",
     "HOST_MEMBER_SET_MISMATCH",
     "HOST_RELATIONSHIP_MISMATCH",
     "ApplicationHostBindingResult",
