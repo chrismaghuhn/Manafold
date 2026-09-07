@@ -34,6 +34,7 @@ from context_application_v2_host_binding import (
     _validate_link_member_union,
 )
 from context_application_v2_resolver import (
+    ContextApplicationV2ResolutionError,
     ContextApplicationV2Resolver,
     canonical_source_bindings,
 )
@@ -1584,6 +1585,172 @@ class ContextApplicationV2HostBindingEvaluatorTests(unittest.TestCase):
             evaluator.evaluate(canonical_container),
             evaluator.evaluate(rebuilt_from_permuted_upstream),
         )
+
+    def test_full_p8_permutations_cover_records_links_and_hbcr_order(self) -> None:
+        case, source_resolver, record, claim, host_binding, claim_bindings = (
+            self._full_linked_case()
+        )
+        _, variant, _ = build_application_variant_with_v3_event(self, case, "permutation-b")
+        base_binding = cast(ContextAuthoritySourceBindingV2, case["base_binding"])
+        candidate_binding = ContextAuthoritySourceBindingV2(
+            "candidate_universe",
+            cast(str, record.members[0].candidate_universe_binding[0]),
+            cast(str, record.members[0].candidate_universe_binding[1]),
+            cast(bytes, record.members[0].candidate_universe_binding[2]),
+        )
+        links = (
+            ApplicationHostBindingV2(
+                "context_application", record.application_id, (claim.identity().as_text(),)
+            ),
+            ApplicationHostBindingV2(
+                "context_application", variant.application_id, (claim.identity().as_text(),)
+            ),
+        )
+
+        def build_container(
+            selected_host_binding: ContextAuthoritySourceBindingV2,
+            selected_records: tuple[ContextApplicationV2Record, ...],
+            selected_links: tuple[ApplicationHostBindingV2, ...],
+        ) -> ContextApplicationAuthorityV2:
+            provisional = ContextApplicationAuthorityV2(
+                base_authority_v1_binding=base_binding,
+                host_binding_authority_v2_binding=selected_host_binding,
+                candidate_universe_binding=candidate_binding,
+                source_bindings=canonical_source_bindings(
+                    (base_binding, candidate_binding, selected_host_binding, *claim_bindings)
+                ),
+                context_application_v2_records=tuple(
+                    sorted(selected_records, key=lambda item: encode_canonical(item.to_cbor()))
+                ),
+                context_application_v2_supersession_records=(),
+                application_host_bindings_v2=tuple(
+                    sorted(selected_links, key=lambda item: encode_canonical(item.to_cbor()))
+                ),
+            )
+            complete = ContextApplicationV2Resolver(
+                source_resolver, base_authority_binding=base_binding
+            ).expected_container_source_closure_v2(provisional)
+            return replace(provisional, source_bindings=complete)
+
+        first = ContextApplicationV2HostBindingEvaluator(source_resolver).evaluate(
+            build_container(host_binding, (record, variant), links)
+        )
+        host_file = case["fixture"].repo / Path(*host_binding.path.split("/"))
+        host_document = cast(dict[str, object], json.loads(host_file.read_text(encoding="utf-8")))
+        host_document["cross_deck_host_binding_claim_records"] = list(
+            reversed(cast(list[object], host_document["cross_deck_host_binding_claim_records"]))
+        )
+        host_document["cross_deck_host_binding_claim_supersession_records"] = list(
+            reversed(
+                cast(
+                    list[object],
+                    host_document["cross_deck_host_binding_claim_supersession_records"],
+                )
+            )
+        )
+        host_raw = (json.dumps(host_document, separators=(",", ":")) + "\n").encode()
+        host_file.write_bytes(host_raw)
+        permuted_host_binding = ContextAuthoritySourceBindingV2(
+            "host_binding_authority_v2",
+            host_binding.path,
+            host_binding.schema,
+            hashlib.sha256(host_raw).digest(),
+        )
+        second = ContextApplicationV2HostBindingEvaluator(source_resolver).evaluate(
+            build_container(permuted_host_binding, (variant, record), tuple(reversed(links)))
+        )
+        self.assertEqual(first, second)
+
+    def test_claim_id_rebuild_permutation_is_canonical_before_dto_construction(self) -> None:
+        application = _application_id(32)
+        claim_ids = (_claim_id(33), _claim_id(34))
+        first = ApplicationHostBindingV2(
+            "context_application", application, tuple(sorted(claim_ids, key=encode_canonical))
+        )
+        second = ApplicationHostBindingV2(
+            "context_application",
+            application,
+            tuple(sorted(reversed(claim_ids), key=encode_canonical)),
+        )
+        self.assertEqual(first, second)
+        self.assertEqual(first.to_cbor(), second.to_cbor())
+
+    def test_wrong_application_kind_is_rejected_at_the_contract_boundary(self) -> None:
+        with self.assertRaises(AuthorityContractError):
+            ApplicationHostBindingV2(
+                "relation_application",
+                _application_id(35),
+                (_claim_id(36),),
+            )
+
+    def test_member_identity_mutations_fail_closed_independently(self) -> None:
+        case = self._synthetic_case()
+        member = cast(ContextApplicationV2Record, case["record"]).members[0]
+        resolver = ContextApplicationV2Resolver(
+            case["source_resolver"],
+            base_authority_binding=cast(ContextAuthoritySourceBindingV2, case["base_binding"]),
+        )
+        mutations = (
+            ("candidate_id", "wrong-candidate"),
+            (
+                "candidate_identity_digest_reference",
+                replace(
+                    member.candidate_identity_digest_reference,
+                    digest_bytes=bytes([7]) * 32,
+                ),
+            ),
+            ("source_instance_id", "si.v1/wrong/0"),
+        )
+        for field_name, value in mutations:
+            with (
+                self.subTest(field=field_name),
+                self.assertRaises((ContextApplicationV2ResolutionError, ResolutionError)),
+            ):
+                resolver.resolve_member_source_instance(replace(member, **{field_name: value}))
+
+    def test_cross_application_hbc_link_does_not_transfer_across_supersession(self) -> None:
+        case = self._synthetic_case()
+        source_resolver, application_a, _ = build_application_with_v3_event(self, case)
+        _, application_b, _ = build_application_variant_with_v3_event(self, case, "replacement-b")
+        semantic_input = ContextApplicationV2SupersessionInputV2(
+            superseded_record_id_bytes=application_a.record_id.digest_bytes,
+            replacement_record_id_bytes=application_b.record_id.digest_bytes,
+            replacement_record_kind="context_application_v2_record",
+            reason_code=SupersessionReason.SOURCE_REVISION,
+            source_evidence_refs=(case["member"].member_evidence_refs[0],),
+        )
+        _, supersession, _ = build_supersession_with_v3_event(self, case, semantic_input)
+        claim = _cross_host_claim(self._member_key_for_record(application_a))
+        read_model = self._read_model_for_case(case, claim)
+        base_binding = cast(ContextAuthoritySourceBindingV2, case["base_binding"])
+        member = application_a.members[0]
+        candidate_binding = ContextAuthoritySourceBindingV2(
+            "candidate_universe",
+            cast(str, member.candidate_universe_binding[0]),
+            cast(str, member.candidate_universe_binding[1]),
+            cast(bytes, member.candidate_universe_binding[2]),
+        )
+        link_a = ApplicationHostBindingV2(
+            "context_application", application_a.application_id, (claim.identity().as_text(),)
+        )
+        container = ContextApplicationAuthorityV2(
+            base_authority_v1_binding=base_binding,
+            host_binding_authority_v2_binding=HOST_BINDING,
+            candidate_universe_binding=candidate_binding,
+            source_bindings=(),
+            context_application_v2_records=tuple(
+                sorted(
+                    (application_a, application_b),
+                    key=lambda item: encode_canonical(item.to_cbor()),
+                )
+            ),
+            context_application_v2_supersession_records=(supersession,),
+            application_host_bindings_v2=(link_a,),
+        )
+
+        with self.assertRaises(ContextApplicationV2HostBindingError) as caught:
+            self._evaluator_with_read_model(source_resolver, read_model).evaluate(container)
+        self.assertEqual(caught.exception.code, "APPLICATION_HOST_BINDING_INVALID")
 
     def test_rejection_is_failure_atomic_and_fingerprint_stable(self) -> None:
         case = self._synthetic_case()
