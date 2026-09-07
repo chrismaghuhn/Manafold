@@ -18,6 +18,10 @@ from authority_source_resolver import (
     ResolutionStatus,
     Rev3ArchiveStore,
 )
+from authority_v2_validator import (
+    HostBindingAuthorityV2ReadModel,
+    HostBindingClaimRecordStatus,
+)
 from context_application_v2_host_binding import (
     ContextApplicationV2HostBindingError,
     ContextApplicationV2HostBindingEvaluationResult,
@@ -45,7 +49,16 @@ from mtgml.authority import (
     ReviewEventRefV3,
     SupersessionReason,
 )
-from mtgml.host_binding import ApplicationMemberKeyV1
+from mtgml.host_binding import (
+    ApplicationMemberKeyV1,
+    CrossDeckHostBindingClaimV1,
+    CrossDeckParticipantDiscoveryHostBindingV1,
+    DiscoveryHostRefV1,
+    HostBindingEvidenceRefV2,
+    HostBindingSourceBindingV2,
+    HostRealizationWitnessV1,
+    ParticipantHostRealizationV1,
+)
 from mtgml.persistence import encode_canonical
 from test_authority_v2_validator import _claim
 
@@ -85,6 +98,66 @@ def _link(marker: int, claim_marker: int) -> ApplicationHostBindingV2:
         "context_application",
         _application_id(marker),
         (_claim_id(claim_marker),),
+    )
+
+
+def _cross_host_claim(member_key: ApplicationMemberKeyV1) -> CrossDeckHostBindingClaimV1:
+    discovery_bindings = []
+    realizations = []
+    for position, (participant_ref, host_id) in enumerate(
+        (("cap.aura", "Token Triumph"), ("cap.draw", "Grave Danger"))
+    ):
+        mapping_ref = HostBindingEvidenceRefV2(
+            "rev3_card_requirement_map",
+            "derived/Card_Requirement_Map_REV3.csv",
+            None,
+            bytes(32),
+            ("csv_row", position),
+        )
+        deck_ref = HostBindingEvidenceRefV2(
+            "rev3_deck_row_source_resolution",
+            "inputs/deck_row_source_resolution_REV3.csv",
+            None,
+            bytes(32),
+            ("csv_row", position),
+        )
+        osi_ref = HostBindingEvidenceRefV2(
+            "rev3_osi_source_records",
+            "source/raw/oracle_cards_selected_REV3.jsonl",
+            None,
+            bytes(32),
+            ("jsonl_line", position),
+        )
+        b2_ref = HostBindingEvidenceRefV2(
+            "b2_classifications",
+            "sources/m2_5/closures/B2/card_semantic_classifications.v1.json",
+            "manafold.m2.5.b2.card-semantic-classifications.v1",
+            bytes(32),
+            ("json_pointer", f"/classifications/{position}"),
+        )
+        host = DiscoveryHostRefV1("rev3_deck", host_id)
+        discovery = CrossDeckParticipantDiscoveryHostBindingV1(
+            member_key,
+            position,
+            participant_ref,
+            "rev3_left_family" if position == 0 else "rev3_right_family",
+            host,
+            (mapping_ref,),
+        )
+        realization = ParticipantHostRealizationV1(
+            member_key,
+            position,
+            participant_ref,
+            host,
+            (HostRealizationWitnessV1(mapping_ref, deck_ref, osi_ref, (b2_ref,)),),
+        )
+        discovery_bindings.append(discovery)
+        realizations.append(realization)
+    return CrossDeckHostBindingClaimV1(
+        member_key,
+        tuple(discovery_bindings),
+        tuple(realizations),
+        "cross_host",
     )
 
 
@@ -299,6 +372,107 @@ class ContextApplicationV2HostBindingEvaluatorTests(unittest.TestCase):
             source_resolver = AuthoritySourceResolver(ROOT)
         return ContextApplicationV2HostBindingEvaluator(source_resolver)
 
+    @staticmethod
+    def _member_key_for_record(record: ContextApplicationV2Record) -> ApplicationMemberKeyV1:
+        member = record.members[0]
+        return ApplicationMemberKeyV1(
+            member.candidate_id,
+            member.candidate_identity_digest_reference.digest_bytes,
+            member.source_instance_id,
+        )
+
+    def _read_model_for_case(
+        self,
+        case: dict[str, object],
+        claim: CrossDeckHostBindingClaimV1,
+        *,
+        current: bool = True,
+        status: HostBindingClaimRecordStatus = HostBindingClaimRecordStatus.CURRENT,
+    ) -> HostBindingAuthorityV2ReadModel:
+        claim_id = claim.identity().as_text()
+        record_id = "hbcr.v1/" + "42" * 32
+        base = cast(ContextAuthoritySourceBindingV2, case["base_binding"])
+        member = claim.member_key
+        candidate_values = cast(ContextApplicationV2Record, case["record"]).members[0]
+        candidate = ContextAuthoritySourceBindingV2(
+            "candidate_universe",
+            cast(str, candidate_values.candidate_universe_binding[0]),
+            cast(str, candidate_values.candidate_universe_binding[1]),
+            cast(bytes, candidate_values.candidate_universe_binding[2]),
+        )
+        host_base = HostBindingSourceBindingV2(
+            base.artifact_role,
+            base.path,
+            base.schema,
+            base.raw_sha256,
+        )
+        host_candidate = HostBindingSourceBindingV2(
+            candidate.artifact_role,
+            candidate.path,
+            candidate.schema,
+            candidate.raw_sha256,
+        )
+        return HostBindingAuthorityV2ReadModel(
+            base_authority_v1_binding=host_base,
+            candidate_universe_binding=host_candidate,
+            admitted_claims_by_id=((claim_id, claim),),
+            current_claims_by_id=((claim_id, claim),) if current else (),
+            current_claims_by_member=((member, claim_id),) if current else (),
+            claim_record_status_by_record_id=((record_id, status),),
+            claim_record_ids_by_claim_id=((claim_id, (record_id,)),),
+            used_source_bindings=(),
+        )
+
+    def _container_with_link(
+        self,
+        case: dict[str, object],
+        record: ContextApplicationV2Record,
+        claim_id: str,
+        *,
+        host_binding: ContextAuthoritySourceBindingV2 | None = HOST_BINDING,
+        supersessions: tuple[ContextApplicationV2SupersessionRecord, ...] = (),
+    ) -> ContextApplicationAuthorityV2:
+        member = record.members[0]
+        candidate_binding = ContextAuthoritySourceBindingV2(
+            "candidate_universe",
+            cast(str, member.candidate_universe_binding[0]),
+            cast(str, member.candidate_universe_binding[1]),
+            cast(bytes, member.candidate_universe_binding[2]),
+        )
+        return ContextApplicationAuthorityV2(
+            base_authority_v1_binding=cast(
+                ContextAuthoritySourceBindingV2,
+                case["base_binding"],
+            ),
+            host_binding_authority_v2_binding=host_binding,
+            candidate_universe_binding=candidate_binding,
+            source_bindings=(),
+            context_application_v2_records=(record,),
+            context_application_v2_supersession_records=supersessions,
+            application_host_bindings_v2=(
+                ApplicationHostBindingV2(
+                    "context_application",
+                    record.application_id,
+                    (claim_id,),
+                ),
+            ),
+        )
+
+    def _evaluator_with_read_model(
+        self,
+        source_resolver: AuthoritySourceResolver,
+        read_model: HostBindingAuthorityV2ReadModel,
+    ) -> ContextApplicationV2HostBindingEvaluator:
+        class AdmittedEvaluator(ContextApplicationV2HostBindingEvaluator):
+            def _admit_host_binding(
+                self,
+                container: ContextApplicationAuthorityV2,
+            ) -> HostBindingAuthorityV2ReadModel:
+                del container
+                return read_model
+
+        return AdmittedEvaluator(source_resolver)
+
     def test_non_context_authority_input_is_rejected_with_frozen_error(self) -> None:
         evaluator = self._evaluator()
 
@@ -407,6 +581,7 @@ class ContextApplicationV2HostBindingEvaluatorTests(unittest.TestCase):
 
         case = self._synthetic_case()
         source_resolver, record, _ = build_application_with_v3_event(self, case)
+        claim = _cross_host_claim(self._member_key_for_record(record))
         semantic_input = ContextApplicationV2SupersessionInputV2(
             superseded_record_id_bytes=record.record_id.digest_bytes,
             replacement_record_id_bytes=None,
@@ -422,7 +597,13 @@ class ContextApplicationV2HostBindingEvaluatorTests(unittest.TestCase):
         link = ApplicationHostBindingV2(
             "context_application",
             record.application_id,
-            (_claim_id(21),),
+            (claim.identity().as_text(),),
+        )
+        candidate_binding = ContextAuthoritySourceBindingV2(
+            "candidate_universe",
+            cast(str, record.members[0].candidate_universe_binding[0]),
+            cast(str, record.members[0].candidate_universe_binding[1]),
+            cast(bytes, record.members[0].candidate_universe_binding[2]),
         )
 
         current_container = ContextApplicationAuthorityV2(
@@ -431,7 +612,7 @@ class ContextApplicationV2HostBindingEvaluatorTests(unittest.TestCase):
                 case["base_binding"],
             ),
             host_binding_authority_v2_binding=HOST_BINDING,
-            candidate_universe_binding=CANDIDATE_BINDING,
+            candidate_universe_binding=candidate_binding,
             source_bindings=(),
             context_application_v2_records=(record,),
             context_application_v2_supersession_records=(),
@@ -441,15 +622,38 @@ class ContextApplicationV2HostBindingEvaluatorTests(unittest.TestCase):
             current_container,
             context_application_v2_supersession_records=(supersession,),
         )
-        evaluator = self._evaluator(source_resolver)
+        current = self._evaluator_with_read_model(
+            source_resolver,
+            self._read_model_for_case(case, claim),
+        ).evaluate(current_container)
+        historical = self._evaluator_with_read_model(
+            source_resolver,
+            self._read_model_for_case(
+                case,
+                claim,
+                current=False,
+                status=HostBindingClaimRecordStatus.REVOKED,
+            ),
+        ).evaluate(historical_container)
 
-        current = evaluator.evaluate(current_container)
-        historical = evaluator.evaluate(historical_container)
-
-        self.assertEqual(current.application_host_binding_results, ())
-        self.assertEqual(historical.application_host_binding_results, ())
-        self.assertEqual(current.qualified_current_application_record_ids, ())
+        self.assertEqual(
+            current.qualified_current_application_record_ids,
+            (record.record_id,),
+        )
+        self.assertEqual(
+            current.application_host_binding_results[0].status.value,
+            "qualified_current",
+        )
+        self.assertEqual(
+            current.current_host_claim_ids,
+            (claim.identity().as_text(),),
+        )
+        self.assertEqual(
+            historical.application_host_binding_results[0].status.value, "historical_only"
+        )
         self.assertEqual(historical.qualified_current_application_record_ids, ())
+        self.assertEqual(historical.current_host_claim_ids, ())
+        evaluator = self._evaluator(source_resolver)
         current_closure = evaluator._derive_application_closures(
             (record,),
             current.currentness,
@@ -509,6 +713,157 @@ class ContextApplicationV2HostBindingEvaluatorTests(unittest.TestCase):
         self.assertEqual(historical_closure.required_member_keys, (required_key,))
         self.assertNotIn(non_required_key, current_closure.required_member_keys)
         self.assertNotIn(non_required_key, historical_closure.required_member_keys)
+
+    def test_current_claim_admission_qualifies_current_application(self) -> None:
+        case = self._synthetic_case()
+        source_resolver, record, _ = build_application_with_v3_event(self, case)
+        claim = _cross_host_claim(self._member_key_for_record(record))
+        read_model = self._read_model_for_case(case, claim)
+        container = self._container_with_link(case, record, claim.identity().as_text())
+
+        result = self._evaluator_with_read_model(source_resolver, read_model).evaluate(container)
+
+        self.assertEqual(result.qualified_current_application_record_ids, (record.record_id,))
+        self.assertEqual(
+            result.application_host_binding_results[0].status.value, "qualified_current"
+        )
+        self.assertEqual(result.current_host_claim_ids, (claim.identity().as_text(),))
+
+    def test_historical_noncurrent_claims_are_retained_without_current_qualification(self) -> None:
+        case = self._synthetic_case()
+        source_resolver, record, _ = build_application_with_v3_event(self, case)
+        claim = _cross_host_claim(self._member_key_for_record(record))
+        semantic_input = ContextApplicationV2SupersessionInputV2(
+            superseded_record_id_bytes=record.record_id.digest_bytes,
+            replacement_record_id_bytes=None,
+            replacement_record_kind=None,
+            reason_code=SupersessionReason.AUTHORITY_REVOCATION,
+            source_evidence_refs=(record.members[0].member_evidence_refs[0],),
+        )
+        _, supersession, _ = build_supersession_with_v3_event(
+            self,
+            case,
+            semantic_input,
+        )
+        container = self._container_with_link(
+            case,
+            record,
+            claim.identity().as_text(),
+            supersessions=(supersession,),
+        )
+        for status in (
+            HostBindingClaimRecordStatus.SUPERSEDED,
+            HostBindingClaimRecordStatus.REVOKED,
+        ):
+            with self.subTest(status=status.value):
+                read_model = self._read_model_for_case(
+                    case,
+                    claim,
+                    current=False,
+                    status=status,
+                )
+                result = self._evaluator_with_read_model(
+                    source_resolver,
+                    read_model,
+                ).evaluate(container)
+                self.assertEqual(result.qualified_current_application_record_ids, ())
+                self.assertEqual(
+                    result.application_host_binding_results[0].status.value,
+                    "historical_only",
+                )
+                self.assertEqual(result.current_host_claim_ids, ())
+
+    def test_historical_unknown_claim_is_rejected(self) -> None:
+        case = self._synthetic_case()
+        source_resolver, record, _ = build_application_with_v3_event(self, case)
+        claim = _cross_host_claim(self._member_key_for_record(record))
+        semantic_input = ContextApplicationV2SupersessionInputV2(
+            superseded_record_id_bytes=record.record_id.digest_bytes,
+            replacement_record_id_bytes=None,
+            replacement_record_kind=None,
+            reason_code=SupersessionReason.AUTHORITY_REVOCATION,
+            source_evidence_refs=(record.members[0].member_evidence_refs[0],),
+        )
+        _, supersession, _ = build_supersession_with_v3_event(
+            self,
+            case,
+            semantic_input,
+        )
+        read_model = self._read_model_for_case(case, claim)
+        read_model = replace(
+            read_model,
+            admitted_claims_by_id=(),
+            current_claims_by_id=(),
+            current_claims_by_member=(),
+            claim_record_status_by_record_id=(),
+            claim_record_ids_by_claim_id=(),
+        )
+        container = self._container_with_link(
+            case,
+            record,
+            claim.identity().as_text(),
+            supersessions=(supersession,),
+        )
+
+        with self.assertRaises(ContextApplicationV2HostBindingError) as caught:
+            self._evaluator_with_read_model(source_resolver, read_model).evaluate(container)
+        self.assertEqual(caught.exception.code, "HOST_CLAIM_UNKNOWN")
+
+    def test_current_stale_claim_is_rejected(self) -> None:
+        case = self._synthetic_case()
+        source_resolver, record, _ = build_application_with_v3_event(self, case)
+        claim = _cross_host_claim(self._member_key_for_record(record))
+        read_model = self._read_model_for_case(
+            case,
+            claim,
+            current=False,
+            status=HostBindingClaimRecordStatus.SUPERSEDED,
+        )
+        container = self._container_with_link(case, record, claim.identity().as_text())
+
+        with self.assertRaises(ContextApplicationV2HostBindingError) as caught:
+            self._evaluator_with_read_model(source_resolver, read_model).evaluate(container)
+        self.assertEqual(caught.exception.code, "HOST_CLAIM_NOT_CURRENT")
+
+    def test_host_authority_binding_is_required_for_any_link(self) -> None:
+        case = self._synthetic_case()
+        source_resolver, record, _ = build_application_with_v3_event(self, case)
+        claim = _cross_host_claim(self._member_key_for_record(record))
+        container = self._container_with_link(
+            case,
+            record,
+            claim.identity().as_text(),
+            host_binding=None,
+        )
+
+        with self.assertRaises(ContextApplicationV2HostBindingError) as caught:
+            self._evaluator(source_resolver).evaluate(container)
+        self.assertEqual(caught.exception.code, "HOST_AUTHORITY_BINDING_REQUIRED")
+
+    def test_unused_host_authority_binding_is_rejected(self) -> None:
+        with self.assertRaises(ContextApplicationV2HostBindingError) as caught:
+            self._evaluator().evaluate(_empty_container(host_binding=HOST_BINDING))
+        self.assertEqual(caught.exception.code, "HOST_AUTHORITY_BINDING_UNEXPECTED")
+
+    def test_host_snapshot_mismatch_is_rejected(self) -> None:
+        case = self._synthetic_case()
+        source_resolver, record, _ = build_application_with_v3_event(self, case)
+        claim = _cross_host_claim(self._member_key_for_record(record))
+        read_model = self._read_model_for_case(case, claim)
+        read_model = replace(
+            read_model,
+            base_authority_v1_binding=HostBindingSourceBindingV2(
+                read_model.base_authority_v1_binding.artifact_role,
+                read_model.base_authority_v1_binding.path,
+                read_model.base_authority_v1_binding.schema_or_null,
+                bytes([9]) * 32,
+            ),
+        )
+        container = self._container_with_link(case, record, claim.identity().as_text())
+
+        with self.assertRaises(ContextApplicationV2HostBindingError) as caught:
+            self._evaluator_with_read_model(source_resolver, read_model).evaluate(container)
+        self.assertEqual(caught.exception.code, "HOST_AUTHORITY_CROSS_SNAPSHOT_MISMATCH")
 
     def test_member_source_resolution_errors_are_wrapped_with_typed_boundary(self) -> None:
         case = self._synthetic_case()

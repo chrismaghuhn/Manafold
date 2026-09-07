@@ -21,7 +21,12 @@ if str(PYTHON_SRC) not in sys.path:
     sys.path.insert(0, str(PYTHON_SRC))
 
 from authority_source_resolver import AuthoritySourceResolver, ResolutionError
-from authority_v2_validator import HostBindingClaimRecordStatus
+from authority_v2_validator import (
+    AuthorityV2ValidationError,
+    AuthorityV2Validator,
+    HostBindingAuthorityV2ReadModel,
+    HostBindingClaimRecordStatus,
+)
 from context_application_v2_resolver import (
     ContextApplicationV2ResolutionError,
     ContextApplicationV2Resolver,
@@ -40,7 +45,10 @@ from mtgml.authority import (
     ContextApplicationV2SupersessionRecord,
     ContextAuthoritySourceBindingV2,
 )
-from mtgml.host_binding import ApplicationMemberKeyV1, CrossDeckHostBindingClaimV1
+from mtgml.host_binding import (
+    ApplicationMemberKeyV1,
+    CrossDeckHostBindingClaimV1,
+)
 from mtgml.persistence import encode_canonical
 
 HOST_INTEGRATION_INPUT_INVALID: Final = "HOST_INTEGRATION_INPUT_INVALID"
@@ -51,6 +59,13 @@ APPLICATION_HOST_BINDING_INVALID: Final = "APPLICATION_HOST_BINDING_INVALID"
 HOST_MEMBER_SET_MISMATCH: Final = "HOST_MEMBER_SET_MISMATCH"
 HOST_RELATIONSHIP_MISMATCH: Final = "HOST_RELATIONSHIP_MISMATCH"
 HOST_CLAIM_UNKNOWN: Final = "HOST_CLAIM_UNKNOWN"
+HOST_CLAIM_NOT_CURRENT: Final = "HOST_CLAIM_NOT_CURRENT"
+HOST_AUTHORITY_BINDING_REQUIRED: Final = "HOST_AUTHORITY_BINDING_REQUIRED"
+HOST_AUTHORITY_BINDING_UNEXPECTED: Final = "HOST_AUTHORITY_BINDING_UNEXPECTED"
+HOST_AUTHORITY_INVALID: Final = "HOST_AUTHORITY_INVALID"
+HOST_AUTHORITY_CROSS_SNAPSHOT_MISMATCH: Final = "HOST_AUTHORITY_CROSS_SNAPSHOT_MISMATCH"
+HOST_SOURCE_CLOSURE_MISMATCH: Final = "HOST_SOURCE_CLOSURE_MISMATCH"
+HOST_BINDING_AMBIGUOUS: Final = "HOST_BINDING_AMBIGUOUS"
 
 
 class ApplicationHostBindingStatus(StrEnum):
@@ -368,6 +383,120 @@ class ContextApplicationV2HostBindingEvaluator:
             )
         return tuple(sorted(closures, key=lambda item: _identity_key(item.application_id)))
 
+    def _admit_host_binding(
+        self,
+        container: ContextApplicationAuthorityV2,
+    ) -> HostBindingAuthorityV2ReadModel:
+        binding = container.host_binding_authority_v2_binding
+        if binding is None:
+            raise _error(HOST_AUTHORITY_BINDING_REQUIRED, "host_binding_authority_v2_binding")
+        resolver = ContextApplicationV2Resolver(
+            self._source_resolver,
+            base_authority_binding=container.base_authority_v1_binding,
+        )
+        try:
+            artifact = resolver.resolve_source_binding(binding)
+        except (ContextApplicationV2ResolutionError, ResolutionError) as exc:
+            raise _error(
+                HOST_AUTHORITY_INVALID,
+                "host_binding_authority_v2_binding",
+                cause_code=exc.code,
+            ) from exc
+        try:
+            admission = AuthorityV2Validator(self._source_resolver).admit(artifact.json_value)
+        except AuthorityV2ValidationError as exc:
+            passthrough_codes = {
+                HOST_BINDING_AMBIGUOUS,
+                HOST_CLAIM_UNKNOWN,
+                HOST_CLAIM_NOT_CURRENT,
+                HOST_SOURCE_CLOSURE_MISMATCH,
+            }
+            code = exc.code if exc.code in passthrough_codes else HOST_AUTHORITY_INVALID
+            raise _error(
+                code,
+                "host_binding_authority_v2_binding",
+                cause_code=exc.code,
+            ) from exc
+        return admission.read_model
+
+    @staticmethod
+    def _compare_host_snapshots(
+        container: ContextApplicationAuthorityV2,
+        read_model: HostBindingAuthorityV2ReadModel,
+    ) -> None:
+        host_base = read_model.base_authority_v1_binding
+        host_candidate = read_model.candidate_universe_binding
+        base_matches = (
+            host_base.artifact_role == container.base_authority_v1_binding.artifact_role
+            and host_base.path == container.base_authority_v1_binding.path
+            and host_base.schema_or_null == container.base_authority_v1_binding.schema
+            and host_base.raw_sha256 == container.base_authority_v1_binding.raw_sha256
+        )
+        candidate_matches = host_candidate is not None and (
+            host_candidate.artifact_role == container.candidate_universe_binding.artifact_role
+            and host_candidate.path == container.candidate_universe_binding.path
+            and host_candidate.schema_or_null == container.candidate_universe_binding.schema
+            and host_candidate.raw_sha256 == container.candidate_universe_binding.raw_sha256
+        )
+        if not base_matches or not candidate_matches:
+            raise _error(
+                HOST_AUTHORITY_CROSS_SNAPSHOT_MISMATCH,
+                "host_binding_authority_v2_binding.source_bindings",
+            )
+
+    @staticmethod
+    def _claims_for_link(
+        link: ApplicationHostBindingV2,
+        read_model: HostBindingAuthorityV2ReadModel,
+        *,
+        current: bool,
+    ) -> Mapping[str, CrossDeckHostBindingClaimV1]:
+        admitted = dict(read_model.admitted_claims_by_id)
+        current_claims = dict(read_model.current_claims_by_id)
+        if current:
+            for claim_id in link.host_binding_claim_ids:
+                if claim_id in current_claims:
+                    continue
+                if claim_id in admitted:
+                    raise _error(
+                        HOST_CLAIM_NOT_CURRENT,
+                        "application_host_bindings_v2.host_binding_claim_ids",
+                        application_id=link.application_semantic_id,
+                        claim_id=claim_id,
+                        subject_ids=(claim_id,),
+                    )
+                raise _error(
+                    HOST_CLAIM_UNKNOWN,
+                    "application_host_bindings_v2.host_binding_claim_ids",
+                    application_id=link.application_semantic_id,
+                    claim_id=claim_id,
+                    subject_ids=(claim_id,),
+                )
+            return current_claims
+
+        record_ids_by_claim = dict(read_model.claim_record_ids_by_claim_id)
+        record_status = dict(read_model.claim_record_status_by_record_id)
+        for claim_id in link.host_binding_claim_ids:
+            if claim_id not in admitted:
+                raise _error(
+                    HOST_CLAIM_UNKNOWN,
+                    "application_host_bindings_v2.host_binding_claim_ids",
+                    application_id=link.application_semantic_id,
+                    claim_id=claim_id,
+                    subject_ids=(claim_id,),
+                )
+            record_ids = record_ids_by_claim.get(claim_id, ())
+            if not record_ids or any(record_id not in record_status for record_id in record_ids):
+                raise _error(
+                    HOST_INTEGRATION_INPUT_INVALID,
+                    "host_binding_authority_v2_binding.claim_record_provenance",
+                    cause_code="HOST_CLAIM_RECORD_INVALID",
+                    application_id=link.application_semantic_id,
+                    claim_id=claim_id,
+                    subject_ids=tuple(record_ids),
+                )
+        return admitted
+
     @staticmethod
     def _preflight(
         container: ContextApplicationAuthorityV2,
@@ -522,9 +651,33 @@ class ContextApplicationV2HostBindingEvaluator:
             currentness,
             container.base_authority_v1_binding,
         )
+        has_links = bool(links)
+        has_current_required_members = any(
+            closure.current and closure.required_member_keys for closure in closures
+        )
+        if (
+            not has_links
+            and container.host_binding_authority_v2_binding is not None
+            and not has_current_required_members
+        ):
+            raise _error(
+                HOST_AUTHORITY_BINDING_UNEXPECTED,
+                "host_binding_authority_v2_binding",
+            )
+        if has_links and container.host_binding_authority_v2_binding is None:
+            raise _error(
+                HOST_AUTHORITY_BINDING_REQUIRED,
+                "host_binding_authority_v2_binding",
+            )
+        host_read_model: HostBindingAuthorityV2ReadModel | None = None
+        if has_links:
+            host_read_model = self._admit_host_binding(container)
+            self._compare_host_snapshots(container, host_read_model)
+
         links_by_application = {link.application_semantic_id: link for link in links}
         qualified_current_record_ids: list[AuthorityIdentityV1] = []
         application_results: list[ApplicationHostBindingResult] = []
+        current_host_claim_ids: set[str] = set()
         for closure in closures:
             link = links_by_application.get(closure.application_id)
             if not closure.required_member_keys:
@@ -559,17 +712,46 @@ class ContextApplicationV2HostBindingEvaluator:
                     record_id=closure.record_id,
                     subject_ids=tuple(link.host_binding_claim_ids),
                 )
-            # Task 4 proves the G2 link shape only.  A required link is not
-            # qualified until Task 5 supplies the admitted HBC claim index and
-            # the exact claim/member closure has passed.
+            if host_read_model is None:
+                raise _error(
+                    HOST_AUTHORITY_BINDING_REQUIRED,
+                    "host_binding_authority_v2_binding",
+                    application_id=closure.application_id,
+                )
+            claims_by_id = self._claims_for_link(
+                link,
+                host_read_model,
+                current=closure.current,
+            )
+            required_members = tuple(member for member in closure.members if member.required)
+            _validate_link_member_union(link, required_members, claims_by_id)
+            if closure.current:
+                qualified_current_record_ids.append(closure.record_id)
+                current_host_claim_ids.update(link.host_binding_claim_ids)
+            application_results.append(
+                ApplicationHostBindingResult(
+                    application_id=closure.application_id,
+                    status=(
+                        ApplicationHostBindingStatus.QUALIFIED_CURRENT
+                        if closure.current
+                        else ApplicationHostBindingStatus.HISTORICAL_ONLY
+                    ),
+                    host_binding_claim_ids=link.host_binding_claim_ids,
+                )
+            )
 
         return ContextApplicationV2HostBindingEvaluationResult(
             currentness=currentness,
             qualified_current_application_record_ids=tuple(
                 sorted(qualified_current_record_ids, key=_identity_key)
             ),
-            application_host_binding_results=tuple(application_results),
-            current_host_claim_ids=(),
+            application_host_binding_results=tuple(
+                sorted(
+                    application_results,
+                    key=lambda result: _identity_key(result.application_id),
+                )
+            ),
+            current_host_claim_ids=tuple(sorted(current_host_claim_ids, key=encode_canonical)),
         )
 
     def evaluate(
@@ -584,10 +766,17 @@ __all__ = [
     "APPLICATION_HOST_BINDING_DUPLICATE",
     "APPLICATION_HOST_BINDING_INVALID",
     "APPLICATION_HOST_BINDING_UNKNOWN_APPLICATION",
+    "HOST_AUTHORITY_BINDING_REQUIRED",
+    "HOST_AUTHORITY_BINDING_UNEXPECTED",
+    "HOST_AUTHORITY_CROSS_SNAPSHOT_MISMATCH",
+    "HOST_AUTHORITY_INVALID",
+    "HOST_BINDING_AMBIGUOUS",
+    "HOST_CLAIM_NOT_CURRENT",
     "HOST_CLAIM_UNKNOWN",
     "HOST_INTEGRATION_INPUT_INVALID",
     "HOST_MEMBER_SET_MISMATCH",
     "HOST_RELATIONSHIP_MISMATCH",
+    "HOST_SOURCE_CLOSURE_MISMATCH",
     "ApplicationHostBindingResult",
     "ApplicationHostBindingStatus",
     "ContextApplicationV2HostBindingError",
