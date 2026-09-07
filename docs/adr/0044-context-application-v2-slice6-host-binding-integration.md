@@ -1,20 +1,19 @@
-# ADR 0044 Candidate: ContextApplicationV2 Slice 6 Host-Binding Integration
+# ADR 0044: ContextApplicationV2 Slice 6 Host-Binding Integration
 
-- **Status:** proposed; unaccepted ADR candidate
+- **Status:** accepted
 - **Date:** 2026-09-07
 - **Owners:** architecture-maintainer, rules-maintainer, conformance-maintainer, information-safety-reviewer
 - **Supersedes:** none
 - **Superseded by:** none
 - **Depends on:** ADR 0042, ADR 0043
-- **Reviewed design baseline:** `2ba1d36585015a06efe741713536801b86b24bfd`
+- **Review provenance:** independently reviewed exact-head candidate commit `c7d7c6d4b12c5734a14b45ebdd6f6a28ad234172`, accepted after review found `0 BLOCKER / 0 MAJOR`; permanent number allocated by this acceptance change
+- **Reviewed baseline:** `c7d7c6d4b12c5734a14b45ebdd6f6a28ad234172`
 - **Implementation evidence:** `NOT_RUN`
-- **Acceptance status:** independent review and acceptance required
 
-This candidate records the three normative clarifications required before
-ContextApplicationV2 Slice 6 can be implemented. It is informative until an
-explicit acceptance change assigns the next permanent ADR number. It does not
-authorize an implementation plan, production authority artifacts, Buckle-Up
-review, C changes, Task 5 Slice 3B, or M3.
+This record accepts the three normative clarifications required before
+ContextApplicationV2 Slice 6 can be implemented. It changes no executable
+behavior and does not authorize an implementation plan, production authority
+artifacts, Buckle-Up review, C changes, Task 5 Slice 3B, or M3.
 
 ## Context
 
@@ -77,7 +76,7 @@ authority eligibility.
 
 ## Decision
 
-This candidate proposes the following three clarifications.
+This decision establishes the following three clarifications.
 
 ### 1. Keep `ae.v3` event closure host-free
 
@@ -370,20 +369,22 @@ Verified evidence at the design baseline includes:
   cross-deck/directional required-member behavior; and
 - exact-head design review at `2ba1d36585015a06efe741713536801b86b24bfd`.
 
-Acceptance of this candidate must be a separate change that:
+The acceptance change:
 
-1. assigns the then-current permanent ADR number;
-2. records independent review evidence with G1, G2, and G3 closed;
-3. updates the provisional HostBinding checklist wording;
-4. preserves ADR 0042 identities and schemas; and
-5. explicitly authorizes a later Slice-6 implementation plan only after
-   acceptance.
+1. records independent exact-head review evidence with G1, G2, and G3 closed;
+2. updates the provisional HostBinding checklist wording;
+3. preserves ADR 0042 identities and schemas; and
+4. does not authorize a Slice-6 implementation plan.
 
-Until then:
+After acceptance:
 
 ```text
-ADR_0044_CANDIDATE                 = PROPOSED
-NORMATIVE_AUTHORITY_ESTABLISHED   = NO
+CONTEXT_APPLICATION_V2_SLICE6_CONTRACT = ACCEPTED
+G1_EVENT_CONTAINER_CLOSURE             = RESOLVED
+G2_REQUIRED_MEMBER_APPLICABILITY       = RESOLVED
+G3_HISTORICAL_BINDING_POLICY           = RESOLVED
+
+NORMATIVE_AUTHORITY_ESTABLISHED   = YES
 SLICE_6_IMPLEMENTATION_PLAN       = NOT_AUTHORIZED
 SLICE_6_IMPLEMENTATION             = NOT_AUTHORIZED
 BUCKLE_UP_CANARY                   = NOT_AUTHORIZED
