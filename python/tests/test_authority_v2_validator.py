@@ -1607,6 +1607,57 @@ class AuthorityV2DocumentTests(unittest.TestCase):
         )
         self.assertEqual(replacement_current_ids, (second_claim.identity().as_text(),))
 
+        second_same_claim_record, second_same_claim_event_binding = accepted_record(
+            second_claim,
+            ReviewMode.MULTI_REVIEWER,
+        )
+        second_claim_supersession, second_claim_supersession_binding = accepted_supersession(
+            second_record,
+            second_same_claim_record,
+        )
+        forward_document = authority_document(
+            (record, same_claim_record, second_record, second_same_claim_record),
+            (same_claim_supersession, second_claim_supersession),
+            (
+                event_binding,
+                same_claim_event_binding,
+                second_event_binding,
+                second_same_claim_event_binding,
+            ),
+            (same_claim_supersession_binding, second_claim_supersession_binding),
+        )
+        reverse_document = authority_document(
+            (second_same_claim_record, second_record, same_claim_record, record),
+            (second_claim_supersession, same_claim_supersession),
+            (
+                second_same_claim_event_binding,
+                second_event_binding,
+                same_claim_event_binding,
+                event_binding,
+            ),
+            (second_claim_supersession_binding, same_claim_supersession_binding),
+        )
+        forward_admission = cast(Callable[[object], object], admit)(forward_document)
+        reverse_admission = cast(Callable[[object], object], admit)(reverse_document)
+        self.assertEqual(forward_admission.validation_result, reverse_admission.validation_result)
+        self.assertEqual(
+            forward_admission.read_model.claim_record_ids_by_claim_id,
+            reverse_admission.read_model.claim_record_ids_by_claim_id,
+        )
+        self.assertEqual(
+            forward_admission.read_model.claim_record_status_by_record_id,
+            reverse_admission.read_model.claim_record_status_by_record_id,
+        )
+        self.assertEqual(
+            tuple(claim_id for claim_id, _ in forward_admission.read_model.current_claims_by_id),
+            tuple(
+                sorted(
+                    (claim.identity().as_text(), second_claim.identity().as_text()),
+                    key=lambda item: encode_canonical(item),
+                )
+            ),
+        )
+
         def validate_supersession_for_role(
             artifact_role: str,
             expected_b2_roles: set[str],

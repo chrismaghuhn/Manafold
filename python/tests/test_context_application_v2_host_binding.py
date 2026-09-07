@@ -1661,6 +1661,92 @@ class ContextApplicationV2HostBindingEvaluatorTests(unittest.TestCase):
         )
         self.assertEqual(first, second)
 
+    def test_p8_slice6_cpsr_permutation_has_identical_result(self) -> None:
+        case, source_resolver, record, claim, host_binding, claim_bindings = (
+            self._full_linked_case()
+        )
+        _, variant, _ = build_application_variant_with_v3_event(self, case, "cpsr-permutation-b")
+        to_variant = ContextApplicationV2SupersessionInputV2(
+            superseded_record_id_bytes=record.record_id.digest_bytes,
+            replacement_record_id_bytes=variant.record_id.digest_bytes,
+            replacement_record_kind="context_application_v2_record",
+            reason_code=SupersessionReason.SOURCE_REVISION,
+            source_evidence_refs=(record.members[0].member_evidence_refs[0],),
+        )
+        to_revocation = ContextApplicationV2SupersessionInputV2(
+            superseded_record_id_bytes=variant.record_id.digest_bytes,
+            replacement_record_id_bytes=None,
+            replacement_record_kind=None,
+            reason_code=SupersessionReason.AUTHORITY_REVOCATION,
+            source_evidence_refs=(variant.members[0].member_evidence_refs[0],),
+        )
+        _, first_cpsr, _ = build_supersession_with_v3_event(self, case, to_variant)
+        _, second_cpsr, _ = build_supersession_with_v3_event(self, case, to_revocation)
+        base_binding = cast(ContextAuthoritySourceBindingV2, case["base_binding"])
+        candidate_binding = ContextAuthoritySourceBindingV2(
+            "candidate_universe",
+            cast(str, record.members[0].candidate_universe_binding[0]),
+            cast(str, record.members[0].candidate_universe_binding[1]),
+            cast(bytes, record.members[0].candidate_universe_binding[2]),
+        )
+        links = (
+            ApplicationHostBindingV2(
+                "context_application", record.application_id, (claim.identity().as_text(),)
+            ),
+            ApplicationHostBindingV2(
+                "context_application", variant.application_id, (claim.identity().as_text(),)
+            ),
+        )
+
+        def build_container(
+            records: tuple[ContextApplicationV2Record, ...],
+            supersessions: tuple[ContextApplicationV2SupersessionRecord, ...],
+            selected_links: tuple[ApplicationHostBindingV2, ...],
+        ) -> ContextApplicationAuthorityV2:
+            provisional = ContextApplicationAuthorityV2(
+                base_authority_v1_binding=base_binding,
+                host_binding_authority_v2_binding=host_binding,
+                candidate_universe_binding=candidate_binding,
+                source_bindings=canonical_source_bindings(
+                    (base_binding, candidate_binding, host_binding, *claim_bindings)
+                ),
+                context_application_v2_records=tuple(
+                    sorted(records, key=lambda item: encode_canonical(item.to_cbor()))
+                ),
+                context_application_v2_supersession_records=tuple(
+                    sorted(supersessions, key=lambda item: encode_canonical(item.to_cbor()))
+                ),
+                application_host_bindings_v2=tuple(
+                    sorted(selected_links, key=lambda item: encode_canonical(item.to_cbor()))
+                ),
+            )
+            complete = ContextApplicationV2Resolver(
+                source_resolver, base_authority_binding=base_binding
+            ).expected_container_source_closure_v2(provisional)
+            return replace(provisional, source_bindings=complete)
+
+        evaluator = ContextApplicationV2HostBindingEvaluator(source_resolver)
+        first = evaluator.evaluate(
+            build_container(
+                (record, variant),
+                (first_cpsr, second_cpsr),
+                links,
+            )
+        )
+        second = evaluator.evaluate(
+            build_container(
+                (variant, record),
+                (second_cpsr, first_cpsr),
+                tuple(reversed(links)),
+            )
+        )
+        self.assertEqual(first, second)
+        self.assertEqual(first.qualified_current_application_record_ids, ())
+        self.assertEqual(
+            tuple(item.status.value for item in first.application_host_binding_results),
+            ("historical_only", "historical_only"),
+        )
+
     def test_claim_id_rebuild_permutation_is_canonical_before_dto_construction(self) -> None:
         application = _application_id(32)
         claim_ids = (_claim_id(33), _claim_id(34))
@@ -1797,6 +1883,105 @@ class ContextApplicationV2HostBindingEvaluatorTests(unittest.TestCase):
                 before,
             )
         self.assertEqual(fingerprints[0], fingerprints[1])
+
+    def test_rejection_matrix_atomicity_table(self) -> None:
+        case = self._synthetic_case()
+        source_resolver, record, _ = build_application_with_v3_event(self, case)
+        claim = _cross_host_claim(self._member_key_for_record(record))
+        valid_read_model = self._read_model_for_case(case, claim)
+        wrong_member = ApplicationMemberKeyV1("other", bytes([8]) * 32, "si/other")
+        wrong_claim = _cross_host_claim(wrong_member)
+        cases = (
+            (
+                "duplicate-link",
+                self._evaluator(source_resolver),
+                _empty_container(links=(_link(41, 1), _link(41, 2))),
+                "APPLICATION_HOST_BINDING_DUPLICATE",
+            ),
+            (
+                "unknown-application",
+                self._evaluator(source_resolver),
+                _empty_container(links=(_link(42, 1),)),
+                "APPLICATION_HOST_BINDING_UNKNOWN_APPLICATION",
+            ),
+            (
+                "missing-authority",
+                self._evaluator(source_resolver),
+                self._container_with_link(
+                    case, record, claim.identity().as_text(), host_binding=None
+                ),
+                "HOST_AUTHORITY_BINDING_REQUIRED",
+            ),
+            (
+                "snapshot-drift",
+                self._evaluator_with_read_model(
+                    source_resolver,
+                    replace(
+                        valid_read_model,
+                        base_authority_v1_binding=HostBindingSourceBindingV2(
+                            valid_read_model.base_authority_v1_binding.artifact_role,
+                            valid_read_model.base_authority_v1_binding.path,
+                            valid_read_model.base_authority_v1_binding.schema_or_null,
+                            bytes([7]) * 32,
+                        ),
+                    ),
+                ),
+                self._container_with_link(case, record, claim.identity().as_text()),
+                "HOST_AUTHORITY_CROSS_SNAPSHOT_MISMATCH",
+            ),
+            (
+                "wrong-member-claim",
+                self._evaluator_with_read_model(
+                    source_resolver,
+                    self._read_model_for_case(case, wrong_claim),
+                ),
+                self._container_with_link(case, record, wrong_claim.identity().as_text()),
+                "HOST_MEMBER_SET_MISMATCH",
+            ),
+        )
+        for name, evaluator, container, expected_code in cases:
+            with self.subTest(name=name):
+                before = (
+                    container.to_wire(),
+                    tuple(item.to_cbor() for item in container.context_application_v2_records),
+                    tuple(
+                        item.to_cbor()
+                        for item in container.context_application_v2_supersession_records
+                    ),
+                    _file_digests(case["fixture"].repo),
+                )
+                fingerprints = []
+                for _ in range(2):
+                    with self.assertRaises(ContextApplicationV2HostBindingError) as caught:
+                        evaluator.evaluate(container)
+                    fingerprints.append(
+                        (
+                            caught.exception.code,
+                            caught.exception.location,
+                            caught.exception.cause_code,
+                            caught.exception.application_id,
+                            caught.exception.record_id,
+                            caught.exception.claim_id,
+                            caught.exception.member_key,
+                            caught.exception.subject_ids,
+                        )
+                    )
+                    self.assertEqual(
+                        (
+                            container.to_wire(),
+                            tuple(
+                                item.to_cbor() for item in container.context_application_v2_records
+                            ),
+                            tuple(
+                                item.to_cbor()
+                                for item in container.context_application_v2_supersession_records
+                            ),
+                            _file_digests(case["fixture"].repo),
+                        ),
+                        before,
+                    )
+                self.assertEqual(fingerprints[0], fingerprints[1])
+                self.assertEqual(fingerprints[0][0], expected_code)
 
     def test_historical_noncurrent_claims_are_retained_without_current_qualification(self) -> None:
         case = self._synthetic_case()
