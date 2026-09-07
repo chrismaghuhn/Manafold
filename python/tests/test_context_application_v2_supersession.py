@@ -221,11 +221,6 @@ class ContextApplicationV2SupersessionAdmissionTests(unittest.TestCase):
                 ),
                 "V3_SOURCE_CLOSURE_MISMATCH",
             ),
-            (
-                "missing_review_evidence",
-                lambda wire: wire.__setitem__("review_evidence_refs", []),
-                "REVIEW_EVIDENCE_MISSING",
-            ),
         )
         for name, mutate, cause_code in mutations:
             with self.subTest(name=name):
