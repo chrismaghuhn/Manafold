@@ -1,19 +1,18 @@
-# ADR 0043 (Candidate): ContextApplicationV2 Supersession Lineage, Revocation, and Currentness
+# ADR 0043: ContextApplicationV2 Supersession Lineage, Revocation, and Currentness
 
-- **Status:** candidate
+- **Status:** accepted
 - **Date:** 2026-09-07
-- **Proposed permanent number:** 0043
 - **Supersedes:** none
 - **Superseded by:** none
 - **Depends on:** ADR 0042
+- **Review provenance:** independently reviewed candidate commit `5123a3b201e5a0335e075d96886b00486622e86a`, candidate SHA-256 `4f81149f8ee9ed5ccc11846492b921bef3d7b0d0c941b397c51496d71881bb51`, accepted after review found `0 BLOCKER / 0 MAJOR`; permanent number allocated by this acceptance change according to [`README.md`](README.md)
 - **Reviewed baseline:** `2cdf4116ac2c7f490507e1253e18b66fd6d5fb2d`
 - **Implementation evidence:** `NOT_RUN`
 
-This is a narrow candidate amendment to ADR 0042. Under
-`docs/adr/README.md`, it is informative until an independent review and a
-separate acceptance change assign it permanent ADR status. It does not edit
-ADR 0042, authorize Slice 5 implementation, or authorize an implementation
-plan.
+This record accepts the narrow ContextApplicationV2 Slice 5 contract
+clarification reviewed at the candidate commit above. It leaves ADR 0042
+immutable, changes no executable behavior, and does not authorize Slice 5
+implementation or an implementation plan.
 
 ## Context
 
@@ -211,7 +210,7 @@ lineage.
 
 ## Compatibility and ownership
 
-This candidate preserves, byte-for-byte and semantically, wherever existing
+This ADR preserves, byte-for-byte and semantically, wherever existing
 contracts apply:
 
 ```text
@@ -233,7 +232,7 @@ It adds no `lineage_id`, `current`, `is_latest`, `active_record`, or persisted
 currentness index. Currentness is a derived read model over immutable accepted
 records and immutable semantic edges.
 
-The candidate does not alter:
+This ADR does not alter:
 
 - Slice 3 semantic application validation;
 - Slice 4 V3 application review admission or its public diagnostics;
@@ -242,10 +241,10 @@ The candidate does not alter:
 - Rust DTO/identity ownership;
 - C, Task 5 Slice 3B, M3, Magic rules, cards, or production authority.
 
-After this candidate is accepted, implementation may reuse one narrow internal
-V3 review-binding seam for application and supersession subjects. The graph
-validator remains a separate Slice 5 module. That later work must use
-temporary fixtures and must not create production authority artifacts.
+When separately authorized, implementation may reuse one narrow internal V3
+review-binding seam for application and supersession subjects. The graph
+validator remains a separate Slice 5 module. That later work must use temporary
+fixtures and must not create production authority artifacts.
 
 ## Consequences
 
@@ -265,22 +264,23 @@ eligible records in one group are intentionally an error rather than a
 timestamp-based choice. Distinct application groups may produce multiple
 current records in one overall result.
 
-## Acceptance boundary
+## Implementation boundary
 
-This candidate is not itself normative authority. Candidate acceptance must:
+This ADR establishes the accepted normative contract clarification, but it does
+not by itself authorize implementation planning or implementation. Executable
+fixtures and verification remain required for behavior claims.
 
-1. independently review the exact lineage, duplicate-`cps.v2`, revocation, and
-   currentness clauses above;
-2. assign permanent ADR 0043 status through an explicit acceptance change;
-3. preserve ADR history by leaving ADR 0042 immutable; and
-4. only then permit a separately authorized Slice 5 implementation plan.
+ADR 0042 remains immutable. A separately authorized Slice 5 implementation plan
+may follow this acceptance, subject to the existing staged workflow and
+verification gates.
 
-No implementation plan or implementation may begin from this candidate alone.
+No implementation plan or implementation begins from this ADR without that
+separate authorization.
 
 ## Status
 
 ```text
-SLICE5_CONTRACT_RESOLUTION_CONTENT      = PASS
+CONTEXT_APPLICATION_V2_SLICE5_CONTRACT = ACCEPTED
 
 LINEAGE_KEY_RESOLVED                    = YES
 DUPLICATE_CPS_ACCEPTANCE_RULE_RESOLVED  = YES
@@ -291,10 +291,9 @@ IDENTITY_CHANGE_REQUIRED                = NO
 SCHEMA_CHANGE_REQUIRED                  = NO
 PREIMAGE_CHANGE_REQUIRED                = NO
 
-NORMATIVE_AUTHORITY_ESTABLISHED         = NO
-DESIGN_APPROVED_AS_ADR_CANDIDATE        = YES
+NORMATIVE_AUTHORITY_ESTABLISHED         = YES
 CONTRACT_GAP_SEMANTIC                   = NO
-CONTRACT_GAP_NORMATIVE                  = YES
+CONTRACT_GAP_NORMATIVE                  = NO
 
 IMPLEMENTATION_PLAN_AUTHORIZED          = NO
 IMPLEMENTATION_STARTED                  = NO
