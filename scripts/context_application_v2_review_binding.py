@@ -22,7 +22,6 @@ from context_application_v2_resolver import (
 from mtgml.authority import (
     AcceptanceSubjectKindV3,
     AcceptanceSubjectPayloadV3,
-    AuthorityIdentityV1,
     ContextApplicationV2Record,
     ContextApplicationV2SupersessionRecord,
     ContextAuthoritySourceBindingV2,
@@ -37,7 +36,6 @@ from reviewer_role_binding import (
     resolve_reviewer_roster,
     validate_reviewer_binding_against_roster,
 )
-
 
 REQUIRED_V2_ROLES: Final = (
     "architecture_maintainer",

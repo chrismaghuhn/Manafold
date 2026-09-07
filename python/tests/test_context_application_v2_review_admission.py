@@ -11,7 +11,6 @@ from typing import cast
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
 
-from authority_source_resolver import AuthoritySourceResolver
 from context_application_v2_resolver import (
     ContextApplicationV2Resolver,
     context_source_binding_from_wire,
@@ -22,7 +21,6 @@ from context_application_v2_test_support import (
     rebind_application_event,
 )
 from mtgml.authority import (
-    AcceptanceEvidenceRefV1,
     AcceptanceSubjectKindV3,
     AcceptanceSubjectPayloadV3,
     ContextApplicationV2Record,
@@ -30,10 +28,6 @@ from mtgml.authority import (
     ContextApplicationV2SupersessionRecord,
     ContextAuthoritySourceBindingV2,
     DigestReferenceV1,
-    ReviewAcceptanceEventInputV3,
-    ReviewAcceptanceEventLeafV3,
-    ReviewerRoleBindingV1,
-    ReviewerRosterRefV1,
     ReviewEventRefV3,
     ReviewMode,
     SupersessionReason,

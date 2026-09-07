@@ -2,8 +2,6 @@ from __future__ import annotations
 
 import copy
 import dataclasses
-import hashlib
-import json
 import sys
 import unittest
 from pathlib import Path
@@ -14,8 +12,8 @@ sys.path.insert(0, str(ROOT / "scripts"))
 
 from context_application_v2_test_support import (
     DEFAULT_REVIEWER_ROLES,
-    build_application_with_v3_event,
     build_application_variant_with_v3_event,
+    build_application_with_v3_event,
     build_supersession_with_v3_event,
     rebind_supersession_event,
 )
@@ -26,8 +24,6 @@ from mtgml.authority import (
     ContextApplicationV2Record,
     ContextApplicationV2SupersessionInputV2,
     ContextApplicationV2SupersessionRecord,
-    DigestReferenceV1,
-    ReviewMode,
     SupersessionReason,
 )
 from mtgml.persistence import encode_canonical
@@ -73,8 +69,8 @@ class ContextApplicationV2SupersessionAdmissionTests(unittest.TestCase):
 
     def test_valid_authority_revocation_is_mechanically_admitted(self) -> None:
         from context_application_v2_supersession import (
-            ContextApplicationV2SupersessionAdmissionValidator,
             ContextApplicationV2SupersessionAdmissionResult,
+            ContextApplicationV2SupersessionAdmissionValidator,
         )
 
         case, source_resolver, _, supersession, _ = self._valid_revocation()
@@ -417,7 +413,7 @@ class ContextApplicationV2CurrentnessGraphTests(unittest.TestCase):
         _, revision, _ = build_application_with_v3_event(
             self,
             case,
-            reviewer_roles=DEFAULT_REVIEWER_ROLES + ("project_owner",),
+            reviewer_roles=(*DEFAULT_REVIEWER_ROLES, "project_owner"),
         )
         return revision
 
@@ -451,7 +447,7 @@ class ContextApplicationV2CurrentnessGraphTests(unittest.TestCase):
             a,
             b,
             SupersessionReason.SOURCE_REVISION,
-            reviewer_roles=DEFAULT_REVIEWER_ROLES + ("project_owner",),
+            reviewer_roles=(*DEFAULT_REVIEWER_ROLES, "project_owner"),
         )
         result = self._evaluate(case, resolver, (a, b), (first, second))
         self.assertEqual(len(result.successor_edges), 1)

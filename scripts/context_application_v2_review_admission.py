@@ -25,6 +25,7 @@ from mtgml.authority import (
     AuthorityIdentityV1,
     ContextApplicationV2Record,
     ContextAuthoritySourceBindingV2,
+    DigestReferenceV1,
     ReviewerRosterRefV1,
     ReviewEventRefV3,
     ReviewMode,
@@ -129,6 +130,7 @@ class ContextApplicationV2ReviewAdmissionValidator:
             required_roles=binding.required_roles,
             review_mode=binding.review_mode,
         )
+
 
 __all__ = [
     "REQUIRED_V2_ROLES",

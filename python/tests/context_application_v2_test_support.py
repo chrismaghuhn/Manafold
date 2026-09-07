@@ -23,8 +23,8 @@ from mtgml.authority import (
     AcceptanceSubjectPayloadV3,
     AuthorityIdentityKind,
     AuthorityIdentityV1,
-    ContextApplicationV2Record,
     ContextApplicationV2InputV1,
+    ContextApplicationV2Record,
     ContextApplicationV2SupersessionInputV2,
     ContextApplicationV2SupersessionRecord,
     DigestReferenceV1,
@@ -35,7 +35,6 @@ from mtgml.authority import (
     ReviewEventRefV3,
     ReviewMode,
 )
-
 
 DEFAULT_REVIEWER_ROLES: tuple[str, ...] = (
     "architecture_maintainer",
@@ -71,9 +70,7 @@ def _write_event_for_subject(
         separators=(",", ":"),
     ).encode("utf-8")
     roster_digest = hashlib.sha256(roster_raw).digest()
-    roster_path = (
-        "sources/m2_5/authorities/reviewer_rosters/v1/" + roster_digest.hex() + ".json"
-    )
+    roster_path = "sources/m2_5/authorities/reviewer_rosters/v1/" + roster_digest.hex() + ".json"
     fixture.write_repo(roster_path, roster_raw)
     roster_ref = ReviewerRosterRefV1(
         roster_path,
@@ -166,9 +163,7 @@ def _event_input_from_wire(wire: dict[str, object]) -> ReviewAcceptanceEventInpu
         AcceptanceEvidenceRefV1(
             cast(str, cast(dict[str, object], item)["path"]),
             bytes.fromhex(cast(str, cast(dict[str, object], item)["raw_sha256"])),
-            _acceptance_locator(
-                cast(dict[str, object], cast(dict[str, object], item)["locator"])
-            ),
+            _acceptance_locator(cast(dict[str, object], cast(dict[str, object], item)["locator"])),
         )
         for item in cast(list[object], wire["review_evidence_refs"])
     )
@@ -292,12 +287,10 @@ def build_application_variant_with_v3_event(
     variant_bridge = replace(
         bridge,
         context=tuple(
-            replace(slot, rationale=f"{slot.rationale} {variant_tag}")
-            for slot in bridge.context
+            replace(slot, rationale=f"{slot.rationale} {variant_tag}") for slot in bridge.context
         ),
         temporal=tuple(
-            replace(slot, rationale=f"{slot.rationale} {variant_tag}")
-            for slot in bridge.temporal
+            replace(slot, rationale=f"{slot.rationale} {variant_tag}") for slot in bridge.temporal
         ),
     )
     variant_member = replace(
@@ -393,8 +386,8 @@ def build_supersession_with_v3_event(
 
 __all__ = [
     "DEFAULT_REVIEWER_ROLES",
-    "build_application_with_v3_event",
     "build_application_variant_with_v3_event",
+    "build_application_with_v3_event",
     "build_supersession_with_v3_event",
     "rebind_application_event",
     "rebind_supersession_event",

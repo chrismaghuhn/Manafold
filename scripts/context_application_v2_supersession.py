@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import sys
-from dataclasses import dataclass
 from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Final, cast
 
@@ -14,13 +14,13 @@ if str(PYTHON_SRC) not in sys.path:
     sys.path.insert(0, str(PYTHON_SRC))
 
 from authority_source_resolver import AuthoritySourceResolver
-from context_application_v2_review_binding import (
-    ContextApplicationV2V3ReviewBindingError,
-    admit_v3_review_binding,
-)
 from context_application_v2_review_admission import (
     ContextApplicationV2ReviewAdmissionError,
     ContextApplicationV2ReviewAdmissionValidator,
+)
+from context_application_v2_review_binding import (
+    ContextApplicationV2V3ReviewBindingError,
+    admit_v3_review_binding,
 )
 from mtgml.authority import (
     AuthorityIdentityKind,
@@ -32,13 +32,12 @@ from mtgml.authority import (
     ContextAuthoritySourceBindingV2,
     DigestReferenceV1,
     EvidenceRefV1,
+    ReviewerRosterRefV1,
     ReviewEventRefV3,
     ReviewMode,
-    ReviewerRosterRefV1,
     SupersessionReason,
 )
 from mtgml.persistence import encode_canonical
-
 
 SUPERSESSION_ERROR_CODES: Final = frozenset(
     {
@@ -226,9 +225,7 @@ class ContextApplicationV2SupersessionAdmissionValidator:
                 else record.replacement_record_id.digest_bytes
             ),
             replacement_record_kind=(
-                None
-                if record.replacement_record_id is None
-                else "context_application_v2_record"
+                None if record.replacement_record_id is None else "context_application_v2_record"
             ),
             reason_code=record.reason_code,
             source_evidence_refs=record.source_evidence_refs,
@@ -467,9 +464,7 @@ class ContextApplicationV2CurrentnessEvaluator:
             edges.append(
                 ContextApplicationV2SupersessionEdge(
                     supersession_id=first.supersession_id,
-                    accepted_record_ids=tuple(
-                        item.record_id for item in ordered
-                    ),
+                    accepted_record_ids=tuple(item.record_id for item in ordered),
                     superseded_record_id=first.superseded_record_id,
                     replacement_record_id=first.replacement_record_id,
                     reason_code=first.reason_code,
@@ -571,9 +566,7 @@ class ContextApplicationV2CurrentnessEvaluator:
         if not cycles:
             return
         cycle = min(cycles, key=lambda path: tuple(_identity_key(item) for item in path))
-        cycle_edges = tuple(
-            successor_edges[_identity_key(record_id)] for record_id in cycle
-        )
+        cycle_edges = tuple(successor_edges[_identity_key(record_id)] for record_id in cycle)
         subject_supersession_ids = tuple(
             sorted((edge.supersession_id for edge in cycle_edges), key=_identity_key)
         )
@@ -670,18 +663,22 @@ class ContextApplicationV2CurrentnessEvaluator:
                 )
             ),
             revoked_record_ids=_sorted_ids(
-                tuple(record.record_id for record in applications if _identity_key(record.record_id) in revoked_record_ids)
+                tuple(
+                    record.record_id
+                    for record in applications
+                    if _identity_key(record.record_id) in revoked_record_ids
+                )
             ),
             successor_edges=tuple(sorted(edges, key=_edge_key)),
         )
 
 
 __all__ = [
-    "ContextApplicationV2SupersessionAdmissionResult",
-    "ContextApplicationV2SupersessionAdmissionValidator",
-    "ContextApplicationV2SupersessionError",
-    "ContextApplicationV2SupersessionEdge",
-    "ContextApplicationV2CurrentnessResult",
     "ContextApplicationV2CurrentnessError",
     "ContextApplicationV2CurrentnessEvaluator",
+    "ContextApplicationV2CurrentnessResult",
+    "ContextApplicationV2SupersessionAdmissionResult",
+    "ContextApplicationV2SupersessionAdmissionValidator",
+    "ContextApplicationV2SupersessionEdge",
+    "ContextApplicationV2SupersessionError",
 ]
