@@ -1,5 +1,7 @@
 # ContextApplicationV2 Slice 5 — Supersession and Currentness Implementation Plan
 
+**Status:** provisional implementation plan; implementation not started
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Implement read-only ContextApplicationV2 supersession admission and deterministic application-wide revocation/currentness evaluation exactly as accepted by ADR 0043, without changing any persisted identity, schema, or production authority artifact.
@@ -9,8 +11,6 @@
 **Tech Stack:** Python 3.11–3.13, frozen dataclasses, `unittest`, existing `AuthoritySourceResolver`, `ContextApplicationV2Resolver`, canonical CBOR and digest-envelope identities, existing V2/V3 DTOs, repository verification scripts, and Rust structural parity checks. No new Rust Slice 5 policy implementation.
 
 ---
-
-**Plan status:** provisional implementation plan; implementation not started
 
 **Integration base (`BASE`):** `193493c610424bbf19bef30a25de14746c21dff5`
 
