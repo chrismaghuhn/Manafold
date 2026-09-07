@@ -1,13 +1,15 @@
-"""Structural Slice-6 composition entrypoint for ContextApplicationV2.
+"""Deterministic Slice-6 composition boundary for ContextApplicationV2.
 
-Task 3 owns the typed boundary and the currentness-first ordering.  Member
-applicability and HostBinding claim composition are deliberately added by the
-later Slice-6 tasks; this module must not invent a second lifecycle authority.
+Task 4 owns verified member applicability and the cpa-level member closure.
+HostBinding claim currentness and historical policy remain owned by the later
+admission-composition task; this module does not invent a second lifecycle
+authority.
 """
 
 from __future__ import annotations
 
 import sys
+from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
@@ -20,6 +22,10 @@ if str(PYTHON_SRC) not in sys.path:
 
 from authority_source_resolver import AuthoritySourceResolver
 from authority_v2_validator import HostBindingClaimRecordStatus
+from context_application_v2_resolver import (
+    ContextApplicationV2ResolutionError,
+    ContextApplicationV2Resolver,
+)
 from context_application_v2_supersession import (
     ContextApplicationV2CurrentnessError,
     ContextApplicationV2CurrentnessEvaluator,
@@ -29,17 +35,22 @@ from mtgml.authority import (
     ApplicationHostBindingV2,
     AuthorityIdentityV1,
     ContextApplicationAuthorityV2,
+    ContextApplicationMemberV2,
     ContextApplicationV2Record,
     ContextApplicationV2SupersessionRecord,
     ContextAuthoritySourceBindingV2,
 )
-from mtgml.host_binding import ApplicationMemberKeyV1
+from mtgml.host_binding import ApplicationMemberKeyV1, CrossDeckHostBindingClaimV1
 from mtgml.persistence import encode_canonical
 
 HOST_INTEGRATION_INPUT_INVALID: Final = "HOST_INTEGRATION_INPUT_INVALID"
 APPLICATION_CURRENTNESS_FAILED: Final = "APPLICATION_CURRENTNESS_FAILED"
 APPLICATION_HOST_BINDING_DUPLICATE: Final = "APPLICATION_HOST_BINDING_DUPLICATE"
 APPLICATION_HOST_BINDING_UNKNOWN_APPLICATION: Final = "APPLICATION_HOST_BINDING_UNKNOWN_APPLICATION"
+APPLICATION_HOST_BINDING_INVALID: Final = "APPLICATION_HOST_BINDING_INVALID"
+HOST_MEMBER_SET_MISMATCH: Final = "HOST_MEMBER_SET_MISMATCH"
+HOST_RELATIONSHIP_MISMATCH: Final = "HOST_RELATIONSHIP_MISMATCH"
+HOST_CLAIM_UNKNOWN: Final = "HOST_CLAIM_UNKNOWN"
 
 
 class ApplicationHostBindingStatus(StrEnum):
@@ -79,8 +90,28 @@ class ContextApplicationV2HostBindingError(ValueError):
         ValueError.__init__(self, f"{self.code} at {self.location}")
 
 
+@dataclass(frozen=True)
+class _ResolvedApplicationMember:
+    member_key: ApplicationMemberKeyV1
+    expected_host_relationship: str
+    required: bool
+
+
+@dataclass(frozen=True)
+class _ApplicationMemberClosure:
+    application_id: AuthorityIdentityV1
+    record_id: AuthorityIdentityV1
+    current: bool
+    members: tuple[_ResolvedApplicationMember, ...]
+    required_member_keys: tuple[ApplicationMemberKeyV1, ...]
+
+
 def _identity_key(identity: AuthorityIdentityV1) -> bytes:
     return encode_canonical(identity.to_cbor())
+
+
+def _member_key_bytes(member_key: ApplicationMemberKeyV1) -> bytes:
+    return encode_canonical(member_key.to_cbor())
 
 
 def _error(
@@ -142,11 +173,200 @@ def _require_identity_collection(
     return tuple(identities)
 
 
+def _validate_link_member_union(
+    link: ApplicationHostBindingV2,
+    required_members: tuple[_ResolvedApplicationMember, ...],
+    claims_by_id: Mapping[str, CrossDeckHostBindingClaimV1],
+) -> None:
+    """Validate G2's exact claim/member union without choosing currentness."""
+
+    expected_by_key = {_member_key_bytes(member.member_key): member for member in required_members}
+    if len(expected_by_key) != len(required_members):
+        raise _error(
+            HOST_MEMBER_SET_MISMATCH,
+            "application_host_bindings_v2.host_binding_claim_ids",
+            application_id=link.application_semantic_id,
+        )
+
+    actual_by_key: dict[bytes, tuple[str, CrossDeckHostBindingClaimV1]] = {}
+    for claim_id in link.host_binding_claim_ids:
+        claim = claims_by_id.get(claim_id)
+        if claim is None:
+            raise _error(
+                HOST_CLAIM_UNKNOWN,
+                "application_host_bindings_v2.host_binding_claim_ids",
+                application_id=link.application_semantic_id,
+                claim_id=claim_id,
+                subject_ids=(claim_id,),
+            )
+        member_key = _member_key_bytes(claim.member_key)
+        if member_key in actual_by_key:
+            raise _error(
+                HOST_MEMBER_SET_MISMATCH,
+                "application_host_bindings_v2.host_binding_claim_ids",
+                application_id=link.application_semantic_id,
+                claim_id=claim_id,
+                member_key=claim.member_key,
+                subject_ids=tuple(link.host_binding_claim_ids),
+            )
+        expected = expected_by_key.get(member_key)
+        if expected is None:
+            raise _error(
+                HOST_MEMBER_SET_MISMATCH,
+                "application_host_bindings_v2.host_binding_claim_ids",
+                application_id=link.application_semantic_id,
+                claim_id=claim_id,
+                member_key=claim.member_key,
+                subject_ids=tuple(link.host_binding_claim_ids),
+            )
+        if claim.observed_host_relationship != expected.expected_host_relationship:
+            raise _error(
+                HOST_RELATIONSHIP_MISMATCH,
+                "application_host_bindings_v2.host_binding_claim_ids",
+                application_id=link.application_semantic_id,
+                claim_id=claim_id,
+                member_key=claim.member_key,
+                subject_ids=(claim_id,),
+            )
+        actual_by_key[member_key] = (claim_id, claim)
+
+    if set(actual_by_key) != set(expected_by_key):
+        raise _error(
+            HOST_MEMBER_SET_MISMATCH,
+            "application_host_bindings_v2.host_binding_claim_ids",
+            application_id=link.application_semantic_id,
+            subject_ids=tuple(link.host_binding_claim_ids),
+        )
+
+
 class ContextApplicationV2HostBindingEvaluator:
     """Run the typed Slice-6 boundary with Slice-5 currentness first."""
 
     def __init__(self, source_resolver: AuthoritySourceResolver) -> None:
         self._source_resolver = source_resolver
+
+    @staticmethod
+    def _project_verified_member(
+        member: ContextApplicationMemberV2,
+        candidate_record: Mapping[str, object],
+    ) -> _ResolvedApplicationMember:
+        try:
+            expected_host_relationship = member.context_binding_v1[3]
+        except (IndexError, TypeError) as exc:
+            raise _error(
+                HOST_INTEGRATION_INPUT_INVALID,
+                "context_application_v2_records.members.context_binding_v1",
+            ) from exc
+        if not isinstance(expected_host_relationship, str):
+            raise _error(
+                HOST_INTEGRATION_INPUT_INVALID,
+                "context_application_v2_records.members.context_binding_v1.host_relationship",
+            )
+        required = (
+            candidate_record.get("scope") == "cross_deck"
+            and candidate_record.get("relation") == "directional_binary"
+        )
+        if required and expected_host_relationship == "not_applicable":
+            raise _error(
+                HOST_RELATIONSHIP_MISMATCH,
+                "context_application_v2_records.members.context_binding_v1.host_relationship",
+                member_key=ApplicationMemberKeyV1(
+                    candidate_id=member.candidate_id,
+                    candidate_identity_digest=(
+                        member.candidate_identity_digest_reference.digest_bytes
+                    ),
+                    source_instance_id=member.source_instance_id,
+                ),
+            )
+        return _ResolvedApplicationMember(
+            member_key=ApplicationMemberKeyV1(
+                candidate_id=member.candidate_id,
+                candidate_identity_digest=member.candidate_identity_digest_reference.digest_bytes,
+                source_instance_id=member.source_instance_id,
+            ),
+            expected_host_relationship=expected_host_relationship,
+            required=required,
+        )
+
+    def _resolve_record_members(
+        self,
+        record: ContextApplicationV2Record,
+        base_authority_binding: ContextAuthoritySourceBindingV2,
+    ) -> tuple[_ResolvedApplicationMember, ...]:
+        resolver = ContextApplicationV2Resolver(
+            self._source_resolver,
+            base_authority_binding=base_authority_binding,
+        )
+        projections: list[_ResolvedApplicationMember] = []
+        for member in record.members:
+            member_key = ApplicationMemberKeyV1(
+                candidate_id=member.candidate_id,
+                candidate_identity_digest=member.candidate_identity_digest_reference.digest_bytes,
+                source_instance_id=member.source_instance_id,
+            )
+            try:
+                resolved = resolver.resolve_member_source_instance(member)
+            except ContextApplicationV2ResolutionError as exc:
+                raise _error(
+                    HOST_INTEGRATION_INPUT_INVALID,
+                    "context_application_v2_records.members",
+                    cause_code=exc.code,
+                    application_id=record.application_id,
+                    record_id=record.record_id,
+                    member_key=member_key,
+                ) from exc
+            projections.append(
+                self._project_verified_member(member, resolved.candidate.candidate_record)
+            )
+        return tuple(projections)
+
+    def _derive_application_closures(
+        self,
+        records: tuple[ContextApplicationV2Record, ...],
+        currentness: ContextApplicationV2CurrentnessResult,
+        base_authority_binding: ContextAuthoritySourceBindingV2,
+    ) -> tuple[_ApplicationMemberClosure, ...]:
+        current_record_keys = {
+            _identity_key(record_id) for record_id in currentness.current_record_ids
+        }
+        groups: dict[bytes, list[ContextApplicationV2Record]] = {}
+        for record in records:
+            groups.setdefault(_identity_key(record.application_id), []).append(record)
+
+        closures: list[_ApplicationMemberClosure] = []
+        for application_key in sorted(groups):
+            group = tuple(
+                sorted(groups[application_key], key=lambda item: encode_canonical(item.to_cbor()))
+            )
+            current_records = tuple(
+                record for record in group if _identity_key(record.record_id) in current_record_keys
+            )
+            if len(current_records) > 1:
+                raise _error(
+                    APPLICATION_CURRENTNESS_FAILED,
+                    "context_application_v2_records.application_id",
+                    cause_code="CURRENTNESS_AMBIGUOUS",
+                    application_id=group[0].application_id,
+                    subject_ids=tuple(record.record_id.as_text() for record in current_records),
+                )
+            selected = current_records[0] if current_records else group[0]
+            members = self._resolve_record_members(selected, base_authority_binding)
+            required_members = tuple(
+                sorted(
+                    (member for member in members if member.required),
+                    key=lambda member: _member_key_bytes(member.member_key),
+                )
+            )
+            closures.append(
+                _ApplicationMemberClosure(
+                    application_id=selected.application_id,
+                    record_id=selected.record_id,
+                    current=bool(current_records),
+                    members=members,
+                    required_member_keys=tuple(member.member_key for member in required_members),
+                )
+            )
+        return tuple(sorted(closures, key=lambda item: _identity_key(item.application_id)))
 
     @staticmethod
     def _preflight(
@@ -297,10 +517,66 @@ class ContextApplicationV2HostBindingEvaluator:
                     subject_ids=(link.application_semantic_id.as_text(),),
                 )
 
+        closures = self._derive_application_closures(
+            records,
+            currentness,
+            container.base_authority_v1_binding,
+        )
+        links_by_application = {link.application_semantic_id: link for link in links}
+        qualified_current_record_ids: list[AuthorityIdentityV1] = []
+        application_results: list[ApplicationHostBindingResult] = []
+        for closure in closures:
+            link = links_by_application.get(closure.application_id)
+            if not closure.required_member_keys:
+                if link is not None:
+                    raise _error(
+                        HOST_MEMBER_SET_MISMATCH,
+                        "application_host_bindings_v2.host_binding_claim_ids",
+                        application_id=closure.application_id,
+                        subject_ids=tuple(link.host_binding_claim_ids),
+                    )
+                if closure.current:
+                    qualified_current_record_ids.append(closure.record_id)
+                continue
+
+            if link is None:
+                if closure.current:
+                    raise _error(
+                        APPLICATION_HOST_BINDING_INVALID,
+                        "application_host_bindings_v2",
+                        application_id=closure.application_id,
+                        record_id=closure.record_id,
+                        subject_ids=tuple(
+                            member_key.candidate_id for member_key in closure.required_member_keys
+                        ),
+                    )
+                continue
+            if len(link.host_binding_claim_ids) != len(closure.required_member_keys):
+                raise _error(
+                    HOST_MEMBER_SET_MISMATCH,
+                    "application_host_bindings_v2.host_binding_claim_ids",
+                    application_id=closure.application_id,
+                    record_id=closure.record_id,
+                    subject_ids=tuple(link.host_binding_claim_ids),
+                )
+            application_results.append(
+                ApplicationHostBindingResult(
+                    application_id=closure.application_id,
+                    status=(
+                        ApplicationHostBindingStatus.QUALIFIED_CURRENT
+                        if closure.current
+                        else ApplicationHostBindingStatus.HISTORICAL_ONLY
+                    ),
+                    host_binding_claim_ids=link.host_binding_claim_ids,
+                )
+            )
+
         return ContextApplicationV2HostBindingEvaluationResult(
             currentness=currentness,
-            qualified_current_application_record_ids=(),
-            application_host_binding_results=(),
+            qualified_current_application_record_ids=tuple(
+                sorted(qualified_current_record_ids, key=_identity_key)
+            ),
+            application_host_binding_results=tuple(application_results),
             current_host_claim_ids=(),
         )
 
@@ -314,8 +590,12 @@ class ContextApplicationV2HostBindingEvaluator:
 __all__ = [
     "APPLICATION_CURRENTNESS_FAILED",
     "APPLICATION_HOST_BINDING_DUPLICATE",
+    "APPLICATION_HOST_BINDING_INVALID",
     "APPLICATION_HOST_BINDING_UNKNOWN_APPLICATION",
+    "HOST_CLAIM_UNKNOWN",
     "HOST_INTEGRATION_INPUT_INVALID",
+    "HOST_MEMBER_SET_MISMATCH",
+    "HOST_RELATIONSHIP_MISMATCH",
     "ApplicationHostBindingResult",
     "ApplicationHostBindingStatus",
     "ContextApplicationV2HostBindingError",

@@ -3,7 +3,7 @@ from __future__ import annotations
 import hashlib
 import sys
 import unittest
-from dataclasses import FrozenInstanceError
+from dataclasses import FrozenInstanceError, replace
 from pathlib import Path
 from typing import cast
 
@@ -15,6 +15,8 @@ from context_application_v2_host_binding import (
     ContextApplicationV2HostBindingError,
     ContextApplicationV2HostBindingEvaluationResult,
     ContextApplicationV2HostBindingEvaluator,
+    _ResolvedApplicationMember,
+    _validate_link_member_union,
 )
 from context_application_v2_test_support import (
     build_application_variant_with_v3_event,
@@ -33,7 +35,9 @@ from mtgml.authority import (
     ContextAuthoritySourceBindingV2,
     SupersessionReason,
 )
+from mtgml.host_binding import ApplicationMemberKeyV1
 from mtgml.persistence import encode_canonical
+from test_authority_v2_validator import _claim
 
 BASE_BINDING = ContextAuthoritySourceBindingV2(
     "base_authority_v1",
@@ -99,6 +103,18 @@ def _file_digests(repo: Path) -> dict[str, str]:
 
 
 class ContextApplicationV2HostBindingEvaluatorTests(unittest.TestCase):
+    def _synthetic_case(self) -> dict[str, object]:
+        from test_context_application_v2_validator import ContextApplicationV2IntegrationTests
+
+        base = ContextApplicationV2IntegrationTests()
+        base.setUp()
+        self.addCleanup(base.doCleanups)
+        self.addCleanup(base.tearDown)
+        return base._synthetic_case(
+            source_timing="not_applicable",
+            reviewed_timing="not_applicable",
+        )
+
     def _evaluator(
         self,
         source_resolver: AuthoritySourceResolver | object | None = None,
@@ -166,6 +182,169 @@ class ContextApplicationV2HostBindingEvaluatorTests(unittest.TestCase):
         self.assertEqual(result.current_host_claim_ids, ())
         with self.assertRaises(FrozenInstanceError):
             result.current_host_claim_ids = ("hbc.v1/" + "00" * 32,)
+
+    def test_member_key_uses_candidate_identity_and_source_instance(self) -> None:
+        case = self._synthetic_case()
+        record = cast(ContextApplicationV2Record, case["record"])
+        evaluator = self._evaluator(case["source_resolver"])
+
+        projections = evaluator._resolve_record_members(
+            record,
+            cast(ContextAuthoritySourceBindingV2, case["base_binding"]),
+        )
+
+        self.assertEqual(len(projections), 1)
+        self.assertEqual(
+            projections[0].member_key,
+            ApplicationMemberKeyV1(
+                candidate_id=record.members[0].candidate_id,
+                candidate_identity_digest=(
+                    record.members[0].candidate_identity_digest_reference.digest_bytes
+                ),
+                source_instance_id=record.members[0].source_instance_id,
+            ),
+        )
+        self.assertTrue(projections[0].required)
+
+    def test_applicability_uses_only_verified_scope_and_relation(self) -> None:
+        case = self._synthetic_case()
+        member = cast(ContextApplicationV2Record, case["record"]).members[0]
+        evaluator = self._evaluator(case["source_resolver"])
+
+        required = evaluator._project_verified_member(
+            member,
+            {"scope": "cross_deck", "relation": "directional_binary"},
+        )
+        non_required = evaluator._project_verified_member(
+            member,
+            {"scope": "intra_deck", "relation": "unordered_binary"},
+        )
+
+        self.assertTrue(required.required)
+        self.assertFalse(non_required.required)
+
+    def test_current_and_historical_links_use_the_same_required_subset(self) -> None:
+        from context_application_v2_test_support import (
+            build_application_with_v3_event,
+            build_supersession_with_v3_event,
+        )
+
+        case = self._synthetic_case()
+        source_resolver, record, _ = build_application_with_v3_event(self, case)
+        semantic_input = ContextApplicationV2SupersessionInputV2(
+            superseded_record_id_bytes=record.record_id.digest_bytes,
+            replacement_record_id_bytes=None,
+            replacement_record_kind=None,
+            reason_code=SupersessionReason.AUTHORITY_REVOCATION,
+            source_evidence_refs=(case["member"].member_evidence_refs[0],),
+        )
+        _, supersession, _ = build_supersession_with_v3_event(
+            self,
+            case,
+            semantic_input,
+        )
+        link = ApplicationHostBindingV2(
+            "context_application",
+            record.application_id,
+            (_claim_id(21),),
+        )
+
+        current_container = ContextApplicationAuthorityV2(
+            base_authority_v1_binding=cast(
+                ContextAuthoritySourceBindingV2,
+                case["base_binding"],
+            ),
+            host_binding_authority_v2_binding=HOST_BINDING,
+            candidate_universe_binding=CANDIDATE_BINDING,
+            source_bindings=(),
+            context_application_v2_records=(record,),
+            context_application_v2_supersession_records=(),
+            application_host_bindings_v2=(link,),
+        )
+        historical_container = replace(
+            current_container,
+            context_application_v2_supersession_records=(supersession,),
+        )
+        evaluator = self._evaluator(source_resolver)
+
+        current = evaluator.evaluate(current_container)
+        historical = evaluator.evaluate(historical_container)
+
+        self.assertEqual(
+            current.application_host_binding_results[0].status.value,
+            "qualified_current",
+        )
+        self.assertEqual(
+            historical.application_host_binding_results[0].status.value,
+            "historical_only",
+        )
+        current_closure = evaluator._derive_application_closures(
+            (record,),
+            current.currentness,
+            cast(ContextAuthoritySourceBindingV2, case["base_binding"]),
+        )
+        historical_closure = evaluator._derive_application_closures(
+            (record,),
+            historical.currentness,
+            cast(ContextAuthoritySourceBindingV2, case["base_binding"]),
+        )
+        self.assertEqual(
+            current_closure[0].required_member_keys,
+            historical_closure[0].required_member_keys,
+        )
+
+    def test_exact_member_union_and_reviewed_host_relationship_are_validated(self) -> None:
+        member_a = ApplicationMemberKeyV1("candidate-a", bytes([1]) * 32, "si/a")
+        member_b = ApplicationMemberKeyV1("candidate-b", bytes([2]) * 32, "si/b")
+        projected = (
+            _ResolvedApplicationMember(member_a, "same_host", True),
+            _ResolvedApplicationMember(member_b, "same_host", False),
+        )
+        claim_a = _claim(member_a, "Token Triumph", 1)
+        claim_b = _claim(member_b, "Grave Danger", 2)
+        claims = {
+            claim_a.identity().as_text(): claim_a,
+            claim_b.identity().as_text(): claim_b,
+        }
+        application = _application_id(22)
+        mixed_link = ApplicationHostBindingV2(
+            "context_application",
+            application,
+            tuple(sorted(claims)),
+        )
+
+        required_members = tuple(member for member in projected if member.required)
+        _validate_link_member_union(
+            ApplicationHostBindingV2(
+                "context_application",
+                application,
+                (claim_a.identity().as_text(),),
+            ),
+            required_members,
+            claims,
+        )
+
+        with self.assertRaises(ContextApplicationV2HostBindingError) as missing:
+            _validate_link_member_union(
+                mixed_link,
+                required_members,
+                claims,
+            )
+        self.assertEqual(missing.exception.code, "HOST_MEMBER_SET_MISMATCH")
+
+        with self.assertRaises(ContextApplicationV2HostBindingError) as relationship:
+            _validate_link_member_union(
+                mixed_link,
+                (
+                    _ResolvedApplicationMember(member_a, "same_host", True),
+                    _ResolvedApplicationMember(member_b, "cross_host", True),
+                ),
+                {
+                    claim_a.identity().as_text(): claim_a,
+                    claim_b.identity().as_text(): claim_b,
+                },
+            )
+        self.assertEqual(relationship.exception.code, "HOST_RELATIONSHIP_MISMATCH")
 
     def test_noncanonical_link_order_is_rejected_at_constructor_boundary(self) -> None:
         first, second = _link(9, 1), _link(10, 2)
