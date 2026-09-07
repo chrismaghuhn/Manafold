@@ -39,6 +39,7 @@ from context_application_v2_supersession import (
 )
 from mtgml.authority import (
     ApplicationHostBindingV2,
+    AuthorityContractError,
     AuthorityIdentityV1,
     ContextApplicationAuthorityV2,
     ContextApplicationMemberV2,
@@ -615,6 +616,21 @@ class ContextApplicationV2HostBindingEvaluator:
         for value in application_links:
             if not isinstance(value, ApplicationHostBindingV2):
                 raise _error(HOST_INTEGRATION_INPUT_INVALID, "application_host_bindings_v2")
+            try:
+                ApplicationHostBindingV2(
+                    application_kind=value.application_kind,
+                    application_semantic_id=value.application_semantic_id,
+                    host_binding_claim_ids=value.host_binding_claim_ids,
+                )
+            except (AuthorityContractError, AttributeError, TypeError) as exc:
+                semantic_id = getattr(value, "application_semantic_id", None)
+                raise _error(
+                    APPLICATION_HOST_BINDING_INVALID,
+                    "application_host_bindings_v2",
+                    application_id=(
+                        semantic_id if isinstance(semantic_id, AuthorityIdentityV1) else None
+                    ),
+                ) from exc
         _require_canonical_items(application_links, "application_host_bindings_v2")
         link_values = tuple(cast(ApplicationHostBindingV2, value) for value in application_links)
         application_ids = tuple(link.application_semantic_id for link in link_values)

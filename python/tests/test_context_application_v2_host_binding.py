@@ -1778,26 +1778,35 @@ class ContextApplicationV2HostBindingEvaluatorTests(unittest.TestCase):
             record.application_id,
             (claim.identity().as_text(),),
         )
-        forged = object.__new__(ApplicationHostBindingV2)
-        for field_name in (
-            "application_kind",
-            "application_semantic_id",
-            "host_binding_claim_ids",
-        ):
-            object.__setattr__(forged, field_name, getattr(valid_link, field_name))
-        object.__setattr__(forged, "application_kind", "relation_application")
-        container = self._container_with_link(case, record, claim.identity().as_text())
-        object.__setattr__(container, "application_host_bindings_v2", (forged,))
-
-        with self.assertRaises(ContextApplicationV2HostBindingError) as caught:
-            self._evaluator_with_read_model(
-                source_resolver,
-                self._read_model_for_case(case, claim),
-            ).evaluate(container)
-        self.assertIn(
-            caught.exception.code,
-            {"HOST_INTEGRATION_INPUT_INVALID", "APPLICATION_HOST_BINDING_INVALID"},
+        mutations = (
+            ("application_kind", "relation_application"),
+            (
+                "application_semantic_id",
+                AuthorityIdentityV1(
+                    AuthorityIdentityKind.RELATION_APPLICATION,
+                    bytes([9]) * 32,
+                ),
+            ),
         )
+        for field_name, field_value in mutations:
+            with self.subTest(field=field_name):
+                forged = object.__new__(ApplicationHostBindingV2)
+                for child_field in (
+                    "application_kind",
+                    "application_semantic_id",
+                    "host_binding_claim_ids",
+                ):
+                    object.__setattr__(forged, child_field, getattr(valid_link, child_field))
+                object.__setattr__(forged, field_name, field_value)
+                container = self._container_with_link(case, record, claim.identity().as_text())
+                object.__setattr__(container, "application_host_bindings_v2", (forged,))
+
+                with self.assertRaises(ContextApplicationV2HostBindingError) as caught:
+                    self._evaluator_with_read_model(
+                        source_resolver,
+                        self._read_model_for_case(case, claim),
+                    ).evaluate(container)
+                self.assertEqual(caught.exception.code, "APPLICATION_HOST_BINDING_INVALID")
 
     def test_member_identity_mutations_fail_closed_independently(self) -> None:
         case = self._synthetic_case()
