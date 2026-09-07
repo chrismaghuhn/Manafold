@@ -10,7 +10,7 @@ import sys
 import tempfile
 import unittest
 import zipfile
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from pathlib import Path
 from types import MappingProxyType
 from typing import cast
@@ -283,7 +283,7 @@ class AuthorityV2ClosureTests(unittest.TestCase):
             ),
         )
 
-        with self.assertRaises(AuthorityV2ValidationError):
+        with self.assertRaises(AuthorityV2ValidationError) as caught:
             validate_application_host_closure(
                 (self.claim_a, alternate),
                 links,
@@ -296,6 +296,12 @@ class AuthorityV2ClosureTests(unittest.TestCase):
                     links[1].application_semantic_id: "same_host",
                 },
             )
+        self.assertEqual(caught.exception.code, "HOST_BINDING_AMBIGUOUS")
+        self.assertEqual(caught.exception.member_key, self.member_a)
+        self.assertEqual(
+            set(caught.exception.claim_ids),
+            {self.claim_a.identity().as_text(), alternate.identity().as_text()},
+        )
 
     def test_observed_host_relationship_must_match_theorem_expectation(self) -> None:
         link = ApplicationHostBindingV1(
@@ -1358,6 +1364,23 @@ class AuthorityV2DocumentTests(unittest.TestCase):
 
         self.assertTrue(result.valid)
         self.assertEqual(result.counts["cross_deck_host_binding_claim_records"], 2)
+        admit = getattr(validator, "admit", None)
+        self.assertTrue(callable(admit))
+        admission = cast(Callable[[object], object], admit)(document)
+        self.assertEqual(admission.validation_result, result)
+        self.assertEqual(len(admission.read_model.admitted_claims_by_id), 2)
+        self.assertEqual(len(admission.read_model.current_claims_by_id), 2)
+        for claim_value in (claim, second_claim):
+            claim_id = claim_value.identity().as_text()
+            self.assertEqual(
+                len(dict(admission.read_model.claim_record_ids_by_claim_id)[claim_id]),
+                1,
+            )
+            record_id = dict(admission.read_model.claim_record_ids_by_claim_id)[claim_id][0]
+            self.assertEqual(
+                dict(admission.read_model.claim_record_status_by_record_id)[record_id].value,
+                "current",
+            )
 
         b2_evidence_by_role = {
             "b2_classifications": b2_ref,
@@ -1484,6 +1507,15 @@ class AuthorityV2DocumentTests(unittest.TestCase):
             self.assertEqual(
                 supersession_result.counts["cross_deck_host_binding_claim_supersession_records"],
                 1,
+            )
+            supersession_admission = cast(Callable[[object], object], admit)(supersession_document)
+            self.assertEqual(supersession_admission.validation_result, supersession_result)
+            superseded_status = dict(
+                supersession_admission.read_model.claim_record_status_by_record_id
+            )
+            self.assertEqual(
+                superseded_status[record.record_identity().as_text()].value,
+                "revoked",
             )
 
         for artifact_role, expected_b2_roles in (
