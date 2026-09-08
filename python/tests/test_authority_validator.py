@@ -1506,6 +1506,206 @@ class AuthorityValidatorTests(unittest.TestCase):
             validator._resolve_evidence_wire_list([evidence], "criterion evidence")
         self.assertEqual(context.exception.code, "REV3_MEMBER_MISSING")
 
+    def test_distinct_rev3_source_bindings_with_same_role_are_accepted(self) -> None:
+        from authority_validator import AuthorityValidator
+
+        oracle = SourceBindingDigestV1(
+            "rev3_source",
+            "source/raw/oracle_cards_selected_REV3.jsonl",
+            None,
+            bytes.fromhex("00" * 32),
+        )
+        deck_rows = SourceBindingDigestV1(
+            "rev3_source",
+            "inputs/deck_row_source_resolution_REV3.csv",
+            None,
+            bytes.fromhex("11" * 32),
+        )
+
+        registry = AuthorityValidator(self.resolver)._parse_root_bindings(
+            sorted(
+                [
+                    self._source_binding_wire(oracle, "rev3"),
+                    self._source_binding_wire(deck_rows, "rev3"),
+                ],
+                key=lambda item: encode_canonical(
+                    [
+                        item["artifact_role"],
+                        item["path"],
+                        item["schema_or_null"],
+                        bytes.fromhex(cast(str, item["raw_sha256"])),
+                    ]
+                ),
+            )
+        )
+
+        self.assertEqual(len(registry.by_key), 2)
+
+    def test_exact_duplicate_source_binding_tuple_is_rejected(self) -> None:
+        from authority_validator import AuthorityValidator
+
+        binding = SourceBindingDigestV1(
+            "rev3_source",
+            "source/raw/oracle_cards_selected_REV3.jsonl",
+            None,
+            bytes.fromhex("00" * 32),
+        )
+
+        with self.assertRaises(ResolutionError) as context:
+            AuthorityValidator(self.resolver)._parse_root_bindings(
+                [
+                    self._source_binding_wire(binding, "rev3"),
+                    self._source_binding_wire(binding, "rev3"),
+                ]
+            )
+
+        self.assertEqual(context.exception.code, "NONCANONICAL_SOURCE_BINDINGS")
+
+    def test_duplicate_static_source_binding_role_is_rejected(self) -> None:
+        from authority_validator import AuthorityValidator
+
+        first = SourceBindingDigestV1(
+            "b2_catalog",
+            "sources/m2_5/closures/B2/requirement_family_catalog.v1.json",
+            "manafold.m2.5.b2.requirement-family-catalog.v1",
+            bytes.fromhex("00" * 32),
+        )
+        second = SourceBindingDigestV1(
+            "b2_catalog",
+            "sources/m2_5/closures/B2/requirement_family_catalog.v1.json",
+            "manafold.m2.5.b2.requirement-family-catalog.v1",
+            bytes.fromhex("11" * 32),
+        )
+
+        with self.assertRaises(ResolutionError) as context:
+            AuthorityValidator(self.resolver)._parse_root_bindings(
+                [
+                    self._source_binding_wire(first, "b2"),
+                    self._source_binding_wire(second, "b2"),
+                ]
+            )
+
+        self.assertEqual(context.exception.code, "SOURCE_BINDING_AMBIGUOUS")
+
+    def test_v1_acceptance_input_keeps_distinct_rev3_source_bindings(self) -> None:
+        oracle = SourceBindingDigestV1(
+            "rev3_source",
+            "source/raw/oracle_cards_selected_REV3.jsonl",
+            None,
+            bytes.fromhex("00" * 32),
+        )
+        deck_rows = SourceBindingDigestV1(
+            "rev3_source",
+            "inputs/deck_row_source_resolution_REV3.csv",
+            None,
+            bytes.fromhex("11" * 32),
+        )
+        roster = ReviewerRosterRefV1(
+            "sources/m2_5/authorities/reviewer_rosters/v1/" + "22" * 32 + ".json",
+            REVIEWER_ROSTER_SCHEMA_V1,
+            bytes.fromhex("22" * 32),
+        )
+        event_input = ReviewAcceptanceEventInputV1(
+            subject_kind=AcceptanceSubjectKind.DOMAIN_THEOREM_RECORD,
+            subject_payload_digest=bytes(32),
+            reviewer_roster_ref=roster,
+            reviewer_role_bindings=(ReviewerRoleBindingV1("alice", ("project_owner",)),),
+            review_mode=ReviewMode.SOLO_SEPARATE_SELF_REVIEW,
+            source_binding_digests=tuple(
+                sorted(
+                    (
+                        SourceBindingDigestV1(
+                            "declared_model",
+                            MODEL_PATH,
+                            MODEL_SCHEMA,
+                            bytes.fromhex("33" * 32),
+                        ),
+                        SourceBindingDigestV1(
+                            "reviewer_roster_leaf",
+                            roster.path,
+                            roster.schema,
+                            roster.raw_sha256,
+                        ),
+                        oracle,
+                        deck_rows,
+                    ),
+                    key=lambda item: encode_canonical(item.to_cbor()),
+                )
+            ),
+            review_evidence_refs=(
+                AcceptanceEvidenceRefV1(
+                    "docs/review/rev3-source-parity.md",
+                    bytes.fromhex("44" * 32),
+                    ("whole_artifact", None),
+                ),
+            ),
+        )
+
+        self.assertEqual(
+            sum(
+                binding.artifact_role == "rev3_source"
+                for binding in event_input.source_binding_digests
+            ),
+            2,
+        )
+
+    def test_acceptance_subject_source_closure_requires_both_rev3_bindings(self) -> None:
+        from authority_validator import AuthorityValidator, _SourceRegistry
+
+        oracle = SourceBindingDigestV1(
+            "rev3_source",
+            "source/raw/oracle_cards_selected_REV3.jsonl",
+            None,
+            bytes.fromhex("00" * 32),
+        )
+        deck_rows = SourceBindingDigestV1(
+            "rev3_source",
+            "inputs/deck_row_source_resolution_REV3.csv",
+            None,
+            bytes.fromhex("11" * 32),
+        )
+        roster = SourceBindingDigestV1(
+            "reviewer_roster_leaf",
+            "sources/m2_5/authorities/reviewer_rosters/v1/" + "22" * 32 + ".json",
+            REVIEWER_ROSTER_SCHEMA_V1,
+            bytes.fromhex("22" * 32),
+        )
+        evidence = [
+            {
+                "authority_kind": "rev3",
+                "path": oracle.path,
+                "locator": {"kind": "whole_artifact"},
+                "raw_sha256": oracle.raw_sha256.hex(),
+            },
+            {
+                "authority_kind": "rev3",
+                "path": deck_rows.path,
+                "locator": {"kind": "whole_artifact"},
+                "raw_sha256": deck_rows.raw_sha256.hex(),
+            },
+        ]
+        bindings = (self._model_binding(), roster, oracle, deck_rows)
+        validator = AuthorityValidator(self.resolver)
+        validator._root_bindings = _SourceRegistry(
+            MappingProxyType({encode_canonical(binding.to_cbor()): binding for binding in bindings})
+        )
+        expected = validator._subject_bindings(
+            {"source_evidence_refs": evidence},
+            self._model_binding(),
+            roster,
+        )
+
+        self.assertIn(encode_canonical(oracle.to_cbor()), expected)
+        self.assertIn(encode_canonical(deck_rows.to_cbor()), expected)
+        self.assertNotEqual(
+            expected,
+            {
+                encode_canonical(self._model_binding().to_cbor()),
+                encode_canonical(roster.to_cbor()),
+                encode_canonical(oracle.to_cbor()),
+            },
+        )
+
     def test_missing_model_source_binding_fails_closed(self) -> None:
         from authority_validator import AuthorityValidator
 
