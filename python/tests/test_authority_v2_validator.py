@@ -10,7 +10,7 @@ import sys
 import tempfile
 import unittest
 import zipfile
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from pathlib import Path
 from types import MappingProxyType
 from typing import cast
@@ -283,7 +283,7 @@ class AuthorityV2ClosureTests(unittest.TestCase):
             ),
         )
 
-        with self.assertRaises(AuthorityV2ValidationError):
+        with self.assertRaises(AuthorityV2ValidationError) as caught:
             validate_application_host_closure(
                 (self.claim_a, alternate),
                 links,
@@ -296,6 +296,12 @@ class AuthorityV2ClosureTests(unittest.TestCase):
                     links[1].application_semantic_id: "same_host",
                 },
             )
+        self.assertEqual(caught.exception.code, "HOST_BINDING_AMBIGUOUS")
+        self.assertEqual(caught.exception.member_key, self.member_a)
+        self.assertEqual(
+            set(caught.exception.claim_ids),
+            {self.claim_a.identity().as_text(), alternate.identity().as_text()},
+        )
 
     def test_observed_host_relationship_must_match_theorem_expectation(self) -> None:
         link = ApplicationHostBindingV1(
@@ -409,6 +415,28 @@ class AuthorityV2DocumentTests(unittest.TestCase):
 
         self.assertTrue(result.valid)
         self.assertEqual(result.counts["cross_deck_host_binding_claim_records"], 0)
+
+    def test_rejected_authority_admission_is_repeatable_and_does_not_mutate_input(self) -> None:
+        import copy
+
+        document = copy.deepcopy(self.document)
+        document["source_bindings"] = []
+        before = copy.deepcopy(document)
+        fingerprints = []
+        for _ in range(2):
+            with self.assertRaises(AuthorityV2ValidationError) as caught:
+                self.validator.admit(document)
+            fingerprints.append(
+                (
+                    caught.exception.code,
+                    caught.exception.location,
+                    caught.exception.record_ids,
+                    caught.exception.claim_ids,
+                    caught.exception.member_key,
+                )
+            )
+            self.assertEqual(document, before)
+        self.assertEqual(fingerprints[0], fingerprints[1])
 
     def test_v1_root_cannot_be_validated_as_v2(self) -> None:
         document = dict(self.document)
@@ -1283,13 +1311,14 @@ class AuthorityV2DocumentTests(unittest.TestCase):
 
         def accepted_record(
             claim_value: CrossDeckHostBindingClaimV1,
+            review_mode: ReviewMode = ReviewMode.SOLO_SEPARATE_SELF_REVIEW,
         ) -> tuple[CrossDeckHostBindingClaimRecordV1, HostBindingSourceBindingV2]:
             event_input = HostBindingAcceptanceEventInputV2(
                 "cross_deck_host_binding_claim_record_v1",
                 claim_value.identity().digest_bytes,
                 ReviewerRosterRefV1(roster_path, roster_binding.schema_or_null, roster_digest),
                 (ReviewerRoleBindingV1("alice", ("architecture_maintainer", "project_owner")),),
-                ReviewMode.SOLO_SEPARATE_SELF_REVIEW,
+                review_mode,
                 "cross-deck-host-binding-review-checklist.v1",
                 event_sources,
                 (
@@ -1329,6 +1358,10 @@ class AuthorityV2DocumentTests(unittest.TestCase):
 
         record, event_binding = accepted_record(claim)
         second_record, second_event_binding = accepted_record(second_claim)
+        same_claim_record, same_claim_event_binding = accepted_record(
+            claim,
+            ReviewMode.MULTI_REVIEWER,
+        )
         base_binding = HostBindingSourceBindingV2(
             "base_authority_v1",
             BASE_PATH,
@@ -1358,6 +1391,23 @@ class AuthorityV2DocumentTests(unittest.TestCase):
 
         self.assertTrue(result.valid)
         self.assertEqual(result.counts["cross_deck_host_binding_claim_records"], 2)
+        admit = getattr(validator, "admit", None)
+        self.assertTrue(callable(admit))
+        admission = cast(Callable[[object], object], admit)(document)
+        self.assertEqual(admission.validation_result, result)
+        self.assertEqual(len(admission.read_model.admitted_claims_by_id), 2)
+        self.assertEqual(len(admission.read_model.current_claims_by_id), 2)
+        for claim_value in (claim, second_claim):
+            claim_id = claim_value.identity().as_text()
+            self.assertEqual(
+                len(dict(admission.read_model.claim_record_ids_by_claim_id)[claim_id]),
+                1,
+            )
+            record_id = dict(admission.read_model.claim_record_ids_by_claim_id)[claim_id][0]
+            self.assertEqual(
+                dict(admission.read_model.claim_record_status_by_record_id)[record_id].value,
+                "current",
+            )
 
         b2_evidence_by_role = {
             "b2_classifications": b2_ref,
@@ -1380,6 +1430,233 @@ class AuthorityV2DocumentTests(unittest.TestCase):
                 ("whole_artifact", None),
             ),
         }
+
+        def accepted_supersession(
+            superseded_record: CrossDeckHostBindingClaimRecordV1,
+            replacement_record: CrossDeckHostBindingClaimRecordV1,
+        ) -> tuple[CrossDeckHostBindingClaimSupersessionV1, HostBindingSourceBindingV2]:
+            evidence = b2_evidence_by_role["b2_classifications"]
+            supersession_event_sources = tuple(
+                binding
+                for binding in event_sources
+                if binding.artifact_role
+                in {
+                    "declared_model",
+                    "reviewer_roster_leaf",
+                    "b2_catalog",
+                    "b2_classifications",
+                    "b2_closure",
+                }
+            )
+            placeholder_event_ref = HostBindingAcceptanceEventRefV2(
+                "sources/m2_5/authorities/review_acceptance_events/v2/" + "00" * 32 + ".json",
+                bytes(32),
+                "ae.v2/" + "00" * 32,
+            )
+            provisional = CrossDeckHostBindingClaimSupersessionV1(
+                superseded_record.record_identity(),
+                replacement_record.record_identity(),
+                "source_revision",
+                (evidence,),
+                placeholder_event_ref,
+            )
+            event_input = HostBindingAcceptanceEventInputV2(
+                "cross_deck_host_binding_claim_supersession_v1",
+                provisional.identity().digest_bytes,
+                ReviewerRosterRefV1(roster_path, roster_binding.schema_or_null, roster_digest),
+                (ReviewerRoleBindingV1("alice", ("architecture_maintainer", "project_owner")),),
+                ReviewMode.SOLO_SEPARATE_SELF_REVIEW,
+                "cross-deck-host-binding-review-checklist.v1",
+                supersession_event_sources,
+                (
+                    AcceptanceEvidenceRefV1(
+                        "docs/review/host-binding.md",
+                        hashlib.sha256(evidence_raw).digest(),
+                        ("whole_artifact", None),
+                    ),
+                ),
+            )
+            leaf = HostBindingAcceptanceEventLeafV2.from_input(event_input)
+            raw = (json.dumps(leaf.to_wire(), separators=(",", ":")) + "\n").encode("utf-8")
+            path = (
+                "sources/m2_5/authorities/review_acceptance_events/v2/"
+                + leaf.event_id.as_text().removeprefix("ae.v2/")
+                + ".json"
+            )
+            event_file = self.repo / Path(*path.split("/"))
+            event_file.parent.mkdir(parents=True, exist_ok=True)
+            event_file.write_bytes(raw)
+            event_ref = HostBindingAcceptanceEventRefV2(
+                path,
+                hashlib.sha256(raw).digest(),
+                leaf.event_id.as_text(),
+            )
+            supersession = CrossDeckHostBindingClaimSupersessionV1(
+                superseded_record.record_identity(),
+                replacement_record.record_identity(),
+                "source_revision",
+                (evidence,),
+                event_ref,
+            )
+            return (
+                supersession,
+                HostBindingSourceBindingV2(
+                    "acceptance_event_leaf_v2",
+                    path,
+                    "manafold.m2.5.c.review-acceptance-event.v2",
+                    hashlib.sha256(raw).digest(),
+                ),
+            )
+
+        def authority_document(
+            records: tuple[CrossDeckHostBindingClaimRecordV1, ...],
+            supersessions: tuple[CrossDeckHostBindingClaimSupersessionV1, ...],
+            record_event_bindings: tuple[HostBindingSourceBindingV2, ...],
+            supersession_event_bindings: tuple[HostBindingSourceBindingV2, ...],
+        ) -> dict[str, object]:
+            root_sources = tuple(
+                sorted(
+                    (
+                        base_binding,
+                        *record_event_bindings,
+                        *supersession_event_bindings,
+                        *event_sources,
+                    ),
+                    key=lambda binding: encode_canonical(binding.to_cbor()),
+                )
+            )
+            return {
+                "schema": HOST_BINDING_AUTHORITY_SCHEMA_V2,
+                "base_authority_v1_binding": base_binding.to_wire(),
+                "source_bindings": [binding.to_wire() for binding in root_sources],
+                "cross_deck_host_binding_claim_records": [
+                    record_value.to_wire() for record_value in records
+                ],
+                "cross_deck_host_binding_claim_supersession_records": [
+                    supersession_value.to_wire() for supersession_value in supersessions
+                ],
+                "application_host_bindings": [],
+            }
+
+        same_claim_supersession, same_claim_supersession_binding = accepted_supersession(
+            record,
+            same_claim_record,
+        )
+        same_claim_document = authority_document(
+            (record, same_claim_record),
+            (same_claim_supersession,),
+            (event_binding, same_claim_event_binding),
+            (same_claim_supersession_binding,),
+        )
+        same_claim_admission = cast(Callable[[object], object], admit)(same_claim_document)
+        same_claim_id = claim.identity().as_text()
+        same_claim_record_ids = dict(same_claim_admission.read_model.claim_record_ids_by_claim_id)[
+            same_claim_id
+        ]
+        self.assertEqual(
+            same_claim_record_ids,
+            tuple(
+                sorted(
+                    (
+                        record.record_identity().as_text(),
+                        same_claim_record.record_identity().as_text(),
+                    ),
+                    key=lambda item: encode_canonical(item),
+                )
+            ),
+        )
+        same_claim_statuses = dict(same_claim_admission.read_model.claim_record_status_by_record_id)
+        self.assertEqual(
+            same_claim_statuses[record.record_identity().as_text()].value,
+            "superseded",
+        )
+        self.assertEqual(
+            same_claim_statuses[same_claim_record.record_identity().as_text()].value,
+            "current",
+        )
+        self.assertEqual(
+            tuple(claim_id for claim_id, _ in same_claim_admission.read_model.current_claims_by_id),
+            (same_claim_id,),
+        )
+        self.assertEqual(len(same_claim_admission.read_model.current_claims_by_member), 1)
+
+        replacement_supersession, replacement_supersession_binding = accepted_supersession(
+            record,
+            second_record,
+        )
+        replacement_document = authority_document(
+            (record, second_record),
+            (replacement_supersession,),
+            (event_binding, second_event_binding),
+            (replacement_supersession_binding,),
+        )
+        replacement_admission = cast(Callable[[object], object], admit)(replacement_document)
+        replacement_statuses = dict(
+            replacement_admission.read_model.claim_record_status_by_record_id
+        )
+        self.assertEqual(
+            replacement_statuses[record.record_identity().as_text()].value,
+            "superseded",
+        )
+        self.assertEqual(
+            replacement_statuses[second_record.record_identity().as_text()].value,
+            "current",
+        )
+        replacement_current_ids = tuple(
+            claim_id for claim_id, _ in replacement_admission.read_model.current_claims_by_id
+        )
+        self.assertEqual(replacement_current_ids, (second_claim.identity().as_text(),))
+
+        second_same_claim_record, second_same_claim_event_binding = accepted_record(
+            second_claim,
+            ReviewMode.MULTI_REVIEWER,
+        )
+        second_claim_supersession, second_claim_supersession_binding = accepted_supersession(
+            second_record,
+            second_same_claim_record,
+        )
+        forward_document = authority_document(
+            (record, same_claim_record, second_record, second_same_claim_record),
+            (same_claim_supersession, second_claim_supersession),
+            (
+                event_binding,
+                same_claim_event_binding,
+                second_event_binding,
+                second_same_claim_event_binding,
+            ),
+            (same_claim_supersession_binding, second_claim_supersession_binding),
+        )
+        reverse_document = authority_document(
+            (second_same_claim_record, second_record, same_claim_record, record),
+            (second_claim_supersession, same_claim_supersession),
+            (
+                second_same_claim_event_binding,
+                second_event_binding,
+                same_claim_event_binding,
+                event_binding,
+            ),
+            (second_claim_supersession_binding, same_claim_supersession_binding),
+        )
+        forward_admission = cast(Callable[[object], object], admit)(forward_document)
+        reverse_admission = cast(Callable[[object], object], admit)(reverse_document)
+        self.assertEqual(forward_admission.validation_result, reverse_admission.validation_result)
+        self.assertEqual(
+            forward_admission.read_model.claim_record_ids_by_claim_id,
+            reverse_admission.read_model.claim_record_ids_by_claim_id,
+        )
+        self.assertEqual(
+            forward_admission.read_model.claim_record_status_by_record_id,
+            reverse_admission.read_model.claim_record_status_by_record_id,
+        )
+        self.assertEqual(
+            tuple(claim_id for claim_id, _ in forward_admission.read_model.current_claims_by_id),
+            tuple(
+                sorted(
+                    (claim.identity().as_text(), second_claim.identity().as_text()),
+                    key=lambda item: encode_canonical(item),
+                )
+            ),
+        )
 
         def validate_supersession_for_role(
             artifact_role: str,
@@ -1484,6 +1761,15 @@ class AuthorityV2DocumentTests(unittest.TestCase):
             self.assertEqual(
                 supersession_result.counts["cross_deck_host_binding_claim_supersession_records"],
                 1,
+            )
+            supersession_admission = cast(Callable[[object], object], admit)(supersession_document)
+            self.assertEqual(supersession_admission.validation_result, supersession_result)
+            superseded_status = dict(
+                supersession_admission.read_model.claim_record_status_by_record_id
+            )
+            self.assertEqual(
+                superseded_status[record.record_identity().as_text()].value,
+                "revoked",
             )
 
         for artifact_role, expected_b2_roles in (

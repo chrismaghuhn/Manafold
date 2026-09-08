@@ -105,6 +105,13 @@ _SOURCE_BINDING_KIND_BY_ROLE: Final = {
     "acceptance_event_leaf": "acceptance_event",
     "reviewer_roster_leaf": "reviewer_roster",
 }
+_MULTI_BINDING_ROLES: Final = frozenset(
+    {
+        "rev3_source",
+        "acceptance_event_leaf",
+        "reviewer_roster_leaf",
+    }
+)
 _STATIC_ROLE_BY_PATH: Final = {
     "sources/m2_5/closures/C/declared_interaction_model.v2.json": "declared_model",
     "sources/m2_5/closures/B2/requirement_family_catalog.v1.json": "b2_catalog",
@@ -1340,7 +1347,7 @@ class AuthorityValidator:
                 schema,
                 _digest(record.get("raw_sha256"), "source binding digest"),
             )
-            if role not in {"acceptance_event_leaf", "reviewer_roster_leaf"} and any(
+            if role not in _MULTI_BINDING_ROLES and any(
                 existing.artifact_role == role for existing in bindings
             ):
                 _fail(

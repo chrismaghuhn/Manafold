@@ -10,6 +10,7 @@ import io
 import zipfile
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from enum import StrEnum
 from types import MappingProxyType
 from typing import cast
 
@@ -38,14 +39,65 @@ from mtgml.host_binding import (
 from mtgml.persistence import encode_canonical
 
 
+class AuthorityV2ValidationCode(StrEnum):
+    AUTHORITY_V2_INVALID = "AUTHORITY_V2_INVALID"
+    HOST_BINDING_AMBIGUOUS = "HOST_BINDING_AMBIGUOUS"
+    HOST_CLAIM_UNKNOWN = "HOST_CLAIM_UNKNOWN"
+    HOST_CLAIM_NOT_CURRENT = "HOST_CLAIM_NOT_CURRENT"
+    HOST_CLAIM_RECORD_INVALID = "HOST_CLAIM_RECORD_INVALID"
+    HOST_SOURCE_INVALID = "HOST_SOURCE_INVALID"
+    HOST_SOURCE_CLOSURE_MISMATCH = "HOST_SOURCE_CLOSURE_MISMATCH"
+
+
 class AuthorityV2ValidationError(ValueError):
     """Raised when V2 host-binding closure is structurally invalid."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        code: AuthorityV2ValidationCode = AuthorityV2ValidationCode.AUTHORITY_V2_INVALID,
+        location: str | None = None,
+        record_ids: tuple[str, ...] = (),
+        claim_ids: tuple[str, ...] = (),
+        member_key: ApplicationMemberKeyV1 | None = None,
+    ) -> None:
+        self.code = code.value
+        self.location = location
+        self.record_ids = record_ids
+        self.claim_ids = claim_ids
+        self.member_key = member_key
+        super().__init__(message)
 
 
 @dataclass(frozen=True)
 class AuthorityV2ValidationResult:
     valid: bool
     counts: Mapping[str, int]
+
+
+class HostBindingClaimRecordStatus(StrEnum):
+    CURRENT = "current"
+    SUPERSEDED = "superseded"
+    REVOKED = "revoked"
+
+
+@dataclass(frozen=True)
+class HostBindingAuthorityV2ReadModel:
+    base_authority_v1_binding: HostBindingSourceBindingV2
+    candidate_universe_binding: HostBindingSourceBindingV2 | None
+    admitted_claims_by_id: tuple[tuple[str, CrossDeckHostBindingClaimV1], ...]
+    current_claims_by_id: tuple[tuple[str, CrossDeckHostBindingClaimV1], ...]
+    current_claims_by_member: tuple[tuple[ApplicationMemberKeyV1, str], ...]
+    claim_record_status_by_record_id: tuple[tuple[str, HostBindingClaimRecordStatus], ...]
+    claim_record_ids_by_claim_id: tuple[tuple[str, tuple[str, ...]], ...]
+    used_source_bindings: tuple[HostBindingSourceBindingV2, ...]
+
+
+@dataclass(frozen=True)
+class AuthorityV2AdmissionResult:
+    validation_result: AuthorityV2ValidationResult
+    read_model: HostBindingAuthorityV2ReadModel
 
 
 def _member_key_bytes(member: ApplicationMemberKeyV1) -> bytes:
@@ -167,7 +219,11 @@ def validate_application_host_closure(
         previous = claim_by_member.get(member_key)
         if previous is not None and previous != claim_id:
             raise AuthorityV2ValidationError(
-                "one application member is bound to multiple current host claims"
+                "one application member is bound to multiple current host claims",
+                code=AuthorityV2ValidationCode.HOST_BINDING_AMBIGUOUS,
+                location="claims.member_key",
+                claim_ids=(previous, claim_id),
+                member_key=claim.member_key,
             )
         claim_by_member[member_key] = claim_id
 
@@ -263,13 +319,19 @@ class AuthorityV2Validator:
         self._resolver = resolver
         self._host_resolver = HostBindingSourceResolver(resolver)
 
-    def validate(self, value: object) -> AuthorityV2ValidationResult:
+    def admit(self, value: object) -> AuthorityV2AdmissionResult:
         try:
             return self._validate_document(value)
         except HostBindingContractError as exc:
-            raise AuthorityV2ValidationError(str(exc)) from exc
+            raise AuthorityV2ValidationError(
+                str(exc),
+                code=AuthorityV2ValidationCode.HOST_SOURCE_INVALID,
+            ) from exc
 
-    def _validate_document(self, value: object) -> AuthorityV2ValidationResult:
+    def validate(self, value: object) -> AuthorityV2ValidationResult:
+        return self.admit(value).validation_result
+
+    def _validate_document(self, value: object) -> AuthorityV2AdmissionResult:
         document = self._exact_object(
             value,
             {
@@ -321,8 +383,29 @@ class AuthorityV2Validator:
         claims = tuple(record.claim for record in claim_records)
         record_ids = [record.record_identity().as_text() for record in claim_records]
         if len(set(record_ids)) != len(record_ids):
-            raise AuthorityV2ValidationError("V2 claim record identities must be unique")
+            raise AuthorityV2ValidationError(
+                "V2 claim record identities must be unique",
+                code=AuthorityV2ValidationCode.HOST_CLAIM_RECORD_INVALID,
+                location="cross_deck_host_binding_claim_records.record_id",
+                record_ids=tuple(record_ids),
+            )
         claim_ids = [claim.identity().as_text() for claim in claims]
+        admitted_claims_by_id: dict[str, CrossDeckHostBindingClaimV1] = {}
+        claim_record_ids_by_claim_id: dict[str, list[str]] = {}
+        for record in claim_records:
+            claim_id = record.claim.identity().as_text()
+            prior_claim = admitted_claims_by_id.get(claim_id)
+            if prior_claim is not None and prior_claim != record.claim:
+                raise AuthorityV2ValidationError(
+                    "accepted claim records disagree for one hbc.v1 identity",
+                    code=AuthorityV2ValidationCode.HOST_CLAIM_RECORD_INVALID,
+                    location="cross_deck_host_binding_claim_records.claim_id",
+                    claim_ids=(claim_id,),
+                )
+            admitted_claims_by_id[claim_id] = record.claim
+            claim_record_ids_by_claim_id.setdefault(claim_id, []).append(
+                record.record_identity().as_text()
+            )
         if claim_records and b2_bindings is None:
             raise AuthorityV2ValidationError(
                 "V2 host-binding claims require the complete B2 catalog/classification/closure set"
@@ -392,7 +475,9 @@ class AuthorityV2Validator:
             }
             if actual_event_sources != expected_event_sources:
                 raise AuthorityV2ValidationError(
-                    "V2 claim acceptance source bindings are not the exact claim closure"
+                    "V2 claim acceptance source bindings are not the exact claim closure",
+                    code=AuthorityV2ValidationCode.HOST_SOURCE_CLOSURE_MISMATCH,
+                    location="cross_deck_host_binding_claim_records.acceptance",
                 )
             used_bindings.update(actual_event_sources)
             used_bindings.add(
@@ -414,13 +499,17 @@ class AuthorityV2Validator:
             for claim_id in link.host_binding_claim_ids:
                 if claim_id not in claim_ids:
                     raise AuthorityV2ValidationError(
-                        f"application link references unknown claim {claim_id!r}"
+                        f"application link references unknown claim {claim_id!r}",
+                        code=AuthorityV2ValidationCode.HOST_CLAIM_UNKNOWN,
+                        location="application_host_bindings.host_binding_claim_ids",
+                        claim_ids=(claim_id,),
                     )
 
         supersessions: list[CrossDeckHostBindingClaimSupersessionV1] = []
         superseded_record_ids: set[str] = set()
         known_record_ids = {record.record_identity().as_text() for record in claim_records}
         successor_by_record: dict[str, str | None] = {}
+        supersession_by_record: dict[str, CrossDeckHostBindingClaimSupersessionV1] = {}
         for item in raw_supersessions:
             supersession = self._parse_supersession(item)
             superseded = supersession.superseded_record_id.as_text()
@@ -436,6 +525,7 @@ class AuthorityV2Validator:
             if replacement is not None and replacement not in known_record_ids:
                 raise AuthorityV2ValidationError("V2 supersession replacement is unknown")
             successor_by_record[superseded] = replacement
+            supersession_by_record[superseded] = supersession
             superseded_record_ids.add(superseded)
             supersessions.append(supersession)
             for evidence in supersession.source_evidence_refs:
@@ -465,7 +555,9 @@ class AuthorityV2Validator:
             }
             if actual_event_sources != expected_event_sources:
                 raise AuthorityV2ValidationError(
-                    "V2 supersession acceptance source bindings are not the exact closure"
+                    "V2 supersession acceptance source bindings are not the exact closure",
+                    code=AuthorityV2ValidationCode.HOST_SOURCE_CLOSURE_MISMATCH,
+                    location="cross_deck_host_binding_claim_supersession_records.acceptance",
                 )
             used_bindings.update(actual_event_sources)
             used_bindings.add(
@@ -497,13 +589,23 @@ class AuthorityV2Validator:
             if record.record_identity().as_text() not in superseded_record_ids
         )
         current_claim_by_id: dict[str, CrossDeckHostBindingClaimV1] = {}
+        current_record_by_claim_id: dict[str, str] = {}
         for record in current_records:
             claim_id = record.claim.identity().as_text()
             if claim_id in current_claim_by_id:
                 raise AuthorityV2ValidationError(
-                    "multiple current record revisions exist for one host-binding claim"
+                    "multiple current record revisions exist for one host-binding claim",
+                    code=AuthorityV2ValidationCode.HOST_BINDING_AMBIGUOUS,
+                    location="cross_deck_host_binding_claim_records",
+                    record_ids=(
+                        current_record_by_claim_id[claim_id],
+                        record.record_identity().as_text(),
+                    ),
+                    claim_ids=(claim_id,),
+                    member_key=record.claim.member_key,
                 )
             current_claim_by_id[claim_id] = record.claim
+            current_record_by_claim_id[claim_id] = record.record_identity().as_text()
         current_claims = tuple(current_claim_by_id.values())
         application_members, expected_hosts, member_sources = self._v1_application_facts(
             dict(base_document),
@@ -529,7 +631,12 @@ class AuthorityV2Validator:
                     None,
                 )
                 if claim is None:
-                    raise AuthorityV2ValidationError("application link lacks a current claim")
+                    raise AuthorityV2ValidationError(
+                        "application link lacks a current claim",
+                        code=AuthorityV2ValidationCode.HOST_CLAIM_NOT_CURRENT,
+                        location="application_host_bindings.host_binding_claim_ids",
+                        claim_ids=(claim_id,),
+                    )
                 member_source = member_sources.get(_member_key_bytes(claim.member_key))
                 if member_source is None or pair_binding is None:
                     raise AuthorityV2ValidationError(
@@ -550,10 +657,12 @@ class AuthorityV2Validator:
         actual_bindings = {encode_canonical(binding.to_cbor()) for binding in source_bindings}
         if actual_bindings != used_bindings:
             raise AuthorityV2ValidationError(
-                "V2 source_bindings are not the exact used binding set"
+                "V2 source_bindings are not the exact used binding set",
+                code=AuthorityV2ValidationCode.HOST_SOURCE_CLOSURE_MISMATCH,
+                location="source_bindings",
             )
 
-        return AuthorityV2ValidationResult(
+        validation_result = AuthorityV2ValidationResult(
             valid=True,
             counts=MappingProxyType(
                 {
@@ -562,6 +671,80 @@ class AuthorityV2Validator:
                     "cross_deck_host_binding_claim_supersession_records": len(raw_supersessions),
                 }
             ),
+        )
+        current_claims_by_member: dict[bytes, tuple[ApplicationMemberKeyV1, str]] = {}
+        for claim_id, claim in current_claim_by_id.items():
+            member_key = _member_key_bytes(claim.member_key)
+            if member_key in current_claims_by_member:
+                raise AuthorityV2ValidationError(
+                    "multiple current host claims exist for one member",
+                    code=AuthorityV2ValidationCode.HOST_BINDING_AMBIGUOUS,
+                    location="current_claims_by_member",
+                    claim_ids=(current_claims_by_member[member_key][1], claim_id),
+                    member_key=claim.member_key,
+                )
+            current_claims_by_member[member_key] = (claim.member_key, claim_id)
+
+        record_status: dict[str, HostBindingClaimRecordStatus] = {}
+        for record in claim_records:
+            record_id = record.record_identity().as_text()
+            supersession = supersession_by_record.get(record_id)
+            if supersession is None:
+                record_status[record_id] = HostBindingClaimRecordStatus.CURRENT
+            elif supersession.replacement_record_id is None:
+                record_status[record_id] = HostBindingClaimRecordStatus.REVOKED
+            else:
+                record_status[record_id] = HostBindingClaimRecordStatus.SUPERSEDED
+
+        read_model = HostBindingAuthorityV2ReadModel(
+            base_authority_v1_binding=base_binding,
+            candidate_universe_binding=candidate_binding,
+            admitted_claims_by_id=tuple(
+                sorted(
+                    admitted_claims_by_id.items(),
+                    key=lambda item: encode_canonical(item[0]),
+                )
+            ),
+            current_claims_by_id=tuple(
+                sorted(
+                    current_claim_by_id.items(),
+                    key=lambda item: encode_canonical(item[0]),
+                )
+            ),
+            current_claims_by_member=tuple(
+                sorted(
+                    current_claims_by_member.values(),
+                    key=lambda item: _member_key_bytes(item[0]),
+                )
+            ),
+            claim_record_status_by_record_id=tuple(
+                sorted(
+                    record_status.items(),
+                    key=lambda item: encode_canonical(item[0]),
+                )
+            ),
+            claim_record_ids_by_claim_id=tuple(
+                sorted(
+                    (
+                        (
+                            claim_id,
+                            tuple(
+                                sorted(
+                                    record_ids_for_claim,
+                                    key=lambda item: encode_canonical(item),
+                                )
+                            ),
+                        )
+                        for claim_id, record_ids_for_claim in claim_record_ids_by_claim_id.items()
+                    ),
+                    key=lambda item: encode_canonical(item[0]),
+                ),
+            ),
+            used_source_bindings=tuple(source_bindings),
+        )
+        return AuthorityV2AdmissionResult(
+            validation_result=validation_result,
+            read_model=read_model,
         )
 
     def _validate_acceptance_event(
@@ -818,7 +1001,11 @@ class AuthorityV2Validator:
         try:
             return host_binding_claim_supersession_from_wire(value)
         except HostBindingContractError as exc:
-            raise AuthorityV2ValidationError(str(exc)) from exc
+            raise AuthorityV2ValidationError(
+                str(exc),
+                code=AuthorityV2ValidationCode.HOST_CLAIM_RECORD_INVALID,
+                location="cross_deck_host_binding_claim_supersession_records",
+            ) from exc
 
     @staticmethod
     def _v1_application_facts(
@@ -1049,8 +1236,12 @@ class AuthorityV2Validator:
 
 
 __all__ = [
+    "AuthorityV2AdmissionResult",
+    "AuthorityV2ValidationCode",
     "AuthorityV2ValidationError",
     "AuthorityV2ValidationResult",
     "AuthorityV2Validator",
+    "HostBindingAuthorityV2ReadModel",
+    "HostBindingClaimRecordStatus",
     "validate_application_host_closure",
 ]

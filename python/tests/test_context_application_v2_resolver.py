@@ -345,6 +345,11 @@ class ContextApplicationV2ResolverTests(unittest.TestCase):
                     )
                 )
 
+    def test_noncanonical_source_set_is_rejected_not_normalized(self) -> None:
+        expected = canonical_source_bindings((BASE, MODEL))
+        with self.assertRaises(ContextApplicationV2ResolutionError):
+            require_exact_source_set(tuple(reversed(expected)), expected)
+
     def test_model_evidence_maps_to_exact_v2_binding(self) -> None:
         evidence = EvidenceRefV1(
             authority_kind="model",
@@ -1150,7 +1155,6 @@ class ContextApplicationV2ResolverTests(unittest.TestCase):
                 subject,
                 roster_ref,
                 base_authority_binding=base_binding,
-                host_bindings=(host_authority_binding, claim_bindings[claim_a_id]),
             )
             acceptance_subject = AcceptanceSubjectPayloadV3(
                 AcceptanceSubjectKindV3.CONTEXT_APPLICATION_V2_RECORD,
@@ -1220,6 +1224,8 @@ class ContextApplicationV2ResolverTests(unittest.TestCase):
                         candidate_v2_binding,
                         *event_expected_a,
                         event_leaf_binding,
+                        host_authority_binding,
+                        claim_bindings[claim_a_id],
                     )
                 ),
                 context_application_v2_records=(record_a,),
@@ -1239,6 +1245,10 @@ class ContextApplicationV2ResolverTests(unittest.TestCase):
             expected_container_ab = resolver.expected_container_source_closure_v2(container_ab)
             resolved_event = resolver.resolve_review_event_leaf_v3(event_ref_v3)
             self.assertEqual(resolved_event.event.source_binding_digests, event_expected_a)
+            self.assertNotIn(
+                host_authority_binding,
+                resolved_event.event.source_binding_digests,
+            )
             self.assertEqual(
                 expected_container_a,
                 tuple(
@@ -1247,6 +1257,7 @@ class ContextApplicationV2ResolverTests(unittest.TestCase):
                     if binding != claim_bindings[claim_b_id]
                 ),
             )
+            self.assertIn(host_authority_binding, expected_container_a)
             self.assertIn(claim_bindings[claim_b_id], expected_container_ab)
             self.assertNotIn(
                 claim_bindings[claim_b_id], resolved_event.event.source_binding_digests
@@ -1630,6 +1641,13 @@ class ContextApplicationV2ResolverTests(unittest.TestCase):
         self.assertNotIn(
             "host_bindings",
             inspect.signature(resolver.validate_event_source_closure_v3).parameters,
+        )
+
+    def test_context_application_event_closure_seam_has_no_host_binding_parameter(self) -> None:
+        resolver = ContextApplicationV2Resolver(AuthoritySourceResolver(Path.cwd()))
+        self.assertNotIn(
+            "host_bindings",
+            inspect.signature(resolver._expected_acceptance_source_closure_v3).parameters,
         )
 
     def test_base_authority_is_v1_validated_before_dependency_walk(self) -> None:

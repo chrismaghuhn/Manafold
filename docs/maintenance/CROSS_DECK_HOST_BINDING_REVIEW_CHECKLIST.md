@@ -32,8 +32,11 @@ interaction proof, an application record, or a human acceptance event.
   ordering, capability names, or co-occurrence.
 - Verify the claim is linked to semantic V1 Application IDs, not accepted
   Application Record IDs, and that member-atomic claims cover the exact
-  application member set. Every current V1 Relation, Domain, and Context
-  Application requires exactly one such host-binding link.
+  required member set. The required set contains only members whose verified
+  Candidate record has `scope == cross_deck` and `relation ==
+  directional_binary`; non-applicable members require no HostBinding claim.
+  A mixed application covers only that subset, and an application with an
+  empty required set has no host-binding link.
 - Verify the current claim/supersession graph and reject revoked,
   superseded, duplicate, or cross-snapshot claims.
 - A supersession identity is computed from its payload before acceptance

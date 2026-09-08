@@ -1146,7 +1146,6 @@ class ContextApplicationV2Resolver:
         reviewer_roster_ref: ReviewerRosterRefV1,
         *,
         base_authority_binding: ContextAuthoritySourceBindingV2 | None = None,
-        host_bindings: Sequence[ContextAuthoritySourceBindingV2] = (),
     ) -> tuple[ContextAuthoritySourceBindingV2, ...]:
         """Reconstruct a V3 event closure without reading its source list."""
 
@@ -1201,7 +1200,6 @@ class ContextApplicationV2Resolver:
             available_bindings=available,
             b2_evidence_roles=b2_roles,
             b1_citation=b1,
-            host_bindings=host_bindings,
         )
         for binding in expected:
             self.resolve_source_binding(binding)
@@ -1371,20 +1369,10 @@ class ContextApplicationV2Resolver:
                 reference.raw_sha256,
             )
             resolved_event = self.resolve_review_event_leaf_v3(reference)
-            event_host_bindings = (
-                self._container_host_bindings_for_application(
-                    container,
-                    record.application_id.as_text(),
-                    source_bindings,
-                )
-                if isinstance(record, ContextApplicationV2Record)
-                else ()
-            )
             expected_event = self._expected_acceptance_source_closure_v3(
                 record,
                 resolved_event.event.reviewer_roster_ref,
                 base_authority_binding=container.base_authority_v1_binding,
-                host_bindings=event_host_bindings,
             )
             require_exact_source_set(resolved_event.event.source_binding_digests, expected_event)
             event_leaf_bindings.append(event_leaf)
