@@ -45,8 +45,13 @@ ACCEPTANCE_SUBJECT_INPUT_SCHEMA_V3: Final = "manafold.m2.5.c.acceptance-subject-
 ACCEPTANCE_EVENT_SCHEMA_V3: Final = "manafold.m2.5.c.review-acceptance-event.v3"
 ACCEPTANCE_EVENT_INPUT_SCHEMA_V3: Final = "manafold.m2.5.c.review-acceptance-event-input.v3"
 ACCEPTANCE_CHECKLIST_V2: Final = "interaction-authority-review-checklist.v2"
+ACCEPTANCE_CHECKLIST_V3: Final = "interaction-authority-review-checklist.v3"
 CANDIDATE_IDENTITY_DOMAIN: Final = "manafold.m2.5.c.candidate-identity.v1"
 CANDIDATE_IDENTITY_INPUT_SCHEMA: Final = "manafold.m2.5.c.candidate-identity-input.v1"
+ACCEPTANCE_SUBJECT_SCHEMA_V4: Final = "manafold.m2.5.c.acceptance-subject-payload.v4"
+ACCEPTANCE_SUBJECT_INPUT_SCHEMA_V4: Final = "manafold.m2.5.c.acceptance-subject-payload-input.v4"
+ACCEPTANCE_EVENT_SCHEMA_V4: Final = "manafold.m2.5.c.review-acceptance-event.v4"
+ACCEPTANCE_EVENT_INPUT_SCHEMA_V4: Final = "manafold.m2.5.c.review-acceptance-event-input.v4"
 
 _RAW_REV3_PATHS: Final = frozenset(
     {
@@ -204,6 +209,8 @@ class AuthorityIdentityKind(str, Enum):
     CONTEXT_SUPERSESSION_RECORD_V2 = "context_supersession_record_v2"
     ACCEPTANCE_SUBJECT_V3 = "acceptance_subject_v3"
     REVIEW_ACCEPTANCE_EVENT_V3 = "review_acceptance_event_v3"
+    ACCEPTANCE_SUBJECT_V4 = "acceptance_subject_v4"
+    REVIEW_ACCEPTANCE_EVENT_V4 = "review_acceptance_event_v4"
 
 
 class ContextBridgeRelationV2(str, Enum):
@@ -214,6 +221,35 @@ class ContextBridgeRelationV2(str, Enum):
 class AcceptanceSubjectKindV3(str, Enum):
     CONTEXT_APPLICATION_V2_RECORD = "context_application_v2_record"
     CONTEXT_APPLICATION_V2_SUPERSESSION_RECORD = "context_application_v2_supersession_record"
+
+
+class AcceptanceSubjectKindV4(str, Enum):
+    RELATION_APPLICATION_V2_RECORD = "relation_application_v2_record"
+    RELATION_APPLICATION_V2_SUPERSESSION_RECORD = "relation_application_v2_supersession_record"
+    CONTEXT_APPLICATION_V3_RECORD = "context_application_v3_record"
+    CONTEXT_APPLICATION_V3_SUPERSESSION_RECORD = "context_application_v3_supersession_record"
+
+
+class ReviewAuthorityArtifactRoleV4(str, Enum):
+    DECLARED_MODEL = "declared_model"
+    CANDIDATE_UNIVERSE = "candidate_universe"
+    REV3_CANDIDATE_CENSUS = "rev3_candidate_census"
+    REV3_DECK_ROW_SOURCE_RESOLUTION = "rev3_deck_row_source_resolution"
+    REV3_OSI_SOURCE_RECORDS = "rev3_osi_source_records"
+    REV3_SOURCE_INDEX = "rev3_source_index"
+    B2_CATALOG = "b2_catalog"
+    B2_CLASSIFICATIONS = "b2_classifications"
+    B2_CLOSURE = "b2_closure"
+    B1_FINAL_CITATIONS = "b1_final_citations"
+    B1_FINAL_CLOSURE = "b1_final_closure"
+    REVIEWER_ROSTER_LEAF = "reviewer_roster_leaf"
+    ACCEPTANCE_EVENT_LEAF_V1 = "acceptance_event_leaf_v1"
+    ACCEPTANCE_EVENT_LEAF_V4 = "acceptance_event_leaf_v4"
+
+
+REVIEW_AUTHORITY_SOURCE_ROLES_V4: Final = tuple(
+    role.value for role in ReviewAuthorityArtifactRoleV4
+)
 
 
 class ContextAuthorityArtifactRoleV2(str, Enum):
@@ -454,6 +490,16 @@ _IDENTITY_SPECS: Final[dict[AuthorityIdentityKind, _IdentitySpec]] = {
         ACCEPTANCE_EVENT_SCHEMA_V3,
         ACCEPTANCE_EVENT_INPUT_SCHEMA_V3,
     ),
+    AuthorityIdentityKind.ACCEPTANCE_SUBJECT_V4: _IdentitySpec(
+        "asp.v4/",
+        ACCEPTANCE_SUBJECT_SCHEMA_V4,
+        ACCEPTANCE_SUBJECT_INPUT_SCHEMA_V4,
+    ),
+    AuthorityIdentityKind.REVIEW_ACCEPTANCE_EVENT_V4: _IdentitySpec(
+        "ae.v4/",
+        ACCEPTANCE_EVENT_SCHEMA_V4,
+        ACCEPTANCE_EVENT_INPUT_SCHEMA_V4,
+    ),
 }
 _IDENTITY_ARITIES: Final[dict[AuthorityIdentityKind, int]] = {
     AuthorityIdentityKind.RELATION_THEOREM: 12,
@@ -479,6 +525,8 @@ _IDENTITY_ARITIES: Final[dict[AuthorityIdentityKind, int]] = {
     AuthorityIdentityKind.CONTEXT_SUPERSESSION_RECORD_V2: 3,
     AuthorityIdentityKind.ACCEPTANCE_SUBJECT_V3: 3,
     AuthorityIdentityKind.REVIEW_ACCEPTANCE_EVENT_V3: 10,
+    AuthorityIdentityKind.ACCEPTANCE_SUBJECT_V4: 3,
+    AuthorityIdentityKind.REVIEW_ACCEPTANCE_EVENT_V4: 10,
 }
 
 
@@ -2391,6 +2439,209 @@ def _validate_acceptance_event_input(value: list[object]) -> None:
     _validate_acceptance_evidence_refs(value[9])
 
 
+_V4_STATIC_SOURCE_BINDINGS: Final = {
+    "declared_model": (
+        "sources/m2_5/closures/C/declared_interaction_model.v2.json",
+        "manafold.m2.5.c.declared-interaction-model.v2",
+    ),
+    "candidate_universe": (
+        "sources/m2_5/closures/C/interaction_candidate_universe.v2.json",
+        "manafold.m2.5.c.interaction-candidate-universe.v2",
+    ),
+    "b2_catalog": (
+        "sources/m2_5/closures/B2/requirement_family_catalog.v1.json",
+        "manafold.m2.5.b2.requirement-family-catalog.v1",
+    ),
+    "b2_classifications": (
+        "sources/m2_5/closures/B2/card_semantic_classifications.v1.json",
+        "manafold.m2.5.b2.card-semantic-classifications.v1",
+    ),
+    "b2_closure": (
+        "sources/m2_5/closures/B2/classification_closure.v1.json",
+        "manafold.m2.5.b2.classification-closure.v1",
+    ),
+    "b1_final_citations": (
+        "sources/m2_5/closures/B1/official_authority_citations.v3.json",
+        "manafold.m2.5.b1.official-authority-citations.v3",
+    ),
+    "b1_final_closure": (
+        "sources/m2_5/closures/B1/official_authority_citation_closure.v2.json",
+        "manafold.m2.5.b1.official-authority-citation-closure.v2",
+    ),
+}
+_V4_RAW_REV3_SOURCE_ROLES: Final = {
+    "derived/Pair_Interaction_Census_REV3.csv": "rev3_candidate_census",
+    "inputs/deck_row_source_resolution_REV3.csv": "rev3_deck_row_source_resolution",
+    "source/raw/oracle_cards_selected_REV3.jsonl": "rev3_osi_source_records",
+    "source/raw/source_record_index_REV3.csv": "rev3_source_index",
+}
+
+
+def _validate_v4_source_binding_array(value: object) -> None:
+    fields = _array(value, "V4 source binding", 4)
+    role = _enum(fields[0], REVIEW_AUTHORITY_SOURCE_ROLES_V4, "V4 source binding role")
+    path = _text(fields[1], "V4 source binding path")
+    schema = fields[2]
+    if schema is not None:
+        _text(schema, "V4 source binding schema")
+    _bytes32(fields[3], "V4 source binding digest")
+    if role in _V4_STATIC_SOURCE_BINDINGS:
+        expected_path, expected_schema = _V4_STATIC_SOURCE_BINDINGS[role]
+        if path != expected_path or schema != expected_schema:
+            _fail("V4 source binding role/path/schema mismatch")
+    elif role in _V4_RAW_REV3_SOURCE_ROLES.values():
+        if _V4_RAW_REV3_SOURCE_ROLES.get(path) != role or schema is not None:
+            _fail("V4 raw REV3 source binding role/path/schema mismatch")
+    elif role == "reviewer_roster_leaf":
+        if (
+            re.fullmatch(r"sources/m2_5/authorities/reviewer_rosters/v1/[0-9a-f]{64}\.json", path)
+            is None
+            or schema != REVIEWER_ROSTER_SCHEMA_V1
+        ):
+            _fail("V4 reviewer roster source binding mismatch")
+    elif role == "acceptance_event_leaf_v1":
+        if (
+            re.fullmatch(
+                r"sources/m2_5/authorities/review_acceptance_events/v1/[0-9a-f]{64}\.json", path
+            )
+            is None
+            or schema != ACCEPTANCE_EVENT_SCHEMA_V1
+        ):
+            _fail("V4 V1 acceptance event source binding mismatch")
+    elif role == "acceptance_event_leaf_v4":
+        if (
+            re.fullmatch(
+                r"sources/m2_5/authorities/review_acceptance_events/v4/[0-9a-f]{64}\.json", path
+            )
+            is None
+            or schema != ACCEPTANCE_EVENT_SCHEMA_V4
+        ):
+            _fail("V4 acceptance event source binding mismatch")
+
+
+def _validate_v4_members(value: object, label: str) -> None:
+    members = _array(value, label)
+    if not members:
+        _fail(f"{label} must be non-empty")
+    _canonical_array(members, lambda item: _validate_cbor_value(item, label), label)
+
+
+def _validate_acceptance_subject_v4_payload(subject_kind: str, payload: object) -> None:
+    fields = _array(payload, "V4 acceptance subject payload")
+    if not fields or fields[0] != subject_kind:
+        _fail("V4 acceptance subject payload kind marker is inconsistent")
+    if subject_kind == AcceptanceSubjectKindV4.RELATION_APPLICATION_V2_RECORD.value:
+        if len(fields) != 5:
+            _fail("V4 relation application subject payload must contain five fields")
+        _bytes32(fields[1], "V4 relation application ID")
+        _bytes32(fields[2], "V4 relation theorem record ID")
+        _enum(fields[3], _TERMINAL_DISPOSITIONS, "V4 terminal disposition")
+        _validate_v4_members(fields[4], "V4 relation application members")
+        return
+    if subject_kind == AcceptanceSubjectKindV4.CONTEXT_APPLICATION_V3_RECORD.value:
+        if len(fields) != 4:
+            _fail("V4 context application subject payload must contain four fields")
+        _bytes32(fields[1], "V4 context application ID")
+        _bytes32(fields[2], "V4 context theorem record ID")
+        _validate_v4_members(fields[3], "V4 context application members")
+        return
+    if len(fields) != 8:
+        _fail("V4 supersession subject payload must contain eight fields")
+    _bytes32(fields[1], "V4 supersession ID")
+    _bytes32(fields[2], "V4 superseded record ID")
+    if fields[3] is not None:
+        _bytes32(fields[3], "V4 replacement record ID")
+    expected_kind = (
+        "relation_application_v2_record"
+        if subject_kind == AcceptanceSubjectKindV4.RELATION_APPLICATION_V2_SUPERSESSION_RECORD.value
+        else "context_application_v3_record"
+    )
+    if fields[4] != expected_kind:
+        _fail("V4 superseded record kind is inconsistent")
+    if fields[3] is None:
+        if fields[5] is not None or fields[6] != SupersessionReason.AUTHORITY_REVOCATION.value:
+            _fail("V4 revocation replacement fields are inconsistent")
+    elif fields[5] != expected_kind or fields[6] == SupersessionReason.AUTHORITY_REVOCATION.value:
+        _fail("V4 replacement record fields are inconsistent")
+    _enum(fields[6], tuple(reason.value for reason in SupersessionReason), "V4 supersession reason")
+    _validate_nonempty_evidence_refs(fields[7], "V4 supersession source evidence")
+
+
+def _validate_acceptance_subject_v4_input(values: list[object]) -> None:
+    if len(values) != 3 or values[0] != ACCEPTANCE_SUBJECT_INPUT_SCHEMA_V4:
+        _fail("V4 acceptance subject input is not the closed three-field shape")
+    kind = _enum(
+        values[1],
+        tuple(subject_kind.value for subject_kind in AcceptanceSubjectKindV4),
+        "V4 acceptance subject kind",
+    )
+    _validate_acceptance_subject_v4_payload(kind, values[2])
+
+
+def _validate_acceptance_event_v4_input(values: list[object]) -> None:
+    if len(values) != 10 or values[0] != ACCEPTANCE_EVENT_INPUT_SCHEMA_V4:
+        _fail("V4 acceptance event input must contain the exact ten fields")
+    _enum(
+        values[1],
+        tuple(subject_kind.value for subject_kind in AcceptanceSubjectKindV4),
+        "V4 acceptance event subject kind",
+    )
+    subject_reference = DigestReferenceV1.from_cbor(values[2])
+    if (
+        subject_reference.semantic_domain != ACCEPTANCE_SUBJECT_SCHEMA_V4
+        or subject_reference.input_schema_id != ACCEPTANCE_SUBJECT_INPUT_SCHEMA_V4
+    ):
+        _fail("V4 acceptance event subject digest has the wrong contract")
+    if values[3] != "human_accepted":
+        _fail("V4 acceptance event decision is not human_accepted")
+    _validate_roster_ref_array(values[4])
+    bindings = _array(values[5], "V4 reviewer role bindings")
+    if not bindings:
+        _fail("V4 reviewer role bindings must be non-empty")
+    _canonical_array(bindings, _validate_role_binding, "V4 reviewer role bindings")
+    reviewer_ids = [
+        cast(str, _array(binding, "V4 reviewer role binding", 2)[0]) for binding in bindings
+    ]
+    if reviewer_ids != sorted(reviewer_ids) or len(set(reviewer_ids)) != len(reviewer_ids):
+        _fail("V4 reviewer role bindings must be sorted by reviewer ID and duplicate-free")
+    required_roles = {
+        "architecture_maintainer",
+        "rules_authority_maintainer",
+        "conformance_maintainer",
+        "information_safety_reviewer",
+    }
+    observed_roles = {
+        role
+        for binding in bindings
+        for role in _array(_array(binding, "V4 reviewer role binding", 2)[1], "V4 reviewer roles")
+    }
+    if not required_roles.issubset(observed_roles):
+        _fail("V4 reviewer role bindings must contain all required roles")
+    _enum(
+        values[6],
+        (ReviewMode.MULTI_REVIEWER.value, ReviewMode.SOLO_SEPARATE_SELF_REVIEW.value),
+        "V4 review mode",
+    )
+    if values[7] != ACCEPTANCE_CHECKLIST_V3:
+        _fail("V4 acceptance checklist is not the V3 contract")
+    source_bindings = _array(values[8], "V4 acceptance source bindings")
+    if not source_bindings:
+        _fail("V4 acceptance source bindings must be non-empty")
+    _canonical_array(
+        source_bindings, _validate_v4_source_binding_array, "V4 acceptance source bindings"
+    )
+    source_keys = [
+        (
+            cast(str, _array(binding, "V4 source binding", 4)[0]),
+            cast(str, _array(binding, "V4 source binding", 4)[1]),
+        )
+        for binding in source_bindings
+    ]
+    if len(set(source_keys)) != len(source_keys):
+        _fail("V4 source bindings must be duplicate-free by role and path")
+    _validate_acceptance_evidence_refs(values[9])
+
+
 def _validate_kind_payload(kind: AuthorityIdentityKind, fields: list[AuthorityValue]) -> None:
     values = cast(list[object], fields)
     if kind is AuthorityIdentityKind.RELATION_THEOREM:
@@ -2477,6 +2728,10 @@ def _validate_kind_payload(kind: AuthorityIdentityKind, fields: list[AuthorityVa
         _validate_acceptance_subject_v3_input(values)
     elif kind is AuthorityIdentityKind.REVIEW_ACCEPTANCE_EVENT_V3:
         _validate_acceptance_event_v3_input(values)
+    elif kind is AuthorityIdentityKind.ACCEPTANCE_SUBJECT_V4:
+        _validate_acceptance_subject_v4_input(values)
+    elif kind is AuthorityIdentityKind.REVIEW_ACCEPTANCE_EVENT_V4:
+        _validate_acceptance_event_v4_input(values)
 
 
 @dataclass(frozen=True)
@@ -3581,6 +3836,240 @@ class ReviewAcceptanceEventLeafV3:
             ],
             "review_mode": event.review_mode.value,
             "checklist_id": ACCEPTANCE_CHECKLIST_V2,
+            "source_binding_digests": [
+                binding.to_wire() for binding in event.source_binding_digests
+            ],
+            "review_evidence_refs": [evidence.to_wire() for evidence in event.review_evidence_refs],
+        }
+
+
+@dataclass(frozen=True)
+class ReviewAuthoritySourceBindingV4:
+    artifact_role: str
+    path: str
+    schema: str | None
+    raw_sha256: bytes
+
+    def __post_init__(self) -> None:
+        _validate_v4_source_binding_array(self.to_cbor())
+
+    def to_cbor(self) -> list[AuthorityValue]:
+        return [self.artifact_role, self.path, self.schema, self.raw_sha256]
+
+    def to_wire(self) -> dict[str, object]:
+        return {
+            "artifact_role": self.artifact_role,
+            "path": self.path,
+            "schema": self.schema,
+            "raw_sha256": self.raw_sha256.hex(),
+        }
+
+
+def V1DependencySourceBindingToV4(
+    binding: SourceBindingDigestV1,
+) -> ReviewAuthoritySourceBindingV4:
+    if not isinstance(binding, SourceBindingDigestV1):
+        raise AuthorityContractError("V1 dependency source binding must be SourceBindingDigestV1")
+    if binding.artifact_role == "rev3_source":
+        role = _V4_RAW_REV3_SOURCE_ROLES.get(binding.path)
+        if role is None or binding.schema_or_null is not None:
+            raise AuthorityContractError("V1 REV3 dependency has no exact V4 projection")
+    else:
+        role = (
+            "acceptance_event_leaf_v1"
+            if binding.artifact_role == "acceptance_event_leaf"
+            else binding.artifact_role
+        )
+        if role not in REVIEW_AUTHORITY_SOURCE_ROLES_V4:
+            raise AuthorityContractError("V1 dependency role has no exact V4 projection")
+    return ReviewAuthoritySourceBindingV4(
+        role, binding.path, binding.schema_or_null, binding.raw_sha256
+    )
+
+
+v1_dependency_source_binding_to_v4 = V1DependencySourceBindingToV4
+
+
+@dataclass(frozen=True)
+class AcceptanceSubjectPayloadV4:
+    subject_kind: AcceptanceSubjectKindV4
+    subject_payload: list[AuthorityValue]
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.subject_kind, AcceptanceSubjectKindV4):
+            raise AuthorityContractError("V4 acceptance subject kind is not closed")
+        _validate_acceptance_subject_v4_payload(self.subject_kind.value, self.subject_payload)
+
+    def semantic_input(self) -> list[AuthorityValue]:
+        return [ACCEPTANCE_SUBJECT_INPUT_SCHEMA_V4, self.subject_kind.value, self.subject_payload]
+
+    def identity(self) -> AuthorityIdentityV1:
+        return compute_authority_identity(
+            AuthorityIdentityKind.ACCEPTANCE_SUBJECT_V4, self.semantic_input()
+        )
+
+    def to_cbor(self) -> list[AuthorityValue]:
+        return [self.subject_kind.value, self.subject_payload]
+
+
+@dataclass(frozen=True)
+class ReviewEventRefV4:
+    path: str
+    raw_sha256: bytes
+    event_id: str
+
+    def __post_init__(self) -> None:
+        _require_repo_relative_path(self.path, "V4 review event path")
+        _require_digest_bytes(self.raw_sha256, "V4 review event digest")
+        if re.fullmatch(r"ae\.v4/[0-9a-f]{64}", self.event_id) is None:
+            raise AuthorityContractError("V4 review event ID has the wrong namespace")
+        expected_path = (
+            "sources/m2_5/authorities/review_acceptance_events/v4/"
+            + self.event_id.removeprefix("ae.v4/")
+            + ".json"
+        )
+        if self.path != expected_path:
+            raise AuthorityContractError("V4 review event path is not bound to its event ID")
+
+    def to_cbor(self) -> list[AuthorityValue]:
+        return [self.path, self.raw_sha256, ["event_id", self.event_id]]
+
+    def to_wire(self) -> dict[str, object]:
+        return {"event_id": self.event_id, "path": self.path, "raw_sha256": self.raw_sha256.hex()}
+
+
+@dataclass(frozen=True)
+class ReviewAcceptanceEventInputV4:
+    subject_kind: AcceptanceSubjectKindV4
+    subject_payload_digest_reference: DigestReferenceV1
+    reviewer_roster_ref: ReviewerRosterRefV1
+    reviewer_role_bindings: tuple[ReviewerRoleBindingV1, ...]
+    review_mode: ReviewMode
+    source_binding_digests: tuple[ReviewAuthoritySourceBindingV4, ...]
+    review_evidence_refs: tuple[AcceptanceEvidenceRefV1, ...]
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.subject_kind, AcceptanceSubjectKindV4):
+            raise AuthorityContractError("V4 acceptance subject kind is not closed")
+        if not isinstance(self.reviewer_roster_ref, ReviewerRosterRefV1):
+            raise AuthorityContractError("V4 reviewer roster reference is not V1")
+        if any(
+            not isinstance(binding, ReviewerRoleBindingV1)
+            for binding in self.reviewer_role_bindings
+        ):
+            raise AuthorityContractError("V4 reviewer role binding is not V1")
+        if any(
+            not isinstance(binding, ReviewAuthoritySourceBindingV4)
+            for binding in self.source_binding_digests
+        ):
+            raise AuthorityContractError("V4 source binding is not V4")
+        if any(
+            not isinstance(evidence, AcceptanceEvidenceRefV1)
+            for evidence in self.review_evidence_refs
+        ):
+            raise AuthorityContractError("V4 review evidence is not V1")
+        _validate_acceptance_event_v4_input(cast(list[object], self.semantic_input()))
+
+    def semantic_input(self) -> list[AuthorityValue]:
+        return [
+            ACCEPTANCE_EVENT_INPUT_SCHEMA_V4,
+            self.subject_kind.value,
+            self.subject_payload_digest_reference.to_cbor(),
+            "human_accepted",
+            self.reviewer_roster_ref.to_cbor(),
+            [binding.to_cbor() for binding in self.reviewer_role_bindings],
+            self.review_mode.value,
+            ACCEPTANCE_CHECKLIST_V3,
+            [binding.to_cbor() for binding in self.source_binding_digests],
+            [evidence.to_cbor() for evidence in self.review_evidence_refs],
+        ]
+
+    def identity(self) -> AuthorityIdentityV1:
+        return compute_authority_identity(
+            AuthorityIdentityKind.REVIEW_ACCEPTANCE_EVENT_V4, self.semantic_input()
+        )
+
+    def to_cbor(self) -> list[AuthorityValue]:
+        return self.semantic_input()
+
+
+def validate_v4_event_source_bindings(
+    event_id: AuthorityIdentityV1,
+    source_bindings: tuple[ReviewAuthoritySourceBindingV4, ...],
+) -> None:
+    if event_id.kind is not AuthorityIdentityKind.REVIEW_ACCEPTANCE_EVENT_V4:
+        raise AuthorityContractError("V4 event source validation requires an ae.v4 identity")
+    own_path = (
+        "sources/m2_5/authorities/review_acceptance_events/v4/"
+        + event_id.digest_bytes.hex()
+        + ".json"
+    )
+    if any(
+        binding.artifact_role == "acceptance_event_leaf_v4" and binding.path == own_path
+        for binding in source_bindings
+    ):
+        raise AuthorityContractError("V4 acceptance event cannot bind its own leaf")
+
+
+@dataclass(frozen=True)
+class ReviewAcceptanceEventLeafV4:
+    event_id: AuthorityIdentityV1
+    subject_kind: AcceptanceSubjectKindV4
+    subject_payload_digest_reference: DigestReferenceV1
+    reviewer_roster_ref: ReviewerRosterRefV1
+    reviewer_role_bindings: tuple[ReviewerRoleBindingV1, ...]
+    review_mode: ReviewMode
+    source_binding_digests: tuple[ReviewAuthoritySourceBindingV4, ...]
+    review_evidence_refs: tuple[AcceptanceEvidenceRefV1, ...]
+
+    @classmethod
+    def from_input(cls, event: ReviewAcceptanceEventInputV4) -> ReviewAcceptanceEventLeafV4:
+        return cls(
+            event.identity(),
+            event.subject_kind,
+            event.subject_payload_digest_reference,
+            event.reviewer_roster_ref,
+            event.reviewer_role_bindings,
+            event.review_mode,
+            event.source_binding_digests,
+            event.review_evidence_refs,
+        )
+
+    def __post_init__(self) -> None:
+        if self.event_id.kind is not AuthorityIdentityKind.REVIEW_ACCEPTANCE_EVENT_V4:
+            raise AuthorityContractError("V4 acceptance event ID has the wrong kind")
+        validate_v4_event_source_bindings(self.event_id, self.source_binding_digests)
+        if self.as_input().identity() != self.event_id:
+            raise AuthorityContractError("V4 acceptance event ID does not match its input")
+
+    def as_input(self) -> ReviewAcceptanceEventInputV4:
+        return ReviewAcceptanceEventInputV4(
+            self.subject_kind,
+            self.subject_payload_digest_reference,
+            self.reviewer_roster_ref,
+            self.reviewer_role_bindings,
+            self.review_mode,
+            self.source_binding_digests,
+            self.review_evidence_refs,
+        )
+
+    def to_cbor(self) -> list[AuthorityValue]:
+        return self.as_input().semantic_input()
+
+    def to_wire(self) -> dict[str, object]:
+        event = self.as_input()
+        return {
+            "event_id": self.event_id.as_text(),
+            "schema": ACCEPTANCE_EVENT_SCHEMA_V4,
+            "subject_kind": event.subject_kind.value,
+            "subject_payload_digest": event.subject_payload_digest_reference.to_wire(),
+            "decision": "human_accepted",
+            "reviewer_roster_ref": event.reviewer_roster_ref.to_wire(),
+            "reviewer_role_bindings": [
+                binding.to_wire() for binding in event.reviewer_role_bindings
+            ],
+            "review_mode": event.review_mode.value,
+            "checklist_id": ACCEPTANCE_CHECKLIST_V3,
             "source_binding_digests": [
                 binding.to_wire() for binding in event.source_binding_digests
             ],

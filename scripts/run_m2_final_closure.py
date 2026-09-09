@@ -714,6 +714,7 @@ SCHEMA_INVENTORY_ALLOWED: frozenset[str] = frozenset(
         "review-acceptance-event.v1.schema.json",
         "review-acceptance-event.v2.schema.json",
         "review-acceptance-event.v3.schema.json",
+        "review-acceptance-event.v4.schema.json",
         "reviewer-roster.v1.schema.json",
         "scope-impact-report.v1.schema.json",
         "supersession-record.v1.schema.json",

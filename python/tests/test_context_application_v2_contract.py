@@ -641,12 +641,14 @@ class ContextApplicationV2ContractTests(unittest.TestCase):
                 encoding="utf-8"
             )
         )
-        self.assertEqual(len(matrix["identities"]), 17)
+        historical = [
+            entry
+            for entry in matrix["identities"]
+            if entry["identity"].split("/", maxsplit=1)[0].endswith(".v1")
+        ]
+        self.assertEqual(len(historical), 17)
         self.assertTrue(
-            all(
-                entry["identity"].split("/", maxsplit=1)[0].endswith(".v1")
-                for entry in matrix["identities"]
-            )
+            all(entry["identity"].split("/", maxsplit=1)[0].endswith(".v1") for entry in historical)
         )
 
 

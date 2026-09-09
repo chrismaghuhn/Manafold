@@ -28,6 +28,13 @@ pub const ACCEPTANCE_EVENT_SCHEMA_V3: &str = "manafold.m2.5.c.review-acceptance-
 pub const ACCEPTANCE_EVENT_INPUT_SCHEMA_V3: &str =
     "manafold.m2.5.c.review-acceptance-event-input.v3";
 pub const ACCEPTANCE_CHECKLIST_V2: &str = "interaction-authority-review-checklist.v2";
+pub const ACCEPTANCE_CHECKLIST_V3: &str = "interaction-authority-review-checklist.v3";
+pub const ACCEPTANCE_SUBJECT_SCHEMA_V4: &str = "manafold.m2.5.c.acceptance-subject-payload.v4";
+pub const ACCEPTANCE_SUBJECT_INPUT_SCHEMA_V4: &str =
+    "manafold.m2.5.c.acceptance-subject-payload-input.v4";
+pub const ACCEPTANCE_EVENT_SCHEMA_V4: &str = "manafold.m2.5.c.review-acceptance-event.v4";
+pub const ACCEPTANCE_EVENT_INPUT_SCHEMA_V4: &str =
+    "manafold.m2.5.c.review-acceptance-event-input.v4";
 pub const CANDIDATE_IDENTITY_DOMAIN: &str = "manafold.m2.5.c.candidate-identity.v1";
 pub const CANDIDATE_IDENTITY_INPUT_SCHEMA: &str = "manafold.m2.5.c.candidate-identity-input.v1";
 
@@ -94,6 +101,8 @@ pub enum AuthorityIdentityKind {
     ContextSupersessionRecordV2,
     AcceptanceSubjectV3,
     ReviewAcceptanceEventV3,
+    AcceptanceSubjectV4,
+    ReviewAcceptanceEventV4,
 }
 
 impl AuthorityIdentityKind {
@@ -122,6 +131,8 @@ impl AuthorityIdentityKind {
             Self::ContextSupersessionRecordV2 => "cpsr.v2/",
             Self::AcceptanceSubjectV3 => "asp.v3/",
             Self::ReviewAcceptanceEventV3 => "ae.v3/",
+            Self::AcceptanceSubjectV4 => "asp.v4/",
+            Self::ReviewAcceptanceEventV4 => "ae.v4/",
         }
     }
 
@@ -152,6 +163,8 @@ impl AuthorityIdentityKind {
             }
             Self::AcceptanceSubjectV3 => "manafold.m2.5.c.acceptance-subject-payload.v3",
             Self::ReviewAcceptanceEventV3 => "manafold.m2.5.c.review-acceptance-event.v3",
+            Self::AcceptanceSubjectV4 => ACCEPTANCE_SUBJECT_SCHEMA_V4,
+            Self::ReviewAcceptanceEventV4 => ACCEPTANCE_EVENT_SCHEMA_V4,
         }
     }
 
@@ -182,6 +195,8 @@ impl AuthorityIdentityKind {
             Self::ContextSupersessionRecordV2 => CONTEXT_SUPERSESSION_RECORD_INPUT_SCHEMA_V2,
             Self::AcceptanceSubjectV3 => ACCEPTANCE_SUBJECT_INPUT_SCHEMA_V3,
             Self::ReviewAcceptanceEventV3 => ACCEPTANCE_EVENT_INPUT_SCHEMA_V3,
+            Self::AcceptanceSubjectV4 => ACCEPTANCE_SUBJECT_INPUT_SCHEMA_V4,
+            Self::ReviewAcceptanceEventV4 => ACCEPTANCE_EVENT_INPUT_SCHEMA_V4,
         }
     }
 
@@ -210,6 +225,8 @@ impl AuthorityIdentityKind {
             Self::ContextSupersessionRecordV2 => 3,
             Self::AcceptanceSubjectV3 => 3,
             Self::ReviewAcceptanceEventV3 => 10,
+            Self::AcceptanceSubjectV4 => 3,
+            Self::ReviewAcceptanceEventV4 => 10,
         }
     }
 }
@@ -2998,6 +3015,10 @@ fn validate_identity_payload(
         AuthorityIdentityKind::ReviewAcceptanceEventV3 => {
             validate_acceptance_event_v3_input(fields)
         }
+        AuthorityIdentityKind::AcceptanceSubjectV4 => validate_acceptance_subject_v4_input(fields),
+        AuthorityIdentityKind::ReviewAcceptanceEventV4 => {
+            validate_acceptance_event_v4_input(fields)
+        }
     }
 }
 
@@ -3140,6 +3161,85 @@ impl AcceptanceSubjectKindV3 {
         }
     }
 }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AcceptanceSubjectKindV4 {
+    RelationApplicationV2Record,
+    RelationApplicationV2SupersessionRecord,
+    ContextApplicationV3Record,
+    ContextApplicationV3SupersessionRecord,
+}
+
+impl AcceptanceSubjectKindV4 {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::RelationApplicationV2Record => "relation_application_v2_record",
+            Self::RelationApplicationV2SupersessionRecord => {
+                "relation_application_v2_supersession_record"
+            }
+            Self::ContextApplicationV3Record => "context_application_v3_record",
+            Self::ContextApplicationV3SupersessionRecord => {
+                "context_application_v3_supersession_record"
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ReviewAuthorityArtifactRoleV4 {
+    DeclaredModel,
+    CandidateUniverse,
+    Rev3CandidateCensus,
+    Rev3DeckRowSourceResolution,
+    Rev3OsiSourceRecords,
+    Rev3SourceIndex,
+    B2Catalog,
+    B2Classifications,
+    B2Closure,
+    B1FinalCitations,
+    B1FinalClosure,
+    ReviewerRosterLeaf,
+    AcceptanceEventLeafV1,
+    AcceptanceEventLeafV4,
+}
+
+impl ReviewAuthorityArtifactRoleV4 {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::DeclaredModel => "declared_model",
+            Self::CandidateUniverse => "candidate_universe",
+            Self::Rev3CandidateCensus => "rev3_candidate_census",
+            Self::Rev3DeckRowSourceResolution => "rev3_deck_row_source_resolution",
+            Self::Rev3OsiSourceRecords => "rev3_osi_source_records",
+            Self::Rev3SourceIndex => "rev3_source_index",
+            Self::B2Catalog => "b2_catalog",
+            Self::B2Classifications => "b2_classifications",
+            Self::B2Closure => "b2_closure",
+            Self::B1FinalCitations => "b1_final_citations",
+            Self::B1FinalClosure => "b1_final_closure",
+            Self::ReviewerRosterLeaf => "reviewer_roster_leaf",
+            Self::AcceptanceEventLeafV1 => "acceptance_event_leaf_v1",
+            Self::AcceptanceEventLeafV4 => "acceptance_event_leaf_v4",
+        }
+    }
+}
+
+pub const REVIEW_AUTHORITY_SOURCE_ROLES_V4: [&str; 14] = [
+    "declared_model",
+    "candidate_universe",
+    "rev3_candidate_census",
+    "rev3_deck_row_source_resolution",
+    "rev3_osi_source_records",
+    "rev3_source_index",
+    "b2_catalog",
+    "b2_classifications",
+    "b2_closure",
+    "b1_final_citations",
+    "b1_final_closure",
+    "reviewer_roster_leaf",
+    "acceptance_event_leaf_v1",
+    "acceptance_event_leaf_v4",
+];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ContextAuthorityArtifactRoleV2 {
@@ -4449,6 +4549,318 @@ impl ReviewAcceptanceEventLeafV3 {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ReviewAuthoritySourceBindingV4 {
+    pub artifact_role: String,
+    pub path: String,
+    pub schema: Option<String>,
+    pub raw_sha256: [u8; 32],
+}
+
+impl ReviewAuthoritySourceBindingV4 {
+    pub fn new(
+        artifact_role: impl Into<String>,
+        path: impl Into<String>,
+        schema: Option<&str>,
+        raw_sha256: [u8; 32],
+    ) -> Result<Self, PersistenceDecodeErrorV1> {
+        let artifact_role = artifact_role.into();
+        let path = path.into();
+        let schema = schema.map(str::to_owned);
+        validate_v4_source_binding(&artifact_role, &path, schema.as_deref())?;
+        Ok(Self {
+            artifact_role,
+            path,
+            schema,
+            raw_sha256,
+        })
+    }
+
+    pub fn to_cbor(&self) -> cbor::Value {
+        cbor::Value::Array(vec![
+            cbor::Value::Text(self.artifact_role.clone()),
+            cbor::Value::Text(self.path.clone()),
+            self.schema.as_ref().map_or(cbor::Value::Null, |schema| {
+                cbor::Value::Text(schema.clone())
+            }),
+            cbor::Value::Bytes(self.raw_sha256.to_vec()),
+        ])
+    }
+
+    pub fn to_wire(&self) -> serde_json::Value {
+        serde_json::json!({
+            "artifact_role": self.artifact_role,
+            "path": self.path,
+            "schema": self.schema,
+            "raw_sha256": hex_encode(&self.raw_sha256),
+        })
+    }
+}
+
+pub fn v1_dependency_source_binding_to_v4(
+    binding: &SourceBindingDigestV1,
+) -> Result<ReviewAuthoritySourceBindingV4, PersistenceDecodeErrorV1> {
+    let role = if binding.artifact_role == "rev3_source" {
+        match binding.path.as_str() {
+            "derived/Pair_Interaction_Census_REV3.csv" => "rev3_candidate_census",
+            "inputs/deck_row_source_resolution_REV3.csv" => "rev3_deck_row_source_resolution",
+            "source/raw/oracle_cards_selected_REV3.jsonl" => "rev3_osi_source_records",
+            "source/raw/source_record_index_REV3.csv" => "rev3_source_index",
+            _ => return Err(PersistenceDecodeErrorV1::SchemaIdentityMismatch),
+        }
+    } else if binding.artifact_role == "acceptance_event_leaf" {
+        "acceptance_event_leaf_v1"
+    } else if REVIEW_AUTHORITY_SOURCE_ROLES_V4.contains(&binding.artifact_role.as_str()) {
+        binding.artifact_role.as_str()
+    } else {
+        return Err(PersistenceDecodeErrorV1::SchemaIdentityMismatch);
+    };
+    ReviewAuthoritySourceBindingV4::new(
+        role,
+        binding.path.clone(),
+        binding.schema_or_null.as_deref(),
+        binding.raw_sha256,
+    )
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AcceptanceSubjectPayloadV4 {
+    pub subject_kind: AcceptanceSubjectKindV4,
+    pub subject_payload: cbor::Value,
+}
+
+impl AcceptanceSubjectPayloadV4 {
+    pub fn new(
+        subject_kind: AcceptanceSubjectKindV4,
+        subject_payload: cbor::Value,
+    ) -> Result<Self, PersistenceDecodeErrorV1> {
+        validate_acceptance_subject_v4_payload(subject_kind.as_str(), &subject_payload)?;
+        Ok(Self {
+            subject_kind,
+            subject_payload,
+        })
+    }
+
+    pub fn semantic_input(&self) -> cbor::Value {
+        cbor::Value::Array(vec![
+            cbor::Value::Text(ACCEPTANCE_SUBJECT_INPUT_SCHEMA_V4.to_owned()),
+            cbor::Value::Text(self.subject_kind.as_str().to_owned()),
+            self.subject_payload.clone(),
+        ])
+    }
+
+    pub fn identity(&self) -> Result<AuthorityIdentityV1, PersistenceDecodeErrorV1> {
+        AuthorityIdentityV1::compute(
+            AuthorityIdentityKind::AcceptanceSubjectV4,
+            self.semantic_input(),
+        )
+    }
+
+    pub fn to_cbor(&self) -> cbor::Value {
+        cbor::Value::Array(vec![
+            cbor::Value::Text(self.subject_kind.as_str().to_owned()),
+            self.subject_payload.clone(),
+        ])
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ReviewEventRefV4 {
+    pub path: String,
+    pub raw_sha256: [u8; 32],
+    pub event_id: String,
+}
+
+impl ReviewEventRefV4 {
+    pub fn new(
+        path: impl Into<String>,
+        raw_sha256: [u8; 32],
+        event_id: impl Into<String>,
+    ) -> Result<Self, PersistenceDecodeErrorV1> {
+        let path = path.into();
+        let event_id = event_id.into();
+        validate_repo_relative_path(&path)?;
+        if !is_namespaced_digest(&event_id, "ae.v4/") {
+            return Err(PersistenceDecodeErrorV1::SchemaIdentityMismatch);
+        }
+        let expected = format!(
+            "sources/m2_5/authorities/review_acceptance_events/v4/{}.json",
+            &event_id["ae.v4/".len()..]
+        );
+        if path != expected {
+            return Err(PersistenceDecodeErrorV1::SchemaIdentityMismatch);
+        }
+        Ok(Self {
+            path,
+            raw_sha256,
+            event_id,
+        })
+    }
+
+    pub fn to_cbor(&self) -> cbor::Value {
+        cbor::Value::Array(vec![
+            cbor::Value::Text(self.path.clone()),
+            cbor::Value::Bytes(self.raw_sha256.to_vec()),
+            cbor::Value::Array(vec![
+                cbor::Value::Text("event_id".to_owned()),
+                cbor::Value::Text(self.event_id.clone()),
+            ]),
+        ])
+    }
+
+    pub fn to_wire(&self) -> serde_json::Value {
+        serde_json::json!({"event_id": self.event_id, "path": self.path, "raw_sha256": hex_encode(&self.raw_sha256)})
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ReviewAcceptanceEventInputV4 {
+    pub subject_kind: AcceptanceSubjectKindV4,
+    pub subject_payload_digest_reference: DigestReferenceV1,
+    pub reviewer_roster_ref: ReviewerRosterRefV1,
+    pub reviewer_role_bindings: Vec<ReviewerRoleBindingV1>,
+    pub review_mode: ReviewMode,
+    pub source_binding_digests: Vec<ReviewAuthoritySourceBindingV4>,
+    pub review_evidence_refs: Vec<AcceptanceEvidenceRefV1>,
+}
+
+impl ReviewAcceptanceEventInputV4 {
+    #[allow(clippy::too_many_arguments)]
+    pub fn new(
+        subject_kind: AcceptanceSubjectKindV4,
+        subject_payload_digest_reference: DigestReferenceV1,
+        reviewer_roster_ref: ReviewerRosterRefV1,
+        reviewer_role_bindings: Vec<ReviewerRoleBindingV1>,
+        review_mode: ReviewMode,
+        source_binding_digests: Vec<ReviewAuthoritySourceBindingV4>,
+        review_evidence_refs: Vec<AcceptanceEvidenceRefV1>,
+    ) -> Result<Self, PersistenceDecodeErrorV1> {
+        let input = Self {
+            subject_kind,
+            subject_payload_digest_reference,
+            reviewer_roster_ref,
+            reviewer_role_bindings,
+            review_mode,
+            source_binding_digests,
+            review_evidence_refs,
+        };
+        let semantic = input.semantic_input();
+        let fields = value_array(&semantic, None)?;
+        validate_acceptance_event_v4_input(fields)?;
+        Ok(input)
+    }
+
+    pub fn semantic_input(&self) -> cbor::Value {
+        cbor::Value::Array(vec![
+            cbor::Value::Text(ACCEPTANCE_EVENT_INPUT_SCHEMA_V4.to_owned()),
+            cbor::Value::Text(self.subject_kind.as_str().to_owned()),
+            digest_reference_to_cbor(&self.subject_payload_digest_reference),
+            cbor::Value::Text("human_accepted".to_owned()),
+            self.reviewer_roster_ref.to_cbor(),
+            cbor::Value::Array(
+                self.reviewer_role_bindings
+                    .iter()
+                    .map(ReviewerRoleBindingV1::to_cbor)
+                    .collect(),
+            ),
+            cbor::Value::Text(self.review_mode.as_str().to_owned()),
+            cbor::Value::Text(ACCEPTANCE_CHECKLIST_V3.to_owned()),
+            cbor::Value::Array(
+                self.source_binding_digests
+                    .iter()
+                    .map(ReviewAuthoritySourceBindingV4::to_cbor)
+                    .collect(),
+            ),
+            cbor::Value::Array(
+                self.review_evidence_refs
+                    .iter()
+                    .map(AcceptanceEvidenceRefV1::to_cbor)
+                    .collect(),
+            ),
+        ])
+    }
+
+    pub fn identity(&self) -> Result<AuthorityIdentityV1, PersistenceDecodeErrorV1> {
+        AuthorityIdentityV1::compute(
+            AuthorityIdentityKind::ReviewAcceptanceEventV4,
+            self.semantic_input(),
+        )
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ReviewAcceptanceEventLeafV4 {
+    pub event_id: AuthorityIdentityV1,
+    pub subject_kind: AcceptanceSubjectKindV4,
+    pub subject_payload_digest_reference: DigestReferenceV1,
+    pub reviewer_roster_ref: ReviewerRosterRefV1,
+    pub reviewer_role_bindings: Vec<ReviewerRoleBindingV1>,
+    pub review_mode: ReviewMode,
+    pub source_binding_digests: Vec<ReviewAuthoritySourceBindingV4>,
+    pub review_evidence_refs: Vec<AcceptanceEvidenceRefV1>,
+}
+
+impl ReviewAcceptanceEventLeafV4 {
+    pub fn from_input(
+        input: ReviewAcceptanceEventInputV4,
+    ) -> Result<Self, PersistenceDecodeErrorV1> {
+        let event_id = input.identity()?;
+        let leaf = Self {
+            event_id,
+            subject_kind: input.subject_kind,
+            subject_payload_digest_reference: input.subject_payload_digest_reference,
+            reviewer_roster_ref: input.reviewer_roster_ref,
+            reviewer_role_bindings: input.reviewer_role_bindings,
+            review_mode: input.review_mode,
+            source_binding_digests: input.source_binding_digests,
+            review_evidence_refs: input.review_evidence_refs,
+        };
+        validate_v4_event_source_bindings(&leaf.event_id, &leaf.source_binding_digests)?;
+        Ok(leaf)
+    }
+
+    pub fn as_input(&self) -> Result<ReviewAcceptanceEventInputV4, PersistenceDecodeErrorV1> {
+        if self.event_id.kind() != AuthorityIdentityKind::ReviewAcceptanceEventV4 {
+            return Err(PersistenceDecodeErrorV1::SchemaIdentityMismatch);
+        }
+        let input = ReviewAcceptanceEventInputV4::new(
+            self.subject_kind,
+            self.subject_payload_digest_reference.clone(),
+            self.reviewer_roster_ref.clone(),
+            self.reviewer_role_bindings.clone(),
+            self.review_mode,
+            self.source_binding_digests.clone(),
+            self.review_evidence_refs.clone(),
+        )?;
+        if input.identity()? != self.event_id {
+            return Err(PersistenceDecodeErrorV1::DigestMismatch);
+        }
+        validate_v4_event_source_bindings(&self.event_id, &self.source_binding_digests)?;
+        Ok(input)
+    }
+
+    pub fn to_cbor(&self) -> Result<cbor::Value, PersistenceDecodeErrorV1> {
+        Ok(self.as_input()?.semantic_input())
+    }
+
+    pub fn to_wire(&self) -> Result<serde_json::Value, PersistenceDecodeErrorV1> {
+        let input = self.as_input()?;
+        Ok(serde_json::json!({
+            "event_id": self.event_id.as_text(),
+            "schema": ACCEPTANCE_EVENT_SCHEMA_V4,
+            "subject_kind": input.subject_kind.as_str(),
+            "subject_payload_digest": digest_reference_to_wire(&input.subject_payload_digest_reference),
+            "decision": "human_accepted",
+            "reviewer_roster_ref": reviewer_roster_ref_to_wire(&input.reviewer_roster_ref),
+            "reviewer_role_bindings": input.reviewer_role_bindings.iter().map(reviewer_role_binding_to_wire).collect::<Vec<_>>(),
+            "review_mode": input.review_mode.as_str(),
+            "checklist_id": ACCEPTANCE_CHECKLIST_V3,
+            "source_binding_digests": input.source_binding_digests.iter().map(ReviewAuthoritySourceBindingV4::to_wire).collect::<Vec<_>>(),
+            "review_evidence_refs": input.review_evidence_refs.iter().map(acceptance_evidence_to_wire).collect::<Vec<_>>(),
+        }))
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ApplicationHostBindingV2 {
     pub application_kind: String,
     pub application_semantic_id: AuthorityIdentityV1,
@@ -5027,6 +5439,328 @@ fn validate_acceptance_event_v3_input(
     }
     validate_context_source_bindings(&fields[8])?;
     validate_acceptance_evidence_refs(&fields[9])
+}
+
+fn validate_v4_source_binding(
+    role: &str,
+    path: &str,
+    schema: Option<&str>,
+) -> Result<(), PersistenceDecodeErrorV1> {
+    validate_member(&REVIEW_AUTHORITY_SOURCE_ROLES_V4, role)?;
+    validate_repo_relative_path(path)?;
+    match role {
+        "declared_model" => {
+            if path != "sources/m2_5/closures/C/declared_interaction_model.v2.json"
+                || schema != Some("manafold.m2.5.c.declared-interaction-model.v2")
+            {
+                return Err(PersistenceDecodeErrorV1::SchemaIdentityMismatch);
+            }
+        }
+        "candidate_universe" => {
+            if path != "sources/m2_5/closures/C/interaction_candidate_universe.v2.json"
+                || schema != Some("manafold.m2.5.c.interaction-candidate-universe.v2")
+            {
+                return Err(PersistenceDecodeErrorV1::SchemaIdentityMismatch);
+            }
+        }
+        "b2_catalog" => {
+            if path != "sources/m2_5/closures/B2/requirement_family_catalog.v1.json"
+                || schema != Some("manafold.m2.5.b2.requirement-family-catalog.v1")
+            {
+                return Err(PersistenceDecodeErrorV1::SchemaIdentityMismatch);
+            }
+        }
+        "b2_classifications" => {
+            if path != "sources/m2_5/closures/B2/card_semantic_classifications.v1.json"
+                || schema != Some("manafold.m2.5.b2.card-semantic-classifications.v1")
+            {
+                return Err(PersistenceDecodeErrorV1::SchemaIdentityMismatch);
+            }
+        }
+        "b2_closure" => {
+            if path != "sources/m2_5/closures/B2/classification_closure.v1.json"
+                || schema != Some("manafold.m2.5.b2.classification-closure.v1")
+            {
+                return Err(PersistenceDecodeErrorV1::SchemaIdentityMismatch);
+            }
+        }
+        "b1_final_citations" => {
+            if path != "sources/m2_5/closures/B1/official_authority_citations.v3.json"
+                || schema != Some("manafold.m2.5.b1.official-authority-citations.v3")
+            {
+                return Err(PersistenceDecodeErrorV1::SchemaIdentityMismatch);
+            }
+        }
+        "b1_final_closure" => {
+            if path != "sources/m2_5/closures/B1/official_authority_citation_closure.v2.json"
+                || schema != Some("manafold.m2.5.b1.official-authority-citation-closure.v2")
+            {
+                return Err(PersistenceDecodeErrorV1::SchemaIdentityMismatch);
+            }
+        }
+        "rev3_candidate_census" => {
+            if path != "derived/Pair_Interaction_Census_REV3.csv" || schema.is_some() {
+                return Err(PersistenceDecodeErrorV1::SchemaIdentityMismatch);
+            }
+        }
+        "rev3_deck_row_source_resolution" => {
+            if path != "inputs/deck_row_source_resolution_REV3.csv" || schema.is_some() {
+                return Err(PersistenceDecodeErrorV1::SchemaIdentityMismatch);
+            }
+        }
+        "rev3_osi_source_records" => {
+            if path != "source/raw/oracle_cards_selected_REV3.jsonl" || schema.is_some() {
+                return Err(PersistenceDecodeErrorV1::SchemaIdentityMismatch);
+            }
+        }
+        "rev3_source_index" => {
+            if path != "source/raw/source_record_index_REV3.csv" || schema.is_some() {
+                return Err(PersistenceDecodeErrorV1::SchemaIdentityMismatch);
+            }
+        }
+        "reviewer_roster_leaf" => {
+            if !is_authority_leaf_path(path, "sources/m2_5/authorities/reviewer_rosters/v1/")
+                || schema != Some(REVIEWER_ROSTER_SCHEMA_V1)
+            {
+                return Err(PersistenceDecodeErrorV1::SchemaIdentityMismatch);
+            }
+        }
+        "acceptance_event_leaf_v1" => {
+            if !is_authority_leaf_path(
+                path,
+                "sources/m2_5/authorities/review_acceptance_events/v1/",
+            ) || schema != Some(ACCEPTANCE_EVENT_SCHEMA_V1)
+            {
+                return Err(PersistenceDecodeErrorV1::SchemaIdentityMismatch);
+            }
+        }
+        "acceptance_event_leaf_v4" => {
+            if !is_authority_leaf_path(
+                path,
+                "sources/m2_5/authorities/review_acceptance_events/v4/",
+            ) || schema != Some(ACCEPTANCE_EVENT_SCHEMA_V4)
+            {
+                return Err(PersistenceDecodeErrorV1::SchemaIdentityMismatch);
+            }
+        }
+        _ => return Err(PersistenceDecodeErrorV1::UnknownVariant),
+    }
+    Ok(())
+}
+
+fn validate_v4_source_binding_array(value: &cbor::Value) -> Result<(), PersistenceDecodeErrorV1> {
+    let fields = value_array(value, Some(4))?;
+    let role = value_text(&fields[0])?;
+    let path = value_text(&fields[1])?;
+    let schema = match &fields[2] {
+        cbor::Value::Null => None,
+        cbor::Value::Text(value) => Some(value.as_str()),
+        _ => return Err(PersistenceDecodeErrorV1::SchemaIdentityMismatch),
+    };
+    let raw_sha256 = match &fields[3] {
+        cbor::Value::Bytes(value) if value.len() == 32 => {
+            let mut digest = [0u8; 32];
+            digest.copy_from_slice(value);
+            digest
+        }
+        _ => return Err(PersistenceDecodeErrorV1::SemanticValidation),
+    };
+    ReviewAuthoritySourceBindingV4::new(role, path, schema, raw_sha256).map(|_| ())
+}
+
+fn validate_v4_members(value: &cbor::Value) -> Result<(), PersistenceDecodeErrorV1> {
+    let members = value_array(value, None)?;
+    if members.is_empty() {
+        return Err(PersistenceDecodeErrorV1::SemanticValidation);
+    }
+    validate_canonical_values(members, validate_cbor_value)
+}
+
+fn validate_acceptance_subject_v4_payload(
+    subject_kind: &str,
+    value: &cbor::Value,
+) -> Result<(), PersistenceDecodeErrorV1> {
+    let fields = value_array(value, None)?;
+    if value_text(&fields[0])? != subject_kind {
+        return Err(PersistenceDecodeErrorV1::SchemaIdentityMismatch);
+    }
+    match subject_kind {
+        "relation_application_v2_record" => {
+            if fields.len() != 5 {
+                return Err(PersistenceDecodeErrorV1::WrongRecordLength);
+            }
+            value_bytes32(&fields[1])?;
+            value_bytes32(&fields[2])?;
+            enum_text(&fields[3], &TERMINAL_DISPOSITIONS)?;
+            validate_v4_members(&fields[4])
+        }
+        "context_application_v3_record" => {
+            if fields.len() != 4 {
+                return Err(PersistenceDecodeErrorV1::WrongRecordLength);
+            }
+            value_bytes32(&fields[1])?;
+            value_bytes32(&fields[2])?;
+            validate_v4_members(&fields[3])
+        }
+        "relation_application_v2_supersession_record"
+        | "context_application_v3_supersession_record" => {
+            if fields.len() != 8 {
+                return Err(PersistenceDecodeErrorV1::WrongRecordLength);
+            }
+            value_bytes32(&fields[1])?;
+            value_bytes32(&fields[2])?;
+            if !matches!(&fields[3], cbor::Value::Null) {
+                value_bytes32(&fields[3])?;
+            }
+            let expected_kind = if subject_kind.starts_with("relation_") {
+                "relation_application_v2_record"
+            } else {
+                "context_application_v3_record"
+            };
+            if value_text(&fields[4])? != expected_kind {
+                return Err(PersistenceDecodeErrorV1::SchemaIdentityMismatch);
+            }
+            if matches!(&fields[3], cbor::Value::Null) {
+                if !matches!(&fields[5], cbor::Value::Null)
+                    || value_text(&fields[6])? != SupersessionReason::AuthorityRevocation.as_str()
+                {
+                    return Err(PersistenceDecodeErrorV1::SchemaIdentityMismatch);
+                }
+            } else if value_text(&fields[5])? != expected_kind
+                || value_text(&fields[6])? == SupersessionReason::AuthorityRevocation.as_str()
+            {
+                return Err(PersistenceDecodeErrorV1::SchemaIdentityMismatch);
+            }
+            enum_text(
+                &fields[6],
+                &[
+                    "semantic_correction",
+                    "source_revision",
+                    "model_revision",
+                    "authority_revocation",
+                ],
+            )?;
+            validate_nonempty_evidence_refs(&fields[7])
+        }
+        _ => Err(PersistenceDecodeErrorV1::UnknownVariant),
+    }
+}
+
+fn validate_acceptance_subject_v4_input(
+    fields: &[cbor::Value],
+) -> Result<(), PersistenceDecodeErrorV1> {
+    if fields.len() != 3 || value_text(&fields[0])? != ACCEPTANCE_SUBJECT_INPUT_SCHEMA_V4 {
+        return Err(PersistenceDecodeErrorV1::SchemaIdentityMismatch);
+    }
+    let kind = enum_text(
+        &fields[1],
+        &[
+            "relation_application_v2_record",
+            "relation_application_v2_supersession_record",
+            "context_application_v3_record",
+            "context_application_v3_supersession_record",
+        ],
+    )?;
+    validate_acceptance_subject_v4_payload(kind, &fields[2])
+}
+
+fn validate_acceptance_event_v4_input(
+    fields: &[cbor::Value],
+) -> Result<(), PersistenceDecodeErrorV1> {
+    if fields.len() != 10 || value_text(&fields[0])? != ACCEPTANCE_EVENT_INPUT_SCHEMA_V4 {
+        return Err(PersistenceDecodeErrorV1::SchemaIdentityMismatch);
+    }
+    enum_text(
+        &fields[1],
+        &[
+            "relation_application_v2_record",
+            "relation_application_v2_supersession_record",
+            "context_application_v3_record",
+            "context_application_v3_supersession_record",
+        ],
+    )?;
+    let subject_digest = value_array(&fields[2], Some(6))?;
+    if value_text(&subject_digest[2])? != ACCEPTANCE_SUBJECT_SCHEMA_V4
+        || value_text(&subject_digest[4])? != ACCEPTANCE_SUBJECT_INPUT_SCHEMA_V4
+    {
+        return Err(PersistenceDecodeErrorV1::SchemaIdentityMismatch);
+    }
+    validate_digest_reference_v1(&fields[2])?;
+    if value_text(&fields[3])? != "human_accepted" {
+        return Err(PersistenceDecodeErrorV1::SemanticValidation);
+    }
+    validate_roster_ref_array(&fields[4])?;
+    let bindings = value_array(&fields[5], None)?;
+    if bindings.is_empty() {
+        return Err(PersistenceDecodeErrorV1::SemanticValidation);
+    }
+    validate_canonical_order(bindings)?;
+    let mut reviewer_ids: Vec<&str> = Vec::with_capacity(bindings.len());
+    for binding in bindings {
+        let fields = value_array(binding, Some(2))?;
+        reviewer_ids.push(value_text(&fields[0])?);
+    }
+    if reviewer_ids.windows(2).any(|pair| pair[0] >= pair[1]) {
+        return Err(PersistenceDecodeErrorV1::NoncanonicalOrder);
+    }
+    let required = [
+        "architecture_maintainer",
+        "rules_authority_maintainer",
+        "conformance_maintainer",
+        "information_safety_reviewer",
+    ];
+    for role in required {
+        if !bindings.iter().any(|binding| {
+            value_array(binding, Some(2))
+                .and_then(|fields| value_array(&fields[1], None))
+                .map(|roles| {
+                    roles
+                        .iter()
+                        .any(|value| value == &cbor::Value::Text(role.to_owned()))
+                })
+                .unwrap_or(false)
+        }) {
+            return Err(PersistenceDecodeErrorV1::SemanticValidation);
+        }
+    }
+    enum_text(&fields[6], &["multi_reviewer", "solo_separate_self_review"])?;
+    if value_text(&fields[7])? != ACCEPTANCE_CHECKLIST_V3 {
+        return Err(PersistenceDecodeErrorV1::SchemaIdentityMismatch);
+    }
+    let source_bindings = value_array(&fields[8], None)?;
+    if source_bindings.is_empty() {
+        return Err(PersistenceDecodeErrorV1::SemanticValidation);
+    }
+    validate_canonical_values(source_bindings, validate_v4_source_binding_array)?;
+    let mut source_keys: Vec<(&str, &str)> = Vec::with_capacity(source_bindings.len());
+    for binding in source_bindings {
+        let fields = value_array(binding, Some(4))?;
+        let key = (value_text(&fields[0])?, value_text(&fields[1])?);
+        if source_keys.contains(&key) {
+            return Err(PersistenceDecodeErrorV1::DuplicateSemanticKey);
+        }
+        source_keys.push(key);
+    }
+    validate_acceptance_evidence_refs(&fields[9])
+}
+
+fn validate_v4_event_source_bindings(
+    event_id: &AuthorityIdentityV1,
+    bindings: &[ReviewAuthoritySourceBindingV4],
+) -> Result<(), PersistenceDecodeErrorV1> {
+    if event_id.kind() != AuthorityIdentityKind::ReviewAcceptanceEventV4 {
+        return Err(PersistenceDecodeErrorV1::SchemaIdentityMismatch);
+    }
+    let own_path = format!(
+        "sources/m2_5/authorities/review_acceptance_events/v4/{}.json",
+        hex_encode(&event_id.digest_bytes())
+    );
+    if bindings.iter().any(|binding| {
+        binding.artifact_role == "acceptance_event_leaf_v4" && binding.path == own_path
+    }) {
+        return Err(PersistenceDecodeErrorV1::SemanticValidation);
+    }
+    Ok(())
 }
 
 fn cbor_value_to_json(value: &cbor::Value) -> serde_json::Value {

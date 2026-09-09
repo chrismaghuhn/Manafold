@@ -1,0 +1,11 @@
+{
+  "negative": [
+    {"name": "unknown_subject_kind", "mutation": "unknown_subject_kind"},
+    {"name": "wrong_checklist", "mutation": "wrong_checklist"},
+    {"name": "missing_required_reviewer_role", "mutation": "missing_required_reviewer_role"},
+    {"name": "empty_review_evidence", "mutation": "empty_review_evidence"},
+    {"name": "unknown_source_role", "mutation": "unknown_source_role"},
+    {"name": "self_binding_role", "mutation": "self_binding_role"},
+    {"name": "wrong_event_reference_namespace", "mutation": "wrong_event_reference_namespace"}
+  ]
+}
