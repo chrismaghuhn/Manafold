@@ -1208,6 +1208,128 @@ def _acceptance(value: object, label: str) -> tuple[ReviewEventRefV1, JsonObject
     return reference, record
 
 
+def validate_relation_member_proof_v1_against_theorem(
+    member: Mapping[str, object],
+    theorem: Mapping[str, object],
+    label: str,
+    *,
+    declared_model: Mapping[str, object] | None = None,
+) -> None:
+    """Validate relation member-proof semantics shared by V1 and V2.
+
+    The wire mapping is deliberately the existing V1 member-proof mapping.
+    New relation-application versions may add surrounding semantic fields, but
+    they must project their member proof into this operation rather than
+    maintaining a second proof-kind implementation.
+    """
+
+    proof = _object(theorem.get("proof_payload"), "relation proof payload")
+    proof_kind = _text(proof.get("kind"), "proof kind")
+    member_proof = _object(member.get("member_proof_attestation"), f"{label}.member proof")
+    if member_proof.get("kind") != proof_kind:
+        _fail("MEMBER_PROOF_KIND_MISMATCH", f"{label} member proof kind differs from theorem")
+    if proof_kind == "positive_interaction":
+        ordinals = [
+            _uint32(item, "causal chain ordinal")
+            for item in _array(
+                member_proof.get("causal_chain_ordinals"), "causal chain ordinals"
+            )
+        ]
+        chain = _array(proof.get("causal_chain"), "theorem causal chain")
+        if ordinals != list(range(len(chain))):
+            _fail(
+                "CAUSAL_CHAIN_BINDING_MISMATCH",
+                f"{label} does not bind the complete causal chain",
+            )
+        template = proof.get("class_projection_template")
+        equivalence = member_proof.get("class_projection_equivalence")
+        if (template is None) != (equivalence is None):
+            _fail(
+                "CLASS_PROJECTION_BINDING_MISMATCH",
+                f"{label} class projection nullability differs",
+            )
+        if equivalence is not None:
+            equivalence_record = _object(equivalence, "class projection equivalence")
+            theorem_projection = _class_projection(
+                equivalence_record.get("theorem_projection"), "theorem projection"
+            )
+            member_projection = _class_projection(
+                equivalence_record.get("member_projection"), "member projection"
+            )
+            template_projection = _class_projection(template, "class projection template")
+            if (
+                theorem_projection != template_projection
+                or member_projection != template_projection
+            ):
+                _fail(
+                    "CLASS_PROJECTION_BINDING_MISMATCH",
+                    f"{label} projection differs from theorem template",
+                )
+            claim = _object(
+                equivalence_record.get("semantic_claim_relation"), "semantic claim relation"
+            )
+            theorem_id = _identity_ref(
+                theorem.get("theorem_id"),
+                AuthorityIdentityKind.RELATION_THEOREM,
+                "theorem identity",
+            )
+            if (
+                _digest(claim.get("theorem_semantic_digest"), "theorem semantic digest")
+                != theorem_id.digest_bytes
+            ):
+                _fail(
+                    "CLASS_PROJECTION_BINDING_MISMATCH",
+                    f"{label} class claim names another theorem",
+                )
+    elif proof_kind == "positive_separation":
+        obligations = _array(proof.get("separation_obligations"), "separation obligations")
+        coverages = _array(member_proof.get("channel_coverages"), "channel coverages")
+        if len(obligations) != len(coverages):
+            _fail(
+                "SEPARATION_COVERAGE_INCOMPLETE", f"{label} separation channels are incomplete"
+            )
+        for obligation, coverage in zip(obligations, coverages, strict=True):
+            obligation_record = _object(obligation, "separation obligation")
+            coverage_record = _object(coverage, "channel coverage")
+            if coverage_record.get("channel") != obligation_record.get(
+                "channel"
+            ) or coverage_record.get("coverage") != obligation_record.get(
+                "required_conclusion"
+            ):
+                _fail(
+                    "SEPARATION_COVERAGE_MISMATCH",
+                    f"{label} channel coverage differs from theorem",
+                )
+    elif proof_kind == "model_bound_scope":
+        expected_scope = _object(proof, "scope proof payload")
+        actual_scope = _object(
+            member_proof.get("scope_boundary_attestation"), "scope attestation"
+        )
+        if declared_model is None:
+            _fail(
+                "MODEL_BOUNDARY_RESOLUTION_REQUIRED",
+                f"{label} requires the declared model for scope-proof validation",
+            )
+        if (
+            actual_scope.get("model_id") != declared_model.get("model_id")
+            or actual_scope.get("model_version") != declared_model.get("model_version")
+            or actual_scope.get("reason_code") != expected_scope.get("reason_code")
+            or _candidate_shape(
+                actual_scope.get("observed_candidate_shape"), "member scope shape"
+            )
+            != _candidate_shape(
+                expected_scope.get("observed_candidate_shape"), "theorem scope shape"
+            )
+            or _model_boundary_ref(
+                actual_scope.get("model_boundary_ref"), "member scope boundary"
+            )
+            != _model_boundary_ref(
+                expected_scope.get("model_boundary_ref"), "theorem scope boundary"
+            )
+        ):
+            _fail("SCOPE_BINDING_MISMATCH", f"{label} scope attestation differs from theorem")
+
+
 class AuthorityValidator:
     """Validate one persisted V1 authority graph without deriving C semantics."""
 
@@ -2888,6 +3010,66 @@ class AuthorityValidator:
             )
         return record.record
 
+    def require_current_relation_theorem(
+        self, identity: AuthorityIdentityV1
+    ) -> Mapping[str, object]:
+        """Require a current, accepted V1 relation theorem for RPA V2 admission.
+
+        This is a read-only projection of the existing V1 validation graph. It
+        does not change V1 identity, supersession, or acceptance semantics.
+        """
+
+        if not self._validation_complete:
+            _fail(
+                "AUTHORITY_NOT_VALIDATED",
+                "authority must be validated before current theorem lookup",
+            )
+        if identity.kind is not AuthorityIdentityKind.RELATION_THEOREM_RECORD:
+            _fail(
+                "THEOREM_REFERENCE_INVALID",
+                "RPA V2 requires a relation theorem record identity",
+            )
+        record = self._records.get(identity.as_text())
+        if record is None or record.kind is not RecordKind.RELATION_THEOREM_RECORD:
+            _fail(
+                "RELATION_APPLICATION_V2_CURRENTNESS_FAILED",
+                "relation theorem record is absent from the validated V1 authority",
+            )
+        if identity.as_text() in self._superseded_record_ids:
+            _fail(
+                "SUPERSEDED_AUTHORITY_USED",
+                "RPA V2 references a superseded or revoked V1 relation theorem",
+            )
+        theorem_id = _identity_ref(
+            record.record.get("theorem_id"),
+            AuthorityIdentityKind.RELATION_THEOREM,
+            "relation theorem semantic identity",
+        )
+        current_records = []
+        for candidate in self._records.values():
+            if candidate.kind is not RecordKind.RELATION_THEOREM_RECORD:
+                continue
+            candidate_theorem_id = _identity_ref(
+                candidate.record.get("theorem_id"),
+                AuthorityIdentityKind.RELATION_THEOREM,
+                "relation theorem semantic identity",
+            )
+            if candidate_theorem_id.as_text() == theorem_id.as_text() and (
+                candidate.record_id.as_text() not in self._superseded_record_ids
+            ):
+                current_records.append(candidate)
+        if not current_records:
+            _fail(
+                "RELATION_APPLICATION_V2_CURRENTNESS_FAILED",
+                "relation theorem semantic identity has no current accepted record",
+            )
+        if len(current_records) > 1:
+            _fail(
+                "RELATION_APPLICATION_V2_CURRENTNESS_AMBIGUOUS",
+                "relation theorem semantic identity has multiple current records",
+            )
+        return current_records[0].record
+
     def _source_instance_shape(
         self, resolved: ResolvedSourceInstance, label: str
     ) -> tuple[str, str, list[list[CborValue]]]:
@@ -3115,107 +3297,31 @@ class AuthorityValidator:
     def _validate_member_proof_against_theorem(
         self, member: Mapping[str, object], theorem: Mapping[str, object], label: str
     ) -> None:
-        proof = _object(theorem.get("proof_payload"), "relation proof payload")
-        proof_kind = _text(proof.get("kind"), "proof kind")
-        member_proof = _object(member.get("member_proof_attestation"), f"{label}.member proof")
-        if member_proof.get("kind") != proof_kind:
-            _fail("MEMBER_PROOF_KIND_MISMATCH", f"{label} member proof kind differs from theorem")
-        if proof_kind == "positive_interaction":
-            ordinals = [
-                _uint32(item, "causal chain ordinal")
-                for item in _array(
-                    member_proof.get("causal_chain_ordinals"), "causal chain ordinals"
-                )
-            ]
-            chain = _array(proof.get("causal_chain"), "theorem causal chain")
-            if ordinals != list(range(len(chain))):
-                _fail(
-                    "CAUSAL_CHAIN_BINDING_MISMATCH",
-                    f"{label} does not bind the complete causal chain",
-                )
-            template = proof.get("class_projection_template")
-            equivalence = member_proof.get("class_projection_equivalence")
-            if (template is None) != (equivalence is None):
-                _fail(
-                    "CLASS_PROJECTION_BINDING_MISMATCH",
-                    f"{label} class projection nullability differs",
-                )
-            if equivalence is not None:
-                equivalence_record = _object(equivalence, "class projection equivalence")
-                theorem_projection = _class_projection(
-                    equivalence_record.get("theorem_projection"), "theorem projection"
-                )
-                member_projection = _class_projection(
-                    equivalence_record.get("member_projection"), "member projection"
-                )
-                template_projection = _class_projection(template, "class projection template")
-                if (
-                    theorem_projection != template_projection
-                    or member_projection != template_projection
-                ):
-                    _fail(
-                        "CLASS_PROJECTION_BINDING_MISMATCH",
-                        f"{label} projection differs from theorem template",
-                    )
-                claim = _object(
-                    equivalence_record.get("semantic_claim_relation"), "semantic claim relation"
-                )
-                theorem_id = _identity_ref(
-                    theorem.get("theorem_id"),
-                    AuthorityIdentityKind.RELATION_THEOREM,
-                    "theorem identity",
-                )
-                if (
-                    _digest(claim.get("theorem_semantic_digest"), "theorem semantic digest")
-                    != theorem_id.digest_bytes
-                ):
-                    _fail(
-                        "CLASS_PROJECTION_BINDING_MISMATCH",
-                        f"{label} class claim names another theorem",
-                    )
-        elif proof_kind == "positive_separation":
-            obligations = _array(proof.get("separation_obligations"), "separation obligations")
-            coverages = _array(member_proof.get("channel_coverages"), "channel coverages")
-            if len(obligations) != len(coverages):
-                _fail(
-                    "SEPARATION_COVERAGE_INCOMPLETE", f"{label} separation channels are incomplete"
-                )
-            for obligation, coverage in zip(obligations, coverages, strict=True):
-                obligation_record = _object(obligation, "separation obligation")
-                coverage_record = _object(coverage, "channel coverage")
-                if coverage_record.get("channel") != obligation_record.get(
-                    "channel"
-                ) or coverage_record.get("coverage") != obligation_record.get(
-                    "required_conclusion"
-                ):
-                    _fail(
-                        "SEPARATION_COVERAGE_MISMATCH",
-                        f"{label} channel coverage differs from theorem",
-                    )
-        elif proof_kind == "model_bound_scope":
-            expected_scope = _object(proof, "scope proof payload")
-            actual_scope = _object(
-                member_proof.get("scope_boundary_attestation"), "scope attestation"
-            )
-            _, model = self._require_model()
-            if (
-                actual_scope.get("model_id") != model.get("model_id")
-                or actual_scope.get("model_version") != model.get("model_version")
-                or actual_scope.get("reason_code") != expected_scope.get("reason_code")
-                or _candidate_shape(
-                    actual_scope.get("observed_candidate_shape"), "member scope shape"
-                )
-                != _candidate_shape(
-                    expected_scope.get("observed_candidate_shape"), "theorem scope shape"
-                )
-                or _model_boundary_ref(
-                    actual_scope.get("model_boundary_ref"), "member scope boundary"
-                )
-                != _model_boundary_ref(
-                    expected_scope.get("model_boundary_ref"), "theorem scope boundary"
-                )
-            ):
-                _fail("SCOPE_BINDING_MISMATCH", f"{label} scope attestation differs from theorem")
+        _, model = self._require_model()
+        validate_relation_member_proof_v1_against_theorem(
+            member,
+            theorem,
+            label,
+            declared_model=model,
+        )
+
+    def validate_relation_member_proof_v1(
+        self, member: Mapping[str, object], theorem: Mapping[str, object], label: str
+    ) -> None:
+        """Run the existing V1 relation member-proof operation for an adapter.
+
+        Versioned relation applications may add source-to-reviewed role data,
+        but their member proof remains the V1 semantic operation.  This public
+        seam lets newer validators reuse the source/model-aware implementation
+        without copying proof-kind branches.
+        """
+
+        self._resolve_member_evidence(member, label)
+        self._resolve_member_proof(
+            member.get("member_proof_attestation"),
+            f"{label}.member_proof_attestation",
+        )
+        self._validate_member_proof_against_theorem(member, theorem, label)
 
     def _validate_relation_members(
         self, members: Sequence[JsonObject], theorem: Mapping[str, object], label: str
@@ -3757,4 +3863,8 @@ class AuthorityValidator:
             )
 
 
-__all__ = ["AuthorityValidationResult", "AuthorityValidator"]
+__all__ = [
+    "AuthorityValidationResult",
+    "AuthorityValidator",
+    "validate_relation_member_proof_v1_against_theorem",
+]

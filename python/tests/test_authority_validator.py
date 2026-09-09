@@ -632,6 +632,76 @@ class AuthorityValidatorTests(unittest.TestCase):
         self.assertTrue(result.valid)
         self.assertEqual(result.counts["relation_proofs"], 1)
 
+    def test_current_relation_theorem_rejects_ambiguous_semantic_record_group(self) -> None:
+        from authority_validator import AuthorityValidator
+
+        document = deepcopy(self.document)
+        theorem = cast(dict[str, object], document["relation_proofs"][0])
+        theorem_id = bytes.fromhex(
+            cast(dict[str, object], theorem["theorem_id"])["digest_hex"]  # type: ignore[arg-type]
+        )
+        rationale = cast(str, theorem["semantic_rationale"])
+        model_binding = self._model_binding()
+        model_evidence = EvidenceRefV1(
+            "model",
+            MODEL_PATH,
+            ("whole_artifact", None),
+            model_binding.raw_sha256,
+        )
+        duplicate_acceptance, duplicate_event_binding = self._new_acceptance(
+            AcceptanceSubjectKind.RELATION_THEOREM_RECORD,
+            [theorem_id, [model_evidence.to_cbor()], rationale],
+            "duplicate-current-theorem",
+        )
+        duplicate_event_ref = cast(dict[str, object], duplicate_acceptance["review_event_ref"])
+        duplicate_locator = cast(dict[str, object], duplicate_event_ref["locator"])
+        duplicate_ref = ReviewEventRefV1(
+            cast(str, duplicate_event_ref["path"]),
+            bytes.fromhex(cast(str, duplicate_event_ref["raw_sha256"])),
+            cast(str, duplicate_locator["value"]),
+        )
+        duplicate_record_id = compute_authority_identity(
+            AuthorityIdentityKind.RELATION_THEOREM_RECORD,
+            [
+                "manafold.m2.5.c.relation-proof-record-input.v1",
+                theorem_id,
+                [model_evidence.to_cbor()],
+                duplicate_ref.to_cbor(),
+                rationale,
+            ],
+        )
+        duplicate = deepcopy(theorem)
+        duplicate["record_id"] = identity_wire(duplicate_record_id)
+        duplicate["acceptance"] = duplicate_acceptance
+        document["relation_proofs"] = [theorem, duplicate]
+        source_bindings = cast(list[dict[str, object]], document["source_bindings"])
+        source_bindings.append(
+            self._source_binding_wire(duplicate_event_binding, "acceptance_event")
+        )
+        source_bindings.sort(
+            key=lambda item: encode_canonical(
+                [
+                    item["artifact_role"],
+                    item["path"],
+                    item["schema_or_null"],
+                    bytes.fromhex(cast(str, item["raw_sha256"])),
+                ]
+            )
+        )
+        document["source_bindings"] = source_bindings
+
+        validator = AuthorityValidator(self.resolver)
+        validator.validate(document)
+        original_record_id = AuthorityIdentityV1(
+            AuthorityIdentityKind.RELATION_THEOREM_RECORD,
+            bytes.fromhex(
+                cast(dict[str, object], theorem["record_id"])["digest_hex"]  # type: ignore[arg-type]
+            ),
+        )
+        with self.assertRaises(ResolutionError) as context:
+            validator.require_current_relation_theorem(original_record_id)
+        self.assertEqual(context.exception.code, "RELATION_APPLICATION_V2_CURRENTNESS_AMBIGUOUS")
+
     def test_theorem_identity_mismatch_fails_without_mutating_input(self) -> None:
         from authority_validator import AuthorityValidator
 

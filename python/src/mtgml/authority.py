@@ -40,6 +40,12 @@ CONTEXT_SUPERSESSION_INPUT_SCHEMA_V2: Final = (
 CONTEXT_SUPERSESSION_RECORD_INPUT_SCHEMA_V2: Final = (
     "manafold.m2.5.c.context-application-supersession-record-input.v2"
 )
+RELATION_APPLICATION_INPUT_SCHEMA_V2: Final = (
+    "manafold.m2.5.c.relation-application-input.v2"
+)
+RELATION_APPLICATION_RECORD_INPUT_SCHEMA_V2: Final = (
+    "manafold.m2.5.c.relation-application-record-input.v2"
+)
 ACCEPTANCE_SUBJECT_SCHEMA_V3: Final = "manafold.m2.5.c.acceptance-subject-payload.v3"
 ACCEPTANCE_SUBJECT_INPUT_SCHEMA_V3: Final = "manafold.m2.5.c.acceptance-subject-payload-input.v3"
 ACCEPTANCE_EVENT_SCHEMA_V3: Final = "manafold.m2.5.c.review-acceptance-event.v3"
@@ -190,6 +196,8 @@ class AuthorityIdentityKind(str, Enum):
     RELATION_THEOREM_RECORD = "relation_theorem_record"
     RELATION_APPLICATION = "relation_application"
     RELATION_APPLICATION_RECORD = "relation_application_record"
+    RELATION_APPLICATION_V2 = "relation_application_v2"
+    RELATION_APPLICATION_RECORD_V2 = "relation_application_record_v2"
     RELATION_SUPERSESSION = "relation_supersession"
     DOMAIN_THEOREM = "domain_theorem"
     DOMAIN_THEOREM_RECORD = "domain_theorem_record"
@@ -395,6 +403,16 @@ _IDENTITY_SPECS: Final[dict[AuthorityIdentityKind, _IdentitySpec]] = {
         "manafold.m2.5.c.relation-application-record.v1",
         "manafold.m2.5.c.relation-application-record-input.v1",
     ),
+    AuthorityIdentityKind.RELATION_APPLICATION_V2: _IdentitySpec(
+        "rpa.v2/",
+        "manafold.m2.5.c.relation-application.v2",
+        RELATION_APPLICATION_INPUT_SCHEMA_V2,
+    ),
+    AuthorityIdentityKind.RELATION_APPLICATION_RECORD_V2: _IdentitySpec(
+        "rpar.v2/",
+        "manafold.m2.5.c.relation-application-record.v2",
+        RELATION_APPLICATION_RECORD_INPUT_SCHEMA_V2,
+    ),
     AuthorityIdentityKind.RELATION_SUPERSESSION: _IdentitySpec(
         "rps.v1/",
         "manafold.m2.5.c.relation-supersession.v1",
@@ -506,6 +524,8 @@ _IDENTITY_ARITIES: Final[dict[AuthorityIdentityKind, int]] = {
     AuthorityIdentityKind.RELATION_THEOREM_RECORD: 5,
     AuthorityIdentityKind.RELATION_APPLICATION: 4,
     AuthorityIdentityKind.RELATION_APPLICATION_RECORD: 3,
+    AuthorityIdentityKind.RELATION_APPLICATION_V2: 4,
+    AuthorityIdentityKind.RELATION_APPLICATION_RECORD_V2: 3,
     AuthorityIdentityKind.RELATION_SUPERSESSION: 8,
     AuthorityIdentityKind.DOMAIN_THEOREM: 8,
     AuthorityIdentityKind.DOMAIN_THEOREM_RECORD: 5,
@@ -2688,6 +2708,10 @@ def _validate_kind_payload(kind: AuthorityIdentityKind, fields: list[AuthorityVa
         _validate_application_members(
             values[3], _validate_relation_member, "relation application members"
         )
+    elif kind is AuthorityIdentityKind.RELATION_APPLICATION_V2:
+        _validate_relation_application_v2_input(values)
+    elif kind is AuthorityIdentityKind.RELATION_APPLICATION_RECORD_V2:
+        _validate_relation_application_v2_record_input(values)
     elif kind is AuthorityIdentityKind.DOMAIN_APPLICATION:
         _bytes32(values[1], "domain theorem record ID")
         _enum(values[2], _REVIEW_DOMAINS, "review domain")
@@ -2872,6 +2896,541 @@ def _require_evidence_tuple(
     if any(not isinstance(value, EvidenceRefV1) for value in values):
         raise AuthorityContractError(f"{label} contains a non-V1 evidence reference")
     _typed_canonical_items(values, label, allow_empty=allow_empty)
+
+
+def _relation_binding_to_wire(value: list[AuthorityValue]) -> dict[str, object]:
+    fields = _array(value, "V2 reviewed relation binding", 5)
+    participants = _array(fields[4], "V2 reviewed relation participants")
+    return {
+        "scope": _text(fields[0], "V2 relation scope"),
+        "relation": _text(fields[1], "V2 relation"),
+        "directionality": _text(fields[2], "V2 relation directionality"),
+        "host_relationship": _text(fields[3], "V2 relation host relationship"),
+        "participant_bindings": [
+            {
+                "position": _uint32(_array(item, "V2 relation participant", 4)[0], "position"),
+                "role": _text(_array(item, "V2 relation participant", 4)[1], "role"),
+                "participant_kind": _text(
+                    _array(item, "V2 relation participant", 4)[2], "participant kind"
+                ),
+                "semantic_ref": _text(
+                    _array(item, "V2 relation participant", 4)[3], "semantic reference"
+                ),
+            }
+            for item in participants
+        ],
+    }
+
+
+def _locator_to_wire_from_cbor(value: AuthorityValue) -> dict[str, object]:
+    fields = _array(value, "V1 locator", 2)
+    wire: dict[str, object] = {"kind": _text(fields[0], "locator kind")}
+    if fields[1] is not None:
+        wire["value"] = fields[1]
+    return wire
+
+
+def _evidence_to_wire_from_cbor(value: AuthorityValue) -> dict[str, object]:
+    fields = _array(value, "V1 evidence reference", 4)
+    return EvidenceRefV1(
+        authority_kind=_text(fields[0], "evidence authority kind"),
+        path=_text(fields[1], "evidence path"),
+        locator=(
+            _text(_array(fields[2], "evidence locator", 2)[0], "evidence locator kind"),
+            cast(str | int | None, _array(fields[2], "evidence locator", 2)[1]),
+        ),
+        raw_sha256=_bytes32(fields[3], "evidence digest"),
+    ).to_wire()
+
+
+def _participant_to_wire_from_cbor(value: AuthorityValue) -> dict[str, object]:
+    fields = _array(value, "participant binding", 4)
+    return {
+        "position": _uint32(fields[0], "participant position"),
+        "role": _text(fields[1], "participant role"),
+        "participant_kind": _text(fields[2], "participant kind"),
+        "semantic_ref": _text(fields[3], "participant semantic reference"),
+    }
+
+
+def _class_projection_to_wire_from_cbor(value: AuthorityValue) -> dict[str, object]:
+    fields = _array(value, "class projection", 9)
+    return {
+        "arity": _text(fields[0], "class arity"),
+        "directionality": _text(fields[1], "class directionality"),
+        "participant_roles": [
+            _participant_to_wire_from_cbor(cast(AuthorityValue, item))
+            for item in _array(fields[2], "class participant roles")
+        ],
+        "host_relationship": _text(fields[3], "class host relationship"),
+        "context_dimensions": _persistence_value_to_wire(cast(AuthorityValue, fields[4])),
+        "temporal_semantics": _persistence_value_to_wire(cast(AuthorityValue, fields[5])),
+        "b2_family_refs": [
+            {
+                "family_id": _text(_array(item, "B2 family reference", 3)[0], "B2 family ID"),
+                "lifecycle": _text(_array(item, "B2 family reference", 3)[1], "B2 lifecycle"),
+                "assignment_role": _text(
+                    _array(item, "B2 family reference", 3)[2], "B2 assignment role"
+                ),
+            }
+            for item in _array(fields[6], "class B2 family references")
+        ],
+        "b2_boundary_refs": [
+            {
+                "family_id": _text(_array(item, "B2 boundary reference", 2)[0], "B2 family ID"),
+                "precise_semantic_definition": _text(
+                    _array(item, "B2 boundary reference", 2)[1], "B2 definition"
+                ),
+            }
+            for item in _array(fields[7], "class B2 boundary references")
+        ],
+        "b1_final_citation_refs": [
+            {
+                "authority_id": _text(
+                    _array(item, "B1 citation reference", 2)[0], "B1 authority ID"
+                ),
+                "citation_id": _text(
+                    _array(item, "B1 citation reference", 2)[1], "B1 citation ID"
+                ),
+            }
+            for item in _array(fields[8], "class B1 citation references")
+        ],
+    }
+
+
+def _class_projection_equivalence_to_wire_from_cbor(
+    value: AuthorityValue,
+) -> dict[str, object]:
+    fields = _array(value, "class projection equivalence", 6)
+    claim = _array(fields[3], "semantic claim relation", 2)
+    return {
+        "theorem_projection": _class_projection_to_wire_from_cbor(
+            cast(AuthorityValue, fields[0])
+        ),
+        "member_projection": _class_projection_to_wire_from_cbor(
+            cast(AuthorityValue, fields[1])
+        ),
+        "equal_positions": [
+            _text(item, "equal position") for item in _array(fields[2], "equal positions")
+        ],
+        "semantic_claim_relation": {
+            "kind": _text(claim[0], "semantic claim kind"),
+            "theorem_semantic_digest": _bytes32(claim[1], "theorem semantic digest").hex(),
+        },
+        "evidence_refs": [
+            _evidence_to_wire_from_cbor(cast(AuthorityValue, item))
+            for item in _array(fields[4], "class equivalence evidence")
+        ],
+        "rationale": _text(fields[5], "class equivalence rationale"),
+    }
+
+
+def _positive_boundary_fact_to_wire_from_cbor(value: AuthorityValue) -> dict[str, object]:
+    tagged = _array(value, "positive boundary fact", 2)
+    kind = _text(tagged[0], "positive boundary fact kind")
+    payload = _array(tagged[1], "positive boundary fact payload")
+    if kind == "b2_boundary":
+        return {
+            "kind": kind,
+            "family_id": _text(payload[0], "B2 family ID"),
+            "lifecycle": _text(payload[1], "B2 lifecycle"),
+            "assignment_role": _text(payload[2], "B2 assignment role"),
+            "precise_semantic_definition": _text(payload[3], "B2 definition"),
+        }
+    if kind in {"rev3_locator", "b2_locator"}:
+        return {
+            "kind": kind,
+            "path": _text(payload[0], "source fact path"),
+            "raw_sha256": _bytes32(payload[1], "source fact digest").hex(),
+            "locator": _locator_to_wire_from_cbor(cast(AuthorityValue, payload[2])),
+        }
+    if kind == "b1_citation":
+        return {
+            "kind": kind,
+            "citation": {
+                "authority_id": _text(payload[0], "B1 authority ID"),
+                "citation_id": _text(payload[1], "B1 citation ID"),
+            },
+        }
+    if kind == "context_slot":
+        return {
+            "kind": kind,
+            "slot_kind": _text(payload[0], "context slot kind"),
+            "slot_name": _text(payload[1], "context slot name"),
+            "observed_value": _persistence_value_to_wire(cast(AuthorityValue, payload[2])),
+        }
+    if kind == "model_boundary":
+        return {
+            "kind": kind,
+            "model_id": _text(payload[0], "boundary model ID"),
+            "model_version": _text(payload[1], "boundary model version"),
+            "model_boundary_locator": _locator_to_wire_from_cbor(
+                cast(AuthorityValue, payload[2])
+            ),
+        }
+    raise AuthorityContractError("positive boundary fact kind is not closed")
+
+
+def _channel_coverage_to_wire_from_cbor(value: AuthorityValue) -> dict[str, object]:
+    fields = _array(value, "channel coverage", 6)
+    return {
+        "channel": _text(fields[0], "coverage channel"),
+        "coverage": _text(fields[1], "coverage conclusion"),
+        "positive_boundary_facts": [
+            _positive_boundary_fact_to_wire_from_cbor(cast(AuthorityValue, item))
+            for item in _array(fields[2], "positive boundary facts")
+        ],
+        "source_evidence_refs": [
+            _evidence_to_wire_from_cbor(cast(AuthorityValue, item))
+            for item in _array(fields[3], "coverage source evidence")
+        ],
+        "b1_final_citation_refs": [
+            {
+                "authority_id": _text(
+                    _array(item, "B1 citation reference", 2)[0], "B1 authority ID"
+                ),
+                "citation_id": _text(
+                    _array(item, "B1 citation reference", 2)[1], "B1 citation ID"
+                ),
+            }
+            for item in _array(fields[4], "coverage B1 references")
+        ],
+        "rationale": _text(fields[5], "coverage rationale"),
+    }
+
+
+def _scope_attestation_to_wire_from_cbor(value: AuthorityValue) -> dict[str, object]:
+    fields = _array(value, "scope boundary attestation", 6)
+    boundary = _array(fields[2], "model boundary reference", 4)
+    shape = _array(fields[4], "scope candidate shape", 5)
+    return {
+        "model_id": _text(fields[0], "scope model ID"),
+        "model_version": _text(fields[1], "scope model version"),
+        "model_boundary_ref": {
+            "path": _text(boundary[0], "model boundary path"),
+            "schema": _text(boundary[1], "model boundary schema"),
+            "raw_sha256": _bytes32(boundary[2], "model boundary digest").hex(),
+            "locator": _locator_to_wire_from_cbor(cast(AuthorityValue, boundary[3])),
+        },
+        "reason_code": _text(fields[3], "scope reason"),
+        "observed_candidate_shape": {
+            "scope": _text(shape[0], "scope candidate scope"),
+            "relation": _text(shape[1], "scope candidate relation"),
+            "arity": _text(shape[2], "scope candidate arity"),
+            "directionality": _text(shape[3], "scope candidate directionality"),
+            "participant_count": _uint32(shape[4], "scope participant count"),
+        },
+        "positive_boundary_evidence_refs": [
+            _evidence_to_wire_from_cbor(cast(AuthorityValue, item))
+            for item in _array(fields[5], "scope boundary evidence")
+        ],
+    }
+
+
+def _member_proof_to_wire(value: list[AuthorityValue]) -> dict[str, object]:
+    fields = _array(value, "V2 member proof", 2)
+    kind = _text(fields[0], "V2 member proof kind")
+    payload = _array(fields[1], "V2 member proof payload")
+    if kind == "positive_interaction":
+        return {
+            "kind": kind,
+            "causal_chain_ordinals": _persistence_value_to_wire(
+                cast(AuthorityValue, payload[0])
+            ),
+            "class_projection_equivalence": (
+                None
+                if payload[1] is None
+                else _class_projection_equivalence_to_wire_from_cbor(
+                    cast(AuthorityValue, payload[1])
+                )
+            ),
+        }
+    if kind == "positive_separation":
+        return {
+            "kind": kind,
+            "channel_coverages": [
+                _channel_coverage_to_wire_from_cbor(cast(AuthorityValue, item))
+                for item in _array(payload[0], "channel coverages")
+            ],
+        }
+    return {
+        "kind": kind,
+        "scope_boundary_attestation": _scope_attestation_to_wire_from_cbor(
+            cast(AuthorityValue, payload[0])
+        ),
+    }
+
+
+def _validate_relation_application_member_v2(value: object) -> None:
+    fields = _array(value, "V2 relation application member", 9)
+    _text(fields[0], "V2 candidate ID")
+    _validate_candidate_identity_reference(DigestReferenceV1.from_cbor(fields[1]))
+    _text(fields[2], "V2 source instance ID")
+    _validate_candidate_universe_binding(fields[3])
+    _validate_relation_binding(fields[4])
+    ParticipantRoleBridgeV1.from_cbor(fields[5])
+    _validate_precondition_attestations(fields[6])
+    _validate_nonempty_evidence_refs(fields[7], "V2 member evidence references")
+    _validate_member_proof_attestation(fields[8])
+
+
+def _validate_relation_application_members_v2(value: object) -> None:
+    members = _array(value, "V2 relation application members")
+    if not members:
+        _fail("V2 relation application members must be non-empty")
+    keys: list[bytes] = []
+    for member in members:
+        _validate_relation_application_member_v2(member)
+        fields = _array(member, "V2 relation application member", 9)
+        candidate = DigestReferenceV1.from_cbor(fields[1])
+        source_instance_id = _text(fields[2], "V2 source instance ID")
+        keys.append(encode_canonical([candidate.digest_bytes, source_instance_id]))
+    if keys != sorted(keys) or len(set(keys)) != len(keys):
+        _fail("V2 relation application members must be sorted and duplicate-free")
+
+
+def _validate_relation_application_v2_input(values: list[object]) -> None:
+    if len(values) != 4:
+        _fail("V2 relation application input must contain four fields")
+    if values[0] != RELATION_APPLICATION_INPUT_SCHEMA_V2:
+        _fail("V2 relation application schema is not the closed V2 schema")
+    _bytes32(values[1], "V2 relation theorem record ID")
+    _enum(values[2], _TERMINAL_DISPOSITIONS, "V2 terminal disposition")
+    _validate_relation_application_members_v2(values[3])
+
+
+def _validate_review_event_ref_v4_array(value: object) -> None:
+    fields = _array(value, "V4 review event reference", 3)
+    locator = _array(fields[2], "V4 review event locator", 2)
+    if locator[0] != "event_id":
+        _fail("V4 review event locator must be event_id")
+    ReviewEventRefV4(
+        path=_any_text(fields[0], "V4 review event path"),
+        raw_sha256=_bytes32(fields[1], "V4 review event digest"),
+        event_id=_any_text(locator[1], "V4 review event ID"),
+    )
+
+
+def _validate_relation_application_v2_record_input(values: list[object]) -> None:
+    if len(values) != 3:
+        _fail("V2 relation application record input must contain three fields")
+    if values[0] != RELATION_APPLICATION_RECORD_INPUT_SCHEMA_V2:
+        _fail("V2 relation application record schema is not the closed V2 schema")
+    _bytes32(values[1], "V2 relation application ID")
+    _validate_review_event_ref_v4_array(values[2])
+
+
+@dataclass(frozen=True)
+class RelationApplicationMemberV2:
+    candidate_id: str
+    candidate_identity_digest_reference: DigestReferenceV1
+    source_instance_id: str
+    candidate_universe_binding: list[AuthorityValue]
+    reviewed_relation_binding_v1: list[AuthorityValue]
+    participant_role_bridge_v1: ParticipantRoleBridgeV1
+    precondition_attestations_v1: list[AuthorityValue]
+    member_evidence_refs: tuple[EvidenceRefV1, ...]
+    member_proof_attestation_v1: list[AuthorityValue]
+
+    def __post_init__(self) -> None:
+        _text(self.candidate_id, "V2 candidate ID")
+        _validate_candidate_identity_reference(self.candidate_identity_digest_reference)
+        _text(self.source_instance_id, "V2 source instance ID")
+        _validate_candidate_universe_binding(self.candidate_universe_binding)
+        _validate_relation_binding(self.reviewed_relation_binding_v1)
+        if not isinstance(self.participant_role_bridge_v1, ParticipantRoleBridgeV1):
+            raise AuthorityContractError(
+                "V2 participant role bridge must be ParticipantRoleBridgeV1"
+            )
+        _validate_precondition_attestations(self.precondition_attestations_v1)
+        _require_evidence_tuple(self.member_evidence_refs, "V2 member evidence", allow_empty=False)
+        _validate_member_proof_attestation(self.member_proof_attestation_v1)
+
+    def to_cbor(self) -> list[AuthorityValue]:
+        return [
+            self.candidate_id,
+            self.candidate_identity_digest_reference.to_cbor(),
+            self.source_instance_id,
+            self.candidate_universe_binding,
+            self.reviewed_relation_binding_v1,
+            self.participant_role_bridge_v1.to_cbor(),
+            self.precondition_attestations_v1,
+            [reference.to_cbor() for reference in self.member_evidence_refs],
+            self.member_proof_attestation_v1,
+        ]
+
+    def to_wire(self) -> dict[str, object]:
+        return {
+            "candidate_id": self.candidate_id,
+            "candidate_identity": self.candidate_identity_digest_reference.to_wire(),
+            "source_instance_id": self.source_instance_id,
+            "candidate_universe_binding": {
+                "path": self.candidate_universe_binding[0],
+                "schema": self.candidate_universe_binding[1],
+                "raw_sha256": cast(bytes, self.candidate_universe_binding[2]).hex(),
+            },
+            "relation_binding": _relation_binding_to_wire(self.reviewed_relation_binding_v1),
+            "participant_role_bridge": [
+                entry.to_wire() for entry in self.participant_role_bridge_v1.entries
+            ],
+            "precondition_attestations": [
+                _precondition_to_wire(precondition)
+                for precondition in self.precondition_attestations_v1
+            ],
+            "member_evidence_refs": [
+                reference.to_wire() for reference in self.member_evidence_refs
+            ],
+            "member_proof_attestation": _member_proof_to_wire(
+                self.member_proof_attestation_v1
+            ),
+        }
+
+
+@dataclass(frozen=True)
+class RelationApplicationV2:
+    theorem_record_id_bytes: bytes
+    terminal_disposition: str
+    members: tuple[RelationApplicationMemberV2, ...]
+
+    def __post_init__(self) -> None:
+        _require_digest_bytes(self.theorem_record_id_bytes, "V2 relation theorem record ID")
+        _enum(self.terminal_disposition, _TERMINAL_DISPOSITIONS, "V2 terminal disposition")
+        _validate_relation_application_members_v2([member.to_cbor() for member in self.members])
+
+    def semantic_input(self) -> list[AuthorityValue]:
+        return [
+            RELATION_APPLICATION_INPUT_SCHEMA_V2,
+            self.theorem_record_id_bytes,
+            self.terminal_disposition,
+            [member.to_cbor() for member in self.members],
+        ]
+
+    def identity(self) -> AuthorityIdentityV1:
+        return compute_authority_identity(
+            AuthorityIdentityKind.RELATION_APPLICATION_V2,
+            self.semantic_input(),
+        )
+
+    def to_cbor(self) -> list[AuthorityValue]:
+        return self.semantic_input()
+
+
+RelationApplicationV2InputV1 = RelationApplicationV2
+
+
+@dataclass(frozen=True)
+class RelationApplicationV2RecordInputV1:
+    relation_application_id_bytes: bytes
+    review_event_ref_v4: ReviewEventRefV4
+
+    def __post_init__(self) -> None:
+        _require_digest_bytes(self.relation_application_id_bytes, "V2 relation application ID")
+        if not isinstance(self.review_event_ref_v4, ReviewEventRefV4):
+            raise AuthorityContractError("V4 review event reference is required")
+
+    def semantic_input(self) -> list[AuthorityValue]:
+        return [
+            RELATION_APPLICATION_RECORD_INPUT_SCHEMA_V2,
+            self.relation_application_id_bytes,
+            self.review_event_ref_v4.to_cbor(),
+        ]
+
+    def identity(self) -> AuthorityIdentityV1:
+        return compute_authority_identity(
+            AuthorityIdentityKind.RELATION_APPLICATION_RECORD_V2,
+            self.semantic_input(),
+        )
+
+    def to_cbor(self) -> list[AuthorityValue]:
+        return self.semantic_input()
+
+
+@dataclass(frozen=True)
+class RelationApplicationV2Record:
+    record_id: AuthorityIdentityV1
+    application_id: AuthorityIdentityV1
+    theorem_record_id: AuthorityIdentityV1
+    terminal_disposition: str
+    members: tuple[RelationApplicationMemberV2, ...]
+    review_event_ref_v4: ReviewEventRefV4
+
+    @classmethod
+    def from_parts(
+        cls,
+        application_id: AuthorityIdentityV1,
+        theorem_record_id: AuthorityIdentityV1,
+        terminal_disposition: str,
+        members: tuple[RelationApplicationMemberV2, ...],
+        review_event_ref_v4: ReviewEventRefV4,
+    ) -> RelationApplicationV2Record:
+        record_id = RelationApplicationV2RecordInputV1(
+            relation_application_id_bytes=application_id.digest_bytes,
+            review_event_ref_v4=review_event_ref_v4,
+        ).identity()
+        return cls(
+            record_id,
+            application_id,
+            theorem_record_id,
+            terminal_disposition,
+            members,
+            review_event_ref_v4,
+        )
+
+    def __post_init__(self) -> None:
+        if self.record_id.kind is not AuthorityIdentityKind.RELATION_APPLICATION_RECORD_V2:
+            raise AuthorityContractError("V2 relation application record ID has the wrong kind")
+        if self.application_id.kind is not AuthorityIdentityKind.RELATION_APPLICATION_V2:
+            raise AuthorityContractError("V2 relation application ID has the wrong kind")
+        if self.theorem_record_id.kind is not AuthorityIdentityKind.RELATION_THEOREM_RECORD:
+            raise AuthorityContractError("V1 relation theorem record ID has the wrong kind")
+        _enum(self.terminal_disposition, _TERMINAL_DISPOSITIONS, "V2 terminal disposition")
+        _validate_relation_application_members_v2([member.to_cbor() for member in self.members])
+        if not isinstance(self.review_event_ref_v4, ReviewEventRefV4):
+            raise AuthorityContractError("V4 review event reference is required")
+        expected = RelationApplicationV2RecordInputV1(
+            self.application_id.digest_bytes,
+            self.review_event_ref_v4,
+        ).identity()
+        if expected != self.record_id:
+            raise AuthorityContractError(
+                "V2 relation application record ID does not match its input"
+            )
+
+    def acceptance_free_subject_payload(self) -> list[AuthorityValue]:
+        return [
+            AcceptanceSubjectKindV4.RELATION_APPLICATION_V2_RECORD.value,
+            self.application_id.digest_bytes,
+            self.theorem_record_id.digest_bytes,
+            self.terminal_disposition,
+            [member.to_cbor() for member in self.members],
+        ]
+
+    def to_cbor(self) -> list[AuthorityValue]:
+        return [
+            self.record_id.to_cbor(),
+            self.application_id.to_cbor(),
+            self.theorem_record_id.to_cbor(),
+            self.terminal_disposition,
+            [member.to_cbor() for member in self.members],
+            ["human_accepted", self.review_event_ref_v4.to_cbor()],
+        ]
+
+    def to_wire(self) -> dict[str, object]:
+        return {
+            "record_id": self.record_id.as_text(),
+            "application_id": self.application_id.as_text(),
+            "theorem_record_id": self.theorem_record_id.as_text(),
+            "terminal_disposition": self.terminal_disposition,
+            "members": [member.to_wire() for member in self.members],
+            "acceptance": {
+                "decision": "human_accepted",
+                "review_event_ref": self.review_event_ref_v4.to_wire(),
+            },
+        }
+
+
+RelationApplicationRecordV2 = RelationApplicationV2Record
+RelationApplicationRecordV2InputV1 = RelationApplicationV2RecordInputV1
 
 
 @dataclass(frozen=True)
