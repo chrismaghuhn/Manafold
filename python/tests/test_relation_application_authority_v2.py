@@ -3,7 +3,10 @@ from __future__ import annotations
 import json
 import sys
 import unittest
+from copy import deepcopy
 from pathlib import Path
+
+import jsonschema
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
@@ -21,6 +24,7 @@ from relation_application_v2_supersession import (
     RelationApplicationV2SupersessionError,
     admit_relation_application_authority_v2,
 )
+from test_relation_application_v2_review_admission import valid_record
 
 
 def binding(role: str, path: str, schema: str | None) -> RelationAuthoritySourceBindingV2:
@@ -28,6 +32,33 @@ def binding(role: str, path: str, schema: str | None) -> RelationAuthoritySource
 
 
 class RelationApplicationAuthorityV2Tests(unittest.TestCase):
+    def test_aggregate_schema_accepts_all_existing_v1_member_proof_wire_goldens(self) -> None:
+        schema = json.loads(
+            (ROOT / "schemas/relation-application-authority.v2.schema.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        aggregate = json.loads(
+            (
+                ROOT
+                / "conformance/fixtures/authority/relation_application_authority.v2.json"
+            ).read_text(encoding="utf-8")
+        )
+        proof_matrix = json.loads(
+            (
+                ROOT
+                / "conformance/fixtures/authority/relation_application_v2_wire_golden.v1.json"
+            ).read_text(encoding="utf-8")
+        )
+        record, _ = valid_record()
+        for proof_kind, proof_wire in proof_matrix["proof_wire_goldens"].items():
+            with self.subTest(proof_kind=proof_kind):
+                candidate = deepcopy(aggregate)
+                record_wire = record.to_wire()
+                record_wire["members"][0]["member_proof_attestation"] = proof_wire
+                candidate["relation_application_v2_records"] = [record_wire]
+                jsonschema.Draft202012Validator(schema).validate(candidate)
+
     def test_rps_and_rpsr_identities_match_shared_golden_bytes(self) -> None:
         matrix = json.loads(
             (

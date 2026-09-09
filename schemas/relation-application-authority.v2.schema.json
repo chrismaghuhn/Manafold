@@ -61,8 +61,9 @@
     "locator": {
       "oneOf": [
         { "type": "object", "additionalProperties": false, "properties": { "kind": { "const": "whole_artifact" } }, "required": ["kind"] },
-        { "type": "object", "additionalProperties": false, "properties": { "kind": { "const": "json_pointer" }, "value": { "type": "string" } }, "required": ["kind", "value"] },
-        { "type": "object", "additionalProperties": false, "properties": { "kind": { "const": "archive_member" }, "value": { "$ref": "#/$defs/relative_path" } }, "required": ["kind", "value"] }
+        { "type": "object", "additionalProperties": false, "properties": { "kind": { "const": "json_pointer" }, "value": { "type": "string", "pattern": "^(/([^~/]|~0|~1)*)*$" } }, "required": ["kind", "value"] },
+        { "type": "object", "additionalProperties": false, "properties": { "kind": { "const": "archive_member" }, "value": { "$ref": "#/$defs/relative_path" } }, "required": ["kind", "value"] },
+        { "type": "object", "additionalProperties": false, "properties": { "kind": { "const": "event_id" }, "value": { "type": "string", "pattern": "^ae\\.v1/[0-9a-f]{64}$" } }, "required": ["kind", "value"] }
       ]
     },
     "evidence_ref": {
@@ -75,6 +76,383 @@
         "raw_sha256": { "$ref": "#/$defs/digest" }
       },
       "required": ["authority_kind", "path", "locator", "raw_sha256"]
+    },
+    "non_empty_string": {
+      "type": "string",
+      "minLength": 1
+    },
+    "authority_arity": {
+      "type": "string",
+      "enum": ["unary", "binary", "higher_order"]
+    },
+    "authority_directionality": {
+      "type": "string",
+      "enum": ["directed", "none", "symmetric"]
+    },
+    "authority_scope": {
+      "type": "string",
+      "enum": ["cross_deck", "intra_deck", "unary_or_higher_order"]
+    },
+    "authority_relation": {
+      "type": "string",
+      "enum": [
+        "declared_card_trigger",
+        "directional_binary",
+        "reviewed_higher_order",
+        "unordered_binary"
+      ]
+    },
+    "candidate_shape": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "scope": { "$ref": "#/$defs/authority_scope" },
+        "relation": { "$ref": "#/$defs/authority_relation" },
+        "arity": { "$ref": "#/$defs/authority_arity" },
+        "directionality": { "$ref": "#/$defs/authority_directionality" },
+        "participant_count": { "type": "integer", "minimum": 0, "maximum": 4294967295 }
+      },
+      "required": ["scope", "relation", "arity", "directionality", "participant_count"]
+    },
+    "participant_kind": {
+      "type": "string",
+      "enum": [
+        "ability",
+        "card",
+        "copiable_value",
+        "deck",
+        "effect",
+        "event",
+        "object",
+        "permanent",
+        "player",
+        "requirement_family",
+        "source_instance",
+        "spell",
+        "token",
+        "zone"
+      ]
+    },
+    "participant_role_name": {
+      "type": "string",
+      "enum": [
+        "affected",
+        "controller",
+        "copied_source",
+        "copy_result",
+        "decision_actor",
+        "destination_zone",
+        "origin_zone",
+        "ordered_participant",
+        "owner",
+        "replacement_actor",
+        "source",
+        "target",
+        "trigger_source"
+      ]
+    },
+    "host_relationship": {
+      "type": "string",
+      "enum": ["cross_host", "not_applicable", "same_host"]
+    },
+    "b2_lifecycle": {
+      "type": "string",
+      "enum": ["active", "active_unassigned"]
+    },
+    "b2_assignment_role": {
+      "type": "string",
+      "enum": ["primary", "supporting"]
+    },
+    "b2_family_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "family_id": { "$ref": "#/$defs/non_empty_string" },
+        "lifecycle": { "$ref": "#/$defs/b2_lifecycle" },
+        "assignment_role": { "$ref": "#/$defs/b2_assignment_role" }
+      },
+      "required": ["family_id", "lifecycle", "assignment_role"]
+    },
+    "b2_boundary_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "family_id": { "$ref": "#/$defs/non_empty_string" },
+        "precise_semantic_definition": { "$ref": "#/$defs/non_empty_string" }
+      },
+      "required": ["family_id", "precise_semantic_definition"]
+    },
+    "cbor_value": {
+      "oneOf": [
+        { "type": "null" },
+        { "type": "boolean" },
+        { "type": "integer" },
+        { "type": "string" },
+        { "type": "array", "items": { "$ref": "#/$defs/cbor_value" } }
+      ]
+    },
+    "model_boundary_locator": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": { "kind": { "const": "coverage_scope" } },
+          "required": ["kind"]
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "kind": { "const": "excluded_claim" },
+            "index": { "type": "integer", "minimum": 0, "maximum": 4294967295 }
+          },
+          "required": ["kind", "index"]
+        }
+      ]
+    },
+    "model_boundary_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "path": { "$ref": "#/$defs/relative_path" },
+        "schema": { "const": "manafold.m2.5.c.declared-interaction-model.v2" },
+        "raw_sha256": { "$ref": "#/$defs/digest" },
+        "locator": { "$ref": "#/$defs/model_boundary_locator" }
+      },
+      "required": ["path", "schema", "raw_sha256", "locator"]
+    },
+    "scope_reason": {
+      "type": "string",
+      "enum": [
+        "unbounded_n_way_not_representable",
+        "undeclared_participant_kind",
+        "undeclared_relation_shape",
+        "undeclared_outcome_surface"
+      ]
+    },
+    "relation_channel": {
+      "type": "string",
+      "enum": [
+        "participant_boundary",
+        "event_or_effect_causality",
+        "target_or_choice",
+        "zone_or_object_identity",
+        "control_or_ownership",
+        "replacement_or_layer",
+        "trigger_or_lki",
+        "information_or_visibility",
+        "ordering_or_temporal",
+        "decision_actor",
+        "format_and_declared_scope"
+      ]
+    },
+    "required_conclusion": {
+      "type": "string",
+      "enum": ["separated", "not_relevant"]
+    },
+    "b1_citation_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "authority_id": { "$ref": "#/$defs/non_empty_string" },
+        "citation_id": { "$ref": "#/$defs/non_empty_string" }
+      },
+      "required": ["authority_id", "citation_id"]
+    },
+    "evidence_refs": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/evidence_ref" }
+    },
+    "participant_role": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "position": { "type": "integer", "minimum": 0, "maximum": 4294967295 },
+        "role": { "$ref": "#/$defs/participant_role_name" },
+        "participant_kind": { "$ref": "#/$defs/participant_kind" },
+        "semantic_ref": { "$ref": "#/$defs/non_empty_string" }
+      },
+      "required": ["position", "role", "participant_kind", "semantic_ref"]
+    },
+    "context_dimension_values": {
+      "type": "array",
+      "prefixItems": [
+        { "type": "string", "enum": ["battlefield", "command_zone", "exile", "graveyard", "hand", "library", "outside_game", "stack", "zone_agnostic", "not_applicable"] },
+        { "type": "string", "enum": ["controller_only", "hidden_to_actor", "identity_hidden", "not_applicable", "owner_only", "private", "public"] },
+        { "type": "string", "enum": ["activation_time", "cast_time", "combat_time", "continuous_effect", "not_applicable", "resolution_time", "state_based_check", "trigger_time", "turn_boundary", "zone_change_time"] },
+        { "type": "string", "enum": ["after", "before", "during", "not_applicable", "sequential", "simultaneous", "until", "while"] },
+        { "type": "string", "enum": ["both_affected", "no_effect_relation", "not_applicable", "source_affected", "source_affects_other"] },
+        { "type": "string", "enum": ["control_changes", "cross_controller", "cross_owner", "not_applicable", "ownership_changes", "same_controller", "same_owner"] },
+        { "type": "string", "enum": ["copy_layer", "control_layer", "layer_dependency", "no_replacement_or_layer", "not_applicable", "pt_layer", "replacement_effect", "type_layer", "zone_change_replacement"] },
+        { "type": "string", "enum": ["intervening_if", "last_known_information", "no_trigger_lki", "not_applicable", "trigger_condition", "triggered_event"] },
+        { "type": "string", "enum": ["hidden_identity", "known_to_controller", "known_to_owner", "no_information_dependency", "not_applicable", "private_look", "public_identity", "random_unknown"] },
+        { "type": "string", "enum": ["active_player", "controller", "no_decision", "not_applicable", "opponent", "owner", "rules_forced", "target_player"] }
+      ],
+      "items": false,
+      "minItems": 10,
+      "maxItems": 10
+    },
+    "temporal_semantic_values": {
+      "type": "array",
+      "prefixItems": [
+        { "type": "string", "enum": ["deferred", "immediate", "no_temporal_dependency", "not_applicable"] },
+        { "type": "string", "enum": ["dependency_ordered", "no_temporal_dependency", "not_applicable"] },
+        { "type": "string", "enum": ["duration_limited", "indefinite", "not_applicable", "until_event"] },
+        { "type": "string", "enum": ["after_effect", "before_effect", "no_temporal_dependency", "not_applicable", "same_event"] }
+      ],
+      "items": false,
+      "minItems": 4,
+      "maxItems": 4
+    },
+    "class_projection_positions": {
+      "type": "array",
+      "prefixItems": [
+        { "const": "arity" },
+        { "const": "directionality" },
+        { "const": "participant_roles" },
+        { "const": "host_relationship" },
+        { "const": "context_dimensions" },
+        { "const": "temporal_semantics" },
+        { "const": "b2_family_refs" },
+        { "const": "b2_boundary_refs" },
+        { "const": "b1_final_citation_refs" }
+      ],
+      "items": false,
+      "minItems": 9,
+      "maxItems": 9
+    },
+    "semantic_claim_relation": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "kind": { "const": "same_theorem_semantic_id" },
+        "theorem_semantic_digest": { "$ref": "#/$defs/digest" }
+      },
+      "required": ["kind", "theorem_semantic_digest"]
+    },
+    "class_projection": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "arity": { "$ref": "#/$defs/authority_arity" },
+        "directionality": { "$ref": "#/$defs/authority_directionality" },
+        "participant_roles": { "type": "array", "items": { "$ref": "#/$defs/participant_role" } },
+        "host_relationship": { "$ref": "#/$defs/host_relationship" },
+        "context_dimensions": { "$ref": "#/$defs/context_dimension_values" },
+        "temporal_semantics": { "$ref": "#/$defs/temporal_semantic_values" },
+        "b2_family_refs": { "type": "array", "items": { "$ref": "#/$defs/b2_family_ref" } },
+        "b2_boundary_refs": { "type": "array", "items": { "$ref": "#/$defs/b2_boundary_ref" } },
+        "b1_final_citation_refs": { "type": "array", "items": { "$ref": "#/$defs/b1_citation_ref" } }
+      },
+      "required": ["arity", "directionality", "participant_roles", "host_relationship", "context_dimensions", "temporal_semantics", "b2_family_refs", "b2_boundary_refs", "b1_final_citation_refs"]
+    },
+    "class_projection_equivalence": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "theorem_projection": { "$ref": "#/$defs/class_projection" },
+        "member_projection": { "$ref": "#/$defs/class_projection" },
+        "equal_positions": { "$ref": "#/$defs/class_projection_positions" },
+        "semantic_claim_relation": { "$ref": "#/$defs/semantic_claim_relation" },
+        "evidence_refs": { "$ref": "#/$defs/evidence_refs" },
+        "rationale": { "$ref": "#/$defs/non_empty_string" }
+      },
+      "required": ["theorem_projection", "member_projection", "equal_positions", "semantic_claim_relation", "evidence_refs", "rationale"]
+    },
+    "positive_boundary_fact": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "kind": { "const": "b2_boundary" },
+            "family_id": { "$ref": "#/$defs/non_empty_string" },
+            "lifecycle": { "$ref": "#/$defs/b2_lifecycle" },
+            "assignment_role": { "$ref": "#/$defs/b2_assignment_role" },
+            "precise_semantic_definition": { "$ref": "#/$defs/non_empty_string" }
+          },
+          "required": ["kind", "family_id", "lifecycle", "assignment_role", "precise_semantic_definition"]
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "kind": { "const": "rev3_locator" },
+            "path": { "$ref": "#/$defs/relative_path" },
+            "raw_sha256": { "$ref": "#/$defs/digest" },
+            "locator": { "$ref": "#/$defs/locator" }
+          },
+          "required": ["kind", "path", "raw_sha256", "locator"]
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "kind": { "const": "b2_locator" },
+            "path": { "$ref": "#/$defs/relative_path" },
+            "raw_sha256": { "$ref": "#/$defs/digest" },
+            "locator": { "$ref": "#/$defs/locator" }
+          },
+          "required": ["kind", "path", "raw_sha256", "locator"]
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "kind": { "const": "b1_citation" },
+            "citation": { "$ref": "#/$defs/b1_citation_ref" }
+          },
+          "required": ["kind", "citation"]
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "kind": { "const": "context_slot" },
+            "slot_kind": { "$ref": "#/$defs/non_empty_string" },
+            "slot_name": { "$ref": "#/$defs/non_empty_string" },
+            "observed_value": { "$ref": "#/$defs/cbor_value" }
+          },
+          "required": ["kind", "slot_kind", "slot_name", "observed_value"]
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "kind": { "const": "model_boundary" },
+            "model_id": { "$ref": "#/$defs/non_empty_string" },
+            "model_version": { "$ref": "#/$defs/non_empty_string" },
+            "model_boundary_locator": { "$ref": "#/$defs/model_boundary_locator" }
+          },
+          "required": ["kind", "model_id", "model_version", "model_boundary_locator"]
+        }
+      ]
+    },
+    "channel_coverage": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "channel": { "$ref": "#/$defs/relation_channel" },
+        "coverage": { "$ref": "#/$defs/required_conclusion" },
+        "positive_boundary_facts": { "type": "array", "items": { "$ref": "#/$defs/positive_boundary_fact" } },
+        "source_evidence_refs": { "$ref": "#/$defs/evidence_refs" },
+        "b1_final_citation_refs": { "type": "array", "items": { "$ref": "#/$defs/b1_citation_ref" } },
+        "rationale": { "$ref": "#/$defs/non_empty_string" }
+      },
+      "required": ["channel", "coverage", "positive_boundary_facts", "source_evidence_refs", "b1_final_citation_refs", "rationale"]
+    },
+    "scope_boundary_attestation": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "model_id": { "$ref": "#/$defs/non_empty_string" },
+        "model_version": { "$ref": "#/$defs/non_empty_string" },
+        "model_boundary_ref": { "$ref": "#/$defs/model_boundary_ref" },
+        "reason_code": { "$ref": "#/$defs/scope_reason" },
+        "observed_candidate_shape": { "$ref": "#/$defs/candidate_shape" },
+        "positive_boundary_evidence_refs": { "$ref": "#/$defs/evidence_refs" }
+      },
+      "required": ["model_id", "model_version", "model_boundary_ref", "reason_code", "observed_candidate_shape", "positive_boundary_evidence_refs"]
     },
     "participant_binding": {
       "type": "object",
@@ -129,8 +507,16 @@
           "additionalProperties": false,
           "properties": {
             "kind": { "const": "positive_interaction" },
-            "causal_chain_ordinals": { "type": "array", "items": { "type": "integer", "minimum": 0 } },
-            "class_projection_equivalence": { "type": ["object", "null"] }
+            "causal_chain_ordinals": {
+              "type": "array",
+              "items": { "type": "integer", "minimum": 0, "maximum": 4294967295 }
+            },
+            "class_projection_equivalence": {
+              "anyOf": [
+                { "$ref": "#/$defs/class_projection_equivalence" },
+                { "type": "null" }
+              ]
+            }
           },
           "required": ["kind", "causal_chain_ordinals", "class_projection_equivalence"]
         },
@@ -139,7 +525,10 @@
           "additionalProperties": false,
           "properties": {
             "kind": { "const": "positive_separation" },
-            "channel_coverages": { "type": "array", "minItems": 1, "items": { "type": "object", "additionalProperties": false } }
+            "channel_coverages": {
+              "type": "array",
+              "items": { "$ref": "#/$defs/channel_coverage" }
+            }
           },
           "required": ["kind", "channel_coverages"]
         },
@@ -148,7 +537,7 @@
           "additionalProperties": false,
           "properties": {
             "kind": { "const": "model_bound_scope" },
-            "scope_boundary_attestation": { "type": "object", "additionalProperties": false }
+            "scope_boundary_attestation": { "$ref": "#/$defs/scope_boundary_attestation" }
           },
           "required": ["kind", "scope_boundary_attestation"]
         }

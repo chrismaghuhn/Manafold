@@ -2694,6 +2694,10 @@ class AuthorityValidatorTests(unittest.TestCase):
 
     def test_valid_same_kind_revocation_supersession_is_accepted(self) -> None:
         from authority_validator import AuthorityValidator
+        from relation_application_v2_resolver import (
+            RelationApplicationV2ResolutionError,
+            RelationApplicationV2Resolver,
+        )
 
         theorem = cast(dict[str, object], self.document["relation_proofs"][0])
         theorem_record_id = cast(dict[str, object], theorem["record_id"])
@@ -2763,9 +2767,15 @@ class AuthorityValidatorTests(unittest.TestCase):
                 ]
             )
         )
-        result = AuthorityValidator(self.resolver).validate(candidate)
+        validator = AuthorityValidator(self.resolver)
+        result = validator.validate(candidate)
         self.assertTrue(result.valid)
         self.assertEqual(result.counts["supersession_records"], 1)
+
+        rpa_resolver = RelationApplicationV2Resolver(self.resolver, validator, candidate)
+        with self.assertRaises(RelationApplicationV2ResolutionError) as raised:
+            rpa_resolver.require_current_relation_theorem(theorem_record_identity)
+        self.assertEqual(raised.exception.code, "SUPERSEDED_AUTHORITY_USED")
 
 
 if __name__ == "__main__":
