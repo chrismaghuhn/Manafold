@@ -11,7 +11,12 @@ PYTHON_SRC = ROOT / "python" / "src"
 if str(PYTHON_SRC) not in sys.path:
     sys.path.insert(0, str(PYTHON_SRC))
 
-from authority_source_resolver import AuthoritySourceResolver, ResolvedArtifact
+from authority_source_resolver import (
+    AuthoritySourceResolver,
+    B2ArtifactBindingsV1,
+    B2BoundaryReferenceV1,
+    ResolvedArtifact,
+)
 from authority_validator import AuthorityValidator
 from mtgml.authority import (
     ACCEPTANCE_EVENT_SCHEMA_V1,
@@ -105,6 +110,73 @@ class RelationApplicationV2Resolver:
 
     def resolve_v4_acceptance_evidence(self, evidence: AcceptanceEvidenceRefV1) -> object:
         return self._source_resolver.resolve_v4_acceptance_evidence(evidence)
+
+    def _b2_bindings(self) -> B2ArtifactBindingsV1:
+        raw_sources = self._authority_document.get("source_bindings")
+        if not isinstance(raw_sources, list):
+            raise RelationApplicationV2ResolutionError(
+                "B2_PRECONDITION_SOURCE_MISMATCH", "base_authority.source_bindings"
+            )
+        found: dict[str, SourceBindingDigestV1] = {}
+        for raw in raw_sources:
+            if not isinstance(raw, Mapping):
+                continue
+            role = raw.get("artifact_role")
+            if role not in {"b2_catalog", "b2_classifications", "b2_closure"}:
+                continue
+            try:
+                found[role] = SourceBindingDigestV1(
+                    role,
+                    raw["path"],
+                    raw.get("schema_or_null"),
+                    bytes.fromhex(raw["raw_sha256"]),
+                )
+            except (KeyError, TypeError, ValueError) as exc:
+                raise RelationApplicationV2ResolutionError(
+                    "B2_PRECONDITION_SOURCE_MISMATCH", role
+                ) from exc
+        if set(found) != {"b2_catalog", "b2_classifications", "b2_closure"}:
+            raise RelationApplicationV2ResolutionError(
+                "B2_PRECONDITION_SOURCE_MISMATCH", "base_authority.source_bindings"
+            )
+        return B2ArtifactBindingsV1(
+            found["b2_catalog"],
+            found["b2_classifications"],
+            found["b2_closure"],
+        )
+
+    def resolve_relation_application_v2_b2_boundary(self, payload: object) -> None:
+        if not isinstance(payload, list) or len(payload) != 4:
+            raise RelationApplicationV2ResolutionError(
+                "B2_PRECONDITION_SOURCE_MISMATCH", "b2_boundary"
+            )
+        family_id, lifecycle, _assignment_role, definition = payload
+        if not all(
+            isinstance(value, str) and value for value in (family_id, lifecycle, definition)
+        ):
+            raise RelationApplicationV2ResolutionError(
+                "B2_PRECONDITION_SOURCE_MISMATCH", "b2_boundary"
+            )
+        bindings = self._b2_bindings()
+        try:
+            family = self._source_resolver.resolve_b2_requirement_family(family_id, bindings)
+            if str(family.record.get("status", "")).lower() != lifecycle:
+                raise RelationApplicationV2ResolutionError(
+                    "B2_PRECONDITION_LIFECYCLE_MISMATCH", "b2_boundary.lifecycle"
+                )
+            self._source_resolver.resolve_b2_boundary(
+                family,
+                B2BoundaryReferenceV1(
+                    family_id=family_id,
+                    precise_semantic_definition=definition,
+                ),
+            )
+        except RelationApplicationV2ResolutionError:
+            raise
+        except Exception as exc:
+            raise RelationApplicationV2ResolutionError(
+                "B2_PRECONDITION_SOURCE_MISMATCH", "b2_boundary", str(exc)
+            ) from exc
 
     @staticmethod
     def _evidence_from_cbor(value: object) -> EvidenceRefV1 | None:

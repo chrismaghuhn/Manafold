@@ -237,6 +237,34 @@ class RelationApplicationV2ValidatorTests(unittest.TestCase):
             )
         self.assertEqual(raised.exception.code, "B2_PRECONDITION_RESOLUTION_REQUIRED")
 
+    def test_b2_boundary_positive_path_uses_the_existing_resolver_adapter(self) -> None:
+        payload = ["family", "ACTIVE", "required", "definition"]
+        theorem = theorem_record(
+            preconditions=[
+                {
+                    "precondition_id": "b2",
+                    "precondition_kind": "b2_boundary",
+                    "payload": payload,
+                }
+            ]
+        )
+        observed = replace(
+            member(),
+            precondition_attestations_v1=[
+                ["b2", payload, [["model", "a", ["whole_artifact", None], b"e" * 32]], "b2"]
+            ],
+        )
+
+        class FakeB2Resolver(FakeSourceResolver):
+            def resolve_relation_application_v2_b2_boundary(self, observed_payload: object) -> None:
+                if observed_payload != payload:
+                    raise AssertionError("wrong B2 payload")
+
+        result = validate_relation_application_v2_semantics(
+            observed, FakeB2Resolver(), theorem_record=theorem
+        )
+        self.assertTrue(result.valid)
+
     def test_historical_role_substitution_fails_closed(self) -> None:
         altered = ParticipantRoleBridgeV1(
             (
