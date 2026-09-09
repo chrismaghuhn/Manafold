@@ -700,6 +700,7 @@ SCHEMA_INVENTORY_ALLOWED: frozenset[str] = frozenset(
         "interaction-review-authority.v1.schema.json",
         "interaction-review-authority.v2.schema.json",
         "context-application-authority.v2.schema.json",
+        "relation-application-authority.v2.schema.json",
         "normative-document-register.v1.schema.json",
         "observation-envelope.v1.schema.json",
         "observed-event-envelope.v1.schema.json",

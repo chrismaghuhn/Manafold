@@ -141,6 +141,11 @@ class FakeAuthorityValidator:
     def require_current_relation_theorem(self, _theorem_id: object) -> dict[str, object]:
         return self.theorem
 
+    def require_validated_record(
+        self, _identity: object, _kind: object, _label: str
+    ) -> dict[str, object]:
+        return self.theorem
+
     def validate_relation_member_proof_v1(
         self,
         member: dict[str, object],

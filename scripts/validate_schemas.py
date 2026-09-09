@@ -72,6 +72,10 @@ AUTHORITY_ARTIFACT_CASES = [
         "conformance/fixtures/authority/context_application_authority.v2.json",
     ),
     (
+        "relation-application-authority.v2.schema.json",
+        "conformance/fixtures/authority/relation_application_authority.v2.json",
+    ),
+    (
         "review-acceptance-event.v1.schema.json",
         "conformance/fixtures/authority/review_acceptance_event.v1.json",
     ),
