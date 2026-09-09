@@ -13,12 +13,12 @@ PYTHON_SRC = ROOT / "python" / "src"
 if str(PYTHON_SRC) not in sys.path:
     sys.path.insert(0, str(PYTHON_SRC))
 
+from authority_validator import validate_relation_member_proof_v1_against_theorem
 from mtgml.authority import (
     RelationApplicationMemberV2,
     RelationApplicationV2,
     SourceBindingDigestV1,
 )
-from mtgml.persistence import encode_canonical
 
 
 class RelationApplicationV2SemanticValidationError(ValueError):
@@ -155,64 +155,23 @@ def _reviewed_binding(member: RelationApplicationMemberV2) -> list[object]:
 
 
 def _validate_member_proof(
-    member: RelationApplicationMemberV2, theorem: Mapping[str, object], label: str
+    member: RelationApplicationMemberV2,
+    theorem: Mapping[str, object],
+    label: str,
+    source_resolver: object,
 ) -> None:
-    theorem_kind = _text(
-        theorem.get("proof_kind"), "RELATION_APPLICATION_V2_THEOREM_MISMATCH", "proof kind"
-    )
-    proof = _array(member.member_proof_attestation_v1, "member proof", 2)
-    if proof[0] != theorem_kind:
-        _fail("RELATION_APPLICATION_V2_THEOREM_MISMATCH", f"{label}.member_proof_attestation")
-    theorem_payload = _mapping(theorem.get("proof_payload"), "proof payload")
-    if theorem_payload.get("kind") != theorem_kind:
-        _fail("RELATION_APPLICATION_V2_THEOREM_MISMATCH", "theorem proof kind")
-    member_payload = _array(proof[1], "member proof payload")
-    if theorem_kind == "positive_interaction":
-        member_payload = _array(member_payload, "positive interaction member proof", 2)
-        causal_chain = theorem_payload.get("causal_chain")
-        if isinstance(causal_chain, list):
-            ordinals = _array(member_payload[0], "causal chain ordinals")
-            if ordinals != list(range(len(causal_chain))):
-                _fail("CAUSAL_CHAIN_BINDING_MISMATCH", f"{label}.member_proof_attestation")
-        template = theorem_payload.get("class_projection_template")
-        equivalence = member_payload[1]
-        if (template is None) != (equivalence is None):
-            _fail("CLASS_PROJECTION_BINDING_MISMATCH", f"{label}.member_proof_attestation")
-        if equivalence is not None:
-            equivalence_fields = _array(equivalence, "class projection equivalence", 6)
-            if encode_canonical(cast(object, equivalence_fields[0])) != encode_canonical(template):
-                _fail("CLASS_PROJECTION_BINDING_MISMATCH", f"{label}.member_proof_attestation")
-            if encode_canonical(cast(object, equivalence_fields[1])) != encode_canonical(template):
-                _fail("CLASS_PROJECTION_BINDING_MISMATCH", f"{label}.member_proof_attestation")
-    elif theorem_kind == "positive_separation":
-        obligations = _array(
-            theorem_payload.get("separation_obligations"), "separation obligations"
-        )
-        coverages = member_payload
-        if len(obligations) != len(coverages):
-            _fail("SEPARATION_COVERAGE_INCOMPLETE", f"{label}.member_proof_attestation")
-        for obligation, coverage in zip(obligations, coverages, strict=True):
-            obligation_record = _mapping(obligation, "separation obligation")
-            coverage_fields = _array(coverage, "separation coverage", 6)
-            if coverage_fields[0] != obligation_record.get("channel") or coverage_fields[
-                1
-            ] != obligation_record.get("required_conclusion"):
-                _fail("SEPARATION_COVERAGE_MISMATCH", f"{label}.member_proof_attestation")
-    elif theorem_kind == "model_bound_scope":
-        expected_scope = _mapping(theorem_payload, "scope proof payload")
-        scope_fields = _array(member_payload, "scope member proof", 1)
-        actual_scope = _array(scope_fields[0], "scope boundary attestation", 6)
-        for field in (
-            (0, "model_id"),
-            (1, "model_version"),
-            (3, "reason_code"),
-            (4, "observed_candidate_shape"),
-            (2, "model_boundary_ref"),
-        ):
-            index, name = field
-            expected_value = expected_scope.get(name)
-            if expected_value is not None and actual_scope[index] != expected_value:
-                _fail("SCOPE_BINDING_MISMATCH", f"{label}.member_proof_attestation")
+    wire_member = member.to_wire()
+    shared = getattr(source_resolver, "validate_relation_member_proof_v1", None)
+    try:
+        if callable(shared):
+            shared(wire_member, theorem, label)
+        else:
+            validate_relation_member_proof_v1_against_theorem(wire_member, theorem, label)
+    except RelationApplicationV2SemanticValidationError:
+        raise
+    except Exception as exc:
+        code = getattr(exc, "code", "RELATION_APPLICATION_V2_THEOREM_MISMATCH")
+        _fail(code, f"{label}.member_proof_attestation", str(exc))
 
 
 def _validate_preconditions(
@@ -275,7 +234,7 @@ def _validate_preconditions(
             ):
                 _fail("PRECONDITION_SOURCE_MISMATCH", f"{label}.precondition_attestations[{index}")
         elif kind == "class_projection":
-            _validate_member_proof(member, theorem, label)
+            _validate_member_proof(member, theorem, label, source_resolver)
         elif kind == "b2_boundary":
             resolver = getattr(source_resolver, "resolve_relation_application_v2_b2_boundary", None)
             if not callable(resolver):
@@ -381,7 +340,7 @@ def validate_relation_application_v2_semantics(
             has_divergent_member = True
         else:
             has_exact_member = True
-        _validate_member_proof(member, theorem_record, label)
+        _validate_member_proof(member, theorem_record, label, source_resolver)
         _validate_preconditions(
             member,
             theorem_record,

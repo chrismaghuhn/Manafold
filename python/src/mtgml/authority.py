@@ -2922,6 +2922,211 @@ def _relation_binding_to_wire(value: list[AuthorityValue]) -> dict[str, object]:
     }
 
 
+def _locator_to_wire_from_cbor(value: AuthorityValue) -> dict[str, object]:
+    fields = _array(value, "V1 locator", 2)
+    wire: dict[str, object] = {"kind": _text(fields[0], "locator kind")}
+    if fields[1] is not None:
+        wire["value"] = fields[1]
+    return wire
+
+
+def _evidence_to_wire_from_cbor(value: AuthorityValue) -> dict[str, object]:
+    fields = _array(value, "V1 evidence reference", 4)
+    return EvidenceRefV1(
+        authority_kind=_text(fields[0], "evidence authority kind"),
+        path=_text(fields[1], "evidence path"),
+        locator=(
+            _text(_array(fields[2], "evidence locator", 2)[0], "evidence locator kind"),
+            cast(str | int | None, _array(fields[2], "evidence locator", 2)[1]),
+        ),
+        raw_sha256=_bytes32(fields[3], "evidence digest"),
+    ).to_wire()
+
+
+def _participant_to_wire_from_cbor(value: AuthorityValue) -> dict[str, object]:
+    fields = _array(value, "participant binding", 4)
+    return {
+        "position": _uint32(fields[0], "participant position"),
+        "role": _text(fields[1], "participant role"),
+        "participant_kind": _text(fields[2], "participant kind"),
+        "semantic_ref": _text(fields[3], "participant semantic reference"),
+    }
+
+
+def _class_projection_to_wire_from_cbor(value: AuthorityValue) -> dict[str, object]:
+    fields = _array(value, "class projection", 9)
+    return {
+        "arity": _text(fields[0], "class arity"),
+        "directionality": _text(fields[1], "class directionality"),
+        "participant_roles": [
+            _participant_to_wire_from_cbor(cast(AuthorityValue, item))
+            for item in _array(fields[2], "class participant roles")
+        ],
+        "host_relationship": _text(fields[3], "class host relationship"),
+        "context_dimensions": _persistence_value_to_wire(cast(AuthorityValue, fields[4])),
+        "temporal_semantics": _persistence_value_to_wire(cast(AuthorityValue, fields[5])),
+        "b2_family_refs": [
+            {
+                "family_id": _text(_array(item, "B2 family reference", 3)[0], "B2 family ID"),
+                "lifecycle": _text(_array(item, "B2 family reference", 3)[1], "B2 lifecycle"),
+                "assignment_role": _text(
+                    _array(item, "B2 family reference", 3)[2], "B2 assignment role"
+                ),
+            }
+            for item in _array(fields[6], "class B2 family references")
+        ],
+        "b2_boundary_refs": [
+            {
+                "family_id": _text(_array(item, "B2 boundary reference", 2)[0], "B2 family ID"),
+                "precise_semantic_definition": _text(
+                    _array(item, "B2 boundary reference", 2)[1], "B2 definition"
+                ),
+            }
+            for item in _array(fields[7], "class B2 boundary references")
+        ],
+        "b1_final_citation_refs": [
+            {
+                "authority_id": _text(
+                    _array(item, "B1 citation reference", 2)[0], "B1 authority ID"
+                ),
+                "citation_id": _text(
+                    _array(item, "B1 citation reference", 2)[1], "B1 citation ID"
+                ),
+            }
+            for item in _array(fields[8], "class B1 citation references")
+        ],
+    }
+
+
+def _class_projection_equivalence_to_wire_from_cbor(
+    value: AuthorityValue,
+) -> dict[str, object]:
+    fields = _array(value, "class projection equivalence", 6)
+    claim = _array(fields[3], "semantic claim relation", 2)
+    return {
+        "theorem_projection": _class_projection_to_wire_from_cbor(
+            cast(AuthorityValue, fields[0])
+        ),
+        "member_projection": _class_projection_to_wire_from_cbor(
+            cast(AuthorityValue, fields[1])
+        ),
+        "equal_positions": [
+            _text(item, "equal position") for item in _array(fields[2], "equal positions")
+        ],
+        "semantic_claim_relation": {
+            "kind": _text(claim[0], "semantic claim kind"),
+            "theorem_semantic_digest": _bytes32(claim[1], "theorem semantic digest").hex(),
+        },
+        "evidence_refs": [
+            _evidence_to_wire_from_cbor(cast(AuthorityValue, item))
+            for item in _array(fields[4], "class equivalence evidence")
+        ],
+        "rationale": _text(fields[5], "class equivalence rationale"),
+    }
+
+
+def _positive_boundary_fact_to_wire_from_cbor(value: AuthorityValue) -> dict[str, object]:
+    tagged = _array(value, "positive boundary fact", 2)
+    kind = _text(tagged[0], "positive boundary fact kind")
+    payload = _array(tagged[1], "positive boundary fact payload")
+    if kind == "b2_boundary":
+        return {
+            "kind": kind,
+            "family_id": _text(payload[0], "B2 family ID"),
+            "lifecycle": _text(payload[1], "B2 lifecycle"),
+            "assignment_role": _text(payload[2], "B2 assignment role"),
+            "precise_semantic_definition": _text(payload[3], "B2 definition"),
+        }
+    if kind in {"rev3_locator", "b2_locator"}:
+        return {
+            "kind": kind,
+            "path": _text(payload[0], "source fact path"),
+            "raw_sha256": _bytes32(payload[1], "source fact digest").hex(),
+            "locator": _locator_to_wire_from_cbor(cast(AuthorityValue, payload[2])),
+        }
+    if kind == "b1_citation":
+        return {
+            "kind": kind,
+            "citation": {
+                "authority_id": _text(payload[0], "B1 authority ID"),
+                "citation_id": _text(payload[1], "B1 citation ID"),
+            },
+        }
+    if kind == "context_slot":
+        return {
+            "kind": kind,
+            "slot_kind": _text(payload[0], "context slot kind"),
+            "slot_name": _text(payload[1], "context slot name"),
+            "observed_value": _persistence_value_to_wire(cast(AuthorityValue, payload[2])),
+        }
+    if kind == "model_boundary":
+        return {
+            "kind": kind,
+            "model_id": _text(payload[0], "boundary model ID"),
+            "model_version": _text(payload[1], "boundary model version"),
+            "model_boundary_locator": _locator_to_wire_from_cbor(
+                cast(AuthorityValue, payload[2])
+            ),
+        }
+    raise AuthorityContractError("positive boundary fact kind is not closed")
+
+
+def _channel_coverage_to_wire_from_cbor(value: AuthorityValue) -> dict[str, object]:
+    fields = _array(value, "channel coverage", 6)
+    return {
+        "channel": _text(fields[0], "coverage channel"),
+        "coverage": _text(fields[1], "coverage conclusion"),
+        "positive_boundary_facts": [
+            _positive_boundary_fact_to_wire_from_cbor(cast(AuthorityValue, item))
+            for item in _array(fields[2], "positive boundary facts")
+        ],
+        "source_evidence_refs": [
+            _evidence_to_wire_from_cbor(cast(AuthorityValue, item))
+            for item in _array(fields[3], "coverage source evidence")
+        ],
+        "b1_final_citation_refs": [
+            {
+                "authority_id": _text(
+                    _array(item, "B1 citation reference", 2)[0], "B1 authority ID"
+                ),
+                "citation_id": _text(
+                    _array(item, "B1 citation reference", 2)[1], "B1 citation ID"
+                ),
+            }
+            for item in _array(fields[4], "coverage B1 references")
+        ],
+        "rationale": _text(fields[5], "coverage rationale"),
+    }
+
+
+def _scope_attestation_to_wire_from_cbor(value: AuthorityValue) -> dict[str, object]:
+    fields = _array(value, "scope boundary attestation", 6)
+    boundary = _array(fields[2], "model boundary reference", 4)
+    shape = _array(fields[4], "scope candidate shape", 5)
+    return {
+        "model_id": _text(fields[0], "scope model ID"),
+        "model_version": _text(fields[1], "scope model version"),
+        "model_boundary_ref": {
+            "path": _text(boundary[0], "model boundary path"),
+            "schema": _text(boundary[1], "model boundary schema"),
+            "raw_sha256": _bytes32(boundary[2], "model boundary digest").hex(),
+            "locator": _locator_to_wire_from_cbor(cast(AuthorityValue, boundary[3])),
+        },
+        "reason_code": _text(fields[3], "scope reason"),
+        "observed_candidate_shape": {
+            "scope": _text(shape[0], "scope candidate scope"),
+            "relation": _text(shape[1], "scope candidate relation"),
+            "arity": _text(shape[2], "scope candidate arity"),
+            "directionality": _text(shape[3], "scope candidate directionality"),
+            "participant_count": _uint32(shape[4], "scope participant count"),
+        },
+        "positive_boundary_evidence_refs": [
+            _evidence_to_wire_from_cbor(cast(AuthorityValue, item))
+            for item in _array(fields[5], "scope boundary evidence")
+        ],
+    }
+
+
 def _member_proof_to_wire(value: list[AuthorityValue]) -> dict[str, object]:
     fields = _array(value, "V2 member proof", 2)
     kind = _text(fields[0], "V2 member proof kind")
@@ -2935,17 +3140,24 @@ def _member_proof_to_wire(value: list[AuthorityValue]) -> dict[str, object]:
             "class_projection_equivalence": (
                 None
                 if payload[1] is None
-                else _persistence_value_to_wire(cast(AuthorityValue, payload[1]))
+                else _class_projection_equivalence_to_wire_from_cbor(
+                    cast(AuthorityValue, payload[1])
+                )
             ),
         }
     if kind == "positive_separation":
         return {
             "kind": kind,
-            "channel_coverages": _persistence_value_to_wire(cast(AuthorityValue, payload[0])),
+            "channel_coverages": [
+                _channel_coverage_to_wire_from_cbor(cast(AuthorityValue, item))
+                for item in _array(payload[0], "channel coverages")
+            ],
         }
     return {
         "kind": kind,
-        "scope_boundary_attestation": _persistence_value_to_wire(cast(AuthorityValue, payload[0])),
+        "scope_boundary_attestation": _scope_attestation_to_wire_from_cbor(
+            cast(AuthorityValue, payload[0])
+        ),
     }
 
 

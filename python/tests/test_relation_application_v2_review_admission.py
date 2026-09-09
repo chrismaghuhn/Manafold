@@ -10,6 +10,7 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
 sys.path.insert(0, str(ROOT / "python" / "tests"))
 
+from authority_validator import validate_relation_member_proof_v1_against_theorem
 from mtgml.authority import (
     AcceptanceEvidenceRefV1,
     AcceptanceSubjectKindV4,
@@ -126,6 +127,9 @@ class FakeAuthoritativeRpaResolver(FakeSourceResolver):
     def resolve_v4_source_binding(self, _binding: ReviewAuthoritySourceBindingV4) -> object:
         return object()
 
+    def resolve_v4_acceptance_evidence(self, _evidence: AcceptanceEvidenceRefV1) -> object:
+        return object()
+
 
 class FakeAuthorityValidator:
     def __init__(self, theorem: dict[str, object]) -> None:
@@ -133,6 +137,14 @@ class FakeAuthorityValidator:
 
     def require_current_relation_theorem(self, _theorem_id: object) -> dict[str, object]:
         return self.theorem
+
+    def validate_relation_member_proof_v1(
+        self,
+        member: dict[str, object],
+        theorem: dict[str, object],
+        label: str,
+    ) -> None:
+        validate_relation_member_proof_v1_against_theorem(member, theorem, label)
 
 
 def valid_record() -> tuple[
@@ -226,7 +238,16 @@ class RelationApplicationV2ReviewAdmissionTests(unittest.TestCase):
         resolver = RelationApplicationV2Resolver(
             FakeAuthoritativeRpaResolver(),
             FakeAuthorityValidator(theorem),
-            {"schema": "manafold.m2.5.c.interaction-review-authority.v1"},
+            {
+                "schema": "manafold.m2.5.c.interaction-review-authority.v1",
+                "model_binding": {
+                    "path": model_path,
+                    "raw_sha256": "aa" * 32,
+                    "model_id": "declared-interaction-model.v2",
+                    "model_version": "2",
+                },
+                "source_bindings": [],
+            },
         )
         closure = resolver.expected_relation_application_v2_source_closure(
             record, reviewer_roster_ref
@@ -339,6 +360,101 @@ class RelationApplicationV2ReviewAdmissionTests(unittest.TestCase):
             raised.exception.code,
             {"RPA_V2_SUBJECT_DIGEST_MISMATCH", "RPA_V2_SOURCE_CLOSURE_MISMATCH"},
         )
+
+    def test_production_closure_rejects_event_claim_subset(self) -> None:
+        record, _ = valid_record()
+        model_path = "sources/m2_5/closures/C/declared_interaction_model.v2.json"
+        record = replace(
+            record,
+            members=(
+                replace(
+                    record.members[0],
+                    member_evidence_refs=(
+                        EvidenceRefV1(
+                            "model",
+                            model_path,
+                            ("whole_artifact", None),
+                            bytes.fromhex("aa" * 32),
+                        ),
+                    ),
+                ),
+            ),
+        )
+        application = RelationApplicationV2(
+            theorem_record_id_bytes=record.theorem_record_id.digest_bytes,
+            terminal_disposition=record.terminal_disposition,
+            members=record.members,
+        )
+        record = RelationApplicationV2Record.from_parts(
+            application_id=application.identity(),
+            theorem_record_id=record.theorem_record_id,
+            terminal_disposition=record.terminal_disposition,
+            members=record.members,
+            review_event_ref_v4=record.review_event_ref_v4,
+        )
+        theorem = theorem_record()
+        theorem["acceptance"] = {
+            "review_event_ref": {
+                "path": "sources/m2_5/authorities/review_acceptance_events/v1/"
+                + "11" * 32
+                + ".json",
+                "raw_sha256": "22" * 32,
+                "locator": {"kind": "event_id", "value": "ae.v1/" + "11" * 32},
+            }
+        }
+        source_resolver = FakeAuthoritativeRpaResolver()
+        production = RelationApplicationV2Resolver(
+            source_resolver,
+            FakeAuthorityValidator(theorem),
+            {
+                "schema": "manafold.m2.5.c.interaction-review-authority.v1",
+                "model_binding": {
+                    "path": model_path,
+                    "raw_sha256": "aa" * 32,
+                    "model_id": "declared-interaction-model.v2",
+                    "model_version": "2",
+                },
+                "source_bindings": [],
+            },
+        )
+        subject = AcceptanceSubjectPayloadV4(
+            AcceptanceSubjectKindV4.RELATION_APPLICATION_V2_RECORD,
+            record.acceptance_free_subject_payload(),
+        )
+        event = ReviewAcceptanceEventLeafV4.from_input(
+            ReviewAcceptanceEventInputV4(
+                subject_kind=subject.subject_kind,
+                subject_payload_digest_reference=DigestReferenceV1.from_identity(subject.identity()),
+                reviewer_roster_ref=ReviewerRosterRefV1(
+                    path="sources/m2_5/authorities/reviewer_rosters/v1/" + "72" * 32 + ".json",
+                    schema="manafold.m2.5.c.reviewer-roster.v1",
+                    raw_sha256=bytes.fromhex("72" * 32),
+                ),
+                reviewer_role_bindings=(
+                    ReviewerRoleBindingV1(
+                        "reviewer",
+                        (
+                            "architecture_maintainer",
+                            "conformance_maintainer",
+                            "information_safety_reviewer",
+                            "rules_authority_maintainer",
+                        ),
+                    ),
+                ),
+                review_mode=ReviewMode.MULTI_REVIEWER,
+                source_binding_digests=(source_binding(),),
+                review_evidence_refs=(review_evidence(),),
+            )
+        )
+        production.resolve_acceptance_event_leaf_v4 = lambda _reference: event  # type: ignore[method-assign]
+        with self.assertRaises(RelationApplicationV2ReviewAdmissionError) as raised:
+            admit_relation_application_v2_record(
+                record,
+                production,
+                theorem_record=theorem,
+                currentness=production,
+            )
+        self.assertEqual(raised.exception.code, "RPA_V2_SOURCE_CLOSURE_MISMATCH")
 
     def test_theorem_currentness_states_fail_closed_with_stable_categories(self) -> None:
         record, expected = valid_record()

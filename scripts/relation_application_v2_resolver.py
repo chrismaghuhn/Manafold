@@ -12,6 +12,7 @@ if str(PYTHON_SRC) not in sys.path:
     sys.path.insert(0, str(PYTHON_SRC))
 
 from authority_source_resolver import (
+    DECLARED_MODEL_SCHEMA,
     AuthoritySourceResolver,
     B2ArtifactBindingsV1,
     B2BoundaryReferenceV1,
@@ -97,6 +98,23 @@ class RelationApplicationV2Resolver:
             code = getattr(exc, "code", "RELATION_APPLICATION_V2_CURRENTNESS_FAILED")
             raise RelationApplicationV2ResolutionError(code, "theorem_record_id") from exc
 
+    def validate_relation_member_proof_v1(
+        self,
+        member: Mapping[str, object],
+        theorem: Mapping[str, object],
+        label: str,
+    ) -> None:
+        """Reuse the validated V1 member-proof operation for RPA V2."""
+
+        try:
+            self._authority_validator.validate_relation_member_proof_v1(member, theorem, label)
+        except Exception as exc:
+            raise RelationApplicationV2ResolutionError(
+                getattr(exc, "code", "RELATION_APPLICATION_V2_THEOREM_MISMATCH"),
+                label,
+                str(exc),
+            ) from exc
+
     def resolve_candidate_source_instance(self, *args: object) -> object:
         return self._source_resolver.resolve_candidate_source_instance(*args)
 
@@ -110,6 +128,108 @@ class RelationApplicationV2Resolver:
 
     def resolve_v4_acceptance_evidence(self, evidence: AcceptanceEvidenceRefV1) -> object:
         return self._source_resolver.resolve_v4_acceptance_evidence(evidence)
+
+    def _root_source_binding(self, role: str) -> SourceBindingDigestV1:
+        raw_sources = self._authority_document.get("source_bindings")
+        if not isinstance(raw_sources, list):
+            raise RelationApplicationV2ResolutionError(
+                "RPA_V2_SOURCE_CLOSURE_RECONSTRUCTION_FAILED", "base_authority.source_bindings"
+            )
+        matches = [
+            raw
+            for raw in raw_sources
+            if isinstance(raw, Mapping) and raw.get("artifact_role") == role
+        ]
+        if len(matches) != 1:
+            raise RelationApplicationV2ResolutionError(
+                "RPA_V2_SOURCE_CLOSURE_RECONSTRUCTION_FAILED",
+                f"base_authority.source_bindings[{role}]",
+            )
+        raw = matches[0]
+        try:
+            return SourceBindingDigestV1(
+                role,
+                raw["path"],
+                raw.get("schema_or_null"),
+                bytes.fromhex(raw["raw_sha256"]),
+            )
+        except (KeyError, TypeError, ValueError) as exc:
+            raise RelationApplicationV2ResolutionError(
+                "RPA_V2_SOURCE_CLOSURE_RECONSTRUCTION_FAILED",
+                f"base_authority.source_bindings[{role}]",
+            ) from exc
+
+    def _declared_model_binding(self) -> SourceBindingDigestV1:
+        model = self._authority_document.get("model_binding")
+        if not isinstance(model, Mapping):
+            raise RelationApplicationV2ResolutionError(
+                "RPA_V2_SOURCE_CLOSURE_RECONSTRUCTION_FAILED", "base_authority.model_binding"
+            )
+        try:
+            return SourceBindingDigestV1(
+                "declared_model",
+                model["path"],
+                DECLARED_MODEL_SCHEMA,
+                bytes.fromhex(model["raw_sha256"]),
+            )
+        except (KeyError, TypeError, ValueError) as exc:
+            raise RelationApplicationV2ResolutionError(
+                "RPA_V2_SOURCE_CLOSURE_RECONSTRUCTION_FAILED", "base_authority.model_binding"
+            ) from exc
+
+    @staticmethod
+    def _nonempty_list(value: object) -> bool:
+        return isinstance(value, list) and bool(value)
+
+    @classmethod
+    def _semantic_static_roles(cls, value: object) -> set[str]:
+        """Find explicit B1/B2 semantic dependencies, never event claims."""
+
+        roles: set[str] = set()
+
+        def walk(node: object) -> None:
+            if isinstance(node, Mapping):
+                for key, child in node.items():
+                    if key in {
+                        "b2_boundary_refs",
+                        "b2_family_refs",
+                        "through_boundary_refs",
+                        "positive_boundary_facts",
+                    } and cls._nonempty_list(child):
+                        roles.update({"b2_catalog", "b2_classifications", "b2_closure"})
+                    if key in {
+                        "b1_final_citation_refs",
+                        "b1_citation_refs",
+                        "b1_final_citations",
+                    } and cls._nonempty_list(child):
+                        roles.update({"b1_final_citations", "b1_final_closure"})
+                    walk(child)
+            elif isinstance(node, list):
+                for child in node:
+                    walk(child)
+
+        walk(value)
+        return roles
+
+    @classmethod
+    def _theorem_static_roles(cls, theorem: Mapping[str, object]) -> set[str]:
+        roles = cls._semantic_static_roles(theorem)
+        for precondition in theorem.get("preconditions", []):
+            if not isinstance(precondition, Mapping):
+                continue
+            kind = precondition.get("precondition_kind")
+            payload = precondition.get("payload")
+            if kind == "b2_boundary":
+                roles.update({"b2_catalog", "b2_classifications", "b2_closure"})
+            elif kind == "class_projection" and isinstance(payload, list) and len(payload) == 9:
+                if (
+                    (isinstance(payload[6], list) and bool(payload[6]))
+                    or (isinstance(payload[7], list) and bool(payload[7]))
+                ):
+                    roles.update({"b2_catalog", "b2_classifications", "b2_closure"})
+                if isinstance(payload[8], list) and payload[8]:
+                    roles.update({"b1_final_citations", "b1_final_closure"})
+        return roles
 
     def _b2_bindings(self) -> B2ArtifactBindingsV1:
         raw_sources = self._authority_document.get("source_bindings")
@@ -160,7 +280,7 @@ class RelationApplicationV2Resolver:
         bindings = self._b2_bindings()
         try:
             family = self._source_resolver.resolve_b2_requirement_family(family_id, bindings)
-            if str(family.record.get("status", "")).lower() != lifecycle:
+            if str(family.record.get("status", "")).lower() != str(lifecycle).lower():
                 raise RelationApplicationV2ResolutionError(
                     "B2_PRECONDITION_LIFECYCLE_MISMATCH", "b2_boundary.lifecycle"
                 )
@@ -207,6 +327,26 @@ class RelationApplicationV2Resolver:
             if evidence is not None:
                 found.append(evidence)
                 return
+            if isinstance(node, Mapping) and {
+                "authority_kind",
+                "path",
+                "locator",
+                "raw_sha256",
+            }.issubset(node):
+                locator = node["locator"]
+                if isinstance(locator, Mapping) and isinstance(locator.get("kind"), str):
+                    try:
+                        found.append(
+                            EvidenceRefV1(
+                                authority_kind=node["authority_kind"],
+                                path=node["path"],
+                                locator=(locator["kind"], locator.get("value")),
+                                raw_sha256=bytes.fromhex(node["raw_sha256"]),
+                            )
+                        )
+                        return
+                    except (TypeError, ValueError):
+                        pass
             if isinstance(node, list):
                 for child in node:
                     walk(child)
@@ -253,8 +393,14 @@ class RelationApplicationV2Resolver:
         return projected
 
     def _v1_event_closure(
-        self, reference: ReviewEventRefV1
+        self, reference: ReviewEventRefV1, seen: set[str] | None = None
     ) -> list[ReviewAuthoritySourceBindingV4]:
+        seen = set() if seen is None else set(seen)
+        if reference.event_id in seen:
+            raise RelationApplicationV2ResolutionError(
+                "RPA_V2_SOURCE_CLOSURE_RECONSTRUCTION_FAILED", "theorem.acceptance"
+            )
+        seen.add(reference.event_id)
         try:
             artifact = self._source_resolver.resolve_acceptance_event_leaf(reference)
             event = artifact.json_value
@@ -283,6 +429,24 @@ class RelationApplicationV2Resolver:
                     bytes.fromhex(raw["raw_sha256"]),
                 )
                 result.append(V1DependencySourceBindingToV4(source))
+                if source.artifact_role == "acceptance_event_leaf":
+                    nested_artifact = self._source_resolver.resolve_source_binding(source)
+                    nested_event = nested_artifact.json_value
+                    if not isinstance(nested_event, Mapping):
+                        raise ValueError("nested V1 acceptance event is not an object")
+                    nested_id = nested_event.get("event_id")
+                    if not isinstance(nested_id, str):
+                        raise ValueError("nested V1 acceptance event has no event ID")
+                    result.extend(
+                        self._v1_event_closure(
+                            ReviewEventRefV1(
+                                source.path,
+                                source.raw_sha256,
+                                nested_id,
+                            ),
+                            seen,
+                        )
+                    )
             return result
         except RelationApplicationV2ResolutionError:
             raise
@@ -302,6 +466,7 @@ class RelationApplicationV2Resolver:
             )
         theorem = self.require_current_relation_theorem(record.theorem_record_id)
         direct: list[ReviewAuthoritySourceBindingV4] = [
+            V1DependencySourceBindingToV4(self._declared_model_binding()),
             ReviewAuthoritySourceBindingV4(
                 "reviewer_roster_leaf",
                 reviewer_roster_ref.path,
@@ -333,6 +498,10 @@ class RelationApplicationV2Resolver:
                 )
             )
             direct.extend(self._project_evidence(self._walk_evidence(member.to_cbor())))
+            direct.extend(
+                V1DependencySourceBindingToV4(self._root_source_binding(role))
+                for role in self._semantic_static_roles(member.to_wire())
+            )
         acceptance = theorem.get("acceptance")
         if not isinstance(acceptance, Mapping) or not isinstance(
             acceptance.get("review_event_ref"), Mapping
@@ -353,6 +522,10 @@ class RelationApplicationV2Resolver:
         )
         direct.extend(self._v1_event_closure(v1_ref))
         direct.extend(self._project_evidence(self._walk_evidence(theorem)))
+        direct.extend(
+            V1DependencySourceBindingToV4(self._root_source_binding(role))
+            for role in self._theorem_static_roles(theorem)
+        )
         unique = {encode_canonical(binding.to_cbor()): binding for binding in direct}
         result = tuple(sorted(unique.values(), key=lambda item: encode_canonical(item.to_cbor())))
         for binding in result:
