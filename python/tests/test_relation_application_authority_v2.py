@@ -10,9 +10,12 @@ sys.path.insert(0, str(ROOT / "scripts"))
 
 from mtgml.authority import (
     AuthorityContractError,
+    AuthorityIdentityKind,
     RelationApplicationAuthorityV2,
     RelationAuthoritySourceBindingV2,
+    compute_authority_identity,
 )
+from mtgml.persistence import decode_canonical, encode_canonical
 from relation_application_v2_resolver import RelationApplicationV2Resolver
 from relation_application_v2_supersession import (
     RelationApplicationV2SupersessionError,
@@ -25,6 +28,25 @@ def binding(role: str, path: str, schema: str | None) -> RelationAuthoritySource
 
 
 class RelationApplicationAuthorityV2Tests(unittest.TestCase):
+    def test_rps_and_rpsr_identities_match_shared_golden_bytes(self) -> None:
+        matrix = json.loads(
+            (
+                ROOT
+                / "conformance/fixtures/authority/"
+                / "relation_application_v2_supersession_identity_golden_matrix.v1.json"
+            ).read_text(encoding="utf-8")
+        )
+        for entry in matrix["identities"]:
+            payload = decode_canonical(bytes.fromhex(entry["payload_cbor_hex"]))
+            kind = AuthorityIdentityKind(
+                "relation_supersession_v2"
+                if entry["kind"] == "relation_application_v2_supersession"
+                else "relation_supersession_record_v2"
+            )
+            identity = compute_authority_identity(kind, payload)
+            self.assertEqual(identity.as_text(), entry["identity"])
+            self.assertEqual(encode_canonical(identity.to_cbor()).hex(), entry["identity_cbor_hex"])
+
     def test_closure_matrix_is_registered_and_closed(self) -> None:
         matrix = json.loads(
             (

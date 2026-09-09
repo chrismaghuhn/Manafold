@@ -321,7 +321,7 @@ class RelationApplicationV2CurrentnessEvaluator:
         records: Mapping[str, RelationApplicationV2Record],
     ) -> tuple[set[str], dict[str, RelationApplicationV2SupersessionEdge]]:
         successors: dict[str, RelationApplicationV2SupersessionEdge] = {}
-        replacement_sources: set[str] = set()
+        superseded_sources: set[str] = set()
         for edge in edges:
             source = edge.superseded_record_id.as_text()
             if source not in records:
@@ -338,13 +338,13 @@ class RelationApplicationV2CurrentnessEvaluator:
                     raise RelationApplicationV2SupersessionError(
                         "SELF_SUPERSESSION", "replacement_record_id"
                     )
-                replacement_sources.add(target)
+                superseded_sources.add(source)
             if source in successors:
                 raise RelationApplicationV2SupersessionError(
                     "MULTIPLE_SUCCESSORS", "superseded_record_id"
                 )
             successors[source] = edge
-        return replacement_sources, successors
+        return superseded_sources, successors
 
     @staticmethod
     def _validate_cycles(successors: Mapping[str, RelationApplicationV2SupersessionEdge]) -> None:
@@ -383,7 +383,23 @@ class RelationApplicationV2CurrentnessEvaluator:
                     "RELATION_APPLICATION_V2_CURRENTNESS_FAILED",
                     "RELATION_APPLICATION_V2_CURRENTNESS_AMBIGUOUS",
                 }:
-                    admitted_records.append(record)
+                    try:
+                        admit_relation_application_v2_record(
+                            record,
+                            self._resolver,
+                            currentness=self._currentness,
+                            require_current_theorem=False,
+                        )
+                    except Exception as historical_exc:
+                        raise RelationApplicationV2SupersessionError(
+                            "APPLICATION_REVIEW_ADMISSION_FAILED",
+                            "application_record",
+                            cause_code=getattr(
+                                historical_exc,
+                                "code",
+                                type(historical_exc).__name__,
+                            ),
+                        ) from historical_exc
                     continue
                 raise RelationApplicationV2SupersessionError(
                     "APPLICATION_REVIEW_ADMISSION_FAILED", "application_record", cause_code=code
@@ -398,7 +414,7 @@ class RelationApplicationV2CurrentnessEvaluator:
                 )
             )
         edges = self._group_edges(admissions)
-        replacement_sources, successors = self._validate_edges(edges, record_map)
+        superseded_sources, successors = self._validate_edges(edges, record_map)
         self._validate_cycles(successors)
         revoked_apps = {
             record_map[edge.superseded_record_id.as_text()].application_id.as_text()
@@ -416,12 +432,12 @@ class RelationApplicationV2CurrentnessEvaluator:
                 revoked.extend(record.record_id for record in group)
                 continue
             candidates = [
-                record for record in group if record.record_id.as_text() not in replacement_sources
+                record for record in group if record.record_id.as_text() not in superseded_sources
             ]
             superseded.extend(
                 record.record_id
                 for record in group
-                if record.record_id.as_text() in replacement_sources
+                if record.record_id.as_text() in superseded_sources
             )
             if len(candidates) > 1:
                 raise RelationApplicationV2SupersessionError(

@@ -405,6 +405,26 @@ fn relation_application_v2_identity_vectors_match_python_contract() {
 }
 
 #[test]
+fn relation_application_v2_supersession_identity_vectors_match_python_contract() {
+    let matrix: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../conformance/fixtures/authority/relation_application_v2_supersession_identity_golden_matrix.v1.json"
+    ))
+    .unwrap();
+    for entry in matrix["identities"].as_array().unwrap() {
+        let kind = authority_kind(entry["kind"].as_str().unwrap());
+        let payload =
+            cbor::decode_canonical(&decode_hex(entry["payload_cbor_hex"].as_str().unwrap()))
+                .unwrap();
+        let identity = authority::AuthorityIdentityV1::compute(kind, payload).unwrap();
+        assert_eq!(identity.as_text(), entry["identity"].as_str().unwrap());
+        assert_eq!(
+            cbor::encode_canonical(&identity.to_cbor()).unwrap(),
+            decode_hex(entry["identity_cbor_hex"].as_str().unwrap())
+        );
+    }
+}
+
+#[test]
 fn relation_application_v2_member_proof_wire_goldens_match_python_contract() {
     let matrix: serde_json::Value = serde_json::from_str(include_str!(
         "../../../conformance/fixtures/authority/relation_application_v2_wire_golden.v1.json"
@@ -1276,6 +1296,10 @@ fn authority_kind(value: &str) -> AuthorityIdentityKind {
         "relation_application_record" => AuthorityIdentityKind::RelationApplicationRecord,
         "relation_application_v2" => AuthorityIdentityKind::RelationApplicationV2,
         "relation_application_record_v2" => AuthorityIdentityKind::RelationApplicationRecordV2,
+        "relation_application_v2_supersession" => AuthorityIdentityKind::RelationSupersessionV2,
+        "relation_application_v2_supersession_record" => {
+            AuthorityIdentityKind::RelationSupersessionRecordV2
+        }
         "relation_supersession" => AuthorityIdentityKind::RelationSupersession,
         "domain_theorem" => AuthorityIdentityKind::DomainTheorem,
         "domain_theorem_record" => AuthorityIdentityKind::DomainTheoremRecord,

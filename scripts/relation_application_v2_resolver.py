@@ -24,6 +24,7 @@ from mtgml.authority import (
     AUTHORITY_SCHEMA_V1,
     AcceptanceEvidenceRefV1,
     EvidenceRefV1,
+    RecordKind,
     RelationApplicationV2Record,
     RelationApplicationV2SupersessionRecord,
     RelationAuthoritySourceBindingV2,
@@ -99,6 +100,20 @@ class RelationApplicationV2Resolver:
         except Exception as exc:
             code = getattr(exc, "code", "RELATION_APPLICATION_V2_CURRENTNESS_FAILED")
             raise RelationApplicationV2ResolutionError(code, "theorem_record_id") from exc
+
+    def resolve_relation_theorem_record(self, theorem_record_id: object) -> Mapping[str, object]:
+        try:
+            return self._authority_validator.require_validated_record(
+                theorem_record_id,
+                RecordKind.RELATION_THEOREM_RECORD,
+                "RPA V2 theorem_record_id",
+            )
+        except Exception as exc:
+            raise RelationApplicationV2ResolutionError(
+                "RELATION_APPLICATION_V2_THEOREM_MISMATCH",
+                "theorem_record_id",
+                str(exc),
+            ) from exc
 
     def validate_relation_member_proof_v1(
         self,
@@ -478,7 +493,7 @@ class RelationApplicationV2Resolver:
             raise RelationApplicationV2ResolutionError(
                 "RPA_V2_SOURCE_CLOSURE_RECONSTRUCTION_FAILED", "reviewer_roster_ref"
             )
-        theorem = self.require_current_relation_theorem(record.theorem_record_id)
+        theorem = self.resolve_relation_theorem_record(record.theorem_record_id)
         direct: list[ReviewAuthoritySourceBindingV4] = [
             V1DependencySourceBindingToV4(self._declared_model_binding()),
             ReviewAuthoritySourceBindingV4(

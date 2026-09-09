@@ -38,6 +38,10 @@ class RelationApplicationV2Currentness(Protocol):
         self, theorem_record_id: object
     ) -> Mapping[str, object]: ...
 
+    def resolve_relation_theorem_record(
+        self, theorem_record_id: object
+    ) -> Mapping[str, object]: ...
+
 
 class RelationApplicationV2ReviewAdmissionError(ValueError):
     """Stable RPA V2 admission failure."""
@@ -64,6 +68,7 @@ def admit_relation_application_v2_record(
     theorem_record: Mapping[str, object] | None = None,
     currentness: RelationApplicationV2Currentness,
     expected_source_bindings: tuple[ReviewAuthoritySourceBindingV4, ...] | None = None,
+    require_current_theorem: bool = True,
 ) -> RelationApplicationV2ReviewAdmissionResult:
     if not isinstance(record, RelationApplicationV2Record):
         raise RelationApplicationV2ReviewAdmissionError("APPLICATION_INPUT_INVALID", "record")
@@ -77,7 +82,17 @@ def admit_relation_application_v2_record(
             "RELATION_APPLICATION_V2_IDENTITY_MISMATCH", "application_id"
         )
     try:
-        resolved_theorem = currentness.require_current_relation_theorem(record.theorem_record_id)
+        if require_current_theorem:
+            resolved_theorem = currentness.require_current_relation_theorem(
+                record.theorem_record_id
+            )
+        else:
+            resolver_for_historical = getattr(currentness, "resolve_relation_theorem_record", None)
+            if not callable(resolver_for_historical):
+                raise RelationApplicationV2ReviewAdmissionError(
+                    "RELATION_APPLICATION_V2_THEOREM_MISMATCH", "theorem_record_id"
+                )
+            resolved_theorem = resolver_for_historical(record.theorem_record_id)
     except RelationApplicationV2ReviewAdmissionError:
         raise
     except RelationApplicationV2ResolutionError as exc:

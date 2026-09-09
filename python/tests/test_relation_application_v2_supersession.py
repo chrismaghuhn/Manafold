@@ -3,6 +3,7 @@ from __future__ import annotations
 import sys
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
@@ -25,6 +26,7 @@ from mtgml.authority import (
     ReviewMode,
     SupersessionReason,
 )
+from relation_application_v2_review_admission import RelationApplicationV2ReviewAdmissionError
 from relation_application_v2_supersession import (
     RelationApplicationV2CurrentnessEvaluator,
     RelationApplicationV2SupersessionEdge,
@@ -92,6 +94,24 @@ class RelationApplicationV2SupersessionTests(unittest.TestCase):
             )
         self.assertEqual(raised.exception.code, "SUPERSESSION_CYCLE")
 
+    def test_supersession_source_is_superseded_and_replacement_remains_current_candidate(
+        self,
+    ) -> None:
+        a = AuthorityIdentityV1(AuthorityIdentityKind.RELATION_APPLICATION_RECORD_V2, b"a" * 32)
+        b = AuthorityIdentityV1(AuthorityIdentityKind.RELATION_APPLICATION_RECORD_V2, b"b" * 32)
+        edge = RelationApplicationV2SupersessionEdge(
+            AuthorityIdentityV1(AuthorityIdentityKind.RELATION_SUPERSESSION_V2, b"1" * 32),
+            (),
+            a,
+            b,
+            SupersessionReason.SOURCE_REVISION,
+        )
+        superseded_sources, _ = RelationApplicationV2CurrentnessEvaluator._validate_edges(
+            (edge,),
+            {a.as_text(): object(), b.as_text(): object()},  # type: ignore[dict-item]
+        )
+        self.assertEqual(superseded_sources, {a.as_text()})
+
     def test_two_current_records_in_one_application_group_are_ambiguous(self) -> None:
         record, _ = valid_record()
         subject = AcceptanceSubjectPayloadV4(
@@ -143,6 +163,40 @@ class RelationApplicationV2SupersessionTests(unittest.TestCase):
         with self.assertRaises(RelationApplicationV2SupersessionError) as raised:
             evaluator.evaluate((record, second), ())
         self.assertEqual(raised.exception.code, "CURRENTNESS_AMBIGUOUS")
+
+    def test_stale_theorem_never_enters_live_current_records(self) -> None:
+        record, _ = valid_record()
+        with patch(
+            "relation_application_v2_supersession.admit_relation_application_v2_record",
+            side_effect=[
+                RelationApplicationV2ReviewAdmissionError(
+                    "SUPERSEDED_AUTHORITY_USED", "theorem_record_id"
+                ),
+                None,
+            ],
+        ):
+            result = RelationApplicationV2CurrentnessEvaluator(
+                object(), currentness=object()
+            ).evaluate((record,), ())
+        self.assertEqual(result.current_record_ids, ())
+
+    def test_stale_theorem_does_not_mask_other_record_invalidity(self) -> None:
+        record, _ = valid_record()
+        with patch(
+            "relation_application_v2_supersession.admit_relation_application_v2_record",
+            side_effect=[
+                RelationApplicationV2ReviewAdmissionError(
+                    "SUPERSEDED_AUTHORITY_USED", "theorem_record_id"
+                ),
+                RelationApplicationV2ReviewAdmissionError(
+                    "RELATION_APPLICATION_V2_IDENTITY_MISMATCH", "application_id"
+                ),
+            ],
+        ), self.assertRaises(RelationApplicationV2SupersessionError) as raised:
+            RelationApplicationV2CurrentnessEvaluator(object(), currentness=object()).evaluate(
+                (record,), ()
+            )
+        self.assertEqual(raised.exception.code, "APPLICATION_REVIEW_ADMISSION_FAILED")
 
     def test_supersession_record_uses_its_own_v4_acceptance_before_graph_use(self) -> None:
         application_record, _ = valid_record()
