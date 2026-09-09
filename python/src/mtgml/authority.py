@@ -675,6 +675,108 @@ class SourceBindingDigestV1:
 
 
 @dataclass(frozen=True)
+class ParticipantRoleBridgeEntryV1:
+    position: int
+    participant_kind: str
+    semantic_ref: str
+    historical_source_role: str
+    reviewed_role: str
+
+    def __post_init__(self) -> None:
+        _uint32(self.position, "participant role bridge position")
+        _enum(
+            self.participant_kind,
+            _PARTICIPANT_KINDS,
+            "participant role bridge participant kind",
+        )
+        _text(self.semantic_ref, "participant role bridge semantic reference")
+        _enum(
+            self.historical_source_role,
+            _PARTICIPANT_ROLES,
+            "participant role bridge historical source role",
+        )
+        _enum(
+            self.reviewed_role,
+            _PARTICIPANT_ROLES,
+            "participant role bridge reviewed role",
+        )
+
+    def to_cbor(self) -> list[AuthorityValue]:
+        return [
+            self.position,
+            self.participant_kind,
+            self.semantic_ref,
+            self.historical_source_role,
+            self.reviewed_role,
+        ]
+
+    def to_wire(self) -> dict[str, object]:
+        return {
+            "position": self.position,
+            "participant_kind": self.participant_kind,
+            "semantic_ref": self.semantic_ref,
+            "historical_source_role": self.historical_source_role,
+            "reviewed_role": self.reviewed_role,
+        }
+
+
+@dataclass(frozen=True)
+class ParticipantRoleBridgeV1:
+    entries: tuple[ParticipantRoleBridgeEntryV1, ...]
+
+    def __post_init__(self) -> None:
+        if not self.entries:
+            _fail("participant role bridge must contain at least one entry")
+        encoded_entries: list[bytes] = []
+        for index, entry in enumerate(self.entries):
+            if not isinstance(entry, ParticipantRoleBridgeEntryV1):
+                _fail("participant role bridge entries must use the V1 entry type")
+            if entry.position != index:
+                _fail("participant role bridge positions must be the ordered 0..n-1 sequence")
+            encoded_entries.append(encode_canonical(entry.to_cbor()))
+        if len(set(encoded_entries)) != len(encoded_entries):
+            _fail("participant role bridge entries must be duplicate-free")
+
+    @classmethod
+    def from_cbor(cls, value: object) -> ParticipantRoleBridgeV1:
+        entries_value = _array(value, "participant role bridge")
+        entries = []
+        for index, raw_entry in enumerate(entries_value):
+            fields = _array(raw_entry, f"participant role bridge entry {index}", 5)
+            entries.append(
+                ParticipantRoleBridgeEntryV1(
+                    position=_uint32(fields[0], f"participant role bridge entry {index} position"),
+                    participant_kind=_enum(
+                        fields[1],
+                        _PARTICIPANT_KINDS,
+                        f"participant role bridge entry {index} participant kind",
+                    ),
+                    semantic_ref=_text(
+                        fields[2],
+                        f"participant role bridge entry {index} semantic reference",
+                    ),
+                    historical_source_role=_enum(
+                        fields[3],
+                        _PARTICIPANT_ROLES,
+                        f"participant role bridge entry {index} historical source role",
+                    ),
+                    reviewed_role=_enum(
+                        fields[4],
+                        _PARTICIPANT_ROLES,
+                        f"participant role bridge entry {index} reviewed role",
+                    ),
+                )
+            )
+        return cls(tuple(entries))
+
+    def to_cbor(self) -> list[AuthorityValue]:
+        return [entry.to_cbor() for entry in self.entries]
+
+    def to_wire(self) -> dict[str, object]:
+        return {"participant_role_bridge": [entry.to_wire() for entry in self.entries]}
+
+
+@dataclass(frozen=True)
 class B2FamilyRefV1:
     family_id: str
     lifecycle: str

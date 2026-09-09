@@ -2,10 +2,32 @@ use super::{authority, cbor, checkpoint_digest, envelope, PersistenceDecodeError
 use authority::{
     canonical_identity_input, AcceptanceEvidenceRefV1, AcceptanceSubjectKind,
     AcceptanceSubjectPayloadV1, AcceptanceV1, AuthorityIdentityKind, EvidenceLocatorV1,
-    ReviewAcceptanceEventInputV1, ReviewAcceptanceEventLeafV1, ReviewEventRefV1, ReviewMode,
-    ReviewerRoleBindingV1, ReviewerRosterRefV1, SourceBindingDigestV1,
+    ParticipantRoleBridgeEntryV1, ParticipantRoleBridgeV1, ReviewAcceptanceEventInputV1,
+    ReviewAcceptanceEventLeafV1, ReviewEventRefV1, ReviewMode, ReviewerRoleBindingV1,
+    ReviewerRosterRefV1, SourceBindingDigestV1,
 };
 use mtgml_model::{CheckpointCodecIdentity, EnvironmentLimitCounters, EpisodeStatus};
+
+fn json_value_to_cbor(value: &serde_json::Value) -> cbor::Value {
+    match value {
+        serde_json::Value::Null => cbor::Value::Null,
+        serde_json::Value::Bool(value) => cbor::Value::Bool(*value),
+        serde_json::Value::Number(value) => {
+            if let Some(value) = value.as_u64() {
+                cbor::Value::Unsigned(value)
+            } else if let Some(value) = value.as_i64() {
+                cbor::Value::Signed(value)
+            } else {
+                panic!("matrix number is outside the supported integer range")
+            }
+        }
+        serde_json::Value::String(value) => cbor::Value::Text(value.clone()),
+        serde_json::Value::Array(values) => {
+            cbor::Value::Array(values.iter().map(json_value_to_cbor).collect())
+        }
+        serde_json::Value::Object(_) => panic!("matrix values must not be objects"),
+    }
+}
 
 #[test]
 fn authority_relation_identity_matches_cross_language_known_answer() {
@@ -129,6 +151,49 @@ fn authority_source_binding_has_fixed_cbor_preimage() {
         EvidenceLocatorV1::JsonPointer("/review~2".to_owned()),
     )
     .is_err());
+}
+
+#[test]
+fn participant_role_bridge_matches_shared_golden_matrix() {
+    let matrix: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../conformance/fixtures/authority/participant_role_bridge_golden_matrix.v1.json"
+    ))
+    .unwrap();
+    for case in matrix["valid"].as_array().unwrap() {
+        let entries = case["entries"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|entry| {
+                ParticipantRoleBridgeEntryV1::new(
+                    entry["position"].as_u64().unwrap() as u32,
+                    entry["participant_kind"].as_str().unwrap(),
+                    entry["semantic_ref"].as_str().unwrap(),
+                    entry["historical_source_role"].as_str().unwrap(),
+                    entry["reviewed_role"].as_str().unwrap(),
+                )
+                .unwrap()
+            })
+            .collect();
+        let bridge = ParticipantRoleBridgeV1::new(entries).unwrap();
+        assert_eq!(bridge.to_cbor(), json_value_to_cbor(&case["cbor"]));
+        assert_eq!(bridge.to_wire(), case["wire"]);
+    }
+}
+
+#[test]
+fn participant_role_bridge_negative_matrix_fails_closed() {
+    let matrix: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../conformance/fixtures/authority/participant_role_bridge_negative_matrix.v1.json"
+    ))
+    .unwrap();
+    for case in matrix["negative"].as_array().unwrap() {
+        assert!(
+            ParticipantRoleBridgeV1::from_cbor(&json_value_to_cbor(&case["cbor"])).is_err(),
+            "negative bridge case was accepted: {}",
+            case["name"].as_str().unwrap()
+        );
+    }
 }
 
 #[test]

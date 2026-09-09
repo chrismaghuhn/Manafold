@@ -354,6 +354,117 @@ impl SourceBindingDigestV1 {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ParticipantRoleBridgeEntryV1 {
+    pub position: u32,
+    pub participant_kind: String,
+    pub semantic_ref: String,
+    pub historical_source_role: String,
+    pub reviewed_role: String,
+}
+
+impl ParticipantRoleBridgeEntryV1 {
+    pub fn new(
+        position: u32,
+        participant_kind: impl Into<String>,
+        semantic_ref: impl Into<String>,
+        historical_source_role: impl Into<String>,
+        reviewed_role: impl Into<String>,
+    ) -> Result<Self, PersistenceDecodeErrorV1> {
+        let participant_kind = participant_kind.into();
+        let semantic_ref = semantic_ref.into();
+        let historical_source_role = historical_source_role.into();
+        let reviewed_role = reviewed_role.into();
+        if semantic_ref.is_empty() {
+            return Err(PersistenceDecodeErrorV1::SemanticValidation);
+        }
+        validate_member(&PARTICIPANT_KINDS, &participant_kind)?;
+        validate_member(&PARTICIPANT_ROLES, &historical_source_role)?;
+        validate_member(&PARTICIPANT_ROLES, &reviewed_role)?;
+        Ok(Self {
+            position,
+            participant_kind,
+            semantic_ref,
+            historical_source_role,
+            reviewed_role,
+        })
+    }
+
+    pub fn to_cbor(&self) -> cbor::Value {
+        cbor::Value::Array(vec![
+            cbor::Value::Unsigned(u64::from(self.position)),
+            cbor::Value::Text(self.participant_kind.clone()),
+            cbor::Value::Text(self.semantic_ref.clone()),
+            cbor::Value::Text(self.historical_source_role.clone()),
+            cbor::Value::Text(self.reviewed_role.clone()),
+        ])
+    }
+
+    pub fn to_wire(&self) -> serde_json::Value {
+        serde_json::json!({
+            "position": self.position,
+            "participant_kind": self.participant_kind,
+            "semantic_ref": self.semantic_ref,
+            "historical_source_role": self.historical_source_role,
+            "reviewed_role": self.reviewed_role,
+        })
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ParticipantRoleBridgeV1 {
+    pub entries: Vec<ParticipantRoleBridgeEntryV1>,
+}
+
+impl ParticipantRoleBridgeV1 {
+    pub fn new(
+        entries: Vec<ParticipantRoleBridgeEntryV1>,
+    ) -> Result<Self, PersistenceDecodeErrorV1> {
+        if entries.is_empty() {
+            return Err(PersistenceDecodeErrorV1::SemanticValidation);
+        }
+        for (index, entry) in entries.iter().enumerate() {
+            if entry.position != index as u32 {
+                return Err(PersistenceDecodeErrorV1::NoncanonicalOrder);
+            }
+        }
+        Ok(Self { entries })
+    }
+
+    pub fn from_cbor(value: &cbor::Value) -> Result<Self, PersistenceDecodeErrorV1> {
+        let values = value_array(value, None)?;
+        let mut entries = Vec::with_capacity(values.len());
+        for value in values {
+            let fields = value_array(value, Some(5))?;
+            entries.push(ParticipantRoleBridgeEntryV1::new(
+                value_uint32(&fields[0])?,
+                enum_text(&fields[1], &PARTICIPANT_KINDS)?.to_owned(),
+                value_text(&fields[2])?.to_owned(),
+                enum_text(&fields[3], &PARTICIPANT_ROLES)?.to_owned(),
+                enum_text(&fields[4], &PARTICIPANT_ROLES)?.to_owned(),
+            )?);
+        }
+        Self::new(entries)
+    }
+
+    pub fn to_cbor(&self) -> cbor::Value {
+        cbor::Value::Array(
+            self.entries
+                .iter()
+                .map(ParticipantRoleBridgeEntryV1::to_cbor)
+                .collect(),
+        )
+    }
+
+    pub fn to_wire(&self) -> serde_json::Value {
+        serde_json::json!({
+            "participant_role_bridge": self.entries.iter()
+                .map(ParticipantRoleBridgeEntryV1::to_wire)
+                .collect::<Vec<_>>(),
+        })
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct B2FamilyRefV1 {
     pub family_id: String,
     pub lifecycle: String,
