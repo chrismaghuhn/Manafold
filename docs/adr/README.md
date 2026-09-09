@@ -1,6 +1,6 @@
 # Architecture Decision Records
 
-ADRs are immutable decision history. Superseded records remain and point to replacements. Numbered records currently run through ADR 0044; ADR 0000 is the template.
+ADRs are immutable decision history. Superseded records remain and point to replacements. Numbered records currently run through ADR 0045; ADR 0000 is the template.
 
 ADRs 0039 and 0040 are accepted M2.A architecture decisions. Their acceptance freezes the implementation direction for M2.B, but does not make any executable M2 behavior gate `PASS`; those gates remain `NOT_RUN` until their declared evidence executes.
 
@@ -13,6 +13,11 @@ ADR 0043 accepts the ContextApplicationV2 supersession lineage, revocation, and 
 ADR 0044 accepts the ContextApplicationV2 Slice 6 Host-Binding integration
 clarifications. It changes no executable behavior and does not authorize a
 Slice-6 implementation plan.
+
+ADR 0045 accepts the Reviewed Participant-Role Bridge architecture. It freezes
+the divergent-role RPA V2 and ContextApplicationV3 ownership, V4 acceptance
+contract, source closures, currentness, and HostBinding V3 composition. It does
+not authorize implementation, production authority records, C changes, or M3.
 
 ## Reviewed candidates awaiting acceptance
 
