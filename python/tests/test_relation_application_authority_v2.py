@@ -32,6 +32,125 @@ def binding(role: str, path: str, schema: str | None) -> RelationAuthoritySource
 
 
 class RelationApplicationAuthorityV2Tests(unittest.TestCase):
+    def _schema_and_empty_aggregate(self) -> tuple[dict[str, object], dict[str, object]]:
+        schema = json.loads(
+            (ROOT / "schemas/relation-application-authority.v2.schema.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        aggregate = json.loads(
+            (
+                ROOT
+                / "conformance/fixtures/authority/relation_application_authority.v2.json"
+            ).read_text(encoding="utf-8")
+        )
+        return schema, aggregate
+
+    def test_schema_rejects_rpa_v2_cross_contract_mutations(self) -> None:
+        schema, aggregate = self._schema_and_empty_aggregate()
+        validator = jsonschema.Draft202012Validator(schema)
+
+        unknown_role = deepcopy(aggregate)
+        unknown_role["source_bindings"][0]["artifact_role"] = "unknown_role"
+        with self.subTest(case="unknown source role"), self.assertRaises(
+            jsonschema.ValidationError
+        ):
+            validator.validate(unknown_role)
+
+        wrong_path = deepcopy(aggregate)
+        wrong_path["source_bindings"][0]["path"] = "sources/not-the-base-authority.json"
+        with self.subTest(case="wrong source path"), self.assertRaises(
+            jsonschema.ValidationError
+        ):
+            validator.validate(wrong_path)
+
+        record, _ = valid_record()
+        with_record = deepcopy(aggregate)
+        with_record["relation_application_v2_records"] = [record.to_wire()]
+
+        wrong_application_kind = deepcopy(with_record)
+        wrong_application_kind["relation_application_v2_records"][0]["application_id"] = (
+            "rpar.v2/" + "a" * 64
+        )
+        with self.subTest(case="wrong application identity kind"), self.assertRaises(
+            jsonschema.ValidationError
+        ):
+            validator.validate(wrong_application_kind)
+
+        for field, value in (
+            ("scope", "not-a-scope"),
+            ("relation", "not-a-relation"),
+            ("directionality", "not-a-directionality"),
+        ):
+            mutated = deepcopy(with_record)
+            mutated["relation_application_v2_records"][0]["members"][0]["relation_binding"][
+                field
+            ] = value
+            with self.subTest(case=f"invalid relation {field}"), self.assertRaises(
+                jsonschema.ValidationError
+            ):
+                validator.validate(mutated)
+
+        invalid_role = deepcopy(with_record)
+        invalid_role["relation_application_v2_records"][0]["members"][0][
+            "relation_binding"
+        ]["participant_bindings"][0]["role"] = "not-a-role"
+        with self.subTest(case="invalid participant role"), self.assertRaises(
+            jsonschema.ValidationError
+        ):
+            validator.validate(invalid_role)
+
+        invalid_kind = deepcopy(with_record)
+        invalid_kind["relation_application_v2_records"][0]["members"][0][
+            "relation_binding"
+        ]["participant_bindings"][0]["participant_kind"] = "not-a-kind"
+        with self.subTest(case="invalid participant kind"), self.assertRaises(
+            jsonschema.ValidationError
+        ):
+            validator.validate(invalid_kind)
+
+        revocation_with_replacement = deepcopy(aggregate)
+        revocation_with_replacement["relation_application_v2_supersession_records"] = [
+            {
+                "record_id": "rpsr.v2/" + "a" * 64,
+                "supersession_id": "rps.v2/" + "b" * 64,
+                "superseded_record_id": "rpar.v2/" + "c" * 64,
+                "replacement_record_id": "rpar.v2/" + "d" * 64,
+                "superseded_record_kind": "relation_application_v2_record",
+                "replacement_record_kind": "relation_application_v2_record",
+                "reason_code": "authority_revocation",
+                "source_evidence_refs": [
+                    {
+                        "authority_kind": "model",
+                        "path": "sources/model.json",
+                        "locator": {"kind": "whole_artifact"},
+                        "raw_sha256": "e" * 64,
+                    }
+                ],
+                "acceptance": {
+                    "decision": "human_accepted",
+                    "review_event_ref": {
+                        "event_id": "ae.v4/" + "f" * 64,
+                        "path": "sources/event.json",
+                        "raw_sha256": "f" * 64,
+                    },
+                },
+            }
+        ]
+        with self.subTest(case="revocation with replacement"), self.assertRaises(
+            jsonschema.ValidationError
+        ):
+            validator.validate(revocation_with_replacement)
+
+        unknown_evidence_authority = deepcopy(with_record)
+        unknown_evidence_authority["relation_application_v2_records"][0]["members"][0][
+            "member_evidence_refs"
+        ][0]["authority_kind"] = "unknown"
+        with self.subTest(case="unknown evidence authority kind"), self.assertRaises(
+            jsonschema.ValidationError
+        ):
+            validator.validate(unknown_evidence_authority)
+
     def test_aggregate_schema_accepts_all_existing_v1_member_proof_wire_goldens(self) -> None:
         schema = json.loads(
             (ROOT / "schemas/relation-application-authority.v2.schema.json").read_text(

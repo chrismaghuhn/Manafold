@@ -39,11 +39,157 @@
         "schema": { "type": ["string", "null"] },
         "raw_sha256": { "$ref": "#/$defs/digest" }
       },
-      "required": ["artifact_role", "path", "schema", "raw_sha256"]
+      "required": ["artifact_role", "path", "schema", "raw_sha256"],
+      "oneOf": [
+        {
+          "properties": {
+            "artifact_role": { "const": "base_authority_v1" },
+            "path": { "const": "sources/m2_5/authorities/interaction_review_authority.v1.json" },
+            "schema": { "const": "manafold.m2.5.c.interaction-review-authority.v1" }
+          }
+        },
+        {
+          "properties": {
+            "artifact_role": { "const": "declared_model" },
+            "path": { "const": "sources/m2_5/closures/C/declared_interaction_model.v2.json" },
+            "schema": { "const": "manafold.m2.5.c.declared-interaction-model.v2" }
+          }
+        },
+        {
+          "properties": {
+            "artifact_role": { "const": "candidate_universe" },
+            "path": { "const": "sources/m2_5/closures/C/interaction_candidate_universe.v2.json" },
+            "schema": { "const": "manafold.m2.5.c.interaction-candidate-universe.v2" }
+          }
+        },
+        {
+          "properties": {
+            "artifact_role": { "const": "rev3_candidate_census" },
+            "path": { "const": "derived/Pair_Interaction_Census_REV3.csv" },
+            "schema": { "const": null }
+          }
+        },
+        {
+          "properties": {
+            "artifact_role": { "const": "rev3_pair_aggregates" },
+            "path": { "const": "derived/Pair_Requirement_Aggregates_REV3.json" },
+            "schema": { "const": null }
+          }
+        },
+        {
+          "properties": {
+            "artifact_role": { "const": "rev3_card_requirement_map" },
+            "path": { "const": "derived/Card_Requirement_Map_REV3.csv" },
+            "schema": { "const": null }
+          }
+        },
+        {
+          "properties": {
+            "artifact_role": { "const": "rev3_deck_row_source_resolution" },
+            "path": { "const": "inputs/deck_row_source_resolution_REV3.csv" },
+            "schema": { "const": null }
+          }
+        },
+        {
+          "properties": {
+            "artifact_role": { "const": "rev3_osi_source_records" },
+            "path": { "const": "source/raw/oracle_cards_selected_REV3.jsonl" },
+            "schema": { "const": null }
+          }
+        },
+        {
+          "properties": {
+            "artifact_role": { "const": "rev3_source_index" },
+            "path": { "const": "source/raw/source_record_index_REV3.csv" },
+            "schema": { "const": null }
+          }
+        },
+        {
+          "properties": {
+            "artifact_role": { "const": "b2_catalog" },
+            "path": { "const": "sources/m2_5/closures/B2/requirement_family_catalog.v1.json" },
+            "schema": { "const": "manafold.m2.5.b2.requirement-family-catalog.v1" }
+          }
+        },
+        {
+          "properties": {
+            "artifact_role": { "const": "b2_classifications" },
+            "path": { "const": "sources/m2_5/closures/B2/card_semantic_classifications.v1.json" },
+            "schema": { "const": "manafold.m2.5.b2.card-semantic-classifications.v1" }
+          }
+        },
+        {
+          "properties": {
+            "artifact_role": { "const": "b2_closure" },
+            "path": { "const": "sources/m2_5/closures/B2/classification_closure.v1.json" },
+            "schema": { "const": "manafold.m2.5.b2.classification-closure.v1" }
+          }
+        },
+        {
+          "properties": {
+            "artifact_role": { "const": "b1_final_citations" },
+            "path": { "const": "sources/m2_5/closures/B1/official_authority_citations.v3.json" },
+            "schema": { "const": "manafold.m2.5.b1.official-authority-citations.v3" }
+          }
+        },
+        {
+          "properties": {
+            "artifact_role": { "const": "b1_final_closure" },
+            "path": { "const": "sources/m2_5/closures/B1/official_authority_citation_closure.v2.json" },
+            "schema": { "const": "manafold.m2.5.b1.official-authority-citation-closure.v2" }
+          }
+        },
+        {
+          "properties": {
+            "artifact_role": { "const": "reviewer_roster_leaf" },
+            "path": { "pattern": "^sources/m2_5/authorities/reviewer_rosters/v1/[0-9a-f]{64}\\.json$" },
+            "schema": { "const": "manafold.m2.5.c.reviewer-roster.v1" }
+          }
+        },
+        {
+          "properties": {
+            "artifact_role": { "const": "acceptance_event_leaf_v1" },
+            "path": { "pattern": "^sources/m2_5/authorities/review_acceptance_events/v1/[0-9a-f]{64}\\.json$" },
+            "schema": { "const": "manafold.m2.5.c.review-acceptance-event.v1" }
+          }
+        },
+        {
+          "properties": {
+            "artifact_role": { "const": "acceptance_event_leaf_v4" },
+            "path": { "pattern": "^sources/m2_5/authorities/review_acceptance_events/v4/[0-9a-f]{64}\\.json$" },
+            "schema": { "const": "manafold.m2.5.c.review-acceptance-event.v4" }
+          }
+        }
+      ]
     },
     "identity": {
       "type": "string",
       "pattern": "^(rpa\\.v2|rpar\\.v2|rps\\.v2|rpsr\\.v2|rpr\\.v1)/[0-9a-f]{64}$"
+    },
+    "rpa_identity": {
+      "type": "string",
+      "pattern": "^rpa\\.v2/[0-9a-f]{64}$"
+    },
+    "authority_kind": {
+      "type": "string",
+      "enum": [
+        "model",
+        "rev3",
+        "b2",
+        "b1_final",
+        "c_candidate",
+        "reviewer_roster",
+        "acceptance_event"
+      ]
+    },
+    "supersession_reason": {
+      "type": "string",
+      "enum": [
+        "semantic_correction",
+        "source_revision",
+        "model_revision",
+        "authority_revocation"
+      ]
     },
     "digest_reference": {
       "type": "object",
@@ -70,7 +216,7 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "authority_kind": { "type": "string", "minLength": 1 },
+        "authority_kind": { "$ref": "#/$defs/authority_kind" },
         "path": { "$ref": "#/$defs/relative_path" },
         "locator": { "$ref": "#/$defs/locator" },
         "raw_sha256": { "$ref": "#/$defs/digest" }
@@ -459,9 +605,9 @@
       "additionalProperties": false,
       "properties": {
         "position": { "type": "integer", "minimum": 0, "maximum": 4294967295 },
-        "role": { "type": "string", "minLength": 1 },
-        "participant_kind": { "type": "string", "minLength": 1 },
-        "semantic_ref": { "type": "string", "minLength": 1 }
+        "role": { "$ref": "#/$defs/participant_role_name" },
+        "participant_kind": { "$ref": "#/$defs/participant_kind" },
+        "semantic_ref": { "$ref": "#/$defs/non_empty_string" }
       },
       "required": ["position", "role", "participant_kind", "semantic_ref"]
     },
@@ -469,10 +615,10 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "scope": { "type": "string", "minLength": 1 },
-        "relation": { "type": "string", "minLength": 1 },
-        "directionality": { "type": "string", "minLength": 1 },
-        "host_relationship": { "type": "string", "minLength": 1 },
+        "scope": { "$ref": "#/$defs/authority_scope" },
+        "relation": { "$ref": "#/$defs/authority_relation" },
+        "directionality": { "$ref": "#/$defs/authority_directionality" },
+        "host_relationship": { "$ref": "#/$defs/host_relationship" },
         "participant_bindings": { "type": "array", "items": { "$ref": "#/$defs/participant_binding" }, "minItems": 1 }
       },
       "required": ["scope", "relation", "directionality", "host_relationship", "participant_bindings"]
@@ -482,10 +628,10 @@
       "additionalProperties": false,
       "properties": {
         "position": { "type": "integer", "minimum": 0, "maximum": 4294967295 },
-        "participant_kind": { "type": "string", "minLength": 1 },
-        "semantic_ref": { "type": "string", "minLength": 1 },
-        "historical_source_role": { "type": "string", "minLength": 1 },
-        "reviewed_role": { "type": "string", "minLength": 1 }
+        "participant_kind": { "$ref": "#/$defs/participant_kind" },
+        "semantic_ref": { "$ref": "#/$defs/non_empty_string" },
+        "historical_source_role": { "$ref": "#/$defs/participant_role_name" },
+        "reviewed_role": { "$ref": "#/$defs/participant_role_name" }
       },
       "required": ["position", "participant_kind", "semantic_ref", "historical_source_role", "reviewed_role"]
     },
@@ -583,7 +729,7 @@
       "additionalProperties": false,
       "properties": {
         "record_id": { "type": "string", "pattern": "^rpar\\.v2/[0-9a-f]{64}$" },
-        "application_id": { "$ref": "#/$defs/identity" },
+        "application_id": { "$ref": "#/$defs/rpa_identity" },
         "theorem_record_id": { "type": "string", "pattern": "^rpr\\.v1/[0-9a-f]{64}$" },
         "terminal_disposition": { "enum": ["required_interaction", "not_an_interaction_with_proof", "out_of_declared_scope_with_reason"] },
         "members": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/member" } },
@@ -609,7 +755,7 @@
         "replacement_record_id": { "type": ["string", "null"], "pattern": "^rpar\\.v2/[0-9a-f]{64}$" },
         "superseded_record_kind": { "const": "relation_application_v2_record" },
         "replacement_record_kind": { "enum": ["relation_application_v2_record", null] },
-        "reason_code": { "enum": ["semantic_correction", "source_revision", "model_revision", "authority_revocation"] },
+        "reason_code": { "$ref": "#/$defs/supersession_reason" },
         "source_evidence_refs": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/evidence_ref" } },
         "acceptance": {
           "type": "object",
@@ -621,7 +767,28 @@
           "required": ["decision", "review_event_ref"]
         }
       },
-      "required": ["record_id", "supersession_id", "superseded_record_id", "replacement_record_id", "superseded_record_kind", "replacement_record_kind", "reason_code", "source_evidence_refs", "acceptance"]
+      "required": ["record_id", "supersession_id", "superseded_record_id", "replacement_record_id", "superseded_record_kind", "replacement_record_kind", "reason_code", "source_evidence_refs", "acceptance"],
+      "oneOf": [
+        {
+          "properties": {
+            "reason_code": { "const": "authority_revocation" },
+            "replacement_record_id": { "const": null },
+            "replacement_record_kind": { "const": null }
+          }
+        },
+        {
+          "properties": {
+            "reason_code": {
+              "enum": ["semantic_correction", "source_revision", "model_revision"]
+            },
+            "replacement_record_id": {
+              "type": "string",
+              "pattern": "^rpar\\.v2/[0-9a-f]{64}$"
+            },
+            "replacement_record_kind": { "const": "relation_application_v2_record" }
+          }
+        }
+      ]
     }
   }
 }
