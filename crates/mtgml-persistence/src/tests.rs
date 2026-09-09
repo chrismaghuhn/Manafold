@@ -1,10 +1,11 @@
 use super::{authority, cbor, checkpoint_digest, envelope, PersistenceDecodeErrorV1};
 use authority::{
     canonical_identity_input, AcceptanceEvidenceRefV1, AcceptanceSubjectKind,
-    AcceptanceSubjectPayloadV1, AcceptanceV1, AuthorityIdentityKind, EvidenceLocatorV1,
-    ParticipantRoleBridgeEntryV1, ParticipantRoleBridgeV1, ReviewAcceptanceEventInputV1,
-    ReviewAcceptanceEventLeafV1, ReviewEventRefV1, ReviewMode, ReviewerRoleBindingV1,
-    ReviewerRosterRefV1, SourceBindingDigestV1,
+    AcceptanceSubjectKindV4, AcceptanceSubjectPayloadV1, AcceptanceV1, AuthorityIdentityKind,
+    EvidenceLocatorV1, ParticipantRoleBridgeEntryV1, ParticipantRoleBridgeV1,
+    ReviewAcceptanceEventInputV1, ReviewAcceptanceEventLeafV1, ReviewAuthoritySourceBindingV4,
+    ReviewEventRefV1, ReviewEventRefV4, ReviewMode, ReviewerRoleBindingV1, ReviewerRosterRefV1,
+    SourceBindingDigestV1,
 };
 use mtgml_model::{CheckpointCodecIdentity, EnvironmentLimitCounters, EpisodeStatus};
 
@@ -197,6 +198,48 @@ fn participant_role_bridge_negative_matrix_fails_closed() {
 }
 
 #[test]
+fn v4_acceptance_contract_has_closed_subject_and_projection_surfaces() {
+    assert_eq!(
+        AuthorityIdentityKind::AcceptanceSubjectV4.prefix(),
+        "asp.v4/"
+    );
+    assert_eq!(
+        AuthorityIdentityKind::ReviewAcceptanceEventV4.prefix(),
+        "ae.v4/"
+    );
+    assert_eq!(
+        AcceptanceSubjectKindV4::RelationApplicationV2Record.as_str(),
+        "relation_application_v2_record"
+    );
+    let binding = SourceBindingDigestV1::new(
+        "rev3_source",
+        "derived/Pair_Interaction_Census_REV3.csv",
+        None,
+        [0u8; 32],
+    )
+    .unwrap();
+    let projected = authority::v1_dependency_source_binding_to_v4(&binding).unwrap();
+    assert_eq!(projected.artifact_role, "rev3_candidate_census");
+    assert_eq!(projected.path, binding.path);
+    let _ = ReviewAuthoritySourceBindingV4::new(
+        "declared_model",
+        "sources/m2_5/closures/C/declared_interaction_model.v2.json",
+        Some("manafold.m2.5.c.declared-interaction-model.v2"),
+        [0u8; 32],
+    )
+    .unwrap();
+    let _ = ReviewEventRefV4::new(
+        format!(
+            "sources/m2_5/authorities/review_acceptance_events/v4/{}.json",
+            "0".repeat(64)
+        ),
+        [0u8; 32],
+        format!("ae.v4/{}", "0".repeat(64)),
+    )
+    .unwrap();
+}
+
+#[test]
 fn authority_acceptance_event_identity_matches_cross_language_known_answer() {
     let subject = AcceptanceSubjectPayloadV1::new(
         AcceptanceSubjectKind::RelationTheoremRecord,
@@ -309,7 +352,7 @@ fn all_authority_identity_kinds_match_the_shared_golden_matrix() {
     ))
     .unwrap();
     let identities = matrix["identities"].as_array().unwrap();
-    assert_eq!(identities.len(), 17);
+    assert_eq!(identities.len(), 19);
 
     for entry in identities {
         let kind = authority_kind(entry["kind"].as_str().unwrap());
@@ -1115,6 +1158,8 @@ fn authority_kind(value: &str) -> AuthorityIdentityKind {
         "context_supersession" => AuthorityIdentityKind::ContextSupersession,
         "acceptance_subject" => AuthorityIdentityKind::AcceptanceSubject,
         "review_acceptance_event" => AuthorityIdentityKind::ReviewAcceptanceEvent,
+        "acceptance_subject_v4" => AuthorityIdentityKind::AcceptanceSubjectV4,
+        "review_acceptance_event_v4" => AuthorityIdentityKind::ReviewAcceptanceEventV4,
         other => panic!("unknown authority identity kind: {other}"),
     }
 }

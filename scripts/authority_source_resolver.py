@@ -31,17 +31,25 @@ if str(PYTHON_SRC) not in sys.path:
 
 from mtgml.authority import (
     ACCEPTANCE_EVENT_SCHEMA_V1,
+    ACCEPTANCE_EVENT_SCHEMA_V4,
     REVIEWER_ROSTER_SCHEMA_V1,
     AcceptanceEvidenceRefV1,
     AcceptanceSubjectKind,
+    AcceptanceSubjectKindV4,
+    DigestReferenceV1,
     ReviewAcceptanceEventInputV1,
+    ReviewAcceptanceEventInputV4,
+    ReviewAcceptanceEventLeafV4,
+    ReviewAuthoritySourceBindingV4,
     ReviewerRoleBindingV1,
     ReviewerRosterRefV1,
     ReviewerRosterV1,
     ReviewerV1,
     ReviewEventRefV1,
+    ReviewEventRefV4,
     ReviewMode,
     SourceBindingDigestV1,
+    V1DependencySourceBindingToV4,
 )
 from mtgml.persistence import (
     CANONICAL_CBOR_ID,
@@ -52,6 +60,15 @@ from mtgml.persistence import (
     encode_envelope,
     hash_envelope,
 )
+
+
+def project_v1_dependency_source_binding_to_v4(
+    binding: SourceBindingDigestV1,
+) -> ReviewAuthoritySourceBindingV4:
+    """Project one immutable V1 dependency into the closed V4 vocabulary."""
+
+    return V1DependencySourceBindingToV4(binding)
+
 
 REV3_ARCHIVE_ENV_VAR = "MANAFOLD_SOURCE_ARCHIVE"
 REV3_ARCHIVE_RELATIVE_PATH = Path("m2_5/Manafold_M2_5_Pre_Research_ALL_ARTIFACTS_REV3.zip")
@@ -3604,6 +3621,192 @@ class AuthoritySourceResolver:
             _fail("ACCEPTANCE_EVENT_PATH_INVALID", "acceptance event path is not bound to event_id")
         self._verify_acceptance_event_identity(event, reference.event_id)
         return artifact
+
+    def resolve_v4_source_binding(
+        self, binding: ReviewAuthoritySourceBindingV4
+    ) -> ResolvedArtifact:
+        if binding.artifact_role in {
+            "rev3_candidate_census",
+            "rev3_deck_row_source_resolution",
+            "rev3_osi_source_records",
+            "rev3_source_index",
+        }:
+            return self.resolve_rev3_member(binding.path, binding.raw_sha256, binding.schema)
+        return self.resolve_repository_artifact(binding.path, binding.raw_sha256, binding.schema)
+
+    def resolve_v4_acceptance_evidence(self, evidence: AcceptanceEvidenceRefV1) -> ResolvedLocator:
+        artifact = self.resolve_repository_artifact(evidence.path, evidence.raw_sha256, None)
+        kind, payload = evidence.locator
+        if kind == "whole_artifact":
+            value: object = artifact.raw_bytes
+        elif kind == "json_pointer":
+            if artifact.json_value is None:
+                try:
+                    value = json.loads(artifact.raw_bytes.decode("utf-8"))
+                except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+                    _fail("REVIEW_EVIDENCE_INVALID", f"evidence is not JSON: {exc}")
+            else:
+                value = artifact.json_value
+            value = _json_pointer(value, payload)
+        elif kind == "archive_member":
+            if not isinstance(payload, str):
+                _fail("REVIEW_EVIDENCE_INVALID", "archive member locator must contain a path")
+            try:
+                with zipfile.ZipFile(io.BytesIO(artifact.raw_bytes)) as archive:
+                    if payload not in archive.namelist():
+                        _fail("REVIEW_EVIDENCE_INVALID", "evidence archive member is missing")
+                    value = archive.read(payload)
+            except (OSError, zipfile.BadZipFile) as exc:
+                _fail("REVIEW_EVIDENCE_INVALID", f"evidence archive is unreadable: {exc}")
+        else:
+            _fail("REVIEW_EVIDENCE_INVALID", f"unsupported evidence locator: {kind!r}")
+        return ResolvedLocator(artifact, evidence.locator, value)
+
+    def resolve_acceptance_event_leaf_v4(
+        self, reference: ReviewEventRefV4
+    ) -> ReviewAcceptanceEventLeafV4:
+        if not isinstance(reference, ReviewEventRefV4):
+            _fail("V4_EVENT_REFERENCE_INVALID", "V4 event reference has the wrong type")
+        artifact = self.resolve_repository_artifact(
+            reference.path, reference.raw_sha256, ACCEPTANCE_EVENT_SCHEMA_V4
+        )
+        record = _json_object(artifact.json_value, "V4 acceptance event leaf")
+        _exact_keys(
+            record,
+            {
+                "event_id",
+                "schema",
+                "subject_kind",
+                "subject_payload_digest",
+                "decision",
+                "reviewer_roster_ref",
+                "reviewer_role_bindings",
+                "review_mode",
+                "checklist_id",
+                "source_binding_digests",
+                "review_evidence_refs",
+            },
+            "V4 acceptance event leaf",
+        )
+        if record["event_id"] != reference.event_id:
+            _fail("V4_EVENT_IDENTITY_INVALID", "V4 event ID differs from its reference")
+        if record["schema"] != ACCEPTANCE_EVENT_SCHEMA_V4:
+            _fail("V4_EVENT_SCHEMA_INVALID", "V4 event schema is not V4")
+        try:
+            subject_kind = AcceptanceSubjectKindV4(cast(str, record["subject_kind"]))
+            digest_record = _json_object(record["subject_payload_digest"], "V4 subject digest")
+            _exact_keys(
+                digest_record,
+                {
+                    "envelope_id",
+                    "algorithm_id",
+                    "semantic_domain",
+                    "payload_codec_id",
+                    "input_schema_id",
+                    "digest_hex",
+                },
+                "V4 subject digest",
+            )
+            subject_digest = DigestReferenceV1(
+                envelope_id=_json_text(digest_record["envelope_id"], "digest envelope"),
+                algorithm_id=_json_text(digest_record["algorithm_id"], "digest algorithm"),
+                semantic_domain=_json_text(digest_record["semantic_domain"], "digest domain"),
+                payload_codec_id=_json_text(digest_record["payload_codec_id"], "digest codec"),
+                input_schema_id=_json_text(digest_record["input_schema_id"], "digest schema"),
+                digest_bytes=_json_digest(digest_record["digest_hex"], "subject digest"),
+            )
+            roster_record = _json_object(
+                record["reviewer_roster_ref"], "V4 reviewer roster reference"
+            )
+            _exact_keys(
+                roster_record, {"path", "schema", "raw_sha256"}, "V4 reviewer roster reference"
+            )
+            roster_ref = ReviewerRosterRefV1(
+                _json_text(roster_record["path"], "reviewer roster path"),
+                _json_text(roster_record["schema"], "reviewer roster schema"),
+                _json_digest(roster_record["raw_sha256"], "reviewer roster digest"),
+            )
+            role_bindings = tuple(
+                ReviewerRoleBindingV1(
+                    _json_text(
+                        _json_object(item, "V4 reviewer role binding")["reviewer_id"], "reviewer ID"
+                    ),
+                    tuple(_json_object(item, "V4 reviewer role binding")["roles"]),
+                )
+                for item in cast(list[object], record["reviewer_role_bindings"])
+            )
+            source_bindings = tuple(
+                ReviewAuthoritySourceBindingV4(
+                    _json_text(
+                        _json_object(item, "V4 source binding")["artifact_role"], "artifact role"
+                    ),
+                    _json_text(_json_object(item, "V4 source binding")["path"], "source path"),
+                    cast(str | None, _json_object(item, "V4 source binding")["schema"]),
+                    _json_digest(
+                        _json_object(item, "V4 source binding")["raw_sha256"], "source digest"
+                    ),
+                )
+                for item in cast(list[object], record["source_binding_digests"])
+            )
+            evidence = tuple(
+                AcceptanceEvidenceRefV1(
+                    _json_text(
+                        _json_object(item, "V4 acceptance evidence")["path"], "evidence path"
+                    ),
+                    _json_digest(
+                        _json_object(item, "V4 acceptance evidence")["raw_sha256"],
+                        "evidence digest",
+                    ),
+                    self._v4_wire_locator(_json_object(item, "V4 acceptance evidence")["locator"]),
+                )
+                for item in cast(list[object], record["review_evidence_refs"])
+            )
+            event = ReviewAcceptanceEventInputV4(
+                subject_kind=subject_kind,
+                subject_payload_digest_reference=subject_digest,
+                reviewer_roster_ref=roster_ref,
+                reviewer_role_bindings=role_bindings,
+                review_mode=ReviewMode(_json_text(record["review_mode"], "review mode")),
+                source_binding_digests=source_bindings,
+                review_evidence_refs=evidence,
+            )
+            leaf = ReviewAcceptanceEventLeafV4.from_input(event)
+        except ResolutionError:
+            raise
+        except (TypeError, ValueError) as exc:
+            _fail("V4_EVENT_SCHEMA_INVALID", str(exc))
+        if leaf.event_id.as_text() != reference.event_id:
+            _fail(
+                "V4_EVENT_IDENTITY_INVALID", "V4 event bytes do not recompute to the reference ID"
+            )
+        roster_artifact = self.resolve_reviewer_roster_leaf(roster_ref)
+        roster = _json_object(roster_artifact.json_value, "V4 reviewer roster leaf")
+        roster_entries = {
+            _json_text(
+                _json_object(item, "reviewer roster entry")["reviewer_id"], "reviewer ID"
+            ): set(_json_object(item, "reviewer roster entry")["roles"])
+            for item in cast(list[object], roster["reviewers"])
+        }
+        for binding in role_bindings:
+            if binding.reviewer_id not in roster_entries or not set(binding.roles).issubset(
+                roster_entries[binding.reviewer_id]
+            ):
+                _fail("REVIEWER_ROSTER_INVALID", "V4 reviewer binding is not covered by the roster")
+        return leaf
+
+    @staticmethod
+    def _v4_wire_locator(value: object) -> Locator:
+        record = _json_object(value, "V4 evidence locator")
+        kind = _json_text(record.get("kind"), "locator kind")
+        if kind == "whole_artifact":
+            _exact_keys(record, {"kind"}, "V4 evidence locator")
+            payload = None
+        elif kind in {"json_pointer", "archive_member"}:
+            _exact_keys(record, {"kind", "value"}, "V4 evidence locator")
+            payload = record.get("value")
+        else:
+            _fail("REVIEW_EVIDENCE_INVALID", f"unsupported V4 evidence locator: {kind!r}")
+        return _locator((kind, payload))
 
     def resolve_reviewer_roster_leaf(self, reference: ReviewerRosterRefV1) -> ResolvedArtifact:
         artifact = self.resolve_repository_artifact(

@@ -84,6 +84,10 @@ AUTHORITY_ARTIFACT_CASES = [
         "conformance/fixtures/authority/review_acceptance_event.v3.json",
     ),
     (
+        "review-acceptance-event.v4.schema.json",
+        "conformance/fixtures/authority/review_acceptance_event.v4.json",
+    ),
+    (
         "reviewer-roster.v1.schema.json",
         "conformance/fixtures/authority/reviewer_roster.v1.json",
     ),
