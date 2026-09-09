@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import sys
 import unittest
+from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -16,6 +17,7 @@ from mtgml.authority import (
     AuthorityIdentityKind,
     AuthorityIdentityV1,
     DigestReferenceV1,
+    EvidenceRefV1,
     RelationApplicationV2,
     RelationApplicationV2Record,
     ReviewAcceptanceEventInputV4,
@@ -26,6 +28,7 @@ from mtgml.authority import (
     ReviewEventRefV4,
     ReviewMode,
 )
+from relation_application_v2_resolver import RelationApplicationV2Resolver
 from relation_application_v2_review_admission import (
     RelationApplicationV2ReviewAdmissionError,
     admit_relation_application_v2_record,
@@ -97,6 +100,41 @@ class FakeAdmissionResolver(FakeSourceResolver):
         return tuple(self.event.source_binding_digests)
 
 
+class FakeAuthoritativeRpaResolver(FakeSourceResolver):
+    def resolve_candidate_source_instance(self, *args: object) -> object:
+        resolved = super().resolve_candidate_source_instance(*args)
+        resolved.source_artifact = SimpleNamespace(
+            path="inputs/deck_row_source_resolution_REV3.csv",
+            raw_sha256="33" * 32,
+        )
+        return resolved
+
+    def resolve_acceptance_event_leaf(self, _reference: object) -> object:
+        return SimpleNamespace(
+            json_value={
+                "source_binding_digests": [
+                    {
+                        "artifact_role": "declared_model",
+                        "path": "sources/m2_5/closures/C/declared_interaction_model.v2.json",
+                        "schema_or_null": "manafold.m2.5.c.declared-interaction-model.v2",
+                        "raw_sha256": "aa" * 32,
+                    }
+                ]
+            }
+        )
+
+    def resolve_v4_source_binding(self, _binding: ReviewAuthoritySourceBindingV4) -> object:
+        return object()
+
+
+class FakeAuthorityValidator:
+    def __init__(self, theorem: dict[str, object]) -> None:
+        self.theorem = theorem
+
+    def require_current_relation_theorem(self, _theorem_id: object) -> dict[str, object]:
+        return self.theorem
+
+
 def valid_record() -> tuple[
     RelationApplicationV2Record, tuple[ReviewAuthoritySourceBindingV4, ...]
 ]:
@@ -158,6 +196,48 @@ def valid_record() -> tuple[
 
 
 class RelationApplicationV2ReviewAdmissionTests(unittest.TestCase):
+    def test_production_rpa_resolver_reconstructs_closure_independently_of_ae_v4(self) -> None:
+        record, _ = valid_record()
+        model_path = "sources/m2_5/closures/C/declared_interaction_model.v2.json"
+        theorem = theorem_record()
+        theorem["acceptance"] = {
+            "review_event_ref": {
+                "path": "sources/m2_5/authorities/review_acceptance_events/v1/"
+                + "11" * 32
+                + ".json",
+                "raw_sha256": "22" * 32,
+                "locator": {"kind": "event_id", "value": "ae.v1/" + "11" * 32},
+            }
+        }
+        member_with_exact_evidence = replace(
+            record.members[0],
+            member_evidence_refs=(
+                EvidenceRefV1(
+                    "model", model_path, ("whole_artifact", None), bytes.fromhex("aa" * 32)
+                ),
+            ),
+        )
+        record = replace(record, members=(member_with_exact_evidence,))
+        reviewer_roster_ref = ReviewerRosterRefV1(
+            path="sources/m2_5/authorities/reviewer_rosters/v1/" + "72" * 32 + ".json",
+            schema="manafold.m2.5.c.reviewer-roster.v1",
+            raw_sha256=bytes.fromhex("72" * 32),
+        )
+        resolver = RelationApplicationV2Resolver(
+            FakeAuthoritativeRpaResolver(),
+            FakeAuthorityValidator(theorem),
+            {"schema": "manafold.m2.5.c.interaction-review-authority.v1"},
+        )
+        closure = resolver.expected_relation_application_v2_source_closure(
+            record, reviewer_roster_ref
+        )
+        roles = {binding.artifact_role for binding in closure}
+        self.assertIn("acceptance_event_leaf_v1", roles)
+        self.assertIn("declared_model", roles)
+        self.assertIn("candidate_universe", roles)
+        self.assertIn("rev3_deck_row_source_resolution", roles)
+        self.assertIn("reviewer_roster_leaf", roles)
+
     def test_rpar_v2_requires_current_theorem_before_v4_binding(self) -> None:
         record, expected = valid_record()
         subject = AcceptanceSubjectPayloadV4(

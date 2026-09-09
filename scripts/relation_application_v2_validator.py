@@ -166,8 +166,9 @@ def _validate_member_proof(
     theorem_payload = _mapping(theorem.get("proof_payload"), "proof payload")
     if theorem_payload.get("kind") != theorem_kind:
         _fail("RELATION_APPLICATION_V2_THEOREM_MISMATCH", "theorem proof kind")
-    member_payload = _array(proof[1], "member proof payload", 2)
+    member_payload = _array(proof[1], "member proof payload")
     if theorem_kind == "positive_interaction":
+        member_payload = _array(member_payload, "positive interaction member proof", 2)
         causal_chain = theorem_payload.get("causal_chain")
         if isinstance(causal_chain, list):
             ordinals = _array(member_payload[0], "causal chain ordinals")
@@ -187,7 +188,7 @@ def _validate_member_proof(
         obligations = _array(
             theorem_payload.get("separation_obligations"), "separation obligations"
         )
-        coverages = _array(member_payload[0], "separation channel coverages")
+        coverages = member_payload
         if len(obligations) != len(coverages):
             _fail("SEPARATION_COVERAGE_INCOMPLETE", f"{label}.member_proof_attestation")
         for obligation, coverage in zip(obligations, coverages, strict=True):
@@ -199,15 +200,18 @@ def _validate_member_proof(
                 _fail("SEPARATION_COVERAGE_MISMATCH", f"{label}.member_proof_attestation")
     elif theorem_kind == "model_bound_scope":
         expected_scope = _mapping(theorem_payload, "scope proof payload")
-        actual_scope = _mapping(member_payload[0], "scope boundary attestation")
+        scope_fields = _array(member_payload, "scope member proof", 1)
+        actual_scope = _array(scope_fields[0], "scope boundary attestation", 6)
         for field in (
-            "model_id",
-            "model_version",
-            "reason_code",
-            "observed_candidate_shape",
-            "model_boundary_ref",
+            (0, "model_id"),
+            (1, "model_version"),
+            (3, "reason_code"),
+            (4, "observed_candidate_shape"),
+            (2, "model_boundary_ref"),
         ):
-            if actual_scope.get(field) != expected_scope.get(field):
+            index, name = field
+            expected_value = expected_scope.get(name)
+            if expected_value is not None and actual_scope[index] != expected_value:
                 _fail("SCOPE_BINDING_MISMATCH", f"{label}.member_proof_attestation")
 
 
