@@ -2888,6 +2888,38 @@ class AuthorityValidator:
             )
         return record.record
 
+    def require_current_relation_theorem(
+        self, identity: AuthorityIdentityV1
+    ) -> Mapping[str, object]:
+        """Require a current, accepted V1 relation theorem for RPA V2 admission.
+
+        This is a read-only projection of the existing V1 validation graph. It
+        does not change V1 identity, supersession, or acceptance semantics.
+        """
+
+        if not self._validation_complete:
+            _fail(
+                "AUTHORITY_NOT_VALIDATED",
+                "authority must be validated before current theorem lookup",
+            )
+        if identity.kind is not AuthorityIdentityKind.RELATION_THEOREM_RECORD:
+            _fail(
+                "THEOREM_REFERENCE_INVALID",
+                "RPA V2 requires a relation theorem record identity",
+            )
+        record = self._records.get(identity.as_text())
+        if record is None or record.kind is not RecordKind.RELATION_THEOREM_RECORD:
+            _fail(
+                "RELATION_APPLICATION_V2_CURRENTNESS_FAILED",
+                "relation theorem record is absent from the validated V1 authority",
+            )
+        if identity.as_text() in self._superseded_record_ids:
+            _fail(
+                "SUPERSEDED_AUTHORITY_USED",
+                "RPA V2 references a superseded or revoked V1 relation theorem",
+            )
+        return record.record
+
     def _source_instance_shape(
         self, resolved: ResolvedSourceInstance, label: str
     ) -> tuple[str, str, list[list[CborValue]]]:

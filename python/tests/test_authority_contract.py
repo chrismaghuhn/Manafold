@@ -577,6 +577,8 @@ class AuthorityIdentityMatrixTests(unittest.TestCase):
             )
         )
         new_context_kinds = {
+            AuthorityIdentityKind.RELATION_APPLICATION_V2,
+            AuthorityIdentityKind.RELATION_APPLICATION_RECORD_V2,
             AuthorityIdentityKind.CONTEXT_APPLICATION_V2,
             AuthorityIdentityKind.CONTEXT_APPLICATION_RECORD_V2,
             AuthorityIdentityKind.CONTEXT_SUPERSESSION_V2,

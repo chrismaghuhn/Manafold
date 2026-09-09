@@ -17,6 +17,10 @@ pub const CONTEXT_APPLICATION_INPUT_SCHEMA_V2: &str =
     "manafold.m2.5.c.context-application-input.v2";
 pub const CONTEXT_APPLICATION_RECORD_INPUT_SCHEMA_V2: &str =
     "manafold.m2.5.c.context-application-record-input.v2";
+pub const RELATION_APPLICATION_INPUT_SCHEMA_V2: &str =
+    "manafold.m2.5.c.relation-application-input.v2";
+pub const RELATION_APPLICATION_RECORD_INPUT_SCHEMA_V2: &str =
+    "manafold.m2.5.c.relation-application-record-input.v2";
 pub const CONTEXT_SUPERSESSION_INPUT_SCHEMA_V2: &str =
     "manafold.m2.5.c.context-application-v2-supersession-input.v2";
 pub const CONTEXT_SUPERSESSION_RECORD_INPUT_SCHEMA_V2: &str =
@@ -82,6 +86,8 @@ pub enum AuthorityIdentityKind {
     RelationTheoremRecord,
     RelationApplication,
     RelationApplicationRecord,
+    RelationApplicationV2,
+    RelationApplicationRecordV2,
     RelationSupersession,
     DomainTheorem,
     DomainTheoremRecord,
@@ -112,6 +118,8 @@ impl AuthorityIdentityKind {
             Self::RelationTheoremRecord => "rpr.v1/",
             Self::RelationApplication => "rpa.v1/",
             Self::RelationApplicationRecord => "rpar.v1/",
+            Self::RelationApplicationV2 => "rpa.v2/",
+            Self::RelationApplicationRecordV2 => "rpar.v2/",
             Self::RelationSupersession => "rps.v1/",
             Self::DomainTheorem => "dp.v1/",
             Self::DomainTheoremRecord => "dpr.v1/",
@@ -142,6 +150,8 @@ impl AuthorityIdentityKind {
             Self::RelationTheoremRecord => "manafold.m2.5.c.relation-proof-record.v1",
             Self::RelationApplication => "manafold.m2.5.c.relation-application.v1",
             Self::RelationApplicationRecord => "manafold.m2.5.c.relation-application-record.v1",
+            Self::RelationApplicationV2 => "manafold.m2.5.c.relation-application.v2",
+            Self::RelationApplicationRecordV2 => "manafold.m2.5.c.relation-application-record.v2",
             Self::RelationSupersession => "manafold.m2.5.c.relation-supersession.v1",
             Self::DomainTheorem => "manafold.m2.5.c.domain-proof.v1",
             Self::DomainTheoremRecord => "manafold.m2.5.c.domain-proof-record.v1",
@@ -176,6 +186,8 @@ impl AuthorityIdentityKind {
             Self::RelationApplicationRecord => {
                 "manafold.m2.5.c.relation-application-record-input.v1"
             }
+            Self::RelationApplicationV2 => RELATION_APPLICATION_INPUT_SCHEMA_V2,
+            Self::RelationApplicationRecordV2 => RELATION_APPLICATION_RECORD_INPUT_SCHEMA_V2,
             Self::RelationSupersession => "manafold.m2.5.c.relation-supersession-input.v1",
             Self::DomainTheorem => "manafold.m2.5.c.domain-proof-input.v1",
             Self::DomainTheoremRecord => "manafold.m2.5.c.domain-proof-record-input.v1",
@@ -206,6 +218,8 @@ impl AuthorityIdentityKind {
             Self::RelationTheoremRecord => 5,
             Self::RelationApplication => 4,
             Self::RelationApplicationRecord => 3,
+            Self::RelationApplicationV2 => 4,
+            Self::RelationApplicationRecordV2 => 3,
             Self::RelationSupersession => 8,
             Self::DomainTheorem => 8,
             Self::DomainTheoremRecord => 5,
@@ -2606,6 +2620,95 @@ fn validate_relation_member(value: &cbor::Value) -> Result<(), PersistenceDecode
     validate_member_proof_attestation(&fields[7])
 }
 
+fn validate_relation_application_member_v2(
+    value: &cbor::Value,
+) -> Result<(), PersistenceDecodeErrorV1> {
+    let fields = value_array(value, Some(9))?;
+    value_text(&fields[0])?;
+    validate_digest_reference(&fields[1])?;
+    value_text(&fields[2])?;
+    validate_candidate_universe_binding(&fields[3])?;
+    validate_relation_binding(&fields[4])?;
+    ParticipantRoleBridgeV1::from_cbor(&fields[5])?;
+    validate_precondition_attestations(&fields[6])?;
+    validate_nonempty_evidence_refs(&fields[7])?;
+    validate_member_proof_attestation(&fields[8])
+}
+
+fn validate_relation_application_members_v2(
+    value: &cbor::Value,
+) -> Result<(), PersistenceDecodeErrorV1> {
+    let members = value_array(value, None)?;
+    if members.is_empty() {
+        return Err(PersistenceDecodeErrorV1::SemanticValidation);
+    }
+    let mut keys = Vec::with_capacity(members.len());
+    for member in members {
+        validate_relation_application_member_v2(member)?;
+        let fields = value_array(member, Some(9))?;
+        let identity = value_array(&fields[1], Some(6))?;
+        let digest = match &identity[5] {
+            cbor::Value::Bytes(bytes) if bytes.len() == 32 => bytes.clone(),
+            _ => return Err(PersistenceDecodeErrorV1::SemanticValidation),
+        };
+        let source_instance_id = value_text(&fields[2])?;
+        keys.push(cbor::encode_canonical(&cbor::Value::Array(vec![
+            cbor::Value::Bytes(digest),
+            cbor::Value::Text(source_instance_id.to_owned()),
+        ]))?);
+    }
+    validate_sorted_unique_keys(&keys)
+}
+
+fn validate_review_event_ref_v4_array(value: &cbor::Value) -> Result<(), PersistenceDecodeErrorV1> {
+    let fields = value_array(value, Some(3))?;
+    let path = value_text(&fields[0])?;
+    value_bytes32(&fields[1])?;
+    let locator = value_array(&fields[2], Some(2))?;
+    if value_text(&locator[0])? != "event_id" {
+        return Err(PersistenceDecodeErrorV1::UnknownVariant);
+    }
+    let event_id = value_text(&locator[1])?;
+    if !is_namespaced_digest(event_id, "ae.v4/") {
+        return Err(PersistenceDecodeErrorV1::SchemaIdentityMismatch);
+    }
+    let expected = format!(
+        "sources/m2_5/authorities/review_acceptance_events/v4/{}.json",
+        &event_id["ae.v4/".len()..]
+    );
+    if path != expected {
+        return Err(PersistenceDecodeErrorV1::SchemaIdentityMismatch);
+    }
+    Ok(())
+}
+
+fn validate_relation_application_v2_input(
+    fields: &[cbor::Value],
+) -> Result<(), PersistenceDecodeErrorV1> {
+    if fields.len() != 4 {
+        return Err(PersistenceDecodeErrorV1::WrongRecordLength);
+    }
+    if value_text(&fields[0])? != RELATION_APPLICATION_INPUT_SCHEMA_V2 {
+        return Err(PersistenceDecodeErrorV1::SchemaIdentityMismatch);
+    }
+    value_bytes32(&fields[1])?;
+    enum_text(&fields[2], &TERMINAL_DISPOSITIONS)?;
+    validate_relation_application_members_v2(&fields[3])
+}
+
+fn validate_relation_application_v2_record_input(
+    fields: &[cbor::Value],
+) -> Result<(), PersistenceDecodeErrorV1> {
+    if fields.len() != 3 {
+        return Err(PersistenceDecodeErrorV1::WrongRecordLength);
+    }
+    if value_text(&fields[0])? != RELATION_APPLICATION_RECORD_INPUT_SCHEMA_V2 {
+        return Err(PersistenceDecodeErrorV1::SchemaIdentityMismatch);
+    }
+    value_bytes32(&fields[1])?;
+    validate_review_event_ref_v4_array(&fields[2])
+}
+
 fn validate_domain_criterion(value: &cbor::Value) -> Result<(), PersistenceDecodeErrorV1> {
     let fields = value_array(value, Some(2))?;
     let kind = value_text(&fields[0])?;
@@ -2980,6 +3083,12 @@ fn validate_identity_payload(
             value_bytes32(&fields[1])?;
             enum_text(&fields[2], &TERMINAL_DISPOSITIONS)?;
             validate_application_members(&fields[3], validate_relation_member)
+        }
+        AuthorityIdentityKind::RelationApplicationV2 => {
+            validate_relation_application_v2_input(fields)
+        }
+        AuthorityIdentityKind::RelationApplicationRecordV2 => {
+            validate_relation_application_v2_record_input(fields)
         }
         AuthorityIdentityKind::DomainApplication => {
             value_bytes32(&fields[1])?;
@@ -3616,6 +3725,301 @@ impl ContextApplicationMemberV2 {
         })
     }
 }
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RelationApplicationMemberV2 {
+    pub candidate_id: String,
+    pub candidate_identity_digest_reference: DigestReferenceV1,
+    pub source_instance_id: String,
+    pub candidate_universe_binding: cbor::Value,
+    pub reviewed_relation_binding_v1: cbor::Value,
+    pub participant_role_bridge_v1: ParticipantRoleBridgeV1,
+    pub precondition_attestations_v1: cbor::Value,
+    pub member_evidence_refs: Vec<EvidenceRefV1>,
+    pub member_proof_attestation_v1: cbor::Value,
+}
+
+impl RelationApplicationMemberV2 {
+    #[allow(clippy::too_many_arguments)]
+    pub fn new(
+        candidate_id: impl Into<String>,
+        candidate_identity_digest_reference: DigestReferenceV1,
+        source_instance_id: impl Into<String>,
+        candidate_universe_binding: cbor::Value,
+        reviewed_relation_binding_v1: cbor::Value,
+        participant_role_bridge_v1: ParticipantRoleBridgeV1,
+        precondition_attestations_v1: cbor::Value,
+        member_evidence_refs: Vec<EvidenceRefV1>,
+        member_proof_attestation_v1: cbor::Value,
+    ) -> Result<Self, PersistenceDecodeErrorV1> {
+        let candidate_id = candidate_id.into();
+        let source_instance_id = source_instance_id.into();
+        if candidate_id.is_empty() || source_instance_id.is_empty() {
+            return Err(PersistenceDecodeErrorV1::SemanticValidation);
+        }
+        if candidate_identity_digest_reference.semantic_domain != CANDIDATE_IDENTITY_DOMAIN
+            || candidate_identity_digest_reference.input_schema_id
+                != CANDIDATE_IDENTITY_INPUT_SCHEMA
+        {
+            return Err(PersistenceDecodeErrorV1::SchemaIdentityMismatch);
+        }
+        validate_digest_reference_v1(&digest_reference_to_cbor(
+            &candidate_identity_digest_reference,
+        ))?;
+        validate_candidate_universe_binding(&candidate_universe_binding)?;
+        validate_relation_binding(&reviewed_relation_binding_v1)?;
+        validate_precondition_attestations(&precondition_attestations_v1)?;
+        if member_evidence_refs.is_empty() {
+            return Err(PersistenceDecodeErrorV1::SemanticValidation);
+        }
+        validate_evidence_values(&member_evidence_refs)?;
+        validate_member_proof_attestation(&member_proof_attestation_v1)?;
+        Ok(Self {
+            candidate_id,
+            candidate_identity_digest_reference,
+            source_instance_id,
+            candidate_universe_binding,
+            reviewed_relation_binding_v1,
+            precondition_attestations_v1,
+            participant_role_bridge_v1,
+            member_evidence_refs,
+            member_proof_attestation_v1,
+        })
+    }
+
+    pub fn to_cbor(&self) -> cbor::Value {
+        cbor::Value::Array(vec![
+            cbor::Value::Text(self.candidate_id.clone()),
+            digest_reference_to_cbor(&self.candidate_identity_digest_reference),
+            cbor::Value::Text(self.source_instance_id.clone()),
+            self.candidate_universe_binding.clone(),
+            self.reviewed_relation_binding_v1.clone(),
+            self.participant_role_bridge_v1.to_cbor(),
+            self.precondition_attestations_v1.clone(),
+            cbor::Value::Array(
+                self.member_evidence_refs
+                    .iter()
+                    .map(EvidenceRefV1::to_cbor)
+                    .collect(),
+            ),
+            self.member_proof_attestation_v1.clone(),
+        ])
+    }
+
+    pub fn to_wire(&self) -> serde_json::Value {
+        serde_json::json!({
+            "candidate_id": self.candidate_id,
+            "candidate_identity": digest_reference_to_wire(&self.candidate_identity_digest_reference),
+            "source_instance_id": self.source_instance_id,
+            "candidate_universe_binding": candidate_universe_binding_to_wire(&self.candidate_universe_binding),
+            "relation_binding": relation_binding_to_wire(&self.reviewed_relation_binding_v1),
+            "participant_role_bridge": self.participant_role_bridge_v1.entries.iter().map(ParticipantRoleBridgeEntryV1::to_wire).collect::<Vec<_>>(),
+            "precondition_attestations": preconditions_to_wire(&self.precondition_attestations_v1),
+            "member_evidence_refs": self.member_evidence_refs.iter().map(evidence_to_wire).collect::<Vec<_>>(),
+            "member_proof_attestation": cbor_value_to_json(&self.member_proof_attestation_v1),
+        })
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RelationApplicationV2 {
+    pub theorem_record_id_bytes: [u8; 32],
+    pub terminal_disposition: String,
+    pub members: Vec<RelationApplicationMemberV2>,
+}
+
+impl RelationApplicationV2 {
+    pub fn new(
+        theorem_record_id_bytes: [u8; 32],
+        terminal_disposition: impl Into<String>,
+        members: Vec<RelationApplicationMemberV2>,
+    ) -> Result<Self, PersistenceDecodeErrorV1> {
+        let terminal_disposition = terminal_disposition.into();
+        let value = cbor::Value::Array(vec![
+            cbor::Value::Text(RELATION_APPLICATION_INPUT_SCHEMA_V2.to_owned()),
+            cbor::Value::Bytes(theorem_record_id_bytes.to_vec()),
+            cbor::Value::Text(terminal_disposition.clone()),
+            cbor::Value::Array(
+                members
+                    .iter()
+                    .map(RelationApplicationMemberV2::to_cbor)
+                    .collect(),
+            ),
+        ]);
+        canonical_identity_input(AuthorityIdentityKind::RelationApplicationV2, value)?;
+        Ok(Self {
+            theorem_record_id_bytes,
+            terminal_disposition,
+            members,
+        })
+    }
+
+    pub fn semantic_input(&self) -> cbor::Value {
+        cbor::Value::Array(vec![
+            cbor::Value::Text(RELATION_APPLICATION_INPUT_SCHEMA_V2.to_owned()),
+            cbor::Value::Bytes(self.theorem_record_id_bytes.to_vec()),
+            cbor::Value::Text(self.terminal_disposition.clone()),
+            cbor::Value::Array(
+                self.members
+                    .iter()
+                    .map(RelationApplicationMemberV2::to_cbor)
+                    .collect(),
+            ),
+        ])
+    }
+
+    pub fn identity(&self) -> Result<AuthorityIdentityV1, PersistenceDecodeErrorV1> {
+        AuthorityIdentityV1::compute(
+            AuthorityIdentityKind::RelationApplicationV2,
+            self.semantic_input(),
+        )
+    }
+
+    pub fn to_cbor(&self) -> cbor::Value {
+        self.semantic_input()
+    }
+}
+
+pub type RelationApplicationV2InputV1 = RelationApplicationV2;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RelationApplicationV2RecordInputV1 {
+    pub relation_application_id_bytes: [u8; 32],
+    pub review_event_ref_v4: ReviewEventRefV4,
+}
+
+impl RelationApplicationV2RecordInputV1 {
+    pub fn new(
+        relation_application_id_bytes: [u8; 32],
+        review_event_ref_v4: ReviewEventRefV4,
+    ) -> Self {
+        Self {
+            relation_application_id_bytes,
+            review_event_ref_v4,
+        }
+    }
+
+    pub fn semantic_input(&self) -> cbor::Value {
+        cbor::Value::Array(vec![
+            cbor::Value::Text(RELATION_APPLICATION_RECORD_INPUT_SCHEMA_V2.to_owned()),
+            cbor::Value::Bytes(self.relation_application_id_bytes.to_vec()),
+            self.review_event_ref_v4.to_cbor(),
+        ])
+    }
+
+    pub fn identity(&self) -> Result<AuthorityIdentityV1, PersistenceDecodeErrorV1> {
+        AuthorityIdentityV1::compute(
+            AuthorityIdentityKind::RelationApplicationRecordV2,
+            self.semantic_input(),
+        )
+    }
+
+    pub fn to_cbor(&self) -> cbor::Value {
+        self.semantic_input()
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RelationApplicationV2Record {
+    pub record_id: AuthorityIdentityV1,
+    pub application_id: AuthorityIdentityV1,
+    pub theorem_record_id: AuthorityIdentityV1,
+    pub terminal_disposition: String,
+    pub members: Vec<RelationApplicationMemberV2>,
+    pub review_event_ref_v4: ReviewEventRefV4,
+}
+
+impl RelationApplicationV2Record {
+    pub fn from_parts(
+        application_id: AuthorityIdentityV1,
+        theorem_record_id: AuthorityIdentityV1,
+        terminal_disposition: impl Into<String>,
+        members: Vec<RelationApplicationMemberV2>,
+        review_event_ref_v4: ReviewEventRefV4,
+    ) -> Result<Self, PersistenceDecodeErrorV1> {
+        let record_id = RelationApplicationV2RecordInputV1::new(
+            application_id.digest_bytes(),
+            review_event_ref_v4.clone(),
+        )
+        .identity()?;
+        let record = Self {
+            record_id,
+            application_id,
+            theorem_record_id,
+            terminal_disposition: terminal_disposition.into(),
+            members,
+            review_event_ref_v4,
+        };
+        if record.application_id.kind() != AuthorityIdentityKind::RelationApplicationV2
+            || record.theorem_record_id.kind() != AuthorityIdentityKind::RelationTheoremRecord
+        {
+            return Err(PersistenceDecodeErrorV1::SchemaIdentityMismatch);
+        }
+        canonical_identity_input(
+            AuthorityIdentityKind::RelationApplicationRecordV2,
+            record.record_input().semantic_input(),
+        )?;
+        Ok(record)
+    }
+
+    pub fn record_input(&self) -> RelationApplicationV2RecordInputV1 {
+        RelationApplicationV2RecordInputV1::new(
+            self.application_id.digest_bytes(),
+            self.review_event_ref_v4.clone(),
+        )
+    }
+
+    pub fn acceptance_free_subject_payload(&self) -> cbor::Value {
+        cbor::Value::Array(vec![
+            cbor::Value::Text("relation_application_v2_record".to_owned()),
+            cbor::Value::Bytes(self.application_id.digest_bytes().to_vec()),
+            cbor::Value::Bytes(self.theorem_record_id.digest_bytes().to_vec()),
+            cbor::Value::Text(self.terminal_disposition.clone()),
+            cbor::Value::Array(
+                self.members
+                    .iter()
+                    .map(RelationApplicationMemberV2::to_cbor)
+                    .collect(),
+            ),
+        ])
+    }
+
+    pub fn to_cbor(&self) -> cbor::Value {
+        cbor::Value::Array(vec![
+            self.record_id.to_cbor(),
+            self.application_id.to_cbor(),
+            self.theorem_record_id.to_cbor(),
+            cbor::Value::Text(self.terminal_disposition.clone()),
+            cbor::Value::Array(
+                self.members
+                    .iter()
+                    .map(RelationApplicationMemberV2::to_cbor)
+                    .collect(),
+            ),
+            cbor::Value::Array(vec![
+                cbor::Value::Text("human_accepted".to_owned()),
+                self.review_event_ref_v4.to_cbor(),
+            ]),
+        ])
+    }
+
+    pub fn to_wire(&self) -> serde_json::Value {
+        serde_json::json!({
+            "record_id": self.record_id.as_text(),
+            "application_id": self.application_id.as_text(),
+            "theorem_record_id": self.theorem_record_id.as_text(),
+            "terminal_disposition": self.terminal_disposition,
+            "members": self.members.iter().map(RelationApplicationMemberV2::to_wire).collect::<Vec<_>>(),
+            "acceptance": {
+                "decision": "human_accepted",
+                "review_event_ref": self.review_event_ref_v4.to_wire(),
+            },
+        })
+    }
+}
+
+pub type RelationApplicationRecordV2 = RelationApplicationV2Record;
+pub type RelationApplicationRecordV2InputV1 = RelationApplicationV2RecordInputV1;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ContextAuthoritySourceBindingV2 {
@@ -5786,6 +6190,30 @@ fn candidate_universe_binding_to_wire(value: &cbor::Value) -> serde_json::Value 
             cbor::Value::Bytes(bytes) => hex_bytes(bytes),
             _ => String::new(),
         },
+    })
+}
+
+fn relation_binding_to_wire(value: &cbor::Value) -> serde_json::Value {
+    let fields = value_array(value, Some(5)).expect("validated relation binding");
+    let participants = value_array(&fields[4], None)
+        .expect("validated relation participants")
+        .iter()
+        .map(|participant| {
+            let fields = value_array(participant, Some(4)).expect("validated participant");
+            serde_json::json!({
+                "position": value_uint32(&fields[0]).expect("validated position"),
+                "role": value_text(&fields[1]).expect("validated role"),
+                "participant_kind": value_text(&fields[2]).expect("validated participant kind"),
+                "semantic_ref": value_text(&fields[3]).expect("validated semantic reference"),
+            })
+        })
+        .collect::<Vec<_>>();
+    serde_json::json!({
+        "scope": value_text(&fields[0]).expect("validated scope"),
+        "relation": value_text(&fields[1]).expect("validated relation"),
+        "directionality": value_text(&fields[2]).expect("validated directionality"),
+        "host_relationship": value_text(&fields[3]).expect("validated host relationship"),
+        "participant_bindings": participants,
     })
 }
 

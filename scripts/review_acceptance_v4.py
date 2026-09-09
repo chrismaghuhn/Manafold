@@ -64,6 +64,23 @@ def bind_review_acceptance_v4(
         raise ReviewAcceptanceV4BindingError(
             "SUBJECT_DIGEST_MISMATCH", "V4 event subject digest does not match the subject"
         )
+    required_roles = {
+        "architecture_maintainer",
+        "rules_authority_maintainer",
+        "conformance_maintainer",
+        "information_safety_reviewer",
+    }
+    observed_roles = {role for binding in event.reviewer_role_bindings for role in binding.roles}
+    missing_roles = required_roles - observed_roles
+    if missing_roles:
+        raise ReviewAcceptanceV4BindingError(
+            "REVIEWER_ROLE_MISSING",
+            "V4 event reviewer_role_bindings omit required roles",
+        )
+    if not event.review_evidence_refs:
+        raise ReviewAcceptanceV4BindingError(
+            "REVIEW_EVIDENCE_MISSING", "V4 event review_evidence_refs must be non-empty"
+        )
     validate_v4_event_source_bindings(event.event_id, event.source_binding_digests)
     actual = [encode_canonical(binding.to_cbor()) for binding in event.source_binding_digests]
     expected = [encode_canonical(binding.to_cbor()) for binding in expected_source_bindings]

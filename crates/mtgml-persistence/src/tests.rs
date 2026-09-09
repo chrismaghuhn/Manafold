@@ -377,6 +377,34 @@ fn all_authority_identity_kinds_match_the_shared_golden_matrix() {
 }
 
 #[test]
+fn relation_application_v2_identity_vectors_match_python_contract() {
+    let matrix: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../conformance/fixtures/authority/relation_application_v2_identity_golden_matrix.v1.json"
+    ))
+    .unwrap();
+    assert_eq!(
+        matrix["schema_version"],
+        serde_json::json!("relation-application-v2-identity-golden-matrix.v1")
+    );
+    for entry in matrix["identities"].as_array().unwrap() {
+        let kind = authority_kind(entry["kind"].as_str().unwrap());
+        let payload =
+            cbor::decode_canonical(&decode_hex(entry["payload_cbor_hex"].as_str().unwrap()))
+                .unwrap();
+        let identity = authority::AuthorityIdentityV1::compute(kind, payload).unwrap();
+        assert_eq!(identity.as_text(), entry["identity"].as_str().unwrap());
+        assert_eq!(
+            identity.digest_bytes(),
+            decode_hex(entry["digest_hex"].as_str().unwrap()).as_slice()
+        );
+        assert_eq!(
+            cbor::encode_canonical(&identity.to_cbor()).unwrap(),
+            decode_hex(entry["identity_cbor_hex"].as_str().unwrap())
+        );
+    }
+}
+
+#[test]
 fn authority_contract_negative_matrix_rejects_every_case() {
     let matrix: serde_json::Value = serde_json::from_str(include_str!(
         "../../../conformance/fixtures/authority/identity_contract_negative_matrix.v1.json"
@@ -1145,6 +1173,8 @@ fn authority_kind(value: &str) -> AuthorityIdentityKind {
         "relation_theorem_record" => AuthorityIdentityKind::RelationTheoremRecord,
         "relation_application" => AuthorityIdentityKind::RelationApplication,
         "relation_application_record" => AuthorityIdentityKind::RelationApplicationRecord,
+        "relation_application_v2" => AuthorityIdentityKind::RelationApplicationV2,
+        "relation_application_record_v2" => AuthorityIdentityKind::RelationApplicationRecordV2,
         "relation_supersession" => AuthorityIdentityKind::RelationSupersession,
         "domain_theorem" => AuthorityIdentityKind::DomainTheorem,
         "domain_theorem_record" => AuthorityIdentityKind::DomainTheoremRecord,
