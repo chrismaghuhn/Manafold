@@ -166,24 +166,56 @@ def _validate_member_proof(
     theorem_payload = _mapping(theorem.get("proof_payload"), "proof payload")
     if theorem_payload.get("kind") != theorem_kind:
         _fail("RELATION_APPLICATION_V2_THEOREM_MISMATCH", "theorem proof kind")
-    template = theorem_payload.get("class_projection_template")
-    if template is None:
-        return
     member_payload = _array(proof[1], "member proof payload", 2)
-    equivalence = member_payload[1]
-    if equivalence is None:
-        _fail("CLASS_PROJECTION_PRECONDITION_PROOF_MISSING", f"{label}.member_proof_attestation")
-    equivalence_fields = _array(equivalence, "class projection equivalence", 6)
-    if encode_canonical(cast(object, equivalence_fields[0])) != encode_canonical(template):
-        _fail("CLASS_PROJECTION_BINDING_MISMATCH", f"{label}.member_proof_attestation")
-    if encode_canonical(cast(object, equivalence_fields[1])) != encode_canonical(template):
-        _fail("CLASS_PROJECTION_BINDING_MISMATCH", f"{label}.member_proof_attestation")
+    if theorem_kind == "positive_interaction":
+        causal_chain = theorem_payload.get("causal_chain")
+        if isinstance(causal_chain, list):
+            ordinals = _array(member_payload[0], "causal chain ordinals")
+            if ordinals != list(range(len(causal_chain))):
+                _fail("CAUSAL_CHAIN_BINDING_MISMATCH", f"{label}.member_proof_attestation")
+        template = theorem_payload.get("class_projection_template")
+        equivalence = member_payload[1]
+        if (template is None) != (equivalence is None):
+            _fail("CLASS_PROJECTION_BINDING_MISMATCH", f"{label}.member_proof_attestation")
+        if equivalence is not None:
+            equivalence_fields = _array(equivalence, "class projection equivalence", 6)
+            if encode_canonical(cast(object, equivalence_fields[0])) != encode_canonical(template):
+                _fail("CLASS_PROJECTION_BINDING_MISMATCH", f"{label}.member_proof_attestation")
+            if encode_canonical(cast(object, equivalence_fields[1])) != encode_canonical(template):
+                _fail("CLASS_PROJECTION_BINDING_MISMATCH", f"{label}.member_proof_attestation")
+    elif theorem_kind == "positive_separation":
+        obligations = _array(
+            theorem_payload.get("separation_obligations"), "separation obligations"
+        )
+        coverages = _array(member_payload[0], "separation channel coverages")
+        if len(obligations) != len(coverages):
+            _fail("SEPARATION_COVERAGE_INCOMPLETE", f"{label}.member_proof_attestation")
+        for obligation, coverage in zip(obligations, coverages, strict=True):
+            obligation_record = _mapping(obligation, "separation obligation")
+            coverage_fields = _array(coverage, "separation coverage", 6)
+            if coverage_fields[0] != obligation_record.get("channel") or coverage_fields[
+                1
+            ] != obligation_record.get("required_conclusion"):
+                _fail("SEPARATION_COVERAGE_MISMATCH", f"{label}.member_proof_attestation")
+    elif theorem_kind == "model_bound_scope":
+        expected_scope = _mapping(theorem_payload, "scope proof payload")
+        actual_scope = _mapping(member_payload[0], "scope boundary attestation")
+        for field in (
+            "model_id",
+            "model_version",
+            "reason_code",
+            "observed_candidate_shape",
+            "model_boundary_ref",
+        ):
+            if actual_scope.get(field) != expected_scope.get(field):
+                _fail("SCOPE_BINDING_MISMATCH", f"{label}.member_proof_attestation")
 
 
 def _validate_preconditions(
     member: RelationApplicationMemberV2,
     theorem: Mapping[str, object],
     resolved: object,
+    source_resolver: object,
     relation_binding: list[object],
     label: str,
 ) -> None:
@@ -240,7 +272,22 @@ def _validate_preconditions(
                 _fail("PRECONDITION_SOURCE_MISMATCH", f"{label}.precondition_attestations[{index}")
         elif kind == "class_projection":
             _validate_member_proof(member, theorem, label)
-        elif kind in {"b2_boundary", "temporal_semantic"}:
+        elif kind == "b2_boundary":
+            resolver = getattr(source_resolver, "resolve_relation_application_v2_b2_boundary", None)
+            if not callable(resolver):
+                _fail(
+                    "B2_PRECONDITION_RESOLUTION_REQUIRED",
+                    f"{label}.precondition_attestations[{index}",
+                )
+            try:
+                resolver(expected_value)
+            except Exception as exc:
+                _fail(
+                    "B2_PRECONDITION_SOURCE_MISMATCH",
+                    f"{label}.precondition_attestations[{index}",
+                    str(exc),
+                )
+        elif kind == "temporal_semantic":
             continue
         else:
             _fail("PRECONDITION_KIND_UNSUPPORTED", f"{label}.precondition_attestations[{index}")
@@ -261,8 +308,22 @@ def validate_relation_application_v2_semantics(
         _fail("RELATION_APPLICATION_V2_SOURCE_MISMATCH", "members")
     expected_theorem = _theorem_participants(theorem_record)
     subject = _theorem_subject(theorem_record)
+    proof_kind = _text(
+        theorem_record.get("proof_kind"), "RELATION_APPLICATION_V2_THEOREM_MISMATCH", "proof_kind"
+    )
+    expected_disposition = {
+        "positive_interaction": "required_interaction",
+        "positive_separation": "not_an_interaction_with_proof",
+        "model_bound_scope": "out_of_declared_scope_with_reason",
+    }.get(proof_kind)
+    if (
+        isinstance(application, RelationApplicationV2)
+        and application.terminal_disposition != expected_disposition
+    ):
+        _fail("RELATION_APPLICATION_V2_THEOREM_MISMATCH", "terminal_disposition")
     divergent_positions: set[int] = set()
-    exact_positions: set[int] = set()
+    has_exact_member = False
+    has_divergent_member = False
     for member_index, member in enumerate(members):
         label = f"members[{member_index}]"
         resolved = _source_instance(source_resolver, member)
@@ -295,6 +356,7 @@ def validate_relation_application_v2_semantics(
         entries = member.participant_role_bridge_v1.entries
         if len(entries) != len(source_participants) or len(entries) != len(expected_theorem):
             _fail("ROLE_BRIDGE_MISSING", f"{label}.participant_role_bridge")
+        member_divergent = False
         for entry, source, reviewed in zip(
             entries, source_participants, reviewed_participants, strict=True
         ):
@@ -307,17 +369,27 @@ def validate_relation_application_v2_semantics(
             if entry.reviewed_role != reviewed[1]:
                 _fail("ROLE_BRIDGE_REVIEWED_ROLE_MISMATCH", f"{label}.participant_role_bridge")
             if entry.historical_source_role == entry.reviewed_role:
-                exact_positions.add(entry.position)
+                continue
             else:
+                member_divergent = True
                 divergent_positions.add(entry.position)
+        if member_divergent:
+            has_divergent_member = True
+        else:
+            has_exact_member = True
         _validate_member_proof(member, theorem_record, label)
-        _validate_preconditions(member, theorem_record, resolved, relation_binding, label)
+        _validate_preconditions(
+            member,
+            theorem_record,
+            resolved,
+            source_resolver,
+            relation_binding,
+            label,
+        )
 
-    if exact_positions:
+    if has_exact_member:
         _fail("RELATION_APPLICATION_V2_NOT_DIVERGENT", "members")
-    if not divergent_positions:
-        _fail("RELATION_APPLICATION_V2_NOT_DIVERGENT", "members")
-    if len(members) > 1 and exact_positions and divergent_positions:
+    if not has_divergent_member:
         _fail("RELATION_APPLICATION_V2_NOT_DIVERGENT", "members")
     return RelationApplicationV2SemanticValidationResult(True, tuple(sorted(divergent_positions)))
 

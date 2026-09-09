@@ -5,6 +5,7 @@ from __future__ import annotations
 import sys
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Protocol
 
 ROOT = Path(__file__).resolve().parents[1]
 PYTHON_SRC = ROOT / "python" / "src"
@@ -20,6 +21,7 @@ from mtgml.authority import (
     ReviewAuthoritySourceBindingV4,
     ReviewEventRefV4,
 )
+from mtgml.persistence import encode_canonical
 from review_acceptance_v4 import (
     ReviewAcceptanceV4Binding,
     ReviewAcceptanceV4BindingError,
@@ -38,6 +40,14 @@ class RelationApplicationV2ReviewBindingError(ValueError):
         super().__init__(f"{code} at {location}")
 
 
+class RelationApplicationV2SourceClosureResolver(Protocol):
+    def expected_relation_application_v2_source_closure(
+        self,
+        record: RelationApplicationV2Record,
+        reviewer_roster_ref: object,
+    ) -> tuple[ReviewAuthoritySourceBindingV4, ...]: ...
+
+
 @dataclass(frozen=True)
 class RelationApplicationV2ReviewBindingResult:
     record_id: str
@@ -47,6 +57,43 @@ class RelationApplicationV2ReviewBindingResult:
     review_event_ref: ReviewEventRefV4
     event: ReviewAcceptanceEventLeafV4
     exact_event_closure: tuple[ReviewAuthoritySourceBindingV4, ...]
+
+
+def reconstruct_relation_application_v2_source_closure(
+    record: RelationApplicationV2Record,
+    resolver: object,
+    reviewer_roster_ref: object,
+) -> tuple[ReviewAuthoritySourceBindingV4, ...]:
+    """Reconstruct the RPA V2 immutable event closure from authoritative deps."""
+
+    method = getattr(resolver, "expected_relation_application_v2_source_closure", None)
+    if not callable(method):
+        raise RelationApplicationV2ReviewBindingError(
+            "RPA_V2_SOURCE_CLOSURE_RECONSTRUCTION_REQUIRED",
+            "review_event.source_binding_digests",
+        )
+    try:
+        values = tuple(method(record, reviewer_roster_ref))
+    except RelationApplicationV2ReviewBindingError:
+        raise
+    except Exception as exc:
+        raise RelationApplicationV2ReviewBindingError(
+            "RPA_V2_SOURCE_CLOSURE_RECONSTRUCTION_FAILED",
+            "review_event.source_binding_digests",
+            cause_code=type(exc).__name__,
+        ) from exc
+    if any(not isinstance(value, ReviewAuthoritySourceBindingV4) for value in values):
+        raise RelationApplicationV2ReviewBindingError(
+            "RPA_V2_SOURCE_CLOSURE_RECONSTRUCTION_FAILED",
+            "review_event.source_binding_digests",
+        )
+    encoded = [encode_canonical(value.to_cbor()) for value in values]
+    if encoded != sorted(encoded) or len(set(encoded)) != len(encoded):
+        raise RelationApplicationV2ReviewBindingError(
+            "RPA_V2_SOURCE_CLOSURE_RECONSTRUCTION_FAILED",
+            "review_event.source_binding_digests",
+        )
+    return values
 
 
 def bind_relation_application_v2_review(
@@ -94,5 +141,7 @@ def bind_relation_application_v2_review(
 __all__ = [
     "RelationApplicationV2ReviewBindingError",
     "RelationApplicationV2ReviewBindingResult",
+    "RelationApplicationV2SourceClosureResolver",
     "bind_relation_application_v2_review",
+    "reconstruct_relation_application_v2_source_closure",
 ]

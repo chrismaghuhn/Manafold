@@ -14,6 +14,7 @@ from mtgml.authority import (
     AuthorityContractError,
     ParticipantRoleBridgeEntryV1,
     ParticipantRoleBridgeV1,
+    RelationApplicationV2,
 )
 from relation_application_v2_validator import (
     RelationApplicationV2SemanticValidationError,
@@ -112,11 +113,11 @@ class RelationApplicationV2ValidatorTests(unittest.TestCase):
                     0,
                     "requirement_family",
                     "cap.mass_destruction",
-                    "ordered_participant",
-                    "ordered_participant",
+                    "source",
+                    "source",
                 ),
                 ParticipantRoleBridgeEntryV1(
-                    1, "requirement_family", "cap.death_trigger", "ordered_participant", "affected"
+                    1, "requirement_family", "cap.death_trigger", "affected", "affected"
                 ),
             )
         )
@@ -125,62 +126,116 @@ class RelationApplicationV2ValidatorTests(unittest.TestCase):
                 replace(
                     member(),
                     participant_role_bridge_v1=exact_bridge,
-                    reviewed_relation_binding_v1=[
-                        "cross_deck",
-                        "directional_binary",
-                        "directed",
-                        "cross_host",
-                        [
-                            [
-                                0,
-                                "ordered_participant",
-                                "requirement_family",
-                                "cap.mass_destruction",
-                            ],
-                            [1, "affected", "requirement_family", "cap.death_trigger"],
-                        ],
-                    ],
                 ),
-                FakeSourceResolver(),
-                theorem_record=theorem_record(roles=("ordered_participant", "affected")),
+                FakeSourceResolver(roles=("source", "affected")),
+                theorem_record=theorem_record(),
             )
         self.assertEqual(raised.exception.code, "RELATION_APPLICATION_V2_NOT_DIVERGENT")
 
     def test_mixed_exact_and_divergent_roles_are_rejected(self) -> None:
-        mixed = ParticipantRoleBridgeV1(
+        exact = replace(
+            member(digest=b"a" * 32, source_instance_id="exact"),
+            participant_role_bridge_v1=ParticipantRoleBridgeV1(
+                (
+                    ParticipantRoleBridgeEntryV1(
+                        0, "requirement_family", "cap.mass_destruction", "source", "source"
+                    ),
+                    ParticipantRoleBridgeEntryV1(
+                        1, "requirement_family", "cap.death_trigger", "affected", "affected"
+                    ),
+                )
+            ),
+        )
+
+        class MixedSourceResolver(FakeSourceResolver):
+            def resolve_candidate_source_instance(self, *args: object) -> object:
+                source_instance_id = args[2]
+                roles = ("source", "affected") if source_instance_id == "exact" else self.roles
+                return FakeSourceResolver(roles=roles).resolve_candidate_source_instance(*args)
+
+        divergent = member(digest=b"b" * 32, source_instance_id="divergent")
+        with self.assertRaises(RelationApplicationV2SemanticValidationError) as raised:
+            validate_relation_application_v2_semantics(
+                RelationApplicationV2(
+                    theorem_record_id_bytes=bytes(32),
+                    terminal_disposition="required_interaction",
+                    members=(exact, divergent),
+                ),
+                MixedSourceResolver(),
+                theorem_record=theorem_record(),
+            )
+        self.assertEqual(raised.exception.code, "RELATION_APPLICATION_V2_NOT_DIVERGENT")
+
+    def test_one_exact_position_does_not_make_a_member_exact(self) -> None:
+        partly_exact = ParticipantRoleBridgeV1(
             (
                 ParticipantRoleBridgeEntryV1(
-                    0, "requirement_family", "cap.mass_destruction", "ordered_participant", "source"
+                    0, "requirement_family", "cap.mass_destruction", "source", "source"
                 ),
-                ParticipantRoleBridgeEntryV1(
-                    1,
-                    "requirement_family",
-                    "cap.death_trigger",
-                    "ordered_participant",
-                    "ordered_participant",
-                ),
+                bridge().entries[1],
             )
         )
+        result = validate_relation_application_v2_semantics(
+            replace(member(), participant_role_bridge_v1=partly_exact),
+            FakeSourceResolver(roles=("source", "ordered_participant")),
+            theorem_record=theorem_record(),
+        )
+        self.assertTrue(result.valid)
+        self.assertEqual(result.divergent_positions, (1,))
+
+    def test_terminal_disposition_remains_bound_to_theorem_proof_kind(self) -> None:
+        with self.assertRaises(RelationApplicationV2SemanticValidationError) as raised:
+            validate_relation_application_v2_semantics(
+                RelationApplicationV2(
+                    theorem_record_id_bytes=bytes(32),
+                    terminal_disposition="not_an_interaction_with_proof",
+                    members=(member(),),
+                ),
+                FakeSourceResolver(),
+                theorem_record=theorem_record(),
+            )
+        self.assertEqual(raised.exception.code, "RELATION_APPLICATION_V2_THEOREM_MISMATCH")
+
+    def test_positive_interaction_binds_the_complete_causal_chain(self) -> None:
+        theorem = theorem_record()
+        theorem["proof_payload"] = {
+            "kind": "positive_interaction",
+            "causal_chain": [{}],
+            "class_projection_template": None,
+        }
         with self.assertRaises(RelationApplicationV2SemanticValidationError) as raised:
             validate_relation_application_v2_semantics(
                 replace(
                     member(),
-                    participant_role_bridge_v1=mixed,
-                    reviewed_relation_binding_v1=[
-                        "cross_deck",
-                        "directional_binary",
-                        "directed",
-                        "cross_host",
-                        [
-                            [0, "source", "requirement_family", "cap.mass_destruction"],
-                            [1, "ordered_participant", "requirement_family", "cap.death_trigger"],
-                        ],
-                    ],
+                    member_proof_attestation_v1=["positive_interaction", [[], None]],
                 ),
                 FakeSourceResolver(),
-                theorem_record=theorem_record(roles=("source", "ordered_participant")),
+                theorem_record=theorem,
             )
-        self.assertEqual(raised.exception.code, "RELATION_APPLICATION_V2_NOT_DIVERGENT")
+        self.assertEqual(raised.exception.code, "CAUSAL_CHAIN_BINDING_MISMATCH")
+
+    def test_b2_boundary_precondition_requires_the_existing_b2_resolver_seam(self) -> None:
+        payload = ["family", "ACTIVE", "required", "definition"]
+        theorem = theorem_record(
+            preconditions=[
+                {
+                    "precondition_id": "b2",
+                    "precondition_kind": "b2_boundary",
+                    "payload": payload,
+                }
+            ]
+        )
+        observed = replace(
+            member(),
+            precondition_attestations_v1=[
+                ["b2", payload, [["model", "a", ["whole_artifact", None], b"e" * 32]], "b2"]
+            ],
+        )
+        with self.assertRaises(RelationApplicationV2SemanticValidationError) as raised:
+            validate_relation_application_v2_semantics(
+                observed, FakeSourceResolver(), theorem_record=theorem
+            )
+        self.assertEqual(raised.exception.code, "B2_PRECONDITION_RESOLUTION_REQUIRED")
 
     def test_historical_role_substitution_fails_closed(self) -> None:
         altered = ParticipantRoleBridgeV1(

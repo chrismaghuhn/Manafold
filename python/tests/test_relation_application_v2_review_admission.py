@@ -52,12 +52,19 @@ def review_evidence() -> AcceptanceEvidenceRefV1:
 
 
 class FakeCurrentness:
-    def __init__(self, status: str = "current") -> None:
+    def __init__(self, status: str = "current", theorem: dict[str, object] | None = None) -> None:
         self.status = status
+        self.theorem = theorem
 
-    def require_current_relation_theorem(self, _theorem_id: AuthorityIdentityV1) -> None:
+    def require_current_relation_theorem(
+        self, _theorem_id: AuthorityIdentityV1
+    ) -> dict[str, object]:
         if self.status == "current":
-            return
+            if self.theorem is None:
+                raise RelationApplicationV2ReviewAdmissionError(
+                    "RELATION_APPLICATION_V2_CURRENTNESS_FAILED", "theorem_record_id"
+                )
+            return self.theorem
         code = {
             "no-current": "RELATION_APPLICATION_V2_CURRENTNESS_FAILED",
             "ambiguous": "RELATION_APPLICATION_V2_CURRENTNESS_AMBIGUOUS",
@@ -81,6 +88,13 @@ class FakeAdmissionResolver(FakeSourceResolver):
 
     def resolve_v4_acceptance_evidence(self, _evidence: AcceptanceEvidenceRefV1) -> object:
         return object()
+
+    def expected_relation_application_v2_source_closure(
+        self,
+        _record: RelationApplicationV2Record,
+        _reviewer_roster_ref: object,
+    ) -> tuple[ReviewAuthoritySourceBindingV4, ...]:
+        return tuple(self.event.source_binding_digests)
 
 
 def valid_record() -> tuple[
@@ -178,7 +192,7 @@ class RelationApplicationV2ReviewAdmissionTests(unittest.TestCase):
             record,
             resolver,
             theorem_record=theorem_record(),
-            currentness=FakeCurrentness(),
+            currentness=FakeCurrentness(theorem=theorem_record()),
             expected_source_bindings=expected,
         )
         self.assertEqual(result.record_id, record.record_id.as_text())
@@ -188,7 +202,7 @@ class RelationApplicationV2ReviewAdmissionTests(unittest.TestCase):
                 record,
                 resolver,
                 theorem_record=theorem_record(),
-                currentness=FakeCurrentness("superseded"),
+                currentness=FakeCurrentness("superseded", theorem_record()),
                 expected_source_bindings=expected,
             )
         self.assertEqual(raised.exception.code, "SUPERSEDED_AUTHORITY_USED")
@@ -238,7 +252,7 @@ class RelationApplicationV2ReviewAdmissionTests(unittest.TestCase):
                 record,
                 resolver,
                 theorem_record=theorem_record(),
-                currentness=FakeCurrentness(),
+                currentness=FakeCurrentness(theorem=theorem_record()),
                 expected_source_bindings=(),
             )
         self.assertIn(
@@ -288,7 +302,7 @@ class RelationApplicationV2ReviewAdmissionTests(unittest.TestCase):
                         record,
                         resolver,
                         theorem_record=theorem_record(),
-                        currentness=FakeCurrentness(status),
+                        currentness=FakeCurrentness(status, theorem_record()),
                         expected_source_bindings=expected,
                     )
                 self.assertEqual(raised.exception.code, expected_code)
@@ -329,6 +343,7 @@ class RelationApplicationV2ReviewAdmissionTests(unittest.TestCase):
                 event_id=event.event_id,
                 subject_kind=event.subject_kind,
                 subject_payload_digest_reference=event.subject_payload_digest_reference,
+                reviewer_roster_ref=roster_ref,
                 reviewer_role_bindings=(
                     ReviewerRoleBindingV1("reviewer", ("architecture_maintainer",)),
                 ),
@@ -341,7 +356,7 @@ class RelationApplicationV2ReviewAdmissionTests(unittest.TestCase):
                 record,
                 resolver,
                 theorem_record=theorem_record(),
-                currentness=FakeCurrentness(),
+                currentness=FakeCurrentness(theorem=theorem_record()),
                 expected_source_bindings=expected,
             )
         self.assertEqual(raised.exception.code, "REVIEWER_ROLE_MISSING")
@@ -350,6 +365,7 @@ class RelationApplicationV2ReviewAdmissionTests(unittest.TestCase):
             event_id=event.event_id,
             subject_kind=event.subject_kind,
             subject_payload_digest_reference=event.subject_payload_digest_reference,
+            reviewer_roster_ref=roster_ref,
             reviewer_role_bindings=event.reviewer_role_bindings,
             source_binding_digests=event.source_binding_digests,
             review_evidence_refs=(),
@@ -359,10 +375,50 @@ class RelationApplicationV2ReviewAdmissionTests(unittest.TestCase):
                 record,
                 resolver,
                 theorem_record=theorem_record(),
-                currentness=FakeCurrentness(),
+                currentness=FakeCurrentness(theorem=theorem_record()),
                 expected_source_bindings=expected,
             )
         self.assertEqual(raised.exception.code, "REVIEW_EVIDENCE_MISSING")
+
+    def test_semantic_theorem_mapping_must_be_the_current_theorem_mapping(self) -> None:
+        record, expected = valid_record()
+        subject = AcceptanceSubjectPayloadV4(
+            AcceptanceSubjectKindV4.RELATION_APPLICATION_V2_RECORD,
+            record.acceptance_free_subject_payload(),
+        )
+        event_input = ReviewAcceptanceEventInputV4(
+            subject_kind=subject.subject_kind,
+            subject_payload_digest_reference=DigestReferenceV1.from_identity(subject.identity()),
+            reviewer_roster_ref=ReviewerRosterRefV1(
+                path="sources/m2_5/authorities/reviewer_rosters/v1/" + "72" * 32 + ".json",
+                schema="manafold.m2.5.c.reviewer-roster.v1",
+                raw_sha256=bytes.fromhex("72" * 32),
+            ),
+            reviewer_role_bindings=(
+                ReviewerRoleBindingV1(
+                    "reviewer",
+                    (
+                        "architecture_maintainer",
+                        "conformance_maintainer",
+                        "information_safety_reviewer",
+                        "rules_authority_maintainer",
+                    ),
+                ),
+            ),
+            review_mode=ReviewMode.MULTI_REVIEWER,
+            source_binding_digests=expected,
+            review_evidence_refs=(review_evidence(),),
+        )
+        resolver = FakeAdmissionResolver(ReviewAcceptanceEventLeafV4.from_input(event_input))
+        with self.assertRaises(RelationApplicationV2ReviewAdmissionError) as raised:
+            admit_relation_application_v2_record(
+                record,
+                resolver,
+                theorem_record=theorem_record(roles=("affected", "source")),
+                currentness=FakeCurrentness(theorem=theorem_record()),
+                expected_source_bindings=expected,
+            )
+        self.assertEqual(raised.exception.code, "RELATION_APPLICATION_V2_THEOREM_MISMATCH")
 
 
 if __name__ == "__main__":
