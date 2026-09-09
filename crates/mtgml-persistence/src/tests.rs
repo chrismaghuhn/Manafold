@@ -405,6 +405,107 @@ fn relation_application_v2_identity_vectors_match_python_contract() {
 }
 
 #[test]
+fn relation_application_v2_member_proof_wire_goldens_match_python_contract() {
+    let matrix: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../conformance/fixtures/authority/relation_application_v2_wire_golden.v1.json"
+    ))
+    .unwrap();
+    let evidence = || {
+        cbor::Value::Array(vec![
+            cbor::Value::Text("model".to_owned()),
+            cbor::Value::Text("sources/model.json".to_owned()),
+            cbor::Value::Array(vec![
+                cbor::Value::Text("whole_artifact".to_owned()),
+                cbor::Value::Null,
+            ]),
+            cbor::Value::Bytes(vec![0x65; 32]),
+        ])
+    };
+    let positive_interaction = cbor::Value::Array(vec![
+        cbor::Value::Text("positive_interaction".to_owned()),
+        cbor::Value::Array(vec![
+            cbor::Value::Array(vec![cbor::Value::Unsigned(0)]),
+            cbor::Value::Null,
+        ]),
+    ]);
+    let channels = [
+        "participant_boundary",
+        "event_or_effect_causality",
+        "target_or_choice",
+        "zone_or_object_identity",
+        "control_or_ownership",
+        "replacement_or_layer",
+        "trigger_or_lki",
+        "information_or_visibility",
+        "ordering_or_temporal",
+        "decision_actor",
+        "format_and_declared_scope",
+    ];
+    let coverages = channels
+        .iter()
+        .map(|channel| {
+            cbor::Value::Array(vec![
+                cbor::Value::Text((*channel).to_owned()),
+                cbor::Value::Text("separated".to_owned()),
+                cbor::Value::Array(vec![cbor::Value::Array(vec![
+                    cbor::Value::Text("b2_boundary".to_owned()),
+                    cbor::Value::Array(vec![
+                        cbor::Value::Text("family".to_owned()),
+                        cbor::Value::Text("active".to_owned()),
+                        cbor::Value::Text("primary".to_owned()),
+                        cbor::Value::Text("definition".to_owned()),
+                    ]),
+                ])]),
+                cbor::Value::Array(vec![evidence()]),
+                cbor::Value::Array(vec![]),
+                cbor::Value::Text("covered".to_owned()),
+            ])
+        })
+        .collect::<Vec<_>>();
+    let positive_separation = cbor::Value::Array(vec![
+        cbor::Value::Text("positive_separation".to_owned()),
+        cbor::Value::Array(vec![cbor::Value::Array(coverages)]),
+    ]);
+    let model_bound_scope = cbor::Value::Array(vec![
+        cbor::Value::Text("model_bound_scope".to_owned()),
+        cbor::Value::Array(vec![cbor::Value::Array(vec![
+            cbor::Value::Text("declared-interaction-model.v2".to_owned()),
+            cbor::Value::Text("2".to_owned()),
+            cbor::Value::Array(vec![
+                cbor::Value::Text(
+                    "sources/m2_5/closures/C/declared_interaction_model.v2.json".to_owned(),
+                ),
+                cbor::Value::Text("manafold.m2.5.c.declared-interaction-model.v2".to_owned()),
+                cbor::Value::Bytes(vec![0x6d; 32]),
+                cbor::Value::Array(vec![
+                    cbor::Value::Text("coverage_scope".to_owned()),
+                    cbor::Value::Null,
+                ]),
+            ]),
+            cbor::Value::Text("undeclared_relation_shape".to_owned()),
+            cbor::Value::Array(vec![
+                cbor::Value::Text("cross_deck".to_owned()),
+                cbor::Value::Text("directional_binary".to_owned()),
+                cbor::Value::Text("binary".to_owned()),
+                cbor::Value::Text("directed".to_owned()),
+                cbor::Value::Unsigned(2),
+            ]),
+            cbor::Value::Array(vec![evidence()]),
+        ])]),
+    ]);
+    for (kind, proof) in [
+        ("positive_interaction", positive_interaction),
+        ("positive_separation", positive_separation),
+        ("model_bound_scope", model_bound_scope),
+    ] {
+        assert_eq!(
+            authority::member_proof_attestation_to_wire(&proof),
+            matrix["proof_wire_goldens"][kind]
+        );
+    }
+}
+
+#[test]
 fn authority_contract_negative_matrix_rejects_every_case() {
     let matrix: serde_json::Value = serde_json::from_str(include_str!(
         "../../../conformance/fixtures/authority/identity_contract_negative_matrix.v1.json"

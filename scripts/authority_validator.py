@@ -3040,7 +3040,35 @@ class AuthorityValidator:
                 "SUPERSEDED_AUTHORITY_USED",
                 "RPA V2 references a superseded or revoked V1 relation theorem",
             )
-        return record.record
+        theorem_id = _identity_ref(
+            record.record.get("theorem_id"),
+            AuthorityIdentityKind.RELATION_THEOREM,
+            "relation theorem semantic identity",
+        )
+        current_records = []
+        for candidate in self._records.values():
+            if candidate.kind is not RecordKind.RELATION_THEOREM_RECORD:
+                continue
+            candidate_theorem_id = _identity_ref(
+                candidate.record.get("theorem_id"),
+                AuthorityIdentityKind.RELATION_THEOREM,
+                "relation theorem semantic identity",
+            )
+            if candidate_theorem_id.as_text() == theorem_id.as_text() and (
+                candidate.record_id.as_text() not in self._superseded_record_ids
+            ):
+                current_records.append(candidate)
+        if not current_records:
+            _fail(
+                "RELATION_APPLICATION_V2_CURRENTNESS_FAILED",
+                "relation theorem semantic identity has no current accepted record",
+            )
+        if len(current_records) > 1:
+            _fail(
+                "RELATION_APPLICATION_V2_CURRENTNESS_AMBIGUOUS",
+                "relation theorem semantic identity has multiple current records",
+            )
+        return current_records[0].record
 
     def _source_instance_shape(
         self, resolved: ResolvedSourceInstance, label: str

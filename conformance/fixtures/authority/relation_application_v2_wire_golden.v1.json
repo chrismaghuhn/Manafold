@@ -1,0 +1,325 @@
+{
+  "schema": "manafold.m2.5.c.relation-application-v2-wire-golden.v1",
+  "proof_wire_goldens": {
+    "positive_interaction": {
+      "kind": "positive_interaction",
+      "causal_chain_ordinals": [
+        0
+      ],
+      "class_projection_equivalence": null
+    },
+    "positive_separation": {
+      "kind": "positive_separation",
+      "channel_coverages": [
+        {
+          "channel": "participant_boundary",
+          "coverage": "separated",
+          "positive_boundary_facts": [
+            {
+              "kind": "b2_boundary",
+              "family_id": "family",
+              "lifecycle": "active",
+              "assignment_role": "primary",
+              "precise_semantic_definition": "definition"
+            }
+          ],
+          "source_evidence_refs": [
+            {
+              "authority_kind": "model",
+              "path": "sources/model.json",
+              "locator": {
+                "kind": "whole_artifact"
+              },
+              "raw_sha256": "6565656565656565656565656565656565656565656565656565656565656565"
+            }
+          ],
+          "b1_final_citation_refs": [],
+          "rationale": "covered"
+        },
+        {
+          "channel": "event_or_effect_causality",
+          "coverage": "separated",
+          "positive_boundary_facts": [
+            {
+              "kind": "b2_boundary",
+              "family_id": "family",
+              "lifecycle": "active",
+              "assignment_role": "primary",
+              "precise_semantic_definition": "definition"
+            }
+          ],
+          "source_evidence_refs": [
+            {
+              "authority_kind": "model",
+              "path": "sources/model.json",
+              "locator": {
+                "kind": "whole_artifact"
+              },
+              "raw_sha256": "6565656565656565656565656565656565656565656565656565656565656565"
+            }
+          ],
+          "b1_final_citation_refs": [],
+          "rationale": "covered"
+        },
+        {
+          "channel": "target_or_choice",
+          "coverage": "separated",
+          "positive_boundary_facts": [
+            {
+              "kind": "b2_boundary",
+              "family_id": "family",
+              "lifecycle": "active",
+              "assignment_role": "primary",
+              "precise_semantic_definition": "definition"
+            }
+          ],
+          "source_evidence_refs": [
+            {
+              "authority_kind": "model",
+              "path": "sources/model.json",
+              "locator": {
+                "kind": "whole_artifact"
+              },
+              "raw_sha256": "6565656565656565656565656565656565656565656565656565656565656565"
+            }
+          ],
+          "b1_final_citation_refs": [],
+          "rationale": "covered"
+        },
+        {
+          "channel": "zone_or_object_identity",
+          "coverage": "separated",
+          "positive_boundary_facts": [
+            {
+              "kind": "b2_boundary",
+              "family_id": "family",
+              "lifecycle": "active",
+              "assignment_role": "primary",
+              "precise_semantic_definition": "definition"
+            }
+          ],
+          "source_evidence_refs": [
+            {
+              "authority_kind": "model",
+              "path": "sources/model.json",
+              "locator": {
+                "kind": "whole_artifact"
+              },
+              "raw_sha256": "6565656565656565656565656565656565656565656565656565656565656565"
+            }
+          ],
+          "b1_final_citation_refs": [],
+          "rationale": "covered"
+        },
+        {
+          "channel": "control_or_ownership",
+          "coverage": "separated",
+          "positive_boundary_facts": [
+            {
+              "kind": "b2_boundary",
+              "family_id": "family",
+              "lifecycle": "active",
+              "assignment_role": "primary",
+              "precise_semantic_definition": "definition"
+            }
+          ],
+          "source_evidence_refs": [
+            {
+              "authority_kind": "model",
+              "path": "sources/model.json",
+              "locator": {
+                "kind": "whole_artifact"
+              },
+              "raw_sha256": "6565656565656565656565656565656565656565656565656565656565656565"
+            }
+          ],
+          "b1_final_citation_refs": [],
+          "rationale": "covered"
+        },
+        {
+          "channel": "replacement_or_layer",
+          "coverage": "separated",
+          "positive_boundary_facts": [
+            {
+              "kind": "b2_boundary",
+              "family_id": "family",
+              "lifecycle": "active",
+              "assignment_role": "primary",
+              "precise_semantic_definition": "definition"
+            }
+          ],
+          "source_evidence_refs": [
+            {
+              "authority_kind": "model",
+              "path": "sources/model.json",
+              "locator": {
+                "kind": "whole_artifact"
+              },
+              "raw_sha256": "6565656565656565656565656565656565656565656565656565656565656565"
+            }
+          ],
+          "b1_final_citation_refs": [],
+          "rationale": "covered"
+        },
+        {
+          "channel": "trigger_or_lki",
+          "coverage": "separated",
+          "positive_boundary_facts": [
+            {
+              "kind": "b2_boundary",
+              "family_id": "family",
+              "lifecycle": "active",
+              "assignment_role": "primary",
+              "precise_semantic_definition": "definition"
+            }
+          ],
+          "source_evidence_refs": [
+            {
+              "authority_kind": "model",
+              "path": "sources/model.json",
+              "locator": {
+                "kind": "whole_artifact"
+              },
+              "raw_sha256": "6565656565656565656565656565656565656565656565656565656565656565"
+            }
+          ],
+          "b1_final_citation_refs": [],
+          "rationale": "covered"
+        },
+        {
+          "channel": "information_or_visibility",
+          "coverage": "separated",
+          "positive_boundary_facts": [
+            {
+              "kind": "b2_boundary",
+              "family_id": "family",
+              "lifecycle": "active",
+              "assignment_role": "primary",
+              "precise_semantic_definition": "definition"
+            }
+          ],
+          "source_evidence_refs": [
+            {
+              "authority_kind": "model",
+              "path": "sources/model.json",
+              "locator": {
+                "kind": "whole_artifact"
+              },
+              "raw_sha256": "6565656565656565656565656565656565656565656565656565656565656565"
+            }
+          ],
+          "b1_final_citation_refs": [],
+          "rationale": "covered"
+        },
+        {
+          "channel": "ordering_or_temporal",
+          "coverage": "separated",
+          "positive_boundary_facts": [
+            {
+              "kind": "b2_boundary",
+              "family_id": "family",
+              "lifecycle": "active",
+              "assignment_role": "primary",
+              "precise_semantic_definition": "definition"
+            }
+          ],
+          "source_evidence_refs": [
+            {
+              "authority_kind": "model",
+              "path": "sources/model.json",
+              "locator": {
+                "kind": "whole_artifact"
+              },
+              "raw_sha256": "6565656565656565656565656565656565656565656565656565656565656565"
+            }
+          ],
+          "b1_final_citation_refs": [],
+          "rationale": "covered"
+        },
+        {
+          "channel": "decision_actor",
+          "coverage": "separated",
+          "positive_boundary_facts": [
+            {
+              "kind": "b2_boundary",
+              "family_id": "family",
+              "lifecycle": "active",
+              "assignment_role": "primary",
+              "precise_semantic_definition": "definition"
+            }
+          ],
+          "source_evidence_refs": [
+            {
+              "authority_kind": "model",
+              "path": "sources/model.json",
+              "locator": {
+                "kind": "whole_artifact"
+              },
+              "raw_sha256": "6565656565656565656565656565656565656565656565656565656565656565"
+            }
+          ],
+          "b1_final_citation_refs": [],
+          "rationale": "covered"
+        },
+        {
+          "channel": "format_and_declared_scope",
+          "coverage": "separated",
+          "positive_boundary_facts": [
+            {
+              "kind": "b2_boundary",
+              "family_id": "family",
+              "lifecycle": "active",
+              "assignment_role": "primary",
+              "precise_semantic_definition": "definition"
+            }
+          ],
+          "source_evidence_refs": [
+            {
+              "authority_kind": "model",
+              "path": "sources/model.json",
+              "locator": {
+                "kind": "whole_artifact"
+              },
+              "raw_sha256": "6565656565656565656565656565656565656565656565656565656565656565"
+            }
+          ],
+          "b1_final_citation_refs": [],
+          "rationale": "covered"
+        }
+      ]
+    },
+    "model_bound_scope": {
+      "kind": "model_bound_scope",
+      "scope_boundary_attestation": {
+        "model_id": "declared-interaction-model.v2",
+        "model_version": "2",
+        "model_boundary_ref": {
+          "path": "sources/m2_5/closures/C/declared_interaction_model.v2.json",
+          "schema": "manafold.m2.5.c.declared-interaction-model.v2",
+          "raw_sha256": "6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d",
+          "locator": {
+            "kind": "coverage_scope"
+          }
+        },
+        "reason_code": "undeclared_relation_shape",
+        "observed_candidate_shape": {
+          "scope": "cross_deck",
+          "relation": "directional_binary",
+          "arity": "binary",
+          "directionality": "directed",
+          "participant_count": 2
+        },
+        "positive_boundary_evidence_refs": [
+          {
+            "authority_kind": "model",
+            "path": "sources/model.json",
+            "locator": {
+              "kind": "whole_artifact"
+            },
+            "raw_sha256": "6565656565656565656565656565656565656565656565656565656565656565"
+          }
+        ]
+      }
+    }
+  }
+}

@@ -19,6 +19,7 @@ from mtgml.authority import (
     RelationApplicationV2Record,
     ReviewAuthoritySourceBindingV4,
 )
+from relation_application_v2_resolver import RelationApplicationV2ResolutionError
 from relation_application_v2_review_binding import (
     RelationApplicationV2ReviewBindingError,
     RelationApplicationV2ReviewBindingResult,
@@ -79,6 +80,17 @@ def admit_relation_application_v2_record(
         resolved_theorem = currentness.require_current_relation_theorem(record.theorem_record_id)
     except RelationApplicationV2ReviewAdmissionError:
         raise
+    except RelationApplicationV2ResolutionError as exc:
+        code = exc.code
+        if code not in {
+            "SUPERSEDED_AUTHORITY_USED",
+            "RELATION_APPLICATION_V2_CURRENTNESS_FAILED",
+            "RELATION_APPLICATION_V2_CURRENTNESS_AMBIGUOUS",
+        }:
+            code = "RELATION_APPLICATION_V2_CURRENTNESS_FAILED"
+        raise RelationApplicationV2ReviewAdmissionError(
+            code, "theorem_record_id", cause_code=exc.code
+        ) from exc
     except ResolutionError as exc:
         code = exc.code
         if code not in {
@@ -92,7 +104,9 @@ def admit_relation_application_v2_record(
         ) from exc
     except Exception as exc:
         raise RelationApplicationV2ReviewAdmissionError(
-            "SUPERSEDED_AUTHORITY_USED", "theorem_record_id", cause_code=type(exc).__name__
+            "RELATION_APPLICATION_V2_CURRENTNESS_FAILED",
+            "theorem_record_id",
+            cause_code=type(exc).__name__,
         ) from exc
     if not isinstance(resolved_theorem, Mapping) or not resolved_theorem:
         raise RelationApplicationV2ReviewAdmissionError(

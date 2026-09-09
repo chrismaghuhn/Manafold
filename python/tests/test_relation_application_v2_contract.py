@@ -278,6 +278,65 @@ class RelationApplicationV2ContractTests(unittest.TestCase):
                     encode_canonical(identity.to_cbor()).hex(), entry["identity_cbor_hex"]
                 )
 
+    def test_member_proof_wire_goldens_use_the_closed_v1_object_shapes(self) -> None:
+        matrix = json.loads(
+            (
+                ROOT
+                / "conformance/fixtures/authority/"
+                / "relation_application_v2_wire_golden.v1.json"
+            ).read_text(encoding="utf-8")
+        )
+        channels = (
+            "participant_boundary",
+            "event_or_effect_causality",
+            "target_or_choice",
+            "zone_or_object_identity",
+            "control_or_ownership",
+            "replacement_or_layer",
+            "trigger_or_lki",
+            "information_or_visibility",
+            "ordering_or_temporal",
+            "decision_actor",
+            "format_and_declared_scope",
+        )
+        coverages = [
+            [
+                channel,
+                "separated",
+                [["b2_boundary", ["family", "active", "primary", "definition"]]],
+                [evidence().to_cbor()],
+                [],
+                "covered",
+            ]
+            for channel in channels
+        ]
+        model_boundary = [
+            "sources/m2_5/closures/C/declared_interaction_model.v2.json",
+            "manafold.m2.5.c.declared-interaction-model.v2",
+            b"m" * 32,
+            ["coverage_scope", None],
+        ]
+        scope = [
+            "declared-interaction-model.v2",
+            "2",
+            model_boundary,
+            "undeclared_relation_shape",
+            ["cross_deck", "directional_binary", "binary", "directed", 2],
+            [evidence().to_cbor()],
+        ]
+        observed = {
+            "positive_interaction": member().to_wire()["member_proof_attestation"],
+            "positive_separation": replace(
+                member(),
+                member_proof_attestation_v1=["positive_separation", [coverages]],
+            ).to_wire()["member_proof_attestation"],
+            "model_bound_scope": replace(
+                member(),
+                member_proof_attestation_v1=["model_bound_scope", [scope]],
+            ).to_wire()["member_proof_attestation"],
+        }
+        self.assertEqual(observed, matrix["proof_wire_goldens"])
+
 
 if __name__ == "__main__":
     unittest.main()

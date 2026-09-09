@@ -29,7 +29,10 @@ from mtgml.authority import (
     ReviewEventRefV4,
     ReviewMode,
 )
-from relation_application_v2_resolver import RelationApplicationV2Resolver
+from relation_application_v2_resolver import (
+    RelationApplicationV2ResolutionError,
+    RelationApplicationV2Resolver,
+)
 from relation_application_v2_review_admission import (
     RelationApplicationV2ReviewAdmissionError,
     admit_relation_application_v2_record,
@@ -208,6 +211,27 @@ def valid_record() -> tuple[
 
 
 class RelationApplicationV2ReviewAdmissionTests(unittest.TestCase):
+    def test_structured_production_currentness_code_is_preserved(self) -> None:
+        record, _ = valid_record()
+
+        class StructuredCurrentnessFailure:
+            def require_current_relation_theorem(self, _theorem_id: object) -> object:
+                raise RelationApplicationV2ResolutionError(
+                    "RELATION_APPLICATION_V2_CURRENTNESS_FAILED",
+                    "theorem_record_id",
+                )
+
+        with self.assertRaises(RelationApplicationV2ReviewAdmissionError) as raised:
+            admit_relation_application_v2_record(
+                record,
+                FakeSourceResolver(),
+                currentness=StructuredCurrentnessFailure(),
+            )
+        self.assertEqual(
+            raised.exception.code,
+            "RELATION_APPLICATION_V2_CURRENTNESS_FAILED",
+        )
+
     def test_production_rpa_resolver_reconstructs_closure_independently_of_ae_v4(self) -> None:
         record, _ = valid_record()
         model_path = "sources/m2_5/closures/C/declared_interaction_model.v2.json"

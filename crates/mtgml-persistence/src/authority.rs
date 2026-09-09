@@ -3816,7 +3816,8 @@ impl RelationApplicationMemberV2 {
             "participant_role_bridge": self.participant_role_bridge_v1.entries.iter().map(ParticipantRoleBridgeEntryV1::to_wire).collect::<Vec<_>>(),
             "precondition_attestations": preconditions_to_wire(&self.precondition_attestations_v1),
             "member_evidence_refs": self.member_evidence_refs.iter().map(evidence_to_wire).collect::<Vec<_>>(),
-            "member_proof_attestation": cbor_value_to_json(&self.member_proof_attestation_v1),
+            "member_proof_attestation":
+                member_proof_attestation_to_wire(&self.member_proof_attestation_v1),
         })
     }
 }
@@ -6178,6 +6179,249 @@ fn cbor_value_to_json(value: &cbor::Value) -> serde_json::Value {
         cbor::Value::Array(values) => {
             serde_json::Value::Array(values.iter().map(cbor_value_to_json).collect())
         }
+    }
+}
+
+fn participant_to_wire(value: &cbor::Value) -> serde_json::Value {
+    let fields = value_array(value, Some(4)).expect("validated participant");
+    serde_json::json!({
+        "position": value_uint32(&fields[0]).expect("validated position"),
+        "role": value_text(&fields[1]).expect("validated role"),
+        "participant_kind": value_text(&fields[2]).expect("validated participant kind"),
+        "semantic_ref": value_text(&fields[3]).expect("validated semantic reference"),
+    })
+}
+
+fn class_projection_to_wire(value: &cbor::Value) -> serde_json::Value {
+    let fields = value_array(value, Some(9)).expect("validated class projection");
+    let participant_roles = value_array(&fields[2], None)
+        .expect("validated class participant roles")
+        .iter()
+        .map(participant_to_wire)
+        .collect::<Vec<_>>();
+    let b2_family_refs = value_array(&fields[6], None)
+        .expect("validated class B2 family references")
+        .iter()
+        .map(|value| {
+            let fields = value_array(value, Some(3)).expect("validated B2 family reference");
+            serde_json::json!({
+                "family_id": value_text(&fields[0]).expect("validated B2 family ID"),
+                "lifecycle": value_text(&fields[1]).expect("validated B2 lifecycle"),
+                "assignment_role": value_text(&fields[2]).expect("validated B2 assignment role"),
+            })
+        })
+        .collect::<Vec<_>>();
+    let b2_boundary_refs = value_array(&fields[7], None)
+        .expect("validated class B2 boundary references")
+        .iter()
+        .map(|value| {
+            let fields = value_array(value, Some(2)).expect("validated B2 boundary reference");
+            serde_json::json!({
+                "family_id": value_text(&fields[0]).expect("validated B2 family ID"),
+                "precise_semantic_definition": value_text(&fields[1]).expect("validated B2 definition"),
+            })
+        })
+        .collect::<Vec<_>>();
+    let b1_final_citation_refs = value_array(&fields[8], None)
+        .expect("validated class B1 citation references")
+        .iter()
+        .map(|value| {
+            let fields = value_array(value, Some(2)).expect("validated B1 citation reference");
+            serde_json::json!({
+                "authority_id": value_text(&fields[0]).expect("validated B1 authority ID"),
+                "citation_id": value_text(&fields[1]).expect("validated B1 citation ID"),
+            })
+        })
+        .collect::<Vec<_>>();
+    serde_json::json!({
+        "arity": value_text(&fields[0]).expect("validated class arity"),
+        "directionality": value_text(&fields[1]).expect("validated class directionality"),
+        "participant_roles": participant_roles,
+        "host_relationship": value_text(&fields[3]).expect("validated class host relationship"),
+        "context_dimensions": cbor_value_to_json(&fields[4]),
+        "temporal_semantics": cbor_value_to_json(&fields[5]),
+        "b2_family_refs": b2_family_refs,
+        "b2_boundary_refs": b2_boundary_refs,
+        "b1_final_citation_refs": b1_final_citation_refs,
+    })
+}
+
+fn class_projection_equivalence_to_wire(value: &cbor::Value) -> serde_json::Value {
+    let fields = value_array(value, Some(6)).expect("validated class projection equivalence");
+    let claim = value_array(&fields[3], Some(2)).expect("validated semantic claim relation");
+    let digest = match &claim[1] {
+        cbor::Value::Bytes(bytes) => hex_bytes(bytes),
+        _ => String::new(),
+    };
+    let equal_positions = value_array(&fields[2], None)
+        .expect("validated equal positions")
+        .iter()
+        .map(|value| value_text(value).expect("validated equal position"))
+        .collect::<Vec<_>>();
+    let evidence_refs = value_array(&fields[4], None)
+        .expect("validated class equivalence evidence")
+        .iter()
+        .map(evidence_ref_value_to_wire)
+        .collect::<Vec<_>>();
+    serde_json::json!({
+        "theorem_projection": class_projection_to_wire(&fields[0]),
+        "member_projection": class_projection_to_wire(&fields[1]),
+        "equal_positions": equal_positions,
+        "semantic_claim_relation": {
+            "kind": value_text(&claim[0]).expect("validated semantic claim kind"),
+            "theorem_semantic_digest": digest,
+        },
+        "evidence_refs": evidence_refs,
+        "rationale": value_text(&fields[5]).expect("validated class equivalence rationale"),
+    })
+}
+
+fn positive_boundary_fact_to_wire(value: &cbor::Value) -> serde_json::Value {
+    let tagged = value_array(value, Some(2)).expect("validated positive boundary fact");
+    let kind = value_text(&tagged[0]).expect("validated positive boundary fact kind");
+    let payload = value_array(&tagged[1], None).expect("validated positive boundary fact payload");
+    match kind {
+        "b2_boundary" => serde_json::json!({
+            "kind": kind,
+            "family_id": value_text(&payload[0]).expect("validated B2 family ID"),
+            "lifecycle": value_text(&payload[1]).expect("validated B2 lifecycle"),
+            "assignment_role": value_text(&payload[2]).expect("validated B2 assignment role"),
+            "precise_semantic_definition": value_text(&payload[3]).expect("validated B2 definition"),
+        }),
+        "rev3_locator" | "b2_locator" => serde_json::json!({
+            "kind": kind,
+            "path": value_text(&payload[0]).expect("validated source fact path"),
+            "raw_sha256": match &payload[1] {
+                cbor::Value::Bytes(bytes) => hex_bytes(bytes),
+                _ => String::new(),
+            },
+            "locator": locator_value_to_wire(&payload[2]),
+        }),
+        "b1_citation" => {
+            serde_json::json!({
+                "kind": kind,
+                "citation": {
+                    "authority_id": value_text(&payload[0]).expect("validated B1 authority ID"),
+                    "citation_id": value_text(&payload[1]).expect("validated B1 citation ID"),
+                },
+            })
+        }
+        "context_slot" => serde_json::json!({
+            "kind": kind,
+            "slot_kind": value_text(&payload[0]).expect("validated context slot kind"),
+            "slot_name": value_text(&payload[1]).expect("validated context slot name"),
+            "observed_value": cbor_value_to_json(&payload[2]),
+        }),
+        "model_boundary" => serde_json::json!({
+            "kind": kind,
+            "model_id": value_text(&payload[0]).expect("validated boundary model ID"),
+            "model_version": value_text(&payload[1]).expect("validated boundary model version"),
+            "model_boundary_locator": locator_value_to_wire(&payload[2]),
+        }),
+        _ => serde_json::Value::Null,
+    }
+}
+
+fn channel_coverage_to_wire(value: &cbor::Value) -> serde_json::Value {
+    let fields = value_array(value, Some(6)).expect("validated channel coverage");
+    let positive_boundary_facts = value_array(&fields[2], None)
+        .expect("validated positive boundary facts")
+        .iter()
+        .map(positive_boundary_fact_to_wire)
+        .collect::<Vec<_>>();
+    let source_evidence_refs = value_array(&fields[3], None)
+        .expect("validated coverage source evidence")
+        .iter()
+        .map(evidence_ref_value_to_wire)
+        .collect::<Vec<_>>();
+    let b1_final_citation_refs = value_array(&fields[4], None)
+        .expect("validated coverage B1 references")
+        .iter()
+        .map(|value| {
+            let fields = value_array(value, Some(2)).expect("validated B1 citation reference");
+            serde_json::json!({
+                "authority_id": value_text(&fields[0]).expect("validated B1 authority ID"),
+                "citation_id": value_text(&fields[1]).expect("validated B1 citation ID"),
+            })
+        })
+        .collect::<Vec<_>>();
+    serde_json::json!({
+        "channel": value_text(&fields[0]).expect("validated coverage channel"),
+        "coverage": value_text(&fields[1]).expect("validated coverage conclusion"),
+        "positive_boundary_facts": positive_boundary_facts,
+        "source_evidence_refs": source_evidence_refs,
+        "b1_final_citation_refs": b1_final_citation_refs,
+        "rationale": value_text(&fields[5]).expect("validated coverage rationale"),
+    })
+}
+
+fn scope_attestation_to_wire(value: &cbor::Value) -> serde_json::Value {
+    let fields = value_array(value, Some(6)).expect("validated scope boundary attestation");
+    let boundary = value_array(&fields[2], Some(4)).expect("validated model boundary reference");
+    let shape = value_array(&fields[4], Some(5)).expect("validated scope candidate shape");
+    let evidence = value_array(&fields[5], None)
+        .expect("validated scope boundary evidence")
+        .iter()
+        .map(evidence_ref_value_to_wire)
+        .collect::<Vec<_>>();
+    serde_json::json!({
+        "model_id": value_text(&fields[0]).expect("validated scope model ID"),
+        "model_version": value_text(&fields[1]).expect("validated scope model version"),
+        "model_boundary_ref": {
+            "path": value_text(&boundary[0]).expect("validated model boundary path"),
+            "schema": value_text(&boundary[1]).expect("validated model boundary schema"),
+            "raw_sha256": match &boundary[2] {
+                cbor::Value::Bytes(bytes) => hex_bytes(bytes),
+                _ => String::new(),
+            },
+            "locator": locator_value_to_wire(&boundary[3]),
+        },
+        "reason_code": value_text(&fields[3]).expect("validated scope reason"),
+        "observed_candidate_shape": {
+            "scope": value_text(&shape[0]).expect("validated scope candidate scope"),
+            "relation": value_text(&shape[1]).expect("validated scope candidate relation"),
+            "arity": value_text(&shape[2]).expect("validated scope candidate arity"),
+            "directionality": value_text(&shape[3]).expect("validated scope candidate directionality"),
+            "participant_count": value_uint32(&shape[4]).expect("validated scope participant count"),
+        },
+        "positive_boundary_evidence_refs": evidence,
+    })
+}
+
+pub(crate) fn member_proof_attestation_to_wire(value: &cbor::Value) -> serde_json::Value {
+    let fields = value_array(value, Some(2)).expect("validated member proof attestation");
+    let kind = value_text(&fields[0]).expect("validated member proof kind");
+    match kind {
+        "positive_interaction" => {
+            let payload = value_array(&fields[1], Some(2)).expect("validated interaction proof");
+            serde_json::json!({
+                "kind": kind,
+                "causal_chain_ordinals": cbor_value_to_json(&payload[0]),
+                "class_projection_equivalence": if matches!(payload[1], cbor::Value::Null) {
+                    serde_json::Value::Null
+                } else {
+                    class_projection_equivalence_to_wire(&payload[1])
+                },
+            })
+        }
+        "positive_separation" => serde_json::json!({
+            "kind": kind,
+            "channel_coverages": value_array(
+                &value_array(&fields[1], Some(1)).expect("validated separation proof")[0],
+                None,
+            )
+                .expect("validated channel coverages")
+                .iter()
+                .map(channel_coverage_to_wire)
+                .collect::<Vec<_>>(),
+        }),
+        "model_bound_scope" => serde_json::json!({
+            "kind": kind,
+            "scope_boundary_attestation": scope_attestation_to_wire(
+                &value_array(&fields[1], Some(1)).expect("validated scope proof")[0],
+            ),
+        }),
+        _ => serde_json::Value::Null,
     }
 }
 
