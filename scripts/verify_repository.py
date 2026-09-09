@@ -64,6 +64,7 @@ def main() -> None:
         "schemas/normative-document-register.v1.schema.json",
         "schemas/interaction-review-authority.v1.schema.json",
         "schemas/context-application-authority.v2.schema.json",
+        "schemas/relation-application-authority.v2.schema.json",
         "schemas/review-acceptance-event.v1.schema.json",
         "schemas/review-acceptance-event.v3.schema.json",
         "schemas/reviewer-roster.v1.schema.json",

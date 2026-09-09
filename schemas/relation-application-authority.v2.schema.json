@@ -1,0 +1,104 @@
+{
+  "$id": "relation-application-authority.v2.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Manafold M2.5.C RelationApplication Authority V2",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "schema": { "const": "manafold.m2.5.c.relation-application-authority.v2" },
+    "base_authority_v1_binding": { "$ref": "#/$defs/source_binding" },
+    "candidate_universe_binding": { "$ref": "#/$defs/source_binding" },
+    "source_bindings": { "type": "array", "items": { "$ref": "#/$defs/source_binding" } },
+    "relation_application_v2_records": { "type": "array", "items": { "$ref": "#/$defs/record" } },
+    "relation_application_v2_supersession_records": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/supersession_record" }
+    }
+  },
+  "required": [
+    "schema",
+    "base_authority_v1_binding",
+    "candidate_universe_binding",
+    "source_bindings",
+    "relation_application_v2_records",
+    "relation_application_v2_supersession_records"
+  ],
+  "$defs": {
+    "digest": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "relative_path": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^(?!/)(?!.*\\\\)(?!.*://)(?![A-Za-z]:)[^\\r\\n]+$"
+    },
+    "source_binding": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "artifact_role": { "type": "string", "minLength": 1 },
+        "path": { "$ref": "#/$defs/relative_path" },
+        "schema": { "type": ["string", "null"] },
+        "raw_sha256": { "$ref": "#/$defs/digest" }
+      },
+      "required": ["artifact_role", "path", "schema", "raw_sha256"]
+    },
+    "identity": {
+      "type": "string",
+      "pattern": "^(rpa\\.v2|rpar\\.v2|rps\\.v2|rpsr\\.v2|rpr\\.v1)/[0-9a-f]{64}$"
+    },
+    "review_event_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "event_id": { "type": "string", "pattern": "^ae\\.v4/[0-9a-f]{64}$" },
+        "path": { "$ref": "#/$defs/relative_path" },
+        "raw_sha256": { "$ref": "#/$defs/digest" }
+      },
+      "required": ["event_id", "path", "raw_sha256"]
+    },
+    "record": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "record_id": { "type": "string", "pattern": "^rpar\\.v2/[0-9a-f]{64}$" },
+        "application_id": { "$ref": "#/$defs/identity" },
+        "theorem_record_id": { "type": "string", "pattern": "^rpr\\.v1/[0-9a-f]{64}$" },
+        "terminal_disposition": { "type": "string" },
+        "members": { "type": "array" },
+        "acceptance": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "decision": { "const": "human_accepted" },
+            "review_event_ref": { "$ref": "#/$defs/review_event_ref" }
+          },
+          "required": ["decision", "review_event_ref"]
+        }
+      },
+      "required": ["record_id", "application_id", "theorem_record_id", "terminal_disposition", "members", "acceptance"]
+    },
+    "supersession_record": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "record_id": { "type": "string", "pattern": "^rpsr\\.v2/[0-9a-f]{64}$" },
+        "supersession_id": { "type": "string", "pattern": "^rps\\.v2/[0-9a-f]{64}$" },
+        "superseded_record_id": { "type": "string", "pattern": "^rpar\\.v2/[0-9a-f]{64}$" },
+        "replacement_record_id": { "type": ["string", "null"] },
+        "superseded_record_kind": { "const": "relation_application_v2_record" },
+        "replacement_record_kind": { "type": ["string", "null"] },
+        "reason_code": { "enum": ["semantic_correction", "source_revision", "model_revision", "authority_revocation"] },
+        "source_evidence_refs": { "type": "array" },
+        "acceptance": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "decision": { "const": "human_accepted" },
+            "review_event_ref": { "$ref": "#/$defs/review_event_ref" }
+          },
+          "required": ["decision", "review_event_ref"]
+        }
+      },
+      "required": ["record_id", "supersession_id", "superseded_record_id", "replacement_record_id", "superseded_record_kind", "replacement_record_kind", "reason_code", "source_evidence_refs", "acceptance"]
+    }
+  }
+}

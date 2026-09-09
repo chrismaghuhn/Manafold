@@ -40,12 +40,17 @@ CONTEXT_SUPERSESSION_INPUT_SCHEMA_V2: Final = (
 CONTEXT_SUPERSESSION_RECORD_INPUT_SCHEMA_V2: Final = (
     "manafold.m2.5.c.context-application-supersession-record-input.v2"
 )
-RELATION_APPLICATION_INPUT_SCHEMA_V2: Final = (
-    "manafold.m2.5.c.relation-application-input.v2"
-)
+RELATION_APPLICATION_INPUT_SCHEMA_V2: Final = "manafold.m2.5.c.relation-application-input.v2"
 RELATION_APPLICATION_RECORD_INPUT_SCHEMA_V2: Final = (
     "manafold.m2.5.c.relation-application-record-input.v2"
 )
+RELATION_SUPERSESSION_INPUT_SCHEMA_V2: Final = (
+    "manafold.m2.5.c.relation-application-v2-supersession-input.v2"
+)
+RELATION_SUPERSESSION_RECORD_INPUT_SCHEMA_V2: Final = (
+    "manafold.m2.5.c.relation-application-supersession-record-input.v2"
+)
+RELATION_AUTHORITY_SCHEMA_V2: Final = "manafold.m2.5.c.relation-application-authority.v2"
 ACCEPTANCE_SUBJECT_SCHEMA_V3: Final = "manafold.m2.5.c.acceptance-subject-payload.v3"
 ACCEPTANCE_SUBJECT_INPUT_SCHEMA_V3: Final = "manafold.m2.5.c.acceptance-subject-payload-input.v3"
 ACCEPTANCE_EVENT_SCHEMA_V3: Final = "manafold.m2.5.c.review-acceptance-event.v3"
@@ -198,6 +203,8 @@ class AuthorityIdentityKind(str, Enum):
     RELATION_APPLICATION_RECORD = "relation_application_record"
     RELATION_APPLICATION_V2 = "relation_application_v2"
     RELATION_APPLICATION_RECORD_V2 = "relation_application_record_v2"
+    RELATION_SUPERSESSION_V2 = "relation_supersession_v2"
+    RELATION_SUPERSESSION_RECORD_V2 = "relation_supersession_record_v2"
     RELATION_SUPERSESSION = "relation_supersession"
     DOMAIN_THEOREM = "domain_theorem"
     DOMAIN_THEOREM_RECORD = "domain_theorem_record"
@@ -332,6 +339,102 @@ def context_authority_source_registry_v2() -> tuple[
     return tuple(entries)
 
 
+_RELATION_AUTHORITY_STATIC_BINDING_REGISTRY_V2: Final = {
+    "base_authority_v1": (
+        "sources/m2_5/authorities/interaction_review_authority.v1.json",
+        "manafold.m2.5.c.interaction-review-authority.v1",
+    ),
+    "declared_model": (
+        "sources/m2_5/closures/C/declared_interaction_model.v2.json",
+        "manafold.m2.5.c.declared-interaction-model.v2",
+    ),
+    "candidate_universe": (
+        "sources/m2_5/closures/C/interaction_candidate_universe.v2.json",
+        "manafold.m2.5.c.interaction-candidate-universe.v2",
+    ),
+    "rev3_candidate_census": ("derived/Pair_Interaction_Census_REV3.csv", None),
+    "rev3_pair_aggregates": ("derived/Pair_Requirement_Aggregates_REV3.json", None),
+    "rev3_card_requirement_map": ("derived/Card_Requirement_Map_REV3.csv", None),
+    "rev3_deck_row_source_resolution": ("inputs/deck_row_source_resolution_REV3.csv", None),
+    "rev3_osi_source_records": ("source/raw/oracle_cards_selected_REV3.jsonl", None),
+    "rev3_source_index": ("source/raw/source_record_index_REV3.csv", None),
+    "b2_catalog": (
+        "sources/m2_5/closures/B2/requirement_family_catalog.v1.json",
+        "manafold.m2.5.b2.requirement-family-catalog.v1",
+    ),
+    "b2_classifications": (
+        "sources/m2_5/closures/B2/card_semantic_classifications.v1.json",
+        "manafold.m2.5.b2.card-semantic-classifications.v1",
+    ),
+    "b2_closure": (
+        "sources/m2_5/closures/B2/classification_closure.v1.json",
+        "manafold.m2.5.b2.classification-closure.v1",
+    ),
+    "b1_final_citations": (
+        "sources/m2_5/closures/B1/official_authority_citations.v3.json",
+        "manafold.m2.5.b1.official-authority-citations.v3",
+    ),
+    "b1_final_closure": (
+        "sources/m2_5/closures/B1/official_authority_citation_closure.v2.json",
+        "manafold.m2.5.b1.official-authority-citation-closure.v2",
+    ),
+}
+_RELATION_AUTHORITY_LEAF_BINDING_REGISTRY_V2: Final = {
+    "reviewer_roster_leaf": (
+        r"sources/m2_5/authorities/reviewer_rosters/v1/[0-9a-f]{64}\.json",
+        REVIEWER_ROSTER_SCHEMA_V1,
+    ),
+    "acceptance_event_leaf_v1": (
+        r"sources/m2_5/authorities/review_acceptance_events/v1/[0-9a-f]{64}\.json",
+        ACCEPTANCE_EVENT_SCHEMA_V1,
+    ),
+    "acceptance_event_leaf_v4": (
+        r"sources/m2_5/authorities/review_acceptance_events/v4/[0-9a-f]{64}\.json",
+        ACCEPTANCE_EVENT_SCHEMA_V4,
+    ),
+}
+RELATION_AUTHORITY_SOURCE_ROLES_V2: Final = tuple(
+    (*_RELATION_AUTHORITY_STATIC_BINDING_REGISTRY_V2, *_RELATION_AUTHORITY_LEAF_BINDING_REGISTRY_V2)
+)
+
+
+@dataclass(frozen=True)
+class RelationAuthoritySourceBindingV2:
+    artifact_role: str
+    path: str
+    schema: str | None
+    raw_sha256: bytes
+
+    def __post_init__(self) -> None:
+        if self.artifact_role not in RELATION_AUTHORITY_SOURCE_ROLES_V2:
+            raise AuthorityContractError("relation authority source role is not closed in V2")
+        _require_repo_relative_path(self.path, "relation authority source path")
+        if self.artifact_role in _RELATION_AUTHORITY_STATIC_BINDING_REGISTRY_V2:
+            expected_path, expected_schema = _RELATION_AUTHORITY_STATIC_BINDING_REGISTRY_V2[
+                self.artifact_role
+            ]
+            if self.path != expected_path or self.schema != expected_schema:
+                raise AuthorityContractError("relation authority source role/path/schema mismatch")
+        else:
+            pattern, expected_schema = _RELATION_AUTHORITY_LEAF_BINDING_REGISTRY_V2[
+                self.artifact_role
+            ]
+            if re.fullmatch(pattern, self.path) is None or self.schema != expected_schema:
+                raise AuthorityContractError("relation authority leaf path/schema mismatch")
+        _require_digest_bytes(self.raw_sha256, "relation authority source digest")
+
+    def to_cbor(self) -> list[AuthorityValue]:
+        return [self.artifact_role, self.path, self.schema, self.raw_sha256]
+
+    def to_wire(self) -> dict[str, object]:
+        return {
+            "artifact_role": self.artifact_role,
+            "path": self.path,
+            "schema": self.schema,
+            "raw_sha256": self.raw_sha256.hex(),
+        }
+
+
 class AcceptanceSubjectKind(str, Enum):
     RELATION_THEOREM_RECORD = "relation_theorem_record"
     DOMAIN_THEOREM_RECORD = "domain_theorem_record"
@@ -412,6 +515,16 @@ _IDENTITY_SPECS: Final[dict[AuthorityIdentityKind, _IdentitySpec]] = {
         "rpar.v2/",
         "manafold.m2.5.c.relation-application-record.v2",
         RELATION_APPLICATION_RECORD_INPUT_SCHEMA_V2,
+    ),
+    AuthorityIdentityKind.RELATION_SUPERSESSION_V2: _IdentitySpec(
+        "rps.v2/",
+        "manafold.m2.5.c.relation-application-supersession.v2",
+        RELATION_SUPERSESSION_INPUT_SCHEMA_V2,
+    ),
+    AuthorityIdentityKind.RELATION_SUPERSESSION_RECORD_V2: _IdentitySpec(
+        "rpsr.v2/",
+        "manafold.m2.5.c.relation-application-supersession-record.v2",
+        RELATION_SUPERSESSION_RECORD_INPUT_SCHEMA_V2,
     ),
     AuthorityIdentityKind.RELATION_SUPERSESSION: _IdentitySpec(
         "rps.v1/",
@@ -526,6 +639,8 @@ _IDENTITY_ARITIES: Final[dict[AuthorityIdentityKind, int]] = {
     AuthorityIdentityKind.RELATION_APPLICATION_RECORD: 3,
     AuthorityIdentityKind.RELATION_APPLICATION_V2: 4,
     AuthorityIdentityKind.RELATION_APPLICATION_RECORD_V2: 3,
+    AuthorityIdentityKind.RELATION_SUPERSESSION_V2: 7,
+    AuthorityIdentityKind.RELATION_SUPERSESSION_RECORD_V2: 3,
     AuthorityIdentityKind.RELATION_SUPERSESSION: 8,
     AuthorityIdentityKind.DOMAIN_THEOREM: 8,
     AuthorityIdentityKind.DOMAIN_THEOREM_RECORD: 5,
@@ -2712,6 +2827,10 @@ def _validate_kind_payload(kind: AuthorityIdentityKind, fields: list[AuthorityVa
         _validate_relation_application_v2_input(values)
     elif kind is AuthorityIdentityKind.RELATION_APPLICATION_RECORD_V2:
         _validate_relation_application_v2_record_input(values)
+    elif kind is AuthorityIdentityKind.RELATION_SUPERSESSION_V2:
+        _validate_relation_supersession_v2_input(values)
+    elif kind is AuthorityIdentityKind.RELATION_SUPERSESSION_RECORD_V2:
+        _validate_relation_supersession_record_v2_input(values)
     elif kind is AuthorityIdentityKind.DOMAIN_APPLICATION:
         _bytes32(values[1], "domain theorem record ID")
         _enum(values[2], _REVIEW_DOMAINS, "review domain")
@@ -2989,9 +3108,7 @@ def _class_projection_to_wire_from_cbor(value: AuthorityValue) -> dict[str, obje
                 "authority_id": _text(
                     _array(item, "B1 citation reference", 2)[0], "B1 authority ID"
                 ),
-                "citation_id": _text(
-                    _array(item, "B1 citation reference", 2)[1], "B1 citation ID"
-                ),
+                "citation_id": _text(_array(item, "B1 citation reference", 2)[1], "B1 citation ID"),
             }
             for item in _array(fields[8], "class B1 citation references")
         ],
@@ -3004,12 +3121,8 @@ def _class_projection_equivalence_to_wire_from_cbor(
     fields = _array(value, "class projection equivalence", 6)
     claim = _array(fields[3], "semantic claim relation", 2)
     return {
-        "theorem_projection": _class_projection_to_wire_from_cbor(
-            cast(AuthorityValue, fields[0])
-        ),
-        "member_projection": _class_projection_to_wire_from_cbor(
-            cast(AuthorityValue, fields[1])
-        ),
+        "theorem_projection": _class_projection_to_wire_from_cbor(cast(AuthorityValue, fields[0])),
+        "member_projection": _class_projection_to_wire_from_cbor(cast(AuthorityValue, fields[1])),
         "equal_positions": [
             _text(item, "equal position") for item in _array(fields[2], "equal positions")
         ],
@@ -3064,9 +3177,7 @@ def _positive_boundary_fact_to_wire_from_cbor(value: AuthorityValue) -> dict[str
             "kind": kind,
             "model_id": _text(payload[0], "boundary model ID"),
             "model_version": _text(payload[1], "boundary model version"),
-            "model_boundary_locator": _locator_to_wire_from_cbor(
-                cast(AuthorityValue, payload[2])
-            ),
+            "model_boundary_locator": _locator_to_wire_from_cbor(cast(AuthorityValue, payload[2])),
         }
     raise AuthorityContractError("positive boundary fact kind is not closed")
 
@@ -3089,9 +3200,7 @@ def _channel_coverage_to_wire_from_cbor(value: AuthorityValue) -> dict[str, obje
                 "authority_id": _text(
                     _array(item, "B1 citation reference", 2)[0], "B1 authority ID"
                 ),
-                "citation_id": _text(
-                    _array(item, "B1 citation reference", 2)[1], "B1 citation ID"
-                ),
+                "citation_id": _text(_array(item, "B1 citation reference", 2)[1], "B1 citation ID"),
             }
             for item in _array(fields[4], "coverage B1 references")
         ],
@@ -3134,9 +3243,7 @@ def _member_proof_to_wire(value: list[AuthorityValue]) -> dict[str, object]:
     if kind == "positive_interaction":
         return {
             "kind": kind,
-            "causal_chain_ordinals": _persistence_value_to_wire(
-                cast(AuthorityValue, payload[0])
-            ),
+            "causal_chain_ordinals": _persistence_value_to_wire(cast(AuthorityValue, payload[0])),
             "class_projection_equivalence": (
                 None
                 if payload[1] is None
@@ -3220,6 +3327,34 @@ def _validate_relation_application_v2_record_input(values: list[object]) -> None
     _validate_review_event_ref_v4_array(values[2])
 
 
+def _validate_relation_supersession_v2_input(values: list[object]) -> None:
+    if len(values) != 7:
+        _fail("V2 relation supersession input must contain seven fields")
+    _text(values[0], "V2 relation supersession schema")
+    _bytes32(values[1], "superseded V2 record ID")
+    if values[2] is not None:
+        _bytes32(values[2], "replacement V2 record ID")
+    if values[3] != "relation_application_v2_record":
+        _fail("V2 relation supersession record kind is not closed")
+    if values[2] is None:
+        if values[4] is not None or values[5] != SupersessionReason.AUTHORITY_REVOCATION.value:
+            _fail("V2 relation revocation replacement fields are inconsistent")
+    elif values[4] != "relation_application_v2_record":
+        _fail("V2 relation supersession replacement kind must match")
+    elif values[5] == SupersessionReason.AUTHORITY_REVOCATION.value:
+        _fail("V2 relation revocation cannot carry a replacement")
+    _enum(values[5], tuple(reason.value for reason in SupersessionReason), "V2 relation reason")
+    _validate_nonempty_evidence_refs(values[6], "V2 relation supersession evidence")
+
+
+def _validate_relation_supersession_record_v2_input(values: list[object]) -> None:
+    if len(values) != 3:
+        _fail("V2 relation supersession record input must contain three fields")
+    _text(values[0], "V2 relation supersession record schema")
+    _bytes32(values[1], "V2 relation supersession ID")
+    _validate_review_event_ref_v4_array(values[2])
+
+
 @dataclass(frozen=True)
 class RelationApplicationMemberV2:
     candidate_id: str
@@ -3280,9 +3415,7 @@ class RelationApplicationMemberV2:
             "member_evidence_refs": [
                 reference.to_wire() for reference in self.member_evidence_refs
             ],
-            "member_proof_attestation": _member_proof_to_wire(
-                self.member_proof_attestation_v1
-            ),
+            "member_proof_attestation": _member_proof_to_wire(self.member_proof_attestation_v1),
         }
 
 
@@ -3431,6 +3564,225 @@ class RelationApplicationV2Record:
 
 RelationApplicationRecordV2 = RelationApplicationV2Record
 RelationApplicationRecordV2InputV1 = RelationApplicationV2RecordInputV1
+
+
+@dataclass(frozen=True)
+class RelationApplicationV2SupersessionInputV2:
+    superseded_record_id_bytes: bytes
+    replacement_record_id_bytes: bytes | None
+    replacement_record_kind: str | None
+    reason_code: SupersessionReason
+    source_evidence_refs: tuple[EvidenceRefV1, ...]
+
+    def __post_init__(self) -> None:
+        _require_digest_bytes(self.superseded_record_id_bytes, "superseded V2 record ID")
+        if self.replacement_record_id_bytes is not None:
+            _require_digest_bytes(self.replacement_record_id_bytes, "replacement V2 record ID")
+        if not isinstance(self.reason_code, SupersessionReason):
+            raise AuthorityContractError("V2 relation supersession reason is not closed")
+        if self.replacement_record_id_bytes is None:
+            if (
+                self.replacement_record_kind is not None
+                or self.reason_code is not SupersessionReason.AUTHORITY_REVOCATION
+            ):
+                raise AuthorityContractError("V2 relation revocation replacement is inconsistent")
+        elif (
+            self.replacement_record_kind != "relation_application_v2_record"
+            or self.reason_code is SupersessionReason.AUTHORITY_REVOCATION
+        ):
+            raise AuthorityContractError("V2 relation replacement is inconsistent")
+        _require_evidence_tuple(
+            self.source_evidence_refs, "V2 relation supersession evidence", allow_empty=False
+        )
+
+    def semantic_input(self) -> list[AuthorityValue]:
+        return [
+            RELATION_SUPERSESSION_INPUT_SCHEMA_V2,
+            self.superseded_record_id_bytes,
+            self.replacement_record_id_bytes,
+            "relation_application_v2_record",
+            self.replacement_record_kind,
+            self.reason_code.value,
+            [reference.to_cbor() for reference in self.source_evidence_refs],
+        ]
+
+    def identity(self) -> AuthorityIdentityV1:
+        return compute_authority_identity(
+            AuthorityIdentityKind.RELATION_SUPERSESSION_V2,
+            self.semantic_input(),
+        )
+
+    def to_cbor(self) -> list[AuthorityValue]:
+        return self.semantic_input()
+
+    def acceptance_free_subject_payload(self) -> list[AuthorityValue]:
+        return [
+            AcceptanceSubjectKindV4.RELATION_APPLICATION_V2_SUPERSESSION_RECORD.value,
+            self.identity().digest_bytes,
+            self.superseded_record_id_bytes,
+            self.replacement_record_id_bytes,
+            "relation_application_v2_record",
+            self.replacement_record_kind,
+            self.reason_code.value,
+            [reference.to_cbor() for reference in self.source_evidence_refs],
+        ]
+
+
+@dataclass(frozen=True)
+class RelationApplicationV2SupersessionRecordInputV1:
+    supersession_id_bytes: bytes
+    review_event_ref_v4: ReviewEventRefV4
+
+    def __post_init__(self) -> None:
+        _require_digest_bytes(self.supersession_id_bytes, "V2 relation supersession ID")
+        if not isinstance(self.review_event_ref_v4, ReviewEventRefV4):
+            raise AuthorityContractError("V4 review event reference is required")
+
+    def semantic_input(self) -> list[AuthorityValue]:
+        return [
+            RELATION_SUPERSESSION_RECORD_INPUT_SCHEMA_V2,
+            self.supersession_id_bytes,
+            self.review_event_ref_v4.to_cbor(),
+        ]
+
+    def identity(self) -> AuthorityIdentityV1:
+        return compute_authority_identity(
+            AuthorityIdentityKind.RELATION_SUPERSESSION_RECORD_V2,
+            self.semantic_input(),
+        )
+
+    def to_cbor(self) -> list[AuthorityValue]:
+        return self.semantic_input()
+
+
+@dataclass(frozen=True)
+class RelationApplicationV2SupersessionRecord:
+    record_id: AuthorityIdentityV1
+    supersession_id: AuthorityIdentityV1
+    superseded_record_id: AuthorityIdentityV1
+    replacement_record_id: AuthorityIdentityV1 | None
+    reason_code: SupersessionReason
+    source_evidence_refs: tuple[EvidenceRefV1, ...]
+    review_event_ref_v4: ReviewEventRefV4
+
+    @classmethod
+    def from_parts(
+        cls,
+        supersession_id: AuthorityIdentityV1,
+        superseded_record_id: AuthorityIdentityV1,
+        replacement_record_id: AuthorityIdentityV1 | None,
+        reason_code: SupersessionReason,
+        source_evidence_refs: tuple[EvidenceRefV1, ...],
+        review_event_ref_v4: ReviewEventRefV4,
+    ) -> RelationApplicationV2SupersessionRecord:
+        record_id = RelationApplicationV2SupersessionRecordInputV1(
+            supersession_id.digest_bytes,
+            review_event_ref_v4,
+        ).identity()
+        return cls(
+            record_id,
+            supersession_id,
+            superseded_record_id,
+            replacement_record_id,
+            reason_code,
+            source_evidence_refs,
+            review_event_ref_v4,
+        )
+
+    def __post_init__(self) -> None:
+        if self.record_id.kind is not AuthorityIdentityKind.RELATION_SUPERSESSION_RECORD_V2:
+            raise AuthorityContractError("V2 relation supersession record ID has the wrong kind")
+        if self.supersession_id.kind is not AuthorityIdentityKind.RELATION_SUPERSESSION_V2:
+            raise AuthorityContractError("V2 relation supersession ID has the wrong kind")
+        if (
+            self.superseded_record_id.kind
+            is not AuthorityIdentityKind.RELATION_APPLICATION_RECORD_V2
+        ):
+            raise AuthorityContractError("superseded V2 relation record ID has the wrong kind")
+        if (
+            self.replacement_record_id is not None
+            and self.replacement_record_id.kind
+            is not AuthorityIdentityKind.RELATION_APPLICATION_RECORD_V2
+        ):
+            raise AuthorityContractError("replacement V2 relation record ID has the wrong kind")
+        if self.replacement_record_id is None:
+            if self.reason_code is not SupersessionReason.AUTHORITY_REVOCATION:
+                raise AuthorityContractError("V2 relation null replacement requires revocation")
+        elif self.reason_code is SupersessionReason.AUTHORITY_REVOCATION:
+            raise AuthorityContractError("V2 relation revocation cannot carry a replacement")
+        if not isinstance(self.reason_code, SupersessionReason):
+            raise AuthorityContractError("V2 relation supersession reason is not closed")
+        _require_evidence_tuple(
+            self.source_evidence_refs, "V2 relation supersession evidence", allow_empty=False
+        )
+        expected_supersession = RelationApplicationV2SupersessionInputV2(
+            self.superseded_record_id.digest_bytes,
+            None if self.replacement_record_id is None else self.replacement_record_id.digest_bytes,
+            None if self.replacement_record_id is None else "relation_application_v2_record",
+            self.reason_code,
+            self.source_evidence_refs,
+        ).identity()
+        if expected_supersession != self.supersession_id:
+            raise AuthorityContractError("V2 relation supersession ID does not match its input")
+        expected_record = RelationApplicationV2SupersessionRecordInputV1(
+            self.supersession_id.digest_bytes,
+            self.review_event_ref_v4,
+        ).identity()
+        if expected_record != self.record_id:
+            raise AuthorityContractError(
+                "V2 relation supersession record ID does not match its input"
+            )
+
+    def to_cbor(self) -> list[AuthorityValue]:
+        return [
+            self.record_id.to_cbor(),
+            self.supersession_id.to_cbor(),
+            self.superseded_record_id.to_cbor(),
+            None if self.replacement_record_id is None else self.replacement_record_id.to_cbor(),
+            "relation_application_v2_record",
+            None if self.replacement_record_id is None else "relation_application_v2_record",
+            self.reason_code.value,
+            [reference.to_cbor() for reference in self.source_evidence_refs],
+            ["human_accepted", self.review_event_ref_v4.to_cbor()],
+        ]
+
+    def to_wire(self) -> dict[str, object]:
+        return {
+            "record_id": self.record_id.as_text(),
+            "supersession_id": self.supersession_id.as_text(),
+            "superseded_record_id": self.superseded_record_id.as_text(),
+            "replacement_record_id": None
+            if self.replacement_record_id is None
+            else self.replacement_record_id.as_text(),
+            "superseded_record_kind": "relation_application_v2_record",
+            "replacement_record_kind": None
+            if self.replacement_record_id is None
+            else "relation_application_v2_record",
+            "reason_code": self.reason_code.value,
+            "source_evidence_refs": [
+                reference.to_wire() for reference in self.source_evidence_refs
+            ],
+            "acceptance": {
+                "decision": "human_accepted",
+                "review_event_ref": self.review_event_ref_v4.to_wire(),
+            },
+        }
+
+    def acceptance_free_subject_payload(self) -> list[AuthorityValue]:
+        return [
+            AcceptanceSubjectKindV4.RELATION_APPLICATION_V2_SUPERSESSION_RECORD.value,
+            self.supersession_id.digest_bytes,
+            self.superseded_record_id.digest_bytes,
+            None if self.replacement_record_id is None else self.replacement_record_id.digest_bytes,
+            "relation_application_v2_record",
+            None if self.replacement_record_id is None else "relation_application_v2_record",
+            self.reason_code.value,
+            [reference.to_cbor() for reference in self.source_evidence_refs],
+        ]
+
+
+RelationSupersessionV2 = RelationApplicationV2SupersessionInputV2
+RelationSupersessionRecordV2 = RelationApplicationV2SupersessionRecord
 
 
 @dataclass(frozen=True)
@@ -4670,6 +5022,84 @@ class ApplicationHostBindingV2:
             "application_kind": self.application_kind,
             "application_semantic_id": self.application_semantic_id.as_text(),
             "host_binding_claim_ids": list(self.host_binding_claim_ids),
+        }
+
+
+@dataclass(frozen=True)
+class RelationApplicationAuthorityV2:
+    base_authority_v1_binding: RelationAuthoritySourceBindingV2
+    candidate_universe_binding: RelationAuthoritySourceBindingV2
+    source_bindings: tuple[RelationAuthoritySourceBindingV2, ...]
+    relation_application_v2_records: tuple[RelationApplicationV2Record, ...]
+    relation_application_v2_supersession_records: tuple[
+        RelationApplicationV2SupersessionRecord, ...
+    ]
+
+    def __post_init__(self) -> None:
+        if any(
+            not isinstance(binding, RelationAuthoritySourceBindingV2)
+            for binding in self.source_bindings
+        ):
+            raise AuthorityContractError("V2 relation authority source binding has the wrong type")
+        _typed_canonical_items(self.source_bindings, "V2 relation authority source bindings")
+        keys = [(binding.artifact_role, binding.path) for binding in self.source_bindings]
+        if len(set(keys)) != len(keys):
+            raise AuthorityContractError("V2 relation authority source bindings must be unique")
+        by_role = {binding.artifact_role: binding for binding in self.source_bindings}
+        if (
+            sum(binding.artifact_role == "base_authority_v1" for binding in self.source_bindings)
+            != 1
+        ):
+            raise AuthorityContractError("V2 relation authority requires one base projection")
+        if (
+            sum(binding.artifact_role == "candidate_universe" for binding in self.source_bindings)
+            != 1
+        ):
+            raise AuthorityContractError("V2 relation authority requires one candidate projection")
+        if by_role.get("base_authority_v1") != self.base_authority_v1_binding:
+            raise AuthorityContractError("V2 relation base projection is not exact")
+        if by_role.get("candidate_universe") != self.candidate_universe_binding:
+            raise AuthorityContractError("V2 relation candidate projection is not exact")
+        if any(
+            not isinstance(record, RelationApplicationV2Record)
+            for record in self.relation_application_v2_records
+        ):
+            raise AuthorityContractError("V2 relation application record has the wrong type")
+        if any(
+            not isinstance(record, RelationApplicationV2SupersessionRecord)
+            for record in self.relation_application_v2_supersession_records
+        ):
+            raise AuthorityContractError("V2 relation supersession record has the wrong type")
+        _typed_canonical_items(
+            self.relation_application_v2_records,
+            "V2 relation application records",
+        )
+        _typed_canonical_items(
+            self.relation_application_v2_supersession_records,
+            "V2 relation supersession records",
+        )
+        record_ids = [record.record_id.as_text() for record in self.relation_application_v2_records]
+        supersession_ids = [
+            record.record_id.as_text()
+            for record in self.relation_application_v2_supersession_records
+        ]
+        if len(set(record_ids)) != len(record_ids) or len(set(supersession_ids)) != len(
+            supersession_ids
+        ):
+            raise AuthorityContractError("V2 relation authority record IDs must be unique")
+
+    def to_wire(self) -> dict[str, object]:
+        return {
+            "schema": RELATION_AUTHORITY_SCHEMA_V2,
+            "base_authority_v1_binding": self.base_authority_v1_binding.to_wire(),
+            "candidate_universe_binding": self.candidate_universe_binding.to_wire(),
+            "source_bindings": [binding.to_wire() for binding in self.source_bindings],
+            "relation_application_v2_records": [
+                record.to_wire() for record in self.relation_application_v2_records
+            ],
+            "relation_application_v2_supersession_records": [
+                record.to_wire() for record in self.relation_application_v2_supersession_records
+            ],
         }
 
 

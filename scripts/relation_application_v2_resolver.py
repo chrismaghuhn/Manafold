@@ -25,6 +25,8 @@ from mtgml.authority import (
     AcceptanceEvidenceRefV1,
     EvidenceRefV1,
     RelationApplicationV2Record,
+    RelationApplicationV2SupersessionRecord,
+    RelationAuthoritySourceBindingV2,
     ReviewAcceptanceEventLeafV4,
     ReviewAuthoritySourceBindingV4,
     ReviewerRosterRefV1,
@@ -129,6 +131,19 @@ class RelationApplicationV2Resolver:
     def resolve_v4_acceptance_evidence(self, evidence: AcceptanceEvidenceRefV1) -> object:
         return self._source_resolver.resolve_v4_acceptance_evidence(evidence)
 
+    def resolve_relation_source_binding(self, binding: RelationAuthoritySourceBindingV2) -> object:
+        if binding.artifact_role.startswith("rev3_"):
+            return self._source_resolver.resolve_rev3_member(
+                binding.path,
+                binding.raw_sha256,
+                binding.schema,
+            )
+        return self._source_resolver.resolve_repository_artifact(
+            binding.path,
+            binding.raw_sha256,
+            binding.schema,
+        )
+
     def _root_source_binding(self, role: str) -> SourceBindingDigestV1:
         raw_sources = self._authority_document.get("source_bindings")
         if not isinstance(raw_sources, list):
@@ -222,9 +237,8 @@ class RelationApplicationV2Resolver:
             if kind == "b2_boundary":
                 roles.update({"b2_catalog", "b2_classifications", "b2_closure"})
             elif kind == "class_projection" and isinstance(payload, list) and len(payload) == 9:
-                if (
-                    (isinstance(payload[6], list) and bool(payload[6]))
-                    or (isinstance(payload[7], list) and bool(payload[7]))
+                if (isinstance(payload[6], list) and bool(payload[6])) or (
+                    isinstance(payload[7], list) and bool(payload[7])
                 ):
                     roles.update({"b2_catalog", "b2_classifications", "b2_closure"})
                 if isinstance(payload[8], list) and payload[8]:
@@ -472,7 +486,7 @@ class RelationApplicationV2Resolver:
                 reviewer_roster_ref.path,
                 reviewer_roster_ref.schema,
                 reviewer_roster_ref.raw_sha256,
-            )
+            ),
         ]
         for member in record.members:
             binding = member.candidate_universe_binding
@@ -531,6 +545,134 @@ class RelationApplicationV2Resolver:
         for binding in result:
             self._source_resolver.resolve_v4_source_binding(binding)
         return result
+
+    def expected_relation_application_v2_supersession_source_closure(
+        self,
+        record: RelationApplicationV2SupersessionRecord,
+        reviewer_roster_ref: ReviewerRosterRefV1,
+        superseded_record: RelationApplicationV2Record,
+        replacement_record: RelationApplicationV2Record | None,
+    ) -> tuple[ReviewAuthoritySourceBindingV4, ...]:
+        direct = self._project_evidence(record.source_evidence_refs)
+        endpoints = (superseded_record,) + (
+            () if replacement_record is None else (replacement_record,)
+        )
+        for endpoint in endpoints:
+            event = self.resolve_acceptance_event_leaf_v4(endpoint.review_event_ref_v4)
+            direct.append(
+                ReviewAuthoritySourceBindingV4(
+                    "acceptance_event_leaf_v4",
+                    endpoint.review_event_ref_v4.path,
+                    "manafold.m2.5.c.review-acceptance-event.v4",
+                    endpoint.review_event_ref_v4.raw_sha256,
+                )
+            )
+            direct.extend(
+                self.expected_relation_application_v2_source_closure(
+                    endpoint,
+                    event.reviewer_roster_ref,
+                )
+            )
+        unique = {encode_canonical(binding.to_cbor()): binding for binding in direct}
+        result = tuple(sorted(unique.values(), key=lambda item: encode_canonical(item.to_cbor())))
+        for binding in result:
+            self._source_resolver.resolve_v4_source_binding(binding)
+        return result
+
+    @staticmethod
+    def _relation_binding_from_v4(
+        binding: ReviewAuthoritySourceBindingV4,
+    ) -> RelationAuthoritySourceBindingV2:
+        return RelationAuthoritySourceBindingV2(
+            binding.artifact_role,
+            binding.path,
+            binding.schema,
+            binding.raw_sha256,
+        )
+
+    def expected_relation_application_authority_v2_source_closure(
+        self,
+        authority: object,
+    ) -> tuple[RelationAuthoritySourceBindingV2, ...]:
+        source_bindings = tuple(authority.source_bindings)
+        base = authority.base_authority_v1_binding
+        candidate = authority.candidate_universe_binding
+        by_key = {(binding.artifact_role, binding.path): binding for binding in source_bindings}
+        if by_key.get(("base_authority_v1", base.path)) != base:
+            raise RelationApplicationV2ResolutionError(
+                "CONTAINER_SOURCE_CLOSURE_MISMATCH", "base_authority_v1_binding"
+            )
+        if by_key.get(("candidate_universe", candidate.path)) != candidate:
+            raise RelationApplicationV2ResolutionError(
+                "CONTAINER_SOURCE_CLOSURE_MISMATCH", "candidate_universe_binding"
+            )
+        direct: list[RelationAuthoritySourceBindingV2] = [base, candidate]
+        records = tuple(authority.relation_application_v2_records)
+        supersessions = tuple(authority.relation_application_v2_supersession_records)
+        record_map = {record.record_id.as_text(): record for record in records}
+        for record in records:
+            event = self.resolve_acceptance_event_leaf_v4(record.review_event_ref_v4)
+            event_closure = self.expected_relation_application_v2_source_closure(
+                record,
+                event.reviewer_roster_ref,
+            )
+            direct.append(
+                RelationAuthoritySourceBindingV2(
+                    "acceptance_event_leaf_v4",
+                    record.review_event_ref_v4.path,
+                    "manafold.m2.5.c.review-acceptance-event.v4",
+                    record.review_event_ref_v4.raw_sha256,
+                )
+            )
+            direct.extend(self._relation_binding_from_v4(item) for item in event_closure)
+        for record in supersessions:
+            event = self.resolve_acceptance_event_leaf_v4(record.review_event_ref_v4)
+            superseded = record_map.get(record.superseded_record_id.as_text())
+            replacement = (
+                None
+                if record.replacement_record_id is None
+                else record_map.get(record.replacement_record_id.as_text())
+            )
+            if superseded is None or (
+                record.replacement_record_id is not None and replacement is None
+            ):
+                raise RelationApplicationV2ResolutionError(
+                    "CONTAINER_SOURCE_CLOSURE_MISMATCH", "supersession endpoint"
+                )
+            event_closure = self.expected_relation_application_v2_supersession_source_closure(
+                record,
+                event.reviewer_roster_ref,
+                superseded,
+                replacement,
+            )
+            direct.append(
+                RelationAuthoritySourceBindingV2(
+                    "acceptance_event_leaf_v4",
+                    record.review_event_ref_v4.path,
+                    "manafold.m2.5.c.review-acceptance-event.v4",
+                    record.review_event_ref_v4.raw_sha256,
+                )
+            )
+            direct.extend(self._relation_binding_from_v4(item) for item in event_closure)
+        unique = {encode_canonical(binding.to_cbor()): binding for binding in direct}
+        result = tuple(sorted(unique.values(), key=lambda item: encode_canonical(item.to_cbor())))
+        for binding in result:
+            self.resolve_relation_source_binding(binding)
+        return result
+
+    def validate_relation_application_authority_v2_source_closure(
+        self,
+        authority: object,
+    ) -> tuple[RelationAuthoritySourceBindingV2, ...]:
+        expected = self.expected_relation_application_authority_v2_source_closure(authority)
+        actual = tuple(authority.source_bindings)
+        actual_encoded = tuple(encode_canonical(item.to_cbor()) for item in actual)
+        expected_encoded = tuple(encode_canonical(item.to_cbor()) for item in expected)
+        if actual_encoded != expected_encoded or len(set(actual_encoded)) != len(actual_encoded):
+            raise RelationApplicationV2ResolutionError(
+                "CONTAINER_SOURCE_CLOSURE_MISMATCH", "source_bindings"
+            )
+        return expected
 
 
 __all__ = [
