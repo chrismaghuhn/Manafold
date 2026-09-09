@@ -730,6 +730,34 @@ fn context_application_v2_identity_vectors_match_shared_matrix() {
 }
 
 #[test]
+fn context_application_v3_identity_vectors_match_python_contract() {
+    let matrix: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../conformance/fixtures/authority/context_application_v3_identity_golden_matrix.v1.json"
+    ))
+    .unwrap();
+    assert_eq!(
+        matrix["schema_version"],
+        serde_json::json!("context-application-v3-identity-golden-matrix.v1")
+    );
+    for entry in matrix["identities"].as_array().unwrap() {
+        let kind = match entry["kind"].as_str().unwrap() {
+            "context_application_v3" => AuthorityIdentityKind::ContextApplicationV3,
+            "context_application_record_v3" => AuthorityIdentityKind::ContextApplicationRecordV3,
+            other => panic!("unknown context application V3 identity kind: {other}"),
+        };
+        let payload =
+            cbor::decode_canonical(&decode_hex(entry["payload_cbor_hex"].as_str().unwrap()))
+                .unwrap();
+        let identity = authority::AuthorityIdentityV1::compute(kind, payload).unwrap();
+        assert_eq!(identity.as_text(), entry["identity"].as_str().unwrap());
+        assert_eq!(
+            cbor::encode_canonical(&identity.to_cbor()).unwrap(),
+            decode_hex(entry["identity_cbor_hex"].as_str().unwrap())
+        );
+    }
+}
+
+#[test]
 fn context_application_v2_rust_dtos_emit_the_shared_member_payload() {
     let evidence = authority::EvidenceRefV1::new(
         "model",

@@ -3070,6 +3070,62 @@ class AuthorityValidator:
             )
         return current_records[0].record
 
+    def require_current_context_theorem(
+        self, identity: AuthorityIdentityV1
+    ) -> Mapping[str, object]:
+        """Require a current, accepted V1 context theorem for Context V3."""
+
+        if not self._validation_complete:
+            _fail(
+                "AUTHORITY_NOT_VALIDATED",
+                "authority must be validated before current context theorem lookup",
+            )
+        if identity.kind is not AuthorityIdentityKind.CONTEXT_THEOREM_RECORD:
+            _fail(
+                "THEOREM_REFERENCE_INVALID",
+                "Context V3 requires a context theorem record identity",
+            )
+        record = self._records.get(identity.as_text())
+        if record is None or record.kind is not RecordKind.CONTEXT_THEOREM_RECORD:
+            _fail(
+                "CONTEXT_APPLICATION_V3_CURRENTNESS_FAILED",
+                "context theorem record is absent from the validated V1 authority",
+            )
+        if identity.as_text() in self._superseded_record_ids:
+            _fail(
+                "SUPERSEDED_AUTHORITY_USED",
+                "Context V3 references a superseded or revoked V1 context theorem",
+            )
+        theorem_id = _identity_ref(
+            record.record.get("theorem_id"),
+            AuthorityIdentityKind.CONTEXT_THEOREM,
+            "context theorem semantic identity",
+        )
+        current_records = []
+        for candidate in self._records.values():
+            if candidate.kind is not RecordKind.CONTEXT_THEOREM_RECORD:
+                continue
+            candidate_theorem_id = _identity_ref(
+                candidate.record.get("theorem_id"),
+                AuthorityIdentityKind.CONTEXT_THEOREM,
+                "context theorem semantic identity",
+            )
+            if candidate_theorem_id.as_text() == theorem_id.as_text() and (
+                candidate.record_id.as_text() not in self._superseded_record_ids
+            ):
+                current_records.append(candidate)
+        if not current_records:
+            _fail(
+                "CONTEXT_APPLICATION_V3_CURRENTNESS_FAILED",
+                "context theorem semantic identity has no current accepted record",
+            )
+        if len(current_records) > 1:
+            _fail(
+                "CONTEXT_APPLICATION_V3_CURRENTNESS_AMBIGUOUS",
+                "context theorem semantic identity has multiple current records",
+            )
+        return current_records[0].record
+
     def _source_instance_shape(
         self, resolved: ResolvedSourceInstance, label: str
     ) -> tuple[str, str, list[list[CborValue]]]:
