@@ -758,6 +758,30 @@ fn context_application_v3_identity_vectors_match_python_contract() {
 }
 
 #[test]
+fn context_v3_supersession_identity_vectors_match_python_contract() {
+    let matrix: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../conformance/fixtures/authority/context_application_v3_supersession_identity_golden_matrix.v1.json"
+    ))
+    .unwrap();
+    for entry in matrix["identities"].as_array().unwrap() {
+        let kind = match entry["kind"].as_str().unwrap() {
+            "context_supersession_v3" => AuthorityIdentityKind::ContextSupersessionV3,
+            "context_supersession_record_v3" => AuthorityIdentityKind::ContextSupersessionRecordV3,
+            other => panic!("unknown context supersession identity kind: {other}"),
+        };
+        let payload =
+            cbor::decode_canonical(&decode_hex(entry["payload_cbor_hex"].as_str().unwrap()))
+                .unwrap();
+        let identity = authority::AuthorityIdentityV1::compute(kind, payload).unwrap();
+        assert_eq!(identity.as_text(), entry["identity"].as_str().unwrap());
+        assert_eq!(
+            cbor::encode_canonical(&identity.to_cbor()).unwrap(),
+            decode_hex(entry["identity_cbor_hex"].as_str().unwrap())
+        );
+    }
+}
+
+#[test]
 fn context_v3_supersession_identities_are_versioned_and_closed() {
     let evidence = cbor::Value::Array(vec![
         cbor::Value::Text("model".to_owned()),
@@ -811,6 +835,66 @@ fn context_v3_supersession_identities_are_versioned_and_closed() {
         AuthorityIdentityKind::ContextSupersessionRecordV3
     );
     assert_eq!(cpsr.as_text().len(), 72);
+}
+
+#[test]
+fn context_v3_source_bindings_reject_duplicate_role_path_even_with_different_digest() {
+    let base = authority::ContextAuthoritySourceBindingV3::new(
+        "base_authority_v1",
+        "sources/m2_5/authorities/interaction_review_authority.v1.json",
+        Some("manafold.m2.5.c.interaction-review-authority.v1"),
+        [b'a'; 32],
+    )
+    .unwrap();
+    let candidate = authority::ContextAuthoritySourceBindingV3::new(
+        "candidate_universe",
+        "sources/m2_5/closures/C/interaction_candidate_universe.v2.json",
+        Some("manafold.m2.5.c.interaction-candidate-universe.v2"),
+        [b'b'; 32],
+    )
+    .unwrap();
+    let relation = authority::ContextAuthoritySourceBindingV3::new(
+        "relation_authority_v2",
+        "sources/m2_5/authorities/relation_application_authority/v2/relation_application_authority.v2.json",
+        Some("manafold.m2.5.c.relation-application-authority.v2"),
+        [b'c'; 32],
+    )
+    .unwrap();
+    let model_a = authority::ContextAuthoritySourceBindingV3::new(
+        "declared_model",
+        "sources/m2_5/closures/C/declared_interaction_model.v2.json",
+        Some("manafold.m2.5.c.declared-interaction-model.v2"),
+        [b'm'; 32],
+    )
+    .unwrap();
+    let model_b = authority::ContextAuthoritySourceBindingV3::new(
+        "declared_model",
+        "sources/m2_5/closures/C/declared_interaction_model.v2.json",
+        Some("manafold.m2.5.c.declared-interaction-model.v2"),
+        [b'z'; 32],
+    )
+    .unwrap();
+    let mut source_bindings = vec![
+        base.clone(),
+        candidate.clone(),
+        relation.clone(),
+        model_a,
+        model_b,
+    ];
+    source_bindings.sort_by_key(|item| cbor::encode_canonical(&item.to_cbor()).unwrap());
+    assert!(authority::ContextApplicationAuthorityV3::new(
+        base,
+        candidate,
+        source_bindings,
+        relation,
+        vec![],
+        None,
+        vec![],
+        vec![],
+        vec![],
+        vec![],
+    )
+    .is_err());
 }
 
 #[test]

@@ -105,6 +105,7 @@ def main() -> None:
         "conformance/fixtures/authority/context_application_authority.v2.json",
         "conformance/fixtures/authority/context_application_v2_identity_golden_matrix.v1.json",
         "conformance/fixtures/authority/context_application_v3_identity_golden_matrix.v1.json",
+        "conformance/fixtures/authority/context_application_v3_supersession_identity_golden_matrix.v1.json",
         "conformance/fixtures/authority/context_application_authority.v3.json",
         "conformance/fixtures/authority/context_application_v3_closure_matrix.v1.json",
         "conformance/fixtures/authority/context_application_v2_semantic_golden_matrix.v1.json",

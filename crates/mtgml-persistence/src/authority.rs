@@ -6721,16 +6721,40 @@ impl ContextApplicationAuthorityV3 {
             .map(ContextAuthoritySourceBindingV3::to_cbor)
             .collect();
         validate_canonical_order(&source_values)?;
+        for (index, binding) in source_bindings.iter().enumerate() {
+            if source_bindings[index + 1..].iter().any(|other| {
+                other.artifact_role == binding.artifact_role && other.path == binding.path
+            }) {
+                return Err(PersistenceDecodeErrorV1::DuplicateSemanticKey);
+            }
+        }
         let relation_values: Vec<cbor::Value> = relation_source_bindings
             .iter()
             .map(RelationAuthoritySourceBindingV2::to_cbor)
             .collect();
         validate_canonical_order(&relation_values)?;
+        for (index, binding) in relation_source_bindings.iter().enumerate() {
+            if relation_source_bindings[index + 1..].iter().any(|other| {
+                other.artifact_role == binding.artifact_role && other.path == binding.path
+            }) {
+                return Err(PersistenceDecodeErrorV1::DuplicateSemanticKey);
+            }
+        }
         let host_values: Vec<cbor::Value> = host_binding_source_bindings
             .iter()
             .map(HostBindingSourceBindingV2::to_cbor)
             .collect();
         validate_canonical_order(&host_values)?;
+        for (index, binding) in host_binding_source_bindings.iter().enumerate() {
+            if host_binding_source_bindings[index + 1..]
+                .iter()
+                .any(|other| {
+                    other.artifact_role == binding.artifact_role && other.path == binding.path
+                })
+            {
+                return Err(PersistenceDecodeErrorV1::DuplicateSemanticKey);
+            }
+        }
         let record_values: Vec<cbor::Value> = context_application_v3_records
             .iter()
             .map(ContextApplicationV3Record::to_cbor)

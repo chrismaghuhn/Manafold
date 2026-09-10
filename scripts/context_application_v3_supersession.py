@@ -124,8 +124,7 @@ class ContextApplicationV3SupersessionAdmissionValidator:
 
     def __init__(
         self,
-        own_record_admitter: Callable[[ContextApplicationV3SupersessionRecord], object]
-        | None = None,
+        own_record_admitter: Callable[[ContextApplicationV3SupersessionRecord], object],
     ) -> None:
         self._own_record_admitter = own_record_admitter
 
@@ -157,31 +156,19 @@ class ContextApplicationV3SupersessionAdmissionValidator:
             raise ContextApplicationV3SupersessionError(
                 "CONTEXT_APPLICATION_V3_SUPERSESSION_RECORD_IDENTITY_MISMATCH", "record_id"
             )
-        if self._own_record_admitter is not None:
-            try:
-                result = self._own_record_admitter(record)
-            except Exception as exc:
-                raise ContextApplicationV3SupersessionError(
-                    "CONTEXT_APPLICATION_V3_SUPERSESSION_REVIEW_ADMISSION_FAILED",
-                    "review_event_ref_v4",
-                    cause_code=getattr(exc, "code", type(exc).__name__),
-                ) from exc
-            return ContextApplicationV3SupersessionAdmissionResult(
-                record.record_id,
-                record.supersession_id,
-                record.superseded_record_id,
-                record.replacement_record_id,
-                record.reason_code,
-                record.review_event_ref_v4,
-                getattr(
-                    getattr(result, "review_binding", result),
-                    "event_id",
-                    record.review_event_ref_v4.event_id,
-                ),
-                tuple(
-                    getattr(getattr(result, "review_binding", result), "exact_event_closure", ())
-                ),
-            )
+        try:
+            result = self._own_record_admitter(record)
+            binding = getattr(result, "review_binding", result)
+            event_id = getattr(binding, "event_id", None)
+            exact_event_closure = getattr(binding, "exact_event_closure", None)
+            if not isinstance(event_id, str) or not isinstance(exact_event_closure, tuple):
+                raise TypeError("own V4 admission result is not a review binding")
+        except Exception as exc:
+            raise ContextApplicationV3SupersessionError(
+                "CONTEXT_APPLICATION_V3_SUPERSESSION_REVIEW_ADMISSION_FAILED",
+                "review_event_ref_v4",
+                cause_code=getattr(exc, "code", type(exc).__name__),
+            ) from exc
         return ContextApplicationV3SupersessionAdmissionResult(
             record.record_id,
             record.supersession_id,
@@ -189,8 +176,8 @@ class ContextApplicationV3SupersessionAdmissionValidator:
             record.replacement_record_id,
             record.reason_code,
             record.review_event_ref_v4,
-            record.review_event_ref_v4.event_id,
-            (),
+            event_id,
+            exact_event_closure,
         )
 
 
@@ -269,13 +256,11 @@ class ContextApplicationV3CurrentnessEvaluator:
 
     def __init__(
         self,
-        record_admitter: Callable[[ContextApplicationV3Record], object] | None = None,
-        supersession_admitter: ContextApplicationV3SupersessionAdmissionValidator | None = None,
+        record_admitter: Callable[[ContextApplicationV3Record], object],
+        supersession_admitter: ContextApplicationV3SupersessionAdmissionValidator,
     ) -> None:
         self._record_admitter = record_admitter
-        self._supersession_admitter = (
-            supersession_admitter or ContextApplicationV3SupersessionAdmissionValidator()
-        )
+        self._supersession_admitter = supersession_admitter
 
     def evaluate(
         self,

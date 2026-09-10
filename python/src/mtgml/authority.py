@@ -12,7 +12,10 @@ import re
 from collections.abc import Callable
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Final, NoReturn, Protocol, TypeAlias, cast
+from typing import TYPE_CHECKING, Any, Final, NoReturn, Protocol, TypeAlias, cast
+
+if TYPE_CHECKING:
+    from .host_binding import HostBindingSourceBindingV2
 
 from .persistence import (
     CANONICAL_CBOR_ID,
@@ -5852,7 +5855,7 @@ class ContextApplicationAuthorityV3:
     relation_application_authority_v2_binding: ContextAuthoritySourceBindingV3
     relation_source_bindings: tuple[RelationAuthoritySourceBindingV2, ...]
     host_binding_authority_v2_binding: ContextAuthoritySourceBindingV3 | None
-    host_binding_source_bindings: tuple[object, ...]
+    host_binding_source_bindings: tuple[HostBindingSourceBindingV2, ...]
     context_application_v3_records: tuple[ContextApplicationV3Record, ...]
     context_application_v3_supersession_records: tuple[ContextApplicationV3SupersessionRecord, ...]
     application_host_bindings_v3: tuple[ApplicationHostBindingV3, ...]
@@ -5891,6 +5894,11 @@ class ContextApplicationAuthorityV3:
         ):
             raise AuthorityContractError("V3 relation source binding has the wrong type")
         _typed_canonical_items(self.relation_source_bindings, "V3 relation source bindings")
+        relation_keys = [
+            (item.artifact_role, item.path) for item in self.relation_source_bindings
+        ]
+        if len(set(relation_keys)) != len(relation_keys):
+            raise AuthorityContractError("V3 relation source bindings must be unique by role/path")
         if any(
             not isinstance(item, HostBindingSourceBindingV2)
             for item in self.host_binding_source_bindings
@@ -5900,6 +5908,11 @@ class ContextApplicationAuthorityV3:
             cast(tuple[_CborConvertible, ...], self.host_binding_source_bindings),
             "V3 host source bindings",
         )
+        host_keys = [
+            (item.artifact_role, item.path) for item in self.host_binding_source_bindings
+        ]
+        if len(set(host_keys)) != len(host_keys):
+            raise AuthorityContractError("V3 host source bindings must be unique by role/path")
         if any(
             not isinstance(item, ContextApplicationV3Record)
             for item in self.context_application_v3_records
