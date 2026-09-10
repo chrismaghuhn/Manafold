@@ -1,0 +1,10 @@
+{
+  "schema_version": "candidate-4-context-v3-golden-v1",
+  "candidate_id": "CROSS_DECK|P3|cap.mass_destruction|cap.death_trigger|DIRECTIONAL_BINARY",
+  "candidate_identity": "af33dd4f0b65103102828bfec8ebd23196b1685282ee6ef9f0dc4690e3a6420b",
+  "rev3_row_ordinal": 6463,
+  "cpa_v3": "cpa.v3/50b73d4c39d77b4124e15eacbb07bae0c4d45eca8c9d915cffbd134dafd4f5dc",
+  "cpar_v3": "cpar.v3/089114bb657f1150c727f57eb4ebf7fd1bbcec86538d709555ed91fa8a86ab24",
+  "subject_identity": "baf80ceff3da062184b43d14c40bd8b30da1c38141747c488a40ca12eaabe281",
+  "application_host_binding_v3_cbor_hex": "8376636f6e746578745f6170706c69636174696f6e5f7633582050b73d4c39d77b4124e15eacbb07bae0c4d45eca8c9d915cffbd134dafd4f5dc8178476862632e76312f39396137626262353331383038643332363831393034666135666465616637336334353965636366623464343364643566313563666634353434333637653264"
+}

@@ -1,0 +1,52 @@
+{
+  "schema_version": "candidate-4-role-bridge-golden-v1",
+  "candidate_id": "CROSS_DECK|P3|cap.mass_destruction|cap.death_trigger|DIRECTIONAL_BINARY",
+  "candidate_identity": "af33dd4f0b65103102828bfec8ebd23196b1685282ee6ef9f0dc4690e3a6420b",
+  "rev3_row_ordinal": 6463,
+  "source_instance_id": "si.v1/candidate-4/0",
+  "historical_participants": [
+    {
+      "position": 0,
+      "role": "ordered_participant",
+      "participant_kind": "requirement_family",
+      "semantic_ref": "cap.mass_destruction"
+    },
+    {
+      "position": 1,
+      "role": "ordered_participant",
+      "participant_kind": "requirement_family",
+      "semantic_ref": "cap.death_trigger"
+    }
+  ],
+  "reviewed_participants": [
+    {
+      "position": 0,
+      "role": "source",
+      "participant_kind": "requirement_family",
+      "semantic_ref": "cap.mass_destruction"
+    },
+    {
+      "position": 1,
+      "role": "affected",
+      "participant_kind": "requirement_family",
+      "semantic_ref": "cap.death_trigger"
+    }
+  ],
+  "bridge": [
+    {
+      "position": 0,
+      "participant_kind": "requirement_family",
+      "semantic_ref": "cap.mass_destruction",
+      "historical_source_role": "ordered_participant",
+      "reviewed_role": "source"
+    },
+    {
+      "position": 1,
+      "participant_kind": "requirement_family",
+      "semantic_ref": "cap.death_trigger",
+      "historical_source_role": "ordered_participant",
+      "reviewed_role": "affected"
+    }
+  ],
+  "expected_identity_families": ["rpa.v2", "rpar.v2", "cpa.v3", "cpar.v3"]
+}
