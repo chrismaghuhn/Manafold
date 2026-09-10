@@ -748,9 +748,7 @@ class ContextApplicationV3AuthorityResolver:
             )
         for application_id, records in records_by_application.items():
             current_records = [
-                record
-                for record in records
-                if record.record_id.as_text() in current_keys
+                record for record in records if record.record_id.as_text() in current_keys
             ]
             selected = (
                 current_records
@@ -1051,10 +1049,10 @@ class ContextApplicationV3AuthorityResolver:
                     binding.artifact_role not in context_by_role
                     or not self._same_binding(context_by_role[binding.artifact_role], binding)
                 ):
-                            raise ContextApplicationV3ResolutionError(
-                                "CONTEXT_APPLICATION_V3_SHARED_SNAPSHOT_MISMATCH",
-                                binding.artifact_role,
-                            )
+                    raise ContextApplicationV3ResolutionError(
+                        "CONTEXT_APPLICATION_V3_SHARED_SNAPSHOT_MISMATCH",
+                        binding.artifact_role,
+                    )
             for binding in host_used:
                 projected = self._context_binding_from_source(binding)
                 expected_context[encode_canonical(projected.to_cbor())] = projected

@@ -66,9 +66,7 @@ class ContextApplicationAuthorityV3Tests(unittest.TestCase):
             b"h" * 32,
         )
         claim_path = (
-            "sources/m2_5/authorities/cross_deck_host_binding_claims/v1/"
-            + "d" * 64
-            + ".json"
+            "sources/m2_5/authorities/cross_deck_host_binding_claims/v1/" + "d" * 64 + ".json"
         )
         claim_context = ContextAuthoritySourceBindingV3(
             "host_binding_claim_record",
