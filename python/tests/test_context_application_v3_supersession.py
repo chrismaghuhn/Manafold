@@ -14,8 +14,11 @@ from context_application_v3_supersession import (
     ContextApplicationV3CurrentnessError,
     ContextApplicationV3CurrentnessEvaluator,
     ContextApplicationV3SupersessionAdmissionValidator,
+    admit_context_application_v3_supersession_record,
 )
 from mtgml.authority import (
+    AcceptanceSubjectKindV4,
+    AcceptanceSubjectPayloadV4,
     AuthorityIdentityKind,
     AuthorityIdentityV1,
     ContextApplicationV3InputV1,
@@ -23,12 +26,29 @@ from mtgml.authority import (
     ContextApplicationV3SupersessionInputV1,
     ContextApplicationV3SupersessionRecord,
     ContextApplicationV3SupersessionRecordInputV1,
+    DigestReferenceV1,
     EvidenceRefV1,
+    ReviewAcceptanceEventInputV4,
+    ReviewAcceptanceEventLeafV4,
+    ReviewerRoleBindingV1,
     ReviewEventRefV4,
+    ReviewMode,
     SupersessionReason,
 )
 from mtgml.persistence import encode_canonical
 from test_context_application_v3_contract import member
+from test_review_acceptance_event_v4 import (
+    REQUIRED_ROLES,
+)
+from test_review_acceptance_event_v4 import (
+    evidence as v4_evidence,
+)
+from test_review_acceptance_event_v4 import (
+    roster_ref as v4_roster_ref,
+)
+from test_review_acceptance_event_v4 import (
+    source_bindings as v4_source_bindings,
+)
 
 
 def record(event_hex: str) -> ContextApplicationV3Record:
@@ -129,6 +149,81 @@ class ContextApplicationV3SupersessionTests(unittest.TestCase):
             ContextApplicationV3SupersessionAdmissionValidator(
                 own_record_admitter=lambda value: value
             ).admit(supersession)
+
+    def test_cpsr_admission_uses_the_real_generic_v4_binder(self) -> None:
+        endpoint = record("a" * 64)
+        evidence = EvidenceRefV1("model", "sources/model.json", ("whole_artifact", None), b"e" * 32)
+        supersession_id = ContextApplicationV3SupersessionInputV1(
+            endpoint.record_id.digest_bytes,
+            None,
+            None,
+            SupersessionReason.AUTHORITY_REVOCATION,
+            (evidence,),
+        ).identity()
+        placeholder_ref = ReviewEventRefV4(
+            "sources/m2_5/authorities/review_acceptance_events/v4/" + "a" * 64 + ".json",
+            b"a" * 32,
+            "ae.v4/" + "a" * 64,
+        )
+        provisional = ContextApplicationV3SupersessionRecord.from_parts(
+            supersession_id,
+            endpoint.record_id,
+            None,
+            SupersessionReason.AUTHORITY_REVOCATION,
+            (evidence,),
+            placeholder_ref,
+        )
+        subject = AcceptanceSubjectPayloadV4(
+            AcceptanceSubjectKindV4.CONTEXT_APPLICATION_V3_SUPERSESSION_RECORD,
+            provisional.acceptance_free_subject_payload(),
+        )
+        event = ReviewAcceptanceEventLeafV4.from_input(
+            ReviewAcceptanceEventInputV4(
+                AcceptanceSubjectKindV4.CONTEXT_APPLICATION_V3_SUPERSESSION_RECORD,
+                DigestReferenceV1.from_identity(subject.identity()),
+                v4_roster_ref(),
+                (ReviewerRoleBindingV1("reviewer", REQUIRED_ROLES),),
+                ReviewMode.MULTI_REVIEWER,
+                v4_source_bindings(),
+                (v4_evidence(),),
+            )
+        )
+        event_ref = ReviewEventRefV4(
+            "sources/m2_5/authorities/review_acceptance_events/v4/"
+            + event.event_id.digest_bytes.hex()
+            + ".json",
+            event.event_id.digest_bytes,
+            event.event_id.as_text(),
+        )
+        record_value = ContextApplicationV3SupersessionRecord.from_parts(
+            supersession_id,
+            endpoint.record_id,
+            None,
+            SupersessionReason.AUTHORITY_REVOCATION,
+            (evidence,),
+            event_ref,
+        )
+
+        class Resolver:
+            def resolve_acceptance_event_leaf_v4(
+                self, _reference: ReviewEventRefV4
+            ) -> ReviewAcceptanceEventLeafV4:
+                return event
+
+            def expected_context_application_v3_supersession_source_closure(
+                self, _record: object, _roster: object
+            ) -> tuple[object, ...]:
+                return v4_source_bindings()
+
+            def resolve_v4_source_binding(self, _binding: object) -> object:
+                return object()
+
+            def resolve_v4_acceptance_evidence(self, _evidence: object) -> object:
+                return object()
+
+        admitted = admit_context_application_v3_supersession_record(record_value, Resolver())
+        self.assertEqual(admitted.event_id, event.event_id.as_text())
+        self.assertEqual(len(admitted.exact_event_closure), len(v4_source_bindings()))
 
     def test_cps_and_cpsr_v3_are_versioned_and_revocation_is_closed(self) -> None:
         source = record("a" * 64)
