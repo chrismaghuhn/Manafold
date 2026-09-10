@@ -159,6 +159,7 @@ class ContextApplicationAuthorityV3Tests(unittest.TestCase):
             source_bindings=relation_sources,
             to_wire=lambda: {"bound": "rpa"},
         )
+        context_resolver._rpa_member_resolver._authority = relation_authority
         evaluator = ContextApplicationV3AuthorityResolver(context_resolver)
         evaluator.validate_source_closure(
             authority,
@@ -394,6 +395,22 @@ class ContextApplicationAuthorityV3Tests(unittest.TestCase):
             resolver._require_bound_relation_authority(
                 authority,
                 SimpleNamespace(to_wire=lambda: {"schema": "substituted"}),
+            )
+        self.assertEqual(
+            raised.exception.code,
+            "CONTEXT_APPLICATION_V3_RELATION_AUTHORITY_MISMATCH",
+        )
+
+    def test_rpa_member_resolver_must_use_the_bound_authority_object(self) -> None:
+        resolver = object.__new__(ContextApplicationV3AuthorityResolver)
+        resolver._resolver = SimpleNamespace(
+            _rpa_member_resolver=SimpleNamespace(
+                _authority=SimpleNamespace(to_wire=lambda: {"authority": "A"})
+            )
+        )
+        with self.assertRaises(ContextApplicationV3ResolutionError) as raised:
+            resolver._require_rpa_member_resolver_binding(
+                SimpleNamespace(to_wire=lambda: {"authority": "B"})
             )
         self.assertEqual(
             raised.exception.code,

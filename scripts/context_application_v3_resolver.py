@@ -27,6 +27,7 @@ from mtgml.authority import (
     ContextApplicationMemberV2,
     ContextApplicationMemberV3,
     ContextApplicationV2Record,
+    ContextApplicationV2SupersessionRecord,
     ContextApplicationV3Record,
     ContextAuthoritySourceBindingV2,
     DigestReferenceV1,
@@ -98,6 +99,10 @@ class ContextApplicationV3RpaResolver:
         self._current_record_ids = {
             identity.as_text() for identity in admitted.currentness.current_record_ids
         }
+
+    @property
+    def authority(self) -> object:
+        return self._authority
 
     def expected_rpa_source_closure(
         self, record: RelationApplicationV2Record, reviewer_roster_ref: ReviewerRosterRefV1
@@ -666,6 +671,27 @@ class ContextApplicationV3AuthorityResolver:
                 cause_code=getattr(exc, "code", type(exc).__name__),
             ) from exc
 
+    def _require_rpa_member_resolver_binding(self, relation_authority: object) -> None:
+        if self._resolver is None:
+            raise ContextApplicationV3ResolutionError(
+                "CONTEXT_APPLICATION_V3_RELATION_AUTHORITY_MISMATCH",
+                "relation_application_authority_v2_binding",
+            )
+        member_resolver = self._resolver._rpa_member_resolver
+        owned = getattr(member_resolver, "authority", getattr(member_resolver, "_authority", None))
+        owned_wire = getattr(owned, "to_wire", None)
+        requested_wire = getattr(relation_authority, "to_wire", None)
+        if not callable(owned_wire) or not callable(requested_wire):
+            raise ContextApplicationV3ResolutionError(
+                "CONTEXT_APPLICATION_V3_RELATION_AUTHORITY_MISMATCH",
+                "relation_application_v2_binding",
+            )
+        if owned_wire() != requested_wire():
+            raise ContextApplicationV3ResolutionError(
+                "CONTEXT_APPLICATION_V3_RELATION_AUTHORITY_MISMATCH",
+                "relation_application_v2_binding",
+            )
+
     @staticmethod
     def _resolve_v2_current_records(
         records: tuple[ContextApplicationV2Record, ...], currentness: object
@@ -689,7 +715,7 @@ class ContextApplicationV3AuthorityResolver:
         *,
         relation_authority: object,
         v2_records: tuple[ContextApplicationV2Record, ...],
-        v2_currentness: object,
+        v2_supersession_records: tuple[ContextApplicationV2SupersessionRecord, ...],
     ) -> object:
         """Run closure, secure admission/currentness, and version partition together."""
 
@@ -712,7 +738,23 @@ class ContextApplicationV3AuthorityResolver:
             host_read_model=host_read_model,
         )
         currentness = self.evaluate_currentness(authority)
-        v2_current_records = self._resolve_v2_current_records(v2_records, v2_currentness)
+        from context_application_v2_supersession import (
+            ContextApplicationV2CurrentnessError,
+            ContextApplicationV2CurrentnessEvaluator,
+        )
+
+        try:
+            v2_currentness = ContextApplicationV2CurrentnessEvaluator(
+                self._resolver._source_resolver,
+                base_authority_binding=self._resolver._base_binding,
+            ).evaluate(v2_records, v2_supersession_records)
+            v2_current_records = self._resolve_v2_current_records(v2_records, v2_currentness)
+        except ContextApplicationV2CurrentnessError as exc:
+            raise ContextApplicationV3ResolutionError(
+                "CONTEXT_AUTHORITY_V2_CURRENTNESS_FAILED",
+                "context_v2.currentness",
+                cause_code=exc.code,
+            ) from exc
         current_keys = {identity.as_text() for identity in currentness.current_record_ids}
         v3_current = tuple(
             record
@@ -942,6 +984,7 @@ class ContextApplicationV3AuthorityResolver:
                 "CONTEXT_APPLICATION_V3_SOURCE_CLOSURE_MISMATCH", "resolver"
             )
         self._require_bound_relation_authority(authority, relation_authority)
+        self._require_rpa_member_resolver_binding(relation_authority)
         self.validate_event_closure_boundary(authority)
         self.require_shared_snapshots(authority, relation_authority)
 
@@ -1119,9 +1162,6 @@ class ContextApplicationV3AuthorityResolver:
     def evaluate_currentness(
         self,
         authority: ContextApplicationAuthorityV3,
-        *,
-        record_admitter: object | None = None,
-        supersession_admitter: object | None = None,
     ) -> object:
         from context_application_v3_supersession import (
             ContextApplicationV3CurrentnessEvaluator,
@@ -1130,36 +1170,25 @@ class ContextApplicationV3AuthorityResolver:
         )
 
         ContextApplicationV3AuthorityResolver.validate_container_shape(authority)
-        if self._resolver is not None:
-            self._resolver.set_context_application_v3_records(
-                authority.context_application_v3_records
-            )
-            if record_admitter is None:
-                from context_application_v3_review_admission import (
-                    admit_context_application_v3_record,
-                )
-
-                def record_admitter(record: ContextApplicationV3Record) -> object:
-                    return admit_context_application_v3_record(record, self._resolver)
-
-            if supersession_admitter is None:
-
-                def supersession_record_admitter(record: object) -> object:
-                    return admit_context_application_v3_supersession_record(record, self._resolver)
-
-                supersession_admitter = ContextApplicationV3SupersessionAdmissionValidator(
-                    own_record_admitter=supersession_record_admitter
-                )
-        if record_admitter is None or not isinstance(
-            supersession_admitter, ContextApplicationV3SupersessionAdmissionValidator
-        ):
+        if self._resolver is None:
             raise ContextApplicationV3ResolutionError(
                 "CONTEXT_APPLICATION_V3_CURRENTNESS_ADMISSION_REQUIRED",
                 "currentness",
             )
+        self._resolver.set_context_application_v3_records(authority.context_application_v3_records)
+        from context_application_v3_review_admission import admit_context_application_v3_record
+
+        def record_admitter(record: ContextApplicationV3Record) -> object:
+            return admit_context_application_v3_record(record, self._resolver)
+
+        def supersession_record_admitter(record: object) -> object:
+            return admit_context_application_v3_supersession_record(record, self._resolver)
+
         evaluator = ContextApplicationV3CurrentnessEvaluator(
             record_admitter=record_admitter,
-            supersession_admitter=supersession_admitter,
+            supersession_admitter=ContextApplicationV3SupersessionAdmissionValidator(
+                own_record_admitter=supersession_record_admitter
+            ),
         )
         return evaluator.evaluate(
             authority.context_application_v3_records,
