@@ -5894,9 +5894,7 @@ class ContextApplicationAuthorityV3:
         ):
             raise AuthorityContractError("V3 relation source binding has the wrong type")
         _typed_canonical_items(self.relation_source_bindings, "V3 relation source bindings")
-        relation_keys = [
-            (item.artifact_role, item.path) for item in self.relation_source_bindings
-        ]
+        relation_keys = [(item.artifact_role, item.path) for item in self.relation_source_bindings]
         if len(set(relation_keys)) != len(relation_keys):
             raise AuthorityContractError("V3 relation source bindings must be unique by role/path")
         if any(
@@ -5908,9 +5906,7 @@ class ContextApplicationAuthorityV3:
             cast(tuple[_CborConvertible, ...], self.host_binding_source_bindings),
             "V3 host source bindings",
         )
-        host_keys = [
-            (item.artifact_role, item.path) for item in self.host_binding_source_bindings
-        ]
+        host_keys = [(item.artifact_role, item.path) for item in self.host_binding_source_bindings]
         if len(set(host_keys)) != len(host_keys):
             raise AuthorityContractError("V3 host source bindings must be unique by role/path")
         if any(
