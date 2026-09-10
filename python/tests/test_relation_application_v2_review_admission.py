@@ -453,7 +453,9 @@ class RelationApplicationV2ReviewAdmissionTests(unittest.TestCase):
         event = ReviewAcceptanceEventLeafV4.from_input(
             ReviewAcceptanceEventInputV4(
                 subject_kind=subject.subject_kind,
-                subject_payload_digest_reference=DigestReferenceV1.from_identity(subject.identity()),
+                subject_payload_digest_reference=DigestReferenceV1.from_identity(
+                    subject.identity()
+                ),
                 reviewer_roster_ref=ReviewerRosterRefV1(
                     path="sources/m2_5/authorities/reviewer_rosters/v1/" + "72" * 32 + ".json",
                     schema="manafold.m2.5.c.reviewer-roster.v1",

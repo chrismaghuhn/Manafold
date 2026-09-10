@@ -1231,9 +1231,7 @@ def validate_relation_member_proof_v1_against_theorem(
     if proof_kind == "positive_interaction":
         ordinals = [
             _uint32(item, "causal chain ordinal")
-            for item in _array(
-                member_proof.get("causal_chain_ordinals"), "causal chain ordinals"
-            )
+            for item in _array(member_proof.get("causal_chain_ordinals"), "causal chain ordinals")
         ]
         chain = _array(proof.get("causal_chain"), "theorem causal chain")
         if ordinals != list(range(len(chain))):
@@ -1285,26 +1283,20 @@ def validate_relation_member_proof_v1_against_theorem(
         obligations = _array(proof.get("separation_obligations"), "separation obligations")
         coverages = _array(member_proof.get("channel_coverages"), "channel coverages")
         if len(obligations) != len(coverages):
-            _fail(
-                "SEPARATION_COVERAGE_INCOMPLETE", f"{label} separation channels are incomplete"
-            )
+            _fail("SEPARATION_COVERAGE_INCOMPLETE", f"{label} separation channels are incomplete")
         for obligation, coverage in zip(obligations, coverages, strict=True):
             obligation_record = _object(obligation, "separation obligation")
             coverage_record = _object(coverage, "channel coverage")
             if coverage_record.get("channel") != obligation_record.get(
                 "channel"
-            ) or coverage_record.get("coverage") != obligation_record.get(
-                "required_conclusion"
-            ):
+            ) or coverage_record.get("coverage") != obligation_record.get("required_conclusion"):
                 _fail(
                     "SEPARATION_COVERAGE_MISMATCH",
                     f"{label} channel coverage differs from theorem",
                 )
     elif proof_kind == "model_bound_scope":
         expected_scope = _object(proof, "scope proof payload")
-        actual_scope = _object(
-            member_proof.get("scope_boundary_attestation"), "scope attestation"
-        )
+        actual_scope = _object(member_proof.get("scope_boundary_attestation"), "scope attestation")
         if declared_model is None:
             _fail(
                 "MODEL_BOUNDARY_RESOLUTION_REQUIRED",
@@ -1314,15 +1306,11 @@ def validate_relation_member_proof_v1_against_theorem(
             actual_scope.get("model_id") != declared_model.get("model_id")
             or actual_scope.get("model_version") != declared_model.get("model_version")
             or actual_scope.get("reason_code") != expected_scope.get("reason_code")
-            or _candidate_shape(
-                actual_scope.get("observed_candidate_shape"), "member scope shape"
-            )
+            or _candidate_shape(actual_scope.get("observed_candidate_shape"), "member scope shape")
             != _candidate_shape(
                 expected_scope.get("observed_candidate_shape"), "theorem scope shape"
             )
-            or _model_boundary_ref(
-                actual_scope.get("model_boundary_ref"), "member scope boundary"
-            )
+            or _model_boundary_ref(actual_scope.get("model_boundary_ref"), "member scope boundary")
             != _model_boundary_ref(
                 expected_scope.get("model_boundary_ref"), "theorem scope boundary"
             )

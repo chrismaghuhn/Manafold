@@ -247,8 +247,7 @@ class RelationApplicationV2ValidatorTests(unittest.TestCase):
         theorem["proof_payload"] = {
             "kind": "positive_separation",
             "separation_obligations": [
-                {"channel": channel, "required_conclusion": "separated"}
-                for channel in channels
+                {"channel": channel, "required_conclusion": "separated"} for channel in channels
             ],
         }
         observed = replace(

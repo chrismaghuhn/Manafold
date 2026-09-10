@@ -198,15 +198,9 @@ class RelationApplicationV2SupersessionTests(unittest.TestCase):
         base, _ = valid_record()
         theorem_id = base.theorem_record_id
         application_x = base.application_id
-        record_a, event_a = _application_record(
-            application_x, theorem_id, base.members, 1
-        )
-        record_b, event_b = _application_record(
-            application_x, theorem_id, base.members, 2
-        )
-        record_c, event_c = _application_record(
-            application_x, theorem_id, base.members, 3
-        )
+        record_a, event_a = _application_record(application_x, theorem_id, base.members, 1)
+        record_b, event_b = _application_record(application_x, theorem_id, base.members, 2)
+        record_c, event_c = _application_record(application_x, theorem_id, base.members, 3)
         application_y = RelationApplicationV2(
             theorem_record_id_bytes=theorem_id.digest_bytes,
             terminal_disposition="required_interaction",
@@ -438,17 +432,20 @@ class RelationApplicationV2SupersessionTests(unittest.TestCase):
 
     def test_stale_theorem_does_not_mask_other_record_invalidity(self) -> None:
         record, _ = valid_record()
-        with patch(
-            "relation_application_v2_supersession.admit_relation_application_v2_record",
-            side_effect=[
-                RelationApplicationV2ReviewAdmissionError(
-                    "SUPERSEDED_AUTHORITY_USED", "theorem_record_id"
-                ),
-                RelationApplicationV2ReviewAdmissionError(
-                    "RELATION_APPLICATION_V2_IDENTITY_MISMATCH", "application_id"
-                ),
-            ],
-        ), self.assertRaises(RelationApplicationV2SupersessionError) as raised:
+        with (
+            patch(
+                "relation_application_v2_supersession.admit_relation_application_v2_record",
+                side_effect=[
+                    RelationApplicationV2ReviewAdmissionError(
+                        "SUPERSEDED_AUTHORITY_USED", "theorem_record_id"
+                    ),
+                    RelationApplicationV2ReviewAdmissionError(
+                        "RELATION_APPLICATION_V2_IDENTITY_MISMATCH", "application_id"
+                    ),
+                ],
+            ),
+            self.assertRaises(RelationApplicationV2SupersessionError) as raised,
+        ):
             RelationApplicationV2CurrentnessEvaluator(object(), currentness=object()).evaluate(
                 (record,), ()
             )
