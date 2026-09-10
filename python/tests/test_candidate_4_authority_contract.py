@@ -21,6 +21,7 @@ from authority_v2_validator import HostBindingAuthorityV2ReadModel
 from authority_validator import validate_relation_member_proof_v1_against_theorem
 from context_application_v3_host_binding import (
     ContextApplicationV3HostBindingError,
+    admit_host_binding_authority_v2,
     validate_application_host_binding_v3,
 )
 from context_application_v3_resolver import (
@@ -522,6 +523,8 @@ class Candidate4SourceResolver(AuthoritySourceResolver):
     def __init__(self) -> None:
         super().__init__(ROOT, rev3_archive_root=REV3_ARCHIVE_ROOT)
         self.bound_rpa_document: Mapping[str, object] | None = None
+        self.bound_host_document: Mapping[str, object] | None = None
+        self.bound_host_base_document: Mapping[str, object] | None = None
 
     def resolve_repository_artifact(
         self,
@@ -536,6 +539,16 @@ class Candidate4SourceResolver(AuthoritySourceResolver):
             and self.bound_rpa_document is not None
         ):
             return SimpleNamespace(json_value=self.bound_rpa_document)
+        if (
+            path == "sources/m2_5/authorities/interaction_review_authority.v2.json"
+            and self.bound_host_document is not None
+        ):
+            return SimpleNamespace(json_value=self.bound_host_document)
+        if (
+            path == "sources/m2_5/authorities/interaction_review_authority.v1.json"
+            and self.bound_host_base_document is not None
+        ):
+            return SimpleNamespace(json_value=self.bound_host_base_document)
         return super().resolve_repository_artifact(path, expected_raw_sha256, schema_or_null)
 
 
@@ -1099,9 +1112,81 @@ class Candidate4AuthorityContractTests(unittest.TestCase):
             bundle.context_record, bundle.context_resolver
         )
         self.assertTrue(context_admission.semantic_validation.valid)
+
+        def admit_candidate4_host_authority(
+            resolver: Candidate4SourceResolver,
+            binding: ContextAuthoritySourceBindingV3,
+        ) -> HostBindingAuthorityV2ReadModel:
+            model_path = "sources/m2_5/closures/C/declared_interaction_model.v2.json"
+            model_digest = _repo_digest(model_path)
+            synthetic_base = {
+                "schema": "manafold.m2.5.c.interaction-review-authority.v1",
+                "model_binding": {
+                    "path": model_path,
+                    "raw_sha256": model_digest.hex(),
+                    "model_id": "declared-interaction-model.v2",
+                    "model_version": "2",
+                },
+                "source_bindings": [
+                    {
+                        "authority_kind": "model",
+                        "artifact_role": "declared_model",
+                        "path": model_path,
+                        "schema_or_null": "manafold.m2.5.c.declared-interaction-model.v2",
+                        "raw_sha256": model_digest.hex(),
+                    }
+                ],
+                "relation_proofs": [],
+                "relation_applications": [],
+                "domain_proofs": [],
+                "domain_applications": [],
+                "context_proofs": [],
+                "context_applications": [],
+                "supersession_records": [],
+            }
+            resolver.bound_host_base_document = synthetic_base
+            synthetic_base_raw_digest = hashlib.sha256(
+                json.dumps(synthetic_base, separators=(",", ":")).encode("utf-8")
+            ).digest()
+            base = HostBindingSourceBindingV2(
+                "base_authority_v1",
+                "sources/m2_5/authorities/interaction_review_authority.v1.json",
+                "manafold.m2.5.c.interaction-review-authority.v1",
+                synthetic_base_raw_digest,
+            )
+            resolver.bound_host_document = {
+                "schema": "manafold.m2.5.c.interaction-review-authority.v2",
+                "base_authority_v1_binding": base.to_wire(),
+                "source_bindings": [base.to_wire()],
+                "cross_deck_host_binding_claim_records": [],
+                "cross_deck_host_binding_claim_supersession_records": [],
+                "application_host_bindings": [],
+            }
+            admitted = admit_host_binding_authority_v2(resolver, binding)
+            return replace(
+                admitted,
+                base_authority_v1_binding=HostBindingSourceBindingV2(
+                    "base_authority_v1",
+                    "sources/m2_5/authorities/interaction_review_authority.v1.json",
+                    "manafold.m2.5.c.interaction-review-authority.v1",
+                    _repo_digest("sources/m2_5/authorities/interaction_review_authority.v1.json"),
+                ),
+                candidate_universe_binding=HostBindingSourceBindingV2(
+                    "candidate_universe",
+                    CANDIDATE_UNIVERSE_PATH,
+                    CANDIDATE_UNIVERSE_SCHEMA,
+                    CANDIDATE_UNIVERSE_DIGEST,
+                ),
+                admitted_claims_by_id=bundle.host_read_model.admitted_claims_by_id,
+                current_claims_by_id=bundle.host_read_model.current_claims_by_id,
+                current_claims_by_member=bundle.host_read_model.current_claims_by_member,
+                claim_record_ids_by_claim_id=bundle.host_read_model.claim_record_ids_by_claim_id,
+                used_source_bindings=bundle.host_read_model.used_source_bindings,
+            )
+
         with patch(
             "context_application_v3_host_binding.admit_host_binding_authority_v2",
-            return_value=bundle.host_read_model,
+            side_effect=admit_candidate4_host_authority,
         ):
             currentness = ContextApplicationV3AuthorityResolver(
                 bundle.context_resolver
