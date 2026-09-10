@@ -40,8 +40,7 @@ class RelationApplicationAuthorityV2Tests(unittest.TestCase):
         )
         aggregate = json.loads(
             (
-                ROOT
-                / "conformance/fixtures/authority/relation_application_authority.v2.json"
+                ROOT / "conformance/fixtures/authority/relation_application_authority.v2.json"
             ).read_text(encoding="utf-8")
         )
         return schema, aggregate
@@ -52,16 +51,15 @@ class RelationApplicationAuthorityV2Tests(unittest.TestCase):
 
         unknown_role = deepcopy(aggregate)
         unknown_role["source_bindings"][0]["artifact_role"] = "unknown_role"
-        with self.subTest(case="unknown source role"), self.assertRaises(
-            jsonschema.ValidationError
+        with (
+            self.subTest(case="unknown source role"),
+            self.assertRaises(jsonschema.ValidationError),
         ):
             validator.validate(unknown_role)
 
         wrong_path = deepcopy(aggregate)
         wrong_path["source_bindings"][0]["path"] = "sources/not-the-base-authority.json"
-        with self.subTest(case="wrong source path"), self.assertRaises(
-            jsonschema.ValidationError
-        ):
+        with self.subTest(case="wrong source path"), self.assertRaises(jsonschema.ValidationError):
             validator.validate(wrong_path)
 
         record, _ = valid_record()
@@ -72,8 +70,9 @@ class RelationApplicationAuthorityV2Tests(unittest.TestCase):
         wrong_application_kind["relation_application_v2_records"][0]["application_id"] = (
             "rpar.v2/" + "a" * 64
         )
-        with self.subTest(case="wrong application identity kind"), self.assertRaises(
-            jsonschema.ValidationError
+        with (
+            self.subTest(case="wrong application identity kind"),
+            self.assertRaises(jsonschema.ValidationError),
         ):
             validator.validate(wrong_application_kind)
 
@@ -86,26 +85,29 @@ class RelationApplicationAuthorityV2Tests(unittest.TestCase):
             mutated["relation_application_v2_records"][0]["members"][0]["relation_binding"][
                 field
             ] = value
-            with self.subTest(case=f"invalid relation {field}"), self.assertRaises(
-                jsonschema.ValidationError
+            with (
+                self.subTest(case=f"invalid relation {field}"),
+                self.assertRaises(jsonschema.ValidationError),
             ):
                 validator.validate(mutated)
 
         invalid_role = deepcopy(with_record)
-        invalid_role["relation_application_v2_records"][0]["members"][0][
-            "relation_binding"
-        ]["participant_bindings"][0]["role"] = "not-a-role"
-        with self.subTest(case="invalid participant role"), self.assertRaises(
-            jsonschema.ValidationError
+        invalid_role["relation_application_v2_records"][0]["members"][0]["relation_binding"][
+            "participant_bindings"
+        ][0]["role"] = "not-a-role"
+        with (
+            self.subTest(case="invalid participant role"),
+            self.assertRaises(jsonschema.ValidationError),
         ):
             validator.validate(invalid_role)
 
         invalid_kind = deepcopy(with_record)
-        invalid_kind["relation_application_v2_records"][0]["members"][0][
-            "relation_binding"
-        ]["participant_bindings"][0]["participant_kind"] = "not-a-kind"
-        with self.subTest(case="invalid participant kind"), self.assertRaises(
-            jsonschema.ValidationError
+        invalid_kind["relation_application_v2_records"][0]["members"][0]["relation_binding"][
+            "participant_bindings"
+        ][0]["participant_kind"] = "not-a-kind"
+        with (
+            self.subTest(case="invalid participant kind"),
+            self.assertRaises(jsonschema.ValidationError),
         ):
             validator.validate(invalid_kind)
 
@@ -137,8 +139,9 @@ class RelationApplicationAuthorityV2Tests(unittest.TestCase):
                 },
             }
         ]
-        with self.subTest(case="revocation with replacement"), self.assertRaises(
-            jsonschema.ValidationError
+        with (
+            self.subTest(case="revocation with replacement"),
+            self.assertRaises(jsonschema.ValidationError),
         ):
             validator.validate(revocation_with_replacement)
 
@@ -146,8 +149,9 @@ class RelationApplicationAuthorityV2Tests(unittest.TestCase):
         unknown_evidence_authority["relation_application_v2_records"][0]["members"][0][
             "member_evidence_refs"
         ][0]["authority_kind"] = "unknown"
-        with self.subTest(case="unknown evidence authority kind"), self.assertRaises(
-            jsonschema.ValidationError
+        with (
+            self.subTest(case="unknown evidence authority kind"),
+            self.assertRaises(jsonschema.ValidationError),
         ):
             validator.validate(unknown_evidence_authority)
 
@@ -159,14 +163,12 @@ class RelationApplicationAuthorityV2Tests(unittest.TestCase):
         )
         aggregate = json.loads(
             (
-                ROOT
-                / "conformance/fixtures/authority/relation_application_authority.v2.json"
+                ROOT / "conformance/fixtures/authority/relation_application_authority.v2.json"
             ).read_text(encoding="utf-8")
         )
         proof_matrix = json.loads(
             (
-                ROOT
-                / "conformance/fixtures/authority/relation_application_v2_wire_golden.v1.json"
+                ROOT / "conformance/fixtures/authority/relation_application_v2_wire_golden.v1.json"
             ).read_text(encoding="utf-8")
         )
         record, _ = valid_record()

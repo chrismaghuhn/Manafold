@@ -112,6 +112,8 @@ pub enum AuthorityIdentityKind {
     ContextApplicationRecordV2,
     ContextSupersessionV2,
     ContextSupersessionRecordV2,
+    ContextApplicationV3,
+    ContextApplicationRecordV3,
     AcceptanceSubjectV3,
     ReviewAcceptanceEventV3,
     AcceptanceSubjectV4,
@@ -146,6 +148,8 @@ impl AuthorityIdentityKind {
             Self::ContextApplicationRecordV2 => "cpar.v2/",
             Self::ContextSupersessionV2 => "cps.v2/",
             Self::ContextSupersessionRecordV2 => "cpsr.v2/",
+            Self::ContextApplicationV3 => "cpa.v3/",
+            Self::ContextApplicationRecordV3 => "cpar.v3/",
             Self::AcceptanceSubjectV3 => "asp.v3/",
             Self::ReviewAcceptanceEventV3 => "ae.v3/",
             Self::AcceptanceSubjectV4 => "asp.v4/",
@@ -184,6 +188,8 @@ impl AuthorityIdentityKind {
             Self::ContextSupersessionRecordV2 => {
                 "manafold.m2.5.c.context-application-supersession-record.v2"
             }
+            Self::ContextApplicationV3 => "manafold.m2.5.c.context-application.v3",
+            Self::ContextApplicationRecordV3 => "manafold.m2.5.c.context-application-record.v3",
             Self::AcceptanceSubjectV3 => "manafold.m2.5.c.acceptance-subject-payload.v3",
             Self::ReviewAcceptanceEventV3 => "manafold.m2.5.c.review-acceptance-event.v3",
             Self::AcceptanceSubjectV4 => ACCEPTANCE_SUBJECT_SCHEMA_V4,
@@ -220,6 +226,10 @@ impl AuthorityIdentityKind {
             Self::ContextApplicationRecordV2 => CONTEXT_APPLICATION_RECORD_INPUT_SCHEMA_V2,
             Self::ContextSupersessionV2 => CONTEXT_SUPERSESSION_INPUT_SCHEMA_V2,
             Self::ContextSupersessionRecordV2 => CONTEXT_SUPERSESSION_RECORD_INPUT_SCHEMA_V2,
+            Self::ContextApplicationV3 => "manafold.m2.5.c.context-application-input.v3",
+            Self::ContextApplicationRecordV3 => {
+                "manafold.m2.5.c.context-application-record-input.v3"
+            }
             Self::AcceptanceSubjectV3 => ACCEPTANCE_SUBJECT_INPUT_SCHEMA_V3,
             Self::ReviewAcceptanceEventV3 => ACCEPTANCE_EVENT_INPUT_SCHEMA_V3,
             Self::AcceptanceSubjectV4 => ACCEPTANCE_SUBJECT_INPUT_SCHEMA_V4,
@@ -254,6 +264,8 @@ impl AuthorityIdentityKind {
             Self::ContextApplicationRecordV2 => 3,
             Self::ContextSupersessionV2 => 7,
             Self::ContextSupersessionRecordV2 => 3,
+            Self::ContextApplicationV3 => 3,
+            Self::ContextApplicationRecordV3 => 3,
             Self::AcceptanceSubjectV3 => 3,
             Self::ReviewAcceptanceEventV3 => 10,
             Self::AcceptanceSubjectV4 => 3,
@@ -3184,6 +3196,12 @@ fn validate_identity_payload(
         AuthorityIdentityKind::ContextApplicationRecordV2 => {
             validate_context_application_record_v2_input(fields)
         }
+        AuthorityIdentityKind::ContextApplicationV3 => {
+            validate_context_application_v3_input(fields)
+        }
+        AuthorityIdentityKind::ContextApplicationRecordV3 => {
+            validate_context_application_record_v3_input(fields)
+        }
         AuthorityIdentityKind::ContextSupersessionV2 => {
             validate_context_supersession_v2_input(fields)
         }
@@ -3789,6 +3807,104 @@ impl ContextApplicationMemberV2 {
             "source_instance_id": self.source_instance_id,
             "candidate_universe_binding": candidate_universe_binding_to_wire(&self.candidate_universe_binding),
             "context_binding": context_binding_to_wire(&self.context_binding_v1),
+            "precondition_attestations": preconditions_to_wire(&self.precondition_attestations_v1),
+            "member_evidence_refs": self.member_evidence_refs.iter().map(evidence_to_wire).collect::<Vec<_>>(),
+            "context_member_attestation": self.context_member_bridge_attestation_v2.to_wire(),
+        })
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ContextApplicationMemberV3 {
+    pub candidate_id: String,
+    pub candidate_identity_digest_reference: DigestReferenceV1,
+    pub source_instance_id: String,
+    pub candidate_universe_binding: cbor::Value,
+    pub context_binding_v1: cbor::Value,
+    pub relation_application_v2_id_bytes: [u8; 32],
+    pub precondition_attestations_v1: cbor::Value,
+    pub member_evidence_refs: Vec<EvidenceRefV1>,
+    pub context_member_bridge_attestation_v2: ContextMemberBridgeAttestationV2,
+}
+
+impl ContextApplicationMemberV3 {
+    #[allow(clippy::too_many_arguments)]
+    pub fn new(
+        candidate_id: impl Into<String>,
+        candidate_identity_digest_reference: DigestReferenceV1,
+        source_instance_id: impl Into<String>,
+        candidate_universe_binding: cbor::Value,
+        context_binding_v1: cbor::Value,
+        relation_application_v2_id_bytes: [u8; 32],
+        precondition_attestations_v1: cbor::Value,
+        member_evidence_refs: Vec<EvidenceRefV1>,
+        context_member_bridge_attestation_v2: ContextMemberBridgeAttestationV2,
+    ) -> Result<Self, PersistenceDecodeErrorV1> {
+        let candidate_id = candidate_id.into();
+        let source_instance_id = source_instance_id.into();
+        if candidate_id.is_empty() || source_instance_id.is_empty() {
+            return Err(PersistenceDecodeErrorV1::SemanticValidation);
+        }
+        if candidate_identity_digest_reference.semantic_domain != CANDIDATE_IDENTITY_DOMAIN
+            || candidate_identity_digest_reference.input_schema_id
+                != CANDIDATE_IDENTITY_INPUT_SCHEMA
+        {
+            return Err(PersistenceDecodeErrorV1::SchemaIdentityMismatch);
+        }
+        validate_digest_reference_v1(&digest_reference_to_cbor(
+            &candidate_identity_digest_reference,
+        ))?;
+        validate_candidate_universe_binding(&candidate_universe_binding)?;
+        validate_context_binding(&context_binding_v1)?;
+        validate_precondition_attestations(&precondition_attestations_v1)?;
+        if member_evidence_refs.is_empty() {
+            return Err(PersistenceDecodeErrorV1::SemanticValidation);
+        }
+        validate_evidence_values(&member_evidence_refs)?;
+        Ok(Self {
+            candidate_id,
+            candidate_identity_digest_reference,
+            source_instance_id,
+            candidate_universe_binding,
+            context_binding_v1,
+            relation_application_v2_id_bytes,
+            precondition_attestations_v1,
+            member_evidence_refs,
+            context_member_bridge_attestation_v2,
+        })
+    }
+
+    pub fn to_cbor(&self) -> cbor::Value {
+        cbor::Value::Array(vec![
+            cbor::Value::Text(self.candidate_id.clone()),
+            digest_reference_to_cbor(&self.candidate_identity_digest_reference),
+            cbor::Value::Text(self.source_instance_id.clone()),
+            self.candidate_universe_binding.clone(),
+            self.context_binding_v1.clone(),
+            cbor::Value::Bytes(self.relation_application_v2_id_bytes.to_vec()),
+            self.precondition_attestations_v1.clone(),
+            cbor::Value::Array(
+                self.member_evidence_refs
+                    .iter()
+                    .map(EvidenceRefV1::to_cbor)
+                    .collect(),
+            ),
+            self.context_member_bridge_attestation_v2.to_cbor(),
+        ])
+    }
+
+    pub fn to_wire(&self) -> serde_json::Value {
+        let rpa_id = format!(
+            "rpa.v2/{}",
+            hex_encode(&self.relation_application_v2_id_bytes)
+        );
+        serde_json::json!({
+            "candidate_id": self.candidate_id,
+            "candidate_identity": digest_reference_to_wire(&self.candidate_identity_digest_reference),
+            "source_instance_id": self.source_instance_id,
+            "candidate_universe_binding": candidate_universe_binding_to_wire(&self.candidate_universe_binding),
+            "context_binding": context_binding_to_wire(&self.context_binding_v1),
+            "relation_application_v2_id": rpa_id,
             "precondition_attestations": preconditions_to_wire(&self.precondition_attestations_v1),
             "member_evidence_refs": self.member_evidence_refs.iter().map(evidence_to_wire).collect::<Vec<_>>(),
             "context_member_attestation": self.context_member_bridge_attestation_v2.to_wire(),
@@ -4873,6 +4989,174 @@ impl ContextApplicationV2InputV1 {
 
     pub fn to_cbor(&self) -> cbor::Value {
         self.semantic_input()
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ContextApplicationV3InputV1 {
+    pub theorem_record_id_bytes: [u8; 32],
+    pub members: Vec<ContextApplicationMemberV3>,
+}
+
+impl ContextApplicationV3InputV1 {
+    pub fn new(
+        theorem_record_id_bytes: [u8; 32],
+        members: Vec<ContextApplicationMemberV3>,
+    ) -> Result<Self, PersistenceDecodeErrorV1> {
+        if members.is_empty() {
+            return Err(PersistenceDecodeErrorV1::SemanticValidation);
+        }
+        let values: Vec<cbor::Value> = members
+            .iter()
+            .map(ContextApplicationMemberV3::to_cbor)
+            .collect();
+        validate_application_members_v3(&cbor::Value::Array(values))?;
+        Ok(Self {
+            theorem_record_id_bytes,
+            members,
+        })
+    }
+
+    pub fn semantic_input(&self) -> cbor::Value {
+        cbor::Value::Array(vec![
+            cbor::Value::Text("manafold.m2.5.c.context-application-input.v3".to_owned()),
+            cbor::Value::Bytes(self.theorem_record_id_bytes.to_vec()),
+            cbor::Value::Array(
+                self.members
+                    .iter()
+                    .map(ContextApplicationMemberV3::to_cbor)
+                    .collect(),
+            ),
+        ])
+    }
+
+    pub fn identity(&self) -> Result<AuthorityIdentityV1, PersistenceDecodeErrorV1> {
+        AuthorityIdentityV1::compute(
+            AuthorityIdentityKind::ContextApplicationV3,
+            self.semantic_input(),
+        )
+    }
+
+    pub fn to_cbor(&self) -> cbor::Value {
+        self.semantic_input()
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ContextApplicationV3RecordInputV1 {
+    pub context_application_v3_id_bytes: [u8; 32],
+    pub review_event_ref_v4: ReviewEventRefV4,
+}
+
+impl ContextApplicationV3RecordInputV1 {
+    pub fn semantic_input(&self) -> cbor::Value {
+        cbor::Value::Array(vec![
+            cbor::Value::Text("manafold.m2.5.c.context-application-record-input.v3".to_owned()),
+            cbor::Value::Bytes(self.context_application_v3_id_bytes.to_vec()),
+            self.review_event_ref_v4.to_cbor(),
+        ])
+    }
+
+    pub fn identity(&self) -> Result<AuthorityIdentityV1, PersistenceDecodeErrorV1> {
+        AuthorityIdentityV1::compute(
+            AuthorityIdentityKind::ContextApplicationRecordV3,
+            self.semantic_input(),
+        )
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ContextApplicationV3Record {
+    pub record_id: AuthorityIdentityV1,
+    pub application_id: AuthorityIdentityV1,
+    pub theorem_record_id: AuthorityIdentityV1,
+    pub members: Vec<ContextApplicationMemberV3>,
+    pub review_event_ref_v4: ReviewEventRefV4,
+}
+
+impl ContextApplicationV3Record {
+    pub fn from_parts(
+        application_id: AuthorityIdentityV1,
+        theorem_record_id: AuthorityIdentityV1,
+        members: Vec<ContextApplicationMemberV3>,
+        review_event_ref_v4: ReviewEventRefV4,
+    ) -> Result<Self, PersistenceDecodeErrorV1> {
+        if application_id.kind() != AuthorityIdentityKind::ContextApplicationV3
+            || theorem_record_id.kind() != AuthorityIdentityKind::ContextTheoremRecord
+            || members.is_empty()
+        {
+            return Err(PersistenceDecodeErrorV1::SchemaIdentityMismatch);
+        }
+        let member_values: Vec<cbor::Value> = members
+            .iter()
+            .map(ContextApplicationMemberV3::to_cbor)
+            .collect();
+        validate_application_members_v3(&cbor::Value::Array(member_values))?;
+        let expected_application_id = ContextApplicationV3InputV1 {
+            theorem_record_id_bytes: theorem_record_id.digest_bytes(),
+            members: members.clone(),
+        }
+        .identity()?;
+        if expected_application_id != application_id {
+            return Err(PersistenceDecodeErrorV1::SemanticValidation);
+        }
+        let record_id = ContextApplicationV3RecordInputV1 {
+            context_application_v3_id_bytes: application_id.digest_bytes(),
+            review_event_ref_v4: review_event_ref_v4.clone(),
+        }
+        .identity()?;
+        Ok(Self {
+            record_id,
+            application_id,
+            theorem_record_id,
+            members,
+            review_event_ref_v4,
+        })
+    }
+
+    pub fn acceptance_free_subject_payload(&self) -> cbor::Value {
+        cbor::Value::Array(vec![
+            cbor::Value::Text("context_application_v3_record".to_owned()),
+            cbor::Value::Bytes(self.application_id.digest_bytes().to_vec()),
+            cbor::Value::Bytes(self.theorem_record_id.digest_bytes().to_vec()),
+            cbor::Value::Array(
+                self.members
+                    .iter()
+                    .map(ContextApplicationMemberV3::to_cbor)
+                    .collect(),
+            ),
+        ])
+    }
+
+    pub fn to_cbor(&self) -> cbor::Value {
+        cbor::Value::Array(vec![
+            self.record_id.to_cbor(),
+            self.application_id.to_cbor(),
+            self.theorem_record_id.to_cbor(),
+            cbor::Value::Array(
+                self.members
+                    .iter()
+                    .map(ContextApplicationMemberV3::to_cbor)
+                    .collect(),
+            ),
+            cbor::Value::Array(vec![
+                cbor::Value::Text("human_accepted".to_owned()),
+                self.review_event_ref_v4.to_cbor(),
+            ]),
+        ])
+    }
+
+    pub fn to_wire(&self) -> serde_json::Value {
+        serde_json::json!({
+            "record_id": self.record_id.as_text(),
+            "application_id": self.application_id.as_text(),
+            "theorem_record_id": self.theorem_record_id.as_text(),
+            "members": self.members.iter().map(ContextApplicationMemberV3::to_wire).collect::<Vec<_>>(),
+            "acceptance": {
+                "decision": "human_accepted",
+                "review_event_ref": self.review_event_ref_v4.to_wire(),
+            },
+        })
     }
 }
 
@@ -6183,6 +6467,43 @@ fn validate_application_members_v2(value: &cbor::Value) -> Result<(), Persistenc
     validate_sorted_unique_keys(&keys)
 }
 
+fn validate_context_application_member_v3(
+    value: &cbor::Value,
+) -> Result<(), PersistenceDecodeErrorV1> {
+    let fields = value_array(value, Some(9))?;
+    value_text(&fields[0])?;
+    validate_candidate_identity_digest_reference_v1(&fields[1])?;
+    value_text(&fields[2])?;
+    validate_candidate_universe_binding(&fields[3])?;
+    validate_context_binding(&fields[4])?;
+    value_bytes32(&fields[5])?;
+    validate_precondition_attestations(&fields[6])?;
+    validate_nonempty_evidence_refs(&fields[7])?;
+    validate_context_member_bridge_v2(&fields[8])
+}
+
+fn validate_application_members_v3(value: &cbor::Value) -> Result<(), PersistenceDecodeErrorV1> {
+    let members = value_array(value, None)?;
+    if members.is_empty() {
+        return Err(PersistenceDecodeErrorV1::SemanticValidation);
+    }
+    let mut keys = Vec::with_capacity(members.len());
+    for member in members {
+        validate_context_application_member_v3(member)?;
+        let fields = value_array(member, Some(9))?;
+        let digest = match value_array(&fields[1], Some(6))?[5].clone() {
+            cbor::Value::Bytes(bytes) => bytes,
+            _ => return Err(PersistenceDecodeErrorV1::SemanticValidation),
+        };
+        let source_instance_id = value_text(&fields[2])?;
+        keys.push(cbor::encode_canonical(&cbor::Value::Array(vec![
+            cbor::Value::Bytes(digest),
+            cbor::Value::Text(source_instance_id.to_owned()),
+        ]))?);
+    }
+    validate_sorted_unique_keys(&keys)
+}
+
 fn validate_review_event_ref_v3_array(value: &cbor::Value) -> Result<(), PersistenceDecodeErrorV1> {
     let fields = value_array(value, Some(3))?;
     let locator = value_array(&fields[2], Some(2))?;
@@ -6252,6 +6573,32 @@ fn validate_context_application_v2_input(
     }
     value_bytes32(&fields[1])?;
     validate_application_members_v2(&fields[2])
+}
+
+fn validate_context_application_v3_input(
+    fields: &[cbor::Value],
+) -> Result<(), PersistenceDecodeErrorV1> {
+    if fields.len() != 3 {
+        return Err(PersistenceDecodeErrorV1::WrongRecordLength);
+    }
+    if value_text(&fields[0])? != "manafold.m2.5.c.context-application-input.v3" {
+        return Err(PersistenceDecodeErrorV1::SchemaIdentityMismatch);
+    }
+    value_bytes32(&fields[1])?;
+    validate_application_members_v3(&fields[2])
+}
+
+fn validate_context_application_record_v3_input(
+    fields: &[cbor::Value],
+) -> Result<(), PersistenceDecodeErrorV1> {
+    if fields.len() != 3 {
+        return Err(PersistenceDecodeErrorV1::WrongRecordLength);
+    }
+    if value_text(&fields[0])? != "manafold.m2.5.c.context-application-record-input.v3" {
+        return Err(PersistenceDecodeErrorV1::SchemaIdentityMismatch);
+    }
+    value_bytes32(&fields[1])?;
+    validate_review_event_ref_v4_array(&fields[2])
 }
 
 fn validate_context_application_record_v2_input(

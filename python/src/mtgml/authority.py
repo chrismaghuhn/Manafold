@@ -34,6 +34,10 @@ CONTEXT_APPLICATION_INPUT_SCHEMA_V2: Final = "manafold.m2.5.c.context-applicatio
 CONTEXT_APPLICATION_RECORD_INPUT_SCHEMA_V2: Final = (
     "manafold.m2.5.c.context-application-record-input.v2"
 )
+CONTEXT_APPLICATION_INPUT_SCHEMA_V3: Final = "manafold.m2.5.c.context-application-input.v3"
+CONTEXT_APPLICATION_RECORD_INPUT_SCHEMA_V3: Final = (
+    "manafold.m2.5.c.context-application-record-input.v3"
+)
 CONTEXT_SUPERSESSION_INPUT_SCHEMA_V2: Final = (
     "manafold.m2.5.c.context-application-v2-supersession-input.v2"
 )
@@ -222,6 +226,8 @@ class AuthorityIdentityKind(str, Enum):
     CONTEXT_APPLICATION_RECORD_V2 = "context_application_record_v2"
     CONTEXT_SUPERSESSION_V2 = "context_supersession_v2"
     CONTEXT_SUPERSESSION_RECORD_V2 = "context_supersession_record_v2"
+    CONTEXT_APPLICATION_V3 = "context_application_v3"
+    CONTEXT_APPLICATION_RECORD_V3 = "context_application_record_v3"
     ACCEPTANCE_SUBJECT_V3 = "acceptance_subject_v3"
     REVIEW_ACCEPTANCE_EVENT_V3 = "review_acceptance_event_v3"
     ACCEPTANCE_SUBJECT_V4 = "acceptance_subject_v4"
@@ -601,6 +607,16 @@ _IDENTITY_SPECS: Final[dict[AuthorityIdentityKind, _IdentitySpec]] = {
         "manafold.m2.5.c.context-application-record.v2",
         CONTEXT_APPLICATION_RECORD_INPUT_SCHEMA_V2,
     ),
+    AuthorityIdentityKind.CONTEXT_APPLICATION_V3: _IdentitySpec(
+        "cpa.v3/",
+        "manafold.m2.5.c.context-application.v3",
+        CONTEXT_APPLICATION_INPUT_SCHEMA_V3,
+    ),
+    AuthorityIdentityKind.CONTEXT_APPLICATION_RECORD_V3: _IdentitySpec(
+        "cpar.v3/",
+        "manafold.m2.5.c.context-application-record.v3",
+        CONTEXT_APPLICATION_RECORD_INPUT_SCHEMA_V3,
+    ),
     AuthorityIdentityKind.CONTEXT_SUPERSESSION_V2: _IdentitySpec(
         "cps.v2/",
         "manafold.m2.5.c.context-application-supersession.v2",
@@ -658,6 +674,8 @@ _IDENTITY_ARITIES: Final[dict[AuthorityIdentityKind, int]] = {
     AuthorityIdentityKind.CONTEXT_APPLICATION_RECORD_V2: 3,
     AuthorityIdentityKind.CONTEXT_SUPERSESSION_V2: 7,
     AuthorityIdentityKind.CONTEXT_SUPERSESSION_RECORD_V2: 3,
+    AuthorityIdentityKind.CONTEXT_APPLICATION_V3: 3,
+    AuthorityIdentityKind.CONTEXT_APPLICATION_RECORD_V3: 3,
     AuthorityIdentityKind.ACCEPTANCE_SUBJECT_V3: 3,
     AuthorityIdentityKind.REVIEW_ACCEPTANCE_EVENT_V3: 10,
     AuthorityIdentityKind.ACCEPTANCE_SUBJECT_V4: 3,
@@ -2863,6 +2881,10 @@ def _validate_kind_payload(kind: AuthorityIdentityKind, fields: list[AuthorityVa
         _validate_context_application_v2_input(values)
     elif kind is AuthorityIdentityKind.CONTEXT_APPLICATION_RECORD_V2:
         _validate_context_application_record_v2_input(values)
+    elif kind is AuthorityIdentityKind.CONTEXT_APPLICATION_V3:
+        _validate_context_application_v3_input(values)
+    elif kind is AuthorityIdentityKind.CONTEXT_APPLICATION_RECORD_V3:
+        _validate_context_application_record_v3_input(values)
     elif kind is AuthorityIdentityKind.CONTEXT_SUPERSESSION_V2:
         _validate_context_supersession_v2_input(values)
     elif kind is AuthorityIdentityKind.CONTEXT_SUPERSESSION_RECORD_V2:
@@ -4244,6 +4266,257 @@ class ContextApplicationV2Record:
                 "review_event_ref": self.review_event_ref_v3.to_wire(),
             },
         }
+
+
+@dataclass(frozen=True)
+class ContextApplicationMemberV3:
+    candidate_id: str
+    candidate_identity_digest_reference: DigestReferenceV1
+    source_instance_id: str
+    candidate_universe_binding: list[AuthorityValue]
+    reviewed_context_binding_v1: list[AuthorityValue]
+    relation_application_v2_id_bytes: bytes
+    precondition_attestations_v1: list[AuthorityValue]
+    member_evidence_refs: tuple[EvidenceRefV1, ...]
+    context_member_bridge_attestation_v2: ContextMemberBridgeAttestationV2
+
+    def __post_init__(self) -> None:
+        _text(self.candidate_id, "V3 candidate ID")
+        _validate_candidate_identity_reference(self.candidate_identity_digest_reference)
+        _text(self.source_instance_id, "V3 source instance ID")
+        _validate_candidate_universe_binding(self.candidate_universe_binding)
+        _validate_context_binding(self.reviewed_context_binding_v1)
+        _require_digest_bytes(self.relation_application_v2_id_bytes, "V3 RPA V2 ID")
+        _validate_precondition_attestations(self.precondition_attestations_v1)
+        _require_evidence_tuple(self.member_evidence_refs, "V3 member evidence", allow_empty=False)
+        if not isinstance(
+            self.context_member_bridge_attestation_v2,
+            ContextMemberBridgeAttestationV2,
+        ):
+            raise AuthorityContractError("V3 member bridge attestation is not V2")
+
+    def to_cbor(self) -> list[AuthorityValue]:
+        return [
+            self.candidate_id,
+            self.candidate_identity_digest_reference.to_cbor(),
+            self.source_instance_id,
+            self.candidate_universe_binding,
+            self.reviewed_context_binding_v1,
+            self.relation_application_v2_id_bytes,
+            self.precondition_attestations_v1,
+            [reference.to_cbor() for reference in self.member_evidence_refs],
+            self.context_member_bridge_attestation_v2.to_cbor(),
+        ]
+
+    def to_wire(self) -> dict[str, object]:
+        return {
+            "candidate_id": self.candidate_id,
+            "candidate_identity": self.candidate_identity_digest_reference.to_wire(),
+            "source_instance_id": self.source_instance_id,
+            "candidate_universe_binding": {
+                "path": self.candidate_universe_binding[0],
+                "schema": self.candidate_universe_binding[1],
+                "raw_sha256": cast(bytes, self.candidate_universe_binding[2]).hex(),
+            },
+            "context_binding": {
+                "arity": self.reviewed_context_binding_v1[0],
+                "directionality": self.reviewed_context_binding_v1[1],
+                "participant_roles": self.reviewed_context_binding_v1[2],
+                "host_relationship": self.reviewed_context_binding_v1[3],
+            },
+            "relation_application_v2_id": AuthorityIdentityV1(
+                AuthorityIdentityKind.RELATION_APPLICATION_V2,
+                self.relation_application_v2_id_bytes,
+            ).as_text(),
+            "precondition_attestations": [
+                _precondition_to_wire(precondition)
+                for precondition in self.precondition_attestations_v1
+            ],
+            "member_evidence_refs": [
+                reference.to_wire() for reference in self.member_evidence_refs
+            ],
+            "context_member_attestation": self.context_member_bridge_attestation_v2.to_wire(),
+        }
+
+
+@dataclass(frozen=True)
+class ContextApplicationV3InputV1:
+    theorem_record_id_bytes: bytes
+    members: tuple[ContextApplicationMemberV3, ...]
+
+    def __post_init__(self) -> None:
+        _require_digest_bytes(self.theorem_record_id_bytes, "V3 theorem record ID")
+        _validate_context_application_members_v3([member.to_cbor() for member in self.members])
+
+    def semantic_input(self) -> list[AuthorityValue]:
+        return [
+            CONTEXT_APPLICATION_INPUT_SCHEMA_V3,
+            self.theorem_record_id_bytes,
+            [member.to_cbor() for member in self.members],
+        ]
+
+    def identity(self) -> AuthorityIdentityV1:
+        return compute_authority_identity(
+            AuthorityIdentityKind.CONTEXT_APPLICATION_V3,
+            self.semantic_input(),
+        )
+
+    def to_cbor(self) -> list[AuthorityValue]:
+        return self.semantic_input()
+
+
+@dataclass(frozen=True)
+class ContextApplicationV3RecordInputV1:
+    context_application_v3_id_bytes: bytes
+    review_event_ref_v4: ReviewEventRefV4
+
+    def __post_init__(self) -> None:
+        _require_digest_bytes(self.context_application_v3_id_bytes, "V3 application ID")
+        if not isinstance(self.review_event_ref_v4, ReviewEventRefV4):
+            raise AuthorityContractError("V4 review event reference is required")
+
+    def semantic_input(self) -> list[AuthorityValue]:
+        return [
+            CONTEXT_APPLICATION_RECORD_INPUT_SCHEMA_V3,
+            self.context_application_v3_id_bytes,
+            self.review_event_ref_v4.to_cbor(),
+        ]
+
+    def identity(self) -> AuthorityIdentityV1:
+        return compute_authority_identity(
+            AuthorityIdentityKind.CONTEXT_APPLICATION_RECORD_V3,
+            self.semantic_input(),
+        )
+
+    def to_cbor(self) -> list[AuthorityValue]:
+        return self.semantic_input()
+
+
+@dataclass(frozen=True)
+class ContextApplicationV3Record:
+    record_id: AuthorityIdentityV1
+    application_id: AuthorityIdentityV1
+    theorem_record_id: AuthorityIdentityV1
+    members: tuple[ContextApplicationMemberV3, ...]
+    review_event_ref_v4: ReviewEventRefV4
+
+    @classmethod
+    def from_parts(
+        cls,
+        application_id: AuthorityIdentityV1,
+        theorem_record_id: AuthorityIdentityV1,
+        members: tuple[ContextApplicationMemberV3, ...],
+        review_event_ref_v4: ReviewEventRefV4,
+    ) -> ContextApplicationV3Record:
+        expected_application_id = ContextApplicationV3InputV1(
+            theorem_record_id.digest_bytes,
+            members,
+        ).identity()
+        if expected_application_id != application_id:
+            raise AuthorityContractError("V3 application ID does not match theorem and members")
+        record_id = ContextApplicationV3RecordInputV1(
+            application_id.digest_bytes,
+            review_event_ref_v4,
+        ).identity()
+        return cls(record_id, application_id, theorem_record_id, members, review_event_ref_v4)
+
+    def __post_init__(self) -> None:
+        if self.record_id.kind is not AuthorityIdentityKind.CONTEXT_APPLICATION_RECORD_V3:
+            raise AuthorityContractError("V3 application record ID has the wrong kind")
+        if self.application_id.kind is not AuthorityIdentityKind.CONTEXT_APPLICATION_V3:
+            raise AuthorityContractError("V3 application ID has the wrong kind")
+        if self.theorem_record_id.kind is not AuthorityIdentityKind.CONTEXT_THEOREM_RECORD:
+            raise AuthorityContractError("V1 context theorem record ID has the wrong kind")
+        _validate_context_application_members_v3([member.to_cbor() for member in self.members])
+        expected_application = ContextApplicationV3InputV1(
+            self.theorem_record_id.digest_bytes,
+            self.members,
+        ).identity()
+        if expected_application != self.application_id:
+            raise AuthorityContractError("V3 application ID does not match theorem and members")
+        expected = ContextApplicationV3RecordInputV1(
+            self.application_id.digest_bytes,
+            self.review_event_ref_v4,
+        ).identity()
+        if expected != self.record_id:
+            raise AuthorityContractError("V3 application record ID does not match its input")
+
+    def acceptance_free_subject_payload(self) -> list[AuthorityValue]:
+        return [
+            AcceptanceSubjectKindV4.CONTEXT_APPLICATION_V3_RECORD.value,
+            self.application_id.digest_bytes,
+            self.theorem_record_id.digest_bytes,
+            [member.to_cbor() for member in self.members],
+        ]
+
+    def to_cbor(self) -> list[AuthorityValue]:
+        return [
+            self.record_id.to_cbor(),
+            self.application_id.to_cbor(),
+            self.theorem_record_id.to_cbor(),
+            [member.to_cbor() for member in self.members],
+            ["human_accepted", self.review_event_ref_v4.to_cbor()],
+        ]
+
+    def to_wire(self) -> dict[str, object]:
+        return {
+            "record_id": self.record_id.as_text(),
+            "application_id": self.application_id.as_text(),
+            "theorem_record_id": self.theorem_record_id.as_text(),
+            "members": [member.to_wire() for member in self.members],
+            "acceptance": {
+                "decision": "human_accepted",
+                "review_event_ref": self.review_event_ref_v4.to_wire(),
+            },
+        }
+
+
+def _validate_context_application_member_v3(value: object) -> None:
+    fields = _array(value, "V3 context application member", 9)
+    _text(fields[0], "V3 candidate ID")
+    _validate_candidate_identity_reference(DigestReferenceV1.from_cbor(fields[1]))
+    _text(fields[2], "V3 source instance ID")
+    _validate_candidate_universe_binding(fields[3])
+    _validate_context_binding(fields[4])
+    _bytes32(fields[5], "V3 RPA V2 application ID")
+    _validate_precondition_attestations(fields[6])
+    _validate_nonempty_evidence_refs(fields[7], "V3 member evidence references")
+    _validate_context_member_bridge_v2(fields[8])
+
+
+def _validate_context_application_members_v3(value: object) -> None:
+    members = _array(value, "V3 context application members")
+    if not members:
+        _fail("V3 context application members must be non-empty")
+    keys: list[bytes] = []
+    for member in members:
+        _validate_context_application_member_v3(member)
+        fields = _array(member, "V3 context application member", 9)
+        identity = DigestReferenceV1.from_cbor(fields[1])
+        source_instance_id = _text(fields[2], "V3 source instance ID")
+        keys.append(encode_canonical([identity.digest_bytes, source_instance_id]))
+    if keys != sorted(keys):
+        _fail("V3 context application members must use the digest/source order")
+    if len(set(keys)) != len(keys):
+        _fail("V3 context application members must be duplicate-free")
+
+
+def _validate_context_application_v3_input(values: list[object]) -> None:
+    if len(values) != 3:
+        _fail("V3 context application input must contain three fields")
+    if values[0] != CONTEXT_APPLICATION_INPUT_SCHEMA_V3:
+        _fail("V3 context application schema is not the closed V3 schema")
+    _bytes32(values[1], "V3 theorem record ID")
+    _validate_context_application_members_v3(values[2])
+
+
+def _validate_context_application_record_v3_input(values: list[object]) -> None:
+    if len(values) != 3:
+        _fail("V3 context application record input must contain three fields")
+    if values[0] != CONTEXT_APPLICATION_RECORD_INPUT_SCHEMA_V3:
+        _fail("V3 context application record schema is not the closed V3 schema")
+    _bytes32(values[1], "V3 context application ID")
+    _validate_review_event_ref_v4_array(values[2])
 
 
 def _validate_context_application_v2_input(values: list[object]) -> None:
