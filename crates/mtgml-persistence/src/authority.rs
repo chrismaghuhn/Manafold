@@ -6548,6 +6548,14 @@ impl ContextApplicationV3SupersessionRecord {
         source_evidence_refs: Vec<EvidenceRefV1>,
         review_event_ref_v4: ReviewEventRefV4,
     ) -> Result<Self, PersistenceDecodeErrorV1> {
+        if superseded_record_id.kind() != AuthorityIdentityKind::ContextApplicationRecordV3 {
+            return Err(PersistenceDecodeErrorV1::SchemaIdentityMismatch);
+        }
+        if replacement_record_id.as_ref().is_some_and(|identity| {
+            identity.kind() != AuthorityIdentityKind::ContextApplicationRecordV3
+        }) {
+            return Err(PersistenceDecodeErrorV1::SchemaIdentityMismatch);
+        }
         let supersession_input = ContextApplicationV3SupersessionInputV1 {
             superseded_record_id_bytes: superseded_record_id.digest_bytes(),
             replacement_record_id_bytes: replacement_record_id

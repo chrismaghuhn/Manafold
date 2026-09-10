@@ -898,6 +898,58 @@ fn context_v3_source_bindings_reject_duplicate_role_path_even_with_different_dig
 }
 
 #[test]
+fn context_v3_supersession_rejects_v2_endpoint_kinds() {
+    let supersession_id = authority::AuthorityIdentityV1::compute(
+        AuthorityIdentityKind::ContextSupersessionV3,
+        cbor::Value::Array(vec![
+            cbor::Value::Text(
+                "manafold.m2.5.c.context-application-v3-supersession-input.v3".to_owned(),
+            ),
+            cbor::Value::Bytes(vec![b'a'; 32]),
+            cbor::Value::Null,
+            cbor::Value::Text("context_application_v3_record".to_owned()),
+            cbor::Value::Null,
+            cbor::Value::Text("authority_revocation".to_owned()),
+            cbor::Value::Array(vec![cbor::Value::Array(vec![
+                cbor::Value::Text("model".to_owned()),
+                cbor::Value::Text("sources/model.json".to_owned()),
+                cbor::Value::Array(vec![
+                    cbor::Value::Text("whole_artifact".to_owned()),
+                    cbor::Value::Null,
+                ]),
+                cbor::Value::Bytes(vec![b'e'; 32]),
+            ])]),
+        ]),
+    )
+    .unwrap();
+    let v2_endpoint = authority::AuthorityIdentityV1::from_digest_bytes(
+        AuthorityIdentityKind::ContextApplicationRecordV2,
+        [b'v'; 32],
+    );
+    let event_ref = ReviewEventRefV4::new(
+        format!(
+            "sources/m2_5/authorities/review_acceptance_events/v4/{}.json",
+            "b".repeat(64)
+        ),
+        [b'b'; 32],
+        format!("ae.v4/{}", "b".repeat(64)),
+    )
+    .unwrap();
+    let result = authority::ContextApplicationV3SupersessionRecord::from_parts(
+        supersession_id,
+        v2_endpoint,
+        None,
+        authority::SupersessionReason::AuthorityRevocation,
+        vec![],
+        event_ref,
+    );
+    assert!(matches!(
+        result,
+        Err(PersistenceDecodeErrorV1::SchemaIdentityMismatch)
+    ));
+}
+
+#[test]
 fn context_application_v2_rust_dtos_emit_the_shared_member_payload() {
     let evidence = authority::EvidenceRefV1::new(
         "model",

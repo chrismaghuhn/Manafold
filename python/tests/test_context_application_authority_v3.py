@@ -25,6 +25,8 @@ from mtgml.authority import (
     ContextAuthoritySourceBindingV3,
     RelationAuthoritySourceBindingV2,
 )
+from mtgml.host_binding import HostBindingSourceBindingV2
+from mtgml.persistence import encode_canonical
 
 
 def binding(role: str, digest: bytes) -> ContextAuthoritySourceBindingV3:
@@ -47,6 +49,149 @@ def binding(role: str, digest: bytes) -> ContextAuthoritySourceBindingV3:
 
 
 class ContextApplicationAuthorityV3Tests(unittest.TestCase):
+    def test_total_context_closure_includes_relation_and_host_provenance(self) -> None:
+        base = binding("base_authority_v1", b"a" * 32)
+        candidate = binding("candidate_universe", b"b" * 32)
+        relation_projection = binding("relation_authority_v2", b"c" * 32)
+        model = ContextAuthoritySourceBindingV3(
+            "declared_model",
+            "sources/m2_5/closures/C/declared_interaction_model.v2.json",
+            "manafold.m2.5.c.declared-interaction-model.v2",
+            b"m" * 32,
+        )
+        host_authority = ContextAuthoritySourceBindingV3(
+            "host_binding_authority_v2",
+            "sources/m2_5/authorities/interaction_review_authority.v2.json",
+            "manafold.m2.5.c.interaction-review-authority.v2",
+            b"h" * 32,
+        )
+        claim_path = (
+            "sources/m2_5/authorities/cross_deck_host_binding_claims/v1/"
+            + "d" * 64
+            + ".json"
+        )
+        claim_context = ContextAuthoritySourceBindingV3(
+            "host_binding_claim_record",
+            claim_path,
+            "manafold.m2.5.c.cross-deck-host-binding-claim-record.v1",
+            b"d" * 32,
+        )
+        relation_sources = tuple(
+            sorted(
+                (
+                    RelationAuthoritySourceBindingV2(
+                        "base_authority_v1", base.path, base.schema, base.raw_sha256
+                    ),
+                    RelationAuthoritySourceBindingV2(
+                        "candidate_universe", candidate.path, candidate.schema, candidate.raw_sha256
+                    ),
+                    RelationAuthoritySourceBindingV2(
+                        "declared_model", model.path, model.schema, model.raw_sha256
+                    ),
+                ),
+                key=lambda item: encode_canonical(item.to_cbor()),
+            )
+        )
+        host_sources = tuple(
+            sorted(
+                (
+                    HostBindingSourceBindingV2(
+                        "base_authority_v1", base.path, base.schema, base.raw_sha256
+                    ),
+                    HostBindingSourceBindingV2(
+                        "candidate_universe", candidate.path, candidate.schema, candidate.raw_sha256
+                    ),
+                    HostBindingSourceBindingV2(
+                        "host_binding_claim_record",
+                        claim_path,
+                        claim_context.schema,
+                        claim_context.raw_sha256,
+                    ),
+                ),
+                key=lambda item: encode_canonical(item.to_cbor()),
+            )
+        )
+        source_bindings = tuple(
+            sorted(
+                (base, candidate, relation_projection, model, host_authority, claim_context),
+                key=lambda item: encode_canonical(item.to_cbor()),
+            )
+        )
+        authority = ContextApplicationAuthorityV3(
+            base,
+            candidate,
+            source_bindings,
+            relation_projection,
+            relation_sources,
+            host_authority,
+            host_sources,
+            (),
+            (),
+            (
+                ApplicationHostBindingV3(
+                    "context_application_v3",
+                    AuthorityIdentityV1(AuthorityIdentityKind.CONTEXT_APPLICATION_V3, b"q" * 32),
+                    ("hbc.v1/" + "e" * 64,),
+                ),
+            ),
+        )
+
+        class SourceResolver:
+            def resolve_repository_artifact(self, *_args: object) -> object:
+                return SimpleNamespace(json_value={"bound": "rpa"})
+
+        class RelationResolver:
+            def validate_relation_application_authority_v2_source_closure(
+                self, _authority: object
+            ) -> tuple[RelationAuthoritySourceBindingV2, ...]:
+                return relation_sources
+
+        context_resolver = SimpleNamespace(
+            _source_resolver=SourceResolver(),
+            _rpa_member_resolver=SimpleNamespace(_rpa_resolver=RelationResolver()),
+            resolve_acceptance_event_leaf_v4=lambda _reference: None,
+        )
+        relation_authority = SimpleNamespace(
+            base_authority_v1_binding=next(
+                item for item in relation_sources if item.artifact_role == "base_authority_v1"
+            ),
+            candidate_universe_binding=next(
+                item for item in relation_sources if item.artifact_role == "candidate_universe"
+            ),
+            source_bindings=relation_sources,
+            to_wire=lambda: {"bound": "rpa"},
+        )
+        evaluator = ContextApplicationV3AuthorityResolver(context_resolver)
+        evaluator.validate_source_closure(
+            authority,
+            relation_authority=relation_authority,
+            host_read_model=SimpleNamespace(used_source_bindings=host_sources),
+        )
+
+        missing_claim = ContextApplicationAuthorityV3(
+            base,
+            candidate,
+            tuple(
+                sorted(
+                    (base, candidate, relation_projection, model, host_authority),
+                    key=lambda item: encode_canonical(item.to_cbor()),
+                )
+            ),
+            relation_projection,
+            relation_sources,
+            host_authority,
+            host_sources,
+            (),
+            (),
+            authority.application_host_bindings_v3,
+        )
+        with self.assertRaises(ContextApplicationV3ResolutionError):
+            evaluator.validate_source_closure(
+                missing_claim,
+                relation_authority=relation_authority,
+                host_read_model=SimpleNamespace(used_source_bindings=host_sources),
+            )
+
     def test_v3_schema_pins_source_roles_and_paths(self) -> None:
         schema = json.loads(
             (ROOT / "schemas/context-application-authority.v3.schema.json").read_text(
@@ -222,6 +367,39 @@ class ContextApplicationAuthorityV3Tests(unittest.TestCase):
         self.assertEqual(
             raised.exception.code,
             "CONTEXT_APPLICATION_V3_SOURCE_CLOSURE_MISMATCH",
+        )
+
+    def test_relation_authority_object_must_match_bound_artifact(self) -> None:
+        base = binding("base_authority_v1", b"a" * 32)
+        candidate = binding("candidate_universe", b"b" * 32)
+        relation = binding("relation_authority_v2", b"c" * 32)
+        authority = ContextApplicationAuthorityV3(
+            base,
+            candidate,
+            tuple(sorted((base, candidate, relation), key=lambda item: item.to_cbor())),
+            relation,
+            (),
+            None,
+            (),
+            (),
+            (),
+            (),
+        )
+
+        class SourceResolver:
+            def resolve_repository_artifact(self, *_args: object) -> object:
+                return SimpleNamespace(json_value={"schema": "bound"})
+
+        resolver = object.__new__(ContextApplicationV3AuthorityResolver)
+        resolver._resolver = SimpleNamespace(_source_resolver=SourceResolver())
+        with self.assertRaises(ContextApplicationV3ResolutionError) as raised:
+            resolver._require_bound_relation_authority(
+                authority,
+                SimpleNamespace(to_wire=lambda: {"schema": "substituted"}),
+            )
+        self.assertEqual(
+            raised.exception.code,
+            "CONTEXT_APPLICATION_V3_RELATION_AUTHORITY_MISMATCH",
         )
 
     def test_closure_matrix_cases_are_executable(self) -> None:

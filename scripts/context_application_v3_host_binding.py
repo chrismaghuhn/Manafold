@@ -74,6 +74,8 @@ def validate_application_host_binding_v3(
     link: ApplicationHostBindingV3,
     host_read_model: HostBindingAuthorityV2ReadModel,
     candidate_records: Mapping[str, Mapping[str, object]],
+    *,
+    current: bool = True,
 ) -> ContextApplicationV3HostBindingResult:
     if not isinstance(host_read_model, HostBindingAuthorityV2ReadModel):
         raise ContextApplicationV3HostBindingError(
@@ -98,7 +100,7 @@ def validate_application_host_binding_v3(
             raise ContextApplicationV3HostBindingError(
                 "HOST_CLAIM_UNKNOWN", "host_binding_claim_ids"
             )
-        if current_claims_by_id.get(claim_id) != claim:
+        if current and current_claims_by_id.get(claim_id) != claim:
             raise ContextApplicationV3HostBindingError(
                 "HOST_CLAIM_NOT_CURRENT", "host_binding_claim_ids"
             )

@@ -123,6 +123,19 @@ class ContextApplicationV3HostBindingTests(unittest.TestCase):
                     }
                 },
             )
+        historical = validate_application_host_binding_v3(
+            record,
+            link,
+            read_model,
+            {
+                record.members[0].candidate_id: {
+                    "scope": "cross_deck",
+                    "relation": "directional_binary",
+                }
+            },
+            current=False,
+        )
+        self.assertEqual(historical.claim_ids, (claim_id,))
 
 
 if __name__ == "__main__":

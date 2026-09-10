@@ -226,6 +226,23 @@ class ContextApplicationV3Resolver:
         )
         return self._v2_resolver.resolve_member_source_instance(projected)
 
+    def resolve_candidate_records(
+        self, record: ContextApplicationV3Record
+    ) -> dict[str, Mapping[str, object]]:
+        """Resolve candidate facts from the bound candidate universe, not a caller map."""
+
+        result: dict[str, Mapping[str, object]] = {}
+        for member in record.members:
+            resolved = self.resolve_member_source_instance(member)
+            candidate_record = resolved.candidate.candidate_record
+            prior = result.get(member.candidate_id)
+            if prior is not None and prior != candidate_record:
+                raise ContextApplicationV3ResolutionError(
+                    "CONTEXT_APPLICATION_V3_SOURCE_MISMATCH", "candidate_id"
+                )
+            result[member.candidate_id] = candidate_record
+        return result
+
     def resolve_acceptance_event_leaf_v4(self, reference: object) -> ReviewAcceptanceEventLeafV4:
         return self._source_resolver.resolve_acceptance_event_leaf_v4(reference)
 
@@ -620,18 +637,64 @@ class ContextApplicationV3AuthorityResolver:
                 facts.append((key, self._source_roles(resolved), self._reviewed_roles(member)))
         return tuple(facts)
 
+    def _require_bound_relation_authority(
+        self,
+        authority: ContextApplicationAuthorityV3,
+        relation_authority: object,
+    ) -> None:
+        if self._resolver is None:
+            raise ContextApplicationV3ResolutionError(
+                "CONTEXT_APPLICATION_V3_SOURCE_CLOSURE_MISMATCH",
+                "relation_application_authority_v2_binding",
+            )
+        try:
+            artifact = self._resolver._source_resolver.resolve_repository_artifact(
+                authority.relation_application_authority_v2_binding.path,
+                authority.relation_application_authority_v2_binding.raw_sha256,
+                authority.relation_application_authority_v2_binding.schema,
+            )
+            document = artifact.json_value
+            to_wire = getattr(relation_authority, "to_wire", None)
+            if not isinstance(document, Mapping) or not callable(to_wire):
+                raise ValueError("RPA authority is not a closed wire object")
+            if dict(document) != to_wire():
+                raise ValueError("RPA authority object differs from its bound artifact")
+        except Exception as exc:
+            raise ContextApplicationV3ResolutionError(
+                "CONTEXT_APPLICATION_V3_RELATION_AUTHORITY_MISMATCH",
+                "relation_application_authority_v2_binding",
+                cause_code=getattr(exc, "code", type(exc).__name__),
+            ) from exc
+
+    @staticmethod
+    def _resolve_v2_current_records(
+        records: tuple[ContextApplicationV2Record, ...], currentness: object
+    ) -> tuple[ContextApplicationV2Record, ...]:
+        current_ids = getattr(currentness, "current_record_ids", None)
+        if not isinstance(current_ids, tuple):
+            raise ContextApplicationV3ResolutionError(
+                "CONTEXT_AUTHORITY_VERSION_ELIGIBILITY_MISMATCH", "context_v2.currentness"
+            )
+        current_keys = {identity.as_text() for identity in current_ids}
+        selected = tuple(record for record in records if record.record_id.as_text() in current_keys)
+        if len({record.record_id.as_text() for record in selected}) != len(current_keys):
+            raise ContextApplicationV3ResolutionError(
+                "CONTEXT_AUTHORITY_VERSION_ELIGIBILITY_MISMATCH", "context_v2.currentness"
+            )
+        return selected
+
     def evaluate_authority(
         self,
         authority: ContextApplicationAuthorityV3,
         *,
         relation_authority: object,
-        v2_current_records: tuple[ContextApplicationV2Record, ...],
-        host_read_model: object | None = None,
-        candidate_records: Mapping[str, Mapping[str, object]] | None = None,
+        v2_records: tuple[ContextApplicationV2Record, ...],
+        v2_currentness: object,
     ) -> object:
         """Run closure, secure admission/currentness, and version partition together."""
 
-        if authority.application_host_bindings_v3 and host_read_model is None:
+        host_read_model: object | None = None
+        if authority.application_host_bindings_v3:
             if self._resolver is None:
                 raise ContextApplicationV3ResolutionError(
                     "HOST_AUTHORITY_BINDING_REQUIRED", "host_binding_authority_v2_binding"
@@ -649,6 +712,7 @@ class ContextApplicationV3AuthorityResolver:
             host_read_model=host_read_model,
         )
         currentness = self.evaluate_currentness(authority)
+        v2_current_records = self._resolve_v2_current_records(v2_records, v2_currentness)
         current_keys = {identity.as_text() for identity in currentness.current_record_ids}
         v3_current = tuple(
             record
@@ -659,35 +723,71 @@ class ContextApplicationV3AuthorityResolver:
             v2_member_facts=self._record_role_facts(v2_current_records, v3=False),
             v3_member_facts=self._record_role_facts(v3_current, v3=True),
         )
-        if authority.application_host_bindings_v3:
-            if host_read_model is None or candidate_records is None:
-                raise ContextApplicationV3ResolutionError(
-                    "HOST_AUTHORITY_BINDING_REQUIRED", "application_host_bindings_v3"
-                )
-            from context_application_v3_host_binding import validate_application_host_binding_v3
+        if self._resolver is None:
+            raise ContextApplicationV3ResolutionError(
+                "CONTEXT_APPLICATION_V3_SOURCE_CLOSURE_MISMATCH", "resolver"
+            )
+        from context_application_v3_host_binding import (
+            required_member_keys,
+            validate_application_host_binding_v3,
+        )
 
-            links_by_application = {
-                link.application_semantic_id: link
-                for link in authority.application_host_bindings_v3
-            }
-            for record in v3_current:
-                link = links_by_application.get(record.application_id)
-                if link is None:
+        links_by_application = {}
+        for link in authority.application_host_bindings_v3:
+            if link.application_semantic_id.as_text() in links_by_application:
+                raise ContextApplicationV3ResolutionError(
+                    "APPLICATION_HOST_BINDING_DUPLICATE", "application_host_bindings_v3"
+                )
+            links_by_application[link.application_semantic_id.as_text()] = link
+        records_by_application: dict[str, list[ContextApplicationV3Record]] = {}
+        for record in authority.context_application_v3_records:
+            records_by_application.setdefault(record.application_id.as_text(), []).append(record)
+        if set(links_by_application) - set(records_by_application):
+            raise ContextApplicationV3ResolutionError(
+                "APPLICATION_HOST_BINDING_UNKNOWN_APPLICATION", "application_host_bindings_v3"
+            )
+        for application_id, records in records_by_application.items():
+            current_records = [
+                record
+                for record in records
+                if record.record_id.as_text() in current_keys
+            ]
+            selected = (
+                current_records
+                or sorted(records, key=lambda item: encode_canonical(item.to_cbor()))
+            )[0]
+            candidate_records = self._resolver.resolve_candidate_records(selected)
+            required = required_member_keys(selected, candidate_records)
+            link = links_by_application.get(application_id)
+            if not required:
+                if link is not None:
+                    raise ContextApplicationV3ResolutionError(
+                        "HOST_AUTHORITY_BINDING_UNEXPECTED", "application_host_bindings_v3"
+                    )
+                continue
+            if link is None:
+                if current_records:
                     raise ContextApplicationV3ResolutionError(
                         "APPLICATION_HOST_BINDING_INVALID", "application_host_bindings_v3"
                     )
-                try:
-                    validate_application_host_binding_v3(
-                        record,
-                        link,
-                        host_read_model,
-                        candidate_records,
-                    )
-                except Exception as exc:
-                    raise ContextApplicationV3ResolutionError(
-                        getattr(exc, "code", "HOST_AUTHORITY_INVALID"),
-                        "application_host_bindings_v3",
-                    ) from exc
+                continue
+            if host_read_model is None:
+                raise ContextApplicationV3ResolutionError(
+                    "HOST_AUTHORITY_BINDING_REQUIRED", "host_binding_authority_v2_binding"
+                )
+            try:
+                validate_application_host_binding_v3(
+                    selected,
+                    link,
+                    host_read_model,
+                    candidate_records,
+                    current=bool(current_records),
+                )
+            except Exception as exc:
+                raise ContextApplicationV3ResolutionError(
+                    getattr(exc, "code", "HOST_AUTHORITY_INVALID"),
+                    "application_host_bindings_v3",
+                ) from exc
         return currentness
 
     @classmethod
@@ -794,6 +894,25 @@ class ContextApplicationV3AuthorityResolver:
                 cause_code=type(exc).__name__,
             ) from exc
 
+    @staticmethod
+    def _context_binding_from_source(binding: object) -> object:
+        from mtgml.authority import ContextAuthoritySourceBindingV3
+
+        schema = getattr(binding, "schema", getattr(binding, "schema_or_null", None))
+        try:
+            return ContextAuthoritySourceBindingV3(
+                binding.artifact_role,
+                binding.path,
+                schema,
+                binding.raw_sha256,
+            )
+        except Exception as exc:
+            raise ContextApplicationV3ResolutionError(
+                "CONTEXT_APPLICATION_V3_SOURCE_CLOSURE_MISMATCH",
+                "source_bindings",
+                cause_code=type(exc).__name__,
+            ) from exc
+
     @classmethod
     def _require_exact_bindings(
         cls,
@@ -824,6 +943,7 @@ class ContextApplicationV3AuthorityResolver:
             raise ContextApplicationV3ResolutionError(
                 "CONTEXT_APPLICATION_V3_SOURCE_CLOSURE_MISMATCH", "resolver"
             )
+        self._require_bound_relation_authority(authority, relation_authority)
         self.validate_event_closure_boundary(authority)
         self.require_shared_snapshots(authority, relation_authority)
 
@@ -897,6 +1017,10 @@ class ContextApplicationV3AuthorityResolver:
                 projected = self._context_binding_from_v4(binding)
                 expected_context[encode_canonical(projected.to_cbor())] = projected
 
+        for binding in reconstructed_relation:
+            projected = self._context_binding_from_source(binding)
+            expected_context[encode_canonical(projected.to_cbor())] = projected
+
         if authority.application_host_bindings_v3:
             if host_read_model is None:
                 raise ContextApplicationV3ResolutionError(
@@ -927,10 +1051,13 @@ class ContextApplicationV3AuthorityResolver:
                     binding.artifact_role not in context_by_role
                     or not self._same_binding(context_by_role[binding.artifact_role], binding)
                 ):
-                    raise ContextApplicationV3ResolutionError(
-                        "CONTEXT_APPLICATION_V3_SHARED_SNAPSHOT_MISMATCH",
-                        binding.artifact_role,
-                    )
+                            raise ContextApplicationV3ResolutionError(
+                                "CONTEXT_APPLICATION_V3_SHARED_SNAPSHOT_MISMATCH",
+                                binding.artifact_role,
+                            )
+            for binding in host_used:
+                projected = self._context_binding_from_source(binding)
+                expected_context[encode_canonical(projected.to_cbor())] = projected
             for binding in host_used:
                 for role in ("declared_model", "candidate_universe"):
                     if binding.artifact_role == role:

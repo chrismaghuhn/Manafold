@@ -11,6 +11,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 sys.path.insert(0, str(ROOT / "python" / "tests"))
 
 from context_application_v3_supersession import (
+    ContextApplicationV3CurrentnessError,
     ContextApplicationV3CurrentnessEvaluator,
     ContextApplicationV3SupersessionAdmissionValidator,
 )
@@ -85,6 +86,25 @@ class ContextApplicationV3SupersessionTests(unittest.TestCase):
         first = record("a" * 64)
         with self.assertRaises(TypeError):
             ContextApplicationV3CurrentnessEvaluator().evaluate((first,), ())
+
+    def test_application_admission_errors_are_not_silently_dropped(self) -> None:
+        first = record("a" * 64)
+
+        class StaleTheorem(ValueError):
+            code = "SUPERSEDED_AUTHORITY_USED"
+
+        def reject(_value: object) -> object:
+            raise StaleTheorem("stale theorem")
+
+        with self.assertRaises(ContextApplicationV3CurrentnessError) as raised:
+            ContextApplicationV3CurrentnessEvaluator(
+                record_admitter=reject,
+                supersession_admitter=ContextApplicationV3SupersessionAdmissionValidator(
+                    own_record_admitter=self._admitted
+                ),
+            ).evaluate((first,), ())
+        self.assertEqual(raised.exception.code, "CURRENTNESS_RECORD_ADMISSION_FAILED")
+        self.assertEqual(raised.exception.cause_code, "SUPERSEDED_AUTHORITY_USED")
 
     def test_supersession_requires_own_v4_admission(self) -> None:
         source = record("a" * 64)

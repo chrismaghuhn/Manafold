@@ -290,8 +290,12 @@ class ContextApplicationV3CurrentnessEvaluator:
             if self._record_admitter is not None:
                 try:
                     self._record_admitter(record)
-                except Exception:
-                    continue
+                except Exception as exc:
+                    raise ContextApplicationV3CurrentnessError(
+                        "CURRENTNESS_RECORD_ADMISSION_FAILED",
+                        "application_records",
+                        cause_code=getattr(exc, "code", type(exc).__name__),
+                    ) from exc
             live_records[_id_key(record.record_id)] = record
         admissions = []
         for record in sorted(supersessions, key=lambda item: _id_key(item.record_id)):
