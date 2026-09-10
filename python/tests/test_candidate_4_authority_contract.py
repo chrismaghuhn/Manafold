@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import base64
 import copy
+import hashlib
 import json
 import sys
 import unittest
@@ -14,6 +16,7 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
 sys.path.insert(0, str(ROOT / "python" / "tests"))
 
+from authority_source_resolver import AuthoritySourceResolver
 from authority_v2_validator import HostBindingAuthorityV2ReadModel
 from authority_validator import validate_relation_member_proof_v1_against_theorem
 from context_application_v3_host_binding import (
@@ -66,6 +69,7 @@ from mtgml.authority import (
     ReviewerRosterRefV1,
     ReviewEventRefV4,
     ReviewMode,
+    SourceBindingDigestV1,
     TemporalSlotAttestationV2,
 )
 from mtgml.host_binding import ApplicationMemberKeyV1, HostBindingSourceBindingV2
@@ -79,7 +83,17 @@ from test_context_application_v2_host_binding import _cross_host_claim
 
 CANDIDATE_ID = "CROSS_DECK|P3|cap.mass_destruction|cap.death_trigger|DIRECTIONAL_BINARY"
 CANDIDATE_DIGEST = bytes.fromhex("af33dd4f0b65103102828bfec8ebd23196b1685282ee6ef9f0dc4690e3a6420b")
-SOURCE_INSTANCE_ID = "si.v1/candidate-4/0"
+CANDIDATE_UNIVERSE_PATH = "sources/m2_5/closures/C/interaction_candidate_universe.v2.json"
+CANDIDATE_UNIVERSE_SCHEMA = "manafold.m2.5.c.interaction-candidate-universe.v2"
+CANDIDATE_UNIVERSE_DIGEST = bytes.fromhex(
+    "1f8761af56f8b44c5e51d8cb9fcff79dd95dd56a98bfc6793e2ca8860050c532"
+)
+REV3_ARCHIVE_ROOT = Path(r"C:\Users\chris\Documents\ManafoldArchive")
+SOURCE_INSTANCE_ID = (
+    "si.v1/"
+    + base64.urlsafe_b64encode(CANDIDATE_ID.encode("utf-8")).decode("ascii").rstrip("=")
+    + "/0"
+)
 ZERO = bytes(32)
 REQUIRED_ROLES = (
     "architecture_maintainer",
@@ -131,10 +145,22 @@ def _member_evidence() -> tuple[EvidenceRefV1, ...]:
 
 def _candidate_binding() -> list[object]:
     return [
-        "sources/m2_5/closures/C/interaction_candidate_universe.v2.json",
-        "manafold.m2.5.c.interaction-candidate-universe.v2",
-        b"c" * 32,
+        CANDIDATE_UNIVERSE_PATH,
+        CANDIDATE_UNIVERSE_SCHEMA,
+        CANDIDATE_UNIVERSE_DIGEST,
     ]
+
+
+def _repo_digest(relative_path: str) -> bytes:
+    return hashlib.sha256((ROOT / Path(*relative_path.split("/"))).read_bytes()).digest()
+
+
+def _plain(value: object) -> object:
+    if isinstance(value, Mapping):
+        return {str(key): _plain(child) for key, child in value.items()}
+    if isinstance(value, list | tuple):
+        return [_plain(child) for child in value]
+    return value
 
 
 def _bridge(
@@ -487,6 +513,69 @@ class Candidate4Bundle:
     context_closure: tuple[ReviewAuthoritySourceBindingV4, ...]
     rpa_closure: tuple[ReviewAuthoritySourceBindingV4, ...]
     source_instance_snapshot: dict[str, object]
+    source_resolver: Candidate4SourceResolver
+
+
+class Candidate4SourceResolver(AuthoritySourceResolver):
+    """Real repository/REV3 resolver with only the synthetic RPA artifact overlaid."""
+
+    def __init__(self) -> None:
+        super().__init__(ROOT, rev3_archive_root=REV3_ARCHIVE_ROOT)
+        self.bound_rpa_document: Mapping[str, object] | None = None
+
+    def resolve_repository_artifact(
+        self,
+        path: str,
+        expected_raw_sha256: object,
+        schema_or_null: str | None,
+    ) -> object:
+        if (
+            path
+            == "sources/m2_5/authorities/relation_application_authority/v2/"
+            "relation_application_authority.v2.json"
+            and self.bound_rpa_document is not None
+        ):
+            return SimpleNamespace(json_value=self.bound_rpa_document)
+        return super().resolve_repository_artifact(path, expected_raw_sha256, schema_or_null)
+
+
+_CANDIDATE4_SOURCE_RESOLVER: Candidate4SourceResolver | None = None
+_CANDIDATE4_RESOLVED_SOURCE: object | None = None
+
+
+def _candidate4_source_resolver() -> Candidate4SourceResolver:
+    global _CANDIDATE4_SOURCE_RESOLVER
+    if _CANDIDATE4_SOURCE_RESOLVER is None:
+        _CANDIDATE4_SOURCE_RESOLVER = Candidate4SourceResolver()
+    return _CANDIDATE4_SOURCE_RESOLVER
+
+
+def _semantic_source_view(resolved: object) -> object:
+    """Keep real resolver bytes/identity while exposing its immutable facts as wire mappings."""
+
+    raw = resolved.source_instance_record
+    participants = [
+        {
+            "position": position,
+            "role": item["role"],
+            "participant_ref": dict(item["participant_ref"]),
+        }
+        for position, item in enumerate(raw["participant_bindings"])
+    ]
+    record = {
+        "source_instance_id": raw["source_instance_id"],
+        "candidate_id": raw["candidate_id"],
+        "source_binding": dict(raw["source_binding"]),
+        "participant_bindings": participants,
+        "relation_binding": {"participant_bindings": participants},
+        "source_context": dict(raw["source_context"]),
+    }
+    return SimpleNamespace(
+        candidate=resolved.candidate,
+        source_instance_record=record,
+        source_binding=resolved.source_binding,
+        source_artifact=resolved.source_artifact,
+    )
 
 
 class SyntheticRpaResolver:
@@ -498,6 +587,7 @@ class SyntheticRpaResolver:
         theorem: Mapping[str, object],
         relation_sources: tuple[RelationAuthoritySourceBindingV2, ...],
         closure: tuple[ReviewAuthoritySourceBindingV4, ...],
+        source_resolver: Candidate4SourceResolver,
     ) -> None:
         self.authority: object | None = None
         self.record = record
@@ -506,6 +596,9 @@ class SyntheticRpaResolver:
         self.theorem = theorem
         self.relation_sources = relation_sources
         self.closure = closure
+        self.source_resolver = source_resolver
+        self.source_override: object | None = None
+        self.source_view = _semantic_source_view(source)
         self.roster_seen: list[ReviewerRosterRefV1] = []
 
     def resolve_candidate_source_instance(self, *_args: object) -> object:
@@ -518,7 +611,9 @@ class SyntheticRpaResolver:
                 or candidate_identity.get("digest_hex") != CANDIDATE_DIGEST.hex()
             ):
                 raise ValueError("candidate identity mismatch")
-        return self.source
+        if self.source_override is not None:
+            return self.source_override
+        return self.source_view
 
     def validate_relation_member_proof_v1(
         self, member: Mapping[str, object], theorem: Mapping[str, object], label: str
@@ -612,6 +707,7 @@ class SyntheticContextResolver(ContextApplicationV3Resolver):
         theorem: Mapping[str, object],
         candidate: Mapping[str, object],
         rpa_event: ReviewAcceptanceEventLeafV4,
+        source_resolver: Candidate4SourceResolver,
         context_event: ReviewAcceptanceEventLeafV4 | None = None,
     ) -> None:
         base_v2 = ContextAuthoritySourceBindingV2(
@@ -621,7 +717,7 @@ class SyntheticContextResolver(ContextApplicationV3Resolver):
             b"b" * 32,
         )
         super().__init__(
-            SimpleNamespace(),
+            source_resolver,
             base_authority_binding=base_v2,
             rpa_member_resolver=rpa_member_resolver,
         )
@@ -629,6 +725,8 @@ class SyntheticContextResolver(ContextApplicationV3Resolver):
         self._source = source
         self._theorem = theorem
         self._candidate = candidate
+        self._candidate_source_resolver = source_resolver
+        self._source_view = _semantic_source_view(source)
         self._rpa_event = rpa_event
         self._v1_validator = SyntheticV1Validator()
         self._v2_resolver = SyntheticContextV2Resolver(
@@ -636,7 +734,7 @@ class SyntheticContextResolver(ContextApplicationV3Resolver):
                 "declared_model",
                 "sources/m2_5/closures/C/declared_interaction_model.v2.json",
                 "manafold.m2.5.c.declared-interaction-model.v2",
-                b"m" * 32,
+                _repo_digest("sources/m2_5/closures/C/declared_interaction_model.v2.json"),
             )
         )
         self._context_event = context_event
@@ -655,12 +753,13 @@ class SyntheticContextResolver(ContextApplicationV3Resolver):
             or _member.candidate_identity_digest_reference.digest_bytes != CANDIDATE_DIGEST
         ):
             raise ValueError("candidate/source instance substitution")
-        return self._source
+        return self._source_view
 
     def resolve_candidate_records(
         self, _record: ContextApplicationV3Record
     ) -> dict[str, Mapping[str, object]]:
-        return {CANDIDATE_ID: self._candidate}
+        resolved = self.resolve_member_source_instance(_record.members[0])
+        return {CANDIDATE_ID: resolved.candidate.candidate_record}
 
     def resolve_acceptance_event_leaf_v4(self, reference: object) -> ReviewAcceptanceEventLeafV4:
         if getattr(reference, "event_id", None) == self._rpa_event.event_id.as_text():
@@ -722,8 +821,22 @@ def _host_sources(
 
 
 def build_bundle() -> Candidate4Bundle:
-    candidate = _candidate_record()
-    source = _resolved_source()
+    global _CANDIDATE4_RESOLVED_SOURCE
+    source_resolver = _candidate4_source_resolver()
+    if _CANDIDATE4_RESOLVED_SOURCE is None:
+        _CANDIDATE4_RESOLVED_SOURCE = source_resolver.resolve_candidate_source_instance(
+            CANDIDATE_ID,
+            _candidate_identity().to_wire(),
+            SOURCE_INSTANCE_ID,
+            SourceBindingDigestV1(
+                "candidate_universe",
+                CANDIDATE_UNIVERSE_PATH,
+                CANDIDATE_UNIVERSE_SCHEMA,
+                CANDIDATE_UNIVERSE_DIGEST,
+            ),
+        )
+    source = _CANDIDATE4_RESOLVED_SOURCE
+    candidate = source.candidate.candidate_record
     rpa_theorem_id = AuthorityIdentityV1(AuthorityIdentityKind.RELATION_THEOREM_RECORD, b"t" * 32)
     rpa_app = RelationApplicationV2(
         rpa_theorem_id.digest_bytes, "required_interaction", (_rpa_member(),)
@@ -732,8 +845,11 @@ def build_bundle() -> Candidate4Bundle:
     rpa_sources = tuple(
         sorted(
             (
-                _binding_v4("candidate_universe", b"c" * 32),
-                _binding_v4("declared_model", b"m" * 32),
+                _binding_v4("candidate_universe", CANDIDATE_UNIVERSE_DIGEST),
+                _binding_v4(
+                    "declared_model",
+                    _repo_digest("sources/m2_5/closures/C/declared_interaction_model.v2.json"),
+                ),
                 _binding_v4("acceptance_event_leaf_v1", b"1" * 32),
                 _binding_v4("reviewer_roster_leaf", rpa_roster.raw_sha256),
             ),
@@ -769,26 +885,32 @@ def build_bundle() -> Candidate4Bundle:
                     "base_authority_v1",
                     "sources/m2_5/authorities/interaction_review_authority.v1.json",
                     "manafold.m2.5.c.interaction-review-authority.v1",
-                    b"b" * 32,
+                    _repo_digest("sources/m2_5/authorities/interaction_review_authority.v1.json"),
                 ),
                 _relation_source_binding(
                     "candidate_universe",
                     "sources/m2_5/closures/C/interaction_candidate_universe.v2.json",
                     "manafold.m2.5.c.interaction-candidate-universe.v2",
-                    b"c" * 32,
+                    CANDIDATE_UNIVERSE_DIGEST,
                 ),
                 _relation_source_binding(
                     "declared_model",
                     "sources/m2_5/closures/C/declared_interaction_model.v2.json",
                     "manafold.m2.5.c.declared-interaction-model.v2",
-                    b"m" * 32,
+                    _repo_digest("sources/m2_5/closures/C/declared_interaction_model.v2.json"),
                 ),
             ),
             key=lambda item: encode_canonical(item.to_cbor()),
         )
     )
     rpa_resolver = SyntheticRpaResolver(
-        rpa_record, rpa_event, source, _rpa_theorem(), relation_sources, rpa_sources
+        rpa_record,
+        rpa_event,
+        source,
+        _rpa_theorem(),
+        relation_sources,
+        rpa_sources,
+        source_resolver,
     )
     rpa_authority = RelationApplicationAuthorityV2(
         next(item for item in relation_sources if item.artifact_role == "base_authority_v1"),
@@ -798,6 +920,7 @@ def build_bundle() -> Candidate4Bundle:
         (),
     )
     rpa_resolver.authority = rpa_authority
+    source_resolver.bound_rpa_document = rpa_authority.to_wire()
     rpa_member_resolver = ContextApplicationV3RpaResolver(
         rpa_authority, rpa_resolver, currentness=rpa_resolver
     )
@@ -817,7 +940,12 @@ def build_bundle() -> Candidate4Bundle:
         ),
     )
     context_resolver = SyntheticContextResolver(
-        rpa_member_resolver, source, _context_theorem(), candidate, rpa_event
+        rpa_member_resolver,
+        source,
+        _context_theorem(),
+        candidate,
+        rpa_event,
+        source_resolver,
     )
     context_roster = _roster(b"s" * 32)
     context_closure = context_resolver.expected_context_application_v3_source_closure(
@@ -844,13 +972,13 @@ def build_bundle() -> Candidate4Bundle:
         "base_authority_v1",
         "sources/m2_5/authorities/interaction_review_authority.v1.json",
         "manafold.m2.5.c.interaction-review-authority.v1",
-        b"b" * 32,
+        _repo_digest("sources/m2_5/authorities/interaction_review_authority.v1.json"),
     )
     candidate_binding = ContextAuthoritySourceBindingV3(
         "candidate_universe",
         "sources/m2_5/closures/C/interaction_candidate_universe.v2.json",
         "manafold.m2.5.c.interaction-candidate-universe.v2",
-        b"c" * 32,
+        CANDIDATE_UNIVERSE_DIGEST,
     )
     relation_projection = ContextAuthoritySourceBindingV3(
         "relation_authority_v2",
@@ -927,12 +1055,7 @@ def build_bundle() -> Candidate4Bundle:
         (),
         (host_link,),
     )
-    context_resolver._source_resolver = SimpleNamespace(
-        resolve_repository_artifact=lambda *_args: SimpleNamespace(
-            json_value=rpa_authority.to_wire()
-        )
-    )
-    source_snapshot = copy.deepcopy(source.source_instance_record)
+    source_snapshot = _plain(source.source_instance_record)
     return Candidate4Bundle(
         rpa_app.members[0],
         rpa_record,
@@ -949,6 +1072,7 @@ def build_bundle() -> Candidate4Bundle:
         context_closure,
         rpa_sources,
         source_snapshot,
+        source_resolver,
     )
 
 
@@ -958,6 +1082,13 @@ class Candidate4AuthorityContractTests(unittest.TestCase):
         self.assertEqual(lock["candidate_id"], CANDIDATE_ID)
         self.assertEqual(lock["candidate_identity"], CANDIDATE_DIGEST.hex())
         self.assertEqual(lock["rev3_row_ordinal"], 6463)
+        self.assertEqual(lock["candidate_universe_raw_sha256"], CANDIDATE_UNIVERSE_DIGEST.hex())
+        self.assertEqual(lock["source_instance_id"], SOURCE_INSTANCE_ID)
+        self.assertEqual(lock["source_binding"]["row_ordinal"], 6463)
+        self.assertEqual(
+            lock["source_binding"]["archive_member_sha256"],
+            "82f9312113bb1007ad6562d454c515f85dbc1e0d7a471f7b1c6793725aea45d4",
+        )
         bundle = build_bundle()
         source_before = copy.deepcopy(bundle.source_instance_snapshot)
         rpa_admission = admit_relation_application_v2_record(
@@ -968,29 +1099,18 @@ class Candidate4AuthorityContractTests(unittest.TestCase):
             bundle.context_record, bundle.context_resolver
         )
         self.assertTrue(context_admission.semantic_validation.valid)
-        evaluator = ContextApplicationV3AuthorityResolver(bundle.context_resolver)
-        evaluator.validate_source_closure(
-            bundle.context_authority,
-            relation_authority=bundle.rpa_authority,
-            host_read_model=bundle.host_read_model,
-        )
-        currentness = evaluator.evaluate_currentness(bundle.context_authority)
-        ContextApplicationV3AuthorityResolver.require_cross_version_eligibility(
-            v2_member_facts=(),
-            v3_member_facts=(
-                (
-                    (CANDIDATE_DIGEST, SOURCE_INSTANCE_ID),
-                    ("ordered_participant", "ordered_participant"),
-                    ("source", "affected"),
-                ),
-            ),
-        )
-        validate_application_host_binding_v3(
-            bundle.context_record,
-            bundle.host_link,
-            bundle.host_read_model,
-            {CANDIDATE_ID: _candidate_record()},
-        )
+        with patch(
+            "context_application_v3_host_binding.admit_host_binding_authority_v2",
+            return_value=bundle.host_read_model,
+        ):
+            currentness = ContextApplicationV3AuthorityResolver(
+                bundle.context_resolver
+            ).evaluate_authority(
+                bundle.context_authority,
+                relation_authority=bundle.rpa_authority,
+                v2_records=(),
+                v2_supersession_records=(),
+            )
         self.assertEqual(
             tuple(item.as_text() for item in currentness.current_record_ids),
             (bundle.context_record.record_id.as_text(),),
@@ -1005,11 +1125,26 @@ class Candidate4AuthorityContractTests(unittest.TestCase):
         self.assertEqual(
             bundle.rpa_member.participant_role_bridge_v1.entries[1].reviewed_role, "affected"
         )
+        source_roundtrip = bundle.source_resolver.resolve_candidate_source_instance(
+            CANDIDATE_ID,
+            _candidate_identity().to_wire(),
+            SOURCE_INSTANCE_ID,
+            SourceBindingDigestV1(
+                "candidate_universe",
+                CANDIDATE_UNIVERSE_PATH,
+                CANDIDATE_UNIVERSE_SCHEMA,
+                CANDIDATE_UNIVERSE_DIGEST,
+            ),
+        )
+        self.assertEqual(source_before, _plain(source_roundtrip.source_instance_record))
+        self.assertEqual(source_roundtrip.source_binding["row_ordinal"], 6463)
         self.assertEqual(
-            source_before,
-            bundle.context_resolver.resolve_member_source_instance(
-                bundle.context_member
-            ).source_instance_record,
+            source_roundtrip.source_binding["archive_member_sha256"],
+            "82f9312113bb1007ad6562d454c515f85dbc1e0d7a471f7b1c6793725aea45d4",
+        )
+        self.assertEqual(
+            source_roundtrip.candidate.candidate_universe.raw_sha256,
+            CANDIDATE_UNIVERSE_DIGEST.hex(),
         )
 
     def test_deterministic_repeatability_and_golden_identities(self) -> None:
@@ -1138,7 +1273,7 @@ class Candidate4AuthorityContractTests(unittest.TestCase):
                 )
             return
         if mutation == "historical_source_role_mutation":
-            bundle.relation_resolver.source = _resolved_source(
+            bundle.relation_resolver.source_override = _resolved_source(
                 roles=("source", "ordered_participant")
             )
             application = RelationApplicationV2(
@@ -1314,7 +1449,7 @@ class Candidate4AuthorityContractTests(unittest.TestCase):
                         bundle.context_record,
                         bundle.host_link,
                         stale,
-                        {CANDIDATE_ID: _candidate_record()},
+                        bundle.context_resolver.resolve_candidate_records(bundle.context_record),
                     )
             else:
                 wrong = _cross_host_claim(
@@ -1330,7 +1465,7 @@ class Candidate4AuthorityContractTests(unittest.TestCase):
                         bundle.context_record,
                         bundle.host_link,
                         bad,
-                        {CANDIDATE_ID: _candidate_record()},
+                        bundle.context_resolver.resolve_candidate_records(bundle.context_record),
                     )
             return
         if mutation == "v2_v3_current_collision":
