@@ -44,6 +44,11 @@ class ReviewAcceptanceV4Binding:
     subject: AcceptanceSubjectPayloadV4
     event: ReviewAcceptanceEventLeafV4
     event_ref: ReviewEventRefV4
+    exact_event_closure: tuple[ReviewAuthoritySourceBindingV4, ...]
+
+    @property
+    def event_id(self) -> str:
+        return self.event.event_id.as_text()
 
 
 def bind_review_acceptance_v4(
@@ -92,4 +97,9 @@ def bind_review_acceptance_v4(
         resolver.resolve_v4_source_binding(binding)
     for evidence in event.review_evidence_refs:
         resolver.resolve_v4_acceptance_evidence(evidence)
-    return ReviewAcceptanceV4Binding(subject=subject, event=event, event_ref=event_ref)
+    return ReviewAcceptanceV4Binding(
+        subject=subject,
+        event=event,
+        event_ref=event_ref,
+        exact_event_closure=expected_source_bindings,
+    )

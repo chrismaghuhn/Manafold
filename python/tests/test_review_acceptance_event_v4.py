@@ -167,6 +167,8 @@ class ReviewAcceptanceEventV4Tests(unittest.TestCase):
         resolver = FakeV4Resolver(event)
         result = bind_review_acceptance_v4(subject, event_ref, resolver, source_bindings())
         self.assertIs(result.subject, subject)
+        self.assertEqual(result.event_id, event.event_id.as_text())
+        self.assertEqual(result.exact_event_closure, source_bindings())
         self.assertEqual(resolver.event_ref, event_ref)
         self.assertEqual(len(resolver.source_bindings), len(source_bindings()))
         self.assertEqual(len(resolver.evidence), 1)
