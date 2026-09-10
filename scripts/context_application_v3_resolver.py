@@ -212,9 +212,7 @@ class ContextApplicationV3Resolver:
         )
         return self._v2_resolver.resolve_member_source_instance(projected)
 
-    def resolve_acceptance_event_leaf_v4(
-        self, reference: object
-    ) -> ReviewAcceptanceEventLeafV4:
+    def resolve_acceptance_event_leaf_v4(self, reference: object) -> ReviewAcceptanceEventLeafV4:
         return self._source_resolver.resolve_acceptance_event_leaf_v4(reference)
 
     def resolve_v4_source_binding(self, binding: ReviewAuthoritySourceBindingV4) -> object:
@@ -364,9 +362,7 @@ class ContextApplicationV3Resolver:
                 )
             )
 
-        theorem_bindings, theorem_b2, theorem_b1 = self._v2_resolver._walk_v1_dependencies(
-            theorem
-        )
+        theorem_bindings, theorem_b2, theorem_b1 = self._v2_resolver._walk_v1_dependencies(theorem)
         direct.extend(theorem_bindings)
         b2_roles.update(theorem_b2)
         b1 = b1 or theorem_b1
@@ -379,9 +375,7 @@ class ContextApplicationV3Resolver:
         )
         result: list[ReviewAuthoritySourceBindingV4] = [
             self._project(
-                SourceBindingDigestV1(
-                    "declared_model", model.path, model.schema, model.raw_sha256
-                )
+                SourceBindingDigestV1("declared_model", model.path, model.schema, model.raw_sha256)
             ),
             ReviewAuthoritySourceBindingV4(
                 "reviewer_roster_leaf",

@@ -97,18 +97,21 @@ class FakeV3Resolver:
                         },
                     },
                 ],
-                "source_context": {name: "not_applicable" for name in (
-                    "zone",
-                    "visibility",
-                    "timing",
-                    "temporal_order",
-                    "source_affected_relation",
-                    "control_ownership_relation",
-                    "replacement_layer_relation",
-                    "trigger_lki_relation",
-                    "information_relation",
-                    "decision_actor_relation",
-                )},
+                "source_context": {
+                    name: "not_applicable"
+                    for name in (
+                        "zone",
+                        "visibility",
+                        "timing",
+                        "temporal_order",
+                        "source_affected_relation",
+                        "control_ownership_relation",
+                        "replacement_layer_relation",
+                        "trigger_lki_relation",
+                        "information_relation",
+                        "decision_actor_relation",
+                    )
+                },
             }
         )
 

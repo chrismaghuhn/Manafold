@@ -4413,9 +4413,7 @@ class ContextApplicationV3Record:
             members,
         ).identity()
         if expected_application_id != application_id:
-            raise AuthorityContractError(
-                "V3 application ID does not match theorem and members"
-            )
+            raise AuthorityContractError("V3 application ID does not match theorem and members")
         record_id = ContextApplicationV3RecordInputV1(
             application_id.digest_bytes,
             review_event_ref_v4,
@@ -4435,9 +4433,7 @@ class ContextApplicationV3Record:
             self.members,
         ).identity()
         if expected_application != self.application_id:
-            raise AuthorityContractError(
-                "V3 application ID does not match theorem and members"
-            )
+            raise AuthorityContractError("V3 application ID does not match theorem and members")
         expected = ContextApplicationV3RecordInputV1(
             self.application_id.digest_bytes,
             self.review_event_ref_v4,
