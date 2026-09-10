@@ -1,0 +1,59 @@
+{
+  "schema_version": "candidate-4-role-bridge-golden-v1",
+  "candidate_id": "CROSS_DECK|P3|cap.mass_destruction|cap.death_trigger|DIRECTIONAL_BINARY",
+  "candidate_identity": "af33dd4f0b65103102828bfec8ebd23196b1685282ee6ef9f0dc4690e3a6420b",
+  "rev3_row_ordinal": 6463,
+  "candidate_universe_raw_sha256": "1f8761af56f8b44c5e51d8cb9fcff79dd95dd56a98bfc6793e2ca8860050c532",
+  "source_instance_id": "si.v1/Q1JPU1NfREVDS3xQM3xjYXAubWFzc19kZXN0cnVjdGlvbnxjYXAuZGVhdGhfdHJpZ2dlcnxESVJFQ1RJT05BTF9CSU5BUlk/0",
+  "source_binding": {
+    "archive_member": "derived/Pair_Interaction_Census_REV3.csv",
+    "archive_member_sha256": "82f9312113bb1007ad6562d454c515f85dbc1e0d7a471f7b1c6793725aea45d4",
+    "row_ordinal": 6463
+  },
+  "historical_participants": [
+    {
+      "position": 0,
+      "role": "ordered_participant",
+      "participant_kind": "requirement_family",
+      "semantic_ref": "cap.mass_destruction"
+    },
+    {
+      "position": 1,
+      "role": "ordered_participant",
+      "participant_kind": "requirement_family",
+      "semantic_ref": "cap.death_trigger"
+    }
+  ],
+  "reviewed_participants": [
+    {
+      "position": 0,
+      "role": "source",
+      "participant_kind": "requirement_family",
+      "semantic_ref": "cap.mass_destruction"
+    },
+    {
+      "position": 1,
+      "role": "affected",
+      "participant_kind": "requirement_family",
+      "semantic_ref": "cap.death_trigger"
+    }
+  ],
+  "bridge": [
+    {
+      "position": 0,
+      "participant_kind": "requirement_family",
+      "semantic_ref": "cap.mass_destruction",
+      "historical_source_role": "ordered_participant",
+      "reviewed_role": "source"
+    },
+    {
+      "position": 1,
+      "participant_kind": "requirement_family",
+      "semantic_ref": "cap.death_trigger",
+      "historical_source_role": "ordered_participant",
+      "reviewed_role": "affected"
+    }
+  ],
+  "bridge_cbor_hex": "82850072726571756972656d656e745f66616d696c79746361702e6d6173735f6465737472756374696f6e736f7264657265645f7061727469636970616e7466736f75726365850172726571756972656d656e745f66616d696c79716361702e64656174685f74726967676572736f7264657265645f7061727469636970616e74686166666563746564",
+  "expected_identity_families": ["rpa.v2", "rpar.v2", "cpa.v3", "cpar.v3"]
+}

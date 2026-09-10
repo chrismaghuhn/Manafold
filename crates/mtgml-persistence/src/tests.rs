@@ -758,6 +758,69 @@ fn context_application_v3_identity_vectors_match_python_contract() {
 }
 
 #[test]
+fn candidate_4_identity_surface_matches_python_fixture() {
+    let role_fixture: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../conformance/fixtures/authority/candidate_4_role_bridge_golden.v1.json"
+    ))
+    .unwrap();
+    assert_eq!(
+        role_fixture["candidate_id"],
+        serde_json::json!(
+            "CROSS_DECK|P3|cap.mass_destruction|cap.death_trigger|DIRECTIONAL_BINARY"
+        )
+    );
+    assert_eq!(role_fixture["rev3_row_ordinal"], serde_json::json!(6463));
+    assert_eq!(
+        role_fixture["source_instance_id"],
+        serde_json::json!("si.v1/Q1JPU1NfREVDS3xQM3xjYXAubWFzc19kZXN0cnVjdGlvbnxjYXAuZGVhdGhfdHJpZ2dlcnxESVJFQ1RJT05BTF9CSU5BUlk/0")
+    );
+    let bridge = cbor::decode_canonical(&decode_hex(
+        role_fixture["bridge_cbor_hex"].as_str().unwrap(),
+    ))
+    .unwrap();
+    assert_eq!(
+        hex(&cbor::encode_canonical(&bridge).unwrap()),
+        role_fixture["bridge_cbor_hex"].as_str().unwrap()
+    );
+
+    let rpa_fixture: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../conformance/fixtures/authority/candidate_4_rpa_v2_golden.v1.json"
+    ))
+    .unwrap();
+    let context_fixture: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../conformance/fixtures/authority/candidate_4_context_v3_golden.v1.json"
+    ))
+    .unwrap();
+    for (fixture, entries) in [
+        (
+            rpa_fixture,
+            [
+                ("rpa_v2", AuthorityIdentityKind::RelationApplicationV2),
+                (
+                    "rpar_v2",
+                    AuthorityIdentityKind::RelationApplicationRecordV2,
+                ),
+            ],
+        ),
+        (
+            context_fixture,
+            [
+                ("cpa_v3", AuthorityIdentityKind::ContextApplicationV3),
+                ("cpar_v3", AuthorityIdentityKind::ContextApplicationRecordV3),
+            ],
+        ),
+    ] {
+        for (field, kind) in entries {
+            let text = fixture[field].as_str().unwrap();
+            let digest = decode_hex(&text[text.find('/').unwrap() + 1..]);
+            let digest: [u8; 32] = digest.try_into().unwrap();
+            let identity = authority::AuthorityIdentityV1::from_digest_bytes(kind, digest);
+            assert_eq!(identity.as_text(), text);
+        }
+    }
+}
+
+#[test]
 fn context_v3_supersession_identity_vectors_match_python_contract() {
     let matrix: serde_json::Value = serde_json::from_str(include_str!(
         "../../../conformance/fixtures/authority/context_application_v3_supersession_identity_golden_matrix.v1.json"
