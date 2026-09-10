@@ -4408,6 +4408,14 @@ class ContextApplicationV3Record:
         members: tuple[ContextApplicationMemberV3, ...],
         review_event_ref_v4: ReviewEventRefV4,
     ) -> ContextApplicationV3Record:
+        expected_application_id = ContextApplicationV3InputV1(
+            theorem_record_id.digest_bytes,
+            members,
+        ).identity()
+        if expected_application_id != application_id:
+            raise AuthorityContractError(
+                "V3 application ID does not match theorem and members"
+            )
         record_id = ContextApplicationV3RecordInputV1(
             application_id.digest_bytes,
             review_event_ref_v4,
@@ -4422,6 +4430,14 @@ class ContextApplicationV3Record:
         if self.theorem_record_id.kind is not AuthorityIdentityKind.CONTEXT_THEOREM_RECORD:
             raise AuthorityContractError("V1 context theorem record ID has the wrong kind")
         _validate_context_application_members_v3([member.to_cbor() for member in self.members])
+        expected_application = ContextApplicationV3InputV1(
+            self.theorem_record_id.digest_bytes,
+            self.members,
+        ).identity()
+        if expected_application != self.application_id:
+            raise AuthorityContractError(
+                "V3 application ID does not match theorem and members"
+            )
         expected = ContextApplicationV3RecordInputV1(
             self.application_id.digest_bytes,
             self.review_event_ref_v4,

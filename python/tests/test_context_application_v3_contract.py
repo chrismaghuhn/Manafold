@@ -119,6 +119,20 @@ def event_ref() -> ReviewEventRefV4:
 
 
 class ContextApplicationV3ContractTests(unittest.TestCase):
+    def test_record_rejects_application_id_not_recomputed_from_theorem_and_members(self) -> None:
+        application = ContextApplicationV3InputV1(b"t" * 32, (member(),))
+        other_application = ContextApplicationV3InputV1(
+            b"t" * 32,
+            (member(digest=b"d" * 32, source_instance_id="si/1"),),
+        )
+        with self.assertRaises(ValueError):
+            ContextApplicationV3Record.from_parts(
+                other_application.identity(),
+                AuthorityIdentityV1(AuthorityIdentityKind.CONTEXT_THEOREM_RECORD, b"t" * 32),
+                application.members,
+                event_ref(),
+            )
+
     def test_member_wire_is_closed_and_uses_typed_rpa_v2_id(self) -> None:
         wire = member().to_wire()
         self.assertEqual(

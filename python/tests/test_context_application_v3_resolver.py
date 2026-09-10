@@ -42,6 +42,11 @@ class RpaClosureResolver(FakeAdmissionResolver):
     ) -> tuple[RelationAuthoritySourceBindingV2, ...]:
         return authority.source_bindings
 
+    def expected_relation_application_v2_source_closure(
+        self, _record: object, _reviewer_roster_ref: object
+    ) -> tuple[object, ...]:
+        return tuple(self.event.source_binding_digests)
+
 
 def event_for_record(record: object) -> ReviewAcceptanceEventLeafV4:
     subject = AcceptanceSubjectPayloadV4(
@@ -104,6 +109,11 @@ class ContextApplicationV3ResolverTests(unittest.TestCase):
             currentness=FakeCurrentness(theorem=theorem_record()),
         )
         return resolver, record
+
+    def test_rpa_transitive_closure_is_a_required_typed_dependency(self) -> None:
+        resolver, record = self._resolver()
+        closure = resolver.expected_rpa_source_closure(record, object())
+        self.assertTrue(closure)
 
     def test_exact_current_rpa_member_is_resolved(self) -> None:
         resolver, record = self._resolver()

@@ -5092,6 +5092,14 @@ impl ContextApplicationV3Record {
             .map(ContextApplicationMemberV3::to_cbor)
             .collect();
         validate_application_members_v3(&cbor::Value::Array(member_values))?;
+        let expected_application_id = ContextApplicationV3InputV1 {
+            theorem_record_id_bytes: theorem_record_id.digest_bytes(),
+            members: members.clone(),
+        }
+        .identity()?;
+        if expected_application_id != application_id {
+            return Err(PersistenceDecodeErrorV1::SemanticValidation);
+        }
         let record_id = ContextApplicationV3RecordInputV1 {
             context_application_v3_id_bytes: application_id.digest_bytes(),
             review_event_ref_v4: review_event_ref_v4.clone(),

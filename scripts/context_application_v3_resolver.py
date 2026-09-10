@@ -64,6 +64,10 @@ class ContextApplicationV3RpaMemberResolver(Protocol):
         source_instance_id: str,
     ) -> ResolvedRpaV2Member: ...
 
+    def expected_rpa_source_closure(
+        self, record: RelationApplicationV2Record, reviewer_roster_ref: ReviewerRosterRefV1
+    ) -> tuple[ReviewAuthoritySourceBindingV4, ...]: ...
+
 
 class ContextApplicationV3RpaResolver:
     """Resolve one exact current RPA V2 member from the admitted RPA aggregate."""
@@ -88,9 +92,24 @@ class ContextApplicationV3RpaResolver:
                 cause_code=getattr(exc, "code", type(exc).__name__),
             ) from exc
         self._authority = authority
+        self._rpa_resolver = resolver
         self._current_record_ids = {
             identity.as_text() for identity in admitted.currentness.current_record_ids
         }
+
+    def expected_rpa_source_closure(
+        self, record: RelationApplicationV2Record, reviewer_roster_ref: ReviewerRosterRefV1
+    ) -> tuple[ReviewAuthoritySourceBindingV4, ...]:
+        try:
+            return self._rpa_resolver.expected_relation_application_v2_source_closure(
+                record, reviewer_roster_ref
+            )
+        except Exception as exc:
+            raise ContextApplicationV3ResolutionError(
+                "CONTEXT_APPLICATION_V3_RPA_CLOSURE_MISMATCH",
+                "relation_application_v2.source_closure",
+                cause_code=getattr(exc, "code", type(exc).__name__),
+            ) from exc
 
     def resolve_current_rpa_member(
         self,
@@ -339,9 +358,11 @@ class ContextApplicationV3Resolver:
                     resolved_rpa.record.review_event_ref_v4.raw_sha256,
                 )
             )
-            rpa_closure = getattr(self._rpa_member_resolver, "expected_rpa_source_closure", None)
-            if callable(rpa_closure):
-                rpa_event_sources.extend(rpa_closure(resolved_rpa.record, reviewer_roster_ref))
+            rpa_event_sources.extend(
+                self._rpa_member_resolver.expected_rpa_source_closure(
+                    resolved_rpa.record, reviewer_roster_ref
+                )
+            )
 
         theorem_bindings, theorem_b2, theorem_b1 = self._v2_resolver._walk_v1_dependencies(
             theorem
