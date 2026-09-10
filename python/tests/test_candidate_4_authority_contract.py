@@ -1075,7 +1075,6 @@ class Candidate4AuthorityContractTests(unittest.TestCase):
         if mutation in {
             "candidate_identity_mismatch",
             "wrong_candidate_substitution",
-            "historical_source_role_mutation",
             "bridge_historical_role_mismatch",
             "bridge_reviewed_role_mismatch",
             "bridge_participant_kind_mismatch",
@@ -1138,17 +1137,45 @@ class Candidate4AuthorityContractTests(unittest.TestCase):
                     application, bundle.relation_resolver, theorem_record=_rpa_theorem()
                 )
             return
-        if mutation == "stale_rpa":
-            with self.assertRaises(ContextApplicationV3ResolutionError):
-                ContextApplicationV3RpaResolver(
-                    bundle.rpa_authority,
+        if mutation == "historical_source_role_mutation":
+            bundle.relation_resolver.source = _resolved_source(
+                roles=("source", "ordered_participant")
+            )
+            application = RelationApplicationV2(
+                bundle.rpa_record.theorem_record_id.digest_bytes,
+                "required_interaction",
+                (bundle.rpa_member,),
+            )
+            with self.assertRaises(RelationApplicationV2SemanticValidationError):
+                validate_relation_application_v2_semantics(
+                    application,
                     bundle.relation_resolver,
-                    currentness=SimpleNamespace(
-                        require_current_relation_theorem=lambda _id: (_ for _ in ()).throw(
-                            ValueError("stale")
-                        )
-                    ),
+                    theorem_record=_rpa_theorem(),
                 )
+            return
+        if mutation == "stale_rpa":
+            from relation_application_v2_resolver import RelationApplicationV2ResolutionError
+
+            for status, code in (
+                ("stale", "SUPERSEDED_AUTHORITY_USED"),
+                ("revoked", "SUPERSEDED_AUTHORITY_USED"),
+                ("ambiguous", "RELATION_APPLICATION_V2_CURRENTNESS_AMBIGUOUS"),
+            ):
+                with (
+                    self.subTest(status=status),
+                    self.assertRaises(ContextApplicationV3ResolutionError),
+                ):
+                    ContextApplicationV3RpaResolver(
+                        bundle.rpa_authority,
+                        bundle.relation_resolver,
+                        currentness=SimpleNamespace(
+                            require_current_relation_theorem=lambda _id, code=code: (
+                                (_ for _ in ()).throw(
+                                    RelationApplicationV2ResolutionError(code, "theorem_record_id")
+                                )
+                            )
+                        ),
+                    )
             return
         if mutation == "wrong_rpa_identity":
             member = replace(bundle.context_member, relation_application_v2_id_bytes=b"z" * 32)
