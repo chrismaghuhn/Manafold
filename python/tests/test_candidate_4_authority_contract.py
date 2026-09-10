@@ -4,6 +4,7 @@ import base64
 import copy
 import hashlib
 import json
+import os
 import sys
 import unittest
 from collections.abc import Mapping
@@ -73,7 +74,20 @@ from mtgml.authority import (
     SourceBindingDigestV1,
     TemporalSlotAttestationV2,
 )
-from mtgml.host_binding import ApplicationMemberKeyV1, HostBindingSourceBindingV2
+from mtgml.host_binding import (
+    ApplicationMemberKeyV1,
+    CrossDeckHostBindingClaimRecordV1,
+    CrossDeckHostBindingClaimV1,
+    CrossDeckParticipantDiscoveryHostBindingV1,
+    DiscoveryHostRefV1,
+    HostBindingAcceptanceEventInputV2,
+    HostBindingAcceptanceEventLeafV2,
+    HostBindingAcceptanceEventRefV2,
+    HostBindingEvidenceRefV2,
+    HostBindingSourceBindingV2,
+    HostRealizationWitnessV1,
+    ParticipantHostRealizationV1,
+)
 from mtgml.persistence import encode_canonical
 from relation_application_v2_review_admission import admit_relation_application_v2_record
 from relation_application_v2_validator import (
@@ -89,13 +103,29 @@ CANDIDATE_UNIVERSE_SCHEMA = "manafold.m2.5.c.interaction-candidate-universe.v2"
 CANDIDATE_UNIVERSE_DIGEST = bytes.fromhex(
     "1f8761af56f8b44c5e51d8cb9fcff79dd95dd56a98bfc6793e2ca8860050c532"
 )
-REV3_ARCHIVE_ROOT = Path(r"C:\Users\chris\Documents\ManafoldArchive")
 SOURCE_INSTANCE_ID = (
     "si.v1/"
     + base64.urlsafe_b64encode(CANDIDATE_ID.encode("utf-8")).decode("ascii").rstrip("=")
     + "/0"
 )
 ZERO = bytes(32)
+REV3_CARD_REQUIREMENT_MAP_PATH = "derived/Card_Requirement_Map_REV3.csv"
+REV3_CARD_REQUIREMENT_MAP_DIGEST = bytes.fromhex(
+    "07af07fa0a45785cd497db616343569786212f58f6aa3e61e5f143fc1e23bfe7"
+)
+REV3_DECK_ROW_SOURCE_RESOLUTION_PATH = "inputs/deck_row_source_resolution_REV3.csv"
+REV3_DECK_ROW_SOURCE_RESOLUTION_DIGEST = bytes.fromhex(
+    "611a5d1de9ee8560d52ef434666d02d6d0906d321e5c41974b4588d163e508da"
+)
+REV3_OSI_SOURCE_RECORDS_PATH = "source/raw/oracle_cards_selected_REV3.jsonl"
+REV3_OSI_SOURCE_RECORDS_DIGEST = bytes.fromhex(
+    "0392cf3d9c4f8c27fd1a12722889594dfb79e0f9f1b92764db8d577e98e08b2b"
+)
+REV3_PAIR_AGGREGATES_PATH = "derived/Pair_Requirement_Aggregates_REV3.json"
+REV3_PAIR_AGGREGATES_DIGEST = bytes.fromhex(
+    "9fec921f3a29548f9638c3708fffa37fb4900991fa88ec005c7232d3830e7f74"
+)
+REV3_ARCHIVE_ENV_VAR = "MANAFOLD_SOURCE_ARCHIVE"
 REQUIRED_ROLES = (
     "architecture_maintainer",
     "conformance_maintainer",
@@ -518,13 +548,39 @@ class Candidate4Bundle:
 
 
 class Candidate4SourceResolver(AuthoritySourceResolver):
-    """Real repository/REV3 resolver with only the synthetic RPA artifact overlaid."""
+    """Real repository/REV3 resolver with digest-checked test artifacts overlaid."""
 
     def __init__(self) -> None:
-        super().__init__(ROOT, rev3_archive_root=REV3_ARCHIVE_ROOT)
-        self.bound_rpa_document: Mapping[str, object] | None = None
-        self.bound_host_document: Mapping[str, object] | None = None
-        self.bound_host_base_document: Mapping[str, object] | None = None
+        super().__init__(ROOT)
+        self._bound_artifacts: dict[str, SimpleNamespace] = {}
+
+    def bind_json_artifact(
+        self,
+        path: str,
+        schema: str,
+        value: Mapping[str, object],
+    ) -> bytes:
+        raw = (json.dumps(value, separators=(",", ":"), sort_keys=True) + "\n").encode("utf-8")
+        return self.bind_raw_artifact(path, schema, raw, json_value=json.loads(raw))
+
+    def bind_raw_artifact(
+        self,
+        path: str,
+        schema: str | None,
+        raw: bytes,
+        *,
+        json_value: object | None = None,
+    ) -> bytes:
+        digest = hashlib.sha256(raw).digest()
+        self._bound_artifacts[path] = SimpleNamespace(
+            source_kind="synthetic-conformance",
+            path=path,
+            raw_bytes=raw,
+            raw_sha256=digest.hex(),
+            json_value=json_value,
+            schema=schema,
+        )
+        return digest
 
     def resolve_repository_artifact(
         self,
@@ -532,23 +588,18 @@ class Candidate4SourceResolver(AuthoritySourceResolver):
         expected_raw_sha256: object,
         schema_or_null: str | None,
     ) -> object:
-        if (
-            path
-            == "sources/m2_5/authorities/relation_application_authority/v2/"
-            "relation_application_authority.v2.json"
-            and self.bound_rpa_document is not None
-        ):
-            return SimpleNamespace(json_value=self.bound_rpa_document)
-        if (
-            path == "sources/m2_5/authorities/interaction_review_authority.v2.json"
-            and self.bound_host_document is not None
-        ):
-            return SimpleNamespace(json_value=self.bound_host_document)
-        if (
-            path == "sources/m2_5/authorities/interaction_review_authority.v1.json"
-            and self.bound_host_base_document is not None
-        ):
-            return SimpleNamespace(json_value=self.bound_host_base_document)
+        artifact = self._bound_artifacts.get(path)
+        if artifact is not None:
+            expected_digest = (
+                expected_raw_sha256
+                if isinstance(expected_raw_sha256, bytes)
+                else bytes.fromhex(str(expected_raw_sha256))
+            )
+            if expected_digest.hex() != artifact.raw_sha256:
+                raise ValueError(f"synthetic artifact digest mismatch for {path}")
+            if schema_or_null != artifact.schema:
+                raise ValueError(f"synthetic artifact schema mismatch for {path}")
+            return artifact
         return super().resolve_repository_artifact(path, expected_raw_sha256, schema_or_null)
 
 
@@ -808,25 +859,290 @@ def _relation_source_binding(
     return RelationAuthoritySourceBindingV2(role, path, schema, digest)
 
 
-def _host_sources(
-    base: ContextAuthoritySourceBindingV3, candidate: ContextAuthoritySourceBindingV3, claim_id: str
-) -> tuple[HostBindingSourceBindingV2, ...]:
-    claim_record = HostBindingSourceBindingV2(
-        "host_binding_claim_record",
-        "sources/m2_5/authorities/cross_deck_host_binding_claims/v1/" + "c" * 64 + ".json",
-        "manafold.m2.5.c.cross-deck-host-binding-claim-record.v1",
-        b"c" * 32,
+def _synthetic_base_authority(
+    source_resolver: Candidate4SourceResolver,
+) -> HostBindingSourceBindingV2:
+    """Create one digest-bound, test-only V1 envelope for HBC admission."""
+
+    model_path = "sources/m2_5/closures/C/declared_interaction_model.v2.json"
+    model_digest = _repo_digest(model_path)
+    document = {
+        "schema": "manafold.m2.5.c.interaction-review-authority.v1",
+        "model_binding": {
+            "path": model_path,
+            "raw_sha256": model_digest.hex(),
+            "model_id": "declared-interaction-model.v2",
+            "model_version": "2",
+        },
+        "source_bindings": [
+            {
+                "authority_kind": "model",
+                "artifact_role": "declared_model",
+                "path": model_path,
+                "schema_or_null": "manafold.m2.5.c.declared-interaction-model.v2",
+                "raw_sha256": model_digest.hex(),
+            }
+        ],
+        "relation_proofs": [],
+        "relation_applications": [],
+        "domain_proofs": [],
+        "domain_applications": [],
+        "context_proofs": [],
+        "context_applications": [],
+        "supersession_records": [],
+    }
+    path = "sources/m2_5/authorities/interaction_review_authority.v1.json"
+    digest = source_resolver.bind_json_artifact(
+        path, "manafold.m2.5.c.interaction-review-authority.v1", document
     )
-    return tuple(
+    return HostBindingSourceBindingV2(
+        "base_authority_v1",
+        path,
+        "manafold.m2.5.c.interaction-review-authority.v1",
+        digest,
+    )
+
+
+def _candidate4_host_claim(
+    source_resolver: Candidate4SourceResolver,
+    member_key: ApplicationMemberKeyV1,
+    base_binding: HostBindingSourceBindingV2,
+    model_binding: HostBindingSourceBindingV2,
+    candidate_binding: HostBindingSourceBindingV2,
+) -> tuple[
+    CrossDeckHostBindingClaimRecordV1,
+    tuple[HostBindingSourceBindingV2, ...],
+]:
+    map_binding = HostBindingSourceBindingV2(
+        "rev3_card_requirement_map",
+        REV3_CARD_REQUIREMENT_MAP_PATH,
+        None,
+        REV3_CARD_REQUIREMENT_MAP_DIGEST,
+    )
+    deck_binding = HostBindingSourceBindingV2(
+        "rev3_deck_row_source_resolution",
+        REV3_DECK_ROW_SOURCE_RESOLUTION_PATH,
+        None,
+        REV3_DECK_ROW_SOURCE_RESOLUTION_DIGEST,
+    )
+    osi_binding = HostBindingSourceBindingV2(
+        "rev3_osi_source_records",
+        REV3_OSI_SOURCE_RECORDS_PATH,
+        None,
+        REV3_OSI_SOURCE_RECORDS_DIGEST,
+    )
+    pair_binding = HostBindingSourceBindingV2(
+        "rev3_pair_aggregates",
+        REV3_PAIR_AGGREGATES_PATH,
+        None,
+        REV3_PAIR_AGGREGATES_DIGEST,
+    )
+    b2_catalog = HostBindingSourceBindingV2(
+        "b2_catalog",
+        "sources/m2_5/closures/B2/requirement_family_catalog.v1.json",
+        "manafold.m2.5.b2.requirement-family-catalog.v1",
+        _repo_digest("sources/m2_5/closures/B2/requirement_family_catalog.v1.json"),
+    )
+    b2_classifications = HostBindingSourceBindingV2(
+        "b2_classifications",
+        "sources/m2_5/closures/B2/card_semantic_classifications.v1.json",
+        "manafold.m2.5.b2.card-semantic-classifications.v1",
+        _repo_digest("sources/m2_5/closures/B2/card_semantic_classifications.v1.json"),
+    )
+    b2_closure = HostBindingSourceBindingV2(
+        "b2_closure",
+        "sources/m2_5/closures/B2/classification_closure.v1.json",
+        "manafold.m2.5.b2.classification-closure.v1",
+        _repo_digest("sources/m2_5/closures/B2/classification_closure.v1.json"),
+    )
+
+    participant_facts = (
+        (
+            0,
+            "cap.mass_destruction",
+            "rev3_left_family",
+            "Buckle Up",
+            15,
+            30,
+            349,
+            340,
+        ),
+        (
+            1,
+            "cap.death_trigger",
+            "rev3_right_family",
+            "Upgrades Unleashed",
+            432,
+            421,
+            344,
+            0,
+        ),
+    )
+    discoveries: list[CrossDeckParticipantDiscoveryHostBindingV1] = []
+    realizations: list[ParticipantHostRealizationV1] = []
+    for (
+        position,
+        participant_ref,
+        side,
+        host_id,
+        map_row,
+        deck_row,
+        osi_line,
+        b2_row,
+    ) in participant_facts:
+        mapping_ref = HostBindingEvidenceRefV2(
+            "rev3_card_requirement_map",
+            REV3_CARD_REQUIREMENT_MAP_PATH,
+            None,
+            REV3_CARD_REQUIREMENT_MAP_DIGEST,
+            ("csv_row", map_row),
+        )
+        deck_ref = HostBindingEvidenceRefV2(
+            "rev3_deck_row_source_resolution",
+            REV3_DECK_ROW_SOURCE_RESOLUTION_PATH,
+            None,
+            REV3_DECK_ROW_SOURCE_RESOLUTION_DIGEST,
+            ("csv_row", deck_row),
+        )
+        osi_ref = HostBindingEvidenceRefV2(
+            "rev3_osi_source_records",
+            REV3_OSI_SOURCE_RECORDS_PATH,
+            None,
+            REV3_OSI_SOURCE_RECORDS_DIGEST,
+            ("jsonl_line", osi_line),
+        )
+        b2_ref = HostBindingEvidenceRefV2(
+            "b2_classifications",
+            b2_classifications.path,
+            b2_classifications.schema_or_null,
+            b2_classifications.raw_sha256,
+            ("json_pointer", f"/classifications/{b2_row}"),
+        )
+        host = DiscoveryHostRefV1("rev3_deck", host_id)
+        discoveries.append(
+            CrossDeckParticipantDiscoveryHostBindingV1(
+                member_key,
+                position,
+                participant_ref,
+                side,
+                host,
+                (mapping_ref,),
+            )
+        )
+        realizations.append(
+            ParticipantHostRealizationV1(
+                member_key,
+                position,
+                participant_ref,
+                host,
+                (HostRealizationWitnessV1(mapping_ref, deck_ref, osi_ref, (b2_ref,)),),
+            )
+        )
+    claim = CrossDeckHostBindingClaimV1(
+        member_key,
+        tuple(discoveries),
+        tuple(realizations),
+        "cross_host",
+    )
+
+    roster_raw = (
+        json.dumps(
+            {
+                "schema": "manafold.m2.5.c.reviewer-roster.v1",
+                "reviewers": [
+                    {
+                        "reviewer_id": "candidate4-host-reviewer",
+                        "roles": ["architecture_maintainer", "project_owner"],
+                    }
+                ],
+            },
+            separators=(",", ":"),
+            sort_keys=True,
+        ).encode("utf-8")
+        + b"\n"
+    )
+    roster_path = (
+        "sources/m2_5/authorities/reviewer_rosters/v1/"
+        + hashlib.sha256(roster_raw).hexdigest()
+        + ".json"
+    )
+    roster_digest = source_resolver.bind_raw_artifact(
+        roster_path,
+        "manafold.m2.5.c.reviewer-roster.v1",
+        roster_raw,
+        json_value=json.loads(roster_raw),
+    )
+    roster_ref = ReviewerRosterRefV1(
+        roster_path, "manafold.m2.5.c.reviewer-roster.v1", roster_digest
+    )
+    evidence_raw = b"candidate-4 host-binding synthetic review evidence\n"
+    evidence_path = "conformance/fixtures/authority/candidate_4_host_review.txt"
+    evidence_digest = source_resolver.bind_raw_artifact(evidence_path, None, evidence_raw)
+    evidence_ref = AcceptanceEvidenceRefV1(evidence_path, evidence_digest, ("whole_artifact", None))
+    event_sources = tuple(
         sorted(
             (
+                model_binding,
+                candidate_binding,
+                pair_binding,
+                map_binding,
+                deck_binding,
+                osi_binding,
+                b2_catalog,
+                b2_classifications,
+                b2_closure,
                 HostBindingSourceBindingV2(
-                    "base_authority_v1", base.path, base.schema, base.raw_sha256
+                    "reviewer_roster_leaf",
+                    roster_path,
+                    "manafold.m2.5.c.reviewer-roster.v1",
+                    roster_digest,
                 ),
+            ),
+            key=lambda item: encode_canonical(item.to_cbor()),
+        )
+    )
+    event_input = HostBindingAcceptanceEventInputV2(
+        "cross_deck_host_binding_claim_record_v1",
+        claim.identity().digest_bytes,
+        roster_ref,
+        (
+            ReviewerRoleBindingV1(
+                "candidate4-host-reviewer", ("architecture_maintainer", "project_owner")
+            ),
+        ),
+        ReviewMode.MULTI_REVIEWER,
+        "cross-deck-host-binding-review-checklist.v1",
+        event_sources,
+        (evidence_ref,),
+    )
+    event = HostBindingAcceptanceEventLeafV2.from_input(event_input)
+    event_path = (
+        "sources/m2_5/authorities/review_acceptance_events/v2/"
+        + event.event_id.digest_bytes.hex()
+        + ".json"
+    )
+    event_raw = (json.dumps(event.to_wire(), separators=(",", ":"), sort_keys=True) + "\n").encode(
+        "utf-8"
+    )
+    event_digest = source_resolver.bind_raw_artifact(
+        event_path,
+        "manafold.m2.5.c.review-acceptance-event.v2",
+        event_raw,
+        json_value=json.loads(event_raw),
+    )
+    event_ref = HostBindingAcceptanceEventRefV2(event_path, event_digest, event.event_id.as_text())
+    record = CrossDeckHostBindingClaimRecordV1(claim, event_ref)
+    return record, tuple(
+        sorted(
+            (
+                base_binding,
+                *event_sources,
                 HostBindingSourceBindingV2(
-                    "candidate_universe", candidate.path, candidate.schema, candidate.raw_sha256
+                    "acceptance_event_leaf_v2",
+                    event_path,
+                    "manafold.m2.5.c.review-acceptance-event.v2",
+                    event_digest,
                 ),
-                claim_record,
             ),
             key=lambda item: encode_canonical(item.to_cbor()),
         )
@@ -835,6 +1151,10 @@ def _host_sources(
 
 def build_bundle() -> Candidate4Bundle:
     global _CANDIDATE4_RESOLVED_SOURCE
+    if not os.environ.get(REV3_ARCHIVE_ENV_VAR):
+        raise unittest.SkipTest(
+            f"{REV3_ARCHIVE_ENV_VAR} is unavailable; real Candidate-4 source probe is blocked"
+        )
     source_resolver = _candidate4_source_resolver()
     if _CANDIDATE4_RESOLVED_SOURCE is None:
         _CANDIDATE4_RESOLVED_SOURCE = source_resolver.resolve_candidate_source_instance(
@@ -850,6 +1170,7 @@ def build_bundle() -> Candidate4Bundle:
         )
     source = _CANDIDATE4_RESOLVED_SOURCE
     candidate = source.candidate.candidate_record
+    base_v2 = _synthetic_base_authority(source_resolver)
     rpa_theorem_id = AuthorityIdentityV1(AuthorityIdentityKind.RELATION_THEOREM_RECORD, b"t" * 32)
     rpa_app = RelationApplicationV2(
         rpa_theorem_id.digest_bytes, "required_interaction", (_rpa_member(),)
@@ -898,7 +1219,7 @@ def build_bundle() -> Candidate4Bundle:
                     "base_authority_v1",
                     "sources/m2_5/authorities/interaction_review_authority.v1.json",
                     "manafold.m2.5.c.interaction-review-authority.v1",
-                    _repo_digest("sources/m2_5/authorities/interaction_review_authority.v1.json"),
+                    base_v2.raw_sha256,
                 ),
                 _relation_source_binding(
                     "candidate_universe",
@@ -911,6 +1232,48 @@ def build_bundle() -> Candidate4Bundle:
                     "sources/m2_5/closures/C/declared_interaction_model.v2.json",
                     "manafold.m2.5.c.declared-interaction-model.v2",
                     _repo_digest("sources/m2_5/closures/C/declared_interaction_model.v2.json"),
+                ),
+                _relation_source_binding(
+                    "rev3_pair_aggregates",
+                    REV3_PAIR_AGGREGATES_PATH,
+                    None,
+                    REV3_PAIR_AGGREGATES_DIGEST,
+                ),
+                _relation_source_binding(
+                    "rev3_card_requirement_map",
+                    REV3_CARD_REQUIREMENT_MAP_PATH,
+                    None,
+                    REV3_CARD_REQUIREMENT_MAP_DIGEST,
+                ),
+                _relation_source_binding(
+                    "rev3_deck_row_source_resolution",
+                    REV3_DECK_ROW_SOURCE_RESOLUTION_PATH,
+                    None,
+                    REV3_DECK_ROW_SOURCE_RESOLUTION_DIGEST,
+                ),
+                _relation_source_binding(
+                    "rev3_osi_source_records",
+                    REV3_OSI_SOURCE_RECORDS_PATH,
+                    None,
+                    REV3_OSI_SOURCE_RECORDS_DIGEST,
+                ),
+                _relation_source_binding(
+                    "b2_catalog",
+                    "sources/m2_5/closures/B2/requirement_family_catalog.v1.json",
+                    "manafold.m2.5.b2.requirement-family-catalog.v1",
+                    _repo_digest("sources/m2_5/closures/B2/requirement_family_catalog.v1.json"),
+                ),
+                _relation_source_binding(
+                    "b2_classifications",
+                    "sources/m2_5/closures/B2/card_semantic_classifications.v1.json",
+                    "manafold.m2.5.b2.card-semantic-classifications.v1",
+                    _repo_digest("sources/m2_5/closures/B2/card_semantic_classifications.v1.json"),
+                ),
+                _relation_source_binding(
+                    "b2_closure",
+                    "sources/m2_5/closures/B2/classification_closure.v1.json",
+                    "manafold.m2.5.b2.classification-closure.v1",
+                    _repo_digest("sources/m2_5/closures/B2/classification_closure.v1.json"),
                 ),
             ),
             key=lambda item: encode_canonical(item.to_cbor()),
@@ -933,7 +1296,72 @@ def build_bundle() -> Candidate4Bundle:
         (),
     )
     rpa_resolver.authority = rpa_authority
-    source_resolver.bound_rpa_document = rpa_authority.to_wire()
+    rpa_path = (
+        "sources/m2_5/authorities/relation_application_authority/v2/"
+        "relation_application_authority.v2.json"
+    )
+    rpa_digest = source_resolver.bind_json_artifact(
+        rpa_path,
+        "manafold.m2.5.c.relation-application-authority.v2",
+        rpa_authority.to_wire(),
+    )
+    base = ContextAuthoritySourceBindingV3(
+        "base_authority_v1",
+        base_v2.path,
+        base_v2.schema_or_null,
+        base_v2.raw_sha256,
+    )
+    candidate_binding = ContextAuthoritySourceBindingV3(
+        "candidate_universe",
+        CANDIDATE_UNIVERSE_PATH,
+        CANDIDATE_UNIVERSE_SCHEMA,
+        CANDIDATE_UNIVERSE_DIGEST,
+    )
+    relation_projection = ContextAuthoritySourceBindingV3(
+        "relation_authority_v2",
+        rpa_path,
+        "manafold.m2.5.c.relation-application-authority.v2",
+        rpa_digest,
+    )
+    claim_key = ApplicationMemberKeyV1(CANDIDATE_ID, CANDIDATE_DIGEST, SOURCE_INSTANCE_ID)
+    host_record, host_sources = _candidate4_host_claim(
+        source_resolver,
+        claim_key,
+        base_v2,
+        HostBindingSourceBindingV2(
+            "declared_model",
+            "sources/m2_5/closures/C/declared_interaction_model.v2.json",
+            "manafold.m2.5.c.declared-interaction-model.v2",
+            _repo_digest("sources/m2_5/closures/C/declared_interaction_model.v2.json"),
+        ),
+        HostBindingSourceBindingV2(
+            "candidate_universe",
+            CANDIDATE_UNIVERSE_PATH,
+            CANDIDATE_UNIVERSE_SCHEMA,
+            CANDIDATE_UNIVERSE_DIGEST,
+        ),
+    )
+    host_path = "sources/m2_5/authorities/interaction_review_authority.v2.json"
+    host_document = {
+        "schema": "manafold.m2.5.c.interaction-review-authority.v2",
+        "base_authority_v1_binding": base_v2.to_wire(),
+        "source_bindings": [item.to_wire() for item in host_sources],
+        "cross_deck_host_binding_claim_records": [host_record.to_wire()],
+        "cross_deck_host_binding_claim_supersession_records": [],
+        "application_host_bindings": [],
+    }
+    host_digest = source_resolver.bind_json_artifact(
+        host_path,
+        "manafold.m2.5.c.interaction-review-authority.v2",
+        host_document,
+    )
+    host_projection = ContextAuthoritySourceBindingV3(
+        "host_binding_authority_v2",
+        host_path,
+        "manafold.m2.5.c.interaction-review-authority.v2",
+        host_digest,
+    )
+    host_model = admit_host_binding_authority_v2(source_resolver, host_projection)
     rpa_member_resolver = ContextApplicationV3RpaResolver(
         rpa_authority, rpa_resolver, currentness=rpa_resolver
     )
@@ -981,53 +1409,10 @@ def build_bundle() -> Candidate4Bundle:
         context_app.identity(), context_theorem_id, context_app.members, context_ref
     )
     context_resolver._context_event = context_event
-    base = ContextAuthoritySourceBindingV3(
-        "base_authority_v1",
-        "sources/m2_5/authorities/interaction_review_authority.v1.json",
-        "manafold.m2.5.c.interaction-review-authority.v1",
-        _repo_digest("sources/m2_5/authorities/interaction_review_authority.v1.json"),
-    )
-    candidate_binding = ContextAuthoritySourceBindingV3(
-        "candidate_universe",
-        "sources/m2_5/closures/C/interaction_candidate_universe.v2.json",
-        "manafold.m2.5.c.interaction-candidate-universe.v2",
-        CANDIDATE_UNIVERSE_DIGEST,
-    )
-    relation_projection = ContextAuthoritySourceBindingV3(
-        "relation_authority_v2",
-        "sources/m2_5/authorities/relation_application_authority/v2/relation_application_authority.v2.json",
-        "manafold.m2.5.c.relation-application-authority.v2",
-        b"q" * 32,
-    )
-    host_projection = ContextAuthoritySourceBindingV3(
-        "host_binding_authority_v2",
-        "sources/m2_5/authorities/interaction_review_authority.v2.json",
-        "manafold.m2.5.c.interaction-review-authority.v2",
-        b"h" * 32,
-    )
-    claim_key = ApplicationMemberKeyV1(CANDIDATE_ID, CANDIDATE_DIGEST, SOURCE_INSTANCE_ID)
-    claim = _cross_host_claim(claim_key)
+    claim = host_record.claim
     claim_id = claim.identity().as_text()
     host_link = ApplicationHostBindingV3(
         "context_application_v3", context_record.application_id, (claim_id,)
-    )
-    host_sources = _host_sources(base, candidate_binding, claim_id)
-    host_model = HostBindingAuthorityV2ReadModel(
-        base_authority_v1_binding=HostBindingSourceBindingV2(
-            "base_authority_v1", base.path, base.schema, base.raw_sha256
-        ),
-        candidate_universe_binding=HostBindingSourceBindingV2(
-            "candidate_universe",
-            candidate_binding.path,
-            candidate_binding.schema,
-            candidate_binding.raw_sha256,
-        ),
-        admitted_claims_by_id=((claim_id, claim),),
-        current_claims_by_id=((claim_id, claim),),
-        current_claims_by_member=((claim_key, claim_id),),
-        claim_record_status_by_record_id=(),
-        claim_record_ids_by_claim_id=((claim_id, ("hbcr.v1/" + "c" * 64,)),),
-        used_source_bindings=host_sources,
     )
     context_source_values: dict[bytes, ContextAuthoritySourceBindingV3] = {
         encode_canonical(item.to_cbor()): item
@@ -1090,6 +1475,18 @@ def build_bundle() -> Candidate4Bundle:
 
 
 class Candidate4AuthorityContractTests(unittest.TestCase):
+    def test_synthetic_authority_artifacts_require_exact_bound_digest(self) -> None:
+        resolver = Candidate4SourceResolver()
+        path = (
+            "sources/m2_5/authorities/relation_application_authority/v2/"
+            "relation_application_authority.v2.json"
+        )
+        schema = "manafold.m2.5.c.relation-application-authority.v2"
+        digest = resolver.bind_json_artifact(path, schema, {"schema": schema})
+        self.assertIsNotNone(resolver.resolve_repository_artifact(path, digest, schema))
+        with self.assertRaises(ValueError):
+            resolver.resolve_repository_artifact(path, b"q" * 32, schema)
+
     def test_exact_candidate_4_lock_and_full_positive_path(self) -> None:
         lock = _fixture("candidate_4_role_bridge_golden.v1.json")
         self.assertEqual(lock["candidate_id"], CANDIDATE_ID)
@@ -1104,6 +1501,17 @@ class Candidate4AuthorityContractTests(unittest.TestCase):
         )
         bundle = build_bundle()
         source_before = copy.deepcopy(bundle.source_instance_snapshot)
+        admitted_claims = dict(bundle.host_read_model.admitted_claims_by_id)
+        current_claims = dict(bundle.host_read_model.current_claims_by_id)
+        claim_id = bundle.host_link.host_binding_claim_ids[0]
+        self.assertIn(claim_id, admitted_claims)
+        self.assertIs(current_claims[claim_id], admitted_claims[claim_id])
+        self.assertTrue(
+            any(
+                record_ids
+                for _claim, record_ids in bundle.host_read_model.claim_record_ids_by_claim_id
+            )
+        )
         rpa_admission = admit_relation_application_v2_record(
             bundle.rpa_record, bundle.relation_resolver, currentness=bundle.relation_resolver
         )
@@ -1112,90 +1520,14 @@ class Candidate4AuthorityContractTests(unittest.TestCase):
             bundle.context_record, bundle.context_resolver
         )
         self.assertTrue(context_admission.semantic_validation.valid)
-
-        def admit_candidate4_host_authority(
-            resolver: Candidate4SourceResolver,
-            binding: ContextAuthoritySourceBindingV3,
-        ) -> HostBindingAuthorityV2ReadModel:
-            model_path = "sources/m2_5/closures/C/declared_interaction_model.v2.json"
-            model_digest = _repo_digest(model_path)
-            synthetic_base = {
-                "schema": "manafold.m2.5.c.interaction-review-authority.v1",
-                "model_binding": {
-                    "path": model_path,
-                    "raw_sha256": model_digest.hex(),
-                    "model_id": "declared-interaction-model.v2",
-                    "model_version": "2",
-                },
-                "source_bindings": [
-                    {
-                        "authority_kind": "model",
-                        "artifact_role": "declared_model",
-                        "path": model_path,
-                        "schema_or_null": "manafold.m2.5.c.declared-interaction-model.v2",
-                        "raw_sha256": model_digest.hex(),
-                    }
-                ],
-                "relation_proofs": [],
-                "relation_applications": [],
-                "domain_proofs": [],
-                "domain_applications": [],
-                "context_proofs": [],
-                "context_applications": [],
-                "supersession_records": [],
-            }
-            resolver.bound_host_base_document = synthetic_base
-            synthetic_base_raw_digest = hashlib.sha256(
-                json.dumps(synthetic_base, separators=(",", ":")).encode("utf-8")
-            ).digest()
-            base = HostBindingSourceBindingV2(
-                "base_authority_v1",
-                "sources/m2_5/authorities/interaction_review_authority.v1.json",
-                "manafold.m2.5.c.interaction-review-authority.v1",
-                synthetic_base_raw_digest,
-            )
-            resolver.bound_host_document = {
-                "schema": "manafold.m2.5.c.interaction-review-authority.v2",
-                "base_authority_v1_binding": base.to_wire(),
-                "source_bindings": [base.to_wire()],
-                "cross_deck_host_binding_claim_records": [],
-                "cross_deck_host_binding_claim_supersession_records": [],
-                "application_host_bindings": [],
-            }
-            admitted = admit_host_binding_authority_v2(resolver, binding)
-            return replace(
-                admitted,
-                base_authority_v1_binding=HostBindingSourceBindingV2(
-                    "base_authority_v1",
-                    "sources/m2_5/authorities/interaction_review_authority.v1.json",
-                    "manafold.m2.5.c.interaction-review-authority.v1",
-                    _repo_digest("sources/m2_5/authorities/interaction_review_authority.v1.json"),
-                ),
-                candidate_universe_binding=HostBindingSourceBindingV2(
-                    "candidate_universe",
-                    CANDIDATE_UNIVERSE_PATH,
-                    CANDIDATE_UNIVERSE_SCHEMA,
-                    CANDIDATE_UNIVERSE_DIGEST,
-                ),
-                admitted_claims_by_id=bundle.host_read_model.admitted_claims_by_id,
-                current_claims_by_id=bundle.host_read_model.current_claims_by_id,
-                current_claims_by_member=bundle.host_read_model.current_claims_by_member,
-                claim_record_ids_by_claim_id=bundle.host_read_model.claim_record_ids_by_claim_id,
-                used_source_bindings=bundle.host_read_model.used_source_bindings,
-            )
-
-        with patch(
-            "context_application_v3_host_binding.admit_host_binding_authority_v2",
-            side_effect=admit_candidate4_host_authority,
-        ):
-            currentness = ContextApplicationV3AuthorityResolver(
-                bundle.context_resolver
-            ).evaluate_authority(
-                bundle.context_authority,
-                relation_authority=bundle.rpa_authority,
-                v2_records=(),
-                v2_supersession_records=(),
-            )
+        currentness = ContextApplicationV3AuthorityResolver(
+            bundle.context_resolver
+        ).evaluate_authority(
+            bundle.context_authority,
+            relation_authority=bundle.rpa_authority,
+            v2_records=(),
+            v2_supersession_records=(),
+        )
         self.assertEqual(
             tuple(item.as_text() for item in currentness.current_record_ids),
             (bundle.context_record.record_id.as_text(),),
@@ -1447,9 +1779,9 @@ class Candidate4AuthorityContractTests(unittest.TestCase):
                         [
                             *authority.relation_source_bindings,
                             _relation_source_binding(
-                                "b2_catalog",
-                                "sources/m2_5/closures/B2/requirement_family_catalog.v1.json",
-                                "manafold.m2.5.b2.requirement-family-catalog.v1",
+                                "rev3_source_index",
+                                "source/raw/source_record_index_REV3.csv",
+                                None,
                                 b"x" * 32,
                             ),
                         ],
