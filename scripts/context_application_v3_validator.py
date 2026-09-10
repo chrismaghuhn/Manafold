@@ -17,7 +17,10 @@ if str(PYTHON_SRC) not in sys.path:
 from context_application_v2_validator import (
     CONTEXT_DIMENSIONS,
     ContextApplicationV2SemanticInput,
+    ContextApplicationV2SemanticValidationError,
     ContextPreconditionValueV1,
+    _member_preconditions,
+    _theorem_preconditions,
     validate_context_application_v2_semantics,
 )
 from context_application_v3_resolver import (
@@ -48,17 +51,15 @@ class ContextApplicationV3SemanticValidationResult:
     member_count: int
 
 
-def _preconditions(value: object, label: str) -> tuple[ContextPreconditionValueV1, ...]:
-    if not isinstance(value, list):
-        raise ContextApplicationV3SemanticValidationError("PRECONDITION_MISMATCH", label)
-    result: list[ContextPreconditionValueV1] = []
-    for index, item in enumerate(value):
-        if not isinstance(item, list) or len(item) != 4 or not isinstance(item[0], str):
-            raise ContextApplicationV3SemanticValidationError(
-                "PRECONDITION_MISMATCH", f"{label}[{index}]"
-            )
-        result.append(ContextPreconditionValueV1(item[0], cast(object, item[1])))
-    return tuple(result)
+def _precondition_values(
+    theorem: Mapping[str, object],
+    member: ContextApplicationMemberV3,
+    label: str,
+) -> tuple[tuple[ContextPreconditionValueV1, ...], tuple[ContextPreconditionValueV1, ...]]:
+    try:
+        return _theorem_preconditions(theorem, label), _member_preconditions(member, label)
+    except ContextApplicationV2SemanticValidationError as exc:
+        raise ContextApplicationV3SemanticValidationError(exc.code, exc.location) from exc
 
 
 def _context_binding_from_wire(value: object, label: str) -> list[object]:
@@ -295,6 +296,7 @@ class ContextApplicationV3SemanticValidator:
                 "CONTEXT_APPLICATION_V3_SOURCE_MISMATCH", f"{label}.source_context"
             )
         historical_values = tuple(source_context[name] for name in CONTEXT_DIMENSIONS)
+        theorem_preconditions, member_preconditions = _precondition_values(theorem, member, label)
         semantic = ContextApplicationV2SemanticInput(
             theorem_subject_shape=cast(
                 object, _context_binding_from_wire(theorem["subject_shape"], label)
@@ -307,8 +309,8 @@ class ContextApplicationV3SemanticValidator:
             bridge_relations=tuple(slot.relation for slot in bridge.context),
             theorem_temporal_values=theorem_temporal,
             bridge_temporal_values=tuple(slot.reviewed_value for slot in bridge.temporal),
-            theorem_preconditions=_preconditions(theorem.get("preconditions"), label),
-            member_preconditions=_preconditions(member.precondition_attestations_v1, label),
+            theorem_preconditions=theorem_preconditions,
+            member_preconditions=member_preconditions,
         )
         validate_context_application_v2_semantics(semantic)
 

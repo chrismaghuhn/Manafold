@@ -347,7 +347,6 @@ class ContextApplicationV3Resolver:
             rpa_event = self.resolve_acceptance_event_leaf_v4(
                 resolved_rpa.record.review_event_ref_v4
             )
-            del rpa_event
             rpa_event_sources.append(
                 ReviewAuthoritySourceBindingV4(
                     "acceptance_event_leaf_v4",
@@ -358,7 +357,7 @@ class ContextApplicationV3Resolver:
             )
             rpa_event_sources.extend(
                 self._rpa_member_resolver.expected_rpa_source_closure(
-                    resolved_rpa.record, reviewer_roster_ref
+                    resolved_rpa.record, rpa_event.reviewer_roster_ref
                 )
             )
 
