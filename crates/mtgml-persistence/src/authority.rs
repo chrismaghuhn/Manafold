@@ -13,6 +13,7 @@ pub const REVIEWER_ROSTER_SCHEMA_V1: &str = "manafold.m2.5.c.reviewer-roster.v1"
 pub const ACCEPTANCE_CHECKLIST_V1: &str = "interaction-authority-review-checklist.v1";
 pub const SUPERSESSION_RECORD_SCHEMA_V1: &str = "manafold.m2.5.c.supersession-record.v1";
 pub const CONTEXT_AUTHORITY_SCHEMA_V2: &str = "manafold.m2.5.c.context-application-authority.v2";
+pub const CONTEXT_AUTHORITY_SCHEMA_V3: &str = "manafold.m2.5.c.context-application-authority.v3";
 pub const CONTEXT_APPLICATION_INPUT_SCHEMA_V2: &str =
     "manafold.m2.5.c.context-application-input.v2";
 pub const CONTEXT_APPLICATION_RECORD_INPUT_SCHEMA_V2: &str =
@@ -30,6 +31,10 @@ pub const CONTEXT_SUPERSESSION_INPUT_SCHEMA_V2: &str =
     "manafold.m2.5.c.context-application-v2-supersession-input.v2";
 pub const CONTEXT_SUPERSESSION_RECORD_INPUT_SCHEMA_V2: &str =
     "manafold.m2.5.c.context-application-supersession-record-input.v2";
+pub const CONTEXT_SUPERSESSION_INPUT_SCHEMA_V3: &str =
+    "manafold.m2.5.c.context-application-v3-supersession-input.v3";
+pub const CONTEXT_SUPERSESSION_RECORD_INPUT_SCHEMA_V3: &str =
+    "manafold.m2.5.c.context-application-supersession-record-input.v3";
 pub const ACCEPTANCE_SUBJECT_SCHEMA_V3: &str = "manafold.m2.5.c.acceptance-subject-payload.v3";
 pub const ACCEPTANCE_SUBJECT_INPUT_SCHEMA_V3: &str =
     "manafold.m2.5.c.acceptance-subject-payload-input.v3";
@@ -65,6 +70,30 @@ const ARTIFACT_ROLES: [&str; 10] = [
     "candidate_universe",
     "acceptance_event_leaf",
     "reviewer_roster_leaf",
+];
+
+const CONTEXT_AUTHORITY_SOURCE_ROLES_V3: [&str; 21] = [
+    "base_authority_v1",
+    "declared_model",
+    "candidate_universe",
+    "rev3_candidate_census",
+    "rev3_pair_aggregates",
+    "rev3_card_requirement_map",
+    "rev3_deck_row_source_resolution",
+    "rev3_osi_source_records",
+    "rev3_source_index",
+    "b2_catalog",
+    "b2_classifications",
+    "b2_closure",
+    "b1_final_citations",
+    "b1_final_closure",
+    "reviewer_roster_leaf",
+    "acceptance_event_leaf_v1",
+    "acceptance_event_leaf_v2",
+    "acceptance_event_leaf_v4",
+    "relation_authority_v2",
+    "host_binding_authority_v2",
+    "host_binding_claim_record",
 ];
 
 const AUTHORITY_KINDS: [&str; 7] = [
@@ -114,6 +143,8 @@ pub enum AuthorityIdentityKind {
     ContextSupersessionRecordV2,
     ContextApplicationV3,
     ContextApplicationRecordV3,
+    ContextSupersessionV3,
+    ContextSupersessionRecordV3,
     AcceptanceSubjectV3,
     ReviewAcceptanceEventV3,
     AcceptanceSubjectV4,
@@ -150,6 +181,8 @@ impl AuthorityIdentityKind {
             Self::ContextSupersessionRecordV2 => "cpsr.v2/",
             Self::ContextApplicationV3 => "cpa.v3/",
             Self::ContextApplicationRecordV3 => "cpar.v3/",
+            Self::ContextSupersessionV3 => "cps.v3/",
+            Self::ContextSupersessionRecordV3 => "cpsr.v3/",
             Self::AcceptanceSubjectV3 => "asp.v3/",
             Self::ReviewAcceptanceEventV3 => "ae.v3/",
             Self::AcceptanceSubjectV4 => "asp.v4/",
@@ -190,6 +223,10 @@ impl AuthorityIdentityKind {
             }
             Self::ContextApplicationV3 => "manafold.m2.5.c.context-application.v3",
             Self::ContextApplicationRecordV3 => "manafold.m2.5.c.context-application-record.v3",
+            Self::ContextSupersessionV3 => "manafold.m2.5.c.context-application-supersession.v3",
+            Self::ContextSupersessionRecordV3 => {
+                "manafold.m2.5.c.context-application-supersession-record.v3"
+            }
             Self::AcceptanceSubjectV3 => "manafold.m2.5.c.acceptance-subject-payload.v3",
             Self::ReviewAcceptanceEventV3 => "manafold.m2.5.c.review-acceptance-event.v3",
             Self::AcceptanceSubjectV4 => ACCEPTANCE_SUBJECT_SCHEMA_V4,
@@ -230,6 +267,8 @@ impl AuthorityIdentityKind {
             Self::ContextApplicationRecordV3 => {
                 "manafold.m2.5.c.context-application-record-input.v3"
             }
+            Self::ContextSupersessionV3 => CONTEXT_SUPERSESSION_INPUT_SCHEMA_V3,
+            Self::ContextSupersessionRecordV3 => CONTEXT_SUPERSESSION_RECORD_INPUT_SCHEMA_V3,
             Self::AcceptanceSubjectV3 => ACCEPTANCE_SUBJECT_INPUT_SCHEMA_V3,
             Self::ReviewAcceptanceEventV3 => ACCEPTANCE_EVENT_INPUT_SCHEMA_V3,
             Self::AcceptanceSubjectV4 => ACCEPTANCE_SUBJECT_INPUT_SCHEMA_V4,
@@ -266,6 +305,8 @@ impl AuthorityIdentityKind {
             Self::ContextSupersessionRecordV2 => 3,
             Self::ContextApplicationV3 => 3,
             Self::ContextApplicationRecordV3 => 3,
+            Self::ContextSupersessionV3 => 7,
+            Self::ContextSupersessionRecordV3 => 3,
             Self::AcceptanceSubjectV3 => 3,
             Self::ReviewAcceptanceEventV3 => 10,
             Self::AcceptanceSubjectV4 => 3,
@@ -3202,6 +3243,12 @@ fn validate_identity_payload(
         AuthorityIdentityKind::ContextApplicationRecordV3 => {
             validate_context_application_record_v3_input(fields)
         }
+        AuthorityIdentityKind::ContextSupersessionV3 => {
+            validate_context_supersession_v3_input(fields)
+        }
+        AuthorityIdentityKind::ContextSupersessionRecordV3 => {
+            validate_context_supersession_record_v3_input(fields)
+        }
         AuthorityIdentityKind::ContextSupersessionV2 => {
             validate_context_supersession_v2_input(fields)
         }
@@ -4776,6 +4823,187 @@ impl ContextAuthoritySourceBindingV2 {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ContextAuthoritySourceBindingV3 {
+    pub artifact_role: String,
+    pub path: String,
+    pub schema: Option<String>,
+    pub raw_sha256: [u8; 32],
+}
+
+impl ContextAuthoritySourceBindingV3 {
+    pub fn new(
+        artifact_role: impl Into<String>,
+        path: impl Into<String>,
+        schema: Option<&str>,
+        raw_sha256: [u8; 32],
+    ) -> Result<Self, PersistenceDecodeErrorV1> {
+        let artifact_role = artifact_role.into();
+        let path = path.into();
+        validate_member(&CONTEXT_AUTHORITY_SOURCE_ROLES_V3, &artifact_role)?;
+        validate_repo_relative_path(&path)?;
+        let schema = schema.map(str::to_owned);
+        let expected = match artifact_role.as_str() {
+            "base_authority_v1" => Some((
+                "sources/m2_5/authorities/interaction_review_authority.v1.json",
+                Some("manafold.m2.5.c.interaction-review-authority.v1"),
+            )),
+            "declared_model" => Some((
+                "sources/m2_5/closures/C/declared_interaction_model.v2.json",
+                Some("manafold.m2.5.c.declared-interaction-model.v2"),
+            )),
+            "candidate_universe" => Some((
+                "sources/m2_5/closures/C/interaction_candidate_universe.v2.json",
+                Some("manafold.m2.5.c.interaction-candidate-universe.v2"),
+            )),
+            "rev3_candidate_census" => Some(("derived/Pair_Interaction_Census_REV3.csv", None)),
+            "rev3_pair_aggregates" => Some(("derived/Pair_Requirement_Aggregates_REV3.json", None)),
+            "rev3_card_requirement_map" => Some(("derived/Card_Requirement_Map_REV3.csv", None)),
+            "rev3_deck_row_source_resolution" => Some(("inputs/deck_row_source_resolution_REV3.csv", None)),
+            "rev3_osi_source_records" => Some(("source/raw/oracle_cards_selected_REV3.jsonl", None)),
+            "rev3_source_index" => Some(("source/raw/source_record_index_REV3.csv", None)),
+            "b2_catalog" => Some((
+                "sources/m2_5/closures/B2/requirement_family_catalog.v1.json",
+                Some("manafold.m2.5.b2.requirement-family-catalog.v1"),
+            )),
+            "b2_classifications" => Some((
+                "sources/m2_5/closures/B2/card_semantic_classifications.v1.json",
+                Some("manafold.m2.5.b2.card-semantic-classifications.v1"),
+            )),
+            "b2_closure" => Some((
+                "sources/m2_5/closures/B2/classification_closure.v1.json",
+                Some("manafold.m2.5.b2.classification-closure.v1"),
+            )),
+            "b1_final_citations" => Some((
+                "sources/m2_5/closures/B1/official_authority_citations.v3.json",
+                Some("manafold.m2.5.b1.official-authority-citations.v3"),
+            )),
+            "b1_final_closure" => Some((
+                "sources/m2_5/closures/B1/official_authority_citation_closure.v2.json",
+                Some("manafold.m2.5.b1.official-authority-citation-closure.v2"),
+            )),
+            "relation_authority_v2" => Some((
+                "sources/m2_5/authorities/relation_application_authority/v2/relation_application_authority.v2.json",
+                Some(RELATION_AUTHORITY_SCHEMA_V2),
+            )),
+            "host_binding_authority_v2" => Some((
+                "sources/m2_5/authorities/interaction_review_authority.v2.json",
+                Some("manafold.m2.5.c.interaction-review-authority.v2"),
+            )),
+            _ => None,
+        };
+        if let Some((expected_path, expected_schema)) = expected {
+            if path != expected_path || schema.as_deref() != expected_schema {
+                return Err(PersistenceDecodeErrorV1::SchemaIdentityMismatch);
+            }
+        } else {
+            let (prefix, expected_schema) = match artifact_role.as_str() {
+                "reviewer_roster_leaf" => (
+                    "sources/m2_5/authorities/reviewer_rosters/v1/",
+                    REVIEWER_ROSTER_SCHEMA_V1,
+                ),
+                "acceptance_event_leaf_v1" => (
+                    "sources/m2_5/authorities/review_acceptance_events/v1/",
+                    ACCEPTANCE_EVENT_SCHEMA_V1,
+                ),
+                "acceptance_event_leaf_v2" => (
+                    "sources/m2_5/authorities/review_acceptance_events/v2/",
+                    "manafold.m2.5.c.review-acceptance-event.v2",
+                ),
+                "acceptance_event_leaf_v4" => (
+                    "sources/m2_5/authorities/review_acceptance_events/v4/",
+                    ACCEPTANCE_EVENT_SCHEMA_V4,
+                ),
+                "host_binding_claim_record" => (
+                    "sources/m2_5/authorities/cross_deck_host_binding_claims/v1/",
+                    "manafold.m2.5.c.cross-deck-host-binding-claim-record.v1",
+                ),
+                _ => return Err(PersistenceDecodeErrorV1::SchemaIdentityMismatch),
+            };
+            if !is_authority_leaf_path(&path, prefix) || schema.as_deref() != Some(expected_schema)
+            {
+                return Err(PersistenceDecodeErrorV1::SchemaIdentityMismatch);
+            }
+        }
+        Ok(Self {
+            artifact_role,
+            path,
+            schema,
+            raw_sha256,
+        })
+    }
+
+    pub fn to_cbor(&self) -> cbor::Value {
+        cbor::Value::Array(vec![
+            cbor::Value::Text(self.artifact_role.clone()),
+            cbor::Value::Text(self.path.clone()),
+            self.schema
+                .as_ref()
+                .map_or(cbor::Value::Null, |value| cbor::Value::Text(value.clone())),
+            cbor::Value::Bytes(self.raw_sha256.to_vec()),
+        ])
+    }
+
+    pub fn to_wire(&self) -> serde_json::Value {
+        serde_json::json!({
+            "artifact_role": self.artifact_role,
+            "path": self.path,
+            "schema": self.schema,
+            "raw_sha256": hex_encode(&self.raw_sha256),
+        })
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HostBindingSourceBindingV2 {
+    pub artifact_role: String,
+    pub path: String,
+    pub schema: Option<String>,
+    pub raw_sha256: [u8; 32],
+}
+
+impl HostBindingSourceBindingV2 {
+    pub fn new(
+        artifact_role: impl Into<String>,
+        path: impl Into<String>,
+        schema: Option<&str>,
+        raw_sha256: [u8; 32],
+    ) -> Result<Self, PersistenceDecodeErrorV1> {
+        let artifact_role = artifact_role.into();
+        let path = path.into();
+        if artifact_role.is_empty() {
+            return Err(PersistenceDecodeErrorV1::SchemaIdentityMismatch);
+        }
+        validate_repo_relative_path(&path)?;
+        Ok(Self {
+            artifact_role,
+            path,
+            schema: schema.map(str::to_owned),
+            raw_sha256,
+        })
+    }
+
+    pub fn to_cbor(&self) -> cbor::Value {
+        cbor::Value::Array(vec![
+            cbor::Value::Text(self.artifact_role.clone()),
+            cbor::Value::Text(self.path.clone()),
+            self.schema
+                .as_ref()
+                .map_or(cbor::Value::Null, |value| cbor::Value::Text(value.clone())),
+            cbor::Value::Bytes(self.raw_sha256.to_vec()),
+        ])
+    }
+
+    pub fn to_wire(&self) -> serde_json::Value {
+        serde_json::json!({
+            "artifact_role": self.artifact_role,
+            "path": self.path,
+            "schema": self.schema,
+            "raw_sha256": hex_encode(&self.raw_sha256),
+        })
+    }
+}
+
 fn context_closure_insert(
     values: &mut Vec<ContextAuthoritySourceBindingV2>,
     binding: &ContextAuthoritySourceBindingV2,
@@ -6181,6 +6409,219 @@ impl ApplicationHostBindingV2 {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ApplicationHostBindingV3 {
+    pub application_kind: String,
+    pub application_semantic_id: AuthorityIdentityV1,
+    pub host_binding_claim_ids: Vec<String>,
+}
+
+impl ApplicationHostBindingV3 {
+    pub fn new(
+        application_kind: impl Into<String>,
+        application_semantic_id: AuthorityIdentityV1,
+        host_binding_claim_ids: Vec<String>,
+    ) -> Result<Self, PersistenceDecodeErrorV1> {
+        let application_kind = application_kind.into();
+        if application_kind != "context_application_v3"
+            || application_semantic_id.kind() != AuthorityIdentityKind::ContextApplicationV3
+            || host_binding_claim_ids.is_empty()
+            || host_binding_claim_ids
+                .iter()
+                .any(|id| !is_namespaced_digest(id, "hbc.v1/"))
+        {
+            return Err(PersistenceDecodeErrorV1::SchemaIdentityMismatch);
+        }
+        let encoded: Vec<Vec<u8>> = host_binding_claim_ids
+            .iter()
+            .map(|id| cbor::encode_canonical(&cbor::Value::Text(id.clone())))
+            .collect::<Result<_, _>>()?;
+        validate_sorted_unique_keys(&encoded)?;
+        Ok(Self {
+            application_kind,
+            application_semantic_id,
+            host_binding_claim_ids,
+        })
+    }
+
+    pub fn to_cbor(&self) -> cbor::Value {
+        cbor::Value::Array(vec![
+            cbor::Value::Text(self.application_kind.clone()),
+            cbor::Value::Bytes(self.application_semantic_id.digest_bytes().to_vec()),
+            cbor::Value::Array(
+                self.host_binding_claim_ids
+                    .iter()
+                    .map(|id| cbor::Value::Text(id.clone()))
+                    .collect(),
+            ),
+        ])
+    }
+
+    pub fn to_wire(&self) -> serde_json::Value {
+        serde_json::json!({
+            "application_kind": self.application_kind,
+            "application_semantic_id": self.application_semantic_id.as_text(),
+            "host_binding_claim_ids": self.host_binding_claim_ids,
+        })
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ContextApplicationV3SupersessionInputV1 {
+    pub superseded_record_id_bytes: [u8; 32],
+    pub replacement_record_id_bytes: Option<[u8; 32]>,
+    pub replacement_record_kind: Option<String>,
+    pub reason_code: SupersessionReason,
+    pub source_evidence_refs: Vec<EvidenceRefV1>,
+}
+
+impl ContextApplicationV3SupersessionInputV1 {
+    pub fn semantic_input(&self) -> cbor::Value {
+        cbor::Value::Array(vec![
+            cbor::Value::Text(CONTEXT_SUPERSESSION_INPUT_SCHEMA_V3.to_string()),
+            cbor::Value::Bytes(self.superseded_record_id_bytes.to_vec()),
+            self.replacement_record_id_bytes
+                .map_or(cbor::Value::Null, |bytes| {
+                    cbor::Value::Bytes(bytes.to_vec())
+                }),
+            cbor::Value::Text("context_application_v3_record".to_string()),
+            self.replacement_record_kind
+                .clone()
+                .map_or(cbor::Value::Null, cbor::Value::Text),
+            cbor::Value::Text(self.reason_code.as_str().to_string()),
+            cbor::Value::Array(
+                self.source_evidence_refs
+                    .iter()
+                    .map(EvidenceRefV1::to_cbor)
+                    .collect(),
+            ),
+        ])
+    }
+
+    pub fn identity(&self) -> Result<AuthorityIdentityV1, PersistenceDecodeErrorV1> {
+        AuthorityIdentityV1::compute(
+            AuthorityIdentityKind::ContextSupersessionV3,
+            self.semantic_input(),
+        )
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ContextApplicationV3SupersessionRecordInputV1 {
+    pub supersession_id_bytes: [u8; 32],
+    pub review_event_ref_v4: ReviewEventRefV4,
+}
+
+impl ContextApplicationV3SupersessionRecordInputV1 {
+    pub fn semantic_input(&self) -> cbor::Value {
+        cbor::Value::Array(vec![
+            cbor::Value::Text(CONTEXT_SUPERSESSION_RECORD_INPUT_SCHEMA_V3.to_string()),
+            cbor::Value::Bytes(self.supersession_id_bytes.to_vec()),
+            self.review_event_ref_v4.to_cbor(),
+        ])
+    }
+
+    pub fn identity(&self) -> Result<AuthorityIdentityV1, PersistenceDecodeErrorV1> {
+        AuthorityIdentityV1::compute(
+            AuthorityIdentityKind::ContextSupersessionRecordV3,
+            self.semantic_input(),
+        )
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ContextApplicationV3SupersessionRecord {
+    pub record_id: AuthorityIdentityV1,
+    pub supersession_id: AuthorityIdentityV1,
+    pub superseded_record_id: AuthorityIdentityV1,
+    pub replacement_record_id: Option<AuthorityIdentityV1>,
+    pub reason_code: SupersessionReason,
+    pub source_evidence_refs: Vec<EvidenceRefV1>,
+    pub review_event_ref_v4: ReviewEventRefV4,
+}
+
+impl ContextApplicationV3SupersessionRecord {
+    pub fn from_parts(
+        supersession_id: AuthorityIdentityV1,
+        superseded_record_id: AuthorityIdentityV1,
+        replacement_record_id: Option<AuthorityIdentityV1>,
+        reason_code: SupersessionReason,
+        source_evidence_refs: Vec<EvidenceRefV1>,
+        review_event_ref_v4: ReviewEventRefV4,
+    ) -> Result<Self, PersistenceDecodeErrorV1> {
+        let supersession_input = ContextApplicationV3SupersessionInputV1 {
+            superseded_record_id_bytes: superseded_record_id.digest_bytes(),
+            replacement_record_id_bytes: replacement_record_id
+                .as_ref()
+                .map(AuthorityIdentityV1::digest_bytes),
+            replacement_record_kind: replacement_record_id
+                .as_ref()
+                .map(|_| "context_application_v3_record".to_string()),
+            reason_code,
+            source_evidence_refs: source_evidence_refs.clone(),
+        };
+        if supersession_input.identity()? != supersession_id {
+            return Err(PersistenceDecodeErrorV1::DigestMismatch);
+        }
+        let record_id = ContextApplicationV3SupersessionRecordInputV1 {
+            supersession_id_bytes: supersession_id.digest_bytes(),
+            review_event_ref_v4: review_event_ref_v4.clone(),
+        }
+        .identity()?;
+        Ok(Self {
+            record_id,
+            supersession_id,
+            superseded_record_id,
+            replacement_record_id,
+            reason_code,
+            source_evidence_refs,
+            review_event_ref_v4,
+        })
+    }
+
+    pub fn to_cbor(&self) -> cbor::Value {
+        cbor::Value::Array(vec![
+            self.record_id.to_cbor(),
+            self.supersession_id.to_cbor(),
+            self.superseded_record_id.to_cbor(),
+            self.replacement_record_id
+                .as_ref()
+                .map_or(cbor::Value::Null, AuthorityIdentityV1::to_cbor),
+            cbor::Value::Text("context_application_v3_record".to_string()),
+            self.replacement_record_id
+                .as_ref()
+                .map_or(cbor::Value::Null, |_| {
+                    cbor::Value::Text("context_application_v3_record".to_string())
+                }),
+            cbor::Value::Text(self.reason_code.as_str().to_string()),
+            cbor::Value::Array(
+                self.source_evidence_refs
+                    .iter()
+                    .map(EvidenceRefV1::to_cbor)
+                    .collect(),
+            ),
+            cbor::Value::Array(vec![
+                cbor::Value::Text("human_accepted".to_string()),
+                self.review_event_ref_v4.to_cbor(),
+            ]),
+        ])
+    }
+
+    pub fn to_wire(&self) -> serde_json::Value {
+        serde_json::json!({
+            "record_id": self.record_id.as_text(),
+            "supersession_id": self.supersession_id.as_text(),
+            "superseded_record_id": self.superseded_record_id.as_text(),
+            "replacement_record_id": self.replacement_record_id.as_ref().map(AuthorityIdentityV1::as_text),
+            "superseded_record_kind": "context_application_v3_record",
+            "replacement_record_kind": self.replacement_record_id.as_ref().map(|_| "context_application_v3_record"),
+            "reason_code": self.reason_code.as_str(),
+            "source_evidence_refs": self.source_evidence_refs.iter().map(evidence_to_wire).collect::<Vec<_>>(),
+            "acceptance": {"decision": "human_accepted", "review_event_ref": self.review_event_ref_v4.to_wire()},
+        })
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ContextApplicationAuthorityV2 {
     pub base_authority_v1_binding: ContextAuthoritySourceBindingV2,
     pub host_binding_authority_v2_binding: Option<ContextAuthoritySourceBindingV2>,
@@ -6243,6 +6684,119 @@ impl ContextApplicationAuthorityV2 {
             "context_application_v2_records": self.context_application_v2_records.iter().map(|record| record.to_wire()).collect::<Vec<_>>(),
             "context_application_v2_supersession_records": self.context_application_v2_supersession_records.iter().map(|record| record.to_wire()).collect::<Vec<_>>(),
             "application_host_bindings_v2": self.application_host_bindings_v2.iter().map(ApplicationHostBindingV2::to_wire).collect::<Vec<_>>(),
+        })
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ContextApplicationAuthorityV3 {
+    pub base_authority_v1_binding: ContextAuthoritySourceBindingV3,
+    pub candidate_universe_binding: ContextAuthoritySourceBindingV3,
+    pub source_bindings: Vec<ContextAuthoritySourceBindingV3>,
+    pub relation_application_authority_v2_binding: ContextAuthoritySourceBindingV3,
+    pub relation_source_bindings: Vec<RelationAuthoritySourceBindingV2>,
+    pub host_binding_authority_v2_binding: Option<ContextAuthoritySourceBindingV3>,
+    pub host_binding_source_bindings: Vec<HostBindingSourceBindingV2>,
+    pub context_application_v3_records: Vec<ContextApplicationV3Record>,
+    pub context_application_v3_supersession_records: Vec<ContextApplicationV3SupersessionRecord>,
+    pub application_host_bindings_v3: Vec<ApplicationHostBindingV3>,
+}
+
+impl ContextApplicationAuthorityV3 {
+    #[allow(clippy::too_many_arguments)]
+    pub fn new(
+        base_authority_v1_binding: ContextAuthoritySourceBindingV3,
+        candidate_universe_binding: ContextAuthoritySourceBindingV3,
+        source_bindings: Vec<ContextAuthoritySourceBindingV3>,
+        relation_application_authority_v2_binding: ContextAuthoritySourceBindingV3,
+        relation_source_bindings: Vec<RelationAuthoritySourceBindingV2>,
+        host_binding_authority_v2_binding: Option<ContextAuthoritySourceBindingV3>,
+        host_binding_source_bindings: Vec<HostBindingSourceBindingV2>,
+        context_application_v3_records: Vec<ContextApplicationV3Record>,
+        context_application_v3_supersession_records: Vec<ContextApplicationV3SupersessionRecord>,
+        application_host_bindings_v3: Vec<ApplicationHostBindingV3>,
+    ) -> Result<Self, PersistenceDecodeErrorV1> {
+        let source_values: Vec<cbor::Value> = source_bindings
+            .iter()
+            .map(ContextAuthoritySourceBindingV3::to_cbor)
+            .collect();
+        validate_canonical_order(&source_values)?;
+        let relation_values: Vec<cbor::Value> = relation_source_bindings
+            .iter()
+            .map(RelationAuthoritySourceBindingV2::to_cbor)
+            .collect();
+        validate_canonical_order(&relation_values)?;
+        let host_values: Vec<cbor::Value> = host_binding_source_bindings
+            .iter()
+            .map(HostBindingSourceBindingV2::to_cbor)
+            .collect();
+        validate_canonical_order(&host_values)?;
+        let record_values: Vec<cbor::Value> = context_application_v3_records
+            .iter()
+            .map(ContextApplicationV3Record::to_cbor)
+            .collect();
+        validate_canonical_order(&record_values)?;
+        let supersession_values: Vec<cbor::Value> = context_application_v3_supersession_records
+            .iter()
+            .map(ContextApplicationV3SupersessionRecord::to_cbor)
+            .collect();
+        validate_canonical_order(&supersession_values)?;
+        let link_values: Vec<cbor::Value> = application_host_bindings_v3
+            .iter()
+            .map(ApplicationHostBindingV3::to_cbor)
+            .collect();
+        validate_canonical_order(&link_values)?;
+        let by_role: std::collections::HashMap<&str, &ContextAuthoritySourceBindingV3> =
+            source_bindings
+                .iter()
+                .map(|item| (item.artifact_role.as_str(), item))
+                .collect();
+        if by_role.get("base_authority_v1") != Some(&&base_authority_v1_binding)
+            || by_role.get("candidate_universe") != Some(&&candidate_universe_binding)
+            || by_role.get("relation_authority_v2")
+                != Some(&&relation_application_authority_v2_binding)
+        {
+            return Err(PersistenceDecodeErrorV1::SchemaIdentityMismatch);
+        }
+        if let Some(host) = &host_binding_authority_v2_binding {
+            if by_role.get("host_binding_authority_v2") != Some(&host) {
+                return Err(PersistenceDecodeErrorV1::SchemaIdentityMismatch);
+            }
+        }
+        if host_binding_authority_v2_binding.is_none()
+            && source_bindings
+                .iter()
+                .any(|item| item.artifact_role == "host_binding_authority_v2")
+        {
+            return Err(PersistenceDecodeErrorV1::SchemaIdentityMismatch);
+        }
+        Ok(Self {
+            base_authority_v1_binding,
+            candidate_universe_binding,
+            source_bindings,
+            relation_application_authority_v2_binding,
+            relation_source_bindings,
+            host_binding_authority_v2_binding,
+            host_binding_source_bindings,
+            context_application_v3_records,
+            context_application_v3_supersession_records,
+            application_host_bindings_v3,
+        })
+    }
+
+    pub fn to_wire(&self) -> serde_json::Value {
+        serde_json::json!({
+            "schema": CONTEXT_AUTHORITY_SCHEMA_V3,
+            "base_authority_v1_binding": self.base_authority_v1_binding.to_wire(),
+            "candidate_universe_binding": self.candidate_universe_binding.to_wire(),
+            "source_bindings": self.source_bindings.iter().map(ContextAuthoritySourceBindingV3::to_wire).collect::<Vec<_>>(),
+            "relation_application_authority_v2_binding": self.relation_application_authority_v2_binding.to_wire(),
+            "relation_source_bindings": self.relation_source_bindings.iter().map(RelationAuthoritySourceBindingV2::to_wire).collect::<Vec<_>>(),
+            "host_binding_authority_v2_binding": self.host_binding_authority_v2_binding.as_ref().map(ContextAuthoritySourceBindingV3::to_wire),
+            "host_binding_source_bindings": self.host_binding_source_bindings.iter().map(HostBindingSourceBindingV2::to_wire).collect::<Vec<_>>(),
+            "context_application_v3_records": self.context_application_v3_records.iter().map(ContextApplicationV3Record::to_wire).collect::<Vec<_>>(),
+            "context_application_v3_supersession_records": self.context_application_v3_supersession_records.iter().map(ContextApplicationV3SupersessionRecord::to_wire).collect::<Vec<_>>(),
+            "application_host_bindings_v3": self.application_host_bindings_v3.iter().map(ApplicationHostBindingV3::to_wire).collect::<Vec<_>>(),
         })
     }
 }
@@ -6666,6 +7220,59 @@ fn validate_context_supersession_record_v2_input(
     }
     value_bytes32(&fields[1])?;
     validate_review_event_ref_v3_array(&fields[2])
+}
+
+fn validate_context_supersession_v3_input(
+    fields: &[cbor::Value],
+) -> Result<(), PersistenceDecodeErrorV1> {
+    if fields.len() != 7 {
+        return Err(PersistenceDecodeErrorV1::WrongRecordLength);
+    }
+    if value_text(&fields[0])? != CONTEXT_SUPERSESSION_INPUT_SCHEMA_V3 {
+        return Err(PersistenceDecodeErrorV1::SchemaIdentityMismatch);
+    }
+    value_bytes32(&fields[1])?;
+    let replacement = &fields[2];
+    if !matches!(replacement, cbor::Value::Null) {
+        value_bytes32(replacement)?;
+    }
+    if value_text(&fields[3])? != "context_application_v3_record" {
+        return Err(PersistenceDecodeErrorV1::SchemaIdentityMismatch);
+    }
+    if matches!(replacement, cbor::Value::Null) {
+        if !matches!(&fields[4], cbor::Value::Null)
+            || value_text(&fields[5])? != SupersessionReason::AuthorityRevocation.as_str()
+        {
+            return Err(PersistenceDecodeErrorV1::SchemaIdentityMismatch);
+        }
+    } else if value_text(&fields[4])? != "context_application_v3_record"
+        || value_text(&fields[5])? == SupersessionReason::AuthorityRevocation.as_str()
+    {
+        return Err(PersistenceDecodeErrorV1::SchemaIdentityMismatch);
+    }
+    enum_text(
+        &fields[5],
+        &[
+            "semantic_correction",
+            "source_revision",
+            "model_revision",
+            "authority_revocation",
+        ],
+    )?;
+    validate_nonempty_evidence_refs(&fields[6])
+}
+
+fn validate_context_supersession_record_v3_input(
+    fields: &[cbor::Value],
+) -> Result<(), PersistenceDecodeErrorV1> {
+    if fields.len() != 3 {
+        return Err(PersistenceDecodeErrorV1::WrongRecordLength);
+    }
+    if value_text(&fields[0])? != CONTEXT_SUPERSESSION_RECORD_INPUT_SCHEMA_V3 {
+        return Err(PersistenceDecodeErrorV1::SchemaIdentityMismatch);
+    }
+    value_bytes32(&fields[1])?;
+    validate_review_event_ref_v4_array(&fields[2])
 }
 
 fn validate_acceptance_subject_v3_input(

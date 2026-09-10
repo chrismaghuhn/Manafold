@@ -1,0 +1,223 @@
+{
+  "$id": "context-application-authority.v3.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Manafold M2.5.C ContextApplication Authority V3",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "schema": { "const": "manafold.m2.5.c.context-application-authority.v3" },
+    "base_authority_v1_binding": { "$ref": "#/$defs/context_source_binding" },
+    "candidate_universe_binding": { "$ref": "#/$defs/context_source_binding" },
+    "source_bindings": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/context_source_binding" }
+    },
+    "relation_application_authority_v2_binding": { "$ref": "#/$defs/context_source_binding" },
+    "relation_source_bindings": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/relation_source_binding" }
+    },
+    "host_binding_authority_v2_binding": {
+      "oneOf": [
+        { "$ref": "#/$defs/context_source_binding" },
+        { "type": "null" }
+      ]
+    },
+    "host_binding_source_bindings": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/host_source_binding" }
+    },
+    "context_application_v3_records": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/record" }
+    },
+    "context_application_v3_supersession_records": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/supersession_record" }
+    },
+    "application_host_bindings_v3": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/application_host_binding" }
+    }
+  },
+  "required": [
+    "schema",
+    "base_authority_v1_binding",
+    "candidate_universe_binding",
+    "source_bindings",
+    "relation_application_authority_v2_binding",
+    "relation_source_bindings",
+    "host_binding_authority_v2_binding",
+    "host_binding_source_bindings",
+    "context_application_v3_records",
+    "context_application_v3_supersession_records",
+    "application_host_bindings_v3"
+  ],
+  "$defs": {
+    "digest": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "relative_path": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^(?!/)(?!.*\\\\)(?!.*://)(?![A-Za-z]:)[^\\r\\n]+$"
+    },
+    "context_source_role": {
+      "type": "string",
+      "enum": [
+        "base_authority_v1",
+        "declared_model",
+        "candidate_universe",
+        "rev3_candidate_census",
+        "rev3_pair_aggregates",
+        "rev3_card_requirement_map",
+        "rev3_deck_row_source_resolution",
+        "rev3_osi_source_records",
+        "rev3_source_index",
+        "b2_catalog",
+        "b2_classifications",
+        "b2_closure",
+        "b1_final_citations",
+        "b1_final_closure",
+        "reviewer_roster_leaf",
+        "acceptance_event_leaf_v1",
+        "acceptance_event_leaf_v2",
+        "acceptance_event_leaf_v4",
+        "relation_authority_v2",
+        "host_binding_authority_v2",
+        "host_binding_claim_record"
+      ]
+    },
+    "context_source_binding": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "artifact_role": { "$ref": "#/$defs/context_source_role" },
+        "path": { "$ref": "#/$defs/relative_path" },
+        "schema": { "type": ["string", "null"] },
+        "raw_sha256": { "$ref": "#/$defs/digest" }
+      },
+      "required": ["artifact_role", "path", "schema", "raw_sha256"]
+    },
+    "relation_source_binding": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "artifact_role": { "type": "string", "minLength": 1 },
+        "path": { "$ref": "#/$defs/relative_path" },
+        "schema": { "type": ["string", "null"] },
+        "raw_sha256": { "$ref": "#/$defs/digest" }
+      },
+      "required": ["artifact_role", "path", "schema", "raw_sha256"]
+    },
+    "host_source_binding": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "artifact_role": { "type": "string", "minLength": 1 },
+        "path": { "$ref": "#/$defs/relative_path" },
+        "schema": { "type": ["string", "null"] },
+        "raw_sha256": { "$ref": "#/$defs/digest" }
+      },
+      "required": ["artifact_role", "path", "schema", "raw_sha256"]
+    },
+    "candidate_identity": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "envelope_id": { "const": "mtgml.digest-envelope.v1" },
+        "algorithm_id": { "const": "sha-256" },
+        "semantic_domain": { "const": "manafold.m2.5.c.candidate-identity.v1" },
+        "payload_codec_id": { "const": "mtgml.canonical-cbor.v1" },
+        "input_schema_id": { "const": "manafold.m2.5.c.candidate-identity-input.v1" },
+        "digest_hex": { "$ref": "#/$defs/digest" }
+      },
+      "required": ["envelope_id", "algorithm_id", "semantic_domain", "payload_codec_id", "input_schema_id", "digest_hex"]
+    },
+    "context_binding": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "arity": { "type": "string" },
+        "directionality": { "type": "string" },
+        "participant_roles": { "type": "array" },
+        "host_relationship": { "type": "string" }
+      },
+      "required": ["arity", "directionality", "participant_roles", "host_relationship"]
+    },
+    "member": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "candidate_id": { "type": "string", "minLength": 1 },
+        "candidate_identity": { "$ref": "#/$defs/candidate_identity" },
+        "source_instance_id": { "type": "string", "minLength": 1 },
+        "candidate_universe_binding": { "$ref": "#/$defs/context_source_binding" },
+        "context_binding": { "$ref": "#/$defs/context_binding" },
+        "relation_application_v2_id": { "type": "string", "pattern": "^rpa\\.v2/[0-9a-f]{64}$" },
+        "precondition_attestations": { "type": "array" },
+        "member_evidence_refs": { "type": "array" },
+        "context_member_attestation": { "type": "object" }
+      },
+      "required": ["candidate_id", "candidate_identity", "source_instance_id", "candidate_universe_binding", "context_binding", "relation_application_v2_id", "precondition_attestations", "member_evidence_refs", "context_member_attestation"]
+    },
+    "event_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "event_id": { "type": "string", "pattern": "^ae\\.v4/[0-9a-f]{64}$" },
+        "path": { "type": "string", "pattern": "^sources/m2_5/authorities/review_acceptance_events/v4/[0-9a-f]{64}\\.json$" },
+        "raw_sha256": { "$ref": "#/$defs/digest" }
+      },
+      "required": ["event_id", "path", "raw_sha256"]
+    },
+    "acceptance": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "decision": { "const": "human_accepted" },
+        "review_event_ref": { "$ref": "#/$defs/event_ref" }
+      },
+      "required": ["decision", "review_event_ref"]
+    },
+    "record": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "record_id": { "type": "string", "pattern": "^cpar\\.v3/[0-9a-f]{64}$" },
+        "application_id": { "type": "string", "pattern": "^cpa\\.v3/[0-9a-f]{64}$" },
+        "theorem_record_id": { "type": "string", "pattern": "^cpr\\.v1/[0-9a-f]{64}$" },
+        "members": { "type": "array", "items": { "$ref": "#/$defs/member" } },
+        "acceptance": { "$ref": "#/$defs/acceptance" }
+      },
+      "required": ["record_id", "application_id", "theorem_record_id", "members", "acceptance"]
+    },
+    "supersession_record": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "record_id": { "type": "string", "pattern": "^cpsr\\.v3/[0-9a-f]{64}$" },
+        "supersession_id": { "type": "string", "pattern": "^cps\\.v3/[0-9a-f]{64}$" },
+        "superseded_record_id": { "type": "string", "pattern": "^cpar\\.v3/[0-9a-f]{64}$" },
+        "replacement_record_id": { "oneOf": [{ "type": "string", "pattern": "^cpar\\.v3/[0-9a-f]{64}$" }, { "type": "null" }] },
+        "superseded_record_kind": { "const": "context_application_v3_record" },
+        "replacement_record_kind": { "oneOf": [{ "const": "context_application_v3_record" }, { "type": "null" }] },
+        "reason_code": { "type": "string", "enum": ["semantic_correction", "source_revision", "model_revision", "authority_revocation"] },
+        "source_evidence_refs": { "type": "array" },
+        "acceptance": { "$ref": "#/$defs/acceptance" }
+      },
+      "required": ["record_id", "supersession_id", "superseded_record_id", "replacement_record_id", "superseded_record_kind", "replacement_record_kind", "reason_code", "source_evidence_refs", "acceptance"]
+    },
+    "application_host_binding": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "application_kind": { "const": "context_application_v3" },
+        "application_semantic_id": { "type": "string", "pattern": "^cpa\\.v3/[0-9a-f]{64}$" },
+        "host_binding_claim_ids": { "type": "array", "minItems": 1, "items": { "type": "string", "pattern": "^hbc\\.v1/[0-9a-f]{64}$" } }
+      },
+      "required": ["application_kind", "application_semantic_id", "host_binding_claim_ids"]
+    }
+  }
+}

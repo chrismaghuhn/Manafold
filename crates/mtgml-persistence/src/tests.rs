@@ -758,6 +758,62 @@ fn context_application_v3_identity_vectors_match_python_contract() {
 }
 
 #[test]
+fn context_v3_supersession_identities_are_versioned_and_closed() {
+    let evidence = cbor::Value::Array(vec![
+        cbor::Value::Text("model".to_owned()),
+        cbor::Value::Text("sources/model.json".to_owned()),
+        cbor::Value::Array(vec![
+            cbor::Value::Text("whole_artifact".to_owned()),
+            cbor::Value::Null,
+        ]),
+        cbor::Value::Bytes(vec![b'e'; 32]),
+    ]);
+    let cps_payload = cbor::Value::Array(vec![
+        cbor::Value::Text(
+            "manafold.m2.5.c.context-application-v3-supersession-input.v3".to_owned(),
+        ),
+        cbor::Value::Bytes(vec![b'a'; 32]),
+        cbor::Value::Null,
+        cbor::Value::Text("context_application_v3_record".to_owned()),
+        cbor::Value::Null,
+        cbor::Value::Text("authority_revocation".to_owned()),
+        cbor::Value::Array(vec![evidence]),
+    ]);
+    let cps = authority::AuthorityIdentityV1::compute(
+        AuthorityIdentityKind::ContextSupersessionV3,
+        cps_payload.clone(),
+    )
+    .unwrap();
+    assert_eq!(cps.as_text().len(), 71);
+    assert_eq!(cps.kind(), AuthorityIdentityKind::ContextSupersessionV3);
+    let event_ref = ReviewEventRefV4::new(
+        format!(
+            "sources/m2_5/authorities/review_acceptance_events/v4/{}.json",
+            "b".repeat(64)
+        ),
+        [b'b'; 32],
+        format!("ae.v4/{}", "b".repeat(64)),
+    )
+    .unwrap();
+    let cpsr = authority::AuthorityIdentityV1::compute(
+        AuthorityIdentityKind::ContextSupersessionRecordV3,
+        cbor::Value::Array(vec![
+            cbor::Value::Text(
+                "manafold.m2.5.c.context-application-supersession-record-input.v3".to_owned(),
+            ),
+            cbor::Value::Bytes(cps.digest_bytes().to_vec()),
+            event_ref.to_cbor(),
+        ]),
+    )
+    .unwrap();
+    assert_eq!(
+        cpsr.kind(),
+        AuthorityIdentityKind::ContextSupersessionRecordV3
+    );
+    assert_eq!(cpsr.as_text().len(), 72);
+}
+
+#[test]
 fn context_application_v2_rust_dtos_emit_the_shared_member_payload() {
     let evidence = authority::EvidenceRefV1::new(
         "model",

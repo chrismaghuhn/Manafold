@@ -23,6 +23,7 @@ from mtgml.authority import (
     AcceptanceEvidenceRefV1,
     AuthorityIdentityKind,
     AuthorityIdentityV1,
+    ContextApplicationAuthorityV3,
     ContextApplicationMemberV2,
     ContextApplicationMemberV3,
     ContextApplicationV3Record,
@@ -405,7 +406,128 @@ class ContextApplicationV3Resolver:
         )
 
 
+class ContextApplicationV3AuthorityResolver:
+    """Container-level V3 provenance and shared-snapshot boundary."""
+
+    def __init__(self, resolver: ContextApplicationV3Resolver | None = None) -> None:
+        self._resolver = resolver
+
+    @staticmethod
+    def _same_binding(left: object, right: object) -> bool:
+        return (
+            getattr(left, "artifact_role", None) == getattr(right, "artifact_role", None)
+            and getattr(left, "path", None) == getattr(right, "path", None)
+            and getattr(left, "schema", getattr(left, "schema_or_null", None))
+            == getattr(right, "schema", getattr(right, "schema_or_null", None))
+            and getattr(left, "raw_sha256", None) == getattr(right, "raw_sha256", None)
+        )
+
+    @classmethod
+    def require_shared_snapshots(
+        cls, context_authority: ContextApplicationAuthorityV3, relation_authority: object
+    ) -> None:
+        for context_binding, relation_binding, location in (
+            (
+                context_authority.base_authority_v1_binding,
+                getattr(relation_authority, "base_authority_v1_binding", None),
+                "base_authority_v1_binding",
+            ),
+            (
+                context_authority.candidate_universe_binding,
+                getattr(relation_authority, "candidate_universe_binding", None),
+                "candidate_universe_binding",
+            ),
+        ):
+            if relation_binding is None or not cls._same_binding(context_binding, relation_binding):
+                raise ContextApplicationV3ResolutionError(
+                    "CONTEXT_APPLICATION_V3_SHARED_SNAPSHOT_MISMATCH", location
+                )
+
+    @staticmethod
+    def require_exact_projection(
+        authority: ContextApplicationAuthorityV3,
+    ) -> None:
+        by_role = {item.artifact_role: item for item in authority.source_bindings}
+        for role, projection in (
+            ("base_authority_v1", authority.base_authority_v1_binding),
+            ("candidate_universe", authority.candidate_universe_binding),
+            ("relation_authority_v2", authority.relation_application_authority_v2_binding),
+        ):
+            if by_role.get(role) != projection:
+                raise ContextApplicationV3ResolutionError(
+                    "CONTEXT_APPLICATION_V3_SOURCE_CLOSURE_MISMATCH", role
+                )
+        host = authority.host_binding_authority_v2_binding
+        if host is None and "host_binding_authority_v2" in by_role:
+            raise ContextApplicationV3ResolutionError(
+                "CONTEXT_APPLICATION_V3_SOURCE_CLOSURE_MISMATCH",
+                "host_binding_authority_v2_binding",
+            )
+        if host is not None and by_role.get("host_binding_authority_v2") != host:
+            raise ContextApplicationV3ResolutionError(
+                "CONTEXT_APPLICATION_V3_SOURCE_CLOSURE_MISMATCH",
+                "host_binding_authority_v2_binding",
+            )
+
+    @classmethod
+    def validate_container_shape(cls, authority: ContextApplicationAuthorityV3) -> None:
+        if not isinstance(authority, ContextApplicationAuthorityV3):
+            raise ContextApplicationV3ResolutionError(
+                "CONTEXT_APPLICATION_V3_INPUT_INVALID", "authority"
+            )
+        cls.require_exact_projection(authority)
+        if (
+            authority.application_host_bindings_v3
+            and authority.host_binding_authority_v2_binding is None
+        ):
+            raise ContextApplicationV3ResolutionError(
+                "HOST_AUTHORITY_BINDING_REQUIRED", "host_binding_authority_v2_binding"
+            )
+        if not authority.application_host_bindings_v3 and authority.host_binding_source_bindings:
+            raise ContextApplicationV3ResolutionError(
+                "HOST_AUTHORITY_BINDING_UNEXPECTED", "host_binding_source_bindings"
+            )
+
+    @staticmethod
+    def evaluate_currentness(
+        authority: ContextApplicationAuthorityV3,
+        *,
+        record_admitter: object | None = None,
+    ) -> object:
+        from context_application_v3_supersession import ContextApplicationV3CurrentnessEvaluator
+
+        ContextApplicationV3AuthorityResolver.validate_container_shape(authority)
+        evaluator = ContextApplicationV3CurrentnessEvaluator(record_admitter=record_admitter)
+        return evaluator.evaluate(
+            authority.context_application_v3_records,
+            authority.context_application_v3_supersession_records,
+        )
+
+    def validate_event_closure_boundary(self, authority: ContextApplicationAuthorityV3) -> None:
+        """Keep mutable Context/Host aggregates outside immutable V4 closures."""
+
+        self.validate_container_shape(authority)
+        forbidden = {
+            "context_application_authority_v3",
+            "relation_authority_v2",
+            "host_binding_authority_v2",
+            "host_binding_claim_record",
+        }
+        for record in authority.context_application_v3_records:
+            if self._resolver is None:
+                raise ContextApplicationV3ResolutionError(
+                    "CONTEXT_APPLICATION_V3_SOURCE_CLOSURE_MISMATCH", "resolver"
+                )
+            event = self._resolver.resolve_acceptance_event_leaf_v4(record.review_event_ref_v4)
+            if any(binding.artifact_role in forbidden for binding in event.source_binding_digests):
+                raise ContextApplicationV3ResolutionError(
+                    "CONTEXT_APPLICATION_V3_SOURCE_CLOSURE_MISMATCH",
+                    "review_event.source_binding_digests",
+                )
+
+
 __all__ = [
+    "ContextApplicationV3AuthorityResolver",
     "ContextApplicationV3ResolutionError",
     "ContextApplicationV3Resolver",
     "ContextApplicationV3RpaResolver",
