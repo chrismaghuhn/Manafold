@@ -1,6 +1,6 @@
 # Manafold — Technical Company Logo
 
-**Status:** design-only; awaiting written-spec review before implementation planning
+**Status:** implemented as the initial SVG asset set
 **Design baseline:** `d647e63`
 **Scope:** Discord server branding and public documentation
 
@@ -78,5 +78,4 @@ All variants must use the same geometry, proportions, wordmark, and spelling.
 
 This design does not change the repository name, README, application UI,
 documentation templates, or project metadata. It does not define a full brand
-book, animation system, merchandise treatment, or final asset filenames until
-the implementation plan is approved.
+book, animation system, or merchandise treatment.

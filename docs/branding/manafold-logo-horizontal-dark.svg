@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 240" role="img" aria-labelledby="title desc">
+  <title id="title">Manafold</title>
+  <desc id="desc">The Manafold folded M symbol and wordmark for dark backgrounds.</desc>
+  <g transform="translate(36 40)" aria-hidden="true">
+    <path d="M16 136V34L47 16L80 47V107L47 77V118Z" fill="#19D3C5"/>
+    <path d="M80 47L113 16L144 34V136L113 118V77L80 107Z" fill="#0E9F98"/>
+    <path d="M80 47L113 16V57L80 88Z" fill="#A4F7EF"/>
+  </g>
+  <text x="234" y="151" fill="#F4F7F8" font-family="Space Grotesk, Segoe UI, Arial, sans-serif" font-size="78" font-weight="600" letter-spacing="1.5">Manafold</text>
+</svg>
