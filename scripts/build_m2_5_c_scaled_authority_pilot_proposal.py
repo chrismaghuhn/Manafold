@@ -23,11 +23,24 @@ from build_m2_5_c_authority_review_worklist import (
     LoadedReviewInputs,
     load_review_inputs,
 )
-from mtgml.authority import SourceBindingDigestV1
+from mtgml.authority import (
+    ParticipantRoleBridgeEntryV1,
+    ParticipantRoleBridgeV1,
+    SourceBindingDigestV1,
+)
 
 PROPOSAL_FORMAT: Final = "manafold.m2.5.c.scaled-authority-pilot-proposal.v1"
 PROPOSAL_NAME: Final = "scaled_authority_pilot_proposal.v1.json"
 EXPECTED_PILOT_COUNT: Final = 5
+SEMANTIC_PROPOSAL_BLOCKER: Final = "SEMANTIC_PROPOSAL_INPUT_MISSING"
+SEMANTIC_PROPOSAL_MISSING_FIELDS: Final = (
+    "reviewed_relation_proof_v1",
+    "causal_or_separation_mechanism",
+    "candidate_specific_b1_final_citations",
+    "candidate_specific_b2_boundary_evidence",
+    "context_and_temporal_semantics",
+    "theorem_preconditions",
+)
 
 
 @dataclass(frozen=True)
@@ -150,23 +163,27 @@ def _candidate4_bridge(
         _fail("CANDIDATE4_ROLE_BRIDGE_INVALID", "Candidate 4 must have exactly two participants")
     if tuple(reviewed_roles) != ("source", "affected"):
         _fail("CANDIDATE4_REVIEWED_ROLE_INVALID", "Candidate 4 reviewed roles are not exact")
-    bridge: list[dict[str, object]] = []
+    entries: list[ParticipantRoleBridgeEntryV1] = []
     for position, raw in enumerate(raw_participants):
         if not isinstance(raw, Mapping):
             _fail("CANDIDATE4_ROLE_BRIDGE_INVALID", "Candidate 4 participant is not an object")
         ref = raw.get("participant_ref")
         if not isinstance(ref, Mapping) or raw.get("role") != "ordered_participant":
             _fail("CANDIDATE4_HISTORICAL_ROLE_MISMATCH", "Candidate 4 history is not immutable V1")
-        bridge.append(
-            {
-                "position": position,
-                "participant_kind": ref.get("participant_kind"),
-                "semantic_ref": ref.get("semantic_ref"),
-                "historical_source_role": raw.get("role"),
-                "reviewed_role": reviewed_roles[position],
-            }
-        )
-    return bridge
+        try:
+            entries.append(
+                ParticipantRoleBridgeEntryV1(
+                    position=position,
+                    participant_kind=cast(str, ref.get("participant_kind")),
+                    semantic_ref=cast(str, ref.get("semantic_ref")),
+                    historical_source_role=cast(str, raw.get("role")),
+                    reviewed_role=reviewed_roles[position],
+                )
+            )
+        except (TypeError, ValueError) as exc:
+            _fail("CANDIDATE4_ROLE_BRIDGE_INVALID", str(exc))
+    bridge = ParticipantRoleBridgeV1(tuple(entries))
+    return [entry.to_wire() for entry in bridge.entries]
 
 
 def _resolve_candidate(
@@ -212,15 +229,12 @@ def _path_for_spec(spec: PilotSpec, source_instance: Mapping[str, object]) -> di
         return {
             "status": "blocked",
             "eligibility": "defer_until_exact_relation_proof_v1",
-            "blocking_reasons": [
-                "reviewed RelationProofV1 roles are not supplied by the current proposal inputs",
-                "V1/V2 eligibility must not be inferred from candidate names or positions",
-            ],
+            "blocking_reasons": [SEMANTIC_PROPOSAL_BLOCKER],
             "required_review_families": ["relation_proof_v1", "context_proof_v1"],
         }
     bridge = _candidate4_bridge(source_instance, spec.reviewed_roles)
     return {
-        "status": "awaiting_human_semantic_review",
+        "status": "blocked",
         "eligibility": "role_divergent_requires_v2_v3",
         "relation_application_family": "rpa.v2",
         "relation_application_record_family": "rpar.v2",
@@ -228,6 +242,8 @@ def _path_for_spec(spec: PilotSpec, source_instance: Mapping[str, object]) -> di
         "context_application_record_family": "cpar.v3",
         "host_binding_family": "application_host_binding_v3",
         "participant_role_bridge": bridge,
+        "deferred_until": "theorem_acceptance",
+        "blocking_reasons": [SEMANTIC_PROPOSAL_BLOCKER],
         "acceptance_materialization": "not_authorized",
     }
 
@@ -285,7 +301,9 @@ def build_proposal_document(
                 "resolved_source": resolved["resolved_source"],
                 "current_c_classification": _plain_mapping(classification),
                 "proposed_authority_path": _path_for_spec(spec, instance),
-                "semantic_status": "awaiting_human_semantic_review",
+                "semantic_status": "blocked",
+                "semantic_proposal_missing_fields": list(SEMANTIC_PROPOSAL_MISSING_FIELDS),
+                "blocking_reasons": [SEMANTIC_PROPOSAL_BLOCKER],
                 "acceptance_status": "not_authorized",
             }
         )
@@ -303,9 +321,21 @@ def build_proposal_document(
     return {
         "record_type": "non_authoritative_scaled_authority_pilot_proposal",
         "format": PROPOSAL_FORMAT,
-        "proposal_state": "awaiting_independent_review",
+        "proposal_state": "blocked",
+        "construction_status": "blocked",
         "authority_status": "non_authoritative",
         "acceptance_status": "not_authorized",
+        "construction_blockers": [
+            {
+                "code": SEMANTIC_PROPOSAL_BLOCKER,
+                "candidate_ordinals": [spec.ordinal for spec in pilot_specs],
+                "missing_fields": list(SEMANTIC_PROPOSAL_MISSING_FIELDS),
+                "detail": (
+                    "candidate-specific theorem and semantic review inputs are not present; "
+                    "no authority may be inferred"
+                ),
+            }
+        ],
         "source_identity": source_identity,
         "pilot": {
             "selection_policy": "fixed-five-candidate-human-anchor-v1",
