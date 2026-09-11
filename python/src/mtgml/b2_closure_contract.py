@@ -43,6 +43,24 @@ B2_CLOSURE_SNAPSHOT_CONSTANTS: Final = {
     "catalog_family_count": 216,
 }
 
+B2_CLOSURE_ARTIFACT_BINDINGS: Final = {
+    "b2_classifications_v1": (
+        "sources/m2_5/closures/B2/card_semantic_classifications.v1.json",
+        "manafold.m2.5.b2.card-semantic-classifications.v1",
+        "40cd5b9c37e26157a6df0449a75040f8a5879d825e3946dd500d666a502201d5",
+    ),
+    "b2_family_catalog_v1": (
+        "sources/m2_5/closures/B2/requirement_family_catalog.v1.json",
+        "manafold.m2.5.b2.requirement-family-catalog.v1",
+        "a9dc94b86a2efdb6885081191e53380cf5b3723a58487600b6372bcb789abb92",
+    ),
+    "b2_projection_v1": (
+        "sources/m2_5/closures/B2/deck_row_classification_refs.v1.csv",
+        "manafold.m2.5.b2.deck-row-classification-refs.v1",
+        "59a0f6ca00af6376fcce1d6c33c06ada3655c2c7fb3bf07354ab3643a96dba5a",
+    ),
+}
+
 _HEX64 = re.compile(r"^[0-9a-f]{64}$")
 _VERSION = re.compile(r"^v[0-9]+$")
 
@@ -209,23 +227,7 @@ def validate_current_root_set(roots: Sequence[B2ClosureCurrentRootV1]) -> B2Clos
     return roots[0].validate()
 
 
-_ARTIFACT_REGISTRY: Final = {
-    "b2_classifications_v1": (
-        "sources/m2_5/closures/B2/card_semantic_classifications.v1.json",
-        "manafold.m2.5.b2.card-semantic-classifications.v1",
-        "40cd5b9c37e26157a6df0449a75040f8a5879d825e3946dd500d666a502201d5",
-    ),
-    "b2_family_catalog_v1": (
-        "sources/m2_5/closures/B2/requirement_family_catalog.v1.json",
-        "manafold.m2.5.b2.requirement-family-catalog.v1",
-        "a9dc94b86a2efdb6885081191e53380cf5b3723a58487600b6372bcb789abb92",
-    ),
-    "b2_projection_v1": (
-        "sources/m2_5/closures/B2/deck_row_classification_refs.v1.csv",
-        "manafold.m2.5.b2.deck-row-classification-refs.v1",
-        "59a0f6ca00af6376fcce1d6c33c06ada3655c2c7fb3bf07354ab3643a96dba5a",
-    ),
-}
+_ARTIFACT_REGISTRY = B2_CLOSURE_ARTIFACT_BINDINGS
 
 
 @dataclass(frozen=True)

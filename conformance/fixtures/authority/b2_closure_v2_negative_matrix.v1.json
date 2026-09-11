@@ -1,0 +1,22 @@
+{
+  "schema": "manafold.m2.5.b2.closure-v2-negative-matrix.v1",
+  "cases": [
+    {"case_id": "wrong_closure_schema", "expected": "reject"},
+    {"case_id": "extra_top_level_field", "expected": "reject"},
+    {"case_id": "missing_top_level_field", "expected": "reject"},
+    {"case_id": "missing_artifact_binding", "expected": "reject"},
+    {"case_id": "duplicate_artifact_role", "expected": "reject"},
+    {"case_id": "unknown_artifact_role", "expected": "reject"},
+    {"case_id": "noncanonical_artifact_order", "expected": "reject"},
+    {"case_id": "wrong_artifact_path", "expected": "reject"},
+    {"case_id": "wrong_artifact_schema", "expected": "reject"},
+    {"case_id": "wrong_artifact_sha", "expected": "reject"},
+    {"case_id": "tampered_classification_bytes", "expected": "reject"},
+    {"case_id": "wrong_source_package", "expected": "reject"},
+    {"case_id": "wrong_snapshot_count", "expected": "reject"},
+    {"case_id": "self_binding_attempt", "expected": "reject"},
+    {"case_id": "verification_summary_binding_attempt", "expected": "reject"},
+    {"case_id": "current_root_binding_attempt", "expected": "reject"},
+    {"case_id": "unknown_extra_b2_file", "expected": "reject"}
+  ]
+}

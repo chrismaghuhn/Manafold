@@ -10,6 +10,7 @@
   "authority_contracts": [
     "b2-closure-current-root.v1.schema.json",
     "b2-closure-artifact-binding.v1.schema.json",
+    "b2-classification-closure.v2.schema.json",
     "interaction-review-authority.v1.schema.json",
     "interaction-review-authority.v2.schema.json",
     "relation-application-authority.v2.schema.json",
