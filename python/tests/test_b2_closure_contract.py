@@ -119,6 +119,26 @@ class B2ClosureContractTests(unittest.TestCase):
                         validate_artifact_bindings(bindings)
                 self.assertEqual(failure.exception.code.value, case["expected_error"])
 
+    @unittest.skipIf(jsonschema is None, "jsonschema is not installed")
+    def test_negative_extra_fields_are_rejected_by_json_schema(self) -> None:
+        root_schema = json.loads(
+            (ROOT / "schemas" / "b2-closure-current-root.v1.schema.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        binding_schema = json.loads(
+            (ROOT / "schemas" / "b2-closure-artifact-binding.v1.schema.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        for case in self.negative_matrix["cases"]:
+            if case["case_id"] == "root_with_extra_field":
+                with self.assertRaises(jsonschema.ValidationError):
+                    jsonschema.Draft202012Validator(root_schema).validate(case["value"])
+            if case["case_id"] == "artifact_binding_with_extra_field":
+                with self.assertRaises(jsonschema.ValidationError):
+                    jsonschema.Draft202012Validator(binding_schema).validate(case["value"][0])
+
     def test_v2_failure_does_not_fallback_to_v1(self) -> None:
         invalid_v2 = dict(self.fixture["goldens"]["future_v2"])
         invalid_v2["closure_schema_id"] = B2_CLOSURE_V1_SCHEMA

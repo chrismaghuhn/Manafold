@@ -2131,12 +2131,16 @@ fn b2_closure_slice1_negative_matrix_matches_the_python_contract() {
                     .map(|_| ())
                     .map_err(|error| error.code)
             }
-            "bindings" => {
-                let bindings: Vec<b2_closure_contract::B2ClosureArtifactBindingV1> =
-                    serde_json::from_value(case["value"].clone()).unwrap();
+            "bindings" => serde_json::from_value::<
+                Vec<b2_closure_contract::B2ClosureArtifactBindingV1>,
+            >(case["value"].clone())
+            .map_err(|_| {
+                b2_closure_contract::B2ClosureContractErrorCode::InvalidArtifactBindingShape
+            })
+            .and_then(|bindings| {
                 b2_closure_contract::validate_b2_closure_artifact_bindings(&bindings)
                     .map_err(|error| error.code)
-            }
+            }),
             other => panic!("unknown negative case kind: {other}"),
         };
         let error = result.expect_err(case["case_id"].as_str().unwrap());

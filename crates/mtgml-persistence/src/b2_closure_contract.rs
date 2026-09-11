@@ -102,6 +102,7 @@ pub enum B2ClosureCurrentnessState {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct B2ClosureCurrentRootV1 {
     pub schema: String,
     pub artifact_role: String,
@@ -207,6 +208,7 @@ pub fn validate_b2_closure_current_root_set(
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct B2ClosureArtifactBindingV1 {
     pub artifact_role: String,
     pub repository_relative_path: String,
