@@ -11,12 +11,14 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
+from types import MappingProxyType
 from typing import cast
 
 from b2_closure_source_resolver import (
     B2ClosureResolutionMode,
     B2ClosureSourceResolution,
     resolve_b2_closure,
+    resolve_b2_closure_binding,
 )
 
 
@@ -33,6 +35,7 @@ class B2DownstreamReadinessError(Exception):
 class B2DownstreamReadinessConsumer(StrEnum):
     """Future current-construction seams covered by this readiness proof."""
 
+    AUTHORITY_SOURCE_RESOLUTION = "authority_source_resolution"
     AUTHORITY_VALIDATOR = "authority_validator"
     B1_CURRENT_EVIDENCE_ROOT = "b1_current_evidence_root"
     C_CURRENT_SOURCE_ROOT = "c_current_source_root"
@@ -40,6 +43,58 @@ class B2DownstreamReadinessConsumer(StrEnum):
     CONTEXT_APPLICATION = "context_application"
     HOST_BINDING = "host_binding"
     REVIEW_ACCEPTANCE = "review_acceptance"
+
+
+class B2DownstreamReadinessStatus(StrEnum):
+    ALREADY_READY = "already_ready"
+    NOT_APPLICABLE = "not_applicable"
+
+
+@dataclass(frozen=True)
+class B2DownstreamOwnership:
+    status: B2DownstreamReadinessStatus
+    rationale: str
+
+
+B2_DOWNSTREAM_OWNERSHIP = MappingProxyType(
+    {
+        B2DownstreamReadinessConsumer.AUTHORITY_SOURCE_RESOLUTION: B2DownstreamOwnership(
+            B2DownstreamReadinessStatus.ALREADY_READY,
+            "Slice 3 owns explicit verified historical-v1/candidate-v2 source resolution.",
+        ),
+        B2DownstreamReadinessConsumer.AUTHORITY_VALIDATOR: B2DownstreamOwnership(
+            B2DownstreamReadinessStatus.NOT_APPLICABLE,
+            "The historical validator contract remains frozen; successor admission is "
+            "separately owned.",
+        ),
+        B2DownstreamReadinessConsumer.B1_CURRENT_EVIDENCE_ROOT: B2DownstreamOwnership(
+            B2DownstreamReadinessStatus.NOT_APPLICABLE,
+            "No current B1 evidence-root construction is authorized before Slice 6.",
+        ),
+        B2DownstreamReadinessConsumer.C_CURRENT_SOURCE_ROOT: B2DownstreamOwnership(
+            B2DownstreamReadinessStatus.NOT_APPLICABLE,
+            "No current C source-root construction is authorized before Slice 6.",
+        ),
+        B2DownstreamReadinessConsumer.RELATION_APPLICATION: B2DownstreamOwnership(
+            B2DownstreamReadinessStatus.NOT_APPLICABLE,
+            "Historical RelationApplication contracts remain frozen; successor admission "
+            "is not yet owned.",
+        ),
+        B2DownstreamReadinessConsumer.CONTEXT_APPLICATION: B2DownstreamOwnership(
+            B2DownstreamReadinessStatus.NOT_APPLICABLE,
+            "Historical ContextApplication contracts remain frozen; successor admission "
+            "is not yet owned.",
+        ),
+        B2DownstreamReadinessConsumer.HOST_BINDING: B2DownstreamOwnership(
+            B2DownstreamReadinessStatus.NOT_APPLICABLE,
+            "Historical HostBinding contracts remain frozen; successor admission is not yet owned.",
+        ),
+        B2DownstreamReadinessConsumer.REVIEW_ACCEPTANCE: B2DownstreamOwnership(
+            B2DownstreamReadinessStatus.NOT_APPLICABLE,
+            "No production acceptance-event successor is authorized in Slice 4.",
+        ),
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -80,6 +135,7 @@ def _coerce_consumer(
 
 
 def validate_b2_downstream_readiness(
+    repo_root: Path,
     readiness: B2DownstreamReadiness,
 ) -> B2DownstreamReadiness:
     """Validate a readiness input without selecting or creating current state."""
@@ -88,8 +144,22 @@ def validate_b2_downstream_readiness(
         raise B2DownstreamReadinessError(
             "B2_DOWNSTREAM_READINESS_INVALID", "readiness has the wrong type"
         )
-    _coerce_consumer(readiness.consumer)
+    consumer = _coerce_consumer(readiness.consumer)
+    ownership = B2_DOWNSTREAM_OWNERSHIP[consumer]
+    if ownership.status is not B2DownstreamReadinessStatus.ALREADY_READY:
+        raise B2DownstreamReadinessError("DOWNSTREAM_CONSUMER_NOT_APPLICABLE", ownership.rationale)
     resolution = readiness.resolution
+    if resolution.v2_current:
+        raise B2DownstreamReadinessError(
+            "CURRENT_ROOT_ADOPTION_FORBIDDEN",
+            "Slice 4 readiness cannot claim that closure v2 is current",
+        )
+    fresh_resolution = resolve_b2_closure_binding(repo_root, resolution.binding)
+    if fresh_resolution != resolution:
+        raise B2DownstreamReadinessError(
+            "B2_DOWNSTREAM_WITNESS_MISMATCH",
+            "readiness witness does not equal a fresh repository-verified resolution",
+        )
     if resolution.mode is not B2ClosureResolutionMode.CANDIDATE_V2:
         raise B2DownstreamReadinessError(
             "CURRENT_CONSUMER_VERSION_UNSUPPORTED",
@@ -98,11 +168,6 @@ def validate_b2_downstream_readiness(
     if not resolution.v2_verified:
         raise B2DownstreamReadinessError(
             "B2_CLOSURE_NOT_VERIFIED", "downstream readiness requires verified closure v2"
-        )
-    if resolution.v2_current:
-        raise B2DownstreamReadinessError(
-            "CURRENT_ROOT_ADOPTION_FORBIDDEN",
-            "Slice 4 readiness cannot claim that closure v2 is current",
         )
     if resolution.binding.artifact_role != "b2_closure_v2":
         raise B2DownstreamReadinessError(
@@ -124,16 +189,24 @@ def prepare_b2_downstream_readiness(
     """
 
     normalized = _coerce_consumer(consumer)
+    if B2_DOWNSTREAM_OWNERSHIP[normalized].status is not B2DownstreamReadinessStatus.ALREADY_READY:
+        raise B2DownstreamReadinessError(
+            "DOWNSTREAM_CONSUMER_NOT_APPLICABLE",
+            B2_DOWNSTREAM_OWNERSHIP[normalized].rationale,
+        )
     resolution = resolve_b2_closure(repo_root, B2ClosureResolutionMode.CANDIDATE_V2)
     return validate_b2_downstream_readiness(
-        B2DownstreamReadiness(consumer=normalized, resolution=resolution)
+        repo_root, B2DownstreamReadiness(consumer=normalized, resolution=resolution)
     )
 
 
 __all__ = [
+    "B2_DOWNSTREAM_OWNERSHIP",
+    "B2DownstreamOwnership",
     "B2DownstreamReadiness",
     "B2DownstreamReadinessConsumer",
     "B2DownstreamReadinessError",
+    "B2DownstreamReadinessStatus",
     "prepare_b2_downstream_readiness",
     "validate_b2_downstream_readiness",
 ]

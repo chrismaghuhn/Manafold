@@ -14,8 +14,10 @@ sys.path.insert(0, str(ROOT / "python" / "src"))
 
 from authority_source_resolver import ResolutionError
 from b2_closure_downstream_readiness import (
+    B2_DOWNSTREAM_OWNERSHIP,
     B2DownstreamReadinessConsumer,
     B2DownstreamReadinessError,
+    B2DownstreamReadinessStatus,
     prepare_b2_downstream_readiness,
     validate_b2_downstream_readiness,
 )
@@ -37,22 +39,49 @@ class B2ClosureDownstreamReadinessTests(unittest.TestCase):
     def test_slice4_readiness_module_exists(self) -> None:
         self.assertIsNotNone(importlib.util.find_spec("b2_closure_downstream_readiness"))
 
-    def test_all_future_consumer_slots_are_ready_without_becoming_current(self) -> None:
+    def test_ownership_matrix_does_not_claim_unimplemented_consumers_ready(self) -> None:
+        self.assertEqual(
+            B2_DOWNSTREAM_OWNERSHIP[
+                B2DownstreamReadinessConsumer.AUTHORITY_SOURCE_RESOLUTION
+            ].status,
+            B2DownstreamReadinessStatus.ALREADY_READY,
+        )
         for consumer in B2DownstreamReadinessConsumer:
+            if consumer is B2DownstreamReadinessConsumer.AUTHORITY_SOURCE_RESOLUTION:
+                continue
             with self.subTest(consumer=consumer):
-                readiness = prepare_b2_downstream_readiness(ROOT, consumer)
-                self.assertTrue(readiness.v2_ready)
-                self.assertFalse(readiness.v2_current)
-                self.assertEqual(readiness.resolution.mode, B2ClosureResolutionMode.CANDIDATE_V2)
-                self.assertTrue(readiness.resolution.v2_verified)
-                self.assertFalse(readiness.production_record_created)
+                self.assertEqual(
+                    B2_DOWNSTREAM_OWNERSHIP[consumer].status,
+                    B2DownstreamReadinessStatus.NOT_APPLICABLE,
+                )
+
+    def test_applicable_source_resolver_is_ready_without_becoming_current(self) -> None:
+        readiness = prepare_b2_downstream_readiness(
+            ROOT, B2DownstreamReadinessConsumer.AUTHORITY_SOURCE_RESOLUTION
+        )
+        self.assertTrue(readiness.v2_ready)
+        self.assertFalse(readiness.v2_current)
+        self.assertEqual(readiness.resolution.mode, B2ClosureResolutionMode.CANDIDATE_V2)
+        self.assertTrue(readiness.resolution.v2_verified)
+        self.assertFalse(readiness.production_record_created)
+
+    def test_not_applicable_consumers_fail_closed_instead_of_claiming_readiness(self) -> None:
+        for consumer in B2DownstreamReadinessConsumer:
+            if consumer is B2DownstreamReadinessConsumer.AUTHORITY_SOURCE_RESOLUTION:
+                continue
+            with (
+                self.subTest(consumer=consumer),
+                self.assertRaises(B2DownstreamReadinessError) as failure,
+            ):
+                prepare_b2_downstream_readiness(ROOT, consumer)
+            self.assertEqual(failure.exception.code, "DOWNSTREAM_CONSUMER_NOT_APPLICABLE")
 
     def test_readiness_is_deterministic_and_has_no_current_root_side_effect(self) -> None:
         first = prepare_b2_downstream_readiness(
-            ROOT, B2DownstreamReadinessConsumer.AUTHORITY_VALIDATOR
+            ROOT, B2DownstreamReadinessConsumer.AUTHORITY_SOURCE_RESOLUTION
         )
         second = prepare_b2_downstream_readiness(
-            ROOT, B2DownstreamReadinessConsumer.AUTHORITY_VALIDATOR
+            ROOT, B2DownstreamReadinessConsumer.AUTHORITY_SOURCE_RESOLUTION
         )
         self.assertEqual(first, second)
         self.assertFalse((ROOT / "sources/m2_5/closures/B2/current_root.json").exists())
@@ -61,12 +90,12 @@ class B2ClosureDownstreamReadinessTests(unittest.TestCase):
         v1 = resolve_b2_closure(ROOT, B2ClosureResolutionMode.HISTORICAL_V1)
         readiness = replace(
             prepare_b2_downstream_readiness(
-                ROOT, B2DownstreamReadinessConsumer.C_CURRENT_SOURCE_ROOT
+                ROOT, B2DownstreamReadinessConsumer.AUTHORITY_SOURCE_RESOLUTION
             ),
             resolution=v1,
         )
         with self.assertRaises(B2DownstreamReadinessError) as failure:
-            validate_b2_downstream_readiness(readiness)
+            validate_b2_downstream_readiness(ROOT, readiness)
         self.assertEqual(failure.exception.code, "CURRENT_CONSUMER_VERSION_UNSUPPORTED")
 
     def test_unknown_consumer_fails_closed(self) -> None:
@@ -83,9 +112,34 @@ class B2ClosureDownstreamReadinessTests(unittest.TestCase):
             path.write_bytes(path.read_bytes() + b"\n")
             with self.assertRaises(ResolutionError) as failure:
                 prepare_b2_downstream_readiness(
-                    repo, B2DownstreamReadinessConsumer.AUTHORITY_VALIDATOR
+                    repo, B2DownstreamReadinessConsumer.AUTHORITY_SOURCE_RESOLUTION
                 )
-            self.assertEqual(failure.exception.code, "SOURCE_DIGEST_MISMATCH")
+        self.assertEqual(failure.exception.code, "SOURCE_DIGEST_MISMATCH")
+
+    def test_forged_verified_witness_is_revalidated_against_repository(self) -> None:
+        valid = prepare_b2_downstream_readiness(
+            ROOT, B2DownstreamReadinessConsumer.AUTHORITY_SOURCE_RESOLUTION
+        )
+        forged_resolution = replace(
+            valid.resolution,
+            binding=replace(
+                valid.resolution.binding,
+                repository_relative_path="sources/m2_5/closures/B2/wrong.json",
+            ),
+        )
+        forged = replace(valid, resolution=forged_resolution)
+        with self.assertRaises(ResolutionError) as failure:
+            validate_b2_downstream_readiness(ROOT, forged)
+        self.assertEqual(failure.exception.code, "CURRENT_ROOT_PATH_MISMATCH")
+
+    def test_forged_current_flag_is_rejected(self) -> None:
+        valid = prepare_b2_downstream_readiness(
+            ROOT, B2DownstreamReadinessConsumer.AUTHORITY_SOURCE_RESOLUTION
+        )
+        forged = replace(valid, resolution=replace(valid.resolution, v2_current=True))
+        with self.assertRaises(B2DownstreamReadinessError) as failure:
+            validate_b2_downstream_readiness(ROOT, forged)
+        self.assertEqual(failure.exception.code, "CURRENT_ROOT_ADOPTION_FORBIDDEN")
 
     def test_historical_role_registries_are_not_widened(self) -> None:
         self.assertNotIn("b2_closure_v2", {role.value for role in ReviewAuthorityArtifactRoleV4})
@@ -100,7 +154,9 @@ class B2ClosureDownstreamReadinessTests(unittest.TestCase):
             ROOT / "sources/m2_5/closures/B2/classification_closure.v2.json",
         )
         before = tuple(path.read_bytes() for path in paths)
-        prepare_b2_downstream_readiness(ROOT, B2DownstreamReadinessConsumer.HOST_BINDING)
+        prepare_b2_downstream_readiness(
+            ROOT, B2DownstreamReadinessConsumer.AUTHORITY_SOURCE_RESOLUTION
+        )
         self.assertEqual(before, tuple(path.read_bytes() for path in paths))
 
 
