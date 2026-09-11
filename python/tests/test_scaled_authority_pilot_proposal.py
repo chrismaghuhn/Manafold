@@ -183,8 +183,19 @@ class ScaledAuthorityPilotProposalTests(unittest.TestCase):
         self.assertEqual(proposal["proposal_state"], "blocked")
         self.assertEqual(candidate4["semantic_status"], "blocked")
         self.assertEqual(path["status"], "blocked")
+        self.assertEqual(path["host_binding_prerequisite"], "DEFERRED_UNTIL_CONTEXT_APPLICATION_ID")
         self.assertEqual(path["relation_application_family"], "rpa.v2")
         self.assertEqual(path["context_application_family"], "cpa.v3")
+        self.assertEqual(
+            path["relation_application_v2"]["prerequisite"],
+            "current_accepted_relation_proof_v1",
+        )
+        self.assertEqual(
+            path["context_application_v3"]["prerequisite"],
+            "current_accepted_context_proof_v1_and_current_rpa_v2_application_id",
+        )
+        self.assertEqual(path["application_host_binding_v3"]["materialized"], False)
+        self.assertEqual(path["application_host_binding_v3"]["claim_ids"], [])
         bridge = cast(list[dict[str, object]], path["participant_role_bridge"])
         self.assertEqual([entry["reviewed_role"] for entry in bridge], ["source", "affected"])
         self.assertEqual(proposal["authority_status"], "non_authoritative")
@@ -192,6 +203,14 @@ class ScaledAuthorityPilotProposalTests(unittest.TestCase):
         encoded = json.dumps(proposal, sort_keys=True)
         self.assertNotIn("human_accepted", encoded)
         self.assertNotIn("review_event_ref", encoded)
+
+    def test_candidate4_has_no_materialized_context_or_host_identity(self) -> None:
+        proposal = build_proposal_document(ROOT, inputs=self.inputs, resolver=self.resolver)
+        candidate4 = cast(dict[str, object], proposal["pilot"])["candidates"][3]
+        path = cast(dict[str, object], candidate4["proposed_authority_path"])
+        self.assertIsNone(path["relation_application_v2"]["materialized_id"])
+        self.assertIsNone(path["context_application_v3"]["materialized_id"])
+        self.assertEqual(path["application_host_binding_v3"]["claim_ids"], [])
 
     def test_proposal_bytes_are_deterministic_and_quarantined(self) -> None:
         with TemporaryDirectory() as temporary:

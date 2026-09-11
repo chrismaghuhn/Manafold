@@ -236,6 +236,24 @@ def _path_for_spec(spec: PilotSpec, source_instance: Mapping[str, object]) -> di
     return {
         "status": "blocked",
         "eligibility": "role_divergent_requires_v2_v3",
+        "relation_application_v2": {
+            "status": "deferred",
+            "prerequisite": "current_accepted_relation_proof_v1",
+            "materialized_id": None,
+        },
+        "context_application_v3": {
+            "status": "deferred",
+            "prerequisite": ("current_accepted_context_proof_v1_and_current_rpa_v2_application_id"),
+            "materialized_id": None,
+        },
+        "application_host_binding_v3": {
+            "status": "deferred",
+            "prerequisite": "exact_context_application_v3_id",
+            "deferred_code": "DEFERRED_UNTIL_CONTEXT_APPLICATION_ID",
+            "materialized": False,
+            "claim_ids": [],
+        },
+        "host_binding_prerequisite": "DEFERRED_UNTIL_CONTEXT_APPLICATION_ID",
         "relation_application_family": "rpa.v2",
         "relation_application_record_family": "rpar.v2",
         "context_application_family": "cpa.v3",
