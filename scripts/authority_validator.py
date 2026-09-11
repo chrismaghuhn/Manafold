@@ -1346,6 +1346,14 @@ class AuthorityValidator:
         self._validation_complete = True
         return result
 
+    @staticmethod
+    def validate_b2_closure_v2_readiness(repo_root: Path, binding: object) -> object:
+        """Validate a future B2-v2 dependency without admitting current Authority."""
+
+        from b2_closure_downstream_readiness import require_verified_b2_v2
+
+        return require_verified_b2_v2(repo_root, binding)
+
     def _validate_document(self, value: object) -> AuthorityValidationResult:
         self._root_bindings = None
         self._model_binding = None

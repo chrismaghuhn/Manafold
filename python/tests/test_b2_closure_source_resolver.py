@@ -111,9 +111,7 @@ class B2ClosureSourceResolverTests(unittest.TestCase):
             replace(v1, schema_identifier=B2_CLOSURE_V2_SCHEMA),
             "CURRENT_ROOT_SCHEMA_MISMATCH",
         )
-        self._assert_failure(
-            replace(v1, raw_sha256="g" * 64), "CURRENT_ROOT_DIGEST_MISMATCH"
-        )
+        self._assert_failure(replace(v1, raw_sha256="g" * 64), "CURRENT_ROOT_DIGEST_MISMATCH")
         self._assert_failure(
             replace(v1, raw_sha256=v1.raw_sha256.upper()), "CURRENT_ROOT_DIGEST_MISMATCH"
         )
@@ -167,10 +165,13 @@ class B2ClosureSourceResolverTests(unittest.TestCase):
                 )
 
     def test_invalid_v2_internal_closure_fails_without_retry(self) -> None:
-        with patch(
-            "b2_closure_source_resolver.verify_closure_v2",
-            side_effect=B2ClosureV2VerificationError("invalid internal closure"),
-        ), self.assertRaises(ResolutionError) as failure:
+        with (
+            patch(
+                "b2_closure_source_resolver.verify_closure_v2",
+                side_effect=B2ClosureV2VerificationError("invalid internal closure"),
+            ),
+            self.assertRaises(ResolutionError) as failure,
+        ):
             resolve_b2_closure(ROOT, B2ClosureResolutionMode.CANDIDATE_V2)
         self.assertEqual(failure.exception.code, "B2_CLOSURE_INVALID")
 
