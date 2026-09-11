@@ -119,10 +119,23 @@ class B2ClosureV2Tests(unittest.TestCase):
                             repo / "sources/m2_5/closures/B2/card_semantic_classifications.v1.json"
                         )
                         source.write_bytes(source.read_bytes() + b"\n")
+                    elif case["case_id"] == "tampered_family_catalog_bytes":
+                        source = (
+                            repo / "sources/m2_5/closures/B2/requirement_family_catalog.v1.json"
+                        )
+                        source.write_bytes(source.read_bytes() + b"\n")
+                    elif case["case_id"] == "tampered_projection_bytes":
+                        source = (
+                            repo / "sources/m2_5/closures/B2/deck_row_classification_refs.v1.csv"
+                        )
+                        source.write_bytes(source.read_bytes() + b"\n")
                     elif case["case_id"] == "wrong_source_package":
                         mutated["source_package_sha256"] = "b" * 64
-                    elif case["case_id"] == "wrong_snapshot_count":
-                        mutated["snapshot_constants"]["classification_count"] += 1
+                    elif case["case_id"].startswith("wrong_") and case["case_id"].endswith(
+                        "_count"
+                    ):
+                        count_name = case["case_id"][len("wrong_") : -len("_count")]
+                        mutated["snapshot_constants"][count_name + "_count"] += 1
                     elif case["case_id"] == "self_binding_attempt":
                         mutated["artifact_bindings"][0]["artifact_role"] = "b2_closure_v2"
                     elif case["case_id"] == "verification_summary_binding_attempt":
