@@ -1,4 +1,6 @@
-use super::{authority, cbor, checkpoint_digest, envelope, PersistenceDecodeErrorV1};
+use super::{
+    authority, b2_closure_contract, cbor, checkpoint_digest, envelope, PersistenceDecodeErrorV1,
+};
 use authority::{
     canonical_identity_input, AcceptanceEvidenceRefV1, AcceptanceSubjectKind,
     AcceptanceSubjectKindV4, AcceptanceSubjectPayloadV1, AcceptanceV1, AuthorityIdentityKind,
@@ -2080,6 +2082,66 @@ fn error_categories_are_closed_and_stable() {
         PersistenceDecodeErrorV1::UnsupportedHistoricalVersion.as_str(),
         "unsupported_historical_version"
     );
+}
+
+#[test]
+fn b2_closure_slice1_fixture_matches_the_python_contract() {
+    let fixture: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../conformance/fixtures/authority/b2_closure_contract_slice1.v1.json"
+    ))
+    .unwrap();
+    let legacy: b2_closure_contract::B2ClosureCurrentRootV1 =
+        serde_json::from_value(fixture["goldens"]["legacy_v1"].clone()).unwrap();
+    let future: b2_closure_contract::B2ClosureCurrentRootV1 =
+        serde_json::from_value(fixture["goldens"]["future_v2"].clone()).unwrap();
+
+    legacy.validate().unwrap();
+    future.validate().unwrap();
+    assert_eq!(legacy.artifact_role, "b2_closure");
+    assert_eq!(future.artifact_role, "b2_closure_v2");
+    assert_eq!(
+        b2_closure_contract::B2_CLOSURE_SOURCE_PACKAGE_SHA256,
+        fixture["source_package_sha256"].as_str().unwrap()
+    );
+    assert_eq!(
+        b2_closure_contract::validate_b2_closure_current_root_set(&[])
+            .unwrap_err()
+            .code,
+        b2_closure_contract::B2ClosureContractErrorCode::CurrentRootMissing
+    );
+}
+
+#[test]
+fn b2_closure_slice1_negative_matrix_matches_the_python_contract() {
+    let matrix: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../conformance/fixtures/authority/b2_closure_contract_slice1_negative_matrix.v1.json"
+    ))
+    .unwrap();
+    for case in matrix["cases"].as_array().unwrap() {
+        let result = match case["kind"].as_str().unwrap() {
+            "root" => serde_json::from_value::<b2_closure_contract::B2ClosureCurrentRootV1>(
+                case["value"].clone(),
+            )
+            .map_err(|_| b2_closure_contract::B2ClosureContractErrorCode::InvalidRootShape)
+            .and_then(|root| root.validate().map(|_| ()).map_err(|error| error.code)),
+            "root_set" => {
+                let roots: Vec<b2_closure_contract::B2ClosureCurrentRootV1> =
+                    serde_json::from_value(case["value"].clone()).unwrap();
+                b2_closure_contract::validate_b2_closure_current_root_set(&roots)
+                    .map(|_| ())
+                    .map_err(|error| error.code)
+            }
+            "bindings" => {
+                let bindings: Vec<b2_closure_contract::B2ClosureArtifactBindingV1> =
+                    serde_json::from_value(case["value"].clone()).unwrap();
+                b2_closure_contract::validate_b2_closure_artifact_bindings(&bindings)
+                    .map_err(|error| error.code)
+            }
+            other => panic!("unknown negative case kind: {other}"),
+        };
+        let error = result.expect_err(case["case_id"].as_str().unwrap());
+        assert_eq!(error.as_str(), case["expected_error"].as_str().unwrap());
+    }
 }
 
 fn hex(bytes: &[u8]) -> String {
