@@ -1,0 +1,24 @@
+{
+  "schema": "manafold.m2.5.b2.closure-v2-adoption-readiness-negative-matrix.v1",
+  "cases": [
+    {"case_id": "wrong_v1_role", "mutation": "historical_v1_binding.artifact_role", "expected": "reject"},
+    {"case_id": "wrong_v2_role", "mutation": "candidate_v2_binding.artifact_role", "expected": "reject"},
+    {"case_id": "wrong_v1_path", "mutation": "historical_v1_binding.repository_relative_path", "expected": "reject"},
+    {"case_id": "wrong_v2_path", "mutation": "candidate_v2_binding.repository_relative_path", "expected": "reject"},
+    {"case_id": "wrong_v1_schema", "mutation": "historical_v1_binding.schema_identifier", "expected": "reject"},
+    {"case_id": "wrong_v2_schema", "mutation": "candidate_v2_binding.schema_identifier", "expected": "reject"},
+    {"case_id": "wrong_v1_digest", "mutation": "historical_v1_binding.raw_sha256", "expected": "reject"},
+    {"case_id": "wrong_v2_digest", "mutation": "candidate_v2_binding.raw_sha256", "expected": "reject"},
+    {"case_id": "wrong_source_package", "mutation": "source_package_sha256", "expected": "reject"},
+    {"case_id": "tampered_semantic_artifact_bytes", "mutation": "actual semantic artifact bytes", "expected": "reject"},
+    {"case_id": "wrong_snapshot_constant", "mutation": "snapshot_constants.classification_count", "expected": "reject"},
+    {"case_id": "legacy_alias", "mutation": "source_role_parity.b2_closure_v1_alias_introduced", "expected": "reject"},
+    {"case_id": "unknown_version", "mutation": "candidate_v2_binding.closure_version", "expected": "reject"},
+    {"case_id": "v2_failure_no_v1_fallback", "mutation": "candidate v2 verification failure", "expected": "reject"},
+    {"case_id": "historical_failure_no_v2_substitution", "mutation": "historical v1 verification failure", "expected": "reject"},
+    {"case_id": "evidence_claims_current", "mutation": "current_root.adopted_v2", "expected": "reject"},
+    {"case_id": "evidence_claims_current_root_created", "mutation": "current_root.created", "expected": "reject"},
+    {"case_id": "unimplemented_consumer_ready", "mutation": "downstream_readiness.context_application", "expected": "reject"},
+    {"case_id": "unknown_extra_field", "mutation": "unexpected top-level field", "expected": "reject"}
+  ]
+}

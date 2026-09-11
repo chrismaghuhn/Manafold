@@ -64,6 +64,10 @@ AUTHORITY_ARTIFACT_CASES = [
         "sources/m2_5/closures/B2/classification_closure.v2.json",
     ),
     (
+        "b2-closure-v2-adoption-readiness.v1.schema.json",
+        "sources/m2_5/closures/B2/verification/b2_closure_v2_adoption_readiness.v1.json",
+    ),
+    (
         "interaction-review-authority.v1.schema.json",
         "conformance/fixtures/authority/interaction_review_authority.v1.json",
     ),

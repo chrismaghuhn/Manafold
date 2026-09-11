@@ -1,0 +1,297 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "manafold.m2.5.b2.closure-v2-adoption-readiness.v1",
+  "title": "Manafold M2.5 B2 closure-v2 adoption readiness evidence",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "schema": { "const": "manafold.m2.5.b2.closure-v2-adoption-readiness.v1" },
+    "currentness_state": { "const": "v2_ready_not_adopted" },
+    "source_package_sha256": {
+      "const": "99b33945a3e0c7b2982734e65f770715029ce6acd500104bde48e8466eed1a90"
+    },
+    "historical_v1_verification": { "const": "PASS" },
+    "v2_verification": { "const": "PASS" },
+    "historical_v1_binding": { "$ref": "#/$defs/closureBinding" },
+    "candidate_v2_binding": { "$ref": "#/$defs/closureBinding" },
+    "semantic_artifact_bindings": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 3,
+      "items": { "$ref": "#/$defs/artifactBinding" }
+    },
+    "snapshot_constants": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "oracle_semantic_identity_count": { "const": 402 },
+        "classification_count": { "const": 402 },
+        "terminal_assignment_edge_count": { "const": 1883 },
+        "deck_row_count": { "const": 441 },
+        "projection_row_count": { "const": 441 },
+        "historical_family_count": { "const": 216 },
+        "catalog_family_count": { "const": 216 }
+      },
+      "required": [
+        "oracle_semantic_identity_count",
+        "classification_count",
+        "terminal_assignment_edge_count",
+        "deck_row_count",
+        "projection_row_count",
+        "historical_family_count",
+        "catalog_family_count"
+      ]
+    },
+    "historical_parity": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "status": { "const": "PASS" },
+        "b2_v1_artifacts": {
+          "type": "array",
+          "minItems": 8,
+          "maxItems": 8,
+          "items": { "$ref": "#/$defs/parityArtifact" }
+        },
+        "b2_v2_baseline_raw_sha256": { "$ref": "#/$defs/sha256" },
+        "b2_v2_current_raw_sha256": { "$ref": "#/$defs/sha256" }
+      },
+      "required": [
+        "status",
+        "b2_v1_artifacts",
+        "b2_v2_baseline_raw_sha256",
+        "b2_v2_current_raw_sha256"
+      ]
+    },
+    "historical_nonmutation": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "status": { "const": "PASS" },
+        "b1": { "const": "NO" },
+        "c": { "const": "NO" },
+        "authority": { "const": "NO" },
+        "identity_rewrite": { "const": "NO" }
+      },
+      "required": ["status", "b1", "c", "authority", "identity_rewrite"]
+    },
+    "source_role_parity": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "historical_role": { "const": "b2_closure" },
+        "candidate_role": { "const": "b2_closure_v2" },
+        "b2_closure_v1_alias_introduced": { "const": false },
+        "role_version_matrix": { "const": "PASS" }
+      },
+      "required": [
+        "historical_role",
+        "candidate_role",
+        "b2_closure_v1_alias_introduced",
+        "role_version_matrix"
+      ]
+    },
+    "no_fallback": { "const": "PASS" },
+    "downstream_readiness": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "authority_source_resolution": { "const": "PASS" },
+        "authority_validator": { "const": "PASS" },
+        "b1_current_evidence_root": { "const": "PASS" },
+        "c_current_source_root": { "const": "PASS" },
+        "relation_application": { "const": "PASS" },
+        "context_application": { "const": "NOT_APPLICABLE" },
+        "host_binding": { "const": "NOT_APPLICABLE" },
+        "review_acceptance": { "const": "NOT_APPLICABLE" }
+      },
+      "required": [
+        "authority_source_resolution",
+        "authority_validator",
+        "b1_current_evidence_root",
+        "c_current_source_root",
+        "relation_application",
+        "context_application",
+        "host_binding",
+        "review_acceptance"
+      ]
+    },
+    "adoption_gate_matrix": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "v2_schema_dto_closure": { "const": "PASS" },
+        "v2_positive_verifier": { "const": "PASS" },
+        "v2_negative_matrix": { "const": "PASS" },
+        "b2_v1_semantic_byte_parity": { "const": "PASS" },
+        "exact_artifact_role_bindings": { "const": "PASS" },
+        "exact_artifact_path_bindings": { "const": "PASS" },
+        "exact_artifact_schema_bindings": { "const": "PASS" },
+        "exact_artifact_raw_sha_bindings": { "const": "PASS" },
+        "source_package_binding": { "const": "PASS" },
+        "snapshot_count_consistency": { "const": "PASS" },
+        "historical_v1_verification": { "const": "PASS" },
+        "versioned_source_role_admission": { "const": "PASS" },
+        "authority_source_resolver_v2_readiness": { "const": "PASS" },
+        "authority_validator_v2_readiness": { "const": "PASS" },
+        "b1_current_evidence_root_readiness": { "const": "PASS" },
+        "c_current_source_root_readiness": { "const": "PASS" },
+        "relation_application_readiness": { "const": "PASS" },
+        "context_application_readiness": { "const": "NOT_APPLICABLE" },
+        "host_binding_readiness": { "const": "NOT_APPLICABLE" },
+        "review_acceptance_readiness": { "const": "NOT_APPLICABLE" },
+        "no_aliasing": { "const": "PASS" },
+        "no_fallback": { "const": "PASS" },
+        "no_historical_mutation": { "const": "PASS" },
+        "no_identity_rewrite": { "const": "NO" },
+        "local_integration": { "const": "EXTERNAL_EVIDENCE_REQUIRED" },
+        "rust_gates": { "const": "EXTERNAL_EVIDENCE_REQUIRED" },
+        "python_gates": { "const": "EXTERNAL_EVIDENCE_REQUIRED" },
+        "schema_gates": { "const": "EXTERNAL_EVIDENCE_REQUIRED" },
+        "conformance_gates": { "const": "EXTERNAL_EVIDENCE_REQUIRED" },
+        "maintainer_gates": { "const": "EXTERNAL_EVIDENCE_REQUIRED" },
+        "hosted_exact_head_ci": { "const": "EXTERNAL_EVIDENCE_REQUIRED" },
+        "independent_review": { "const": "EXTERNAL_EVIDENCE_REQUIRED" },
+        "explicit_maintainer_adoption": { "const": "NOT_AUTHORIZED" }
+      },
+      "required": [
+        "v2_schema_dto_closure",
+        "v2_positive_verifier",
+        "v2_negative_matrix",
+        "b2_v1_semantic_byte_parity",
+        "exact_artifact_role_bindings",
+        "exact_artifact_path_bindings",
+        "exact_artifact_schema_bindings",
+        "exact_artifact_raw_sha_bindings",
+        "source_package_binding",
+        "snapshot_count_consistency",
+        "historical_v1_verification",
+        "versioned_source_role_admission",
+        "authority_source_resolver_v2_readiness",
+        "authority_validator_v2_readiness",
+        "b1_current_evidence_root_readiness",
+        "c_current_source_root_readiness",
+        "relation_application_readiness",
+        "context_application_readiness",
+        "host_binding_readiness",
+        "review_acceptance_readiness",
+        "no_aliasing",
+        "no_fallback",
+        "no_historical_mutation",
+        "no_identity_rewrite",
+        "local_integration",
+        "rust_gates",
+        "python_gates",
+        "schema_gates",
+        "conformance_gates",
+        "maintainer_gates",
+        "hosted_exact_head_ci",
+        "independent_review",
+        "explicit_maintainer_adoption"
+      ]
+    },
+    "current_root": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "admission_path": {
+          "const": "sources/m2_5/closures/B2/current_root.json"
+        },
+        "created": { "const": false },
+        "adopted_v2": { "const": false }
+      },
+      "required": ["admission_path", "created", "adopted_v2"]
+    },
+    "evidence_dag": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "status": { "const": "PASS" },
+        "edges": {
+          "const": [
+            "immutable_b2_v1_semantic_artifacts->classification_closure_v2",
+            "classification_closure_v2->slice5_readiness_evidence"
+          ]
+        }
+      },
+      "required": ["status", "edges"]
+    }
+  },
+  "required": [
+    "schema",
+    "currentness_state",
+    "source_package_sha256",
+    "historical_v1_verification",
+    "v2_verification",
+    "historical_v1_binding",
+    "candidate_v2_binding",
+    "semantic_artifact_bindings",
+    "snapshot_constants",
+    "historical_parity",
+    "historical_nonmutation",
+    "source_role_parity",
+    "no_fallback",
+    "downstream_readiness",
+    "adoption_gate_matrix",
+    "current_root",
+    "evidence_dag"
+  ],
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "closureBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "artifact_role": { "enum": ["b2_closure", "b2_closure_v2"] },
+        "closure_version": { "enum": ["v1", "v2"] },
+        "repository_relative_path": { "type": "string", "minLength": 1 },
+        "schema_identifier": { "type": "string", "minLength": 1 },
+        "raw_sha256": { "$ref": "#/$defs/sha256" },
+        "source_package_sha256": { "$ref": "#/$defs/sha256" }
+      },
+      "required": [
+        "artifact_role",
+        "closure_version",
+        "repository_relative_path",
+        "schema_identifier",
+        "raw_sha256",
+        "source_package_sha256"
+      ]
+    },
+    "artifactBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "artifact_role": {
+          "enum": [
+            "b2_classifications_v1",
+            "b2_family_catalog_v1",
+            "b2_projection_v1"
+          ]
+        },
+        "repository_relative_path": { "type": "string", "minLength": 1 },
+        "schema_identifier": { "type": "string", "minLength": 1 },
+        "raw_sha256": { "$ref": "#/$defs/sha256" }
+      },
+      "required": [
+        "artifact_role",
+        "repository_relative_path",
+        "schema_identifier",
+        "raw_sha256"
+      ]
+    },
+    "parityArtifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "path": { "type": "string", "minLength": 1 },
+        "baseline_raw_sha256": { "$ref": "#/$defs/sha256" },
+        "current_raw_sha256": { "$ref": "#/$defs/sha256" }
+      },
+      "required": ["path", "baseline_raw_sha256", "current_raw_sha256"]
+    }
+  }
+}
