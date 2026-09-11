@@ -40,19 +40,20 @@ class B2ClosureDownstreamReadinessTests(unittest.TestCase):
         self.assertIsNotNone(importlib.util.find_spec("b2_closure_downstream_readiness"))
 
     def test_ownership_matrix_does_not_claim_unimplemented_consumers_ready(self) -> None:
-        self.assertEqual(
-            B2_DOWNSTREAM_OWNERSHIP[
-                B2DownstreamReadinessConsumer.AUTHORITY_SOURCE_RESOLUTION
-            ].status,
-            B2DownstreamReadinessStatus.ALREADY_READY,
-        )
+        required = {
+            B2DownstreamReadinessConsumer.AUTHORITY_SOURCE_RESOLUTION,
+            B2DownstreamReadinessConsumer.AUTHORITY_VALIDATOR,
+            B2DownstreamReadinessConsumer.B1_CURRENT_EVIDENCE_ROOT,
+            B2DownstreamReadinessConsumer.C_CURRENT_SOURCE_ROOT,
+            B2DownstreamReadinessConsumer.RELATION_APPLICATION,
+        }
         for consumer in B2DownstreamReadinessConsumer:
-            if consumer is B2DownstreamReadinessConsumer.AUTHORITY_SOURCE_RESOLUTION:
-                continue
             with self.subTest(consumer=consumer):
                 self.assertEqual(
                     B2_DOWNSTREAM_OWNERSHIP[consumer].status,
-                    B2DownstreamReadinessStatus.NOT_APPLICABLE,
+                    B2DownstreamReadinessStatus.ALREADY_READY
+                    if consumer in required
+                    else B2DownstreamReadinessStatus.NOT_APPLICABLE,
                 )
 
     def test_applicable_source_resolver_is_ready_without_becoming_current(self) -> None:
@@ -65,9 +66,26 @@ class B2ClosureDownstreamReadinessTests(unittest.TestCase):
         self.assertTrue(readiness.resolution.v2_verified)
         self.assertFalse(readiness.production_record_created)
 
+    def test_required_owner_paths_consume_the_explicit_v2_witness(self) -> None:
+        required = (
+            B2DownstreamReadinessConsumer.AUTHORITY_SOURCE_RESOLUTION,
+            B2DownstreamReadinessConsumer.AUTHORITY_VALIDATOR,
+            B2DownstreamReadinessConsumer.B1_CURRENT_EVIDENCE_ROOT,
+            B2DownstreamReadinessConsumer.C_CURRENT_SOURCE_ROOT,
+            B2DownstreamReadinessConsumer.RELATION_APPLICATION,
+        )
+        for consumer in required:
+            with self.subTest(consumer=consumer):
+                readiness = prepare_b2_downstream_readiness(ROOT, consumer)
+                self.assertTrue(readiness.v2_ready)
+                self.assertFalse(readiness.v2_current)
+
     def test_not_applicable_consumers_fail_closed_instead_of_claiming_readiness(self) -> None:
         for consumer in B2DownstreamReadinessConsumer:
-            if consumer is B2DownstreamReadinessConsumer.AUTHORITY_SOURCE_RESOLUTION:
+            if (
+                B2_DOWNSTREAM_OWNERSHIP[consumer].status
+                is B2DownstreamReadinessStatus.ALREADY_READY
+            ):
                 continue
             with (
                 self.subTest(consumer=consumer),

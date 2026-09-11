@@ -94,6 +94,14 @@ class RelationApplicationV2Resolver:
                 "AUTHORITY_SCHEMA_MISMATCH", "base_authority.schema"
             )
 
+    @staticmethod
+    def validate_b2_closure_v2_readiness(repo_root: Path, binding: object) -> object:
+        """Validate the future C/RPA B2-v2 root without creating an RPA record."""
+
+        from b2_closure_downstream_readiness import require_verified_b2_v2
+
+        return require_verified_b2_v2(repo_root, binding)
+
     def require_current_relation_theorem(self, theorem_record_id: object) -> Mapping[str, object]:
         try:
             return self._authority_validator.require_current_relation_theorem(theorem_record_id)

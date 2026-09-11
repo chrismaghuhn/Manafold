@@ -128,6 +128,14 @@ def blocked(code: str, message: str) -> None:
     raise B1Error("BLOCKED", code, message)
 
 
+def validate_b2_closure_v2_readiness(repo_root: Path, binding: object) -> object:
+    """Validate an explicit future B2-v2 evidence-root dependency only."""
+
+    from b2_closure_downstream_readiness import require_verified_b2_v2
+
+    return require_verified_b2_v2(repo_root, binding)
+
+
 def sha256_bytes(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 

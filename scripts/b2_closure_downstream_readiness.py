@@ -16,8 +16,9 @@ from typing import cast
 
 from b2_closure_source_resolver import (
     B2ClosureResolutionMode,
+    B2ClosureSourceBinding,
     B2ClosureSourceResolution,
-    resolve_b2_closure,
+    binding_for_mode,
     resolve_b2_closure_binding,
 )
 
@@ -63,22 +64,21 @@ B2_DOWNSTREAM_OWNERSHIP = MappingProxyType(
             "Slice 3 owns explicit verified historical-v1/candidate-v2 source resolution.",
         ),
         B2DownstreamReadinessConsumer.AUTHORITY_VALIDATOR: B2DownstreamOwnership(
-            B2DownstreamReadinessStatus.NOT_APPLICABLE,
-            "The historical validator contract remains frozen; successor admission is "
-            "separately owned.",
+            B2DownstreamReadinessStatus.ALREADY_READY,
+            "AuthorityValidator owns the non-current successor readiness entrypoint.",
         ),
         B2DownstreamReadinessConsumer.B1_CURRENT_EVIDENCE_ROOT: B2DownstreamOwnership(
-            B2DownstreamReadinessStatus.NOT_APPLICABLE,
-            "No current B1 evidence-root construction is authorized before Slice 6.",
+            B2DownstreamReadinessStatus.ALREADY_READY,
+            "The B1 citation checker owns the non-current evidence-root readiness entrypoint.",
         ),
         B2DownstreamReadinessConsumer.C_CURRENT_SOURCE_ROOT: B2DownstreamOwnership(
-            B2DownstreamReadinessStatus.NOT_APPLICABLE,
-            "No current C source-root construction is authorized before Slice 6.",
+            B2DownstreamReadinessStatus.ALREADY_READY,
+            "The RelationApplication resolver owns the non-current C source-root "
+            "readiness entrypoint.",
         ),
         B2DownstreamReadinessConsumer.RELATION_APPLICATION: B2DownstreamOwnership(
-            B2DownstreamReadinessStatus.NOT_APPLICABLE,
-            "Historical RelationApplication contracts remain frozen; successor admission "
-            "is not yet owned.",
+            B2DownstreamReadinessStatus.ALREADY_READY,
+            "The RelationApplication resolver owns the non-current successor readiness entrypoint.",
         ),
         B2DownstreamReadinessConsumer.CONTEXT_APPLICATION: B2DownstreamOwnership(
             B2DownstreamReadinessStatus.NOT_APPLICABLE,
@@ -134,6 +134,55 @@ def _coerce_consumer(
         ) from exc
 
 
+def require_verified_b2_v2(
+    repo_root: Path, binding: B2ClosureSourceBinding
+) -> B2ClosureSourceResolution:
+    """Shared owner primitive for an exact, explicitly supplied v2 witness."""
+
+    resolution = resolve_b2_closure_binding(repo_root, binding)
+    if resolution.mode is not B2ClosureResolutionMode.CANDIDATE_V2:
+        raise B2DownstreamReadinessError(
+            "CURRENT_CONSUMER_VERSION_UNSUPPORTED",
+            "successor readiness requires candidate-v2 closure resolution",
+        )
+    if not resolution.v2_verified or resolution.v2_current:
+        raise B2DownstreamReadinessError(
+            "B2_DOWNSTREAM_READINESS_INVALID",
+            "successor readiness requires verified non-current closure v2",
+        )
+    return resolution
+
+
+def _owner_resolution(
+    repo_root: Path,
+    consumer: B2DownstreamReadinessConsumer,
+    binding: B2ClosureSourceBinding,
+) -> B2ClosureSourceResolution:
+    if consumer is B2DownstreamReadinessConsumer.AUTHORITY_SOURCE_RESOLUTION:
+        return require_verified_b2_v2(repo_root, binding)
+    if consumer is B2DownstreamReadinessConsumer.AUTHORITY_VALIDATOR:
+        from authority_validator import AuthorityValidator
+
+        return AuthorityValidator.validate_b2_closure_v2_readiness(repo_root, binding)
+    if consumer is B2DownstreamReadinessConsumer.B1_CURRENT_EVIDENCE_ROOT:
+        from check_m2_5_b1_authority_citations import (
+            validate_b2_closure_v2_readiness,
+        )
+
+        return validate_b2_closure_v2_readiness(repo_root, binding)
+    if consumer in {
+        B2DownstreamReadinessConsumer.C_CURRENT_SOURCE_ROOT,
+        B2DownstreamReadinessConsumer.RELATION_APPLICATION,
+    }:
+        from relation_application_v2_resolver import RelationApplicationV2Resolver
+
+        return RelationApplicationV2Resolver.validate_b2_closure_v2_readiness(repo_root, binding)
+    raise B2DownstreamReadinessError(
+        "DOWNSTREAM_CONSUMER_NOT_APPLICABLE",
+        B2_DOWNSTREAM_OWNERSHIP[consumer].rationale,
+    )
+
+
 def validate_b2_downstream_readiness(
     repo_root: Path,
     readiness: B2DownstreamReadiness,
@@ -154,7 +203,7 @@ def validate_b2_downstream_readiness(
             "CURRENT_ROOT_ADOPTION_FORBIDDEN",
             "Slice 4 readiness cannot claim that closure v2 is current",
         )
-    fresh_resolution = resolve_b2_closure_binding(repo_root, resolution.binding)
+    fresh_resolution = _owner_resolution(repo_root, consumer, resolution.binding)
     if fresh_resolution != resolution:
         raise B2DownstreamReadinessError(
             "B2_DOWNSTREAM_WITNESS_MISMATCH",
@@ -194,7 +243,8 @@ def prepare_b2_downstream_readiness(
             "DOWNSTREAM_CONSUMER_NOT_APPLICABLE",
             B2_DOWNSTREAM_OWNERSHIP[normalized].rationale,
         )
-    resolution = resolve_b2_closure(repo_root, B2ClosureResolutionMode.CANDIDATE_V2)
+    binding = binding_for_mode(B2ClosureResolutionMode.CANDIDATE_V2)
+    resolution = _owner_resolution(repo_root, normalized, binding)
     return validate_b2_downstream_readiness(
         repo_root, B2DownstreamReadiness(consumer=normalized, resolution=resolution)
     )
@@ -208,5 +258,6 @@ __all__ = [
     "B2DownstreamReadinessError",
     "B2DownstreamReadinessStatus",
     "prepare_b2_downstream_readiness",
+    "require_verified_b2_v2",
     "validate_b2_downstream_readiness",
 ]
