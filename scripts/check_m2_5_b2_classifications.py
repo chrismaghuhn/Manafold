@@ -112,6 +112,7 @@ EXACT_B2_FILES = (
     "verification/b2_negative_test_matrix.v1.json",
     "verification/b2_verification_summary.v1.json",
 )
+ADDITIVE_B2_FILES = ("classification_closure.v2.json",)
 B2_GIT_RELATIVE_ROOT = Path("sources/m2_5/closures/B2")
 B2_SUMMARY_GIT_PATH = B2_GIT_RELATIVE_ROOT / "verification/b2_verification_summary.v1.json"
 B2_GIT_FILES = tuple(B2_GIT_RELATIVE_ROOT / relative for relative in EXACT_B2_FILES)
@@ -2152,8 +2153,9 @@ def actual_inventory(extra_paths: set[str] | None = None) -> set[str]:
                 files.add(path.relative_to(B2_DIR).as_posix())
     if extra_paths:
         files.update(extra_paths)
-    if files != set(EXACT_B2_FILES):
-        extras = sorted(files - set(EXACT_B2_FILES))
+    allowed = set(EXACT_B2_FILES) | set(ADDITIVE_B2_FILES)
+    if not set(EXACT_B2_FILES).issubset(files) or not files.issubset(allowed):
+        extras = sorted(files - allowed)
         missing = sorted(set(EXACT_B2_FILES) - files)
         if extras:
             fail("B2_FILE_INVENTORY_REJECTED", f"unrecognized B2 file: {extras[0]}")

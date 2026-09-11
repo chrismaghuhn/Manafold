@@ -686,6 +686,7 @@ SCHEMA_INVENTORY_ALLOWED: frozenset[str] = frozenset(
         "authoritative-replay.v1.schema.json",
         "authoritative-replay.v2.schema.json",
         "authoritative-replay.v3.schema.json",
+        "b2-classification-closure.v2.schema.json",
         "b2-closure-artifact-binding.v1.schema.json",
         "b2-closure-current-root.v1.schema.json",
         "bundle-certification.v1.schema.json",

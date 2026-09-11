@@ -48,12 +48,11 @@ class B2ClosureContractTests(unittest.TestCase):
         self.assertEqual(root.closure_version, "v1")
         self.assertEqual(root.validate(), root)
 
-    def test_golden_v2_shape_is_valid_but_not_materialized(self) -> None:
+    def test_golden_v2_contract_shape_is_valid(self) -> None:
         root = B2ClosureCurrentRootV1.from_wire(self.fixture["goldens"]["future_v2"])
         self.assertEqual(root.artifact_role, "b2_closure_v2")
         self.assertEqual(root.closure_version, "v2")
         self.assertEqual(root.validate(), root)
-        self.assertFalse((ROOT / root.repository_relative_path).exists())
 
     @unittest.skipIf(jsonschema is None, "jsonschema is not installed")
     def test_golden_fixtures_match_closed_schemas(self) -> None:
