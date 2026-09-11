@@ -1,0 +1,59 @@
+{
+  "schema": "manafold.m2.5.b2.closure-contract-slice1-fixture.v1",
+  "source_package_sha256": "99b33945a3e0c7b2982734e65f770715029ce6acd500104bde48e8466eed1a90",
+  "snapshot_constants": {
+    "catalog_family_count": 216,
+    "classification_count": 402,
+    "deck_row_count": 441,
+    "historical_family_count": 216,
+    "oracle_semantic_identity_count": 402,
+    "projection_row_count": 441,
+    "terminal_assignment_edge_count": 1883
+  },
+  "role_version_matrix": {
+    "v1": ["b2_closure"],
+    "v2": ["b2_closure_v2"]
+  },
+  "goldens": {
+    "legacy_v1": {
+      "schema": "manafold.m2.5.b2.closure-current-root.v1",
+      "artifact_role": "b2_closure",
+      "closure_version": "v1",
+      "repository_relative_path": "sources/m2_5/closures/B2/classification_closure.v1.json",
+      "closure_schema_id": "manafold.m2.5.b2.classification-closure.v1",
+      "closure_raw_sha256": "ed6a0bf4b0eb83c85027fdcc61eaf32bfa7bb06d4de78c77d0946d87212e7d43",
+      "source_package_sha256": "99b33945a3e0c7b2982734e65f770715029ce6acd500104bde48e8466eed1a90"
+    },
+    "future_v2": {
+      "schema": "manafold.m2.5.b2.closure-current-root.v1",
+      "artifact_role": "b2_closure_v2",
+      "closure_version": "v2",
+      "repository_relative_path": "sources/m2_5/closures/B2/classification_closure.v2.json",
+      "closure_schema_id": "manafold.m2.5.b2.classification-closure.v2",
+      "closure_raw_sha256": "2222222222222222222222222222222222222222222222222222222222222222",
+      "source_package_sha256": "99b33945a3e0c7b2982734e65f770715029ce6acd500104bde48e8466eed1a90"
+    }
+  },
+  "artifact_bindings": [
+    {
+      "artifact_role": "b2_classifications_v1",
+      "repository_relative_path": "sources/m2_5/closures/B2/card_semantic_classifications.v1.json",
+      "schema_identifier": "manafold.m2.5.b2.card-semantic-classifications.v1",
+      "raw_sha256": "40cd5b9c37e26157a6df0449a75040f8a5879d825e3946dd500d666a502201d5"
+    },
+    {
+      "artifact_role": "b2_family_catalog_v1",
+      "repository_relative_path": "sources/m2_5/closures/B2/requirement_family_catalog.v1.json",
+      "schema_identifier": "manafold.m2.5.b2.requirement-family-catalog.v1",
+      "raw_sha256": "a9dc94b86a2efdb6885081191e53380cf5b3723a58487600b6372bcb789abb92"
+    },
+    {
+      "artifact_role": "b2_projection_v1",
+      "repository_relative_path": "sources/m2_5/closures/B2/deck_row_classification_refs.v1.csv",
+      "schema_identifier": "manafold.m2.5.b2.deck-row-classification-refs.v1",
+      "raw_sha256": "59a0f6ca00af6376fcce1d6c33c06ada3655c2c7fb3bf07354ab3643a96dba5a"
+    }
+  ],
+  "v2_closure_materialized": false,
+  "v2_current": false
+}

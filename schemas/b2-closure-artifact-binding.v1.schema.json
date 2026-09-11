@@ -1,0 +1,84 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "manafold.m2.5.b2.closure-artifact-binding.v1",
+  "title": "B2 Closure Artifact Binding v1",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "artifact_role": {
+      "enum": [
+        "b2_classifications_v1",
+        "b2_family_catalog_v1",
+        "b2_projection_v1"
+      ]
+    },
+    "repository_relative_path": { "type": "string", "minLength": 1 },
+    "schema_identifier": { "type": "string", "minLength": 1 },
+    "raw_sha256": { "pattern": "^[0-9a-f]{64}$", "type": "string" }
+  },
+  "required": [
+    "artifact_role",
+    "repository_relative_path",
+    "schema_identifier",
+    "raw_sha256"
+  ],
+  "allOf": [
+    {
+      "if": {
+        "properties": { "artifact_role": { "const": "b2_classifications_v1" } },
+        "required": ["artifact_role"]
+      },
+      "then": {
+        "properties": {
+          "repository_relative_path": {
+            "const": "sources/m2_5/closures/B2/card_semantic_classifications.v1.json"
+          },
+          "schema_identifier": {
+            "const": "manafold.m2.5.b2.card-semantic-classifications.v1"
+          },
+          "raw_sha256": {
+            "const": "40cd5b9c37e26157a6df0449a75040f8a5879d825e3946dd500d666a502201d5"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "artifact_role": { "const": "b2_family_catalog_v1" } },
+        "required": ["artifact_role"]
+      },
+      "then": {
+        "properties": {
+          "repository_relative_path": {
+            "const": "sources/m2_5/closures/B2/requirement_family_catalog.v1.json"
+          },
+          "schema_identifier": {
+            "const": "manafold.m2.5.b2.requirement-family-catalog.v1"
+          },
+          "raw_sha256": {
+            "const": "a9dc94b86a2efdb6885081191e53380cf5b3723a58487600b6372bcb789abb92"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "artifact_role": { "const": "b2_projection_v1" } },
+        "required": ["artifact_role"]
+      },
+      "then": {
+        "properties": {
+          "repository_relative_path": {
+            "const": "sources/m2_5/closures/B2/deck_row_classification_refs.v1.csv"
+          },
+          "schema_identifier": {
+            "const": "manafold.m2.5.b2.deck-row-classification-refs.v1"
+          },
+          "raw_sha256": {
+            "const": "59a0f6ca00af6376fcce1d6c33c06ada3655c2c7fb3bf07354ab3643a96dba5a"
+          }
+        }
+      }
+    }
+  ]
+}
