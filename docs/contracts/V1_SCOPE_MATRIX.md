@@ -61,6 +61,7 @@ The selected-pair-only obligation artifacts are:
 - [`selected_pair_information_census.v1.json`](../../sources/m2_5/scope/selected_pair_information_census.v1.json)
 - [`selected_pair_generated_object_census.v1.json`](../../sources/m2_5/scope/selected_pair_generated_object_census.v1.json)
 - [`selected_pair_recursive_capability_closure.v2.json`](../../sources/m2_5/scope/selected_pair_recursive_capability_closure.v2.json)
+- [`selected_pair_capability_dependency_evidence.v1.json`](../../sources/m2_5/scope/selected_pair_capability_dependency_evidence.v1.json)
 
 The former `selected_pair_recursive_capability_closure.v1.json` remains
 historical evidence from the merged CDI census and is superseded by the
@@ -90,6 +91,11 @@ provide no reusable dependency edges or terminal-leaf evidence for these
 bindings. The unresolved count is an explicit obligation ledger. It does not promote
 historical blocked C research, create Authority, or claim implementation or
 certification.
+
+The selected-pair capability dependency evidence contract itself is `PASS`:
+all 125 direct roots have one source-bound disposition. At this baseline every
+root is `UNRESOLVED_DEPENDENCY_EVIDENCE`; no dependency edge or terminal leaf is
+claimed. This artifact does not recompute or promote the recursive closure.
 
 ## Closure review
 

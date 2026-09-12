@@ -1,0 +1,250 @@
+{
+  "$id": "https://example.invalid/schemas/m2-5-selected-pair-capability-dependency-evidence.v1.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "schema": { "const": "manafold.m2.5.selected-pair-capability-dependency-evidence.v1" },
+    "artifact_kind": { "const": "capability_dependency_evidence" },
+    "task_id": { "const": "M2_5_SELECTED_PAIR_CAPABILITY_DEPENDENCY_EVIDENCE_01" },
+    "status": { "const": "PASS" },
+    "evidence_contract_status": { "const": "PASS" },
+    "selected_pair": { "$ref": "#/$defs/selectedPair" },
+    "source_package_sha256": { "$ref": "#/$defs/digest" },
+    "input_bindings": { "$ref": "#/$defs/inputBindings" },
+    "preserved_artifact_digests": { "$ref": "#/$defs/preservedArtifacts" },
+    "direct_roots": {
+      "items": { "type": "string" },
+      "minItems": 1,
+      "uniqueItems": true,
+      "type": "array"
+    },
+    "capabilities": {
+      "items": { "$ref": "#/$defs/capabilityRecord" },
+      "type": "array"
+    },
+    "dependency_edges": {
+      "items": { "$ref": "#/$defs/dependencyEdge" },
+      "type": "array"
+    },
+    "terminal_leaves": {
+      "items": { "type": "string" },
+      "uniqueItems": true,
+      "type": "array"
+    },
+    "unresolved_scope_obligations": {
+      "items": { "$ref": "#/$defs/unresolved" },
+      "type": "array"
+    },
+    "summary": { "$ref": "#/$defs/summary" },
+    "semantic_owner_map": {
+      "additionalProperties": {
+        "items": { "minLength": 1, "type": "string" },
+        "minItems": 1,
+        "type": "array"
+      },
+      "type": "object"
+    },
+    "recursive_capability_closure": { "const": "BLOCKED" },
+    "content_sha256": { "$ref": "#/$defs/digest" }
+  },
+  "required": [
+    "schema",
+    "artifact_kind",
+    "task_id",
+    "status",
+    "evidence_contract_status",
+    "selected_pair",
+    "source_package_sha256",
+    "input_bindings",
+    "preserved_artifact_digests",
+    "direct_roots",
+    "capabilities",
+    "dependency_edges",
+    "terminal_leaves",
+    "unresolved_scope_obligations",
+    "summary",
+    "semantic_owner_map",
+    "recursive_capability_closure",
+    "content_sha256"
+  ],
+  "$defs": {
+    "digest": { "pattern": "^[0-9a-f]{64}$", "type": "string" },
+    "selectedPair": {
+      "additionalProperties": false,
+      "properties": {
+        "lock_path": { "const": "sources/m2_5/scope/exact_two_deck_scope_lock.v1.json" },
+        "lock_sha256": { "$ref": "#/$defs/digest" },
+        "deck_ids": {
+          "items": { "enum": ["m2-5/token-triumph", "m2-5/grave-danger"] },
+          "minItems": 2,
+          "maxItems": 2,
+          "uniqueItems": true,
+          "type": "array"
+        },
+        "deck_names": {
+          "items": { "enum": ["Token Triumph", "Grave Danger"] },
+          "minItems": 2,
+          "maxItems": 2,
+          "uniqueItems": true,
+          "type": "array"
+        }
+      },
+      "required": ["lock_path", "lock_sha256", "deck_ids", "deck_names"],
+      "type": "object"
+    },
+    "binding": {
+      "additionalProperties": false,
+      "properties": {
+        "path": { "type": "string" },
+        "raw_sha256": { "$ref": "#/$defs/digest" },
+        "schema": { "type": ["string", "null"] },
+        "evidence_role": { "type": "string" },
+        "locator": { "type": "string" },
+        "entry_count": { "minimum": 0, "type": "integer" }
+      },
+      "required": ["path", "raw_sha256"],
+      "type": "object"
+    },
+    "selectedBinding": {
+      "additionalProperties": false,
+      "properties": {
+        "path": { "type": "string" },
+        "raw_sha256": { "$ref": "#/$defs/digest" },
+        "content_sha256": { "$ref": "#/$defs/digest" },
+        "schema": { "type": "string" },
+        "source_package_sha256": { "$ref": "#/$defs/digest" }
+      },
+      "required": ["path", "raw_sha256", "content_sha256", "schema"],
+      "type": "object"
+    },
+    "inputBindings": {
+      "additionalProperties": false,
+      "properties": {
+        "scope_lock": { "$ref": "#/$defs/binding" },
+        "capability_census": { "$ref": "#/$defs/selectedBinding" },
+        "recursive_capability_closure": { "$ref": "#/$defs/selectedBinding" },
+        "b2_current_root": { "$ref": "#/$defs/binding" },
+        "b2_closure": { "$ref": "#/$defs/binding" },
+        "b2_classifications": { "$ref": "#/$defs/binding" },
+        "b2_catalog": { "$ref": "#/$defs/binding" },
+        "b2_projection": { "$ref": "#/$defs/binding" },
+        "dependency_sources": { "items": { "$ref": "#/$defs/evidenceRef" }, "type": "array" },
+        "production_capability_registry": { "$ref": "#/$defs/binding" }
+      },
+      "required": [
+        "scope_lock",
+        "capability_census",
+        "recursive_capability_closure",
+        "b2_current_root",
+        "b2_closure",
+        "b2_classifications",
+        "b2_catalog",
+        "b2_projection",
+        "dependency_sources",
+        "production_capability_registry"
+      ],
+      "type": "object"
+    },
+    "preservedArtifacts": {
+      "additionalProperties": false,
+      "properties": {
+        "authority": { "items": { "$ref": "#/$defs/preservedBinding" }, "type": "array" },
+        "b1": { "items": { "$ref": "#/$defs/preservedBinding" }, "type": "array" },
+        "b2": { "items": { "$ref": "#/$defs/preservedBinding" }, "type": "array" },
+        "c": { "items": { "$ref": "#/$defs/preservedBinding" }, "type": "array" },
+        "ranking": { "items": { "$ref": "#/$defs/preservedBinding" }, "type": "array" }
+      },
+      "required": ["authority", "b1", "b2", "c", "ranking"],
+      "type": "object"
+    },
+    "preservedBinding": {
+      "additionalProperties": false,
+      "properties": {
+        "path": { "type": "string" },
+        "raw_sha256": { "$ref": "#/$defs/digest" },
+        "schema": { "type": ["string", "null"] }
+      },
+      "required": ["path", "raw_sha256", "schema"],
+      "type": "object"
+    },
+    "evidenceRef": {
+      "additionalProperties": false,
+      "properties": {
+        "path": { "type": "string" },
+        "raw_sha256": { "$ref": "#/$defs/digest" },
+        "locator": { "minLength": 1, "type": "string" },
+        "evidence_role": { "minLength": 1, "type": "string" },
+        "b2_family_id": { "type": "string" },
+        "source_package_sha256": { "$ref": "#/$defs/digest" },
+        "content_sha256": { "$ref": "#/$defs/digest" }
+      },
+      "required": ["path", "raw_sha256", "locator"],
+      "type": "object"
+    },
+    "capabilityRecord": {
+      "additionalProperties": false,
+      "properties": {
+        "capability_family_id": { "type": "string" },
+        "semantic_owner_roles": { "items": { "minLength": 1, "type": "string" }, "minItems": 1, "type": "array" },
+        "disposition": { "enum": ["DEPENDENCY_SET_EVIDENCED", "TERMINAL_LEAF_EVIDENCED", "UNRESOLVED_DEPENDENCY_EVIDENCE"] },
+        "dependencies": { "items": { "$ref": "#/$defs/dependencyEdge" }, "type": "array" },
+        "terminal_evidence": { "items": { "$ref": "#/$defs/evidenceRef" }, "type": "array" },
+        "unresolved": { "$ref": "#/$defs/unresolvedRecord" }
+      },
+      "required": ["capability_family_id", "semantic_owner_roles", "disposition", "dependencies", "terminal_evidence", "unresolved"],
+      "type": "object"
+    },
+    "dependencyEdge": {
+      "additionalProperties": false,
+      "properties": {
+        "parent_family_id": { "type": "string" },
+        "child_family_id": { "type": "string" },
+        "dependency_kind": { "enum": ["SEMANTIC_PREREQUISITE", "STATE_MODEL_PREREQUISITE", "DECISION_PREREQUISITE", "INFORMATION_PREREQUISITE", "FORMAT_PREREQUISITE", "GENERATED_OBJECT_PREREQUISITE"] },
+        "evidence_refs": { "items": { "$ref": "#/$defs/evidenceRef" }, "minItems": 1, "type": "array" },
+        "rationale": { "minLength": 1, "type": "string" }
+      },
+      "required": ["parent_family_id", "child_family_id", "dependency_kind", "evidence_refs", "rationale"],
+      "type": "object"
+    },
+    "unresolvedRecord": {
+      "additionalProperties": false,
+      "properties": {
+        "reason_code": { "minLength": 1, "type": "string" },
+        "future_owner": { "minLength": 1, "type": "string" },
+        "rationale": { "minLength": 1, "type": "string" },
+        "evidence_refs": { "items": { "$ref": "#/$defs/evidenceRef" }, "minItems": 1, "type": "array" }
+      },
+      "required": ["reason_code", "future_owner", "rationale", "evidence_refs"],
+      "type": ["object", "null"]
+    },
+    "unresolved": {
+      "additionalProperties": false,
+      "properties": {
+        "obligation_id": { "type": "string" },
+        "reason_code": { "type": "string" },
+        "subject": { "type": "string" },
+        "future_owner": { "type": "string" },
+        "evidence_refs": { "items": { "$ref": "#/$defs/evidenceRef" }, "minItems": 1, "type": "array" }
+      },
+      "required": ["obligation_id", "reason_code", "subject", "future_owner", "evidence_refs"],
+      "type": "object"
+    },
+    "summary": {
+      "additionalProperties": false,
+      "properties": {
+        "direct_capability_roots": { "minimum": 0, "type": "integer" },
+        "dependency_set_evidenced": { "minimum": 0, "type": "integer" },
+        "terminal_leaf_evidenced": { "minimum": 0, "type": "integer" },
+        "unresolved_dependency_evidence": { "minimum": 0, "type": "integer" },
+        "total_dependency_edges": { "minimum": 0, "type": "integer" },
+        "unique_dependency_children": { "minimum": 0, "type": "integer" },
+        "transitive_only_capability_references": { "minimum": 0, "type": "integer" },
+        "missing_dependency_capabilities": { "minimum": 0, "type": "integer" }
+      },
+      "required": ["direct_capability_roots", "dependency_set_evidenced", "terminal_leaf_evidenced", "unresolved_dependency_evidence", "total_dependency_edges", "unique_dependency_children", "transitive_only_capability_references", "missing_dependency_capabilities"],
+      "type": "object"
+    }
+  },
+  "title": "M2.5 Selected-Pair Capability Dependency and Terminal-Leaf Evidence v1",
+  "type": "object"
+}

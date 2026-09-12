@@ -18,6 +18,7 @@ DEFAULT_PROFILE = "full"
 SMOKE_TESTS = (
     "test_m2_5_selected_pair_cdi_census",
     "test_m2_5_selected_pair_recursive_capability_closure",
+    "test_m2_5_selected_pair_capability_dependency_evidence",
     "test_m2_5_exact_two_deck_scope_lock",
     "test_authority_contract",
     "test_context_application_v2_contract",
