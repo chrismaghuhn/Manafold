@@ -443,7 +443,17 @@ def run_negative_evidence_matrix(repo_root: Path, evidence: dict[str, object]) -
     return tuple(case_ids)
 
 
-def build_adoption_readiness(repo_root: Path) -> dict[str, object]:
+def build_adoption_readiness(
+    repo_root: Path, *, allow_current_root_for_historical_test: bool = False
+) -> dict[str, object]:
+    """Build the pre-adoption readiness evidence.
+
+    The production path remains fail-closed after Slice-6 adoption: a current
+    root prevents rebuilding pre-adoption evidence.  The explicit keyword is
+    only for historical tests that need to recompute the immutable Slice-5
+    evidence after the repository has adopted v2.
+    """
+
     historical_status = run_historical_v1_verification(repo_root)
     v2_path = _path(repo_root, B2_CLOSURE_V2_PATH)
     verify_closure_v2(repo_root, v2_path)
@@ -457,7 +467,7 @@ def build_adoption_readiness(repo_root: Path) -> dict[str, object]:
         raise B2AdoptionReadinessError("historical v1 closure digest changed")
     if v2_resolution.raw_sha256 != B2_CLOSURE_V2_RAW_SHA256:
         raise B2AdoptionReadinessError("candidate v2 closure digest changed")
-    if _path(repo_root, CURRENT_ROOT_PATH).exists():
+    if _path(repo_root, CURRENT_ROOT_PATH).exists() and not allow_current_root_for_historical_test:
         raise B2AdoptionReadinessError("a current-root admission artifact already exists")
 
     role_matrix = _role_version_matrix(repo_root)

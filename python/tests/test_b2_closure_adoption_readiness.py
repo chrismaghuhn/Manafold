@@ -37,7 +37,7 @@ class B2ClosureAdoptionReadinessTests(unittest.TestCase):
         self, historical_verification: object
     ) -> None:
         historical_verification.return_value = "PASS"  # type: ignore[attr-defined]
-        evidence = build_adoption_readiness(ROOT)
+        evidence = build_adoption_readiness(ROOT, allow_current_root_for_historical_test=True)
 
         self.assertEqual(evidence["schema"], B2_ADOPTION_READINESS_SCHEMA)
         self.assertEqual(evidence["currentness_state"], "v2_ready_not_adopted")
@@ -52,8 +52,12 @@ class B2ClosureAdoptionReadinessTests(unittest.TestCase):
     @patch("b2_closure_v2_adoption_readiness.run_historical_v1_verification")
     def test_builder_is_deterministic(self, historical_verification: object) -> None:
         historical_verification.return_value = "PASS"  # type: ignore[attr-defined]
-        first = render_adoption_readiness(build_adoption_readiness(ROOT))
-        second = render_adoption_readiness(build_adoption_readiness(ROOT))
+        first = render_adoption_readiness(
+            build_adoption_readiness(ROOT, allow_current_root_for_historical_test=True)
+        )
+        second = render_adoption_readiness(
+            build_adoption_readiness(ROOT, allow_current_root_for_historical_test=True)
+        )
 
         self.assertEqual(first, second)
 
@@ -68,7 +72,9 @@ class B2ClosureAdoptionReadinessTests(unittest.TestCase):
             "b2_closure_v2_adoption_readiness.run_historical_v1_verification",
             return_value="PASS",
         ):
-            rendered = render_adoption_readiness(build_adoption_readiness(ROOT))
+            rendered = render_adoption_readiness(
+                build_adoption_readiness(ROOT, allow_current_root_for_historical_test=True)
+            )
 
         self.assertIsInstance(json.loads(rendered), dict)
 
@@ -87,7 +93,7 @@ class B2ClosureAdoptionReadinessTests(unittest.TestCase):
         self, historical_verification: object
     ) -> None:
         historical_verification.return_value = "PASS"  # type: ignore[attr-defined]
-        evidence = build_adoption_readiness(ROOT)
+        evidence = build_adoption_readiness(ROOT, allow_current_root_for_historical_test=True)
         for field, value in (
             (("current_root", "created"), True),
             (("current_root", "adopted_v2"), True),
@@ -95,19 +101,19 @@ class B2ClosureAdoptionReadinessTests(unittest.TestCase):
             mutated = deepcopy(evidence)
             cast(dict[str, object], mutated[field[0]])[field[1]] = value
             with self.subTest(field=field), self.assertRaises(B2AdoptionReadinessError):
-                verify_adoption_readiness_value(ROOT, mutated)
+                verify_adoption_readiness_value(ROOT, mutated, recomputed=evidence)
 
         extra = deepcopy(evidence)
         extra["unexpected_future_field"] = True
         with self.assertRaises(B2AdoptionReadinessError):
-            verify_adoption_readiness_value(ROOT, extra)
+            verify_adoption_readiness_value(ROOT, extra, recomputed=evidence)
 
     @patch("b2_closure_v2_adoption_readiness.run_historical_v1_verification")
     def test_negative_matrix_executes_every_declared_case(
         self, historical_verification: object
     ) -> None:
         historical_verification.return_value = "PASS"  # type: ignore[attr-defined]
-        evidence = build_adoption_readiness(ROOT)
+        evidence = build_adoption_readiness(ROOT, allow_current_root_for_historical_test=True)
         executed = run_negative_evidence_matrix(ROOT, evidence)
 
         self.assertEqual(len(executed), 19)
