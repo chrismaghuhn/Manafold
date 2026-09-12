@@ -18,6 +18,7 @@ from b2_closure_v2_adoption_readiness import (
     B2AdoptionReadinessError,
     build_adoption_readiness,
     render_adoption_readiness,
+    run_negative_evidence_matrix,
     verify_adoption_readiness_value,
 )
 
@@ -100,6 +101,17 @@ class B2ClosureAdoptionReadinessTests(unittest.TestCase):
         extra["unexpected_future_field"] = True
         with self.assertRaises(B2AdoptionReadinessError):
             verify_adoption_readiness_value(ROOT, extra)
+
+    @patch("b2_closure_v2_adoption_readiness.run_historical_v1_verification")
+    def test_negative_matrix_executes_every_declared_case(
+        self, historical_verification: object
+    ) -> None:
+        historical_verification.return_value = "PASS"  # type: ignore[attr-defined]
+        evidence = build_adoption_readiness(ROOT)
+        executed = run_negative_evidence_matrix(ROOT, evidence)
+
+        self.assertEqual(len(executed), 19)
+        self.assertEqual(len(set(executed)), 19)
 
 
 if __name__ == "__main__":

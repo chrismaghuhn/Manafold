@@ -190,6 +190,43 @@
         "explicit_maintainer_adoption"
       ]
     },
+    "negative_matrix_execution": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "status": { "const": "PASS" },
+        "executed_case_ids": {
+          "type": "array",
+          "minItems": 19,
+          "maxItems": 19,
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "wrong_v1_role",
+              "wrong_v2_role",
+              "wrong_v1_path",
+              "wrong_v2_path",
+              "wrong_v1_schema",
+              "wrong_v2_schema",
+              "wrong_v1_digest",
+              "wrong_v2_digest",
+              "wrong_source_package",
+              "tampered_semantic_artifact_bytes",
+              "wrong_snapshot_constant",
+              "legacy_alias",
+              "unknown_version",
+              "v2_failure_no_v1_fallback",
+              "historical_failure_no_v2_substitution",
+              "evidence_claims_current",
+              "evidence_claims_current_root_created",
+              "unimplemented_consumer_ready",
+              "unknown_extra_field"
+            ]
+          }
+        }
+      },
+      "required": ["status", "executed_case_ids"]
+    },
     "current_root": {
       "type": "object",
       "additionalProperties": false,
@@ -233,6 +270,7 @@
     "no_fallback",
     "downstream_readiness",
     "adoption_gate_matrix",
+    "negative_matrix_execution",
     "current_root",
     "evidence_dag"
   ],

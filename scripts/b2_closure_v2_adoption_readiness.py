@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import copy
 import hashlib
 import json
 import os
@@ -40,6 +41,7 @@ from b2_closure_v2_support import (
     verify_v1_artifact_bindings,
 )
 from check_m2_5_b2_closure_v2 import (
+    B2ClosureV2VerificationError,
     verify_closure_v2,
 )
 from mtgml.b2_closure_contract import (
@@ -73,6 +75,30 @@ HISTORICAL_MUTATION_PREFIXES = (
 )
 CURRENT_ROOT_PATH = "sources/m2_5/closures/B2/current_root.json"
 SLICE2_NEGATIVE_MATRIX_PATH = "conformance/fixtures/authority/b2_closure_v2_negative_matrix.v1.json"
+SLICE5_NEGATIVE_MATRIX_PATH = (
+    "conformance/fixtures/authority/b2_closure_v2_adoption_readiness_negative_matrix.v1.json"
+)
+SLICE5_NEGATIVE_CASE_IDS = (
+    "wrong_v1_role",
+    "wrong_v2_role",
+    "wrong_v1_path",
+    "wrong_v2_path",
+    "wrong_v1_schema",
+    "wrong_v2_schema",
+    "wrong_v1_digest",
+    "wrong_v2_digest",
+    "wrong_source_package",
+    "tampered_semantic_artifact_bytes",
+    "wrong_snapshot_constant",
+    "legacy_alias",
+    "unknown_version",
+    "v2_failure_no_v1_fallback",
+    "historical_failure_no_v2_substitution",
+    "evidence_claims_current",
+    "evidence_claims_current_root_created",
+    "unimplemented_consumer_ready",
+    "unknown_extra_field",
+)
 
 
 class B2AdoptionReadinessError(ValueError):
@@ -284,19 +310,137 @@ def _downstream_readiness(repo_root: Path) -> dict[str, str]:
 
 
 def _slice2_negative_matrix(repo_root: Path) -> str:
-    path = _path(repo_root, SLICE2_NEGATIVE_MATRIX_PATH)
+    try:
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "unittest",
+                "python.tests.test_b2_closure_v2.B2ClosureV2Tests.test_negative_matrix_rejects_closure_mutations",
+            ],
+            cwd=repo_root,
+            env=os.environ.copy(),
+            capture_output=True,
+            text=True,
+        )
+    except OSError as exc:
+        raise B2AdoptionReadinessError("Slice-2 negative matrix runner could not start") from exc
+    if result.returncode != 0:
+        raise B2AdoptionReadinessError(
+            "Slice-2 negative matrix runner failed: "
+            f"{result.stdout.strip() or result.stderr.strip()}"
+        )
+    return "PASS"
+
+
+def _load_slice5_negative_matrix(repo_root: Path) -> list[str]:
+    path = _path(repo_root, SLICE5_NEGATIVE_MATRIX_PATH)
     try:
         value = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise B2AdoptionReadinessError(f"Slice-2 negative matrix is unreadable: {path}") from exc
+        raise B2AdoptionReadinessError(f"Slice-5 negative matrix is unreadable: {path}") from exc
     cases = value.get("cases") if isinstance(value, dict) else None
-    if (
-        not isinstance(cases, list)
-        or not cases
-        or any(not isinstance(case, dict) or case.get("expected") != "reject" for case in cases)
+    if not isinstance(cases, list) or any(
+        not isinstance(case, dict) or case.get("expected") != "reject" for case in cases
     ):
-        raise B2AdoptionReadinessError("Slice-2 negative matrix is not closed and rejecting")
-    return "PASS"
+        raise B2AdoptionReadinessError("Slice-5 negative matrix contains an invalid case")
+    case_ids = [case.get("case_id") for case in cases]
+    if tuple(case_ids) != SLICE5_NEGATIVE_CASE_IDS:
+        raise B2AdoptionReadinessError("Slice-5 negative matrix case identity/order drifted")
+    return list(SLICE5_NEGATIVE_CASE_IDS)
+
+
+def _mutated_evidence(evidence: dict[str, object], case_id: str) -> dict[str, object]:
+    mutated = copy.deepcopy(evidence)
+    if case_id == "wrong_v1_role":
+        mutated["historical_v1_binding"]["artifact_role"] = "b2_closure_v2"  # type: ignore[index]
+    elif case_id == "wrong_v2_role":
+        mutated["candidate_v2_binding"]["artifact_role"] = "b2_closure"  # type: ignore[index]
+    elif case_id == "wrong_v1_path":
+        mutated["historical_v1_binding"]["repository_relative_path"] = "wrong/path"  # type: ignore[index]
+    elif case_id == "wrong_v2_path":
+        mutated["candidate_v2_binding"]["repository_relative_path"] = "wrong/path"  # type: ignore[index]
+    elif case_id == "wrong_v1_schema":
+        mutated["historical_v1_binding"]["schema_identifier"] = "wrong.schema"  # type: ignore[index]
+    elif case_id == "wrong_v2_schema":
+        mutated["candidate_v2_binding"]["schema_identifier"] = "wrong.schema"  # type: ignore[index]
+    elif case_id == "wrong_v1_digest":
+        mutated["historical_v1_binding"]["raw_sha256"] = "0" * 64  # type: ignore[index]
+    elif case_id == "wrong_v2_digest":
+        mutated["candidate_v2_binding"]["raw_sha256"] = "0" * 64  # type: ignore[index]
+    elif case_id == "wrong_source_package":
+        mutated["source_package_sha256"] = "0" * 64
+    elif case_id == "wrong_snapshot_constant":
+        mutated["snapshot_constants"]["classification_count"] = 401  # type: ignore[index]
+    elif case_id == "legacy_alias":
+        mutated["source_role_parity"]["b2_closure_v1_alias_introduced"] = True  # type: ignore[index]
+    elif case_id == "unknown_version":
+        mutated["candidate_v2_binding"]["closure_version"] = "v3"  # type: ignore[index]
+    elif case_id == "evidence_claims_current":
+        mutated["current_root"]["adopted_v2"] = True  # type: ignore[index]
+    elif case_id == "evidence_claims_current_root_created":
+        mutated["current_root"]["created"] = True  # type: ignore[index]
+    elif case_id == "unimplemented_consumer_ready":
+        mutated["downstream_readiness"]["context_application"] = "PASS"  # type: ignore[index]
+    elif case_id == "unknown_extra_field":
+        mutated["unexpected_future_field"] = True
+    else:
+        raise B2AdoptionReadinessError(f"case {case_id} requires a repository mutation probe")
+    return mutated
+
+
+def _assert_semantic_bytes_tampered(repo_root: Path) -> None:
+    directory, copied = _copy_resolution_repo(repo_root)
+    try:
+        source = _path(copied, "sources/m2_5/closures/B2/card_semantic_classifications.v1.json")
+        source.write_bytes(source.read_bytes() + b"\n")
+        try:
+            verify_closure_v2(copied, _path(copied, B2_CLOSURE_V2_PATH))
+        except B2ClosureV2VerificationError:
+            return
+        raise B2AdoptionReadinessError("tampered semantic bytes were accepted")
+    finally:
+        directory.cleanup()
+
+
+def _assert_no_fallback_probe(repo_root: Path, mode: B2ClosureResolutionMode) -> None:
+    directory, copied = _copy_resolution_repo(repo_root)
+    try:
+        relative = (
+            B2_CLOSURE_V2_PATH
+            if mode is B2ClosureResolutionMode.CANDIDATE_V2
+            else B2_CLOSURE_V1_PATH
+        )
+        source = _path(copied, relative)
+        source.write_bytes(source.read_bytes() + b"\n")
+        try:
+            resolve_b2_closure(copied, mode)
+        except ResolutionError:
+            return
+        raise B2AdoptionReadinessError(f"invalid {mode.value} resolution was accepted")
+    finally:
+        directory.cleanup()
+
+
+def run_negative_evidence_matrix(repo_root: Path, evidence: dict[str, object]) -> tuple[str, ...]:
+    """Execute every declared Slice-5 negative case and return its case IDs."""
+
+    case_ids = _load_slice5_negative_matrix(repo_root)
+    for case_id in case_ids:
+        if case_id == "tampered_semantic_artifact_bytes":
+            _assert_semantic_bytes_tampered(repo_root)
+        elif case_id == "v2_failure_no_v1_fallback":
+            _assert_no_fallback_probe(repo_root, B2ClosureResolutionMode.CANDIDATE_V2)
+        elif case_id == "historical_failure_no_v2_substitution":
+            _assert_no_fallback_probe(repo_root, B2ClosureResolutionMode.HISTORICAL_V1)
+        else:
+            mutated = _mutated_evidence(evidence, case_id)
+            try:
+                verify_adoption_readiness_value(repo_root, mutated, recomputed=evidence)
+            except B2AdoptionReadinessError:
+                continue
+            raise B2AdoptionReadinessError(f"negative case unexpectedly passed: {case_id}")
+    return tuple(case_ids)
 
 
 def build_adoption_readiness(repo_root: Path) -> dict[str, object]:
@@ -321,7 +465,8 @@ def build_adoption_readiness(repo_root: Path) -> dict[str, object]:
     downstream = _downstream_readiness(repo_root)
     historical_nonmutation = _historical_nonmutation(repo_root)
     historical_parity = _historical_parity(repo_root)
-    return {
+    slice2_negative_status = _slice2_negative_matrix(repo_root)
+    evidence: dict[str, object] = {
         "schema": B2_ADOPTION_READINESS_SCHEMA,
         "currentness_state": "v2_ready_not_adopted",
         "source_package_sha256": SOURCE_PACKAGE_SHA256,
@@ -344,7 +489,7 @@ def build_adoption_readiness(repo_root: Path) -> dict[str, object]:
         "adoption_gate_matrix": {
             "v2_schema_dto_closure": "PASS",
             "v2_positive_verifier": "PASS",
-            "v2_negative_matrix": _slice2_negative_matrix(repo_root),
+            "v2_negative_matrix": slice2_negative_status,
             "b2_v1_semantic_byte_parity": historical_parity["status"],
             "exact_artifact_role_bindings": "PASS",
             "exact_artifact_path_bindings": "PASS",
@@ -389,6 +534,16 @@ def build_adoption_readiness(repo_root: Path) -> dict[str, object]:
             ],
         },
     }
+    evidence["negative_matrix_execution"] = {
+        "status": "PASS",
+        "executed_case_ids": list(SLICE5_NEGATIVE_CASE_IDS),
+    }
+    executed = run_negative_evidence_matrix(repo_root, evidence)
+    evidence["negative_matrix_execution"] = {
+        "status": "PASS",
+        "executed_case_ids": list(executed),
+    }
+    return evidence
 
 
 def render_adoption_readiness(value: dict[str, object]) -> bytes:
@@ -424,12 +579,17 @@ def verify_adoption_readiness(repo_root: Path, evidence_path: Path) -> dict[str,
     return verify_adoption_readiness_value(repo_root, value)
 
 
-def verify_adoption_readiness_value(repo_root: Path, value: dict[str, object]) -> dict[str, object]:
+def verify_adoption_readiness_value(
+    repo_root: Path,
+    value: dict[str, object],
+    *,
+    recomputed: dict[str, object] | None = None,
+) -> dict[str, object]:
     """Verify one decoded evidence value against freshly recomputed repository facts."""
 
     _schema_validate(repo_root, value)
-    recomputed = build_adoption_readiness(repo_root)
-    if value != recomputed:
+    expected = recomputed if recomputed is not None else build_adoption_readiness(repo_root)
+    if value != expected:
         raise B2AdoptionReadinessError(
             "readiness evidence differs from recomputed repository facts"
         )
