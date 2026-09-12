@@ -1,0 +1,761 @@
+{
+  "mappings": [
+    {
+      "b2_family_id": "cap.activation_cost",
+      "durable_keys": [
+        "decision/activation-cost"
+      ]
+    },
+    {
+      "b2_family_id": "cap.additional_sacrifice_cost",
+      "durable_keys": [
+        "decision/additional-sacrifice-cost"
+      ]
+    },
+    {
+      "b2_family_id": "cap.alternate_cast_zone",
+      "durable_keys": [
+        "rules/alternate-cast-zone"
+      ]
+    },
+    {
+      "b2_family_id": "cap.amass",
+      "durable_keys": [
+        "mechanic/amass"
+      ]
+    },
+    {
+      "b2_family_id": "cap.artifact_permanent",
+      "durable_keys": [
+        "rules/artifact-permanent"
+      ]
+    },
+    {
+      "b2_family_id": "cap.attack_trigger",
+      "durable_keys": [
+        "rules/attack-trigger"
+      ]
+    },
+    {
+      "b2_family_id": "cap.aura",
+      "durable_keys": [
+        "mechanic/aura"
+      ]
+    },
+    {
+      "b2_family_id": "cap.aura_curse",
+      "durable_keys": [
+        "mechanic/aura-curse"
+      ]
+    },
+    {
+      "b2_family_id": "cap.bounded_control_restoration",
+      "durable_keys": [
+        "mechanic/bounded-control-restoration"
+      ]
+    },
+    {
+      "b2_family_id": "cap.choice_number_x",
+      "durable_keys": [
+        "decision/choose-number"
+      ]
+    },
+    {
+      "b2_family_id": "cap.choose_creature_type",
+      "durable_keys": [
+        "decision/choose-creature-type"
+      ]
+    },
+    {
+      "b2_family_id": "cap.choose_two_targets",
+      "durable_keys": [
+        "decision/two-target-selection"
+      ]
+    },
+    {
+      "b2_family_id": "cap.color_addition",
+      "durable_keys": [
+        "rules/color-addition"
+      ]
+    },
+    {
+      "b2_family_id": "cap.color_set_black",
+      "durable_keys": [
+        "rules/color-set-black"
+      ]
+    },
+    {
+      "b2_family_id": "cap.combat_trigger",
+      "durable_keys": [
+        "rules/combat-trigger"
+      ]
+    },
+    {
+      "b2_family_id": "cap.conditional_exile",
+      "durable_keys": [
+        "rules/conditional-exile"
+      ]
+    },
+    {
+      "b2_family_id": "cap.continuous_ability",
+      "durable_keys": [
+        "rules/continuous-effect"
+      ]
+    },
+    {
+      "b2_family_id": "cap.continuous_pt",
+      "durable_keys": [
+        "rules/continuous-pt"
+      ]
+    },
+    {
+      "b2_family_id": "cap.controller_assignment_on_zone_entry",
+      "durable_keys": [
+        "rules/controller-assignment-on-entry"
+      ]
+    },
+    {
+      "b2_family_id": "cap.convoke",
+      "durable_keys": [
+        "mechanic/convoke"
+      ]
+    },
+    {
+      "b2_family_id": "cap.copiable_token_values",
+      "durable_keys": [
+        "rules/copy-effect"
+      ]
+    },
+    {
+      "b2_family_id": "cap.count_tapped",
+      "durable_keys": [
+        "rules/count-tapped"
+      ]
+    },
+    {
+      "b2_family_id": "cap.countered_setup",
+      "durable_keys": [
+        "rules/countered-setup"
+      ]
+    },
+    {
+      "b2_family_id": "cap.counters",
+      "durable_keys": [
+        "rules/counters"
+      ]
+    },
+    {
+      "b2_family_id": "cap.counterspell",
+      "durable_keys": [
+        "rules/counterspell"
+      ]
+    },
+    {
+      "b2_family_id": "cap.damage",
+      "durable_keys": [
+        "rules/damage"
+      ]
+    },
+    {
+      "b2_family_id": "cap.damage_trigger",
+      "durable_keys": [
+        "rules/damage-trigger"
+      ]
+    },
+    {
+      "b2_family_id": "cap.death_trigger",
+      "durable_keys": [
+        "rules/death-trigger"
+      ]
+    },
+    {
+      "b2_family_id": "cap.deathtouch",
+      "durable_keys": [
+        "rules/deathtouch"
+      ]
+    },
+    {
+      "b2_family_id": "cap.delayed_trigger",
+      "durable_keys": [
+        "rules/delayed-trigger"
+      ]
+    },
+    {
+      "b2_family_id": "cap.destroy",
+      "durable_keys": [
+        "rules/destroy"
+      ]
+    },
+    {
+      "b2_family_id": "cap.discard_cost",
+      "durable_keys": [
+        "decision/discard-cost"
+      ]
+    },
+    {
+      "b2_family_id": "cap.draw",
+      "durable_keys": [
+        "rules/draw"
+      ]
+    },
+    {
+      "b2_family_id": "cap.draw_discard",
+      "durable_keys": [
+        "rules/draw-discard"
+      ]
+    },
+    {
+      "b2_family_id": "cap.draw_trigger",
+      "durable_keys": [
+        "rules/draw-trigger"
+      ]
+    },
+    {
+      "b2_family_id": "cap.dynamic_activated_ability_grant",
+      "durable_keys": [
+        "mechanic/dynamic-activated-ability-grant"
+      ]
+    },
+    {
+      "b2_family_id": "cap.end_step_trigger",
+      "durable_keys": [
+        "rules/end-step-trigger"
+      ]
+    },
+    {
+      "b2_family_id": "cap.exile",
+      "durable_keys": [
+        "rules/exile"
+      ]
+    },
+    {
+      "b2_family_id": "cap.flash",
+      "durable_keys": [
+        "mechanic/flash"
+      ]
+    },
+    {
+      "b2_family_id": "cap.flashback",
+      "durable_keys": [
+        "mechanic/flashback"
+      ]
+    },
+    {
+      "b2_family_id": "cap.flying_grant",
+      "durable_keys": [
+        "rules/flying-grant"
+      ]
+    },
+    {
+      "b2_family_id": "cap.grant_activated_ability",
+      "durable_keys": [
+        "rules/grant-activated-ability"
+      ]
+    },
+    {
+      "b2_family_id": "cap.grant_mana_ability",
+      "durable_keys": [
+        "rules/grant-mana-ability"
+      ]
+    },
+    {
+      "b2_family_id": "cap.graveyard",
+      "durable_keys": [
+        "rules/graveyard-zone"
+      ]
+    },
+    {
+      "b2_family_id": "cap.graveyard_cast_permission",
+      "durable_keys": [
+        "rules/graveyard-cast-permission"
+      ]
+    },
+    {
+      "b2_family_id": "cap.graveyard_count",
+      "durable_keys": [
+        "rules/graveyard-count"
+      ]
+    },
+    {
+      "b2_family_id": "cap.graveyard_return",
+      "durable_keys": [
+        "rules/graveyard-return"
+      ]
+    },
+    {
+      "b2_family_id": "cap.graveyard_target",
+      "durable_keys": [
+        "decision/graveyard-target"
+      ]
+    },
+    {
+      "b2_family_id": "cap.indestructible_until_eot",
+      "durable_keys": [
+        "rules/indestructible-until-eot"
+      ]
+    },
+    {
+      "b2_family_id": "cap.kicker",
+      "durable_keys": [
+        "mechanic/kicker"
+      ]
+    },
+    {
+      "b2_family_id": "cap.land_zone",
+      "durable_keys": [
+        "rules/land-zone"
+      ]
+    },
+    {
+      "b2_family_id": "cap.landfall",
+      "durable_keys": [
+        "mechanic/landfall"
+      ]
+    },
+    {
+      "b2_family_id": "cap.library_graveyard_information",
+      "durable_keys": [
+        "visibility/library-graveyard-information"
+      ]
+    },
+    {
+      "b2_family_id": "cap.library_traversal",
+      "durable_keys": [
+        "rules/library-traversal"
+      ]
+    },
+    {
+      "b2_family_id": "cap.life",
+      "durable_keys": [
+        "rules/life"
+      ]
+    },
+    {
+      "b2_family_id": "cap.life_additional_cost",
+      "durable_keys": [
+        "decision/life-additional-cost"
+      ]
+    },
+    {
+      "b2_family_id": "cap.life_drain",
+      "durable_keys": [
+        "rules/life-drain"
+      ]
+    },
+    {
+      "b2_family_id": "cap.life_scaled_token_creation",
+      "durable_keys": [
+        "mechanic/life-scaled-token-creation"
+      ]
+    },
+    {
+      "b2_family_id": "cap.linked_exile_return",
+      "durable_keys": [
+        "rules/linked-exile-return"
+      ]
+    },
+    {
+      "b2_family_id": "cap.loyalty_activation_rules",
+      "durable_keys": [
+        "rules/loyalty-activation-rules"
+      ]
+    },
+    {
+      "b2_family_id": "cap.loyalty_counters",
+      "durable_keys": [
+        "rules/loyalty-counters"
+      ]
+    },
+    {
+      "b2_family_id": "cap.mana_ability",
+      "durable_keys": [
+        "rules/mana-ability"
+      ]
+    },
+    {
+      "b2_family_id": "cap.mana_production",
+      "durable_keys": [
+        "rules/mana-production"
+      ]
+    },
+    {
+      "b2_family_id": "cap.mana_source",
+      "durable_keys": [
+        "rules/mana-source"
+      ]
+    },
+    {
+      "b2_family_id": "cap.mass_cross_graveyard_reanimation",
+      "durable_keys": [
+        "rules/mass-cross-graveyard-reanimation"
+      ]
+    },
+    {
+      "b2_family_id": "cap.mass_destruction",
+      "durable_keys": [
+        "rules/mass-destruction"
+      ]
+    },
+    {
+      "b2_family_id": "cap.mass_exile",
+      "durable_keys": [
+        "rules/mass-exile"
+      ]
+    },
+    {
+      "b2_family_id": "cap.mass_library_traversal",
+      "durable_keys": [
+        "rules/mass-library-traversal"
+      ]
+    },
+    {
+      "b2_family_id": "cap.mass_put_battlefield",
+      "durable_keys": [
+        "rules/mass-put-battlefield"
+      ]
+    },
+    {
+      "b2_family_id": "cap.mass_sacrifice",
+      "durable_keys": [
+        "rules/mass-sacrifice"
+      ]
+    },
+    {
+      "b2_family_id": "cap.mass_token_creation",
+      "durable_keys": [
+        "mechanic/mass-token-creation"
+      ]
+    },
+    {
+      "b2_family_id": "cap.mass_type_change",
+      "durable_keys": [
+        "rules/mass-type-change"
+      ]
+    },
+    {
+      "b2_family_id": "cap.mass_untap",
+      "durable_keys": [
+        "rules/mass-untap"
+      ]
+    },
+    {
+      "b2_family_id": "cap.mill",
+      "durable_keys": [
+        "rules/mill"
+      ]
+    },
+    {
+      "b2_family_id": "cap.mode_choice",
+      "durable_keys": [
+        "decision/mode-choice"
+      ]
+    },
+    {
+      "b2_family_id": "cap.multi_actor_staged_resolution",
+      "durable_keys": [
+        "mechanic/multi-actor-staged-resolution"
+      ]
+    },
+    {
+      "b2_family_id": "cap.multi_target",
+      "durable_keys": [
+        "decision/multi-target"
+      ]
+    },
+    {
+      "b2_family_id": "cap.multi_target_graveyard",
+      "durable_keys": [
+        "decision/multi-target-graveyard"
+      ]
+    },
+    {
+      "b2_family_id": "cap.multiplayer_wording",
+      "durable_keys": [
+        "rules/multiplayer-wording"
+      ]
+    },
+    {
+      "b2_family_id": "cap.open_vocabulary_domain",
+      "durable_keys": [
+        "decision/open-vocabulary-domain"
+      ]
+    },
+    {
+      "b2_family_id": "cap.ordered_library_card",
+      "durable_keys": [
+        "rules/ordered-library-card"
+      ]
+    },
+    {
+      "b2_family_id": "cap.owner_controller_separation",
+      "durable_keys": [
+        "rules/ownership-control"
+      ]
+    },
+    {
+      "b2_family_id": "cap.per_turn_permission",
+      "durable_keys": [
+        "rules/per-turn-permission"
+      ]
+    },
+    {
+      "b2_family_id": "cap.planeswalker",
+      "durable_keys": [
+        "rules/planeswalker"
+      ]
+    },
+    {
+      "b2_family_id": "cap.populate_token_copy",
+      "durable_keys": [
+        "mechanic/populate"
+      ]
+    },
+    {
+      "b2_family_id": "cap.post_destruction_choice",
+      "durable_keys": [
+        "decision/post-destruction-choice"
+      ]
+    },
+    {
+      "b2_family_id": "cap.put_battlefield",
+      "durable_keys": [
+        "rules/put-battlefield"
+      ]
+    },
+    {
+      "b2_family_id": "cap.reanimation",
+      "durable_keys": [
+        "rules/reanimation"
+      ]
+    },
+    {
+      "b2_family_id": "cap.reanimation_tapped",
+      "durable_keys": [
+        "rules/reanimation-tapped"
+      ]
+    },
+    {
+      "b2_family_id": "cap.reanimation_under_your_control",
+      "durable_keys": [
+        "mechanic/reanimation-under-your-control"
+      ]
+    },
+    {
+      "b2_family_id": "cap.replacement_prevention",
+      "durable_keys": [
+        "rules/replacement-effect"
+      ]
+    },
+    {
+      "b2_family_id": "cap.reveal",
+      "durable_keys": [
+        "visibility/reveal"
+      ]
+    },
+    {
+      "b2_family_id": "cap.scaled_token_creation",
+      "durable_keys": [
+        "mechanic/scaled-token-creation"
+      ]
+    },
+    {
+      "b2_family_id": "cap.scry",
+      "durable_keys": [
+        "mechanic/scry"
+      ]
+    },
+    {
+      "b2_family_id": "cap.search_library",
+      "durable_keys": [
+        "visibility/search-private-zone"
+      ]
+    },
+    {
+      "b2_family_id": "cap.selective_temporary_pt_modification",
+      "durable_keys": [
+        "rules/selective-temporary-pt-modification"
+      ]
+    },
+    {
+      "b2_family_id": "cap.self_exile",
+      "durable_keys": [
+        "rules/self-exile"
+      ]
+    },
+    {
+      "b2_family_id": "cap.sequential_choice_collection",
+      "durable_keys": [
+        "decision/sequential-choice-collection"
+      ]
+    },
+    {
+      "b2_family_id": "cap.shuffle",
+      "durable_keys": [
+        "rules/shuffle"
+      ]
+    },
+    {
+      "b2_family_id": "cap.shuffle_self",
+      "durable_keys": [
+        "rules/shuffle-self"
+      ]
+    },
+    {
+      "b2_family_id": "cap.simultaneous_sacrifice",
+      "durable_keys": [
+        "mechanic/simultaneous-sacrifice"
+      ]
+    },
+    {
+      "b2_family_id": "cap.static_team_pt",
+      "durable_keys": [
+        "rules/static-team-pt"
+      ]
+    },
+    {
+      "b2_family_id": "cap.subtype_add_zombie",
+      "durable_keys": [
+        "rules/subtype-add-zombie"
+      ]
+    },
+    {
+      "b2_family_id": "cap.subtype_addition",
+      "durable_keys": [
+        "rules/subtype-addition"
+      ]
+    },
+    {
+      "b2_family_id": "cap.surveil",
+      "durable_keys": [
+        "mechanic/surveil"
+      ]
+    },
+    {
+      "b2_family_id": "cap.tap_another_creature_cost",
+      "durable_keys": [
+        "decision/tap-another-creature-cost"
+      ]
+    },
+    {
+      "b2_family_id": "cap.tap_event",
+      "durable_keys": [
+        "rules/tap-event"
+      ]
+    },
+    {
+      "b2_family_id": "cap.tap_subset_cost",
+      "durable_keys": [
+        "decision/tap-subset-cost"
+      ]
+    },
+    {
+      "b2_family_id": "cap.tapped_tokens",
+      "durable_keys": [
+        "mechanic/tapped-tokens"
+      ]
+    },
+    {
+      "b2_family_id": "cap.target",
+      "durable_keys": [
+        "decision/target-selection"
+      ]
+    },
+    {
+      "b2_family_id": "cap.target_card_any_graveyard",
+      "durable_keys": [
+        "decision/target-card-any-graveyard"
+      ]
+    },
+    {
+      "b2_family_id": "cap.target_destroy",
+      "durable_keys": [
+        "decision/target-destroy"
+      ]
+    },
+    {
+      "b2_family_id": "cap.target_pt_modification",
+      "durable_keys": [
+        "decision/target-pt-modification"
+      ]
+    },
+    {
+      "b2_family_id": "cap.target_restriction",
+      "durable_keys": [
+        "decision/target-restriction"
+      ]
+    },
+    {
+      "b2_family_id": "cap.temporary_flying_double_strike",
+      "durable_keys": [
+        "rules/temporary-flying-double-strike"
+      ]
+    },
+    {
+      "b2_family_id": "cap.token_creation",
+      "durable_keys": [
+        "mechanic/token-creation"
+      ]
+    },
+    {
+      "b2_family_id": "cap.token_exception",
+      "durable_keys": [
+        "mechanic/token-exception"
+      ]
+    },
+    {
+      "b2_family_id": "cap.token_or_counters",
+      "durable_keys": [
+        "mechanic/token-or-counters"
+      ]
+    },
+    {
+      "b2_family_id": "cap.tribal",
+      "durable_keys": [
+        "mechanic/tribal"
+      ]
+    },
+    {
+      "b2_family_id": "cap.tribal_permission",
+      "durable_keys": [
+        "rules/tribal-permission"
+      ]
+    },
+    {
+      "b2_family_id": "cap.trigger",
+      "durable_keys": [
+        "rules/triggered-ability"
+      ]
+    },
+    {
+      "b2_family_id": "cap.turn_scoped_graveyard_cast_permission",
+      "durable_keys": [
+        "rules/turn-scoped-graveyard-cast-permission"
+      ]
+    },
+    {
+      "b2_family_id": "cap.turn_scoped_permission",
+      "durable_keys": [
+        "rules/turn-scoped-permission"
+      ]
+    },
+    {
+      "b2_family_id": "cap.type_change",
+      "durable_keys": [
+        "rules/type-change"
+      ]
+    },
+    {
+      "b2_family_id": "cap.upkeep_trigger",
+      "durable_keys": [
+        "rules/upkeep-trigger"
+      ]
+    }
+  ],
+  "schema": "manafold.m2.5.selected-pair-durable-capability-mapping.v1",
+  "source": {
+    "scope_lock_path": "sources/m2_5/scope/exact_two_deck_scope_lock.v1.json",
+    "scope_lock_sha256": "fb5481eca5510227ab91ec88441bc4f0860d4a5da4dede45df2c1fef0a76f877",
+    "selected_pair_census_path": "sources/m2_5/scope/selected_pair_capability_census.v1.json",
+    "selected_pair_census_sha256": "d75425e749ef5596894296eca073490390ece379e7adda3cf7198406343e0448"
+  }
+}

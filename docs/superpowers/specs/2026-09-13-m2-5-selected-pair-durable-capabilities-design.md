@@ -4,6 +4,9 @@
 
 **Baseline:** `c578eb78cd5f0ba7ca6db7267f7a05211a92ec06` (merged PR #144)
 
+**Status:** accepted for task execution
+**Stability:** provisional
+
 ## Goal
 
 Materialize the complete durable capability set required by the locked Token Triumph versus Grave Danger scope. Every one of the 125 selected B2 families will map to one or more stable Manafold capability keys, and every resulting durable capability will be specified for M3 without claiming implementation or certification.

@@ -1,5 +1,3816 @@
 {
-  "entries": [],
+  "entries": [
+    {
+      "authority_refs": [
+        "b1-final:sources/m2_5/closures/B1/official_authority_citations.v3.json#cap.activation_cost",
+        "b2-boundary:sources/m2_5/closures/B2/requirement_family_catalog.v1.json#cap.activation_cost",
+        "comprehensive-rules:CR-118-costs",
+        "comprehensive-rules:CR-602-activated-abilities",
+        "docs/DECISION_PROTOCOL.md",
+        "docs/DOMAIN_MODEL.md",
+        "docs/REPLAY_AND_DETERMINISM.md",
+        "docs/RULES_SEMANTICS.md",
+        "docs/STATE_HASHING.md",
+        "docs/contracts/ENGINE_STATE_CLOSURE.md"
+      ],
+      "benchmark_scenarios": [],
+      "category": "decision",
+      "conformance_cases": [],
+      "dependencies": [],
+      "implementation_paths": [],
+      "information_risk": "high",
+      "key": "decision/activation-cost",
+      "lifecycle": "specified",
+      "owners": [
+        "decision-maintainer"
+      ],
+      "spec_path": "docs/rules/capabilities/decision/activation-cost.md",
+      "summary": "This durable V1 capability covers the cost portion of an activated ability, including its mana, tap, discard, sacrifice, or other payment.",
+      "version": "0.1.0"
+    },
+    {
+      "authority_refs": [
+        "b1-final:sources/m2_5/closures/B1/official_authority_citations.v3.json#cap.additional_sacrifice_cost",
+        "b2-boundary:sources/m2_5/closures/B2/requirement_family_catalog.v1.json#cap.additional_sacrifice_cost",
+        "comprehensive-rules:CR-118-costs",
+        "comprehensive-rules:CR-601-casting-spells",
+        "comprehensive-rules:CR-701-21-sacrifice",
+        "docs/DECISION_PROTOCOL.md",
+        "docs/DOMAIN_MODEL.md",
+        "docs/REPLAY_AND_DETERMINISM.md",
+        "docs/RULES_SEMANTICS.md",
+        "docs/STATE_HASHING.md",
+        "docs/contracts/ENGINE_STATE_CLOSURE.md"
+      ],
+      "benchmark_scenarios": [],
+      "category": "decision",
+      "conformance_cases": [],
+      "dependencies": [],
+      "implementation_paths": [],
+      "information_risk": "high",
+      "key": "decision/additional-sacrifice-cost",
+      "lifecycle": "specified",
+      "owners": [
+        "decision-maintainer"
+      ],
+      "spec_path": "docs/rules/capabilities/decision/additional-sacrifice-cost.md",
+      "summary": "This durable V1 capability covers sacrificing a permanent as an additional cost to cast a spell.",
+      "version": "0.1.0"
+    },
+    {
+      "authority_refs": [
+        "b1-final:sources/m2_5/closures/B1/official_authority_citations.v3.json#cap.choose_creature_type",
+        "b2-boundary:sources/m2_5/closures/B2/requirement_family_catalog.v1.json#cap.choose_creature_type",
+        "comprehensive-rules:CR-205-type-line",
+        "comprehensive-rules:CR-700-2-modes",
+        "docs/DECISION_PROTOCOL.md",
+        "docs/DOMAIN_MODEL.md",
+        "docs/REPLAY_AND_DETERMINISM.md",
+        "docs/RULES_SEMANTICS.md",
+        "docs/STATE_HASHING.md",
+        "docs/contracts/ENGINE_STATE_CLOSURE.md"
+      ],
+      "benchmark_scenarios": [],
+      "category": "decision",
+      "conformance_cases": [],
+      "dependencies": [],
+      "implementation_paths": [],
+      "information_risk": "high",
+      "key": "decision/choose-creature-type",
+      "lifecycle": "specified",
+      "owners": [
+        "decision-maintainer"
+      ],
+      "spec_path": "docs/rules/capabilities/decision/choose-creature-type.md",
+      "summary": "This durable V1 capability covers a player choice of a creature type from the rules-defined creature-type vocabulary.",
+      "version": "0.1.0"
+    },
+    {
+      "authority_refs": [
+        "b1-final:sources/m2_5/closures/B1/official_authority_citations.v3.json#cap.choice_number_x",
+        "b2-boundary:sources/m2_5/closures/B2/requirement_family_catalog.v1.json#cap.choice_number_x",
+        "comprehensive-rules:CR-601-casting-spells",
+        "docs/DECISION_PROTOCOL.md",
+        "docs/DOMAIN_MODEL.md",
+        "docs/REPLAY_AND_DETERMINISM.md",
+        "docs/RULES_SEMANTICS.md",
+        "docs/STATE_HASHING.md",
+        "docs/contracts/ENGINE_STATE_CLOSURE.md"
+      ],
+      "benchmark_scenarios": [],
+      "category": "decision",
+      "conformance_cases": [],
+      "dependencies": [],
+      "implementation_paths": [],
+      "information_risk": "high",
+      "key": "decision/choose-number",
+      "lifecycle": "specified",
+      "owners": [
+        "decision-maintainer"
+      ],
+      "spec_path": "docs/rules/capabilities/decision/choose-number.md",
+      "summary": "This durable V1 capability covers the player explicitly chooses a numeric value for X or pays an X variable as part of a choice or cost.",
+      "version": "0.1.0"
+    },
+    {
+      "authority_refs": [
+        "b1-final:sources/m2_5/closures/B1/official_authority_citations.v3.json#cap.discard_cost",
+        "b2-boundary:sources/m2_5/closures/B2/requirement_family_catalog.v1.json#cap.discard_cost",
+        "comprehensive-rules:CR-118-costs",
+        "comprehensive-rules:CR-701-9-discard",
+        "docs/DECISION_PROTOCOL.md",
+        "docs/DOMAIN_MODEL.md",
+        "docs/REPLAY_AND_DETERMINISM.md",
+        "docs/RULES_SEMANTICS.md",
+        "docs/STATE_HASHING.md",
+        "docs/contracts/ENGINE_STATE_CLOSURE.md"
+      ],
+      "benchmark_scenarios": [],
+      "category": "decision",
+      "conformance_cases": [],
+      "dependencies": [],
+      "implementation_paths": [],
+      "information_risk": "high",
+      "key": "decision/discard-cost",
+      "lifecycle": "specified",
+      "owners": [
+        "decision-maintainer"
+      ],
+      "spec_path": "docs/rules/capabilities/decision/discard-cost.md",
+      "summary": "This durable V1 capability covers discarding a card as an explicit cost before the colon or casting instruction resolves.",
+      "version": "0.1.0"
+    },
+    {
+      "authority_refs": [
+        "b1-final:sources/m2_5/closures/B1/official_authority_citations.v3.json#cap.graveyard_target",
+        "b2-boundary:sources/m2_5/closures/B2/requirement_family_catalog.v1.json#cap.graveyard_target",
+        "comprehensive-rules:CR-115-targets",
+        "comprehensive-rules:CR-404-graveyard",
+        "docs/DECISION_PROTOCOL.md",
+        "docs/DOMAIN_MODEL.md",
+        "docs/INFORMATION_MODEL.md",
+        "docs/REPLAY_AND_DETERMINISM.md",
+        "docs/RULES_SEMANTICS.md",
+        "docs/STATE_HASHING.md",
+        "docs/contracts/ENGINE_STATE_CLOSURE.md"
+      ],
+      "benchmark_scenarios": [],
+      "category": "decision",
+      "conformance_cases": [],
+      "dependencies": [
+        "decision/target-selection",
+        "rules/graveyard-zone"
+      ],
+      "implementation_paths": [],
+      "information_risk": "critical",
+      "key": "decision/graveyard-target",
+      "lifecycle": "specified",
+      "owners": [
+        "decision-maintainer",
+        "information-safety-maintainer"
+      ],
+      "spec_path": "docs/rules/capabilities/decision/graveyard-target.md",
+      "summary": "This durable V1 capability covers a target selection whose candidate objects are cards in a graveyard.",
+      "version": "0.1.0"
+    },
+    {
+      "authority_refs": [
+        "b1-final:sources/m2_5/closures/B1/official_authority_citations.v3.json#cap.life_additional_cost",
+        "b2-boundary:sources/m2_5/closures/B2/requirement_family_catalog.v1.json#cap.life_additional_cost",
+        "comprehensive-rules:CR-118-costs",
+        "docs/DECISION_PROTOCOL.md",
+        "docs/DOMAIN_MODEL.md",
+        "docs/REPLAY_AND_DETERMINISM.md",
+        "docs/RULES_SEMANTICS.md",
+        "docs/STATE_HASHING.md",
+        "docs/contracts/ENGINE_STATE_CLOSURE.md"
+      ],
+      "benchmark_scenarios": [],
+      "category": "decision",
+      "conformance_cases": [],
+      "dependencies": [
+        "rules/life"
+      ],
+      "implementation_paths": [],
+      "information_risk": "high",
+      "key": "decision/life-additional-cost",
+      "lifecycle": "specified",
+      "owners": [
+        "decision-maintainer"
+      ],
+      "spec_path": "docs/rules/capabilities/decision/life-additional-cost.md",
+      "summary": "This durable V1 capability covers paying life as an explicit additional cost to cast a spell or activate an ability.",
+      "version": "0.1.0"
+    },
+    {
+      "authority_refs": [
+        "b1-final:sources/m2_5/closures/B1/official_authority_citations.v3.json#cap.mode_choice",
+        "b2-boundary:sources/m2_5/closures/B2/requirement_family_catalog.v1.json#cap.mode_choice",
+        "comprehensive-rules:CR-700-2-modes",
+        "docs/DECISION_PROTOCOL.md",
+        "docs/DOMAIN_MODEL.md",
+        "docs/REPLAY_AND_DETERMINISM.md",
+        "docs/RULES_SEMANTICS.md",
+        "docs/STATE_HASHING.md",
+        "docs/contracts/ENGINE_STATE_CLOSURE.md"
+      ],
+      "benchmark_scenarios": [],
+      "category": "decision",
+      "conformance_cases": [],
+      "dependencies": [],
+      "implementation_paths": [],
+      "information_risk": "high",
+      "key": "decision/mode-choice",
+      "lifecycle": "specified",
+      "owners": [
+        "decision-maintainer"
+      ],
+      "spec_path": "docs/rules/capabilities/decision/mode-choice.md",
+      "summary": "This durable V1 capability covers a choose-one, choose-one-or-more, or equivalent mode-selection decision.",
+      "version": "0.1.0"
+    },
+    {
+      "authority_refs": [
+        "b1-final:sources/m2_5/closures/B1/official_authority_citations.v3.json#cap.multi_target",
+        "b2-boundary:sources/m2_5/closures/B2/requirement_family_catalog.v1.json#cap.multi_target",
+        "comprehensive-rules:CR-115-targets",
+        "docs/DECISION_PROTOCOL.md",
+        "docs/DOMAIN_MODEL.md",
+        "docs/INFORMATION_MODEL.md",
+        "docs/REPLAY_AND_DETERMINISM.md",
+        "docs/RULES_SEMANTICS.md",
+        "docs/STATE_HASHING.md",
+        "docs/contracts/ENGINE_STATE_CLOSURE.md"
+      ],
+      "benchmark_scenarios": [],
+      "category": "decision",
+      "conformance_cases": [],
+      "dependencies": [
+        "decision/target-selection"
+      ],
+      "implementation_paths": [],
+      "information_risk": "high",
+      "key": "decision/multi-target",
+      "lifecycle": "specified",
+      "owners": [
+        "decision-maintainer"
+      ],
+      "spec_path": "docs/rules/capabilities/decision/multi-target.md",
+      "summary": "This durable V1 capability covers an effect that selects two or more targets or a variable plurality of targets.",
+      "version": "0.1.0"
+    },
+    {
+      "authority_refs": [
+        "b1-final:sources/m2_5/closures/B1/official_authority_citations.v3.json#cap.multi_target_graveyard",
+        "b2-boundary:sources/m2_5/closures/B2/requirement_family_catalog.v1.json#cap.multi_target_graveyard",
+        "comprehensive-rules:CR-115-targets",
+        "comprehensive-rules:CR-404-graveyard",
+        "docs/DECISION_PROTOCOL.md",
+        "docs/DOMAIN_MODEL.md",
+        "docs/INFORMATION_MODEL.md",
+        "docs/REPLAY_AND_DETERMINISM.md",
+        "docs/RULES_SEMANTICS.md",
+        "docs/STATE_HASHING.md",
+        "docs/contracts/ENGINE_STATE_CLOSURE.md"
+      ],
+      "benchmark_scenarios": [],
+      "category": "decision",
+      "conformance_cases": [],
+      "dependencies": [
+        "decision/multi-target",
+        "rules/graveyard-zone"
+      ],
+      "implementation_paths": [],
+      "information_risk": "critical",
+      "key": "decision/multi-target-graveyard",
+      "lifecycle": "specified",
+      "owners": [
+        "decision-maintainer",
+        "information-safety-maintainer"
+      ],
+      "spec_path": "docs/rules/capabilities/decision/multi-target-graveyard.md",
+      "summary": "This durable V1 capability covers a target contract selecting multiple cards or objects from graveyards.",
+      "version": "0.1.0"
+    },
+    {
+      "authority_refs": [
+        "b1-final:sources/m2_5/closures/B1/official_authority_citations.v3.json#cap.open_vocabulary_domain",
+        "b2-boundary:sources/m2_5/closures/B2/requirement_family_catalog.v1.json#cap.open_vocabulary_domain",
+        "comprehensive-rules:CR-601-casting-spells",
+        "comprehensive-rules:CR-700-2-modes",
+        "docs/DECISION_PROTOCOL.md",
+        "docs/DOMAIN_MODEL.md",
+        "docs/REPLAY_AND_DETERMINISM.md",
+        "docs/RULES_SEMANTICS.md",
+        "docs/STATE_HASHING.md",
+        "docs/contracts/ENGINE_STATE_CLOSURE.md"
+      ],
+      "benchmark_scenarios": [],
+      "category": "decision",
+      "conformance_cases": [],
+      "dependencies": [],
+      "implementation_paths": [],
+      "information_risk": "high",
+      "key": "decision/open-vocabulary-domain",
+      "lifecycle": "specified",
+      "owners": [
+        "decision-maintainer"
+      ],
+      "spec_path": "docs/rules/capabilities/decision/open-vocabulary-domain.md",
+      "summary": "This durable V1 capability covers a choice whose candidates come from an open rules vocabulary rather than a finite card-listed set.",
+      "version": "0.1.0"
+    },
+    {
+      "authority_refs": [
+        "b1-final:sources/m2_5/closures/B1/official_authority_citations.v3.json#cap.post_destruction_choice",
+        "b2-boundary:sources/m2_5/closures/B2/requirement_family_catalog.v1.json#cap.post_destruction_choice",
+        "comprehensive-rules:CR-700-2-modes",
+        "comprehensive-rules:CR-701-8-destroy",
+        "docs/DECISION_PROTOCOL.md",
+        "docs/DOMAIN_MODEL.md",
+        "docs/REPLAY_AND_DETERMINISM.md",
+        "docs/RULES_SEMANTICS.md",
+        "docs/STATE_HASHING.md",
+        "docs/contracts/ENGINE_STATE_CLOSURE.md"
+      ],
+      "benchmark_scenarios": [],
+      "category": "decision",
+      "conformance_cases": [],
+      "dependencies": [
+        "decision/mode-choice",
+        "rules/destroy"
+      ],
+      "implementation_paths": [],
+      "information_risk": "high",
+      "key": "decision/post-destruction-choice",
+      "lifecycle": "specified",
+      "owners": [
+        "decision-maintainer"
+      ],
+      "spec_path": "docs/rules/capabilities/decision/post-destruction-choice.md",
+      "summary": "This durable V1 capability covers a choice made after or conditional on a destruction event.",
+      "version": "0.1.0"
+    },
+    {
+      "authority_refs": [
+        "b1-final:sources/m2_5/closures/B1/official_authority_citations.v3.json#cap.sequential_choice_collection",
+        "b2-boundary:sources/m2_5/closures/B2/requirement_family_catalog.v1.json#cap.sequential_choice_collection",
+        "comprehensive-rules:CR-601-casting-spells",
+        "comprehensive-rules:CR-700-2-modes",
+        "docs/DECISION_PROTOCOL.md",
+        "docs/DOMAIN_MODEL.md",
+        "docs/INFORMATION_MODEL.md",
+        "docs/REPLAY_AND_DETERMINISM.md",
+        "docs/RULES_SEMANTICS.md",
+        "docs/STATE_HASHING.md",
+        "docs/contracts/ENGINE_STATE_CLOSURE.md"
+      ],
+      "benchmark_scenarios": [],
+      "category": "decision",
+      "conformance_cases": [],
+      "dependencies": [],
+      "implementation_paths": [],
+      "information_risk": "high",
+      "key": "decision/sequential-choice-collection",
+      "lifecycle": "specified",
+      "owners": [
+        "decision-maintainer"
+      ],
+      "spec_path": "docs/rules/capabilities/decision/sequential-choice-collection.md",
+      "summary": "This durable V1 capability covers an effect that collects multiple choices in a stated sequence.",
+      "version": "0.1.0"
+    },
+    {
+      "authority_refs": [
+        "b1-final:sources/m2_5/closures/B1/official_authority_citations.v3.json#cap.tap_another_creature_cost",
+        "b2-boundary:sources/m2_5/closures/B2/requirement_family_catalog.v1.json#cap.tap_another_creature_cost",
+        "comprehensive-rules:CR-118-costs",
+        "comprehensive-rules:CR-701-26-tap-untap",
+        "docs/DECISION_PROTOCOL.md",
+        "docs/DOMAIN_MODEL.md",
+        "docs/REPLAY_AND_DETERMINISM.md",
+        "docs/RULES_SEMANTICS.md",
+        "docs/STATE_HASHING.md",
+        "docs/contracts/ENGINE_STATE_CLOSURE.md"
+      ],
+      "benchmark_scenarios": [],
+      "category": "decision",
+      "conformance_cases": [],
+      "dependencies": [
+        "decision/tap-subset-cost"
+      ],
+      "implementation_paths": [],
+      "information_risk": "high",
+      "key": "decision/tap-another-creature-cost",
+      "lifecycle": "specified",
+      "owners": [
+        "decision-maintainer"
+      ],
+      "spec_path": "docs/rules/capabilities/decision/tap-another-creature-cost.md",
+      "summary": "This durable V1 capability covers an activated cost requiring the player to tap another creature.",
+      "version": "0.1.0"
+    },
+    {
+      "authority_refs": [
+        "b1-final:sources/m2_5/closures/B1/official_authority_citations.v3.json#cap.tap_subset_cost",
+        "b2-boundary:sources/m2_5/closures/B2/requirement_family_catalog.v1.json#cap.tap_subset_cost",
+        "comprehensive-rules:CR-118-costs",
+        "comprehensive-rules:CR-701-26-tap-untap",
+        "docs/DECISION_PROTOCOL.md",
+        "docs/DOMAIN_MODEL.md",
+        "docs/REPLAY_AND_DETERMINISM.md",
+        "docs/RULES_SEMANTICS.md",
+        "docs/STATE_HASHING.md",
+        "docs/contracts/ENGINE_STATE_CLOSURE.md"
+      ],
+      "benchmark_scenarios": [],
+      "category": "decision",
+      "conformance_cases": [],
+      "dependencies": [
+        "decision/activation-cost",
+        "rules/tap-event"
+      ],
+      "implementation_paths": [],
+      "information_risk": "high",
+      "key": "decision/tap-subset-cost",
+      "lifecycle": "specified",
+      "owners": [
+        "decision-maintainer"
+      ],
+      "spec_path": "docs/rules/capabilities/decision/tap-subset-cost.md",
+      "summary": "This durable V1 capability covers an activated cost requiring the player to tap a chosen subset of creatures or permanents.",
+      "version": "0.1.0"
+    },
+    {
+      "authority_refs": [
+        "b1-final:sources/m2_5/closures/B1/official_authority_citations.v3.json#cap.target_card_any_graveyard",
+        "b2-boundary:sources/m2_5/closures/B2/requirement_family_catalog.v1.json#cap.target_card_any_graveyard",
+        "comprehensive-rules:CR-115-targets",
+        "comprehensive-rules:CR-404-graveyard",
+        "docs/DECISION_PROTOCOL.md",
+        "docs/DOMAIN_MODEL.md",
+        "docs/INFORMATION_MODEL.md",
+        "docs/REPLAY_AND_DETERMINISM.md",
+        "docs/RULES_SEMANTICS.md",
+        "docs/STATE_HASHING.md",
+        "docs/contracts/ENGINE_STATE_CLOSURE.md"
+      ],
+      "benchmark_scenarios": [],
+      "category": "decision",
+      "conformance_cases": [],
+      "dependencies": [
+        "decision/target-selection",
+        "rules/graveyard-zone"
+      ],
+      "implementation_paths": [],
+      "information_risk": "critical",
+      "key": "decision/target-card-any-graveyard",
+      "lifecycle": "specified",
+      "owners": [
+        "decision-maintainer",
+        "information-safety-maintainer"
+      ],
+      "spec_path": "docs/rules/capabilities/decision/target-card-any-graveyard.md",
+      "summary": "This durable V1 capability covers a target card selected from any player's graveyard.",
+      "version": "0.1.0"
+    },
+    {
+      "authority_refs": [
+        "b1-final:sources/m2_5/closures/B1/official_authority_citations.v3.json#cap.target_destroy",
+        "b2-boundary:sources/m2_5/closures/B2/requirement_family_catalog.v1.json#cap.target_destroy",
+        "comprehensive-rules:CR-115-targets",
+        "comprehensive-rules:CR-701-8-destroy",
+        "docs/DECISION_PROTOCOL.md",
+        "docs/DOMAIN_MODEL.md",
+        "docs/INFORMATION_MODEL.md",
+        "docs/REPLAY_AND_DETERMINISM.md",
+        "docs/RULES_SEMANTICS.md",
+        "docs/STATE_HASHING.md",
+        "docs/contracts/ENGINE_STATE_CLOSURE.md"
+      ],
+      "benchmark_scenarios": [],
+      "category": "decision",
+      "conformance_cases": [],
+      "dependencies": [
+        "decision/target-selection",
+        "rules/destroy"
+      ],
+      "implementation_paths": [],
+      "information_risk": "high",
+      "key": "decision/target-destroy",
+      "lifecycle": "specified",
+      "owners": [
+        "decision-maintainer"
+      ],
+      "spec_path": "docs/rules/capabilities/decision/target-destroy.md",
+      "summary": "This durable V1 capability covers a targeted instruction that destroys a target permanent or object.",
+      "version": "0.1.0"
+    },
+    {
+      "authority_refs": [
+        "b1-final:sources/m2_5/closures/B1/official_authority_citations.v3.json#cap.target_pt_modification",
+        "b2-boundary:sources/m2_5/closures/B2/requirement_family_catalog.v1.json#cap.target_pt_modification",
+        "comprehensive-rules:CR-613-continuous-effects",
+        "docs/DECISION_PROTOCOL.md",
+        "docs/DOMAIN_MODEL.md",
+        "docs/INFORMATION_MODEL.md",
+        "docs/REPLAY_AND_DETERMINISM.md",
+        "docs/RULES_SEMANTICS.md",
+        "docs/STATE_HASHING.md",
+        "docs/contracts/ENGINE_STATE_CLOSURE.md"
+      ],
+      "benchmark_scenarios": [],
+      "category": "decision",
+      "conformance_cases": [],
+      "dependencies": [
+        "decision/target-selection",
+        "rules/continuous-pt"
+      ],
+      "implementation_paths": [],
+      "information_risk": "high",
+      "key": "decision/target-pt-modification",
+      "lifecycle": "specified",
+      "owners": [
+        "decision-maintainer"
+      ],
+      "spec_path": "docs/rules/capabilities/decision/target-pt-modification.md",
+      "summary": "This durable V1 capability covers a targeted effect that modifies a target's power and toughness.",
+      "version": "0.1.0"
+    },
+    {
+      "authority_refs": [
+        "b1-final:sources/m2_5/closures/B1/official_authority_citations.v3.json#cap.target_restriction",
+        "b2-boundary:sources/m2_5/closures/B2/requirement_family_catalog.v1.json#cap.target_restriction",
+        "comprehensive-rules:CR-115-targets",
+        "docs/DECISION_PROTOCOL.md",
+        "docs/DOMAIN_MODEL.md",
+        "docs/INFORMATION_MODEL.md",
+        "docs/REPLAY_AND_DETERMINISM.md",
+        "docs/RULES_SEMANTICS.md",
+        "docs/STATE_HASHING.md",
+        "docs/contracts/ENGINE_STATE_CLOSURE.md"
+      ],
+      "benchmark_scenarios": [],
+      "category": "decision",
+      "conformance_cases": [],
+      "dependencies": [
+        "decision/target-selection"
+      ],
+      "implementation_paths": [],
+      "information_risk": "high",
+      "key": "decision/target-restriction",
+      "lifecycle": "specified",
+      "owners": [
+        "decision-maintainer"
+      ],
+      "spec_path": "docs/rules/capabilities/decision/target-restriction.md",
+      "summary": "This durable V1 capability covers a target contract restricted by a stated characteristic, zone, type, or controller.",
+      "version": "0.1.0"
+    },
+    {
+      "authority_refs": [
+        "b1-final:sources/m2_5/closures/B1/official_authority_citations.v3.json#cap.target",
+        "b2-boundary:sources/m2_5/closures/B2/requirement_family_catalog.v1.json#cap.target",
+        "comprehensive-rules:CR-115-targets",
+        "docs/DECISION_PROTOCOL.md",
+        "docs/DOMAIN_MODEL.md",
+        "docs/INFORMATION_MODEL.md",
+        "docs/REPLAY_AND_DETERMINISM.md",
+        "docs/RULES_SEMANTICS.md",
+        "docs/STATE_HASHING.md",
+        "docs/contracts/ENGINE_STATE_CLOSURE.md"
+      ],
+      "benchmark_scenarios": [],
+      "category": "decision",
+      "conformance_cases": [],
+      "dependencies": [],
+      "implementation_paths": [],
+      "information_risk": "high",
+      "key": "decision/target-selection",
+      "lifecycle": "specified",
+      "owners": [
+        "decision-maintainer"
+      ],
+      "spec_path": "docs/rules/capabilities/decision/target-selection.md",
+      "summary": "This durable V1 capability covers an instruction that uses the rules-defined target designation for at least one object, player, or zone.",
+      "version": "0.1.0"
+    },
+    {
+      "authority_refs": [
+        "b1-final:sources/m2_5/closures/B1/official_authority_citations.v3.json#cap.choose_two_targets",
+        "b2-boundary:sources/m2_5/closures/B2/requirement_family_catalog.v1.json#cap.choose_two_targets",
+        "comprehensive-rules:CR-115-targets",
+        "docs/DECISION_PROTOCOL.md",
+        "docs/DOMAIN_MODEL.md",
+        "docs/INFORMATION_MODEL.md",
+        "docs/REPLAY_AND_DETERMINISM.md",
+        "docs/RULES_SEMANTICS.md",
+        "docs/STATE_HASHING.md",
+        "docs/contracts/ENGINE_STATE_CLOSURE.md"
+      ],
+      "benchmark_scenarios": [],
+      "category": "decision",
+      "conformance_cases": [],
+      "dependencies": [
+        "decision/target-selection"
+      ],
+      "implementation_paths": [],
+      "information_risk": "high",
+      "key": "decision/two-target-selection",
+      "lifecycle": "specified",
+      "owners": [
+        "decision-maintainer"
+      ],
+      "spec_path": "docs/rules/capabilities/decision/two-target-selection.md",
+      "summary": "This durable V1 capability covers a choice that selects exactly two targets.",
+      "version": "0.1.0"
+    },
+    {
+      "authority_refs": [
+        "b1-final:sources/m2_5/closures/B1/official_authority_citations.v3.json#cap.amass",
+        "b2-boundary:sources/m2_5/closures/B2/requirement_family_catalog.v1.json#cap.amass",
+        "comprehensive-rules:CR-701-47a-amass",
+        "docs/DECISION_PROTOCOL.md",
+        "docs/DOMAIN_MODEL.md",
+        "docs/REPLAY_AND_DETERMINISM.md",
+        "docs/RULES_SEMANTICS.md",
+        "docs/STATE_HASHING.md",
+        "docs/contracts/ENGINE_STATE_CLOSURE.md"
+      ],
+      "benchmark_scenarios": [],
+      "category": "mechanic",
+      "conformance_cases": [],
+      "dependencies": [
+        "mechanic/token-creation",
+        "rules/counters",
+        "rules/subtype-add-zombie"
+      ],
+      "implementation_paths": [],
+      "information_risk": "high",
+      "key": "mechanic/amass",
+      "lifecycle": "specified",
+      "owners": [
+        "rules-maintainer"
+      ],
+      "spec_path": "docs/rules/capabilities/mechanic/amass.md",
+      "summary": "This durable V1 capability covers the Amass operation that creates or grows a specified Army creature token.",
+      "version": "0.1.0"
+    },
+    {
+      "authority_refs": [
+        "b1-final:sources/m2_5/closures/B1/official_authority_citations.v3.json#cap.aura",
+        "b2-boundary:sources/m2_5/closures/B2/requirement_family_catalog.v1.json#cap.aura",
+        "comprehensive-rules:CR-303-enchantments",
+        "comprehensive-rules:CR-702-5-enchant",
+        "comprehensive-rules:CR-704-5m-aura-sba",
+        "docs/DOMAIN_MODEL.md",
+        "docs/INFORMATION_MODEL.md",
+        "docs/REPLAY_AND_DETERMINISM.md",
+        "docs/RULES_SEMANTICS.md",
+        "docs/STATE_HASHING.md",
+        "docs/contracts/ENGINE_STATE_CLOSURE.md"
+      ],
+      "benchmark_scenarios": [],
+      "category": "mechanic",
+      "conformance_cases": [],
+      "dependencies": [],
+      "implementation_paths": [],
+      "information_risk": "high",
+      "key": "mechanic/aura",
+      "lifecycle": "specified",
+      "owners": [
+        "rules-maintainer"
+      ],
+      "spec_path": "docs/rules/capabilities/mechanic/aura.md",
+      "summary": "This durable V1 capability covers an attached Aura permanent and its explicit enchant restriction or attachment relation to another object.",
+      "version": "0.1.0"
+    },
+    {
+      "authority_refs": [
+        "b1-final:sources/m2_5/closures/B1/official_authority_citations.v3.json#cap.aura_curse",
+        "b2-boundary:sources/m2_5/closures/B2/requirement_family_catalog.v1.json#cap.aura_curse",
+        "comprehensive-rules:CR-303-enchantments",
+        "comprehensive-rules:CR-702-5-enchant",
+        "docs/DECISION_PROTOCOL.md",
+        "docs/DOMAIN_MODEL.md",
+        "docs/REPLAY_AND_DETERMINISM.md",
+        "docs/RULES_SEMANTICS.md",
+        "docs/STATE_HASHING.md",
+        "docs/contracts/ENGINE_STATE_CLOSURE.md"
+      ],
+      "benchmark_scenarios": [],
+      "category": "mechanic",
+      "conformance_cases": [],
+      "dependencies": [
+        "mechanic/aura"
+      ],
+      "implementation_paths": [],
+      "information_risk": "high",
+      "key": "mechanic/aura-curse",
+      "lifecycle": "specified",
+      "owners": [
+        "rules-maintainer"
+      ],
+      "spec_path": "docs/rules/capabilities/mechanic/aura-curse.md",
+      "summary": "This durable V1 capability covers a Curse Aura whose subtype and enchant-player attachment impose an effect on an enchanted player.",
+      "version": "0.1.0"
+    },
+    {
+      "authority_refs": [
+        "b1-final:sources/m2_5/closures/B1/official_authority_citations.v3.json#cap.bounded_control_restoration",
+        "b2-boundary:sources/m2_5/closures/B2/requirement_family_catalog.v1.json#cap.bounded_control_restoration",
+        "comprehensive-rules:CR-613-continuous-effects",
+        "docs/DECISION_PROTOCOL.md",
+        "docs/DOMAIN_MODEL.md",
+        "docs/INFORMATION_MODEL.md",
+        "docs/REPLAY_AND_DETERMINISM.md",
+        "docs/RULES_SEMANTICS.md",
+        "docs/STATE_HASHING.md",
+        "docs/contracts/ENGINE_STATE_CLOSURE.md"
+      ],
+      "benchmark_scenarios": [],
+      "category": "mechanic",
+      "conformance_cases": [],
+      "dependencies": [],
+      "implementation_paths": [],
+      "information_risk": "high",
+      "key": "mechanic/bounded-control-restoration",
+      "lifecycle": "specified",
+      "owners": [
+        "rules-interaction-maintainer"
+      ],
+      "spec_path": "docs/rules/capabilities/mechanic/bounded-control-restoration.md",
+      "summary": "This durable V1 capability covers an effect that restores control of an object only within its stated boundary or controller set.",
+      "version": "0.1.0"
+    },
+    {
+      "authority_refs": [
+        "b1-final:sources/m2_5/closures/B1/official_authority_citations.v3.json#cap.convoke",
+        "b2-boundary:sources/m2_5/closures/B2/requirement_family_catalog.v1.json#cap.convoke",
+        "comprehensive-rules:CR-702-51a-convoke",
+        "docs/DECISION_PROTOCOL.md",
+        "docs/DOMAIN_MODEL.md",
+        "docs/REPLAY_AND_DETERMINISM.md",
+        "docs/RULES_SEMANTICS.md",
+        "docs/STATE_HASHING.md",
+        "docs/contracts/ENGINE_STATE_CLOSURE.md"
+      ],
+      "benchmark_scenarios": [],
+      "category": "mechanic",
+      "conformance_cases": [],
+      "dependencies": [
+        "rules/tap-event"
+      ],
+      "implementation_paths": [],
+      "information_risk": "medium",
+      "key": "mechanic/convoke",
+      "lifecycle": "specified",
+      "owners": [
+        "rules-maintainer"
+      ],
+      "spec_path": "docs/rules/capabilities/mechanic/convoke.md",
+      "summary": "This durable V1 capability covers the Convoke keyword that permits tapping creatures to help pay a spell's cost.",
+      "version": "0.1.0"
+    },
+    {
+      "authority_refs": [
+        "b1-final:sources/m2_5/closures/B1/official_authority_citations.v3.json#cap.dynamic_activated_ability_grant",
+        "b2-boundary:sources/m2_5/closures/B2/requirement_family_catalog.v1.json#cap.dynamic_activated_ability_grant",
+        "comprehensive-rules:CR-602-activated-abilities",
+        "comprehensive-rules:CR-611-continuous-effects",
+        "comprehensive-rules:CR-613-continuous-effects",
+        "docs/DECISION_PROTOCOL.md",
+        "docs/DOMAIN_MODEL.md",
+        "docs/INFORMATION_MODEL.md",
+        "docs/REPLAY_AND_DETERMINISM.md",
+        "docs/RULES_SEMANTICS.md",
+        "docs/STATE_HASHING.md",
+        "docs/contracts/ENGINE_STATE_CLOSURE.md"
+      ],
+      "benchmark_scenarios": [],
+      "category": "mechanic",
+      "conformance_cases": [],
+      "dependencies": [
+        "rules/grant-activated-ability"
+      ],
+      "implementation_paths": [],
+      "information_risk": "high",
+      "key": "mechanic/dynamic-activated-ability-grant",
+      "lifecycle": "specified",
+      "owners": [
+        "rules-interaction-maintainer"
+      ],
+      "spec_path": "docs/rules/capabilities/mechanic/dynamic-activated-ability-grant.md",
+      "summary": "This durable V1 capability covers granting an activated ability whose cost or effect is determined by a changing object characteristic.",
+      "version": "0.1.0"
+    },
+    {
+      "authority_refs": [
+        "b1-final:sources/m2_5/closures/B1/official_authority_citations.v3.json#cap.flash",
+        "b2-boundary:sources/m2_5/closures/B2/requirement_family_catalog.v1.json#cap.flash",
+        "comprehensive-rules:CR-702-8-flash",
+        "docs/DECISION_PROTOCOL.md",
+        "docs/DOMAIN_MODEL.md",
+        "docs/REPLAY_AND_DETERMINISM.md",
+        "docs/RULES_SEMANTICS.md",
+        "docs/STATE_HASHING.md",
+        "docs/contracts/ENGINE_STATE_CLOSURE.md"
+      ],
+      "benchmark_scenarios": [],
+      "category": "mechanic",
+      "conformance_cases": [],
+      "dependencies": [],
+      "implementation_paths": [],
+      "information_risk": "medium",
+      "key": "mechanic/flash",
+      "lifecycle": "specified",
+      "owners": [
+        "rules-maintainer"
+      ],
+      "spec_path": "docs/rules/capabilities/mechanic/flash.md",
+      "summary": "This durable V1 capability covers the Flash keyword that permits casting the card as though it had instant timing.",
+      "version": "0.1.0"
+    },
+    {
+      "authority_refs": [
+        "b1-final:sources/m2_5/closures/B1/official_authority_citations.v3.json#cap.flashback",
+        "b2-boundary:sources/m2_5/closures/B2/requirement_family_catalog.v1.json#cap.flashback",
+        "comprehensive-rules:CR-404-graveyard",
+        "comprehensive-rules:CR-601-casting-spells",
+        "comprehensive-rules:CR-702-34-flashback",
+        "docs/DECISION_PROTOCOL.md",
+        "docs/DOMAIN_MODEL.md",
+        "docs/INFORMATION_MODEL.md",
+        "docs/REPLAY_AND_DETERMINISM.md",
+        "docs/RULES_SEMANTICS.md",
+        "docs/STATE_HASHING.md",
+        "docs/contracts/ENGINE_STATE_CLOSURE.md"
+      ],
+      "benchmark_scenarios": [],
+      "category": "mechanic",
+      "conformance_cases": [],
+      "dependencies": [
+        "rules/alternate-cast-zone",
+        "rules/exile",
+        "rules/graveyard-zone"
+      ],
+      "implementation_paths": [],
+      "information_risk": "high",
+      "key": "mechanic/flashback",
+      "lifecycle": "specified",
+      "owners": [
+        "rules-maintainer"
+      ],
+      "spec_path": "docs/rules/capabilities/mechanic/flashback.md",
+      "summary": "This durable V1 capability covers the Flashback permission to cast a card from a graveyard for its flashback cost.",
+      "version": "0.1.0"
+    },
+    {
+      "authority_refs": [
+        "b1-final:sources/m2_5/closures/B1/official_authority_citations.v3.json#cap.kicker",
+        "b2-boundary:sources/m2_5/closures/B2/requirement_family_catalog.v1.json#cap.kicker",
+        "comprehensive-rules:CR-702-33-kicker",
+        "docs/DECISION_PROTOCOL.md",
+        "docs/DOMAIN_MODEL.md",
+        "docs/REPLAY_AND_DETERMINISM.md",
+        "docs/RULES_SEMANTICS.md",
+        "docs/STATE_HASHING.md",
+        "docs/contracts/ENGINE_STATE_CLOSURE.md"
+      ],
+      "benchmark_scenarios": [],
+      "category": "mechanic",
+      "conformance_cases": [],
+      "dependencies": [],
+      "implementation_paths": [],
+      "information_risk": "medium",
+      "key": "mechanic/kicker",
+      "lifecycle": "specified",
+      "owners": [
+        "rules-maintainer"
+      ],
+      "spec_path": "docs/rules/capabilities/mechanic/kicker.md",
+      "summary": "This durable V1 capability covers the Kicker keyword and its optional additional casting cost.",
+      "version": "0.1.0"
+    },
+    {
+      "authority_refs": [
+        "b1-final:sources/m2_5/closures/B1/official_authority_citations.v3.json#cap.landfall",
+        "b2-boundary:sources/m2_5/closures/B2/requirement_family_catalog.v1.json#cap.landfall",
+        "comprehensive-rules:CR-403-battlefield",
+        "comprehensive-rules:CR-603-triggered-abilities",
+        "docs/DECISION_PROTOCOL.md",
+        "docs/DOMAIN_MODEL.md",
+        "docs/INFORMATION_MODEL.md",
+        "docs/REPLAY_AND_DETERMINISM.md",
+        "docs/RULES_SEMANTICS.md",
+        "docs/STATE_HASHING.md",
+        "docs/contracts/ENGINE_STATE_CLOSURE.md"
+      ],
+      "benchmark_scenarios": [],
+      "category": "mechanic",
+      "conformance_cases": [],
+      "dependencies": [
+        "rules/land-zone",
+        "rules/triggered-ability"
+      ],
+      "implementation_paths": [],
+      "information_risk": "high",
+      "key": "mechanic/landfall",
+      "lifecycle": "specified",
+      "owners": [
+        "rules-maintainer"
+      ],
+      "spec_path": "docs/rules/capabilities/mechanic/landfall.md",
+      "summary": "This durable V1 capability covers a triggered ability whose condition is a land entering the battlefield.",
+      "version": "0.1.0"
+    },
+    {
+      "authority_refs": [
+        "b1-final:sources/m2_5/closures/B1/official_authority_citations.v3.json#cap.life_scaled_token_creation",
+        "b2-boundary:sources/m2_5/closures/B2/requirement_family_catalog.v1.json#cap.life_scaled_token_creation",
+        "comprehensive-rules:CR-111-tokens",
+        "docs/DECISION_PROTOCOL.md",
+        "docs/DOMAIN_MODEL.md",
+        "docs/INFORMATION_MODEL.md",
+        "docs/REPLAY_AND_DETERMINISM.md",
+        "docs/RULES_SEMANTICS.md",
+        "docs/STATE_HASHING.md",
+        "docs/contracts/ENGINE_STATE_CLOSURE.md"
+      ],
+      "benchmark_scenarios": [],
+      "category": "mechanic",
+      "conformance_cases": [],
+      "dependencies": [
+        "mechanic/token-creation",
+        "rules/life"
+      ],
+      "implementation_paths": [],
+      "information_risk": "high",
+      "key": "mechanic/life-scaled-token-creation",
+      "lifecycle": "specified",
+      "owners": [
+        "rules-interaction-maintainer"
+      ],
+      "spec_path": "docs/rules/capabilities/mechanic/life-scaled-token-creation.md",
+      "summary": "This durable V1 capability covers token quantity or token characteristics scaled by a player's life total.",
+      "version": "0.1.0"
+    },
+    {
+      "authority_refs": [
+        "b1-final:sources/m2_5/closures/B1/official_authority_citations.v3.json#cap.mass_token_creation",
+        "b2-boundary:sources/m2_5/closures/B2/requirement_family_catalog.v1.json#cap.mass_token_creation",
+        "comprehensive-rules:CR-111-tokens",
+        "docs/DECISION_PROTOCOL.md",
+        "docs/DOMAIN_MODEL.md",
+        "docs/INFORMATION_MODEL.md",
+        "docs/REPLAY_AND_DETERMINISM.md",
+        "docs/RULES_SEMANTICS.md",
+        "docs/STATE_HASHING.md",
+        "docs/contracts/ENGINE_STATE_CLOSURE.md"
+      ],
+      "benchmark_scenarios": [],
+      "category": "mechanic",
+      "conformance_cases": [],
+      "dependencies": [
+        "mechanic/token-creation"
+      ],
+      "implementation_paths": [],
+      "information_risk": "high",
+      "key": "mechanic/mass-token-creation",
+      "lifecycle": "specified",
+      "owners": [
+        "rules-interaction-maintainer"
+      ],
+      "spec_path": "docs/rules/capabilities/mechanic/mass-token-creation.md",
+      "summary": "This durable V1 capability covers one event creating multiple tokens, with the plurality established by the card-side instruction.",
+      "version": "0.1.0"
+    },
+    {
+      "authority_refs": [
+        "b1-final:sources/m2_5/closures/B1/official_authority_citations.v3.json#cap.multi_actor_staged_resolution",
+        "b2-boundary:sources/m2_5/closures/B2/requirement_family_catalog.v1.json#cap.multi_actor_staged_resolution",
+        "comprehensive-rules:CR-101-4-APNAP",
+        "comprehensive-rules:CR-701-21-sacrifice",
+        "docs/DECISION_PROTOCOL.md",
+        "docs/DOMAIN_MODEL.md",
+        "docs/INFORMATION_MODEL.md",
+        "docs/REPLAY_AND_DETERMINISM.md",
+        "docs/RULES_SEMANTICS.md",
+        "docs/STATE_HASHING.md",
+        "docs/contracts/ENGINE_STATE_CLOSURE.md"
+      ],
+      "benchmark_scenarios": [],
+      "category": "mechanic",
+      "conformance_cases": [],
+      "dependencies": [
+        "decision/sequential-choice-collection"
+      ],
+      "implementation_paths": [],
+      "information_risk": "high",
+      "key": "mechanic/multi-actor-staged-resolution",
+      "lifecycle": "specified",
+      "owners": [
+        "rules-interaction-maintainer"
+      ],
+      "spec_path": "docs/rules/capabilities/mechanic/multi-actor-staged-resolution.md",
+      "summary": "This durable V1 capability covers a resolution that applies separately to multiple players or actors in a stated sequence.",
+      "version": "0.1.0"
+    },
+    {
+      "authority_refs": [
+        "b1-final:sources/m2_5/closures/B1/official_authority_citations.v3.json#cap.populate_token_copy",
+        "b2-boundary:sources/m2_5/closures/B2/requirement_family_catalog.v1.json#cap.populate_token_copy",
+        "comprehensive-rules:CR-111-tokens",
+        "comprehensive-rules:CR-701-36a-populate",
+        "comprehensive-rules:CR-707-copying-objects",
+        "docs/DECISION_PROTOCOL.md",
+        "docs/DOMAIN_MODEL.md",
+        "docs/INFORMATION_MODEL.md",
+        "docs/REPLAY_AND_DETERMINISM.md",
+        "docs/RULES_SEMANTICS.md",
+        "docs/STATE_HASHING.md",
+        "docs/contracts/ENGINE_STATE_CLOSURE.md"
+      ],
+      "benchmark_scenarios": [],
+      "category": "mechanic",
+      "conformance_cases": [],
+      "dependencies": [
+        "mechanic/token-creation",
+        "rules/copy-effect"
+      ],
+      "implementation_paths": [],
+      "information_risk": "high",
+      "key": "mechanic/populate",
+      "lifecycle": "specified",
+      "owners": [
+        "rules-interaction-maintainer"
+      ],
+      "spec_path": "docs/rules/capabilities/mechanic/populate.md",
+      "summary": "This durable V1 capability covers the Populate operation that creates a token copy of a creature token you control.",
+      "version": "0.1.0"
+    },
+    {
+      "authority_refs": [
+        "b1-final:sources/m2_5/closures/B1/official_authority_citations.v3.json#cap.reanimation_under_your_control",
+        "b2-boundary:sources/m2_5/closures/B2/requirement_family_catalog.v1.json#cap.reanimation_under_your_control",
+        "comprehensive-rules:CR-110-permanents",
+        "comprehensive-rules:CR-400-7-new-object",
+        "comprehensive-rules:CR-403-battlefield",
+        "comprehensive-rules:CR-404-graveyard",
+        "docs/DECISION_PROTOCOL.md",
+        "docs/DOMAIN_MODEL.md",
+        "docs/INFORMATION_MODEL.md",
+        "docs/REPLAY_AND_DETERMINISM.md",
+        "docs/RULES_SEMANTICS.md",
+        "docs/STATE_HASHING.md",
+        "docs/contracts/ENGINE_STATE_CLOSURE.md"
+      ],
+      "benchmark_scenarios": [],
+      "category": "mechanic",
+      "conformance_cases": [],
+      "dependencies": [
+        "rules/ownership-control",
+        "rules/reanimation"
+      ],
+      "implementation_paths": [],
+      "information_risk": "critical",
+      "key": "mechanic/reanimation-under-your-control",
+      "lifecycle": "specified",
+      "owners": [
+        "rules-interaction-maintainer"
+      ],
+      "spec_path": "docs/rules/capabilities/mechanic/reanimation-under-your-control.md",
+      "summary": "This durable V1 capability covers returning or putting a card from a graveyard onto the battlefield under your control.",
+      "version": "0.1.0"
+    },
+    {
+      "authority_refs": [
+        "b1-final:sources/m2_5/closures/B1/official_authority_citations.v3.json#cap.scaled_token_creation",
+        "b2-boundary:sources/m2_5/closures/B2/requirement_family_catalog.v1.json#cap.scaled_token_creation",
+        "comprehensive-rules:CR-111-tokens",
+        "docs/DECISION_PROTOCOL.md",
+        "docs/DOMAIN_MODEL.md",
+        "docs/INFORMATION_MODEL.md",
+        "docs/REPLAY_AND_DETERMINISM.md",
+        "docs/RULES_SEMANTICS.md",
+        "docs/STATE_HASHING.md",
+        "docs/contracts/ENGINE_STATE_CLOSURE.md"
+      ],
+      "benchmark_scenarios": [],
+      "category": "mechanic",
+      "conformance_cases": [],
+      "dependencies": [
+        "mechanic/token-creation"
+      ],
+      "implementation_paths": [],
+      "information_risk": "high",
+      "key": "mechanic/scaled-token-creation",
+      "lifecycle": "specified",
+      "owners": [
+        "rules-interaction-maintainer"
+      ],
+      "spec_path": "docs/rules/capabilities/mechanic/scaled-token-creation.md",
+      "summary": "This durable V1 capability covers token creation whose quantity is determined by X, a count, equal-to relation, or for-each scaling.",
+      "version": "0.1.0"
+    },
+    {
+      "authority_refs": [
+        "b1-final:sources/m2_5/closures/B1/official_authority_citations.v3.json#cap.scry",
+        "b2-boundary:sources/m2_5/closures/B2/requirement_family_catalog.v1.json#cap.scry",
+        "comprehensive-rules:CR-401-library",
+        "comprehensive-rules:CR-701-22a-scry",
+        "docs/DECISION_PROTOCOL.md",
+        "docs/DOMAIN_MODEL.md",
+        "docs/INFORMATION_MODEL.md",
+        "docs/REPLAY_AND_DETERMINISM.md",
+        "docs/RULES_SEMANTICS.md",
+        "docs/STATE_HASHING.md",
+        "docs/contracts/ENGINE_STATE_CLOSURE.md"
+      ],
+      "benchmark_scenarios": [],
+      "category": "mechanic",
+      "conformance_cases": [],
+      "dependencies": [],
+      "implementation_paths": [],
+      "information_risk": "high",
+      "key": "mechanic/scry",
+      "lifecycle": "specified",
+      "owners": [
+        "rules-maintainer"
+      ],
+      "spec_path": "docs/rules/capabilities/mechanic/scry.md",
+      "summary": "This durable V1 capability covers the Scry operation that looks at the top cards of a library and orders them or puts them on the bottom.",
+      "version": "0.1.0"
+    },
+    {
+      "authority_refs": [
+        "b1-final:sources/m2_5/closures/B1/official_authority_citations.v3.json#cap.simultaneous_sacrifice",
+        "b2-boundary:sources/m2_5/closures/B2/requirement_family_catalog.v1.json#cap.simultaneous_sacrifice",
+        "comprehensive-rules:CR-101-4-APNAP",
+        "comprehensive-rules:CR-701-21-sacrifice",
+        "docs/DECISION_PROTOCOL.md",
+        "docs/DOMAIN_MODEL.md",
+        "docs/INFORMATION_MODEL.md",
+        "docs/REPLAY_AND_DETERMINISM.md",
+        "docs/RULES_SEMANTICS.md",
+        "docs/STATE_HASHING.md",
+        "docs/contracts/ENGINE_STATE_CLOSURE.md"
+      ],
+      "benchmark_scenarios": [],
+      "category": "mechanic",
+      "conformance_cases": [],
+      "dependencies": [],
+      "implementation_paths": [],
+      "information_risk": "high",
+      "key": "mechanic/simultaneous-sacrifice",
+      "lifecycle": "specified",
+      "owners": [
+        "rules-interaction-maintainer"
+      ],
+      "spec_path": "docs/rules/capabilities/mechanic/simultaneous-sacrifice.md",
+      "summary": "This durable V1 capability covers one instruction that sacrifices multiple objects simultaneously as one event.",
+      "version": "0.1.0"
+    },
+    {
+      "authority_refs": [
+        "b1-final:sources/m2_5/closures/B1/official_authority_citations.v3.json#cap.surveil",
+        "b2-boundary:sources/m2_5/closures/B2/requirement_family_catalog.v1.json#cap.surveil",
+        "comprehensive-rules:CR-401-library",
+        "comprehensive-rules:CR-404-graveyard",
+        "comprehensive-rules:CR-701-25-surveil",
+        "docs/DECISION_PROTOCOL.md",
+        "docs/DOMAIN_MODEL.md",
+        "docs/INFORMATION_MODEL.md",
+        "docs/REPLAY_AND_DETERMINISM.md",
+        "docs/RULES_SEMANTICS.md",
+        "docs/STATE_HASHING.md",
+        "docs/contracts/ENGINE_STATE_CLOSURE.md"
+      ],
+      "benchmark_scenarios": [],
+      "category": "mechanic",
+      "conformance_cases": [],
+      "dependencies": [
+        "rules/graveyard-zone",
+        "rules/library-traversal"
+      ],
+      "implementation_paths": [],
+      "information_risk": "high",
+      "key": "mechanic/surveil",
+      "lifecycle": "specified",
+      "owners": [
+        "rules-maintainer"
+      ],
+      "spec_path": "docs/rules/capabilities/mechanic/surveil.md",
+      "summary": "This durable V1 capability covers the Surveil operation that looks at the top cards and sends each to the graveyard or back on top.",
+      "version": "0.1.0"
+    },
+    {
+      "authority_refs": [
+        "b1-final:sources/m2_5/closures/B1/official_authority_citations.v3.json#cap.tapped_tokens",
+        "b2-boundary:sources/m2_5/closures/B2/requirement_family_catalog.v1.json#cap.tapped_tokens",
+        "comprehensive-rules:CR-111-tokens",
+        "comprehensive-rules:CR-701-26-tap-untap",
+        "docs/DECISION_PROTOCOL.md",
+        "docs/DOMAIN_MODEL.md",
+        "docs/INFORMATION_MODEL.md",
+        "docs/REPLAY_AND_DETERMINISM.md",
+        "docs/RULES_SEMANTICS.md",
+        "docs/STATE_HASHING.md",
+        "docs/contracts/ENGINE_STATE_CLOSURE.md"
+      ],
+      "benchmark_scenarios": [],
+      "category": "mechanic",
+      "conformance_cases": [],
+      "dependencies": [
+        "mechanic/token-creation",
+        "rules/tap-event"
+      ],
+      "implementation_paths": [],
+      "information_risk": "high",
+      "key": "mechanic/tapped-tokens",
+      "lifecycle": "specified",
+      "owners": [
+        "rules-interaction-maintainer"
+      ],
+      "spec_path": "docs/rules/capabilities/mechanic/tapped-tokens.md",
+      "summary": "This durable V1 capability covers creation of tokens that explicitly enter the battlefield tapped.",
+      "version": "0.1.0"
+    },
+    {
+      "authority_refs": [
+        "b1-final:sources/m2_5/closures/B1/official_authority_citations.v3.json#cap.token_creation",
+        "b2-boundary:sources/m2_5/closures/B2/requirement_family_catalog.v1.json#cap.token_creation",
+        "comprehensive-rules:CR-111-tokens",
+        "docs/DECISION_PROTOCOL.md",
+        "docs/DOMAIN_MODEL.md",
+        "docs/INFORMATION_MODEL.md",
+        "docs/REPLAY_AND_DETERMINISM.md",
+        "docs/RULES_SEMANTICS.md",
+        "docs/STATE_HASHING.md",
+        "docs/contracts/ENGINE_STATE_CLOSURE.md"
+      ],
+      "benchmark_scenarios": [],
+      "category": "mechanic",
+      "conformance_cases": [],
+      "dependencies": [],
+      "implementation_paths": [],
+      "information_risk": "high",
+      "key": "mechanic/token-creation",
+      "lifecycle": "specified",
+      "owners": [
+        "rules-interaction-maintainer"
+      ],
+      "spec_path": "docs/rules/capabilities/mechanic/token-creation.md",
+      "summary": "This durable V1 capability covers an instruction that creates one or more token objects.",
+      "version": "0.1.0"
+    },
+    {
+      "authority_refs": [
+        "b1-final:sources/m2_5/closures/B1/official_authority_citations.v3.json#cap.token_exception",
+        "b2-boundary:sources/m2_5/closures/B2/requirement_family_catalog.v1.json#cap.token_exception",
+        "comprehensive-rules:CR-111-tokens",
+        "docs/DECISION_PROTOCOL.md",
+        "docs/DOMAIN_MODEL.md",
+        "docs/INFORMATION_MODEL.md",
+        "docs/REPLAY_AND_DETERMINISM.md",
+        "docs/RULES_SEMANTICS.md",
+        "docs/STATE_HASHING.md",
+        "docs/contracts/ENGINE_STATE_CLOSURE.md"
+      ],
+      "benchmark_scenarios": [],
+      "category": "mechanic",
+      "conformance_cases": [],
+      "dependencies": [
+        "mechanic/token-creation"
+      ],
+      "implementation_paths": [],
+      "information_risk": "high",
+      "key": "mechanic/token-exception",
+      "lifecycle": "specified",
+      "owners": [
+        "rules-interaction-maintainer"
+      ],
+      "spec_path": "docs/rules/capabilities/mechanic/token-exception.md",
+      "summary": "This durable V1 capability covers an effect that distinguishes nontoken objects from tokens in its eligibility or result.",
+      "version": "0.1.0"
+    },
+    {
+      "authority_refs": [
+        "b1-final:sources/m2_5/closures/B1/official_authority_citations.v3.json#cap.token_or_counters",
+        "b2-boundary:sources/m2_5/closures/B2/requirement_family_catalog.v1.json#cap.token_or_counters",
+        "comprehensive-rules:CR-111-tokens",
+        "comprehensive-rules:CR-122-counters",
+        "comprehensive-rules:CR-700-2-modes",
+        "docs/DECISION_PROTOCOL.md",
+        "docs/DOMAIN_MODEL.md",
+        "docs/REPLAY_AND_DETERMINISM.md",
+        "docs/RULES_SEMANTICS.md",
+        "docs/STATE_HASHING.md",
+        "docs/contracts/ENGINE_STATE_CLOSURE.md"
+      ],
+      "benchmark_scenarios": [],
+      "category": "mechanic",
+      "conformance_cases": [],
+      "dependencies": [
+        "decision/mode-choice",
+        "mechanic/token-creation",
+        "rules/counters"
+      ],
+      "implementation_paths": [],
+      "information_risk": "high",
+      "key": "mechanic/token-or-counters",
+      "lifecycle": "specified",
+      "owners": [
+        "rules-interaction-maintainer"
+      ],
+      "spec_path": "docs/rules/capabilities/mechanic/token-or-counters.md",
+      "summary": "This durable V1 capability covers a mode or effect that explicitly offers token creation as one alternative and counter placement as another.",
+      "version": "0.1.0"
+    },
+    {
+      "authority_refs": [
+        "b1-final:sources/m2_5/closures/B1/official_authority_citations.v3.json#cap.tribal",
+        "b2-boundary:sources/m2_5/closures/B2/requirement_family_catalog.v1.json#cap.tribal",
+        "comprehensive-rules:CR-205-type-line",
+        "docs/DECISION_PROTOCOL.md",
+        "docs/DOMAIN_MODEL.md",
+        "docs/INFORMATION_MODEL.md",
+        "docs/REPLAY_AND_DETERMINISM.md",
+        "docs/RULES_SEMANTICS.md",
+        "docs/STATE_HASHING.md",
+        "docs/contracts/ENGINE_STATE_CLOSURE.md"
+      ],
+      "benchmark_scenarios": [],
+      "category": "mechanic",
+      "conformance_cases": [],
+      "dependencies": [],
+      "implementation_paths": [],
+      "information_risk": "high",
+      "key": "mechanic/tribal",
+      "lifecycle": "specified",
+      "owners": [
+        "rules-maintainer"
+      ],
+      "spec_path": "docs/rules/capabilities/mechanic/tribal.md",
+      "summary": "This durable V1 capability covers a card-side effect that uses a creature type to constrain a selection, condition, permission, or outcome.",
+      "version": "0.1.0"
+    },
+    {
+      "authority_refs": [
+        "b1-final:sources/m2_5/closures/B1/official_authority_citations.v3.json#cap.alternate_cast_zone",
+        "b2-boundary:sources/m2_5/closures/B2/requirement_family_catalog.v1.json#cap.alternate_cast_zone",
+        "comprehensive-rules:CR-601-casting-spells",
+        "docs/DECISION_PROTOCOL.md",
+        "docs/DOMAIN_MODEL.md",
+        "docs/INFORMATION_MODEL.md",
+        "docs/REPLAY_AND_DETERMINISM.md",
+        "docs/RULES_SEMANTICS.md",
+        "docs/STATE_HASHING.md",
+        "docs/contracts/ENGINE_STATE_CLOSURE.md"
+      ],
+      "benchmark_scenarios": [],
+      "category": "core_rule",
+      "conformance_cases": [],
+      "dependencies": [],
+      "implementation_paths": [],
+      "information_risk": "high",
+      "key": "rules/alternate-cast-zone",
+      "lifecycle": "specified",
+      "owners": [
+        "rules-maintainer"
+      ],
+      "spec_path": "docs/rules/capabilities/rules/alternate-cast-zone.md",
+      "summary": "This durable V1 capability covers permission to cast a card from a zone other than its owner's hand.",
+      "version": "0.1.0"
+    },
+    {
+      "authority_refs": [
+        "b1-final:sources/m2_5/closures/B1/official_authority_citations.v3.json#cap.artifact_permanent",
+        "b2-boundary:sources/m2_5/closures/B2/requirement_family_catalog.v1.json#cap.artifact_permanent",
+        "comprehensive-rules:CR-205-type-line",
+        "comprehensive-rules:CR-301-artifacts",
+        "docs/DECISION_PROTOCOL.md",
+        "docs/DOMAIN_MODEL.md",
+        "docs/REPLAY_AND_DETERMINISM.md",
+        "docs/RULES_SEMANTICS.md",
+        "docs/STATE_HASHING.md",
+        "docs/contracts/ENGINE_STATE_CLOSURE.md"
+      ],
+      "benchmark_scenarios": [],
+      "category": "core_rule",
+      "conformance_cases": [],
+      "dependencies": [],
+      "implementation_paths": [],
+      "information_risk": "high",
+      "key": "rules/artifact-permanent",
+      "lifecycle": "specified",
+      "owners": [
+        "rules-maintainer"
+      ],
+      "spec_path": "docs/rules/capabilities/rules/artifact-permanent.md",
+      "summary": "This durable V1 capability covers the Artifact card type on the public type line.",
+      "version": "0.1.0"
+    },
+    {
+      "authority_refs": [
+        "b1-final:sources/m2_5/closures/B1/official_authority_citations.v3.json#cap.attack_trigger",
+        "b2-boundary:sources/m2_5/closures/B2/requirement_family_catalog.v1.json#cap.attack_trigger",
+        "comprehensive-rules:CR-508-declare-attackers",
+        "comprehensive-rules:CR-603-triggered-abilities",
+        "docs/DECISION_PROTOCOL.md",
+        "docs/DOMAIN_MODEL.md",
+        "docs/INFORMATION_MODEL.md",
+        "docs/REPLAY_AND_DETERMINISM.md",
+        "docs/RULES_SEMANTICS.md",
+        "docs/STATE_HASHING.md",
+        "docs/contracts/ENGINE_STATE_CLOSURE.md"
+      ],
+      "benchmark_scenarios": [],
+      "category": "core_rule",
+      "conformance_cases": [],
+      "dependencies": [
+        "rules/triggered-ability"
+      ],
+      "implementation_paths": [],
+      "information_risk": "high",
+      "key": "rules/attack-trigger",
+      "lifecycle": "specified",
+      "owners": [
+        "rules-maintainer"
+      ],
+      "spec_path": "docs/rules/capabilities/rules/attack-trigger.md",
+      "summary": "This durable V1 capability covers an actual triggered ability whose event condition is a creature or permanent attacking.",
+      "version": "0.1.0"
+    },
+    {
+      "authority_refs": [
+        "b1-final:sources/m2_5/closures/B1/official_authority_citations.v3.json#cap.color_addition",
+        "b2-boundary:sources/m2_5/closures/B2/requirement_family_catalog.v1.json#cap.color_addition",
+        "comprehensive-rules:CR-105-colors",
+        "comprehensive-rules:CR-613-continuous-effects",
+        "docs/DECISION_PROTOCOL.md",
+        "docs/DOMAIN_MODEL.md",
+        "docs/INFORMATION_MODEL.md",
+        "docs/REPLAY_AND_DETERMINISM.md",
+        "docs/RULES_SEMANTICS.md",
+        "docs/STATE_HASHING.md",
+        "docs/contracts/ENGINE_STATE_CLOSURE.md"
+      ],
+      "benchmark_scenarios": [],
+      "category": "core_rule",
+      "conformance_cases": [],
+      "dependencies": [
+        "rules/continuous-effect"
+      ],
+      "implementation_paths": [],
+      "information_risk": "high",
+      "key": "rules/color-addition",
+      "lifecycle": "specified",
+      "owners": [
+        "rules-maintainer"
+      ],
+      "spec_path": "docs/rules/capabilities/rules/color-addition.md",
+      "summary": "This durable V1 capability covers an effect that adds a color to a permanent or object in addition to its existing colors.",
+      "version": "0.1.0"
+    },
+    {
+      "authority_refs": [
+        "b1-final:sources/m2_5/closures/B1/official_authority_citations.v3.json#cap.color_set_black",
+        "b2-boundary:sources/m2_5/closures/B2/requirement_family_catalog.v1.json#cap.color_set_black",
+        "comprehensive-rules:CR-105-colors",
+        "comprehensive-rules:CR-613-continuous-effects",
+        "docs/DECISION_PROTOCOL.md",
+        "docs/DOMAIN_MODEL.md",
+        "docs/INFORMATION_MODEL.md",
+        "docs/REPLAY_AND_DETERMINISM.md",
+        "docs/RULES_SEMANTICS.md",
+        "docs/STATE_HASHING.md",
+        "docs/contracts/ENGINE_STATE_CLOSURE.md"
+      ],
+      "benchmark_scenarios": [],
+      "category": "core_rule",
+      "conformance_cases": [],
+      "dependencies": [
+        "rules/continuous-effect"
+      ],
+      "implementation_paths": [],
+      "information_risk": "high",
+      "key": "rules/color-set-black",
+      "lifecycle": "specified",
+      "owners": [
+        "rules-maintainer"
+      ],
+      "spec_path": "docs/rules/capabilities/rules/color-set-black.md",
+      "summary": "This durable V1 capability covers an effect that sets an object's color to black.",
+      "version": "0.1.0"
+    },
+    {
+      "authority_refs": [
+        "b1-final:sources/m2_5/closures/B1/official_authority_citations.v3.json#cap.combat_trigger",
+        "b2-boundary:sources/m2_5/closures/B2/requirement_family_catalog.v1.json#cap.combat_trigger",
+        "comprehensive-rules:CR-508-declare-attackers",
+        "comprehensive-rules:CR-603-triggered-abilities",
+        "docs/DOMAIN_MODEL.md",
+        "docs/REPLAY_AND_DETERMINISM.md",
+        "docs/RULES_SEMANTICS.md",
+        "docs/STATE_HASHING.md",
+        "docs/contracts/ENGINE_STATE_CLOSURE.md"
+      ],
+      "benchmark_scenarios": [],
+      "category": "core_rule",
+      "conformance_cases": [],
+      "dependencies": [
+        "rules/triggered-ability"
+      ],
+      "implementation_paths": [],
+      "information_risk": "medium",
+      "key": "rules/combat-trigger",
+      "lifecycle": "specified",
+      "owners": [
+        "rules-maintainer"
+      ],
+      "spec_path": "docs/rules/capabilities/rules/combat-trigger.md",
+      "summary": "This durable V1 capability covers an actual triggered ability whose event is a combat event other than specifically combat damage.",
+      "version": "0.1.0"
+    },
+    {
+      "authority_refs": [
+        "b1-final:sources/m2_5/closures/B1/official_authority_citations.v3.json#cap.conditional_exile",
+        "b2-boundary:sources/m2_5/closures/B2/requirement_family_catalog.v1.json#cap.conditional_exile",
+        "comprehensive-rules:CR-406-exile",
+        "docs/DECISION_PROTOCOL.md",
+        "docs/DOMAIN_MODEL.md",
+        "docs/INFORMATION_MODEL.md",
+        "docs/REPLAY_AND_DETERMINISM.md",
+        "docs/RULES_SEMANTICS.md",
+        "docs/STATE_HASHING.md",
+        "docs/contracts/ENGINE_STATE_CLOSURE.md"
+      ],
+      "benchmark_scenarios": [],
+      "category": "core_rule",
+      "conformance_cases": [],
+      "dependencies": [
+        "rules/exile",
+        "rules/zone-change"
+      ],
+      "implementation_paths": [],
+      "information_risk": "critical",
+      "key": "rules/conditional-exile",
+      "lifecycle": "specified",
+      "owners": [
+        "rules-maintainer"
+      ],
+      "spec_path": "docs/rules/capabilities/rules/conditional-exile.md",
+      "summary": "This durable V1 capability covers an exile instruction that applies only when its stated condition or eligibility test is satisfied.",
+      "version": "0.1.0"
+    },
+    {
+      "authority_refs": [
+        "b1-final:sources/m2_5/closures/B1/official_authority_citations.v3.json#cap.continuous_ability",
+        "b2-boundary:sources/m2_5/closures/B2/requirement_family_catalog.v1.json#cap.continuous_ability",
+        "comprehensive-rules:CR-604-static-abilities",
+        "comprehensive-rules:CR-611-continuous-effects",
+        "comprehensive-rules:CR-613-continuous-effects",
+        "docs/DECISION_PROTOCOL.md",
+        "docs/DOMAIN_MODEL.md",
+        "docs/INFORMATION_MODEL.md",
+        "docs/REPLAY_AND_DETERMINISM.md",
+        "docs/RULES_SEMANTICS.md",
+        "docs/STATE_HASHING.md",
+        "docs/contracts/ENGINE_STATE_CLOSURE.md"
+      ],
+      "benchmark_scenarios": [],
+      "category": "core_rule",
+      "conformance_cases": [],
+      "dependencies": [],
+      "implementation_paths": [],
+      "information_risk": "high",
+      "key": "rules/continuous-effect",
+      "lifecycle": "specified",
+      "owners": [
+        "rules-maintainer"
+      ],
+      "spec_path": "docs/rules/capabilities/rules/continuous-effect.md",
+      "summary": "This durable V1 capability covers a continuous effect that grants, removes, or modifies an ability on the affected object.",
+      "version": "0.1.0"
+    },
+    {
+      "authority_refs": [
+        "b1-final:sources/m2_5/closures/B1/official_authority_citations.v3.json#cap.continuous_pt",
+        "b2-boundary:sources/m2_5/closures/B2/requirement_family_catalog.v1.json#cap.continuous_pt",
+        "comprehensive-rules:CR-613-continuous-effects",
+        "docs/DECISION_PROTOCOL.md",
+        "docs/DOMAIN_MODEL.md",
+        "docs/INFORMATION_MODEL.md",
+        "docs/REPLAY_AND_DETERMINISM.md",
+        "docs/RULES_SEMANTICS.md",
+        "docs/STATE_HASHING.md",
+        "docs/contracts/ENGINE_STATE_CLOSURE.md"
+      ],
+      "benchmark_scenarios": [],
+      "category": "core_rule",
+      "conformance_cases": [],
+      "dependencies": [
+        "rules/continuous-effect"
+      ],
+      "implementation_paths": [],
+      "information_risk": "high",
+      "key": "rules/continuous-pt",
+      "lifecycle": "specified",
+      "owners": [
+        "rules-maintainer"
+      ],
+      "spec_path": "docs/rules/capabilities/rules/continuous-pt.md",
+      "summary": "This durable V1 capability covers a continuous effect that modifies creatures' power and toughness for its stated duration.",
+      "version": "0.1.0"
+    },
+    {
+      "authority_refs": [
+        "b1-final:sources/m2_5/closures/B1/official_authority_citations.v3.json#cap.controller_assignment_on_zone_entry",
+        "b2-boundary:sources/m2_5/closures/B2/requirement_family_catalog.v1.json#cap.controller_assignment_on_zone_entry",
+        "comprehensive-rules:CR-400-7-new-object",
+        "comprehensive-rules:CR-403-battlefield",
+        "docs/DECISION_PROTOCOL.md",
+        "docs/DOMAIN_MODEL.md",
+        "docs/INFORMATION_MODEL.md",
+        "docs/REPLAY_AND_DETERMINISM.md",
+        "docs/RULES_SEMANTICS.md",
+        "docs/STATE_HASHING.md",
+        "docs/contracts/ENGINE_STATE_CLOSURE.md"
+      ],
+      "benchmark_scenarios": [],
+      "category": "core_rule",
+      "conformance_cases": [],
+      "dependencies": [
+        "rules/put-battlefield",
+        "rules/zone-change"
+      ],
+      "implementation_paths": [],
+      "information_risk": "critical",
+      "key": "rules/controller-assignment-on-entry",
+      "lifecycle": "specified",
+      "owners": [
+        "information-safety-maintainer",
+        "rules-interaction-maintainer"
+      ],
+      "spec_path": "docs/rules/capabilities/rules/controller-assignment-on-entry.md",
+      "summary": "This durable V1 capability covers an effect assigning control to an object as it enters or is put onto the battlefield.",
+      "version": "0.1.0"
+    },
+    {
+      "authority_refs": [
+        "b1-final:sources/m2_5/closures/B1/official_authority_citations.v3.json#cap.copiable_token_values",
+        "b2-boundary:sources/m2_5/closures/B2/requirement_family_catalog.v1.json#cap.copiable_token_values",
+        "comprehensive-rules:CR-111-tokens",
+        "comprehensive-rules:CR-707-copying-objects",
+        "docs/DECISION_PROTOCOL.md",
+        "docs/DOMAIN_MODEL.md",
+        "docs/INFORMATION_MODEL.md",
+        "docs/REPLAY_AND_DETERMINISM.md",
+        "docs/RULES_SEMANTICS.md",
+        "docs/STATE_HASHING.md",
+        "docs/contracts/ENGINE_STATE_CLOSURE.md"
+      ],
+      "benchmark_scenarios": [],
+      "category": "core_rule",
+      "conformance_cases": [],
+      "dependencies": [],
+      "implementation_paths": [],
+      "information_risk": "high",
+      "key": "rules/copy-effect",
+      "lifecycle": "specified",
+      "owners": [
+        "rules-interaction-maintainer"
+      ],
+      "spec_path": "docs/rules/capabilities/rules/copy-effect.md",
+      "summary": "This durable V1 capability covers the copiable values of a creature token used to define a created token's characteristics.",
+      "version": "0.1.0"
+    },
+    {
+      "authority_refs": [
+        "b1-final:sources/m2_5/closures/B1/official_authority_citations.v3.json#cap.count_tapped",
+        "b2-boundary:sources/m2_5/closures/B2/requirement_family_catalog.v1.json#cap.count_tapped",
+        "comprehensive-rules:CR-701-26-tap-untap",
+        "docs/DECISION_PROTOCOL.md",
+        "docs/DOMAIN_MODEL.md",
+        "docs/INFORMATION_MODEL.md",
+        "docs/REPLAY_AND_DETERMINISM.md",
+        "docs/RULES_SEMANTICS.md",
+        "docs/STATE_HASHING.md",
+        "docs/contracts/ENGINE_STATE_CLOSURE.md"
+      ],
+      "benchmark_scenarios": [],
+      "category": "core_rule",
+      "conformance_cases": [],
+      "dependencies": [
+        "rules/tap-event"
+      ],
+      "implementation_paths": [],
+      "information_risk": "high",
+      "key": "rules/count-tapped",
+      "lifecycle": "specified",
+      "owners": [
+        "rules-maintainer"
+      ],
+      "spec_path": "docs/rules/capabilities/rules/count-tapped.md",
+      "summary": "This durable V1 capability covers an effect that counts tapped permanents or creatures as a numeric input.",
+      "version": "0.1.0"
+    },
+    {
+      "authority_refs": [
+        "b1-final:sources/m2_5/closures/B1/official_authority_citations.v3.json#cap.countered_setup",
+        "b2-boundary:sources/m2_5/closures/B2/requirement_family_catalog.v1.json#cap.countered_setup",
+        "comprehensive-rules:CR-122-counters",
+        "docs/DECISION_PROTOCOL.md",
+        "docs/DOMAIN_MODEL.md",
+        "docs/INFORMATION_MODEL.md",
+        "docs/REPLAY_AND_DETERMINISM.md",
+        "docs/RULES_SEMANTICS.md",
+        "docs/STATE_HASHING.md",
+        "docs/contracts/ENGINE_STATE_CLOSURE.md"
+      ],
+      "benchmark_scenarios": [],
+      "category": "core_rule",
+      "conformance_cases": [],
+      "dependencies": [],
+      "implementation_paths": [],
+      "information_risk": "high",
+      "key": "rules/countered-setup",
+      "lifecycle": "specified",
+      "owners": [
+        "rules-maintainer"
+      ],
+      "spec_path": "docs/rules/capabilities/rules/countered-setup.md",
+      "summary": "This durable V1 capability covers a setup state whose defining progress is established by placing or removing a named counter.",
+      "version": "0.1.0"
+    },
+    {
+      "authority_refs": [
+        "b1-final:sources/m2_5/closures/B1/official_authority_citations.v3.json#cap.counters",
+        "b2-boundary:sources/m2_5/closures/B2/requirement_family_catalog.v1.json#cap.counters",
+        "comprehensive-rules:CR-122-counters",
+        "docs/DECISION_PROTOCOL.md",
+        "docs/DOMAIN_MODEL.md",
+        "docs/INFORMATION_MODEL.md",
+        "docs/REPLAY_AND_DETERMINISM.md",
+        "docs/RULES_SEMANTICS.md",
+        "docs/STATE_HASHING.md",
+        "docs/contracts/ENGINE_STATE_CLOSURE.md"
+      ],
+      "benchmark_scenarios": [],
+      "category": "core_rule",
+      "conformance_cases": [],
+      "dependencies": [],
+      "implementation_paths": [],
+      "information_risk": "high",
+      "key": "rules/counters",
+      "lifecycle": "specified",
+      "owners": [
+        "rules-maintainer"
+      ],
+      "spec_path": "docs/rules/capabilities/rules/counters.md",
+      "summary": "This durable V1 capability covers an effect that puts, removes, or tracks counters on a named object.",
+      "version": "0.1.0"
+    },
+    {
+      "authority_refs": [
+        "b1-final:sources/m2_5/closures/B1/official_authority_citations.v3.json#cap.counterspell",
+        "b2-boundary:sources/m2_5/closures/B2/requirement_family_catalog.v1.json#cap.counterspell",
+        "comprehensive-rules:CR-701-6-counter",
+        "docs/DECISION_PROTOCOL.md",
+        "docs/DOMAIN_MODEL.md",
+        "docs/INFORMATION_MODEL.md",
+        "docs/REPLAY_AND_DETERMINISM.md",
+        "docs/RULES_SEMANTICS.md",
+        "docs/STATE_HASHING.md",
+        "docs/contracts/ENGINE_STATE_CLOSURE.md"
+      ],
+      "benchmark_scenarios": [],
+      "category": "core_rule",
+      "conformance_cases": [],
+      "dependencies": [
+        "rules/countered-setup"
+      ],
+      "implementation_paths": [],
+      "information_risk": "high",
+      "key": "rules/counterspell",
+      "lifecycle": "specified",
+      "owners": [
+        "rules-maintainer"
+      ],
+      "spec_path": "docs/rules/capabilities/rules/counterspell.md",
+      "summary": "This durable V1 capability covers an instruction that counters a target spell.",
+      "version": "0.1.0"
+    },
+    {
+      "authority_refs": [
+        "b1-final:sources/m2_5/closures/B1/official_authority_citations.v3.json#cap.damage",
+        "b2-boundary:sources/m2_5/closures/B2/requirement_family_catalog.v1.json#cap.damage",
+        "comprehensive-rules:CR-120-damage",
+        "docs/DECISION_PROTOCOL.md",
+        "docs/DOMAIN_MODEL.md",
+        "docs/INFORMATION_MODEL.md",
+        "docs/REPLAY_AND_DETERMINISM.md",
+        "docs/RULES_SEMANTICS.md",
+        "docs/STATE_HASHING.md",
+        "docs/contracts/ENGINE_STATE_CLOSURE.md"
+      ],
+      "benchmark_scenarios": [],
+      "category": "core_rule",
+      "conformance_cases": [],
+      "dependencies": [],
+      "implementation_paths": [],
+      "information_risk": "high",
+      "key": "rules/damage",
+      "lifecycle": "specified",
+      "owners": [
+        "rules-maintainer"
+      ],
+      "spec_path": "docs/rules/capabilities/rules/damage.md",
+      "summary": "This durable V1 capability covers an instruction that deals damage to a player, creature, planeswalker, or other object.",
+      "version": "0.1.0"
+    },
+    {
+      "authority_refs": [
+        "b1-final:sources/m2_5/closures/B1/official_authority_citations.v3.json#cap.damage_trigger",
+        "b2-boundary:sources/m2_5/closures/B2/requirement_family_catalog.v1.json#cap.damage_trigger",
+        "comprehensive-rules:CR-120-damage",
+        "comprehensive-rules:CR-603-triggered-abilities",
+        "docs/DECISION_PROTOCOL.md",
+        "docs/DOMAIN_MODEL.md",
+        "docs/INFORMATION_MODEL.md",
+        "docs/REPLAY_AND_DETERMINISM.md",
+        "docs/RULES_SEMANTICS.md",
+        "docs/STATE_HASHING.md",
+        "docs/contracts/ENGINE_STATE_CLOSURE.md"
+      ],
+      "benchmark_scenarios": [],
+      "category": "core_rule",
+      "conformance_cases": [],
+      "dependencies": [],
+      "implementation_paths": [],
+      "information_risk": "high",
+      "key": "rules/damage-trigger",
+      "lifecycle": "specified",
+      "owners": [
+        "rules-maintainer"
+      ],
+      "spec_path": "docs/rules/capabilities/rules/damage-trigger.md",
+      "summary": "This durable V1 capability covers an actual triggered ability that triggers when a creature or permanent is dealt damage.",
+      "version": "0.1.0"
+    },
+    {
+      "authority_refs": [
+        "b1-final:sources/m2_5/closures/B1/official_authority_citations.v3.json#cap.death_trigger",
+        "b2-boundary:sources/m2_5/closures/B2/requirement_family_catalog.v1.json#cap.death_trigger",
+        "comprehensive-rules:CR-603-triggered-abilities",
+        "comprehensive-rules:CR-700-general",
+        "docs/DECISION_PROTOCOL.md",
+        "docs/DOMAIN_MODEL.md",
+        "docs/INFORMATION_MODEL.md",
+        "docs/REPLAY_AND_DETERMINISM.md",
+        "docs/RULES_SEMANTICS.md",
+        "docs/STATE_HASHING.md",
+        "docs/contracts/ENGINE_STATE_CLOSURE.md"
+      ],
+      "benchmark_scenarios": [],
+      "category": "core_rule",
+      "conformance_cases": [],
+      "dependencies": [
+        "rules/triggered-ability"
+      ],
+      "implementation_paths": [],
+      "information_risk": "high",
+      "key": "rules/death-trigger",
+      "lifecycle": "specified",
+      "owners": [
+        "rules-maintainer"
+      ],
+      "spec_path": "docs/rules/capabilities/rules/death-trigger.md",
+      "summary": "This durable V1 capability covers an actual triggered ability whose event is a creature dying or moving from battlefield to graveyard.",
+      "version": "0.1.0"
+    },
+    {
+      "authority_refs": [
+        "b1-final:sources/m2_5/closures/B1/official_authority_citations.v3.json#cap.deathtouch",
+        "b2-boundary:sources/m2_5/closures/B2/requirement_family_catalog.v1.json#cap.deathtouch",
+        "comprehensive-rules:CR-702-2-deathtouch",
+        "comprehensive-rules:CR-704-state-based-actions",
+        "docs/DECISION_PROTOCOL.md",
+        "docs/DOMAIN_MODEL.md",
+        "docs/REPLAY_AND_DETERMINISM.md",
+        "docs/RULES_SEMANTICS.md",
+        "docs/STATE_HASHING.md",
+        "docs/contracts/ENGINE_STATE_CLOSURE.md"
+      ],
+      "benchmark_scenarios": [],
+      "category": "core_rule",
+      "conformance_cases": [],
+      "dependencies": [
+        "rules/damage"
+      ],
+      "implementation_paths": [],
+      "information_risk": "medium",
+      "key": "rules/deathtouch",
+      "lifecycle": "specified",
+      "owners": [
+        "rules-maintainer"
+      ],
+      "spec_path": "docs/rules/capabilities/rules/deathtouch.md",
+      "summary": "This durable V1 capability covers the Deathtouch keyword or an effect that explicitly grants or relies on Deathtouch.",
+      "version": "0.1.0"
+    },
+    {
+      "authority_refs": [
+        "b1-final:sources/m2_5/closures/B1/official_authority_citations.v3.json#cap.delayed_trigger",
+        "b2-boundary:sources/m2_5/closures/B2/requirement_family_catalog.v1.json#cap.delayed_trigger",
+        "comprehensive-rules:CR-603-triggered-abilities",
+        "docs/DECISION_PROTOCOL.md",
+        "docs/DOMAIN_MODEL.md",
+        "docs/INFORMATION_MODEL.md",
+        "docs/REPLAY_AND_DETERMINISM.md",
+        "docs/RULES_SEMANTICS.md",
+        "docs/STATE_HASHING.md",
+        "docs/contracts/ENGINE_STATE_CLOSURE.md"
+      ],
+      "benchmark_scenarios": [],
+      "category": "core_rule",
+      "conformance_cases": [],
+      "dependencies": [
+        "rules/triggered-ability"
+      ],
+      "implementation_paths": [],
+      "information_risk": "high",
+      "key": "rules/delayed-trigger",
+      "lifecycle": "specified",
+      "owners": [
+        "rules-maintainer"
+      ],
+      "spec_path": "docs/rules/capabilities/rules/delayed-trigger.md",
+      "summary": "This durable V1 capability covers a delayed triggered ability created now to trigger on a later stated event or time.",
+      "version": "0.1.0"
+    },
+    {
+      "authority_refs": [
+        "b1-final:sources/m2_5/closures/B1/official_authority_citations.v3.json#cap.destroy",
+        "b2-boundary:sources/m2_5/closures/B2/requirement_family_catalog.v1.json#cap.destroy",
+        "comprehensive-rules:CR-701-8-destroy",
+        "docs/DECISION_PROTOCOL.md",
+        "docs/DOMAIN_MODEL.md",
+        "docs/INFORMATION_MODEL.md",
+        "docs/REPLAY_AND_DETERMINISM.md",
+        "docs/RULES_SEMANTICS.md",
+        "docs/STATE_HASHING.md",
+        "docs/contracts/ENGINE_STATE_CLOSURE.md"
+      ],
+      "benchmark_scenarios": [],
+      "category": "core_rule",
+      "conformance_cases": [],
+      "dependencies": [],
+      "implementation_paths": [],
+      "information_risk": "high",
+      "key": "rules/destroy",
+      "lifecycle": "specified",
+      "owners": [
+        "rules-maintainer"
+      ],
+      "spec_path": "docs/rules/capabilities/rules/destroy.md",
+      "summary": "This durable V1 capability covers an instruction that destroys a permanent or other destroyable object.",
+      "version": "0.1.0"
+    },
+    {
+      "authority_refs": [
+        "b1-final:sources/m2_5/closures/B1/official_authority_citations.v3.json#cap.draw",
+        "b2-boundary:sources/m2_5/closures/B2/requirement_family_catalog.v1.json#cap.draw",
+        "comprehensive-rules:CR-121-drawing",
+        "docs/DECISION_PROTOCOL.md",
+        "docs/DOMAIN_MODEL.md",
+        "docs/INFORMATION_MODEL.md",
+        "docs/REPLAY_AND_DETERMINISM.md",
+        "docs/RULES_SEMANTICS.md",
+        "docs/STATE_HASHING.md",
+        "docs/contracts/ENGINE_STATE_CLOSURE.md"
+      ],
+      "benchmark_scenarios": [],
+      "category": "core_rule",
+      "conformance_cases": [],
+      "dependencies": [
+        "rules/library-traversal"
+      ],
+      "implementation_paths": [],
+      "information_risk": "high",
+      "key": "rules/draw",
+      "lifecycle": "specified",
+      "owners": [
+        "rules-maintainer"
+      ],
+      "spec_path": "docs/rules/capabilities/rules/draw.md",
+      "summary": "This durable V1 capability covers an instruction that moves one or more cards from a library into a player's hand as card draw.",
+      "version": "0.1.0"
+    },
+    {
+      "authority_refs": [
+        "b1-final:sources/m2_5/closures/B1/official_authority_citations.v3.json#cap.draw_discard",
+        "b2-boundary:sources/m2_5/closures/B2/requirement_family_catalog.v1.json#cap.draw_discard",
+        "comprehensive-rules:CR-121-drawing",
+        "comprehensive-rules:CR-701-9-discard",
+        "docs/DECISION_PROTOCOL.md",
+        "docs/DOMAIN_MODEL.md",
+        "docs/INFORMATION_MODEL.md",
+        "docs/REPLAY_AND_DETERMINISM.md",
+        "docs/RULES_SEMANTICS.md",
+        "docs/STATE_HASHING.md",
+        "docs/contracts/ENGINE_STATE_CLOSURE.md"
+      ],
+      "benchmark_scenarios": [],
+      "category": "core_rule",
+      "conformance_cases": [],
+      "dependencies": [
+        "rules/draw"
+      ],
+      "implementation_paths": [],
+      "information_risk": "high",
+      "key": "rules/draw-discard",
+      "lifecycle": "specified",
+      "owners": [
+        "rules-maintainer"
+      ],
+      "spec_path": "docs/rules/capabilities/rules/draw-discard.md",
+      "summary": "This durable V1 capability covers one effect that combines drawing cards and discarding cards as its operative hand operation.",
+      "version": "0.1.0"
+    },
+    {
+      "authority_refs": [
+        "b1-final:sources/m2_5/closures/B1/official_authority_citations.v3.json#cap.draw_trigger",
+        "b2-boundary:sources/m2_5/closures/B2/requirement_family_catalog.v1.json#cap.draw_trigger",
+        "comprehensive-rules:CR-121-drawing",
+        "comprehensive-rules:CR-603-triggered-abilities",
+        "docs/DECISION_PROTOCOL.md",
+        "docs/DOMAIN_MODEL.md",
+        "docs/INFORMATION_MODEL.md",
+        "docs/REPLAY_AND_DETERMINISM.md",
+        "docs/RULES_SEMANTICS.md",
+        "docs/STATE_HASHING.md",
+        "docs/contracts/ENGINE_STATE_CLOSURE.md"
+      ],
+      "benchmark_scenarios": [],
+      "category": "core_rule",
+      "conformance_cases": [],
+      "dependencies": [
+        "rules/draw",
+        "rules/triggered-ability"
+      ],
+      "implementation_paths": [],
+      "information_risk": "high",
+      "key": "rules/draw-trigger",
+      "lifecycle": "specified",
+      "owners": [
+        "rules-maintainer"
+      ],
+      "spec_path": "docs/rules/capabilities/rules/draw-trigger.md",
+      "summary": "This durable V1 capability covers an actual triggered ability whose event or result is card draw.",
+      "version": "0.1.0"
+    },
+    {
+      "authority_refs": [
+        "b1-final:sources/m2_5/closures/B1/official_authority_citations.v3.json#cap.end_step_trigger",
+        "b2-boundary:sources/m2_5/closures/B2/requirement_family_catalog.v1.json#cap.end_step_trigger",
+        "comprehensive-rules:CR-513-end-step",
+        "comprehensive-rules:CR-603-triggered-abilities",
+        "docs/DECISION_PROTOCOL.md",
+        "docs/DOMAIN_MODEL.md",
+        "docs/INFORMATION_MODEL.md",
+        "docs/REPLAY_AND_DETERMINISM.md",
+        "docs/RULES_SEMANTICS.md",
+        "docs/STATE_HASHING.md",
+        "docs/contracts/ENGINE_STATE_CLOSURE.md"
+      ],
+      "benchmark_scenarios": [],
+      "category": "core_rule",
+      "conformance_cases": [],
+      "dependencies": [
+        "rules/triggered-ability"
+      ],
+      "implementation_paths": [],
+      "information_risk": "high",
+      "key": "rules/end-step-trigger",
+      "lifecycle": "specified",
+      "owners": [
+        "rules-maintainer"
+      ],
+      "spec_path": "docs/rules/capabilities/rules/end-step-trigger.md",
+      "summary": "This durable V1 capability covers an actual triggered ability with an end-step event condition.",
+      "version": "0.1.0"
+    },
+    {
+      "authority_refs": [
+        "b1-final:sources/m2_5/closures/B1/official_authority_citations.v3.json#cap.exile",
+        "b2-boundary:sources/m2_5/closures/B2/requirement_family_catalog.v1.json#cap.exile",
+        "comprehensive-rules:CR-406-exile",
+        "docs/DECISION_PROTOCOL.md",
+        "docs/DOMAIN_MODEL.md",
+        "docs/INFORMATION_MODEL.md",
+        "docs/REPLAY_AND_DETERMINISM.md",
+        "docs/RULES_SEMANTICS.md",
+        "docs/STATE_HASHING.md",
+        "docs/contracts/ENGINE_STATE_CLOSURE.md"
+      ],
+      "benchmark_scenarios": [],
+      "category": "core_rule",
+      "conformance_cases": [],
+      "dependencies": [
+        "rules/zone-change"
+      ],
+      "implementation_paths": [],
+      "information_risk": "critical",
+      "key": "rules/exile",
+      "lifecycle": "specified",
+      "owners": [
+        "rules-maintainer"
+      ],
+      "spec_path": "docs/rules/capabilities/rules/exile.md",
+      "summary": "This durable V1 capability covers an instruction that moves a card or permanent to the exile zone.",
+      "version": "0.1.0"
+    },
+    {
+      "authority_refs": [
+        "b1-final:sources/m2_5/closures/B1/official_authority_citations.v3.json#cap.flying_grant",
+        "b2-boundary:sources/m2_5/closures/B2/requirement_family_catalog.v1.json#cap.flying_grant",
+        "comprehensive-rules:CR-613-continuous-effects",
+        "comprehensive-rules:CR-702-9-flying",
+        "docs/DECISION_PROTOCOL.md",
+        "docs/DOMAIN_MODEL.md",
+        "docs/INFORMATION_MODEL.md",
+        "docs/REPLAY_AND_DETERMINISM.md",
+        "docs/RULES_SEMANTICS.md",
+        "docs/STATE_HASHING.md",
+        "docs/contracts/ENGINE_STATE_CLOSURE.md"
+      ],
+      "benchmark_scenarios": [],
+      "category": "core_rule",
+      "conformance_cases": [],
+      "dependencies": [
+        "rules/continuous-effect"
+      ],
+      "implementation_paths": [],
+      "information_risk": "high",
+      "key": "rules/flying-grant",
+      "lifecycle": "specified",
+      "owners": [
+        "rules-maintainer"
+      ],
+      "spec_path": "docs/rules/capabilities/rules/flying-grant.md",
+      "summary": "This durable V1 capability covers an effect that grants or gives the Flying keyword to a creature or permanent.",
+      "version": "0.1.0"
+    },
+    {
+      "authority_refs": [
+        "b1-final:sources/m2_5/closures/B1/official_authority_citations.v3.json#cap.grant_activated_ability",
+        "b2-boundary:sources/m2_5/closures/B2/requirement_family_catalog.v1.json#cap.grant_activated_ability",
+        "comprehensive-rules:CR-602-activated-abilities",
+        "comprehensive-rules:CR-611-continuous-effects",
+        "docs/DECISION_PROTOCOL.md",
+        "docs/DOMAIN_MODEL.md",
+        "docs/INFORMATION_MODEL.md",
+        "docs/REPLAY_AND_DETERMINISM.md",
+        "docs/RULES_SEMANTICS.md",
+        "docs/STATE_HASHING.md",
+        "docs/contracts/ENGINE_STATE_CLOSURE.md"
+      ],
+      "benchmark_scenarios": [],
+      "category": "core_rule",
+      "conformance_cases": [],
+      "dependencies": [
+        "rules/continuous-effect"
+      ],
+      "implementation_paths": [],
+      "information_risk": "high",
+      "key": "rules/grant-activated-ability",
+      "lifecycle": "specified",
+      "owners": [
+        "rules-maintainer"
+      ],
+      "spec_path": "docs/rules/capabilities/rules/grant-activated-ability.md",
+      "summary": "This durable V1 capability covers an effect that grants an activated ability with a printed cost and colon to another object.",
+      "version": "0.1.0"
+    },
+    {
+      "authority_refs": [
+        "b1-final:sources/m2_5/closures/B1/official_authority_citations.v3.json#cap.grant_mana_ability",
+        "b2-boundary:sources/m2_5/closures/B2/requirement_family_catalog.v1.json#cap.grant_mana_ability",
+        "comprehensive-rules:CR-605-mana-abilities",
+        "docs/DECISION_PROTOCOL.md",
+        "docs/DOMAIN_MODEL.md",
+        "docs/REPLAY_AND_DETERMINISM.md",
+        "docs/RULES_SEMANTICS.md",
+        "docs/STATE_HASHING.md",
+        "docs/contracts/ENGINE_STATE_CLOSURE.md"
+      ],
+      "benchmark_scenarios": [],
+      "category": "core_rule",
+      "conformance_cases": [],
+      "dependencies": [
+        "rules/grant-activated-ability",
+        "rules/mana-ability"
+      ],
+      "implementation_paths": [],
+      "information_risk": "high",
+      "key": "rules/grant-mana-ability",
+      "lifecycle": "specified",
+      "owners": [
+        "rules-maintainer"
+      ],
+      "spec_path": "docs/rules/capabilities/rules/grant-mana-ability.md",
+      "summary": "This durable V1 capability covers an effect that grants a mana-producing activated ability to a permanent.",
+      "version": "0.1.0"
+    },
+    {
+      "authority_refs": [
+        "b1-final:sources/m2_5/closures/B1/official_authority_citations.v3.json#cap.graveyard_cast_permission",
+        "b2-boundary:sources/m2_5/closures/B2/requirement_family_catalog.v1.json#cap.graveyard_cast_permission",
+        "comprehensive-rules:CR-404-graveyard",
+        "comprehensive-rules:CR-601-casting-spells",
+        "docs/DECISION_PROTOCOL.md",
+        "docs/DOMAIN_MODEL.md",
+        "docs/INFORMATION_MODEL.md",
+        "docs/REPLAY_AND_DETERMINISM.md",
+        "docs/RULES_SEMANTICS.md",
+        "docs/STATE_HASHING.md",
+        "docs/contracts/ENGINE_STATE_CLOSURE.md"
+      ],
+      "benchmark_scenarios": [],
+      "category": "core_rule",
+      "conformance_cases": [],
+      "dependencies": [
+        "rules/alternate-cast-zone",
+        "rules/graveyard-zone"
+      ],
+      "implementation_paths": [],
+      "information_risk": "critical",
+      "key": "rules/graveyard-cast-permission",
+      "lifecycle": "specified",
+      "owners": [
+        "information-safety-maintainer"
+      ],
+      "spec_path": "docs/rules/capabilities/rules/graveyard-cast-permission.md",
+      "summary": "This durable V1 capability covers permission to cast a card from a graveyard.",
+      "version": "0.1.0"
+    },
+    {
+      "authority_refs": [
+        "b1-final:sources/m2_5/closures/B1/official_authority_citations.v3.json#cap.graveyard_count",
+        "b2-boundary:sources/m2_5/closures/B2/requirement_family_catalog.v1.json#cap.graveyard_count",
+        "comprehensive-rules:CR-404-graveyard",
+        "docs/DECISION_PROTOCOL.md",
+        "docs/DOMAIN_MODEL.md",
+        "docs/INFORMATION_MODEL.md",
+        "docs/REPLAY_AND_DETERMINISM.md",
+        "docs/RULES_SEMANTICS.md",
+        "docs/STATE_HASHING.md",
+        "docs/contracts/ENGINE_STATE_CLOSURE.md"
+      ],
+      "benchmark_scenarios": [],
+      "category": "core_rule",
+      "conformance_cases": [],
+      "dependencies": [
+        "rules/graveyard-zone"
+      ],
+      "implementation_paths": [],
+      "information_risk": "high",
+      "key": "rules/graveyard-count",
+      "lifecycle": "specified",
+      "owners": [
+        "information-safety-maintainer"
+      ],
+      "spec_path": "docs/rules/capabilities/rules/graveyard-count.md",
+      "summary": "This durable V1 capability covers a numeric effect whose value counts cards or objects in a graveyard.",
+      "version": "0.1.0"
+    },
+    {
+      "authority_refs": [
+        "b1-final:sources/m2_5/closures/B1/official_authority_citations.v3.json#cap.graveyard_return",
+        "b2-boundary:sources/m2_5/closures/B2/requirement_family_catalog.v1.json#cap.graveyard_return",
+        "comprehensive-rules:CR-400-7-new-object",
+        "comprehensive-rules:CR-402-hand",
+        "comprehensive-rules:CR-404-graveyard",
+        "docs/DECISION_PROTOCOL.md",
+        "docs/DOMAIN_MODEL.md",
+        "docs/INFORMATION_MODEL.md",
+        "docs/REPLAY_AND_DETERMINISM.md",
+        "docs/RULES_SEMANTICS.md",
+        "docs/STATE_HASHING.md",
+        "docs/contracts/ENGINE_STATE_CLOSURE.md"
+      ],
+      "benchmark_scenarios": [],
+      "category": "core_rule",
+      "conformance_cases": [],
+      "dependencies": [
+        "rules/graveyard-zone",
+        "rules/zone-change"
+      ],
+      "implementation_paths": [],
+      "information_risk": "critical",
+      "key": "rules/graveyard-return",
+      "lifecycle": "specified",
+      "owners": [
+        "information-safety-maintainer"
+      ],
+      "spec_path": "docs/rules/capabilities/rules/graveyard-return.md",
+      "summary": "This durable V1 capability covers an instruction that returns a card from a graveyard to a player's hand.",
+      "version": "0.1.0"
+    },
+    {
+      "authority_refs": [
+        "b1-final:sources/m2_5/closures/B1/official_authority_citations.v3.json#cap.graveyard",
+        "b2-boundary:sources/m2_5/closures/B2/requirement_family_catalog.v1.json#cap.graveyard",
+        "comprehensive-rules:CR-404-graveyard",
+        "docs/DECISION_PROTOCOL.md",
+        "docs/DOMAIN_MODEL.md",
+        "docs/INFORMATION_MODEL.md",
+        "docs/REPLAY_AND_DETERMINISM.md",
+        "docs/RULES_SEMANTICS.md",
+        "docs/STATE_HASHING.md",
+        "docs/contracts/ENGINE_STATE_CLOSURE.md"
+      ],
+      "benchmark_scenarios": [],
+      "category": "core_rule",
+      "conformance_cases": [],
+      "dependencies": [],
+      "implementation_paths": [],
+      "information_risk": "critical",
+      "key": "rules/graveyard-zone",
+      "lifecycle": "specified",
+      "owners": [
+        "information-safety-maintainer"
+      ],
+      "spec_path": "docs/rules/capabilities/rules/graveyard-zone.md",
+      "summary": "This durable V1 capability covers a card-side operation or condition that uses a graveyard as an object zone.",
+      "version": "0.1.0"
+    },
+    {
+      "authority_refs": [
+        "b1-final:sources/m2_5/closures/B1/official_authority_citations.v3.json#cap.indestructible_until_eot",
+        "b2-boundary:sources/m2_5/closures/B2/requirement_family_catalog.v1.json#cap.indestructible_until_eot",
+        "comprehensive-rules:CR-613-continuous-effects",
+        "comprehensive-rules:CR-702-12-indestructible",
+        "docs/DECISION_PROTOCOL.md",
+        "docs/DOMAIN_MODEL.md",
+        "docs/INFORMATION_MODEL.md",
+        "docs/REPLAY_AND_DETERMINISM.md",
+        "docs/RULES_SEMANTICS.md",
+        "docs/STATE_HASHING.md",
+        "docs/contracts/ENGINE_STATE_CLOSURE.md"
+      ],
+      "benchmark_scenarios": [],
+      "category": "core_rule",
+      "conformance_cases": [],
+      "dependencies": [
+        "rules/continuous-effect"
+      ],
+      "implementation_paths": [],
+      "information_risk": "high",
+      "key": "rules/indestructible-until-eot",
+      "lifecycle": "specified",
+      "owners": [
+        "rules-maintainer"
+      ],
+      "spec_path": "docs/rules/capabilities/rules/indestructible-until-eot.md",
+      "summary": "This durable V1 capability covers an effect granting Indestructible through the end of the current turn.",
+      "version": "0.1.0"
+    },
+    {
+      "authority_refs": [
+        "b1-final:sources/m2_5/closures/B1/official_authority_citations.v3.json#cap.land_zone",
+        "b2-boundary:sources/m2_5/closures/B2/requirement_family_catalog.v1.json#cap.land_zone",
+        "comprehensive-rules:CR-205-type-line",
+        "comprehensive-rules:CR-403-battlefield",
+        "docs/DECISION_PROTOCOL.md",
+        "docs/DOMAIN_MODEL.md",
+        "docs/REPLAY_AND_DETERMINISM.md",
+        "docs/RULES_SEMANTICS.md",
+        "docs/STATE_HASHING.md",
+        "docs/contracts/ENGINE_STATE_CLOSURE.md"
+      ],
+      "benchmark_scenarios": [],
+      "category": "core_rule",
+      "conformance_cases": [],
+      "dependencies": [],
+      "implementation_paths": [],
+      "information_risk": "high",
+      "key": "rules/land-zone",
+      "lifecycle": "specified",
+      "owners": [
+        "rules-maintainer"
+      ],
+      "spec_path": "docs/rules/capabilities/rules/land-zone.md",
+      "summary": "This durable V1 capability covers the Land card type on the public type line.",
+      "version": "0.1.0"
+    },
+    {
+      "authority_refs": [
+        "b1-final:sources/m2_5/closures/B1/official_authority_citations.v3.json#cap.library_traversal",
+        "b2-boundary:sources/m2_5/closures/B2/requirement_family_catalog.v1.json#cap.library_traversal",
+        "comprehensive-rules:CR-401-library",
+        "docs/DECISION_PROTOCOL.md",
+        "docs/DOMAIN_MODEL.md",
+        "docs/INFORMATION_MODEL.md",
+        "docs/REPLAY_AND_DETERMINISM.md",
+        "docs/RULES_SEMANTICS.md",
+        "docs/STATE_HASHING.md",
+        "docs/contracts/ENGINE_STATE_CLOSURE.md"
+      ],
+      "benchmark_scenarios": [],
+      "category": "core_rule",
+      "conformance_cases": [],
+      "dependencies": [],
+      "implementation_paths": [],
+      "information_risk": "high",
+      "key": "rules/library-traversal",
+      "lifecycle": "specified",
+      "owners": [
+        "rules-maintainer"
+      ],
+      "spec_path": "docs/rules/capabilities/rules/library-traversal.md",
+      "summary": "This durable V1 capability covers an effect that inspects or processes multiple cards while moving through a library.",
+      "version": "0.1.0"
+    },
+    {
+      "authority_refs": [
+        "b1-final:sources/m2_5/closures/B1/official_authority_citations.v3.json#cap.life",
+        "b2-boundary:sources/m2_5/closures/B2/requirement_family_catalog.v1.json#cap.life",
+        "comprehensive-rules:CR-119-life",
+        "docs/DECISION_PROTOCOL.md",
+        "docs/DOMAIN_MODEL.md",
+        "docs/INFORMATION_MODEL.md",
+        "docs/REPLAY_AND_DETERMINISM.md",
+        "docs/RULES_SEMANTICS.md",
+        "docs/STATE_HASHING.md",
+        "docs/contracts/ENGINE_STATE_CLOSURE.md"
+      ],
+      "benchmark_scenarios": [],
+      "category": "core_rule",
+      "conformance_cases": [],
+      "dependencies": [],
+      "implementation_paths": [],
+      "information_risk": "high",
+      "key": "rules/life",
+      "lifecycle": "specified",
+      "owners": [
+        "rules-maintainer"
+      ],
+      "spec_path": "docs/rules/capabilities/rules/life.md",
+      "summary": "This durable V1 capability covers an instruction that changes a player's life total by gaining or losing life.",
+      "version": "0.1.0"
+    },
+    {
+      "authority_refs": [
+        "b1-final:sources/m2_5/closures/B1/official_authority_citations.v3.json#cap.life_drain",
+        "b2-boundary:sources/m2_5/closures/B2/requirement_family_catalog.v1.json#cap.life_drain",
+        "comprehensive-rules:CR-119-life",
+        "docs/DECISION_PROTOCOL.md",
+        "docs/DOMAIN_MODEL.md",
+        "docs/INFORMATION_MODEL.md",
+        "docs/REPLAY_AND_DETERMINISM.md",
+        "docs/RULES_SEMANTICS.md",
+        "docs/STATE_HASHING.md",
+        "docs/contracts/ENGINE_STATE_CLOSURE.md"
+      ],
+      "benchmark_scenarios": [],
+      "category": "core_rule",
+      "conformance_cases": [],
+      "dependencies": [
+        "rules/life"
+      ],
+      "implementation_paths": [],
+      "information_risk": "high",
+      "key": "rules/life-drain",
+      "lifecycle": "specified",
+      "owners": [
+        "rules-maintainer"
+      ],
+      "spec_path": "docs/rules/capabilities/rules/life-drain.md",
+      "summary": "This durable V1 capability covers one effect in which an opponent loses life while that same effect gives life to its controller.",
+      "version": "0.1.0"
+    },
+    {
+      "authority_refs": [
+        "b1-final:sources/m2_5/closures/B1/official_authority_citations.v3.json#cap.linked_exile_return",
+        "b2-boundary:sources/m2_5/closures/B2/requirement_family_catalog.v1.json#cap.linked_exile_return",
+        "comprehensive-rules:CR-406-exile",
+        "comprehensive-rules:CR-607-linked-abilities",
+        "docs/DECISION_PROTOCOL.md",
+        "docs/DOMAIN_MODEL.md",
+        "docs/INFORMATION_MODEL.md",
+        "docs/REPLAY_AND_DETERMINISM.md",
+        "docs/RULES_SEMANTICS.md",
+        "docs/STATE_HASHING.md",
+        "docs/contracts/ENGINE_STATE_CLOSURE.md"
+      ],
+      "benchmark_scenarios": [],
+      "category": "core_rule",
+      "conformance_cases": [],
+      "dependencies": [
+        "rules/exile",
+        "rules/zone-change"
+      ],
+      "implementation_paths": [],
+      "information_risk": "critical",
+      "key": "rules/linked-exile-return",
+      "lifecycle": "specified",
+      "owners": [
+        "rules-maintainer"
+      ],
+      "spec_path": "docs/rules/capabilities/rules/linked-exile-return.md",
+      "summary": "This durable V1 capability covers a linked pair in which an ability returns the cards exiled by its linked ability.",
+      "version": "0.1.0"
+    },
+    {
+      "authority_refs": [
+        "b1-final:sources/m2_5/closures/B1/official_authority_citations.v3.json#cap.loyalty_activation_rules",
+        "b2-boundary:sources/m2_5/closures/B2/requirement_family_catalog.v1.json#cap.loyalty_activation_rules",
+        "comprehensive-rules:CR-117-timing-priority",
+        "comprehensive-rules:CR-306-planeswalkers",
+        "comprehensive-rules:CR-602-activated-abilities",
+        "comprehensive-rules:CR-606-3-loyalty-activation",
+        "docs/DECISION_PROTOCOL.md",
+        "docs/DOMAIN_MODEL.md",
+        "docs/REPLAY_AND_DETERMINISM.md",
+        "docs/RULES_SEMANTICS.md",
+        "docs/STATE_HASHING.md",
+        "docs/contracts/ENGINE_STATE_CLOSURE.md"
+      ],
+      "benchmark_scenarios": [],
+      "category": "core_rule",
+      "conformance_cases": [],
+      "dependencies": [],
+      "implementation_paths": [],
+      "information_risk": "high",
+      "key": "rules/loyalty-activation-rules",
+      "lifecycle": "specified",
+      "owners": [
+        "rules-maintainer"
+      ],
+      "spec_path": "docs/rules/capabilities/rules/loyalty-activation-rules.md",
+      "summary": "This durable V1 capability covers the loyalty-ability activation restriction and timing applicable to a planeswalker.",
+      "version": "0.1.0"
+    },
+    {
+      "authority_refs": [
+        "b1-final:sources/m2_5/closures/B1/official_authority_citations.v3.json#cap.loyalty_counters",
+        "b2-boundary:sources/m2_5/closures/B2/requirement_family_catalog.v1.json#cap.loyalty_counters",
+        "comprehensive-rules:CR-122-counters",
+        "comprehensive-rules:CR-306-planeswalkers",
+        "docs/DECISION_PROTOCOL.md",
+        "docs/DOMAIN_MODEL.md",
+        "docs/REPLAY_AND_DETERMINISM.md",
+        "docs/RULES_SEMANTICS.md",
+        "docs/STATE_HASHING.md",
+        "docs/contracts/ENGINE_STATE_CLOSURE.md"
+      ],
+      "benchmark_scenarios": [],
+      "category": "core_rule",
+      "conformance_cases": [],
+      "dependencies": [
+        "rules/counters"
+      ],
+      "implementation_paths": [],
+      "information_risk": "high",
+      "key": "rules/loyalty-counters",
+      "lifecycle": "specified",
+      "owners": [
+        "rules-maintainer"
+      ],
+      "spec_path": "docs/rules/capabilities/rules/loyalty-counters.md",
+      "summary": "This durable V1 capability covers placing, removing, or counting loyalty counters on a planeswalker.",
+      "version": "0.1.0"
+    },
+    {
+      "authority_refs": [
+        "b1-final:sources/m2_5/closures/B1/official_authority_citations.v3.json#cap.mana_ability",
+        "b2-boundary:sources/m2_5/closures/B2/requirement_family_catalog.v1.json#cap.mana_ability",
+        "comprehensive-rules:CR-605-mana-abilities",
+        "docs/DECISION_PROTOCOL.md",
+        "docs/DOMAIN_MODEL.md",
+        "docs/REPLAY_AND_DETERMINISM.md",
+        "docs/RULES_SEMANTICS.md",
+        "docs/STATE_HASHING.md",
+        "docs/contracts/ENGINE_STATE_CLOSURE.md"
+      ],
+      "benchmark_scenarios": [],
+      "category": "core_rule",
+      "conformance_cases": [],
+      "dependencies": [
+        "rules/mana-production"
+      ],
+      "implementation_paths": [],
+      "information_risk": "high",
+      "key": "rules/mana-ability",
+      "lifecycle": "specified",
+      "owners": [
+        "rules-maintainer"
+      ],
+      "spec_path": "docs/rules/capabilities/rules/mana-ability.md",
+      "summary": "This durable V1 capability covers an activated ability that produces mana and satisfies the rules-defined mana-ability form.",
+      "version": "0.1.0"
+    },
+    {
+      "authority_refs": [
+        "b1-final:sources/m2_5/closures/B1/official_authority_citations.v3.json#cap.mana_production",
+        "b2-boundary:sources/m2_5/closures/B2/requirement_family_catalog.v1.json#cap.mana_production",
+        "comprehensive-rules:CR-605-mana-abilities",
+        "docs/DECISION_PROTOCOL.md",
+        "docs/DOMAIN_MODEL.md",
+        "docs/REPLAY_AND_DETERMINISM.md",
+        "docs/RULES_SEMANTICS.md",
+        "docs/STATE_HASHING.md",
+        "docs/contracts/ENGINE_STATE_CLOSURE.md"
+      ],
+      "benchmark_scenarios": [],
+      "category": "core_rule",
+      "conformance_cases": [],
+      "dependencies": [],
+      "implementation_paths": [],
+      "information_risk": "high",
+      "key": "rules/mana-production",
+      "lifecycle": "specified",
+      "owners": [
+        "rules-maintainer"
+      ],
+      "spec_path": "docs/rules/capabilities/rules/mana-production.md",
+      "summary": "This durable V1 capability covers an instruction that adds mana to a mana pool or explicitly produces mana.",
+      "version": "0.1.0"
+    },
+    {
+      "authority_refs": [
+        "b1-final:sources/m2_5/closures/B1/official_authority_citations.v3.json#cap.mana_source",
+        "b2-boundary:sources/m2_5/closures/B2/requirement_family_catalog.v1.json#cap.mana_source",
+        "comprehensive-rules:CR-205-type-line",
+        "comprehensive-rules:CR-605-mana-abilities",
+        "docs/DECISION_PROTOCOL.md",
+        "docs/DOMAIN_MODEL.md",
+        "docs/REPLAY_AND_DETERMINISM.md",
+        "docs/RULES_SEMANTICS.md",
+        "docs/STATE_HASHING.md",
+        "docs/contracts/ENGINE_STATE_CLOSURE.md"
+      ],
+      "benchmark_scenarios": [],
+      "category": "core_rule",
+      "conformance_cases": [],
+      "dependencies": [
+        "rules/mana-production"
+      ],
+      "implementation_paths": [],
+      "information_risk": "high",
+      "key": "rules/mana-source",
+      "lifecycle": "specified",
+      "owners": [
+        "rules-maintainer"
+      ],
+      "spec_path": "docs/rules/capabilities/rules/mana-source.md",
+      "summary": "This durable V1 capability covers a permanent whose printed type line is Basic Land and therefore functions as a basic mana source.",
+      "version": "0.1.0"
+    },
+    {
+      "authority_refs": [
+        "b1-final:sources/m2_5/closures/B1/official_authority_citations.v3.json#cap.mass_cross_graveyard_reanimation",
+        "b2-boundary:sources/m2_5/closures/B2/requirement_family_catalog.v1.json#cap.mass_cross_graveyard_reanimation",
+        "comprehensive-rules:CR-110-permanents",
+        "comprehensive-rules:CR-400-7-new-object",
+        "comprehensive-rules:CR-403-battlefield",
+        "comprehensive-rules:CR-404-graveyard",
+        "docs/DECISION_PROTOCOL.md",
+        "docs/DOMAIN_MODEL.md",
+        "docs/INFORMATION_MODEL.md",
+        "docs/REPLAY_AND_DETERMINISM.md",
+        "docs/RULES_SEMANTICS.md",
+        "docs/STATE_HASHING.md",
+        "docs/contracts/ENGINE_STATE_CLOSURE.md"
+      ],
+      "benchmark_scenarios": [],
+      "category": "core_rule",
+      "conformance_cases": [],
+      "dependencies": [
+        "rules/graveyard-zone",
+        "rules/mass-put-battlefield",
+        "rules/reanimation",
+        "rules/zone-change"
+      ],
+      "implementation_paths": [],
+      "information_risk": "critical",
+      "key": "rules/mass-cross-graveyard-reanimation",
+      "lifecycle": "specified",
+      "owners": [
+        "information-safety-maintainer"
+      ],
+      "spec_path": "docs/rules/capabilities/rules/mass-cross-graveyard-reanimation.md",
+      "summary": "This durable V1 capability covers one effect returning multiple creature cards from multiple graveyards to the battlefield.",
+      "version": "0.1.0"
+    },
+    {
+      "authority_refs": [
+        "b1-final:sources/m2_5/closures/B1/official_authority_citations.v3.json#cap.mass_destruction",
+        "b2-boundary:sources/m2_5/closures/B2/requirement_family_catalog.v1.json#cap.mass_destruction",
+        "comprehensive-rules:CR-701-8-destroy",
+        "docs/DECISION_PROTOCOL.md",
+        "docs/DOMAIN_MODEL.md",
+        "docs/INFORMATION_MODEL.md",
+        "docs/REPLAY_AND_DETERMINISM.md",
+        "docs/RULES_SEMANTICS.md",
+        "docs/STATE_HASHING.md",
+        "docs/contracts/ENGINE_STATE_CLOSURE.md"
+      ],
+      "benchmark_scenarios": [],
+      "category": "core_rule",
+      "conformance_cases": [],
+      "dependencies": [
+        "rules/destroy"
+      ],
+      "implementation_paths": [],
+      "information_risk": "high",
+      "key": "rules/mass-destruction",
+      "lifecycle": "specified",
+      "owners": [
+        "rules-maintainer"
+      ],
+      "spec_path": "docs/rules/capabilities/rules/mass-destruction.md",
+      "summary": "This durable V1 capability covers one effect that destroys all or a plurality of permanents or objects.",
+      "version": "0.1.0"
+    },
+    {
+      "authority_refs": [
+        "b1-final:sources/m2_5/closures/B1/official_authority_citations.v3.json#cap.mass_exile",
+        "b2-boundary:sources/m2_5/closures/B2/requirement_family_catalog.v1.json#cap.mass_exile",
+        "comprehensive-rules:CR-406-exile",
+        "docs/DECISION_PROTOCOL.md",
+        "docs/DOMAIN_MODEL.md",
+        "docs/INFORMATION_MODEL.md",
+        "docs/REPLAY_AND_DETERMINISM.md",
+        "docs/RULES_SEMANTICS.md",
+        "docs/STATE_HASHING.md",
+        "docs/contracts/ENGINE_STATE_CLOSURE.md"
+      ],
+      "benchmark_scenarios": [],
+      "category": "core_rule",
+      "conformance_cases": [],
+      "dependencies": [
+        "rules/exile"
+      ],
+      "implementation_paths": [],
+      "information_risk": "high",
+      "key": "rules/mass-exile",
+      "lifecycle": "specified",
+      "owners": [
+        "rules-maintainer"
+      ],
+      "spec_path": "docs/rules/capabilities/rules/mass-exile.md",
+      "summary": "This durable V1 capability covers one instruction that exiles all or a plurality of objects as a mass operation.",
+      "version": "0.1.0"
+    },
+    {
+      "authority_refs": [
+        "b1-final:sources/m2_5/closures/B1/official_authority_citations.v3.json#cap.mass_library_traversal",
+        "b2-boundary:sources/m2_5/closures/B2/requirement_family_catalog.v1.json#cap.mass_library_traversal",
+        "comprehensive-rules:CR-401-library",
+        "docs/DECISION_PROTOCOL.md",
+        "docs/DOMAIN_MODEL.md",
+        "docs/INFORMATION_MODEL.md",
+        "docs/REPLAY_AND_DETERMINISM.md",
+        "docs/RULES_SEMANTICS.md",
+        "docs/STATE_HASHING.md",
+        "docs/contracts/ENGINE_STATE_CLOSURE.md"
+      ],
+      "benchmark_scenarios": [],
+      "category": "core_rule",
+      "conformance_cases": [],
+      "dependencies": [
+        "rules/library-traversal"
+      ],
+      "implementation_paths": [],
+      "information_risk": "critical",
+      "key": "rules/mass-library-traversal",
+      "lifecycle": "specified",
+      "owners": [
+        "rules-maintainer"
+      ],
+      "spec_path": "docs/rules/capabilities/rules/mass-library-traversal.md",
+      "summary": "This durable V1 capability covers one effect that processes a plurality of cards while traversing or revealing a library.",
+      "version": "0.1.0"
+    },
+    {
+      "authority_refs": [
+        "b1-final:sources/m2_5/closures/B1/official_authority_citations.v3.json#cap.mass_put_battlefield",
+        "b2-boundary:sources/m2_5/closures/B2/requirement_family_catalog.v1.json#cap.mass_put_battlefield",
+        "comprehensive-rules:CR-110-permanents",
+        "comprehensive-rules:CR-400-7-new-object",
+        "comprehensive-rules:CR-403-battlefield",
+        "docs/DECISION_PROTOCOL.md",
+        "docs/DOMAIN_MODEL.md",
+        "docs/INFORMATION_MODEL.md",
+        "docs/REPLAY_AND_DETERMINISM.md",
+        "docs/RULES_SEMANTICS.md",
+        "docs/STATE_HASHING.md",
+        "docs/contracts/ENGINE_STATE_CLOSURE.md"
+      ],
+      "benchmark_scenarios": [],
+      "category": "core_rule",
+      "conformance_cases": [],
+      "dependencies": [
+        "rules/put-battlefield",
+        "rules/zone-change"
+      ],
+      "implementation_paths": [],
+      "information_risk": "critical",
+      "key": "rules/mass-put-battlefield",
+      "lifecycle": "specified",
+      "owners": [
+        "rules-maintainer"
+      ],
+      "spec_path": "docs/rules/capabilities/rules/mass-put-battlefield.md",
+      "summary": "This durable V1 capability covers one effect that puts multiple cards or permanents directly onto the battlefield.",
+      "version": "0.1.0"
+    },
+    {
+      "authority_refs": [
+        "b1-final:sources/m2_5/closures/B1/official_authority_citations.v3.json#cap.mass_sacrifice",
+        "b2-boundary:sources/m2_5/closures/B2/requirement_family_catalog.v1.json#cap.mass_sacrifice",
+        "comprehensive-rules:CR-101-4-APNAP",
+        "comprehensive-rules:CR-701-21-sacrifice",
+        "docs/DECISION_PROTOCOL.md",
+        "docs/DOMAIN_MODEL.md",
+        "docs/INFORMATION_MODEL.md",
+        "docs/REPLAY_AND_DETERMINISM.md",
+        "docs/RULES_SEMANTICS.md",
+        "docs/STATE_HASHING.md",
+        "docs/contracts/ENGINE_STATE_CLOSURE.md"
+      ],
+      "benchmark_scenarios": [],
+      "category": "core_rule",
+      "conformance_cases": [],
+      "dependencies": [
+        "mechanic/simultaneous-sacrifice"
+      ],
+      "implementation_paths": [],
+      "information_risk": "high",
+      "key": "rules/mass-sacrifice",
+      "lifecycle": "specified",
+      "owners": [
+        "rules-maintainer"
+      ],
+      "spec_path": "docs/rules/capabilities/rules/mass-sacrifice.md",
+      "summary": "This durable V1 capability covers one effect requiring multiple players or multiple permanents to sacrifice in one event.",
+      "version": "0.1.0"
+    },
+    {
+      "authority_refs": [
+        "b1-final:sources/m2_5/closures/B1/official_authority_citations.v3.json#cap.mass_type_change",
+        "b2-boundary:sources/m2_5/closures/B2/requirement_family_catalog.v1.json#cap.mass_type_change",
+        "comprehensive-rules:CR-205-type-line",
+        "comprehensive-rules:CR-613-continuous-effects",
+        "docs/DECISION_PROTOCOL.md",
+        "docs/DOMAIN_MODEL.md",
+        "docs/INFORMATION_MODEL.md",
+        "docs/REPLAY_AND_DETERMINISM.md",
+        "docs/RULES_SEMANTICS.md",
+        "docs/STATE_HASHING.md",
+        "docs/contracts/ENGINE_STATE_CLOSURE.md"
+      ],
+      "benchmark_scenarios": [],
+      "category": "core_rule",
+      "conformance_cases": [],
+      "dependencies": [
+        "rules/type-change"
+      ],
+      "implementation_paths": [],
+      "information_risk": "high",
+      "key": "rules/mass-type-change",
+      "lifecycle": "specified",
+      "owners": [
+        "rules-maintainer"
+      ],
+      "spec_path": "docs/rules/capabilities/rules/mass-type-change.md",
+      "summary": "This durable V1 capability covers one continuous or resolving effect that changes the type of multiple objects as a group.",
+      "version": "0.1.0"
+    },
+    {
+      "authority_refs": [
+        "b1-final:sources/m2_5/closures/B1/official_authority_citations.v3.json#cap.mass_untap",
+        "b2-boundary:sources/m2_5/closures/B2/requirement_family_catalog.v1.json#cap.mass_untap",
+        "comprehensive-rules:CR-701-26-tap-untap",
+        "docs/DECISION_PROTOCOL.md",
+        "docs/DOMAIN_MODEL.md",
+        "docs/INFORMATION_MODEL.md",
+        "docs/REPLAY_AND_DETERMINISM.md",
+        "docs/RULES_SEMANTICS.md",
+        "docs/STATE_HASHING.md",
+        "docs/contracts/ENGINE_STATE_CLOSURE.md"
+      ],
+      "benchmark_scenarios": [],
+      "category": "core_rule",
+      "conformance_cases": [],
+      "dependencies": [
+        "rules/tap-event"
+      ],
+      "implementation_paths": [],
+      "information_risk": "high",
+      "key": "rules/mass-untap",
+      "lifecycle": "specified",
+      "owners": [
+        "rules-maintainer"
+      ],
+      "spec_path": "docs/rules/capabilities/rules/mass-untap.md",
+      "summary": "This durable V1 capability covers one instruction that untaps multiple permanents, such as untap all or a stated set.",
+      "version": "0.1.0"
+    },
+    {
+      "authority_refs": [
+        "b1-final:sources/m2_5/closures/B1/official_authority_citations.v3.json#cap.mill",
+        "b2-boundary:sources/m2_5/closures/B2/requirement_family_catalog.v1.json#cap.mill",
+        "comprehensive-rules:CR-404-graveyard",
+        "comprehensive-rules:CR-701-17a-mill",
+        "docs/DECISION_PROTOCOL.md",
+        "docs/DOMAIN_MODEL.md",
+        "docs/INFORMATION_MODEL.md",
+        "docs/REPLAY_AND_DETERMINISM.md",
+        "docs/RULES_SEMANTICS.md",
+        "docs/STATE_HASHING.md",
+        "docs/contracts/ENGINE_STATE_CLOSURE.md"
+      ],
+      "benchmark_scenarios": [],
+      "category": "core_rule",
+      "conformance_cases": [],
+      "dependencies": [
+        "rules/graveyard-zone",
+        "rules/library-traversal"
+      ],
+      "implementation_paths": [],
+      "information_risk": "high",
+      "key": "rules/mill",
+      "lifecycle": "specified",
+      "owners": [
+        "rules-maintainer"
+      ],
+      "spec_path": "docs/rules/capabilities/rules/mill.md",
+      "summary": "This durable V1 capability covers an instruction that puts cards from a library into a graveyard by the mill operation.",
+      "version": "0.1.0"
+    },
+    {
+      "authority_refs": [
+        "b1-final:sources/m2_5/closures/B1/official_authority_citations.v3.json#cap.multiplayer_wording",
+        "b2-boundary:sources/m2_5/closures/B2/requirement_family_catalog.v1.json#cap.multiplayer_wording",
+        "commander-policy:CG-PLAY-RULES",
+        "comprehensive-rules:CR-101-4-APNAP",
+        "docs/DECISION_PROTOCOL.md",
+        "docs/DOMAIN_MODEL.md",
+        "docs/INFORMATION_MODEL.md",
+        "docs/REPLAY_AND_DETERMINISM.md",
+        "docs/RULES_SEMANTICS.md",
+        "docs/STATE_HASHING.md",
+        "docs/contracts/ENGINE_STATE_CLOSURE.md"
+      ],
+      "benchmark_scenarios": [],
+      "category": "core_rule",
+      "conformance_cases": [],
+      "dependencies": [],
+      "implementation_paths": [],
+      "information_risk": "high",
+      "key": "rules/multiplayer-wording",
+      "lifecycle": "specified",
+      "owners": [
+        "rules-maintainer"
+      ],
+      "spec_path": "docs/rules/capabilities/rules/multiplayer-wording.md",
+      "summary": "This durable V1 capability covers wording that applies distinctly to each opponent or to a multiplayer set of players.",
+      "version": "0.1.0"
+    },
+    {
+      "authority_refs": [
+        "b1-final:sources/m2_5/closures/B1/official_authority_citations.v3.json#cap.ordered_library_card",
+        "b2-boundary:sources/m2_5/closures/B2/requirement_family_catalog.v1.json#cap.ordered_library_card",
+        "comprehensive-rules:CR-401-library",
+        "docs/DECISION_PROTOCOL.md",
+        "docs/DOMAIN_MODEL.md",
+        "docs/INFORMATION_MODEL.md",
+        "docs/REPLAY_AND_DETERMINISM.md",
+        "docs/RULES_SEMANTICS.md",
+        "docs/STATE_HASHING.md",
+        "docs/contracts/ENGINE_STATE_CLOSURE.md"
+      ],
+      "benchmark_scenarios": [],
+      "category": "core_rule",
+      "conformance_cases": [],
+      "dependencies": [
+        "rules/library-traversal"
+      ],
+      "implementation_paths": [],
+      "information_risk": "high",
+      "key": "rules/ordered-library-card",
+      "lifecycle": "specified",
+      "owners": [
+        "rules-maintainer"
+      ],
+      "spec_path": "docs/rules/capabilities/rules/ordered-library-card.md",
+      "summary": "This durable V1 capability covers an effect that selects or orders a card relative to the top or bottom of a library.",
+      "version": "0.1.0"
+    },
+    {
+      "authority_refs": [
+        "b1-final:sources/m2_5/closures/B1/official_authority_citations.v3.json#cap.owner_controller_separation",
+        "b2-boundary:sources/m2_5/closures/B2/requirement_family_catalog.v1.json#cap.owner_controller_separation",
+        "commander-policy:CG-COMMAND-ZONE",
+        "comprehensive-rules:CR-109-objects",
+        "docs/DECISION_PROTOCOL.md",
+        "docs/DOMAIN_MODEL.md",
+        "docs/INFORMATION_MODEL.md",
+        "docs/REPLAY_AND_DETERMINISM.md",
+        "docs/RULES_SEMANTICS.md",
+        "docs/STATE_HASHING.md",
+        "docs/contracts/ENGINE_STATE_CLOSURE.md"
+      ],
+      "benchmark_scenarios": [],
+      "category": "core_rule",
+      "conformance_cases": [],
+      "dependencies": [],
+      "implementation_paths": [],
+      "information_risk": "critical",
+      "key": "rules/ownership-control",
+      "lifecycle": "specified",
+      "owners": [
+        "information-safety-maintainer",
+        "rules-interaction-maintainer"
+      ],
+      "spec_path": "docs/rules/capabilities/rules/ownership-control.md",
+      "summary": "This durable V1 capability covers an effect whose result distinguishes an object's owner from its current controller.",
+      "version": "0.1.0"
+    },
+    {
+      "authority_refs": [
+        "b1-final:sources/m2_5/closures/B1/official_authority_citations.v3.json#cap.per_turn_permission",
+        "b2-boundary:sources/m2_5/closures/B2/requirement_family_catalog.v1.json#cap.per_turn_permission",
+        "comprehensive-rules:CR-117-timing-priority",
+        "comprehensive-rules:CR-601-casting-spells",
+        "docs/DECISION_PROTOCOL.md",
+        "docs/DOMAIN_MODEL.md",
+        "docs/INFORMATION_MODEL.md",
+        "docs/REPLAY_AND_DETERMINISM.md",
+        "docs/RULES_SEMANTICS.md",
+        "docs/STATE_HASHING.md",
+        "docs/contracts/ENGINE_STATE_CLOSURE.md"
+      ],
+      "benchmark_scenarios": [],
+      "category": "core_rule",
+      "conformance_cases": [],
+      "dependencies": [
+        "rules/turn-scoped-permission"
+      ],
+      "implementation_paths": [],
+      "information_risk": "high",
+      "key": "rules/per-turn-permission",
+      "lifecycle": "specified",
+      "owners": [
+        "information-safety-maintainer"
+      ],
+      "spec_path": "docs/rules/capabilities/rules/per-turn-permission.md",
+      "summary": "This durable V1 capability covers a permission or restriction that explicitly resets or is limited once per turn.",
+      "version": "0.1.0"
+    },
+    {
+      "authority_refs": [
+        "b1-final:sources/m2_5/closures/B1/official_authority_citations.v3.json#cap.planeswalker",
+        "b2-boundary:sources/m2_5/closures/B2/requirement_family_catalog.v1.json#cap.planeswalker",
+        "comprehensive-rules:CR-306-planeswalkers",
+        "docs/DECISION_PROTOCOL.md",
+        "docs/DOMAIN_MODEL.md",
+        "docs/REPLAY_AND_DETERMINISM.md",
+        "docs/RULES_SEMANTICS.md",
+        "docs/STATE_HASHING.md",
+        "docs/contracts/ENGINE_STATE_CLOSURE.md"
+      ],
+      "benchmark_scenarios": [],
+      "category": "core_rule",
+      "conformance_cases": [],
+      "dependencies": [
+        "rules/loyalty-activation-rules",
+        "rules/loyalty-counters"
+      ],
+      "implementation_paths": [],
+      "information_risk": "high",
+      "key": "rules/planeswalker",
+      "lifecycle": "specified",
+      "owners": [
+        "rules-interaction-maintainer"
+      ],
+      "spec_path": "docs/rules/capabilities/rules/planeswalker.md",
+      "summary": "This durable V1 capability covers the Planeswalker card type and its loyalty ability object class.",
+      "version": "0.1.0"
+    },
+    {
+      "authority_refs": [
+        "b1-final:sources/m2_5/closures/B1/official_authority_citations.v3.json#cap.put_battlefield",
+        "b2-boundary:sources/m2_5/closures/B2/requirement_family_catalog.v1.json#cap.put_battlefield",
+        "comprehensive-rules:CR-110-permanents",
+        "comprehensive-rules:CR-400-7-new-object",
+        "comprehensive-rules:CR-403-battlefield",
+        "docs/DECISION_PROTOCOL.md",
+        "docs/DOMAIN_MODEL.md",
+        "docs/INFORMATION_MODEL.md",
+        "docs/REPLAY_AND_DETERMINISM.md",
+        "docs/RULES_SEMANTICS.md",
+        "docs/STATE_HASHING.md",
+        "docs/contracts/ENGINE_STATE_CLOSURE.md"
+      ],
+      "benchmark_scenarios": [],
+      "category": "core_rule",
+      "conformance_cases": [],
+      "dependencies": [
+        "rules/zone-change"
+      ],
+      "implementation_paths": [],
+      "information_risk": "critical",
+      "key": "rules/put-battlefield",
+      "lifecycle": "specified",
+      "owners": [
+        "rules-maintainer"
+      ],
+      "spec_path": "docs/rules/capabilities/rules/put-battlefield.md",
+      "summary": "This durable V1 capability covers an instruction that puts an object directly onto the battlefield.",
+      "version": "0.1.0"
+    },
+    {
+      "authority_refs": [
+        "b1-final:sources/m2_5/closures/B1/official_authority_citations.v3.json#cap.reanimation",
+        "b2-boundary:sources/m2_5/closures/B2/requirement_family_catalog.v1.json#cap.reanimation",
+        "comprehensive-rules:CR-110-permanents",
+        "comprehensive-rules:CR-400-7-new-object",
+        "comprehensive-rules:CR-403-battlefield",
+        "comprehensive-rules:CR-404-graveyard",
+        "docs/DECISION_PROTOCOL.md",
+        "docs/DOMAIN_MODEL.md",
+        "docs/INFORMATION_MODEL.md",
+        "docs/REPLAY_AND_DETERMINISM.md",
+        "docs/RULES_SEMANTICS.md",
+        "docs/STATE_HASHING.md",
+        "docs/contracts/ENGINE_STATE_CLOSURE.md"
+      ],
+      "benchmark_scenarios": [],
+      "category": "core_rule",
+      "conformance_cases": [],
+      "dependencies": [
+        "rules/graveyard-zone",
+        "rules/put-battlefield",
+        "rules/zone-change"
+      ],
+      "implementation_paths": [],
+      "information_risk": "critical",
+      "key": "rules/reanimation",
+      "lifecycle": "specified",
+      "owners": [
+        "rules-maintainer"
+      ],
+      "spec_path": "docs/rules/capabilities/rules/reanimation.md",
+      "summary": "This durable V1 capability covers returning or putting a card from a graveyard onto the battlefield.",
+      "version": "0.1.0"
+    },
+    {
+      "authority_refs": [
+        "b1-final:sources/m2_5/closures/B1/official_authority_citations.v3.json#cap.reanimation_tapped",
+        "b2-boundary:sources/m2_5/closures/B2/requirement_family_catalog.v1.json#cap.reanimation_tapped",
+        "comprehensive-rules:CR-110-permanents",
+        "comprehensive-rules:CR-400-7-new-object",
+        "comprehensive-rules:CR-403-battlefield",
+        "comprehensive-rules:CR-404-graveyard",
+        "docs/DECISION_PROTOCOL.md",
+        "docs/DOMAIN_MODEL.md",
+        "docs/INFORMATION_MODEL.md",
+        "docs/REPLAY_AND_DETERMINISM.md",
+        "docs/RULES_SEMANTICS.md",
+        "docs/STATE_HASHING.md",
+        "docs/contracts/ENGINE_STATE_CLOSURE.md"
+      ],
+      "benchmark_scenarios": [],
+      "category": "core_rule",
+      "conformance_cases": [],
+      "dependencies": [
+        "rules/reanimation"
+      ],
+      "implementation_paths": [],
+      "information_risk": "critical",
+      "key": "rules/reanimation-tapped",
+      "lifecycle": "specified",
+      "owners": [
+        "rules-maintainer"
+      ],
+      "spec_path": "docs/rules/capabilities/rules/reanimation-tapped.md",
+      "summary": "This durable V1 capability covers reanimation that puts the returned permanent onto the battlefield tapped.",
+      "version": "0.1.0"
+    },
+    {
+      "authority_refs": [
+        "b1-final:sources/m2_5/closures/B1/official_authority_citations.v3.json#cap.replacement_prevention",
+        "b2-boundary:sources/m2_5/closures/B2/requirement_family_catalog.v1.json#cap.replacement_prevention",
+        "comprehensive-rules:CR-614-replacement-effects",
+        "docs/DECISION_PROTOCOL.md",
+        "docs/DOMAIN_MODEL.md",
+        "docs/INFORMATION_MODEL.md",
+        "docs/REPLAY_AND_DETERMINISM.md",
+        "docs/RULES_SEMANTICS.md",
+        "docs/STATE_HASHING.md",
+        "docs/contracts/ENGINE_STATE_CLOSURE.md"
+      ],
+      "benchmark_scenarios": [],
+      "category": "core_rule",
+      "conformance_cases": [],
+      "dependencies": [],
+      "implementation_paths": [],
+      "information_risk": "high",
+      "key": "rules/replacement-effect",
+      "lifecycle": "specified",
+      "owners": [
+        "rules-maintainer"
+      ],
+      "spec_path": "docs/rules/capabilities/rules/replacement-effect.md",
+      "summary": "This durable V1 capability covers a prevention or replacement effect that prevents a stated event or amount from occurring.",
+      "version": "0.1.0"
+    },
+    {
+      "authority_refs": [
+        "b1-final:sources/m2_5/closures/B1/official_authority_citations.v3.json#cap.selective_temporary_pt_modification",
+        "b2-boundary:sources/m2_5/closures/B2/requirement_family_catalog.v1.json#cap.selective_temporary_pt_modification",
+        "comprehensive-rules:CR-613-continuous-effects",
+        "docs/DECISION_PROTOCOL.md",
+        "docs/DOMAIN_MODEL.md",
+        "docs/INFORMATION_MODEL.md",
+        "docs/REPLAY_AND_DETERMINISM.md",
+        "docs/RULES_SEMANTICS.md",
+        "docs/STATE_HASHING.md",
+        "docs/contracts/ENGINE_STATE_CLOSURE.md"
+      ],
+      "benchmark_scenarios": [],
+      "category": "core_rule",
+      "conformance_cases": [],
+      "dependencies": [
+        "rules/continuous-pt"
+      ],
+      "implementation_paths": [],
+      "information_risk": "high",
+      "key": "rules/selective-temporary-pt-modification",
+      "lifecycle": "specified",
+      "owners": [
+        "rules-maintainer"
+      ],
+      "spec_path": "docs/rules/capabilities/rules/selective-temporary-pt-modification.md",
+      "summary": "This durable V1 capability covers a temporary power/toughness modification applied only to a selected subset of objects.",
+      "version": "0.1.0"
+    },
+    {
+      "authority_refs": [
+        "b1-final:sources/m2_5/closures/B1/official_authority_citations.v3.json#cap.self_exile",
+        "b2-boundary:sources/m2_5/closures/B2/requirement_family_catalog.v1.json#cap.self_exile",
+        "comprehensive-rules:CR-406-exile",
+        "docs/DECISION_PROTOCOL.md",
+        "docs/DOMAIN_MODEL.md",
+        "docs/INFORMATION_MODEL.md",
+        "docs/REPLAY_AND_DETERMINISM.md",
+        "docs/RULES_SEMANTICS.md",
+        "docs/STATE_HASHING.md",
+        "docs/contracts/ENGINE_STATE_CLOSURE.md"
+      ],
+      "benchmark_scenarios": [],
+      "category": "core_rule",
+      "conformance_cases": [],
+      "dependencies": [
+        "rules/exile",
+        "rules/zone-change"
+      ],
+      "implementation_paths": [],
+      "information_risk": "critical",
+      "key": "rules/self-exile",
+      "lifecycle": "specified",
+      "owners": [
+        "rules-maintainer"
+      ],
+      "spec_path": "docs/rules/capabilities/rules/self-exile.md",
+      "summary": "This durable V1 capability covers the source card or permanent exiling itself as an explicit part of its effect.",
+      "version": "0.1.0"
+    },
+    {
+      "authority_refs": [
+        "b1-final:sources/m2_5/closures/B1/official_authority_citations.v3.json#cap.shuffle",
+        "b2-boundary:sources/m2_5/closures/B2/requirement_family_catalog.v1.json#cap.shuffle",
+        "comprehensive-rules:CR-701-24-shuffle",
+        "docs/DECISION_PROTOCOL.md",
+        "docs/DOMAIN_MODEL.md",
+        "docs/INFORMATION_MODEL.md",
+        "docs/REPLAY_AND_DETERMINISM.md",
+        "docs/RULES_SEMANTICS.md",
+        "docs/STATE_HASHING.md",
+        "docs/contracts/ENGINE_STATE_CLOSURE.md"
+      ],
+      "benchmark_scenarios": [],
+      "category": "core_rule",
+      "conformance_cases": [],
+      "dependencies": [],
+      "implementation_paths": [],
+      "information_risk": "critical",
+      "key": "rules/shuffle",
+      "lifecycle": "specified",
+      "owners": [
+        "rules-maintainer"
+      ],
+      "spec_path": "docs/rules/capabilities/rules/shuffle.md",
+      "summary": "This durable V1 capability covers an instruction that shuffles a library or other stated set of cards.",
+      "version": "0.1.0"
+    },
+    {
+      "authority_refs": [
+        "b1-final:sources/m2_5/closures/B1/official_authority_citations.v3.json#cap.shuffle_self",
+        "b2-boundary:sources/m2_5/closures/B2/requirement_family_catalog.v1.json#cap.shuffle_self",
+        "comprehensive-rules:CR-701-24-shuffle",
+        "docs/DECISION_PROTOCOL.md",
+        "docs/DOMAIN_MODEL.md",
+        "docs/INFORMATION_MODEL.md",
+        "docs/REPLAY_AND_DETERMINISM.md",
+        "docs/RULES_SEMANTICS.md",
+        "docs/STATE_HASHING.md",
+        "docs/contracts/ENGINE_STATE_CLOSURE.md"
+      ],
+      "benchmark_scenarios": [],
+      "category": "core_rule",
+      "conformance_cases": [],
+      "dependencies": [
+        "rules/shuffle"
+      ],
+      "implementation_paths": [],
+      "information_risk": "critical",
+      "key": "rules/shuffle-self",
+      "lifecycle": "specified",
+      "owners": [
+        "rules-maintainer"
+      ],
+      "spec_path": "docs/rules/capabilities/rules/shuffle-self.md",
+      "summary": "This durable V1 capability covers a resolving spell or ability that shuffles its own card into its owner's library.",
+      "version": "0.1.0"
+    },
+    {
+      "authority_refs": [
+        "b1-final:sources/m2_5/closures/B1/official_authority_citations.v3.json#cap.static_team_pt",
+        "b2-boundary:sources/m2_5/closures/B2/requirement_family_catalog.v1.json#cap.static_team_pt",
+        "comprehensive-rules:CR-604-static-abilities",
+        "comprehensive-rules:CR-611-continuous-effects",
+        "comprehensive-rules:CR-613-continuous-effects",
+        "docs/DECISION_PROTOCOL.md",
+        "docs/DOMAIN_MODEL.md",
+        "docs/INFORMATION_MODEL.md",
+        "docs/REPLAY_AND_DETERMINISM.md",
+        "docs/RULES_SEMANTICS.md",
+        "docs/STATE_HASHING.md",
+        "docs/contracts/ENGINE_STATE_CLOSURE.md"
+      ],
+      "benchmark_scenarios": [],
+      "category": "core_rule",
+      "conformance_cases": [],
+      "dependencies": [
+        "rules/continuous-pt"
+      ],
+      "implementation_paths": [],
+      "information_risk": "high",
+      "key": "rules/static-team-pt",
+      "lifecycle": "specified",
+      "owners": [
+        "rules-maintainer"
+      ],
+      "spec_path": "docs/rules/capabilities/rules/static-team-pt.md",
+      "summary": "This durable V1 capability covers a static continuous effect that modifies the power and toughness of a team of creatures.",
+      "version": "0.1.0"
+    },
+    {
+      "authority_refs": [
+        "b1-final:sources/m2_5/closures/B1/official_authority_citations.v3.json#cap.subtype_add_zombie",
+        "b2-boundary:sources/m2_5/closures/B2/requirement_family_catalog.v1.json#cap.subtype_add_zombie",
+        "comprehensive-rules:CR-205-type-line",
+        "comprehensive-rules:CR-613-continuous-effects",
+        "docs/DECISION_PROTOCOL.md",
+        "docs/DOMAIN_MODEL.md",
+        "docs/INFORMATION_MODEL.md",
+        "docs/REPLAY_AND_DETERMINISM.md",
+        "docs/RULES_SEMANTICS.md",
+        "docs/STATE_HASHING.md",
+        "docs/contracts/ENGINE_STATE_CLOSURE.md"
+      ],
+      "benchmark_scenarios": [],
+      "category": "core_rule",
+      "conformance_cases": [],
+      "dependencies": [
+        "rules/subtype-addition"
+      ],
+      "implementation_paths": [],
+      "information_risk": "high",
+      "key": "rules/subtype-add-zombie",
+      "lifecycle": "specified",
+      "owners": [
+        "rules-maintainer"
+      ],
+      "spec_path": "docs/rules/capabilities/rules/subtype-add-zombie.md",
+      "summary": "This durable V1 capability covers an effect that adds Zombie as a subtype to the affected object.",
+      "version": "0.1.0"
+    },
+    {
+      "authority_refs": [
+        "b1-final:sources/m2_5/closures/B1/official_authority_citations.v3.json#cap.subtype_addition",
+        "b2-boundary:sources/m2_5/closures/B2/requirement_family_catalog.v1.json#cap.subtype_addition",
+        "comprehensive-rules:CR-205-type-line",
+        "comprehensive-rules:CR-613-continuous-effects",
+        "docs/DECISION_PROTOCOL.md",
+        "docs/DOMAIN_MODEL.md",
+        "docs/INFORMATION_MODEL.md",
+        "docs/REPLAY_AND_DETERMINISM.md",
+        "docs/RULES_SEMANTICS.md",
+        "docs/STATE_HASHING.md",
+        "docs/contracts/ENGINE_STATE_CLOSURE.md"
+      ],
+      "benchmark_scenarios": [],
+      "category": "core_rule",
+      "conformance_cases": [],
+      "dependencies": [
+        "rules/type-change"
+      ],
+      "implementation_paths": [],
+      "information_risk": "high",
+      "key": "rules/subtype-addition",
+      "lifecycle": "specified",
+      "owners": [
+        "rules-maintainer"
+      ],
+      "spec_path": "docs/rules/capabilities/rules/subtype-addition.md",
+      "summary": "This durable V1 capability covers an effect that adds a subtype to an object's existing type line.",
+      "version": "0.1.0"
+    },
+    {
+      "authority_refs": [
+        "b1-final:sources/m2_5/closures/B1/official_authority_citations.v3.json#cap.tap_event",
+        "b2-boundary:sources/m2_5/closures/B2/requirement_family_catalog.v1.json#cap.tap_event",
+        "comprehensive-rules:CR-603-triggered-abilities",
+        "comprehensive-rules:CR-701-26-tap-untap",
+        "docs/DECISION_PROTOCOL.md",
+        "docs/DOMAIN_MODEL.md",
+        "docs/INFORMATION_MODEL.md",
+        "docs/REPLAY_AND_DETERMINISM.md",
+        "docs/RULES_SEMANTICS.md",
+        "docs/STATE_HASHING.md",
+        "docs/contracts/ENGINE_STATE_CLOSURE.md"
+      ],
+      "benchmark_scenarios": [],
+      "category": "core_rule",
+      "conformance_cases": [],
+      "dependencies": [],
+      "implementation_paths": [],
+      "information_risk": "high",
+      "key": "rules/tap-event",
+      "lifecycle": "specified",
+      "owners": [
+        "rules-maintainer"
+      ],
+      "spec_path": "docs/rules/capabilities/rules/tap-event.md",
+      "summary": "This durable V1 capability covers an effect or trigger whose operative event is a permanent becoming tapped.",
+      "version": "0.1.0"
+    },
+    {
+      "authority_refs": [
+        "b1-final:sources/m2_5/closures/B1/official_authority_citations.v3.json#cap.temporary_flying_double_strike",
+        "b2-boundary:sources/m2_5/closures/B2/requirement_family_catalog.v1.json#cap.temporary_flying_double_strike",
+        "comprehensive-rules:CR-510-combat-damage-step",
+        "comprehensive-rules:CR-613-continuous-effects",
+        "comprehensive-rules:CR-702-4-double-strike",
+        "comprehensive-rules:CR-702-9-flying",
+        "docs/DOMAIN_MODEL.md",
+        "docs/REPLAY_AND_DETERMINISM.md",
+        "docs/RULES_SEMANTICS.md",
+        "docs/STATE_HASHING.md",
+        "docs/contracts/ENGINE_STATE_CLOSURE.md"
+      ],
+      "benchmark_scenarios": [],
+      "category": "core_rule",
+      "conformance_cases": [],
+      "dependencies": [
+        "rules/continuous-effect",
+        "rules/flying-grant"
+      ],
+      "implementation_paths": [],
+      "information_risk": "high",
+      "key": "rules/temporary-flying-double-strike",
+      "lifecycle": "specified",
+      "owners": [
+        "rules-maintainer"
+      ],
+      "spec_path": "docs/rules/capabilities/rules/temporary-flying-double-strike.md",
+      "summary": "This durable V1 capability covers one temporary effect granting both Flying and Double Strike for its stated duration.",
+      "version": "0.1.0"
+    },
+    {
+      "authority_refs": [
+        "b1-final:sources/m2_5/closures/B1/official_authority_citations.v3.json#cap.tribal_permission",
+        "b2-boundary:sources/m2_5/closures/B2/requirement_family_catalog.v1.json#cap.tribal_permission",
+        "comprehensive-rules:CR-205-type-line",
+        "comprehensive-rules:CR-601-casting-spells",
+        "docs/DECISION_PROTOCOL.md",
+        "docs/DOMAIN_MODEL.md",
+        "docs/INFORMATION_MODEL.md",
+        "docs/REPLAY_AND_DETERMINISM.md",
+        "docs/RULES_SEMANTICS.md",
+        "docs/STATE_HASHING.md",
+        "docs/contracts/ENGINE_STATE_CLOSURE.md"
+      ],
+      "benchmark_scenarios": [],
+      "category": "core_rule",
+      "conformance_cases": [],
+      "dependencies": [
+        "mechanic/tribal"
+      ],
+      "implementation_paths": [],
+      "information_risk": "high",
+      "key": "rules/tribal-permission",
+      "lifecycle": "specified",
+      "owners": [
+        "information-safety-maintainer"
+      ],
+      "spec_path": "docs/rules/capabilities/rules/tribal-permission.md",
+      "summary": "This durable V1 capability covers a permission effect whose availability is explicitly conditioned on a creature type or tribal identity.",
+      "version": "0.1.0"
+    },
+    {
+      "authority_refs": [
+        "b1-final:sources/m2_5/closures/B1/official_authority_citations.v3.json#cap.trigger",
+        "b2-boundary:sources/m2_5/closures/B2/requirement_family_catalog.v1.json#cap.trigger",
+        "comprehensive-rules:CR-603-triggered-abilities",
+        "docs/DECISION_PROTOCOL.md",
+        "docs/DOMAIN_MODEL.md",
+        "docs/INFORMATION_MODEL.md",
+        "docs/REPLAY_AND_DETERMINISM.md",
+        "docs/RULES_SEMANTICS.md",
+        "docs/STATE_HASHING.md",
+        "docs/contracts/ENGINE_STATE_CLOSURE.md"
+      ],
+      "benchmark_scenarios": [],
+      "category": "core_rule",
+      "conformance_cases": [],
+      "dependencies": [],
+      "implementation_paths": [],
+      "information_risk": "high",
+      "key": "rules/triggered-ability",
+      "lifecycle": "specified",
+      "owners": [
+        "rules-maintainer"
+      ],
+      "spec_path": "docs/rules/capabilities/rules/triggered-ability.md",
+      "summary": "This durable V1 capability covers an actual triggered ability with an event condition introduced by when, whenever, or at.",
+      "version": "0.1.0"
+    },
+    {
+      "authority_refs": [
+        "b1-final:sources/m2_5/closures/B1/official_authority_citations.v3.json#cap.turn_scoped_graveyard_cast_permission",
+        "b2-boundary:sources/m2_5/closures/B2/requirement_family_catalog.v1.json#cap.turn_scoped_graveyard_cast_permission",
+        "comprehensive-rules:CR-404-graveyard",
+        "comprehensive-rules:CR-601-casting-spells",
+        "docs/DECISION_PROTOCOL.md",
+        "docs/DOMAIN_MODEL.md",
+        "docs/INFORMATION_MODEL.md",
+        "docs/REPLAY_AND_DETERMINISM.md",
+        "docs/RULES_SEMANTICS.md",
+        "docs/STATE_HASHING.md",
+        "docs/contracts/ENGINE_STATE_CLOSURE.md"
+      ],
+      "benchmark_scenarios": [],
+      "category": "core_rule",
+      "conformance_cases": [],
+      "dependencies": [
+        "rules/graveyard-cast-permission",
+        "rules/turn-scoped-permission"
+      ],
+      "implementation_paths": [],
+      "information_risk": "critical",
+      "key": "rules/turn-scoped-graveyard-cast-permission",
+      "lifecycle": "specified",
+      "owners": [
+        "information-safety-maintainer"
+      ],
+      "spec_path": "docs/rules/capabilities/rules/turn-scoped-graveyard-cast-permission.md",
+      "summary": "This durable V1 capability covers permission to cast a card from a graveyard only until the stated turn boundary.",
+      "version": "0.1.0"
+    },
+    {
+      "authority_refs": [
+        "b1-final:sources/m2_5/closures/B1/official_authority_citations.v3.json#cap.turn_scoped_permission",
+        "b2-boundary:sources/m2_5/closures/B2/requirement_family_catalog.v1.json#cap.turn_scoped_permission",
+        "comprehensive-rules:CR-117-timing-priority",
+        "comprehensive-rules:CR-601-casting-spells",
+        "docs/DECISION_PROTOCOL.md",
+        "docs/DOMAIN_MODEL.md",
+        "docs/INFORMATION_MODEL.md",
+        "docs/REPLAY_AND_DETERMINISM.md",
+        "docs/RULES_SEMANTICS.md",
+        "docs/STATE_HASHING.md",
+        "docs/contracts/ENGINE_STATE_CLOSURE.md"
+      ],
+      "benchmark_scenarios": [],
+      "category": "core_rule",
+      "conformance_cases": [],
+      "dependencies": [],
+      "implementation_paths": [],
+      "information_risk": "high",
+      "key": "rules/turn-scoped-permission",
+      "lifecycle": "specified",
+      "owners": [
+        "information-safety-maintainer"
+      ],
+      "spec_path": "docs/rules/capabilities/rules/turn-scoped-permission.md",
+      "summary": "This durable V1 capability covers a permission to cast, activate, or use an object that lasts until end of turn or another stated turn boundary.",
+      "version": "0.1.0"
+    },
+    {
+      "authority_refs": [
+        "b1-final:sources/m2_5/closures/B1/official_authority_citations.v3.json#cap.type_change",
+        "b2-boundary:sources/m2_5/closures/B2/requirement_family_catalog.v1.json#cap.type_change",
+        "comprehensive-rules:CR-110-permanents",
+        "comprehensive-rules:CR-205-type-line",
+        "comprehensive-rules:CR-613-continuous-effects",
+        "docs/DECISION_PROTOCOL.md",
+        "docs/DOMAIN_MODEL.md",
+        "docs/INFORMATION_MODEL.md",
+        "docs/REPLAY_AND_DETERMINISM.md",
+        "docs/RULES_SEMANTICS.md",
+        "docs/STATE_HASHING.md",
+        "docs/contracts/ENGINE_STATE_CLOSURE.md"
+      ],
+      "benchmark_scenarios": [],
+      "category": "core_rule",
+      "conformance_cases": [],
+      "dependencies": [
+        "rules/continuous-effect"
+      ],
+      "implementation_paths": [],
+      "information_risk": "high",
+      "key": "rules/type-change",
+      "lifecycle": "specified",
+      "owners": [
+        "rules-maintainer"
+      ],
+      "spec_path": "docs/rules/capabilities/rules/type-change.md",
+      "summary": "This durable V1 capability covers an effect that changes, adds, or removes a card type, subtype, or supertype.",
+      "version": "0.1.0"
+    },
+    {
+      "authority_refs": [
+        "b1-final:sources/m2_5/closures/B1/official_authority_citations.v3.json#cap.upkeep_trigger",
+        "b2-boundary:sources/m2_5/closures/B2/requirement_family_catalog.v1.json#cap.upkeep_trigger",
+        "comprehensive-rules:CR-503-upkeep-step",
+        "comprehensive-rules:CR-603-triggered-abilities",
+        "docs/DECISION_PROTOCOL.md",
+        "docs/DOMAIN_MODEL.md",
+        "docs/INFORMATION_MODEL.md",
+        "docs/REPLAY_AND_DETERMINISM.md",
+        "docs/RULES_SEMANTICS.md",
+        "docs/STATE_HASHING.md",
+        "docs/contracts/ENGINE_STATE_CLOSURE.md"
+      ],
+      "benchmark_scenarios": [],
+      "category": "core_rule",
+      "conformance_cases": [],
+      "dependencies": [
+        "rules/triggered-ability"
+      ],
+      "implementation_paths": [],
+      "information_risk": "high",
+      "key": "rules/upkeep-trigger",
+      "lifecycle": "specified",
+      "owners": [
+        "rules-maintainer"
+      ],
+      "spec_path": "docs/rules/capabilities/rules/upkeep-trigger.md",
+      "summary": "This durable V1 capability covers an actual triggered ability with an upkeep event condition.",
+      "version": "0.1.0"
+    },
+    {
+      "authority_refs": [
+        "comprehensive-rules:CR-110-permanents",
+        "comprehensive-rules:CR-400-7-new-object",
+        "docs/DOMAIN_MODEL.md",
+        "docs/INFORMATION_MODEL.md",
+        "docs/REPLAY_AND_DETERMINISM.md",
+        "docs/RULES_SEMANTICS.md",
+        "docs/STATE_HASHING.md",
+        "docs/contracts/ENGINE_STATE_CLOSURE.md"
+      ],
+      "benchmark_scenarios": [],
+      "category": "core_rule",
+      "conformance_cases": [],
+      "dependencies": [],
+      "implementation_paths": [],
+      "information_risk": "critical",
+      "key": "rules/zone-change",
+      "lifecycle": "specified",
+      "notes": "Durable shared prerequisite for selected-pair zone-changing capabilities; not a second registry or a selected-pair B2 root.",
+      "owners": [
+        "rules-maintainer"
+      ],
+      "spec_path": "docs/rules/capabilities/rules/zone-change.md",
+      "summary": "Durable shared prerequisite for new object incarnations across zone changes.",
+      "version": "0.1.0"
+    },
+    {
+      "authority_refs": [
+        "b1-final:sources/m2_5/closures/B1/official_authority_citations.v3.json#cap.library_graveyard_information",
+        "b2-boundary:sources/m2_5/closures/B2/requirement_family_catalog.v1.json#cap.library_graveyard_information",
+        "comprehensive-rules:CR-401-library",
+        "comprehensive-rules:CR-404-graveyard",
+        "docs/DECISION_PROTOCOL.md",
+        "docs/DOMAIN_MODEL.md",
+        "docs/INFORMATION_MODEL.md",
+        "docs/REPLAY_AND_DETERMINISM.md",
+        "docs/RULES_SEMANTICS.md",
+        "docs/STATE_HASHING.md",
+        "docs/contracts/ENGINE_STATE_CLOSURE.md"
+      ],
+      "benchmark_scenarios": [],
+      "category": "visibility",
+      "conformance_cases": [],
+      "dependencies": [
+        "rules/graveyard-zone",
+        "rules/library-traversal"
+      ],
+      "implementation_paths": [],
+      "information_risk": "critical",
+      "key": "visibility/library-graveyard-information",
+      "lifecycle": "specified",
+      "owners": [
+        "information-safety-maintainer"
+      ],
+      "spec_path": "docs/rules/capabilities/visibility/library-graveyard-information.md",
+      "summary": "This durable V1 capability covers an effect whose information boundary jointly depends on library cards and graveyard cards.",
+      "version": "0.1.0"
+    },
+    {
+      "authority_refs": [
+        "b1-final:sources/m2_5/closures/B1/official_authority_citations.v3.json#cap.reveal",
+        "b2-boundary:sources/m2_5/closures/B2/requirement_family_catalog.v1.json#cap.reveal",
+        "comprehensive-rules:CR-701-20-reveal",
+        "docs/DECISION_PROTOCOL.md",
+        "docs/DOMAIN_MODEL.md",
+        "docs/INFORMATION_MODEL.md",
+        "docs/REPLAY_AND_DETERMINISM.md",
+        "docs/RULES_SEMANTICS.md",
+        "docs/STATE_HASHING.md",
+        "docs/contracts/ENGINE_STATE_CLOSURE.md"
+      ],
+      "benchmark_scenarios": [],
+      "category": "visibility",
+      "conformance_cases": [],
+      "dependencies": [],
+      "implementation_paths": [],
+      "information_risk": "critical",
+      "key": "visibility/reveal",
+      "lifecycle": "specified",
+      "owners": [
+        "information-safety-maintainer"
+      ],
+      "spec_path": "docs/rules/capabilities/visibility/reveal.md",
+      "summary": "This durable V1 capability covers an instruction that makes a card or object visible to the players as a reveal.",
+      "version": "0.1.0"
+    },
+    {
+      "authority_refs": [
+        "b1-final:sources/m2_5/closures/B1/official_authority_citations.v3.json#cap.search_library",
+        "b2-boundary:sources/m2_5/closures/B2/requirement_family_catalog.v1.json#cap.search_library",
+        "comprehensive-rules:CR-401-library",
+        "comprehensive-rules:CR-701-20-reveal",
+        "comprehensive-rules:CR-701-23-search",
+        "comprehensive-rules:CR-701-24-shuffle",
+        "docs/DECISION_PROTOCOL.md",
+        "docs/DOMAIN_MODEL.md",
+        "docs/INFORMATION_MODEL.md",
+        "docs/REPLAY_AND_DETERMINISM.md",
+        "docs/RULES_SEMANTICS.md",
+        "docs/STATE_HASHING.md",
+        "docs/contracts/ENGINE_STATE_CLOSURE.md"
+      ],
+      "benchmark_scenarios": [],
+      "category": "visibility",
+      "conformance_cases": [],
+      "dependencies": [
+        "rules/library-traversal",
+        "rules/shuffle",
+        "visibility/reveal"
+      ],
+      "implementation_paths": [],
+      "information_risk": "critical",
+      "key": "visibility/search-private-zone",
+      "lifecycle": "specified",
+      "owners": [
+        "information-safety-maintainer"
+      ],
+      "spec_path": "docs/rules/capabilities/visibility/search-private-zone.md",
+      "summary": "This durable V1 capability covers an instruction that searches a library for a card or object and applies the stated reveal or shuffle result.",
+      "version": "0.1.0"
+    }
+  ],
   "registry_id": "project/capabilities",
   "schema_version": "capability-registry.v1"
 }

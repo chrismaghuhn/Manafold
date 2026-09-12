@@ -20,8 +20,8 @@ sys.path.insert(0, str(ROOT / "scripts"))
 from maintainer_common import find_dependency_cycles, load_json, validate_capability_registry
 
 
-def _canonical_json(value: object) -> bytes:
-    return (json.dumps(value, indent=2, sort_keys=True) + "\n").encode("utf-8")
+def _canonical_json(value: object) -> str:
+    return json.dumps(value, indent=2, sort_keys=True) + "\n"
 
 
 def _sha256(path: Path) -> str:
@@ -124,7 +124,7 @@ def _validate_selected_pair_mapping(
         raise AssertionError("mapping rows are not a complete deterministic selected-root sequence")
     if set(by_family) != selected_roots:
         raise AssertionError("selected B2 roots are missing or extra in the migration map")
-    if MAPPING.read_bytes() != _canonical_json(mapping):
+    if MAPPING.read_text(encoding="utf-8") != _canonical_json(mapping):
         raise AssertionError("migration map is not canonically serialized")
 
     registry_entries = registry.get("entries")
@@ -217,6 +217,7 @@ class SelectedPairDurableCapabilityTests(unittest.TestCase):
         _, mapped_keys = _validate_selected_pair_mapping(mapping, census, lock, registry)
         entries = registry["entries"]
         self.assertEqual([entry["key"] for entry in entries], sorted(entry["key"] for entry in entries))
+        self.assertEqual(REGISTRY.read_text(encoding="utf-8"), _canonical_json(registry))
         for key in sorted(mapped_keys):
             entry = next(entry for entry in entries if entry["key"] == key)
             text = (ROOT / entry["spec_path"]).read_text(encoding="utf-8")
@@ -235,33 +236,50 @@ class SelectedPairDurableCapabilityTests(unittest.TestCase):
         outlier_osi = {
             item["oracle_semantic_identity"] for item in census["high_risk_outliers"]
         }
-        high_risk_families: set[str] = set()
+        high_risk_families: dict[str, set[str]] = {}
         for record in census["records"]:
             if record["oracle_semantic_identity"] in outlier_osi:
-                high_risk_families.update(
-                    assignment["family_id"] for assignment in record["capability_assignments"]
+                outlier = next(
+                    item
+                    for item in census["high_risk_outliers"]
+                    if item["oracle_semantic_identity"] == record["oracle_semantic_identity"]
                 )
+                details = {
+                    f"{card_name} [{outlier['risk_tags']}]"
+                    for card_name in record["card_names"]
+                }
+                for assignment in record["capability_assignments"]:
+                    high_risk_families.setdefault(assignment["family_id"], set()).update(details)
         registry_by_key = {entry["key"]: entry for entry in registry["entries"]}
         self.assertGreater(len(high_risk_families), 0)
         for family_id in sorted(high_risk_families):
             for durable_key in mapping_by_family[family_id]["durable_keys"]:
                 self.assertIn(durable_key, mapped_keys)
+                self.assertIn(registry_by_key[durable_key]["information_risk"], {"high", "critical"})
                 text = (ROOT / registry_by_key[durable_key]["spec_path"]).read_text(
                     encoding="utf-8"
                 )
                 self.assertIn("## High-risk review", text)
                 self.assertIn(f"Selected B2 family: `{family_id}`", text)
+                for detail in sorted(high_risk_families[family_id]):
+                    self.assertIn(detail, text)
 
     def test_b1_b2_and_c_sources_are_unchanged_from_task_base(self) -> None:
-        completed = subprocess.run(
-            ["git", "diff", "--name-only", f"{BASE_SHA}..HEAD"],
-            cwd=ROOT,
-            check=True,
-            text=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-        )
-        changed = [line for line in completed.stdout.splitlines() if line]
+        changed: set[str] = set()
+        for command in (
+            ["git", "diff", "--name-only", BASE_SHA],
+            ["git", "diff", "--cached", "--name-only", BASE_SHA],
+            ["git", "ls-files", "--others", "--exclude-standard"],
+        ):
+            completed = subprocess.run(
+                command,
+                cwd=ROOT,
+                check=True,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+            )
+            changed.update(line for line in completed.stdout.splitlines() if line)
         forbidden_prefixes = (
             "sources/m2_5/closures/B1/",
             "sources/m2_5/closures/B2/",
@@ -269,7 +287,7 @@ class SelectedPairDurableCapabilityTests(unittest.TestCase):
         )
         self.assertFalse(
             any(path.startswith(forbidden) for path in changed for forbidden in forbidden_prefixes),
-            changed,
+            sorted(changed),
         )
 
 

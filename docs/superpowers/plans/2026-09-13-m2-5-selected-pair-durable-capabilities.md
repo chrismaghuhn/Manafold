@@ -4,6 +4,9 @@
 
 **Goal:** Convert all 125 selected Token Triumph versus Grave Danger B2 capability families into a reviewed, acyclic, `specified` durable registry/specification set with a minimal removable migration map.
 
+**Status:** accepted implementation plan
+**Stability:** provisional
+
 **Architecture:** Keep `capability-registry.v1` unchanged. A focused Python test validates the temporary identity-only map against the locked selected-pair census and validates only the mapped registry targets; unrelated future registry proposals remain outside this lifecycle gate. A one-off generator derives spec prose and authority references from the accepted B2 family boundaries and B1.Final citation bindings, writes the durable registry/specs/map, and is deleted before the PR.
 
 **Tech Stack:** JSON, Markdown, Python 3, existing `maintainer_common` registry validator, `jsonschema`, repository `just` profiles, Cargo/Rust workspace.
@@ -18,6 +21,7 @@ Create or modify only these durable/result files, the focused validation test, a
 - Create: `sources/m2_5/scope/selected_pair_durable_capability_mapping.v1.json` — identity-only `b2_family_id` to `durable_keys` mappings plus exact source-file hashes.
 - Modify: `cards/capabilities/registry.json` — the complete durable capability registry, sorted by key.
 - Modify: `cards/capabilities/README.md` — describe the real selected-pair registry and the removable migration-map boundary.
+- Modify: `docs/normative-document-register.v1.json` — register this task's accepted process documents for the existing documentation gate.
 - Create/update: `docs/rules/capabilities/**` — one concise specification for every durable registry entry, including any explicitly justified reusable prerequisite capability.
 - Keep: `schemas/capability-registry.v1.schema.json` unchanged unless an actual schema blocker is demonstrated.
 - Do not modify: `sources/m2_5/closures/B1/**`, `sources/m2_5/closures/B2/**`, `sources/m2_5/closures/C/**`, Rust runtime/card/IR code, production authority records, acceptance records, or historical closure files.
@@ -209,7 +213,11 @@ For each high-risk target, add a concrete `## High-risk review` section naming t
 
 Replace the stale “registry is intentionally empty” text with a concise statement that the registry now contains the `specified` durable V1 selected-pair capability definitions, that M3 consumes registry/specs directly, and that the separate mapping file is migration/validation provenance removable after M2.5 Final. Do not turn the README into a second registry or evidence packet.
 
-- [ ] **Step 4: Run the focused tests GREEN**
+- [ ] **Step 4: Register the accepted design and plan documents**
+
+Add the two new `docs/superpowers/` paths to `docs/normative-document-register.v1.json` with the existing `process-pr` change process, `maintainer` owner, `process` role, and `provisional` stability. Keep the register change limited to these two paths so `check_documentation.py` classifies the required task documents without changing any rules or evidence contract.
+
+- [ ] **Step 5: Run the focused tests GREEN**
 
 Run:
 
@@ -219,11 +227,11 @@ python -m pytest python/tests/test_m2_5_selected_pair_durable_capabilities.py -q
 
 Expected result: all focused tests PASS, including `MAPPED_TARGETS_PROPOSED = 0`, 125 mapped roots, zero unmapped roots, zero missing specs/authority/risk/owners, zero unknown/duplicate/self dependencies, zero cycles, deterministic ordering, high-risk sections, third-deck rejection, and unchanged B1/B2/C closure directories.
 
-- [ ] **Step 5: Remove the temporary generator**
+- [ ] **Step 6: Remove the temporary generator**
 
 Delete `scripts/_generate_selected_pair_durable_capabilities.py` with `apply_patch`. Confirm `git status --short` contains no temporary generator, dependency-evidence artifact, review packet, proposal packet, or closure successor.
 
-- [ ] **Step 6: Commit the durable bulk result**
+- [ ] **Step 7: Commit the durable bulk result**
 
 ```powershell
 git add cards/capabilities/README.md cards/capabilities/registry.json docs/rules/capabilities python/tests/test_m2_5_selected_pair_durable_capabilities.py sources/m2_5/scope/selected_pair_durable_capability_mapping.v1.json
