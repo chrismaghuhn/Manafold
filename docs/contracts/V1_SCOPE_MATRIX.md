@@ -78,7 +78,10 @@ GENERATED_OBJECT_CLASSES        = 16
 UNRESOLVED_SCOPE_OBLIGATIONS    = 340
 ```
 
-The unresolved count is an explicit obligation ledger. It does not promote
+RECURSIVE_CAPABILITY_CLOSURE remains `BLOCKED`: no accepted transitive B2
+dependency graph exists. The 125 direct roots and their unresolved dependency
+obligations are preserved explicitly. The unresolved count is an explicit
+obligation ledger. It does not promote
 historical blocked C research, create Authority, or claim implementation or
 certification.
 

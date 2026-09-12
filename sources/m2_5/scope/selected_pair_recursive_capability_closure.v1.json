@@ -2,7 +2,7 @@
   "schema": "manafold.m2.5.selected-pair-cdi-census.v1",
   "artifact_kind": "recursive_capability_closure",
   "task_id": "M2_5_SELECTED_PAIR_CDI_CENSUS_01",
-  "status": "PASS",
+  "status": "BLOCKED",
   "selected_pair": {
     "lock_path": "sources/m2_5/scope/exact_two_deck_scope_lock.v1.json",
     "lock_sha256": "fb5481eca5510227ab91ec88441bc4f0860d4a5da4dede45df2c1fef0a76f877",
@@ -491,7 +491,8 @@
   "record_counts": {
     "direct_capability_roots": 125,
     "resolved_recursive_capability_families": 125,
-    "explicit_dependency_edges": 0
+    "explicit_dependency_edges": 0,
+    "unresolved_dependency_obligations": 125
   },
   "records": [],
   "families": [
@@ -3850,5 +3851,5 @@
       "evidence_member": "inputs/card_semantic_classification_REV3.json"
     }
   ],
-  "content_sha256": "517283ae355ab53244ac581cdb432030f4bc7c142cfe2ce017cf84252e0a3d16"
+  "content_sha256": "d8bc5da237f00eedde05550c08308582e9c5aee925b26618d5440dd051f01ae1"
 }

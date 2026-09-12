@@ -824,6 +824,7 @@ def _build_closure(context: dict[str, Any], capability: dict[str, Any]) -> dict[
         context["archive"],
         "recursive_capability_closure",
     )
+    artifact["status"] = "BLOCKED"
     roots = sorted(family["family_id"] for family in capability["families"])
     artifact["direct_roots"] = roots
     artifact["resolved_families"] = roots
@@ -833,6 +834,7 @@ def _build_closure(context: dict[str, Any], capability: dict[str, Any]) -> dict[
         "direct_capability_roots": len(roots),
         "resolved_recursive_capability_families": len(roots),
         "explicit_dependency_edges": 0,
+        "unresolved_dependency_obligations": len(roots),
     }
     artifact["unresolved_scope_obligations"] = [
         {
@@ -1164,6 +1166,10 @@ def validate_census_set(
         "generated-object record count mismatch",
     )
     closure = artifacts["recursive_capability_closure"]
+    _require(
+        closure["status"] == "BLOCKED",
+        "recursive closure must remain BLOCKED without accepted transitive dependency evidence",
+    )
     _require(
         set(closure["direct_roots"]) == family_ids,
         "recursive closure roots differ from capability families",

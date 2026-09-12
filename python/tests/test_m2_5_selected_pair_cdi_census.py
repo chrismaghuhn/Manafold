@@ -40,6 +40,7 @@ class SelectedPairCdiCensusTests(unittest.TestCase):
             {item["deck_name"] for item in capability["selected_decks"]},
             {"Token Triumph", "Grave Danger"},
         )
+        self.assertEqual(self.artifacts["recursive_capability_closure"]["status"], "BLOCKED")
 
     def test_all_artifact_content_digests_recompute(self) -> None:
         for artifact in self.artifacts.values():
@@ -52,6 +53,16 @@ class SelectedPairCdiCensusTests(unittest.TestCase):
         )
 
         with self.assertRaisesRegex(ScopeCensusValidationError, "selected pair"):
+            validate_census_set(mutated, ROOT)
+
+    def test_recursive_closure_pass_promotion_is_rejected(self) -> None:
+        mutated = copy.deepcopy(self.artifacts)
+        mutated["recursive_capability_closure"]["status"] = "PASS"
+        mutated["recursive_capability_closure"]["content_sha256"] = compute_artifact_content_sha256(
+            mutated["recursive_capability_closure"]
+        )
+
+        with self.assertRaisesRegex(ScopeCensusValidationError, "recursive closure must remain BLOCKED"):
             validate_census_set(mutated, ROOT)
 
     def test_b2_and_source_identity_bindings_are_required(self) -> None:
