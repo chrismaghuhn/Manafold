@@ -1,0 +1,9 @@
+{
+  "artifact_role": "b2_closure_v2",
+  "closure_raw_sha256": "43a0613be367159ffd224d6282deb4e263b2147b861acb90a26388d56729f748",
+  "closure_schema_id": "manafold.m2.5.b2.classification-closure.v2",
+  "closure_version": "v2",
+  "repository_relative_path": "sources/m2_5/closures/B2/classification_closure.v2.json",
+  "schema": "manafold.m2.5.b2.closure-current-root.v1",
+  "source_package_sha256": "99b33945a3e0c7b2982734e65f770715029ce6acd500104bde48e8466eed1a90"
+}
