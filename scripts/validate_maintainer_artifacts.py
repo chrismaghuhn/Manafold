@@ -17,6 +17,10 @@ from maintainer_common import (
 )
 
 CASES = [
+    (
+        "schemas/m2-5-exact-two-deck-scope-lock.v1.schema.json",
+        "sources/m2_5/scope/exact_two_deck_scope_lock.v1.json",
+    ),
     ("schemas/capability-registry.v1.schema.json", "cards/capabilities/registry.json"),
     (
         "schemas/capability-registry.v1.schema.json",

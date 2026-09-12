@@ -705,6 +705,7 @@ SCHEMA_INVENTORY_ALLOWED: frozenset[str] = frozenset(
         "interaction-review-authority.v2.schema.json",
         "context-application-authority.v2.schema.json",
         "context-application-authority.v3.schema.json",
+        "m2-5-exact-two-deck-scope-lock.v1.schema.json",
         "relation-application-authority.v2.schema.json",
         "normative-document-register.v1.schema.json",
         "observation-envelope.v1.schema.json",

@@ -30,6 +30,10 @@ WIRE_MAPPING = {
     "authoritative-replay.v3": "authoritative-replay.v3.schema.json",
 }
 ARTIFACT_CASES = [
+    (
+        "m2-5-exact-two-deck-scope-lock.v1.schema.json",
+        "sources/m2_5/scope/exact_two_deck_scope_lock.v1.json",
+    ),
     ("capability-registry.v1.schema.json", "cards/capabilities/registry.json"),
     ("capability-registry.v1.schema.json", "cards/capabilities/registry.example.json"),
     (
