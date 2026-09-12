@@ -10,6 +10,11 @@ from pathlib import Path
 from typing import Any
 
 import jsonschema
+from validate_m2_5_exact_two_deck_scope_lock import (
+    load_lock,
+    validate_lock_document,
+    verify_pinned_archive,
+)
 from validate_m2_5_selected_pair_cdi_census import (
     ARTIFACTS as CDI_ARTIFACTS,
 )
@@ -26,7 +31,6 @@ from validate_m2_5_selected_pair_cdi_census import (
     _sha256,
     compute_artifact_content_sha256,
     load_census_artifacts,
-    validate_census_set,
     validate_dependency_edges,
 )
 
@@ -155,12 +159,79 @@ def _source_bound_root_refs(
     return _root_dependency_evidence(root, family_id, capability_binding, dependency_bindings)
 
 
+def _validate_selected_scope_inputs(
+    root: Path,
+    archive_root: Path,
+    census: dict[str, dict[str, Any]],
+) -> None:
+    lock_path = root / "sources/m2_5/scope/exact_two_deck_scope_lock.v1.json"
+    lock = load_lock(lock_path)
+    lock_sha = _sha256(lock_path.read_bytes())
+    validate_lock_document(lock)
+    verify_pinned_archive(lock, archive_root)
+    selected_osis = {
+        row["oracle_semantic_identity"] for deck in lock["decks"] for row in deck["cards"]
+    }
+    expected_pair = {
+        "lock_path": "sources/m2_5/scope/exact_two_deck_scope_lock.v1.json",
+        "lock_sha256": lock_sha,
+        "deck_ids": [deck["deck_id"] for deck in lock["decks"]],
+        "deck_names": [deck["deck_name"] for deck in lock["decks"]],
+    }
+    capability = census["capability"]
+    _require(capability["selected_pair"] == expected_pair, "selected-pair lock binding mismatch")
+    _require(
+        {deck["deck_name"] for deck in capability["selected_decks"]}
+        == {"Token Triumph", "Grave Danger"},
+        "selected capability census pair mismatch",
+    )
+    _require(
+        {record["oracle_semantic_identity"] for record in capability["records"]} == selected_osis,
+        "selected capability census Oracle identity set mismatch",
+    )
+    for artifact in census.values():
+        _require(
+            artifact["source_package_sha256"] == EXPECTED_SOURCE_PACKAGE_SHA256,
+            f"source package drift in {artifact['artifact_kind']}",
+        )
+        _require(
+            artifact["content_sha256"] == compute_artifact_content_sha256(artifact),
+            f"content digest drift in {artifact['artifact_kind']}",
+        )
+    closure = census["recursive_capability_closure"]
+    _require(
+        closure["schema"] == "manafold.m2.5.selected-pair-recursive-capability-closure.v2",
+        "closure schema drift",
+    )
+    _require(closure["status"] == "BLOCKED", "closure status is not the accepted blocked value")
+    roots = sorted(family["family_id"] for family in capability["families"])
+    _require(closure["direct_roots"] == roots, "closure direct roots drift")
+    _require(
+        closure["dependency_edges"] == [], "accepted closure unexpectedly contains dependency edges"
+    )
+    _require(
+        closure["terminal_leaves"] == [], "accepted closure unexpectedly contains terminal leaves"
+    )
+    _require(
+        len(closure["unresolved_scope_obligations"]) == len(roots),
+        "accepted closure unresolved obligation count drift",
+    )
+    _require(
+        closure["dependency_evidence_bindings"] == _dependency_source_bindings(root),
+        "accepted closure dependency source bindings drift",
+    )
+    _require(
+        closure["preserved_artifact_digests"] == _preserved_artifacts(root),
+        "accepted closure preserved artifact bindings drift",
+    )
+
+
 def build_dependency_evidence_artifact(
     root: Path = ROOT, archive_root: Path | None = None
 ) -> dict[str, Any]:
     configured = archive_root or Path(os.environ[ARCHIVE_ENV_VAR])
     census = load_census_artifacts(root)
-    validate_census_set(census, root, configured)
+    _validate_selected_scope_inputs(root, configured, census)
     capability = census["capability"]
     closure = census["recursive_capability_closure"]
     owners = _owner_map(capability)
@@ -259,9 +330,13 @@ def validate_dependency_evidence_artifact(
     )
     configured = archive_root or Path(os.environ[ARCHIVE_ENV_VAR])
     census = load_census_artifacts(root)
-    validate_census_set(census, root, configured)
+    _validate_selected_scope_inputs(root, configured, census)
     capability = census["capability"]
     closure = census["recursive_capability_closure"]
+    _require(
+        artifact["selected_pair"] == capability["selected_pair"],
+        "selected-pair binding mismatch",
+    )
     expected_bindings = _input_bindings(root, census)
     _require(artifact["input_bindings"] == expected_bindings, "input binding mismatch")
     _require(
@@ -276,6 +351,15 @@ def validate_dependency_evidence_artifact(
         "capability evidence root records are missing, extra, or noncanonical",
     )
     owners = _owner_map(capability)
+    accepted_dependency_evidence_available = False
+    _require(
+        not artifact["dependency_edges"],
+        "accepted dependency evidence is unavailable",
+    )
+    _require(
+        not artifact["terminal_leaves"],
+        "accepted terminal evidence is unavailable",
+    )
     dependency_edges = validate_dependency_edges(
         artifact["dependency_edges"],
         {family["family_id"] for family in _json(root / B2_FILES["family_catalog"][0])["families"]},
@@ -307,9 +391,17 @@ def validate_dependency_evidence_artifact(
                 f"unresolved reason mismatch: {family_id}",
             )
         elif record["disposition"] == "TERMINAL_LEAF_EVIDENCED":
+            _require(
+                accepted_dependency_evidence_available,
+                f"accepted terminal evidence is unavailable: {family_id}",
+            )
             _require(record["terminal_evidence"], f"terminal evidence missing: {family_id}")
             _require(not record["dependencies"], f"terminal root has dependencies: {family_id}")
         else:
+            _require(
+                accepted_dependency_evidence_available,
+                f"accepted dependency evidence is unavailable: {family_id}",
+            )
             _require(record["dependencies"], f"dependency set missing: {family_id}")
             _require(
                 not record["terminal_evidence"],
