@@ -1,5 +1,6 @@
 {
   "maintainer_artifacts": [
+    "m2-5-exact-two-deck-scope-lock.v1.schema.json",
     "capability-registry.v1.schema.json",
     "card-definition-manifest.v1.schema.json",
     "bundle-manifest.v1.schema.json",
