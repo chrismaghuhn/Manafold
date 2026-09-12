@@ -39,6 +39,58 @@ ARTIFACTS = {
     "recursive_capability_closure": "selected_pair_recursive_capability_closure.v1.json",
 }
 
+SEMANTIC_GENERATED_OBJECT_SPECS = {
+    "copied_token_instance": {
+        "object_kind": "COPY_INSTANCE",
+        "status": "KNOWN_REQUIRED",
+        "binding_mode": "B2_ASSIGNMENT",
+        "source_selector_family_ids": ("cap.populate_token_copy",),
+        "evidence_family_ids": (
+            "cap.copiable_token_values",
+            "cap.populate_token_copy",
+        ),
+    },
+    "new_zone_incarnation": {
+        "object_kind": "ZONE_CHANGE_IDENTITY",
+        "status": "KNOWN_REQUIRED",
+        "binding_mode": "SCOPE_INVARIANT",
+        "scope_contracts": (
+            ("docs/DOMAIN_MODEL.md", "Identity families and Zone model"),
+            ("docs/cards/CAPABILITY_MODEL.md", "Closure sources"),
+        ),
+    },
+    "planeswalker_loyalty_and_counter_state": {
+        "object_kind": "COUNTER_STATE",
+        "status": "KNOWN_REQUIRED",
+        "binding_mode": "B2_ASSIGNMENT",
+        "source_selector_family_ids": ("cap.planeswalker",),
+        "evidence_family_ids": (
+            "cap.counters",
+            "cap.loyalty_activation_rules",
+            "cap.loyalty_counters",
+            "cap.planeswalker",
+        ),
+    },
+    "owner_controller_distinct_object": {
+        "object_kind": "CONTROL_OWNER_STATE",
+        "status": "KNOWN_REQUIRED",
+        "binding_mode": "B2_ASSIGNMENT",
+        "source_selector_family_ids": (
+            "cap.controller_assignment_on_zone_entry",
+            "cap.owner_controller_separation",
+        ),
+        "evidence_family_ids": (
+            "cap.controller_assignment_on_zone_entry",
+            "cap.owner_controller_separation",
+        ),
+    },
+    "emblem": {
+        "object_kind": "EMBLEM",
+        "status": "KNOWN_NOT_APPLICABLE",
+        "binding_mode": "REV3_NEGATIVE_SCAN",
+    },
+}
+
 B2_FILES = {
     "current_root": (
         "sources/m2_5/closures/B2/current_root.json",
@@ -599,6 +651,153 @@ def _high_risk(context: dict[str, Any]) -> list[dict[str, Any]]:
     return sorted(results, key=lambda item: item["oracle_semantic_identity"])
 
 
+def _selected_osis_for_families(
+    capability: dict[str, Any], family_ids: tuple[str, ...]
+) -> list[str]:
+    wanted = set(family_ids)
+    return sorted(
+        {
+            record["oracle_semantic_identity"]
+            for record in capability["records"]
+            if any(
+                assignment["family_id"] in wanted for assignment in record["capability_assignments"]
+            )
+        }
+    )
+
+
+def _capability_assignment_evidence(
+    capability: dict[str, Any], source_osis: list[str], family_ids: tuple[str, ...]
+) -> list[dict[str, Any]]:
+    selected_osis = set(source_osis)
+    wanted = set(family_ids)
+    evidence = []
+    for record in capability["records"]:
+        osi = record["oracle_semantic_identity"]
+        if osi not in selected_osis:
+            continue
+        for assignment in record["capability_assignments"]:
+            if assignment["family_id"] not in wanted:
+                continue
+            evidence.append(
+                {
+                    "kind": "B2_CAPABILITY_ASSIGNMENT",
+                    "artifact_path": B2_FILES["classifications"][0],
+                    "source_package_sha256": EXPECTED_SOURCE_PACKAGE_SHA256,
+                    "oracle_semantic_identity": osi,
+                    "family_id": assignment["family_id"],
+                    "classification_identity_sha256": assignment["classification_identity_sha256"],
+                    "review_status": assignment["review_status"],
+                    "evidence_basis": assignment["evidence_basis"],
+                    "assignment_evidence_sha256": assignment["assignment_evidence_sha256"],
+                    "source_evidence_digest": assignment["source_evidence_digest"],
+                    "family_boundary_sha256": assignment["family_boundary_sha256"],
+                }
+            )
+    return sorted(
+        evidence,
+        key=lambda item: (item["oracle_semantic_identity"], item["family_id"]),
+    )
+
+
+def _scope_contract_evidence(
+    root: Path, contracts: tuple[tuple[str, str], ...]
+) -> list[dict[str, Any]]:
+    return [
+        {
+            "kind": "SCOPE_CONTRACT",
+            "path": path,
+            "raw_sha256": _sha256((root / path).read_bytes()),
+            "locator": locator,
+        }
+        for path, locator in contracts
+    ]
+
+
+def _emblem_negative_scan_evidence(
+    context: dict[str, Any], capability: dict[str, Any]
+) -> list[dict[str, Any]]:
+    emblem_part_count = 0
+    for osi in context["osis"]:
+        source_record_id = context["rows_by_osi"][osi][0]["oracle_source_record_id"]
+        source_record = context["archive"]["oracle_records"][source_record_id]
+        emblem_part_count += sum(
+            part.get("component") == "emblem" for part in source_record.get("all_parts") or []
+        )
+    b2_emblem_assignment_count = sum(
+        assignment["family_id"] == "cap.emblem"
+        for record in capability["records"]
+        for assignment in record["capability_assignments"]
+    )
+    oracle_member = "source/raw/oracle_cards_selected_REV3.jsonl"
+    return [
+        {
+            "kind": "REV3_SELECTED_ALL_PARTS_NEGATIVE_SCAN",
+            "artifact_path": oracle_member,
+            "archive_member_sha256": context["archive"]["entries"][oracle_member]["sha256"],
+            "source_package_sha256": EXPECTED_SOURCE_PACKAGE_SHA256,
+            "selected_oracle_identity_count": len(context["osis"]),
+            "emblem_part_count": emblem_part_count,
+            "b2_emblem_assignment_count": b2_emblem_assignment_count,
+        }
+    ]
+
+
+def _build_semantic_generated_object_records(
+    context: dict[str, Any], capability: dict[str, Any]
+) -> list[dict[str, Any]]:
+    records = []
+    for class_id, spec in SEMANTIC_GENERATED_OBJECT_SPECS.items():
+        record = {
+            "object_class_id": class_id,
+            "object_kind": spec["object_kind"],
+            "status": spec["status"],
+            "source_binding_mode": spec["binding_mode"],
+        }
+        if spec["binding_mode"] == "B2_ASSIGNMENT":
+            source_osis = _selected_osis_for_families(
+                capability, spec["source_selector_family_ids"]
+            )
+            evidence = _capability_assignment_evidence(
+                capability, source_osis, spec["evidence_family_ids"]
+            )
+            _require(source_osis, f"missing semantic generated-object source OSIs: {class_id}")
+            _require(evidence, f"missing semantic generated-object capability evidence: {class_id}")
+            record.update(
+                {
+                    "source_card_osis": source_osis,
+                    "owning_capability_families": sorted({item["family_id"] for item in evidence}),
+                    "capability_evidence": evidence,
+                    "evidence_refs": evidence,
+                }
+            )
+        elif spec["binding_mode"] == "SCOPE_INVARIANT":
+            evidence = _scope_contract_evidence(context["root"], spec["scope_contracts"])
+            record.update(
+                {
+                    "source_card_osis": [],
+                    "owning_capability_families": [],
+                    "capability_evidence": [],
+                    "evidence_refs": evidence,
+                }
+            )
+        else:
+            _require(
+                spec["binding_mode"] == "REV3_NEGATIVE_SCAN",
+                f"unknown semantic generated-object binding mode: {class_id}",
+            )
+            record.update(
+                {
+                    "source_card_osis": [],
+                    "owning_capability_families": [],
+                    "capability_evidence": [],
+                    "evidence_refs": _emblem_negative_scan_evidence(context, capability),
+                }
+            )
+        records.append(record)
+    return records
+
+
 def _surface_evidence(context: dict[str, Any], osi: str) -> dict[str, Any]:
     record = context["classifications"][osi]
     return {
@@ -698,7 +897,7 @@ def _build_surface_artifact(
     return artifact
 
 
-def _build_generated_objects(context: dict[str, Any]) -> dict[str, Any]:
+def _build_generated_objects(context: dict[str, Any], capability: dict[str, Any]) -> dict[str, Any]:
     artifact = _common(
         context["root"],
         context["lock"],
@@ -748,60 +947,7 @@ def _build_generated_objects(context: dict[str, Any]) -> dict[str, Any]:
                     "type_line": part.get("type_line"),
                 }
             )
-    semantic = [
-        {
-            "object_class_id": "copied_token_instance",
-            "object_kind": "COPY_INSTANCE",
-            "status": "KNOWN_REQUIRED",
-            "source_card_osis": ["04046ae4-5c51-434b-930c-f3b1d348bf4b"],
-            "owning_capability_families": ["cap.copiable_token_values", "cap.populate_token_copy"],
-        },
-        {
-            "object_class_id": "new_zone_incarnation",
-            "object_kind": "ZONE_CHANGE_IDENTITY",
-            "status": "KNOWN_REQUIRED",
-            "source_card_osis": sorted(context["osis"]),
-            "owning_capability_families": [
-                "cap.graveyard",
-                "cap.reanimation",
-                "cap.reanimation_under_your_control",
-            ],
-        },
-        {
-            "object_class_id": "planeswalker_loyalty_and_counter_state",
-            "object_kind": "COUNTER_STATE",
-            "status": "KNOWN_REQUIRED",
-            "source_card_osis": [
-                "1d5ff280-7f4d-4801-aefd-9b6e6b1f2818",
-                "4f66489c-5a19-40ad-9126-461fa8231f1b",
-            ],
-            "owning_capability_families": [
-                "cap.loyalty_activation_rules",
-                "cap.loyalty_counters",
-                "cap.counters",
-            ],
-        },
-        {
-            "object_class_id": "owner_controller_distinct_object",
-            "object_kind": "CONTROL_OWNER_STATE",
-            "status": "KNOWN_REQUIRED",
-            "source_card_osis": sorted(context["osis"]),
-            "owning_capability_families": [
-                "cap.owner_controller_separation",
-                "cap.controller_assignment_on_zone_entry",
-            ],
-        },
-        {
-            "object_class_id": "emblem",
-            "object_kind": "EMBLEM",
-            "status": "KNOWN_NOT_APPLICABLE",
-            "source_card_osis": [],
-            "owning_capability_families": [],
-            "evidence_refs": [
-                {"reason": "no selected Oracle all_parts token/emblem record or B2 assignment"}
-            ],
-        },
-    ]
+    semantic = _build_semantic_generated_object_records(context, capability)
     artifact["records"] = sorted(
         [*tokens.values(), *references.values(), *semantic],
         key=lambda item: item["object_class_id"],
@@ -862,7 +1008,7 @@ def build_census_artifacts(
     information = _build_surface_artifact(
         context, "information", INFO_SURFACE_MAP, "information_surface"
     )
-    generated = _build_generated_objects(context)
+    generated = _build_generated_objects(context, capability)
     closure = _build_closure(context, capability)
     artifacts = {
         "capability": capability,
@@ -932,20 +1078,68 @@ def validate_b2_projection_rows(
 
 
 def validate_generated_object_records(
-    artifact: dict[str, Any], root: Path, archive_root: Path
+    artifact: dict[str, Any],
+    root: Path,
+    archive_root: Path,
+    capability: dict[str, Any] | None = None,
 ) -> None:
-    """Verify generated/reference records against exact Oracle all_parts rows."""
+    """Verify generated/reference records against exact source and B2 evidence."""
 
-    lock, _, osis, _ = _lock_context(root)
-    archive = _archive_context(archive_root, lock)
+    context = _build_context(root, archive_root)
+    lock = context["lock"]
+    osis = set(context["osis"])
+    archive = context["archive"]
+    if capability is None:
+        capability = _json(root / SCOPE_RELATIVE_PATH / ARTIFACTS["capability"])
+    _require(
+        capability["content_sha256"] == compute_artifact_content_sha256(capability),
+        "capability artifact content digest mismatch",
+    )
+    validate_b2_projection_rows(context["projection"], context["classifications"], capability)
+    expected_semantic = {
+        record["object_class_id"]: record
+        for record in _build_semantic_generated_object_records(context, capability)
+    }
     source_by_osi = {
         row["oracle_semantic_identity"]: row for deck in lock["decks"] for row in deck["cards"]
     }
+    seen_semantic: set[str] = set()
     for record in artifact["records"]:
         source_osis = set(record.get("source_card_osis", []))
         _require(source_osis.issubset(osis), "generated object has unbound source identity")
+        if record["object_kind"] in {"TOKEN_CLASS", "REFERENCED_OBJECT"}:
+            continue
+        class_id = record.get("object_class_id")
+        _require(
+            class_id in expected_semantic,
+            f"unknown semantic generated-object class: {class_id}",
+        )
+        _require(
+            class_id not in seen_semantic, f"duplicate semantic generated-object class: {class_id}"
+        )
+        seen_semantic.add(class_id)
+        expected = expected_semantic[class_id]
+        for field, label in (
+            ("object_kind", "kind"),
+            ("status", "status"),
+            ("source_binding_mode", "source binding mode"),
+            ("source_card_osis", "source identity evidence"),
+            ("owning_capability_families", "owning capability families"),
+            ("capability_evidence", "capability evidence"),
+            ("evidence_refs", "evidence references"),
+        ):
+            _require(
+                record.get(field) == expected[field],
+                f"semantic generated object {label} mismatch: {class_id}",
+            )
+    _require(
+        seen_semantic == set(expected_semantic),
+        "semantic generated-object class set is incomplete",
+    )
+    for record in artifact["records"]:
         if record["object_kind"] not in {"TOKEN_CLASS", "REFERENCED_OBJECT"}:
             continue
+        source_osis = set(record.get("source_card_osis", []))
         bindings = record.get("source_part_bindings", [])
         _require(bindings, "generated object all_parts bindings are missing")
         expected_pairs: set[tuple[str, str]] = set()
@@ -1214,7 +1408,9 @@ def validate_census_set(
                     == expected["oracle_normalized_record_sha256"],
                     f"source normalized digest mismatch for {osi}",
                 )
-        validate_generated_object_records(artifacts["generated_object"], root, archive_root)
+        validate_generated_object_records(
+            artifacts["generated_object"], root, archive_root, capability=capability
+        )
 
 
 def _write_artifacts(artifacts: dict[str, dict[str, Any]], root: Path) -> None:

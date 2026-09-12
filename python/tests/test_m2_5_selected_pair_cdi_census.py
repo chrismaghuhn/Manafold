@@ -40,6 +40,14 @@ class SelectedPairCdiCensusTests(unittest.TestCase):
             {item["deck_name"] for item in capability["selected_decks"]},
             {"Token Triumph", "Grave Danger"},
         )
+        zone_identity = next(
+            item
+            for item in self.artifacts["generated_object"]["records"]
+            if item["object_class_id"] == "new_zone_incarnation"
+        )
+        self.assertEqual(zone_identity["source_card_osis"], [])
+        self.assertEqual(zone_identity["owning_capability_families"], [])
+        self.assertEqual(zone_identity["source_binding_mode"], "SCOPE_INVARIANT")
         self.assertEqual(self.artifacts["recursive_capability_closure"]["status"], "BLOCKED")
 
     def test_all_artifact_content_digests_recompute(self) -> None:
@@ -62,7 +70,9 @@ class SelectedPairCdiCensusTests(unittest.TestCase):
             mutated["recursive_capability_closure"]
         )
 
-        with self.assertRaisesRegex(ScopeCensusValidationError, "recursive closure must remain BLOCKED"):
+        with self.assertRaisesRegex(
+            ScopeCensusValidationError, "recursive closure must remain BLOCKED"
+        ):
             validate_census_set(mutated, ROOT)
 
     def test_b2_and_source_identity_bindings_are_required(self) -> None:
@@ -139,6 +149,19 @@ class SelectedPairCdiCensusTests(unittest.TestCase):
         token["content_sha256"] = compute_artifact_content_sha256(mutated)
 
         with self.assertRaisesRegex(ScopeCensusValidationError, "bindings are missing"):
+            validate_generated_object_records(mutated, ROOT, Path(configured))
+
+    def test_semantic_generated_object_evidence_mutation_is_rejected(self) -> None:
+        configured = os.environ.get("MANAFOLD_SOURCE_ARCHIVE")
+        if not configured:
+            self.skipTest("MANAFOLD_SOURCE_ARCHIVE is not configured")
+        mutated = copy.deepcopy(self.artifacts["generated_object"])
+        record = next(item for item in mutated["records"] if item["object_kind"] == "COPY_INSTANCE")
+        evidence = record.setdefault("capability_evidence", [{"family_id": "cap.aura"}])[0]
+        evidence["family_id"] = "cap.aura"
+        mutated["content_sha256"] = compute_artifact_content_sha256(mutated)
+
+        with self.assertRaisesRegex(ScopeCensusValidationError, "capability evidence"):
             validate_generated_object_records(mutated, ROOT, Path(configured))
 
     def test_builder_is_deterministic_when_configured(self) -> None:
