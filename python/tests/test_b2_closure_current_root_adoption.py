@@ -45,7 +45,12 @@ class B2ClosureCurrentRootAdoptionTests(unittest.TestCase):
         self.assertEqual(result.root.artifact_role, "b2_closure_v2")
         self.assertEqual(result.resolution.mode, B2ClosureResolutionMode.CANDIDATE_V2)
         self.assertTrue(result.resolution.v2_verified)
+        self.assertTrue(result.current)
+        self.assertTrue(result.resolution.v2_current)
         self.assertEqual(result.resolution.raw_sha256, result.root.closure_raw_sha256)
+
+        candidate = resolve_b2_closure(ROOT, B2ClosureResolutionMode.CANDIDATE_V2)
+        self.assertFalse(candidate.v2_current)
 
     def test_historical_v1_remains_independent_of_current_root(self) -> None:
         result = resolve_b2_closure(ROOT, B2ClosureResolutionMode.HISTORICAL_V1)

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 from b2_closure_source_resolver import (
@@ -99,13 +99,17 @@ def resolve_current_b2_closure(repo_root: Path) -> B2CurrentClosureResolution:
         raw_sha256=root.closure_raw_sha256,
         source_package_sha256=root.source_package_sha256,
     )
-    resolution = resolve_b2_closure_binding(repo_root, binding)
-    if resolution.mode is not B2ClosureResolutionMode.CANDIDATE_V2 or not resolution.v2_verified:
+    candidate_resolution = resolve_b2_closure_binding(repo_root, binding)
+    if (
+        candidate_resolution.mode is not B2ClosureResolutionMode.CANDIDATE_V2
+        or not candidate_resolution.v2_verified
+    ):
         raise B2CurrentRootError(
             "CURRENT_CONSUMER_VERSION_UNSUPPORTED",
             "current construction requires verified closure v2",
         )
-    return B2CurrentClosureResolution(root=root, resolution=resolution)
+    current_resolution = replace(candidate_resolution, v2_current=True)
+    return B2CurrentClosureResolution(root=root, resolution=current_resolution)
 
 
 __all__ = [
