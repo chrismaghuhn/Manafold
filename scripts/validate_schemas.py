@@ -108,6 +108,12 @@ AUTHORITY_ARTIFACT_CASES = [
         "conformance/fixtures/authority/supersession_record.v1.json",
     ),
 ]
+OPTIONAL_AUTHORITY_ARTIFACT_CASES = [
+    (
+        "b2-closure-v2-adoption-readiness.v1.schema.json",
+        "sources/m2_5/closures/B2/verification/b2_closure_v2_adoption_readiness.v1.json",
+    )
+]
 
 
 def load(path: Path) -> object:
@@ -130,9 +136,18 @@ def main() -> None:
         jsonschema.Draft202012Validator(load(ROOT / "schemas" / schema_rel)).validate(
             load(ROOT / value_rel)
         )
+    staged_optional_count = 0
+    for schema_rel, value_rel in OPTIONAL_AUTHORITY_ARTIFACT_CASES:
+        value_path = ROOT / value_rel
+        if value_path.is_file():
+            jsonschema.Draft202012Validator(load(ROOT / "schemas" / schema_rel)).validate(
+                load(value_path)
+            )
+            staged_optional_count += 1
     print(
         f"PASS: {len(fixtures)} wire fixtures and"
-        f" {len(ARTIFACT_CASES) + len(AUTHORITY_ARTIFACT_CASES)} maintainer artifacts"
+        f" {len(ARTIFACT_CASES) + len(AUTHORITY_ARTIFACT_CASES) + staged_optional_count}"
+        " maintainer artifacts"
         " validated against schemas"
     )
 

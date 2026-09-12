@@ -1,0 +1,194 @@
+{
+  "adoption_gate_matrix": {
+    "authority_source_resolver_v2_readiness": "PASS",
+    "authority_validator_v2_readiness": "PASS",
+    "b1_current_evidence_root_readiness": "PASS",
+    "b2_v1_semantic_byte_parity": "PASS",
+    "c_current_source_root_readiness": "PASS",
+    "conformance_gates": "EXTERNAL_EVIDENCE_REQUIRED",
+    "context_application_readiness": "NOT_APPLICABLE",
+    "exact_artifact_path_bindings": "PASS",
+    "exact_artifact_raw_sha_bindings": "PASS",
+    "exact_artifact_role_bindings": "PASS",
+    "exact_artifact_schema_bindings": "PASS",
+    "explicit_maintainer_adoption": "NOT_AUTHORIZED",
+    "historical_v1_verification": "PASS",
+    "host_binding_readiness": "NOT_APPLICABLE",
+    "hosted_exact_head_ci": "EXTERNAL_EVIDENCE_REQUIRED",
+    "independent_review": "EXTERNAL_EVIDENCE_REQUIRED",
+    "local_integration": "EXTERNAL_EVIDENCE_REQUIRED",
+    "maintainer_gates": "EXTERNAL_EVIDENCE_REQUIRED",
+    "no_aliasing": "PASS",
+    "no_fallback": "PASS",
+    "no_historical_mutation": "PASS",
+    "no_identity_rewrite": "NO",
+    "python_gates": "EXTERNAL_EVIDENCE_REQUIRED",
+    "relation_application_readiness": "PASS",
+    "review_acceptance_readiness": "NOT_APPLICABLE",
+    "rust_gates": "EXTERNAL_EVIDENCE_REQUIRED",
+    "schema_gates": "EXTERNAL_EVIDENCE_REQUIRED",
+    "snapshot_count_consistency": "PASS",
+    "source_package_binding": "PASS",
+    "v2_negative_matrix": "PASS",
+    "v2_positive_verifier": "PASS",
+    "v2_schema_dto_closure": "PASS",
+    "versioned_source_role_admission": "PASS"
+  },
+  "candidate_v2_binding": {
+    "artifact_role": "b2_closure_v2",
+    "closure_version": "v2",
+    "raw_sha256": "43a0613be367159ffd224d6282deb4e263b2147b861acb90a26388d56729f748",
+    "repository_relative_path": "sources/m2_5/closures/B2/classification_closure.v2.json",
+    "schema_identifier": "manafold.m2.5.b2.classification-closure.v2",
+    "source_package_sha256": "99b33945a3e0c7b2982734e65f770715029ce6acd500104bde48e8466eed1a90"
+  },
+  "current_root": {
+    "admission_path": "sources/m2_5/closures/B2/current_root.json",
+    "adopted_v2": false,
+    "created": false
+  },
+  "currentness_state": "v2_ready_not_adopted",
+  "downstream_readiness": {
+    "authority_source_resolution": "PASS",
+    "authority_validator": "PASS",
+    "b1_current_evidence_root": "PASS",
+    "c_current_source_root": "PASS",
+    "context_application": "NOT_APPLICABLE",
+    "host_binding": "NOT_APPLICABLE",
+    "relation_application": "PASS",
+    "review_acceptance": "NOT_APPLICABLE"
+  },
+  "evidence_dag": {
+    "edges": [
+      "immutable_b2_v1_semantic_artifacts->classification_closure_v2",
+      "classification_closure_v2->slice5_readiness_evidence"
+    ],
+    "status": "PASS"
+  },
+  "historical_nonmutation": {
+    "authority": "NO",
+    "b1": "NO",
+    "c": "NO",
+    "identity_rewrite": "NO",
+    "status": "PASS"
+  },
+  "historical_parity": {
+    "b2_v1_artifacts": [
+      {
+        "baseline_raw_sha256": "68d3953d411b0273cd2b082b07f15583c98403dd7db29c76bd8e54376729bc51",
+        "current_raw_sha256": "68d3953d411b0273cd2b082b07f15583c98403dd7db29c76bd8e54376729bc51",
+        "path": "sources/m2_5/closures/B2/B2_DESIGN_SPEC.md"
+      },
+      {
+        "baseline_raw_sha256": "ed6a0bf4b0eb83c85027fdcc61eaf32bfa7bb06d4de78c77d0946d87212e7d43",
+        "current_raw_sha256": "ed6a0bf4b0eb83c85027fdcc61eaf32bfa7bb06d4de78c77d0946d87212e7d43",
+        "path": "sources/m2_5/closures/B2/classification_closure.v1.json"
+      },
+      {
+        "baseline_raw_sha256": "40cd5b9c37e26157a6df0449a75040f8a5879d825e3946dd500d666a502201d5",
+        "current_raw_sha256": "40cd5b9c37e26157a6df0449a75040f8a5879d825e3946dd500d666a502201d5",
+        "path": "sources/m2_5/closures/B2/card_semantic_classifications.v1.json"
+      },
+      {
+        "baseline_raw_sha256": "a9dc94b86a2efdb6885081191e53380cf5b3723a58487600b6372bcb789abb92",
+        "current_raw_sha256": "a9dc94b86a2efdb6885081191e53380cf5b3723a58487600b6372bcb789abb92",
+        "path": "sources/m2_5/closures/B2/requirement_family_catalog.v1.json"
+      },
+      {
+        "baseline_raw_sha256": "59a0f6ca00af6376fcce1d6c33c06ada3655c2c7fb3bf07354ab3643a96dba5a",
+        "current_raw_sha256": "59a0f6ca00af6376fcce1d6c33c06ada3655c2c7fb3bf07354ab3643a96dba5a",
+        "path": "sources/m2_5/closures/B2/deck_row_classification_refs.v1.csv"
+      },
+      {
+        "baseline_raw_sha256": "eebde95ab08edd95bb06a4334c057b5522167e6d7479386738ad0a4351b24773",
+        "current_raw_sha256": "eebde95ab08edd95bb06a4334c057b5522167e6d7479386738ad0a4351b24773",
+        "path": "sources/m2_5/closures/B2/CLASSIFICATION_REPORT.md"
+      },
+      {
+        "baseline_raw_sha256": "f98d06b92f281119fba59a20d933d4413f0a3b7d49791846478696e9effe83ce",
+        "current_raw_sha256": "f98d06b92f281119fba59a20d933d4413f0a3b7d49791846478696e9effe83ce",
+        "path": "sources/m2_5/closures/B2/verification/b2_negative_test_matrix.v1.json"
+      },
+      {
+        "baseline_raw_sha256": "ca83c1e3bdc1af4ca432ebb11f98647c39e662bd758453e8cee9ef1051adc2bd",
+        "current_raw_sha256": "ca83c1e3bdc1af4ca432ebb11f98647c39e662bd758453e8cee9ef1051adc2bd",
+        "path": "sources/m2_5/closures/B2/verification/b2_verification_summary.v1.json"
+      }
+    ],
+    "b2_v2_baseline_raw_sha256": "43a0613be367159ffd224d6282deb4e263b2147b861acb90a26388d56729f748",
+    "b2_v2_current_raw_sha256": "43a0613be367159ffd224d6282deb4e263b2147b861acb90a26388d56729f748",
+    "status": "PASS"
+  },
+  "historical_v1_binding": {
+    "artifact_role": "b2_closure",
+    "closure_version": "v1",
+    "raw_sha256": "ed6a0bf4b0eb83c85027fdcc61eaf32bfa7bb06d4de78c77d0946d87212e7d43",
+    "repository_relative_path": "sources/m2_5/closures/B2/classification_closure.v1.json",
+    "schema_identifier": "manafold.m2.5.b2.classification-closure.v1",
+    "source_package_sha256": "99b33945a3e0c7b2982734e65f770715029ce6acd500104bde48e8466eed1a90"
+  },
+  "historical_v1_verification": "PASS",
+  "negative_matrix_execution": {
+    "executed_case_ids": [
+      "wrong_v1_role",
+      "wrong_v2_role",
+      "wrong_v1_path",
+      "wrong_v2_path",
+      "wrong_v1_schema",
+      "wrong_v2_schema",
+      "wrong_v1_digest",
+      "wrong_v2_digest",
+      "wrong_source_package",
+      "tampered_semantic_artifact_bytes",
+      "wrong_snapshot_constant",
+      "legacy_alias",
+      "unknown_version",
+      "v2_failure_no_v1_fallback",
+      "historical_failure_no_v2_substitution",
+      "evidence_claims_current",
+      "evidence_claims_current_root_created",
+      "unimplemented_consumer_ready",
+      "unknown_extra_field"
+    ],
+    "status": "PASS"
+  },
+  "no_fallback": "PASS",
+  "schema": "manafold.m2.5.b2.closure-v2-adoption-readiness.v1",
+  "semantic_artifact_bindings": [
+    {
+      "artifact_role": "b2_classifications_v1",
+      "raw_sha256": "40cd5b9c37e26157a6df0449a75040f8a5879d825e3946dd500d666a502201d5",
+      "repository_relative_path": "sources/m2_5/closures/B2/card_semantic_classifications.v1.json",
+      "schema_identifier": "manafold.m2.5.b2.card-semantic-classifications.v1"
+    },
+    {
+      "artifact_role": "b2_family_catalog_v1",
+      "raw_sha256": "a9dc94b86a2efdb6885081191e53380cf5b3723a58487600b6372bcb789abb92",
+      "repository_relative_path": "sources/m2_5/closures/B2/requirement_family_catalog.v1.json",
+      "schema_identifier": "manafold.m2.5.b2.requirement-family-catalog.v1"
+    },
+    {
+      "artifact_role": "b2_projection_v1",
+      "raw_sha256": "59a0f6ca00af6376fcce1d6c33c06ada3655c2c7fb3bf07354ab3643a96dba5a",
+      "repository_relative_path": "sources/m2_5/closures/B2/deck_row_classification_refs.v1.csv",
+      "schema_identifier": "manafold.m2.5.b2.deck-row-classification-refs.v1"
+    }
+  ],
+  "snapshot_constants": {
+    "catalog_family_count": 216,
+    "classification_count": 402,
+    "deck_row_count": 441,
+    "historical_family_count": 216,
+    "oracle_semantic_identity_count": 402,
+    "projection_row_count": 441,
+    "terminal_assignment_edge_count": 1883
+  },
+  "source_package_sha256": "99b33945a3e0c7b2982734e65f770715029ce6acd500104bde48e8466eed1a90",
+  "source_role_parity": {
+    "b2_closure_v1_alias_introduced": false,
+    "candidate_role": "b2_closure_v2",
+    "historical_role": "b2_closure",
+    "role_version_matrix": "PASS"
+  },
+  "v2_verification": "PASS"
+}
