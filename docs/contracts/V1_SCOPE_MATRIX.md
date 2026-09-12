@@ -52,6 +52,39 @@ source-grounded research envelope. It is not an authoritative ranking result.
 The selected pair is locked for the next finite M2.5 capability/census block;
 the M2.5 final closure requirements below remain open.
 
+## Selected-pair CDI census
+
+The selected-pair-only obligation artifacts are:
+
+- [`selected_pair_capability_census.v1.json`](../../sources/m2_5/scope/selected_pair_capability_census.v1.json)
+- [`selected_pair_decision_census.v1.json`](../../sources/m2_5/scope/selected_pair_decision_census.v1.json)
+- [`selected_pair_information_census.v1.json`](../../sources/m2_5/scope/selected_pair_information_census.v1.json)
+- [`selected_pair_generated_object_census.v1.json`](../../sources/m2_5/scope/selected_pair_generated_object_census.v1.json)
+- [`selected_pair_recursive_capability_closure.v1.json`](../../sources/m2_5/scope/selected_pair_recursive_capability_closure.v1.json)
+
+They are source-bound to the accepted lock, B1.Final/B2 v2 evidence, and the
+pinned REV3 package. Current deterministic census counts are:
+
+```text
+SELECTED_DECK_ROWS              = 144
+SELECTED_ORACLE_IDENTITIES      = 140
+CAPABILITY_FAMILIES             = 125
+CAPABILITY_ASSIGNMENT_EDGES     = 628
+DECISION_FAMILIES               = 13
+DECISION_OBLIGATIONS            = 140
+INFORMATION_FAMILIES            = 15
+INFORMATION_OBLIGATIONS         = 140
+GENERATED_OBJECT_CLASSES        = 16
+UNRESOLVED_SCOPE_OBLIGATIONS    = 340
+```
+
+RECURSIVE_CAPABILITY_CLOSURE remains `BLOCKED`: no accepted transitive B2
+dependency graph exists. The 125 direct roots and their unresolved dependency
+obligations are preserved explicitly. The unresolved count is an explicit
+obligation ledger. It does not promote
+historical blocked C research, create Authority, or claim implementation or
+certification.
+
 ## Closure review
 
 For both decks enumerate all faces, generated/referenced objects, mechanics,

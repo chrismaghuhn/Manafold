@@ -705,6 +705,7 @@ SCHEMA_INVENTORY_ALLOWED: frozenset[str] = frozenset(
         "interaction-review-authority.v2.schema.json",
         "context-application-authority.v2.schema.json",
         "context-application-authority.v3.schema.json",
+        "m2-5-selected-pair-cdi-census.v1.schema.json",
         "m2-5-exact-two-deck-scope-lock.v1.schema.json",
         "relation-application-authority.v2.schema.json",
         "normative-document-register.v1.schema.json",
@@ -940,7 +941,12 @@ def check_schema_inventory_pinned(root: Path) -> str:
     forbidden = [
         name
         for name in schemas
-        if "trajectory" in name or "deck-lock" in name or "deck_lock" in name or "census" in name
+        if (
+            "trajectory" in name
+            or "deck-lock" in name
+            or "deck_lock" in name
+            or ("census" in name and name != "m2-5-selected-pair-cdi-census.v1.schema.json")
+        )
     ]
     if forbidden:
         raise ScopeCheckFailure(f"forbidden M2.5/M5 schema artifacts present: {forbidden}")
