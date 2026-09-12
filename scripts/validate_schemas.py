@@ -60,6 +60,10 @@ ARTIFACT_CASES = [
 ]
 AUTHORITY_ARTIFACT_CASES = [
     (
+        "b2-closure-current-root.v1.schema.json",
+        "sources/m2_5/closures/B2/current_root.json",
+    ),
+    (
         "b2-classification-closure.v2.schema.json",
         "sources/m2_5/closures/B2/classification_closure.v2.json",
     ),

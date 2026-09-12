@@ -95,6 +95,8 @@ class B2ClosureDownstreamReadinessTests(unittest.TestCase):
             self.assertEqual(failure.exception.code, "DOWNSTREAM_CONSUMER_NOT_APPLICABLE")
 
     def test_readiness_is_deterministic_and_has_no_current_root_side_effect(self) -> None:
+        current_root = ROOT / "sources/m2_5/closures/B2/current_root.json"
+        current_root_before = current_root.read_bytes()
         first = prepare_b2_downstream_readiness(
             ROOT, B2DownstreamReadinessConsumer.AUTHORITY_SOURCE_RESOLUTION
         )
@@ -102,7 +104,7 @@ class B2ClosureDownstreamReadinessTests(unittest.TestCase):
             ROOT, B2DownstreamReadinessConsumer.AUTHORITY_SOURCE_RESOLUTION
         )
         self.assertEqual(first, second)
-        self.assertFalse((ROOT / "sources/m2_5/closures/B2/current_root.json").exists())
+        self.assertEqual(current_root.read_bytes(), current_root_before)
 
     def test_historical_v1_resolution_cannot_satisfy_v2_readiness(self) -> None:
         v1 = resolve_b2_closure(ROOT, B2ClosureResolutionMode.HISTORICAL_V1)

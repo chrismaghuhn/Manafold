@@ -115,6 +115,7 @@ EXACT_B2_FILES = (
 ADDITIVE_B2_FILES = (
     "classification_closure.v2.json",
     "verification/b2_closure_v2_adoption_readiness.v1.json",
+    "current_root.json",
 )
 B2_GIT_RELATIVE_ROOT = Path("sources/m2_5/closures/B2")
 B2_SUMMARY_GIT_PATH = B2_GIT_RELATIVE_ROOT / "verification/b2_verification_summary.v1.json"
