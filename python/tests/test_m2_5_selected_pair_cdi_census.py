@@ -71,7 +71,7 @@ class SelectedPairCdiCensusTests(unittest.TestCase):
         )
 
         with self.assertRaisesRegex(
-            ScopeCensusValidationError, "recursive closure must remain BLOCKED"
+            ScopeCensusValidationError, "recursive closure PASS"
         ):
             validate_census_set(mutated, ROOT)
 
@@ -85,7 +85,9 @@ class SelectedPairCdiCensusTests(unittest.TestCase):
             mutated["capability"]
         )
 
-        with self.assertRaisesRegex(ScopeCensusValidationError, "source raw digest"):
+        with self.assertRaisesRegex(
+            ScopeCensusValidationError, "source raw digest|capability census"
+        ):
             validate_census_set(mutated, ROOT, Path(configured))
 
     def test_private_source_binding_when_configured(self) -> None:

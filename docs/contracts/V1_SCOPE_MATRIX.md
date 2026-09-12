@@ -60,7 +60,11 @@ The selected-pair-only obligation artifacts are:
 - [`selected_pair_decision_census.v1.json`](../../sources/m2_5/scope/selected_pair_decision_census.v1.json)
 - [`selected_pair_information_census.v1.json`](../../sources/m2_5/scope/selected_pair_information_census.v1.json)
 - [`selected_pair_generated_object_census.v1.json`](../../sources/m2_5/scope/selected_pair_generated_object_census.v1.json)
-- [`selected_pair_recursive_capability_closure.v1.json`](../../sources/m2_5/scope/selected_pair_recursive_capability_closure.v1.json)
+- [`selected_pair_recursive_capability_closure.v2.json`](../../sources/m2_5/scope/selected_pair_recursive_capability_closure.v2.json)
+
+The former `selected_pair_recursive_capability_closure.v1.json` remains
+historical evidence from the merged CDI census and is superseded by the
+explicit v2 closure contract.
 
 They are source-bound to the accepted lock, B1.Final/B2 v2 evidence, and the
 pinned REV3 package. Current deterministic census counts are:
@@ -78,10 +82,12 @@ GENERATED_OBJECT_CLASSES        = 16
 UNRESOLVED_SCOPE_OBLIGATIONS    = 340
 ```
 
-RECURSIVE_CAPABILITY_CLOSURE remains `BLOCKED`: no accepted transitive B2
-dependency graph exists. The 125 direct roots and their unresolved dependency
-obligations are preserved explicitly. The unresolved count is an explicit
-obligation ledger. It does not promote
+RECURSIVE_CAPABILITY_CLOSURE remains `BLOCKED`: the accepted B2 catalog,
+classification closure, B2 design boundary, and production capability registry
+provide no reusable dependency edges or terminal-leaf evidence for these
+`cap.*` families. The v2 artifact records all 125 direct roots as
+`BLOCKED_MISSING_DEPENDENCY_EVIDENCE` with semantic owners and exact evidence
+bindings. The unresolved count is an explicit obligation ledger. It does not promote
 historical blocked C research, create Authority, or claim implementation or
 certification.
 

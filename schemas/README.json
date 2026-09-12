@@ -1,6 +1,7 @@
 {
   "maintainer_artifacts": [
     "m2-5-selected-pair-cdi-census.v1.schema.json",
+    "m2-5-selected-pair-recursive-capability-closure.v2.schema.json",
     "m2-5-exact-two-deck-scope-lock.v1.schema.json",
     "capability-registry.v1.schema.json",
     "card-definition-manifest.v1.schema.json",
