@@ -1,0 +1,288 @@
+{
+  "$id": "https://example.invalid/schemas/m2-5-selected-pair-recursive-capability-closure.v2.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "schema": { "const": "manafold.m2.5.selected-pair-recursive-capability-closure.v2" },
+    "artifact_kind": { "const": "recursive_capability_closure" },
+    "task_id": { "const": "M2_5_SELECTED_PAIR_CDI_CENSUS_01" },
+    "status": { "enum": ["PASS", "BLOCKED"] },
+    "selected_pair": { "$ref": "#/$defs/selectedPair" },
+    "source_package_sha256": { "$ref": "#/$defs/digest" },
+    "evidence_bindings": { "$ref": "#/$defs/evidenceBindings" },
+    "preserved_artifact_digests": { "$ref": "#/$defs/preservedArtifacts" },
+    "selected_decks": {
+      "items": { "$ref": "#/$defs/deck" },
+      "minItems": 2,
+      "maxItems": 2,
+      "type": "array"
+    },
+    "selected_capability_census": { "$ref": "#/$defs/selectedCapability" },
+    "superseded_artifact": { "$ref": "#/$defs/supersededArtifact" },
+    "dependency_direction": { "const": "parent_family_id -> child_family_id means supporting the parent requires the child" },
+    "dependency_evidence_bindings": {
+      "items": { "$ref": "#/$defs/evidenceRef" },
+      "type": "array"
+    },
+    "families": { "items": { "type": "object" }, "type": "array" },
+    "records": { "items": { "type": "object" }, "type": "array" },
+    "direct_roots": {
+      "items": { "type": "string" },
+      "minItems": 1,
+      "uniqueItems": true,
+      "type": "array"
+    },
+    "resolved_families": {
+      "items": { "type": "string" },
+      "uniqueItems": true,
+      "type": "array"
+    },
+    "transitive_only_families": {
+      "items": { "type": "string" },
+      "uniqueItems": true,
+      "type": "array"
+    },
+    "dependency_edges": {
+      "items": { "$ref": "#/$defs/dependencyEdge" },
+      "type": "array"
+    },
+    "terminal_leaves": {
+      "items": { "type": "string" },
+      "uniqueItems": true,
+      "type": "array"
+    },
+    "blocked_families": {
+      "items": { "type": "string" },
+      "uniqueItems": true,
+      "type": "array"
+    },
+    "missing_capabilities": {
+      "items": { "$ref": "#/$defs/missingCapability" },
+      "type": "array"
+    },
+    "cycles": {
+      "items": {
+        "items": { "type": "string" },
+        "minItems": 3,
+        "type": "array"
+      },
+      "type": "array"
+    },
+    "root_classifications": {
+      "items": { "$ref": "#/$defs/rootClassification" },
+      "type": "array"
+    },
+    "semantic_owner_map": {
+      "additionalProperties": {
+        "items": { "minLength": 1, "type": "string" },
+        "minItems": 1,
+        "type": "array"
+      },
+      "type": "object"
+    },
+    "record_counts": {
+      "additionalProperties": { "minimum": 0, "type": "integer" },
+      "type": "object"
+    },
+    "unresolved_scope_obligations": {
+      "items": { "$ref": "#/$defs/unresolved" },
+      "type": "array"
+    },
+    "high_risk_outliers": { "items": { "type": "object" }, "type": "array" },
+    "content_sha256": { "$ref": "#/$defs/digest" }
+  },
+  "required": [
+    "schema",
+    "artifact_kind",
+    "task_id",
+    "status",
+    "selected_pair",
+    "source_package_sha256",
+    "evidence_bindings",
+    "preserved_artifact_digests",
+    "selected_decks",
+    "selected_capability_census",
+    "superseded_artifact",
+    "dependency_direction",
+    "dependency_evidence_bindings",
+    "families",
+    "records",
+    "direct_roots",
+    "resolved_families",
+    "transitive_only_families",
+    "dependency_edges",
+    "terminal_leaves",
+    "blocked_families",
+    "missing_capabilities",
+    "cycles",
+    "root_classifications",
+    "semantic_owner_map",
+    "record_counts",
+    "unresolved_scope_obligations",
+    "high_risk_outliers",
+    "content_sha256"
+  ],
+  "$defs": {
+    "digest": { "pattern": "^[0-9a-f]{64}$", "type": "string" },
+    "binding": {
+      "additionalProperties": false,
+      "properties": {
+        "path": { "type": "string" },
+        "schema": { "type": ["string", "null"] },
+        "raw_sha256": { "$ref": "#/$defs/digest" }
+      },
+      "required": ["path", "schema", "raw_sha256"],
+      "type": "object"
+    },
+    "evidenceBindings": {
+      "additionalProperties": false,
+      "properties": {
+        "b1": { "items": { "$ref": "#/$defs/binding" }, "type": "array" },
+        "b2": { "items": { "$ref": "#/$defs/binding" }, "type": "array" },
+        "rev3": { "items": { "$ref": "#/$defs/binding" }, "type": "array" }
+      },
+      "required": ["b1", "b2", "rev3"],
+      "type": "object"
+    },
+    "preservedArtifacts": {
+      "additionalProperties": false,
+      "properties": {
+        "authority": { "items": { "$ref": "#/$defs/binding" }, "type": "array" },
+        "b1": { "items": { "$ref": "#/$defs/binding" }, "type": "array" },
+        "b2": { "items": { "$ref": "#/$defs/binding" }, "type": "array" },
+        "c": { "items": { "$ref": "#/$defs/binding" }, "type": "array" },
+        "ranking": { "items": { "$ref": "#/$defs/binding" }, "type": "array" }
+      },
+      "required": ["authority", "b1", "b2", "c", "ranking"],
+      "type": "object"
+    },
+    "selectedPair": {
+      "additionalProperties": false,
+      "properties": {
+        "lock_path": { "const": "sources/m2_5/scope/exact_two_deck_scope_lock.v1.json" },
+        "lock_sha256": { "$ref": "#/$defs/digest" },
+        "deck_ids": {
+          "items": { "enum": ["m2-5/token-triumph", "m2-5/grave-danger"] },
+          "minItems": 2,
+          "maxItems": 2,
+          "uniqueItems": true,
+          "type": "array"
+        },
+        "deck_names": {
+          "items": { "enum": ["Token Triumph", "Grave Danger"] },
+          "minItems": 2,
+          "maxItems": 2,
+          "uniqueItems": true,
+          "type": "array"
+        }
+      },
+      "required": ["lock_path", "lock_sha256", "deck_ids", "deck_names"],
+      "type": "object"
+    },
+    "deck": {
+      "additionalProperties": false,
+      "properties": {
+        "deck_id": { "pattern": "^m2-5/[a-z0-9-]+$", "type": "string" },
+        "deck_name": { "type": "string" },
+        "player": { "enum": [1, 2], "type": "integer" }
+      },
+      "required": ["deck_id", "deck_name", "player"],
+      "type": "object"
+    },
+    "selectedCapability": {
+      "additionalProperties": false,
+      "properties": {
+        "path": { "const": "sources/m2_5/scope/selected_pair_capability_census.v1.json" },
+        "raw_sha256": { "$ref": "#/$defs/digest" },
+        "content_sha256": { "$ref": "#/$defs/digest" },
+        "source_package_sha256": { "$ref": "#/$defs/digest" }
+      },
+      "required": ["path", "raw_sha256", "content_sha256", "source_package_sha256"],
+      "type": "object"
+    },
+    "supersededArtifact": {
+      "additionalProperties": false,
+      "properties": {
+        "path": { "const": "sources/m2_5/scope/selected_pair_recursive_capability_closure.v1.json" },
+        "raw_sha256": { "$ref": "#/$defs/digest" },
+        "status": { "const": "HISTORICAL_BLOCKED_V1" }
+      },
+      "required": ["path", "raw_sha256", "status"],
+      "type": "object"
+    },
+    "evidenceRef": {
+      "additionalProperties": false,
+      "properties": {
+        "path": { "type": "string" },
+        "raw_sha256": { "$ref": "#/$defs/digest" },
+        "locator": { "minLength": 1, "type": "string" },
+        "evidence_role": { "minLength": 1, "type": "string" },
+        "b2_family_id": { "type": "string" },
+        "source_package_sha256": { "$ref": "#/$defs/digest" },
+        "content_sha256": { "$ref": "#/$defs/digest" }
+      },
+      "required": ["path", "raw_sha256", "locator"],
+      "type": "object"
+    },
+    "dependencyEdge": {
+      "additionalProperties": false,
+      "properties": {
+        "parent_family_id": { "type": "string" },
+        "child_family_id": { "type": "string" },
+        "dependency_kind": {
+          "enum": [
+            "SEMANTIC_PREREQUISITE",
+            "STATE_MODEL_PREREQUISITE",
+            "DECISION_PREREQUISITE",
+            "INFORMATION_PREREQUISITE",
+            "FORMAT_PREREQUISITE",
+            "GENERATED_OBJECT_PREREQUISITE"
+          ]
+        },
+        "evidence_refs": { "items": { "$ref": "#/$defs/evidenceRef" }, "minItems": 1, "type": "array" },
+        "rationale": { "minLength": 1, "type": "string" }
+      },
+      "required": ["parent_family_id", "child_family_id", "dependency_kind", "evidence_refs", "rationale"],
+      "type": "object"
+    },
+    "rootClassification": {
+      "additionalProperties": false,
+      "properties": {
+        "family_id": { "type": "string" },
+        "state": { "enum": ["TERMINAL_LEAF", "HAS_ACCEPTED_DEPENDENCIES", "BLOCKED_MISSING_DEPENDENCY_EVIDENCE"] },
+        "semantic_owner_roles": { "items": { "minLength": 1, "type": "string" }, "minItems": 1, "type": "array" },
+        "evidence_refs": { "items": { "$ref": "#/$defs/evidenceRef" }, "minItems": 1, "type": "array" },
+        "reason_code": { "type": "string" },
+        "future_owner": { "type": "string" }
+      },
+      "required": ["family_id", "state", "semantic_owner_roles", "evidence_refs"],
+      "type": "object"
+    },
+    "missingCapability": {
+      "additionalProperties": false,
+      "properties": {
+        "required_key": { "minLength": 1, "type": "string" },
+        "parent_family_id": { "minLength": 1, "type": "string" },
+        "reason": { "minLength": 1, "type": "string" },
+        "future_owner": { "minLength": 1, "type": "string" },
+        "evidence_refs": { "items": { "$ref": "#/$defs/evidenceRef" }, "minItems": 1, "type": "array" }
+      },
+      "required": ["required_key", "parent_family_id", "reason", "future_owner", "evidence_refs"],
+      "type": "object"
+    },
+    "unresolved": {
+      "additionalProperties": false,
+      "properties": {
+        "obligation_id": { "type": "string" },
+        "reason_code": { "type": "string" },
+        "subject": { "type": "string" },
+        "evidence_refs": { "items": { "$ref": "#/$defs/evidenceRef" }, "minItems": 1, "type": "array" },
+        "future_owner": { "type": "string" }
+      },
+      "required": ["obligation_id", "reason_code", "subject", "evidence_refs", "future_owner"],
+      "type": "object"
+    }
+  },
+  "title": "M2.5 Selected-Pair Recursive Capability Dependency Closure v2",
+  "type": "object"
+}

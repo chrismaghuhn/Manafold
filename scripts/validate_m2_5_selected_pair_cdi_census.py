@@ -25,18 +25,43 @@ from validate_m2_5_exact_two_deck_scope_lock import (
 
 ROOT = Path(__file__).resolve().parents[1]
 LOCK_RELATIVE_PATH = Path("sources/m2_5/scope/exact_two_deck_scope_lock.v1.json")
-SCHEMA_RELATIVE_PATH = Path("schemas/m2-5-selected-pair-cdi-census.v1.schema.json")
+CENSUS_SCHEMA_RELATIVE_PATH = Path("schemas/m2-5-selected-pair-cdi-census.v1.schema.json")
+CLOSURE_SCHEMA_RELATIVE_PATH = Path(
+    "schemas/m2-5-selected-pair-recursive-capability-closure.v2.schema.json"
+)
 SCOPE_RELATIVE_PATH = Path("sources/m2_5/scope")
 TASK_ID = "M2_5_SELECTED_PAIR_CDI_CENSUS_01"
-SCHEMA_ID = "manafold.m2.5.selected-pair-cdi-census.v1"
+CENSUS_SCHEMA_ID = "manafold.m2.5.selected-pair-cdi-census.v1"
+CLOSURE_SCHEMA_ID = "manafold.m2.5.selected-pair-recursive-capability-closure.v2"
 ARCHIVE_ENV_VAR = "MANAFOLD_SOURCE_ARCHIVE"
+HISTORICAL_CLOSURE_RELATIVE_PATH = (
+    "sources/m2_5/scope/selected_pair_recursive_capability_closure.v1.json"
+)
+
+DEPENDENCY_KINDS = frozenset(
+    {
+        "SEMANTIC_PREREQUISITE",
+        "STATE_MODEL_PREREQUISITE",
+        "DECISION_PREREQUISITE",
+        "INFORMATION_PREREQUISITE",
+        "FORMAT_PREREQUISITE",
+        "GENERATED_OBJECT_PREREQUISITE",
+    }
+)
+ROOT_STATES = frozenset(
+    {
+        "TERMINAL_LEAF",
+        "HAS_ACCEPTED_DEPENDENCIES",
+        "BLOCKED_MISSING_DEPENDENCY_EVIDENCE",
+    }
+)
 
 ARTIFACTS = {
     "capability": "selected_pair_capability_census.v1.json",
     "decision": "selected_pair_decision_census.v1.json",
     "information": "selected_pair_information_census.v1.json",
     "generated_object": "selected_pair_generated_object_census.v1.json",
-    "recursive_capability_closure": "selected_pair_recursive_capability_closure.v1.json",
+    "recursive_capability_closure": "selected_pair_recursive_capability_closure.v2.json",
 }
 
 SEMANTIC_GENERATED_OBJECT_SPECS = {
@@ -123,6 +148,33 @@ B1_FILES = {
         "manafold.m2.5.b1.official-authority-citation-closure.v2",
     ),
 }
+DEPENDENCY_EVIDENCE_SOURCES = (
+    (
+        "sources/m2_5/closures/B2/requirement_family_catalog.v1.json",
+        "B2 family catalog has no dependency edge field",
+        "B2_FAMILY_CATALOG_NO_DEPENDENCY_GRAPH",
+    ),
+    (
+        "sources/m2_5/closures/B2/card_semantic_classifications.v1.json",
+        "B2 terminal assignments contain no reusable dependency edges",
+        "B2_CLASSIFICATIONS_NO_DEPENDENCY_GRAPH",
+    ),
+    (
+        "sources/m2_5/closures/B2/classification_closure.v2.json",
+        "accepted B2 closure snapshot has no dependency graph",
+        "B2_CLOSURE_NO_DEPENDENCY_GRAPH",
+    ),
+    (
+        "sources/m2_5/closures/B2/B2_DESIGN_SPEC.md",
+        "B2 terminal classification contract, not recursive capability closure",
+        "B2_DESIGN_SCOPE_BOUNDARY",
+    ),
+    (
+        "cards/capabilities/registry.json",
+        "production capability registry is empty at this baseline",
+        "PRODUCTION_CAPABILITY_REGISTRY_EMPTY",
+    ),
+)
 IMMUTABLE_ROOTS = {
     "c": "sources/m2_5/closures/C",
     "b1": "sources/m2_5/closures/B1",
@@ -330,10 +382,182 @@ def _require(condition: bool, message: str) -> None:
         raise ScopeCensusValidationError(message)
 
 
+def _validate_dependency_evidence_refs(evidence_refs: object, root: Path) -> list[dict[str, Any]]:
+    _require(
+        isinstance(evidence_refs, list) and evidence_refs,
+        "dependency evidence is missing",
+    )
+    canonical: list[dict[str, Any]] = []
+    for reference in evidence_refs:
+        _require(isinstance(reference, dict), "dependency evidence reference is not an object")
+        path_value = reference.get("path")
+        raw_sha256 = reference.get("raw_sha256")
+        locator = reference.get("locator")
+        _require(
+            isinstance(path_value, str) and path_value and isinstance(raw_sha256, str),
+            "dependency evidence reference is incomplete",
+        )
+        relative = Path(path_value)
+        _require(
+            not relative.is_absolute() and ".." not in relative.parts,
+            "dependency evidence path escapes repository",
+        )
+        evidence_path = root / relative
+        _require(evidence_path.is_file(), f"dependency evidence file is missing: {path_value}")
+        _require(
+            _sha256(evidence_path.read_bytes()) == raw_sha256,
+            f"dependency evidence digest mismatch: {path_value}",
+        )
+        _require(
+            isinstance(locator, str) and locator,
+            "dependency evidence locator is missing",
+        )
+        canonical.append(dict(reference))
+    return sorted(canonical, key=lambda item: _canonical(item))
+
+
+def validate_dependency_edges(
+    edges: object,
+    known_family_ids: set[str],
+    root: Path = ROOT,
+) -> list[dict[str, Any]]:
+    """Validate and canonically order parent-requires-child dependency edges."""
+
+    _require(isinstance(edges, list), "dependency edges must be an array")
+    canonical: list[dict[str, Any]] = []
+    by_pair: dict[tuple[str, str], dict[str, Any]] = {}
+    allowed_keys = {
+        "parent_family_id",
+        "child_family_id",
+        "dependency_kind",
+        "evidence_refs",
+        "rationale",
+    }
+    for edge in edges:
+        _require(isinstance(edge, dict), "dependency edge is not an object")
+        _require(
+            set(edge) == allowed_keys,
+            "dependency edge shape is not exact",
+        )
+        parent = edge["parent_family_id"]
+        child = edge["child_family_id"]
+        kind = edge["dependency_kind"]
+        _require(
+            isinstance(parent, str) and parent in known_family_ids,
+            f"unknown parent capability family: {parent}",
+        )
+        _require(
+            isinstance(child, str) and child in known_family_ids,
+            f"unknown child capability family: {child}",
+        )
+        _require(parent != child, f"self-dependency is not permitted: {parent}")
+        _require(
+            isinstance(kind, str) and kind in DEPENDENCY_KINDS,
+            f"unknown dependency kind: {kind}",
+        )
+        normalized = {
+            "parent_family_id": parent,
+            "child_family_id": child,
+            "dependency_kind": kind,
+            "evidence_refs": _validate_dependency_evidence_refs(edge["evidence_refs"], root),
+            "rationale": edge["rationale"],
+        }
+        _require(
+            isinstance(normalized["rationale"], str) and normalized["rationale"],
+            "dependency rationale is missing",
+        )
+        pair = (parent, child)
+        previous = by_pair.get(pair)
+        if previous is not None:
+            if previous == normalized:
+                raise ScopeCensusValidationError(f"duplicate dependency edge: {parent} -> {child}")
+            raise ScopeCensusValidationError(f"conflicting dependency edge: {parent} -> {child}")
+        by_pair[pair] = normalized
+        canonical.append(normalized)
+    return sorted(
+        canonical,
+        key=lambda item: (
+            item["parent_family_id"],
+            item["child_family_id"],
+            item["dependency_kind"],
+            _canonical(item["evidence_refs"]),
+            item["rationale"],
+        ),
+    )
+
+
+def _canonical_cycle(cycle: list[str]) -> list[str]:
+    ring = cycle[:-1]
+    rotations = [ring[index:] + ring[:index] for index in range(len(ring))]
+    best = min(rotations)
+    return [*best, best[0]]
+
+
+def compute_dependency_closure(
+    direct_roots: list[str], edges: list[dict[str, Any]]
+) -> dict[str, Any]:
+    """Compute the deterministic parent-requires-child transitive closure."""
+
+    _require(
+        direct_roots == sorted(set(direct_roots)),
+        "direct capability roots are not canonical or contain duplicates",
+    )
+    children: dict[str, list[str]] = defaultdict(list)
+    nodes = set(direct_roots)
+    for edge in edges:
+        parent = edge["parent_family_id"]
+        child = edge["child_family_id"]
+        children[parent].append(child)
+        nodes.update((parent, child))
+    for parent in children:
+        children[parent] = sorted(children[parent])
+
+    state: dict[str, int] = {}
+    stack: list[str] = []
+    cycles: set[tuple[str, ...]] = set()
+
+    def visit(node: str) -> None:
+        marker = state.get(node, 0)
+        if marker == 2:
+            return
+        if marker == 1:
+            index = stack.index(node)
+            cycles.add(tuple(_canonical_cycle([*stack[index:], node])))
+            return
+        state[node] = 1
+        stack.append(node)
+        for child in children.get(node, []):
+            visit(child)
+        stack.pop()
+        state[node] = 2
+
+    for node in sorted(nodes):
+        visit(node)
+
+    resolved: set[str] = set()
+    pending = list(reversed(direct_roots))
+    while pending:
+        node = pending.pop()
+        if node in resolved:
+            continue
+        resolved.add(node)
+        pending.extend(reversed(children.get(node, [])))
+    roots = set(direct_roots)
+    return {
+        "resolved_families": sorted(resolved),
+        "transitive_only_families": sorted(resolved - roots),
+        "cycles": [list(cycle) for cycle in sorted(cycles)],
+    }
+
+
 def compute_artifact_content_sha256(artifact: dict[str, Any]) -> str:
     value = copy.deepcopy(artifact)
     value.pop("content_sha256", None)
     return _sha256(_canonical(value))
+
+
+def _artifact_serialized_bytes(artifact: dict[str, Any]) -> bytes:
+    return (json.dumps(artifact, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
 
 
 def _binding(path: str, schema: str | None, raw_sha256: str) -> dict[str, Any]:
@@ -347,8 +571,15 @@ def load_census_artifacts(root: Path = ROOT) -> dict[str, dict[str, Any]]:
     return result
 
 
+def _schema_for_artifact_kind(kind: str) -> tuple[Path, str]:
+    if kind == "recursive_capability_closure":
+        return CLOSURE_SCHEMA_RELATIVE_PATH, CLOSURE_SCHEMA_ID
+    return CENSUS_SCHEMA_RELATIVE_PATH, CENSUS_SCHEMA_ID
+
+
 def _validate_schema(artifact: dict[str, Any], root: Path) -> None:
-    schema = _json(root / SCHEMA_RELATIVE_PATH)
+    schema_path, _schema_id = _schema_for_artifact_kind(artifact["artifact_kind"])
+    schema = _json(root / schema_path)
     try:
         jsonschema.Draft202012Validator(schema).validate(artifact)
     except jsonschema.ValidationError as exc:
@@ -372,6 +603,84 @@ def _repo_bindings(root: Path, paths: dict[str, tuple[str, str]]) -> list[dict[s
     for path, schema in paths.values():
         values.append(_binding(path, schema, _sha256((root / path).read_bytes())))
     return sorted(values, key=lambda item: item["path"])
+
+
+def _dependency_source_bindings(root: Path) -> list[dict[str, Any]]:
+    bindings = []
+    for path, locator, evidence_role in DEPENDENCY_EVIDENCE_SOURCES:
+        file_path = root / path
+        _require(file_path.is_file(), f"dependency evidence source is missing: {path}")
+        bindings.append(
+            {
+                "path": path,
+                "raw_sha256": _sha256(file_path.read_bytes()),
+                "locator": locator,
+                "evidence_role": evidence_role,
+            }
+        )
+    return sorted(bindings, key=lambda item: item["path"])
+
+
+def _dependency_evidence_ref(
+    binding: dict[str, Any], *, b2_family_id: str | None = None
+) -> dict[str, Any]:
+    reference = dict(binding)
+    if b2_family_id is not None:
+        reference["b2_family_id"] = b2_family_id
+    return reference
+
+
+def _selected_capability_binding(root: Path, capability: dict[str, Any]) -> dict[str, Any]:
+    path = root / SCOPE_RELATIVE_PATH / ARTIFACTS["capability"]
+    return {
+        "path": path.relative_to(root).as_posix(),
+        "raw_sha256": _sha256(_artifact_serialized_bytes(capability)),
+        "content_sha256": capability["content_sha256"],
+        "source_package_sha256": EXPECTED_SOURCE_PACKAGE_SHA256,
+    }
+
+
+def _historical_closure_binding(root: Path) -> dict[str, Any]:
+    path = root / HISTORICAL_CLOSURE_RELATIVE_PATH
+    return {
+        "path": HISTORICAL_CLOSURE_RELATIVE_PATH,
+        "raw_sha256": _sha256(path.read_bytes()),
+        "status": "HISTORICAL_BLOCKED_V1",
+    }
+
+
+def _semantic_owner_map(capability: dict[str, Any]) -> dict[str, list[str]]:
+    owners = {
+        family["family_id"]: sorted(set(family.get("semantic_owner_roles", [])))
+        for family in capability["families"]
+    }
+    _require(
+        all(owners[family_id] for family_id in owners),
+        "selected capability family is missing semantic owner",
+    )
+    return dict(sorted(owners.items()))
+
+
+def _root_dependency_evidence(
+    root: Path,
+    family_id: str,
+    capability_binding: dict[str, Any],
+    dependency_bindings: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    references = [
+        {
+            "path": capability_binding["path"],
+            "raw_sha256": capability_binding["raw_sha256"],
+            "locator": f"families/{family_id}",
+            "evidence_role": "SELECTED_DIRECT_CAPABILITY_ROOT",
+            "source_package_sha256": EXPECTED_SOURCE_PACKAGE_SHA256,
+            "b2_family_id": family_id,
+        }
+    ]
+    references.extend(
+        _dependency_evidence_ref(binding, b2_family_id=family_id) for binding in dependency_bindings
+    )
+    return sorted(references, key=lambda item: _canonical(item))
 
 
 def _preserved_artifacts(root: Path) -> dict[str, list[dict[str, Any]]]:
@@ -475,8 +784,9 @@ def _common(
     archive: dict[str, Any],
     kind: str,
 ) -> dict[str, Any]:
+    _schema_path, schema_id = _schema_for_artifact_kind(kind)
     return {
-        "schema": SCHEMA_ID,
+        "schema": schema_id,
         "artifact_kind": kind,
         "task_id": TASK_ID,
         "status": "PASS",
@@ -970,27 +1280,69 @@ def _build_closure(context: dict[str, Any], capability: dict[str, Any]) -> dict[
         context["archive"],
         "recursive_capability_closure",
     )
-    artifact["status"] = "BLOCKED"
     roots = sorted(family["family_id"] for family in capability["families"])
-    artifact["direct_roots"] = roots
-    artifact["resolved_families"] = roots
-    artifact["dependency_edges"] = []
-    artifact["families"] = capability["families"]
+    capability_binding = _selected_capability_binding(context["root"], capability)
+    dependency_bindings = _dependency_source_bindings(context["root"])
+    owner_map = _semantic_owner_map(capability)
+    root_classifications = []
+    for family_id in roots:
+        evidence_refs = _root_dependency_evidence(
+            context["root"], family_id, capability_binding, dependency_bindings
+        )
+        root_classifications.append(
+            {
+                "family_id": family_id,
+                "state": "BLOCKED_MISSING_DEPENDENCY_EVIDENCE",
+                "semantic_owner_roles": owner_map[family_id],
+                "evidence_refs": evidence_refs,
+                "reason_code": "NO_ACCEPTED_REUSABLE_DEPENDENCY_EVIDENCE",
+                "future_owner": owner_map[family_id][0],
+            }
+        )
+    unresolved = [
+        {
+            "obligation_id": f"recursive-dependency:{record['family_id']}",
+            "reason_code": record["reason_code"],
+            "subject": record["family_id"],
+            "evidence_refs": record["evidence_refs"],
+            "future_owner": record["future_owner"],
+        }
+        for record in root_classifications
+    ]
+    artifact.update(
+        {
+            "status": "BLOCKED",
+            "selected_capability_census": capability_binding,
+            "superseded_artifact": _historical_closure_binding(context["root"]),
+            "dependency_direction": (
+                "parent_family_id -> child_family_id means supporting the parent requires the child"
+            ),
+            "dependency_evidence_bindings": dependency_bindings,
+            "direct_roots": roots,
+            "resolved_families": roots,
+            "transitive_only_families": [],
+            "dependency_edges": [],
+            "terminal_leaves": [],
+            "blocked_families": roots,
+            "missing_capabilities": [],
+            "cycles": [],
+            "root_classifications": root_classifications,
+            "semantic_owner_map": owner_map,
+            "families": capability["families"],
+            "unresolved_scope_obligations": unresolved,
+        }
+    )
     artifact["record_counts"] = {
         "direct_capability_roots": len(roots),
         "resolved_recursive_capability_families": len(roots),
+        "transitive_only_capability_families": 0,
         "explicit_dependency_edges": 0,
+        "terminal_leaves": 0,
+        "blocked_families": len(roots),
+        "missing_capabilities": 0,
+        "cycles": 0,
         "unresolved_dependency_obligations": len(roots),
     }
-    artifact["unresolved_scope_obligations"] = [
-        {
-            "obligation_id": f"recursive-dependency:{family_id}",
-            "reason_code": "NO_ACCEPTED_TRANSITIVE_B2_DEPENDENCY_EDGE",
-            "subject": family_id,
-            "evidence_refs": [{"b2_family_id": family_id}],
-        }
-        for family_id in roots
-    ]
     artifact["high_risk_outliers"] = capability["high_risk_outliers"]
     return artifact
 
@@ -1002,6 +1354,7 @@ def build_census_artifacts(
     context = _build_context(root, configured)
     capability = _build_capability(context)
     validate_b2_projection_rows(context["projection"], context["classifications"], capability)
+    capability["content_sha256"] = compute_artifact_content_sha256(capability)
     decision = _build_surface_artifact(
         context, "decision", DECISION_SURFACE_MAP, "decision_surface"
     )
@@ -1209,6 +1562,203 @@ def validate_generated_object_records(
             )
 
 
+def validate_recursive_capability_closure(
+    artifact: dict[str, Any],
+    capability: dict[str, Any],
+    root: Path = ROOT,
+) -> None:
+    """Validate the v2 recursive closure without inferring missing edges."""
+
+    _validate_schema(artifact, root)
+    _require(
+        artifact["content_sha256"] == compute_artifact_content_sha256(artifact),
+        "recursive closure content digest mismatch",
+    )
+    _require(
+        artifact["source_package_sha256"] == EXPECTED_SOURCE_PACKAGE_SHA256,
+        "recursive closure source package binding mismatch",
+    )
+    _require(
+        capability["content_sha256"] == compute_artifact_content_sha256(capability),
+        "capability census content digest mismatch",
+    )
+    family_ids = {family["family_id"] for family in capability["families"]}
+    roots = sorted(family_ids)
+    _require(artifact["direct_roots"] == roots, "recursive closure roots are not exact")
+    _require(
+        artifact["selected_pair"] == capability["selected_pair"],
+        "recursive closure selected-pair binding mismatch",
+    )
+    _require(
+        artifact["selected_capability_census"]["path"]
+        == (SCOPE_RELATIVE_PATH / ARTIFACTS["capability"]).as_posix(),
+        "recursive closure capability census path mismatch",
+    )
+    capability_path = root / artifact["selected_capability_census"]["path"]
+    _require(
+        capability_path.is_file()
+        and _sha256(capability_path.read_bytes())
+        == artifact["selected_capability_census"]["raw_sha256"],
+        "recursive closure capability census raw digest mismatch",
+    )
+    _require(
+        artifact["selected_capability_census"]["content_sha256"] == capability["content_sha256"],
+        "recursive closure capability census content binding mismatch",
+    )
+    _require(
+        artifact["selected_capability_census"]["source_package_sha256"]
+        == EXPECTED_SOURCE_PACKAGE_SHA256,
+        "recursive closure capability census source package mismatch",
+    )
+    _require(
+        artifact["superseded_artifact"] == _historical_closure_binding(root),
+        "recursive closure historical v1 binding mismatch",
+    )
+    _require(
+        artifact["dependency_evidence_bindings"] == _dependency_source_bindings(root),
+        "recursive closure dependency evidence bindings drift",
+    )
+    owner_map = _semantic_owner_map(capability)
+    _require(
+        artifact["semantic_owner_map"] == owner_map,
+        "recursive closure semantic owner map mismatch",
+    )
+
+    edges = validate_dependency_edges(artifact["dependency_edges"], family_ids, root)
+    closure = compute_dependency_closure(roots, edges)
+    _require(
+        artifact["resolved_families"] == closure["resolved_families"],
+        "recursive closure resolved family set mismatch",
+    )
+    _require(
+        artifact["transitive_only_families"] == closure["transitive_only_families"],
+        "recursive closure transitive family set mismatch",
+    )
+    _require(
+        artifact["cycles"] == closure["cycles"],
+        "recursive closure cycle set mismatch",
+    )
+
+    classifications = artifact["root_classifications"]
+    _require(
+        isinstance(classifications, list)
+        and [record.get("family_id") for record in classifications] == roots,
+        "recursive closure root classifications are not exact",
+    )
+    outgoing = defaultdict(list)
+    for edge in edges:
+        outgoing[edge["parent_family_id"]].append(edge)
+    blocked: set[str] = set()
+    terminal: set[str] = set()
+    dependency_roots: set[str] = set()
+    for record in classifications:
+        family_id = record["family_id"]
+        state = record["state"]
+        owners = record["semantic_owner_roles"]
+        _require(
+            owners == owner_map[family_id] and owners,
+            f"recursive closure semantic owner missing: {family_id}",
+        )
+        evidence = _validate_dependency_evidence_refs(record["evidence_refs"], root)
+        _require(
+            evidence == record["evidence_refs"],
+            f"recursive closure evidence ordering drift: {family_id}",
+        )
+        if state == "TERMINAL_LEAF":
+            _require(evidence, f"terminal evidence is missing: {family_id}")
+            _require(
+                any(
+                    reference.get("evidence_role") == "ACCEPTED_TERMINAL_LEAF"
+                    for reference in evidence
+                ),
+                f"terminal evidence is not accepted: {family_id}",
+            )
+            _require(
+                not outgoing.get(family_id),
+                f"terminal leaf has accepted dependencies: {family_id}",
+            )
+            terminal.add(family_id)
+        elif state == "HAS_ACCEPTED_DEPENDENCIES":
+            _require(
+                outgoing.get(family_id),
+                f"accepted dependency state has no edges: {family_id}",
+            )
+            dependency_roots.add(family_id)
+        elif state == "BLOCKED_MISSING_DEPENDENCY_EVIDENCE":
+            _require(
+                record["reason_code"] == "NO_ACCEPTED_REUSABLE_DEPENDENCY_EVIDENCE",
+                f"blocked dependency reason is not exact: {family_id}",
+            )
+            _require(
+                record["future_owner"] in owners,
+                f"blocked dependency future owner is not exact: {family_id}",
+            )
+            blocked.add(family_id)
+        else:
+            raise ScopeCensusValidationError(f"unknown recursive closure root state: {state}")
+
+    declared_blocked = set(artifact["blocked_families"])
+    _require(
+        not (terminal & declared_blocked),
+        "family is both terminal and blocked",
+    )
+    _require(not (terminal & blocked), "family is both terminal and blocked")
+    _require(not (terminal & dependency_roots), "family is both terminal and dependency root")
+    _require(not (blocked & dependency_roots), "family is both blocked and dependency root")
+    _require(
+        artifact["terminal_leaves"] == sorted(terminal),
+        "recursive closure terminal leaf set mismatch",
+    )
+    _require(
+        artifact["blocked_families"] == sorted(blocked),
+        "recursive closure blocked family set mismatch",
+    )
+    _require(
+        artifact["missing_capabilities"] == [],
+        "recursive closure has unsupported missing capabilities",
+    )
+    if artifact["status"] == "PASS":
+        _require(not blocked, "recursive closure PASS has blocked roots")
+        _require(
+            not artifact["missing_capabilities"], "recursive closure PASS has missing capabilities"
+        )
+        _require(not closure["cycles"], "recursive closure PASS has cycles")
+        _require(
+            not artifact["unresolved_scope_obligations"],
+            "recursive closure PASS has unresolved obligations",
+        )
+    expected_unresolved = [f"recursive-dependency:{family_id}" for family_id in sorted(blocked)]
+    _require(
+        [item["obligation_id"] for item in artifact["unresolved_scope_obligations"]]
+        == expected_unresolved,
+        "recursive closure unresolved obligation set mismatch",
+    )
+    expected_counts = {
+        "direct_capability_roots": len(roots),
+        "resolved_recursive_capability_families": len(closure["resolved_families"]),
+        "transitive_only_capability_families": len(closure["transitive_only_families"]),
+        "explicit_dependency_edges": len(edges),
+        "terminal_leaves": len(terminal),
+        "blocked_families": len(blocked),
+        "missing_capabilities": len(artifact["missing_capabilities"]),
+        "cycles": len(closure["cycles"]),
+        "unresolved_dependency_obligations": len(artifact["unresolved_scope_obligations"]),
+    }
+    _require(
+        artifact["record_counts"] == expected_counts,
+        "recursive closure record counts mismatch",
+    )
+    if artifact["status"] != "PASS":
+        _require(
+            artifact["status"] == "BLOCKED",
+            f"unknown recursive closure status: {artifact['status']}",
+        )
+        _require(
+            blocked or artifact["missing_capabilities"] or closure["cycles"],
+            "recursive closure BLOCKED has no blocking reason",
+        )
+
+
 def validate_census_set(
     artifacts: dict[str, dict[str, Any]],
     root: Path = ROOT,
@@ -1360,18 +1910,7 @@ def validate_census_set(
         "generated-object record count mismatch",
     )
     closure = artifacts["recursive_capability_closure"]
-    _require(
-        closure["status"] == "BLOCKED",
-        "recursive closure must remain BLOCKED without accepted transitive dependency evidence",
-    )
-    _require(
-        set(closure["direct_roots"]) == family_ids,
-        "recursive closure roots differ from capability families",
-    )
-    _require(
-        set(closure["resolved_families"]) >= family_ids,
-        "recursive closure omits direct capability roots",
-    )
+    validate_recursive_capability_closure(closure, capability, root)
     _require(
         not any(artifact["artifact_kind"] == "authority" for artifact in artifacts.values()),
         "Authority artifact admitted",
@@ -1417,9 +1956,7 @@ def _write_artifacts(artifacts: dict[str, dict[str, Any]], root: Path) -> None:
     target = root / SCOPE_RELATIVE_PATH
     target.mkdir(parents=True, exist_ok=True)
     for kind, filename in ARTIFACTS.items():
-        (target / filename).write_text(
-            json.dumps(artifacts[kind], ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
-        )
+        (target / filename).write_bytes(_artifact_serialized_bytes(artifacts[kind]))
 
 
 def main() -> int:

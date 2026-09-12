@@ -1,0 +1,205 @@
+from __future__ import annotations
+
+import copy
+import hashlib
+import sys
+import unittest
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT / "scripts"))
+
+from validate_m2_5_selected_pair_cdi_census import (
+    ScopeCensusValidationError,
+    compute_artifact_content_sha256,
+    compute_dependency_closure,
+    load_census_artifacts,
+    validate_dependency_edges,
+    validate_recursive_capability_closure,
+)
+
+
+class SelectedPairRecursiveCapabilityClosureTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.artifacts = load_census_artifacts(ROOT)
+        self.capability = self.artifacts["capability"]
+        self.closure = self.artifacts["recursive_capability_closure"]
+        self.family_ids = {family["family_id"] for family in self.capability["families"]}
+        self.evidence_path = "docs/cards/CAPABILITY_MODEL.md"
+        self.evidence_sha256 = hashlib.sha256((ROOT / self.evidence_path).read_bytes()).hexdigest()
+
+    def _edge(
+        self,
+        parent: str = "cap.parent",
+        child: str = "cap.child",
+        dependency_kind: str = "SEMANTIC_PREREQUISITE",
+    ) -> dict[str, object]:
+        return {
+            "parent_family_id": parent,
+            "child_family_id": child,
+            "dependency_kind": dependency_kind,
+            "evidence_refs": [
+                {
+                    "path": self.evidence_path,
+                    "raw_sha256": self.evidence_sha256,
+                    "locator": "Dependency closure / Closure sources",
+                }
+            ],
+            "rationale": "The accepted evidence explicitly requires the child capability.",
+        }
+
+    def test_current_closure_preserves_exact_blocked_root_envelope(self) -> None:
+        validate_recursive_capability_closure(self.closure, self.capability, ROOT)
+        self.assertEqual(self.closure["status"], "BLOCKED")
+        self.assertEqual(len(self.closure["direct_roots"]), 125)
+        self.assertEqual(
+            {record["family_id"] for record in self.closure["root_classifications"]},
+            set(self.closure["direct_roots"]),
+        )
+        self.assertTrue(
+            all(
+                record["state"] == "BLOCKED_MISSING_DEPENDENCY_EVIDENCE"
+                for record in self.closure["root_classifications"]
+            )
+        )
+        self.assertEqual(self.closure["dependency_edges"], [])
+        self.assertEqual(self.closure["terminal_leaves"], [])
+        self.assertEqual(self.closure["missing_capabilities"], [])
+        self.assertEqual(self.closure["cycles"], [])
+        self.assertEqual(
+            self.closure["record_counts"]["unresolved_dependency_obligations"],
+            125,
+        )
+
+    def test_unknown_parent_is_rejected(self) -> None:
+        with self.assertRaisesRegex(ScopeCensusValidationError, "unknown parent"):
+            validate_dependency_edges(
+                [self._edge("cap.unknown", "cap.child")],
+                {"cap.child"},
+                ROOT,
+            )
+
+    def test_unknown_child_is_rejected(self) -> None:
+        with self.assertRaisesRegex(ScopeCensusValidationError, "unknown child"):
+            validate_dependency_edges(
+                [self._edge("cap.parent", "cap.unknown")],
+                {"cap.parent"},
+                ROOT,
+            )
+
+    def test_duplicate_and_conflicting_edges_are_rejected(self) -> None:
+        edge = self._edge("cap.parent", "cap.child")
+        with self.assertRaisesRegex(ScopeCensusValidationError, "duplicate dependency edge"):
+            validate_dependency_edges(
+                [edge, copy.deepcopy(edge)], {"cap.parent", "cap.child"}, ROOT
+            )
+
+        conflicting = self._edge("cap.parent", "cap.child", "STATE_MODEL_PREREQUISITE")
+        with self.assertRaisesRegex(ScopeCensusValidationError, "conflicting dependency edge"):
+            validate_dependency_edges([edge, conflicting], {"cap.parent", "cap.child"}, ROOT)
+
+    def test_self_edge_is_rejected(self) -> None:
+        with self.assertRaisesRegex(ScopeCensusValidationError, "self-dependency"):
+            validate_dependency_edges(
+                [self._edge("cap.parent", "cap.parent")], {"cap.parent"}, ROOT
+            )
+
+    def test_cycle_reports_full_path(self) -> None:
+        edges = [
+            self._edge("cap.a", "cap.b"),
+            self._edge("cap.b", "cap.c"),
+            self._edge("cap.c", "cap.a"),
+        ]
+        canonical = validate_dependency_edges(edges, {"cap.a", "cap.b", "cap.c"}, ROOT)
+        result = compute_dependency_closure(["cap.a"], canonical)
+        self.assertEqual(result["cycles"], [["cap.a", "cap.b", "cap.c", "cap.a"]])
+
+    def test_dependency_direction_is_parent_requires_child(self) -> None:
+        edge = self._edge("cap.parent", "cap.child")
+        canonical = validate_dependency_edges([edge], {"cap.parent", "cap.child"}, ROOT)
+        result = compute_dependency_closure(["cap.parent"], canonical)
+        self.assertEqual(result["resolved_families"], ["cap.child", "cap.parent"])
+        self.assertEqual(result["transitive_only_families"], ["cap.child"])
+
+    def test_canonical_order_is_independent_of_input_order(self) -> None:
+        edges = [
+            self._edge("cap.a", "cap.c"),
+            self._edge("cap.a", "cap.b"),
+        ]
+        first = validate_dependency_edges(edges, {"cap.a", "cap.b", "cap.c"}, ROOT)
+        second = validate_dependency_edges(list(reversed(edges)), {"cap.a", "cap.b", "cap.c"}, ROOT)
+        self.assertEqual(first, second)
+        self.assertEqual(
+            compute_dependency_closure(["cap.a"], first),
+            compute_dependency_closure(["cap.a"], second),
+        )
+
+    def test_missing_or_mutated_edge_evidence_is_rejected(self) -> None:
+        missing = self._edge()
+        missing["evidence_refs"] = []
+        with self.assertRaisesRegex(ScopeCensusValidationError, "evidence"):
+            validate_dependency_edges([missing], {"cap.parent", "cap.child"}, ROOT)
+
+        mutated = self._edge()
+        mutated["evidence_refs"][0]["raw_sha256"] = "0" * 64
+        with self.assertRaisesRegex(ScopeCensusValidationError, "evidence"):
+            validate_dependency_edges([mutated], {"cap.parent", "cap.child"}, ROOT)
+
+    def test_deleting_unresolved_obligations_does_not_promote_pass(self) -> None:
+        mutated = copy.deepcopy(self.artifacts)
+        closure = mutated["recursive_capability_closure"]
+        closure["status"] = "PASS"
+        closure["unresolved_scope_obligations"] = []
+        closure["record_counts"]["unresolved_dependency_obligations"] = 0
+        closure["content_sha256"] = compute_artifact_content_sha256(closure)
+        with self.assertRaisesRegex(ScopeCensusValidationError, "blocked root"):
+            validate_recursive_capability_closure(closure, mutated["capability"], ROOT)
+
+    def test_terminal_promotion_without_evidence_is_rejected(self) -> None:
+        mutated = copy.deepcopy(self.closure)
+        first = mutated["root_classifications"][0]
+        first["state"] = "TERMINAL_LEAF"
+        mutated["content_sha256"] = compute_artifact_content_sha256(mutated)
+        with self.assertRaisesRegex(ScopeCensusValidationError, "terminal evidence"):
+            validate_recursive_capability_closure(mutated, self.capability, ROOT)
+
+    def test_accepted_dependency_state_requires_an_edge(self) -> None:
+        mutated = copy.deepcopy(self.closure)
+        mutated["root_classifications"][0]["state"] = "HAS_ACCEPTED_DEPENDENCIES"
+        mutated["root_classifications"][0]["evidence_refs"][0]["evidence_role"] = (
+            "ACCEPTED_DEPENDENCY"
+        )
+        mutated["content_sha256"] = compute_artifact_content_sha256(mutated)
+        with self.assertRaisesRegex(ScopeCensusValidationError, "has no edges"):
+            validate_recursive_capability_closure(mutated, self.capability, ROOT)
+
+    def test_terminal_leaf_cannot_also_be_blocked(self) -> None:
+        mutated = copy.deepcopy(self.closure)
+        first_id = mutated["direct_roots"][0]
+        mutated["root_classifications"][0]["state"] = "TERMINAL_LEAF"
+        mutated["root_classifications"][0]["evidence_refs"][0]["evidence_role"] = (
+            "ACCEPTED_TERMINAL_LEAF"
+        )
+        mutated["terminal_leaves"] = [first_id]
+        mutated["terminal_leaves"][0] = first_id
+        mutated["content_sha256"] = compute_artifact_content_sha256(mutated)
+        with self.assertRaisesRegex(ScopeCensusValidationError, "both terminal and blocked"):
+            validate_recursive_capability_closure(mutated, self.capability, ROOT)
+
+    def test_missing_semantic_owner_is_rejected(self) -> None:
+        mutated = copy.deepcopy(self.closure)
+        mutated["root_classifications"][0]["semantic_owner_roles"] = ["FORGED_OWNER"]
+        mutated["content_sha256"] = compute_artifact_content_sha256(mutated)
+        with self.assertRaisesRegex(ScopeCensusValidationError, "semantic owner"):
+            validate_recursive_capability_closure(mutated, self.capability, ROOT)
+
+    def test_capability_census_binding_mutation_is_rejected(self) -> None:
+        mutated = copy.deepcopy(self.closure)
+        mutated["selected_capability_census"]["content_sha256"] = "0" * 64
+        mutated["content_sha256"] = compute_artifact_content_sha256(mutated)
+        with self.assertRaisesRegex(ScopeCensusValidationError, "capability census"):
+            validate_recursive_capability_closure(mutated, self.capability, ROOT)
+
+
+if __name__ == "__main__":
+    unittest.main()

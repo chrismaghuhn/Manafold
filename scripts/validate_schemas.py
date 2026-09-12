@@ -51,6 +51,10 @@ ARTIFACT_CASES = [
         "sources/m2_5/scope/selected_pair_recursive_capability_closure.v1.json",
     ),
     (
+        "m2-5-selected-pair-recursive-capability-closure.v2.schema.json",
+        "sources/m2_5/scope/selected_pair_recursive_capability_closure.v2.json",
+    ),
+    (
         "m2-5-exact-two-deck-scope-lock.v1.schema.json",
         "sources/m2_5/scope/exact_two_deck_scope_lock.v1.json",
     ),
