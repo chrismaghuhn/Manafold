@@ -14,6 +14,8 @@ sys.path.insert(0, str(ROOT / "scripts"))
 from validate_m2_5_selected_pair_capability_dependency_evidence import (
     EVIDENCE_SCHEMA_ID,
     ScopeDependencyEvidenceError,
+    _validate_capability_census_against_b2,
+    _validate_persisted_closure_root_evidence,
     build_dependency_evidence_artifact,
     compute_artifact_content_sha256,
     load_dependency_evidence_artifact,
@@ -27,6 +29,9 @@ class SelectedPairCapabilityDependencyEvidenceTests(unittest.TestCase):
         if not self.configured:
             self.skipTest("MANAFOLD_SOURCE_ARCHIVE is not configured")
         self.artifact = load_dependency_evidence_artifact(ROOT)
+        from validate_m2_5_selected_pair_cdi_census import load_census_artifacts
+
+        self.census = load_census_artifacts(ROOT)
         self.archive_root = Path(self.configured)
         self.evidence_path = "docs/cards/CAPABILITY_MODEL.md"
         self.evidence_sha256 = hashlib.sha256((ROOT / self.evidence_path).read_bytes()).hexdigest()
@@ -149,6 +154,19 @@ class SelectedPairCapabilityDependencyEvidenceTests(unittest.TestCase):
         mutated["content_sha256"] = compute_artifact_content_sha256(mutated)
         with self.assertRaisesRegex(ScopeDependencyEvidenceError, "selected-pair"):
             validate_dependency_evidence_artifact(mutated, ROOT, self.archive_root)
+
+    def test_capability_family_forgery_is_rejected_against_b2(self) -> None:
+        mutated = copy.deepcopy(self.census["capability"])
+        mutated["families"][0]["canonical_name"] = "forged-capability"
+        mutated["content_sha256"] = compute_artifact_content_sha256(mutated)
+        with self.assertRaisesRegex(ValueError, "independently B2-bound"):
+            _validate_capability_census_against_b2(ROOT, mutated)
+
+    def test_persisted_closure_root_evidence_forgery_is_rejected(self) -> None:
+        mutated = copy.deepcopy(self.census["recursive_capability_closure"])
+        mutated["root_classifications"][0]["evidence_refs"][0]["locator"] = "forged-root-locator"
+        with self.assertRaisesRegex(ValueError, "persisted closure root evidence"):
+            _validate_persisted_closure_root_evidence(ROOT, self.census["capability"], mutated)
 
 
 if __name__ == "__main__":

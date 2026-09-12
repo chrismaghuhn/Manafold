@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import csv
 import json
 import os
 from pathlib import Path
@@ -23,14 +24,18 @@ from validate_m2_5_selected_pair_cdi_census import (
     EXPECTED_SOURCE_PACKAGE_SHA256,
     ROOT,
     SCOPE_RELATIVE_PATH,
+    _canonical,
     _dependency_source_bindings,
+    _family_owner_roles,
     _json,
+    _lock_context,
     _preserved_artifacts,
     _root_dependency_evidence,
     _selected_capability_binding,
     _sha256,
     compute_artifact_content_sha256,
     load_census_artifacts,
+    validate_b2_projection_rows,
     validate_dependency_edges,
 )
 
@@ -156,7 +161,162 @@ def _source_bound_root_refs(
 ) -> list[dict[str, Any]]:
     capability_binding = _selected_capability_binding(root, capability)
     dependency_bindings = _dependency_source_bindings(root)
-    return _root_dependency_evidence(root, family_id, capability_binding, dependency_bindings)
+    expected = _root_dependency_evidence(root, family_id, capability_binding, dependency_bindings)
+    persisted = {item["family_id"]: item for item in closure["root_classifications"]}.get(family_id)
+    _require(persisted is not None, f"persisted closure root evidence is missing: {family_id}")
+    _require(
+        persisted["evidence_refs"] == expected,
+        f"persisted closure root evidence is not B2-bound: {family_id}",
+    )
+    return persisted["evidence_refs"]
+
+
+def _validate_capability_census_against_b2(root: Path, capability: dict[str, Any]) -> None:
+    catalog = {
+        family["family_id"]: family
+        for family in _json(root / B2_FILES["family_catalog"][0])["families"]
+    }
+    classifications = {
+        item["oracle_semantic_identity"]: item
+        for item in _json(root / B2_FILES["classifications"][0])["classifications"]
+    }
+    with (root / B2_FILES["projection"][0]).open(encoding="utf-8", newline="") as handle:
+        projection = list(csv.DictReader(handle))
+    selected_projection = [
+        row for row in projection if row["deck_id"] in {"Token Triumph", "Grave Danger"}
+    ]
+    validate_b2_projection_rows(selected_projection, classifications, capability)
+    _lock, _lock_sha, selected_osis, row_ids = _lock_context(root)
+    _require(
+        {record["oracle_semantic_identity"] for record in capability["records"]} == selected_osis,
+        "capability census Oracle identities are not exact",
+    )
+    seen_rows: set[str] = set()
+    assignment_counts: dict[str, dict[str, int]] = {}
+    seen_edges: set[tuple[str, str]] = set()
+    for record in capability["records"]:
+        osi = record["oracle_semantic_identity"]
+        classification = classifications.get(osi)
+        _require(classification is not None, f"capability census classification missing: {osi}")
+        _require(
+            record["classification_identity_sha256"]
+            == classification["classification_identity"]["digest_hex"],
+            f"capability census classification identity mismatch: {osi}",
+        )
+        _require(
+            record["review_status"] == classification["review_status"],
+            f"capability census review status mismatch: {osi}",
+        )
+        for row_id in record["deck_row_ids"]:
+            _require(
+                row_id in row_ids and row_id not in seen_rows,
+                f"capability census row binding mismatch: {row_id}",
+            )
+            seen_rows.add(row_id)
+        source_assignments = {
+            item["requirement_family_id"]: item
+            for item in classification["requirement_assignments"]
+        }
+        for assignment in record["capability_assignments"]:
+            family_id = assignment["family_id"]
+            source_assignment = source_assignments.get(family_id)
+            family = catalog.get(family_id)
+            _require(
+                source_assignment is not None, f"capability assignment is not B2-bound: {family_id}"
+            )
+            _require(family is not None, f"capability family is not in B2 catalog: {family_id}")
+            _require(
+                assignment["classification_identity_sha256"]
+                == classification["classification_identity"]["digest_hex"],
+                f"capability assignment classification digest mismatch: {family_id}",
+            )
+            _require(
+                assignment["review_status"] == classification["review_status"],
+                f"capability assignment review status mismatch: {family_id}",
+            )
+            _require(
+                assignment["evidence_basis"] == source_assignment["evidence_basis"],
+                f"capability assignment evidence basis mismatch: {family_id}",
+            )
+            _require(
+                assignment["assignment_evidence_sha256"] == _sha256(_canonical(source_assignment)),
+                f"capability assignment evidence digest mismatch: {family_id}",
+            )
+            _require(
+                assignment["source_evidence_digest"]
+                == classification["source_evidence_digest"]["digest_hex"],
+                f"capability assignment source digest mismatch: {family_id}",
+            )
+            _require(
+                assignment["family_boundary_sha256"]
+                == _sha256(family["precise_semantic_definition"].encode("utf-8")),
+                f"capability assignment family boundary mismatch: {family_id}",
+            )
+            key = (osi, family_id)
+            _require(key not in seen_edges, f"duplicate capability assignment: {key}")
+            seen_edges.add(key)
+            counts = assignment_counts.setdefault(
+                family_id,
+                {"edge_count": 0, "oracle_identity_count": 0, "deck_row_count": 0},
+            )
+            counts["edge_count"] += len(record["deck_row_ids"])
+            counts["oracle_identity_count"] += 1
+            counts["deck_row_count"] += len(record["deck_row_ids"])
+    _require(seen_rows == row_ids, "capability census row coverage mismatch")
+    for family_record in capability["families"]:
+        family_id = family_record["family_id"]
+        family = catalog.get(family_id)
+        _require(
+            family is not None, f"capability family metadata is not in B2 catalog: {family_id}"
+        )
+        counts = assignment_counts.get(
+            family_id, {"edge_count": 0, "oracle_identity_count": 0, "deck_row_count": 0}
+        )
+        expected = {
+            "family_id": family_id,
+            "canonical_name": family["canonical_name"],
+            "status": family["status"],
+            "terminal_assignable": family["terminal_assignable"],
+            "precise_semantic_definition_sha256": _sha256(
+                family["precise_semantic_definition"].encode("utf-8")
+            ),
+            "semantic_owner_roles": _family_owner_roles(family),
+            "semantic_owner_status": "SCOPE_ROLE_REQUIRED",
+            **counts,
+        }
+        _require(
+            all(family_record.get(key) == value for key, value in expected.items()),
+            f"capability family metadata is not independently B2-bound: {family_id}",
+        )
+    _require(
+        capability["record_counts"]["selected_deck_rows"] == 144,
+        "capability census row count drift",
+    )
+    _require(
+        capability["record_counts"]["selected_oracle_identities"] == 140,
+        "capability census OSI count drift",
+    )
+    _require(
+        capability["record_counts"]["capability_families"] == 125,
+        "capability census family count drift",
+    )
+    _require(
+        capability["record_counts"]["capability_assignment_edges"] == 628,
+        "capability census edge count drift",
+    )
+
+
+def _validate_persisted_closure_root_evidence(
+    root: Path, capability: dict[str, Any], closure: dict[str, Any]
+) -> None:
+    expected_by_family = {
+        family_id: _source_bound_root_refs(root, family_id, capability, closure)
+        for family_id in closure["direct_roots"]
+    }
+    _require(
+        set(expected_by_family) == set(closure["direct_roots"]),
+        "persisted closure root evidence set is incomplete",
+    )
 
 
 def _validate_selected_scope_inputs(
@@ -224,6 +384,8 @@ def _validate_selected_scope_inputs(
         closure["preserved_artifact_digests"] == _preserved_artifacts(root),
         "accepted closure preserved artifact bindings drift",
     )
+    _validate_capability_census_against_b2(root, capability)
+    _validate_persisted_closure_root_evidence(root, capability, closure)
 
 
 def build_dependency_evidence_artifact(
