@@ -1,6 +1,6 @@
 # Architecture Decision Records
 
-ADRs are immutable decision history. Superseded records remain and point to replacements. Numbered records currently run through ADR 0046; ADR 0000 is the template.
+ADRs are immutable decision history. Superseded records remain and point to replacements. Numbered records currently run through ADR 0047; ADR 0000 is the template.
 
 ADRs 0039 and 0040 are accepted M2.A architecture decisions. Their acceptance freezes the implementation direction for M2.B, but does not make any executable M2 behavior gate `PASS`; those gates remain `NOT_RUN` until their declared evidence executes.
 
@@ -24,6 +24,12 @@ the immutable legacy `b2_closure` role, defines additive `b2_closure_v2`
 current-root adoption, and freezes the historical/current verification split.
 It does not authorize closure-v2 implementation, current-root adoption,
 production authority records, C changes, or M3.
+
+ADR 0047 accepts the M2.5 scope-restoration and M3-entry boundary. It preserves
+the strict C rule `PASS => unresolved = 0`, freezes the exact two-deck scope and
+explicit unresolved-obligation ledger as the M2.5 boundary, and assigns full
+candidate Authority and certification to later work. It does not declare M2.5
+final, change C, or authorize M3 by itself.
 
 ## Reviewed candidates awaiting acceptance
 
