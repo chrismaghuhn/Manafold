@@ -17,7 +17,7 @@ LOCK = ROOT / "sources/m2_5/scope/exact_two_deck_scope_lock.v1.json"
 REGISTRY = ROOT / "cards/capabilities/registry.json"
 sys.path.insert(0, str(ROOT / "scripts"))
 
-from maintainer_common import find_dependency_cycles, load_json, validate_capability_registry
+from maintainer_common import find_dependency_cycles, validate_capability_registry
 
 
 def _canonical_json(value: object) -> str:
@@ -79,9 +79,7 @@ def _validate_selected_pair_mapping(
 ) -> tuple[set[str], set[str]]:
     if set(mapping) != {"mappings", "schema", "source"}:
         raise AssertionError("migration map contains registry or dependency semantics")
-    if mapping.get("schema") != (
-        "manafold.m2.5.selected-pair-durable-capability-mapping.v1"
-    ):
+    if mapping.get("schema") != ("manafold.m2.5.selected-pair-durable-capability-mapping.v1"):
         raise AssertionError("unexpected migration map schema")
 
     source = mapping.get("source")
@@ -105,7 +103,9 @@ def _validate_selected_pair_mapping(
         raise AssertionError("selected deck pair is not locked")
     deck_names = [deck.get("deck_name") for deck in lock.get("decks", [])]
     if deck_names != ["Token Triumph", "Grave Danger"]:
-        raise AssertionError("mapping validation requires exactly the locked Token Triumph/Grave Danger pair")
+        raise AssertionError(
+            "mapping validation requires exactly the locked Token Triumph/Grave Danger pair"
+        )
     selected_pair = census.get("selected_pair")
     if not isinstance(selected_pair, dict) or selected_pair.get("deck_ids") != [
         "m2-5/token-triumph",
@@ -114,7 +114,10 @@ def _validate_selected_pair_mapping(
         raise AssertionError("selected census is not bound to the locked pair")
 
     selected_roots = _selected_roots(census)
-    if len(selected_roots) != 125 or census.get("record_counts", {}).get("capability_families") != 125:
+    if (
+        len(selected_roots) != 125
+        or census.get("record_counts", {}).get("capability_families") != 125
+    ):
         raise AssertionError("selected B2 root count is not exactly 125")
     if census.get("record_counts", {}).get("selected_oracle_identities") != 140:
         raise AssertionError("selected Oracle identity count drifted from the locked census")
@@ -133,11 +136,7 @@ def _validate_selected_pair_mapping(
     registry_by_key = {entry.get("key"): entry for entry in registry_entries}
     if len(registry_by_key) != len(registry_entries):
         raise AssertionError("capability registry contains duplicate keys")
-    mapped_keys = {
-        durable_key
-        for row in by_family.values()
-        for durable_key in row["durable_keys"]
-    }
+    mapped_keys = {durable_key for row in by_family.values() for durable_key in row["durable_keys"]}
     for durable_key in sorted(mapped_keys):
         entry = registry_by_key.get(durable_key)
         if entry is None:
@@ -216,7 +215,10 @@ class SelectedPairDurableCapabilityTests(unittest.TestCase):
         mapping, census, lock, registry = self._artifacts()
         _, mapped_keys = _validate_selected_pair_mapping(mapping, census, lock, registry)
         entries = registry["entries"]
-        self.assertEqual([entry["key"] for entry in entries], sorted(entry["key"] for entry in entries))
+        self.assertEqual(
+            [entry["key"] for entry in entries],
+            sorted(entry["key"] for entry in entries),
+        )
         self.assertEqual(REGISTRY.read_text(encoding="utf-8"), _canonical_json(registry))
         for key in sorted(mapped_keys):
             entry = next(entry for entry in entries if entry["key"] == key)
@@ -233,9 +235,7 @@ class SelectedPairDurableCapabilityTests(unittest.TestCase):
         mapping, census, lock, registry = self._artifacts()
         _, mapped_keys = _validate_selected_pair_mapping(mapping, census, lock, registry)
         mapping_by_family = _mapping_by_family(mapping)
-        outlier_osi = {
-            item["oracle_semantic_identity"] for item in census["high_risk_outliers"]
-        }
+        outlier_osi = {item["oracle_semantic_identity"] for item in census["high_risk_outliers"]}
         high_risk_families: dict[str, set[str]] = {}
         for record in census["records"]:
             if record["oracle_semantic_identity"] in outlier_osi:
@@ -245,8 +245,7 @@ class SelectedPairDurableCapabilityTests(unittest.TestCase):
                     if item["oracle_semantic_identity"] == record["oracle_semantic_identity"]
                 )
                 details = {
-                    f"{card_name} [{outlier['risk_tags']}]"
-                    for card_name in record["card_names"]
+                    f"{card_name} [{outlier['risk_tags']}]" for card_name in record["card_names"]
                 }
                 for assignment in record["capability_assignments"]:
                     high_risk_families.setdefault(assignment["family_id"], set()).update(details)
@@ -255,7 +254,10 @@ class SelectedPairDurableCapabilityTests(unittest.TestCase):
         for family_id in sorted(high_risk_families):
             for durable_key in mapping_by_family[family_id]["durable_keys"]:
                 self.assertIn(durable_key, mapped_keys)
-                self.assertIn(registry_by_key[durable_key]["information_risk"], {"high", "critical"})
+                self.assertIn(
+                    registry_by_key[durable_key]["information_risk"],
+                    {"high", "critical"},
+                )
                 text = (ROOT / registry_by_key[durable_key]["spec_path"]).read_text(
                     encoding="utf-8"
                 )
