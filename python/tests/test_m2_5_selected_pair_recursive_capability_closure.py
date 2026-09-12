@@ -238,7 +238,6 @@ class SelectedPairRecursiveCapabilityClosureTests(unittest.TestCase):
         roots = closure["direct_roots"]
         for record in closure["root_classifications"]:
             record["state"] = "TERMINAL_LEAF"
-            record["evidence_refs"][0]["evidence_role"] = "ACCEPTED_TERMINAL_LEAF"
         closure["status"] = "PASS"
         closure["accepted_terminal_leaf_evidence"] = [
             {
@@ -262,9 +261,6 @@ class SelectedPairRecursiveCapabilityClosureTests(unittest.TestCase):
     def test_accepted_dependency_state_requires_an_edge(self) -> None:
         mutated = copy.deepcopy(self.closure)
         mutated["root_classifications"][0]["state"] = "HAS_ACCEPTED_DEPENDENCIES"
-        mutated["root_classifications"][0]["evidence_refs"][0]["evidence_role"] = (
-            "ACCEPTED_DEPENDENCY"
-        )
         mutated["records"] = mutated["root_classifications"]
         mutated["content_sha256"] = compute_artifact_content_sha256(mutated)
         with self.assertRaisesRegex(ScopeCensusValidationError, "has no edges"):
@@ -274,9 +270,6 @@ class SelectedPairRecursiveCapabilityClosureTests(unittest.TestCase):
         mutated = copy.deepcopy(self.closure)
         first_id = mutated["direct_roots"][0]
         mutated["root_classifications"][0]["state"] = "TERMINAL_LEAF"
-        mutated["root_classifications"][0]["evidence_refs"][0]["evidence_role"] = (
-            "ACCEPTED_TERMINAL_LEAF"
-        )
         mutated["terminal_leaves"] = [first_id]
         mutated["terminal_leaves"][0] = first_id
         mutated["records"] = mutated["root_classifications"]
