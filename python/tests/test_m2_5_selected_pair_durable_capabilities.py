@@ -190,6 +190,36 @@ class SelectedPairDurableCapabilityTests(unittest.TestCase):
             )
         )
 
+    def test_unrelated_registry_proposal_is_outside_selected_pair_lifecycle_gate(self) -> None:
+        mapping, census, lock, registry = self._artifacts()
+        unrelated = copy.deepcopy(registry)
+        unrelated["entries"].append(
+            {
+                "authority_refs": [],
+                "benchmark_scenarios": [],
+                "category": "mechanic",
+                "conformance_cases": [],
+                "dependencies": [],
+                "implementation_paths": [],
+                "information_risk": "unreviewed",
+                "key": "mechanic/future-proposal",
+                "lifecycle": "proposed",
+                "owners": ["future-maintainer"],
+                "spec_path": "docs/rules/capabilities/mechanic/example-draw.md",
+                "summary": "Unrelated future proposal outside this selected-pair gate.",
+                "version": "0.1.0",
+            }
+        )
+        _, mapped_keys = _validate_selected_pair_mapping(mapping, census, lock, unrelated)
+        self.assertEqual(
+            sum(
+                entry["lifecycle"] == "proposed"
+                for entry in unrelated["entries"]
+                if entry["key"] in mapped_keys
+            ),
+            0,
+        )
+
     def test_selected_pair_mapping_rejects_third_deck_contamination(self) -> None:
         mapping, census, lock, registry = self._artifacts()
         contaminated_lock = copy.deepcopy(lock)
