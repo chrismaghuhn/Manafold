@@ -168,6 +168,21 @@ class SelectedPairCapabilityDependencyEvidenceTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "persisted closure root evidence"):
             _validate_persisted_closure_root_evidence(ROOT, self.census["capability"], mutated)
 
+    def test_owner_map_forgery_is_rejected(self) -> None:
+        mutated = copy.deepcopy(self.artifact)
+        family_id = mutated["direct_roots"][0]
+        mutated["semantic_owner_map"][family_id] = ["FORGED_OWNER"]
+        mutated["content_sha256"] = compute_artifact_content_sha256(mutated)
+        with self.assertRaisesRegex(ScopeDependencyEvidenceError, "owner map"):
+            validate_dependency_evidence_artifact(mutated, ROOT, self.archive_root)
+
+    def test_unresolved_future_owner_forgery_is_rejected(self) -> None:
+        mutated = copy.deepcopy(self.artifact)
+        mutated["capabilities"][0]["unresolved"]["future_owner"] = "FORGED_OWNER"
+        mutated["content_sha256"] = compute_artifact_content_sha256(mutated)
+        with self.assertRaisesRegex(ScopeDependencyEvidenceError, "future owner"):
+            validate_dependency_evidence_artifact(mutated, ROOT, self.archive_root)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -513,6 +513,10 @@ def validate_dependency_evidence_artifact(
         "capability evidence root records are missing, extra, or noncanonical",
     )
     owners = _owner_map(capability)
+    _require(
+        artifact["semantic_owner_map"] == owners,
+        "semantic owner map is not independently source-bound",
+    )
     accepted_dependency_evidence_available = False
     _require(
         not artifact["dependency_edges"],
@@ -552,6 +556,10 @@ def validate_dependency_evidence_artifact(
                 == "NO_ACCEPTED_DEPENDENCY_OR_TERMINAL_EVIDENCE",
                 f"unresolved reason mismatch: {family_id}",
             )
+            _require(
+                record["unresolved"]["future_owner"] == owners[family_id][0],
+                f"unresolved future owner is not source-bound: {family_id}",
+            )
         elif record["disposition"] == "TERMINAL_LEAF_EVIDENCED":
             _require(
                 accepted_dependency_evidence_available,
@@ -579,7 +587,7 @@ def validate_dependency_evidence_artifact(
             "obligation_id": f"dependency-evidence:{record['capability_family_id']}",
             "reason_code": record["unresolved"]["reason_code"],
             "subject": record["capability_family_id"],
-            "future_owner": record["unresolved"]["future_owner"],
+            "future_owner": owners[record["capability_family_id"]][0],
             "evidence_refs": record["unresolved"]["evidence_refs"],
         }
         for record in records
