@@ -48,13 +48,6 @@ DEPENDENCY_KINDS = frozenset(
         "GENERATED_OBJECT_PREREQUISITE",
     }
 )
-ROOT_STATES = frozenset(
-    {
-        "TERMINAL_LEAF",
-        "HAS_ACCEPTED_DEPENDENCIES",
-        "BLOCKED_MISSING_DEPENDENCY_EVIDENCE",
-    }
-)
 
 ARTIFACTS = {
     "capability": "selected_pair_capability_census.v1.json",
@@ -382,7 +375,13 @@ def _require(condition: bool, message: str) -> None:
         raise ScopeCensusValidationError(message)
 
 
-def _validate_dependency_evidence_refs(evidence_refs: object, root: Path) -> list[dict[str, Any]]:
+def _validate_dependency_evidence_refs(
+    evidence_refs: object,
+    root: Path,
+    *,
+    expected_role: str | None = None,
+    locator_prefix: str | None = None,
+) -> list[dict[str, Any]]:
     _require(
         isinstance(evidence_refs, list) and evidence_refs,
         "dependency evidence is missing",
@@ -412,6 +411,16 @@ def _validate_dependency_evidence_refs(evidence_refs: object, root: Path) -> lis
             isinstance(locator, str) and locator,
             "dependency evidence locator is missing",
         )
+        if expected_role is not None:
+            _require(
+                reference.get("evidence_role") == expected_role,
+                f"dependency evidence role is not {expected_role}",
+            )
+        if locator_prefix is not None:
+            _require(
+                locator.startswith(locator_prefix),
+                f"dependency evidence locator does not start with {locator_prefix}",
+            )
         canonical.append(dict(reference))
     return sorted(canonical, key=lambda item: _canonical(item))
 
@@ -459,7 +468,12 @@ def validate_dependency_edges(
             "parent_family_id": parent,
             "child_family_id": child,
             "dependency_kind": kind,
-            "evidence_refs": _validate_dependency_evidence_refs(edge["evidence_refs"], root),
+            "evidence_refs": _validate_dependency_evidence_refs(
+                edge["evidence_refs"],
+                root,
+                expected_role="ACCEPTED_DEPENDENCY_EDGE",
+                locator_prefix="dependency-edge:",
+            ),
             "rationale": edge["rationale"],
         }
         _require(
@@ -659,6 +673,49 @@ def _semantic_owner_map(capability: dict[str, Any]) -> dict[str, list[str]]:
         "selected capability family is missing semantic owner",
     )
     return dict(sorted(owners.items()))
+
+
+def _closure_family_records(
+    capability: dict[str, Any],
+    catalog: dict[str, dict[str, Any]],
+    family_ids: list[str],
+) -> list[dict[str, Any]]:
+    direct = {family["family_id"]: family for family in capability["families"]}
+    records = []
+    for family_id in sorted(family_ids):
+        if family_id in direct:
+            records.append(copy.deepcopy(direct[family_id]))
+            continue
+        family = catalog.get(family_id)
+        _require(family is not None, f"resolved family is absent from B2 catalog: {family_id}")
+        records.append(
+            {
+                "family_id": family_id,
+                "canonical_name": family["canonical_name"],
+                "status": family["status"],
+                "terminal_assignable": family["terminal_assignable"],
+                "precise_semantic_definition_sha256": _sha256(
+                    family["precise_semantic_definition"].encode("utf-8")
+                ),
+                "semantic_owner_roles": _family_owner_roles(family),
+                "semantic_owner_status": "SCOPE_ROLE_REQUIRED",
+                "edge_count": 0,
+                "oracle_identity_count": 0,
+                "deck_row_count": 0,
+            }
+        )
+    return records
+
+
+def _closure_owner_map(
+    capability: dict[str, Any],
+    catalog: dict[str, dict[str, Any]],
+    family_ids: list[str],
+) -> dict[str, list[str]]:
+    return {
+        record["family_id"]: sorted(record["semantic_owner_roles"])
+        for record in _closure_family_records(capability, catalog, family_ids)
+    }
 
 
 def _root_dependency_evidence(
@@ -1281,9 +1338,10 @@ def _build_closure(context: dict[str, Any], capability: dict[str, Any]) -> dict[
         "recursive_capability_closure",
     )
     roots = sorted(family["family_id"] for family in capability["families"])
+    family_records = _closure_family_records(capability, context["catalog"], roots)
     capability_binding = _selected_capability_binding(context["root"], capability)
     dependency_bindings = _dependency_source_bindings(context["root"])
-    owner_map = _semantic_owner_map(capability)
+    owner_map = _closure_owner_map(capability, context["catalog"], roots)
     root_classifications = []
     for family_id in roots:
         evidence_refs = _root_dependency_evidence(
@@ -1318,6 +1376,7 @@ def _build_closure(context: dict[str, Any], capability: dict[str, Any]) -> dict[
                 "parent_family_id -> child_family_id means supporting the parent requires the child"
             ),
             "dependency_evidence_bindings": dependency_bindings,
+            "accepted_terminal_leaf_evidence": [],
             "direct_roots": roots,
             "resolved_families": roots,
             "transitive_only_families": [],
@@ -1328,7 +1387,8 @@ def _build_closure(context: dict[str, Any], capability: dict[str, Any]) -> dict[
             "cycles": [],
             "root_classifications": root_classifications,
             "semantic_owner_map": owner_map,
-            "families": capability["families"],
+            "families": family_records,
+            "records": root_classifications,
             "unresolved_scope_obligations": unresolved,
         }
     )
@@ -1583,6 +1643,11 @@ def validate_recursive_capability_closure(
         "capability census content digest mismatch",
     )
     family_ids = {family["family_id"] for family in capability["families"]}
+    catalog = {
+        family["family_id"]: family
+        for family in _json(root / B2_FILES["family_catalog"][0])["families"]
+    }
+    all_family_ids = set(catalog)
     roots = sorted(family_ids)
     _require(artifact["direct_roots"] == roots, "recursive closure roots are not exact")
     _require(
@@ -1618,14 +1683,26 @@ def validate_recursive_capability_closure(
         artifact["dependency_evidence_bindings"] == _dependency_source_bindings(root),
         "recursive closure dependency evidence bindings drift",
     )
-    owner_map = _semantic_owner_map(capability)
+    edges = validate_dependency_edges(artifact["dependency_edges"], all_family_ids, root)
+    _require(
+        artifact["dependency_edges"] == edges,
+        "recursive closure dependency edge ordering or evidence drift",
+    )
+    closure = compute_dependency_closure(roots, edges)
+    _require(
+        set(closure["resolved_families"]).issubset(all_family_ids),
+        "recursive closure resolved an unknown B2 family",
+    )
+    owner_map = _closure_owner_map(capability, catalog, closure["resolved_families"])
     _require(
         artifact["semantic_owner_map"] == owner_map,
         "recursive closure semantic owner map mismatch",
     )
-
-    edges = validate_dependency_edges(artifact["dependency_edges"], family_ids, root)
-    closure = compute_dependency_closure(roots, edges)
+    _require(
+        artifact["families"]
+        == _closure_family_records(capability, catalog, closure["resolved_families"]),
+        "recursive closure family records are not source-bound",
+    )
     _require(
         artifact["resolved_families"] == closure["resolved_families"],
         "recursive closure resolved family set mismatch",
@@ -1645,9 +1722,14 @@ def validate_recursive_capability_closure(
         and [record.get("family_id") for record in classifications] == roots,
         "recursive closure root classifications are not exact",
     )
+    _require(
+        artifact["records"] == classifications,
+        "recursive closure records are not reconciled with root classifications",
+    )
     outgoing = defaultdict(list)
     for edge in edges:
         outgoing[edge["parent_family_id"]].append(edge)
+    declared_blocked = set(artifact["blocked_families"])
     blocked: set[str] = set()
     terminal: set[str] = set()
     dependency_roots: set[str] = set()
@@ -1665,13 +1747,13 @@ def validate_recursive_capability_closure(
             f"recursive closure evidence ordering drift: {family_id}",
         )
         if state == "TERMINAL_LEAF":
-            _require(evidence, f"terminal evidence is missing: {family_id}")
             _require(
-                any(
-                    reference.get("evidence_role") == "ACCEPTED_TERMINAL_LEAF"
-                    for reference in evidence
-                ),
-                f"terminal evidence is not accepted: {family_id}",
+                family_id not in declared_blocked,
+                "family is both terminal and blocked",
+            )
+            _require(
+                artifact["accepted_terminal_leaf_evidence"],
+                "accepted terminal-leaf evidence contract is unavailable",
             )
             _require(
                 not outgoing.get(family_id),
@@ -1697,7 +1779,6 @@ def validate_recursive_capability_closure(
         else:
             raise ScopeCensusValidationError(f"unknown recursive closure root state: {state}")
 
-    declared_blocked = set(artifact["blocked_families"])
     _require(
         not (terminal & declared_blocked),
         "family is both terminal and blocked",
@@ -1713,10 +1794,20 @@ def validate_recursive_capability_closure(
         artifact["blocked_families"] == sorted(blocked),
         "recursive closure blocked family set mismatch",
     )
-    _require(
-        artifact["missing_capabilities"] == [],
-        "recursive closure has unsupported missing capabilities",
-    )
+    missing_obligation_ids = []
+    for missing in artifact["missing_capabilities"]:
+        _require(
+            missing["parent_family_id"] in all_family_ids,
+            f"missing capability has unknown parent: {missing['parent_family_id']}",
+        )
+        _require(
+            missing["future_owner"] in owner_map[missing["parent_family_id"]],
+            f"missing capability future owner is not exact: {missing['required_key']}",
+        )
+        _validate_dependency_evidence_refs(missing["evidence_refs"], root)
+        missing_obligation_ids.append(
+            f"missing-capability:{missing['required_key']}:{missing['parent_family_id']}"
+        )
     if artifact["status"] == "PASS":
         _require(not blocked, "recursive closure PASS has blocked roots")
         _require(
@@ -1727,7 +1818,9 @@ def validate_recursive_capability_closure(
             not artifact["unresolved_scope_obligations"],
             "recursive closure PASS has unresolved obligations",
         )
-    expected_unresolved = [f"recursive-dependency:{family_id}" for family_id in sorted(blocked)]
+    expected_unresolved = [
+        f"recursive-dependency:{family_id}" for family_id in sorted(blocked)
+    ] + sorted(missing_obligation_ids)
     _require(
         [item["obligation_id"] for item in artifact["unresolved_scope_obligations"]]
         == expected_unresolved,

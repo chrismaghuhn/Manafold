@@ -24,8 +24,12 @@
       "items": { "$ref": "#/$defs/evidenceRef" },
       "type": "array"
     },
-    "families": { "items": { "type": "object" }, "type": "array" },
-    "records": { "items": { "type": "object" }, "type": "array" },
+    "accepted_terminal_leaf_evidence": {
+      "items": { "$ref": "#/$defs/evidenceRef" },
+      "type": "array"
+    },
+    "families": { "items": { "$ref": "#/$defs/familyRecord" }, "type": "array" },
+    "records": { "items": { "$ref": "#/$defs/rootClassification" }, "type": "array" },
     "direct_roots": {
       "items": { "type": "string" },
       "minItems": 1,
@@ -105,6 +109,7 @@
     "superseded_artifact",
     "dependency_direction",
     "dependency_evidence_bindings",
+    "accepted_terminal_leaf_evidence",
     "families",
     "records",
     "direct_roots",
@@ -222,6 +227,38 @@
         "content_sha256": { "$ref": "#/$defs/digest" }
       },
       "required": ["path", "raw_sha256", "locator"],
+      "type": "object"
+    },
+    "familyRecord": {
+      "additionalProperties": false,
+      "properties": {
+        "family_id": { "type": "string" },
+        "canonical_name": { "type": "string" },
+        "status": { "type": "string" },
+        "terminal_assignable": { "type": "boolean" },
+        "precise_semantic_definition_sha256": { "$ref": "#/$defs/digest" },
+        "semantic_owner_roles": {
+          "items": { "minLength": 1, "type": "string" },
+          "minItems": 1,
+          "type": "array"
+        },
+        "semantic_owner_status": { "type": "string" },
+        "edge_count": { "minimum": 0, "type": "integer" },
+        "oracle_identity_count": { "minimum": 0, "type": "integer" },
+        "deck_row_count": { "minimum": 0, "type": "integer" }
+      },
+      "required": [
+        "family_id",
+        "canonical_name",
+        "status",
+        "terminal_assignable",
+        "precise_semantic_definition_sha256",
+        "semantic_owner_roles",
+        "semantic_owner_status",
+        "edge_count",
+        "oracle_identity_count",
+        "deck_row_count"
+      ],
       "type": "object"
     },
     "dependencyEdge": {

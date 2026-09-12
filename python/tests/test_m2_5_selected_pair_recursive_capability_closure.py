@@ -42,7 +42,8 @@ class SelectedPairRecursiveCapabilityClosureTests(unittest.TestCase):
                 {
                     "path": self.evidence_path,
                     "raw_sha256": self.evidence_sha256,
-                    "locator": "Dependency closure / Closure sources",
+                    "locator": f"dependency-edge:{parent}->{child}",
+                    "evidence_role": "ACCEPTED_DEPENDENCY_EDGE",
                 }
             ],
             "rationale": "The accepted evidence explicitly requires the child capability.",
@@ -145,6 +146,11 @@ class SelectedPairRecursiveCapabilityClosureTests(unittest.TestCase):
         with self.assertRaisesRegex(ScopeCensusValidationError, "evidence"):
             validate_dependency_edges([mutated], {"cap.parent", "cap.child"}, ROOT)
 
+        wrong_role = self._edge()
+        wrong_role["evidence_refs"][0]["evidence_role"] = "FORGED_ROLE"
+        with self.assertRaisesRegex(ScopeCensusValidationError, "evidence role"):
+            validate_dependency_edges([wrong_role], {"cap.parent", "cap.child"}, ROOT)
+
     def test_deleting_unresolved_obligations_does_not_promote_pass(self) -> None:
         mutated = copy.deepcopy(self.artifacts)
         closure = mutated["recursive_capability_closure"]
@@ -159,9 +165,30 @@ class SelectedPairRecursiveCapabilityClosureTests(unittest.TestCase):
         mutated = copy.deepcopy(self.closure)
         first = mutated["root_classifications"][0]
         first["state"] = "TERMINAL_LEAF"
+        mutated["records"] = mutated["root_classifications"]
+        mutated["blocked_families"] = mutated["blocked_families"][1:]
         mutated["content_sha256"] = compute_artifact_content_sha256(mutated)
-        with self.assertRaisesRegex(ScopeCensusValidationError, "terminal evidence"):
+        with self.assertRaisesRegex(ScopeCensusValidationError, "terminal-leaf evidence"):
             validate_recursive_capability_closure(mutated, self.capability, ROOT)
+
+    def test_forged_terminal_role_cannot_promote_pass(self) -> None:
+        mutated = copy.deepcopy(self.artifacts)
+        closure = mutated["recursive_capability_closure"]
+        roots = closure["direct_roots"]
+        for record in closure["root_classifications"]:
+            record["state"] = "TERMINAL_LEAF"
+            record["evidence_refs"][0]["evidence_role"] = "ACCEPTED_TERMINAL_LEAF"
+        closure["status"] = "PASS"
+        closure["terminal_leaves"] = roots
+        closure["blocked_families"] = []
+        closure["unresolved_scope_obligations"] = []
+        closure["record_counts"].update(
+            {"terminal_leaves": 125, "blocked_families": 0, "unresolved_dependency_obligations": 0}
+        )
+        closure["records"] = closure["root_classifications"]
+        closure["content_sha256"] = compute_artifact_content_sha256(closure)
+        with self.assertRaisesRegex(ScopeCensusValidationError, "terminal-leaf evidence contract"):
+            validate_recursive_capability_closure(closure, mutated["capability"], ROOT)
 
     def test_accepted_dependency_state_requires_an_edge(self) -> None:
         mutated = copy.deepcopy(self.closure)
@@ -169,6 +196,7 @@ class SelectedPairRecursiveCapabilityClosureTests(unittest.TestCase):
         mutated["root_classifications"][0]["evidence_refs"][0]["evidence_role"] = (
             "ACCEPTED_DEPENDENCY"
         )
+        mutated["records"] = mutated["root_classifications"]
         mutated["content_sha256"] = compute_artifact_content_sha256(mutated)
         with self.assertRaisesRegex(ScopeCensusValidationError, "has no edges"):
             validate_recursive_capability_closure(mutated, self.capability, ROOT)
@@ -182,6 +210,7 @@ class SelectedPairRecursiveCapabilityClosureTests(unittest.TestCase):
         )
         mutated["terminal_leaves"] = [first_id]
         mutated["terminal_leaves"][0] = first_id
+        mutated["records"] = mutated["root_classifications"]
         mutated["content_sha256"] = compute_artifact_content_sha256(mutated)
         with self.assertRaisesRegex(ScopeCensusValidationError, "both terminal and blocked"):
             validate_recursive_capability_closure(mutated, self.capability, ROOT)
@@ -189,6 +218,7 @@ class SelectedPairRecursiveCapabilityClosureTests(unittest.TestCase):
     def test_missing_semantic_owner_is_rejected(self) -> None:
         mutated = copy.deepcopy(self.closure)
         mutated["root_classifications"][0]["semantic_owner_roles"] = ["FORGED_OWNER"]
+        mutated["records"] = mutated["root_classifications"]
         mutated["content_sha256"] = compute_artifact_content_sha256(mutated)
         with self.assertRaisesRegex(ScopeCensusValidationError, "semantic owner"):
             validate_recursive_capability_closure(mutated, self.capability, ROOT)
@@ -199,6 +229,19 @@ class SelectedPairRecursiveCapabilityClosureTests(unittest.TestCase):
         mutated["content_sha256"] = compute_artifact_content_sha256(mutated)
         with self.assertRaisesRegex(ScopeCensusValidationError, "capability census"):
             validate_recursive_capability_closure(mutated, self.capability, ROOT)
+
+    def test_family_and_record_payload_mutations_are_rejected(self) -> None:
+        family_mutation = copy.deepcopy(self.closure)
+        family_mutation["families"][0]["canonical_name"] = "forged-family"
+        family_mutation["content_sha256"] = compute_artifact_content_sha256(family_mutation)
+        with self.assertRaisesRegex(ScopeCensusValidationError, "family records"):
+            validate_recursive_capability_closure(family_mutation, self.capability, ROOT)
+
+        record_mutation = copy.deepcopy(self.closure)
+        record_mutation["records"][0]["state"] = "TERMINAL_LEAF"
+        record_mutation["content_sha256"] = compute_artifact_content_sha256(record_mutation)
+        with self.assertRaisesRegex(ScopeCensusValidationError, "root classifications"):
+            validate_recursive_capability_closure(record_mutation, self.capability, ROOT)
 
 
 if __name__ == "__main__":
