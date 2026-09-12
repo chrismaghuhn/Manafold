@@ -128,6 +128,30 @@
     "source_package_sha256": "99b33945a3e0c7b2982734e65f770715029ce6acd500104bde48e8466eed1a90"
   },
   "historical_v1_verification": "PASS",
+  "negative_matrix_execution": {
+    "executed_case_ids": [
+      "wrong_v1_role",
+      "wrong_v2_role",
+      "wrong_v1_path",
+      "wrong_v2_path",
+      "wrong_v1_schema",
+      "wrong_v2_schema",
+      "wrong_v1_digest",
+      "wrong_v2_digest",
+      "wrong_source_package",
+      "tampered_semantic_artifact_bytes",
+      "wrong_snapshot_constant",
+      "legacy_alias",
+      "unknown_version",
+      "v2_failure_no_v1_fallback",
+      "historical_failure_no_v2_substitution",
+      "evidence_claims_current",
+      "evidence_claims_current_root_created",
+      "unimplemented_consumer_ready",
+      "unknown_extra_field"
+    ],
+    "status": "PASS"
+  },
   "no_fallback": "PASS",
   "schema": "manafold.m2.5.b2.closure-v2-adoption-readiness.v1",
   "semantic_artifact_bindings": [
