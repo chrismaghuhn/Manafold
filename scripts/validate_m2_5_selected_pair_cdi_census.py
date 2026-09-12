@@ -1683,6 +1683,10 @@ def validate_recursive_capability_closure(
         artifact["dependency_evidence_bindings"] == _dependency_source_bindings(root),
         "recursive closure dependency evidence bindings drift",
     )
+    _require(
+        not artifact["accepted_terminal_leaf_evidence"],
+        "accepted terminal-leaf evidence contract is unavailable",
+    )
     edges = validate_dependency_edges(artifact["dependency_edges"], all_family_ids, root)
     _require(
         artifact["dependency_edges"] == edges,
@@ -1751,9 +1755,8 @@ def validate_recursive_capability_closure(
                 family_id not in declared_blocked,
                 "family is both terminal and blocked",
             )
-            _require(
-                artifact["accepted_terminal_leaf_evidence"],
-                "accepted terminal-leaf evidence contract is unavailable",
+            raise ScopeCensusValidationError(
+                "accepted terminal-leaf evidence contract is unavailable"
             )
             _require(
                 not outgoing.get(family_id),

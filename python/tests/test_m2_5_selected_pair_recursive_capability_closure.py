@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import copy
 import hashlib
+import json
 import sys
 import unittest
 from pathlib import Path
@@ -122,6 +123,61 @@ class SelectedPairRecursiveCapabilityClosureTests(unittest.TestCase):
         self.assertEqual(result["resolved_families"], ["cap.child", "cap.parent"])
         self.assertEqual(result["transitive_only_families"], ["cap.child"])
 
+    def test_b2_catalog_space_allows_transitive_only_family(self) -> None:
+        catalog = {
+            item["family_id"]
+            for item in json.loads(
+                (ROOT / "sources/m2_5/closures/B2/requirement_family_catalog.v1.json").read_text(
+                    encoding="utf-8"
+                )
+            )["families"]
+        }
+        direct = next(iter(self.family_ids))
+        transitive_only = next(item for item in sorted(catalog) if item not in self.family_ids)
+        edge = self._edge(direct, transitive_only)
+        canonical = validate_dependency_edges([edge], catalog, ROOT)
+        result = compute_dependency_closure([direct], canonical)
+        self.assertIn(transitive_only, result["transitive_only_families"])
+
+    def test_full_artifact_rejects_noncanonical_stored_edge_order(self) -> None:
+        mutated = copy.deepcopy(self.closure)
+        roots = mutated["direct_roots"]
+        parent, child_a, child_b = roots[:3]
+
+        def edge(child: str) -> dict[str, object]:
+            return {
+                "parent_family_id": parent,
+                "child_family_id": child,
+                "dependency_kind": "SEMANTIC_PREREQUISITE",
+                "evidence_refs": [
+                    {
+                        "path": self.evidence_path,
+                        "raw_sha256": self.evidence_sha256,
+                        "locator": f"dependency-edge:{parent}->{child}",
+                        "evidence_role": "ACCEPTED_DEPENDENCY_EDGE",
+                    }
+                ],
+                "rationale": "Synthetic validator fixture.",
+            }
+
+        mutated["dependency_edges"] = [edge(child_b), edge(child_a)]
+        mutated["root_classifications"][0]["state"] = "HAS_ACCEPTED_DEPENDENCIES"
+        mutated["records"] = mutated["root_classifications"]
+        mutated["blocked_families"] = roots[1:]
+        mutated["unresolved_scope_obligations"] = [
+            item for item in mutated["unresolved_scope_obligations"] if item["subject"] != parent
+        ]
+        mutated["record_counts"].update(
+            {
+                "explicit_dependency_edges": 2,
+                "blocked_families": len(roots) - 1,
+                "unresolved_dependency_obligations": len(roots) - 1,
+            }
+        )
+        mutated["content_sha256"] = compute_artifact_content_sha256(mutated)
+        with self.assertRaisesRegex(ScopeCensusValidationError, "edge ordering"):
+            validate_recursive_capability_closure(mutated, self.capability, ROOT)
+
     def test_canonical_order_is_independent_of_input_order(self) -> None:
         edges = [
             self._edge("cap.a", "cap.c"),
@@ -151,6 +207,11 @@ class SelectedPairRecursiveCapabilityClosureTests(unittest.TestCase):
         with self.assertRaisesRegex(ScopeCensusValidationError, "evidence role"):
             validate_dependency_edges([wrong_role], {"cap.parent", "cap.child"}, ROOT)
 
+        wrong_locator = self._edge()
+        wrong_locator["evidence_refs"][0]["locator"] = "wrong-locator"
+        with self.assertRaisesRegex(ScopeCensusValidationError, "locator"):
+            validate_dependency_edges([wrong_locator], {"cap.parent", "cap.child"}, ROOT)
+
     def test_deleting_unresolved_obligations_does_not_promote_pass(self) -> None:
         mutated = copy.deepcopy(self.artifacts)
         closure = mutated["recursive_capability_closure"]
@@ -179,6 +240,14 @@ class SelectedPairRecursiveCapabilityClosureTests(unittest.TestCase):
             record["state"] = "TERMINAL_LEAF"
             record["evidence_refs"][0]["evidence_role"] = "ACCEPTED_TERMINAL_LEAF"
         closure["status"] = "PASS"
+        closure["accepted_terminal_leaf_evidence"] = [
+            {
+                "path": self.evidence_path,
+                "raw_sha256": self.evidence_sha256,
+                "locator": "forged-terminal-locator",
+                "evidence_role": "ACCEPTED_TERMINAL_LEAF",
+            }
+        ]
         closure["terminal_leaves"] = roots
         closure["blocked_families"] = []
         closure["unresolved_scope_obligations"] = []
