@@ -139,7 +139,6 @@ class BuildReportTests(unittest.TestCase):
     def test_all_pass_authoritative_report_completes_m2(self) -> None:
         report = complete_report()
         self.assertEqual(report["milestone_status"], "COMPLETE")
-        self.assertEqual(report["m2_5_status"], "UNBLOCKED")
         claims = report["claims"]
         self.assertFalse(claims["real_magic_rules"])
         self.assertFalse(claims["real_card_support"])
@@ -149,7 +148,6 @@ class BuildReportTests(unittest.TestCase):
     def test_development_mode_never_completes(self) -> None:
         report = complete_report(mode="development")
         self.assertEqual(report["milestone_status"], "INCOMPLETE")
-        self.assertEqual(report["m2_5_status"], "BLOCKED")
 
     def test_missing_expect_commit_never_completes(self) -> None:
         report = complete_report(expected_commit=None)
@@ -166,7 +164,6 @@ class BuildReportTests(unittest.TestCase):
             with self.subTest(status=status):
                 report = complete_report(gates=gates)
                 self.assertEqual(report["milestone_status"], "INCOMPLETE")
-                self.assertEqual(report["m2_5_status"], "BLOCKED")
 
     def test_duplicate_gate_registration_blocks_completion(self) -> None:
         gates = passing_gates()
@@ -201,7 +198,6 @@ class BuildReportTests(unittest.TestCase):
             with self.subTest(status=status):
                 report = complete_report(certification={"status": status})
                 self.assertEqual(report["milestone_status"], "INCOMPLETE")
-                self.assertEqual(report["m2_5_status"], "BLOCKED")
                 self.assertEqual(report["overall"], "INCOMPLETE")
 
 

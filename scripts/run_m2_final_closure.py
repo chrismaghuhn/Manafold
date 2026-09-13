@@ -686,10 +686,6 @@ SCHEMA_INVENTORY_ALLOWED: frozenset[str] = frozenset(
         "authoritative-replay.v1.schema.json",
         "authoritative-replay.v2.schema.json",
         "authoritative-replay.v3.schema.json",
-        "b2-classification-closure.v2.schema.json",
-        "b2-closure-v2-adoption-readiness.v1.schema.json",
-        "b2-closure-artifact-binding.v1.schema.json",
-        "b2-closure-current-root.v1.schema.json",
         "bundle-certification.v1.schema.json",
         "bundle-manifest.v1.schema.json",
         "capability-registry.v1.schema.json",
@@ -701,14 +697,6 @@ SCHEMA_INVENTORY_ALLOWED: frozenset[str] = frozenset(
         "golden-path-index.v1.schema.json",
         "information-state-envelope.v1.schema.json",
         "information-state-envelope.v2.schema.json",
-        "interaction-review-authority.v1.schema.json",
-        "interaction-review-authority.v2.schema.json",
-        "context-application-authority.v2.schema.json",
-        "context-application-authority.v3.schema.json",
-        "m2-5-selected-pair-cdi-census.v1.schema.json",
-        "m2-5-selected-pair-recursive-capability-closure.v2.schema.json",
-        "m2-5-exact-two-deck-scope-lock.v1.schema.json",
-        "relation-application-authority.v2.schema.json",
         "normative-document-register.v1.schema.json",
         "observation-envelope.v1.schema.json",
         "observed-event-envelope.v1.schema.json",
@@ -720,13 +708,7 @@ SCHEMA_INVENTORY_ALLOWED: frozenset[str] = frozenset(
         "replay-manifest.v1.schema.json",
         "replay-manifest.v2.schema.json",
         "replay-manifest.v3.schema.json",
-        "review-acceptance-event.v1.schema.json",
-        "review-acceptance-event.v2.schema.json",
-        "review-acceptance-event.v3.schema.json",
-        "review-acceptance-event.v4.schema.json",
-        "reviewer-roster.v1.schema.json",
         "scope-impact-report.v1.schema.json",
-        "supersession-record.v1.schema.json",
     }
 )
 
@@ -942,22 +924,10 @@ def check_schema_inventory_pinned(root: Path) -> str:
     forbidden = [
         name
         for name in schemas
-        if (
-            "trajectory" in name
-            or "deck-lock" in name
-            or "deck_lock" in name
-            or (
-                "census" in name
-                and name
-                not in {
-                    "m2-5-selected-pair-cdi-census.v1.schema.json",
-                    "m2-5-selected-pair-recursive-capability-closure.v2.schema.json",
-                }
-            )
-        )
+        if ("trajectory" in name or "deck-lock" in name or "deck_lock" in name or "census" in name)
     ]
     if forbidden:
-        raise ScopeCheckFailure(f"forbidden M2.5/M5 schema artifacts present: {forbidden}")
+        raise ScopeCheckFailure(f"forbidden later-milestone schema artifacts present: {forbidden}")
     return f"schema inventory matches the pinned M2 inventory ({len(schemas)} schemas)"
 
 
@@ -967,12 +937,12 @@ def check_card_and_deck_artifacts_unclaimed(root: Path) -> str:
     if decks != DECK_FILES_ALLOWED:
         raise ScopeCheckFailure(
             f"cards/decks inventory drifted: {sorted(decks)} != {sorted(DECK_FILES_ALLOWED)}; "
-            "M2.5 exact deck lock work is out of scope"
+            "exact deck lock work is out of scope"
         )
     deck_directories = [path.name for path in decks_dir.iterdir() if path.is_dir()]
     if deck_directories:
         raise ScopeCheckFailure(
-            f"cards/decks contains subdirectories (possible M2.5 deck-lock work): "
+            f"cards/decks contains subdirectories (possible deck-lock work): "
             f"{sorted(deck_directories)}"
         )
     definition_entries = {path.name for path in (root / "cards" / "definitions").iterdir()}
@@ -1305,7 +1275,6 @@ def build_report(
         "certification_prerequisite": certification,
         "overall": "COMPLETE" if complete else "INCOMPLETE",
         "milestone_status": "COMPLETE" if complete else "INCOMPLETE",
-        "m2_5_status": "UNBLOCKED" if complete else "BLOCKED",
         "claims": {
             "playable_engine": False,
             "real_magic_rules": False,
@@ -1318,7 +1287,6 @@ def build_report(
             "vector_or_distributed_training_present": False,
             "optimized_alternate_rules_backend_present": False,
             "hidden_heuristic_choice_completion_present": False,
-            "m2_5_deck_lock_or_census_work_present": False,
         },
     }
 
@@ -1375,7 +1343,6 @@ def render_markdown(report: dict[str, Any]) -> str:
                 else "- M1 = NOT CLOSED"
             ),
             f"- M2 = **{report['milestone_status']}**",
-            f"- M2.5 = **{report['m2_5_status']}**",
             "- M3 STARTED = NO",
             "- REAL MAGIC SUPPORT = NO",
             "- REAL CARD SUPPORT = NO",
@@ -1383,7 +1350,7 @@ def render_markdown(report: dict[str, Any]) -> str:
             "",
             (
                 "Only the authoritative exact-head report may claim `M2 = COMPLETE`; "
-                "completion never claims playable Magic, real cards, or M2.5 work."
+                "completion never claims playable Magic, real cards, or future rules work."
                 if report["milestone_status"] == "COMPLETE"
                 else "Development or incomplete runs never authorize milestone completion claims."
             ),
@@ -1547,7 +1514,6 @@ def main() -> int:
                 {
                     "mode": mode,
                     "milestone_status": report["milestone_status"],
-                    "m2_5_status": report["m2_5_status"],
                     "blocked_reason": reason,
                     "output_dir": str(output),
                 },
@@ -1658,7 +1624,6 @@ def main() -> int:
             {
                 "mode": report["mode"],
                 "milestone_status": report["milestone_status"],
-                "m2_5_status": report["m2_5_status"],
                 "output_dir": str(output),
                 "source_commit": report["source_commit"],
                 "source_identity": source_identity.get("status"),

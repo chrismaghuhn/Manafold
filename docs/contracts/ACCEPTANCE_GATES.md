@@ -175,7 +175,7 @@ Wire-decode failure is earlier than semantic response rejection but must indepen
 `M1_GATE_REGRESSION_AND_M2_SCOPE_GUARD` requires:
 
 - all ten M1 gates rerun successfully;
-- no real Magic/card/deck/M2.5 capability work;
+- no real Magic/card/deck/capability work;
 - no production Python/native transport;
 - no stable trajectory/action-key contract;
 - no search/determinization/vector/distributed training work;
@@ -187,7 +187,6 @@ Only the final generated M2 closure report may emit:
 
 ```text
 M2 = COMPLETE
-M2.5 = UNBLOCKED
 ```
 
 ## Capability coverage
@@ -223,4 +222,4 @@ CLEAN_MACHINE_REPRODUCTION
 SIGNED_OR_CHECKSUMMED_EVIDENCE_MANIFEST
 ```
 
-Numerical thresholds are set at roadmap M2.5 and cannot be retroactively weakened without an ADR and new bundle identity.
+Numerical thresholds are set by the applicable accepted bundle contract and cannot be retroactively weakened without an ADR and new bundle identity.

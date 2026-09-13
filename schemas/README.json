@@ -1,31 +1,11 @@
 {
   "maintainer_artifacts": [
-    "m2-5-selected-pair-cdi-census.v1.schema.json",
-    "m2-5-selected-pair-recursive-capability-closure.v2.schema.json",
-    "m2-5-exact-two-deck-scope-lock.v1.schema.json",
     "capability-registry.v1.schema.json",
     "card-definition-manifest.v1.schema.json",
     "bundle-manifest.v1.schema.json",
     "bundle-certification.v1.schema.json",
     "scope-impact-report.v1.schema.json",
     "normative-document-register.v1.schema.json"
-  ],
-  "authority_contracts": [
-    "b2-closure-current-root.v1.schema.json",
-    "b2-closure-artifact-binding.v1.schema.json",
-    "b2-classification-closure.v2.schema.json",
-    "b2-closure-v2-adoption-readiness.v1.schema.json",
-    "interaction-review-authority.v1.schema.json",
-    "interaction-review-authority.v2.schema.json",
-    "relation-application-authority.v2.schema.json",
-    "context-application-authority.v2.schema.json",
-    "context-application-authority.v3.schema.json",
-    "review-acceptance-event.v1.schema.json",
-    "review-acceptance-event.v2.schema.json",
-    "review-acceptance-event.v3.schema.json",
-    "review-acceptance-event.v4.schema.json",
-    "reviewer-roster.v1.schema.json",
-    "supersession-record.v1.schema.json"
   ],
   "note": "JSON Schema validates shape. Rust/Python codecs or maintainer semantic validators enforce cross-field, uniqueness, closure, cycle, lifecycle, and canonicalization invariants.",
   "wire_contracts": [

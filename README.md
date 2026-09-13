@@ -109,7 +109,7 @@ Imported -> Parsed -> Implemented -> Covered -> Certified
 
 Only a certified locked bundle is a real support claim. Parsed/imported/compiled/implemented artifacts are not automatically supported.
 
-No real cards are added before roadmap M2.5 locks exact decks and capability closure.
+No real cards are added before an explicit reviewed scope and capability closure.
 
 ## Local verification
 
@@ -147,7 +147,7 @@ cargo test --workspace --all-features --locked
 - no hidden/heuristic completion of player choices;
 - unsupported semantics fail closed;
 - no rules logic in Python or card generators;
-- no real cards before exact V1 deck closure in M2.5;
+- no real cards before exact V1 deck closure is explicitly reviewed;
 - no optimized rollout backend before reference parity and profiling;
 - no native card executor in a certified bundle under the current quarantine policy;
 - no broad support claim from parsing, compilation, or raw card counts.
