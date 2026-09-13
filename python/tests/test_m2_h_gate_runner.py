@@ -165,7 +165,9 @@ observed = []
 
 def fake_discover(start_dir):
     observed.append((sys.path[0], start_dir))
-    return run_python_tests.unittest.TestSuite()
+    return run_python_tests.unittest.TestSuite(
+        [run_python_tests.unittest.FunctionTestCase(lambda: None)]
+    )
 
 with mock.patch.object(
     run_python_tests.unittest.defaultTestLoader,
