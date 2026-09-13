@@ -168,6 +168,10 @@ def capture(
     repository_root = Path(repository_root).resolve()
     if not repository_root.is_dir():
         return _blocked(f"repository root is not a directory: {repository_root}")
+    try:
+        failure_packet.validate_output_root(output_root, repository_root)
+    except failure_packet.FailurePacketError as error:
+        return _blocked(str(error))
 
     provider = source_identity_provider or (
         lambda: failure_packet.read_source_identity(repository_root)

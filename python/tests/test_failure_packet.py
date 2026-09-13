@@ -353,6 +353,62 @@ class CaptureFailureTests(unittest.TestCase):
             self.assertIsNone(result.packet)
             self.assertFalse(output_root.exists())
 
+    def test_unowned_output_root_blocks_before_failing_command(self) -> None:
+        import capture_failure
+
+        with tempfile.TemporaryDirectory() as temporary:
+            output_root = Path(temporary) / "unowned"
+            output_root.mkdir()
+            output_root.joinpath("precious.txt").write_text("keep\n", encoding="utf-8")
+            provider = mock.Mock(return_value=self.identity_provider())
+            with mock.patch.object(
+                capture_failure,
+                "run_bounded",
+                return_value=failure_packet.CommandOutcome(returncode=1),
+            ) as run_bounded:
+                result = capture_failure.capture(
+                    self.failing_command(1),
+                    case_id="CAPTURE_UNOWNED_FAIL",
+                    output_root=output_root,
+                    repository_root=self.repository_root(temporary),
+                    source_identity_provider=provider,
+                )
+            self.assertTrue(output_root.joinpath("precious.txt").is_file())
+
+        self.assertEqual(result.status, failure_packet.CAPTURE_BLOCKED)
+        self.assertEqual(result.exit_code, 2)
+        self.assertIsNone(result.packet)
+        run_bounded.assert_not_called()
+        provider.assert_not_called()
+
+    def test_unowned_output_root_blocks_before_passing_command(self) -> None:
+        import capture_failure
+
+        with tempfile.TemporaryDirectory() as temporary:
+            output_root = Path(temporary) / "unowned"
+            output_root.mkdir()
+            output_root.joinpath("precious.txt").write_text("keep\n", encoding="utf-8")
+            provider = mock.Mock(return_value=self.identity_provider())
+            with mock.patch.object(
+                capture_failure,
+                "run_bounded",
+                return_value=failure_packet.CommandOutcome(returncode=0),
+            ) as run_bounded:
+                result = capture_failure.capture(
+                    self.failing_command(0),
+                    case_id="CAPTURE_UNOWNED_PASS",
+                    output_root=output_root,
+                    repository_root=self.repository_root(temporary),
+                    source_identity_provider=provider,
+                )
+            self.assertTrue(output_root.joinpath("precious.txt").is_file())
+
+        self.assertEqual(result.status, failure_packet.CAPTURE_BLOCKED)
+        self.assertEqual(result.exit_code, 2)
+        self.assertIsNone(result.packet)
+        run_bounded.assert_not_called()
+        provider.assert_not_called()
+
     def test_missing_command_is_blocked_without_packet(self) -> None:
         import capture_failure
 

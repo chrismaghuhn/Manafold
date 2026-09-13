@@ -351,7 +351,7 @@ def parse_signature_marker(output: str | bytes) -> dict[str, str] | None:
     return match.groupdict()
 
 
-def ensure_output_root(output_root: Path, repository_root: Path = ROOT) -> Path:
+def _resolve_output_root(output_root: Path, repository_root: Path) -> Path:
     candidate = Path(output_root)
     if ".." in candidate.parts:
         raise FailurePacketError(f"output root contains traversal: {output_root}")
@@ -365,6 +365,11 @@ def ensure_output_root(output_root: Path, repository_root: Path = ROOT) -> Path:
         relative = resolved.relative_to(repository_root)
         if not relative.parts or relative.parts[0].lower() != "dist":
             raise FailurePacketError("repository output must be under dist/")
+    return resolved
+
+
+def validate_output_root(output_root: Path, repository_root: Path = ROOT) -> Path:
+    resolved = _resolve_output_root(output_root, repository_root)
     if resolved.exists():
         if not resolved.is_dir():
             raise FailurePacketError(f"output root is not a directory: {resolved}")
@@ -372,7 +377,12 @@ def ensure_output_root(output_root: Path, repository_root: Path = ROOT) -> Path:
             raise FailurePacketError(
                 f"refusing unowned output root; expected marker {resolved / OUTPUT_MARKER}"
             )
-    else:
+    return resolved
+
+
+def ensure_output_root(output_root: Path, repository_root: Path = ROOT) -> Path:
+    resolved = validate_output_root(output_root, repository_root)
+    if not resolved.exists():
         try:
             resolved.mkdir(parents=True, exist_ok=False)
             (resolved / OUTPUT_MARKER).write_text(
