@@ -12,6 +12,8 @@ use mtgml_state::{EngineState, SemanticDeltaOperation};
 use std::collections::BTreeMap;
 use thiserror::Error;
 
+mod diagnostics;
+
 pub mod isolation;
 pub mod legal_space;
 pub mod lifecycle;
@@ -199,6 +201,204 @@ mod tests {
                 &expected_response,
             ),
             Err(ConformanceFailure::Response)
+        );
+    }
+
+    #[test]
+    fn current_decision_failure_exposes_a_semantic_path() {
+        let expected = decision(1);
+        let actual = decision(2);
+        let difference = crate::diagnostics::compare_value(
+            crate::diagnostics::ConformanceFailureClass::CurrentDecision,
+            "current_decision",
+            &expected,
+            &actual,
+        )
+        .expect("different current decisions must fail");
+
+        assert_eq!(difference.semantic_path, "current_decision");
+        assert_eq!(
+            difference.mismatch_kind,
+            crate::diagnostics::ConformanceMismatchKind::ValueChanged
+        );
+    }
+
+    #[test]
+    fn event_difference_reports_the_first_nonzero_index() {
+        let difference = crate::diagnostics::compare_sequence(
+            crate::diagnostics::ConformanceFailureClass::Events,
+            "transition.events",
+            &[10_u8, 20, 30, 40],
+            &[10_u8, 20, 31, 40],
+        )
+        .expect("difference");
+
+        assert_eq!(difference.semantic_path, "transition.events[2]");
+        assert_eq!(
+            difference.mismatch_kind,
+            crate::diagnostics::ConformanceMismatchKind::ValueChanged
+        );
+        assert_eq!(difference.sequence.unwrap().first_differing_index, 2);
+    }
+
+    #[test]
+    fn event_missing_at_end_is_distinct_from_an_extra_event() {
+        let missing = crate::diagnostics::compare_sequence(
+            crate::diagnostics::ConformanceFailureClass::Events,
+            "transition.events",
+            &[1_u8, 2, 3],
+            &[1_u8, 2],
+        )
+        .expect("missing difference");
+        let extra = crate::diagnostics::compare_sequence(
+            crate::diagnostics::ConformanceFailureClass::Events,
+            "transition.events",
+            &[1_u8, 2],
+            &[1_u8, 2, 3],
+        )
+        .expect("extra difference");
+
+        assert_eq!(
+            missing.mismatch_kind,
+            crate::diagnostics::ConformanceMismatchKind::ExpectedEntryMissing
+        );
+        assert_eq!(
+            extra.mismatch_kind,
+            crate::diagnostics::ConformanceMismatchKind::UnexpectedExtraEntry
+        );
+        assert_eq!(missing.sequence.unwrap().first_differing_index, 2);
+        assert_eq!(extra.sequence.unwrap().first_differing_index, 2);
+    }
+
+    #[test]
+    fn delta_difference_uses_the_delta_audit_path() {
+        let difference = crate::diagnostics::compare_sequence(
+            crate::diagnostics::ConformanceFailureClass::Delta,
+            "transition.delta.audit",
+            &[1_u8, 2, 3],
+            &[1_u8, 9, 3],
+        )
+        .expect("difference");
+
+        assert_eq!(difference.semantic_path, "transition.delta.audit[1]");
+    }
+
+    #[test]
+    fn scalar_and_player_differences_are_typed() {
+        let next = crate::diagnostics::compare_value(
+            crate::diagnostics::ConformanceFailureClass::NextDecision,
+            "transition.next_decision",
+            &Some(1_u8),
+            &None,
+        )
+        .expect("next decision difference");
+        assert_eq!(
+            next.mismatch_kind,
+            crate::diagnostics::ConformanceMismatchKind::ValueChanged
+        );
+
+        let status = crate::diagnostics::compare_value(
+            crate::diagnostics::ConformanceFailureClass::Status,
+            "transition.status",
+            &1_u8,
+            &2_u8,
+        )
+        .expect("status difference");
+        assert_eq!(status.semantic_path, "transition.status");
+
+        let expected = BTreeMap::from([(PlayerId(1), 10_u8), (PlayerId(2), 20_u8)]);
+        let actual = BTreeMap::from([(PlayerId(1), 11_u8), (PlayerId(2), 20_u8)]);
+        let player =
+            crate::diagnostics::compare_player_map(&expected, &actual).expect("player difference");
+        assert_eq!(player.semantic_path, "player_steps[player:1]");
+        assert_eq!(
+            player.mismatch_kind,
+            crate::diagnostics::ConformanceMismatchKind::PlayerStepDiffered
+        );
+    }
+
+    #[test]
+    fn player_map_reports_missing_and_unexpected_players() {
+        let missing = crate::diagnostics::compare_player_map(
+            &BTreeMap::from([(PlayerId(1), 10_u8)]),
+            &BTreeMap::new(),
+        )
+        .expect("missing player");
+        let unexpected = crate::diagnostics::compare_player_map(
+            &BTreeMap::new(),
+            &BTreeMap::from([(PlayerId(2), 20_u8)]),
+        )
+        .expect("unexpected player");
+
+        assert_eq!(
+            missing.mismatch_kind,
+            crate::diagnostics::ConformanceMismatchKind::PlayerMissing
+        );
+        assert_eq!(
+            unexpected.mismatch_kind,
+            crate::diagnostics::ConformanceMismatchKind::UnexpectedPlayer
+        );
+        assert_eq!(missing.semantic_path, "player_steps[player:1]");
+        assert_eq!(unexpected.semantic_path, "player_steps[player:2]");
+    }
+
+    #[test]
+    fn rejected_mutation_has_a_distinct_diagnostic_classification() {
+        let difference =
+            crate::diagnostics::rejected_mutation_difference(true).expect("changed rejected state");
+
+        assert_eq!(
+            difference.surface,
+            crate::diagnostics::ConformanceFailureClass::RejectedMutation
+        );
+        assert_eq!(
+            difference.mismatch_kind,
+            crate::diagnostics::ConformanceMismatchKind::RejectedMutation
+        );
+        assert_eq!(difference.semantic_path, "rejected_mutation.next_state");
+        assert!(crate::diagnostics::rejected_mutation_difference(false).is_none());
+    }
+
+    #[test]
+    fn first_difference_preserves_declared_precedence() {
+        let event = crate::diagnostics::compare_value(
+            crate::diagnostics::ConformanceFailureClass::Events,
+            "transition.events[0]",
+            &1_u8,
+            &2_u8,
+        );
+        let status = crate::diagnostics::compare_value(
+            crate::diagnostics::ConformanceFailureClass::Status,
+            "transition.status",
+            &1_u8,
+            &2_u8,
+        );
+
+        let first =
+            crate::diagnostics::first_difference([event, status]).expect("first difference");
+        assert_eq!(
+            first.surface,
+            crate::diagnostics::ConformanceFailureClass::Events
+        );
+    }
+
+    #[test]
+    fn signature_marker_contains_only_structured_identity_fields() {
+        let mut first = crate::diagnostics::compare_value(
+            crate::diagnostics::ConformanceFailureClass::Events,
+            "transition.events[2]",
+            &"expected summary",
+            &"actual summary",
+        )
+        .expect("difference");
+        let marker = first.signature_marker();
+        first.expected_summary = "ROOT_SEED_SECRET_SENTINEL".into();
+        first.actual_summary = "PRIVATE_HAND_SENTINEL".into();
+
+        assert_eq!(marker, first.signature_marker());
+        assert_eq!(
+            marker,
+            "MANAFOLD_FAILURE_SIGNATURE v1 surface=events path=transition.events[2] mismatch_kind=value_changed"
         );
     }
 }
