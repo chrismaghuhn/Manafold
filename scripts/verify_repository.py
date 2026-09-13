@@ -123,6 +123,9 @@ def main() -> None:
         "docs/maintenance/MAINTAINER_PROFILES.md",
         "scripts/generate_contracts.py",
         "scripts/run_checks.py",
+        "scripts/failure_packet.py",
+        "scripts/capture_failure.py",
+        "scripts/rerun_failure.py",
         "scripts/bootstrap.py",
         "scripts/validate_golden_path.py",
         "examples/golden-path/index.json",
@@ -406,8 +409,8 @@ def main() -> None:
     for token in (
         "actual_current_decision",
         "actual_response",
-        "ConformanceFailure::CurrentDecision",
-        "ConformanceFailure::Response",
+        "ConformanceFailureClass::CurrentDecision",
+        "ConformanceFailureClass::Response",
         "current_decision_is_an_asserted_conformance_input",
         "submitted_response_is_an_asserted_conformance_input",
     ):

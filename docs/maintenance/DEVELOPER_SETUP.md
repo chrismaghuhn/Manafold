@@ -86,6 +86,39 @@ global Python even when its version is exactly `3.13.15`; its interpreter must
 be the repository `.venv` executable path. Use the canonical `.venv` executable
 directly; shell activation is only a convenience.
 
+## Failure capture and exact-head rerun
+
+Package-D failure capture is an explicit opt-in maintainer command. It is not
+part of `run_checks.py`. From the repository root, use the project Python
+directly.
+
+On native Windows:
+
+```powershell
+.venv\Scripts\python.exe -B scripts/capture_failure.py --case-id CASE -- .\.venv\Scripts\python.exe -B -c "raise SystemExit(1)"
+.venv\Scripts\python.exe -B scripts/rerun_failure.py dist\failures\<packet-id>
+```
+
+On WSL/Linux:
+
+```bash
+.venv/bin/python -B scripts/capture_failure.py --case-id CASE -- .venv/bin/python -B -c 'raise SystemExit(1)'
+.venv/bin/python -B scripts/rerun_failure.py dist/failures/<packet-id>
+```
+
+Capture stores trusted local packets below `dist/failures/` by default. It
+executes only the captured `command.argv` list with `shell=False`; the
+captured `command.cwd` is repository-relative, and
+`reproduction.display_command` is human-facing display text only. Capture
+and rerun apply a maximum child runtime of 600 seconds and never invoke Git
+mutators themselves. If the captured or rerun child changes source or Git
+identity, the operation is blocked; the tooling does not repair, reset, clean,
+stash, or otherwise undo that child mutation. A missing executable, unsafe
+output root, dirty source identity, invalid marker, checksum failure, or
+unavailable required tool is blocked rather than repaired or retried. The
+packet is not public CI,
+player-facing, ML-facing, replay, checkpoint, or semantic-fixture data.
+
 ## Shell and `just`
 
 The current `justfile` explicitly declares:

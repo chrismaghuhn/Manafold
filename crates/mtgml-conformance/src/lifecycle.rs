@@ -18,7 +18,7 @@ use mtgml_state::{
     SyntheticResetInputs, VisibilityPartition, ZoneLocation, ZonePosition,
 };
 
-use crate::ConformanceFailure;
+use crate::{diagnostics, ConformanceFailure, ConformanceFailureClass};
 
 const P1: PlayerId = PlayerId(1);
 const P2: PlayerId = PlayerId(2);
@@ -639,19 +639,43 @@ pub fn assert_exact_transition_product(
 ) -> Result<(), ConformanceFailure> {
     mtgml_rules::validate_transition_contract(before, result)
         .map_err(|error| ConformanceFailure::Contract(error.to_string()))?;
-    if result.events != expected_events {
-        return Err(ConformanceFailure::Events);
+    if let Some(difference) = diagnostics::compare_sequence(
+        ConformanceFailureClass::Events,
+        "transition.events",
+        expected_events,
+        &result.events,
+    ) {
+        return Err(ConformanceFailure::Detailed {
+            classification: ConformanceFailureClass::Events,
+            difference,
+        });
     }
-    if result
+    let actual_state_digest = result
         .next_state
         .digest()
-        .map_err(|_| ConformanceFailure::StateDigest)?
-        != *expected_digest
-    {
-        return Err(ConformanceFailure::StateDigest);
+        .map_err(|_| ConformanceFailure::StateDigest)?;
+    if let Some(difference) = diagnostics::compare_value(
+        ConformanceFailureClass::StateDigest,
+        "transition.state_digest",
+        expected_digest,
+        &actual_state_digest,
+    ) {
+        return Err(ConformanceFailure::Detailed {
+            classification: ConformanceFailureClass::StateDigest,
+            difference,
+        });
     }
-    if !matches!(result.status, EpisodeStatus::Running) {
-        return Err(ConformanceFailure::Status);
+    let expected_status = EpisodeStatus::Running;
+    if let Some(difference) = diagnostics::compare_value(
+        ConformanceFailureClass::Status,
+        "transition.status",
+        &expected_status,
+        &result.status,
+    ) {
+        return Err(ConformanceFailure::Detailed {
+            classification: ConformanceFailureClass::Status,
+            difference,
+        });
     }
     Ok(())
 }
