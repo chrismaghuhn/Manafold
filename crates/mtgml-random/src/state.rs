@@ -1,7 +1,7 @@
 use crate::seed::{RandomValidationError, RootSeed256, MTGML_RNG_V1};
 use crate::stream_key::RandomStreamKeyV1;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 #[derive(
     Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
@@ -47,14 +47,9 @@ impl<'de> Deserialize<'de> for RandomStateV1 {
             stream_entries: Vec<CanonicalRandomStreamEntryV1>,
         }
         let dto = RandomStateDto::deserialize(deserializer)?;
+        validate_stream_entries(&dto.stream_entries).map_err(serde::de::Error::custom)?;
         let mut streams = BTreeMap::new();
-        for entry in &dto.stream_entries {
-            if streams.contains_key(&entry.key) {
-                return Err(serde::de::Error::custom(format!(
-                    "duplicate stream key {:?}",
-                    entry.key
-                )));
-            }
+        for entry in dto.stream_entries {
             streams.insert(
                 entry.key,
                 RandomStreamCursorV1 {
@@ -68,6 +63,28 @@ impl<'de> Deserialize<'de> for RandomStateV1 {
             streams,
         })
     }
+}
+
+fn validate_stream_entries(
+    entries: &[CanonicalRandomStreamEntryV1],
+) -> Result<(), RandomValidationError> {
+    let mut previous_key_bytes: Option<Vec<u8>> = None;
+    let mut seen_key_bytes = BTreeSet::new();
+
+    for entry in entries {
+        let key_bytes = entry.key.to_canonical_bytes();
+        if !seen_key_bytes.insert(key_bytes.clone()) {
+            return Err(RandomValidationError::DuplicateStreamKey);
+        }
+        if let Some(previous) = &previous_key_bytes {
+            if previous > &key_bytes {
+                return Err(RandomValidationError::UnorderedStreamEntries);
+            }
+        }
+        previous_key_bytes = Some(key_bytes);
+    }
+
+    Ok(())
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -139,19 +156,15 @@ impl RandomStateV1 {
         root_seed: RootSeed256,
         entries: Vec<CanonicalRandomStreamEntryV1>,
     ) -> Result<Self, RandomValidationError> {
+        validate_stream_entries(&entries)?;
         let mut streams = BTreeMap::new();
-        for entry in &entries {
-            let key_bytes = entry.key.to_canonical_bytes();
-            if streams.contains_key(&entry.key) {
-                return Err(RandomValidationError::DuplicateStreamKey);
-            }
+        for entry in entries {
             streams.insert(
                 entry.key,
                 RandomStreamCursorV1 {
                     next_raw_u64: entry.next_raw_u64,
                 },
             );
-            drop(key_bytes);
         }
         Ok(Self {
             contract_id: MTGML_RNG_V1.to_owned(),
@@ -212,6 +225,38 @@ mod tests {
     use crate::stream_key::RandomStreamKindV1;
 
     const ALL_ZERO_SEED: &str = "0000000000000000000000000000000000000000000000000000000000000000";
+
+    fn canonical_entries() -> Vec<CanonicalRandomStreamEntryV1> {
+        let mut entries = vec![
+            CanonicalRandomStreamEntryV1 {
+                key: RandomStreamKeyV1::global(RandomStreamKindV1::SyntheticM1),
+                next_raw_u64: 11,
+            },
+            CanonicalRandomStreamEntryV1 {
+                key: RandomStreamKeyV1::player_scoped(RandomStreamKindV1::SyntheticM1, 1),
+                next_raw_u64: 22,
+            },
+            CanonicalRandomStreamEntryV1 {
+                key: RandomStreamKeyV1::player_scoped(RandomStreamKindV1::SyntheticM1, 2),
+                next_raw_u64: 33,
+            },
+        ];
+        entries.sort_by(|left, right| {
+            left.key
+                .to_canonical_bytes()
+                .cmp(&right.key.to_canonical_bytes())
+        });
+        entries
+    }
+
+    fn state_json(entries: &[CanonicalRandomStreamEntryV1]) -> String {
+        serde_json::json!({
+            "contract_id": MTGML_RNG_V1,
+            "root_seed": ALL_ZERO_SEED,
+            "streams": entries,
+        })
+        .to_string()
+    }
 
     #[test]
     fn cursor_defaults_to_zero() {
@@ -277,6 +322,84 @@ mod tests {
             RandomStateV1::from_entries(seed, entries),
             Err(RandomValidationError::DuplicateStreamKey)
         );
+    }
+
+    #[test]
+    fn canonical_entries_roundtrip_preserves_stream_cursor_associations() {
+        let seed = RootSeed256::from_lower_hex(ALL_ZERO_SEED).unwrap();
+        let entries = canonical_entries();
+        let state = RandomStateV1::from_entries(seed, entries.clone()).unwrap();
+        let encoded = serde_json::to_string(&state).unwrap();
+        let decoded: RandomStateV1 = serde_json::from_str(&encoded).unwrap();
+
+        assert_eq!(state, decoded);
+        for entry in entries {
+            assert_eq!(
+                decoded.streams.get(&entry.key).unwrap().next_raw_u64,
+                entry.next_raw_u64,
+                "canonical roundtrip must retain each stream cursor"
+            );
+        }
+    }
+
+    #[test]
+    fn from_entries_rejects_unordered_entries_and_prioritizes_duplicates() {
+        let seed = RootSeed256::from_lower_hex(ALL_ZERO_SEED).unwrap();
+        let canonical = canonical_entries();
+        let [a, b, c] = canonical.as_slice() else {
+            unreachable!("canonical_entries must contain exactly three entries");
+        };
+
+        assert_eq!(
+            RandomStateV1::from_entries(seed, vec![b.clone(), a.clone(), c.clone()]),
+            Err(RandomValidationError::UnorderedStreamEntries)
+        );
+        assert_eq!(
+            RandomStateV1::from_entries(seed, vec![a.clone(), c.clone(), b.clone()]),
+            Err(RandomValidationError::UnorderedStreamEntries)
+        );
+        assert_eq!(
+            RandomStateV1::from_entries(seed, vec![a.clone(), a.clone()]),
+            Err(RandomValidationError::DuplicateStreamKey)
+        );
+        assert_eq!(
+            RandomStateV1::from_entries(seed, vec![a.clone(), b.clone(), a.clone()]),
+            Err(RandomValidationError::DuplicateStreamKey)
+        );
+    }
+
+    #[test]
+    fn serde_deserialize_rejects_noncanonical_entry_order_before_map_normalization() {
+        let canonical = canonical_entries();
+        let [a, b, c] = canonical.as_slice() else {
+            unreachable!("canonical_entries must contain exactly three entries");
+        };
+
+        for entries in [
+            vec![b.clone(), a.clone(), c.clone()],
+            vec![a.clone(), c.clone(), b.clone()],
+        ] {
+            let error = serde_json::from_str::<RandomStateV1>(&state_json(&entries))
+                .expect_err("noncanonical stream order must fail closed");
+            assert!(
+                error
+                    .to_string()
+                    .contains("stream entries are not in canonical key-byte order"),
+                "unexpected unordered-entry error: {error}"
+            );
+        }
+
+        for entries in [
+            vec![a.clone(), a.clone()],
+            vec![a.clone(), b.clone(), a.clone()],
+        ] {
+            let error = serde_json::from_str::<RandomStateV1>(&state_json(&entries))
+                .expect_err("duplicate stream entries must fail closed");
+            assert!(
+                error.to_string().contains("duplicate stream key"),
+                "unexpected duplicate-entry error: {error}"
+            );
+        }
     }
 
     #[test]
