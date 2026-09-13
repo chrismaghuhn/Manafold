@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import base64
+import hashlib
 from dataclasses import dataclass
 from itertools import pairwise
 
@@ -26,6 +28,10 @@ OBSERVED_EVENT_SCHEMA_V2 = "observed-event-envelope.v2"
 PLAYER_STEP_SCHEMA_V2 = "player-step.v2"
 
 
+def observation_digest_from_payload(payload: bytes) -> str:
+    return hashlib.sha256(b"mtgml.observation-digest.v1\x00" + payload).hexdigest()
+
+
 @dataclass(frozen=True, slots=True)
 class ObservationEnvelope:
     schema_version: str
@@ -50,7 +56,7 @@ class ObservationEnvelope:
         )
         if obj["schema_version"] != OBSERVATION_SCHEMA:
             raise WireError("decode.invalid_json", "unsupported observation schema")
-        return cls(
+        result = cls(
             OBSERVATION_SCHEMA,
             parse_uint(obj["perspective"]),
             parse_uint(obj["state_revision"]),
@@ -58,8 +64,21 @@ class ObservationEnvelope:
             require_canonical_base64(obj["payload_base64"]),
             require_digest(obj["digest"]),
         )
+        result.validate()
+        return result
+
+    def validate(self) -> None:
+        payload_base64 = require_canonical_base64(self.payload_base64)
+        digest = require_digest(self.digest)
+        payload = base64.b64decode(payload_base64, validate=True)
+        if observation_digest_from_payload(payload) != digest:
+            raise WireError(
+                "semantic.observation",
+                "observation digest does not match payload",
+            )
 
     def to_wire(self) -> dict[str, object]:
+        self.validate()
         return {
             "digest": require_digest(self.digest),
             "payload_base64": require_canonical_base64(self.payload_base64),
