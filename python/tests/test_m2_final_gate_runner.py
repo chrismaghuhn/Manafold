@@ -12,6 +12,7 @@ import yaml
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
 
+import aggregate_pr_gate as pr_gate
 import run_m2_final_closure as final
 from run_m2_final_closure import (
     CHILD_RUNNERS,
@@ -198,6 +199,25 @@ class PullRequestGateTests(unittest.TestCase):
     def test_missing_mandatory_check_fails(self) -> None:
         completed = self.run_gate(self.statuses(), omit="Analyze (rust)")
         self.assertNotEqual(completed.returncode, 0)
+
+    def test_codeql_neutral_waits_while_analyzer_is_pending(self) -> None:
+        payload = {
+            "check_runs": [
+                {
+                    "name": name,
+                    "head_sha": self.HEAD,
+                    "status": "completed",
+                    "conclusion": "neutral" if name == "CodeQL" else "success",
+                }
+                for name in self.statuses()
+            ]
+        }
+        payload["check_runs"][-2]["status"] = "in_progress"
+        payload["check_runs"][-2]["conclusion"] = None
+
+        state, _ = pr_gate.evaluate(payload, self.HEAD)
+
+        self.assertEqual(state, "WAIT")
 
     def test_pr_integration_workflow_is_exact_head_and_repository_owned(self) -> None:
         workflow_path = ROOT / ".github/workflows/pr-integration.yml"

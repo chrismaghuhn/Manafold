@@ -18,6 +18,8 @@ REQUIRED_CHECKS = (
     "Analyze (rust)",
     "CodeQL",
 )
+CODEQL_ANALYZERS = ("Analyze (actions)", "Analyze (python)", "Analyze (rust)")
+PENDING_STATUSES = {"queued", "in_progress", "requested", "pending"}
 WAIT_EXIT = 10
 
 
@@ -71,11 +73,20 @@ def evaluate(
         name
         for name in required
         if name in statuses
-        and statuses[name] not in {"queued", "in_progress", "requested", "pending"}
+        and statuses[name] not in PENDING_STATUSES
         and statuses[name] != "success"
     )
     if non_success:
-        return "FAIL", non_success
+        codeql_is_transient = (
+            "CodeQL" in non_success
+            and statuses.get("CodeQL") in {"neutral", "skipped"}
+            and any(statuses.get(name) in PENDING_STATUSES for name in CODEQL_ANALYZERS)
+        )
+        hard_failures = tuple(
+            name for name in non_success if name != "CodeQL" or not codeql_is_transient
+        )
+        if hard_failures:
+            return "FAIL", hard_failures
 
     waiting = tuple(name for name in required if statuses.get(name) != "success")
     return "WAIT", waiting
