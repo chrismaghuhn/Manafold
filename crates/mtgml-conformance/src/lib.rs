@@ -14,6 +14,10 @@ use thiserror::Error;
 
 mod diagnostics;
 
+pub use diagnostics::{
+    ConformanceDifference, ConformanceFailureClass, ConformanceMismatchKind, SequenceDifference,
+};
+
 pub mod isolation;
 pub mod legal_space;
 pub mod lifecycle;
@@ -57,38 +61,96 @@ pub fn assert_exact_transition(
         expected.expected_response_result,
         ExpectedResponseResult::Accepted
     );
-    if result.accepted != accepted {
-        return Err(ConformanceFailure::Acceptance);
+    if let Some(difference) = diagnostics::compare_value(
+        ConformanceFailureClass::Acceptance,
+        "transition.acceptance",
+        &accepted,
+        &result.accepted,
+    ) {
+        return Err(ConformanceFailure::Detailed {
+            classification: ConformanceFailureClass::Acceptance,
+            difference,
+        });
     }
-    if result.events != expected.expected_authoritative_events {
-        return Err(ConformanceFailure::Events);
+    if let Some(difference) = diagnostics::compare_sequence(
+        ConformanceFailureClass::Events,
+        "transition.events",
+        &expected.expected_authoritative_events,
+        &result.events,
+    ) {
+        return Err(ConformanceFailure::Detailed {
+            classification: ConformanceFailureClass::Events,
+            difference,
+        });
     }
-    if result.delta.audit != expected.expected_semantic_delta {
-        return Err(ConformanceFailure::Delta);
+    if let Some(difference) = diagnostics::compare_sequence(
+        ConformanceFailureClass::Delta,
+        "transition.delta.audit",
+        &expected.expected_semantic_delta,
+        &result.delta.audit,
+    ) {
+        return Err(ConformanceFailure::Detailed {
+            classification: ConformanceFailureClass::Delta,
+            difference,
+        });
     }
-    if result
+    let actual_state_digest = result
         .next_state
         .digest()
-        .map_err(|_| ConformanceFailure::StateDigest)?
-        != expected.expected_state_digest
+        .map_err(|_| ConformanceFailure::StateDigest)?;
+    if let Some(difference) = diagnostics::compare_value(
+        ConformanceFailureClass::StateDigest,
+        "transition.state_digest",
+        &expected.expected_state_digest,
+        &actual_state_digest,
+    ) {
+        return Err(ConformanceFailure::Detailed {
+            classification: ConformanceFailureClass::StateDigest,
+            difference,
+        });
+    }
+    if let Some(difference) = diagnostics::compare_value(
+        ConformanceFailureClass::NextDecision,
+        "transition.next_decision",
+        &expected.expected_next_decision,
+        &result.next_decision,
+    ) {
+        return Err(ConformanceFailure::Detailed {
+            classification: ConformanceFailureClass::NextDecision,
+            difference,
+        });
+    }
+    if let Some(difference) = diagnostics::compare_value(
+        ConformanceFailureClass::Status,
+        "transition.status",
+        &expected.expected_status,
+        &result.status,
+    ) {
+        return Err(ConformanceFailure::Detailed {
+            classification: ConformanceFailureClass::Status,
+            difference,
+        });
+    }
+    if let Some(difference) =
+        diagnostics::compare_player_map(&expected.expected_player_steps, actual_player_steps)
     {
-        return Err(ConformanceFailure::StateDigest);
-    }
-    if result.next_decision != expected.expected_next_decision {
-        return Err(ConformanceFailure::NextDecision);
-    }
-    if result.status != expected.expected_status {
-        return Err(ConformanceFailure::Status);
-    }
-    if actual_player_steps != &expected.expected_player_steps {
-        return Err(ConformanceFailure::PlayerProjection);
+        return Err(ConformanceFailure::Detailed {
+            classification: ConformanceFailureClass::PlayerProjection,
+            difference,
+        });
     }
     if matches!(
         expected.expected_response_result,
         ExpectedResponseResult::RejectedWithoutMutation
-    ) && &result.next_state != before
-    {
-        return Err(ConformanceFailure::RejectedMutation);
+    ) {
+        if let Some(difference) =
+            diagnostics::rejected_mutation_difference(&result.next_state != before)
+        {
+            return Err(ConformanceFailure::Detailed {
+                classification: ConformanceFailureClass::RejectedMutation,
+                difference,
+            });
+        }
     }
     Ok(())
 }
@@ -99,11 +161,24 @@ fn assert_conformance_inputs(
     expected_current_decision: Option<&AuthoritativeDecisionRequestV2>,
     expected_response: &DecisionResponseV2,
 ) -> Result<(), ConformanceFailure> {
-    if actual_current_decision != expected_current_decision {
-        return Err(ConformanceFailure::CurrentDecision);
-    }
-    if actual_response != expected_response {
-        return Err(ConformanceFailure::Response);
+    if let Some(difference) = diagnostics::first_difference([
+        diagnostics::compare_value(
+            ConformanceFailureClass::CurrentDecision,
+            "current_decision",
+            &expected_current_decision,
+            &actual_current_decision,
+        ),
+        diagnostics::compare_value(
+            ConformanceFailureClass::Response,
+            "response",
+            expected_response,
+            actual_response,
+        ),
+    ]) {
+        return Err(ConformanceFailure::Detailed {
+            classification: difference.surface,
+            difference,
+        });
     }
     Ok(())
 }
@@ -117,6 +192,11 @@ pub fn minimum_event_count_diagnostic(events: &[AuthoritativeRuleEvent], minimum
 pub enum ConformanceFailure {
     #[error("transition contract failed: {0}")]
     Contract(String),
+    #[error("conformance difference ({classification:?}): {difference}")]
+    Detailed {
+        classification: ConformanceFailureClass,
+        difference: ConformanceDifference,
+    },
     #[error("current trusted decision differed")]
     CurrentDecision,
     #[error("submitted response differed")]
@@ -139,13 +219,41 @@ pub enum ConformanceFailure {
     RejectedMutation,
 }
 
+impl ConformanceFailure {
+    pub fn classification(&self) -> Option<ConformanceFailureClass> {
+        match self {
+            Self::Contract(_) => None,
+            Self::Detailed { classification, .. } => Some(*classification),
+            Self::CurrentDecision => Some(ConformanceFailureClass::CurrentDecision),
+            Self::Response => Some(ConformanceFailureClass::Response),
+            Self::Acceptance => Some(ConformanceFailureClass::Acceptance),
+            Self::Events => Some(ConformanceFailureClass::Events),
+            Self::Delta => Some(ConformanceFailureClass::Delta),
+            Self::StateDigest => Some(ConformanceFailureClass::StateDigest),
+            Self::NextDecision => Some(ConformanceFailureClass::NextDecision),
+            Self::Status => Some(ConformanceFailureClass::Status),
+            Self::PlayerProjection => Some(ConformanceFailureClass::PlayerProjection),
+            Self::RejectedMutation => Some(ConformanceFailureClass::RejectedMutation),
+        }
+    }
+
+    pub fn difference(&self) -> Option<&ConformanceDifference> {
+        match self {
+            Self::Detailed { difference, .. } => Some(difference),
+            _ => None,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use mtgml_decision::{
         DecisionAnswerV2, DecisionDomainV2, DecisionResponseV2, DecisionVisibility,
     };
-    use mtgml_model::{DecisionId, PlayerDecisionIdV1, StateRevision};
+    use mtgml_model::{
+        DecisionId, FullStateDigestV3, PlayerDecisionIdV1, StateRevision, TruncationReason,
+    };
 
     fn decision(id: u64) -> AuthoritativeDecisionRequestV2 {
         AuthoritativeDecisionRequestV2 {
@@ -172,19 +280,85 @@ mod tests {
         }
     }
 
+    fn lifecycle_conformance_case() -> (EngineState, TransitionResult, ConformanceStep) {
+        let before = lifecycle::lifecycle_fixture();
+        let result = lifecycle::scenario_public_fanout_two_reveals(&before).unwrap();
+        let submitted = response(1);
+        let expected = ConformanceStep {
+            expected_current_decision: None,
+            response: submitted,
+            expected_response_result: ExpectedResponseResult::Accepted,
+            expected_authoritative_events: result.events.clone(),
+            expected_semantic_delta: result.delta.audit.clone(),
+            expected_state_digest: result.next_state.digest().unwrap(),
+            expected_next_decision: result.next_decision.clone(),
+            expected_player_steps: BTreeMap::new(),
+            expected_status: result.status.clone(),
+        };
+        (before, result, expected)
+    }
+
+    fn truncated_status() -> EpisodeStatus {
+        EpisodeStatus::Truncated {
+            reason: TruncationReason::ExternalStop,
+            players: Vec::new(),
+        }
+    }
+
+    fn player_step_fixture() -> PlayerStepV2 {
+        serde_json::from_str(include_str!("../../../wire/golden/player-step.v2.json"))
+            .expect("valid synthetic player-step fixture")
+    }
+
+    fn assert_detailed_failure(
+        outcome: Result<(), ConformanceFailure>,
+        classification: ConformanceFailureClass,
+        path: &str,
+        mismatch_kind: ConformanceMismatchKind,
+    ) -> ConformanceDifference {
+        let failure = outcome.expect_err("conformance mismatch must fail");
+        assert_eq!(failure.classification(), Some(classification));
+        let difference = failure.difference().expect("detailed conformance mismatch");
+        assert_eq!(difference.semantic_path, path);
+        assert_eq!(difference.mismatch_kind, mismatch_kind);
+        difference.clone()
+    }
+
+    fn lifecycle_product_case() -> (
+        EngineState,
+        TransitionResult,
+        Vec<AuthoritativeRuleEvent>,
+        FullStateDigestV3,
+    ) {
+        let before = lifecycle::lifecycle_fixture();
+        let result = lifecycle::scenario_explicit_forget(&before).unwrap();
+        let expected_events = result.events.clone();
+        let expected_digest = result.next_state.digest().unwrap();
+        (before, result, expected_events, expected_digest)
+    }
+
     #[test]
     fn current_decision_is_an_asserted_conformance_input() {
         let expected_decision = decision(1);
         let actual_decision = decision(2);
         let submitted = response(1);
+        let failure = assert_conformance_inputs(
+            Some(&actual_decision),
+            &submitted,
+            Some(&expected_decision),
+            &submitted,
+        )
+        .expect_err("different current decisions must fail");
         assert_eq!(
-            assert_conformance_inputs(
-                Some(&actual_decision),
-                &submitted,
-                Some(&expected_decision),
-                &submitted,
-            ),
-            Err(ConformanceFailure::CurrentDecision)
+            failure.classification(),
+            Some(ConformanceFailureClass::CurrentDecision)
+        );
+        assert_eq!(
+            failure
+                .difference()
+                .expect("structured difference")
+                .semantic_path,
+            "current_decision"
         );
     }
 
@@ -193,14 +367,23 @@ mod tests {
         let visible = decision(1);
         let expected_response = response(1);
         let actual_response = response(2);
+        let failure = assert_conformance_inputs(
+            Some(&visible),
+            &actual_response,
+            Some(&visible),
+            &expected_response,
+        )
+        .expect_err("different responses must fail");
         assert_eq!(
-            assert_conformance_inputs(
-                Some(&visible),
-                &actual_response,
-                Some(&visible),
-                &expected_response,
-            ),
-            Err(ConformanceFailure::Response)
+            failure.classification(),
+            Some(ConformanceFailureClass::Response)
+        );
+        assert_eq!(
+            failure
+                .difference()
+                .expect("structured difference")
+                .semantic_path,
+            "response"
         );
     }
 
@@ -399,6 +582,357 @@ mod tests {
         assert_eq!(
             marker,
             "MANAFOLD_FAILURE_SIGNATURE v1 surface=events path=transition.events[2] mismatch_kind=value_changed"
+        );
+    }
+
+    #[test]
+    fn exact_transition_event_failure_exposes_the_first_event_path() {
+        let (before, result, mut expected) = lifecycle_conformance_case();
+        assert!(
+            result.events.len() > 3,
+            "fixture needs a nonzero event index"
+        );
+        expected.expected_authoritative_events[3] =
+            expected.expected_authoritative_events[0].clone();
+
+        let failure = assert_exact_transition(
+            &before,
+            None,
+            &expected.response,
+            &result,
+            &BTreeMap::new(),
+            &expected,
+        )
+        .expect_err("different expected event must fail");
+
+        assert_eq!(
+            failure.classification(),
+            Some(ConformanceFailureClass::Events)
+        );
+        assert_eq!(
+            failure
+                .difference()
+                .expect("detailed event mismatch")
+                .semantic_path,
+            "transition.events[3]"
+        );
+    }
+
+    #[test]
+    fn exact_transition_acceptance_failure_is_detailed() {
+        let (before, result, mut expected) = lifecycle_conformance_case();
+        expected.expected_response_result = ExpectedResponseResult::RejectedWithoutMutation;
+
+        assert_detailed_failure(
+            assert_exact_transition(
+                &before,
+                None,
+                &expected.response,
+                &result,
+                &BTreeMap::new(),
+                &expected,
+            ),
+            ConformanceFailureClass::Acceptance,
+            "transition.acceptance",
+            ConformanceMismatchKind::ValueChanged,
+        );
+    }
+
+    #[test]
+    fn exact_transition_event_length_differences_are_detailed() {
+        let (before, result, mut expected) = lifecycle_conformance_case();
+        let last = expected
+            .expected_authoritative_events
+            .last()
+            .cloned()
+            .unwrap();
+        expected.expected_authoritative_events.push(last);
+        let missing = assert_detailed_failure(
+            assert_exact_transition(
+                &before,
+                None,
+                &expected.response,
+                &result,
+                &BTreeMap::new(),
+                &expected,
+            ),
+            ConformanceFailureClass::Events,
+            &format!("transition.events[{}]", result.events.len()),
+            ConformanceMismatchKind::ExpectedEntryMissing,
+        );
+        assert_eq!(
+            missing
+                .sequence
+                .expect("sequence difference")
+                .expected_length,
+            result.events.len() + 1
+        );
+
+        let (before, result, mut expected) = lifecycle_conformance_case();
+        expected.expected_authoritative_events.pop();
+        let extra = assert_detailed_failure(
+            assert_exact_transition(
+                &before,
+                None,
+                &expected.response,
+                &result,
+                &BTreeMap::new(),
+                &expected,
+            ),
+            ConformanceFailureClass::Events,
+            &format!(
+                "transition.events[{}]",
+                expected.expected_authoritative_events.len()
+            ),
+            ConformanceMismatchKind::UnexpectedExtraEntry,
+        );
+        assert_eq!(
+            extra.sequence.expect("sequence difference").actual_length,
+            expected.expected_authoritative_events.len() + 1
+        );
+    }
+
+    #[test]
+    fn exact_transition_delta_failure_reports_a_nonzero_index() {
+        let (before, result, mut expected) = lifecycle_conformance_case();
+        let replacement = expected.expected_semantic_delta[0].clone();
+        expected.expected_semantic_delta[1] = replacement;
+
+        assert_detailed_failure(
+            assert_exact_transition(
+                &before,
+                None,
+                &expected.response,
+                &result,
+                &BTreeMap::new(),
+                &expected,
+            ),
+            ConformanceFailureClass::Delta,
+            "transition.delta.audit[1]",
+            ConformanceMismatchKind::ValueChanged,
+        );
+    }
+
+    #[test]
+    fn exact_transition_state_digest_failure_is_detailed() {
+        let (before, result, mut expected) = lifecycle_conformance_case();
+        expected.expected_state_digest =
+            FullStateDigestV3::parse("ff".repeat(32)).expect("synthetic digest");
+
+        assert_detailed_failure(
+            assert_exact_transition(
+                &before,
+                None,
+                &expected.response,
+                &result,
+                &BTreeMap::new(),
+                &expected,
+            ),
+            ConformanceFailureClass::StateDigest,
+            "transition.state_digest",
+            ConformanceMismatchKind::ValueChanged,
+        );
+    }
+
+    #[test]
+    fn exact_transition_next_decision_failure_is_detailed() {
+        let (before, result, mut expected) = lifecycle_conformance_case();
+        expected.expected_next_decision = Some(decision(99));
+
+        assert_detailed_failure(
+            assert_exact_transition(
+                &before,
+                None,
+                &expected.response,
+                &result,
+                &BTreeMap::new(),
+                &expected,
+            ),
+            ConformanceFailureClass::NextDecision,
+            "transition.next_decision",
+            ConformanceMismatchKind::ValueChanged,
+        );
+    }
+
+    #[test]
+    fn exact_transition_status_failure_is_detailed() {
+        let (before, result, mut expected) = lifecycle_conformance_case();
+        expected.expected_status = truncated_status();
+
+        assert_detailed_failure(
+            assert_exact_transition(
+                &before,
+                None,
+                &expected.response,
+                &result,
+                &BTreeMap::new(),
+                &expected,
+            ),
+            ConformanceFailureClass::Status,
+            "transition.status",
+            ConformanceMismatchKind::ValueChanged,
+        );
+    }
+
+    #[test]
+    fn exact_transition_player_projection_reports_the_first_player() {
+        let (before, result, mut expected) = lifecycle_conformance_case();
+        expected
+            .expected_player_steps
+            .insert(PlayerId(1), player_step_fixture());
+
+        assert_detailed_failure(
+            assert_exact_transition(
+                &before,
+                None,
+                &expected.response,
+                &result,
+                &BTreeMap::new(),
+                &expected,
+            ),
+            ConformanceFailureClass::PlayerProjection,
+            "player_steps[player:1]",
+            ConformanceMismatchKind::PlayerMissing,
+        );
+    }
+
+    #[test]
+    fn exact_transition_same_inputs_produce_the_same_diagnostic() {
+        let (before, result, mut expected) = lifecycle_conformance_case();
+        let last = expected
+            .expected_authoritative_events
+            .last()
+            .cloned()
+            .unwrap();
+        expected.expected_authoritative_events.push(last);
+
+        let first = assert_exact_transition(
+            &before,
+            None,
+            &expected.response,
+            &result,
+            &BTreeMap::new(),
+            &expected,
+        )
+        .expect_err("event mismatch");
+        let second = assert_exact_transition(
+            &before,
+            None,
+            &expected.response,
+            &result,
+            &BTreeMap::new(),
+            &expected,
+        )
+        .expect_err("event mismatch");
+
+        assert_eq!(first, second);
+    }
+
+    #[test]
+    fn exact_transition_reports_event_before_later_status_difference() {
+        let (before, result, mut expected) = lifecycle_conformance_case();
+        let last = expected
+            .expected_authoritative_events
+            .last()
+            .cloned()
+            .unwrap();
+        expected.expected_authoritative_events.push(last);
+        expected.expected_status = truncated_status();
+
+        let failure = assert_exact_transition(
+            &before,
+            None,
+            &expected.response,
+            &result,
+            &BTreeMap::new(),
+            &expected,
+        )
+        .expect_err("multiple mismatches");
+        assert_eq!(
+            failure.classification(),
+            Some(ConformanceFailureClass::Events)
+        );
+        assert_eq!(
+            failure
+                .difference()
+                .expect("event difference")
+                .mismatch_kind,
+            ConformanceMismatchKind::ExpectedEntryMissing
+        );
+    }
+
+    #[test]
+    fn exact_transition_contract_failure_stays_separate() {
+        let (before, result, expected) = lifecycle_conformance_case();
+        let mut tampered = result.clone();
+        tampered.events.pop();
+
+        let failure = assert_exact_transition(
+            &before,
+            None,
+            &expected.response,
+            &tampered,
+            &BTreeMap::new(),
+            &expected,
+        )
+        .expect_err("invalid transition product");
+        assert!(matches!(failure, ConformanceFailure::Contract(_)));
+        assert!(failure.difference().is_none());
+    }
+
+    #[test]
+    fn exact_product_event_failure_is_detailed() {
+        let (before, result, mut expected_events, expected_digest) = lifecycle_product_case();
+        let last = expected_events.last().cloned().unwrap();
+        expected_events.push(last);
+
+        assert_detailed_failure(
+            lifecycle::assert_exact_transition_product(
+                &before,
+                &result,
+                &expected_events,
+                &expected_digest,
+            ),
+            ConformanceFailureClass::Events,
+            &format!("transition.events[{}]", result.events.len()),
+            ConformanceMismatchKind::ExpectedEntryMissing,
+        );
+    }
+
+    #[test]
+    fn exact_product_digest_failure_is_detailed() {
+        let (before, result, expected_events, _) = lifecycle_product_case();
+        let wrong_digest = FullStateDigestV3::parse("ff".repeat(32)).expect("synthetic digest");
+
+        assert_detailed_failure(
+            lifecycle::assert_exact_transition_product(
+                &before,
+                &result,
+                &expected_events,
+                &wrong_digest,
+            ),
+            ConformanceFailureClass::StateDigest,
+            "transition.state_digest",
+            ConformanceMismatchKind::ValueChanged,
+        );
+    }
+
+    #[test]
+    fn exact_product_status_failure_is_detailed() {
+        let (before, result, expected_events, expected_digest) = lifecycle_product_case();
+        let mut tampered = result.clone();
+        tampered.status = truncated_status();
+
+        assert_detailed_failure(
+            lifecycle::assert_exact_transition_product(
+                &before,
+                &tampered,
+                &expected_events,
+                &expected_digest,
+            ),
+            ConformanceFailureClass::Status,
+            "transition.status",
+            ConformanceMismatchKind::ValueChanged,
         );
     }
 }

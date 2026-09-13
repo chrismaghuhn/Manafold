@@ -6,8 +6,6 @@ use mtgml_model::PlayerId;
 // The module itself is private; these helpers are public only within the
 // crate's internal diagnostic implementation boundary.
 
-// The remaining surfaces are consumed by the Task-4 assertion integration.
-#[allow(dead_code)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ConformanceFailureClass {
     CurrentDecision,
@@ -122,7 +120,6 @@ fn value_difference<Expected: Debug, Actual: Debug>(
     }
 }
 
-#[allow(dead_code)]
 pub(crate) fn compare_value<T: Debug + PartialEq>(
     surface: ConformanceFailureClass,
     path: &str,
@@ -141,8 +138,7 @@ pub(crate) fn compare_value<T: Debug + PartialEq>(
     })
 }
 
-#[allow(dead_code)]
-pub fn compare_sequence<T: Debug + PartialEq>(
+pub(crate) fn compare_sequence<T: Debug + PartialEq>(
     surface: ConformanceFailureClass,
     path: &str,
     expected: &[T],
@@ -200,8 +196,7 @@ pub fn compare_sequence<T: Debug + PartialEq>(
     None
 }
 
-#[allow(dead_code)]
-pub fn compare_player_map<T: Debug + PartialEq>(
+pub(crate) fn compare_player_map<T: PartialEq>(
     expected: &BTreeMap<PlayerId, T>,
     actual: &BTreeMap<PlayerId, T>,
 ) -> Option<ConformanceDifference> {
@@ -209,23 +204,23 @@ pub fn compare_player_map<T: Debug + PartialEq>(
     for player in players {
         let path = format!("player_steps[player:{}]", player.0);
         match (expected.get(&player), actual.get(&player)) {
-            (Some(expected), None) => {
+            (Some(_expected), None) => {
                 return Some(value_difference(
                     ConformanceFailureClass::PlayerProjection,
                     path,
                     ConformanceMismatchKind::PlayerMissing,
-                    expected,
+                    &"<present>",
                     &"<missing>",
                     None,
                 ));
             }
-            (None, Some(actual)) => {
+            (None, Some(_actual)) => {
                 return Some(value_difference(
                     ConformanceFailureClass::PlayerProjection,
                     path,
                     ConformanceMismatchKind::UnexpectedPlayer,
                     &"<missing>",
-                    actual,
+                    &"<present>",
                     None,
                 ));
             }
@@ -234,8 +229,8 @@ pub fn compare_player_map<T: Debug + PartialEq>(
                     ConformanceFailureClass::PlayerProjection,
                     path,
                     ConformanceMismatchKind::PlayerStepDiffered,
-                    expected,
-                    actual,
+                    &"<different>",
+                    &"<different>",
                     None,
                 ));
             }
@@ -245,8 +240,7 @@ pub fn compare_player_map<T: Debug + PartialEq>(
     None
 }
 
-#[allow(dead_code)]
-pub fn rejected_mutation_difference(changed: bool) -> Option<ConformanceDifference> {
+pub(crate) fn rejected_mutation_difference(changed: bool) -> Option<ConformanceDifference> {
     changed.then(|| ConformanceDifference {
         surface: ConformanceFailureClass::RejectedMutation,
         semantic_path: "rejected_mutation.next_state".into(),
@@ -257,8 +251,7 @@ pub fn rejected_mutation_difference(changed: bool) -> Option<ConformanceDifferen
     })
 }
 
-#[allow(dead_code)]
-pub fn first_difference<I>(differences: I) -> Option<ConformanceDifference>
+pub(crate) fn first_difference<I>(differences: I) -> Option<ConformanceDifference>
 where
     I: IntoIterator<Item = Option<ConformanceDifference>>,
 {
