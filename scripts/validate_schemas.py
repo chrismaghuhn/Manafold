@@ -30,34 +30,6 @@ WIRE_MAPPING = {
     "authoritative-replay.v3": "authoritative-replay.v3.schema.json",
 }
 ARTIFACT_CASES = [
-    (
-        "m2-5-selected-pair-cdi-census.v1.schema.json",
-        "sources/m2_5/scope/selected_pair_capability_census.v1.json",
-    ),
-    (
-        "m2-5-selected-pair-cdi-census.v1.schema.json",
-        "sources/m2_5/scope/selected_pair_decision_census.v1.json",
-    ),
-    (
-        "m2-5-selected-pair-cdi-census.v1.schema.json",
-        "sources/m2_5/scope/selected_pair_information_census.v1.json",
-    ),
-    (
-        "m2-5-selected-pair-cdi-census.v1.schema.json",
-        "sources/m2_5/scope/selected_pair_generated_object_census.v1.json",
-    ),
-    (
-        "m2-5-selected-pair-cdi-census.v1.schema.json",
-        "sources/m2_5/scope/selected_pair_recursive_capability_closure.v1.json",
-    ),
-    (
-        "m2-5-selected-pair-recursive-capability-closure.v2.schema.json",
-        "sources/m2_5/scope/selected_pair_recursive_capability_closure.v2.json",
-    ),
-    (
-        "m2-5-exact-two-deck-scope-lock.v1.schema.json",
-        "sources/m2_5/scope/exact_two_deck_scope_lock.v1.json",
-    ),
     ("capability-registry.v1.schema.json", "cards/capabilities/registry.json"),
     ("capability-registry.v1.schema.json", "cards/capabilities/registry.example.json"),
     (
@@ -86,66 +58,6 @@ ARTIFACT_CASES = [
     ),
     ("golden-path-index.v1.schema.json", "examples/golden-path/index.json"),
 ]
-AUTHORITY_ARTIFACT_CASES = [
-    (
-        "b2-closure-current-root.v1.schema.json",
-        "sources/m2_5/closures/B2/current_root.json",
-    ),
-    (
-        "b2-classification-closure.v2.schema.json",
-        "sources/m2_5/closures/B2/classification_closure.v2.json",
-    ),
-    (
-        "interaction-review-authority.v1.schema.json",
-        "conformance/fixtures/authority/interaction_review_authority.v1.json",
-    ),
-    (
-        "interaction-review-authority.v2.schema.json",
-        "conformance/fixtures/authority/interaction_review_authority.v2.json",
-    ),
-    (
-        "context-application-authority.v2.schema.json",
-        "conformance/fixtures/authority/context_application_authority.v2.json",
-    ),
-    (
-        "relation-application-authority.v2.schema.json",
-        "conformance/fixtures/authority/relation_application_authority.v2.json",
-    ),
-    (
-        "context-application-authority.v3.schema.json",
-        "conformance/fixtures/authority/context_application_authority.v3.json",
-    ),
-    (
-        "review-acceptance-event.v1.schema.json",
-        "conformance/fixtures/authority/review_acceptance_event.v1.json",
-    ),
-    (
-        "review-acceptance-event.v2.schema.json",
-        "conformance/fixtures/authority/review_acceptance_event.v2.json",
-    ),
-    (
-        "review-acceptance-event.v3.schema.json",
-        "conformance/fixtures/authority/review_acceptance_event.v3.json",
-    ),
-    (
-        "review-acceptance-event.v4.schema.json",
-        "conformance/fixtures/authority/review_acceptance_event.v4.json",
-    ),
-    (
-        "reviewer-roster.v1.schema.json",
-        "conformance/fixtures/authority/reviewer_roster.v1.json",
-    ),
-    (
-        "supersession-record.v1.schema.json",
-        "conformance/fixtures/authority/supersession_record.v1.json",
-    ),
-]
-OPTIONAL_AUTHORITY_ARTIFACT_CASES = [
-    (
-        "b2-closure-v2-adoption-readiness.v1.schema.json",
-        "sources/m2_5/closures/B2/verification/b2_closure_v2_adoption_readiness.v1.json",
-    )
-]
 
 
 def load(path: Path) -> object:
@@ -164,23 +76,9 @@ def main() -> None:
         jsonschema.Draft202012Validator(load(ROOT / "schemas" / schema_rel)).validate(
             load(ROOT / value_rel)
         )
-    for schema_rel, value_rel in AUTHORITY_ARTIFACT_CASES:
-        jsonschema.Draft202012Validator(load(ROOT / "schemas" / schema_rel)).validate(
-            load(ROOT / value_rel)
-        )
-    staged_optional_count = 0
-    for schema_rel, value_rel in OPTIONAL_AUTHORITY_ARTIFACT_CASES:
-        value_path = ROOT / value_rel
-        if value_path.is_file():
-            jsonschema.Draft202012Validator(load(ROOT / "schemas" / schema_rel)).validate(
-                load(value_path)
-            )
-            staged_optional_count += 1
     print(
         f"PASS: {len(fixtures)} wire fixtures and"
-        f" {len(ARTIFACT_CASES) + len(AUTHORITY_ARTIFACT_CASES) + staged_optional_count}"
-        " maintainer artifacts"
-        " validated against schemas"
+        f" {len(ARTIFACT_CASES)} maintainer artifacts validated against schemas"
     )
 
 

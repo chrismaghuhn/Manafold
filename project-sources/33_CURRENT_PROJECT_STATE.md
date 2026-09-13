@@ -38,6 +38,13 @@
 
 None. V0.2.2 is `CONTRACT_FROZEN`. M1 is unblocked.
 
+## Current boundary
+
+Census-driven scope research is outside the authoritative engine repository.
+No Magic/card scope is active here, and M3 remains not authorized. Future M3
+entry requires an explicit reviewed durable scope and capability input from the
+external research process.
+
 ## What V0.2.2 added
 
 - Single-source mechanical contract vocabulary and drift checking.

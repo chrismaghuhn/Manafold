@@ -16,21 +16,10 @@ DEFAULT_PROFILE = "full"
 # Keep this list intentionally explicit. New tests enter the full profile by
 # default and only enter Smoke after an intentional maintainer decision.
 SMOKE_TESTS = (
-    "test_m2_5_selected_pair_cdi_census",
-    "test_m2_5_selected_pair_recursive_capability_closure",
-    "test_m2_5_exact_two_deck_scope_lock",
-    "test_authority_contract",
-    "test_context_application_v2_contract",
-    "test_context_application_v2_validator",
-    "test_context_application_v2_resolver",
-    "test_context_application_v2_review_admission",
-    "test_context_application_v2_supersession",
-    "test_context_application_v2_host_binding",
     "test_constructive_producers",
     "test_m2_b_staging_fixtures",
     "test_persistence_codec",
     "test_python_test_profiles",
-    "test_review_admission_foundation",
     "test_schema_parity",
     "test_wire_contracts",
 )

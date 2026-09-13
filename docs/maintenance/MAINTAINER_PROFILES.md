@@ -5,8 +5,8 @@
 ## Development
 Use `just check-fast` continuously. This profile performs generated-contract,
 repository, documentation, schema, golden-path, and explicit small Python
-smoke checks. It does not scan the complete candidate/classification universe
-or build the full review worklist.
+smoke checks. It does not run the complete Python suite or the native-tool
+integration checks.
 
 `python scripts/run_python_tests.py --profile smoke` uses a closed allowlist.
 New tests enter the full profile automatically and do not enter Smoke unless

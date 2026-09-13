@@ -46,19 +46,7 @@ class PythonTestProfileTests(unittest.TestCase):
             run_python_tests.build_suite("smoke")
 
         self.assertEqual(loaded, list(run_python_tests.SMOKE_TESTS))
-        self.assertEqual(
-            loaded.count("test_context_application_v2_supersession"),
-            1,
-        )
-        self.assertEqual(
-            loaded.count("test_context_application_v2_host_binding"),
-            1,
-        )
         discover.assert_not_called()
-        self.assertNotIn("test_authority_review_worklist", loaded)
-        self.assertNotIn("test_canary_review_packet", loaded)
-        self.assertNotIn("test_canary_packet_qualification", loaded)
-        self.assertNotIn("test_authority_source_resolver", loaded)
 
     def test_full_profile_is_the_runner_default(self) -> None:
         self.assertEqual(run_python_tests.DEFAULT_PROFILE, "full")

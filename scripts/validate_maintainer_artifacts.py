@@ -17,34 +17,6 @@ from maintainer_common import (
 )
 
 CASES = [
-    (
-        "schemas/m2-5-selected-pair-cdi-census.v1.schema.json",
-        "sources/m2_5/scope/selected_pair_capability_census.v1.json",
-    ),
-    (
-        "schemas/m2-5-selected-pair-cdi-census.v1.schema.json",
-        "sources/m2_5/scope/selected_pair_decision_census.v1.json",
-    ),
-    (
-        "schemas/m2-5-selected-pair-cdi-census.v1.schema.json",
-        "sources/m2_5/scope/selected_pair_information_census.v1.json",
-    ),
-    (
-        "schemas/m2-5-selected-pair-cdi-census.v1.schema.json",
-        "sources/m2_5/scope/selected_pair_generated_object_census.v1.json",
-    ),
-    (
-        "schemas/m2-5-selected-pair-cdi-census.v1.schema.json",
-        "sources/m2_5/scope/selected_pair_recursive_capability_closure.v1.json",
-    ),
-    (
-        "schemas/m2-5-selected-pair-recursive-capability-closure.v2.schema.json",
-        "sources/m2_5/scope/selected_pair_recursive_capability_closure.v2.json",
-    ),
-    (
-        "schemas/m2-5-exact-two-deck-scope-lock.v1.schema.json",
-        "sources/m2_5/scope/exact_two_deck_scope_lock.v1.json",
-    ),
     ("schemas/capability-registry.v1.schema.json", "cards/capabilities/registry.json"),
     (
         "schemas/capability-registry.v1.schema.json",

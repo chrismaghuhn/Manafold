@@ -5,7 +5,7 @@
 - **Supersedes:** none
 - **Superseded by:** none
 - **Review provenance:** independently reviewed research candidate (`0 BLOCKER / 0 MAJOR`) at baseline `5c170b1f94b821552a0eff7319565a8020c244ca`; re-checked for drift against post-`M2.Final` `master` `5c92e1abbdef70206c7fc7830c31f9a18e560ba7`, including the Issue #62 structural consolidation; permanent number allocated at acceptance per [`README.md`](README.md)
-- **Implementation evidence:** `NOT_RUN`; semantic-domain inventory and APIs remain evidence-driven by M2.5/M3
+- **Implementation evidence:** `NOT_RUN`; semantic-domain inventory and APIs remain evidence-driven by future reviewed scope and M3
 
 This record accepts the reviewed capability-oriented semantic-domain decision after successful `M2.Final`. It fixes durable semantic-ownership boundaries only; it changes no executable behavior, and behavior gates remain governed by their existing contracts.
 
@@ -70,7 +70,7 @@ for deterministic integration order. It delegates local behavior to the owning
 domains rather than reimplementing it.
 
 The exact domain inventory, process decomposition, and source tree are deferred
-to the M2.5 capability closure and pinned M3 authority cases.
+to a future reviewed capability closure and pinned M3 authority cases.
 
 ### Domains have bounded authority
 
@@ -164,7 +164,7 @@ Capability Registry V1 retains its existing meanings:
 No V1 field is reinterpreted as a runtime semantic domain, primary orchestrator,
 or touched-domain list.
 
-M2.5 must make semantic ownership explicit and reviewable, but its
+Future scope work must make semantic ownership explicit and reviewable, but its
 machine-readable representation is deferred. If it becomes part of the
 capability registry, that requires an explicitly versioned registry evolution;
 a separately versioned semantic-ownership artifact is also permitted.
@@ -226,7 +226,7 @@ This ADR deliberately does **not** freeze:
 - optimized dispatch or rollout backends;
 - machine-readable semantic-owner metadata.
 
-These are evidence-driven by M2.5/M3 rather than speculatively designed here.
+These are evidence-driven by future reviewed scope and M3 rather than speculatively designed here.
 
 ## Compatibility
 
@@ -250,7 +250,7 @@ compatibility, schema-evolution, fixture, migration, and API-lifecycle rules.
 4. Re-review this candidate for drift, allocate the then-current ADR number,
    and accept the narrow ownership decision.
    (Done by this ADR; no material drift was found.)
-5. During M2.5, derive the exact capability closure and a versioned, reviewable semantic-ownership graph.
+5. Before M3 authorization, derive the exact capability closure and a versioned, reviewable semantic-ownership graph from reviewed scope input.
 6. During M3, introduce only domains and bounded interfaces justified by that locked closure, starting with complete vertical capability slices.
 7. Optimize representations or dispatch only after profiling and parity evidence.
 
@@ -267,7 +267,7 @@ Revisit the decision if:
 - cross-domain causal invariants cannot be expressed in one composite ordered proof;
 - event/audit semantics cannot remain mutually auditable;
 - capability identity becomes coupled to routine source moves;
-- the first locked M2.5 closure requires widespread escape hatches;
+- the first locked capability closure requires widespread escape hatches;
 - replacement, continuous, copy, attachment, combat, or format semantics force an alternate authority path;
 - native executors become common rather than exceptional;
 - measured profiling plus parity evidence later demonstrates that the reference closed-world dispatch architecture is unsuitable.
@@ -294,7 +294,6 @@ Merged master (PR #76 squash result) and drift-review base of this acceptance:
 ```text
 SEMANTIC OWNERSHIP ADR = ACCEPTED
 M2 = COMPLETE (executable closure head 352cd80c2ef58a406c30bf7db1cb792109fafc3f; merged master 5c92e1abbdef70206c7fc7830c31f9a18e560ba7)
-M2.5 = NOT STARTED
-M3 = NOT STARTED
+M3 = NOT_AUTHORIZED
 PRODUCTION SEMANTICS CHANGED BY THIS ADR = NO
 ```

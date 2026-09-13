@@ -427,83 +427,6 @@
       "stability": "provisional"
     },
     {
-      "change_process": "process-pr",
-      "owner_role": "maintainer",
-      "path": "docs/superpowers/plans/2026-09-01-m2-5-c-cross-deck-host-binding.md",
-      "role": "process",
-      "stability": "provisional"
-    },
-    {
-      "change_process": "process-pr",
-      "owner_role": "maintainer",
-      "path": "docs/superpowers/specs/2026-08-30-m2-5-c-pair-relation-review-authority-closure-design.md",
-      "role": "process",
-      "stability": "provisional"
-    },
-    {
-      "change_process": "process-pr",
-      "owner_role": "maintainer",
-      "path": "docs/superpowers/specs/2026-09-06-context-application-v2-slice3-semantic-validator-design.md",
-      "role": "process",
-      "stability": "provisional"
-    },
-    {
-      "change_process": "process-pr",
-      "owner_role": "maintainer",
-      "path": "docs/superpowers/plans/2026-09-06-context-application-v2-slice3-semantic-validator.md",
-      "role": "process",
-      "stability": "provisional"
-    },
-    {
-      "change_process": "process-pr",
-      "owner_role": "maintainer",
-      "path": "docs/superpowers/specs/2026-09-06-context-application-v2-slice4-v3-review-admission-design.md",
-      "role": "process",
-      "stability": "provisional"
-    },
-    {
-      "change_process": "process-pr",
-      "owner_role": "maintainer",
-      "path": "docs/superpowers/plans/2026-09-06-context-application-v2-slice4-v3-review-admission.md",
-      "role": "process",
-      "stability": "provisional"
-    },
-    {
-      "change_process": "process-pr",
-      "owner_role": "maintainer",
-      "path": "docs/superpowers/specs/2026-09-07-context-application-v2-slice5-contract-gap-resolution-design.md",
-      "role": "process",
-      "stability": "provisional"
-    },
-    {
-      "change_process": "process-pr",
-      "owner_role": "maintainer",
-      "path": "docs/superpowers/specs/2026-09-07-context-application-v2-slice5-supersession-currentness-design.md",
-      "role": "process",
-      "stability": "provisional"
-    },
-    {
-      "change_process": "process-pr",
-      "owner_role": "maintainer",
-      "path": "docs/superpowers/plans/2026-09-07-context-application-v2-slice5-supersession-currentness-implementation.md",
-      "role": "process",
-      "stability": "provisional"
-    },
-    {
-      "change_process": "process-pr",
-      "owner_role": "maintainer",
-      "path": "docs/superpowers/specs/2026-09-07-context-application-v2-slice6-host-binding-integration-design.md",
-      "role": "process",
-      "stability": "provisional"
-    },
-    {
-      "change_process": "process-pr",
-      "owner_role": "maintainer",
-      "path": "docs/superpowers/plans/2026-09-07-context-application-v2-slice6-host-binding-integration-implementation.md",
-      "role": "process",
-      "stability": "provisional"
-    },
-    {
       "change_process": "adr-and-fixtures",
       "owner_role": "state-maintainer",
       "path": "docs/STATE_HASHING.md",
@@ -691,27 +614,6 @@
       "path": "docs/maintenance/OWNERSHIP_MODEL.md",
       "role": "process",
       "stability": "accepted"
-    },
-    {
-      "change_process": "governance-pr",
-      "owner_role": "project-governance",
-      "path": "docs/maintenance/INTERACTION_AUTHORITY_REVIEW_CHECKLIST.md",
-      "role": "process",
-      "stability": "accepted"
-    },
-    {
-      "change_process": "governance-pr",
-      "owner_role": "project-governance",
-      "path": "docs/maintenance/INTERACTION_AUTHORITY_REVIEW_CHECKLIST_V2.md",
-      "role": "process",
-      "stability": "accepted"
-    },
-    {
-      "change_process": "governance-pr",
-      "owner_role": "project-governance",
-      "path": "docs/maintenance/CROSS_DECK_HOST_BINDING_REVIEW_CHECKLIST.md",
-      "role": "process",
-      "stability": "provisional"
     },
     {
       "change_process": "process-pr",

@@ -23,7 +23,7 @@ branch:        chris/m2-b-v3-structural-cut
 
 The local `just check-fast` baseline is already known to be `BLOCKED` because Windows cannot start WSL2/Hyper-V (`HCS_E_HYPERV_NOT_INSTALLED`). It must remain reported as `BLOCKED`, never upgraded to `PASS`, and native Rust/Python fallback evidence must be labeled separately.
 
-The implementation is one PR with reviewable internal commits. No commit may leave a current producer using a newly reinterpreted V2 value. V1/V2 fixtures, domain vectors, detached V2 readers, and historical support classifications remain unchanged. M2.B must not add general `ChooseMany`, `ChooseNumber`, or `Order` execution, knowledge lifecycle behavior, event-redaction lifecycle, legality completeness, noninterference closure, semantic action keys, Python transport, real Magic rules, cards, decks, M2.5, or M3 behavior.
+The implementation is one PR with reviewable internal commits. No commit may leave a current producer using a newly reinterpreted V2 value. V1/V2 fixtures, domain vectors, detached V2 readers, and historical support classifications remain unchanged. M2.B must not add general `ChooseMany`, `ChooseNumber`, or `Order` execution, knowledge lifecycle behavior, event-redaction lifecycle, legality completeness, noninterference closure, semantic action keys, Python transport, real Magic rules, cards, decks, future capability work, or M3 behavior.
 
 ## Commit policy and the one atomic runtime cut
 
