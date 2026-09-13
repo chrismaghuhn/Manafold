@@ -3,6 +3,8 @@ from __future__ import annotations
 import subprocess
 import sys
 import unittest
+from contextlib import redirect_stdout
+from io import StringIO
 from pathlib import Path
 from unittest import mock
 
@@ -183,6 +185,81 @@ class PythonTestProfileTests(unittest.TestCase):
 
         self.assertEqual(result, 7)
         run.assert_called_once_with(commands[0], cwd=run_checks.ROOT)
+
+    def test_successful_subprocess_reports_duration_and_command(self) -> None:
+        command = ["tool-a", "--flag"]
+        output = StringIO()
+
+        with (
+            mock.patch.object(run_checks, "command_available", return_value=True),
+            mock.patch.object(
+                run_checks.subprocess,
+                "run",
+                return_value=subprocess.CompletedProcess(command, 0),
+            ),
+            mock.patch("time.perf_counter", side_effect=[2.0, 2.125]),
+            redirect_stdout(output),
+        ):
+            result = run_checks.run([command], allow_missing=False)
+
+        self.assertEqual(result, 0)
+        self.assertEqual(
+            output.getvalue(),
+            "RUN tool-a --flag\nPASS 0.125s tool-a --flag\n",
+        )
+
+    def test_failed_subprocess_reports_duration_and_rerun_command(self) -> None:
+        command = ["tool-a", "--flag"]
+        output = StringIO()
+
+        with (
+            mock.patch.object(run_checks, "command_available", return_value=True),
+            mock.patch.object(
+                run_checks.subprocess,
+                "run",
+                return_value=subprocess.CompletedProcess(command, 7),
+            ),
+            mock.patch("time.perf_counter", side_effect=[3.0, 3.25]),
+            redirect_stdout(output),
+        ):
+            result = run_checks.run([command], allow_missing=False)
+
+        self.assertEqual(result, 7)
+        self.assertEqual(
+            output.getvalue(),
+            "RUN tool-a --flag\nFAIL 0.250s tool-a --flag\nRERUN: tool-a --flag\n",
+        )
+
+    def test_missing_tool_reports_exact_rerun_command(self) -> None:
+        command = ["missing-tool", "--flag"]
+        output = StringIO()
+
+        with (
+            mock.patch.object(run_checks, "command_available", return_value=False),
+            redirect_stdout(output),
+        ):
+            result = run_checks.run([command], allow_missing=False)
+
+        self.assertEqual(result, 2)
+        self.assertEqual(
+            output.getvalue(),
+            "MISSING TOOL: missing-tool\nRERUN: missing-tool --flag\n",
+        )
+
+    def test_fast_missing_tool_skip_reports_no_pass(self) -> None:
+        command = ["missing-tool", "--flag"]
+        output = StringIO()
+
+        with (
+            mock.patch.object(run_checks, "command_available", return_value=False),
+            redirect_stdout(output),
+        ):
+            result = run_checks.run([command], allow_missing=True)
+
+        self.assertEqual(result, 0)
+        self.assertIn("MISSING TOOL: missing-tool", output.getvalue())
+        self.assertIn("RERUN: missing-tool --flag", output.getvalue())
+        self.assertNotIn("PASS", output.getvalue())
 
 
 if __name__ == "__main__":
