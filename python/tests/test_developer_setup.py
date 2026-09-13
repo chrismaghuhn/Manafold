@@ -21,8 +21,8 @@ class BootstrapTests(unittest.TestCase):
     REQUIRED_PYTHON = "3.13.15"
 
     @staticmethod
-    def _create_fake_windows_venv(path: Path) -> None:
-        python = path / "Scripts" / "python.exe"
+    def _create_fake_venv(path: Path) -> None:
+        python = bootstrap.venv_python_path(path)
         python.parent.mkdir(parents=True, exist_ok=True)
         python.touch()
 
@@ -49,7 +49,7 @@ class BootstrapTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             venv_path = Path(directory) / ".venv"
             builder = mock.Mock()
-            builder.create.side_effect = self._create_fake_windows_venv
+            builder.create.side_effect = self._create_fake_venv
             protected_before = {
                 relative: (ROOT / relative).read_bytes() for relative in bootstrap.PROTECTED_FILES
             }
@@ -84,7 +84,7 @@ class BootstrapTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             venv_path = Path(directory) / ".venv"
             builder = mock.Mock()
-            builder.create.side_effect = self._create_fake_windows_venv
+            builder.create.side_effect = self._create_fake_venv
             with (
                 mock.patch.object(
                     bootstrap, "current_python_version", return_value=self.REQUIRED_PYTHON
