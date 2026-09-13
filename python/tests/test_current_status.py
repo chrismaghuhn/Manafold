@@ -15,9 +15,11 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
             r"\*\*Current foundation milestone:\*\* M2 .*COMPLETE",
         )
         self.assertIn(
-            "**Current active work area:** maintainer hardening under Issue #130",
+            "**Current active work area:** pre-M3 foundation reconciliation and "
+            "adversarial audit preparation under Issue #105; this does not authorize M3",
             readme,
         )
+        self.assertNotIn("maintainer hardening under Issue #130", readme)
         self.assertNotIn("Batch A5/C1", readme)
         self.assertRegex(readme, r"M2\.5[^\n]*NOT_CLAIMED")
         self.assertRegex(readme, r"M3[^\n]*NOT_AUTHORIZED")
@@ -45,6 +47,8 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
         self.assertRegex(roadmap, r"## M2 [^\n]+\n\n\*\*Status:\*\* `COMPLETE`")
         self.assertIn("`M2.5 = NOT_CLAIMED / NOT_FROZEN`", roadmap)
         self.assertIn("`M3 = NOT_AUTHORIZED`", roadmap)
+        self.assertIn("Issue #105", roadmap)
+        self.assertNotIn("current active maintainer work area is Issue\n#130", roadmap)
         self.assertIn("Census-driven scope", roadmap)
         self.assertIn("outside this authoritative engine repository", roadmap)
 
