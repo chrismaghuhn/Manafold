@@ -264,6 +264,34 @@ class FailurePacketCoreTests(unittest.TestCase):
                         b"failure\n",
                     )
 
+    def test_load_packet_rejects_nested_unapproved_fields(self) -> None:
+        nested_fields = {
+            "origin": {"internal_id": "INTERNAL_OBJECT_ID_SENTINEL"},
+            "source": {"root_seed": "ROOT_SEED_SECRET_SENTINEL"},
+            "command": {"environment": {"TOKEN": "SECRET_ENV_SENTINEL"}},
+            "execution": {"private_detail": "PRIVATE_HAND_SENTINEL"},
+        }
+        with tempfile.TemporaryDirectory() as temporary:
+            packet = failure_packet.write_packet(
+                Path(temporary) / "output",
+                "case-1",
+                base_manifest(),
+                b"failure\n",
+            )
+            manifest_path = packet / "manifest.json"
+            original = manifest_path.read_text(encoding="utf-8")
+            for section, extras in nested_fields.items():
+                with self.subTest(section=section):
+                    manifest = json.loads(original)
+                    manifest[section].update(extras)
+                    manifest_path.write_text(
+                        json.dumps(manifest),
+                        encoding="utf-8",
+                    )
+                    with self.assertRaises(failure_packet.FailurePacketError):
+                        failure_packet.load_packet(packet)
+                    manifest_path.write_text(original, encoding="utf-8")
+
     def test_packet_does_not_snapshot_process_environment(self) -> None:
         manifest = base_manifest()
         manifest["environment"] = {"SECRET_ENV_SENTINEL": "must-not-be-captured"}
@@ -567,6 +595,510 @@ class CaptureFailureTests(unittest.TestCase):
             )
 
         self.assertEqual(result.status, failure_packet.CAPTURE_COMMAND_EXIT)
+
+
+class RerunFailureTests(unittest.TestCase):
+    @staticmethod
+    def repository_root(temporary: str) -> Path:
+        repository_root = Path(temporary) / "repo"
+        repository_root.mkdir()
+        return repository_root
+
+    @staticmethod
+    def identity(
+        *,
+        commit: str = "a" * 40,
+        tree: str = "b" * 40,
+        fingerprint: str = "c" * 64,
+        clean: bool = True,
+    ) -> failure_packet.SourceIdentity:
+        return failure_packet.SourceIdentity(
+            commit=commit,
+            tree=tree,
+            fingerprint=fingerprint,
+            clean=clean,
+        )
+
+    @staticmethod
+    def command(exit_status: int = 1) -> list[str]:
+        return [
+            sys.executable,
+            "-c",
+            f"import sys; sys.exit({exit_status})",
+        ]
+
+    @staticmethod
+    def marker_line(
+        *,
+        surface: str = "events",
+        semantic_path: str = "transition.events[3]",
+        mismatch_kind: str = "value_changed",
+    ) -> str:
+        return (
+            "MANAFOLD_FAILURE_SIGNATURE v1 "
+            f"surface={surface} path={semantic_path} mismatch_kind={mismatch_kind}"
+        )
+
+    def make_packet(
+        self,
+        temporary: str,
+        *,
+        outcome: str = failure_packet.COMMAND_EXIT,
+        exit_status: int | None = 1,
+        argv: list[str] | None = None,
+        cwd: str = ".",
+        marker: dict[str, str] | None = None,
+        tool_version: str | None = None,
+    ) -> tuple[Path, Path, failure_packet.SourceIdentity]:
+        repository_root = self.repository_root(temporary)
+        identity = self.identity()
+        argv = list(argv or self.command())
+        manifest = base_manifest()
+        manifest["packet_id"] = "rerun-case"
+        manifest["source"] = {
+            "commit": identity.commit,
+            "tree": identity.tree,
+            "fingerprint": identity.fingerprint,
+            "clean": identity.clean,
+        }
+        manifest["command"] = {"argv": argv, "cwd": cwd}
+        manifest["execution"] = {
+            "outcome": outcome,
+            "exit_status": exit_status,
+            "timeout_seconds": failure_packet.MAX_SINGLE_REPRO_SUBPROCESS_RUNTIME_SECONDS,
+        }
+        manifest["failure"] = {"classification": outcome}
+        manifest["failure_signature"] = {
+            "origin_kind": "command",
+            "case_id": "CASE_1",
+            "failure_classification": outcome,
+            "surface": marker["surface"] if marker else None,
+            "semantic_path": marker["semantic_path"] if marker else None,
+            "mismatch_kind": marker["mismatch_kind"] if marker else None,
+        }
+        manifest["tools"] = failure_packet.tool_identity()
+        if tool_version is not None:
+            manifest["tools"]["capture_python"]["version"] = tool_version
+        log = b"failure\n"
+        if marker is not None:
+            log = (self.marker_line(**marker) + "\n").encode("utf-8")
+        packet = failure_packet.write_packet(
+            Path(temporary) / "output",
+            "rerun-case",
+            manifest,
+            log,
+        )
+        return packet, repository_root, identity
+
+    def rerun_with_outcome(
+        self,
+        rerun_failure: Any,
+        packet: Path,
+        repository_root: Path,
+        identity: failure_packet.SourceIdentity,
+        outcome: failure_packet.CommandOutcome,
+    ) -> tuple[Any, mock.MagicMock]:
+        run_bounded = mock.patch.object(
+            rerun_failure,
+            "run_bounded",
+            return_value=outcome,
+        )
+        started = run_bounded.start()
+        try:
+            result = rerun_failure.rerun(
+                packet,
+                repository_root=repository_root,
+                source_identity_provider=lambda: identity,
+            )
+        finally:
+            run_bounded.stop()
+        return result, started
+
+    def test_matching_command_exit_is_reproduced(self) -> None:
+        import rerun_failure
+
+        with tempfile.TemporaryDirectory() as temporary:
+            packet, repository_root, identity = self.make_packet(temporary)
+            result, run_bounded = self.rerun_with_outcome(
+                rerun_failure,
+                packet,
+                repository_root,
+                identity,
+                failure_packet.CommandOutcome(returncode=1),
+            )
+
+        self.assertEqual(result.status, failure_packet.RERUN_REPRODUCED)
+        self.assertEqual(result.exit_code, 0)
+        run_bounded.assert_called_once()
+        self.assertEqual(run_bounded.call_args.args[0], self.command())
+        self.assertEqual(run_bounded.call_args.kwargs["cwd"], repository_root.resolve())
+        self.assertFalse(run_bounded.call_args.kwargs["shell"])
+        self.assertLessEqual(
+            run_bounded.call_args.kwargs["timeout"],
+            failure_packet.MAX_SINGLE_REPRO_SUBPROCESS_RUNTIME_SECONDS,
+        )
+
+    def test_different_exit_status_is_not_reproduced(self) -> None:
+        import rerun_failure
+
+        with tempfile.TemporaryDirectory() as temporary:
+            packet, repository_root, identity = self.make_packet(temporary)
+            result, _run_bounded = self.rerun_with_outcome(
+                rerun_failure,
+                packet,
+                repository_root,
+                identity,
+                failure_packet.CommandOutcome(returncode=2),
+            )
+
+        self.assertEqual(result.status, failure_packet.RERUN_NOT_REPRODUCED)
+        self.assertEqual(result.exit_code, 1)
+
+    def test_passing_rerun_is_not_reproduced(self) -> None:
+        import rerun_failure
+
+        with tempfile.TemporaryDirectory() as temporary:
+            packet, repository_root, identity = self.make_packet(temporary)
+            result, _run_bounded = self.rerun_with_outcome(
+                rerun_failure,
+                packet,
+                repository_root,
+                identity,
+                failure_packet.CommandOutcome(returncode=0),
+            )
+
+        self.assertEqual(result.status, failure_packet.RERUN_NOT_REPRODUCED)
+        self.assertEqual(result.exit_code, 1)
+
+    def test_matching_timeout_is_reproduced(self) -> None:
+        import rerun_failure
+
+        with tempfile.TemporaryDirectory() as temporary:
+            packet, repository_root, identity = self.make_packet(
+                temporary,
+                outcome=failure_packet.COMMAND_TIMEOUT,
+                exit_status=None,
+            )
+            result, _run_bounded = self.rerun_with_outcome(
+                rerun_failure,
+                packet,
+                repository_root,
+                identity,
+                failure_packet.CommandOutcome(returncode=None, timed_out=True),
+            )
+
+        self.assertEqual(result.status, failure_packet.RERUN_REPRODUCED)
+        self.assertEqual(result.exit_code, 0)
+
+    def test_timeout_followed_by_ordinary_exit_is_not_reproduced(self) -> None:
+        import rerun_failure
+
+        with tempfile.TemporaryDirectory() as temporary:
+            packet, repository_root, identity = self.make_packet(
+                temporary,
+                outcome=failure_packet.COMMAND_TIMEOUT,
+                exit_status=None,
+            )
+            result, _run_bounded = self.rerun_with_outcome(
+                rerun_failure,
+                packet,
+                repository_root,
+                identity,
+                failure_packet.CommandOutcome(returncode=1),
+            )
+
+        self.assertEqual(result.status, failure_packet.RERUN_NOT_REPRODUCED)
+        self.assertEqual(result.exit_code, 1)
+
+    def test_matching_structured_signature_is_reproduced(self) -> None:
+        import rerun_failure
+
+        marker = {
+            "surface": "events",
+            "semantic_path": "transition.events[3]",
+            "mismatch_kind": "value_changed",
+        }
+        with tempfile.TemporaryDirectory() as temporary:
+            packet, repository_root, identity = self.make_packet(
+                temporary,
+                marker=marker,
+            )
+            result, _run_bounded = self.rerun_with_outcome(
+                rerun_failure,
+                packet,
+                repository_root,
+                identity,
+                failure_packet.CommandOutcome(
+                    returncode=1,
+                    stdout=(self.marker_line(**marker) + "\n").encode("utf-8"),
+                ),
+            )
+
+        self.assertEqual(result.status, failure_packet.RERUN_REPRODUCED)
+
+    def test_different_structured_signature_is_not_reproduced(self) -> None:
+        import rerun_failure
+
+        expected = {
+            "surface": "events",
+            "semantic_path": "transition.events[3]",
+            "mismatch_kind": "value_changed",
+        }
+        actual = {
+            "surface": "delta",
+            "semantic_path": "transition.delta.audit[1]",
+            "mismatch_kind": "value_changed",
+        }
+        with tempfile.TemporaryDirectory() as temporary:
+            packet, repository_root, identity = self.make_packet(
+                temporary,
+                marker=expected,
+            )
+            result, _run_bounded = self.rerun_with_outcome(
+                rerun_failure,
+                packet,
+                repository_root,
+                identity,
+                failure_packet.CommandOutcome(
+                    returncode=1,
+                    stdout=(self.marker_line(**actual) + "\n").encode("utf-8"),
+                ),
+            )
+
+        self.assertEqual(result.status, failure_packet.RERUN_NOT_REPRODUCED)
+        self.assertEqual(result.exit_code, 1)
+
+    def test_structured_signature_without_marker_is_blocked(self) -> None:
+        import rerun_failure
+
+        marker = {
+            "surface": "events",
+            "semantic_path": "transition.events[3]",
+            "mismatch_kind": "value_changed",
+        }
+        with tempfile.TemporaryDirectory() as temporary:
+            packet, repository_root, identity = self.make_packet(
+                temporary,
+                marker=marker,
+            )
+            result, _run_bounded = self.rerun_with_outcome(
+                rerun_failure,
+                packet,
+                repository_root,
+                identity,
+                failure_packet.CommandOutcome(returncode=1),
+            )
+
+        self.assertEqual(result.status, failure_packet.RERUN_BLOCKED)
+        self.assertEqual(result.exit_code, 2)
+
+    def test_malformed_rerun_marker_is_blocked(self) -> None:
+        import rerun_failure
+
+        marker = {
+            "surface": "events",
+            "semantic_path": "transition.events[3]",
+            "mismatch_kind": "value_changed",
+        }
+        with tempfile.TemporaryDirectory() as temporary:
+            packet, repository_root, identity = self.make_packet(
+                temporary,
+                marker=marker,
+            )
+            result, _run_bounded = self.rerun_with_outcome(
+                rerun_failure,
+                packet,
+                repository_root,
+                identity,
+                failure_packet.CommandOutcome(
+                    returncode=1,
+                    stdout=b"MANAFOLD_FAILURE_SIGNATURE v1 malformed\n",
+                ),
+            )
+
+        self.assertEqual(result.status, failure_packet.RERUN_BLOCKED)
+        self.assertEqual(result.exit_code, 2)
+
+    def test_generic_signature_with_marker_is_not_reproduced(self) -> None:
+        import rerun_failure
+
+        marker = {
+            "surface": "events",
+            "semantic_path": "transition.events[3]",
+            "mismatch_kind": "value_changed",
+        }
+        with tempfile.TemporaryDirectory() as temporary:
+            packet, repository_root, identity = self.make_packet(temporary)
+            result, _run_bounded = self.rerun_with_outcome(
+                rerun_failure,
+                packet,
+                repository_root,
+                identity,
+                failure_packet.CommandOutcome(
+                    returncode=1,
+                    stdout=(self.marker_line(**marker) + "\n").encode("utf-8"),
+                ),
+            )
+
+        self.assertEqual(result.status, failure_packet.RERUN_NOT_REPRODUCED)
+
+    def test_source_identity_mismatch_blocks_before_command(self) -> None:
+        import rerun_failure
+
+        with tempfile.TemporaryDirectory() as temporary:
+            packet, repository_root, identity = self.make_packet(temporary)
+            changed = self.identity(commit="d" * 40)
+            with mock.patch.object(rerun_failure, "run_bounded") as run_bounded:
+                result = rerun_failure.rerun(
+                    packet,
+                    repository_root=repository_root,
+                    source_identity_provider=lambda: changed,
+                )
+
+        self.assertEqual(result.status, failure_packet.RERUN_BLOCKED)
+        self.assertEqual(result.exit_code, 2)
+        run_bounded.assert_not_called()
+        self.assertNotEqual(identity.commit, changed.commit)
+
+    def test_each_source_identity_mismatch_blocks_before_command(self) -> None:
+        import rerun_failure
+
+        changed_identities = {
+            "commit": self.identity(commit="d" * 40),
+            "tree": self.identity(tree="d" * 40),
+            "fingerprint": self.identity(fingerprint="d" * 64),
+            "clean": self.identity(clean=False),
+        }
+        for field, changed in changed_identities.items():
+            with self.subTest(field=field), tempfile.TemporaryDirectory() as temporary:
+                packet, repository_root, _identity = self.make_packet(temporary)
+                with mock.patch.object(rerun_failure, "run_bounded") as run_bounded:
+                    result = rerun_failure.rerun(
+                        packet,
+                        repository_root=repository_root,
+                        source_identity_provider=lambda changed=changed: changed,
+                    )
+
+            self.assertEqual(result.status, failure_packet.RERUN_BLOCKED)
+            self.assertEqual(result.exit_code, 2)
+            run_bounded.assert_not_called()
+
+    def test_tool_version_mismatch_blocks_before_command(self) -> None:
+        import rerun_failure
+
+        with tempfile.TemporaryDirectory() as temporary:
+            packet, repository_root, identity = self.make_packet(
+                temporary,
+                tool_version="0.0.0-test-mismatch",
+            )
+            with mock.patch.object(rerun_failure, "run_bounded") as run_bounded:
+                result = rerun_failure.rerun(
+                    packet,
+                    repository_root=repository_root,
+                    source_identity_provider=lambda: identity,
+                )
+
+        self.assertEqual(result.status, failure_packet.RERUN_BLOCKED)
+        self.assertEqual(result.exit_code, 2)
+        run_bounded.assert_not_called()
+
+    def test_missing_cwd_blocks_before_command(self) -> None:
+        import rerun_failure
+
+        with tempfile.TemporaryDirectory() as temporary:
+            packet, repository_root, identity = self.make_packet(
+                temporary,
+                cwd="missing-directory",
+            )
+            with mock.patch.object(rerun_failure, "run_bounded") as run_bounded:
+                result = rerun_failure.rerun(
+                    packet,
+                    repository_root=repository_root,
+                    source_identity_provider=lambda: identity,
+                )
+
+        self.assertEqual(result.status, failure_packet.RERUN_BLOCKED)
+        self.assertEqual(result.exit_code, 2)
+        run_bounded.assert_not_called()
+
+    def test_missing_executable_blocks_before_command(self) -> None:
+        import rerun_failure
+
+        with tempfile.TemporaryDirectory() as temporary:
+            packet, repository_root, identity = self.make_packet(
+                temporary,
+                argv=[str(Path(temporary) / "repo" / "missing-command.exe")],
+            )
+            with mock.patch.object(rerun_failure, "run_bounded") as run_bounded:
+                result = rerun_failure.rerun(
+                    packet,
+                    repository_root=repository_root,
+                    source_identity_provider=lambda: identity,
+                )
+
+        self.assertEqual(result.status, failure_packet.RERUN_BLOCKED)
+        self.assertEqual(result.exit_code, 2)
+        run_bounded.assert_not_called()
+
+    def test_source_mutation_blocks_even_matching_failure(self) -> None:
+        import rerun_failure
+
+        with tempfile.TemporaryDirectory() as temporary:
+            packet, repository_root, identity = self.make_packet(temporary)
+            snapshots = iter([identity, self.identity(fingerprint="d" * 64)])
+            with mock.patch.object(
+                rerun_failure,
+                "run_bounded",
+                return_value=failure_packet.CommandOutcome(returncode=1),
+            ) as run_bounded:
+                result = rerun_failure.rerun(
+                    packet,
+                    repository_root=repository_root,
+                    source_identity_provider=lambda: next(snapshots),
+                )
+
+        self.assertEqual(result.status, failure_packet.RERUN_BLOCKED)
+        self.assertEqual(result.exit_code, 2)
+        run_bounded.assert_called_once()
+
+    def test_tampered_nested_packet_blocks_before_command(self) -> None:
+        import rerun_failure
+
+        with tempfile.TemporaryDirectory() as temporary:
+            packet, repository_root, identity = self.make_packet(temporary)
+            manifest_path = packet / "manifest.json"
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            manifest["command"]["environment"] = {
+                "TOKEN": "SECRET_ENV_SENTINEL",
+            }
+            manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+            with mock.patch.object(rerun_failure, "run_bounded") as run_bounded:
+                result = rerun_failure.rerun(
+                    packet,
+                    repository_root=repository_root,
+                    source_identity_provider=lambda: identity,
+                )
+
+        self.assertEqual(result.status, failure_packet.RERUN_BLOCKED)
+        self.assertEqual(result.exit_code, 2)
+        run_bounded.assert_not_called()
+
+    def test_tampered_log_checksum_blocks_before_command(self) -> None:
+        import rerun_failure
+
+        with tempfile.TemporaryDirectory() as temporary:
+            packet, repository_root, identity = self.make_packet(temporary)
+            (packet / "command.log").write_bytes(b"tampered\n")
+            with mock.patch.object(rerun_failure, "run_bounded") as run_bounded:
+                result = rerun_failure.rerun(
+                    packet,
+                    repository_root=repository_root,
+                    source_identity_provider=lambda: identity,
+                )
+
+        self.assertEqual(result.status, failure_packet.RERUN_BLOCKED)
+        self.assertEqual(result.exit_code, 2)
+        run_bounded.assert_not_called()
 
 
 if __name__ == "__main__":

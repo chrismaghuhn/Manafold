@@ -194,6 +194,18 @@ def _copy_exact_mapping(
     return {key: copy.deepcopy(mapping[key]) for key in allowed if key in mapping}
 
 
+def _validate_exact_mapping(
+    value: object,
+    label: str,
+    allowed: set[str],
+) -> dict[str, Any]:
+    mapping = _require_mapping(value, label)
+    unknown = set(mapping) - allowed
+    if unknown:
+        raise FailurePacketError(f"unsupported {label} fields: {sorted(unknown)}")
+    return mapping
+
+
 def _copy_signature(value: object) -> dict[str, Any]:
     signature = _require_mapping(value, "failure_signature")
     allowed = {
@@ -258,18 +270,26 @@ def validate_manifest(value: object, *, require_artifact: bool = True) -> dict[s
     if sensitivity not in {"public", "perspective_private", "trusted"}:
         raise FailurePacketError(f"unsupported packet sensitivity: {sensitivity!r}")
 
-    origin = _require_mapping(manifest.get("origin"), "origin")
+    origin = _validate_exact_mapping(manifest.get("origin"), "origin", {"kind", "case_id"})
     _require_string(origin.get("kind"), "origin.kind")
     _require_string(origin.get("case_id"), "origin.case_id")
 
-    source = _require_mapping(manifest.get("source"), "source")
+    source = _validate_exact_mapping(
+        manifest.get("source"),
+        "source",
+        {"commit", "tree", "fingerprint", "clean"},
+    )
     _require_hex(source.get("commit"), "source.commit", _HEX40_RE)
     _require_hex(source.get("tree"), "source.tree", _HEX40_RE)
     _require_hex(source.get("fingerprint"), "source.fingerprint", _HEX64_RE)
     if not isinstance(source.get("clean"), bool):
         raise FailurePacketError("source.clean must be boolean")
 
-    command = _require_mapping(manifest.get("command"), "command")
+    command = _validate_exact_mapping(
+        manifest.get("command"),
+        "command",
+        {"argv", "cwd"},
+    )
     argv = command.get("argv")
     if not isinstance(argv, list) or not argv:
         raise FailurePacketError("command.argv must be a nonempty list")
@@ -279,7 +299,11 @@ def validate_manifest(value: object, *, require_artifact: bool = True) -> dict[s
         raise FailurePacketError("command.argv entries must be nonempty NUL-free strings")
     _safe_relative_path(command.get("cwd"), "command.cwd")
 
-    execution = _require_mapping(manifest.get("execution"), "execution")
+    execution = _validate_exact_mapping(
+        manifest.get("execution"),
+        "execution",
+        {"outcome", "exit_status", "timeout_seconds"},
+    )
     outcome = execution.get("outcome")
     if outcome not in {COMMAND_EXIT, COMMAND_TIMEOUT}:
         raise FailurePacketError(f"unsupported execution outcome: {outcome!r}")
@@ -298,11 +322,22 @@ def validate_manifest(value: object, *, require_artifact: bool = True) -> dict[s
     elif exit_status is not None:
         raise FailurePacketError("COMMAND_TIMEOUT requires a null exit_status")
 
-    failure = _require_mapping(manifest.get("failure"), "failure")
+    failure = _validate_exact_mapping(manifest.get("failure"), "failure", {"classification"})
     if failure.get("classification") != outcome:
         raise FailurePacketError("failure.classification does not match execution.outcome")
 
-    signature = _require_mapping(manifest.get("failure_signature"), "failure_signature")
+    signature = _validate_exact_mapping(
+        manifest.get("failure_signature"),
+        "failure_signature",
+        {
+            "origin_kind",
+            "case_id",
+            "failure_classification",
+            "surface",
+            "semantic_path",
+            "mismatch_kind",
+        },
+    )
     if signature.get("origin_kind") != origin.get("kind"):
         raise FailurePacketError("failure_signature.origin_kind does not match origin.kind")
     if signature.get("case_id") != origin.get("case_id"):
@@ -317,18 +352,30 @@ def validate_manifest(value: object, *, require_artifact: bool = True) -> dict[s
         if signature.get(field) is not None:
             _require_string(signature[field], f"failure_signature.{field}")
 
-    tools = _require_mapping(manifest.get("tools"), "tools")
-    capture_python = _require_mapping(tools.get("capture_python"), "tools.capture_python")
+    tools = _validate_exact_mapping(manifest.get("tools"), "tools", {"capture_python"})
+    capture_python = _validate_exact_mapping(
+        tools.get("capture_python"),
+        "tools.capture_python",
+        {"version", "required"},
+    )
     _require_string(capture_python.get("version"), "tools.capture_python.version")
     if capture_python.get("required") is not True:
         raise FailurePacketError("tools.capture_python.required must be true")
 
-    reproduction = _require_mapping(manifest.get("reproduction"), "reproduction")
+    reproduction = _validate_exact_mapping(
+        manifest.get("reproduction"),
+        "reproduction",
+        {"display_command"},
+    )
     _require_string(reproduction.get("display_command"), "reproduction.display_command")
 
     if require_artifact:
-        artifacts = _require_mapping(manifest.get("artifacts"), "artifacts")
-        log = _require_mapping(artifacts.get("log"), "artifacts.log")
+        artifacts = _validate_exact_mapping(manifest.get("artifacts"), "artifacts", {"log"})
+        log = _validate_exact_mapping(
+            artifacts.get("log"),
+            "artifacts.log",
+            {"path", "sha256"},
+        )
         _safe_relative_path(log.get("path"), "artifacts.log.path")
         _require_hex(log.get("sha256"), "artifacts.log.sha256", _HEX64_RE)
 
