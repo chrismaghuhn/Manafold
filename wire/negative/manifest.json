@@ -43,6 +43,12 @@
       "path": "observation-invalid-base64.json"
     },
     {
+      "contract": "observation-envelope.v1",
+      "expected_error_code": "semantic.observation",
+      "expected_reject_layer": "rust-python-semantic-or-decode",
+      "path": "observation-digest-mismatch.json"
+    },
+    {
       "contract": "observed-event-envelope.v1",
       "expected_error_code": "decode.invalid_json",
       "expected_reject_layer": "rust-python-semantic-or-decode",

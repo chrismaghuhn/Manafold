@@ -26,8 +26,11 @@ impl ObservationEnvelope {
         let decoded = STANDARD
             .decode(&self.payload_base64)
             .map_err(|_| ObservationValidationError::Base64)?;
-        if STANDARD.encode(decoded) != self.payload_base64 {
+        if STANDARD.encode(&decoded) != self.payload_base64 {
             return Err(ObservationValidationError::Base64);
+        }
+        if ObservationDigest::from_canonical_bytes(&decoded) != self.digest {
+            return Err(ObservationValidationError::DigestMismatch);
         }
         Ok(())
     }

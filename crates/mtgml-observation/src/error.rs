@@ -9,6 +9,8 @@ pub enum ObservationValidationError {
     SchemaOrCodec,
     #[error("payload is not canonical base64")]
     Base64,
+    #[error("observation digest does not match payload")]
+    DigestMismatch,
     #[error("information state and current observation disagree")]
     InformationStateMismatch,
     #[error("observed event label/code must be non-empty")]
