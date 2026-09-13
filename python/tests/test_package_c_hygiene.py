@@ -68,15 +68,18 @@ class DependencyAuditTests(unittest.TestCase):
             dependency_audit,
             "run_bounded",
             side_effect=[
-                self.result(0, stdout="cargo-audit 0.21.2"),
-                self.result(0, stdout='{"vulnerabilities": {"found": 0, "list": []}}'),
+                self.result(0, stdout="cargo-audit 0.22.2"),
+                self.result(
+                    0,
+                    stdout='{"vulnerabilities": {"found": false, "count": 0, "list": []}}',
+                ),
             ],
         ):
             result = dependency_audit.audit_ecosystem(
                 "rust",
                 version_command=["cargo-audit", "--version"],
                 audit_command=["cargo-audit", "--json"],
-                expected_tool_version="cargo-audit 0.21.2",
+                expected_tool_version="cargo-audit 0.22.2",
             )
         self.assertEqual(result.status, dependency_audit.AUDIT_PASS)
 
@@ -85,11 +88,12 @@ class DependencyAuditTests(unittest.TestCase):
             dependency_audit,
             "run_bounded",
             side_effect=[
-                self.result(0, stdout="cargo-audit 0.21.2"),
+                self.result(0, stdout="cargo-audit 0.22.2"),
                 self.result(
                     1,
                     stdout=(
-                        '{"vulnerabilities": {"found": 1, "list": [{"id": "RUSTSEC-0000-0000"}]}}'
+                        '{"vulnerabilities": {"found": true, "count": 1, '
+                        '"list": [{"id": "RUSTSEC-0000-0000"}]}}'
                     ),
                 ),
             ],
@@ -98,7 +102,7 @@ class DependencyAuditTests(unittest.TestCase):
                 "rust",
                 version_command=["cargo-audit", "--version"],
                 audit_command=["cargo-audit", "--json"],
-                expected_tool_version="cargo-audit 0.21.2",
+                expected_tool_version="cargo-audit 0.22.2",
             )
         self.assertEqual(result.status, dependency_audit.AUDIT_FAIL)
 
@@ -107,7 +111,7 @@ class DependencyAuditTests(unittest.TestCase):
             dependency_audit,
             "run_bounded",
             side_effect=[
-                self.result(0, stdout="cargo-audit 0.21.2"),
+                self.result(0, stdout="cargo-audit 0.22.2"),
                 self.result(0, stdout=""),
             ],
         ):
@@ -115,7 +119,7 @@ class DependencyAuditTests(unittest.TestCase):
                 "rust",
                 version_command=["cargo-audit", "--version"],
                 audit_command=["cargo-audit", "audit", "--json"],
-                expected_tool_version="cargo-audit 0.21.2",
+                expected_tool_version="cargo-audit 0.22.2",
             )
         self.assertEqual(result.status, dependency_audit.AUDIT_BLOCKED)
 
@@ -124,7 +128,7 @@ class DependencyAuditTests(unittest.TestCase):
             dependency_audit,
             "run_bounded",
             side_effect=[
-                self.result(0, stdout="cargo-audit 0.21.2"),
+                self.result(0, stdout="cargo-audit 0.22.2"),
                 self.result(0, stdout="garbage"),
             ],
         ):
@@ -132,7 +136,7 @@ class DependencyAuditTests(unittest.TestCase):
                 "rust",
                 version_command=["cargo-audit", "--version"],
                 audit_command=["cargo-audit", "audit", "--json"],
-                expected_tool_version="cargo-audit 0.21.2",
+                expected_tool_version="cargo-audit 0.22.2",
             )
         self.assertEqual(result.status, dependency_audit.AUDIT_BLOCKED)
 
@@ -141,7 +145,7 @@ class DependencyAuditTests(unittest.TestCase):
             dependency_audit,
             "run_bounded",
             side_effect=[
-                self.result(0, stdout="cargo-audit 0.21.2"),
+                self.result(0, stdout="cargo-audit 0.22.2"),
                 self.result(0, stdout='{"unexpected": "schema"}'),
             ],
         ):
@@ -149,7 +153,7 @@ class DependencyAuditTests(unittest.TestCase):
                 "rust",
                 version_command=["cargo-audit", "--version"],
                 audit_command=["cargo-audit", "audit", "--json"],
-                expected_tool_version="cargo-audit 0.21.2",
+                expected_tool_version="cargo-audit 0.22.2",
             )
         self.assertEqual(result.status, dependency_audit.AUDIT_BLOCKED)
 
@@ -159,24 +163,27 @@ class DependencyAuditTests(unittest.TestCase):
             "run_bounded",
             side_effect=[
                 self.result(0, stdout="cargo-audit 0.19.0"),
-                self.result(0, stdout='{"vulnerabilities": {"found": 0, "list": []}}'),
+                self.result(
+                    0,
+                    stdout='{"vulnerabilities": {"found": false, "count": 0, "list": []}}',
+                ),
             ],
         ):
             result = dependency_audit.audit_ecosystem(
                 "rust",
                 version_command=["cargo-audit", "--version"],
                 audit_command=["cargo-audit", "audit", "--json"],
-                expected_tool_version="cargo-audit 0.21.2",
+                expected_tool_version="cargo-audit 0.22.2",
             )
         self.assertEqual(result.status, dependency_audit.AUDIT_BLOCKED)
-        self.assertIn("expected cargo-audit 0.21.2", result.detail)
+        self.assertIn("expected cargo-audit 0.22.2", result.detail)
 
     def test_rust_advisory_database_error_is_blocked(self) -> None:
         with mock.patch.object(
             dependency_audit,
             "run_bounded",
             side_effect=[
-                self.result(0, stdout="cargo-audit 0.21.2"),
+                self.result(0, stdout="cargo-audit 0.22.2"),
                 self.result(1, stderr="error loading advisory database: unsupported CVSS version"),
             ],
         ):
@@ -184,7 +191,7 @@ class DependencyAuditTests(unittest.TestCase):
                 "rust",
                 version_command=["cargo-audit", "--version"],
                 audit_command=["cargo-audit", "audit", "--json"],
-                expected_tool_version="cargo-audit 0.21.2",
+                expected_tool_version="cargo-audit 0.22.2",
             )
         self.assertEqual(result.status, dependency_audit.AUDIT_BLOCKED)
 
@@ -198,7 +205,7 @@ class DependencyAuditTests(unittest.TestCase):
                 "rust",
                 version_command=["cargo-audit", "--version"],
                 audit_command=["cargo-audit", "--json"],
-                expected_tool_version="cargo-audit 0.21.2",
+                expected_tool_version="cargo-audit 0.22.2",
             )
         self.assertEqual(result.status, dependency_audit.AUDIT_BLOCKED)
 
@@ -212,7 +219,7 @@ class DependencyAuditTests(unittest.TestCase):
                 "rust",
                 version_command=["cargo-audit", "--version"],
                 audit_command=["cargo-audit", "--json"],
-                expected_tool_version="cargo-audit 0.21.2",
+                expected_tool_version="cargo-audit 0.22.2",
             )
         self.assertEqual(result.status, dependency_audit.AUDIT_BLOCKED)
 
@@ -221,8 +228,11 @@ class DependencyAuditTests(unittest.TestCase):
             dependency_audit,
             "run_bounded",
             side_effect=[
-                self.result(0, stdout="cargo-audit 0.21.2"),
-                self.result(0, stdout='{"vulnerabilities": {"found": 0, "list": []}}'),
+                self.result(0, stdout="cargo-audit 0.22.2"),
+                self.result(
+                    0,
+                    stdout='{"vulnerabilities": {"found": false, "count": 0, "list": []}}',
+                ),
                 self.result(0, stdout="pip-audit 2.10.1"),
                 self.result(0, stdout='{"dependencies": [], "fixes": []}'),
             ],
@@ -435,8 +445,9 @@ class ReleaseReproducibilityTests(unittest.TestCase):
         self.assertNotIn("manafold-pr-gate", source)
         self.assertEqual(workflow["jobs"]["dependency-audit"]["runs-on"], "ubuntu-latest")
         self.assertIn("rustup toolchain install 1.85.1", source)
-        self.assertIn("cargo install cargo-audit", source)
-        self.assertIn("--version 0.21.2", source)
+        self.assertIn("rustup toolchain install 1.88.0", source)
+        self.assertIn("cargo +1.88.0 install cargo-audit", source)
+        self.assertIn("--version 0.22.2", source)
         self.assertIn("pip-audit==2.10.1", source)
         for step in workflow["jobs"]["dependency-audit"]["steps"]:
             if "run" in step and any(

@@ -46,10 +46,11 @@ security update does not bypass semantic compatibility.
 
 `<project-python> scripts/run_dependency_audit.py` (or the Bash-oriented
 `just audit-dependencies` recipe after project bootstrap) is the explicit
-read-only audit path. It runs RustSec `cargo-audit` against `Cargo.lock` and
-PyPA `pip-audit` against `python/requirements-dev.lock`. The audit tools are
-installed separately from ordinary bootstrap; normal Fast/Integration gates do
-not download advisory databases.
+read-only audit path. It runs RustSec `cargo-audit` 0.22.2 against `Cargo.lock`
+and PyPA `pip-audit` 2.10.1 against `python/requirements-dev.lock`. The audit
+tools are installed separately from ordinary bootstrap. `cargo-audit` is built
+with audit-only Rust 1.88.0; Manafold itself remains on reference Rust 1.85.1.
+Normal Fast/Integration gates do not download advisory databases.
 
 Each ecosystem reports `PASS`, `FAIL`, or `BLOCKED`. A missing audit tool,
 advisory service, or bounded subprocess produces `BLOCKED`, never `PASS`.

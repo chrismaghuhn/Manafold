@@ -8,7 +8,7 @@
 
 **Architecture:** The workflow files remain the authoritative Action-pin source; `scripts/verify_repository.py` rejects every external mutable Action reference. `scripts/run_dependency_audit.py` is a read-only orchestration boundary that invokes separately installed ecosystem-native tools, classifies clean/vulnerable/unavailable execution as `PASS`/`FAIL`/`BLOCKED`, and never participates in `manafold-pr-gate`. Existing `TOOLCHAIN_POLICY.md` and `DEPENDENCY_POLICY.md` own the reproducibility and update-review rules; no new status source or dependency bot is introduced.
 
-**Tech Stack:** GitHub Actions, GitHub upstream tag refs, Python 3.13.15 project `.venv`, Rust 1.85.1/Cargo.lock, RustSec `cargo-audit` 0.21.2, PyPA `pip-audit` 2.10.1, Python subprocess/unittest/pytest, existing documentation registry.
+**Tech Stack:** GitHub Actions, GitHub upstream tag refs, Python 3.13.15 project `.venv`, Rust 1.85.1/Cargo.lock, audit-only Rust 1.88.0 for RustSec `cargo-audit` 0.22.2, PyPA `pip-audit` 2.10.1, Python subprocess/unittest/pytest, existing documentation registry.
 
 ---
 
@@ -94,7 +94,7 @@ the official upstream tags:
 ```yaml
 actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
-Swatinem/rust-cache@49a0bdc70d2e1b713ca9e2869b211fcce03d3c1c # v2
+Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
 ```
 
 Preserve the existing action inputs, job names, exact-head behavior, and
@@ -171,7 +171,7 @@ AUDIT_FAIL = "FAIL"
 AUDIT_BLOCKED = "BLOCKED"
 ```
 
-Run `cargo-audit --version`, `cargo-audit --json`,
+Run `cargo-audit --version`, `cargo-audit audit --json`,
 `<audit-python> -m pip_audit --version`, and
 `<audit-python> -m pip_audit --requirement python/requirements-dev.lock
 --format json --progress-spinner off` with `timeout=600`, captured output, and
@@ -220,8 +220,9 @@ Run `<project-python> -B -m pytest -q python/tests/test_package_c_hygiene.py -k 
 Use `workflow_dispatch` and a weekly schedule, `ubuntu-latest`, and a job-level
 `timeout-minutes: 10`. Pin checkout and setup-python using the immutable SHAs
 from Task 3. Bootstrap the project `.venv`, install `pip-audit==2.10.1` in a
-runner-temp audit environment, install `cargo-audit==0.21.2` into a
-runner-temp Cargo root with `--locked`, and invoke
+runner-temp audit environment, install audit-only Rust 1.88.0, install
+`cargo-audit==0.22.2` into a runner-temp Cargo root with `--locked` using
+`cargo +1.88.0`, and invoke
 `.venv/bin/python scripts/run_dependency_audit.py` with those tool paths.
 
 Do not add this workflow to `manafold-pr-gate` or branch protection. Do not

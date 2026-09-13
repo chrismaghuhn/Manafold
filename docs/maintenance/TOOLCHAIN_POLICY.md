@@ -57,9 +57,12 @@ Accordingly, `OD-016` remains `PARTIAL`: the public release strategy and its
 transitive Python/build provenance are not yet accepted. `OD-021` remains
 `OPEN`: certification artifact signing and attestation are not resolved here.
 
-The separate dependency audit path uses RustSec `cargo-audit` and PyPA
-`pip-audit` as read-only advisory checks. Audit availability is reported
-separately from merge correctness and is not a reproducibility claim.
+The separate dependency audit path uses RustSec `cargo-audit` 0.22.2 and PyPA
+`pip-audit` 2.10.1 as read-only advisory checks. `cargo-audit` is built with
+the audit-only Rust 1.88.0 toolchain; this does not change the Manafold
+reference Rust 1.85.1 toolchain and never builds or tests Manafold binaries.
+Audit availability is reported separately from merge correctness and is not a
+reproducibility claim.
 
 ## Change rule
 

@@ -143,13 +143,16 @@ Do not remove a parent directory or a shared environment as part of recovery.
 
 Dependency auditing is an explicit, separate path and is not part of ordinary
 bootstrap, Fast, or Integration. The reviewed tool versions are RustSec
-`cargo-audit` `0.21.2` and PyPA `pip-audit` `2.10.1`. Install them in an
+`cargo-audit` `0.22.2` and PyPA `pip-audit` `2.10.1`. Install them in an
 audit-only tool location; do not add them to the development bootstrap lock.
+The audit binary is built with the audit-only Rust toolchain `1.88.0`; the
+Manafold reference compiler remains `1.85.1` for all project builds and tests.
 
 The separate installation commands are:
 
 ```text
-cargo install cargo-audit --version 0.21.2 --locked
+rustup toolchain install 1.88.0 --profile minimal
+cargo +1.88.0 install cargo-audit --version 0.22.2 --locked
 <audit-python> -m pip install pip-audit==2.10.1
 ```
 
@@ -167,8 +170,8 @@ On WSL/Linux, the equivalent direct command is:
 ```
 
 The `<audit-python>` executable must be the interpreter where `pip-audit`
-2.10.1 is installed; `cargo-audit` is discovered as `cargo-audit` on `PATH` or
-can be supplied with `--rust-audit-executable`. The script audits
+2.10.1 is installed; `cargo-audit` 0.22.2 is discovered as `cargo-audit` on
+`PATH` or can be supplied with `--rust-audit-executable`. The script audits
 `Cargo.lock` and `python/requirements-dev.lock` read-only, bounds each audit
 subprocess to 600 seconds, and reports `PASS`, `FAIL`, or `BLOCKED`. Missing
 tools, unavailable advisory data, and timeouts are never green. The scheduled

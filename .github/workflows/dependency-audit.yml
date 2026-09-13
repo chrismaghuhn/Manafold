@@ -17,7 +17,7 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version-file: ".python-version"
-      - name: Install pinned Rust toolchain
+      - name: Install pinned Manafold Rust toolchain
         shell: bash
         timeout-minutes: 10
         run: rustup toolchain install 1.85.1 --profile minimal
@@ -40,9 +40,10 @@ jobs:
         shell: bash
         timeout-minutes: 10
         run: |
+          rustup toolchain install 1.88.0 --profile minimal
           audit_root="${RUNNER_TEMP}/manafold-cargo-audit"
-          cargo install cargo-audit \
-            --version 0.21.2 \
+          cargo +1.88.0 install cargo-audit \
+            --version 0.22.2 \
             --locked \
             --root "$audit_root"
           echo "RUST_AUDIT_EXECUTABLE=$audit_root/bin/cargo-audit" >> "$GITHUB_ENV"

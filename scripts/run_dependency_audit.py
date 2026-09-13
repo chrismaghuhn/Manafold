@@ -16,7 +16,7 @@ MAX_SINGLE_AUDIT_SUBPROCESS_RUNTIME_SECONDS = 600
 AUDIT_PASS = "PASS"
 AUDIT_FAIL = "FAIL"
 AUDIT_BLOCKED = "BLOCKED"
-REQUIRED_RUST_AUDIT_VERSION = "cargo-audit 0.21.2"
+REQUIRED_RUST_AUDIT_VERSION = "cargo-audit 0.22.2"
 REQUIRED_PYTHON_AUDIT_VERSION = "pip-audit 2.10.1"
 
 
@@ -116,16 +116,19 @@ def parse_audit_payload(ecosystem: str, output: str) -> tuple[bool, bool]:
             return False, False
         listed = vulnerabilities.get("list")
         found = vulnerabilities.get("found")
+        count = vulnerabilities.get("count")
         if (
-            not isinstance(found, int)
-            or isinstance(found, bool)
-            or found < 0
+            not isinstance(found, bool)
+            or not isinstance(count, int)
+            or isinstance(count, bool)
+            or count < 0
             or not isinstance(listed, list)
-            or found != len(listed)
+            or count != len(listed)
+            or found != (count > 0)
             or not all(isinstance(entry, dict) for entry in listed)
         ):
             return False, False
-        return True, found > 0
+        return True, found
 
     return False, False
 
