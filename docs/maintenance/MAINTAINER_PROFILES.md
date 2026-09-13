@@ -18,6 +18,11 @@ Python suite via `python scripts/run_python_tests.py --profile full`, then
 Ruff, Mypy, Cargo, and maintainer-artifact checks. Missing native tools fail
 this profile.
 
+For pull requests, `PR Fast` provides short development feedback and `PR
+Integration` runs the exact-head repository-owned integration profile.
+`manafold-pr-gate` is the stable aggregate result: it passes only when the
+mandatory Fast, Integration, and CodeQL checks all conclude `success`.
+
 ## Certification / release
 Use `just check-all`, then `just release-candidate`. Release evidence is valid only with no `NOT_RUN` or `FAIL`.
 
