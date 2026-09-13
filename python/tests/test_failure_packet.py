@@ -228,6 +228,10 @@ class FailurePacketCoreTests(unittest.TestCase):
         manifest["failure"]["expected_summary"] = "INTERNAL_OBJECT_ID_SENTINEL"
         manifest["failure"]["actual_summary"] = "PRIVATE_HAND_SENTINEL"
         manifest["tools"]["private_path"] = "ROOT_SEED_SECRET_SENTINEL"
+        manifest["failure_signature"]["semantic_path"] = (
+            "zones.locations[object:INTERNAL_OBJECT_ID_SENTINEL]"
+        )
+        manifest["failure_signature"]["private_detail"] = "ROOT_SEED_SECRET_SENTINEL"
 
         summary = failure_packet.safe_summary(manifest)
         rendered = json.dumps(summary, sort_keys=True)
@@ -236,6 +240,28 @@ class FailurePacketCoreTests(unittest.TestCase):
         self.assertNotIn("INTERNAL_OBJECT_ID_SENTINEL", rendered)
         self.assertNotIn("PRIVATE_HAND_SENTINEL", rendered)
         self.assertEqual(summary["failure"]["classification"], "COMMAND_EXIT")
+
+    def test_nested_unapproved_fields_are_rejected(self) -> None:
+        nested_fields = {
+            "origin": {"internal_id": "INTERNAL_OBJECT_ID_SENTINEL"},
+            "source": {"root_seed": "ROOT_SEED_SECRET_SENTINEL"},
+            "command": {"environment": {"TOKEN": "SECRET_ENV_SENTINEL"}},
+            "execution": {"private_detail": "PRIVATE_HAND_SENTINEL"},
+        }
+        for section, extras in nested_fields.items():
+            with self.subTest(section=section):
+                manifest = base_manifest()
+                manifest[section].update(extras)
+                with (
+                    tempfile.TemporaryDirectory() as temporary,
+                    self.assertRaises(failure_packet.FailurePacketError),
+                ):
+                    failure_packet.write_packet(
+                        Path(temporary) / "output",
+                        "case-1",
+                        manifest,
+                        b"failure\n",
+                    )
 
     def test_packet_does_not_snapshot_process_environment(self) -> None:
         manifest = base_manifest()

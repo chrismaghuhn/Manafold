@@ -182,6 +182,18 @@ def _require_hex(value: object, label: str, pattern: re.Pattern[str]) -> str:
     return value
 
 
+def _copy_exact_mapping(
+    value: object,
+    label: str,
+    allowed: set[str],
+) -> dict[str, Any]:
+    mapping = _require_mapping(value, label)
+    unknown = set(mapping) - allowed
+    if unknown:
+        raise FailurePacketError(f"unsupported {label} fields: {sorted(unknown)}")
+    return {key: copy.deepcopy(mapping[key]) for key in allowed if key in mapping}
+
+
 def _copy_signature(value: object) -> dict[str, Any]:
     signature = _require_mapping(value, "failure_signature")
     allowed = {
@@ -198,6 +210,26 @@ def _copy_signature(value: object) -> dict[str, Any]:
 def _sanitized_manifest(value: object) -> dict[str, Any]:
     manifest = _require_mapping(value, "manifest")
     sanitized = {key: copy.deepcopy(manifest[key]) for key in _ALLOWED_TOP_LEVEL if key in manifest}
+    sanitized["origin"] = _copy_exact_mapping(
+        manifest.get("origin"),
+        "origin",
+        {"kind", "case_id"},
+    )
+    sanitized["source"] = _copy_exact_mapping(
+        manifest.get("source"),
+        "source",
+        {"commit", "tree", "fingerprint", "clean"},
+    )
+    sanitized["command"] = _copy_exact_mapping(
+        manifest.get("command"),
+        "command",
+        {"argv", "cwd"},
+    )
+    sanitized["execution"] = _copy_exact_mapping(
+        manifest.get("execution"),
+        "execution",
+        {"outcome", "exit_status", "timeout_seconds"},
+    )
     failure = _require_mapping(sanitized.get("failure"), "failure")
     sanitized["failure"] = {"classification": failure.get("classification")}
     tools = _require_mapping(sanitized.get("tools"), "tools")
@@ -450,7 +482,6 @@ def safe_summary(manifest: dict[str, Any]) -> dict[str, Any]:
             "case_id": signature.get("case_id"),
             "failure_classification": signature.get("failure_classification"),
             "surface": signature.get("surface"),
-            "semantic_path": signature.get("semantic_path"),
             "mismatch_kind": signature.get("mismatch_kind"),
         },
         "source": {
