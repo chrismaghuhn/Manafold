@@ -45,6 +45,20 @@ class BootstrapTests(unittest.TestCase):
         builder.assert_not_called()
         run_command.assert_not_called()
 
+    def test_wrong_python_rerun_diagnostic_uses_posix_selector(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            venv_path = Path(directory) / ".venv"
+            stderr = io.StringIO()
+            with (
+                mock.patch.object(bootstrap.sys, "platform", "linux"),
+                mock.patch.object(bootstrap, "current_python_version", return_value="3.14.5"),
+                contextlib.redirect_stderr(stderr),
+            ):
+                result = self._run_bootstrap(venv_path)
+
+        self.assertNotEqual(result, 0)
+        self.assertIn("RERUN: python3.13 scripts/bootstrap.py", stderr.getvalue())
+
     def test_exact_python_bootstrap_is_idempotent_and_does_not_touch_lock_commands(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             venv_path = Path(directory) / ".venv"
@@ -283,6 +297,31 @@ class DoctorTests(unittest.TestCase):
 
     def test_doctor_probe_budget_is_small(self) -> None:
         self.assertLessEqual(doctor.DOCTOR_PROBE_TIMEOUT_SECONDS, 60)
+
+
+class VerificationEntryPointTests(unittest.TestCase):
+    def test_just_reference_profiles_use_the_project_python(self) -> None:
+        justfile = (ROOT / "justfile").read_text(encoding="utf-8")
+
+        self.assertIn('project_python := ".venv/bin/python"', justfile)
+        for profile in ("fast", "integration", "certification"):
+            self.assertIn(
+                f"    {{{{project_python}}}} scripts/run_checks.py {profile}",
+                justfile,
+            )
+            self.assertNotIn(f"    python scripts/run_checks.py {profile}", justfile)
+
+    def test_reference_workflows_bootstrap_before_project_profile_checks(self) -> None:
+        workflow_paths = (
+            ROOT / ".github/workflows/pr-fast.yml",
+            ROOT / ".github/workflows/pr-integration.yml",
+            ROOT / ".github/workflows/nightly.yml",
+            ROOT / ".github/workflows/integration.yml",
+        )
+        for workflow_path in workflow_paths:
+            workflow = workflow_path.read_text(encoding="utf-8")
+            self.assertIn("scripts/bootstrap.py", workflow)
+            self.assertIn(".venv/bin/python scripts/run_checks.py", workflow)
 
 
 if __name__ == "__main__":

@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import shutil
 import subprocess
 import sys
@@ -23,9 +24,22 @@ def current_python_version() -> str:
     return ".".join(map(str, sys.version_info[:3]))
 
 
+def project_python_path() -> Path:
+    relative = Path(".venv/Scripts/python.exe" if sys.platform == "win32" else ".venv/bin/python")
+    return ROOT / relative
+
+
+def normalized_path(path: str | Path) -> str:
+    return os.path.normcase(os.path.abspath(os.fspath(path)))
+
+
+def project_python_matches() -> bool:
+    return normalized_path(sys.executable) == normalized_path(project_python_path())
+
+
 def reference_python_matches() -> bool:
     try:
-        return current_python_version() == required_python_version()
+        return current_python_version() == required_python_version() and project_python_matches()
     except OSError:
         return False
 
@@ -127,7 +141,18 @@ def main() -> int:
         except OSError:
             required = "the repository-pinned version"
         actual = current_python_version()
-        print(f"FAIL: Python {required} required; running {actual} ({sys.executable})")
+        mismatch_reported = False
+        if actual != required:
+            print(f"FAIL: Python {required} required; running {actual} ({sys.executable})")
+            mismatch_reported = True
+        if not project_python_matches():
+            print(
+                "FAIL: project .venv Python required; "
+                f"running {sys.executable}; expected {project_python_path()}"
+            )
+            mismatch_reported = True
+        if not mismatch_reported:
+            print(f"FAIL: selected Python environment is not accepted ({sys.executable})")
         print(f"RERUN: <project-python> scripts/run_checks.py {args.profile}")
         return 2
     if args.allow_missing_tools and args.profile != "fast":

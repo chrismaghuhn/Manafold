@@ -81,8 +81,10 @@ executable is:
 Ruff, Mypy, pytest, and schema tooling belong to the project environment. The
 normal checks invoke Python-owned tools through the selected interpreter (for
 example, `python -m ruff`), so a global `ruff`, `mypy`, or `pytest` executable
-cannot satisfy the project verification path. Use the canonical `.venv`
-executable directly; shell activation is only a convenience.
+cannot satisfy the project verification path. `run_checks.py` also rejects a
+global Python even when its version is exactly `3.13.15`; its interpreter must
+be the repository `.venv` executable path. Use the canonical `.venv` executable
+directly; shell activation is only a convenience.
 
 ## Shell and `just`
 
@@ -93,7 +95,9 @@ set shell := ["bash", "-euo", "pipefail", "-c"]
 ```
 
 Therefore the Bash-oriented `just doctor`, `just bootstrap`, `just check-fast`,
-`just check`, and `just check-all` recipes are supported on WSL/Linux. Native
+`just check`, and `just check-all` recipes are supported on WSL/Linux. After
+bootstrap, the verification recipes use `.venv/bin/python`, so `just` cannot
+silently substitute an exact-version global Python. Native
 Windows PowerShell and `cmd.exe` users do not need Bash for the direct Python
 and Cargo commands documented above. The repository does not claim a separate
 Git Bash compatibility path; use WSL/Linux for the documented Bash-oriented

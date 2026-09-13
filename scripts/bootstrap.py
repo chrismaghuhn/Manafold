@@ -29,6 +29,11 @@ def current_python_version() -> str:
     return ".".join(map(str, sys.version_info[:3]))
 
 
+def bootstrap_rerun_command() -> str:
+    selector = "py -3.13" if sys.platform == "win32" else "python3.13"
+    return f"{selector} scripts/bootstrap.py"
+
+
 def venv_python_path(venv_path: Path) -> Path:
     relative = Path("Scripts/python.exe" if sys.platform == "win32" else "bin/python")
     return venv_path / relative
@@ -138,7 +143,7 @@ def main() -> int:
     actual = current_python_version()
     if actual != required:
         print(f"Python {required} required; running {actual}", file=sys.stderr)
-        print("RERUN: py -3.13 scripts/bootstrap.py", file=sys.stderr)
+        print(f"RERUN: {bootstrap_rerun_command()}", file=sys.stderr)
         return 2
 
     venv_path = args.venv if args.venv.is_absolute() else ROOT / args.venv

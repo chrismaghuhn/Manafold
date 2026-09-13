@@ -47,10 +47,14 @@ Implement:
 def reference_python_matches() -> bool:
     required = (ROOT / ".python-version").read_text(encoding="utf-8").strip()
     actual = ".".join(map(str, sys.version_info[:3]))
-    return actual == required
+    return actual == required and project_python_matches()
 ```
 
-At the start of `main()`, before running any profile subprocess, return `2` and print the required version, actual version, executable, and a `RERUN` line when the guard is false.
+Implement `project_python_path()` for `.venv/Scripts/python.exe` on Windows and
+`.venv/bin/python` on POSIX, compare normalized absolute executable paths
+without resolving away POSIX virtual-environment symlinks, and at the start of
+`main()`, before running any profile subprocess, return `2` and print the
+version/path mismatch and a `RERUN` line when the guard is false.
 
 - [x] **Step 2: Replace bare Python-tool commands with module invocation.**
 
@@ -150,6 +154,11 @@ Read `rust-toolchain.toml`, report the required channel/components, verify `rust
 
 **Files:**
 - Create: `.github/workflows/windows-setup-smoke.yml`
+- Modify: `.github/workflows/pr-fast.yml`
+- Modify: `.github/workflows/pr-integration.yml`
+- Modify: `.github/workflows/integration.yml`
+- Modify: `.github/workflows/nightly.yml`
+- Modify: `justfile`
 - Modify: `scripts/aggregate_pr_gate.py`
 - Test: `python/tests/test_m2_final_gate_runner.py`
 
@@ -175,6 +184,15 @@ Checkout with `ref: ${{ github.event.pull_request.head.sha }}`, assert `git rev-
 
 Run `<project-python> -B -m pytest -q python/tests/test_m2_final_gate_runner.py`. Expected result: PASS, including success and failure/cancelled/skipped/missing Windows cases and the exact-head/budgeted workflow structure.
 
+- [ ] **Step 4: Route reference profiles through the project environment.**
+
+After the setup action invokes host Python only for bootstrap, run the reference
+profiles with `.venv/bin/python` on Ubuntu/WSL. Update the matching `just`
+recipes to use the same POSIX project executable after bootstrap; retain the
+host `python` invocations for diagnostic bootstrap entry points and retain the
+intentional 3.11/3.12/3.13 compatibility matrix as a separate compatibility
+test.
+
 ### Task 6: Document the durable setup contract
 
 **Files:**
@@ -186,7 +204,7 @@ Run `<project-python> -B -m pytest -q python/tests/test_m2_final_gate_runner.py`
 
 - [ ] **Step 1: Write one setup document under maintainer ownership.**
 
-Document `.python-version` `3.13.15`, `rust-toolchain.toml` `1.85.1`, the direct Windows commands using `py -3.13` plus exact patch validation, the POSIX/WSL commands using `python3.13`, the canonical `.venv\Scripts\python.exe` and `.venv/bin/python` paths, optional activation, strict doctor, fast/integration/certification checks, stale `.venv` recovery, and the distinction between native direct paths and bash-required `just` recipes. State that bootstrap/doctor do not mutate Rust or lock contracts and that global Python tools are not verification authority.
+Document `.python-version` `3.13.15`, `rust-toolchain.toml` `1.85.1`, the direct Windows commands using `py -3.13` plus exact patch validation, the POSIX/WSL commands using `python3.13`, the canonical `.venv\Scripts\python.exe` and `.venv/bin/python` paths, optional activation, strict doctor, fast/integration/certification checks, stale `.venv` recovery, and the distinction between native direct paths and bash-required `just` recipes. State that bootstrap/doctor do not mutate Rust or lock contracts, global Python tools are not verification authority, and even an exact-version global Python is rejected by `run_checks.py`.
 
 - [ ] **Step 2: Link the setup document from current maintainer entry points.**
 

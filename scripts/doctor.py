@@ -38,6 +38,10 @@ def project_python_path() -> Path:
     return ROOT / relative
 
 
+def normalized_path(path: str | Path) -> str:
+    return os.path.normcase(os.path.abspath(os.fspath(path)))
+
+
 def probe(command: list[str]) -> str | None:
     identity = command_text(command)
     try:
@@ -113,9 +117,9 @@ def main() -> int:
         add_problem(problems, f"python-reference:{error}")
     actual_python = platform.python_version()
     expected_project_python = project_python_path()
-    current_executable = Path(sys.executable).resolve()
-    project_executable = expected_project_python.resolve()
-    project_environment = current_executable == project_executable
+    project_environment = normalized_path(sys.executable) == normalized_path(
+        expected_project_python
+    )
 
     print(f"python:           {actual_python} ({sys.executable})")
     print(f"required Python:  {required_python}")

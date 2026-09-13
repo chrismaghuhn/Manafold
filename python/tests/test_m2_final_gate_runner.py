@@ -287,7 +287,14 @@ class PullRequestGateTests(unittest.TestCase):
         )
         self.assertTrue(
             any(
-                step.get("run") == "python scripts/run_checks.py integration"
+                step.get("run") == ".venv/bin/python scripts/run_checks.py integration"
+                for step in integration["steps"]
+            )
+        )
+        self.assertTrue(
+            any(
+                step.get("run") == "python scripts/bootstrap.py"
+                and step.get("timeout-minutes") == 10
                 for step in integration["steps"]
             )
         )
