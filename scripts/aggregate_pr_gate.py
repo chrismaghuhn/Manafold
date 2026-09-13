@@ -13,6 +13,7 @@ from typing import Any
 REQUIRED_CHECKS = (
     "fast",
     "integration",
+    "windows-setup-smoke",
     "Analyze (actions)",
     "Analyze (python)",
     "Analyze (rust)",

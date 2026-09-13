@@ -97,6 +97,8 @@ def main() -> None:
         ".github/workflows/pr-fast.yml",
         ".github/workflows/integration.yml",
         ".github/workflows/nightly.yml",
+        ".github/workflows/windows-setup-smoke.yml",
+        "docs/maintenance/DEVELOPER_SETUP.md",
     ]
     missing = [path for path in required if not (ROOT / path).is_file()]
     if missing:

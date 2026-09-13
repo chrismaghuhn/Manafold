@@ -83,6 +83,7 @@ status source.
 ## Maintainer process
 
 - [`maintenance/MAINTAINER_PROFILES.md`](maintenance/MAINTAINER_PROFILES.md)
+- [`maintenance/DEVELOPER_SETUP.md`](maintenance/DEVELOPER_SETUP.md)
 - [`MAINTAINER_PLAYBOOK.md`](MAINTAINER_PLAYBOOK.md)
 - [`IMPLEMENTATION_STANDARDS.md`](IMPLEMENTATION_STANDARDS.md)
 - [`THREAT_MODEL.md`](THREAT_MODEL.md)

@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import shutil
 import subprocess
 import sys
@@ -13,6 +14,35 @@ from pathlib import Path
 sys.dont_write_bytecode = True
 ROOT = Path(__file__).resolve().parents[1]
 MAX_SINGLE_GATE_SUBPROCESS_RUNTIME_SECONDS = 600
+
+
+def required_python_version() -> str:
+    return (ROOT / ".python-version").read_text(encoding="utf-8").strip()
+
+
+def current_python_version() -> str:
+    return ".".join(map(str, sys.version_info[:3]))
+
+
+def project_python_path() -> Path:
+    relative = Path(".venv/Scripts/python.exe" if sys.platform == "win32" else ".venv/bin/python")
+    return ROOT / relative
+
+
+def normalized_path(path: str | Path) -> str:
+    return os.path.normcase(os.path.abspath(os.fspath(path)))
+
+
+def project_python_matches() -> bool:
+    return normalized_path(sys.executable) == normalized_path(project_python_path())
+
+
+def reference_python_matches() -> bool:
+    try:
+        return current_python_version() == required_python_version() and project_python_matches()
+    except OSError:
+        return False
+
 
 FAST = [
     [sys.executable, "scripts/generate_contracts.py", "--check"],
@@ -25,9 +55,9 @@ FAST = [
 ]
 INTEGRATION_EXTRA = [
     [sys.executable, "scripts/run_python_tests.py", "--profile", "full"],
-    ["ruff", "format", "--check", "python", "scripts"],
-    ["ruff", "check", "python", "scripts"],
-    ["mypy", "--config-file", "python/pyproject.toml"],
+    [sys.executable, "-m", "ruff", "format", "--check", "python", "scripts"],
+    [sys.executable, "-m", "ruff", "check", "python", "scripts"],
+    [sys.executable, "-m", "mypy", "--config-file", "python/pyproject.toml"],
     ["cargo", "fmt", "--all", "--", "--check"],
     ["cargo", "check", "--workspace", "--all-targets", "--all-features", "--locked"],
     [
@@ -105,6 +135,26 @@ def main() -> int:
         help="development-only convenience; never valid freeze evidence",
     )
     args = parser.parse_args()
+    if not reference_python_matches():
+        try:
+            required = required_python_version()
+        except OSError:
+            required = "the repository-pinned version"
+        actual = current_python_version()
+        mismatch_reported = False
+        if actual != required:
+            print(f"FAIL: Python {required} required; running {actual} ({sys.executable})")
+            mismatch_reported = True
+        if not project_python_matches():
+            print(
+                "FAIL: project .venv Python required; "
+                f"running {sys.executable}; expected {project_python_path()}"
+            )
+            mismatch_reported = True
+        if not mismatch_reported:
+            print(f"FAIL: selected Python environment is not accepted ({sys.executable})")
+        print(f"RERUN: <project-python> scripts/run_checks.py {args.profile}")
+        return 2
     if args.allow_missing_tools and args.profile != "fast":
         parser.error("--allow-missing-tools is only valid for the fast profile")
     commands = list(FAST)

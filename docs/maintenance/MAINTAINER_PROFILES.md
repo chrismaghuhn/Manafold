@@ -7,7 +7,9 @@
 Use the repository root [`README.md`](../../README.md) for current foundation,
 active-work, and authorization status; use [`docs/ROADMAP.md`](../ROADMAP.md)
 for milestone ordering. This file owns the local and PR verification profiles
-below. External census status never authorizes Manafold engine semantics.
+below. Follow [`DEVELOPER_SETUP.md`](DEVELOPER_SETUP.md) for the reproducible
+Python/Rust environment and platform-specific direct commands. External census
+status never authorizes Manafold engine semantics.
 
 ## Development
 Use `just check-fast` continuously. This profile performs generated-contract,

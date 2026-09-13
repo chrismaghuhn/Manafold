@@ -427,6 +427,13 @@
       "stability": "provisional"
     },
     {
+      "change_process": "process-pr",
+      "owner_role": "maintainer",
+      "path": "docs/superpowers/plans/2026-09-13-issue-130-package-b-reproducible-developer-setup.md",
+      "role": "process",
+      "stability": "provisional"
+    },
+    {
       "change_process": "adr-and-fixtures",
       "owner_role": "state-maintainer",
       "path": "docs/STATE_HASHING.md",
@@ -592,6 +599,13 @@
       "owner_role": "release-maintainer",
       "path": "docs/maintenance/DEPENDENCY_POLICY.md",
       "role": "normative",
+      "stability": "accepted"
+    },
+    {
+      "change_process": "process-pr",
+      "owner_role": "maintainer",
+      "path": "docs/maintenance/DEVELOPER_SETUP.md",
+      "role": "process",
       "stability": "accepted"
     },
     {

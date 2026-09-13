@@ -33,20 +33,21 @@ M1 established the deterministic synthetic kernel shell: complete state construc
 3. [`docs/NORMATIVE_HIERARCHY.md`](docs/NORMATIVE_HIERARCHY.md)
 4. [`docs/ROADMAP.md`](docs/ROADMAP.md)
 5. [`docs/maintenance/MAINTAINER_PROFILES.md`](docs/maintenance/MAINTAINER_PROFILES.md)
-6. [`docs/contracts/ACCEPTANCE_GATES.md`](docs/contracts/ACCEPTANCE_GATES.md)
-7. [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
-8. [`docs/DOMAIN_MODEL.md`](docs/DOMAIN_MODEL.md)
-9. [`docs/EXECUTION_MODEL.md`](docs/EXECUTION_MODEL.md)
-10. [`docs/DECISION_PROTOCOL.md`](docs/DECISION_PROTOCOL.md)
-11. [`docs/INFORMATION_MODEL.md`](docs/INFORMATION_MODEL.md)
-12. [`docs/ML_ENVIRONMENT.md`](docs/ML_ENVIRONMENT.md)
-13. [`docs/STATE_HASHING.md`](docs/STATE_HASHING.md)
+6. [`docs/maintenance/DEVELOPER_SETUP.md`](docs/maintenance/DEVELOPER_SETUP.md)
+7. [`docs/contracts/ACCEPTANCE_GATES.md`](docs/contracts/ACCEPTANCE_GATES.md)
+8. [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
+9. [`docs/DOMAIN_MODEL.md`](docs/DOMAIN_MODEL.md)
+10. [`docs/EXECUTION_MODEL.md`](docs/EXECUTION_MODEL.md)
+11. [`docs/DECISION_PROTOCOL.md`](docs/DECISION_PROTOCOL.md)
+12. [`docs/INFORMATION_MODEL.md`](docs/INFORMATION_MODEL.md)
+13. [`docs/ML_ENVIRONMENT.md`](docs/ML_ENVIRONMENT.md)
+14. [`docs/STATE_HASHING.md`](docs/STATE_HASHING.md)
 
 The ADR index is [`docs/adr/README.md`](docs/adr/README.md).
 
 Generated verification evidence is external to the reproducible source archive. Historical M1/M2 closure claims come from their recorded exact-head evidence and accepted ADRs; future changes must produce fresh evidence rather than relying on prose status.
 
-The maintainer route is [`docs/maintenance/MAINTAINER_PROFILES.md`](docs/maintenance/MAINTAINER_PROFILES.md). The mandatory PR checks are `PR Fast`, `PR Integration`, and the stable aggregate `manafold-pr-gate`.
+The maintainer route is [`docs/maintenance/MAINTAINER_PROFILES.md`](docs/maintenance/MAINTAINER_PROFILES.md), with the durable setup path in [`docs/maintenance/DEVELOPER_SETUP.md`](docs/maintenance/DEVELOPER_SETUP.md). The mandatory PR checks are `PR Fast`, `PR Integration`, and the stable aggregate `manafold-pr-gate`.
 
 ## Durable boundaries
 
@@ -130,14 +131,14 @@ just release-candidate
 
 Core direct checks include:
 
-```bash
-python scripts/verify_repository.py
-python scripts/check_rust_source_structure.py
-python scripts/check_documentation.py
-python scripts/validate_schemas.py
-python scripts/validate_maintainer_artifacts.py
-python scripts/verify_python_toolchain.py
-python scripts/run_python_tests.py
+```text
+<project-python> scripts/verify_repository.py
+<project-python> scripts/check_rust_source_structure.py
+<project-python> scripts/check_documentation.py
+<project-python> scripts/validate_schemas.py
+<project-python> scripts/validate_maintainer_artifacts.py
+<project-python> scripts/verify_python_toolchain.py
+<project-python> scripts/run_python_tests.py
 
 cargo fmt --all -- --check
 cargo check --workspace --all-targets --all-features --locked
@@ -145,7 +146,10 @@ cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
 cargo test --workspace --all-features --locked
 ```
 
-`PASS` is reported only for commands actually executed successfully. Missing/unavailable tools are `NOT_RUN` or `BLOCKED`.
+Use the platform-specific `<project-python>` paths in the developer setup
+document; the scripts reject a non-pinned Python interpreter. `PASS` is
+reported only for commands actually executed successfully. Missing/unavailable
+tools are `NOT_RUN` or `BLOCKED`.
 
 ## Scope discipline
 

@@ -180,7 +180,7 @@ assert result == 0, result
 assert observed == [(expected_source, expected_tests)], observed
 """
         completed = subprocess.run(
-            [sys.executable, "-c", probe],
+            [sys.executable, "-B", "-c", probe],
             cwd=ROOT,
             env=environment,
             text=True,

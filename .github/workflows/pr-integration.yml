@@ -23,14 +23,14 @@ jobs:
         run: test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha }}"
       - uses: actions/setup-python@v7
         with: {python-version-file: ".python-version"}
-      - run: |
-          python -m pip install -r python/requirements-dev.lock
-          python -m pip install --no-deps -e python
+      - name: Bootstrap project environment
+        run: python scripts/bootstrap.py
+        timeout-minutes: 10
       - run: |
           rustup toolchain uninstall 1.85.1 || true
           rustup toolchain install 1.85.1 --profile minimal --component rustfmt,clippy
       - uses: Swatinem/rust-cache@v2
-      - run: python scripts/run_checks.py integration
+      - run: .venv/bin/python scripts/run_checks.py integration
 
   manafold-pr-gate:
     name: manafold-pr-gate
