@@ -298,8 +298,11 @@ These dimensions must not be collapsed into one percentage.
 ## M4 — Card Definitions, Bundle Integration, and First Certification
 
 M4 may begin after the separately reviewed Initial Semantic Foundation reaches
-its declared exit. It does not wait for universal Magic semantic closure, and
-it does not prevent later M3 capability work.
+its declared exit. M3 is the Initial Semantic Foundation milestone; once that
+exit is reached, M3 may be marked `COMPLETE` and M4 may begin. M4 does not wait
+for universal Magic semantic closure. Later semantic capabilities continue
+through the same capability workflow during M4 or later; they do not reopen M3
+or block M4 merely because unrelated Magic semantics remain unsupported.
 
 M4 owns reviewed Card IR definitions, content-specific conformance, recursive
 capability closure, bundle integration, exact deck manifests when required,
@@ -328,8 +331,13 @@ locked bundle
     = certified support claim
 ```
 
-A small, deeply proven initial bundle may therefore be certified with explicit
-unsupported semantics and exclusions. Later bundles may require additional
+A small, deeply proven initial bundle may therefore be certified while broader
+Magic semantics remain unsupported, provided every semantic capability
+reachable and required by that bundle has complete required closure and
+current evidence. Exclusions bound the certified support claim; they do not
+waive missing requirements inside the bundle's reachable scope. Unsupported
+semantics outside that scope may remain excluded, but an unsupported reachable
+requirement blocks certification. Later bundles may require additional
 capabilities and evidence; M3 semantic coverage alone never certifies a card,
 deck, format, or bundle.
 

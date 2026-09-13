@@ -118,7 +118,9 @@ reviewed Card IR definition
 The M3 semantic witness stage makes no card-support claim. M4 content work may
 use covered capabilities, but a card remains subject to its own definition,
 interaction, information, replay, and closure evidence. Later capability work
-can continue while M4 integrates content.
+can continue through the same capability workflow while M4 integrates content;
+after the bounded M3 milestone closes, that expansion does not reopen M3 or
+block M4 merely because unrelated Magic semantics remain unsupported.
 
 ## Expected effort
 
