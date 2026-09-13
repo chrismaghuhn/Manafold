@@ -21,6 +21,7 @@ jobs:
           python -m pip install -r python/requirements-dev.lock
           python -m pip install --no-deps -e python
       - run: python scripts/run_checks.py fast
+        timeout-minutes: 10
       - name: Assert clean source before M2.B gate
         shell: bash
         run: |
@@ -32,40 +33,48 @@ jobs:
       - run: |
           cargo +1.85.1 fmt --all -- --check
           cargo +1.85.1 check --workspace --all-targets --all-features --locked
+        timeout-minutes: 10
       - run: python scripts/run_m2_b_contract_cut.py
+        timeout-minutes: 10
       - name: Assert clean source before M2.C gates
         shell: bash
         run: |
           status="$(git status --porcelain=v1 --untracked-files=all)"
           test -z "$status" || { printf '%s\n' "$status"; exit 1; }
       - run: python scripts/run_m2_c_gates.py
+        timeout-minutes: 10
       - name: Assert clean source before M2.D gates
         shell: bash
         run: |
           status="$(git status --porcelain=v1 --untracked-files=all)"
           test -z "$status" || { printf '%s\n' "$status"; exit 1; }
       - run: python scripts/run_m2_d_gates.py
+        timeout-minutes: 10
       - name: Assert clean source before M2.E gates
         shell: bash
         run: |
           status="$(git status --porcelain=v1 --untracked-files=all)"
           test -z "$status" || { printf '%s\n' "$status"; exit 1; }
       - run: python scripts/run_m2_e_gates.py
+        timeout-minutes: 10
       - name: Assert clean source before M2.F gates
         shell: bash
         run: |
           status="$(git status --porcelain=v1 --untracked-files=all)"
           test -z "$status" || { printf '%s\n' "$status"; exit 1; }
       - run: python scripts/run_m2_f_gates.py
+        timeout-minutes: 10
       - name: Assert clean source before M2.G gates
         shell: bash
         run: |
           status="$(git status --porcelain=v1 --untracked-files=all)"
           test -z "$status" || { printf '%s\n' "$status"; exit 1; }
       - run: python scripts/run_m2_g_gates.py
+        timeout-minutes: 10
       - name: Assert clean source before M2.H gates
         shell: bash
         run: |
           status="$(git status --porcelain=v1 --untracked-files=all)"
           test -z "$status" || { printf '%s\n' "$status"; exit 1; }
       - run: python scripts/run_m2_h_gates.py
+        timeout-minutes: 10

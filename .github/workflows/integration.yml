@@ -35,3 +35,4 @@ jobs:
           python -m pip install -r python/requirements-dev.lock
           python -m pip install --no-deps -e python
       - run: PYTHONPATH=python/src python -m pytest python/tests
+        timeout-minutes: 10

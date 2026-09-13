@@ -1,13 +1,18 @@
 from __future__ import annotations
 
+import json
 import subprocess
 import sys
+import tempfile
 import unittest
 from pathlib import Path
+
+import yaml
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
 
+import aggregate_pr_gate as pr_gate
 import run_m2_final_closure as final
 from run_m2_final_closure import (
     CHILD_RUNNERS,
@@ -133,6 +138,115 @@ class AggregationTests(unittest.TestCase):
             with self.subTest(unknown=unknown):
                 self.assertEqual(aggregate([unknown]), "FAIL")
                 self.assertEqual(aggregate(["PASS", unknown]), "FAIL")
+
+
+class PullRequestGateTests(unittest.TestCase):
+    HEAD = "f" * 40
+
+    def run_gate(
+        self, statuses: dict[str, str], *, omit: str | None = None
+    ) -> subprocess.CompletedProcess[str]:
+        check_runs = [
+            {
+                "name": name,
+                "head_sha": self.HEAD,
+                "status": "completed",
+                "conclusion": status,
+            }
+            for name, status in statuses.items()
+            if name != omit
+        ]
+        with tempfile.TemporaryDirectory(prefix="manafold-pr-gate-") as directory:
+            path = Path(directory) / "check-runs.json"
+            path.write_text(json.dumps({"check_runs": check_runs}), encoding="utf-8")
+            return subprocess.run(
+                [
+                    sys.executable,
+                    str(ROOT / "scripts/aggregate_pr_gate.py"),
+                    "--head-sha",
+                    self.HEAD,
+                    "--check-runs",
+                    str(path),
+                ],
+                cwd=ROOT,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+    def statuses(self) -> dict[str, str]:
+        return {
+            "fast": "success",
+            "integration": "success",
+            "Analyze (actions)": "success",
+            "Analyze (python)": "success",
+            "Analyze (rust)": "success",
+            "CodeQL": "success",
+        }
+
+    def test_all_mandatory_success_passes(self) -> None:
+        completed = self.run_gate(self.statuses())
+        self.assertEqual(completed.returncode, 0, completed.stdout + completed.stderr)
+
+    def test_any_non_success_fails(self) -> None:
+        for conclusion in ("failure", "cancelled", "skipped", "neutral"):
+            statuses = self.statuses()
+            statuses["integration"] = conclusion
+            with self.subTest(conclusion=conclusion):
+                completed = self.run_gate(statuses)
+                self.assertNotEqual(completed.returncode, 0)
+
+    def test_missing_mandatory_check_fails(self) -> None:
+        completed = self.run_gate(self.statuses(), omit="Analyze (rust)")
+        self.assertNotEqual(completed.returncode, 0)
+
+    def test_codeql_neutral_waits_while_analyzer_is_pending(self) -> None:
+        payload = {
+            "check_runs": [
+                {
+                    "name": name,
+                    "head_sha": self.HEAD,
+                    "status": "completed",
+                    "conclusion": "neutral" if name == "CodeQL" else "success",
+                }
+                for name in self.statuses()
+            ]
+        }
+        payload["check_runs"][-2]["status"] = "in_progress"
+        payload["check_runs"][-2]["conclusion"] = None
+
+        state, _ = pr_gate.evaluate(payload, self.HEAD)
+
+        self.assertEqual(state, "WAIT")
+
+    def test_pr_integration_workflow_is_exact_head_and_repository_owned(self) -> None:
+        workflow_path = ROOT / ".github/workflows/pr-integration.yml"
+        self.assertTrue(workflow_path.is_file())
+        workflow = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))
+        jobs = workflow["jobs"]
+        integration = jobs["integration"]
+        checkout = next(step for step in integration["steps"] if "checkout" in step.get("uses", ""))
+        self.assertEqual(checkout["with"]["ref"], "${{ github.event.pull_request.head.sha }}")
+        self.assertTrue(
+            any(
+                "git rev-parse HEAD" in step.get("run", "")
+                and "github.event.pull_request.head.sha" in step.get("run", "")
+                for step in integration["steps"]
+            )
+        )
+        self.assertTrue(
+            any(
+                step.get("run") == "python scripts/run_checks.py integration"
+                for step in integration["steps"]
+            )
+        )
+        gate = jobs["manafold-pr-gate"]
+        self.assertEqual(gate["name"], "manafold-pr-gate")
+        self.assertIn("always()", gate["if"])
+        self.assertIn("integration", gate["needs"])
+        self.assertTrue(
+            any("aggregate_pr_gate.py" in step.get("run", "") for step in gate["steps"])
+        )
 
 
 class BuildReportTests(unittest.TestCase):
