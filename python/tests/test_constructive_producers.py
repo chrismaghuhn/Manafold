@@ -46,7 +46,7 @@ from mtgml.observation import (
 from mtgml.wire import compute_information_state_digest_v2, encode_canonical
 
 GOLDEN = ROOT / "wire" / "golden"
-ZERO_DIGEST = "0" * 64
+OBSERVATION_DIGEST = "90845308617867fd703c6c4f37ede7908da24420053821f89190ad36236dfca3"
 
 
 def golden_bytes(name: str) -> bytes:
@@ -260,7 +260,7 @@ def information_state_v2() -> PlayerInformationStateV2:
         state_revision=0,
         payload_codec="synthetic-m2-observation.v1",
         payload_base64="e30=",
-        digest=ZERO_DIGEST,
+        digest=OBSERVATION_DIGEST,
     )
     retained_knowledge = (
         PlayerKnownObjectV1(

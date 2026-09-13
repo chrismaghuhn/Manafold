@@ -32,6 +32,27 @@ OUTPUT = ROOT / "dist" / "m2-b-verification"
 OUTPUT_MARKER = ".mtgml-m2-b-contract-cut-output"
 GATE_NAME = "M2_EXECUTABLE_CONTRACT_AND_VERSION_CUT"
 PINNED_TOOLCHAIN: dict[str, str | None] = {"channel": None}
+HISTORICAL_COMPATIBILITY = ROOT / "wire" / "historical" / "v1-v2-compatibility.v1.json"
+HISTORICAL_COMPATIBILITY_SCHEMA = "wire-historical-v1-v2-compatibility.v1"
+HISTORICAL_COMPATIBILITY_CLASSIFICATION = "historical_evidence_only_current_semantic_regeneration"
+HISTORICAL_COMPATIBILITY_TOP_LEVEL_KEYS = {
+    "schema_version",
+    "source_commit",
+    "classification",
+    "fixtures",
+}
+HISTORICAL_COMPATIBILITY_ENTRY_KEYS = {
+    "manifest",
+    "contract",
+    "path",
+    "classification",
+}
+HISTORICAL_COMPATIBILITY_PATHS = {
+    ("golden", "observation-envelope.v1", "observation-envelope.v1.json"),
+    ("golden", "information-state-envelope.v1", "information-state-envelope.v1.json"),
+    ("golden", "player-step.v1", "player-step.v1.json"),
+    ("negative", "player-step.v1", "player-step-privileged-extra-field.json"),
+}
 
 
 @dataclass(frozen=True)
@@ -391,6 +412,40 @@ def baseline_json(relative: str) -> Any:
     return json.loads(raw)
 
 
+def compatibility_paths() -> set[tuple[str, str, str]]:
+    compatibility = json.loads(HISTORICAL_COMPATIBILITY.read_text(encoding="utf-8"))
+    if (
+        not isinstance(compatibility, dict)
+        or set(compatibility) != HISTORICAL_COMPATIBILITY_TOP_LEVEL_KEYS
+    ):
+        raise AssertionError("historical compatibility top-level shape changed")
+    if compatibility.get("schema_version") != HISTORICAL_COMPATIBILITY_SCHEMA:
+        raise AssertionError("historical compatibility schema changed")
+    if compatibility.get("source_commit") != STARTING_SHA:
+        raise AssertionError("historical compatibility source SHA changed")
+    if compatibility.get("classification") != HISTORICAL_COMPATIBILITY_CLASSIFICATION:
+        raise AssertionError("historical compatibility classification changed")
+    entries = compatibility.get("fixtures")
+    if not isinstance(entries, list) or len(entries) != len(HISTORICAL_COMPATIBILITY_PATHS):
+        raise AssertionError("historical compatibility fixtures are not a list")
+    paths = set()
+    for entry in entries:
+        if not isinstance(entry, dict) or set(entry) != HISTORICAL_COMPATIBILITY_ENTRY_KEYS:
+            raise AssertionError("historical compatibility entry shape changed")
+        if entry.get("classification") != HISTORICAL_COMPATIBILITY_CLASSIFICATION:
+            raise AssertionError("historical compatibility classification changed")
+        key = (str(entry["manifest"]), str(entry["contract"]), str(entry["path"]))
+        if key in paths:
+            raise AssertionError(f"duplicate historical compatibility entry: {key}")
+        paths.add(key)
+    if paths != HISTORICAL_COMPATIBILITY_PATHS:
+        raise AssertionError(
+            "historical compatibility paths changed: "
+            f"expected={HISTORICAL_COMPATIBILITY_PATHS}, actual={paths}"
+        )
+    return paths
+
+
 def check_historical_inventory() -> str:
     inventory_path = ROOT / "wire" / "historical" / "v1-v2-fixtures.json"
     inventory = json.loads(inventory_path.read_text(encoding="utf-8"))
@@ -419,17 +474,29 @@ def check_historical_inventory() -> str:
             f"missing={set(baseline) - set(actual)}, "
             f"extra={set(actual) - set(baseline)}"
         )
+    classified_paths = compatibility_paths()
+    if not classified_paths <= set(baseline):
+        raise AssertionError("historical compatibility path is absent from the baseline inventory")
     for kind, contract, path in baseline:
         baseline_bytes = run_command(
             ("git", "show", f"{STARTING_SHA}:wire/{kind}/{path}")
         ).stdout.encode("utf-8")
         current_path = ROOT / "wire" / kind / path
-        if not current_path.is_file() or current_path.read_bytes() != baseline_bytes:
+        if not current_path.is_file():
+            raise AssertionError(f"historical fixture path missing: {kind}/{path}")
+        if (
+            kind,
+            contract,
+            path,
+        ) not in classified_paths and current_path.read_bytes() != baseline_bytes:
             raise AssertionError(f"historical fixture bytes changed: {kind}/{path}")
         expected = hashlib.sha256(baseline_bytes).hexdigest()
         if actual[(kind, contract, path)].get("sha256") != expected:
             raise AssertionError(f"historical fixture hash mismatch: {kind}/{path}")
-    return f"covered {len(baseline)} baseline fixtures from {STARTING_SHA}"
+    return (
+        f"covered {len(baseline)} baseline fixtures from {STARTING_SHA}; "
+        f"classified current semantic regeneration paths={len(classified_paths)}"
+    )
 
 
 def source_files() -> Iterable[Path]:
