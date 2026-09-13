@@ -312,6 +312,21 @@ class FailurePacketCoreTests(unittest.TestCase):
             run_verification.source_tree_fingerprint(),
         )
 
+    def test_failure_reproducer_scripts_are_repository_guarded(self) -> None:
+        verifier = (ROOT / "scripts" / "verify_repository.py").read_text(encoding="utf-8")
+        for script in (
+            "scripts/failure_packet.py",
+            "scripts/capture_failure.py",
+            "scripts/rerun_failure.py",
+        ):
+            with self.subTest(script=script):
+                self.assertIn(f'"{script}"', verifier)
+
+    def test_run_checks_keeps_failure_reproducer_opt_in(self) -> None:
+        run_checks = (ROOT / "scripts" / "run_checks.py").read_text(encoding="utf-8")
+        self.assertNotIn("capture_failure.py", run_checks)
+        self.assertNotIn("rerun_failure.py", run_checks)
+
 
 class CaptureFailureTests(unittest.TestCase):
     @staticmethod
