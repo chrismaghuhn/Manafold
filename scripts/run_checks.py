@@ -75,6 +75,8 @@ def main() -> int:
         help="development-only convenience; never valid freeze evidence",
     )
     args = parser.parse_args()
+    if args.allow_missing_tools and args.profile != "fast":
+        parser.error("--allow-missing-tools is only valid for the fast profile")
     commands = list(FAST)
     if args.profile in {"integration", "certification"}:
         commands += INTEGRATION_EXTRA
