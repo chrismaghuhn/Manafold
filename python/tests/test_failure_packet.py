@@ -226,13 +226,13 @@ class FailurePacketCoreTests(unittest.TestCase):
         manifest = base_manifest()
         manifest["command"]["argv"] = ["ROOT_SEED_SECRET_SENTINEL"]
         manifest["command"]["cwd"] = "PRIVATE_HAND_SENTINEL"
-        manifest["failure"]["expected_summary"] = "INTERNAL_OBJECT_ID_SENTINEL"
-        manifest["failure"]["actual_summary"] = "PRIVATE_HAND_SENTINEL"
-        manifest["tools"]["private_path"] = "ROOT_SEED_SECRET_SENTINEL"
+        manifest["tools"]["capture_python"]["version"] = "ROOT_SEED_SECRET_SENTINEL"
+        manifest["reproduction"]["display_command"] = "PRIVATE_HAND_SENTINEL"
+        manifest["failure_signature"]["surface"] = "events"
         manifest["failure_signature"]["semantic_path"] = (
             "zones.locations[object:INTERNAL_OBJECT_ID_SENTINEL]"
         )
-        manifest["failure_signature"]["private_detail"] = "ROOT_SEED_SECRET_SENTINEL"
+        manifest["failure_signature"]["mismatch_kind"] = "value_changed"
 
         summary = failure_packet.safe_summary(manifest)
         rendered = json.dumps(summary, sort_keys=True)
@@ -241,6 +241,56 @@ class FailurePacketCoreTests(unittest.TestCase):
         self.assertNotIn("INTERNAL_OBJECT_ID_SENTINEL", rendered)
         self.assertNotIn("PRIVATE_HAND_SENTINEL", rendered)
         self.assertEqual(summary["failure"]["classification"], "COMMAND_EXIT")
+
+    def test_packet_contract_rejects_nontrusted_or_unsupported_identity(self) -> None:
+        cases = {
+            "public sensitivity": {"sensitivity": "public"},
+            "perspective-private sensitivity": {"sensitivity": "perspective_private"},
+            "non-command origin": {
+                "origin": {"kind": "root_seed_secret_sentinel", "case_id": "CASE_1"}
+            },
+            "unsafe case ID": {"origin": {"kind": "command", "case_id": "CASE WITH SPACE"}},
+        }
+        for label, changes in cases.items():
+            with self.subTest(label=label):
+                manifest = base_manifest()
+                for section, values in changes.items():
+                    if isinstance(values, dict):
+                        manifest[section].update(values)
+                    else:
+                        manifest[section] = values
+                with self.assertRaises(failure_packet.FailurePacketError):
+                    failure_packet.validate_manifest(manifest, require_artifact=False)
+
+    def test_packet_contract_rejects_unknown_structured_tokens(self) -> None:
+        for field, value in (
+            ("surface", "ROOT_SEED_SECRET_SENTINEL"),
+            ("mismatch_kind", "INTERNAL_OBJECT_ID_SENTINEL"),
+        ):
+            with self.subTest(field=field):
+                manifest = base_manifest()
+                manifest["failure_signature"].update(
+                    {
+                        "surface": "events",
+                        "semantic_path": "transition.events[3]",
+                        "mismatch_kind": "value_changed",
+                        field: value,
+                    }
+                )
+                with self.assertRaises(failure_packet.FailurePacketError):
+                    failure_packet.validate_manifest(manifest, require_artifact=False)
+
+    def test_safe_summary_fails_closed_for_unvalidated_signature_tokens(self) -> None:
+        manifest = base_manifest()
+        manifest["failure_signature"].update(
+            {
+                "surface": "ROOT_SEED_SECRET_SENTINEL",
+                "semantic_path": "transition.events[3]",
+                "mismatch_kind": "value_changed",
+            }
+        )
+        with self.assertRaises(failure_packet.FailurePacketError):
+            failure_packet.safe_summary(manifest)
 
     def test_nested_unapproved_fields_are_rejected(self) -> None:
         nested_fields = {

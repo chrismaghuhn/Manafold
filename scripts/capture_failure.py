@@ -160,8 +160,10 @@ def capture(
     repository_root: Path = ROOT,
     source_identity_provider: Callable[[], failure_packet.SourceIdentity] | None = None,
 ) -> CaptureResult:
-    if not isinstance(case_id, str) or not case_id or "\x00" in case_id:
-        return _blocked("case ID must be a nonempty NUL-free string")
+    try:
+        failure_packet.validate_case_id(case_id)
+    except failure_packet.FailurePacketError as error:
+        return _blocked(str(error))
     command_error = _validate_argv(argv)
     if command_error is not None:
         return _blocked(command_error)

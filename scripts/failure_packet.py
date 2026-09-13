@@ -39,6 +39,32 @@ OUTPUT_MARKER = ".mtgml-failure-output"
 _HEX40_RE = re.compile(r"^[0-9a-f]{40}$")
 _HEX64_RE = re.compile(r"^[0-9a-f]{64}$")
 _PACKET_ID_RE = re.compile(r"^[a-z0-9][a-z0-9._-]*$")
+_CASE_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
+_ALLOWED_FAILURE_SURFACES = frozenset(
+    {
+        "current_decision",
+        "response",
+        "acceptance",
+        "events",
+        "delta",
+        "state_digest",
+        "next_decision",
+        "status",
+        "player_projection",
+        "rejected_mutation",
+    }
+)
+_ALLOWED_MISMATCH_KINDS = frozenset(
+    {
+        "value_changed",
+        "expected_entry_missing",
+        "unexpected_extra_entry",
+        "player_missing",
+        "unexpected_player",
+        "player_step_differed",
+        "rejected_mutation",
+    }
+)
 _SIGNATURE_LINE_RE = re.compile(
     r"^MANAFOLD_FAILURE_SIGNATURE v1 "
     r"surface=(?P<surface>[a-z0-9_]+) "
@@ -176,6 +202,24 @@ def _require_string(value: object, label: str) -> str:
     return value
 
 
+def validate_case_id(value: object) -> str:
+    if not isinstance(value, str) or _CASE_ID_RE.fullmatch(value) is None:
+        raise FailurePacketError(
+            "case ID must start with an alphanumeric character and contain only "
+            "letters, digits, '.', '_' or '-'"
+        )
+    return value
+
+
+def _validate_signature_tokens(signature: dict[str, Any]) -> None:
+    surface = signature.get("surface")
+    mismatch_kind = signature.get("mismatch_kind")
+    if surface not in _ALLOWED_FAILURE_SURFACES:
+        raise FailurePacketError(f"unsupported failure_signature.surface: {surface!r}")
+    if mismatch_kind not in _ALLOWED_MISMATCH_KINDS:
+        raise FailurePacketError(f"unsupported failure_signature.mismatch_kind: {mismatch_kind!r}")
+
+
 def _require_hex(value: object, label: str, pattern: re.Pattern[str]) -> str:
     if not isinstance(value, str) or pattern.fullmatch(value) is None:
         raise FailurePacketError(f"{label} must be lowercase hexadecimal")
@@ -267,12 +311,13 @@ def validate_manifest(value: object, *, require_artifact: bool = True) -> dict[s
         raise FailurePacketError(f"unsupported packet format: {manifest.get('format')!r}")
     packet_id = _safe_packet_id(manifest.get("packet_id"))
     sensitivity = manifest.get("sensitivity")
-    if sensitivity not in {"public", "perspective_private", "trusted"}:
+    if sensitivity != "trusted":
         raise FailurePacketError(f"unsupported packet sensitivity: {sensitivity!r}")
 
     origin = _validate_exact_mapping(manifest.get("origin"), "origin", {"kind", "case_id"})
-    _require_string(origin.get("kind"), "origin.kind")
-    _require_string(origin.get("case_id"), "origin.case_id")
+    if origin.get("kind") != "command":
+        raise FailurePacketError(f"unsupported origin.kind: {origin.get('kind')!r}")
+    validate_case_id(origin.get("case_id"))
 
     source = _validate_exact_mapping(
         manifest.get("source"),
@@ -351,6 +396,8 @@ def validate_manifest(value: object, *, require_artifact: bool = True) -> dict[s
     for field in marker_fields:
         if signature.get(field) is not None:
             _require_string(signature[field], f"failure_signature.{field}")
+    if all(present_marker_fields):
+        _validate_signature_tokens(signature)
 
     tools = _validate_exact_mapping(manifest.get("tools"), "tools", {"capture_python"})
     capture_python = _validate_exact_mapping(
@@ -369,7 +416,7 @@ def validate_manifest(value: object, *, require_artifact: bool = True) -> dict[s
     )
     _require_string(reproduction.get("display_command"), "reproduction.display_command")
 
-    if require_artifact:
+    if require_artifact or "artifacts" in manifest:
         artifacts = _validate_exact_mapping(manifest.get("artifacts"), "artifacts", {"log"})
         log = _validate_exact_mapping(
             artifacts.get("log"),
@@ -395,7 +442,9 @@ def parse_signature_marker(output: str | bytes) -> dict[str, str] | None:
     match = _SIGNATURE_LINE_RE.fullmatch(lines[0])
     if match is None:
         raise FailurePacketError("malformed failure signature marker")
-    return match.groupdict()
+    marker = match.groupdict()
+    _validate_signature_tokens(marker)
+    return marker
 
 
 def _resolve_output_root(output_root: Path, repository_root: Path) -> Path:
@@ -520,13 +569,14 @@ def write_packet(
 def safe_summary(manifest: dict[str, Any]) -> dict[str, Any]:
     """Construct a sink-safe summary from explicitly approved fields only."""
 
-    source = _require_mapping(manifest.get("source"), "source")
-    origin = _require_mapping(manifest.get("origin"), "origin")
-    failure = _require_mapping(manifest.get("failure"), "failure")
-    signature = _require_mapping(manifest.get("failure_signature"), "failure_signature")
+    validated = validate_manifest(manifest, require_artifact=False)
+    source = validated["source"]
+    origin = validated["origin"]
+    failure = validated["failure"]
+    signature = validated["failure_signature"]
     return {
-        "format": manifest.get("format"),
-        "packet_id": manifest.get("packet_id"),
+        "format": validated["format"],
+        "packet_id": validated["packet_id"],
         "origin": {
             "kind": origin.get("kind"),
             "case_id": origin.get("case_id"),
