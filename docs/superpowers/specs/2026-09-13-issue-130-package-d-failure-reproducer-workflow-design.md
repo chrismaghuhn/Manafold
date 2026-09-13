@@ -1,6 +1,6 @@
 # Issue #130 Package D — Deterministic Failure / Reproducer Workflow
 
-**Status:** design v1 after review; implementation remains unauthorized by this document
+**Status:** design v2 after review; implementation remains unauthorized by this document
 
 **Issue:** [#130 — Maintainer hardening](https://github.com/chrismaghuhn/Manafold/issues/130)
 
@@ -25,6 +25,13 @@ failure
 
 The package adds maintainer ergonomics. It does not add Magic semantics,
 semantic authority, player diagnostics, a public artifact, or an M3 TestKit.
+
+The Package-D packet is deliberately not the complete ADR-0036 portable
+reproduction bundle. It is a smaller command-level maintainer reproducer. It
+does not provide a complete deterministic start point, a response/replay
+segment, a complete checkpoint, or automatic content, authority, or RNG
+identity capture. A packet without those artifacts must not be presented as a
+portable engine reproduction or as replay evidence.
 
 ## 2. Preconditions and boundaries
 
@@ -211,7 +218,7 @@ source.tree
 
 source.fingerprint
   SHA-256 over Manafold's relevant source files, using the existing archive
-  source-set exclusions for generated/output/cache paths
+  `source_files()` set and its generated/output/cache exclusions
 ```
 
 The packet records `command.argv` as a list and `command.cwd` as a
@@ -222,13 +229,21 @@ executes placeholders from that field.
 
 `failure_signature` contains the structured diagnostic identity. For generic
 commands it contains the origin, case, and command-failure classification.
-The Package-D command path records only this generic signature; the Rust
+The Package-D command path records this generic signature; the Rust
 first-difference detail remains in its typed failure and captured log. A
-future trusted harness may provide optional first-difference fields through an
-explicit typed adapter, but the packet never derives them by parsing
-arbitrary exception or `Debug` text. If such a structured predicate is
-present without a comparable structured observation during rerun, the result
-is `BLOCKED`.
+trusted harness may also emit one explicit internal marker using the reviewed
+signature fields:
+
+```text
+MANAFOLD_FAILURE_SIGNATURE v1 surface=events path=transition.events[3] mismatch_kind=value_changed
+```
+
+Capture and rerun parse only this exact marker shape. They never derive a
+signature by parsing arbitrary exception or `Debug` text. The marker carries
+no expected/actual values. If a packet records structured marker fields, a
+rerun with the same nonzero process result but different marker fields is
+`NOT_REPRODUCED`; a missing or malformed marker is `BLOCKED` because the
+structured predicate cannot be compared.
 
 The generic execution predicate is separate from diagnostic identity:
 
@@ -276,8 +291,8 @@ The maintainer invokes:
 ```
 
 Capture validates the argv, output root, and clean source baseline before
-starting the command. It runs the exact argv without a shell and applies the
-hard maximum `MAX_SINGLE_REPRO_SUBPROCESS_RUNTIME_SECONDS = 600`.
+starting the command. It runs the exact argv with `shell=False` and applies
+the hard maximum `MAX_SINGLE_REPRO_SUBPROCESS_RUNTIME_SECONDS = 600`.
 
 The results are:
 
@@ -376,9 +391,15 @@ summaries, hidden state, private data, seeds, or trusted IDs. Tests use sentinel
 values for those categories and verify that the safe renderer never emits
 them. No post-hoc string replacement is the security model.
 
-The capture default is trusted local storage. No CI workflow uploads full
-packets in Package D. No player API, experiment telemetry, or ML dataset gets
-diagnostic detail or trusted error strings.
+The capture default is trusted local storage, not public output. The `trusted`
+packet classification authorizes restricted maintainer handling; it does not
+assert that arbitrary command output is safe or secret-free. The standard
+path has no secret-capability option and must not be used for a command known
+or expected to emit `secret_seed_material`. Such a command is outside Package
+D and remains `BLOCKED` until a separately reviewed secret diagnostic path
+exists. No CI workflow uploads full packets in Package D. No player API,
+experiment telemetry, or ML dataset gets diagnostic detail or trusted error
+strings.
 
 ## 10. Regression promotion and minimization
 
@@ -432,8 +453,9 @@ classification, rejected-mutation classification, and contract separation.
 Python tests use temporary local repositories and local commands. They cover
 capture pass/fail/timeout/blocking behavior, exact commit/tree/fingerprint,
 argv preservation, checksums, output safety, source nonmutation, exact-head
-reruns, `REPRODUCED`, `NOT_REPRODUCED`, `BLOCKED`, and the sentinel-based safe
-summary boundary. They use no live network.
+reruns, `REPRODUCED`, `NOT_REPRODUCED`, `BLOCKED`, a same-command nonzero rerun
+with a different structured signature yielding `NOT_REPRODUCED`, and the
+sentinel-based safe-summary boundary. They use no live network.
 
 The implementation must also perform one deliberate synthetic failure
 demonstration:
