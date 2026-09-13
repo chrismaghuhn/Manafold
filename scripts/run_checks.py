@@ -7,6 +7,7 @@ import argparse
 import shutil
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 sys.dont_write_bytecode = True
@@ -52,17 +53,33 @@ def command_available(command: list[str]) -> bool:
     return command[0] == sys.executable or shutil.which(command[0]) is not None
 
 
+def command_text(command: list[str]) -> str:
+    return subprocess.list2cmdline(command)
+
+
+def duration_text(seconds: float) -> str:
+    return f"{seconds:.3f}s"
+
+
 def run(commands: list[list[str]], *, allow_missing: bool) -> int:
     for command in commands:
+        text = command_text(command)
         if not command_available(command):
             print(f"MISSING TOOL: {command[0]}")
+            print(f"RERUN: {text}")
             if allow_missing:
                 continue
             return 2
-        print("+", " ".join(command), flush=True)
+
+        print(f"RUN {text}", flush=True)
+        started = time.perf_counter()
         result = subprocess.run(command, cwd=ROOT)
+        duration = duration_text(time.perf_counter() - started)
         if result.returncode != 0:
+            print(f"FAIL {duration} {text}")
+            print(f"RERUN: {text}")
             return result.returncode
+        print(f"PASS {duration} {text}", flush=True)
     return 0
 
 
