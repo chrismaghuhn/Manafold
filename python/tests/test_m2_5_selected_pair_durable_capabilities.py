@@ -260,6 +260,15 @@ class SelectedPairDurableCapabilityTests(unittest.TestCase):
             self.assertIn("## Dependencies", text)
             for forbidden in ("TBD", "TODO", "Generated proposal", "TBD-owner-role"):
                 self.assertNotIn(forbidden, text)
+            for duplicated_contract in (
+                "Manafold keeps authoritative state",
+                "Accepted transitions remain deterministic",
+                "Any player-influenced target, mode, order",
+                "Hidden-zone access, reveal, look",
+                "The same accepted inputs, authoritative state",
+                "Semantics outside the supported scope, missing authority",
+            ):
+                self.assertNotIn(duplicated_contract, text)
 
     def test_capability_spec_directory_has_no_orphaned_durable_specs(self) -> None:
         registry = _load_required(REGISTRY)

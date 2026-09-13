@@ -47,27 +47,27 @@ This durable V1 capability covers one temporary effect granting both Flying and 
 - Zone and visibility surface: battlefield and combat information only unless Includes explicitly names another zone
 - Ownership and control: only the attacking player's and affected object's controller relations stated in Includes
 - Information and identity: only the public combat-state or combat-trigger consequence stated in Includes
-- Manafold keeps authoritative state, player observation, and retained player information separate; this specification does not grant a player endpoint trusted state or identity access.
+- Shared state and identity boundaries follow `docs/DOMAIN_MODEL.md`, `docs/INFORMATION_MODEL.md`, and `docs/contracts/ENGINE_STATE_CLOSURE.md`; this capability adds no privileged state surface.
 
 ## Events and replacement implications
 
 - The auditable operation is the attack, block, combat-damage, combat, or combat-phase operation stated in Includes; it occurs in only the declare-attackers, combat-damage, combat, or phase timing stated in Includes.
 - Replacement or prevention behavior is limited to the rule dependency explicitly stated here: combat, attack, block, or combat-damage rules required by Includes.
-- Accepted transitions remain deterministic and atomic; rejected or unsupported paths mutate nothing and fail closed.
+- Transaction and rejection behavior follows `docs/RULES_SEMANTICS.md`; this capability adds no fallback semantics.
 
 ## Decisions and ordering
 
 - Targets and choices: only attackers, defenders, damaged objects, or targets explicitly selected in Includes
-- Any player-influenced target, mode, order, payment, or replacement choice is represented through the closed Decision protocol; this capability supplies no silent default.
+- Decision behavior follows `docs/DECISION_PROTOCOL.md`; no target, mode, order, payment, or replacement choice is supplied silently.
 
 ## Information and visibility implications
 
 - Visibility boundary: battlefield and combat information only unless Includes explicitly names another zone
-- Hidden-zone access, reveal, look, randomization, and opaque identity effects are exposed only through the perspective-bound information contracts and their explicit provenance.
+- Perspective and provenance behavior follows `docs/INFORMATION_MODEL.md`; this capability adds no privileged observation.
 
 ## Replay and determinism implications
 
-- The same accepted inputs, authoritative state, and RNG stream produce the same event, delta, identity, and replay result. Checkpoints and replay preserve the exact state/identity implications declared above.
+- Replay and digest behavior follows `docs/REPLAY_AND_DETERMINISM.md` and `docs/STATE_HASHING.md`; this capability adds no alternate identity path.
 
 ## M3 implementation owner
 
@@ -82,4 +82,4 @@ This durable V1 capability covers one temporary effect granting both Flying and 
 
 ## Unsupported paths
 
-- Semantics outside the supported scope, missing authority, invalid decisions, or incomplete information/identity provenance are rejected without a fallback interpretation.
+- Unsupported, unauthorized, invalid, or incompletely proven paths fail closed under `docs/RULES_SEMANTICS.md`.
