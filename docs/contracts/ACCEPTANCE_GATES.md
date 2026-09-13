@@ -108,9 +108,10 @@ Requires both architecture and executable structural evidence:
 - no reinterpretation of old artifacts;
 - Rust/Python/schema/fixture identity coherence where public DTOs exist.
 
-M2.A documentation is only the contract half. M2.B now supplies the local
-clean exact-head structural implementation and executable evidence; hosted PR
-evidence and the broader M2.Final closure remain separate gates.
+M2.A documentation was only the contract half. M2.B supplied the structural
+implementation and executable evidence; the broader M2.Final closure is
+recorded by accepted ADR 0041 at its exact evidence head. Hosted PR evidence
+remains a separate CI gate.
 
 ### Decision gates
 

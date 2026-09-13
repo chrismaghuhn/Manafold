@@ -52,6 +52,9 @@
 
 ## M2 — Decision Machinery and Synthetic Information Safety
 
+**Status:** `COMPLETE` by accepted ADR 0041, which records the exact M2.Final
+closure evidence head `352cd80c2ef58a406c30bf7db1cb792109fafc3f`.
+
 - representative closed decision families and serializable continuations;
 - separate trusted and player-visible request identity;
 - perspective-bound observation, retained information state, observed events, safe errors, and PlayerStep;
@@ -75,12 +78,22 @@ M2.H      temporary rules-free Python semantic adapter
 M2.Final  exact-head executable closure
 ```
 
-M2.A architecture acceptance does not mark any M2 executable behavior gate PASS. M2.B owns the executable structural half of `M2_EXECUTABLE_CONTRACT_AND_VERSION_CUT`; M2.Final reruns the complete M1 matrix.
+M2.A architecture acceptance did not by itself mark an M2 executable behavior
+gate `PASS`; the later M2.Final evidence and accepted ADR 0041 closed the M2
+foundation. M2.B remains the structural implementation slice within that
+history.
 
-The next substantive Magic-scope work is not authorized. Census-driven scope
-research is outside this authoritative engine repository. Future M3 entry
-requires an explicit reviewed durable scope and capability input from that
-external process.
+## Post-M2 scope boundary
+
+`M2.5 = NOT_CLAIMED / NOT_FROZEN`. Its abandoned census and research
+machinery was removed from the active repository; the merged history remains
+historical evidence only. The current active maintainer work area is Issue
+#130, not a Magic-semantics milestone.
+
+`M3 = NOT_AUTHORIZED` for the Manafold engine. Census-driven scope research is
+outside this authoritative engine repository, and external census M3
+authorization must not be treated as engine-semantic authorization. Future M3
+entry requires an explicit reviewed durable scope and capability input.
 
 ## M3 — Required Magic Primitives
 
