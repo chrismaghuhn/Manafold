@@ -5,7 +5,30 @@
 
 ## Goal
 
-A normal card whose required capabilities already exist should be mostly declarative content plus focused tests. New general semantics are added once as capabilities, not duplicated per card.
+A normal card whose required capabilities already exist should be mostly
+declarative content plus focused tests. New general semantics are added once
+as capabilities, not duplicated per card. Card breadth is an M4 content and
+integration concern; it must not become the architecture driver for future M3
+semantic work.
+
+## Semantic witnesses are not card definitions
+
+A concrete card, rules example, ruling example, or minimal scenario may be
+selected as a **Semantic Witness** for a future capability. The witness helps
+expose reusable semantics and interaction obligations, but it is not an
+authoritative Manafold card definition and does not establish support:
+
+```text
+semantic witness != reviewed Card IR definition
+reviewed Card IR definition != covered card
+covered card != certified card in a locked bundle
+```
+
+A named card used as a witness is illustrative unless a later reviewed content
+workflow promotes it. Do not freeze the first M3 card or witness through a
+card-maintenance document. If a witness exposes missing general semantics,
+route that gap to the capability workflow rather than adding card-specific
+kernel behavior.
 
 ## Current workflow
 
@@ -38,6 +61,12 @@ List all direct requirements, including:
 - generated token/copy/emblem/named-object definitions;
 - any currently unsupported case.
 
+The declared requirements are content requirements, not proof that the
+capabilities are covered. Resolve their complete recursive closure against the
+reviewed capability evidence. A witness may help author or test a requirement,
+but it cannot satisfy the card lifecycle or bundle-certification gates by
+itself.
+
 Run:
 
 ```bash
@@ -60,6 +89,10 @@ At minimum:
 - per-perspective observation/event assertions;
 - capability closure check.
 
+Where a requirement crosses a semantic seam, include the applicable reviewed
+interaction evidence. Do not infer that evidence from isolated capability
+passes, a successful parse or compile, or a game that happens to complete.
+
 ### 7. Promote status carefully
 
 ```text
@@ -67,6 +100,25 @@ Imported -> Parsed -> Implemented -> Covered
 ```
 
 A card becomes **Certified** only through a certified locked bundle. A single passing card test is not certification.
+
+## M3 to M4 content boundary
+
+M4 may begin once the separately reviewed M3 Initial Semantic Foundation
+reaches its declared bounded exit. M4 does not require universal Magic
+semantic closure. For each card or bundle item, use this routing rule:
+
+```text
+reviewed Card IR definition
+    -> derive direct and recursive capability requirements
+    -> every required capability covered for this scope?
+         YES -> continue card and bundle evidence
+         NO  -> return the missing general semantics to the capability workflow
+```
+
+The M3 semantic witness stage makes no card-support claim. M4 content work may
+use covered capabilities, but a card remains subject to its own definition,
+interaction, information, replay, and closure evidence. Later capability work
+can continue while M4 integrates content.
 
 ## Expected effort
 
@@ -115,6 +167,7 @@ The following invariants remain explicit:
 add-card != supported
 generated != authoritative
 parsed != supported
+witness != supported
 implemented != certified
 ```
 
@@ -160,7 +213,12 @@ just add-cards cards.txt
 just add-deck deck.txt
 ```
 
-Their deterministic reports could distinguish cards or definitions that are already covered by existing capabilities, require only new card definitions and tests, or are blocked by missing reusable capabilities. These commands and report shapes are future direction only and are not being implemented or specified as a stable CLI contract here.
+Their deterministic reports could distinguish cards or definitions that are
+already covered by existing capabilities, require only new card definitions
+and tests, or are blocked by missing reusable capabilities. Exact deck
+manifests remain content and certification artifacts; they do not determine M3
+semantic scope. These commands and report shapes are future direction only and
+are not being implemented or specified as a stable CLI contract here.
 
 ## Prohibited patterns
 

@@ -95,22 +95,254 @@ outside this authoritative engine repository, and external census M3
 authorization must not be treated as engine-semantic authorization. Future M3
 entry requires an explicit reviewed durable scope and capability input.
 
-## M3 — Required Magic Primitives
+## M3 — Bounded Semantic Coverage
 
-When authorized, implement only the reviewed closure's reusable semantics:
-turn/priority/stack, costs/mana, targets, zones/LKI, events,
-replacement/prevention, triggers, SBA, combat, continuous/copy semantics,
-Commander tracking, loops, and other required capabilities. Each capability
-advances through specification, implementation, coverage, and bundle evidence.
+**Status:** `NOT_AUTHORIZED`; this section describes a future execution model
+only. It does not authorize M3, select its first capability, or select a card.
 
-## M4 — Card Definitions and Certified V1 Bundle
+### Purpose and progress authority
 
-- reviewed definitions for all reachable content;
-- no hidden/random fallback decisions;
-- card and interaction cases;
-- capability closure complete;
-- bundle certification gates pass;
-- first legitimate support claim.
+When separately authorized, M3 builds reusable Magic semantics as bounded,
+independently reviewable capability slices. Its primary progress unit is a
+covered semantic capability slice and its applicable reviewed interaction
+obligations.
+
+M3 progress is not measured by:
+
+- card count or deck completion;
+- raw parsed, generated, or compiled content;
+- usage frequency by itself; or
+- playability of a game or matchup.
+
+The architecture driver is semantic depth followed by interaction evidence,
+then reusable capability coverage, then content breadth. A concrete deck or
+deck pair may provide witnesses, but it must not determine M3 semantics.
+
+### Semantic witnesses
+
+A **Semantic Witness** is a concrete card, rules example, ruling example, or
+minimal scenario used to expose and prove a reusable semantic capability. A
+witness is evidence input, not a Manafold card definition or support claim:
+
+```text
+witness != supported
+implemented != covered
+covered != certified
+```
+
+Any named card used while planning a slice is illustrative unless a later
+review explicitly promotes it through the Card IR and certification workflows.
+No first M3 card, witness, or capability is frozen by this roadmap.
+
+### M3 slice model
+
+The future roadmap is organized around bounded slices, each with its own
+declared exit:
+
+```text
+M3.T0  thin private conformance facade over the real Rust kernel
+M3.S1  first separately reviewed bounded semantic capability slice
+M3.S2  next independently justified capability slice
+M3.S3  first meaningful multi-capability interaction closure
+M3.Sn  additional reviewed slices as evidence and scope justify them
+```
+
+M3.T0 may provide complete setup, explicit player responses, exact transition
+products, rejection nonmutation, state/event/delta assertions,
+perspective-safe assertions, structured diagnostics, and applicable
+replay/checkpoint/fork assertions. It remains a thin facade over the real
+authoritative kernel and does not require a real card.
+
+A slice normally declares its capability identity and bounded scope, pinned
+authority, explicit exclusions, minimal witnesses, RED conformance cases,
+implementation, applicable decision and information evidence, state/event/
+delta evidence, replay/checkpoint/fork parity where relevant, reviewed
+interaction obligations, fail-closed unsupported cases, and the evidence
+needed for lifecycle advancement. An evidence class may be marked not
+applicable only with a scope-specific reason.
+
+In compact form, a bounded coverage claim requires:
+
+```text
+capability
+    + included scope and explicit exclusions
+    + pinned authority and implementation
+    + isolated conformance evidence
+    + applicable interaction obligations and evidence
+    + applicable decision, information, state/event/delta, and parity evidence
+    = bounded semantic coverage claim
+```
+
+The claim never silently extends beyond its declared scope.
+
+The durable scope rule is:
+
+> Complete one semantic capability slice before expanding to unrelated
+> semantic breadth.
+
+The exact number of slices and the Initial Semantic Foundation are not frozen
+here.
+
+### Interaction closure and risk map
+
+Issue #129's interaction philosophy remains in force:
+
+```text
+POTENTIAL_SEAM
+    -> REVIEWED_OBLIGATION
+    -> SATISFIED_EVIDENCE
+```
+
+The obligations are explicit, reviewed, scope-aware, and risk-based. M3 must
+review applicable seams, but it must not require a Cartesian product of every
+capability, and it must not allow zero interaction review. Isolated capability
+passes do not prove their composition.
+
+The following domains remain an evidence-priority risk map, not a global M3
+exit checklist:
+
+```text
+zones / object incarnation       LKI
+replacement / prevention         triggers
+state-based actions              priority / stack
+hidden information / knowledge   continuous effects / layers
+copy effects                     loops / forced progress
+costs / payment                  targeting / resolution legality
+combat                           control / ownership
+Commander-specific state
+```
+
+A domain may therefore contain one narrow covered slice alongside explicitly
+unsupported cases. A narrow continuous-effects slice, for example, does not
+claim that all layer or dependency cases are supported.
+
+### Selection signals and external research
+
+Usage and census data may help prioritize reusable capabilities. They do not
+establish semantic authority, support, or correctness, and this roadmap freezes
+no scoring formula, weights, or percentages. The separate `manafold-census`
+project remains advisory:
+
+```text
+census signal
+    -> human review
+    -> explicit Manafold scope decision
+    -> capability specification
+    -> implementation and conformance
+```
+
+A future reviewed selection may consider foundational importance, reuse across
+cards, usage-informed relevance, interaction centrality, ML decision value,
+information-safety value, and a reasonable bounded implementation cost. No one
+signal dominates automatically; highest usage is not automatically first.
+
+`Coverage gain` is another advisory planning concept: implementing one
+reusable capability may move many content items closer to recursive closure.
+Future census work may estimate cards requiring a capability,
+usage-weighted demand, sole blockers, or recursive closure gain. None of these
+estimates is a support count, a certification result, or an engine decision.
+
+```text
+ML/census planning signal != Rust rules authority
+```
+
+External engines and their failure registers remain research and
+differential-testing references only. Generalized lessons motivating this
+boundary include the externally recorded classes `EXT-MTG-004`, `EXT-MTG-006`,
+and relevant 1v1 portions of `EXT-MTG-018`: replacement/prevention/trigger/
+SBA/layer and repeated-instance composition can fail; parsed, generated, or
+compiled shape is not semantic support; actor, ordering, and simultaneous-
+choice distinctions matter. Therefore:
+
+```text
+parsed != semantically supported
+compiled != semantically supported
+many implemented cards != proven composition
+isolated capability correctness != interaction correctness
+playable game != conformance evidence
+later gameplay discovery != a substitute for explicit interaction evidence
+```
+
+These are generalized architectural lessons, not claims that another engine
+is Manafold's authority or that any finding belongs exclusively to a named
+engine. Do not assign an `EXT-MTG-*` finding to a specific external engine
+unless the finalized external-failure register provides that provenance.
+
+### Initial Semantic Foundation and M3 exit
+
+The **Initial Semantic Foundation** is a small, explicitly reviewed set of
+foundational capability slices, their applicable reviewed interaction
+obligations, and the conformance infrastructure needed to prove them. Its
+exact capabilities, witnesses, interactions, and count require a separate
+reviewed M3 entry/scope decision.
+
+M3 may advance to its declared bounded exit only when that foundation and its
+required gates have current `PASS` evidence. This is not a claim that all
+Magic mechanics, all Issue #129 risk domains, a complete Commander rules
+engine, arbitrary Commander or deck support, a representative metagame, or
+global card coverage are complete. These are not requirements for the bounded
+M3 exit.
+
+### M3 and M4 progress are separate
+
+| M3 semantic progress | M4 content and integration progress |
+| --- | --- |
+| specified, implemented, and covered capabilities | reviewed Card IR definitions |
+| semantic witnesses with current evidence | definitions covered by their requirements |
+| satisfied reviewed interaction obligations | recursive capability closure |
+| applicable decision, information, state/event/delta, and parity evidence | exact deck or bundle manifests |
+| bounded exclusions and fail-closed unsupported cases | bundle certification and end-to-end integration |
+
+These dimensions must not be collapsed into one percentage.
+
+## M4 — Card Definitions, Bundle Integration, and First Certification
+
+M4 may begin after the separately reviewed Initial Semantic Foundation reaches
+its declared exit. It does not wait for universal Magic semantic closure, and
+it does not prevent later M3 capability work.
+
+M4 owns reviewed Card IR definitions, content-specific conformance, recursive
+capability closure, bundle integration, exact deck manifests when required,
+and the first legitimate locked-bundle support claim. For each card or
+content item:
+
+```text
+card definition
+    -> derive recursive capability requirements
+    -> all required capabilities covered?
+         YES -> continue content and bundle evidence
+         NO  -> return the missing general semantics to the capability workflow
+```
+
+Missing semantics must be implemented as reusable capabilities, never as
+card-name-specific shortcuts. M3 semantic coverage does not automatically
+support a card, deck, format, or bundle.
+
+Certification remains bundle-specific:
+
+```text
+locked bundle
+    + exact capability closure
+    + exact content and snapshots
+    + required runtime and conformance evidence
+    = certified support claim
+```
+
+A small, deeply proven initial bundle may therefore be certified with explicit
+unsupported semantics and exclusions. Later bundles may require additional
+capabilities and evidence; M3 semantic coverage alone never certifies a card,
+deck, format, or bundle.
+
+## M3/M4 boundary summary
+
+```text
+M3: bounded reusable semantics and applicable interaction obligations
+    -> M4: reviewed Card IR, content integration, bundles, decks,
+           and certification
+```
+
+M4 content breadth is downstream of semantic evidence. A deck manifest and
+bundle are certification artifacts, not the architecture driver for M3.
 
 ## M5 — ML Environment and Baselines
 
