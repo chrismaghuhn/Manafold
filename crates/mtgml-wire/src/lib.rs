@@ -557,9 +557,10 @@ mod constructive_producer_tests {
 
     use crate::encode_canonical;
 
-    const ZERO_DIGEST: &str = "0000000000000000000000000000000000000000000000000000000000000000";
+    const OBSERVATION_DIGEST: &str =
+        "90845308617867fd703c6c4f37ede7908da24420053821f89190ad36236dfca3";
     const GOLDEN_INFORMATION_STATE_DIGEST_V2: &str =
-        "256b504fe8fc2b9cb41395986c74586ea5617cf192a8939f05e7373f25dd41ca";
+        "3ca09ef084ebca02f6350db80423db3d8eeddb1d42fe7b2868acf2dbb752ebfd";
 
     fn golden_fixture(name: &str) -> Vec<u8> {
         std::fs::read(
@@ -593,7 +594,7 @@ mod constructive_producer_tests {
                 state_revision: StateRevision(0),
                 payload_codec: "synthetic-m2-observation.v1".to_owned(),
                 payload_base64: "e30=".to_owned(),
-                digest: ObservationDigest::parse(ZERO_DIGEST).expect("zero digest"),
+                digest: ObservationDigest::parse(OBSERVATION_DIGEST).expect("observation digest"),
             },
             next_visible_sequence: VisibleSequence(5),
             retained_knowledge: vec![
@@ -704,7 +705,7 @@ mod constructive_producer_tests {
             state_revision: StateRevision(0),
             payload_codec: "synthetic-json.v1".to_owned(),
             payload_base64: "e30=".to_owned(),
-            digest: ObservationDigest::parse(ZERO_DIGEST).expect("zero digest"),
+            digest: ObservationDigest::parse(OBSERVATION_DIGEST).expect("observation digest"),
         };
         assert_eq!(
             encode_canonical(&value).unwrap(),

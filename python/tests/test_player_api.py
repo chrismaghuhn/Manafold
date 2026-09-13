@@ -302,7 +302,7 @@ class InitialConfigurationCursorParityTests(unittest.TestCase):
             state_revision=0,
             payload_codec="synthetic-m2-observation.v1",
             payload_base64="e30=",
-            digest="0000000000000000000000000000000000000000000000000000000000000000",
+            digest="90845308617867fd703c6c4f37ede7908da24420053821f89190ad36236dfca3",
         )
         record = {
             "kind": "active",
