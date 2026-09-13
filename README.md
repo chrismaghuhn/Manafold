@@ -4,7 +4,7 @@
 
 - **Current foundation milestone:** M2 — Decision Machinery and Synthetic Information Safety (`COMPLETE` by accepted ADR 0041; exact M2.Final closure evidence head `352cd80c2ef58a406c30bf7db1cb792109fafc3f`)
 - **M2.5 scope work:** `NOT_CLAIMED` / `NOT_FROZEN`; the abandoned census and research machinery remains historical Git evidence, not active engine scope
-- **Current active work area:** maintainer hardening, Issue #130 Batch A5/C1
+- **Current active work area:** maintainer hardening under Issue #130
 - **Blocked:** no active Magic/card scope; engine `M3 = NOT_AUTHORIZED`. External census M3 authorization does not authorize Manafold engine semantics.
 - **Project type:** independent greenfield MTG/ML rules and simulation engine
 - **Playable engine:** no

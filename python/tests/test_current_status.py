@@ -14,6 +14,11 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
             readme,
             r"\*\*Current foundation milestone:\*\* M2 .*COMPLETE",
         )
+        self.assertIn(
+            "**Current active work area:** maintainer hardening under Issue #130",
+            readme,
+        )
+        self.assertNotIn("Batch A5/C1", readme)
         self.assertRegex(readme, r"M2\.5[^\n]*NOT_CLAIMED")
         self.assertRegex(readme, r"M3[^\n]*NOT_AUTHORIZED")
         self.assertNotIn("M2 is not complete", readme)
@@ -55,10 +60,15 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
             encoding="utf-8"
         )
 
-        self.assertIn("not a second status", source_state)
+        self.assertIn("V0.2.2 Foundation Snapshot", source_state)
+        self.assertIn("historical", source_state.lower())
         self.assertIn("../README.md", source_state)
-        self.assertIn("Foundation snapshot", source_state)
+        self.assertIn("../docs/ROADMAP.md", source_state)
+        self.assertNotIn("M2.5", source_state)
+        self.assertNotIn("Issue #130", source_state)
+        self.assertNotIn("Engine M3", source_state)
         self.assertNotIn("## Current blockers", source_state)
+        self.assertNotIn("## Current boundary", source_state)
 
 
 if __name__ == "__main__":
