@@ -43,3 +43,9 @@ Use `just check-all`, then `just release-candidate`. Release evidence is valid o
 
 ## Bootstrap and diagnostics
 `just doctor` is non-mutating. `just bootstrap` only creates/updates `.venv` and installed Python packages; it never edits contracts or `Cargo.lock`.
+
+## Dependency audit
+Run the separate `just audit-dependencies` or direct audit command from
+[`DEVELOPER_SETUP.md`](DEVELOPER_SETUP.md) when the separately installed audit
+tools and advisory data are available. Its `PASS`/`FAIL`/`BLOCKED` result is
+not part of `manafold-pr-gate`.

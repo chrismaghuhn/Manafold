@@ -24,6 +24,9 @@ check:
 check-all:
     {{project_python}} scripts/run_checks.py certification
 
+audit-dependencies:
+    {{project_python}} scripts/run_dependency_audit.py
+
 release-candidate:
     {{project_python}} scripts/run_verification.py
 

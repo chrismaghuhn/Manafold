@@ -24,5 +24,6 @@ The verification runner marks directories it owns and refuses to replace an exis
 - `generate_contracts.py` — single-source generation/check for mechanical Rust/Python/schema vocabulary;
 - `run_checks.py` — fast (Smoke), integration (Smoke + Full), and certification
   maintainer profiles;
+- `run_dependency_audit.py` — explicit, bounded RustSec/PyPA dependency audits;
 - `bootstrap.py` — prepares `.venv` only and never mutates contracts or lockfiles;
 - `validate_golden_path.py` — verifies the synthetic vertical path fails closed at certification;
