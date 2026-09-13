@@ -110,10 +110,13 @@ Capture stores trusted local packets below `dist/failures/` by default. It
 executes only the captured `command.argv` list with `shell=False`; the
 captured `command.cwd` is repository-relative, and
 `reproduction.display_command` is human-facing display text only. Capture
-and rerun apply a maximum child runtime of 600 seconds and never modify Git
-state. A missing executable, unsafe output root, dirty or changed source
-identity, invalid marker, checksum failure, or unavailable required tool is
-blocked rather than repaired or retried. The packet is not public CI,
+and rerun apply a maximum child runtime of 600 seconds and never invoke Git
+mutators themselves. If the captured or rerun child changes source or Git
+identity, the operation is blocked; the tooling does not repair, reset, clean,
+stash, or otherwise undo that child mutation. A missing executable, unsafe
+output root, dirty source identity, invalid marker, checksum failure, or
+unavailable required tool is blocked rather than repaired or retried. The
+packet is not public CI,
 player-facing, ML-facing, replay, checkpoint, or semantic-fixture data.
 
 ## Shell and `just`
