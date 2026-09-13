@@ -16,6 +16,14 @@ import run_python_tests
 class PythonTestProfileTests(unittest.TestCase):
     """The fast gate stays small while full discovery remains available."""
 
+    @staticmethod
+    def _passing_suite() -> unittest.TestSuite:
+        return unittest.TestSuite([unittest.FunctionTestCase(lambda: None)])
+
+    def _run_python_tests(self, *arguments: str) -> int:
+        with mock.patch.object(sys, "argv", ["run_python_tests.py", *arguments]):
+            return run_python_tests.main()
+
     def _run_checks(self, *arguments: str) -> int:
         with mock.patch.object(sys, "argv", ["run_checks.py", *arguments]):
             try:
@@ -38,7 +46,7 @@ class PythonTestProfileTests(unittest.TestCase):
 
         def load(name: str) -> unittest.TestSuite:
             loaded.append(name)
-            return unittest.TestSuite()
+            return self._passing_suite()
 
         with (
             mock.patch.object(
@@ -69,6 +77,70 @@ class PythonTestProfileTests(unittest.TestCase):
             run_checks.FAST,
         )
         self.assertIn(full, run_checks.INTEGRATION_EXTRA)
+
+    def test_full_profile_rejects_zero_discovered_tests(self) -> None:
+        with mock.patch.object(
+            run_python_tests,
+            "build_suite",
+            return_value=unittest.TestSuite(),
+        ):
+            result = self._run_python_tests("--profile", "full")
+
+        self.assertNotEqual(result, 0)
+
+    def test_smoke_profile_rejects_an_empty_allowlisted_member(self) -> None:
+        loaded: list[str] = []
+
+        def load(name: str) -> unittest.TestSuite:
+            loaded.append(name)
+            if name == run_python_tests.SMOKE_TESTS[0]:
+                return unittest.TestSuite()
+            return self._passing_suite()
+
+        with mock.patch.object(
+            run_python_tests.unittest.defaultTestLoader,
+            "loadTestsFromName",
+            side_effect=load,
+        ):
+            result = self._run_python_tests("--profile", "smoke")
+
+        self.assertNotEqual(result, 0)
+        self.assertEqual(loaded, [run_python_tests.SMOKE_TESTS[0]])
+
+    def test_nonempty_full_profile_preserves_success(self) -> None:
+        suite = self._passing_suite()
+        with mock.patch.object(run_python_tests, "build_suite", return_value=suite):
+            result = self._run_python_tests("--profile", "full")
+
+        self.assertEqual(result, 0)
+
+    def test_nonempty_smoke_profile_preserves_success(self) -> None:
+        suite = self._passing_suite()
+        with mock.patch.object(run_python_tests, "build_suite", return_value=suite):
+            result = self._run_python_tests("--profile", "smoke")
+
+        self.assertEqual(result, 0)
+
+    def test_incomplete_execution_result_is_rejected(self) -> None:
+        suite = self._passing_suite()
+        result = mock.Mock()
+        result.wasSuccessful.return_value = True
+        result.testsRun = 0
+        runner = mock.Mock()
+        runner.run.return_value = result
+
+        with (
+            mock.patch.object(run_python_tests, "build_suite", return_value=suite),
+            mock.patch.object(
+                run_python_tests.unittest,
+                "TextTestRunner",
+                return_value=runner,
+            ),
+        ):
+            exit_code = self._run_python_tests("--profile", "full")
+
+        self.assertNotEqual(exit_code, 0)
+        runner.run.assert_called_once_with(suite)
 
     def test_allow_missing_tools_is_allowed_for_fast(self) -> None:
         with mock.patch.object(run_checks, "command_available", return_value=False):
