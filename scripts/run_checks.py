@@ -14,6 +14,22 @@ sys.dont_write_bytecode = True
 ROOT = Path(__file__).resolve().parents[1]
 MAX_SINGLE_GATE_SUBPROCESS_RUNTIME_SECONDS = 600
 
+
+def required_python_version() -> str:
+    return (ROOT / ".python-version").read_text(encoding="utf-8").strip()
+
+
+def current_python_version() -> str:
+    return ".".join(map(str, sys.version_info[:3]))
+
+
+def reference_python_matches() -> bool:
+    try:
+        return current_python_version() == required_python_version()
+    except OSError:
+        return False
+
+
 FAST = [
     [sys.executable, "scripts/generate_contracts.py", "--check"],
     [sys.executable, "scripts/verify_repository.py"],
@@ -25,9 +41,9 @@ FAST = [
 ]
 INTEGRATION_EXTRA = [
     [sys.executable, "scripts/run_python_tests.py", "--profile", "full"],
-    ["ruff", "format", "--check", "python", "scripts"],
-    ["ruff", "check", "python", "scripts"],
-    ["mypy", "--config-file", "python/pyproject.toml"],
+    [sys.executable, "-m", "ruff", "format", "--check", "python", "scripts"],
+    [sys.executable, "-m", "ruff", "check", "python", "scripts"],
+    [sys.executable, "-m", "mypy", "--config-file", "python/pyproject.toml"],
     ["cargo", "fmt", "--all", "--", "--check"],
     ["cargo", "check", "--workspace", "--all-targets", "--all-features", "--locked"],
     [
@@ -105,6 +121,15 @@ def main() -> int:
         help="development-only convenience; never valid freeze evidence",
     )
     args = parser.parse_args()
+    if not reference_python_matches():
+        try:
+            required = required_python_version()
+        except OSError:
+            required = "the repository-pinned version"
+        actual = current_python_version()
+        print(f"FAIL: Python {required} required; running {actual} ({sys.executable})")
+        print(f"RERUN: <project-python> scripts/run_checks.py {args.profile}")
+        return 2
     if args.allow_missing_tools and args.profile != "fast":
         parser.error("--allow-missing-tools is only valid for the fast profile")
     commands = list(FAST)

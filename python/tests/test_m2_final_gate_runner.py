@@ -178,6 +178,7 @@ class PullRequestGateTests(unittest.TestCase):
         return {
             "fast": "success",
             "integration": "success",
+            "windows-setup-smoke": "success",
             "Analyze (actions)": "success",
             "Analyze (python)": "success",
             "Analyze (rust)": "success",
@@ -196,9 +197,58 @@ class PullRequestGateTests(unittest.TestCase):
                 completed = self.run_gate(statuses)
                 self.assertNotEqual(completed.returncode, 0)
 
+    def test_windows_setup_smoke_failure_cancelled_skipped_fail(self) -> None:
+        for conclusion in ("failure", "cancelled", "skipped"):
+            statuses = self.statuses()
+            statuses["windows-setup-smoke"] = conclusion
+            with self.subTest(conclusion=conclusion):
+                completed = self.run_gate(statuses)
+                self.assertNotEqual(completed.returncode, 0)
+
     def test_missing_mandatory_check_fails(self) -> None:
         completed = self.run_gate(self.statuses(), omit="Analyze (rust)")
         self.assertNotEqual(completed.returncode, 0)
+
+    def test_windows_setup_smoke_missing_waits_then_fails_closed(self) -> None:
+        payload = {
+            "check_runs": [
+                {
+                    "name": name,
+                    "head_sha": self.HEAD,
+                    "status": "completed",
+                    "conclusion": status,
+                }
+                for name, status in self.statuses().items()
+                if name != "windows-setup-smoke"
+            ]
+        }
+
+        state, waiting = pr_gate.evaluate(payload, self.HEAD)
+
+        self.assertEqual(state, "WAIT")
+        self.assertEqual(waiting, ("windows-setup-smoke",))
+
+        with tempfile.TemporaryDirectory(prefix="manafold-pr-gate-") as directory:
+            path = Path(directory) / "check-runs.json"
+            path.write_text(json.dumps(payload), encoding="utf-8")
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    str(ROOT / "scripts/aggregate_pr_gate.py"),
+                    "--head-sha",
+                    self.HEAD,
+                    "--check-runs",
+                    str(path),
+                    "--wait",
+                ],
+                cwd=ROOT,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+        self.assertEqual(completed.returncode, pr_gate.WAIT_EXIT)
+        self.assertIn("windows-setup-smoke", completed.stdout)
 
     def test_codeql_neutral_waits_while_analyzer_is_pending(self) -> None:
         payload = {
@@ -212,8 +262,9 @@ class PullRequestGateTests(unittest.TestCase):
                 for name in self.statuses()
             ]
         }
-        payload["check_runs"][-2]["status"] = "in_progress"
-        payload["check_runs"][-2]["conclusion"] = None
+        rust = next(run for run in payload["check_runs"] if run["name"] == "Analyze (rust)")
+        rust["status"] = "in_progress"
+        rust["conclusion"] = None
 
         state, _ = pr_gate.evaluate(payload, self.HEAD)
 
@@ -247,6 +298,40 @@ class PullRequestGateTests(unittest.TestCase):
         self.assertTrue(
             any("aggregate_pr_gate.py" in step.get("run", "") for step in gate["steps"])
         )
+
+    def test_windows_setup_smoke_workflow_is_exact_head_and_bounded(self) -> None:
+        workflow_path = ROOT / ".github/workflows/windows-setup-smoke.yml"
+        self.assertTrue(workflow_path.is_file())
+        workflow = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))
+        self.assertEqual(workflow["name"], "Windows Setup Smoke")
+        job = workflow["jobs"]["windows-setup-smoke"]
+        self.assertEqual(job["name"], "windows-setup-smoke")
+        self.assertEqual(job["runs-on"], "windows-latest")
+        steps = job["steps"]
+        checkout = next(step for step in steps if "checkout" in step.get("uses", ""))
+        self.assertEqual(checkout["with"]["ref"], "${{ github.event.pull_request.head.sha }}")
+        self.assertTrue(
+            any(
+                "git rev-parse HEAD" in step.get("run", "")
+                and "github.event.pull_request.head.sha" in step.get("run", "")
+                for step in steps
+            )
+        )
+        self.assertTrue(any("scripts/bootstrap.py" in step.get("run", "") for step in steps))
+        self.assertTrue(
+            any(
+                "scripts/doctor.py --strict" in step.get("run", "")
+                and ".venv" in step.get("run", "")
+                for step in steps
+            )
+        )
+        self.assertTrue(any("scripts/run_checks.py fast" in step.get("run", "") for step in steps))
+        for step in steps:
+            if any(
+                token in step.get("run", "")
+                for token in ("rustup", "bootstrap.py", "doctor.py", "run_checks.py fast")
+            ):
+                self.assertEqual(step.get("timeout-minutes"), 10)
 
 
 class BuildReportTests(unittest.TestCase):

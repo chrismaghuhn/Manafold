@@ -27,7 +27,10 @@ class PythonTestProfileTests(unittest.TestCase):
             return run_python_tests.main()
 
     def _run_checks(self, *arguments: str) -> int:
-        with mock.patch.object(sys, "argv", ["run_checks.py", *arguments]):
+        with (
+            mock.patch.object(sys, "argv", ["run_checks.py", *arguments]),
+            mock.patch.object(run_checks, "reference_python_matches", return_value=True),
+        ):
             try:
                 return run_checks.main()
             except SystemExit as error:
@@ -79,6 +82,46 @@ class PythonTestProfileTests(unittest.TestCase):
             run_checks.FAST,
         )
         self.assertIn(full, run_checks.INTEGRATION_EXTRA)
+
+    def test_python_tools_are_bound_to_the_selected_interpreter(self) -> None:
+        self.assertIn(
+            [sys.executable, "-m", "ruff", "format", "--check", "python", "scripts"],
+            run_checks.INTEGRATION_EXTRA,
+        )
+        self.assertIn(
+            [sys.executable, "-m", "ruff", "check", "python", "scripts"],
+            run_checks.INTEGRATION_EXTRA,
+        )
+        self.assertIn(
+            [sys.executable, "-m", "mypy", "--config-file", "python/pyproject.toml"],
+            run_checks.INTEGRATION_EXTRA,
+        )
+        self.assertNotIn(
+            ["ruff", "format", "--check", "python", "scripts"],
+            run_checks.INTEGRATION_EXTRA,
+        )
+        self.assertNotIn(
+            ["ruff", "check", "python", "scripts"],
+            run_checks.INTEGRATION_EXTRA,
+        )
+        self.assertNotIn(
+            ["mypy", "--config-file", "python/pyproject.toml"],
+            run_checks.INTEGRATION_EXTRA,
+        )
+
+    def test_wrong_reference_python_is_rejected_before_running_checks(self) -> None:
+        output = StringIO()
+        with (
+            mock.patch.object(sys, "argv", ["run_checks.py", "fast"]),
+            mock.patch.object(run_checks, "reference_python_matches", return_value=False),
+            mock.patch.object(run_checks, "run") as run,
+            redirect_stdout(output),
+        ):
+            result = run_checks.main()
+
+        self.assertNotEqual(result, 0)
+        run.assert_not_called()
+        self.assertIn("Python", output.getvalue())
 
     def test_full_profile_rejects_zero_discovered_tests(self) -> None:
         with mock.patch.object(
