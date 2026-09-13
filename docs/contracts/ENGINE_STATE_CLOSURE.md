@@ -1,6 +1,6 @@
 # Engine State Closure
 
-**Status:** accepted state-closure contract including M2 field refinements; local M2.B structural evidence `PASS`, hosted/M2.Final closure pending
+**Status:** accepted state-closure contract including M2 field refinements; M2 executable closure is recorded as `COMPLETE` by accepted ADR 0041 at exact evidence head `352cd80c2ef58a406c30bf7db1cb792109fafc3f`
 **Stability:** normative
 
 `EngineState` is the complete semantic input to a transition:

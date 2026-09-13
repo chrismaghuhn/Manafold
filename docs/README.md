@@ -17,10 +17,11 @@ The machine-readable classification of binding, process, and informative documen
 - [`ROADMAP.md`](ROADMAP.md)
 - [`OPEN_DECISIONS.md`](OPEN_DECISIONS.md)
 
-Current executable status is M1 complete. M2.A architecture contracts are
-accepted and the M2.B structural implementation is present; the authoritative
-`M2_EXECUTABLE_CONTRACT_AND_VERSION_CUT` is `PASS` on the local clean exact
-head. Hosted PR evidence and M2.Final closure remain separate.
+Current status is owned by the repository root [`README.md`](../README.md) and
+the milestone ordering in [`ROADMAP.md`](ROADMAP.md). They record M2 as
+complete by accepted ADR 0041, M2.5 as `NOT_CLAIMED` / `NOT_FROZEN`, and engine
+M3 as `NOT_AUTHORIZED`; this documentation index does not duplicate a second
+status source.
 
 ## Normative architecture and semantics
 
@@ -81,6 +82,7 @@ head. Hosted PR evidence and M2.Final closure remain separate.
 
 ## Maintainer process
 
+- [`maintenance/MAINTAINER_PROFILES.md`](maintenance/MAINTAINER_PROFILES.md)
 - [`MAINTAINER_PLAYBOOK.md`](MAINTAINER_PLAYBOOK.md)
 - [`IMPLEMENTATION_STANDARDS.md`](IMPLEMENTATION_STANDARDS.md)
 - [`THREAT_MODEL.md`](THREAT_MODEL.md)
@@ -93,4 +95,4 @@ head. Hosted PR evidence and M2.Final closure remain separate.
 - [`maintenance/SCHEMA_EVOLUTION.md`](maintenance/SCHEMA_EVOLUTION.md)
 - [`adr/README.md`](adr/README.md)
 
-Accepted ADRs 0039 and 0040 contain the M2 decision and information/V3 compatibility architecture; accepted ADR 0041 records the post-`M2.Final` capability-oriented semantic-ownership decision. ADRs record intent; executable M2 closure remains evidence-driven.
+Accepted ADRs 0039 and 0040 contain the M2 decision and information/V3 compatibility architecture; accepted ADR 0041 records the post-`M2.Final` capability-oriented semantic-ownership decision and the accepted M2 closure status. ADRs record intent, while executable behavior remains evidence-driven.

@@ -4,7 +4,10 @@ ADRs are immutable decision history. Superseded records remain and point to repl
 
 ADR numbers 0042 through 0047 are historically occupied by accepted ContextApplication/M2.5 decisions that were intentionally removed from the active source tree by the post-purge cleanup. Their numbers remain permanently reserved and are not reusable; the acceptance of ADR 0048 is therefore accompanied by an explicit historical numbering gap.
 
-ADRs 0039 and 0040 are accepted M2.A architecture decisions. Their acceptance freezes the implementation direction for M2.B, but does not make any executable M2 behavior gate `PASS`; those gates remain `NOT_RUN` until their declared evidence executes.
+ADRs 0039 and 0040 are accepted M2.A architecture decisions. Their acceptance
+froze the implementation direction for M2.B but did not by itself make any
+executable M2 behavior gate `PASS`; the later exact M2.Final closure is
+recorded by accepted ADR 0041.
 
 ADR 0041 accepts the reviewed capability-oriented semantic-ownership candidate after `M2.Final`; the post-acceptance drift re-review found no material contradiction with the consolidated M2 architecture.
 

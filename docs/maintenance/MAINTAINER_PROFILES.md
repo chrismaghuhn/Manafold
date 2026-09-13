@@ -2,6 +2,13 @@
 
 **Status:** accepted
 
+## Current project entry point
+
+Use the repository root [`README.md`](../../README.md) for current foundation,
+active-work, and authorization status; use [`docs/ROADMAP.md`](../ROADMAP.md)
+for milestone ordering. This file owns the local and PR verification profiles
+below. External census status never authorizes Manafold engine semantics.
+
 ## Development
 Use `just check-fast` continuously. This profile performs generated-contract,
 repository, documentation, schema, golden-path, and explicit small Python
