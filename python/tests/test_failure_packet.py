@@ -6,6 +6,7 @@ import tempfile
 import unittest
 from pathlib import Path
 from typing import Any
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
@@ -282,6 +283,238 @@ class FailurePacketCoreTests(unittest.TestCase):
             failure_packet.source_tree_fingerprint(),
             run_verification.source_tree_fingerprint(),
         )
+
+
+class CaptureFailureTests(unittest.TestCase):
+    @staticmethod
+    def repository_root(temporary: str) -> Path:
+        repository_root = Path(temporary) / "repo"
+        repository_root.mkdir()
+        return repository_root
+
+    @staticmethod
+    def identity_provider(
+        *,
+        fingerprint: str = "c" * 64,
+        clean: bool = True,
+    ) -> failure_packet.SourceIdentity:
+        return failure_packet.SourceIdentity(
+            commit="a" * 40,
+            tree="b" * 40,
+            fingerprint=fingerprint,
+            clean=clean,
+        )
+
+    @staticmethod
+    def failing_command(exit_status: int = 1) -> list[str]:
+        return [
+            sys.executable,
+            "-c",
+            f"import sys; sys.exit({exit_status})",
+        ]
+
+    def test_failing_command_creates_packet_and_preserves_exit(self) -> None:
+        import capture_failure
+
+        with tempfile.TemporaryDirectory() as temporary:
+            output_root = Path(temporary) / "output"
+            result = capture_failure.capture(
+                self.failing_command(7),
+                case_id="CAPTURE_FAIL",
+                output_root=output_root,
+                repository_root=self.repository_root(temporary),
+                source_identity_provider=self.identity_provider,
+            )
+
+            self.assertEqual(result.status, failure_packet.CAPTURE_COMMAND_EXIT)
+            self.assertEqual(result.exit_code, 7)
+            self.assertIsNotNone(result.packet)
+            self.assertTrue(result.packet.joinpath("manifest.json").is_file())
+            manifest = failure_packet.load_packet(result.packet)
+
+        self.assertEqual(manifest["execution"]["outcome"], failure_packet.COMMAND_EXIT)
+        self.assertEqual(manifest["execution"]["exit_status"], 7)
+
+    def test_passing_command_creates_no_packet(self) -> None:
+        import capture_failure
+
+        with tempfile.TemporaryDirectory() as temporary:
+            output_root = Path(temporary) / "output"
+            result = capture_failure.capture(
+                self.failing_command(0),
+                case_id="CAPTURE_PASS",
+                output_root=output_root,
+                repository_root=self.repository_root(temporary),
+                source_identity_provider=self.identity_provider,
+            )
+
+            self.assertEqual(result.status, failure_packet.CAPTURE_PASS)
+            self.assertEqual(result.exit_code, 0)
+            self.assertIsNone(result.packet)
+            self.assertFalse(output_root.exists())
+
+    def test_missing_command_is_blocked_without_packet(self) -> None:
+        import capture_failure
+
+        with tempfile.TemporaryDirectory() as temporary:
+            output_root = Path(temporary) / "output"
+            result = capture_failure.capture(
+                [str(Path(temporary) / "missing-command.exe")],
+                case_id="CAPTURE_MISSING",
+                output_root=output_root,
+                repository_root=self.repository_root(temporary),
+                source_identity_provider=self.identity_provider,
+            )
+
+        self.assertEqual(result.status, failure_packet.CAPTURE_BLOCKED)
+        self.assertEqual(result.exit_code, 2)
+        self.assertIsNone(result.packet)
+
+    def test_timeout_creates_distinct_timeout_packet(self) -> None:
+        import capture_failure
+
+        timeout = failure_packet.CommandOutcome(
+            returncode=None,
+            timed_out=True,
+            stdout=b"partial stdout\n",
+            stderr=b"partial stderr\n",
+        )
+        with tempfile.TemporaryDirectory() as temporary:
+            output_root = Path(temporary) / "output"
+            with mock.patch.object(capture_failure, "run_bounded", return_value=timeout):
+                result = capture_failure.capture(
+                    self.failing_command(),
+                    case_id="CAPTURE_TIMEOUT",
+                    output_root=output_root,
+                    repository_root=self.repository_root(temporary),
+                    source_identity_provider=self.identity_provider,
+                )
+
+            self.assertEqual(result.status, failure_packet.CAPTURE_TIMEOUT)
+            self.assertEqual(result.exit_code, 124)
+            manifest = failure_packet.load_packet(result.packet)
+
+        self.assertEqual(manifest["execution"]["outcome"], failure_packet.COMMAND_TIMEOUT)
+        self.assertIsNone(manifest["execution"]["exit_status"])
+
+    def test_source_mutation_is_blocked_without_packet(self) -> None:
+        import capture_failure
+
+        snapshots = iter(
+            [
+                self.identity_provider(),
+                self.identity_provider(fingerprint="d" * 64),
+            ]
+        )
+        with tempfile.TemporaryDirectory() as temporary:
+            output_root = Path(temporary) / "output"
+            result = capture_failure.capture(
+                self.failing_command(),
+                case_id="CAPTURE_MUTATION",
+                output_root=output_root,
+                repository_root=self.repository_root(temporary),
+                source_identity_provider=lambda: next(snapshots),
+            )
+
+        self.assertEqual(result.status, failure_packet.CAPTURE_BLOCKED)
+        self.assertEqual(result.exit_code, 2)
+        self.assertIsNone(result.packet)
+
+    def test_malformed_marker_is_blocked_without_packet(self) -> None:
+        import capture_failure
+
+        command = [
+            sys.executable,
+            "-c",
+            "print('MANAFOLD_FAILURE_SIGNATURE v1 malformed'); raise SystemExit(1)",
+        ]
+        with tempfile.TemporaryDirectory() as temporary:
+            output_root = Path(temporary) / "output"
+            result = capture_failure.capture(
+                command,
+                case_id="CAPTURE_MARKER",
+                output_root=output_root,
+                repository_root=self.repository_root(temporary),
+                source_identity_provider=self.identity_provider,
+            )
+
+        self.assertEqual(result.status, failure_packet.CAPTURE_BLOCKED)
+        self.assertEqual(result.exit_code, 2)
+        self.assertIsNone(result.packet)
+
+    def test_valid_marker_is_stored_as_structured_signature(self) -> None:
+        import capture_failure
+
+        command = [
+            sys.executable,
+            "-c",
+            (
+                "print('MANAFOLD_FAILURE_SIGNATURE v1 "
+                "surface=events path=transition.events[3] "
+                "mismatch_kind=value_changed'); raise SystemExit(1)"
+            ),
+        ]
+        with tempfile.TemporaryDirectory() as temporary:
+            result = capture_failure.capture(
+                command,
+                case_id="CAPTURE_MARKER",
+                output_root=Path(temporary) / "output",
+                repository_root=self.repository_root(temporary),
+                source_identity_provider=self.identity_provider,
+            )
+            manifest = failure_packet.load_packet(result.packet)
+
+        self.assertEqual(
+            manifest["failure_signature"]["semantic_path"],
+            "transition.events[3]",
+        )
+
+    def test_capture_uses_shell_false_and_hard_timeout(self) -> None:
+        import capture_failure
+
+        outcome = failure_packet.CommandOutcome(returncode=1)
+        with tempfile.TemporaryDirectory() as temporary:
+            repository_root = self.repository_root(temporary)
+            output_root = Path(temporary) / "output"
+            with mock.patch.object(
+                capture_failure,
+                "run_bounded",
+                return_value=outcome,
+            ) as run_bounded:
+                result = capture_failure.capture(
+                    self.failing_command(),
+                    case_id="CAPTURE_BOUND",
+                    output_root=output_root,
+                    repository_root=repository_root,
+                    source_identity_provider=self.identity_provider,
+                )
+
+        self.assertEqual(result.status, failure_packet.CAPTURE_COMMAND_EXIT)
+        run_bounded.assert_called_once()
+        self.assertFalse(run_bounded.call_args.kwargs["shell"])
+        self.assertLessEqual(
+            run_bounded.call_args.kwargs["timeout"],
+            failure_packet.MAX_SINGLE_REPRO_SUBPROCESS_RUNTIME_SECONDS,
+        )
+
+    def test_capture_source_identity_is_unchanged_on_successful_capture(self) -> None:
+        import capture_failure
+
+        snapshots = iter([self.identity_provider(), self.identity_provider()])
+        with tempfile.TemporaryDirectory() as temporary:
+            result = capture_failure.capture(
+                self.failing_command(),
+                case_id="CAPTURE_STABLE",
+                output_root=Path(temporary) / "output",
+                repository_root=self.repository_root(temporary),
+                source_identity_provider=lambda: next(snapshots),
+            )
+
+        self.assertEqual(result.status, failure_packet.CAPTURE_COMMAND_EXIT)
+
+
+if __name__ == "__main__":
+    unittest.main()
 
 
 if __name__ == "__main__":
