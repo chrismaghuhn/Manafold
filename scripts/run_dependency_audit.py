@@ -16,6 +16,8 @@ MAX_SINGLE_AUDIT_SUBPROCESS_RUNTIME_SECONDS = 600
 AUDIT_PASS = "PASS"
 AUDIT_FAIL = "FAIL"
 AUDIT_BLOCKED = "BLOCKED"
+REQUIRED_RUST_AUDIT_VERSION = "cargo-audit 0.21.2"
+REQUIRED_PYTHON_AUDIT_VERSION = "pip-audit 2.10.1"
 
 
 @dataclass(frozen=True)
@@ -83,36 +85,65 @@ def run_bounded(
     )
 
 
-def payload_contains_vulnerabilities(ecosystem: str, output: str) -> bool:
+def parse_audit_payload(ecosystem: str, output: str) -> tuple[bool, bool]:
     try:
         payload = json.loads(output)
     except (json.JSONDecodeError, TypeError):
-        return False
+        return False, False
 
-    if ecosystem == "python" and isinstance(payload, dict):
+    if not isinstance(payload, dict):
+        return False, False
+
+    if ecosystem == "python":
         dependencies = payload.get("dependencies")
-        return isinstance(dependencies, list) and any(
-            isinstance(dependency, dict) and bool(dependency.get("vulns"))
-            for dependency in dependencies
-        )
+        fixes = payload.get("fixes")
+        if not isinstance(dependencies, list) or not isinstance(fixes, list):
+            return False, False
+        for dependency in dependencies:
+            if not isinstance(dependency, dict):
+                return False, False
+            if not isinstance(dependency.get("name"), str):
+                return False, False
+            if not isinstance(dependency.get("version"), str):
+                return False, False
+            if not isinstance(dependency.get("vulns"), list):
+                return False, False
+        return True, any(bool(dependency["vulns"]) for dependency in dependencies)
 
-    if ecosystem == "rust" and isinstance(payload, dict):
+    if ecosystem == "rust":
         vulnerabilities = payload.get("vulnerabilities")
         if not isinstance(vulnerabilities, dict):
-            return False
+            return False, False
         listed = vulnerabilities.get("list")
         found = vulnerabilities.get("found")
-        return (isinstance(listed, list) and bool(listed)) or (isinstance(found, int) and found > 0)
+        if (
+            not isinstance(found, int)
+            or isinstance(found, bool)
+            or found < 0
+            or not isinstance(listed, list)
+            or found != len(listed)
+            or not all(isinstance(entry, dict) for entry in listed)
+        ):
+            return False, False
+        return True, found > 0
 
-    return False
+    return False, False
+
+
+def payload_contains_vulnerabilities(ecosystem: str, output: str) -> bool:
+    valid, vulnerable = parse_audit_payload(ecosystem, output)
+    return valid and vulnerable
 
 
 def classify_audit_result(result: CommandResult, ecosystem: str) -> str:
     if result.blocked or result.returncode is None:
         return AUDIT_BLOCKED
+    valid, vulnerable = parse_audit_payload(ecosystem, result.output)
+    if not valid:
+        return AUDIT_BLOCKED
     if result.returncode == 0:
-        return AUDIT_PASS
-    if result.returncode == 1 and payload_contains_vulnerabilities(ecosystem, result.output):
+        return AUDIT_FAIL if vulnerable else AUDIT_PASS
+    if result.returncode == 1 and vulnerable:
         return AUDIT_FAIL
     return AUDIT_BLOCKED
 
@@ -134,16 +165,32 @@ def audit_ecosystem(
     *,
     version_command: list[str],
     audit_command: list[str],
+    expected_tool_version: str,
 ) -> EcosystemResult:
     version_result = run_bounded(version_command)
+    tool_version = next(
+        (line.strip() for line in version_result.output.splitlines() if line.strip()),
+        "unknown",
+    )
     if version_result.blocked or version_result.returncode != 0:
         return EcosystemResult(
             ecosystem=ecosystem,
             status=AUDIT_BLOCKED,
+            tool_version=None if tool_version == "unknown" else tool_version,
             detail="audit tool version probe was unavailable",
         )
 
-    tool_version = version_result.output.splitlines()[0] if version_result.output else "unknown"
+    if tool_version != expected_tool_version:
+        return EcosystemResult(
+            ecosystem=ecosystem,
+            status=AUDIT_BLOCKED,
+            tool_version=tool_version,
+            detail=(
+                f"audit tool version mismatch: expected {expected_tool_version}; "
+                f"actual {tool_version}"
+            ),
+        )
+
     audit_result = run_bounded(audit_command)
     status = classify_audit_result(audit_result, ecosystem)
     detail = audit_result.output
@@ -166,6 +213,7 @@ def run_audits(
         "rust",
         version_command=[rust_audit_executable, "--version"],
         audit_command=[rust_audit_executable, "audit", "--json"],
+        expected_tool_version=REQUIRED_RUST_AUDIT_VERSION,
     )
     python_result = audit_ecosystem(
         "python",
@@ -181,6 +229,7 @@ def run_audits(
             "--progress-spinner",
             "off",
         ],
+        expected_tool_version=REQUIRED_PYTHON_AUDIT_VERSION,
     )
     results = [rust_result, python_result]
     return results, aggregate_statuses([result.status for result in results])

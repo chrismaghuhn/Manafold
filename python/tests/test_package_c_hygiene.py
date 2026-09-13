@@ -69,13 +69,14 @@ class DependencyAuditTests(unittest.TestCase):
             "run_bounded",
             side_effect=[
                 self.result(0, stdout="cargo-audit 0.21.2"),
-                self.result(0),
+                self.result(0, stdout='{"vulnerabilities": {"found": 0, "list": []}}'),
             ],
         ):
             result = dependency_audit.audit_ecosystem(
                 "rust",
                 version_command=["cargo-audit", "--version"],
                 audit_command=["cargo-audit", "--json"],
+                expected_tool_version="cargo-audit 0.21.2",
             )
         self.assertEqual(result.status, dependency_audit.AUDIT_PASS)
 
@@ -84,10 +85,12 @@ class DependencyAuditTests(unittest.TestCase):
             dependency_audit,
             "run_bounded",
             side_effect=[
-                self.result(0),
+                self.result(0, stdout="cargo-audit 0.21.2"),
                 self.result(
                     1,
-                    stdout='{"vulnerabilities": {"list": [{"id": "RUSTSEC-0000-0000"}]}}',
+                    stdout=(
+                        '{"vulnerabilities": {"found": 1, "list": [{"id": "RUSTSEC-0000-0000"}]}}'
+                    ),
                 ),
             ],
         ):
@@ -95,15 +98,85 @@ class DependencyAuditTests(unittest.TestCase):
                 "rust",
                 version_command=["cargo-audit", "--version"],
                 audit_command=["cargo-audit", "--json"],
+                expected_tool_version="cargo-audit 0.21.2",
             )
         self.assertEqual(result.status, dependency_audit.AUDIT_FAIL)
+
+    def test_rust_empty_audit_output_is_blocked(self) -> None:
+        with mock.patch.object(
+            dependency_audit,
+            "run_bounded",
+            side_effect=[
+                self.result(0, stdout="cargo-audit 0.21.2"),
+                self.result(0, stdout=""),
+            ],
+        ):
+            result = dependency_audit.audit_ecosystem(
+                "rust",
+                version_command=["cargo-audit", "--version"],
+                audit_command=["cargo-audit", "audit", "--json"],
+                expected_tool_version="cargo-audit 0.21.2",
+            )
+        self.assertEqual(result.status, dependency_audit.AUDIT_BLOCKED)
+
+    def test_rust_malformed_audit_output_is_blocked(self) -> None:
+        with mock.patch.object(
+            dependency_audit,
+            "run_bounded",
+            side_effect=[
+                self.result(0, stdout="cargo-audit 0.21.2"),
+                self.result(0, stdout="garbage"),
+            ],
+        ):
+            result = dependency_audit.audit_ecosystem(
+                "rust",
+                version_command=["cargo-audit", "--version"],
+                audit_command=["cargo-audit", "audit", "--json"],
+                expected_tool_version="cargo-audit 0.21.2",
+            )
+        self.assertEqual(result.status, dependency_audit.AUDIT_BLOCKED)
+
+    def test_rust_unexpected_audit_shape_is_blocked(self) -> None:
+        with mock.patch.object(
+            dependency_audit,
+            "run_bounded",
+            side_effect=[
+                self.result(0, stdout="cargo-audit 0.21.2"),
+                self.result(0, stdout='{"unexpected": "schema"}'),
+            ],
+        ):
+            result = dependency_audit.audit_ecosystem(
+                "rust",
+                version_command=["cargo-audit", "--version"],
+                audit_command=["cargo-audit", "audit", "--json"],
+                expected_tool_version="cargo-audit 0.21.2",
+            )
+        self.assertEqual(result.status, dependency_audit.AUDIT_BLOCKED)
+
+    def test_rust_version_mismatch_is_blocked(self) -> None:
+        with mock.patch.object(
+            dependency_audit,
+            "run_bounded",
+            side_effect=[
+                self.result(0, stdout="cargo-audit 0.19.0"),
+                self.result(0, stdout='{"vulnerabilities": {"found": 0, "list": []}}'),
+            ],
+        ):
+            result = dependency_audit.audit_ecosystem(
+                "rust",
+                version_command=["cargo-audit", "--version"],
+                audit_command=["cargo-audit", "audit", "--json"],
+                expected_tool_version="cargo-audit 0.21.2",
+            )
+        self.assertEqual(result.status, dependency_audit.AUDIT_BLOCKED)
+        self.assertIn("expected cargo-audit 0.21.2", result.detail)
 
     def test_rust_advisory_database_error_is_blocked(self) -> None:
         with mock.patch.object(
             dependency_audit,
             "run_bounded",
             side_effect=[
-                self.result(0),
+                self.result(0, stdout="cargo-audit 0.21.2"),
                 self.result(1, stderr="error loading advisory database: unsupported CVSS version"),
             ],
         ):
@@ -111,6 +184,7 @@ class DependencyAuditTests(unittest.TestCase):
                 "rust",
                 version_command=["cargo-audit", "--version"],
                 audit_command=["cargo-audit", "audit", "--json"],
+                expected_tool_version="cargo-audit 0.21.2",
             )
         self.assertEqual(result.status, dependency_audit.AUDIT_BLOCKED)
 
@@ -124,6 +198,7 @@ class DependencyAuditTests(unittest.TestCase):
                 "rust",
                 version_command=["cargo-audit", "--version"],
                 audit_command=["cargo-audit", "--json"],
+                expected_tool_version="cargo-audit 0.21.2",
             )
         self.assertEqual(result.status, dependency_audit.AUDIT_BLOCKED)
 
@@ -137,6 +212,7 @@ class DependencyAuditTests(unittest.TestCase):
                 "rust",
                 version_command=["cargo-audit", "--version"],
                 audit_command=["cargo-audit", "--json"],
+                expected_tool_version="cargo-audit 0.21.2",
             )
         self.assertEqual(result.status, dependency_audit.AUDIT_BLOCKED)
 
@@ -146,9 +222,9 @@ class DependencyAuditTests(unittest.TestCase):
             "run_bounded",
             side_effect=[
                 self.result(0, stdout="cargo-audit 0.21.2"),
-                self.result(0),
+                self.result(0, stdout='{"vulnerabilities": {"found": 0, "list": []}}'),
                 self.result(0, stdout="pip-audit 2.10.1"),
-                self.result(0),
+                self.result(0, stdout='{"dependencies": [], "fixes": []}'),
             ],
         ) as run_bounded:
             dependency_audit.run_audits(
@@ -167,13 +243,14 @@ class DependencyAuditTests(unittest.TestCase):
             "run_bounded",
             side_effect=[
                 self.result(0, stdout="pip-audit 2.10.1"),
-                self.result(0),
+                self.result(0, stdout='{"dependencies": [], "fixes": []}'),
             ],
         ):
             result = dependency_audit.audit_ecosystem(
                 "python",
                 version_command=["python", "-m", "pip_audit", "--version"],
                 audit_command=["python", "-m", "pip_audit", "--format", "json"],
+                expected_tool_version="pip-audit 2.10.1",
             )
         self.assertEqual(result.status, dependency_audit.AUDIT_PASS)
 
@@ -182,12 +259,13 @@ class DependencyAuditTests(unittest.TestCase):
             dependency_audit,
             "run_bounded",
             side_effect=[
-                self.result(0),
+                self.result(0, stdout="pip-audit 2.10.1"),
                 self.result(
                     1,
                     stdout=(
                         '{"dependencies": [{"name": "pytest", "vulns": '
-                        '[{"id": "PYSEC-0000-0000"}]}]}'
+                        '[{"id": "PYSEC-0000-0000"}], "version": "8.4.1"}], '
+                        '"fixes": []}'
                     ),
                 ),
             ],
@@ -196,8 +274,78 @@ class DependencyAuditTests(unittest.TestCase):
                 "python",
                 version_command=["python", "-m", "pip_audit", "--version"],
                 audit_command=["python", "-m", "pip_audit", "--format", "json"],
+                expected_tool_version="pip-audit 2.10.1",
             )
         self.assertEqual(result.status, dependency_audit.AUDIT_FAIL)
+
+    def test_python_empty_audit_output_is_blocked(self) -> None:
+        with mock.patch.object(
+            dependency_audit,
+            "run_bounded",
+            side_effect=[
+                self.result(0, stdout="pip-audit 2.10.1"),
+                self.result(0, stdout=""),
+            ],
+        ):
+            result = dependency_audit.audit_ecosystem(
+                "python",
+                version_command=["python", "-m", "pip_audit", "--version"],
+                audit_command=["python", "-m", "pip_audit", "--format", "json"],
+                expected_tool_version="pip-audit 2.10.1",
+            )
+        self.assertEqual(result.status, dependency_audit.AUDIT_BLOCKED)
+
+    def test_python_malformed_audit_output_is_blocked(self) -> None:
+        with mock.patch.object(
+            dependency_audit,
+            "run_bounded",
+            side_effect=[
+                self.result(0, stdout="pip-audit 2.10.1"),
+                self.result(0, stdout="garbage"),
+            ],
+        ):
+            result = dependency_audit.audit_ecosystem(
+                "python",
+                version_command=["python", "-m", "pip_audit", "--version"],
+                audit_command=["python", "-m", "pip_audit", "--format", "json"],
+                expected_tool_version="pip-audit 2.10.1",
+            )
+        self.assertEqual(result.status, dependency_audit.AUDIT_BLOCKED)
+
+    def test_python_unexpected_audit_shape_is_blocked(self) -> None:
+        with mock.patch.object(
+            dependency_audit,
+            "run_bounded",
+            side_effect=[
+                self.result(0, stdout="pip-audit 2.10.1"),
+                self.result(0, stdout='{"unexpected": "schema"}'),
+            ],
+        ):
+            result = dependency_audit.audit_ecosystem(
+                "python",
+                version_command=["python", "-m", "pip_audit", "--version"],
+                audit_command=["python", "-m", "pip_audit", "--format", "json"],
+                expected_tool_version="pip-audit 2.10.1",
+            )
+        self.assertEqual(result.status, dependency_audit.AUDIT_BLOCKED)
+
+    def test_python_version_mismatch_is_blocked(self) -> None:
+        with mock.patch.object(
+            dependency_audit,
+            "run_bounded",
+            side_effect=[
+                self.result(0, stdout="pip-audit 2.8.0"),
+                self.result(0, stdout='{"dependencies": [], "fixes": []}'),
+            ],
+        ):
+            result = dependency_audit.audit_ecosystem(
+                "python",
+                version_command=["python", "-m", "pip_audit", "--version"],
+                audit_command=["python", "-m", "pip_audit", "--format", "json"],
+                expected_tool_version="pip-audit 2.10.1",
+            )
+        self.assertEqual(result.status, dependency_audit.AUDIT_BLOCKED)
+        self.assertIn("expected pip-audit 2.10.1", result.detail)
 
     def test_python_missing_tool_is_blocked(self) -> None:
         with mock.patch.object(
@@ -209,6 +357,7 @@ class DependencyAuditTests(unittest.TestCase):
                 "python",
                 version_command=["python", "-m", "pip_audit", "--version"],
                 audit_command=["python", "-m", "pip_audit", "--format", "json"],
+                expected_tool_version="pip-audit 2.10.1",
             )
         self.assertEqual(result.status, dependency_audit.AUDIT_BLOCKED)
 
@@ -222,6 +371,7 @@ class DependencyAuditTests(unittest.TestCase):
                 "python",
                 version_command=["python", "-m", "pip_audit", "--version"],
                 audit_command=["python", "-m", "pip_audit", "--format", "json"],
+                expected_tool_version="pip-audit 2.10.1",
             )
         self.assertEqual(result.status, dependency_audit.AUDIT_BLOCKED)
 
