@@ -749,11 +749,11 @@ fn panic_classification_policy_is_closed_and_detail_free() {
         ] {
             assert!(
                 !player_line.contains(marker),
-                "leaked {marker:?} to player surface"
+                "redaction marker leaked to player surface"
             );
             assert!(
                 !trusted_line.contains(marker),
-                "leaked {marker:?} to trusted surface"
+                "redaction marker leaked to trusted surface"
             );
         }
     }
@@ -934,10 +934,7 @@ fn run_level_endpoint_panic_emits_closed_envelope_and_exits_fatal() {
 
     // Redaction: no panic detail (nor any trusted material) in the output.
     for marker in [PANIC_MESSAGE, "panic", TRUSTED_KEY, ROOT_SEED_HEX] {
-        assert!(
-            !text.contains(marker),
-            "panic detail leaked into stdout: {marker:?}"
-        );
+        assert!(!text.contains(marker), "panic detail leaked into stdout");
     }
 }
 
@@ -993,7 +990,7 @@ fn failing_seam_redacts_and_service_continues() {
     // NO trusted detail anywhere in ANY emitted output.
     for line in &emitted_lines {
         for secret in [TRUSTED_KEY, ROOT_SEED_HEX] {
-            assert!(!line.contains(secret), "trusted detail leaked: {secret:?}");
+            assert!(!line.contains(secret), "trusted detail leaked");
         }
     }
 }
