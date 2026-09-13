@@ -261,6 +261,16 @@ class SelectedPairDurableCapabilityTests(unittest.TestCase):
             for forbidden in ("TBD", "TODO", "Generated proposal", "TBD-owner-role"):
                 self.assertNotIn(forbidden, text)
 
+    def test_capability_spec_directory_has_no_orphaned_durable_specs(self) -> None:
+        registry = _load_required(REGISTRY)
+        registered = {entry["spec_path"] for entry in registry["entries"]}
+        allowed_examples = {"docs/rules/capabilities/mechanic/example-draw.md"}
+        actual = {
+            path.relative_to(ROOT).as_posix()
+            for path in (ROOT / "docs/rules/capabilities").rglob("*.md")
+        }
+        self.assertEqual(actual - registered - allowed_examples, set())
+
     def test_high_risk_selected_families_have_individual_review_sections(self) -> None:
         mapping, census, lock, registry = self._artifacts()
         _, mapped_keys = _validate_selected_pair_mapping(mapping, census, lock, registry)
