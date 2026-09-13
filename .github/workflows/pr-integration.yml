@@ -46,6 +46,7 @@ jobs:
         shell: bash
         run: test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha }}"
       - name: Evaluate mandatory pull-request checks
+        timeout-minutes: 10
         env:
           GH_TOKEN: ${{ github.token }}
           REPOSITORY: ${{ github.repository }}
@@ -53,7 +54,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          for attempt in $(seq 1 90); do
+          for attempt in $(seq 1 55); do
             gh api \
               --header 'Accept: application/vnd.github+json' \
               "/repos/${REPOSITORY}/commits/${HEAD_SHA}/check-runs?per_page=100&filter=latest" \
@@ -73,5 +74,6 @@ jobs:
             fi
             sleep 10
           done
-          echo "FAIL: timed out waiting for mandatory pull-request checks" >&2
+          echo "TIMEOUT 600s manafold-pr-gate: mandatory checks did not all conclude success" >&2
+          echo "RERUN: gh api /repos/${REPOSITORY}/commits/${HEAD_SHA}/check-runs?per_page=100\\&filter=latest > ${RUNNER_TEMP}/manafold-check-runs.json && python scripts/aggregate_pr_gate.py --head-sha ${HEAD_SHA} --check-runs ${RUNNER_TEMP}/manafold-check-runs.json --wait" >&2
           exit 1

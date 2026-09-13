@@ -184,7 +184,38 @@ class PythonTestProfileTests(unittest.TestCase):
             result = run_checks.run(commands, allow_missing=False)
 
         self.assertEqual(result, 7)
-        run.assert_called_once_with(commands[0], cwd=run_checks.ROOT)
+        run.assert_called_once_with(
+            commands[0],
+            cwd=run_checks.ROOT,
+            timeout=run_checks.MAX_SINGLE_GATE_SUBPROCESS_RUNTIME_SECONDS,
+        )
+
+    def test_timed_out_subprocess_fails_closed_with_rerun_diagnostic(self) -> None:
+        command = ["tool-a", "--flag"]
+        output = StringIO()
+
+        with (
+            mock.patch.object(run_checks, "command_available", return_value=True),
+            mock.patch.object(
+                run_checks.subprocess,
+                "run",
+                side_effect=subprocess.TimeoutExpired(command, 600),
+            ),
+            mock.patch("time.perf_counter", side_effect=[1.0, 601.0]),
+            redirect_stdout(output),
+        ):
+            try:
+                result = run_checks.run([command], allow_missing=False)
+            except subprocess.TimeoutExpired as error:
+                self.fail(f"runner leaked subprocess timeout: {error}")
+
+        self.assertEqual(result, 124)
+        self.assertEqual(
+            output.getvalue(),
+            "RUN tool-a --flag\n"
+            "TIMEOUT 600.000s tool-a --flag (limit=600s)\n"
+            "RERUN: tool-a --flag\n",
+        )
 
     def test_successful_subprocess_reports_duration_and_command(self) -> None:
         command = ["tool-a", "--flag"]

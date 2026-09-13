@@ -12,6 +12,7 @@ from pathlib import Path
 
 sys.dont_write_bytecode = True
 ROOT = Path(__file__).resolve().parents[1]
+MAX_SINGLE_GATE_SUBPROCESS_RUNTIME_SECONDS = 600
 
 FAST = [
     [sys.executable, "scripts/generate_contracts.py", "--check"],
@@ -73,7 +74,19 @@ def run(commands: list[list[str]], *, allow_missing: bool) -> int:
 
         print(f"RUN {text}", flush=True)
         started = time.perf_counter()
-        result = subprocess.run(command, cwd=ROOT)
+        try:
+            result = subprocess.run(
+                command,
+                cwd=ROOT,
+                timeout=MAX_SINGLE_GATE_SUBPROCESS_RUNTIME_SECONDS,
+            )
+        except subprocess.TimeoutExpired:
+            duration = duration_text(time.perf_counter() - started)
+            print(
+                f"TIMEOUT {duration} {text} (limit={MAX_SINGLE_GATE_SUBPROCESS_RUNTIME_SECONDS}s)"
+            )
+            print(f"RERUN: {text}")
+            return 124
         duration = duration_text(time.perf_counter() - started)
         if result.returncode != 0:
             print(f"FAIL {duration} {text}")
