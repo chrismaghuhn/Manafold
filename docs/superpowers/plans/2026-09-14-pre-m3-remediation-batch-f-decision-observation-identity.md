@@ -770,13 +770,17 @@ crates/mtgml-conformance/src/isolation/mutants.rs; do not weaken FND-016A.
 
 - [ ] **Step 4: Add two focused semantic negative fixtures**
 
-Derive both fixtures from the checked-in player-step-v2-rejected.json bytes:
+Derive both fixtures from the checked-in player-step-v2-rejected.json bytes.
+Keep the canonical field present in both fixtures:
 
-1. Remove next_decision while retaining submission.code = invalid_answer.
+1. Replace the decision value with the explicit JSON value
+   "next_decision": null while retaining submission.code = invalid_answer.
 2. Retain next_decision while changing the submission code to
    unavailable_decision.
 
-Register both with contract player-step.v2, expected error
+The first fixture must contain the explicit null, not omit the key; omitting
+the key would test canonical decoding rather than the intended semantic
+cross-field rule. Register both with contract player-step.v2, expected error
 semantic.player_step, and the existing shared semantic/decode rejection layer.
 Keep the existing episode_closed running-status negative fixture; it remains a
 fixture-only boundary test.
@@ -1070,13 +1074,18 @@ archive gate as FAIL or NOT_RUN rather than as a successful final gate.
 - [ ] **Step 6: Verify compatibility and final local cleanliness**
 
 ~~~powershell
-rg -n "PlayerStepV3|CandidateIdV2|decision-response.v3|observed-event-envelope.v3|SystemTime|thread_rng|rand::" crates python schemas wire docs/superpowers/specs/2026-09-14-pre-m3-remediation-batch-f* || exit 1
+$addedForbidden = git diff --unified=0 b24bba153f2aa74bd59e8d6a872a0612ff7f76aa HEAD -- crates python schemas wire | Select-String -Pattern '^\+[^+].*(PlayerStepV3|CandidateIdV2|decision-response.v3|observed-event-envelope.v3|SystemTime|thread_rng|rand::)'
+if ($null -ne $addedForbidden) {
+    $addedForbidden
+    throw "compatibility scan found a forbidden new version, clock, or RNG dependency"
+}
 git diff --check
 git status --porcelain=v1
 ~~~
 
-The search must not find a new version, clock/RNG dependency, or unrelated
-scope. Existing historical references are classified, not deleted.
+The diff-based scan succeeds when no added line introduces a new version,
+clock/RNG dependency, or unrelated scope. Existing historical references in
+unchanged lines are classified, not deleted.
 
 ## Task 9: Independent exact-head code review
 
@@ -1103,6 +1112,15 @@ Do not interrupt the reviewer. Close it only after it reaches a final status.
 Fix every blocker/major finding, rerun the affected tests, and review the new
 head. A minor/nit is either fixed or recorded explicitly in the evidence
 document; no review result is treated as verification by itself.
+
+After every review fix and its verification, run the final source-tree archive
+gate again, immediately before preparing the evidence document and PR body:
+
+~~~powershell
+just archive-check
+~~~
+
+This final archive result supersedes any earlier Task 8 archive-check result.
 
 ## Task 10: Push one branch, open one PR, and wait for hosted CI
 
