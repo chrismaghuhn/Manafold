@@ -1,8 +1,0 @@
-{
-  "tracker": {
-    "type": "github",
-    "repo": "chrismaghuhn/Manafold"
-  },
-  "stacks": ["rust", "python"],
-  "prHost": "github"
-}

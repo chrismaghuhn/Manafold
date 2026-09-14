@@ -10,7 +10,7 @@
 
 **Canonical tracker:** [Issue #164](https://github.com/chrismaghuhn/Manafold/issues/164)
 
-**Design status:** approved direction; production implementation is not yet authorized by this document alone
+**Status:** design pending independent approval
 
 ## 1. Goal and boundary
 
@@ -145,7 +145,7 @@ unless separately registered. No frozen public wire contract changes.
 
 | Finding | Normative owner | Production owner | Current executable behavior | Authority/stability | Compatibility and history | Disposition |
 |---|---|---|---|---|---|---|
-| FND-017 | `STATE_HASHING.md`, `EXECUTION_MODEL.md`, ADR 0040 | `mtgml-persistence::checkpoint_digest`; complete boundary `mtgml-environment::checkpoint` and `mtgml-replay::v3` | The public calculator validates duplicate status outcomes and nonempty codec fields, but accepts arbitrary `DigestReferenceV1` metadata and impossible counters. The complete checkpoint boundary already validates state, state digest, status player universe, canonical status order, counters, and pending-decision closure. The digest helper intentionally sorts outcomes before encoding. | Detached digest primitive is trusted cross-crate implementation API; complete checkpoint/replay values are current V3 experimental/freeze-candidate runtime surfaces. | No valid V3 bytes or historical meaning may change. Invalid direct helper inputs must fail at the primitive boundary where that primitive owns the invariant; state-origin proof remains above it. | `SPLIT_REQUIRED`: confirmed low-level reference/counter closure plus payload-surface narrowing; high-level state/status/player checks are already owned and remain unchanged. |
+| FND-017 | `STATE_HASHING.md`, `EXECUTION_MODEL.md`, ADR 0040 | `mtgml-persistence::checkpoint_digest`; complete boundary `mtgml-environment::checkpoint` and `mtgml-replay::v3` | The public calculator validates duplicate status outcomes and nonempty codec fields, but accepts arbitrary `DigestReferenceV1` metadata and impossible counters. The complete checkpoint boundary already validates state, state digest, status player universe, canonical status order, counters, and pending-decision closure. The digest helper intentionally sorts outcomes before encoding. | Detached digest primitive is trusted cross-crate implementation API; complete checkpoint/replay values are current V3 experimental/freeze-candidate runtime surfaces. | No valid V3 bytes or historical meaning may change. Invalid direct helper inputs must fail at the primitive boundary where that primitive owns the invariant; state-origin proof remains above it. | `SPLIT_REQUIRED`: `FND-017A = CONFIRMED` for detached reference/counter closure and payload-surface narrowing; `FND-017B = RESOLVED_ON_BASE` for complete checkpoint/replay closure. |
 | FND-018 | ADR 0038, `STATE_HASHING.md`, `WIRE_CONTRACT.md`, `API_LIFECYCLE.md` | `mtgml-environment::EnvironmentCheckpointV3` | `EnvironmentCheckpointV3` derives `Serialize` and `Deserialize`, so a caller can invoke raw `serde_json`, bincode, or another serializer even though no durable checkpoint file format is defined. Repository search found no production consumer relying on that raw format. | Top-level Rust type is publicly reachable but internal/experimental; raw Serde is not a frozen wire or durable persistence contract. | Removing only the top-level derives narrows an experimental source surface. Nested runtime Serde remains for internal mechanics and tests. No checkpoint bytes are changed because no supported raw checkpoint codec exists. | `CONFIRMED`: the top-level raw persistence surface is unintended and can be closed locally. |
 | FND-019 | ADR 0040 total `PersistenceDecodeErrorV1` order and `STATE_HASHING.md` codec rules | `mtgml-persistence::cbor` and `python/src/mtgml/persistence.py` | Python checks an oversized array length before depth; Rust checks depth before array length. At a nested oversized array both defects are observable, so Rust returns `depth_exceeded` while Python returns `array_too_large`. Existing envelope/framing and primitive cases already mostly agree. | `mtgml.canonical-cbor.v1` is a shared trusted codec contract; Python is mechanical parity, not checkpoint authority. | Fixing control-flow order does not alter any accepted bytes or valid digest. No malformed input is newly accepted. | `CONFIRMED`: align Rust with ADR 0040 and pin a bounded cross-language compound-defect matrix. |
 | FND-029 | `RNG_CONTRACT.md`, ADR 0035 | `mtgml-random::hmac_counter` | Public `raw_u64_at(&[u8; 32], usize)` has only `debug_assert!(lane < 4)` and directly indexes four eight-byte lanes. Release callers can panic for an invalid lane. Production `next_raw_u64` derives `lane = cursor % 4`, but the public helper is broader than the contract. | Raw RNG behavior is trusted/internal; the public helper currently exposes an experimental unsafe shape. | Valid raw block bytes, cursor progression, sampler behavior, and KATs remain unchanged. Narrowing the helper is an internal/experimental Rust API change. | `CONFIRMED`: make lane access checked and non-public; add a typed internal failure for invalid defensive input. |
@@ -172,7 +172,7 @@ mtgml-persistence::calculate_checkpoint_digest_v3
     constructs:
       the existing one canonical checkpoint digest payload and envelope
 
-EnvironmentCheckpointV3::validate / InitialEnvironmentIdentityV3::validate
+EnvironmentCheckpointV3::validate
     additionally validates:
       EngineState cross-component invariants
       state -> FullStateDigestV3 correspondence
@@ -180,6 +180,19 @@ EnvironmentCheckpointV3::validate / InitialEnvironmentIdentityV3::validate
       canonical status outcome ordering
       completed-status pending-decision relation
       complete checkpoint/replay identity coherence
+
+InitialEnvironmentIdentityV3::validate
+    additionally validates:
+      local status validity
+      local codec identity
+      local EnvironmentLimitCounters validity
+      checkpoint digest recomputation
+
+ReplayManifestV3 / AuthoritativeReplayV3
+    additionally validates:
+      manifest/player-universe closure
+      replay revision, actor, response, status, counter, and identity continuity
+      complete replay identity coherence
 ```
 
 The calculator does not and must not prove that the 32 digest bytes came from
@@ -192,9 +205,26 @@ accepted full checkpoint/replay boundaries continue to reject noncanonical
 outcome order. The existing FND-025 regression that sorted and permuted
 status inputs produce the same low-level digest remains required.
 
+The canonical subfinding dispositions are:
+
+```text
+FND-017A = CONFIRMED
+  Detached checkpoint-digest input closure:
+  exact FullStateDigestV3 reference identity, local counters/status/codec
+  validity, and checkpoint_payload visibility.
+
+FND-017B = RESOLVED_ON_BASE
+  Complete checkpoint/replay closure at the existing high-level owners:
+  EngineState, state/digest correspondence, player universe, canonical status
+  ordering, completed-status relation, and replay identity continuity.
+
+FND-017 parent = SPLIT_REQUIRED during design; it becomes CLOSED only after
+FND-017A receives its Batch-G RED-to-GREEN evidence.
+```
+
 ## 5. Concrete production design
 
-### 5.1 FND-017: close only the detached input boundary
+### 5.1 FND-017A: close only the detached input boundary
 
 Add one local validation step in `crates/mtgml-persistence/src/checkpoint_digest.rs`
 before payload construction. The check compares the five reference identity
@@ -433,7 +463,8 @@ Planned RED/GREEN cases:
 
 | Finding | RED behavior | GREEN behavior |
 |---|---|---|
-| FND-017 | Direct V3 calculator accepts a malformed full-state reference or impossible counter and returns a digest. | Exact reference metadata and counter validity fail closed; valid known-answer digest is unchanged. |
+| FND-017A | Direct V3 calculator accepts a malformed full-state reference or impossible counter and returns a digest. | Exact reference metadata and counter validity fail closed; valid known-answer digest is unchanged. |
+| FND-017B | Characterization confirms that the complete checkpoint/replay owners already reject their out-of-bound state/status/player/continuity defects. | Preserve those existing high-level checks and record the parent subfinding as `RESOLVED_ON_BASE`; no duplicate low-level state authority is added. |
 | FND-018 | A source/trait guard observes the top-level checkpoint's raw Serde derive. | The top-level checkpoint no longer advertises raw Serde; nested internal Serde remains. |
 | FND-019 | Rust and Python classify the nested oversized-array/depth compound input differently. | Both return ADR-0040's `array_too_large`. |
 | FND-029 | Invalid direct lane access can panic or has no closed error. | Invalid lane returns `InvalidRawLane` without panic; valid lanes and cursor KATs remain unchanged. |
@@ -450,13 +481,9 @@ is regression evidence rather than a fake RED test.
 
 ```text
 Create  docs/superpowers/specs/2026-09-14-pre-m3-remediation-batch-g-persistence-safety-design.md
-Create  .claude/dev-kit.json
 Create  docs/superpowers/plans/2026-09-14-pre-m3-remediation-batch-g-persistence-safety.md
 Create  docs/superpowers/specs/2026-09-14-pre-m3-remediation-batch-g-dispositions-and-evidence.md
 ```
-
-`.claude/dev-kit.json` is secret-free GitHub tracker configuration created by
-the issue-fetch setup; it is not semantic runtime state.
 
 ### Production and tests, subject to final characterization
 
