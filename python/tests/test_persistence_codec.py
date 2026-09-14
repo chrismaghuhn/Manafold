@@ -65,6 +65,43 @@ class PersistenceCodecTests(unittest.TestCase):
             "b0cf94e1f49fb58feb6ebc07d88b2a7e226be78c1ca92ee7b9772d4f51290f6c",
         )
 
+    def test_fnd_017a_rejects_local_checkpoint_identity_inputs(self) -> None:
+        valid_counters = {
+            "decisions_submitted": 0,
+            "accepted_transitions": 0,
+            "rule_events_emitted": 0,
+            "resource_units_consumed": 0,
+            "wall_clock_elapsed_millis": 0,
+        }
+        for codec_id, semantic_version, expected_label in (
+            ("", "3", "empty codec id"),
+            ("in-memory-reference", "", "empty semantic version"),
+        ):
+            with self.subTest(expected_label=expected_label):
+                with self.assertRaises(PersistenceError) as caught:
+                    calculate_checkpoint_digest_v3(
+                        "07" * 32,
+                        EpisodeStatus.running(),
+                        valid_counters,
+                        codec_id,
+                        semantic_version,
+                    )
+                self.assertEqual(caught.exception.code, "semantic_validation")
+
+        invalid_counters = {
+            **valid_counters,
+            "accepted_transitions": 1,
+        }
+        with self.assertRaises(PersistenceError) as caught:
+            calculate_checkpoint_digest_v3(
+                "07" * 32,
+                EpisodeStatus.running(),
+                invalid_counters,
+                "in-memory-reference",
+                "3",
+            )
+        self.assertEqual(caught.exception.code, "semantic_validation")
+
 
 def test_cross_language_mechanical_golden_vectors() -> None:
     test = PersistenceCodecTests("test_cross_language_mechanical_golden_vectors")

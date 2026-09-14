@@ -377,6 +377,73 @@ fn mtgml_frame(value: &[u8]) -> Vec<u8> {
     output
 }
 
+fn valid_full_state_reference() -> mtgml_model::DigestReferenceV1 {
+    mtgml_model::DigestReferenceV1 {
+        envelope_version: envelope::DIGEST_ENVELOPE_ID.to_owned(),
+        algorithm_id: envelope::SHA256_ID.to_owned(),
+        semantic_domain: "mtgml.full-state-digest.v3".to_owned(),
+        payload_codec_id: envelope::CANONICAL_CBOR_ID.to_owned(),
+        input_schema_id: "full-state-digest-input.v3".to_owned(),
+        digest_bytes: [7; 32],
+    }
+}
+
+fn valid_checkpoint_codec() -> CheckpointCodecIdentity {
+    CheckpointCodecIdentity {
+        codec_id: "in-memory-reference".to_owned(),
+        semantic_version: "3".to_owned(),
+    }
+}
+
+#[test]
+fn fnd_017a_rejects_non_v3_full_state_reference_identity() {
+    let cases: [(&str, fn(&mut mtgml_model::DigestReferenceV1)); 5] = [
+        ("envelope", |reference| reference.envelope_version = "other".into()),
+        ("algorithm", |reference| reference.algorithm_id = "sha-512".into()),
+        ("domain", |reference| reference.semantic_domain = "other-domain".into()),
+        ("codec", |reference| reference.payload_codec_id = "other-codec".into()),
+        ("schema", |reference| reference.input_schema_id = "other-schema".into()),
+    ];
+    for (label, mutate) in cases {
+        let mut reference = valid_full_state_reference();
+        mutate(&mut reference);
+        assert_eq!(
+            checkpoint_digest::calculate_checkpoint_digest_v3(
+                &reference,
+                &EpisodeStatus::Running,
+                &EnvironmentLimitCounters::default(),
+                &valid_checkpoint_codec(),
+            ),
+            Err(PersistenceDecodeErrorV1::SemanticValidation),
+            "invalid reference field: {label}"
+        );
+    }
+}
+
+#[test]
+fn fnd_017a_rejects_impossible_checkpoint_counters() {
+    let counters = EnvironmentLimitCounters {
+        accepted_transitions: 1,
+        decisions_submitted: 0,
+        ..EnvironmentLimitCounters::default()
+    };
+    assert_eq!(
+        checkpoint_digest::calculate_checkpoint_digest_v3(
+            &valid_full_state_reference(),
+            &EpisodeStatus::Running,
+            &counters,
+            &valid_checkpoint_codec(),
+        ),
+        Err(PersistenceDecodeErrorV1::SemanticValidation)
+    );
+}
+
+#[test]
+fn fnd_017a_checkpoint_payload_is_not_a_public_function() {
+    let source = include_str!("checkpoint_digest.rs");
+    assert!(!source.contains("pub fn checkpoint_payload"));
+}
+
 /// The shared mechanical negative corpus is Rust-authoritative evidence:
 /// every committed fixture must produce its manifest-declared category from
 /// the Rust decoder. Python parity runs against the same corpus.
