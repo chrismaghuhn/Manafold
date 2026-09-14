@@ -142,7 +142,7 @@ EXPECTED_EVIDENCE: dict[str, tuple[str, ...]] = {
     GATE_REPLAY: (
         "synthetic::replay_parity_tests::historical_reprojection_byte_exact",
         "synthetic::replay_parity_tests::diagnostic_rejected_step_executes_with_intact_identity_chain",
-        "synthetic::replay_parity_tests::recorded_inactive_counter_progression_fails_closed_without_live_mutation",
+        "synthetic::replay_parity_tests::recorded_external_counter_progression_is_applied_without_live_mutation",
         "isolation::replay_parity::tests::final_identity_and_snapshot_parity",
         "tests::diagnostic_step_preserves_complete_identity",
         "tests::inactive_counter_forward_progression_passes_structural_monotonicity",
@@ -212,7 +212,7 @@ REQUIRED_COVERAGE: dict[str, frozenset[str]] = {
         {
             "synthetic::replay_parity_tests::historical_reprojection_byte_exact",
             "synthetic::replay_parity_tests::diagnostic_rejected_step_executes_with_intact_identity_chain",
-            "synthetic::replay_parity_tests::recorded_inactive_counter_progression_fails_closed_without_live_mutation",
+            "synthetic::replay_parity_tests::recorded_external_counter_progression_is_applied_without_live_mutation",
             "isolation::replay_parity::tests::final_identity_and_snapshot_parity",
             "tests::diagnostic_step_preserves_complete_identity",
             "tests::inactive_counter_forward_progression_passes_structural_monotonicity",
@@ -589,8 +589,8 @@ GATE_TESTS: dict[str, tuple[EvidenceDefinition, ...]] = {
         ),
         rust(
             "mtgml-environment",
-            "synthetic::replay_parity_tests::recorded_inactive_counter_progression_fails_closed_without_live_mutation",
-            "recorded inactive counter progression fails closed without live mutation",
+            "synthetic::replay_parity_tests::recorded_external_counter_progression_is_applied_without_live_mutation",
+            "recorded external counter progression applies without live mutation",
         ),
         rust(
             "mtgml-conformance",
