@@ -176,3 +176,37 @@ fn orphaned_knowledge_acquire_is_rejected_without_mutation() {
     assert!(apply_perspective_lifecycle(&mut state, &audit).is_err());
     assert_eq!(state, before);
 }
+
+#[test]
+fn lifecycle_rejects_invalid_channel_cause_without_mutation() {
+    let mut state = lifecycle_fixture();
+    let before = state.clone();
+    let audit = PerspectiveLifecycleAuditV1 {
+        perspective: PlayerId(1),
+        sequence: VisibleSequence(1),
+        mutation: PerspectiveLifecycleMutationV1 {
+            identity: IdentityMutationV1::Allocate {
+                opaque: OpaqueObjectId(2),
+                object: GameObjectId(3),
+            },
+            knowledge: Some(KnowledgeMutationV1::Acquire {
+                opaque: OpaqueObjectId(2),
+                definition: Some(CardDefinitionId(3)),
+                location: Some(crate::zones::ZoneLocation {
+                    zone: ZoneKind::Exile,
+                    player: None,
+                    position: crate::zones::ZonePosition::Unordered,
+                    visibility: crate::zones::VisibilityPartition::Public,
+                    partition: None,
+                }),
+                acquisition: crate::knowledge::KnowledgeAcquisitionReason::Observed {
+                    channel: crate::knowledge::KnowledgeHistoryChannel::Private,
+                    sequence: VisibleSequence(1),
+                    cause: crate::knowledge::KnowledgeAcquisitionCause::PublicEvent,
+                },
+            }),
+        },
+    };
+    assert!(apply_perspective_lifecycle(&mut state, &audit).is_err());
+    assert_eq!(state, before);
+}

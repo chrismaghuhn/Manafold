@@ -138,6 +138,9 @@ fn ensure_bound_provenance(
     provenance: &KnowledgeAcquisitionReason,
     sequence: VisibleSequence,
 ) -> Result<(), LifecycleApplicationError> {
+    if !provenance.has_accepted_channel_cause() {
+        return Err(LifecycleApplicationError::InvalidState);
+    }
     match provenance.observed_sequence() {
         None => Err(LifecycleApplicationError::UnsequencedProvenance),
         Some(observed) if observed == sequence => Ok(()),
