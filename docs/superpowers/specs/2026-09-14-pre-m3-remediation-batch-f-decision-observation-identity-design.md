@@ -404,3 +404,22 @@ FND_028 = BLOCKED_CONTRACT_AMBIGUITY
 IMPLEMENTATION_AUTHORIZED = NOT_YET
 M3_AUTHORIZED = NO
 ```
+
+## Implementation evidence appendix
+
+**Status:** implementation complete on the reviewed source head; final PR and hosted CI remain pending
+**RED characterization commit:** `99ad216b24d1f46166c1c55611873726e6c5aa54`
+**Final pre-evidence source head:** `4de61d126a67b15b780848a3ca5e7c40ec7386d9`
+**Pre-evidence direct archive:** `PASS`, SHA-256 `d52a7920cb29aca631029b4323d51490ec86b42670ce82d9721a27598f4e49ee`
+**Fix commits:** `78b9a27`, `d61547c`, `16c9b9e`, `02f83e7`, `722ec6f`, `4c4af86`, `e6cbab4`, `3b9b5a7`, `4de61d1`
+
+The executable Batch-F dispositions are `FND-009 = CONFIRMED`,
+`FND-013 = RESOLVED_ON_BASE`, `FND-014 = CONFIRMED`,
+`FND-015 = CONFIRMED`, `FND-016 = SPLIT_REQUIRED` with
+`FND-016A = CONFIRMED` and `FND-016B = DEFER_TO_EVD_005`,
+`FND-027 = RESOLVED_ON_BASE`, and
+`FND-028 = BLOCKED_CONTRACT_AMBIGUITY`. The bounded F4 evidence is recorded
+in `2026-09-14-pre-m3-remediation-batch-f-dispositions-and-evidence.md`.
+No ADR was accepted; the unnumbered PlayerId-zero candidate remains
+non-authoritative. The final exact-head review, PR, hosted CI, and merge remain
+separate gates. `M3_AUTHORIZED = NO`.
