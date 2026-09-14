@@ -87,8 +87,9 @@ history.
 
 `M2.5 = NOT_CLAIMED / NOT_FROZEN`. Its abandoned census and research
 machinery was removed from the active repository; the merged history remains
-historical evidence only. The current active maintainer work area is Issue
-#130, not a Magic-semantics milestone.
+historical evidence only. The current active maintainer work area is pre-M3
+foundation reconciliation and adversarial audit preparation under Issue #105;
+this is not a Magic-semantics milestone and does not authorize M3.
 
 `M3 = NOT_AUTHORIZED` for the Manafold engine. Census-driven scope research is
 outside this authoritative engine repository, and external census M3
