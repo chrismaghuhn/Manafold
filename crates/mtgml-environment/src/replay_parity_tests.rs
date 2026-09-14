@@ -125,6 +125,35 @@ fn visible_decision_bytes(endpoint: &PlayerEndpointHandle) -> Option<Vec<u8>> {
         .map(|request| mtgml_wire::encode_canonical(&request).unwrap())
 }
 
+#[test]
+fn eventful_replay_reprojection_requires_nonempty_base_batches() {
+    let controller = TrustedEnvironmentController::new(backend());
+    let before = controller.checkpoint().unwrap();
+    let transition = controller
+        .execute_trusted_response(
+            PlayerId(1),
+            DecisionResponseV2 {
+                schema_version: DECISION_RESPONSE_V2_SCHEMA.into(),
+                player_decision_id: PlayerDecisionIdV1(1),
+                state_revision: before.state.revision,
+                answer: order_entry_answer(),
+            },
+        )
+        .unwrap();
+    let after = controller.checkpoint().unwrap();
+    let envelopes = crate::lifecycle_projection::project_occurrence_envelopes(
+        &before.state,
+        &after.state,
+        &transition.events,
+    )
+    .unwrap();
+
+    assert!(
+        envelopes.values().any(|batch| !batch.is_empty()),
+        "the eventful replay proof needs a real observed-event batch"
+    );
+}
+
 fn snapshot_bytes(endpoint: &PlayerEndpointHandle) -> PerspectiveBytes {
     PerspectiveBytes {
         information_bytes: mtgml_wire::encode_canonical(&endpoint.information_state().unwrap())
