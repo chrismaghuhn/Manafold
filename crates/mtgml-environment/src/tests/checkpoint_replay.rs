@@ -255,10 +255,12 @@ fn replay_rejects_wrong_player_decision_id_before_trusted_execution() {
     tampered.validate().unwrap();
 
     let result = controller.execute_replay_from_checkpoint(checkpoint, tampered);
-    assert!(
-        result.is_err(),
-        "a structurally valid replay with the wrong request identity must fail at execution"
-    );
+    assert!(matches!(
+        result,
+        Err(ControllerError::ReplayExecution(
+            ReplayExecutionError::PlayerDecisionIdentityMismatch { step_index: 0 }
+        ))
+    ));
     assert_eq!(controller.checkpoint().unwrap(), live_checkpoint);
     assert_eq!(controller.export_replay().unwrap(), live_replay);
 }
