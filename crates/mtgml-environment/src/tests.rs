@@ -574,3 +574,4 @@ include!("tests/error_nonmutation.rs");
 include!("tests/batch_d.rs");
 include!("tests/batch_e.rs");
 include!("tests/batch_f.rs");
+include!("tests/batch_g.rs");

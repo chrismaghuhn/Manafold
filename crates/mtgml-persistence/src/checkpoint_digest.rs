@@ -1,11 +1,45 @@
 use crate::{cbor, envelope, PersistenceDecodeErrorV1};
 use mtgml_model::{
     CheckpointCodecIdentity, CheckpointDigestV3, DigestReferenceV1, EnvironmentLimitCounters,
-    EpisodeStatus, PlayerOutcome, PlayerResult, TerminalReason, TruncationReason,
+    EpisodeStatus, FullStateDigestV3, PlayerOutcome, PlayerResult, TerminalReason,
+    TruncationReason,
 };
 
 pub const CHECKPOINT_DOMAIN: &str = "mtgml.checkpoint-digest.v3";
 pub const CHECKPOINT_INPUT_SCHEMA: &str = "environment-checkpoint-digest-input.v3";
+
+fn validate_full_state_reference(
+    reference: &DigestReferenceV1,
+) -> Result<(), PersistenceDecodeErrorV1> {
+    if reference.envelope_version != envelope::DIGEST_ENVELOPE_ID
+        || reference.algorithm_id != envelope::SHA256_ID
+        || reference.semantic_domain != FullStateDigestV3::DOMAIN
+        || reference.payload_codec_id != envelope::CANONICAL_CBOR_ID
+        || reference.input_schema_id != "full-state-digest-input.v3"
+    {
+        return Err(PersistenceDecodeErrorV1::SemanticValidation);
+    }
+    Ok(())
+}
+
+fn validate_checkpoint_digest_inputs(
+    full_state_digest: &DigestReferenceV1,
+    status: &EpisodeStatus,
+    counters: &EnvironmentLimitCounters,
+    codec: &CheckpointCodecIdentity,
+) -> Result<(), PersistenceDecodeErrorV1> {
+    validate_full_state_reference(full_state_digest)?;
+    status
+        .validate()
+        .map_err(|_| PersistenceDecodeErrorV1::SemanticValidation)?;
+    counters
+        .validate()
+        .map_err(|_| PersistenceDecodeErrorV1::SemanticValidation)?;
+    if codec.codec_id.is_empty() || codec.semantic_version.is_empty() {
+        return Err(PersistenceDecodeErrorV1::SemanticValidation);
+    }
+    Ok(())
+}
 
 pub fn calculate_checkpoint_digest_v3(
     full_state_digest: &DigestReferenceV1,
@@ -13,12 +47,7 @@ pub fn calculate_checkpoint_digest_v3(
     counters: &EnvironmentLimitCounters,
     codec: &CheckpointCodecIdentity,
 ) -> Result<CheckpointDigestV3, PersistenceDecodeErrorV1> {
-    status
-        .validate()
-        .map_err(|_| PersistenceDecodeErrorV1::SemanticValidation)?;
-    if codec.codec_id.is_empty() || codec.semantic_version.is_empty() {
-        return Err(PersistenceDecodeErrorV1::SemanticValidation);
-    }
+    validate_checkpoint_digest_inputs(full_state_digest, status, counters, codec)?;
     let payload = checkpoint_payload(full_state_digest, status, counters, codec)?;
     let bytes = cbor::encode_canonical(&payload)?;
     let envelope = envelope::encode_envelope(CHECKPOINT_DOMAIN, CHECKPOINT_INPUT_SCHEMA, &bytes)?;
@@ -27,7 +56,7 @@ pub fn calculate_checkpoint_digest_v3(
     ))
 }
 
-pub fn checkpoint_payload(
+fn checkpoint_payload(
     full_state_digest: &DigestReferenceV1,
     status: &EpisodeStatus,
     counters: &EnvironmentLimitCounters,

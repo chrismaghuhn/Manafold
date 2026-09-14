@@ -1,5 +1,5 @@
 use std::collections::{BTreeMap, BTreeSet};
-use std::fmt::{self, Debug};
+use std::fmt;
 
 use mtgml_model::PlayerId;
 
@@ -102,25 +102,41 @@ impl fmt::Display for ConformanceDifference {
     }
 }
 
-fn value_difference<Expected: Debug, Actual: Debug>(
+fn summary_difference(
     surface: ConformanceFailureClass,
     semantic_path: String,
     mismatch_kind: ConformanceMismatchKind,
-    expected: &Expected,
-    actual: &Actual,
+    expected_summary: &'static str,
+    actual_summary: &'static str,
     sequence: Option<SequenceDifference>,
 ) -> ConformanceDifference {
     ConformanceDifference {
         surface,
         semantic_path,
         mismatch_kind,
-        expected_summary: format!("{expected:?}"),
-        actual_summary: format!("{actual:?}"),
+        expected_summary: expected_summary.into(),
+        actual_summary: actual_summary.into(),
         sequence,
     }
 }
 
-pub(crate) fn compare_value<T: Debug + PartialEq>(
+fn value_difference(
+    surface: ConformanceFailureClass,
+    semantic_path: String,
+    mismatch_kind: ConformanceMismatchKind,
+    sequence: Option<SequenceDifference>,
+) -> ConformanceDifference {
+    summary_difference(
+        surface,
+        semantic_path,
+        mismatch_kind,
+        "<different>",
+        "<different>",
+        sequence,
+    )
+}
+
+pub(crate) fn compare_value<T: PartialEq>(
     surface: ConformanceFailureClass,
     path: &str,
     expected: &T,
@@ -131,14 +147,12 @@ pub(crate) fn compare_value<T: Debug + PartialEq>(
             surface,
             path.to_owned(),
             ConformanceMismatchKind::ValueChanged,
-            expected,
-            actual,
             None,
         )
     })
 }
 
-pub(crate) fn compare_sequence<T: Debug + PartialEq>(
+pub(crate) fn compare_sequence<T: PartialEq>(
     surface: ConformanceFailureClass,
     path: &str,
     expected: &[T],
@@ -155,8 +169,6 @@ pub(crate) fn compare_sequence<T: Debug + PartialEq>(
                 surface,
                 format!("{path}[{index}]"),
                 ConformanceMismatchKind::ValueChanged,
-                &expected[index],
-                &actual[index],
                 Some(SequenceDifference {
                     first_differing_index: index,
                     ..sequence
@@ -167,12 +179,12 @@ pub(crate) fn compare_sequence<T: Debug + PartialEq>(
 
     if expected.len() > actual.len() {
         let index = actual.len();
-        return Some(value_difference(
+        return Some(summary_difference(
             surface,
             format!("{path}[{index}]"),
             ConformanceMismatchKind::ExpectedEntryMissing,
-            &expected[index],
-            &"<missing>",
+            "<present>",
+            "<missing>",
             Some(SequenceDifference {
                 first_differing_index: index,
                 ..sequence
@@ -181,12 +193,12 @@ pub(crate) fn compare_sequence<T: Debug + PartialEq>(
     }
     if actual.len() > expected.len() {
         let index = expected.len();
-        return Some(value_difference(
+        return Some(summary_difference(
             surface,
             format!("{path}[{index}]"),
             ConformanceMismatchKind::UnexpectedExtraEntry,
-            &"<missing>",
-            &actual[index],
+            "<missing>",
+            "<present>",
             Some(SequenceDifference {
                 first_differing_index: index,
                 ..sequence
@@ -205,32 +217,32 @@ pub(crate) fn compare_player_map<T: PartialEq>(
         let path = format!("player_steps[player:{}]", player.0);
         match (expected.get(&player), actual.get(&player)) {
             (Some(_expected), None) => {
-                return Some(value_difference(
+                return Some(summary_difference(
                     ConformanceFailureClass::PlayerProjection,
                     path,
                     ConformanceMismatchKind::PlayerMissing,
-                    &"<present>",
-                    &"<missing>",
+                    "<present>",
+                    "<missing>",
                     None,
                 ));
             }
             (None, Some(_actual)) => {
-                return Some(value_difference(
+                return Some(summary_difference(
                     ConformanceFailureClass::PlayerProjection,
                     path,
                     ConformanceMismatchKind::UnexpectedPlayer,
-                    &"<missing>",
-                    &"<present>",
+                    "<missing>",
+                    "<present>",
                     None,
                 ));
             }
             (Some(expected), Some(actual)) if expected != actual => {
-                return Some(value_difference(
+                return Some(summary_difference(
                     ConformanceFailureClass::PlayerProjection,
                     path,
                     ConformanceMismatchKind::PlayerStepDiffered,
-                    &"<different>",
-                    &"<different>",
+                    "<different>",
+                    "<different>",
                     None,
                 ));
             }

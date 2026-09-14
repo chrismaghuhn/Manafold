@@ -780,9 +780,8 @@ mod tests {
     }
 
     /// A checkpoint whose limit counters were tampered fails closed at the
-    /// earliest validation gate (counter tampering breaks checkpoint-digest
-    /// consistency before the limit invariant is even reached), and the
-    /// failed restore leaves the live COMPLETE fingerprint untouched.
+    /// checkpoint owner's local counter-validation gate, and the failed
+    /// restore leaves the live COMPLETE fingerprint untouched.
     #[test]
     fn corrupt_checkpoint_restores_fail_closed() -> Result<(), HarnessError> {
         let (controller, endpoints) = decision_rich_spawned()?;
@@ -798,7 +797,7 @@ mod tests {
         match controller.restore(corrupted) {
             Ok(()) => panic!("a digest-inconsistent checkpoint must fail closed"),
             Err(ControllerError::CheckpointValidation(
-                CheckpointValidationError::CheckpointDigest,
+                CheckpointValidationError::LimitCounters,
             )) => {}
             Err(other) => panic!("closed checkpoint-validation failure required: {other:?}"),
         }

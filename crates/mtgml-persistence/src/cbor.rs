@@ -186,14 +186,14 @@ impl<'a> Decoder<'a> {
                 Ok(Value::Text(text))
             }
             4 => {
-                if depth >= MAX_DEPTH {
-                    return Err(PersistenceDecodeErrorV1::DepthExceeded);
-                }
                 let length = checked_length(
                     argument,
                     MAX_ARRAY_ELEMENTS,
                     PersistenceDecodeErrorV1::ArrayTooLarge,
                 )?;
+                if depth >= MAX_DEPTH {
+                    return Err(PersistenceDecodeErrorV1::DepthExceeded);
+                }
                 if self.items.checked_add(length).unwrap_or(usize::MAX) > MAX_ITEMS {
                     return Err(PersistenceDecodeErrorV1::ItemLimitExceeded);
                 }

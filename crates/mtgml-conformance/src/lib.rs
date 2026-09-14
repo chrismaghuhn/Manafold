@@ -347,6 +347,55 @@ mod tests {
         (before, result, expected_events, expected_digest)
     }
 
+    #[derive(PartialEq)]
+    struct SecretDiagnosticValue(&'static str);
+
+    impl std::fmt::Debug for SecretDiagnosticValue {
+        fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            write!(formatter, "SECRET_DIAGNOSTIC_SENTINEL({})", self.0)
+        }
+    }
+
+    #[test]
+    fn fnd_031_default_difference_does_not_render_debug_values() {
+        let difference = crate::diagnostics::compare_value(
+            crate::diagnostics::ConformanceFailureClass::StateDigest,
+            "transition.secret",
+            &SecretDiagnosticValue("root-seed"),
+            &SecretDiagnosticValue("private-card"),
+        )
+        .expect("different values must produce a difference");
+        let rendered = difference.to_string();
+        assert!(rendered.contains("path=transition.secret"));
+        assert!(rendered.contains("mismatch_kind=value_changed"));
+        assert!(!rendered.contains("SECRET_DIAGNOSTIC_SENTINEL"));
+        assert!(!rendered.contains("root-seed"));
+        assert!(!rendered.contains("private-card"));
+    }
+
+    #[test]
+    fn fnd_031_sequence_summaries_preserve_presence_shape_without_values() {
+        let missing = crate::diagnostics::compare_sequence(
+            crate::diagnostics::ConformanceFailureClass::Events,
+            "transition.events",
+            &[1_u8, 2, 3],
+            &[1_u8, 2],
+        )
+        .expect("missing entry must produce a difference");
+        assert_eq!(missing.expected_summary, "<present>");
+        assert_eq!(missing.actual_summary, "<missing>");
+
+        let extra = crate::diagnostics::compare_sequence(
+            crate::diagnostics::ConformanceFailureClass::Events,
+            "transition.events",
+            &[1_u8, 2],
+            &[1_u8, 2, 3],
+        )
+        .expect("extra entry must produce a difference");
+        assert_eq!(extra.expected_summary, "<missing>");
+        assert_eq!(extra.actual_summary, "<present>");
+    }
+
     #[test]
     fn current_decision_is_an_asserted_conformance_input() {
         let expected_decision = decision(1);
