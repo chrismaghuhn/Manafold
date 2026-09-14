@@ -24,7 +24,7 @@ fn fnd_015_object_moved_requires_at_least_one_visible_identity() {
 }
 
 fn valid_information_state() -> PlayerInformationStateV2 {
-    let state = PlayerInformationStateV2 {
+    PlayerInformationStateV2 {
         schema_version: INFORMATION_STATE_SCHEMA_V2.into(),
         perspective: PlayerId(1),
         state_revision: StateRevision(0),
@@ -32,8 +32,7 @@ fn valid_information_state() -> PlayerInformationStateV2 {
         next_visible_sequence: VisibleSequence(0),
         retained_knowledge: Vec::new(),
         digest: mtgml_model::InformationStateDigestV2::from_canonical_bytes(b"placeholder"),
-    };
-    state
+    }
 }
 
 fn valid_current_request() -> mtgml_decision::PlayerDecisionRequestV2 {
