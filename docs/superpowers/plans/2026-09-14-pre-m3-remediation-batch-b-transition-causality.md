@@ -94,13 +94,14 @@ classification.
 
 ### Task 2: Implement confirmed fixes only
 
-- [ ] **Step 1: Make the lifecycle seam transactional if FND-007 is confirmed.**
+- [ ] **Step 1: Make local lifecycle mutation transactional if FND-007 is confirmed.**
 
-Apply lifecycle mutation to a cloned complete `EngineState`, run the existing
-central `validate_engine_state` on the candidate, and assign the candidate only
-after validation succeeds. Map the invariant failure to a closed lifecycle
-application error without exposing trusted diagnostics. Preserve existing
-local atomicity and identity/knowledge semantics.
+Clone the affected knowledge and perspective-identity slots, reject undeclared
+location players and orphaned acquire/invalidate relationships, and assign the
+slots only after local postconditions pass. Do not run full
+`validate_engine_state` here: conformance stages an occurrence before a later
+physical zone event. The complete state validator remains the transition-commit
+boundary. Map failures to a closed lifecycle error without trusted diagnostics.
 
 - [ ] **Step 2: Centralize exact revision and identity progression checks.**
 

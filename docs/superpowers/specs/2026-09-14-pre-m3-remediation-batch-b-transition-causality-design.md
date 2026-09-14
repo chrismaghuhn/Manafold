@@ -69,9 +69,10 @@ dispositions are:
 
 Use the smallest owning-boundary fix:
 
-- lifecycle application remains clone-then-commit and validates its complete
-  candidate state before returning `Ok` if it is a complete authoritative
-  EngineState seam;
+- lifecycle application clones and validates its affected knowledge/identity
+  slots plus declared-player/local coupling before commit; complete
+  `EngineState` validation remains at transition commit because this seam is
+  also used to stage an occurrence before a later physical zone event;
 - transition progression checks are centralized at the transition contract;
 - unsupported authoritative mutation families fail closed until their event
   family is explicitly contracted;
