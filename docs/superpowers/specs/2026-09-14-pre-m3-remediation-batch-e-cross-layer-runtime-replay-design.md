@@ -268,3 +268,18 @@ Batch E may finish with independent slices in different states. In particular:
 
 The final PR body and response will use the exact disposition matrix required
 by the Batch-E task, with no unexecuted gate reported as `PASS`.
+
+## Implementation evidence checkpoint
+
+The current code/evidence head is `d7eef2e`. E1 is dispositioned `PASS` with
+FND-007 resolved on the base, the reachable FND-008 mutation families covered,
+and FND-012B rejected as a separate presentation policy. E2 is dispositioned
+`PASS`: current producer identities are guarded, V3 checkpoint/replay status
+and keyed-array boundaries are fail-closed, external replay counters apply on
+the internal replay fork, and detached structural validation is documented
+separately from backend verification. E3 is `PARTIAL`: FND-026D has exact
+eventful replay reprojection evidence, FND-026C is `DEFERRED_P2`, and FND-026B
+is `BLOCKED_CONTRACT_AMBIGUITY` because `PlayerStepV2.submission` has no neutral
+non-actor meaning. E4 remains pending the final bounded matrix and complete
+verification profile. Final exact-head values and gate statuses are recorded in
+the separate Batch-E dispositions/evidence document.
