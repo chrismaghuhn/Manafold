@@ -663,8 +663,8 @@ fn inactive_counter_forward_progression_passes_structural_monotonicity() {
     // The uncovered class is FORWARD inflation of the host-independent
     // counters: the structural contract pins monotonicity only, while exact
     // carry-forward is enforced by the environment executor, pinned there as
-    // a fail-closed AfterDigestMismatch execution rejection
-    // (`recorded_inactive_counter_progression_fails_closed_without_live_mutation`).
+    // trusted replay-control application without live mutation
+    // (`recorded_external_counter_progression_is_applied_without_live_mutation`).
     let manifest = manifest_v3();
     let initial = manifest.initial_identity.clone();
     let inflated = v3_identity(

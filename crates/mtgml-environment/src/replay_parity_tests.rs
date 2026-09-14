@@ -6,7 +6,7 @@
 //! occurrence projection); no second projector exists here. Trusted controls
 //! pin the host-independent counters EXACTLY unchanged across live commits
 //! and replayed traces alike, with explicit replay application of recorded
-//! external counters. Every M2.G gate remains `NOT_RUN`.
+//! external counters. The M2.G runner records the gate verdicts separately.
 
 use super::{SyntheticM1EnvironmentBackend, SyntheticM1EnvironmentConfig, SyntheticM1ReplayConfig};
 use crate::checkpoint::{CheckpointCodecIdentity, EnvironmentCheckpointV3};
