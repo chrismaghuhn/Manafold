@@ -48,6 +48,7 @@ affected package suite before its fix commit.
 | crates/mtgml-random/src/seed.rs | Add the typed internal InvalidRawLane error. |
 | crates/mtgml-conformance/src/diagnostics.rs | Replace generic Debug rendering with bounded safe summaries. |
 | crates/mtgml-conformance/src/lib.rs | Add the secret-sentinel diagnostic regression. |
+| crates/mtgml-conformance/src/isolation/checkpoint_parity.rs | Update the existing checkpoint-tampering expectation to the approved local counter-validation owner. |
 | crates/mtgml-commander/src/lib.rs | Separate designation membership from cast-count lookup and add helper tests. |
 | python/src/mtgml/persistence.py | Mirror local counter and codec-input rejection in the mechanical calculator. |
 | python/tests/test_persistence_codec.py | Add Python persistence input and precedence parity tests. |
@@ -372,6 +373,9 @@ identities must use a test-only unverified identity helper with an arbitrary
 checkpoint digest; they must not call the now-closed persistence calculator.
 That preserves the replay owner's CounterProgression rejection while keeping
 FND-017A's calculator boundary closed.
+The existing conformance checkpoint-tampering assertion must likewise expect
+CheckpointValidationError::LimitCounters because the approved high-level
+checkpoint owner validates local counters before recomputing its digest.
 Commit:
 
 ~~~powershell
@@ -1376,6 +1380,7 @@ $allowed = @(
   "crates/mtgml-random/src/seed.rs",
   "crates/mtgml-conformance/src/diagnostics.rs",
   "crates/mtgml-conformance/src/lib.rs",
+  "crates/mtgml-conformance/src/isolation/checkpoint_parity.rs",
   "crates/mtgml-commander/src/lib.rs",
   "python/src/mtgml/persistence.py",
   "python/tests/test_persistence_codec.py",

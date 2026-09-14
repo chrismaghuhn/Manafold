@@ -374,6 +374,29 @@ mod tests {
     }
 
     #[test]
+    fn fnd_031_sequence_summaries_preserve_presence_shape_without_values() {
+        let missing = crate::diagnostics::compare_sequence(
+            crate::diagnostics::ConformanceFailureClass::Events,
+            "transition.events",
+            &[1_u8, 2, 3],
+            &[1_u8, 2],
+        )
+        .expect("missing entry must produce a difference");
+        assert_eq!(missing.expected_summary, "<present>");
+        assert_eq!(missing.actual_summary, "<missing>");
+
+        let extra = crate::diagnostics::compare_sequence(
+            crate::diagnostics::ConformanceFailureClass::Events,
+            "transition.events",
+            &[1_u8, 2],
+            &[1_u8, 2, 3],
+        )
+        .expect("extra entry must produce a difference");
+        assert_eq!(extra.expected_summary, "<missing>");
+        assert_eq!(extra.actual_summary, "<present>");
+    }
+
+    #[test]
     fn current_decision_is_an_asserted_conformance_input() {
         let expected_decision = decision(1);
         let actual_decision = decision(2);

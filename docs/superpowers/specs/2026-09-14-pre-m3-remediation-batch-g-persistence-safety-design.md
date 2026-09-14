@@ -498,6 +498,7 @@ Modify  crates/mtgml-random/src/hmac_counter.rs
 Modify  crates/mtgml-random/src/seed.rs
 Modify  crates/mtgml-conformance/src/diagnostics.rs
 Modify  crates/mtgml-conformance/src/lib.rs
+Modify  crates/mtgml-conformance/src/isolation/checkpoint_parity.rs (counter-owner expectation only)
 Modify  crates/mtgml-commander/src/lib.rs
 Modify  python/src/mtgml/persistence.py
 Modify  python/tests/test_persistence_codec.py
