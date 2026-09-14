@@ -26,3 +26,10 @@ fn fnd_017b_closed_status_with_pending_decision_is_rejected_at_checkpoint_owner(
         Err(CheckpointValidationError::CompletedWithDecision)
     ));
 }
+
+#[test]
+fn fnd_018_environment_checkpoint_is_not_a_raw_serde_surface() {
+    let source = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/src/checkpoint.rs"));
+    assert!(!source.contains("Serialize"));
+    assert!(!source.contains("Deserialize"));
+}
