@@ -488,8 +488,17 @@ fn occurrence_must_not_bind_to_a_future_zone_transition() {
     mtgml_state::apply_perspective_lifecycle(&mut after, &audit).unwrap();
     after.zones.objects.remove(&mtgml_model::GameObjectId(2));
     after.zones.locations.remove(&mtgml_model::GameObjectId(2));
-    if let Some(objects) = after.zones.ordered_zones.get_mut(&old_location.key()) {
+    let old_zone_key = old_location.key();
+    let remove_old_zone_key = if let Some(objects) =
+        after.zones.ordered_zones.get_mut(&old_zone_key)
+    {
         objects.retain(|object| *object != mtgml_model::GameObjectId(2));
+        objects.is_empty()
+    } else {
+        false
+    };
+    if remove_old_zone_key {
+        after.zones.ordered_zones.remove(&old_zone_key);
     }
     after
         .zones

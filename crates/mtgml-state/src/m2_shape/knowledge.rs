@@ -98,7 +98,7 @@ fn validate_location_chronology(
 ) -> Result<(), M2ShapeViolation> {
     if historical_locations
         .iter()
-        .chain(current_or_last_known.into_iter())
+        .chain(current_or_last_known)
         .any(|fact| {
             matches!(
                 fact.location.position,
@@ -108,9 +108,7 @@ fn validate_location_chronology(
     {
         return Err(M2ShapeViolation::Knowledge);
     }
-    let location_facts = historical_locations
-        .iter()
-        .chain(current_or_last_known.into_iter());
+    let location_facts = historical_locations.iter().chain(current_or_last_known);
     let initial_location_count = location_facts
         .clone()
         .filter(|fact| {
