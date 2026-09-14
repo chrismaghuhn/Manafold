@@ -517,3 +517,67 @@ fn repeated_projection_is_pure_and_stable() {
     assert_eq!(before.digest().unwrap(), before_digest);
     assert_eq!(result.next_state.digest().unwrap(), after_digest);
 }
+
+#[test]
+fn multi_perspective_occurrence_batches_are_constructed_and_reprojectable() {
+    let (before, result) = two_perspective_outcome_product();
+    let first = crate::lifecycle_projection::project_occurrence_envelopes(
+        &before,
+        &result.next_state,
+        &result.events,
+    )
+    .unwrap();
+    let second = crate::lifecycle_projection::project_occurrence_envelopes(
+        &before,
+        &result.next_state,
+        &result.events,
+    )
+    .unwrap();
+
+    for (player, expected_code) in [(PlayerId(1), "p1-outcome"), (PlayerId(2), "p2-outcome")] {
+        let batch = &first[&player];
+        assert_eq!(batch.len(), 1);
+        batch[0].validate().unwrap();
+        match &batch[0].event {
+            mtgml_observation::ObservedEventKindV2::PublicOutcome { code } => {
+                assert_eq!(code, expected_code);
+            }
+            other => panic!("unexpected event for {player:?}: {other:?}"),
+        }
+    }
+    assert_ne!(
+        serde_json::to_vec(&first[&PlayerId(1)]).unwrap(),
+        serde_json::to_vec(&first[&PlayerId(2)]).unwrap()
+    );
+    assert_eq!(
+        serde_json::to_vec(&first).unwrap(),
+        serde_json::to_vec(&second).unwrap(),
+        "authoritative replay reprojection must reproduce every perspective batch"
+    );
+}
+
+#[test]
+fn non_actor_projected_envelope_is_validated_before_commit_boundary() {
+    let (before, result) = two_perspective_outcome_product();
+    let mut events = result.events.clone();
+    let event = events
+        .get_mut(1)
+        .expect("the second event is the non-actor occurrence");
+    match &mut event.event {
+        mtgml_rules::AuthoritativeRuleEventKind::PerspectiveOccurrence {
+            observation: mtgml_rules::PerspectiveObservationPolicyV1::AnnouncedOutcome { code },
+            ..
+        } => code.clear(),
+        other => panic!("unexpected non-actor event: {other:?}"),
+    }
+
+    assert!(
+        crate::lifecycle_projection::project_occurrence_envelopes(
+            &before,
+            &result.next_state,
+            &events,
+        )
+        .is_err(),
+        "a malformed non-actor envelope must fail the shared projection boundary"
+    );
+}

@@ -299,6 +299,25 @@ fn response_v3() -> DecisionResponseV2 {
 }
 
 #[test]
+fn initial_identity_rejects_impossible_counters() {
+    let mut manifest = manifest_v3();
+    manifest.initial_identity = v3_identity(
+        0,
+        0,
+        EnvironmentLimitCounters {
+            accepted_transitions: 1,
+            decisions_submitted: 0,
+            ..EnvironmentLimitCounters::default()
+        },
+    );
+
+    assert_eq!(
+        manifest.validate(),
+        Err(ReplayValidationError::CounterProgression)
+    );
+}
+
+#[test]
 fn replay_v3_empty_accepted_rejected_identity_matrix() {
     let manifest = manifest_v3();
     manifest.validate().unwrap();

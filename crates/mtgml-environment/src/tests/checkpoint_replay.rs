@@ -229,6 +229,204 @@ fn semantic_replay_reproduces_the_authoritative_transition() {
 }
 
 #[test]
+fn replay_rejects_wrong_player_decision_id_before_trusted_execution() {
+    let controller = TrustedEnvironmentController::new(backend());
+    let checkpoint = controller.checkpoint().unwrap();
+    controller
+        .execute_trusted_response(PlayerId(1), response(0, 0))
+        .unwrap();
+    let live_replay = controller.export_replay().unwrap();
+    let live_checkpoint = controller.checkpoint().unwrap();
+    let initial = live_replay.manifest.initial_identity.clone();
+
+    // A detached replay can validate the response shape without reconstructing
+    // the authoritative request. The execution boundary must still bind the
+    // player-decision identity before trusted execution.
+    let mut tampered = live_replay.clone();
+    let step = &mut tampered.steps[0];
+    step.response.player_decision_id = PlayerDecisionIdV1(999);
+    step.accepted = false;
+    step.state_revision_after = initial.state_revision;
+    step.full_state_digest_after = initial.full_state_digest.clone();
+    step.episode_status_after = initial.episode_status.clone();
+    step.environment_limit_counters_after = initial.environment_limit_counters.clone();
+    step.checkpoint_digest_after = initial.checkpoint_digest.clone();
+    tampered.final_identity = initial;
+    tampered.validate().unwrap();
+
+    let result = controller.execute_replay_from_checkpoint(checkpoint, tampered);
+    assert!(
+        result.is_err(),
+        "a structurally valid replay with the wrong request identity must fail at execution"
+    );
+    assert_eq!(controller.checkpoint().unwrap(), live_checkpoint);
+    assert_eq!(controller.export_replay().unwrap(), live_replay);
+}
+
+#[test]
+fn closed_status_trusted_execution_is_rejected_without_mutation() {
+    let controller = environment_at_members_stage();
+    let p1 = controller.bind_player(PlayerId(1)).unwrap();
+    let _ = submit_answer(&p1, members_answer(&[0, 1]));
+    let _ = submit_answer(&p1, order_answer(&[1, 0]));
+    let state = controller.checkpoint().unwrap().state;
+    let codec = CheckpointCodecIdentity {
+        codec_id: "synthetic-m2-memory".into(),
+        semantic_version: "3".into(),
+    };
+
+    for status in [
+        EpisodeStatus::Terminal {
+            reason: TerminalReason::Concession,
+            players: vec![],
+        },
+        EpisodeStatus::Truncated {
+            reason: TruncationReason::ExternalStop,
+            players: vec![],
+        },
+    ] {
+        let checkpoint = EnvironmentCheckpointV3::new(
+            state.clone(),
+            status,
+            EnvironmentLimitCounters::default(),
+            codec.clone(),
+        )
+        .unwrap();
+        let closed = TrustedEnvironmentController::new(
+            SyntheticM1EnvironmentBackend::from_checkpoint(
+                checkpoint,
+                config([PlayerId(1), PlayerId(2)]),
+            )
+            .unwrap(),
+        );
+        let before = closed.checkpoint().unwrap();
+        let replay = closed.export_replay().unwrap();
+        let transition = closed
+            .execute_trusted_response(PlayerId(1), response(0, state.revision.0))
+            .unwrap();
+        assert!(!transition.accepted);
+        assert_eq!(closed.checkpoint().unwrap(), before);
+        assert_eq!(closed.export_replay().unwrap(), replay);
+    }
+}
+
+#[test]
+fn accepted_trusted_counters_are_recomputed_exactly() {
+    let controller = TrustedEnvironmentController::new(backend());
+    let before = controller.checkpoint().unwrap();
+    let transition = controller
+        .execute_trusted_response(PlayerId(1), response(0, 0))
+        .unwrap();
+    assert!(transition.accepted);
+    let after = controller.checkpoint().unwrap();
+    assert_eq!(
+        after.limit_counters.decisions_submitted,
+        before.limit_counters.decisions_submitted + 1
+    );
+    assert_eq!(
+        after.limit_counters.accepted_transitions,
+        before.limit_counters.accepted_transitions + 1
+    );
+    assert_eq!(
+        after.limit_counters.rule_events_emitted,
+        before.limit_counters.rule_events_emitted
+            + u64::try_from(transition.events.len()).unwrap()
+    );
+    assert_eq!(
+        after.limit_counters.resource_units_consumed,
+        before.limit_counters.resource_units_consumed
+    );
+    assert_eq!(
+        after.limit_counters.wall_clock_elapsed_millis,
+        before.limit_counters.wall_clock_elapsed_millis
+    );
+}
+
+#[test]
+fn closed_status_player_outcomes_are_only_locally_validated_on_base() {
+    let (state, _) = two_perspective_outcome_product();
+    let codec = CheckpointCodecIdentity {
+        codec_id: "synthetic-m2-memory".into(),
+        semantic_version: "3".into(),
+    };
+    let statuses = [
+        EpisodeStatus::Terminal {
+            reason: TerminalReason::Concession,
+            players: vec![],
+        },
+        EpisodeStatus::Terminal {
+            reason: TerminalReason::Concession,
+            players: vec![PlayerOutcome {
+                player: PlayerId(999),
+                result: PlayerResult::Win,
+            }],
+        },
+        EpisodeStatus::Terminal {
+            reason: TerminalReason::Concession,
+            players: vec![
+                PlayerOutcome {
+                    player: PlayerId(1),
+                    result: PlayerResult::Win,
+                },
+                PlayerOutcome {
+                    player: PlayerId(1),
+                    result: PlayerResult::Loss,
+                },
+            ],
+        },
+        EpisodeStatus::Terminal {
+            reason: TerminalReason::Concession,
+            players: vec![
+                PlayerOutcome {
+                    player: PlayerId(1),
+                    result: PlayerResult::Win,
+                },
+                PlayerOutcome {
+                    player: PlayerId(2),
+                    result: PlayerResult::Loss,
+                },
+            ],
+        },
+    ];
+    assert!(
+        EnvironmentCheckpointV3::new(
+            state.clone(),
+            statuses[0].clone(),
+            EnvironmentLimitCounters::default(),
+            codec.clone(),
+        )
+        .is_ok()
+    );
+    assert!(
+        EnvironmentCheckpointV3::new(
+            state.clone(),
+            statuses[1].clone(),
+            EnvironmentLimitCounters::default(),
+            codec.clone(),
+        )
+        .is_ok()
+    );
+    assert!(
+        EnvironmentCheckpointV3::new(
+            state.clone(),
+            statuses[2].clone(),
+            EnvironmentLimitCounters::default(),
+            codec.clone(),
+        )
+        .is_err()
+    );
+    assert!(
+        EnvironmentCheckpointV3::new(
+            state,
+            statuses[3].clone(),
+            EnvironmentLimitCounters::default(),
+            codec,
+        )
+        .is_ok()
+    );
+}
+
+#[test]
 fn checkpoint_identity_tampering_is_rejected() {
     let mut checkpoint = backend().checkpoint().unwrap();
     checkpoint.state_digest = FullStateDigestV3::from_digest_bytes([0xff; 32]);
