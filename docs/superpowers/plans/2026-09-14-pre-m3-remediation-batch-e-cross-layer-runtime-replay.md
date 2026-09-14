@@ -7,6 +7,8 @@ replay, canonical-identity, and eventful-reprojection gaps while preserving
 M2 semantics, historical replay meaning, and all existing public/wire/digest/RNG
 contracts.
 
+**Status:** active implementation plan
+
 **Architecture:** Keep mtgml-state as the authoritative state owner,
 mtgml-rules::validate_transition_contract as the one ordered semantic proof,
 the environment as the complete precommit owner, and the existing production
