@@ -1,7 +1,7 @@
 use crate::events::AuthoritativeRuleEventKind;
 use mtgml_model::{EpisodeStatus, PlayerId};
 use mtgml_state::PerspectiveIdentityRecordV2;
-use mtgml_state::{validate_engine_state, EngineState, ZoneTransition};
+use mtgml_state::{validate_engine_state, EngineState};
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 use std::convert::TryFrom;
@@ -9,6 +9,112 @@ use std::convert::TryFrom;
 use crate::semantic_cursor::SemanticValidationCursor;
 use crate::transition::TransitionResult;
 use crate::validation::TransitionViolation;
+
+fn validate_accepted_progression(
+    before: &EngineState,
+    result: &TransitionResult,
+) -> Result<(), TransitionViolation> {
+    let after = &result.next_state;
+
+    if after.allocators.next_object_id.0 < before.allocators.next_object_id.0
+        || after.allocators.next_ability_id.0 < before.allocators.next_ability_id.0
+        || after.allocators.next_stack_object_id.0 < before.allocators.next_stack_object_id.0
+        || after.allocators.next_effect_id.0 < before.allocators.next_effect_id.0
+        || after.allocators.next_trigger_id.0 < before.allocators.next_trigger_id.0
+        || after.allocators.next_continuation_id.0 < before.allocators.next_continuation_id.0
+        || after.allocators.next_rule_event_id.0 < before.allocators.next_rule_event_id.0
+    {
+        return Err(TransitionViolation::AllocatorProgression);
+    }
+
+    let before_request = before
+        .execution
+        .pending_decision
+        .as_ref()
+        .map(|record| &record.request);
+    let after_request = after
+        .execution
+        .pending_decision
+        .as_ref()
+        .map(|record| &record.request);
+    if let (Some(before_request), Some(after_request)) = (before_request, after_request) {
+        if before_request.continuation_id.is_some()
+            && after_request.continuation_id.is_some()
+            && before_request.continuation_id != after_request.continuation_id
+        {
+            return Err(TransitionViolation::ContinuationIdentity);
+        }
+    }
+
+    let decision_created = match (before_request, after_request) {
+        (None, Some(_)) => true,
+        (Some(before), Some(after)) => before.decision_id != after.decision_id,
+        _ => false,
+    };
+    let expected_next_decision = before
+        .allocators
+        .next_decision_id
+        .0
+        .checked_add(u64::from(decision_created))
+        .ok_or(TransitionViolation::DecisionProgression)?;
+    if after.allocators.next_decision_id.0 != expected_next_decision {
+        return Err(TransitionViolation::DecisionProgression);
+    }
+
+    let actor = after_request
+        .filter(|_| decision_created)
+        .map(|request| request.actor);
+    for (player, before_identity) in &before.perspective_identities.players {
+        let after_identity = after
+            .perspective_identities
+            .players
+            .get(player)
+            .ok_or(TransitionViolation::DecisionProgression)?;
+        let expected = if Some(*player) == actor {
+            before_identity
+                .next_player_decision_id
+                .0
+                .checked_add(1)
+                .ok_or(TransitionViolation::DecisionProgression)?
+        } else {
+            before_identity.next_player_decision_id.0
+        };
+        if after_identity.next_player_decision_id.0 != expected {
+            return Err(TransitionViolation::DecisionProgression);
+        }
+    }
+    if let Some(request) = after_request.filter(|_| decision_created) {
+        let before_identity = before
+            .perspective_identities
+            .players
+            .get(&request.actor)
+            .ok_or(TransitionViolation::DecisionProgression)?;
+        if request.decision_id.0 != before.allocators.next_decision_id.0
+            || request.player_decision_id.0 != before_identity.next_player_decision_id.0
+        {
+            return Err(TransitionViolation::DecisionProgression);
+        }
+    }
+
+    // M2 has no event families for these core semantic fields. Fail closed
+    // until a reviewed current contract defines their event/cursor proof.
+    let has_lost_changed = before.core.players.iter().any(|(player, state)| {
+        after
+            .core
+            .players
+            .get(player)
+            .is_none_or(|other| other.has_lost != state.has_lost)
+    });
+    if before.core.active_player != after.core.active_player
+        || before.core.priority_player != after.core.priority_player
+        || before.core.turn_number != after.core.turn_number
+        || before.core.players.len() != after.core.players.len()
+        || has_lost_changed
+    {
+        return Err(TransitionViolation::UnexplainedMutation);
+    }
+    Ok(())
+}
 
 pub fn validate_transition_contract(
     before: &EngineState,
@@ -35,7 +141,13 @@ pub fn validate_transition_contract(
         {
             return Err(TransitionViolation::RejectedMutation);
         }
-    } else if result.next_state.revision.0 <= before.revision.0 {
+    } else if result.next_state.revision.0
+        != before
+            .revision
+            .0
+            .checked_add(1)
+            .ok_or(TransitionViolation::RevisionDidNotAdvance)?
+    {
         return Err(TransitionViolation::RevisionDidNotAdvance);
     } else {
         let before_decision = before
@@ -54,16 +166,10 @@ pub fn validate_transition_contract(
         }
     }
 
-    let transitions: Vec<ZoneTransition> = result
-        .events
-        .iter()
-        .filter_map(|event| match &event.event {
-            AuthoritativeRuleEventKind::ZoneTransition { transition } => {
-                Some((**transition).clone())
-            }
-            _ => None,
-        })
-        .collect();
+    if result.accepted {
+        validate_accepted_progression(before, result)?;
+    }
+
     let event_audit: Vec<_> = result
         .events
         .iter()
@@ -76,6 +182,8 @@ pub fn validate_transition_contract(
     let mut running_identities: BTreeMap<PlayerId, PerspectiveIdentityRecordV2> =
         before.perspective_identities.players.clone();
     let mut seen = BTreeSet::new();
+    let mut seen_transitions = Vec::new();
+    let mut previous_random_sample = None;
     let mut cursor = SemanticValidationCursor::from_state(before)?;
     for (offset, event) in result.events.iter().enumerate() {
         let offset = u64::try_from(offset).map_err(|_| TransitionViolation::EventIdentity)?;
@@ -96,8 +204,18 @@ pub fn validate_transition_contract(
             observation,
         } = &event.event
         {
-            crate::events::validate_occurrence_pairing(lifecycle, observation, &transitions)
+            crate::events::validate_occurrence_pairing(lifecycle, observation, &seen_transitions)
                 .map_err(|_| TransitionViolation::OccurrencePairing)?;
+            if let crate::events::PerspectiveObservationPolicyV1::SawRandomOutcome {
+                exclusive_upper_bound,
+                value,
+                ..
+            } = observation
+            {
+                if previous_random_sample != Some((*exclusive_upper_bound, *value)) {
+                    return Err(TransitionViolation::OccurrencePairing);
+                }
+            }
             // Causal knowledge binding against the SEQUENTIAL identity
             // snapshot: old-side references resolve pre-occurrence, new-side
             // post-occurrence.
@@ -108,7 +226,7 @@ pub fn validate_transition_contract(
                     old_object,
                     new_object,
                     ..
-                } => transitions.iter().find(|transition| {
+                } => seen_transitions.iter().find(|transition| {
                     transition.old_object == *old_object
                         && transition.new_object == *new_object
                         && transition.from.zone == *from_zone
@@ -118,7 +236,7 @@ pub fn validate_transition_contract(
                     from_zone,
                     to_zone,
                     new_object,
-                } => transitions.iter().find(|transition| {
+                } => seen_transitions.iter().find(|transition| {
                     transition.new_object == *new_object
                         && transition.from.zone == *from_zone
                         && transition.to.zone == *to_zone
@@ -174,6 +292,15 @@ pub fn validate_transition_contract(
             }
         }
         cursor.apply(&event.event)?;
+        previous_random_sample = match &event.event {
+            AuthoritativeRuleEventKind::RandomValueSampled { bound, value, .. } => {
+                Some((*bound, *value))
+            }
+            _ => None,
+        };
+        if let AuthoritativeRuleEventKind::ZoneTransition { transition } = &event.event {
+            seen_transitions.push((**transition).clone());
+        }
     }
     cursor.validate_final_state(&result.next_state)?;
 
