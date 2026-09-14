@@ -76,6 +76,11 @@ fn backend() -> SyntheticM1EnvironmentBackend {
     SyntheticM1EnvironmentBackend::new(players, seed(), config(players)).unwrap()
 }
 
+fn eventful_backend() -> SyntheticM1EnvironmentBackend {
+    let players = [PlayerId(1), PlayerId(2)];
+    super::eventful::backend(players, seed(), config(players)).unwrap()
+}
+
 fn submit_answer(
     endpoint: &PlayerEndpointHandle,
     answer: mtgml_decision::DecisionAnswerV2,
@@ -126,32 +131,110 @@ fn visible_decision_bytes(endpoint: &PlayerEndpointHandle) -> Option<Vec<u8>> {
 }
 
 #[test]
-fn eventful_replay_reprojection_requires_nonempty_base_batches() {
-    let controller = TrustedEnvironmentController::new(backend());
-    let before = controller.checkpoint().unwrap();
-    let transition = controller
+fn eventful_replay_reprojects_both_perspectives_byte_exactly() {
+    let controller = TrustedEnvironmentController::new(eventful_backend());
+    let cp0 = controller.checkpoint().unwrap();
+    let live_transition = controller
         .execute_trusted_response(
             PlayerId(1),
             DecisionResponseV2 {
                 schema_version: DECISION_RESPONSE_V2_SCHEMA.into(),
                 player_decision_id: PlayerDecisionIdV1(1),
-                state_revision: before.state.revision,
+                state_revision: cp0.state.revision,
                 answer: order_entry_answer(),
             },
         )
         .unwrap();
-    let after = controller.checkpoint().unwrap();
-    let envelopes = crate::lifecycle_projection::project_occurrence_envelopes(
-        &before.state,
-        &after.state,
-        &transition.events,
+    let live_after = controller.checkpoint().unwrap();
+    let live_replay = controller.export_replay().unwrap();
+
+    let live_events = crate::lifecycle_projection::project_occurrence_envelopes(
+        &cp0.state,
+        &live_after.state,
+        &live_transition.events,
     )
     .unwrap();
+    assert!(!live_events[&PlayerId(1)].is_empty());
+    assert!(!live_events[&PlayerId(2)].is_empty());
+    match &live_events[&PlayerId(1)][0].event {
+        mtgml_observation::ObservedEventKindV2::ObjectMoved {
+            old_object: None,
+            new_object: Some(_),
+            ..
+        } => {}
+        other => panic!("unexpected P1 event: {other:?}"),
+    }
+    assert!(matches!(
+        &live_events[&PlayerId(2)][0].event,
+        mtgml_observation::ObservedEventKindV2::PublicOutcome { code }
+            if code == "p2-public"
+    ));
 
-    assert!(
-        envelopes.values().any(|batch| !batch.is_empty()),
-        "the eventful replay proof needs a real observed-event batch"
+    let mut live_step = SyntheticM1EnvironmentBackend::player_step_from_state(
+        &live_after.state,
+        PlayerId(1),
+        live_transition.status.clone(),
+        PlayerStepSubmissionV1::Accepted,
+    )
+    .unwrap();
+    live_step.observed_events = live_events[&PlayerId(1)].clone();
+    live_step.validate().unwrap();
+
+    let report = controller
+        .execute_replay_from_checkpoint(cp0.clone(), live_replay.clone())
+        .unwrap();
+    assert_eq!(report.traces.len(), 1);
+    let trace = &report.traces[0];
+    let replay_events = crate::lifecycle_projection::project_occurrence_envelopes(
+        &trace.before.state,
+        &trace.after.state,
+        &trace.transition.events,
+    )
+    .unwrap();
+    for player in [PlayerId(1), PlayerId(2)] {
+        assert_eq!(
+            serde_json::to_vec(&replay_events[&player]).unwrap(),
+            serde_json::to_vec(&live_events[&player]).unwrap(),
+        );
+    }
+
+    let mut replay_step = SyntheticM1EnvironmentBackend::player_step_from_state(
+        &trace.after.state,
+        PlayerId(1),
+        trace.after.status.clone(),
+        PlayerStepSubmissionV1::Accepted,
+    )
+    .unwrap();
+    replay_step.observed_events = replay_events[&PlayerId(1)].clone();
+    replay_step.validate().unwrap();
+    assert_eq!(
+        mtgml_wire::encode_canonical(&replay_step).unwrap(),
+        mtgml_wire::encode_canonical(&live_step).unwrap(),
     );
+
+    let p1_bytes = serde_json::to_vec(&live_events[&PlayerId(1)]).unwrap();
+    let p2_bytes = serde_json::to_vec(&live_events[&PlayerId(2)]).unwrap();
+    assert_ne!(
+        p1_bytes, p2_bytes,
+        "perspective products must remain separated"
+    );
+    for bytes in [&p1_bytes, &p2_bytes] {
+        let text = String::from_utf8_lossy(bytes);
+        for forbidden in [
+            "GameObjectId",
+            "PhysicalCardId",
+            "DecisionId",
+            "RuleEventId",
+            "root_seed",
+            "raw_words",
+            "checkpoint_digest",
+        ] {
+            assert!(!text.contains(forbidden), "forbidden field {forbidden}");
+        }
+    }
+
+    assert_eq!(controller.checkpoint().unwrap(), live_after);
+    assert_eq!(controller.export_replay().unwrap(), live_replay);
 }
 
 fn snapshot_bytes(endpoint: &PlayerEndpointHandle) -> PerspectiveBytes {
