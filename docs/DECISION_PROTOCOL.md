@@ -131,11 +131,35 @@ The complete ordering key is the lexicographic semantic tuple `(variant_rank, pa
 
 After sorting, `CandidateIdV1` values are assigned densely as `0..n-1`.
 
+`CandidateIdV1` uses the full representable dense domain `0..=u32::MAX`, so
+one request can contain at most `2^32` candidates. Authoritative dense
+assignment and public candidate validation use one checked capacity rule
+before enumeration; a count above that boundary fails with a typed
+deterministic error and cannot produce partial or wrapped IDs.
+
 M2 permits **no duplicate public ordering key**. If two generated candidate records have the same `(variant_rank, payload_value)`, generation fails closed even when trusted code believes the bindings are semantically equivalent. M2 does not collapse duplicates and never uses a trusted/hidden tiebreaker. A future equivalence/canonicalization policy requires its own explicitly versioned ordering contract.
 
 Ordering must not use trusted object IDs, physical IDs, hidden definitions, candidate bindings, allocator history, insertion/hash-map order, RNG state, or continuation internals.
 
 Exact binding validation compares visible values and perspective mappings, not merely enum variants.
+
+The ownership boundary is explicit:
+
+```text
+AuthoritativeDecisionRequestV2::validate()
+    = local structural request validity
+
+validate_pending_authoritative_request()
+    = authoritative exact visible-to-trusted candidate binding,
+      including scalar payload equality and perspective resolver equality
+
+project_player_request()
+    = projection of a request after that authoritative state boundary has
+      passed; it is not a second binding authority
+```
+
+The player projection never exposes the trusted binding and does not perform a
+second resolver check.
 
 ## Validation order
 

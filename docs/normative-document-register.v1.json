@@ -854,6 +854,34 @@
       "stability": "provisional"
     },
     {
+      "change_process": "process-pr",
+      "owner_role": "maintainer",
+      "path": "docs/superpowers/specs/2026-09-14-pre-m3-remediation-batch-f-decision-observation-identity-design.md",
+      "role": "process",
+      "stability": "provisional"
+    },
+    {
+      "change_process": "process-pr",
+      "owner_role": "maintainer",
+      "path": "docs/superpowers/plans/2026-09-14-pre-m3-remediation-batch-f-decision-observation-identity.md",
+      "role": "process",
+      "stability": "provisional"
+    },
+    {
+      "change_process": "adr-candidate-review",
+      "owner_role": "architecture-maintainer",
+      "path": "docs/superpowers/specs/2026-09-14-player-id-zero-policy-adr-candidate.md",
+      "role": "process",
+      "stability": "provisional"
+    },
+    {
+      "change_process": "process-pr",
+      "owner_role": "maintainer",
+      "path": "docs/superpowers/specs/2026-09-14-pre-m3-remediation-batch-f-dispositions-and-evidence.md",
+      "role": "process",
+      "stability": "provisional"
+    },
+    {
       "change_process": "governance-pr",
       "owner_role": "project-governance",
       "path": "LICENSE",

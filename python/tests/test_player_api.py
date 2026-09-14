@@ -150,11 +150,16 @@ class PlayerStepV2NextDecisionSerializationTests(unittest.TestCase):
     def _decisionless_step(self) -> PlayerStepV2:
         import dataclasses
 
+        from mtgml.observation import PlayerStepSubmissionV1
         from mtgml.wire import decode_canonical
 
         decoded = decode_canonical("player-step.v2", self.GOLDEN.read_bytes())
         assert isinstance(decoded, PlayerStepV2)
-        step = dataclasses.replace(decoded, next_decision=None)
+        step = dataclasses.replace(
+            decoded,
+            next_decision=None,
+            submission=PlayerStepSubmissionV1("rejected", "unavailable_decision"),
+        )
         assert step.next_decision is None
         return step
 
@@ -365,7 +370,7 @@ class ObservedEventV2CodecParityTests(unittest.TestCase):
     MINIMAL_EVENTS: ClassVar[list[dict]] = [
         {
             "kind": "object_moved",
-            "old_object": None,
+            "old_object": "1",
             "new_object": None,
             "from": "battlefield",
             "to": "graveyard",
@@ -430,27 +435,19 @@ class ObservedEventV2CodecParityTests(unittest.TestCase):
             },
         )
 
-    def test_absent_optional_identities_re_encode_as_explicit_nulls(self) -> None:
+    def test_absent_optional_identities_are_semantically_rejected(self) -> None:
         from mtgml.errors import WireError
         from mtgml.observation import ObservedEventEnvelopeV2
         from mtgml.wire import decode_canonical
 
         event = {"kind": "object_moved", "from": "battlefield", "to": "graveyard"}
-        decoded = ObservedEventEnvelopeV2.from_wire(self._envelope(event))
-        self.assertEqual(
-            decoded.to_wire()["event"],
-            {
-                "kind": "object_moved",
-                "old_object": None,
-                "new_object": None,
-                "from": "battlefield",
-                "to": "graveyard",
-            },
-        )
+        with self.assertRaises(WireError) as direct:
+            ObservedEventEnvelopeV2.from_wire(self._envelope(event))
+        self.assertEqual(direct.exception.code, "semantic.observed_event")
         payload = self._canonical_bytes(self._envelope(event))
         with self.assertRaises(WireError) as caught:
             decode_canonical(self.SCHEMA, payload)
-        self.assertEqual(caught.exception.code, "decode.non_canonical_json")
+        self.assertEqual(caught.exception.code, "semantic.observed_event")
 
     def test_representative_rejections_carry_the_rust_wire_codes(self) -> None:
         from mtgml.errors import WireError
@@ -577,20 +574,23 @@ class ObservedEventV2CodecParityTests(unittest.TestCase):
                     ObservedEventEnvelopeV2.from_wire(self._envelope(event))
                 self.assertEqual(caught.exception.code, expected_code)
 
-    def test_null_and_uint_identities_are_equivalent_on_decode(self) -> None:
+    def test_null_identity_pair_is_rejected_but_partial_identity_is_valid(self) -> None:
+        from mtgml.errors import WireError
         from mtgml.observation import ObservedEventEnvelopeV2
 
-        nulls = ObservedEventEnvelopeV2.from_wire(
-            self._envelope(
-                {
-                    "kind": "object_moved",
-                    "old_object": None,
-                    "new_object": None,
-                    "from": "hand",
-                    "to": "stack",
-                }
+        with self.assertRaises(WireError) as caught:
+            ObservedEventEnvelopeV2.from_wire(
+                self._envelope(
+                    {
+                        "kind": "object_moved",
+                        "old_object": None,
+                        "new_object": None,
+                        "from": "hand",
+                        "to": "stack",
+                    }
+                )
             )
-        )
+        self.assertEqual(caught.exception.code, "semantic.observed_event")
         explicit = ObservedEventEnvelopeV2.from_wire(
             self._envelope(
                 {
@@ -602,7 +602,5 @@ class ObservedEventV2CodecParityTests(unittest.TestCase):
                 }
             )
         )
-        self.assertIs(dict(nulls.event.payload)["old_object"], None)
-        self.assertIs(dict(nulls.event.payload)["new_object"], None)
         self.assertEqual(dict(explicit.event.payload)["old_object"], 4)
         self.assertEqual(dict(explicit.event.payload)["new_object"], 5)

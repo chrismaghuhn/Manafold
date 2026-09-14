@@ -65,6 +65,14 @@ A player-visible ID must not derive from global hidden allocation history.
 
 `validate_engine_state()` owns cross-component validation. Component presence alone is insufficient.
 
+For pending V2 decisions, `AuthoritativeDecisionRequestV2::validate()` owns
+only local structural request validity. The state-owned
+`validate_pending_authoritative_request()` boundary calls the exact candidate
+binding check for every pending candidate, including scalar payload equality
+and perspective-local object/ability resolver equality. `project_player_request()`
+projects only after that authoritative boundary has passed; it is not a second
+binding authority and never exposes trusted bindings.
+
 It validates at least:
 
 - player references;

@@ -662,6 +662,11 @@ class ObservedEventV2:
             payload["to"] = str(obj["to"])
             for key in ("old_object", "new_object"):
                 payload[key] = None if obj.get(key) is None else parse_uint(obj[key])
+            if payload["old_object"] is None and payload["new_object"] is None:
+                raise WireError(
+                    "semantic.observed_event",
+                    "object_moved must reveal at least one identity",
+                )
         elif kind == "object_ceased_to_exist":
             payload["object"] = parse_uint(obj["object"])
         elif kind == "life_changed":
@@ -863,15 +868,28 @@ class PlayerStepV2:
                     "rejected submission must carry an empty event batch",
                 )
             if self.submission.code == "episode_closed":
-                if self.status.kind == "running":
+                if self.status.kind == "running" or self.next_decision is not None:
+                    raise WireError(
+                        "semantic.player_step", "episode_closed rejection has an invalid product"
+                    )
+            elif self.submission.code == "unavailable_decision":
+                if self.status.kind != "running" or self.next_decision is not None:
                     raise WireError(
                         "semantic.player_step",
-                        "episode_closed rejection requires a non-running status",
+                        "unavailable decision has an invalid product",
                     )
-            elif self.status.kind != "running":
+            elif self.submission.code in {
+                "stale_decision",
+                "invalid_answer",
+                "invalid_candidate",
+                "duplicate_assignment",
+                "invalid_cardinality",
+                "invalid_number",
+                "invalid_order",
+            } and (self.status.kind != "running" or self.next_decision is None):
                 raise WireError(
                     "semantic.player_step",
-                    "typed rejection requires a running episode",
+                    "actor-bound rejection must carry the current decision",
                 )
 
     def to_wire(self) -> dict[str, object]:

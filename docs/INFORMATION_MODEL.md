@@ -242,6 +242,13 @@ Canonical ordering, candidate count/order, opaque IDs, event order/count, errors
 
 Authoritative events may include internal IDs and full RNG provenance. `ObservedEventV2` contains only perspective-authorized public/opaque values plus the perspective-local `VisibleSequence`.
 
+An emitted V2 `ObjectMoved` envelope contains at least one
+perspective-visible opaque object identity: `old_object` or `new_object` must
+be present. The fields remain optional because old-only, new-only, and
+both-present moves have distinct redaction meanings. Rules own the audience
+policy that determines which identity is visible; observation validation owns
+this minimum visible-identity invariant.
+
 Authoritative event families declare trusted audience semantics such as public, private-to-player, selected-player set, hidden, or mixed field policy. Rules own audience semantics; observation code owns redaction/opaque projection; environment validates the complete per-perspective product before commit.
 
 For each perspective, visible events are assigned contiguous sequence values. Hidden events emit nothing and advance no sequence for that perspective.

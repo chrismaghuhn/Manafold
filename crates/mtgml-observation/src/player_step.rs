@@ -144,15 +144,39 @@ impl PlayerStepV2 {
             if !self.observed_events.is_empty() {
                 return Err(ObservationValidationError::Submission);
             }
-            if *code == PlayerSubmissionCodeV1::EpisodeClosed {
-                // An episode_closed rejection requires a non-Running status.
-                if matches!(self.status, EpisodeStatus::Running) {
-                    return Err(ObservationValidationError::Submission);
+            match code {
+                PlayerSubmissionCodeV1::EpisodeClosed => {
+                    // An episode_closed rejection requires a non-Running
+                    // status and cannot expose a continuation decision.
+                    if matches!(self.status, EpisodeStatus::Running) || self.next_decision.is_some()
+                    {
+                        return Err(ObservationValidationError::Submission);
+                    }
                 }
-            } else if !matches!(self.status, EpisodeStatus::Running) {
-                // Every other typed rejection mirrors a live Running
-                // episode; a closed episode surfaces as episode_closed.
-                return Err(ObservationValidationError::Submission);
+                PlayerSubmissionCodeV1::UnavailableDecision => {
+                    // An unavailable actor-bound decision cannot expose a
+                    // decision that was unavailable to that actor.
+                    if !matches!(self.status, EpisodeStatus::Running)
+                        || self.next_decision.is_some()
+                    {
+                        return Err(ObservationValidationError::Submission);
+                    }
+                }
+                PlayerSubmissionCodeV1::StaleDecision
+                | PlayerSubmissionCodeV1::InvalidAnswer
+                | PlayerSubmissionCodeV1::InvalidCandidate
+                | PlayerSubmissionCodeV1::DuplicateAssignment
+                | PlayerSubmissionCodeV1::InvalidCardinality
+                | PlayerSubmissionCodeV1::InvalidNumber
+                | PlayerSubmissionCodeV1::InvalidOrder => {
+                    // Actor-bound live rejections mirror the current visible
+                    // request; its actor and revision were checked above.
+                    if !matches!(self.status, EpisodeStatus::Running)
+                        || self.next_decision.is_none()
+                    {
+                        return Err(ObservationValidationError::Submission);
+                    }
+                }
             }
         }
         Ok(())

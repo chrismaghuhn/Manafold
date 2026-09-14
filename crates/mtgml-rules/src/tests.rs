@@ -188,3 +188,4 @@ include!("tests/synthetic_program.rs");
 include!("tests/transition_contract.rs");
 include!("tests/determinism.rs");
 include!("tests/batch_e.rs");
+include!("tests/batch_f.rs");

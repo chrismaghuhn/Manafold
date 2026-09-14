@@ -61,6 +61,12 @@
       "path": "observed-event-v2-random-outcome-range.json"
     },
     {
+      "contract": "observed-event-envelope.v2",
+      "expected_error_code": "semantic.observed_event",
+      "expected_reject_layer": "rust-python-semantic-or-decode",
+      "path": "observed-event-v2-object-moved-no-identity.json"
+    },
+    {
       "contract": "player-step.v1",
       "expected_error_code": "decode.invalid_json",
       "expected_reject_layer": "rust-python-semantic-or-decode",
@@ -209,6 +215,18 @@
       "expected_error_code": "semantic.player_step",
       "expected_reject_layer": "rust-python-semantic-or-decode",
       "path": "player-step-v2-episode-closed-rejection-running.json"
+    },
+    {
+      "contract": "player-step.v2",
+      "expected_error_code": "semantic.player_step",
+      "expected_reject_layer": "rust-python-semantic-or-decode",
+      "path": "player-step-v2-rejection-missing-next-decision.json"
+    },
+    {
+      "contract": "player-step.v2",
+      "expected_error_code": "semantic.player_step",
+      "expected_reject_layer": "rust-python-semantic-or-decode",
+      "path": "player-step-v2-unavailable-with-next-decision.json"
     },
     {
       "contract": "player-step.v2",
