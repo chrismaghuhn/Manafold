@@ -86,8 +86,14 @@ fn set_object_two_position(state: &mut EngineState, position: ZonePosition) {
         .position = position;
 }
 
+fn assert_rejected_without_mutation(state: EngineState) {
+    let before = state.clone();
+    assert!(validate_engine_state(&state).is_err());
+    assert_eq!(state, before);
+}
+
 #[test]
-fn fnd_002_base_accepts_acquisition_newer_than_history() {
+fn fnd_002_rejects_acquisition_newer_than_history() {
     let mut state = active_chronology_state();
     let record = state
         .knowledge
@@ -99,11 +105,11 @@ fn fnd_002_base_accepts_acquisition_newer_than_history() {
         .unwrap();
     record.acquisition = observed_public_at(4);
     record.historical_locations.push(observed_public_fact(3));
-    assert_eq!(validate_engine_state(&state), Ok(()));
+    assert_rejected_without_mutation(state);
 }
 
 #[test]
-fn fnd_002_base_accepts_locally_increasing_history_before_acquisition() {
+fn fnd_002_rejects_locally_increasing_history_before_acquisition() {
     let mut state = active_chronology_state();
     let record = state
         .knowledge
@@ -115,11 +121,11 @@ fn fnd_002_base_accepts_locally_increasing_history_before_acquisition() {
         .unwrap();
     record.acquisition = observed_public_at(4);
     record.historical_locations = vec![observed_public_fact(3), observed_public_fact(5)];
-    assert_eq!(validate_engine_state(&state), Ok(()));
+    assert_rejected_without_mutation(state);
 }
 
 #[test]
-fn fnd_002_base_accepts_current_older_than_newest_history() {
+fn fnd_002_rejects_current_older_than_newest_history() {
     let mut state = active_chronology_state();
     let record = state
         .knowledge
@@ -132,11 +138,11 @@ fn fnd_002_base_accepts_current_older_than_newest_history() {
     record.acquisition = observed_public_at(2);
     record.historical_locations = vec![observed_public_fact(4), observed_public_fact(6)];
     record.known_location = Some(fact(public_location(), observed_public_at(5)));
-    assert_eq!(validate_engine_state(&state), Ok(()));
+    assert_rejected_without_mutation(state);
 }
 
 #[test]
-fn fnd_002_base_accepts_retired_last_known_older_than_newest_history() {
+fn fnd_002_rejects_retired_last_known_older_than_newest_history() {
     let mut state = retired_chronology_state();
     let record = state
         .knowledge
@@ -149,11 +155,11 @@ fn fnd_002_base_accepts_retired_last_known_older_than_newest_history() {
     record.historical_locations = vec![observed_public_fact(5), observed_public_fact(7)];
     record.last_known_location = Some(fact(public_location(), observed_public_at(6)));
     record.invalidation.provenance = observed_public_at(8);
-    assert_eq!(validate_engine_state(&state), Ok(()));
+    assert_rejected_without_mutation(state);
 }
 
 #[test]
-fn fnd_002_base_accepts_invalidation_earlier_than_acquisition() {
+fn fnd_002_rejects_invalidation_earlier_than_acquisition() {
     let mut state = retired_chronology_state();
     let record = state
         .knowledge
@@ -165,11 +171,11 @@ fn fnd_002_base_accepts_invalidation_earlier_than_acquisition() {
         .unwrap();
     record.acquisition = observed_public_at(5);
     record.invalidation.provenance = observed_public_at(4);
-    assert_eq!(validate_engine_state(&state), Ok(()));
+    assert_rejected_without_mutation(state);
 }
 
 #[test]
-fn fnd_002_base_accepts_invalidation_earlier_than_newest_history() {
+fn fnd_002_rejects_invalidation_earlier_than_newest_history() {
     let mut state = retired_chronology_state();
     let record = state
         .knowledge
@@ -181,11 +187,11 @@ fn fnd_002_base_accepts_invalidation_earlier_than_newest_history() {
         .unwrap();
     record.historical_locations = vec![observed_public_fact(5)];
     record.invalidation.provenance = observed_public_at(4);
-    assert_eq!(validate_engine_state(&state), Ok(()));
+    assert_rejected_without_mutation(state);
 }
 
 #[test]
-fn fnd_002_base_accepts_invalidation_earlier_than_last_known() {
+fn fnd_002_rejects_invalidation_earlier_than_last_known() {
     let mut state = retired_chronology_state();
     let record = state
         .knowledge
@@ -197,7 +203,7 @@ fn fnd_002_base_accepts_invalidation_earlier_than_last_known() {
         .unwrap();
     record.last_known_location = Some(fact(public_location(), observed_public_at(5)));
     record.invalidation.provenance = observed_public_at(4);
-    assert_eq!(validate_engine_state(&state), Ok(()));
+    assert_rejected_without_mutation(state);
 }
 
 #[test]
@@ -253,7 +259,7 @@ fn fnd_002_sequence_gaps_are_accepted() {
 }
 
 #[test]
-fn fnd_002_base_accepts_multiple_initial_location_facts() {
+fn fnd_002_rejects_multiple_initial_location_facts() {
     let mut state = active_chronology_state();
     let record = state
         .knowledge
@@ -267,11 +273,11 @@ fn fnd_002_base_accepts_multiple_initial_location_facts() {
         fact(public_location(), KnowledgeAcquisitionReason::InitialConfiguration),
         fact(public_location(), KnowledgeAcquisitionReason::InitialConfiguration),
     ];
-    assert_eq!(validate_engine_state(&state), Ok(()));
+    assert_rejected_without_mutation(state);
 }
 
 #[test]
-fn fnd_002_base_accepts_initial_location_after_observed_history() {
+fn fnd_002_rejects_initial_location_after_observed_history() {
     let mut state = active_chronology_state();
     let record = state
         .knowledge
@@ -285,11 +291,11 @@ fn fnd_002_base_accepts_initial_location_after_observed_history() {
         observed_public_fact(2),
         fact(public_location(), KnowledgeAcquisitionReason::InitialConfiguration),
     ];
-    assert_eq!(validate_engine_state(&state), Ok(()));
+    assert_rejected_without_mutation(state);
 }
 
 #[test]
-fn fnd_002_base_accepts_current_older_than_acquisition() {
+fn fnd_002_rejects_current_older_than_acquisition() {
     let mut state = active_chronology_state();
     let record = state
         .knowledge
@@ -301,11 +307,11 @@ fn fnd_002_base_accepts_current_older_than_acquisition() {
         .unwrap();
     record.acquisition = observed_public_at(5);
     record.known_location = Some(fact(public_location(), observed_public_at(4)));
-    assert_eq!(validate_engine_state(&state), Ok(()));
+    assert_rejected_without_mutation(state);
 }
 
 #[test]
-fn fnd_002_base_accepts_initial_current_after_observed_history() {
+fn fnd_002_rejects_initial_current_after_observed_history() {
     let mut state = active_chronology_state();
     let record = state
         .knowledge
@@ -320,7 +326,7 @@ fn fnd_002_base_accepts_initial_current_after_observed_history() {
         public_location(),
         KnowledgeAcquisitionReason::InitialConfiguration,
     ));
-    assert_eq!(validate_engine_state(&state), Ok(()));
+    assert_rejected_without_mutation(state);
 }
 
 #[test]
@@ -423,7 +429,7 @@ fn fnd_002_lifecycle_retains_acquire_location_with_original_sequence() {
 }
 
 #[test]
-fn fnd_006b_base_accepts_swapped_index_values() {
+fn fnd_006b_rejects_swapped_index_values() {
     let mut state = two_object_ordered_state();
     set_object_two_position(&mut state, ZonePosition::Index { index: 1 });
     state
@@ -432,39 +438,39 @@ fn fnd_006b_base_accepts_swapped_index_values() {
         .get_mut(&GameObjectId(3))
         .unwrap()
         .position = ZonePosition::Index { index: 0 };
-    assert_eq!(validate_engine_state(&state), Ok(()));
+    assert_rejected_without_mutation(state);
 }
 
 #[test]
-fn fnd_006b_base_accepts_duplicate_top_zero_offsets() {
+fn fnd_006b_rejects_duplicate_top_zero_offsets() {
     let mut state = two_object_ordered_state();
     set_object_two_position(&mut state, ZonePosition::Top { offset: 0 });
-    assert_eq!(validate_engine_state(&state), Ok(()));
+    assert_rejected_without_mutation(state);
 }
 
 #[test]
-fn fnd_006b_base_accepts_out_of_range_index() {
+fn fnd_006b_rejects_out_of_range_index() {
     let mut state = two_object_ordered_state();
     set_object_two_position(&mut state, ZonePosition::Index { index: 9 });
-    assert_eq!(validate_engine_state(&state), Ok(()));
+    assert_rejected_without_mutation(state);
 }
 
 #[test]
-fn fnd_006b_base_accepts_out_of_range_top_offset() {
+fn fnd_006b_rejects_out_of_range_top_offset() {
     let mut state = two_object_ordered_state();
     set_object_two_position(&mut state, ZonePosition::Top { offset: 9 });
-    assert_eq!(validate_engine_state(&state), Ok(()));
+    assert_rejected_without_mutation(state);
 }
 
 #[test]
-fn fnd_006b_base_accepts_out_of_range_bottom_offset() {
+fn fnd_006b_rejects_out_of_range_bottom_offset() {
     let mut state = two_object_ordered_state();
     set_object_two_position(&mut state, ZonePosition::Bottom { offset: 9 });
-    assert_eq!(validate_engine_state(&state), Ok(()));
+    assert_rejected_without_mutation(state);
 }
 
 #[test]
-fn fnd_006b_base_accepts_equivalent_index_spelling() {
+fn fnd_006b_rejects_equivalent_index_spelling() {
     let mut state = two_object_ordered_state();
     set_object_two_position(&mut state, ZonePosition::Index { index: 0 });
     state
@@ -473,11 +479,11 @@ fn fnd_006b_base_accepts_equivalent_index_spelling() {
         .get_mut(&GameObjectId(3))
         .unwrap()
         .position = ZonePosition::Index { index: 1 };
-    assert_eq!(validate_engine_state(&state), Ok(()));
+    assert_rejected_without_mutation(state);
 }
 
 #[test]
-fn fnd_006b_base_accepts_unrelated_empty_declared_key() {
+fn fnd_006b_rejects_unrelated_empty_declared_key() {
     let mut state = two_object_ordered_state();
     state.zones.ordered_zones.insert(
         ZoneKey {
@@ -488,11 +494,11 @@ fn fnd_006b_base_accepts_unrelated_empty_declared_key() {
         },
         Vec::new(),
     );
-    assert_eq!(validate_engine_state(&state), Ok(()));
+    assert_rejected_without_mutation(state);
 }
 
 #[test]
-fn fnd_006b_base_accepts_empty_key_alongside_valid_key() {
+fn fnd_006b_rejects_empty_key_alongside_valid_key() {
     let mut state = two_object_ordered_state();
     state.zones.ordered_zones.insert(
         ZoneKey {
@@ -503,11 +509,11 @@ fn fnd_006b_base_accepts_empty_key_alongside_valid_key() {
         },
         Vec::new(),
     );
-    assert_eq!(validate_engine_state(&state), Ok(()));
+    assert_rejected_without_mutation(state);
 }
 
 #[test]
-fn fnd_006b_base_accepts_bottom_in_retained_history() {
+fn fnd_006b_rejects_bottom_in_retained_history() {
     let mut state = active_chronology_state();
     state
         .knowledge
@@ -525,11 +531,11 @@ fn fnd_006b_base_accepts_bottom_in_retained_history() {
             },
             observed_public_at(2),
         ));
-    assert_eq!(validate_engine_state(&state), Ok(()));
+    assert_rejected_without_mutation(state);
 }
 
 #[test]
-fn fnd_006b_base_accepts_index_in_retired_last_known() {
+fn fnd_006b_rejects_index_in_retired_last_known() {
     let mut state = retired_chronology_state();
     state
         .knowledge
@@ -546,5 +552,5 @@ fn fnd_006b_base_accepts_index_in_retired_last_known() {
             },
             observed_public_at(1),
         ));
-    assert_eq!(validate_engine_state(&state), Ok(()));
+    assert_rejected_without_mutation(state);
 }
