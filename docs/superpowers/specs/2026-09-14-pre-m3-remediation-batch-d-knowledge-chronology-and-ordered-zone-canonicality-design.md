@@ -1,7 +1,7 @@
 # Pre-M3 Remediation Batch D: knowledge chronology and ordered-zone canonicality
 
-**Status:** design review approved with precisions; the ADR candidate remains
-PROPOSED until independent review and merge.
+**Status:** ADR 0049 accepted after design review approval; final exact-head
+evidence review remains required before PR #168 can merge.
 
 ## Goal
 

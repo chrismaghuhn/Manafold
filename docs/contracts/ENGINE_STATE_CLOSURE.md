@@ -81,14 +81,14 @@ It validates at least:
 
 An invariant failure is an implementation defect, not a legal game outcome.
 
-The proposed Batch-D closure refinement adds one chronology over each retained
+ADR 0049 adds one chronology over each retained
 record and rejects noncanonical ordered-zone representations. Acquisition,
 history, current or last-known location, and invalidation are checked in
 oldest-to-newest order with same-occurrence equality only for identical
 Acquire-created provenance. Live ordered vectors are authoritative; every live
 ordered location uses a Top offset equal to its vector ordinal, and empty
-ordered-zone entries are invalid. This text is a proposed review candidate,
-not an accepted milestone or M3 authorization.
+ordered-zone entries are invalid. The decision is accepted architecture; this
+does not authorize M3, whose boundary remains unchanged.
 
 ## State delta
 

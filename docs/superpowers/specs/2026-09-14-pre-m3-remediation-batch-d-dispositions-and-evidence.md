@@ -1,24 +1,24 @@
 # Pre-M3 Remediation Batch D dispositions and evidence
 
-**Status:** evidence snapshot at the local code head; ADR candidate remains
-PROPOSED pending independent exact-head review and merge
+**Status:** evidence snapshot updated for ADR 0049 promotion; final corrected
+evidence and exact-head review remain required before PR #168 can merge
 
 ## Identity
 
 TASK = PRE_M3_REMEDIATION_BATCH_D
 BASE = 481415542687ac2ca88187184acb52ba7a044ac0
 CODE_EVIDENCE_HEAD = 22d809e32274443ccc03f1fb8e7997cca89dfe07
+PROMOTION_BASE_HEAD = 02c0e66f73cef5a15f541e714ffa5b4e04b5860b
 BRANCH = chris/pre-m3-remediation-batch-d-state-contract-resolution
-PR = NOT_OPEN_AT_THIS_SNAPSHOT
+PR = https://github.com/chrismaghuhn/Manafold/pull/168
 
 ## FND-002 disposition
 
 FND_002 = CONFIRMED
 
 FND_002_CURRENT_AUTHORITY = accepted INFORMATION_MODEL, DOMAIN_MODEL,
-ENGINE_STATE_CLOSURE, STATE_HASHING, RULES_SEMANTICS, M1.1, and ADR 0040
-provide local provenance, visible-sequence, lifecycle, and retained-state
-obligations; the Batch-D ADR candidate proposes the missing total chronology.
+ENGINE_STATE_CLOSURE, STATE_HASHING, RULES_SEMANTICS, M1.1, ADR 0040, and
+accepted ADR 0049
 
 FND_002_CONTRACT_DECISION = InitialConfiguration acquisition and location facts
 are configuration-only, unsequenced, and earliest, with at most one retained
@@ -40,10 +40,8 @@ fail-closed, and does not normalize history.
 
 FND_006B = CONFIRMED
 
-FND_006B_CURRENT_AUTHORITY = DOMAIN_MODEL and M1.1 establish one authoritative
-ordered-zone order and membership/uniqueness closure; STATE_HASHING persists
-both order and position vocabulary; the Batch-D ADR candidate resolves their
-canonical relation.
+FND_006B_CURRENT_AUTHORITY = accepted ADR 0049 together with DOMAIN_MODEL,
+M1.1, and STATE_HASHING
 
 FND_006B_SOURCE_OF_TRUTH = ordered_zones vector
 
@@ -66,15 +64,15 @@ structural validation and adds no Magic zone legality.
 
 ## Contract and evidence status
 
-ADR_CANDIDATE = docs/adr/candidates/2026-09-14-pre-m3-remediation-batch-d-knowledge-chronology-and-ordered-zone-canonicality.md
-ADR_STATUS = PROPOSED
+ADR = docs/adr/0049-knowledge-chronology-and-ordered-zone-canonicality.md
+ADR_STATUS = ACCEPTED
 
 CONFIRMED = FND-002, FND-006B, digest fail-closed closure, checkpoint
 fail-closed closure, valid canonical reorder digest sensitivity
 REJECTED = NONE
 RESOLVED_ON_BASE = NONE
-BLOCKED_CONTRACT_AMBIGUITY = NONE in the proposed Batch-D direction;
-independent review and merge remain required for acceptance
+BLOCKED_CONTRACT_AMBIGUITY = NONE; exact-head evidence review remains required
+before merge
 SPLIT_REQUIRED = NONE
 
 BASE_MATRIX = Before production changes, 17 FND-002 characterization tests
@@ -117,6 +115,6 @@ M3_AUTHORIZED = NO
 
 ## Remaining exact action
 
-Push this branch, open one PR against master, wait for hosted checks at the
-exact final PR head, and leave merge to independent review. The proposed ADR
-must not be described as accepted architecture before that review and merge.
+Re-run the corrected exact-head evidence and hosted checks after the promotion
+and evidence-fix commits, then leave merge to independent review. ADR 0049 is
+accepted architecture; M3 remains unauthorized.

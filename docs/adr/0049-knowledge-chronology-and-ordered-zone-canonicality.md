@@ -1,10 +1,18 @@
-# Proposed ADR: Pre-M3 Batch D knowledge chronology and ordered-zone canonicality
+# ADR 0049: Knowledge Chronology and Ordered-Zone Canonicality
 
-- **Status:** PROPOSED
+- **Status:** accepted
 - **Date:** 2026-09-14
+- **Owners:** architecture maintainers; state maintainers; information-safety reviewers
 - **Scope:** FND-002 and FND-006B only
-- **Review vehicle:** Pre-M3 Remediation Batch D pull request
-- **Acceptance condition:** independent exact-head review and merge; this proposal is not accepted architecture
+- **Supersedes:** none
+- **Superseded by:** none
+- **Review provenance:** design review approved with precision by the maintainer
+  in PR #168; ADR promotion explicitly authorized after confirming
+  origin/master remained at 481415542687ac2ca88187184acb52ba7a044ac0.
+  Final exact-head evidence review remains required before merge.
+- **Implementation evidence:** PR #168 Batch-D code head
+  02c0e66f73cef5a15f541e714ffa5b4e04b5860b; the final evidence corrections
+  are carried on the same branch and must be rechecked at the resulting head.
 
 ## Context
 
@@ -153,7 +161,7 @@ without a canonical spelling would preserve the duplicate-representation risk.
 ### Remove or reinterpret Bottom and Index
 
 Rejected for this batch. The variants remain present in the type and wire
-shape. This proposal only rejects them in the current canonical state; any
+shape. ADR 0049 only rejects them in the current canonical state; any
 future accepted meaning requires a separately versioned contract decision.
 
 ### Normalize empty ordered-zone entries
@@ -208,7 +216,7 @@ new information channel is added.
 
 ## M3 implications
 
-This proposal does not add real Magic rules, zone legality, cards, Card IR,
+ADR 0049 does not add real Magic rules, zone legality, cards, Card IR,
 combat, priority, stack expansion, or event-delivery behavior. M3 may use the
 canonical ordered-state representation but must make any additional
 zone-specific semantics explicit in its own reviewed scope.
@@ -246,4 +254,6 @@ The Batch-D evidence must show:
 12. the canonical reset digest bytes remain unchanged and a valid two-object
     order change produces a different digest.
 
-Acceptance of this candidate remains separate from passing these tests.
+Acceptance of ADR 0049 remains separate from the executable evidence gates;
+the exact-head re-review must confirm the corrected evidence claims before
+merge.

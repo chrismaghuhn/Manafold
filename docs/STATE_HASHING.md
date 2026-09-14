@@ -406,15 +406,15 @@ private_group
 
 ```
 
-The Batch-D proposal does not change this V3 layout. It defines the vector as
+ADR 0049 does not change this V3 layout. It defines the vector as
 the authoritative semantic order and requires every live ordered location to
 use the canonical redundant witness Top { offset }, with vector index zero as
 top and offset equal to the vector ordinal. Bottom and Index remain
 wire-representable enum variants but are rejected in the current canonical
 EngineState. Empty ordered-zone entries are invalid. Persisted retained
 ordered locations also use Top; historical offsets are not compared with a
-current vector. The proposal is a fail-closed validation refinement, not a
-digest-domain or schema change.
+current vector. This is a fail-closed validation refinement, not a digest-domain
+or schema change.
 
 `zone_key`:
 
@@ -644,7 +644,7 @@ A known-location fact is:
 
 Historical facts preserve semantic history order.
 
-The Batch-D proposal further requires the chronology of acquisition, retained
+ADR 0049 further requires the chronology of acquisition, retained
 location facts, and invalidation to be coherent. Acquisition may be
 InitialConfiguration or Observed; an observed location may equal observed
 acquisition only when its complete provenance is identical to the

@@ -105,14 +105,15 @@ encode Magic legality. M1.1 closes these structural gaps:
    for declared players; allocator cursors for represented opaque identities
    remain strictly ahead of those identities.
 
-The proposed Pre-M3 Batch-D refinement strengthens item 1 without changing the
+ADR 0049 strengthens item 1 without changing the
 wire shape: ordered_zones remains authoritative, vector index zero is top, and
 each live ordered location must use Top { offset } equal to its vector ordinal.
 Bottom and Index are rejected in the current canonical state, empty ordered
 zone entries are invalid, and retained historical or last-known ordered
 locations use Top without reconstructing an old vector. FND-002 likewise adds
 one shared chronology across acquisition, location facts, and invalidation.
-These are PROPOSED review terms until the Batch-D ADR is accepted.
+These are accepted structural terms under ADR 0049; they do not add Magic
+legality or authorize M3.
 
 Negative tests start from the canonical valid state and mutate one invariant
 per case. Failures use typed `EngineStateViolation` values.

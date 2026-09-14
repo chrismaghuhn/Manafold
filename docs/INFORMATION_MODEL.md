@@ -142,10 +142,10 @@ Canonical retained-knowledge order is ascending numeric `OpaqueObjectId` across 
 
 The public DTO excludes `PhysicalCardId`, `GameObjectId`, trusted `ZoneLocation`, authoritative event IDs, RNG provenance, and another perspective's knowledge.
 
-### Proposed Batch-D chronology refinement
+### Batch-D chronology refinement (ADR 0049)
 
-Status: PROPOSED in the Pre-M3 Batch-D ADR candidate; independent review and
-merge are required before this becomes accepted architecture.
+Status: accepted by ADR 0049; final exact-head evidence review remains required
+for PR #168 before merge.
 
 Retained chronology is oldest to newest across acquisition, location facts, and
 retirement. InitialConfiguration acquisition and location facts are
