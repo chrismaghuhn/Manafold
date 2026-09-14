@@ -25,6 +25,14 @@ fn accepted_product_for_contract(
     }
 }
 
+fn assert_contract_rejects_without_mutation(before: &EngineState, result: &TransitionResult) {
+    let before_snapshot = before.clone();
+    let result_snapshot = result.clone();
+    assert!(validate_transition_contract(before, result).is_err());
+    assert_eq!(before, &before_snapshot);
+    assert_eq!(result, &result_snapshot);
+}
+
 fn decision_creation_product(
     decision_id: DecisionId,
     player_decision_id: PlayerDecisionIdV1,
@@ -263,7 +271,7 @@ fn unexplained_turn_mutation_must_not_pass_transition_contract() {
     after.revision = StateRevision(before.revision.0 + 1);
     after.core.turn_number += 1;
     let result = accepted_product_for_contract(&before, after, Vec::new());
-    assert!(validate_transition_contract(&before, &result).is_err());
+    assert_contract_rejects_without_mutation(&before, &result);
 }
 
 #[test]
@@ -272,7 +280,7 @@ fn accepted_revision_must_advance_exactly_once() {
     let mut after = before.clone();
     after.revision = StateRevision(before.revision.0 + 2);
     let result = accepted_product_for_contract(&before, after, Vec::new());
-    assert!(validate_transition_contract(&before, &result).is_err());
+    assert_contract_rejects_without_mutation(&before, &result);
 }
 
 #[test]
@@ -283,19 +291,19 @@ fn global_allocator_rewind_must_not_pass_transition_contract() {
     after.revision = StateRevision(1);
     after.allocators.next_object_id = mtgml_model::GameObjectId(3);
     let result = accepted_product_for_contract(&before, after, Vec::new());
-    assert!(validate_transition_contract(&before, &result).is_err());
+    assert_contract_rejects_without_mutation(&before, &result);
 }
 
 #[test]
 fn trusted_decision_identity_reuse_must_not_pass_transition_contract() {
     let (before, result) = decision_creation_product(DecisionId(1), PlayerDecisionIdV1(1), 5, 2);
-    assert!(validate_transition_contract(&before, &result).is_err());
+    assert_contract_rejects_without_mutation(&before, &result);
 }
 
 #[test]
 fn perspective_decision_identity_reuse_must_not_pass_transition_contract() {
     let (before, result) = decision_creation_product(DecisionId(5), PlayerDecisionIdV1(1), 6, 5);
-    assert!(validate_transition_contract(&before, &result).is_err());
+    assert_contract_rejects_without_mutation(&before, &result);
 }
 
 #[test]
@@ -341,7 +349,7 @@ fn continuation_identity_must_persist_across_staged_decisions() {
         },
     ];
     let result = accepted_product_for_contract(&before, after, events);
-    assert!(validate_transition_contract(&before, &result).is_err());
+    assert_contract_rejects_without_mutation(&before, &result);
 }
 
 #[test]
@@ -361,10 +369,11 @@ fn cross_perspective_decision_cursor_inheritance_must_not_pass() {
         .unwrap()
         .request;
     request.actor = PlayerId(2);
-    request.decision_id = DecisionId(1);
+    request.decision_id = DecisionId(2);
     request.player_decision_id = PlayerDecisionIdV1(10);
     request.state_revision = after.revision;
     after.execution.pending_decision = Some(mtgml_state::PendingDecisionRecordV2 { request });
+    after.allocators.next_decision_id = DecisionId(3);
     after
         .perspective_identities
         .players
@@ -376,11 +385,11 @@ fn cross_perspective_decision_cursor_inheritance_must_not_pass() {
         event_id: mtgml_model::RuleEventId(1),
         state_revision: after.revision,
         event: AuthoritativeRuleEventKind::DecisionCreated {
-            decision: DecisionId(1),
+            decision: DecisionId(2),
         },
     };
     let result = accepted_product_for_contract(&before, after, vec![event]);
-    assert!(validate_transition_contract(&before, &result).is_err());
+    assert_contract_rejects_without_mutation(&before, &result);
 }
 
 fn outcome_occurrence_product(
@@ -421,7 +430,7 @@ fn visible_random_outcome_requires_authoritative_rng_provenance() {
             value: 5,
         },
     );
-    assert!(validate_transition_contract(&before, &result).is_err());
+    assert_contract_rejects_without_mutation(&before, &result);
 }
 
 #[test]
@@ -550,5 +559,5 @@ fn occurrence_must_not_bind_to_a_future_zone_transition() {
         },
     ];
     let result = accepted_product_for_contract(&before, after, events);
-    assert!(validate_transition_contract(&before, &result).is_err());
+    assert_contract_rejects_without_mutation(&before, &result);
 }

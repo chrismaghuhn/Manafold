@@ -18,6 +18,7 @@ use crate::m2_shape::{
     KnowledgeInvalidationV2, KnowledgeRecordV2, KnownLocationFactV2, PerspectiveIdentityRecordV2,
     PlayerKnowledgeStateV2, RetiredKnowledgeRecordV2,
 };
+use crate::validation::validate_engine_state;
 use crate::zones::ZoneLocation;
 
 /// Complete state-changing meaning of one perspective-visible occurrence.
@@ -130,6 +131,8 @@ pub enum LifecycleApplicationError {
     ReverseMappingMismatch,
     #[error("knowledge record required for the mutation is missing")]
     UnknownKnowledge,
+    #[error("lifecycle mutation would leave the complete authoritative state invalid")]
+    InvalidState,
 }
 
 fn ensure_bound_provenance(
@@ -335,13 +338,14 @@ pub fn apply_perspective_lifecycle(
     if !state.core.players.contains_key(&audit.perspective) {
         return Err(LifecycleApplicationError::UnknownPlayer);
     }
-    let zones_objects = &state.zones.objects;
-    let knowledge = state
+    let mut candidate = state.clone();
+    let zones_objects = &candidate.zones.objects;
+    let knowledge = candidate
         .knowledge
         .players
         .get_mut(&audit.perspective)
         .ok_or(LifecycleApplicationError::UnknownPlayer)?;
-    let identity = state
+    let identity = candidate
         .perspective_identities
         .players
         .get_mut(&audit.perspective)
@@ -351,7 +355,10 @@ pub fn apply_perspective_lifecycle(
         identity,
         &|object| zones_objects.contains_key(&object),
         audit,
-    )
+    )?;
+    validate_engine_state(&candidate).map_err(|_| LifecycleApplicationError::InvalidState)?;
+    *state = candidate;
+    Ok(())
 }
 
 /// Applies only the identity-mapping bookkeeping of one lifecycle audit to
