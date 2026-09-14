@@ -4,8 +4,8 @@ use mtgml_decision::{DecisionAnswerV2, DecisionResponseV2, DECISION_RESPONSE_V2_
 
 use mtgml_model::{
     CandidateIdV1, CheckpointDigestV3, ContentDigest, ContinuationId, EpisodeStatus,
-    FullStateDigestV3, PlayerDecisionIdV1, PlayerId, StateRevision, TerminalReason,
-    TruncationReason,
+    FullStateDigestV3, PlayerDecisionIdV1, PlayerId, PlayerOutcome, PlayerResult, StateRevision,
+    TerminalReason, TruncationReason,
 };
 
 use mtgml_observation::{
@@ -474,6 +474,28 @@ fn tracked_incarnation_product() -> Result<(EngineState, TransitionResult), ()> 
         .map_err(|_| ())?;
     let result = transition.finish().map_err(|_| ())?;
     Ok((before, result))
+}
+
+fn two_perspective_outcome_product() -> (EngineState, TransitionResult) {
+    use mtgml_rules::fixture_support::{FixtureTransition, PlannedOccurrence};
+
+    let before = m2e_fixture();
+    let mut transition = FixtureTransition::start(&before).unwrap();
+    for (perspective, code) in [(PlayerId(1), "p1-outcome"), (PlayerId(2), "p2-outcome")] {
+        transition
+            .apply_occurrence(PlannedOccurrence {
+                lifecycle: mtgml_state::PerspectiveLifecycleAuditV1 {
+                    perspective,
+                    sequence: VisibleSequence(1),
+                    mutation: mtgml_state::PerspectiveLifecycleMutationV1::default(),
+                },
+                observation: mtgml_rules::PerspectiveObservationPolicyV1::AnnouncedOutcome {
+                    code: code.into(),
+                },
+            })
+            .unwrap();
+    }
+    (before, transition.finish().unwrap())
 }
 
 #[test]

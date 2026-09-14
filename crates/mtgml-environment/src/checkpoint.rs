@@ -72,9 +72,9 @@ impl EnvironmentCheckpointV3 {
         self.status
             .validate()
             .map_err(|_| CheckpointValidationError::EpisodeStatus)?;
-        if self.limit_counters.accepted_transitions > self.limit_counters.decisions_submitted {
-            return Err(CheckpointValidationError::LimitCounters);
-        }
+        self.limit_counters
+            .validate()
+            .map_err(|_| CheckpointValidationError::LimitCounters)?;
         if !matches!(self.status, EpisodeStatus::Running)
             && self.state.execution.pending_decision.is_some()
         {

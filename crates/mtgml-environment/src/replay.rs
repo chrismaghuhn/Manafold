@@ -111,17 +111,19 @@ pub(crate) fn execute_replay(
             }
             .into());
         }
-        let pending_actor = before
-            .state
-            .execution
-            .pending_decision
-            .as_ref()
-            .map(|pending| pending.request.actor)
-            .ok_or(ReplayExecutionError::ActorUnavailable {
+        let pending = before.state.execution.pending_decision.as_ref().ok_or(
+            ReplayExecutionError::ActorUnavailable {
                 step_index: step.step_index,
-            })?;
-        if pending_actor != step.actor {
+            },
+        )?;
+        if pending.request.actor != step.actor {
             return Err(ReplayExecutionError::ActorUnavailable {
+                step_index: step.step_index,
+            }
+            .into());
+        }
+        if pending.request.player_decision_id != step.response.player_decision_id {
+            return Err(ReplayExecutionError::PlayerDecisionIdentityMismatch {
                 step_index: step.step_index,
             }
             .into());
