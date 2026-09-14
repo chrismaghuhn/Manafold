@@ -1,6 +1,6 @@
 # Pre-M3 Remediation Batch F: Decision, Observation, and Identity Implementation Plan
 
-**Status:** implementation plan ready for independent review; production implementation not yet authorized
+**Status:** implementation plan approved; inline implementation authorized by maintainer
 
 > For agentic workers: REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox syntax for tracking.
 
