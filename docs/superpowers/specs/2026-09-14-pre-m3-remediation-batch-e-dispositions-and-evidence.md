@@ -3,7 +3,7 @@
 **Status:** implementation evidence in progress; final exact-head review pending
 **Date:** 2026-09-14
 **Base:** `9996cfd0fcd4ef67d98cb0422611cebabd20e46b`
-**Code/evidence head before final evidence metadata:** `a29075f3f105cabddc472d53754d447ef9af873b`
+**Code/evidence head:** `cfe5a87d1194a2de3ec2f0b148e0fa3565fba333`
 **Branch:** `chris/pre-m3-remediation-batch-e-cross-layer-closure`
 **PR:** `NOT_RUN`
 
@@ -19,7 +19,7 @@ Issue #162. No M3 work or real Magic semantics is included.
 ```text
 TASK = PRE_M3_REMEDIATION_BATCH_E
 BASE = 9996cfd0fcd4ef67d98cb0422611cebabd20e46b
-HEAD = a29075f3f105cabddc472d53754d447ef9af873b
+HEAD = cfe5a87d1194a2de3ec2f0b148e0fa3565fba333
 BRANCH = chris/pre-m3-remediation-batch-e-cross-layer-closure
 PR = NOT_RUN
 
@@ -93,7 +93,7 @@ HISTORICAL_REPLAY_CHANGE = NO
 
 INFORMATION_SAFETY = PASS for the eventful projection test's observed products; no new player surface exposes trusted IDs, RNG provenance, checkpoint identity, or hidden order
 
-WORKTREE_CLEAN = YES at a29075f
+WORKTREE_CLEAN = YES at cfe5a87
 REMOTE_HEAD_EQUALS_LOCAL = NOT_RUN
 
 NEW_MAGIC_SEMANTICS = NO
