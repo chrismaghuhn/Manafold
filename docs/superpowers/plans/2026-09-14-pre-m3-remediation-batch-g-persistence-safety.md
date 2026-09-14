@@ -74,7 +74,8 @@ if ($LASTEXITCODE -ne 0) { throw "current head is not descended from the approve
 $planningChanges = @(git diff --name-only "$approvedDesign..HEAD")
 $allowedPlanningChanges = @(
   "docs/superpowers/specs/2026-09-14-pre-m3-remediation-batch-g-persistence-safety-design.md",
-  "docs/superpowers/plans/2026-09-14-pre-m3-remediation-batch-g-persistence-safety.md"
+  "docs/superpowers/plans/2026-09-14-pre-m3-remediation-batch-g-persistence-safety.md",
+  "docs/normative-document-register.v1.json"
 )
 if (@($planningChanges | Where-Object { $_ -notin $allowedPlanningChanges })) { throw "production changes exist before implementation authorization" }
 if ((git branch --show-current) -ne "chris/pre-m3-remediation-batch-g-persistence-safety-hardening") { throw "wrong Batch-G branch" }
@@ -106,6 +107,8 @@ baseline counts.
 - Modify: crates/mtgml-persistence/src/tests.rs
 - Modify: crates/mtgml-persistence/src/checkpoint_digest.rs
 - Modify: crates/mtgml-environment/src/checkpoint.rs
+- Modify: crates/mtgml-environment/src/tests.rs
+- Create: crates/mtgml-environment/src/tests/batch_g.rs
 - Modify: python/src/mtgml/persistence.py
 - Modify: python/tests/test_persistence_codec.py
 
@@ -188,19 +191,15 @@ fn fnd_017a_checkpoint_payload_is_not_a_public_function() {
 Run the exact RED tests:
 
 ~~~powershell
-cargo test -p mtgml-persistence --locked fnd_017a_rejects_non_v3_full_state_reference -- --exact
-cargo test -p mtgml-persistence --locked fnd_017a_rejects_impossible_checkpoint_counters -- --exact
-cargo test -p mtgml-persistence --locked fnd_017a_checkpoint_payload_is_not_a_public_function -- --exact
+cargo test -p mtgml-persistence --locked fnd_017a_rejects_non_v3_full_state_reference_identity
+cargo test -p mtgml-persistence --locked fnd_017a_rejects_impossible_checkpoint_counters
+cargo test -p mtgml-persistence --locked fnd_017a_checkpoint_payload_is_not_a_public_function
 ~~~
 
 Expected on the unfixed base: the first two tests observe Ok(CheckpointDigestV3)
 instead of Err(SemanticValidation), and the third observes the public function
-declaration. Record this test-only RED commit as:
-
-~~~powershell
-git add crates/mtgml-persistence/src/tests.rs python/tests/test_persistence_codec.py
-git commit -m "test: characterize Batch-G checkpoint input closure"
-~~~
+declaration. Leave these Rust RED tests uncommitted until the independent
+Python RED is added in the next step.
 
 - [ ] **Step 2: Add Python RED parity for empty codec identity and impossible counters.**
 
@@ -208,9 +207,9 @@ Add this test to python/tests/test_persistence_codec.py:
 
 ~~~python
 def test_fnd_017a_rejects_local_checkpoint_identity_inputs(self) -> None:
-    counters = {
+    valid_counters = {
         "decisions_submitted": 0,
-        "accepted_transitions": 1,
+        "accepted_transitions": 0,
         "rule_events_emitted": 0,
         "resource_units_consumed": 0,
         "wall_clock_elapsed_millis": 0,
@@ -224,17 +223,21 @@ def test_fnd_017a_rejects_local_checkpoint_identity_inputs(self) -> None:
                 calculate_checkpoint_digest_v3(
                     "07" * 32,
                     EpisodeStatus.running(),
-                    counters,
+                    valid_counters,
                     codec_id,
                     semantic_version,
                 )
             self.assertEqual(caught.exception.code, "semantic_validation")
 
+    invalid_counters = {
+        **valid_counters,
+        "accepted_transitions": 1,
+    }
     with self.assertRaises(PersistenceError) as caught:
         calculate_checkpoint_digest_v3(
             "07" * 32,
             EpisodeStatus.running(),
-            counters,
+            invalid_counters,
             "in-memory-reference",
             "3",
         )
@@ -248,8 +251,16 @@ Run:
 ~~~
 
 Expected on the unfixed base: the empty codec calls and impossible counter call
-return a digest instead of raising semantic_validation. Add the test to the
-same RED characterization commit before continuing.
+return a digest instead of raising semantic_validation. Run the Rust RED tests
+again, then commit both language RED tests together:
+
+~~~powershell
+cargo test -p mtgml-persistence --locked fnd_017a_rejects_non_v3_full_state_reference_identity
+cargo test -p mtgml-persistence --locked fnd_017a_rejects_impossible_checkpoint_counters
+cargo test -p mtgml-persistence --locked fnd_017a_checkpoint_payload_is_not_a_public_function
+git add crates/mtgml-persistence/src/tests.rs python/tests/test_persistence_codec.py
+git commit -m "test: characterize Batch-G checkpoint input closure"
+~~~
 
 ### GREEN
 
@@ -348,7 +359,7 @@ Do not add EngineState, player-universe, or replay execution logic to Python.
 
 ~~~powershell
 cargo test -p mtgml-persistence --locked fnd_017a -- --nocapture
-cargo test -p mtgml-environment --locked checkpoint_v3_validation_and_restore_nonmutation_matrix -- --exact
+cargo test -p mtgml-environment --locked checkpoint_v3_validation_and_restore_nonmutation_matrix
 .venv\Scripts\python.exe -m pytest python/tests/test_persistence_codec.py -k fnd_017a -q
 ~~~
 
@@ -361,26 +372,81 @@ git add crates/mtgml-persistence/src/checkpoint_digest.rs crates/mtgml-persisten
 git commit -m "fix: close Batch-G checkpoint identity input boundary"
 ~~~
 
-## Task 3: RED and GREEN for FND-018 top-level checkpoint raw Serde narrowing
+- [ ] **Step 7: Record FND-017B as resolved on the existing high-level owners.**
 
-**Files:**
-
-- Modify: crates/mtgml-environment/src/tests.rs
-- Create: crates/mtgml-environment/src/tests/batch_g.rs
-- Modify: crates/mtgml-environment/src/checkpoint.rs
-
-- [ ] **Step 1: Include the Batch-G environment test module.**
-
-Append this line to the include list at the end of
-crates/mtgml-environment/src/tests.rs:
+This is evidence-only. It does not change production code. Create the
+Batch-G environment test module and include it from tests.rs:
 
 ~~~rust
 include!("tests/batch_g.rs");
 ~~~
 
-- [ ] **Step 2: Add the failing source-surface guard.**
+Add this characterization test to crates/mtgml-environment/src/tests/batch_g.rs:
 
-Create crates/mtgml-environment/src/tests/batch_g.rs with:
+~~~rust
+#[test]
+fn fnd_017b_closed_status_with_pending_decision_is_rejected_at_checkpoint_owner() {
+    let controller = environment_at_members_stage();
+    let checkpoint = controller.checkpoint().unwrap();
+    assert!(checkpoint.state.execution.pending_decision.is_some());
+    let status = EpisodeStatus::Terminal {
+        reason: TerminalReason::Concession,
+        players: vec![
+            PlayerOutcome {
+                player: PlayerId(1),
+                result: PlayerResult::Loss,
+            },
+            PlayerOutcome {
+                player: PlayerId(2),
+                result: PlayerResult::Win,
+            },
+        ],
+    };
+    assert!(
+        EnvironmentCheckpointV3::new(
+            checkpoint.state.clone(),
+            status,
+            checkpoint.limit_counters.clone(),
+            checkpoint.codec.clone(),
+        )
+        .is_err()
+    );
+}
+~~~
+
+Run the named existing boundary evidence and the new pending-decision check:
+
+~~~powershell
+cargo test -p mtgml-environment --locked batch_d_invalid_ordered_state_cannot_construct_checkpoint
+cargo test -p mtgml-environment --locked checkpoint_identity_tampering_is_rejected
+cargo test -p mtgml-environment --locked closed_status_player_outcomes_require_authoritative_player_universe
+cargo test -p mtgml-environment --locked fnd_025_checkpoint_rejects_noncanonical_status_order
+cargo test -p mtgml-environment --locked fnd_017b_closed_status_with_pending_decision_is_rejected_at_checkpoint_owner
+cargo test -p mtgml-replay --locked fnd_022b_manifest_requires_the_exact_deck_player_universe_for_closed_status
+cargo test -p mtgml-replay --locked fnd_025_manifest_rejects_noncanonical_deck_and_status_order
+cargo test -p mtgml-replay --locked replay_v3_rejects_corrupt_accepted_progression
+~~~
+
+Expected: every named test runs and passes on the current high-level owners.
+Record FND-017B as RESOLVED_ON_BASE; do not add a production fix. Commit this
+characterization evidence separately:
+
+~~~powershell
+git add crates/mtgml-environment/src/tests.rs crates/mtgml-environment/src/tests/batch_g.rs
+git commit -m "test: record Batch-G resolved checkpoint boundary"
+~~~
+
+## Task 3: RED and GREEN for FND-018 top-level checkpoint raw Serde narrowing
+
+**Files:**
+
+- Modify: crates/mtgml-environment/src/tests.rs
+- Modify: crates/mtgml-environment/src/tests/batch_g.rs
+- Modify: crates/mtgml-environment/src/checkpoint.rs
+
+- [ ] **Step 1: Add the failing source-surface guard to the existing Batch-G module.**
+
+Append this test to the existing crates/mtgml-environment/src/tests/batch_g.rs:
 
 ~~~rust
 #[test]
@@ -394,7 +460,7 @@ fn fnd_018_environment_checkpoint_is_not_a_raw_serde_surface() {
 Run:
 
 ~~~powershell
-cargo test -p mtgml-environment --locked fnd_018_environment_checkpoint_is_not_a_raw_serde_surface -- --exact
+cargo test -p mtgml-environment --locked fnd_018_environment_checkpoint_is_not_a_raw_serde_surface
 ~~~
 
 Expected on the base: FAIL because EnvironmentCheckpointV3 derives both traits.
@@ -405,7 +471,7 @@ git add crates/mtgml-environment/src/tests.rs crates/mtgml-environment/src/tests
 git commit -m "test: characterize Batch-G checkpoint serialization surface"
 ~~~
 
-- [ ] **Step 3: Remove only the top-level derives.**
+- [ ] **Step 2: Remove only the top-level derives.**
 
 In crates/mtgml-environment/src/checkpoint.rs, change:
 
@@ -413,6 +479,7 @@ In crates/mtgml-environment/src/checkpoint.rs, change:
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 ~~~
 
 to:
@@ -421,15 +488,16 @@ to:
 #[derive(Debug, Clone, PartialEq, Eq)]
 ~~~
 
-Do not remove Serde from EngineState, nested state components, model values,
+Remove the top-level #[serde(deny_unknown_fields)] attribute together with the
+Serde import and derives. Do not remove Serde from EngineState, nested state components, model values,
 replay DTOs, or internal test fixtures.
 
-- [ ] **Step 4: Run GREEN environment checkpoint and replay tests.**
+- [ ] **Step 3: Run GREEN environment checkpoint and replay tests.**
 
 ~~~powershell
-cargo test -p mtgml-environment --locked fnd_018_environment_checkpoint_is_not_a_raw_serde_surface -- --exact
-cargo test -p mtgml-environment --locked checkpoint_v3_validation_and_restore_nonmutation_matrix -- --exact
-cargo test -p mtgml-environment --locked checkpoint_restore_repeats_exact_transition_and_replay_segment -- --exact
+cargo test -p mtgml-environment --locked fnd_018_environment_checkpoint_is_not_a_raw_serde_surface
+cargo test -p mtgml-environment --locked checkpoint_v3_validation_and_restore_nonmutation_matrix
+cargo test -p mtgml-environment --locked checkpoint_restore_repeats_exact_transition_and_replay_segment
 cargo test -p mtgml-replay --locked
 ~~~
 
@@ -480,7 +548,7 @@ def test_fnd_019_array_limit_precedes_depth_limit(self) -> None:
 - [ ] **Step 2: Run the matrix tests to prove the Rust/Python RED divergence.**
 
 ~~~powershell
-cargo test -p mtgml-persistence --locked fnd_019_array_limit_precedes_depth_limit -- --exact
+cargo test -p mtgml-persistence --locked fnd_019_array_limit_precedes_depth_limit
 .venv\Scripts\python.exe -m pytest python/tests/test_persistence_codec.py -k fnd_019 -q
 ~~~
 
@@ -563,7 +631,7 @@ fn fnd_029_invalid_raw_lane_does_not_panic() {
 Run:
 
 ~~~powershell
-cargo test -p mtgml-random --locked fnd_029_invalid_raw_lane_does_not_panic -- --exact
+cargo test -p mtgml-random --locked fnd_029_invalid_raw_lane_does_not_panic
 ~~~
 
 Expected on the base: FAIL because debug builds hit the debug_assert and panic.
@@ -632,9 +700,9 @@ assert_eq!(result.unwrap(), Err(RandomValidationError::InvalidRawLane));
 - [ ] **Step 4: Run lane, KAT, and cursor evidence.**
 
 ~~~powershell
-cargo test -p mtgml-random --locked fnd_029_invalid_raw_lane_does_not_panic -- --exact
-cargo test -p mtgml-random --locked hmac_counter::tests::raw_words_0_to_7_kat -- --exact
-cargo test -p mtgml-random --locked hmac_counter::tests::cursor_boundary_kat -- --exact
+cargo test -p mtgml-random --locked fnd_029_invalid_raw_lane_does_not_panic
+cargo test -p mtgml-random --locked hmac_counter::tests::raw_words_0_to_7_kat
+cargo test -p mtgml-random --locked hmac_counter::tests::cursor_boundary_kat
 cargo test -p mtgml-random --locked
 ~~~
 
@@ -838,7 +906,7 @@ fn fnd_031_default_difference_does_not_render_debug_values() {
 Run:
 
 ~~~powershell
-cargo test -p mtgml-conformance --locked fnd_031_default_difference_does_not_render_debug_values -- --exact
+cargo test -p mtgml-conformance --locked fnd_031_default_difference_does_not_render_debug_values
 ~~~
 
 Expected on the base: FAIL because value_difference stores the secret Debug
@@ -863,24 +931,41 @@ to:
 use std::fmt;
 ~~~
 
-Change value_difference to accept no Debug-bounded values and store only
-bounded summaries:
+Add a summary constructor that receives only safe, fixed tokens:
 
 ~~~rust
-fn value_difference(
+fn summary_difference(
     surface: ConformanceFailureClass,
     semantic_path: String,
     mismatch_kind: ConformanceMismatchKind,
+    expected_summary: &'static str,
+    actual_summary: &'static str,
     sequence: Option<SequenceDifference>,
 ) -> ConformanceDifference {
     ConformanceDifference {
         surface,
         semantic_path,
         mismatch_kind,
-        expected_summary: "<different>".into(),
-        actual_summary: "<different>".into(),
+        expected_summary: expected_summary.into(),
+        actual_summary: actual_summary.into(),
         sequence,
     }
+}
+
+fn value_difference(
+    surface: ConformanceFailureClass,
+    semantic_path: String,
+    mismatch_kind: ConformanceMismatchKind,
+    sequence: Option<SequenceDifference>,
+) -> ConformanceDifference {
+    summary_difference(
+        surface,
+        semantic_path,
+        mismatch_kind,
+        "<different>",
+        "<different>",
+        sequence,
+    )
 }
 ~~~
 
@@ -904,19 +989,42 @@ pub(crate) fn compare_value<T: PartialEq>(
 }
 ~~~
 
-Change compare_sequence to T: PartialEq and make every differing-entry,
-missing-entry, and extra-entry branch call the same safe summary constructor;
-retain the existing semantic path, first-differing-index, expected length, and
-actual length. Keep compare_player_map's present/missing tokens and
+Change compare_sequence to T: PartialEq. Its differing-entry branch uses
+different/different, its expected-entry-missing branch uses present/missing,
+and its unexpected-extra-entry branch uses missing/present. Retain the
+existing semantic path, first-differing-index, expected length, and actual
+length. The two length-mismatch branches use these exact summary pairs:
+
+~~~rust
+summary_difference(
+    surface,
+    format!("{path}[{index}]"),
+    ConformanceMismatchKind::ExpectedEntryMissing,
+    "<present>",
+    "<missing>",
+    Some(sequence),
+)
+
+summary_difference(
+    surface,
+    format!("{path}[{index}]"),
+    ConformanceMismatchKind::UnexpectedExtraEntry,
+    "<missing>",
+    "<present>",
+    Some(sequence),
+)
+~~~
+
+Keep compare_player_map's present/missing tokens and
 rejected_mutation_difference's unchanged/changed tokens. Do not remove any
 authoritative type's Debug derive.
 
 - [ ] **Step 3: Run diagnostic and full conformance tests.**
 
 ~~~powershell
-cargo test -p mtgml-conformance --locked fnd_031_default_difference_does_not_render_debug_values -- --exact
-cargo test -p mtgml-conformance --locked tests::exact_transition_event_failure_exposes_the_first_event_path -- --exact
-cargo test -p mtgml-conformance --locked tests::exact_transition_same_inputs_produce_the_same_diagnostic -- --exact
+cargo test -p mtgml-conformance --locked fnd_031_default_difference_does_not_render_debug_values
+cargo test -p mtgml-conformance --locked tests::exact_transition_event_failure_exposes_the_first_event_path
+cargo test -p mtgml-conformance --locked tests::exact_transition_same_inputs_produce_the_same_diagnostic
 cargo test -p mtgml-conformance --locked
 ~~~
 
@@ -1038,8 +1146,8 @@ format declarations, or capability registries.
 
 ~~~powershell
 cargo test -p mtgml-commander --locked
-cargo test -p mtgml-state --locked valid_commander_structural_references_are_accepted -- --exact
-cargo test -p mtgml-state --locked commander_ledger_must_reference_a_designated_physical_card -- --exact
+cargo test -p mtgml-state --locked valid_commander_structural_references_are_accepted
+cargo test -p mtgml-state --locked commander_ledger_must_reference_a_designated_physical_card
 ~~~
 
 Expected: all commands exit 0; no Commander capability or support claim is
@@ -1092,6 +1200,10 @@ HEAD and all statuses only after the corresponding commands have run:
 **BASE:** 04a4831f4fd6e35aa5b6ac315e641b7af238fe9c
 
 **HEAD:** the exact final implementation SHA measured after all source changes
+
+**CODE_VERIFICATION_HEAD:** the exact SHA used for code/workspace verification before the evidence-only commit
+
+**FINAL_EVIDENCE_HEAD:** the exact SHA after the evidence-only commit and final documentation/archive rerun
 
 ## Dispositions
 
@@ -1219,14 +1331,15 @@ On this Windows host, a missing Bash/WSL wrapper is recorded as BLOCKED per
 DEVELOPER_SETUP.md; direct profiles remain separate evidence and do not upgrade
 a blocked wrapper result.
 
-- [ ] **Step 6: Run archive reproducibility last.**
+- [ ] **Step 6: Run archive reproducibility at the code-verification head.**
 
 ~~~powershell
 .venv\Scripts\python.exe scripts/verify_archive_reproducibility.py
 ~~~
 
-Expected: deterministic archive verification passes. Run no source-changing
-operation after this command before recording the final archive result.
+Expected: deterministic archive verification passes. Record this source SHA as
+CODE_VERIFICATION_HEAD. Task 11 reruns archive verification after the final
+evidence commit, because the evidence document itself changes the source tree.
 
 ## Task 11: Scope audit and final local handoff
 
@@ -1289,6 +1402,23 @@ git commit -m "docs: record Batch-G dispositions and evidence"
 After this documentation-only commit, rerun the change-aware documentation
 gate and record the new exact HEAD. Do not reuse pre-commit source evidence
 for a post-commit source claim.
+
+- [ ] **Step 3: Re-run final documentation and archive gates on the evidence head.**
+
+Immediately after the evidence commit, record FINAL_EVIDENCE_HEAD and run:
+
+~~~powershell
+git rev-parse HEAD
+.venv\Scripts\python.exe scripts/check_documentation.py
+git diff --check
+.venv\Scripts\python.exe scripts/verify_archive_reproducibility.py
+just archive-check
+~~~
+
+Expected: documentation and direct archive verification pass on the final
+evidence head. Record just archive-check as BLOCKED if the documented Bash/WSL
+wrapper is unavailable. The final archive result must cite FINAL_EVIDENCE_HEAD,
+not CODE_VERIFICATION_HEAD.
 
 ## Task 12: Hosted handoff after implementation approval
 
