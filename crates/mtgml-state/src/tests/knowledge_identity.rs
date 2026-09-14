@@ -126,10 +126,12 @@ fn retired_knowledge_requires_a_matching_retired_identity() {
         .unwrap()
         .retired
         .insert(OpaqueObjectId(5), retired_record(OpaqueObjectId(5)));
+    let before = malformed.clone();
     assert_eq!(
         validate_engine_state(&malformed),
         Err(EngineStateViolation::KnowledgeMismatch)
     );
+    assert_eq!(malformed, before);
 
     let mut identity_only = synthetic_state();
     let identity = identity_only
@@ -245,10 +247,12 @@ fn every_retained_location_fact_must_reference_a_declared_player() {
         .push(valid_fact(invalid_location));
 
     for malformed in [active_current, active_history, retired_last, retired_history] {
+        let before = malformed.clone();
         assert_eq!(
             validate_engine_state(&malformed),
             Err(EngineStateViolation::KnowledgeMismatch)
         );
+        assert_eq!(malformed, before);
     }
 }
 

@@ -121,10 +121,12 @@ fn pending_select_player_must_reference_a_declared_player() {
     candidate.trusted_binding = mtgml_decision::EngineCandidateBinding::SelectPlayer {
         player: PlayerId(999),
     };
+    let before = state.clone();
     assert_eq!(
         validate_engine_state(&state),
         Err(EngineStateViolation::PendingDecisionMismatch)
     );
+    assert_eq!(state, before);
 }
 
 #[test]
@@ -191,10 +193,12 @@ fn commander_designation_membership_must_be_canonical() {
             vec![PhysicalCardId(4), PhysicalCardId(3)],
         );
     }
+    let before = permuted.clone();
     assert_eq!(
         validate_engine_state(&permuted),
         Err(EngineStateViolation::FormatMismatch)
     );
+    assert_eq!(permuted, before);
     assert_eq!(
         permuted.digest(),
         Err(StateDigestError::StateInvariant)
@@ -245,11 +249,14 @@ fn empty_ordered_zone_keys_must_reference_declared_players() {
         },
         Vec::new(),
     );
+    let before = state.clone();
     assert_eq!(
         validate_engine_state(&state),
         Err(EngineStateViolation::ObjectPlayerMismatch)
     );
+    assert_eq!(state, before);
 }
+
 
 
 #[test]
