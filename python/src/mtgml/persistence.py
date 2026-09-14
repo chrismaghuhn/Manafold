@@ -367,21 +367,22 @@ def calculate_checkpoint_digest_v3(
         "resource_units_consumed",
         "wall_clock_elapsed_millis",
     )
-    counter_values: list[PersistenceValue] = []
+    validated_counter_values: list[int] = []
     for name in counter_names:
         value = counters.get(name)
         if isinstance(value, bool) or not isinstance(value, int) or not 0 <= value <= 2**64 - 1:
             raise _error("value_out_of_range", f"counter {name} is outside u64")
-        counter_values.append(value)
+        validated_counter_values.append(value)
     if not isinstance(codec_id, str) or not codec_id:
         raise _error("semantic_validation", "codec_id must be non-empty")
     if not isinstance(semantic_version, str) or not semantic_version:
         raise _error("semantic_validation", "semantic_version must be non-empty")
-    if counter_values[1] > counter_values[0]:
+    if validated_counter_values[1] > validated_counter_values[0]:
         raise _error(
             "semantic_validation",
             "accepted transitions exceed submitted decisions",
         )
+    counter_values: list[PersistenceValue] = list(validated_counter_values)
     payload = encode_canonical(
         [
             CHECKPOINT_INPUT_SCHEMA,
