@@ -293,10 +293,16 @@ fn episode_status_does_not_change_the_information_digest() {
         final_state.clone(),
         EpisodeStatus::Terminal {
             reason: TerminalReason::Concession,
-            players: vec![mtgml_model::PlayerOutcome {
-                player: PlayerId(1),
-                result: mtgml_model::PlayerResult::Loss,
-            }],
+            players: vec![
+                mtgml_model::PlayerOutcome {
+                    player: PlayerId(1),
+                    result: mtgml_model::PlayerResult::Loss,
+                },
+                mtgml_model::PlayerOutcome {
+                    player: PlayerId(2),
+                    result: mtgml_model::PlayerResult::Win,
+                },
+            ],
         },
         EnvironmentLimitCounters::default(),
         codec.clone(),

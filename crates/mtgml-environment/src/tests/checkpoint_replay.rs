@@ -280,11 +280,29 @@ fn closed_status_trusted_execution_is_rejected_without_mutation() {
     for status in [
         EpisodeStatus::Terminal {
             reason: TerminalReason::Concession,
-            players: vec![],
+            players: vec![
+                PlayerOutcome {
+                    player: PlayerId(1),
+                    result: PlayerResult::Loss,
+                },
+                PlayerOutcome {
+                    player: PlayerId(2),
+                    result: PlayerResult::Win,
+                },
+            ],
         },
         EpisodeStatus::Truncated {
             reason: TruncationReason::ExternalStop,
-            players: vec![],
+            players: vec![
+                PlayerOutcome {
+                    player: PlayerId(1),
+                    result: PlayerResult::Unresolved,
+                },
+                PlayerOutcome {
+                    player: PlayerId(2),
+                    result: PlayerResult::Unresolved,
+                },
+            ],
         },
     ] {
         let checkpoint = EnvironmentCheckpointV3::new(
@@ -345,7 +363,7 @@ fn accepted_trusted_counters_are_recomputed_exactly() {
 }
 
 #[test]
-fn closed_status_player_outcomes_are_only_locally_validated_on_base() {
+fn closed_status_player_outcomes_require_authoritative_player_universe() {
     let (state, _) = two_perspective_outcome_product();
     let codec = CheckpointCodecIdentity {
         codec_id: "synthetic-m2-memory".into(),
@@ -397,7 +415,7 @@ fn closed_status_player_outcomes_are_only_locally_validated_on_base() {
             EnvironmentLimitCounters::default(),
             codec.clone(),
         )
-        .is_ok()
+        .is_err()
     );
     assert!(
         EnvironmentCheckpointV3::new(
@@ -406,7 +424,7 @@ fn closed_status_player_outcomes_are_only_locally_validated_on_base() {
             EnvironmentLimitCounters::default(),
             codec.clone(),
         )
-        .is_ok()
+        .is_err()
     );
     assert!(
         EnvironmentCheckpointV3::new(

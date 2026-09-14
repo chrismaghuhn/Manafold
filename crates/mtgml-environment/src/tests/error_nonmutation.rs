@@ -341,7 +341,16 @@ fn typed_rejection_codes_matrix() {
         completed_state,
         EpisodeStatus::Truncated {
             reason: TruncationReason::ExternalStop,
-            players: vec![],
+            players: vec![
+                mtgml_model::PlayerOutcome {
+                    player: PlayerId(1),
+                    result: mtgml_model::PlayerResult::Unresolved,
+                },
+                mtgml_model::PlayerOutcome {
+                    player: PlayerId(2),
+                    result: mtgml_model::PlayerResult::Unresolved,
+                },
+            ],
         },
         EnvironmentLimitCounters::default(),
         CheckpointCodecIdentity {
