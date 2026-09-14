@@ -216,3 +216,76 @@ fn fnd_022e_replay_applies_recorded_external_counter_progression() {
         "replay runs on an internal backend"
     );
 }
+
+#[test]
+fn fnd_023_structural_replay_validation_does_not_verify_backend_state() {
+    let controller = TrustedEnvironmentController::new(backend());
+    let initial = controller.checkpoint().unwrap();
+    controller
+        .execute_trusted_response(PlayerId(1), response(0, 0))
+        .unwrap();
+    let live_after = controller.checkpoint().unwrap();
+    let mut tampered = controller.export_replay().unwrap();
+    tampered.steps[0].full_state_digest_after =
+        mtgml_model::FullStateDigestV3::from_digest_bytes([0x7f; 32]);
+    reseal_replay_step(&mut tampered);
+
+    tampered.validate().unwrap();
+    let result = controller.execute_replay_from_checkpoint(initial, tampered);
+    assert!(matches!(
+        result,
+        Err(ControllerError::ReplayExecution(
+            ReplayExecutionError::AfterDigestMismatch { step_index: 0 }
+        ))
+    ));
+    assert_eq!(controller.checkpoint().unwrap(), live_after);
+}
+
+#[test]
+fn fnd_024_trusted_rejection_is_not_recorded_in_live_replay() {
+    let controller = TrustedEnvironmentController::new(backend());
+    let before_checkpoint = controller.checkpoint().unwrap();
+    let before_replay = controller.export_replay().unwrap();
+    let transition = controller
+        .execute_trusted_response(PlayerId(1), response(1, 0))
+        .unwrap();
+
+    assert!(!transition.accepted);
+    assert_eq!(controller.checkpoint().unwrap(), before_checkpoint);
+    assert_eq!(controller.export_replay().unwrap(), before_replay);
+}
+
+#[test]
+fn fnd_024_external_counter_cannot_invent_a_truncated_status() {
+    let controller = TrustedEnvironmentController::new(backend());
+    let initial = controller.checkpoint().unwrap();
+    controller
+        .execute_trusted_response(PlayerId(1), response(0, 0))
+        .unwrap();
+    let mut replay = controller.export_replay().unwrap();
+    replay.steps[0]
+        .environment_limit_counters_after
+        .wall_clock_elapsed_millis += 1000;
+    replay.steps[0].episode_status_after = EpisodeStatus::Truncated {
+        reason: TruncationReason::WallClockLimit,
+        players: vec![
+            PlayerOutcome {
+                player: PlayerId(1),
+                result: PlayerResult::Unresolved,
+            },
+            PlayerOutcome {
+                player: PlayerId(2),
+                result: PlayerResult::Unresolved,
+            },
+        ],
+    };
+    reseal_replay_step(&mut replay);
+    replay.validate().unwrap();
+
+    assert!(matches!(
+        controller.execute_replay_from_checkpoint(initial, replay),
+        Err(ControllerError::ReplayExecution(
+            ReplayExecutionError::TransitionMismatch { step_index: 0 }
+        ))
+    ));
+}

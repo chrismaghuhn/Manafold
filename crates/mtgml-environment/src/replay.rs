@@ -15,6 +15,9 @@ pub struct ReplayExecutionTrace {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+/// Backend/checkpoint-verified replay traces produced from a trusted starting
+/// checkpoint. This report is a trusted controller result and is never exposed
+/// through a player endpoint.
 pub struct ReplayExecutionReport {
     pub traces: Vec<ReplayExecutionTrace>,
     pub final_checkpoint: EnvironmentCheckpointV3,

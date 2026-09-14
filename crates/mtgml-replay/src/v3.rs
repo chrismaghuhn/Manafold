@@ -172,6 +172,9 @@ pub struct AuthoritativeReplayV3 {
 }
 
 impl AuthoritativeReplayV3 {
+    /// Validates detached V3 replay structure and identity-chain shape only.
+    /// This does not execute responses, reconstruct an authoritative state, or
+    /// prove that a backend produces the recorded transition or projections.
     pub fn validate(&self) -> Result<(), ReplayValidationError> {
         if self.schema_version != REPLAY_FILE_SCHEMA_V3 {
             return Err(ReplayValidationError::SchemaVersion);
