@@ -20,6 +20,7 @@ use crate::errors::{ControllerError, EnvironmentCommitError};
 
 mod commit;
 #[cfg(test)]
+#[path = "tests/eventful.rs"]
 mod eventful;
 mod projection;
 mod replay;
