@@ -347,6 +347,32 @@ mod tests {
         (before, result, expected_events, expected_digest)
     }
 
+    #[derive(PartialEq)]
+    struct SecretDiagnosticValue(&'static str);
+
+    impl std::fmt::Debug for SecretDiagnosticValue {
+        fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            write!(formatter, "SECRET_DIAGNOSTIC_SENTINEL({})", self.0)
+        }
+    }
+
+    #[test]
+    fn fnd_031_default_difference_does_not_render_debug_values() {
+        let difference = crate::diagnostics::compare_value(
+            crate::diagnostics::ConformanceFailureClass::StateDigest,
+            "transition.secret",
+            &SecretDiagnosticValue("root-seed"),
+            &SecretDiagnosticValue("private-card"),
+        )
+        .expect("different values must produce a difference");
+        let rendered = difference.to_string();
+        assert!(rendered.contains("path=transition.secret"));
+        assert!(rendered.contains("mismatch_kind=value_changed"));
+        assert!(!rendered.contains("SECRET_DIAGNOSTIC_SENTINEL"));
+        assert!(!rendered.contains("root-seed"));
+        assert!(!rendered.contains("private-card"));
+    }
+
     #[test]
     fn current_decision_is_an_asserted_conformance_input() {
         let expected_decision = decision(1);
