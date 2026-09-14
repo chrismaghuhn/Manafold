@@ -1,11 +1,11 @@
 # Pre-M3 Remediation Batch F: Decision, Observation, and Identity Hardening
 
-**Status:** user-approved design course with required changes; independent design review pending  
-**Date:** 2026-09-14  
-**Base:** `b24bba153f2aa74bd59e8d6a872a0612ff7f76aa`  
-**Pre-design branch head:** `215e09164aaa9d6223bce9c7f3a3d75e88ac07fc`  
-**Branch:** `chris/pre-m3-remediation-batch-f-decision-observation-identity`  
-**Issue:** #164  
+**Status:** user-approved design course with required changes; independent design review pending
+**Date:** 2026-09-14
+**Base:** `b24bba153f2aa74bd59e8d6a872a0612ff7f76aa`
+**Pre-design branch head:** `215e09164aaa9d6223bce9c7f3a3d75e88ac07fc`
+**Branch:** `chris/pre-m3-remediation-batch-f-decision-observation-identity`
+**Issue:** #164
 **Scope:** FND-009, FND-013, FND-014, FND-015, FND-016, FND-027, and FND-028
 
 This document records the design boundary for Batch F. It is not an
