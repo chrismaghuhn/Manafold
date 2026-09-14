@@ -8,6 +8,11 @@
 
 **Tech Stack:** Rust workspace with Cargo and locked dependencies; Python 3.13 reference DTOs and pinned repository scripts; canonical JSON wire fixtures; GitHub Actions via one PR against master.
 
+**Status:** implementation plan ready for independent review; production implementation not yet authorized
+**Date:** 2026-09-14
+**Base:** b24bba153f2aa74bd59e8d6a872a0612ff7f76aa
+**Branch:** chris/pre-m3-remediation-batch-f-decision-observation-identity
+
 ---
 
 ## Scope and invariants
