@@ -149,6 +149,12 @@ mod tests {
     }
 
     #[test]
+    fn fnd_029_invalid_raw_lane_does_not_panic() {
+        let result = std::panic::catch_unwind(|| raw_u64_at(&[0u8; 32], 4));
+        assert!(result.is_ok(), "invalid raw lane must fail closed");
+    }
+
+    #[test]
     fn cursor_boundary_kat() {
         let seed = RootSeed256::from_lower_hex(ALL_ZERO_SEED).unwrap();
         let key = global_key();
