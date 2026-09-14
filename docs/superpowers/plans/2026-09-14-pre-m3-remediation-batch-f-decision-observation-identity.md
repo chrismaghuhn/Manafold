@@ -93,7 +93,8 @@ production endpoint method is modified.
 
 - [ ] **Step 1: Wire the test-only Batch-F files**
 
-Append these includes after the existing Batch-E includes:
+Append these test-only includes at the end of the indicated test files. The
+observation test file has no Batch-E include:
 
 ~~~rust
 // crates/mtgml-rules/src/tests.rs
@@ -408,7 +409,7 @@ current behavior. Fix test setup errors before committing.
 ~~~powershell
 git diff --check
 git status --short
-git add crates/mtgml-rules/src/tests.rs crates/mtgml-rules/src/tests/batch_f.rs crates/mtgml-observation/src/tests.rs crates/mtgml-observation/src/tests/batch_f.rs crates/mtgml-environment/src/tests.rs crates/mtgml-environment/src/tests/batch_f.rs crates/mtgml-state/src/tests.rs crates/mtgml-state/src/tests/batch_f.rs crates/mtgml-decision/src/lib.rs
+git add crates/mtgml-rules/src/tests.rs crates/mtgml-rules/src/tests/batch_f.rs crates/mtgml-observation/src/tests.rs crates/mtgml-observation/src/tests/batch_f.rs crates/mtgml-environment/src/tests.rs crates/mtgml-environment/src/tests/batch_f.rs crates/mtgml-state/src/tests.rs crates/mtgml-state/src/tests/batch_f.rs crates/mtgml-decision/src/lib.rs crates/mtgml-decision/src/tests/batch_f.rs
 git diff --cached --check
 git commit -m "tests: characterize Batch-F decision observation identity boundaries"
 ~~~
@@ -607,7 +608,7 @@ Run and commit:
 cargo test -p mtgml-decision --locked
 C:\Python313\python.exe -m pytest python/tests/test_batch_f.py -q
 git diff --check
-git add crates/mtgml-decision/src/lib.rs docs/DECISION_PROTOCOL.md python/src/mtgml/decision.py python/tests/test_batch_f.py
+git add crates/mtgml-decision/src/lib.rs crates/mtgml-decision/src/tests/batch_f.rs docs/DECISION_PROTOCOL.md python/src/mtgml/decision.py python/tests/test_batch_f.py
 git commit -m "fix: make candidate capacity fail closed"
 ~~~
 
@@ -917,7 +918,7 @@ git commit -m "docs: record Batch-F binding and PlayerId policy boundaries"
 Expected: documentation links/register pass, no PlayerId parser or boundary
 behavior changes, and FND-028 remains BLOCKED_CONTRACT_AMBIGUITY.
 
-## Task 7: Build the bounded F4 integration evidence document
+## Task 7: Build the bounded F4 integration evidence document (deferred)
 
 **Files:**
 
@@ -925,10 +926,17 @@ behavior changes, and FND-028 remains BLOCKED_CONTRACT_AMBIGUITY.
 - Modify: docs/superpowers/specs/2026-09-14-pre-m3-remediation-batch-f-decision-observation-identity-design.md
 - Modify: docs/normative-document-register.v1.json
 
+Execute this task only after Task 9 has completed the code review and its
+pre-evidence final archive gate. The matrix and disposition text may be
+prepared earlier as uncommitted notes, but the evidence document and design
+appendix must not be created or committed before the final reviewed source
+head is known.
+
 - [ ] **Step 1: Map every required integration row to actual evidence**
 
-The evidence document must include the exact test/fixture names and actual
-result for these rows:
+Prepare the evidence content with the exact test/fixture names and actual
+result for these rows, but defer writing the file until the ordering gate above
+is complete:
 
 ~~~text
 1  valid decision request projection
@@ -976,17 +984,26 @@ Batch E. Register the evidence document after it exists.
 
 - [ ] **Step 3: Update the approved design's evidence appendix**
 
-Append the exact RED commit SHA, fix commit SHAs, focused test names, and final
-dispositions to the design document. Change only evidence/status metadata; do
-not rewrite its approved architecture.
+After Task 9's pre-evidence archive gate, append the exact RED commit SHA, fix
+commit SHAs, focused test names, and final dispositions to the design
+document. Change only evidence/status metadata; do not rewrite its approved
+architecture.
 
-- [ ] **Step 4: Commit the evidence documents**
+- [ ] **Step 4: Commit the deferred evidence documents**
 
 ~~~powershell
 C:\Python313\python.exe scripts/check_documentation.py
 git diff --check
 git add docs/superpowers/specs/2026-09-14-pre-m3-remediation-batch-f-dispositions-and-evidence.md docs/superpowers/specs/2026-09-14-pre-m3-remediation-batch-f-decision-observation-identity-design.md docs/normative-document-register.v1.json
 git commit -m "docs: record Batch-F dispositions and evidence"
+~~~
+
+Immediately after this evidence commit, run the final archive gate again. The
+evidence document is source, so the earlier pre-evidence archive result is not
+sufficient:
+
+~~~powershell
+just archive-check
 ~~~
 
 ## Task 8: Run the complete local verification matrix
@@ -1121,6 +1138,23 @@ just archive-check
 ~~~
 
 This final archive result supersedes any earlier Task 8 archive-check result.
+
+Now execute the deferred Task 7 steps. After the evidence commit and its
+second archive-check, rerun the M2 profiles against the final evidence head so
+their source identity cannot become stale after a review fix or documentation
+commit:
+
+~~~powershell
+$finalBatchFHead = git rev-parse HEAD
+C:\Python313\python.exe scripts/run_m2_d_gates.py --expect-commit $finalBatchFHead
+C:\Python313\python.exe scripts/run_m2_e_gates.py --expect-commit $finalBatchFHead
+C:\Python313\python.exe scripts/run_m2_g_gates.py --expect-commit $finalBatchFHead
+C:\Python313\python.exe scripts/run_m2_h_gates.py --expect-commit $finalBatchFHead
+C:\Python313\python.exe scripts/run_m2_final_closure.py --expect-commit $finalBatchFHead
+~~~
+
+Only after these exact-head reruns may Task 10 final checks and PR preparation
+begin.
 
 ## Task 10: Push one branch, open one PR, and wait for hosted CI
 
