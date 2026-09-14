@@ -512,10 +512,22 @@ struct CandidateOrderingKey {
 
 pub struct CandidateOrderingV1;
 
+const CANDIDATE_ID_COUNT_CAPACITY: u64 = (u32::MAX as u64) + 1;
+
+fn validate_candidate_capacity(candidate_count: usize) -> Result<(), DecisionValidationError> {
+    let count = u64::try_from(candidate_count)
+        .map_err(|_| DecisionValidationError::CandidateCapacityExceeded)?;
+    if count > CANDIDATE_ID_COUNT_CAPACITY {
+        return Err(DecisionValidationError::CandidateCapacityExceeded);
+    }
+    Ok(())
+}
+
 impl CandidateOrderingV1 {
     pub fn assign_dense(
         candidates: Vec<(CandidateIntent, EngineCandidateBinding)>,
     ) -> Result<Vec<AuthoritativeCandidateV2>, DecisionValidationError> {
+        validate_candidate_capacity(candidates.len())?;
         let mut keyed = candidates
             .into_iter()
             .map(|(visible_intent, trusted_binding)| {
@@ -527,26 +539,30 @@ impl CandidateOrderingV1 {
         if keyed.windows(2).any(|window| window[0].0 == window[1].0) {
             return Err(DecisionValidationError::DuplicateOrderingKey);
         }
-        Ok(keyed
+        let assigned = keyed
             .into_iter()
             .enumerate()
-            .map(
-                |(index, (_, visible_intent, trusted_binding))| AuthoritativeCandidateV2 {
-                    candidate_id: CandidateIdV1(
-                        u32::try_from(index).expect("candidate ordering is bounded by u32"),
-                    ),
+            .map(|(index, (_, visible_intent, trusted_binding))| {
+                let candidate_id = u32::try_from(index)
+                    .map_err(|_| DecisionValidationError::CandidateCapacityExceeded)?;
+                Ok(AuthoritativeCandidateV2 {
+                    candidate_id: CandidateIdV1(candidate_id),
                     visible_intent,
                     trusted_binding,
-                },
-            )
-            .collect())
+                })
+            })
+            .collect::<Result<Vec<_>, DecisionValidationError>>()?;
+        Ok(assigned)
     }
 
     pub fn validate_public(
         candidates: &[VisibleCandidateV2],
     ) -> Result<(), DecisionValidationError> {
+        validate_candidate_capacity(candidates.len())?;
         for (index, candidate) in candidates.iter().enumerate() {
-            if candidate.candidate_id.0 != index as u32 {
+            let expected = u32::try_from(index)
+                .map_err(|_| DecisionValidationError::CandidateCapacityExceeded)?;
+            if candidate.candidate_id.0 != expected {
                 return Err(DecisionValidationError::CandidateIdsNotDense);
             }
             if let Some(previous) = candidates.get(index.wrapping_sub(1)) {
@@ -708,6 +724,8 @@ pub enum DecisionValidationError {
     StateRevisionMismatch,
     #[error("candidate value is outside the supported range")]
     ValueOutOfRange,
+    #[error("candidate count exceeds the CandidateIdV1 capacity")]
+    CandidateCapacityExceeded,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
@@ -1097,6 +1115,47 @@ mod tests {
             CandidateOrderingV1::assign_dense(pairs),
             Err(DecisionValidationError::DuplicateOrderingKey)
         ));
+    }
+
+    #[test]
+    fn candidate_capacity_uses_the_full_u32_id_domain_without_allocation() {
+        let capacity = u64::from(u32::MAX) + 1;
+        let Ok(last_count) = usize::try_from(capacity) else {
+            return;
+        };
+        assert_eq!(validate_candidate_capacity(last_count), Ok(()));
+        let first_unrepresentable = last_count.checked_add(1).unwrap();
+        assert_eq!(
+            validate_candidate_capacity(first_unrepresentable),
+            Err(DecisionValidationError::CandidateCapacityExceeded)
+        );
+    }
+
+    #[test]
+    fn dense_assignment_and_public_validation_remain_exact_for_small_inputs() {
+        let assigned = CandidateOrderingV1::assign_dense(vec![
+            (CandidateIntent::Confirm, EngineCandidateBinding::Confirm),
+            (
+                CandidateIntent::PassPriority,
+                EngineCandidateBinding::PassPriority,
+            ),
+        ])
+        .unwrap();
+        assert_eq!(
+            assigned
+                .iter()
+                .map(|candidate| candidate.candidate_id)
+                .collect::<Vec<_>>(),
+            vec![CandidateIdV1(0), CandidateIdV1(1)]
+        );
+        let visible = assigned
+            .iter()
+            .map(|candidate| VisibleCandidateV2 {
+                candidate_id: candidate.candidate_id,
+                intent: candidate.visible_intent.clone(),
+            })
+            .collect::<Vec<_>>();
+        assert!(CandidateOrderingV1::validate_public(&visible).is_ok());
     }
 }
 
