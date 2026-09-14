@@ -3,7 +3,7 @@
 **Status:** implementation evidence in progress; final exact-head review pending
 **Date:** 2026-09-14
 **Base:** `9996cfd0fcd4ef67d98cb0422611cebabd20e46b`
-**Code/evidence head:** `d7eef2e`
+**Code/evidence head before final evidence metadata:** `a29075f3f105cabddc472d53754d447ef9af873b`
 **Branch:** `chris/pre-m3-remediation-batch-e-cross-layer-closure`
 **PR:** `NOT_RUN`
 
@@ -19,7 +19,7 @@ Issue #162. No M3 work or real Magic semantics is included.
 ```text
 TASK = PRE_M3_REMEDIATION_BATCH_E
 BASE = 9996cfd0fcd4ef67d98cb0422611cebabd20e46b
-HEAD = d7eef2e
+HEAD = a29075f3f105cabddc472d53754d447ef9af873b
 BRANCH = chris/pre-m3-remediation-batch-e-cross-layer-closure
 PR = NOT_RUN
 
@@ -40,6 +40,7 @@ E3_MULTI_PERSPECTIVE_CLOSURE = PARTIAL
 FND_026B = BLOCKED_CONTRACT_AMBIGUITY
 FND_026C = DEFERRED_P2
 FND_026D = RESOLVED_ON_BASE
+E4_CROSS_LAYER_INTEGRATION = BLOCKED: E3 complete non-actor PlayerStepV2 product semantics remain contract-blocked
 
 FND_007_CONTRACT = lower lifecycle seam is an intentional staging primitive; complete EngineState validation remains at the atomic transition/checkpoint owner
 FND_008_MUTATION_FAMILY_MATRIX = reachable life/object/tap/decision/RNG/lifecycle mutations are event/cursor owned; allocator/revision progression is explicit; has_lost/turn/active/priority/player-universe mutation is rejected; effect/trigger/stack/format semantic mutation is not reachable in the current M2 foundation
@@ -68,19 +69,19 @@ SPLIT_REQUIRED = NONE
 DEFERRED_P2 = FND-026C
 
 RED_TESTS = PASS: fnd_020_current_producer_rejects_a_false_observation_schema_identity, fnd_022b_checkpoint_requires_the_exact_authoritative_player_universe, fnd_025_checkpoint_rejects_noncanonical_status_order, fnd_025_manifest_rejects_noncanonical_deck_and_status_order, fnd_022e_replay_applies_recorded_external_counter_progression, eventful_replay_reprojection_requires_nonempty_base_batches
-FOCUSED_TESTS = PASS: affected focused tests run through current head; final package counts are recorded below after the final verification pass
-WORKSPACE_TESTS = NOT_RUN
-FMT = NOT_RUN
-CHECK = NOT_RUN
-CLIPPY = NOT_RUN
-PYTHON_FULL = NOT_RUN
-SCHEMA_GATES = NOT_RUN
-WIRE_GATES = NOT_RUN
-MAINTAINER_GATES = NOT_RUN
-LOCAL_CHECK_FAST = NOT_RUN
-LOCAL_CHECK = NOT_RUN
-DIRECT_FAST_PROFILE = NOT_RUN
-DIRECT_INTEGRATION_PROFILE = NOT_RUN
+FOCUSED_TESTS = PASS: mtgml-state 93, mtgml-rules 35, mtgml-replay 14, mtgml-environment 58, mtgml-observation 10, mtgml-conformance 125
+WORKSPACE_TESTS = PASS: cargo test --workspace --all-features --locked, 432 tests, 0 failures
+FMT = PASS: cargo fmt --all -- --check
+CHECK = PASS: cargo check --workspace --all-targets --all-features --locked
+CLIPPY = PASS: cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
+PYTHON_FULL = PASS: .venv/Scripts/python.exe scripts/run_python_tests.py --profile full, 387 tests, 3 expected M2.H skips
+SCHEMA_GATES = PASS: 38 wire fixtures and 9 maintainer artifacts validated against schemas
+WIRE_GATES = PASS: 38 golden fixtures and 43 negative fixtures verified; direct Python wire profile passed
+MAINTAINER_GATES = PASS: direct fast/integration profiles; generated contracts, repository, Rust structure, documentation, golden path, maintainer artifacts, and toolchain checks passed
+LOCAL_CHECK_FAST = BLOCKED: just cannot start WSL /bin/bash on this Windows host
+LOCAL_CHECK = BLOCKED: just cannot start WSL /bin/bash on this Windows host
+DIRECT_FAST_PROFILE = PASS: .venv/Scripts/python.exe scripts/run_checks.py fast
+DIRECT_INTEGRATION_PROFILE = PASS: .venv/Scripts/python.exe scripts/run_checks.py integration
 HOSTED_CI = NOT_RUN
 
 PUBLIC_API_CHANGE = NO
@@ -92,7 +93,7 @@ HISTORICAL_REPLAY_CHANGE = NO
 
 INFORMATION_SAFETY = PASS for the eventful projection test's observed products; no new player surface exposes trusted IDs, RNG provenance, checkpoint identity, or hidden order
 
-WORKTREE_CLEAN = YES at d7eef2e
+WORKTREE_CLEAN = YES at a29075f
 REMOTE_HEAD_EQUALS_LOCAL = NOT_RUN
 
 NEW_MAGIC_SEMANTICS = NO
