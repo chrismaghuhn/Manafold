@@ -351,4 +351,5 @@ include!("tests/validation.rs");
 include!("tests/continuation.rs");
 include!("tests/knowledge_identity.rs");
 include!("tests/lifecycle.rs");
+include!("tests/batch_d.rs");
 include!("tests/zones_allocators.rs");
