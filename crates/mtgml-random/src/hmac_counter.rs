@@ -37,19 +37,20 @@ pub fn raw_block(k_stream: &[u8; 32], block_index: u64) -> [u8; 32] {
     out
 }
 
-pub fn raw_u64_at(block: &[u8; 32], lane: usize) -> u64 {
-    debug_assert!(lane < 4);
-    let offset = lane * 8;
-    u64::from_be_bytes([
-        block[offset],
-        block[offset + 1],
-        block[offset + 2],
-        block[offset + 3],
-        block[offset + 4],
-        block[offset + 5],
-        block[offset + 6],
-        block[offset + 7],
-    ])
+fn raw_u64_at(block: &[u8; 32], lane: usize) -> Result<u64, RandomValidationError> {
+    let offset = lane
+        .checked_mul(8)
+        .ok_or(RandomValidationError::InvalidRawLane)?;
+    let end = offset
+        .checked_add(8)
+        .ok_or(RandomValidationError::InvalidRawLane)?;
+    let bytes = block
+        .get(offset..end)
+        .ok_or(RandomValidationError::InvalidRawLane)?;
+    let word: [u8; 8] = bytes
+        .try_into()
+        .map_err(|_| RandomValidationError::InvalidRawLane)?;
+    Ok(u64::from_be_bytes(word))
 }
 
 pub fn next_raw_u64(
@@ -65,7 +66,7 @@ pub fn next_raw_u64(
     let block_index = i / 4;
     let lane = (i % 4) as usize;
     let block = raw_block(&k_stream, block_index);
-    let value = raw_u64_at(&block, lane);
+    let value = raw_u64_at(&block, lane)?;
     Ok((
         value,
         RandomStreamCursorV1 {
@@ -138,20 +139,21 @@ mod tests {
         let k_stream = derive_stream_key(&seed, &key);
         let block0 = raw_block(&k_stream, 0);
         let block1 = raw_block(&k_stream, 1);
-        assert_eq!(raw_u64_at(&block0, 0), 0x6818e6bd053d9b77);
-        assert_eq!(raw_u64_at(&block0, 1), 0x0e26253e8d724b04);
-        assert_eq!(raw_u64_at(&block0, 2), 0x03c524aeb6b3cff5);
-        assert_eq!(raw_u64_at(&block0, 3), 0x2508069342e336e4);
-        assert_eq!(raw_u64_at(&block1, 0), 0xac6a5d827f0dcbbf);
-        assert_eq!(raw_u64_at(&block1, 1), 0x060d1adce197e555);
-        assert_eq!(raw_u64_at(&block1, 2), 0x69da50c9030d2a2b);
-        assert_eq!(raw_u64_at(&block1, 3), 0x2a7f637923566d45);
+        assert_eq!(raw_u64_at(&block0, 0).unwrap(), 0x6818e6bd053d9b77);
+        assert_eq!(raw_u64_at(&block0, 1).unwrap(), 0x0e26253e8d724b04);
+        assert_eq!(raw_u64_at(&block0, 2).unwrap(), 0x03c524aeb6b3cff5);
+        assert_eq!(raw_u64_at(&block0, 3).unwrap(), 0x2508069342e336e4);
+        assert_eq!(raw_u64_at(&block1, 0).unwrap(), 0xac6a5d827f0dcbbf);
+        assert_eq!(raw_u64_at(&block1, 1).unwrap(), 0x060d1adce197e555);
+        assert_eq!(raw_u64_at(&block1, 2).unwrap(), 0x69da50c9030d2a2b);
+        assert_eq!(raw_u64_at(&block1, 3).unwrap(), 0x2a7f637923566d45);
     }
 
     #[test]
     fn fnd_029_invalid_raw_lane_does_not_panic() {
         let result = std::panic::catch_unwind(|| raw_u64_at(&[0u8; 32], 4));
         assert!(result.is_ok(), "invalid raw lane must fail closed");
+        assert_eq!(result.unwrap(), Err(RandomValidationError::InvalidRawLane));
     }
 
     #[test]
