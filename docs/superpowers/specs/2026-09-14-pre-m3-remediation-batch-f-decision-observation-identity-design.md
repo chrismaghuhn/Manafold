@@ -1,11 +1,12 @@
 # Pre-M3 Remediation Batch F: Decision, Observation, and Identity Hardening
 
-**Status:** user-approved design course with review corrections applied; independent re-review pending
+**Status:** reviewed and approved for implementation planning; production implementation not yet authorized
 **Date:** 2026-09-14
 **Base:** `b24bba153f2aa74bd59e8d6a872a0612ff7f76aa`
 **Pre-design branch head:** `215e09164aaa9d6223bce9c7f3a3d75e88ac07fc`
 **Branch:** `chris/pre-m3-remediation-batch-f-decision-observation-identity`
 **Issue:** #164
+**Independent design review:** `APPROVE` after the required corrections; read-only, no file changes
 **Scope:** FND-009, FND-013, FND-014, FND-015, FND-016, FND-027, and FND-028
 
 This document records the design boundary for Batch F. It is not an
@@ -390,6 +391,7 @@ Independent review must verify:
 
 ```text
 BATCH_F_DESIGN_COURSE = APPROVE_WITH_CHANGES
+BATCH_F_DESIGN_REVIEW = APPROVE
 FND_009 = CONFIRMED
 FND_013 = RESOLVED_ON_BASE
 FND_014 = CONFIRMED
