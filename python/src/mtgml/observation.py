@@ -886,12 +886,11 @@ class PlayerStepV2:
                 "invalid_cardinality",
                 "invalid_number",
                 "invalid_order",
-            }:
-                if self.status.kind != "running" or self.next_decision is None:
-                    raise WireError(
-                        "semantic.player_step",
-                        "actor-bound rejection must carry the current decision",
-                    )
+            } and (self.status.kind != "running" or self.next_decision is None):
+                raise WireError(
+                    "semantic.player_step",
+                    "actor-bound rejection must carry the current decision",
+                )
 
     def to_wire(self) -> dict[str, object]:
         self.validate()
