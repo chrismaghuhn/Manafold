@@ -349,6 +349,21 @@ pub struct EnvironmentLimitCounters {
     pub wall_clock_elapsed_millis: u64,
 }
 
+impl EnvironmentLimitCounters {
+    pub fn validate(&self) -> Result<(), EnvironmentLimitCounterValidationError> {
+        if self.accepted_transitions > self.decisions_submitted {
+            return Err(EnvironmentLimitCounterValidationError::AcceptedTransitionsExceedDecisions);
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
+pub enum EnvironmentLimitCounterValidationError {
+    #[error("accepted transitions exceed submitted decisions")]
+    AcceptedTransitionsExceedDecisions,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct CheckpointCodecIdentity {
@@ -421,6 +436,20 @@ mod tests {
     fn episode_reasons_are_closed_during_deserialization() {
         let value = r#"{"kind":"terminal","reason":"banana","players":[]}"#;
         assert!(serde_json::from_str::<EpisodeStatus>(value).is_err());
+    }
+
+    #[test]
+    fn environment_limit_counters_reject_impossible_acceptance_count() {
+        let invalid = EnvironmentLimitCounters {
+            accepted_transitions: 1,
+            decisions_submitted: 0,
+            ..EnvironmentLimitCounters::default()
+        };
+        assert_eq!(
+            invalid.validate(),
+            Err(EnvironmentLimitCounterValidationError::AcceptedTransitionsExceedDecisions)
+        );
+        assert!(EnvironmentLimitCounters::default().validate().is_ok());
     }
 
     #[test]

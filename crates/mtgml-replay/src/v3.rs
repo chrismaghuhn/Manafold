@@ -37,6 +37,9 @@ impl InitialEnvironmentIdentityV3 {
         {
             return Err(ReplayValidationError::EmptyIdentity);
         }
+        self.environment_limit_counters
+            .validate()
+            .map_err(|_| ReplayValidationError::CounterProgression)?;
         if self.checkpoint_digest != calculate_checkpoint_digest(self)? {
             return Err(ReplayValidationError::CheckpointIdentity);
         }
@@ -181,6 +184,9 @@ impl AuthoritativeReplayV3 {
                 // backwards.
                 let after = &step.environment_limit_counters_after;
                 let before_counters = &previous.environment_limit_counters;
+                after
+                    .validate()
+                    .map_err(|_| ReplayValidationError::CounterProgression)?;
                 let next_decisions = before_counters
                     .decisions_submitted
                     .checked_add(1)
@@ -191,7 +197,6 @@ impl AuthoritativeReplayV3 {
                     .ok_or(ReplayValidationError::CounterProgression)?;
                 if after.decisions_submitted != next_decisions
                     || after.accepted_transitions != next_accepted
-                    || after.accepted_transitions > after.decisions_submitted
                     || after.rule_events_emitted < before_counters.rule_events_emitted
                     || after.resource_units_consumed < before_counters.resource_units_consumed
                     || after.wall_clock_elapsed_millis < before_counters.wall_clock_elapsed_millis
