@@ -1,6 +1,6 @@
 # Pre-M3 Remediation Batch F: Decision, Observation, and Identity Hardening
 
-**Status:** user-approved design course with required changes; independent design review pending
+**Status:** user-approved design course with review corrections applied; independent re-review pending
 **Date:** 2026-09-14
 **Base:** `b24bba153f2aa74bd59e8d6a872a0612ff7f76aa`
 **Pre-design branch head:** `215e09164aaa9d6223bce9c7f3a3d75e88ac07fc`
@@ -152,6 +152,12 @@ candidate_count <= 2^32       -> capacity valid
 candidate_count >  2^32       -> CandidateCapacityExceeded
 ```
 
+The comparison uses widened arithmetic: the capacity constant is represented
+as `u64::from(u32::MAX) + 1`, and the `usize` input is converted with
+`u64::try_from` before comparison. This avoids a `usize` overflow on the
+boundary and keeps the rule independent of the host word size. The same typed
+error is returned by both call sites.
+
 The helper runs before sorting/enumeration in `assign_dense()` and before the
 ordinal loop in `validate_public()`. The ordinal conversion itself also uses
 checked `u32::try_from(index)` and maps failure to the same typed error. No
@@ -183,9 +189,11 @@ projection remain positive controls.
 ### FND-016A: local actor-bound rejection matrix
 
 `PlayerStepV2::validate()` and the matching Python validator will enforce this
-local matrix. The validator can enforce presence/absence and cross-field
-relationships; it cannot prove that a returned `next_decision` equals the
-pre-call request without environment evidence.
+local matrix. The `Some(current actor request)` entries describe the product
+that the live endpoint must return; the local DTO validator can enforce only
+that a decision is present, actor-bound, and revision-bound. It cannot prove
+that the decision equals the exact pre-call request without environment
+evidence.
 
 | Submission | Status | `next_decision` | `observed_events` |
 | --- | --- | --- | --- |
@@ -205,13 +213,20 @@ The existing perspective/revision checks continue to validate the decision
 that is present. Existing endpoint code already constructs the corresponding
 products for live rejection paths.
 
+`EpisodeClosed` is a boundary/fixture case in the current synthetic runtime,
+not a live gameplay rejection matrix row: the frozen synthetic completion path
+remains `Running`, and the closed-status test uses a validated truncated or
+terminal checkpoint. The wire and DTO contract still validates the row.
+
 ### FND-016B: defer unchanged-product parity to EVD-005
 
 FND-016 remains `SPLIT_REQUIRED`. FND-016A is the local DTO closure owned by
-this batch. FND-016B is `DEFER_TO_EVD_005`: complete before/after environment
-fingerprint parity and independent expected returned-product evidence are not
-absorbed into Batch F. This batch will not invent a neutral non-actor
-`PlayerStepV2`, change endpoint delivery, or claim EVD-005 globally closed.
+this batch. FND-016B is `DEFER_TO_EVD_005`: the environment/conformance
+evidence owner must prove complete before/after fingerprint parity and an
+independent expected returned product for each reachable submission. Those
+proofs are not absorbed into Batch F. This batch will not invent a neutral
+non-actor `PlayerStepV2`, change endpoint delivery, or claim EVD-005 globally
+closed.
 
 ## F3: perspective and PlayerId identity closure
 
@@ -265,6 +280,12 @@ policy matrix for the next ADR decision:
 | Replay V3 step actor | explicitly rejects zero | preserve current signal; rationale unresolved |
 | environment `bind_player(0)` | accepts a declared zero player | unresolved |
 | wire/schema unsigned player fields | schema permits zero | preserve historical/executable shape |
+
+The ADR candidate is owned by the architecture maintainers, with review from
+the model/state, replay, observation, and environment maintainers. It must be
+stored as an unnumbered candidate under `docs/superpowers/specs/`; a final ADR
+number is allocated only after acceptance. No proposed policy becomes
+executable through this Batch F design.
 
 The ADR candidate will compare the three coherent policies (zero valid
 everywhere, zero forbidden at authoritative/player-identity boundaries, or a
@@ -334,12 +355,20 @@ Wire/fixtures:
 
 Documentation:
   this design
-  focused PlayerId-zero ADR candidate without a final ADR number
+  docs/superpowers/specs/2026-09-14-player-id-zero-policy-adr-candidate.md
   final dispositions/evidence document after implementation
 ```
 
 No generated contract vocabulary changes, schema changes, historical fixture
 rewrites, replay-version changes, or public endpoint additions are planned.
+The temporary issue-tracker setup file created during discovery is not part of
+Batch F and has been removed from the branch.
+
+Adding `CandidateCapacityExceeded` is an internal/experimental Rust error-enum
+extension permitted by the compatibility policy. It changes no frozen public,
+wire, schema, digest, RNG, or historical replay meaning; exhaustive internal
+matches must be updated and the change must remain classified as an internal
+typed-error change.
 
 ## Review questions
 
