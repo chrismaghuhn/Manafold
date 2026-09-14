@@ -1,14 +1,13 @@
 from __future__ import annotations
 
+import sys
 import tempfile
 import unittest
 from pathlib import Path
 
-import sys
-
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
-import generate_contracts  # noqa: E402
+import generate_contracts
 
 
 class GeneratedArtifactByteTests(unittest.TestCase):
