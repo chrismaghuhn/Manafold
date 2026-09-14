@@ -4,7 +4,7 @@
 
 > For agentic workers: REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox syntax for tracking.
 
-**Goal:** Close the confirmed Batch F decision, observed-event, and actor-bound PlayerStep gaps while preserving the existing Rules-owned identity boundary and leaving FND-028 fail-closed pending an accepted ADR.
+**Goal:** Close the confirmed Batch F decision, observed-event, and actor-bound PlayerStep gaps while preserving the existing Rules-owned identity boundary and leaving FND-028 contract-blocked with executable behavior unchanged pending an accepted ADR.
 
 **Architecture:** Keep mtgml-state::validate_engine_state() and mtgml-rules::validate_transition_contract() as the authoritative cross-component boundaries. Add no-op checks to the Rules semantic cursor, one widened shared candidate-capacity helper to both Rust dense-ID paths, semantic V2 observation and PlayerStep checks in Rust and Python, and evidence-only regressions for FND-013, FND-027, and FND-028. Do not add a resolver call to project_player_request() or a second final identity comparison to the lifecycle projector.
 
@@ -265,8 +265,11 @@ fn fnd_014_dense_candidate_paths_have_checked_u32_boundaries() {
 }
 ~~~
 
-This is a bounded source-contract RED, not an artificial huge allocation. It
-fails on the base for the exact expect() and index as u32 expressions.
+This is SOURCE_RED / STATIC_CHARACTERIZATION, not an executable request-level
+panic reproducer and not an artificial huge allocation. It fails on the base
+for the exact expect() and index as u32 expressions. The executable GREEN
+evidence is the widened capacity helper at 2^32 and 2^32 + 1 without a large
+candidate allocation.
 
 - [ ] **Step 4: Write the V2 observed-event RED and controls**
 
@@ -379,13 +382,24 @@ Err(EngineStateViolation::PendingDecisionMismatch) while the matching control
 returns Ok(()). The direct authoritative request validator and projection
 remain structural positive controls.
 
-In crates/mtgml-rules/src/tests/batch_f.rs, mutate only
-next_opaque_object_id from its valid value to the next valid allocator value
-in an otherwise valid after-state. This leaves the after-state structurally
-valid, so the lifecycle cursor reaches its final comparison. Assert that
-validate_transition_contract() returns
-Err(TransitionViolation::OccurrencePairing). This is evidence for the existing
-Rules owner and does not call the projector.
+In crates/mtgml-rules/src/tests/batch_f.rs, use the canonical FND-027 witness:
+mutate only next_opaque_object_id from its valid value to the next valid
+allocator value in an otherwise valid after-state. The test must first assert
+that validate_engine_state(&tampered.next_state) is Ok, proving that the
+after-state is structurally valid. It must then assert exactly:
+
+~~~rust
+assert_eq!(
+    validate_transition_contract(&before, &tampered),
+    Err(TransitionViolation::OccurrencePairing)
+);
+~~~
+
+This proves the Rules lifecycle cursor, rather than the state validator,
+rejects the event-trace/final-identity mismatch. Additional missing/extra
+mapping, retired-ID, ability-map, and perspective-set cases may fail earlier at
+the state validator and count only as supplementary closed controls. The test
+does not call the projector.
 
 In crates/mtgml-environment/src/tests/batch_f.rs, characterize a distinct
 [PlayerId(0), PlayerId(1)] state, environment binding of player zero, a V3
@@ -582,8 +596,9 @@ fn dense_assignment_and_public_validation_remain_exact_for_small_inputs() {
 ~~~
 
 The boundary test skips only on a host whose usize cannot represent 2^32; it
-never allocates a large vector. The source RED from Task 1 is the pre-fix
-evidence for the old panic/unchecked paths.
+never allocates a large vector. The SOURCE_RED / STATIC_CHARACTERIZATION from
+Task 1 is the pre-fix evidence for the old panic/unchecked paths; it is not
+reported as a runtime panic reproduction.
 
 - [ ] **Step 4: Keep Python's logical limit aligned**
 
@@ -608,7 +623,7 @@ Run and commit:
 
 ~~~powershell
 cargo test -p mtgml-decision --locked
-C:\Python313\python.exe -m pytest python/tests/test_batch_f.py -q
+.venv\Scripts\python.exe -m pytest python/tests/test_batch_f.py -q
 git diff --check
 git add crates/mtgml-decision/src/lib.rs crates/mtgml-decision/src/tests/batch_f.rs docs/DECISION_PROTOCOL.md python/src/mtgml/decision.py python/tests/test_batch_f.py
 git commit -m "fix: make candidate capacity fail closed"
@@ -676,7 +691,7 @@ Run:
 ~~~powershell
 cargo test -p mtgml-observation --locked
 cargo test -p mtgml-wire --locked every_shared_negative_fixture_is_rejected_with_the_expected_code
-C:\Python313\python.exe -m pytest python/tests/test_batch_f.py python/tests/test_wire_contracts.py -q
+.venv\Scripts\python.exe -m pytest python/tests/test_batch_f.py python/tests/test_wire_contracts.py -q
 git diff --check
 git add crates/mtgml-observation/src/error.rs crates/mtgml-observation/src/observed_event.rs crates/mtgml-observation/src/tests/batch_f.rs python/src/mtgml/observation.py python/tests/test_batch_f.py docs/INFORMATION_MODEL.md wire/negative/observed-event-v2-object-moved-no-identity.json wire/negative/manifest.json
 git commit -m "fix: require visible identity in V2 object moves"
@@ -809,7 +824,7 @@ Run:
 cargo test -p mtgml-observation --locked fnd_016a
 cargo test -p mtgml-conformance --locked paired
 cargo test -p mtgml-wire --locked every_shared_negative_fixture_is_rejected_with_the_expected_code
-C:\Python313\python.exe -m pytest python/tests/test_batch_f.py python/tests/test_player_api.py -q
+.venv\Scripts\python.exe -m pytest python/tests/test_batch_f.py python/tests/test_player_api.py -q
 git diff --check
 git add crates/mtgml-observation/src/player_step.rs crates/mtgml-observation/src/tests/batch_f.rs python/src/mtgml/observation.py python/tests/test_batch_f.py crates/mtgml-conformance/src/isolation/paired.rs crates/mtgml-conformance/src/isolation/mutants.rs docs/ML_ENVIRONMENT.md wire/negative/player-step-v2-rejection-missing-next-decision.json wire/negative/player-step-v2-unavailable-with-next-decision.json wire/negative/manifest.json
 git commit -m "fix: close actor-bound PlayerStep rejection fields"
@@ -911,7 +926,7 @@ docs/normative-document-register.v1.json only after the paths exist.
 - [ ] **Step 5: Verify documentation and commit the decision records**
 
 ~~~powershell
-C:\Python313\python.exe scripts/check_documentation.py
+.venv\Scripts\python.exe scripts/check_documentation.py
 git diff --check
 git add docs/DECISION_PROTOCOL.md docs/contracts/ENGINE_STATE_CLOSURE.md crates/mtgml-state/src/tests/batch_f.rs crates/mtgml-rules/src/tests/batch_f.rs crates/mtgml-environment/src/tests/batch_f.rs docs/superpowers/specs/2026-09-14-player-id-zero-policy-adr-candidate.md docs/normative-document-register.v1.json
 git commit -m "docs: record Batch-F binding and PlayerId policy boundaries"
@@ -972,6 +987,7 @@ Use this exact disposition block:
 FND_009 = CONFIRMED
 FND_013 = RESOLVED_ON_BASE
 FND_014 = CONFIRMED
+FND_014_RED = SOURCE_RED / STATIC_CHARACTERIZATION
 FND_015 = CONFIRMED
 FND_016 = SPLIT_REQUIRED
 FND_016A = CONFIRMED
@@ -994,7 +1010,7 @@ architecture.
 - [ ] **Step 4: Commit the deferred evidence documents**
 
 ~~~powershell
-C:\Python313\python.exe scripts/check_documentation.py
+.venv\Scripts\python.exe scripts/check_documentation.py
 git diff --check
 git add docs/superpowers/specs/2026-09-14-pre-m3-remediation-batch-f-dispositions-and-evidence.md docs/superpowers/specs/2026-09-14-pre-m3-remediation-batch-f-decision-observation-identity-design.md docs/normative-document-register.v1.json
 git commit -m "docs: record Batch-F dispositions and evidence"
@@ -1005,8 +1021,13 @@ evidence document is source, so the earlier pre-evidence archive result is not
 sufficient:
 
 ~~~powershell
+.venv\Scripts\python.exe scripts/verify_archive_reproducibility.py
 just archive-check
 ~~~
+
+The direct Windows command is the local archive-verification authority. Record
+the wrapper result independently; it may be BLOCKED when the host lacks
+WSL /bin/bash.
 
 ## Task 8: Run the complete local verification matrix
 
@@ -1056,23 +1077,23 @@ cargo test --workspace --all-features --locked
 Use the pinned interpreter and record the actual result of each command:
 
 ~~~powershell
-C:\Python313\python.exe scripts/verify_repository.py
-C:\Python313\python.exe scripts/check_rust_source_structure.py
-C:\Python313\python.exe scripts/check_documentation.py
-C:\Python313\python.exe scripts/validate_schemas.py
-C:\Python313\python.exe scripts/validate_maintainer_artifacts.py
-C:\Python313\python.exe scripts/verify_python_toolchain.py
-C:\Python313\python.exe scripts/run_python_tests.py
-C:\Python313\python.exe -m pytest python/tests/test_batch_f.py python/tests/test_wire_contracts.py python/tests/test_player_api.py -q
+.venv\Scripts\python.exe scripts/verify_repository.py
+.venv\Scripts\python.exe scripts/check_rust_source_structure.py
+.venv\Scripts\python.exe scripts/check_documentation.py
+.venv\Scripts\python.exe scripts/validate_schemas.py
+.venv\Scripts\python.exe scripts/validate_maintainer_artifacts.py
+.venv\Scripts\python.exe scripts/verify_python_toolchain.py
+.venv\Scripts\python.exe scripts/run_python_tests.py
+.venv\Scripts\python.exe -m pytest python/tests/test_batch_f.py python/tests/test_wire_contracts.py python/tests/test_player_api.py -q
 ~~~
 
 Run the applicable M2 decision/information/endpoint profiles:
 
 ~~~powershell
-C:\Python313\python.exe scripts/run_m2_d_gates.py
-C:\Python313\python.exe scripts/run_m2_e_gates.py
-C:\Python313\python.exe scripts/run_m2_g_gates.py
-C:\Python313\python.exe scripts/run_m2_h_gates.py
+.venv\Scripts\python.exe scripts/run_m2_d_gates.py
+.venv\Scripts\python.exe scripts/run_m2_e_gates.py
+.venv\Scripts\python.exe scripts/run_m2_g_gates.py
+.venv\Scripts\python.exe scripts/run_m2_h_gates.py
 ~~~
 
 - [ ] **Step 5: Run wrapper checks with honest status handling**
@@ -1081,14 +1102,15 @@ C:\Python313\python.exe scripts/run_m2_h_gates.py
 just check-fast
 just check
 just check-all
+.venv\Scripts\python.exe scripts/verify_archive_reproducibility.py
 just archive-check
 ~~~
 
 If a wrapper cannot start because WSL /bin/bash is unavailable, record its
 corresponding key as BLOCKED; do not infer it from direct Cargo/Python
-success. Record direct constituent profiles separately. Run archive-check only
-after all source-changing operations, and treat a failed or unavailable
-archive gate as FAIL or NOT_RUN rather than as a successful final gate.
+success. Record direct constituent profiles separately. The direct archive
+command is checked independently. Treat a failed or unavailable archive gate
+as FAIL or NOT_RUN rather than as a successful final gate.
 
 - [ ] **Step 6: Verify compatibility and final local cleanliness**
 
@@ -1136,6 +1158,7 @@ After every review fix and its verification, run the final source-tree archive
 gate again, immediately before preparing the evidence document and PR body:
 
 ~~~powershell
+.venv\Scripts\python.exe scripts/verify_archive_reproducibility.py
 just archive-check
 ~~~
 
@@ -1148,11 +1171,11 @@ commit:
 
 ~~~powershell
 $finalBatchFHead = git rev-parse HEAD
-C:\Python313\python.exe scripts/run_m2_d_gates.py --expect-commit $finalBatchFHead
-C:\Python313\python.exe scripts/run_m2_e_gates.py --expect-commit $finalBatchFHead
-C:\Python313\python.exe scripts/run_m2_g_gates.py --expect-commit $finalBatchFHead
-C:\Python313\python.exe scripts/run_m2_h_gates.py --expect-commit $finalBatchFHead
-C:\Python313\python.exe scripts/run_m2_final_closure.py --expect-commit $finalBatchFHead
+.venv\Scripts\python.exe scripts/run_m2_d_gates.py --expect-commit $finalBatchFHead
+.venv\Scripts\python.exe scripts/run_m2_e_gates.py --expect-commit $finalBatchFHead
+.venv\Scripts\python.exe scripts/run_m2_g_gates.py --expect-commit $finalBatchFHead
+.venv\Scripts\python.exe scripts/run_m2_h_gates.py --expect-commit $finalBatchFHead
+.venv\Scripts\python.exe scripts/run_m2_final_closure.py --expect-commit $finalBatchFHead
 ~~~
 
 Only after these exact-head reruns may Task 10 final checks and PR preparation
