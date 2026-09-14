@@ -7,7 +7,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "python" / "src"))
 
-from mtgml.decision import (  # noqa: E402
+from mtgml.decision import (
     PLAYER_DECISION_REQUEST_V2_SCHEMA,
     CandidateIntent,
     DecisionSpec,
@@ -15,9 +15,9 @@ from mtgml.decision import (  # noqa: E402
     VisibleCandidateV2,
     _validate_candidate_capacity,
 )
-from mtgml.episode import EpisodeStatus, TruncationReason  # noqa: E402
-from mtgml.errors import WireError  # noqa: E402
-from mtgml.observation import (  # noqa: E402
+from mtgml.episode import EpisodeStatus, TruncationReason
+from mtgml.errors import WireError
+from mtgml.observation import (
     INFORMATION_STATE_SCHEMA_V2,
     OBSERVATION_SCHEMA,
     PLAYER_STEP_SCHEMA_V2,
@@ -27,7 +27,7 @@ from mtgml.observation import (  # noqa: E402
     PlayerStepSubmissionV1,
     PlayerStepV2,
 )
-from mtgml.wire import compute_information_state_digest_v2  # noqa: E402
+from mtgml.wire import compute_information_state_digest_v2
 
 
 class CandidateCapacityTests(unittest.TestCase):
