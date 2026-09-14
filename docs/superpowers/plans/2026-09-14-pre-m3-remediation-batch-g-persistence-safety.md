@@ -1,5 +1,7 @@
 # Pre-M3 Remediation Batch G: Persistence and Safety Implementation Plan
 
+**Status:** implementation plan pending independent review
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox syntax for tracking. The user has explicitly prohibited subagents for this work.
 
 **Goal:** Close the confirmed Batch-G persistence, RNG, generation, diagnostic, and helper defects while preserving V3 bytes, historical meanings, valid RNG output, public wire contracts, and M3_AUTHORIZED = NO.
