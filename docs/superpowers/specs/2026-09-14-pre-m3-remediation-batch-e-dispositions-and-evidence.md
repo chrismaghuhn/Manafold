@@ -3,7 +3,7 @@
 **Status:** final local evidence; hosted CI pending exact final PR head
 **Date:** 2026-09-14
 **Base:** `9996cfd0fcd4ef67d98cb0422611cebabd20e46b`
-**Code/evidence head before PR metadata:** `ae16a809b7e427821cef7389f8f9afc7778fa645`
+**Code/evidence head before final PR metadata:** `c258d19045aa1d6442cb0e5462e683a62b7a1c6b`
 **Branch:** `chris/pre-m3-remediation-batch-e-cross-layer-closure`
 **PR:** `https://github.com/chrismaghuhn/Manafold/pull/169`
 
@@ -19,7 +19,7 @@ Issue #162. No M3 work or real Magic semantics is included.
 ```text
 TASK = PRE_M3_REMEDIATION_BATCH_E
 BASE = 9996cfd0fcd4ef67d98cb0422611cebabd20e46b
-HEAD = ae16a809b7e427821cef7389f8f9afc7778fa645
+HEAD = c258d19045aa1d6442cb0e5462e683a62b7a1c6b
 BRANCH = chris/pre-m3-remediation-batch-e-cross-layer-closure
 PR = https://github.com/chrismaghuhn/Manafold/pull/169
 
@@ -82,7 +82,7 @@ LOCAL_CHECK_FAST = BLOCKED: just cannot start WSL /bin/bash on this Windows host
 LOCAL_CHECK = BLOCKED: just cannot start WSL /bin/bash on this Windows host
 DIRECT_FAST_PROFILE = PASS: .venv/Scripts/python.exe scripts/run_checks.py fast
 DIRECT_INTEGRATION_PROFILE = PASS: .venv/Scripts/python.exe scripts/run_checks.py integration
-HOSTED_CI = NOT_RUN: CI was initially dispatched for ae16a809 and must be rerun on the final pushed metadata head
+HOSTED_CI = NOT_RUN: prior b522dd96 run failed only because the test-only fixture path was scanned as runtime; rerun required on the final pushed head
 
 PUBLIC_API_CHANGE = NO
 WIRE_CHANGE = NO
@@ -93,7 +93,7 @@ HISTORICAL_REPLAY_CHANGE = NO
 
 INFORMATION_SAFETY = PASS for the eventful projection test's observed products; no new player surface exposes trusted IDs, RNG provenance, checkpoint identity, or hidden order
 
-WORKTREE_CLEAN = YES at ae16a809
+WORKTREE_CLEAN = YES at c258d190
 REMOTE_HEAD_EQUALS_LOCAL = NOT_RUN
 
 NEW_MAGIC_SEMANTICS = NO

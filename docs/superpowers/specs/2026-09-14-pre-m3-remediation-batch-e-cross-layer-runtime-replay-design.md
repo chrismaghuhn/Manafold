@@ -271,8 +271,8 @@ by the Batch-E task, with no unexecuted gate reported as `PASS`.
 
 ## Implementation evidence checkpoint
 
-The current locally verified code/evidence head before PR metadata is
-`ae16a809b7e427821cef7389f8f9afc7778fa645`. E1 is dispositioned `PASS` with
+The current locally verified code/evidence head before final PR metadata is
+`c258d19045aa1d6442cb0e5462e683a62b7a1c6b`. E1 is dispositioned `PASS` with
 FND-007 resolved on the base, the reachable FND-008 mutation families covered,
 and FND-012B rejected as a separate presentation policy. E2 is dispositioned
 `PASS`: current producer identities are guarded, V3 checkpoint/replay status
