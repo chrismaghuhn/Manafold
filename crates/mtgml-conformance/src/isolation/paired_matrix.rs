@@ -393,6 +393,7 @@ fn inject_foreign_history_entry(state: &mut EngineState) -> Result<(), HarnessEr
     let location = location_of(state, home)?;
     let opaque = opaque_of(state, home)?;
     let record = p2_knowledge_mut(state, opaque)?;
+    record.known_location = None;
     record.historical_locations.push(KnownLocationFactV2 {
         location,
         provenance: KnowledgeAcquisitionReason::Observed {
