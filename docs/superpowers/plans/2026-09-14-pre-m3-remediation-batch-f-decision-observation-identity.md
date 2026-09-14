@@ -1,5 +1,7 @@
 # Pre-M3 Remediation Batch F: Decision, Observation, and Identity Implementation Plan
 
+**Status:** implementation plan ready for independent review; production implementation not yet authorized
+
 > For agentic workers: REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox syntax for tracking.
 
 **Goal:** Close the confirmed Batch F decision, observed-event, and actor-bound PlayerStep gaps while preserving the existing Rules-owned identity boundary and leaving FND-028 fail-closed pending an accepted ADR.
@@ -8,7 +10,6 @@
 
 **Tech Stack:** Rust workspace with Cargo and locked dependencies; Python 3.13 reference DTOs and pinned repository scripts; canonical JSON wire fixtures; GitHub Actions via one PR against master.
 
-**Status:** implementation plan ready for independent review; production implementation not yet authorized
 **Date:** 2026-09-14
 **Base:** b24bba153f2aa74bd59e8d6a872a0612ff7f76aa
 **Branch:** chris/pre-m3-remediation-batch-f-decision-observation-identity
