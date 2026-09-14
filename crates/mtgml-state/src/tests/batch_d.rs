@@ -38,6 +38,12 @@ fn retired_chronology_state() -> EngineState {
     knowledge
         .retired
         .insert(OpaqueObjectId(5), retired_record(OpaqueObjectId(5)));
+    knowledge
+        .retired
+        .get_mut(&OpaqueObjectId(5))
+        .unwrap()
+        .invalidation
+        .provenance = observed_public_at(2);
     state
 }
 
@@ -62,6 +68,25 @@ fn two_object_ordered_state() -> EngineState {
         .push(GameObjectId(3));
     state.allocators.next_object_id = GameObjectId(4);
     state
+}
+
+fn replace_with_canonical_two_object_reorder(state: &mut EngineState) {
+    let mut reordered = two_object_ordered_state();
+    set_object_two_position(&mut reordered, ZonePosition::Top { offset: 1 });
+    reordered
+        .zones
+        .locations
+        .get_mut(&GameObjectId(3))
+        .unwrap()
+        .position = ZonePosition::Top { offset: 0 };
+    let key = reordered.zones.locations[&GameObjectId(2)].key();
+    reordered
+        .zones
+        .ordered_zones
+        .get_mut(&key)
+        .unwrap()
+        .reverse();
+    *state = reordered;
 }
 
 fn set_object_two_position(state: &mut EngineState, position: ZonePosition) {
@@ -445,6 +470,12 @@ fn fnd_006b_rejects_swapped_index_values() {
 fn fnd_006b_rejects_duplicate_top_zero_offsets() {
     let mut state = two_object_ordered_state();
     set_object_two_position(&mut state, ZonePosition::Top { offset: 0 });
+    state
+        .zones
+        .locations
+        .get_mut(&GameObjectId(3))
+        .unwrap()
+        .position = ZonePosition::Top { offset: 0 };
     assert_rejected_without_mutation(state);
 }
 
@@ -553,4 +584,36 @@ fn fnd_006b_rejects_index_in_retired_last_known() {
             observed_public_at(1),
         ));
     assert_rejected_without_mutation(state);
+}
+
+#[test]
+fn fnd_002_invalid_chronology_cannot_obtain_a_v3_digest() {
+    let mut state = active_chronology_state();
+    let record = state
+        .knowledge
+        .players
+        .get_mut(&PlayerId(1))
+        .unwrap()
+        .active
+        .get_mut(&OpaqueObjectId(1))
+        .unwrap();
+    record.acquisition = observed_public_at(4);
+    record.historical_locations.push(observed_public_fact(3));
+    assert_eq!(state.digest(), Err(StateDigestError::StateInvariant));
+}
+
+#[test]
+fn fnd_006b_noncanonical_position_cannot_obtain_a_v3_digest() {
+    let mut state = synthetic_state();
+    set_object_two_position(&mut state, ZonePosition::Bottom { offset: 0 });
+    assert_eq!(state.digest(), Err(StateDigestError::StateInvariant));
+}
+
+#[test]
+fn fnd_006b_valid_canonical_reorder_changes_the_v3_digest() {
+    let baseline = synthetic_state();
+    let mut reordered = baseline.clone();
+    replace_with_canonical_two_object_reorder(&mut reordered);
+    validate_engine_state(&reordered).unwrap();
+    assert_ne!(baseline.digest().unwrap(), reordered.digest().unwrap());
 }

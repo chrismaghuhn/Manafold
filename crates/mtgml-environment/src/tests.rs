@@ -135,7 +135,7 @@ fn rich_provenance_state() -> mtgml_state::EngineState {
             location: hidden_location.clone(),
             provenance: observed(
                 KnowledgeHistoryChannel::Private,
-                0,
+                2,
                 KnowledgeAcquisitionCause::PrivateLook,
             ),
         }),
@@ -143,7 +143,7 @@ fn rich_provenance_state() -> mtgml_state::EngineState {
             location: hidden_location.clone(),
             provenance: observed(
                 KnowledgeHistoryChannel::Private,
-                0,
+                1,
                 KnowledgeAcquisitionCause::OwnPrivateIdentity,
             ),
         }],
@@ -155,7 +155,7 @@ fn rich_provenance_state() -> mtgml_state::EngineState {
         invalidation: KnowledgeInvalidationV2 {
             provenance: observed(
                 KnowledgeHistoryChannel::Public,
-                0,
+                3,
                 KnowledgeAcquisitionCause::ExplicitReveal,
             ),
             reason: KnowledgeInvalidationReason::Shuffle,
@@ -165,7 +165,7 @@ fn rich_provenance_state() -> mtgml_state::EngineState {
         location: hidden_location.clone(),
         provenance: observed(
             KnowledgeHistoryChannel::Private,
-            0,
+            2,
             KnowledgeAcquisitionCause::PrivateLook,
         ),
     });
@@ -173,6 +173,7 @@ fn rich_provenance_state() -> mtgml_state::EngineState {
         .retired
         .insert(mtgml_model::OpaqueObjectId(2), retired);
     knowledge.active.remove(&mtgml_model::OpaqueObjectId(2));
+    knowledge.next_visible_sequence = VisibleSequence(4);
 
     // Active record with explicit_reveal current-fact provenance.
     knowledge.active.insert(
@@ -570,3 +571,4 @@ include!("tests/player_endpoint.rs");
 include!("tests/continuation.rs");
 include!("tests/information_projection.rs");
 include!("tests/error_nonmutation.rs");
+include!("tests/batch_d.rs");

@@ -121,8 +121,15 @@ impl FixtureTransition {
             .insert(new_object, to.clone());
         if from.position != ZonePosition::Unordered {
             let key: ZoneKey = from.key();
-            if let Some(entries) = self.workspace.zones.ordered_zones.get_mut(&key) {
+            let remove_key = if let Some(entries) = self.workspace.zones.ordered_zones.get_mut(&key)
+            {
                 entries.retain(|entry| *entry != object);
+                entries.is_empty()
+            } else {
+                false
+            };
+            if remove_key {
+                self.workspace.zones.ordered_zones.remove(&key);
             }
         }
 

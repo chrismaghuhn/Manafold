@@ -158,14 +158,14 @@ fn provenance_is_preserved_through_projection_restore_and_fork() {
     assert!(
         expected.contains(&(
             2u64,
-            "invalidation/observed/Public/0/ExplicitReveal/Shuffle".to_string()
+            "invalidation/observed/Public/3/ExplicitReveal/Shuffle".to_string()
         )),
         "invalidation provenance was not preserved: {expected:?}"
     );
     assert!(
         expected.contains(&(
             2u64,
-            "historical/observed/Private/0/OwnPrivateIdentity".to_string()
+            "historical/observed/Private/1/OwnPrivateIdentity".to_string()
         )),
         "own_private_identity history was collapsed: {expected:?}"
     );

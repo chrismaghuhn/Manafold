@@ -117,11 +117,7 @@ fn retired_record(opaque: OpaqueObjectId) -> RetiredKnowledgeRecordV2 {
         card_definition: Some(CardDefinitionId(3)),
         last_known_location: None,
         historical_locations: Vec::new(),
-        acquisition: observed(
-            KnowledgeHistoryChannel::Public,
-            0,
-            KnowledgeAcquisitionCause::PublicEvent,
-        ),
+        acquisition: KnowledgeAcquisitionReason::InitialConfiguration,
         invalidation: KnowledgeInvalidationV2 {
             provenance: observed(
                 KnowledgeHistoryChannel::Public,
