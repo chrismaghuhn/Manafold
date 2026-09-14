@@ -43,6 +43,7 @@ affected package suite before its fix commit.
 | crates/mtgml-environment/src/checkpoint.rs | Remove top-level raw Serde and preserve high-level counter error ownership. |
 | crates/mtgml-environment/src/tests.rs | Include the Batch-G environment characterization module. |
 | crates/mtgml-environment/src/tests/batch_g.rs | Guard the top-level checkpoint serialization boundary. |
+| crates/mtgml-replay/src/tests.rs | Keep intentionally impossible-counter replay negatives on an unverified test identity after FND-017A closes the calculator. |
 | crates/mtgml-random/src/hmac_counter.rs | Make raw-lane access checked and non-public; preserve valid extraction. |
 | crates/mtgml-random/src/seed.rs | Add the typed internal InvalidRawLane error. |
 | crates/mtgml-conformance/src/diagnostics.rs | Replace generic Debug rendering with bounded safe summaries. |
@@ -109,6 +110,7 @@ baseline counts.
 - Modify: crates/mtgml-environment/src/checkpoint.rs
 - Modify: crates/mtgml-environment/src/tests.rs
 - Create: crates/mtgml-environment/src/tests/batch_g.rs
+- Modify: crates/mtgml-replay/src/tests.rs
 - Modify: python/src/mtgml/persistence.py
 - Modify: python/tests/test_persistence_codec.py
 
@@ -365,6 +367,11 @@ cargo test -p mtgml-environment --locked checkpoint_v3_validation_and_restore_no
 
 Expected: every named test passes; the existing
 checkpoint_digest_v3_known_answer and FND-025 defensive-sort tests still pass.
+Existing replay negative tests that intentionally construct impossible counter
+identities must use a test-only unverified identity helper with an arbitrary
+checkpoint digest; they must not call the now-closed persistence calculator.
+That preserves the replay owner's CounterProgression rejection while keeping
+FND-017A's calculator boundary closed.
 Commit:
 
 ~~~powershell
@@ -1364,6 +1371,7 @@ $allowed = @(
   "crates/mtgml-environment/src/checkpoint.rs",
   "crates/mtgml-environment/src/tests.rs",
   "crates/mtgml-environment/src/tests/batch_g.rs",
+  "crates/mtgml-replay/src/tests.rs",
   "crates/mtgml-random/src/hmac_counter.rs",
   "crates/mtgml-random/src/seed.rs",
   "crates/mtgml-conformance/src/diagnostics.rs",

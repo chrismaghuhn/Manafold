@@ -3,9 +3,9 @@ use mtgml_decision::{
     DECISION_RESPONSE_SCHEMA, DECISION_RESPONSE_V2_SCHEMA,
 };
 use mtgml_model::{
-    CheckpointCodecIdentity, ContentDigest, DecisionId, EnvironmentLimitCounters, EpisodeStatus,
-    FullStateDigest, FullStateDigestV2, FullStateDigestV3, PlayerDecisionIdV1, PlayerId,
-    StateRevision,
+    CheckpointCodecIdentity, CheckpointDigestV3, ContentDigest, DecisionId,
+    EnvironmentLimitCounters, EpisodeStatus, FullStateDigest, FullStateDigestV2,
+    FullStateDigestV3, PlayerDecisionIdV1, PlayerId, StateRevision,
 };
 
 use crate::recorder::ReplayRecorderV2;
@@ -254,6 +254,24 @@ fn v3_identity(
     }
 }
 
+fn v3_identity_with_unverified_checkpoint_digest(
+    revision: u64,
+    digest_byte: u8,
+    counters: EnvironmentLimitCounters,
+) -> InitialEnvironmentIdentityV3 {
+    InitialEnvironmentIdentityV3 {
+        state_revision: StateRevision(revision),
+        full_state_digest: FullStateDigestV3::from_digest_bytes([digest_byte; 32]),
+        episode_status: EpisodeStatus::Running,
+        environment_limit_counters: counters,
+        checkpoint_codec_identity: CheckpointCodecIdentity {
+            codec_id: "in-memory-reference".into(),
+            semantic_version: "3".into(),
+        },
+        checkpoint_digest: CheckpointDigestV3::from_digest_bytes([0; 32]),
+    }
+}
+
 fn manifest_v3() -> ReplayManifestV3 {
     ReplayManifestV3 {
         schema_version: REPLAY_MANIFEST_SCHEMA_V3.into(),
@@ -301,7 +319,7 @@ fn response_v3() -> DecisionResponseV2 {
 #[test]
 fn initial_identity_rejects_impossible_counters() {
     let mut manifest = manifest_v3();
-    manifest.initial_identity = v3_identity(
+    manifest.initial_identity = v3_identity_with_unverified_checkpoint_digest(
         0,
         0,
         EnvironmentLimitCounters {
@@ -466,7 +484,11 @@ fn replay_v3_rejects_corrupt_accepted_progression() {
             },
         ),
     ] {
-        let after = v3_identity(1, 1, counters);
+        let after = if name == "accepted_transitions" {
+            v3_identity_with_unverified_checkpoint_digest(1, 1, counters)
+        } else {
+            v3_identity(1, 1, counters)
+        };
         replay.steps = vec![accepted_v3_step(0, &initial, after.clone())];
         replay.final_identity = after;
         assert_eq!(

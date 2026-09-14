@@ -493,6 +493,7 @@ Modify  crates/mtgml-persistence/src/tests.rs
 Modify  crates/mtgml-environment/src/checkpoint.rs
 Modify  crates/mtgml-environment/src/tests.rs
 Create  crates/mtgml-environment/src/tests/batch_g.rs
+Modify  crates/mtgml-replay/src/tests.rs (detached impossible-counter test fixtures only)
 Modify  crates/mtgml-random/src/hmac_counter.rs
 Modify  crates/mtgml-random/src/seed.rs
 Modify  crates/mtgml-conformance/src/diagnostics.rs

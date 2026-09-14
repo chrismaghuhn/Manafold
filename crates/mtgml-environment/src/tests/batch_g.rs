@@ -1,0 +1,28 @@
+#[test]
+fn fnd_017b_closed_status_with_pending_decision_is_rejected_at_checkpoint_owner() {
+    let controller = environment_at_members_stage();
+    let checkpoint = controller.checkpoint().unwrap();
+    assert!(checkpoint.state.execution.pending_decision.is_some());
+    let status = EpisodeStatus::Terminal {
+        reason: TerminalReason::Concession,
+        players: vec![
+            PlayerOutcome {
+                player: PlayerId(1),
+                result: PlayerResult::Loss,
+            },
+            PlayerOutcome {
+                player: PlayerId(2),
+                result: PlayerResult::Win,
+            },
+        ],
+    };
+    assert!(matches!(
+        EnvironmentCheckpointV3::new(
+            checkpoint.state.clone(),
+            status,
+            checkpoint.limit_counters.clone(),
+            checkpoint.codec.clone(),
+        ),
+        Err(CheckpointValidationError::CompletedWithDecision)
+    ));
+}
