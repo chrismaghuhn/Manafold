@@ -86,6 +86,24 @@ Counters whose values are deterministic consequences of submitted decisions/even
 
 Wire-decode failures are not semantic replay steps because no typed `DecisionResponseV2` exists.
 
+## Detached and backend-verified replay
+
+`AuthoritativeReplayV3::validate()` is detached structural validation. It
+proves the V3 schema and local DTO shape, canonical keyed-array order,
+manifest/deck consistency, replay identity-chain shape, and the revision and
+counter rules encoded by the replay DTO. It does not execute a response,
+reconstruct an authoritative pending request, or prove that a backend reaches
+the recorded state, digest, status, or player projection.
+
+`TrustedEnvironmentController::execute_replay_from_checkpoint()` first
+validates the detached artifact, then executes it on an internal backend fork
+from a validated checkpoint. Its `ReplayExecutionReport` is the
+backend/checkpoint-verified evidence: it proves actor and player-decision
+binding, authoritative transition parity, deterministic counter parity,
+recorded external-counter application, complete after identity, and the
+available production projection trace. The report and its privileged fields
+remain outside player endpoints.
+
 ## Deterministic sources
 
 Authoritative behavior cannot depend on wall clock, thread scheduling, randomized container iteration, locale, filesystem order, network responses, or process-global RNG.

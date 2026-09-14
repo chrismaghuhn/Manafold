@@ -802,7 +802,7 @@ Canonical payload:
 player outcome = [player_id, player_result]
 ```
 
-`player_outcomes` is semantically keyed by player and is encoded sorted by `PlayerId`, duplicate-free. Stable strings are exactly:
+`player_outcomes` is semantically keyed by player and is encoded sorted by `PlayerId`, duplicate-free. The checkpoint digest helper retains this defensive canonical sort when it encodes a supplied status. V3-authoritative checkpoint and replay boundaries must reject a noncanonical outcome order before accepting the status as authoritative; the shared `EpisodeStatus` model validator does not acquire a new global ordering rule from this V3 boundary requirement. Stable strings are exactly:
 
 ```text
 terminal_reason = rules_loss | concession | simultaneous_outcome | rules_draw | specified_loop

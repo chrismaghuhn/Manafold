@@ -16,6 +16,32 @@ pub const REPLAY_MANIFEST_SCHEMA_V3: &str = "replay-manifest.v3";
 pub const REPLAY_FILE_SCHEMA_V3: &str = "authoritative-replay.v3";
 pub const REPLAY_STEP_SCHEMA_V3: &str = "replay-step.v3";
 
+fn validate_status_for_players(
+    status: &EpisodeStatus,
+    expected: &BTreeSet<PlayerId>,
+) -> Result<(), ReplayValidationError> {
+    let outcomes = match status {
+        EpisodeStatus::Running => return Ok(()),
+        EpisodeStatus::Terminal { players, .. } | EpisodeStatus::Truncated { players, .. } => {
+            players
+        }
+    };
+    status
+        .validate()
+        .map_err(|_| ReplayValidationError::StatusPlayerUniverse)?;
+    if outcomes
+        .windows(2)
+        .any(|window| window[0].player >= window[1].player)
+    {
+        return Err(ReplayValidationError::NoncanonicalKeyOrder);
+    }
+    let actual: BTreeSet<_> = outcomes.iter().map(|outcome| outcome.player).collect();
+    if actual != *expected {
+        return Err(ReplayValidationError::StatusPlayerUniverse);
+    }
+    Ok(())
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct InitialEnvironmentIdentityV3 {
@@ -105,13 +131,17 @@ impl ReplayManifestV3 {
             return Err(ReplayValidationError::MissingDecks);
         }
         let mut players = BTreeSet::new();
-        if self
-            .decks
-            .iter()
-            .any(|deck| deck.deck_id.is_empty() || !players.insert(deck.player))
-        {
-            return Err(ReplayValidationError::DuplicateDeckPlayer);
+        let mut previous_player = None;
+        for deck in &self.decks {
+            if deck.deck_id.is_empty() || !players.insert(deck.player) {
+                return Err(ReplayValidationError::DuplicateDeckPlayer);
+            }
+            if previous_player.is_some_and(|previous| previous > deck.player) {
+                return Err(ReplayValidationError::NoncanonicalKeyOrder);
+            }
+            previous_player = Some(deck.player);
         }
+        validate_status_for_players(&self.initial_identity.episode_status, &players)?;
         self.initial_identity.validate()
     }
 }
@@ -142,6 +172,9 @@ pub struct AuthoritativeReplayV3 {
 }
 
 impl AuthoritativeReplayV3 {
+    /// Validates detached V3 replay structure and identity-chain shape only.
+    /// This does not execute responses, reconstruct an authoritative state, or
+    /// prove that a backend produces the recorded transition or projections.
     pub fn validate(&self) -> Result<(), ReplayValidationError> {
         if self.schema_version != REPLAY_FILE_SCHEMA_V3 {
             return Err(ReplayValidationError::SchemaVersion);
@@ -212,6 +245,9 @@ impl AuthoritativeReplayV3 {
                 checkpoint_codec_identity: previous.checkpoint_codec_identity.clone(),
                 checkpoint_digest: step.checkpoint_digest_after.clone(),
             };
+            let manifest_players: BTreeSet<_> =
+                self.manifest.decks.iter().map(|deck| deck.player).collect();
+            validate_status_for_players(&next.episode_status, &manifest_players)?;
             next.validate()?;
             previous = next;
         }

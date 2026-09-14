@@ -97,6 +97,9 @@ impl TrustedEnvironmentController {
         self.lock()?.execute_trusted_response(actor, response)
     }
 
+    /// Executes detached replay input on an internal backend fork and returns
+    /// backend/checkpoint-verified traces. Detached replay validation alone does
+    /// not establish these execution facts.
     pub fn execute_replay_from_checkpoint(
         &self,
         checkpoint: EnvironmentCheckpointV3,

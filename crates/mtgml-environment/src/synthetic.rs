@@ -19,6 +19,9 @@ use crate::endpoint::PlayerEndpointError;
 use crate::errors::{ControllerError, EnvironmentCommitError};
 
 mod commit;
+#[cfg(test)]
+#[path = "tests/eventful.rs"]
+mod eventful;
 mod projection;
 mod replay;
 
@@ -58,6 +61,8 @@ pub struct SyntheticM1EnvironmentBackend {
     config: SyntheticM1EnvironmentConfig,
     replay: ReplayRecorderV3,
     kernel: SyntheticM1RulesKernel,
+    #[cfg(test)]
+    eventful_fixture: bool,
 }
 
 impl SyntheticM1EnvironmentBackend {
@@ -84,6 +89,8 @@ impl SyntheticM1EnvironmentBackend {
             config,
             replay,
             kernel: SyntheticM1RulesKernel,
+            #[cfg(test)]
+            eventful_fixture: false,
         })
     }
 
@@ -109,6 +116,8 @@ impl SyntheticM1EnvironmentBackend {
             config,
             replay,
             kernel: SyntheticM1RulesKernel,
+            #[cfg(test)]
+            eventful_fixture: false,
         })
     }
 }
@@ -123,6 +132,8 @@ impl EnvironmentBackend for SyntheticM1EnvironmentBackend {
     }
 
     fn restore(&mut self, checkpoint: EnvironmentCheckpointV3) -> Result<(), ControllerError> {
+        #[cfg(test)]
+        let eventful_fixture = self.eventful_fixture;
         let candidate = Self::from_checkpoint(checkpoint, self.config.clone())?;
         self.state = candidate.state;
         self.status = candidate.status;
@@ -130,15 +141,24 @@ impl EnvironmentBackend for SyntheticM1EnvironmentBackend {
         self.codec = candidate.codec;
         self.replay = candidate.replay;
         self.kernel = SyntheticM1RulesKernel;
+        #[cfg(test)]
+        {
+            self.eventful_fixture = eventful_fixture;
+        }
         Ok(())
     }
 
     fn fork_boxed(&self) -> Result<Box<dyn EnvironmentBackend>, ControllerError> {
         let checkpoint = self.current_checkpoint()?;
-        Ok(Box::new(Self::from_checkpoint(
-            checkpoint,
-            self.config.clone(),
-        )?))
+        #[cfg(test)]
+        let mut child = Self::from_checkpoint(checkpoint, self.config.clone())?;
+        #[cfg(not(test))]
+        let child = Self::from_checkpoint(checkpoint, self.config.clone())?;
+        #[cfg(test)]
+        {
+            child.eventful_fixture = self.eventful_fixture;
+        }
+        Ok(Box::new(child))
     }
 
     fn export_replay(&self) -> Result<AuthoritativeReplayV3, ControllerError> {

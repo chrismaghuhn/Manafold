@@ -43,6 +43,15 @@ For a typed semantic rejection:
 
 Malformed/noncanonical wire bytes are not a semantic environment submission. They fail in the wire/adapter layer with a closed malformed-response code, invoke no `PlayerEndpoint::submit`, and produce no synthetic `PlayerStep`.
 
+`PlayerStepV2` is actor-submission-bound: its `submission` field describes the
+typed response submitted by the perspective that receives the step. The
+foundation therefore does not construct or deliver a neutral non-actor
+`PlayerStepV2`; no current value of `submission` means "another perspective's
+accepted transition." Non-actor observed-event batches remain available to
+trusted production projection and replay/trajectory derivation, but live
+non-actor delivery is not a foundation API promise. A future neutral product or
+delivery API requires its own reviewed lifecycle and versioning decision.
+
 ## Error layers
 
 The public boundary distinguishes:

@@ -1,4 +1,6 @@
-use mtgml_model::{CheckpointDigestV3, EpisodeStatus, FullStateDigestV3};
+use std::collections::BTreeSet;
+
+use mtgml_model::{CheckpointDigestV3, EpisodeStatus, FullStateDigestV3, PlayerId};
 use mtgml_state::{validate_engine_state, EngineState};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -17,6 +19,29 @@ pub struct EnvironmentCheckpointV3 {
     pub limit_counters: EnvironmentLimitCounters,
     pub codec: CheckpointCodecIdentity,
     pub checkpoint_digest: CheckpointDigestV3,
+}
+
+fn validate_v3_status_for_players(
+    status: &EpisodeStatus,
+    expected: &BTreeSet<PlayerId>,
+) -> Result<(), CheckpointValidationError> {
+    let outcomes = match status {
+        EpisodeStatus::Running => return Ok(()),
+        EpisodeStatus::Terminal { players, .. } | EpisodeStatus::Truncated { players, .. } => {
+            players
+        }
+    };
+    if outcomes
+        .windows(2)
+        .any(|window| window[0].player >= window[1].player)
+    {
+        return Err(CheckpointValidationError::NoncanonicalStatusOrder);
+    }
+    let actual: BTreeSet<_> = outcomes.iter().map(|outcome| outcome.player).collect();
+    if actual != *expected {
+        return Err(CheckpointValidationError::StatusPlayerUniverse);
+    }
+    Ok(())
 }
 
 impl EnvironmentCheckpointV3 {
@@ -53,6 +78,11 @@ impl EnvironmentCheckpointV3 {
         }
         validate_engine_state(&self.state)
             .map_err(|_| CheckpointValidationError::StateInvariant)?;
+        self.status
+            .validate()
+            .map_err(|_| CheckpointValidationError::EpisodeStatus)?;
+        let players: BTreeSet<_> = self.state.core.players.keys().copied().collect();
+        validate_v3_status_for_players(&self.status, &players)?;
         let state_digest = self
             .state
             .digest()
@@ -69,9 +99,6 @@ impl EnvironmentCheckpointV3 {
         if checkpoint_digest != self.checkpoint_digest {
             return Err(CheckpointValidationError::CheckpointDigest);
         }
-        self.status
-            .validate()
-            .map_err(|_| CheckpointValidationError::EpisodeStatus)?;
         self.limit_counters
             .validate()
             .map_err(|_| CheckpointValidationError::LimitCounters)?;
@@ -111,6 +138,10 @@ pub enum CheckpointValidationError {
     CheckpointDigest,
     #[error("checkpoint episode status is invalid")]
     EpisodeStatus,
+    #[error("checkpoint episode status player order is not canonical")]
+    NoncanonicalStatusOrder,
+    #[error("checkpoint episode status does not cover the authoritative player universe")]
+    StatusPlayerUniverse,
     #[error("checkpoint limit counters are inconsistent")]
     LimitCounters,
     #[error("completed checkpoint retains a pending player decision")]

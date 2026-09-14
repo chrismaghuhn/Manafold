@@ -60,7 +60,8 @@ mod tests {
         EnvironmentCheckpointV3, PlayerEndpoint, PlayerEndpointHandle, TrustedEnvironmentController,
     };
     use mtgml_model::{
-        CandidateIdV1, EpisodeStatus, PlayerDecisionIdV1, PlayerId, StateRevision, TerminalReason,
+        CandidateIdV1, EpisodeStatus, PlayerDecisionIdV1, PlayerId, PlayerOutcome, PlayerResult,
+        StateRevision, TerminalReason,
     };
     use mtgml_observation::PlayerStepSubmissionV1;
     use mtgml_state::validate_engine_state;
@@ -500,7 +501,16 @@ mod tests {
             completed.state.clone(),
             EpisodeStatus::Terminal {
                 reason: TerminalReason::Concession,
-                players: Vec::new(),
+                players: vec![
+                    PlayerOutcome {
+                        player: P1,
+                        result: PlayerResult::Win,
+                    },
+                    PlayerOutcome {
+                        player: P2,
+                        result: PlayerResult::Loss,
+                    },
+                ],
             },
             completed.limit_counters.clone(),
             completed.codec.clone(),
