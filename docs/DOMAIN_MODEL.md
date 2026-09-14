@@ -85,6 +85,16 @@ A `ZoneLocation` includes:
 
 `ZoneState` proves a bijection between live objects and locations. Ordered zones have one authoritative ordering. Stack records/order are mutually consistent.
 
+The proposed Batch-D canonicality contract makes the ordered_zones vector the
+authoritative order and ZoneLocation.position its redundant witness. Vector
+index zero is top, and every live ordered object uses Top { offset } equal to
+its vector ordinal. Unordered objects are absent from ordered vectors. Bottom
+and Index remain in the type for compatibility but are rejected in the current
+canonical EngineState. Persisted retained ordered locations also use Top;
+historical offsets are retained without reconstructing an old vector. Empty
+ordered-zone entries are invalid and are never normalized. This refinement is
+PROPOSED until the Batch-D ADR is independently reviewed and merged.
+
 A hidden location does not by itself determine whether a previous opaque identity survives; the rules/information contract separately determines distinguishability.
 
 ## Knowledge model

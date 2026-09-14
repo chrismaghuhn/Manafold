@@ -812,6 +812,20 @@
       "stability": "provisional"
     },
     {
+      "change_process": "process-pr",
+      "owner_role": "maintainer",
+      "path": "docs/superpowers/plans/2026-09-14-pre-m3-remediation-batch-d-knowledge-chronology-and-ordered-zone-canonicality.md",
+      "role": "process",
+      "stability": "provisional"
+    },
+    {
+      "change_process": "process-pr",
+      "owner_role": "maintainer",
+      "path": "docs/superpowers/specs/2026-09-14-pre-m3-remediation-batch-d-knowledge-chronology-and-ordered-zone-canonicality-design.md",
+      "role": "process",
+      "stability": "provisional"
+    },
+    {
       "change_process": "governance-pr",
       "owner_role": "project-governance",
       "path": "LICENSE",

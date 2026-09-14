@@ -142,6 +142,23 @@ Canonical retained-knowledge order is ascending numeric `OpaqueObjectId` across 
 
 The public DTO excludes `PhysicalCardId`, `GameObjectId`, trusted `ZoneLocation`, authoritative event IDs, RNG provenance, and another perspective's knowledge.
 
+### Proposed Batch-D chronology refinement
+
+Status: PROPOSED in the Pre-M3 Batch-D ADR candidate; independent review and
+merge are required before this becomes accepted architecture.
+
+Retained chronology is oldest to newest across acquisition, location facts, and
+retirement. InitialConfiguration acquisition and location facts are
+configuration-only, unsequenced, and earliest; at most one retained location
+fact may use that provenance. An observed acquisition is a lower bound. A
+location fact may equal its acquisition sequence only when the complete
+provenance is identical, representing the same Acquire occurrence. That fact
+may later move unchanged into historical_locations or last_known_location.
+Later observed location facts are strictly newer, history remains strictly
+increasing with legal sequence gaps, and invalidation is observed and strictly
+newer than every prior retained observed fact. Every observed provenance
+remains below next_visible_sequence.
+
 ## Knowledge lifecycle
 
 Required synthetic lifecycle cases include:
