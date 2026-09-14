@@ -5,14 +5,14 @@
 //! submit pipeline uses (observation, information state, step assembly,
 //! occurrence projection); no second projector exists here. Trusted controls
 //! pin the host-independent counters EXACTLY unchanged across live commits
-//! and replayed traces alike, and recorded inactive-counter inflation to a
-//! fail-closed executor rejection. Every M2.G gate remains `NOT_RUN`.
+//! and replayed traces alike, with explicit replay application of recorded
+//! external counters. Every M2.G gate remains `NOT_RUN`.
 
 use super::{SyntheticM1EnvironmentBackend, SyntheticM1EnvironmentConfig, SyntheticM1ReplayConfig};
 use crate::checkpoint::{CheckpointCodecIdentity, EnvironmentCheckpointV3};
 use crate::controller::TrustedEnvironmentController;
 use crate::endpoint::{PlayerEndpoint, PlayerEndpointHandle};
-use crate::errors::{ControllerError, ReplayExecutionError};
+use crate::errors::ControllerError;
 use mtgml_decision::{DecisionAnswerV2, DecisionResponseV2, DECISION_RESPONSE_V2_SCHEMA};
 use mtgml_model::{CandidateIdV1, PlayerDecisionIdV1, PlayerId};
 use mtgml_observation::{
@@ -412,7 +412,7 @@ fn diagnostic_rejected_step_executes_with_intact_identity_chain() {
 }
 
 #[test]
-fn recorded_inactive_counter_progression_fails_closed_without_live_mutation() {
+fn recorded_external_counter_progression_is_applied_without_live_mutation() {
     use mtgml_model::CheckpointDigestV3;
     use mtgml_persistence::checkpoint_digest::calculate_checkpoint_digest_v3;
     use mtgml_replay::InitialEnvironmentIdentityV3;
@@ -461,36 +461,28 @@ fn recorded_inactive_counter_progression_fails_closed_without_live_mutation() {
             .execute_replay_from_checkpoint(cp0.clone(), replay)
     };
 
-    // Digest-consistent forward wall-clock inflation passes the structural
-    // monotonicity contract but MUST fail closed against the deterministically
-    // re-executed checkpoint identity (the executor's own counter check
-    // compares execution against execution, never the recording).
+    // Digest-consistent forward wall-clock progression is trusted replay
+    // control data and must be applied to the replay-owned backend.
     let mut tampered = pristine.clone();
     tampered.steps[0]
         .environment_limit_counters_after
         .wall_clock_elapsed_millis += 1000;
     resealed(&mut tampered);
     tampered.validate().unwrap();
-    assert!(matches!(
-        run(tampered),
-        Err(ControllerError::ReplayExecution(
-            ReplayExecutionError::AfterDigestMismatch { step_index: 0 }
-        ))
-    ));
+    let expected_counters = tampered.steps[0].environment_limit_counters_after.clone();
+    let report = run(tampered).unwrap();
+    assert_eq!(report.final_checkpoint.limit_counters, expected_counters);
 
-    // Same for the resource-units counter.
+    // Same for resource-unit progression.
     let mut tampered = pristine.clone();
     tampered.steps[0]
         .environment_limit_counters_after
         .resource_units_consumed += 5;
     resealed(&mut tampered);
     tampered.validate().unwrap();
-    assert!(matches!(
-        run(tampered),
-        Err(ControllerError::ReplayExecution(
-            ReplayExecutionError::AfterDigestMismatch { step_index: 0 }
-        ))
-    ));
+    let expected_counters = tampered.steps[0].environment_limit_counters_after.clone();
+    let report = run(tampered).unwrap();
+    assert_eq!(report.final_checkpoint.limit_counters, expected_counters);
 
     // A decisions_submitted overcount is rejected at the earliest gate by
     // the structural exact +1-per-accepted-step contract itself.

@@ -156,3 +156,63 @@ fn fnd_025_checkpoint_digest_helper_retains_defensive_outcome_sort() {
         .unwrap();
     assert_eq!(sorted_digest, permuted_digest);
 }
+
+fn reseal_replay_step(replay: &mut AuthoritativeReplayV3) {
+    let step = &mut replay.steps[0];
+    let identity = mtgml_replay::InitialEnvironmentIdentityV3 {
+        state_revision: step.state_revision_after,
+        full_state_digest: step.full_state_digest_after.clone(),
+        episode_status: step.episode_status_after.clone(),
+        environment_limit_counters: step.environment_limit_counters_after.clone(),
+        checkpoint_codec_identity: replay
+            .manifest
+            .initial_identity
+            .checkpoint_codec_identity
+            .clone(),
+        checkpoint_digest: CheckpointDigestV3::from_digest_bytes([0; 32]),
+    };
+    step.checkpoint_digest_after =
+        mtgml_persistence::checkpoint_digest::calculate_checkpoint_digest_v3(
+            &identity.full_state_digest.as_digest_reference(),
+            &identity.episode_status,
+            &identity.environment_limit_counters,
+            &identity.checkpoint_codec_identity,
+        )
+        .unwrap();
+    replay.final_identity = mtgml_replay::InitialEnvironmentIdentityV3 {
+        checkpoint_digest: step.checkpoint_digest_after.clone(),
+        ..identity
+    };
+}
+
+#[test]
+fn fnd_022e_replay_applies_recorded_external_counter_progression() {
+    let controller = TrustedEnvironmentController::new(backend());
+    let initial = controller.checkpoint().unwrap();
+    controller
+        .execute_trusted_response(PlayerId(1), response(0, 0))
+        .unwrap();
+    let live_after = controller.checkpoint().unwrap();
+    let mut replay = controller.export_replay().unwrap();
+    replay.steps[0]
+        .environment_limit_counters_after
+        .resource_units_consumed += 5;
+    replay.steps[0]
+        .environment_limit_counters_after
+        .wall_clock_elapsed_millis += 1000;
+    reseal_replay_step(&mut replay);
+    replay.validate().unwrap();
+
+    let report = controller
+        .execute_replay_from_checkpoint(initial, replay.clone())
+        .unwrap();
+    assert_eq!(
+        report.final_checkpoint.limit_counters,
+        replay.steps[0].environment_limit_counters_after
+    );
+    assert_eq!(
+        controller.checkpoint().unwrap(),
+        live_after,
+        "replay runs on an internal backend"
+    );
+}

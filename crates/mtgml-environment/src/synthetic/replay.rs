@@ -10,8 +10,8 @@ use mtgml_observation::{
 };
 use mtgml_random::MTGML_RNG_V1;
 use mtgml_replay::{
-    InitialEnvironmentIdentityV3, RandomnessIdentityV2, ReplayManifestV3, REPLAY_MANIFEST_SCHEMA_V3,
-    REPLAY_STEP_SCHEMA_V3,
+    InitialEnvironmentIdentityV3, RandomnessIdentityV2, ReplayManifestV3,
+    REPLAY_MANIFEST_SCHEMA_V3, REPLAY_STEP_SCHEMA_V3,
 };
 
 use super::SyntheticM1EnvironmentConfig;

@@ -242,12 +242,8 @@ impl AuthoritativeReplayV3 {
                 checkpoint_codec_identity: previous.checkpoint_codec_identity.clone(),
                 checkpoint_digest: step.checkpoint_digest_after.clone(),
             };
-            let manifest_players: BTreeSet<_> = self
-                .manifest
-                .decks
-                .iter()
-                .map(|deck| deck.player)
-                .collect();
+            let manifest_players: BTreeSet<_> =
+                self.manifest.decks.iter().map(|deck| deck.player).collect();
             validate_status_for_players(&next.episode_status, &manifest_players)?;
             next.validate()?;
             previous = next;

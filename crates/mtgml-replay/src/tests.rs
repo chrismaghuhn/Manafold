@@ -562,7 +562,10 @@ fn fnd_022b_manifest_requires_the_exact_deck_player_universe_for_closed_status()
     };
     manifest.initial_identity.checkpoint_digest =
         mtgml_persistence::checkpoint_digest::calculate_checkpoint_digest_v3(
-            &manifest.initial_identity.full_state_digest.as_digest_reference(),
+            &manifest
+                .initial_identity
+                .full_state_digest
+                .as_digest_reference(),
             &manifest.initial_identity.episode_status,
             &manifest.initial_identity.environment_limit_counters,
             &manifest.initial_identity.checkpoint_codec_identity,
@@ -603,7 +606,10 @@ fn fnd_025_manifest_rejects_noncanonical_deck_and_status_order() {
     };
     status_manifest.initial_identity.checkpoint_digest =
         mtgml_persistence::checkpoint_digest::calculate_checkpoint_digest_v3(
-            &status_manifest.initial_identity.full_state_digest.as_digest_reference(),
+            &status_manifest
+                .initial_identity
+                .full_state_digest
+                .as_digest_reference(),
             &status_manifest.initial_identity.episode_status,
             &status_manifest.initial_identity.environment_limit_counters,
             &status_manifest.initial_identity.checkpoint_codec_identity,

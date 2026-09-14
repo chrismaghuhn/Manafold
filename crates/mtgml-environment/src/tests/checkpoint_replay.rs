@@ -568,13 +568,13 @@ fn semantic_replay_rejects_tampered_identity_without_live_mutation() {
         tampered.final_identity = identity.clone();
         identity.checkpoint_digest
     };
-    // The recorded counter divergence surfaces as a full after-identity
-    // mismatch against the deterministically re-executed checkpoint.
+    // Deterministic rule-event counters cannot be supplied as external trace
+    // data, so the replay fails before applying the candidate checkpoint.
     assert!(matches!(
         run(tampered),
-        Err(ControllerError::ReplayExecution(
-            ReplayExecutionError::AfterDigestMismatch { step_index: 0 }
-        ))
+        Err(ControllerError::ReplayExecution(ReplayExecutionError::CounterMismatch {
+            step_index: 0
+        }))
     ));
 
     // A wrong final full-state digest is rejected after execution.
