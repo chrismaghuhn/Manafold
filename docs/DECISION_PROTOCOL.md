@@ -143,6 +143,24 @@ Ordering must not use trusted object IDs, physical IDs, hidden definitions, cand
 
 Exact binding validation compares visible values and perspective mappings, not merely enum variants.
 
+The ownership boundary is explicit:
+
+```text
+AuthoritativeDecisionRequestV2::validate()
+    = local structural request validity
+
+validate_pending_authoritative_request()
+    = authoritative exact visible-to-trusted candidate binding,
+      including scalar payload equality and perspective resolver equality
+
+project_player_request()
+    = projection of a request after that authoritative state boundary has
+      passed; it is not a second binding authority
+```
+
+The player projection never exposes the trusted binding and does not perform a
+second resolver check.
+
 ## Validation order
 
 1. canonical wire/shape and schema version;

@@ -180,3 +180,88 @@ fn fnd_027_final_identity_mismatch_is_rejected_by_the_rules_cursor() {
         Err(TransitionViolation::OccurrencePairing)
     ));
 }
+
+fn assert_identity_variant_is_rejected(mutate: impl FnOnce(&mut EngineState)) {
+    let (before, mut result) = outcome_occurrence_product(
+        PerspectiveObservationPolicyV1::AnnouncedOutcome {
+            code: "identity-variant-proof".into(),
+        },
+    );
+    mutate(&mut result.next_state);
+    if let Ok(delta) = mtgml_state::StateDelta::between(
+        &before,
+        &result.next_state,
+        result
+            .events
+            .iter()
+            .map(|event| event.event.semantic_delta())
+            .collect(),
+    ) {
+        result.delta = delta;
+    }
+    assert_contract_rejects_without_mutation(&before, &result);
+}
+
+#[test]
+fn fnd_027_identity_snapshot_variants_fail_closed_at_the_existing_owner() {
+    assert_identity_variant_is_rejected(|after| {
+        let identity = after
+            .perspective_identities
+            .players
+            .get_mut(&PlayerId(1))
+            .unwrap();
+        identity
+            .opaque_to_object
+            .insert(mtgml_model::OpaqueObjectId(2), mtgml_model::GameObjectId(2));
+        identity
+            .object_to_opaque
+            .insert(mtgml_model::GameObjectId(2), mtgml_model::OpaqueObjectId(2));
+        identity.next_opaque_object_id = mtgml_model::OpaqueObjectId(3);
+    });
+
+    assert_identity_variant_is_rejected(|after| {
+        let identity = after
+            .perspective_identities
+            .players
+            .get_mut(&PlayerId(1))
+            .unwrap();
+        identity
+            .opaque_to_object
+            .remove(&mtgml_model::OpaqueObjectId(1));
+        identity
+            .object_to_opaque
+            .remove(&mtgml_model::GameObjectId(1));
+    });
+
+    assert_identity_variant_is_rejected(|after| {
+        after
+            .perspective_identities
+            .players
+            .get_mut(&PlayerId(1))
+            .unwrap()
+            .retired_object_ids
+            .insert(mtgml_model::OpaqueObjectId(2));
+    });
+
+    assert_identity_variant_is_rejected(|after| {
+        let identity = after
+            .perspective_identities
+            .players
+            .get_mut(&PlayerId(1))
+            .unwrap();
+        identity
+            .opaque_to_ability
+            .insert(mtgml_model::OpaqueAbilityId(1), mtgml_model::AbilityInstanceId(1));
+        identity
+            .ability_to_opaque
+            .insert(mtgml_model::AbilityInstanceId(1), mtgml_model::OpaqueAbilityId(1));
+        identity.next_opaque_ability_id = mtgml_model::OpaqueAbilityId(2);
+    });
+
+    assert_identity_variant_is_rejected(|after| {
+        after
+            .perspective_identities
+            .players
+            .remove(&PlayerId(2));
+    });
+}
