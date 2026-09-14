@@ -4,8 +4,8 @@ use mtgml_decision::{
 };
 use mtgml_model::{
     CheckpointCodecIdentity, CheckpointDigestV3, ContentDigest, DecisionId,
-    EnvironmentLimitCounters, EpisodeStatus, FullStateDigest, FullStateDigestV2,
-    FullStateDigestV3, PlayerDecisionIdV1, PlayerId, StateRevision,
+    EnvironmentLimitCounters, EpisodeStatus, FullStateDigest, FullStateDigestV2, FullStateDigestV3,
+    PlayerDecisionIdV1, PlayerId, StateRevision,
 };
 
 use crate::recorder::ReplayRecorderV2;

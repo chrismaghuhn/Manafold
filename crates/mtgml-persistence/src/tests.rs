@@ -398,11 +398,21 @@ fn valid_checkpoint_codec() -> CheckpointCodecIdentity {
 #[test]
 fn fnd_017a_rejects_non_v3_full_state_reference_identity() {
     let cases: [(&str, fn(&mut mtgml_model::DigestReferenceV1)); 5] = [
-        ("envelope", |reference| reference.envelope_version = "other".into()),
-        ("algorithm", |reference| reference.algorithm_id = "sha-512".into()),
-        ("domain", |reference| reference.semantic_domain = "other-domain".into()),
-        ("codec", |reference| reference.payload_codec_id = "other-codec".into()),
-        ("schema", |reference| reference.input_schema_id = "other-schema".into()),
+        ("envelope", |reference| {
+            reference.envelope_version = "other".into()
+        }),
+        ("algorithm", |reference| {
+            reference.algorithm_id = "sha-512".into()
+        }),
+        ("domain", |reference| {
+            reference.semantic_domain = "other-domain".into()
+        }),
+        ("codec", |reference| {
+            reference.payload_codec_id = "other-codec".into()
+        }),
+        ("schema", |reference| {
+            reference.input_schema_id = "other-schema".into()
+        }),
     ];
     for (label, mutate) in cases {
         let mut reference = valid_full_state_reference();
