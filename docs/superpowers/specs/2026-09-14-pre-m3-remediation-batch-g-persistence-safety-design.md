@@ -10,7 +10,7 @@
 
 **Canonical tracker:** [Issue #164](https://github.com/chrismaghuhn/Manafold/issues/164)
 
-**Status:** design pending independent approval
+**Status:** reviewed/approved for implementation planning
 
 ## 1. Goal and boundary
 
