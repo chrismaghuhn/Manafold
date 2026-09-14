@@ -1099,3 +1099,7 @@ mod tests {
         ));
     }
 }
+
+#[cfg(test)]
+#[path = "tests/batch_f.rs"]
+mod batch_f;

@@ -149,3 +149,5 @@ fn observation_digest_known_value_binds_exact_payload_bytes() {
     );
     assert_ne!(digest, ObservationDigest::from_canonical_bytes(b"e30="));
 }
+
+include!("tests/batch_f.rs");
