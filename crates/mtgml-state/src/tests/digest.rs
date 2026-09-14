@@ -146,7 +146,6 @@ fn m2_b_full_state_digest_v3_mutation_matrix() {
                 }
             }
         }),
-        ("zone_order_reorder", replace_with_canonical_two_object_reorder),
         ("zone_stack_records", |state| {
             state.zones.stack_records.insert(
                 StackObjectId(1),

@@ -70,23 +70,21 @@ fn two_object_ordered_state() -> EngineState {
     state
 }
 
-fn replace_with_canonical_two_object_reorder(state: &mut EngineState) {
-    let mut reordered = two_object_ordered_state();
-    set_object_two_position(&mut reordered, ZonePosition::Top { offset: 1 });
-    reordered
+fn swap_canonical_two_object_order(state: &mut EngineState) {
+    set_object_two_position(state, ZonePosition::Top { offset: 1 });
+    state
         .zones
         .locations
         .get_mut(&GameObjectId(3))
         .unwrap()
         .position = ZonePosition::Top { offset: 0 };
-    let key = reordered.zones.locations[&GameObjectId(2)].key();
-    reordered
+    let key = state.zones.locations[&GameObjectId(2)].key();
+    state
         .zones
         .ordered_zones
         .get_mut(&key)
         .unwrap()
         .reverse();
-    *state = reordered;
 }
 
 fn set_object_two_position(state: &mut EngineState, position: ZonePosition) {
@@ -611,9 +609,9 @@ fn fnd_006b_noncanonical_position_cannot_obtain_a_v3_digest() {
 
 #[test]
 fn fnd_006b_valid_canonical_reorder_changes_the_v3_digest() {
-    let baseline = synthetic_state();
+    let baseline = two_object_ordered_state();
     let mut reordered = baseline.clone();
-    replace_with_canonical_two_object_reorder(&mut reordered);
+    swap_canonical_two_object_order(&mut reordered);
     validate_engine_state(&reordered).unwrap();
     assert_ne!(baseline.digest().unwrap(), reordered.digest().unwrap());
 }

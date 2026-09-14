@@ -9,11 +9,37 @@ fn batch_d_invalid_ordered_state_cannot_construct_checkpoint() {
             root_seed: seed(),
         })
         .unwrap();
+    let codec = CheckpointCodecIdentity {
+        codec_id: "synthetic-m2-memory".into(),
+        semantic_version: "3".into(),
+    };
+    assert!(
+        EnvironmentCheckpointV3::new(
+            state.clone(),
+            EpisodeStatus::Running,
+            EnvironmentLimitCounters::default(),
+            codec.clone(),
+        )
+        .is_ok()
+    );
     state
         .zones
         .locations
         .get_mut(&mtgml_model::GameObjectId(2))
         .unwrap()
+        .position = mtgml_state::ZonePosition::Bottom { offset: 0 };
+    state
+        .knowledge
+        .players
+        .get_mut(&PlayerId(2))
+        .unwrap()
+        .active
+        .get_mut(&mtgml_model::OpaqueObjectId(2))
+        .unwrap()
+        .known_location
+        .as_mut()
+        .unwrap()
+        .location
         .position = mtgml_state::ZonePosition::Bottom { offset: 0 };
 
     assert_eq!(
@@ -21,10 +47,7 @@ fn batch_d_invalid_ordered_state_cannot_construct_checkpoint() {
             state,
             EpisodeStatus::Running,
             EnvironmentLimitCounters::default(),
-            CheckpointCodecIdentity {
-                codec_id: "synthetic-m2-memory".into(),
-                semantic_version: "3".into(),
-            },
+            codec,
         ),
         Err(CheckpointValidationError::StateDigest)
     );
