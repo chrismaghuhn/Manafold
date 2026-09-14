@@ -1,11 +1,13 @@
 # Pre-M3 Remediation Batch E: Cross-Layer Runtime and Replay Closure
 
-**Status:** approved design for implementation
+**Status:** reviewed and approved for implementation
 **Date:** 2026-09-14
 **Base:** `9996cfd0fcd4ef67d98cb0422611cebabd20e46b`
 **Branch:** `chris/pre-m3-remediation-batch-e-cross-layer-closure`
 **Scope:** Issue #164 findings FND-007, FND-008, FND-012B, FND-020, FND-022B,
 FND-022E, FND-023, FND-024, FND-025, and FND-026B-FND-026D
+**Review provenance:** user review approval on 2026-09-14 after the four requested
+scope corrections.
 
 ## Goal
 
@@ -48,7 +50,7 @@ ADR 0039, ADR 0040, ADR 0041, and ADR 0049.
 | FND-022E | Explicit trusted replay-control trace | Environment replay executor | Replay fields exist, but replay currently carries resource and wall-clock values forward and rejects resealed forward progress instead of applying the recorded values. | Apply validated recorded external counters to the replay-owned backend through the existing checkpoint restore path. Never read host time. |
 | FND-023 | Replay evidence boundary | `AuthoritativeReplayV3::validate`; environment replay executor | Structural replay validation and backend execution are separate, but the distinction is not explicit enough in the API/docs. | Document and test `validate()` as detached structural validation; use `ReplayExecutionReport` as backend/checkpoint-verified evidence. |
 | FND-024 | Layered rejection contract | Environment endpoint, rules kernel, replay recorder | Wire and player semantic rejections produce no authoritative replay step. A trusted `accepted=false` transition is nonmutating and can be represented as an explicit diagnostic replay step. | Record one unified layer A-D matrix and preserve the current policy. No player rejection is silently added to authoritative replay. |
-| FND-025 | Canonical identity encoding | V3 status, checkpoint digest, replay manifest | Checkpoint digest sorts player outcomes during encoding; V3 manifest validation does not reject a permuted deck list. | Reject noncanonical authoritative keyed-array order and remove V3 digest-side sorting. Construction-time producer configuration may be sorted before identity is formed. |
+| FND-025 | Canonical identity encoding | V3 checkpoint/replay boundaries and checkpoint digest | Checkpoint digest sorts player outcomes during encoding; V3 manifest validation does not reject a permuted deck list, and the shared `EpisodeStatus` model must not acquire a new global ordering rule. | Reject noncanonical authoritative keyed-array order at V3 checkpoint/replay boundaries. Preserve the defensive sort inside the V3 digest encoder. Construction-time producer configuration may be sorted before identity is formed. |
 | FND-026B | M2 per-perspective product validation | Environment precommit product | Every projected observed envelope is validated, but `PlayerStepV2.submission` has no neutral non-actor meaning. | `BLOCKED_CONTRACT_AMBIGUITY`; do not invent a non-actor `PlayerStepV2`. |
 | FND-026C | M2 environment API lifecycle | Player endpoint/API boundary | `submit(response) -> PlayerStep` is actor-bound and no live non-actor delivery API is promised. | `DEFERRED_P2`; no queue, mailbox, polling method, callback, or hidden controller state. |
 | FND-026D | Replay projection parity | Production lifecycle projector plus environment replay trace | Existing tests reproject live products and construct both perspective envelope batches, but do not execute an eventful replay trace and compare a non-actor batch. | Add a test-only eventful situation generator. Reprojection uses the production projector on replay `before/events/after`. |
@@ -94,9 +96,11 @@ turn a historical reader into a current implementation probe.
 
 #### Closed status player universe
 
-`EpisodeStatus::validate()` remains local: it checks closed enum data, duplicate
-keys, and canonical ascending player order. A separate environment-owned
-relation checks:
+`EpisodeStatus::validate()` remains the shared local V1/model validation: it
+checks closed enum data and duplicate keys, but it does not impose a new global
+serialization order on the shared `EpisodeStatus` type. V3-authoritative
+checkpoint/replay boundaries separately require ascending keyed-array order and
+the exact player universe. Those boundary checks compare:
 
 ```text
 set(closed_status.players.player)
@@ -105,7 +109,12 @@ set(authoritative_player_universe)
 ```
 
 The checkpoint boundary uses `EngineState.core.players.keys()`. The detached
-V3 replay boundary uses the manifest deck-player set. This handles terminal,
+V3 replay boundary uses the manifest deck-player set. The V3 checkpoint digest
+encoder may continue to sort `player_outcomes` defensively, as required by the
+existing `STATE_HASHING.md` contract; the authoritative checkpoint/replay
+boundary rejects an unsorted input before it becomes authoritative. This keeps
+the accepted digest helper and all existing V3 KAT bytes stable without
+globalizing a V3 rule into the shared V1/model validator. This handles terminal,
 truncated, concession, draw, win/loss, eliminated, unresolved, and future
 multi-player states without assuming two players. `Running` has no outcome
 set. Missing, foreign, and duplicate outcomes fail closed before trusted
@@ -157,7 +166,9 @@ received by a player endpoint.
 | A | malformed/noncanonical wire bytes | no | no mutation | no |
 | B | stale, invalid candidate, wrong answer, closed endpoint submission | no | no mutation | typed rejected mirror for the actor |
 | C | trusted kernel returns `accepted=false` | only when explicitly represented as a diagnostic step | complete checkpoint identity unchanged | no endpoint product is synthesized by replay |
-| D | environment/internal technical failure | no | candidate discarded; no silent semantic mutation | closed service failure |
+| D1 | accepted transition whose already-defined deterministic limit result is `Truncated` | yes; the committed after status and complete counters are recorded | committed according to the existing accepted-transition contract | the normal actor product, with the truncated status |
+| D2 | aborted internal/service failure before commit | no | candidate discarded; no mutation | closed service failure |
+| D3 | external-counter-driven truncation without a reviewed threshold/transition contract | no successful replay step; fail closed as unsupported | no invented status or outcomes | no player product |
 
 The current recorder/executor remains capable of validating a deliberately
 recorded layer-C `accepted=false` diagnostic step. Live layer-B rejection does
