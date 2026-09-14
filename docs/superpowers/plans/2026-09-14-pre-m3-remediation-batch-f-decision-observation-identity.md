@@ -49,6 +49,7 @@ value, schema value, player-facing error code, digest input, or replay value.
 | crates/mtgml-rules/src/semantic_cursor.rs | Reject no-op LifeChanged and ObjectTapped events at the Rules semantic owner. |
 | crates/mtgml-rules/src/tests.rs and crates/mtgml-rules/src/tests/batch_f.rs | Batch-F Rules RED tests, positive controls, and FND-027 transition-parity regression. |
 | crates/mtgml-decision/src/lib.rs | Shared widened candidate-capacity helper, checked dense conversions, and exact-binding primitive tests. |
+| crates/mtgml-decision/src/tests/batch_f.rs | Separate source-contract RED for the old unchecked candidate conversions. |
 | crates/mtgml-state/src/tests.rs and crates/mtgml-state/src/tests/batch_f.rs | FND-013 authoritative-state exact-binding evidence and FND-028 zero-policy characterization. |
 | crates/mtgml-observation/src/error.rs | Typed Rust diagnostic for an identity-less V2 ObjectMoved. |
 | crates/mtgml-observation/src/observed_event.rs | V2 ObjectMoved semantic validation. |
@@ -87,6 +88,8 @@ production endpoint method is modified.
 - Create: crates/mtgml-environment/src/tests/batch_f.rs
 - Modify: crates/mtgml-state/src/tests.rs
 - Create: crates/mtgml-state/src/tests/batch_f.rs
+- Modify: crates/mtgml-decision/src/lib.rs
+- Create: crates/mtgml-decision/src/tests/batch_f.rs
 
 - [ ] **Step 1: Wire the test-only Batch-F files**
 
@@ -101,6 +104,14 @@ include!("tests/batch_f.rs");
 
 // crates/mtgml-environment/src/tests.rs
 include!("tests/batch_f.rs");
+
+// crates/mtgml-state/src/tests.rs
+include!("tests/batch_f.rs");
+
+// crates/mtgml-decision/src/lib.rs
+#[cfg(test)]
+#[path = "tests/batch_f.rs"]
+mod batch_f;
 ~~~
 
 Run:
@@ -109,6 +120,8 @@ Run:
 cargo test -p mtgml-rules --locked
 cargo test -p mtgml-observation --locked
 cargo test -p mtgml-environment --locked
+cargo test -p mtgml-state --locked
+cargo test -p mtgml-decision --locked
 ~~~
 
 Expected: the existing base suites pass with no Batch-F test names yet.
@@ -235,13 +248,15 @@ ZoneTransition rule.
 
 - [ ] **Step 3: Write the bounded FND-014 source RED**
 
-Add this test to the existing cfg(test) module in
-crates/mtgml-decision/src/lib.rs before the production helper exists:
+Create crates/mtgml-decision/src/tests/batch_f.rs and add this test there
+before the production helper exists. The source string is outside
+crates/mtgml-decision/src/lib.rs, so the test cannot match its own assertion
+text:
 
 ~~~rust
 #[test]
 fn fnd_014_dense_candidate_paths_have_checked_u32_boundaries() {
-    let source = include_str!("lib.rs");
+    let source = include_str!("../lib.rs");
     assert!(!source.contains("expect(\"candidate ordering is bounded by u32\")"));
     assert!(!source.contains("index as u32"));
 }
@@ -353,15 +368,18 @@ accepted local rejection shape.
 
 - [ ] **Step 6: Add FND-013, FND-027, and FND-028 characterization evidence**
 
-In crates/mtgml-state/src/tests/batch_f.rs, add same-variant/different-value
+In crates/mtgml-state/src/tests/batch_f.rs, which is wired above, add
+same-variant/different-value
 pending-candidate cases for SelectPlayer, SelectMode, ChooseBoolean,
 DeclareNumber, SelectObject, and ActivateAbility. Every mismatch must return
 Err(EngineStateViolation::PendingDecisionMismatch) while the matching control
 returns Ok(()). The direct authoritative request validator and projection
 remain structural positive controls.
 
-In crates/mtgml-rules/src/tests/batch_f.rs, mutate a lifecycle-owned identity
-field in an otherwise valid after-state and assert that
+In crates/mtgml-rules/src/tests/batch_f.rs, mutate only
+next_opaque_object_id from its valid value to the next valid allocator value
+in an otherwise valid after-state. This leaves the after-state structurally
+valid, so the lifecycle cursor reaches its final comparison. Assert that
 validate_transition_contract() returns
 Err(TransitionViolation::OccurrencePairing). This is evidence for the existing
 Rules owner and does not call the projector.
@@ -468,7 +486,7 @@ internal/experimental Rust error; do not map it to a new player submission code.
 Near CandidateOrderingV1, define one shared rule:
 
 ~~~rust
-const CANDIDATE_ID_COUNT_CAPACITY: u64 = u64::from(u32::MAX) + 1;
+const CANDIDATE_ID_COUNT_CAPACITY: u64 = (u32::MAX as u64) + 1;
 
 fn validate_candidate_capacity(
     candidate_count: usize,
@@ -674,6 +692,7 @@ eventful production projection remains valid.
 - Modify: python/src/mtgml/observation.py
 - Modify: python/tests/test_batch_f.py
 - Modify: crates/mtgml-conformance/src/isolation/paired.rs
+- Modify: crates/mtgml-conformance/src/isolation/mutants.rs
 - Modify: docs/ML_ENVIRONMENT.md
 - Create: wire/negative/player-step-v2-rejection-missing-next-decision.json
 - Create: wire/negative/player-step-v2-unavailable-with-next-decision.json
@@ -738,6 +757,17 @@ two-candidate request used by the PlayerStep tests and set it as
 next_decision. This keeps the fixture a valid current-request rejection without
 adding a new production endpoint meaning.
 
+The existing M2.G m4_submission_code_swap mutant cannot continue to change a
+wrong-actor UnavailableDecision into InvalidAnswer: FND-016A correctly requires
+UnavailableDecision to have no next decision and InvalidAnswer to carry the
+current actor-bound request. Keep the M2.G test name and leak-detection role,
+but move the valid mutation to a stale current-actor submission. The test must
+submit a response with the correct actor's player-decision ID and a stale
+revision, then change StaleDecision to InvalidAnswer only when the hidden
+fixture predicate differs. Both outputs retain the same valid next decision.
+Update the m4 comment and test in
+crates/mtgml-conformance/src/isolation/mutants.rs; do not weaken FND-016A.
+
 - [ ] **Step 4: Add two focused semantic negative fixtures**
 
 Derive both fixtures from the checked-in player-step-v2-rejected.json bytes:
@@ -774,7 +804,7 @@ cargo test -p mtgml-conformance --locked paired
 cargo test -p mtgml-wire --locked every_shared_negative_fixture_is_rejected_with_the_expected_code
 C:\Python313\python.exe -m pytest python/tests/test_batch_f.py python/tests/test_player_api.py -q
 git diff --check
-git add crates/mtgml-observation/src/player_step.rs crates/mtgml-observation/src/tests/batch_f.rs python/src/mtgml/observation.py python/tests/test_batch_f.py crates/mtgml-conformance/src/isolation/paired.rs docs/ML_ENVIRONMENT.md wire/negative/player-step-v2-rejection-missing-next-decision.json wire/negative/player-step-v2-unavailable-with-next-decision.json wire/negative/manifest.json
+git add crates/mtgml-observation/src/player_step.rs crates/mtgml-observation/src/tests/batch_f.rs python/src/mtgml/observation.py python/tests/test_batch_f.py crates/mtgml-conformance/src/isolation/paired.rs crates/mtgml-conformance/src/isolation/mutants.rs docs/ML_ENVIRONMENT.md wire/negative/player-step-v2-rejection-missing-next-decision.json wire/negative/player-step-v2-unavailable-with-next-decision.json wire/negative/manifest.json
 git commit -m "fix: close actor-bound PlayerStep rejection fields"
 ~~~
 
@@ -876,7 +906,7 @@ docs/normative-document-register.v1.json only after the paths exist.
 ~~~powershell
 C:\Python313\python.exe scripts/check_documentation.py
 git diff --check
-git add docs/DECISION_PROTOCOL.md docs/contracts/ENGINE_STATE_CLOSURE.md docs/superpowers/specs/2026-09-14-player-id-zero-policy-adr-candidate.md docs/normative-document-register.v1.json
+git add docs/DECISION_PROTOCOL.md docs/contracts/ENGINE_STATE_CLOSURE.md crates/mtgml-state/src/tests/batch_f.rs crates/mtgml-rules/src/tests/batch_f.rs crates/mtgml-environment/src/tests/batch_f.rs docs/superpowers/specs/2026-09-14-player-id-zero-policy-adr-candidate.md docs/normative-document-register.v1.json
 git commit -m "docs: record Batch-F binding and PlayerId policy boundaries"
 ~~~
 
@@ -1027,11 +1057,15 @@ C:\Python313\python.exe scripts/run_m2_h_gates.py
 ~~~powershell
 just check-fast
 just check
+just check-all
+just archive-check
 ~~~
 
-If either command cannot start because WSL /bin/bash is unavailable, record
-the corresponding key as BLOCKED; do not infer it from direct Cargo/Python
-success. Record direct constituent profiles separately.
+If a wrapper cannot start because WSL /bin/bash is unavailable, record its
+corresponding key as BLOCKED; do not infer it from direct Cargo/Python
+success. Record direct constituent profiles separately. Run archive-check only
+after all source-changing operations, and treat a failed or unavailable
+archive gate as FAIL or NOT_RUN rather than as a successful final gate.
 
 - [ ] **Step 6: Verify compatibility and final local cleanliness**
 
