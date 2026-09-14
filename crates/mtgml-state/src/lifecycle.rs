@@ -18,7 +18,6 @@ use crate::m2_shape::{
     KnowledgeInvalidationV2, KnowledgeRecordV2, KnownLocationFactV2, PerspectiveIdentityRecordV2,
     PlayerKnowledgeStateV2, RetiredKnowledgeRecordV2,
 };
-use crate::validation::validate_engine_state;
 use crate::zones::ZoneLocation;
 
 /// Complete state-changing meaning of one perspective-visible occurrence.
@@ -338,26 +337,65 @@ pub fn apply_perspective_lifecycle(
     if !state.core.players.contains_key(&audit.perspective) {
         return Err(LifecycleApplicationError::UnknownPlayer);
     }
-    let mut candidate = state.clone();
-    let zones_objects = &candidate.zones.objects;
-    let knowledge = candidate
+    let declared_player = |player: Option<PlayerId>| {
+        player.is_none_or(|player| state.core.players.contains_key(&player))
+    };
+    match &audit.mutation.knowledge {
+        Some(KnowledgeMutationV1::Acquire {
+            location: Some(location),
+            ..
+        }) if !declared_player(location.player) => {
+            return Err(LifecycleApplicationError::InvalidState)
+        }
+        Some(KnowledgeMutationV1::UpdateLocation { fact, .. })
+            if !declared_player(fact.location.player) =>
+        {
+            return Err(LifecycleApplicationError::InvalidState)
+        }
+        _ => {}
+    }
+    let mut candidate_knowledge = state
         .knowledge
         .players
         .get_mut(&audit.perspective)
-        .ok_or(LifecycleApplicationError::UnknownPlayer)?;
-    let identity = candidate
+        .ok_or(LifecycleApplicationError::UnknownPlayer)?
+        .clone();
+    let mut candidate_identity = state
         .perspective_identities
         .players
         .get_mut(&audit.perspective)
-        .ok_or(LifecycleApplicationError::UnknownPlayer)?;
+        .ok_or(LifecycleApplicationError::UnknownPlayer)?
+        .clone();
     apply_lifecycle_to_player(
-        knowledge,
-        identity,
-        &|object| zones_objects.contains_key(&object),
+        &mut candidate_knowledge,
+        &mut candidate_identity,
+        &|object| state.zones.objects.contains_key(&object),
         audit,
     )?;
-    validate_engine_state(&candidate).map_err(|_| LifecycleApplicationError::InvalidState)?;
-    *state = candidate;
+    match &audit.mutation.knowledge {
+        Some(KnowledgeMutationV1::Acquire { opaque, .. })
+        | Some(KnowledgeMutationV1::UpdateLocation { opaque, .. })
+        | Some(KnowledgeMutationV1::CurrentToHistory { opaque, .. })
+            if !candidate_identity.opaque_to_object.contains_key(opaque) =>
+        {
+            return Err(LifecycleApplicationError::InvalidState)
+        }
+        Some(KnowledgeMutationV1::Invalidate { opaque, .. })
+            if candidate_identity.opaque_to_object.contains_key(opaque)
+                || !candidate_identity.retired_object_ids.contains(opaque) =>
+        {
+            return Err(LifecycleApplicationError::InvalidState)
+        }
+        _ => {}
+    }
+    state
+        .knowledge
+        .players
+        .insert(audit.perspective, candidate_knowledge);
+    state
+        .perspective_identities
+        .players
+        .insert(audit.perspective, candidate_identity);
     Ok(())
 }
 

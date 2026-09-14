@@ -38,9 +38,12 @@ Add the smallest real transition-contract and lifecycle probes for:
 Each probe recorded the actual owner and exact current result. The frozen
 dispositions are:
 
-- FND-007: `CONFIRMED`. The public EngineState lifecycle seam can return `Ok`
-  while a complete state violates the already accepted player-reference
-  closure.
+- FND-007: `SPLIT_REQUIRED`. Local lifecycle postconditions are confirmed:
+  undeclared location players and orphan knowledge acquisition can return
+  `Ok`, and are now rejected atomically. Full `validate_engine_state` at this
+  primitive is `BLOCKED_CONTRACT_AMBIGUITY` because conformance uses the seam
+  to stage an occurrence before its later physical zone event; the complete
+  state is validated at transition commit.
 - FND-008: `SPLIT_REQUIRED`. Core `turn_number` mutation without a semantic
   event is `CONFIRMED`; stack/format/other unsupported mutation families remain
   `BLOCKED_CONTRACT_AMBIGUITY` until their current event vocabulary is explicit.

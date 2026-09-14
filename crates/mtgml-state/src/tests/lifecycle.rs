@@ -151,3 +151,28 @@ fn lifecycle_public_seam_must_not_return_ok_with_invalid_full_state() {
     assert!(result.is_err(), "invalid full state must not return Ok");
     assert_eq!(state, before, "rejected lifecycle mutation must be atomic");
 }
+
+#[test]
+fn orphaned_knowledge_acquire_is_rejected_without_mutation() {
+    let mut state = lifecycle_fixture();
+    let before = state.clone();
+    let audit = PerspectiveLifecycleAuditV1 {
+        perspective: PlayerId(1),
+        sequence: VisibleSequence(1),
+        mutation: PerspectiveLifecycleMutationV1 {
+            identity: IdentityMutationV1::None,
+            knowledge: Some(KnowledgeMutationV1::Acquire {
+                opaque: OpaqueObjectId(5),
+                definition: None,
+                location: None,
+                acquisition: observed_at(
+                    1,
+                    crate::knowledge::KnowledgeHistoryChannel::Public,
+                    crate::knowledge::KnowledgeAcquisitionCause::ExplicitReveal,
+                ),
+            }),
+        },
+    };
+    assert!(apply_perspective_lifecycle(&mut state, &audit).is_err());
+    assert_eq!(state, before);
+}
