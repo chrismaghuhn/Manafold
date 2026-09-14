@@ -1154,6 +1154,14 @@ Fix every blocker/major finding, rerun the affected tests, and review the new
 head. A minor/nit is either fixed or recorded explicitly in the evidence
 document; no review result is treated as verification by itself.
 
+If a review fix changes production Rust, Python semantic code, tests, fixtures,
+schemas, or verification tooling, rerun the complete Task 8 verification
+matrix, Steps 1-6, on the new exact source HEAD before creating final evidence.
+A documentation-, comment-, or evidence-only review fix may use a change-aware
+rerun limited to documentation, archive, and directly affected gates, but that
+exception must be recorded explicitly in the evidence document. No final PASS
+may cite evidence from a HEAD preceding the last relevant source change.
+
 After every review fix and its verification, run the final source-tree archive
 gate again, immediately before preparing the evidence document and PR body:
 
