@@ -1,5 +1,7 @@
 # Pre-M3 Remediation Batch A: State Closure and Canonicalization Implementation Plan
 
+**Status:** active implementation plan
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Close the confirmed Batch-A authoritative state-closure defects while preserving the current public, wire, schema, RNG, and digest contracts.

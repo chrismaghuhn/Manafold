@@ -1,5 +1,7 @@
 # Pre-M3 Remediation Batch A: State Closure and Canonicalization
 
+**Status:** proposed for Batch-A review
+
 ## Goal
 
 Close the confirmed authoritative state-closure defects FND-001, FND-003,
