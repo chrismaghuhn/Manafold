@@ -1,5 +1,7 @@
 # Pre-M3 Remediation Batch B: Transition, Causality, and Atomicity Implementation Plan
 
+**Status:** active implementation plan
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Characterize and minimally close confirmed current-runtime transition, causality, progression, and atomicity defects in FND-007, FND-008, FND-010, FND-011, and FND-012.
