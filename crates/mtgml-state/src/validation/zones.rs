@@ -5,15 +5,27 @@
 
 use std::collections::BTreeSet;
 
-use mtgml_model::PhysicalCardId;
+use mtgml_model::{PhysicalCardId, PlayerId};
 
 use super::EngineStateViolation;
 use crate::engine::EngineState;
-use crate::zones::ZonePosition;
+use crate::zones::{ZoneLocation, ZonePosition};
+
+pub(super) fn player_reference_is_declared(
+    player: Option<PlayerId>,
+    players: &BTreeSet<PlayerId>,
+) -> bool {
+    player.is_none_or(|player| players.contains(&player))
+}
+
+fn location_player_is_declared(location: &ZoneLocation, players: &BTreeSet<PlayerId>) -> bool {
+    player_reference_is_declared(location.player, players)
+}
 
 pub(super) fn validate_zone_structure(state: &EngineState) -> Result<(), EngineStateViolation> {
-    if !state.core.players.contains_key(&state.core.active_player)
-        || !state.core.players.contains_key(&state.core.priority_player)
+    let players: BTreeSet<_> = state.core.players.keys().copied().collect();
+    if !players.contains(&state.core.active_player)
+        || !players.contains(&state.core.priority_player)
     {
         return Err(EngineStateViolation::MissingTurnPlayer);
     }
@@ -25,15 +37,21 @@ pub(super) fn validate_zone_structure(state: &EngineState) -> Result<(), EngineS
     {
         return Err(EngineStateViolation::ObjectKeyMismatch);
     }
-    if state.zones.objects.values().any(|object| {
-        !state.core.players.contains_key(&object.owner)
-            || !state.core.players.contains_key(&object.controller)
-    }) || state
+    if state
         .zones
-        .locations
+        .objects
         .values()
-        .filter_map(|location| location.player)
-        .any(|player| !state.core.players.contains_key(&player))
+        .any(|object| !players.contains(&object.owner) || !players.contains(&object.controller))
+        || state
+            .zones
+            .locations
+            .values()
+            .any(|location| !location_player_is_declared(location, &players))
+        || state
+            .zones
+            .ordered_zones
+            .keys()
+            .any(|key| !player_reference_is_declared(key.player, &players))
     {
         return Err(EngineStateViolation::ObjectPlayerMismatch);
     }

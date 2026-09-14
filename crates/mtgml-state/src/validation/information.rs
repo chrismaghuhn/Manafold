@@ -9,6 +9,7 @@ use std::collections::BTreeSet;
 
 use mtgml_model::PlayerId;
 
+use super::zones::player_reference_is_declared;
 use super::EngineStateViolation;
 use crate::engine::EngineState;
 use crate::knowledge::KnowledgeAcquisitionReason;
@@ -65,6 +66,14 @@ pub(super) fn validate_retained_knowledge_against_live_state(
                 })
                 .collect();
             let history_is_increasing = observed.windows(2).any(|window| window[0] >= window[1]);
+            let current_location_player_is_declared = record
+                .known_location
+                .as_ref()
+                .is_none_or(|fact| player_reference_is_declared(fact.location.player, players));
+            let historical_location_players_are_declared = record
+                .historical_locations
+                .iter()
+                .all(|fact| player_reference_is_declared(fact.location.player, players));
             if known_fact_matches_live
                 || record
                     .physical_card
@@ -81,6 +90,8 @@ pub(super) fn validate_retained_knowledge_against_live_state(
                     .historical_locations
                     .iter()
                     .all(|fact| fact_is_valid(fact, knowledge))
+                || !current_location_player_is_declared
+                || !historical_location_players_are_declared
                 || history_is_increasing
             {
                 return Err(EngineStateViolation::KnowledgeMismatch);
@@ -93,9 +104,18 @@ pub(super) fn validate_retained_knowledge_against_live_state(
             // invalidate anything.
             let invalidation_is_observed =
                 record.invalidation.provenance.observed_sequence().is_some();
+            let last_known_location_player_is_declared = record
+                .last_known_location
+                .as_ref()
+                .is_none_or(|fact| player_reference_is_declared(fact.location.player, players));
+            let historical_location_players_are_declared = record
+                .historical_locations
+                .iter()
+                .all(|fact| player_reference_is_declared(fact.location.player, players));
             if identity
                 .opaque_to_object
                 .contains_key(&record.opaque_object)
+                || !identity.retired_object_ids.contains(&record.opaque_object)
                 || !invalidation_is_observed
                 || !provenance_is_valid(&record.acquisition, knowledge)
                 || !provenance_is_valid(&record.invalidation.provenance, knowledge)
@@ -107,6 +127,8 @@ pub(super) fn validate_retained_knowledge_against_live_state(
                     .historical_locations
                     .iter()
                     .all(|fact| fact_is_valid(fact, knowledge))
+                || !last_known_location_player_is_declared
+                || !historical_location_players_are_declared
                 || {
                     let observed: Vec<_> = record
                         .historical_locations
