@@ -444,6 +444,16 @@ fn fnd_017a_checkpoint_payload_is_not_a_public_function() {
     assert!(!source.contains("pub fn checkpoint_payload"));
 }
 
+#[test]
+fn fnd_019_array_limit_precedes_depth_limit() {
+    let mut bytes = vec![0x81; cbor::MAX_DEPTH];
+    bytes.extend([0x9a, 0x00, 0x10, 0x00, 0x01]);
+    assert_eq!(
+        cbor::decode_canonical(&bytes),
+        Err(PersistenceDecodeErrorV1::ArrayTooLarge)
+    );
+}
+
 /// The shared mechanical negative corpus is Rust-authoritative evidence:
 /// every committed fixture must produce its manifest-declared category from
 /// the Rust decoder. Python parity runs against the same corpus.

@@ -147,3 +147,11 @@ class PayloadFramingPrecedenceTests(unittest.TestCase):
         with self.assertRaises(PersistenceError) as trailing:
             decode_envelope(build(declared) + b"\x00")
         self.assertEqual(trailing.exception.code, "envelope_length")
+
+    def test_fnd_019_array_limit_precedes_depth_limit(self) -> None:
+        from mtgml.persistence import MAX_DEPTH
+
+        payload = (b"\x81" * MAX_DEPTH) + b"\x9a\x00\x10\x00\x01"
+        with self.assertRaises(PersistenceError) as caught:
+            decode_canonical(payload)
+        self.assertEqual(caught.exception.code, "array_too_large")
