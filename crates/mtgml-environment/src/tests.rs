@@ -572,3 +572,4 @@ include!("tests/continuation.rs");
 include!("tests/information_projection.rs");
 include!("tests/error_nonmutation.rs");
 include!("tests/batch_d.rs");
+include!("tests/batch_e.rs");
