@@ -254,7 +254,11 @@ pub(crate) fn rename_hidden_object(
 pub(crate) mod test_support {
     use super::*;
     use crate::isolation::witnesses::TrustedRenamingBijection;
-    use mtgml_decision::{DecisionAnswerV2, DecisionResponseV2, DECISION_RESPONSE_V2_SCHEMA};
+    use mtgml_decision::{
+        CandidateIntent, DecisionAnswerV2, DecisionDomainV2, DecisionResponseV2,
+        DecisionVisibility, PlayerDecisionRequestV2, VisibleCandidateV2,
+        DECISION_RESPONSE_V2_SCHEMA, PLAYER_DECISION_REQUEST_V2_SCHEMA,
+    };
     use mtgml_environment::PlayerEndpoint;
     use mtgml_model::{
         InformationStateDigestV2, ObservationDigest, StateRevision, VisibleSequence,
@@ -354,11 +358,32 @@ pub(crate) mod test_support {
             mtgml_wire::compute_information_state_digest_v2(&information_state.digest_input())
                 .unwrap();
         information_state.digest = digest;
+        let next_decision = PlayerDecisionRequestV2 {
+            schema_version: PLAYER_DECISION_REQUEST_V2_SCHEMA.into(),
+            player_decision_id: mtgml_model::PlayerDecisionIdV1(1),
+            state_revision: StateRevision(0),
+            actor: P1,
+            visibility: DecisionVisibility::Public,
+            decision: DecisionDomainV2::ChooseOne,
+            candidates: vec![
+                VisibleCandidateV2 {
+                    candidate_id: mtgml_model::CandidateIdV1(0),
+                    intent: CandidateIntent::ChooseBoolean { value: false },
+                },
+                VisibleCandidateV2 {
+                    candidate_id: mtgml_model::CandidateIdV1(1),
+                    intent: CandidateIntent::ChooseBoolean { value: true },
+                },
+            ],
+        };
+        next_decision
+            .validate()
+            .map_err(|_| mtgml_environment::PlayerEndpointError::ServiceUnavailable)?;
         Ok(PlayerStepV2 {
             schema_version: PLAYER_STEP_SCHEMA_V2.into(),
             information_state,
             observed_events: Vec::new(),
-            next_decision: None,
+            next_decision: Some(next_decision),
             status: EpisodeStatus::Running,
             submission: PlayerStepSubmissionV1::Rejected {
                 code: PlayerSubmissionCodeV1::InvalidAnswer,

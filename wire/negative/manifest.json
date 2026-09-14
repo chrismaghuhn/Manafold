@@ -220,6 +220,18 @@
       "contract": "player-step.v2",
       "expected_error_code": "semantic.player_step",
       "expected_reject_layer": "rust-python-semantic-or-decode",
+      "path": "player-step-v2-rejection-missing-next-decision.json"
+    },
+    {
+      "contract": "player-step.v2",
+      "expected_error_code": "semantic.player_step",
+      "expected_reject_layer": "rust-python-semantic-or-decode",
+      "path": "player-step-v2-unavailable-with-next-decision.json"
+    },
+    {
+      "contract": "player-step.v2",
+      "expected_error_code": "semantic.player_step",
+      "expected_reject_layer": "rust-python-semantic-or-decode",
       "path": "player-step-v2-events-duplicate-sequence.json"
     },
     {

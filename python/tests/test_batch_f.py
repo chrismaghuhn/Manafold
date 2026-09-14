@@ -15,8 +15,19 @@ from mtgml.decision import (  # noqa: E402
     VisibleCandidateV2,
     _validate_candidate_capacity,
 )
+from mtgml.episode import EpisodeStatus, TruncationReason  # noqa: E402
 from mtgml.errors import WireError  # noqa: E402
-from mtgml.observation import ObservedEventEnvelopeV2  # noqa: E402
+from mtgml.observation import (  # noqa: E402
+    INFORMATION_STATE_SCHEMA_V2,
+    OBSERVATION_SCHEMA,
+    PLAYER_STEP_SCHEMA_V2,
+    ObservationEnvelope,
+    ObservedEventEnvelopeV2,
+    PlayerInformationStateV2,
+    PlayerStepSubmissionV1,
+    PlayerStepV2,
+)
+from mtgml.wire import compute_information_state_digest_v2  # noqa: E402
 
 
 class CandidateCapacityTests(unittest.TestCase):
@@ -64,6 +75,98 @@ class ObservedEventIdentityTests(unittest.TestCase):
         ObservedEventEnvelopeV2.from_wire(envelope("3", None))
         ObservedEventEnvelopeV2.from_wire(envelope(None, "11"))
         ObservedEventEnvelopeV2.from_wire(envelope("3", "11"))
+
+
+class ActorBoundRejectionTests(unittest.TestCase):
+    @staticmethod
+    def _information_state() -> PlayerInformationStateV2:
+        observation = ObservationEnvelope(
+            schema_version=OBSERVATION_SCHEMA,
+            perspective=1,
+            state_revision=0,
+            payload_codec="synthetic-m2-observation.v1",
+            payload_base64="e30=",
+            digest="90845308617867fd703c6c4f37ede7908da24420053821f89190ad36236dfca3",
+        )
+        state = PlayerInformationStateV2(
+            schema_version=INFORMATION_STATE_SCHEMA_V2,
+            perspective=1,
+            state_revision=0,
+            current_observation=observation,
+            next_visible_sequence=0,
+            retained_knowledge=(),
+            digest="0" * 64,
+        )
+        _, digest = compute_information_state_digest_v2(state.digest_input())
+        return PlayerInformationStateV2(
+            schema_version=state.schema_version,
+            perspective=state.perspective,
+            state_revision=state.state_revision,
+            current_observation=state.current_observation,
+            next_visible_sequence=state.next_visible_sequence,
+            retained_knowledge=state.retained_knowledge,
+            digest=digest,
+        )
+
+    @staticmethod
+    def _request() -> PlayerDecisionRequestV2:
+        return PlayerDecisionRequestV2(
+            schema_version=PLAYER_DECISION_REQUEST_V2_SCHEMA,
+            player_decision_id=1,
+            state_revision=0,
+            actor=1,
+            visibility="public",
+            decision=DecisionSpec("choose_one"),
+            candidates=(
+                VisibleCandidateV2(0, CandidateIntent("choose_boolean", (("value", False),))),
+                VisibleCandidateV2(1, CandidateIntent("choose_boolean", (("value", True),))),
+            ),
+        )
+
+    def _rejected(
+        self,
+        code: str,
+        next_decision: PlayerDecisionRequestV2 | None,
+        status: EpisodeStatus,
+    ) -> PlayerStepV2:
+        return PlayerStepV2(
+            schema_version=PLAYER_STEP_SCHEMA_V2,
+            information_state=self._information_state(),
+            observed_events=(),
+            next_decision=next_decision,
+            status=status,
+            submission=PlayerStepSubmissionV1("rejected", code),
+        )
+
+    def test_rejection_matrix_requires_actor_bound_decision_presence(self) -> None:
+        request = self._request()
+        for code in (
+            "stale_decision",
+            "invalid_answer",
+            "invalid_candidate",
+            "duplicate_assignment",
+            "invalid_cardinality",
+            "invalid_number",
+            "invalid_order",
+        ):
+            with self.subTest(code=code):
+                with self.assertRaises(WireError) as caught:
+                    self._rejected(code, None, EpisodeStatus.running()).validate()
+                self.assertEqual(caught.exception.code, "semantic.player_step")
+                self._rejected(code, request, EpisodeStatus.running()).validate()
+
+        with self.assertRaises(WireError):
+            self._rejected(
+                "unavailable_decision", request, EpisodeStatus.running()
+            ).validate()
+        self._rejected(
+            "unavailable_decision", None, EpisodeStatus.running()
+        ).validate()
+        self._rejected(
+            "episode_closed",
+            None,
+            EpisodeStatus("truncated", TruncationReason.EXTERNAL_STOP),
+        ).validate()
 
 
 if __name__ == "__main__":

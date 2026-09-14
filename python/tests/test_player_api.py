@@ -150,11 +150,16 @@ class PlayerStepV2NextDecisionSerializationTests(unittest.TestCase):
     def _decisionless_step(self) -> PlayerStepV2:
         import dataclasses
 
+        from mtgml.observation import PlayerStepSubmissionV1
         from mtgml.wire import decode_canonical
 
         decoded = decode_canonical("player-step.v2", self.GOLDEN.read_bytes())
         assert isinstance(decoded, PlayerStepV2)
-        step = dataclasses.replace(decoded, next_decision=None)
+        step = dataclasses.replace(
+            decoded,
+            next_decision=None,
+            submission=PlayerStepSubmissionV1("rejected", "unavailable_decision"),
+        )
         assert step.next_decision is None
         return step
 

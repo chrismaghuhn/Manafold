@@ -868,16 +868,30 @@ class PlayerStepV2:
                     "rejected submission must carry an empty event batch",
                 )
             if self.submission.code == "episode_closed":
-                if self.status.kind == "running":
+                if self.status.kind == "running" or self.next_decision is not None:
+                    raise WireError(
+                        "semantic.player_step", "episode_closed rejection has an invalid product"
+                    )
+            elif self.submission.code == "unavailable_decision":
+                if self.status.kind != "running" or self.next_decision is not None:
                     raise WireError(
                         "semantic.player_step",
-                        "episode_closed rejection requires a non-running status",
+                        "unavailable decision has an invalid product",
                     )
-            elif self.status.kind != "running":
-                raise WireError(
-                    "semantic.player_step",
-                    "typed rejection requires a running episode",
-                )
+            elif self.submission.code in {
+                "stale_decision",
+                "invalid_answer",
+                "invalid_candidate",
+                "duplicate_assignment",
+                "invalid_cardinality",
+                "invalid_number",
+                "invalid_order",
+            }:
+                if self.status.kind != "running" or self.next_decision is None:
+                    raise WireError(
+                        "semantic.player_step",
+                        "actor-bound rejection must carry the current decision",
+                    )
 
     def to_wire(self) -> dict[str, object]:
         self.validate()
