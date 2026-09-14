@@ -80,6 +80,13 @@ impl SyntheticM1EnvironmentBackend {
         ) -> Result<(), ControllerError>,
     {
         let before = self.current_checkpoint()?;
+        #[cfg(test)]
+        let transition = if self.eventful_fixture {
+            super::eventful::apply(&before.state, actor, &response)?
+        } else {
+            self.kernel.apply(&before.state, actor, &response)?
+        };
+        #[cfg(not(test))]
         let transition = self.kernel.apply(&before.state, actor, &response)?;
         validate_transition_contract(&before.state, &transition)?;
 
