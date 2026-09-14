@@ -55,6 +55,9 @@ pub(super) fn validate_zone_structure(state: &EngineState) -> Result<(), EngineS
     {
         return Err(EngineStateViolation::ObjectPlayerMismatch);
     }
+    if state.zones.ordered_zones.values().any(Vec::is_empty) {
+        return Err(EngineStateViolation::OrderedZoneMismatch);
+    }
     let mut live_physical_cards = BTreeSet::<PhysicalCardId>::new();
     for object in state.zones.objects.values() {
         if let Some(physical_card) = object.physical_card {
@@ -78,14 +81,16 @@ pub(super) fn validate_zone_structure(state: &EngineState) -> Result<(), EngineS
         .collect();
     let mut ordered_seen = BTreeSet::new();
     for (key, objects) in &state.zones.ordered_zones {
-        for object in objects {
+        for (ordinal, object) in objects.iter().enumerate() {
             let Some(location) = state.zones.locations.get(object) else {
                 return Err(EngineStateViolation::OrderedZoneMismatch);
             };
-            if matches!(location.position, ZonePosition::Unordered)
-                || &location.key() != key
-                || !ordered_seen.insert(*object)
-            {
+            let canonical_position = matches!(
+                location.position,
+                ZonePosition::Top { offset }
+                    if u32::try_from(ordinal).is_ok_and(|expected| offset == expected)
+            );
+            if !canonical_position || &location.key() != key || !ordered_seen.insert(*object) {
                 return Err(EngineStateViolation::OrderedZoneMismatch);
             }
         }

@@ -1,6 +1,6 @@
 # Architecture Decision Records
 
-ADRs are immutable decision history. Superseded records remain and point to replacements. Numbered active records currently run through ADR 0048; ADR 0000 is the template.
+ADRs are immutable decision history. Superseded records remain and point to replacements. Numbered active records currently run through ADR 0049; ADR 0000 is the template.
 
 ADR numbers 0042 through 0047 are historically occupied by accepted ContextApplication/M2.5 decisions that were intentionally removed from the active source tree by the post-purge cleanup. Their numbers remain permanently reserved and are not reusable; the acceptance of ADR 0048 is therefore accompanied by an explicit historical numbering gap.
 
@@ -16,6 +16,10 @@ ADR 0041 accepts the reviewed capability-oriented semantic-ownership candidate a
 Reviewed ADR candidates may be stored under `docs/adr/candidates/` without allocating a permanent ADR number. They are informative until a later acceptance change assigns the then-current number and changes the record to `Accepted`. There is currently no open reviewed candidate.
 
 A candidate must not be cited as accepted architecture, used to claim executable support, or used to begin a later milestone before its explicit acceptance change. Candidate numbering shown inside research material is provisional only.
+
+ADR 0049 accepts the Pre-M3 Batch-D knowledge chronology and ordered-zone
+canonicality decision. Its executable evidence remains subject to the exact
+head review recorded in the associated pull request.
 
 Create a new record with:
 

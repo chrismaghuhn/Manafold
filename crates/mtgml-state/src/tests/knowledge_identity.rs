@@ -200,6 +200,15 @@ fn every_retained_location_fact_must_reference_a_declared_player() {
         .active
         .get_mut(&OpaqueObjectId(1))
         .unwrap()
+        .known_location = None;
+    active_history
+        .knowledge
+        .players
+        .get_mut(&PlayerId(1))
+        .unwrap()
+        .active
+        .get_mut(&OpaqueObjectId(1))
+        .unwrap()
         .historical_locations
         .push(valid_fact(invalid_location.clone()));
 
@@ -209,7 +218,7 @@ fn every_retained_location_fact_must_reference_a_declared_player() {
         .players
         .get_mut(&PlayerId(1))
         .unwrap()
-        .next_visible_sequence = VisibleSequence(2);
+        .next_visible_sequence = VisibleSequence(3);
     let identity = retired_last
         .perspective_identities
         .players
@@ -226,6 +235,11 @@ fn every_retained_location_fact_must_reference_a_declared_player() {
             KnowledgeAcquisitionCause::PublicEvent,
         ),
     });
+    last_record.invalidation.provenance = observed(
+        KnowledgeHistoryChannel::Public,
+        2,
+        KnowledgeAcquisitionCause::PublicEvent,
+    );
     retired_last
         .knowledge
         .players

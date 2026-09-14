@@ -146,20 +146,6 @@ fn m2_b_full_state_digest_v3_mutation_matrix() {
                 }
             }
         }),
-        ("zone_location_position", |state| {
-            let location = state.zones.locations.get_mut(&GameObjectId(2)).unwrap();
-            location.position = ZonePosition::Bottom { offset: 0 };
-            let knowledge = state.knowledge.players.get_mut(&PlayerId(2)).unwrap();
-            knowledge
-                .active
-                .get_mut(&OpaqueObjectId(2))
-                .unwrap()
-                .known_location
-                .as_mut()
-                .unwrap()
-                .location
-                .position = ZonePosition::Bottom { offset: 0 };
-        }),
         ("zone_stack_records", |state| {
             state.zones.stack_records.insert(
                 StackObjectId(1),
@@ -313,20 +299,24 @@ fn m2_b_full_state_digest_v3_mutation_matrix() {
         ("knowledge_acquisition_provenance", |state| {
             let knowledge = state.knowledge.players.get_mut(&PlayerId(1)).unwrap();
             let record = knowledge.active.get_mut(&OpaqueObjectId(1)).unwrap();
-            record.acquisition = observed(
+            let provenance = observed(
                 KnowledgeHistoryChannel::Public,
                 0,
                 KnowledgeAcquisitionCause::PublicEvent,
             );
+            record.acquisition = provenance;
+            record.known_location.as_mut().unwrap().provenance = provenance;
         }),
         ("knowledge_provenance_cause_only", |state| {
             let knowledge = state.knowledge.players.get_mut(&PlayerId(1)).unwrap();
             let record = knowledge.active.get_mut(&OpaqueObjectId(1)).unwrap();
-            record.acquisition = observed(
+            let provenance = observed(
                 KnowledgeHistoryChannel::Public,
                 0,
                 KnowledgeAcquisitionCause::ExplicitReveal,
             );
+            record.acquisition = provenance;
+            record.known_location.as_mut().unwrap().provenance = provenance;
         }),
         ("knowledge_known_location", |state| {
             let graveyard = ZoneLocation {
@@ -348,20 +338,19 @@ fn m2_b_full_state_digest_v3_mutation_matrix() {
         ("knowledge_private_acquisition", |state| {
             let knowledge = state.knowledge.players.get_mut(&PlayerId(2)).unwrap();
             let record = knowledge.active.get_mut(&OpaqueObjectId(2)).unwrap();
-            record.acquisition = observed(
+            let provenance = observed(
                 KnowledgeHistoryChannel::Private,
                 0,
                 KnowledgeAcquisitionCause::PrivateLook,
             );
+            record.acquisition = provenance;
+            record.known_location.as_mut().unwrap().provenance = provenance;
         }),
         ("knowledge_historical_location", |state| {
             let knowledge = state.knowledge.players.get_mut(&PlayerId(1)).unwrap();
-            knowledge
-                .active
-                .get_mut(&OpaqueObjectId(1))
-                .unwrap()
-                .historical_locations
-                .push(fact(
+            let record = knowledge.active.get_mut(&OpaqueObjectId(1)).unwrap();
+            record.known_location = None;
+            record.historical_locations.push(fact(
                     public_location(),
                     observed(
                         KnowledgeHistoryChannel::Public,
@@ -457,6 +446,7 @@ fn knowledge_history_is_digested_without_a_player_level_aggregate() {
     let knowledge = state.knowledge.players.get_mut(&PlayerId(2)).unwrap();
     let record = knowledge.active.get_mut(&OpaqueObjectId(2)).unwrap();
     let location = record.known_location.clone().unwrap().location;
+    record.known_location = None;
     record.historical_locations.push(fact(
         location,
         observed(
@@ -541,6 +531,7 @@ fn historical_private_look_provenance_is_bound_into_the_digest() {
     let knowledge = state.knowledge.players.get_mut(&PlayerId(2)).unwrap();
     let record = knowledge.active.get_mut(&OpaqueObjectId(2)).unwrap();
     let location = record.known_location.clone().unwrap().location;
+    record.known_location = None;
     record.historical_locations.push(fact(
         location,
         observed(
@@ -572,6 +563,7 @@ fn explicit_reveal_is_not_collapsed_to_public_event() {
     let knowledge = state.knowledge.players.get_mut(&PlayerId(1)).unwrap();
     let record = knowledge.active.get_mut(&OpaqueObjectId(1)).unwrap();
     let location = record.known_location.clone().unwrap().location;
+    record.known_location = None;
     record.historical_locations.push(fact(
         location,
         observed(
@@ -591,6 +583,7 @@ fn own_private_identity_is_not_collapsed_to_private_look() {
     let knowledge = state.knowledge.players.get_mut(&PlayerId(2)).unwrap();
     let record = knowledge.active.get_mut(&OpaqueObjectId(2)).unwrap();
     let location = record.known_location.clone().unwrap().location;
+    record.known_location = None;
     record.historical_locations.push(fact(
         location,
         observed(
@@ -644,6 +637,7 @@ fn historical_monotonicity_ignores_unsequenced_provenance() {
         let knowledge = state.knowledge.players.get_mut(&PlayerId(1)).unwrap();
         let record = knowledge.active.get_mut(&OpaqueObjectId(1)).unwrap();
         let location = record.known_location.clone().unwrap().location;
+        record.known_location = None;
         record.historical_locations = provenances
             .into_iter()
             .map(|provenance| fact(location.clone(), provenance))
@@ -662,7 +656,7 @@ fn historical_monotonicity_ignores_unsequenced_provenance() {
     ]);
     validate_engine_state(&valid).unwrap();
 
-    // Two observed facts at the same sequence remain invalid.
+    // An initial location after observed history is invalid.
     let invalid = build(vec![
         observed(
             KnowledgeHistoryChannel::Public,
@@ -670,16 +664,11 @@ fn historical_monotonicity_ignores_unsequenced_provenance() {
             KnowledgeAcquisitionCause::PublicEvent,
         ),
         KnowledgeAcquisitionReason::InitialConfiguration,
-        observed(
-            KnowledgeHistoryChannel::Public,
-            0,
-            KnowledgeAcquisitionCause::PublicEvent,
-        ),
     ]);
     assert_eq!(
         validate_engine_state(&invalid),
         Err(EngineStateViolation::M2Shape(
-            M2ShapeViolation::VisibleSequence
+            M2ShapeViolation::Knowledge
         ))
     );
 }

@@ -56,16 +56,6 @@ pub(super) fn validate_retained_knowledge_against_live_state(
                 .known_location
                 .as_ref()
                 .is_some_and(|fact| state.zones.locations.get(object) != Some(&fact.location));
-            let observed: Vec<_> = record
-                .historical_locations
-                .iter()
-                .filter_map(|fact| {
-                    fact.provenance
-                        .observed_sequence()
-                        .map(|sequence| sequence.0)
-                })
-                .collect();
-            let history_is_increasing = observed.windows(2).any(|window| window[0] >= window[1]);
             let current_location_player_is_declared = record
                 .known_location
                 .as_ref()
@@ -92,7 +82,6 @@ pub(super) fn validate_retained_knowledge_against_live_state(
                     .all(|fact| fact_is_valid(fact, knowledge))
                 || !current_location_player_is_declared
                 || !historical_location_players_are_declared
-                || history_is_increasing
             {
                 return Err(EngineStateViolation::KnowledgeMismatch);
             }
@@ -129,18 +118,6 @@ pub(super) fn validate_retained_knowledge_against_live_state(
                     .all(|fact| fact_is_valid(fact, knowledge))
                 || !last_known_location_player_is_declared
                 || !historical_location_players_are_declared
-                || {
-                    let observed: Vec<_> = record
-                        .historical_locations
-                        .iter()
-                        .filter_map(|fact| {
-                            fact.provenance
-                                .observed_sequence()
-                                .map(|sequence| sequence.0)
-                        })
-                        .collect();
-                    observed.windows(2).any(|window| window[0] >= window[1])
-                }
             {
                 return Err(EngineStateViolation::KnowledgeMismatch);
             }
