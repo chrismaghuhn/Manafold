@@ -1,11 +1,11 @@
 # Pre-M3 Remediation Batch E dispositions and evidence
 
-**Status:** implementation evidence in progress; final exact-head review pending
+**Status:** final local evidence; hosted CI pending exact final PR head
 **Date:** 2026-09-14
 **Base:** `9996cfd0fcd4ef67d98cb0422611cebabd20e46b`
-**Code/evidence head:** `cfe5a87d1194a2de3ec2f0b148e0fa3565fba333`
+**Code/evidence head before PR metadata:** `ae16a809b7e427821cef7389f8f9afc7778fa645`
 **Branch:** `chris/pre-m3-remediation-batch-e-cross-layer-closure`
-**PR:** `NOT_RUN`
+**PR:** `https://github.com/chrismaghuhn/Manafold/pull/169`
 
 ## Scope
 
@@ -19,9 +19,9 @@ Issue #162. No M3 work or real Magic semantics is included.
 ```text
 TASK = PRE_M3_REMEDIATION_BATCH_E
 BASE = 9996cfd0fcd4ef67d98cb0422611cebabd20e46b
-HEAD = cfe5a87d1194a2de3ec2f0b148e0fa3565fba333
+HEAD = ae16a809b7e427821cef7389f8f9afc7778fa645
 BRANCH = chris/pre-m3-remediation-batch-e-cross-layer-closure
-PR = NOT_RUN
+PR = https://github.com/chrismaghuhn/Manafold/pull/169
 
 E1_RUNTIME_CLOSURE = PASS
 FND_007_REMAINDER = RESOLVED_ON_BASE
@@ -82,7 +82,7 @@ LOCAL_CHECK_FAST = BLOCKED: just cannot start WSL /bin/bash on this Windows host
 LOCAL_CHECK = BLOCKED: just cannot start WSL /bin/bash on this Windows host
 DIRECT_FAST_PROFILE = PASS: .venv/Scripts/python.exe scripts/run_checks.py fast
 DIRECT_INTEGRATION_PROFILE = PASS: .venv/Scripts/python.exe scripts/run_checks.py integration
-HOSTED_CI = NOT_RUN
+HOSTED_CI = NOT_RUN: CI was initially dispatched for ae16a809 and must be rerun on the final pushed metadata head
 
 PUBLIC_API_CHANGE = NO
 WIRE_CHANGE = NO
@@ -93,7 +93,7 @@ HISTORICAL_REPLAY_CHANGE = NO
 
 INFORMATION_SAFETY = PASS for the eventful projection test's observed products; no new player surface exposes trusted IDs, RNG provenance, checkpoint identity, or hidden order
 
-WORKTREE_CLEAN = YES at cfe5a87
+WORKTREE_CLEAN = YES at ae16a809
 REMOTE_HEAD_EQUALS_LOCAL = NOT_RUN
 
 NEW_MAGIC_SEMANTICS = NO
