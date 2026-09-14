@@ -187,3 +187,4 @@ fn entry_stage0() -> EngineState {
 include!("tests/synthetic_program.rs");
 include!("tests/transition_contract.rs");
 include!("tests/determinism.rs");
+include!("tests/batch_e.rs");
