@@ -24,7 +24,9 @@ Validation covers at least:
 
 - zone transition, new incarnation, exact locations, and identical LKI;
 - object cessation;
-- life and tapped changes;
+- life and tapped changes; `LifeChanged` and `ObjectTapped` are mutation
+  events and therefore require unequal `from` and `to` values, while
+  occurrence-only event families are not subject to a blanket mutation rule;
 - decision creation/clearing;
 - RNG cursor advancement, bound, and sampled value;
 - revision monotonicity and event-ID allocation;
@@ -33,6 +35,10 @@ Validation covers at least:
 ## Zone transitions
 
 A transition creates a new `GameObjectId`; a real `PhysicalCardId` may persist. The old object’s snapshot supplies LKI. Token/copy cessation is represented separately when applicable.
+
+`ZoneTransition` is an identity/incarnation change and requires distinct old
+and new object identities. This event-family rule is independent of the
+value-change requirement for life and tapped mutations.
 
 ## Replacements, triggers, SBA, priority
 

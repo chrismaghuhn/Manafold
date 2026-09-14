@@ -31,10 +31,14 @@ fn fnd_009_noop_life_change_is_rejected_by_the_transition_contract() {
         },
     };
     let result = single_event_product(&before, after, event);
+    let before_snapshot = before.clone();
+    let result_snapshot = result.clone();
     assert!(matches!(
         validate_transition_contract(&before, &result),
         Err(TransitionViolation::LifeChange)
     ));
+    assert_eq!(before, before_snapshot);
+    assert_eq!(result, result_snapshot);
 }
 
 #[test]
@@ -53,10 +57,14 @@ fn fnd_009_noop_object_tap_is_rejected_by_the_transition_contract() {
         },
     };
     let result = single_event_product(&before, after, event);
+    let before_snapshot = before.clone();
+    let result_snapshot = result.clone();
     assert!(matches!(
         validate_transition_contract(&before, &result),
         Err(TransitionViolation::TapChange)
     ));
+    assert_eq!(before, before_snapshot);
+    assert_eq!(result, result_snapshot);
 }
 
 #[test]
