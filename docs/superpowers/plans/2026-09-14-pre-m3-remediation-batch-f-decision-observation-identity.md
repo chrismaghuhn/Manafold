@@ -38,9 +38,11 @@ M3_AUTHORIZED = NO
 MERGE_PERFORMED = NO
 ~~~
 
-The only new Rust API-level value is the internal/experimental
-DecisionValidationError::CandidateCapacityExceeded variant. It is not a wire
-value, schema value, player-facing error code, digest input, or replay value.
+The new Rust API-level values are the internal/experimental
+DecisionValidationError::CandidateCapacityExceeded and
+ObservationValidationError::ObjectMovedIdentity variants. They are not wire
+values, schema values, player-facing error codes, digest inputs, or replay
+values; no frozen public API changes.
 
 ## File map
 
