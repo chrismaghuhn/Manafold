@@ -15,11 +15,15 @@ pub fn additional_cast_cost(
     format: &FormatState,
     commander: PhysicalCardId,
 ) -> Result<u32, CommanderError> {
-    let casts = commander_state(format)?
-        .cast_counts
-        .get(&commander)
-        .copied()
-        .ok_or(CommanderError::NotDesignated)?;
+    let state = commander_state(format)?;
+    let designated = state
+        .designations
+        .values()
+        .any(|cards| cards.contains(&commander));
+    if !designated {
+        return Err(CommanderError::NotDesignated);
+    }
+    let casts = state.cast_counts.get(&commander).copied().unwrap_or(0);
     Ok(casts.saturating_mul(2))
 }
 
