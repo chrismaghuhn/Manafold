@@ -1,5 +1,7 @@
 # Pre-M3 Remediation Batch C: Replay, Checkpoint, and Delivery Closure Implementation Plan
 
+**Status:** active implementation plan
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Characterize FND-021, FND-022, and FND-026 at their actual Rust ownership boundaries, fix only confirmed replay/counter/projection-validation defects, and record exact dispositions without changing wire schemas, historical replay meanings, or M3 scope.
@@ -150,4 +152,3 @@ cargo test --workspace --all-features --locked
 - [ ] No second replay executor, projector, hidden controller state, or player-visible trusted field was added.
 - [ ] All exact `PASS`, `FAIL`, `BLOCKED`, and `NOT_RUN` labels are backed by commands actually run.
 - [ ] The final disposition matrix includes every FND-021/FND-022/FND-026 sub-slice and ends with `M3_AUTHORIZED = NO`.
-
