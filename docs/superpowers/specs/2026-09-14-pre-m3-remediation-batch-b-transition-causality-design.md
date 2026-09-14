@@ -23,7 +23,7 @@ revision progression, fresh current Decision V2 identities, typed checkpointable
 RNG continuation, and authoritative provenance for visible outcomes. Historical
 Replay V1/V2 contracts remain immutable and are not remediation targets.
 
-## Phase 1: characterization
+## Phase 1: characterization and dispositions
 
 Add the smallest real transition-contract and lifecycle probes for:
 
@@ -35,11 +35,32 @@ Add the smallest real transition-contract and lifecycle probes for:
 - visible random outcome occurrence without a `RandomValueSampled` event;
 - announced/public outcome behavior separately from random outcomes.
 
-Each probe records the actual owner and the exact current result. A finding is
-`CONFIRMED` only when the current contract clearly requires rejection. An
-unsupported mutation family whose permitted event model is not enumerated is
-recorded as `BLOCKED_CONTRACT_AMBIGUITY` or `SPLIT_REQUIRED` instead of being
-fixed by inventing event types.
+Each probe recorded the actual owner and exact current result. The frozen
+dispositions are:
+
+- FND-007: `CONFIRMED`. The public EngineState lifecycle seam can return `Ok`
+  while a complete state violates the already accepted player-reference
+  closure.
+- FND-008: `SPLIT_REQUIRED`. Core `turn_number` mutation without a semantic
+  event is `CONFIRMED`; stack/format/other unsupported mutation families remain
+  `BLOCKED_CONTRACT_AMBIGUITY` until their current event vocabulary is explicit.
+- FND-010A: `CONFIRMED`; accepted revision jumps are accepted.
+- FND-010B: `CONFIRMED`; global allocator rewind is accepted.
+- FND-010C: `CONFIRMED`; trusted DecisionId reuse below the allocator cursor is
+  accepted.
+- FND-010D: `CONFIRMED`; perspective-local PlayerDecisionId reuse/jumps are
+  accepted.
+- FND-010E: `CONFIRMED`; a staged request can replace its ContinuationId while
+  the current contract requires persistence.
+- FND-010F: `CONFIRMED`; a perspective can inherit another perspective's
+  visible-decision cursor history.
+- FND-011: `CONFIRMED`. A perspective occurrence can bind to a later physical
+  zone transition through product-wide lookup.
+- FND-012A: `CONFIRMED`. A visible random outcome can pass without a preceding
+  authoritative `RandomValueSampled` event.
+- FND-012B: `SPLIT_REQUIRED`. `AnnouncedOutcome` is accepted independently and
+  is not forced through RNG; its authoritative announcement pairing needs a
+  separate contract decision.
 
 ## Phase 2: confirmed remediation
 

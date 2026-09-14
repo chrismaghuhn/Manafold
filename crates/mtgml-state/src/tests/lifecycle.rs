@@ -116,3 +116,38 @@ fn unsequenced_provenance_is_rejected() {
         LifecycleApplicationError::UnsequencedProvenance
     );
 }
+
+#[test]
+fn lifecycle_public_seam_must_not_return_ok_with_invalid_full_state() {
+    let mut state = lifecycle_fixture();
+    let before = state.clone();
+    let audit = PerspectiveLifecycleAuditV1 {
+        perspective: PlayerId(1),
+        sequence: VisibleSequence(1),
+        mutation: PerspectiveLifecycleMutationV1 {
+            identity: IdentityMutationV1::Allocate {
+                opaque: OpaqueObjectId(2),
+                object: GameObjectId(3),
+            },
+            knowledge: Some(KnowledgeMutationV1::Acquire {
+                opaque: OpaqueObjectId(2),
+                definition: Some(CardDefinitionId(3)),
+                location: Some(crate::zones::ZoneLocation {
+                    zone: ZoneKind::Exile,
+                    player: Some(PlayerId(999)),
+                    position: crate::zones::ZonePosition::Unordered,
+                    visibility: crate::zones::VisibilityPartition::Public,
+                    partition: None,
+                }),
+                acquisition: observed_at(
+                    1,
+                    crate::knowledge::KnowledgeHistoryChannel::Public,
+                    crate::knowledge::KnowledgeAcquisitionCause::ExplicitReveal,
+                ),
+            }),
+        },
+    };
+    let result = apply_perspective_lifecycle(&mut state, &audit);
+    assert!(result.is_err(), "invalid full state must not return Ok");
+    assert_eq!(state, before, "rejected lifecycle mutation must be atomic");
+}
