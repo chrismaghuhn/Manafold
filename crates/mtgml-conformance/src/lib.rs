@@ -252,7 +252,8 @@ mod tests {
         DecisionAnswerV2, DecisionDomainV2, DecisionResponseV2, DecisionVisibility,
     };
     use mtgml_model::{
-        DecisionId, FullStateDigestV3, PlayerDecisionIdV1, StateRevision, TruncationReason,
+        DecisionId, FullStateDigestV3, PlayerDecisionIdV1, PlayerOutcome, PlayerResult,
+        StateRevision, TruncationReason,
     };
 
     fn decision(id: u64) -> AuthoritativeDecisionRequestV2 {
@@ -301,7 +302,16 @@ mod tests {
     fn truncated_status() -> EpisodeStatus {
         EpisodeStatus::Truncated {
             reason: TruncationReason::ExternalStop,
-            players: Vec::new(),
+            players: vec![
+                PlayerOutcome {
+                    player: PlayerId(1),
+                    result: PlayerResult::Unresolved,
+                },
+                PlayerOutcome {
+                    player: PlayerId(2),
+                    result: PlayerResult::Unresolved,
+                },
+            ],
         }
     }
 
