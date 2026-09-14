@@ -1,9 +1,9 @@
 # PlayerId Zero Policy — ADR Candidate
 
-**Status:** proposed, non-authoritative, blocks implementation of a global zero policy  
-**Stability:** provisional, non-authoritative  
-Owner: architecture maintainers  
-Reviewers: model/state, replay, observation, and environment maintainers  
+**Status:** proposed, non-authoritative, blocks implementation of a global zero policy
+**Stability:** provisional, non-authoritative
+Owner: architecture maintainers
+Reviewers: model/state, replay, observation, and environment maintainers
 Final ADR number: not allocated
 
 ## Context
