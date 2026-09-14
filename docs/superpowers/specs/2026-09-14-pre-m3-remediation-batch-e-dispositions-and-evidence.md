@@ -1,9 +1,10 @@
 # Pre-M3 Remediation Batch E dispositions and evidence
 
-**Status:** final local evidence; hosted CI pending exact final PR head
+**Status:** reviewed and approved for implementation; final exact-head evidence
 **Date:** 2026-09-14
 **Base:** `9996cfd0fcd4ef67d98cb0422611cebabd20e46b`
 **Code/evidence head before final PR metadata:** `c258d19045aa1d6442cb0e5462e683a62b7a1c6b`
+**Final verification head:** `b5bba7c0a7952b1b2896a11578d14a1210b5676c`
 **Branch:** `chris/pre-m3-remediation-batch-e-cross-layer-closure`
 **PR:** `https://github.com/chrismaghuhn/Manafold/pull/169`
 
@@ -19,7 +20,7 @@ Issue #162. No M3 work or real Magic semantics is included.
 ```text
 TASK = PRE_M3_REMEDIATION_BATCH_E
 BASE = 9996cfd0fcd4ef67d98cb0422611cebabd20e46b
-HEAD = c258d19045aa1d6442cb0e5462e683a62b7a1c6b
+HEAD = b5bba7c0a7952b1b2896a11578d14a1210b5676c
 BRANCH = chris/pre-m3-remediation-batch-e-cross-layer-closure
 PR = https://github.com/chrismaghuhn/Manafold/pull/169
 
@@ -82,7 +83,8 @@ LOCAL_CHECK_FAST = BLOCKED: just cannot start WSL /bin/bash on this Windows host
 LOCAL_CHECK = BLOCKED: just cannot start WSL /bin/bash on this Windows host
 DIRECT_FAST_PROFILE = PASS: .venv/Scripts/python.exe scripts/run_checks.py fast
 DIRECT_INTEGRATION_PROFILE = PASS: .venv/Scripts/python.exe scripts/run_checks.py integration
-HOSTED_CI = NOT_RUN: prior b522dd96 run failed only because the test-only fixture path was scanned as runtime; rerun required on the final pushed head
+M2_G_GATES = PASS: scripts/run_m2_g_gates.py, all 6 authoritative replay/information gates
+HOSTED_CI = PASS at b5bba7c0a7952b1b2896a11578d14a1210b5676c: PR Fast, PR Integration, manafold-pr-gate, Windows Setup Smoke, and all CodeQL analyses
 
 PUBLIC_API_CHANGE = NO
 WIRE_CHANGE = NO
@@ -93,8 +95,8 @@ HISTORICAL_REPLAY_CHANGE = NO
 
 INFORMATION_SAFETY = PASS for the eventful projection test's observed products; no new player surface exposes trusted IDs, RNG provenance, checkpoint identity, or hidden order
 
-WORKTREE_CLEAN = YES at c258d190
-REMOTE_HEAD_EQUALS_LOCAL = NOT_RUN
+WORKTREE_CLEAN = YES at b5bba7c0a7952b1b2896a11578d14a1210b5676c
+REMOTE_HEAD_EQUALS_LOCAL = YES at b5bba7c0a7952b1b2896a11578d14a1210b5676c
 
 NEW_MAGIC_SEMANTICS = NO
 M3_STARTED = NO
@@ -142,7 +144,7 @@ FND-026D is closed by the eventful replay test. The fixture only creates one
 eventful situation. Live and replayed observed-event batches both use
 project_occurrence_envelopes, and the replay runs through the production
 execute_replay path. EVD-010 is not closed by this single test. E4 remains
-partial until the final matrix and all required gates are recorded; no blocked
+blocked by the exact FND-026B non-actor product contract question; no blocked
 non-actor contract is represented as green behavior.
 
 ## PR body
@@ -154,6 +156,6 @@ delivery. It will list every command and exact count from the final verification
 pass, classify blocked/deferred work without vague wording, state all six
 compatibility fields, and end with `M3_AUTHORIZED = NO`.
 
-The PR will target `master`, use the title `Pre-M3 remediation Batch E:
-cross-layer runtime and replay closure`, and remain unmerged. Hosted CI will be
-reported only for the final pushed PR head.
+The PR targets `master`, uses the title `Pre-M3 remediation Batch E:
+cross-layer runtime and replay closure`, and remains unmerged. Hosted CI is
+reported above for the final pushed PR head.
