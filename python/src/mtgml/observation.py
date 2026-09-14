@@ -662,6 +662,11 @@ class ObservedEventV2:
             payload["to"] = str(obj["to"])
             for key in ("old_object", "new_object"):
                 payload[key] = None if obj.get(key) is None else parse_uint(obj[key])
+            if payload["old_object"] is None and payload["new_object"] is None:
+                raise WireError(
+                    "semantic.observed_event",
+                    "object_moved must reveal at least one identity",
+                )
         elif kind == "object_ceased_to_exist":
             payload["object"] = parse_uint(obj["object"])
         elif kind == "life_changed":

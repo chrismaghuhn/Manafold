@@ -17,6 +17,8 @@ pub enum ObservationValidationError {
     EmptyEventText,
     #[error("random outcome is outside its declared range")]
     RandomOutcome,
+    #[error("object move must reveal at least one visible identity")]
+    ObjectMovedIdentity,
     #[error("observed event belongs to a future revision")]
     FutureEvent,
     #[error("next decision is invalid for this endpoint")]

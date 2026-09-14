@@ -16,6 +16,7 @@ from mtgml.decision import (  # noqa: E402
     _validate_candidate_capacity,
 )
 from mtgml.errors import WireError  # noqa: E402
+from mtgml.observation import ObservedEventEnvelopeV2  # noqa: E402
 
 
 class CandidateCapacityTests(unittest.TestCase):
@@ -39,6 +40,30 @@ class CandidateCapacityTests(unittest.TestCase):
             ),
         )
         request.validate()
+
+
+class ObservedEventIdentityTests(unittest.TestCase):
+    def test_object_moved_requires_one_visible_identity(self) -> None:
+        def envelope(old_object: object, new_object: object) -> dict[str, object]:
+            return {
+                "schema_version": "observed-event-envelope.v2",
+                "sequence": "1",
+                "state_revision": "0",
+                "event": {
+                    "kind": "object_moved",
+                    "old_object": old_object,
+                    "new_object": new_object,
+                    "from": "hand",
+                    "to": "battlefield",
+                },
+            }
+
+        with self.assertRaises(WireError) as caught:
+            ObservedEventEnvelopeV2.from_wire(envelope(None, None))
+        self.assertEqual(caught.exception.code, "semantic.observed_event")
+        ObservedEventEnvelopeV2.from_wire(envelope("3", None))
+        ObservedEventEnvelopeV2.from_wire(envelope(None, "11"))
+        ObservedEventEnvelopeV2.from_wire(envelope("3", "11"))
 
 
 if __name__ == "__main__":

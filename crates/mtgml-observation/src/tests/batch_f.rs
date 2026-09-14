@@ -14,7 +14,10 @@ fn moved(old_object: Option<u64>, new_object: Option<u64>) -> ObservedEventEnvel
 
 #[test]
 fn fnd_015_object_moved_requires_at_least_one_visible_identity() {
-    assert!(moved(None, None).validate().is_err());
+    assert!(matches!(
+        moved(None, None).validate(),
+        Err(ObservationValidationError::ObjectMovedIdentity)
+    ));
     assert!(moved(Some(3), None).validate().is_ok());
     assert!(moved(None, Some(11)).validate().is_ok());
     assert!(moved(Some(3), Some(11)).validate().is_ok());

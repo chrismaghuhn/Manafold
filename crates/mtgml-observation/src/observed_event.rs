@@ -130,6 +130,11 @@ impl ObservedEventEnvelopeV2 {
             return Err(ObservationValidationError::SchemaOrCodec);
         }
         match &self.event {
+            ObservedEventKindV2::ObjectMoved {
+                old_object: None,
+                new_object: None,
+                ..
+            } => Err(ObservationValidationError::ObjectMovedIdentity),
             ObservedEventKindV2::RandomOutcomeVisible {
                 label,
                 exclusive_upper_bound,
