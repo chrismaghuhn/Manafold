@@ -402,15 +402,15 @@ fn fnd_017b_closed_status_with_pending_decision_is_rejected_at_checkpoint_owner(
             },
         ],
     };
-    assert!(
+    assert!(matches!(
         EnvironmentCheckpointV3::new(
             checkpoint.state.clone(),
             status,
             checkpoint.limit_counters.clone(),
             checkpoint.codec.clone(),
-        )
-        .is_err()
-    );
+        ),
+        Err(CheckpointValidationError::CompletedWithDecision)
+    ));
 }
 ~~~
 
@@ -1199,11 +1199,9 @@ HEAD and all statuses only after the corresponding commands have run:
 
 **BASE:** 04a4831f4fd6e35aa5b6ac315e641b7af238fe9c
 
-**HEAD:** the exact final implementation SHA measured after all source changes
-
 **CODE_VERIFICATION_HEAD:** the exact SHA used for code/workspace verification before the evidence-only commit
 
-**FINAL_EVIDENCE_HEAD:** the exact SHA after the evidence-only commit and final documentation/archive rerun
+**EVIDENCE_INPUT_HEAD:** the exact HEAD immediately before the evidence-only commit
 
 ## Dispositions
 
@@ -1223,7 +1221,10 @@ Record each test-only RED SHA, failing command/result, fix SHA, and passing comm
 
 ## Integration matrix
 
-Record rows 1-18 from the approved design as PASS, FAIL, NOT_RUN, or BLOCKED, with the exact command and source SHA for each row.
+Record rows 1-18 from the approved design as PASS, FAIL, NOT_RUN, or BLOCKED,
+with the exact command and source SHA for each row. These recorded rows are
+the code-verification evidence at CODE_VERIFICATION_HEAD; final post-evidence
+documentation/archive results are recorded externally in the final handoff.
 
 ## Compatibility and scope
 
@@ -1389,23 +1390,25 @@ version, wire fixture, checkpoint fixture, or M3 paths fail this audit.
 
 - [ ] **Step 2: Record final exact-head identities and statuses.**
 
-Update the evidence document with the actual final HEAD, branch, RED/GREEN
-commit SHAs, all focused/workspace/direct/wrapper/archive statuses, and the
-required final matrix. Re-run git diff --check, then commit only the evidence
-record and any required register update:
+Update the evidence document with CODE_VERIFICATION_HEAD,
+EVIDENCE_INPUT_HEAD, branch, RED/GREEN commit SHAs, all focused/workspace/
+direct/wrapper statuses measured at CODE_VERIFICATION_HEAD, the code-head
+archive result, and the required final matrix. Re-run git diff --check, then
+commit only the evidence record and any required register update:
 
 ~~~powershell
 git add docs/normative-document-register.v1.json docs/superpowers/specs/2026-09-14-pre-m3-remediation-batch-g-dispositions-and-evidence.md
 git commit -m "docs: record Batch-G dispositions and evidence"
 ~~~
 
-After this documentation-only commit, rerun the change-aware documentation
-gate and record the new exact HEAD. Do not reuse pre-commit source evidence
-for a post-commit source claim.
+After this documentation-only commit, FINAL_EVIDENCE_HEAD is the new exact
+HEAD. Keep it external to the evidence document; do not create a follow-up
+commit merely to write that SHA back into the document.
 
 - [ ] **Step 3: Re-run final documentation and archive gates on the evidence head.**
 
-Immediately after the evidence commit, record FINAL_EVIDENCE_HEAD and run:
+Immediately after the evidence commit, record FINAL_EVIDENCE_HEAD externally in
+the PR body and final handoff, then run:
 
 ~~~powershell
 git rev-parse HEAD
@@ -1417,8 +1420,8 @@ just archive-check
 
 Expected: documentation and direct archive verification pass on the final
 evidence head. Record just archive-check as BLOCKED if the documented Bash/WSL
-wrapper is unavailable. The final archive result must cite FINAL_EVIDENCE_HEAD,
-not CODE_VERIFICATION_HEAD.
+wrapper is unavailable. Report these final post-evidence results externally
+with FINAL_EVIDENCE_HEAD; do not edit the evidence document after this step.
 
 ## Task 12: Hosted handoff after implementation approval
 
@@ -1442,9 +1445,10 @@ Use the approved title:
 Pre-M3 remediation Batch G: persistence and safety hardening
 ~~~
 
-The PR body must contain BASE, final HEAD, all seven dispositions plus
-FND-017A/B, compatibility fields, exact local gate results, direct/wrapper
-statuses, and M3_AUTHORIZED = NO. Do not merge.
+The PR body must contain BASE, FINAL_EVIDENCE_HEAD, all seven dispositions plus
+FND-017A/B, compatibility fields, exact CODE_VERIFICATION_HEAD gate results,
+final post-evidence documentation/archive results, direct/wrapper statuses,
+and M3_AUTHORIZED = NO. Do not merge.
 
 - [ ] **Step 3: Wait for exact-head hosted checks.**
 
