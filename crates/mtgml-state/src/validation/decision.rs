@@ -1,7 +1,7 @@
 //! Ownership: pending authoritative request validation and candidate
 //! binding cross-checks.
 
-use mtgml_decision::{validate_candidate_binding, ActionCandidate};
+use mtgml_decision::{validate_candidate_binding, ActionCandidate, EngineCandidateBinding};
 
 use super::EngineStateViolation;
 use crate::engine::EngineState;
@@ -27,6 +27,13 @@ pub(super) fn validate_pending_authoritative_request(
             return Err(EngineStateViolation::PendingDecisionMismatch);
         }
         for candidate in &request.candidates {
+            if matches!(
+                &candidate.trusted_binding,
+                EngineCandidateBinding::SelectPlayer { player }
+                    if !state.core.players.contains_key(player)
+            ) {
+                return Err(EngineStateViolation::PendingDecisionMismatch);
+            }
             let visible = ActionCandidate {
                 candidate_id: candidate.candidate_id.to_string(),
                 semantic_key: format!("candidate.{}", candidate.candidate_id.0),

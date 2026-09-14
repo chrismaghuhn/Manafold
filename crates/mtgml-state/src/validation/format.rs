@@ -15,6 +15,9 @@ pub(super) fn validate_commander_format_references(
             if !state.core.players.contains_key(player) || cards.is_empty() {
                 return Err(EngineStateViolation::FormatMismatch);
             }
+            if cards.windows(2).any(|window| window[0] >= window[1]) {
+                return Err(EngineStateViolation::FormatMismatch);
+            }
             if cards.iter().any(|card| !designated.insert(*card)) {
                 return Err(EngineStateViolation::FormatMismatch);
             }
