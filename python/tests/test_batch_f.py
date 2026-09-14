@@ -156,12 +156,8 @@ class ActorBoundRejectionTests(unittest.TestCase):
                 self._rejected(code, request, EpisodeStatus.running()).validate()
 
         with self.assertRaises(WireError):
-            self._rejected(
-                "unavailable_decision", request, EpisodeStatus.running()
-            ).validate()
-        self._rejected(
-            "unavailable_decision", None, EpisodeStatus.running()
-        ).validate()
+            self._rejected("unavailable_decision", request, EpisodeStatus.running()).validate()
+        self._rejected("unavailable_decision", None, EpisodeStatus.running()).validate()
         self._rejected(
             "episode_closed",
             None,
