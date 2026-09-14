@@ -2,15 +2,13 @@ use std::collections::BTreeSet;
 
 use mtgml_model::{CheckpointDigestV3, EpisodeStatus, FullStateDigestV3, PlayerId};
 use mtgml_state::{validate_engine_state, EngineState};
-use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 pub use mtgml_model::{CheckpointCodecIdentity, EnvironmentLimitCounters};
 
 pub const ENVIRONMENT_CHECKPOINT_SCHEMA: &str = "environment-checkpoint.v3";
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EnvironmentCheckpointV3 {
     pub schema_version: String,
     pub state: EngineState,
@@ -54,6 +52,9 @@ impl EnvironmentCheckpointV3 {
         let state_digest = state
             .digest()
             .map_err(|_| CheckpointValidationError::StateDigest)?;
+        limit_counters
+            .validate()
+            .map_err(|_| CheckpointValidationError::LimitCounters)?;
         let checkpoint_digest =
             calculate_checkpoint_digest(&state_digest, &status, &limit_counters, &codec)?;
         let checkpoint = Self {
@@ -90,6 +91,9 @@ impl EnvironmentCheckpointV3 {
         if state_digest != self.state_digest {
             return Err(CheckpointValidationError::StateDigest);
         }
+        self.limit_counters
+            .validate()
+            .map_err(|_| CheckpointValidationError::LimitCounters)?;
         let checkpoint_digest = calculate_checkpoint_digest(
             &self.state_digest,
             &self.status,
@@ -99,9 +103,6 @@ impl EnvironmentCheckpointV3 {
         if checkpoint_digest != self.checkpoint_digest {
             return Err(CheckpointValidationError::CheckpointDigest);
         }
-        self.limit_counters
-            .validate()
-            .map_err(|_| CheckpointValidationError::LimitCounters)?;
         if !matches!(self.status, EpisodeStatus::Running)
             && self.state.execution.pending_decision.is_some()
         {
