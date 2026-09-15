@@ -24,7 +24,7 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
         self.assertIn("**Core modularization:** Issue #162 `COMPLETE`", readme)
         self.assertIn("**M3 semantic implementation:** `NOT_STARTED`", readme)
         self.assertIn("**M3 authorization:** `NOT_AUTHORIZED`", readme)
-        self.assertIn("**M3 pre-T0 hardening:** `IN_PROGRESS`", readme)
+        self.assertIn("**M3 pre-T0 hardening:** `CANDIDATE`", readme)
         self.assertIn("11 Foundation capabilities are `specified` only", readme)
         self.assertNotIn(
             "Current active work area:** pre-M3 foundation reconciliation and "

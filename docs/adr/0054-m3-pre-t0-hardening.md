@@ -31,7 +31,7 @@ not a reason to delete history.
 The current candidate state is therefore:
 
 ```text
-M3_PRE_T0_HARDENING = IN_PROGRESS
+M3_PRE_T0_HARDENING = CANDIDATE
 
 PRIOR_AUTHORIZATION_HEAD =
 0f13b43680ea7d0b043c5baee59eb2ed3c364ecc
