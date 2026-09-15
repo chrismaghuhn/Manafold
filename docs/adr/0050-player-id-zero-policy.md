@@ -1,18 +1,18 @@
 # ADR 0050: `PlayerId(0)` as a valid declared player identity
 
-- **Status:** proposed
+- **Status:** accepted
 - **Date:** 2026-09-15
 - **Owners:** architecture maintainers; state, decision, information-safety, replay, environment, and wire maintainers
 - **Resolves:** FND-028
-- **Decision:** Option A, pending independent exact-head approval
+- **Decision:** Option A
 - **Supersedes:** none
 - **Superseded by:** none
+- **Review provenance:** `FND_028_ADR_POLICY_REVIEW = APPROVE` for the technical policy at the prior exact head; this docs-only promotion does not authorize runtime implementation
 
-This is the numbered Task 1 proposal for FND-028. It is not accepted
-architecture until an independent review of the exact commit records
-`FND_028_ADR_REVIEW = APPROVE`, `POLICY_ACCEPTED = YES`, and
-`IMPLEMENTATION_PLANNING_AUTHORIZED = YES`. It authorizes no production,
-schema, wire, replay, test-semantic, or environment behavior change.
+This is the accepted Task 1 decision for FND-028. Acceptance records the
+policy only; it authorizes no production, schema, wire, replay, test-semantic,
+or environment behavior change, and implementation planning remains separately
+gated by the exact-head review process.
 
 ## Context
 
@@ -80,7 +80,7 @@ standalone DTO validation without such a universe cannot prove membership.
 
 ## Decision
 
-### Proposed policy: Option A
+### Accepted policy: Option A
 
 `PlayerId(0)` is a valid ordinary player identity everywhere an actual player
 identity is admitted, provided the owning contract declares that player in its
@@ -175,7 +175,7 @@ actor is zero even though:
   checkpoint paths; and
 - backend replay verification already owns exact actor/declaration binding.
 
-Under this proposal, accepting a step that was rejected solely by that numeric
+Under this decision, accepting a step that was rejected solely by that numeric
 guard is a **reader-compatible validator broadening**. It is not a historical
 semantic change because the rejected byte sequence was not a valid Replay V3
 artifact under the previous contract and therefore had no accepted historical
@@ -193,7 +193,7 @@ checkpoint state.
 
 Historical V1/V2 replay schemas, fixtures, hashes, and support classifications
 remain unchanged. They are not re-read as current M2 state, are not silently
-migrated, and are not made executable by this proposal. No tracked valid or
+migrated, and are not made executable by this ADR. No tracked valid or
 historical fixture currently contains a zero player/actor/perspective field.
 The historical inventory and source hashes remain immutable.
 
@@ -274,7 +274,7 @@ Costs and risks:
 - consumers that treated rejection of zero as an undocumented input filter may
   observe the compatible acceptance broadening for newly admitted Replay V3
   instances;
-- this proposal does not itself provide executable evidence or close FND-028.
+- this ADR does not itself provide executable evidence or close FND-028.
 
 ## Migration
 
@@ -301,16 +301,18 @@ HISTORICAL_REPLAY_MEANING_CHANGE = NO
 API_CHANGE_REQUIRED = NO
 MIGRATION_REQUIRED = NO
 
-ADR_ACCEPTED = NO
+ADR_ACCEPTED = YES
+POLICY_ACCEPTED = YES
+IMPLEMENTATION_PLANNING_AUTHORIZED = NO
 IMPLEMENTATION_AUTHORIZED = NO
-FND_028 = STILL_BLOCKED_PENDING_ADR_REVIEW
+FND_028 = STILL_BLOCKED_PENDING_IMPLEMENTATION_AND_EVIDENCE
 FOUNDATION_READY_FOR_M3 = NO
 M3_STARTED = NO
 M3_AUTHORIZED = NO
 ```
 
-Acceptance of this proposal would resolve the policy ambiguity but would not
-close FND-028. The later implementation and evidence task must remove the
+Acceptance of this ADR resolves the policy ambiguity but does not close
+FND-028. The later implementation and evidence task must remove the
 Replay V3 exception, prove every affected boundary, and obtain its separate
 implementation-plan and exact-head reviews. Applying review corrections is
 not approval.
