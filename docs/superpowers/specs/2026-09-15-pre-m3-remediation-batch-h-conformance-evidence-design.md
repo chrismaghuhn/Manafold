@@ -127,7 +127,7 @@ the declared difference to be present in the stated shape.
 | FaceDownIdentity | PhysicalCardId assignments among the same face-down objects and their matching foreign retained records | At least two assignments differ but the face-down physical-card multiset is equal |
 | RootSeedPreAuth | RandomStateV1.root_seed only | Seeds differ; revisions, streams, and every non-random state component are equal |
 | HiddenRngCursor | The explicitly named global SyntheticM1 stream cursor only | That cursor differs; stream keys, other cursors, and every non-random state component are equal |
-| ObjectRenaming | The declared object bijection in zone map keys, object IDs, ordered-zone references, stack/pending trusted references, and every perspective identity mapping target/key, plus the corresponding global next-object allocator head | At least one declared object mapping changes; no undeclared object key/reference changes |
+| ObjectRenaming | The declared object bijection in zone map keys, object IDs, ordered-zone references, stack/pending trusted references, and every perspective identity mapping target/key, plus the corresponding global next-object allocator head. Every opaque object key remains present exactly once; forward targets and reverse-map keys are remapped by the same declared bijection and no opaque identity is created, dropped, or renumbered. | At least one declared object mapping changes; no undeclared object key/reference changes |
 | AbilityRenaming | The declared ability bijection in stack references, pending decision trusted ActivateAbility bindings, and perspective identity mapping target/key, plus the corresponding global next-ability allocator head. Opaque ability keys remain identical; reverse-map keys are remapped only by the same declared bijection. | At least one declared ability mapping changes; no undeclared ability key/reference changes |
 | GlobalAllocatorHistory | The global IdentityAllocatorState only | Global allocator values differ while the witness perspective's complete identity record remains equal |
 | ForeignKnowledgeHistory | known-location and historical-location fields of one foreign active record | Exactly one foreign record changes only in those two history fields; all other foreign knowledge and all other state fields are equal |
@@ -286,12 +286,13 @@ complement:
   and one wrong-union number answer;
 - ChooseNumber: every value within the bounded interval, both representable
   outside-range sentinels, and one wrong-union SelectOne answer;
-- Order: every bounded permutation for lengths minimum through maximum, every
-  bounded below-minimum permutation in the finite complement, one duplicate
-  answer, one unknown member, one overlong answer, and one wrong-union number
-  answer. Above-maximum lengths are represented by the smallest bounded
-  extension that is syntactically constructible; if the extension would
-  exceed the shared budget, the typed budget result is recorded instead of
+- Order: every bounded permutation for lengths minimum through maximum and
+  every finite complement length in 0 through candidate_count + 1, including
+  all below-minimum and above-maximum permutations that are constructible from
+  the advertised IDs plus at most one fresh unknown ID. One duplicate answer
+  and one wrong-union number answer are added as separate shape probes. The
+  full finite set is counted before generation; if it exceeds the shared
+  generated-answer budget, the typed budget result is recorded instead of
   silently truncating.
 
 Advertised status includes membership, uniqueness, and the canonical
@@ -319,6 +320,7 @@ protected randomness.root_seed_hex is intentionally not rendered or stored in
 the default diagnostic fingerprint; it remains trusted checkpoint/replay
 input and is not replaced by a player-visible surrogate:
 
+    schema_version (ReplayManifestV3)
     engine_build
     kernel.implementation_id / semantic_version / build_profile
     rules_snapshot
@@ -335,7 +337,9 @@ input and is not replaced by a player-visible surrogate:
     (envelope_version, algorithm_id, semantic_domain, payload_codec_id,
     input_schema_id, digest_bytes)
     the exact DigestReferenceV1 tuple for the current CheckpointDigestV3
-    using environment-checkpoint-digest-input.v3 and its digest bytes
+    (envelope_version, algorithm_id, semantic_domain,
+    payload_codec_id, input_schema_id, digest_bytes), using
+    environment-checkpoint-digest-input.v3
 
 The environment group continues to retain the current checkpoint schema,
 codec identity, current status/counters, FullStateDigestV3, and
@@ -350,8 +354,9 @@ manifest.initial_identity anchor into the fingerprint, and derives both
 digest-reference tuples from the captured typed digests rather than from
 unrelated constants. capture_snapshot verifies that observation,
 information state, and visible decision (when present) all carry the same
-revision and perspective. The final checkpoint read must equal the first
-checkpoint. Any revision or identity drift returns a closed
+perspective and exactly the captured checkpoint revision; capture_complete
+checks this for both endpoints. The final checkpoint read must equal the
+first checkpoint. Any revision or identity drift returns a closed
 incoherent-capture error. This is an explicit revision-bound capture; it
 introduces no mutable cache and does not claim a multi-thread lock over the
 entire controller.
