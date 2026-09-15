@@ -1,6 +1,6 @@
 # Architecture Decision Records
 
-ADRs are immutable decision history. Superseded records remain and point to replacements. Numbered accepted records currently run through ADR 0052; ADR 0000 is the template.
+ADRs are immutable decision history. Superseded records remain and point to replacements. Numbered accepted records currently run through ADR 0052; ADR 0053 is an unaccepted candidate, and ADR 0000 is the template.
 
 ADR numbers 0042 through 0047 are historically occupied by accepted ContextApplication/M2.5 decisions that were intentionally removed from the active source tree by the post-purge cleanup. Their numbers remain permanently reserved and are not reusable; the acceptance of ADR 0048 is therefore accompanied by an explicit historical numbering gap.
 
@@ -32,6 +32,12 @@ identity record. It does not implement rules or authorize M3.
 ADR 0052 resolves the OD-019 M3 deadline as a format-neutral initial M3 with
 `FormatState::None`. It deliberately does not freeze a generic format-hook API
 or authorize Commander semantics.
+
+ADR 0053 is the candidate M3 Entry Decision. Its companion foundation artifact
+freezes the exact capability closure, ownership graph, S1, exclusions, and
+bounded exit. The decision becomes durable only when its entry PR is merged;
+that merge still does not authorize M3. Authorization requires the separate
+exact-`master` review and comment specified by ADR 0053.
 
 Create a new record with:
 

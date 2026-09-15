@@ -116,6 +116,11 @@ reviewed M3 Entry Decision and Initial Semantic Foundation selection; no
 semantic implementation, S1 selection, or capability registration is implied
 by the current governance work.
 
+The candidate operational scope record for that decision is
+[`docs/rules/M3_INITIAL_SEMANTIC_FOUNDATION_V1.md`](rules/M3_INITIAL_SEMANTIC_FOUNDATION_V1.md).
+It becomes effective as the accepted entry scope only when its entry PR is
+merged; it does not authorize M3 by itself.
+
 ## M3 — Bounded Semantic Coverage
 
 **Status:** `NOT_AUTHORIZED`; this section describes a future execution model
