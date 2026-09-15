@@ -27,8 +27,8 @@ be spawned. Therefore the plan-governance gate remains explicitly
 
 The complete applicable direct verification matrix passed at:
 
-    CODE_VERIFICATION_HEAD = 87797b1ef1f4e2b3ef564d92fb2228b2bbafd10d
-    EVIDENCE_INPUT_HEAD = 87797b1ef1f4e2b3ef564d92fb2228b2bbafd10d
+    CODE_VERIFICATION_HEAD = f62c03f9bd792edf16f69a699daf3960173a69a3
+    EVIDENCE_INPUT_HEAD = f62c03f9bd792edf16f69a699daf3960173a69a3
     WORKTREE_CLEAN_AT_INPUT = YES
 
 `FINAL_EVIDENCE_HEAD` is intentionally not written into this file because
@@ -51,7 +51,7 @@ after the evidence commit.
 | EVD-010 | CONFIRMED | Eventful live product now comes from `PlayerEndpoint::submit`; replay reprojection is nonempty and byte-exact. | No non-actor `PlayerStep` or delivery API added. |
 | EVD-011 | CONFIRMED | Reidentification selects a hidden object through P1's retired physical chain and preserves the retired opaque identity. | No lifecycle semantic expansion. |
 | EVD-012 | CONFIRMED | Fingerprints are revision-bound and retain non-secret manifest/schema/deck/digest-reference identity. | Root seed is still excluded from the default diagnostic surface; no version change. |
-| EVD-013 | CONFIRMED | Structural guard tests are named separately; controlled mutant tests retain validity gates and clean-outcome prerequisites. | No hidden callback or production mutation seam. |
+| EVD-013 | CONFIRMED | Structural guard comments are separate from controlled mutant evidence; legacy test names are retained for the pinned M2.G gate manifest, and controlled tests retain validity gates and clean-outcome prerequisites. | No hidden callback or production mutation seam. |
 | EVD-014 | CONFIRMED | Fixture operations roll back workspace/events/offset on late error and require the explicit global SyntheticM1 stream. | Feature-gated testkit only; no player/replay API change. |
 
 FND-016B is `CLOSED` by the complete rejection-product matrix. The expected
@@ -234,7 +234,7 @@ EVD_009 = CONFIRMED — bounded validated canonical explorer/oracle PASS
 EVD_010 = CONFIRMED — real eventful endpoint and replay reprojection PASS
 EVD_011 = CONFIRMED — retired physical/opaque lifecycle chain PASS
 EVD_012 = CONFIRMED — revision-bound manifest-complete fingerprint PASS
-EVD_013 = CONFIRMED — structural and controlled mutation evidence separated PASS
+EVD_013 = CONFIRMED — structural and controlled mutation evidence separated PASS; pinned legacy names retained
 EVD_014 = CONFIRMED — transactional explicit-stream fixture support PASS
 
 FND_016B = CLOSED
