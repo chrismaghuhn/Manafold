@@ -121,38 +121,27 @@ mod tests {
     }
 
     #[test]
-    fn forced_rejection_stub() {
+    fn production_sampler_consumes_rejected_words_and_advances_the_cursor() {
         let seed = RootSeed256::from_lower_hex(ALL_ZERO_SEED).unwrap();
         let key = global_key();
         let cursor = RandomStreamCursorV1::default();
-        let (value, consumed, _) =
-            uniform_below_u64_stub(&seed, &key, &cursor, 10, &[0, 6]).unwrap();
-        assert_eq!(value, 6);
-        assert_eq!(consumed, 2);
-    }
+        let bound = (1u64 << 63) + 1;
+        let threshold = ((1u128 << 64) % u128::from(bound)) as u64;
+        let words = [
+            0x6818e6bd053d9b77,
+            0x0e26253e8d724b04,
+            0x03c524aeb6b3cff5,
+            0x2508069342e336e4,
+            0xac6a5d827f0dcbbf,
+        ];
+        assert!(words[..4].iter().all(|word| *word < threshold));
+        assert!(words[4] >= threshold);
 
-    fn uniform_below_u64_stub(
-        _root: &RootSeed256,
-        _key: &RandomStreamKeyV1,
-        cursor: &RandomStreamCursorV1,
-        n: u64,
-        stub_words: &[u64],
-    ) -> Result<(u64, u64, RandomStreamCursorV1), RandomValidationError> {
-        if n == 0 {
-            return Err(RandomValidationError::InvalidRandomBound);
-        }
-        if n == 1 {
-            return Ok((0, 0, *cursor));
-        }
-        let threshold = ((1u128 << 64) % (n as u128)) as u64;
-        let mut consumed = 0u64;
-        for &word in stub_words {
-            consumed += 1;
-            if word >= threshold {
-                return Ok((word % n, consumed, *cursor));
-            }
-        }
-        Err(RandomValidationError::StreamExhausted)
+        let (value, consumed, next) =
+            uniform_below_u64(&seed, &key, &cursor, bound).unwrap();
+        assert_eq!(consumed, 5);
+        assert_eq!(next.next_raw_u64, 5);
+        assert_eq!(value, words[4] % bound);
     }
 
     #[test]
