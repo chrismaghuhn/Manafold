@@ -40,6 +40,24 @@ Comprehensive Rules **TXT** artifact exposed by the official rules page:
 - Exact byte length: `977822`
 - SHA-256: `4381ad1b39ab2c05f7d03633a20f711ed37277074d3266dcba5f38cbb527423f`
 
+The first-party link provenance was captured separately from the artifact
+bytes. A direct HTTP 200 retrieval of the official Rules page at
+`2026-09-15T18:13:09.3026022Z` returned `150428` HTML bytes with
+`Content-Type: text/html; charset=utf-8` and SHA-256
+`51aa239447a0706fa036a416284086afee62ddb703e7af11afe9375d67eba938`.
+That exact retrieved page exposed:
+
+```text
+DOCX = https://media.wizards.com/2026/downloads/MagicCompRules%2020260807.docx
+PDF  = https://media.wizards.com/2026/downloads/MagicCompRules%2020260807.pdf
+TXT  = https://media.wizards.com/2026/downloads/MagicCompRules%2020260819.txt
+```
+
+Therefore `20260819.txt` is bound here by durable first-party page
+provenance, not merely by reachability of a `media.wizards.com` URL. The page
+may later expose a different artifact; that creates a new reviewed snapshot
+selection rather than silently rewriting this one.
+
 The stable project-facing snapshot identifier is:
 
 ```text
@@ -50,7 +68,9 @@ Wizards exposes official DOCX and PDF variants as well. Their exact metadata
 and digests are preserved in the repository-owned authority record, but they
 are presentation/audit variants for this decision, not separate semantic
 rule versions. The TXT variant is selected because it is the direct textual
-representation for deterministic clause extraction and rule-number citation.
+representation for deterministic clause extraction and rule-number citation,
+and because it was the exact TXT link exposed by the official page at the
+binding observation above.
 
 ### Citation policy
 
