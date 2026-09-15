@@ -4,7 +4,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task with review checkpoints.
 
-**Goal:** Close EVD-001 through EVD-014 and FND-016B with executable, non-vacuous conformance evidence while preserving the current M2 contracts and leaving FND-026B/FND-028 explicitly classified.
+**Goal:** Close EVD-001 through EVD-015 and FND-016B with executable, non-vacuous conformance evidence while preserving the current M2 contracts and leaving FND-026B/FND-028 explicitly classified.
 
 **Architecture:** Keep Rust state, rules, environment, replay, RNG, and player projection authoritative. Strengthen only the existing persistence tests, RNG tests, feature-gated fixture support, and conformance harness. Use a typed complete-state witness relation, a pre-state-derived rejection oracle, revision-bound fingerprints, and bounded independent legal-space/reference checks. No player delivery API, semantic action key, replay/checkpoint version, schema, digest domain, or Magic capability is added.
 
@@ -123,11 +123,31 @@ The code/test changes below are the only expected executable owners:
 | crates/mtgml-environment/src/replay_parity_tests.rs | Eventful endpoint submit and replay reprojection |
 | crates/mtgml-rules/src/fixture_support.rs | Transactional feature-gated fixture operations and explicit RNG stream |
 | crates/mtgml-conformance/src/lifecycle.rs | Physical/opaque lifecycle chain selection evidence |
+| crates/mtgml-environment/src/tests/information_projection.rs | Complete retained-provenance projection evidence for EVD-015 |
+| crates/mtgml-environment/src/tests.rs | Independent expected retained-provenance vector used by EVD-015 |
 | docs/superpowers/specs/2026-09-15-pre-m3-remediation-batch-h-dispositions-and-evidence.md | Final evidence matrix, after all source verification |
 
 No other affected file may be changed without stopping and recording
 DISCOVERED_AFFECTED_FILE, WHY_REQUIRED, PRODUCTION_OR_TEST_ONLY, and
 SEMANTIC_SCOPE_CHANGE for independent scope approval.
+
+## Corrective exact-head review scope record
+
+The independent review of PR #172 identified a live tracker item omitted from
+the original plan and required two already-used test owners to be recorded
+explicitly:
+
+    DISCOVERED_AFFECTED_FILE = crates/mtgml-environment/src/tests/information_projection.rs and crates/mtgml-environment/src/tests.rs
+    WHY_REQUIRED = EVD-015 is canonical in Issue #164 and the current partial provenance oracle cannot prove complete retained provenance
+    PRODUCTION_OR_TEST_ONLY = TEST_ONLY
+    SEMANTIC_SCOPE_CHANGE = NO
+    SCOPE_APPROVAL = requested by the independent exact-head review; correction remains inside PR #172
+
+    DISCOVERED_AFFECTED_FILE = crates/mtgml-conformance/src/isolation/paired.rs
+    WHY_REQUIRED = EVD-006's shared accepted-progress helper is the common evidence owner for paired/checkpoint/fork accepted-transition proofs
+    PRODUCTION_OR_TEST_ONLY = TEST_ONLY
+    SEMANTIC_SCOPE_CHANGE = NO
+    SCOPE_APPROVAL = requested by the independent exact-head review; correction remains inside PR #172
 
 ## Task 1: Close EVD-001 persistence corpus and exact boundaries
 
@@ -554,6 +574,46 @@ git commit -m "test: harden Batch-H legal-space evidence"
 
 Do not add new Magic semantics, an action-key contract, or a production import
 of the conformance oracle.
+
+## Task 3b: Close EVD-015 with a complete provenance projection oracle
+
+**Files:**
+
+- Modify: crates/mtgml-environment/src/tests/information_projection.rs
+- Modify: crates/mtgml-environment/src/tests.rs
+
+- [ ] **Step 1: Characterize the partial oracle.**
+
+Confirm that the existing provenance test uses a rendered subset and
+`contains` assertions rather than comparing the complete retained-knowledge
+shape. This is a P1 evidence defect, not a production projection defect.
+
+- [ ] **Step 2: Declare the complete expected player-safe vector.**
+
+Replace the partial renderer with an independently authored expected
+`Vec<PlayerKnownObjectV1>` covering every active/retired record, every
+current/last-known fact, every historical fact, acquisition provenance,
+invalidation provenance, and invalidation reason. Do not derive the expected
+value by calling the production projector.
+
+- [ ] **Step 3: Compare exact projection through lifecycle operations.**
+
+Add the named test
+`evd_015_retained_provenance_is_complete_and_stable_through_restore_and_fork`.
+Compare the complete vector at the live endpoint, after checkpoint restore,
+and after fork. Keep the existing state and digest validation checks.
+
+- [ ] **Step 4: Run and commit the corrective evidence.**
+
+~~~powershell
+cargo test -p mtgml-environment --all-features --locked evd_015_retained_provenance_is_complete_and_stable_through_restore_and_fork
+git diff --check
+git add -- crates/mtgml-environment/src/tests/information_projection.rs crates/mtgml-environment/src/tests.rs
+git commit -m "test: close Batch-H provenance projection evidence"
+~~~
+
+This is test-only. No wire, schema, replay, checkpoint, digest, or player API
+meaning changes.
 
 ## Task 4: Make fixture support transactional and lifecycle chain-correct
 
@@ -1158,12 +1218,14 @@ FND-026B remains BLOCKED_CONTRACT_AMBIGUITY and FND-026C remains DEFERRED_P2.
 
 - [ ] **Step 1: Separate structural negatives from controlled mutants.**
 
-Rename tests and comments so the M1/M2 literal-channel tests are explicitly
-structural guard tests:
+Label the M1/M2 literal-channel tests explicitly as structural guard tests in
+their comments. Retain their historical `detects_m1_resort_retained_knowledge`
+and `detects_m2_candidate_ids` names because the existing exact M2.G gate
+manifest pins those node identities:
 
 ~~~text
-structural_guard_rejects_trusted_order_mutation_channel
-structural_guard_rejects_binding_derived_candidate_ids
+detects_m1_resort_retained_knowledge (structural guard)
+detects_m2_candidate_ids (structural guard)
 fallback_mutant_detects_trusted_difference_in_valid_carrier
 ~~~
 
@@ -1339,7 +1401,7 @@ BASE = ff37f0896cdbb8e2faea424859faf128155b4579
 HEAD = FINAL_EVIDENCE_HEAD recorded externally after the evidence commit
 BRANCH = chris/pre-m3-remediation-batch-h-conformance-evidence-closure
 PR = pending until the single branch is pushed
-EVD_001 through EVD_014 = each actual disposition and exact evidence result
+EVD_001 through EVD_015 = each actual disposition and exact evidence result
 FND_016B = CLOSED
 FND_026B_CURRENT_STATUS = BLOCKED_CONTRACT_AMBIGUITY
 FND_026B_FREEZE_READINESS = MUST_RESOLVE_BEFORE_FOUNDATION_FREEZE = NO

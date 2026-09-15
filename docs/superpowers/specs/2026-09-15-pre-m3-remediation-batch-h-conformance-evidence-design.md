@@ -16,8 +16,8 @@
 
 ## 1. Purpose and boundary
 
-Batch H closes or characterizes the fourteen P1 evidence findings EVD-001
-through EVD-014 and the deferred FND-016B product-parity slice. Its purpose is
+Batch H closes or characterizes the fifteen P1 evidence findings EVD-001
+through EVD-015 and the deferred FND-016B product-parity slice. Its purpose is
 to make a passing conformance result mean that the claimed invariant was
 actually exercised and independently checked.
 
@@ -66,7 +66,7 @@ environment code.
 Characterization found two implementation families:
 
     H1 = EVD-001, EVD-002, EVD-003, EVD-004, EVD-005, EVD-006,
-         EVD-010, EVD-012, EVD-013
+         EVD-010, EVD-012, EVD-013, EVD-015
     H2 = EVD-007, EVD-008, EVD-009, EVD-011, EVD-014
 
 The families are separately reviewable at the evidence level, but they share
@@ -105,6 +105,7 @@ engine.
 | EVD-012 | One complete fingerprint belongs to one coherent trusted instant and retains required immutable protocol/manifest identity even when recorder history is excluded. Owners: docs/REPLAY_AND_DETERMINISM.md, docs/STATE_HASHING.md, and information-safety policy. | mtgml-conformance isolation/fingerprint.rs. | No production change; revision-bound conformance capture. | capture_complete performs separate checkpoint, replay, P1, and P2 reads without checking one revision. The trusted surface retains only a subset of manifest identity, so excluding recorder history can also exclude execution context identity. | Batch G did not change fingerprint capture. | CONFIRMED |
 | EVD-013 | Each mutation guard reaches the named faulty projector/generator after valid prerequisites; structural negatives are labeled separately. Owners: docs/testing/NONINTERFERENCE_TESTING.md and conformance gate policy. | mtgml-conformance isolation/mutants.rs. | No production change; conformance mutant harness/tests. | M1/M2 literal channels are structurally impossible and use fallback carriers, but tests are named as if they detect the original channel. Step mutant evidence does not uniformly assert the clean product reached the intended class before mutation. | Batch G hardened diagnostic safety only; mutant reachability remains mixed. | CONFIRMED |
 | EVD-014 | Every fallible fixture helper is transactional, fail-closed, explicit about RNG stream choice, bounded to its declared capability, and does not panic where a typed error is promised. Owners: docs/testing/CONFORMANCE_AUTHORING.md and fixture support policy. | mtgml-rules fixture_support.rs and mtgml-conformance lifecycle/paired helpers. | Feature-gated testkit only: mtgml-rules::fixture_support plus conformance wrappers. | move_object_incarnation/apply_occurrence/record_hidden_random_sample can mutate the fixture workspace before a later bind error; record_hidden_random_sample uses keys().next(); one wrapper panics while converting a typed fixture error. | Batch G did not change fixture transactionality or stream selection. | CONFIRMED |
+| EVD-015 | Every retained-knowledge provenance field projected by the player information-state owner is preserved exactly, including active/retired shape, current/last-known facts, historical facts, acquisition, invalidation provenance, and invalidation reason. Owners: docs/INFORMATION_MODEL.md and the existing environment projection tests. | crates/mtgml-environment/src/tests/information_projection.rs with the independent expected vector in crates/mtgml-environment/src/tests.rs. | No production semantic change; environment test evidence only. | The existing test reduced the projection to a rendered subset and used `contains` checks, so omitted or invented fields could pass. | The live tracker adds EVD-015 to the canonical P1 set; no prior Batch-G evidence closed the complete projection oracle. | CONFIRMED |
 
 The evidence owner, not a new engine layer, owns every confirmed gap. If a
 future implementation discovers a directly affected file outside this table,
@@ -384,6 +385,19 @@ through the checked lookup API, and fails if that stream is absent; it never
 selects the first map entry. Conformance error adapters return typed closed
 errors and do not panic during normal helper failure.
 
+### EVD-015 complete provenance projection contract
+
+The projection test now declares the complete expected player-safe retained
+knowledge vector independently from the production projector and compares the
+whole vector, rather than rendering selected provenance markers and checking
+membership. The expected vector covers the active and retired record shape,
+every current/last-known fact, every historical fact, acquisition provenance,
+invalidation provenance, and invalidation reason. The same exact vector is
+checked after checkpoint restore and after fork. The test is
+`evd_015_retained_provenance_is_complete_and_stable_through_restore_and_fork`.
+No production projection behavior, wire schema, digest domain, or historical
+artifact meaning changes.
+
 ## 6. Expected files and ownership
 
 The expected implementation/evidence set is deliberately bounded:
@@ -407,8 +421,11 @@ The expected implementation/evidence set is deliberately bounded:
     crates/mtgml-conformance/src/isolation/rejection.rs
     crates/mtgml-conformance/src/isolation/mutants.rs
     crates/mtgml-conformance/src/isolation/paired_matrix.rs
+    crates/mtgml-conformance/src/isolation/paired.rs (accepted-progress test support)
     crates/mtgml-conformance/src/isolation/mod.rs
     crates/mtgml-environment/src/replay_parity_tests.rs
+    crates/mtgml-environment/src/tests.rs (independent expected projection vector)
+    crates/mtgml-environment/src/tests/information_projection.rs
     crates/mtgml-rules/src/fixture_support.rs
     crates/mtgml-conformance/src/lifecycle.rs
 
@@ -427,6 +444,25 @@ The plan review identified one additional direct test owner:
     PRODUCTION_OR_TEST_ONLY = TEST_ONLY
     SEMANTIC_SCOPE_CHANGE = NO
     SCOPE_APPROVAL = required from the independent plan/design review
+
+### Recorded post-review corrective scope extensions
+
+The independent exact-head review of PR #172 identified two directly affected
+test owners that were absent from the original design file map. The reviewer
+authorized correcting PR #172 itself; these extensions remain test-only and do
+not widen semantic scope:
+
+    DISCOVERED_AFFECTED_FILE = crates/mtgml-conformance/src/isolation/paired.rs
+    WHY_REQUIRED = the shared accepted-entry progression helper is the evidence owner for EVD-006 and is used by the paired/checkpoint/fork proof paths
+    PRODUCTION_OR_TEST_ONLY = TEST_ONLY
+    SEMANTIC_SCOPE_CHANGE = NO
+    SCOPE_APPROVAL = independent exact-head review feedback on PR #172; maintainer correction requested in the same PR
+
+    DISCOVERED_AFFECTED_FILE = crates/mtgml-environment/src/tests/information_projection.rs and crates/mtgml-environment/src/tests.rs
+    WHY_REQUIRED = EVD-015 is a live canonical P1 tracker finding; the existing partial provenance oracle and its expected-value helper must be replaced by a complete independent vector
+    PRODUCTION_OR_TEST_ONLY = TEST_ONLY
+    SEMANTIC_SCOPE_CHANGE = NO
+    SCOPE_APPROVAL = independent exact-head review feedback on PR #172; maintainer correction requested in the same PR
 
 ## 7. Compatibility, determinism, and artifact impact
 

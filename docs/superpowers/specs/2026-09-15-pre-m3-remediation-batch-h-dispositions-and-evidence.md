@@ -3,7 +3,7 @@
 **Date:** 2026-09-15
 **Repository:** `chrismaghuhn/Manafold`
 **Issue:** #164
-**Status:** evidence recorded; independent plan approval and hosted exact-head review pending
+**Status:** corrective evidence recorded; independent exact-head re-review pending
 **BASE:** `ff37f0896cdbb8e2faea424859faf128155b4579`
 **Branch:** `chris/pre-m3-remediation-batch-h-conformance-evidence-closure`
 
@@ -23,12 +23,19 @@ corrected plan was not run after the user requested that no further subagents
 be spawned. Therefore the plan-governance gate remains explicitly
 `PARTIAL/NOT_RUN`; this record does not claim independent final plan approval.
 
+The independent exact-head review of PR #172 additionally identified the live
+canonical tracker item EVD-015 and a too-broad HiddenConcealedOrdering
+normalizer. Those corrections are kept in PR #172. The review also records
+that the historical plan gate was not satisfied before implementation and that
+the accepted-progress helper in `isolation/paired.rs` was a post-design scope
+extension.
+
 ## Evidence input identity
 
 The complete applicable direct verification matrix passed at:
 
-    CODE_VERIFICATION_HEAD = f62c03f9bd792edf16f69a699daf3960173a69a3
-    EVIDENCE_INPUT_HEAD = f62c03f9bd792edf16f69a699daf3960173a69a3
+    CODE_VERIFICATION_HEAD = 6161c4660a22aba4e40912b7c25f6028d2682b3b
+    EVIDENCE_INPUT_HEAD = 6161c4660a22aba4e40912b7c25f6028d2682b3b
     WORKTREE_CLEAN_AT_INPUT = YES
 
 `FINAL_EVIDENCE_HEAD` is intentionally not written into this file because
@@ -53,6 +60,7 @@ after the evidence commit.
 | EVD-012 | CONFIRMED | Fingerprints are revision-bound and retain non-secret manifest/schema/deck/digest-reference identity. | Root seed is still excluded from the default diagnostic surface; no version change. |
 | EVD-013 | CONFIRMED | Structural guard comments are separate from controlled mutant evidence; legacy test names are retained for the pinned M2.G gate manifest, and controlled tests retain validity gates and clean-outcome prerequisites. | No hidden callback or production mutation seam. |
 | EVD-014 | CONFIRMED | Fixture operations roll back workspace/events/offset on late error and require the explicit global SyntheticM1 stream. | Feature-gated testkit only; no player/replay API change. |
+| EVD-015 | CONFIRMED | Complete independently declared retained-provenance vector is compared at the live endpoint, after restore, and after fork; the former partial `contains` oracle is removed. | Test-only environment evidence; no projection schema or semantic meaning change. |
 
 FND-016B is `CLOSED` by the complete rejection-product matrix. The expected
 product is built before submit from pre-information, pre-decision, pre-status,
@@ -78,8 +86,9 @@ minimal fixes were:
 | EVD-007 | `empty_production_path_is_missing_choice` | `Some(Vec::new())` was treated as represented. | `cargo test -p mtgml-conformance --all-features --locked completeness` — 5 passed. |
 | EVD-008 | `generate_probes_contains_the_bounded_invalid_complement` | The old explorer omitted the bounded unknown/duplicate/reversed/wrong-variant complement. | Same named test — passed after the finite grammar was added. |
 | EVD-011 | `reidentification_of_a_randomized_card_uses_fresh_opaque_and_keeps_old_retired` | The helper could choose the first hidden object whose physical card was not in P1's retired chain. | `cargo test -p mtgml-conformance --all-features --locked lifecycle` — 10 passed. |
+| EVD-015 | Existing projection test characterization | The test rendered only selected provenance markers and asserted `contains`, leaving omitted or invented retained fields unproven. | `cargo test -p mtgml-environment --all-features --locked evd_015_retained_provenance_is_complete_and_stable_through_restore_and_fork` — 1 passed after replacement. |
 
-The EVD-001 and EVD-002 changes are evidence-only additions and had no
+The EVD-001, EVD-002, and EVD-015 changes are evidence-only additions and had no
 production behavioral RED. The source-level and regression tests for EVD-003,
 EVD-004, EVD-006, EVD-009, EVD-012, EVD-013, and EVD-014 are green on the
 verified head; a separate pre-fix RED transcript for each was not retained in
@@ -96,16 +105,17 @@ head:
 | Persistence | `persisted_positive_fixture_manifest_matches_rust_bytes_and_meaning`; `cbor_resource_boundaries_are_exact_at_each_declared_boundary`; Python `test_persistence_resource_boundaries_match_rust_contract`. |
 | RNG rejection | `production_sampler_consumes_rejected_words_and_advances_the_cursor`; full `mtgml-random` suite: 43 passed. |
 | Checkpoint/fork | `restore_decision_rich`, `restore_information_rich`, `corrupt_checkpoint_restores_fail_closed`, `fork_decision_rich`, `fork_information_rich`, `cross_mutation_isolation_matrix`, `accepted_determinism_twins`. |
-| Noninterference | Ten axis tests in `paired_matrix`, `paired_rejection_parity_hidden_axes`, and `contaminated_object_rename_plus_life_change_is_rejected`. |
+| Noninterference | Ten axis tests in `paired_matrix`, `paired_rejection_parity_hidden_axes`, `contaminated_object_rename_plus_life_change_is_rejected`, and `public_order_change_is_rejected_by_hidden_concealed_witness`. |
 | Rejection products | `semantic_matrix_returns_the_independent_complete_rejected_product`; `semantic_matrix_fingerprint_stable`; 15 declared rows. |
 | Legal space | Full `legal_space` group: 29 passed, including complement probes, empty paths, bounded Order failure, reference transition validation, canonical declaration order, and trace-length controls. |
 | Eventful replay | `eventful_replay_reprojects_both_perspectives_byte_exactly`; live endpoint product and replay projection are nonempty and byte-exact. |
 | Lifecycle | Full `lifecycle` group: 10 passed, including physical-chain reidentification. |
+| Provenance projection | `evd_015_retained_provenance_is_complete_and_stable_through_restore_and_fork`; complete retained vector compared across live/restore/fork. |
 | Fingerprint | Full `fingerprint` group: 11 passed, including revision-bound capture, manifest identity, and digest-reference domains. |
-| Mutation guards | Full `mutants` group: 15 passed; structural guard names are distinct from controlled mutants. |
+| Mutation guards | Full `mutants` group: 15 passed; structural guard comments are distinct from controlled mutants and historical names remain pinned for M2.G. |
 | Fixture transactionality | Feature-gated `fixture_support` group: 4 passed, including all late-binding rollback cases and explicit global-stream failure. |
 
-## Bounded 30-row integration matrix
+## Bounded 31-row integration matrix
 
 | # | Obligation | Result and exact evidence |
 |---:|---|---|
@@ -139,6 +149,7 @@ head:
 | 28 | No silent player-choice selection | PASS — fixture helpers perform declared lifecycle/RNG operations only; no player-choice helper added. |
 | 29 | FND-026B freeze-readiness | PASS as a classification — blocked ambiguity, nonblocking provisional policy, no invented product. |
 | 30 | FND-028 freeze-readiness | PASS as a classification — blocked ambiguity, freeze blocker, no invented zero policy. |
+| 31 | Complete retained provenance projection | PASS — EVD-015 compares every declared retained record/fact/provenance/reason field at live, restore, and fork boundaries. |
 
 ## Package and workspace verification
 
@@ -236,6 +247,7 @@ EVD_011 = CONFIRMED — retired physical/opaque lifecycle chain PASS
 EVD_012 = CONFIRMED — revision-bound manifest-complete fingerprint PASS
 EVD_013 = CONFIRMED — structural and controlled mutation evidence separated PASS; pinned legacy names retained
 EVD_014 = CONFIRMED — transactional explicit-stream fixture support PASS
+EVD_015 = CONFIRMED — complete retained provenance projection oracle PASS
 
 FND_016B = CLOSED
 
@@ -245,7 +257,7 @@ FND_026B_FREEZE_READINESS = MUST_RESOLVE_BEFORE_FOUNDATION_FREEZE = NO; NONBLOCK
 FND_028_CURRENT_STATUS = BLOCKED_CONTRACT_AMBIGUITY
 FND_028_FREEZE_READINESS = MUST_RESOLVE_BEFORE_FOUNDATION_FREEZE = YES; FREEZE_BLOCKER
 
-CONFIRMED = EVD_001..EVD_014; FND_016B
+CONFIRMED = EVD_001..EVD_015; FND_016B
 REJECTED = NONE
 RESOLVED_ON_BASE = NONE
 PARTIALLY_RESOLVED_ON_BASE = NONE
@@ -255,11 +267,11 @@ DEFERRED_P2 = FND_026C
 
 VACUITY_GAPS_FOUND = EVD_003 twin-only parity; EVD_006 unproven acceptance; EVD_007 empty paths; EVD_008 incomplete complement; EVD_010 empty/manual eventful product; EVD_011 first-hidden selection; EVD_012 mixed-instant capture
 COMMON_MODE_GAPS_FOUND = EVD_002 disconnected sampler stub; EVD_004 partial witness relation; EVD_005 code-only rejection assertion; EVD_009 silent oracle transition and trace drift; EVD_013 unrelated structural negatives; EVD_014 partial fixture mutation
-PROOF_GAPS_FIXED = EVD_001..EVD_014 evidence-owner fixes listed above
+PROOF_GAPS_FIXED = EVD_001..EVD_015 evidence-owner fixes listed above
 
 RED_TESTS = empty_production_path_is_missing_choice; generate_probes_contains_the_bounded_invalid_complement; reidentification_of_a_randomized_card_uses_fresh_opaque_and_keeps_old_retired
 CHARACTERIZATION_TESTS = Batch-G baseline workspace PASS; source-level fingerprint/reference checks; complete package and cross-language matrix
-FOCUSED_TESTS = conformance 142 PASS; persistence 12 PASS; random 43 PASS; rules 45 PASS; environment 61 PASS; lifecycle 10 PASS; fingerprint 11 PASS; mutants 15 PASS
+FOCUSED_TESTS = conformance 143 PASS; persistence 12 PASS; random 43 PASS; rules 45 PASS; environment 61 PASS; lifecycle 10 PASS; fingerprint 11 PASS; mutants 15 PASS
 WORKSPACE_TESTS = cargo test --workspace --all-features --locked PASS — 481 unit tests, zero failures
 
 PERSISTENCE_EVIDENCE = PASS
@@ -297,7 +309,7 @@ LOCAL_ARCHIVE_CHECK = BLOCKED — WSL /bin/bash unavailable
 
 M2_H_ADAPTER_SCENARIOS = NOT_RUN — MTGML_M2_ADAPTER_BIN unavailable; not required for the H-owned proof obligations
 
-HOSTED_CI = NOT_RUN at EVIDENCE_INPUT_HEAD; required after the single PR is opened
+HOSTED_CI = NOT_RUN for the corrective code head; required again after the single PR is pushed
 
 RUST_API_CHANGE = YES — conformance-only typed oracle/budget signatures
 PYTHON_API_CHANGE = NO — tests only
@@ -323,10 +335,13 @@ CAPABILITY_REGISTRY_CHANGE = NO
 COMMANDER_SUPPORT_CLAIM = NO
 NEW_MAGIC_SEMANTICS = NO
 
-REMAINING_PRE_FREEZE_BLOCKERS = FND-028 freeze blocker; independent final plan approval is NOT_RUN after REQUEST_CHANGES corrections; independent exact-head review and Hosted CI remain pending
+HISTORICAL_PLAN_GATE_COMPLIANCE = FAIL / PROCESS_DEVIATION — implementation followed REQUEST_CHANGES corrections without a second independent approval
+PROCESS_DEVIATION = YES — corrected plan was not independently re-approved before implementation
+P1_CONFORMANCE_CLOSURE = COMPLETE_ON_CORRECTIVE_CODE_HEAD; independent exact-head re-review pending
+REMAINING_PRE_FREEZE_BLOCKERS = FND-028 freeze blocker; historical plan-gate deviation requires maintainer acceptance; independent exact-head re-review and Hosted CI for the corrective head remain pending
 
 WORKTREE_CLEAN = YES at EVIDENCE_INPUT_HEAD
-REMOTE_HEAD_EQUALS_LOCAL = NOT_RUN
+REMOTE_HEAD_EQUALS_LOCAL = NOT_RUN for the corrective head
 
 M3_STARTED = NO
 M3_AUTHORIZED = NO
