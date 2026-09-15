@@ -12,7 +12,7 @@
 
 **Issue:** #164
 
-**Independent design review:** pending; no production implementation is authorized by this document
+**Independent design review:** REQUEST_CHANGES on review 1; amendments below require re-review before implementation
 
 ## 1. Purpose and boundary
 
@@ -63,20 +63,23 @@ environment code.
 
 ### H1/H2 split decision
 
-Characterization found two independent implementation families:
+Characterization found two implementation families:
 
     H1 = EVD-001, EVD-002, EVD-003, EVD-004, EVD-005, EVD-006,
          EVD-010, EVD-012, EVD-013
     H2 = EVD-007, EVD-008, EVD-009, EVD-011, EVD-014
 
-The H2 legal-space/oracle/fixture work has no code dependency on the H1
-fingerprint/rejection/replay work. The proposed review boundary is therefore
-H_SPLIT_REQUIRED = YES: independent design review must approve two
-reviewable implementation plans/PRs before production implementation starts.
-Only the already-created single Batch-H branch exists. No second branch is
-created automatically. If the independent reviewer finds that the final
-change set is still one small, coherent review unit, this decision must be
-amended to H_SPLIT_REQUIRED = NO before the plan gate.
+The families are separately reviewable at the evidence level, but they share
+the feature-gated FixtureTransition seam used by the checkpoint, eventful
+replay, lifecycle, and fixture tests. Splitting that seam would make the
+first PR's evidence depend on an unreviewed second PR. The reviewed design
+therefore keeps one bounded implementation plan and one PR:
+
+    H_SPLIT_REQUIRED = NO
+
+The plan will sequence the shared fixture seam before the evidence consumers
+and keep the legal-space/oracle changes in a clearly named task group. Only
+the already-created single Batch-H branch exists.
 
 ## 3. Authority and evidence map
 
@@ -106,6 +109,34 @@ engine.
 The evidence owner, not a new engine layer, owns every confirmed gap. If a
 future implementation discovers a directly affected file outside this table,
 the scope-extension rule applies before that file is changed.
+
+### EVD-004 exact authorized-difference relation
+
+The witness relation is a typed clone-normalization relation over the complete
+EngineState, not a list of fields that the comparator happens to ignore. Both
+states must first pass the authoritative state validator. The conformance
+relation then normalizes only the permitted differences below and requires the
+normalized states to be exactly equal. A separate non-vacuity check requires
+the declared difference to be present in the stated shape.
+
+| Axis | Only permitted difference after normalization | Non-vacuity requirement |
+|---|---|---|
+| OpponentHiddenDefinition | CardDefinitionId on face-down zone objects and the matching non-witness retained-knowledge definition markers | Exactly one face-down object and its mapped foreign knowledge record change definition; all other object and record fields remain equal |
+| HiddenConcealedOrdering | The P2 face-down library ordered member vector, matching object ZonePosition values, and matching foreign known-location ZonePosition values | The member multiset is equal, the ordered vector differs, and every changed position is one of those members |
+| ForeignPrivateLook | Active-record membership for one non-witness perspective | Exactly one foreign active opaque key is added or removed; all common records, retired records, cursors, and other state fields are equal |
+| FaceDownIdentity | PhysicalCardId assignments among the same face-down objects and their matching foreign retained records | At least two assignments differ but the face-down physical-card multiset is equal |
+| RootSeedPreAuth | RandomStateV1.root_seed only | Seeds differ; revisions, streams, and every non-random state component are equal |
+| HiddenRngCursor | The explicitly named global SyntheticM1 stream cursor only | That cursor differs; stream keys, other cursors, and every non-random state component are equal |
+| ObjectRenaming | The declared object bijection in zone map keys, object IDs, ordered-zone references, stack/pending trusted references, and every perspective identity mapping target/key, plus the corresponding global next-object allocator head | At least one declared object mapping changes; no undeclared object key/reference changes |
+| AbilityRenaming | The declared ability bijection in stack references and perspective identity mapping target/key, plus the corresponding global next-ability allocator head | At least one declared ability mapping changes; no undeclared ability key/reference changes |
+| GlobalAllocatorHistory | The global IdentityAllocatorState only | Global allocator values differ while the witness perspective's complete identity record remains equal |
+| ForeignKnowledgeHistory | known-location and historical-location fields of one foreign active record | Exactly one foreign record changes only in those two history fields; all other foreign knowledge and all other state fields are equal |
+
+The implementation will keep this relation in a focused conformance module if
+that avoids enlarging witnesses.rs. It will add a contaminated-pair negative
+that performs a valid declared object rename plus an unrelated life change and
+proves the witness rejects it. TransformReport metadata is not treated as
+proof; the actual normalized state comparison is the proof.
 
 ## 4. FND-016B and freeze-readiness decisions
 
@@ -202,6 +233,114 @@ trusted bindings, private knowledge, checkpoints, or full authoritative
 state. New assertions compare typed values internally and report closed
 failure categories or safe labels.
 
+### EVD-003 and EVD-006 accepted-progress contract
+
+Every accepted witness used by checkpoint, fork, or paired-state evidence
+must perform these assertions before comparing the two sides:
+
+1. the returned PlayerStep submission is Accepted;
+2. the before and after revisions differ by exactly one;
+3. decisions_submitted and accepted_transitions each increase by exactly one;
+4. resource and wall-clock counters remain unchanged unless the scenario
+   explicitly names a trusted external progression;
+5. the expected semantic mutation is present, independently derived from the
+   fixture contract: entry changes the actor life from 40 to 38, consumes the
+   named synthetic RNG stream, creates the ChooseCount continuation, and
+   exposes the frozen 0..3 number request; the count witness changes that
+   request to the exact ChooseMany request for the selected count;
+6. the returned step's revision/status/next decision matches the independently
+   expected after product, and the replay trace carries the expected event and
+   delta products.
+
+Checkpoint tests also retain an immutable copy of the source checkpoint and
+compare it after every fork-side accepted/rejected/restore operation. Fork
+tests compare the parent checkpoint and replay recorder directly, in addition
+to the complete fingerprint. Equal outputs are never the acceptance
+predicate.
+
+### EVD-008 and EVD-009 bounded probe contract
+
+The shared conformance budget is:
+
+    max_candidates_per_request = 8
+    max_numeric_span = 16
+    max_depth = 4
+    max_total_nodes = 64
+    max_generated_answers = 256
+
+The reference and production explorers use the same budget values while
+retaining separate typed error enums. Each visible request receives a finite
+complement:
+
+- ChooseOne: every advertised candidate, one unknown candidate, and one
+  wrong-union SelectMany answer;
+- ChooseMany: every bounded subset, one duplicate answer, one unknown-member
+  answer, one overlong answer, one reversed two-member answer when available,
+  and one wrong-union number answer;
+- ChooseNumber: every value within the bounded interval, both representable
+  outside-range sentinels, and one wrong-union SelectOne answer;
+- Order: every bounded permutation, one duplicate answer, one unknown member,
+  one overlong answer, and one wrong-union number answer.
+
+Advertised status includes membership, uniqueness, and the canonical
+SelectMany ordering rules; a representative complement is never mislabeled
+as advertised. Every rejected complement probe is checked against a
+before/after complete fingerprint of its branch. An accepted complement is a
+typed OutOfContractAccepted defect. Budget exhaustion is a typed error and
+never a truncated completeness result.
+
+ReferenceAssemblySpec validation rejects duplicate or unsupported declared
+atoms. ReferenceAutomaton construction and advance return typed errors.
+Reference enumeration consumes the shared node/depth/generated-answer
+budget. Request comparison requires equal stage and observed-request lengths
+and reports an invalid reference transition instead of silently retaining the
+old state. Declaration iteration order is normalized before an expected
+request is emitted.
+
+### EVD-012 revision-bound fingerprint contract
+
+TrustedEnvironmentIdentitySurface retains the complete immutable execution
+context that is currently present in ReplayManifestV3, without the trusted
+root seed:
+
+    engine_build
+    kernel.implementation_id / semantic_version / build_profile
+    rules_snapshot
+    format_policy_snapshot
+    oracle_snapshot
+    card_bundle
+    randomness.contract_id
+    all ReplaySchemaVersionsV1 fields
+    every DeckIdentityV1 player/deck_id/digest
+
+The environment group continues to retain the current checkpoint schema,
+codec identity, current status/counters, FullStateDigestV3, and
+CheckpointDigestV3. It never stores root_seed_hex, raw stream keys, or raw
+cursor values in this public/debug fingerprint surface.
+
+capture_complete captures one checkpoint first, reads the replay and both
+endpoint products, and then verifies the replay final identity equals that
+checkpoint's revision, digest, status, counters, codec, and checkpoint
+digest. capture_snapshot verifies that observation, information state, and
+visible decision (when present) all carry the same revision and perspective.
+The final checkpoint read must equal the first checkpoint. Any revision or
+identity drift returns a closed incoherent-capture error. This is an explicit
+revision-bound capture; it introduces no mutable cache and does not claim a
+multi-thread lock over the entire controller.
+
+### EVD-014 transactional fixture contract
+
+Each fallible FixtureTransition helper runs its operation against a cloned
+workspace, event vector, and offset. The clone is committed only after all
+state mutation, event binding, and counter arithmetic succeeds. An Err
+restores the exact workspace/event/offset snapshot. The rule applies to
+move_object_incarnation, apply_occurrence, and record_hidden_random_sample.
+The random helper resolves exactly
+RandomStreamKeyV1::global(RandomStreamKindV1::SyntheticM1), obtains cursors
+through the checked lookup API, and fails if that stream is absent; it never
+selects the first map entry. Conformance error adapters return typed closed
+errors and do not panic during normal helper failure.
+
 ## 6. Expected files and ownership
 
 The expected implementation/evidence set is deliberately bounded:
@@ -285,7 +424,7 @@ verify:
 Required gate values before production implementation:
 
     BATCH_H_DESIGN_REVIEW = APPROVE
-    H_SPLIT_DECISION = REVIEWED
+    H_SPLIT_DECISION = NO
     PRODUCTION_IMPLEMENTATION_AUTHORIZED = YES
 
 Until those values are produced by independent review and recorded, this
