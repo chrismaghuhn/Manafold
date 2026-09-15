@@ -1,10 +1,10 @@
 # Pre-M3 Remediation Batch H: Dispositions and Evidence
 
-**Date:** 2026-09-15  
-**Repository:** `chrismaghuhn/Manafold`  
-**Issue:** #164  
-**Status:** evidence recorded; independent plan approval and hosted exact-head review pending  
-**BASE:** `ff37f0896cdbb8e2faea424859faf128155b4579`  
+**Date:** 2026-09-15
+**Repository:** `chrismaghuhn/Manafold`
+**Issue:** #164
+**Status:** evidence recorded; independent plan approval and hosted exact-head review pending
+**BASE:** `ff37f0896cdbb8e2faea424859faf128155b4579`
 **Branch:** `chris/pre-m3-remediation-batch-h-conformance-evidence-closure`
 
 ## Scope and process status
