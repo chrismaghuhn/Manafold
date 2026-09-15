@@ -1,15 +1,16 @@
 # M3 Initial Semantic Foundation V1
 
-**Status:** candidate entry decision; acceptance requires merge of the entry PR
-**Stability:** provisional, versioned M3 scope
+**Status:** accepted M3 entry scope
+**Stability:** accepted / frozen-by-authorization-gate
 **Artifact version:** `m3.initial-semantic-foundation.v1`
 **Candidate baseline:** `50f71adfdcd0d0f6ad50506290617e045baf0c28`
+**Accepted by:** PR #182, merge commit `10f0387281529be087bcb658b779c19a70c2bf8c`
 **M3 state:** `M3_STARTED = NO`, `M3_AUTHORIZED = NO`
 
-This document is the exact operational scope record for the candidate M3 Entry
-Decision. It becomes a durable accepted scope record only when the entry PR is
-merged. It never authorizes M3 by itself. The separate post-merge authorization
-protocol in this document remains mandatory.
+This document is the exact operational scope record for the accepted M3 Entry
+Decision. It is durable on `master` after PR #182, but it never authorizes M3 by
+itself. The separate post-merge authorization protocol in this document remains
+mandatory.
 
 ## 1. Decision boundary and authority
 
@@ -45,11 +46,14 @@ capability is implemented, covered, or certified.
 
 ## 2. M3 entry state
 
-The candidate is based on the verified current `origin/master`:
+The accepted scope was derived from the verified pre-entry `origin/master` and
+is now present on the verified current `origin/master`:
 
 ```text
 MASTER_AT_START = 50f71adfdcd0d0f6ad50506290617e045baf0c28
 PR_181_MERGE_HEAD = 50f71adfdcd0d0f6ad50506290617e045baf0c28
+ENTRY_PR_182_HEAD = c2669d17b5abece5549f0781eea20b73b9776d29
+ENTRY_PR_182_MERGE_COMMIT = 10f0387281529be087bcb658b779c19a70c2bf8c
 
 FINAL_FOUNDATION_CLOSURE = PASS
 CANONICAL_FINDINGS_DISPOSITIONED = 53/53
@@ -70,8 +74,8 @@ FND-026B = BLOCKED_CONTRACT_AMBIGUITY / NONBLOCKING
 FND-026C = DEFERRED_P2
 HRD-006 = DEFERRED_P2
 
-M3_ENTRY_DECISION = CANDIDATE
-INITIAL_FOUNDATION = CANDIDATE
+M3_ENTRY_DECISION = ACCEPTED
+INITIAL_FOUNDATION = ACCEPTED
 M3_STARTED = NO
 M3_AUTHORIZED = NO
 AUTHORIZATION_HEAD = NOT_SET
@@ -282,7 +286,8 @@ The resolved closure is exactly:
 ### 4.5 Capability identity table
 
 The following table is the single authoritative identity record for this
-candidate. A capability key is a support identity, not a runtime dispatch key.
+accepted entry scope. A capability key is a support identity, not a runtime
+dispatch key.
 `M3_target_lifecycle` names the required lifecycle at the bounded M3 exit; it
 does not claim that the capability is currently implemented or covered.
 
@@ -853,7 +858,7 @@ The required exit artifact uses these states:
 | --- | --- | --- | --- | --- |
 | All 11 closure capabilities | `YES` | `NO` | `NO` | `YES` for all three states |
 
-At candidate creation:
+At entry-scope acceptance:
 
 ```text
 ENTRY_REVIEWED_INTERACTION_OBLIGATIONS = 16
@@ -931,9 +936,9 @@ AUTHORIZATION_HEAD = NOT_SET
 The reviewed merged head may be recorded separately as `REVIEWED_HEAD` without
 turning it into an authorization head.
 
-## 17. Candidate change boundary
+## 17. Accepted entry change boundary
 
-This candidate changes no production Rust semantics, production Python
+This accepted entry scope changes no production Rust semantics, production Python
 semantics, wire or Decision schemas, observation schemas, replay/checkpoint
 codecs, RNG, digests, Card IR, cards, decks, or capability registry support
 entries. It adds no public RulesCase protocol, no dynamic format hook, no
@@ -949,7 +954,7 @@ CARDS_ADDED = 0
 DECKS_ADDED = 0
 ```
 
-The only durable candidate authority artifacts are this operational foundation
-record and the companion M3 Entry ADR. Issue #178 remains open as the master
-execution tracker. Issue #163 remains open as planning provenance until the
-entry decision is merged, independently approved, and explicitly authorized.
+The durable accepted entry-scope authority artifacts are this operational
+foundation record and the companion M3 Entry ADR. Issue #178 remains open as
+the master execution tracker. Issue #163 remains open as planning provenance
+until the separate post-merge authorization gate explicitly supersedes it.
