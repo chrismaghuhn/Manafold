@@ -1,22 +1,26 @@
 # PlayerId Zero Policy — ADR Candidate
 
-**Status:** proposed, non-authoritative, blocks implementation of a global zero policy
+**Status:** superseded historical candidate, non-authoritative; accepted ADR 0050 carries the current decision record
 **Stability:** provisional, non-authoritative
 Owner: architecture maintainers
 Reviewers: model/state, replay, observation, and environment maintainers
-Final ADR number: not allocated
+Accepted ADR: [0050 — `PlayerId(0)` as a valid declared player identity](../../adr/0050-player-id-zero-policy.md)
 
 ## Context
 
 `PlayerId` is a generic canonical unsigned identifier and can currently
 represent `0`. The executable system does not apply one coherent meaning to
 that value: some authoritative and player-facing surfaces accept a declared
-zero player, while Replay V3 explicitly rejects a zero step actor. Batch FND-028
-therefore remains `BLOCKED_CONTRACT_AMBIGUITY`. This candidate records the
-choice that must be reviewed; it does not change any parser, validator,
-fixture, schema, replay meaning, or runtime boundary.
+zero player, while Replay V3 explicitly rejects a zero step actor. At the time
+of Batch F, FND-028 therefore remained `BLOCKED_CONTRACT_AMBIGUITY`. This
+candidate recorded the choice that required review; it does not change any
+parser, validator, fixture, schema, replay meaning, or runtime boundary.
 
-## Current executable matrix
+This file is retained as the initial Batch-F input. It is intentionally not a
+complete current-source matrix; the expanded characterization and accepted
+policy are recorded in ADR 0050.
+
+## Initial Batch-F executable matrix
 
 | Surface | Current zero behavior | Contract status in Batch F |
 | --- | --- | --- |
@@ -69,7 +73,7 @@ state whether existing fixtures containing zero are historical meanings that
 must remain byte-compatible, and whether any surface needs a versioned
 migration.
 
-No option is implemented by Batch F. Until an accepted, numbered ADR exists,
-FND-028 is recorded as `BLOCKED_CONTRACT_AMBIGUITY` with executable behavior
-unchanged. A final ADR number is allocated only after independent review and
-acceptance; this candidate must not be cited as normative authority.
+No option was implemented by Batch F. Accepted ADR 0050 records Option A; this
+file remains a historical, non-authoritative candidate and must not be cited
+as the acceptance record. Runtime behavior remains unchanged until separately
+authorized implementation and evidence work.

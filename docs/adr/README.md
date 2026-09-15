@@ -1,6 +1,6 @@
 # Architecture Decision Records
 
-ADRs are immutable decision history. Superseded records remain and point to replacements. Numbered active records currently run through ADR 0049; ADR 0000 is the template.
+ADRs are immutable decision history. Superseded records remain and point to replacements. Numbered accepted records currently run through ADR 0050; ADR 0000 is the template.
 
 ADR numbers 0042 through 0047 are historically occupied by accepted ContextApplication/M2.5 decisions that were intentionally removed from the active source tree by the post-purge cleanup. Their numbers remain permanently reserved and are not reusable; the acceptance of ADR 0048 is therefore accompanied by an explicit historical numbering gap.
 
@@ -20,6 +20,10 @@ A candidate must not be cited as accepted architecture, used to claim executable
 ADR 0049 accepts the Pre-M3 Batch-D knowledge chronology and ordered-zone
 canonicality decision. Its executable evidence remains subject to the exact
 head review recorded in the associated pull request.
+
+ADR 0050 accepts the Pre-M3 FND-028 `PlayerId(0)` policy decision as Option A.
+It records policy intent only; implementation remains separately gated by the
+accepted review and planning process.
 
 Create a new record with:
 
