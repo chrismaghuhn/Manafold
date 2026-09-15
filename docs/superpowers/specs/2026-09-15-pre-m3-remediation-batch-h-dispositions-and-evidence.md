@@ -180,8 +180,9 @@ all workspace doc-test groups also exited successfully.
 - `scripts/run_checks.py fast`: PASS.
 - `scripts/run_checks.py integration`: PASS.
 - `scripts/run_checks.py certification`: PASS.
-- `scripts/verify_archive_reproducibility.py`: PASS — 684 safe files,
-  archive SHA-256 `fe616920b531902e5f84a0fcb0be79dba75a15367ce8cf052b2ddd3e5958dce3`.
+- `scripts/verify_archive_reproducibility.py`: PASS — 685 safe files. The
+  final archive hash is recorded externally after the final evidence commit
+  because embedding it would make the archive hash self-referential.
 
 The repository wrappers were attempted separately and all four were blocked
 before their underlying Python command could start because this host's WSL
@@ -287,7 +288,7 @@ MAINTAINER_GATES = PASS
 DIRECT_FAST_PROFILE = PASS
 DIRECT_INTEGRATION_PROFILE = PASS
 DIRECT_CERTIFICATION_PROFILE = PASS
-DIRECT_ARCHIVE_CHECK = PASS — fe616920b531902e5f84a0fcb0be79dba75a15367ce8cf052b2ddd3e5958dce3
+DIRECT_ARCHIVE_CHECK = PASS — 685 safe files; final hash recorded externally after the final evidence commit
 
 LOCAL_CHECK_FAST = BLOCKED — WSL /bin/bash unavailable
 LOCAL_CHECK = BLOCKED — WSL /bin/bash unavailable
