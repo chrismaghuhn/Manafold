@@ -8,19 +8,20 @@ jobs:
   fast:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
       - name: Assert exact pull request head
         shell: bash
         run: test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha }}"
-      - uses: actions/setup-python@v7
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with: {python-version-file: ".python-version"}
-      - run: |
-          python -m pip install -r python/requirements-dev.lock
-          python -m pip install --no-deps -e python
-      - run: python scripts/run_checks.py fast
+      - name: Bootstrap project environment
+        run: python scripts/bootstrap.py
+        timeout-minutes: 10
+      - run: .venv/bin/python scripts/run_checks.py fast
+        timeout-minutes: 10
       - name: Assert clean source before M2.B gate
         shell: bash
         run: |
@@ -32,40 +33,48 @@ jobs:
       - run: |
           cargo +1.85.1 fmt --all -- --check
           cargo +1.85.1 check --workspace --all-targets --all-features --locked
-      - run: python scripts/run_m2_b_contract_cut.py
+        timeout-minutes: 10
+      - run: .venv/bin/python scripts/run_m2_b_contract_cut.py
+        timeout-minutes: 10
       - name: Assert clean source before M2.C gates
         shell: bash
         run: |
           status="$(git status --porcelain=v1 --untracked-files=all)"
           test -z "$status" || { printf '%s\n' "$status"; exit 1; }
-      - run: python scripts/run_m2_c_gates.py
+      - run: .venv/bin/python scripts/run_m2_c_gates.py
+        timeout-minutes: 10
       - name: Assert clean source before M2.D gates
         shell: bash
         run: |
           status="$(git status --porcelain=v1 --untracked-files=all)"
           test -z "$status" || { printf '%s\n' "$status"; exit 1; }
-      - run: python scripts/run_m2_d_gates.py
+      - run: .venv/bin/python scripts/run_m2_d_gates.py
+        timeout-minutes: 10
       - name: Assert clean source before M2.E gates
         shell: bash
         run: |
           status="$(git status --porcelain=v1 --untracked-files=all)"
           test -z "$status" || { printf '%s\n' "$status"; exit 1; }
-      - run: python scripts/run_m2_e_gates.py
+      - run: .venv/bin/python scripts/run_m2_e_gates.py
+        timeout-minutes: 10
       - name: Assert clean source before M2.F gates
         shell: bash
         run: |
           status="$(git status --porcelain=v1 --untracked-files=all)"
           test -z "$status" || { printf '%s\n' "$status"; exit 1; }
-      - run: python scripts/run_m2_f_gates.py
+      - run: .venv/bin/python scripts/run_m2_f_gates.py
+        timeout-minutes: 10
       - name: Assert clean source before M2.G gates
         shell: bash
         run: |
           status="$(git status --porcelain=v1 --untracked-files=all)"
           test -z "$status" || { printf '%s\n' "$status"; exit 1; }
-      - run: python scripts/run_m2_g_gates.py
+      - run: .venv/bin/python scripts/run_m2_g_gates.py
+        timeout-minutes: 10
       - name: Assert clean source before M2.H gates
         shell: bash
         run: |
           status="$(git status --porcelain=v1 --untracked-files=all)"
           test -z "$status" || { printf '%s\n' "$status"; exit 1; }
-      - run: python scripts/run_m2_h_gates.py
+      - run: .venv/bin/python scripts/run_m2_h_gates.py
+        timeout-minutes: 10

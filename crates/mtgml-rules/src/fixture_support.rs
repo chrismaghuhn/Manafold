@@ -8,6 +8,7 @@
 //! accepted-product semantics that Replay V3 reexecutes.
 
 use mtgml_model::{GameObjectId, RuleEventId, StateRevision};
+use mtgml_random::{RandomStreamKeyV1, RandomStreamKindV1};
 use mtgml_state::{
     apply_perspective_lifecycle, EngineState, ObjectSnapshot, ZoneKey, ZoneLocation, ZonePosition,
     ZoneTransition,
@@ -74,11 +75,37 @@ impl FixtureTransition {
         })
     }
 
+    fn transaction<T>(
+        &mut self,
+        action: impl FnOnce(&mut Self) -> Result<T, KernelExecutionError>,
+    ) -> Result<T, KernelExecutionError> {
+        let workspace = self.workspace.clone();
+        let events = self.events.clone();
+        let offset = self.offset;
+        match action(self) {
+            Ok(value) => Ok(value),
+            Err(error) => {
+                self.workspace = workspace;
+                self.events = events;
+                self.offset = offset;
+                Err(error)
+            }
+        }
+    }
+
     /// Authoritative zone movement creating a fresh incarnation (the frozen
     /// semantic of every synthetic zone transition). Source and target zones
     /// must be unordered; ordered-position bookkeeping stays outside the
     /// M2.E fixture family on purpose.
     pub fn move_object_incarnation(
+        &mut self,
+        object: GameObjectId,
+        to: ZoneLocation,
+    ) -> Result<GameObjectId, KernelExecutionError> {
+        self.transaction(|transition| transition.move_object_incarnation_inner(object, to))
+    }
+
+    fn move_object_incarnation_inner(
         &mut self,
         object: GameObjectId,
         to: ZoneLocation,
@@ -121,8 +148,15 @@ impl FixtureTransition {
             .insert(new_object, to.clone());
         if from.position != ZonePosition::Unordered {
             let key: ZoneKey = from.key();
-            if let Some(entries) = self.workspace.zones.ordered_zones.get_mut(&key) {
+            let remove_key = if let Some(entries) = self.workspace.zones.ordered_zones.get_mut(&key)
+            {
                 entries.retain(|entry| *entry != object);
+                entries.is_empty()
+            } else {
+                false
+            };
+            if remove_key {
+                self.workspace.zones.ordered_zones.remove(&key);
             }
         }
 
@@ -150,7 +184,10 @@ impl FixtureTransition {
             transition: Box::new(transition),
         });
         self.events.push(event?);
-        self.offset += 1;
+        self.offset = self
+            .offset
+            .checked_add(1)
+            .ok_or(KernelExecutionError::RuleEventIdOverflow)?;
         Ok(new_object)
     }
 
@@ -159,6 +196,13 @@ impl FixtureTransition {
     /// The closed pairing matrix is enforced by the contract validation that
     /// [`Self::finish`] runs.
     pub fn apply_occurrence(
+        &mut self,
+        planned: PlannedOccurrence,
+    ) -> Result<(), KernelExecutionError> {
+        self.transaction(|transition| transition.apply_occurrence_inner(planned))
+    }
+
+    fn apply_occurrence_inner(
         &mut self,
         planned: PlannedOccurrence,
     ) -> Result<(), KernelExecutionError> {
@@ -172,7 +216,10 @@ impl FixtureTransition {
             observation: planned.observation,
         });
         self.events.push(event?);
-        self.offset += 1;
+        self.offset = self
+            .offset
+            .checked_add(1)
+            .ok_or(KernelExecutionError::RuleEventIdOverflow)?;
         Ok(())
     }
 
@@ -180,19 +227,17 @@ impl FixtureTransition {
     /// perspective occurrence): the trusted counterpart of a hidden
     /// randomization step inside the fixture program.
     pub fn record_hidden_random_sample(&mut self, bound: u64) -> Result<(), KernelExecutionError> {
-        let key = *self
-            .workspace
-            .random
-            .streams
-            .keys()
-            .next()
-            .ok_or(KernelExecutionError::UnsupportedStagePath)?;
-        let cursor_before = self.workspace.random.streams[&key].next_raw_u64;
-        let (value, consumed) = self
-            .workspace
-            .uniform_below_u64(&key, bound)
-            .map_err(|_| KernelExecutionError::UnsupportedStagePath)?;
-        let cursor_after = self.workspace.random.streams[&key].next_raw_u64;
+        self.transaction(|transition| transition.record_hidden_random_sample_inner(bound))
+    }
+
+    fn record_hidden_random_sample_inner(
+        &mut self,
+        bound: u64,
+    ) -> Result<(), KernelExecutionError> {
+        let key = RandomStreamKeyV1::global(RandomStreamKindV1::SyntheticM1);
+        let cursor_before = self.workspace.random.lookup_stream(&key)?.next_raw_u64;
+        let (value, consumed) = self.workspace.uniform_below_u64(&key, bound)?;
+        let cursor_after = self.workspace.random.lookup_stream(&key)?.next_raw_u64;
         let event = self.bind(AuthoritativeRuleEventKind::RandomValueSampled {
             stream: key,
             bound,
@@ -202,7 +247,10 @@ impl FixtureTransition {
             cursor_after,
         })?;
         self.events.push(event);
-        self.offset += 1;
+        self.offset = self
+            .offset
+            .checked_add(1)
+            .ok_or(KernelExecutionError::RuleEventIdOverflow)?;
         Ok(())
     }
 
@@ -215,5 +263,127 @@ impl FixtureTransition {
             ..
         } = self;
         build_accepted_product(&before, workspace, events, |_| Ok(()))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use mtgml_model::{PlayerId, VisibleSequence, ZoneKind};
+    use mtgml_random::RootSeed256;
+    use mtgml_state::{
+        construct_synthetic_engine_state, PerspectiveLifecycleAuditV1,
+        PerspectiveLifecycleMutationV1, SyntheticResetInputs, VisibilityPartition,
+    };
+
+    const P1: PlayerId = PlayerId(1);
+    const P2: PlayerId = PlayerId(2);
+
+    fn state() -> EngineState {
+        construct_synthetic_engine_state(SyntheticResetInputs {
+            players: [P1, P2],
+            root_seed: RootSeed256::from_lower_hex(&"11".repeat(32)).unwrap(),
+        })
+        .unwrap()
+    }
+
+    fn location(zone: ZoneKind) -> ZoneLocation {
+        ZoneLocation {
+            zone,
+            player: None,
+            position: ZonePosition::Unordered,
+            visibility: VisibilityPartition::Public,
+            partition: None,
+        }
+    }
+
+    fn occurrence(sequence: u64) -> PlannedOccurrence {
+        PlannedOccurrence {
+            lifecycle: PerspectiveLifecycleAuditV1 {
+                perspective: P1,
+                sequence: VisibleSequence(sequence),
+                mutation: PerspectiveLifecycleMutationV1::default(),
+            },
+            observation: PerspectiveObservationPolicyV1::NoEnvelope,
+        }
+    }
+
+    #[test]
+    fn move_object_rolls_back_when_event_binding_fails() {
+        let mut before = state();
+        before.allocators.next_rule_event_id = RuleEventId(u64::MAX);
+        let mut transition = FixtureTransition::start(&before).unwrap();
+        let moved = transition
+            .move_object_incarnation(GameObjectId(1), location(ZoneKind::Exile))
+            .unwrap();
+        let workspace_before = transition.workspace.clone();
+        let events_before = transition.events.clone();
+        let offset_before = transition.offset;
+
+        assert!(matches!(
+            transition.move_object_incarnation(moved, location(ZoneKind::Battlefield)),
+            Err(KernelExecutionError::RuleEventIdOverflow)
+        ));
+        assert_eq!(transition.workspace, workspace_before);
+        assert_eq!(transition.events, events_before);
+        assert_eq!(transition.offset, offset_before);
+    }
+
+    #[test]
+    fn occurrence_rolls_back_when_event_binding_fails() {
+        let mut before = state();
+        before.allocators.next_rule_event_id = RuleEventId(u64::MAX);
+        let mut transition = FixtureTransition::start(&before).unwrap();
+        transition.apply_occurrence(occurrence(1)).unwrap();
+        let workspace_before = transition.workspace.clone();
+        let events_before = transition.events.clone();
+        let offset_before = transition.offset;
+
+        assert!(matches!(
+            transition.apply_occurrence(occurrence(2)),
+            Err(KernelExecutionError::RuleEventIdOverflow)
+        ));
+        assert_eq!(transition.workspace, workspace_before);
+        assert_eq!(transition.events, events_before);
+        assert_eq!(transition.offset, offset_before);
+    }
+
+    #[test]
+    fn random_sample_rolls_back_cursor_when_event_binding_fails() {
+        let mut before = state();
+        before.allocators.next_rule_event_id = RuleEventId(u64::MAX);
+        let mut transition = FixtureTransition::start(&before).unwrap();
+        transition.record_hidden_random_sample(1000).unwrap();
+        let workspace_before = transition.workspace.clone();
+        let events_before = transition.events.clone();
+        let offset_before = transition.offset;
+
+        assert!(matches!(
+            transition.record_hidden_random_sample(1000),
+            Err(KernelExecutionError::RuleEventIdOverflow)
+        ));
+        assert_eq!(transition.workspace, workspace_before);
+        assert_eq!(transition.events, events_before);
+        assert_eq!(transition.offset, offset_before);
+    }
+
+    #[test]
+    fn random_sample_requires_the_declared_global_stream() {
+        let mut before = state();
+        let global = RandomStreamKeyV1::global(RandomStreamKindV1::SyntheticM1);
+        let cursor = before.random.lookup_stream(&global).unwrap();
+        before.random.streams.remove(&global);
+        before.random.streams.insert(
+            RandomStreamKeyV1::player_scoped(RandomStreamKindV1::SyntheticM1, P1.0),
+            cursor,
+        );
+        let mut transition = FixtureTransition::start(&before).unwrap();
+        let workspace_before = transition.workspace.clone();
+
+        assert!(matches!(
+            transition.record_hidden_random_sample(1000),
+            Err(KernelExecutionError::Random(_))
+        ));
+        assert_eq!(transition.workspace, workspace_before);
     }
 }

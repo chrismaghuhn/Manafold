@@ -19,28 +19,7 @@ use crate::legal_space::canonical::{
     CanonicalCompleteChoice, CanonicalStageChoice, SyntheticChoiceAtom,
 };
 
-/// Hard resource caps. Exceeding ANY cap fails closed: a broken or mutated
-/// production surface must never turn the harness unbounded.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct ExplorerBudget {
-    pub max_candidates_per_request: u32,
-    pub max_numeric_span: u64,
-    pub max_depth: u32,
-    pub max_total_nodes: u32,
-    pub max_generated_answers: u64,
-}
-
-impl Default for ExplorerBudget {
-    fn default() -> Self {
-        Self {
-            max_candidates_per_request: 8,
-            max_numeric_span: 16,
-            max_depth: 4,
-            max_total_nodes: 64,
-            max_generated_answers: 256,
-        }
-    }
-}
+pub use super::LegalSpaceBudget as ExplorerBudget;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
 pub enum ExplorationBoundError {
@@ -54,6 +33,8 @@ pub enum ExplorationBoundError {
     TotalNodesExceeded,
     #[error("generated answer budget exceeded")]
     GeneratedAnswersExceeded,
+    #[error("Order probe range exceeds the bounded finite complement")]
+    OrderProbeRangeExceeded,
     #[error("visible request is malformed (inverted bounds)")]
     MalformedVisibleRequest,
 }
@@ -72,6 +53,8 @@ pub enum ExplorationFailure {
     Bound(#[from] ExplorationBoundError),
     #[error("visible semantic mapper failed: {0}")]
     Mapper(#[from] MapperError),
+    #[error("rejected probe mutated its isolated branch")]
+    RejectedMutation,
     #[error("internal endpoint/backend failure during exploration")]
     Internal,
 }
@@ -134,25 +117,41 @@ pub struct Probe {
 }
 
 /// Grammar: which shapes does the VISIBLE request claim reachable?
-#[allow(dead_code)]
 fn is_advertised(request: &PlayerDecisionRequestV2, shape: &AnswerShape) -> bool {
+    let ids: BTreeSet<u32> = request
+        .candidates
+        .iter()
+        .map(|candidate| candidate.candidate_id.0)
+        .collect();
+    let in_bounds = |length: usize, minimum: u32, maximum: u32| {
+        u32::try_from(length)
+            .map(|length| minimum <= length && length <= maximum)
+            .unwrap_or(false)
+    };
+    let unique =
+        |values: &[u32]| values.iter().copied().collect::<BTreeSet<_>>().len() == values.len();
     match (&request.decision, shape) {
-        (DecisionDomainV2::ChooseOne, AnswerShape::SelectOne(_)) => true,
+        (DecisionDomainV2::ChooseOne, AnswerShape::SelectOne(candidate)) => ids.contains(candidate),
         (
             DecisionDomainV2::ChooseMany { minimum, maximum },
             AnswerShape::SelectMany(candidate_ids),
         ) => {
-            let length = candidate_ids.len() as u32;
-            *minimum <= length && length <= *maximum
+            in_bounds(candidate_ids.len(), *minimum, *maximum)
+                && unique(candidate_ids)
+                && candidate_ids
+                    .iter()
+                    .all(|candidate| ids.contains(candidate))
+                && candidate_ids.windows(2).all(|window| window[0] < window[1])
         }
         (DecisionDomainV2::ChooseNumber { minimum, maximum }, AnswerShape::Number(value)) => {
-            let (minimum, maximum) = (*minimum, *maximum);
-            let value = *value;
             minimum <= value && value <= maximum
         }
         (DecisionDomainV2::Order { minimum, maximum }, AnswerShape::Order(candidate_ids)) => {
-            let length = candidate_ids.len() as u32;
-            *minimum <= length && length <= *maximum
+            in_bounds(candidate_ids.len(), *minimum, *maximum)
+                && unique(candidate_ids)
+                && candidate_ids
+                    .iter()
+                    .all(|candidate| ids.contains(candidate))
         }
         _ => false,
     }
@@ -163,45 +162,107 @@ pub fn generate_probes(
     request: &PlayerDecisionRequestV2,
     budget: &ExplorerBudget,
 ) -> Result<Vec<Probe>, ExplorationBoundError> {
-    let candidate_count = request.candidates.len() as u32;
+    let candidate_count = u32::try_from(request.candidates.len())
+        .map_err(|_| ExplorationBoundError::CandidatesExceeded)?;
     if candidate_count > budget.max_candidates_per_request {
         return Err(ExplorationBoundError::CandidatesExceeded);
     }
-    let ids: Vec<u32> = request
-        .candidates
-        .iter()
-        .map(|candidate| candidate.candidate_id.0)
-        .collect();
+    let ids = request_ids(request);
     let mut probes = Vec::new();
     match &request.decision {
         DecisionDomainV2::ChooseOne => {
             if ids.is_empty() {
                 return Err(ExplorationBoundError::MalformedVisibleRequest);
             }
-            for id in ids {
-                let shape = AnswerShape::SelectOne(id);
+            for id in &ids {
+                let shape = AnswerShape::SelectOne(*id);
                 let advertised = is_advertised(request, &shape);
                 probes.push(Probe { shape, advertised });
             }
+            if let Some(unknown) = unknown_candidate_id(&ids) {
+                probes.push(Probe {
+                    shape: AnswerShape::SelectOne(unknown),
+                    advertised: false,
+                });
+            }
+            probes.push(Probe {
+                shape: AnswerShape::SelectMany(Vec::new()),
+                advertised: false,
+            });
         }
         DecisionDomainV2::ChooseMany { minimum, .. } => {
             if *minimum > candidate_count {
                 return Err(ExplorationBoundError::MalformedVisibleRequest);
             }
             let subsets = 1u64
-                .checked_mul(1u64 << candidate_count.min(63))
+                .checked_shl(candidate_count)
                 .ok_or(ExplorationBoundError::GeneratedAnswersExceeded)?;
-            if subsets > budget.max_generated_answers {
+            let unknown = unknown_candidate_id(&ids);
+            let mut total = subsets;
+            if !ids.is_empty() {
+                total = total
+                    .checked_add(1)
+                    .ok_or(ExplorationBoundError::GeneratedAnswersExceeded)?;
+            }
+            if unknown.is_some() {
+                total = total
+                    .checked_add(2)
+                    .ok_or(ExplorationBoundError::GeneratedAnswersExceeded)?;
+            }
+            if ids.len() >= 2 {
+                total = total
+                    .checked_add(1)
+                    .ok_or(ExplorationBoundError::GeneratedAnswersExceeded)?;
+            }
+            total = total
+                .checked_add(1)
+                .ok_or(ExplorationBoundError::GeneratedAnswersExceeded)?;
+            if total > budget.max_generated_answers {
                 return Err(ExplorationBoundError::GeneratedAnswersExceeded);
             }
+            probes.reserve(usize::try_from(total).unwrap_or(usize::MAX));
             for mask in 0..subsets {
-                let chosen: Vec<u32> = (0..candidate_count)
-                    .filter(|index| mask & (1 << index) != 0)
+                let chosen: Vec<u32> = ids
+                    .iter()
+                    .enumerate()
+                    .filter(|(index, _)| mask & (1 << index) != 0)
+                    .map(|(_, id)| *id)
                     .collect();
                 let shape = AnswerShape::SelectMany(chosen);
                 let advertised = is_advertised(request, &shape);
                 probes.push(Probe { shape, advertised });
             }
+            if let Some(first) = ids.first().copied() {
+                probes.push(Probe {
+                    shape: AnswerShape::SelectMany(vec![first, first]),
+                    advertised: false,
+                });
+            }
+            if let Some(unknown) = unknown {
+                probes.push(Probe {
+                    shape: AnswerShape::SelectMany(vec![unknown]),
+                    advertised: false,
+                });
+                probes.push(Probe {
+                    shape: AnswerShape::SelectMany(
+                        ids.iter()
+                            .copied()
+                            .chain(std::iter::once(unknown))
+                            .collect(),
+                    ),
+                    advertised: false,
+                });
+            }
+            if ids.len() >= 2 {
+                probes.push(Probe {
+                    shape: AnswerShape::SelectMany(vec![ids[1], ids[0]]),
+                    advertised: false,
+                });
+            }
+            probes.push(Probe {
+                shape: AnswerShape::Number(0),
+                advertised: false,
+            });
         }
         DecisionDomainV2::ChooseNumber { minimum, maximum } => {
             if minimum > maximum {
@@ -211,6 +272,14 @@ pub fn generate_probes(
             if span > i128::from(budget.max_numeric_span) {
                 return Err(ExplorationBoundError::NumericSpanExceeded);
             }
+            let total = u64::try_from(span)
+                .ok()
+                .and_then(|value| value.checked_add(3))
+                .ok_or(ExplorationBoundError::GeneratedAnswersExceeded)?;
+            if total > budget.max_generated_answers {
+                return Err(ExplorationBoundError::GeneratedAnswersExceeded);
+            }
+            probes.reserve(usize::try_from(total).unwrap_or(usize::MAX));
             for value in *minimum..=*maximum {
                 let shape = AnswerShape::Number(value);
                 let advertised = is_advertised(request, &shape);
@@ -227,29 +296,111 @@ pub fn generate_probes(
                     advertised: false,
                 });
             }
+            probes.push(Probe {
+                shape: AnswerShape::SelectOne(0),
+                advertised: false,
+            });
         }
         DecisionDomainV2::Order { minimum, maximum } => {
             if minimum > maximum {
                 return Err(ExplorationBoundError::MalformedVisibleRequest);
             }
+            if *minimum > candidate_count {
+                return Err(ExplorationBoundError::MalformedVisibleRequest);
+            }
+            let maximum_probe_length = candidate_count
+                .checked_add(1)
+                .ok_or(ExplorationBoundError::OrderProbeRangeExceeded)?;
+            if *maximum > maximum_probe_length {
+                return Err(ExplorationBoundError::OrderProbeRangeExceeded);
+            }
+            let unknown = unknown_candidate_id(&ids);
+            let extended_ids = unknown
+                .map(|unknown| {
+                    ids.iter()
+                        .copied()
+                        .chain(std::iter::once(unknown))
+                        .collect()
+                })
+                .unwrap_or_else(|| ids.clone());
             let mut estimated = 0u64;
-            for length in *minimum..=*maximum {
-                estimated += permutations_count(candidate_count as u64, length as u64)
+            for length in 0..=maximum_probe_length {
+                let source_count = if length <= candidate_count {
+                    u64::from(candidate_count)
+                } else {
+                    u64::from(maximum_probe_length)
+                };
+                estimated = estimated
+                    .checked_add(
+                        permutations_count(source_count, u64::from(length))
+                            .ok_or(ExplorationBoundError::GeneratedAnswersExceeded)?,
+                    )
                     .ok_or(ExplorationBoundError::GeneratedAnswersExceeded)?;
             }
+            if !ids.is_empty() {
+                estimated = estimated
+                    .checked_add(1)
+                    .ok_or(ExplorationBoundError::GeneratedAnswersExceeded)?;
+            }
+            if unknown.is_some() {
+                estimated = estimated
+                    .checked_add(1)
+                    .ok_or(ExplorationBoundError::GeneratedAnswersExceeded)?;
+            }
+            estimated = estimated
+                .checked_add(1)
+                .ok_or(ExplorationBoundError::GeneratedAnswersExceeded)?;
             if estimated > budget.max_generated_answers {
                 return Err(ExplorationBoundError::GeneratedAnswersExceeded);
             }
-            for length in *minimum..=*maximum {
-                for sequence in permutations_of(&ids, length as usize) {
+            probes.reserve(usize::try_from(estimated).unwrap_or(usize::MAX));
+            for length in 0..=maximum_probe_length {
+                let source = if length <= candidate_count {
+                    &ids
+                } else {
+                    &extended_ids
+                };
+                for sequence in permutations_of(source, length as usize) {
                     let shape = AnswerShape::Order(sequence);
                     let advertised = is_advertised(request, &shape);
                     probes.push(Probe { shape, advertised });
                 }
             }
+            if let Some(first) = ids.first().copied() {
+                probes.push(Probe {
+                    shape: AnswerShape::Order(vec![first, first]),
+                    advertised: false,
+                });
+            }
+            if let Some(unknown) = unknown {
+                probes.push(Probe {
+                    shape: AnswerShape::Order(vec![unknown]),
+                    advertised: false,
+                });
+            }
+            probes.push(Probe {
+                shape: AnswerShape::Number(0),
+                advertised: false,
+            });
         }
     }
     Ok(probes)
+}
+
+fn request_ids(request: &PlayerDecisionRequestV2) -> Vec<u32> {
+    request
+        .candidates
+        .iter()
+        .map(|candidate| candidate.candidate_id.0)
+        .collect()
+}
+
+fn unknown_candidate_id(ids: &[u32]) -> Option<u32> {
+    ids.iter()
+        .copied()
+        .max()
+        .and_then(|id| id.checked_add(1))
+        .or_else(|| ids.is_empty().then_some(0))
 }
 
 fn permutations_count(n: u64, k: u64) -> Option<u64> {
@@ -458,7 +609,9 @@ fn walk(
     observed: &mut Vec<ObservedRequest>,
     space: &mut ProductionSpace,
 ) -> Result<(), ExplorationFailure> {
-    *nodes += 1;
+    *nodes = nodes.checked_add(1).ok_or(ExplorationFailure::Bound(
+        ExplorationBoundError::TotalNodesExceeded,
+    ))?;
     if *nodes > budget.max_total_nodes {
         return Err(ExplorationFailure::Bound(
             ExplorationBoundError::TotalNodesExceeded,
@@ -478,18 +631,15 @@ fn walk(
     observed.push(observe_request(&request, context)?);
 
     for probe in generate_probes(&request, &budget)? {
-        *nodes += 1;
-        if *nodes > budget.max_total_nodes {
-            return Err(ExplorationFailure::Bound(
-                ExplorationBoundError::TotalNodesExceeded,
-            ));
-        }
         let response = materialize_response(&probe.shape, &request);
         let branch = controller
             .fork()
             .map_err(|_| ExplorationFailure::Internal)?;
         let branch_endpoint = branch
             .bind_player(perspective)
+            .map_err(|_| ExplorationFailure::Internal)?;
+        let before_submit = branch
+            .checkpoint()
             .map_err(|_| ExplorationFailure::Internal)?;
         let step = branch_endpoint
             .submit(response)
@@ -520,6 +670,12 @@ fn walk(
                 path.pop();
             }
             mtgml_observation::PlayerStepSubmissionV1::Rejected { code } => {
+                let after_submit = branch
+                    .checkpoint()
+                    .map_err(|_| ExplorationFailure::Internal)?;
+                if after_submit != before_submit {
+                    return Err(ExplorationFailure::RejectedMutation);
+                }
                 let shape_debug = format!("{probe:?}");
                 if probe.advertised {
                     space.advertised_rejected.push(format!(

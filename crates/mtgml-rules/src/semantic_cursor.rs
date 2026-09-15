@@ -83,7 +83,7 @@ impl SemanticValidationCursor {
                     .life
                     .get_mut(player)
                     .ok_or(TransitionViolation::LifeChange)?;
-                if *current != *from {
+                if from == to || *current != *from {
                     return Err(TransitionViolation::LifeChange);
                 }
                 *current = *to;
@@ -93,7 +93,7 @@ impl SemanticValidationCursor {
                     .objects
                     .get_mut(object)
                     .ok_or(TransitionViolation::TapChange)?;
-                if current.tapped != *from {
+                if from == to || current.tapped != *from {
                     return Err(TransitionViolation::TapChange);
                 }
                 current.tapped = *to;

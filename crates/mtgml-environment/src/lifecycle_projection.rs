@@ -23,6 +23,8 @@ pub enum LifecycleProjectionError {
     FinalCursorMismatch,
     #[error("authorized field references an object outside the snapshot mapping")]
     AuthorizedObjectUnresolvable,
+    #[error("projected observed event envelope is invalid")]
+    InvalidObservedEvent,
 }
 
 type ProjectionResult<T> = Result<T, LifecycleProjectionError>;
@@ -158,6 +160,9 @@ pub fn project_occurrence_envelopes(
                 state_revision,
                 event: event_kind,
             };
+            envelope
+                .validate()
+                .map_err(|_| LifecycleProjectionError::InvalidObservedEvent)?;
             envelopes.entry(perspective).or_default().push(envelope);
         }
     }

@@ -142,6 +142,23 @@ Canonical retained-knowledge order is ascending numeric `OpaqueObjectId` across 
 
 The public DTO excludes `PhysicalCardId`, `GameObjectId`, trusted `ZoneLocation`, authoritative event IDs, RNG provenance, and another perspective's knowledge.
 
+### Batch-D chronology refinement (ADR 0049)
+
+Status: accepted by ADR 0049; final exact-head evidence review remains required
+for PR #168 before merge.
+
+Retained chronology is oldest to newest across acquisition, location facts, and
+retirement. InitialConfiguration acquisition and location facts are
+configuration-only, unsequenced, and earliest; at most one retained location
+fact may use that provenance. An observed acquisition is a lower bound. A
+location fact may equal its acquisition sequence only when the complete
+provenance is identical, representing the same Acquire occurrence. That fact
+may later move unchanged into historical_locations or last_known_location.
+Later observed location facts are strictly newer, history remains strictly
+increasing with legal sequence gaps, and invalidation is observed and strictly
+newer than every prior retained observed fact. Every observed provenance
+remains below next_visible_sequence.
+
 ## Knowledge lifecycle
 
 Required synthetic lifecycle cases include:
@@ -224,6 +241,13 @@ Canonical ordering, candidate count/order, opaque IDs, event order/count, errors
 ## Observed events
 
 Authoritative events may include internal IDs and full RNG provenance. `ObservedEventV2` contains only perspective-authorized public/opaque values plus the perspective-local `VisibleSequence`.
+
+An emitted V2 `ObjectMoved` envelope contains at least one
+perspective-visible opaque object identity: `old_object` or `new_object` must
+be present. The fields remain optional because old-only, new-only, and
+both-present moves have distinct redaction meanings. Rules own the audience
+policy that determines which identity is visible; observation validation owns
+this minimum visible-identity invariant.
 
 Authoritative event families declare trusted audience semantics such as public, private-to-player, selected-player set, hidden, or mixed field policy. Rules own audience semantics; observation code owns redaction/opaque projection; environment validates the complete per-perspective product before commit.
 

@@ -130,12 +130,17 @@ pub enum LifecycleApplicationError {
     ReverseMappingMismatch,
     #[error("knowledge record required for the mutation is missing")]
     UnknownKnowledge,
+    #[error("lifecycle mutation would leave the complete authoritative state invalid")]
+    InvalidState,
 }
 
 fn ensure_bound_provenance(
     provenance: &KnowledgeAcquisitionReason,
     sequence: VisibleSequence,
 ) -> Result<(), LifecycleApplicationError> {
+    if !provenance.has_accepted_channel_cause() {
+        return Err(LifecycleApplicationError::InvalidState);
+    }
     match provenance.observed_sequence() {
         None => Err(LifecycleApplicationError::UnsequencedProvenance),
         Some(observed) if observed == sequence => Ok(()),
@@ -335,23 +340,66 @@ pub fn apply_perspective_lifecycle(
     if !state.core.players.contains_key(&audit.perspective) {
         return Err(LifecycleApplicationError::UnknownPlayer);
     }
-    let zones_objects = &state.zones.objects;
-    let knowledge = state
+    let declared_player = |player: Option<PlayerId>| {
+        player.is_none_or(|player| state.core.players.contains_key(&player))
+    };
+    match &audit.mutation.knowledge {
+        Some(KnowledgeMutationV1::Acquire {
+            location: Some(location),
+            ..
+        }) if !declared_player(location.player) => {
+            return Err(LifecycleApplicationError::InvalidState)
+        }
+        Some(KnowledgeMutationV1::UpdateLocation { fact, .. })
+            if !declared_player(fact.location.player) =>
+        {
+            return Err(LifecycleApplicationError::InvalidState)
+        }
+        _ => {}
+    }
+    let mut candidate_knowledge = state
         .knowledge
         .players
         .get_mut(&audit.perspective)
-        .ok_or(LifecycleApplicationError::UnknownPlayer)?;
-    let identity = state
+        .ok_or(LifecycleApplicationError::UnknownPlayer)?
+        .clone();
+    let mut candidate_identity = state
         .perspective_identities
         .players
         .get_mut(&audit.perspective)
-        .ok_or(LifecycleApplicationError::UnknownPlayer)?;
+        .ok_or(LifecycleApplicationError::UnknownPlayer)?
+        .clone();
     apply_lifecycle_to_player(
-        knowledge,
-        identity,
-        &|object| zones_objects.contains_key(&object),
+        &mut candidate_knowledge,
+        &mut candidate_identity,
+        &|object| state.zones.objects.contains_key(&object),
         audit,
-    )
+    )?;
+    match &audit.mutation.knowledge {
+        Some(KnowledgeMutationV1::Acquire { opaque, .. })
+        | Some(KnowledgeMutationV1::UpdateLocation { opaque, .. })
+        | Some(KnowledgeMutationV1::CurrentToHistory { opaque, .. })
+            if !candidate_identity.opaque_to_object.contains_key(opaque) =>
+        {
+            return Err(LifecycleApplicationError::InvalidState)
+        }
+        Some(KnowledgeMutationV1::Invalidate { opaque, .. })
+            if candidate_identity.opaque_to_object.contains_key(opaque)
+                || !candidate_identity.retired_object_ids.contains(opaque) =>
+        {
+            return Err(LifecycleApplicationError::InvalidState)
+        }
+        _ => {}
+    }
+    state
+        .knowledge
+        .players
+        .insert(audit.perspective, candidate_knowledge);
+    state
+        .perspective_identities
+        .players
+        .insert(audit.perspective, candidate_identity);
+    Ok(())
 }
 
 /// Applies only the identity-mapping bookkeeping of one lifecycle audit to

@@ -127,7 +127,7 @@ fn information_state_orders_active_and_retired_knowledge_jointly() {
 }
 
 #[test]
-fn provenance_is_preserved_through_projection_restore_and_fork() {
+fn evd_015_retained_provenance_is_complete_and_stable_through_restore_and_fork() {
     let codec = CheckpointCodecIdentity {
         codec_id: "synthetic-m2-memory".into(),
         semantic_version: "3".into(),
@@ -151,33 +151,10 @@ fn provenance_is_preserved_through_projection_restore_and_fork() {
     let endpoint = controller.bind_player(PlayerId(1)).unwrap();
     let projected = endpoint.information_state().unwrap();
     projected.validate().unwrap();
-    let expected = projected_provenance(&projected);
-
-    // The projection must not invent causes: every projected provenance
-    // equals its authoritative counterpart.
-    assert!(
-        expected.contains(&(
-            2u64,
-            "invalidation/observed/Public/0/ExplicitReveal/Shuffle".to_string()
-        )),
-        "invalidation provenance was not preserved: {expected:?}"
-    );
-    assert!(
-        expected.contains(&(
-            2u64,
-            "historical/observed/Private/0/OwnPrivateIdentity".to_string()
-        )),
-        "own_private_identity history was collapsed: {expected:?}"
-    );
-    assert!(
-        expected.contains(&(3u64, "current/observed/Public/0/ExplicitReveal".to_string())),
-        "explicit_reveal current fact was collapsed: {expected:?}"
-    );
-    assert!(
-        !expected
-            .iter()
-            .any(|(_, text)| text.contains("PublicEvent")),
-        "projection invented a public_event cause: {expected:?}"
+    let expected = expected_retained_knowledge();
+    assert_eq!(
+        projected.retained_knowledge, expected,
+        "projection must preserve every declared retained provenance field"
     );
 
     // Checkpoint -> restore preserves exact provenance.
@@ -191,7 +168,7 @@ fn provenance_is_preserved_through_projection_restore_and_fork() {
     restored.restore(checkpoint.clone()).unwrap();
     let restored_endpoint = restored.bind_player(PlayerId(1)).unwrap();
     assert_eq!(
-        projected_provenance(&restored_endpoint.information_state().unwrap()),
+        restored_endpoint.information_state().unwrap().retained_knowledge,
         expected
     );
     assert_eq!(restored.checkpoint().unwrap().state, state);
@@ -200,7 +177,7 @@ fn provenance_is_preserved_through_projection_restore_and_fork() {
     let fork = controller.fork().unwrap();
     let fork_endpoint = fork.bind_player(PlayerId(1)).unwrap();
     assert_eq!(
-        projected_provenance(&fork_endpoint.information_state().unwrap()),
+        fork_endpoint.information_state().unwrap().retained_knowledge,
         expected
     );
     assert_eq!(fork.checkpoint().unwrap().state, state);
@@ -293,10 +270,16 @@ fn episode_status_does_not_change_the_information_digest() {
         final_state.clone(),
         EpisodeStatus::Terminal {
             reason: TerminalReason::Concession,
-            players: vec![mtgml_model::PlayerOutcome {
-                player: PlayerId(1),
-                result: mtgml_model::PlayerResult::Loss,
-            }],
+            players: vec![
+                mtgml_model::PlayerOutcome {
+                    player: PlayerId(1),
+                    result: mtgml_model::PlayerResult::Loss,
+                },
+                mtgml_model::PlayerOutcome {
+                    player: PlayerId(2),
+                    result: mtgml_model::PlayerResult::Win,
+                },
+            ],
         },
         EnvironmentLimitCounters::default(),
         codec.clone(),
@@ -516,4 +499,68 @@ fn repeated_projection_is_pure_and_stable() {
     assert_eq!(first, second);
     assert_eq!(before.digest().unwrap(), before_digest);
     assert_eq!(result.next_state.digest().unwrap(), after_digest);
+}
+
+#[test]
+fn multi_perspective_occurrence_batches_are_constructed_and_reprojectable() {
+    let (before, result) = two_perspective_outcome_product();
+    let first = crate::lifecycle_projection::project_occurrence_envelopes(
+        &before,
+        &result.next_state,
+        &result.events,
+    )
+    .unwrap();
+    let second = crate::lifecycle_projection::project_occurrence_envelopes(
+        &before,
+        &result.next_state,
+        &result.events,
+    )
+    .unwrap();
+
+    for (player, expected_code) in [(PlayerId(1), "p1-outcome"), (PlayerId(2), "p2-outcome")] {
+        let batch = &first[&player];
+        assert_eq!(batch.len(), 1);
+        batch[0].validate().unwrap();
+        match &batch[0].event {
+            mtgml_observation::ObservedEventKindV2::PublicOutcome { code } => {
+                assert_eq!(code, expected_code);
+            }
+            other => panic!("unexpected event for {player:?}: {other:?}"),
+        }
+    }
+    assert_ne!(
+        serde_json::to_vec(&first[&PlayerId(1)]).unwrap(),
+        serde_json::to_vec(&first[&PlayerId(2)]).unwrap()
+    );
+    assert_eq!(
+        serde_json::to_vec(&first).unwrap(),
+        serde_json::to_vec(&second).unwrap(),
+        "authoritative replay reprojection must reproduce every perspective batch"
+    );
+}
+
+#[test]
+fn non_actor_projected_envelope_is_validated_before_commit_boundary() {
+    let (before, result) = two_perspective_outcome_product();
+    let mut events = result.events.clone();
+    let event = events
+        .get_mut(1)
+        .expect("the second event is the non-actor occurrence");
+    match &mut event.event {
+        mtgml_rules::AuthoritativeRuleEventKind::PerspectiveOccurrence {
+            observation: mtgml_rules::PerspectiveObservationPolicyV1::AnnouncedOutcome { code },
+            ..
+        } => code.clear(),
+        other => panic!("unexpected non-actor event: {other:?}"),
+    }
+
+    assert!(
+        crate::lifecycle_projection::project_occurrence_envelopes(
+            &before,
+            &result.next_state,
+            &events,
+        )
+        .is_err(),
+        "a malformed non-actor envelope must fail the shared projection boundary"
+    );
 }

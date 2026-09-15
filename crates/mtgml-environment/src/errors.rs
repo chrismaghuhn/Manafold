@@ -21,6 +21,8 @@ pub enum ReplayExecutionError {
     ManifestMismatch,
     #[error("replay step {step_index} has no authorized pending actor")]
     ActorUnavailable { step_index: u64 },
+    #[error("replay step {step_index} has the wrong player-decision identity")]
+    PlayerDecisionIdentityMismatch { step_index: u64 },
     #[error("replay step {step_index} has the wrong before revision")]
     BeforeRevisionMismatch { step_index: u64 },
     #[error("replay step {step_index} has the wrong before digest")]

@@ -1,6 +1,6 @@
 # Engine State Closure
 
-**Status:** accepted state-closure contract including M2 field refinements; local M2.B structural evidence `PASS`, hosted/M2.Final closure pending
+**Status:** accepted state-closure contract including M2 field refinements; M2 executable closure is recorded as `COMPLETE` by accepted ADR 0041 at exact evidence head `352cd80c2ef58a406c30bf7db1cb792109fafc3f`
 **Stability:** normative
 
 `EngineState` is the complete semantic input to a transition:
@@ -65,6 +65,14 @@ A player-visible ID must not derive from global hidden allocation history.
 
 `validate_engine_state()` owns cross-component validation. Component presence alone is insufficient.
 
+For pending V2 decisions, `AuthoritativeDecisionRequestV2::validate()` owns
+only local structural request validity. The state-owned
+`validate_pending_authoritative_request()` boundary calls the exact candidate
+binding check for every pending candidate, including scalar payload equality
+and perspective-local object/ability resolver equality. `project_player_request()`
+projects only after that authoritative boundary has passed; it is not a second
+binding authority and never exposes trusted bindings.
+
 It validates at least:
 
 - player references;
@@ -80,6 +88,15 @@ It validates at least:
 - RNG identity/state.
 
 An invariant failure is an implementation defect, not a legal game outcome.
+
+ADR 0049 adds one chronology over each retained
+record and rejects noncanonical ordered-zone representations. Acquisition,
+history, current or last-known location, and invalidation are checked in
+oldest-to-newest order with same-occurrence equality only for identical
+Acquire-created provenance. Live ordered vectors are authoritative; every live
+ordered location uses a Top offset equal to its vector ordinal, and empty
+ordered-zone entries are invalid. The decision is accepted architecture; this
+does not authorize M3, whose boundary remains unchanged.
 
 ## State delta
 

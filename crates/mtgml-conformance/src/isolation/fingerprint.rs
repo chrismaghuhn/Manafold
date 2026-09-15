@@ -6,11 +6,15 @@
 
 use mtgml_environment::{PlayerEndpoint, PlayerEndpointHandle, TrustedEnvironmentController};
 use mtgml_model::{
-    CheckpointCodecIdentity, CheckpointDigestV3, EnvironmentLimitCounters, EpisodeStatus,
-    FullStateDigestV3, InformationStateDigestV2, PlayerId, StateRevision, VisibleSequence,
+    CheckpointCodecIdentity, CheckpointDigestV3, DigestReferenceV1, EnvironmentLimitCounters,
+    EpisodeStatus, FullStateDigestV3, InformationStateDigestV2, PlayerId, StateRevision,
+    VisibleSequence,
 };
 use mtgml_observation::{
     PlayerServiceErrorCodeV1, PlayerStepSubmissionV1, PlayerStepV2, PlayerSubmissionCodeV1,
+};
+use mtgml_replay::{
+    DeckIdentityV1, InitialEnvironmentIdentityV3, KernelIdentityV1, ReplaySchemaVersionsV1,
 };
 use mtgml_state::EngineState;
 use mtgml_wire::{compute_information_state_digest_v2, encode_canonical};
@@ -35,12 +39,25 @@ pub struct PlayerProtocolIdentitySurface {
 /// artifacts (checkpoint and exported replay).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TrustedEnvironmentIdentitySurface {
+    pub schema_version: String,
+    pub engine_build: String,
+    pub kernel: KernelIdentityV1,
+    pub rules_snapshot: String,
+    pub format_policy_snapshot: String,
+    pub oracle_snapshot: String,
+    pub card_bundle: String,
+    pub randomness_contract_id: String,
+    pub schemas: ReplaySchemaVersionsV1,
+    pub decks: Vec<DeckIdentityV1>,
+    pub initial_identity: InitialEnvironmentIdentityV3,
     pub checkpoint_schema: String,
     pub checkpoint_codec_id: String,
     pub checkpoint_codec_semantic_version: String,
     pub replay_manifest_schema: String,
     pub replay_step_schema: String,
     pub replay_file_schema: String,
+    pub full_state_digest_reference: DigestReferenceV1,
+    pub checkpoint_digest_reference: DigestReferenceV1,
 }
 
 /// One perspective's visible product, captured only through real
@@ -48,6 +65,7 @@ pub struct TrustedEnvironmentIdentitySurface {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PlayerVisibleSnapshot {
     pub perspective: PlayerId,
+    pub state_revision: StateRevision,
     /// Canonical bytes of the `ObservationEnvelope` returned by
     /// `observation()`.
     pub current_observation_bytes: Vec<u8>,
@@ -144,6 +162,12 @@ pub fn capture_snapshot(
     let information_state = endpoint
         .information_state()
         .map_err(|_| HarnessError::EndpointService)?;
+    if observation.perspective != perspective
+        || information_state.perspective != perspective
+        || observation.state_revision != information_state.state_revision
+    {
+        return Err(HarnessError::IncoherentFingerprintCapture);
+    }
     let information_state_bytes =
         encode_canonical(&information_state).map_err(|_| HarnessError::WireEncoding)?;
     let (_, recomputed) = compute_information_state_digest_v2(&information_state.digest_input())
@@ -154,6 +178,11 @@ pub fn capture_snapshot(
     let visible_decision = endpoint
         .visible_decision()
         .map_err(|_| HarnessError::EndpointService)?;
+    if visible_decision.as_ref().is_some_and(|decision| {
+        decision.actor != perspective || decision.state_revision != information_state.state_revision
+    }) {
+        return Err(HarnessError::IncoherentFingerprintCapture);
+    }
     let visible_decision_bytes = visible_decision
         .as_ref()
         .map(|decision| encode_canonical(decision).map_err(|_| HarnessError::WireEncoding))
@@ -168,6 +197,7 @@ pub fn capture_snapshot(
     };
     Ok(PlayerVisibleSnapshot {
         perspective,
+        state_revision: information_state.state_revision,
         current_observation_bytes,
         information_state_bytes,
         information_digest: information_state.digest,
@@ -273,7 +303,7 @@ pub fn capture_complete(
     controller: &TrustedEnvironmentController,
     endpoints: &[PlayerEndpointHandle; 2],
 ) -> Result<CompleteM2Fingerprint, HarnessError> {
-    let checkpoint = controller
+    let checkpoint_before = controller
         .checkpoint()
         .map_err(|_| HarnessError::ControllerService)?;
     let replay = controller
@@ -283,25 +313,66 @@ pub fn capture_complete(
         encode_canonical(&replay).map_err(|_| HarnessError::WireEncoding)?;
     let p1_snapshot = capture_snapshot(&endpoints[0])?;
     let p2_snapshot = capture_snapshot(&endpoints[1])?;
+    let current_identity = InitialEnvironmentIdentityV3 {
+        state_revision: checkpoint_before.state.revision,
+        full_state_digest: checkpoint_before.state_digest.clone(),
+        episode_status: checkpoint_before.status.clone(),
+        environment_limit_counters: checkpoint_before.limit_counters.clone(),
+        checkpoint_codec_identity: checkpoint_before.codec.clone(),
+        checkpoint_digest: checkpoint_before.checkpoint_digest.clone(),
+    };
+    if replay.final_identity != current_identity
+        || p1_snapshot.state_revision != checkpoint_before.state.revision
+        || p2_snapshot.state_revision != checkpoint_before.state.revision
+    {
+        return Err(HarnessError::IncoherentFingerprintCapture);
+    }
+    let checkpoint_after = controller
+        .checkpoint()
+        .map_err(|_| HarnessError::ControllerService)?;
+    if checkpoint_after != checkpoint_before {
+        return Err(HarnessError::IncoherentFingerprintCapture);
+    }
+    let checkpoint_digest_reference = DigestReferenceV1 {
+        envelope_version: "mtgml.digest-envelope.v1".into(),
+        algorithm_id: "sha-256".into(),
+        semantic_domain: CheckpointDigestV3::DOMAIN.into(),
+        payload_codec_id: "mtgml.canonical-cbor.v1".into(),
+        input_schema_id: "environment-checkpoint-digest-input.v3".into(),
+        digest_bytes: checkpoint_before.checkpoint_digest.raw_bytes(),
+    };
     let surface = TrustedEnvironmentIdentitySurface {
-        checkpoint_schema: checkpoint.schema_version.clone(),
-        checkpoint_codec_id: checkpoint.codec.codec_id.clone(),
-        checkpoint_codec_semantic_version: checkpoint.codec.semantic_version.clone(),
+        schema_version: replay.manifest.schema_version.clone(),
+        engine_build: replay.manifest.engine_build.clone(),
+        kernel: replay.manifest.kernel.clone(),
+        rules_snapshot: replay.manifest.rules_snapshot.clone(),
+        format_policy_snapshot: replay.manifest.format_policy_snapshot.clone(),
+        oracle_snapshot: replay.manifest.oracle_snapshot.clone(),
+        card_bundle: replay.manifest.card_bundle.clone(),
+        randomness_contract_id: replay.manifest.randomness.contract_id.clone(),
+        schemas: replay.manifest.schemas.clone(),
+        decks: replay.manifest.decks.clone(),
+        initial_identity: replay.manifest.initial_identity.clone(),
+        checkpoint_schema: checkpoint_before.schema_version.clone(),
+        checkpoint_codec_id: checkpoint_before.codec.codec_id.clone(),
+        checkpoint_codec_semantic_version: checkpoint_before.codec.semantic_version.clone(),
         replay_manifest_schema: replay.manifest.schema_version.clone(),
         replay_step_schema: replay.manifest.schemas.replay_step.clone(),
         replay_file_schema: replay.schema_version.clone(),
+        full_state_digest_reference: checkpoint_before.state_digest.as_digest_reference(),
+        checkpoint_digest_reference,
     };
     Ok(CompleteM2Fingerprint {
         semantic: SemanticStateFingerprint {
-            revision: checkpoint.state.revision,
-            full_state_digest: checkpoint.state_digest.clone(),
-            engine_state_equal_probe: checkpoint.state.clone(),
+            revision: checkpoint_before.state.revision,
+            full_state_digest: checkpoint_before.state_digest.clone(),
+            engine_state_equal_probe: checkpoint_before.state.clone(),
         },
         environment: EnvironmentFingerprint {
-            status: checkpoint.status,
-            limit_counters: checkpoint.limit_counters,
-            codec: checkpoint.codec,
-            checkpoint_digest: checkpoint.checkpoint_digest,
+            status: checkpoint_before.status,
+            limit_counters: checkpoint_before.limit_counters,
+            codec: checkpoint_before.codec,
+            checkpoint_digest: checkpoint_before.checkpoint_digest,
             surface,
         },
         player: PlayerVisibleFingerprint {
@@ -327,7 +398,20 @@ pub fn assert_fingerprint_policies(
     if before.semantic != after.semantic {
         return Err(HarnessError::SemanticGroupMismatch);
     }
-    if before.environment != after.environment {
+    let environment_equal = match comparison {
+        FingerprintComparison::All => before.environment == after.environment,
+        FingerprintComparison::ExcludeReplayRecorder => {
+            before.environment.status == after.environment.status
+                && before.environment.limit_counters == after.environment.limit_counters
+                && before.environment.codec == after.environment.codec
+                && before.environment.checkpoint_digest == after.environment.checkpoint_digest
+                && immutable_environment_surface_equal(
+                    &before.environment.surface,
+                    &after.environment.surface,
+                )
+        }
+    };
+    if !environment_equal {
         return Err(HarnessError::EnvironmentGroupMismatch);
     }
     if before.player != after.player {
@@ -337,6 +421,32 @@ pub fn assert_fingerprint_policies(
         return Err(HarnessError::ReplayRecorderGroupMismatch);
     }
     Ok(())
+}
+
+fn immutable_environment_surface_equal(
+    before: &TrustedEnvironmentIdentitySurface,
+    after: &TrustedEnvironmentIdentitySurface,
+) -> bool {
+    before.schema_version == after.schema_version
+        && before.engine_build == after.engine_build
+        && before.kernel == after.kernel
+        && before.rules_snapshot == after.rules_snapshot
+        && before.format_policy_snapshot == after.format_policy_snapshot
+        && before.oracle_snapshot == after.oracle_snapshot
+        && before.card_bundle == after.card_bundle
+        && before.randomness_contract_id == after.randomness_contract_id
+        && before.schemas == after.schemas
+        && before.decks == after.decks
+        && before.initial_identity.checkpoint_codec_identity
+            == after.initial_identity.checkpoint_codec_identity
+        && before.checkpoint_schema == after.checkpoint_schema
+        && before.checkpoint_codec_id == after.checkpoint_codec_id
+        && before.checkpoint_codec_semantic_version == after.checkpoint_codec_semantic_version
+        && before.replay_manifest_schema == after.replay_manifest_schema
+        && before.replay_step_schema == after.replay_step_schema
+        && before.replay_file_schema == after.replay_file_schema
+        && before.full_state_digest_reference == after.full_state_digest_reference
+        && before.checkpoint_digest_reference == after.checkpoint_digest_reference
 }
 
 #[cfg(test)]
@@ -359,6 +469,7 @@ mod tests {
         let (controller, endpoints) = spawn_environment(state, &config).unwrap();
         let snapshot = capture_snapshot(&endpoints[0]).unwrap();
         assert_eq!(snapshot.perspective, P1);
+        assert_eq!(snapshot.state_revision, StateRevision(0));
         assert_eq!(
             snapshot.protocol.observation_schema.as_deref(),
             Some(OBSERVATION_SCHEMA)
@@ -410,6 +521,61 @@ mod tests {
                 .as_str(),
             REPLAY_FILE_SCHEMA_V3
         );
+    }
+
+    #[test]
+    fn fingerprint_source_declares_manifest_identity_contract() {
+        let source = include_str!("fingerprint.rs");
+        for required in [
+            "pub engine_build",
+            "ReplayManifestV3",
+            "pub initial_identity",
+            "pub full_state_digest_reference",
+            "pub checkpoint_digest_reference",
+        ] {
+            assert!(
+                source.contains(required),
+                "missing fingerprint source field {required}"
+            );
+        }
+    }
+
+    #[test]
+    fn manifest_identity_is_part_of_the_environment_fingerprint() {
+        let (mut before, after) = equal_complete_fingerprints();
+        before.environment.surface.engine_build.push_str("-mutated");
+        assert_eq!(
+            assert_fingerprint_policies(&before, &after, FingerprintComparison::All),
+            Err(HarnessError::EnvironmentGroupMismatch)
+        );
+    }
+
+    #[test]
+    fn digest_reference_surfaces_preserve_the_declared_domains() {
+        let state = base_pair_state(&"11".repeat(32)).unwrap();
+        let config = synthetic_environment_config([P1, P2]);
+        let (controller, endpoints) = spawn_environment(state, &config).unwrap();
+        let fingerprint = capture_complete(&controller, &endpoints).unwrap();
+        let surface = &fingerprint.environment.surface;
+        assert_eq!(
+            surface.full_state_digest_reference.semantic_domain,
+            FullStateDigestV3::DOMAIN
+        );
+        assert_eq!(
+            surface.full_state_digest_reference.input_schema_id,
+            "full-state-digest-input.v3"
+        );
+        assert_eq!(
+            surface.checkpoint_digest_reference.semantic_domain,
+            CheckpointDigestV3::DOMAIN
+        );
+        assert_eq!(
+            surface.checkpoint_digest_reference.input_schema_id,
+            "environment-checkpoint-digest-input.v3"
+        );
+        let replay = controller.export_replay().unwrap();
+        assert_eq!(surface.initial_identity, replay.manifest.initial_identity);
+        assert!(!surface.randomness_contract_id.is_empty());
     }
 
     #[test]

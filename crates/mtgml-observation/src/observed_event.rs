@@ -130,15 +130,23 @@ impl ObservedEventEnvelopeV2 {
             return Err(ObservationValidationError::SchemaOrCodec);
         }
         match &self.event {
+            ObservedEventKindV2::ObjectMoved {
+                old_object: None,
+                new_object: None,
+                ..
+            } => Err(ObservationValidationError::ObjectMovedIdentity),
             ObservedEventKindV2::RandomOutcomeVisible {
                 label,
                 exclusive_upper_bound,
                 value,
-            } if label.is_empty()
-                || *exclusive_upper_bound == 0
-                || *value >= *exclusive_upper_bound =>
-            {
-                Err(ObservationValidationError::RandomOutcome)
+            } => {
+                if label.is_empty() {
+                    return Err(ObservationValidationError::EmptyEventText);
+                }
+                if *exclusive_upper_bound == 0 || *value >= *exclusive_upper_bound {
+                    return Err(ObservationValidationError::RandomOutcome);
+                }
+                Ok(())
             }
             ObservedEventKindV2::PublicOutcome { code } if code.is_empty() => {
                 Err(ObservationValidationError::EmptyEventText)

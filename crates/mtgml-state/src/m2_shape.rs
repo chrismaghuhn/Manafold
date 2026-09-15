@@ -1,7 +1,9 @@
-//! Private, detached M2 state shapes prepared before the current-runtime cut.
+//! Typed M2 state components used by current `EngineState` validation.
 //!
-//! Nothing in this module is reachable through the current `EngineState` until
-//! the coordinated Tasks 7-11 cut. The types deliberately do not adapt or
+//! This module provides the continuation, retained-knowledge, and
+//! perspective-identity shapes embedded in `EngineState`, plus their M2 shape
+//! checks. `validation::validate_engine_state` composes these checks with the
+//! other authoritative state validators. The types do not adapt or
 //! reinterpret any historical V1/V2 value.
 
 mod continuation;

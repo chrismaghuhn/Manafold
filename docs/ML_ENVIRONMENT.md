@@ -41,7 +41,30 @@ For a typed semantic rejection:
 - episode status remains unchanged;
 - only the closed submission outcome/error code differs.
 
+The actor-bound local product matrix is:
+
+```text
+EpisodeClosed       -> non-Running, next_decision=None, observed_events=[]
+UnavailableDecision -> Running,     next_decision=None, observed_events=[]
+Stale/Invalid*      -> Running,     next_decision=Some(current actor request), observed_events=[]
+```
+
+The local `PlayerStepV2` validator can require decision presence and prove the
+present request's actor and revision match the information-state perspective.
+It cannot prove that the request is byte-for-byte the product from before a
+rejected environment call. That unchanged-product parity is the separate
+FND-016B scope deferred to EVD-005; this batch does not claim EVD-005 closed.
+
 Malformed/noncanonical wire bytes are not a semantic environment submission. They fail in the wire/adapter layer with a closed malformed-response code, invoke no `PlayerEndpoint::submit`, and produce no synthetic `PlayerStep`.
+
+`PlayerStepV2` is actor-submission-bound: its `submission` field describes the
+typed response submitted by the perspective that receives the step. The
+foundation therefore does not construct or deliver a neutral non-actor
+`PlayerStepV2`; no current value of `submission` means "another perspective's
+accepted transition." Non-actor observed-event batches remain available to
+trusted production projection and replay/trajectory derivation, but live
+non-actor delivery is not a foundation API promise. A future neutral product or
+delivery API requires its own reviewed lifecycle and versioning decision.
 
 ## Error layers
 

@@ -254,7 +254,11 @@ pub(crate) fn rename_hidden_object(
 pub(crate) mod test_support {
     use super::*;
     use crate::isolation::witnesses::TrustedRenamingBijection;
-    use mtgml_decision::{DecisionAnswerV2, DecisionResponseV2, DECISION_RESPONSE_V2_SCHEMA};
+    use mtgml_decision::{
+        CandidateIntent, DecisionAnswerV2, DecisionDomainV2, DecisionResponseV2,
+        DecisionVisibility, PlayerDecisionRequestV2, VisibleCandidateV2,
+        DECISION_RESPONSE_V2_SCHEMA, PLAYER_DECISION_REQUEST_V2_SCHEMA,
+    };
     use mtgml_environment::PlayerEndpoint;
     use mtgml_model::{
         InformationStateDigestV2, ObservationDigest, StateRevision, VisibleSequence,
@@ -300,10 +304,18 @@ pub(crate) mod test_support {
     pub fn accepted_entry_submission(
         handle: &PlayerEndpointHandle,
     ) -> Result<PlayerStepV2, HarnessError> {
+        let pre_information = handle
+            .information_state()
+            .map_err(|_| HarnessError::EndpointService)?;
         let request = handle
             .visible_decision()
             .map_err(|_| HarnessError::EndpointService)?
             .ok_or(HarnessError::EndpointService)?;
+        if request.actor != handle.perspective()
+            || request.state_revision != pre_information.state_revision
+        {
+            return Err(HarnessError::AcceptedTransitionRequired);
+        }
         let candidate = request
             .candidates
             .first()
@@ -319,8 +331,305 @@ pub(crate) mod test_support {
                 },
             })
             .map_err(|_| HarnessError::EndpointService)?;
+        if step.submission != PlayerStepSubmissionV1::Accepted {
+            return Err(HarnessError::AcceptedTransitionRequired);
+        }
+        let expected_revision = pre_information
+            .state_revision
+            .0
+            .checked_add(1)
+            .ok_or(HarnessError::AcceptedTransitionRequired)?;
+        if step.information_state.state_revision != StateRevision(expected_revision) {
+            return Err(HarnessError::AcceptedTransitionRequired);
+        }
         step.validate().map_err(|_| HarnessError::WireEncoding)?;
         Ok(step)
+    }
+
+    /// Independently checks the synthetic entry transition before any
+    /// byte-parity assertion is used as evidence.
+    pub fn assert_accepted_entry_progression(
+        before: &EnvironmentCheckpointV3,
+        after: &EnvironmentCheckpointV3,
+        step: &PlayerStepV2,
+    ) -> Result<(), HarnessError> {
+        if step.submission != PlayerStepSubmissionV1::Accepted {
+            return Err(HarnessError::AcceptedTransitionRequired);
+        }
+        let next_revision = before
+            .state
+            .revision
+            .0
+            .checked_add(1)
+            .ok_or(HarnessError::AcceptedTransitionRequired)?;
+        if after.state.revision != StateRevision(next_revision)
+            || step.information_state.state_revision != after.state.revision
+        {
+            return Err(HarnessError::AcceptedTransitionRequired);
+        }
+        let add = |value: u64| {
+            value
+                .checked_add(1)
+                .ok_or(HarnessError::AcceptedTransitionRequired)
+        };
+        if after.limit_counters.decisions_submitted
+            != add(before.limit_counters.decisions_submitted)?
+            || after.limit_counters.accepted_transitions
+                != add(before.limit_counters.accepted_transitions)?
+            || after.limit_counters.rule_events_emitted
+                != before
+                    .limit_counters
+                    .rule_events_emitted
+                    .checked_add(5)
+                    .ok_or(HarnessError::AcceptedTransitionRequired)?
+            || after.limit_counters.resource_units_consumed
+                != before.limit_counters.resource_units_consumed
+            || after.limit_counters.wall_clock_elapsed_millis
+                != before.limit_counters.wall_clock_elapsed_millis
+        {
+            return Err(HarnessError::AcceptedTransitionRequired);
+        }
+        if before.state.core.players.get(&P1).map(|player| player.life) != Some(40)
+            || after.state.core.players.get(&P1).map(|player| player.life) != Some(38)
+        {
+            return Err(HarnessError::AcceptedTransitionRequired);
+        }
+        let key =
+            mtgml_random::RandomStreamKeyV1::global(mtgml_random::RandomStreamKindV1::SyntheticM1);
+        let before_cursor = before
+            .state
+            .random
+            .lookup_stream(&key)
+            .map_err(|_| HarnessError::AcceptedTransitionRequired)?
+            .next_raw_u64;
+        let after_cursor = after
+            .state
+            .random
+            .lookup_stream(&key)
+            .map_err(|_| HarnessError::AcceptedTransitionRequired)?
+            .next_raw_u64;
+        if after_cursor <= before_cursor {
+            return Err(HarnessError::AcceptedTransitionRequired);
+        }
+
+        let before_pending = before
+            .state
+            .execution
+            .pending_decision
+            .as_ref()
+            .ok_or(HarnessError::AcceptedTransitionRequired)?;
+        if !matches!(before_pending.request.decision, DecisionDomainV2::ChooseOne)
+            || !before.state.execution.continuations.is_empty()
+        {
+            return Err(HarnessError::AcceptedTransitionRequired);
+        }
+        let after_pending = after
+            .state
+            .execution
+            .pending_decision
+            .as_ref()
+            .ok_or(HarnessError::AcceptedTransitionRequired)?;
+        if !matches!(
+            after_pending.request.decision,
+            DecisionDomainV2::ChooseNumber {
+                minimum: 0,
+                maximum: 3
+            }
+        ) || !after_pending.request.candidates.is_empty()
+        {
+            return Err(HarnessError::AcceptedTransitionRequired);
+        }
+        let continuation_id = after_pending
+            .request
+            .continuation_id
+            .ok_or(HarnessError::AcceptedTransitionRequired)?;
+        let continuation = after
+            .state
+            .execution
+            .continuations
+            .get(&continuation_id)
+            .ok_or(HarnessError::AcceptedTransitionRequired)?;
+        if after.state.execution.continuations.len() != 1
+            || continuation.id != continuation_id
+            || continuation.actor != P1
+            || continuation.created_at_revision != after.state.revision
+            || !matches!(
+                continuation.payload,
+                mtgml_state::ContinuationPayloadV2::SyntheticM2Assembly {
+                    stage: mtgml_state::AssemblyStageV2::ChooseCount,
+                    selected_count: None,
+                    ..
+                }
+            )
+        {
+            return Err(HarnessError::AcceptedTransitionRequired);
+        }
+        let expected_next = after_pending
+            .request
+            .project_player_request()
+            .map_err(|_| HarnessError::AcceptedTransitionRequired)?;
+        if step.status != after.status
+            || step.next_decision.as_ref() != Some(&expected_next)
+            || step.information_state.perspective != P1
+            || step.information_state.next_visible_sequence
+                != after.state.knowledge.players[&P1].next_visible_sequence
+        {
+            return Err(HarnessError::AcceptedTransitionRequired);
+        }
+        let (_, digest) =
+            mtgml_wire::compute_information_state_digest_v2(&step.information_state.digest_input())
+                .map_err(|_| HarnessError::AcceptedTransitionRequired)?;
+        if digest != step.information_state.digest {
+            return Err(HarnessError::AcceptedTransitionRequired);
+        }
+        Ok(())
+    }
+
+    /// Independently checks the frozen ChooseCount -> ChooseMembers accepted
+    /// transition used by checkpoint and fork parity.
+    pub fn assert_accepted_count_progression(
+        before: &EnvironmentCheckpointV3,
+        after: &EnvironmentCheckpointV3,
+        step: &PlayerStepV2,
+    ) -> Result<(), HarnessError> {
+        if step.submission != PlayerStepSubmissionV1::Accepted {
+            return Err(HarnessError::AcceptedTransitionRequired);
+        }
+        let next_revision = before
+            .state
+            .revision
+            .0
+            .checked_add(1)
+            .ok_or(HarnessError::AcceptedTransitionRequired)?;
+        if after.state.revision != StateRevision(next_revision)
+            || step.information_state.state_revision != after.state.revision
+            || after.state.core != before.state.core
+            || after.state.random != before.state.random
+        {
+            return Err(HarnessError::AcceptedTransitionRequired);
+        }
+        let add = |value: u64| {
+            value
+                .checked_add(1)
+                .ok_or(HarnessError::AcceptedTransitionRequired)
+        };
+        if after.limit_counters.decisions_submitted
+            != add(before.limit_counters.decisions_submitted)?
+            || after.limit_counters.accepted_transitions
+                != add(before.limit_counters.accepted_transitions)?
+            || after.limit_counters.rule_events_emitted
+                != before
+                    .limit_counters
+                    .rule_events_emitted
+                    .checked_add(2)
+                    .ok_or(HarnessError::AcceptedTransitionRequired)?
+            || after.limit_counters.resource_units_consumed
+                != before.limit_counters.resource_units_consumed
+            || after.limit_counters.wall_clock_elapsed_millis
+                != before.limit_counters.wall_clock_elapsed_millis
+        {
+            return Err(HarnessError::AcceptedTransitionRequired);
+        }
+        let before_pending = before
+            .state
+            .execution
+            .pending_decision
+            .as_ref()
+            .ok_or(HarnessError::AcceptedTransitionRequired)?;
+        if !matches!(
+            before_pending.request.decision,
+            DecisionDomainV2::ChooseNumber {
+                minimum: 0,
+                maximum: 3
+            }
+        ) || !before_pending.request.candidates.is_empty()
+        {
+            return Err(HarnessError::AcceptedTransitionRequired);
+        }
+        let continuation_id = before_pending
+            .request
+            .continuation_id
+            .ok_or(HarnessError::AcceptedTransitionRequired)?;
+        let before_continuation = before
+            .state
+            .execution
+            .continuations
+            .get(&continuation_id)
+            .ok_or(HarnessError::AcceptedTransitionRequired)?;
+        if !matches!(
+            before_continuation.payload,
+            mtgml_state::ContinuationPayloadV2::SyntheticM2Assembly {
+                stage: mtgml_state::AssemblyStageV2::ChooseCount,
+                selected_count: None,
+                ..
+            }
+        ) {
+            return Err(HarnessError::AcceptedTransitionRequired);
+        }
+        let after_pending = after
+            .state
+            .execution
+            .pending_decision
+            .as_ref()
+            .ok_or(HarnessError::AcceptedTransitionRequired)?;
+        if after_pending.request.continuation_id != Some(continuation_id)
+            || !matches!(
+                after_pending.request.decision,
+                DecisionDomainV2::ChooseMany {
+                    minimum: 2,
+                    maximum: 2
+                }
+            )
+            || after_pending.request.candidates.len() != 2
+            || !after_pending
+                .request
+                .candidates
+                .iter()
+                .enumerate()
+                .all(|(index, candidate)| {
+                    candidate.candidate_id.0 == index as u32
+                        && matches!(
+                            candidate.visible_intent,
+                            CandidateIntent::SelectMode { mode_index } if mode_index == index as u32
+                        )
+                })
+        {
+            return Err(HarnessError::AcceptedTransitionRequired);
+        }
+        let after_continuation = after
+            .state
+            .execution
+            .continuations
+            .get(&continuation_id)
+            .ok_or(HarnessError::AcceptedTransitionRequired)?;
+        if !matches!(
+            after_continuation.payload,
+            mtgml_state::ContinuationPayloadV2::SyntheticM2Assembly {
+                stage: mtgml_state::AssemblyStageV2::ChooseMembers,
+                selected_count: Some(2),
+                ref selected_piece_keys,
+                ref ordered_piece_keys,
+            } if selected_piece_keys.is_empty() && ordered_piece_keys.is_empty()
+        ) {
+            return Err(HarnessError::AcceptedTransitionRequired);
+        }
+        let expected_next = after_pending
+            .request
+            .project_player_request()
+            .map_err(|_| HarnessError::AcceptedTransitionRequired)?;
+        let (_, digest) =
+            mtgml_wire::compute_information_state_digest_v2(&step.information_state.digest_input())
+                .map_err(|_| HarnessError::AcceptedTransitionRequired)?;
+        if step.status != after.status
+            || step.next_decision.as_ref() != Some(&expected_next)
+            || step.information_state.perspective != P1
+            || step.information_state.next_visible_sequence
+                != after.state.knowledge.players[&P1].next_visible_sequence
+            || digest != step.information_state.digest
+        {
+            return Err(HarnessError::AcceptedTransitionRequired);
+        }
+        Ok(())
     }
 
     pub fn renaming_bijection() -> TrustedRenamingBijection {
@@ -354,11 +663,32 @@ pub(crate) mod test_support {
             mtgml_wire::compute_information_state_digest_v2(&information_state.digest_input())
                 .unwrap();
         information_state.digest = digest;
+        let next_decision = PlayerDecisionRequestV2 {
+            schema_version: PLAYER_DECISION_REQUEST_V2_SCHEMA.into(),
+            player_decision_id: mtgml_model::PlayerDecisionIdV1(1),
+            state_revision: StateRevision(0),
+            actor: P1,
+            visibility: DecisionVisibility::Public,
+            decision: DecisionDomainV2::ChooseOne,
+            candidates: vec![
+                VisibleCandidateV2 {
+                    candidate_id: mtgml_model::CandidateIdV1(0),
+                    intent: CandidateIntent::ChooseBoolean { value: false },
+                },
+                VisibleCandidateV2 {
+                    candidate_id: mtgml_model::CandidateIdV1(1),
+                    intent: CandidateIntent::ChooseBoolean { value: true },
+                },
+            ],
+        };
+        next_decision
+            .validate()
+            .map_err(|_| mtgml_environment::PlayerEndpointError::ServiceUnavailable)?;
         Ok(PlayerStepV2 {
             schema_version: PLAYER_STEP_SCHEMA_V2.into(),
             information_state,
             observed_events: Vec::new(),
-            next_decision: None,
+            next_decision: Some(next_decision),
             status: EpisodeStatus::Running,
             submission: PlayerStepSubmissionV1::Rejected {
                 code: PlayerSubmissionCodeV1::InvalidAnswer,

@@ -11,6 +11,7 @@ sys.dont_write_bytecode = True
 ROOT = Path(__file__).resolve().parents[1]
 LINK_RE = re.compile(r"(?<!!)\[[^\]]*\]\(([^)]+)\)")
 ADR_RE = re.compile(r"^(\d{4})-")
+HISTORICAL_ADR_GAPS = {42, 43, 44, 45, 46, 47}
 
 
 def main() -> None:
@@ -97,8 +98,14 @@ def main() -> None:
         match = ADR_RE.match(path.name)
         if match:
             numbers.append(int(match.group(1)))
-    if numbers and numbers != list(range(min(numbers), max(numbers) + 1)):
-        errors.append(f"ADR numbering gap or duplicate: {numbers}")
+    if numbers:
+        expected_numbers = [
+            number
+            for number in range(min(numbers), max(numbers) + 1)
+            if number not in HISTORICAL_ADR_GAPS
+        ]
+        if numbers != expected_numbers:
+            errors.append(f"ADR numbering gap or duplicate: {numbers}")
 
     required_index_tokens = [
         "M0_2_SPECIFICATION.md",

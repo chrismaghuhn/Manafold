@@ -24,7 +24,7 @@ pub enum ReplayValidationError {
     EmptyReplayIdentity,
     #[error("unsupported RNG contract in replay")]
     UnsupportedRngContract,
-    #[error("replay-step schema identity must be replay-step.v2")]
+    #[error("replay-step schema identity is invalid")]
     ReplayStepIdentity,
     #[error("replay checkpoint identity does not recompute")]
     CheckpointIdentity,
@@ -32,4 +32,8 @@ pub enum ReplayValidationError {
     Actor,
     #[error("accepted replay step counter progression is not deterministic")]
     CounterProgression,
+    #[error("V3 replay keyed array is not in canonical order")]
+    NoncanonicalKeyOrder,
+    #[error("V3 replay status does not cover the manifest player universe")]
+    StatusPlayerUniverse,
 }

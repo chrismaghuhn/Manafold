@@ -15,6 +15,9 @@ pub struct ReplayExecutionTrace {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+/// Backend/checkpoint-verified replay traces produced from a trusted starting
+/// checkpoint. This report is a trusted controller result and is never exposed
+/// through a player endpoint.
 pub struct ReplayExecutionReport {
     pub traces: Vec<ReplayExecutionTrace>,
     pub final_checkpoint: EnvironmentCheckpointV3,
@@ -30,13 +33,10 @@ fn checked_counter_add(
         .ok_or(ControllerError::CounterOverflow { counter })
 }
 
-fn expected_counters(
+fn deterministic_counters(
     before: &EnvironmentCheckpointV3,
     transition: &mtgml_rules::TransitionResult,
 ) -> Result<EnvironmentLimitCounters, ControllerError> {
-    if !transition.accepted {
-        return Ok(before.limit_counters.clone());
-    }
     let event_count =
         u64::try_from(transition.events.len()).map_err(|_| ControllerError::CounterOverflow {
             counter: "rule_events_emitted",
@@ -60,6 +60,26 @@ fn expected_counters(
         resource_units_consumed: before.limit_counters.resource_units_consumed,
         wall_clock_elapsed_millis: before.limit_counters.wall_clock_elapsed_millis,
     })
+}
+
+fn expected_counters(
+    before: &EnvironmentCheckpointV3,
+    transition: &mtgml_rules::TransitionResult,
+    recorded: &EnvironmentLimitCounters,
+    step_index: u64,
+) -> Result<EnvironmentLimitCounters, ControllerError> {
+    if !transition.accepted {
+        return Ok(before.limit_counters.clone());
+    }
+    let mut expected = deterministic_counters(before, transition)?;
+    if recorded.resource_units_consumed < before.limit_counters.resource_units_consumed
+        || recorded.wall_clock_elapsed_millis < before.limit_counters.wall_clock_elapsed_millis
+    {
+        return Err(ReplayExecutionError::CounterMismatch { step_index }.into());
+    }
+    expected.resource_units_consumed = recorded.resource_units_consumed;
+    expected.wall_clock_elapsed_millis = recorded.wall_clock_elapsed_millis;
+    Ok(expected)
 }
 
 fn checkpoint(
@@ -111,42 +131,69 @@ pub(crate) fn execute_replay(
             }
             .into());
         }
-        let pending_actor = before
-            .state
-            .execution
-            .pending_decision
-            .as_ref()
-            .map(|pending| pending.request.actor)
-            .ok_or(ReplayExecutionError::ActorUnavailable {
+        let pending = before.state.execution.pending_decision.as_ref().ok_or(
+            ReplayExecutionError::ActorUnavailable {
                 step_index: step.step_index,
-            })?;
-        if pending_actor != step.actor {
+            },
+        )?;
+        if pending.request.actor != step.actor {
             return Err(ReplayExecutionError::ActorUnavailable {
+                step_index: step.step_index,
+            }
+            .into());
+        }
+        if pending.request.player_decision_id != step.response.player_decision_id {
+            return Err(ReplayExecutionError::PlayerDecisionIdentityMismatch {
                 step_index: step.step_index,
             }
             .into());
         }
         let transition = backend.execute_trusted_response(step.actor, step.response.clone())?;
         validate_transition_contract(&before.state, &transition)?;
-        let after = checkpoint(backend)?;
+        let executed_after = checkpoint(backend)?;
         if transition.accepted != step.accepted {
             return Err(ReplayExecutionError::OutcomeMismatch {
                 step_index: step.step_index,
             }
             .into());
         }
-        if transition.next_state != after.state || transition.status != after.status {
+        if transition.next_state != executed_after.state
+            || transition.status != executed_after.status
+            || step.episode_status_after != executed_after.status
+        {
             return Err(ReplayExecutionError::TransitionMismatch {
                 step_index: step.step_index,
             }
             .into());
         }
-        if after.limit_counters != expected_counters(&before, &transition)? {
+        let expected_counters = expected_counters(
+            &before,
+            &transition,
+            &step.environment_limit_counters_after,
+            step.step_index,
+        )?;
+        if expected_counters != step.environment_limit_counters_after {
             return Err(ReplayExecutionError::CounterMismatch {
                 step_index: step.step_index,
             }
             .into());
         }
+        let after = if executed_after.limit_counters == expected_counters {
+            executed_after
+        } else {
+            // External/resource and wall-clock progression is trusted replay
+            // control data. Apply it only to the replay-owned backend through
+            // the existing complete checkpoint boundary; never read the host
+            // clock or infer the values from game semantics.
+            let candidate = EnvironmentCheckpointV3::new(
+                executed_after.state.clone(),
+                executed_after.status.clone(),
+                expected_counters,
+                executed_after.codec.clone(),
+            )?;
+            backend.restore(candidate)?;
+            checkpoint(backend)?
+        };
         let actual_after = identity_from_checkpoint(&after);
         if actual_after.state_revision != step.state_revision_after
             || actual_after.full_state_digest != step.full_state_digest_after

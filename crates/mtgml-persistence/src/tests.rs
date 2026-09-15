@@ -377,6 +377,83 @@ fn mtgml_frame(value: &[u8]) -> Vec<u8> {
     output
 }
 
+fn valid_full_state_reference() -> mtgml_model::DigestReferenceV1 {
+    mtgml_model::DigestReferenceV1 {
+        envelope_version: envelope::DIGEST_ENVELOPE_ID.to_owned(),
+        algorithm_id: envelope::SHA256_ID.to_owned(),
+        semantic_domain: "mtgml.full-state-digest.v3".to_owned(),
+        payload_codec_id: envelope::CANONICAL_CBOR_ID.to_owned(),
+        input_schema_id: "full-state-digest-input.v3".to_owned(),
+        digest_bytes: [7; 32],
+    }
+}
+
+fn valid_checkpoint_codec() -> CheckpointCodecIdentity {
+    CheckpointCodecIdentity {
+        codec_id: "in-memory-reference".to_owned(),
+        semantic_version: "3".to_owned(),
+    }
+}
+
+#[test]
+fn fnd_017a_rejects_non_v3_full_state_reference_identity() {
+    for label in ["envelope", "algorithm", "domain", "codec", "schema"] {
+        let mut reference = valid_full_state_reference();
+        match label {
+            "envelope" => reference.envelope_version = "other".into(),
+            "algorithm" => reference.algorithm_id = "sha-512".into(),
+            "domain" => reference.semantic_domain = "other-domain".into(),
+            "codec" => reference.payload_codec_id = "other-codec".into(),
+            "schema" => reference.input_schema_id = "other-schema".into(),
+            _ => unreachable!("all reference fields are listed"),
+        }
+        assert_eq!(
+            checkpoint_digest::calculate_checkpoint_digest_v3(
+                &reference,
+                &EpisodeStatus::Running,
+                &EnvironmentLimitCounters::default(),
+                &valid_checkpoint_codec(),
+            ),
+            Err(PersistenceDecodeErrorV1::SemanticValidation),
+            "invalid reference field: {label}"
+        );
+    }
+}
+
+#[test]
+fn fnd_017a_rejects_impossible_checkpoint_counters() {
+    let counters = EnvironmentLimitCounters {
+        accepted_transitions: 1,
+        decisions_submitted: 0,
+        ..EnvironmentLimitCounters::default()
+    };
+    assert_eq!(
+        checkpoint_digest::calculate_checkpoint_digest_v3(
+            &valid_full_state_reference(),
+            &EpisodeStatus::Running,
+            &counters,
+            &valid_checkpoint_codec(),
+        ),
+        Err(PersistenceDecodeErrorV1::SemanticValidation)
+    );
+}
+
+#[test]
+fn fnd_017a_checkpoint_payload_is_not_a_public_function() {
+    let source = include_str!("checkpoint_digest.rs");
+    assert!(!source.contains("pub fn checkpoint_payload"));
+}
+
+#[test]
+fn fnd_019_array_limit_precedes_depth_limit() {
+    let mut bytes = vec![0x81; cbor::MAX_DEPTH];
+    bytes.extend([0x9a, 0x00, 0x10, 0x00, 0x01]);
+    assert_eq!(
+        cbor::decode_canonical(&bytes),
+        Err(PersistenceDecodeErrorV1::ArrayTooLarge)
+    );
+}
+
 /// The shared mechanical negative corpus is Rust-authoritative evidence:
 /// every committed fixture must produce its manifest-declared category from
 /// the Rust decoder. Python parity runs against the same corpus.
@@ -420,6 +497,68 @@ fn persisted_negative_fixture_manifest_matches_rust_categories() {
         assert!(seen
             .insert(fixture.path.clone(), fixture.contract.clone())
             .is_none());
+    }
+}
+
+#[test]
+fn persisted_positive_fixture_manifest_matches_rust_bytes_and_meaning() {
+    #[derive(Debug, serde::Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct Manifest {
+        schema_version: String,
+        fixtures: Vec<Fixture>,
+    }
+    #[derive(Debug, serde::Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct Fixture {
+        contract: String,
+        path: String,
+        #[serde(default)]
+        sha256: Option<String>,
+    }
+
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let raw = std::fs::read(root.join("persistence/golden/manifest.json")).unwrap();
+    let manifest: Manifest = serde_json::from_slice(&raw).unwrap();
+    assert_eq!(manifest.schema_version, "persistence-fixture-manifest.v1");
+    assert!(!manifest.fixtures.is_empty());
+
+    for fixture in manifest.fixtures {
+        let bytes = std::fs::read(root.join("persistence/golden").join(&fixture.path)).unwrap();
+        let expected_value = cbor::Value::Array(vec![
+            cbor::Value::Text("input.v1".to_owned()),
+            cbor::Value::Unsigned(7),
+        ]);
+        let expected_payload = cbor::encode_canonical(&expected_value).unwrap();
+        match (fixture.contract.as_str(), fixture.path.as_str()) {
+            ("canonical-cbor.v1", "canonical-array.cbor") => {
+                assert_eq!(bytes, expected_payload);
+                assert_eq!(cbor::decode_canonical(&bytes).unwrap(), expected_value);
+                assert_eq!(cbor::encode_canonical(&expected_value).unwrap(), bytes);
+                assert!(fixture.sha256.is_none());
+            }
+            ("digest-envelope.v1", "digest-envelope-test.cbor") => {
+                let expected = envelope::encode_envelope(
+                    "mtgml.test-domain.v1",
+                    "test-input.v1",
+                    &expected_payload,
+                )
+                .unwrap();
+                assert_eq!(bytes, expected);
+                let (reference, payload) = envelope::decode_envelope(&bytes).unwrap();
+                assert_eq!(payload, expected_payload);
+                assert_eq!(cbor::decode_canonical(&payload).unwrap(), expected_value);
+                assert_eq!(
+                    fixture.sha256.as_deref(),
+                    Some("b1188a072cbe39da6a521f51a3d5790fe1f0e4c46c25b5e90f62bf5ee4a7f6ad")
+                );
+                assert_eq!(hex(&reference.digest_bytes), fixture.sha256.unwrap());
+                assert_eq!(reference.semantic_domain, "mtgml.test-domain.v1");
+                assert_eq!(reference.input_schema_id, "test-input.v1");
+                assert_eq!(reference.digest_bytes, envelope::hash_envelope(&bytes));
+            }
+            other => panic!("unknown positive persistence fixture {other:?}"),
+        }
     }
 }
 

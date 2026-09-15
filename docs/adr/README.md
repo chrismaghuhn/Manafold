@@ -1,8 +1,13 @@
 # Architecture Decision Records
 
-ADRs are immutable decision history. Superseded records remain and point to replacements. Numbered records currently run through ADR 0041; ADR 0000 is the template.
+ADRs are immutable decision history. Superseded records remain and point to replacements. Numbered accepted records currently run through ADR 0050; ADR 0000 is the template.
 
-ADRs 0039 and 0040 are accepted M2.A architecture decisions. Their acceptance freezes the implementation direction for M2.B, but does not make any executable M2 behavior gate `PASS`; those gates remain `NOT_RUN` until their declared evidence executes.
+ADR numbers 0042 through 0047 are historically occupied by accepted ContextApplication/M2.5 decisions that were intentionally removed from the active source tree by the post-purge cleanup. Their numbers remain permanently reserved and are not reusable; the acceptance of ADR 0048 is therefore accompanied by an explicit historical numbering gap.
+
+ADRs 0039 and 0040 are accepted M2.A architecture decisions. Their acceptance
+froze the implementation direction for M2.B but did not by itself make any
+executable M2 behavior gate `PASS`; the later exact M2.Final closure is
+recorded by accepted ADR 0041.
 
 ADR 0041 accepts the reviewed capability-oriented semantic-ownership candidate after `M2.Final`; the post-acceptance drift re-review found no material contradiction with the consolidated M2 architecture.
 
@@ -11,6 +16,14 @@ ADR 0041 accepts the reviewed capability-oriented semantic-ownership candidate a
 Reviewed ADR candidates may be stored under `docs/adr/candidates/` without allocating a permanent ADR number. They are informative until a later acceptance change assigns the then-current number and changes the record to `Accepted`. There is currently no open reviewed candidate.
 
 A candidate must not be cited as accepted architecture, used to claim executable support, or used to begin a later milestone before its explicit acceptance change. Candidate numbering shown inside research material is provisional only.
+
+ADR 0049 accepts the Pre-M3 Batch-D knowledge chronology and ordered-zone
+canonicality decision. Its executable evidence remains subject to the exact
+head review recorded in the associated pull request.
+
+ADR 0050 accepts the Pre-M3 FND-028 `PlayerId(0)` policy decision as Option A.
+It records policy intent only; implementation remains separately gated by the
+accepted review and planning process.
 
 Create a new record with:
 

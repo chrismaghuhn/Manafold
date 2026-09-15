@@ -294,6 +294,18 @@ def rendered() -> dict[str, str]:
     }
 
 
+def generated_bytes(content: str) -> bytes:
+    return content.encode("utf-8")
+
+
+def write_generated(target: Path, content: str) -> None:
+    target.write_bytes(generated_bytes(content))
+
+
+def generated_bytes_match(target: Path, content: str) -> bool:
+    return target.is_file() and target.read_bytes() == generated_bytes(content)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--check", action="store_true")
@@ -302,11 +314,11 @@ def main() -> int:
     for rel, content in rendered().items():
         target = ROOT / rel
         if args.check:
-            if not target.is_file() or target.read_text(encoding="utf-8") != content:
+            if not generated_bytes_match(target, content):
                 drift.append(rel)
         else:
             target.parent.mkdir(parents=True, exist_ok=True)
-            target.write_text(content, encoding="utf-8")
+            write_generated(target, content)
     if drift:
         print("generated contract drift:")
         for rel in drift:

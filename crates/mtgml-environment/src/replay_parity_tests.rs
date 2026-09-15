@@ -5,14 +5,14 @@
 //! submit pipeline uses (observation, information state, step assembly,
 //! occurrence projection); no second projector exists here. Trusted controls
 //! pin the host-independent counters EXACTLY unchanged across live commits
-//! and replayed traces alike, and recorded inactive-counter inflation to a
-//! fail-closed executor rejection. Every M2.G gate remains `NOT_RUN`.
+//! and replayed traces alike, with explicit replay application of recorded
+//! external counters. The M2.G runner records the gate verdicts separately.
 
 use super::{SyntheticM1EnvironmentBackend, SyntheticM1EnvironmentConfig, SyntheticM1ReplayConfig};
 use crate::checkpoint::{CheckpointCodecIdentity, EnvironmentCheckpointV3};
 use crate::controller::TrustedEnvironmentController;
 use crate::endpoint::{PlayerEndpoint, PlayerEndpointHandle};
-use crate::errors::{ControllerError, ReplayExecutionError};
+use crate::errors::ControllerError;
 use mtgml_decision::{DecisionAnswerV2, DecisionResponseV2, DECISION_RESPONSE_V2_SCHEMA};
 use mtgml_model::{CandidateIdV1, PlayerDecisionIdV1, PlayerId};
 use mtgml_observation::{
@@ -21,8 +21,8 @@ use mtgml_observation::{
 };
 use mtgml_random::RootSeed256;
 use mtgml_replay::{
-    AuthoritativeReplayV3, DeckIdentityV1, KernelIdentityV1, ReplaySchemaVersionsV1, ReplayStepV3,
-    ReplayValidationError, REPLAY_FILE_SCHEMA_V3,
+    AuthoritativeReplayV3, DeckIdentityV1, InitialEnvironmentIdentityV3, KernelIdentityV1,
+    ReplaySchemaVersionsV1, ReplayStepV3, ReplayValidationError, REPLAY_FILE_SCHEMA_V3,
 };
 
 fn config(players: [PlayerId; 2]) -> SyntheticM1EnvironmentConfig {
@@ -76,6 +76,11 @@ fn backend() -> SyntheticM1EnvironmentBackend {
     SyntheticM1EnvironmentBackend::new(players, seed(), config(players)).unwrap()
 }
 
+fn eventful_backend() -> SyntheticM1EnvironmentBackend {
+    let players = [PlayerId(1), PlayerId(2)];
+    super::eventful::backend(players, seed(), config(players)).unwrap()
+}
+
 fn submit_answer(
     endpoint: &PlayerEndpointHandle,
     answer: mtgml_decision::DecisionAnswerV2,
@@ -123,6 +128,98 @@ fn visible_decision_bytes(endpoint: &PlayerEndpointHandle) -> Option<Vec<u8>> {
         .visible_decision()
         .unwrap()
         .map(|request| mtgml_wire::encode_canonical(&request).unwrap())
+}
+
+#[test]
+fn eventful_replay_reprojects_both_perspectives_byte_exactly() {
+    let controller = TrustedEnvironmentController::new(eventful_backend());
+    let p1 = controller.bind_player(PlayerId(1)).unwrap();
+    let _p2 = controller.bind_player(PlayerId(2)).unwrap();
+    let cp0 = controller.checkpoint().unwrap();
+    let live_step = submit_answer(&p1, order_entry_answer());
+    assert_eq!(live_step.submission, PlayerStepSubmissionV1::Accepted);
+    assert!(!live_step.observed_events.is_empty());
+    let live_after = controller.checkpoint().unwrap();
+    let live_replay = controller.export_replay().unwrap();
+    assert_eq!(live_replay.steps.len(), 1);
+    assert_eq!(
+        live_replay.final_identity,
+        InitialEnvironmentIdentityV3 {
+            state_revision: live_after.state.revision,
+            full_state_digest: live_after.state_digest.clone(),
+            episode_status: live_after.status.clone(),
+            environment_limit_counters: live_after.limit_counters.clone(),
+            checkpoint_codec_identity: live_after.codec.clone(),
+            checkpoint_digest: live_after.checkpoint_digest.clone(),
+        }
+    );
+
+    let report = controller
+        .execute_replay_from_checkpoint(cp0.clone(), live_replay.clone())
+        .unwrap();
+    assert_eq!(report.traces.len(), 1);
+    let trace = &report.traces[0];
+    let replay_events = crate::lifecycle_projection::project_occurrence_envelopes(
+        &trace.before.state,
+        &trace.after.state,
+        &trace.transition.events,
+    )
+    .unwrap();
+    assert!(!trace.transition.events.is_empty());
+    assert!(!replay_events[&PlayerId(1)].is_empty());
+    assert!(!replay_events[&PlayerId(2)].is_empty());
+    assert_eq!(replay_events[&PlayerId(1)], live_step.observed_events);
+    assert!(matches!(
+        &replay_events[&PlayerId(1)][0].event,
+        mtgml_observation::ObservedEventKindV2::ObjectMoved {
+            old_object: None,
+            new_object: Some(_),
+            ..
+        }
+    ));
+    assert!(matches!(
+        &replay_events[&PlayerId(2)][0].event,
+        mtgml_observation::ObservedEventKindV2::PublicOutcome { code }
+            if code == "p2-public"
+    ));
+
+    let mut replay_step = SyntheticM1EnvironmentBackend::player_step_from_state(
+        &trace.after.state,
+        PlayerId(1),
+        trace.after.status.clone(),
+        PlayerStepSubmissionV1::Accepted,
+    )
+    .unwrap();
+    replay_step.observed_events = replay_events[&PlayerId(1)].clone();
+    replay_step.validate().unwrap();
+    assert_eq!(
+        mtgml_wire::encode_canonical(&replay_step).unwrap(),
+        mtgml_wire::encode_canonical(&live_step).unwrap(),
+    );
+
+    let p1_bytes = serde_json::to_vec(&replay_events[&PlayerId(1)]).unwrap();
+    let p2_bytes = serde_json::to_vec(&replay_events[&PlayerId(2)]).unwrap();
+    assert_ne!(
+        p1_bytes, p2_bytes,
+        "perspective products must remain separated"
+    );
+    for bytes in [&p1_bytes, &p2_bytes] {
+        let text = String::from_utf8_lossy(bytes);
+        for forbidden in [
+            "GameObjectId",
+            "PhysicalCardId",
+            "DecisionId",
+            "RuleEventId",
+            "root_seed",
+            "raw_words",
+            "checkpoint_digest",
+        ] {
+            assert!(!text.contains(forbidden), "forbidden field {forbidden}");
+        }
+    }
+
+    assert_eq!(controller.checkpoint().unwrap(), live_after);
+    assert_eq!(controller.export_replay().unwrap(), live_replay);
 }
 
 fn snapshot_bytes(endpoint: &PlayerEndpointHandle) -> PerspectiveBytes {
@@ -412,7 +509,7 @@ fn diagnostic_rejected_step_executes_with_intact_identity_chain() {
 }
 
 #[test]
-fn recorded_inactive_counter_progression_fails_closed_without_live_mutation() {
+fn recorded_external_counter_progression_is_applied_without_live_mutation() {
     use mtgml_model::CheckpointDigestV3;
     use mtgml_persistence::checkpoint_digest::calculate_checkpoint_digest_v3;
     use mtgml_replay::InitialEnvironmentIdentityV3;
@@ -461,36 +558,28 @@ fn recorded_inactive_counter_progression_fails_closed_without_live_mutation() {
             .execute_replay_from_checkpoint(cp0.clone(), replay)
     };
 
-    // Digest-consistent forward wall-clock inflation passes the structural
-    // monotonicity contract but MUST fail closed against the deterministically
-    // re-executed checkpoint identity (the executor's own counter check
-    // compares execution against execution, never the recording).
+    // Digest-consistent forward wall-clock progression is trusted replay
+    // control data and must be applied to the replay-owned backend.
     let mut tampered = pristine.clone();
     tampered.steps[0]
         .environment_limit_counters_after
         .wall_clock_elapsed_millis += 1000;
     resealed(&mut tampered);
     tampered.validate().unwrap();
-    assert!(matches!(
-        run(tampered),
-        Err(ControllerError::ReplayExecution(
-            ReplayExecutionError::AfterDigestMismatch { step_index: 0 }
-        ))
-    ));
+    let expected_counters = tampered.steps[0].environment_limit_counters_after.clone();
+    let report = run(tampered).unwrap();
+    assert_eq!(report.final_checkpoint.limit_counters, expected_counters);
 
-    // Same for the resource-units counter.
+    // Same for resource-unit progression.
     let mut tampered = pristine.clone();
     tampered.steps[0]
         .environment_limit_counters_after
         .resource_units_consumed += 5;
     resealed(&mut tampered);
     tampered.validate().unwrap();
-    assert!(matches!(
-        run(tampered),
-        Err(ControllerError::ReplayExecution(
-            ReplayExecutionError::AfterDigestMismatch { step_index: 0 }
-        ))
-    ));
+    let expected_counters = tampered.steps[0].environment_limit_counters_after.clone();
+    let report = run(tampered).unwrap();
+    assert_eq!(report.final_checkpoint.limit_counters, expected_counters);
 
     // A decisions_submitted overcount is rejected at the earliest gate by
     // the structural exact +1-per-accepted-step contract itself.

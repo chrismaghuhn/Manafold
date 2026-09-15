@@ -3,9 +3,9 @@ use mtgml_decision::{
     DECISION_RESPONSE_SCHEMA, DECISION_RESPONSE_V2_SCHEMA,
 };
 use mtgml_model::{
-    CheckpointCodecIdentity, ContentDigest, DecisionId, EnvironmentLimitCounters, EpisodeStatus,
-    FullStateDigest, FullStateDigestV2, FullStateDigestV3, PlayerDecisionIdV1, PlayerId,
-    StateRevision,
+    CheckpointCodecIdentity, CheckpointDigestV3, ContentDigest, DecisionId,
+    EnvironmentLimitCounters, EpisodeStatus, FullStateDigest, FullStateDigestV2, FullStateDigestV3,
+    PlayerDecisionIdV1, PlayerId, StateRevision,
 };
 
 use crate::recorder::ReplayRecorderV2;
@@ -14,8 +14,8 @@ use crate::{
     KernelIdentityV1, RandomnessIdentityV1, RandomnessIdentityV2, ReplayManifestV1,
     ReplayManifestV2, ReplayManifestV3, ReplayRecorderV3, ReplaySchemaVersionsV1, ReplayStepV1,
     ReplayStepV2, ReplayStepV3, ReplayValidationError, REPLAY_FILE_SCHEMA, REPLAY_FILE_SCHEMA_V2,
-    REPLAY_MANIFEST_SCHEMA, REPLAY_MANIFEST_SCHEMA_V2, REPLAY_MANIFEST_SCHEMA_V3,
-    REPLAY_STEP_SCHEMA_V3,
+    REPLAY_FILE_SCHEMA_V3, REPLAY_MANIFEST_SCHEMA, REPLAY_MANIFEST_SCHEMA_V2,
+    REPLAY_MANIFEST_SCHEMA_V3, REPLAY_STEP_SCHEMA_V3,
 };
 
 fn digest(text: char) -> FullStateDigest {
@@ -254,6 +254,24 @@ fn v3_identity(
     }
 }
 
+fn v3_identity_with_unverified_checkpoint_digest(
+    revision: u64,
+    digest_byte: u8,
+    counters: EnvironmentLimitCounters,
+) -> InitialEnvironmentIdentityV3 {
+    InitialEnvironmentIdentityV3 {
+        state_revision: StateRevision(revision),
+        full_state_digest: FullStateDigestV3::from_digest_bytes([digest_byte; 32]),
+        episode_status: EpisodeStatus::Running,
+        environment_limit_counters: counters,
+        checkpoint_codec_identity: CheckpointCodecIdentity {
+            codec_id: "in-memory-reference".into(),
+            semantic_version: "3".into(),
+        },
+        checkpoint_digest: CheckpointDigestV3::from_digest_bytes([0; 32]),
+    }
+}
+
 fn manifest_v3() -> ReplayManifestV3 {
     ReplayManifestV3 {
         schema_version: REPLAY_MANIFEST_SCHEMA_V3.into(),
@@ -296,6 +314,68 @@ fn response_v3() -> DecisionResponseV2 {
         state_revision: StateRevision(0),
         answer: DecisionAnswerV2::ChooseNumber { value: 0 },
     }
+}
+
+fn replay_v3_with_declared_zero_actor() -> AuthoritativeReplayV3 {
+    let mut manifest = manifest_v3();
+    manifest.decks[0].player = PlayerId(0);
+    manifest.validate().unwrap();
+    let initial = manifest.initial_identity.clone();
+    let step = ReplayStepV3 {
+        step_index: 0,
+        actor: PlayerId(0),
+        checkpoint_digest_before: initial.checkpoint_digest.clone(),
+        state_revision_before: initial.state_revision,
+        response: response_v3(),
+        accepted: false,
+        state_revision_after: initial.state_revision,
+        full_state_digest_after: initial.full_state_digest.clone(),
+        episode_status_after: initial.episode_status.clone(),
+        environment_limit_counters_after: initial.environment_limit_counters.clone(),
+        checkpoint_digest_after: initial.checkpoint_digest.clone(),
+    };
+    AuthoritativeReplayV3 {
+        schema_version: REPLAY_FILE_SCHEMA_V3.into(),
+        manifest,
+        steps: vec![step],
+        final_identity: initial,
+    }
+}
+
+#[test]
+fn fnd_028_replay_v3_accepts_declared_zero_actor_structurally() {
+    let replay = replay_v3_with_declared_zero_actor();
+    assert_eq!(replay.steps[0].actor, PlayerId(0));
+    assert_eq!(replay.validate(), Ok(()));
+}
+
+#[test]
+fn replay_step_identity_diagnostic_is_version_neutral() {
+    let mut manifest = manifest_v3();
+    manifest.schemas.replay_step = "replay-step.v2".into();
+
+    let error = manifest.validate().unwrap_err();
+    assert_eq!(error, ReplayValidationError::ReplayStepIdentity);
+    assert_eq!(error.to_string(), "replay-step schema identity is invalid");
+}
+
+#[test]
+fn initial_identity_rejects_impossible_counters() {
+    let mut manifest = manifest_v3();
+    manifest.initial_identity = v3_identity_with_unverified_checkpoint_digest(
+        0,
+        0,
+        EnvironmentLimitCounters {
+            accepted_transitions: 1,
+            decisions_submitted: 0,
+            ..EnvironmentLimitCounters::default()
+        },
+    );
+
+    assert_eq!(
+        manifest.validate(),
+        Err(ReplayValidationError::CounterProgression)
+    );
 }
 
 #[test]
@@ -447,7 +527,11 @@ fn replay_v3_rejects_corrupt_accepted_progression() {
             },
         ),
     ] {
-        let after = v3_identity(1, 1, counters);
+        let after = if name == "accepted_transitions" {
+            v3_identity_with_unverified_checkpoint_digest(1, 1, counters)
+        } else {
+            v3_identity(1, 1, counters)
+        };
         replay.steps = vec![accepted_v3_step(0, &initial, after.clone())];
         replay.final_identity = after;
         assert_eq!(
@@ -523,6 +607,83 @@ fn replay_v3_rejects_corrupt_accepted_progression() {
 }
 
 #[test]
+fn fnd_020_detached_manifest_reader_does_not_require_current_observation_id() {
+    let mut manifest = manifest_v3();
+    manifest.schemas.observation = "observation-envelope.v999".into();
+    assert!(manifest.validate().is_ok());
+}
+
+#[test]
+fn fnd_022b_manifest_requires_the_exact_deck_player_universe_for_closed_status() {
+    let mut manifest = manifest_v3();
+    manifest.decks.push(DeckIdentityV1 {
+        player: PlayerId(2),
+        deck_id: "deck-2".into(),
+        digest: ContentDigest::parse("22".repeat(32)).unwrap(),
+    });
+    manifest.initial_identity.episode_status = EpisodeStatus::Terminal {
+        reason: mtgml_model::TerminalReason::Concession,
+        players: Vec::new(),
+    };
+    manifest.initial_identity.checkpoint_digest =
+        mtgml_persistence::checkpoint_digest::calculate_checkpoint_digest_v3(
+            &manifest
+                .initial_identity
+                .full_state_digest
+                .as_digest_reference(),
+            &manifest.initial_identity.episode_status,
+            &manifest.initial_identity.environment_limit_counters,
+            &manifest.initial_identity.checkpoint_codec_identity,
+        )
+        .unwrap();
+    assert!(manifest.validate().is_err());
+}
+
+#[test]
+fn fnd_025_manifest_rejects_noncanonical_deck_and_status_order() {
+    let mut manifest = manifest_v3();
+    manifest.decks.push(DeckIdentityV1 {
+        player: PlayerId(2),
+        deck_id: "deck-2".into(),
+        digest: ContentDigest::parse("22".repeat(32)).unwrap(),
+    });
+    manifest.decks.swap(0, 1);
+    assert!(manifest.validate().is_err());
+
+    let mut status_manifest = manifest_v3();
+    status_manifest.decks.push(DeckIdentityV1 {
+        player: PlayerId(2),
+        deck_id: "deck-2".into(),
+        digest: ContentDigest::parse("22".repeat(32)).unwrap(),
+    });
+    status_manifest.initial_identity.episode_status = EpisodeStatus::Terminal {
+        reason: mtgml_model::TerminalReason::Concession,
+        players: vec![
+            mtgml_model::PlayerOutcome {
+                player: PlayerId(2),
+                result: mtgml_model::PlayerResult::Loss,
+            },
+            mtgml_model::PlayerOutcome {
+                player: PlayerId(1),
+                result: mtgml_model::PlayerResult::Win,
+            },
+        ],
+    };
+    status_manifest.initial_identity.checkpoint_digest =
+        mtgml_persistence::checkpoint_digest::calculate_checkpoint_digest_v3(
+            &status_manifest
+                .initial_identity
+                .full_state_digest
+                .as_digest_reference(),
+            &status_manifest.initial_identity.episode_status,
+            &status_manifest.initial_identity.environment_limit_counters,
+            &status_manifest.initial_identity.checkpoint_codec_identity,
+        )
+        .unwrap();
+    assert!(status_manifest.validate().is_err());
+}
+
+#[test]
 fn diagnostic_step_preserves_complete_identity() {
     // Direct-construction counterpart of the recorder-append path covered by
     // `replay_v3_empty_accepted_rejected_identity_matrix`: one hand-built
@@ -567,8 +728,8 @@ fn inactive_counter_forward_progression_passes_structural_monotonicity() {
     // The uncovered class is FORWARD inflation of the host-independent
     // counters: the structural contract pins monotonicity only, while exact
     // carry-forward is enforced by the environment executor, pinned there as
-    // a fail-closed AfterDigestMismatch execution rejection
-    // (`recorded_inactive_counter_progression_fails_closed_without_live_mutation`).
+    // trusted replay-control application without live mutation
+    // (`recorded_external_counter_progression_is_applied_without_live_mutation`).
     let manifest = manifest_v3();
     let initial = manifest.initial_identity.clone();
     let inflated = v3_identity(

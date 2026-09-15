@@ -9,6 +9,7 @@ PLAYER_DECISION_REQUEST_SCHEMA = "player-decision-request.v1"
 DECISION_RESPONSE_SCHEMA = "decision-response.v1"
 PLAYER_DECISION_REQUEST_V2_SCHEMA = "player-decision-request.v2"
 DECISION_RESPONSE_V2_SCHEMA = "decision-response.v2"
+_CANDIDATE_ID_COUNT_CAPACITY = 2**32
 
 _ALLOWED_VISIBILITY = {"public", "acting_player_only", "mixed"}
 _ALLOWED_DECISIONS = {"choose_one", "choose_many", "choose_number", "order"}
@@ -23,6 +24,14 @@ _ALLOWED_INTENTS = {
     "declare_number",
     "confirm",
 }
+
+
+def _validate_candidate_capacity(candidate_count: int) -> None:
+    if candidate_count > _CANDIDATE_ID_COUNT_CAPACITY:
+        raise WireError(
+            "semantic.decision",
+            "candidate count exceeds the CandidateIdV1 capacity",
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -383,6 +392,7 @@ class PlayerDecisionRequestV2:
         return result
 
     def validate(self) -> None:
+        _validate_candidate_capacity(len(self.candidates))
         self.decision.validate(len(self.candidates))
         for index, candidate in enumerate(self.candidates):
             if candidate.candidate_id != index:

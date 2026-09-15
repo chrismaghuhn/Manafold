@@ -11,8 +11,8 @@ use mtgml_model::{
 use mtgml_random::RootSeed256;
 
 use mtgml_state::{
-    construct_synthetic_engine_state, AssemblyStageV2, ContinuationPayloadV2, EngineState,
-    SyntheticResetInputs,
+    construct_synthetic_engine_state, AssemblyStageV2, ContinuationPayloadV2, ContinuationRecordV2,
+    EngineState, PendingDecisionRecordV2, SyntheticResetInputs,
 };
 
 fn synthetic_state() -> mtgml_state::EngineState {
@@ -21,6 +21,56 @@ fn synthetic_state() -> mtgml_state::EngineState {
         root_seed: RootSeed256::from_lower_hex(&"11".repeat(32)).unwrap(),
     })
     .unwrap()
+}
+
+fn state_without_pending_decision() -> EngineState {
+    let mut state = synthetic_state();
+    state.execution.pending_decision = None;
+    state
+}
+
+fn continuation_state() -> EngineState {
+    let mut state = state_without_pending_decision();
+    state.execution.continuations.insert(
+        mtgml_model::ContinuationId(1),
+        ContinuationRecordV2 {
+            id: mtgml_model::ContinuationId(1),
+            actor: PlayerId(1),
+            created_at_revision: StateRevision(0),
+            stage_index: AssemblyStageV2::ChooseCount.stage_index(),
+            payload: ContinuationPayloadV2::SyntheticM2Assembly {
+                stage: AssemblyStageV2::ChooseCount,
+                selected_count: None,
+                selected_piece_keys: Vec::new(),
+                ordered_piece_keys: Vec::new(),
+            },
+        },
+    );
+    state.execution.pending_decision = Some(PendingDecisionRecordV2 {
+        request: mtgml_decision::AuthoritativeDecisionRequestV2 {
+            decision_id: DecisionId(9),
+            player_decision_id: PlayerDecisionIdV1(9),
+            state_revision: StateRevision(0),
+            actor: PlayerId(1),
+            visibility: mtgml_decision::DecisionVisibility::Public,
+            decision: mtgml_decision::DecisionDomainV2::ChooseNumber {
+                minimum: 0,
+                maximum: 3,
+            },
+            candidates: Vec::new(),
+            continuation_id: Some(mtgml_model::ContinuationId(1)),
+        },
+    });
+    state.allocators.next_decision_id = DecisionId(10);
+    state.allocators.next_continuation_id = mtgml_model::ContinuationId(2);
+    state
+        .perspective_identities
+        .players
+        .get_mut(&PlayerId(1))
+        .unwrap()
+        .next_player_decision_id = PlayerDecisionIdV1(10);
+    mtgml_state::validate_engine_state(&state).unwrap();
+    state
 }
 
 fn response(candidate_id: u32, revision: u64) -> DecisionResponseV2 {
@@ -137,3 +187,5 @@ fn entry_stage0() -> EngineState {
 include!("tests/synthetic_program.rs");
 include!("tests/transition_contract.rs");
 include!("tests/determinism.rs");
+include!("tests/batch_e.rs");
+include!("tests/batch_f.rs");

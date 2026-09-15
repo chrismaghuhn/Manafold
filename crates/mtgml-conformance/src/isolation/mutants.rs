@@ -383,30 +383,27 @@ pub fn m3_identity_ids_from_global_allocators(
 // === M4 =====================================================================
 
 /// M4 — swap the semantic submission code to another VALID closed variant
-/// actor-dependently: on the wrong-actor surface (the submitting actor does
-/// not own the authoritative pending request) an `unavailable_decision`
-/// outcome flips to `invalid_answer` exactly when the trusted context shows
-/// the swapped face-down physical assignment (fixture predicate: the home
-/// hidden incarnation no longer tracks its baseline physical card). Both
-/// variants satisfy the identical rejection constraints, so validity holds
-/// by construction.
+/// actor-dependently: on the actor-owned stale-response surface a
+/// `stale_decision` outcome flips to `invalid_answer` exactly when the trusted
+/// context shows the swapped face-down physical assignment (fixture
+/// predicate: the home hidden incarnation no longer tracks its baseline
+/// physical card). Both variants retain the same current actor-bound
+/// decision, so validity holds by construction.
 ///
-/// Pairing note: the task's provisional axis-03 pairing cannot satisfy the
-/// clean-output premise — the wrong-actor product embeds the submitting
-/// player's OWN information state, which legitimately differs on axis 03
-/// (that player holds the injected private look). Axis 04 keeps every
-/// projected byte equal across sides while the trusted physical swap feeds
-/// the flip, so it is used instead.
+/// Pairing note: Axis 04 keeps every projected byte equal across sides while
+/// the trusted physical swap feeds the actor-owned stale-response flip. The
+/// provisional axis-03 pairing is not used for this submission-code channel
+/// because its own private-look information state is legitimately different.
 pub fn m4_submission_code_swap(
     mut step: PlayerStepV2,
     context: &EngineState,
     submitting_actor: PlayerId,
 ) -> Result<PlayerStepV2, HarnessError> {
-    let wrong_actor = context
+    let actor_owns_request = context
         .execution
         .pending_decision
         .as_ref()
-        .is_some_and(|pending| pending.request.actor != submitting_actor);
+        .is_some_and(|pending| pending.request.actor == submitting_actor);
     let members = concealed_members(context);
     let home = members
         .first()
@@ -415,9 +412,9 @@ pub fn m4_submission_code_swap(
     // Fixture predicate: the harness binds incarnation N to trusted physical
     // card N; the axis-04 swap breaks that baseline for the home object.
     let secret_present = concealed_physical(context, home) != home.0;
-    if wrong_actor && secret_present {
+    if actor_owns_request && secret_present {
         if let PlayerStepSubmissionV1::Rejected { code } = &mut step.submission {
-            if *code == PlayerSubmissionCodeV1::UnavailableDecision {
+            if *code == PlayerSubmissionCodeV1::StaleDecision {
                 *code = PlayerSubmissionCodeV1::InvalidAnswer;
             }
         }
@@ -750,6 +747,7 @@ mod tests {
         axis: AxisKind,
         submitting_actor: PlayerId,
         response: DecisionResponseV2,
+        expected_clean_submission: PlayerStepSubmissionV1,
         mutant: StepLeakMutant,
     ) -> Result<(Vec<u8>, Vec<u8>), HarnessError> {
         let case = build_axis_case(axis)?;
@@ -760,6 +758,8 @@ mod tests {
         let step_b = endpoint_for(&pair[1].1, submitting_actor)?
             .submit(response)
             .map_err(|_| HarnessError::EndpointService)?;
+        assert_eq!(step_a.submission, expected_clean_submission);
+        assert_eq!(step_b.submission, expected_clean_submission);
 
         // 1. clean products are byte-equal across A/B.
         assert_eq!(
@@ -783,8 +783,8 @@ mod tests {
 
     #[test]
     fn detects_m1_resort_retained_knowledge() -> Result<(), HarnessError> {
-        // Pin the literal channel's structural impossibility: a reordered
-        // retained-knowledge array is rejected by validation.
+        // This is a structural guard: a reordered retained-knowledge array is
+        // rejected by validation, so no projector sensitivity is claimed.
         {
             let case = build_axis_case(AxisKind::ObjectRenaming)?;
             let pair = spawn_pair(&case)?;
@@ -804,8 +804,8 @@ mod tests {
 
     #[test]
     fn detects_m2_candidate_ids() -> Result<(), HarnessError> {
-        // Pin the literal channel's structural impossibility: a
-        // binding-hash-derived candidate id breaks the dense-from-zero rule.
+        // This is a structural guard: a binding-hash-derived candidate id
+        // breaks the dense-from-zero rule before projection.
         {
             let case = build_axis_case(AxisKind::ObjectRenaming)?;
             let pair = spawn_pair(&case)?;
@@ -831,23 +831,23 @@ mod tests {
     #[test]
     fn detects_m4_submission_code() -> Result<(), HarnessError> {
         // Axis 04 keeps every projected byte equal across sides (the trusted
-        // physical swap is invisible) while feeding the actor-dependent flip;
-        // on the provisional axis-03 pairing the wrong-actor product embeds
-        // the private-look holder's own legitimately different information
-        // state, so the clean-output premise fails there.
+        // physical swap is invisible) while feeding the actor-dependent flip.
         let response = DecisionResponseV2 {
             schema_version: DECISION_RESPONSE_V2_SCHEMA.into(),
             player_decision_id: mtgml_model::PlayerDecisionIdV1(1),
-            state_revision: mtgml_model::StateRevision(0),
+            state_revision: mtgml_model::StateRevision(1),
             answer: DecisionAnswerV2::SelectOne {
                 candidate_id: CandidateIdV1(0),
             },
         };
-        // Wrong-actor surface: P2 submits against P1's pending entry request.
+        // Actor-owned surface: P1 submits with a stale response revision.
         let (bytes_a, bytes_b) = detect_step(
             AxisKind::FaceDownIdentity,
-            P2,
+            mtgml_model::PlayerId(1),
             response,
+            PlayerStepSubmissionV1::Rejected {
+                code: PlayerSubmissionCodeV1::StaleDecision,
+            },
             m4_submission_code_swap,
         )?;
         // The flip landed exactly where intended.
@@ -858,7 +858,7 @@ mod tests {
         assert_eq!(
             mutated_a.submission,
             PlayerStepSubmissionV1::Rejected {
-                code: PlayerSubmissionCodeV1::UnavailableDecision
+                code: PlayerSubmissionCodeV1::StaleDecision
             }
         );
         assert_eq!(

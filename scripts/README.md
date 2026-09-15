@@ -24,5 +24,24 @@ The verification runner marks directories it owns and refuses to replace an exis
 - `generate_contracts.py` — single-source generation/check for mechanical Rust/Python/schema vocabulary;
 - `run_checks.py` — fast (Smoke), integration (Smoke + Full), and certification
   maintainer profiles;
+- `failure_packet.py` — internal trusted packet validation, source identities,
+  checksums, atomic writes, and safe summaries;
+- `capture_failure.py` — opt-in bounded command capture with `shell=False`;
+  `CAPTURE_PASS` creates no packet, `CAPTURE_COMMAND_EXIT` preserves a
+  nonzero exit in trusted evidence, `CAPTURE_TIMEOUT` records
+  `COMMAND_TIMEOUT`, and unsafe or unavailable preconditions return
+  `CAPTURE_BLOCKED`;
+- `rerun_failure.py` — opt-in exact-head packet rerun with commit/tree/source
+  fingerprint checks and `REPRODUCED`, `NOT_REPRODUCED`, or `BLOCKED` status;
+- `run_dependency_audit.py` — explicit, bounded RustSec/PyPA dependency audits;
 - `bootstrap.py` — prepares `.venv` only and never mutates contracts or lockfiles;
 - `validate_golden_path.py` — verifies the synthetic vertical path fails closed at certification;
+
+The failure-reproducer scripts are maintainer-only and are never invoked by
+`run_checks.py`. The default generated packet location is
+`dist/failures/`, owned by `.mtgml-failure-output`; an existing unowned root is
+rejected. Packet logs are trusted local evidence, not public CI output,
+player diagnostics, ML fields, replay/checkpoint authority, or semantic
+fixtures. `command.argv` is the only executable argument list,
+`command.cwd` is repository-relative, and any display rerun command is
+informational only.

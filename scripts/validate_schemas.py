@@ -64,7 +64,47 @@ def load(path: Path) -> object:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
+def validate_wire_schema_inventory(
+    inventory: object,
+    *,
+    schema_root: Path = ROOT / "schemas",
+) -> None:
+    """Validate the declared wire-schema inventory against the validator map."""
+
+    if not isinstance(inventory, dict):
+        raise ValueError("schema inventory must be a JSON object")
+    declared = inventory.get("wire_contracts")
+    if not isinstance(declared, list) or not all(isinstance(name, str) for name in declared):
+        raise ValueError("schema inventory wire_contracts must be a list of strings")
+
+    duplicate_entries = sorted({name for name in declared if declared.count(name) > 1})
+    if duplicate_entries:
+        raise ValueError(f"duplicate schema inventory entry: {duplicate_entries}")
+
+    mapped = list(WIRE_MAPPING.values())
+    duplicate_mapping = sorted({name for name in mapped if mapped.count(name) > 1})
+    if duplicate_mapping:
+        raise ValueError(f"duplicate schema mapping value: {duplicate_mapping}")
+
+    expected = sorted(mapped)
+    declared_set = set(declared)
+    expected_set = set(expected)
+    missing = sorted(expected_set - declared_set)
+    stale = sorted(declared_set - expected_set)
+    if missing:
+        raise ValueError(f"missing schema inventory entries: {missing}")
+    if stale:
+        raise ValueError(f"unexpected schema inventory entries: {stale}")
+    if declared != expected:
+        raise ValueError(f"schema inventory is not in canonical order: {declared} != {expected}")
+
+    missing_files = sorted(name for name in expected if not (schema_root / name).is_file())
+    if missing_files:
+        raise ValueError(f"missing schema files: {missing_files}")
+
+
 def main() -> None:
+    validate_wire_schema_inventory(load(ROOT / "schemas" / "README.json"))
     manifest = load(ROOT / "wire/golden/manifest.json")
     assert isinstance(manifest, dict)
     fixtures = manifest["fixtures"]

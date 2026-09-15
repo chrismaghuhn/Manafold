@@ -1,0 +1,75 @@
+name: Windows Setup Smoke
+on:
+  pull_request: {}
+permissions:
+  contents: read
+concurrency:
+  group: windows-setup-smoke-${{ github.event.pull_request.head.sha }}
+  cancel-in-progress: true
+jobs:
+  windows-setup-smoke:
+    name: windows-setup-smoke
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        timeout-minutes: 10
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+      - name: Assert exact pull request head
+        shell: pwsh
+        timeout-minutes: 10
+        run: |
+          $actual = (git rev-parse HEAD).Trim()
+          $expected = "${{ github.event.pull_request.head.sha }}"
+          if ($actual -ne $expected) {
+            throw "Exact-head assertion failed: actual=$actual expected=$expected"
+          }
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        timeout-minutes: 10
+        with:
+          python-version-file: ".python-version"
+      - name: Assert pinned Python selector
+        shell: pwsh
+        timeout-minutes: 10
+        run: |
+          $required = "Python " + (Get-Content .python-version -Raw).Trim()
+          $actual = (& python --version 2>&1).Trim()
+          if ($actual -ne $required) {
+            throw "Pinned Python assertion failed: actual=$actual expected=$required"
+          }
+      - name: Ensure fresh project environment
+        shell: pwsh
+        timeout-minutes: 10
+        run: |
+          if (Test-Path -LiteralPath .venv) {
+            throw "Fresh-checkout assertion failed: .venv already exists"
+          }
+      - name: Install repository Rust toolchain
+        shell: pwsh
+        timeout-minutes: 10
+        run: |
+          rustup toolchain install 1.85.1 --profile minimal --component rustfmt,clippy
+          $actual = (& rustc --version 2>&1).Trim()
+          if (-not $actual.StartsWith("rustc 1.85.1")) {
+            throw "Pinned Rust assertion failed: actual=$actual"
+          }
+          cargo --version
+          rustfmt --version
+          cargo clippy --version
+      - name: Bootstrap project environment
+        shell: pwsh
+        timeout-minutes: 10
+        run: python scripts/bootstrap.py
+      - name: Strict environment doctor
+        shell: pwsh
+        timeout-minutes: 10
+        run: |
+          & .venv\Scripts\python.exe scripts/doctor.py --strict
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Fast setup smoke
+        shell: pwsh
+        timeout-minutes: 10
+        run: |
+          & .venv\Scripts\python.exe scripts/run_checks.py fast
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

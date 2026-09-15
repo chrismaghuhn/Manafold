@@ -1,7 +1,11 @@
 # Manafold
 
-- **Current executable milestone:** M1 — Closed Deterministic Kernel Shell (`COMPLETE` by merged M1 closure evidence)
-- **Current design milestone:** M2.C — closed decision families and typed continuation lifecycle implemented and reviewable; both owned gates execute locally, hosted/M2.Final closure pending
+## Current status
+
+- **Current foundation milestone:** M2 — Decision Machinery and Synthetic Information Safety (`COMPLETE` by accepted ADR 0041; exact M2.Final closure evidence head `352cd80c2ef58a406c30bf7db1cb792109fafc3f`)
+- **M2.5 scope work:** `NOT_CLAIMED` / `NOT_FROZEN`; the abandoned census and research machinery remains historical Git evidence, not active engine scope
+- **Current active work area:** pre-M3 foundation reconciliation and adversarial audit preparation under Issue #105; this does not authorize M3
+- **Blocked:** no active Magic/card scope; engine `M3 = NOT_AUTHORIZED`. External census M3 authorization does not authorize Manafold engine semantics.
 - **Project type:** independent greenfield MTG/ML rules and simulation engine
 - **Playable engine:** no
 - **Real Magic rules:** no
@@ -20,9 +24,7 @@ correctness
 → ML scale
 ```
 
-M1 established the deterministic synthetic kernel shell: complete state construction, accepted/rejected atomic transitions, exact state/event/delta parity, deterministic RNG/allocators, checkpoint/restore/fork/replay parity, and two bound synthetic player endpoints.
-
-M2 is not complete. M2.A freezes the architecture for the structural M2.B cut; no M2 executable behavior gate is claimed by that design acceptance.
+M1 established the deterministic synthetic kernel shell: complete state construction, accepted/rejected atomic transitions, exact state/event/delta parity, deterministic RNG/allocators, checkpoint/restore/fork/replay parity, and two bound synthetic player endpoints. M2 subsequently closed the decision and synthetic information-safety foundation under the accepted exact-head evidence above.
 
 ## Start here
 
@@ -30,18 +32,22 @@ M2 is not complete. M2.A freezes the architecture for the structural M2.B cut; n
 2. [`AGENTS.md`](AGENTS.md)
 3. [`docs/NORMATIVE_HIERARCHY.md`](docs/NORMATIVE_HIERARCHY.md)
 4. [`docs/ROADMAP.md`](docs/ROADMAP.md)
-5. [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
-6. [`docs/DOMAIN_MODEL.md`](docs/DOMAIN_MODEL.md)
-7. [`docs/EXECUTION_MODEL.md`](docs/EXECUTION_MODEL.md)
-8. [`docs/DECISION_PROTOCOL.md`](docs/DECISION_PROTOCOL.md)
-9. [`docs/INFORMATION_MODEL.md`](docs/INFORMATION_MODEL.md)
-10. [`docs/ML_ENVIRONMENT.md`](docs/ML_ENVIRONMENT.md)
-11. [`docs/STATE_HASHING.md`](docs/STATE_HASHING.md)
-12. [`docs/contracts/ACCEPTANCE_GATES.md`](docs/contracts/ACCEPTANCE_GATES.md)
+5. [`docs/maintenance/MAINTAINER_PROFILES.md`](docs/maintenance/MAINTAINER_PROFILES.md)
+6. [`docs/maintenance/DEVELOPER_SETUP.md`](docs/maintenance/DEVELOPER_SETUP.md)
+7. [`docs/contracts/ACCEPTANCE_GATES.md`](docs/contracts/ACCEPTANCE_GATES.md)
+8. [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
+9. [`docs/DOMAIN_MODEL.md`](docs/DOMAIN_MODEL.md)
+10. [`docs/EXECUTION_MODEL.md`](docs/EXECUTION_MODEL.md)
+11. [`docs/DECISION_PROTOCOL.md`](docs/DECISION_PROTOCOL.md)
+12. [`docs/INFORMATION_MODEL.md`](docs/INFORMATION_MODEL.md)
+13. [`docs/ML_ENVIRONMENT.md`](docs/ML_ENVIRONMENT.md)
+14. [`docs/STATE_HASHING.md`](docs/STATE_HASHING.md)
 
 The ADR index is [`docs/adr/README.md`](docs/adr/README.md).
 
-Generated verification evidence is external to the reproducible source archive. M1 closure uses `scripts/run_m1_closure.py`; future M2 final closure must similarly generate evidence rather than relying on prose status.
+Generated verification evidence is external to the reproducible source archive. Historical M1/M2 closure claims come from their recorded exact-head evidence and accepted ADRs; future changes must produce fresh evidence rather than relying on prose status.
+
+The maintainer route is [`docs/maintenance/MAINTAINER_PROFILES.md`](docs/maintenance/MAINTAINER_PROFILES.md), with the durable setup path in [`docs/maintenance/DEVELOPER_SETUP.md`](docs/maintenance/DEVELOPER_SETUP.md). The mandatory PR checks are `PR Fast`, `PR Integration`, and the stable aggregate `manafold-pr-gate`.
 
 ## Durable boundaries
 
@@ -64,7 +70,7 @@ Rules-free Python/ML
 
 No player endpoint can obtain full state, root seed, RNG internals, authoritative events, checkpoints, forks, authoritative replay, trusted IDs, or free-form diagnostics.
 
-## M2 contract direction
+## M2 contract boundaries
 
 The accepted M2.A architecture requires:
 
@@ -125,14 +131,14 @@ just release-candidate
 
 Core direct checks include:
 
-```bash
-python scripts/verify_repository.py
-python scripts/check_rust_source_structure.py
-python scripts/check_documentation.py
-python scripts/validate_schemas.py
-python scripts/validate_maintainer_artifacts.py
-python scripts/verify_python_toolchain.py
-python scripts/run_python_tests.py
+```text
+<project-python> scripts/verify_repository.py
+<project-python> scripts/check_rust_source_structure.py
+<project-python> scripts/check_documentation.py
+<project-python> scripts/validate_schemas.py
+<project-python> scripts/validate_maintainer_artifacts.py
+<project-python> scripts/verify_python_toolchain.py
+<project-python> scripts/run_python_tests.py
 
 cargo fmt --all -- --check
 cargo check --workspace --all-targets --all-features --locked
@@ -140,7 +146,10 @@ cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
 cargo test --workspace --all-features --locked
 ```
 
-`PASS` is reported only for commands actually executed successfully. Missing/unavailable tools are `NOT_RUN` or `BLOCKED`.
+Use the platform-specific `<project-python>` paths in the developer setup
+document; the scripts reject a non-pinned Python interpreter. `PASS` is
+reported only for commands actually executed successfully. Missing/unavailable
+tools are `NOT_RUN` or `BLOCKED`.
 
 ## Scope discipline
 

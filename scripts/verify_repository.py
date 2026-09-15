@@ -21,6 +21,8 @@ IGNORED_PARTS = SCAN_EXCLUDED_PARTS | {
     ".mypy_cache",
     ".ruff_cache",
 }
+ACTION_USE_RE = re.compile(r"^\s*(?:-\s*)?uses:\s*(\S+)")
+ACTION_PIN_RE = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+@[0-9a-f]{40}$")
 
 
 def source_paths(pattern: str):
@@ -33,6 +35,35 @@ def source_paths(pattern: str):
 
 def fail(message: str) -> None:
     raise SystemExit(f"FAIL: {message}")
+
+
+def action_pin_error(reference: str) -> str | None:
+    if reference.startswith(("./", "../")):
+        return None
+    if ACTION_PIN_RE.fullmatch(reference):
+        return None
+    return "external GitHub Action must use a 40-character lowercase commit SHA"
+
+
+def workflow_action_references() -> list[tuple[str, int, str]]:
+    references: list[tuple[str, int, str]] = []
+    workflow_root = ROOT / ".github" / "workflows"
+    for workflow in sorted((*workflow_root.glob("*.yml"), *workflow_root.glob("*.yaml"))):
+        relative = str(workflow.relative_to(ROOT))
+        for number, line in enumerate(workflow.read_text(encoding="utf-8").splitlines(), start=1):
+            match = ACTION_USE_RE.match(line)
+            if match is not None:
+                references.append((relative, number, match.group(1).strip("'\"")))
+    return references
+
+
+def workflow_action_pin_errors() -> list[str]:
+    errors: list[str] = []
+    for path, line, reference in workflow_action_references():
+        problem = action_pin_error(reference)
+        if problem is not None:
+            errors.append(f"{path}:{line}: {problem}: {reference}")
+    return errors
 
 
 def main() -> None:
@@ -78,6 +109,7 @@ def main() -> None:
         "scripts/capability_census.py",
         "scripts/certify_bundle.py",
         "scripts/check_documentation.py",
+        "scripts/run_dependency_audit.py",
         "scripts/validate_maintainer_artifacts.py",
         "scripts/build_source_archive.py",
         "scripts/verify_source_archive.py",
@@ -91,16 +123,26 @@ def main() -> None:
         "docs/maintenance/MAINTAINER_PROFILES.md",
         "scripts/generate_contracts.py",
         "scripts/run_checks.py",
+        "scripts/failure_packet.py",
+        "scripts/capture_failure.py",
+        "scripts/rerun_failure.py",
         "scripts/bootstrap.py",
         "scripts/validate_golden_path.py",
         "examples/golden-path/index.json",
         ".github/workflows/pr-fast.yml",
         ".github/workflows/integration.yml",
         ".github/workflows/nightly.yml",
+        ".github/workflows/windows-setup-smoke.yml",
+        ".github/workflows/dependency-audit.yml",
+        "docs/maintenance/DEVELOPER_SETUP.md",
     ]
     missing = [path for path in required if not (ROOT / path).is_file()]
     if missing:
         fail(f"required files are missing: {missing}")
+
+    action_pin_errors = workflow_action_pin_errors()
+    if action_pin_errors:
+        fail("invalid GitHub Action pins: " + "; ".join(action_pin_errors))
 
     if (ROOT / "crates/mtgml-engine-state").exists():
         fail("duplicate/orphan mtgml-engine-state crate is forbidden; mtgml-state is canonical")
@@ -223,6 +265,7 @@ def main() -> None:
         "check-fast:",
         "check:",
         "check-all:",
+        "audit-dependencies:",
         "release-candidate:",
     ):
         if recipe not in justfile:
@@ -366,8 +409,8 @@ def main() -> None:
     for token in (
         "actual_current_decision",
         "actual_response",
-        "ConformanceFailure::CurrentDecision",
-        "ConformanceFailure::Response",
+        "ConformanceFailureClass::CurrentDecision",
+        "ConformanceFailureClass::Response",
         "current_decision_is_an_asserted_conformance_input",
         "submitted_response_is_an_asserted_conformance_input",
     ):
