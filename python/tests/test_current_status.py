@@ -80,9 +80,7 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
 
     def test_foundation_registry_is_specified_only(self) -> None:
         registry = json.loads(
-            (ROOT / "cards" / "capabilities" / "registry.json").read_text(
-                encoding="utf-8"
-            )
+            (ROOT / "cards" / "capabilities" / "registry.json").read_text(encoding="utf-8")
         )
         expected = {
             "rules/basic-priority",
@@ -108,15 +106,9 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
                 self.assertEqual(entry["conformance_cases"], [])
                 self.assertEqual(entry["benchmark_scenarios"], [])
 
-        self.assertEqual(
-            sum(entry["lifecycle"] == "implemented" for entry in entries), 0
-        )
-        self.assertEqual(
-            sum(entry["lifecycle"] == "covered" for entry in entries), 0
-        )
-        self.assertEqual(
-            sum(entry["lifecycle"] == "certified" for entry in entries), 0
-        )
+        self.assertEqual(sum(entry["lifecycle"] == "implemented" for entry in entries), 0)
+        self.assertEqual(sum(entry["lifecycle"] == "covered" for entry in entries), 0)
+        self.assertEqual(sum(entry["lifecycle"] == "certified" for entry in entries), 0)
 
     def test_project_source_state_points_to_the_single_current_entry_point(self) -> None:
         source_state = (ROOT / "project-sources" / "33_CURRENT_PROJECT_STATE.md").read_text(
