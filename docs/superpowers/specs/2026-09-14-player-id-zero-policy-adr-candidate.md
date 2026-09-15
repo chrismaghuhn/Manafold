@@ -1,10 +1,10 @@
 # PlayerId Zero Policy — ADR Candidate
 
-**Status:** proposed, non-authoritative, blocks implementation of a global zero policy
+**Status:** superseded working candidate, non-authoritative; proposed ADR 0050 carries the current decision record
 **Stability:** provisional, non-authoritative
 Owner: architecture maintainers
 Reviewers: model/state, replay, observation, and environment maintainers
-Final ADR number: not allocated
+Proposed ADR: [0050 — `PlayerId(0)` as a valid declared player identity](../../adr/0050-player-id-zero-policy.md)
 
 ## Context
 
@@ -16,7 +16,11 @@ therefore remains `BLOCKED_CONTRACT_AMBIGUITY`. This candidate records the
 choice that must be reviewed; it does not change any parser, validator,
 fixture, schema, replay meaning, or runtime boundary.
 
-## Current executable matrix
+This file is retained as the initial Batch-F input. It is intentionally not a
+complete current-source matrix; the expanded characterization and selected
+policy are recorded in proposed ADR 0050.
+
+## Initial Batch-F executable matrix
 
 | Surface | Current zero behavior | Contract status in Batch F |
 | --- | --- | --- |
@@ -69,7 +73,8 @@ state whether existing fixtures containing zero are historical meanings that
 must remain byte-compatible, and whether any surface needs a versioned
 migration.
 
-No option is implemented by Batch F. Until an accepted, numbered ADR exists,
-FND-028 is recorded as `BLOCKED_CONTRACT_AMBIGUITY` with executable behavior
-unchanged. A final ADR number is allocated only after independent review and
-acceptance; this candidate must not be cited as normative authority.
+No option was implemented by Batch F. The numbered ADR 0050 proposal now
+records the selected policy, but it is not accepted architecture until the
+required independent exact-head review approves it. Until then, FND-028
+remains `BLOCKED_CONTRACT_AMBIGUITY` with executable behavior unchanged; this
+candidate and the proposal must not be cited as accepted normative authority.
