@@ -971,6 +971,20 @@
       "path": "docs/superpowers/specs/2026-09-15-issue-162-semantic-neutral-modularization-design.md",
       "role": "process",
       "stability": "provisional"
+    },
+    {
+      "change_process": "authority-policy-pr",
+      "owner_role": "rules-maintainer",
+      "path": "docs/rules/COMPREHENSIVE_RULES_ARTIFACT_RESEARCH_2026-09-15.md",
+      "role": "normative",
+      "stability": "accepted"
+    },
+    {
+      "change_process": "process-pr",
+      "owner_role": "maintainer",
+      "path": "docs/superpowers/plans/2026-09-15-pre-m3-governance-cleanup.md",
+      "role": "process",
+      "stability": "provisional"
     }
   ],
   "schema_version": "normative-document-register.v1"

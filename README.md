@@ -2,10 +2,14 @@
 
 ## Current status
 
-- **Current foundation milestone:** M2 — Decision Machinery and Synthetic Information Safety (`COMPLETE` by accepted ADR 0041; exact M2.Final closure evidence head `352cd80c2ef58a406c30bf7db1cb792109fafc3f`)
+- **Foundation closure/freeze:** `COMPLETE` (`FINAL_FOUNDATION_CLOSURE = PASS`, `PRE_M3_REMEDIATION_FREEZE = PASS`, `FOUNDATION_READY_FOR_M3 = YES`)
+- **Core modularization:** Issue #162 `COMPLETE`, merged by PR #179; the refactor was semantic-neutral and did not change public, wire, schema, digest, replay, or rules contracts
 - **M2.5 scope work:** `NOT_CLAIMED` / `NOT_FROZEN`; the abandoned census and research machinery remains historical Git evidence, not active engine scope
-- **Current active work area:** pre-M3 foundation reconciliation and adversarial audit preparation under Issue #105; this does not authorize M3
-- **Blocked:** no active Magic/card scope; engine `M3 = NOT_AUTHORIZED`. External census M3 authorization does not authorize Manafold engine semantics.
+- **Current active work area:** M3 Entry governance under Issue #178; the separate Entry Decision is the next gate
+- **Pre-M3 governance cleanup:** `COMPLETE` for this candidate; the next task is the separate M3 Entry Decision and Initial Semantic Foundation selection
+- **M3 semantic implementation:** `NOT_STARTED`
+- **M3 authorization:** `NOT_AUTHORIZED` (`AUTHORIZATION_HEAD = NOT_SET`); no Issue #178 checkbox or governance PR substitutes for the explicit reviewed authorization
+- **Blocked:** no active Magic/card scope. External census M3 authorization does not authorize Manafold engine semantics.
 - **Project type:** independent greenfield MTG/ML rules and simulation engine
 - **Playable engine:** no
 - **Real Magic rules:** no
