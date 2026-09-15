@@ -179,7 +179,46 @@ observation projection, information-state tracking, replay, checkpoint/fork,
 RNG, state hashing, and event/delta auditing. Their existing ownership and
 version identities remain binding.
 
-### 4.2 Direct roots
+### 4.2 Foundational synthetic rules substrate
+
+The selected combat and turn cases require a bounded set of semantic facts that
+the current M2 synthetic state does not yet model. These facts are named here
+so the closure does not hide them behind fixture labels:
+
+```text
+M3_SYNTHETIC_RULES_INPUT_PROFILE = INTERNAL_RULE_INPUT_PROFILE_V1
+STATUS = required internal setup contract; not a Magic capability
+VISIBILITY = repository-internal / non-public / non-wire
+REGISTRY_ENTRY = NONE
+PHYSICAL_STATE_OWNER = mtgml-state::EngineState
+SEMANTIC_INTERPRETERS = turn, combat, damage, state_based_actions
+```
+
+For each selected two-player case, the validated authoritative input must carry
+these exact semantic facts:
+
+| Fact | Required bounded meaning |
+| --- | --- |
+| Player universe | Exactly two declared players; each has an `i64` life total and a `has_lost` flag. |
+| Permanent identity | Each relevant permanent has the existing owner/controller, `PhysicalCardId`, and current `GameObjectId` identity families. |
+| Permanent type | Relevant battlefield objects are creatures; no object is a planeswalker, battle, token, Aura, Equipment, or other unsupported permanent. |
+| Characteristics | Current effective power and toughness are signed integer values supplied by the authoritative state; no layer, copy, dependency, or characteristic-changing effect contributes to them. |
+| Damage marking | Each relevant creature has an explicit nonnegative marked-damage value; it is retained until the selected cleanup reset. |
+| Control age | Each relevant attacker has an authoritative `controlled_since_turn` fact. The selected attacker is legal only when it was controlled continuously since the current turn began. |
+| Tapped state | `tapped` is authoritative and is the only selected untap/attack state change affecting that flag. |
+| Keyword/restriction profile | Haste, defender, evasion, first/double strike, trample, deathtouch, lifelink, infect, wither, toxic, attack restrictions, block restrictions, requirements, and costs are absent. |
+| Libraries and hands | Each library is an ordered nonempty face-down sequence for the selected draw; each hand is within the selected cleanup hand-size bound. |
+| Execution context | The stack, effects, waiting triggers, delayed effects, replacements, and format-specific state are empty or `FormatState::None`. |
+| Combat cardinality | At most eight relevant attackers and eight relevant blockers are in one selected combat case. A larger relevant set is outside this bounded scope and fails closed. |
+
+This profile records semantic input requirements, not a concrete Rust field
+layout. It does not create a public schema, wire contract, Card IR type,
+capability registry entry, or alternate state owner. Any implementation must
+materialize these facts in the single `EngineState` closure and validate them
+before execution. A test fixture may name a fact, but it cannot invent a
+rule-relevant history that the authoritative kernel cannot establish.
+
+### 4.3 Direct roots
 
 The direct roots are the reviewed semantic goals of the entry scope:
 
@@ -196,7 +235,7 @@ DIRECT_ROOTS =
 required turn-action consequences of the selected integration path. They are
 not hidden implementation details.
 
-### 4.3 Transitive dependency set and resolved closure
+### 4.4 Transitive dependency set and resolved closure
 
 ```text
 TRANSITIVE_DEPENDENCIES =
@@ -226,7 +265,7 @@ The resolved closure is exactly:
 11. rules/zone-incarnation@0.1.0
 ```
 
-### 4.4 Capability identity table
+### 4.5 Capability identity table
 
 The following table is the single authoritative identity record for this
 candidate. A capability key is a support identity, not a runtime dispatch key.
@@ -235,19 +274,19 @@ does not claim that the capability is currently implemented or covered.
 
 | `key` | `version` | `role` | `summary` | `included_scope` | `explicit_exclusions` | `authority` | `dependencies` | `primary_semantic_owner` | `primary_orchestrator` | `physical_state_owner` | `decision_surface` | `information_risk` | `M3_target_lifecycle` | `entry_reason` |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `rules/turn-structure` | `0.1.0` | `root` | Deterministic two-player turn, phase, and step structure. | Active-player ownership; turn numbering; beginning, precombat main, combat, postcombat main, and ending phase order; beginning/untap/upkeep/draw and ending/end/cleanup step order; no-priority classification for untap and ordinary cleanup; untap of all active-player permanents in the selected simple state; boundary entry/exit; active-player switch after cleanup. | Game-start procedure and first-turn draw skip; phasing; no-untap effects; extra or skipped turns/phases/steps; additional combat phases; effects that alter durations; phase-specific choices outside the selected roots; draw and damage removal execution, which belong to their named capabilities. | Pinned snapshot; CR `500.1`, `500.3`, `500.12`, `501.1`, `502.3-502.4`, `505.1-505.2`, `512.1`, `513.1`, `514.3`. | none | `turn` | `turn-priority-progression` | `mtgml-state::EngineState` | none in the isolated capability; integration receives explicit priority products | low | `covered` | Direct temporal/action root. |
+| `rules/turn-structure` | `0.1.0` | `root` | Deterministic two-player turn, phase, and step structure. | Active-player ownership; turn numbering; beginning, precombat main, combat, postcombat main, and ending phase order; beginning/untap/upkeep/draw and ending/end/cleanup step order; no-priority classification for untap and ordinary cleanup; explicit active-player `ChooseMany` subset for untap in the selected simple state; boundary entry/exit; active-player switch after cleanup. | Game-start procedure and first-turn draw skip; day/night; phasing; no-untap effects; extra or skipped turns/phases/steps; additional combat phases; effects that alter durations; phase-specific choices outside the selected roots; draw and damage removal execution, which belong to their named capabilities. | Pinned snapshot; CR `500.1`, `500.3`, `500.12`, `501.1`, `502.2-502.4`, `505.1-505.2`, `512.1`, `513.1`, `514.3`. | none | `turn` | `turn-priority-progression` | `mtgml-state::EngineState` | Active player submits an explicit `ChooseMany` subset of the active player’s simple-state permanents, with minimum `0` and maximum `n`; no priority is offered | low | `covered` | Direct temporal/action root. |
 | `rules/basic-priority` | `0.1.0` | `root` | Empty-stack priority windows and explicit pass progression. | Active player receives priority at applicable step/phase boundaries; only `pass_priority` is offered in the selected empty-stack scope; each explicit pass transfers priority; two successive passes end the current priority-bearing step/phase; state-based-action check precedes priority; no hidden automatic pass. | Non-pass actions; spells; activated abilities; stack objects; mana abilities; triggered abilities; replacement/prevention; priority during unsupported cleanup conditions; multiplayer priority. | Pinned snapshot; CR `117.1`, `117.2c-117.2d`, `117.3a`, `117.3d`, `117.4-117.5`, `500.2`. | `rules/turn-structure@0.1.0`, `rules/state-based-actions-combat@0.1.0` | `priority` | `turn-priority-progression` | `mtgml-state::EngineState` | Explicit `pass_priority` response for each offered window | medium | `covered` | Direct priority root required to close temporal windows without guessing; its pre-priority SBA check is part of the selected closure. |
 | `rules/draw-card` | `0.1.0` | `root` | One ordinary draw-step card draw. | During the selected draw step, the active player puts the top card of a nonempty library into that player’s hand; the move is one authoritative zone/incarnation transition; the active player receives authorized knowledge and the opponent does not receive the card identity; no RNG is consumed by the draw itself. | Empty-library attempted draw; draw replacement; multiple draws; effects that reveal, modify, or replace a draw; drawing outside the draw step; mulligan and game-start draws; card-specific draw triggers. | Pinned snapshot; CR `121.1-121.2`, `401.2`, `402.1`; CR `121.4` is the fail-closed boundary for an empty library. | `rules/turn-structure@0.1.0`, `rules/zone-incarnation@0.1.0` | `turn` | `turn-step-action` | `mtgml-state::EngineState` | none | high | `covered` | Direct turn-action consequence required by the selected normal-turn integration. |
 | `rules/cleanup-reset` | `0.1.0` | `root` | Bounded cleanup reset for combat damage. | During an ordinary cleanup step with no discard requirement, remove damage marked on permanents and complete the no-priority cleanup path; preserve all earlier marked damage until this boundary. | Hand-size discard; cleanup-trigger exception; duration expiry for unsupported continuous effects; mana-pool semantics; additional cleanup steps; effects that modify cleanup. | Pinned snapshot; CR `120.6`, `514.1-514.3`. | `rules/turn-structure@0.1.0`, `rules/damage-and-life@0.1.0` | `turn` | `cleanup-damage-reset` | `mtgml-state::EngineState` | none for the selected hand-size-safe case | medium | `covered` | Direct consequence required to make marked combat damage and the next turn semantically coherent. |
 | `rules/combat-damage` | `0.1.0` | `root` | One bounded normal combat-damage step. | One combat-damage step; each attacking/blocking creature with positive power assigns its power; unblocked attackers damage the defending player; a blocked attacker and its single blocker damage each other; all assigned damage is dealt simultaneously; the selected post-damage SBA pipeline runs before the next priority window. | First strike/double strike; trample; deathtouch; lifelink; infect/wither/toxic; planeswalker/battle damage; multiple blockers per attacker; damage assignment choices; damage replacement/prevention; combat effects; creatures entering combat by effects. | Pinned snapshot; CR `510.1a-510.3`, `120.2a`, `120.3a`, `120.3e`, `120.4b-120.4d`, `120.5-120.6`. | `rules/declare-blockers@0.1.0`, `rules/damage-and-life@0.1.0`, `rules/state-based-actions-combat@0.1.0` | `combat` | `combat-damage-pipeline` | `mtgml-state::EngineState` | none in the one-blocker, no-assignment-choice scope | high | `covered` | Direct bounded combat root. |
-| `rules/combat-phase` | `0.1.0` | `dependency` | Combat phase context and step progression. | Beginning of combat, declare attackers, declare blockers, combat damage, and end of combat order; fixed defending opponent in a two-player game; skip of declare blockers and combat damage when no attackers exist; priority at beginning and end boundaries; removal from combat when the phase ends. | Multiplayer defending-player selection; extra/skipped combat phases; first/double-strike second damage step; effects putting attackers/blockers onto the battlefield; combat effects that alter participation. | Pinned snapshot; CR `506.1-506.3`, `507.1-507.2`, `508.8`, `511.1-511.3`. | `rules/turn-structure@0.1.0`, `rules/basic-priority@0.1.0` | `combat` | `combat-priority-progression` | `mtgml-state::EngineState` | none; declaration decisions belong to declaration capabilities | medium | `covered` | Required dependency for all selected combat steps. |
-| `rules/declare-attackers` | `0.1.0` | `dependency` | Bounded attacker declaration and legality. | Active player chooses an unordered subset of eligible, untapped creatures controlled continuously since the turn began; the fixed opponent is the attack target; selected creatures tap and become attacking; empty attack is representable; all choices are explicit and canonical. | Haste; defender; attack restrictions or requirements; attack costs; banding; attacking planeswalkers/battles; effects putting creatures onto the battlefield attacking; multiplayer target selection; card-specific attack abilities. | Pinned snapshot; CR `506.2-506.3`, `508.1a-508.1d`, `508.1f`, `508.1k`, `508.2`, `508.8`. | `rules/combat-phase@0.1.0` | `combat` | `combat-declaration` | `mtgml-state::EngineState` | `ChooseMany` over the complete eligible attacker set, minimum `0`, maximum eligible count | high | `covered` | Required dependency for a bounded combat path and for legal attacker soundness/completeness. |
-| `rules/declare-blockers` | `0.1.0` | `dependency` | Bounded blocker assignment with at most one blocker per attacker. | Defending player explicitly assigns untapped controlled creatures to attacking creatures; every blocker blocks at most one attacker and every attacker has at most one blocker in this scope; the empty assignment is representable; the assignment commits atomically after the internal typed continuation completes; no priority occurs between assignment stages. | Multiple blockers per attacker; evasion; blocking restrictions or requirements; block costs; banding; effects putting creatures onto the battlefield blocking; damage assignment ordering; multiplayer. | Pinned snapshot; CR `509.1a-509.1h`, `509.2`; CR `510.1c-510.1d` defines the excluded multiple-blocker assignment boundary. | `rules/declare-attackers@0.1.0` | `combat` | `combat-declaration` | `mtgml-state::EngineState` | Internal typed continuation of `ChooseOne`: for each canonically ordered blocker, choose a legal attacker or an explicit `confirm` no-assignment candidate; each stage is actor-bound and nonmutating on rejection | high | `covered` | Required dependency for a complete bounded block assignment and unambiguous damage recipients. |
+| `rules/combat-phase` | `0.1.0` | `dependency` | Combat phase context and step progression. | Beginning of combat, declare attackers, declare blockers, combat damage, and end of combat order; fixed defending opponent in a two-player game; skip of declare blockers and combat damage when no attackers exist; priority at each selected priority-bearing boundary after turn-based actions; removal from combat when the phase ends. | Multiplayer defending-player selection; extra/skipped combat phases; first/double-strike second damage step; effects putting attackers/blockers onto the battlefield; combat effects that alter participation. | Pinned snapshot; CR `506.1-506.3`, `507.1-507.2`, `508.8`, `511.1-511.3`. | `rules/turn-structure@0.1.0`, `rules/basic-priority@0.1.0` | `combat` | `combat-priority-progression` | `mtgml-state::EngineState` | none; declaration decisions belong to declaration capabilities | medium | `covered` | Required dependency for all selected combat steps. |
+| `rules/declare-attackers` | `0.1.0` | `dependency` | Bounded attacker declaration and legality. | Active player chooses an unordered subset of at most eight eligible, untapped creatures controlled continuously since the turn began; the fixed opponent is the attack target; selected creatures tap and become attacking; empty attack is representable; all choices are explicit and canonical. | Haste; defender; attack restrictions or requirements; attack costs; banding; attacking planeswalkers/battles; effects putting creatures onto the battlefield attacking; multiplayer target selection; card-specific attack abilities; more than eight relevant attackers in the bounded case. | Pinned snapshot; CR `506.2-506.3`, `508.1a-508.1d`, `508.1f`, `508.1k`, `508.2`, `508.8`. | `rules/combat-phase@0.1.0` | `combat` | `combat-declaration` | `mtgml-state::EngineState` | `ChooseMany` over the complete eligible attacker set, minimum `0`, maximum eligible count, with at most eight eligible attackers | high | `covered` | Required dependency for a bounded combat path and for legal attacker soundness/completeness. |
+| `rules/declare-blockers` | `0.1.0` | `dependency` | Bounded blocker assignment with at most one blocker per attacker. | Defending player explicitly assigns at most eight untapped controlled creatures to the attacking creatures; every blocker blocks at most one attacker and every attacker has at most one blocker in this scope; the empty assignment is representable. Each submitted stage is an ordinary atomic Decision transaction that persists the typed continuation, its partial assignment, and the next Decision in `EngineState`; the environment commits that continuation product normally. The final stage applies the complete assignment in its rules transition workspace. No priority occurs between stages. | Multiple blockers per attacker; evasion; blocking restrictions or requirements; block costs; banding; effects putting creatures onto the battlefield blocking; damage assignment ordering; multiplayer; more than eight relevant blockers or attackers in the bounded case. | Pinned snapshot; CR `509.1a-509.1h`, `509.2`; CR `510.1c-510.1d` defines the excluded multiple-blocker assignment boundary. | `rules/declare-attackers@0.1.0` | `combat` | `combat-declaration` | `mtgml-state::EngineState` | Internal typed continuation of `ChooseOne`: for each canonically ordered blocker, choose a legal attacker or an explicit `confirm` no-assignment candidate; each stage is actor-bound and nonmutating on rejection; maximum eight stages | high | `covered` | Required dependency for a complete bounded block assignment and unambiguous damage recipients. |
 | `rules/damage-and-life` | `0.1.0` | `dependency` | Basic combat-damage results for life and marked creature damage. | Apply simultaneous unmodified combat damage; damage to a player causes that player to lose the amount; damage to a creature without infect/wither marks that amount; retain source, affected-object, and event roles; retain marks until cleanup. | Poison, counters from infect/wither, lifelink, toxic, prevention, replacement, damage redirection, noncombat damage, negative/unsupported characteristic calculations, life-payment semantics. | Pinned snapshot; CR `119.2-119.3`, `120.1`, `120.2a`, `120.3a`, `120.3e`, `120.4b-120.4d`, `120.6`. | none | `damage` | `combat-damage-pipeline` | `mtgml-state::EngineState` | none | high | `covered` | Required consequence of the selected combat-damage root and cleanup root. |
-| `rules/state-based-actions-combat` | `0.1.0` | `dependency` | Bounded state-based action fixed point after selected damage. | Before a player receives priority, repeatedly check and perform applicable actions simultaneously: a player at `0` or less life loses; a creature with toughness `0` or less is put into its owner’s graveyard; a creature with lethal marked damage is destroyed; repeat until stable; simultaneous player loss produces the accepted terminal outcome. | Poison; empty-library loss; tokens; deathtouch; indestructible/regeneration; legend/world/Aura/Equipment/Role/counter/Saga/battle actions; replacement effects; triggered abilities; any unsupported condition. | Pinned snapshot; CR `104.3a-104.4a`, `119.6`, `704.1-704.3`, `704.5a`, `704.5f-704.5g`, `704.8`, `701.8`. | `rules/damage-and-life@0.1.0`, `rules/zone-incarnation@0.1.0` | `state_based_actions` | `combat-damage-pipeline` | `mtgml-state::EngineState` | none | high | `covered` | Required post-damage consequence and terminal boundary for the selected combat path. |
+| `rules/state-based-actions-combat` | `0.1.0` | `dependency` | Bounded selected state-based-action fixed point at every pre-priority boundary. | Before a player receives priority, and during the selected ordinary cleanup check, repeatedly check and perform applicable actions simultaneously: a player at `0` or less life loses; a creature with toughness `0` or less is put into its owner’s graveyard; a creature with lethal marked damage is destroyed; repeat until stable. One-player loss and simultaneous loss have the exact terminal products defined in Section 10.3. | Poison; empty-library loss; tokens; deathtouch; indestructible/regeneration; legend/world/Aura/Equipment/Role/counter/Saga/battle actions; replacement effects; triggered abilities; any unsupported condition. | Pinned snapshot; CR `104.3a-104.4a`, `119.6`, `704.1-704.3`, `704.5a`, `704.5f-704.5g`, `704.8`, `701.8`. | `rules/damage-and-life@0.1.0`, `rules/zone-incarnation@0.1.0` | `state_based_actions` | `combat-damage-pipeline` | `mtgml-state::EngineState` | none | high | Required pre-priority consequence, terminal boundary, and fixed point for the selected combat path. |
 | `rules/zone-incarnation` | `0.1.0` | `dependency` | Selected zone moves with object incarnation and identity continuity. | Battlefield-to-owner-graveyard moves caused by selected SBAs and library-to-owner-hand moves caused by selected draws; every zone change creates a new `GameObjectId`; `PhysicalCardId` continuity is preserved; old-incarnation snapshot is available for the authoritative event/audit boundary; ordered library top is consumed; perspective identity/knowledge is updated through existing projection contracts. | Generic zone moves; shuffle/randomization; copy continuity; attachments; tokens; exile/command zone; cast/resolution exceptions; general LKI-dependent triggers; hidden randomization identity retirement beyond existing substrate behavior. | Pinned snapshot; CR `400.1-400.7`, `400.7j`, `401.1-401.2`, `402.1`, `700.4`; existing identity and information contracts remain binding. | none | `zones_identity` | `zone-transition-pipeline` | `mtgml-state::EngineState` | none | high | `covered` | Required identity consequence of draw and bounded SBA paths. |
 
-### 4.5 Version policy
+### 4.6 Version policy
 
 Every node uses `0.1.0` because this is the first frozen semantic meaning for
 that node. A later change that can alter legal actions, state, visibility,
@@ -381,20 +420,22 @@ legality; it does not duplicate it.
 
 | Process | Touched owners | Primary orchestrator | Integration order |
 | --- | --- | --- | --- |
-| Turn/step progression with priority | `turn`, `priority` | `turn-priority-progression` owned by `turn` | Enter boundary; perform selected turn-based action; run required SBA check; offer explicit priority; advance only after the required empty-stack pass sequence. |
-| Turn-based draw | `turn`, `zones_identity`, information substrate | `turn-step-action` owned by `turn` | Validate draw-step context; consume the authoritative library top; commit zone/incarnation and authorized knowledge; then offer priority. |
-| Cleanup damage reset | `turn`, `damage` | `cleanup-damage-reset` owned by `turn` | Validate ordinary cleanup; remove marked damage simultaneously; perform the no-priority cleanup exit. |
+| Turn/step progression with priority | `turn`, `priority` | `turn-priority-progression` owned by `turn` | Enter a boundary; perform the selected turn-based action; if the context is priority-bearing, invoke `priority-sba-gate` and offer explicit priority; if the context is untap or ordinary cleanup, complete the no-priority path without offering priority; advance only after the required empty-stack pass sequence. |
+| Pre-priority SBA gate | `priority`, `state_based_actions`, `damage`, `zones_identity` | `priority-sba-gate` owned by `priority` | At every selected priority boundary, run the selected SBA fixed point; offer priority only when no selected SBA action remains and the context permits priority; emit no priority during untap or ordinary cleanup. |
+| Turn-based draw | `turn`, `zones_identity`, information substrate | `turn-step-action` owned by `turn` | Validate draw-step context; consume the authoritative library top; apply the candidate zone/incarnation and authorized-knowledge changes in the rules workspace; let the environment validate and commit or discard the complete product; then offer priority. |
+| Cleanup damage reset | `turn`, `damage` | `cleanup-damage-reset` owned by `turn` | Validate ordinary cleanup; apply simultaneous marked-damage removal in the rules workspace; let the environment validate and commit or discard the product; perform the no-priority cleanup exit. |
 | Combat phase with priority | `combat`, `turn`, `priority` | `combat-priority-progression` owned by `combat` | Enter combat; run beginning-of-combat priority; invoke declarations in order; invoke damage; run end-of-combat priority; remove combat participation. |
 | Attacker declaration | `combat`, Decision substrate | `combat-declaration` owned by `combat` | Read the complete eligible set; accept one explicit canonical set; validate; tap and mark attackers atomically; offer the next priority window. |
-| Blocker declaration | `combat`, Decision substrate | `combat-declaration` owned by `combat` | Build the typed staged request; accept explicit blocker assignments; commit the complete bounded assignment atomically; offer the next priority window. |
-| Combat damage pipeline | `combat`, `damage`, `state_based_actions`, `zones_identity` | `combat-damage-pipeline` owned by `combat` | Freeze assignments; assign and deal simultaneously; apply damage results; run SBA fixed point; commit terminal/zone consequences; only then return to priority. |
-| Zone transition and identity | `zones_identity`, information substrate | `zone-transition-pipeline` owned by `zones_identity` | Capture old incarnation; apply selected move; allocate new authoritative incarnation; preserve or update physical/opaque identity according to existing contracts; validate projections before commit. |
+| Blocker declaration | `combat`, Decision substrate | `combat-declaration` owned by `combat` | Build the typed staged request; accept explicit blocker assignments; apply the complete bounded assignment atomically in the final rules workspace; let the environment validate and commit or discard that product; offer the next priority window. |
+| Combat damage pipeline | `combat`, `damage`, `state_based_actions`, `zones_identity` | `combat-damage-pipeline` owned by `combat` | Freeze assignments; assign and deal simultaneously; apply damage results; run SBA fixed point; produce terminal/zone consequences in the rules workspace; let the environment validate and commit or discard the complete product; only then return to priority. |
+| Zone transition and identity | `zones_identity`, information substrate | `zone-transition-pipeline` owned by `zones_identity` | Capture old incarnation; apply the selected move in the rules workspace; allocate the new authoritative incarnation; preserve or update physical/opaque identity according to existing contracts; validate projections before the environment commits or discards the product. |
 
 The ownership graph is reviewed separately from the capability dependency DAG.
 The only delegated semantic paths are:
 
 ```text
 turn-priority-progression -> priority
+priority-sba-gate -> state_based_actions -> damage -> zones_identity
 combat-priority-progression -> priority
 combat-damage-pipeline -> damage -> state_based_actions -> zones_identity
 turn-step-action -> zones_identity
@@ -424,7 +465,7 @@ capability by file size or coding convenience.
 
 | Candidate | Depth | Reuse | Scope boundedness | Conformance clarity | Decision complexity | Information risk | Cross-domain complexity | Replay/checkpoint relevance | Interaction burden | Fail-closed clarity | Premature abstraction risk |
 | --- | ---: | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `rules/turn-structure@0.1.0` | 0 | H | H | H | L | L | M | H | M | H | L |
+| `rules/turn-structure@0.1.0` | 0 | H | H | H | M | L | M | H | M | H | L |
 | `rules/zone-incarnation@0.1.0` | 0 | H | M | M | L | H | H | H | H | M | M |
 | `rules/damage-and-life@0.1.0` | 0 | H | M | H | L | H | M | H | H | H | L |
 | `rules/basic-priority@0.1.0` | 1 | H | M | H | M | M | H | H | H | H | M |
@@ -439,20 +480,23 @@ S1_ID = rules/turn-structure
 S1_VERSION = 0.1.0
 S1_SCOPE =
   two-player, format-neutral temporal structure with active-player ownership,
-  fixed phase/step order, ordinary untap action, explicit no-priority
-  classification, deterministic phase/step boundaries, and active-player
-  switch after cleanup
+  fixed phase/step order, ordinary untap with an explicit active-player
+  selection, explicit no-priority classification, deterministic phase/step
+  boundaries, and active-player switch after cleanup
 S1_EXCLUSIONS =
-  draw execution, cleanup damage removal, priority/pass semantics, combat
-  declarations, spells, abilities, stack objects, triggers, replacements,
-  continuous effects, game-start procedure, extra/skipped turns/phases/steps,
-  additional combat phases, multiplayer, Commander
+  draw execution, cleanup damage removal and conditional cleanup, priority/pass
+  semantics, combat declarations, spells, abilities, stack objects, triggers,
+  replacements, continuous effects, game-start procedure and first-turn draw
+  skip, day/night, phasing, no-untap effects, extra/skipped
+  turns/phases/steps, additional combat phases, multiplayer, Commander
 S1_DEPENDENCIES = none (Magic capability dependencies)
 S1_PRIMARY_SEMANTIC_OWNER = turn
 S1_PRIMARY_ORCHESTRATOR = turn-priority-progression for integrated use;
   none for the isolated turn-only proof path
 S1_INFORMATION_RISK = LOW
-S1_DECISION_SURFACE = NONE in the isolated scope; no auto-pass is permitted
+S1_DECISION_SURFACE =
+  active-player ChooseMany over the simple-state permanents during untap,
+  minimum 0 and maximum n; no auto-selection and no auto-pass are permitted
 S1_AUTHORITY_SNAPSHOT =
   wotc-cr-2026-08-07-txt-20260819-sha256-4381ad1b39ab2c05f7d03633a20f711ed37277074d3266dcba5f38cbb527423f
 S1_ADDITIONAL_OFFICIAL_AUTHORITY = NONE
@@ -460,7 +504,8 @@ S1_CR_SECTIONS =
   500.1, 500.3, 500.12, 501.1, 502.3-502.4, 505.1-505.2, 512.1, 513.1,
   514.3
 S1_REQUIRED_EVENTS =
-  turn_boundary_entered, phase_started, step_started, untap_completed,
+  turn_boundary_entered, phase_started, step_started, untap_choice_committed,
+  untap_completed,
   step_ended, phase_ended, active_player_changed, priority_required_boundary
 S1_REQUIRED_STATE_DELTA =
   exact current turn/phase/step context, active-player identity, turn number,
@@ -468,8 +513,9 @@ S1_REQUIRED_STATE_DELTA =
   mutation to life, zones, RNG, knowledge, replay, or environment counters
 S1_REQUIRED_REJECTION_BEHAVIOR =
   reject unsupported priority-required advancement, game-start/extra/skip
-  context, invalid temporal state, and any hidden choice without mutating the
-  complete semantic/environment/player/replay fingerprint
+  context, invalid temporal state, invalid/noncanonical untap subsets, and any
+  hidden choice without mutating the complete semantic/environment/player/replay
+  fingerprint
 S1_REQUIRED_PROJECTION_EVIDENCE =
   phase/step and active-player values are projected only through authorized
   player products; trusted IDs, hidden definitions, RNG, and diagnostics stay
@@ -507,7 +553,7 @@ implementation tasks and do not register support.
 
 | Requirement ID | Authority | Meaning | Capability |
 | --- | --- | --- | --- |
-| `M3-REQ-TURN-001` | CR `500.1`, `501.1`, `502.3-502.4`, `505.1-505.2`, `512.1`, `513.1`, `514.3` | Fixed two-player phase/step order, ordinary untap, and no-priority boundaries. | `rules/turn-structure@0.1.0` |
+| `M3-REQ-TURN-001` | CR `500.1`, `501.1`, `502.3-502.4`, `505.1-505.2`, `512.1`, `513.1`, `514.3` | Fixed two-player phase/step order, explicit ordinary-untap subset choice, and no-priority boundaries. | `rules/turn-structure@0.1.0` |
 | `M3-REQ-PRIORITY-001` | CR `117.3a`, `117.3d`, `117.4-117.5`, `500.2` | Explicit empty-stack priority and pass progression. | `rules/basic-priority@0.1.0` |
 | `M3-REQ-DRAW-001` | CR `121.1`, `401.2`, `402.1` | One draw-step top-card move into the active player’s hand. | `rules/draw-card@0.1.0` |
 | `M3-REQ-CLEANUP-001` | CR `120.6`, `514.1-514.3` | Remove marked damage at ordinary cleanup while retaining it before cleanup. | `rules/cleanup-reset@0.1.0` |
@@ -516,8 +562,9 @@ implementation tasks and do not register support.
 | `M3-REQ-BLOCK-001` | CR `509.1a-509.1h`, `509.2` | Complete bounded blocker assignment with explicit actor choices. | `rules/declare-blockers@0.1.0` |
 | `M3-REQ-DAMAGE-001` | CR `510.1a-510.3`, `120.2a`, `120.3a`, `120.3e`, `120.4b-120.4d` | Simultaneous selected combat damage assignment and dealing. | `rules/combat-damage@0.1.0` |
 | `M3-REQ-LIFE-MARKS-001` | CR `119.2-119.3`, `120.3a`, `120.3e`, `120.6` | Life loss and marked creature damage results. | `rules/damage-and-life@0.1.0` |
-| `M3-REQ-SBA-001` | CR `104.3b`, `104.4a`, `704.1-704.3`, `704.5a`, `704.5f-704.5g`, `704.8` | Bounded simultaneous SBA fixed point and terminal consequence. | `rules/state-based-actions-combat@0.1.0` |
+| `M3-REQ-SBA-001` | CR `104.3b`, `104.4a`, `704.1-704.3`, `704.5a`, `704.5f-704.5g`, `704.8` | Bounded simultaneous SBA fixed point, exact `rules_loss`/`simultaneous_outcome` status, and terminal consequence. | `rules/state-based-actions-combat@0.1.0` |
 | `M3-REQ-INCARNATION-001` | CR `400.6-400.7`, `400.7j`, `700.4` | New game-object incarnation with physical-card continuity for selected moves. | `rules/zone-incarnation@0.1.0` |
+| `M3-REQ-SYNTHETIC-INPUT-001` | Section 4.2; current `EngineState` ownership and ADR `0041` | Make creature type, simple P/T, marked damage, control age, tapped state, bounded libraries, and execution context explicit without creating a Card IR or alternate state authority. | Existing `mtgml-state` substrate; not a Magic capability node |
 | `M3-REQ-ARCH-001` | ADR `0041`; current Decision, Information, Replay, State, and Execution contracts | Keep explicit ownership, decision, information, atomicity, determinism, and parity boundaries. | Existing foundational substrates; not a Magic capability node |
 
 ## 9. Interaction obligations
@@ -536,7 +583,7 @@ evidence.
 | Obligation ID | Reviewed seam | Closure identities | Required evidence at M3 exit | Risk | Entry state |
 | --- | --- | --- | --- | --- | --- |
 | `M3-ENTRY-001` | turn progression × priority | `turn-structure`, `basic-priority` | Exact boundary/pass sequence; no priority at untap/ordinary cleanup; no implicit pass; state/event/delta/status parity. | high | `REVIEWED_OBLIGATION / SATISFIED_EVIDENCE = NO` |
-| `M3-ENTRY-002` | step progression × forced progress | `turn-structure`, `draw-card`, `cleanup-reset` | Untap and cleanup automatic actions finish before priority; draw occurs exactly once; unsupported mandatory action fails closed. | medium | `REVIEWED_OBLIGATION / SATISFIED_EVIDENCE = NO` |
+| `M3-ENTRY-002` | step progression × forced progress | `turn-structure`, `draw-card`, `cleanup-reset` | Untap accepts one explicit active-player subset with no priority between choice and completion; ordinary cleanup actions finish before priority; draw occurs exactly once; unsupported mandatory action fails closed. | medium | `REVIEWED_OBLIGATION / SATISFIED_EVIDENCE = NO` |
 | `M3-ENTRY-003` | draw × zone/incarnation × information | `draw-card`, `zone-incarnation` | Nonempty-library draw moves the correct top card, creates the correct new incarnation, updates only authorized knowledge, and preserves paired hidden-state bytes. | high | `REVIEWED_OBLIGATION / SATISFIED_EVIDENCE = NO` |
 | `M3-ENTRY-004` | combat phase × priority | `combat-phase`, `basic-priority` | Beginning/end combat priority sequence and empty-stack advancement are exact; skipped combat steps occur only when no attackers exist. | high | `REVIEWED_OBLIGATION / SATISFIED_EVIDENCE = NO` |
 | `M3-ENTRY-005` | declare attackers × Decision | `declare-attackers`, Decision substrate | Every bounded legal attacker subset is representable exactly once; every offered subset is legal; empty attack is explicit. | high | `REVIEWED_OBLIGATION / SATISFIED_EVIDENCE = NO` |
@@ -579,10 +626,28 @@ every explicit priority pass and every typed blocker-continuation stage. The
 driver never fills a missing choice with a first, default, random, or implicit
 pass value.
 
-The blocker continuation is an internal representation of one atomic
-declare-blockers action. No spell, ability, trigger, SBA, priority window, or
-environment commit occurs between its stages. Rejection at any stage restores
-the complete pre-submission fingerprint.
+For `m` eligible attackers and `n` eligible blockers, the bounded blocker
+continuation has `0 <= m <= 8` and `0 <= n <= 8`, exactly `n` stages, and a
+canonically ordered blocker list by the defending player’s visible opaque
+object identity. At stage `i`, the candidate set is every still-unassigned
+attacker plus one explicit `confirm` no-assignment candidate. The partial
+assignment is an injective map from blockers to attackers. The final stage
+produces the complete assignment; no other assignment is accepted.
+
+The typed continuation payload contains exactly the ordered blocker identities,
+the fixed attacking identities, the next stage index, and the partial
+blocker-to-attacker assignments already selected. A `confirm` selection stores
+an explicit unassigned value. It contains no callback, closure, dynamic label,
+or hidden controller state.
+
+Each stage is an ordinary submitted Decision transaction. It validates and
+commits the typed continuation, its partial assignment, the fresh next
+Decision identity, revision, replay identity, and required projections through
+the existing transaction boundary. No blocker assignment effect, priority
+window, SBA, trigger, or other gameplay consequence occurs between stages. The
+final stage applies the complete assignment in its rules transition workspace;
+the environment then validates and commits or discards that complete product.
+Rejection at any stage restores the complete pre-submission fingerprint.
 
 ### 10.2 Information-safety matrix
 
@@ -592,6 +657,33 @@ the complete pre-submission fingerprint.
 | Draw | Kernel sees exact library top and physical/game-object identities. | Drawing player may retain authorized knowledge; opponent sees no card identity. | Different hidden card identities produce equal opponent-safe bytes when all authorized public facts match. | Perspective-local knowledge/opaque identity contracts. |
 | Attack/block decisions | Kernel sees authoritative bindings and complete legal set. | Actor sees only its authorized opaque/public candidates and request-local IDs. | Trusted-ID renaming and insertion order do not alter visible order or IDs. | `mtgml-decision` binding boundary and `mtgml-observation` projection. |
 | Damage/SBA/zone | Kernel sees source, affected object, old incarnation, and full event/delta. | Public consequences are visible through authorized observed events; trusted IDs and hidden diagnostics are absent. | Unauthorized hidden state does not alter player bytes, event sequence, or error class. | Read-only projection before environment commit. |
+
+### 10.3 Terminal status binding
+
+The selected SBA capability has one exact terminal mapping. Player outcomes are
+encoded in ascending `PlayerId` order in the existing `EpisodeStatus` product.
+
+```text
+ONE_PLAYER_AT_OR_BELOW_ZERO_LIFE:
+  loser.has_lost = true
+  other_player.has_lost = false
+  status = Terminal { reason = rules_loss,
+                      players = [{ player = loser, result = loss },
+                                 { player = other, result = win }] }
+
+ALL_REMAINING_PLAYERS_LOSE_IN_ONE_SBA_CHECK:
+  every_losing_player.has_lost = true
+  status = Terminal { reason = simultaneous_outcome,
+                      players = [{ player = P1, result = draw },
+                                 { player = P2, result = draw }] }
+```
+
+The corresponding trusted state delta marks the losing players, the ordered
+authoritative event product records the terminal cause, and no later priority
+or gameplay action is offered. A creature moved by the same SBA check still
+uses the selected zone/incarnation product before the complete terminal
+product is validated and committed. The integration milestone does not use a
+terminal player-loss case; isolated SBA cases must cover both mappings.
 
 ## 11. Scenario construction policy
 
@@ -638,7 +730,7 @@ is not reachable as silently approximated behavior inside the selected scope.
 | Empty-library draw | `DEFERRED_TO_LATER_M3` | draw/SBA capability workflow | `rules/draw-card` requires a nonempty library. | Reject before mutating library, status, or replay. |
 | First-turn game-start procedure | `OUT_OF_INITIAL_FOUNDATION` | later game-start scope review | The integration starts from a validated turn-2 state. | Reject an unclassified game-start/first-turn-skip context. |
 | Extra or skipped turns/phases/steps | `DEFERRED_TO_LATER_M3` | turn capability workflow | Fixed normal turn only. | Reject before advancing. |
-| Commander | `M4` | format capability and bundle workflow | `FormatState::None`; no Commander rules or registration. | Reject Commander configuration/semantics. |
+| Commander | `DEFERRED_TO_LATER_FORMAT_SCOPE` | format capability and bundle workflow | `FormatState::None`; no Commander rules or registration; no accepted Commander milestone is implied. | Reject Commander configuration/semantics. |
 | Loops and shortcuts | `LATER_MILESTONE` | explicit loop policy decision | No loop-capable mandatory path. | Apply no heuristic shortcut; fail closed at the unsupported boundary. |
 | Multiplayer | `LATER_MILESTONE` | multiplayer format workflow | Exactly two players and one fixed opponent. | Reject a topology other than two-player. |
 | Search/determinization | `M5` | ML/search workflow | No full-state search forks or determinization. | No policy access to those products. |
@@ -697,13 +789,20 @@ turn 2, active player P1, FormatState::None
 The validated setup has exactly two players, ordinary life totals, nonempty
 libraries, no stack objects, no effects, no triggers, no replacements, no
 continuous effects, no unsupported keywords, no attack/block restrictions, and
-hand sizes that do not require cleanup discard. P1 has two eligible untapped
-creatures: a `3/3` attacker `A` and a `2/2` attacker `C`. P2 has one eligible
-untapped `2/2` blocker `B`. P1 explicitly attacks with `{A, C}`; P2 explicitly
-assigns `B` to `A`. Damage is simultaneous: `A` deals `3` to `B`, `B` deals `2`
-to `A`, and `C` deals `2` to P2. The selected SBA fixed point moves lethal `B`
-to its owner’s graveyard as a new game-object incarnation, and the marked
-damage on surviving `A` remains until cleanup. P2’s life becomes `18`.
+hand sizes that do not require cleanup discard. The setup materializes the
+synthetic input profile in Section 4.2: creature type, current `3/3`, `2/2`,
+and `2/2` characteristics, zero initial marked damage, explicit control-age
+facts, and bounded library order. P1 has two creatures that are eligible after
+untap: a `3/3` attacker `A` and a `2/2` attacker `C`; both begin the selected
+untap step tapped. P2 has one eligible untapped `2/2` blocker `B`. At each
+untap step the active player submits an explicit `ChooseMany` response: P1
+selects `{A, C}` and P2 selects the empty set after `B` has left the battlefield.
+P1 explicitly attacks with `{A, C}`; P2
+explicitly assigns `B` to `A`. Damage is simultaneous: `A` deals `3` to `B`,
+`B` deals `2` to `A`, and `C` deals `2` to P2. The selected SBA fixed point
+moves lethal `B` to its owner’s graveyard as a new game-object incarnation,
+and the marked damage on surviving `A` remains until cleanup. P2’s life becomes
+`18`.
 
 Every priority-bearing boundary uses explicit pass responses. The next turn
 proves active-player switch and a second draw/projection path. The case

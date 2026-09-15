@@ -1,6 +1,6 @@
 # Architecture Decision Records
 
-ADRs are immutable decision history. Superseded records remain and point to replacements. Numbered accepted records currently run through ADR 0053; ADR 0000 is the template.
+ADRs are immutable decision history. Superseded records remain and point to replacements. Numbered accepted records currently run through ADR 0052; ADR 0053 is an unaccepted candidate, and ADR 0000 is the template.
 
 ADR numbers 0042 through 0047 are historically occupied by accepted ContextApplication/M2.5 decisions that were intentionally removed from the active source tree by the post-purge cleanup. Their numbers remain permanently reserved and are not reusable; the acceptance of ADR 0048 is therefore accompanied by an explicit historical numbering gap.
 

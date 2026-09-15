@@ -1,6 +1,6 @@
 # ADR 0053 — M3 Entry Decision: Initial Semantic Foundation
 
-- **Status:** accepted candidate; effective on merge of the entry PR
+- **Status:** proposed candidate; acceptance requires merge of the entry PR
 - **Date:** 2026-09-15
 - **Owners:** architecture maintainers; rules maintainers; conformance maintainers
 - **Resolves:** the M3 Entry Decision scope gate in Issue [#178](https://github.com/chrismaghuhn/Manafold/issues/178)
@@ -80,9 +80,10 @@ S1_ID = rules/turn-structure
 S1_VERSION = 0.1.0
 S1_OWNER = turn
 S1_AUTHORITY = wotc-cr-2026-08-07-txt-20260819-sha256-4381ad1b39ab2c05f7d03633a20f711ed37277074d3266dcba5f38cbb527423f
-S1_SCOPE = two-player, format-neutral temporal structure with ordinary untap,
-           fixed normal phase/step order, no-priority classification, and
-           active-player switch after cleanup
+S1_SCOPE = two-player, format-neutral temporal structure with explicit ordinary
+           untap subset selection, fixed normal phase/step order, no-priority
+           classification, and active-player switch after cleanup
+S1_DECISION_SURFACE = active-player ChooseMany subset, minimum 0, maximum n
 ```
 
 S1 is selected from the zero-depth dependency frontier because it is the
@@ -92,6 +93,12 @@ basic damage/life are also frontier leaves, but they carry higher information
 and interaction risk and do not establish the temporal/action skeleton.
 Priority and combat are deliberately downstream of the selected temporal
 context.
+
+The companion artifact also names the internal synthetic rules-input profile
+needed by the bounded combat cases without adding a Card IR, public schema, or
+second state authority. It binds the current state facts for creature type,
+power/toughness, marked damage, control age, tapped state, library order, and
+execution-context exclusions.
 
 ### Format and M3/M4 boundary
 
