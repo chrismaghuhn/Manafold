@@ -700,6 +700,13 @@
       "stability": "provisional"
     },
     {
+      "change_process": "m3-entry-decision-pr",
+      "owner_role": "architecture-maintainer",
+      "path": "docs/rules/M3_INITIAL_SEMANTIC_FOUNDATION_V2.md",
+      "role": "normative",
+      "stability": "accepted"
+    },
+    {
       "change_process": "template-pr",
       "owner_role": "maintainer",
       "path": "docs/templates/BENCHMARK_REPORT_TEMPLATE.md",

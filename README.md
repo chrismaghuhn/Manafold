@@ -5,11 +5,14 @@
 - **Foundation closure/freeze:** `COMPLETE` (`FINAL_FOUNDATION_CLOSURE = PASS`, `PRE_M3_REMEDIATION_FREEZE = PASS`, `FOUNDATION_READY_FOR_M3 = YES`)
 - **Core modularization:** Issue #162 `COMPLETE`, merged by PR #179; the refactor was semantic-neutral and did not change public, wire, schema, digest, replay, or rules contracts
 - **M2.5 scope work:** `NOT_CLAIMED` / `NOT_FROZEN`; the abandoned census and research machinery remains historical Git evidence, not active engine scope
-- **Current active work area:** M3 Entry governance under Issue #178; the separate Entry Decision is the next gate
-- **Pre-M3 governance cleanup:** `COMPLETE` for this candidate; the next task is the separate M3 Entry Decision and Initial Semantic Foundation selection
+- **Current active work area:** M3 Pre-T0 plan hardening under Issue #178; implementation remains blocked pending a merged hardened plan and exact-master reauthorization
+- **Pre-M3 governance cleanup:** `COMPLETE`; the accepted M3 Entry Decision is preserved as historical scope and is under pre-T0 hardening
 - **M3 semantic implementation:** `NOT_STARTED`
-- **M3 authorization:** `NOT_AUTHORIZED` (`AUTHORIZATION_HEAD = NOT_SET`); no Issue #178 checkbox or governance PR substitutes for the explicit reviewed authorization
-- **Blocked:** no active Magic/card scope. External census M3 authorization does not authorize Manafold engine semantics.
+- **M3 authorization:** `NOT_AUTHORIZED` (`AUTHORIZATION_HEAD = NOT_SET`); the prior authorization is historical and superseded pending hardening review
+- **M3 pre-T0 hardening:** `CANDIDATE`; next gate is `HARDENED_PLAN_MERGE_AND_EXACT_MASTER_REAUTHORIZATION`
+- **M3 hardening acceptance:** PR #184 is the plan-acceptance vehicle for ADR 0054/Foundation V2; exact-master reauthorization remains the separate execution gate
+- **Capability lifecycle:** 11 Foundation capabilities are `specified` only; `implemented = 0`, `covered = 0`, `certified = 0`
+- **Blocked:** no active Magic/card implementation scope. External census M3 authorization does not authorize Manafold engine semantics.
 - **Project type:** independent greenfield MTG/ML rules and simulation engine
 - **Playable engine:** no
 - **Real Magic rules:** no

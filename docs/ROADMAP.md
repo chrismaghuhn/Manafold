@@ -93,12 +93,14 @@ PRE_M3_REMEDIATION_FREEZE = PASS
 FOUNDATION_READY_FOR_M3 = YES
 CORE_MODULARIZATION = COMPLETE
 GOVERNANCE_CLEANUP = COMPLETE
+M3_PRE_T0_HARDENING = CANDIDATE
+PRIOR_AUTHORIZATION_HEAD = 0f13b43680ea7d0b043c5baee59eb2ed3c364ecc
 M3_STARTED = NO
 M3_AUTHORIZED = NO
 AUTHORIZATION_HEAD = NOT_SET
-M3_ENTRY_DECISION = MERGED / ACCEPTED
+M3_ENTRY_DECISION = ACCEPTED_BUT_UNDER_PRE_T0_HARDENING
 M3_S1 = rules/turn-structure@0.1.0 SELECTED
-NEXT_GATE = EXACT_MASTER_AUTHORIZATION
+NEXT_GATE = HARDENED_PLAN_MERGE_AND_EXACT_MASTER_REAUTHORIZATION
 ```
 
 `M2.5 = NOT_CLAIMED / NOT_FROZEN`. Its abandoned census and research
@@ -106,27 +108,44 @@ machinery was removed from the active repository; the merged history remains
 historical evidence only. Final foundation closure and the Pre-M3 Remediation
 Freeze are complete, and Issue #105 is closed as historical audit work. Issue
 #162 core modularization is also complete and merged by PR #179. The current
-active maintainer work area is post-merge M3 Entry authorization under Issue
-#178; this is not a Magic-semantics milestone and does not authorize M3. The
-pre-M3 governance cleanup and M3 Entry Decision are merged and accepted; the
-next gate is the separate exact-`master` authorization review and comment.
+active maintainer work area is the M3 Pre-T0 plan hardening candidate under
+Issue #178; this is not a Magic-semantics milestone and does not authorize M3.
+The pre-M3 governance cleanup and M3 Entry Decision remain historically
+accepted, but the deeper pre-T0 audit supersedes their execution authorization
+pending a new exact-`master` review after the hardened plan is merged. PR #184
+is the acceptance vehicle for ADR 0054 and Foundation V2; its merge accepts the
+plan without authorizing execution.
 
 `M3 = NOT_STARTED / NOT_AUTHORIZED` for the Manafold engine, with
 `AUTHORIZATION_HEAD = NOT_SET`. Census-driven scope research is outside this authoritative engine repository, and external census M3 authorization must not
 be treated as engine-semantic authorization. The accepted M3 Entry Decision
-selects `rules/turn-structure@0.1.0` as S1; the next gate is the separate
-exact-`master` authorization review and comment. No semantic implementation or
-capability registration is implied by the accepted entry scope.
+selects `rules/turn-structure@0.1.0` as S1; the current candidate adds a
+semantic-neutral state/persistence prerequisite before T0. No semantic
+implementation is implied by the hardening candidate.
 
-The accepted operational scope record for that decision is
+The historical accepted operational scope record for that decision is
 [`docs/rules/M3_INITIAL_SEMANTIC_FOUNDATION_V1.md`](rules/M3_INITIAL_SEMANTIC_FOUNDATION_V1.md).
-It was merged by PR #182 and does not authorize M3 by itself.
+The hardening candidate is recorded in
+[`docs/rules/M3_INITIAL_SEMANTIC_FOUNDATION_V2.md`](rules/M3_INITIAL_SEMANTIC_FOUNDATION_V2.md)
+and [`docs/adr/0054-m3-pre-t0-hardening.md`](adr/0054-m3-pre-t0-hardening.md).
+Neither artifact authorizes M3 before the separate post-merge reauthorization.
 
 ## M3 — Bounded Semantic Coverage
 
 **Status:** `NOT_STARTED / NOT_AUTHORIZED`; this section describes the future
-execution model after exact-`master` authorization. The accepted Entry Decision
-selects S1 but does not authorize M3 or select a card.
+execution model after exact-`master` reauthorization. The accepted Entry
+Decision and current hardening candidate select S1 but do not authorize M3 or
+select a card.
+
+The planned execution order is:
+
+```text
+M3.P0 semantic-neutral state/persistence identity cut
+→ M3.T0 thin private conformance facade
+→ M3.S1 rules/turn-structure@0.1.0
+```
+
+P0 and T0 add no Magic capability and do not advance any capability lifecycle.
 
 ### Purpose and progress authority
 
@@ -160,8 +179,8 @@ covered != certified
 
 Any named card used while planning a slice is illustrative unless a later
 review explicitly promotes it through the Card IR and certification workflows.
-The S1 capability identity is frozen by accepted ADR 0053; no card or witness
-support claim is frozen by this roadmap.
+The S1 capability identity is retained from accepted ADR 0053 and the current
+hardening candidate; no card or witness support claim is frozen by this roadmap.
 
 ### M3 slice model
 
@@ -210,8 +229,9 @@ The durable scope rule is:
 > semantic breadth.
 
 The exact number of later slices is not frozen here. The Initial Semantic
-Foundation scope is accepted by ADR 0053 and remains gated by the separate
-exact-`master` authorization procedure.
+Foundation scope is historically accepted by ADR 0053, refined by the current
+ADR 0054/Foundation V2 hardening candidate, and remains gated by the separate
+exact-`master` reauthorization procedure.
 
 ### Interaction closure and risk map
 
@@ -303,8 +323,9 @@ unless the finalized external-failure register provides that provenance.
 The **Initial Semantic Foundation** is a small, explicitly reviewed set of
 foundational capability slices, their applicable reviewed interaction
 obligations, and the conformance infrastructure needed to prove them. Its
-exact capabilities, witnesses, interactions, and count are accepted by ADR
-0053 and its companion scope record. Acceptance does not claim implementation,
+historical exact capabilities, witnesses, interactions, and count are accepted
+by ADR 0053; the current dependency/lifecycle/state hardening is recorded by
+candidate ADR 0054 and Foundation V2. Neither status claims implementation,
 coverage, certification, or M3 authorization.
 
 M3 may advance to its declared bounded exit only when that foundation and its

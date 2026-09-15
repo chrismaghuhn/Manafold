@@ -1,5 +1,269 @@
 {
-  "entries": [],
+  "entries": [
+    {
+      "authority_refs": [
+        "docs/adr/0054-m3-pre-t0-hardening.md",
+        "docs/rules/M3_INITIAL_SEMANTIC_FOUNDATION_V2.md",
+        "wotc-cr-2026-08-07-txt-20260819-sha256-4381ad1b39ab2c05f7d03633a20f711ed37277074d3266dcba5f38cbb527423f"
+      ],
+      "benchmark_scenarios": [],
+      "category": "core_rule",
+      "conformance_cases": [],
+      "dependencies": [
+        "rules/state-based-actions-combat",
+        "rules/turn-structure"
+      ],
+      "implementation_paths": [],
+      "information_risk": "medium",
+      "key": "rules/basic-priority",
+      "lifecycle": "specified",
+      "notes": "Specified only; no implementation, conformance, benchmark, coverage, or certification evidence is claimed.",
+      "owners": [
+        "priority"
+      ],
+      "spec_path": "docs/rules/M3_INITIAL_SEMANTIC_FOUNDATION_V2.md",
+      "summary": "Empty-stack priority windows and explicit pass progression.",
+      "version": "0.1.0"
+    },
+    {
+      "authority_refs": [
+        "docs/adr/0054-m3-pre-t0-hardening.md",
+        "docs/rules/M3_INITIAL_SEMANTIC_FOUNDATION_V2.md",
+        "wotc-cr-2026-08-07-txt-20260819-sha256-4381ad1b39ab2c05f7d03633a20f711ed37277074d3266dcba5f38cbb527423f"
+      ],
+      "benchmark_scenarios": [],
+      "category": "core_rule",
+      "conformance_cases": [],
+      "dependencies": [
+        "rules/turn-structure"
+      ],
+      "implementation_paths": [],
+      "information_risk": "high",
+      "key": "rules/cleanup-reset",
+      "lifecycle": "specified",
+      "notes": "Specified only; no implementation, conformance, benchmark, coverage, or certification evidence is claimed.",
+      "owners": [
+        "turn"
+      ],
+      "spec_path": "docs/rules/M3_INITIAL_SEMANTIC_FOUNDATION_V2.md",
+      "summary": "Bounded cleanup reset for combat damage.",
+      "version": "0.1.0"
+    },
+    {
+      "authority_refs": [
+        "docs/adr/0054-m3-pre-t0-hardening.md",
+        "docs/rules/M3_INITIAL_SEMANTIC_FOUNDATION_V2.md",
+        "wotc-cr-2026-08-07-txt-20260819-sha256-4381ad1b39ab2c05f7d03633a20f711ed37277074d3266dcba5f38cbb527423f"
+      ],
+      "benchmark_scenarios": [],
+      "category": "core_rule",
+      "conformance_cases": [],
+      "dependencies": [
+        "rules/declare-blockers",
+        "rules/damage-and-life",
+        "rules/state-based-actions-combat"
+      ],
+      "implementation_paths": [],
+      "information_risk": "high",
+      "key": "rules/combat-damage",
+      "lifecycle": "specified",
+      "notes": "Specified only; no implementation, conformance, benchmark, coverage, or certification evidence is claimed.",
+      "owners": [
+        "combat"
+      ],
+      "spec_path": "docs/rules/M3_INITIAL_SEMANTIC_FOUNDATION_V2.md",
+      "summary": "One bounded normal combat-damage step.",
+      "version": "0.1.0"
+    },
+    {
+      "authority_refs": [
+        "docs/adr/0054-m3-pre-t0-hardening.md",
+        "docs/rules/M3_INITIAL_SEMANTIC_FOUNDATION_V2.md",
+        "wotc-cr-2026-08-07-txt-20260819-sha256-4381ad1b39ab2c05f7d03633a20f711ed37277074d3266dcba5f38cbb527423f"
+      ],
+      "benchmark_scenarios": [],
+      "category": "core_rule",
+      "conformance_cases": [],
+      "dependencies": [
+        "rules/basic-priority",
+        "rules/turn-structure"
+      ],
+      "implementation_paths": [],
+      "information_risk": "medium",
+      "key": "rules/combat-phase",
+      "lifecycle": "specified",
+      "notes": "Specified only; no implementation, conformance, benchmark, coverage, or certification evidence is claimed.",
+      "owners": [
+        "combat"
+      ],
+      "spec_path": "docs/rules/M3_INITIAL_SEMANTIC_FOUNDATION_V2.md",
+      "summary": "Combat phase context and step progression.",
+      "version": "0.1.0"
+    },
+    {
+      "authority_refs": [
+        "docs/adr/0054-m3-pre-t0-hardening.md",
+        "docs/rules/M3_INITIAL_SEMANTIC_FOUNDATION_V2.md",
+        "wotc-cr-2026-08-07-txt-20260819-sha256-4381ad1b39ab2c05f7d03633a20f711ed37277074d3266dcba5f38cbb527423f"
+      ],
+      "benchmark_scenarios": [],
+      "category": "core_rule",
+      "conformance_cases": [],
+      "dependencies": [
+        "rules/combat-phase"
+      ],
+      "implementation_paths": [],
+      "information_risk": "high",
+      "key": "rules/declare-attackers",
+      "lifecycle": "specified",
+      "notes": "Specified only; no implementation, conformance, benchmark, coverage, or certification evidence is claimed.",
+      "owners": [
+        "combat"
+      ],
+      "spec_path": "docs/rules/M3_INITIAL_SEMANTIC_FOUNDATION_V2.md",
+      "summary": "Bounded attacker declaration and legality.",
+      "version": "0.1.0"
+    },
+    {
+      "authority_refs": [
+        "docs/adr/0054-m3-pre-t0-hardening.md",
+        "docs/rules/M3_INITIAL_SEMANTIC_FOUNDATION_V2.md",
+        "wotc-cr-2026-08-07-txt-20260819-sha256-4381ad1b39ab2c05f7d03633a20f711ed37277074d3266dcba5f38cbb527423f"
+      ],
+      "benchmark_scenarios": [],
+      "category": "core_rule",
+      "conformance_cases": [],
+      "dependencies": [
+        "rules/declare-attackers"
+      ],
+      "implementation_paths": [],
+      "information_risk": "high",
+      "key": "rules/declare-blockers",
+      "lifecycle": "specified",
+      "notes": "Specified only; no implementation, conformance, benchmark, coverage, or certification evidence is claimed.",
+      "owners": [
+        "combat"
+      ],
+      "spec_path": "docs/rules/M3_INITIAL_SEMANTIC_FOUNDATION_V2.md",
+      "summary": "Bounded blocker assignment with at most one relevant blocker.",
+      "version": "0.1.0"
+    },
+    {
+      "authority_refs": [
+        "docs/adr/0054-m3-pre-t0-hardening.md",
+        "docs/rules/M3_INITIAL_SEMANTIC_FOUNDATION_V2.md",
+        "wotc-cr-2026-08-07-txt-20260819-sha256-4381ad1b39ab2c05f7d03633a20f711ed37277074d3266dcba5f38cbb527423f"
+      ],
+      "benchmark_scenarios": [],
+      "category": "core_rule",
+      "conformance_cases": [],
+      "dependencies": [],
+      "implementation_paths": [],
+      "information_risk": "high",
+      "key": "rules/damage-and-life",
+      "lifecycle": "specified",
+      "notes": "Specified only; no implementation, conformance, benchmark, coverage, or certification evidence is claimed.",
+      "owners": [
+        "damage"
+      ],
+      "spec_path": "docs/rules/M3_INITIAL_SEMANTIC_FOUNDATION_V2.md",
+      "summary": "Basic combat-damage results for life and marked creature damage.",
+      "version": "0.1.0"
+    },
+    {
+      "authority_refs": [
+        "docs/adr/0054-m3-pre-t0-hardening.md",
+        "docs/rules/M3_INITIAL_SEMANTIC_FOUNDATION_V2.md",
+        "wotc-cr-2026-08-07-txt-20260819-sha256-4381ad1b39ab2c05f7d03633a20f711ed37277074d3266dcba5f38cbb527423f"
+      ],
+      "benchmark_scenarios": [],
+      "category": "core_rule",
+      "conformance_cases": [],
+      "dependencies": [
+        "rules/zone-incarnation"
+      ],
+      "implementation_paths": [],
+      "information_risk": "high",
+      "key": "rules/state-based-actions-combat",
+      "lifecycle": "specified",
+      "notes": "Specified only; the combat suffix bounds the SBA subset; no implementation, conformance, benchmark, coverage, or certification evidence is claimed.",
+      "owners": [
+        "state_based_actions"
+      ],
+      "spec_path": "docs/rules/M3_INITIAL_SEMANTIC_FOUNDATION_V2.md",
+      "summary": "Bounded selected state-based-action fixed point for the combat foundation.",
+      "version": "0.1.0"
+    },
+    {
+      "authority_refs": [
+        "docs/adr/0054-m3-pre-t0-hardening.md",
+        "docs/rules/M3_INITIAL_SEMANTIC_FOUNDATION_V2.md",
+        "wotc-cr-2026-08-07-txt-20260819-sha256-4381ad1b39ab2c05f7d03633a20f711ed37277074d3266dcba5f38cbb527423f"
+      ],
+      "benchmark_scenarios": [],
+      "category": "core_rule",
+      "conformance_cases": [],
+      "dependencies": [
+        "rules/turn-structure",
+        "rules/zone-incarnation"
+      ],
+      "implementation_paths": [],
+      "information_risk": "high",
+      "key": "rules/draw-card",
+      "lifecycle": "specified",
+      "notes": "Specified only; no implementation, conformance, benchmark, coverage, or certification evidence is claimed.",
+      "owners": [
+        "turn"
+      ],
+      "spec_path": "docs/rules/M3_INITIAL_SEMANTIC_FOUNDATION_V2.md",
+      "summary": "One ordinary draw-step card draw.",
+      "version": "0.1.0"
+    },
+    {
+      "authority_refs": [
+        "docs/adr/0054-m3-pre-t0-hardening.md",
+        "docs/rules/M3_INITIAL_SEMANTIC_FOUNDATION_V2.md",
+        "wotc-cr-2026-08-07-txt-20260819-sha256-4381ad1b39ab2c05f7d03633a20f711ed37277074d3266dcba5f38cbb527423f"
+      ],
+      "benchmark_scenarios": [],
+      "category": "core_rule",
+      "conformance_cases": [],
+      "dependencies": [],
+      "implementation_paths": [],
+      "information_risk": "low",
+      "key": "rules/turn-structure",
+      "lifecycle": "specified",
+      "notes": "Specified only; no implementation, conformance, benchmark, coverage, or certification evidence is claimed.",
+      "owners": [
+        "turn"
+      ],
+      "spec_path": "docs/rules/M3_INITIAL_SEMANTIC_FOUNDATION_V2.md",
+      "summary": "Deterministic two-player turn, phase, and step structure.",
+      "version": "0.1.0"
+    },
+    {
+      "authority_refs": [
+        "docs/adr/0054-m3-pre-t0-hardening.md",
+        "docs/rules/M3_INITIAL_SEMANTIC_FOUNDATION_V2.md",
+        "wotc-cr-2026-08-07-txt-20260819-sha256-4381ad1b39ab2c05f7d03633a20f711ed37277074d3266dcba5f38cbb527423f"
+      ],
+      "benchmark_scenarios": [],
+      "category": "core_rule",
+      "conformance_cases": [],
+      "dependencies": [],
+      "implementation_paths": [],
+      "information_risk": "high",
+      "key": "rules/zone-incarnation",
+      "lifecycle": "specified",
+      "notes": "Specified only; no implementation, conformance, benchmark, coverage, or certification evidence is claimed.",
+      "owners": [
+        "zones_identity"
+      ],
+      "spec_path": "docs/rules/M3_INITIAL_SEMANTIC_FOUNDATION_V2.md",
+      "summary": "Selected zone moves with object incarnation and identity continuity.",
+      "version": "0.1.0"
+    }
+  ],
   "registry_id": "project/capabilities",
   "schema_version": "capability-registry.v1"
 }
