@@ -87,14 +87,21 @@ history.
 
 `M2.5 = NOT_CLAIMED / NOT_FROZEN`. Its abandoned census and research
 machinery was removed from the active repository; the merged history remains
-historical evidence only. The current active maintainer work area is pre-M3
-foundation reconciliation and adversarial audit preparation under Issue #105;
-this is not a Magic-semantics milestone and does not authorize M3.
+historical evidence only. Final foundation closure and the Pre-M3 Remediation
+Freeze are complete, and Issue #105 is closed as historical audit work. Issue
+#162 core modularization is also complete and merged by PR #179. The current
+active maintainer work area is M3 Entry governance under Issue #178; this is
+not a Magic-semantics milestone and does not authorize M3. The pre-M3
+governance cleanup is complete for this candidate; the separate M3 Entry
+Decision remains next.
 
-`M3 = NOT_AUTHORIZED` for the Manafold engine. Census-driven scope research is
-outside this authoritative engine repository, and external census M3
-authorization must not be treated as engine-semantic authorization. Future M3
-entry requires an explicit reviewed durable scope and capability input.
+`M3 = NOT_STARTED / NOT_AUTHORIZED` for the Manafold engine, with
+`AUTHORIZATION_HEAD = NOT_SET`. Census-driven scope research is outside this
+authoritative engine repository, and external census M3 authorization must not
+be treated as engine-semantic authorization. The next gate is the separate
+reviewed M3 Entry Decision and Initial Semantic Foundation selection; no
+semantic implementation, S1 selection, or capability registration is implied
+by the current governance work.
 
 ## M3 — Bounded Semantic Coverage
 
