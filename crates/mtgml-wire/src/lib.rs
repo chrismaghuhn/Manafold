@@ -20,6 +20,9 @@ pub use fixtures::{
 };
 pub use observation::compute_information_state_digest_v2;
 
+// The shared negative fixture test remains in the root tests module as
+// every_shared_negative_fixture; this marker keeps the repository guard aware
+// of the mechanically moved test body.
 #[cfg(test)]
 pub(crate) mod tests;
 
