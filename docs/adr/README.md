@@ -1,6 +1,6 @@
 # Architecture Decision Records
 
-ADRs are immutable decision history. Superseded records remain and point to replacements. Numbered accepted records currently run through ADR 0050; ADR 0000 is the template.
+ADRs are immutable decision history. Superseded records remain and point to replacements. Numbered accepted records currently run through ADR 0052; ADR 0000 is the template.
 
 ADR numbers 0042 through 0047 are historically occupied by accepted ContextApplication/M2.5 decisions that were intentionally removed from the active source tree by the post-purge cleanup. Their numbers remain permanently reserved and are not reusable; the acceptance of ADR 0048 is therefore accompanied by an explicit historical numbering gap.
 
@@ -24,6 +24,14 @@ head review recorded in the associated pull request.
 ADR 0050 accepts the Pre-M3 FND-028 `PlayerId(0)` policy decision as Option A.
 It records policy intent only; implementation remains separately gated by the
 accepted review and planning process.
+
+ADR 0051 resolves OD-004 by binding the first M3 rules case to the exact
+official Wizards TXT artifact recorded in the repository-owned authority
+identity record. It does not implement rules or authorize M3.
+
+ADR 0052 resolves the OD-019 M3 deadline as a format-neutral initial M3 with
+`FormatState::None`. It deliberately does not freeze a generic format-hook API
+or authorize Commander semantics.
 
 Create a new record with:
 
