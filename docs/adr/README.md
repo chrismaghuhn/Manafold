@@ -1,6 +1,6 @@
 # Architecture Decision Records
 
-ADRs are immutable decision history. Superseded records remain and point to replacements. Numbered accepted records currently run through ADR 0053, and ADR 0000 is the template. ADR 0054 is the acceptance vehicle for the M3 pre-T0 hardening plan: merging PR #184 accepts the plan, while the separate exact-master reauthorization remains the execution gate.
+ADRs are immutable decision history. Superseded records remain and point to replacements. The accepted base sequence currently runs through ADR 0053, and ADR 0000 is the template. ADR 0054 is the acceptance vehicle for the M3 pre-T0 hardening plan: merging PR #184 accepts the plan, while the separate exact-master reauthorization remains the execution gate.
 
 ADR numbers 0042 through 0047 are historically occupied by accepted ContextApplication/M2.5 decisions that were intentionally removed from the active source tree by the post-purge cleanup. Their numbers remain permanently reserved and are not reusable; the acceptance of ADR 0048 is therefore accompanied by an explicit historical numbering gap.
 
@@ -44,6 +44,15 @@ Foundation V1 as historical evidence, corrects the semantic dependency graph,
 defines Foundation V2 and the coordinated V4 state/persistence prerequisite,
 and resets current execution authorization. PR #184 is the plan-acceptance
 vehicle; a later exact-master review separately authorizes execution.
+
+The merge boundary is explicit:
+
+```text
+ADR_0054 = ACCEPTED
+FOUNDATION_V2 = ACCEPTED_HARDENED_M3_SCOPE
+M3_AUTHORIZED = NO
+AUTHORIZATION_HEAD = NOT_SET
+```
 
 Create a new record with:
 

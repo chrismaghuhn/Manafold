@@ -25,6 +25,7 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
         self.assertIn("**M3 semantic implementation:** `NOT_STARTED`", readme)
         self.assertIn("**M3 authorization:** `NOT_AUTHORIZED`", readme)
         self.assertIn("**M3 pre-T0 hardening:** `CANDIDATE`", readme)
+        self.assertIn("**M3 hardening acceptance:** PR #184 is the plan-acceptance vehicle", readme)
         self.assertIn("11 Foundation capabilities are `specified` only", readme)
         self.assertNotIn(
             "Current active work area:** pre-M3 foundation reconciliation and "
@@ -66,6 +67,7 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
         self.assertIn("M3_ENTRY_DECISION = ACCEPTED_BUT_UNDER_PRE_T0_HARDENING", roadmap)
         self.assertIn("NEXT_GATE = HARDENED_PLAN_MERGE_AND_EXACT_MASTER_REAUTHORIZATION", roadmap)
         self.assertIn("M3.P0 semantic-neutral state/persistence identity cut", roadmap)
+        self.assertIn("PR #184", roadmap)
         self.assertIn("`M3 = NOT_STARTED / NOT_AUTHORIZED`", roadmap)
         self.assertIn("Issue #105", roadmap)
         self.assertNotIn("current active maintainer work area is Issue\n#130", roadmap)

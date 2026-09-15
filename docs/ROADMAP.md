@@ -111,8 +111,10 @@ Freeze are complete, and Issue #105 is closed as historical audit work. Issue
 active maintainer work area is the M3 Pre-T0 plan hardening candidate under
 Issue #178; this is not a Magic-semantics milestone and does not authorize M3.
 The pre-M3 governance cleanup and M3 Entry Decision remain historically
-accepted, but the deeper pre-T0 audit supersedes their authorization pending a
-new exact-`master` review after the hardened plan is merged.
+accepted, but the deeper pre-T0 audit supersedes their execution authorization
+pending a new exact-`master` review after the hardened plan is merged. PR #184
+is the acceptance vehicle for ADR 0054 and Foundation V2; its merge accepts the
+plan without authorizing execution.
 
 `M3 = NOT_STARTED / NOT_AUTHORIZED` for the Manafold engine, with
 `AUTHORIZATION_HEAD = NOT_SET`. Census-driven scope research is outside this authoritative engine repository, and external census M3 authorization must not
