@@ -59,6 +59,10 @@ pub enum WitnessViolation {
     },
     /// The pair declared an authoritative difference that does not hold.
     VacuousPair,
+    /// The full authoritative state differs outside the declared axis.
+    UnauthorizedStateDifference,
+    /// One side of the pair is not a valid authoritative state.
+    InvalidState,
     MissingPerspective,
 }
 
@@ -502,6 +506,22 @@ pub fn assert_witness(
             return Err(WitnessViolation::BijectionNotInjective { path });
         }
     }
+    crate::isolation::state_relation::assert_only_authorized_difference(
+        witness.perspective,
+        a,
+        b,
+        witness.expected_difference,
+        witness.bijection.as_ref(),
+    )
+    .map_err(|violation| match violation {
+        crate::isolation::state_relation::StateRelationViolation::InvalidState => {
+            WitnessViolation::InvalidState
+        }
+        crate::isolation::state_relation::StateRelationViolation::UnauthorizedStateDifference
+        | crate::isolation::state_relation::StateRelationViolation::MalformedBijection => {
+            WitnessViolation::UnauthorizedStateDifference
+        }
+    })?;
     let declared_difference_holds = match witness.expected_difference {
         NonVacuityPredicate::None => true,
         predicate => predicate.difference_holds(a, b, witness),
@@ -522,21 +542,12 @@ impl NonVacuityPredicate {
             Self::None => true,
             Self::Required => a != b,
             Self::OpponentHiddenDefinition => {
-                hidden_definition_multiset(a) != hidden_definition_multiset(b)
-                    && face_down_count(a) == face_down_count(b)
-                    && authorized_visible_counts_equal(a, b, witness.perspective)
+                hidden_definition_difference_exact(a, b, witness.perspective)
             }
             Self::HiddenConcealedOrdering => concealed_order_diverges(a, b),
-            Self::ForeignPrivateLook => {
-                foreign_record_set_differs(a, b, witness.perspective)
-                    && authorized_visible_counts_equal(a, b, witness.perspective)
-            }
+            Self::ForeignPrivateLook => foreign_record_set_differs(a, b, witness.perspective),
             Self::FaceDownIdentity => face_down_physical_swap(a, b),
-            Self::RootSeedPreAuth => {
-                a.random.root_seed != b.random.root_seed
-                    && a.revision == b.revision
-                    && authorized_visible_counts_equal(a, b, witness.perspective)
-            }
+            Self::RootSeedPreAuth => a.random.root_seed != b.random.root_seed,
             Self::HiddenRngCursor => global_cursor(a) != global_cursor(b),
             Self::ObjectRenaming => renaming_difference_holds(a, b, &witness.bijection),
             Self::AbilityRenaming => ability_renaming_difference_holds(a, b, &witness.bijection),
@@ -545,28 +556,69 @@ impl NonVacuityPredicate {
                     && a.perspective_identities.players.get(&witness.perspective)
                         == b.perspective_identities.players.get(&witness.perspective)
             }
-            Self::ForeignKnowledgeHistory => {
-                foreign_history_differs(a, b, witness.perspective)
-                    && authorized_visible_counts_equal(a, b, witness.perspective)
-            }
+            Self::ForeignKnowledgeHistory => foreign_history_differs(a, b, witness.perspective),
         }
     }
 }
 
-/// Multiset of card definitions over face-down objects (trusted side).
-fn hidden_definition_multiset(
-    state: &EngineState,
-) -> BTreeMap<mtgml_model::CardDefinitionId, usize> {
-    let mut multiset = BTreeMap::new();
-    for object in state
+fn hidden_definition_difference_exact(
+    a: &EngineState,
+    b: &EngineState,
+    perspective: PlayerId,
+) -> bool {
+    let changed_objects: Vec<GameObjectId> = a
         .zones
         .objects
-        .values()
-        .filter(|object| object.face_down)
-    {
-        *multiset.entry(object.card_definition).or_default() += 1;
+        .iter()
+        .filter(|(object, value)| {
+            value.face_down
+                && b.zones
+                    .objects
+                    .get(object)
+                    .is_some_and(|other| other.card_definition != value.card_definition)
+        })
+        .map(|(object, _)| *object)
+        .collect();
+    if changed_objects.len() != 1 {
+        return false;
     }
-    multiset
+    let target = changed_objects[0];
+    let mut changed_records = Vec::new();
+    for (player, knowledge_a) in &a.knowledge.players {
+        if *player == perspective {
+            continue;
+        }
+        let Some(knowledge_b) = b.knowledge.players.get(player) else {
+            return false;
+        };
+        for (opaque, record_a) in &knowledge_a.active {
+            if knowledge_b
+                .active
+                .get(opaque)
+                .is_some_and(|record_b| record_b.card_definition != record_a.card_definition)
+            {
+                changed_records.push((*player, *opaque));
+            }
+        }
+        for (opaque, record_a) in &knowledge_a.retired {
+            if knowledge_b
+                .retired
+                .get(opaque)
+                .is_some_and(|record_b| record_b.card_definition != record_a.card_definition)
+            {
+                changed_records.push((*player, *opaque));
+            }
+        }
+    }
+    if changed_records.len() != 1 {
+        return false;
+    }
+    let (player, opaque) = changed_records[0];
+    a.perspective_identities
+        .players
+        .get(&player)
+        .and_then(|identity| identity.object_to_opaque.get(&target))
+        == Some(&opaque)
 }
 
 fn face_down_count(state: &EngineState) -> usize {
@@ -578,24 +630,6 @@ fn face_down_count(state: &EngineState) -> usize {
         .count()
 }
 
-/// Authorized visible counts of `perspective`: opaque active-record keys and
-/// the next visible sequence must be equal between sides.
-fn authorized_visible_counts_equal(
-    a: &EngineState,
-    b: &EngineState,
-    perspective: PlayerId,
-) -> bool {
-    let knowledge_a = a.knowledge.players.get(&perspective);
-    let knowledge_b = b.knowledge.players.get(&perspective);
-    match (knowledge_a, knowledge_b) {
-        (Some(knowledge_a), Some(knowledge_b)) => {
-            keys_of(&knowledge_a.active) == keys_of(&knowledge_b.active)
-                && knowledge_a.next_visible_sequence == knowledge_b.next_visible_sequence
-        }
-        _ => false,
-    }
-}
-
 /// The concealed ordered-zone vectors differ between sides while each
 /// permuted vector preserves the other's member multiset and at least two
 /// objects are concealed.
@@ -603,7 +637,7 @@ fn concealed_order_diverges(a: &EngineState, b: &EngineState) -> bool {
     if face_down_count(a) < 2 || face_down_count(b) < 2 {
         return false;
     }
-    let mut diverges = false;
+    let mut diverging_zones = 0;
     for (key, members_a) in &a.zones.ordered_zones {
         if members_a.len() < 2 {
             continue;
@@ -619,16 +653,16 @@ fn concealed_order_diverges(a: &EngineState, b: &EngineState) -> bool {
             return false;
         }
         if members_a != members_b {
-            diverges = true;
+            diverging_zones += 1;
         }
     }
-    diverges
+    diverging_zones == 1
 }
 
 /// The non-witness player's retained record set differs while both sides
 /// remain otherwise comparable (two-player M2 shape).
 fn foreign_record_set_differs(a: &EngineState, b: &EngineState, perspective: PlayerId) -> bool {
-    let mut differs = false;
+    let mut difference_count = 0;
     for (player, knowledge_a) in &a.knowledge.players {
         if *player == perspective {
             continue;
@@ -636,11 +670,11 @@ fn foreign_record_set_differs(a: &EngineState, b: &EngineState, perspective: Pla
         let Some(knowledge_b) = b.knowledge.players.get(player) else {
             return false;
         };
-        if keys_of(&knowledge_a.active) != keys_of(&knowledge_b.active) {
-            differs = true;
-        }
+        difference_count += keys_of(&knowledge_a.active)
+            .symmetric_difference(&keys_of(&knowledge_b.active))
+            .count();
     }
-    differs && a.knowledge.players.len() == b.knowledge.players.len()
+    difference_count == 1 && a.knowledge.players.len() == b.knowledge.players.len()
 }
 
 /// The assignment of physical cards to face-down incarnations differs while
@@ -668,9 +702,13 @@ fn face_down_physical_swap(a: &EngineState, b: &EngineState) -> bool {
         }
         multiset
     };
-    assignment_a.len() >= 2
+    assignment_a.keys().collect::<BTreeSet<_>>() == assignment_b.keys().collect()
+        && assignment_a
+            .iter()
+            .filter(|(object, physical)| assignment_b.get(object) != Some(*physical))
+            .count()
+            >= 2
         && multiset(&assignment_a) == multiset(&assignment_b)
-        && assignment_a != assignment_b
 }
 
 fn global_cursor(state: &EngineState) -> Option<u64> {
@@ -752,7 +790,7 @@ fn ability_renaming_difference_holds(
 /// At least one non-witness record carries a different history-vector
 /// content between sides.
 fn foreign_history_differs(a: &EngineState, b: &EngineState, perspective: PlayerId) -> bool {
-    let mut differs = false;
+    let mut difference_count = 0;
     for (player, knowledge_a) in &a.knowledge.players {
         if *player == perspective {
             continue;
@@ -763,16 +801,17 @@ fn foreign_history_differs(a: &EngineState, b: &EngineState, perspective: Player
         for (opaque, record_a) in &knowledge_a.active {
             match knowledge_b.active.get(opaque) {
                 Some(record_b)
-                    if record_a.historical_locations != record_b.historical_locations =>
+                    if record_a.known_location != record_b.known_location
+                        || record_a.historical_locations != record_b.historical_locations =>
                 {
-                    differs = true;
+                    difference_count += 1;
                 }
                 Some(_) => {}
                 None => return false,
             }
         }
     }
-    differs && a.knowledge.players.len() == b.knowledge.players.len()
+    difference_count == 1 && a.knowledge.players.len() == b.knowledge.players.len()
 }
 
 #[cfg(test)]
@@ -839,6 +878,25 @@ mod tests {
             assert_witness(&state_a, &state_b, &unexplained),
             Err(WitnessViolation::BijectionUnexplained { .. })
         ));
+    }
+
+    #[test]
+    fn contaminated_object_rename_plus_life_change_is_rejected() {
+        let state_a = base_pair_state(&"11".repeat(32)).unwrap();
+        let mut state_b = state_a.clone();
+        rename_hidden_object(&mut state_b).unwrap();
+        state_b.core.players.get_mut(&P1).unwrap().life -= 1;
+        mtgml_state::validate_engine_state(&state_b).unwrap();
+
+        let witness = PairWitness::new(
+            P2,
+            Some(renaming_bijection()),
+            NonVacuityPredicate::ObjectRenaming,
+        );
+        assert_eq!(
+            assert_witness(&state_a, &state_b, &witness),
+            Err(WitnessViolation::UnauthorizedStateDifference)
+        );
     }
 
     #[test]

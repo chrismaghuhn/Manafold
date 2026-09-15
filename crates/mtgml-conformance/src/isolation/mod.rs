@@ -15,6 +15,7 @@ mod paired;
 mod paired_matrix;
 mod rejection;
 mod replay_parity;
+mod state_relation;
 mod wire_boundary;
 mod witnesses;
 
