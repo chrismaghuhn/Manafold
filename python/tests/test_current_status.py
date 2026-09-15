@@ -12,11 +12,19 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
 
         self.assertRegex(
             readme,
-            r"\*\*Current foundation milestone:\*\* M2 .*COMPLETE",
+            r"\*\*Foundation closure/freeze:\*\* `COMPLETE`",
         )
         self.assertIn(
-            "**Current active work area:** pre-M3 foundation reconciliation and "
-            "adversarial audit preparation under Issue #105; this does not authorize M3",
+            "**Current active work area:** M3 Entry governance under Issue #178; "
+            "the separate Entry Decision is the next gate",
+            readme,
+        )
+        self.assertIn("**Core modularization:** Issue #162 `COMPLETE`", readme)
+        self.assertIn("**M3 semantic implementation:** `NOT_STARTED`", readme)
+        self.assertIn("**M3 authorization:** `NOT_AUTHORIZED`", readme)
+        self.assertNotIn(
+            "Current active work area:** pre-M3 foundation reconciliation and "
+            "adversarial audit preparation under Issue #105",
             readme,
         )
         self.assertNotIn("maintainer hardening under Issue #130", readme)
@@ -46,7 +54,7 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
 
         self.assertRegex(roadmap, r"## M2 [^\n]+\n\n\*\*Status:\*\* `COMPLETE`")
         self.assertIn("`M2.5 = NOT_CLAIMED / NOT_FROZEN`", roadmap)
-        self.assertIn("`M3 = NOT_AUTHORIZED`", roadmap)
+        self.assertIn("`M3 = NOT_STARTED / NOT_AUTHORIZED`", roadmap)
         self.assertIn("Issue #105", roadmap)
         self.assertNotIn("current active maintainer work area is Issue\n#130", roadmap)
         self.assertIn("Census-driven scope", roadmap)

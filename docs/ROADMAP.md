@@ -96,8 +96,7 @@ governance cleanup is complete for this candidate; the separate M3 Entry
 Decision remains next.
 
 `M3 = NOT_STARTED / NOT_AUTHORIZED` for the Manafold engine, with
-`AUTHORIZATION_HEAD = NOT_SET`. Census-driven scope research is outside this
-authoritative engine repository, and external census M3 authorization must not
+`AUTHORIZATION_HEAD = NOT_SET`. Census-driven scope research is outside this authoritative engine repository, and external census M3 authorization must not
 be treated as engine-semantic authorization. The next gate is the separate
 reviewed M3 Entry Decision and Initial Semantic Foundation selection; no
 semantic implementation, S1 selection, or capability registration is implied

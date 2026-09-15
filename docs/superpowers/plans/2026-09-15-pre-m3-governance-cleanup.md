@@ -67,6 +67,7 @@
 - Modify: `README.md`
 - Modify: `docs/ROADMAP.md`
 - Modify: `docs/OPEN_DECISIONS.md`
+- Modify: `python/tests/test_current_status.py` (status guard only)
 
 - [x] Update current status to foundation frozen/complete, #162 complete, governance cleanup current, M3 not started/not authorized, and M3 entry decision next.
 - [x] Review OD-001 through OD-021 individually, preserving the existing compact register vocabulary and recording current status, deadline, safe default/current resolution, M3 relevance, and evidence without silently resolving unsupported choices.
