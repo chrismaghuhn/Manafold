@@ -1,6 +1,6 @@
 # Pre-M3 Remediation Batch H: Conformance Evidence and Proof Completeness
 
-**Status:** proposed for independent design review
+**Status:** approved for implementation planning after independent design review
 
 **Date:** 2026-09-15
 
@@ -12,7 +12,7 @@
 
 **Issue:** #164
 
-**Independent design review:** REQUEST_CHANGES on review 1; amendments below require re-review before implementation
+**Independent design review:** APPROVE at exact head e6fb5d8d164bc0a4d3a01c4a52dfd0840e5123c7 after three review rounds; no production implementation was included
 
 ## 1. Purpose and boundary
 
@@ -468,11 +468,16 @@ Required gate values before production implementation:
 
     BATCH_H_DESIGN_REVIEW = APPROVE
     H_SPLIT_DECISION = NO
+    PRODUCTION_IMPLEMENTATION_AUTHORIZED = NO — plan review still required
+
+The independent design review has approved the design. Production
+implementation remains unauthorized until the implementation plan is written,
+registered, independently reviewed, and records:
+
+    BATCH_H_PLAN_REVIEW = APPROVE
     PRODUCTION_IMPLEMENTATION_AUTHORIZED = YES
 
-Until those values are produced by independent review and recorded, this
-document authorizes characterization/design work only. M3 remains
-unauthorized.
+M3 remains unauthorized.
 
     M3_STARTED = NO
     M3_AUTHORIZED = NO
