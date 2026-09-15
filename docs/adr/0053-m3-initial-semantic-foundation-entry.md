@@ -1,17 +1,18 @@
 # ADR 0053 — M3 Entry Decision: Initial Semantic Foundation
 
-- **Status:** proposed candidate; acceptance requires merge of the entry PR
+- **Status:** accepted
 - **Date:** 2026-09-15
 - **Owners:** architecture maintainers; rules maintainers; conformance maintainers
 - **Resolves:** the M3 Entry Decision scope gate in Issue [#178](https://github.com/chrismaghuhn/Manafold/issues/178)
-- **Supersedes:** Issue [#163](https://github.com/chrismaghuhn/Manafold/issues/163) only after merge, independent approval, and explicit authorization
+- **Supersedes:** Issue [#163](https://github.com/chrismaghuhn/Manafold/issues/163) after the separate post-merge authorization gate
 - **Companion authority:** [`M3_INITIAL_SEMANTIC_FOUNDATION_V1.md`](../rules/M3_INITIAL_SEMANTIC_FOUNDATION_V1.md)
 - **Implementation evidence:** `NOT_RUN`; this ADR changes no Magic behavior and authorizes no M3 implementation
 
-This is the candidate M3 Entry Decision. Before the entry PR is merged, the
-record is not present on `master` and cannot authorize M3. After merge it makes
-the scope durable, but a separate exact-`master` authorization remains
-required.
+This is the accepted M3 Entry Decision. PR #182 merged the reviewed entry scope
+at `10f0387281529be087bcb658b779c19a70c2bf8c` from head
+`c2669d17b5abece5549f0781eea20b73b9776d29`. Acceptance makes the scope durable
+on `master`, but a separate exact-`master` authorization remains required and
+M3 remains unauthorized.
 
 ## Context
 
@@ -183,27 +184,30 @@ Costs and constraints:
 
 ## Compatibility
 
-This candidate changes no production Rust or Python semantics, wire or Decision
+This acceptance-only change alters no production Rust or Python semantics, wire or Decision
 schemas, observation schemas, replay/checkpoint codecs, RNG, digests, Card IR,
-cards, decks, capability registry entries, or public API. It adds only the
-companion governance artifact, this ADR, the normative-document registration,
-and the roadmap/index references required to make the candidate discoverable.
+cards, decks, capability registry entries, or public API. It records the merged
+entry decision as accepted while preserving the separate M3 authorization gate.
 
 ## Authorization conditions
 
-The entry PR must remain unmerged until reviewed. While it is unmerged:
+PR #182 is merged and this ADR is accepted. Before the separate post-merge
+authorization comment exists, the current state is:
 
 ```text
-M3_ENTRY_DECISION = CANDIDATE
-INITIAL_FOUNDATION = CANDIDATE
+ENTRY_PR_182_HEAD = c2669d17b5abece5549f0781eea20b73b9776d29
+ENTRY_PR_182_MERGE_COMMIT = 10f0387281529be087bcb658b779c19a70c2bf8c
+M3_ENTRY_DECISION = ACCEPTED
+INITIAL_FOUNDATION = ACCEPTED
 M3_STARTED = NO
 M3_AUTHORIZED = NO
 AUTHORIZATION_HEAD = NOT_SET
 ```
-After merge, a separate invocation must fetch the current remote `master`,
-verify containment of the entry PR, re-review the companion artifact and this
-ADR, confirm `0 BLOCKER / 0 MAJOR`, verify required hosted gates, update the
-final Issue #178 Entry Gate items, and post:
+
+A separate invocation must then fetch the current remote `master`, verify
+containment of the entry PR, re-review the companion artifact and this ADR,
+confirm `0 BLOCKER / 0 MAJOR`, verify required hosted gates, update the final
+Issue #178 Entry Gate items, and post:
 
 ```text
 M3_ENTRY_REVIEW = APPROVE
@@ -234,7 +238,7 @@ ENTRY_INTERACTION_OBLIGATIONS = 16
 SATISFIED_INTERACTION_EVIDENCE_AT_ENTRY = 0
 CAPABILITY_REGISTRY_MODIFIED = NO
 MAGIC_SEMANTICS_IMPLEMENTED = NO
-M3_ENTRY_DECISION = CANDIDATE
+M3_ENTRY_DECISION = ACCEPTED
 M3_AUTHORIZED = NO
 M3_STARTED = NO
 AUTHORIZATION_HEAD = NOT_SET
