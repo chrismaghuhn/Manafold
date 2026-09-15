@@ -81,18 +81,18 @@
 **Files:**
 - Read-only verification of the complete diff and source tree
 
-- [ ] Confirm no production Rust/Python, capability registry, Card IR, wire, schema, replay, RNG, digest, or authoritative state files changed.
-- [ ] Run `python scripts/check_documentation.py`, `python scripts/verify_repository.py`, and `git diff --check`.
-- [ ] Run `just check-fast` and `just check` when wrappers work; otherwise record wrapper status as `BLOCKED` and run exact native equivalents required by the repository.
-- [ ] Inspect the final diff and re-run all status/search checks after the last edit.
+- [x] Confirm no production Rust/Python, capability registry, Card IR, wire, schema, replay, RNG, digest, or authoritative state files changed.
+- [x] Run `python scripts/check_documentation.py`, `python scripts/verify_repository.py`, and `git diff --check`.
+- [x] Run `just check-fast` and `just check` when wrappers work; otherwise record wrapper status as `BLOCKED` and run exact native equivalents required by the repository.
+- [x] Inspect the final diff and re-run all status/search checks after the last edit.
 
 ### Task 7: Commit, publish, review, and report
 
 **Files:**
 - Git commits on `chris/pre-m3-governance-cleanup-20260915`
 
-- [ ] Commit logically reviewable documentation changes without rewriting history or merging.
-- [ ] Push the branch and open one PR titled `docs: close pre-M3 governance decisions` with an explicit non-authorization/non-semantics/non-S1/non-registry scope statement.
-- [ ] Verify hosted PR Fast, PR Integration, `manafold-pr-gate`, and Windows Setup Smoke results; do not report pending checks as green.
-- [ ] Add the concise candidate/awaiting-merge comment to #178 only after the PR exists; do not close #178 or authorize M3.
-- [ ] Finish with the exact requested status block, including evidence, blockers, wrapper status, PR, branch, base, and final remote master.
+- [x] Commit logically reviewable documentation changes without rewriting history or merging.
+- [x] Push the branch and open one PR titled `docs: close pre-M3 governance decisions` with an explicit non-authorization/non-semantics/non-S1/non-registry scope statement.
+- [x] Verify hosted PR Fast, PR Integration, `manafold-pr-gate`, and Windows Setup Smoke results; do not report pending checks as green.
+- [x] Add the concise candidate/awaiting-merge comment to #178 only after the PR exists; do not close #178 or authorize M3.
+- [x] Finish with the exact requested status block, including evidence, blockers, wrapper status, PR, branch, base, and final remote master.
