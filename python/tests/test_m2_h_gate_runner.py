@@ -601,7 +601,7 @@ def _decode_arms(names: Iterable[str]) -> str:
     return "\n".join(f'        "{name}" => Ok(decode_variant()),' for name in sorted(names))
 
 
-def _wire_lib_rs(names: Iterable[str], extra_arm: str | None = None) -> str:
+def _wire_fixtures_rs(names: Iterable[str], extra_arm: str | None = None) -> str:
     arms = _decode_arms(names)
     if extra_arm is not None:
         arms += f'\n        "{extra_arm}" => Ok(decode_variant()),'
@@ -631,18 +631,18 @@ def _validate_schemas_py(names: Iterable[str]) -> str:
 
 @contextmanager
 def _synthetic_registry(
-    wire_lib_rs: str, decoders_py: str, validate_schemas_py: str
+    wire_fixtures_rs: str, decoders_py: str, validate_schemas_py: str
 ) -> Iterator[None]:
     with tempfile.TemporaryDirectory() as tmp:
         base = Path(tmp)
-        wire_lib = base / "lib.rs"
+        wire_fixtures = base / "fixtures.rs"
         wire_py = base / "wire.py"
         validate_schemas = base / "validate_schemas.py"
-        wire_lib.write_text(wire_lib_rs, encoding="utf-8")
+        wire_fixtures.write_text(wire_fixtures_rs, encoding="utf-8")
         wire_py.write_text(decoders_py, encoding="utf-8")
         validate_schemas.write_text(validate_schemas_py, encoding="utf-8")
         with (
-            mock.patch.object(runner, "WIRE_LIB_RS", wire_lib),
+            mock.patch.object(runner, "WIRE_FIXTURES_RS", wire_fixtures),
             mock.patch.object(runner, "WIRE_PY", wire_py),
             mock.patch.object(runner, "VALIDATE_SCHEMAS_PY", validate_schemas),
         ):
@@ -656,7 +656,7 @@ class RegistryRelationTests(unittest.TestCase):
         common = runner.COMMON_NAMED_CONTRACTS
         python_set = common | runner.PYTHON_MECHANICAL_ONLY
         with _synthetic_registry(
-            _wire_lib_rs(common), _decoders_py(python_set), _validate_schemas_py(common)
+            _wire_fixtures_rs(common), _decoders_py(python_set), _validate_schemas_py(common)
         ):
             self.assertEqual(runner.extract_rust_decode_named_contracts("t"), common)
             detail = runner.verify_registry_relation()
@@ -666,7 +666,7 @@ class RegistryRelationTests(unittest.TestCase):
         common = runner.COMMON_NAMED_CONTRACTS
         with (
             _synthetic_registry(
-                _wire_lib_rs(common), _decoders_py(common), _validate_schemas_py(common)
+                _wire_fixtures_rs(common), _decoders_py(common), _validate_schemas_py(common)
             ),
             self.assertRaises(runner.GateConfigurationError) as raised,
         ):
@@ -680,7 +680,7 @@ class RegistryRelationTests(unittest.TestCase):
         python_set = common | runner.PYTHON_MECHANICAL_ONLY
         with (
             _synthetic_registry(
-                _wire_lib_rs(common, extra_arm="bonus-contract.v9"),
+                _wire_fixtures_rs(common, extra_arm="bonus-contract.v9"),
                 _decoders_py(python_set),
                 _validate_schemas_py(common),
             ),
@@ -695,7 +695,7 @@ class RegistryRelationTests(unittest.TestCase):
         drifted = common - {"episode-status.v1"}
         with (
             _synthetic_registry(
-                _wire_lib_rs(common), _decoders_py(python_set), _validate_schemas_py(drifted)
+                _wire_fixtures_rs(common), _decoders_py(python_set), _validate_schemas_py(drifted)
             ),
             self.assertRaises(runner.GateConfigurationError) as raised,
         ):
