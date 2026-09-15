@@ -128,7 +128,7 @@ the declared difference to be present in the stated shape.
 | RootSeedPreAuth | RandomStateV1.root_seed only | Seeds differ; revisions, streams, and every non-random state component are equal |
 | HiddenRngCursor | The explicitly named global SyntheticM1 stream cursor only | That cursor differs; stream keys, other cursors, and every non-random state component are equal |
 | ObjectRenaming | The declared object bijection in zone map keys, object IDs, ordered-zone references, stack/pending trusted references, and every perspective identity mapping target/key, plus the corresponding global next-object allocator head | At least one declared object mapping changes; no undeclared object key/reference changes |
-| AbilityRenaming | The declared ability bijection in stack references and perspective identity mapping target/key, plus the corresponding global next-ability allocator head | At least one declared ability mapping changes; no undeclared ability key/reference changes |
+| AbilityRenaming | The declared ability bijection in stack references, pending decision trusted ActivateAbility bindings, and perspective identity mapping target/key, plus the corresponding global next-ability allocator head. Opaque ability keys remain identical; reverse-map keys are remapped only by the same declared bijection. | At least one declared ability mapping changes; no undeclared ability key/reference changes |
 | GlobalAllocatorHistory | The global IdentityAllocatorState only | Global allocator values differ while the witness perspective's complete identity record remains equal |
 | ForeignKnowledgeHistory | known-location and historical-location fields of one foreign active record | Exactly one foreign record changes only in those two history fields; all other foreign knowledge and all other state fields are equal |
 
@@ -250,7 +250,14 @@ must perform these assertions before comparing the two sides:
    request to the exact ChooseMany request for the selected count;
 6. the returned step's revision/status/next decision matches the independently
    expected after product, and the replay trace carries the expected event and
-   delta products.
+   delta products;
+7. rule_events_emitted_after equals
+   rule_events_emitted_before plus exactly the number of authoritative events
+   in the accepted transition. H's accepted semantic witnesses have
+   resource_units_consumed_after equal to before and
+   wall_clock_elapsed_millis_after equal to before. A test that applies
+   recorded external progression must name the exact recorded delta and
+   compare it to that value; no external-counter delta is left open-ended.
 
 Checkpoint tests also retain an immutable copy of the source checkpoint and
 compare it after every fork-side accepted/rejected/restore operation. Fork
@@ -279,8 +286,13 @@ complement:
   and one wrong-union number answer;
 - ChooseNumber: every value within the bounded interval, both representable
   outside-range sentinels, and one wrong-union SelectOne answer;
-- Order: every bounded permutation, one duplicate answer, one unknown member,
-  one overlong answer, and one wrong-union number answer.
+- Order: every bounded permutation for lengths minimum through maximum, every
+  bounded below-minimum permutation in the finite complement, one duplicate
+  answer, one unknown member, one overlong answer, and one wrong-union number
+  answer. Above-maximum lengths are represented by the smallest bounded
+  extension that is syntactically constructible; if the extension would
+  exceed the shared budget, the typed budget result is recorded instead of
+  silently truncating.
 
 Advertised status includes membership, uniqueness, and the canonical
 SelectMany ordering rules; a representative complement is never mislabeled
@@ -292,16 +304,20 @@ never a truncated completeness result.
 ReferenceAssemblySpec validation rejects duplicate or unsupported declared
 atoms. ReferenceAutomaton construction and advance return typed errors.
 Reference enumeration consumes the shared node/depth/generated-answer
-budget. Request comparison requires equal stage and observed-request lengths
-and reports an invalid reference transition instead of silently retaining the
-old state. Declaration iteration order is normalized before an expected
-request is emitted.
+budget. The frozen reference path length is exactly four stages:
+Anchor, Number, Members, Order. Request comparison requires equal expected
+path and observed-request lengths, rejects any request after the reference
+automaton reaches Complete, and reports an invalid reference transition
+instead of silently retaining the old state. Declaration iteration order is
+normalized before an expected request is emitted.
 
 ### EVD-012 revision-bound fingerprint contract
 
-TrustedEnvironmentIdentitySurface retains the complete immutable execution
-context that is currently present in ReplayManifestV3, without the trusted
-root seed:
+TrustedEnvironmentIdentitySurface retains the complete non-secret immutable
+execution context that is currently present in ReplayManifestV3. The
+protected randomness.root_seed_hex is intentionally not rendered or stored in
+the default diagnostic fingerprint; it remains trusted checkpoint/replay
+input and is not replaced by a player-visible surrogate:
 
     engine_build
     kernel.implementation_id / semantic_version / build_profile
@@ -312,6 +328,14 @@ root seed:
     randomness.contract_id
     all ReplaySchemaVersionsV1 fields
     every DeckIdentityV1 player/deck_id/digest
+    the ReplayManifestV3.initial_identity segment anchor, including its
+    revision, status, environment counters, codec identity, full-state
+    digest, and checkpoint digest
+    the exact DigestReferenceV1 tuple for the current FullStateDigestV3
+    (envelope_version, algorithm_id, semantic_domain, payload_codec_id,
+    input_schema_id, digest_bytes)
+    the exact DigestReferenceV1 tuple for the current CheckpointDigestV3
+    using environment-checkpoint-digest-input.v3 and its digest bytes
 
 The environment group continues to retain the current checkpoint schema,
 codec identity, current status/counters, FullStateDigestV3, and
@@ -321,12 +345,26 @@ cursor values in this public/debug fingerprint surface.
 capture_complete captures one checkpoint first, reads the replay and both
 endpoint products, and then verifies the replay final identity equals that
 checkpoint's revision, digest, status, counters, codec, and checkpoint
-digest. capture_snapshot verifies that observation, information state, and
-visible decision (when present) all carry the same revision and perspective.
-The final checkpoint read must equal the first checkpoint. Any revision or
-identity drift returns a closed incoherent-capture error. This is an explicit
-revision-bound capture; it introduces no mutable cache and does not claim a
-multi-thread lock over the entire controller.
+digest. It copies the complete non-secret manifest context and the
+manifest.initial_identity anchor into the fingerprint, and derives both
+digest-reference tuples from the captured typed digests rather than from
+unrelated constants. capture_snapshot verifies that observation,
+information state, and visible decision (when present) all carry the same
+revision and perspective. The final checkpoint read must equal the first
+checkpoint. Any revision or identity drift returns a closed
+incoherent-capture error. This is an explicit revision-bound capture; it
+introduces no mutable cache and does not claim a multi-thread lock over the
+entire controller.
+
+FingerprintComparison::All compares the captured segment anchor as well as
+the current identity. FingerprintComparison::ExcludeReplayRecorder retains
+the anchor for diagnostics and separate assert_segment_anchor checks, but
+does not compare the anchor's mutable segment revision/digest/status/counter
+values because fork and restore intentionally rebase a fresh replay segment.
+It still compares the complete immutable manifest context and the digest
+reference schema/domain/codec identities. Thus excluding recorder history
+cannot drop execution-context identity and cannot make a fork look equal by
+discarding the manifest.
 
 ### EVD-014 transactional fixture contract
 
