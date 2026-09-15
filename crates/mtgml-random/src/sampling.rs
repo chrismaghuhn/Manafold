@@ -137,8 +137,7 @@ mod tests {
         assert!(words[..4].iter().all(|word| *word < threshold));
         assert!(words[4] >= threshold);
 
-        let (value, consumed, next) =
-            uniform_below_u64(&seed, &key, &cursor, bound).unwrap();
+        let (value, consumed, next) = uniform_below_u64(&seed, &key, &cursor, bound).unwrap();
         assert_eq!(consumed, 5);
         assert_eq!(next.next_raw_u64, 5);
         assert_eq!(value, words[4] % bound);

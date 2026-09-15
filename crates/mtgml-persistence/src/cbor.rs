@@ -410,7 +410,10 @@ mod tests {
         );
 
         let payload = encode_canonical(&Value::Array(vec![Value::Unsigned(0)])).unwrap();
-        for length in [envelope::MAX_IDENTIFIER_BYTES - 1, envelope::MAX_IDENTIFIER_BYTES] {
+        for length in [
+            envelope::MAX_IDENTIFIER_BYTES - 1,
+            envelope::MAX_IDENTIFIER_BYTES,
+        ] {
             let identifier = "a".repeat(length);
             assert!(envelope::encode_envelope(&identifier, "schema", &payload).is_ok());
         }
