@@ -139,11 +139,14 @@ impl ObservedEventEnvelopeV2 {
                 label,
                 exclusive_upper_bound,
                 value,
-            } if label.is_empty()
-                || *exclusive_upper_bound == 0
-                || *value >= *exclusive_upper_bound =>
-            {
-                Err(ObservationValidationError::RandomOutcome)
+            } => {
+                if label.is_empty() {
+                    return Err(ObservationValidationError::EmptyEventText);
+                }
+                if *exclusive_upper_bound == 0 || *value >= *exclusive_upper_bound {
+                    return Err(ObservationValidationError::RandomOutcome);
+                }
+                Ok(())
             }
             ObservedEventKindV2::PublicOutcome { code } if code.is_empty() => {
                 Err(ObservationValidationError::EmptyEventText)
