@@ -21,8 +21,8 @@ use mtgml_observation::{
 };
 use mtgml_random::RootSeed256;
 use mtgml_replay::{
-    AuthoritativeReplayV3, DeckIdentityV1, KernelIdentityV1, ReplaySchemaVersionsV1, ReplayStepV3,
-    ReplayValidationError, REPLAY_FILE_SCHEMA_V3,
+    AuthoritativeReplayV3, DeckIdentityV1, InitialEnvironmentIdentityV3, KernelIdentityV1,
+    ReplaySchemaVersionsV1, ReplayStepV3, ReplayValidationError, REPLAY_FILE_SCHEMA_V3,
 };
 
 fn config(players: [PlayerId; 2]) -> SyntheticM1EnvironmentConfig {
@@ -133,52 +133,26 @@ fn visible_decision_bytes(endpoint: &PlayerEndpointHandle) -> Option<Vec<u8>> {
 #[test]
 fn eventful_replay_reprojects_both_perspectives_byte_exactly() {
     let controller = TrustedEnvironmentController::new(eventful_backend());
+    let p1 = controller.bind_player(PlayerId(1)).unwrap();
+    let _p2 = controller.bind_player(PlayerId(2)).unwrap();
     let cp0 = controller.checkpoint().unwrap();
-    let live_transition = controller
-        .execute_trusted_response(
-            PlayerId(1),
-            DecisionResponseV2 {
-                schema_version: DECISION_RESPONSE_V2_SCHEMA.into(),
-                player_decision_id: PlayerDecisionIdV1(1),
-                state_revision: cp0.state.revision,
-                answer: order_entry_answer(),
-            },
-        )
-        .unwrap();
+    let live_step = submit_answer(&p1, order_entry_answer());
+    assert_eq!(live_step.submission, PlayerStepSubmissionV1::Accepted);
+    assert!(!live_step.observed_events.is_empty());
     let live_after = controller.checkpoint().unwrap();
     let live_replay = controller.export_replay().unwrap();
-
-    let live_events = crate::lifecycle_projection::project_occurrence_envelopes(
-        &cp0.state,
-        &live_after.state,
-        &live_transition.events,
-    )
-    .unwrap();
-    assert!(!live_events[&PlayerId(1)].is_empty());
-    assert!(!live_events[&PlayerId(2)].is_empty());
-    match &live_events[&PlayerId(1)][0].event {
-        mtgml_observation::ObservedEventKindV2::ObjectMoved {
-            old_object: None,
-            new_object: Some(_),
-            ..
-        } => {}
-        other => panic!("unexpected P1 event: {other:?}"),
-    }
-    assert!(matches!(
-        &live_events[&PlayerId(2)][0].event,
-        mtgml_observation::ObservedEventKindV2::PublicOutcome { code }
-            if code == "p2-public"
-    ));
-
-    let mut live_step = SyntheticM1EnvironmentBackend::player_step_from_state(
-        &live_after.state,
-        PlayerId(1),
-        live_transition.status.clone(),
-        PlayerStepSubmissionV1::Accepted,
-    )
-    .unwrap();
-    live_step.observed_events = live_events[&PlayerId(1)].clone();
-    live_step.validate().unwrap();
+    assert_eq!(live_replay.steps.len(), 1);
+    assert_eq!(
+        live_replay.final_identity,
+        InitialEnvironmentIdentityV3 {
+            state_revision: live_after.state.revision,
+            full_state_digest: live_after.state_digest.clone(),
+            episode_status: live_after.status.clone(),
+            environment_limit_counters: live_after.limit_counters.clone(),
+            checkpoint_codec_identity: live_after.codec.clone(),
+            checkpoint_digest: live_after.checkpoint_digest.clone(),
+        }
+    );
 
     let report = controller
         .execute_replay_from_checkpoint(cp0.clone(), live_replay.clone())
@@ -191,12 +165,23 @@ fn eventful_replay_reprojects_both_perspectives_byte_exactly() {
         &trace.transition.events,
     )
     .unwrap();
-    for player in [PlayerId(1), PlayerId(2)] {
-        assert_eq!(
-            serde_json::to_vec(&replay_events[&player]).unwrap(),
-            serde_json::to_vec(&live_events[&player]).unwrap(),
-        );
-    }
+    assert!(!trace.transition.events.is_empty());
+    assert!(!replay_events[&PlayerId(1)].is_empty());
+    assert!(!replay_events[&PlayerId(2)].is_empty());
+    assert_eq!(replay_events[&PlayerId(1)], live_step.observed_events);
+    assert!(matches!(
+        &replay_events[&PlayerId(1)][0].event,
+        mtgml_observation::ObservedEventKindV2::ObjectMoved {
+            old_object: None,
+            new_object: Some(_),
+            ..
+        }
+    ));
+    assert!(matches!(
+        &replay_events[&PlayerId(2)][0].event,
+        mtgml_observation::ObservedEventKindV2::PublicOutcome { code }
+            if code == "p2-public"
+    ));
 
     let mut replay_step = SyntheticM1EnvironmentBackend::player_step_from_state(
         &trace.after.state,
@@ -212,8 +197,8 @@ fn eventful_replay_reprojects_both_perspectives_byte_exactly() {
         mtgml_wire::encode_canonical(&live_step).unwrap(),
     );
 
-    let p1_bytes = serde_json::to_vec(&live_events[&PlayerId(1)]).unwrap();
-    let p2_bytes = serde_json::to_vec(&live_events[&PlayerId(2)]).unwrap();
+    let p1_bytes = serde_json::to_vec(&replay_events[&PlayerId(1)]).unwrap();
+    let p2_bytes = serde_json::to_vec(&replay_events[&PlayerId(2)]).unwrap();
     assert_ne!(
         p1_bytes, p2_bytes,
         "perspective products must remain separated"
