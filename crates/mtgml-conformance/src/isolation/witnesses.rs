@@ -21,6 +21,8 @@ use mtgml_state::{
     ZoneLocation,
 };
 
+const CONCEALED_LIBRARY_OWNER: PlayerId = PlayerId(2);
+
 /// Outcome of one authorization relation over a state pair.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RelationOutcome {
@@ -544,7 +546,7 @@ impl NonVacuityPredicate {
             Self::OpponentHiddenDefinition => {
                 hidden_definition_difference_exact(a, b, witness.perspective)
             }
-            Self::HiddenConcealedOrdering => concealed_order_diverges(a, b),
+            Self::HiddenConcealedOrdering => concealed_order_diverges(a, b, witness.perspective),
             Self::ForeignPrivateLook => foreign_record_set_differs(a, b, witness.perspective),
             Self::FaceDownIdentity => face_down_physical_swap(a, b),
             Self::RootSeedPreAuth => a.random.root_seed != b.random.root_seed,
@@ -630,33 +632,41 @@ fn face_down_count(state: &EngineState) -> usize {
         .count()
 }
 
-/// The concealed ordered-zone vectors differ between sides while each
-/// permuted vector preserves the other's member multiset and at least two
-/// objects are concealed.
-fn concealed_order_diverges(a: &EngineState, b: &EngineState) -> bool {
+/// The one foreign face-down library vector differs between sides while its
+/// member multiset is preserved and at least two objects are concealed.
+fn concealed_order_diverges(a: &EngineState, b: &EngineState, perspective: PlayerId) -> bool {
     if face_down_count(a) < 2 || face_down_count(b) < 2 {
         return false;
     }
-    let mut diverging_zones = 0;
-    for (key, members_a) in &a.zones.ordered_zones {
-        if members_a.len() < 2 {
-            continue;
-        }
-        let Some(members_b) = b.zones.ordered_zones.get(key) else {
-            return false;
-        };
-        let mut sorted_a = members_a.clone();
-        let mut sorted_b = members_b.clone();
-        sorted_a.sort_unstable();
-        sorted_b.sort_unstable();
-        if sorted_a != sorted_b || members_a.len() != members_b.len() {
-            return false;
-        }
-        if members_a != members_b {
-            diverging_zones += 1;
-        }
+    let keys: Vec<_> = a
+        .zones
+        .ordered_zones
+        .keys()
+        .filter(|key| {
+            key.zone == ZoneKind::Library
+                && key.visibility == mtgml_state::VisibilityPartition::FaceDown
+                && key.player == Some(CONCEALED_LIBRARY_OWNER)
+                && perspective != CONCEALED_LIBRARY_OWNER
+        })
+        .collect();
+    if keys.len() != 1 {
+        return false;
     }
-    diverging_zones == 1
+    let key = keys[0];
+    let Some(members_a) = a.zones.ordered_zones.get(key) else {
+        return false;
+    };
+    let Some(members_b) = b.zones.ordered_zones.get(key) else {
+        return false;
+    };
+    if members_a.len() < 2 || members_a.len() != members_b.len() {
+        return false;
+    }
+    let mut sorted_a = members_a.clone();
+    let mut sorted_b = members_b.clone();
+    sorted_a.sort_unstable();
+    sorted_b.sort_unstable();
+    sorted_a == sorted_b && members_a != members_b
 }
 
 /// The non-witness player's retained record set differs while both sides
@@ -825,6 +835,75 @@ mod tests {
     const P1: PlayerId = PlayerId(1);
     const P2: PlayerId = PlayerId(2);
 
+    fn add_public_ordered_pair(state: &mut EngineState, swapped: bool) {
+        let object = GameObjectId(3);
+        state.zones.objects.insert(
+            object,
+            mtgml_state::GameObject {
+                id: object,
+                physical_card: Some(mtgml_model::PhysicalCardId(3)),
+                card_definition: mtgml_model::CardDefinitionId(3),
+                owner: P1,
+                controller: P1,
+                tapped: false,
+                face_down: false,
+            },
+        );
+        let public_location = |offset| mtgml_state::ZoneLocation {
+            zone: ZoneKind::Battlefield,
+            player: None,
+            position: mtgml_state::ZonePosition::Top { offset },
+            visibility: mtgml_state::VisibilityPartition::Public,
+            partition: None,
+        };
+        state.zones.locations.insert(
+            GameObjectId(1),
+            public_location(if swapped { 1 } else { 0 }),
+        );
+        state
+            .zones
+            .locations
+            .insert(object, public_location(if swapped { 0 } else { 1 }));
+        let key = mtgml_state::ZoneKey {
+            zone: ZoneKind::Battlefield,
+            player: None,
+            visibility: mtgml_state::VisibilityPartition::Public,
+            partition: None,
+        };
+        state.zones.ordered_zones.insert(
+            key,
+            if swapped {
+                vec![object, GameObjectId(1)]
+            } else {
+                vec![GameObjectId(1), object]
+            },
+        );
+        for player in [P1, P2] {
+            let opaque = state.perspective_identities.players[&player]
+                .object_to_opaque
+                .get(&GameObjectId(1))
+                .copied()
+                .unwrap();
+            state
+                .knowledge
+                .players
+                .get_mut(&player)
+                .unwrap()
+                .active
+                .get_mut(&opaque)
+                .unwrap()
+                .known_location
+                .as_mut()
+                .unwrap()
+                .location
+                .position = mtgml_state::ZonePosition::Top {
+                offset: if swapped { 1 } else { 0 },
+            };
+        }
+        state.allocators.next_object_id = GameObjectId(4);
+        mtgml_state::validate_engine_state(state).unwrap();
+    }
+
     #[test]
     fn identical_clone_satisfies_all_relations() {
         let state = base_pair_state(&"11".repeat(32)).unwrap();
@@ -893,6 +972,20 @@ mod tests {
             Some(renaming_bijection()),
             NonVacuityPredicate::ObjectRenaming,
         );
+        assert_eq!(
+            assert_witness(&state_a, &state_b, &witness),
+            Err(WitnessViolation::UnauthorizedStateDifference)
+        );
+    }
+
+    #[test]
+    fn public_order_change_is_rejected_by_hidden_concealed_witness() {
+        let mut state_a = base_pair_state(&"11".repeat(32)).unwrap();
+        let mut state_b = state_a.clone();
+        add_public_ordered_pair(&mut state_a, false);
+        add_public_ordered_pair(&mut state_b, true);
+
+        let witness = PairWitness::new(P1, None, NonVacuityPredicate::HiddenConcealedOrdering);
         assert_eq!(
             assert_witness(&state_a, &state_b, &witness),
             Err(WitnessViolation::UnauthorizedStateDifference)

@@ -8,11 +8,13 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use mtgml_decision::EngineCandidateBinding;
-use mtgml_model::{AbilityInstanceId, GameObjectId, OpaqueObjectId, PlayerId};
+use mtgml_model::{AbilityInstanceId, GameObjectId, OpaqueObjectId, PlayerId, ZoneKind};
 use mtgml_random::{RandomStreamKeyV1, RandomStreamKindV1};
 use mtgml_state::{EngineState, ZoneKey};
 
 use super::witnesses::{NonVacuityPredicate, TrustedRenamingBijection};
+
+const CONCEALED_LIBRARY_OWNER: PlayerId = PlayerId(2);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
 pub(crate) enum StateRelationViolation {
@@ -128,7 +130,7 @@ fn normalize_foreign_card_definitions(
     changed_hidden_objects: &BTreeSet<GameObjectId>,
 ) {
     for (player, knowledge_a) in &a.knowledge.players {
-        if *player == perspective {
+        if *player == perspective || *player != CONCEALED_LIBRARY_OWNER {
             continue;
         }
         let Some(knowledge_b) = b.knowledge.players.get_mut(player) else {
@@ -155,35 +157,35 @@ fn normalize_foreign_card_definitions(
 }
 
 fn normalize_concealed_ordering(a: &EngineState, b: &mut EngineState, perspective: PlayerId) {
+    let Some(authoritative_key) = concealed_order_key(a, perspective) else {
+        return;
+    };
     let mut changed_members = BTreeSet::new();
-    let keys: Vec<ZoneKey> = a.zones.ordered_zones.keys().cloned().collect();
-    for key in keys {
-        let Some(members_a) = a.zones.ordered_zones.get(&key) else {
-            continue;
-        };
-        let Some(members_b) = b.zones.ordered_zones.get_mut(&key) else {
-            continue;
-        };
-        let mut sorted_a = members_a.clone();
-        let mut sorted_b = members_b.clone();
-        sorted_a.sort_unstable();
-        sorted_b.sort_unstable();
-        if sorted_a == sorted_b && members_a != members_b {
-            *members_b = members_a.clone();
-            changed_members.extend(members_a.iter().copied());
-            for object in members_a {
-                if let (Some(location_a), Some(location_b)) = (
-                    a.zones.locations.get(object),
-                    b.zones.locations.get_mut(object),
-                ) {
-                    location_b.position = location_a.position;
-                }
+    let Some(members_a) = a.zones.ordered_zones.get(&authoritative_key) else {
+        return;
+    };
+    let Some(members_b) = b.zones.ordered_zones.get_mut(&authoritative_key) else {
+        return;
+    };
+    let mut sorted_a = members_a.clone();
+    let mut sorted_b = members_b.clone();
+    sorted_a.sort_unstable();
+    sorted_b.sort_unstable();
+    if sorted_a == sorted_b && members_a != members_b {
+        *members_b = members_a.clone();
+        changed_members.extend(members_a.iter().copied());
+        for object in members_a {
+            if let (Some(location_a), Some(location_b)) = (
+                a.zones.locations.get(object),
+                b.zones.locations.get_mut(object),
+            ) {
+                location_b.position = location_a.position;
             }
         }
     }
 
     for (player, knowledge_a) in &a.knowledge.players {
-        if *player == perspective {
+        if *player == perspective || *player != CONCEALED_LIBRARY_OWNER {
             continue;
         }
         let Some(identity) = a.perspective_identities.players.get(player) else {
@@ -206,10 +208,30 @@ fn normalize_concealed_ordering(a: &EngineState, b: &mut EngineState, perspectiv
                 record_a.known_location.as_ref(),
                 record_b.known_location.as_mut(),
             ) {
-                fact_b.location.position = fact_a.location.position;
+                if fact_a.location.key() == authoritative_key
+                    && fact_b.location.key() == authoritative_key
+                {
+                    fact_b.location.position = fact_a.location.position;
+                }
             }
         }
     }
+}
+
+fn concealed_order_key(state: &EngineState, perspective: PlayerId) -> Option<ZoneKey> {
+    let keys: Vec<ZoneKey> = state
+        .zones
+        .ordered_zones
+        .keys()
+        .filter(|key| {
+            key.zone == ZoneKind::Library
+                && key.visibility == mtgml_state::VisibilityPartition::FaceDown
+                && key.player == Some(CONCEALED_LIBRARY_OWNER)
+                && perspective != CONCEALED_LIBRARY_OWNER
+        })
+        .cloned()
+        .collect();
+    (keys.len() == 1).then(|| keys[0].clone())
 }
 
 fn normalize_foreign_active_membership(
