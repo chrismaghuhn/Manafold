@@ -62,7 +62,7 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
         self.assertIn("PRE_M3_REMEDIATION_FREEZE = PASS", roadmap)
         self.assertIn("M3_STARTED = NO", roadmap)
         self.assertIn("M3_AUTHORIZED = NO", roadmap)
-        self.assertIn("M3_PRE_T0_HARDENING = IN_PROGRESS", roadmap)
+        self.assertIn("M3_PRE_T0_HARDENING = CANDIDATE", roadmap)
         self.assertIn("M3_ENTRY_DECISION = ACCEPTED_BUT_UNDER_PRE_T0_HARDENING", roadmap)
         self.assertIn("NEXT_GATE = HARDENED_PLAN_MERGE_AND_EXACT_MASTER_REAUTHORIZATION", roadmap)
         self.assertIn("M3.P0 semantic-neutral state/persistence identity cut", roadmap)
