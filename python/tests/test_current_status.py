@@ -17,7 +17,8 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
         )
         self.assertIn(
             "**Current active work area:** M3 Pre-T0 plan hardening under Issue #178; "
-            "implementation remains blocked pending a merged hardened plan and exact-master reauthorization",
+            "implementation remains blocked pending a merged hardened plan and "
+            "exact-master reauthorization",
             readme,
         )
         self.assertIn("**Core modularization:** Issue #162 `COMPLETE`", readme)
