@@ -91,7 +91,7 @@ engine.
 
 | Finding | Claimed invariant and normative owner | Current evidence owner | Production/test owner | Current proof and weakness | Post-A-G characterization | Disposition |
 |---|---|---|---|---|---|---|
-| EVD-001 | Every committed positive persistence fixture is consumed and CBOR/envelope resource boundaries and ADR-0040 precedence are exercised. Owners: docs/STATE_HASHING.md and ADR 0040. | mtgml-persistence tests and python/tests/test_persistence_codec.py. | No semantic production change; Rust positive-corpus and boundary tests in mtgml-persistence. | Rust consumes the negative manifest but not persistence/golden/manifest.json. Existing tests cover selected upper bounds, not every boundary-1/boundary/boundary+1. Hand-built tests can drift from committed bytes. | Batch G aligned the nested array/depth precedence and recorded negative parity, but did not add a Rust positive-corpus consumer or complete boundary matrix. | CONFIRMED |
+| EVD-001 | Every committed positive persistence fixture is consumed and CBOR/envelope resource boundaries and ADR-0040 precedence are exercised. Owners: docs/STATE_HASHING.md and ADR 0040. | mtgml-persistence tests and python/tests/test_persistence_codec.py. | No semantic production change; Rust positive-corpus tests in tests.rs and private byte-string boundary tests in cbor.rs. | Rust consumes the negative manifest but not persistence/golden/manifest.json. Existing tests cover selected upper bounds, not every boundary-1/boundary/boundary+1. Hand-built tests can drift from committed bytes. | Batch G aligned the nested array/depth precedence and recorded negative parity, but did not add a Rust positive-corpus consumer or complete boundary matrix. | CONFIRMED |
 | EVD-002 | The production uniform-below sampler consumes rejected raw words, advances the cursor for each word, then returns the first accepted word. Owner: RNG contract and docs/REPLAY_AND_DETERMINISM.md. | mtgml-random sampling tests. | No semantic production change; direct production-path KAT in mtgml-random. | forced_rejection_stub exercises a separate loop and never calls uniform_below_u64. A direct KAT using a bound with a known rejected prefix is absent. Common-mode risk is hidden by the disconnected stub. | Batch G did not change sampling or add direct rejection evidence. | CONFIRMED |
 | EVD-003 | Checkpoint/restore/fork parity proves correctness and nonmutation, not just equality of two executions. Owners: docs/REPLAY_AND_DETERMINISM.md and docs/TESTING_AND_CONFORMANCE.md. | mtgml-conformance isolation checkpoint_parity, fork_parity, and endpoint_pair. | No production change; conformance assertions/tests. | Several tests compare twins or a restored value without an independent exact revision, status, counter, decision, or semantic-mutation expectation. Source nonmutation is sometimes only implicit in a group comparison. | Batch G changed persistence identity only; current parity tests still contain twin-equality-only subclaims. | CONFIRMED |
 | EVD-004 | A noninterference pair differs on exactly the authorized hidden axis and matches on every other relevant state component. Owners: docs/INFORMATION_MODEL.md, docs/testing/NONINTERFERENCE_TESTING.md, and docs/THREAT_MODEL.md. | mtgml-conformance isolation/witnesses.rs and paired_matrix.rs. | No production change; conformance witness relation. | Current axis predicates are existential and the relation checks only the witness perspective's knowledge, decision, and selected identity maps. Contaminated changes in unrelated authoritative fields can survive. Marker checks do not establish the full state relation. | Batch G did not touch paired witnesses. Current ten-axis tests pass, but their construction discipline is not enforced by a full authorized-difference relation. | CONFIRMED |
@@ -393,6 +393,7 @@ The expected implementation/evidence set is deliberately bounded:
     docs/superpowers/specs/2026-09-15-pre-m3-remediation-batch-h-dispositions-and-evidence.md
     docs/normative-document-register.v1.json
     crates/mtgml-persistence/src/tests.rs
+    crates/mtgml-persistence/src/cbor.rs (test-only boundary ownership)
     crates/mtgml-random/src/sampling.rs
     crates/mtgml-conformance/src/legal_space/comparator.rs
     crates/mtgml-conformance/src/legal_space/oracle.rs
@@ -416,6 +417,16 @@ that an owner needs only an existing test, but it may not add an unreviewed
 affected owner. No wire fixture, schema, replay artifact, checkpoint
 artifact, generated contract vocabulary, or Python semantic engine is
 expected.
+
+### Recorded plan-stage scope extension
+
+The plan review identified one additional direct test owner:
+
+    DISCOVERED_AFFECTED_FILE = crates/mtgml-persistence/src/cbor.rs
+    WHY_REQUIRED = the public payload bound dominates a standalone 64 MiB byte-string boundary; the private Decoder owns the declared byte-string check
+    PRODUCTION_OR_TEST_ONLY = TEST_ONLY
+    SEMANTIC_SCOPE_CHANGE = NO
+    SCOPE_APPROVAL = required from the independent plan/design review
 
 ## 7. Compatibility, determinism, and artifact impact
 

@@ -42,10 +42,10 @@ git diff --name-only ff37f0896cdbb8e2faea424859faf128155b4579..HEAD
 Expected:
 
 ~~~text
-HEAD = d70f3b743cb27b4669610ce44f1e033cdd536e59
+PLAN_REVIEW_INPUT_HEAD = 1a0e4004bb53d3ecf253044d2a1f52ef0e79a078
 origin/master = ff37f0896cdbb8e2faea424859faf128155b4579
 status = clean
-changed files = only the Batch-H design and its register entry
+changed files = the Batch-H design, this already-committed plan, and their register entries
 ~~~
 
 The design was independently approved at exact head
@@ -56,9 +56,10 @@ BATCH_H_DESIGN_REVIEW = APPROVE
 H_SPLIT_DECISION = NO
 ~~~
 
-- [ ] **Step 2: Register the plan without changing executable contracts.**
+- [ ] **Step 2: Confirm the already-committed plan registration.**
 
-Add one document entry with:
+Do not add a duplicate entry or edit executable contracts. Verify the existing
+plan entry has this exact shape:
 
 ~~~json
 {
@@ -77,21 +78,20 @@ Run:
 git diff --check
 ~~~
 
-Expected: both commands exit 0, and the plan path exists in the register.
+Expected: both commands exit 0, and the plan path exists exactly once in the register.
 
-- [ ] **Step 3: Commit the reviewed implementation plan.**
+- [ ] **Step 3: Record the plan-review head without a self-commit step.**
 
 Run:
 
 ~~~powershell
-git add -- docs/superpowers/plans/2026-09-15-pre-m3-remediation-batch-h-conformance-evidence.md docs/normative-document-register.v1.json
-git commit -m "docs: add Batch-H conformance implementation plan"
 git rev-parse HEAD
 git status --porcelain=v1
 ~~~
 
-Record the resulting plan commit as PLAN_HEAD. Do not edit source/test/tooling
-files before BATCH_H_PLAN_REVIEW = APPROVE and
+Record the exact output as PLAN_REVIEW_HEAD. It must equal
+PLAN_REVIEW_INPUT_HEAD above for the initial independent plan review. Do not
+edit source/test/tooling files before BATCH_H_PLAN_REVIEW = APPROVE and
 PRODUCTION_IMPLEMENTATION_AUTHORIZED = YES are recorded by independent review.
 
 ## File ownership map
@@ -101,6 +101,7 @@ The code/test changes below are the only expected executable owners:
 | File | Responsibility |
 |---|---|
 | crates/mtgml-persistence/src/tests.rs | Rust positive persistence corpus and exact CBOR/envelope boundaries |
+| crates/mtgml-persistence/src/cbor.rs | Private Decoder boundary tests only; no production codec behavior change |
 | python/tests/test_persistence_codec.py | Python boundary parity over the same persistence contract |
 | crates/mtgml-random/src/sampling.rs | Direct production rejection-sampling KAT; remove disconnected stub |
 | crates/mtgml-conformance/src/legal_space/mod.rs | Shared bounded legal-space budget |
@@ -133,6 +134,7 @@ SEMANTIC_SCOPE_CHANGE for independent scope approval.
 **Files:**
 
 - Modify: crates/mtgml-persistence/src/tests.rs
+- Modify: crates/mtgml-persistence/src/cbor.rs (test-only private Decoder boundary)
 - Modify: python/tests/test_persistence_codec.py
 
 - [ ] **Step 1: Add the Rust positive-manifest consumer.**
@@ -186,10 +188,9 @@ Use direct canonical byte builders with checked lengths. For MAX_ITEMS use a
 root array containing four child arrays whose leaf counts are
 1_048_576, 1_048_576, 1_048_576, and 1_048_571 at the exact boundary; vary only
 the last count for boundary-1 and boundary+1. For MAX_BYTE_STRING_BYTES,
-exercise the private Decoder boundary inside the mtgml-persistence unit-test
-module and separately document that the public top-level payload limit
-dominates a standalone 64 MiB byte string. Do not allocate a value from an
-untrusted header before the checked bound.
+exercise the private Decoder boundary in cbor.rs and separately document that
+the public top-level payload limit dominates a standalone 64 MiB byte string.
+Do not allocate a value from an untrusted header before the checked bound.
 
 Assert the exact closed errors:
 
@@ -373,6 +374,12 @@ ExplorerBudget so existing callers remain readable. The reference automaton
 and production explorer must receive the same values, while their errors
 remain separate typed enums.
 
+Extend ExplorationBoundError with the closed
+OrderProbeRangeExceeded variant. Its meaning is that a structurally valid
+Order request advertises a maximum beyond candidate_count + 1, which the
+finite conformance explorer will not iterate. This is an explorer limitation,
+not a production legality result.
+
 - [ ] **Step 4: Add finite complement probes and prove their advertised status.**
 
 Extend is_advertised so it checks domain, candidate membership, uniqueness,
@@ -387,24 +394,44 @@ ChooseNumber: every in-range value, both checked outside-range sentinels,
               and wrong SelectOne variant
 Order: every permutation for every length 0..=candidate_count+1,
        including below-minimum and above-maximum lengths, using at most one
-       fresh unknown ID, plus one duplicate and one wrong-number variant
+       fresh unknown ID, plus one duplicate and one wrong-number variant.
+       Before enumeration, require maximum <= candidate_count + 1; when a
+       valid request declares a larger maximum, return the typed
+       OrderProbeRangeExceeded result instead of iterating the declared
+       u32 range or silently truncating it.
 ~~~
 
 Count the complete finite set before allocation. If the set exceeds
 max_generated_answers, return GeneratedAnswersExceeded. If an unknown ID
 cannot be represented because the request already uses u32::MAX, omit only
 that syntactically impossible extension and keep the typed bounded result.
+The max_total_nodes budget counts only recursion/state nodes; generated
+answers are charged to max_generated_answers so the default live scenario
+remains within 64 state nodes while every generated complement is still
+bounded.
 
-Add test generate_probes_contains_the_bounded_invalid_complement. On the base,
-use a small ChooseMany and Order request and assert the new unknown,
-duplicate, reversed, wrong-variant, below-minimum, and above-maximum shapes.
-This is a source/test characterization if the first assertions need to be
-split; every RED command must fail because the named complement is absent.
+The executable Order probe range is exactly 0 through
+candidate_count + 1. If the structurally valid request has
+maximum > candidate_count + 1, return OrderProbeRangeExceeded before any
+range iteration. This is a typed explorer limitation and must be recorded as
+BLOCKED for that generic request; it must never be reported as legal-space
+completeness.
+
+Add tests
+generate_probes_contains_the_bounded_invalid_complement and
+large_order_range_fails_closed_before_iteration. On the base, use a small
+ChooseMany and Order request and assert the new unknown, duplicate, reversed,
+wrong-variant, below-minimum, and above-maximum shapes. The large-range test
+uses maximum = u32::MAX and requires OrderProbeRangeExceeded without
+allocating or iterating the declared range. Every RED command must fail
+because the named complement/boundary behavior is absent, not because of a
+compile error or an unrelated validator.
 
 Run:
 
 ~~~powershell
 cargo test -p mtgml-conformance --locked generate_probes_contains_the_bounded_invalid_complement
+cargo test -p mtgml-conformance --locked large_order_range_fails_closed_before_iteration
 ~~~
 
 Implement the minimal probe grammar and rerun the same command. Expected:
@@ -415,6 +442,9 @@ PASS with a nonzero complement count.
 In walk, capture branch.checkpoint() immediately before each submit. For a
 Rejected step, capture branch.checkpoint() immediately after submit and return
 a new typed ExplorationFailure::RejectedMutation if the checkpoints differ.
+Do not increment max_total_nodes for each probe; charge each probe to the
+pre-counted generated-answer budget. This prevents the complement itself from
+exhausting the state-node budget.
 Do not use the source controller as the mutable branch and do not expose
 trusted details in the error.
 
@@ -476,7 +506,10 @@ max_generated_answers = 256
 
 Count every explored reference node and generated choice with checked
 arithmetic. Return typed bound errors. Require the complete reference path to
-have exactly four stages: Anchor, Number, Members, Order.
+have exactly four stages: Anchor, Number, Members, Order. For production
+Order requests, reject maximum > candidate_count + 1 with the typed
+OrderProbeRangeExceeded result before any range loop; the bounded synthetic
+live request has maximum equal to candidate_count and remains fully explored.
 
 Extend SpaceDefect with a safe TraceLengthMismatch and
 ReferenceTransitionRejected defect. Make request_sequence_defects reject:
@@ -786,22 +819,22 @@ authority.
 - Modify: crates/mtgml-conformance/src/isolation/fingerprint.rs
 - Modify: crates/mtgml-conformance/src/isolation/mod.rs
 
-- [ ] **Step 1: Add identity-surface assertions before changing capture.**
+- [ ] **Step 1: Add a source-level RED for the missing identity contract.**
 
-Add:
+Add the test fingerprint_source_declares_manifest_identity_contract. It must
+read fingerprint.rs with include_str and assert that the source declares the
+new safe fields engine_build, ReplayManifestV3 schema identity, initial
+identity, and both digest-reference surfaces. This is a source RED, not a
+compile-error RED and not a production semantic test.
 
-~~~rust
-#[test]
-fn manifest_identity_is_part_of_the_environment_fingerprint() { /* mutate
-    engine_build or schema identity and require EnvironmentGroupMismatch */ }
+Run:
 
-#[test]
-fn digest_reference_surfaces_preserve_the_declared_domains() { /* assert
-    full-state and checkpoint envelope/schema/domain/codec fields */ }
+~~~powershell
+cargo test -p mtgml-conformance --locked fingerprint_source_declares_manifest_identity_contract
 ~~~
 
-These tests may be characterization assertions over the new types. They must
-not print digest bytes, seeds, stream keys, or authoritative state.
+Expected RED reason on the current base: the fingerprint source retains only
+schema/codec fragments and no complete manifest/digest-reference surface.
 
 - [ ] **Step 2: Add complete non-secret manifest and digest-reference fields.**
 
@@ -828,7 +861,24 @@ environment-checkpoint-digest-input.v3 and the existing
 mtgml.digest-envelope.v1/sha-256/mtgml.canonical-cbor.v1 identities. Do not
 store or render randomness.root_seed_hex in this default diagnostic surface.
 
-- [ ] **Step 3: Enforce revision-bound capture.**
+- [ ] **Step 3: Add behavior tests after the fields exist.**
+
+Add:
+
+~~~rust
+#[test]
+fn manifest_identity_is_part_of_the_environment_fingerprint() { /* mutate
+    engine_build or schema identity and require EnvironmentGroupMismatch */ }
+
+#[test]
+fn digest_reference_surfaces_preserve_the_declared_domains() { /* assert
+    full-state and checkpoint envelope/schema/domain/codec fields */ }
+~~~
+
+These tests must not print digest bytes, seeds, stream keys, or authoritative
+state. Rerun the source RED from Step 1; it must now pass.
+
+- [ ] **Step 4: Enforce revision-bound capture.**
 
 In capture_snapshot, require observation, information_state, and visible
 decision (when present) to have the same perspective and revision. In
@@ -861,7 +911,7 @@ cargo test -p mtgml-conformance --all-features --locked fingerprint
 Expected: all fingerprint tests PASS and existing fork/restore comparisons
 remain valid under the clarified policy.
 
-- [ ] **Step 4: Commit fingerprint evidence.**
+- [ ] **Step 5: Commit fingerprint evidence.**
 
 ~~~powershell
 git add -- crates/mtgml-conformance/src/isolation/fingerprint.rs crates/mtgml-conformance/src/isolation/mod.rs
