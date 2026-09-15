@@ -134,9 +134,7 @@ pub(crate) mod support {
         }
     }
 
-    fn fixture_transition(error: mtgml_rules::KernelExecutionError) -> HarnessError {
-        panic!("fixture transition rejected: {error:?}");
-        #[allow(unreachable_code)]
+    fn fixture_transition(_: mtgml_rules::KernelExecutionError) -> HarnessError {
         HarnessError::FixtureTransitionRejected
     }
 
