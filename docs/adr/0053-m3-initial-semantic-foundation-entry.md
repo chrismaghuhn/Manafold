@@ -50,9 +50,10 @@ RESOLVED_CAPABILITY_COUNT = 11
 ```
 
 The closure contains the temporal/action skeleton, explicit empty-stack
-priority, ordinary draw and cleanup consequences, bounded combat declarations,
-simultaneous combat damage, basic life/marked-damage results, the selected SBA
-fixed point, and the selected zone/incarnation consequences. The companion
+priority under an authoritative pass-only precondition, ordinary draw and
+cleanup consequences, bounded combat declarations, simultaneous combat damage,
+basic life/marked-damage results, the selected SBA fixed point, and the
+selected zone/incarnation consequences. The companion
 artifact is the sole detailed identity, dependency, ownership, interaction,
 exclusion, and exit record; this ADR does not duplicate its tables.
 
@@ -80,10 +81,12 @@ S1_ID = rules/turn-structure
 S1_VERSION = 0.1.0
 S1_OWNER = turn
 S1_AUTHORITY = wotc-cr-2026-08-07-txt-20260819-sha256-4381ad1b39ab2c05f7d03633a20f711ed37277074d3266dcba5f38cbb527423f
-S1_SCOPE = two-player, format-neutral temporal structure with explicit ordinary
-           untap subset selection, fixed normal phase/step order, no-priority
-           classification, and active-player switch after cleanup
-S1_DECISION_SURFACE = active-player ChooseMany subset, minimum 0, maximum n
+S1_SCOPE = two-player, format-neutral temporal structure with deterministic
+           ordinary untap of all untap-eligible permanents, fixed normal
+           phase/step order, no-priority classification, and active-player
+           switch after cleanup
+S1_DECISION_SURFACE = none for ordinary untap; forced progress clears all
+                      untap-eligible permanents simultaneously
 ```
 
 S1 is selected from the zero-depth dependency frontier because it is the
@@ -97,8 +100,13 @@ context.
 The companion artifact also names the internal synthetic rules-input profile
 needed by the bounded combat cases without adding a Card IR, public schema, or
 second state authority. It binds the current state facts for creature type,
-power/toughness, marked damage, control age, tapped state, library order, and
-execution-context exclusions.
+power/toughness, marked damage, control age, tapped state, library order,
+inert card/action surface, and execution-context exclusions. Priority is
+offered only after the rules-owned `PASS_ONLY_PRIORITY_PRECONDITION` proves
+that no non-pass action exists; an unproven action surface fails closed before
+Decision creation. The initial conformance case admits at most eight relevant
+attackers and at most one relevant eligible blocker; more than one eligible
+blocker fails closed before a blocking Decision is generated.
 
 ### Format and M3/M4 boundary
 
@@ -115,7 +123,9 @@ Every selected node cites the exact Comprehensive Rules snapshot bound by ADR
 replacement/prevention, triggers, continuous effects, first/double strike,
 multiple blockers, empty-library draw, Commander, or multiplayer—must fail
 closed before an incorrect transition, projection, replay step, or support
-claim is produced.
+claim is produced. A pass-only priority window is offered only after its
+authoritative action-surface precondition validates; an unimplemented action
+candidate is never silently treated as absent.
 
 No domain may commit authoritative state or environment state, append replay,
 advance environment counters, bypass Decision, own projection legality, retain
@@ -166,7 +176,7 @@ Positive consequences:
 
 Costs and constraints:
 
-- the blocker assignment uses an internal typed staged Decision representation because the current M2 decision union has no pair-valued public candidate; the representation remains one atomic rules action and does not freeze a public schema;
+- the Initial Foundation bounds each case to at most one relevant eligible blocker; one blocker uses a single `ChooseOne` assignment and more than one eligible blocker fails closed before Decision creation;
 - multiple blockers per attacker and combat-damage assignment remain a separate semantic slice;
 - the M3 exit requires interaction evidence in addition to isolated capability cases;
 - semantic versions must change when meaning changes, even if the Rust file layout does not.
