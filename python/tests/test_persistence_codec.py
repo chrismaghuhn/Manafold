@@ -11,10 +11,19 @@ sys.path.insert(0, str(ROOT / "python" / "src"))
 
 from mtgml.episode import EpisodeStatus
 from mtgml.persistence import (
+    MAX_ARRAY_ELEMENTS,
+    MAX_BYTE_STRING_BYTES,
+    MAX_DEPTH,
+    MAX_IDENTIFIER_BYTES,
+    MAX_ITEMS,
+    MAX_PAYLOAD_BYTES,
+    MAX_TEXT_BYTES,
     PersistenceError,
     calculate_checkpoint_digest_v3,
     decode_canonical,
     decode_envelope,
+    encode_canonical,
+    encode_envelope,
 )
 
 
@@ -101,6 +110,73 @@ class PersistenceCodecTests(unittest.TestCase):
                 "3",
             )
         self.assertEqual(caught.exception.code, "semantic_validation")
+
+    def test_persistence_resource_boundaries_match_rust_contract(self) -> None:
+        from mtgml.persistence import _Decoder
+
+        def bytes_value(length: int) -> bytes:
+            return b"\x5a" + length.to_bytes(4, "big") + bytes(length)
+
+        def text_value(length: int) -> bytes:
+            return b"\x7a" + length.to_bytes(4, "big") + (b"a" * length)
+
+        def array_of_nulls(length: int) -> bytes:
+            return b"\x9a" + length.to_bytes(4, "big") + (b"\xf6" * length)
+
+        def nested_arrays(depth: int) -> bytes:
+            return (b"\x81" * depth) + b"\x00"
+
+        def item_boundary_payload(last_child_len: int) -> bytes:
+            lengths = (1_048_576, 1_048_576, 1_048_576, last_child_len)
+            payload = bytearray(b"\x84")
+            for length in lengths:
+                payload += b"\x9a" + length.to_bytes(4, "big") + (b"\xf6" * length)
+            return bytes(payload)
+
+        for total in (MAX_PAYLOAD_BYTES - 1, MAX_PAYLOAD_BYTES):
+            self.assertEqual(len(bytes_value(total - 5)), total)
+            self.assertEqual(len(decode_canonical(bytes_value(total - 5))), total - 5)
+        with self.assertRaises(PersistenceError) as payload_error:
+            decode_canonical(bytes(MAX_PAYLOAD_BYTES + 1))
+        self.assertEqual(payload_error.exception.code, "payload_too_large")
+
+        self.assertEqual(len(decode_canonical(text_value(MAX_TEXT_BYTES - 1))), MAX_TEXT_BYTES - 1)
+        self.assertEqual(len(decode_canonical(text_value(MAX_TEXT_BYTES))), MAX_TEXT_BYTES)
+        with self.assertRaises(PersistenceError) as text_error:
+            decode_canonical(text_value(MAX_TEXT_BYTES + 1))
+        self.assertEqual(text_error.exception.code, "string_too_large")
+
+        self.assertEqual(len(decode_canonical(array_of_nulls(MAX_ARRAY_ELEMENTS - 1))), MAX_ARRAY_ELEMENTS - 1)
+        self.assertEqual(len(decode_canonical(array_of_nulls(MAX_ARRAY_ELEMENTS))), MAX_ARRAY_ELEMENTS)
+        with self.assertRaises(PersistenceError) as array_error:
+            decode_canonical(array_of_nulls(MAX_ARRAY_ELEMENTS + 1))
+        self.assertEqual(array_error.exception.code, "array_too_large")
+
+        self.assertIsNotNone(decode_canonical(nested_arrays(MAX_DEPTH - 1)))
+        self.assertIsNotNone(decode_canonical(nested_arrays(MAX_DEPTH)))
+        with self.assertRaises(PersistenceError) as depth_error:
+            decode_canonical(nested_arrays(MAX_DEPTH + 1))
+        self.assertEqual(depth_error.exception.code, "depth_exceeded")
+
+        exact_last_child_len = MAX_ITEMS - 5 - (3 * 1_048_576)
+        self.assertIsNotNone(decode_canonical(item_boundary_payload(exact_last_child_len - 1)))
+        self.assertIsNotNone(decode_canonical(item_boundary_payload(exact_last_child_len)))
+        with self.assertRaises(PersistenceError) as items_error:
+            decode_canonical(item_boundary_payload(exact_last_child_len + 1))
+        self.assertEqual(items_error.exception.code, "item_limit_exceeded")
+
+        for length in (MAX_BYTE_STRING_BYTES - 1, MAX_BYTE_STRING_BYTES):
+            self.assertEqual(len(_Decoder(bytes_value(length)).value(0)), length)
+        with self.assertRaises(PersistenceError) as byte_error:
+            _Decoder(bytes_value(MAX_BYTE_STRING_BYTES + 1)).value(0)
+        self.assertEqual(byte_error.exception.code, "payload_too_large")
+
+        payload = encode_canonical([0])
+        for length in (MAX_IDENTIFIER_BYTES - 1, MAX_IDENTIFIER_BYTES):
+            self.assertTrue(encode_envelope("a" * length, "schema", payload))
+        with self.assertRaises(PersistenceError) as identifier_error:
+            encode_envelope("a" * (MAX_IDENTIFIER_BYTES + 1), "schema", payload)
+        self.assertEqual(identifier_error.exception.code, "envelope_identity")
 
 
 def test_cross_language_mechanical_golden_vectors() -> None:

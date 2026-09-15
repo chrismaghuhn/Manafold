@@ -501,6 +501,68 @@ fn persisted_negative_fixture_manifest_matches_rust_categories() {
 }
 
 #[test]
+fn persisted_positive_fixture_manifest_matches_rust_bytes_and_meaning() {
+    #[derive(Debug, serde::Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct Manifest {
+        schema_version: String,
+        fixtures: Vec<Fixture>,
+    }
+    #[derive(Debug, serde::Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct Fixture {
+        contract: String,
+        path: String,
+        #[serde(default)]
+        sha256: Option<String>,
+    }
+
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let raw = std::fs::read(root.join("persistence/golden/manifest.json")).unwrap();
+    let manifest: Manifest = serde_json::from_slice(&raw).unwrap();
+    assert_eq!(manifest.schema_version, "persistence-fixture-manifest.v1");
+    assert!(!manifest.fixtures.is_empty());
+
+    for fixture in manifest.fixtures {
+        let bytes = std::fs::read(root.join("persistence/golden").join(&fixture.path)).unwrap();
+        let expected_value = cbor::Value::Array(vec![
+            cbor::Value::Text("input.v1".to_owned()),
+            cbor::Value::Unsigned(7),
+        ]);
+        let expected_payload = cbor::encode_canonical(&expected_value).unwrap();
+        match (fixture.contract.as_str(), fixture.path.as_str()) {
+            ("canonical-cbor.v1", "canonical-array.cbor") => {
+                assert_eq!(bytes, expected_payload);
+                assert_eq!(cbor::decode_canonical(&bytes).unwrap(), expected_value);
+                assert_eq!(cbor::encode_canonical(&expected_value).unwrap(), bytes);
+                assert!(fixture.sha256.is_none());
+            }
+            ("digest-envelope.v1", "digest-envelope-test.cbor") => {
+                let expected = envelope::encode_envelope(
+                    "mtgml.test-domain.v1",
+                    "test-input.v1",
+                    &expected_payload,
+                )
+                .unwrap();
+                assert_eq!(bytes, expected);
+                let (reference, payload) = envelope::decode_envelope(&bytes).unwrap();
+                assert_eq!(payload, expected_payload);
+                assert_eq!(cbor::decode_canonical(&payload).unwrap(), expected_value);
+                assert_eq!(
+                    fixture.sha256.as_deref(),
+                    Some("b1188a072cbe39da6a521f51a3d5790fe1f0e4c46c25b5e90f62bf5ee4a7f6ad")
+                );
+                assert_eq!(hex(&reference.digest_bytes), fixture.sha256.unwrap());
+                assert_eq!(reference.semantic_domain, "mtgml.test-domain.v1");
+                assert_eq!(reference.input_schema_id, "test-input.v1");
+                assert_eq!(reference.digest_bytes, envelope::hash_envelope(&bytes));
+            }
+            other => panic!("unknown positive persistence fixture {other:?}"),
+        }
+    }
+}
+
+#[test]
 fn checkpoint_digest_v3_known_answer() {
     let full_state = mtgml_model::DigestReferenceV1 {
         envelope_version: envelope::DIGEST_ENVELOPE_ID.to_owned(),
