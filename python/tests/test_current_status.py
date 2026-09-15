@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import unittest
 from pathlib import Path
 
@@ -15,13 +16,15 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
             r"\*\*Foundation closure/freeze:\*\* `COMPLETE`",
         )
         self.assertIn(
-            "**Current active work area:** M3 Entry governance under Issue #178; "
-            "the separate Entry Decision is the next gate",
+            "**Current active work area:** M3 Pre-T0 plan hardening under Issue #178; "
+            "implementation remains blocked pending a merged hardened plan and exact-master reauthorization",
             readme,
         )
         self.assertIn("**Core modularization:** Issue #162 `COMPLETE`", readme)
         self.assertIn("**M3 semantic implementation:** `NOT_STARTED`", readme)
         self.assertIn("**M3 authorization:** `NOT_AUTHORIZED`", readme)
+        self.assertIn("**M3 pre-T0 hardening:** `IN_PROGRESS`", readme)
+        self.assertIn("11 Foundation capabilities are `specified` only", readme)
         self.assertNotIn(
             "Current active work area:** pre-M3 foundation reconciliation and "
             "adversarial audit preparation under Issue #105",
@@ -58,6 +61,10 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
         self.assertIn("PRE_M3_REMEDIATION_FREEZE = PASS", roadmap)
         self.assertIn("M3_STARTED = NO", roadmap)
         self.assertIn("M3_AUTHORIZED = NO", roadmap)
+        self.assertIn("M3_PRE_T0_HARDENING = IN_PROGRESS", roadmap)
+        self.assertIn("M3_ENTRY_DECISION = ACCEPTED_BUT_UNDER_PRE_T0_HARDENING", roadmap)
+        self.assertIn("NEXT_GATE = HARDENED_PLAN_MERGE_AND_EXACT_MASTER_REAUTHORIZATION", roadmap)
+        self.assertIn("M3.P0 semantic-neutral state/persistence identity cut", roadmap)
         self.assertIn("`M3 = NOT_STARTED / NOT_AUTHORIZED`", roadmap)
         self.assertIn("Issue #105", roadmap)
         self.assertNotIn("current active maintainer work area is Issue\n#130", roadmap)
@@ -69,6 +76,46 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
         self.assertNotRegex(
             readme,
             r"(?:CURRENT_STATUS|PROJECT_STATE|status\.json)",
+        )
+
+    def test_foundation_registry_is_specified_only(self) -> None:
+        registry = json.loads(
+            (ROOT / "cards" / "capabilities" / "registry.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        expected = {
+            "rules/basic-priority",
+            "rules/cleanup-reset",
+            "rules/combat-damage",
+            "rules/combat-phase",
+            "rules/declare-attackers",
+            "rules/declare-blockers",
+            "rules/damage-and-life",
+            "rules/draw-card",
+            "rules/state-based-actions-combat",
+            "rules/turn-structure",
+            "rules/zone-incarnation",
+        }
+        entries = registry["entries"]
+        self.assertEqual({entry["key"] for entry in entries}, expected)
+        self.assertEqual(len(entries), 11)
+        for entry in entries:
+            with self.subTest(capability=entry["key"]):
+                self.assertEqual(entry["version"], "0.1.0")
+                self.assertEqual(entry["lifecycle"], "specified")
+                self.assertEqual(entry["implementation_paths"], [])
+                self.assertEqual(entry["conformance_cases"], [])
+                self.assertEqual(entry["benchmark_scenarios"], [])
+
+        self.assertEqual(
+            sum(entry["lifecycle"] == "implemented" for entry in entries), 0
+        )
+        self.assertEqual(
+            sum(entry["lifecycle"] == "covered" for entry in entries), 0
+        )
+        self.assertEqual(
+            sum(entry["lifecycle"] == "certified" for entry in entries), 0
         )
 
     def test_project_source_state_points_to_the_single_current_entry_point(self) -> None:

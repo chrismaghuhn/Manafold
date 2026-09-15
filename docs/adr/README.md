@@ -1,6 +1,6 @@
 # Architecture Decision Records
 
-ADRs are immutable decision history. Superseded records remain and point to replacements. Numbered accepted records currently run through ADR 0053, and ADR 0000 is the template.
+ADRs are immutable decision history. Superseded records remain and point to replacements. Numbered accepted records currently run through ADR 0053, and ADR 0000 is the template. ADR 0054 is the current pre-T0 hardening candidate and is not accepted until its PR is merged and the separate exact-master reauthorization succeeds.
 
 ADR numbers 0042 through 0047 are historically occupied by accepted ContextApplication/M2.5 decisions that were intentionally removed from the active source tree by the post-purge cleanup. Their numbers remain permanently reserved and are not reusable; the acceptance of ADR 0048 is therefore accompanied by an explicit historical numbering gap.
 
@@ -13,7 +13,7 @@ ADR 0041 accepts the reviewed capability-oriented semantic-ownership candidate a
 
 ## Reviewed candidates awaiting acceptance
 
-Reviewed ADR candidates may be stored under `docs/adr/candidates/` without allocating a permanent ADR number. They are informative until a later acceptance change assigns the then-current number and changes the record to `Accepted`. There is currently no open reviewed candidate.
+Reviewed ADR candidates may be stored under `docs/adr/candidates/` without allocating a permanent ADR number. They are informative until a later acceptance change assigns the then-current number and changes the record to `Accepted`. ADR 0054 is the current numbered hardening candidate; it remains provisional on the candidate branch.
 
 A candidate must not be cited as accepted architecture, used to claim executable support, or used to begin a later milestone before its explicit acceptance change. Candidate numbering shown inside research material is provisional only.
 
@@ -38,6 +38,11 @@ freezes the exact capability closure, ownership graph, S1, exclusions, and
 bounded exit. Acceptance makes the decision durable on `master`, but does not
 authorize M3. Authorization requires the separate exact-`master` review,
 Issue #178 gate update, and explicit comment specified by ADR 0053.
+
+ADR 0054 records the M3 Pre-T0 hardening candidate. It preserves ADR 0053 and
+Foundation V1 as historical evidence, corrects the semantic dependency graph,
+defines Foundation V2 and the coordinated V4 state/persistence prerequisite,
+and resets current authorization pending a new exact-master review.
 
 Create a new record with:
 
