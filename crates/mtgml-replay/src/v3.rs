@@ -186,7 +186,6 @@ impl AuthoritativeReplayV3 {
                 || step.checkpoint_digest_before != previous.checkpoint_digest
                 || step.state_revision_before != previous.state_revision
                 || step.response.state_revision != previous.state_revision
-                || step.actor.0 == 0
             {
                 return Err(ReplayValidationError::RevisionDiscontinuity);
             }

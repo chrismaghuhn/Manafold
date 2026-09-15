@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import sys
 import unittest
 from pathlib import Path
@@ -7,6 +8,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "python" / "src"))
 
+from mtgml.canonical import canonical_json_bytes
 from mtgml.decision import (
     PLAYER_DECISION_REQUEST_V2_SCHEMA,
     CandidateIntent,
@@ -27,7 +29,8 @@ from mtgml.observation import (
     PlayerStepSubmissionV1,
     PlayerStepV2,
 )
-from mtgml.wire import compute_information_state_digest_v2
+from mtgml.replay import AuthoritativeReplayV3
+from mtgml.wire import compute_information_state_digest_v2, decode_canonical, encode_canonical
 
 
 class CandidateCapacityTests(unittest.TestCase):
@@ -163,6 +166,48 @@ class ActorBoundRejectionTests(unittest.TestCase):
             None,
             EpisodeStatus("truncated", TruncationReason.EXTERNAL_STOP),
         ).validate()
+
+
+def _replay_v3_with_declared_zero_actor() -> dict[str, object]:
+    value = json.loads(
+        (ROOT / "wire" / "golden" / "authoritative-replay-empty.v3.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    initial = value["manifest"]["initial_identity"]
+    value["manifest"]["decks"][0]["player"] = "0"
+    value["steps"] = [
+        {
+            "accepted": False,
+            "actor": "0",
+            "checkpoint_digest_after": initial["checkpoint_digest"],
+            "checkpoint_digest_before": initial["checkpoint_digest"],
+            "environment_limit_counters_after": initial["environment_limit_counters"],
+            "episode_status_after": initial["episode_status"],
+            "full_state_digest_after": initial["full_state_digest"],
+            "response": {
+                "answer": {"kind": "choose_number", "value": 0},
+                "player_decision_id": "1",
+                "schema_version": "decision-response.v2",
+                "state_revision": "0",
+            },
+            "state_revision_after": initial["state_revision"],
+            "state_revision_before": initial["state_revision"],
+            "step_index": 0,
+        }
+    ]
+    value["final_identity"] = dict(initial)
+    return value
+
+
+class ReplayV3PlayerZeroTests(unittest.TestCase):
+    def test_declared_zero_actor_is_structurally_valid_and_canonical(self) -> None:
+        raw = canonical_json_bytes(_replay_v3_with_declared_zero_actor())
+        replay = AuthoritativeReplayV3.from_wire(json.loads(raw.decode("utf-8")))
+        self.assertEqual(replay.steps[0].actor, 0)
+        self.assertIn(b'"actor":"0"', raw)
+        self.assertEqual(encode_canonical(replay), raw)
+        self.assertEqual(decode_canonical("authoritative-replay.v3", raw), replay)
 
 
 if __name__ == "__main__":

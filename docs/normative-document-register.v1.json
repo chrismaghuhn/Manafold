@@ -924,6 +924,13 @@
       "stability": "provisional"
     },
     {
+      "change_process": "process-pr",
+      "owner_role": "maintainer",
+      "path": "docs/superpowers/specs/2026-09-15-fnd-028-player-id-zero-implementation-evidence.md",
+      "role": "process",
+      "stability": "provisional"
+    },
+    {
       "change_process": "governance-pr",
       "owner_role": "project-governance",
       "path": "LICENSE",
