@@ -146,8 +146,12 @@ class PersistenceCodecTests(unittest.TestCase):
             decode_canonical(text_value(MAX_TEXT_BYTES + 1))
         self.assertEqual(text_error.exception.code, "string_too_large")
 
-        self.assertEqual(len(decode_canonical(array_of_nulls(MAX_ARRAY_ELEMENTS - 1))), MAX_ARRAY_ELEMENTS - 1)
-        self.assertEqual(len(decode_canonical(array_of_nulls(MAX_ARRAY_ELEMENTS))), MAX_ARRAY_ELEMENTS)
+        self.assertEqual(
+            len(decode_canonical(array_of_nulls(MAX_ARRAY_ELEMENTS - 1))), MAX_ARRAY_ELEMENTS - 1
+        )
+        self.assertEqual(
+            len(decode_canonical(array_of_nulls(MAX_ARRAY_ELEMENTS))), MAX_ARRAY_ELEMENTS
+        )
         with self.assertRaises(PersistenceError) as array_error:
             decode_canonical(array_of_nulls(MAX_ARRAY_ELEMENTS + 1))
         self.assertEqual(array_error.exception.code, "array_too_large")
