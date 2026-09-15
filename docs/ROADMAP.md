@@ -85,6 +85,20 @@ history.
 
 ## Post-M2 scope boundary
 
+The current project status is:
+
+```text
+FINAL_FOUNDATION_CLOSURE = PASS
+PRE_M3_REMEDIATION_FREEZE = PASS
+FOUNDATION_READY_FOR_M3 = YES
+CORE_MODULARIZATION = COMPLETE
+GOVERNANCE_CLEANUP = COMPLETE_FOR_CANDIDATE
+M3_STARTED = NO
+M3_AUTHORIZED = NO
+AUTHORIZATION_HEAD = NOT_SET
+M3_ENTRY_DECISION = NEXT
+```
+
 `M2.5 = NOT_CLAIMED / NOT_FROZEN`. Its abandoned census and research
 machinery was removed from the active repository; the merged history remains
 historical evidence only. Final foundation closure and the Pre-M3 Remediation

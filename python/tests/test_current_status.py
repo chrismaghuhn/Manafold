@@ -54,6 +54,10 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
 
         self.assertRegex(roadmap, r"## M2 [^\n]+\n\n\*\*Status:\*\* `COMPLETE`")
         self.assertIn("`M2.5 = NOT_CLAIMED / NOT_FROZEN`", roadmap)
+        self.assertIn("FINAL_FOUNDATION_CLOSURE = PASS", roadmap)
+        self.assertIn("PRE_M3_REMEDIATION_FREEZE = PASS", roadmap)
+        self.assertIn("M3_STARTED = NO", roadmap)
+        self.assertIn("M3_AUTHORIZED = NO", roadmap)
         self.assertIn("`M3 = NOT_STARTED / NOT_AUTHORIZED`", roadmap)
         self.assertIn("Issue #105", roadmap)
         self.assertNotIn("current active maintainer work area is Issue\n#130", roadmap)
