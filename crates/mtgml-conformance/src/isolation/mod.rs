@@ -91,4 +91,6 @@ pub enum HarnessError {
     PlayerGroupMismatch,
     #[error("replay-recorder fingerprint group mismatched")]
     ReplayRecorderGroupMismatch,
+    #[error("fingerprint capture observed inconsistent revision or identity")]
+    IncoherentFingerprintCapture,
 }
