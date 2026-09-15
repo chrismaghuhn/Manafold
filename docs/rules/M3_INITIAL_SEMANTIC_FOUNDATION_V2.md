@@ -1,17 +1,34 @@
 # M3 Initial Semantic Foundation V2
 
-**Status:** hardening candidate scope
-**Stability:** candidate / pending hardening merge and exact-master reauthorization
+**Status:** accepted on merge of PR #184; candidate until that merge
+**Stability:** accepted on hardening-PR merge; execution remains separately unauthorized
 **Artifact version:** `m3.initial-semantic-foundation.v2`
 **Candidate baseline:** `0f13b43680ea7d0b043c5baee59eb2ed3c364ecc`
-**Historical basis:** V1 was accepted by PR #182, merge commit `10f0387281529be087bcb658b779c19a70c2bf8c`; this V2 is pending the hardening PR and post-merge reauthorization
+**Historical basis:** V1 was accepted by PR #182, merge commit `10f0387281529be087bcb658b779c19a70c2bf8c`; this V2 is accepted by merge of PR #184
 **M3 state:** `M3_STARTED = NO`, `M3_AUTHORIZED = NO`
 
-This document is the current candidate operational scope record for the M3 Entry
-Decision after the pre-T0 hardening audit. Foundation V1 remains immutable
-historical accepted evidence; this V2 records the reviewed dependency correction
-and structural prerequisites. It is not an authorization and the separate
-post-merge reauthorization protocol remains mandatory.
+This document is the current operational scope record for the M3 Entry Decision
+after the pre-T0 hardening audit. Foundation V1 remains immutable historical
+accepted evidence; this V2 records the reviewed dependency correction and
+structural prerequisites. PR #184 is the acceptance vehicle for this plan.
+The separate post-merge exact-master reauthorization authorizes execution only;
+it is not an acceptance prerequisite.
+
+```text
+ADR_0054 = ACCEPTED_ON_MERGE_OF_PR_184
+FOUNDATION_V2 = ACCEPTED_HARDENED_M3_SCOPE_ON_MERGE_OF_PR_184
+M3_AUTHORIZED = NO
+AUTHORIZATION_HEAD = NOT_SET
+```
+
+The post-merge plan state is explicitly:
+
+```text
+ADR_0054 = ACCEPTED
+FOUNDATION_V2 = ACCEPTED_HARDENED_M3_SCOPE
+M3_AUTHORIZED = NO
+AUTHORIZATION_HEAD = NOT_SET
+```
 
 
 ## Hardening delta from V1
@@ -31,7 +48,7 @@ were not true capability dependencies:
 The resolved capability set, direct roots, all eleven capability identities,
 their declared scopes, the retained edges, S1, and the sixteen reviewed
 interaction obligations are otherwise unchanged. The current candidate also
-binds the coordinated semantic-neutral state/persistence cut and forced-
+    binds the coordinated semantic-neutral state/persistence cut and forced-
 progress proof prerequisites recorded in ADR 0054.
 ## 1. Decision boundary and authority
 
@@ -132,9 +149,9 @@ The facade may provide one typed internal case path containing:
 | --- | --- |
 | Case identity | Stable internal case identity and authority metadata; not a public protocol identity. |
 | Setup | Complete validated setup supplied explicitly. Setup distinguishes structural validity, case validity, and historical reachability. |
-| Driver | Real trusted controller, player endpoint, and Rust kernel path. |
-| Decision | Exact current authoritative and perspective-visible decision assertions. |
-| Response | Explicit submitted response; no driver-generated target, mode, payment, order, combat choice, or pass. |
+| Driver | One of two closed internal paths: `ResponseDriven` submits one explicit `DecisionResponseV2`; `ForcedProgressDriven` submits no response and drives only rules-owned deterministic progress. |
+| Decision | Exact current authoritative and perspective-visible decision assertions when a real Decision exists; forced-progress cases assert the absence of a fabricated Decision until the stop boundary. |
+| Response | `ResponseDriven` only: explicit submitted response with no driver-generated target, mode, payment, order, combat choice, or pass. `ForcedProgressDriven` has no response field and never represents no-choice work as a response. |
 | Acceptance | Exact accepted or rejected result. |
 | Events | Exact ordered authoritative event product. |
 | Delta | Exact complete `StateDelta` product and full reapplication check. |
@@ -174,10 +191,15 @@ path:
 6. a deliberate mismatch with deterministic first-divergence output;
 7. independently authored expectations for semantic values, distinct from harness comparator self-tests;
 8. trusted reproducible failure-packet integration where a case fails;
-9. focused and repository gates with executed evidence.
+9. `FORCED_PROGRESS_CONFORMANCE`: forced progress from a validated no-choice
+   state through the next real Decision, outcome, or unsupported stop, with
+   exact state/events/delta/digest/status/products and applicable
+   checkpoint/restore/fork/replay parity;
+10. focused and repository gates with executed evidence.
 
 Every item is `NOT_SATISFIED_AT_ENTRY`. T0 implementation begins only after
-post-merge explicit M3 authorization.
+post-merge explicit M3 authorization and, because P0 precedes T0, after the
+state-identity cut is complete and independently reviewed at its exact head.
 
 ## 4. Initial Semantic Foundation scope
 
@@ -228,11 +250,11 @@ these exact semantic facts:
 | --- | --- |
 | Player universe | Exactly two declared players; each has an `i64` life total and a `has_lost` flag. |
 | Permanent identity | Each relevant permanent has the existing owner/controller, `PhysicalCardId`, and current `GameObjectId` identity families. |
-| Permanent type | Relevant battlefield objects are creatures; no object is a planeswalker, battle, token, Aura, Equipment, or other unsupported permanent. |
-| Characteristics | Current effective power and toughness are signed integer values supplied by the authoritative state; no layer, copy, dependency, or characteristic-changing effect contributes to them. |
+| Permanent type | Relevant battlefield objects carry the closed source kind `Creature`; no object is a planeswalker, battle, token, Aura, Equipment, or other unsupported permanent. Creature qualification is derived from this source fact under the bounded profile. |
+| Characteristics | A bounded source characteristic profile supplies simple base power and toughness; the rules derive the current bounded values only when the profile proves that no layer, copy, dependency, or characteristic-changing effect contributes. |
 | Damage marking | Each relevant creature has an explicit nonnegative marked-damage value; it is retained until the selected cleanup reset. |
-| Control age | Each relevant attacker has an authoritative `controlled_since_turn` fact. The selected attacker is legal only when it was controlled continuously since the current turn began. |
-| Tapped state | `tapped` is authoritative; ordinary untap clears it simultaneously for every untap-eligible permanent in the selected simple state, and attack declaration is the only other selected mutation of that flag. |
+| Control history | Each relevant object has an authoritative typed control-history fact that distinguishes control established before the current turn from control acquired during the current turn. The selected attacker is legal only when the derived continuous-control predicate is true. |
+| Tapped state | `tapped` is authoritative; ordinary untap clears it simultaneously for every object satisfying the rules-derived untap predicate in the selected simple state, and attack declaration is the only other selected mutation of that flag. |
 | Keyword/restriction profile | Haste, defender, evasion, first/double strike, trample, deathtouch, lifelink, infect, wither, toxic, attack restrictions, block restrictions, requirements, and costs are absent. |
 | Libraries and hands | Each library is an ordered nonempty face-down sequence for the selected draw; each hand is within the selected cleanup hand-size bound; every synthetic card object is an opaque inert placeholder with no spell, land-play, ability, or other action semantics. |
 | Execution context | The stack, effects, waiting triggers, delayed effects, replacements, and format-specific state are empty or `FormatState::None`. |
@@ -258,6 +280,65 @@ OUTCOME_IF_UNPROVEN = UNSUPPORTED_ACTION_SURFACE before Decision creation
 not shorthand for an incomplete candidate generator. The rules-owned validator
 must establish it from the closed synthetic profile and authoritative state;
 otherwise the transition rejects before offering `pass_priority`.
+
+### 4.2.1 Source facts versus derived bounded rules values
+
+The V2 state cut stores source facts, not cached answers to future rules
+queries. The bounded source representation is conceptually:
+
+```text
+FoundationCreatureSource =
+  source_kind: Creature
+  base_characteristics: Simple { power, toughness }
+  marked_damage
+  control_history: ControlHistory
+
+ControlHistory =
+  BeforeTurnStart { turn_number }
+  | DuringTurn { turn_number, boundary: closed TurnPosition }
+```
+
+The rules derive creature qualification, current bounded power/toughness, and
+untap eligibility from these source facts plus the validated absence of
+unsupported type-changing, layer/copy, and no-untap machinery. In particular,
+there is no persisted `untap_eligibility` field and no persisted “effective”
+power/toughness cache. A `DuringTurn` control record with the current turn
+number does not satisfy the selected attack predicate; an earlier-turn or
+before-turn-start record does, subject to the remaining closed profile.
+
+### 4.2.2 M3 observation payload contract
+
+The player-visible temporal payload is independently versioned while retaining
+the existing `ObservationEnvelopeV1` and `ObservationDigestV1` identities:
+
+```text
+payload_codec = synthetic-m3-observation.v1
+payload_schema = synthetic-m3-observation.v1
+payload_codec_status = required after P0; not implemented by this plan
+```
+
+The canonical compact UTF-8 JSON payload has sorted keys, canonical decimal
+string IDs, and exactly these fields:
+
+```json
+{
+  "schema_version": "synthetic-m3-observation.v1",
+  "active_player": "<PlayerId>",
+  "turn_number": "<u64>",
+  "turn_position": {"kind": "precombat_main"},
+  "priority": {"kind": "none"}
+}
+```
+
+`turn_position` is a closed tagged union. Its only admitted values are
+`beginning` with `untap|upkeep|draw`, `precombat_main`, `combat` with
+`beginning_of_combat|declare_attackers|declare_blockers|combat_damage|end_of_combat`,
+`postcombat_main`, and `ending` with `end_step|cleanup`. Main phases therefore
+have no fake same-named step. The priority value is exactly `none` or
+`held_by` with an authorized player ID; it is never omitted or represented by
+a sentinel. The payload is canonicalized and digest-bound before projection.
+`synthetic-m2-observation.v1` is never reinterpreted, and V4 replay metadata
+binds the M3 payload codec explicitly.
 
 ### 4.3 Direct roots
 
@@ -316,16 +397,16 @@ does not claim that the capability is currently implemented or covered.
 
 | `key` | `version` | `role` | `summary` | `included_scope` | `explicit_exclusions` | `authority` | `dependencies` | `primary_semantic_owner` | `primary_orchestrator` | `physical_state_owner` | `decision_surface` | `information_risk` | `M3_target_lifecycle` | `entry_reason` |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `rules/turn-structure` | `0.1.0` | `root` | Deterministic two-player turn, phase, and step structure. | Active-player ownership; turn numbering; beginning, precombat main, combat, postcombat main, and ending phase order; beginning/untap/upkeep/draw and ending/end/cleanup step order; no-priority classification for untap and ordinary cleanup; deterministic simultaneous untap of every untap-eligible permanent in the selected simple state; boundary entry/exit; active-player switch after cleanup. | Game-start procedure and first-turn draw skip; day/night; phasing; no-untap effects; untap choices/restrictions created by effects; extra or skipped turns/phases/steps; additional combat phases; effects that alter durations; phase-specific choices outside the selected roots; draw and damage removal execution, which belong to their named capabilities. | Pinned snapshot; CR `500.1`, `500.3`, `500.12`, `501.1`, `502.2-502.4`, `505.1-505.2`, `512.1`, `513.1`, `514.3`. | none | `turn` | `turn-priority-progression` | `mtgml-state::EngineState` | none for ordinary untap; forced progress clears every untap-eligible permanent and offers no untap Decision | low | `covered` | Direct temporal/action root. |
+| `rules/turn-structure` | `0.1.0` | `root` | Deterministic two-player turn, phase, and step structure. | Active-player ownership; turn numbering; beginning, precombat main, combat, postcombat main, and ending phase order; beginning/untap/upkeep/draw and ending/end/cleanup step order; no-priority classification for untap and ordinary cleanup; deterministic simultaneous untap of every object satisfying the bounded rules-derived untap predicate in the selected simple state; boundary entry/exit; active-player switch after cleanup. | Game-start procedure and first-turn draw skip; day/night; phasing; no-untap effects; untap choices/restrictions created by effects; extra or skipped turns/phases/steps; additional combat phases; effects that alter durations; phase-specific choices outside the selected roots; draw and damage removal execution, which belong to their named capabilities. | Pinned snapshot; CR `500.1`, `500.3`, `500.12`, `501.1`, `502.2-502.4`, `505.1-505.2`, `512.1`, `513.1`, `514.3`. | none | `turn` | `turn-priority-progression` | `mtgml-state::EngineState` | none for ordinary untap; forced progress derives eligibility from typed source facts and the validated no-untap-modifier profile, then clears the affected set simultaneously without an untap Decision | low | `covered` | Direct temporal/action root. |
 | `rules/basic-priority` | `0.1.0` | `root` | Empty-stack priority windows and explicit pass progression. | At each selected priority-bearing step/phase boundary, the rules-owned validator first establishes `PASS_ONLY_PRIORITY_PRECONDITION`; only `pass_priority` is then offered; each explicit pass transfers priority; two successive passes end the current priority-bearing step/phase; state-based-action check precedes priority; no hidden automatic pass. | Any non-pass action surface not proven empty; spells; activated abilities; stack objects; mana abilities; triggered abilities; replacement/prevention; priority during unsupported cleanup conditions; multiplayer priority. | Pinned snapshot; CR `117.1`, `117.2c-117.2d`, `117.3a`, `117.3d`, `117.4-117.5`, `500.2`; synthetic pass-only precondition in Section 4.2. | `rules/turn-structure@0.1.0`, `rules/state-based-actions-combat@0.1.0` | `priority` | `turn-priority-progression` | `mtgml-state::EngineState` | Explicit `pass_priority` response for each offered window, but only after authoritative pass-only validation | medium | `covered` | Direct priority root required to close temporal windows without guessing; an unproven non-pass action surface fails closed. |
 | `rules/draw-card` | `0.1.0` | `root` | One ordinary draw-step card draw. | During the selected draw step, the active player puts the top card of a nonempty library into that player’s hand; the move is one authoritative zone/incarnation transition; the active player receives authorized knowledge and the opponent does not receive the card identity; no RNG is consumed by the draw itself. | Empty-library attempted draw; draw replacement; multiple draws; effects that reveal, modify, or replace a draw; drawing outside the draw step; mulligan and game-start draws; card-specific draw triggers. | Pinned snapshot; CR `121.1-121.2`, `121.4`, `401.2`, `402.1`, `504.1`; CR `121.4` is the fail-closed boundary for an empty library. | `rules/turn-structure@0.1.0`, `rules/zone-incarnation@0.1.0` | `turn` | `turn-step-action` | `mtgml-state::EngineState` | none | high | `covered` | Direct turn-action consequence required by the selected normal-turn integration. |
 | `rules/cleanup-reset` | `0.1.0` | `root` | Bounded cleanup reset for combat damage. | During an ordinary cleanup step with no discard requirement, remove damage marked on permanents and complete the no-priority cleanup path; preserve all earlier marked damage until this boundary. | Hand-size discard; cleanup-trigger exception; duration expiry for unsupported continuous effects; mana-pool semantics; additional cleanup steps; effects that modify cleanup. | Pinned snapshot; CR `120.6`, `514.1-514.3`. | `rules/turn-structure@0.1.0` | `turn` | `cleanup-damage-reset` | `mtgml-state::EngineState` | none for the selected hand-size-safe case | medium | `covered` | Direct consequence required to make marked combat damage and the next turn semantically coherent. |
 | `rules/combat-damage` | `0.1.0` | `root` | One bounded normal combat-damage step. | One combat-damage step; each attacking/blocking creature with positive power assigns its power; unblocked attackers damage the defending player; a blocked attacker and its single blocker damage each other; all assigned damage is dealt simultaneously; the selected post-damage SBA pipeline runs before the next priority window. | First strike/double strike; trample; deathtouch; lifelink; infect/wither/toxic; planeswalker/battle damage; multiple blockers per attacker; damage assignment choices; damage replacement/prevention; combat effects; creatures entering combat by effects. | Pinned snapshot; CR `510.1a-510.3`, `120.2a`, `120.3a`, `120.3e`, `120.4b-120.4d`, `120.5-120.6`. | `rules/declare-blockers@0.1.0`, `rules/damage-and-life@0.1.0`, `rules/state-based-actions-combat@0.1.0` | `combat` | `combat-damage-pipeline` | `mtgml-state::EngineState` | none in the one-blocker, no-assignment-choice scope | high | `covered` | Direct bounded combat root. |
 | `rules/combat-phase` | `0.1.0` | `dependency` | Combat phase context and step progression. | Beginning of combat, declare attackers, declare blockers, combat damage, and end of combat order; fixed defending opponent in a two-player game; skip of declare blockers and combat damage when no attackers exist; priority at each selected priority-bearing boundary after turn-based actions; removal from combat when the phase ends. | Multiplayer defending-player selection; extra/skipped combat phases; first/double-strike second damage step; effects putting attackers/blockers onto the battlefield; combat effects that alter participation. | Pinned snapshot; CR `506.1-506.3`, `507.1-507.2`, `508.8`, `511.1-511.3`. | `rules/turn-structure@0.1.0`, `rules/basic-priority@0.1.0` | `combat` | `combat-priority-progression` | `mtgml-state::EngineState` | none; declaration decisions belong to declaration capabilities | medium | `covered` | Required dependency for all selected combat steps. |
-| `rules/declare-attackers` | `0.1.0` | `dependency` | Bounded attacker declaration and legality. | Active player chooses an unordered subset of at most eight eligible, untapped creatures controlled continuously since the turn began; the fixed opponent is the attack target; selected creatures tap and become attacking; empty attack is representable; all choices are explicit and canonical. | Haste; defender; attack restrictions or requirements; attack costs; banding; attacking planeswalkers/battles; effects putting creatures onto the battlefield attacking; multiplayer target selection; card-specific attack abilities; more than eight relevant attackers in the bounded case. | Pinned snapshot; CR `506.2-506.3`, `508.1a-508.1d`, `508.1f`, `508.1k`, `508.2`, `508.8`. | `rules/combat-phase@0.1.0` | `combat` | `combat-declaration` | `mtgml-state::EngineState` | `ChooseMany` over the complete eligible attacker set, minimum `0`, maximum eligible count, with at most eight eligible attackers | high | `covered` | Required dependency for a bounded combat path and for legal attacker soundness/completeness. |
+| `rules/declare-attackers` | `0.1.0` | `dependency` | Bounded attacker declaration and legality. | Active player chooses an unordered subset of at most eight eligible, untapped source creatures whose typed control history proves continuous control since the turn began; the fixed opponent is the attack target; selected creatures tap and become attacking; empty attack is representable; all choices are explicit and canonical. | Haste; defender; attack restrictions or requirements; attack costs; banding; attacking planeswalkers/battles; effects putting creatures onto the battlefield attacking; multiplayer target selection; card-specific attack abilities; more than eight relevant attackers in the bounded case. | Pinned snapshot; CR `506.2-506.3`, `508.1a-508.1d`, `508.1f`, `508.1k`, `508.2`, `508.8`. | `rules/combat-phase@0.1.0` | `combat` | `combat-declaration` | `mtgml-state::EngineState` | `ChooseMany` over the complete derived eligible attacker set, minimum `0`, maximum eligible count, with at most eight eligible attackers | high | `covered` | Required dependency for a bounded combat path and for legal attacker soundness/completeness. |
 | `rules/declare-blockers` | `0.1.0` | `dependency` | Bounded blocker assignment with at most one relevant eligible blocker per case. | Defending player assigns zero or one untapped controlled creature to one attacking creature; with no eligible blocker the empty assignment completes without a Decision, and with exactly one eligible blocker the player chooses one attacking creature or explicit `confirm` for no block. A case with more than one eligible blocker fails closed before a blocking Decision is generated. The selected assignment is applied atomically in the rules transition workspace and the environment validates and commits or discards the complete product. No priority occurs during declaration. | Multiple blockers per attacker; any case with more than one relevant eligible blocker; evasion; blocking restrictions or requirements; block costs; banding; effects putting creatures onto the battlefield blocking; damage assignment ordering; multiplayer; more than eight relevant attackers in the bounded case. | Pinned snapshot; CR `509.1a-509.1h`, `509.2`; CR `510.1c-510.1d` defines the excluded multiple-blocker assignment boundary. | `rules/declare-attackers@0.1.0` | `combat` | `combat-declaration` | `mtgml-state::EngineState` | If exactly one eligible blocker exists, one actor-bound `ChooseOne` over the attacking creatures plus explicit `confirm`; no staged continuation in this scope | high | `covered` | Required dependency for a complete bounded one-blocker assignment and unambiguous damage recipients. |
 | `rules/damage-and-life` | `0.1.0` | `dependency` | Basic combat-damage results for life and marked creature damage. | Apply simultaneous unmodified combat damage; damage to a player causes that player to lose the amount; damage to a creature without infect/wither marks that amount; retain source, affected-object, and event roles; retain marks until cleanup. | Poison, counters from infect/wither, lifelink, toxic, prevention, replacement, damage redirection, noncombat damage, negative/unsupported characteristic calculations, life-payment semantics. | Pinned snapshot; CR `119.2-119.3`, `120.1`, `120.2a`, `120.3a`, `120.3e`, `120.4b-120.4d`, `120.6`. | none | `damage` | `combat-damage-pipeline` | `mtgml-state::EngineState` | none | high | `covered` | Required consequence of the selected combat-damage root and cleanup root. |
-| `rules/state-based-actions-combat` | `0.1.0` | `dependency` | Bounded selected state-based-action fixed point at every pre-priority boundary. | Before a player receives priority, and during the selected ordinary cleanup check, repeatedly check and perform applicable actions simultaneously: a player at `0` or less life loses; a creature with toughness `0` or less is put into its owner’s graveyard; a creature with lethal marked damage is destroyed; repeat until stable. One-player loss and simultaneous loss have the exact terminal products defined in Section 10.3. | Poison; empty-library loss; tokens; deathtouch; indestructible/regeneration; legend/world/Aura/Equipment/Role/counter/Saga/battle actions; replacement effects; triggered abilities; any unsupported condition. | Pinned snapshot; CR `104.3a-104.4a`, `119.6`, `704.1-704.3`, `704.5a`, `704.5f-704.5g`, `704.8`, `701.8`. | `rules/zone-incarnation@0.1.0` | `state_based_actions` | `combat-damage-pipeline` | `mtgml-state::EngineState` | none | high | Required pre-priority consequence, terminal boundary, and fixed point for the selected combat path. |
+| `rules/state-based-actions-combat` | `0.1.0` | `dependency` | Bounded selected state-based-action fixed point at every pre-priority boundary. | Before a player receives priority, and during the selected ordinary cleanup check, repeatedly derive and perform applicable actions simultaneously: a player at `0` or less life loses; a source with derived toughness `0` or less is put into its owner’s graveyard; a source with lethal marked damage is destroyed; repeat until stable. One-player loss and simultaneous loss have the exact terminal products defined in Section 10.3. | Poison; empty-library loss; tokens; deathtouch; indestructible/regeneration; legend/world/Aura/Equipment/Role/counter/Saga/battle actions; replacement effects; triggered abilities; any unsupported condition. | Pinned snapshot; CR `104.3a-104.4a`, `119.6`, `704.1-704.3`, `704.5a`, `704.5f-704.5g`, `704.8`, `701.8`. | `rules/zone-incarnation@0.1.0` | `state_based_actions` | `combat-damage-pipeline` | `mtgml-state::EngineState` | none | high | Required pre-priority consequence, terminal boundary, and fixed point for the selected combat path. |
 | `rules/zone-incarnation` | `0.1.0` | `dependency` | Selected zone moves with object incarnation and identity continuity. | Battlefield-to-owner-graveyard moves caused by selected SBAs and library-to-owner-hand moves caused by selected draws; every zone change creates a new `GameObjectId`; `PhysicalCardId` continuity is preserved; old-incarnation snapshot is available for the authoritative event/audit boundary; ordered library top is consumed; perspective identity/knowledge is updated through existing projection contracts. | Generic zone moves; shuffle/randomization; copy continuity; attachments; tokens; exile/command zone; cast/resolution exceptions; general LKI-dependent triggers; hidden randomization identity retirement beyond existing substrate behavior. | Pinned snapshot; CR `400.1-400.7`, `400.7j`, `401.1-401.2`, `402.1`, `700.4`; existing identity and information contracts remain binding. | none | `zones_identity` | `zone-transition-pipeline` | `mtgml-state::EngineState` | none | high | `covered` | Required identity consequence of draw and bounded SBA paths. |
 
 ### 4.6 Version policy
@@ -461,7 +542,7 @@ legality; it does not duplicate it.
 | Process | Touched owners | Primary orchestrator | Integration order |
 | --- | --- | --- | --- |
 | Turn/step progression with priority | `turn`, `priority` | `turn-priority-progression` owned by `turn` | Enter a boundary; perform the selected turn-based action, including deterministic ordinary untap; if the context is priority-bearing, invoke `priority-sba-gate` and offer explicit priority only after the pass-only precondition validates; if the context is untap or ordinary cleanup, complete the no-priority path without offering priority; advance only after the required empty-stack pass sequence. |
-| Pre-priority SBA gate | `priority`, `state_based_actions`, `damage`, `zones_identity` | `priority-sba-gate` owned by `priority` | At every selected priority boundary, run the selected SBA fixed point; offer priority only when no selected SBA action remains, `PASS_ONLY_PRIORITY_PRECONDITION` validates, and the context permits priority; emit no priority during untap or ordinary cleanup. |
+| Pre-priority SBA gate | `priority`, `state_based_actions`, `zones_identity` only when a selected SBA moves an object | `priority-sba-gate` owned by `priority` | At every selected priority boundary, run the selected SBA fixed point over authoritative life/marked-damage and source-characteristic facts; invoke the zone pipeline only when a selected SBA actually moves an object; offer priority only when no selected SBA action remains, `PASS_ONLY_PRIORITY_PRECONDITION` validates, and the context permits priority; emit no priority during untap or ordinary cleanup. The gate does not invoke damage-producer semantics. |
 | Turn-based draw | `turn`, `zones_identity`, information substrate | `turn-step-action` owned by `turn` | Validate draw-step context; consume the authoritative library top; apply the candidate zone/incarnation and authorized-knowledge changes in the rules workspace; let the environment validate and commit or discard the complete product; then offer priority. |
 | Cleanup damage reset | `turn`, `damage` | `cleanup-damage-reset` owned by `turn` | Validate ordinary cleanup; apply simultaneous marked-damage removal in the rules workspace; let the environment validate and commit or discard the product; perform the no-priority cleanup exit. |
 | Combat phase with priority | `combat`, `turn`, `priority` | `combat-priority-progression` owned by `combat` | Enter combat; run beginning-of-combat priority; invoke declarations in order; invoke damage; run end-of-combat priority; remove combat participation. |
@@ -475,12 +556,18 @@ The only delegated semantic paths are:
 
 ```text
 turn-priority-progression -> priority
-priority-sba-gate -> state_based_actions -> damage -> zones_identity
+priority-sba-gate -> state_based_actions -> zones_identity (when a selected move occurs)
 combat-priority-progression -> priority
 combat-damage-pipeline -> damage -> state_based_actions -> zones_identity
 turn-step-action -> zones_identity
 cleanup-damage-reset -> damage
 ```
+
+The `damage` owner is invoked by `combat-damage-pipeline` to produce the
+selected damage result. The pre-priority SBA gate consumes the resulting
+authoritative life/marked-damage facts and invokes no damage-producer
+semantics. This ownership distinction is independent of the capability-DAG
+removal of the two producer/consumer edges.
 
 There is no return edge from `priority`, `damage`, `state_based_actions`, or
 `zones_identity` to a local owner. The apparent turn/priority mutual runtime
@@ -521,7 +608,7 @@ S1_VERSION = 0.1.0
 S1_SCOPE =
   two-player, format-neutral temporal structure with active-player ownership,
   fixed phase/step order, ordinary untap that simultaneously clears every
-  untap-eligible simple-state permanent, explicit no-priority classification,
+  object satisfying the bounded rules-derived untap predicate, explicit no-priority classification,
   deterministic phase/step boundaries, and active-player switch after cleanup
 S1_EXCLUSIONS =
   draw execution, cleanup damage removal and conditional cleanup, priority/pass
@@ -536,8 +623,8 @@ S1_PRIMARY_ORCHESTRATOR = turn-priority-progression for integrated use;
   none for the isolated turn-only proof path
 S1_INFORMATION_RISK = LOW
 S1_DECISION_SURFACE =
-  none for ordinary untap; forced progress simultaneously clears every
-  untap-eligible simple-state permanent; priority decisions belong to
+  none for ordinary untap; forced progress derives eligibility from typed
+  source facts and simultaneously clears the affected set; priority decisions belong to
   basic-priority and remain explicit after pass-only validation
 S1_AUTHORITY_SNAPSHOT =
   wotc-cr-2026-08-07-txt-20260819-sha256-4381ad1b39ab2c05f7d03633a20f711ed37277074d3266dcba5f38cbb527423f
@@ -549,9 +636,9 @@ S1_REQUIRED_EVENTS =
   turn_boundary_entered, phase_started, step_started, untap_completed,
   step_ended, phase_ended, active_player_changed, priority_required_boundary
 S1_REQUIRED_STATE_DELTA =
-  exact current turn/phase/step context, active-player identity, turn number,
-  simultaneous tapped-state clearing for every untap-eligible simple-state
-  permanent, and no mutation to life, zones, RNG, knowledge, replay, or
+  exact current turn-position context, active-player identity, turn number,
+  simultaneous tapped-state clearing for every object satisfying the bounded
+  rules-derived untap predicate, and no mutation to life, zones, RNG, knowledge, replay, or
   environment counters
 S1_REQUIRED_REJECTION_BEHAVIOR =
   reject unsupported priority-required advancement, game-start/extra/skip
@@ -559,7 +646,7 @@ S1_REQUIRED_REJECTION_BEHAVIOR =
   ordinary-untap boundary, and any hidden choice without mutating the complete
   semantic/environment/player/replay fingerprint
 S1_REQUIRED_PROJECTION_EVIDENCE =
-  phase/step and active-player values are projected only through authorized
+  closed turn-position and active-player values are projected only through authorized
   player products; trusted IDs, hidden definitions, RNG, and diagnostics stay
   absent; paired unauthorized hidden-state variants produce identical bytes
 S1_REQUIRED_REPLAY_CHECKPOINT_FORK_EVIDENCE =
@@ -582,8 +669,8 @@ wire fields, or a new public event hierarchy.
 The minimal witnesses are synthetic and carry no card-support meaning:
 
 ```text
-S1-W-UNTAP = validated turn-2 untap state with all untap-eligible active-player
-             permanents cleared simultaneously by forced progress
+S1-W-UNTAP = validated turn-2 untap state with all objects satisfying the
+             bounded rules-derived untap predicate cleared simultaneously by forced progress
 S1-W-BOUNDARY = validated state at the end of an ordinary step with no pending stack/effect/trigger
 ```
 
@@ -597,7 +684,7 @@ implementation tasks and do not register support.
 
 | Requirement ID | Authority | Meaning | Capability |
 | --- | --- | --- | --- |
-| `M3-REQ-TURN-001` | CR `500.1`, `501.1`, `502.3-502.4`, `505.1-505.2`, `512.1`, `513.1`, `514.3` | Fixed two-player phase/step order, deterministic ordinary untap of all untap-eligible permanents, and no-priority boundaries. | `rules/turn-structure@0.1.0` |
+| `M3-REQ-TURN-001` | CR `500.1`, `501.1`, `502.3-502.4`, `505.1-505.2`, `512.1`, `513.1`, `514.3` | Fixed two-player phase/step order, deterministic ordinary untap of all objects satisfying the bounded rules-derived untap predicate, and no-priority boundaries. | `rules/turn-structure@0.1.0` |
 | `M3-REQ-PRIORITY-001` | Section 4.2 pass-only precondition; CR `117.3a`, `117.3d`, `117.4-117.5`, `500.2` | Explicit empty-stack priority and pass progression only after authoritative validation that no non-pass action surface exists. | `rules/basic-priority@0.1.0` |
 | `M3-REQ-DRAW-001` | CR `121.1`, `401.2`, `402.1`, `504.1` | One draw-step top-card move into the active player’s hand, ordered by the draw-step turn-based action. | `rules/draw-card@0.1.0` |
 | `M3-REQ-CLEANUP-001` | CR `120.6`, `514.1-514.3` | Remove marked damage at ordinary cleanup while retaining it before cleanup. | `rules/cleanup-reset@0.1.0` |
@@ -627,11 +714,11 @@ evidence.
 | Obligation ID | Reviewed seam | Closure identities | Required evidence at M3 exit | Risk | Entry state |
 | --- | --- | --- | --- | --- | --- |
 | `M3-ENTRY-001` | turn progression × priority | `turn-structure`, `basic-priority` | Exact boundary/pass sequence; deterministic ordinary untap with no untap Decision; no priority at untap/ordinary cleanup; `PASS_ONLY_PRIORITY_PRECONDITION` validates before every pass-only window; no implicit pass; state/event/delta/status parity. | high | `REVIEWED_OBLIGATION / SATISFIED_EVIDENCE = NO` |
-| `M3-ENTRY-002` | step progression × forced progress | `turn-structure`, `draw-card`, `cleanup-reset` | Forced progress untaps every untap-eligible permanent simultaneously with no player choice or priority; ordinary cleanup actions finish before priority; draw occurs exactly once; unsupported mandatory action fails closed. | medium | `REVIEWED_OBLIGATION / SATISFIED_EVIDENCE = NO` |
+| `M3-ENTRY-002` | step progression × forced progress | `turn-structure`, `draw-card`, `cleanup-reset` | Forced progress clears every object satisfying the bounded rules-derived untap predicate simultaneously with no player choice or priority; ordinary cleanup actions finish before priority; draw occurs exactly once; unsupported mandatory action fails closed. | medium | `REVIEWED_OBLIGATION / SATISFIED_EVIDENCE = NO` |
 | `M3-ENTRY-003` | draw × zone/incarnation × information | `draw-card`, `zone-incarnation` | Nonempty-library draw moves the correct top card, creates the correct new incarnation, updates only authorized knowledge, and preserves paired hidden-state bytes. | high | `REVIEWED_OBLIGATION / SATISFIED_EVIDENCE = NO` |
 | `M3-ENTRY-004` | combat phase × priority | `combat-phase`, `basic-priority` | Beginning/end combat priority sequence and empty-stack advancement are exact; the pass-only precondition is validated before each window; skipped combat steps occur only when no attackers exist. | high | `REVIEWED_OBLIGATION / SATISFIED_EVIDENCE = NO` |
 | `M3-ENTRY-005` | declare attackers × Decision | `declare-attackers`, Decision substrate | Every bounded legal attacker subset is representable exactly once; every offered subset is legal; empty attack is explicit. | high | `REVIEWED_OBLIGATION / SATISFIED_EVIDENCE = NO` |
-| `M3-ENTRY-006` | attack legality × control/status | `declare-attackers`, `turn-structure` | Continuous-control and untapped predicates are correct; haste, restrictions, requirements, and unsupported status are rejected before mutation. | medium | `REVIEWED_OBLIGATION / SATISFIED_EVIDENCE = NO` |
+| `M3-ENTRY-006` | attack legality × control/status | `declare-attackers`, `turn-structure` | Typed control-history and derived untapped predicates are correct; haste, restrictions, requirements, and unsupported status are rejected before mutation. | medium | `REVIEWED_OBLIGATION / SATISFIED_EVIDENCE = NO` |
 | `M3-ENTRY-007` | declare blockers × Decision | `declare-blockers`, Decision substrate | Every declared-scope complete choice—no block or one eligible blocker assigned to one attacker—is explicit and complete; more than one eligible blocker fails closed before a blocking Decision is generated; no default or implicit assignment is applied. | high | `REVIEWED_OBLIGATION / SATISFIED_EVIDENCE = NO` |
 | `M3-ENTRY-008` | block assignment × combat damage | `declare-blockers`, `combat-damage` | Blocked/unblocked status and every source/recipient pair match the committed assignment; no stale or trusted-ID binding crosses the player boundary. | high | `REVIEWED_OBLIGATION / SATISFIED_EVIDENCE = NO` |
 | `M3-ENTRY-009` | combat damage × life/marked damage | `combat-damage`, `damage-and-life` | Positive-power damage is simultaneous and exact; player life and creature marks match source and affected-object roles. | high | `REVIEWED_OBLIGATION / SATISFIED_EVIDENCE = NO` |
@@ -829,13 +916,15 @@ unsupported keywords, no attack/block restrictions, and hand sizes that do not
 require cleanup discard. Every synthetic card is an opaque inert placeholder,
 so the pass-only action surface is authoritative rather than an omission from
 candidate generation. The setup materializes the synthetic input profile in
-Section 4.2: creature type, current `3/3`, `2/2`, and `2/2` characteristics,
-zero initial marked damage, explicit control-age facts, and bounded library
-order. P1 has two creatures that are eligible after deterministic untap: a
+Section 4.2: creature source kind, simple base characteristics yielding
+bounded `3/3`, `2/2`, and `2/2` values, zero initial marked damage, explicit
+typed control-history facts, and bounded library order. P1 has two creatures
+that satisfy the derived eligibility predicate after deterministic untap: a
 `3/3` attacker `A` and a `2/2` attacker `C`; both begin the selected untap step
-tapped and both untap simultaneously. P2 has one eligible untapped `2/2`
-blocker `B`. After `B` has left the battlefield, P2’s next untap has no
-eligible tapped permanent and no untap Decision. P1 explicitly attacks with
+tapped and both satisfy the bounded untap predicate, so both untap
+simultaneously. P2 has one eligible untapped `2/2` blocker `B`. After `B` has
+left the battlefield, P2’s next untap has no tapped object satisfying the
+bounded predicate and no untap Decision. P1 explicitly attacks with
 `{A, C}`; P2 explicitly assigns `B` to `A`. Damage is simultaneous: `A` deals
 `3` to `B`, `B` deals `2` to `A`, and `C` deals `2` to P2. The selected SBA
 fixed point moves lethal `B` to its owner’s graveyard as a new game-object
@@ -896,11 +985,13 @@ capability. Certification remains an exact content/bundle claim under ADR
 
 ## 16. Explicit authorization protocol
 
-### 16.1 Candidate stage
+### 16.1 Pre-merge acceptance candidate
 
 While the entry PR is unmerged:
 
 ```text
+ADR_0054 = ACCEPTED_ON_MERGE_OF_PR_184
+FOUNDATION_V2 = ACCEPTED_HARDENED_M3_SCOPE_ON_MERGE_OF_PR_184
 M3_ENTRY_DECISION = HARDENING_CANDIDATE
 INITIAL_FOUNDATION = HARDENING_CANDIDATE
 M3_STARTED = NO
@@ -908,12 +999,14 @@ M3_AUTHORIZED = NO
 AUTHORIZATION_HEAD = NOT_SET
 ```
 
-The candidate branch head, green CI, Issue #178 checkbox, research report,
-proposed ADR, or this document cannot substitute for post-merge authorization.
+PR #184 is the acceptance vehicle for ADR 0054 and Foundation V2. Its merge
+accepts the hardened plan; the candidate branch head, green CI, Issue #178
+checkbox, or this document cannot authorize execution.
 
 ### 16.2 Post-merge authorization
 
-After the complete hardening PR is merged, a separate reviewed invocation must:
+After the complete hardening PR is merged, a separate reviewed invocation must
+authorize execution, not accept the already-merged plan:
 
 1. fetch the current remote `master`;
 2. verify that the exact entry PR is contained in it;
@@ -927,6 +1020,7 @@ The reauthorization comment must contain:
 
 ```text
 M3_ENTRY_REVIEW = APPROVE
+M3_PRE_T0_HARDENING_REVIEW = APPROVE
 AUTHORIZATION_HEAD = <exact current merged master SHA>
 
 INITIAL_FOUNDATION = FROZEN
@@ -938,12 +1032,14 @@ S1 = FROZEN
 
 M3_AUTHORIZED = YES
 M3_STARTED = NO
-AUTHORIZED_NEXT_TASK = M3.T0
+AUTHORIZED_NEXT_TASK = M3.P0_STATE_IDENTITY_CUT
+T0_START_REQUIRES = M3 reauthorized AND P0 complete AND P0 exact-head reviewed
 ```
 
-Only after that comment exists may T0 implementation begin. The first actual
-M3 implementation task may then set `M3_STARTED = YES`; authorization and
-execution start are distinct states.
+Only after that comment exists may the `M3.P0_STATE_IDENTITY_CUT` task begin.
+T0 implementation remains blocked until P0 is complete and independently
+reviewed at its exact head. The first actual M3 implementation task may then
+set `M3_STARTED = YES`; authorization and execution start are distinct states.
 
 ### 16.3 Authorization failure
 
@@ -977,7 +1073,8 @@ CARDS_ADDED = 0
 DECKS_ADDED = 0
 ```
 
-The historical V1 entry-scope authority remains immutable. This V2 candidate
-and ADR 0054 are the current hardening authorities pending merge and separate
-exact-master reauthorization. Issue #178 remains open as the master execution
-tracker. Issue #163 remains closed as historical planning provenance.
+The historical V1 entry-scope authority remains immutable. On merge of PR #184,
+this V2 and ADR 0054 become the accepted hardening authorities; the separate
+exact-master reauthorization then controls execution. Issue #178 remains open
+as the master execution tracker. Issue #163 remains closed as historical
+planning provenance.

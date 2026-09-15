@@ -111,6 +111,21 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
         self.assertEqual(sum(entry["lifecycle"] == "covered" for entry in entries), 0)
         self.assertEqual(sum(entry["lifecycle"] == "certified" for entry in entries), 0)
 
+    def test_plan_acceptance_is_separate_from_execution_authorization(self) -> None:
+        adr = (ROOT / "docs" / "adr" / "0054-m3-pre-t0-hardening.md").read_text(encoding="utf-8")
+        foundation = (ROOT / "docs" / "rules" / "M3_INITIAL_SEMANTIC_FOUNDATION_V2.md").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn("ADR_0054 = ACCEPTED_ON_MERGE_OF_PR_184", adr)
+        self.assertIn("FOUNDATION_V2 = ACCEPTED_HARDENED_M3_SCOPE_ON_MERGE_OF_PR_184", adr)
+        self.assertIn("ADR_0054 = ACCEPTED\nFOUNDATION_V2 = ACCEPTED_HARDENED_M3_SCOPE", adr)
+        self.assertIn("M3_AUTHORIZED = NO", adr)
+        self.assertIn("AUTHORIZED_NEXT_TASK = M3.P0_STATE_IDENTITY_CUT", adr)
+        self.assertIn("T0_START_REQUIRES = M3 reauthorized AND P0 complete", adr)
+        self.assertIn("M3_PRE_T0_HARDENING_REVIEW = APPROVE", foundation)
+        self.assertNotIn("AUTHORIZED_NEXT_TASK = M3.T0", foundation)
+
     def test_project_source_state_points_to_the_single_current_entry_point(self) -> None:
         source_state = (ROOT / "project-sources" / "33_CURRENT_PROJECT_STATE.md").read_text(
             encoding="utf-8"

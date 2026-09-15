@@ -1,6 +1,7 @@
 # ADR 0054 — M3 Pre-T0 Hardening: Capability Lifecycle, Dependency Closure, State Identity Cut, and Reauthorization
 
-- **Status:** candidate; pending hardening-PR merge and exact-master reauthorization
+- **Status:** accepted by merge of PR #184; candidate until that merge
+- **Stability:** accepted on merge of PR #184; execution remains separately unauthorized
 - **Date:** 2026-09-16
 - **Owners:** architecture maintainers; state maintainers; rules maintainers; conformance maintainers
 - **Historical basis:** accepted ADR 0053 and `M3_INITIAL_SEMANTIC_FOUNDATION_V1.md`
@@ -8,10 +9,27 @@
 - **Implementation evidence:** `NOT_RUN`; this ADR changes no production semantic behavior
 
 This ADR records the pre-T0 hardening decision for the accepted M3 Entry
-scope. It is a candidate on the hardening branch until the change is merged
-and a separate exact-`master` review reauthorizes M3. ADR 0053 and Foundation
-V1 remain immutable historical evidence; they are not rewritten to conceal the
-earlier acceptance or authorization record.
+scope. PR #184 is its acceptance vehicle: merging that PR accepts ADR 0054 and
+Foundation V2 as the hardened M3 plan. A separate exact-`master` review then
+controls execution authorization; it is not an acceptance prerequisite. ADR
+0053 and Foundation V1 remain immutable historical evidence; they are not
+rewritten to conceal the earlier acceptance or authorization record.
+
+```text
+ADR_0054 = ACCEPTED_ON_MERGE_OF_PR_184
+FOUNDATION_V2 = ACCEPTED_HARDENED_M3_SCOPE_ON_MERGE_OF_PR_184
+M3_AUTHORIZED = NO
+AUTHORIZATION_HEAD = NOT_SET
+```
+
+The post-merge plan state is explicitly:
+
+```text
+ADR_0054 = ACCEPTED
+FOUNDATION_V2 = ACCEPTED_HARDENED_M3_SCOPE
+M3_AUTHORIZED = NO
+AUTHORIZATION_HEAD = NOT_SET
+```
 
 ## 1. Context and current status authority
 
@@ -99,16 +117,16 @@ columns describe the required V4 plan; no V4 type is implemented by this ADR.
 
 | Capability | Semantic fact | Current V3 location | Missing | Authoritative vs derived | Persistence required | Checkpoint required | Digest required | Replay consequence | Observation consequence | Future generalization risk | Proposed owner | Proposed representation |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `rules/turn-structure@0.1.0` | Turn number; active player; closed phase/step position; explicit no-priority untap/cleanup boundary; simultaneous untap eligibility and tapped-state clearing. | `EngineState.core.turn_number`, `active_player`; `zones_v1.objects[].tapped`; no phase/step or no-priority value. | YES: phase/step, explicit priority absence, and untap eligibility contract. | Turn position, active player, and eligible/tapped facts are authoritative; boundary events are derived audit products. | YES | YES | YES | One accepted player response includes all deterministic forced consequences through the next decision/outcome; no untap replay response. | Authorized phase, step, active player, and priority availability may be visible; trusted IDs and hidden state remain absent. | Extra/skipped turns, extra phases, phasing, and no-untap effects must fail closed rather than fit a dynamic registry. | `turn` / `mtgml-state` physical storage | Closed `TurnPosition` plus `PriorityState`; typed untap eligibility in the bounded creature/permanent fact. |
+| `rules/turn-structure@0.1.0` | Turn number; active player; closed phase/step position; explicit no-priority untap/cleanup boundary; simultaneous clearing of tapped source facts that satisfy the bounded rules-derived untap predicate. | `EngineState.core.turn_number`, `active_player`; `zones_v1.objects[].tapped`; no phase/step or no-priority value. | YES: phase/step, explicit priority absence, and bounded state inputs for the untap predicate. | Turn position, active player, and source/tapped facts are authoritative; untap eligibility and boundary events are derived. | YES | YES | YES | One accepted player response includes all deterministic forced consequences through the next decision/outcome; no untap replay response. | Authorized phase, step, active player, and priority availability may be visible; trusted IDs and hidden state remain absent. | Extra/skipped turns, extra phases, phasing, and no-untap effects must fail closed rather than fit a dynamic registry. | `turn` / `mtgml-state` physical storage | Closed `TurnPosition` plus `PriorityState`; untap eligibility is a rules-derived predicate over typed source facts and the closed no-modifier profile. |
 | `rules/basic-priority@0.1.0` | Priority presence/absence; holder; zero/one consecutive pass state; pass-only action-surface precondition; empty-stack boundary. | `EngineState.core.priority_player`; `execution_v2.pending_authoritative_decision`; empty V3 stack/effect arrays. | YES: representable `None` and explicit pass-progress state. | Priority state and validated action surface are authoritative; “pass-only” is a validated semantic predicate, not a fixture flag. | YES | YES | YES | Each explicit pass is one player decision and one replay step; two successive passes advance through rules-owned forced progress in that same transaction. | Priority availability/authorized holder can be projected; action-surface diagnostics and trusted bindings cannot. | Spells, abilities, stack objects, triggers, replacements, and multiplayer priority remain fail-closed. | `priority` semantic owner; `mtgml-state` stores state | `PriorityState::None` or `PriorityState::HeldBy { player, consecutive_passes }`, with `consecutive_passes` restricted to `0..=1`. |
 | `rules/draw-card@0.1.0` | Draw-step context; active player; top of a nonempty ordered library; library-to-hand zone move; physical-card continuity; authorized knowledge update. | `zones_v1.ordered_zones[]`, `ZonePosition::Top`; `zones_v1.objects/locations`; `knowledge_v2` and `perspective_identities_v2`; no phase/step. | YES: draw-step context only; existing order/incarnation substrate is present. | Library order, object identity, and knowledge are authoritative; draw legality is rules-derived from turn position and profile. | YES | YES | YES | V4 replay binds the after identity and replays the authoritative zone/knowledge transition; no RNG is consumed by the draw. | Drawing player may learn the card through existing authorized knowledge; opponent-safe bytes remain independent of hidden card identity. | Empty-library, replacement, multiple-draw, and game-start cases remain unsupported. | `turn` orchestrator with `zones_identity` and information substrate | Existing ordered-zone vector with typed draw-step action and selected `ZoneTransition`. |
-| `rules/cleanup-reset@0.1.0` | Ordinary cleanup boundary; no discard requirement in the selected case; marked damage is removed exactly at cleanup and retained before it; no priority. | No marked-damage field; cleanup position absent; `zones_v1.objects[]` has tapped/face-down only. | YES: marked damage and cleanup temporal context. | Marked damage is authoritative; cleanup eligibility is derived from typed turn position and bounded profile. | YES | YES | YES | Cleanup reset is deterministic forced work inside the response transaction or initialization stabilization; it is not a player replay action. | Authorized temporal state and public tapped/consequence changes only; marks need not be exposed unless authorized by a later observation contract. | Cleanup discard, duration expiry, and cleanup-trigger exceptions remain unsupported. | `turn` semantic owner; `mtgml-state` stores marks | Bounded `marked_damage: u64` in the typed foundation creature/permanent fact; no dependency on damage producer behavior. |
+| `rules/cleanup-reset@0.1.0` | Ordinary cleanup boundary; no discard requirement in the selected case; marked damage is removed exactly at cleanup and retained before it; no priority. | No marked-damage field; cleanup position absent; `zones_v1.objects[]` has tapped/face-down only. | YES: marked damage and cleanup temporal context. | Marked damage is authoritative; cleanup eligibility is derived from typed turn position and bounded profile. | YES | YES | YES | Cleanup reset is deterministic forced work inside the response transaction or initialization stabilization; it is not a player replay action. | Authorized temporal state and public tapped/consequence changes only; marks need not be exposed unless authorized by a later observation contract. | Cleanup discard, duration expiry, and cleanup-trigger exceptions remain unsupported. | `turn` semantic owner; `mtgml-state` stores marks | Bounded `marked_damage: u64` in the typed `FoundationCreatureSource`; no dependency on damage producer behavior. |
 | `rules/combat-damage@0.1.0` | Combat step; attacking objects; defending player target; blocker assignment; positive power; simultaneous assignment/dealing; post-damage SBA boundary. | No combat context in `EngineState`; current zones only carry object/location/tapped/face-down. | YES: combat participation, assignments, simple characteristics, and marked damage. | Assignments and combat context are authoritative after explicit Decisions; positive-power and recipient results are derived within the rules transaction. | YES | YES | YES | One response transaction includes assignment, simultaneous damage, SBA fixed point, and stop at the next decision/outcome. | Public combat participation and authorized consequences may be observed; trusted object IDs and hidden bindings remain absent. | First/double strike, trample, prevention/replacement, multiple blockers, and assignment choices remain excluded. | `combat` orchestrator; `damage` and `state_based_actions` semantic owners | Typed bounded `CombatState` plus typed damage result/delta; no free-form labels. |
 | `rules/combat-phase@0.1.0` | Beginning/end combat, declaration, damage, and end-of-combat step order; fixed defending opponent; participation removal. | No phase/step or combat state. | YES | Phase/step and fixed opponent are authoritative; skip rules are derived from the bounded combat state. | YES | YES | YES | Forced phase/step transitions remain in the same replay step until a real declaration decision or outcome. | Current authorized temporal position and combat visibility are projected without privileged identities. | Additional combat phases and second damage steps fail closed. | `combat` with `turn-priority-progression` | Closed combat-step enum nested in `TurnPosition`; optional bounded `CombatState`. |
-| `rules/declare-attackers@0.1.0` | Eligible creatures; untapped state; continuous control since turn start; attacking subset; fixed defending player; explicit empty subset. | `zones_v1.objects[].controller/tapped`; no `controlled_since_turn`, creature classification, or attackers set. | YES: control age, creature qualification, and attacking set. | Control age and eligibility facts are authoritative; the legal subset is derived and exposed through a Decision. | YES | YES | YES | Accepted attacker declaration is one replay step; no implicit empty attack or default subset. | Actor receives canonical opaque/public candidates only; opponent receives only authorized public combat information. | Haste, defender, restrictions, requirements, and non-player attack targets fail closed. | `combat` / `combat-declaration` | `CombatState.attackers: ordered Vec<GameObjectId>` plus typed `FoundationCreatureFact`. |
+| `rules/declare-attackers@0.1.0` | Eligible source objects; untapped state; precise control history showing whether control began before the current turn or during it; attacking subset; fixed defending player; explicit empty subset. | `zones_v1.objects[].controller/tapped`; no control-history, source-kind, characteristic-profile, or attackers set. | YES: control history, source qualification, and attacking set. | Control history and source facts are authoritative; current eligibility and legal subset are derived and exposed through a Decision. | YES | YES | YES | Accepted attacker declaration is one replay step; no implicit empty attack or default subset. | Actor receives canonical opaque/public candidates only; opponent receives only authorized public combat information. | Haste, defender, restrictions, requirements, and non-player attack targets fail closed. | `combat` / `combat-declaration` | `CombatState.attackers: ordered Vec<GameObjectId>` plus typed `FoundationCreatureSource`. |
 | `rules/declare-blockers@0.1.0` | Attacking set; defending player; zero/one relevant blocker; complete blocker-to-attacker assignment; no priority during declaration. | No attacking or blocker assignment state. | YES | Explicit assignment is authoritative after Decision; eligible blocker set is derived from the closed profile. | YES | YES | YES | One blocker Decision, if needed, is one replay step and commits the complete assignment atomically. | Defending actor sees only authorized canonical candidates; more than one eligible blocker fails before Decision creation. | Multiple blockers, evasion, restrictions, requirements, and assignment order fail closed. | `combat` / `combat-declaration` | `CombatState.blockers` as a canonical typed mapping from attacker to zero/one blocker. |
-| `rules/damage-and-life@0.1.0` | Player life; player loss flag; simple positive power; marked creature damage; source/affected roles; simultaneous result. | `core_v1.players[].life/has_lost`; no power/toughness or marked damage. | YES: simple creature facts and marks; life/loss already exists. | Life/loss and marks are authoritative; damage assignment/result is derived from combat state and simple characteristics. | YES | YES | YES | Replay validates the V4 after identity and exact accepted transition; no separate replay action for a damage consequence. | Authorized life/loss and public consequence may be observed; source/affected trusted IDs remain restricted. | Layers, copy effects, negative/complex characteristics, lifelink, infect/wither/toxic, and replacement fail closed. | `damage` / `mtgml-state` storage | `FoundationCreatureFact { power, toughness, marked_damage, ... }` plus existing `PlayerState`. |
-| `rules/state-based-actions-combat@0.1.0` | Life loss; zero toughness; lethal marked damage; simultaneous application; fixed point; selected zone moves and terminal status. | `core_v1.players[].life/has_lost`; no creature characteristics/marks; zone incarnation exists in `zones_v1` and `ZoneTransition` event product. | YES: predicates' creature inputs and explicit fixed-point execution boundary; life/loss and zone substrate exist. | Predicates and simultaneous action set are derived by the SBA interpreter; life/marks/identity are authoritative state facts. | YES for resulting state; NO for a transient loop cursor | YES | YES | Fixed-point consequences remain inside the triggering replay step; terminal status ends the step without a next Decision. | Public loss/life/zone consequences may be projected; hidden identity and diagnostics remain absent. | Indestructible, regeneration, tokens, legend/world/Aura/Equipment/Role/counter/battle actions, and triggers fail closed. | `state_based_actions` with `zone-transition-pipeline` | Typed SBA action set/fixed point over `FoundationCreatureFact`; selected moves use `ZoneTransition`. |
+| `rules/damage-and-life@0.1.0` | Player life; player loss flag; bounded simple base power/toughness source values; marked creature damage; source/affected roles; simultaneous result. | `core_v1.players[].life/has_lost`; no base characteristic profile or marked damage. | YES: bounded source characteristics and marks; life/loss already exists. | Life/loss and marks are authoritative; bounded effective values and damage result are derived only after validating the simple no-layer profile. | YES | YES | YES | Replay validates the V4 after identity and exact accepted transition; no separate replay action for a damage consequence. | Authorized life/loss and public consequence may be observed; source/affected trusted IDs remain restricted. | Layers, copy effects, negative/complex characteristics, lifelink, infect/wither/toxic, and replacement fail closed. | `damage` / `mtgml-state` storage | `FoundationCreatureSource { kind, base_characteristics, marked_damage, control_history }` plus existing `PlayerState`; no cached effective value. |
+| `rules/state-based-actions-combat@0.1.0` | Life loss; zero toughness; lethal marked damage; simultaneous application; fixed point; selected zone moves and terminal status. | `core_v1.players[].life/has_lost`; no source characteristics/marks; zone incarnation exists in `zones_v1` and `ZoneTransition` event product. | YES: predicates' source inputs and explicit fixed-point execution boundary; life/loss and zone substrate exist. | Predicates and simultaneous action set are derived by the SBA interpreter; life/marks/identity are authoritative state facts. | YES for resulting state; NO for a transient loop cursor | YES | YES | Fixed-point consequences remain inside the triggering replay step; terminal status ends the step without a next Decision. | Public loss/life/zone consequences may be projected; hidden identity and diagnostics remain absent. | Indestructible, regeneration, tokens, legend/world/Aura/Equipment/Role/counter/battle actions, and triggers fail closed. | `state_based_actions` with `zone-transition-pipeline` | Typed SBA action set/fixed point over `FoundationCreatureSource`; selected moves use `ZoneTransition`. |
 | `rules/zone-incarnation@0.1.0` | Ordered library; physical-card continuity; new `GameObjectId`; old-incarnation snapshot/LKI input; selected draw/death moves. | `zones_v1.objects/locations/ordered_zones`; `allocators_v3.next_object_id`; `ZoneTransition.last_known/new_snapshot` exists in event products. | NO for selected live identity/order substrate; LKI is not persistent post-state. | Live objects, locations, order, and physical identity are authoritative; LKI is a transition-bound snapshot, not a cache. | YES for live state and physical continuity; NO for obsolete LKI after the transaction | YES | YES | V4 replay must reproduce the same typed transition and after identity; LKI remains part of event/delta/conformance evidence. | Existing perspective identity/knowledge lifecycle applies; public projection uses opaque IDs and authorized locations only. | Randomization, copy continuity, attachments, tokens, exile/command, and general LKI-trigger semantics remain excluded. | `zones_identity` / `zone-transition-pipeline` | Existing object/location vectors plus typed old/new `ObjectSnapshot`; no second identity owner. |
 
 The census intentionally does not add generic layers, dynamic phase registries,
@@ -261,13 +279,15 @@ CombatState =
   attackers: canonical GameObjectId[]
   blockers: canonical attacker -> zero_or_one GameObjectId mapping
 
-FoundationCreatureFact =
-  creature_qualification
-  simple_power
-  simple_toughness
+FoundationCreatureSource =
+  source_kind: Creature
+  base_characteristics: Simple { power, toughness }
   marked_damage
-  controlled_since_turn
-  untap_eligibility
+  control_history: ControlHistory
+
+ControlHistory =
+  BeforeTurnStart { turn_number }
+  | DuringTurn { turn_number, boundary: closed TurnPosition }
 ```
 
 The closed `TurnPosition` prevents invalid phase/step pairs without a free-form
@@ -277,7 +297,15 @@ convention represents absence. The pass counter is bounded because the
 selected protocol needs only zero or one consecutive pass before the second
 pass advances the boundary. Future extra turns, skips, additional combat
 steps, layers, copy effects, or format callbacks are not represented here and
-must fail closed.
+must fail closed. `FoundationCreatureSource` contains source facts only: the
+rules derive creature qualification, current bounded power/toughness, and
+untap eligibility from those facts plus the validated no-layer/no-copy and
+no-untap-modifier profile. A source acquired during the current turn is
+represented by `DuringTurn { turn_number = current_turn, ... }` and does not
+qualify for the selected attack; a source acquired during an earlier turn or
+before the current turn start does qualify if no unsupported control change is
+present. This makes continuous-control history explicit rather than encoding
+it as an ambiguous turn number.
 
 ## 8. Historical V3 compatibility
 
@@ -306,9 +334,9 @@ OBSERVATION_PAYLOAD_M2_CLASSIFICATION_AFTER_P0 = READABLE_VERIFIABLE_ONLY
 ```
 
 The new payload is a canonical compact UTF-8 JSON object with sorted keys,
-canonical decimal-string IDs, no omitted optional priority value, and exactly
-these semantic fields in addition to the envelope-bound perspective and
-revision context:
+canonical decimal-string IDs, no omitted priority value, and exactly these
+semantic fields in addition to the envelope-bound perspective and revision
+context:
 
 The canonical payload has this closed object shape (the `priority` value is
 exactly one of the two shown alternatives):
@@ -318,8 +346,7 @@ exactly one of the two shown alternatives):
   "schema_version": "synthetic-m3-observation.v1",
   "active_player": "<PlayerId>",
   "turn_number": "<u64>",
-  "phase": "<closed phase id>",
-  "step": "<closed step id>",
+  "turn_position": {"kind": "beginning", "step": "untap"},
   "priority": {"kind": "none"}
 }
 ```
@@ -331,21 +358,25 @@ or:
   "schema_version": "synthetic-m3-observation.v1",
   "active_player": "<PlayerId>",
   "turn_number": "<u64>",
-  "phase": "<closed phase id>",
-  "step": "<closed step id>",
+  "turn_position": {"kind": "combat", "step": "declare_attackers"},
   "priority": {"kind": "held_by", "player": "<PlayerId>"}
 }
 ```
 
-The admitted phase IDs are `beginning`, `precombat_main`, `combat`,
-`postcombat_main`, and `ending`. The admitted step IDs are `untap`, `upkeep`,
-`draw`, `precombat_main`, `beginning_of_combat`, `declare_attackers`,
-`declare_blockers`, `combat_damage`, `end_of_combat`, `postcombat_main`,
-`end_step`, and `cleanup`.
+The closed `turn_position` alternatives are exactly:
 
-The payload schema must reject phase/step combinations not admitted by the
-closed `TurnPosition`, and `priority.kind = none` is explicit rather than a
-missing field. Its bytes are validated canonically before the existing V1
+```text
+{"kind":"beginning","step":"untap|upkeep|draw"}
+{"kind":"precombat_main"}
+{"kind":"combat","step":"beginning_of_combat|declare_attackers|declare_blockers|combat_damage|end_of_combat"}
+{"kind":"postcombat_main"}
+{"kind":"ending","step":"end_step|cleanup"}
+```
+
+The payload schema must reject any `turn_position` variant or step not admitted
+by the closed `TurnPosition`; main phases therefore have no fake same-named
+step. `priority.kind = none` is explicit rather than a missing field. Its bytes
+are validated canonically before the existing V1
 observation digest is calculated. `synthetic-m2-observation.v1` is never
 rewritten to carry temporal fields. `ReplayManifestV4` must bind the selected
 payload codec explicitly so replay reprojection cannot silently select an
@@ -532,6 +563,7 @@ S1 = rules/turn-structure@0.1.0
 M3_AUTHORIZED = YES
 M3_STARTED = NO
 AUTHORIZED_NEXT_TASK = M3.P0_STATE_IDENTITY_CUT
+T0_START_REQUIRES = M3 reauthorized AND P0 complete AND P0 exact-head reviewed
 ```
 
 This ADR never performs that future authorization.

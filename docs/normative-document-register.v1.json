@@ -704,7 +704,7 @@
       "owner_role": "architecture-maintainer",
       "path": "docs/rules/M3_INITIAL_SEMANTIC_FOUNDATION_V2.md",
       "role": "normative",
-      "stability": "provisional"
+      "stability": "accepted"
     },
     {
       "change_process": "template-pr",
