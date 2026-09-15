@@ -72,6 +72,25 @@ fn observed_event_text_fields_are_closed_like_python_and_schema() {
 }
 
 #[test]
+fn observed_event_v2_random_empty_label_uses_empty_text_error() {
+    let event = ObservedEventEnvelopeV2 {
+        schema_version: OBSERVED_EVENT_SCHEMA_V2.into(),
+        sequence: VisibleSequence(0),
+        state_revision: StateRevision(0),
+        event: ObservedEventKindV2::RandomOutcomeVisible {
+            label: String::new(),
+            exclusive_upper_bound: 2,
+            value: 0,
+        },
+    };
+
+    assert_eq!(
+        event.validate(),
+        Err(ObservationValidationError::EmptyEventText)
+    );
+}
+
+#[test]
 fn information_state_input_excludes_trusted_fields() {
     let observation = observation(b"{}", b"{}");
     let input = InformationStateDigestInputV2 {

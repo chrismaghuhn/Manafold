@@ -350,6 +350,16 @@ fn fnd_028_replay_v3_accepts_declared_zero_actor_structurally() {
 }
 
 #[test]
+fn replay_step_identity_diagnostic_is_version_neutral() {
+    let mut manifest = manifest_v3();
+    manifest.schemas.replay_step = "replay-step.v2".into();
+
+    let error = manifest.validate().unwrap_err();
+    assert_eq!(error, ReplayValidationError::ReplayStepIdentity);
+    assert_eq!(error.to_string(), "replay-step schema identity is invalid");
+}
+
+#[test]
 fn initial_identity_rejects_impossible_counters() {
     let mut manifest = manifest_v3();
     manifest.initial_identity = v3_identity_with_unverified_checkpoint_digest(

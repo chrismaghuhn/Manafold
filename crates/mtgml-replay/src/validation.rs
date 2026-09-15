@@ -24,7 +24,7 @@ pub enum ReplayValidationError {
     EmptyReplayIdentity,
     #[error("unsupported RNG contract in replay")]
     UnsupportedRngContract,
-    #[error("replay-step schema identity must be replay-step.v2")]
+    #[error("replay-step schema identity is invalid")]
     ReplayStepIdentity,
     #[error("replay checkpoint identity does not recompute")]
     CheckpointIdentity,
