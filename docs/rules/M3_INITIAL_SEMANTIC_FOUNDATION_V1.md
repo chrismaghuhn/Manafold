@@ -119,6 +119,7 @@ The facade may provide one typed internal case path containing:
 | Rejection | Complete rejection/nonmutation fingerprint. |
 | Parity hooks | Checkpoint/restore, fork, replay, and reprojection parity hooks. |
 | Diagnostics | Deterministic first-divergence packet with trusted details kept outside player products. |
+| Failure packet | Trusted reproducible failure-packet integration with engine/build, authority, input, expected/actual identity, invariant detail, and deterministic rerun command. |
 
 T0 uses the existing authoritative proof machinery. It does not define a second
 rules program, a generic rules DSL, a public `RulesCaseV1` schema, a public wire
@@ -145,7 +146,8 @@ path:
 5. at least one exercised checkpoint, fork, or replay hook;
 6. a deliberate mismatch with deterministic first-divergence output;
 7. independently authored expectations for semantic values, distinct from harness comparator self-tests;
-8. focused and repository gates with executed evidence.
+8. trusted reproducible failure-packet integration where a case fails;
+9. focused and repository gates with executed evidence.
 
 Every item is `NOT_SATISFIED_AT_ENTRY`. T0 implementation begins only after
 post-merge explicit M3 authorization.
@@ -453,6 +455,7 @@ S1_INFORMATION_RISK = LOW
 S1_DECISION_SURFACE = NONE in the isolated scope; no auto-pass is permitted
 S1_AUTHORITY_SNAPSHOT =
   wotc-cr-2026-08-07-txt-20260819-sha256-4381ad1b39ab2c05f7d03633a20f711ed37277074d3266dcba5f38cbb527423f
+S1_ADDITIONAL_OFFICIAL_AUTHORITY = NONE
 S1_CR_SECTIONS =
   500.1, 500.3, 500.12, 501.1, 502.3-502.4, 505.1-505.2, 512.1, 513.1,
   514.3

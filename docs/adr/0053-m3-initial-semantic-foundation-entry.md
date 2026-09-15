@@ -66,7 +66,8 @@ V1. The registry remains empty.
 T0 is a thin internal `mtgml-conformance` facade over the real authoritative
 Rust execution path. It supplies exact setup, decisions, accepted/rejected
 products, events, deltas, state/digest, status, player products, nonmutation,
-parity, and first-divergence assertions. It does not calculate Magic legality,
+parity, first-divergence assertions, and trusted reproducible failure packets.
+It does not calculate Magic legality,
 does not silently complete choices, does not create a public RulesCase schema,
 and introduces zero Magic capabilities or support claims.
 
