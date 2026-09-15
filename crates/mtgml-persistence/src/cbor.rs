@@ -304,3 +304,127 @@ fn checked_length(
     }
     Ok(length)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::envelope;
+
+    fn bytes_value(length: usize) -> Vec<u8> {
+        let length = u32::try_from(length).unwrap();
+        let mut bytes = vec![0x5a];
+        bytes.extend_from_slice(&length.to_be_bytes());
+        bytes.extend(std::iter::repeat_n(0u8, length as usize));
+        bytes
+    }
+
+    fn text_value(length: usize) -> Vec<u8> {
+        let length = u32::try_from(length).unwrap();
+        let mut bytes = vec![0x7a];
+        bytes.extend_from_slice(&length.to_be_bytes());
+        bytes.extend(std::iter::repeat_n(b'a', length as usize));
+        bytes
+    }
+
+    fn array_of_nulls(length: usize) -> Vec<u8> {
+        let length = u32::try_from(length).unwrap();
+        let mut bytes = vec![0x9a];
+        bytes.extend_from_slice(&length.to_be_bytes());
+        bytes.extend(std::iter::repeat_n(0xf6, length as usize));
+        bytes
+    }
+
+    fn nested_arrays(depth: usize) -> Vec<u8> {
+        std::iter::repeat_n(0x81u8, depth)
+            .chain(std::iter::once(0x00))
+            .collect()
+    }
+
+    fn item_boundary_payload(last_child_len: usize) -> Vec<u8> {
+        let child_lengths = [1_048_576usize, 1_048_576, 1_048_576, last_child_len];
+        let mut bytes = vec![0x84];
+        for length in child_lengths {
+            bytes.extend_from_slice(&[0x9a]);
+            bytes.extend_from_slice(&u32::try_from(length).unwrap().to_be_bytes());
+            bytes.extend(std::iter::repeat_n(0xf6, length));
+        }
+        bytes
+    }
+
+    #[test]
+    fn cbor_resource_boundaries_are_exact_at_each_declared_boundary() {
+        for total in [MAX_PAYLOAD_BYTES - 1, MAX_PAYLOAD_BYTES] {
+            assert!(decode_canonical(&bytes_value(total - 5)).is_ok());
+        }
+        assert_eq!(
+            decode_canonical(&vec![0u8; MAX_PAYLOAD_BYTES + 1]).unwrap_err(),
+            PersistenceDecodeErrorV1::PayloadTooLarge
+        );
+
+        assert!(decode_canonical(&text_value(MAX_TEXT_BYTES - 1)).is_ok());
+        assert!(decode_canonical(&text_value(MAX_TEXT_BYTES)).is_ok());
+        assert_eq!(
+            decode_canonical(&text_value(MAX_TEXT_BYTES + 1)).unwrap_err(),
+            PersistenceDecodeErrorV1::StringTooLarge
+        );
+
+        assert!(decode_canonical(&array_of_nulls(MAX_ARRAY_ELEMENTS - 1)).is_ok());
+        assert!(decode_canonical(&array_of_nulls(MAX_ARRAY_ELEMENTS)).is_ok());
+        assert_eq!(
+            decode_canonical(&array_of_nulls(MAX_ARRAY_ELEMENTS + 1)).unwrap_err(),
+            PersistenceDecodeErrorV1::ArrayTooLarge
+        );
+
+        assert!(decode_canonical(&nested_arrays(MAX_DEPTH - 1)).is_ok());
+        assert!(decode_canonical(&nested_arrays(MAX_DEPTH)).is_ok());
+        assert_eq!(
+            decode_canonical(&nested_arrays(MAX_DEPTH + 1)).unwrap_err(),
+            PersistenceDecodeErrorV1::DepthExceeded
+        );
+
+        assert!(decode_canonical(&item_boundary_payload(1_048_570)).is_ok());
+        assert!(decode_canonical(&item_boundary_payload(1_048_571)).is_ok());
+        assert_eq!(
+            decode_canonical(&item_boundary_payload(1_048_572)).unwrap_err(),
+            PersistenceDecodeErrorV1::ItemLimitExceeded
+        );
+
+        for length in [MAX_BYTE_STRING_BYTES - 1, MAX_BYTE_STRING_BYTES] {
+            let bytes = bytes_value(length);
+            let mut decoder = Decoder {
+                input: &bytes,
+                offset: 0,
+                items: 0,
+            };
+            assert!(decoder.read_value(0).is_ok());
+        }
+        let bytes = bytes_value(MAX_BYTE_STRING_BYTES + 1);
+        let mut decoder = Decoder {
+            input: &bytes,
+            offset: 0,
+            items: 0,
+        };
+        assert_eq!(
+            decoder.read_value(0).unwrap_err(),
+            PersistenceDecodeErrorV1::PayloadTooLarge
+        );
+
+        let payload = encode_canonical(&Value::Array(vec![Value::Unsigned(0)])).unwrap();
+        for length in [
+            envelope::MAX_IDENTIFIER_BYTES - 1,
+            envelope::MAX_IDENTIFIER_BYTES,
+        ] {
+            let identifier = "a".repeat(length);
+            assert!(envelope::encode_envelope(&identifier, "schema", &payload).is_ok());
+        }
+        assert_eq!(
+            envelope::encode_envelope(
+                &"a".repeat(envelope::MAX_IDENTIFIER_BYTES + 1),
+                "schema",
+                &payload
+            )
+            .unwrap_err(),
+            PersistenceDecodeErrorV1::EnvelopeIdentity
+        );
+    }
+}

@@ -134,9 +134,7 @@ pub(crate) mod support {
         }
     }
 
-    fn fixture_transition(error: mtgml_rules::KernelExecutionError) -> HarnessError {
-        panic!("fixture transition rejected: {error:?}");
-        #[allow(unreachable_code)]
+    fn fixture_transition(_: mtgml_rules::KernelExecutionError) -> HarnessError {
         HarnessError::FixtureTransitionRejected
     }
 
@@ -159,7 +157,18 @@ pub(crate) mod support {
     ) -> Result<(TrustedEnvironmentController, [PlayerEndpointHandle; 2]), HarnessError> {
         let (controller, endpoints) =
             spawn_environment(base_pair_state(SEED_HEX_DECISION_RICH)?, &config())?;
+        let before = controller
+            .checkpoint()
+            .map_err(|_| HarnessError::ControllerService)?;
         let entry_step = accepted_entry_submission(&endpoints[0])?;
+        let after = controller
+            .checkpoint()
+            .map_err(|_| HarnessError::ControllerService)?;
+        crate::isolation::paired::test_support::assert_accepted_entry_progression(
+            &before,
+            &after,
+            &entry_step,
+        )?;
         assert_eq!(
             entry_step.submission,
             PlayerStepSubmissionV1::Accepted,
@@ -635,9 +644,16 @@ mod tests {
         // RESUME proof: the identical next input on original and twin.
         let original_request = visible_request(&endpoints[0])?;
         let response = choose_count_answer(&original_request, EQUAL_COUNT_VALUE)?;
+        let before_count_original = controller.checkpoint().map_err(controller_service)?;
         let step_original = endpoints[0]
             .submit(response.clone())
             .map_err(|_| HarnessError::EndpointService)?;
+        let after_count_original = controller.checkpoint().map_err(controller_service)?;
+        crate::isolation::paired::test_support::assert_accepted_count_progression(
+            &before_count_original,
+            &after_count_original,
+            &step_original,
+        )?;
         let product_original = capture_transition_product(Ok(step_original))?;
         assert_eq!(
             product_original.semantic_submission_code.as_deref(),
@@ -668,9 +684,16 @@ mod tests {
             twin_request_bytes, original_request_bytes,
             "the restored twin must expose the byte-identical pending request"
         );
+        let before_count_twin = twin.checkpoint().map_err(controller_service)?;
         let step_twin = twin_endpoints[0]
             .submit(response)
             .map_err(|_| HarnessError::EndpointService)?;
+        let after_count_twin = twin.checkpoint().map_err(controller_service)?;
+        crate::isolation::paired::test_support::assert_accepted_count_progression(
+            &before_count_twin,
+            &after_count_twin,
+            &step_twin,
+        )?;
         let product_twin = capture_transition_product(Ok(step_twin))?;
         assert_eq!(
             product_twin, product_original,

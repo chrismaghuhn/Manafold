@@ -886,8 +886,30 @@ mod tests {
         case: &PairedCase,
         pair: &SpawnedPair,
     ) -> Result<(), HarnessError> {
+        let before_a = pair[0]
+            .0
+            .checkpoint()
+            .map_err(|_| HarnessError::ControllerService)?;
+        let before_b = pair[1]
+            .0
+            .checkpoint()
+            .map_err(|_| HarnessError::ControllerService)?;
         let step_a = accepted_entry_submission(endpoint_for(&pair[0].1, P1)?)?;
         let step_b = accepted_entry_submission(endpoint_for(&pair[1].1, P1)?)?;
+        let after_a = pair[0]
+            .0
+            .checkpoint()
+            .map_err(|_| HarnessError::ControllerService)?;
+        let after_b = pair[1]
+            .0
+            .checkpoint()
+            .map_err(|_| HarnessError::ControllerService)?;
+        crate::isolation::paired::test_support::assert_accepted_entry_progression(
+            &before_a, &after_a, &step_a,
+        )?;
+        crate::isolation::paired::test_support::assert_accepted_entry_progression(
+            &before_b, &after_b, &step_b,
+        )?;
         let product_a = capture_transition_product(Ok(step_a))?;
         let product_b = capture_transition_product(Ok(step_b))?;
         assert_products_byte_equal(&product_a, &product_b);

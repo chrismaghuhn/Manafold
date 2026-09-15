@@ -15,6 +15,7 @@ mod paired;
 mod paired_matrix;
 mod rejection;
 mod replay_parity;
+mod state_relation;
 mod wire_boundary;
 mod witnesses;
 
@@ -90,4 +91,8 @@ pub enum HarnessError {
     PlayerGroupMismatch,
     #[error("replay-recorder fingerprint group mismatched")]
     ReplayRecorderGroupMismatch,
+    #[error("fingerprint capture observed inconsistent revision or identity")]
+    IncoherentFingerprintCapture,
+    #[error("accepted transition was required but the endpoint returned another outcome")]
+    AcceptedTransitionRequired,
 }

@@ -747,6 +747,7 @@ mod tests {
         axis: AxisKind,
         submitting_actor: PlayerId,
         response: DecisionResponseV2,
+        expected_clean_submission: PlayerStepSubmissionV1,
         mutant: StepLeakMutant,
     ) -> Result<(Vec<u8>, Vec<u8>), HarnessError> {
         let case = build_axis_case(axis)?;
@@ -757,6 +758,8 @@ mod tests {
         let step_b = endpoint_for(&pair[1].1, submitting_actor)?
             .submit(response)
             .map_err(|_| HarnessError::EndpointService)?;
+        assert_eq!(step_a.submission, expected_clean_submission);
+        assert_eq!(step_b.submission, expected_clean_submission);
 
         // 1. clean products are byte-equal across A/B.
         assert_eq!(
@@ -780,8 +783,8 @@ mod tests {
 
     #[test]
     fn detects_m1_resort_retained_knowledge() -> Result<(), HarnessError> {
-        // Pin the literal channel's structural impossibility: a reordered
-        // retained-knowledge array is rejected by validation.
+        // This is a structural guard: a reordered retained-knowledge array is
+        // rejected by validation, so no projector sensitivity is claimed.
         {
             let case = build_axis_case(AxisKind::ObjectRenaming)?;
             let pair = spawn_pair(&case)?;
@@ -801,8 +804,8 @@ mod tests {
 
     #[test]
     fn detects_m2_candidate_ids() -> Result<(), HarnessError> {
-        // Pin the literal channel's structural impossibility: a
-        // binding-hash-derived candidate id breaks the dense-from-zero rule.
+        // This is a structural guard: a binding-hash-derived candidate id
+        // breaks the dense-from-zero rule before projection.
         {
             let case = build_axis_case(AxisKind::ObjectRenaming)?;
             let pair = spawn_pair(&case)?;
@@ -842,6 +845,9 @@ mod tests {
             AxisKind::FaceDownIdentity,
             mtgml_model::PlayerId(1),
             response,
+            PlayerStepSubmissionV1::Rejected {
+                code: PlayerSubmissionCodeV1::StaleDecision,
+            },
             m4_submission_code_swap,
         )?;
         // The flip landed exactly where intended.

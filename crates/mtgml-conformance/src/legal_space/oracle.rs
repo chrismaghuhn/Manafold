@@ -15,16 +15,45 @@ use std::collections::BTreeSet;
 use crate::legal_space::canonical::{
     CanonicalCompleteChoice, CanonicalStageChoice, SyntheticChoiceAtom,
 };
+use crate::legal_space::LegalSpaceBudget;
 
-/// Independently declared scenario bounds (frozen M2.C fixture semantics).
+/// Independently declared bounds of the frozen M2.C assembly scenario.
 pub const SCENARIO_COUNT_MIN: i64 = 0;
 pub const SCENARIO_COUNT_MAX: i64 = 3;
+const SUPPORTED_PIECES: [u32; 3] = [0, 1, 2];
 
-/// Piece keys of the scenario. Declaration order is internal iteration
-/// order only; enumeration output must be identical for any permutation
-/// (insertion-order invariance evidence I1).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
+pub enum ReferenceSpecError {
+    #[error("reference spec contains an unsupported piece atom")]
+    UnsupportedPiece,
+    #[error("reference spec contains a duplicate piece atom")]
+    DuplicatePiece,
+    #[error("reference spec does not declare the exact frozen piece set")]
+    MissingPiece,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
+pub enum ReferenceTransitionError {
+    #[error("reference transition choice is not legal in the current state")]
+    InvalidChoice,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
+pub enum ReferenceExplorationError {
+    #[error("reference exploration depth budget exceeded")]
+    DepthExceeded,
+    #[error("reference exploration node budget exceeded")]
+    TotalNodesExceeded,
+    #[error("reference exploration generated-answer budget exceeded")]
+    GeneratedAnswersExceeded,
+    #[error("reference exploration produced a non-canonical complete path")]
+    InvalidCompletePath,
+    #[error("reference transition rejected during exploration: {0}")]
+    Transition(#[from] ReferenceTransitionError),
+}
+
+/// Independently declared scenario bounds (frozen M2.C fixture semantics).
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
 pub struct ReferenceAssemblySpec {
     pub piece_iteration_order: Vec<u32>,
 }
@@ -32,8 +61,26 @@ pub struct ReferenceAssemblySpec {
 impl Default for ReferenceAssemblySpec {
     fn default() -> Self {
         Self {
-            piece_iteration_order: vec![0, 1, 2],
+            piece_iteration_order: SUPPORTED_PIECES.to_vec(),
         }
+    }
+}
+
+impl ReferenceAssemblySpec {
+    pub fn validate(&self) -> Result<(), ReferenceSpecError> {
+        let mut seen = BTreeSet::new();
+        for piece in &self.piece_iteration_order {
+            if !SUPPORTED_PIECES.contains(piece) {
+                return Err(ReferenceSpecError::UnsupportedPiece);
+            }
+            if !seen.insert(*piece) {
+                return Err(ReferenceSpecError::DuplicatePiece);
+            }
+        }
+        if seen.len() != SUPPORTED_PIECES.len() {
+            return Err(ReferenceSpecError::MissingPiece);
+        }
+        Ok(())
     }
 }
 
@@ -67,21 +114,20 @@ pub struct ExpectedRequest {
 /// assembly scenario. It has no execution or commit authority whatsoever.
 #[derive(Debug, Clone)]
 pub struct ReferenceAutomaton {
-    #[allow(dead_code)]
-    #[allow(dead_code)]
     spec: ReferenceAssemblySpec,
     state: ReferenceAssemblyState,
 }
 
 impl ReferenceAutomaton {
-    pub fn new(spec: ReferenceAssemblySpec) -> Self {
-        Self {
+    pub fn new(spec: ReferenceAssemblySpec) -> Result<Self, ReferenceSpecError> {
+        spec.validate()?;
+        Ok(Self {
             spec,
             state: ReferenceAssemblyState::Entry,
-        }
+        })
     }
 
-    pub fn initial() -> Self {
+    pub fn initial() -> Result<Self, ReferenceSpecError> {
         Self::new(ReferenceAssemblySpec::default())
     }
 
@@ -103,19 +149,23 @@ impl ReferenceAutomaton {
                 },
                 candidate_atoms: Vec::new(),
             },
-            ReferenceAssemblyState::ChooseMembers { count } => ExpectedRequest {
-                domain: ExpectedDomain::ChooseMany {
-                    minimum: *count,
-                    maximum: *count,
-                },
-                candidate_atoms: self
+            ReferenceAssemblyState::ChooseMembers { count } => {
+                let mut candidate_atoms: Vec<SyntheticChoiceAtom> = self
                     .spec
                     .piece_iteration_order
                     .iter()
                     .filter(|piece| (**piece) < *count)
                     .map(|piece| SyntheticChoiceAtom::Piece(*piece))
-                    .collect(),
-            },
+                    .collect();
+                candidate_atoms.sort();
+                ExpectedRequest {
+                    domain: ExpectedDomain::ChooseMany {
+                        minimum: *count,
+                        maximum: *count,
+                    },
+                    candidate_atoms,
+                }
+            }
             ReferenceAssemblyState::OrderMembers { selected, .. } => ExpectedRequest {
                 domain: ExpectedDomain::Order {
                     minimum: selected.len() as u32,
@@ -160,7 +210,13 @@ impl ReferenceAutomaton {
 
     /// Advances the automaton along one legal choice (must be one of
     /// [`Self::reference_choices`]).
-    pub fn advance(&mut self, choice: &CanonicalStageChoice) {
+    pub fn advance(
+        &mut self,
+        choice: &CanonicalStageChoice,
+    ) -> Result<(), ReferenceTransitionError> {
+        if !self.reference_choices().contains(choice) {
+            return Err(ReferenceTransitionError::InvalidChoice);
+        }
         match (&self.state, choice) {
             (ReferenceAssemblyState::Entry, CanonicalStageChoice::Anchor) => {
                 self.state = ReferenceAssemblyState::ChooseCount;
@@ -188,34 +244,80 @@ impl ReferenceAutomaton {
             (ReferenceAssemblyState::OrderMembers { .. }, CanonicalStageChoice::Order(_)) => {
                 self.state = ReferenceAssemblyState::Complete;
             }
-            _ => {}
+            _ => return Err(ReferenceTransitionError::InvalidChoice),
         }
+        Ok(())
     }
 
     /// Exhaustively enumerates every complete reference choice from the
-    /// current state (bounded by the tiny frozen scenario).
-    pub fn enumerate_complete_choices(&self) -> Vec<CanonicalCompleteChoice> {
+    /// current state under the shared conformance budget.
+    pub fn enumerate_complete_choices(
+        &self,
+        budget: &LegalSpaceBudget,
+    ) -> Result<Vec<CanonicalCompleteChoice>, ReferenceExplorationError> {
         let mut out = Vec::new();
         let mut stack: Vec<(ReferenceAutomaton, Vec<CanonicalStageChoice>)> =
             vec![(self.clone(), Vec::new())];
+        let mut nodes = 0u32;
+        let mut generated_answers = 0u64;
+
         while let Some((automaton, path)) = stack.pop() {
-            for choice in automaton.reference_choices() {
+            nodes = nodes
+                .checked_add(1)
+                .ok_or(ReferenceExplorationError::TotalNodesExceeded)?;
+            if nodes > budget.max_total_nodes {
+                return Err(ReferenceExplorationError::TotalNodesExceeded);
+            }
+
+            if matches!(automaton.state, ReferenceAssemblyState::Complete) {
+                if !is_complete_path(&path) {
+                    return Err(ReferenceExplorationError::InvalidCompletePath);
+                }
+                out.push(CanonicalCompleteChoice(path));
+                continue;
+            }
+
+            let path_depth =
+                u32::try_from(path.len()).map_err(|_| ReferenceExplorationError::DepthExceeded)?;
+            if path_depth >= budget.max_depth {
+                return Err(ReferenceExplorationError::DepthExceeded);
+            }
+
+            let choices = automaton.reference_choices();
+            generated_answers = generated_answers
+                .checked_add(
+                    u64::try_from(choices.len())
+                        .map_err(|_| ReferenceExplorationError::GeneratedAnswersExceeded)?,
+                )
+                .ok_or(ReferenceExplorationError::GeneratedAnswersExceeded)?;
+            if generated_answers > budget.max_generated_answers {
+                return Err(ReferenceExplorationError::GeneratedAnswersExceeded);
+            }
+
+            for choice in choices {
                 let mut next_automaton = automaton.clone();
-                next_automaton.advance(&choice);
+                next_automaton.advance(&choice)?;
                 let mut next_path = path.clone();
                 next_path.push(choice);
-                match next_automaton.state {
-                    ReferenceAssemblyState::Complete => {
-                        out.push(CanonicalCompleteChoice(next_path))
-                    }
-                    _ => stack.push((next_automaton, next_path)),
-                }
+                stack.push((next_automaton, next_path));
             }
         }
         out.sort();
         out.dedup();
-        out
+        Ok(out)
     }
+}
+
+fn is_complete_path(path: &[CanonicalStageChoice]) -> bool {
+    matches!(
+        path,
+        [
+            CanonicalStageChoice::Anchor,
+            CanonicalStageChoice::Number(_),
+            CanonicalStageChoice::Members(_),
+            CanonicalStageChoice::Order(_)
+        ]
+    )
 }
 
 fn permutations(atoms: &BTreeSet<SyntheticChoiceAtom>) -> Vec<CanonicalStageChoice> {
@@ -244,10 +346,13 @@ fn permute_recursive(
 #[cfg(test)]
 mod debug {
     use super::*;
+
     #[test]
     fn debug_enumerate_count() {
-        let auto = ReferenceAutomaton::initial();
-        let all = auto.enumerate_complete_choices();
+        let auto = ReferenceAutomaton::initial().unwrap();
+        let all = auto
+            .enumerate_complete_choices(&LegalSpaceBudget::default())
+            .unwrap();
         eprintln!("total: {}", all.len());
         for (i, choice) in all.iter().enumerate() {
             eprintln!("  [{i}] {choice:?}");

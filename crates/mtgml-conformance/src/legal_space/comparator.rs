@@ -22,6 +22,10 @@ pub enum SpaceDefect {
     OutOfContractAccepted { count: u64 },
     /// Observed visible request diverges from the independent expectation.
     RequestShapeMismatch { index: usize, detail: String },
+    /// The path and request trace do not have the same bounded length.
+    TraceLengthMismatch { expected: usize, observed: usize },
+    /// A reference transition was invalid or was attempted after completion.
+    ReferenceTransitionRejected { index: usize },
 }
 
 fn domains_match(
@@ -87,11 +91,27 @@ pub fn request_sequence_defects(
 ) -> Vec<SpaceDefect> {
     let mut automaton = automaton.clone();
     let mut out = Vec::new();
+
+    if stages.len() != observed_requests.len() {
+        out.push(SpaceDefect::TraceLengthMismatch {
+            expected: stages.len(),
+            observed: observed_requests.len(),
+        });
+        return out;
+    }
+    if stages.len() != 4 {
+        out.push(SpaceDefect::TraceLengthMismatch {
+            expected: 4,
+            observed: stages.len(),
+        });
+        return out;
+    }
+
     for (index, stage) in stages.iter().enumerate() {
         let expected = automaton.expected_request();
-        let observed = observed_requests.get(index).cloned();
-        match (expected, observed) {
-            (Some(expected), Some(observed)) => {
+        let observed = &observed_requests[index];
+        match expected {
+            Some(expected) => {
                 if !domains_match(&expected.domain, &observed.domain)
                     || expected.candidate_atoms != observed.candidate_atoms
                 {
@@ -103,12 +123,11 @@ pub fn request_sequence_defects(
                     });
                 }
             }
-            _ => out.push(SpaceDefect::RequestShapeMismatch {
-                index,
-                detail: "missing expected or observed request".into(),
-            }),
+            None => out.push(SpaceDefect::ReferenceTransitionRejected { index }),
         }
-        automaton.advance(stage);
+        if automaton.advance(stage).is_err() {
+            out.push(SpaceDefect::ReferenceTransitionRejected { index });
+        }
     }
     out
 }
@@ -151,6 +170,9 @@ pub fn completeness_defects(
             None => out.push(SpaceDefect::MissingChoice {
                 choice: choice.clone(),
             }),
+            Some(paths) if paths.is_empty() => out.push(SpaceDefect::MissingChoice {
+                choice: choice.clone(),
+            }),
             Some(paths) if paths.len() > 1 => out.push(SpaceDefect::DuplicatePath {
                 choice: choice.clone(),
                 path_count: paths.len(),
@@ -159,4 +181,52 @@ pub fn completeness_defects(
         }
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::legal_space::explorer::{ObservedDomain, ObservedRequest};
+
+    #[test]
+    fn request_trace_rejects_extra_observed_request() {
+        let automaton = ReferenceAutomaton::initial().unwrap();
+        let stages = vec![CanonicalStageChoice::Anchor; 4];
+        let observed_requests = vec![
+            ObservedRequest {
+                domain: ObservedDomain::ChooseOne,
+                candidate_atoms: Vec::new(),
+            };
+            5
+        ];
+        let defects = request_sequence_defects(&automaton, &stages, &observed_requests);
+        assert!(defects.iter().any(|defect| matches!(
+            defect,
+            SpaceDefect::TraceLengthMismatch {
+                expected: 4,
+                observed: 5
+            }
+        )));
+    }
+
+    #[test]
+    fn request_trace_rejects_non_complete_path_length() {
+        let automaton = ReferenceAutomaton::initial().unwrap();
+        let stages = vec![CanonicalStageChoice::Anchor; 3];
+        let observed_requests = vec![
+            ObservedRequest {
+                domain: ObservedDomain::ChooseOne,
+                candidate_atoms: Vec::new(),
+            };
+            3
+        ];
+        let defects = request_sequence_defects(&automaton, &stages, &observed_requests);
+        assert!(defects.iter().any(|defect| matches!(
+            defect,
+            SpaceDefect::TraceLengthMismatch {
+                expected: 4,
+                observed: 3
+            }
+        )));
+    }
 }

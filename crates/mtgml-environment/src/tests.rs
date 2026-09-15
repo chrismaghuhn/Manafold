@@ -201,85 +201,93 @@ fn rich_provenance_state() -> mtgml_state::EngineState {
     state
 }
 
-fn projected_provenance(
-    information: &mtgml_observation::PlayerInformationStateV2,
-) -> Vec<(u64, String)> {
-    use mtgml_observation::{PlayerKnowledgeProvenanceV1, PlayerKnownObjectV1};
-    fn render(provenance: &PlayerKnowledgeProvenanceV1) -> String {
-        match provenance {
-            PlayerKnowledgeProvenanceV1::InitialConfiguration => "initial_configuration".into(),
-            PlayerKnowledgeProvenanceV1::Observed {
-                channel,
-                sequence,
-                cause,
-            } => format!("observed/{channel:?}/{}/{cause:?}", sequence.0),
-        }
-    }
-    let mut rendered = Vec::new();
-    for record in &information.retained_knowledge {
-        match record {
-            PlayerKnownObjectV1::Active {
-                opaque_object_id,
-                current_known_location_fact,
-                historical_locations,
-                acquisition,
-                ..
-            } => {
-                if let Some(current) = current_known_location_fact {
-                    rendered.push((
-                        opaque_object_id.0,
-                        format!("current/{}", render(&current.provenance)),
-                    ));
-                }
-                for historical in historical_locations {
-                    rendered.push((
-                        opaque_object_id.0,
-                        format!("historical/{}", render(&historical.provenance)),
-                    ));
-                }
-                rendered.push((
-                    opaque_object_id.0,
-                    format!("acquisition/{}", render(acquisition)),
-                ));
-            }
-            PlayerKnownObjectV1::Retired {
-                opaque_object_id,
-                last_known_location_fact,
-                historical_locations,
-                acquisition,
-                invalidation,
-                ..
-            } => {
-                if let Some(last) = last_known_location_fact {
-                    rendered.push((
-                        opaque_object_id.0,
-                        format!("last/{}", render(&last.provenance)),
-                    ));
-                }
-                for historical in historical_locations {
-                    rendered.push((
-                        opaque_object_id.0,
-                        format!("historical/{}", render(&historical.provenance)),
-                    ));
-                }
-                rendered.push((
-                    opaque_object_id.0,
-                    format!("acquisition/{}", render(acquisition)),
-                ));
-                let reason_text = format!("{:?}", invalidation.reason);
-                rendered.push((
-                    opaque_object_id.0,
-                    format!(
-                        "invalidation/{}/{}",
-                        render(&invalidation.provenance),
-                        reason_text
-                    ),
-                ));
-            }
-        }
-    }
-    rendered.sort();
-    rendered
+fn expected_retained_knowledge() -> Vec<mtgml_observation::PlayerKnownObjectV1> {
+    use mtgml_model::{CardDefinitionId, OpaqueObjectId, PlayerId, VisibleSequence, ZoneKind};
+    use mtgml_observation::{
+        PlayerKnowledgeCauseV1, PlayerKnowledgeChannelV1, PlayerKnowledgeInvalidationReasonV1,
+        PlayerKnowledgeInvalidationV1, PlayerKnowledgeProvenanceV1, PlayerKnownLocationFactV1,
+        PlayerKnownLocationV1, PlayerKnownObjectV1,
+    };
+
+    let initial = || PlayerKnowledgeProvenanceV1::InitialConfiguration;
+    let observed = |channel, sequence, cause| PlayerKnowledgeProvenanceV1::Observed {
+        channel,
+        sequence: VisibleSequence(sequence),
+        cause,
+    };
+    let battlefield = || PlayerKnownLocationV1 {
+        zone: ZoneKind::Battlefield,
+        player: None,
+    };
+    let hidden_library = || PlayerKnownLocationV1 {
+        zone: ZoneKind::Library,
+        player: Some(PlayerId(2)),
+    };
+    let fact = |location, provenance| PlayerKnownLocationFactV1 {
+        location,
+        provenance,
+    };
+
+    vec![
+        PlayerKnownObjectV1::Active {
+            opaque_object_id: OpaqueObjectId(1),
+            known_definition: Some(CardDefinitionId(1)),
+            current_known_location_fact: Some(fact(battlefield(), initial())),
+            historical_locations: Vec::new(),
+            acquisition: initial(),
+        },
+        PlayerKnownObjectV1::Retired {
+            opaque_object_id: OpaqueObjectId(2),
+            known_definition: None,
+            last_known_location_fact: Some(fact(
+                hidden_library(),
+                observed(
+                    PlayerKnowledgeChannelV1::Private,
+                    2,
+                    PlayerKnowledgeCauseV1::PrivateLook,
+                ),
+            )),
+            historical_locations: vec![fact(
+                hidden_library(),
+                observed(
+                    PlayerKnowledgeChannelV1::Private,
+                    1,
+                    PlayerKnowledgeCauseV1::OwnPrivateIdentity,
+                ),
+            )],
+            acquisition: observed(
+                PlayerKnowledgeChannelV1::Private,
+                0,
+                PlayerKnowledgeCauseV1::PrivateLook,
+            ),
+            invalidation: PlayerKnowledgeInvalidationV1 {
+                provenance: observed(
+                    PlayerKnowledgeChannelV1::Public,
+                    3,
+                    PlayerKnowledgeCauseV1::ExplicitReveal,
+                ),
+                reason: PlayerKnowledgeInvalidationReasonV1::Shuffle,
+            },
+        },
+        PlayerKnownObjectV1::Active {
+            opaque_object_id: OpaqueObjectId(3),
+            known_definition: Some(CardDefinitionId(2)),
+            current_known_location_fact: Some(fact(
+                hidden_library(),
+                observed(
+                    PlayerKnowledgeChannelV1::Public,
+                    0,
+                    PlayerKnowledgeCauseV1::ExplicitReveal,
+                ),
+            )),
+            historical_locations: Vec::new(),
+            acquisition: observed(
+                PlayerKnowledgeChannelV1::Public,
+                0,
+                PlayerKnowledgeCauseV1::ExplicitReveal,
+            ),
+        },
+    ]
 }
 
 fn submit_answer(

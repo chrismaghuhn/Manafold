@@ -25,6 +25,7 @@ mod tests {
         assert_fingerprint_policies, capture_complete, capture_transition_product,
         FingerprintComparison,
     };
+    use crate::isolation::paired::test_support::assert_accepted_count_progression;
     use crate::isolation::HarnessError;
     use mtgml_decision::{DecisionResponseV2, DECISION_RESPONSE_V2_SCHEMA};
     use mtgml_environment::{
@@ -119,12 +120,18 @@ mod tests {
             "twins must expose identical pending requests pre-divergence"
         );
         let response = choose_count_answer(&source_request, EQUAL_COUNT_VALUE)?;
+        let before_count_source = source.checkpoint().map_err(controller_service)?;
+        let before_count_fork = fork.checkpoint().map_err(controller_service)?;
         let step_source = source_h[0]
             .submit(response.clone())
             .map_err(|_| HarnessError::EndpointService)?;
         let step_fork = fork_h[0]
             .submit(response)
             .map_err(|_| HarnessError::EndpointService)?;
+        let after_count_source = source.checkpoint().map_err(controller_service)?;
+        let after_count_fork = fork.checkpoint().map_err(controller_service)?;
+        assert_accepted_count_progression(&before_count_source, &after_count_source, &step_source)?;
+        assert_accepted_count_progression(&before_count_fork, &after_count_fork, &step_fork)?;
         assert_eq!(
             step_source.submission, step_fork.submission,
             "the identical input must classify identically"
@@ -222,9 +229,12 @@ mod tests {
 
         // (a) One accepted transition on the fork.
         let fork_request = visible_request(&fork_h[0])?;
+        let before_count = fork.checkpoint().map_err(controller_service)?;
         let step_a = fork_h[0]
             .submit(choose_count_answer(&fork_request, EQUAL_COUNT_VALUE)?)
             .map_err(|_| HarnessError::EndpointService)?;
+        let after_count = fork.checkpoint().map_err(controller_service)?;
+        assert_accepted_count_progression(&before_count, &after_count, &step_a)?;
         assert_eq!(step_a.submission, PlayerStepSubmissionV1::Accepted);
         source_unchanged("after the fork's accepted transition")?;
 

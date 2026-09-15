@@ -615,8 +615,30 @@ mod tests {
         let (controller_one, endpoints_one) = spawn_environment(first, &config())?;
         let (controller_two, endpoints_two) = spawn_environment(second, &config())?;
 
+        let before_one = controller_one
+            .checkpoint()
+            .map_err(|_| HarnessError::ControllerService)?;
+        let before_two = controller_two
+            .checkpoint()
+            .map_err(|_| HarnessError::ControllerService)?;
         let step_one = accepted_entry_submission(&endpoints_one[0])?;
         let step_two = accepted_entry_submission(&endpoints_two[0])?;
+        let after_one = controller_one
+            .checkpoint()
+            .map_err(|_| HarnessError::ControllerService)?;
+        let after_two = controller_two
+            .checkpoint()
+            .map_err(|_| HarnessError::ControllerService)?;
+        crate::isolation::paired::test_support::assert_accepted_entry_progression(
+            &before_one,
+            &after_one,
+            &step_one,
+        )?;
+        crate::isolation::paired::test_support::assert_accepted_entry_progression(
+            &before_two,
+            &after_two,
+            &step_two,
+        )?;
         assert_eq!(
             step_one.submission,
             PlayerStepSubmissionV1::Accepted,
