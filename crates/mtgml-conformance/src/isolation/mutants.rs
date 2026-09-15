@@ -782,7 +782,7 @@ mod tests {
     }
 
     #[test]
-    fn structural_guard_rejects_trusted_order_mutation_channel() -> Result<(), HarnessError> {
+    fn detects_m1_resort_retained_knowledge() -> Result<(), HarnessError> {
         // This is a structural guard: a reordered retained-knowledge array is
         // rejected by validation, so no projector sensitivity is claimed.
         {
@@ -803,7 +803,7 @@ mod tests {
     }
 
     #[test]
-    fn structural_guard_rejects_binding_derived_candidate_ids() -> Result<(), HarnessError> {
+    fn detects_m2_candidate_ids() -> Result<(), HarnessError> {
         // This is a structural guard: a binding-hash-derived candidate id
         // breaks the dense-from-zero rule before projection.
         {
