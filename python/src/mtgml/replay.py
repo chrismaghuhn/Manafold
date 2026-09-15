@@ -895,7 +895,6 @@ class AuthoritativeReplayV3:
         for index, step in enumerate(self.steps):
             if (
                 step.step_index != index
-                or step.actor == 0
                 or step.checkpoint_digest_before != previous.checkpoint_digest
                 or step.state_revision_before != previous.state_revision
                 or step.response.state_revision != previous.state_revision

@@ -14,8 +14,8 @@ use crate::{
     KernelIdentityV1, RandomnessIdentityV1, RandomnessIdentityV2, ReplayManifestV1,
     ReplayManifestV2, ReplayManifestV3, ReplayRecorderV3, ReplaySchemaVersionsV1, ReplayStepV1,
     ReplayStepV2, ReplayStepV3, ReplayValidationError, REPLAY_FILE_SCHEMA, REPLAY_FILE_SCHEMA_V2,
-    REPLAY_MANIFEST_SCHEMA, REPLAY_MANIFEST_SCHEMA_V2, REPLAY_MANIFEST_SCHEMA_V3,
-    REPLAY_STEP_SCHEMA_V3,
+    REPLAY_FILE_SCHEMA_V3, REPLAY_MANIFEST_SCHEMA, REPLAY_MANIFEST_SCHEMA_V2,
+    REPLAY_MANIFEST_SCHEMA_V3, REPLAY_STEP_SCHEMA_V3,
 };
 
 fn digest(text: char) -> FullStateDigest {
@@ -314,6 +314,39 @@ fn response_v3() -> DecisionResponseV2 {
         state_revision: StateRevision(0),
         answer: DecisionAnswerV2::ChooseNumber { value: 0 },
     }
+}
+
+fn replay_v3_with_declared_zero_actor() -> AuthoritativeReplayV3 {
+    let mut manifest = manifest_v3();
+    manifest.decks[0].player = PlayerId(0);
+    manifest.validate().unwrap();
+    let initial = manifest.initial_identity.clone();
+    let step = ReplayStepV3 {
+        step_index: 0,
+        actor: PlayerId(0),
+        checkpoint_digest_before: initial.checkpoint_digest.clone(),
+        state_revision_before: initial.state_revision,
+        response: response_v3(),
+        accepted: false,
+        state_revision_after: initial.state_revision,
+        full_state_digest_after: initial.full_state_digest.clone(),
+        episode_status_after: initial.episode_status.clone(),
+        environment_limit_counters_after: initial.environment_limit_counters.clone(),
+        checkpoint_digest_after: initial.checkpoint_digest.clone(),
+    };
+    AuthoritativeReplayV3 {
+        schema_version: REPLAY_FILE_SCHEMA_V3.into(),
+        manifest,
+        steps: vec![step],
+        final_identity: initial,
+    }
+}
+
+#[test]
+fn fnd_028_replay_v3_accepts_declared_zero_actor_structurally() {
+    let replay = replay_v3_with_declared_zero_actor();
+    assert_eq!(replay.steps[0].actor, PlayerId(0));
+    assert_eq!(replay.validate(), Ok(()));
 }
 
 #[test]
