@@ -500,7 +500,7 @@ cargo test -p mtgml-wire --all-features --locked
 Expected result: existing schemas and fixture bytes remain unchanged and all
 existing positive/negative fixture classifications stay green.
 
-## Task 8: Record implementation evidence and FND-028 closure
+## Task 8: Record committed implementation evidence candidate
 
 **Files:**
 
@@ -508,12 +508,16 @@ existing positive/negative fixture classifications stay green.
 - Modify: docs/normative-document-register.v1.json to register the evidence
   record after it exists
 
-- [ ] Create the evidence record only after every focused test and required
-  gate has executed on one exact implementation head. Record the actual values
-  from git rev-parse HEAD, git rev-parse HEAD^, the implementation PR head, and
-  Hosted checks.
+- [ ] Create the evidence record after the focused tests and local verification
+  gates have executed on the implementation head, before the final push and
+  Hosted CI. The committed record may contain the implementation base, changed
+  files, RED and green commands/results, local verification results,
+  compatibility classifications, and the code/test evidence. It must not
+  contain its own final commit SHA, the final PR head, Hosted CI results,
+  independent review, a merge commit, or merged-master state.
 
-- [ ] Include this final block only when every result has executed successfully:
+- [ ] Include this implementation-evidence candidate block after all required
+  local evidence has executed successfully:
 
 ~~~
 ADR_0050 = ACCEPTED
@@ -544,8 +548,11 @@ CHECKPOINT_VERSION_CHANGE = NO
 DIGEST_DOMAIN_CHANGE = NO
 MIGRATION_REQUIRED = NO
 
-FND_028 = CLOSED
-PRE_M3_FREEZE_BLOCKER = NO
+FND_028_IMPLEMENTATION_EVIDENCE = COMPLETE_CANDIDATE
+FND_028_IMPLEMENTATION_REVIEW = PENDING
+FND_028 = OPEN_PENDING_REVIEW_AND_MERGE
+PRE_M3_FREEZE_BLOCKER = YES
+FOUNDATION_READY_FOR_M3 = NO
 M3_STARTED = NO
 M3_AUTHORIZED = NO
 ~~~
@@ -554,8 +561,9 @@ M3_AUTHORIZED = NO
   record the RED and green outputs, and state that no historical fixture was
   rewritten.
 
-- [ ] Do not record FND_028 = CLOSED until independent exact-head review,
-  merge, and merged-master verification have all completed.
+- [ ] Do not put final PR-head, Hosted-CI, independent-review, merge-commit,
+  or merged-master values in the committed evidence record. Record those
+  external values in Task 10 after the corresponding events occur.
 
 ## Task 9: Execute the complete local verification set
 
@@ -655,8 +663,24 @@ Rust/Python parity, and the no-schema/no-fixture compatibility claim.
   Do not mark FND-028 closed on the implementation branch before the merged
   head is available on master.
 
-- [ ] On merged master, record the implementation/evidence commit and exact
-  statuses in Issue 164 and set FND-028 = CLOSED only then.
+- [ ] After Hosted CI passes, independent exact-head review approves, the PR
+  merges, and merged-master verification completes, record the following
+  values externally in the PR/review/Issue 164 rather than in the committed
+  evidence record:
+
+~~~
+FINAL_PR_HEAD = the actual headRefOid reported for the reviewed PR
+HOSTED_CI = PASS
+FND_028_IMPLEMENTATION_REVIEW = APPROVE
+MERGE_COMMIT = the actual merge commit
+MERGED_MASTER = the actual master SHA verified after merge
+FND_028 = CLOSED
+PRE_M3_FREEZE_BLOCKER = NO
+~~~
+
+- [ ] Set FND_028 = CLOSED only in that post-merge external record. The
+  implementation branch remains OPEN_PENDING_REVIEW_AND_MERGE until
+  independent approval, merge, and merged-master verification have completed.
 
 - [ ] Stop after FND-028 closure. Do not run Final Foundation Closure, modify
   HRD-001..006, create the 53-item matrix, perform the Pre-M3 freeze, or start
