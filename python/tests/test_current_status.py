@@ -161,8 +161,14 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
         self.assertNotIn("current numbered hardening acceptance candidate", adr_index)
         self.assertEqual(foundation_registration["role"], "normative")
         self.assertEqual(foundation_registration["stability"], "accepted")
-        self.assertIn("- **Status:** accepted by merge of PR #184; candidate until that merge", adr)
-        self.assertIn("**Status:** accepted on merge of PR #184; candidate until that merge", foundation)
+        self.assertIn(
+            "- **Status:** accepted by merge of PR #184; candidate until that merge",
+            adr,
+        )
+        self.assertIn(
+            "**Status:** accepted on merge of PR #184; candidate until that merge",
+            foundation,
+        )
         self.assertIn("ADR_0054 = ACCEPTED_ON_MERGE_OF_PR_184", adr)
         self.assertIn("FOUNDATION_V2 = ACCEPTED_HARDENED_M3_SCOPE_ON_MERGE_OF_PR_184", adr)
         self.assertIn("ADR_0054 = ACCEPTED\nFOUNDATION_V2 = ACCEPTED_HARDENED_M3_SCOPE", adr)
