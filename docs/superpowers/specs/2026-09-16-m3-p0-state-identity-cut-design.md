@@ -1,5 +1,7 @@
 # M3.P0 State Identity Cut Design
 
+**Status:** provisional P0 implementation design; subordinate to accepted ADR 0054; P0 remains in progress and this document does not authorize T0 or S1
+
 ## Goal
 
 Move the current Manafold runtime from V3 semantic identity to a coordinated

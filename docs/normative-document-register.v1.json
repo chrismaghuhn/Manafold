@@ -999,6 +999,13 @@
       "path": "docs/superpowers/plans/2026-09-15-pre-m3-governance-cleanup.md",
       "role": "process",
       "stability": "provisional"
+    },
+    {
+      "change_process": "process-pr",
+      "owner_role": "maintainer",
+      "path": "docs/superpowers/specs/2026-09-16-m3-p0-state-identity-cut-design.md",
+      "role": "process",
+      "stability": "provisional"
     }
   ],
   "schema_version": "normative-document-register.v1"
