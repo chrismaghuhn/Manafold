@@ -18,3 +18,22 @@ fn p0_replay_v4_identity_family_is_present_and_closed() {
     assert!(size_of::<AuthoritativeReplayV4>() > 0);
     assert!(size_of::<ReplayRecorderV4>() > 0);
 }
+
+#[test]
+fn p0_replay_v4_schema_identity_explicitly_binds_m3_observation_payload() {
+    let schemas = ReplaySchemaVersionsV4 {
+        observation: "observation-envelope.v1".into(),
+        observation_payload_codec: "synthetic-m3-observation.v1".into(),
+        information_state: "information-state-envelope.v2".into(),
+        decision: "player-decision-request.v2".into(),
+        decision_response: "decision-response.v2".into(),
+        observed_event: "observed-event-envelope.v2".into(),
+        player_step: "player-step.v2".into(),
+        replay_step: "replay-step.v4".into(),
+    };
+
+    assert_eq!(
+        schemas.observation_payload_codec,
+        "synthetic-m3-observation.v1"
+    );
+}
