@@ -24,6 +24,10 @@ authorization head `ea668c47ef1361b3d989fd32b8f3cfd4751b1e79`.
   remain unchanged.
 - Every rejected operation validates before mutation and leaves the complete
   state, environment, projection, and replay fingerprint unchanged.
+- A normal accepted `TransitionResult` may not change a newly introduced V4
+  fact during P0. Until a later authorized semantic slice adds its typed event
+  and cursor proof, a change to `TurnPosition`, `PriorityState`, `CombatState`,
+  or `FoundationCreatureSource` is an `UnexplainedMutation`.
 
 ## Ownership
 
@@ -35,6 +39,7 @@ The existing ownership graph remains authoritative.
 | Current full-state semantic input and producer | `mtgml-state` | Add `digest_v4.rs`; `EngineState::canonical_digest_bytes()` and `EngineState::digest()` use V4. The producer validates state first and uses the existing persistence envelope. |
 | Rules-neutral canonical CBOR and checkpoint digest primitives | `mtgml-persistence` | Keep the CBOR/envelope codec as-is. Add a V4 checkpoint-digest function beside the untouched V3 function. This crate does not own full-state meaning. |
 | Complete authoritative state | `mtgml-state` | Store temporal state, explicit priority absence, bounded combat state, and foundation source facts in `EngineState`. No controller, cache, or Python mirror stores them. |
+| Normal transition/event contract | `mtgml-rules` | Extend `validate_transition_contract()` and its `SemanticValidationCursor` with a V4-fact snapshot. During P0, any changed temporal, priority, combat, or foundation-source fact is rejected as `UnexplainedMutation`; checkpoint/reset construction and restore are separate controlled boundaries. |
 | Current checkpoint and atomic restore/fork | `mtgml-environment` | Replace current backend/controller checkpoint APIs with `EnvironmentCheckpointV4`. V3 checkpoint runtime types are retired rather than allowed to embed V4 state. |
 | Current replay identity and validation | `mtgml-replay` | Add detached/current V4 replay types and recorder. Keep V3 validation detached and prevent V3 semantic execution through current V4 backends. |
 | Player-safe payload shape | `mtgml-observation` | Add passive closed DTOs and validation for `synthetic-m3-observation.v1`. These DTOs do not read `EngineState` or decide what is authorized. |
@@ -109,9 +114,59 @@ control_history: BeforeTurnStart { turn_number: u64 }
 
 The map key is the live `GameObjectId`, so validation can prove that each
 source fact belongs to a live object. Control-history turn references cannot
-be future-dated relative to the current turn. No effective power/toughness,
-creature qualification, attack/block eligibility, untap result, layer result,
-or other derived answer is persisted.
+be future-dated relative to the current turn. Boundary chronology is also
+checked. Assign the closed positions these canonical ranks:
+
+```text
+Beginning/Untap               0
+Beginning/Upkeep              1
+Beginning/Draw                2
+PrecombatMain                 3
+Combat/BeginningOfCombat      4
+Combat/DeclareAttackers       5
+Combat/DeclareBlockers        6
+Combat/CombatDamage           7
+Combat/EndOfCombat            8
+PostcombatMain                9
+Ending/EndStep               10
+Ending/Cleanup                11
+```
+
+(`Beginning/Untap` is the `Untap` variant.) If a
+`DuringTurn` record names the current turn, its boundary rank must be less
+than or equal to the current `TurnPosition` rank. A record for an earlier turn
+does not claim a current-turn boundary. This is structural history ordering,
+not attack, untap, or any other Magic legality rule. No effective
+power/toughness, creature qualification, attack/block eligibility, untap
+result, layer result, or other derived answer is persisted.
+
+### Existing synthetic setup
+
+Adding mandatory V4 fields to the existing synthetic reset requires an
+explicit setup source. `SyntheticResetInputs` therefore gains a named
+`SyntheticV4Setup` value containing `position`, `priority`, optional `combat`,
+and the `foundation_sources` map. The constructor copies those values into
+the new authoritative fields and validates object references after the
+existing synthetic object IDs have been allocated. It does not infer a
+position from the pending decision or a priority holder from `priority_player`.
+
+The existing M2 synthetic harness will pass a separately named
+`SyntheticV4Setup::m2_compatibility()` record whose values are documented as a
+structural compatibility setup: `Beginning::Untap`, `PriorityState::None`, no
+combat, and an empty source map. This record does not claim that the old M2
+fixture had Magic turn or priority semantics. Future M3 setup paths must pass
+their own explicit V4 setup record, including every source fact needed by that
+path. There is no `Default` implementation and no hidden P/T,
+`ControlHistory`, or priority default.
+
+The new fields are immutable across ordinary P0 rules transitions. The
+`mtgml-rules` transition contract snapshots them in its
+`SemanticValidationCursor` and rejects any before/after difference with the
+existing `UnexplainedMutation` classification. This protects the
+authoritative mutation/event boundary while leaving state construction,
+checkpoint restore, and a later typed semantic owner as distinct controlled
+boundaries. P0 does not add a temporal/combat event family that would make
+these fields mutable.
 
 ## Full-state digest V4
 
@@ -172,6 +227,23 @@ remain unchanged.
 `FullStateDigestV4`, status, counters, codec identity, and
 `CheckpointDigestV4`. `TrustedEnvironmentController`, `EnvironmentBackend`,
 the synthetic backend, replay execution, restore, and fork use V4.
+
+The current V4 checkpoint codec identity is fixed, not inherited from a V3
+fixture:
+
+```text
+codec_id = in-memory-reference
+semantic_version = 4
+```
+
+The repository's existing in-memory checkpoint implementation is the same
+codec family; the V4 semantic state payload therefore receives the next
+explicit codec version. The historical V3 pair
+`in-memory-reference` / `3` remains valid only in detached V3 evidence. The
+V4 validator rejects a V3 semantic version and current synthetic producers use
+the exact V4 pair. Test-only identifiers such as `synthetic-m2-memory` / `3`
+are historical M2 configuration evidence and are not accepted as a current
+V4 checkpoint identity.
 
 Checkpoint construction and restore validate the complete candidate before
 assignment. A rejected checkpoint cannot change backend state, counters,
@@ -257,10 +329,12 @@ identity-chain mutations.
 The implementation proceeds in reviewable commits:
 
 1. P0 RED tests for absent V4 identity, closed temporal/priority shapes, M3
-   payload, and the V3/current-runtime boundary.
+   payload, the V3/current-runtime boundary, and immutable V4 facts across a
+   normal transition.
 2. Model/state V4 source facts, validation, and StateDelta identity.
-3. State-owned V4 full-state digest and persistence-owned V4 checkpoint digest.
-4. V4 environment checkpoint, restore, fork, and synthetic current producer.
+3. Rules transition-contract guards for the new V4 facts, followed by
+   state-owned V4 full-state digest and persistence-owned V4 checkpoint digest.
+4. V4 environment checkpoint, restore, fork, and explicit synthetic setup.
 5. V4 replay and the V3 detached execution boundary.
 6. Projection-owned M3 payload, wire dispatch, Python parity, schemas, and
    fixtures.
