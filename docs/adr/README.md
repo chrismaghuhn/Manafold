@@ -1,6 +1,6 @@
 # Architecture Decision Records
 
-ADRs are immutable decision history. Superseded records remain and point to replacements. The accepted base sequence currently runs through ADR 0053, and ADR 0000 is the template. ADR 0054 is the acceptance vehicle for the M3 pre-T0 hardening plan: merging PR #184 accepts the plan, while the separate exact-master reauthorization remains the execution gate.
+ADRs are immutable decision history. Superseded records remain and point to replacements. The accepted base sequence currently runs through ADR 0054, and ADR 0000 is the template. PR #184 accepted ADR 0054 for the M3 pre-T0 hardening plan, while the separate exact-master reauthorization remains the execution gate.
 
 ADR numbers 0042 through 0047 are historically occupied by accepted ContextApplication/M2.5 decisions that were intentionally removed from the active source tree by the post-purge cleanup. Their numbers remain permanently reserved and are not reusable; the acceptance of ADR 0048 is therefore accompanied by an explicit historical numbering gap.
 
@@ -13,7 +13,7 @@ ADR 0041 accepts the reviewed capability-oriented semantic-ownership candidate a
 
 ## Reviewed candidates awaiting acceptance
 
-Reviewed ADR candidates may be stored under `docs/adr/candidates/` without allocating a permanent ADR number. They are informative until a later acceptance change assigns the then-current number and changes the record to `Accepted`. ADR 0054 is the current numbered hardening acceptance candidate; its merge accepts the plan, but does not authorize execution.
+Reviewed ADR candidates may be stored under `docs/adr/candidates/` without allocating a permanent ADR number. They are informative until a later acceptance change assigns the then-current number and changes the record to `Accepted`. ADR 0054 is accepted; its merge accepted the plan, but does not authorize execution.
 
 A candidate must not be cited as accepted architecture, used to claim executable support, or used to begin a later milestone before its explicit acceptance change. Candidate numbering shown inside research material is provisional only.
 
@@ -39,11 +39,11 @@ bounded exit. Acceptance makes the decision durable on `master`, but does not
 authorize M3. Authorization requires the separate exact-`master` review,
 Issue #178 gate update, and explicit comment specified by ADR 0053.
 
-ADR 0054 records the M3 Pre-T0 hardening plan. It preserves ADR 0053 and
+ADR 0054 records the accepted M3 Pre-T0 hardening plan. It preserves ADR 0053 and
 Foundation V1 as historical evidence, corrects the semantic dependency graph,
 defines Foundation V2 and the coordinated V4 state/persistence prerequisite,
-and resets current execution authorization. PR #184 is the plan-acceptance
-vehicle; a later exact-master review separately authorizes execution.
+and resets current execution authorization. PR #184 accepted the plan; a later
+exact-master review separately authorizes execution.
 
 The merge boundary is explicit:
 

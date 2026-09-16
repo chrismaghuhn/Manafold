@@ -16,17 +16,26 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
             r"\*\*Foundation closure/freeze:\*\* `COMPLETE`",
         )
         self.assertIn(
-            "**Current active work area:** M3 Pre-T0 plan hardening under Issue #178; "
-            "implementation remains blocked pending a merged hardened plan and "
-            "exact-master reauthorization",
+            "**Current active work area:** post-merge exact-master M3 reauthorization "
+            "under Issue #178; implementation remains blocked pending exact-master "
+            "reauthorization",
             readme,
         )
         self.assertIn("**Core modularization:** Issue #162 `COMPLETE`", readme)
         self.assertIn("**M3 semantic implementation:** `NOT_STARTED`", readme)
         self.assertIn("**M3 authorization:** `NOT_AUTHORIZED`", readme)
-        self.assertIn("**M3 pre-T0 hardening:** `CANDIDATE`", readme)
-        self.assertIn("**M3 hardening acceptance:** PR #184 is the plan-acceptance vehicle", readme)
+        self.assertIn("**M3 Pre-T0 hardening:** `COMPLETE / ACCEPTED`", readme)
+        self.assertIn("ADR 0054 = ACCEPTED", readme)
+        self.assertIn("FOUNDATION_V2 = ACCEPTED_HARDENED_M3_SCOPE", readme)
+        self.assertIn("**M3 plan status:** `ACCEPTED_PENDING_REAUTHORIZATION`", readme)
+        self.assertIn("**Next gate:** `EXACT_MASTER_REAUTHORIZATION`", readme)
+        self.assertIn(
+            "**M3 hardening acceptance:** PR #184 merged and accepted ADR 0054/Foundation V2",
+            readme,
+        )
         self.assertIn("11 Foundation capabilities are `specified` only", readme)
+        self.assertNotIn("M3 Pre-T0 plan hardening under Issue #178", readme)
+        self.assertNotIn("HARDENED_PLAN_MERGE_AND_EXACT_MASTER_REAUTHORIZATION", readme)
         self.assertNotIn(
             "Current active work area:** pre-M3 foundation reconciliation and "
             "adversarial audit preparation under Issue #105",
@@ -61,11 +70,26 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
         self.assertIn("`M2.5 = NOT_CLAIMED / NOT_FROZEN`", roadmap)
         self.assertIn("FINAL_FOUNDATION_CLOSURE = PASS", roadmap)
         self.assertIn("PRE_M3_REMEDIATION_FREEZE = PASS", roadmap)
+        self.assertIn("CORE_MODULARIZATION = COMPLETE", roadmap)
+        self.assertIn("GOVERNANCE_CLEANUP = COMPLETE", roadmap)
         self.assertIn("M3_STARTED = NO", roadmap)
         self.assertIn("M3_AUTHORIZED = NO", roadmap)
-        self.assertIn("M3_PRE_T0_HARDENING = CANDIDATE", roadmap)
-        self.assertIn("M3_ENTRY_DECISION = ACCEPTED_BUT_UNDER_PRE_T0_HARDENING", roadmap)
-        self.assertIn("NEXT_GATE = HARDENED_PLAN_MERGE_AND_EXACT_MASTER_REAUTHORIZATION", roadmap)
+        self.assertIn("M3_PRE_T0_HARDENING = COMPLETE / ACCEPTED", roadmap)
+        self.assertIn("M3_PLAN_STATUS = ACCEPTED_PENDING_REAUTHORIZATION", roadmap)
+        self.assertIn("ADR_0054 = ACCEPTED", roadmap)
+        self.assertIn("FOUNDATION_V2 = ACCEPTED", roadmap)
+        self.assertIn("M3_S1 = rules/turn-structure@0.1.0 SELECTED", roadmap)
+        self.assertIn("AUTHORIZATION_HEAD = NOT_SET", roadmap)
+        self.assertIn("NEXT_GATE = EXACT_MASTER_REAUTHORIZATION", roadmap)
+        self.assertNotIn("M3_PRE_T0_HARDENING = CANDIDATE", roadmap)
+        self.assertNotIn("M3_ENTRY_DECISION = ACCEPTED_BUT_UNDER_PRE_T0_HARDENING", roadmap)
+        self.assertNotIn("HARDENED_PLAN_MERGE_AND_EXACT_MASTER_REAUTHORIZATION", roadmap)
+        self.assertIn(
+            "M3.P0 semantic-neutral state/persistence identity cut\n"
+            "→ M3.T0 thin private conformance facade\n"
+            "→ M3.S1 rules/turn-structure@0.1.0",
+            roadmap,
+        )
         self.assertIn("M3.P0 semantic-neutral state/persistence identity cut", roadmap)
         self.assertIn("PR #184", roadmap)
         self.assertIn("`M3 = NOT_STARTED / NOT_AUTHORIZED`", roadmap)
@@ -112,19 +136,56 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
         self.assertEqual(sum(entry["lifecycle"] == "implemented" for entry in entries), 0)
         self.assertEqual(sum(entry["lifecycle"] == "covered" for entry in entries), 0)
         self.assertEqual(sum(entry["lifecycle"] == "certified" for entry in entries), 0)
+        self.assertEqual(
+            sum(len(entry.get("dependencies", [])) for entry in entries),
+            13,
+        )
 
     def test_plan_acceptance_is_separate_from_execution_authorization(self) -> None:
+        adr_index = (ROOT / "docs" / "adr" / "README.md").read_text(encoding="utf-8")
         adr = (ROOT / "docs" / "adr" / "0054-m3-pre-t0-hardening.md").read_text(encoding="utf-8")
         foundation = (ROOT / "docs" / "rules" / "M3_INITIAL_SEMANTIC_FOUNDATION_V2.md").read_text(
             encoding="utf-8"
         )
+        register = json.loads(
+            (ROOT / "docs" / "normative-document-register.v1.json").read_text(encoding="utf-8")
+        )
+        foundation_registration = next(
+            entry
+            for entry in register["documents"]
+            if entry["path"] == "docs/rules/M3_INITIAL_SEMANTIC_FOUNDATION_V2.md"
+        )
 
+        self.assertIn("accepted base sequence currently runs through ADR 0054", adr_index)
+        self.assertIn("ADR_0054 = ACCEPTED\nFOUNDATION_V2 = ACCEPTED_HARDENED_M3_SCOPE", adr_index)
+        self.assertNotIn("current numbered hardening acceptance candidate", adr_index)
+        self.assertEqual(foundation_registration["role"], "normative")
+        self.assertEqual(foundation_registration["stability"], "accepted")
+        self.assertIn(
+            "- **Status:** accepted by merge of PR #184; candidate until that merge",
+            adr,
+        )
+        self.assertIn(
+            "**Status:** accepted on merge of PR #184; candidate until that merge",
+            foundation,
+        )
         self.assertIn("ADR_0054 = ACCEPTED_ON_MERGE_OF_PR_184", adr)
         self.assertIn("FOUNDATION_V2 = ACCEPTED_HARDENED_M3_SCOPE_ON_MERGE_OF_PR_184", adr)
         self.assertIn("ADR_0054 = ACCEPTED\nFOUNDATION_V2 = ACCEPTED_HARDENED_M3_SCOPE", adr)
         self.assertIn("M3_AUTHORIZED = NO", adr)
+        self.assertIn("AUTHORIZATION_HEAD = NOT_SET", adr)
+        self.assertIn(
+            "PRIOR_AUTHORIZATION_HEAD =\n0f13b43680ea7d0b043c5baee59eb2ed3c364ecc",
+            adr,
+        )
         self.assertIn("AUTHORIZED_NEXT_TASK = M3.P0_STATE_IDENTITY_CUT", adr)
         self.assertIn("T0_START_REQUIRES = M3 reauthorized AND P0 complete", adr)
+        self.assertIn("M3_AUTHORIZED = NO", foundation)
+        self.assertIn("AUTHORIZATION_HEAD = NOT_SET", foundation)
+        self.assertIn(
+            "PRIOR_AUTHORIZATION_HEAD = 0f13b43680ea7d0b043c5baee59eb2ed3c364ecc",
+            foundation,
+        )
         self.assertIn("M3_PRE_T0_HARDENING_REVIEW = APPROVE", foundation)
         self.assertNotIn("AUTHORIZED_NEXT_TASK = M3.T0", foundation)
 
