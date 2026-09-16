@@ -1,5 +1,5 @@
-//! Ownership: zone/object structural validation segment (active/priority
-//! player presence; object map identity; owner/controller and zone-player
+//! Ownership: zone/object structural validation segment (object map identity;
+//! owner/controller and zone-player
 //! references; duplicate live physical-card identity; object/location
 //! bijection; ordered-zone consistency; stack consistency).
 
@@ -24,11 +24,6 @@ fn location_player_is_declared(location: &ZoneLocation, players: &BTreeSet<Playe
 
 pub(super) fn validate_zone_structure(state: &EngineState) -> Result<(), EngineStateViolation> {
     let players: BTreeSet<_> = state.core.players.keys().copied().collect();
-    if !players.contains(&state.core.active_player)
-        || !players.contains(&state.core.priority_player)
-    {
-        return Err(EngineStateViolation::MissingTurnPlayer);
-    }
     if state
         .zones
         .objects

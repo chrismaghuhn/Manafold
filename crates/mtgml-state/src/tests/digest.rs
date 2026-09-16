@@ -2,13 +2,44 @@
 // every identity remains tests::<name>.
 
 /// Frozen known answer for the canonical synthetic reset state. The payload is
-/// the complete `full-state-digest-input.v3` canonical CBOR array and the
+/// the complete `full-state-digest-input.v4` canonical CBOR array and the
 /// digest is SHA-256 of the `mtgml.digest-envelope.v1` framing around it.
 #[test]
-fn full_state_digest_v3_known_answer() {
+fn full_state_digest_v4_known_answer() {
     let state = synthetic_state();
     let payload = state.canonical_digest_bytes().unwrap();
-    const EXPECTED_PAYLOAD_HEX: &str = concat!(
+    const EXPECTED_PAYLOAD_HEX: &str = "8d781a66756c6c2d73746174652d6469676573742d696e7075742e7634781a6d74676d6c2e66756c6c2d73746174652d6469676573742e763400858283011828f483021828f401018269626567696e6e696e6765756e74617082646e6f6e65f68582870101010101f4f4870202020202f4f5828201856b626174746c656669656c64f68269756e6f726465726564f6667075626c6963f6820285676c696272617279028263746f700069666163655f646f776ef6818284676c6962726172790269666163655f646f776ef681028080880301010101020101858801010001667075626c6963826a63686f6f73655f6f6e65f6818300826d73656c6563745f6f626a65637401826d73656c6563745f6f626a65637401f680808080836c6d74676d6c2e726e672e763158201111111111111111111111111111111111111111111111111111111111111111818244010001000082840101818601010182856b626174746c656669656c64f68269756e6f726465726564f6667075626c6963f68275696e697469616c5f636f6e66696775726174696f6ef6808275696e697469616c5f636f6e66696775726174696f6ef680840201828601010182856b626174746c656669656c64f68269756e6f726465726564f6667075626c6963f68275696e697469616c5f636f6e66696775726174696f6ef6808275696e697469616c5f636f6e66696775726174696f6ef6860202028285676c696272617279028263746f700069666163655f646f776ef68275696e697469616c5f636f6e66696775726174696f6ef6808275696e697469616c5f636f6e66696775726174696f6ef68082880181820101800201028080880282820101820202800301028080f68082646e6f6e65f6";
+    const EXPECTED_DIGEST_HEX: &str =
+        "24fe3ab44864b6e3e7e75e55a62fba7fed6c94be3198ae5e93c1c196c1527227";
+    assert_eq!(hex(&payload), EXPECTED_PAYLOAD_HEX);
+    let digest = state.digest().unwrap();
+    assert_eq!(digest.to_string(), EXPECTED_DIGEST_HEX);
+    assert_eq!(digest.raw_bytes().len(), 32);
+    assert_eq!(digest, state.clone().digest().unwrap());
+
+    // The payload is exactly the thirteen declared top-level fields, and each
+    // knowledge entry is the fixed four-element per-player record.
+    let decoded = mtgml_persistence::cbor::decode_canonical(&payload).unwrap();
+    let Value::Array(fields) = &decoded else {
+        panic!("V4 payload must be an array");
+    };
+    assert_eq!(fields.len(), 13);
+    assert_eq!(fields[0], Value::Text("full-state-digest-input.v4".into()));
+    assert_eq!(fields[1], Value::Text("mtgml.full-state-digest.v4".into()));
+    let Value::Array(knowledge_players) = &fields[8] else {
+        panic!("knowledge_v2 must be an array");
+    };
+    for player_entry in knowledge_players {
+        let Value::Array(entry) = player_entry else {
+            panic!("knowledge_v2 entries must be arrays");
+        };
+        assert_eq!(entry.len(), 4, "knowledge_v2 per-player layout changed");
+    }
+}
+
+#[test]
+fn full_state_digest_v3_historical_known_answer_is_detached() {
+    const HISTORICAL_V3_PAYLOAD_HEX: &str = concat!(
         "8b781a66756c6c2d73746174652d6469676573742d696e7075742e7633781a6d74676d6c2e66756c6c2d73746174652d",
         "6469676573742e763300848283011828f483021828f40101018582870101010101f4f4870202020202f4f5828201856b",
         "626174746c656669656c64f68269756e6f726465726564f6667075626c6963f6820285676c696272617279028263746f",
@@ -23,36 +54,25 @@ fn full_state_digest_v3_known_answer() {
         "646f776ef68275696e697469616c5f636f6e66696775726174696f6ef6808275696e697469616c5f636f6e6669677572",
         "6174696f6ef6808288018182010180020102808088028282010182020280030102808082646e6f6e65f6",
     );
-    const EXPECTED_DIGEST_HEX: &str =
-        "680120895f69a0cea14399e53a80cc6bf3b10f167d7f9b21c5e2d38ebddf164a";
-    assert_eq!(hex(&payload), EXPECTED_PAYLOAD_HEX);
-    let digest = state.digest().unwrap();
-    assert_eq!(digest.to_string(), EXPECTED_DIGEST_HEX);
-    assert_eq!(digest.raw_bytes().len(), 32);
-    assert_eq!(digest, state.clone().digest().unwrap());
+    let payload = decode_hex(HISTORICAL_V3_PAYLOAD_HEX);
+    let envelope = mtgml_persistence::envelope::encode_envelope(
+        "mtgml.full-state-digest.v3",
+        "full-state-digest-input.v3",
+        &payload,
+    )
+    .unwrap();
+    let digest = mtgml_model::FullStateDigestV3::from_digest_bytes(
+        mtgml_persistence::envelope::hash_envelope(&envelope),
+    );
 
-    // The payload is exactly the eleven declared top-level fields, and each
-    // knowledge entry is the fixed four-element per-player record.
-    let decoded = mtgml_persistence::cbor::decode_canonical(&payload).unwrap();
-    let Value::Array(fields) = &decoded else {
-        panic!("V3 payload must be an array");
-    };
-    assert_eq!(fields.len(), 11);
-    assert_eq!(fields[0], Value::Text("full-state-digest-input.v3".into()));
-    assert_eq!(fields[1], Value::Text("mtgml.full-state-digest.v3".into()));
-    let Value::Array(knowledge_players) = &fields[8] else {
-        panic!("knowledge_v2 must be an array");
-    };
-    for player_entry in knowledge_players {
-        let Value::Array(entry) = player_entry else {
-            panic!("knowledge_v2 entries must be arrays");
-        };
-        assert_eq!(entry.len(), 4, "knowledge_v2 per-player layout changed");
-    }
+    assert_eq!(
+        digest.to_string(),
+        "680120895f69a0cea14399e53a80cc6bf3b10f167d7f9b21c5e2d38ebddf164a"
+    );
 }
 
 #[test]
-fn m2_b_full_state_digest_v3_mutation_matrix() {
+fn m3_p0_full_state_digest_v4_mutation_matrix() {
     type Mutation = (&'static str, fn(&mut EngineState));
     let mutations: Vec<Mutation> = vec![
         ("revision_and_pending_revision", |state| {
@@ -70,11 +90,46 @@ fn m2_b_full_state_digest_v3_mutation_matrix() {
         ("core_active_player", |state| {
             state.core.active_player = PlayerId(2);
         }),
-        ("core_priority_player", |state| {
-            state.core.priority_player = PlayerId(2);
+        ("core_priority", |state| {
+            state.core.priority = PriorityState::HeldBy {
+                player: PlayerId(2),
+                consecutive_passes: 0,
+            };
         }),
         ("core_turn_number", |state| {
             state.core.turn_number += 1;
+        }),
+        ("core_position", |state| {
+            state.core.position = TurnPosition::Beginning {
+                step: BeginningStep::Upkeep,
+            };
+        }),
+        ("core_priority_pass_count", |state| {
+            state.core.priority = PriorityState::HeldBy {
+                player: PlayerId(1),
+                consecutive_passes: 1,
+            };
+        }),
+        ("combat_presence", |state| {
+            state.combat = Some(CombatState {
+                defending_player: PlayerId(2),
+                attackers: vec![GameObjectId(1)],
+                blockers: BTreeMap::from([(GameObjectId(1), None)]),
+            });
+        }),
+        ("foundation_source_presence", |state| {
+            state.foundation_sources.insert(
+                GameObjectId(1),
+                FoundationCreatureSource {
+                    source_kind: FoundationSourceKind::Creature,
+                    base_characteristics: BaseCharacteristics::Simple {
+                        power: 3,
+                        toughness: 3,
+                    },
+                    marked_damage: 0,
+                    control_history: ControlHistory::BeforeTurnStart { turn_number: 1 },
+                },
+            );
         }),
         ("zone_object_tapped", |state| {
             state
@@ -435,9 +490,91 @@ fn m2_b_full_state_digest_v3_mutation_matrix() {
         let changed_digest = changed.digest().unwrap();
         assert_ne!(
             baseline_digest, changed_digest,
-            "mutation {name} must change the V3 digest"
+            "mutation {name} must change the V4 digest"
         );
     }
+}
+
+fn state_with_foundation_source() -> EngineState {
+    let mut state = synthetic_state();
+    state.foundation_sources.insert(
+        GameObjectId(1),
+        FoundationCreatureSource {
+            source_kind: FoundationSourceKind::Creature,
+            base_characteristics: BaseCharacteristics::Simple {
+                power: 3,
+                toughness: 3,
+            },
+            marked_damage: 0,
+            control_history: ControlHistory::BeforeTurnStart { turn_number: 1 },
+        },
+    );
+    validate_engine_state(&state).unwrap();
+    state
+}
+
+#[test]
+fn v4_digest_binds_foundation_source_inner_values() {
+    let baseline = state_with_foundation_source();
+    let baseline_digest = baseline.digest().unwrap();
+    let mutations: [fn(&mut EngineState); 3] = [
+        |state| {
+            state
+                .foundation_sources
+                .get_mut(&GameObjectId(1))
+                .unwrap()
+                .marked_damage = 1;
+        },
+        |state| {
+            state
+                .foundation_sources
+                .get_mut(&GameObjectId(1))
+                .unwrap()
+                .base_characteristics = BaseCharacteristics::Simple {
+                power: 4,
+                toughness: 3,
+            };
+        },
+        |state| {
+            state
+                .foundation_sources
+                .get_mut(&GameObjectId(1))
+                .unwrap()
+                .control_history = ControlHistory::DuringTurn {
+                turn_number: state.core.turn_number,
+                boundary: TurnPosition::Beginning {
+                    step: BeginningStep::Untap,
+                },
+            };
+        },
+    ];
+
+    for mutate in mutations {
+        let mut changed = baseline.clone();
+        mutate(&mut changed);
+        validate_engine_state(&changed).unwrap();
+        assert_ne!(baseline_digest, changed.digest().unwrap());
+    }
+}
+
+#[test]
+fn v4_digest_binds_combat_inner_values() {
+    let mut baseline = synthetic_state();
+    baseline.combat = Some(CombatState {
+        defending_player: PlayerId(2),
+        attackers: vec![GameObjectId(1), GameObjectId(2)],
+        blockers: BTreeMap::from([
+            (GameObjectId(1), None),
+            (GameObjectId(2), None),
+        ]),
+    });
+    validate_engine_state(&baseline).unwrap();
+    let baseline_digest = baseline.digest().unwrap();
+
+    let mut changed = baseline.clone();
+    changed.combat.as_mut().unwrap().defending_player = PlayerId(1);
+    validate_engine_state(&changed).unwrap();
+    assert_ne!(baseline_digest, changed.digest().unwrap());
 }
 
 #[test]
@@ -473,7 +610,7 @@ fn knowledge_history_is_digested_without_a_player_level_aggregate() {
 }
 
 #[test]
-fn state_delta_uses_full_state_digest_v3() {
+fn state_delta_uses_full_state_digest_v4() {
     let before = synthetic_state();
     let mut after = before.clone();
     after.core.players.get_mut(&PlayerId(1)).unwrap().life = 39;
@@ -518,7 +655,7 @@ fn state_delta_uses_full_state_digest_v3() {
 }
 
 #[test]
-fn v3_digest_payload_is_nonempty_canonical_cbor() {
+fn v4_digest_payload_is_nonempty_canonical_cbor() {
     let state = synthetic_state();
     let payload = state.canonical_digest_bytes().unwrap();
     assert!(!payload.is_empty());
@@ -543,7 +680,7 @@ fn historical_private_look_provenance_is_bound_into_the_digest() {
     validate_engine_state(&state).unwrap();
     assert!(digest_payload_texts(&state).contains(&"private_look".to_string()));
 
-    // Changing only the retained cause changes the V3 digest.
+    // Changing only the retained cause changes the V4 digest.
     let baseline_digest = state.digest().unwrap();
     let mut changed = state.clone();
     let knowledge = changed.knowledge.players.get_mut(&PlayerId(2)).unwrap();

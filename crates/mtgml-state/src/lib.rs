@@ -8,6 +8,7 @@ mod core;
 mod delta;
 mod digest;
 mod digest_v3;
+mod digest_v4;
 mod engine;
 mod execution;
 mod format;
@@ -20,8 +21,13 @@ mod zones;
 
 pub use construction::{
     construct_synthetic_engine_state, SyntheticResetInputs, SyntheticStateConstructionError,
+    SyntheticV4Setup,
 };
-pub use core::{CoreRulesState, PlayerState};
+pub use core::{
+    BaseCharacteristics, BeginningStep, CombatState, CombatStep, ControlHistory, CoreRulesState,
+    EndingStep, FoundationCreatureSource, FoundationSourceKind, PlayerState, PriorityState,
+    TurnPosition,
+};
 pub use delta::{DeltaApplicationError, SemanticDeltaOperation, StateDelta};
 pub use digest::StateDigestError;
 pub use engine::{EngineState, EngineStateParts, FULL_STATE_DIGEST_INPUT_SCHEMA};

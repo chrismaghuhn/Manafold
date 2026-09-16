@@ -96,8 +96,9 @@ fn validate_accepted_progression(
         }
     }
 
-    // M2 has no event families for these core semantic fields. Fail closed
-    // until a reviewed current contract defines their event/cursor proof.
+    // M2/P0 have no event families for these core semantic fields. Fail
+    // closed until a reviewed current contract defines their event/cursor
+    // proof. Compare complete values, not only map presence or keys.
     let has_lost_changed = before.core.players.iter().any(|(player, state)| {
         after
             .core
@@ -106,10 +107,13 @@ fn validate_accepted_progression(
             .is_none_or(|other| other.has_lost != state.has_lost)
     });
     if before.core.active_player != after.core.active_player
-        || before.core.priority_player != after.core.priority_player
         || before.core.turn_number != after.core.turn_number
+        || before.core.priority != after.core.priority
+        || before.core.position != after.core.position
         || before.core.players.len() != after.core.players.len()
         || has_lost_changed
+        || before.combat != after.combat
+        || before.foundation_sources != after.foundation_sources
     {
         return Err(TransitionViolation::UnexplainedMutation);
     }

@@ -585,7 +585,7 @@ fn fnd_006b_rejects_index_in_retired_last_known() {
 }
 
 #[test]
-fn fnd_002_invalid_chronology_cannot_obtain_a_v3_digest() {
+fn fnd_002_invalid_chronology_cannot_obtain_a_v4_digest() {
     let mut state = active_chronology_state();
     let record = state
         .knowledge
@@ -601,14 +601,14 @@ fn fnd_002_invalid_chronology_cannot_obtain_a_v3_digest() {
 }
 
 #[test]
-fn fnd_006b_noncanonical_position_cannot_obtain_a_v3_digest() {
+fn fnd_006b_noncanonical_position_cannot_obtain_a_v4_digest() {
     let mut state = synthetic_state();
     set_object_two_position(&mut state, ZonePosition::Bottom { offset: 0 });
     assert_eq!(state.digest(), Err(StateDigestError::StateInvariant));
 }
 
 #[test]
-fn fnd_006b_valid_canonical_reorder_changes_the_v3_digest() {
+fn fnd_006b_valid_canonical_reorder_changes_the_v4_digest() {
     let baseline = two_object_ordered_state();
     let mut reordered = baseline.clone();
     swap_canonical_two_object_order(&mut reordered);

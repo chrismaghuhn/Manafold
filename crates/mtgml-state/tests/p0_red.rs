@@ -15,7 +15,9 @@ fn current_digest_is_v4(state: &mtgml_state::EngineState) -> FullStateDigestV4 {
 #[test]
 fn p0_synthetic_reset_receives_v4_facts_as_explicit_setup_input() {
     let setup = SyntheticV4Setup {
-        position: TurnPosition::Beginning(BeginningStep::Untap),
+        position: TurnPosition::Beginning {
+            step: BeginningStep::Untap,
+        },
         priority: PriorityState::None,
         combat: None,
         foundation_sources: BTreeMap::new(),
@@ -30,7 +32,9 @@ fn p0_synthetic_reset_receives_v4_facts_as_explicit_setup_input() {
     let _digest = current_digest_is_v4(&state);
     assert_eq!(
         state.core.position,
-        TurnPosition::Beginning(BeginningStep::Untap)
+        TurnPosition::Beginning {
+            step: BeginningStep::Untap,
+        }
     );
     assert_eq!(state.core.priority, PriorityState::None);
     assert_eq!(state.combat, None);
@@ -132,22 +136,28 @@ fn dangling_foundation_source(state: &mut mtgml_state::EngineState) {
 }
 
 fn future_same_turn_control_boundary(state: &mut mtgml_state::EngineState) {
-    state.core.position = TurnPosition::Beginning(BeginningStep::Upkeep);
+    state.core.position = TurnPosition::Beginning {
+        step: BeginningStep::Upkeep,
+    };
     state.foundation_sources.insert(
         GameObjectId(1),
         FoundationCreatureSource {
             control_history: ControlHistory::DuringTurn {
                 turn_number: state.core.turn_number,
-                boundary: TurnPosition::Combat(CombatStep::DeclareAttackers),
+                boundary: TurnPosition::Combat {
+                    step: CombatStep::DeclareAttackers,
+                },
             },
             ..foundation_source()
         },
     );
 }
 
+type InvalidStateCase = (&'static str, fn(&mut mtgml_state::EngineState));
+
 #[test]
 fn p0_v4_state_validation_rejects_each_new_structural_invalidity() {
-    let cases: [(&str, fn(&mut mtgml_state::EngineState)); 8] = [
+    let cases: [InvalidStateCase; 8] = [
         ("absent priority holder", absent_priority_holder),
         ("consecutive passes above one", excessive_consecutive_passes),
         ("dangling attacker", dangling_attacker),

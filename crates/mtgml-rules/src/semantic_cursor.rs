@@ -1,6 +1,9 @@
 use mtgml_model::{DecisionId, GameObjectId, PlayerId};
 use mtgml_random::{RandomStreamCursorV1, RandomStreamKeyV1, RootSeed256};
-use mtgml_state::{EngineState, KnowledgeStateV2, ObjectSnapshot, PerspectiveIdentityStateV2};
+use mtgml_state::{
+    CombatState, EngineState, FoundationCreatureSource, KnowledgeStateV2, ObjectSnapshot,
+    PerspectiveIdentityStateV2, PriorityState, TurnPosition,
+};
 use std::collections::BTreeMap;
 
 use crate::validation::TransitionViolation;
@@ -9,6 +12,10 @@ use crate::validation::TransitionViolation;
 pub(crate) struct SemanticValidationCursor {
     life: BTreeMap<PlayerId, i64>,
     objects: BTreeMap<GameObjectId, ObjectSnapshot>,
+    position: TurnPosition,
+    priority: PriorityState,
+    combat: Option<CombatState>,
+    foundation_sources: BTreeMap<GameObjectId, FoundationCreatureSource>,
     pending_decision: Option<DecisionId>,
     root_seed: RootSeed256,
     random_counters: BTreeMap<RandomStreamKeyV1, u64>,
@@ -29,6 +36,10 @@ impl SemanticValidationCursor {
                 .map(|(player, player_state)| (*player, player_state.life))
                 .collect(),
             objects: crate::snapshots::object_snapshots(state)?,
+            position: state.core.position,
+            priority: state.core.priority,
+            combat: state.combat.clone(),
+            foundation_sources: state.foundation_sources.clone(),
             pending_decision: state
                 .execution
                 .pending_decision
@@ -181,6 +192,13 @@ impl SemanticValidationCursor {
         &self,
         after: &EngineState,
     ) -> Result<(), TransitionViolation> {
+        if self.position != after.core.position
+            || self.priority != after.core.priority
+            || self.combat != after.combat
+            || self.foundation_sources != after.foundation_sources
+        {
+            return Err(TransitionViolation::UnexplainedMutation);
+        }
         let after_life: BTreeMap<_, _> = after
             .core
             .players

@@ -28,9 +28,12 @@ fn fnd_008_active_player_mutation_requires_current_semantic_ownership() {
 }
 
 #[test]
-fn fnd_008_priority_player_mutation_requires_current_semantic_ownership() {
+fn fnd_008_priority_mutation_requires_current_semantic_ownership() {
     assert_fnd_008_unexplained_core_mutation(|after| {
-        after.core.priority_player = PlayerId(2);
+        after.core.priority = mtgml_state::PriorityState::HeldBy {
+            player: PlayerId(2),
+            consecutive_passes: 0,
+        };
     });
 }
 
