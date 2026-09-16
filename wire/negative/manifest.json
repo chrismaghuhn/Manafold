@@ -307,6 +307,24 @@
       "path": "m3-noncanonical-active-player.json"
     },
     {
+      "contract": "synthetic-m3-observation.v1",
+      "expected_error_code": "semantic.synthetic_m3_observation",
+      "expected_reject_layer": "rust-python-semantic-or-decode",
+      "path": "m3-wrong-schema-version.json"
+    },
+    {
+      "contract": "synthetic-m3-observation.v1",
+      "expected_error_code": "decode.invalid_json",
+      "expected_reject_layer": "rust-python-semantic-or-decode",
+      "path": "m3-fake-step-on-precombat-main.json"
+    },
+    {
+      "contract": "synthetic-m3-observation.v1",
+      "expected_error_code": "semantic.synthetic_m3_observation",
+      "expected_reject_layer": "rust-python-semantic-or-decode",
+      "path": "m3-noncanonical-turn-number.json"
+    },
+    {
       "contract": "replay-manifest.v4",
       "expected_error_code": "semantic.replay_manifest",
       "expected_reject_layer": "rust-python-semantic-or-decode",

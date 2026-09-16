@@ -138,14 +138,22 @@ class SyntheticM3Observation:
                 "priority",
             },
         )
-        if obj["schema_version"] != SYNTHETIC_M3_OBSERVATION_SCHEMA:
+        schema_raw = obj["schema_version"]
+        if not isinstance(schema_raw, str):
             raise WireError("decode.invalid_json", "unsupported M3 observation schema")
+        if schema_raw != SYNTHETIC_M3_OBSERVATION_SCHEMA:
+            raise WireError("semantic.synthetic_m3_observation", "unsupported M3 observation schema")
         active_player = parse_uint(obj["active_player"])
         turn_number_raw = obj["turn_number"]
-        # turn_number is a canonical u64 decimal string on the wire.
-        parse_uint(turn_number_raw)
+        # turn_number is a canonical u64 decimal string on the wire. A
+        # non-string is a shape failure; a string that is not canonical
+        # u64 decimal is an M3 semantic-identity failure.
         if not isinstance(turn_number_raw, str):
             raise WireError("decode.invalid_json", "turn number must be a string")
+        try:
+            parse_uint(turn_number_raw)
+        except WireError as exc:
+            raise WireError("semantic.synthetic_m3_observation", exc.message) from exc
         result = cls(
             SYNTHETIC_M3_OBSERVATION_SCHEMA,
             active_player,
@@ -157,10 +165,17 @@ class SyntheticM3Observation:
         return result
 
     def validate(self) -> None:
-        if self.schema_version != SYNTHETIC_M3_OBSERVATION_SCHEMA:
+        if not isinstance(self.schema_version, str):
             raise WireError("decode.invalid_json", "unsupported M3 observation schema")
+        if self.schema_version != SYNTHETIC_M3_OBSERVATION_SCHEMA:
+            raise WireError("semantic.synthetic_m3_observation", "unsupported M3 observation schema")
         uint_wire(self.active_player)
-        parse_uint(self.turn_number)
+        if not isinstance(self.turn_number, str):
+            raise WireError("decode.invalid_json", "turn number must be a string")
+        try:
+            parse_uint(self.turn_number)
+        except WireError as exc:
+            raise WireError("semantic.synthetic_m3_observation", exc.message) from exc
         self.turn_position.to_wire()
         self.priority.to_wire()
 

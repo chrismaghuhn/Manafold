@@ -660,6 +660,26 @@ SCOPE_MAGIC_PATTERNS: tuple[tuple[str, str], ...] = (
     (r"\bpriority_pass\b", "real Magic priority semantics"),
 )
 
+# Exact closed-vocabulary exceptions for the scope guard. Each entry is
+# (pattern, relative path, exact stripped source line). Only an occurrence
+# whose pattern, file, AND stripped line all match exactly is excused. Any
+# other combat_damage occurrence - same file different line, or any other
+# file - still fails. The pattern itself is preserved above.
+SCOPE_MAGIC_CLOSED_VOCAB_EXCEPTIONS: frozenset[tuple[str, str, str]] = frozenset(
+    {
+        (
+            r"\bcombat_damage\b",
+            "crates/mtgml-state/src/digest_v4.rs",
+            'CombatStep::CombatDamage => "combat_damage",',
+        ),
+        (
+            r"\bcombat_damage\b",
+            "python/src/mtgml/_observation_m3.py",
+            '"combat_damage",',
+        ),
+    }
+)
+
 WORKSPACE_MEMBERS_ALLOWED: tuple[str, ...] = (
     "crates/mtgml-card-ir",
     "crates/mtgml-commander",
@@ -779,7 +799,28 @@ def check_no_hidden_heuristic_choices(root: Path) -> str:
 
 
 def check_no_real_magic_sources(root: Path) -> str:
-    scanned, _ = scan_for_patterns(root, SCOPE_MAGIC_PATTERNS, "real Magic semantics")
+    violations: list[str] = []
+    compiled = [(re.compile(pattern), reason, pattern) for pattern, reason in SCOPE_MAGIC_PATTERNS]
+    scanned = 0
+    for path in scope_scan_files(root):
+        scanned += 1
+        try:
+            lines = path.read_text(encoding="utf-8").splitlines()
+        except OSError as error:
+            raise RuntimeError(f"unreadable scope-scan input {path}: {error}") from error
+        relative = path.relative_to(root).as_posix()
+        text = "\n".join(lines)
+        for regex, reason, pattern in compiled:
+            for match in regex.finditer(text):
+                lineno = text.count("\n", 0, match.start()) + 1
+                stripped = lines[lineno - 1].strip() if 1 <= lineno <= len(lines) else ""
+                if (pattern, relative, stripped) in SCOPE_MAGIC_CLOSED_VOCAB_EXCEPTIONS:
+                    continue
+                violations.append(f"{relative}:{lineno}: {reason} ({regex.pattern!r})")
+    if violations:
+        raise ScopeCheckFailure(
+            "production sources contain real Magic semantics:\n" + "\n".join(violations[:50])
+        )
     return f"no real Magic/card semantics across {scanned} source files"
 
 

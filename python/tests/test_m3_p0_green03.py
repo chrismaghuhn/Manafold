@@ -191,7 +191,9 @@ class CheckpointDigestV4Tests(unittest.TestCase):
             "resource_units_consumed": 0,
             "wall_clock_elapsed_millis": 0,
         }
-        # Rust-verified vectors (see GREEN-03 evidence: Rust tmp prints).
+        # Cross-language KAT counterpart: crates/mtgml-persistence/tests/p0_red.rs
+        # p0_checkpoint_digest_v4_known_answers asserts the same two hashes
+        # through the authoritative Rust V4 implementation.
         self.assertEqual(
             calculate_checkpoint_digest_v4(
                 "07" * 32, EpisodeStatus.running(), counters, "in-memory-reference", "4"
