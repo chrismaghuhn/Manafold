@@ -2,7 +2,7 @@
 // every identity remains tests::<name>.
 
 #[test]
-fn checkpoint_v3_validation_and_restore_nonmutation_matrix() {
+fn checkpoint_v4_validation_and_restore_nonmutation_matrix() {
     let checkpoint = backend().checkpoint().unwrap();
     checkpoint.validate().unwrap();
     assert_eq!(checkpoint.schema_version, ENVIRONMENT_CHECKPOINT_SCHEMA);

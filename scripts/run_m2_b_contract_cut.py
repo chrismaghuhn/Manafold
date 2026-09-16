@@ -112,18 +112,23 @@ GATE_TESTS: dict[str, tuple[EvidenceDefinition, ...]] = {
         ),
         rust(
             "mtgml-state",
-            "tests::full_state_digest_v3_known_answer",
-            "FullStateDigestV3 known answer",
+            "tests::full_state_digest_v4_known_answer",
+            "FullStateDigestV4 known answer",
         ),
         rust(
             "mtgml-state",
-            "tests::m2_b_full_state_digest_v3_mutation_matrix",
-            "authoritative V3 digest mutation matrix",
+            "tests::m3_p0_full_state_digest_v4_mutation_matrix",
+            "authoritative V4 digest mutation matrix",
         ),
         rust(
             "mtgml-state",
-            "tests::state_delta_uses_full_state_digest_v3",
-            "StateDelta V3 identity and exact reapplication",
+            "tests::state_delta_uses_full_state_digest_v4",
+            "StateDelta V4 identity and exact reapplication",
+        ),
+        rust(
+            "mtgml-state",
+            "tests::full_state_digest_v3_historical_known_answer_is_detached",
+            "historical detached V3 digest known answer (verification only, not current runtime)",
         ),
         rust(
             "mtgml-state",
@@ -147,8 +152,8 @@ GATE_TESTS: dict[str, tuple[EvidenceDefinition, ...]] = {
         ),
         rust(
             "mtgml-environment",
-            "tests::checkpoint_v3_validation_and_restore_nonmutation_matrix",
-            "CheckpointV3 validation and restore nonmutation",
+            "tests::checkpoint_v4_validation_and_restore_nonmutation_matrix",
+            "CheckpointV4 validation and restore nonmutation",
         ),
         rust(
             "mtgml-environment",
@@ -171,7 +176,7 @@ GATE_TESTS: dict[str, tuple[EvidenceDefinition, ...]] = {
         ),
         source(
             "source_check::no_current_v2_producer",
-            "current V3 producer boundary and staging retirement",
+            "current V4 producer boundary with detached V3; staging retired",
         ),
         python(
             "python/tests/test_persistence_codec.py::test_cross_language_mechanical_golden_vectors",
@@ -562,11 +567,64 @@ def check_no_current_v2_producer() -> str:
                     raise AssertionError(
                         f"current producer token {token} in {path.relative_to(ROOT)}"
                     )
+    # Post-P0 currentness: the V4 successor identities must own the current
+    # producers. Each pair is an explicit (file, token) presence requirement.
+    v4_current = (
+        ("crates/mtgml-state/src/engine.rs", "FullStateDigestV4"),
+        ("crates/mtgml-environment/src/checkpoint.rs", "EnvironmentCheckpointV4"),
+        (
+            "crates/mtgml-environment/src/synthetic/replay.rs",
+            "synthetic-m3-observation.v1",
+        ),
+        (
+            "crates/mtgml-persistence/src/checkpoint_digest.rs",
+            "environment-checkpoint-digest-input.v4",
+        ),
+    )
+    for relative, token in v4_current:
+        text = (ROOT / relative).read_text(encoding="utf-8")
+        if not contains_exact_identifier(text, token):
+            raise AssertionError(
+                f"current V4 successor identity absent: {relative}:{token}"
+            )
+    # Predecessor V3 identities must not reappear as current producers. V3
+    # remains present only in explicitly detached historical files, which are
+    # asserted separately below; any other occurrence fails the gate.
+    v3_not_current = (
+        ("crates/mtgml-state/src/engine.rs", "FullStateDigestV3"),
+        ("crates/mtgml-environment/src/checkpoint.rs", "CheckpointDigestV3"),
+        (
+            "crates/mtgml-environment/src/synthetic/replay.rs",
+            "ReplayManifestV3",
+        ),
+        (
+            "crates/mtgml-environment/src/synthetic/replay.rs",
+            "synthetic-m2-observation.v1",
+        ),
+    )
+    for relative, token in v3_not_current:
+        text = (ROOT / relative).read_text(encoding="utf-8")
+        if contains_exact_identifier(text, token):
+            raise AssertionError(
+                f"predecessor V3 identity reappears as current producer: {relative}:{token}"
+            )
+    # Detached V3 historical evidence must stay present and readable; it is
+    # verification-only and never current runtime identity.
+    v3_detached = (
+        ("crates/mtgml-state/src/digest_v3.rs", "FullStateDigestV3"),
+        ("crates/mtgml-replay/src/v3.rs", "ReplayManifestV3"),
+    )
+    for relative, token in v3_detached:
+        text = (ROOT / relative).read_text(encoding="utf-8")
+        if not contains_exact_identifier(text, token):
+            raise AssertionError(
+                f"detached V3 historical evidence missing: {relative}:{token}"
+            )
     if (ROOT / "wire" / "staging").exists():
         raise AssertionError("temporary wire staging directory remains")
     return (
-        "current state/rules/environment producers are V3-only; "
-        "detached V1/V2 readers remain isolated"
+        "current state/rules/environment producers are V4; "
+        "V3 readers/evidence remain detached"
     )
 
 
