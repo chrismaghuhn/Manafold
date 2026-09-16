@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from itertools import pairwise
 
 from ._replay_common import DeckIdentityV1, KernelIdentityV1
 from ._replay_v2 import RandomnessIdentityV2
@@ -205,7 +206,7 @@ def _validate_status_for_players(status: EpisodeStatus, players: set[int]) -> No
     if status.kind == "running":
         return
     ordered = [outcome.player for outcome in status.players]
-    if any(left >= right for left, right in zip(ordered, ordered[1:])):
+    if any(left >= right for left, right in pairwise(ordered)):
         raise WireError("semantic.replay_manifest", "status players are not in canonical order")
     actual = {outcome.player for outcome in status.players}
     if actual != players:
@@ -475,7 +476,7 @@ class AuthoritativeReplayV4:
                 raise WireError("semantic.replay", exc.message) from exc
             if previous.episode_status.kind != "running":
                 ordered = [o.player for o in previous.episode_status.players]
-                if any(l >= r for l, r in zip(ordered, ordered[1:])):
+                if any(left >= right for left, right in pairwise(ordered)):
                     raise WireError("semantic.replay", "status players are not canonical")
                 if {o.player for o in previous.episode_status.players} != manifest_players:
                     raise WireError("semantic.replay", "status universe differs")

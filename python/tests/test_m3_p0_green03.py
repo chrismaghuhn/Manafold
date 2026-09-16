@@ -18,7 +18,6 @@ from mtgml._replay_v4 import (
     REPLAY_FILE_SCHEMA_V4,
     REPLAY_MANIFEST_SCHEMA_V4,
     REPLAY_STEP_SCHEMA_V4,
-    AuthoritativeReplayV4,
     ReplayManifestV4,
 )
 from mtgml.episode import EpisodeStatus
@@ -135,9 +134,11 @@ class M3ObservationParityTests(unittest.TestCase):
             ("noncanonical turn", lambda d: d.update({"turn_number": "01"})),
         ]
         for label, mutator in cases:
-            with self.subTest(label=label):
-                with self.assertRaises(WireError):
-                    decode_canonical("synthetic-m3-observation.v1", raw(mutator))
+            with (
+                self.subTest(label=label),
+                self.assertRaises(WireError),
+            ):
+                decode_canonical("synthetic-m3-observation.v1", raw(mutator))
 
     def test_player_safe_contract_hides_privileged_fields(self) -> None:
         for privileged in (
@@ -332,8 +333,7 @@ class ReplayV4ParityTests(unittest.TestCase):
 class InformationStabilityTests(unittest.TestCase):
     def test_frozen_identities_are_unchanged(self) -> None:
         from mtgml._information_v2 import INFORMATION_STATE_SCHEMA_V2
-        from mtgml._observation_v1 import OBSERVATION_SCHEMA
-        from mtgml._observation_v1 import observation_digest_from_payload
+        from mtgml._observation_v1 import OBSERVATION_SCHEMA, observation_digest_from_payload
 
         self.assertEqual(INFORMATION_STATE_SCHEMA_V2, "information-state-envelope.v2")
         self.assertEqual(OBSERVATION_SCHEMA, "observation-envelope.v1")

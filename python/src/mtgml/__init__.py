@@ -1,3 +1,9 @@
+from ._observation_m3 import (
+    SYNTHETIC_M3_OBSERVATION_SCHEMA,
+    SyntheticM3Observation,
+    SyntheticM3Priority,
+    SyntheticM3TurnPosition,
+)
 from .decision import (
     ActionCandidate,
     CandidateAssignment,
@@ -18,12 +24,6 @@ from .episode import (
     TruncationReason,
 )
 from .events import ObservedEvent, ObservedEventEnvelope
-from ._observation_m3 import (
-    SYNTHETIC_M3_OBSERVATION_SCHEMA,
-    SyntheticM3Observation,
-    SyntheticM3Priority,
-    SyntheticM3TurnPosition,
-)
 from .observation import (
     InformationStateDigestInputV2,
     InformationStateEnvelope,
@@ -56,6 +56,7 @@ from .replay import (
 from .wire import compute_information_state_digest_v2, decode_canonical, encode_canonical
 
 __all__ = [
+    "SYNTHETIC_M3_OBSERVATION_SCHEMA",
     "ActionCandidate",
     "AuthoritativeReplayV1",
     "AuthoritativeReplayV2",
@@ -95,7 +96,6 @@ __all__ = [
     "ReplaySchemaVersionsV4",
     "ReplayStepV3",
     "ReplayStepV4",
-    "SYNTHETIC_M3_OBSERVATION_SCHEMA",
     "SyntheticM3Observation",
     "SyntheticM3Priority",
     "SyntheticM3TurnPosition",

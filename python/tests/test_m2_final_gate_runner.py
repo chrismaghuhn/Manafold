@@ -824,7 +824,8 @@ class ScopeScanTests(unittest.TestCase):
             py_dir = base / "python" / "src" / "mtgml"
             py_dir.mkdir(parents=True)
             (py_dir / "_observation_m3.py").write_text(
-                'M3_COMBAT_STEPS = frozenset(\n    {\n        "combat_damage",\n        "combat_damage",\n    }\n)\n',
+                'M3_COMBAT_STEPS = frozenset(\n    {\n        "combat_damage",\n'
+                '        "combat_damage",\n    }\n)\n',
                 encoding="utf-8",
             )
             with self.assertRaises(final.ScopeCheckFailure) as caught:

@@ -5,6 +5,7 @@ import json
 from collections.abc import Callable
 from typing import TypeVar
 
+from ._observation_m3 import SyntheticM3Observation
 from .canonical import canonical_json_bytes
 from .decision import (
     DecisionResponse,
@@ -15,7 +16,6 @@ from .decision import (
 from .episode import EpisodeStatus
 from .errors import WireError
 from .events import ObservedEventEnvelope
-from ._observation_m3 import SyntheticM3Observation
 from .observation import (
     InformationStateDigestInputV2,
     InformationStateEnvelope,
