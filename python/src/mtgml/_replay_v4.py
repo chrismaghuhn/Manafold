@@ -50,7 +50,7 @@ class ReplaySchemaVersionsV4:
             "replay_step",
         }
         obj = require_exact_keys(value, keys)
-        return cls(**{key: require_nonempty(obj[key], key) for key in keys})  # type: ignore[arg-type]
+        return cls(**{key: require_nonempty(obj[key], key) for key in keys})
 
     def to_wire(self) -> dict[str, object]:
         return {
