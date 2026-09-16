@@ -96,32 +96,47 @@ GOVERNANCE_CLEANUP = COMPLETE
 M3_PRE_T0_HARDENING = COMPLETE / ACCEPTED
 ADR_0054 = ACCEPTED
 FOUNDATION_V2 = ACCEPTED
-M3_PLAN_STATUS = ACCEPTED_PENDING_REAUTHORIZATION
+M3_PLAN_STATUS = ACCEPTED
 PRIOR_AUTHORIZATION_HEAD = 0f13b43680ea7d0b043c5baee59eb2ed3c364ecc
-M3_STARTED = NO
-M3_AUTHORIZED = NO
-AUTHORIZATION_HEAD = NOT_SET
+M3_AUTHORIZED = YES
+AUTHORIZATION_HEAD = ea668c47ef1361b3d989fd32b8f3cfd4751b1e79
+AUTHORIZED_TASK_AT_AUTHORIZATION_HEAD = M3.P0_STATE_IDENTITY_CUT
+M3_STARTED = YES
+P0_REVIEW_HEAD = a7e641a7e6145610c9533187cf6340712f460e44
+P0_MERGE_COMMIT = 20dac927027776ef5f0a5b389a27d4a05eefb180
+P0_EXACT_HEAD_REVIEW = APPROVE
+P0_COMPLETE = YES
+P0_FROZEN = YES
 M3_S1 = rules/turn-structure@0.1.0 SELECTED
-NEXT_GATE = EXACT_MASTER_REAUTHORIZATION
+T0_AUTHORIZED = NO
+T0_STARTED = NO
+S1_IMPLEMENTATION = NOT_AUTHORIZED
+NEXT_GATE = EXACT_MASTER_T0_REAUTHORIZATION
 ```
 
 `M2.5 = NOT_CLAIMED / NOT_FROZEN`. Its abandoned census and research
 machinery was removed from the active repository; the merged history remains
 historical evidence only. Final foundation closure and the Pre-M3 Remediation
 Freeze are complete, and Issue #105 is closed as historical audit work. Issue
-#162 core modularization is also complete and merged by PR #179. The current
-active maintainer work area is the post-merge exact-master M3 reauthorization
-under Issue #178; this is not a Magic-semantics milestone and does not
-authorize M3. The pre-M3 governance cleanup and M3 Entry Decision remain
-historically accepted, while PR #184 has accepted the hardened ADR 0054 and
-Foundation V2 plan. The separate exact-`master` review remains required before
-execution authorization.
+#162 core modularization is also complete and merged by PR #179. The accepted M3 authorization at
+`ea668c47ef1361b3d989fd32b8f3cfd4751b1e79` authorized the task
+`M3.P0_STATE_IDENTITY_CUT`; that semantic-neutral P0 infrastructure slice is
+now merged after an approved cumulative exact-head review, with reviewed head
+`a7e641a7e6145610c9533187cf6340712f460e44` and merge commit
+`20dac927027776ef5f0a5b389a27d4a05eefb180`, so P0 is complete and frozen. The
+pre-M3 governance cleanup and M3 Entry Decision remain historically accepted,
+and PR #184 has accepted the hardened ADR 0054 and Foundation V2 plan. The
+separate exact-`master` T0 reauthorization remains required before T0
+execution.
 
-`M3 = NOT_STARTED / NOT_AUTHORIZED` for the Manafold engine, with
-`AUTHORIZATION_HEAD = NOT_SET`. Census-driven scope research is outside this authoritative engine repository, and external census M3 authorization must not
+M3 has started only in the sense that the semantic-neutral P0
+infrastructure is merged: P0 is complete and frozen, and it introduced no
+Magic capability. No Foundation capability has yet advanced from `specified`
+to `implemented`. Census-driven scope research is outside this authoritative engine repository, and external census M3 authorization must not
 be treated as engine-semantic authorization. The accepted M3 Entry Decision
-and accepted hardening plan select `rules/turn-structure@0.1.0` as S1; the
-semantic-neutral state/persistence prerequisite remains before T0. No semantic
+and accepted hardening plan select `rules/turn-structure@0.1.0` as S1; S1
+remains selected but not authorized for implementation. T0 remains separately
+unauthorized. No semantic
 implementation is implied by the accepted plan.
 
 The historical accepted operational scope record for that decision is
@@ -129,14 +144,16 @@ The historical accepted operational scope record for that decision is
 The accepted hardening plan is recorded in
 [`docs/rules/M3_INITIAL_SEMANTIC_FOUNDATION_V2.md`](rules/M3_INITIAL_SEMANTIC_FOUNDATION_V2.md)
 and [`docs/adr/0054-m3-pre-t0-hardening.md`](adr/0054-m3-pre-t0-hardening.md).
-Neither artifact authorizes M3 before the separate post-merge reauthorization.
+Neither artifact itself performs execution authorization; the P0 authorization
+was recorded at `ea668c47ef1361b3d989fd32b8f3cfd4751b1e79`, and T0
+reauthorization remains separate.
 
 ## M3 — Bounded Semantic Coverage
 
-**Status:** `NOT_STARTED / NOT_AUTHORIZED`; this section describes the future
-execution model after exact-`master` reauthorization. The accepted Entry
-Decision and accepted hardening plan select S1 but do not authorize M3 or
-select a card.
+**Status:** `STARTED — P0 COMPLETE / FROZEN`; the sections below describe the
+execution model for the remaining slices. M3.P0 infrastructure is merged and
+frozen; M3.T0 is `NOT_STARTED / NOT_AUTHORIZED` and M3.S1 is
+`SELECTED / NOT_AUTHORIZED`.
 
 The planned execution order is:
 
@@ -146,7 +163,8 @@ M3.P0 semantic-neutral state/persistence identity cut
 → M3.S1 rules/turn-structure@0.1.0
 ```
 
-P0 and T0 add no Magic capability and do not advance any capability lifecycle.
+P0 added no Magic capability and advanced no capability lifecycle; T0 adds no
+Magic capability and does not advance any capability lifecycle.
 
 ### Purpose and progress authority
 
