@@ -1,16 +1,16 @@
 # M3 Initial Semantic Foundation V2
 
-**Status:** accepted (PR #184 merged)
-**Stability:** accepted; execution remains separately unauthorized
+**Status:** accepted on merge of PR #184; candidate until that merge
+**Stability:** accepted on hardening-PR merge; execution remains separately unauthorized
 **Artifact version:** `m3.initial-semantic-foundation.v2`
-**Pre-merge baseline:** `0f13b43680ea7d0b043c5baee59eb2ed3c364ecc`
+**Candidate baseline:** `0f13b43680ea7d0b043c5baee59eb2ed3c364ecc`
 **Historical basis:** V1 was accepted by PR #182, merge commit `10f0387281529be087bcb658b779c19a70c2bf8c`; this V2 is accepted by merge of PR #184
 **M3 state:** `M3_STARTED = NO`, `M3_AUTHORIZED = NO`
 
 This document is the current operational scope record for the M3 Entry Decision
 after the pre-T0 hardening audit. Foundation V1 remains immutable historical
 accepted evidence; this V2 records the reviewed dependency correction and
-structural prerequisites. PR #184 accepted this plan.
+structural prerequisites. PR #184 is the acceptance vehicle for this plan.
 The separate post-merge exact-master reauthorization authorizes execution only;
 it is not an acceptance prerequisite.
 
@@ -47,7 +47,7 @@ were not true capability dependencies:
 
 The resolved capability set, direct roots, all eleven capability identities,
 their declared scopes, the retained edges, S1, and the sixteen reviewed
-interaction obligations are otherwise unchanged. The accepted hardening plan also
+interaction obligations are otherwise unchanged. The current candidate also
     binds the coordinated semantic-neutral state/persistence cut and forced-
 progress proof prerequisites recorded in ADR 0054.
 ## 1. Decision boundary and authority
@@ -112,15 +112,13 @@ FND-026B = BLOCKED_CONTRACT_AMBIGUITY / NONBLOCKING
 FND-026C = DEFERRED_P2
 HRD-006 = DEFERRED_P2
 
-M3_PRE_T0_HARDENING = COMPLETE / ACCEPTED
-M3_ENTRY_DECISION = ACCEPTED
-INITIAL_FOUNDATION = ACCEPTED_HARDENED_M3_SCOPE
-M3_PLAN_STATUS = ACCEPTED_PENDING_REAUTHORIZATION
+M3_PRE_T0_HARDENING = CANDIDATE
+M3_ENTRY_DECISION = ACCEPTED_BUT_UNDER_PRE_T0_HARDENING
+INITIAL_FOUNDATION = HARDENING_CANDIDATE
 PRIOR_AUTHORIZATION_HEAD = 0f13b43680ea7d0b043c5baee59eb2ed3c364ecc
 M3_STARTED = NO
 M3_AUTHORIZED = NO
 AUTHORIZATION_HEAD = NOT_SET
-NEXT_GATE = EXACT_MASTER_REAUTHORIZATION
 ```
 
 The retained findings remain at their accepted dispositions. This decision
@@ -971,7 +969,7 @@ The required exit artifact uses these states:
 | --- | --- | --- | --- | --- |
 | All 11 closure capabilities | `YES` | `NO` | `NO` | `YES` for all three states |
 
-At accepted hardening-plan scope:
+At hardening-candidate scope:
 
 ```text
 ENTRY_REVIEWED_INTERACTION_OBLIGATIONS = 16

@@ -1,7 +1,7 @@
 # ADR 0054 — M3 Pre-T0 Hardening: Capability Lifecycle, Dependency Closure, State Identity Cut, and Reauthorization
 
-- **Status:** accepted (PR #184 merged)
-- **Stability:** accepted; execution remains separately unauthorized
+- **Status:** accepted by merge of PR #184; candidate until that merge
+- **Stability:** accepted on merge of PR #184; execution remains separately unauthorized
 - **Date:** 2026-09-16
 - **Owners:** architecture maintainers; state maintainers; rules maintainers; conformance maintainers
 - **Historical basis:** accepted ADR 0053 and `M3_INITIAL_SEMANTIC_FOUNDATION_V1.md`
@@ -9,9 +9,9 @@
 - **Implementation evidence:** `NOT_RUN`; this ADR changes no production semantic behavior
 
 This ADR records the pre-T0 hardening decision for the accepted M3 Entry
-scope. PR #184 was its acceptance vehicle and accepted ADR 0054 and Foundation
-V2 as the hardened M3 plan. A separate exact-`master` review then controls
-execution authorization; it is not an acceptance prerequisite. ADR
+scope. PR #184 is its acceptance vehicle: merging that PR accepts ADR 0054 and
+Foundation V2 as the hardened M3 plan. A separate exact-`master` review then
+controls execution authorization; it is not an acceptance prerequisite. ADR
 0053 and Foundation V1 remain immutable historical evidence; they are not
 rewritten to conceal the earlier acceptance or authorization record.
 
@@ -46,13 +46,10 @@ surfaces still described M3 as unauthorized, while Issue #178's historical
 comment described it as authorized. This is a status-authority contradiction,
 not a reason to delete history.
 
-The current post-merge accepted state is therefore:
+The current candidate state is therefore:
 
 ```text
-M3_PRE_T0_HARDENING = COMPLETE / ACCEPTED
-M3_PLAN_STATUS = ACCEPTED_PENDING_REAUTHORIZATION
-ADR_0054 = ACCEPTED
-FOUNDATION_V2 = ACCEPTED_HARDENED_M3_SCOPE
+M3_PRE_T0_HARDENING = CANDIDATE
 
 PRIOR_AUTHORIZATION_HEAD =
 0f13b43680ea7d0b043c5baee59eb2ed3c364ecc
@@ -64,14 +61,14 @@ M3_AUTHORIZED = NO
 M3_STARTED = NO
 AUTHORIZATION_HEAD = NOT_SET
 
-NEXT_GATE = EXACT_MASTER_REAUTHORIZATION
 IMPLEMENTATION_START = BLOCKED
-BLOCK_REASON = EXACT_MASTER_REAUTHORIZATION_REQUIRED
+BLOCK_REASON = PRE_T0_PLAN_HARDENING
 ```
 
 The earlier authorization happened on the then-reviewed master and remains a
-historical fact. PR #184 accepted the hardened plan, but its execution remains
-unauthorized until the separate exact-master reauthorization is complete.
+historical fact. This hardening review supersedes its present authorization
+effect because the plan's capability closure and persisted-state prerequisites
+are being reviewed again before implementation starts.
 
 ## 2. Re-audit findings
 
@@ -86,7 +83,7 @@ unauthorized until the separate exact-master reauthorization is complete.
 
 ## 3. Capability lifecycle authority
 
-The accepted hardening plan selects **Model B**. The eleven identities in
+The hardening candidate selects **Model B**. The eleven identities in
 Foundation V2 are registered with:
 
 ```text
@@ -500,9 +497,9 @@ No interaction row is marked satisfied by this design review. Standard census
 data remains downstream stress input, OD-003 remains downstream, and no card,
 deck, format, bundle, or certification claim is created.
 
-## 14. Hardening change boundary
+## 14. Candidate change boundary
 
-This accepted hardening change may change documentation, the versioned Foundation
+This hardening candidate may change documentation, the versioned Foundation
 authority, the capability registry lifecycle metadata, the normative-document
 register, and current-status tests. It must not change production behavior:
 
@@ -523,7 +520,7 @@ Card IR definition, or public RulesCase protocol is introduced here.
 
 ## 15. Verification and reauthorization
 
-The hardening branch was required to pass repository-owned documentation, repository,
+The hardening branch must pass repository-owned documentation, repository,
 schema, registry, focused-status, fast, integration, and diff checks that are
 actually executable in the environment. The Windows `just` wrapper is a
 separate result and must remain `BLOCKED` if `/bin/bash` is unavailable. A
@@ -535,18 +532,16 @@ MAJOR = 0
 ```
 
 Hosted PR checks are reported separately and are not inferred from local
-results. PR #184 is merged. A separate invocation must fetch exact remote
-`master`, verify merge-tree parity and hosted evidence,
+results. The PR must remain unmerged. After merge, a separate invocation must
+fetch exact remote `master`, verify merge-tree parity and hosted evidence,
 review ADR 0054, Foundation V2, the registry, README/ROADMAP, and Issue #178,
-then post a new authorization record. Until that happens, the current status is:
+then post a new authorization record. Until that happens:
 
 ```text
-M3_PRE_T0_HARDENING = COMPLETE / ACCEPTED
-M3_PLAN_STATUS = ACCEPTED_PENDING_REAUTHORIZATION
+M3_PRE_T0_HARDENING = CANDIDATE
 M3_AUTHORIZED = NO
 M3_STARTED = NO
 AUTHORIZATION_HEAD = NOT_SET
-NEXT_GATE = EXACT_MASTER_REAUTHORIZATION
 REAUTHORIZATION_REQUIRED_AFTER_MERGE = YES
 ```
 
