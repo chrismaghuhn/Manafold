@@ -45,7 +45,13 @@ fn foundation_source() -> FoundationCreatureSource {
 }
 
 fn assert_v4_fact_mutation_is_rejected(mutate: impl FnOnce(&mut mtgml_state::EngineState)) {
-    let before = state();
+    assert_v4_fact_mutation_is_rejected_from(state(), mutate);
+}
+
+fn assert_v4_fact_mutation_is_rejected_from(
+    before: mtgml_state::EngineState,
+    mutate: impl FnOnce(&mut mtgml_state::EngineState),
+) {
     let mut kernel = SyntheticM1RulesKernel;
     let mut transition = kernel.apply(&before, PlayerId(1), &response()).unwrap();
     mutate(&mut transition.next_state);
@@ -58,6 +64,15 @@ fn assert_v4_fact_mutation_is_rejected(mutate: impl FnOnce(&mut mtgml_state::Eng
 
     let error = validate_transition_contract(&before, &transition).unwrap_err();
     assert!(matches!(error, TransitionViolation::UnexplainedMutation));
+}
+
+fn state_with_foundation_source() -> mtgml_state::EngineState {
+    let mut state = state();
+    state
+        .foundation_sources
+        .insert(mtgml_model::GameObjectId(1), foundation_source());
+    mtgml_state::validate_engine_state(&state).unwrap();
+    state
 }
 
 #[test]
@@ -90,9 +105,11 @@ fn p0_normal_transition_rejects_unexplained_combat_mutation() {
 
 #[test]
 fn p0_normal_transition_rejects_unexplained_foundation_source_mutation() {
-    assert_v4_fact_mutation_is_rejected(|state| {
+    assert_v4_fact_mutation_is_rejected_from(state_with_foundation_source(), |state| {
         state
             .foundation_sources
-            .insert(mtgml_model::GameObjectId(1), foundation_source());
+            .get_mut(&mtgml_model::GameObjectId(1))
+            .unwrap()
+            .marked_damage = 1;
     });
 }
