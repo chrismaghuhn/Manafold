@@ -281,9 +281,7 @@ class ReplayManifestV4:
         if self.schemas.observation != "observation-envelope.v1":
             raise WireError("semantic.replay_manifest", "observation schema is not V1")
         if self.schemas.observation_payload_codec != "synthetic-m3-observation.v1":
-            raise WireError(
-                "semantic.replay_manifest", "observation payload codec is not M3"
-            )
+            raise WireError("semantic.replay_manifest", "observation payload codec is not M3")
         if self.schemas.decision != "player-decision-request.v2":
             raise WireError("semantic.replay_manifest", "decision schema is not V2")
         if self.schemas.decision_response != "decision-response.v2":
@@ -306,9 +304,7 @@ class ReplayManifestV4:
                 raise WireError("semantic.replay_manifest", "deck identities are not unique")
             seen.add(deck.player)
             if previous is not None and previous > deck.player:
-                raise WireError(
-                    "semantic.replay_manifest", "decks are not in canonical order"
-                )
+                raise WireError("semantic.replay_manifest", "decks are not in canonical order")
             previous = deck.player
             players.append(deck.player)
         _validate_status_for_players(self.initial_identity.episode_status, seen)

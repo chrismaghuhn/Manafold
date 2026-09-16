@@ -18,9 +18,7 @@ M3_COMBAT_STEPS = frozenset(
     }
 )
 M3_ENDING_STEPS = frozenset({"end_step", "cleanup"})
-M3_TURN_KINDS = frozenset(
-    {"beginning", "precombat_main", "combat", "postcombat_main", "ending"}
-)
+M3_TURN_KINDS = frozenset({"beginning", "precombat_main", "combat", "postcombat_main", "ending"})
 M3_PRIORITY_KINDS = frozenset({"none", "held_by"})
 
 
@@ -75,9 +73,7 @@ class SyntheticM3TurnPosition:
             result = {"kind": "ending", "step": self.step}
         elif self.kind in {"precombat_main", "postcombat_main"}:
             if self.step is not None:
-                raise WireError(
-                    "decode.invalid_json", "main phase must not carry a step"
-                )
+                raise WireError("decode.invalid_json", "main phase must not carry a step")
             result = {"kind": self.kind}
         else:
             raise WireError("decode.invalid_json", "unknown turn-position kind")
@@ -142,7 +138,9 @@ class SyntheticM3Observation:
         if not isinstance(schema_raw, str):
             raise WireError("decode.invalid_json", "unsupported M3 observation schema")
         if schema_raw != SYNTHETIC_M3_OBSERVATION_SCHEMA:
-            raise WireError("semantic.synthetic_m3_observation", "unsupported M3 observation schema")
+            raise WireError(
+                "semantic.synthetic_m3_observation", "unsupported M3 observation schema"
+            )
         active_player = parse_uint(obj["active_player"])
         turn_number_raw = obj["turn_number"]
         # turn_number is a canonical u64 decimal string on the wire. A
@@ -168,7 +166,9 @@ class SyntheticM3Observation:
         if not isinstance(self.schema_version, str):
             raise WireError("decode.invalid_json", "unsupported M3 observation schema")
         if self.schema_version != SYNTHETIC_M3_OBSERVATION_SCHEMA:
-            raise WireError("semantic.synthetic_m3_observation", "unsupported M3 observation schema")
+            raise WireError(
+                "semantic.synthetic_m3_observation", "unsupported M3 observation schema"
+            )
         uint_wire(self.active_player)
         if not isinstance(self.turn_number, str):
             raise WireError("decode.invalid_json", "turn number must be a string")

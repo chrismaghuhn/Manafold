@@ -90,11 +90,15 @@ class M3ObservationParityTests(unittest.TestCase):
         ]:
             with self.subTest(kind=kind, step=step):
                 obs = _m3(kind, step, "none")
-                self.assertEqual(decode_canonical("synthetic-m3-observation.v1", encode_canonical(obs)), obs)
+                self.assertEqual(
+                    decode_canonical("synthetic-m3-observation.v1", encode_canonical(obs)), obs
+                )
         for kind in ("precombat_main", "postcombat_main"):
             with self.subTest(kind=kind):
                 obs = _m3(kind, None, "none")
-                self.assertEqual(decode_canonical("synthetic-m3-observation.v1", encode_canonical(obs)), obs)
+                self.assertEqual(
+                    decode_canonical("synthetic-m3-observation.v1", encode_canonical(obs)), obs
+                )
 
     def test_negative_observation_fixtures_reject(self) -> None:
         base = {
@@ -115,10 +119,16 @@ class M3ObservationParityTests(unittest.TestCase):
             return canonical_json_bytes(value)
 
         cases = [
-            ("wrong schema", lambda d: d.update({"schema_version": "synthetic-m3-observation.v999"})),
+            (
+                "wrong schema",
+                lambda d: d.update({"schema_version": "synthetic-m3-observation.v999"}),
+            ),
             ("unknown field", lambda d: d.update({"unknown_field": True})),
             ("unknown kind", lambda d: d.update({"turn_position": {"kind": "middle"}})),
-            ("fake step", lambda d: d.update({"turn_position": {"kind": "precombat_main", "step": "untap"}})),
+            (
+                "fake step",
+                lambda d: d.update({"turn_position": {"kind": "precombat_main", "step": "untap"}}),
+            ),
             ("invalid priority", lambda d: d.update({"priority": {"kind": "sometimes"}})),
             ("leaked passes", lambda d: d.update({"consecutive_passes": 0})),
             ("noncanonical player", lambda d: d.update({"active_player": "01"})),
@@ -151,12 +161,16 @@ class M3ObservationParityTests(unittest.TestCase):
     @unittest.skipIf(jsonschema is None, "jsonschema is not installed")
     def test_m3_schema_is_closed_and_validates_goldens(self) -> None:
         schema = json.loads(
-            (ROOT / "schemas" / "synthetic-m3-observation.v1.schema.json").read_text(encoding="utf-8")
+            (ROOT / "schemas" / "synthetic-m3-observation.v1.schema.json").read_text(
+                encoding="utf-8"
+            )
         )
 
         def walk(node: object, path: str) -> None:
             if isinstance(node, dict):
-                declares = node.get("type") == "object" or "properties" in node or "required" in node
+                declares = (
+                    node.get("type") == "object" or "properties" in node or "required" in node
+                )
                 if declares and node.get("additionalProperties") is not False:
                     raise AssertionError(f"open object schema at {path}")
                 for key, value in node.items():
@@ -239,9 +253,7 @@ class CheckpointDigestV4Tests(unittest.TestCase):
         v4 = calculate_checkpoint_digest_v4(
             "00" * 32, EpisodeStatus.running(), counters, "in-memory-reference", "4"
         )
-        self.assertNotEqual(
-            v4, "3d5a04f81ec127ee86be10518b029f01e49fee567b3bbab6799701f55cc30feb"
-        )
+        self.assertNotEqual(v4, "3d5a04f81ec127ee86be10518b029f01e49fee567b3bbab6799701f55cc30feb")
 
 
 class ReplayV4ParityTests(unittest.TestCase):
@@ -274,15 +286,21 @@ class ReplayV4ParityTests(unittest.TestCase):
                 self.assertEqual(encode_canonical(decoded), payload)
 
     def test_v4_negative_fixtures_reject_with_expected_codes(self) -> None:
-        manifest = json.loads((ROOT / "wire" / "negative" / "manifest.json").read_text(encoding="utf-8"))
-        wanted = {c["path"] for c in manifest["fixtures"] if ".v4" in c["contract"] or "-v4-" in c["path"]}
+        manifest = json.loads(
+            (ROOT / "wire" / "negative" / "manifest.json").read_text(encoding="utf-8")
+        )
+        wanted = {
+            c["path"] for c in manifest["fixtures"] if ".v4" in c["contract"] or "-v4-" in c["path"]
+        }
         self.assertGreaterEqual(len(wanted), 7)
         for case in manifest["fixtures"]:
             if case["path"] not in wanted:
                 continue
             with self.subTest(fixture=case["path"]):
                 with self.assertRaises(WireError) as caught:
-                    decode_canonical(case["contract"], (ROOT / "wire" / "negative" / case["path"]).read_bytes())
+                    decode_canonical(
+                        case["contract"], (ROOT / "wire" / "negative" / case["path"]).read_bytes()
+                    )
                 self.assertEqual(caught.exception.code, case["expected_error_code"])
 
     def test_v4_schema_identities_are_exact(self) -> None:
@@ -298,11 +316,15 @@ class ReplayV4ParityTests(unittest.TestCase):
         }
         for contract, schema_name in mapping.items():
             schema = json.loads((ROOT / "schemas" / schema_name).read_text(encoding="utf-8"))
-            golden = json.loads((ROOT / "wire" / "golden" / "manifest.json").read_text(encoding="utf-8"))
+            golden = json.loads(
+                (ROOT / "wire" / "golden" / "manifest.json").read_text(encoding="utf-8")
+            )
             for case in golden["fixtures"]:
                 if case["contract"] != contract:
                     continue
-                instance = json.loads((ROOT / "wire" / "golden" / case["path"]).read_text(encoding="utf-8"))
+                instance = json.loads(
+                    (ROOT / "wire" / "golden" / case["path"]).read_text(encoding="utf-8")
+                )
                 with self.subTest(fixture=case["path"]):
                     jsonschema.Draft202012Validator(schema).validate(instance)
 
