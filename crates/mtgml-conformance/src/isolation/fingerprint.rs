@@ -6,15 +6,15 @@
 
 use mtgml_environment::{PlayerEndpoint, PlayerEndpointHandle, TrustedEnvironmentController};
 use mtgml_model::{
-    CheckpointCodecIdentity, CheckpointDigestV3, DigestReferenceV1, EnvironmentLimitCounters,
-    EpisodeStatus, FullStateDigestV3, InformationStateDigestV2, PlayerId, StateRevision,
+    CheckpointCodecIdentity, CheckpointDigestV4, DigestReferenceV1, EnvironmentLimitCounters,
+    EpisodeStatus, FullStateDigestV4, InformationStateDigestV2, PlayerId, StateRevision,
     VisibleSequence,
 };
 use mtgml_observation::{
     PlayerServiceErrorCodeV1, PlayerStepSubmissionV1, PlayerStepV2, PlayerSubmissionCodeV1,
 };
 use mtgml_replay::{
-    DeckIdentityV1, InitialEnvironmentIdentityV3, KernelIdentityV1, ReplaySchemaVersionsV1,
+    DeckIdentityV1, InitialEnvironmentIdentityV4, KernelIdentityV1, ReplaySchemaVersionsV4,
 };
 use mtgml_state::EngineState;
 use mtgml_wire::{compute_information_state_digest_v2, encode_canonical};
@@ -47,9 +47,9 @@ pub struct TrustedEnvironmentIdentitySurface {
     pub oracle_snapshot: String,
     pub card_bundle: String,
     pub randomness_contract_id: String,
-    pub schemas: ReplaySchemaVersionsV1,
+    pub schemas: ReplaySchemaVersionsV4,
     pub decks: Vec<DeckIdentityV1>,
-    pub initial_identity: InitialEnvironmentIdentityV3,
+    pub initial_identity: InitialEnvironmentIdentityV4,
     pub checkpoint_schema: String,
     pub checkpoint_codec_id: String,
     pub checkpoint_codec_semantic_version: String,
@@ -100,7 +100,7 @@ pub struct TransitionVisibleProduct {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SemanticStateFingerprint {
     pub revision: StateRevision,
-    pub full_state_digest: FullStateDigestV3,
+    pub full_state_digest: FullStateDigestV4,
     pub engine_state_equal_probe: EngineState,
 }
 
@@ -110,7 +110,7 @@ pub struct EnvironmentFingerprint {
     pub status: EpisodeStatus,
     pub limit_counters: EnvironmentLimitCounters,
     pub codec: CheckpointCodecIdentity,
-    pub checkpoint_digest: CheckpointDigestV3,
+    pub checkpoint_digest: CheckpointDigestV4,
     pub surface: TrustedEnvironmentIdentitySurface,
 }
 
@@ -313,7 +313,7 @@ pub fn capture_complete(
         encode_canonical(&replay).map_err(|_| HarnessError::WireEncoding)?;
     let p1_snapshot = capture_snapshot(&endpoints[0])?;
     let p2_snapshot = capture_snapshot(&endpoints[1])?;
-    let current_identity = InitialEnvironmentIdentityV3 {
+    let current_identity = InitialEnvironmentIdentityV4 {
         state_revision: checkpoint_before.state.revision,
         full_state_digest: checkpoint_before.state_digest.clone(),
         episode_status: checkpoint_before.status.clone(),
@@ -336,9 +336,9 @@ pub fn capture_complete(
     let checkpoint_digest_reference = DigestReferenceV1 {
         envelope_version: "mtgml.digest-envelope.v1".into(),
         algorithm_id: "sha-256".into(),
-        semantic_domain: CheckpointDigestV3::DOMAIN.into(),
+        semantic_domain: CheckpointDigestV4::DOMAIN.into(),
         payload_codec_id: "mtgml.canonical-cbor.v1".into(),
-        input_schema_id: "environment-checkpoint-digest-input.v3".into(),
+        input_schema_id: "environment-checkpoint-digest-input.v4".into(),
         digest_bytes: checkpoint_before.checkpoint_digest.raw_bytes(),
     };
     let surface = TrustedEnvironmentIdentitySurface {
@@ -457,7 +457,7 @@ mod tests {
     };
     use mtgml_environment::ENVIRONMENT_CHECKPOINT_SCHEMA;
     use mtgml_observation::{INFORMATION_STATE_SCHEMA_V2, OBSERVATION_SCHEMA};
-    use mtgml_replay::{REPLAY_FILE_SCHEMA_V3, REPLAY_MANIFEST_SCHEMA_V3};
+    use mtgml_replay::{REPLAY_FILE_SCHEMA_V4, REPLAY_MANIFEST_SCHEMA_V4};
 
     const P1: PlayerId = PlayerId(1);
     const P2: PlayerId = PlayerId(2);
@@ -511,7 +511,7 @@ mod tests {
                 .surface
                 .replay_manifest_schema
                 .as_str(),
-            REPLAY_MANIFEST_SCHEMA_V3
+            REPLAY_MANIFEST_SCHEMA_V4
         );
         assert_eq!(
             complete_before
@@ -519,7 +519,7 @@ mod tests {
                 .surface
                 .replay_file_schema
                 .as_str(),
-            REPLAY_FILE_SCHEMA_V3
+            REPLAY_FILE_SCHEMA_V4
         );
     }
 
@@ -528,7 +528,7 @@ mod tests {
         let source = include_str!("fingerprint.rs");
         for required in [
             "pub engine_build",
-            "ReplayManifestV3",
+            "ReplayManifestV4",
             "pub initial_identity",
             "pub full_state_digest_reference",
             "pub checkpoint_digest_reference",
@@ -559,19 +559,19 @@ mod tests {
         let surface = &fingerprint.environment.surface;
         assert_eq!(
             surface.full_state_digest_reference.semantic_domain,
-            FullStateDigestV3::DOMAIN
+            FullStateDigestV4::DOMAIN
         );
         assert_eq!(
             surface.full_state_digest_reference.input_schema_id,
-            "full-state-digest-input.v3"
+            "full-state-digest-input.v4"
         );
         assert_eq!(
             surface.checkpoint_digest_reference.semantic_domain,
-            CheckpointDigestV3::DOMAIN
+            CheckpointDigestV4::DOMAIN
         );
         assert_eq!(
             surface.checkpoint_digest_reference.input_schema_id,
-            "environment-checkpoint-digest-input.v3"
+            "environment-checkpoint-digest-input.v4"
         );
         let replay = controller.export_replay().unwrap();
         assert_eq!(surface.initial_identity, replay.manifest.initial_identity);

@@ -1,8 +1,10 @@
-use mtgml_model::{FullStateDigestV3, StateRevision};
+use std::collections::BTreeMap;
+
+use mtgml_model::{FullStateDigestV4, GameObjectId, StateRevision};
 use mtgml_random::RandomStateV1;
 use serde::{Deserialize, Serialize};
 
-use crate::core::CoreRulesState;
+use crate::core::{CombatState, CoreRulesState, FoundationCreatureSource};
 use crate::digest::StateDigestError;
 use crate::execution::ExecutionState;
 use crate::format::FormatState;
@@ -10,13 +12,15 @@ use crate::identity::IdentityAllocatorState;
 use crate::m2_shape::{KnowledgeStateV2, PerspectiveIdentityStateV2};
 use crate::zones::ZoneState;
 
-pub const FULL_STATE_DIGEST_INPUT_SCHEMA: &str = "full-state-digest-input.v3";
+pub const FULL_STATE_DIGEST_INPUT_SCHEMA: &str = "full-state-digest-input.v4";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct EngineState {
     pub revision: StateRevision,
     pub core: CoreRulesState,
+    pub combat: Option<CombatState>,
+    pub foundation_sources: BTreeMap<GameObjectId, FoundationCreatureSource>,
     pub zones: ZoneState,
     pub allocators: IdentityAllocatorState,
     pub execution: ExecutionState,
@@ -28,17 +32,19 @@ pub struct EngineState {
 
 impl EngineState {
     pub fn canonical_digest_bytes(&self) -> Result<Vec<u8>, StateDigestError> {
-        crate::digest_v3::full_state_digest_input(self)?.canonical_payload()
+        crate::digest_v4::full_state_digest_input(self)?.canonical_payload()
     }
 
-    pub fn digest(&self) -> Result<FullStateDigestV3, StateDigestError> {
-        crate::digest_v3::calculate_full_state_digest_v3_for_state(self)
+    pub fn digest(&self) -> Result<FullStateDigestV4, StateDigestError> {
+        crate::digest_v4::calculate_full_state_digest_v4_for_state(self)
     }
 
     pub fn parts(&self) -> EngineStateParts {
         EngineStateParts {
             revision: self.revision,
             core: self.core.clone(),
+            combat: self.combat.clone(),
+            foundation_sources: self.foundation_sources.clone(),
             zones: self.zones.clone(),
             allocators: self.allocators.clone(),
             execution: self.execution.clone(),
@@ -90,6 +96,8 @@ impl EngineState {
 pub struct EngineStateParts {
     pub revision: StateRevision,
     pub core: CoreRulesState,
+    pub combat: Option<CombatState>,
+    pub foundation_sources: BTreeMap<GameObjectId, FoundationCreatureSource>,
     pub zones: ZoneState,
     pub allocators: IdentityAllocatorState,
     pub execution: ExecutionState,
@@ -104,6 +112,8 @@ impl From<EngineStateParts> for EngineState {
         Self {
             revision: parts.revision,
             core: parts.core,
+            combat: parts.combat,
+            foundation_sources: parts.foundation_sources,
             zones: parts.zones,
             allocators: parts.allocators,
             execution: parts.execution,

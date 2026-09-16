@@ -765,6 +765,73 @@ class ScopeScanTests(unittest.TestCase):
                 self.assertIsInstance(detail, str)
                 self.assertTrue(detail)
 
+    def test_closed_combat_damage_vocabulary_is_accepted(self) -> None:
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            rust_dir = base / "crates" / "mtgml-state" / "src"
+            rust_dir.mkdir(parents=True)
+            (rust_dir / "digest_v4.rs").write_text(
+                'fn combat_step() {\n    CombatStep::CombatDamage => "combat_damage",\n}\n',
+                encoding="utf-8",
+            )
+            py_dir = base / "python" / "src" / "mtgml"
+            py_dir.mkdir(parents=True)
+            (py_dir / "_observation_m3.py").write_text(
+                'M3_COMBAT_STEPS = frozenset(\n    {\n        "combat_damage",\n    }\n)\n',
+                encoding="utf-8",
+            )
+            detail = final.check_no_real_magic_sources(base)
+            self.assertIsInstance(detail, str)
+            self.assertTrue(detail)
+
+    def test_unauthorized_combat_damage_is_still_rejected(self) -> None:
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            evil_dir = base / "crates" / "mtgml-rules" / "src"
+            evil_dir.mkdir(parents=True)
+            (evil_dir / "evil.rs").write_text(
+                "fn deal() {\n    let combat_damage = 1;\n}\n", encoding="utf-8"
+            )
+            with self.assertRaises(final.ScopeCheckFailure) as caught:
+                final.check_no_real_magic_sources(base)
+            self.assertIn("combat_damage", str(caught.exception))
+
+    def test_additional_combat_damage_in_allowed_file_is_still_rejected(self) -> None:
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            rust_dir = base / "crates" / "mtgml-state" / "src"
+            rust_dir.mkdir(parents=True)
+            (rust_dir / "digest_v4.rs").write_text(
+                'fn combat_step() {\n    CombatStep::CombatDamage => "combat_damage",\n}\n'
+                "fn deal() {\n    let combat_damage = 1;\n}\n",
+                encoding="utf-8",
+            )
+            with self.assertRaises(final.ScopeCheckFailure) as caught:
+                final.check_no_real_magic_sources(base)
+            self.assertIn("combat_damage", str(caught.exception))
+
+    def test_duplicate_identical_allowed_line_is_still_rejected(self) -> None:
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            py_dir = base / "python" / "src" / "mtgml"
+            py_dir.mkdir(parents=True)
+            (py_dir / "_observation_m3.py").write_text(
+                'M3_COMBAT_STEPS = frozenset(\n    {\n        "combat_damage",\n'
+                '        "combat_damage",\n    }\n)\n',
+                encoding="utf-8",
+            )
+            with self.assertRaises(final.ScopeCheckFailure) as caught:
+                final.check_no_real_magic_sources(base)
+            self.assertIn("combat_damage", str(caught.exception))
+
 
 class ChildCommandTests(unittest.TestCase):
     def test_expect_commit_and_development_flags_follow_child_capabilities(self) -> None:

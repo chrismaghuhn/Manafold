@@ -17,14 +17,14 @@ use mtgml_decision::{
     VisibleCandidateV2, PLAYER_DECISION_REQUEST_V2_SCHEMA,
 };
 use mtgml_environment::{
-    EnvironmentCheckpointV3, EnvironmentLimitCounters, SyntheticM1EnvironmentBackend,
+    EnvironmentCheckpointV4, EnvironmentLimitCounters, SyntheticM1EnvironmentBackend,
     SyntheticM1EnvironmentConfig, SyntheticM1ReplayConfig, TrustedEnvironmentController,
 };
 use mtgml_model::{
     CandidateIdV1, CheckpointCodecIdentity, ContentDigest, OpaqueObjectId, PlayerId, StateRevision,
 };
 use mtgml_random::RootSeed256;
-use mtgml_replay::{DeckIdentityV1, KernelIdentityV1, ReplaySchemaVersionsV1};
+use mtgml_replay::{DeckIdentityV1, KernelIdentityV1, ReplaySchemaVersionsV4};
 use mtgml_state::construct_synthetic_engine_state;
 
 const P1: PlayerId = PlayerId(1);
@@ -36,8 +36,8 @@ fn seed() -> RootSeed256 {
 
 fn codec() -> CheckpointCodecIdentity {
     CheckpointCodecIdentity {
-        codec_id: "synthetic-m2-memory".into(),
-        semantic_version: "3".into(),
+        codec_id: "in-memory-reference".into(),
+        semantic_version: "4".into(),
     }
 }
 
@@ -48,6 +48,7 @@ fn config(players: [PlayerId; 2]) -> SyntheticM1EnvironmentConfig {
     };
     SyntheticM1EnvironmentConfig {
         codec: codec(),
+        setup: mtgml_state::SyntheticV4Setup::m2_compatibility(),
         replay: SyntheticM1ReplayConfig {
             engine_build: "synthetic-build".into(),
             kernel: KernelIdentityV1 {
@@ -60,14 +61,15 @@ fn config(players: [PlayerId; 2]) -> SyntheticM1EnvironmentConfig {
             oracle_snapshot: "synthetic-oracle".into(),
             card_bundle: "synthetic-bundle".into(),
             randomness_contract_id: "mtgml.rng.v1".into(),
-            schemas: ReplaySchemaVersionsV1 {
+            schemas: ReplaySchemaVersionsV4 {
                 observation: OBSERVATION_SCHEMA.into(),
+                observation_payload_codec: "synthetic-m3-observation.v1".into(),
                 information_state: INFORMATION_STATE_SCHEMA_V2.into(),
                 decision: "player-decision-request.v2".into(),
                 decision_response: "decision-response.v2".into(),
                 observed_event: OBSERVED_EVENT_SCHEMA_V2.into(),
                 player_step: PLAYER_STEP_SCHEMA_V2.into(),
-                replay_step: "replay-step.v3".into(),
+                replay_step: "replay-step.v4".into(),
             },
             decks: players
                 .into_iter()
@@ -89,10 +91,11 @@ fn fixture_controller() -> TrustedEnvironmentController {
     let state = construct_synthetic_engine_state(mtgml_state::SyntheticResetInputs {
         players,
         root_seed: seed(),
+        setup: mtgml_state::SyntheticV4Setup::m2_compatibility(),
     })
     .unwrap();
     let counters = EnvironmentLimitCounters::default();
-    let checkpoint = EnvironmentCheckpointV3::new(
+    let checkpoint = EnvironmentCheckpointV4::new(
         state,
         mtgml_model::EpisodeStatus::Running,
         counters,

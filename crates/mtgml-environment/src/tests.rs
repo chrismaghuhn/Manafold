@@ -3,8 +3,8 @@ use super::*;
 use mtgml_decision::{DecisionAnswerV2, DecisionResponseV2, DECISION_RESPONSE_V2_SCHEMA};
 
 use mtgml_model::{
-    CandidateIdV1, CheckpointDigestV3, ContentDigest, ContinuationId, EpisodeStatus,
-    FullStateDigestV3, PlayerDecisionIdV1, PlayerId, PlayerOutcome, PlayerResult, StateRevision,
+    CandidateIdV1, CheckpointDigestV4, ContentDigest, ContinuationId, EpisodeStatus,
+    FullStateDigestV4, PlayerDecisionIdV1, PlayerId, PlayerOutcome, PlayerResult, StateRevision,
     TerminalReason, TruncationReason,
 };
 
@@ -16,15 +16,16 @@ use mtgml_observation::{
 use mtgml_random::RootSeed256;
 
 use mtgml_replay::{
-    AuthoritativeReplayV3, DeckIdentityV1, KernelIdentityV1, ReplaySchemaVersionsV1,
+    AuthoritativeReplayV4, DeckIdentityV1, KernelIdentityV1, ReplaySchemaVersionsV4,
 };
 
 fn config(players: [PlayerId; 2]) -> SyntheticM1EnvironmentConfig {
     SyntheticM1EnvironmentConfig {
         codec: CheckpointCodecIdentity {
-            codec_id: "synthetic-m2-memory".into(),
-            semantic_version: "3".into(),
+            codec_id: "in-memory-reference".into(),
+            semantic_version: "4".into(),
         },
+        setup: mtgml_state::SyntheticV4Setup::m2_compatibility(),
         replay: SyntheticM1ReplayConfig {
             engine_build: "synthetic-build".into(),
             kernel: KernelIdentityV1 {
@@ -37,14 +38,15 @@ fn config(players: [PlayerId; 2]) -> SyntheticM1EnvironmentConfig {
             oracle_snapshot: "synthetic-oracle".into(),
             card_bundle: "synthetic-bundle".into(),
             randomness_contract_id: "mtgml.rng.v1".into(),
-            schemas: ReplaySchemaVersionsV1 {
+            schemas: ReplaySchemaVersionsV4 {
                 observation: OBSERVATION_SCHEMA.into(),
+                observation_payload_codec: "synthetic-m3-observation.v1".into(),
                 information_state: INFORMATION_STATE_SCHEMA_V2.into(),
                 decision: "player-decision-request.v2".into(),
                 decision_response: DECISION_RESPONSE_V2_SCHEMA.into(),
                 observed_event: OBSERVED_EVENT_SCHEMA_V2.into(),
                 player_step: PLAYER_STEP_SCHEMA_V2.into(),
-                replay_step: "replay-step.v3".into(),
+                replay_step: "replay-step.v4".into(),
             },
             decks: players
                 .into_iter()
@@ -97,6 +99,7 @@ fn rich_provenance_state() -> mtgml_state::EngineState {
         mtgml_state::construct_synthetic_engine_state(mtgml_state::SyntheticResetInputs {
             players: [PlayerId(1), PlayerId(2)],
             root_seed: seed(),
+            setup: mtgml_state::SyntheticV4Setup::m2_compatibility(),
         })
         .unwrap();
 
@@ -362,6 +365,7 @@ fn m2e_fixture() -> EngineState {
     let mut state = construct_synthetic_engine_state(mtgml_state::SyntheticResetInputs {
         players: [PlayerId(1), PlayerId(2)],
         root_seed: seed(),
+        setup: mtgml_state::SyntheticV4Setup::m2_compatibility(),
     })
     .unwrap();
     let exile = ZoneLocation {

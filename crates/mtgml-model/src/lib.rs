@@ -325,6 +325,8 @@ macro_rules! raw_digest {
 
 raw_digest!(FullStateDigestV3, "mtgml.full-state-digest.v3");
 raw_digest!(CheckpointDigestV3, "mtgml.checkpoint-digest.v3");
+raw_digest!(FullStateDigestV4, "mtgml.full-state-digest.v4");
+raw_digest!(CheckpointDigestV4, "mtgml.checkpoint-digest.v4");
 
 impl FullStateDigestV3 {
     pub fn as_digest_reference(&self) -> DigestReferenceV1 {
@@ -334,6 +336,19 @@ impl FullStateDigestV3 {
             semantic_domain: Self::DOMAIN.to_owned(),
             payload_codec_id: "mtgml.canonical-cbor.v1".to_owned(),
             input_schema_id: "full-state-digest-input.v3".to_owned(),
+            digest_bytes: self.raw_bytes(),
+        }
+    }
+}
+
+impl FullStateDigestV4 {
+    pub fn as_digest_reference(&self) -> DigestReferenceV1 {
+        DigestReferenceV1 {
+            envelope_version: "mtgml.digest-envelope.v1".to_owned(),
+            algorithm_id: "sha-256".to_owned(),
+            semantic_domain: Self::DOMAIN.to_owned(),
+            payload_codec_id: "mtgml.canonical-cbor.v1".to_owned(),
+            input_schema_id: "full-state-digest-input.v4".to_owned(),
             digest_bytes: self.raw_bytes(),
         }
     }

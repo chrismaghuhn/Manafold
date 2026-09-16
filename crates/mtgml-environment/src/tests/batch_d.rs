@@ -7,14 +7,15 @@ fn batch_d_invalid_ordered_state_cannot_construct_checkpoint() {
         mtgml_state::construct_synthetic_engine_state(mtgml_state::SyntheticResetInputs {
             players: [PlayerId(1), PlayerId(2)],
             root_seed: seed(),
+            setup: mtgml_state::SyntheticV4Setup::m2_compatibility(),
         })
         .unwrap();
     let codec = CheckpointCodecIdentity {
-        codec_id: "synthetic-m2-memory".into(),
-        semantic_version: "3".into(),
+        codec_id: "in-memory-reference".into(),
+        semantic_version: "4".into(),
     };
     assert!(
-        EnvironmentCheckpointV3::new(
+        EnvironmentCheckpointV4::new(
             state.clone(),
             EpisodeStatus::Running,
             EnvironmentLimitCounters::default(),
@@ -43,7 +44,7 @@ fn batch_d_invalid_ordered_state_cannot_construct_checkpoint() {
         .position = mtgml_state::ZonePosition::Bottom { offset: 0 };
 
     assert_eq!(
-        EnvironmentCheckpointV3::new(
+        EnvironmentCheckpointV4::new(
             state,
             EpisodeStatus::Running,
             EnvironmentLimitCounters::default(),

@@ -125,7 +125,7 @@ GATE_TESTS: dict[str, tuple[TestDefinition, ...]] = {
     "STATE_DELTA_FULL_REAPPLICATION": (
         *test_definitions(
             "mtgml-state",
-            ("tests::state_delta_uses_full_state_digest_v3",),
+            ("tests::state_delta_uses_full_state_digest_v4",),
             "full StateDelta application across every authoritative component",
         ),
         *test_definitions(
@@ -154,11 +154,11 @@ GATE_TESTS: dict[str, tuple[TestDefinition, ...]] = {
         *test_definitions(
             "mtgml-environment",
             (
-                "tests::checkpoint_v3_validation_and_restore_nonmutation_matrix",
+                "tests::checkpoint_v4_validation_and_restore_nonmutation_matrix",
                 "tests::checkpoint_identity_tampering_is_rejected",
                 "tests::checkpoint_restore_repeats_exact_transition_and_replay_segment",
             ),
-            "complete EnvironmentCheckpointV3 creation, validation, and restore identity",
+            "complete EnvironmentCheckpointV4 creation, validation, and restore identity",
         ),
     ),
     "FORK_PARITY": (

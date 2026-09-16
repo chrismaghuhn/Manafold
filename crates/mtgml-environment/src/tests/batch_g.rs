@@ -17,7 +17,7 @@ fn fnd_017b_closed_status_with_pending_decision_is_rejected_at_checkpoint_owner(
         ],
     };
     assert!(matches!(
-        EnvironmentCheckpointV3::new(
+        EnvironmentCheckpointV4::new(
             checkpoint.state.clone(),
             status,
             checkpoint.limit_counters.clone(),

@@ -10,16 +10,16 @@ use std::collections::BTreeMap;
 use mtgml_decision::DecisionResponseV2;
 use mtgml_model::PlayerId;
 use mtgml_observation::ObservedEventEnvelopeV2;
-use mtgml_replay::ReplayStepV3;
+use mtgml_replay::ReplayStepV4;
 use mtgml_rules::{validate_transition_contract, RulesKernel, TransitionResult};
 
 use super::SyntheticM1EnvironmentBackend;
-use crate::checkpoint::{EnvironmentCheckpointV3, EnvironmentLimitCounters};
+use crate::checkpoint::{EnvironmentCheckpointV4, EnvironmentLimitCounters};
 use crate::errors::{ControllerError, EnvironmentCommitError};
 
 impl SyntheticM1EnvironmentBackend {
-    pub(super) fn current_checkpoint(&self) -> Result<EnvironmentCheckpointV3, ControllerError> {
-        Ok(EnvironmentCheckpointV3::new(
+    pub(super) fn current_checkpoint(&self) -> Result<EnvironmentCheckpointV4, ControllerError> {
+        Ok(EnvironmentCheckpointV4::new(
             self.state.clone(),
             self.status.clone(),
             self.limit_counters.clone(),
@@ -74,7 +74,7 @@ impl SyntheticM1EnvironmentBackend {
     ) -> Result<TransitionResult, ControllerError>
     where
         F: FnOnce(
-            &EnvironmentCheckpointV3,
+            &EnvironmentCheckpointV4,
             &TransitionResult,
             &BTreeMap<PlayerId, Vec<ObservedEventEnvelopeV2>>,
         ) -> Result<(), ControllerError>,
@@ -100,7 +100,7 @@ impl SyntheticM1EnvironmentBackend {
 
         let candidate_counters =
             Self::candidate_counters(&before.limit_counters, transition.events.len())?;
-        let candidate = EnvironmentCheckpointV3::new(
+        let candidate = EnvironmentCheckpointV4::new(
             transition.next_state.clone(),
             transition.status.clone(),
             candidate_counters,
@@ -115,7 +115,7 @@ impl SyntheticM1EnvironmentBackend {
                 counter: "replay_step_index",
             }
         })?;
-        let step = ReplayStepV3 {
+        let step = ReplayStepV4 {
             step_index,
             actor,
             checkpoint_digest_before: before.checkpoint_digest.clone(),

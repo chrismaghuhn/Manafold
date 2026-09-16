@@ -20,6 +20,7 @@ fn information_state_orders_active_and_retired_knowledge_jointly() {
         mtgml_state::construct_synthetic_engine_state(mtgml_state::SyntheticResetInputs {
             players: [PlayerId(1), PlayerId(2)],
             root_seed: seed(),
+            setup: mtgml_state::SyntheticV4Setup::m2_compatibility(),
         })
         .unwrap();
 
@@ -91,13 +92,13 @@ fn information_state_orders_active_and_retired_knowledge_jointly() {
         },
     );
 
-    let checkpoint = EnvironmentCheckpointV3::new(
+    let checkpoint = EnvironmentCheckpointV4::new(
         state.clone(),
         EpisodeStatus::Running,
         EnvironmentLimitCounters::default(),
         CheckpointCodecIdentity {
-            codec_id: "synthetic-m2-memory".into(),
-            semantic_version: "3".into(),
+            codec_id: "in-memory-reference".into(),
+            semantic_version: "4".into(),
         },
     )
     .unwrap();
@@ -129,11 +130,11 @@ fn information_state_orders_active_and_retired_knowledge_jointly() {
 #[test]
 fn evd_015_retained_provenance_is_complete_and_stable_through_restore_and_fork() {
     let codec = CheckpointCodecIdentity {
-        codec_id: "synthetic-m2-memory".into(),
-        semantic_version: "3".into(),
+        codec_id: "in-memory-reference".into(),
+        semantic_version: "4".into(),
     };
     let state = rich_provenance_state();
-    let checkpoint = EnvironmentCheckpointV3::new(
+    let checkpoint = EnvironmentCheckpointV4::new(
         state.clone(),
         EpisodeStatus::Running,
         EnvironmentLimitCounters::default(),
@@ -256,17 +257,17 @@ fn episode_status_does_not_change_the_information_digest() {
     let final_state = controller.checkpoint().unwrap().state;
 
     let codec = CheckpointCodecIdentity {
-        codec_id: "synthetic-m2-memory".into(),
-        semantic_version: "3".into(),
+        codec_id: "in-memory-reference".into(),
+        semantic_version: "4".into(),
     };
-    let running = EnvironmentCheckpointV3::new(
+    let running = EnvironmentCheckpointV4::new(
         final_state.clone(),
         EpisodeStatus::Running,
         EnvironmentLimitCounters::default(),
         codec.clone(),
     )
     .unwrap();
-    let terminal = EnvironmentCheckpointV3::new(
+    let terminal = EnvironmentCheckpointV4::new(
         final_state.clone(),
         EpisodeStatus::Terminal {
             reason: TerminalReason::Concession,
@@ -395,17 +396,18 @@ fn visible_decision_exposes_no_trusted_identities_or_internals() {
         mtgml_state::construct_synthetic_engine_state(mtgml_state::SyntheticResetInputs {
             players: [PlayerId(1), PlayerId(2)],
             root_seed: seed(),
+            setup: mtgml_state::SyntheticV4Setup::m2_compatibility(),
         })
         .unwrap();
     variant.allocators.next_effect_id = mtgml_model::EffectInstanceId(500);
     variant.allocators.next_trigger_id = mtgml_model::TriggerInstanceId(900);
-    let checkpoint = EnvironmentCheckpointV3::new(
+    let checkpoint = EnvironmentCheckpointV4::new(
         variant,
         EpisodeStatus::Running,
         EnvironmentLimitCounters::default(),
         CheckpointCodecIdentity {
-            codec_id: "synthetic-m2-memory".into(),
-            semantic_version: "3".into(),
+            codec_id: "in-memory-reference".into(),
+            semantic_version: "4".into(),
         },
     )
     .unwrap();

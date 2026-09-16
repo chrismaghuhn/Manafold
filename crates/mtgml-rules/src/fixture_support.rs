@@ -273,7 +273,8 @@ mod tests {
     use mtgml_random::RootSeed256;
     use mtgml_state::{
         construct_synthetic_engine_state, PerspectiveLifecycleAuditV1,
-        PerspectiveLifecycleMutationV1, SyntheticResetInputs, VisibilityPartition,
+        PerspectiveLifecycleMutationV1, SyntheticResetInputs, SyntheticV4Setup,
+        VisibilityPartition,
     };
 
     const P1: PlayerId = PlayerId(1);
@@ -283,6 +284,7 @@ mod tests {
         construct_synthetic_engine_state(SyntheticResetInputs {
             players: [P1, P2],
             root_seed: RootSeed256::from_lower_hex(&"11".repeat(32)).unwrap(),
+            setup: SyntheticV4Setup::m2_compatibility(),
         })
         .unwrap()
     }

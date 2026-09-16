@@ -337,7 +337,7 @@ fn typed_rejection_codes_matrix() {
 
     // Build a truncated checkpoint to drive episode_closed.
     let completed_state = controller.checkpoint().unwrap().state;
-    let truncated_checkpoint = EnvironmentCheckpointV3::new(
+    let truncated_checkpoint = EnvironmentCheckpointV4::new(
         completed_state,
         EpisodeStatus::Truncated {
             reason: TruncationReason::ExternalStop,
@@ -354,8 +354,8 @@ fn typed_rejection_codes_matrix() {
         },
         EnvironmentLimitCounters::default(),
         CheckpointCodecIdentity {
-            codec_id: "synthetic-m2-memory".into(),
-            semantic_version: "3".into(),
+            codec_id: "in-memory-reference".into(),
+            semantic_version: "4".into(),
         },
     )
     .unwrap();
@@ -386,6 +386,7 @@ fn internal_failures_surface_only_service_unavailable() {
         mtgml_state::construct_synthetic_engine_state(mtgml_state::SyntheticResetInputs {
             players: [PlayerId(1), PlayerId(2)],
             root_seed: seed(),
+            setup: mtgml_state::SyntheticV4Setup::m2_compatibility(),
         })
         .unwrap();
     state.execution.pending_decision = Some(PendingDecisionRecordV2 {
@@ -403,13 +404,13 @@ fn internal_failures_surface_only_service_unavailable() {
             continuation_id: None,
         },
     });
-    let checkpoint = EnvironmentCheckpointV3::new(
+    let checkpoint = EnvironmentCheckpointV4::new(
         state,
         EpisodeStatus::Running,
         EnvironmentLimitCounters::default(),
         CheckpointCodecIdentity {
-            codec_id: "synthetic-m2-memory".into(),
-            semantic_version: "3".into(),
+            codec_id: "in-memory-reference".into(),
+            semantic_version: "4".into(),
         },
     )
     .unwrap();
@@ -437,7 +438,7 @@ fn internal_failures_surface_only_service_unavailable() {
     // and must map to exactly `service_unavailable`.
     let players = [PlayerId(1), PlayerId(2)];
     let fresh = backend().checkpoint().unwrap();
-    let exhausted_checkpoint = EnvironmentCheckpointV3::new(
+    let exhausted_checkpoint = EnvironmentCheckpointV4::new(
         fresh.state,
         fresh.status.clone(),
         EnvironmentLimitCounters {

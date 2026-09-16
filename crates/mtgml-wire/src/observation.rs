@@ -4,13 +4,20 @@ use crate::error::WireError;
 use mtgml_observation::{
     InformationStateDigestInputV2, InformationStateEnvelope, ObservationEnvelope,
     ObservedEventEnvelope, ObservedEventEnvelopeV2, PlayerInformationStateV2, PlayerStep,
-    PlayerStepV2,
+    PlayerStepV2, SyntheticM3Observation,
 };
 
 impl WireContract for ObservationEnvelope {
     fn validate_wire(&self) -> Result<(), WireError> {
         self.validate()
             .map_err(|error| WireError::new("semantic.observation", error.to_string()))
+    }
+}
+
+impl WireContract for SyntheticM3Observation {
+    fn validate_wire(&self) -> Result<(), WireError> {
+        self.validate()
+            .map_err(|error| WireError::new("semantic.synthetic_m3_observation", error.to_string()))
     }
 }
 

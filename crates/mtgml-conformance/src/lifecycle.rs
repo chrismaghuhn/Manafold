@@ -6,7 +6,7 @@
 //! evidence for the three owned M2.E gates.
 
 use mtgml_model::{
-    CardDefinitionId, EpisodeStatus, FullStateDigestV3, GameObjectId, OpaqueObjectId,
+    CardDefinitionId, EpisodeStatus, FullStateDigestV4, GameObjectId, OpaqueObjectId,
     PhysicalCardId, PlayerId, VisibleSequence, ZoneKind,
 };
 use mtgml_rules::fixture_support::{FixtureTransition, PlannedOccurrence};
@@ -33,6 +33,7 @@ pub fn lifecycle_fixture() -> EngineState {
     let mut state = construct_synthetic_engine_state(SyntheticResetInputs {
         players: [P1, P2],
         root_seed: seed(),
+        setup: mtgml_state::SyntheticV4Setup::m2_compatibility(),
     })
     .unwrap();
     for index in 3..=4u64 {
@@ -659,7 +660,7 @@ pub fn assert_exact_transition_product(
     before: &EngineState,
     result: &TransitionResult,
     expected_events: &[AuthoritativeRuleEvent],
-    expected_digest: &FullStateDigestV3,
+    expected_digest: &FullStateDigestV4,
 ) -> Result<(), ConformanceFailure> {
     mtgml_rules::validate_transition_contract(before, result)
         .map_err(|error| ConformanceFailure::Contract(error.to_string()))?;

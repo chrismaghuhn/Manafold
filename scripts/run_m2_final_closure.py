@@ -660,6 +660,25 @@ SCOPE_MAGIC_PATTERNS: tuple[tuple[str, str], ...] = (
     (r"\bpriority_pass\b", "real Magic priority semantics"),
 )
 
+# Exact closed-vocabulary exceptions for the scope guard. Each key is
+# (pattern, relative path, exact stripped source line) and the value is the
+# number of occurrences excused for that exact triple (occurrence
+# cardinality). The first N matches are excused; any further match with the
+# same exact triple still fails, as does any match with another file, line,
+# or pattern. The pattern itself is preserved above.
+SCOPE_MAGIC_CLOSED_VOCAB_EXCEPTIONS: dict[tuple[str, str, str], int] = {
+    (
+        r"\bcombat_damage\b",
+        "crates/mtgml-state/src/digest_v4.rs",
+        'CombatStep::CombatDamage => "combat_damage",',
+    ): 1,
+    (
+        r"\bcombat_damage\b",
+        "python/src/mtgml/_observation_m3.py",
+        '"combat_damage",',
+    ): 1,
+}
+
 WORKSPACE_MEMBERS_ALLOWED: tuple[str, ...] = (
     "crates/mtgml-card-ir",
     "crates/mtgml-commander",
@@ -686,6 +705,7 @@ SCHEMA_INVENTORY_ALLOWED: frozenset[str] = frozenset(
         "authoritative-replay.v1.schema.json",
         "authoritative-replay.v2.schema.json",
         "authoritative-replay.v3.schema.json",
+        "authoritative-replay.v4.schema.json",
         "bundle-certification.v1.schema.json",
         "bundle-manifest.v1.schema.json",
         "capability-registry.v1.schema.json",
@@ -708,6 +728,8 @@ SCHEMA_INVENTORY_ALLOWED: frozenset[str] = frozenset(
         "replay-manifest.v1.schema.json",
         "replay-manifest.v2.schema.json",
         "replay-manifest.v3.schema.json",
+        "replay-manifest.v4.schema.json",
+        "synthetic-m3-observation.v1.schema.json",
         "scope-impact-report.v1.schema.json",
     }
 )
@@ -776,7 +798,32 @@ def check_no_hidden_heuristic_choices(root: Path) -> str:
 
 
 def check_no_real_magic_sources(root: Path) -> str:
-    scanned, _ = scan_for_patterns(root, SCOPE_MAGIC_PATTERNS, "real Magic semantics")
+    violations: list[str] = []
+    compiled = [(re.compile(pattern), reason, pattern) for pattern, reason in SCOPE_MAGIC_PATTERNS]
+    consumed: dict[tuple[str, str, str], int] = {}
+    scanned = 0
+    for path in scope_scan_files(root):
+        scanned += 1
+        try:
+            lines = path.read_text(encoding="utf-8").splitlines()
+        except OSError as error:
+            raise RuntimeError(f"unreadable scope-scan input {path}: {error}") from error
+        relative = path.relative_to(root).as_posix()
+        text = "\n".join(lines)
+        for regex, reason, pattern in compiled:
+            for match in regex.finditer(text):
+                lineno = text.count("\n", 0, match.start()) + 1
+                stripped = lines[lineno - 1].strip() if 1 <= lineno <= len(lines) else ""
+                key = (pattern, relative, stripped)
+                allowed = SCOPE_MAGIC_CLOSED_VOCAB_EXCEPTIONS.get(key, 0)
+                if consumed.get(key, 0) < allowed:
+                    consumed[key] = consumed.get(key, 0) + 1
+                    continue
+                violations.append(f"{relative}:{lineno}: {reason} ({regex.pattern!r})")
+    if violations:
+        raise ScopeCheckFailure(
+            "production sources contain real Magic semantics:\n" + "\n".join(violations[:50])
+        )
     return f"no real Magic/card semantics across {scanned} source files"
 
 
