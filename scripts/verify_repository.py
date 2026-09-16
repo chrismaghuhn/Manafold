@@ -397,7 +397,7 @@ def main() -> None:
         fail("historical V3 checkpoint digest support is not preserved")
 
     for token in (
-        "checkpoint_v3_validation_and_restore_nonmutation_matrix",
+        "checkpoint_v4_validation_and_restore_nonmutation_matrix",
         "checkpoint_identity_tampering_is_rejected",
     ):
         if token not in env_tests:
