@@ -660,25 +660,24 @@ SCOPE_MAGIC_PATTERNS: tuple[tuple[str, str], ...] = (
     (r"\bpriority_pass\b", "real Magic priority semantics"),
 )
 
-# Exact closed-vocabulary exceptions for the scope guard. Each entry is
-# (pattern, relative path, exact stripped source line). Only an occurrence
-# whose pattern, file, AND stripped line all match exactly is excused. Any
-# other combat_damage occurrence - same file different line, or any other
-# file - still fails. The pattern itself is preserved above.
-SCOPE_MAGIC_CLOSED_VOCAB_EXCEPTIONS: frozenset[tuple[str, str, str]] = frozenset(
-    {
-        (
-            r"\bcombat_damage\b",
-            "crates/mtgml-state/src/digest_v4.rs",
-            'CombatStep::CombatDamage => "combat_damage",',
-        ),
-        (
-            r"\bcombat_damage\b",
-            "python/src/mtgml/_observation_m3.py",
-            '"combat_damage",',
-        ),
-    }
-)
+# Exact closed-vocabulary exceptions for the scope guard. Each key is
+# (pattern, relative path, exact stripped source line) and the value is the
+# number of occurrences excused for that exact triple (occurrence
+# cardinality). The first N matches are excused; any further match with the
+# same exact triple still fails, as does any match with another file, line,
+# or pattern. The pattern itself is preserved above.
+SCOPE_MAGIC_CLOSED_VOCAB_EXCEPTIONS: dict[tuple[str, str, str], int] = {
+    (
+        r"\bcombat_damage\b",
+        "crates/mtgml-state/src/digest_v4.rs",
+        'CombatStep::CombatDamage => "combat_damage",',
+    ): 1,
+    (
+        r"\bcombat_damage\b",
+        "python/src/mtgml/_observation_m3.py",
+        '"combat_damage",',
+    ): 1,
+}
 
 WORKSPACE_MEMBERS_ALLOWED: tuple[str, ...] = (
     "crates/mtgml-card-ir",
@@ -801,6 +800,7 @@ def check_no_hidden_heuristic_choices(root: Path) -> str:
 def check_no_real_magic_sources(root: Path) -> str:
     violations: list[str] = []
     compiled = [(re.compile(pattern), reason, pattern) for pattern, reason in SCOPE_MAGIC_PATTERNS]
+    consumed: dict[tuple[str, str, str], int] = {}
     scanned = 0
     for path in scope_scan_files(root):
         scanned += 1
@@ -814,7 +814,10 @@ def check_no_real_magic_sources(root: Path) -> str:
             for match in regex.finditer(text):
                 lineno = text.count("\n", 0, match.start()) + 1
                 stripped = lines[lineno - 1].strip() if 1 <= lineno <= len(lines) else ""
-                if (pattern, relative, stripped) in SCOPE_MAGIC_CLOSED_VOCAB_EXCEPTIONS:
+                key = (pattern, relative, stripped)
+                allowed = SCOPE_MAGIC_CLOSED_VOCAB_EXCEPTIONS.get(key, 0)
+                if consumed.get(key, 0) < allowed:
+                    consumed[key] = consumed.get(key, 0) + 1
                     continue
                 violations.append(f"{relative}:{lineno}: {reason} ({regex.pattern!r})")
     if violations:

@@ -816,6 +816,21 @@ class ScopeScanTests(unittest.TestCase):
                 final.check_no_real_magic_sources(base)
             self.assertIn("combat_damage", str(caught.exception))
 
+    def test_duplicate_identical_allowed_line_is_still_rejected(self) -> None:
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            py_dir = base / "python" / "src" / "mtgml"
+            py_dir.mkdir(parents=True)
+            (py_dir / "_observation_m3.py").write_text(
+                'M3_COMBAT_STEPS = frozenset(\n    {\n        "combat_damage",\n        "combat_damage",\n    }\n)\n',
+                encoding="utf-8",
+            )
+            with self.assertRaises(final.ScopeCheckFailure) as caught:
+                final.check_no_real_magic_sources(base)
+            self.assertIn("combat_damage", str(caught.exception))
+
 
 class ChildCommandTests(unittest.TestCase):
     def test_expect_commit_and_development_flags_follow_child_capabilities(self) -> None:
