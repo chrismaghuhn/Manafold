@@ -26,6 +26,19 @@ pub struct ReplaySchemaVersionsV1 {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
+pub struct ReplaySchemaVersionsV4 {
+    pub observation: String,
+    pub observation_payload_codec: String,
+    pub information_state: String,
+    pub decision: String,
+    pub decision_response: String,
+    pub observed_event: String,
+    pub player_step: String,
+    pub replay_step: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct RandomnessIdentityV1 {
     pub algorithm_id: String,
     pub derivation_version: String,

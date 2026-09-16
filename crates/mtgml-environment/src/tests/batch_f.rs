@@ -5,7 +5,8 @@ fn fnd_028_declared_zero_state_endpoint_and_manifest_remain_valid() {
         mtgml_state::SyntheticResetInputs {
             players,
             root_seed: seed(),
-        },
+            setup: mtgml_state::SyntheticV4Setup::m2_compatibility(),
+        }
     )
     .unwrap();
     assert!(mtgml_state::validate_engine_state(&state).is_ok());
@@ -59,7 +60,7 @@ fn fnd_028_declared_zero_player_is_produced_checkpointed_forked_and_replayed() {
             .unwrap()
             .contains("\"actor\":\"0\"")
     );
-    let decoded: AuthoritativeReplayV3 = mtgml_wire::decode_canonical(&bytes).unwrap();
+    let decoded: AuthoritativeReplayV4 = mtgml_wire::decode_canonical(&bytes).unwrap();
     assert_eq!(decoded, replay);
 
     let report = controller
@@ -91,9 +92,9 @@ fn fnd_028_declared_zero_player_is_produced_checkpointed_forked_and_replayed() {
 
 fn declared_zero_run() -> (
     TrustedEnvironmentController,
-    EnvironmentCheckpointV3,
-    EnvironmentCheckpointV3,
-    AuthoritativeReplayV3,
+    EnvironmentCheckpointV4,
+    EnvironmentCheckpointV4,
+    AuthoritativeReplayV4,
 ) {
     let players = [PlayerId(0), PlayerId(1)];
     let controller = TrustedEnvironmentController::new(

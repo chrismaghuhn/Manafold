@@ -127,6 +127,7 @@ dependencies = [
  "mtgml-observation",
  "mtgml-random",
  "mtgml-replay",
+ "mtgml-state",
  "mtgml-wire",
  "serde",
  "serde_json",

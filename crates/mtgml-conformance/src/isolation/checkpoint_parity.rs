@@ -26,7 +26,7 @@ pub(crate) mod support {
         DECISION_RESPONSE_V2_SCHEMA,
     };
     use mtgml_environment::{
-        EnvironmentCheckpointV3, PlayerEndpoint, PlayerEndpointHandle,
+        EnvironmentCheckpointV4, PlayerEndpoint, PlayerEndpointHandle,
         SyntheticM1EnvironmentConfig, TrustedEnvironmentController,
     };
     use mtgml_model::{
@@ -35,7 +35,7 @@ pub(crate) mod support {
     };
     use mtgml_observation::PlayerStepSubmissionV1;
     use mtgml_random::{RandomStreamKeyV1, RandomStreamKindV1};
-    use mtgml_replay::InitialEnvironmentIdentityV3;
+    use mtgml_replay::InitialEnvironmentIdentityV4;
     use mtgml_rules::fixture_support::{FixtureTransition, PlannedOccurrence};
     use mtgml_rules::PerspectiveObservationPolicyV1;
     use mtgml_state::{
@@ -480,7 +480,7 @@ pub(crate) mod support {
     ) -> Result<(TrustedEnvironmentController, [PlayerEndpointHandle; 2]), HarnessError> {
         let state = information_rich_state()?;
         let config = config();
-        let wrapped = EnvironmentCheckpointV3::new(
+        let wrapped = EnvironmentCheckpointV4::new(
             state.clone(),
             EpisodeStatus::Running,
             EnvironmentLimitCounters::default(),
@@ -555,8 +555,8 @@ pub(crate) mod support {
     /// the replay segment seeded from `checkpoint` carries exactly the
     /// checkpoint identity fields.
     pub(crate) fn assert_segment_anchor(
-        anchor: &InitialEnvironmentIdentityV3,
-        checkpoint: &EnvironmentCheckpointV3,
+        anchor: &InitialEnvironmentIdentityV4,
+        checkpoint: &EnvironmentCheckpointV4,
     ) {
         assert_eq!(anchor.state_revision, checkpoint.state.revision);
         assert_eq!(anchor.full_state_digest, checkpoint.state_digest);
@@ -584,7 +584,7 @@ mod tests {
         TrustedEnvironmentController,
     };
     use mtgml_model::{CandidateIdV1, PlayerDecisionIdV1, StateRevision};
-    use mtgml_replay::AuthoritativeReplayV3;
+    use mtgml_replay::AuthoritativeReplayV4;
     use mtgml_wire::encode_canonical;
 
     fn controller_service(_: ControllerError) -> HarnessError {
@@ -632,7 +632,7 @@ mod tests {
 
         // Segment anchor: the restored recorder starts an empty segment
         // whose initial identity IS the restored checkpoint identity.
-        let exported: AuthoritativeReplayV3 =
+        let exported: AuthoritativeReplayV4 =
             controller.export_replay().map_err(controller_service)?;
         assert!(exported.steps.is_empty());
         assert_segment_anchor(&exported.manifest.initial_identity, &cp0);
@@ -748,7 +748,7 @@ mod tests {
             &fp_restored,
             FingerprintComparison::ExcludeReplayRecorder,
         )?;
-        let exported: AuthoritativeReplayV3 =
+        let exported: AuthoritativeReplayV4 =
             controller.export_replay().map_err(controller_service)?;
         assert!(exported.steps.is_empty());
         assert_segment_anchor(&exported.manifest.initial_identity, &cp0);

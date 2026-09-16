@@ -1,19 +1,19 @@
 use mtgml_decision::{DecisionResponseV2, PlayerDecisionRequestV2};
 use mtgml_model::PlayerId;
 use mtgml_observation::{ObservationEnvelope, PlayerInformationStateV2, PlayerStepV2};
-use mtgml_replay::AuthoritativeReplayV3;
+use mtgml_replay::AuthoritativeReplayV4;
 use std::sync::{Arc, Mutex, MutexGuard};
 
-use crate::checkpoint::EnvironmentCheckpointV3;
+use crate::checkpoint::EnvironmentCheckpointV4;
 use crate::endpoint::PlayerEndpointHandle;
 use crate::errors::ControllerError;
 
 pub trait EnvironmentBackend: Send {
     fn players(&self) -> Vec<PlayerId>;
-    fn checkpoint(&self) -> Result<EnvironmentCheckpointV3, ControllerError>;
-    fn restore(&mut self, checkpoint: EnvironmentCheckpointV3) -> Result<(), ControllerError>;
+    fn checkpoint(&self) -> Result<EnvironmentCheckpointV4, ControllerError>;
+    fn restore(&mut self, checkpoint: EnvironmentCheckpointV4) -> Result<(), ControllerError>;
     fn fork_boxed(&self) -> Result<Box<dyn EnvironmentBackend>, ControllerError>;
-    fn export_replay(&self) -> Result<AuthoritativeReplayV3, ControllerError>;
+    fn export_replay(&self) -> Result<AuthoritativeReplayV4, ControllerError>;
     fn execute_trusted_response(
         &mut self,
         _actor: PlayerId,
@@ -67,11 +67,11 @@ impl TrustedEnvironmentController {
         })
     }
 
-    pub fn checkpoint(&self) -> Result<EnvironmentCheckpointV3, ControllerError> {
+    pub fn checkpoint(&self) -> Result<EnvironmentCheckpointV4, ControllerError> {
         self.lock()?.checkpoint()
     }
 
-    pub fn restore(&self, checkpoint: EnvironmentCheckpointV3) -> Result<(), ControllerError> {
+    pub fn restore(&self, checkpoint: EnvironmentCheckpointV4) -> Result<(), ControllerError> {
         checkpoint
             .validate()
             .map_err(ControllerError::CheckpointValidation)?;
@@ -85,7 +85,7 @@ impl TrustedEnvironmentController {
         })
     }
 
-    pub fn export_replay(&self) -> Result<AuthoritativeReplayV3, ControllerError> {
+    pub fn export_replay(&self) -> Result<AuthoritativeReplayV4, ControllerError> {
         self.lock()?.export_replay()
     }
 
@@ -102,8 +102,8 @@ impl TrustedEnvironmentController {
     /// not establish these execution facts.
     pub fn execute_replay_from_checkpoint(
         &self,
-        checkpoint: EnvironmentCheckpointV3,
-        replay: AuthoritativeReplayV3,
+        checkpoint: EnvironmentCheckpointV4,
+        replay: AuthoritativeReplayV4,
     ) -> Result<crate::replay::ReplayExecutionReport, ControllerError> {
         checkpoint
             .validate()

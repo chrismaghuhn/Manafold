@@ -1,25 +1,27 @@
 use std::collections::BTreeSet;
 
-use mtgml_model::{CheckpointDigestV3, EpisodeStatus, FullStateDigestV3, PlayerId};
+use mtgml_model::{CheckpointDigestV4, EpisodeStatus, FullStateDigestV4, PlayerId};
 use mtgml_state::{validate_engine_state, EngineState};
 use thiserror::Error;
 
 pub use mtgml_model::{CheckpointCodecIdentity, EnvironmentLimitCounters};
 
-pub const ENVIRONMENT_CHECKPOINT_SCHEMA: &str = "environment-checkpoint.v3";
+pub const ENVIRONMENT_CHECKPOINT_SCHEMA: &str = "environment-checkpoint.v4";
+pub const CHECKPOINT_CODEC_ID_V4: &str = "in-memory-reference";
+pub const CHECKPOINT_CODEC_SEMANTIC_VERSION_V4: &str = "4";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct EnvironmentCheckpointV3 {
+pub struct EnvironmentCheckpointV4 {
     pub schema_version: String,
     pub state: EngineState,
-    pub state_digest: FullStateDigestV3,
+    pub state_digest: FullStateDigestV4,
     pub status: EpisodeStatus,
     pub limit_counters: EnvironmentLimitCounters,
     pub codec: CheckpointCodecIdentity,
-    pub checkpoint_digest: CheckpointDigestV3,
+    pub checkpoint_digest: CheckpointDigestV4,
 }
 
-fn validate_v3_status_for_players(
+fn validate_v4_status_for_players(
     status: &EpisodeStatus,
     expected: &BTreeSet<PlayerId>,
 ) -> Result<(), CheckpointValidationError> {
@@ -42,7 +44,7 @@ fn validate_v3_status_for_players(
     Ok(())
 }
 
-impl EnvironmentCheckpointV3 {
+impl EnvironmentCheckpointV4 {
     pub fn new(
         state: EngineState,
         status: EpisodeStatus,
@@ -72,8 +74,8 @@ impl EnvironmentCheckpointV3 {
 
     pub fn validate(&self) -> Result<(), CheckpointValidationError> {
         if self.schema_version != ENVIRONMENT_CHECKPOINT_SCHEMA
-            || self.codec.codec_id.is_empty()
-            || self.codec.semantic_version.is_empty()
+            || self.codec.codec_id != CHECKPOINT_CODEC_ID_V4
+            || self.codec.semantic_version != CHECKPOINT_CODEC_SEMANTIC_VERSION_V4
         {
             return Err(CheckpointValidationError::Identity);
         }
@@ -83,7 +85,7 @@ impl EnvironmentCheckpointV3 {
             .validate()
             .map_err(|_| CheckpointValidationError::EpisodeStatus)?;
         let players: BTreeSet<_> = self.state.core.players.keys().copied().collect();
-        validate_v3_status_for_players(&self.status, &players)?;
+        validate_v4_status_for_players(&self.status, &players)?;
         let state_digest = self
             .state
             .digest()
@@ -113,12 +115,12 @@ impl EnvironmentCheckpointV3 {
 }
 
 fn calculate_checkpoint_digest(
-    state_digest: &FullStateDigestV3,
+    state_digest: &FullStateDigestV4,
     status: &EpisodeStatus,
     counters: &EnvironmentLimitCounters,
     codec: &CheckpointCodecIdentity,
-) -> Result<CheckpointDigestV3, CheckpointValidationError> {
-    mtgml_persistence::checkpoint_digest::calculate_checkpoint_digest_v3(
+) -> Result<CheckpointDigestV4, CheckpointValidationError> {
+    mtgml_persistence::checkpoint_digest::calculate_checkpoint_digest_v4(
         &state_digest.as_digest_reference(),
         status,
         counters,

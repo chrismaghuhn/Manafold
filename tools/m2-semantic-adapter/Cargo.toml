@@ -14,6 +14,7 @@ mtgml-model = { path = "../../crates/mtgml-model" }
 mtgml-observation = { path = "../../crates/mtgml-observation" }
 mtgml-random = { path = "../../crates/mtgml-random" }
 mtgml-replay = { path = "../../crates/mtgml-replay" }
+mtgml-state = { path = "../../crates/mtgml-state" }
 mtgml-wire = { path = "../../crates/mtgml-wire" }
 serde.workspace = true
 serde_json.workspace = true
