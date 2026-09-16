@@ -125,7 +125,7 @@ GATE_TESTS: dict[str, tuple[TestDefinition, ...]] = {
     "STATE_DELTA_FULL_REAPPLICATION": (
         *test_definitions(
             "mtgml-state",
-            ("tests::state_delta_uses_full_state_digest_v3",),
+            ("tests::state_delta_uses_full_state_digest_v4",),
             "full StateDelta application across every authoritative component",
         ),
         *test_definitions(
