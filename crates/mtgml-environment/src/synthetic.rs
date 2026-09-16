@@ -43,6 +43,21 @@ pub struct SyntheticM1EnvironmentConfig {
     pub replay: SyntheticM1ReplayConfig,
 }
 
+impl SyntheticM1EnvironmentConfig {
+    /// Builds the current rules-free M2 compatibility configuration while
+    /// keeping the V4 state setup behind the Environment ownership boundary.
+    pub fn m2_compatibility(
+        codec: CheckpointCodecIdentity,
+        replay: SyntheticM1ReplayConfig,
+    ) -> Self {
+        Self {
+            codec,
+            setup: SyntheticV4Setup::m2_compatibility(),
+            replay,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SyntheticM1ReplayConfig {
     pub engine_build: String,

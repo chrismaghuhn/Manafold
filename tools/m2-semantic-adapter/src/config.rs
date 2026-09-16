@@ -26,10 +26,9 @@ fn codec_identity() -> CheckpointCodecIdentity {
 }
 
 pub fn synthetic_environment_config(players: [PlayerId; 2]) -> SyntheticM1EnvironmentConfig {
-    SyntheticM1EnvironmentConfig {
-        codec: codec_identity(),
-        setup: mtgml_state::SyntheticV4Setup::m2_compatibility(),
-        replay: SyntheticM1ReplayConfig {
+    SyntheticM1EnvironmentConfig::m2_compatibility(
+        codec_identity(),
+        SyntheticM1ReplayConfig {
             engine_build: "synthetic-build".into(),
             kernel: KernelIdentityV1 {
                 implementation_id: "synthetic-m2".into(),
@@ -63,5 +62,5 @@ pub fn synthetic_environment_config(players: [PlayerId; 2]) -> SyntheticM1Enviro
                 })
                 .collect(),
         },
-    }
+    )
 }

@@ -1315,14 +1315,14 @@ fn tokens_are_never_echoed_in_responses_after_binding_results() {
 ///
 /// `MTGML_ALLOWLIST` is the exact set of workspace (mtgml-*) dependencies:
 /// configuration identity types are why mtgml-replay appears; the forbidden
-/// set (rules/persistence/conformance) is implied by exact-set
+/// set (state/rules/persistence/conformance) is implied by exact-set
 /// equality and asserted explicitly for clarity. `INFRASTRUCTURE` pins the
 /// mechanical envelope deps; ANY new dependency — including a new
 /// infrastructure crate — fails this guard until consciously re-reviewed.
 #[test]
 fn tool_direct_dependencies_match_frozen_allowlist() {
     const TOOL: &str = "m2-semantic-adapter";
-    const MTGML_ALLOWLIST: [&str; 8] = [
+    const MTGML_ALLOWLIST: [&str; 7] = [
         "mtgml-environment",
         "mtgml-wire",
         "mtgml-decision",
@@ -1330,10 +1330,14 @@ fn tool_direct_dependencies_match_frozen_allowlist() {
         "mtgml-model",
         "mtgml-random",
         "mtgml-replay",
-        "mtgml-state",
     ];
     const INFRASTRUCTURE: [&str; 4] = ["base64", "getrandom", "serde", "serde_json"];
-    const FORBIDDEN_DIRECT: [&str; 3] = ["mtgml-rules", "mtgml-persistence", "mtgml-conformance"];
+    const FORBIDDEN_DIRECT: [&str; 4] = [
+        "mtgml-state",
+        "mtgml-rules",
+        "mtgml-persistence",
+        "mtgml-conformance",
+    ];
 
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let workspace_root = manifest_dir.join("..").join("..");
