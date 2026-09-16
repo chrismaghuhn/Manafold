@@ -584,9 +584,7 @@ def check_no_current_v2_producer() -> str:
     for relative, token in v4_current:
         text = (ROOT / relative).read_text(encoding="utf-8")
         if not contains_exact_identifier(text, token):
-            raise AssertionError(
-                f"current V4 successor identity absent: {relative}:{token}"
-            )
+            raise AssertionError(f"current V4 successor identity absent: {relative}:{token}")
     # Predecessor V3 identities must not reappear as current producers. V3
     # remains present only in explicitly detached historical files, which are
     # asserted separately below; any other occurrence fails the gate.
@@ -617,15 +615,10 @@ def check_no_current_v2_producer() -> str:
     for relative, token in v3_detached:
         text = (ROOT / relative).read_text(encoding="utf-8")
         if not contains_exact_identifier(text, token):
-            raise AssertionError(
-                f"detached V3 historical evidence missing: {relative}:{token}"
-            )
+            raise AssertionError(f"detached V3 historical evidence missing: {relative}:{token}")
     if (ROOT / "wire" / "staging").exists():
         raise AssertionError("temporary wire staging directory remains")
-    return (
-        "current state/rules/environment producers are V4; "
-        "V3 readers/evidence remain detached"
-    )
+    return "current state/rules/environment producers are V4; V3 readers/evidence remain detached"
 
 
 SOURCE_CHECKS: dict[str, Callable[[], str]] = {
