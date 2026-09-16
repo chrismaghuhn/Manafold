@@ -151,6 +151,26 @@
     {
       "contract": "player-step.v2",
       "path": "player-step-v2-rejected.json"
+    },
+    {
+      "contract": "synthetic-m3-observation.v1",
+      "path": "synthetic-m3-observation-beginning-untap.json"
+    },
+    {
+      "contract": "synthetic-m3-observation.v1",
+      "path": "synthetic-m3-observation-precombat-main.json"
+    },
+    {
+      "contract": "synthetic-m3-observation.v1",
+      "path": "synthetic-m3-observation-held-by.json"
+    },
+    {
+      "contract": "replay-manifest.v4",
+      "path": "replay-manifest.v4.json"
+    },
+    {
+      "contract": "authoritative-replay.v4",
+      "path": "authoritative-replay-empty.v4.json"
     }
   ]
 }

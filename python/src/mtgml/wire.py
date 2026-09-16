@@ -15,6 +15,7 @@ from .decision import (
 from .episode import EpisodeStatus
 from .errors import WireError
 from .events import ObservedEventEnvelope
+from ._observation_m3 import SyntheticM3Observation
 from .observation import (
     InformationStateDigestInputV2,
     InformationStateEnvelope,
@@ -28,9 +29,11 @@ from .replay import (
     AuthoritativeReplayV1,
     AuthoritativeReplayV2,
     AuthoritativeReplayV3,
+    AuthoritativeReplayV4,
     ReplayManifestV1,
     ReplayManifestV2,
     ReplayManifestV3,
+    ReplayManifestV4,
 )
 
 T = TypeVar("T")
@@ -55,6 +58,9 @@ _DECODERS: dict[str, Callable[[object], object]] = {
     "authoritative-replay.v2": AuthoritativeReplayV2.from_wire,
     "replay-manifest.v3": ReplayManifestV3.from_wire,
     "authoritative-replay.v3": AuthoritativeReplayV3.from_wire,
+    "synthetic-m3-observation.v1": SyntheticM3Observation.from_wire,
+    "replay-manifest.v4": ReplayManifestV4.from_wire,
+    "authoritative-replay.v4": AuthoritativeReplayV4.from_wire,
 }
 
 

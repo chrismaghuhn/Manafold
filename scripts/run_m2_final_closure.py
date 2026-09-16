@@ -686,6 +686,7 @@ SCHEMA_INVENTORY_ALLOWED: frozenset[str] = frozenset(
         "authoritative-replay.v1.schema.json",
         "authoritative-replay.v2.schema.json",
         "authoritative-replay.v3.schema.json",
+        "authoritative-replay.v4.schema.json",
         "bundle-certification.v1.schema.json",
         "bundle-manifest.v1.schema.json",
         "capability-registry.v1.schema.json",
@@ -708,6 +709,8 @@ SCHEMA_INVENTORY_ALLOWED: frozenset[str] = frozenset(
         "replay-manifest.v1.schema.json",
         "replay-manifest.v2.schema.json",
         "replay-manifest.v3.schema.json",
+        "replay-manifest.v4.schema.json",
+        "synthetic-m3-observation.v1.schema.json",
         "scope-impact-report.v1.schema.json",
     }
 )

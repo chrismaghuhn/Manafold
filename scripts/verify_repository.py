@@ -357,31 +357,44 @@ def main() -> None:
         if token not in state_rust:
             fail(f"state contract lacks {token}")
 
+    # M3 P0 state-identity cut: current runtime is V4; historical V3
+    # full-state support remains detached (digest_v3.rs).
     for token in (
-        "FullStateDigestInputV3",
+        "FullStateDigestInputV4",
         "canonical_digest_bytes",
         "KnowledgeInvalidationReason",
         "KnowledgeAcquisitionReason",
     ):
         if token not in state_rust:
             fail(f"state contract closure lacks {token}")
+    if "FullStateDigestInputV3" not in state_rust:
+        fail("historical V3 full-state digest support is not preserved")
 
     for token in (
-        "full_state_digest_v3_known_answer",
-        "m2_b_full_state_digest_v3_mutation_matrix",
-        "state_delta_uses_full_state_digest_v3",
+        "full_state_digest_v4_known_answer",
+        "m3_p0_full_state_digest_v4_mutation_matrix",
+        "state_delta_uses_full_state_digest_v4",
     ):
         if token not in state_tests:
             fail(f"state test evidence lacks {token}")
+    if "full_state_digest_v3_historical_known_answer_is_detached" not in state_tests:
+        fail("historical V3 full-state digest evidence is not preserved")
 
+    # Current checkpoint runtime is V4; V3 digest history survives only as
+    # detached historical replay/persistence identity (no V3 checkpoint writer).
     for token in (
-        "EnvironmentCheckpointV3",
+        "EnvironmentCheckpointV4",
         "EnvironmentLimitCounters",
         "CheckpointCodecIdentity",
-        "checkpoint_digest: CheckpointDigestV3",
+        "checkpoint_digest: CheckpointDigestV4",
     ):
         if token not in env_rust:
             fail(f"checkpoint contract lacks {token}")
+    persistence_rust = (ROOT / "crates/mtgml-persistence/src/checkpoint_digest.rs").read_text(
+        encoding="utf-8"
+    )
+    if "calculate_checkpoint_digest_v3" not in persistence_rust:
+        fail("historical V3 checkpoint digest support is not preserved")
 
     for token in (
         "checkpoint_v3_validation_and_restore_nonmutation_matrix",
