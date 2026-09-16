@@ -1,4 +1,4 @@
-//! T0 conformance facade contract (M3.T0-01, RED).
+//! T0 conformance facade contract (M3.T0-01, RED remediation).
 //!
 //! T0 is a *thin private conformance facade over the real Rust kernel*.  It
 //! feeds explicit setups and explicit player responses into the authoritative
@@ -10,9 +10,9 @@
 //! information semantics.
 //!
 //! The case-level surface required by this contract does not exist yet, so
-//! every test below is expected to fail to compile against exactly one
-//! missing-module gate until the reviewed facade implementation slice lands.
-//! This file intentionally contains no facade implementation.
+//! every test below fails against exactly one unresolved-import gate until
+//! the reviewed facade implementation slice lands.  This file intentionally
+//! contains no facade implementation.
 //!
 //! Required surface (narrowest form for the selected synthetic cases):
 //!
@@ -24,16 +24,27 @@
 //! LimitCounterDeltas         authored environment limit-counter deltas
 //! NextDecisionExpectation    authored next-decision projection facts
 //! ConformanceCaseDiagnostic  deterministic first-divergence report
+//! run_case(case, controller, endpoints)
+//!                            execution entry point: submits every step
+//!                            response to the REAL trusted environment and
+//!                            compares each actual product against the
+//!                            authored expectations; returns the
+//!                            deterministic diagnostic for the FIRST
+//!                            mismatching step (Ok(()) when all pass)
 //! ```
 //!
 //! Contract invariants (enforced by review and by the tests below):
 //!
 //! ```text
 //! EXPECTED_VALUES_ARE_LITERAL  expectations are authored data transcribed
-//!                              from accepted evidence, never derived from
-//!                              actual output at runtime (no
+//!                              from accepted evidence and independently
+//!                              recomputed RNG golden vectors, never derived
+//!                              from actual output at runtime (no
 //!                              expected_state = actual_state.clone(), no
 //!                              expected_digest = digest(actual_state))
+//! EXECUTION_IS_REQUIRED        a case without run_case against the real
+//!                              kernel is not conformance evidence; data
+//!                              shapes alone satisfy nothing
 //! RESPONSES_ARE_EXPLICIT       every step carries its literal response; no
 //!                              default/first/empty/pass selection, no
 //!                              malformed-answer repair, no hidden automation
@@ -44,9 +55,12 @@
 //!                              submits what the case supplies and compares
 //!                              what the kernel returns
 //! REJECTION_NONMUTATION        rejected steps must be proven nonmutating by
-//!                              reusing the existing complete-fingerprint
-//!                              authority (CompleteM2Fingerprint equality),
-//!                              never a second fingerprint implementation
+//!                              capturing the existing complete-fingerprint
+//!                              authority before AND after the real
+//!                              submission of the invalid response through
+//!                              the real trusted path, never a second
+//!                              fingerprint implementation and never a
+//!                              tautological no-op comparison
 //! TRUSTED_ONLY                 the facade and its diagnostics live in this
 //!                              conformance crate only; player observation,
 //!                              information-state, step, and endpoint
@@ -58,14 +72,20 @@ mod t0_01_red_contract {
     use mtgml_decision::{
         DecisionAnswerV2, DecisionDomainV2, DecisionResponseV2, DECISION_RESPONSE_V2_SCHEMA,
     };
-    use mtgml_model::{CandidateIdV1, DecisionId, PlayerDecisionIdV1, PlayerId, StateRevision};
+    use mtgml_model::{
+        CandidateIdV1, DecisionId, EpisodeStatus, PlayerDecisionIdV1, PlayerId, RuleEventId,
+        StateRevision,
+    };
+    use mtgml_random::{RandomStreamKeyV1, RandomStreamKindV1};
+    use mtgml_rules::{AuthoritativeRuleEvent, AuthoritativeRuleEventKind};
+    use mtgml_state::SemanticDeltaOperation;
 
     // The single intentional RED gate: this module does not exist yet.  All
     // contract tests share this one unresolved import so the failure remains
     // small and legible (one missing contract surface) instead of cascading.
     use crate::facade::{
-        ConformanceCase, ConformanceCaseDiagnostic, ConformanceExpectation, ConformanceStepRef,
-        LimitCounterDeltas, NextDecisionExpectation,
+        run_case, ConformanceCase, ConformanceCaseDiagnostic, ConformanceExpectation,
+        ConformanceStepRef, LimitCounterDeltas, NextDecisionExpectation,
     };
 
     use crate::isolation::{base_pair_state, capture_complete, spawn_environment};
@@ -77,6 +97,12 @@ mod t0_01_red_contract {
     /// The accepted synthetic base state used by the isolation harness
     /// evidence (64 hex chars).
     const SEED_HEX_A: &str = "3333333333333333333333333333333333333333333333333333333333333333";
+
+    /// The authoritative global synthetic stream (mtgml.rng.v1 canonical
+    /// stream vocabulary).
+    fn synthetic_stream() -> RandomStreamKeyV1 {
+        RandomStreamKeyV1::global(RandomStreamKindV1::SyntheticM1)
+    }
 
     /// Explicitly authored response for the synthetic entry ChooseOne
     /// decision (candidate 0).  Nothing is picked implicitly: identity and
@@ -92,89 +118,181 @@ mod t0_01_red_contract {
         }
     }
 
-    /// Witness A (RED): the facade must express the already-accepted
-    /// synthetic entry transition with independently authored expectations.
-    ///
-    /// Every expected value below is transcribed from the accepted M2.E
-    /// evidence (`synthetic_m2_choose_one_returns_authoritative_transition_
-    /// product` and `assert_accepted_entry_progression`), never derived from
+    /// The five authoritative events of the accepted entry transition,
+    /// authored literally.  Event ids bind to the fresh base allocators
+    /// (`next_rule_event_id = RuleEventId(1)`, revision 0→1).  The sampled
+    /// value is an independently recomputed mtgml.rng.v1 golden vector for
+    /// the `3333…` root seed (HMAC-SHA256 stream derivation, raw word 0,
+    /// uniform below 10): value 2, one raw word consumed, cursor 0→1.
+    /// This data is transcribed from the accepted M2.E evidence and the
+    /// standalone golden-vector computation; it is never derived from
     /// production output at runtime.
-    #[test]
-    fn witness_a_accepted_entry_transition_with_literal_expectations() {
-        let case = ConformanceCase {
-            name: "synthetic-entry-choose-one-accepted",
-            description: "one explicit ChooseOne response commits the accepted V4 transition",
-            steps: vec![ConformanceStepRef {
-                label: "step-1-entry-choose-one",
-                response: explicit_entry_response(),
-                expectation: ConformanceExpectation {
-                    expected_result: ExpectedResponseResult::Accepted,
-                    expected_post_state_revision: StateRevision(1),
-                    // Accepted evidence: 5 authoritative events, limit
-                    // counters +1 submitted / +1 accepted / +5 events.
-                    expected_event_count: 5,
-                    expected_limit_counter_deltas: LimitCounterDeltas {
-                        decisions_submitted: 1,
-                        accepted_transitions: 1,
-                        rule_events_emitted: 5,
-                    },
-                    expected_next_decision: Some(NextDecisionExpectation {
-                        decision_id: DecisionId(2),
-                        domain: DecisionDomainV2::ChooseNumber {
-                            minimum: 0,
-                            maximum: 3,
-                        },
-                        candidate_count: 0,
-                    }),
+    fn expected_entry_events() -> Vec<AuthoritativeRuleEvent> {
+        let stream = synthetic_stream();
+        vec![
+            AuthoritativeRuleEvent {
+                event_id: RuleEventId(1),
+                state_revision: StateRevision(1),
+                event: AuthoritativeRuleEventKind::LifeChanged {
+                    player: P1,
+                    from: 40,
+                    to: 39,
                 },
-            }],
-        };
+            },
+            AuthoritativeRuleEvent {
+                event_id: RuleEventId(2),
+                state_revision: StateRevision(1),
+                event: AuthoritativeRuleEventKind::LifeChanged {
+                    player: P1,
+                    from: 39,
+                    to: 38,
+                },
+            },
+            AuthoritativeRuleEvent {
+                event_id: RuleEventId(3),
+                state_revision: StateRevision(1),
+                event: AuthoritativeRuleEventKind::RandomValueSampled {
+                    stream,
+                    bound: 10,
+                    value: 2,
+                    raw_words_consumed: 1,
+                    cursor_before: 0,
+                    cursor_after: 1,
+                },
+            },
+            AuthoritativeRuleEvent {
+                event_id: RuleEventId(4),
+                state_revision: StateRevision(1),
+                event: AuthoritativeRuleEventKind::DecisionCleared {
+                    decision: DecisionId(1),
+                },
+            },
+            AuthoritativeRuleEvent {
+                event_id: RuleEventId(5),
+                state_revision: StateRevision(1),
+                event: AuthoritativeRuleEventKind::DecisionCreated {
+                    decision: DecisionId(2),
+                },
+            },
+        ]
+    }
 
-        assert_eq!(case.name, "synthetic-entry-choose-one-accepted");
-        assert_eq!(case.steps.len(), 1);
-        assert_eq!(case.steps[0].label, "step-1-entry-choose-one");
-        assert_eq!(
-            case.steps[0].expectation.expected_result,
-            ExpectedResponseResult::Accepted
-        );
-        assert_eq!(
-            case.steps[0].expectation.expected_post_state_revision,
-            StateRevision(1)
-        );
-        assert_eq!(case.steps[0].expectation.expected_event_count, 5);
-        assert_eq!(
-            case.steps[0].expectation.expected_next_decision,
-            Some(NextDecisionExpectation {
+    /// The semantic delta audit of the accepted entry transition, authored
+    /// literally: exactly the per-event semantic operations, in event order
+    /// (the kernel derives `audit` one-to-one from its events).
+    fn expected_entry_delta() -> Vec<SemanticDeltaOperation> {
+        let stream = synthetic_stream();
+        vec![
+            SemanticDeltaOperation::LifeChanged {
+                player: P1,
+                from: 40,
+                to: 39,
+            },
+            SemanticDeltaOperation::LifeChanged {
+                player: P1,
+                from: 39,
+                to: 38,
+            },
+            SemanticDeltaOperation::RandomValueSampled {
+                stream,
+                bound: 10,
+                value: 2,
+                raw_words_consumed: 1,
+                cursor_before: 0,
+                cursor_after: 1,
+            },
+            SemanticDeltaOperation::DecisionCleared {
+                decision: DecisionId(1),
+            },
+            SemanticDeltaOperation::DecisionCreated {
+                decision: DecisionId(2),
+            },
+        ]
+    }
+
+    fn entry_expectation() -> ConformanceExpectation {
+        ConformanceExpectation {
+            expected_result: ExpectedResponseResult::Accepted,
+            expected_post_state_revision: StateRevision(1),
+            expected_status: EpisodeStatus::Running,
+            // Authored ordered authoritative events: contents, not counts.
+            expected_events: expected_entry_events(),
+            // Authored exact semantic delta (audit), not just revisions.
+            expected_delta: expected_entry_delta(),
+            expected_limit_counter_deltas: LimitCounterDeltas {
+                decisions_submitted: 1,
+                accepted_transitions: 1,
+                rule_events_emitted: 5,
+            },
+            expected_next_decision: Some(NextDecisionExpectation {
                 decision_id: DecisionId(2),
                 domain: DecisionDomainV2::ChooseNumber {
                     minimum: 0,
                     maximum: 3,
                 },
                 candidate_count: 0,
-            })
-        );
+            }),
+        }
     }
 
-    /// Witness B (RED): the facade must express the already-accepted
-    /// rejection case and prove complete nonmutation (state, RNG,
-    /// allocators, knowledge, history/events, episode status, pending
-    /// decision) by reusing the existing complete-fingerprint authority —
-    /// never a second fingerprint implementation.
+    fn entry_case() -> ConformanceCase {
+        ConformanceCase {
+            name: "synthetic-entry-choose-one-accepted",
+            description: "one explicit ChooseOne response commits the accepted V4 transition",
+            steps: vec![ConformanceStepRef {
+                label: "step-1-entry-choose-one",
+                response: explicit_entry_response(),
+                expectation: entry_expectation(),
+            }],
+        }
+    }
+
+    /// Witness A (RED): the facade must EXECUTE the already-accepted
+    /// synthetic entry transition against the real trusted environment and
+    /// compare each actual product against the independently authored
+    /// literal expectations (exact ordered events, exact delta audit,
+    /// status, counter deltas, next decision).
+    ///
+    /// A case that is merely constructed and read back is not evidence:
+    /// this test only becomes green through `run_case` driving the real
+    /// kernel and matching every authored field.
     #[test]
-    fn witness_b_rejected_response_requires_complete_nonmutation() {
+    fn witness_a_executes_accepted_entry_transition_against_authored_products() {
+        let case = entry_case();
+
         let state = base_pair_state(SEED_HEX_A).expect("accepted synthetic base state");
         let config = crate::isolation::synthetic_environment_config([P1, P2]);
         let (controller, endpoints) =
             spawn_environment(state, &config).expect("spawned trusted environment");
 
+        run_case(&case, &controller, &endpoints)
+            .expect("authored entry expectations must match the authoritative kernel");
+    }
+
+    /// Witness B (RED): the facade must submit the explicitly invalid
+    /// stale-revision response through the real trusted path BETWEEN two
+    /// complete-fingerprint captures and require exact equality of all four
+    /// groups (semantic, environment, player-visible, replay-recorder).
+    ///
+    /// The submission must happen: a tautological
+    /// `capture == capture` without an intervening rejected submission is
+    /// NOT nonmutation evidence, and the facade must prove the rejection
+    /// outcome plus unchanged counters/pending decision itself.
+    #[test]
+    fn witness_b_rejected_submission_is_bracketed_by_fingerprints() {
+        let state = base_pair_state(SEED_HEX_A).expect("accepted synthetic base state");
+        let config = crate::isolation::synthetic_environment_config([P1, P2]);
+        let (controller, endpoints) =
+            spawn_environment(state, &config).expect("spawned trusted environment");
+
+        // Explicitly malformed-on-purpose response: stale revision 5
+        // against base revision 0; identity fields unchanged.  The case
+        // supplies it literally; nothing repairs it.
         let case = ConformanceCase {
             name: "synthetic-entry-stale-revision-rejected",
             description: "a stale-revision response is rejected without any mutation",
             steps: vec![ConformanceStepRef {
                 label: "step-1-stale-revision-rejected",
-                // Explicit malformed-on-purpose response: stale revision 5
-                // against base revision 0; identity fields unchanged.  The
-                // case supplies it literally; nothing is repaired.
                 response: DecisionResponseV2 {
                     schema_version: DECISION_RESPONSE_V2_SCHEMA.into(),
                     player_decision_id: PlayerDecisionIdV1(1),
@@ -186,9 +304,13 @@ mod t0_01_red_contract {
                 expectation: ConformanceExpectation {
                     expected_result: ExpectedResponseResult::RejectedWithoutMutation,
                     expected_post_state_revision: StateRevision(0),
-                    expected_event_count: 0,
+                    expected_status: EpisodeStatus::Running,
+                    expected_events: Vec::new(),
+                    expected_delta: Vec::new(),
                     expected_limit_counter_deltas: LimitCounterDeltas {
-                        decisions_submitted: 1,
+                        // A rejected submission is not an accepted
+                        // transition: all counters unchanged (0/0/0).
+                        decisions_submitted: 0,
                         accepted_transitions: 0,
                         rule_events_emitted: 0,
                     },
@@ -197,48 +319,34 @@ mod t0_01_red_contract {
             }],
         };
 
-        assert_eq!(case.steps.len(), 1);
-        assert_eq!(
-            case.steps[0].expectation.expected_result,
-            ExpectedResponseResult::RejectedWithoutMutation
-        );
-        assert_eq!(
-            case.steps[0].expectation.expected_post_state_revision,
-            StateRevision(0)
-        );
-        assert_eq!(case.steps[0].expectation.expected_event_count, 0);
-        assert_eq!(
-            case.steps[0].expectation.expected_limit_counter_deltas,
-            LimitCounterDeltas {
-                decisions_submitted: 1,
-                accepted_transitions: 0,
-                rule_events_emitted: 0,
-            }
-        );
-
-        // The existing complete-fingerprint authority is the only permitted
-        // nonmutation oracle: the facade must compare identical captures
-        // before and after the rejected submission and require equality
-        // across all four groups (semantic, environment, player-visible,
-        // replay-recorder).  This witness confirms the authority is
-        // reachable from the case context; the facade implementation slice
-        // must wire the case through it.
+        // The complete-fingerprint authority brackets the REAL submission:
+        // run_case must submit through the trusted player endpoint and the
+        // two captures must then be exactly equal.  run_case is the only
+        // execution path in this witness; the comparison below fails for
+        // any implementation that skips or mutates during rejection.
         let before = capture_complete(&controller, &endpoints).expect("fingerprint capture");
+        run_case(&case, &controller, &endpoints)
+            .expect("the authored rejection expectations must hold");
         let after = capture_complete(&controller, &endpoints).expect("fingerprint capture");
         assert_eq!(before, after);
     }
 
-    /// Witness C (RED): the facade must express an explicit multi-step
-    /// synthetic path (every response literal, no hidden action) and must
-    /// identify the first mismatching step deterministically.
-    ///
-    /// Expectations are transcribed from the accepted count-2 assembly
-    /// chain (`continuation_chain_advances_with_fresh_explicit_identities`
-    /// plus `assert_accepted_entry_progression`/`assert_accepted_count_
-    /// progression`): entry -> ChooseNumber{0,3} -> ChooseMany{2,2} (2
-    /// candidates) -> Order{2,2} (2 candidates).
+    /// Witness C (RED): the facade must execute the explicit three-step
+    /// assembly chain (every response literal) and, when a step's authored
+    /// expectation deliberately mismatches, report the FIRST failing step
+    /// deterministically — as the actual output of a real `run_case`
+    /// mismatch, not as a hand-built struct.
     #[test]
-    fn witness_c_multi_step_sequence_tracks_first_failing_step() {
+    fn witness_c_multi_step_mismatch_reports_first_failing_step() {
+        // Steps 1–2 carry authored expectations transcribed from the
+        // accepted count-2 assembly chain
+        // (`continuation_chain_advances_with_fresh_explicit_identities`,
+        // `assert_accepted_entry_progression`, `assert_accepted_count_
+        // progression`): entry -> ChooseNumber{0,3} -> ChooseMany{2,2}
+        // with 2 candidates.  Step 2's event expectation is deliberately
+        // wrong by one (the authored final `DecisionCreated` points at the
+        // wrong decision id), so a correct facade implementation MUST fail
+        // this case exactly at step index 1.
         let case = ConformanceCase {
             name: "synthetic-assembly-three-explicit-steps",
             description: "ChooseOne, ChooseNumber, SelectMany - each response explicit",
@@ -246,51 +354,65 @@ mod t0_01_red_contract {
                 ConformanceStepRef {
                     label: "step-1-entry-choose-one",
                     response: explicit_entry_response(),
-                    expectation: ConformanceExpectation {
-                        expected_result: ExpectedResponseResult::Accepted,
-                        expected_post_state_revision: StateRevision(1),
-                        expected_event_count: 5,
-                        expected_limit_counter_deltas: LimitCounterDeltas {
-                            decisions_submitted: 1,
-                            accepted_transitions: 1,
-                            rule_events_emitted: 5,
-                        },
-                        expected_next_decision: Some(NextDecisionExpectation {
-                            decision_id: DecisionId(2),
-                            domain: DecisionDomainV2::ChooseNumber {
-                                minimum: 0,
-                                maximum: 3,
-                            },
-                            candidate_count: 0,
-                        }),
-                    },
+                    expectation: entry_expectation(),
                 },
                 ConformanceStepRef {
                     label: "step-2-choose-count",
-                    // Explicit stage answer: count = 2.
                     response: DecisionResponseV2 {
                         schema_version: DECISION_RESPONSE_V2_SCHEMA.into(),
                         player_decision_id: PlayerDecisionIdV1(2),
                         state_revision: StateRevision(1),
                         answer: DecisionAnswerV2::ChooseNumber { value: 2 },
                     },
-                    expectation: ConformanceExpectation {
-                        expected_result: ExpectedResponseResult::Accepted,
-                        expected_post_state_revision: StateRevision(2),
-                        expected_event_count: 2,
-                        expected_limit_counter_deltas: LimitCounterDeltas {
-                            decisions_submitted: 1,
-                            accepted_transitions: 1,
-                            rule_events_emitted: 2,
-                        },
-                        expected_next_decision: Some(NextDecisionExpectation {
-                            decision_id: DecisionId(3),
-                            domain: DecisionDomainV2::ChooseMany {
-                                minimum: 2,
-                                maximum: 2,
+                    expectation: {
+                        let mut expectation = ConformanceExpectation {
+                            expected_result: ExpectedResponseResult::Accepted,
+                            expected_post_state_revision: StateRevision(2),
+                            expected_status: EpisodeStatus::Running,
+                            // Authored stage events: DecisionCleared(2) then
+                            // DecisionCreated(next) — the deliberate mismatch
+                            // points the created id at the WRONG decision so
+                            // the exact event comparison must diverge here.
+                            expected_events: vec![
+                                AuthoritativeRuleEvent {
+                                    event_id: RuleEventId(6),
+                                    state_revision: StateRevision(2),
+                                    event: AuthoritativeRuleEventKind::DecisionCleared {
+                                        decision: DecisionId(2),
+                                    },
+                                },
+                                AuthoritativeRuleEvent {
+                                    event_id: RuleEventId(7),
+                                    state_revision: StateRevision(2),
+                                    event: AuthoritativeRuleEventKind::DecisionCreated {
+                                        decision: DecisionId(99),
+                                    },
+                                },
+                            ],
+                            expected_delta: Vec::new(),
+                            expected_limit_counter_deltas: LimitCounterDeltas {
+                                decisions_submitted: 1,
+                                accepted_transitions: 1,
+                                rule_events_emitted: 2,
                             },
-                            candidate_count: 2,
-                        }),
+                            expected_next_decision: Some(NextDecisionExpectation {
+                                decision_id: DecisionId(3),
+                                domain: DecisionDomainV2::ChooseMany {
+                                    minimum: 2,
+                                    maximum: 2,
+                                },
+                                candidate_count: 2,
+                            }),
+                        };
+                        expectation.expected_delta = vec![
+                            SemanticDeltaOperation::DecisionCleared {
+                                decision: DecisionId(2),
+                            },
+                            SemanticDeltaOperation::DecisionCreated {
+                                decision: DecisionId(99),
+                            },
+                        ];
+                        expectation
                     },
                 },
                 ConformanceStepRef {
@@ -306,7 +428,9 @@ mod t0_01_red_contract {
                     expectation: ConformanceExpectation {
                         expected_result: ExpectedResponseResult::Accepted,
                         expected_post_state_revision: StateRevision(3),
-                        expected_event_count: 2,
+                        expected_status: EpisodeStatus::Running,
+                        expected_events: Vec::new(),
+                        expected_delta: Vec::new(),
                         expected_limit_counter_deltas: LimitCounterDeltas {
                             decisions_submitted: 1,
                             accepted_transitions: 1,
@@ -325,111 +449,77 @@ mod t0_01_red_contract {
             ],
         };
 
-        assert_eq!(case.steps.len(), 3);
-        for (index, step) in case.steps.iter().enumerate() {
-            assert_eq!(
-                step.expectation.expected_result,
-                ExpectedResponseResult::Accepted
-            );
-            assert_eq!(
-                step.expectation.expected_post_state_revision,
-                StateRevision(index as u64 + 1)
-            );
-        }
-        assert_eq!(
-            case.steps[2].expectation.expected_next_decision,
-            Some(NextDecisionExpectation {
-                decision_id: DecisionId(4),
-                domain: DecisionDomainV2::Order {
-                    minimum: 2,
-                    maximum: 2,
-                },
-                candidate_count: 2,
-            })
-        );
+        let state = base_pair_state(SEED_HEX_A).expect("accepted synthetic base state");
+        let config = crate::isolation::synthetic_environment_config([P1, P2]);
+        let (controller, endpoints) =
+            spawn_environment(state, &config).expect("spawned trusted environment");
 
-        // First-divergence contract: a mismatch at the second step must be
-        // reported as exactly step index 1 with case identity, step label,
-        // comparison path, and expected/actual - deterministically.
-        let diagnostic = ConformanceCaseDiagnostic {
-            case: case.name,
-            step_label: case.steps[1].label,
-            first_failing_step_index: Some(1),
-            classification: ConformanceFailureClass::Delta,
-            path: "steps[1].expected_semantic_delta".to_string(),
-            expected: "authored delta for step-2-choose-count".to_string(),
-            actual: "kernel delta differed at step 2".to_string(),
-        };
-        assert_eq!(diagnostic.first_failing_step_index, Some(1));
+        // The diagnostic must come FROM the executed mismatch: same case,
+        // same environment, deterministic report identifying step index 1
+        // ("step-2-choose-count") as the first divergence.
+        let diagnostic = run_case(&case, &controller, &endpoints)
+            .expect_err("the deliberate step-2 mismatch must fail the case");
         assert_eq!(diagnostic.case, case.name);
         assert_eq!(diagnostic.step_label, "step-2-choose-count");
-        assert_eq!(diagnostic.path, "steps[1].expected_semantic_delta");
+        assert_eq!(diagnostic.first_failing_step_index, Some(1));
+        assert_eq!(diagnostic.classification, ConformanceFailureClass::Events);
+        assert_eq!(
+            diagnostic.path,
+            "steps[1].expected_authoritative_events[1].event"
+        );
     }
 
-    /// Diagnostic determinism: the same mismatch must always render the
-    /// same structured report (case, step, path, expected, actual), and the
-    /// report is trusted conformance-only output, never player-facing.
+    /// Diagnostic determinism: rerunning the same mismatching case in a
+    /// fresh environment must produce an identical structured report
+    /// (case, step, path, expected, actual) — the diagnostic is a product
+    /// of the executed comparison, and identical mismatches render
+    /// identically.  Trusted conformance-only output.
     #[test]
-    fn diagnostics_are_deterministic_structured_and_trusted_only() {
-        let left = ConformanceCaseDiagnostic {
-            case: "case-x",
-            step_label: "step-2",
-            first_failing_step_index: Some(1),
-            classification: ConformanceFailureClass::Events,
-            path: "steps[1].expected_authoritative_events".to_string(),
-            expected: "2 events".to_string(),
-            actual: "1 event".to_string(),
+    fn diagnostics_are_deterministic_across_reruns() {
+        let mismatched_case = {
+            let mut case = entry_case();
+            case.name = "deterministic-diagnostic-case";
+            // Corrupt exactly one authored field: final life event "to".
+            case.steps[0].expectation.expected_events[1].event =
+                AuthoritativeRuleEventKind::LifeChanged {
+                    player: P1,
+                    from: 39,
+                    to: 37,
+                };
+            case
         };
-        let right = ConformanceCaseDiagnostic {
-            case: "case-x",
-            step_label: "step-2",
-            first_failing_step_index: Some(1),
-            classification: ConformanceFailureClass::Events,
-            path: "steps[1].expected_authoritative_events".to_string(),
-            expected: "2 events".to_string(),
-            actual: "1 event".to_string(),
+
+        let run = || {
+            let state = base_pair_state(SEED_HEX_A).expect("accepted synthetic base state");
+            let config = crate::isolation::synthetic_environment_config([P1, P2]);
+            let (controller, endpoints) =
+                spawn_environment(state, &config).expect("spawned trusted environment");
+            run_case(&mismatched_case, &controller, &endpoints)
+                .expect_err("the corrupted expectation must fail the case")
         };
-        assert_eq!(left, right);
-        let rendered = format!("{left}");
-        for fragment in [
-            "case-x",
-            "step-2",
-            "expected_authoritative_events",
-            "2",
-            "1",
-        ] {
-            assert!(
-                rendered.contains(fragment),
-                "diagnostic must render {fragment}"
-            );
-        }
+
+        let first = run();
+        let second = run();
+        assert_eq!(first, second);
+        assert_eq!(first.case, mismatched_case.name);
+        assert_eq!(first.step_label, "step-1-entry-choose-one");
+        assert_eq!(first.first_failing_step_index, Some(0));
+        assert_eq!(first.classification, ConformanceFailureClass::Events);
+        assert_eq!(
+            first.path,
+            "steps[0].expected_authoritative_events[1].event"
+        );
     }
 
     /// Decision completeness: the case contract carries only explicit
     /// responses.  There is no default answer, no implicit pass, no
     /// candidate-0 shortcut, and no repair of malformed answers anywhere on
-    /// the case surface; every step names its response literally.
+    /// the case surface; every step names its response literally, and the
+    /// executed witness B proves a malformed response reaches the kernel
+    /// exactly as authored (it is rejected, never fixed up).
     #[test]
     fn responses_are_explicit_and_never_default_selected() {
-        let case = ConformanceCase {
-            name: "explicit-response-only",
-            description: "contract shape: one step, one literal response",
-            steps: vec![ConformanceStepRef {
-                label: "step-1",
-                response: explicit_entry_response(),
-                expectation: ConformanceExpectation {
-                    expected_result: ExpectedResponseResult::Accepted,
-                    expected_post_state_revision: StateRevision(1),
-                    expected_event_count: 5,
-                    expected_limit_counter_deltas: LimitCounterDeltas {
-                        decisions_submitted: 1,
-                        accepted_transitions: 1,
-                        rule_events_emitted: 5,
-                    },
-                    expected_next_decision: None,
-                },
-            }],
-        };
+        let case = entry_case();
         // The response is carried by value on the step: the case data alone
         // determines what is submitted, and no execution input may override
         // or repair it.
@@ -443,29 +533,18 @@ mod t0_01_red_contract {
                 candidate_id: CandidateIdV1(0)
             }
         );
+        assert_eq!(case.steps[0].response.state_revision, StateRevision(0));
     }
 
     /// Information boundary: the facade supports trusted assertions without
     /// touching the player-facing surface.  The contract types live only
     /// inside this crate's facade module; no player observation,
     /// information state, or step type gains trusted fields, and no trusted
-    /// diagnostic is re-exported through player-facing APIs.
+    /// diagnostic is re-exported through player-facing APIs.  The only
+    /// snapshot authority the facade may reuse is the existing
+    /// complete-fingerprint capture.
     #[test]
     fn facade_support_stays_behind_the_trusted_boundary() {
-        let diagnostic = ConformanceCaseDiagnostic {
-            case: "boundary-case",
-            step_label: "step-1",
-            first_failing_step_index: None,
-            classification: ConformanceFailureClass::Status,
-            path: "steps[0].expected_status".to_string(),
-            expected: "running".to_string(),
-            actual: "running".to_string(),
-        };
-        assert_eq!(diagnostic.case, "boundary-case");
-        assert_eq!(diagnostic.first_failing_step_index, None);
-
-        // The existing complete-fingerprint capture remains the only trusted
-        // snapshot authority the facade may reuse.
         let state = base_pair_state(SEED_HEX_A).expect("accepted synthetic base state");
         let config = crate::isolation::synthetic_environment_config([P1, P2]);
         let (controller, endpoints) =
