@@ -185,6 +185,7 @@ fn entry_stage0() -> EngineState {
 
 // Lexical fragments: physical discoverability without changing any
 // tests::<name> identity addressed by the M1/M2 gate runners.
+include!("tests/forced_progress.rs");
 include!("tests/synthetic_program.rs");
 include!("tests/transition_contract.rs");
 include!("tests/determinism.rs");

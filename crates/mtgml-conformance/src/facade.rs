@@ -114,9 +114,10 @@ use std::collections::BTreeMap;
 
 use mtgml_decision::{AuthoritativeDecisionRequestV2, DecisionResponseV2, PlayerDecisionRequestV2};
 use mtgml_environment::{PlayerEndpoint, PlayerEndpointHandle, TrustedEnvironmentController};
-use mtgml_model::PlayerId;
+use mtgml_model::{EpisodeStatus, FullStateDigestV4, PlayerId};
 use mtgml_observation::PlayerStepV2;
-use mtgml_rules::TransitionResult;
+use mtgml_rules::{AuthoritativeRuleEvent, TransitionResult};
+use mtgml_state::StateDelta;
 
 use crate::{assert_exact_transition, ConformanceFailure, ConformanceStep};
 
@@ -137,12 +138,14 @@ pub struct ConformanceCase {
 }
 
 /// A single case step: either an accepted kernel transition verified through
-/// both the trusted fork and the real player endpoint, or an explicit Layer-B
-/// rejection that happens before any kernel execution.
+/// both the trusted fork and the real player endpoint, an explicit Layer-B
+/// rejection that happens before any kernel execution, or rules-owned
+/// forced progress that runs without any player response.
 #[derive(Debug, Clone)]
 pub enum ConformanceCaseStep {
     Transition(Box<ConformanceStepRef>),
     LayerBRejection(Box<ConformanceRejectionStepRef>),
+    ForcedProgress(Box<ConformanceForcedProgressStepRef>),
 }
 
 impl ConformanceCaseStep {
@@ -150,6 +153,7 @@ impl ConformanceCaseStep {
         match self {
             Self::Transition(step) => step.label,
             Self::LayerBRejection(step) => step.label,
+            Self::ForcedProgress(step) => step.label,
         }
     }
 }
@@ -188,6 +192,34 @@ pub struct ConformanceRejectionStepRef {
 pub struct PlayerBoundaryRejectionExpectation {
     pub player_step: PlayerStepV2,
     pub preserved_visible_decision: Option<PlayerDecisionRequestV2>,
+}
+
+/// One rules-owned forced-progress step. The expectation carries the full
+/// authored product of the progress WITHOUT any response field: there is
+/// no `DecisionResponseV2` to submit, synthesize, or default. By
+/// construction a forced-progress step cannot encode a fake response, an
+/// implicit pass, or a first/default candidate.
+#[derive(Debug, Clone)]
+pub struct ConformanceForcedProgressStepRef {
+    pub label: &'static str,
+    pub expectation: ForcedProgressExpectation,
+}
+
+/// Complete authored product of one forced-progress step: exact state
+/// digest, ordered authoritative events, complete semantic delta, next
+/// decision, episode status, per-player information states and visible
+/// decisions, and environment limit-counter deltas.
+#[derive(Debug, Clone)]
+pub struct ForcedProgressExpectation {
+    pub expected_state_digest: FullStateDigestV4,
+    pub expected_authoritative_events: Vec<AuthoritativeRuleEvent>,
+    pub expected_semantic_delta: StateDelta,
+    pub expected_next_decision: Option<AuthoritativeDecisionRequestV2>,
+    pub expected_status: EpisodeStatus,
+    pub expected_information_states:
+        BTreeMap<PlayerId, mtgml_observation::PlayerInformationStateV2>,
+    pub expected_visible_decisions: BTreeMap<PlayerId, Option<PlayerDecisionRequestV2>>,
+    pub expected_limit_counter_deltas: LimitCounterDeltas,
 }
 
 /// Deterministic first-divergence report built from the real comparison
@@ -237,6 +269,7 @@ fn run_step(
     match step {
         ConformanceCaseStep::Transition(tr) => run_transition(tr, controller, endpoints),
         ConformanceCaseStep::LayerBRejection(rr) => run_rejection(rr, controller, endpoints),
+        ConformanceCaseStep::ForcedProgress(fp) => run_forced_progress(fp, controller, endpoints),
     }
 }
 
@@ -403,6 +436,145 @@ fn counter_delta(after: u64, before: u64) -> Result<u64, ConformanceFailure> {
     })
 }
 
+/// Rules-owned forced progress without any player response. Both the
+/// trusted fork and the shared controller execute the authoritative
+/// primitive from the same starting checkpoint; their parity is proven
+/// exactly as for response-driven steps. The replay must be byte-identical
+/// before and after on both legs: responseless progress appends no replay
+/// step. Every actual product is then compared against the authored
+/// response-free expectation, and the endpoint projections are bound per
+/// player.
+fn run_forced_progress(
+    fp: &ConformanceForcedProgressStepRef,
+    controller: &TrustedEnvironmentController,
+    endpoints: &[PlayerEndpointHandle; 2],
+) -> Result<(), ConformanceFailure> {
+    let before = controller.checkpoint().map_err(infrastructure)?;
+    if before.state.execution.pending_decision.is_some() {
+        return Err(ConformanceFailure::Contract(
+            "forced-progress step requires a decision-less starting checkpoint".into(),
+        ));
+    }
+    let replay_before = controller.export_replay().map_err(infrastructure)?;
+
+    let fork = controller.fork().map_err(infrastructure)?;
+    let fork_before = fork.checkpoint().map_err(infrastructure)?;
+    if fork_before != before {
+        return Err(ConformanceFailure::Contract(
+            "trusted fork must start from the identical checkpoint as the shared environment"
+                .into(),
+        ));
+    }
+
+    let trusted: TransitionResult = fork.execute_forced_progress().map_err(infrastructure)?;
+    let main: TransitionResult = controller
+        .execute_forced_progress()
+        .map_err(infrastructure)?;
+    if main != trusted {
+        return Err(ConformanceFailure::Contract(
+            "trusted fork and shared controller diverged on forced progress".into(),
+        ));
+    }
+
+    let after = controller.checkpoint().map_err(infrastructure)?;
+    let trusted_digest = trusted.next_state.digest().map_err(|_| {
+        ConformanceFailure::Contract("forced-progress next-state digest failed".into())
+    })?;
+    if after.state != trusted.next_state || after.state_digest != trusted_digest {
+        return Err(ConformanceFailure::Contract(
+            "shared environment diverged from the trusted forced-progress product (state parity)"
+                .into(),
+        ));
+    }
+    let fork_after = fork.checkpoint().map_err(infrastructure)?;
+    if fork_after != after {
+        return Err(ConformanceFailure::Contract(
+            "trusted fork and shared controller diverged (checkpoint parity)".into(),
+        ));
+    }
+    let fork_replay = fork.export_replay().map_err(infrastructure)?;
+    let main_replay = controller.export_replay().map_err(infrastructure)?;
+    if fork_replay != replay_before || main_replay != replay_before {
+        return Err(ConformanceFailure::Contract(
+            "forced progress must not append a replay step".into(),
+        ));
+    }
+
+    let expectation = &fp.expectation;
+    if after.state_digest != expectation.expected_state_digest {
+        return Err(ConformanceFailure::Contract(
+            "forced-progress state digest differed from the authored expectation".into(),
+        ));
+    }
+    if trusted.events != expectation.expected_authoritative_events {
+        return Err(ConformanceFailure::Contract(
+            "forced-progress authoritative events differed from the authored expectation".into(),
+        ));
+    }
+    if trusted.delta != expectation.expected_semantic_delta {
+        return Err(ConformanceFailure::Contract(
+            "forced-progress semantic delta differed from the authored expectation".into(),
+        ));
+    }
+    if trusted.next_decision != expectation.expected_next_decision {
+        return Err(ConformanceFailure::Contract(
+            "forced-progress next decision differed from the authored expectation".into(),
+        ));
+    }
+    if trusted.status != expectation.expected_status {
+        return Err(ConformanceFailure::Contract(
+            "forced-progress episode status differed from the authored expectation".into(),
+        ));
+    }
+    for (actor, expected_information) in &expectation.expected_information_states {
+        let endpoint = endpoint_for(endpoints, *actor)?;
+        let actual = endpoint.information_state().map_err(infrastructure)?;
+        if &actual != expected_information {
+            return Err(ConformanceFailure::Contract(format!(
+                "forced-progress information state differed for player {}",
+                actor.0
+            )));
+        }
+    }
+    for (actor, expected_visible) in &expectation.expected_visible_decisions {
+        let endpoint = endpoint_for(endpoints, *actor)?;
+        let actual = endpoint.visible_decision().map_err(infrastructure)?;
+        if &actual != expected_visible {
+            return Err(ConformanceFailure::Contract(format!(
+                "forced-progress visible decision differed for player {}",
+                actor.0
+            )));
+        }
+    }
+
+    let actual_deltas = LimitCounterDeltas {
+        decisions_submitted: counter_delta(
+            after.limit_counters.decisions_submitted,
+            before.limit_counters.decisions_submitted,
+        )?,
+        accepted_transitions: counter_delta(
+            after.limit_counters.accepted_transitions,
+            before.limit_counters.accepted_transitions,
+        )?,
+        rule_events_emitted: counter_delta(
+            after.limit_counters.rule_events_emitted,
+            before.limit_counters.rule_events_emitted,
+        )?,
+    };
+    if actual_deltas != expectation.expected_limit_counter_deltas {
+        return Err(ConformanceFailure::Contract(format!(
+            "forced-progress limit-counter deltas differed (expected {} decisions, {} accepted, {} events; actual {} / {} / {})",
+            expectation.expected_limit_counter_deltas.decisions_submitted,
+            expectation.expected_limit_counter_deltas.accepted_transitions,
+            expectation.expected_limit_counter_deltas.rule_events_emitted,
+            actual_deltas.decisions_submitted,
+            actual_deltas.accepted_transitions,
+            actual_deltas.rule_events_emitted,
+        )));
+    }
+    Ok(())
+}
+
 fn run_rejection(
     rr: &ConformanceRejectionStepRef,
     controller: &TrustedEnvironmentController,
@@ -464,8 +636,9 @@ mod t0_01_red_contract {
     use mtgml_state::SemanticDeltaOperation;
 
     use crate::facade::{
-        run_case, ConformanceCase, ConformanceCaseStep, ConformanceRejectionStepRef,
-        ConformanceStepRef, LimitCounterDeltas, PlayerBoundaryRejectionExpectation,
+        run_case, ConformanceCase, ConformanceCaseStep, ConformanceForcedProgressStepRef,
+        ConformanceRejectionStepRef, ConformanceStepRef, ForcedProgressExpectation,
+        LimitCounterDeltas, PlayerBoundaryRejectionExpectation,
     };
 
     use crate::isolation::{base_pair_state, capture_complete, spawn_environment};
@@ -1185,5 +1358,302 @@ mod t0_01_red_contract {
             spawn_environment(state, &config).expect("spawned trusted environment");
         let complete = capture_complete(&controller, &endpoints).expect("trusted fingerprint");
         assert_eq!(complete, complete);
+    }
+
+    // T0-02A forced-progress witnesses. RED: ConformanceCaseStep has no
+    // ForcedProgress variant and no forced-progress execution entry exists.
+
+    /// The narrowest synthetic no-choice setup: the accepted base fixture
+    /// with the pending decision removed. No response can be required at
+    /// entry because no decision exists.
+    fn stabilization_setup() -> mtgml_state::EngineState {
+        let mut setup = base_pair_state(SEED_HEX_A).expect("base fixture");
+        setup.execution.pending_decision = None;
+        setup
+    }
+
+    /// Independently authored stabilized entry request: the entry program
+    /// shape with identities advanced exactly as the transition contract
+    /// requires for a created decision (heads 2/2 at revision 1).
+    fn stabilized_entry_request() -> AuthoritativeDecisionRequestV2 {
+        AuthoritativeDecisionRequestV2 {
+            decision_id: DecisionId(2),
+            player_decision_id: PlayerDecisionIdV1(2),
+            state_revision: StateRevision(1),
+            actor: P1,
+            visibility: DecisionVisibility::Public,
+            decision: DecisionDomainV2::ChooseOne,
+            candidates: vec![AuthoritativeCandidateV2 {
+                candidate_id: CandidateIdV1(0),
+                visible_intent: CandidateIntent::SelectObject {
+                    object: OpaqueObjectId(1),
+                },
+                trusted_binding: EngineCandidateBinding::SelectObject {
+                    object: GameObjectId(1),
+                },
+            }],
+            continuation_id: None,
+        }
+    }
+
+    fn stabilized_entry_events() -> Vec<AuthoritativeRuleEvent> {
+        vec![AuthoritativeRuleEvent {
+            event_id: RuleEventId(1),
+            state_revision: StateRevision(1),
+            event: AuthoritativeRuleEventKind::DecisionCreated {
+                decision: DecisionId(2),
+            },
+        }]
+    }
+
+    fn stabilized_entry_delta_operations() -> Vec<SemanticDeltaOperation> {
+        vec![SemanticDeltaOperation::DecisionCreated {
+            decision: DecisionId(2),
+        }]
+    }
+
+    /// Independently constructed expected stabilized state: literal
+    /// postconditions over the no-choice setup. No kernel execution
+    /// contributes to this value.
+    fn expected_stabilized_state() -> mtgml_state::EngineState {
+        let mut expected = stabilization_setup();
+        expected.revision = StateRevision(1);
+        expected.execution.pending_decision = Some(mtgml_state::PendingDecisionRecordV2 {
+            request: stabilized_entry_request(),
+        });
+        expected.allocators.next_decision_id = DecisionId(3);
+        expected.allocators.next_rule_event_id = RuleEventId(2);
+        expected
+            .perspective_identities
+            .players
+            .get_mut(&P1)
+            .expect("P1 identity")
+            .next_player_decision_id = PlayerDecisionIdV1(3);
+        expected
+    }
+
+    /// Frozen golden: the mechanical V4 digest of the independently
+    /// constructed expected stabilized state (transcribed from authored
+    /// fixture data through the hash mechanism; never production output).
+    fn stabilized_expected_state_digest() -> FullStateDigestV4 {
+        FullStateDigestV4::parse("c02efa9c73cbdea7ac3901cc172f0aa5c749ceb5b4cba5cd790e41fcc7aa967e")
+            .expect("stabilized digest")
+    }
+
+    fn stabilized_p2_observation(state_revision: StateRevision) -> ObservationEnvelope {
+        let mut observation = base_p1_observation(state_revision);
+        observation.perspective = P2;
+        observation
+    }
+
+    fn stabilized_p2_retained_knowledge() -> Vec<PlayerKnownObjectV1> {
+        vec![
+            PlayerKnownObjectV1::Active {
+                opaque_object_id: OpaqueObjectId(1),
+                known_definition: Some(CardDefinitionId(1)),
+                current_known_location_fact: Some(PlayerKnownLocationFactV1 {
+                    location: PlayerKnownLocationV1 {
+                        zone: ZoneKind::Battlefield,
+                        player: None,
+                    },
+                    provenance: PlayerKnowledgeProvenanceV1::InitialConfiguration,
+                }),
+                historical_locations: Vec::new(),
+                acquisition: PlayerKnowledgeProvenanceV1::InitialConfiguration,
+            },
+            PlayerKnownObjectV1::Active {
+                opaque_object_id: OpaqueObjectId(2),
+                known_definition: Some(CardDefinitionId(2)),
+                current_known_location_fact: Some(PlayerKnownLocationFactV1 {
+                    location: PlayerKnownLocationV1 {
+                        zone: ZoneKind::Library,
+                        player: Some(P2),
+                    },
+                    provenance: PlayerKnowledgeProvenanceV1::InitialConfiguration,
+                }),
+                historical_locations: Vec::new(),
+                acquisition: PlayerKnowledgeProvenanceV1::InitialConfiguration,
+            },
+        ]
+    }
+
+    /// Authored stabilized information state with the digest computed
+    /// mechanically from the authored input (hash mechanism reuse, the same
+    /// pattern as EngineState::digest over a constructed expected state).
+    fn stabilized_information_state(
+        perspective: PlayerId,
+        retained_knowledge: Vec<PlayerKnownObjectV1>,
+    ) -> PlayerInformationStateV2 {
+        let observation = if perspective == P1 {
+            base_p1_observation(StateRevision(1))
+        } else {
+            stabilized_p2_observation(StateRevision(1))
+        };
+        let mut state = PlayerInformationStateV2 {
+            schema_version: INFORMATION_STATE_SCHEMA_V2.into(),
+            perspective,
+            state_revision: StateRevision(1),
+            current_observation: observation,
+            next_visible_sequence: VisibleSequence(1),
+            retained_knowledge,
+            digest: InformationStateDigestV2::parse(
+                "0000000000000000000000000000000000000000000000000000000000000000",
+            )
+            .expect("info digest placeholder"),
+        };
+        let (_, digest) = mtgml_wire::compute_information_state_digest_v2(&state.digest_input())
+            .expect("mechanical info digest");
+        state.digest = digest;
+        state
+    }
+
+    fn stabilized_visible_p1_decision() -> PlayerDecisionRequestV2 {
+        PlayerDecisionRequestV2 {
+            schema_version: PLAYER_DECISION_REQUEST_V2_SCHEMA.into(),
+            player_decision_id: PlayerDecisionIdV1(2),
+            state_revision: StateRevision(1),
+            actor: P1,
+            visibility: DecisionVisibility::Public,
+            decision: DecisionDomainV2::ChooseOne,
+            candidates: vec![VisibleCandidateV2 {
+                candidate_id: CandidateIdV1(0),
+                intent: CandidateIntent::SelectObject {
+                    object: OpaqueObjectId(1),
+                },
+            }],
+        }
+    }
+
+    fn forced_progress_expectation() -> ForcedProgressExpectation {
+        let expected_state = expected_stabilized_state();
+        let setup = stabilization_setup();
+        let expected_delta = mtgml_state::StateDelta::between(
+            &setup,
+            &expected_state,
+            stabilized_entry_delta_operations(),
+        )
+        .expect("mechanical delta over authored states");
+        ForcedProgressExpectation {
+            expected_state_digest: stabilized_expected_state_digest(),
+            expected_authoritative_events: stabilized_entry_events(),
+            expected_semantic_delta: expected_delta,
+            expected_next_decision: Some(stabilized_entry_request()),
+            expected_status: EpisodeStatus::Running,
+            expected_information_states: BTreeMap::from([
+                (
+                    P1,
+                    stabilized_information_state(P1, base_p1_retained_knowledge()),
+                ),
+                (
+                    P2,
+                    stabilized_information_state(P2, stabilized_p2_retained_knowledge()),
+                ),
+            ]),
+            expected_visible_decisions: BTreeMap::from([
+                (P1, Some(stabilized_visible_p1_decision())),
+                (P2, None),
+            ]),
+            expected_limit_counter_deltas: LimitCounterDeltas {
+                decisions_submitted: 0,
+                accepted_transitions: 0,
+                rule_events_emitted: 1,
+            },
+        }
+    }
+
+    fn forced_progress_case() -> ConformanceCase {
+        ConformanceCase {
+            name: "synthetic-entry-stabilization-forced-progress",
+            description:
+                "no-choice setup undergoes rules-owned stabilization to the first real decision",
+            steps: vec![ConformanceCaseStep::ForcedProgress(Box::new(
+                ConformanceForcedProgressStepRef {
+                    label: "step-1-stabilize-entry",
+                    expectation: forced_progress_expectation(),
+                },
+            ))],
+        }
+    }
+
+    #[test]
+    fn forced_progress_stabilizes_entry_without_any_response() {
+        let state = stabilization_setup();
+        assert!(state.execution.pending_decision.is_none());
+        let config = crate::isolation::synthetic_environment_config([P1, P2]);
+        let (controller, endpoints) =
+            spawn_environment(state, &config).expect("spawned trusted environment");
+
+        // The case carries no DecisionResponseV2 anywhere: stabilization is
+        // driven without a player submission.
+        run_case(&forced_progress_case(), &controller, &endpoints)
+            .expect("forced progress must reach the authored entry decision");
+
+        let after = controller.checkpoint().expect("checkpoint");
+        assert_eq!(after.state, expected_stabilized_state());
+        assert_eq!(
+            after.limit_counters.decisions_submitted, 0,
+            "forced progress must not submit a decision"
+        );
+        assert_eq!(
+            after.limit_counters.accepted_transitions, 0,
+            "forced progress is not a response transition"
+        );
+    }
+
+    #[test]
+    fn forced_progress_unsupported_setup_fails_closed_with_diagnostic() {
+        // Life 39 is structurally valid (the environment still spawns) but
+        // the entry program requires exactly 40: stabilization fails closed
+        // inside the forced-progress step, not at spawn.
+        let mut setup = stabilization_setup();
+        setup.core.players.get_mut(&P1).expect("P1 state").life = 39;
+        let config = crate::isolation::synthetic_environment_config([P1, P2]);
+        let (controller, endpoints) =
+            spawn_environment(setup, &config).expect("spawned trusted environment");
+        let before = capture_complete(&controller, &endpoints).expect("fingerprint capture");
+        let replay_before = controller.export_replay().expect("replay");
+
+        let diagnostic = run_case(&forced_progress_case(), &controller, &endpoints)
+            .expect_err("unsupported forced progress must fail the case");
+        assert_eq!(diagnostic.step_label, "step-1-stabilize-entry");
+        assert_eq!(diagnostic.first_failing_step_index, Some(0));
+
+        let after = capture_complete(&controller, &endpoints).expect("fingerprint capture");
+        assert_eq!(after, before, "failed progress must not commit");
+        assert_eq!(
+            controller.export_replay().expect("replay"),
+            replay_before,
+            "failed progress must not touch replay"
+        );
+    }
+
+    #[test]
+    fn forced_progress_is_deterministic_across_reruns() {
+        let run = || {
+            let state = stabilization_setup();
+            let config = crate::isolation::synthetic_environment_config([P1, P2]);
+            let (controller, endpoints) =
+                spawn_environment(state, &config).expect("spawned trusted environment");
+            run_case(&forced_progress_case(), &controller, &endpoints)
+                .expect("forced progress must succeed");
+            controller.checkpoint().expect("checkpoint")
+        };
+        let first = run();
+        let second = run();
+        assert_eq!(first, second);
+        assert_eq!(first.state, expected_stabilized_state());
+    }
+
+    #[test]
+    fn stabilized_state_oracle_is_independent_of_execution() {
+        // Mechanical digest of the AUTHORED stabilized state: no kernel
+        // execution contributes to either side of this assertion.
+        let expected = expected_stabilized_state();
+        let mechanical = expected.digest().expect("mechanical digest");
+        assert_eq!(
+            mechanical,
+            stabilized_expected_state_digest(),
+            "constructed stabilized state must digest to the authored golden"
+        );
     }
 }

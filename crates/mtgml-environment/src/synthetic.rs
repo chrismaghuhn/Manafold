@@ -199,6 +199,10 @@ impl EnvironmentBackend for SyntheticM1EnvironmentBackend {
         )
     }
 
+    fn execute_forced_progress(&mut self) -> Result<TransitionResult, ControllerError> {
+        self.execute_forced_progress()
+    }
+
     fn player_observation(
         &self,
         perspective: PlayerId,

@@ -24,6 +24,16 @@ pub trait EnvironmentBackend: Send {
         ))
     }
 
+    /// Rules-owned forced progress without any player response. Backends
+    /// without forced-progress support reject with a backend error.
+    fn execute_forced_progress(
+        &mut self,
+    ) -> Result<mtgml_rules::TransitionResult, ControllerError> {
+        Err(ControllerError::Backend(
+            "forced progress is unavailable".into(),
+        ))
+    }
+
     fn player_observation(
         &self,
         perspective: PlayerId,
@@ -95,6 +105,12 @@ impl TrustedEnvironmentController {
         response: DecisionResponseV2,
     ) -> Result<mtgml_rules::TransitionResult, ControllerError> {
         self.lock()?.execute_trusted_response(actor, response)
+    }
+
+    pub fn execute_forced_progress(
+        &self,
+    ) -> Result<mtgml_rules::TransitionResult, ControllerError> {
+        self.lock()?.execute_forced_progress()
     }
 
     /// Executes detached replay input on an internal backend fork and returns

@@ -66,6 +66,61 @@ impl SyntheticM1EnvironmentBackend {
         })
     }
 
+    /// Rules-owned forced-progress commit. Mirrors the accepted-response
+    /// commit discipline without any player submission: the kernel primitive
+    /// runs on the committed state, its product passes transition-contract
+    /// validation, and the atomic commit advances state, status, and exactly
+    /// the counters the progress consumed. No response exists, so
+    /// `decisions_submitted` never increments (which by the counter
+    /// invariant also pins `accepted_transitions`), and no replay step is
+    /// appended — responseless progress is execution semantics, not a
+    /// synthetic player action, and ReplayStepV4 carries no response field
+    /// to fabricate. Failed progress commits nothing.
+    pub(crate) fn execute_forced_progress(&mut self) -> Result<TransitionResult, ControllerError> {
+        let before = self.current_checkpoint()?;
+        let transition = match self.kernel.stabilize_entry(&before.state) {
+            Ok(transition) => transition,
+            Err(error) => {
+                let after = self.current_checkpoint()?;
+                if after != before {
+                    return Err(EnvironmentCommitError::RejectedMutation.into());
+                }
+                return Err(error.into());
+            }
+        };
+        validate_transition_contract(&before.state, &transition)?;
+
+        let candidate_counters = EnvironmentLimitCounters {
+            decisions_submitted: before.limit_counters.decisions_submitted,
+            accepted_transitions: before.limit_counters.accepted_transitions,
+            rule_events_emitted: Self::checked_add_counter(
+                before.limit_counters.rule_events_emitted,
+                u64::try_from(transition.events.len()).map_err(|_| {
+                    ControllerError::CounterOverflow {
+                        counter: "rule_events_emitted",
+                    }
+                })?,
+                "rule_events_emitted",
+            )?,
+            resource_units_consumed: before.limit_counters.resource_units_consumed,
+            wall_clock_elapsed_millis: before.limit_counters.wall_clock_elapsed_millis,
+        };
+        let candidate = EnvironmentCheckpointV4::new(
+            transition.next_state.clone(),
+            transition.status.clone(),
+            candidate_counters,
+            before.codec.clone(),
+        )?;
+        if candidate.state != transition.next_state || candidate.status != transition.status {
+            return Err(EnvironmentCommitError::CandidateMismatch.into());
+        }
+
+        self.state = candidate.state;
+        self.status = candidate.status;
+        self.limit_counters = candidate.limit_counters;
+        Ok(transition)
+    }
+
     pub(crate) fn execute_response<F>(
         &mut self,
         actor: PlayerId,

@@ -5,7 +5,7 @@ use mtgml_decision::{
     validate_candidate_binding, ActionCandidate, CandidateIntent, DecisionDomainV2,
     EngineCandidateBinding, PerspectiveIdentityResolver,
 };
-use mtgml_model::GameObjectId;
+use mtgml_model::{CandidateIdV1, GameObjectId, OpaqueObjectId, PlayerId};
 use mtgml_state::EngineState;
 
 use super::helpers::global_stream;
@@ -62,29 +62,46 @@ pub(super) fn entry_supported(state: &EngineState) -> Result<(), KernelExecution
     else {
         return Err(KernelExecutionError::UnsupportedStagePath);
     };
-    if state
-        .perspective_identities
-        .resolve_object(actor, *opaque_object)
-        != Some(GameObjectId(1))
-        || candidate.trusted_binding
-            != (EngineCandidateBinding::SelectObject {
-                object: GameObjectId(1),
-            })
+    if candidate.trusted_binding
+        != (EngineCandidateBinding::SelectObject {
+            object: GameObjectId(1),
+        })
     {
         return Err(KernelExecutionError::UnsupportedStagePath);
     }
-    let visible = ActionCandidate {
-        candidate_id: candidate.candidate_id.to_string(),
-        semantic_key: "candidate.0".into(),
-        intent: candidate.visible_intent.clone(),
+    entry_setup_supported(state, actor, *opaque_object, candidate.candidate_id)
+}
+
+/// Setup half of the synthetic entry program support: the fixture facts
+/// from which the entry decision is derived. Shared by pending-request
+/// validation (opaque and candidate id read from the offered request) and
+/// rules-owned entry stabilization (both derived from validated state).
+/// The program definition itself — the fixture public object as the single
+/// entry candidate — lives here once for the whole synthetic kernel.
+pub(super) fn entry_setup_supported(
+    state: &EngineState,
+    actor: PlayerId,
+    opaque_object: OpaqueObjectId,
+    candidate_id: CandidateIdV1,
+) -> Result<(), KernelExecutionError> {
+    if state
+        .perspective_identities
+        .resolve_object(actor, opaque_object)
+        != Some(GameObjectId(1))
+    {
+        return Err(KernelExecutionError::UnsupportedStagePath);
+    }
+    let binding = EngineCandidateBinding::SelectObject {
+        object: GameObjectId(1),
     };
-    if validate_candidate_binding(
-        &visible,
-        &candidate.trusted_binding,
-        actor,
-        &state.perspective_identities,
-    )
-    .is_err()
+    let visible = ActionCandidate {
+        candidate_id: candidate_id.to_string(),
+        semantic_key: "candidate.0".into(),
+        intent: CandidateIntent::SelectObject {
+            object: opaque_object,
+        },
+    };
+    if validate_candidate_binding(&visible, &binding, actor, &state.perspective_identities).is_err()
     {
         return Err(KernelExecutionError::UnsupportedStagePath);
     }
