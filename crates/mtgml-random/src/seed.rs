@@ -41,14 +41,7 @@ pub enum RandomValidationError {
 }
 
 pub fn validate_seed_hex(value: &str) -> Result<(), RandomValidationError> {
-    if value.len() != 64
-        || !value
-            .bytes()
-            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
-    {
-        return Err(RandomValidationError::InvalidSeedHex);
-    }
-    Ok(())
+    RootSeed256::from_lower_hex(value).map(|_| ())
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
