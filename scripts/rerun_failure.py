@@ -134,6 +134,58 @@ def _marker_difference(
     return None
 
 
+def _stored_log(packet: Path, manifest: dict[str, Any]) -> bytes:
+    packet_dir = Path(packet).resolve()
+    relative = manifest["artifacts"]["log"]["path"]
+    if not isinstance(relative, str) or not relative or "\x00" in relative:
+        raise failure_packet.FailurePacketError("packet log path is not a safe string")
+    candidate = (packet_dir / Path(relative)).resolve()
+    if packet_dir not in candidate.parents:
+        raise failure_packet.FailurePacketError("packet log path escapes the packet directory")
+    try:
+        return candidate.read_bytes()
+    except OSError as error:
+        raise failure_packet.FailurePacketError(f"packet log is unreadable: {error}") from error
+
+
+def _t0_context_difference(
+    manifest: dict[str, Any],
+    packet: Path,
+    outcome: failure_packet.CommandOutcome,
+) -> str | None:
+    """Require exact T0 context reproduction when the captured log binds one.
+
+    The stored command.log is checksummed by load_packet before this runs,
+    so the recorded context is trusted. Packets without a T0 context line
+    keep the legacy marker-only behavior.
+    """
+    try:
+        recorded = failure_packet.parse_t0_failure_context(_stored_log(packet, manifest))
+    except failure_packet.FailurePacketError as error:
+        raise failure_packet.FailurePacketError(
+            f"stored T0 failure context is unreadable: {error}"
+        ) from error
+    if recorded is None:
+        return None
+    try:
+        actual = failure_packet.parse_t0_failure_context(_combined_log(outcome))
+    except failure_packet.FailurePacketError as error:
+        raise failure_packet.FailurePacketError(
+            f"rerun did not emit the required T0 failure context: {error}"
+        ) from error
+    if actual is None:
+        raise failure_packet.FailurePacketError(
+            "rerun did not emit the required T0 failure context"
+        )
+    differing = sorted(field for field in recorded if recorded[field] != actual.get(field))
+    if differing:
+        return "T0 failure context differs: " + ", ".join(
+            f"{field} expected {recorded[field]!r}, got {actual.get(field)!r}"
+            for field in differing
+        )
+    return None
+
+
 def _predicate_result(
     manifest: dict[str, Any],
     outcome: failure_packet.CommandOutcome,
@@ -226,6 +278,12 @@ def rerun(
         return _blocked(str(error))
     if marker_difference is not None:
         return _not_reproduced(marker_difference)
+    try:
+        context_difference = _t0_context_difference(manifest, packet, outcome)
+    except failure_packet.FailurePacketError as error:
+        return _blocked(str(error))
+    if context_difference is not None:
+        return _not_reproduced(context_difference)
     return _predicate_result(manifest, outcome)
 
 

@@ -1132,9 +1132,13 @@ mod t0_01_red_contract {
         assert_eq!(before, after);
     }
 
-    #[test]
-    fn witness_c_multi_step_mismatch_reports_first_failing_step() {
-        let case = ConformanceCase {
+    /// The existing deliberate T0 mismatch fixture: two explicit steps
+    /// through the real environment, with the step-2 expectation corrupted
+    /// so the real comparator reports the first divergence. Shared by the
+    /// diagnostics test and the failure-packet witness without weakening
+    /// either.
+    fn witness_c_case() -> ConformanceCase {
+        ConformanceCase {
             name: "synthetic-assembly-two-explicit-steps",
             description: "ChooseOne then ChooseNumber; step-2 expectation deliberately wrong",
             steps: vec![
@@ -1167,7 +1171,12 @@ mod t0_01_red_contract {
                     },
                 })),
             ],
-        };
+        }
+    }
+
+    #[test]
+    fn witness_c_multi_step_mismatch_reports_first_failing_step() {
+        let case = witness_c_case();
 
         let state = base_pair_state(SEED_HEX_A).expect("accepted synthetic base state");
         let config = crate::isolation::synthetic_environment_config([P1, P2]);
@@ -1184,6 +1193,89 @@ mod t0_01_red_contract {
         assert_eq!(classification, ConformanceFailureClass::Events);
         let difference = failure.difference().expect("detailed difference");
         assert_eq!(difference.semantic_path, "transition.events[1]");
+    }
+
+    /// Lowercase hex encoding without extra dependencies or formatting
+    /// machinery (plain nibble table).
+    fn lower_hex(bytes: &[u8]) -> String {
+        const HEX_DIGITS: &[u8; 16] = b"0123456789abcdef";
+        let mut out = Vec::with_capacity(bytes.len() * 2);
+        for byte in bytes {
+            out.push(HEX_DIGITS[(byte >> 4) as usize]);
+            out.push(HEX_DIGITS[(byte & 0x0f) as usize]);
+        }
+        String::from_utf8(out).expect("hex digits are ASCII")
+    }
+
+    /// Digest-mismatch witness case: the accepted entry transition with the
+    /// step-2 golden as its expected state digest. Deliberately wrong for
+    /// this transition, but itself a reviewed canonical identity — no
+    /// invented hex constant. Events, delta, and all other products stay
+    /// exact so the real comparator reports the StateDigest first
+    /// divergence.
+    fn digest_mismatch_case() -> ConformanceCase {
+        let mut step = entry_conformance_step();
+        step.expected_state_digest = count_expected_state_digest();
+        ConformanceCase {
+            name: "synthetic-entry-digest-mismatch",
+            description: "ChooseOne accepted; expected state digest deliberately wrong",
+            steps: vec![ConformanceCaseStep::Transition(Box::new(
+                ConformanceStepRef {
+                    label: "step-1-entry-choose-one",
+                    step,
+                    expected_limit_counter_deltas: LimitCounterDeltas {
+                        decisions_submitted: 1,
+                        accepted_transitions: 1,
+                        rule_events_emitted: 5,
+                    },
+                },
+            ))],
+        }
+    }
+
+    /// Explicit opt-in T0 failure-packet witness. Skipped by ordinary
+    /// `cargo test` runs (including CI); invoked directly for trusted
+    /// failure capture. It executes the real digest-mismatch case through
+    /// the real environment, prints exactly one closed T0 context line plus
+    /// exactly one existing failure signature, flushes stdout, and exits
+    /// nonzero. The mismatch itself is genuine comparator output; the
+    /// expected identity is the authored (deliberately wrong for this
+    /// transition) golden and the actual identity is read live from the
+    /// committed authoritative checkpoint. Only the process exit is
+    /// plumbing.
+    #[test]
+    #[ignore]
+    fn t0_failure_witness_capture() {
+        let case = digest_mismatch_case();
+        let state = base_pair_state(SEED_HEX_A).expect("accepted synthetic base state");
+        let config = crate::isolation::synthetic_environment_config([P1, P2]);
+        let (controller, endpoints) =
+            spawn_environment(state, &config).expect("spawned trusted environment");
+        let diagnostic = run_case(&case, &controller, &endpoints)
+            .expect_err("witness case must mismatch for capture");
+        let difference = diagnostic.failure.difference().expect("first divergence");
+        let actual_digest = controller
+            .checkpoint()
+            .expect("authoritative checkpoint")
+            .state_digest;
+        let kernel = &controller.export_replay().expect("replay").manifest.kernel;
+        println!(
+            "T0_FAILURE_CONTEXT v1 case={} step={} index={} surface={} path={} kind={} authority=mtgml_conformance::assert_exact_transition kernel={} semantic={} expected_state_digest={} actual_state_digest={}",
+            diagnostic.case,
+            diagnostic.step_label,
+            diagnostic.first_failing_step_index.expect("failing step index"),
+            difference.surface.as_token(),
+            difference.semantic_path,
+            difference.mismatch_kind.as_token(),
+            kernel.implementation_id,
+            kernel.semantic_version,
+            lower_hex(&count_expected_state_digest().raw_bytes()),
+            lower_hex(&actual_digest.raw_bytes()),
+        );
+        println!("{}", difference.signature_marker());
+        use std::io::Write as _;
+        std::io::stdout().flush().expect("flush witness output");
+        std::process::exit(1);
     }
 
     #[test]
