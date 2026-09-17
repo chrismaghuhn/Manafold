@@ -14,6 +14,13 @@ use thiserror::Error;
 
 mod diagnostics;
 
+/// T0 conformance facade contract (M3.T0-01, RED): case-level surface
+/// requirements for the thin private conformance facade.  Intentionally
+/// unimplemented; the tests in this module fail until the reviewed facade
+/// slice exists.
+#[cfg(test)]
+mod facade;
+
 pub use diagnostics::{
     ConformanceDifference, ConformanceFailureClass, ConformanceMismatchKind, SequenceDifference,
 };
