@@ -1,8 +1,5 @@
-// Ownership fragment: rules-owned forced-progress (stabilize entry)
-// evidence. Included lexically by tests.rs so every identity remains
-// tests::<name>.
-//
-// RED: SyntheticM1RulesKernel::stabilize_entry does not exist yet.
+// Ownership fragment: rules-owned forced-progress evidence. Included
+// lexically by tests.rs so every identity remains tests::<name>.
 
 use mtgml_decision::{
     AuthoritativeCandidateV2, AuthoritativeDecisionRequestV2, CandidateIntent, DecisionVisibility,
@@ -11,11 +8,11 @@ use mtgml_decision::{
 use mtgml_model::{EffectInstanceId, GameObjectId, OpaqueObjectId, RuleEventId};
 use mtgml_state::SemanticDeltaOperation;
 
-fn stabilize_entry(
+fn advance_forced_progress(
     state: &EngineState,
 ) -> Result<TransitionResult, KernelExecutionError> {
     let mut kernel = SyntheticM1RulesKernel;
-    kernel.stabilize_entry(state)
+    kernel.advance_forced_progress(state)
 }
 
 /// The independently authored expected entry request installed by
@@ -59,12 +56,12 @@ fn expected_stabilized_delta_operations() -> Vec<SemanticDeltaOperation> {
 }
 
 #[test]
-fn stabilize_entry_installs_entry_decision_from_decision_less_setup() {
+fn advance_forced_progress_installs_entry_decision_from_decision_less_setup() {
     let setup = state_without_pending_decision();
     assert!(setup.execution.pending_decision.is_none());
     assert!(setup.execution.continuations.is_empty());
 
-    let product = stabilize_entry(&setup).expect("stabilization must succeed");
+    let product = advance_forced_progress(&setup).expect("stabilization must succeed");
 
     assert!(product.accepted);
     assert_eq!(product.next_state.revision, StateRevision(1));
@@ -137,11 +134,11 @@ fn stabilize_entry_installs_entry_decision_from_decision_less_setup() {
 }
 
 #[test]
-fn stabilize_entry_rejects_state_with_pending_decision() {
+fn advance_forced_progress_rejects_state_with_pending_decision() {
     let state = synthetic_state();
     assert!(state.execution.pending_decision.is_some());
     let before = state.clone();
-    let error = stabilize_entry(&state).unwrap_err();
+    let error = advance_forced_progress(&state).unwrap_err();
     assert!(matches!(
         error,
         KernelExecutionError::UnsupportedStagePath
@@ -150,7 +147,7 @@ fn stabilize_entry_rejects_state_with_pending_decision() {
 }
 
 #[test]
-fn stabilize_entry_rejects_unsupported_setup_without_mutation() {
+fn advance_forced_progress_rejects_unsupported_setup_without_mutation() {
     // Life 39 is structurally valid but the synthetic entry program requires
     // the exact fixture life total: derivation must fail closed with the
     // existing unsupported-path signal.
@@ -162,7 +159,7 @@ fn stabilize_entry_rejects_unsupported_setup_without_mutation() {
         .expect("P1 state")
         .life = 39;
     let before = setup.clone();
-    let error = stabilize_entry(&setup).unwrap_err();
+    let error = advance_forced_progress(&setup).unwrap_err();
     assert!(matches!(
         error,
         KernelExecutionError::UnsupportedStagePath
@@ -171,7 +168,7 @@ fn stabilize_entry_rejects_unsupported_setup_without_mutation() {
 }
 
 #[test]
-fn stabilize_entry_rejects_broken_identity_mapping() {
+fn advance_forced_progress_rejects_broken_identity_mapping() {
     let mut setup = state_without_pending_decision();
     setup
         .perspective_identities
@@ -182,7 +179,7 @@ fn stabilize_entry_rejects_broken_identity_mapping() {
         .remove(&OpaqueObjectId(1));
     // A broken identity mapping fails closed (structural validation rejects
     // the setup before any derivation work begins).
-    assert!(stabilize_entry(&setup).is_err());
+    assert!(advance_forced_progress(&setup).is_err());
     // Restoring the mapping restores progress.
     setup
         .perspective_identities
@@ -191,14 +188,45 @@ fn stabilize_entry_rejects_broken_identity_mapping() {
         .expect("P1 identity")
         .opaque_to_object
         .insert(OpaqueObjectId(1), GameObjectId(1));
-    assert!(stabilize_entry(&setup).is_ok());
+    assert!(advance_forced_progress(&setup).is_ok());
+}
+
+/// A genuine completed assembly: entry, count 2, members, and order all
+/// accepted, leaving no pending Decision and no continuations.
+fn completed_assembly_state() -> EngineState {
+    let stage1 = apply(&synthetic_state(), &select_one_response(0, 0)).next_state;
+    let stage2 = apply(&stage1, &number_response(2, 2, 1)).next_state;
+    let stage3 = apply(&stage2, &many_response(3, &[0, 1], 2)).next_state;
+    let completed = apply(&stage3, &order_response(4, &[0, 1], 3)).next_state;
+    assert!(completed.execution.pending_decision.is_none());
+    assert!(completed.execution.continuations.is_empty());
+    completed
 }
 
 #[test]
-fn stabilize_entry_is_deterministic() {
+fn advance_forced_progress_on_completed_state_is_no_work_without_resurrection() {
+    let completed = completed_assembly_state();
+    assert_ne!(
+        completed.revision,
+        StateRevision(0),
+        "completed assembly must sit past revision 0"
+    );
+    let before = completed.clone();
+    let product = advance_forced_progress(&completed).expect("completed advance must succeed");
+    // No work available: unchanged state, no events, no decision — and in
+    // particular no resurrected entry decision.
+    assert!(!product.accepted);
+    assert_eq!(product.next_state, before);
+    assert!(product.events.is_empty());
+    assert_eq!(product.next_decision, None);
+    assert_eq!(product.status, mtgml_model::EpisodeStatus::Running);
+}
+
+#[test]
+fn advance_forced_progress_is_deterministic() {
     let setup = state_without_pending_decision();
-    let first = stabilize_entry(&setup).expect("first run");
-    let second = stabilize_entry(&setup).expect("second run");
+    let first = advance_forced_progress(&setup).expect("first run");
+    let second = advance_forced_progress(&setup).expect("second run");
     assert_eq!(first.next_state, second.next_state);
     assert_eq!(first.events, second.events);
     assert_eq!(first.delta, second.delta);

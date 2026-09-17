@@ -74,10 +74,93 @@ fn forced_progress_commits_without_response_counters_or_replay_step() {
     );
     assert_eq!(after.state, product.next_state);
 
-    // No replay step is fabricated for responseless progress: the exported
-    // replay is byte-identical before and after.
+    // No replay step is fabricated for responseless progress, but the
+    // recorder baseline is rebased onto the post-progress checkpoint so the
+    // next real response appends against a continuous identity.
     let replay_after = controller.export_replay().unwrap();
-    assert_eq!(replay_after, replay_before);
+    assert!(replay_after.steps.is_empty());
+    assert!(replay_before.steps.is_empty());
+    assert_eq!(replay_after.final_identity.state_revision, StateRevision(1));
+    assert_eq!(
+        replay_after.final_identity.full_state_digest,
+        after.state_digest
+    );
+    assert_eq!(
+        replay_after.final_identity.checkpoint_digest,
+        after.checkpoint_digest
+    );
+    assert_eq!(
+        replay_after.final_identity.environment_limit_counters,
+        after.limit_counters
+    );
+    assert_ne!(
+        replay_after.final_identity, replay_before.final_identity,
+        "baseline must advance past the pre-progress identity"
+    );
+}
+
+#[test]
+fn forced_progress_then_response_keeps_replay_continuous() {
+    // Blocker-1 regression: after standalone forced progress, a valid
+    // response on the resulting real Decision must be accepted, must append
+    // against the rebased baseline, and the exported replay must validate.
+    let controller = TrustedEnvironmentController::new(backend_without_pending());
+    controller.execute_forced_progress().unwrap();
+    let baseline = controller.checkpoint().unwrap();
+    assert_eq!(baseline.state.revision, StateRevision(1));
+
+    let p1 = controller.bind_player(PlayerId(1)).unwrap();
+    let step = submit_answer(&p1, order_entry_answer());
+    assert!(matches!(
+        step.submission,
+        mtgml_observation::PlayerStepSubmissionV1::Accepted
+    ));
+    assert_eq!(step.information_state.state_revision, StateRevision(2));
+
+    let replay = controller.export_replay().unwrap();
+    assert_eq!(replay.steps.len(), 1);
+    let recorded = &replay.steps[0];
+    assert_eq!(recorded.step_index, 0);
+    assert_eq!(recorded.state_revision_before, StateRevision(1));
+    assert_eq!(
+        recorded.checkpoint_digest_before,
+        baseline.checkpoint_digest
+    );
+    assert_eq!(recorded.state_revision_after, StateRevision(2));
+    assert_eq!(replay.final_identity.state_revision, StateRevision(2));
+
+    let after = controller.checkpoint().unwrap();
+    assert_eq!(after.limit_counters.decisions_submitted, 1);
+    assert_eq!(after.limit_counters.accepted_transitions, 1);
+}
+
+#[test]
+fn forced_progress_checkpoint_restores_exactly() {
+    let controller = TrustedEnvironmentController::new(backend_without_pending());
+    controller.execute_forced_progress().unwrap();
+    let progressed = controller.checkpoint().unwrap();
+    let replay_at_progress = controller.export_replay().unwrap();
+
+    // Mutate past the forced-progress product, then restore it.
+    let p1 = controller.bind_player(PlayerId(1)).unwrap();
+    let _ = submit_answer(&p1, order_entry_answer());
+    assert_eq!(
+        controller.checkpoint().unwrap().state.revision,
+        StateRevision(2)
+    );
+
+    controller.restore(progressed.clone()).unwrap();
+    let restored = controller.checkpoint().unwrap();
+    assert_eq!(restored, progressed);
+    assert_eq!(
+        controller.export_replay().unwrap(),
+        replay_at_progress,
+        "restore rebuilds the rebased baseline exactly"
+    );
+    // Projections serve from the restored checkpoint.
+    let visible = p1.visible_decision().unwrap().expect("entry decision");
+    assert_eq!(visible.state_revision, StateRevision(1));
+    assert_eq!(visible.player_decision_id, PlayerDecisionIdV1(2));
 }
 
 #[test]

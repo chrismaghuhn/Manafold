@@ -24,7 +24,9 @@ use mtgml_decision::{
     AuthoritativeCandidateV2, AuthoritativeDecisionRequestV2, CandidateIntent, DecisionAnswerV2,
     DecisionDomainV2, DecisionResponseV2, DecisionVisibility, EngineCandidateBinding,
 };
-use mtgml_model::{CandidateIdV1, ContinuationId, DecisionId, GameObjectId, PlayerId};
+use mtgml_model::{
+    CandidateIdV1, ContinuationId, DecisionId, GameObjectId, PlayerId, StateRevision,
+};
 use mtgml_state::{
     AssemblyStageV2, ContinuationPayloadV2, ContinuationRecordV2, EngineState,
     EngineStateViolation, PendingDecisionRecordV2,
@@ -98,24 +100,35 @@ impl RulesKernel for SyntheticM1RulesKernel {
 }
 
 impl SyntheticM1RulesKernel {
-    /// Rules-owned entry stabilization: the single authoritative internal
-    /// forced-progress primitive of the synthetic kernel.
+    /// Rules-owned forced progress: the single authoritative internal
+    /// forced-progress primitive of the synthetic kernel, shared by the
+    /// response-transaction closure, reset/initial stabilization, and the
+    /// T0 forced-progress proof.
     ///
-    /// From a validated decision-less setup it derives the synthetic entry
+    /// From a validated pristine decision-less setup (revision 0, no
+    /// pending Decision, no continuations) it derives the synthetic entry
     /// decision — actor from the active player, opaque assignment from the
     /// actor identity record, runtime identities from the allocator heads —
     /// and stops at that first real Decision. No response is consumed,
-    /// required, or synthesized. Any state that already offers a Decision,
+    /// required, or synthesized.
+    ///
+    /// A completed state (past revision 0 with no pending Decision and no
+    /// continuations) has no mandatory work left: it returns the unchanged
+    /// state in the contract-validated no-change shape, never inventing a
+    /// follow-up decision. Any state that already offers a Decision,
     /// carries continuation work, or fails entry validation is an
     /// unsupported forced path and fails closed without mutation (the input
     /// is only borrowed).
-    pub fn stabilize_entry(
+    pub fn advance_forced_progress(
         &mut self,
         state: &EngineState,
     ) -> Result<TransitionResult, KernelExecutionError> {
         mtgml_rules_validate_runtime(state)?;
         if state.execution.pending_decision.is_some() || !state.execution.continuations.is_empty() {
             return Err(KernelExecutionError::UnsupportedStagePath);
+        }
+        if state.revision != StateRevision(0) {
+            return rejected(state);
         }
         let actor = state.core.active_player;
         let opaque = state

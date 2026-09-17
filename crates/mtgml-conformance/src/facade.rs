@@ -494,9 +494,33 @@ fn run_forced_progress(
     }
     let fork_replay = fork.export_replay().map_err(infrastructure)?;
     let main_replay = controller.export_replay().map_err(infrastructure)?;
-    if fork_replay != replay_before || main_replay != replay_before {
+    // No replay step is fabricated for responseless progress, but both
+    // recorders must rebase onto the post-progress checkpoint identically:
+    // empty steps, equal replays, and a final identity that matches the
+    // committed checkpoint (so the next real response appends continuously).
+    if !fork_replay.steps.is_empty() || !main_replay.steps.is_empty() {
         return Err(ConformanceFailure::Contract(
             "forced progress must not append a replay step".into(),
+        ));
+    }
+    if fork_replay != main_replay {
+        return Err(ConformanceFailure::Contract(
+            "trusted fork and shared controller diverged (replay parity)".into(),
+        ));
+    }
+    let baseline = &main_replay.final_identity;
+    if baseline.state_revision != after.state.revision
+        || baseline.full_state_digest != after.state_digest
+        || baseline.checkpoint_digest != after.checkpoint_digest
+        || baseline.environment_limit_counters != after.limit_counters
+    {
+        return Err(ConformanceFailure::Contract(
+            "forced-progress replay baseline did not advance onto the committed checkpoint".into(),
+        ));
+    }
+    if main_replay.final_identity == replay_before.final_identity {
+        return Err(ConformanceFailure::Contract(
+            "forced-progress replay baseline did not move".into(),
         ));
     }
 
@@ -1642,6 +1666,55 @@ mod t0_01_red_contract {
         let second = run();
         assert_eq!(first, second);
         assert_eq!(first.state, expected_stabilized_state());
+    }
+
+    #[test]
+    fn forced_progress_result_accepts_a_real_response_with_continuous_replay() {
+        use mtgml_environment::PlayerEndpoint;
+
+        let state = stabilization_setup();
+        let config = crate::isolation::synthetic_environment_config([P1, P2]);
+        let (controller, endpoints) =
+            spawn_environment(state, &config).expect("spawned trusted environment");
+        run_case(&forced_progress_case(), &controller, &endpoints)
+            .expect("forced progress must succeed first");
+        let baseline = controller.checkpoint().expect("baseline checkpoint");
+
+        // Answer the stabilized real Decision through the real endpoint.
+        let step = endpoints[0]
+            .submit(DecisionResponseV2 {
+                schema_version: DECISION_RESPONSE_V2_SCHEMA.into(),
+                player_decision_id: PlayerDecisionIdV1(2),
+                state_revision: StateRevision(1),
+                answer: DecisionAnswerV2::SelectOne {
+                    candidate_id: CandidateIdV1(0),
+                },
+            })
+            .expect("submit on stabilized decision");
+        assert_eq!(
+            step.submission,
+            PlayerStepSubmissionV1::Accepted,
+            "stabilized decision must accept a valid response"
+        );
+        assert_eq!(step.information_state.state_revision, StateRevision(2));
+
+        // The response appends against the rebased baseline: no orphaned
+        // identity, and the exported replay validates on export.
+        let replay = controller.export_replay().expect("replay must validate");
+        assert_eq!(replay.steps.len(), 1);
+        let recorded = &replay.steps[0];
+        assert_eq!(recorded.step_index, 0);
+        assert_eq!(recorded.state_revision_before, StateRevision(1));
+        assert_eq!(
+            recorded.checkpoint_digest_before,
+            baseline.checkpoint_digest
+        );
+        assert_eq!(recorded.state_revision_after, StateRevision(2));
+        assert_eq!(replay.final_identity.state_revision, StateRevision(2));
+
+        let after = controller.checkpoint().expect("checkpoint");
+        assert_eq!(after.limit_counters.decisions_submitted, 1);
+        assert_eq!(after.limit_counters.accepted_transitions, 1);
     }
 
     #[test]
