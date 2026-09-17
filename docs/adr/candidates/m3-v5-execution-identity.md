@@ -81,9 +81,10 @@ current resumable identity, the cut REQUIRES, at minimum
 conceptually (exact Rust shapes at implementation):
 
 ```text
-EnvironmentCheckpointV5
+ExecutionIdentityV1 + ExecutionProgramV1 in mtgml-model (§2.1b)
+EnvironmentCheckpointV5   (WITH execution_identity field, §2.2b)
 CheckpointDigestV5
-InitialEnvironmentIdentityV5   (WITH execution_program field, §2.4)
+InitialEnvironmentIdentityV5   (WITH execution_identity field, §2.4)
 ReplayManifestV5
 ReplayStepV5                   (step semantics UNCHANGED: one explicit
                                 player decision per step; the version
@@ -99,6 +100,90 @@ ReplayExecutionReport / execute_replay_from_checkpoint() and the
 replay executor surfaces → V5 where they name checkpoint/replay types
 ```
 
+### 2.1b Execution identity struct (frozen; supersedes coarse-enum-only binding)
+
+A coarse `ExecutionProgram` enum value alone is not a complete,
+future-proof execution identity: the replay-manifest contract
+already treats kernel, rules snapshot, format policy, oracle data,
+and card bundle as execution provenance, and "every new semantics =
+new enum variant" would force replay/schema churn for each program
+while still leaving manifest/checkpoint consistency unprovable.
+Frozen instead — partially restoring the considered full-tuple
+approach, but as TYPED structure rather than untyped strings:
+
+```text
+ExecutionIdentityV1 {                       # in mtgml-model (§2.5)
+  program_kind:            ExecutionProgramV1,   # dispatch tag ONLY
+  kernel_implementation_id: Text,
+  kernel_semantic_version:  Text,
+  rules_snapshot:           Text,
+}
+ExecutionProgramV1 = SyntheticM2Compat | M3MagicS1   # closed
+```
+
+- ONLY semantics-selecting external identities are struct fields.
+  Format policy, oracle data, and card bundles stay
+  manifest-level provenance: they do not select execution
+  semantics today, and binding non-selecting data into the resume
+  identity would couple checkpoint evolution to content
+  dimensions. `program_kind` remains the dispatch tag
+  (`SyntheticM2Compat | M3MagicS1` for `match`); the CHECKPOINT
+  binds the FULL struct, never the tag alone.
+- Later VALUE changes (new snapshot strings, new kernel
+  versions under NEW program kinds) require NO struct change;
+  later NEW DIMENSIONS require struct evolution (a new versioned
+  identity, never silent field addition).
+- Frozen rows (the complete allowed set; §2.6 immutability
+  applies per row):
+
+```text
+M3MagicS1        ⇔ synthetic-m3 ⇔ 0.3.0 ⇔ wotc-cr-2026-08-07-txt-20260819-sha256-4381ad1b39ab2c05f7d03633a20f711ed37277074d3266dcba5f38cbb527423f
+SyntheticM2Compat ⇔ synthetic-m2 ⇔ 0.2.2 ⇔ synthetic-rules
+```
+
+### 2.1c Exact identity bytes (frozen — KAT and parity need them NOW)
+
+Enum encoding follows the existing canonical-cbor variant rule
+(same `[" snake-case-id ", payload]` shape as the digest helper's
+`variant()`):
+
+```text
+CBOR program_kind:
+  ["synthetic_m2_compat", null]
+  ["m3_magic_s1",         null]
+CBOR ExecutionIdentityV1 (fixed 4-array, field order as declared):
+  [program_kind_variant, kernel_implementation_id_text,
+   kernel_semantic_version_text, rules_snapshot_text]
+V5 checkpoint-digest input = V4 6-element array + the identity
+  array as the 7th (LAST) element. No later re-interpretation of
+  these identifiers: schema evolution forbids redefining enum/key
+  values in place.
+JSON wire (V5 replay; deny-unknown-fields posture like all DTOs):
+  {"program_kind": "synthetic_m2_compat" | "m3_magic_s1",
+   "kernel_implementation_id": <text>,
+   "kernel_semantic_version": <text>,
+   "rules_snapshot": <text>}
+```
+
+### 2.2b Checkpoint data ownership (binding)
+
+```text
+EnvironmentCheckpointV5.execution_identity: ExecutionIdentityV1
+```
+
+The identity is an explicit struct field, reconstructed and
+re-validated by `validate()` like every other checkpoint
+component — not an ambient property, not a comment. Restore
+ordering is frozen:
+
+```text
+restore:
+  checkpoint.validate()
+  → require checkpoint.execution_identity == backend.execution_identity
+  → program×state admission (§2.7)
+  → only then mutate backend
+```
+
 ### 2.3 Canonical digest contract (implementable, frozen)
 
 ```text
@@ -108,46 +193,70 @@ checkpoint schema           = environment-checkpoint.v5
 checkpoint codec            = in-memory-reference / 5
   (the in-memory-reference family was bumped 3→4 at the V4 cut for
   the same reason: new checkpoint semantics ⇒ new codec version)
-V5 CBOR input               = V4 6-element array + the canonical
-  program identity as the 7th (LAST) element; enum encoding follows
-  the existing canonical-cbor variant rule
+V5 CBOR input               = V4 6-element array + the §2.1c identity
+  array as the 7th (LAST) element
 ```
 
-### 2.4 Program value inside replay identity (frozen variant)
+### 2.4 Full identity inside replay identity + detached manifest relation (frozen)
 
-`InitialEnvironmentIdentityV5` carries an explicit
-`execution_program` field (and the final identity mirrors it), so the
-checkpoint digest can be recomputed detached from the identity's own
-explicit fields — exactly as `InitialEnvironmentIdentityV4::validate()`
-recomputes its digest today, and as the Python V4 decoder does.
-Manifest-level-only binding, passed explicitly into identity
-validation, was considered and REJECTED: one of the two strategies
-had to be normative, and self-contained identity recompute is the one
-that keeps detached verifiers honest. The Python V5 decoder mirrors
-the same field and recompute.
+`InitialEnvironmentIdentityV5` carries the FULL
+`ExecutionIdentityV1` struct from §2.1b (and the final identity
+mirrors it), so the checkpoint digest recomputes detached from the
+identity's own explicit fields — exactly as
+`InitialEnvironmentIdentityV4::validate()` recomputes its digest
+today, and as the Python V4 decoder does (`_replay_v4.py`
+recompute + codec check is the verified precedent). Manifest-level-
+only binding, passed explicitly into identity validation, was
+considered and REJECTED: one of the two strategies had to be
+normative, and self-contained identity recompute is the one that
+keeps detached verifiers honest. The Python V5 decoder mirrors the
+same field and recompute.
+
+Additionally frozen — the detached consistency relation that closes
+the contradictory-program/tuple hole: a detached verifier MUST
+check, besides the digest recompute, that the identity's embedded
+triple equals the manifest's triple:
+
+```text
+identity.execution_identity.kernel_implementation_id == manifest.kernel.implementation_id
+identity.execution_identity.kernel_semantic_version  == manifest.kernel.semantic_version
+identity.execution_identity.rules_snapshot           == manifest.rules_snapshot
+```
+
+A replay carrying `program_kind = m3_magic_s1` with a correctly
+recomputed digest but `manifest.kernel = synthetic-m2` (or any
+other triple mismatch, including values outside the §2.1b frozen
+rows) is REJECTED detached. The manifest gains NO program field —
+the frozen two-row mapping plus this relation is complete without
+extending the manifest wire shape.
 
 ### 2.5 Identity ownership (binding)
 
 | Layer | Owns |
 |---|---|
-| `mtgml-model` | THE canonical closed program-identity type (small typed value, existing model ownership) |
-| `mtgml-rules` | semantic consumer / dispatcher (`match` on program; owns predicate/arm legality) |
+| `mtgml-model` | THE canonical closed identity types: `ExecutionIdentityV1` struct + `ExecutionProgramV1` dispatch enum (small typed values, existing model ownership) |
+| `mtgml-rules` | semantic consumer / dispatcher (`match` on `program_kind`; owns predicate/arm legality) |
 | `mtgml-environment` | config field, construction validation, admission, backend/kernel wiring |
-| `mtgml-persistence` | canonical CBOR encoding of the model-owned bytes ONLY |
+| `mtgml-persistence` | canonical CBOR encoding of the model-owned bytes ONLY (`calculate_checkpoint_digest_v5` + KAT/negatives, mirroring the existing v3/v4 functions) |
 
 `mtgml-persistence` is a verified rules-neutral lower layer (depends
 only on `mtgml-model` + serde/sha2/thiserror) and MUST NOT depend on
 rules, environment, or replay. The AUTHORITATIVE
 program⇔(kernel,snapshot) mapping lives OUTSIDE persistence, in
 environment construction validation. No stringly-typed parallel
-contracts: every layer shares the one model-owned type.
+contracts: every layer shares the model-owned types. (Durable
+digest/wire contracts always use the VERSIONED type names
+`ExecutionIdentityV1` / `ExecutionProgramV1`, never unversioned
+`ExecutionProgram`.)
 
 ### 2.6 Program⇔tuple immutability (binding)
 
 ```text
-M3MagicS1 ⇔ synthetic-m3 ⇔ 0.3.0 ⇔ wotc-cr-2026-08-07-txt-20260819-sha256-4381ad1b39ab2c05f7d03633a20f711ed37277074d3266dcba5f38cbb527423f, FOREVER.
-A later semantic program MUST NOT reuse M3MagicS1 with another kernel
-version or rules snapshot.
+Each §2.1b row is immutable FOREVER: a later semantic program MUST NOT
+reuse M3MagicS1 (or SyntheticM2Compat) with another kernel version or
+rules snapshot, and no new row may silently narrow an existing row's
+meaning. New semantics ⇒ new program_kind variant + new struct version
+if dimensions change (§2.1b).
 ```
 
 Rationale recorded: P0 fixtures already bind `synthetic-m3`/`0.2.2`
@@ -167,12 +276,14 @@ PROGRAM_OWNS_ALL_KERNEL_ENTRYPOINTS = YES
 
 - `SyntheticM2Compat`: existing `apply()` + legacy forced progress,
   bit-identical.
-- `M3MagicS1` (this slice's scope): legacy `apply()` FORBIDDEN;
-  ANY `pending_decision != None` and ANY non-empty `continuations`
-  rejected at admission (the S1-01 decision surface is NONE — no
-  legacy-flavored-only loophole for present or future decision
-  types); `apply()` rejects EVERY response; S1 forced progress
-  enabled via the turn-owned predicate-or-hard-stop.
+- `M3MagicS1`: legacy `apply()` FORBIDDEN; S1 forced progress
+  enabled via the turn-owned predicate-or-hard-stop. The program
+  selects WHICH admission/response contract applies; the CONTENT of
+  the M3 contract (which decisions/continuations/responses are
+  admissible — for S1-01: none, decision surface NONE) is owned by
+  the capability specification, not by this ADR. This ADR freezes
+  only that the selection exists, is exhaustive over the closed
+  `ExecutionProgramV1`, and cannot fall through to legacy.
 - `from_checkpoint()` and every restore/commit-admission path
   validate the PROGRAM×STATE combination through a program-aware
   validator (conceptually `validate_runtime_state(program, state)`),
@@ -204,7 +315,7 @@ use EXACTLY the accepted API-lifecycle support taxonomy
 | Surface | Writer | Reader | Verifier | Semantic execution | Migration | Classification |
 |---|---|---|---|---|---|---|
 | `FullStateDigestV4` | yes (unchanged) | yes | yes | n/a (digest) | n/a | `EXECUTABLE` (current) |
-| `EnvironmentCheckpointV4` | no (V5 current) | yes, structural parse only | yes, digest recompute | no under V5 runtime | none (no auto migration) | `UNSUPPORTED` (historical; no V5-runtime restore) |
+| `EnvironmentCheckpointV4` | no (V5 current) | NO durable reader (verified: no checkpoint JSON schema, no Python checkpoint DTO, no durable file format was ever defined — the wire contract states this explicitly) | YES, digest recompute | no under V5 runtime | none (no auto migration) | `UNSUPPORTED` (historical; no V5-runtime restore; retained-Rust-V4-value validation allowed ONLY if the historical type is retained, never as a restore path) |
 | `CheckpointDigestV4` | no | yes | yes | n/a | none | `READABLE_VERIFIABLE_ONLY` |
 | `ReplayManifestV4` | no | yes | yes, detached | no | none | `READABLE_VERIFIABLE_ONLY` |
 | `ReplayStepV4` | no | yes | yes, detached | no | none | `READABLE_VERIFIABLE_ONLY` |
@@ -216,10 +327,12 @@ use EXACTLY the accepted API-lifecycle support taxonomy
 S1 RED-11/12/13 exercise V5 machinery but do not prove the cut
 itself. The V5 slice proves, at minimum:
 
-1. same V4 contents + different program ID ⇒ different
-   `CheckpointDigestV5` (KAT with fixed vectors);
-2. program tamper without digest recompute ⇒ `validate()` reject;
-3. cross-program restore ⇒ reject BEFORE mutation/projection;
+1. same V4 contents + different `ExecutionIdentityV1` ⇒
+   different `CheckpointDigestV5` (KAT with fixed vectors,
+   Rust↔Python byte-identical);
+2. identity tamper without digest recompute ⇒ `validate()` reject;
+3. cross-program restore ⇒ reject BEFORE mutation/projection
+   (checkpoint identity equality precedes admission);
 4. unknown program wire variant ⇒ Rust + Python + Schema reject
    (shared negative fixtures);
 5. replay initial/final identity with wrong program/digest ⇒
@@ -238,20 +351,40 @@ Rust wire dispatch (mtgml-wire replay + fixtures)
 shared positive fixtures (wire/golden)
 shared negative fixtures (wire/negative, incl. unknown-program variant)
 schema inventory update
-Python V5 DTO/decoder (python/src/mtgml/_replay_v5.py pattern)
+crates/mtgml-persistence: calculate_checkpoint_digest_v5 + KAT/negatives
+python/src/mtgml/persistence.py: calculate_checkpoint_digest_v5
+  (mirrors the existing v3/v4 functions; the Python V4 decoder's
+  detached recompute is the verified precedent)
+cross-language checkpoint-digest V5 known-answer vectors
+Python V5 DTO/decoder (python/src/mtgml/_replay_v5.py pattern,
+  including the InitialEnvironmentIdentityV5 execution_identity
+  field + detached recompute + §2.4 triple check)
 Rust↔Python parity tests (incl. schema-parity)
 ```
+
+Without the persistence mirror the promised detached V5 identity
+cannot be checked on the Python side at all: the current Python V4
+decoder recomputes via `calculate_checkpoint_digest_v4()`, so V5
+needs the same function or the parity claim is hollow.
 
 ### 2.12 Maintainer-gate closure (binding)
 
 - `scripts/verify_repository.py` ("Current checkpoint runtime is
-  V4" + V4-type assertions) moves to V5 with the cut.
-- `run_m2_b_contract_cut.py` V4-current evidence stays historical:
-  unchanged, explicitly classified as historical — never silently
-  repointed.
+  V4" + V4-type assertions, verified present) moves to V5 with the
+  cut.
+- `scripts/run_m2_b_contract_cut.py` (verified: asserts V4
+  producer tokens in `checkpoint.rs` + `environment-checkpoint-
+  digest-input.v4`, and rejects predecessor-V3 resurgence) is SPLIT,
+  not edited in place, because PR Fast runs it on every PR and
+  `run_m2_final_closure.py` shells out to it (verified call edge):
+  the historical M2 assertions (V4-as-of-M2 evidence + V3-
+  non-resurgence) stay byte-identical and keep passing; the
+  "current successor identity" check moves to a NEW V5 gate that
+  asserts the §2.3/§2.9 identities as current. History and
+  currentness are never mixed in one runner again.
 - ADD a residual-V4 gate: after the cut, V4 checkpoint/replay
   identities may appear ONLY at the explicitly historical sites
-  named in §2.9.
+  named in §2.9 (plus the frozen historical gate files above).
 
 ### 2.13 Documentation closure (binding)
 
@@ -269,6 +402,30 @@ docs/maintenance/API_LIFECYCLE.md        (§2.9 matrix home)
 Replay and Wire register entries already classify cross-layer
 changes as contract changes; this cut goes through that process,
 not around it.
+
+### 2.14 Legacy semantic parity contract (binding — what "M2 preserved" proves)
+
+V5 cannot be byte-identical to V4 in every respect (versions,
+digests, and provenance change ON PURPOSE), so the V5 slice proves
+this exact split — not an impossible global byte-parity claim:
+
+```text
+LEGACY_SEMANTIC_PARITY (exact, legacy program only):
+  EngineState transition result          exact
+  StateDelta semantic meaning            exact
+  authoritative event sequence           exact
+  Decision products                      exact
+  player observations / info / events    exact
+  EpisodeStatus                          exact
+  RNG state / consumption                exact
+  FullStateDigestV4                      exact
+
+INTENTIONALLY_DIFFERENT (new identities, frozen here):
+  EnvironmentCheckpoint version
+  CheckpointDigest (+ program binding)
+  replay manifest / file / step version
+  execution-identity provenance
+```
 
 ## 3. Sequencing (binding)
 
