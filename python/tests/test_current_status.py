@@ -116,6 +116,10 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
         self.assertIn("ADR_0054 = ACCEPTED", roadmap)
         self.assertIn("FOUNDATION_V2 = ACCEPTED", roadmap)
         self.assertIn("M3_S1 = rules/turn-structure@0.1.0", roadmap)
+        self.assertEqual(
+            roadmap.count("M3_S1 = rules/turn-structure@0.1.0"),
+            1,
+        )
         self.assertIn("M3_S1_AUTHORIZATION_REVIEW = APPROVE", roadmap)
         self.assertIn(
             "S1_AUTHORIZATION_HEAD =\n587016574e4e8f9f797a713877f8caf1c5143cfb",
@@ -132,6 +136,13 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
         self.assertIn("S1_IMPLEMENTATION_STARTED = NO", roadmap)
         self.assertIn("AUTHORIZED_NEXT_TASK = M3.S1", roadmap)
         self.assertIn("S1_REVIEW_MINORS = 3 CARRIED", roadmap)
+        self.assertIn(
+            "S1_SUPPORT_PREDICATE_REQUIRES_EXACTLY_TWO_PLAYERS = YES",
+            roadmap,
+        )
+        self.assertIn("S1_ZONE_LOCATION_MUTATION_AUTHORIZED = NO", roadmap)
+        self.assertIn("S1_OBJECT_INCARNATION_CHANGE_AUTHORIZED = NO", roadmap)
+        self.assertIn("S1_PHYSICAL_CARD_IDENTITY_CHANGE_AUTHORIZED = NO", roadmap)
         self.assertNotIn("S1_IMPLEMENTATION = NOT_AUTHORIZED", roadmap)
         self.assertNotIn("NEXT_GATE = M3_S1_AUTHORIZATION_DECISION", roadmap)
         self.assertIn("NEXT_GATE = M3_S1_IMPLEMENTATION_SLICE_01", roadmap)
