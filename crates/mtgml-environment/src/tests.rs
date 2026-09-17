@@ -578,6 +578,7 @@ fn global_hidden_allocator_history_cannot_move_opaque_assignment() {
 
 // Lexical fragments: physical discoverability without changing any
 // tests::<name> identity addressed by the M1/M2 gate runners.
+include!("tests/forced_progress.rs");
 include!("tests/checkpoint_replay.rs");
 include!("tests/player_endpoint.rs");
 include!("tests/continuation.rs");
