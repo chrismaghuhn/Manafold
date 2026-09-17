@@ -76,7 +76,7 @@
 ### Explicitly unchanged
 
 - No real Magic rules, cards, decks, or playable environment.
-- Concrete Card IR remains experimental until M2.5.
+- Concrete Card IR remains experimental pending an explicit reviewed scope.
 - Native executors remain prohibited in certified bundles.
 - M1 remains blocked until every generated M0.2 freeze gate passes.
 

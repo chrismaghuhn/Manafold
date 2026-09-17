@@ -15,7 +15,10 @@ use mtgml_random::{
 };
 use thiserror::Error;
 
-use crate::core::{CoreRulesState, PlayerState};
+use crate::core::{
+    BeginningStep, CombatState, CoreRulesState, FoundationCreatureSource, PlayerState,
+    PriorityState, TurnPosition,
+};
 use crate::engine::EngineState;
 use crate::execution::ExecutionState;
 use crate::format::FormatState;
@@ -28,10 +31,32 @@ use crate::m2_shape::{
 use crate::validation::{validate_engine_state, EngineStateViolation};
 use crate::zones::{GameObject, VisibilityPartition, ZoneLocation, ZonePosition, ZoneState};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SyntheticResetInputs {
     pub players: [PlayerId; 2],
     pub root_seed: RootSeed256,
+    pub setup: SyntheticV4Setup,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SyntheticV4Setup {
+    pub position: TurnPosition,
+    pub priority: PriorityState,
+    pub combat: Option<CombatState>,
+    pub foundation_sources: BTreeMap<GameObjectId, FoundationCreatureSource>,
+}
+
+impl SyntheticV4Setup {
+    pub fn m2_compatibility() -> Self {
+        Self {
+            position: TurnPosition::Beginning {
+                step: BeginningStep::Untap,
+            },
+            priority: PriorityState::None,
+            combat: None,
+            foundation_sources: BTreeMap::new(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
@@ -47,7 +72,12 @@ pub enum SyntheticStateConstructionError {
 pub fn construct_synthetic_engine_state(
     inputs: SyntheticResetInputs,
 ) -> Result<EngineState, SyntheticStateConstructionError> {
-    let [player_one, player_two] = inputs.players;
+    let SyntheticResetInputs {
+        players,
+        root_seed,
+        setup,
+    } = inputs;
+    let [player_one, player_two] = players;
     if player_one == player_two {
         return Err(SyntheticStateConstructionError::DuplicatePlayers);
     }
@@ -217,7 +247,7 @@ pub fn construct_synthetic_engine_state(
         next_rule_event_id: RuleEventId(1),
     };
     let random = RandomStateV1::from_entries(
-        inputs.root_seed,
+        root_seed,
         vec![CanonicalRandomStreamEntryV1 {
             key: RandomStreamKeyV1::global(RandomStreamKindV1::SyntheticM1),
             next_raw_u64: RandomStreamCursorV1::default().next_raw_u64,
@@ -244,9 +274,12 @@ pub fn construct_synthetic_engine_state(
                 ),
             ]),
             active_player: player_one,
-            priority_player: player_one,
             turn_number: 1,
+            position: setup.position,
+            priority: setup.priority,
         },
+        combat: setup.combat,
+        foundation_sources: setup.foundation_sources,
         zones,
         allocators,
         execution,

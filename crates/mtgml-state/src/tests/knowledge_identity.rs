@@ -111,6 +111,40 @@ fn retired_knowledge_must_not_keep_a_live_mapping() {
 }
 
 #[test]
+fn retired_knowledge_requires_a_matching_retired_identity() {
+    let mut malformed = synthetic_state();
+    let identity = malformed
+        .perspective_identities
+        .players
+        .get_mut(&PlayerId(1))
+        .unwrap();
+    identity.next_opaque_object_id = OpaqueObjectId(6);
+    malformed
+        .knowledge
+        .players
+        .get_mut(&PlayerId(1))
+        .unwrap()
+        .retired
+        .insert(OpaqueObjectId(5), retired_record(OpaqueObjectId(5)));
+    let before = malformed.clone();
+    assert_eq!(
+        validate_engine_state(&malformed),
+        Err(EngineStateViolation::KnowledgeMismatch)
+    );
+    assert_eq!(malformed, before);
+
+    let mut identity_only = synthetic_state();
+    let identity = identity_only
+        .perspective_identities
+        .players
+        .get_mut(&PlayerId(1))
+        .unwrap();
+    identity.next_opaque_object_id = OpaqueObjectId(6);
+    identity.retired_object_ids.insert(OpaqueObjectId(5));
+    assert_eq!(validate_engine_state(&identity_only), Ok(()));
+}
+
+#[test]
 fn known_location_must_match_the_live_association() {
     let mut state = synthetic_state();
     let knowledge = state.knowledge.players.get_mut(&PlayerId(1)).unwrap();
@@ -129,6 +163,111 @@ fn known_location_must_match_the_live_association() {
         validate_engine_state(&state),
         Err(EngineStateViolation::KnowledgeMismatch)
     ));
+}
+
+#[test]
+fn every_retained_location_fact_must_reference_a_declared_player() {
+    let invalid_location = ZoneLocation {
+        player: Some(PlayerId(999)),
+        ..public_location()
+    };
+    let valid_fact = |location: ZoneLocation| KnownLocationFactV2 {
+        location,
+        provenance: observed(
+            KnowledgeHistoryChannel::Public,
+            0,
+            KnowledgeAcquisitionCause::PublicEvent,
+        ),
+    };
+
+    let mut active_current = synthetic_state();
+    active_current
+        .knowledge
+        .players
+        .get_mut(&PlayerId(1))
+        .unwrap()
+        .active
+        .get_mut(&OpaqueObjectId(1))
+        .unwrap()
+        .known_location = Some(valid_fact(invalid_location.clone()));
+
+    let mut active_history = synthetic_state();
+    active_history
+        .knowledge
+        .players
+        .get_mut(&PlayerId(1))
+        .unwrap()
+        .active
+        .get_mut(&OpaqueObjectId(1))
+        .unwrap()
+        .known_location = None;
+    active_history
+        .knowledge
+        .players
+        .get_mut(&PlayerId(1))
+        .unwrap()
+        .active
+        .get_mut(&OpaqueObjectId(1))
+        .unwrap()
+        .historical_locations
+        .push(valid_fact(invalid_location.clone()));
+
+    let mut retired_last = synthetic_state();
+    retired_last
+        .knowledge
+        .players
+        .get_mut(&PlayerId(1))
+        .unwrap()
+        .next_visible_sequence = VisibleSequence(3);
+    let identity = retired_last
+        .perspective_identities
+        .players
+        .get_mut(&PlayerId(1))
+        .unwrap();
+    identity.next_opaque_object_id = OpaqueObjectId(6);
+    identity.retired_object_ids.insert(OpaqueObjectId(5));
+    let mut last_record = retired_record(OpaqueObjectId(5));
+    last_record.last_known_location = Some(KnownLocationFactV2 {
+        location: invalid_location.clone(),
+        provenance: observed(
+            KnowledgeHistoryChannel::Public,
+            1,
+            KnowledgeAcquisitionCause::PublicEvent,
+        ),
+    });
+    last_record.invalidation.provenance = observed(
+        KnowledgeHistoryChannel::Public,
+        2,
+        KnowledgeAcquisitionCause::PublicEvent,
+    );
+    retired_last
+        .knowledge
+        .players
+        .get_mut(&PlayerId(1))
+        .unwrap()
+        .retired
+        .insert(OpaqueObjectId(5), last_record);
+
+    let mut retired_history = retired_last.clone();
+    retired_history
+        .knowledge
+        .players
+        .get_mut(&PlayerId(1))
+        .unwrap()
+        .retired
+        .get_mut(&OpaqueObjectId(5))
+        .unwrap()
+        .historical_locations
+        .push(valid_fact(invalid_location));
+
+    for malformed in [active_current, active_history, retired_last, retired_history] {
+        let before = malformed.clone();
+        assert_eq!(
+            validate_engine_state(&malformed),
+            Err(EngineStateViolation::KnowledgeMismatch)
+        );
+        assert_eq!(malformed, before);
+    }
 }
 
 #[test]

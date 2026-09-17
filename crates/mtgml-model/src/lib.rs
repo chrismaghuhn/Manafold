@@ -325,6 +325,8 @@ macro_rules! raw_digest {
 
 raw_digest!(FullStateDigestV3, "mtgml.full-state-digest.v3");
 raw_digest!(CheckpointDigestV3, "mtgml.checkpoint-digest.v3");
+raw_digest!(FullStateDigestV4, "mtgml.full-state-digest.v4");
+raw_digest!(CheckpointDigestV4, "mtgml.checkpoint-digest.v4");
 
 impl FullStateDigestV3 {
     pub fn as_digest_reference(&self) -> DigestReferenceV1 {
@@ -339,6 +341,19 @@ impl FullStateDigestV3 {
     }
 }
 
+impl FullStateDigestV4 {
+    pub fn as_digest_reference(&self) -> DigestReferenceV1 {
+        DigestReferenceV1 {
+            envelope_version: "mtgml.digest-envelope.v1".to_owned(),
+            algorithm_id: "sha-256".to_owned(),
+            semantic_domain: Self::DOMAIN.to_owned(),
+            payload_codec_id: "mtgml.canonical-cbor.v1".to_owned(),
+            input_schema_id: "full-state-digest-input.v4".to_owned(),
+            digest_bytes: self.raw_bytes(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(deny_unknown_fields)]
 pub struct EnvironmentLimitCounters {
@@ -347,6 +362,21 @@ pub struct EnvironmentLimitCounters {
     pub rule_events_emitted: u64,
     pub resource_units_consumed: u64,
     pub wall_clock_elapsed_millis: u64,
+}
+
+impl EnvironmentLimitCounters {
+    pub fn validate(&self) -> Result<(), EnvironmentLimitCounterValidationError> {
+        if self.accepted_transitions > self.decisions_submitted {
+            return Err(EnvironmentLimitCounterValidationError::AcceptedTransitionsExceedDecisions);
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
+pub enum EnvironmentLimitCounterValidationError {
+    #[error("accepted transitions exceed submitted decisions")]
+    AcceptedTransitionsExceedDecisions,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -421,6 +451,20 @@ mod tests {
     fn episode_reasons_are_closed_during_deserialization() {
         let value = r#"{"kind":"terminal","reason":"banana","players":[]}"#;
         assert!(serde_json::from_str::<EpisodeStatus>(value).is_err());
+    }
+
+    #[test]
+    fn environment_limit_counters_reject_impossible_acceptance_count() {
+        let invalid = EnvironmentLimitCounters {
+            accepted_transitions: 1,
+            decisions_submitted: 0,
+            ..EnvironmentLimitCounters::default()
+        };
+        assert_eq!(
+            invalid.validate(),
+            Err(EnvironmentLimitCounterValidationError::AcceptedTransitionsExceedDecisions)
+        );
+        assert!(EnvironmentLimitCounters::default().validate().is_ok());
     }
 
     #[test]

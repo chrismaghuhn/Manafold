@@ -1,6 +1,6 @@
 # Decision Inventory
 
-**Status:** M2 representative taxonomy freeze candidate; exact V1 Magic census occurs in roadmap M2.5
+**Status:** M2 representative taxonomy freeze candidate; exact V1 Magic scope requires future external review
 
 The unified protocol must eventually represent every player-influenced decision. The complete Magic inventory is intentionally not frozen in M2.
 
@@ -72,8 +72,8 @@ Every meaningful player-controlled node remains an explicit decision/environment
 
 M2 proves one bounded **linear typed continuation** only. It does not freeze one linear frame as the permanent architecture and does not claim nested/simultaneous/distribution/payment semantics. M3 may add new closed decision variants or typed continuation composition when locked capability evidence requires them.
 
-## M2.5 census
+## Future reviewed scope
 
-For the two locked V1 decks, enumerate every reachable decision type, maximum cardinality, ordering semantics, visibility, candidate source, equivalence/canonicalization opportunity, and expected branching stress.
+Before any M3 implementation is authorized, an external reviewed scope input must enumerate every reachable decision type, maximum cardinality, ordering semantics, visibility, candidate source, equivalence/canonicalization opportunity, and expected branching stress.
 
 Any required decision form not covered by the M2 representative machinery becomes an explicit capability/protocol gap. Missing inventory entries block M3 capability closure; they are not silently approximated.

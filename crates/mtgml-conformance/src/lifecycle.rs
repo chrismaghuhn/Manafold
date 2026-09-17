@@ -6,7 +6,7 @@
 //! evidence for the three owned M2.E gates.
 
 use mtgml_model::{
-    CardDefinitionId, EpisodeStatus, FullStateDigestV3, GameObjectId, OpaqueObjectId,
+    CardDefinitionId, EpisodeStatus, FullStateDigestV4, GameObjectId, OpaqueObjectId,
     PhysicalCardId, PlayerId, VisibleSequence, ZoneKind,
 };
 use mtgml_rules::fixture_support::{FixtureTransition, PlannedOccurrence};
@@ -18,7 +18,7 @@ use mtgml_state::{
     SyntheticResetInputs, VisibilityPartition, ZoneLocation, ZonePosition,
 };
 
-use crate::ConformanceFailure;
+use crate::{diagnostics, ConformanceFailure, ConformanceFailureClass};
 
 const P1: PlayerId = PlayerId(1);
 const P2: PlayerId = PlayerId(2);
@@ -33,6 +33,7 @@ pub fn lifecycle_fixture() -> EngineState {
     let mut state = construct_synthetic_engine_state(SyntheticResetInputs {
         players: [P1, P2],
         root_seed: seed(),
+        setup: mtgml_state::SyntheticV4Setup::m2_compatibility(),
     })
     .unwrap();
     for index in 3..=4u64 {
@@ -300,21 +301,40 @@ pub fn scenario_reidentification(
     before: &EngineState,
 ) -> Result<(TransitionResult, PhysicalCardId), ConformanceFailure> {
     let mut transition = FixtureTransition::start(before).map_err(contract)?;
-    // Reidentify a member of the actual randomized hidden set (Hand(P2)).
-    let hidden_members: Vec<GameObjectId> = before
-        .zones
-        .locations
+    // Select the hidden target through P1's retired physical chain. This
+    // keeps the reidentification claim tied to an actually retired card
+    // rather than to the first object in a BTreeMap.
+    let (retired_opaque, retired_record) = before.knowledge.players[&P1]
+        .retired
         .iter()
-        .filter(|(_, location)| **location == hidden_hand(P2))
+        .find(|(_, record)| record.physical_card.is_some())
+        .ok_or_else(|| ConformanceFailure::Contract("retired physical chain is empty".into()))?;
+    let expected_physical = retired_record
+        .physical_card
+        .ok_or_else(|| ConformanceFailure::Contract("retired physical card is missing".into()))?;
+    let target = before
+        .zones
+        .objects
+        .iter()
+        .find(|(object, value)| {
+            value.physical_card == Some(expected_physical)
+                && before.zones.locations.get(object) == Some(&hidden_hand(P2))
+        })
         .map(|(object, _)| *object)
-        .collect();
-    let target = hidden_members
-        .first()
-        .copied()
-        .ok_or_else(|| ConformanceFailure::Contract("hidden set is empty".into()))?;
-    // Bind the reveal to the authoritative identity of the hidden member.
-    let target_object = &before.zones.objects[&target];
-    let expected_physical = target_object.physical_card;
+        .ok_or_else(|| {
+            ConformanceFailure::Contract("retired physical chain is not in the hidden set".into())
+        })?;
+    // The old target incarnation remains hidden until this fixture moves it.
+    if before.zones.locations.get(&target) != Some(&hidden_hand(P2)) {
+        return Err(ConformanceFailure::Contract(
+            "reidentified target is not hidden".into(),
+        ));
+    }
+    let target_object = before
+        .zones
+        .objects
+        .get(&target)
+        .ok_or_else(|| ConformanceFailure::Contract("reidentified object is missing".into()))?;
     let expected_definition = target_object.card_definition;
     let next_opaque = before.perspective_identities.players[&P1].next_opaque_object_id;
     let seen = transition
@@ -346,15 +366,20 @@ pub fn scenario_reidentification(
         ))
         .map_err(contract)?;
     let result = transition.finish().map_err(contract)?;
+    if !result.next_state.knowledge.players[&P1]
+        .retired
+        .contains_key(retired_opaque)
+    {
+        return Err(ConformanceFailure::Contract(
+            "retired opaque identity was not preserved".into(),
+        ));
+    }
     // The new incarnation must still carry the same physical card.
     assert_eq!(
         result.next_state.zones.objects[&seen].physical_card,
-        expected_physical
+        Some(expected_physical)
     );
-    Ok((
-        result,
-        expected_physical.expect("hidden member carries a physical card"),
-    ))
+    Ok((result, expected_physical))
 }
 
 /// Private look plus an accepted public return: exercises UpdateLocation
@@ -635,23 +660,47 @@ pub fn assert_exact_transition_product(
     before: &EngineState,
     result: &TransitionResult,
     expected_events: &[AuthoritativeRuleEvent],
-    expected_digest: &FullStateDigestV3,
+    expected_digest: &FullStateDigestV4,
 ) -> Result<(), ConformanceFailure> {
     mtgml_rules::validate_transition_contract(before, result)
         .map_err(|error| ConformanceFailure::Contract(error.to_string()))?;
-    if result.events != expected_events {
-        return Err(ConformanceFailure::Events);
+    if let Some(difference) = diagnostics::compare_sequence(
+        ConformanceFailureClass::Events,
+        "transition.events",
+        expected_events,
+        &result.events,
+    ) {
+        return Err(ConformanceFailure::Detailed {
+            classification: ConformanceFailureClass::Events,
+            difference,
+        });
     }
-    if result
+    let actual_state_digest = result
         .next_state
         .digest()
-        .map_err(|_| ConformanceFailure::StateDigest)?
-        != *expected_digest
-    {
-        return Err(ConformanceFailure::StateDigest);
+        .map_err(|_| ConformanceFailure::StateDigest)?;
+    if let Some(difference) = diagnostics::compare_value(
+        ConformanceFailureClass::StateDigest,
+        "transition.state_digest",
+        expected_digest,
+        &actual_state_digest,
+    ) {
+        return Err(ConformanceFailure::Detailed {
+            classification: ConformanceFailureClass::StateDigest,
+            difference,
+        });
     }
-    if !matches!(result.status, EpisodeStatus::Running) {
-        return Err(ConformanceFailure::Status);
+    let expected_status = EpisodeStatus::Running;
+    if let Some(difference) = diagnostics::compare_value(
+        ConformanceFailureClass::Status,
+        "transition.status",
+        &expected_status,
+        &result.status,
+    ) {
+        return Err(ConformanceFailure::Detailed {
+            classification: ConformanceFailureClass::Status,
+            difference,
+        });
     }
     Ok(())
 }
@@ -738,7 +787,14 @@ mod gate_evidence {
         let retired_before = state.perspective_identities.players[&P1]
             .retired_object_ids
             .clone();
+        let retired_physical_cards: std::collections::BTreeSet<PhysicalCardId> =
+            state.knowledge.players[&P1]
+                .retired
+                .values()
+                .filter_map(|record| record.physical_card)
+                .collect();
         let (result, physical) = scenario_reidentification(&state).unwrap();
+        assert!(retired_physical_cards.contains(&physical));
         let identity = &result.next_state.perspective_identities.players[&P1];
         // The old opaque ids remain retired and are never reused.
         for old in &retired_before {

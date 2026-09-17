@@ -60,5 +60,6 @@ pub const STABLE_WIRE_ERROR_CODES: &[&str] = &[
     "semantic.episode_status",
     "semantic.replay_manifest",
     "semantic.replay",
+    "semantic.synthetic_m3_observation",
     "fixture.unknown_contract",
 ];

@@ -38,4 +38,5 @@ The catalog owns only mechanically duplicated public vocabulary. It does **not**
 - `semantic.episode_status`
 - `semantic.replay_manifest`
 - `semantic.replay`
+- `semantic.synthetic_m3_observation`
 - `fixture.unknown_contract`

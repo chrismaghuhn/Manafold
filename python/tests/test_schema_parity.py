@@ -2,11 +2,15 @@ from __future__ import annotations
 
 import json
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "python" / "src"))
+sys.path.insert(0, str(ROOT / "scripts"))
+
+import validate_schemas
 
 try:
     import jsonschema
@@ -15,6 +19,65 @@ except ImportError:  # pragma: no cover - the locked dev environment installs it
 
 
 class SchemaParityTests(unittest.TestCase):
+    def _schema_inventory(self) -> dict[str, object]:
+        return json.loads((ROOT / "schemas" / "README.json").read_text(encoding="utf-8"))
+
+    def test_mf_gap_002_replay_v3_schemas_are_inventoried(self) -> None:
+        inventory = self._schema_inventory()
+        self.assertIn(
+            "replay-manifest.v3.schema.json",
+            inventory["wire_contracts"],
+        )
+        self.assertIn(
+            "authoritative-replay.v3.schema.json",
+            inventory["wire_contracts"],
+        )
+
+    def test_schema_readme_matches_wire_mapping(self) -> None:
+        inventory = self._schema_inventory()
+        validate_schemas.validate_wire_schema_inventory(inventory)
+        self.assertEqual(
+            inventory["wire_contracts"],
+            sorted(validate_schemas.WIRE_MAPPING.values()),
+        )
+
+    def test_schema_inventory_duplicate_rejected(self) -> None:
+        inventory = self._schema_inventory()
+        inventory["wire_contracts"] = [
+            *inventory["wire_contracts"],
+            "replay-manifest.v2.schema.json",
+        ]
+        with self.assertRaisesRegex(ValueError, "duplicate schema inventory entry"):
+            validate_schemas.validate_wire_schema_inventory(inventory)
+
+    def test_schema_inventory_missing_rejected(self) -> None:
+        inventory = self._schema_inventory()
+        inventory["wire_contracts"] = [
+            name for name in inventory["wire_contracts"] if name != "replay-manifest.v3.schema.json"
+        ]
+        with self.assertRaisesRegex(ValueError, "missing schema inventory entries"):
+            validate_schemas.validate_wire_schema_inventory(inventory)
+
+    def test_schema_inventory_stale_rejected(self) -> None:
+        inventory = self._schema_inventory()
+        inventory["wire_contracts"] = [
+            *inventory["wire_contracts"],
+            "stale-wire-contract.v1.schema.json",
+        ]
+        with self.assertRaisesRegex(ValueError, "unexpected schema inventory entries"):
+            validate_schemas.validate_wire_schema_inventory(inventory)
+
+    def test_schema_inventory_missing_schema_file_rejected(self) -> None:
+        inventory = {"wire_contracts": sorted(validate_schemas.WIRE_MAPPING.values())}
+        with (
+            tempfile.TemporaryDirectory() as directory,
+            self.assertRaisesRegex(ValueError, "missing schema files"),
+        ):
+            validate_schemas.validate_wire_schema_inventory(
+                inventory,
+                schema_root=Path(directory),
+            )
+
     @unittest.skipIf(jsonschema is None, "jsonschema is not installed")
     def test_all_golden_fixtures_match_their_normative_schema(self) -> None:
         mapping = {
@@ -36,6 +99,9 @@ class SchemaParityTests(unittest.TestCase):
             "player-step.v2": "player-step.v2.schema.json",
             "replay-manifest.v3": "replay-manifest.v3.schema.json",
             "authoritative-replay.v3": "authoritative-replay.v3.schema.json",
+            "synthetic-m3-observation.v1": "synthetic-m3-observation.v1.schema.json",
+            "replay-manifest.v4": "replay-manifest.v4.schema.json",
+            "authoritative-replay.v4": "authoritative-replay.v4.schema.json",
         }
         directory = ROOT / "wire" / "golden"
         manifest = json.loads((directory / "manifest.json").read_text(encoding="utf-8"))

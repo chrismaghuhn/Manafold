@@ -1,0 +1,95 @@
+# Pre-M3 Remediation Batch B: Transition, Causality, and Atomicity
+
+**Status:** proposed for Batch-B review
+
+## Goal
+
+Independently classify FND-007, FND-008, FND-010A-F, FND-011, and FND-012
+against the current M2 contracts, then close only confirmed current-runtime
+transition defects without changing M3 semantics, RNG identity, digest domains,
+wire schemas, or historical replay meaning.
+
+## Authority
+
+`mtgml-state` owns authoritative state and lifecycle mutation. `mtgml-rules`
+owns the ordered semantic transition product and its transition-contract proof.
+The semantic cursor remains one composite ordered proof; it must not become a
+second rules engine. The environment and replay layers validate the complete
+precommit product but do not define legality or event causality.
+
+The current authority requires atomic accepted products, complete rejected
+nonmutation, exact delta reapplication, sequential event validation, exact
+revision progression, fresh current Decision V2 identities, typed checkpointable
+RNG continuation, and authoritative provenance for visible outcomes. Historical
+Replay V1/V2 contracts remain immutable and are not remediation targets.
+
+## Phase 1: characterization and dispositions
+
+Add the smallest real transition-contract and lifecycle probes for:
+
+- a public lifecycle operation returning `Ok` while the complete state is
+  invalid;
+- unexplained core/authoritative mutations that preserve delta equality;
+- accepted revision jumps and global/perspective identity reuse or rewind;
+- occurrence-before-transition lookahead;
+- visible random outcome occurrence without a `RandomValueSampled` event;
+- announced/public outcome behavior separately from random outcomes.
+
+Each probe recorded the actual owner and exact current result. The frozen
+dispositions are:
+
+- FND-007: `SPLIT_REQUIRED`. Local lifecycle postconditions are confirmed:
+  undeclared location players and orphan knowledge acquisition can return
+  `Ok`, and are now rejected atomically. Full `validate_engine_state` at this
+  primitive is `BLOCKED_CONTRACT_AMBIGUITY` because conformance uses the seam
+  to stage an occurrence before its later physical zone event; the complete
+  state is validated at transition commit.
+- FND-008: `SPLIT_REQUIRED`. Core `turn_number` mutation without a semantic
+  event is `CONFIRMED`; stack/format/other unsupported mutation families remain
+  `BLOCKED_CONTRACT_AMBIGUITY` until their current event vocabulary is explicit.
+- FND-010A: `CONFIRMED`; accepted revision jumps are accepted.
+- FND-010B: `CONFIRMED`; global allocator rewind is accepted.
+- FND-010C: `CONFIRMED`; trusted DecisionId reuse below the allocator cursor is
+  accepted.
+- FND-010D: `CONFIRMED`; perspective-local PlayerDecisionId reuse/jumps are
+  accepted.
+- FND-010E: `CONFIRMED`; a staged request can replace its ContinuationId while
+  the current contract requires persistence.
+- FND-010F: `CONFIRMED`; a perspective can inherit another perspective's
+  visible-decision cursor history.
+- FND-011: `CONFIRMED`. A perspective occurrence can bind to a later physical
+  zone transition through product-wide lookup.
+- FND-012A: `CONFIRMED`. A visible random outcome can pass without a preceding
+  authoritative `RandomValueSampled` event.
+- FND-012B: `SPLIT_REQUIRED`. `AnnouncedOutcome` is accepted independently and
+  is not forced through RNG; its authoritative announcement pairing needs a
+  separate contract decision.
+
+## Phase 2: confirmed remediation
+
+Use the smallest owning-boundary fix:
+
+- lifecycle application clones and validates its affected knowledge/identity
+  slots plus declared-player/local coupling before commit; complete
+  `EngineState` validation remains at transition commit because this seam is
+  also used to stage an occurrence before a later physical zone event;
+- transition progression checks are centralized at the transition contract;
+- unsupported authoritative mutation families fail closed until their event
+  family is explicitly contracted;
+- occurrence pairing uses the sequential causal cursor rather than a product-wide
+  future-event search;
+- visible random outcomes require trusted deterministic provenance while
+  player-facing output remains redacted;
+- announced outcomes remain a separate policy family unless current authority
+  proves they share RNG semantics.
+
+Every confirmed fix gets a RED test before production code, a GREEN regression,
+and an atomicity assertion over the complete owning API state. No fix changes
+RNG algorithms, digest domains, wire schemas, historical replay formats, or
+M3 behavior.
+
+## Scope exclusions
+
+FND-002, the unresolved FND-006 position/vector semantics, FND-009 and later
+findings, EVD/HRD items, Issue #162 modularization, real Magic mechanics, M3,
+and broad architectural redesign are outside this batch.

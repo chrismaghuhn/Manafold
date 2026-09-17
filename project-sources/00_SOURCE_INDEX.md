@@ -10,7 +10,7 @@ The bundle intentionally stays below ChatGPT's 40-source limit so several slots 
 
 1. Current pinned Magic Comprehensive Rules snapshot.
 2. Current pinned Commander rules/policy snapshot.
-3. Current exact deck/capability census once M2.5 begins.
+3. Current exact deck/capability scope when an external reviewed input is authorized.
 4. Current implementation/review document for the active milestone.
 5. One rotating research or conformance source relevant to the current task.
 

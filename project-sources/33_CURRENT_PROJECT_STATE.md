@@ -1,6 +1,8 @@
-# Manafold — Current Project State
+# Manafold — V0.2.2 Foundation Snapshot
 
-> Updated after successful `just release-candidate` on the freeze commit.
+> Historical V0.2.2 foundation snapshot. Live current status is owned by the
+> repository root [`README.md`](../README.md) and [`docs/ROADMAP.md`](../docs/ROADMAP.md);
+> this file is a snapshot/pointer, not a second status authority.
 
 - **Version:** `0.2.2`
 - **Foundation:** V0.2.2 Executable Freeze & Maintainer Ergonomics
@@ -10,7 +12,7 @@
 - **Real Magic rules:** `false`
 - **Real card support:** `false`
 
-## Gate status
+## V0.2.2 foundation gate snapshot
 
 | Gate | Status |
 |---|---:|
@@ -33,10 +35,6 @@
 | `schema_validation` | **PASS** |
 | `source_tree_unchanged` | **PASS** |
 | `synthetic_golden_path` | **PASS** |
-
-## Current blockers
-
-None. V0.2.2 is `CONTRACT_FROZEN`. M1 is unblocked.
 
 ## What V0.2.2 added
 

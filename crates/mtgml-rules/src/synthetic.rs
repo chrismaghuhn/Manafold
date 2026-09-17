@@ -20,8 +20,13 @@ mod stages;
 
 pub use runtime::validate_synthetic_runtime_state;
 
-use mtgml_decision::{DecisionAnswerV2, DecisionDomainV2, DecisionResponseV2};
-use mtgml_model::{ContinuationId, DecisionId, PlayerId};
+use mtgml_decision::{
+    AuthoritativeCandidateV2, AuthoritativeDecisionRequestV2, CandidateIntent, DecisionAnswerV2,
+    DecisionDomainV2, DecisionResponseV2, DecisionVisibility, EngineCandidateBinding,
+};
+use mtgml_model::{
+    CandidateIdV1, ContinuationId, DecisionId, GameObjectId, PlayerId, StateRevision,
+};
 use mtgml_state::{
     AssemblyStageV2, ContinuationPayloadV2, ContinuationRecordV2, EngineState,
     EngineStateViolation, PendingDecisionRecordV2,
@@ -40,7 +45,7 @@ use helpers::{
     advance_player_allocator, bound_event, cleared_event, created_event, fresh_stage_identity,
     global_stream, piece_candidates, rejected,
 };
-use runtime::entry_supported;
+use runtime::{entry_setup_supported, entry_supported};
 
 fn mtgml_rules_validate_runtime(state: &EngineState) -> Result<(), KernelExecutionError> {
     validate_synthetic_runtime_state(state)
@@ -95,6 +100,80 @@ impl RulesKernel for SyntheticM1RulesKernel {
 }
 
 impl SyntheticM1RulesKernel {
+    /// Rules-owned forced progress: the single authoritative internal
+    /// forced-progress primitive of the synthetic kernel, shared by the
+    /// response-transaction closure, reset/initial stabilization, and the
+    /// T0 forced-progress proof.
+    ///
+    /// From a validated pristine decision-less setup (revision 0, no
+    /// pending Decision, no continuations) it derives the synthetic entry
+    /// decision — actor from the active player, opaque assignment from the
+    /// actor identity record, runtime identities from the allocator heads —
+    /// and stops at that first real Decision. No response is consumed,
+    /// required, or synthesized.
+    ///
+    /// A completed state (past revision 0 with no pending Decision and no
+    /// continuations) has no mandatory work left: it returns the unchanged
+    /// state in the contract-validated no-change shape, never inventing a
+    /// follow-up decision. Any state that already offers a Decision,
+    /// carries continuation work, or fails entry validation is an
+    /// unsupported forced path and fails closed without mutation (the input
+    /// is only borrowed).
+    pub fn advance_forced_progress(
+        &mut self,
+        state: &EngineState,
+    ) -> Result<TransitionResult, KernelExecutionError> {
+        mtgml_rules_validate_runtime(state)?;
+        if state.execution.pending_decision.is_some() || !state.execution.continuations.is_empty() {
+            return Err(KernelExecutionError::UnsupportedStagePath);
+        }
+        if state.revision != StateRevision(0) {
+            return rejected(state);
+        }
+        let actor = state.core.active_player;
+        let opaque = state
+            .perspective_identities
+            .players
+            .get(&actor)
+            .and_then(|identity| identity.object_to_opaque.get(&GameObjectId(1)).copied())
+            .ok_or(KernelExecutionError::UnsupportedStagePath)?;
+        entry_setup_supported(state, actor, opaque, CandidateIdV1(0))?;
+        let identity = fresh_stage_identity(state, actor)?;
+        let request = AuthoritativeDecisionRequestV2 {
+            decision_id: identity.decision_id,
+            player_decision_id: identity.player_decision_id,
+            state_revision: identity.revision,
+            actor,
+            visibility: DecisionVisibility::Public,
+            decision: DecisionDomainV2::ChooseOne,
+            candidates: vec![AuthoritativeCandidateV2 {
+                candidate_id: CandidateIdV1(0),
+                visible_intent: CandidateIntent::SelectObject { object: opaque },
+                trusted_binding: EngineCandidateBinding::SelectObject {
+                    object: GameObjectId(1),
+                },
+            }],
+            continuation_id: None,
+        };
+        let events = vec![bound_event(
+            state,
+            0,
+            identity.revision,
+            AuthoritativeRuleEventKind::DecisionCreated {
+                decision: identity.decision_id,
+            },
+        )?];
+
+        let mut next = state.clone();
+        next.revision = identity.revision;
+        build_accepted_product(state, next, events, |workspace| {
+            workspace.execution.pending_decision = Some(PendingDecisionRecordV2 { request });
+            workspace.allocators.next_decision_id = DecisionId(identity.decision_id.0 + 1);
+            advance_player_allocator(workspace, actor, identity.player_decision_id)?;
+            Ok(())
+        })
+    }
+
     /// Entry action: the accepted ChooseOne keeps its rule-relevant product
     /// and creates the synthetic assembly continuation with stage 0.
     fn apply_entry(

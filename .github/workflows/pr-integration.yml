@@ -1,0 +1,79 @@
+name: PR Integration
+on:
+  pull_request: {}
+permissions:
+  contents: read
+  actions: read
+  checks: read
+  pull-requests: read
+concurrency:
+  group: pr-integration-${{ github.event.pull_request.head.sha }}
+  cancel-in-progress: true
+jobs:
+  integration:
+    name: integration
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+      - name: Assert exact pull request head
+        shell: bash
+        run: test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha }}"
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with: {python-version-file: ".python-version"}
+      - name: Bootstrap project environment
+        run: python scripts/bootstrap.py
+        timeout-minutes: 10
+      - run: |
+          rustup toolchain uninstall 1.85.1 || true
+          rustup toolchain install 1.85.1 --profile minimal --component rustfmt,clippy
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+      - run: .venv/bin/python scripts/run_checks.py integration
+
+  manafold-pr-gate:
+    name: manafold-pr-gate
+    if: ${{ always() }}
+    needs: [integration]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 1
+      - name: Assert exact pull request head
+        shell: bash
+        run: test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha }}"
+      - name: Evaluate mandatory pull-request checks
+        timeout-minutes: 10
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          for attempt in $(seq 1 55); do
+            gh api \
+              --header 'Accept: application/vnd.github+json' \
+              "/repos/${REPOSITORY}/commits/${HEAD_SHA}/check-runs?per_page=100&filter=latest" \
+              > "${RUNNER_TEMP}/manafold-check-runs.json"
+            set +e
+            python scripts/aggregate_pr_gate.py \
+              --head-sha "$HEAD_SHA" \
+              --check-runs "${RUNNER_TEMP}/manafold-check-runs.json" \
+              --wait
+            result=$?
+            set -e
+            if [ "$result" -eq 0 ]; then
+              exit 0
+            fi
+            if [ "$result" -ne 10 ]; then
+              exit "$result"
+            fi
+            sleep 10
+          done
+          echo "TIMEOUT 600s manafold-pr-gate: mandatory checks did not all conclude success" >&2
+          echo "RERUN: gh api /repos/${REPOSITORY}/commits/${HEAD_SHA}/check-runs?per_page=100\\&filter=latest > ${RUNNER_TEMP}/manafold-check-runs.json && python scripts/aggregate_pr_gate.py --head-sha ${HEAD_SHA} --check-runs ${RUNNER_TEMP}/manafold-check-runs.json --wait" >&2
+          exit 1

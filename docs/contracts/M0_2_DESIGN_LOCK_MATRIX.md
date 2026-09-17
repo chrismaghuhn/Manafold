@@ -16,7 +16,7 @@
 | Format modules | accepted boundary | format state inside EngineState; pure deterministic hooks | exact Commander snapshot/semantics |
 | Digests | accepted domains | full/public/info/observation/candidate/content/replay separated | final persisted hash algorithm/version |
 | Concurrency | accepted | one total semantic order per environment; parallel environments allowed | optimized worker/actor implementation |
-| Card IR | experimental | typed/inspectable/serializable direction | concrete variants after M2.5 census |
+| Card IR | experimental | typed/inspectable/serializable direction | concrete variants after external reviewed scope |
 | Capability model | accepted process | versioned registry, recursive closure, evidence lifecycle | first real registry entries |
 | Native executors | prohibited by default | no direct state mutation/I/O/hidden choices | executable API and approval ADR |
 | ML trajectories | provisional | one step per player choice; rules-free rewards; no privileged data | v1 wire schema/action keys |

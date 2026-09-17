@@ -8,8 +8,8 @@ use super::comparator::{
     SpaceDefect,
 };
 use super::explorer::{
-    explore, generate_probes, ExplorationBoundError, ObservedRequest, ProductionSpace,
-    ScenarioBindingContext,
+    explore, generate_probes, AnswerShape, ExplorationBoundError, ExplorerBudget, ObservedRequest,
+    ProductionSpace, ScenarioBindingContext,
 };
 use super::oracle::ReferenceAutomaton;
 use mtgml_decision::{
@@ -17,14 +17,14 @@ use mtgml_decision::{
     VisibleCandidateV2, PLAYER_DECISION_REQUEST_V2_SCHEMA,
 };
 use mtgml_environment::{
-    EnvironmentCheckpointV3, EnvironmentLimitCounters, SyntheticM1EnvironmentBackend,
+    EnvironmentCheckpointV4, EnvironmentLimitCounters, SyntheticM1EnvironmentBackend,
     SyntheticM1EnvironmentConfig, SyntheticM1ReplayConfig, TrustedEnvironmentController,
 };
 use mtgml_model::{
     CandidateIdV1, CheckpointCodecIdentity, ContentDigest, OpaqueObjectId, PlayerId, StateRevision,
 };
 use mtgml_random::RootSeed256;
-use mtgml_replay::{DeckIdentityV1, KernelIdentityV1, ReplaySchemaVersionsV1};
+use mtgml_replay::{DeckIdentityV1, KernelIdentityV1, ReplaySchemaVersionsV4};
 use mtgml_state::construct_synthetic_engine_state;
 
 const P1: PlayerId = PlayerId(1);
@@ -36,8 +36,8 @@ fn seed() -> RootSeed256 {
 
 fn codec() -> CheckpointCodecIdentity {
     CheckpointCodecIdentity {
-        codec_id: "synthetic-m2-memory".into(),
-        semantic_version: "3".into(),
+        codec_id: "in-memory-reference".into(),
+        semantic_version: "4".into(),
     }
 }
 
@@ -48,6 +48,7 @@ fn config(players: [PlayerId; 2]) -> SyntheticM1EnvironmentConfig {
     };
     SyntheticM1EnvironmentConfig {
         codec: codec(),
+        setup: mtgml_state::SyntheticV4Setup::m2_compatibility(),
         replay: SyntheticM1ReplayConfig {
             engine_build: "synthetic-build".into(),
             kernel: KernelIdentityV1 {
@@ -60,14 +61,15 @@ fn config(players: [PlayerId; 2]) -> SyntheticM1EnvironmentConfig {
             oracle_snapshot: "synthetic-oracle".into(),
             card_bundle: "synthetic-bundle".into(),
             randomness_contract_id: "mtgml.rng.v1".into(),
-            schemas: ReplaySchemaVersionsV1 {
+            schemas: ReplaySchemaVersionsV4 {
                 observation: OBSERVATION_SCHEMA.into(),
+                observation_payload_codec: "synthetic-m3-observation.v1".into(),
                 information_state: INFORMATION_STATE_SCHEMA_V2.into(),
                 decision: "player-decision-request.v2".into(),
                 decision_response: "decision-response.v2".into(),
                 observed_event: OBSERVED_EVENT_SCHEMA_V2.into(),
                 player_step: PLAYER_STEP_SCHEMA_V2.into(),
-                replay_step: "replay-step.v3".into(),
+                replay_step: "replay-step.v4".into(),
             },
             decks: players
                 .into_iter()
@@ -89,10 +91,11 @@ fn fixture_controller() -> TrustedEnvironmentController {
     let state = construct_synthetic_engine_state(mtgml_state::SyntheticResetInputs {
         players,
         root_seed: seed(),
+        setup: mtgml_state::SyntheticV4Setup::m2_compatibility(),
     })
     .unwrap();
     let counters = EnvironmentLimitCounters::default();
-    let checkpoint = EnvironmentCheckpointV3::new(
+    let checkpoint = EnvironmentCheckpointV4::new(
         state,
         mtgml_model::EpisodeStatus::Running,
         counters,
@@ -112,8 +115,12 @@ fn context() -> ScenarioBindingContext {
 
 fn live_production() -> (Vec<CanonicalCompleteChoice>, ProductionSpace) {
     let controller = fixture_controller();
-    let space = explore(&controller, P1, &context(), Default::default()).unwrap();
-    let reference = ReferenceAutomaton::initial().enumerate_complete_choices();
+    let budget = ExplorerBudget::default();
+    let space = explore(&controller, P1, &context(), budget).unwrap();
+    let reference = ReferenceAutomaton::initial()
+        .unwrap()
+        .enumerate_complete_choices(&budget)
+        .unwrap();
     (reference, space)
 }
 
@@ -125,14 +132,17 @@ mod soundness {
         let (reference, production) = live_production();
         assert_eq!(reference.len(), 10);
         assert!(soundness_defects(&reference, &production).is_empty());
-        assert!(request_shape_mismatches(&ReferenceAutomaton::initial(), &production).is_empty());
+        assert!(
+            request_shape_mismatches(&ReferenceAutomaton::initial().unwrap(), &production)
+                .is_empty()
+        );
     }
 
     #[test]
     fn request_soundness_expected_request_matches() {
         let controller = fixture_controller();
         let space = explore(&controller, P1, &context(), Default::default()).unwrap();
-        let automaton = ReferenceAutomaton::initial();
+        let automaton = ReferenceAutomaton::initial().unwrap();
         // Check request soundness along every accepted path.
         for record in space.complete_paths.values().flat_map(|paths| paths.iter()) {
             let defects =
@@ -146,27 +156,49 @@ mod soundness {
 
     #[test]
     fn detects_wrong_visible_candidate_semantics() {
-        // Isolated candidate semantics test: automaton is advanced to
-        // ChooseMembers{count:2} so stage/domain mismatches are excluded.
-        let mut automaton = ReferenceAutomaton::initial();
-        automaton.advance(&CanonicalStageChoice::Anchor);
-        automaton.advance(&CanonicalStageChoice::Number(2));
+        let stages = vec![
+            CanonicalStageChoice::Anchor,
+            CanonicalStageChoice::Number(2),
+            CanonicalStageChoice::Members(
+                [SyntheticChoiceAtom::Piece(0), SyntheticChoiceAtom::Piece(1)]
+                    .into_iter()
+                    .collect(),
+            ),
+            CanonicalStageChoice::Order(vec![
+                SyntheticChoiceAtom::Piece(0),
+                SyntheticChoiceAtom::Piece(1),
+            ]),
+        ];
+        let automaton = ReferenceAutomaton::initial().unwrap();
         // Wrong candidate: Piece(9) instead of Piece(1) in the second position.
-        let observed = ObservedRequest {
-            domain: super::super::explorer::ObservedDomain::ChooseMany {
-                minimum: 2,
-                maximum: 2,
+        let observed = vec![
+            ObservedRequest {
+                domain: super::super::explorer::ObservedDomain::ChooseOne,
+                candidate_atoms: vec![SyntheticChoiceAtom::EntryAnchor],
             },
-            candidate_atoms: vec![SyntheticChoiceAtom::Piece(0), SyntheticChoiceAtom::Piece(9)],
-        };
-        // Only pass the CURRENT stage step so candidate semantics is the
-        // sole defect source.
-        let stages = vec![CanonicalStageChoice::Members(
-            [SyntheticChoiceAtom::Piece(0), SyntheticChoiceAtom::Piece(1)]
-                .into_iter()
-                .collect(),
-        )];
-        let defects = request_sequence_defects(&automaton, &stages, &[observed]);
+            ObservedRequest {
+                domain: super::super::explorer::ObservedDomain::ChooseNumber {
+                    minimum: 0,
+                    maximum: 3,
+                },
+                candidate_atoms: Vec::new(),
+            },
+            ObservedRequest {
+                domain: super::super::explorer::ObservedDomain::ChooseMany {
+                    minimum: 2,
+                    maximum: 2,
+                },
+                candidate_atoms: vec![SyntheticChoiceAtom::Piece(0), SyntheticChoiceAtom::Piece(9)],
+            },
+            ObservedRequest {
+                domain: super::super::explorer::ObservedDomain::Order {
+                    minimum: 2,
+                    maximum: 2,
+                },
+                candidate_atoms: vec![SyntheticChoiceAtom::Piece(0), SyntheticChoiceAtom::Piece(1)],
+            },
+        ];
+        let defects = request_sequence_defects(&automaton, &stages, &observed);
         assert!(defects
             .iter()
             .any(|defect| matches!(defect, SpaceDefect::RequestShapeMismatch { .. })));
@@ -411,6 +443,111 @@ mod budget {
             Err(ExplorationBoundError::CandidatesExceeded)
         ));
     }
+
+    #[test]
+    fn generate_probes_contains_the_bounded_invalid_complement() {
+        let candidate = |id| VisibleCandidateV2 {
+            candidate_id: CandidateIdV1(id),
+            intent: CandidateIntent::SelectMode { mode_index: id },
+        };
+        let choose_many = PlayerDecisionRequestV2 {
+            schema_version: PLAYER_DECISION_REQUEST_V2_SCHEMA.into(),
+            player_decision_id: mtgml_model::PlayerDecisionIdV1(1),
+            state_revision: StateRevision(0),
+            actor: P1,
+            visibility: DecisionVisibility::Public,
+            decision: DecisionDomainV2::ChooseMany {
+                minimum: 1,
+                maximum: 2,
+            },
+            candidates: vec![candidate(0), candidate(1)],
+        };
+        let many_probes = generate_probes(&choose_many, &ExplorerBudget::default()).unwrap();
+        for shape in [
+            AnswerShape::SelectMany(vec![2]),
+            AnswerShape::SelectMany(vec![0, 0]),
+            AnswerShape::SelectMany(vec![1, 0]),
+            AnswerShape::Number(0),
+        ] {
+            assert!(
+                many_probes
+                    .iter()
+                    .any(|probe| probe.shape == shape && !probe.advertised),
+                "missing ChooseMany complement probe {shape:?}"
+            );
+        }
+
+        let order = PlayerDecisionRequestV2 {
+            decision: DecisionDomainV2::Order {
+                minimum: 2,
+                maximum: 2,
+            },
+            ..choose_many
+        };
+        let order_probes = generate_probes(&order, &ExplorerBudget::default()).unwrap();
+        for shape in [
+            AnswerShape::Order(Vec::new()),
+            AnswerShape::Order(vec![0]),
+            AnswerShape::Order(vec![0, 1, 2]),
+        ] {
+            assert!(
+                order_probes
+                    .iter()
+                    .any(|probe| probe.shape == shape && !probe.advertised),
+                "missing Order complement probe {shape:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn large_order_range_fails_closed_before_iteration() {
+        let request = PlayerDecisionRequestV2 {
+            schema_version: PLAYER_DECISION_REQUEST_V2_SCHEMA.into(),
+            player_decision_id: mtgml_model::PlayerDecisionIdV1(1),
+            state_revision: StateRevision(0),
+            actor: P1,
+            visibility: DecisionVisibility::Public,
+            decision: DecisionDomainV2::Order {
+                minimum: 0,
+                maximum: u32::MAX,
+            },
+            candidates: vec![VisibleCandidateV2 {
+                candidate_id: CandidateIdV1(0),
+                intent: CandidateIntent::SelectMode { mode_index: 0 },
+            }],
+        };
+        assert!(matches!(
+            generate_probes(&request, &ExplorerBudget::default()),
+            Err(ExplorationBoundError::OrderProbeRangeExceeded)
+        ));
+    }
+
+    #[test]
+    fn live_complement_probes_are_rejected_without_branch_mutation() {
+        let budget = ExplorerBudget::default();
+        let space = explore(&fixture_controller(), P1, &context(), budget).unwrap();
+        assert!(space.advertised_rejected.is_empty());
+        assert_eq!(space.out_of_contract_accepted, 0);
+        assert!(space.out_of_contract_rejected > 0);
+    }
+
+    #[test]
+    fn reference_source_rejects_silent_invalid_advance() {
+        let source = include_str!("oracle.rs");
+        assert!(source.contains("Result<(), ReferenceTransitionError>"));
+        assert!(!source.contains("_ => {}"));
+    }
+
+    #[test]
+    fn reference_advance_rejects_invalid_choice() {
+        let mut automaton = ReferenceAutomaton::initial().unwrap();
+        let before = automaton.state().clone();
+        assert!(matches!(
+            automaton.advance(&CanonicalStageChoice::Number(0)),
+            Err(super::super::oracle::ReferenceTransitionError::InvalidChoice)
+        ));
+        assert_eq!(automaton.state(), &before);
+    }
 }
 
 mod completeness {
@@ -448,6 +585,18 @@ mod completeness {
         assert!(defects.iter().any(|defect| matches!(
             defect,
             SpaceDefect::MissingChoice { choice } if *choice == dropped
+        )));
+    }
+
+    #[test]
+    fn empty_production_path_is_missing_choice() {
+        let (reference, mut production) = super::live_production();
+        let choice = reference.first().unwrap().clone();
+        production.complete_paths.insert(choice.clone(), Vec::new());
+        let defects = completeness_defects(&reference, &production);
+        assert!(defects.iter().any(|defect| matches!(
+            defect,
+            SpaceDefect::MissingChoice { choice: found } if *found == choice
         )));
     }
 
@@ -509,8 +658,49 @@ mod invariance {
         let spec_b = ReferenceAssemblySpec {
             piece_iteration_order: vec![2, 1, 0],
         };
-        let space_a = ReferenceAutomaton::new(spec_a).enumerate_complete_choices();
-        let space_b = ReferenceAutomaton::new(spec_b).enumerate_complete_choices();
+        let budget = ExplorerBudget::default();
+        let space_a = ReferenceAutomaton::new(spec_a)
+            .unwrap()
+            .enumerate_complete_choices(&budget)
+            .unwrap();
+        let space_b = ReferenceAutomaton::new(spec_b)
+            .unwrap()
+            .enumerate_complete_choices(&budget)
+            .unwrap();
         assert_eq!(space_a, space_b);
+    }
+
+    #[test]
+    fn reversed_reference_declaration_keeps_expected_request_canonical() {
+        let mut automaton = ReferenceAutomaton::new(ReferenceAssemblySpec {
+            piece_iteration_order: vec![2, 1, 0],
+        })
+        .unwrap();
+        automaton.advance(&CanonicalStageChoice::Anchor).unwrap();
+        automaton.advance(&CanonicalStageChoice::Number(3)).unwrap();
+        assert_eq!(
+            automaton.expected_request().unwrap().candidate_atoms,
+            vec![
+                SyntheticChoiceAtom::Piece(0),
+                SyntheticChoiceAtom::Piece(1),
+                SyntheticChoiceAtom::Piece(2),
+            ]
+        );
+    }
+
+    #[test]
+    fn invalid_reference_spec_is_rejected() {
+        assert!(matches!(
+            ReferenceAutomaton::new(ReferenceAssemblySpec {
+                piece_iteration_order: vec![0, 0, 1],
+            }),
+            Err(super::super::oracle::ReferenceSpecError::DuplicatePiece)
+        ));
+        assert!(matches!(
+            ReferenceAutomaton::new(ReferenceAssemblySpec {
+                piece_iteration_order: vec![0, 1, 9],
+            }),
+            Err(super::super::oracle::ReferenceSpecError::UnsupportedPiece)
+        ));
     }
 }

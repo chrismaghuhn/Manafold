@@ -30,6 +30,8 @@ pub enum RandomValidationError {
     PlayerScopeMismatch,
     #[error("invalid random bound")]
     InvalidRandomBound,
+    #[error("raw RNG lane is outside the four-lane block")]
+    InvalidRawLane,
     #[error("random stream exhausted")]
     StreamExhausted,
     #[error("requested stream not found")]

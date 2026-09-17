@@ -38,7 +38,7 @@ Four-player Commander, arbitrary decks, general legality service, draft/sealed, 
 
 ## Scope lock
 
-Card certification starts only after M2.5 commits:
+Card certification starts only after an explicit reviewed scope decision:
 
 - exact deck and generated-object manifests;
 - authority/source snapshots;
@@ -48,3 +48,6 @@ Card certification starts only after M2.5 commits:
 - scope-impact and certification manifests.
 
 Replacing one card or snapshot creates a new bundle identity and impact report.
+
+No Magic/card scope is active in this repository. Future scope input comes from
+the external research process and must be reviewed before M3 authorization.

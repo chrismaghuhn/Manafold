@@ -108,9 +108,10 @@ Requires both architecture and executable structural evidence:
 - no reinterpretation of old artifacts;
 - Rust/Python/schema/fixture identity coherence where public DTOs exist.
 
-M2.A documentation is only the contract half. M2.B now supplies the local
-clean exact-head structural implementation and executable evidence; hosted PR
-evidence and the broader M2.Final closure remain separate gates.
+M2.A documentation was only the contract half. M2.B supplied the structural
+implementation and executable evidence; the broader M2.Final closure is
+recorded by accepted ADR 0041 at its exact evidence head. Hosted PR evidence
+remains a separate CI gate.
 
 ### Decision gates
 
@@ -175,7 +176,7 @@ Wire-decode failure is earlier than semantic response rejection but must indepen
 `M1_GATE_REGRESSION_AND_M2_SCOPE_GUARD` requires:
 
 - all ten M1 gates rerun successfully;
-- no real Magic/card/deck/M2.5 capability work;
+- no real Magic/card/deck/capability work;
 - no production Python/native transport;
 - no stable trajectory/action-key contract;
 - no search/determinization/vector/distributed training work;
@@ -187,7 +188,6 @@ Only the final generated M2 closure report may emit:
 
 ```text
 M2 = COMPLETE
-M2.5 = UNBLOCKED
 ```
 
 ## Capability coverage
@@ -223,4 +223,4 @@ CLEAN_MACHINE_REPRODUCTION
 SIGNED_OR_CHECKSUMMED_EVIDENCE_MANIFEST
 ```
 
-Numerical thresholds are set at roadmap M2.5 and cannot be retroactively weakened without an ADR and new bundle identity.
+Numerical thresholds are set by the applicable accepted bundle contract and cannot be retroactively weakened without an ADR and new bundle identity.

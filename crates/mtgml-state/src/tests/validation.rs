@@ -106,6 +106,30 @@ fn pending_candidate_binding_must_match_authoritative_binding() {
 }
 
 #[test]
+fn pending_select_player_must_reference_a_declared_player() {
+    let mut state = synthetic_state();
+    let candidate = &mut state
+        .execution
+        .pending_decision
+        .as_mut()
+        .unwrap()
+        .request
+        .candidates[0];
+    candidate.visible_intent = mtgml_decision::CandidateIntent::SelectPlayer {
+        player: PlayerId(999),
+    };
+    candidate.trusted_binding = mtgml_decision::EngineCandidateBinding::SelectPlayer {
+        player: PlayerId(999),
+    };
+    let before = state.clone();
+    assert_eq!(
+        validate_engine_state(&state),
+        Err(EngineStateViolation::PendingDecisionMismatch)
+    );
+    assert_eq!(state, before);
+}
+
+#[test]
 fn opaque_allocator_must_reference_declared_player() {
     let mut state = empty_shell();
     state.random.streams.insert(
@@ -148,6 +172,40 @@ fn valid_commander_structural_references_are_accepted() {
 }
 
 #[test]
+fn commander_designation_membership_must_be_canonical() {
+    let mut sorted = lifecycle_fixture();
+    sorted.format = FormatState::Commander {
+        state: CommanderState {
+            designations: BTreeMap::from([(
+                PlayerId(1),
+                vec![PhysicalCardId(3), PhysicalCardId(4)],
+            )]),
+            cast_counts: BTreeMap::new(),
+            damage: BTreeMap::new(),
+        },
+    };
+    assert_eq!(validate_engine_state(&sorted), Ok(()));
+
+    let mut permuted = sorted.clone();
+    if let FormatState::Commander { state: commander } = &mut permuted.format {
+        commander.designations.insert(
+            PlayerId(1),
+            vec![PhysicalCardId(4), PhysicalCardId(3)],
+        );
+    }
+    let before = permuted.clone();
+    assert_eq!(
+        validate_engine_state(&permuted),
+        Err(EngineStateViolation::FormatMismatch)
+    );
+    assert_eq!(permuted, before);
+    assert_eq!(
+        permuted.digest(),
+        Err(StateDigestError::StateInvariant)
+    );
+}
+
+#[test]
 fn commander_ledger_must_reference_a_designated_physical_card() {
     let mut state = synthetic_state();
     state.format = FormatState::Commander {
@@ -178,6 +236,28 @@ fn commander_damage_ledger_must_reference_a_declared_player() {
         Err(EngineStateViolation::FormatMismatch)
     ));
 }
+
+#[test]
+fn empty_ordered_zone_keys_must_reference_declared_players() {
+    let mut state = synthetic_state();
+    state.zones.ordered_zones.insert(
+        ZoneKey {
+            zone: ZoneKind::Library,
+            player: Some(PlayerId(999)),
+            visibility: VisibilityPartition::FaceDown,
+            partition: None,
+        },
+        Vec::new(),
+    );
+    let before = state.clone();
+    assert_eq!(
+        validate_engine_state(&state),
+        Err(EngineStateViolation::ObjectPlayerMismatch)
+    );
+    assert_eq!(state, before);
+}
+
+
 
 #[test]
 fn unsupported_effect_machinery_is_rejected() {

@@ -166,7 +166,7 @@ CARGO_PACKAGE_ADAPTER = f"cargo-package::{ADAPTER_PACKAGE}"
 EXPECTED_PYTHON_PASSED: dict[str, int] = {
     PYTEST_WIRE_CONTRACTS: 2,
     PYTEST_CONSTRUCTIVE: 16,
-    PYTEST_SCHEMA_PARITY: 7,
+    PYTEST_SCHEMA_PARITY: 13,
     PYTEST_ADAPTER_UNIT: 49,
     PYTEST_CORE_SCENARIOS: 4,
     PYTEST_REJECTION_SCENARIOS: 14,
@@ -311,7 +311,7 @@ EXPECTED_EVIDENCE: dict[str, tuple[str, ...]] = {
 
 ENDPOINT_RS = ROOT / "crates" / "mtgml-environment" / "src" / "endpoint.rs"
 BOUNDARY_RS = ROOT / "crates" / "mtgml-environment" / "src" / "boundary.rs"
-WIRE_LIB_RS = ROOT / "crates" / "mtgml-wire" / "src" / "lib.rs"
+WIRE_FIXTURES_RS = ROOT / "crates" / "mtgml-wire" / "src" / "fixtures.rs"
 PLAYER_CLIENT_PY = ROOT / "python" / "src" / "mtgml" / "player_client.py"
 ADAPTER_CLIENT_PY = ROOT / "python" / "src" / "mtgml" / "_m2_adapter" / "client.py"
 WIRE_PY = ROOT / "python" / "src" / "mtgml" / "wire.py"
@@ -387,6 +387,9 @@ COMMON_NAMED_CONTRACTS = frozenset(
         "authoritative-replay.v2",
         "replay-manifest.v3",
         "authoritative-replay.v3",
+        "synthetic-m3-observation.v1",
+        "replay-manifest.v4",
+        "authoritative-replay.v4",
     }
 )
 
@@ -699,7 +702,7 @@ def extract_adapter_public_methods(origin: str) -> frozenset[str]:
 
 
 def extract_rust_decode_named_contracts(origin: str) -> frozenset[str]:
-    text = _read_source(WIRE_LIB_RS)
+    text = _read_source(WIRE_FIXTURES_RS)
     start = text.find("fn decode_named(")
     if start < 0:
         raise GateConfigurationError(f"{origin}: decode_named not found")

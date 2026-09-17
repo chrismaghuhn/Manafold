@@ -9,12 +9,16 @@ pub enum ObservationValidationError {
     SchemaOrCodec,
     #[error("payload is not canonical base64")]
     Base64,
+    #[error("observation digest does not match payload")]
+    DigestMismatch,
     #[error("information state and current observation disagree")]
     InformationStateMismatch,
     #[error("observed event label/code must be non-empty")]
     EmptyEventText,
     #[error("random outcome is outside its declared range")]
     RandomOutcome,
+    #[error("object move must reveal at least one visible identity")]
+    ObjectMovedIdentity,
     #[error("observed event belongs to a future revision")]
     FutureEvent,
     #[error("next decision is invalid for this endpoint")]
@@ -29,4 +33,6 @@ pub enum ObservationValidationError {
     PerspectiveRevision,
     #[error("submission outcome contradicts the step product")]
     Submission,
+    #[error("synthetic M3 observation payload is invalid")]
+    M3Payload,
 }

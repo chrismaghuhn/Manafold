@@ -57,17 +57,18 @@
 - paired-state noninterference and multi-endpoint tests;
 - initial rules-free Python environment integration.
 
-## M2.5 — Exact V1 Deck Lock and Capability Census
-
-- select two exact official-Commander 1v1 decks;
-- pin rules, format, Oracle/source, ruling, and legality snapshots;
-- enumerate cards, faces, tokens, copies, named/generated objects, decisions, information effects, loops, and interactions;
-- produce recursive capability closure, exclusions, target hardware, and numerical gates;
-- freeze scope-impact process.
+The next substantive Magic-scope work is not authorized. Census-driven scope
+research is outside this authoritative engine repository. Future M3 entry
+requires an explicit reviewed durable scope and capability input from that
+external process.
 
 ## M3 — Required Magic Primitives
 
-Implement only the locked closure’s reusable semantics: turn/priority/stack, costs/mana, targets, zones/LKI, events, replacement/prevention, triggers, SBA, combat, continuous/copy semantics, Commander tracking, loops, and other required capabilities. Each capability advances through specification, implementation, coverage, and bundle evidence.
+When authorized, implement only the reviewed closure’s reusable semantics:
+turn/priority/stack, costs/mana, targets, zones/LKI, events,
+replacement/prevention, triggers, SBA, combat, continuous/copy semantics,
+Commander tracking, loops, and other required capabilities. Each capability
+advances through specification, implementation, coverage, and bundle evidence.
 
 ## M4 — Card Definitions and Certified V1 Bundle
 

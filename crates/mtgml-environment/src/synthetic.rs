@@ -5,20 +5,25 @@ use mtgml_observation::{
 };
 use mtgml_random::RootSeed256;
 use mtgml_replay::{
-    AuthoritativeReplayV3, DeckIdentityV1, KernelIdentityV1, ReplayRecorderV3,
-    ReplaySchemaVersionsV1,
+    AuthoritativeReplayV4, DeckIdentityV1, KernelIdentityV1, ReplayRecorderV4,
+    ReplaySchemaVersionsV4,
 };
 use mtgml_rules::{SyntheticM1RulesKernel, TransitionResult};
-use mtgml_state::{construct_synthetic_engine_state, EngineState, SyntheticResetInputs};
+use mtgml_state::{
+    construct_synthetic_engine_state, EngineState, SyntheticResetInputs, SyntheticV4Setup,
+};
 
 use crate::checkpoint::{
-    CheckpointCodecIdentity, EnvironmentCheckpointV3, EnvironmentLimitCounters,
+    CheckpointCodecIdentity, EnvironmentCheckpointV4, EnvironmentLimitCounters,
 };
 use crate::controller::EnvironmentBackend;
 use crate::endpoint::PlayerEndpointError;
 use crate::errors::{ControllerError, EnvironmentCommitError};
 
 mod commit;
+#[cfg(test)]
+#[path = "tests/eventful.rs"]
+mod eventful;
 mod projection;
 mod replay;
 
@@ -34,7 +39,23 @@ use replay::build_manifest;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SyntheticM1EnvironmentConfig {
     pub codec: CheckpointCodecIdentity,
+    pub setup: SyntheticV4Setup,
     pub replay: SyntheticM1ReplayConfig,
+}
+
+impl SyntheticM1EnvironmentConfig {
+    /// Builds the current rules-free M2 compatibility configuration while
+    /// keeping the V4 state setup behind the Environment ownership boundary.
+    pub fn m2_compatibility(
+        codec: CheckpointCodecIdentity,
+        replay: SyntheticM1ReplayConfig,
+    ) -> Self {
+        Self {
+            codec,
+            setup: SyntheticV4Setup::m2_compatibility(),
+            replay,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -46,7 +67,7 @@ pub struct SyntheticM1ReplayConfig {
     pub oracle_snapshot: String,
     pub card_bundle: String,
     pub randomness_contract_id: String,
-    pub schemas: ReplaySchemaVersionsV1,
+    pub schemas: ReplaySchemaVersionsV4,
     pub decks: Vec<DeckIdentityV1>,
 }
 
@@ -56,8 +77,10 @@ pub struct SyntheticM1EnvironmentBackend {
     limit_counters: EnvironmentLimitCounters,
     codec: CheckpointCodecIdentity,
     config: SyntheticM1EnvironmentConfig,
-    replay: ReplayRecorderV3,
+    replay: ReplayRecorderV4,
     kernel: SyntheticM1RulesKernel,
+    #[cfg(test)]
+    eventful_fixture: bool,
 }
 
 impl SyntheticM1EnvironmentBackend {
@@ -66,16 +89,20 @@ impl SyntheticM1EnvironmentBackend {
         root_seed: RootSeed256,
         config: SyntheticM1EnvironmentConfig,
     ) -> Result<Self, ControllerError> {
-        let state = construct_synthetic_engine_state(SyntheticResetInputs { players, root_seed })?;
+        let state = construct_synthetic_engine_state(SyntheticResetInputs {
+            players,
+            root_seed,
+            setup: config.setup.clone(),
+        })?;
         let status = EpisodeStatus::Running;
         let limit_counters = EnvironmentLimitCounters::default();
-        let checkpoint = EnvironmentCheckpointV3::new(
+        let checkpoint = EnvironmentCheckpointV4::new(
             state.clone(),
             status.clone(),
             limit_counters.clone(),
             config.codec.clone(),
         )?;
-        let replay = ReplayRecorderV3::new(build_manifest(&config, &checkpoint)?)?;
+        let replay = ReplayRecorderV4::new(build_manifest(&config, &checkpoint)?)?;
         Ok(Self {
             state,
             status,
@@ -84,11 +111,13 @@ impl SyntheticM1EnvironmentBackend {
             config,
             replay,
             kernel: SyntheticM1RulesKernel,
+            #[cfg(test)]
+            eventful_fixture: false,
         })
     }
 
     pub fn from_checkpoint(
-        checkpoint: EnvironmentCheckpointV3,
+        checkpoint: EnvironmentCheckpointV4,
         config: SyntheticM1EnvironmentConfig,
     ) -> Result<Self, ControllerError> {
         checkpoint.validate()?;
@@ -100,7 +129,7 @@ impl SyntheticM1EnvironmentBackend {
         // are rejected before any player projection can expose them.
         mtgml_rules::validate_synthetic_runtime_state(&checkpoint.state)
             .map_err(|_| ControllerError::UnsupportedSyntheticState)?;
-        let replay = ReplayRecorderV3::new(build_manifest(&config, &checkpoint)?)?;
+        let replay = ReplayRecorderV4::new(build_manifest(&config, &checkpoint)?)?;
         Ok(Self {
             state: checkpoint.state,
             status: checkpoint.status,
@@ -109,6 +138,8 @@ impl SyntheticM1EnvironmentBackend {
             config,
             replay,
             kernel: SyntheticM1RulesKernel,
+            #[cfg(test)]
+            eventful_fixture: false,
         })
     }
 }
@@ -118,11 +149,13 @@ impl EnvironmentBackend for SyntheticM1EnvironmentBackend {
         self.state.core.players.keys().copied().collect()
     }
 
-    fn checkpoint(&self) -> Result<EnvironmentCheckpointV3, ControllerError> {
+    fn checkpoint(&self) -> Result<EnvironmentCheckpointV4, ControllerError> {
         self.current_checkpoint()
     }
 
-    fn restore(&mut self, checkpoint: EnvironmentCheckpointV3) -> Result<(), ControllerError> {
+    fn restore(&mut self, checkpoint: EnvironmentCheckpointV4) -> Result<(), ControllerError> {
+        #[cfg(test)]
+        let eventful_fixture = self.eventful_fixture;
         let candidate = Self::from_checkpoint(checkpoint, self.config.clone())?;
         self.state = candidate.state;
         self.status = candidate.status;
@@ -130,18 +163,27 @@ impl EnvironmentBackend for SyntheticM1EnvironmentBackend {
         self.codec = candidate.codec;
         self.replay = candidate.replay;
         self.kernel = SyntheticM1RulesKernel;
+        #[cfg(test)]
+        {
+            self.eventful_fixture = eventful_fixture;
+        }
         Ok(())
     }
 
     fn fork_boxed(&self) -> Result<Box<dyn EnvironmentBackend>, ControllerError> {
         let checkpoint = self.current_checkpoint()?;
-        Ok(Box::new(Self::from_checkpoint(
-            checkpoint,
-            self.config.clone(),
-        )?))
+        #[cfg(test)]
+        let mut child = Self::from_checkpoint(checkpoint, self.config.clone())?;
+        #[cfg(not(test))]
+        let child = Self::from_checkpoint(checkpoint, self.config.clone())?;
+        #[cfg(test)]
+        {
+            child.eventful_fixture = self.eventful_fixture;
+        }
+        Ok(Box::new(child))
     }
 
-    fn export_replay(&self) -> Result<AuthoritativeReplayV3, ControllerError> {
+    fn export_replay(&self) -> Result<AuthoritativeReplayV4, ControllerError> {
         Ok(self.replay.export()?)
     }
 
@@ -157,12 +199,16 @@ impl EnvironmentBackend for SyntheticM1EnvironmentBackend {
         )
     }
 
+    fn execute_forced_progress(&mut self) -> Result<TransitionResult, ControllerError> {
+        self.execute_forced_progress()
+    }
+
     fn player_observation(
         &self,
         perspective: PlayerId,
     ) -> Result<ObservationEnvelope, PlayerEndpointError> {
         self.require_player(perspective)?;
-        Self::synthetic_observation(perspective, self.state.revision)
+        Self::synthetic_observation(&self.state, perspective)
     }
 
     fn player_information_state(
@@ -178,17 +224,7 @@ impl EnvironmentBackend for SyntheticM1EnvironmentBackend {
         perspective: PlayerId,
     ) -> Result<Option<PlayerDecisionRequestV2>, PlayerEndpointError> {
         self.require_player(perspective)?;
-        let Some(pending) = self.state.execution.pending_decision.as_ref() else {
-            return Ok(None);
-        };
-        if pending.request.actor != perspective {
-            return Ok(None);
-        }
-        pending
-            .request
-            .project_player_request()
-            .map(Some)
-            .map_err(|_| PlayerEndpointError::ServiceUnavailable)
+        Self::visible_decision_from_state(&self.state, perspective)
     }
 
     /// Ordered typed-submission pipeline (DECISION_PROTOCOL validation

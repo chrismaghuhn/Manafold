@@ -3,25 +3,27 @@
 //! second mapping authority is introduced here.
 
 use base64::{engine::general_purpose::STANDARD, Engine as _};
-use mtgml_model::{
-    EpisodeStatus, InformationStateDigestV2, ObservationDigest, PlayerId, StateRevision,
-};
+use mtgml_decision::PlayerDecisionRequestV2;
+use mtgml_model::{EpisodeStatus, InformationStateDigestV2, ObservationDigest, PlayerId};
 use mtgml_observation::{
     InformationStateDigestInputV2, ObservationEnvelope, ObservedEventEnvelopeV2,
     PlayerInformationStateV2, PlayerKnowledgeCauseV1, PlayerKnowledgeChannelV1,
     PlayerKnowledgeInvalidationReasonV1, PlayerKnowledgeProvenanceV1, PlayerKnownLocationFactV1,
     PlayerKnownLocationV1, PlayerKnownObjectV1, PlayerStepSubmissionV1, PlayerStepV2,
-    INFORMATION_STATE_SCHEMA_V2, OBSERVATION_SCHEMA, PLAYER_STEP_SCHEMA_V2,
+    SyntheticM3BeginningStep, SyntheticM3CombatStep, SyntheticM3EndingStep, SyntheticM3Observation,
+    SyntheticM3Priority, SyntheticM3TurnPosition, INFORMATION_STATE_SCHEMA_V2, OBSERVATION_SCHEMA,
+    PLAYER_STEP_SCHEMA_V2, SYNTHETIC_M3_OBSERVATION_SCHEMA,
 };
 use mtgml_state::{
-    EngineState, KnowledgeAcquisitionCause, KnowledgeAcquisitionReason, KnowledgeHistoryChannel,
-    KnowledgeInvalidationReason,
+    BeginningStep, CombatStep, EndingStep, EngineState, KnowledgeAcquisitionCause,
+    KnowledgeAcquisitionReason, KnowledgeHistoryChannel, KnowledgeInvalidationReason,
+    PriorityState, TurnPosition,
 };
 
 use super::SyntheticM1EnvironmentBackend;
 use crate::endpoint::PlayerEndpointError;
 
-const SYNTHETIC_M2_OBSERVATION_CODEC: &str = "synthetic-m2-observation.v1";
+const SYNTHETIC_M3_OBSERVATION_CODEC: &str = SYNTHETIC_M3_OBSERVATION_SCHEMA;
 
 impl SyntheticM1EnvironmentBackend {
     pub(super) fn require_player(&self, perspective: PlayerId) -> Result<(), PlayerEndpointError> {
@@ -33,20 +35,24 @@ impl SyntheticM1EnvironmentBackend {
             .ok_or(PlayerEndpointError::ServiceUnavailable)
     }
 
-    pub(super) fn synthetic_observation(
+    pub(crate) fn synthetic_observation(
+        state: &EngineState,
         perspective: PlayerId,
-        revision: StateRevision,
     ) -> Result<ObservationEnvelope, PlayerEndpointError> {
-        let payload = format!(
-            "{SYNTHETIC_M2_OBSERVATION_CODEC}|perspective={}|state-revision={}",
-            perspective.0, revision.0
-        )
-        .into_bytes();
+        let payload_value = SyntheticM3Observation {
+            schema_version: SYNTHETIC_M3_OBSERVATION_SCHEMA.into(),
+            active_player: state.core.active_player,
+            turn_number: state.core.turn_number.to_string(),
+            turn_position: public_turn_position(state.core.position),
+            priority: public_priority(state.core.priority),
+        };
+        let payload = mtgml_wire::encode_canonical(&payload_value)
+            .map_err(|_| PlayerEndpointError::ServiceUnavailable)?;
         let observation = ObservationEnvelope {
             schema_version: OBSERVATION_SCHEMA.into(),
             perspective,
-            state_revision: revision,
-            payload_codec: SYNTHETIC_M2_OBSERVATION_CODEC.into(),
+            state_revision: state.revision,
+            payload_codec: SYNTHETIC_M3_OBSERVATION_CODEC.into(),
             payload_base64: STANDARD.encode(&payload),
             digest: ObservationDigest::from_canonical_bytes(&payload),
         };
@@ -122,14 +128,14 @@ impl SyntheticM1EnvironmentBackend {
         records.iter().map(Self::public_fact).collect()
     }
 
-    pub(super) fn player_information_state_from_state(
+    pub(crate) fn player_information_state_from_state(
         state: &EngineState,
         perspective: PlayerId,
     ) -> Result<PlayerInformationStateV2, PlayerEndpointError> {
         if !state.core.players.contains_key(&perspective) {
             return Err(PlayerEndpointError::ServiceUnavailable);
         }
-        let current_observation = Self::synthetic_observation(perspective, state.revision)?;
+        let current_observation = Self::synthetic_observation(state, perspective)?;
         let knowledge = state
             .knowledge
             .players
@@ -201,7 +207,66 @@ impl SyntheticM1EnvironmentBackend {
     }
 }
 
+fn public_turn_position(position: TurnPosition) -> SyntheticM3TurnPosition {
+    match position {
+        TurnPosition::Beginning { step } => SyntheticM3TurnPosition::Beginning {
+            step: match step {
+                BeginningStep::Untap => SyntheticM3BeginningStep::Untap,
+                BeginningStep::Upkeep => SyntheticM3BeginningStep::Upkeep,
+                BeginningStep::Draw => SyntheticM3BeginningStep::Draw,
+            },
+        },
+        TurnPosition::PrecombatMain => SyntheticM3TurnPosition::PrecombatMain,
+        TurnPosition::Combat { step } => SyntheticM3TurnPosition::Combat {
+            step: match step {
+                CombatStep::BeginningOfCombat => SyntheticM3CombatStep::BeginningOfCombat,
+                CombatStep::DeclareAttackers => SyntheticM3CombatStep::DeclareAttackers,
+                CombatStep::DeclareBlockers => SyntheticM3CombatStep::DeclareBlockers,
+                CombatStep::CombatDamage => SyntheticM3CombatStep::CombatDamage,
+                CombatStep::EndOfCombat => SyntheticM3CombatStep::EndOfCombat,
+            },
+        },
+        TurnPosition::PostcombatMain => SyntheticM3TurnPosition::PostcombatMain,
+        TurnPosition::Ending { step } => SyntheticM3TurnPosition::Ending {
+            step: match step {
+                EndingStep::EndStep => SyntheticM3EndingStep::EndStep,
+                EndingStep::Cleanup => SyntheticM3EndingStep::Cleanup,
+            },
+        },
+    }
+}
+
+fn public_priority(priority: PriorityState) -> SyntheticM3Priority {
+    match priority {
+        PriorityState::None => SyntheticM3Priority::None,
+        PriorityState::HeldBy { player, .. } => SyntheticM3Priority::HeldBy { player },
+    }
+}
+
 impl SyntheticM1EnvironmentBackend {
+    /// Pure visible-decision projection over an explicit state: the exact
+    /// logic the endpoint serves, reusable for pre-commit candidate
+    /// validation without a committed backend.
+    pub(crate) fn visible_decision_from_state(
+        state: &EngineState,
+        perspective: PlayerId,
+    ) -> Result<Option<PlayerDecisionRequestV2>, PlayerEndpointError> {
+        if !state.core.players.contains_key(&perspective) {
+            return Err(PlayerEndpointError::ServiceUnavailable);
+        }
+        let Some(pending) = state.execution.pending_decision.as_ref() else {
+            return Ok(None);
+        };
+        if pending.request.actor != perspective {
+            return Ok(None);
+        }
+        pending
+            .request
+            .project_player_request()
+            .map(Some)
+            .map_err(|_| PlayerEndpointError::ServiceUnavailable)
+    }
+
     pub(super) fn player_step_from_state(
         state: &EngineState,
         perspective: PlayerId,

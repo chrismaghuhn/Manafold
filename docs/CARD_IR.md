@@ -1,7 +1,7 @@
 # Card IR
 
 **Status:** architectural direction accepted; concrete vocabulary experimental  
-**Stability:** experimental until M2.5 capability census
+**Stability:** experimental pending an explicit reviewed capability scope
 
 ## Required properties
 
@@ -41,7 +41,7 @@ M0.2 intentionally does not freeze:
 - copy/copiable-value representation;
 - native-executor calling convention.
 
-These are driven by M2.5’s exact deck closure and M3 authority cases. The existing Rust enum is illustrative scaffolding, not a support claim.
+These are driven by a future reviewed deck closure and M3 authority cases. The existing Rust enum is illustrative scaffolding, not a support claim.
 
 ## Maintainer rule
 

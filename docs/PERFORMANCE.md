@@ -1,6 +1,6 @@
 # Performance
 
-**Status:** measurement contract; numerical targets open until M2.5
+**Status:** measurement contract; numerical targets open until an explicit reviewed benchmark contract
 
 Correctness, determinism, and information safety precede optimization. “Games per second” alone is not comparable across matchups.
 
@@ -26,7 +26,7 @@ Report distributions (median, tails, spread) and failures, not only means.
 
 ## Regression policy
 
-Numerical budgets are locked at M2.5. Changes beyond tolerance require attribution and either correction or an explicit accepted budget revision. Faster behavior that changes semantics is a failure.
+Numerical budgets become binding only in an explicit accepted benchmark contract. Changes beyond tolerance require attribution and either correction or an explicit accepted budget revision. Faster behavior that changes semantics is a failure.
 
 ## Optimization sequence
 

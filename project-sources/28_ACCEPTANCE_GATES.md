@@ -83,7 +83,7 @@ CLEAN_MACHINE_REPRODUCTION
 SIGNED_OR_CHECKSUMMED_EVIDENCE_MANIFEST
 ```
 
-Numerical thresholds are set at M2.5 and cannot be retroactively weakened without an ADR and new bundle identity.
+Numerical thresholds are set by the applicable accepted bundle contract and cannot be retroactively weakened without an ADR and new bundle identity.
 
 ## V0.2.2 executable freeze
 

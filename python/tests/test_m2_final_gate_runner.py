@@ -1,13 +1,18 @@
 from __future__ import annotations
 
+import json
 import subprocess
 import sys
+import tempfile
 import unittest
 from pathlib import Path
+
+import yaml
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
 
+import aggregate_pr_gate as pr_gate
 import run_m2_final_closure as final
 from run_m2_final_closure import (
     CHILD_RUNNERS,
@@ -135,11 +140,211 @@ class AggregationTests(unittest.TestCase):
                 self.assertEqual(aggregate(["PASS", unknown]), "FAIL")
 
 
+class PullRequestGateTests(unittest.TestCase):
+    HEAD = "f" * 40
+
+    def run_gate(
+        self, statuses: dict[str, str], *, omit: str | None = None
+    ) -> subprocess.CompletedProcess[str]:
+        check_runs = [
+            {
+                "name": name,
+                "head_sha": self.HEAD,
+                "status": "completed",
+                "conclusion": status,
+            }
+            for name, status in statuses.items()
+            if name != omit
+        ]
+        with tempfile.TemporaryDirectory(prefix="manafold-pr-gate-") as directory:
+            path = Path(directory) / "check-runs.json"
+            path.write_text(json.dumps({"check_runs": check_runs}), encoding="utf-8")
+            return subprocess.run(
+                [
+                    sys.executable,
+                    str(ROOT / "scripts/aggregate_pr_gate.py"),
+                    "--head-sha",
+                    self.HEAD,
+                    "--check-runs",
+                    str(path),
+                ],
+                cwd=ROOT,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+    def statuses(self) -> dict[str, str]:
+        return {
+            "fast": "success",
+            "integration": "success",
+            "windows-setup-smoke": "success",
+            "Analyze (actions)": "success",
+            "Analyze (python)": "success",
+            "Analyze (rust)": "success",
+            "CodeQL": "success",
+        }
+
+    def test_all_mandatory_success_passes(self) -> None:
+        completed = self.run_gate(self.statuses())
+        self.assertEqual(completed.returncode, 0, completed.stdout + completed.stderr)
+
+    def test_any_non_success_fails(self) -> None:
+        for conclusion in ("failure", "cancelled", "skipped", "neutral"):
+            statuses = self.statuses()
+            statuses["integration"] = conclusion
+            with self.subTest(conclusion=conclusion):
+                completed = self.run_gate(statuses)
+                self.assertNotEqual(completed.returncode, 0)
+
+    def test_windows_setup_smoke_failure_cancelled_skipped_fail(self) -> None:
+        for conclusion in ("failure", "cancelled", "skipped"):
+            statuses = self.statuses()
+            statuses["windows-setup-smoke"] = conclusion
+            with self.subTest(conclusion=conclusion):
+                completed = self.run_gate(statuses)
+                self.assertNotEqual(completed.returncode, 0)
+
+    def test_missing_mandatory_check_fails(self) -> None:
+        completed = self.run_gate(self.statuses(), omit="Analyze (rust)")
+        self.assertNotEqual(completed.returncode, 0)
+
+    def test_windows_setup_smoke_missing_waits_then_fails_closed(self) -> None:
+        payload = {
+            "check_runs": [
+                {
+                    "name": name,
+                    "head_sha": self.HEAD,
+                    "status": "completed",
+                    "conclusion": status,
+                }
+                for name, status in self.statuses().items()
+                if name != "windows-setup-smoke"
+            ]
+        }
+
+        state, waiting = pr_gate.evaluate(payload, self.HEAD)
+
+        self.assertEqual(state, "WAIT")
+        self.assertEqual(waiting, ("windows-setup-smoke",))
+
+        with tempfile.TemporaryDirectory(prefix="manafold-pr-gate-") as directory:
+            path = Path(directory) / "check-runs.json"
+            path.write_text(json.dumps(payload), encoding="utf-8")
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    str(ROOT / "scripts/aggregate_pr_gate.py"),
+                    "--head-sha",
+                    self.HEAD,
+                    "--check-runs",
+                    str(path),
+                    "--wait",
+                ],
+                cwd=ROOT,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+        self.assertEqual(completed.returncode, pr_gate.WAIT_EXIT)
+        self.assertIn("windows-setup-smoke", completed.stdout)
+
+    def test_codeql_neutral_waits_while_analyzer_is_pending(self) -> None:
+        payload = {
+            "check_runs": [
+                {
+                    "name": name,
+                    "head_sha": self.HEAD,
+                    "status": "completed",
+                    "conclusion": "neutral" if name == "CodeQL" else "success",
+                }
+                for name in self.statuses()
+            ]
+        }
+        rust = next(run for run in payload["check_runs"] if run["name"] == "Analyze (rust)")
+        rust["status"] = "in_progress"
+        rust["conclusion"] = None
+
+        state, _ = pr_gate.evaluate(payload, self.HEAD)
+
+        self.assertEqual(state, "WAIT")
+
+    def test_pr_integration_workflow_is_exact_head_and_repository_owned(self) -> None:
+        workflow_path = ROOT / ".github/workflows/pr-integration.yml"
+        self.assertTrue(workflow_path.is_file())
+        workflow = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))
+        jobs = workflow["jobs"]
+        integration = jobs["integration"]
+        checkout = next(step for step in integration["steps"] if "checkout" in step.get("uses", ""))
+        self.assertEqual(checkout["with"]["ref"], "${{ github.event.pull_request.head.sha }}")
+        self.assertTrue(
+            any(
+                "git rev-parse HEAD" in step.get("run", "")
+                and "github.event.pull_request.head.sha" in step.get("run", "")
+                for step in integration["steps"]
+            )
+        )
+        self.assertTrue(
+            any(
+                step.get("run") == ".venv/bin/python scripts/run_checks.py integration"
+                for step in integration["steps"]
+            )
+        )
+        self.assertTrue(
+            any(
+                step.get("run") == "python scripts/bootstrap.py"
+                and step.get("timeout-minutes") == 10
+                for step in integration["steps"]
+            )
+        )
+        gate = jobs["manafold-pr-gate"]
+        self.assertEqual(gate["name"], "manafold-pr-gate")
+        self.assertIn("always()", gate["if"])
+        self.assertIn("integration", gate["needs"])
+        self.assertTrue(
+            any("aggregate_pr_gate.py" in step.get("run", "") for step in gate["steps"])
+        )
+
+    def test_windows_setup_smoke_workflow_is_exact_head_and_bounded(self) -> None:
+        workflow_path = ROOT / ".github/workflows/windows-setup-smoke.yml"
+        self.assertTrue(workflow_path.is_file())
+        workflow = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))
+        self.assertEqual(workflow["name"], "Windows Setup Smoke")
+        job = workflow["jobs"]["windows-setup-smoke"]
+        self.assertEqual(job["name"], "windows-setup-smoke")
+        self.assertEqual(job["runs-on"], "windows-latest")
+        steps = job["steps"]
+        checkout = next(step for step in steps if "checkout" in step.get("uses", ""))
+        self.assertEqual(checkout["with"]["ref"], "${{ github.event.pull_request.head.sha }}")
+        self.assertTrue(
+            any(
+                "git rev-parse HEAD" in step.get("run", "")
+                and "github.event.pull_request.head.sha" in step.get("run", "")
+                for step in steps
+            )
+        )
+        self.assertTrue(any("scripts/bootstrap.py" in step.get("run", "") for step in steps))
+        self.assertTrue(
+            any(
+                "scripts/doctor.py --strict" in step.get("run", "")
+                and ".venv" in step.get("run", "")
+                for step in steps
+            )
+        )
+        self.assertTrue(any("scripts/run_checks.py fast" in step.get("run", "") for step in steps))
+        for step in steps:
+            if any(
+                token in step.get("run", "")
+                for token in ("rustup", "bootstrap.py", "doctor.py", "run_checks.py fast")
+            ):
+                self.assertEqual(step.get("timeout-minutes"), 10)
+
+
 class BuildReportTests(unittest.TestCase):
     def test_all_pass_authoritative_report_completes_m2(self) -> None:
         report = complete_report()
         self.assertEqual(report["milestone_status"], "COMPLETE")
-        self.assertEqual(report["m2_5_status"], "UNBLOCKED")
         claims = report["claims"]
         self.assertFalse(claims["real_magic_rules"])
         self.assertFalse(claims["real_card_support"])
@@ -149,7 +354,6 @@ class BuildReportTests(unittest.TestCase):
     def test_development_mode_never_completes(self) -> None:
         report = complete_report(mode="development")
         self.assertEqual(report["milestone_status"], "INCOMPLETE")
-        self.assertEqual(report["m2_5_status"], "BLOCKED")
 
     def test_missing_expect_commit_never_completes(self) -> None:
         report = complete_report(expected_commit=None)
@@ -166,7 +370,6 @@ class BuildReportTests(unittest.TestCase):
             with self.subTest(status=status):
                 report = complete_report(gates=gates)
                 self.assertEqual(report["milestone_status"], "INCOMPLETE")
-                self.assertEqual(report["m2_5_status"], "BLOCKED")
 
     def test_duplicate_gate_registration_blocks_completion(self) -> None:
         gates = passing_gates()
@@ -201,7 +404,6 @@ class BuildReportTests(unittest.TestCase):
             with self.subTest(status=status):
                 report = complete_report(certification={"status": status})
                 self.assertEqual(report["milestone_status"], "INCOMPLETE")
-                self.assertEqual(report["m2_5_status"], "BLOCKED")
                 self.assertEqual(report["overall"], "INCOMPLETE")
 
 
@@ -562,6 +764,73 @@ class ScopeScanTests(unittest.TestCase):
                 detail = function(ROOT)
                 self.assertIsInstance(detail, str)
                 self.assertTrue(detail)
+
+    def test_closed_combat_damage_vocabulary_is_accepted(self) -> None:
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            rust_dir = base / "crates" / "mtgml-state" / "src"
+            rust_dir.mkdir(parents=True)
+            (rust_dir / "digest_v4.rs").write_text(
+                'fn combat_step() {\n    CombatStep::CombatDamage => "combat_damage",\n}\n',
+                encoding="utf-8",
+            )
+            py_dir = base / "python" / "src" / "mtgml"
+            py_dir.mkdir(parents=True)
+            (py_dir / "_observation_m3.py").write_text(
+                'M3_COMBAT_STEPS = frozenset(\n    {\n        "combat_damage",\n    }\n)\n',
+                encoding="utf-8",
+            )
+            detail = final.check_no_real_magic_sources(base)
+            self.assertIsInstance(detail, str)
+            self.assertTrue(detail)
+
+    def test_unauthorized_combat_damage_is_still_rejected(self) -> None:
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            evil_dir = base / "crates" / "mtgml-rules" / "src"
+            evil_dir.mkdir(parents=True)
+            (evil_dir / "evil.rs").write_text(
+                "fn deal() {\n    let combat_damage = 1;\n}\n", encoding="utf-8"
+            )
+            with self.assertRaises(final.ScopeCheckFailure) as caught:
+                final.check_no_real_magic_sources(base)
+            self.assertIn("combat_damage", str(caught.exception))
+
+    def test_additional_combat_damage_in_allowed_file_is_still_rejected(self) -> None:
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            rust_dir = base / "crates" / "mtgml-state" / "src"
+            rust_dir.mkdir(parents=True)
+            (rust_dir / "digest_v4.rs").write_text(
+                'fn combat_step() {\n    CombatStep::CombatDamage => "combat_damage",\n}\n'
+                "fn deal() {\n    let combat_damage = 1;\n}\n",
+                encoding="utf-8",
+            )
+            with self.assertRaises(final.ScopeCheckFailure) as caught:
+                final.check_no_real_magic_sources(base)
+            self.assertIn("combat_damage", str(caught.exception))
+
+    def test_duplicate_identical_allowed_line_is_still_rejected(self) -> None:
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            py_dir = base / "python" / "src" / "mtgml"
+            py_dir.mkdir(parents=True)
+            (py_dir / "_observation_m3.py").write_text(
+                'M3_COMBAT_STEPS = frozenset(\n    {\n        "combat_damage",\n'
+                '        "combat_damage",\n    }\n)\n',
+                encoding="utf-8",
+            )
+            with self.assertRaises(final.ScopeCheckFailure) as caught:
+                final.check_no_real_magic_sources(base)
+            self.assertIn("combat_damage", str(caught.exception))
 
 
 class ChildCommandTests(unittest.TestCase):

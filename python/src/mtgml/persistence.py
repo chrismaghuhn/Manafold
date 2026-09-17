@@ -26,6 +26,12 @@ CANONICAL_CBOR_ID = "mtgml.canonical-cbor.v1"
 MAX_IDENTIFIER_BYTES = 255
 CHECKPOINT_DOMAIN = "mtgml.checkpoint-digest.v3"
 CHECKPOINT_INPUT_SCHEMA = "environment-checkpoint-digest-input.v3"
+CHECKPOINT_DOMAIN_V4 = "mtgml.checkpoint-digest.v4"
+CHECKPOINT_INPUT_SCHEMA_V4 = "environment-checkpoint-digest-input.v4"
+FULL_STATE_DOMAIN_V4 = "mtgml.full-state-digest.v4"
+FULL_STATE_INPUT_SCHEMA_V4 = "full-state-digest-input.v4"
+FULL_STATE_DOMAIN_V3 = "mtgml.full-state-digest.v3"
+FULL_STATE_INPUT_SCHEMA_V3 = "full-state-digest-input.v3"
 
 PersistenceValue: TypeAlias = bool | int | bytes | str | list["PersistenceValue"] | None
 
@@ -367,12 +373,22 @@ def calculate_checkpoint_digest_v3(
         "resource_units_consumed",
         "wall_clock_elapsed_millis",
     )
-    counter_values: list[PersistenceValue] = []
+    validated_counter_values: list[int] = []
     for name in counter_names:
         value = counters.get(name)
         if isinstance(value, bool) or not isinstance(value, int) or not 0 <= value <= 2**64 - 1:
             raise _error("value_out_of_range", f"counter {name} is outside u64")
-        counter_values.append(value)
+        validated_counter_values.append(value)
+    if not isinstance(codec_id, str) or not codec_id:
+        raise _error("semantic_validation", "codec_id must be non-empty")
+    if not isinstance(semantic_version, str) or not semantic_version:
+        raise _error("semantic_validation", "semantic_version must be non-empty")
+    if validated_counter_values[1] > validated_counter_values[0]:
+        raise _error(
+            "semantic_validation",
+            "accepted transitions exceed submitted decisions",
+        )
+    counter_values: list[PersistenceValue] = list(validated_counter_values)
     payload = encode_canonical(
         [
             CHECKPOINT_INPUT_SCHEMA,
@@ -385,4 +401,58 @@ def calculate_checkpoint_digest_v3(
     )
     return hashlib.sha256(
         encode_envelope(CHECKPOINT_DOMAIN, CHECKPOINT_INPUT_SCHEMA, payload)
+    ).hexdigest()
+
+
+def calculate_checkpoint_digest_v4(
+    full_state_digest: str,
+    status: EpisodeStatus,
+    counters: dict[str, int],
+    codec_id: str,
+    semantic_version: str,
+) -> str:
+    full_state_digest = require_digest(full_state_digest)
+    reference: dict[str, object] = {
+        "envelope_version": DIGEST_ENVELOPE_ID,
+        "algorithm_id": SHA256_ID,
+        "semantic_domain": FULL_STATE_DOMAIN_V4,
+        "payload_codec_id": CANONICAL_CBOR_ID,
+        "input_schema_id": FULL_STATE_INPUT_SCHEMA_V4,
+        "digest_bytes": bytes.fromhex(full_state_digest),
+    }
+    counter_names = (
+        "decisions_submitted",
+        "accepted_transitions",
+        "rule_events_emitted",
+        "resource_units_consumed",
+        "wall_clock_elapsed_millis",
+    )
+    validated_counter_values: list[int] = []
+    for name in counter_names:
+        value = counters.get(name)
+        if isinstance(value, bool) or not isinstance(value, int) or not 0 <= value <= 2**64 - 1:
+            raise _error("value_out_of_range", f"counter {name} is outside u64")
+        validated_counter_values.append(value)
+    if not isinstance(codec_id, str) or not codec_id:
+        raise _error("semantic_validation", "codec_id must be non-empty")
+    if not isinstance(semantic_version, str) or not semantic_version:
+        raise _error("semantic_validation", "semantic_version must be non-empty")
+    if validated_counter_values[1] > validated_counter_values[0]:
+        raise _error(
+            "semantic_validation",
+            "accepted transitions exceed submitted decisions",
+        )
+    counter_values: list[PersistenceValue] = list(validated_counter_values)
+    payload = encode_canonical(
+        [
+            CHECKPOINT_INPUT_SCHEMA_V4,
+            CHECKPOINT_DOMAIN_V4,
+            digest_reference_value(reference),
+            _episode_status_value(status),
+            counter_values,
+            [codec_id, semantic_version],
+        ]
+    )
+    return hashlib.sha256(
+        encode_envelope(CHECKPOINT_DOMAIN_V4, CHECKPOINT_INPUT_SCHEMA_V4, payload)
     ).hexdigest()

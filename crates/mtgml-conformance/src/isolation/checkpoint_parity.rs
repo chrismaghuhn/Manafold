@@ -26,7 +26,7 @@ pub(crate) mod support {
         DECISION_RESPONSE_V2_SCHEMA,
     };
     use mtgml_environment::{
-        EnvironmentCheckpointV3, PlayerEndpoint, PlayerEndpointHandle,
+        EnvironmentCheckpointV4, PlayerEndpoint, PlayerEndpointHandle,
         SyntheticM1EnvironmentConfig, TrustedEnvironmentController,
     };
     use mtgml_model::{
@@ -35,7 +35,7 @@ pub(crate) mod support {
     };
     use mtgml_observation::PlayerStepSubmissionV1;
     use mtgml_random::{RandomStreamKeyV1, RandomStreamKindV1};
-    use mtgml_replay::InitialEnvironmentIdentityV3;
+    use mtgml_replay::InitialEnvironmentIdentityV4;
     use mtgml_rules::fixture_support::{FixtureTransition, PlannedOccurrence};
     use mtgml_rules::PerspectiveObservationPolicyV1;
     use mtgml_state::{
@@ -134,9 +134,7 @@ pub(crate) mod support {
         }
     }
 
-    fn fixture_transition(error: mtgml_rules::KernelExecutionError) -> HarnessError {
-        panic!("fixture transition rejected: {error:?}");
-        #[allow(unreachable_code)]
+    fn fixture_transition(_: mtgml_rules::KernelExecutionError) -> HarnessError {
         HarnessError::FixtureTransitionRejected
     }
 
@@ -159,7 +157,18 @@ pub(crate) mod support {
     ) -> Result<(TrustedEnvironmentController, [PlayerEndpointHandle; 2]), HarnessError> {
         let (controller, endpoints) =
             spawn_environment(base_pair_state(SEED_HEX_DECISION_RICH)?, &config())?;
+        let before = controller
+            .checkpoint()
+            .map_err(|_| HarnessError::ControllerService)?;
         let entry_step = accepted_entry_submission(&endpoints[0])?;
+        let after = controller
+            .checkpoint()
+            .map_err(|_| HarnessError::ControllerService)?;
+        crate::isolation::paired::test_support::assert_accepted_entry_progression(
+            &before,
+            &after,
+            &entry_step,
+        )?;
         assert_eq!(
             entry_step.submission,
             PlayerStepSubmissionV1::Accepted,
@@ -471,7 +480,7 @@ pub(crate) mod support {
     ) -> Result<(TrustedEnvironmentController, [PlayerEndpointHandle; 2]), HarnessError> {
         let state = information_rich_state()?;
         let config = config();
-        let wrapped = EnvironmentCheckpointV3::new(
+        let wrapped = EnvironmentCheckpointV4::new(
             state.clone(),
             EpisodeStatus::Running,
             EnvironmentLimitCounters::default(),
@@ -546,8 +555,8 @@ pub(crate) mod support {
     /// the replay segment seeded from `checkpoint` carries exactly the
     /// checkpoint identity fields.
     pub(crate) fn assert_segment_anchor(
-        anchor: &InitialEnvironmentIdentityV3,
-        checkpoint: &EnvironmentCheckpointV3,
+        anchor: &InitialEnvironmentIdentityV4,
+        checkpoint: &EnvironmentCheckpointV4,
     ) {
         assert_eq!(anchor.state_revision, checkpoint.state.revision);
         assert_eq!(anchor.full_state_digest, checkpoint.state_digest);
@@ -575,7 +584,7 @@ mod tests {
         TrustedEnvironmentController,
     };
     use mtgml_model::{CandidateIdV1, PlayerDecisionIdV1, StateRevision};
-    use mtgml_replay::AuthoritativeReplayV3;
+    use mtgml_replay::AuthoritativeReplayV4;
     use mtgml_wire::encode_canonical;
 
     fn controller_service(_: ControllerError) -> HarnessError {
@@ -623,7 +632,7 @@ mod tests {
 
         // Segment anchor: the restored recorder starts an empty segment
         // whose initial identity IS the restored checkpoint identity.
-        let exported: AuthoritativeReplayV3 =
+        let exported: AuthoritativeReplayV4 =
             controller.export_replay().map_err(controller_service)?;
         assert!(exported.steps.is_empty());
         assert_segment_anchor(&exported.manifest.initial_identity, &cp0);
@@ -635,9 +644,16 @@ mod tests {
         // RESUME proof: the identical next input on original and twin.
         let original_request = visible_request(&endpoints[0])?;
         let response = choose_count_answer(&original_request, EQUAL_COUNT_VALUE)?;
+        let before_count_original = controller.checkpoint().map_err(controller_service)?;
         let step_original = endpoints[0]
             .submit(response.clone())
             .map_err(|_| HarnessError::EndpointService)?;
+        let after_count_original = controller.checkpoint().map_err(controller_service)?;
+        crate::isolation::paired::test_support::assert_accepted_count_progression(
+            &before_count_original,
+            &after_count_original,
+            &step_original,
+        )?;
         let product_original = capture_transition_product(Ok(step_original))?;
         assert_eq!(
             product_original.semantic_submission_code.as_deref(),
@@ -668,9 +684,16 @@ mod tests {
             twin_request_bytes, original_request_bytes,
             "the restored twin must expose the byte-identical pending request"
         );
+        let before_count_twin = twin.checkpoint().map_err(controller_service)?;
         let step_twin = twin_endpoints[0]
             .submit(response)
             .map_err(|_| HarnessError::EndpointService)?;
+        let after_count_twin = twin.checkpoint().map_err(controller_service)?;
+        crate::isolation::paired::test_support::assert_accepted_count_progression(
+            &before_count_twin,
+            &after_count_twin,
+            &step_twin,
+        )?;
         let product_twin = capture_transition_product(Ok(step_twin))?;
         assert_eq!(
             product_twin, product_original,
@@ -725,7 +748,7 @@ mod tests {
             &fp_restored,
             FingerprintComparison::ExcludeReplayRecorder,
         )?;
-        let exported: AuthoritativeReplayV3 =
+        let exported: AuthoritativeReplayV4 =
             controller.export_replay().map_err(controller_service)?;
         assert!(exported.steps.is_empty());
         assert_segment_anchor(&exported.manifest.initial_identity, &cp0);
@@ -780,9 +803,8 @@ mod tests {
     }
 
     /// A checkpoint whose limit counters were tampered fails closed at the
-    /// earliest validation gate (counter tampering breaks checkpoint-digest
-    /// consistency before the limit invariant is even reached), and the
-    /// failed restore leaves the live COMPLETE fingerprint untouched.
+    /// checkpoint owner's local counter-validation gate, and the failed
+    /// restore leaves the live COMPLETE fingerprint untouched.
     #[test]
     fn corrupt_checkpoint_restores_fail_closed() -> Result<(), HarnessError> {
         let (controller, endpoints) = decision_rich_spawned()?;
@@ -798,7 +820,7 @@ mod tests {
         match controller.restore(corrupted) {
             Ok(()) => panic!("a digest-inconsistent checkpoint must fail closed"),
             Err(ControllerError::CheckpointValidation(
-                CheckpointValidationError::CheckpointDigest,
+                CheckpointValidationError::LimitCounters,
             )) => {}
             Err(other) => panic!("closed checkpoint-validation failure required: {other:?}"),
         }

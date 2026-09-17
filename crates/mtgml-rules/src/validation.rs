@@ -43,4 +43,12 @@ pub enum TransitionViolation {
     Randomness,
     #[error("public outcome code is empty")]
     PublicOutcome,
+    #[error("accepted transition contains an unexplained authoritative mutation")]
+    UnexplainedMutation,
+    #[error("accepted transition rewound an authoritative allocator")]
+    AllocatorProgression,
+    #[error("accepted transition reused or skipped a semantic decision identity")]
+    DecisionProgression,
+    #[error("staged transition changed its continuation identity")]
+    ContinuationIdentity,
 }

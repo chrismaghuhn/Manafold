@@ -1,7 +1,13 @@
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum EngineStateViolation {
-    #[error("active or priority player is absent")]
+    #[error("active player is absent")]
     MissingTurnPlayer,
+    #[error("priority state is structurally invalid")]
+    PriorityState,
+    #[error("combat state is structurally invalid")]
+    CombatState,
+    #[error("foundation source state is structurally invalid")]
+    FoundationSource,
     #[error("object map key does not equal object identity")]
     ObjectKeyMismatch,
     #[error("object owner/controller or zone player is absent")]
@@ -35,6 +41,7 @@ pub enum EngineStateViolation {
 }
 
 mod allocators_execution;
+mod core;
 mod decision;
 mod format;
 mod information;
@@ -50,6 +57,7 @@ use crate::engine::EngineState;
 use crate::m2_shape::validate_m2_shape;
 
 use self::allocators_execution::validate_allocators_and_execution;
+use self::core::validate_core_structure;
 use self::decision::validate_pending_authoritative_request;
 use self::format::validate_commander_format_references;
 use self::information::{
@@ -67,6 +75,7 @@ fn _binding_type_marker(_: &EngineCandidateBinding, _: &VisibleCandidateV2) {}
 /// occupies exactly the position its inline block occupied before Issue #62.
 pub fn validate_engine_state(state: &EngineState) -> Result<(), EngineStateViolation> {
     validate_zone_structure(state)?;
+    validate_core_structure(state)?;
     validate_allocators_and_execution(state)?;
 
     let players: BTreeSet<_> = state.core.players.keys().copied().collect();

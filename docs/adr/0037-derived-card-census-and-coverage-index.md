@@ -118,8 +118,8 @@ early tooling, when useful
   minimal inventory index
   basic reports
 
-M2.5
-  locked-deck mapping and exact capability-closure integration
+external scope process
+  reviewed-deck mapping and exact capability-closure input
 
 M3/M4
   reviewed requirement profiles and trustworthy capability-gap prioritization

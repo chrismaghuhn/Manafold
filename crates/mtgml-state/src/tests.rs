@@ -21,6 +21,7 @@ fn synthetic_state() -> EngineState {
     construct_synthetic_engine_state(SyntheticResetInputs {
         players: [PlayerId(1), PlayerId(2)],
         root_seed: RootSeed256::from_lower_hex(&"11".repeat(32)).unwrap(),
+        setup: SyntheticV4Setup::m2_compatibility(),
     })
     .unwrap()
 }
@@ -43,9 +44,14 @@ fn empty_shell() -> EngineState {
                 })
                 .collect(),
             active_player: PlayerId(1),
-            priority_player: PlayerId(1),
             turn_number: 1,
+            position: TurnPosition::Beginning {
+                step: BeginningStep::Untap,
+            },
+            priority: PriorityState::None,
         },
+        combat: None,
+        foundation_sources: BTreeMap::new(),
         zones: ZoneState::default(),
         allocators: IdentityAllocatorState::default(),
         execution: ExecutionState::default(),
@@ -117,11 +123,7 @@ fn retired_record(opaque: OpaqueObjectId) -> RetiredKnowledgeRecordV2 {
         card_definition: Some(CardDefinitionId(3)),
         last_known_location: None,
         historical_locations: Vec::new(),
-        acquisition: observed(
-            KnowledgeHistoryChannel::Public,
-            0,
-            KnowledgeAcquisitionCause::PublicEvent,
-        ),
+        acquisition: KnowledgeAcquisitionReason::InitialConfiguration,
         invalidation: KnowledgeInvalidationV2 {
             provenance: observed(
                 KnowledgeHistoryChannel::Public,
@@ -150,6 +152,7 @@ fn synthetic_reset_rejects_duplicate_players() {
     let result = construct_synthetic_engine_state(SyntheticResetInputs {
         players: [PlayerId(1), PlayerId(1)],
         root_seed: RootSeed256::from_lower_hex(&"11".repeat(32)).unwrap(),
+        setup: SyntheticV4Setup::m2_compatibility(),
     });
     assert!(matches!(
         result,
@@ -162,9 +165,10 @@ fn synthetic_reset_is_exactly_deterministic_for_identical_inputs() {
     let inputs = SyntheticResetInputs {
         players: [PlayerId(1), PlayerId(2)],
         root_seed: RootSeed256::from_lower_hex(&"33".repeat(32)).unwrap(),
+        setup: SyntheticV4Setup::m2_compatibility(),
     };
     assert_eq!(
-        construct_synthetic_engine_state(inputs).unwrap(),
+        construct_synthetic_engine_state(inputs.clone()).unwrap(),
         construct_synthetic_engine_state(inputs).unwrap()
     );
 }
@@ -174,6 +178,13 @@ fn hex(bytes: &[u8]) -> String {
         std::fmt::Write::write_fmt(&mut out, format_args!("{byte:02x}")).unwrap();
         out
     })
+}
+
+fn decode_hex(text: &str) -> Vec<u8> {
+    text.as_bytes()
+        .chunks_exact(2)
+        .map(|pair| u8::from_str_radix(std::str::from_utf8(pair).unwrap(), 16).unwrap())
+        .collect()
 }
 
 fn digest_payload_texts(state: &EngineState) -> Vec<String> {
@@ -351,4 +362,7 @@ include!("tests/validation.rs");
 include!("tests/continuation.rs");
 include!("tests/knowledge_identity.rs");
 include!("tests/lifecycle.rs");
+include!("tests/batch_d.rs");
+include!("tests/batch_e.rs");
 include!("tests/zones_allocators.rs");
+include!("tests/batch_f.rs");

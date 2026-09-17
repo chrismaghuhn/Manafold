@@ -57,12 +57,16 @@ mod tests {
         DecisionAnswerV2, DecisionResponseV2, PlayerDecisionRequestV2, DECISION_RESPONSE_V2_SCHEMA,
     };
     use mtgml_environment::{
-        EnvironmentCheckpointV3, PlayerEndpoint, PlayerEndpointHandle, TrustedEnvironmentController,
+        EnvironmentCheckpointV4, PlayerEndpoint, PlayerEndpointHandle, TrustedEnvironmentController,
     };
     use mtgml_model::{
-        CandidateIdV1, EpisodeStatus, PlayerDecisionIdV1, PlayerId, StateRevision, TerminalReason,
+        CandidateIdV1, EpisodeStatus, PlayerDecisionIdV1, PlayerId, PlayerOutcome, PlayerResult,
+        StateRevision, TerminalReason,
     };
-    use mtgml_observation::PlayerStepSubmissionV1;
+    use mtgml_observation::{
+        PlayerInformationStateV2, PlayerStepSubmissionV1, PlayerStepV2, PlayerSubmissionCodeV1,
+        PLAYER_STEP_SCHEMA_V2,
+    };
     use mtgml_state::validate_engine_state;
 
     const P1: PlayerId = PlayerId(1);
@@ -94,7 +98,7 @@ mod tests {
         name: &'static str,
         stage: Stage,
         actor_index: usize,
-        expected_code: &'static str,
+        expected_code: PlayerSubmissionCodeV1,
         response: fn(Option<&PlayerDecisionRequestV2>) -> Result<DecisionResponseV2, HarnessError>,
     }
 
@@ -103,42 +107,42 @@ mod tests {
             name: "stale_player_decision_id",
             stage: Stage::Entry,
             actor_index: 0,
-            expected_code: "stale_decision",
+            expected_code: PlayerSubmissionCodeV1::StaleDecision,
             response: stale_player_decision_id,
         },
         SemanticCase {
             name: "stale_state_revision",
             stage: Stage::Entry,
             actor_index: 0,
-            expected_code: "stale_decision",
+            expected_code: PlayerSubmissionCodeV1::StaleDecision,
             response: stale_state_revision,
         },
         SemanticCase {
             name: "unknown_candidate_id",
             stage: Stage::Entry,
             actor_index: 0,
-            expected_code: "invalid_candidate",
+            expected_code: PlayerSubmissionCodeV1::InvalidCandidate,
             response: unknown_candidate_id,
         },
         SemanticCase {
             name: "duplicate_selectmany_member",
             stage: Stage::Members,
             actor_index: 0,
-            expected_code: "duplicate_assignment",
+            expected_code: PlayerSubmissionCodeV1::DuplicateAssignment,
             response: duplicate_selectmany_member,
         },
         SemanticCase {
             name: "choosemany_noncanonical_ordering",
             stage: Stage::Members,
             actor_index: 0,
-            expected_code: "invalid_order",
+            expected_code: PlayerSubmissionCodeV1::InvalidOrder,
             response: choosemany_noncanonical_ordering,
         },
         SemanticCase {
             name: "choosemany_cardinality_below_min",
             stage: Stage::Members,
             actor_index: 0,
-            expected_code: "invalid_cardinality",
+            expected_code: PlayerSubmissionCodeV1::InvalidCardinality,
             response: choosemany_cardinality_below_min,
         },
         SemanticCase {
@@ -148,63 +152,63 @@ mod tests {
             // Membership precedes cardinality, so the maximum-exceeding
             // shape classifies as invalid_candidate; fabricating an
             // invalid_cardinality outcome is impossible on any live request.
-            expected_code: "invalid_candidate",
+            expected_code: PlayerSubmissionCodeV1::InvalidCandidate,
             response: choosemany_cardinality_above_max,
         },
         SemanticCase {
             name: "choosenumber_below_min",
             stage: Stage::Count,
             actor_index: 0,
-            expected_code: "invalid_number",
+            expected_code: PlayerSubmissionCodeV1::InvalidNumber,
             response: choosenumber_below_min,
         },
         SemanticCase {
             name: "choosenumber_above_max",
             stage: Stage::Count,
             actor_index: 0,
-            expected_code: "invalid_number",
+            expected_code: PlayerSubmissionCodeV1::InvalidNumber,
             response: choosenumber_above_max,
         },
         SemanticCase {
             name: "order_duplicate_member",
             stage: Stage::Order,
             actor_index: 0,
-            expected_code: "duplicate_assignment",
+            expected_code: PlayerSubmissionCodeV1::DuplicateAssignment,
             response: order_duplicate_member,
         },
         SemanticCase {
             name: "order_invalid_member",
             stage: Stage::Order,
             actor_index: 0,
-            expected_code: "invalid_candidate",
+            expected_code: PlayerSubmissionCodeV1::InvalidCandidate,
             response: order_invalid_member,
         },
         SemanticCase {
             name: "wrong_answer_union_variant",
             stage: Stage::Entry,
             actor_index: 0,
-            expected_code: "invalid_answer",
+            expected_code: PlayerSubmissionCodeV1::InvalidAnswer,
             response: wrong_answer_union_variant,
         },
         SemanticCase {
             name: "episode_closed_terminal",
             stage: Stage::CompletedTerminal,
             actor_index: 0,
-            expected_code: "episode_closed",
+            expected_code: PlayerSubmissionCodeV1::EpisodeClosed,
             response: plausible,
         },
         SemanticCase {
             name: "unavailable_foreign_actor",
             stage: Stage::Entry,
             actor_index: 1,
-            expected_code: "unavailable_decision",
+            expected_code: PlayerSubmissionCodeV1::UnavailableDecision,
             response: plausible,
         },
         SemanticCase {
             name: "unavailable_requestless_instant",
             stage: Stage::Requestless,
             actor_index: 0,
-            expected_code: "unavailable_decision",
+            expected_code: PlayerSubmissionCodeV1::UnavailableDecision,
             response: plausible,
         },
     ];
@@ -221,6 +225,50 @@ mod tests {
             answer: DecisionAnswerV2::SelectOne {
                 candidate_id: CandidateIdV1(0),
             },
+        }
+    }
+
+    fn expected_rejected_step(
+        pre_information: PlayerInformationStateV2,
+        pre_decision: Option<PlayerDecisionRequestV2>,
+        pre_status: EpisodeStatus,
+        expected_code: PlayerSubmissionCodeV1,
+    ) -> PlayerStepV2 {
+        let next_decision = match expected_code {
+            PlayerSubmissionCodeV1::StaleDecision
+            | PlayerSubmissionCodeV1::InvalidAnswer
+            | PlayerSubmissionCodeV1::InvalidCandidate
+            | PlayerSubmissionCodeV1::DuplicateAssignment
+            | PlayerSubmissionCodeV1::InvalidCardinality
+            | PlayerSubmissionCodeV1::InvalidNumber
+            | PlayerSubmissionCodeV1::InvalidOrder => pre_decision,
+            PlayerSubmissionCodeV1::UnavailableDecision | PlayerSubmissionCodeV1::EpisodeClosed => {
+                None
+            }
+        };
+        PlayerStepV2 {
+            schema_version: PLAYER_STEP_SCHEMA_V2.into(),
+            information_state: pre_information,
+            observed_events: Vec::new(),
+            next_decision,
+            status: pre_status,
+            submission: PlayerStepSubmissionV1::Rejected {
+                code: expected_code,
+            },
+        }
+    }
+
+    fn submission_code_string(code: PlayerSubmissionCodeV1) -> &'static str {
+        match code {
+            PlayerSubmissionCodeV1::StaleDecision => "stale_decision",
+            PlayerSubmissionCodeV1::UnavailableDecision => "unavailable_decision",
+            PlayerSubmissionCodeV1::InvalidAnswer => "invalid_answer",
+            PlayerSubmissionCodeV1::InvalidCandidate => "invalid_candidate",
+            PlayerSubmissionCodeV1::DuplicateAssignment => "duplicate_assignment",
+            PlayerSubmissionCodeV1::InvalidCardinality => "invalid_cardinality",
+            PlayerSubmissionCodeV1::InvalidNumber => "invalid_number",
+            PlayerSubmissionCodeV1::InvalidOrder => "invalid_order",
+            PlayerSubmissionCodeV1::EpisodeClosed => "episode_closed",
         }
     }
 
@@ -496,11 +544,20 @@ mod tests {
         let completed = controller
             .checkpoint()
             .map_err(|_| HarnessError::ControllerService)?;
-        let terminal = EnvironmentCheckpointV3::new(
+        let terminal = EnvironmentCheckpointV4::new(
             completed.state.clone(),
             EpisodeStatus::Terminal {
                 reason: TerminalReason::Concession,
-                players: Vec::new(),
+                players: vec![
+                    PlayerOutcome {
+                        player: P1,
+                        result: PlayerResult::Win,
+                    },
+                    PlayerOutcome {
+                        player: P2,
+                        result: PlayerResult::Loss,
+                    },
+                ],
             },
             completed.limit_counters.clone(),
             completed.codec.clone(),
@@ -577,7 +634,7 @@ mod tests {
 
             assert_eq!(
                 product.semantic_submission_code.as_deref(),
-                Some(case.expected_code),
+                Some(submission_code_string(case.expected_code)),
                 "row {} closed submission code",
                 case.name
             );
@@ -587,6 +644,54 @@ mod tests {
                 case.name
             );
 
+            let after = capture_complete(&controller, &endpoints)?;
+            assert_fingerprint_policies(&before, &after, FingerprintComparison::All)
+                .unwrap_or_else(|error| {
+                    panic!("row {} mutated the environment: {error:?}", case.name)
+                });
+        }
+        Ok(())
+    }
+
+    /// Rebuilds the complete rejected PlayerStep from pre-submission state
+    /// and compares it field-for-field with the real endpoint product.
+    #[test]
+    fn semantic_matrix_returns_the_independent_complete_rejected_product(
+    ) -> Result<(), HarnessError> {
+        for case in SEMANTIC_CASES {
+            let (controller, endpoints) = spawn_at(case.stage)?;
+            let actor = &endpoints[case.actor_index];
+            let before_checkpoint = controller
+                .checkpoint()
+                .map_err(|_| HarnessError::ControllerService)?;
+            let before = capture_complete(&controller, &endpoints)?;
+            let pre_information = actor
+                .information_state()
+                .map_err(|_| HarnessError::EndpointService)?;
+            let pre_decision = actor
+                .visible_decision()
+                .map_err(|_| HarnessError::EndpointService)?;
+            let expected = expected_rejected_step(
+                pre_information,
+                pre_decision.clone(),
+                before_checkpoint.status.clone(),
+                case.expected_code,
+            );
+            let response = (case.response)(pre_decision.as_ref())?;
+            let actual = actor
+                .submit(response)
+                .map_err(|_| HarnessError::EndpointService)?;
+            assert_eq!(
+                actual, expected,
+                "row {} complete rejected product",
+                case.name
+            );
+            assert_eq!(
+                actual.observed_events,
+                Vec::new(),
+                "row {} rejected products have no observed events",
+                case.name
+            );
             let after = capture_complete(&controller, &endpoints)?;
             assert_fingerprint_policies(&before, &after, FingerprintComparison::All)
                 .unwrap_or_else(|error| {

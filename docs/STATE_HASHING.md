@@ -403,7 +403,18 @@ private_group
 
 ```text
 [zone_key, object_ids_in_semantic_zone_order]
+
 ```
+
+ADR 0049 does not change this V3 layout. It defines the vector as
+the authoritative semantic order and requires every live ordered location to
+use the canonical redundant witness Top { offset }, with vector index zero as
+top and offset equal to the vector ordinal. Bottom and Index remain
+wire-representable enum variants but are rejected in the current canonical
+EngineState. Empty ordered-zone entries are invalid. Persisted retained
+ordered locations also use Top; historical offsets are not compared with a
+current vector. This is a fail-closed validation refinement, not a digest-domain
+or schema change.
 
 `zone_key`:
 
@@ -633,6 +644,15 @@ A known-location fact is:
 
 Historical facts preserve semantic history order.
 
+ADR 0049 further requires the chronology of acquisition, retained
+location facts, and invalidation to be coherent. Acquisition may be
+InitialConfiguration or Observed; an observed location may equal observed
+acquisition only when its complete provenance is identical to the
+Acquire-created fact. Later locations are strictly newer, observed history
+allows gaps, and retired invalidation is strictly later than all retained
+observed facts. These checks do not alter the knowledge_v2 bytes or digest
+domain.
+
 A retired record is:
 
 ```text
@@ -782,7 +802,7 @@ Canonical payload:
 player outcome = [player_id, player_result]
 ```
 
-`player_outcomes` is semantically keyed by player and is encoded sorted by `PlayerId`, duplicate-free. Stable strings are exactly:
+`player_outcomes` is semantically keyed by player and is encoded sorted by `PlayerId`, duplicate-free. The checkpoint digest helper retains this defensive canonical sort when it encodes a supplied status. V3-authoritative checkpoint and replay boundaries must reject a noncanonical outcome order before accepting the status as authoritative; the shared `EpisodeStatus` model validator does not acquire a new global ordering rule from this V3 boundary requirement. Stable strings are exactly:
 
 ```text
 terminal_reason = rules_loss | concession | simultaneous_outcome | rules_draw | specified_loop

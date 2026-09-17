@@ -43,7 +43,7 @@ M2.B does not include:
 - the Python semantic environment adapter;
 - production Python/native transport;
 - semantic action keys or trajectory encoding;
-- real Magic rules, cards, decks, Commander behavior, M2.5, or M3 work;
+- real Magic rules, cards, decks, Commander behavior, future capability work, or M3 work;
 - final M2 closure tooling.
 
 These exclusions are acceptance criteria, not deferred implementation notes. Any implementation that requires one of them must fail closed and remain outside this issue.

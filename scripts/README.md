@@ -22,14 +22,46 @@ Generated logs and status reports must not be written into the archived source s
 The verification runner marks directories it owns and refuses to replace an existing unmarked output directory.
 
 - `generate_contracts.py` — single-source generation/check for mechanical Rust/Python/schema vocabulary;
-- `authority_source_resolver.py` — rules-neutral, byte-first repository/REV3 source, locator, candidate, and source-instance resolution;
-- `authority_validator.py` — fail-closed validation of the persisted M2.5.C authority graph;
-- `authority_host_binding.py` — source-bound, rules-neutral correlated REV3/B2 host-realization resolution;
-- `authority_v2_validator.py` — V2 host-binding closure around an exact V1 authority graph;
-- `build_m2_5_c_authority_review_worklist.py` — deterministic, non-authoritative M2.5.C review worklist generation;
-- `scaffold_m2_5_c_authority_review.py` — quarantined single-candidate review proposal scaffolding;
-- `build_m2_5_c_canary_review_packet.py` — single-candidate source inventory and human-review worksheet packet;
 - `run_checks.py` — fast (Smoke), integration (Smoke + Full), and certification
   maintainer profiles;
+- `failure_packet.py` — internal trusted packet validation, source identities,
+  checksums, atomic writes, and safe summaries;
+- `capture_failure.py` — opt-in bounded command capture with `shell=False`;
+  `CAPTURE_PASS` creates no packet, `CAPTURE_COMMAND_EXIT` preserves a
+  nonzero exit in trusted evidence, `CAPTURE_TIMEOUT` records
+  `COMMAND_TIMEOUT`, and unsafe or unavailable preconditions return
+  `CAPTURE_BLOCKED`;
+- `rerun_failure.py` — opt-in exact-head packet rerun with commit/tree/source
+  fingerprint checks and `REPRODUCED`, `NOT_REPRODUCED`, or `BLOCKED` status;
+- `run_dependency_audit.py` — explicit, bounded RustSec/PyPA dependency audits;
 - `bootstrap.py` — prepares `.venv` only and never mutates contracts or lockfiles;
 - `validate_golden_path.py` — verifies the synthetic vertical path fails closed at certification;
+
+The failure-reproducer scripts are maintainer-only and are never invoked by
+`run_checks.py`. The default generated packet location is
+`dist/failures/`, owned by `.mtgml-failure-output`; an existing unowned root is
+rejected. Packet logs are trusted local evidence, not public CI output,
+player diagnostics, ML fields, replay/checkpoint authority, or semantic
+fixtures. `command.argv` is the only executable argument list,
+`command.cwd` is repository-relative, and any display rerun command is
+informational only.
+
+The explicit opt-in T0 failure witness (an ignored Rust test that runs a
+real digest-mismatch T0 case, prints exactly one closed `T0_FAILURE_CONTEXT`
+line plus exactly one `MANAFOLD_FAILURE_SIGNATURE`, and exits nonzero) is
+captured and reproduced outside the source tree with:
+
+```text
+<project-python> scripts/capture_failure.py \
+  --case-id synthetic-entry-digest-mismatch \
+  --output-root <outside-source-or-dist/failures> \
+  -- cargo +1.85.1 test --package mtgml-conformance --locked \
+  t0_failure_witness_capture -- --ignored --nocapture
+
+<project-python> scripts/rerun_failure.py <packet>
+```
+
+A declared `--case-id` that disagrees with the emitted T0 context is
+blocked without a packet. Rerun requires exact T0 context equality
+(case, step, diagnostic, authority, kernel, expected/actual digest
+identities) in addition to the existing signature and exit checks.

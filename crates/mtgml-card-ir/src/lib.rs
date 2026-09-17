@@ -1,8 +1,8 @@
 //! Experimental card-IR vocabulary.
 //!
 //! ADR-0004 fixes the direction—typed, inspectable, serializable IR—but **not**
-//! these concrete variants. The vocabulary remains unstable until M2.5 locks
-//! the first exact deck closure.
+//! these concrete variants. The vocabulary remains unstable until an explicit
+//! reviewed scope locks the first exact deck closure.
 
 use mtgml_model::CardDefinitionId;
 use serde::{Deserialize, Serialize};
