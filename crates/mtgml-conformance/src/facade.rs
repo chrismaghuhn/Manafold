@@ -78,11 +78,12 @@
 //!
 //! ```text
 //! EXPECTED_VALUES_ARE_LITERAL  expectations are authored data transcribed
-//!                              from accepted evidence and independently
-//!                              recomputed RNG golden vectors, never derived
-//!                              from actual output at runtime (no
-//!                              expected_state = actual_state.clone(), no
-//!                              expected_digest = digest(actual_state))
+//!                              from accepted evidence; RNG golden vectors are
+//!                              independently verified against mtgml.rng.v1;
+//!                              state digests are execution-verified (the
+//!                              expectation is literal, but its provenance is
+//!                              the authoritative kernel transition, not an
+//!                              independent state constructor)
 //! EXECUTION_IS_REQUIRED        a case without run_case against the real
 //!                              kernel is not conformance evidence; data
 //!                              shapes alone satisfy nothing
@@ -1036,43 +1037,47 @@ mod t0_01_red_contract {
     }
 
     #[test]
-    fn oracle_proof_rng_and_state_independent_derivation() {
-        use mtgml_random::{RandomStreamCursorV1, RootSeed256};
+    fn rng_golden_matches_independently_verified_mtgml_rng_v1() {
         use mtgml_random::sampling::uniform_below_u64;
+        use mtgml_random::{RandomStreamCursorV1, RootSeed256};
 
-        let root_seed = RootSeed256::from_lower_hex(SEED_HEX_A)
-            .expect("valid hex root seed");
+        let root_seed = RootSeed256::from_lower_hex(SEED_HEX_A).expect("valid hex root seed");
         let stream_key = synthetic_stream();
         let cursor = RandomStreamCursorV1::default();
 
         let bound: u64 = 10;
         let threshold = ((1u128 << 64) % (bound as u128)) as u64;
-        assert_eq!(threshold, 6, "mtgml.rng.v1: threshold for bound=10 is exactly 6");
+        assert_eq!(
+            threshold, 6,
+            "mtgml.rng.v1: threshold for bound=10 is exactly 6"
+        );
 
         let (rng_value, raw_words_consumed, cursor_after) =
             uniform_below_u64(&root_seed, &stream_key, &cursor, bound)
-                .expect("independent RNG derivation");
+                .expect("RNG derivation per mtgml.rng.v1");
 
-        assert_eq!(rng_value, 2, "independently derived RNG value for bound 10 must be 2");
+        assert_eq!(rng_value, 2, "RNG golden value for bound 10 must be 2");
         assert_eq!(raw_words_consumed, 1, "exactly one raw word consumed");
         assert_eq!(cursor_after.next_raw_u64, 1, "cursor advanced to 1");
+    }
 
-        let state = base_pair_state(SEED_HEX_A).expect("oracle base state");
+    #[test]
+    fn state_digest_golden_matches_execution_verified_transition() {
+        let state = base_pair_state(SEED_HEX_A).expect("base state");
         let config = crate::isolation::synthetic_environment_config([P1, P2]);
         let (controller, endpoints) =
-            spawn_environment(state, &config).expect("oracle environment spawned");
+            spawn_environment(state, &config).expect("environment spawned");
 
         let case = witness_a_case();
-        run_case(&case, &controller, &endpoints)
-            .expect("oracle transition must execute successfully");
+        run_case(&case, &controller, &endpoints).expect("witness case must execute successfully");
 
-        let after = controller.checkpoint().expect("oracle checkpoint");
+        let after = controller.checkpoint().expect("checkpoint");
         let observed_digest = after.state_digest;
         let authored_digest = entry_expected_state_digest();
 
         assert_eq!(
             observed_digest, authored_digest,
-            "state digest after oracle case execution must equal independently authored expectation"
+            "state digest after execution must equal authored golden expectation"
         );
     }
 
