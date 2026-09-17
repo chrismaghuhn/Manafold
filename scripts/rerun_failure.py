@@ -177,16 +177,11 @@ def _t0_context_difference(
         raise failure_packet.FailurePacketError(
             "rerun did not emit the required T0 failure context"
         )
-    differing = sorted(
-        field for field in recorded if recorded[field] != actual.get(field)
-    )
+    differing = sorted(field for field in recorded if recorded[field] != actual.get(field))
     if differing:
-        return (
-            "T0 failure context differs: "
-            + ", ".join(
-                f"{field} expected {recorded[field]!r}, got {actual.get(field)!r}"
-                for field in differing
-            )
+        return "T0 failure context differs: " + ", ".join(
+            f"{field} expected {recorded[field]!r}, got {actual.get(field)!r}"
+            for field in differing
         )
     return None
 

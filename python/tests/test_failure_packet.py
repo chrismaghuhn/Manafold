@@ -1203,18 +1203,12 @@ class T0FailureContextTests(unittest.TestCase):
         )
 
     @classmethod
-    def witness_command(
-        cls, *, context: str | None = None, exit_status: int = 1
-    ) -> list[str]:
+    def witness_command(cls, *, context: str | None = None, exit_status: int = 1) -> list[str]:
         lines = context if context is not None else cls.CONTEXT
         return [
             sys.executable,
             "-c",
-            (
-                f"print({lines!r}); "
-                f"print({cls.SIGNATURE!r}); "
-                f"raise SystemExit({exit_status})"
-            ),
+            (f"print({lines!r}); print({cls.SIGNATURE!r}); raise SystemExit({exit_status})"),
         ]
 
     def test_t0_context_parses_valid_line(self) -> None:
@@ -1316,17 +1310,11 @@ class T0FailureContextTests(unittest.TestCase):
     def test_t0_context_disagreeing_with_signature_is_blocked(self) -> None:
         import capture_failure
 
-        drifted_signature = self.SIGNATURE.replace(
-            "surface=state_digest", "surface=events"
-        )
+        drifted_signature = self.SIGNATURE.replace("surface=state_digest", "surface=events")
         command = [
             sys.executable,
             "-c",
-            (
-                f"print({self.CONTEXT!r}); "
-                f"print({drifted_signature!r}); "
-                "raise SystemExit(1)"
-            ),
+            (f"print({self.CONTEXT!r}); print({drifted_signature!r}); raise SystemExit(1)"),
         ]
         with tempfile.TemporaryDirectory() as temporary:
             result = capture_failure.capture(
@@ -1360,9 +1348,7 @@ class T0FailureContextTests(unittest.TestCase):
                 returncode=1,
                 stdout=(self.CONTEXT + "\n" + self.SIGNATURE + "\n").encode(),
             )
-            with mock.patch.object(
-                rerun_failure, "run_bounded", return_value=outcome
-            ):
+            with mock.patch.object(rerun_failure, "run_bounded", return_value=outcome):
                 result = rerun_failure.rerun(
                     captured.packet,
                     repository_root=repository_root,
@@ -1395,9 +1381,7 @@ class T0FailureContextTests(unittest.TestCase):
                 returncode=1,
                 stdout=(drifted + "\n" + self.SIGNATURE + "\n").encode(),
             )
-            with mock.patch.object(
-                rerun_failure, "run_bounded", return_value=outcome
-            ):
+            with mock.patch.object(rerun_failure, "run_bounded", return_value=outcome):
                 result = rerun_failure.rerun(
                     captured.packet,
                     repository_root=repository_root,
@@ -1426,9 +1410,7 @@ class T0FailureContextTests(unittest.TestCase):
                 returncode=1,
                 stdout=(self.SIGNATURE + "\n").encode(),
             )
-            with mock.patch.object(
-                rerun_failure, "run_bounded", return_value=outcome
-            ):
+            with mock.patch.object(rerun_failure, "run_bounded", return_value=outcome):
                 result = rerun_failure.rerun(
                     captured.packet,
                     repository_root=repository_root,
