@@ -107,7 +107,6 @@ P0_MERGE_COMMIT = 20dac927027776ef5f0a5b389a27d4a05eefb180
 P0_EXACT_HEAD_REVIEW = APPROVE
 P0_COMPLETE = YES
 P0_FROZEN = YES
-M3_S1 = rules/turn-structure@0.1.0 SELECTED
 T0_AUTHORIZED = YES
 T0_STARTED = YES
 T0_01 = COMPLETE / MERGED (PR #189, merge acdde953b133dae94a4641c429f4f3d352b34838)
@@ -122,9 +121,27 @@ b9c5f2be97b8fc1f31d648d58f890de78f0a035c
 T0_COMPLETE = YES
 T0_FROZEN = YES
 T0_FREEZE_EXECUTED = YES
-S1_IMPLEMENTATION = NOT_AUTHORIZED
+M3_S1 = rules/turn-structure@0.1.0
+M3_S1_AUTHORIZATION_REVIEW = APPROVE
+S1_AUTHORIZATION_HEAD =
+587016574e4e8f9f797a713877f8caf1c5143cfb
 S1_AUTHORIZATION_ELIGIBLE = YES
-NEXT_GATE = M3_S1_AUTHORIZATION_DECISION
+S1_AUTHORIZED = YES
+S1_IMPLEMENTATION_AUTHORIZED = YES
+S1_STARTED = NO
+S1_IMPLEMENTATION_STARTED = NO
+AUTHORIZED_NEXT_TASK = M3.S1
+S1_DEPENDENCIES = NONE
+S1_PRIMARY_SEMANTIC_OWNER = turn
+S1_SUPPORT_PREDICATE_REQUIRES_EXACTLY_TWO_PLAYERS = YES
+DOWNSTREAM_CAPABILITIES_AUTHORIZED = NO
+S1_ZONE_TRANSITIONS_AUTHORIZED = NO
+S1_ZONE_LOCATION_MUTATION_AUTHORIZED = NO
+S1_OBJECT_INCARNATION_CHANGE_AUTHORIZED = NO
+S1_PHYSICAL_CARD_IDENTITY_CHANGE_AUTHORIZED = NO
+S1_ALLOWED_ZONES_OWNED_MUTATION = bounded untap tapped-field mutation only
+S1_REVIEW_MINORS = 3 CARRIED
+NEXT_GATE = M3_S1_IMPLEMENTATION_SLICE_01
 ```
 
 `M2.5 = NOT_CLAIMED / NOT_FROZEN`. Its abandoned census and research
@@ -143,8 +160,12 @@ reauthorized under Issue #178 and implemented by merged PRs #189 (T0-01),
 #190 (T0-02A), and #191 (T0-02B); the exact-head closure review found the
 frozen T0 exit evidence complete, the repository status sync was exact-head
 reviewed, CI-green, and merged as PR #193, and Issue #178 finalized T0 as
-COMPLETE / FROZEN. The next governance step is the separate S1
-authorization decision; S1 implementation remains NOT_AUTHORIZED.
+COMPLETE / FROZEN. Issue #178 recorded an exact-master S1 authorization
+review APPROVE at `587016574e4e8f9f797a713877f8caf1c5143cfb`:
+`rules/turn-structure@0.1.0` is authorized for implementation; S1
+implementation has not started. Authorization advanced no capability
+lifecycle and creates no Magic support claim yet. All downstream
+capabilities remain unauthorized.
 
 M3 has started through semantic-neutral P0 infrastructure and T0
 conformance/proof infrastructure. P0 is complete/frozen; T0 is
@@ -153,8 +174,8 @@ Neither introduced a Magic capability, and no Foundation capability
 has yet advanced beyond `specified`. Census-driven scope research is outside this authoritative engine repository, and external census M3 authorization must not
 be treated as engine-semantic authorization. The accepted M3 Entry Decision
 and accepted hardening plan select `rules/turn-structure@0.1.0` as S1; S1
-remains selected and eligible for a separate authorization decision, but
-implementation remains NOT_AUTHORIZED. T0 was separately
+is now authorized for implementation (AUTHORIZED_NEXT_TASK = M3.S1) but
+implementation has not started. T0 was separately
 reauthorized under Issue #178 and has completed its
 implementation and executed freeze. No semantic
 implementation is implied by the accepted plan.
@@ -174,7 +195,8 @@ reauthorization was recorded separately under Issue #178.
 the sections below describe the
 execution model for the remaining slices. M3.P0 infrastructure is merged and
 frozen; M3.T0 is finalized COMPLETE / FROZEN (Issue #178); M3.S1 is
-`SELECTED / AUTHORIZATION-ELIGIBLE / NOT_AUTHORIZED`.
+`AUTHORIZED / NOT_STARTED` (authorized for implementation,
+implementation has not started).
 
 The planned execution order is:
 
