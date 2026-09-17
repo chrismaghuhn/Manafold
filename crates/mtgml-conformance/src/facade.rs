@@ -112,8 +112,8 @@ use std::collections::BTreeMap;
 
 use mtgml_decision::{AuthoritativeDecisionRequestV2, DecisionResponseV2, PlayerDecisionRequestV2};
 use mtgml_environment::{PlayerEndpoint, PlayerEndpointHandle, TrustedEnvironmentController};
-use mtgml_model::{EpisodeStatus, PlayerId, StateRevision};
-use mtgml_observation::{PlayerStepSubmissionV1, PlayerSubmissionCodeV1};
+use mtgml_model::PlayerId;
+use mtgml_observation::PlayerStepV2;
 use mtgml_rules::TransitionResult;
 
 use crate::{assert_exact_transition, ConformanceFailure, ConformanceStep};
@@ -173,15 +173,18 @@ pub struct ConformanceRejectionStepRef {
     pub expectation: PlayerBoundaryRejectionExpectation,
 }
 
-/// Narrowest composition for a rejected player-boundary step: the trusted
-/// kernel is untouched, so the expectation carries the closed rejection code,
-/// the preserved episode status and information-state revision, and the
-/// preserved visible decision.
+/// Narrowest composition for a rejected player-boundary step. The trusted
+/// kernel is untouched, so the returned product is the complete mirrored
+/// `PlayerStepV2` (submission outcome, episode status, information state
+/// including its digest, observed events, and next visible decision) plus the
+/// separately re-read preserved visible decision. Binding the WHOLE step is
+/// intentional: checking only the closed rejection code would miss a
+/// `next_decision` / information-state / observed-event regression on the
+/// rejected path, exactly the invariant the accepted path already binds via
+/// `expected_player_steps`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PlayerBoundaryRejectionExpectation {
-    pub code: PlayerSubmissionCodeV1,
-    pub status: EpisodeStatus,
-    pub information_state_revision: StateRevision,
+    pub player_step: PlayerStepV2,
     pub preserved_visible_decision: Option<PlayerDecisionRequestV2>,
 }
 
@@ -291,7 +294,12 @@ fn run_transition(
         .map_err(infrastructure)?;
 
     // Parity: the shared endpoint-mutated instant must equal the trusted
-    // fork's product exactly, state and full-state digest included.
+    // fork's product exactly. The complete `EnvironmentCheckpointV4` binds
+    // authoritative state, full-state digest, episode status, limit counters,
+    // codec identity, and checkpoint digest; the authoritative replay
+    // products bind the recorded transition and the terminal identity. The
+    // trusted fork is a fresh segment anchored at the identical starting
+    // checkpoint, so its recorder holds exactly this one step.
     let after = controller.checkpoint().map_err(infrastructure)?;
     let trusted_digest = trusted
         .next_state
@@ -299,13 +307,41 @@ fn run_transition(
         .map_err(|_| ConformanceFailure::Contract("trusted next-state digest failed".into()))?;
     if after.state != trusted.next_state || after.state_digest != trusted_digest {
         return Err(ConformanceFailure::Contract(
-            "trusted fork and real player endpoint diverged (parity)".into(),
+            "trusted fork and real player endpoint diverged (state parity)".into(),
         ));
     }
     let fork_after = fork.checkpoint().map_err(infrastructure)?;
-    if fork_after.limit_counters != after.limit_counters {
+    if fork_after != after {
         return Err(ConformanceFailure::Contract(
-            "trusted fork and real player endpoint diverged (counter parity)".into(),
+            "trusted fork and real player endpoint diverged (checkpoint parity)".into(),
+        ));
+    }
+    let fork_replay = fork.export_replay().map_err(infrastructure)?;
+    let main_replay = controller.export_replay().map_err(infrastructure)?;
+    if fork_replay.steps.len() != 1 {
+        return Err(ConformanceFailure::Contract(
+            "trusted fork replay must hold exactly the one executed step".into(),
+        ));
+    }
+    let fork_step = &fork_replay.steps[0];
+    let Some(main_step) = main_replay.steps.last() else {
+        return Err(ConformanceFailure::Contract(
+            "shared environment replay is missing the executed step".into(),
+        ));
+    };
+    if fork_step.step_index != 0 || main_step.state_revision_before != before.state.revision {
+        return Err(ConformanceFailure::Contract(
+            "replay step identity is inconsistent with the step under test".into(),
+        ));
+    }
+    // The fork records the identical transition in its own segment, so only
+    // the segment-local step index may differ. Aligning it lets the whole
+    // `ReplayStepV4` be compared instead of hand-picked fields.
+    let mut aligned_fork_step = fork_step.clone();
+    aligned_fork_step.step_index = main_step.step_index;
+    if &aligned_fork_step != main_step || fork_replay.final_identity != main_replay.final_identity {
+        return Err(ConformanceFailure::Contract(
+            "trusted fork and real player endpoint diverged (replay parity)".into(),
         ));
     }
 
@@ -320,18 +356,18 @@ fn run_transition(
     )?;
 
     let actual_deltas = LimitCounterDeltas {
-        decisions_submitted: after
-            .limit_counters
-            .decisions_submitted
-            .saturating_sub(before.limit_counters.decisions_submitted),
-        accepted_transitions: after
-            .limit_counters
-            .accepted_transitions
-            .saturating_sub(before.limit_counters.accepted_transitions),
-        rule_events_emitted: after
-            .limit_counters
-            .rule_events_emitted
-            .saturating_sub(before.limit_counters.rule_events_emitted),
+        decisions_submitted: counter_delta(
+            after.limit_counters.decisions_submitted,
+            before.limit_counters.decisions_submitted,
+        )?,
+        accepted_transitions: counter_delta(
+            after.limit_counters.accepted_transitions,
+            before.limit_counters.accepted_transitions,
+        )?,
+        rule_events_emitted: counter_delta(
+            after.limit_counters.rule_events_emitted,
+            before.limit_counters.rule_events_emitted,
+        )?,
     };
     if actual_deltas != tr.expected_limit_counter_deltas {
         return Err(ConformanceFailure::Contract(format!(
@@ -347,6 +383,16 @@ fn run_transition(
     Ok(())
 }
 
+/// Fail-closed counter progression: a conformance step must never silently
+/// fold a counter regression into a legitimate-looking zero delta.
+fn counter_delta(after: u64, before: u64) -> Result<u64, ConformanceFailure> {
+    after.checked_sub(before).ok_or_else(|| {
+        ConformanceFailure::Contract(format!(
+            "environment limit counter regressed (before {before}, after {after})"
+        ))
+    })
+}
+
 fn run_rejection(
     rr: &ConformanceRejectionStepRef,
     controller: &TrustedEnvironmentController,
@@ -359,24 +405,9 @@ fn run_rejection(
     let step = endpoint
         .submit(rr.response.clone())
         .map_err(infrastructure)?;
-    let submitted_code = match step.submission {
-        PlayerStepSubmissionV1::Rejected { code } => Some(code),
-        PlayerStepSubmissionV1::Accepted => None,
-    };
-    if submitted_code != Some(rr.expectation.code) {
-        return Err(ConformanceFailure::Contract(format!(
-            "rejection code differed from the authored expectation (expected {:?})",
-            rr.expectation.code
-        )));
-    }
-    if step.status != rr.expectation.status {
+    if step != rr.expectation.player_step {
         return Err(ConformanceFailure::Contract(
-            "rejected-step episode status differed".into(),
-        ));
-    }
-    if step.information_state.state_revision != rr.expectation.information_state_revision {
-        return Err(ConformanceFailure::Contract(
-            "rejected-step information-state revision differed".into(),
+            "rejected PlayerStepV2 differed from the authored full product".into(),
         ));
     }
     let preserved = endpoint.visible_decision().map_err(infrastructure)?;
@@ -669,6 +700,22 @@ mod t0_01_red_contract {
         }
     }
 
+    fn entry_rejected_player_step_p1() -> PlayerStepV2 {
+        PlayerStepV2 {
+            schema_version: PLAYER_STEP_SCHEMA_V2.into(),
+            information_state: base_p1_information_state(
+                StateRevision(0),
+                "1709ad67928e88a80e8a4ea3d0ec2acfdabcdba954830249040d7689bd447eb0",
+            ),
+            observed_events: Vec::new(),
+            next_decision: Some(base_visible_decision()),
+            status: EpisodeStatus::Running,
+            submission: PlayerStepSubmissionV1::Rejected {
+                code: PlayerSubmissionCodeV1::StaleDecision,
+            },
+        }
+    }
+
     fn expected_player_steps_for_entry() -> BTreeMap<PlayerId, PlayerStepV2> {
         BTreeMap::from([(P1, entry_accepted_player_step_p1())])
     }
@@ -864,9 +911,7 @@ mod t0_01_red_contract {
                         },
                     },
                     expectation: PlayerBoundaryRejectionExpectation {
-                        code: PlayerSubmissionCodeV1::StaleDecision,
-                        status: EpisodeStatus::Running,
-                        information_state_revision: StateRevision(0),
+                        player_step: entry_rejected_player_step_p1(),
                         preserved_visible_decision: Some(base_visible_decision()),
                     },
                 },
