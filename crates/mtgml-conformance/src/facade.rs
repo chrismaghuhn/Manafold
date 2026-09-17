@@ -1132,9 +1132,13 @@ mod t0_01_red_contract {
         assert_eq!(before, after);
     }
 
-    #[test]
-    fn witness_c_multi_step_mismatch_reports_first_failing_step() {
-        let case = ConformanceCase {
+    /// The existing deliberate T0 mismatch fixture: two explicit steps
+    /// through the real environment, with the step-2 expectation corrupted
+    /// so the real comparator reports the first divergence. Shared by the
+    /// diagnostics test and the failure-packet witness without weakening
+    /// either.
+    fn witness_c_case() -> ConformanceCase {
+        ConformanceCase {
             name: "synthetic-assembly-two-explicit-steps",
             description: "ChooseOne then ChooseNumber; step-2 expectation deliberately wrong",
             steps: vec![
@@ -1167,7 +1171,12 @@ mod t0_01_red_contract {
                     },
                 })),
             ],
-        };
+        }
+    }
+
+    #[test]
+    fn witness_c_multi_step_mismatch_reports_first_failing_step() {
+        let case = witness_c_case();
 
         let state = base_pair_state(SEED_HEX_A).expect("accepted synthetic base state");
         let config = crate::isolation::synthetic_environment_config([P1, P2]);
@@ -1184,6 +1193,50 @@ mod t0_01_red_contract {
         assert_eq!(classification, ConformanceFailureClass::Events);
         let difference = failure.difference().expect("detailed difference");
         assert_eq!(difference.semantic_path, "transition.events[1]");
+    }
+
+    /// Explicit opt-in T0 failure-packet witness. Skipped by ordinary
+    /// `cargo test` runs (including CI); invoked directly for trusted
+    /// failure capture. It executes the real witness_c mismatch through the
+    /// real environment, prints exactly one existing failure signature plus
+    /// deterministic trusted context, flushes stdout, and exits nonzero.
+    /// The mismatch itself is genuine comparator output; only the process
+    /// exit is plumbing.
+    #[test]
+    #[ignore]
+    fn t0_failure_witness_capture() {
+        let case = witness_c_case();
+        let state = base_pair_state(SEED_HEX_A).expect("accepted synthetic base state");
+        let config = crate::isolation::synthetic_environment_config([P1, P2]);
+        let (controller, endpoints) =
+            spawn_environment(state, &config).expect("spawned trusted environment");
+        let diagnostic = run_case(&case, &controller, &endpoints)
+            .expect_err("witness case must mismatch for capture");
+        let difference = diagnostic.failure.difference().expect("first divergence");
+        let kernel = &controller.export_replay().expect("replay").manifest.kernel;
+        println!("T0_FAILURE_WITNESS v1 case={}", diagnostic.case);
+        println!(
+            "T0_CASE_STEP step={} index={}",
+            diagnostic.step_label,
+            diagnostic
+                .first_failing_step_index
+                .expect("failing step index")
+        );
+        println!("T0_COMPARATOR authority=mtgml_conformance::assert_exact_transition");
+        println!(
+            "T0_KERNEL kernel={} semantic={}",
+            kernel.implementation_id, kernel.semantic_version
+        );
+        println!("T0_EXPECTED_SUMMARY {}", difference.expected_summary);
+        println!("T0_ACTUAL_SUMMARY {}", difference.actual_summary);
+        println!(
+            "T0_STEP_STATE_DIGEST_GOLDEN={:?}",
+            count_expected_state_digest()
+        );
+        println!("{}", difference.signature_marker());
+        use std::io::Write as _;
+        std::io::stdout().flush().expect("flush witness output");
+        std::process::exit(1);
     }
 
     #[test]

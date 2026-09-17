@@ -45,3 +45,21 @@ player diagnostics, ML fields, replay/checkpoint authority, or semantic
 fixtures. `command.argv` is the only executable argument list,
 `command.cwd` is repository-relative, and any display rerun command is
 informational only.
+
+The explicit opt-in T0 failure witness (an ignored Rust test that runs a
+real mismatching T0 case, prints exactly one `MANAFOLD_FAILURE_SIGNATURE`
+plus a closed `T0_FAILURE_WITNESS` identity line, and exits nonzero) is
+captured and reproduced outside the source tree with:
+
+```text
+<project-python> scripts/capture_failure.py \
+  --case-id synthetic-assembly-two-explicit-steps \
+  --output-root <outside-source-or-dist/failures> \
+  -- cargo +1.85.1 test --package mtgml-conformance --locked \
+  t0_failure_witness_capture -- --ignored --nocapture
+
+<project-python> scripts/rerun_failure.py <packet>
+```
+
+A declared `--case-id` that disagrees with the emitted T0 witness identity
+is blocked without a packet.

@@ -1166,6 +1166,129 @@ class RerunFailureTests(unittest.TestCase):
         run_bounded.assert_not_called()
 
 
+class T0WitnessCaptureTests(unittest.TestCase):
+    """T0 failure-witness binding: the declared capture case id must match
+    the actual T0 witness identity emitted on the captured log."""
+
+    @staticmethod
+    def repository_root(temporary: str) -> Path:
+        repository_root = Path(temporary) / "repo"
+        repository_root.mkdir()
+        return repository_root
+
+    @staticmethod
+    def identity_provider() -> failure_packet.SourceIdentity:
+        return failure_packet.SourceIdentity(
+            commit="a" * 40,
+            tree="b" * 40,
+            fingerprint="c" * 64,
+            clean=True,
+        )
+
+    @staticmethod
+    def witness_command(*, case: str = "WITNESS_CASE", exit_status: int = 1) -> list[str]:
+        return [
+            sys.executable,
+            "-c",
+            (
+                f"print('T0_FAILURE_WITNESS v1 case={case}'); "
+                "print('MANAFOLD_FAILURE_SIGNATURE v1 surface=events "
+                "path=transition.events[1] mismatch_kind=value_changed'); "
+                f"raise SystemExit({exit_status})"
+            ),
+        ]
+
+    def test_t0_witness_marker_parses_valid_case(self) -> None:
+        marker = failure_packet.parse_t0_witness_marker(
+            b"T0_FAILURE_WITNESS v1 case=WITNESS_CASE\n"
+        )
+        self.assertEqual(marker, {"case": "WITNESS_CASE"})
+
+    def test_t0_witness_marker_absent_returns_none(self) -> None:
+        self.assertIsNone(failure_packet.parse_t0_witness_marker(b"no markers here\n"))
+
+    def test_t0_witness_marker_rejects_multiple_lines(self) -> None:
+        with self.assertRaises(failure_packet.FailurePacketError):
+            failure_packet.parse_t0_witness_marker(
+                b"T0_FAILURE_WITNESS v1 case=A\nT0_FAILURE_WITNESS v1 case=A\n"
+            )
+
+    def test_t0_witness_marker_rejects_malformed_line(self) -> None:
+        with self.assertRaises(failure_packet.FailurePacketError):
+            failure_packet.parse_t0_witness_marker(b"T0_FAILURE_WITNESS v1 nope\n")
+
+    def test_matching_witness_case_id_creates_packet(self) -> None:
+        import capture_failure
+
+        with tempfile.TemporaryDirectory() as temporary:
+            result = capture_failure.capture(
+                self.witness_command(case="WITNESS_CASE"),
+                case_id="WITNESS_CASE",
+                output_root=Path(temporary) / "output",
+                repository_root=self.repository_root(temporary),
+                source_identity_provider=self.identity_provider,
+            )
+            manifest = failure_packet.load_packet(result.packet)
+
+        self.assertEqual(result.status, failure_packet.CAPTURE_COMMAND_EXIT)
+        self.assertIsNotNone(result.packet)
+        self.assertEqual(
+            manifest["failure_signature"]["semantic_path"],
+            "transition.events[1]",
+        )
+
+    def test_mismatching_witness_case_id_is_blocked_without_packet(self) -> None:
+        import capture_failure
+
+        with tempfile.TemporaryDirectory() as temporary:
+            result = capture_failure.capture(
+                self.witness_command(case="ACTUAL_CASE"),
+                case_id="DECLARED_CASE",
+                output_root=Path(temporary) / "output",
+                repository_root=self.repository_root(temporary),
+                source_identity_provider=self.identity_provider,
+            )
+
+        self.assertEqual(result.status, failure_packet.CAPTURE_BLOCKED)
+        self.assertEqual(result.exit_code, 2)
+        self.assertIsNone(result.packet)
+
+    def test_rerun_reproduces_t0_witness_packet(self) -> None:
+        import capture_failure
+        import rerun_failure
+
+        with tempfile.TemporaryDirectory() as temporary:
+            repository_root = self.repository_root(temporary)
+            identity = self.identity_provider()
+            captured = capture_failure.capture(
+                self.witness_command(case="WITNESS_CASE"),
+                case_id="WITNESS_CASE",
+                output_root=Path(temporary) / "output",
+                repository_root=repository_root,
+                source_identity_provider=lambda: identity,
+            )
+            self.assertEqual(captured.status, failure_packet.CAPTURE_COMMAND_EXIT)
+            outcome = failure_packet.CommandOutcome(
+                returncode=1,
+                stdout=(
+                    b"T0_FAILURE_WITNESS v1 case=WITNESS_CASE\n"
+                    b"MANAFOLD_FAILURE_SIGNATURE v1 surface=events "
+                    b"path=transition.events[1] mismatch_kind=value_changed\n"
+                ),
+            )
+            with mock.patch.object(
+                rerun_failure, "run_bounded", return_value=outcome
+            ):
+                result = rerun_failure.rerun(
+                    captured.packet,
+                    repository_root=repository_root,
+                    source_identity_provider=lambda: identity,
+                )
+
+        self.assertEqual(result.status, failure_packet.RERUN_REPRODUCED)
+        self.assertEqual(result.exit_code, 0)
+
+
 if __name__ == "__main__":
     unittest.main()
 

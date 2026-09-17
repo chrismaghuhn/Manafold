@@ -71,6 +71,7 @@ _SIGNATURE_LINE_RE = re.compile(
     r"path=(?P<semantic_path>[A-Za-z0-9_.\[\]:-]+) "
     r"mismatch_kind=(?P<mismatch_kind>[a-z0-9_]+)$"
 )
+_T0_WITNESS_LINE_RE = re.compile(r"^T0_FAILURE_WITNESS v1 case=(?P<case>[A-Za-z0-9._-]+)$")
 _ALLOWED_TOP_LEVEL = {
     "format",
     "packet_id",
@@ -430,6 +431,29 @@ def validate_manifest(value: object, *, require_artifact: bool = True) -> dict[s
         **manifest,
         "packet_id": packet_id,
     }
+
+
+def parse_t0_witness_marker(output: str | bytes) -> dict[str, str] | None:
+    """Parse the closed T0 failure-witness identity marker, if present.
+
+    The marker binds captured output to the actual T0 witness that emitted
+    it; it carries no semantic verdict itself. Zero markers means a
+    non-T0 command (unchanged behavior); exactly one marker must be
+    well-formed with a valid case id; multiple or malformed markers fail
+    closed like signature markers do.
+    """
+    text = output.decode("utf-8", errors="replace") if isinstance(output, bytes) else output
+    lines = [line for line in text.splitlines() if line.startswith("T0_FAILURE_WITNESS")]
+    if not lines:
+        return None
+    if len(lines) != 1:
+        raise FailurePacketError("multiple T0 failure witness markers were emitted")
+    match = _T0_WITNESS_LINE_RE.fullmatch(lines[0])
+    if match is None:
+        raise FailurePacketError("malformed T0 failure witness marker")
+    marker = match.groupdict()
+    validate_case_id(marker["case"])
+    return marker
 
 
 def parse_signature_marker(output: str | bytes) -> dict[str, str] | None:

@@ -205,6 +205,15 @@ def capture(
         marker = failure_packet.parse_signature_marker(log)
     except failure_packet.FailurePacketError as error:
         return _blocked(str(error))
+    try:
+        witness = failure_packet.parse_t0_witness_marker(log)
+    except failure_packet.FailurePacketError as error:
+        return _blocked(str(error))
+    if witness is not None and witness["case"] != case_id:
+        return _blocked(
+            "declared case id does not match the T0 witness identity "
+            f"(declared {case_id!r}, witness {witness['case']!r})"
+        )
 
     if outcome.returncode == 0 and not outcome.timed_out:
         return CaptureResult(failure_packet.CAPTURE_PASS, 0)
