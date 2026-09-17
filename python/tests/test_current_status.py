@@ -16,10 +16,11 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
             r"\*\*Foundation closure/freeze:\*\* `COMPLETE`",
         )
         self.assertIn(
-            "**Current active work area:** M3 S1 authorization decision; T0 is COMPLETE / FROZEN",
+            "**Current active work area:** M3 S1 post-authorization repository status sync; "
+            "`rules/turn-structure@0.1.0` is authorized for implementation but has not started",
             readme,
         )
-        self.assertIn(
+        self.assertNotIn(
             "S1 implementation remains not authorized",
             readme,
         )
@@ -48,13 +49,16 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
         self.assertIn("`b9c5f2be97b8fc1f31d648d58f890de78f0a035c`", readme)
         self.assertNotIn("COMPLETE-CANDIDATE / FREEZE-ELIGIBLE", readme)
         self.assertNotIn("freeze not yet executed or tracked", readme)
-        self.assertIn("**M3.S1:** `SELECTED / AUTHORIZATION-ELIGIBLE / NOT_AUTHORIZED`", readme)
+        self.assertIn("**M3.S1:** `AUTHORIZED / NOT_STARTED`", readme)
+        self.assertIn("`587016574e4e8f9f797a713877f8caf1c5143cfb`", readme)
+        self.assertNotIn("SELECTED / AUTHORIZATION-ELIGIBLE / NOT_AUTHORIZED", readme)
         self.assertIn("**M3 semantic implementation:** `NOT_STARTED`", readme)
         self.assertIn("**M3 Pre-T0 hardening:** `COMPLETE / ACCEPTED`", readme)
         self.assertIn("ADR 0054 = ACCEPTED", readme)
         self.assertIn("FOUNDATION_V2 = ACCEPTED_HARDENED_M3_SCOPE", readme)
         self.assertIn("**M3 plan status:** `ACCEPTED`", readme)
-        self.assertIn("**Next gate:** `M3_S1_AUTHORIZATION_DECISION`", readme)
+        self.assertIn("**Next gate:** `M3_S1_IMPLEMENTATION_SLICE_01`", readme)
+        self.assertNotIn("M3_S1_AUTHORIZATION_DECISION", readme)
         self.assertNotIn("M3_T0_CLOSURE_STATUS_SYNC_EXACT_HEAD_REVIEW", readme)
         self.assertIn(
             "**M3 hardening acceptance:** PR #184 merged and accepted ADR 0054/Foundation V2",
@@ -76,7 +80,8 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
         self.assertNotIn("maintainer hardening under Issue #130", readme)
         self.assertNotIn("Batch A5/C1", readme)
         self.assertRegex(readme, r"M2\.5[^\n]*NOT_CLAIMED")
-        self.assertRegex(readme, r"M3[^\n]*NOT_AUTHORIZED")
+        self.assertRegex(readme, r"M3\.S1[^\n]*AUTHORIZED / NOT_STARTED")
+        self.assertNotIn("NOT_AUTHORIZED", readme)
         self.assertNotIn("M2 is not complete", readme)
 
     def test_current_entry_points_reference_status_owners_and_required_gates(self) -> None:
@@ -110,11 +115,28 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
         self.assertIn("M3_PLAN_STATUS = ACCEPTED", roadmap)
         self.assertIn("ADR_0054 = ACCEPTED", roadmap)
         self.assertIn("FOUNDATION_V2 = ACCEPTED", roadmap)
-        self.assertIn("M3_S1 = rules/turn-structure@0.1.0 SELECTED", roadmap)
+        self.assertIn("M3_S1 = rules/turn-structure@0.1.0", roadmap)
+        self.assertIn("M3_S1_AUTHORIZATION_REVIEW = APPROVE", roadmap)
+        self.assertIn(
+            "S1_AUTHORIZATION_HEAD =\n587016574e4e8f9f797a713877f8caf1c5143cfb",
+            roadmap,
+        )
         self.assertIn(
             "AUTHORIZATION_HEAD = ea668c47ef1361b3d989fd32b8f3cfd4751b1e79",
             roadmap,
         )
+        self.assertIn("S1_AUTHORIZATION_ELIGIBLE = YES", roadmap)
+        self.assertIn("S1_AUTHORIZED = YES", roadmap)
+        self.assertIn("S1_IMPLEMENTATION_AUTHORIZED = YES", roadmap)
+        self.assertIn("S1_STARTED = NO", roadmap)
+        self.assertIn("S1_IMPLEMENTATION_STARTED = NO", roadmap)
+        self.assertIn("AUTHORIZED_NEXT_TASK = M3.S1", roadmap)
+        self.assertIn("S1_REVIEW_MINORS = 3 CARRIED", roadmap)
+        self.assertNotIn("S1_IMPLEMENTATION = NOT_AUTHORIZED", roadmap)
+        self.assertNotIn("NEXT_GATE = M3_S1_AUTHORIZATION_DECISION", roadmap)
+        self.assertIn("NEXT_GATE = M3_S1_IMPLEMENTATION_SLICE_01", roadmap)
+        self.assertNotIn("eligible for a separate authorization decision", roadmap)
+        self.assertNotIn("S1 implementation remains NOT_AUTHORIZED", roadmap)
         self.assertIn(
             "AUTHORIZED_TASK_AT_AUTHORIZATION_HEAD = M3.P0_STATE_IDENTITY_CUT",
             roadmap,
@@ -149,9 +171,6 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
         self.assertNotIn("T0_COMPLETE_CANDIDATE = YES", roadmap)
         self.assertNotIn("T0_FREEZE_ELIGIBLE = YES", roadmap)
         self.assertNotIn("T0_FREEZE_EXECUTED = NO", roadmap)
-        self.assertIn("S1_IMPLEMENTATION = NOT_AUTHORIZED", roadmap)
-        self.assertIn("S1_AUTHORIZATION_ELIGIBLE = YES", roadmap)
-        self.assertIn("NEXT_GATE = M3_S1_AUTHORIZATION_DECISION", roadmap)
         self.assertNotIn("M3_T0_CLOSURE_STATUS_SYNC_EXACT_HEAD_REVIEW", roadmap)
         self.assertNotIn("tracker finalization remain as the pending", roadmap)
         self.assertNotIn("M3_PRE_T0_HARDENING = CANDIDATE", roadmap)
