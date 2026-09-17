@@ -283,7 +283,15 @@ fn run_transition(
         .map(|record| &record.request);
 
     // Trusted path on a deterministic fork of the SAME starting checkpoint.
+    // Explicitly bind: both legs start from identical authoritative state.
     let fork = controller.fork().map_err(infrastructure)?;
+    let fork_before = fork.checkpoint().map_err(infrastructure)?;
+    if fork_before != before {
+        return Err(ConformanceFailure::Contract(
+            "trusted fork must start from the identical checkpoint as the shared environment"
+                .into(),
+        ));
+    }
     let trusted: TransitionResult = fork
         .execute_trusted_response(actor, tr.step.response.clone())
         .map_err(infrastructure)?;
@@ -1025,6 +1033,47 @@ mod t0_01_red_contract {
         assert_eq!(classification, ConformanceFailureClass::Events);
         let difference = failure.difference().expect("detailed difference");
         assert_eq!(difference.semantic_path, "transition.events[1]");
+    }
+
+    #[test]
+    fn oracle_proof_rng_and_state_independent_derivation() {
+        use mtgml_random::{RandomStreamCursorV1, RootSeed256};
+        use mtgml_random::sampling::uniform_below_u64;
+
+        let root_seed = RootSeed256::from_lower_hex(SEED_HEX_A)
+            .expect("valid hex root seed");
+        let stream_key = synthetic_stream();
+        let cursor = RandomStreamCursorV1::default();
+
+        let bound: u64 = 10;
+        let threshold = ((1u128 << 64) % (bound as u128)) as u64;
+        assert_eq!(threshold, 6, "mtgml.rng.v1: threshold for bound=10 is exactly 6");
+
+        let (rng_value, raw_words_consumed, cursor_after) =
+            uniform_below_u64(&root_seed, &stream_key, &cursor, bound)
+                .expect("independent RNG derivation");
+
+        assert_eq!(rng_value, 2, "independently derived RNG value for bound 10 must be 2");
+        assert_eq!(raw_words_consumed, 1, "exactly one raw word consumed");
+        assert_eq!(cursor_after.next_raw_u64, 1, "cursor advanced to 1");
+
+        let state = base_pair_state(SEED_HEX_A).expect("oracle base state");
+        let config = crate::isolation::synthetic_environment_config([P1, P2]);
+        let (controller, endpoints) =
+            spawn_environment(state, &config).expect("oracle environment spawned");
+
+        let case = witness_a_case();
+        run_case(&case, &controller, &endpoints)
+            .expect("oracle transition must execute successfully");
+
+        let after = controller.checkpoint().expect("oracle checkpoint");
+        let observed_digest = after.state_digest;
+        let authored_digest = entry_expected_state_digest();
+
+        assert_eq!(
+            observed_digest, authored_digest,
+            "state digest after oracle case execution must equal independently authored expectation"
+        );
     }
 
     #[test]
