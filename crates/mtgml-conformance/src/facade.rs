@@ -80,10 +80,11 @@
 //! EXPECTED_VALUES_ARE_LITERAL  expectations are authored data transcribed
 //!                              from accepted evidence; RNG golden vectors are
 //!                              independently verified against mtgml.rng.v1;
-//!                              state digests are execution-verified (the
-//!                              expectation is literal, but its provenance is
-//!                              the authoritative kernel transition, not an
-//!                              independent state constructor)
+//!                              the witness-A expected post-transition state
+//!                              is independently constructed as a declarative
+//!                              fixture (base state plus literal postconditions)
+//!                              and its mechanical V4 digest must equal the
+//!                              authored golden before any kernel execution
 //! EXECUTION_IS_REQUIRED        a case without run_case against the real
 //!                              kernel is not conformance evidence; data
 //!                              shapes alone satisfy nothing
@@ -1059,6 +1060,85 @@ mod t0_01_red_contract {
         assert_eq!(rng_value, 2, "RNG golden value for bound 10 must be 2");
         assert_eq!(raw_words_consumed, 1, "exactly one raw word consumed");
         assert_eq!(cursor_after.next_raw_u64, 1, "cursor advanced to 1");
+    }
+
+    #[test]
+    fn state_digest_golden_matches_independently_constructed_expected_state() {
+        use mtgml_model::{ContinuationId, DecisionId, EffectInstanceId, PlayerDecisionIdV1};
+        use mtgml_random::RandomStreamCursorV1;
+        use mtgml_state::{
+            AssemblyStageV2, ContinuationPayloadV2, ContinuationRecordV2, PendingDecisionRecordV2,
+        };
+
+        let mut expected = base_pair_state(SEED_HEX_A).expect("base state").clone();
+
+        expected.revision = StateRevision(1);
+
+        expected.core.players.get_mut(&P1).expect("P1 exists").life = 38;
+
+        expected
+            .random
+            .set_cursor(
+                &synthetic_stream(),
+                RandomStreamCursorV1 { next_raw_u64: 1 },
+            )
+            .expect("RNG cursor set");
+
+        expected.allocators.next_effect_id = EffectInstanceId(2);
+        expected.allocators.next_decision_id = DecisionId(3);
+        expected.allocators.next_continuation_id = ContinuationId(2);
+        expected.allocators.next_rule_event_id = RuleEventId(6);
+
+        expected
+            .perspective_identities
+            .players
+            .get_mut(&P1)
+            .expect("P1 perspective exists")
+            .next_player_decision_id = PlayerDecisionIdV1(3);
+
+        expected.execution.pending_decision = Some(PendingDecisionRecordV2 {
+            request: next_authoritative_choose_number(),
+        });
+
+        expected.execution.continuations.insert(
+            ContinuationId(1),
+            ContinuationRecordV2 {
+                id: ContinuationId(1),
+                actor: P1,
+                created_at_revision: StateRevision(1),
+                stage_index: 0,
+                payload: ContinuationPayloadV2::SyntheticM2Assembly {
+                    stage: AssemblyStageV2::ChooseCount,
+                    selected_count: None,
+                    selected_piece_keys: Vec::new(),
+                    ordered_piece_keys: Vec::new(),
+                },
+            },
+        );
+
+        let expected_digest = expected.digest().expect("expected digest");
+        let authored_digest = entry_expected_state_digest();
+
+        assert_eq!(
+            expected_digest, authored_digest,
+            "independently constructed expected state digest must match authored golden"
+        );
+
+        let state = base_pair_state(SEED_HEX_A).expect("base state");
+        let config = crate::isolation::synthetic_environment_config([P1, P2]);
+        let (controller, endpoints) =
+            spawn_environment(state, &config).expect("environment spawned");
+
+        let case = witness_a_case();
+        run_case(&case, &controller, &endpoints).expect("witness case must execute successfully");
+
+        let after = controller.checkpoint().expect("checkpoint");
+        let actual_state = &after.state;
+
+        assert_eq!(
+            actual_state, &expected,
+            "actual transition result must equal independently constructed expected state"
+        );
     }
 
     #[test]
