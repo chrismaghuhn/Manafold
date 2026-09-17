@@ -1292,6 +1292,55 @@ class T0FailureContextTests(unittest.TestCase):
         self.assertEqual(result.exit_code, 2)
         self.assertIsNone(result.packet)
 
+    def test_t0_context_without_signature_is_blocked(self) -> None:
+        import capture_failure
+
+        command = [
+            sys.executable,
+            "-c",
+            f"print({self.CONTEXT!r}); raise SystemExit(1)",
+        ]
+        with tempfile.TemporaryDirectory() as temporary:
+            result = capture_failure.capture(
+                command,
+                case_id=self.CASE,
+                output_root=Path(temporary) / "output",
+                repository_root=self.repository_root(temporary),
+                source_identity_provider=self.identity_provider,
+            )
+
+        self.assertEqual(result.status, failure_packet.CAPTURE_BLOCKED)
+        self.assertEqual(result.exit_code, 2)
+        self.assertIsNone(result.packet)
+
+    def test_t0_context_disagreeing_with_signature_is_blocked(self) -> None:
+        import capture_failure
+
+        drifted_signature = self.SIGNATURE.replace(
+            "surface=state_digest", "surface=events"
+        )
+        command = [
+            sys.executable,
+            "-c",
+            (
+                f"print({self.CONTEXT!r}); "
+                f"print({drifted_signature!r}); "
+                "raise SystemExit(1)"
+            ),
+        ]
+        with tempfile.TemporaryDirectory() as temporary:
+            result = capture_failure.capture(
+                command,
+                case_id=self.CASE,
+                output_root=Path(temporary) / "output",
+                repository_root=self.repository_root(temporary),
+                source_identity_provider=self.identity_provider,
+            )
+
+        self.assertEqual(result.status, failure_packet.CAPTURE_BLOCKED)
+        self.assertEqual(result.exit_code, 2)
+        self.assertIsNone(result.packet)
+
     def test_rerun_reproduces_identical_t0_context(self) -> None:
         import capture_failure
         import rerun_failure

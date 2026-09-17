@@ -214,6 +214,23 @@ def capture(
             "declared case id does not match the T0 failure context "
             f"(declared {case_id!r}, context {context['case']!r})"
         )
+    if context is not None:
+        # A T0 context without a structured failure signature, or one that
+        # disagrees with it, is incoherent evidence: the context claims a
+        # specific first divergence that the signature must confirm.
+        if marker is None:
+            return _blocked("T0 failure context requires a structured failure signature")
+        for context_field, marker_field in (
+            ("surface", "surface"),
+            ("path", "semantic_path"),
+            ("kind", "mismatch_kind"),
+        ):
+            if context[context_field] != marker[marker_field]:
+                return _blocked(
+                    "T0 failure context disagrees with the failure signature "
+                    f"({context_field} {context[context_field]!r} != "
+                    f"{marker_field} {marker[marker_field]!r})"
+                )
 
     if outcome.returncode == 0 and not outcome.timed_out:
         return CaptureResult(failure_packet.CAPTURE_PASS, 0)
