@@ -164,6 +164,51 @@ fn forced_progress_checkpoint_restores_exactly() {
 }
 
 #[test]
+fn forced_progress_candidate_projects_successfully_pre_commit() {
+    // Alignment pin: the exact projection calls the forced-progress commit
+    // makes pre-commit must accept the candidate product. A committable-yet-
+    // unprojectable mutant is not constructible in the current substrate —
+    // verified by inspection, not assumed:
+    // - opaque id 0 is structurally forbidden (m2_shape perspective_identity
+    //   rejects zero ids before any projection runs);
+    // - non-increasing observed history is structurally forbidden (m2_shape
+    //   knowledge enforces strict sequence order);
+    // - channel/cause acceptance and sequence bounds are identically strict
+    //   in structural validation (state knowledge.rs) and projection
+    //   validation (observation knowledge.rs);
+    // - the kernel derives only projectable pending requests, and the
+    //   observation envelope is derived-coherent by construction.
+    // Structural validation, runtime validation, contract cursor shadows,
+    // and projection validation are deliberately aligned to the same
+    // invariants, so the pre-commit block is defensive hardening for future
+    // substrate evolution (e.g. turn-structure knowledge shapes). This test
+    // pins the alignment: if a future change breaks projectability, it
+    // fails here with the exact perspective instead of a mysterious commit
+    // refusal.
+    use mtgml_state::EngineState;
+    let players = [PlayerId(1), PlayerId(2)];
+    let mut setup =
+        mtgml_state::construct_synthetic_engine_state(mtgml_state::SyntheticResetInputs {
+            players,
+            root_seed: seed(),
+            setup: mtgml_state::SyntheticV4Setup::m2_compatibility(),
+        })
+        .unwrap();
+    setup.execution.pending_decision = None;
+    let mut kernel = mtgml_rules::SyntheticM1RulesKernel;
+    let product = kernel.advance_forced_progress(&setup).unwrap();
+    let candidate: &EngineState = &product.next_state;
+    for perspective in players {
+        SyntheticM1EnvironmentBackend::synthetic_observation(candidate, perspective)
+            .expect("observation must project");
+        SyntheticM1EnvironmentBackend::player_information_state_from_state(candidate, perspective)
+            .expect("information state must project");
+        SyntheticM1EnvironmentBackend::visible_decision_from_state(candidate, perspective)
+            .expect("visible decision must project");
+    }
+}
+
+#[test]
 fn forced_progress_fork_parity_matches_main_controller() {
     let controller = TrustedEnvironmentController::new(backend_without_pending());
     let fork = controller.fork().unwrap();

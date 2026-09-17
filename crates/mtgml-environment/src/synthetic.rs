@@ -224,17 +224,7 @@ impl EnvironmentBackend for SyntheticM1EnvironmentBackend {
         perspective: PlayerId,
     ) -> Result<Option<PlayerDecisionRequestV2>, PlayerEndpointError> {
         self.require_player(perspective)?;
-        let Some(pending) = self.state.execution.pending_decision.as_ref() else {
-            return Ok(None);
-        };
-        if pending.request.actor != perspective {
-            return Ok(None);
-        }
-        pending
-            .request
-            .project_player_request()
-            .map(Some)
-            .map_err(|_| PlayerEndpointError::ServiceUnavailable)
+        Self::visible_decision_from_state(&self.state, perspective)
     }
 
     /// Ordered typed-submission pipeline (DECISION_PROTOCOL validation

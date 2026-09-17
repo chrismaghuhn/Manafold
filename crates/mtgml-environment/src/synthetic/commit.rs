@@ -118,6 +118,30 @@ impl SyntheticM1EnvironmentBackend {
         .map_err(|_| {
             ControllerError::EnvironmentCommit(EnvironmentCommitError::PlayerProjectionInvalid)
         })?;
+        // Full player-facing projection discipline, as required before any
+        // atomic commit: every required perspective's observation,
+        // information state, and visible decision must materialize and
+        // validate against the candidate product. A candidate whose
+        // projections fail must never advance the committed state, even
+        // when the trusted product itself validated.
+        for perspective in transition.next_state.core.players.keys().copied() {
+            Self::synthetic_observation(&transition.next_state, perspective).map_err(|_| {
+                ControllerError::EnvironmentCommit(EnvironmentCommitError::PlayerProjectionInvalid)
+            })?;
+            Self::player_information_state_from_state(&transition.next_state, perspective)
+                .map_err(|_| {
+                    ControllerError::EnvironmentCommit(
+                        EnvironmentCommitError::PlayerProjectionInvalid,
+                    )
+                })?;
+            Self::visible_decision_from_state(&transition.next_state, perspective).map_err(
+                |_| {
+                    ControllerError::EnvironmentCommit(
+                        EnvironmentCommitError::PlayerProjectionInvalid,
+                    )
+                },
+            )?;
+        }
 
         let candidate_counters = EnvironmentLimitCounters {
             decisions_submitted: before.limit_counters.decisions_submitted,

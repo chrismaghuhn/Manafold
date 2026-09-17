@@ -3,6 +3,7 @@
 //! second mapping authority is introduced here.
 
 use base64::{engine::general_purpose::STANDARD, Engine as _};
+use mtgml_decision::PlayerDecisionRequestV2;
 use mtgml_model::{EpisodeStatus, InformationStateDigestV2, ObservationDigest, PlayerId};
 use mtgml_observation::{
     InformationStateDigestInputV2, ObservationEnvelope, ObservedEventEnvelopeV2,
@@ -34,7 +35,7 @@ impl SyntheticM1EnvironmentBackend {
             .ok_or(PlayerEndpointError::ServiceUnavailable)
     }
 
-    pub(super) fn synthetic_observation(
+    pub(crate) fn synthetic_observation(
         state: &EngineState,
         perspective: PlayerId,
     ) -> Result<ObservationEnvelope, PlayerEndpointError> {
@@ -127,7 +128,7 @@ impl SyntheticM1EnvironmentBackend {
         records.iter().map(Self::public_fact).collect()
     }
 
-    pub(super) fn player_information_state_from_state(
+    pub(crate) fn player_information_state_from_state(
         state: &EngineState,
         perspective: PlayerId,
     ) -> Result<PlayerInformationStateV2, PlayerEndpointError> {
@@ -243,6 +244,29 @@ fn public_priority(priority: PriorityState) -> SyntheticM3Priority {
 }
 
 impl SyntheticM1EnvironmentBackend {
+    /// Pure visible-decision projection over an explicit state: the exact
+    /// logic the endpoint serves, reusable for pre-commit candidate
+    /// validation without a committed backend.
+    pub(crate) fn visible_decision_from_state(
+        state: &EngineState,
+        perspective: PlayerId,
+    ) -> Result<Option<PlayerDecisionRequestV2>, PlayerEndpointError> {
+        if !state.core.players.contains_key(&perspective) {
+            return Err(PlayerEndpointError::ServiceUnavailable);
+        }
+        let Some(pending) = state.execution.pending_decision.as_ref() else {
+            return Ok(None);
+        };
+        if pending.request.actor != perspective {
+            return Ok(None);
+        }
+        pending
+            .request
+            .project_player_request()
+            .map(Some)
+            .map_err(|_| PlayerEndpointError::ServiceUnavailable)
+    }
+
     pub(super) fn player_step_from_state(
         state: &EngineState,
         perspective: PlayerId,
