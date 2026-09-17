@@ -149,9 +149,22 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
         self.assertIn("M3.P0 semantic-neutral state/persistence identity cut", roadmap)
         self.assertIn("PR #184", roadmap)
         self.assertIn(
+            "M3 has started through semantic-neutral P0 infrastructure and T0",
+            roadmap,
+        )
+        self.assertIn(
+            "T0 was separately\nreauthorized under Issue #178 and has completed",
+            roadmap,
+        )
+        self.assertNotIn("T0 remains separately", roadmap)
+        self.assertNotIn("T0 reauthorization remains separate", roadmap)
+        self.assertNotIn(
             "M3 has started only in the sense that the semantic-neutral P0",
             roadmap,
         )
+        self.assertNotIn("T0_AUTHORIZED = NO", roadmap)
+        self.assertNotIn("T0_STARTED = NO", roadmap)
+        self.assertNotIn("M3.T0 is `NOT_STARTED / NOT_AUTHORIZED`", roadmap)
         self.assertIn("P0 is complete and frozen", roadmap)
         self.assertIn("Issue #105", roadmap)
         self.assertNotIn("current active maintainer work area is Issue\n#130", roadmap)
