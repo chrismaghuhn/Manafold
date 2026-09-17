@@ -71,7 +71,20 @@ _SIGNATURE_LINE_RE = re.compile(
     r"path=(?P<semantic_path>[A-Za-z0-9_.\[\]:-]+) "
     r"mismatch_kind=(?P<mismatch_kind>[a-z0-9_]+)$"
 )
-_T0_WITNESS_LINE_RE = re.compile(r"^T0_FAILURE_WITNESS v1 case=(?P<case>[A-Za-z0-9._-]+)$")
+_T0_CONTEXT_LINE_RE = re.compile(
+    r"^T0_FAILURE_CONTEXT v1 "
+    r"case=(?P<case>[A-Za-z0-9._-]+) "
+    r"step=(?P<step>[A-Za-z0-9._-]+) "
+    r"index=(?P<index>[0-9]+) "
+    r"surface=(?P<surface>[a-z0-9_]+) "
+    r"path=(?P<path>[A-Za-z0-9_.\[\]:-]+) "
+    r"kind=(?P<kind>[a-z0-9_]+) "
+    r"authority=(?P<authority>[A-Za-z0-9_.:\-]+) "
+    r"kernel=(?P<kernel>[A-Za-z0-9._-]+) "
+    r"semantic=(?P<semantic>[A-Za-z0-9._-]+) "
+    r"expected_state_digest=(?P<expected_state_digest>[0-9a-f]{64}) "
+    r"actual_state_digest=(?P<actual_state_digest>[0-9a-f]{64})$"
+)
 _ALLOWED_TOP_LEVEL = {
     "format",
     "packet_id",
@@ -433,27 +446,31 @@ def validate_manifest(value: object, *, require_artifact: bool = True) -> dict[s
     }
 
 
-def parse_t0_witness_marker(output: str | bytes) -> dict[str, str] | None:
-    """Parse the closed T0 failure-witness identity marker, if present.
+def parse_t0_failure_context(output: str | bytes) -> dict[str, str] | None:
+    """Parse the closed T0 failure-context line, if present.
 
-    The marker binds captured output to the actual T0 witness that emitted
-    it; it carries no semantic verdict itself. Zero markers means a
-    non-T0 command (unchanged behavior); exactly one marker must be
-    well-formed with a valid case id; multiple or malformed markers fail
-    closed like signature markers do.
+    The context binds captured output to the actual T0 failure that emitted
+    it: case/step/index identity, diagnostic surface/path/kind, authority
+    and kernel identity, and the canonical expected/actual state digests.
+    Zero lines means a non-T0 command (unchanged behavior); exactly one
+    line must be well-formed with allowlisted surface/kind tokens and strict
+    digest identities; multiple or malformed lines fail closed like
+    signature markers do. Python compares only these closed strings and
+    identities; it interprets no Magic semantics.
     """
     text = output.decode("utf-8", errors="replace") if isinstance(output, bytes) else output
-    lines = [line for line in text.splitlines() if line.startswith("T0_FAILURE_WITNESS")]
+    lines = [line for line in text.splitlines() if line.startswith("T0_FAILURE_CONTEXT")]
     if not lines:
         return None
     if len(lines) != 1:
-        raise FailurePacketError("multiple T0 failure witness markers were emitted")
-    match = _T0_WITNESS_LINE_RE.fullmatch(lines[0])
+        raise FailurePacketError("multiple T0 failure context lines were emitted")
+    match = _T0_CONTEXT_LINE_RE.fullmatch(lines[0])
     if match is None:
-        raise FailurePacketError("malformed T0 failure witness marker")
-    marker = match.groupdict()
-    validate_case_id(marker["case"])
-    return marker
+        raise FailurePacketError("malformed T0 failure context line")
+    context = match.groupdict()
+    validate_case_id(context["case"])
+    _validate_signature_tokens({"surface": context["surface"], "mismatch_kind": context["kind"]})
+    return context
 
 
 def parse_signature_marker(output: str | bytes) -> dict[str, str] | None:

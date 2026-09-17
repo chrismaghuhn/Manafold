@@ -206,13 +206,13 @@ def capture(
     except failure_packet.FailurePacketError as error:
         return _blocked(str(error))
     try:
-        witness = failure_packet.parse_t0_witness_marker(log)
+        context = failure_packet.parse_t0_failure_context(log)
     except failure_packet.FailurePacketError as error:
         return _blocked(str(error))
-    if witness is not None and witness["case"] != case_id:
+    if context is not None and context["case"] != case_id:
         return _blocked(
-            "declared case id does not match the T0 witness identity "
-            f"(declared {case_id!r}, witness {witness['case']!r})"
+            "declared case id does not match the T0 failure context "
+            f"(declared {case_id!r}, context {context['case']!r})"
         )
 
     if outcome.returncode == 0 and not outcome.timed_out:

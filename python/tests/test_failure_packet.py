@@ -1166,9 +1166,26 @@ class RerunFailureTests(unittest.TestCase):
         run_bounded.assert_not_called()
 
 
-class T0WitnessCaptureTests(unittest.TestCase):
-    """T0 failure-witness binding: the declared capture case id must match
-    the actual T0 witness identity emitted on the captured log."""
+class T0FailureContextTests(unittest.TestCase):
+    """T0 failure-context binding: the closed context line carries case,
+    step, diagnostic, authority, kernel, and expected/actual digest
+    identities. Capture binds the declared case id; rerun requires exact
+    context equality."""
+
+    CASE = "synthetic-entry-digest-mismatch"
+    CONTEXT = (
+        "T0_FAILURE_CONTEXT v1 case=synthetic-entry-digest-mismatch "
+        "step=step-1-entry-choose-one index=0 surface=state_digest "
+        "path=transition.state_digest kind=value_changed "
+        "authority=mtgml_conformance::assert_exact_transition "
+        "kernel=synthetic-m2 semantic=0.2.2 "
+        "expected_state_digest=03e13400f71135656196ea83b00bad1821df341ea8b9a03634e45fc0ae83ed0a "
+        "actual_state_digest=4bf8babd2e5661bd64e84e4830dae09c633d0db348e4df7e75915a15c6c1d3e7"
+    )
+    SIGNATURE = (
+        "MANAFOLD_FAILURE_SIGNATURE v1 surface=state_digest "
+        "path=transition.state_digest mismatch_kind=value_changed"
+    )
 
     @staticmethod
     def repository_root(temporary: str) -> Path:
@@ -1185,45 +1202,67 @@ class T0WitnessCaptureTests(unittest.TestCase):
             clean=True,
         )
 
-    @staticmethod
-    def witness_command(*, case: str = "WITNESS_CASE", exit_status: int = 1) -> list[str]:
+    @classmethod
+    def witness_command(
+        cls, *, context: str | None = None, exit_status: int = 1
+    ) -> list[str]:
+        lines = context if context is not None else cls.CONTEXT
         return [
             sys.executable,
             "-c",
             (
-                f"print('T0_FAILURE_WITNESS v1 case={case}'); "
-                "print('MANAFOLD_FAILURE_SIGNATURE v1 surface=events "
-                "path=transition.events[1] mismatch_kind=value_changed'); "
+                f"print({lines!r}); "
+                f"print({cls.SIGNATURE!r}); "
                 f"raise SystemExit({exit_status})"
             ),
         ]
 
-    def test_t0_witness_marker_parses_valid_case(self) -> None:
-        marker = failure_packet.parse_t0_witness_marker(
-            b"T0_FAILURE_WITNESS v1 case=WITNESS_CASE\n"
+    def test_t0_context_parses_valid_line(self) -> None:
+        context = failure_packet.parse_t0_failure_context((self.CONTEXT + "\n").encode())
+        self.assertEqual(context["case"], self.CASE)
+        self.assertEqual(context["step"], "step-1-entry-choose-one")
+        self.assertEqual(context["index"], "0")
+        self.assertEqual(context["surface"], "state_digest")
+        self.assertEqual(
+            context["expected_state_digest"],
+            "03e13400f71135656196ea83b00bad1821df341ea8b9a03634e45fc0ae83ed0a",
         )
-        self.assertEqual(marker, {"case": "WITNESS_CASE"})
+        self.assertEqual(
+            context["actual_state_digest"],
+            "4bf8babd2e5661bd64e84e4830dae09c633d0db348e4df7e75915a15c6c1d3e7",
+        )
+        self.assertEqual(len(context), 11)
 
-    def test_t0_witness_marker_absent_returns_none(self) -> None:
-        self.assertIsNone(failure_packet.parse_t0_witness_marker(b"no markers here\n"))
+    def test_t0_context_absent_returns_none(self) -> None:
+        self.assertIsNone(failure_packet.parse_t0_failure_context(b"no markers here\n"))
 
-    def test_t0_witness_marker_rejects_multiple_lines(self) -> None:
+    def test_t0_context_rejects_multiple_lines(self) -> None:
         with self.assertRaises(failure_packet.FailurePacketError):
-            failure_packet.parse_t0_witness_marker(
-                b"T0_FAILURE_WITNESS v1 case=A\nT0_FAILURE_WITNESS v1 case=A\n"
+            failure_packet.parse_t0_failure_context(
+                (self.CONTEXT + "\n" + self.CONTEXT + "\n").encode()
             )
 
-    def test_t0_witness_marker_rejects_malformed_line(self) -> None:
+    def test_t0_context_rejects_malformed_line(self) -> None:
         with self.assertRaises(failure_packet.FailurePacketError):
-            failure_packet.parse_t0_witness_marker(b"T0_FAILURE_WITNESS v1 nope\n")
+            failure_packet.parse_t0_failure_context(b"T0_FAILURE_CONTEXT v1 nope\n")
 
-    def test_matching_witness_case_id_creates_packet(self) -> None:
+    def test_t0_context_rejects_bad_digest(self) -> None:
+        bad = self.CONTEXT.replace("expected_state_digest=03e1", "expected_state_digest=ZZZZ")
+        with self.assertRaises(failure_packet.FailurePacketError):
+            failure_packet.parse_t0_failure_context((bad + "\n").encode())
+
+    def test_t0_context_rejects_unknown_surface(self) -> None:
+        bad = self.CONTEXT.replace("surface=state_digest", "surface=made_up")
+        with self.assertRaises(failure_packet.FailurePacketError):
+            failure_packet.parse_t0_failure_context((bad + "\n").encode())
+
+    def test_matching_context_case_id_creates_packet(self) -> None:
         import capture_failure
 
         with tempfile.TemporaryDirectory() as temporary:
             result = capture_failure.capture(
-                self.witness_command(case="WITNESS_CASE"),
-                case_id="WITNESS_CASE",
+                self.witness_command(),
+                case_id=self.CASE,
                 output_root=Path(temporary) / "output",
                 repository_root=self.repository_root(temporary),
                 source_identity_provider=self.identity_provider,
@@ -1234,15 +1273,15 @@ class T0WitnessCaptureTests(unittest.TestCase):
         self.assertIsNotNone(result.packet)
         self.assertEqual(
             manifest["failure_signature"]["semantic_path"],
-            "transition.events[1]",
+            "transition.state_digest",
         )
 
-    def test_mismatching_witness_case_id_is_blocked_without_packet(self) -> None:
+    def test_mismatching_context_case_id_is_blocked_without_packet(self) -> None:
         import capture_failure
 
         with tempfile.TemporaryDirectory() as temporary:
             result = capture_failure.capture(
-                self.witness_command(case="ACTUAL_CASE"),
+                self.witness_command(),
                 case_id="DECLARED_CASE",
                 output_root=Path(temporary) / "output",
                 repository_root=self.repository_root(temporary),
@@ -1253,7 +1292,7 @@ class T0WitnessCaptureTests(unittest.TestCase):
         self.assertEqual(result.exit_code, 2)
         self.assertIsNone(result.packet)
 
-    def test_rerun_reproduces_t0_witness_packet(self) -> None:
+    def test_rerun_reproduces_identical_t0_context(self) -> None:
         import capture_failure
         import rerun_failure
 
@@ -1261,8 +1300,8 @@ class T0WitnessCaptureTests(unittest.TestCase):
             repository_root = self.repository_root(temporary)
             identity = self.identity_provider()
             captured = capture_failure.capture(
-                self.witness_command(case="WITNESS_CASE"),
-                case_id="WITNESS_CASE",
+                self.witness_command(),
+                case_id=self.CASE,
                 output_root=Path(temporary) / "output",
                 repository_root=repository_root,
                 source_identity_provider=lambda: identity,
@@ -1270,11 +1309,7 @@ class T0WitnessCaptureTests(unittest.TestCase):
             self.assertEqual(captured.status, failure_packet.CAPTURE_COMMAND_EXIT)
             outcome = failure_packet.CommandOutcome(
                 returncode=1,
-                stdout=(
-                    b"T0_FAILURE_WITNESS v1 case=WITNESS_CASE\n"
-                    b"MANAFOLD_FAILURE_SIGNATURE v1 surface=events "
-                    b"path=transition.events[1] mismatch_kind=value_changed\n"
-                ),
+                stdout=(self.CONTEXT + "\n" + self.SIGNATURE + "\n").encode(),
             )
             with mock.patch.object(
                 rerun_failure, "run_bounded", return_value=outcome
@@ -1288,9 +1323,71 @@ class T0WitnessCaptureTests(unittest.TestCase):
         self.assertEqual(result.status, failure_packet.RERUN_REPRODUCED)
         self.assertEqual(result.exit_code, 0)
 
+    def test_rerun_with_differing_actual_digest_is_not_reproduced(self) -> None:
+        import capture_failure
+        import rerun_failure
 
-if __name__ == "__main__":
-    unittest.main()
+        with tempfile.TemporaryDirectory() as temporary:
+            repository_root = self.repository_root(temporary)
+            identity = self.identity_provider()
+            captured = capture_failure.capture(
+                self.witness_command(),
+                case_id=self.CASE,
+                output_root=Path(temporary) / "output",
+                repository_root=repository_root,
+                source_identity_provider=lambda: identity,
+            )
+            self.assertEqual(captured.status, failure_packet.CAPTURE_COMMAND_EXIT)
+            drifted = self.CONTEXT.replace(
+                "actual_state_digest=4bf8babd2e5661bd64e84e4830dae09c633d0db348e4df7e75915a15c6c1d3e7",
+                "actual_state_digest=" + "0" * 64,
+            )
+            outcome = failure_packet.CommandOutcome(
+                returncode=1,
+                stdout=(drifted + "\n" + self.SIGNATURE + "\n").encode(),
+            )
+            with mock.patch.object(
+                rerun_failure, "run_bounded", return_value=outcome
+            ):
+                result = rerun_failure.rerun(
+                    captured.packet,
+                    repository_root=repository_root,
+                    source_identity_provider=lambda: identity,
+                )
+
+        self.assertEqual(result.status, failure_packet.RERUN_NOT_REPRODUCED)
+        self.assertEqual(result.exit_code, 1)
+
+    def test_rerun_missing_t0_context_is_blocked(self) -> None:
+        import capture_failure
+        import rerun_failure
+
+        with tempfile.TemporaryDirectory() as temporary:
+            repository_root = self.repository_root(temporary)
+            identity = self.identity_provider()
+            captured = capture_failure.capture(
+                self.witness_command(),
+                case_id=self.CASE,
+                output_root=Path(temporary) / "output",
+                repository_root=repository_root,
+                source_identity_provider=lambda: identity,
+            )
+            self.assertEqual(captured.status, failure_packet.CAPTURE_COMMAND_EXIT)
+            outcome = failure_packet.CommandOutcome(
+                returncode=1,
+                stdout=(self.SIGNATURE + "\n").encode(),
+            )
+            with mock.patch.object(
+                rerun_failure, "run_bounded", return_value=outcome
+            ):
+                result = rerun_failure.rerun(
+                    captured.packet,
+                    repository_root=repository_root,
+                    source_identity_provider=lambda: identity,
+                )
+
+        self.assertEqual(result.status, failure_packet.RERUN_BLOCKED)
+        self.assertEqual(result.exit_code, 2)
 
 
 if __name__ == "__main__":
