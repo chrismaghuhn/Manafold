@@ -108,10 +108,18 @@ P0_EXACT_HEAD_REVIEW = APPROVE
 P0_COMPLETE = YES
 P0_FROZEN = YES
 M3_S1 = rules/turn-structure@0.1.0 SELECTED
-T0_AUTHORIZED = NO
-T0_STARTED = NO
+T0_AUTHORIZED = YES
+T0_STARTED = YES
+T0_01 = COMPLETE / MERGED (PR #189, merge acdde953b133dae94a4641c429f4f3d352b34838)
+T0_02A = COMPLETE / MERGED (PR #190, merge 299827175c285cb081b62d67e1668370185b704b)
+T0_02B = COMPLETE / MERGED (PR #191, merge b403edefcabf7b304c0fa5f6816d22ac8aca477b)
+T0_CLOSURE_REVIEW_HEAD = b403edefcabf7b304c0fa5f6816d22ac8aca477b
+T0_COMPLETE_CANDIDATE = YES
+T0_FREEZE_ELIGIBLE = YES
+T0_FREEZE_EXECUTED = NO
 S1_IMPLEMENTATION = NOT_AUTHORIZED
-NEXT_GATE = EXACT_MASTER_T0_REAUTHORIZATION
+S1_AUTHORIZATION_ELIGIBLE = YES
+NEXT_GATE = M3_T0_CLOSURE_STATUS_SYNC_EXACT_HEAD_REVIEW
 ```
 
 `M2.5 = NOT_CLAIMED / NOT_FROZEN`. Its abandoned census and research
@@ -125,18 +133,23 @@ now merged after an approved cumulative exact-head review, with reviewed head
 `a7e641a7e6145610c9533187cf6340712f460e44` and merge commit
 `20dac927027776ef5f0a5b389a27d4a05eefb180`, so P0 is complete and frozen. The
 pre-M3 governance cleanup and M3 Entry Decision remain historically accepted,
-and PR #184 has accepted the hardened ADR 0054 and Foundation V2 plan. The
-separate exact-`master` T0 reauthorization remains required before T0
-execution.
+and PR #184 has accepted the hardened ADR 0054 and Foundation V2 plan. T0 was
+reauthorized under Issue #178 and implemented by merged PRs #189 (T0-01),
+#190 (T0-02A), and #191 (T0-02B); the exact-head closure review found the
+frozen T0 exit evidence complete (freeze-eligible). Repository freeze/status
+sync and Issue #178 tracker finalization remain as the pending governance
+steps before any S1 authorization.
 
-M3 has started only in the sense that the semantic-neutral P0
-infrastructure is merged: P0 is complete and frozen, and it introduced no
-Magic capability. No Foundation capability has yet advanced from `specified`
-to `implemented`. Census-driven scope research is outside this authoritative engine repository, and external census M3 authorization must not
+M3 has started through semantic-neutral P0 infrastructure and T0
+conformance/proof infrastructure. P0 is complete/frozen; T0
+implementation is merged and closure-reviewed freeze-eligible.
+Neither introduced a Magic capability, and no Foundation capability
+has yet advanced beyond `specified`. Census-driven scope research is outside this authoritative engine repository, and external census M3 authorization must not
 be treated as engine-semantic authorization. The accepted M3 Entry Decision
 and accepted hardening plan select `rules/turn-structure@0.1.0` as S1; S1
-remains selected but not authorized for implementation. T0 remains separately
-unauthorized. No semantic
+remains selected but not authorized for implementation. T0 was separately
+reauthorized under Issue #178 and has completed its
+implementation/closure candidate. No semantic
 implementation is implied by the accepted plan.
 
 The historical accepted operational scope record for that decision is
@@ -146,13 +159,15 @@ The accepted hardening plan is recorded in
 and [`docs/adr/0054-m3-pre-t0-hardening.md`](adr/0054-m3-pre-t0-hardening.md).
 Neither artifact itself performs execution authorization; the P0 authorization
 was recorded at `ea668c47ef1361b3d989fd32b8f3cfd4751b1e79`, and T0
-reauthorization remains separate.
+reauthorization was recorded separately under Issue #178.
 
 ## M3 — Bounded Semantic Coverage
 
-**Status:** `STARTED — P0 COMPLETE / FROZEN`; the sections below describe the
+**Status:** `STARTED — P0 COMPLETE / FROZEN — T0 COMPLETE-CANDIDATE /
+FREEZE-ELIGIBLE (freeze not yet executed)`; the sections below describe the
 execution model for the remaining slices. M3.P0 infrastructure is merged and
-frozen; M3.T0 is `NOT_STARTED / NOT_AUTHORIZED` and M3.S1 is
+frozen; M3.T0 implementation is merged and closure-reviewed
+freeze-eligible, pending repository freeze/status sync; M3.S1 is
 `SELECTED / NOT_AUTHORIZED`.
 
 The planned execution order is:
@@ -163,8 +178,8 @@ M3.P0 semantic-neutral state/persistence identity cut
 → M3.S1 rules/turn-structure@0.1.0
 ```
 
-P0 added no Magic capability and advanced no capability lifecycle; T0 adds no
-Magic capability and does not advance any capability lifecycle.
+P0 added no Magic capability and advanced no capability lifecycle; T0 added no
+Magic capability and advanced no capability lifecycle.
 
 ### Purpose and progress authority
 
