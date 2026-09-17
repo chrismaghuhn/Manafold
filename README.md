@@ -5,18 +5,18 @@
 - **Foundation closure/freeze:** `COMPLETE` (`FINAL_FOUNDATION_CLOSURE = PASS`, `PRE_M3_REMEDIATION_FREEZE = PASS`, `FOUNDATION_READY_FOR_M3 = YES`)
 - **Core modularization:** Issue #162 `COMPLETE`, merged by PR #179; the refactor was semantic-neutral and did not change public, wire, schema, digest, replay, or rules contracts
 - **M2.5 scope work:** `NOT_CLAIMED` / `NOT_FROZEN`; the abandoned census and research machinery remains historical Git evidence, not active engine scope
-- **Current active work area:** M3 T0 closure status sync; T0 implementation (slices T0-01/02A/02B, PRs #189/#190/#191) is merged and the exact-head closure review found the frozen exit evidence complete (freeze-eligible); repository freeze/status sync is the pending governance step
+- **Current active work area:** M3 S1 authorization decision; T0 is COMPLETE / FROZEN (Issue #178 tracker finalization executed) and S1 implementation remains not authorized
 - **Pre-M3 governance cleanup:** `COMPLETE`; the accepted M3 Entry Decision and its historical authorization are preserved, with the hardened scope accepted by PR #184
 - **M3 authorization:** `AUTHORIZED` at `ea668c47ef1361b3d989fd32b8f3cfd4751b1e79`; the authorized task at that head was `M3.P0_STATE_IDENTITY_CUT`
 - **M3 milestone execution:** `STARTED` — P0 infrastructure is merged and frozen
 - **P0:** `COMPLETE / FROZEN` (reviewed head `a7e641a7e6145610c9533187cf6340712f460e44`, merge commit `20dac927027776ef5f0a5b389a27d4a05eefb180`)
-- **M3.T0:** `COMPLETE-CANDIDATE / FREEZE-ELIGIBLE` (closure review head `b403edefcabf7b304c0fa5f6816d22ac8aca477b`, 10/10 frozen exit criteria PASS, 0 BLOCKER / 0 MAJOR; freeze not yet executed or tracked)
-- **M3.S1:** `SELECTED / NOT_AUTHORIZED` (`rules/turn-structure@0.1.0`)
+- **M3.T0:** `COMPLETE / FROZEN` (closure review head `b403edefcabf7b304c0fa5f6816d22ac8aca477b`, 10/10 frozen exit criteria PASS, 0 BLOCKER / 0 MAJOR; status-sync merge `b9c5f2be97b8fc1f31d648d58f890de78f0a035c`; freeze executed and tracked in Issue #178)
+- **M3.S1:** `SELECTED / AUTHORIZATION-ELIGIBLE / NOT_AUTHORIZED` (`rules/turn-structure@0.1.0`; eligibility is not authorization)
 - **M3 semantic implementation:** `NOT_STARTED` — P0 is semantic-neutral infrastructure and introduced no Magic capability
 - **M3 Pre-T0 hardening:** `COMPLETE / ACCEPTED` (`ADR 0054 = ACCEPTED`, `FOUNDATION_V2 = ACCEPTED_HARDENED_M3_SCOPE`)
 - **M3 plan status:** `ACCEPTED`
-- **Next gate:** `M3_T0_CLOSURE_STATUS_SYNC_EXACT_HEAD_REVIEW` (then Issue #178 tracker finalization)
-- **M3 hardening acceptance:** PR #184 merged and accepted ADR 0054/Foundation V2; T0 was reauthorized under Issue #178 and implemented by merged PRs #189/#190/#191
+- **Next gate:** `M3_S1_AUTHORIZATION_DECISION` (review whether S1 may be authorized; S1 implementation is NOT authorized)
+- **M3 hardening acceptance:** PR #184 merged and accepted ADR 0054/Foundation V2; T0 was reauthorized under Issue #178, implemented by merged PRs #189/#190/#191, and finalized as COMPLETE / FROZEN
 - **Capability lifecycle:** 11 Foundation capabilities are `specified` only; `implemented = 0`, `covered = 0`, `certified = 0`
 - **Blocked:** no active Magic/card implementation scope. External census M3 authorization does not authorize Manafold engine semantics.
 - **Project type:** independent greenfield MTG/ML rules and simulation engine

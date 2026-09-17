@@ -114,12 +114,17 @@ T0_01 = COMPLETE / MERGED (PR #189, merge acdde953b133dae94a4641c429f4f3d352b348
 T0_02A = COMPLETE / MERGED (PR #190, merge 299827175c285cb081b62d67e1668370185b704b)
 T0_02B = COMPLETE / MERGED (PR #191, merge b403edefcabf7b304c0fa5f6816d22ac8aca477b)
 T0_CLOSURE_REVIEW_HEAD = b403edefcabf7b304c0fa5f6816d22ac8aca477b
-T0_COMPLETE_CANDIDATE = YES
-T0_FREEZE_ELIGIBLE = YES
-T0_FREEZE_EXECUTED = NO
+T0_STATUS_SYNC_REVIEW_HEAD =
+56d0343b5e500f8460660991c15a8164437dbd50
+T0_STATUS_SYNC_PR = #193
+T0_STATUS_SYNC_MERGE =
+b9c5f2be97b8fc1f31d648d58f890de78f0a035c
+T0_COMPLETE = YES
+T0_FROZEN = YES
+T0_FREEZE_EXECUTED = YES
 S1_IMPLEMENTATION = NOT_AUTHORIZED
 S1_AUTHORIZATION_ELIGIBLE = YES
-NEXT_GATE = M3_T0_CLOSURE_STATUS_SYNC_EXACT_HEAD_REVIEW
+NEXT_GATE = M3_S1_AUTHORIZATION_DECISION
 ```
 
 `M2.5 = NOT_CLAIMED / NOT_FROZEN`. Its abandoned census and research
@@ -136,20 +141,22 @@ pre-M3 governance cleanup and M3 Entry Decision remain historically accepted,
 and PR #184 has accepted the hardened ADR 0054 and Foundation V2 plan. T0 was
 reauthorized under Issue #178 and implemented by merged PRs #189 (T0-01),
 #190 (T0-02A), and #191 (T0-02B); the exact-head closure review found the
-frozen T0 exit evidence complete (freeze-eligible). Repository freeze/status
-sync and Issue #178 tracker finalization remain as the pending governance
-steps before any S1 authorization.
+frozen T0 exit evidence complete, the repository status sync was exact-head
+reviewed, CI-green, and merged as PR #193, and Issue #178 finalized T0 as
+COMPLETE / FROZEN. The next governance step is the separate S1
+authorization decision; S1 implementation remains NOT_AUTHORIZED.
 
 M3 has started through semantic-neutral P0 infrastructure and T0
-conformance/proof infrastructure. P0 is complete/frozen; T0
-implementation is merged and closure-reviewed freeze-eligible.
+conformance/proof infrastructure. P0 is complete/frozen; T0 is
+COMPLETE / FROZEN.
 Neither introduced a Magic capability, and no Foundation capability
 has yet advanced beyond `specified`. Census-driven scope research is outside this authoritative engine repository, and external census M3 authorization must not
 be treated as engine-semantic authorization. The accepted M3 Entry Decision
 and accepted hardening plan select `rules/turn-structure@0.1.0` as S1; S1
-remains selected but not authorized for implementation. T0 was separately
+remains selected and eligible for a separate authorization decision, but
+implementation remains NOT_AUTHORIZED. T0 was separately
 reauthorized under Issue #178 and has completed its
-implementation/closure candidate. No semantic
+implementation and executed freeze. No semantic
 implementation is implied by the accepted plan.
 
 The historical accepted operational scope record for that decision is
@@ -163,12 +170,11 @@ reauthorization was recorded separately under Issue #178.
 
 ## M3 — Bounded Semantic Coverage
 
-**Status:** `STARTED — P0 COMPLETE / FROZEN — T0 COMPLETE-CANDIDATE /
-FREEZE-ELIGIBLE (freeze not yet executed)`; the sections below describe the
+**Status:** `STARTED — P0 COMPLETE / FROZEN — T0 COMPLETE / FROZEN`;
+the sections below describe the
 execution model for the remaining slices. M3.P0 infrastructure is merged and
-frozen; M3.T0 implementation is merged and closure-reviewed
-freeze-eligible, pending repository freeze/status sync; M3.S1 is
-`SELECTED / NOT_AUTHORIZED`.
+frozen; M3.T0 is finalized COMPLETE / FROZEN (Issue #178); M3.S1 is
+`SELECTED / AUTHORIZATION-ELIGIBLE / NOT_AUTHORIZED`.
 
 The planned execution order is:
 

@@ -16,11 +16,14 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
             r"\*\*Foundation closure/freeze:\*\* `COMPLETE`",
         )
         self.assertIn(
-            "**Current active work area:** M3 T0 closure status sync; "
-            "T0 implementation (slices T0-01/02A/02B, PRs #189/#190/#191) is merged",
+            "**Current active work area:** M3 S1 authorization decision; T0 is COMPLETE / FROZEN",
             readme,
         )
         self.assertIn(
+            "S1 implementation remains not authorized",
+            readme,
+        )
+        self.assertNotIn(
             "repository freeze/status sync is the pending governance step",
             readme,
         )
@@ -40,23 +43,28 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
             "merge commit `20dac927027776ef5f0a5b389a27d4a05eefb180`)",
             readme,
         )
-        self.assertIn("**M3.T0:** `COMPLETE-CANDIDATE / FREEZE-ELIGIBLE`", readme)
+        self.assertIn("**M3.T0:** `COMPLETE / FROZEN`", readme)
         self.assertIn("`b403edefcabf7b304c0fa5f6816d22ac8aca477b`", readme)
-        self.assertIn("**M3.S1:** `SELECTED / NOT_AUTHORIZED`", readme)
+        self.assertIn("`b9c5f2be97b8fc1f31d648d58f890de78f0a035c`", readme)
+        self.assertNotIn("COMPLETE-CANDIDATE / FREEZE-ELIGIBLE", readme)
+        self.assertNotIn("freeze not yet executed or tracked", readme)
+        self.assertIn("**M3.S1:** `SELECTED / AUTHORIZATION-ELIGIBLE / NOT_AUTHORIZED`", readme)
         self.assertIn("**M3 semantic implementation:** `NOT_STARTED`", readme)
         self.assertIn("**M3 Pre-T0 hardening:** `COMPLETE / ACCEPTED`", readme)
         self.assertIn("ADR 0054 = ACCEPTED", readme)
         self.assertIn("FOUNDATION_V2 = ACCEPTED_HARDENED_M3_SCOPE", readme)
         self.assertIn("**M3 plan status:** `ACCEPTED`", readme)
-        self.assertIn("**Next gate:** `M3_T0_CLOSURE_STATUS_SYNC_EXACT_HEAD_REVIEW`", readme)
+        self.assertIn("**Next gate:** `M3_S1_AUTHORIZATION_DECISION`", readme)
+        self.assertNotIn("M3_T0_CLOSURE_STATUS_SYNC_EXACT_HEAD_REVIEW", readme)
         self.assertIn(
             "**M3 hardening acceptance:** PR #184 merged and accepted ADR 0054/Foundation V2",
             readme,
         )
         self.assertIn(
-            "T0 was reauthorized under Issue #178 and implemented by merged PRs #189/#190/#191",
+            "T0 was reauthorized under Issue #178, implemented by merged PRs #189/#190/#191",
             readme,
         )
+        self.assertIn("finalized as COMPLETE / FROZEN", readme)
         self.assertIn("11 Foundation capabilities are `specified` only", readme)
         self.assertNotIn("M3 Pre-T0 plan hardening under Issue #178", readme)
         self.assertNotIn("HARDENED_PLAN_MERGE_AND_EXACT_MASTER_REAUTHORIZATION", readme)
@@ -131,12 +139,21 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
             "T0_CLOSURE_REVIEW_HEAD = b403edefcabf7b304c0fa5f6816d22ac8aca477b",
             roadmap,
         )
-        self.assertIn("T0_COMPLETE_CANDIDATE = YES", roadmap)
-        self.assertIn("T0_FREEZE_ELIGIBLE = YES", roadmap)
-        self.assertIn("T0_FREEZE_EXECUTED = NO", roadmap)
+        self.assertIn("T0_COMPLETE = YES", roadmap)
+        self.assertIn("T0_FROZEN = YES", roadmap)
+        self.assertIn("T0_FREEZE_EXECUTED = YES", roadmap)
+        self.assertIn(
+            "T0_STATUS_SYNC_MERGE =\nb9c5f2be97b8fc1f31d648d58f890de78f0a035c",
+            roadmap,
+        )
+        self.assertNotIn("T0_COMPLETE_CANDIDATE = YES", roadmap)
+        self.assertNotIn("T0_FREEZE_ELIGIBLE = YES", roadmap)
+        self.assertNotIn("T0_FREEZE_EXECUTED = NO", roadmap)
         self.assertIn("S1_IMPLEMENTATION = NOT_AUTHORIZED", roadmap)
         self.assertIn("S1_AUTHORIZATION_ELIGIBLE = YES", roadmap)
-        self.assertIn("NEXT_GATE = M3_T0_CLOSURE_STATUS_SYNC_EXACT_HEAD_REVIEW", roadmap)
+        self.assertIn("NEXT_GATE = M3_S1_AUTHORIZATION_DECISION", roadmap)
+        self.assertNotIn("M3_T0_CLOSURE_STATUS_SYNC_EXACT_HEAD_REVIEW", roadmap)
+        self.assertNotIn("tracker finalization remain as the pending", roadmap)
         self.assertNotIn("M3_PRE_T0_HARDENING = CANDIDATE", roadmap)
         self.assertNotIn("M3_ENTRY_DECISION = ACCEPTED_BUT_UNDER_PRE_T0_HARDENING", roadmap)
         self.assertNotIn("HARDENED_PLAN_MERGE_AND_EXACT_MASTER_REAUTHORIZATION", roadmap)
@@ -153,9 +170,13 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
             roadmap,
         )
         self.assertIn(
-            "T0 was separately\nreauthorized under Issue #178 and has completed",
+            "T0 was separately\nreauthorized under Issue #178 and has completed its\n"
+            "implementation and executed freeze",
             roadmap,
         )
+        self.assertIn("Issue #178 finalized T0 as", roadmap)
+        self.assertNotIn("freeze-eligible, pending repository freeze/status sync", roadmap)
+        self.assertNotIn("freeze-eligible). Repository freeze/status", roadmap)
         self.assertNotIn("T0 remains separately", roadmap)
         self.assertNotIn("T0 reauthorization remains separate", roadmap)
         self.assertNotIn(
