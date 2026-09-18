@@ -90,11 +90,17 @@ they name checkpoint/replay types
 
 Superseded V4 manifest provenance fields under V5:
 `kernel_implementation_id` and `kernel_semantic_version` remain
-INFORMATIONAL implementation provenance; `rules_snapshot` is
-DEPRECATED-REDUNDANT (the Comprehensive Rules authority is bound inside
-the content-derived `RulesContractManifestV1`). Detached validation MUST
-NOT treat any of them as semantic authority, and no V5 field may
-contradict the bound contract.
+INFORMATIONAL implementation provenance (never semantic authority, never
+detach-checked against the contract). `rules_snapshot` is RETAINED as
+provenance with one REQUIRED detached equality (§2.10):
+
+```text
+ReplayManifestV5.rules_snapshot
+  == bound RulesContractManifestV1.rules_authority_snapshot_id
+mismatch ⇒ detached rejection (before any execution)
+```
+
+Provenance never defines semantics; the content-derived contract does.
 
 ### 2.3 ExecutionIdentityV1 (binding)
 
@@ -130,13 +136,23 @@ SyntheticRulesCompat:
   legacy synthetic decision-less/forced-progress family;
   no Magic semantics; `apply()` + legacy forced progress bit-identical;
   legacy forced-progress stabilization entry points only.
+  Pairs ONLY with RulesContracts whose rules authority is the
+  repository's stable synthetic rules authority identity — never a
+  Comprehensive Rules snapshot.
 
 MagicRules:
   real Magic semantics executing accepted rules contracts;
   legacy `apply()` FORBIDDEN; forced progress enabled via the
   turn-owned predicate-or-hard-stop; kernel entrypoints are
   program-owned; cannot fall through to legacy.
+  Pairs ONLY with RulesContracts whose rules authority is a
+  Comprehensive Rules snapshot identity (per ADR 0051).
 ```
+
+This pairing is the program_kind × semantic contract compatibility rule
+enforced at restore/admission (§2.8): a SyntheticRulesCompat backend can
+never resume under a CR-bound contract and vice versa, and neither
+family can resume under a contract whose authority is foreign to it.
 
 A new variant is required ONLY when a new execution/dispatch family
 appears that cannot be represented as a new semantic contract under an
@@ -216,7 +232,7 @@ semantic-contract-manifest.v1 payload (fixed 5-array):
 rules-contract-manifest.v1 payload (fixed 4-array):
   [ "rules-contract-manifest.v1",
     "mtgml.rules-contract.v1",
-    cr_authority_snapshot_id,     # exact stable snapshot identity (text)
+    rules_authority_snapshot_id,  # exact stable authority identity (text)
     capability_closure ]          # non-empty canonical array of
                                   #   [capability_key, capability_version]
                                   #   entries, sorted by key, keys unique
@@ -224,12 +240,22 @@ rules-contract-manifest.v1 payload (fixed 4-array):
 
 RulesContractManifestV1 binds ONLY semantic meaning:
 
-- the Comprehensive Rules authority identity the contract is normatively
-  defined against (repository-owned stable snapshot identity per
-  ADR 0051; never rules text);
+- the rules authority identity the contract is normatively defined
+  against — FAMILY-TYPED, one immutable meaning per value:
+  - for MagicRules contracts: the exact Comprehensive Rules snapshot
+    identity per ADR 0051 (repository-owned stable identity; never
+    rules text; no synthetic value may impersonate it);
+  - for SyntheticRulesCompat contracts: the repository's stable
+    synthetic rules authority identity (the value already used as the
+    legacy synthetic rules provenance, e.g. `synthetic-rules`) — the
+    legacy synthetic semantics are a first-class immutable meaning in
+    their own right, NOT a degenerate Magic contract and NOT a fake CR
+    snapshot;
 - the accepted versioned capability closure actually implemented by this
   contract (key + version only — no spec bytes, source hashes,
-  implementation paths, or file digests);
+  implementation paths, or file digests); the synthetic family binds its
+  legacy synthetic capability closure, the Magic family its Magic rules
+  capability closure;
 - project interpretation records, when first adopted, enter through a
   NEW `rules-contract-manifest.v2` schema (the manifest is
   content-addressed, so V1 meaning is immutable automatically). S1 uses
@@ -280,9 +306,11 @@ by `validate()` like every other checkpoint component.
 CHECKPOINT_DOMAIN_V5        = mtgml.checkpoint-digest.v5
 CHECKPOINT_INPUT_SCHEMA_V5  = environment-checkpoint-digest-input.v5
 checkpoint schema           = environment-checkpoint.v5
-checkpoint codec            = in-memory-reference / 6
-  (bumped 3→4→6? NO — the family advanced 3→4 at the V4 cut; V5 is the
-   next value: 5. Exact current value re-verified at implementation.)
+checkpoint codec            = in-memory-reference / "5"
+  (exact: the V4 checkpoint codec identity in code is
+   `in-memory-reference` / "4"; V5 keeps the same codec family and
+   bumps the semantic version only — new checkpoint semantics ⇒ new
+   codec version. This value is digest-relevant and FROZEN here.)
 V5 checkpoint-digest input  = V4 6-element array + the identity as the
   7th (LAST) element, canonically encoded as:
     [ program_kind_variant_array,        # e.g. ["magic_rules", null]
@@ -347,8 +375,11 @@ ReplayManifestV5.semantic_contract = {
 
 A detached verifier MUST check: the manifest hashes to
 `semantic_contract_id`; the rules manifest hashes to
-`manifest.rules_contract_id`; `manifest.semantic fields` are
-consistent (nulls where declared); the top ID equals the identity's.
+`manifest.rules_contract_id`; format/content fields are consistent
+(nulls where declared, no child manifest where null); the top ID equals
+the identity's; AND the replay's `rules_snapshot` equals the bound rules
+contract's `rules_authority_snapshot_id` (§2.2 equality — mismatch is a
+detached rejection).
 A replay with a correctly recomputed checkpoint digest but a
 mismatched/foreign semantic contract is REJECTED detached. This is
 "Level B1" semantic identity verification (§2.11): exact content
@@ -361,9 +392,10 @@ is the complete required set for the current architecture.
 
 Replay provenance remains separate and useful: engine/build, backend and
 kernel implementation, format/source snapshots, Oracle snapshot, bundle
-identity, deck identity, certification/evidence references. Provenance
-that duplicates a transitively bound value (e.g. `rules_snapshot`) is
-deprecated-redundant (§2.2) and never authoritative.
+identity, deck identity, certification/evidence references.
+`rules_snapshot` is the one provenance field with a REQUIRED detached
+equality to the bound contract (§2.2/§2.10); it remains provenance —
+the contract is authoritative.
 
 ### 2.11 Replay validation vocabulary (binding)
 
@@ -412,8 +444,9 @@ slice proves, at minimum:
    (shared negative fixtures);
 5. replay initial/final identity with wrong program/digest ⇒ reject
    (detached);
-6. replay semantic-contract mismatch (manifest vs identity, or child
-   manifest vs child ID) ⇒ detached reject (§2.10);
+6. replay semantic-contract mismatch (manifest vs identity, child
+   manifest vs child ID, or `rules_snapshot` vs bound contract
+   authority) ⇒ detached reject (§2.10);
 7. `RulesContractIdV1` + `SemanticContractIdV1` known-answer vectors
    with Rust↔Python byte parity.
 
@@ -650,6 +683,4 @@ REAL_MAGIC_RULES = NO
 Open verification at acceptance time: `verify_repository.py` V4
 assertions and `run_m2_b_contract_cut.py` evidence must be re-checked
 against §2.15 (they are P0-frozen claims this candidate intentionally
-supersedes for the current runtime only). The exact checkpoint codec
-integer for V5 (§2.7) is confirmed against the V4 constant at
-implementation time before any vector is frozen.
+supersedes for the current runtime only.
