@@ -98,6 +98,7 @@ Dispositions for every V4 occurrence live in the exhaustive census of §22; this
 | Semantic-contract DATA types (§6–§8) | mtgml-model | as listed above | n/a | no | internal |
 | `RuntimeSemanticCatalog` (construction + lookup + support predicate) | mtgml-environment | none (internal, in-process) | n/a | no | internal |
 | `ProgramKernelV1` (program-owned kernel boundary: named construction + `apply` + forced-progress dispatch, §23a.1) | mtgml-rules | none (internal, in-process) | n/a | no | internal |
+| `ProgramKernelConstructionErrorV1` (variant `UnsupportedProgram`; failure of `ProgramKernelV1::for_program`, §18) | mtgml-rules | none (internal, mapped at admission) | n/a | no | internal |
 
 One authoritative definition per type lives in the owner crate; wire/replay/persistence import it. No parallel duplicate structs.
 
@@ -374,7 +375,7 @@ Writer posture (exact): the ADR's `writer = no` is an ARTIFACT-EXPORT policy —
 
 ## 18. Error model
 
-New typed errors (environment): extend the existing `CheckpointValidationError`/`ControllerError` families with distinct variants — `ExecutionIdentity` (malformed identity / unknown program kind at decode), `SemanticContractUnknown`, `SemanticContractDigestMismatch`, `RulesContractDigestMismatch`, `ProgramAuthorityMismatch`, `SemanticContractUnsupported`, `ProgramStateIncompatible`. Replay: extend `ReplayValidationError` with `SemanticContractMismatch` (manifest/identity or child mismatch) and `RulesSnapshotMismatch`. Persistence: reuse `PersistenceDecodeErrorV1` categories (no new codec categories required; the V5 input is a schema-shaped extension). No distinct semantic failure may flatten into one debug string; no privileged contract/catalog detail crosses player-facing APIs.
+New typed errors (environment): extend the existing `CheckpointValidationError`/`ControllerError` families with distinct variants — `ExecutionIdentity` (malformed identity / unknown program kind at decode), `SemanticContractUnknown`, `SemanticContractDigestMismatch`, `RulesContractDigestMismatch`, `ProgramAuthorityMismatch`, `SemanticContractUnsupported`, `ProgramStateIncompatible`. Kernel construction (Fix-05): `ProgramKernelConstructionErrorV1` is owned by mtgml-rules with the single variant `UnsupportedProgram`; `ProgramKernelV1::for_program` returns `Result<ProgramKernelV1, ProgramKernelConstructionErrorV1>`, and the environment admission layer maps it deterministically onto its existing `SemanticContractUnsupported`/program-support `ControllerError` family. It is deliberately NOT a `KernelExecutionError` variant — construction/admission failures precede execution and are semantically distinct from failures during kernel execution. Replay: extend `ReplayValidationError` with `SemanticContractMismatch` (manifest/identity or child mismatch) and `RulesSnapshotMismatch`. Persistence: reuse `PersistenceDecodeErrorV1` categories (no new codec categories required; the V5 input is a schema-shaped extension). No distinct semantic failure may flatten into one debug string; no privileged contract/catalog detail crosses player-facing APIs.
 
 ## 19. Test/KAT/negative-fixture obligations
 
@@ -473,13 +474,13 @@ pub enum ProgramKernelV1 {          // owner: mtgml-rules (new module)
 }
 impl ProgramKernelV1 {
     pub fn for_program(program_kind: ExecutionProgramV1)
-        -> Result<ProgramKernelV1, UnsupportedProgram>;   // the ONLY named construction path
+        -> Result<ProgramKernelV1, ProgramKernelConstructionErrorV1>;   // the ONLY named construction path
     pub fn apply(&mut self, ...);                          // dispatches to the kernel trait method
     pub fn advance_forced_progress(&mut self, ...);        // dispatches to the inherent method (legacy forced progress PRESERVED)
 }
 ```
 
-`for_program(SyntheticRulesCompat)` constructs `SyntheticLegacy(SyntheticM1RulesKernel)` (behavior unchanged); `for_program(MagicRules)` returns `Err(UnsupportedProgram)` (no production Magic contract pre-S1). The unit struct becomes module-private to mtgml-rules; `Default` is removed. Complete literal census (grep-verified at baseline): production `synthetic.rs:113`, `:140`, `:165`; tests `environment/tests/checkpoint_replay.rs:741`, `environment/tests/forced_progress.rs:198`, plus the forced-progress call sites `commit.rs:97`/`:219` and `tests/forced_progress.rs:199` which switch from the inherent method to the `ProgramKernelV1` dispatch. Every site migrates explicitly at compile time; no naked `SyntheticM1RulesKernel` literal remains as a semantic construction path, and both mandatory entry points (trusted response execution + forced progress execution) are program-owned.
+`for_program(SyntheticRulesCompat)` constructs `SyntheticLegacy(SyntheticM1RulesKernel)` (behavior unchanged); `for_program(MagicRules)` returns `Err(ProgramKernelConstructionErrorV1::UnsupportedProgram)` (no production Magic contract pre-S1; error type per §18/§5). The unit struct becomes module-private to mtgml-rules; `Default` is removed. Complete literal census (grep-verified at baseline): production `synthetic.rs:113`, `:140`, `:165`; tests `environment/tests/checkpoint_replay.rs:741`, `environment/tests/forced_progress.rs:198`, plus the forced-progress call sites `commit.rs:97`/`:219` and `tests/forced_progress.rs:199` which switch from the inherent method to the `ProgramKernelV1` dispatch. Every site migrates explicitly at compile time; no naked `SyntheticM1RulesKernel` literal remains as a semantic construction path, and both mandatory entry points (trusted response execution + forced progress execution) are program-owned.
 2. Conformance facade (`crates/mtgml-conformance/src/facade.rs`) — **Decision: MUST MIGRATE.** Concrete V4-typed surface verified at baseline: `expected_state_digest: FullStateDigestV4` field (line ~214), V4 checkpoint binding references, parity-comparison sites. The facade's checkpoint/replay/parity types become V5 in the V5 slice; its retained V4 golden inputs stay FROZEN_FIXTURE.
 3. `EnvironmentCheckpointV4::new` (checkpoint.rs) — retained per §17 writer posture (historical/test-only construction only, §22 census row), not migrated.
 4. `TrustedEnvironmentController::new`, `fork_boxed` — type-signature migration per §23 rows (no decisions open).
