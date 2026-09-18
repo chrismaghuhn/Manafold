@@ -91,8 +91,9 @@ they name checkpoint/replay types
 Superseded V4 manifest provenance fields under V5:
 `kernel_implementation_id` and `kernel_semantic_version` remain
 INFORMATIONAL implementation provenance (never semantic authority, never
-detach-checked against the contract).`rules_snapshot` is RETAINED as provenance with one REQUIRED detached
-equality, family-typed like the contract itself (§2.10):
+detach-checked against the contract). `rules_snapshot` is RETAINED as
+provenance with one REQUIRED detached equality, family-typed like the
+contract itself (§2.10):
 
 ```text
 comprehensive_rules-authority contract:
@@ -260,8 +261,10 @@ meaning per value, owned by the manifest schema version):
 capability_closure_or_null (family-typed requirement):
   comprehensive_rules authority ⇒ NON-EMPTY canonical array of
       [capability_key, capability_version] entries, sorted by key,
-      keys unique — the accepted versioned Magic capability closure
-      actually implemented by this contract.
+      keys unique — the accepted versioned semantic capability
+      closure SELECTED/REQUIRED by this RulesContract (which
+      semantics the contract designates; never the current
+      implementation/support status of any runtime).
   synthetic_legacy authority ⇒ null. The legacy synthetic semantics are
       fully identified by the closed synthetic_legacy variant; NO
       capability-registry closure is claimed for them (the registry
@@ -279,9 +282,11 @@ RulesContractManifestV1 binds ONLY semantic meaning:
   itself: the legacy synthetic semantics are a first-class immutable
   meaning in their own right, NOT a degenerate Magic contract, NOT a
   fake CR snapshot, and NOT an over-claimed provenance string;
-- the accepted versioned capability closure — REQUIRED for
-  `comprehensive_rules` contracts (key + version only; no spec bytes,
-  source hashes, implementation paths, or file digests); MUST be null
+- the accepted versioned semantic capability closure selected/required
+  by this contract (key + version only; no spec bytes,
+  source hashes, implementation paths, or file digests) — this is
+  WHICH SEMANTICS the contract designates, independent of any
+  runtime's implementation or support status; MUST be null
   for `synthetic_legacy` contracts (no synthetic capability closure
   exists; none is invented);
 - project interpretation records, when first adopted, enter through a
