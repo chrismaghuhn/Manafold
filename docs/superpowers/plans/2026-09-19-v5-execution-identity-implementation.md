@@ -57,7 +57,8 @@ If any of these fail on untouched `master`: `V5_IMPLEMENTATION = BLOCKED` — re
 **RED gate** (compile-contract REDs are intended here — the missing types ARE the expected failure; accidental failures elsewhere do not count):
 
 ```bash
-cargo test -p mtgml-model --all-features execution_identity semantic_contract
+cargo test -p mtgml-model --all-features execution_identity
+cargo test -p mtgml-model --all-features semantic_contract
 ```
 
 Expected RED: unresolved types. Then implement; the same command must go GREEN covering the spec §11 matrix exactly, as separate structural-validation vs wire-decode tests: unknown `ExecutionProgramV1` string rejected (wire decode); `RulesAuthorityV1` closed variants (unknown variant rejected); capability key/version per spec §7c grammar (from `schemas/capability-registry.v1.schema.json`: key `^(rules|mechanic|decision|visibility|tooling|format/[a-z0-9-]+)/[a-z0-9][a-z0-9-]*(/[a-z0-9][a-z0-9-]*)*$`, version `^[0-9]+\.[0-9]+\.[0-9]+$` — invalid key, invalid version, duplicate key, unsorted closure rejected); `SyntheticLegacy` + non-null closure rejected; `ComprehensiveRules` + null/empty closure rejected; empty CR snapshot rejected; deny-unknown on every serde type; milestone-name values (`m3…`, `s1…`) rejected as program_kind strings.
@@ -74,7 +75,7 @@ Expected RED: unresolved types. Then implement; the same command must go GREEN c
 
 ## Task 2 — Canonical contract digest machinery (persistence)
 
-**Objective:** `calculate_rules_contract_id_v1` and `calculate_semantic_contract_id_v1` in `crates/mtgml-persistence/src/` (new module `semantic_contract_digest.rs` beside `checkpoint_digest.rs`), byte-exact per spec §9.
+**Objective:** `calculate_rules_contract_id_v1` and `calculate_semantic_contract_id_v1` in `crates/mtgml-persistence/src/` (new module `semantic_contract_digest.rs` beside `checkpoint_digest.rs`), byte-exact per spec §9 — Rust AND the Python mechanical mirror of BOTH functions in `python/src/mtgml/persistence.py` (Plan Fix-01: the Task 3 generator consumes these existing Python functions; it must not duplicate digest logic), plus the first Rust↔Python KAT parity for exactly these two IDs.
 
 **Contracts (copy exactly):** envelope `mtgml.digest-envelope.v1`, algorithm `sha-256`, codec `mtgml.canonical-cbor.v1`; domains `mtgml.rules-contract.v1` / `mtgml.semantic-contract.v1`; input schemas `rules-contract-manifest.v1` / `semantic-contract-manifest.v1`; canonical payloads = spec §7 fixed 4-array (with `[variant_id, payload]` authority encoding and canonically sorted unique closure) and §8 fixed 5-array (`null` = absence, rules ID as raw 32-byte string). Reader-side canonical re-encode equality applies to any decode path.
 
@@ -82,15 +83,16 @@ Expected RED: unresolved types. Then implement; the same command must go GREEN c
 
 ```bash
 cargo test -p mtgml-persistence --all-features semantic_contract_digest
+.venv/bin/python -m unittest python.tests.test_v5_contract_digest -v
 ```
 
-Expected RED: missing functions/domains. GREEN = spec §19.1/§19.2 KAT vectors (SyntheticLegacy manifest → bytes → digest; ComprehensiveRules minimal one-entry manifest → bytes → digest; synthetic rules ID + null + null; KAT-only hypothetical Magic rules ID + null + null — NOT a catalog entry) committed as fixtures.
+Expected RED: missing Rust functions/domains AND missing Python mirror module. GREEN = spec §19.1/§19.2 KAT vectors (SyntheticLegacy manifest → bytes → digest; ComprehensiveRules minimal one-entry manifest → bytes → digest; synthetic rules ID + null + null; KAT-only hypothetical Magic rules ID + null + null — NOT a catalog entry) committed as shared fixtures and asserted byte-identically by both suites.
 
 **Negative/adversarial evidence:** schema/domain disagreement rejected; malformed child digest length rejected.
 
 **Focused GREEN:** `cargo test -p mtgml-persistence --all-features`. **Affected-package GREEN:** `cargo check --workspace --all-targets --all-features --locked`.
 
-**Commit:** `persistence: rules/semantic contract digest machinery with KATs`
+**Commit:** `persistence: rules/semantic contract digest machinery with rust/python parity KATs`
 
 ---
 
@@ -105,7 +107,7 @@ Expected RED: missing functions/domains. GREEN = spec §19.1/§19.2 KAT vectors 
 - Generated Rust output: `crates/mtgml-environment/src/semantic_catalog_generated.rs` (generated-file banner, do-not-edit note; emits manifest constants AND derived `RulesContractIdV1`/`SemanticContractIdV1` constants using Task 2 functions)
 - Rust recompute KAT: `crates/mtgml-environment/src/semantic_catalog_kat.rs` (spec §19.4: recompute every ID constant from the emitted manifest constants via the §9 functions; byte equality; drift fails the build)
 
-**Generator semantics:** reads ONLY `contracts/catalog/semantic-contracts.v1.json` (no Rust parsing, no Python duplicate manifest, no invoking Rust); deterministic; `--check` mode fails on stale output; rerun produces zero diff.
+**Generator semantics:** reads ONLY `contracts/catalog/semantic-contracts.v1.json` (no Rust parsing, no Python duplicate manifest, no invoking Rust); derives IDs via the Task 2 Python mirror functions (`python/src/mtgml/persistence.py::calculate_rules_contract_id_v1` / `calculate_semantic_contract_id_v1`) — NO digest logic in the generator itself; deterministic; `--check` mode fails on stale output; rerun produces zero diff.
 
 **RED gate:**
 
@@ -126,7 +128,20 @@ GREEN = generator emits; `--check` passes; rerun `git diff --exit-code` on gener
 
 ## Task 4 — ProgramKernelV1 boundary (mtgml-rules)
 
-**Objective:** Spec §23a.1 verbatim: `ProgramKernelV1` enum (`SyntheticLegacy(SyntheticM1RulesKernel)`; NO Magic variant pre-S1) with `for_program(program_kind) -> Result<ProgramKernelV1, ProgramKernelConstructionErrorV1>` as the ONLY construction path, dispatching BOTH entry points (`apply` to the trait method; `advance_forced_progress` to the inherent method — legacy forced progress preserved). `ProgramKernelConstructionErrorV1` with variant `UnsupportedProgram`. Remove `#[derive(Default)]` from `SyntheticM1RulesKernel` (`synthetic.rs:54`); make the unit struct module-private to `mtgml-rules`.
+**Objective:** Spec §23a.1 (Plan Fix-01 API closure): public `ProgramKernelV1` as an opaque struct wrapping a PRIVATE inner enum, so `SyntheticM1RulesKernel` stays private to `mtgml-rules` while `ProgramKernelV1` remains externally usable from `mtgml-environment` (no public variant exposing a private payload type; no literal bypass):
+
+```rust
+pub struct ProgramKernelV1 { inner: ProgramKernelInner }   // public, opaque
+enum  ProgramKernelInner { SyntheticLegacy(SyntheticM1RulesKernel) }  // private; NO Magic variant pre-S1
+impl ProgramKernelV1 {
+    pub fn for_program(program_kind: ExecutionProgramV1)
+        -> Result<ProgramKernelV1, ProgramKernelConstructionErrorV1>;   // ONLY construction path
+    pub fn apply(&mut self, ...);            // dispatches to the kernel trait method
+    pub fn advance_forced_progress(&mut self, ...);  // dispatches to the inherent method — legacy forced progress preserved
+}
+```
+
+`ProgramKernelConstructionErrorV1` with variant `UnsupportedProgram`. Remove `#[derive(Default)]` from `SyntheticM1RulesKernel` (`synthetic.rs:54`); keep the unit struct module-private to `mtgml-rules`.
 
 **Migration census (compile-time-explicit; from the verified spec):** literals at `crates/mtgml-rules/src/synthetic.rs:113`, `:140`, `:165` → internal `ProgramKernelV1` construction; `crates/mtgml-environment/src/synthetic.rs` field/`fork_boxed` reset (`:165`) → holds `ProgramKernelV1`; forced-progress call sites `crates/mtgml-environment/src/synthetic/commit.rs:97`, `:219` and `crates/mtgml-environment/src/tests/forced_progress.rs:199` → dispatch via `ProgramKernelV1`; test literals `crates/mtgml-environment/src/tests/checkpoint_replay.rs:741`, `tests/forced_progress.rs:198` → `for_program`.
 
@@ -144,7 +159,7 @@ Expected RED: missing types. GREEN: `for_program(SyntheticRulesCompat)` → synt
 grep -rn "SyntheticM1RulesKernel" crates/ tools/ | grep -v "crates/mtgml-rules/src" | grep -v "ProgramKernelV1" | grep -v "for_program"
 ```
 
-must return zero semantic-construction sites (mentions in type position via the boundary are allowed; naked construction is not). The V5 gate script (Task 13) asserts this permanently.
+must return zero semantic-construction sites (mentions in type position via the boundary are allowed; naked construction is not). The V5 gate script (Task 12, created RED before the migration) asserts this permanently.
 
 **Focused GREEN:** `cargo test -p mtgml-rules --all-features` + `cargo test -p mtgml-environment --all-features` (call-site migration). **Affected-package GREEN:** workspace `cargo check`.
 
@@ -218,7 +233,8 @@ Expected RED: missing type. GREEN: validate chain green; V4 tests untouched and 
 **RED gate:**
 
 ```bash
-cargo test -p mtgml-environment --all-features semantic_catalog restore_admission
+cargo test -p mtgml-environment --all-features semantic_catalog
+cargo test -p mtgml-environment --all-features restore_admission
 ```
 
 Expected RED: missing module/variants. GREEN covers: SyntheticLegacy resolves; unknown semantic ID rejects; known-meaning ≠ supported-execution; `MagicRules` resolves to NO synthetic contract (catalog inputs match generated constants); each of the nine phases rejects in its own typed failure family; atomic rejection — pre/post `checkpoint()` byte-equality on the controller for every rejection phase (spec §12 observable invariant).
@@ -257,14 +273,20 @@ Expected RED: missing module/types. GREEN: record→validate→export round-trip
 
 **Required negatives (each classified, from spec §19):** unknown `program_kind`; wrong digest length; semantic-contract mismatch; rules-contract mismatch; `rules_snapshot` mismatch (CR); identity three-way mismatch; unknown field; wrong schema version.
 
-**RED gate:**
+**RED gate (Plan Fix-01: `validate_schemas.py` alone cannot RED on absent V5 — it validates its existing V1–V4 inventory; the inventory test is the seam):**
 
 ```bash
-.venv/bin/python scripts/validate_schemas.py    # RED: schemas absent → inventory/validation failure
+.venv/bin/python -m unittest python.tests.test_schema_parity.SchemaParityTests.test_v5_replay_schemas_are_inventoried -v
+```
+
+Expected RED: `V5 schema inventory absent` — the test requires `replay-manifest.v5.schema.json` / `authoritative-replay.v5.schema.json` in `WIRE_MAPPING` and `schemas/README.json`. Implement the inventory/mapping entries, schemas, dispatch, and fixtures; then:
+
+```bash
+.venv/bin/python scripts/validate_schemas.py
 cargo test -p mtgml-wire --all-features v5
 ```
 
-GREEN: positive V5 fixtures pass; every negative fails closed with the expected classification; V4 fixtures untouched and passing.
+GREEN: inventory test passes; `validate_schemas.py` green over V1–V5; positive V5 fixtures pass; every negative fails closed with the expected classification; V4 fixtures untouched and passing.
 
 **Focused GREEN:** the two commands. **Affected-package GREEN:** `cargo test --workspace --all-features --locked`.
 
@@ -274,7 +296,7 @@ GREEN: positive V5 fixtures pass; every negative fails closed with the expected 
 
 ## Task 11 — Python V5 mechanical mirror + byte parity
 
-**Objective:** Spec §15/§14.1: `python/src/mtgml/persistence.py` gains `calculate_rules_contract_id_v1`, `calculate_semantic_contract_id_v1`, `calculate_checkpoint_digest_v5` (byte-exact mirrors; V4 functions retained); new `python/src/mtgml/_replay_v5.py` (V5 DTOs, `from_wire`/`to_wire`, deny-unknown, detached recompute chain incl. three-way equality and CR snapshot equality); `replay.py`/`wire.py`/`__init__.py` re-exports per actual ownership (`replay.py:35` currently re-exports `_replay_v4`). Python does NOT decide legality/support/admission.
+**Objective:** Spec §15/§14.1: `python/src/mtgml/persistence.py` gains `calculate_checkpoint_digest_v5` (the two contract-ID mirrors already landed in Task 2; byte-exact mirror; V4 functions retained); new `python/src/mtgml/_replay_v5.py` (V5 DTOs, `from_wire`/`to_wire`, deny-unknown, detached recompute chain incl. three-way equality and CR snapshot equality); `replay.py`/`wire.py`/`__init__.py` re-exports per actual ownership (`replay.py:35` currently re-exports `_replay_v4`). Python does NOT decide legality/support/admission.
 
 **RED gate:**
 
@@ -282,7 +304,7 @@ GREEN: positive V5 fixtures pass; every negative fails closed with the expected 
 .venv/bin/python -m unittest python.tests.test_v5_persistence python.tests.test_v5_replay -v
 ```
 
-Expected RED: modules/functions missing. GREEN: shared KAT vectors byte-identical Rust↔Python for spec §19.1–§19.5 (commands: Rust `cargo test -p mtgml-persistence --all-features semantic_contract_digest checkpoint_digest_v5`; Python `python -m unittest python.tests.test_v5_persistence -v`; vectors read from the same committed fixture files).
+Expected RED: missing checkpoint-digest mirror and V5 DTO modules (the Task 2 contract-ID mirrors already exist and stay green). GREEN: shared KAT vectors byte-identical Rust↔Python for spec §19.1–§19.5 (commands: `cargo test -p mtgml-persistence --all-features semantic_contract_digest` then `cargo test -p mtgml-persistence --all-features checkpoint_digest_v5`; Python `python -m unittest python.tests.test_v5_persistence -v`; vectors read from the same committed fixture files).
 
 **Negative/adversarial evidence:** Python rejects every §19 negative-fixture case mechanically.
 
@@ -292,7 +314,25 @@ Expected RED: modules/functions missing. GREEN: shared KAT vectors byte-identica
 
 ---
 
-## Task 12 — Current producer/consumer migration + conformance/parity closure
+## Task 12 — V5 gate script BEFORE migration (RED by design)
+
+**Objective:** Create `scripts/run_v5_execution_identity_gate.py` FIRST (Plan Fix-01: this is TDD for the migration itself — the gate must observe its RED state while current producers are still V4, which is impossible if it is built after Task 13): assert the V5-current tokens, the §23a.1 residual-kernel-construction grep, and RESIDUAL_V4_CURRENT_PRODUCER_ZERO via the §22 allowlist — V4 tokens permitted ONLY in RETAIN rows; failure output names path, token, line, expected disposition.
+
+**RED gate (expected to FAIL at this point — that IS the evidence):**
+
+```bash
+.venv/bin/python scripts/run_v5_execution_identity_gate.py
+```
+
+Expected RED: current producers are still V4 → named `CURRENT_*` census violations (path/token/line/disposition). Nothing is fixed in this task.
+
+**Negative/adversarial evidence:** scratch-test a violation → gate names it; revert scratch.
+
+**Commit:** `gate: v5 execution identity gate with residual-v4 enforcement (red until migration)`
+
+---
+
+## Task 13 — Current producer/consumer migration + conformance/parity closure (driven by the gate)
 
 **Objective:** Flip every §22 `CURRENT_*` census row to V5: environment producer paths (`synthetic.rs`, `synthetic/commit.rs`, `synthetic/replay.rs:56` manifest construction, `controller.rs`, `replay.rs`, `replay_parity_tests.rs`, `tests.rs`, `lib.rs` re-exports), replay current recorder/export, conformance consumers (`facade.rs`, `lib.rs`, `lifecycle.rs`, `isolation/{paired,replay_parity,checkpoint_parity,fork_parity,rejection,fingerprint,endpoint_pair}.rs`, `legal_space/gate_evidence.rs`), Python public surfaces, and `tools/m2-semantic-adapter` runtime construction path (`session.rs::reset_synthetic` → V5 config/codec/replay-schema; its historical M2 validation evidence stays V4 historical, never reinterpreted — spec §30). `run_m2_final_closure.py` gets ONLY its posture comment. Historical V4 rows (§22 RETAIN) untouched.
 
@@ -300,7 +340,17 @@ Expected RED: modules/functions missing. GREEN: shared KAT vectors byte-identica
 
 **Information-safety review (spec §44):** grep player-facing surfaces (`PlayerObservation`, `PlayerInformationState`, `PlayerStep`, decision products, player-visible events in `mtgml-observation`/`mtgml-decision`/`mtgml-wire`) for `ExecutionIdentityV1|SemanticContractIdV1|RulesContractIdV1|RuntimeSemanticCatalog|checkpoint_digest` — expected `PLAYER_INFORMATION_LEAK = NONE`; record as gate evidence.
 
-**RED gate:** `cargo test --workspace --all-features --locked` (post-migration compile failures are the RED state before the flip; after the flip all GREEN).
+**RED gate (Plan Fix-01: the gate from Task 12 is the characterizing RED, NOT a workspace compile break):**
+
+```bash
+.venv/bin/python scripts/run_v5_execution_identity_gate.py
+```
+
+Work the migration until the gate passes (each gate run names the remaining `CURRENT_*` rows); a mid-migration workspace compile break is incidental, never evidence. After the gate goes GREEN:
+
+```bash
+cargo test --workspace --all-features --locked
+```
 
 **Negative/adversarial evidence:** rejected-restore nonmutation re-run per §19 runtime/admission cases; fork/replay parity suites green.
 
@@ -310,23 +360,23 @@ Expected RED: modules/functions missing. GREEN: shared KAT vectors byte-identica
 
 ---
 
-## Task 13 — Residual-V4 gate, V5 gate script, FAST wiring, documentation closure
+## Task 14 — FAST/justfile wiring + documentation closure
 
-**Objective:** Spec §21/§21b/§22 gate mechanics and ADR §2.16 documentation closure.
+**Objective:** Spec §21/§21b wiring (the gate script itself already exists from Task 12) and ADR §2.16 documentation closure.
 
-**Files:** `scripts/run_v5_execution_identity_gate.py` (new; asserts V5-current tokens, the §23a.1 residual-kernel-construction grep, and RESIDUAL_V4_CURRENT_PRODUCER_ZERO via the §22 allowlist — V4 tokens permitted ONLY in RETAIN rows; failure output names path, token, line, expected disposition); `scripts/verify_repository.py` (V4-current block → V5-current tokens + residual checks); `scripts/run_checks.py` (append the gate script to `FAST`, so it runs in PR Fast, Windows Setup Smoke, PR Integration (integration = FAST + extras), Integration/master, Nightly (certification = FAST + integration extras + certification extras)); `justfile` `contracts` recipe (direct invocation beside `verify_repository.py`; include `generate_semantic_contract_catalog.py --check` there and inside the gate script); `scripts/run_m2_b_contract_cut.py` (post-`git mv` posture line only); `scripts/run_m2_final_closure.py` (posture comment only); docs per spec §22: `docs/contracts/ENGINE_STATE_CLOSURE.md`, `docs/STATE_HASHING.md`, `docs/REPLAY_AND_DETERMINISM.md`, `docs/contracts/WIRE_CONTRACT.md`, `docs/maintenance/API_LIFECYCLE.md` (V4 sections retained as DOC_HISTORY + V5 sections added — docs FOLLOW the executable implementation, never ahead of it).
+**Files:** `scripts/verify_repository.py` (V4-current block → V5-current tokens + residual checks); `scripts/run_checks.py` (append `scripts/run_v5_execution_identity_gate.py` to `FAST`, so it runs in PR Fast, Windows Setup Smoke, PR Integration (integration = FAST + extras), Integration/master, Nightly (certification = FAST + integration extras + certification extras)); `justfile` `contracts` recipe (direct invocation beside `verify_repository.py`; include `generate_semantic_contract_catalog.py --check` there and inside the gate script); `scripts/run_m2_b_contract_cut.py` (post-`git mv` posture line only); `scripts/run_m2_final_closure.py` (posture comment only); docs per spec §22: `docs/contracts/ENGINE_STATE_CLOSURE.md`, `docs/STATE_HASHING.md`, `docs/REPLAY_AND_DETERMINISM.md`, `docs/contracts/WIRE_CONTRACT.md`, `docs/maintenance/API_LIFECYCLE.md` (V4 sections retained as DOC_HISTORY + V5 sections added — docs FOLLOW the executable implementation, never ahead of it).
 
 **RED gate:**
 
 ```bash
-.venv/bin/python scripts/run_v5_execution_identity_gate.py    # RED before Task 12 completes; GREEN after
+.venv/bin/python scripts/run_checks.py fast    # RED until verify_repository V5 tokens + FAST wiring land
 ```
 
-**Negative/adversarial evidence:** temporarily reintroduce a V4 producer reference in a current path (scratch) — gate fails naming path/token/line/disposition; revert.
+**Negative/adversarial evidence:** `generate_semantic_contract_catalog.py --check` fails on a scratch-stale generated file; revert.
 
-**Focused GREEN:** the gate + `.venv/bin/python scripts/check_documentation.py`.
+**Focused GREEN:** `run_checks.py fast` + `.venv/bin/python scripts/check_documentation.py`.
 
-**Commits:** `gate: v5 execution identity gate, residual-v4 enforcement, fast wiring` then `docs: v5 execution identity contract documentation closure`
+**Commits:** `gate: wire v5 gate into fast checks and repository verification` then `docs: v5 execution identity contract documentation closure`
 
 ---
 
@@ -376,9 +426,9 @@ Hosted evidence: PR Fast, PR Integration, Windows Setup Smoke, Nightly all succe
 | WIRE_POSITIVE_FIXTURES | T10 golden fixtures |
 | WIRE_NEGATIVE_FIXTURES | T10 classified negatives |
 | SCHEMA_VALIDATION | T10 `validate_schemas.py` (hosted jsonschema gate) |
-| RESIDUAL_V4_CURRENT_PRODUCER_ZERO | T13 gate script over §22 allowlist |
+| RESIDUAL_V4_CURRENT_PRODUCER_ZERO | T12 gate (created RED) → GREEN at T13; §22 allowlist |
 | HISTORICAL_V4_EVIDENCE_PRESERVED | T7/T10/T12: V4 fixtures/KATs/schemas untouched, still passing |
-| MAINTAINER_GATES | T13 verify_repository + gate + split b-cut posture |
+| MAINTAINER_GATES | T12/T14: gate script, verify_repository tokens, FAST wiring, split b-cut posture |
 | HOSTED_CI | Final matrix hosted runs |
 
 Traceability: ADR 0055 requirements, spec §1–§28, the §22 residual-V4 census, and the §23/§23a direct-constructor census are mapped task-by-task above (`ADR_0055_REQUIREMENTS_MAPPED = YES`, `SPEC_SECTIONS_MAPPED = YES`, `ACCEPTANCE_CRITERIA_MAPPED = YES`, `RESIDUAL_V4_CENSUS_MAPPED = YES`, `DIRECT_CONSTRUCTOR_CENSUS_MAPPED = YES`).
