@@ -1,7 +1,8 @@
-# ADR candidate: V5 execution-identity cut — resumable semantic contract identity
+# ADR 0055 — V5 Execution-Identity Cut: Resumable Semantic Contract Identity
 
-- **Status:** candidate (NOT accepted; informative only until an explicit
-  acceptance change assigns a permanent ADR number)
+- **Status:** accepted by merge of PR #197; candidate until that merge
+- **Stability:** accepted on merge of PR #197; V5 implementation remains
+  a separately gated prerequisite slice
 - **Date:** 2026-09-18
 - **Owners:** architecture maintainers; state maintainers; rules
   maintainers; conformance maintainers; persistence maintainers
@@ -30,7 +31,7 @@ equivalent execution`.
 An independent review series (execution-identity gap review; identity
 model closure; semantic dependency closure; manifest closure; identity
 binding closure; recursive binding closure) established the architecture
-this candidate encodes:
+the review series and this accepted ADR encode:
 
 - the gap is real and requires a V5 resumable-envelope cut;
 - execution semantic identity is NOT Magic game state (`EngineState` and
@@ -43,7 +44,8 @@ this candidate encodes:
 - implementation, build, and support state are provenance/runtime
   concerns, never semantic identity.
 
-This document is the single normative candidate. Earlier candidate
+This document is the single normative record of the V5 execution-identity
+architecture. Earlier candidate
 revisions (coarse program enum; milestone-named variants; inline
 kernel/snapshot identity fields; frozen program⇔kernel⇔snapshot tuple
 rows) are superseded and appear only in §5 as rejected alternatives.
@@ -642,7 +644,7 @@ V5 fixture/schema RED (types, codec vectors, contract-ID KATs, negative
 - The S1-01 spec/plan SHED all V5-freezing authority at rebase time,
   replacing it with a hard DEPENDENCY reference to this ADR (number
   assigned on acceptance) plus the V5 merge head. Until then, the S1
-  branch's V5 text is INPUT to this candidate, not architecture.
+  branch's V5 text is INPUT to this ADR, not architecture.
 - S1 REDs are re-expressed against V5 types at rebase; no semantic
   redesign is expected from the rebase itself.
 - The first real Magic contract (this ADR's §2.6 instantiation) is
@@ -655,7 +657,7 @@ V5 fixture/schema RED (types, codec vectors, contract-ID KATs, negative
   semantic meaning; every new semantics would churn enums/wire.
 - **Milestone-named variants with inline kernel/snapshot identity fields
   and frozen tuple rows (SUPERSEDED — earlier revision of this
-  candidate):** embedded implementation identity in semantic identity
+  candidate revision):** embedded implementation identity in semantic identity
   (breaking parity-equivalence), embedded project chronology in
   persistent names, and bound a rules snapshot string without closing
   what it means. Replaced by §2.3–§2.6.
@@ -698,15 +700,16 @@ V5 fixture/schema RED (types, codec vectors, contract-ID KATs, negative
 
 ## 7. Evidence and follow-up
 
-Acceptance vehicle: PR merging this candidate under its assigned number
-+ exact-head review + CI (`manafold-pr-gate` family). Acceptance does
+Acceptance vehicle: PR #197, which merged this record under its assigned
+number 0055 after exact-head review and hosted CI on the identical head.
+Acceptance does
 NOT authorize V5 implementation; implementation is a separately gated
 prerequisite slice per §3, then S1 RED per §4. Identity existence claims
 no support: `specified ≠ implemented ≠ covered ≠ certified` is unchanged
 by everything herein.
 
 ```text
-V5_ADR = CANDIDATE (this document)
+ADR_0055 = ACCEPTED_ON_MERGE_OF_PR_197
 V5_IMPLEMENTATION_AUTHORIZED = NO
 S1_RED_AUTHORIZED = NO (blocked on V5 merge + S1 rebase)
 S1_LIFECYCLE = specified (unchanged)
@@ -716,5 +719,5 @@ REAL_MAGIC_RULES = NO
 
 Open verification at acceptance time: `verify_repository.py` V4
 assertions and `run_m2_b_contract_cut.py` evidence must be re-checked
-against §2.15 (they are P0-frozen claims this candidate intentionally
+against §2.15 (they are P0-frozen claims this ADR intentionally
 supersedes for the current runtime only.
