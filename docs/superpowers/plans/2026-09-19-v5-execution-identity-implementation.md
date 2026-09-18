@@ -19,15 +19,28 @@
 - `docs/adr/0055-v5-execution-identity.md` (accepted ADR — architecture authority)
 - `docs/superpowers/specs/2026-09-18-v5-execution-identity-implementation-design.md` (reviewed spec @ `84fc20e51c52253168029a65cbf63d6885abcc14` — the implementation contract; section references `§N` below point here)
 
-**Execution preconditions (all must hold before Task 1):**
+**Execution identities (Plan Fix-02 — the PLANNING base and the IMPLEMENTATION base are distinct; never hard-pin the planning SHA for implementation):**
 
-```bash
-git fetch origin
-git rev-parse origin/master        # must be 6932a9bdd61a5ca3567b391c43db977a4b337a0a
-git status --porcelain=v2 --branch # must be clean
+```text
+PLANNING_BASE         = 6932a9bdd61a5ca3567b391c43db977a4b337a0a  (master this plan was written against)
+REVIEWED_SPEC_HEAD    = 84fc20e51c52253168029a65cbf63d6885abcc14
+REVIEWED_PLAN_HEAD    = 7484b2c35686647d640d5cae51c2870ce44f1d24 (or later reviewed plan-fix head)
+IMPLEMENTATION_BASE   = the exact NEW origin/master AFTER spec + plan merge — frozen at branch creation
 ```
 
-**Branch policy (binding):** Implementation starts ONLY after spec + plan are merged/accepted on `master`, the new `master` SHA is re-verified, and implementation is explicitly authorized. Create the future branch `chris/v5-execution-identity-implementation` from that verified `master`. No implementation may start from a documentation branch.
+**Branch policy (binding):** Implementation starts ONLY after spec + plan are merged/accepted on `master` and implementation is explicitly authorized. BEFORE creating `chris/v5-execution-identity-implementation` from `origin/master`, the executor must PROVE on the live post-merge master:
+
+```bash
+git fetch origin && git rev-parse origin/master
+git show origin/master:docs/superpowers/specs/2026-09-18-v5-execution-identity-implementation-design.md | git hash-object --stdin
+#   → must equal the reviewed spec blob on the reviewed branch (spec unchanged on master)
+git show origin/master:docs/superpowers/plans/2026-09-19-v5-execution-identity-implementation.md | git hash-object --stdin
+#   → must equal the reviewed plan blob on the reviewed branch (plan unchanged on master)
+grep -m1 "^status" docs/adr/0055-v5-execution-identity.md   # ADR 0055 remains accepted
+git status --porcelain=v2 --branch                          # clean worktree
+```
+
+Then freeze `IMPLEMENTATION_BASE = $(git rev-parse origin/master)` and branch from exactly that SHA. The implementation baseline gate below runs against `IMPLEMENTATION_BASE`, never against `PLANNING_BASE`.
 
 **Baseline gate (first future execution step, before Task 1):**
 
@@ -86,7 +99,7 @@ cargo test -p mtgml-persistence --all-features semantic_contract_digest
 .venv/bin/python -m unittest python.tests.test_v5_contract_digest -v
 ```
 
-Expected RED: missing Rust functions/domains AND missing Python mirror module. GREEN = spec §19.1/§19.2 KAT vectors (SyntheticLegacy manifest → bytes → digest; ComprehensiveRules minimal one-entry manifest → bytes → digest; synthetic rules ID + null + null; KAT-only hypothetical Magic rules ID + null + null — NOT a catalog entry) committed as shared fixtures and asserted byte-identically by both suites.
+Expected RED: the digest FUNCTIONS are missing (unresolved imports/functions in both suites) — not the test files; the RED evidence is created FIRST (add `python/tests/test_v5_contract_digest.py` importing the two mirror functions and the Rust `semantic_contract_digest` test module importing the two functions, then run). GREEN = spec §19.1/§19.2 KAT vectors (SyntheticLegacy manifest → bytes → digest; ComprehensiveRules minimal one-entry manifest → bytes → digest; synthetic rules ID + null + null; KAT-only hypothetical Magic rules ID + null + null — NOT a catalog entry) committed as shared fixtures and asserted byte-identically by both suites.
 
 **Negative/adversarial evidence:** schema/domain disagreement rejected; malformed child digest length rejected.
 
@@ -109,14 +122,14 @@ Expected RED: missing Rust functions/domains AND missing Python mirror module. G
 
 **Generator semantics:** reads ONLY `contracts/catalog/semantic-contracts.v1.json` (no Rust parsing, no Python duplicate manifest, no invoking Rust); derives IDs via the Task 2 Python mirror functions (`python/src/mtgml/persistence.py::calculate_rules_contract_id_v1` / `calculate_semantic_contract_id_v1`) — NO digest logic in the generator itself; deterministic; `--check` mode fails on stale output; rerun produces zero diff.
 
-**RED gate:**
+**RED gate (create the RED evidence FIRST):** add `python/tests/test_semantic_contract_catalog_generator.py` (invoking the generator: deterministic emit, `--check` semantics, zero-diff rerun) and the Rust `semantic_catalog_kat` test module, THEN run:
 
 ```bash
-.venv/bin/python scripts/generate_semantic_contract_catalog.py --check   # RED: script/schema missing → SystemExit/non-zero
-cargo test -p mtgml-environment --all-features semantic_catalog_kat      # RED: constants/KAT missing
+.venv/bin/python -m unittest python.tests.test_semantic_contract_catalog_generator -v   # RED: generator behavior absent
+cargo test -p mtgml-environment --all-features semantic_catalog_kat                     # RED: constants/KAT missing
 ```
 
-GREEN = generator emits; `--check` passes; rerun `git diff --exit-code` on generated file; Rust KAT GREEN.
+Expected RED: the generator's behavior and the generated constants are missing — not merely the test files. GREEN = generator emits; `--check` passes; rerun `git diff --exit-code` on generated file; Rust KAT GREEN; generator unittest GREEN.
 
 **Negative/adversarial evidence:** mutate one manifest fact in the source JSON (in a scratch copy or test): regenerated ID constants change; `--check` fails against stale generated output; no Magic production contract may be generated (source contains exactly one entry).
 
@@ -228,7 +241,7 @@ Expected RED: missing type. GREEN: validate chain green; V4 tests untouched and 
 
 ## Task 8 — RuntimeSemanticCatalog + restore admission + error taxonomy
 
-**Objective:** Spec §10/§12/§18 in `crates/mtgml-environment` (new module `semantic_catalog.rs`): catalog consuming ONLY generated Task 3 constants (no digest generation, no mutable/lazy state, no filesystem/network/env lookup; `resolve(id)` vs `supported(id, program)` distinction); the spec §12 nine-phase admission order owned exactly as its table states; error variants added to `CheckpointValidationError`/`ControllerError` (`ExecutionIdentity`, `SemanticContractUnknown`, `SemanticContractDigestMismatch`, `RulesContractDigestMismatch`, `ProgramAuthorityMismatch`, `SemanticContractUnsupported`, `ProgramStateIncompatible`) with the deterministic `ProgramKernelConstructionErrorV1 → SemanticContractUnsupported/ControllerError` mapping.
+**Objective:** Spec §10/§12/§18 in `crates/mtgml-environment` (new module `semantic_catalog.rs`): catalog consuming ONLY generated Task 3 constants (no digest generation, no mutable/lazy state, no filesystem/network/env lookup; `resolve(id)` vs `supported(id, program)` distinction); the spec §12 nine-phase admission order owned exactly as its table states; error variants added to `CheckpointValidationError`/`ControllerError` (`ExecutionIdentity`, `SemanticContractUnknown`, `SemanticContractDigestMismatch`, `RulesContractDigestMismatch`, `ProgramAuthorityMismatch`, `SemanticContractUnsupported`, `ProgramStateIncompatible`) with the deterministic `ProgramKernelConstructionErrorV1 → SemanticContractUnsupported/ControllerError` mapping. **Scope guard (Plan Fix-02):** this task builds the catalog and the STATELESS/PURE V5 admission machinery + typed errors at FUNCTION level. The real `EnvironmentBackend::restore` / `TrustedEnvironmentController::restore` surfaces are still V4 at this point (their migration is Task 13) — Task 8 must NOT migrate them and must NOT invent a parallel temporary restore API; wiring admission into controller restore and proving controller-level rejected-restore nonmutation happen in Task 13.
 
 **RED gate:**
 
@@ -237,7 +250,7 @@ cargo test -p mtgml-environment --all-features semantic_catalog
 cargo test -p mtgml-environment --all-features restore_admission
 ```
 
-Expected RED: missing module/variants. GREEN covers: SyntheticLegacy resolves; unknown semantic ID rejects; known-meaning ≠ supported-execution; `MagicRules` resolves to NO synthetic contract (catalog inputs match generated constants); each of the nine phases rejects in its own typed failure family; atomic rejection — pre/post `checkpoint()` byte-equality on the controller for every rejection phase (spec §12 observable invariant).
+Expected RED: missing module/variants. GREEN covers: SyntheticLegacy resolves; unknown semantic ID rejects; known-meaning ≠ supported-execution; `MagicRules` resolves to NO synthetic contract (catalog inputs match generated constants); each of the nine phases rejects in its own typed failure family — asserted at the admission-function level over constructed V5 checkpoints (NOT via `TrustedEnvironmentController::restore`, which stays V4 until Task 13). Controller-level rejected-restore nonmutation (pre/post `checkpoint()` byte-equality for every rejection phase; spec §12 observable invariant) is proven in Task 13 when the real surfaces flip.
 
 **Negative/adversarial evidence:** program × authority mismatch; runtime-unsupported; recompute-mismatch of top-level/rules IDs at admission (invariant-breach classification).
 
@@ -273,13 +286,13 @@ Expected RED: missing module/types. GREEN: record→validate→export round-trip
 
 **Required negatives (each classified, from spec §19):** unknown `program_kind`; wrong digest length; semantic-contract mismatch; rules-contract mismatch; `rules_snapshot` mismatch (CR); identity three-way mismatch; unknown field; wrong schema version.
 
-**RED gate (Plan Fix-01: `validate_schemas.py` alone cannot RED on absent V5 — it validates its existing V1–V4 inventory; the inventory test is the seam):**
+**RED gate (Plan Fix-01/Fix-02: `validate_schemas.py` alone cannot RED on absent V5 — it validates its existing V1–V4 inventory; the inventory test is the seam):** FIRST add the test method `SchemaParityTests.test_v5_replay_schemas_are_inventoried` to `python/tests/test_schema_parity.py` (asserting both V5 schemas in `WIRE_MAPPING` and `schemas/README.json`), THEN run:
 
 ```bash
 .venv/bin/python -m unittest python.tests.test_schema_parity.SchemaParityTests.test_v5_replay_schemas_are_inventoried -v
 ```
 
-Expected RED: `V5 schema inventory absent` — the test requires `replay-manifest.v5.schema.json` / `authoritative-replay.v5.schema.json` in `WIRE_MAPPING` and `schemas/README.json`. Implement the inventory/mapping entries, schemas, dispatch, and fixtures; then:
+Expected RED: `V5 schema inventory absent` — failing on the missing V5 mapping/inventory, not on a missing test. Implement the inventory/mapping entries, schemas, dispatch, and fixtures; then:
 
 ```bash
 .venv/bin/python scripts/validate_schemas.py
@@ -334,7 +347,7 @@ Expected RED: current producers are still V4 → named `CURRENT_*` census violat
 
 ## Task 13 — Current producer/consumer migration + conformance/parity closure (driven by the gate)
 
-**Objective:** Flip every §22 `CURRENT_*` census row to V5: environment producer paths (`synthetic.rs`, `synthetic/commit.rs`, `synthetic/replay.rs:56` manifest construction, `controller.rs`, `replay.rs`, `replay_parity_tests.rs`, `tests.rs`, `lib.rs` re-exports), replay current recorder/export, conformance consumers (`facade.rs`, `lib.rs`, `lifecycle.rs`, `isolation/{paired,replay_parity,checkpoint_parity,fork_parity,rejection,fingerprint,endpoint_pair}.rs`, `legal_space/gate_evidence.rs`), Python public surfaces, and `tools/m2-semantic-adapter` runtime construction path (`session.rs::reset_synthetic` → V5 config/codec/replay-schema; its historical M2 validation evidence stays V4 historical, never reinterpreted — spec §30). `run_m2_final_closure.py` gets ONLY its posture comment. Historical V4 rows (§22 RETAIN) untouched.
+**Objective:** Flip every §22 `CURRENT_*` census row to V5: environment producer paths (`synthetic.rs`, `synthetic/commit.rs`, `synthetic/replay.rs:56` manifest construction, `controller.rs`, `replay.rs`, `replay_parity_tests.rs`, `tests.rs`, `lib.rs` re-exports), replay current recorder/export, conformance consumers (`facade.rs`, `lib.rs`, `lifecycle.rs`, `isolation/{paired,replay_parity,checkpoint_parity,fork_parity,rejection,fingerprint,endpoint_pair}.rs`, `legal_space/gate_evidence.rs`), Python public surfaces, and `tools/m2-semantic-adapter` runtime construction path (`session.rs::reset_synthetic` → V5 config/codec/replay-schema; its historical M2 validation evidence stays V4 historical, never reinterpreted — spec §30). Flip the real runtime surfaces HERE (Plan Fix-02): `EnvironmentBackend::checkpoint/restore/export_replay`, `TrustedEnvironmentController::checkpoint/restore`, and `execute_replay_from_checkpoint` become V5, wiring the Task 8 admission into restore — then prove controller-level rejected restore: pre/post `checkpoint()` byte-equality for every Task 8 rejection phase (spec §12 observable invariant; the `REJECTED_RESTORE_NONMUTATION` evidence lives HERE, not in Task 8). Historical V4 rows (§22 RETAIN) untouched. (`run_m2_final_closure.py` posture comment belongs to Task 14, not here — single owner.)
 
 **Parity closure (spec §20/§45):** fork preserves `ExecutionIdentityV1`/`SemanticContractIdV1`/digest identity with identical behavior until explicit divergence; record live → Replay V5 → detached validate → execute from V5 checkpoint → exact parity; same checkpoint + same identity + same actions + same RNG ⇒ same replay/final state; different identity ⇒ different `CheckpointDigestV5`.
 
@@ -366,10 +379,17 @@ cargo test --workspace --all-features --locked
 
 **Files:** `scripts/verify_repository.py` (V4-current block → V5-current tokens + residual checks); `scripts/run_checks.py` (append `scripts/run_v5_execution_identity_gate.py` to `FAST`, so it runs in PR Fast, Windows Setup Smoke, PR Integration (integration = FAST + extras), Integration/master, Nightly (certification = FAST + integration extras + certification extras)); `justfile` `contracts` recipe (direct invocation beside `verify_repository.py`; include `generate_semantic_contract_catalog.py --check` there and inside the gate script); `scripts/run_m2_b_contract_cut.py` (post-`git mv` posture line only); `scripts/run_m2_final_closure.py` (posture comment only); docs per spec §22: `docs/contracts/ENGINE_STATE_CLOSURE.md`, `docs/STATE_HASHING.md`, `docs/REPLAY_AND_DETERMINISM.md`, `docs/contracts/WIRE_CONTRACT.md`, `docs/maintenance/API_LIFECYCLE.md` (V4 sections retained as DOC_HISTORY + V5 sections added — docs FOLLOW the executable implementation, never ahead of it).
 
-**RED gate:**
+**RED gate (create the RED evidence FIRST — Plan Fix-02: `run_checks.py fast` is GREEN today precisely because it does not know the V5 gate; the profile/entry-point tests are the seam):** add `test_fast_profile_includes_v5_execution_identity_gate` to `python/tests/test_python_test_profiles.py` (the `FAST` list must contain `scripts/run_v5_execution_identity_gate.py`) and a maintainer-entry-point assertion that `justfile contracts` includes `run_v5_execution_identity_gate.py` and `generate_semantic_contract_catalog.py --check`, THEN run:
 
 ```bash
-.venv/bin/python scripts/run_checks.py fast    # RED until verify_repository V5 tokens + FAST wiring land
+.venv/bin/python -m unittest python.tests.test_python_test_profiles -v    # RED: FAST/justfile wiring absent
+```
+
+Expected RED: the wiring assertions fail — not the test file. Implement the `run_checks.py` FAST entry, `verify_repository.py` V5 tokens, and the `justfile contracts` lines; then:
+
+```bash
+.venv/bin/python -m unittest python.tests.test_python_test_profiles -v
+.venv/bin/python scripts/run_checks.py fast
 ```
 
 **Negative/adversarial evidence:** `generate_semantic_contract_catalog.py --check` fails on a scratch-stale generated file; revert.
@@ -380,7 +400,7 @@ cargo test --workspace --all-features --locked
 
 ---
 
-## Final verification matrix (exact commands, after Task 13)
+## Final verification matrix (exact commands, after Task 14)
 
 ```bash
 cargo fmt --all -- --check
@@ -415,11 +435,11 @@ Hosted evidence: PR Fast, PR Integration, Windows Setup Smoke, Nightly all succe
 | SEMANTIC_CONTRACT_KATS | T2/T3 (+T11) KAT suites |
 | CHECKPOINT_V5_KATS | T6 (+T11) `checkpoint_digest_v5` mutation vectors |
 | RUST_PYTHON_BYTE_PARITY | T11 shared KAT commands |
-| SYNTHETIC_LEGACY_PARITY | T5 lock + T12 re-run; golden player bytes unchanged |
-| CHECKPOINT_RESTORE_PARITY | T12 record→checkpoint→restore→resume suites |
-| FORK_PARITY | T12 fork proof (identity preserved, §20) |
-| REPLAY_V5_PARITY | T9/T12 round-trip suites |
-| REJECTED_RESTORE_NONMUTATION | T8 pre/post-checkpoint-equality tests |
+| SYNTHETIC_LEGACY_PARITY | T5 lock + T13 re-run; golden player bytes unchanged |
+| CHECKPOINT_RESTORE_PARITY | T13 record→checkpoint→restore→resume suites |
+| FORK_PARITY | T13 fork proof (identity preserved, §20) |
+| REPLAY_V5_PARITY | T9/T13 round-trip suites |
+| REJECTED_RESTORE_NONMUTATION | T13 controller-restore nonmutation (T8 admission machinery) |
 | UNKNOWN_CONTRACT_FAIL_CLOSED | T8 catalog/admission tests |
 | PROGRAM_AUTHORITY_MISMATCH_FAIL_CLOSED | T8 admission tests |
 | RULES_SNAPSHOT_MISMATCH_FAIL_CLOSED | T9 detached rejection tests |
@@ -427,7 +447,7 @@ Hosted evidence: PR Fast, PR Integration, Windows Setup Smoke, Nightly all succe
 | WIRE_NEGATIVE_FIXTURES | T10 classified negatives |
 | SCHEMA_VALIDATION | T10 `validate_schemas.py` (hosted jsonschema gate) |
 | RESIDUAL_V4_CURRENT_PRODUCER_ZERO | T12 gate (created RED) → GREEN at T13; §22 allowlist |
-| HISTORICAL_V4_EVIDENCE_PRESERVED | T7/T10/T12: V4 fixtures/KATs/schemas untouched, still passing |
+| HISTORICAL_V4_EVIDENCE_PRESERVED | T7/T10/T13: V4 fixtures/KATs/schemas untouched, still passing |
 | MAINTAINER_GATES | T12/T14: gate script, verify_repository tokens, FAST wiring, split b-cut posture |
 | HOSTED_CI | Final matrix hosted runs |
 
