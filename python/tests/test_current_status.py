@@ -280,7 +280,7 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
             if entry["path"] == "docs/rules/M3_INITIAL_SEMANTIC_FOUNDATION_V2.md"
         )
 
-        self.assertIn("accepted base sequence currently runs through ADR 0054", adr_index)
+        self.assertIn("accepted base sequence currently runs through ADR 0055", adr_index)
         self.assertIn("ADR_0054 = ACCEPTED\nFOUNDATION_V2 = ACCEPTED_HARDENED_M3_SCOPE", adr_index)
         self.assertNotIn("current numbered hardening acceptance candidate", adr_index)
         self.assertEqual(foundation_registration["role"], "normative")

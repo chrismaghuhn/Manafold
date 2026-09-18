@@ -1,6 +1,6 @@
 # Architecture Decision Records
 
-ADRs are immutable decision history. Superseded records remain and point to replacements. The accepted base sequence currently runs through ADR 0054, and ADR 0000 is the template. PR #184 accepted ADR 0054 for the M3 pre-T0 hardening plan, while the separate exact-master reauthorization remains the execution gate.
+ADRs are immutable decision history. Superseded records remain and point to replacements. The accepted base sequence currently runs through ADR 0055, and ADR 0000 is the template. PR #184 accepted ADR 0054 for the M3 pre-T0 hardening plan, while the separate exact-master reauthorization remains the execution gate. PR #197 accepted ADR 0055, the V5 execution-identity cut, after an independent review series, exact-head review, and hosted CI on the identical head; acceptance does not authorize the V5 implementation slice.
 
 ADR numbers 0042 through 0047 are historically occupied by accepted ContextApplication/M2.5 decisions that were intentionally removed from the active source tree by the post-purge cleanup. Their numbers remain permanently reserved and are not reusable; the acceptance of ADR 0048 is therefore accompanied by an explicit historical numbering gap.
 
@@ -45,6 +45,15 @@ defines Foundation V2 and the coordinated V4 state/persistence prerequisite,
 and resets current execution authorization. PR #184 accepted the plan; a later
 exact-master review separately authorizes execution.
 
+ADR 0055 accepts the V5 execution-identity cut: checkpoints bind a minimal,
+content-derived semantic contract identity (`ExecutionIdentityV1`:
+`program_kind` × `semantic_contract_id`) so a restored checkpoint can only
+resume under the semantic contract that produced it. Child rules/format/content
+contracts are recursively content-bound; format/content manifests are typed
+seams deferred to future ADRs; implementation, build, and runtime-support state
+stay outside semantic identity. PR #197 accepted the architecture; the V5
+implementation slice and S1 remain separately gated.
+
 The merge boundary is explicit:
 
 ```text
@@ -52,6 +61,9 @@ ADR_0054 = ACCEPTED
 FOUNDATION_V2 = ACCEPTED_HARDENED_M3_SCOPE
 M3_AUTHORIZED = NO
 AUTHORIZATION_HEAD = NOT_SET
+ADR_0055 = ACCEPTED
+V5_IMPLEMENTATION_AUTHORIZED = NO
+S1_BLOCKED_ON = V5_IMPLEMENTATION_SLICE
 ```
 
 Create a new record with:
