@@ -61,6 +61,8 @@ Explicitly out of scope (ADR 0055 §2.19 and §3 sequencing):
 
 ## 4. Current V4 implementation census (discovered facts)
 
+Dispositions for every V4 occurrence live in the exhaustive census of §22; this table records the primary owners discovered at baseline.
+
 | Surface | File | Facts |
 |---|---|---|
 | Checkpoint V4 | `crates/mtgml-environment/src/checkpoint.rs` | `EnvironmentCheckpointV4 { schema_version, state, state_digest: FullStateDigestV4, status, limit_counters, codec: CheckpointCodecIdentity, checkpoint_digest }`; `new()` computes state digest + checkpoint digest then `validate()`; `validate()` re-derives state digest and checkpoint digest; schema const `environment-checkpoint.v4`; codec consts `in-memory-reference` / `"4"`; error enum `CheckpointValidationError` (9 variants incl. `Identity`, `CheckpointDigest`, `CompletedWithDecision`). |
@@ -73,6 +75,10 @@ Explicitly out of scope (ADR 0055 §2.19 and §3 sequencing):
 | Wire/schema | `schemas/replay-manifest.v4.schema.json`, `schemas/authoritative-replay.v4.schema.json`; `crates/mtgml-wire` dispatch; `wire/golden/*v4*`, `wire/negative/*v4*` (`authoritative-replay-empty.v4.json`, `replay-manifest.v4.json`, `authoritative-replay-v4-wrong-schema.json`, `replay-v4-m2-payload-codec.json`, `replay-v4-unknown-field.json`, `replay-v4-v3-checkpoint-digest.json`). |
 | Python | `python/src/mtgml/persistence.py` (consts at lines 29–30; `calculate_checkpoint_digest_v4` at line 407 — verified byte-mirror); `python/src/mtgml/_replay_v4.py` (`ReplaySchemaVersionsV4`, `EnvironmentLimitCountersV4`, `CheckpointCodecIdentityV4`, `InitialEnvironmentIdentityV4` with detached recompute `validate()`, `ReplayManifestV4`, `ReplayStepV4` DTOs with `from_wire`/`to_wire`). |
 | Gates | `scripts/verify_repository.py` (lines ~360–395: "current runtime is V4" type-token assertions incl. `FullStateDigestInputV4`, `EnvironmentCheckpointV4`, `checkpoint_digest: CheckpointDigestV4`; V3-non-resurgence posture); `scripts/run_m2_b_contract_cut.py` (lines ~570–621: current-successor tokens `engine.rs→FullStateDigestV4`, `checkpoint.rs→EnvironmentCheckpointV4`, `environment-checkpoint-digest-input.v4`, message "current state/rules/environment producers are V4…"); `run_m2_final_closure.py` shells to the b-cut script; `python/tests/test_current_status.py` (README/0054 status pins, updated through 0055 in PR #197). |
+| Conformance harness | `crates/mtgml-conformance/src/facade.rs`, `lib.rs`, `lifecycle.rs`, `isolation/{paired,replay_parity,checkpoint_parity,fork_parity,rejection,fingerprint,endpoint_pair}.rs`, `legal_space/gate_evidence.rs` (verified this session) | V4-typed checkpoint/replay/fork-parity/rejection/fingerprint references over the current producers — harness migrates with the V5 slice (see §22). |
+| M2 adapter tool | `tools/m2-semantic-adapter/src/config.rs` | V4 schema/replay-config references in the one-way legacy M2 adapter (§22: historical, never a current-path producer). |
+| Python public surface | `python/src/mtgml/replay.py`, `wire.py`, `__init__.py` | re-export/wrap the `_replay_v4` DTOs — current consumer surface (§22). |
+| Historical tests | `crates/{model,persistence,environment,replay}/tests/p0_red.rs`; `python/tests/test_m3_p0_green03.py`, `python/tests/test_p0_red.py`; `scripts/run_m1_closure.py` | P0/M1/M2-era historical evidence pinning V4 behavior — retained untouched (§22). |
 
 ## 5. V5 type ownership
 
@@ -89,7 +95,8 @@ Explicitly out of scope (ADR 0055 §2.19 and §3 sequencing):
 | `CheckpointDigestV5` | mtgml-model | hex in JSON; `DigestReferenceV1`-carried in preimages | digest newtype macro | no | internal |
 | `EnvironmentCheckpointV5` | mtgml-environment | NO durable wire schema (in-memory family, like V4) | plain struct + `validate()` | no | internal |
 | `InitialEnvironmentIdentityV5`, `ReplayManifestV5`, `ReplayStepV5`, `AuthoritativeReplayV5`, `ReplayRecorderV5`, `ReplaySchemaVersionsV5` | mtgml-replay | JSON wire DTOs (schemas §14) | deny-unknown | no | internal |
-| Semantic contract catalog | mtgml-model | none (internal const table) | n/a | no | internal |
+| Semantic-contract DATA types (§6–§8) | mtgml-model | as listed above | n/a | no | internal |
+| `RuntimeSemanticCatalog` (construction + lookup + support predicate) | mtgml-environment | none (internal, in-process) | n/a | no | internal |
 
 One authoritative definition per type lives in the owner crate; wire/replay/persistence import it. No parallel duplicate structs.
 
@@ -121,7 +128,7 @@ pub enum RulesAuthorityV1 {
     SyntheticLegacy,                       // payload null
     ComprehensiveRules { snapshot_id: String },  // exact ADR-0051 snapshot identity
 }
-pub struct CapabilityRequirementV1 { pub key: String, pub version: String }  // key/version validation per §38
+pub struct CapabilityRequirementV1 { pub key: String, pub version: String }  // grammar frozen in §38b
 pub struct RulesContractManifestV1 {
     pub rules_authority: RulesAuthorityV1,
     pub capability_closure: Option<Vec<CapabilityRequirementV1>>,  // None ONLY for SyntheticLegacy
@@ -139,7 +146,17 @@ Canonical CBOR payload (schema `rules-contract-manifest.v1`, domain `mtgml.rules
                                # | [ [key, version], ... ] sorted by key, keys unique, non-empty
 ```
 
-Validation rules (fail closed): `synthetic_legacy` with non-null closure ⇒ artifact invalid; `comprehensive_rules` with null/empty closure ⇒ invalid; unsorted or duplicate keys ⇒ invalid; empty `key`/`version` strings ⇒ invalid; snapshot text empty ⇒ invalid. JSON wire object mirrors the same fields with `deny_unknown_fields`; `rules_authority` renders as a tagged object.
+Validation rules (fail closed): `synthetic_legacy` with non-null closure ⇒ artifact invalid; `comprehensive_rules` with null/empty closure ⇒ invalid; closure entries sorted by `key` ascending (byte-wise, per the canonical keyed-collection rule), keys unique, key/version grammar per §38b; snapshot text empty ⇒ invalid. Canonical/JSON encoding per §7b.
+
+### 7b. Exact JSON shape of the contract objects
+
+The CBOR canonical payloads above are the ONLY digest inputs. Their JSON wire mirrors (consumed by §14 schemas and §15 Python) are objects with exactly these properties (`additionalProperties: false`; every property required — explicit `null`, never a missing property, mirroring canonical-CBOR rule 4):
+
+- `RulesAuthorityV1` — tagged object, closed variant set: `{ "variant": "synthetic_legacy" }` or `{ "variant": "comprehensive_rules", "snapshot_id": "<non-empty>" }`.
+- `RulesContractManifestV1` — `{ "rules_authority": <RulesAuthorityV1>, "capability_closure": null | [ <entry>... ] }` where each entry is `{ "key": "<§38b grammar>", "version": "<§38b grammar>" }`.
+- `SemanticContractManifestV1` — `{ "rules_contract_id": "<64 lowercase hex>", "format_contract_id": null, "content_contract_id": null }`.
+
+The JSON objects intentionally omit the CBOR preimage's leading `schema`/`domain` diagnostic elements: in JSON the surrounding artifact's `schema_version` carries that identity, in CBOR the envelope does. JSON bytes are therefore NEVER digest inputs — digests recompute from canonical CBOR only (§9).
 
 ## 8. SemanticContractManifestV1
 
@@ -208,16 +225,16 @@ No other element changes. The digest value is `SHA256(envelope_bytes)` with cano
 
 ## 10. Runtime semantic catalog
 
-- **Owner crate: mtgml-model** (new module, e.g. `semantic_catalog.rs`). mtgml-model has no mtgml dependencies, so environment/replay/state/rules can all consume it without creating cycles; the catalog needs only the §6–§8 types it already owns.
-- **Representation:** `const`-defined, compile-time table (a private ordered array of catalog entries, each holding the canonical `SemanticContractManifestV1`, its precomputed-at-construction `SemanticContractIdV1`, and the `RulesContractManifestV1`), exposed through pure lookup functions. No `static mut`, no `OnceCell` mutation, no lazy singletons, no env/filesystem/network reads (§36).
-- **Construction mechanism (ADR-mandated single authoritative path):** one `const fn`/constructor builds each production manifest from explicit literal field values and computes the ID via the persistence digest functions at startup in a `const`-checked test and in the catalog constructor — no hand-maintained digest literals anywhere. Production values for the legacy synthetic contract:
+- **Ownership split (Fix-01):** the semantic-contract DATA TYPES (`RulesAuthorityV1`, `RulesContractManifestV1`, `SemanticContractManifestV1`, the ID newtypes) live in mtgml-model (§5) because they are shared vocabulary; the RUNTIME `RuntimeSemanticCatalog` (constructor, table, lookup, support predicate) lives in **mtgml-environment** (new module, e.g. `semantic_catalog.rs`). mtgml-environment already depends on BOTH `mtgml-model` and `mtgml-persistence` (verified in `Cargo.toml`; `environment/src/checkpoint.rs` already calls `mtgml_persistence::checkpoint_digest::calculate_checkpoint_digest_v4`), so the constructor computes Manifest → digest → ID with no new dependency edge and no cycle (`model ← persistence ← environment`). A model-side catalog would have required `model → persistence` — a direct cycle with `persistence → model` — and is rejected.
+- **Representation:** a private compile-time table of catalog entries (each holding the canonical `SemanticContractManifestV1`, the `RulesContractManifestV1`, and the derived IDs), built by a pure deterministic constructor and exposed through pure lookup functions. No hidden process state of ANY form (task-level invariant, enforced here and in §23's audit): no `static mut`, no `OnceCell`/lazy mutable singleton, no global mutable semantic registry, no environment-variable semantic selection, no filesystem semantic selection, no network semantic lookup, no thread-local execution identity, no uncheckpointed backend mode. The constructor is a plain `fn` — digest computation is not `const`-eligible; determinism comes from fixed literal inputs plus the deterministic §9 digest functions, not from `const`.
+- **Construction mechanism (ADR-mandated single authoritative path):** one constructor builds the production manifest(s) from explicit literal field values and computes the IDs via the §9 persistence functions — no hand-maintained digest literals anywhere. A unit test re-runs the same construction and asserts the IDs are stable (fixpoint check), and the §19 KATs pin the exact digest values. Production values for the legacy synthetic contract:
   - `RulesAuthorityV1::SyntheticLegacy`
   - `capability_closure: None`
   - `SemanticContractManifestV1 { rules_contract_id, format_contract_id: None, content_contract_id: None }`
 - **Lookup behavior:** `resolve(id) -> Option<&CatalogEntry>` (known meaning), plus `supported(id, program) -> bool` (runtime support predicate) as a SEPARATE function; the catalog must distinguish known-meaning from executable-now.
 - **Validation behavior:** catalog construction asserts each entry's ID recomputes from its manifest (implementation-invariant check in tests); lookup returns only validated entries.
-- **Error behavior:** unknown ID ⇒ typed `unknown semantic contract` error (§18/§17); known-but-unsupported ⇒ typed `unsupported semantic contract`.
-- **Initial catalog contents after V5:** exactly ONE production entry — the SyntheticLegacy semantic contract. NO production Magic contract (§39).
+- **Error behavior:** unknown ID ⇒ typed `unknown semantic contract` error (§17/§18); known-but-unsupported ⇒ typed `unsupported semantic contract`.
+- **Initial catalog contents after V5:** exactly ONE production entry — the SyntheticLegacy semantic contract. NO production Magic contract (§25).
 
 ## 11. EnvironmentCheckpointV5
 
@@ -266,7 +283,7 @@ New `crates/mtgml-replay/src/v5.rs` mirroring `v4.rs`, with consts `replay-manif
 
 ```rust
 pub struct ReplaySchemaVersionsV5 { /* 8 fields like V4; replay_step = "replay-step.v5" */ }
-pub struct InitialEnvironmentIdentityV5 { /* V4's 6 fields with checkpoint_digest: CheckpointDigestV5 */ }
+pub struct InitialEnvironmentIdentityV5 { /* V4's 6 fields with checkpoint_digest: CheckpointDigestV5, PLUS execution_identity: ExecutionIdentityV1 (ADR 0055 §2.10) */ }
 pub struct SemanticContractMaterialV5 {   // NEW — ADR §2.10 required material
     pub semantic_contract_id: SemanticContractIdV1,
     pub manifest: SemanticContractManifestV1,
@@ -280,26 +297,43 @@ pub struct ReplayManifestV5 { /* ALL V4 manifest fields, with:
     schemas: ReplaySchemaVersionsV5,
     initial_identity: InitialEnvironmentIdentityV5 */ }
 pub struct ReplayStepV5 { /* identical 11-field shape to V4 with CheckpointDigestV5 before/after */ }
-pub struct AuthoritativeReplayV5 { schema_version, manifest, steps, final_identity }
+pub struct AuthoritativeReplayV5 { schema_version, manifest, steps, final_identity /* V4-shaped final identity with V5 digest, PLUS execution_identity: ExecutionIdentityV1 (ADR 0055 §2.10) */ }
 pub struct ReplayRecorderV5 { /* mirror of V4 recorder */ }
 ```
 
-Identity placement: `ExecutionIdentityV1` appears once at manifest level; `InitialEnvironmentIdentityV5`/`final_identity` do NOT duplicate it (they carry only the per-checkpoint V5 digest, which already binds the identity). Detached `AuthoritativeReplayV5::validate()` adds to the V4 chain-walk: semantic manifest hashes to `semantic_contract.material.semantic_contract_id`; rules manifest hashes to `manifest.rules_contract_id`; manifest child-ID fields consistent (nulls where declared — for the V5 slice both null); `semantic_contract.semantic_contract_id == execution_identity.semantic_contract_id`; and for `comprehensive_rules` contracts `manifest.rules_snapshot == rules_authority.snapshot_id` (mismatch ⇒ detached rejection before any execution; `synthetic_legacy` ⇒ informational). ReplayStepV5 is a new versioned DTO (mechanical rename of digest type + schemas string); step semantics unchanged: one explicit player decision per step, no forced-progress steps.
+Identity placement (ADR 0055 §2.10 is authoritative — full duplication is REQUIRED, not an optimization): `ExecutionIdentityV1` appears in ALL THREE of `ReplayManifestV5.execution_identity`, `InitialEnvironmentIdentityV5.execution_identity`, and `final_identity.execution_identity`. The redundancy is ADR-frozen: every replay identity surface independently binds the identity, and detached validation must prove all three equal (below). Detached `AuthoritativeReplayV5::validate()` adds to the V4 chain-walk: the semantic manifest hashes to `semantic_contract.semantic_contract_id`; the rules manifest hashes to the rules ID recomputed from `semantic_contract.rules_manifest`; manifest child-ID fields consistent (nulls where declared — for the V5 slice both null); `manifest.execution_identity == initial_identity.execution_identity == final_identity.execution_identity` AND each `.semantic_contract_id == semantic_contract.semantic_contract_id` (any mismatch ⇒ detached rejection before any execution); and for `comprehensive_rules` contracts `manifest.rules_snapshot == rules_authority.snapshot_id` (mismatch ⇒ detached rejection; `synthetic_legacy` ⇒ informational). ReplayStepV5 is a new versioned DTO (mechanical rename of digest type + schemas string); step semantics unchanged: one explicit player decision per step, no forced-progress steps.
 
 ## 14. Wire/schema contract
 
-New schemas (shape-compatible with V4 schemas plus new fields; all `deny_unknown_fields` semantics preserved via `additionalProperties: false` where the V4 schemas use it):
+New schemas:
 
 ```text
 schemas/replay-manifest.v5.schema.json
 schemas/authoritative-replay.v5.schema.json
 ```
 
-Obligations: `schema_version` const-enum `"replay-manifest.v5"` / `"authoritative-replay.v5"`; `program_kind` enum `["synthetic_rules_compat","magic_rules"]` (unknown ⇒ schema-invalid); `semantic_contract_id` / `rules_contract_id` as `^[0-9a-f]{64}$`; manifest `semantic_contract` object required; `ExecutionIdentityV1` required in manifest; codec pair consts `in-memory-reference` / `"5"` in `initial_identity.checkpoint_codec_identity`; digest fields render as 64-hex strings (the Rust typed digest is authoritative; JSON never re-parses into bare `String` semantics — the wire DTO validates hex and reconstructs the typed value). Schema inventory check updated. No standalone schema for the in-memory checkpoint (V4 posture retained).
+Obligations: `schema_version` const-enum `"replay-manifest.v5"` / `"authoritative-replay.v5"`; `program_kind` enum `["synthetic_rules_compat","magic_rules"]` (unknown ⇒ schema-invalid); `semantic_contract_id` / `rules_contract_id` as `^[0-9a-f]{64}$`; manifest `semantic_contract` object required; `ExecutionIdentityV1` required in the manifest AND in `initial_identity` AND in `final_identity` (§13); codec pair consts `in-memory-reference` / `"5"` in `initial_identity.checkpoint_codec_identity`; digest fields render as 64-lowercase-hex strings (the Rust typed digest is authoritative; wire DTOs validate hex and reconstruct the typed value). Schema inventory check updated. No standalone schema for the in-memory checkpoint (V4 posture retained).
+
+### 14.1 Exact JSON object shapes
+
+Rust serde, Python `to_wire`/`from_wire`, and the JSON Schemas MUST agree on exactly this property set (closes the cross-DTO divergence risk — one property set, three representations; §7b holds the contract objects, this holds the replay-surface objects):
+
+- `ExecutionProgramV1` — bare JSON string, enum `["synthetic_rules_compat", "magic_rules"]`.
+- `ExecutionIdentityV1` — object; BOTH properties required, `additionalProperties: false`:
+  `{ "program_kind": "synthetic_rules_compat", "semantic_contract_id": "<64 lowercase hex>" }`.
+- `RulesAuthorityV1` — tagged object, closed variant set, `additionalProperties: false`:
+  `{ "variant": "synthetic_legacy" }` or `{ "variant": "comprehensive_rules", "snapshot_id": "<non-empty>" }` (`synthetic_legacy` carrying `snapshot_id`, or `comprehensive_rules` missing it, is invalid).
+- `CapabilityRequirementV1` — `{ "key": "<§38b key grammar>", "version": "<§38b version grammar>" }`, both required.
+- `RulesContractManifestV1`, `SemanticContractManifestV1` — exactly as §7b.
+- `SemanticContractMaterialV5` — object; all three required:
+  `{ "semantic_contract_id": "<64 hex>", "manifest": <SemanticContractManifestV1>, "rules_manifest": <RulesContractManifestV1> }`.
+- `DigestReferenceV1` (V4-shaped references, e.g. the full-state reference inside `initial_identity`) keeps its existing serde object form: `envelope_version`, `algorithm_id`, `semantic_domain`, `payload_codec_id`, `input_schema_id`, `digest_bytes` (64-hex), all required, `additionalProperties: false`.
+
+Fail-closed notes: `format_contract_id`/`content_contract_id` are typed `null | <64-hex>` in JSON Schema so the schema survives the future arrival of real contract IDs unchanged; golden V5 fixtures use `null`, and any non-null value in a replay fails closed regardless (it would have to hash to a registered contract to pass §13 validation — none exists in the V5 slice).
 
 ## 15. Python mechanical-verification contract
 
-`python/src/mtgml/persistence.py`: add `calculate_rules_contract_id_v1`, `calculate_semantic_contract_id_v1`, `calculate_checkpoint_digest_v5` (byte-exact mirrors; consts `mtgml.rules-contract.v1`, `rules-contract-manifest.v1`, `mtgml.semantic-contract.v1`, `semantic-contract-manifest.v1`, `mtgml.checkpoint-digest.v5`, `environment-checkpoint-digest-input.v5`). `python/src/mtgml/_replay_v5.py`: V5 DTOs mirroring §13 (`from_wire`/`to_wire`, `deny-unknown` rejection, detached recompute + equality chain incl. §13's checks). Allowed: canonical manifest encoding, ID recomputation, structural identity equality, `rules_snapshot` equality for `comprehensive_rules`, negative-fixture rejection, V5 checkpoint-digest recompute. Forbidden: Magic legality, capability execution, runtime-support determination, program×EngineState admission, semantic fallback, a second rules engine. Python must implement NO format/content manifest logic (those contracts do not exist).
+`python/src/mtgml/persistence.py`: add `calculate_rules_contract_id_v1`, `calculate_semantic_contract_id_v1`, `calculate_checkpoint_digest_v5` (byte-exact mirrors; consts `mtgml.rules-contract.v1`, `rules-contract-manifest.v1`, `mtgml.semantic-contract.v1`, `semantic-contract-manifest.v1`, `mtgml.checkpoint-digest.v5`, `environment-checkpoint-digest-input.v5`). `python/src/mtgml/_replay_v5.py`: V5 DTOs mirroring §13 (`from_wire`/`to_wire`, `deny-unknown` rejection, detached recompute + equality chain incl. §13's checks). Allowed: canonical manifest encoding, ID recomputation, structural identity equality, `rules_snapshot` equality for `comprehensive_rules`, negative-fixture rejection, V5 checkpoint-digest recompute. Forbidden: Magic legality, capability execution, runtime-support determination, program×EngineState admission, semantic fallback, a second rules engine. Python must implement NO format/content manifest logic (those contracts do not exist). Python JSON DTO property names follow §14.1 exactly, so Rust serde, Python `to_wire`/`from_wire`, and the JSON Schemas cannot diverge.
 
 ## 16. Legacy semantic parity
 
@@ -308,6 +342,8 @@ Under `SyntheticRulesCompat` the following must remain byte-/semantic-equivalent
 ## 17. Historical V4 support
 
 Retain V4 exactly per ADR §2.12: `EnvironmentCheckpointV4` type + validators remain ONLY for retained-Rust-value validation (never a restore path; classification `UNSUPPORTED`); `CheckpointDigestV4` / `ReplayManifestV4` / `ReplayStepV4` / `AuthoritativeReplayV4` / `ReplayRecorderV4` remain readable/verifiable (classification `READABLE_VERIFIABLE_ONLY`); V4 schemas, golden/negative fixtures, V4 KATs, and `calculate_checkpoint_digest_v4` remain for historical digest recomputation. No V4→V5 migration; no API accepts a V4 checkpoint and an execution identity together for "upgrade".
+
+Writer posture (exact): the ADR's `writer = no` is an ARTIFACT-EXPORT policy — V4 has NO current production/export path: no public API produces a V4 checkpoint/replay for current use, no current pipeline exports V4 artifacts, and `RESIDUAL_V4_CURRENT_PRODUCER_ZERO` means zero V4 producers outside the historical sites of §22. The retained historical constructions are permitted ONLY as test-only/historical implementation details at the exact census sites: `EnvironmentCheckpointV4::new` (retained solely so historical V4 fixtures can validate themselves) and V4 recorder/manifest construction retained only inside historical/test code. These are NOT supported writer APIs, MUST NOT appear in any current production path, and the §21 residual-V4 gate fails if they do.
 
 ## 18. Error model
 
@@ -320,7 +356,7 @@ KATs (Rust + Python byte parity, fixed vectors committed as fixtures):
 1. RulesContractIdV1: SyntheticLegacy manifest → canonical bytes → digest; ComprehensiveRules minimal valid manifest (one capability entry) → bytes → digest.
 2. SemanticContractIdV1: synthetic rules ID + null + null; a hypothetical Magic rules ID + null + null (KAT-only value, not a catalog entry).
 3. CheckpointDigestV5: one fixed V4-equivalent checkpoint input; mutation vectors proving each element matters — different `program_kind` ⇒ different digest; different `semantic_contract_id` ⇒ different digest; unchanged identity + unchanged fields ⇒ equal digest.
-4. Canonical CBOR negative vectors for every §26 malformed case.
+4. Canonical CBOR negative vectors for every §19 negative case.
 
 Negative fixtures (wire/negative, each classified): unknown `program_kind` (wire/decode); malformed `rules_authority` variant (decode); `synthetic_legacy` with non-null closure (artifact validation); `comprehensive_rules` with null closure (artifact validation); empty closure (artifact validation); unsorted closure (artifact validation); duplicate capability key (artifact validation); malformed digest length (decode); semantic manifest child digest mismatch (artifact validation); replay top-level `semantic_contract_id` mismatch (artifact validation); rules manifest mismatch (artifact validation); `rules_snapshot` mismatch for `comprehensive_rules` (artifact validation); checkpoint `execution_identity` tamper (artifact validation); checkpoint digest mismatch (artifact validation); unsupported semantic contract (runtime unsupported); program/rules-authority mismatch (semantic admission).
 
@@ -328,30 +364,48 @@ Negative fixtures (wire/negative, each classified): unknown `program_kind` (wire
 
 - Fork: `fork(checkpoint)` preserves `ExecutionIdentityV1`, `SemanticContractIdV1`, and checkpoint digest identity; source and fork produce identical digests/events/player products until explicit later input or RNG divergence; no hidden family difference.
 - Replay parity: record live synthetic execution → Replay V5 → detached validate → execute from V5 checkpoint → exact transition/digest/status/player-product parity.
-- Rejected restore nonmutation: for every §26 runtime/admission rejection, prove no change to backend state, RNG, allocators, knowledge, events, status, counters, replay recorder, semantic identity (§12 observable invariant for controller-based restore).
+- Rejected restore nonmutation: for every §19 runtime/admission rejection case, prove no change to backend state, RNG, allocators, knowledge, events, status, counters, replay recorder, semantic identity (§12 observable invariant for controller-based restore).
 
 ## 21. Maintainer-tooling migration
 
-- `scripts/verify_repository.py`: the "current runtime is V4" block becomes the V5 gate — assert current tokens (`EnvironmentCheckpointV5`, `checkpoint_digest: CheckpointDigestV5`, `execution_identity: ExecutionIdentityV1`, `environment-checkpoint-digest-input.v5`) and add residual-V4 checks: V4 checkpoint/replay type names may appear only at the historical sites listed in §22.
+- `scripts/verify_repository.py`: the "current runtime is V4" block becomes the V5 gate — assert current tokens (`EnvironmentCheckpointV5`, `checkpoint_digest: CheckpointDigestV5`, `execution_identity: ExecutionIdentityV1`, `environment-checkpoint-digest-input.v5`) and add residual-V4 checks: `EnvironmentCheckpointV4`/`CheckpointDigestV4`/`ReplayManifestV4`/`ReplayStepV4`/`AuthoritativeReplayV4`/`ReplayRecorderV4`/`InitialEnvironmentIdentityV4` references and `calculate_checkpoint_digest_v4` calls may appear ONLY in the §22 RETAIN rows — current crates' non-test sources must contain zero V4-producer references; for `tools/m2-semantic-adapter/src/config.rs` the gate allows the retained references (historical adapter posture) and asserts the adapter never feeds a current-path V5 artifact.
 - `scripts/run_m2_b_contract_cut.py`: SPLIT per ADR §2.15 — keep historical M2 assertions byte-identical (V4-as-of-M2 evidence + V3-non-resurgence); move the "current successor identity" block (currently asserting V4 tokens) into a new V5 gate script; `run_m2_final_closure.py` keeps shelling to the historical script unchanged.
 - `python/tests/test_current_status.py`: update current-runtime pins only as they reference the checkpoint/identity cut (README/ADR pins already updated through 0055 by PR #197).
 - Schema-inventory checks: add both V5 schemas.
 - Historical V4 gate = the retained b-cut script; current V5 gate = new script + verify_repository assertions. Historical evidence is never rewritten to pretend it was always V5.
 
-## 22. Residual-V4 migration census
+## 22. Residual-V4 migration census (exhaustive, grep-verified at baseline)
 
-| Path | Disposition |
-|---|---|
-| `crates/mtgml-environment/src/checkpoint.rs` (V4 struct/consts) | RETAIN as historical/`UNSUPPORTED` validator; add V5 beside it |
-| `crates/mtgml-environment/src/synthetic.rs` (backend/config/replay config) | MUST MIGRATE TO V5 (current producer: `checkpoint()`, `restore()`, recorder, manifest construction) |
-| `crates/mtgml-environment/src/controller.rs` (trait + controller signatures) | MUST MIGRATE TO V5 |
-| `crates/mtgml-environment/src/replay.rs`, `replay_parity_tests.rs`, `tests.rs`, `tests/` | MUST MIGRATE TO V5 (current producer/consumer tests) |
-| `crates/mtgml-replay/src/v4.rs`, `identity.rs` (V4 types), `manifest.rs` (if V4-only), `validation.rs` (V4 error reuse) | RETAIN V4 types (historical verifier); ADD v5.rs; shared error enum extended |
-| `crates/mtgml-wire` V4 replay dispatch + fixtures | RETAIN V4 dispatch (historical artifacts); ADD V5 dispatch |
-| `schemas/*v4*`, `wire/golden/*v4*`, `wire/negative/*v4*` | RETAIN (frozen fixtures) |
-| `scripts/verify_repository.py` V4-current assertions | STALE → REMOVE/REPLACE with V5-current + residual-V4 form |
-| `scripts/run_m2_b_contract_cut.py` current-successor block | STALE → MOVE to new V5 gate (historical block retained byte-identical) |
-| `docs/STATE_HASHING.md`, `REPLAY_AND_DETERMINISM.md`, `ENGINE_STATE_CLOSURE.md`, `WIRE_CONTRACT.md`, `API_LIFECYCLE.md` | DOC_HISTORY for V4 sections (retain) + ADD V5 sections (ADR §2.16 documentation closure, done with the implementation slice) |
+Audit method (the implementing slice re-runs it as the §21 gate): ripgrep over `crates/ tools/ python/ scripts/ schemas/ wire/` for `V4`/`v4` plus the exact tokens `EnvironmentCheckpointV4`, `CheckpointDigestV4`, `ReplayManifestV4`, `ReplayStepV4`, `AuthoritativeReplayV4`, `ReplayRecorderV4`, `InitialEnvironmentIdentityV4`, `ReplaySchemaVersionsV4`, `calculate_checkpoint_digest_v4`, `replay-manifest.v4`, `authoritative-replay.v4`, `replay-step.v4`, `environment-checkpoint.v4`, `environment-checkpoint-digest-input.v4`. Every hit maps to exactly one row and one canonical disposition (`CURRENT_PRODUCER → MUST MIGRATE TO V5`, `CURRENT_CONSUMER → MUST MIGRATE TO V5`, `HISTORICAL_VERIFIER → RETAIN V4`, `FROZEN_FIXTURE → RETAIN V4`, `DOC_HISTORY → RETAIN V4`, `STALE → REMOVE`). `RESIDUAL_V4_CURRENT_PRODUCER_ZERO` = zero CURRENT_* rows remaining after the V5 slice.
+
+| Path / site | V4 reference | Disposition |
+|---|---|---|
+| `crates/mtgml-environment/src/checkpoint.rs` (V4 struct, consts, `new()`, `validate()`) | type + digest producer | HISTORICAL_VERIFIER → RETAIN V4 beside V5 (§17 writer posture: test-only/historical construction only) |
+| `crates/mtgml-environment/src/synthetic.rs` (backend, config, `m2_compatibility`, recorder + manifest construction at `synthetic/replay.rs:56`) | producer | CURRENT_PRODUCER → MUST MIGRATE TO V5 |
+| `crates/mtgml-environment/src/controller.rs` (trait + `TrustedEnvironmentController` signatures) | consumer | CURRENT_CONSUMER → MUST MIGRATE TO V5 |
+| `crates/mtgml-environment/src/replay.rs`, `replay_parity_tests.rs`, `tests.rs`, `tests/` | producer/consumer tests | CURRENT_CONSUMER → MUST MIGRATE TO V5 |
+| `crates/mtgml-environment/tests/p0_red.rs` | P0-era RED evidence | FROZEN_FIXTURE → RETAIN V4 untouched |
+| `crates/mtgml-replay/src/v4.rs`, `src/identity.rs` (V4 identity types), `src/manifest.rs` (if V4-only), V4 variants of the shared error enum in `src/validation.rs` | types | HISTORICAL_VERIFIER → RETAIN V4; ADD `src/v5.rs` |
+| `crates/mtgml-replay/tests/p0_red.rs` | P0-era RED evidence | FROZEN_FIXTURE → RETAIN V4 untouched |
+| `crates/mtgml-model/tests/p0_red.rs`, `crates/mtgml-persistence/tests/p0_red.rs` | P0-era RED evidence | FROZEN_FIXTURE → RETAIN V4 untouched |
+| `crates/mtgml-wire` V4 replay dispatch | artifact decoder | HISTORICAL_VERIFIER → RETAIN V4; ADD V5 dispatch |
+| `schemas/*v4*`, `wire/golden/*v4*`, `wire/negative/*v4*` | fixtures | FROZEN_FIXTURE → RETAIN V4 |
+| `crates/mtgml-conformance/src/facade.rs`, `src/lib.rs`, `src/lifecycle.rs` | typed V4 refs | CURRENT_CONSUMER → MUST MIGRATE TO V5 |
+| `crates/mtgml-conformance/src/isolation/paired.rs`, `replay_parity.rs`, `checkpoint_parity.rs`, `fork_parity.rs`, `rejection.rs`, `fingerprint.rs`, `endpoint_pair.rs` | parity/rejection/fingerprint harness over current producers | CURRENT_CONSUMER → MUST MIGRATE TO V5 (historical V4 fixture inputs they load stay FROZEN_FIXTURE) |
+| `crates/mtgml-conformance/src/legal_space/gate_evidence.rs` | gate-evidence V4 refs | CURRENT_CONSUMER → MUST MIGRATE TO V5 |
+| `tools/m2-semantic-adapter/src/config.rs` | one-way legacy M2 adapter config | HISTORICAL_VERIFIER → RETAIN V4 (adapter posture; must never become a current-path V5 producer — asserted by the §21 gate) |
+| `scripts/run_m1_closure.py` | M1-era evidence script | DOC_HISTORY → RETAIN V4 unchanged |
+| `scripts/verify_repository.py` V4-current token block (~360–395) | stale currentness tokens | STALE → REMOVE, replaced by the V5-current + residual-V4 gate (§21) |
+| `scripts/run_m2_b_contract_cut.py` current-successor block (~570–621) | stale currentness tokens | STALE → REMOVE from the historical script (intent moves to the new V5 gate script; historical M2 block stays byte-identical) |
+| `scripts/run_m2_final_closure.py` | shells to the b-cut script | CURRENT_CONSUMER → MUST MIGRATE TO V5 (evaluates the historical script + the new V5 gate) |
+| `python/src/mtgml/persistence.py` (V4 consts lines 29–30, `calculate_checkpoint_digest_v4` line 407) | historical digest mirror | HISTORICAL_VERIFIER → RETAIN V4; ADD §15 V5 functions |
+| `python/src/mtgml/_replay_v4.py` | V4 DTOs | HISTORICAL_VERIFIER → RETAIN V4; ADD `_replay_v5.py` (§15) |
+| `python/src/mtgml/replay.py`, `python/src/mtgml/wire.py`, `python/src/mtgml/__init__.py` | re-export/consume `_replay_v4` DTOs | CURRENT_CONSUMER → MUST MIGRATE TO V5 (V4 re-exports retained only as needed by retained historical tests) |
+| `python/tests/test_m3_p0_green03.py`, `python/tests/test_p0_red.py` | P0/M2-era evidence | FROZEN_FIXTURE → RETAIN V4 untouched |
+| `python/tests/test_current_status.py` | status pins | CURRENT_CONSUMER → MUST MIGRATE TO V5 (current-runtime pins only; §21) |
+| `docs/STATE_HASHING.md`, `docs/REPLAY_AND_DETERMINISM.md`, `docs/contracts/ENGINE_STATE_CLOSURE.md`, `docs/contracts/WIRE_CONTRACT.md`, `docs/maintenance/API_LIFECYCLE.md` | V4 sections | DOC_HISTORY → RETAIN V4; ADD V5 sections (ADR §2.16 documentation closure, with the implementation slice) |
+
+Note: `KernelIdentityV1` is not version-suffixed and is provenance, not V4-specific state; it carries into V5 manifests unchanged (§13).
 
 ## 23. Direct-constructor migration census
 
@@ -368,7 +422,7 @@ Negative fixtures (wire/negative, each classified): unknown `program_kind` (wire
 
 ## 24. Dependency graph impact
 
-No new dependency edges. The catalog lives in mtgml-model (no deps); digest functions live in mtgml-persistence (already below environment/replay); environment already depends on replay/persistence/model/rules/state. No cycle is introduced: model ← persistence ← {state, replay} ← environment ← conformance; wire stays above replay/model. The program-aware state validator stays in mtgml-rules (state never imports program identity, per ADR §2.8 sequencing); environment performs admission via the kernel.
+No NEW dependency edges (Fix-01: the earlier model-side catalog would have required `model → persistence`, a cycle with `persistence → model`; corrected). Final ownership: semantic-contract data types in mtgml-model (no deps); digest functions in mtgml-persistence (model ← persistence); `RuntimeSemanticCatalog` in mtgml-environment, which already depends on both (existing `calculate_checkpoint_digest_v4` call in `environment/src/checkpoint.rs` proves the edge). Resulting direction unchanged: model ← persistence ← {state, replay} ← environment ← conformance; wire stays above replay/model; replay/wire consume only already-typed IDs/manifests, not the catalog itself. The program-aware state validator stays in mtgml-rules (state never imports program identity, per ADR §2.8 sequencing); environment performs admission via the kernel.
 
 ## 25. S1 boundary
 
@@ -376,7 +430,7 @@ V5 implements NONE of: untap semantics, untap eligibility, Untap→Upkeep, Magic
 
 ## 26. Open implementation questions
 
-Only implementation-level items (no architecture open): exact module filename for the catalog (`semantic_catalog.rs` suggested); exact placement of the program-aware state validator entry point within mtgml-rules; fixture file naming under `wire/{golden,negative}` following the existing `*-v5-*` pattern; whether the catalog table lives in one file or per-contract files; private constructor naming. `ARCHITECTURE_OPEN_QUESTIONS = NONE`.
+Only implementation-level items (no architecture open): exact module filename for the catalog (`semantic_catalog.rs` suggested); exact placement of the program-aware state validator entry point within mtgml-rules; fixture file naming under `wire/{golden,negative}` following the existing `*-v5-*` pattern; private constructor naming. `ARCHITECTURE_OPEN_QUESTIONS = NONE`.
 
 ## 27. Acceptance criteria
 
@@ -393,12 +447,12 @@ Future implementation results must be reported as `PASS`/`FAIL`/`NOT_RUN`/`BLOCK
 | CHECKPOINT_RESTORE_PARITY | record→checkpoint→restore→resume equivalence |
 | FORK_PARITY | §20 fork proof |
 | REPLAY_V5_PARITY | §20 replay round-trip |
-| REJECTED_RESTORE_NONMUTATION | §20/§26 nonmutation proofs |
+| REJECTED_RESTORE_NONMUTATION | §20/§19 nonmutation proofs |
 | UNKNOWN_CONTRACT_FAIL_CLOSED | runtime-unsupported test |
 | PROGRAM_AUTHORITY_MISMATCH_FAIL_CLOSED | admission test |
 | RULES_SNAPSHOT_MISMATCH_FAIL_CLOSED | detached rejection test |
 | WIRE_POSITIVE_FIXTURES | V5 golden fixtures added + passing |
-| WIRE_NEGATIVE_FIXTURES | §26 classified set added + failing-closed |
+| WIRE_NEGATIVE_FIXTURES | §19 classified set added + failing-closed |
 | SCHEMA_VALIDATION | both V5 schemas validate fixtures (hosted jsonschema gate) |
 | RESIDUAL_V4_CURRENT_PRODUCER_ZERO | residual-V4 gate green |
 | HISTORICAL_V4_EVIDENCE_PRESERVED | V4 fixtures/KATs/schemas untouched and still passing |
@@ -408,6 +462,22 @@ Future implementation results must be reported as `PASS`/`FAIL`/`NOT_RUN`/`BLOCK
 ## 28. Explicitly deferred work
 
 Concrete Format/Content contract manifests and IDs allocation; portable replay proof bundles; V4→V5 migration (none planned); production Magic semantic contract and its catalog entry (S1); S1 semantics; capability-registry versioning of synthetic semantics; trajectory provenance consumption of `semantic_contract_id`.
+
+## 38b. Capability key/version grammar (frozen; Fix-01 addendum)
+
+The `(key, version)` pair inside a `CapabilityRequirementV1` is a semantic digest input, so its grammar is frozen by reference to the accepted registry schema `schemas/capability-registry.v1.schema.json` (patterns verified verbatim at baseline):
+
+```text
+key:     ^(rules|mechanic|decision|visibility|tooling|format/[a-z0-9-]+)/[a-z0-9][a-z0-9-]*(/[a-z0-9][a-z0-9-]*)*$
+version: ^[0-9]+\.[0-9]+\.[0-9]+$
+```
+
+Validation obligations for `RulesContractManifestV1` closure entries (fail closed, all three representations):
+
+- every key and version matches the grammar exactly (Rust validator, Python mirror, JSON Schema `pattern`);
+- entries sorted by `key` ascending byte-wise; keys unique (canonical keyed-collection rule);
+- a closure entry binds ONLY `(key, version)` — never lifecycle state, implementation paths, conformance IDs, owners, spec paths, summaries, or certification evidence; capability lifecycle (`specified/implemented/covered/certified`) stays registry metadata and is never a digest input here;
+- semantics follow the accepted CAPABILITY_MODEL: a semantic behavior change ⇒ new capability version ⇒ new closure ⇒ new `RulesContractIdV1`.
 
 ## Lifecycle status
 
