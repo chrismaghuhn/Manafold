@@ -1,6 +1,26 @@
 {
   "documents": [
-    {
+  {
+    "change_process": "documentation-pr",
+    "owner_role": "maintainer",
+    "path": "docs/agents/domain.md",
+    "role": "process",
+    "stability": "accepted"
+  },
+  {
+    "change_process": "documentation-pr",
+    "owner_role": "maintainer",
+    "path": "docs/agents/issue-tracker.md",
+    "role": "process",
+    "stability": "accepted"
+  },
+  {
+    "change_process": "documentation-pr",
+    "owner_role": "maintainer",
+    "path": "docs/agents/triage-labels.md",
+    "role": "process",
+    "stability": "accepted"
+  },    {
       "change_process": "governance-pr",
       "owner_role": "project-governance",
       "path": "CODE_OF_CONDUCT.md",
@@ -18,13 +38,6 @@
       "change_process": "governance-pr",
       "owner_role": "project-governance",
       "path": "GOVERNANCE.md",
-      "role": "normative",
-      "stability": "accepted"
-    },
-    {
-      "change_process": "governance-pr",
-      "owner_role": "project-governance",
-      "path": "LICENSE",
       "role": "normative",
       "stability": "accepted"
     },
@@ -99,13 +112,6 @@
       "stability": "deprecated"
     },
     {
-      "change_process": "adr-and-pr",
-      "owner_role": "observability-maintainer",
-      "path": "docs/DEBUG_ARCHITECTURE_CONTRACT.md",
-      "role": "normative",
-      "stability": "accepted"
-    },
-    {
       "change_process": "scope-census-pr",
       "owner_role": "decision-maintainer",
       "path": "docs/DECISION_INVENTORY.md",
@@ -118,6 +124,13 @@
       "path": "docs/DECISION_PROTOCOL.md",
       "role": "normative",
       "stability": "provisional"
+    },
+    {
+      "change_process": "adr-and-pr",
+      "owner_role": "observability-maintainer",
+      "path": "docs/DEBUG_ARCHITECTURE_CONTRACT.md",
+      "role": "normative",
+      "stability": "accepted"
     },
     {
       "change_process": "adr-and-conformance",
@@ -281,6 +294,167 @@
       "stability": "accepted"
     },
     {
+      "change_process": "process-pr",
+      "owner_role": "maintainer",
+      "path": "docs/superpowers/plans/2026-08-20-m1-2-accepted-transaction.md",
+      "role": "process",
+      "stability": "provisional"
+    },
+    {
+      "change_process": "process-pr",
+      "owner_role": "maintainer",
+      "path": "docs/superpowers/plans/2026-08-20-m1-3-rejection-atomicity.md",
+      "role": "process",
+      "stability": "provisional"
+    },
+    {
+      "change_process": "process-pr",
+      "owner_role": "maintainer",
+      "path": "docs/superpowers/specs/2026-08-20-m1-2-accepted-transaction-design.md",
+      "role": "process",
+      "stability": "provisional"
+    },
+    {
+      "change_process": "process-pr",
+      "owner_role": "maintainer",
+      "path": "docs/superpowers/specs/2026-08-20-m1-3-rejection-atomicity-design.md",
+      "role": "process",
+      "stability": "provisional"
+    },
+    {
+      "change_process": "process-pr",
+      "owner_role": "maintainer",
+      "path": "docs/superpowers/plans/2026-08-21-m1-4-sequential-event-delta.md",
+      "role": "process",
+      "stability": "provisional"
+    },
+    {
+      "change_process": "process-pr",
+      "owner_role": "maintainer",
+      "path": "docs/superpowers/specs/2026-08-21-m1-4-sequential-event-delta-design.md",
+      "role": "process",
+      "stability": "provisional"
+    },
+    {
+      "change_process": "process-pr",
+      "owner_role": "maintainer",
+      "path": "docs/superpowers/specs/2026-08-21-m1-5-deterministic-services-design.md",
+      "role": "process",
+      "stability": "provisional"
+    },
+   {
+     "change_process": "process-pr",
+     "owner_role": "maintainer",
+     "path": "docs/superpowers/plans/2026-08-21-m1-5-deterministic-services.md",
+     "role": "process",
+     "stability": "provisional"
+   },
+    {
+      "change_process": "process-pr",
+      "owner_role": "maintainer",
+      "path": "docs/superpowers/specs/2026-08-21-m1-6-checkpoint-fork-replay-design.md",
+      "role": "process",
+      "stability": "provisional"
+    },
+    {
+      "change_process": "process-pr",
+      "owner_role": "maintainer",
+      "path": "docs/superpowers/plans/2026-08-21-m1-6-checkpoint-fork-replay.md",
+      "role": "process",
+      "stability": "provisional"
+    },
+    {
+      "change_process": "process-pr",
+      "owner_role": "maintainer",
+      "path": "docs/superpowers/specs/2026-08-21-m1-7-two-player-endpoints-design.md",
+      "role": "process",
+      "stability": "provisional"
+    },
+    {
+      "change_process": "process-pr",
+      "owner_role": "maintainer",
+      "path": "docs/superpowers/plans/2026-08-21-m1-7-two-player-endpoints.md",
+      "role": "process",
+      "stability": "provisional"
+    },
+    {
+      "change_process": "process-pr",
+      "owner_role": "maintainer",
+      "path": "docs/superpowers/specs/2026-08-21-rustup-toolchain-ci-design.md",
+      "role": "process",
+      "stability": "provisional"
+    },
+    {
+      "change_process": "process-pr",
+      "owner_role": "maintainer",
+      "path": "docs/superpowers/plans/2026-08-21-rustup-toolchain-ci.md",
+      "role": "process",
+      "stability": "provisional"
+    },
+    {
+      "change_process": "process-pr",
+      "owner_role": "maintainer",
+      "path": "docs/superpowers/plans/2026-08-21-m1-f-final-closure.md",
+      "role": "process",
+      "stability": "provisional"
+    },
+    {
+      "change_process": "process-pr",
+      "owner_role": "maintainer",
+      "path": "docs/superpowers/specs/2026-08-21-m1-f-final-closure-design.md",
+      "role": "process",
+      "stability": "provisional"
+    },
+    {
+      "change_process": "process-pr",
+      "owner_role": "maintainer",
+      "path": "docs/superpowers/specs/2026-08-21-m2-b-v3-structural-cut-design.md",
+      "role": "process",
+      "stability": "provisional"
+    },
+    {
+      "change_process": "process-pr",
+      "owner_role": "maintainer",
+      "path": "docs/superpowers/plans/2026-08-21-m2-b-v3-structural-cut.md",
+      "role": "process",
+      "stability": "provisional"
+    },
+    {
+      "change_process": "process-pr",
+      "owner_role": "maintainer",
+      "path": "docs/superpowers/plans/2026-08-24-m2-h-rules-free-python-adapter-wire-parity.md",
+      "role": "process",
+      "stability": "provisional"
+    },
+    {
+      "change_process": "process-pr",
+      "owner_role": "maintainer",
+      "path": "docs/superpowers/plans/2026-09-13-issue-130-package-b-reproducible-developer-setup.md",
+      "role": "process",
+      "stability": "provisional"
+    },
+    {
+      "change_process": "process-pr",
+      "owner_role": "maintainer",
+      "path": "docs/superpowers/plans/2026-09-13-issue-130-package-c-dependency-build-hygiene.md",
+      "role": "process",
+      "stability": "provisional"
+    },
+    {
+      "change_process": "process-pr",
+      "owner_role": "maintainer",
+      "path": "docs/superpowers/specs/2026-09-13-issue-130-package-d-failure-reproducer-workflow-design.md",
+      "role": "process",
+      "stability": "provisional"
+    },
+    {
+      "change_process": "process-pr",
+      "owner_role": "maintainer",
+      "path": "docs/superpowers/plans/2026-09-13-issue-130-package-d-failure-reproducer-workflow.md",
+      "role": "process",
+      "stability": "provisional"
+    },
+    {
       "change_process": "adr-and-fixtures",
       "owner_role": "state-maintainer",
       "path": "docs/STATE_HASHING.md",
@@ -320,27 +494,6 @@
       "owner_role": "architecture-maintainer",
       "path": "docs/VISION.md",
       "role": "informative",
-      "stability": "accepted"
-    },
-    {
-      "change_process": "documentation-pr",
-      "owner_role": "maintainer",
-      "path": "docs/agents/domain.md",
-      "role": "process",
-      "stability": "accepted"
-    },
-    {
-      "change_process": "documentation-pr",
-      "owner_role": "maintainer",
-      "path": "docs/agents/issue-tracker.md",
-      "role": "process",
-      "stability": "accepted"
-    },
-    {
-      "change_process": "documentation-pr",
-      "owner_role": "maintainer",
-      "path": "docs/agents/triage-labels.md",
-      "role": "process",
       "stability": "accepted"
     },
     {
@@ -533,9 +686,9 @@
       "stability": "accepted"
     },
     {
-      "change_process": "authority-policy-pr",
+      "change_process": "lifecycle-pr",
       "owner_role": "rules-maintainer",
-      "path": "docs/rules/COMPREHENSIVE_RULES_ARTIFACT_RESEARCH_2026-09-15.md",
+      "path": "docs/rules/MECHANIC_LIFECYCLE.md",
       "role": "normative",
       "stability": "accepted"
     },
@@ -552,391 +705,6 @@
       "path": "docs/rules/M3_INITIAL_SEMANTIC_FOUNDATION_V2.md",
       "role": "normative",
       "stability": "accepted"
-    },
-    {
-      "change_process": "lifecycle-pr",
-      "owner_role": "rules-maintainer",
-      "path": "docs/rules/MECHANIC_LIFECYCLE.md",
-      "role": "normative",
-      "stability": "accepted"
-    },
-    {
-      "change_process": "process-pr",
-      "owner_role": "maintainer",
-      "path": "docs/superpowers/plans/2026-08-20-m1-2-accepted-transaction.md",
-      "role": "process",
-      "stability": "provisional"
-    },
-    {
-      "change_process": "process-pr",
-      "owner_role": "maintainer",
-      "path": "docs/superpowers/plans/2026-08-20-m1-3-rejection-atomicity.md",
-      "role": "process",
-      "stability": "provisional"
-    },
-    {
-      "change_process": "process-pr",
-      "owner_role": "maintainer",
-      "path": "docs/superpowers/plans/2026-08-21-m1-4-sequential-event-delta.md",
-      "role": "process",
-      "stability": "provisional"
-    },
-    {
-      "change_process": "process-pr",
-      "owner_role": "maintainer",
-      "path": "docs/superpowers/plans/2026-08-21-m1-5-deterministic-services.md",
-      "role": "process",
-      "stability": "provisional"
-    },
-    {
-      "change_process": "process-pr",
-      "owner_role": "maintainer",
-      "path": "docs/superpowers/plans/2026-08-21-m1-6-checkpoint-fork-replay.md",
-      "role": "process",
-      "stability": "provisional"
-    },
-    {
-      "change_process": "process-pr",
-      "owner_role": "maintainer",
-      "path": "docs/superpowers/plans/2026-08-21-m1-7-two-player-endpoints.md",
-      "role": "process",
-      "stability": "provisional"
-    },
-    {
-      "change_process": "process-pr",
-      "owner_role": "maintainer",
-      "path": "docs/superpowers/plans/2026-08-21-m1-f-final-closure.md",
-      "role": "process",
-      "stability": "provisional"
-    },
-    {
-      "change_process": "process-pr",
-      "owner_role": "maintainer",
-      "path": "docs/superpowers/plans/2026-08-21-m2-b-v3-structural-cut.md",
-      "role": "process",
-      "stability": "provisional"
-    },
-    {
-      "change_process": "process-pr",
-      "owner_role": "maintainer",
-      "path": "docs/superpowers/plans/2026-08-21-rustup-toolchain-ci.md",
-      "role": "process",
-      "stability": "provisional"
-    },
-    {
-      "change_process": "process-pr",
-      "owner_role": "maintainer",
-      "path": "docs/superpowers/plans/2026-08-24-m2-h-rules-free-python-adapter-wire-parity.md",
-      "role": "process",
-      "stability": "provisional"
-    },
-    {
-      "change_process": "process-pr",
-      "owner_role": "maintainer",
-      "path": "docs/superpowers/plans/2026-09-13-issue-130-package-b-reproducible-developer-setup.md",
-      "role": "process",
-      "stability": "provisional"
-    },
-    {
-      "change_process": "process-pr",
-      "owner_role": "maintainer",
-      "path": "docs/superpowers/plans/2026-09-13-issue-130-package-c-dependency-build-hygiene.md",
-      "role": "process",
-      "stability": "provisional"
-    },
-    {
-      "change_process": "process-pr",
-      "owner_role": "maintainer",
-      "path": "docs/superpowers/plans/2026-09-13-issue-130-package-d-failure-reproducer-workflow.md",
-      "role": "process",
-      "stability": "provisional"
-    },
-    {
-      "change_process": "process-pr",
-      "owner_role": "maintainer",
-      "path": "docs/superpowers/plans/2026-09-14-pre-m3-remediation-batch-a-state-closure.md",
-      "role": "process",
-      "stability": "provisional"
-    },
-    {
-      "change_process": "process-pr",
-      "owner_role": "maintainer",
-      "path": "docs/superpowers/plans/2026-09-14-pre-m3-remediation-batch-b-transition-causality.md",
-      "role": "process",
-      "stability": "provisional"
-    },
-    {
-      "change_process": "process-pr",
-      "owner_role": "maintainer",
-      "path": "docs/superpowers/plans/2026-09-14-pre-m3-remediation-batch-c-replay-checkpoint-delivery.md",
-      "role": "process",
-      "stability": "provisional"
-    },
-    {
-      "change_process": "process-pr",
-      "owner_role": "maintainer",
-      "path": "docs/superpowers/plans/2026-09-14-pre-m3-remediation-batch-d-knowledge-chronology-and-ordered-zone-canonicality.md",
-      "role": "process",
-      "stability": "provisional"
-    },
-    {
-      "change_process": "process-pr",
-      "owner_role": "maintainer",
-      "path": "docs/superpowers/plans/2026-09-14-pre-m3-remediation-batch-e-cross-layer-runtime-replay.md",
-      "role": "process",
-      "stability": "provisional"
-    },
-    {
-      "change_process": "process-pr",
-      "owner_role": "maintainer",
-      "path": "docs/superpowers/plans/2026-09-14-pre-m3-remediation-batch-f-decision-observation-identity.md",
-      "role": "process",
-      "stability": "provisional"
-    },
-    {
-      "change_process": "process-pr",
-      "owner_role": "maintainer",
-      "path": "docs/superpowers/plans/2026-09-14-pre-m3-remediation-batch-g-persistence-safety.md",
-      "role": "process",
-      "stability": "provisional"
-    },
-    {
-      "change_process": "process-pr",
-      "owner_role": "maintainer",
-      "path": "docs/superpowers/plans/2026-09-15-final-foundation-closure.md",
-      "role": "process",
-      "stability": "provisional"
-    },
-    {
-      "change_process": "process-pr",
-      "owner_role": "maintainer",
-      "path": "docs/superpowers/plans/2026-09-15-issue-162-semantic-neutral-modularization.md",
-      "role": "process",
-      "stability": "provisional"
-    },
-    {
-      "change_process": "process-pr",
-      "owner_role": "maintainer",
-      "path": "docs/superpowers/plans/2026-09-15-pre-m3-governance-cleanup.md",
-      "role": "process",
-      "stability": "provisional"
-    },
-    {
-      "change_process": "process-pr",
-      "owner_role": "maintainer",
-      "path": "docs/superpowers/plans/2026-09-15-pre-m3-remediation-batch-h-conformance-evidence.md",
-      "role": "process",
-      "stability": "provisional"
-    },
-    {
-      "change_process": "process-pr",
-      "owner_role": "maintainer",
-      "path": "docs/superpowers/specs/2026-08-20-m1-2-accepted-transaction-design.md",
-      "role": "process",
-      "stability": "provisional"
-    },
-    {
-      "change_process": "process-pr",
-      "owner_role": "maintainer",
-      "path": "docs/superpowers/specs/2026-08-20-m1-3-rejection-atomicity-design.md",
-      "role": "process",
-      "stability": "provisional"
-    },
-    {
-      "change_process": "process-pr",
-      "owner_role": "maintainer",
-      "path": "docs/superpowers/specs/2026-08-21-m1-4-sequential-event-delta-design.md",
-      "role": "process",
-      "stability": "provisional"
-    },
-    {
-      "change_process": "process-pr",
-      "owner_role": "maintainer",
-      "path": "docs/superpowers/specs/2026-08-21-m1-5-deterministic-services-design.md",
-      "role": "process",
-      "stability": "provisional"
-    },
-    {
-      "change_process": "process-pr",
-      "owner_role": "maintainer",
-      "path": "docs/superpowers/specs/2026-08-21-m1-6-checkpoint-fork-replay-design.md",
-      "role": "process",
-      "stability": "provisional"
-    },
-    {
-      "change_process": "process-pr",
-      "owner_role": "maintainer",
-      "path": "docs/superpowers/specs/2026-08-21-m1-7-two-player-endpoints-design.md",
-      "role": "process",
-      "stability": "provisional"
-    },
-    {
-      "change_process": "process-pr",
-      "owner_role": "maintainer",
-      "path": "docs/superpowers/specs/2026-08-21-m1-f-final-closure-design.md",
-      "role": "process",
-      "stability": "provisional"
-    },
-    {
-      "change_process": "process-pr",
-      "owner_role": "maintainer",
-      "path": "docs/superpowers/specs/2026-08-21-m2-b-v3-structural-cut-design.md",
-      "role": "process",
-      "stability": "provisional"
-    },
-    {
-      "change_process": "process-pr",
-      "owner_role": "maintainer",
-      "path": "docs/superpowers/specs/2026-08-21-rustup-toolchain-ci-design.md",
-      "role": "process",
-      "stability": "provisional"
-    },
-    {
-      "change_process": "process-pr",
-      "owner_role": "maintainer",
-      "path": "docs/superpowers/specs/2026-09-13-issue-130-package-d-failure-reproducer-workflow-design.md",
-      "role": "process",
-      "stability": "provisional"
-    },
-    {
-      "change_process": "adr-candidate-review",
-      "owner_role": "architecture-maintainer",
-      "path": "docs/superpowers/specs/2026-09-14-player-id-zero-policy-adr-candidate.md",
-      "role": "process",
-      "stability": "provisional"
-    },
-    {
-      "change_process": "process-pr",
-      "owner_role": "maintainer",
-      "path": "docs/superpowers/specs/2026-09-14-pre-m3-remediation-batch-a-state-closure-design.md",
-      "role": "process",
-      "stability": "provisional"
-    },
-    {
-      "change_process": "process-pr",
-      "owner_role": "maintainer",
-      "path": "docs/superpowers/specs/2026-09-14-pre-m3-remediation-batch-b-transition-causality-design.md",
-      "role": "process",
-      "stability": "provisional"
-    },
-    {
-      "change_process": "process-pr",
-      "owner_role": "maintainer",
-      "path": "docs/superpowers/specs/2026-09-14-pre-m3-remediation-batch-c-replay-checkpoint-delivery-design.md",
-      "role": "process",
-      "stability": "provisional"
-    },
-    {
-      "change_process": "process-pr",
-      "owner_role": "maintainer",
-      "path": "docs/superpowers/specs/2026-09-14-pre-m3-remediation-batch-d-dispositions-and-evidence.md",
-      "role": "process",
-      "stability": "provisional"
-    },
-    {
-      "change_process": "process-pr",
-      "owner_role": "maintainer",
-      "path": "docs/superpowers/specs/2026-09-14-pre-m3-remediation-batch-d-knowledge-chronology-and-ordered-zone-canonicality-design.md",
-      "role": "process",
-      "stability": "provisional"
-    },
-    {
-      "change_process": "process-pr",
-      "owner_role": "maintainer",
-      "path": "docs/superpowers/specs/2026-09-14-pre-m3-remediation-batch-e-cross-layer-runtime-replay-design.md",
-      "role": "process",
-      "stability": "provisional"
-    },
-    {
-      "change_process": "process-pr",
-      "owner_role": "maintainer",
-      "path": "docs/superpowers/specs/2026-09-14-pre-m3-remediation-batch-e-dispositions-and-evidence.md",
-      "role": "process",
-      "stability": "provisional"
-    },
-    {
-      "change_process": "process-pr",
-      "owner_role": "maintainer",
-      "path": "docs/superpowers/specs/2026-09-14-pre-m3-remediation-batch-f-decision-observation-identity-design.md",
-      "role": "process",
-      "stability": "provisional"
-    },
-    {
-      "change_process": "process-pr",
-      "owner_role": "maintainer",
-      "path": "docs/superpowers/specs/2026-09-14-pre-m3-remediation-batch-f-dispositions-and-evidence.md",
-      "role": "process",
-      "stability": "provisional"
-    },
-    {
-      "change_process": "process-pr",
-      "owner_role": "maintainer",
-      "path": "docs/superpowers/specs/2026-09-14-pre-m3-remediation-batch-g-dispositions-and-evidence.md",
-      "role": "process",
-      "stability": "provisional"
-    },
-    {
-      "change_process": "process-pr",
-      "owner_role": "maintainer",
-      "path": "docs/superpowers/specs/2026-09-14-pre-m3-remediation-batch-g-persistence-safety-design.md",
-      "role": "process",
-      "stability": "provisional"
-    },
-    {
-      "change_process": "process-pr",
-      "owner_role": "maintainer",
-      "path": "docs/superpowers/specs/2026-09-15-final-foundation-closure.md",
-      "role": "process",
-      "stability": "provisional"
-    },
-    {
-      "change_process": "process-pr",
-      "owner_role": "maintainer",
-      "path": "docs/superpowers/specs/2026-09-15-fnd-028-player-id-zero-implementation-evidence.md",
-      "role": "process",
-      "stability": "provisional"
-    },
-    {
-      "change_process": "process-pr",
-      "owner_role": "maintainer",
-      "path": "docs/superpowers/specs/2026-09-15-issue-162-semantic-neutral-modularization-design.md",
-      "role": "process",
-      "stability": "provisional"
-    },
-    {
-      "change_process": "process-pr",
-      "owner_role": "maintainer",
-      "path": "docs/superpowers/specs/2026-09-15-pre-m3-remediation-batch-h-conformance-evidence-design.md",
-      "role": "process",
-      "stability": "provisional"
-    },
-    {
-      "change_process": "process-pr",
-      "owner_role": "maintainer",
-      "path": "docs/superpowers/specs/2026-09-15-pre-m3-remediation-batch-h-dispositions-and-evidence.md",
-      "role": "process",
-      "stability": "provisional"
-    },
-    {
-      "change_process": "process-pr",
-      "owner_role": "maintainer",
-      "path": "docs/superpowers/specs/2026-09-15-pre-m3-remediation-freeze.md",
-      "role": "process",
-      "stability": "provisional"
-    },
-    {
-      "change_process": "process-pr",
-      "owner_role": "maintainer",
-      "path": "docs/superpowers/specs/2026-09-16-m3-p0-state-identity-cut-design.md",
-      "role": "process",
-      "stability": "provisional"
-    },
-    {
-      "path": "docs/superpowers/specs/2026-09-18-v5-execution-identity-implementation-design.md",
-      "role": "process",
-      "stability": "provisional",
-      "owner_role": "maintainer",
-      "change_process": "process-pr"
     },
     {
       "change_process": "template-pr",
@@ -1014,6 +782,237 @@
       "path": "docs/testing/PROPERTY_AND_FUZZING.md",
       "role": "process",
       "stability": "accepted"
+    },
+    {
+      "change_process": "process-pr",
+      "owner_role": "maintainer",
+      "path": "docs/superpowers/plans/2026-09-14-pre-m3-remediation-batch-a-state-closure.md",
+      "role": "process",
+      "stability": "provisional"
+    },
+    {
+      "change_process": "process-pr",
+      "owner_role": "maintainer",
+      "path": "docs/superpowers/specs/2026-09-14-pre-m3-remediation-batch-a-state-closure-design.md",
+      "role": "process",
+      "stability": "provisional"
+    },
+    {
+      "change_process": "process-pr",
+      "owner_role": "maintainer",
+      "path": "docs/superpowers/plans/2026-09-14-pre-m3-remediation-batch-b-transition-causality.md",
+      "role": "process",
+      "stability": "provisional"
+    },
+    {
+      "change_process": "process-pr",
+      "owner_role": "maintainer",
+      "path": "docs/superpowers/specs/2026-09-14-pre-m3-remediation-batch-b-transition-causality-design.md",
+      "role": "process",
+      "stability": "provisional"
+    },
+    {
+      "change_process": "process-pr",
+      "owner_role": "maintainer",
+      "path": "docs/superpowers/plans/2026-09-14-pre-m3-remediation-batch-c-replay-checkpoint-delivery.md",
+      "role": "process",
+      "stability": "provisional"
+    },
+    {
+      "change_process": "process-pr",
+      "owner_role": "maintainer",
+      "path": "docs/superpowers/specs/2026-09-14-pre-m3-remediation-batch-c-replay-checkpoint-delivery-design.md",
+      "role": "process",
+      "stability": "provisional"
+    },
+    {
+      "change_process": "process-pr",
+      "owner_role": "maintainer",
+      "path": "docs/superpowers/plans/2026-09-14-pre-m3-remediation-batch-d-knowledge-chronology-and-ordered-zone-canonicality.md",
+      "role": "process",
+      "stability": "provisional"
+    },
+    {
+      "change_process": "process-pr",
+      "owner_role": "maintainer",
+      "path": "docs/superpowers/specs/2026-09-14-pre-m3-remediation-batch-d-knowledge-chronology-and-ordered-zone-canonicality-design.md",
+      "role": "process",
+      "stability": "provisional"
+    },
+    {
+      "change_process": "process-pr",
+      "owner_role": "maintainer",
+      "path": "docs/superpowers/specs/2026-09-14-pre-m3-remediation-batch-d-dispositions-and-evidence.md",
+      "role": "process",
+      "stability": "provisional"
+    },
+    {
+      "change_process": "process-pr",
+      "owner_role": "maintainer",
+      "path": "docs/superpowers/plans/2026-09-14-pre-m3-remediation-batch-e-cross-layer-runtime-replay.md",
+      "role": "process",
+      "stability": "provisional"
+    },
+    {
+      "change_process": "process-pr",
+      "owner_role": "maintainer",
+      "path": "docs/superpowers/specs/2026-09-14-pre-m3-remediation-batch-e-cross-layer-runtime-replay-design.md",
+      "role": "process",
+      "stability": "provisional"
+    },
+    {
+      "change_process": "process-pr",
+      "owner_role": "maintainer",
+      "path": "docs/superpowers/specs/2026-09-14-pre-m3-remediation-batch-e-dispositions-and-evidence.md",
+      "role": "process",
+      "stability": "provisional"
+    },
+    {
+      "change_process": "process-pr",
+      "owner_role": "maintainer",
+      "path": "docs/superpowers/specs/2026-09-14-pre-m3-remediation-batch-f-decision-observation-identity-design.md",
+      "role": "process",
+      "stability": "provisional"
+    },
+    {
+      "change_process": "process-pr",
+      "owner_role": "maintainer",
+      "path": "docs/superpowers/plans/2026-09-14-pre-m3-remediation-batch-f-decision-observation-identity.md",
+      "role": "process",
+      "stability": "provisional"
+    },
+    {
+      "change_process": "adr-candidate-review",
+      "owner_role": "architecture-maintainer",
+      "path": "docs/superpowers/specs/2026-09-14-player-id-zero-policy-adr-candidate.md",
+      "role": "process",
+      "stability": "provisional"
+    },
+    {
+      "change_process": "process-pr",
+      "owner_role": "maintainer",
+      "path": "docs/superpowers/specs/2026-09-14-pre-m3-remediation-batch-f-dispositions-and-evidence.md",
+      "role": "process",
+      "stability": "provisional"
+    },
+    {
+      "change_process": "process-pr",
+      "owner_role": "maintainer",
+      "path": "docs/superpowers/specs/2026-09-14-pre-m3-remediation-batch-g-persistence-safety-design.md",
+      "role": "process",
+      "stability": "provisional"
+    },
+    {
+      "change_process": "process-pr",
+      "owner_role": "maintainer",
+      "path": "docs/superpowers/plans/2026-09-14-pre-m3-remediation-batch-g-persistence-safety.md",
+      "role": "process",
+      "stability": "provisional"
+    },
+    {
+      "change_process": "process-pr",
+      "owner_role": "maintainer",
+      "path": "docs/superpowers/specs/2026-09-14-pre-m3-remediation-batch-g-dispositions-and-evidence.md",
+      "role": "process",
+      "stability": "provisional"
+    },
+    {
+      "change_process": "process-pr",
+      "owner_role": "maintainer",
+      "path": "docs/superpowers/specs/2026-09-15-pre-m3-remediation-batch-h-conformance-evidence-design.md",
+      "role": "process",
+      "stability": "provisional"
+    },
+    {
+      "change_process": "process-pr",
+      "owner_role": "maintainer",
+      "path": "docs/superpowers/plans/2026-09-15-pre-m3-remediation-batch-h-conformance-evidence.md",
+      "role": "process",
+      "stability": "provisional"
+    },
+    {
+      "change_process": "process-pr",
+      "owner_role": "maintainer",
+      "path": "docs/superpowers/specs/2026-09-15-pre-m3-remediation-batch-h-dispositions-and-evidence.md",
+      "role": "process",
+      "stability": "provisional"
+    },
+    {
+      "change_process": "process-pr",
+      "owner_role": "maintainer",
+      "path": "docs/superpowers/specs/2026-09-15-fnd-028-player-id-zero-implementation-evidence.md",
+      "role": "process",
+      "stability": "provisional"
+    },
+    {
+      "change_process": "process-pr",
+      "owner_role": "maintainer",
+      "path": "docs/superpowers/plans/2026-09-15-final-foundation-closure.md",
+      "role": "process",
+      "stability": "provisional"
+    },
+    {
+      "change_process": "process-pr",
+      "owner_role": "maintainer",
+      "path": "docs/superpowers/specs/2026-09-15-final-foundation-closure.md",
+      "role": "process",
+      "stability": "provisional"
+    },
+    {
+      "change_process": "process-pr",
+      "owner_role": "maintainer",
+      "path": "docs/superpowers/specs/2026-09-15-pre-m3-remediation-freeze.md",
+      "role": "process",
+      "stability": "provisional"
+    },
+    {
+      "change_process": "governance-pr",
+      "owner_role": "project-governance",
+      "path": "LICENSE",
+      "role": "normative",
+      "stability": "accepted"
+    },
+    {
+      "change_process": "process-pr",
+      "owner_role": "maintainer",
+      "path": "docs/superpowers/plans/2026-09-15-issue-162-semantic-neutral-modularization.md",
+      "role": "process",
+      "stability": "provisional"
+    },
+    {
+      "change_process": "process-pr",
+      "owner_role": "maintainer",
+      "path": "docs/superpowers/specs/2026-09-15-issue-162-semantic-neutral-modularization-design.md",
+      "role": "process",
+      "stability": "provisional"
+    },
+    {
+      "change_process": "authority-policy-pr",
+      "owner_role": "rules-maintainer",
+      "path": "docs/rules/COMPREHENSIVE_RULES_ARTIFACT_RESEARCH_2026-09-15.md",
+      "role": "normative",
+      "stability": "accepted"
+    },
+    {
+      "change_process": "process-pr",
+      "owner_role": "maintainer",
+      "path": "docs/superpowers/plans/2026-09-15-pre-m3-governance-cleanup.md",
+      "role": "process",
+      "stability": "provisional"
+    },
+    {
+      "change_process": "process-pr",
+      "owner_role": "maintainer",
+      "path": "docs/superpowers/specs/2026-09-16-m3-p0-state-identity-cut-design.md",
+      "role": "process",
+      "stability": "provisional"
+    },
+    {
+      "change_process": "process-pr",
+      "owner_role": "maintainer",
+      "path": "docs/superpowers/specs/2026-09-18-v5-execution-identity-implementation-design.md",
+      "role": "process",
+      "stability": "provisional"
     }
   ],
   "schema_version": "normative-document-register.v1"
