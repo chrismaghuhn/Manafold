@@ -32,13 +32,18 @@ IMPLEMENTATION_BASE   = the exact NEW origin/master AFTER spec + plan merge — 
 
 ```bash
 git fetch origin && git rev-parse origin/master
-git show origin/master:docs/superpowers/specs/2026-09-18-v5-execution-identity-implementation-design.md | git hash-object --stdin
-#   → must equal the reviewed spec blob on the reviewed branch (spec unchanged on master)
-git show origin/master:docs/superpowers/plans/2026-09-19-v5-execution-identity-implementation.md | git hash-object --stdin
-#   → must equal the reviewed plan blob on the reviewed branch (plan unchanged on master)
-grep -m1 "^status" docs/adr/0055-v5-execution-identity.md   # ADR 0055 remains accepted
-git status --porcelain=v2 --branch                          # clean worktree
+# Blob-equality PROOFS against the independently-authorized reviewed blobs (plan Fix-03:
+# these must be TESTED comparisons, not printed hashes):
+SPEC_BLOB=$(git show origin/master:docs/superpowers/specs/2026-09-18-v5-execution-identity-implementation-design.md | git hash-object --stdin)
+PLAN_BLOB=$(git show origin/master:docs/superpowers/plans/2026-09-19-v5-execution-identity-implementation.md | git hash-object --stdin)
+test "$SPEC_BLOB" = "<spec blob hash from the reviewed branch>" || { echo SPEC_DRIFT; exit 1; }
+test "$PLAN_BLOB" = "<plan blob hash from the reviewed branch>" || { echo PLAN_DRIFT; exit 1; }
+# ADR 0055 remains accepted (against origin/master, not the worktree):
+git show origin/master:docs/adr/0055-v5-execution-identity.md | grep -F -- "- **Status:** accepted" >/dev/null || { echo ADR_NOT_ACCEPTED; exit 1; }
+git status --porcelain=v2 --branch   # clean worktree
 ```
+
+(The two `<…>` blob hashes are recorded once by the independent plan review; the executor substitutes the exact hashes from the final reviewed heads before branching.)
 
 Then freeze `IMPLEMENTATION_BASE = $(git rev-parse origin/master)` and branch from exactly that SHA. The implementation baseline gate below runs against `IMPLEMENTATION_BASE`, never against `PLANNING_BASE`.
 
@@ -67,14 +72,20 @@ If any of these fail on untouched `master`: `V5_IMPLEMENTATION = BLOCKED` — re
 
 **Types:** `ExecutionProgramV1` (`SyntheticRulesCompat` | `MagicRules`; JSON strings `synthetic_rules_compat` / `magic_rules`), `ExecutionIdentityV1`, `RulesAuthorityV1` (`SyntheticLegacy` | `ComprehensiveRules { snapshot_id }`), `CapabilityRequirementV1 { key, version }`, `RulesContractManifestV1`, `RulesContractIdV1`, `SemanticContractManifestV1`, `SemanticContractIdV1`, reserved `FormatContractIdV1` / `ContentContractIdV1` (domain consts `mtgml.format-contract.v1` / `mtgml.content-contract.v1`, NO manifest schema, no constructor from arbitrary bytes), `CheckpointDigestV5` (newtype via macro).
 
-**RED gate** (compile-contract REDs are intended here — the missing types ARE the expected failure; accidental failures elsewhere do not count):
+**RED gate (Plan Fix-03: create the RED tests FIRST, then run — cargo runs ZERO tests and exits SUCCESS on an unmatched filter, which is not RED):** first add `crates/mtgml-model/tests/execution_identity_red.rs` and `crates/mtgml-model/tests/semantic_contract_red.rs` referencing the new types/APIs (integration-test files keep the production `lib.rs` wiring out of scope until GREEN), THEN run the commands below. Expected RED: compile failure on the unresolved types (a deliberate compile-contract RED — the missing types ARE the intended failure; accidental failures elsewhere do not count):
 
 ```bash
-cargo test -p mtgml-model --all-features execution_identity
-cargo test -p mtgml-model --all-features semantic_contract
+cargo test -p mtgml-model --test execution_identity_red
+cargo test -p mtgml-model --test semantic_contract_red
 ```
 
-Expected RED: unresolved types. Then implement; the same command must go GREEN covering the spec §11 matrix exactly, as separate structural-validation vs wire-decode tests: unknown `ExecutionProgramV1` string rejected (wire decode); `RulesAuthorityV1` closed variants (unknown variant rejected); capability key/version per spec §7c grammar (from `schemas/capability-registry.v1.schema.json`: key `^(rules|mechanic|decision|visibility|tooling|format/[a-z0-9-]+)/[a-z0-9][a-z0-9-]*(/[a-z0-9][a-z0-9-]*)*$`, version `^[0-9]+\.[0-9]+\.[0-9]+$` — invalid key, invalid version, duplicate key, unsorted closure rejected); `SyntheticLegacy` + non-null closure rejected; `ComprehensiveRules` + null/empty closure rejected; empty CR snapshot rejected; deny-unknown on every serde type; milestone-name values (`m3…`, `s1…`) rejected as program_kind strings.
+Then implement (including the `lib.rs` re-exports) and run GREEN as:
+
+```bash
+cargo test -p mtgml-model --test execution_identity_red --test semantic_contract_red
+```
+
+covering the spec §11 matrix exactly, as separate structural-validation vs wire-decode tests: unknown `ExecutionProgramV1` string rejected (wire decode); `RulesAuthorityV1` closed variants (unknown variant rejected); capability key/version per spec §7c grammar (from `schemas/capability-registry.v1.schema.json`: key `^(rules|mechanic|decision|visibility|tooling|format/[a-z0-9-]+)/[a-z0-9][a-z0-9-]*(/[a-z0-9][a-z0-9-]*)*$`, version `^[0-9]+\.[0-9]+\.[0-9]+$` — invalid key, invalid version, duplicate key, unsorted closure rejected); `SyntheticLegacy` + non-null closure rejected; `ComprehensiveRules` + null/empty closure rejected; empty CR snapshot rejected; deny-unknown on every serde type; milestone-name values (`m3…`, `s1…`) rejected as program_kind strings.
 
 **Negative/adversarial evidence:** the decode-rejection half of the same suite.
 
@@ -92,10 +103,10 @@ Expected RED: unresolved types. Then implement; the same command must go GREEN c
 
 **Contracts (copy exactly):** envelope `mtgml.digest-envelope.v1`, algorithm `sha-256`, codec `mtgml.canonical-cbor.v1`; domains `mtgml.rules-contract.v1` / `mtgml.semantic-contract.v1`; input schemas `rules-contract-manifest.v1` / `semantic-contract-manifest.v1`; canonical payloads = spec §7 fixed 4-array (with `[variant_id, payload]` authority encoding and canonically sorted unique closure) and §8 fixed 5-array (`null` = absence, rules ID as raw 32-byte string). Reader-side canonical re-encode equality applies to any decode path.
 
-**RED gate:**
+**RED gate (create the RED tests FIRST — Plan Fix-03 sweep):** add `crates/mtgml-persistence/tests/semantic_contract_digest_red.rs` (importing the two new functions) and `python/tests/test_v5_contract_digest.py` (importing the two mirror functions), THEN run:
 
 ```bash
-cargo test -p mtgml-persistence --all-features semantic_contract_digest
+cargo test -p mtgml-persistence --test semantic_contract_digest_red
 .venv/bin/python -m unittest python.tests.test_v5_contract_digest -v
 ```
 
@@ -119,6 +130,7 @@ Expected RED: the digest FUNCTIONS are missing (unresolved imports/functions in 
 - Generator: `scripts/generate_semantic_contract_catalog.py` (modeled on `scripts/generate_contracts.py`'s CATALOG/`--check`/drift-via-`SystemExit` pattern)
 - Generated Rust output: `crates/mtgml-environment/src/semantic_catalog_generated.rs` (generated-file banner, do-not-edit note; emits manifest constants AND derived `RulesContractIdV1`/`SemanticContractIdV1` constants using Task 2 functions)
 - Rust recompute KAT: `crates/mtgml-environment/src/semantic_catalog_kat.rs` (spec §19.4: recompute every ID constant from the emitted manifest constants via the §9 functions; byte equality; drift fails the build)
+- Module wiring (Plan Fix-03): `crates/mtgml-environment/src/lib.rs` — add `mod semantic_catalog_generated;` and `#[cfg(test)] mod semantic_catalog_kat;` (the generated module is otherwise not compiled and the KAT never runs); KAT tests are also reachable via `crates/mtgml-environment/tests/semantic_catalog_kat_red.rs` from Task 3's RED gate
 
 **Generator semantics:** reads ONLY `contracts/catalog/semantic-contracts.v1.json` (no Rust parsing, no Python duplicate manifest, no invoking Rust); derives IDs via the Task 2 Python mirror functions (`python/src/mtgml/persistence.py::calculate_rules_contract_id_v1` / `calculate_semantic_contract_id_v1`) — NO digest logic in the generator itself; deterministic; `--check` mode fails on stale output; rerun produces zero diff.
 
@@ -129,7 +141,7 @@ Expected RED: the digest FUNCTIONS are missing (unresolved imports/functions in 
 cargo test -p mtgml-environment --all-features semantic_catalog_kat                     # RED: constants/KAT missing
 ```
 
-Expected RED: the generator's behavior and the generated constants are missing — not merely the test files. GREEN = generator emits; `--check` passes; rerun `git diff --exit-code` on generated file; Rust KAT GREEN; generator unittest GREEN.
+Expected RED: the generator's behavior and the generated constants are missing — not merely the test files. GREEN = generator emits; `--check` passes; rerun `git diff --exit-code` on generated file; Rust KAT GREEN; generator unittest GREEN. After implementation, the focused GREEN commands are: `cargo test -p mtgml-environment --test semantic_catalog_kat_red` and the generator unittest above.
 
 **Negative/adversarial evidence:** mutate one manifest fact in the source JSON (in a scratch copy or test): regenerated ID constants change; `--check` fails against stale generated output; no Magic production contract may be generated (source contains exactly one entry).
 
@@ -156,23 +168,35 @@ impl ProgramKernelV1 {
 
 `ProgramKernelConstructionErrorV1` with variant `UnsupportedProgram`. Remove `#[derive(Default)]` from `SyntheticM1RulesKernel` (`synthetic.rs:54`); keep the unit struct module-private to `mtgml-rules`.
 
-**Migration census (compile-time-explicit; from the verified spec):** literals at `crates/mtgml-rules/src/synthetic.rs:113`, `:140`, `:165` → internal `ProgramKernelV1` construction; `crates/mtgml-environment/src/synthetic.rs` field/`fork_boxed` reset (`:165`) → holds `ProgramKernelV1`; forced-progress call sites `crates/mtgml-environment/src/synthetic/commit.rs:97`, `:219` and `crates/mtgml-environment/src/tests/forced_progress.rs:199` → dispatch via `ProgramKernelV1`; test literals `crates/mtgml-environment/src/tests/checkpoint_replay.rs:741`, `tests/forced_progress.rs:198` → `for_program`.
+**Migration census (Plan Fix-03, fully grep-verified at baseline; `PROGRAM_OWNS_ALL_KERNEL_ENTRYPOINTS` closes only when EVERY literal outside the owning declaration module migrates):**
 
-**RED gate:**
+- `crates/mtgml-environment/src/synthetic.rs` — production literals at `:113` (`new()`), `:140` (`from_checkpoint()`), `:165` (`restore()` reset) → construct via `ProgramKernelV1::for_program(...)`/dispatch (the struct field at `:81` becomes `ProgramKernelV1`);
+- forced-progress call sites `crates/mtgml-environment/src/synthetic/commit.rs:97`, `:219` → dispatch via `ProgramKernelV1`; test call site `crates/mtgml-environment/src/tests/forced_progress.rs:199` → same;
+- `crates/mtgml-rules/src/tests.rs` (`:135`, `:154`, `:170`), `crates/mtgml-rules/src/tests/determinism.rs` (`:8/:9`, `:34/:35`), `crates/mtgml-rules/src/tests/forced_progress.rs` (`:14`), `crates/mtgml-rules/src/tests/synthetic_program.rs` (`:337`, `:425`), `crates/mtgml-rules/src/tests/transition_contract.rs` (`:84`, `:100`, `:151`, `:165`) → migrate to `ProgramKernelV1::for_program(SyntheticRulesCompat)` + dispatch (crates-internal tests construct through the public boundary like any external consumer);
+- `crates/mtgml-rules/tests/p0_red.rs` — external integration-test crate importing `SyntheticM1RulesKernel` (`:7`) and constructing it (`:55`): P0-frozen RED evidence — migrate its CONSTRUCTION to `ProgramKernelV1::for_program(...)` while asserting the SAME frozen expectations (the P0 claims must keep passing; the construction path changes, the asserted evidence does not); if the private kernel makes a frozen import impossible, the test migrates to the boundary API and the historical claims remain byte-for-byte asserted;
+- `crates/mtgml-environment/src/tests/checkpoint_replay.rs:741` → `for_program`.
+
+Ownership rule: `SyntheticM1RulesKernel`'s DECLARATION stays in its owning implementation module (`crates/mtgml-rules/src/synthetic.rs`); `ProgramKernelInner::SyntheticLegacy(...)` is the ONLY allowed construction owner; ALL other direct literals migrate to `ProgramKernelV1::for_program(...)`.
+
+**RED gate (create the RED tests FIRST):** add `crates/mtgml-rules/tests/program_kernel_red.rs` referencing `ProgramKernelV1`/`ProgramKernelConstructionErrorV1`, THEN run:
 
 ```bash
-cargo test -p mtgml-rules --all-features program_kernel
+cargo test -p mtgml-rules --test program_kernel_red
 ```
 
-Expected RED: missing types. GREEN: `for_program(SyntheticRulesCompat)` → synthetic kernel (behavior unchanged); `for_program(MagicRules)` → `Err(ProgramKernelConstructionErrorV1::UnsupportedProgram)`; both entry points dispatch; pre-S1 enum has no Magic variant.
+Expected RED: compile failure on the missing types (intended compile-contract RED). GREEN: `for_program(SyntheticRulesCompat)` → synthetic kernel (behavior unchanged); `for_program(MagicRules)` → `Err(ProgramKernelConstructionErrorV1::UnsupportedProgram)`; both entry points dispatch; pre-S1 enum has no Magic variant.
 
-**Negative/adversarial evidence (residual gate):**
+**Negative/adversarial evidence (residual gate — Plan Fix-03: must NOT exempt whole directories, or rules-side literals survive):**
 
 ```bash
-grep -rn "SyntheticM1RulesKernel" crates/ tools/ | grep -v "crates/mtgml-rules/src" | grep -v "ProgramKernelV1" | grep -v "for_program"
+grep -rn "SyntheticM1RulesKernel" crates/ tools/ \
+  | grep -v "crates/mtgml-rules/src/synthetic.rs" \
+  | grep -v "ProgramKernelInner" \
+  | grep -v "ProgramKernelV1" \
+  | grep -v "for_program"
 ```
 
-must return zero semantic-construction sites (mentions in type position via the boundary are allowed; naked construction is not). The V5 gate script (Task 12, created RED before the migration) asserts this permanently.
+must return zero construction sites (the owning module's declaration + the private inner-enum construction are the only permitted occurrences; type-position mentions via the boundary are allowed; naked construction is not). The V5 gate script (Task 12, created RED before the migration) asserts this permanent allowlist — failures name path/token/line.
 
 **Focused GREEN:** `cargo test -p mtgml-rules --all-features` + `cargo test -p mtgml-environment --all-features` (call-site migration). **Affected-package GREEN:** workspace `cargo check`.
 
@@ -203,13 +227,13 @@ Targeted: record→transition→record round-trips assert exact `EngineState`, `
 
 **Objective:** `calculate_checkpoint_digest_v5` in `crates/mtgml-persistence/src/checkpoint_digest.rs`, exactly spec §9's seven-element payload: V4's verified six elements (`environment-checkpoint-digest-input.v5`, `mtgml.checkpoint-digest.v5`, full-state `DigestReferenceV1` unchanged against `full-state-digest-input.v4` + `FullStateDigestV4::DOMAIN`, episode status, counters, `["in-memory-reference", "5"]` FROZEN) + `ExecutionIdentityV1` as LAST element (`[program_kind_variant, semantic_contract_id_32bytes]`).
 
-**RED gate:**
+**RED gate (create the RED test FIRST):** add the `checkpoint_digest_v5` test module to `crates/mtgml-persistence/src/checkpoint_digest.rs`'s test tree (or `crates/mtgml-persistence/tests/checkpoint_digest_v5_red.rs`) referencing the new function, THEN run:
 
 ```bash
-cargo test -p mtgml-persistence --all-features checkpoint_digest_v5
+cargo test -p mtgml-persistence --test checkpoint_digest_v5_red
 ```
 
-Expected RED: missing function/domain. GREEN = spec §19.3 KATs: one fixed V4-equivalent input; mutation vectors — different `program_kind` ⇒ different digest; different `semantic_contract_id` ⇒ different digest; identical input ⇒ identical digest. Codec semantic_version `"5"` enforced; `"4"` rejected.
+Expected RED: compile failure on the missing function/domain (intended compile-contract RED). GREEN = spec §19.3 KATs: one fixed V4-equivalent input; mutation vectors — different `program_kind` ⇒ different digest; different `semantic_contract_id` ⇒ different digest; identical input ⇒ identical digest. Codec semantic_version `"5"` enforced; `"4"` rejected.
 
 **Negative/adversarial evidence:** wrong codec pair rejected; full-state reference domain mismatch rejected.
 
@@ -223,13 +247,13 @@ Expected RED: missing function/domain. GREEN = spec §19.3 KATs: one fixed V4-eq
 
 **Objective:** Spec §11 beside retained V4 in `crates/mtgml-environment/src/checkpoint.rs`: consts `ENVIRONMENT_CHECKPOINT_SCHEMA_V5 = "environment-checkpoint.v5"`, `CHECKPOINT_CODEC_ID_V5 = "in-memory-reference"`, `CHECKPOINT_CODEC_SEMANTIC_VERSION_V5 = "5"`; struct with unchanged `EngineState`/`FullStateDigestV4`, plus `execution_identity: ExecutionIdentityV1` and `checkpoint_digest: CheckpointDigestV5`; `new()`/`validate()` mirroring V4 with digest recompute FROM the stored identity.
 
-**RED gate:**
+**RED gate (create the RED test FIRST):** add `crates/mtgml-environment/tests/checkpoint_v5_red.rs` referencing `EnvironmentCheckpointV5`, THEN run:
 
 ```bash
-cargo test -p mtgml-environment --all-features checkpoint_v5
+cargo test -p mtgml-environment --test checkpoint_v5_red
 ```
 
-Expected RED: missing type. GREEN: validate chain green; V4 tests untouched and still green.
+Expected RED: compile failure on the missing type (intended compile-contract RED). GREEN: validate chain green; V4 tests untouched and still green.
 
 **Negative/adversarial evidence:** tampered `execution_identity` ⇒ digest mismatch rejection; tampered digest ⇒ rejection; codec `"4"` rejected; completed-with-pending-decision rule preserved.
 
@@ -243,14 +267,14 @@ Expected RED: missing type. GREEN: validate chain green; V4 tests untouched and 
 
 **Objective:** Spec §10/§12/§18 in `crates/mtgml-environment` (new module `semantic_catalog.rs`): catalog consuming ONLY generated Task 3 constants (no digest generation, no mutable/lazy state, no filesystem/network/env lookup; `resolve(id)` vs `supported(id, program)` distinction); the spec §12 nine-phase admission order owned exactly as its table states; error variants added to `CheckpointValidationError`/`ControllerError` (`ExecutionIdentity`, `SemanticContractUnknown`, `SemanticContractDigestMismatch`, `RulesContractDigestMismatch`, `ProgramAuthorityMismatch`, `SemanticContractUnsupported`, `ProgramStateIncompatible`) with the deterministic `ProgramKernelConstructionErrorV1 → SemanticContractUnsupported/ControllerError` mapping. **Scope guard (Plan Fix-02):** this task builds the catalog and the STATELESS/PURE V5 admission machinery + typed errors at FUNCTION level. The real `EnvironmentBackend::restore` / `TrustedEnvironmentController::restore` surfaces are still V4 at this point (their migration is Task 13) — Task 8 must NOT migrate them and must NOT invent a parallel temporary restore API; wiring admission into controller restore and proving controller-level rejected-restore nonmutation happen in Task 13.
 
-**RED gate:**
+**RED gate (create the RED tests FIRST):** add `crates/mtgml-environment/tests/semantic_catalog_red.rs` and `crates/mtgml-environment/tests/restore_admission_red.rs` referencing the new module/API/errors, THEN run:
 
 ```bash
-cargo test -p mtgml-environment --all-features semantic_catalog
-cargo test -p mtgml-environment --all-features restore_admission
+cargo test -p mtgml-environment --test semantic_catalog_red
+cargo test -p mtgml-environment --test restore_admission_red
 ```
 
-Expected RED: missing module/variants. GREEN covers: SyntheticLegacy resolves; unknown semantic ID rejects; known-meaning ≠ supported-execution; `MagicRules` resolves to NO synthetic contract (catalog inputs match generated constants); each of the nine phases rejects in its own typed failure family — asserted at the admission-function level over constructed V5 checkpoints (NOT via `TrustedEnvironmentController::restore`, which stays V4 until Task 13). Controller-level rejected-restore nonmutation (pre/post `checkpoint()` byte-equality for every rejection phase; spec §12 observable invariant) is proven in Task 13 when the real surfaces flip.
+Expected RED: compile failure on the missing module/variants (intended compile-contract RED). GREEN covers: SyntheticLegacy resolves; unknown semantic ID rejects; known-meaning ≠ supported-execution; `MagicRules` resolves to NO synthetic contract (catalog inputs match generated constants); each of the nine phases rejects in its own typed failure family — asserted at the admission-function level over constructed V5 checkpoints (NOT via `TrustedEnvironmentController::restore`, which stays V4 until Task 13). Controller-level rejected-restore nonmutation (pre/post `checkpoint()` byte-equality for every rejection phase; spec §12 observable invariant) is proven in Task 13 when the real surfaces flip.
 
 **Negative/adversarial evidence:** program × authority mismatch; runtime-unsupported; recompute-mismatch of top-level/rules IDs at admission (invariant-breach classification).
 
@@ -264,13 +288,13 @@ Expected RED: missing module/variants. GREEN covers: SyntheticLegacy resolves; u
 
 **Objective:** Spec §13 in new `crates/mtgml-replay/src/v5.rs` (consts `replay-manifest.v5` / `authoritative-replay.v5` / `replay-step.v5`): `ReplaySchemaVersionsV5`, `InitialEnvironmentIdentityV5` (V4's 6 fields + V5 digest + `execution_identity`), `SemanticContractMaterialV5`, `ReplayManifestV5` (V4 fields + `execution_identity` + `semantic_contract`; `KernelIdentityV1` retained as provenance; `rules_snapshot` retained as provenance), `ReplayStepV5` (mechanical cut: identical 11-field shape, `CheckpointDigestV5` before/after, `replay-step.v5`; NO forced-progress steps, NO fabricated decisions), `AuthoritativeReplayV5` (+ `final_identity.execution_identity`), `ReplayRecorderV5`. Detached `validate()` = V4 chain-walk + spec §13 additions: semantic manifest hashes to material ID; rules manifest hashes to recomputed rules ID; three-way identity equality; child-ID nulls; `comprehensive_rules` rules_snapshot equality.
 
-**RED gate:**
+**RED gate (create the RED test FIRST):** add `crates/mtgml-replay/tests/replay_v5_red.rs` referencing the V5 types, THEN run:
 
 ```bash
-cargo test -p mtgml-replay --all-features v5
+cargo test -p mtgml-replay --test replay_v5_red
 ```
 
-Expected RED: missing module/types. GREEN: record→validate→export round-trip; spec §24 three-way binding tests (each mismatch ⇒ detached rejection BEFORE any backend execution); spec §25 families (SyntheticLegacy ⇒ `rules_snapshot` informational; ComprehensiveRules ⇒ mismatch ⇒ detached rejection — KAT/validation-only, NO runtime Magic contract).
+Expected RED: compile failure on the missing module/types (intended compile-contract RED). GREEN: record→validate→export round-trip; spec §24 three-way binding tests (each mismatch ⇒ detached rejection BEFORE any backend execution); spec §25 families (SyntheticLegacy ⇒ `rules_snapshot` informational; ComprehensiveRules ⇒ mismatch ⇒ detached rejection — KAT/validation-only, NO runtime Magic contract).
 
 **Negative/adversarial evidence:** every detached rejection classified artifact-validation, mutating nothing.
 
@@ -311,13 +335,13 @@ GREEN: inventory test passes; `validate_schemas.py` green over V1–V5; positive
 
 **Objective:** Spec §15/§14.1: `python/src/mtgml/persistence.py` gains `calculate_checkpoint_digest_v5` (the two contract-ID mirrors already landed in Task 2; byte-exact mirror; V4 functions retained); new `python/src/mtgml/_replay_v5.py` (V5 DTOs, `from_wire`/`to_wire`, deny-unknown, detached recompute chain incl. three-way equality and CR snapshot equality); `replay.py`/`wire.py`/`__init__.py` re-exports per actual ownership (`replay.py:35` currently re-exports `_replay_v4`). Python does NOT decide legality/support/admission.
 
-**RED gate:**
+**RED gate (create the RED test modules FIRST):** add `python/tests/test_v5_persistence.py` (importing `calculate_checkpoint_digest_v5` from `python/src/mtgml/persistence.py`) and `python/tests/test_v5_replay.py` (importing the `_replay_v5` DTOs), THEN run:
 
 ```bash
 .venv/bin/python -m unittest python.tests.test_v5_persistence python.tests.test_v5_replay -v
 ```
 
-Expected RED: missing checkpoint-digest mirror and V5 DTO modules (the Task 2 contract-ID mirrors already exist and stay green). GREEN: shared KAT vectors byte-identical Rust↔Python for spec §19.1–§19.5 (commands: `cargo test -p mtgml-persistence --all-features semantic_contract_digest` then `cargo test -p mtgml-persistence --all-features checkpoint_digest_v5`; Python `python -m unittest python.tests.test_v5_persistence -v`; vectors read from the same committed fixture files).
+Expected RED: import/attribute failures naming the MISSING PRODUCTION API (the checkpoint-digest mirror and the V5 DTOs do not exist yet) — not module-file-not-found; the Task 2 contract-ID mirrors already exist and stay green. GREEN: shared KAT vectors byte-identical Rust↔Python for spec §19.1–§19.5 (commands: `cargo test -p mtgml-persistence --all-features semantic_contract_digest` then `cargo test -p mtgml-persistence --all-features checkpoint_digest_v5`; Python `python -m unittest python.tests.test_v5_persistence -v`; vectors read from the same committed fixture files).
 
 **Negative/adversarial evidence:** Python rejects every §19 negative-fixture case mechanically.
 
