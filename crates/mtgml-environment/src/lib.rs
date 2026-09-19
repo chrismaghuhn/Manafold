@@ -11,6 +11,8 @@ mod endpoint;
 mod errors;
 pub mod lifecycle_projection;
 mod replay;
+#[cfg(test)]
+mod semantic_catalog_kat;
 mod synthetic;
 #[cfg(test)]
 mod tests;
@@ -25,6 +27,11 @@ pub use endpoint::{PlayerEndpoint, PlayerEndpointError, PlayerEndpointHandle};
 pub use errors::ControllerError;
 pub use errors::ReplayExecutionError;
 pub use mtgml_model::{CheckpointCodecIdentity, EnvironmentLimitCounters};
+// Task 3 generated catalog module: wired ONLY into test builds until Task 8
+// introduces the runtime catalog consumer. Keeping the declaration cfg(test)
+// preserves the pre-Task-8 production compile surface exactly.
+#[cfg(test)]
+mod semantic_catalog_generated;
 pub use replay::{ReplayExecutionReport, ReplayExecutionTrace};
 pub use synthetic::{
     SyntheticM1EnvironmentBackend, SyntheticM1EnvironmentConfig, SyntheticM1ReplayConfig,
