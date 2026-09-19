@@ -118,7 +118,7 @@ fn invalid_capability_keys_reject() {
         "rules/",
         "rules/-x",
         "rules/x/",
-        "format/Commander",
+        "format/Test-Format",
         "format/",
         "other/x",
         "",
@@ -145,8 +145,9 @@ fn valid_capability_keys_accept() {
         "decision/priority-pass",
         "visibility/hand-cards",
         "tooling/replay-verify",
-        "format/commander",
-        "format/commander/100-point",
+        "format/test-format/example-capability",
+        "format/-/x",
+        "format/test-format/a/b/c",
     ] {
         let manifest = RulesContractManifestV1 {
             rules_authority: RulesAuthorityV1::ComprehensiveRules {
@@ -157,6 +158,25 @@ fn valid_capability_keys_accept() {
         assert!(
             manifest.validate().is_ok(),
             "capability key must accept: {key}"
+        );
+    }
+}
+
+#[test]
+fn format_head_requires_a_capability_segment_after_the_namespace() {
+    // The frozen grammar head alternative is `format/[a-z0-9-]+` and it must
+    // still be followed by one required capability segment; a bare
+    // `format/<namespace>` key is NOT in the regex language.
+    for key in ["format/test-format", "format/-", "format/ns"] {
+        let manifest = RulesContractManifestV1 {
+            rules_authority: RulesAuthorityV1::ComprehensiveRules {
+                snapshot_id: "CR-2026-09-19".to_owned(),
+            },
+            capability_closure: Some(vec![entry(key, "1.0.0")]),
+        };
+        assert!(
+            manifest.validate().is_err(),
+            "format-only namespace key must reject: {key}"
         );
     }
 }
@@ -292,11 +312,13 @@ fn semantic_contract_manifest_json_shape_is_exact() {
 fn semantic_contract_manifest_reserved_ids_round_trip() {
     // The typed seams must survive the future arrival of real format/content
     // contract IDs unchanged (spec §14): non-null values decode/encode as
-    // 64-lowercase-hex strings. Production emission stays None (spec §13).
+    // 64-lowercase-hex strings via the canonical parse/serde path only.
+    // Production emission stays None (spec §13); reserved IDs expose NO
+    // constructor from arbitrary digest bytes (spec §5).
     let manifest = SemanticContractManifestV1 {
         rules_contract_id: RulesContractIdV1::from_digest_bytes([0x12; 32]),
-        format_contract_id: Some(FormatContractIdV1::from_digest_bytes([0x34; 32])),
-        content_contract_id: Some(ContentContractIdV1::from_digest_bytes([0x56; 32])),
+        format_contract_id: Some(FormatContractIdV1::parse("34".repeat(32)).unwrap()),
+        content_contract_id: Some(ContentContractIdV1::parse("56".repeat(32)).unwrap()),
     };
     let rendered = serde_json::to_value(&manifest).unwrap();
     assert_eq!(
@@ -309,6 +331,32 @@ fn semantic_contract_manifest_reserved_ids_round_trip() {
     );
     let decoded: SemanticContractManifestV1 = serde_json::from_value(rendered).unwrap();
     assert_eq!(decoded, manifest);
+}
+
+#[test]
+fn reserved_contract_ids_admit_only_canonical_hex_text() {
+    for bad in [
+        "CD".repeat(32),
+        "34".repeat(31),
+        "34".repeat(33),
+        "gg".repeat(32),
+        String::new(),
+    ] {
+        assert!(
+            FormatContractIdV1::parse(bad.clone()).is_err(),
+            "reserved format contract id must reject: {bad}"
+        );
+        assert!(
+            ContentContractIdV1::parse(bad.clone()).is_err(),
+            "reserved content contract id must reject: {bad}"
+        );
+    }
+    assert!(
+        serde_json::from_value::<FormatContractIdV1>(serde_json::json!("CD".repeat(32))).is_err()
+    );
+    assert!(
+        serde_json::from_value::<ContentContractIdV1>(serde_json::json!("34".repeat(31))).is_err()
+    );
 }
 
 #[test]

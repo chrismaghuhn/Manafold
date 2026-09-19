@@ -273,19 +273,30 @@ fn is_valid_capability_key(key: &str) -> bool {
     if second.is_empty() {
         return false;
     }
-    let head_ok = if FIXED_HEADS.contains(&head) {
-        is_word_segment(second)
-    } else if head == "format" {
-        second
-            .bytes()
-            .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-')
+    if head == "format" {
+        // `format/[a-z0-9-]+` is the namespace head alternative; the grammar
+        // still requires at least one following capability segment, so a bare
+        // `format/<namespace>` key is NOT in the regex language.
+        if !is_format_namespace(second) {
+            return false;
+        }
+        match segments.next() {
+            Some(first) if is_word_segment(first) => segments.all(is_word_segment),
+            _ => false,
+        }
+    } else if FIXED_HEADS.contains(&head) {
+        is_word_segment(second) && segments.all(is_word_segment)
     } else {
         false
-    };
-    if !head_ok {
-        return false;
     }
-    segments.all(is_word_segment)
+}
+
+/// `[a-z0-9-]+` format namespace segment.
+fn is_format_namespace(segment: &str) -> bool {
+    !segment.is_empty()
+        && segment
+            .bytes()
+            .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-')
 }
 
 /// `[a-z0-9][a-z0-9-]*` segment.
