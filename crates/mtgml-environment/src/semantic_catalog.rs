@@ -24,7 +24,7 @@ use mtgml_model::{
 use mtgml_persistence::semantic_contract_digest::{
     calculate_rules_contract_id_v1, calculate_semantic_contract_id_v1,
 };
-use mtgml_rules::validate_runtime_state;
+use mtgml_rules::{validate_runtime_state, ProgramKernelConstructionErrorV1};
 use thiserror::Error;
 
 use crate::checkpoint::{CheckpointValidationError, EnvironmentCheckpointV5};
@@ -78,8 +78,9 @@ impl RuntimeSemanticCatalog {
     }
 
     /// Test-only seam: construct a catalog from explicit entries.
-    /// This is `pub(crate)` and must never be public — the production
-    /// catalog is the only external entry point.
+    /// This is `#[cfg(test)]` so the production binary exposes exactly one
+    /// catalog construction path (`production()`).
+    #[cfg(test)]
     pub(crate) fn from_entries(entries: Vec<CatalogEntry>) -> Self {
         Self { entries }
     }
@@ -205,6 +206,28 @@ impl From<RestoreAdmissionError> for ControllerError {
             }
             RestoreAdmissionError::ProgramStateIncompatible => {
                 ControllerError::ProgramStateIncompatible
+            }
+        }
+    }
+}
+
+/// Deterministic mapping from the program-owned kernel construction error
+/// into the environment admission/support error model (spec §18 / Task-8 Plan
+/// Fix-05). `ProgramKernelConstructionErrorV1::UnsupportedProgram` maps to
+/// `ControllerError::SemanticContractUnsupported` — the runtime refuses to
+/// support a program with no production kernel contract. This is explicitly
+/// NOT a `KernelExecutionError` variant (construction/admission failures
+/// precede execution and are semantically distinct).
+///
+/// The only variant in the current slice is `UnsupportedProgram`; additional
+/// variants added in future slices must receive a deterministic, semantically
+/// distinct mapping — never a flatten to `Backend(String)` or
+/// `InvalidCheckpoint(String)`.
+impl From<ProgramKernelConstructionErrorV1> for ControllerError {
+    fn from(err: ProgramKernelConstructionErrorV1) -> Self {
+        match err {
+            ProgramKernelConstructionErrorV1::UnsupportedProgram => {
+                ControllerError::SemanticContractUnsupported
             }
         }
     }

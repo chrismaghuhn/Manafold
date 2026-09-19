@@ -171,3 +171,15 @@ fn catalog_entry_fields_are_observable() {
     .unwrap();
     assert_ne!(recomputed, wrong_id);
 }
+
+#[test]
+fn program_kernel_construction_error_maps_to_controller_error() {
+    // Fix-05: ProgramKernelConstructionErrorV1::UnsupportedProgram maps
+    // deterministically onto ControllerError::SemanticContractUnsupported.
+    let kernel_err = mtgml_rules::ProgramKernelConstructionErrorV1::UnsupportedProgram;
+    let controller_err: ControllerError = kernel_err.into();
+    assert!(
+        matches!(controller_err, ControllerError::SemanticContractUnsupported),
+        "UnsupportedProgram must map to SemanticContractUnsupported, not Backend(String)"
+    );
+}
