@@ -177,7 +177,21 @@ class SemanticContractDigestTests(unittest.TestCase):
                 }
             )
 
-    def test_schema_domain_identity_defects_reject_at_envelope_boundary(self) -> None:
+    def test_schema_domain_disagreement_is_detectable_and_bound_to_identity(self) -> None:
+        # DEFERRED REJECTION NOTE (accepted Option-A disposition):
+        # Spec §8 and docs/STATE_HASHING.md:317 require that a *decoder* reject
+        # a payload whose leading schema/domain fields disagree with the
+        # envelope identity. Task 2 ships only writer/calculator paths; no
+        # rules/semantic contract decode surface exists yet, so this suite
+        # honestly proves only the detectability/content-binding preconditions:
+        #   1. agreement is observable at the envelope decode boundary;
+        #   2. disagreement is observable and yields a DIFFERENT identity;
+        #   3. content cannot be reinterpreted across domains (identity change).
+        # The rejection assertion itself belongs to the first real contract
+        # decode path (plan Task 8 semantic admission scope) and must be added
+        # there as a genuine disagreement -> exception case.
+        # Evidence status: SCHEMA_DOMAIN_DISAGREEMENT_DETECTABLE = PASS,
+        # SCHEMA_DOMAIN_DISAGREEMENT_REJECTED = DEFERRED (not claimed here).
         # Positive control: the canonical rules payload inside its canonical
         # envelope decodes with agreeing schema/domain identity.
         payload = encode_canonical(
@@ -196,7 +210,9 @@ class SemanticContractDigestTests(unittest.TestCase):
         self.assertEqual(decoded_payload, payload)
 
         # Content binding: the same payload under the WRONG (semantic) labels
-        # is a different artifact with a different identity.
+        # is a different artifact with a different identity. This proves
+        # DISAGREEMENT_IS_DETECTABLE and IDENTITY_CHANGES; it deliberately does
+        # NOT claim DISAGREEMENT_IS_REJECTED (no decode surface exists in Task 2).
         disagreeing_envelope = encode_envelope(
             "mtgml.semantic-contract.v1", "semantic-contract-manifest.v1", payload
         )
@@ -208,8 +224,10 @@ class SemanticContractDigestTests(unittest.TestCase):
             hashlib.sha256(disagreeing_envelope).hexdigest(),
         )
 
-        # Identity defect: a corrupted (empty) domain frame rejects the whole
-        # envelope at the decode boundary.
+        # Envelope-level identity defect (control): a corrupted (empty) domain
+        # frame rejects the whole envelope at the decode boundary. This is
+        # malformed envelope framing, NOT the payload-vs-envelope disagreement
+        # case deferred above.
         corrupted = bytearray(correct_envelope)
         domain_length_offset = len(DIGEST_ENVELOPE_ID) + 1 + 8 + len(SHA256_ID)
         struct.pack_into(">Q", corrupted, domain_length_offset, 0)

@@ -507,7 +507,7 @@ def _is_valid_capability_key(key: str) -> bool:
 
 
 def _is_valid_capability_version(version: str) -> bool:
-    """Frozen version grammar (spec §7c): ^[0-9]+\.[0-9]+\.[0-9]+$"""
+    r"""Frozen version grammar (spec §7c): ^[0-9]+\.[0-9]+\.[0-9]+$"""
     if not isinstance(version, str):
         return False
     parts = version.split(".")
