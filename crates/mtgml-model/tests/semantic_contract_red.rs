@@ -360,6 +360,19 @@ fn reserved_contract_ids_admit_only_canonical_hex_text() {
 }
 
 #[test]
+fn reserved_contract_ids_expose_raw_bytes_of_valid_values_read_only() {
+    // raw_bytes() is an observation of an already-valid typed ID, NOT a
+    // constructor: Task 2's canonical CBOR preimages need the 32 raw digest
+    // bytes of reserved IDs, while minting from arbitrary bytes stays
+    // forbidden (spec §5).
+    let format = FormatContractIdV1::parse("34".repeat(32)).unwrap();
+    assert_eq!(format.raw_bytes(), [0x34; 32]);
+
+    let content = ContentContractIdV1::parse("56".repeat(32)).unwrap();
+    assert_eq!(content.raw_bytes(), [0x56; 32]);
+}
+
+#[test]
 fn contract_id_domains_are_distinct() {
     assert_eq!(RulesContractIdV1::DOMAIN, "mtgml.rules-contract.v1");
     assert_eq!(SemanticContractIdV1::DOMAIN, "mtgml.semantic-contract.v1");

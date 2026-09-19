@@ -343,10 +343,12 @@ raw_digest!(CheckpointDigestV5, "mtgml.checkpoint-digest.v5");
 
 /// Reserved digest identity newtype: DOMAIN + canonical hex parse/serde only.
 ///
-/// Deliberately NO constructor from arbitrary digest bytes (spec §5): the
+/// Deliberately NO construction from arbitrary digest bytes (spec §5): the
 /// reserved format/content contract identities cannot be minted before their
 /// contracts exist. Values may only arrive via canonical 64-lowercase-hex
-/// text (typed-seam decode); no manifest schema and no allocation path exist.
+/// text (typed-seam decode); no arbitrary-byte construction or semantic
+/// derivation path exists. Reading the raw digest bytes of an already-valid
+/// value (`raw_bytes`) is an observation, not a minting path.
 macro_rules! reserved_digest {
     ($name:ident, $domain:literal) => {
         #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -359,6 +361,10 @@ macro_rules! reserved_digest {
                 let text = text.into();
                 decode_lower_hex_32(&text)?;
                 Ok(Self(Digest(text)))
+            }
+
+            pub fn raw_bytes(&self) -> [u8; 32] {
+                decode_lower_hex_32(self.0.as_str()).expect("reserved digest invariant")
             }
 
             pub fn as_str(&self) -> &str {
