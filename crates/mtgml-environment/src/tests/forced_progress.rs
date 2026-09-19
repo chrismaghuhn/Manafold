@@ -195,7 +195,10 @@ fn forced_progress_candidate_projects_successfully_pre_commit() {
         })
         .unwrap();
     setup.execution.pending_decision = None;
-    let mut kernel = mtgml_rules::SyntheticM1RulesKernel;
+    let mut kernel = mtgml_rules::ProgramKernelV1::for_program(
+        mtgml_model::ExecutionProgramV1::SyntheticRulesCompat,
+    )
+    .expect("the synthetic program is supported by the current kernel boundary");
     let product = kernel.advance_forced_progress(&setup).unwrap();
     let candidate: &EngineState = &product.next_state;
     for perspective in players {

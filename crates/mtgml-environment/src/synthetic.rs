@@ -1,5 +1,5 @@
 use mtgml_decision::{DecisionResponseV2, PlayerDecisionRequestV2};
-use mtgml_model::{EpisodeStatus, PlayerId};
+use mtgml_model::{EpisodeStatus, ExecutionProgramV1, PlayerId};
 use mtgml_observation::{
     ObservationEnvelope, PlayerInformationStateV2, PlayerStepV2, PlayerSubmissionCodeV1,
 };
@@ -8,7 +8,7 @@ use mtgml_replay::{
     AuthoritativeReplayV4, DeckIdentityV1, KernelIdentityV1, ReplayRecorderV4,
     ReplaySchemaVersionsV4,
 };
-use mtgml_rules::{SyntheticM1RulesKernel, TransitionResult};
+use mtgml_rules::{ProgramKernelV1, TransitionResult};
 use mtgml_state::{
     construct_synthetic_engine_state, EngineState, SyntheticResetInputs, SyntheticV4Setup,
 };
@@ -78,7 +78,7 @@ pub struct SyntheticM1EnvironmentBackend {
     codec: CheckpointCodecIdentity,
     config: SyntheticM1EnvironmentConfig,
     replay: ReplayRecorderV4,
-    kernel: SyntheticM1RulesKernel,
+    kernel: ProgramKernelV1,
     #[cfg(test)]
     eventful_fixture: bool,
 }
@@ -110,7 +110,8 @@ impl SyntheticM1EnvironmentBackend {
             codec: config.codec.clone(),
             config,
             replay,
-            kernel: SyntheticM1RulesKernel,
+            kernel: ProgramKernelV1::for_program(ExecutionProgramV1::SyntheticRulesCompat)
+                .expect("the synthetic program is supported by the current kernel boundary"),
             #[cfg(test)]
             eventful_fixture: false,
         })
@@ -137,7 +138,8 @@ impl SyntheticM1EnvironmentBackend {
             codec: checkpoint.codec,
             config,
             replay,
-            kernel: SyntheticM1RulesKernel,
+            kernel: ProgramKernelV1::for_program(ExecutionProgramV1::SyntheticRulesCompat)
+                .expect("the synthetic program is supported by the current kernel boundary"),
             #[cfg(test)]
             eventful_fixture: false,
         })
@@ -162,7 +164,8 @@ impl EnvironmentBackend for SyntheticM1EnvironmentBackend {
         self.limit_counters = candidate.limit_counters;
         self.codec = candidate.codec;
         self.replay = candidate.replay;
-        self.kernel = SyntheticM1RulesKernel;
+        self.kernel = ProgramKernelV1::for_program(ExecutionProgramV1::SyntheticRulesCompat)
+            .expect("the synthetic program is supported by the current kernel boundary");
         #[cfg(test)]
         {
             self.eventful_fixture = eventful_fixture;

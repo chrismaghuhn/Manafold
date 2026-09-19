@@ -3,9 +3,7 @@ use std::collections::BTreeMap;
 use mtgml_decision::{DecisionAnswerV2, DecisionResponseV2, DECISION_RESPONSE_V2_SCHEMA};
 use mtgml_model::{CandidateIdV1, PlayerDecisionIdV1, PlayerId, StateRevision};
 use mtgml_random::RootSeed256;
-use mtgml_rules::{
-    validate_transition_contract, RulesKernel, SyntheticM1RulesKernel, TransitionViolation,
-};
+use mtgml_rules::{validate_transition_contract, ProgramKernelV1, TransitionViolation};
 use mtgml_state::{
     construct_synthetic_engine_state, BaseCharacteristics, CombatState, ControlHistory,
     FoundationCreatureSource, FoundationSourceKind, PriorityState, StateDelta,
@@ -52,7 +50,11 @@ fn assert_v4_fact_mutation_is_rejected_from(
     before: mtgml_state::EngineState,
     mutate: impl FnOnce(&mut mtgml_state::EngineState),
 ) {
-    let mut kernel = SyntheticM1RulesKernel;
+    // P0-frozen evidence: the construction path migrated to the program-owned
+    // boundary; the asserted historical claims are unchanged byte-for-byte.
+    let mut kernel =
+        ProgramKernelV1::for_program(mtgml_model::ExecutionProgramV1::SyntheticRulesCompat)
+            .expect("the synthetic program is supported by the current kernel boundary");
     let mut transition = kernel.apply(&before, PlayerId(1), &response()).unwrap();
     mutate(&mut transition.next_state);
     transition.delta = StateDelta::between(

@@ -6,6 +6,7 @@ mod events;
 #[cfg(feature = "m2-conformance-fixtures")]
 pub mod fixture_support;
 mod product;
+mod program_kernel;
 mod semantic_cursor;
 mod snapshots;
 mod synthetic;
@@ -21,6 +22,7 @@ pub use events::{
     AuthoritativeRuleEvent, AuthoritativeRuleEventKind, OccurrencePairingError,
     PerspectiveObservationPolicyV1,
 };
-pub use synthetic::{validate_synthetic_runtime_state, SyntheticM1RulesKernel};
+pub use program_kernel::{ProgramKernelConstructionErrorV1, ProgramKernelV1};
+pub use synthetic::validate_synthetic_runtime_state;
 pub use transition::{RulesKernel, TransitionResult};
 pub use validation::TransitionViolation;

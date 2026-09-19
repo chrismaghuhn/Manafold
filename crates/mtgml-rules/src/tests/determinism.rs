@@ -5,8 +5,8 @@
 fn deterministic_services_repeat_exact_transition_result() {
     let first = synthetic_state();
     let second = synthetic_state();
-    let mut kernel_a = SyntheticM1RulesKernel;
-    let mut kernel_b = SyntheticM1RulesKernel;
+    let mut kernel_a = boundary_kernel();
+    let mut kernel_b = boundary_kernel();
     let left = kernel_a
         .apply(&first, PlayerId(1), &response(0, 0))
         .unwrap();
@@ -31,8 +31,8 @@ fn deterministic_services_isolate_unrelated_stream_cursors() {
             next_raw_u64: 987_654_321,
         },
     );
-    let mut kernel_a = SyntheticM1RulesKernel;
-    let mut kernel_b = SyntheticM1RulesKernel;
+    let mut kernel_a = boundary_kernel();
+    let mut kernel_b = boundary_kernel();
     let baseline = kernel_a
         .apply(&baseline_state, PlayerId(1), &response(0, 0))
         .unwrap();

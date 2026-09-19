@@ -738,10 +738,12 @@ fn unsupported_standalone_decisions_are_internal_kernel_failures() {
     });
     // Soundness boundary: the engine never turns its own unsupported offer
     // into a player rejection; it is an internal failure before execution.
-    let mut kernel = mtgml_rules::SyntheticM1RulesKernel;
+    let mut kernel = mtgml_rules::ProgramKernelV1::for_program(
+        mtgml_model::ExecutionProgramV1::SyntheticRulesCompat,
+    )
+    .expect("the synthetic program is supported by the current kernel boundary");
     assert!(matches!(
-        mtgml_rules::RulesKernel::apply(
-            &mut kernel,
+        kernel.apply(
             &state,
             PlayerId(1),
             &mtgml_decision::DecisionResponseV2 {
