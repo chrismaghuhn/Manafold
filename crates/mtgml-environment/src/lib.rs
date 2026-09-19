@@ -19,8 +19,10 @@ mod tests;
 
 pub use boundary::{submit_response_bytes, PlayerBoundaryError};
 pub use checkpoint::{
-    CheckpointValidationError, EnvironmentCheckpointV4, CHECKPOINT_CODEC_ID_V4,
-    CHECKPOINT_CODEC_SEMANTIC_VERSION_V4, ENVIRONMENT_CHECKPOINT_SCHEMA,
+    CheckpointValidationError, EnvironmentCheckpointV4, EnvironmentCheckpointV5,
+    CHECKPOINT_CODEC_ID_V4, CHECKPOINT_CODEC_ID_V5, CHECKPOINT_CODEC_SEMANTIC_VERSION_V4,
+    CHECKPOINT_CODEC_SEMANTIC_VERSION_V5, ENVIRONMENT_CHECKPOINT_SCHEMA,
+    ENVIRONMENT_CHECKPOINT_SCHEMA_V5,
 };
 pub use controller::{EnvironmentBackend, TrustedEnvironmentController};
 pub use endpoint::{PlayerEndpoint, PlayerEndpointError, PlayerEndpointHandle};
