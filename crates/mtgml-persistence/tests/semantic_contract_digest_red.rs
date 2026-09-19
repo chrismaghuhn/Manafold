@@ -255,11 +255,14 @@ fn schema_domain_disagreement_is_detectable_and_bound_to_identity() {
     //   1. agreement is observable at the envelope decode boundary;
     //   2. disagreement is observable and yields a DIFFERENT identity;
     //   3. content cannot be reinterpreted across domains (identity change).
-    // The rejection assertion itself belongs to the first real contract
-    // decode path (plan Task 8 semantic admission scope). This test must be
-    // extended there with a genuine disagreement -> Err case.
+    // Ownership: OWNER = the first actual rules/semantic contract envelope
+    // decode path. CURRENT_V5_PLAN_OWNER = NONE — the merged V5 plan contains
+    // no task that introduces such a decoder (Task 8 semantic admission works
+    // on already-constructed typed manifests, not on canonical-CBOR contract
+    // envelopes). The obligation is tracked durably in the Task-2 section of
+    // docs/superpowers/plans/2026-09-19-v5-execution-identity-implementation.md.
     // Evidence status: SCHEMA_DOMAIN_DISAGREEMENT_DETECTABLE = PASS,
-    // SCHEMA_DOMAIN_DISAGREEMENT_REJECTED = DEFERRED (not claimed here).
+    // SCHEMA_DOMAIN_DISAGREEMENT_REJECTED = DEFERRED / NOT_RUN (not claimed here).
     // Positive control: the canonical rules payload inside its canonical
     // envelope decodes with agreeing schema/domain identity.
     let payload_value = cbor::Value::Array(vec![
