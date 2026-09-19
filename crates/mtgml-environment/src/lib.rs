@@ -11,6 +11,7 @@ mod endpoint;
 mod errors;
 pub mod lifecycle_projection;
 mod replay;
+mod semantic_catalog;
 #[cfg(test)]
 mod semantic_catalog_kat;
 mod synthetic;

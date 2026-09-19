@@ -71,6 +71,12 @@ pub enum ControllerError {
     CounterOverflow { counter: &'static str },
     #[error("replay identity does not match this backend")]
     ReplayIdentityMismatch,
+    #[error("program kind is incompatible with the rules contract authority")]
+    ProgramAuthorityMismatch,
+    #[error("semantic contract is not supported by this runtime")]
+    SemanticContractUnsupported,
+    #[error("engine state is not compatible with the execution program")]
+    ProgramStateIncompatible,
     #[error("backend failure: {0}")]
     Backend(String),
 }

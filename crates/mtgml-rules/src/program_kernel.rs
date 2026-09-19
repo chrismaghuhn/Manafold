@@ -12,7 +12,7 @@
 //! `ExecutionProgramV1::MagicRules` fails closed with
 //! `ProgramKernelConstructionErrorV1::UnsupportedProgram`.
 
-use crate::synthetic::SyntheticM1RulesKernel;
+use crate::synthetic::{validate_synthetic_runtime_state, SyntheticM1RulesKernel};
 use crate::{KernelExecutionError, RulesKernel, TransitionResult};
 use mtgml_decision::DecisionResponseV2;
 use mtgml_model::ExecutionProgramV1;
@@ -89,6 +89,30 @@ impl ProgramKernelV1 {
     ) -> Result<TransitionResult, KernelExecutionError> {
         match &mut self.inner {
             ProgramKernelInner::SyntheticLegacy(kernel) => kernel.advance_forced_progress(state),
+        }
+    }
+}
+
+/// Program-aware runtime-state validation boundary (spec §8).
+///
+/// This is the mtgml-rules-owned validator that sits ABOVE `EngineState` and
+/// dispatches to per-program runtime-state semantics. The generic
+/// `EngineState` remains free of execution-program identity; program-awareness
+/// lives here, in the rules layer.
+///
+/// Pre-S1:
+/// - `SyntheticRulesCompat` → reuses the existing synthetic runtime-state
+///   validation semantics (never weakened).
+/// - `MagicRules` → NOT executable pre-S1: fails closed.
+pub fn validate_runtime_state(
+    program_kind: ExecutionProgramV1,
+    state: &EngineState,
+) -> Result<(), KernelExecutionError> {
+    match program_kind {
+        ExecutionProgramV1::SyntheticRulesCompat => validate_synthetic_runtime_state(state),
+        ExecutionProgramV1::MagicRules => {
+            // Pre-S1: no Magic kernel exists; Magic rules are not executable.
+            Err(KernelExecutionError::UnsupportedStagePath)
         }
     }
 }

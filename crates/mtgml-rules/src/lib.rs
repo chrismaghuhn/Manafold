@@ -22,7 +22,9 @@ pub use events::{
     AuthoritativeRuleEvent, AuthoritativeRuleEventKind, OccurrencePairingError,
     PerspectiveObservationPolicyV1,
 };
-pub use program_kernel::{ProgramKernelConstructionErrorV1, ProgramKernelV1};
+pub use program_kernel::{
+    validate_runtime_state, ProgramKernelConstructionErrorV1, ProgramKernelV1,
+};
 pub use synthetic::validate_synthetic_runtime_state;
 pub use transition::{RulesKernel, TransitionResult};
 pub use validation::TransitionViolation;

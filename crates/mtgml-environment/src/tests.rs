@@ -588,3 +588,14 @@ include!("tests/batch_d.rs");
 include!("tests/batch_e.rs");
 include!("tests/batch_f.rs");
 include!("tests/batch_g.rs");
+
+mod semantic_catalog {
+    #![allow(unused_imports)]
+    use super::*;
+    include!("tests/semantic_catalog.rs");
+}
+
+mod restore_admission {
+    use super::*;
+    include!("tests/restore_admission.rs");
+}

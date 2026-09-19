@@ -262,6 +262,8 @@ impl EnvironmentCheckpointV5 {
 pub enum CheckpointValidationError {
     #[error("unsupported or empty checkpoint identity")]
     Identity,
+    #[error("execution identity is malformed or carries an unknown program kind")]
+    ExecutionIdentity,
     #[error("checkpoint EngineState violates cross-component invariants")]
     StateInvariant,
     #[error("checkpoint full-state digest does not match its state")]
@@ -278,4 +280,10 @@ pub enum CheckpointValidationError {
     LimitCounters,
     #[error("completed checkpoint retains a pending player decision")]
     CompletedWithDecision,
+    #[error("semantic contract ID is unknown to this runtime")]
+    SemanticContractUnknown,
+    #[error("semantic contract manifest does not match its bound ID")]
+    SemanticContractDigestMismatch,
+    #[error("rules contract manifest does not match its bound ID")]
+    RulesContractDigestMismatch,
 }
