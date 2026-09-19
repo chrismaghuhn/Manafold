@@ -7,12 +7,14 @@
 //! are SHA-256 over the envelope bytes. Manifest canonicality is validated
 //! fail-closed through the model-side validator before hashing — no
 //! non-canonical artifact can obtain an identity, and caller input is never
-//! silently reordered.
+//! silently reordered. Contract IDs enter as typed values and travel as
+//! raw 32-byte preimage elements via their `raw_bytes()` accessors; this
+//! module performs no hex decoding of its own.
 
 use crate::{cbor, envelope, PersistenceDecodeErrorV1};
 use mtgml_model::{
-    CapabilityRequirementV1, RulesAuthorityV1, RulesContractIdV1, RulesContractManifestV1,
-    SemanticContractIdV1, SemanticContractManifestV1,
+    CapabilityRequirementV1, ContentContractIdV1, FormatContractIdV1, RulesAuthorityV1,
+    RulesContractIdV1, RulesContractManifestV1, SemanticContractIdV1, SemanticContractManifestV1,
 };
 
 pub const RULES_CONTRACT_DOMAIN: &str = "mtgml.rules-contract.v1";
@@ -53,8 +55,14 @@ pub fn calculate_semantic_contract_id_v1(
         cbor::Value::Text(SEMANTIC_CONTRACT_INPUT_SCHEMA.to_owned()),
         cbor::Value::Text(SEMANTIC_CONTRACT_DOMAIN.to_owned()),
         cbor::Value::Bytes(manifest.rules_contract_id.raw_bytes().to_vec()),
-        optional_contract_bytes(manifest.format_contract_id.as_ref().map(|id| id.as_str())),
-        optional_contract_bytes(manifest.content_contract_id.as_ref().map(|id| id.as_str())),
+        contract_bytes_or_null(
+            manifest.format_contract_id.as_ref(),
+            FormatContractIdV1::raw_bytes,
+        ),
+        contract_bytes_or_null(
+            manifest.content_contract_id.as_ref(),
+            ContentContractIdV1::raw_bytes,
+        ),
     ]);
     let bytes = cbor::encode_canonical(&payload)?;
     let envelope = envelope::encode_envelope(
@@ -67,19 +75,14 @@ pub fn calculate_semantic_contract_id_v1(
     ))
 }
 
-fn optional_contract_bytes(hex: Option<&str>) -> cbor::Value {
-    match hex {
-        Some(hex) => cbor::Value::Bytes(decode_id_bytes(hex)),
+/// Raw 32-byte preimage element of a typed contract ID, or canonical `null`.
+/// Reads the already-valid bytes of the typed value; no hex decoding and no
+/// minting happens here.
+fn contract_bytes_or_null<T>(id: Option<&T>, raw_bytes: fn(&T) -> [u8; 32]) -> cbor::Value {
+    match id {
+        Some(id) => cbor::Value::Bytes(raw_bytes(id).to_vec()),
         None => cbor::Value::Null,
     }
-}
-
-fn decode_id_bytes(hex: &str) -> Vec<u8> {
-    let bytes = (0..hex.len() / 2)
-        .map(|index| u8::from_str_radix(&hex[index * 2..index * 2 + 2], 16))
-        .collect::<Result<Vec<u8>, _>>()
-        .expect("typed contract id invariant: canonical lowercase hex");
-    bytes
 }
 
 fn rules_authority_value(authority: &RulesAuthorityV1) -> cbor::Value {
@@ -92,9 +95,7 @@ fn rules_authority_value(authority: &RulesAuthorityV1) -> cbor::Value {
     }
 }
 
-fn capability_closure_value(
-    closure: Option<&[mtgml_model::CapabilityRequirementV1]>,
-) -> cbor::Value {
+fn capability_closure_value(closure: Option<&[CapabilityRequirementV1]>) -> cbor::Value {
     match closure {
         None => cbor::Value::Null,
         Some(entries) => cbor::Value::Array(
