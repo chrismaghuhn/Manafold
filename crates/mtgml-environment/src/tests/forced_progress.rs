@@ -97,6 +97,15 @@ fn forced_progress_commits_without_response_counters_or_replay_step() {
         replay_after.final_identity, replay_before.final_identity,
         "baseline must advance past the pre-progress identity"
     );
+    // Parity lock (Task 5): the post-progress full-state identity must
+    // recompute EXACTLY from the committed state — forced progress changes
+    // semantics and identity together or not at all.
+    assert_eq!(
+        after.state_digest,
+        after.state.digest().unwrap(),
+        "forced progress must leave the FullStateDigestV4 identity recompute-exact"
+    );
+    assert_eq!(after.state_digest, product.next_state.digest().unwrap());
 }
 
 #[test]
