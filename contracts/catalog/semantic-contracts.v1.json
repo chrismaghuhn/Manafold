@@ -6,9 +6,7 @@
       "rules_authority": { "variant": "synthetic_legacy" },
       "capability_closure": null,
       "format_contract_id": null,
-      "content_contract_id": null,
-      "rules_contract_id": "19bac684b74115b4fab823dfae2d3e75c23ee24f78effe51e9f72a33d4a58521",
-      "semantic_contract_id": "66ccac959475370e641e853473cbdd7f88489399587794b43f66cfa0342b1be4"
+      "content_contract_id": null
     }
   ]
 }

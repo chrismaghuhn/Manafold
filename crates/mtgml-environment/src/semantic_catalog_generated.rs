@@ -19,6 +19,21 @@ pub const SEMANTIC_CONTRACT_CATALOG_SYNTHETIC_LEGACY_DEFAULT_RULES_CONTRACT_HEX:
 pub const SEMANTIC_CONTRACT_CATALOG_SYNTHETIC_LEGACY_DEFAULT_SEMANTIC_CONTRACT_HEX: &str =
     "66ccac959475370e641e853473cbdd7f88489399587794b43f66cfa0342b1be4";
 
+pub fn synthetic_legacy_default_rules_manifest() -> mtgml_model::RulesContractManifestV1 {
+    mtgml_model::RulesContractManifestV1 {
+        rules_authority: mtgml_model::RulesAuthorityV1::SyntheticLegacy,
+        capability_closure: None,
+    }
+}
+
+pub fn synthetic_legacy_default_semantic_manifest() -> mtgml_model::SemanticContractManifestV1 {
+    mtgml_model::SemanticContractManifestV1 {
+        rules_contract_id: synthetic_legacy_default_rules_contract_id(),
+        format_contract_id: None,
+        content_contract_id: None,
+    }
+}
+
 pub fn synthetic_legacy_default_rules_contract_id() -> RulesContractIdV1 {
     RulesContractIdV1::parse(SEMANTIC_CONTRACT_CATALOG_SYNTHETIC_LEGACY_DEFAULT_RULES_CONTRACT_HEX)
         .expect("generated canonical hex")

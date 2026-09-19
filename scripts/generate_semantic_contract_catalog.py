@@ -44,7 +44,28 @@ def load_source() -> dict[str, object]:
     return data
 
 
+FACT_KEYS = {
+    "entry_id",
+    "rules_authority",
+    "capability_closure",
+    "format_contract_id",
+    "content_contract_id",
+}
+
+
+def validate_entry_facts(entry: dict[str, object]) -> None:
+    """The source carries manifest FACTS only; derived identity is generated
+    output and must never appear in the hand-authored source (no second
+    authority for identity)."""
+    if set(entry) != FACT_KEYS:
+        raise SystemExit(
+            f"catalog entry keys must be exactly {sorted(FACT_KEYS)}; got {sorted(entry)}"
+        )
+
+
 def derive_ids(entry: dict[str, object]) -> tuple[str, str]:
+    """Derive both IDs via the Task-2 Python mechanical mirrors — the ONLY
+    digest path; this generator contains no digest logic of its own."""
     from mtgml.persistence import (
         calculate_rules_contract_id_v1,
         calculate_semantic_contract_id_v1,
@@ -106,17 +127,11 @@ def render_generated() -> str:
     for entry in catalog["entries"]:
         if not isinstance(entry, dict):
             raise SystemExit("catalog entry must be an object")
+        validate_entry_facts(entry)
         entry_id = entry["entry_id"]
         if not isinstance(entry_id, str) or not entry_id:
             raise SystemExit("catalog entry_id must be a non-empty string")
         rules_id, semantic_id = derive_ids(entry)
-        recorded_rules = entry["rules_contract_id"]
-        recorded_semantic = entry["semantic_contract_id"]
-        if recorded_rules != rules_id or recorded_semantic != semantic_id:
-            raise SystemExit(
-                f"catalog source ID drift for entry {entry_id!r}: recorded IDs do not "
-                "recompute from the manifest facts via the Task-2 mirrors"
-            )
         snake = entry_id.replace("-", "_")
         const_prefix = f"SEMANTIC_CONTRACT_CATALOG_{snake.upper()}"
         authority = entry["rules_authority"]
@@ -140,6 +155,31 @@ def render_generated() -> str:
         lines.append(f"    \"{rules_id}\";")
         lines.append(f"pub const {const_prefix}_SEMANTIC_CONTRACT_HEX: &str =")
         lines.append(f"    \"{semantic_id}\";")
+        lines.append("")
+        # GENERATED MANIFEST FACTS: the manifest constructors are emitted from
+        # the source facts themselves, so the recompute KAT builds its
+        # manifests exclusively from GENERATED data — no hand-copied manifest
+        # anywhere (single-source-of-truth chain, spec §10). The V5 slice
+        # supports only synthetic_legacy entries with null closure/dimensions;
+        # the fail-closed checks above guarantee those facts.
+        lines.append(f"pub fn {snake}_rules_manifest() -> mtgml_model::RulesContractManifestV1 {{")
+        lines.append("    mtgml_model::RulesContractManifestV1 {")
+        lines.append(
+            "        rules_authority: mtgml_model::RulesAuthorityV1::SyntheticLegacy,"
+        )
+        lines.append("        capability_closure: None,")
+        lines.append("    }")
+        lines.append("}")
+        lines.append("")
+        lines.append(
+            f"pub fn {snake}_semantic_manifest() -> mtgml_model::SemanticContractManifestV1 {{"
+        )
+        lines.append("    mtgml_model::SemanticContractManifestV1 {")
+        lines.append("        rules_contract_id: synthetic_legacy_default_rules_contract_id(),")
+        lines.append("        format_contract_id: None,")
+        lines.append("        content_contract_id: None,")
+        lines.append("    }")
+        lines.append("}")
         lines.append("")
         lines.append(f"pub fn {snake}_rules_contract_id() -> RulesContractIdV1 {{")
         lines.extend(

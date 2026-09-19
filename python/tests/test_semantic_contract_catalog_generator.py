@@ -57,24 +57,46 @@ class SourceOfTruthTests(unittest.TestCase):
         self.assertIsNone(entry["format_contract_id"])
         self.assertIsNone(entry["content_contract_id"])
 
-    def test_source_ids_recompute_via_task2_mirrors(self) -> None:
-        document = json.loads(SOURCE_PATH.read_text(encoding="utf-8"))
+    def test_source_contains_no_hand_authored_identity(self) -> None:
+        # BLOCKER regression: derived IDs are GENERATED, never hand-authored.
+        # The machine-readable source carries manifest FACTS only; any digest
+        # literal there would be a second authority for derived identity.
+        text = SOURCE_PATH.read_text(encoding="utf-8")
+        document = json.loads(text)
         entry = document["entries"][0]
-        rules_id = calculate_rules_contract_id_v1(
-            {
-                "rules_authority": entry["rules_authority"],
-                "capability_closure": entry["capability_closure"],
-            }
-        )
-        semantic_id = calculate_semantic_contract_id_v1(
-            {
-                "rules_contract_id": rules_id,
-                "format_contract_id": None,
-                "content_contract_id": None,
-            }
-        )
-        self.assertEqual(entry["rules_contract_id"], rules_id)
-        self.assertEqual(entry["semantic_contract_id"], semantic_id)
+        self.assertNotIn("rules_contract_id", entry)
+        self.assertNotIn("semantic_contract_id", entry)
+        self.assertNotIn("rules_contract_id", document)
+        self.assertNotIn("semantic_contract_id", document)
+        self.assertNotIn("19bac684", text, "no hand-maintained digest literal in the source")
+        self.assertNotIn("66ccac95", text, "no hand-maintained digest literal in the source")
+
+    def test_generated_output_contains_manifest_fact_constants(self) -> None:
+        # BLOCKER regression: the generated module must emit BOTH the manifest
+        # facts AND the derived IDs; the KAT must recompute from GENERATED
+        # facts, not from a hand-copied manifest.
+        module = load_generator_module()
+        with tempfile.TemporaryDirectory() as scratch:
+            target = Path(scratch) / "generated.rs"
+            module.write_generated(target, module.render_generated())
+            text = target.read_text(encoding="utf-8")
+        self.assertIn("RulesAuthorityV1::SyntheticLegacy", text)
+        self.assertIn("capability_closure", text)
+        self.assertIn("RulesContractManifestV1", text)
+        self.assertIn("SemanticContractManifestV1", text)
+        self.assertIn("fn synthetic_legacy_default_rules_manifest()", text)
+        self.assertIn("fn synthetic_legacy_default_semantic_manifest()", text)
+
+    def test_source_ids_recompute_into_generated_output(self) -> None:
+        # Source facts -> Task-2 mirrors -> the committed generated artifact.
+        # There are no recorded IDs in the source anymore; the derived IDs
+        # live ONLY in the generated output and must match the facts.
+        module = load_generator_module()
+        document = json.loads(SOURCE_PATH.read_text(encoding="utf-8"))
+        rules_id, semantic_id = module.derive_ids(document["entries"][0])
+        generated = GENERATED_PATH.read_text(encoding="utf-8")
+        self.assertIn(rules_id, generated)
+        self.assertIn(semantic_id, generated)
 
 
 class GeneratorEmitTests(unittest.TestCase):
@@ -137,8 +159,9 @@ class GeneratorEmitTests(unittest.TestCase):
             text = target.read_text(encoding="utf-8")
         document = json.loads(SOURCE_PATH.read_text(encoding="utf-8"))
         entry = document["entries"][0]
-        self.assertIn(entry["rules_contract_id"], text)
-        self.assertIn(entry["semantic_contract_id"], text)
+        rules_id, semantic_id = module.derive_ids(entry)
+        self.assertIn(rules_id, text)
+        self.assertIn(semantic_id, text)
 
 
 class NegativeEvidenceTests(unittest.TestCase):
@@ -195,20 +218,23 @@ class NegativeEvidenceTests(unittest.TestCase):
                 with self.assertRaises(SystemExit):
                     module.render_generated()
 
-    def test_recorded_id_tampering_fails_closed(self) -> None:
-        import unittest.mock as mock
+    def test_tampered_generated_identity_fails_check(self) -> None:
+        # The generated artifact is the only checked-in identity surface;
+        # tampering any digest literal there must be caught by --check
+        # (the generator's recompute from facts is the authority).
+        import re
 
         module = load_generator_module()
-        document = json.loads(module.SOURCE_PATH.read_text(encoding="utf-8"))
-        document["entries"][0]["rules_contract_id"] = (
-            "0" + document["entries"][0]["rules_contract_id"][1:]
-        )
         with tempfile.TemporaryDirectory() as scratch:
-            scratch_path = Path(scratch) / "tampered.json"
-            scratch_path.write_text(json.dumps(document), encoding="utf-8")
-            with mock.patch.object(module, "SOURCE_PATH", scratch_path):
-                with self.assertRaises(SystemExit):
-                    module.render_generated()
+            target = Path(scratch) / "generated.rs"
+            module.write_generated(target, module.render_generated())
+            text = target.read_text(encoding="utf-8")
+            match = re.search(r'"([0-9a-f]{64})"', text)
+            self.assertIsNotNone(match, "generated output must carry a digest literal")
+            original = match.group(1)
+            replacement = ("0" if original[0] != "0" else "1") + original[1:]
+            target.write_text(text.replace(original, replacement, 1), encoding="utf-8")
+            self.assertEqual(module.check_paths([target]), 1)
 
     def test_unsupported_variant_fails_closed(self) -> None:
         import unittest.mock as mock
