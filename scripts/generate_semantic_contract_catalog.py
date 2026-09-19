@@ -253,8 +253,10 @@ def render_generated(catalog: dict[str, object] | None = None) -> str:
 
 def assert_production_policy(catalog: dict[str, object]) -> None:
     """PRODUCTION source policy (V5 slice): exactly one synthetic_legacy
-    entry, null closure, null dimensions. A valid ComprehensiveRules entry is
-    refused here by catalog policy — not because it is an invalid manifest."""
+    entry with a null capability closure. Dimension nullity is deliberately
+    NOT checked here — non-null format/content dimensions are refused at the
+    emission boundary (``render_generated``), which the CLI always runs after
+    this validator. This validator owns the entry-count/variant surface."""
     entries = catalog["entries"]
     if len(entries) != 1:
         raise SystemExit(

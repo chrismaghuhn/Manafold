@@ -223,45 +223,62 @@ class NegativeEvidenceTests(unittest.TestCase):
     regenerated ID constants change AND --check fails against stale generated
     output; no Magic production contract may be generated."""
 
-    def test_mutated_fact_renders_changed_constants_and_check_fails(self) -> None:
-        # End-to-end: mutate the snapshot_id of a VALID comprehensive entry in
-        # a scratch source; the renderer must produce CHANGED ID constants and
-        # the stale generated output must fail --check.
+    def test_single_fact_mutation_changes_ids_and_fails_check(self) -> None:
+        # Plan-exact evidence: mutate EXACTLY ONE manifest fact (the
+        # comprehensive snapshot_id) between two otherwise-identical VALID
+        # comprehensive entries. The single change must alter both derived ID
+        # constants and make --check fail against the baseline (stale)
+        # generated output.
         module = load_generator_module()
-        document = json.loads(SOURCE_PATH.read_text(encoding="utf-8"))
-        entry = document["entries"][0]
-        mutated = {
-            "schema_version": "semantic-contracts-catalog.v1",
-            "entries": [
-                {
-                    "entry_id": entry["entry_id"],
-                    "rules_authority": {
-                        "variant": "comprehensive_rules",
-                        "snapshot_id": "CR-MUTATED-SNAPSHOT",
-                    },
-                    "capability_closure": [
-                        {"key": "rules/synthetic-transition", "version": "1.0.0"}
-                    ],
-                    "format_contract_id": None,
-                    "content_contract_id": None,
-                }
+        baseline_entry = {
+            "entry_id": "scratch_mutation_probe",
+            "rules_authority": {
+                "variant": "comprehensive_rules",
+                "snapshot_id": "CR-BASELINE",
+            },
+            "capability_closure": [
+                {"key": "rules/synthetic-transition", "version": "1.0.0"}
             ],
+            "format_contract_id": None,
+            "content_contract_id": None,
         }
-        baseline_rules, baseline_semantic = module.derive_ids(entry)
-        mutated_rules, mutated_semantic = module.derive_ids(mutated["entries"][0])
-        self.assertNotEqual(baseline_rules, mutated_rules, "mutation must change the rules ID")
+        mutated_entry = dict(baseline_entry)
+        mutated_entry["rules_authority"] = {
+            "variant": "comprehensive_rules",
+            "snapshot_id": "CR-MUTATED",
+        }
+        baseline_catalog = {
+            "schema_version": "semantic-contracts-catalog.v1",
+            "entries": [baseline_entry],
+        }
+        mutated_catalog = {
+            "schema_version": "semantic-contracts-catalog.v1",
+            "entries": [mutated_entry],
+        }
+        baseline_rules, baseline_semantic = module.derive_ids(baseline_entry)
+        mutated_rules, mutated_semantic = module.derive_ids(mutated_entry)
         self.assertNotEqual(
-            baseline_semantic, mutated_semantic, "mutation must change the semantic ID"
+            baseline_rules,
+            mutated_rules,
+            "a single fact change must alter the rules ID",
         )
-        rendered = module.render_generated(mutated)
-        self.assertIn(mutated_rules, rendered)
-        self.assertIn(mutated_semantic, rendered)
+        self.assertNotEqual(
+            baseline_semantic,
+            mutated_semantic,
+            "a single fact change must alter the semantic ID",
+        )
+        baseline_render = module.render_generated(baseline_catalog)
+        mutated_render = module.render_generated(mutated_catalog)
+        self.assertIn(baseline_rules, baseline_render)
+        self.assertIn(mutated_rules, mutated_render)
+        self.assertNotIn(mutated_rules, baseline_render)
+        self.assertNotIn(mutated_semantic, baseline_render)
         with tempfile.TemporaryDirectory() as scratch:
             target = Path(scratch) / "generated.rs"
-            module.write_generated(target, module.render_generated())
-            self.assertEqual(module.check_paths([target]), 0)
+            module.write_generated(target, baseline_render)  # stale after the mutation
+            self.assertEqual(module.check_paths([target], catalog=baseline_catalog), 0)
             self.assertEqual(
-                module.check_paths([target], catalog=mutated),
+                module.check_paths([target], catalog=mutated_catalog),
                 1,
                 "--check must fail against stale generated output after the mutation",
             )
