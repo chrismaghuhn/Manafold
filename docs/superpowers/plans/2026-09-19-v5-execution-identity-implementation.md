@@ -129,19 +129,19 @@ Expected RED: the digest FUNCTIONS are missing (unresolved imports/functions in 
 - Source of truth (the ONLY hand-authored manifest definition): `contracts/catalog/semantic-contracts.v1.json` (schema_version `semantic-contracts-catalog.v1`; one entry: SyntheticLegacy rules authority, null closure, null format/content dimensions)
 - Generator: `scripts/generate_semantic_contract_catalog.py` (modeled on `scripts/generate_contracts.py`'s CATALOG/`--check`/drift-via-`SystemExit` pattern)
 - Generated Rust output: `crates/mtgml-environment/src/semantic_catalog_generated.rs` (generated-file banner, do-not-edit note; emits manifest constants AND derived `RulesContractIdV1`/`SemanticContractIdV1` constants using Task 2 functions)
-- Rust recompute KAT: `crates/mtgml-environment/src/semantic_catalog_kat.rs` (spec §19.4: recompute every ID constant from the emitted manifest constants via the §9 functions; byte equality; drift fails the build)
-- Module wiring (Plan Fix-03): `crates/mtgml-environment/src/lib.rs` — add `mod semantic_catalog_generated;` and `#[cfg(test)] mod semantic_catalog_kat;` (the generated module is otherwise not compiled and the KAT never runs); KAT tests are also reachable via `crates/mtgml-environment/tests/semantic_catalog_kat_red.rs` from Task 3's RED gate
+- Rust recompute KAT (THE one and only Rust semantic-catalog KAT location — there is NO external `tests/semantic_catalog_kat_red.rs` and NO other KAT copy): `crates/mtgml-environment/src/semantic_catalog_kat.rs` (spec §19.4: recompute every ID constant from the emitted manifest constants via the §9 functions; byte equality; drift fails the build); these are crate-internal tests for crate-internal catalog/ID surfaces — they must NOT force internal APIs to become public
+- Module wiring (Plan Fix-03): `crates/mtgml-environment/src/lib.rs` — add `mod semantic_catalog_generated;` and `#[cfg(test)] mod semantic_catalog_kat;` (the generated module is otherwise not compiled and the KAT never runs); the KAT is reachable ONLY through this internal module wiring
 
 **Generator semantics:** reads ONLY `contracts/catalog/semantic-contracts.v1.json` (no Rust parsing, no Python duplicate manifest, no invoking Rust); derives IDs via the Task 2 Python mirror functions (`python/src/mtgml/persistence.py::calculate_rules_contract_id_v1` / `calculate_semantic_contract_id_v1`) — NO digest logic in the generator itself; deterministic; `--check` mode fails on stale output; rerun produces zero diff.
 
-**RED gate (create the RED evidence FIRST):** add `python/tests/test_semantic_contract_catalog_generator.py` (invoking the generator: deterministic emit, `--check` semantics, zero-diff rerun) and the Rust `semantic_catalog_kat` test module, THEN run:
+**RED gate (create the RED evidence FIRST, in this exact order — the focused command is valid only AFTER the internal test module exists and is wired):** add `python/tests/test_semantic_contract_catalog_generator.py` (invoking the generator: deterministic emit, `--check` semantics, zero-diff rerun) AND create/wire the crate-internal Rust KAT test module first (`crates/mtgml-environment/src/semantic_catalog_kat.rs` + the `#[cfg(test)] mod semantic_catalog_kat;` line in `crates/mtgml-environment/src/lib.rs`), referencing the not-yet-existing generated catalog API/constants, THEN run:
 
 ```bash
 .venv/bin/python -m unittest python.tests.test_semantic_contract_catalog_generator -v   # RED: generator behavior absent
-cargo test -p mtgml-environment --all-features semantic_catalog_kat                     # RED: constants/KAT missing
+cargo test -p mtgml-environment --all-features semantic_catalog_kat                     # RED: generated constants/API missing
 ```
 
-Expected RED: the generator's behavior and the generated constants are missing — not merely the test files. GREEN = generator emits; `--check` passes; rerun `git diff --exit-code` on generated file; Rust KAT GREEN; generator unittest GREEN. After implementation, the focused GREEN commands are: `cargo test -p mtgml-environment --test semantic_catalog_kat_red` and the generator unittest above.
+Expected RED: the generator's behavior and the generated constants are missing — not merely the test files. The Rust RED MUST be caused by the missing production/generated API referenced by the internal KAT module (compile failure inside the wired test module), NEVER by zero matched tests (cargo exits SUCCESS on an unmatched filter — verify the failure output names the KAT module/missing API). GREEN = generator emits; `--check` passes; rerun `git diff --exit-code` on generated file; Rust KAT GREEN; generator unittest GREEN. After implementation, the focused GREEN commands are: `cargo test -p mtgml-environment --all-features semantic_catalog_kat` and the generator unittest above.
 
 **Negative/adversarial evidence:** mutate one manifest fact in the source JSON (in a scratch copy or test): regenerated ID constants change; `--check` fails against stale generated output; no Magic production contract may be generated (source contains exactly one entry).
 
@@ -166,15 +166,18 @@ impl ProgramKernelV1 {
 }
 ```
 
-`ProgramKernelConstructionErrorV1` with variant `UnsupportedProgram`. Remove `#[derive(Default)]` from `SyntheticM1RulesKernel` (`synthetic.rs:54`); keep the unit struct module-private to `mtgml-rules`.
+`ProgramKernelConstructionErrorV1` with variant `UnsupportedProgram`. Remove `#[derive(Default)]` from `SyntheticM1RulesKernel` (`synthetic.rs:54`); keep the unit struct module-private to `mtgml-rules`. Because the kernel becomes crate-internal, the PUBLIC re-export of `SyntheticM1RulesKernel` at `crates/mtgml-rules/src/lib.rs:24` (`pub use synthetic::{validate_synthetic_runtime_state, SyntheticM1RulesKernel};`) MUST be removed in this task — `validate_synthetic_runtime_state` stays exported, `SyntheticM1RulesKernel` does not; no public synthetic-kernel escape may remain after Task 4.
 
 **Migration census (Plan Fix-03, fully grep-verified at baseline; `PROGRAM_OWNS_ALL_KERNEL_ENTRYPOINTS` closes only when EVERY literal outside the owning declaration module migrates):**
 
-- `crates/mtgml-environment/src/synthetic.rs` — production literals at `:113` (`new()`), `:140` (`from_checkpoint()`), `:165` (`restore()` reset) → construct via `ProgramKernelV1::for_program(...)`/dispatch (the struct field at `:81` becomes `ProgramKernelV1`);
+- `crates/mtgml-rules/src/lib.rs:24` — public re-export `pub use synthetic::{validate_synthetic_runtime_state, SyntheticM1RulesKernel};` → REMOVE the `SyntheticM1RulesKernel` name from the re-export (keep `validate_synthetic_runtime_state`); the kernel becomes crate-internal, so its public export must die with this task;
+- `crates/mtgml-environment/src/synthetic.rs` — import at `:11` (`use mtgml_rules::{SyntheticM1RulesKernel, TransitionResult};`) drops `SyntheticM1RulesKernel`; production literals at `:113` (`new()`), `:140` (`from_checkpoint()`), `:165` (`restore()` reset) → construct via `ProgramKernelV1::for_program(ExecutionProgramV1::SyntheticRulesCompat)`/dispatch (the struct field at `:81` becomes `ProgramKernelV1`);
 - forced-progress call sites `crates/mtgml-environment/src/synthetic/commit.rs:97`, `:219` → dispatch via `ProgramKernelV1`; test call site `crates/mtgml-environment/src/tests/forced_progress.rs:199` → same;
-- `crates/mtgml-rules/src/tests.rs` (`:135`, `:154`, `:170`), `crates/mtgml-rules/src/tests/determinism.rs` (`:8/:9`, `:34/:35`), `crates/mtgml-rules/src/tests/forced_progress.rs` (`:14`), `crates/mtgml-rules/src/tests/synthetic_program.rs` (`:337`, `:425`), `crates/mtgml-rules/src/tests/transition_contract.rs` (`:84`, `:100`, `:151`, `:165`) → migrate to `ProgramKernelV1::for_program(SyntheticRulesCompat)` + dispatch (crates-internal tests construct through the public boundary like any external consumer);
+- `crates/mtgml-rules/src/tests.rs` (`:135`, `:154`, `:170`), `crates/mtgml-rules/src/tests/determinism.rs` (`:8/:9`, `:34/:35`), `crates/mtgml-rules/src/tests/forced_progress.rs` (`:14`), `crates/mtgml-rules/src/tests/synthetic_program.rs` (`:337`, `:425`), `crates/mtgml-rules/src/tests/transition_contract.rs` (`:84`, `:100`, `:151`, `:165`, `:178`, `:216`) → migrate to `ProgramKernelV1::for_program(SyntheticRulesCompat)` + dispatch (crates-internal tests construct through the public boundary like any external consumer);
 - `crates/mtgml-rules/tests/p0_red.rs` — external integration-test crate importing `SyntheticM1RulesKernel` (`:7`) and constructing it (`:55`): P0-frozen RED evidence — migrate its CONSTRUCTION to `ProgramKernelV1::for_program(...)` while asserting the SAME frozen expectations (the P0 claims must keep passing; the construction path changes, the asserted evidence does not); if the private kernel makes a frozen import impossible, the test migrates to the boundary API and the historical claims remain byte-for-byte asserted;
-- `crates/mtgml-environment/src/tests/checkpoint_replay.rs:741` → `for_program`.
+- `crates/mtgml-environment/src/tests/checkpoint_replay.rs:741` → `for_program`;
+- `crates/mtgml-environment/src/tests/forced_progress.rs:198` — direct `mtgml_rules::SyntheticM1RulesKernel` construction → `ProgramKernelV1::for_program(SyntheticRulesCompat)` (its `:199` forced-progress call then dispatches through the boundary);
+- allowed to REMAIN (internal implementation references, never constructions): the declaration and impls in `crates/mtgml-rules/src/synthetic.rs` (`:55`, `:57`, `:102`), the child-module impl `crates/mtgml-rules/src/synthetic/stages.rs` (`:13` import, `:18` impl), and the `ProgramKernelInner::SyntheticLegacy(SyntheticM1RulesKernel)` construction in the new kernel-boundary module.
 
 Ownership rule: `SyntheticM1RulesKernel`'s DECLARATION stays in its owning implementation module (`crates/mtgml-rules/src/synthetic.rs`); `ProgramKernelInner::SyntheticLegacy(...)` is the ONLY allowed construction owner; ALL other direct literals migrate to `ProgramKernelV1::for_program(...)`.
 
@@ -186,17 +189,21 @@ cargo test -p mtgml-rules --test program_kernel_red
 
 Expected RED: compile failure on the missing types (intended compile-contract RED). GREEN: `for_program(SyntheticRulesCompat)` → synthetic kernel (behavior unchanged); `for_program(MagicRules)` → `Err(ProgramKernelConstructionErrorV1::UnsupportedProgram)`; both entry points dispatch; pre-S1 enum has no Magic variant.
 
-**Negative/adversarial evidence (residual gate — Plan Fix-03: must NOT exempt whole directories, or rules-side literals survive):**
+**Negative/adversarial evidence (residual gate — Plan Fix-03/Plan Fix-04: NO whole-file or whole-directory exemption may serve as proof; a `grep -v` on `crates/mtgml-rules/src/synthetic.rs` would hide future accidental constructions inside the entire file):** the immediate Task-4 evidence MAY use `rg`/grep to DISPLAY remaining references, but the acceptance claim is enforced by the exact T12 gate classifier (`scripts/run_v5_execution_identity_gate.py`, created RED in Task 12), which classifies each remaining reference NARROWLY:
 
-```bash
-grep -rn "SyntheticM1RulesKernel" crates/ tools/ \
-  | grep -v "crates/mtgml-rules/src/synthetic.rs" \
-  | grep -v "ProgramKernelInner" \
-  | grep -v "ProgramKernelV1" \
-  | grep -v "for_program"
+```text
+ALLOWED:  declaration of SyntheticM1RulesKernel; impl SyntheticM1RulesKernel blocks;
+          internal child-module type/impl references required by its implementation
+          (e.g. synthetic/stages.rs); the single
+          ProgramKernelInner::SyntheticLegacy(SyntheticM1RulesKernel) construction
+          owned by the kernel-boundary module.
+FORBIDDEN: public re-export of SyntheticM1RulesKernel; external imports
+          (mtgml_rules::… or use mtgml_rules::{… SyntheticM1RulesKernel …});
+          direct literals in environment code; direct literals in tests;
+          direct literals in tools; alternative semantic construction paths.
 ```
 
-must return zero construction sites (the owning module's declaration + the private inner-enum construction are the only permitted occurrences; type-position mentions via the boundary are allowed; naked construction is not). The V5 gate script (Task 12, created RED before the migration) asserts this permanent allowlist — failures name path/token/line.
+The classifier matches per-line/per-site (declaration/impl/construction/import), never per-file: no path is wholesale-exempted. Gate failures name path/token/line/classification.
 
 **Focused GREEN:** `cargo test -p mtgml-rules --all-features` + `cargo test -p mtgml-environment --all-features` (call-site migration). **Affected-package GREEN:** workspace `cargo check`.
 
@@ -227,7 +234,7 @@ Targeted: record→transition→record round-trips assert exact `EngineState`, `
 
 **Objective:** `calculate_checkpoint_digest_v5` in `crates/mtgml-persistence/src/checkpoint_digest.rs`, exactly spec §9's seven-element payload: V4's verified six elements (`environment-checkpoint-digest-input.v5`, `mtgml.checkpoint-digest.v5`, full-state `DigestReferenceV1` unchanged against `full-state-digest-input.v4` + `FullStateDigestV4::DOMAIN`, episode status, counters, `["in-memory-reference", "5"]` FROZEN) + `ExecutionIdentityV1` as LAST element (`[program_kind_variant, semantic_contract_id_32bytes]`).
 
-**RED gate (create the RED test FIRST):** add the `checkpoint_digest_v5` test module to `crates/mtgml-persistence/src/checkpoint_digest.rs`'s test tree (or `crates/mtgml-persistence/tests/checkpoint_digest_v5_red.rs`) referencing the new function, THEN run:
+**RED gate (create the RED test FIRST — exactly ONE location: the external integration-test file `crates/mtgml-persistence/tests/checkpoint_digest_v5_red.rs`; do NOT also add an inline test module to `checkpoint_digest.rs`, the inline-unit-test option is removed):** add `crates/mtgml-persistence/tests/checkpoint_digest_v5_red.rs` referencing the new function, THEN run:
 
 ```bash
 cargo test -p mtgml-persistence --test checkpoint_digest_v5_red
@@ -267,14 +274,14 @@ Expected RED: compile failure on the missing type (intended compile-contract RED
 
 **Objective:** Spec §10/§12/§18 in `crates/mtgml-environment` (new module `semantic_catalog.rs`): catalog consuming ONLY generated Task 3 constants (no digest generation, no mutable/lazy state, no filesystem/network/env lookup; `resolve(id)` vs `supported(id, program)` distinction); the spec §12 nine-phase admission order owned exactly as its table states; error variants added to `CheckpointValidationError`/`ControllerError` (`ExecutionIdentity`, `SemanticContractUnknown`, `SemanticContractDigestMismatch`, `RulesContractDigestMismatch`, `ProgramAuthorityMismatch`, `SemanticContractUnsupported`, `ProgramStateIncompatible`) with the deterministic `ProgramKernelConstructionErrorV1 → SemanticContractUnsupported/ControllerError` mapping. **Scope guard (Plan Fix-02):** this task builds the catalog and the STATELESS/PURE V5 admission machinery + typed errors at FUNCTION level. The real `EnvironmentBackend::restore` / `TrustedEnvironmentController::restore` surfaces are still V4 at this point (their migration is Task 13) — Task 8 must NOT migrate them and must NOT invent a parallel temporary restore API; wiring admission into controller restore and proving controller-level rejected-restore nonmutation happen in Task 13.
 
-**RED gate (create the RED tests FIRST):** add `crates/mtgml-environment/tests/semantic_catalog_red.rs` and `crates/mtgml-environment/tests/restore_admission_red.rs` referencing the new module/API/errors, THEN run:
+**RED gate (create the RED tests FIRST — crate-INTERNAL test files, because the catalog/admission APIs they exercise are private/`pub(crate)` implementation details and must NOT be made public solely for testing; external integration tests under `crates/mtgml-environment/tests/` cannot see them):** add `crates/mtgml-environment/src/tests/semantic_catalog.rs` and `crates/mtgml-environment/src/tests/restore_admission.rs`, wired through the existing `include!` tree in `crates/mtgml-environment/src/tests.rs` (the crate's exact internal-test mechanism), referencing the new module/API/errors, THEN run (test-name filters — do NOT use `--test`, these are not integration-test binaries):
 
 ```bash
-cargo test -p mtgml-environment --test semantic_catalog_red
-cargo test -p mtgml-environment --test restore_admission_red
+cargo test -p mtgml-environment --all-features semantic_catalog
+cargo test -p mtgml-environment --all-features restore_admission
 ```
 
-Expected RED: compile failure on the missing module/variants (intended compile-contract RED). GREEN covers: SyntheticLegacy resolves; unknown semantic ID rejects; known-meaning ≠ supported-execution; `MagicRules` resolves to NO synthetic contract (catalog inputs match generated constants); each of the nine phases rejects in its own typed failure family — asserted at the admission-function level over constructed V5 checkpoints (NOT via `TrustedEnvironmentController::restore`, which stays V4 until Task 13). Controller-level rejected-restore nonmutation (pre/post `checkpoint()` byte-equality for every rejection phase; spec §12 observable invariant) is proven in Task 13 when the real surfaces flip.
+Expected RED: compile failure on the missing module/variants (intended compile-contract RED) INSIDE the wired internal test files — never zero matched tests; because the filter matches the test names in the wired modules (`semantic_catalog::…`, `restore_admission::…`), an unmatched-filter success cannot masquerade as RED. GREEN covers: SyntheticLegacy resolves; unknown semantic ID rejects; known-meaning ≠ supported-execution; `MagicRules` resolves to NO synthetic contract (catalog inputs match generated constants); each of the nine phases rejects in its own typed failure family — asserted at the admission-function level over constructed V5 checkpoints (NOT via `TrustedEnvironmentController::restore`, which stays V4 until Task 13). Controller-level rejected-restore nonmutation (pre/post `checkpoint()` byte-equality for every rejection phase; spec §12 observable invariant) is proven in Task 13 when the real surfaces flip.
 
 **Negative/adversarial evidence:** program × authority mismatch; runtime-unsupported; recompute-mismatch of top-level/rules IDs at admission (invariant-breach classification).
 
@@ -353,7 +360,7 @@ Expected RED: import/attribute failures naming the MISSING PRODUCTION API (the c
 
 ## Task 12 — V5 gate script BEFORE migration (RED by design)
 
-**Objective:** Create `scripts/run_v5_execution_identity_gate.py` FIRST (Plan Fix-01: this is TDD for the migration itself — the gate must observe its RED state while current producers are still V4, which is impossible if it is built after Task 13): assert the V5-current tokens, the §23a.1 residual-kernel-construction grep, and RESIDUAL_V4_CURRENT_PRODUCER_ZERO via the §22 allowlist — V4 tokens permitted ONLY in RETAIN rows; failure output names path, token, line, expected disposition.
+**Objective:** Create `scripts/run_v5_execution_identity_gate.py` FIRST (Plan Fix-01: this is TDD for the migration itself — the gate must observe its RED state while current producers are still V4, which is impossible if it is built after Task 13): assert the V5-current tokens, the §23a.1 residual-kernel-construction ALLOWLIST via a deterministic script-level site classifier (Task 4's ALLOWED/FORBIDDEN classification — declaration/impl/internal-child-module/single `ProgramKernelInner` construction allowed; public re-exports, external imports, direct literals in environment code/tests/tools, and alternative semantic construction paths forbidden; per-site classification, never whole-file `grep -v` exemptions), and RESIDUAL_V4_CURRENT_PRODUCER_ZERO via the §22 allowlist — V4 tokens permitted ONLY in RETAIN rows; failure output names path, token, line, expected disposition.
 
 **RED gate (expected to FAIL at this point — that IS the evidence):**
 
@@ -401,7 +408,7 @@ cargo test --workspace --all-features --locked
 
 **Objective:** Spec §21/§21b wiring (the gate script itself already exists from Task 12) and ADR §2.16 documentation closure.
 
-**Files:** `scripts/verify_repository.py` (V4-current block → V5-current tokens + residual checks); `scripts/run_checks.py` (append `scripts/run_v5_execution_identity_gate.py` to `FAST`, so it runs in PR Fast, Windows Setup Smoke, PR Integration (integration = FAST + extras), Integration/master, Nightly (certification = FAST + integration extras + certification extras)); `justfile` `contracts` recipe (direct invocation beside `verify_repository.py`; include `generate_semantic_contract_catalog.py --check` there and inside the gate script); `scripts/run_m2_b_contract_cut.py` (post-`git mv` posture line only); `scripts/run_m2_final_closure.py` (posture comment only); docs per spec §22: `docs/contracts/ENGINE_STATE_CLOSURE.md`, `docs/STATE_HASHING.md`, `docs/REPLAY_AND_DETERMINISM.md`, `docs/contracts/WIRE_CONTRACT.md`, `docs/maintenance/API_LIFECYCLE.md` (V4 sections retained as DOC_HISTORY + V5 sections added — docs FOLLOW the executable implementation, never ahead of it).
+**Files:** `scripts/verify_repository.py` (V4-current block → V5-current tokens + residual checks); `scripts/run_checks.py` (append `scripts/run_v5_execution_identity_gate.py` to `FAST`, so it runs in PR Fast, Windows Setup Smoke, PR Integration (integration = FAST + extras), Integration/master, Nightly (certification = FAST + integration extras + certification extras)); `justfile` `contracts` recipe (direct invocation beside `verify_repository.py`; include `generate_semantic_contract_catalog.py --check` there and inside the gate script); `scripts/run_m2_b_contract_cut.py` (EXISTING PATH/NAME RETAINED — logical split only, NO_RENAME, allowed historical-posture line only); `scripts/run_m2_final_closure.py` (posture comment only); docs per spec §22: `docs/contracts/ENGINE_STATE_CLOSURE.md`, `docs/STATE_HASHING.md`, `docs/REPLAY_AND_DETERMINISM.md`, `docs/contracts/WIRE_CONTRACT.md`, `docs/maintenance/API_LIFECYCLE.md` (V4 sections retained as DOC_HISTORY + V5 sections added — docs FOLLOW the executable implementation, never ahead of it).
 
 **RED gate (create the RED evidence FIRST — Plan Fix-02: `run_checks.py fast` is GREEN today precisely because it does not know the V5 gate; the profile/entry-point tests are the seam):** add `test_fast_profile_includes_v5_execution_identity_gate` to `python/tests/test_python_test_profiles.py` (the `FAST` list must contain `scripts/run_v5_execution_identity_gate.py`) and a maintainer-entry-point assertion that `justfile contracts` includes `run_v5_execution_identity_gate.py` and `generate_semantic_contract_catalog.py --check`, THEN run:
 
@@ -472,7 +479,7 @@ Hosted evidence: PR Fast, PR Integration, Windows Setup Smoke, Nightly all succe
 | SCHEMA_VALIDATION | T10 `validate_schemas.py` (hosted jsonschema gate) |
 | RESIDUAL_V4_CURRENT_PRODUCER_ZERO | T12 gate (created RED) → GREEN at T13; §22 allowlist |
 | HISTORICAL_V4_EVIDENCE_PRESERVED | T7/T10/T13: V4 fixtures/KATs/schemas untouched, still passing |
-| MAINTAINER_GATES | T12/T14: gate script, verify_repository tokens, FAST wiring, split b-cut posture |
+| MAINTAINER_GATES | T12/T14: gate script, verify_repository tokens, FAST wiring, b-cut logical-split posture (existing path/name retained, NO_RENAME) |
 | HOSTED_CI | Final matrix hosted runs |
 
 Traceability: ADR 0055 requirements, spec §1–§28, the §22 residual-V4 census, and the §23/§23a direct-constructor census are mapped task-by-task above (`ADR_0055_REQUIREMENTS_MAPPED = YES`, `SPEC_SECTIONS_MAPPED = YES`, `ACCEPTANCE_CRITERIA_MAPPED = YES`, `RESIDUAL_V4_CENSUS_MAPPED = YES`, `DIRECT_CONSTRUCTOR_CENSUS_MAPPED = YES`).
