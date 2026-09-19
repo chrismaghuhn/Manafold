@@ -10,6 +10,14 @@ pub use generated_contract_vocab::{
     PlayerResult, TerminalReason, TruncationReason, ZoneKind, STABLE_WIRE_ERROR_CODES,
 };
 
+mod execution_identity;
+mod semantic_contract;
+pub use execution_identity::{ExecutionIdentityV1, ExecutionProgramV1};
+pub use semantic_contract::{
+    CapabilityRequirementV1, RulesAuthorityV1, RulesContractManifestV1,
+    RulesContractManifestValidationError, SemanticContractManifestV1,
+};
+
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum CanonicalIntegerError {
     #[error("integer text is empty")]
@@ -327,6 +335,13 @@ raw_digest!(FullStateDigestV3, "mtgml.full-state-digest.v3");
 raw_digest!(CheckpointDigestV3, "mtgml.checkpoint-digest.v3");
 raw_digest!(FullStateDigestV4, "mtgml.full-state-digest.v4");
 raw_digest!(CheckpointDigestV4, "mtgml.checkpoint-digest.v4");
+
+// === V5 contract identity and digest domains (spec §5) ===
+raw_digest!(RulesContractIdV1, "mtgml.rules-contract.v1");
+raw_digest!(SemanticContractIdV1, "mtgml.semantic-contract.v1");
+raw_digest!(FormatContractIdV1, "mtgml.format-contract.v1");
+raw_digest!(ContentContractIdV1, "mtgml.content-contract.v1");
+raw_digest!(CheckpointDigestV5, "mtgml.checkpoint-digest.v5");
 
 impl FullStateDigestV3 {
     pub fn as_digest_reference(&self) -> DigestReferenceV1 {
