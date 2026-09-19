@@ -6,9 +6,9 @@
 // derived ID VALUES are checked in as canonical hex string constants
 // and materialized deterministically through parse() accessors (no
 // lazy statics — spec §10 bans hidden process state). The recompute KAT
-// (semantic_catalog_kat.rs) re-derives every ID from these constants
-// via the §9 persistence functions and fails the build on drift.
-// Hand-editing any constant is a gate violation.
+// (semantic_catalog_kat.rs) re-derives every ID from these generated
+// manifest constants via the §9 persistence functions and fails the
+// build on drift. Hand-editing any constant is a gate violation.
 #![allow(dead_code)] // consumed by the KAT now and the Task-8 runtime later
 
 use mtgml_model::{RulesContractIdV1, SemanticContractIdV1};
