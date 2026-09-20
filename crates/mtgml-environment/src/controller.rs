@@ -88,7 +88,7 @@ impl TrustedEnvironmentController {
     }
 
     #[cfg(test)]
-    pub fn restore_with_catalog(
+    pub(crate) fn restore_with_catalog(
         &self,
         checkpoint: EnvironmentCheckpointV5,
         catalog: RuntimeSemanticCatalog,

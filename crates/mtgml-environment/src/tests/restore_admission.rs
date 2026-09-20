@@ -322,7 +322,6 @@ fn controller_restore_rejects_semantic_contract_digest_mismatch_without_mutation
 
 #[test]
 fn controller_restore_rejects_rules_contract_digest_mismatch_without_mutation() {
-    let _wrong_id = SemanticContractIdV1::from_digest_bytes([0xcd; 32]);
     let cr_rules_manifest = RulesContractManifestV1 {
         rules_authority: RulesAuthorityV1::ComprehensiveRules {
             snapshot_id: "test-cr-2026-01-01".to_string(),

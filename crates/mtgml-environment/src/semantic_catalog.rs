@@ -107,13 +107,13 @@ impl RuntimeSemanticCatalog {
     }
 
     /// Number of entries (crate-internal, used by tests).
-    #[allow(dead_code)]
+    #[cfg(test)]
     pub(crate) fn entry_count(&self) -> usize {
         self.entries.len()
     }
 
     /// Slice of all entries (crate-internal, used by tests).
-    #[allow(dead_code)]
+    #[cfg(test)]
     pub(crate) fn entries(&self) -> &[CatalogEntry] {
         &self.entries
     }
@@ -130,8 +130,13 @@ impl RuntimeSemanticCatalog {
 fn program_authority_compatible(program: ExecutionProgramV1, authority: &RulesAuthorityV1) -> bool {
     matches!(
         (program, authority),
-        (ExecutionProgramV1::SyntheticRulesCompat, RulesAuthorityV1::SyntheticLegacy)
-            | (ExecutionProgramV1::MagicRules, RulesAuthorityV1::ComprehensiveRules { .. })
+        (
+            ExecutionProgramV1::SyntheticRulesCompat,
+            RulesAuthorityV1::SyntheticLegacy
+        ) | (
+            ExecutionProgramV1::MagicRules,
+            RulesAuthorityV1::ComprehensiveRules { .. }
+        )
     )
 }
 
