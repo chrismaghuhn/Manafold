@@ -31,6 +31,8 @@ WIRE_MAPPING = {
     "synthetic-m3-observation.v1": "synthetic-m3-observation.v1.schema.json",
     "replay-manifest.v4": "replay-manifest.v4.schema.json",
     "authoritative-replay.v4": "authoritative-replay.v4.schema.json",
+    "replay-manifest.v5": "replay-manifest.v5.schema.json",
+    "authoritative-replay.v5": "authoritative-replay.v5.schema.json",
 }
 ARTIFACT_CASES = [
     ("capability-registry.v1.schema.json", "cards/capabilities/registry.json"),

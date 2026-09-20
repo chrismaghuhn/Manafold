@@ -33,6 +33,25 @@ class SchemaParityTests(unittest.TestCase):
             inventory["wire_contracts"],
         )
 
+    def test_v5_replay_schemas_are_inventoried(self) -> None:
+        inventory = self._schema_inventory()
+        self.assertIn(
+            "replay-manifest.v5.schema.json",
+            inventory["wire_contracts"],
+        )
+        self.assertIn(
+            "authoritative-replay.v5.schema.json",
+            inventory["wire_contracts"],
+        )
+        self.assertIn(
+            "replay-manifest.v5",
+            validate_schemas.WIRE_MAPPING,
+        )
+        self.assertIn(
+            "authoritative-replay.v5",
+            validate_schemas.WIRE_MAPPING,
+        )
+
     def test_schema_readme_matches_wire_mapping(self) -> None:
         inventory = self._schema_inventory()
         validate_schemas.validate_wire_schema_inventory(inventory)
@@ -102,6 +121,8 @@ class SchemaParityTests(unittest.TestCase):
             "synthetic-m3-observation.v1": "synthetic-m3-observation.v1.schema.json",
             "replay-manifest.v4": "replay-manifest.v4.schema.json",
             "authoritative-replay.v4": "authoritative-replay.v4.schema.json",
+            "replay-manifest.v5": "replay-manifest.v5.schema.json",
+            "authoritative-replay.v5": "authoritative-replay.v5.schema.json",
         }
         directory = ROOT / "wire" / "golden"
         manifest = json.loads((directory / "manifest.json").read_text(encoding="utf-8"))
