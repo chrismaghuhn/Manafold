@@ -11,15 +11,14 @@ use mtgml_replay::{
     ReplayManifestV5, ReplaySchemaVersionsV5, SemanticContractMaterialV5,
     REPLAY_MANIFEST_SCHEMA_V5, REPLAY_STEP_SCHEMA_V5,
 };
-use serde_json::{Map, Value};const CHECKPOINT_CODEC_ID_V5: &str = "in-memory-reference";
+use serde_json::{Map, Value};
+const CHECKPOINT_CODEC_ID_V5: &str = "in-memory-reference";
 const CHECKPOINT_CODEC_VERSION_V5: &str = "5";
 const ZERO_DIGEST: &str = "0000000000000000000000000000000000000000000000000000000000000000";
 
 fn canonicalize(value: Value) -> Value {
     match value {
-        Value::Array(items) => {
-            Value::Array(items.into_iter().map(canonicalize).collect())
-        }
+        Value::Array(items) => Value::Array(items.into_iter().map(canonicalize).collect()),
         Value::Object(object) => {
             let mut pairs: Vec<_> = object.into_iter().collect();
             pairs.sort_by(|left, right| left.0.cmp(&right.0));
@@ -170,7 +169,10 @@ fn print_all_fixtures() {
     // Golden manifest
     let manifest = base_manifest(execution_identity.clone(), material.clone());
     manifest.validate().unwrap();
-    println!("GOLDEN_MANIFEST: {}", to_canonical_json(&serde_json::to_value(&manifest).unwrap()));
+    println!(
+        "GOLDEN_MANIFEST: {}",
+        to_canonical_json(&serde_json::to_value(&manifest).unwrap())
+    );
 
     // Golden authoritative replay (empty)
     let material2 = synthetic_semantic_material();
@@ -188,13 +190,17 @@ fn print_all_fixtures() {
         final_identity: initial,
     };
     replay.validate().unwrap();
-    println!("GOLDEN_REPLAY: {}", to_canonical_json(&serde_json::to_value(&replay).unwrap()));
+    println!(
+        "GOLDEN_REPLAY: {}",
+        to_canonical_json(&serde_json::to_value(&replay).unwrap())
+    );
 
     // Negative: unknown program_kind
     {
         let m = base_manifest(execution_identity.clone(), material.clone());
         let mut value = serde_json::to_value(&m).unwrap();
-        value["execution_identity"]["program_kind"] = serde_json::Value::String("unknown_program".to_string());
+        value["execution_identity"]["program_kind"] =
+            serde_json::Value::String("unknown_program".to_string());
         println!("NEG_UNKNOWN_PROGRAM: {}", to_canonical_json(&value));
     }
 
@@ -202,7 +208,9 @@ fn print_all_fixtures() {
     {
         let m = base_manifest(execution_identity.clone(), material.clone());
         let mut value = serde_json::to_value(&m).unwrap();
-        value["semantic_contract"]["semantic_contract_id"] = serde_json::Value::String("66ccac959475370e641e853473cbdd7f88489399587794b43f66cfa0342b1be".to_string());
+        value["semantic_contract"]["semantic_contract_id"] = serde_json::Value::String(
+            "66ccac959475370e641e853473cbdd7f88489399587794b43f66cfa0342b1be".to_string(),
+        );
         println!("NEG_WRONG_DIGEST: {}", to_canonical_json(&value));
     }
 
@@ -210,7 +218,8 @@ fn print_all_fixtures() {
     {
         let m = base_manifest(execution_identity.clone(), material.clone());
         let mut value = serde_json::to_value(&m).unwrap();
-        value["semantic_contract"]["semantic_contract_id"] = serde_json::Value::String(ZERO_DIGEST.to_string());
+        value["semantic_contract"]["semantic_contract_id"] =
+            serde_json::Value::String(ZERO_DIGEST.to_string());
         println!("NEG_SEMANTIC_MISMATCH: {}", to_canonical_json(&value));
     }
 
@@ -218,8 +227,10 @@ fn print_all_fixtures() {
     {
         let m = base_manifest(execution_identity.clone(), material.clone());
         let mut value = serde_json::to_value(&m).unwrap();
-        value["semantic_contract"]["rules_manifest"]["rules_authority"] = serde_json::json!({"variant": "comprehensive_rules", "snapshot_id": "cr:synthetic-v1"});
-        value["semantic_contract"]["rules_manifest"]["capability_closure"] = serde_json::json!([{"key": "rules/synthetic-m1", "version": "1.0.0"}]);
+        value["semantic_contract"]["rules_manifest"]["rules_authority"] =
+            serde_json::json!({"variant": "comprehensive_rules", "snapshot_id": "cr:synthetic-v1"});
+        value["semantic_contract"]["rules_manifest"]["capability_closure"] =
+            serde_json::json!([{"key": "rules/synthetic-m1", "version": "1.0.0"}]);
         println!("NEG_RULES_MISMATCH: {}", to_canonical_json(&value));
     }
 
@@ -240,7 +251,8 @@ fn print_all_fixtures() {
     {
         let m = base_manifest(execution_identity.clone(), material.clone());
         let mut value = serde_json::to_value(&m).unwrap();
-        value["initial_identity"]["execution_identity"]["program_kind"] = serde_json::Value::String("magic_rules".to_string());
+        value["initial_identity"]["execution_identity"]["program_kind"] =
+            serde_json::Value::String("magic_rules".to_string());
         println!("NEG_THREE_WAY: {}", to_canonical_json(&value));
     }
 

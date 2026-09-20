@@ -307,12 +307,10 @@
       "additionalProperties": false,
       "properties": {
         "codec_id": {
-          "minLength": 1,
-          "type": "string"
+          "const": "in-memory-reference"
         },
         "semantic_version": {
-          "minLength": 1,
-          "type": "string"
+          "const": "5"
         }
       },
       "required": [
