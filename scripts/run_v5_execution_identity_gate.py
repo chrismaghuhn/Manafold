@@ -340,10 +340,10 @@ V4_RETAIN_RULES: list[tuple[str, tuple[str, ...]]] = [
     ("crates/mtgml-environment/tests/checkpoint_v5_red.rs", ()),
     ("crates/mtgml-environment/tests/p0_red.rs", ()),
     ("crates/mtgml-rules/tests/p0_red.rs", ()),
-    ("crates/mtgml-rules/tests/", ("ReplayStepV4",
+    ("crates/mtgml-rules/tests/program_kernel_red.rs", ("ReplayStepV4",
         "EnvironmentCheckpointV4", "ReplayRecorderV4", "ReplayManifestV4",
         "ReplaySchemaVersionsV4", "InitialEnvironmentIdentityV4",
-        "AuthoritativeReplayV4", "ReplayStepV4", "CheckpointDigestV4",
+        "AuthoritativeReplayV4", "CheckpointDigestV4",
         "calculate_checkpoint_digest_v4", "REPLAY_FILE_SCHEMA_V4",
         "REPLAY_MANIFEST_SCHEMA_V4", "REPLAY_STEP_SCHEMA_V4",
         "CHECKPOINT_CODEC_ID_V4", "CHECKPOINT_CODEC_SEMANTIC_VERSION_V4",
@@ -370,22 +370,29 @@ V4_RETAIN_RULES: list[tuple[str, tuple[str, ...]]] = [
     # Python V4 persistence/replay retained as historical
     ("python/src/mtgml/persistence.py", ()),
     ("python/src/mtgml/_replay_v4.py", ()),
-    ("python/src/mtgml/_replay_v5.py", (
-        "EnvironmentLimitCountersV4", "CheckpointCodecIdentityV4",
-        "CHECKPOINT_CODEC_ID_V4", "CHECKPOINT_CODEC_VERSION_V4",
-    )),
+    ("python/src/mtgml/_replay_v5.py", ("CHECKPOINT_CODEC_ID_V4",)),
     # Frozen P0/M2-era Python test evidence (FROZEN_FIXTURE / DOC_HISTORY)
     ("python/tests/test_p0_red.py", ()),
     ("python/tests/test_m3_p0_green03.py", ()),
-    ("python/tests/test_schema_parity.py", ()),  # schema mapping includes V4 schema refs (DOC_HISTORY)
+    ("python/tests/test_schema_parity.py", ("replay-manifest.v4", "authoritative-replay.v4")),
     # Schema inventory lists V4 schema filenames (DOC_HISTORY)
     ("schemas/README.json", ()),
     ("schemas/replay-manifest.v4.schema.json", ()),
     ("schemas/authoritative-replay.v4.schema.json", ()),
     # Wire golden/negative fixtures: only V4 schema filename strings appear here
     # (DOC_HISTORY / FROZEN_FIXTURE). V4 type names in wire fixtures are FORBIDDEN.
-    ("wire/golden/", ("replay-manifest.v4", "authoritative-replay.v4", "replay-step.v4")),
-    ("wire/negative/", ("replay-manifest.v4", "authoritative-replay.v4", "replay-step.v4")),
+    ("wire/golden/authoritative-replay-empty.v4.json", ("replay-manifest.v4", "authoritative-replay.v4", "replay-step.v4")),
+    ("wire/golden/manifest.json", ("replay-manifest.v4", "authoritative-replay.v4")),
+    ("wire/golden/replay-manifest.v4.json", ("replay-manifest.v4", "replay-step.v4")),
+    ("wire/negative/authoritative-replay-v4-wrong-schema.json", ("replay-manifest.v4", "replay-step.v4")),
+    ("wire/negative/manifest.json", ("replay-manifest.v4", "authoritative-replay.v4")),
+    ("wire/negative/replay-manifest-v5-wrong-schema.json", ("replay-manifest.v4",)),
+    ("wire/negative/replay-v4-m2-payload-codec.json", ("replay-manifest.v4", "replay-step.v4")),
+    ("wire/negative/replay-v4-unknown-field.json", ("replay-manifest.v4", "replay-step.v4")),
+    ("wire/negative/replay-v4-v3-checkpoint-digest.json", ("replay-manifest.v4", "replay-step.v4")),
+    ("wire/negative/replay-v4-wrong-rng.json", ("replay-manifest.v4", "replay-step.v4")),
+    ("wire/negative/replay-v4-wrong-replay-step.json", ("replay-manifest.v4",)),
+    ("wire/negative/replay-v4-wrong-schema.json", ("replay-step.v4",)),
     # Historical scripts (DOC_HISTORY / HISTORICAL_VERIFIER)
     ("scripts/run_m1_closure.py", ()),
     ("scripts/run_m2_final_closure.py", ()),
@@ -409,16 +416,6 @@ V4_CURRENT_PRODUCER_SITES: set[str] = {
     "crates/mtgml-environment/src/synthetic/replay.rs",
     "crates/mtgml-environment/src/replay.rs",
     "crates/mtgml-environment/src/replay_parity_tests.rs",
-    # Conformance harness (spec §22: CURRENT_CONSUMER → MUST MIGRATE)
-    "crates/mtgml-conformance/src/facade.rs",
-    "crates/mtgml-conformance/src/isolation/paired.rs",
-    "crates/mtgml-conformance/src/isolation/replay_parity.rs",
-    "crates/mtgml-conformance/src/isolation/checkpoint_parity.rs",
-    "crates/mtgml-conformance/src/isolation/fork_parity.rs",
-    "crates/mtgml-conformance/src/isolation/rejection.rs",
-    "crates/mtgml-conformance/src/isolation/fingerprint.rs",
-    "crates/mtgml-conformance/src/isolation/endpoint_pair.rs",
-    "crates/mtgml-conformance/src/legal_space/gate_evidence.rs",
 }
 
 # STALE rows: V4 tokens in scripts whose V4-current blocks must be removed
@@ -446,6 +443,16 @@ V4_CURRENT_CONSUMER_SITES: set[str] = {
     "crates/mtgml-wire/src/replay.rs",
     "tools/m2-semantic-adapter/src/config.rs",
     "tools/m2-semantic-adapter/src/session.rs",
+    # Conformance harness (spec §22: CURRENT_CONSUMER → MUST MIGRATE)
+    "crates/mtgml-conformance/src/facade.rs",
+    "crates/mtgml-conformance/src/isolation/paired.rs",
+    "crates/mtgml-conformance/src/isolation/replay_parity.rs",
+    "crates/mtgml-conformance/src/isolation/checkpoint_parity.rs",
+    "crates/mtgml-conformance/src/isolation/fork_parity.rs",
+    "crates/mtgml-conformance/src/isolation/rejection.rs",
+    "crates/mtgml-conformance/src/isolation/fingerprint.rs",
+    "crates/mtgml-conformance/src/isolation/endpoint_pair.rs",
+    "crates/mtgml-conformance/src/legal_space/gate_evidence.rs",
 }
 
 @dataclass
@@ -465,9 +472,10 @@ def _path_matches_rules(rel_path: str) -> tuple[str, ...] | None:
     norm = rel_path.replace("\\", "/")
     for rule_path, tokens in V4_RETAIN_RULES:
         rule_norm = rule_path.replace("\\", "/")
-        if norm.startswith(rule_norm):
+        if norm == rule_norm:
             return tokens
     return None
+
 
 def _is_comment_line(line: str) -> bool:
     """True if the line is purely a comment (not code containing a comment)."""
