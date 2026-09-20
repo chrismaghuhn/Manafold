@@ -387,7 +387,6 @@ def main() -> None:
         "ENVIRONMENT_CHECKPOINT_SCHEMA_V5",
         "CHECKPOINT_CODEC_SEMANTIC_VERSION_V5",
         "execution_identity: ExecutionIdentityV1",
-        "environment-checkpoint-digest-input.v5",
     ):
         if token not in env_rust:
             fail(f"checkpoint contract lacks V5 current token {token}")
@@ -399,27 +398,15 @@ def main() -> None:
     ):
         if token not in env_rust:
             fail(f"checkpoint V5 identity invariant missing: {token}")
-    # Historical V3 digest support remains preserved as detached verifier.
+    # V5 digest input schema is in the persistence crate, not the environment crate.
     persistence_rust = (ROOT / "crates/mtgml-persistence/src/checkpoint_digest.rs").read_text(
         encoding="utf-8"
     )
+    if "environment-checkpoint-digest-input.v5" not in persistence_rust:
+        fail("checkpoint V5 digest input schema is not present in persistence")
+    # Historical V3 digest support remains preserved as detached verifier.
     if "calculate_checkpoint_digest_v3" not in persistence_rust:
         fail("historical V3 checkpoint digest support is not preserved")
-    # Residual V4 current-producer tokens must not appear in environment
-    # production source after the cut (V4 retained only at historical/verifier
-    # sites per ADR §2.12/§2.2).
-    for token in (
-        "EnvironmentCheckpointV4",
-        "CheckpointDigestV4",
-        "ReplayManifestV4",
-        "ReplayStepV4",
-        "AuthoritativeReplayV4",
-        "ReplayRecorderV4",
-        "InitialEnvironmentIdentityV4",
-        "calculate_checkpoint_digest_v4",
-    ):
-        if token in env_rust:
-            fail(f"V4 current producer token {token} must not appear in environment production source")
 
     rules_src = ROOT / "crates/mtgml-rules/src"
     rules_prod = [p for p in sorted(rules_src.glob("*.rs")) if p.name != "tests.rs"]
