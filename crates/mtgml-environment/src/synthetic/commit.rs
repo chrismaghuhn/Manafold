@@ -18,22 +18,23 @@ use std::collections::BTreeMap;
 use mtgml_decision::DecisionResponseV2;
 use mtgml_model::PlayerId;
 use mtgml_observation::ObservedEventEnvelopeV2;
-use mtgml_replay::{ReplayRecorderV4, ReplayStepV4};
-use mtgml_rules::{validate_transition_contract, RulesKernel, TransitionResult};
+use mtgml_replay::{ReplayRecorderV5, ReplayStepV5};
+use mtgml_rules::{validate_transition_contract, TransitionResult};
 use mtgml_state::StateDelta;
 
 use super::replay::build_manifest;
 use super::SyntheticM1EnvironmentBackend;
-use crate::checkpoint::{EnvironmentCheckpointV4, EnvironmentLimitCounters};
+use crate::checkpoint::{EnvironmentCheckpointV5, EnvironmentLimitCounters};
 use crate::errors::{ControllerError, EnvironmentCommitError};
 
 impl SyntheticM1EnvironmentBackend {
-    pub(super) fn current_checkpoint(&self) -> Result<EnvironmentCheckpointV4, ControllerError> {
-        Ok(EnvironmentCheckpointV4::new(
+    pub(super) fn current_checkpoint(&self) -> Result<EnvironmentCheckpointV5, ControllerError> {
+        Ok(EnvironmentCheckpointV5::new(
             self.state.clone(),
             self.status.clone(),
             self.limit_counters.clone(),
             self.codec.clone(),
+            self.execution_identity.clone(),
         )?)
     }
 
@@ -84,7 +85,7 @@ impl SyntheticM1EnvironmentBackend {
     /// `decisions_submitted` never increments (which by the counter
     /// invariant also pins `accepted_transitions`), and no replay step is
     /// appended — responseless progress is execution semantics, not a
-    /// synthetic player action, and ReplayStepV4 carries no response field
+    /// synthetic player action, and ReplayStepV5 carries no response field
     /// to fabricate — but the recorder baseline is rebased onto the
     /// post-progress checkpoint so the next real response appends against a
     /// continuous identity instead of orphaning into RevisionDiscontinuity.
@@ -158,11 +159,12 @@ impl SyntheticM1EnvironmentBackend {
             resource_units_consumed: before.limit_counters.resource_units_consumed,
             wall_clock_elapsed_millis: before.limit_counters.wall_clock_elapsed_millis,
         };
-        let candidate = EnvironmentCheckpointV4::new(
+        let candidate = EnvironmentCheckpointV5::new(
             transition.next_state.clone(),
             transition.status.clone(),
             candidate_counters,
             before.codec.clone(),
+            before.execution_identity.clone(),
         )?;
         if candidate.state != transition.next_state || candidate.status != transition.status {
             return Err(EnvironmentCommitError::CandidateMismatch.into());
@@ -172,7 +174,7 @@ impl SyntheticM1EnvironmentBackend {
                 "forced progress cannot rebase a non-empty replay history".into(),
             ));
         }
-        let rebased_replay = ReplayRecorderV4::new(build_manifest(&self.config, &candidate)?)?;
+        let rebased_replay = ReplayRecorderV5::new(build_manifest(&self.config, &candidate)?)?;
 
         self.state = candidate.state;
         self.status = candidate.status;
@@ -189,7 +191,7 @@ impl SyntheticM1EnvironmentBackend {
     ) -> Result<TransitionResult, ControllerError>
     where
         F: FnOnce(
-            &EnvironmentCheckpointV4,
+            &EnvironmentCheckpointV5,
             &TransitionResult,
             &BTreeMap<PlayerId, Vec<ObservedEventEnvelopeV2>>,
         ) -> Result<(), ControllerError>,
@@ -250,11 +252,12 @@ impl SyntheticM1EnvironmentBackend {
 
         let candidate_counters =
             Self::candidate_counters(&before.limit_counters, transition.events.len())?;
-        let candidate = EnvironmentCheckpointV4::new(
+        let candidate = EnvironmentCheckpointV5::new(
             transition.next_state.clone(),
             transition.status.clone(),
             candidate_counters,
             before.codec.clone(),
+            before.execution_identity.clone(),
         )?;
         if candidate.state != transition.next_state || candidate.status != transition.status {
             return Err(EnvironmentCommitError::CandidateMismatch.into());
@@ -265,7 +268,7 @@ impl SyntheticM1EnvironmentBackend {
                 counter: "replay_step_index",
             }
         })?;
-        let step = ReplayStepV4 {
+        let step = ReplayStepV5 {
             step_index,
             actor,
             checkpoint_digest_before: before.checkpoint_digest.clone(),

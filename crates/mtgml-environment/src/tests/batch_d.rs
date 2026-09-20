@@ -12,14 +12,15 @@ fn batch_d_invalid_ordered_state_cannot_construct_checkpoint() {
         .unwrap();
     let codec = CheckpointCodecIdentity {
         codec_id: "in-memory-reference".into(),
-        semantic_version: "4".into(),
+        semantic_version: "5".into(),
     };
     assert!(
-        EnvironmentCheckpointV4::new(
+        EnvironmentCheckpointV5::new(
             state.clone(),
             EpisodeStatus::Running,
             EnvironmentLimitCounters::default(),
             codec.clone(),
+        synthetic_identity()
         )
         .is_ok()
     );
@@ -44,11 +45,12 @@ fn batch_d_invalid_ordered_state_cannot_construct_checkpoint() {
         .position = mtgml_state::ZonePosition::Bottom { offset: 0 };
 
     assert_eq!(
-        EnvironmentCheckpointV4::new(
+        EnvironmentCheckpointV5::new(
             state,
             EpisodeStatus::Running,
             EnvironmentLimitCounters::default(),
             codec,
+        synthetic_identity()
         ),
         Err(CheckpointValidationError::StateDigest)
     );

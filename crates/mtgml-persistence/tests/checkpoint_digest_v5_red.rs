@@ -389,7 +389,10 @@ fn kat_vectors() -> Vec<serde_json::Value> {
 #[test]
 fn shared_kat_vectors_reproduce_frozen_digests() {
     let vectors = kat_vectors();
-    assert!(vectors.len() >= 3, "shared checkpoint-digest-v5 KAT fixture regressed");
+    assert!(
+        vectors.len() >= 3,
+        "shared checkpoint-digest-v5 KAT fixture regressed"
+    );
 
     let counters = EnvironmentLimitCounters::default();
     for vector in &vectors {
@@ -405,9 +408,8 @@ fn shared_kat_vectors_reproduce_frozen_digests() {
         let expected = vector["expected_digest"].as_str().unwrap();
 
         let digest = calculate_checkpoint_digest_v5(
-            &FullStateDigestV4::from_digest_bytes(
-                hex_to_bytes(full_state_hex)
-            ).as_digest_reference(),
+            &FullStateDigestV4::from_digest_bytes(hex_to_bytes(full_state_hex))
+                .as_digest_reference(),
             &EpisodeStatus::Running,
             &counters,
             &codec_v5(),
@@ -417,11 +419,7 @@ fn shared_kat_vectors_reproduce_frozen_digests() {
             },
         )
         .unwrap();
-        assert_eq!(
-            digest.as_str(),
-            expected,
-            "KAT case {case} drifted"
-        );
+        assert_eq!(digest.as_str(), expected, "KAT case {case} drifted");
     }
 }
 

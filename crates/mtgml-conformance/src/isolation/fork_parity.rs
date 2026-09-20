@@ -33,7 +33,7 @@ mod tests {
     };
     use mtgml_model::{CandidateIdV1, PlayerDecisionIdV1, StateRevision};
     use mtgml_observation::{PlayerStepSubmissionV1, PlayerSubmissionCodeV1};
-    use mtgml_replay::AuthoritativeReplayV4;
+    use mtgml_replay::AuthoritativeReplayV5;
     use mtgml_wire::encode_canonical;
 
     type ForkPair = (
@@ -106,7 +106,7 @@ mod tests {
             &fork_initial,
             FingerprintComparison::ExcludeReplayRecorder,
         )?;
-        let fork_exported: AuthoritativeReplayV4 =
+        let fork_exported: AuthoritativeReplayV5 =
             fork.export_replay().map_err(controller_service)?;
         assert!(fork_exported.steps.is_empty());
         assert_segment_anchor(&fork_exported.manifest.initial_identity, &origin_cp);
@@ -152,11 +152,11 @@ mod tests {
         // appended step atop the segment anchored at the shared fork-time
         // identity. The source keeps its spawn-seeded segment, so it holds
         // its pre-fork entry step plus the identical-input count step.
-        let fork_exported_after: AuthoritativeReplayV4 =
+        let fork_exported_after: AuthoritativeReplayV5 =
             fork.export_replay().map_err(controller_service)?;
         assert_eq!(fork_exported_after.steps.len(), 1, "fork segment");
         assert_segment_anchor(&fork_exported_after.manifest.initial_identity, &origin_cp);
-        let source_exported_after: AuthoritativeReplayV4 =
+        let source_exported_after: AuthoritativeReplayV5 =
             source.export_replay().map_err(controller_service)?;
         assert_eq!(source_exported_after.steps.len(), 2, "source segment");
         Ok(())
@@ -294,7 +294,7 @@ mod tests {
             &fork_initial,
             FingerprintComparison::ExcludeReplayRecorder,
         )?;
-        let fork_exported: AuthoritativeReplayV4 =
+        let fork_exported: AuthoritativeReplayV5 =
             fork.export_replay().map_err(controller_service)?;
         assert!(fork_exported.steps.is_empty());
         assert_segment_anchor(&fork_exported.manifest.initial_identity, &origin_cp);
@@ -331,7 +331,7 @@ mod tests {
             FingerprintComparison::ExcludeReplayRecorder,
         )?;
         for (label, controller) in [("source", &source), ("fork", &fork)] {
-            let exported: AuthoritativeReplayV4 =
+            let exported: AuthoritativeReplayV5 =
                 controller.export_replay().map_err(controller_service)?;
             assert!(
                 exported.steps.is_empty(),

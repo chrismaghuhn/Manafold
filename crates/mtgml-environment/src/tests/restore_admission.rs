@@ -7,7 +7,6 @@ use crate::semantic_catalog::{
 };
 use crate::semantic_catalog_generated::{
     synthetic_legacy_default_rules_manifest,
-    synthetic_legacy_default_semantic_contract_id,
     synthetic_legacy_default_semantic_manifest,
 };
 use mtgml_decision::{AuthoritativeDecisionRequestV2, DecisionDomainV2, DecisionVisibility};

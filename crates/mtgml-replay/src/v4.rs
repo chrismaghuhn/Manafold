@@ -8,7 +8,8 @@ use mtgml_model::{
 use mtgml_random::types::validate_seed_hex;
 use serde::{Deserialize, Serialize};
 
-use crate::identity::{DeckIdentityV1, KernelIdentityV1, ReplaySchemaVersionsV4};
+pub use crate::identity::ReplaySchemaVersionsV4;
+use crate::identity::{DeckIdentityV1, KernelIdentityV1};
 use crate::v2::RandomnessIdentityV2;
 use crate::validation::ReplayValidationError;
 

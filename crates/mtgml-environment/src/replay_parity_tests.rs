@@ -8,8 +8,11 @@
 //! and replayed traces alike, with explicit replay application of recorded
 //! external counters. The M2.G runner records the gate verdicts separately.
 
-use super::{SyntheticM1EnvironmentBackend, SyntheticM1EnvironmentConfig, SyntheticM1ReplayConfig};
-use crate::checkpoint::{CheckpointCodecIdentity, EnvironmentCheckpointV4};
+use super::{
+    synthetic_identity, SyntheticM1EnvironmentBackend, SyntheticM1EnvironmentConfig,
+    SyntheticM1ReplayConfig,
+};
+use crate::checkpoint::{CheckpointCodecIdentity, EnvironmentCheckpointV5};
 use crate::controller::TrustedEnvironmentController;
 use crate::endpoint::{PlayerEndpoint, PlayerEndpointHandle};
 use crate::errors::ControllerError;
@@ -21,15 +24,15 @@ use mtgml_observation::{
 };
 use mtgml_random::RootSeed256;
 use mtgml_replay::{
-    AuthoritativeReplayV4, DeckIdentityV1, InitialEnvironmentIdentityV4, KernelIdentityV1,
-    ReplaySchemaVersionsV4, ReplayStepV4, ReplayValidationError, REPLAY_FILE_SCHEMA_V4,
+    AuthoritativeReplayV5, DeckIdentityV1, InitialEnvironmentIdentityV5, KernelIdentityV1,
+    ReplaySchemaVersionsV5, ReplayStepV5, ReplayValidationError, REPLAY_FILE_SCHEMA_V5,
 };
 
 fn config(players: [PlayerId; 2]) -> SyntheticM1EnvironmentConfig {
     SyntheticM1EnvironmentConfig {
         codec: CheckpointCodecIdentity {
             codec_id: "in-memory-reference".into(),
-            semantic_version: "4".into(),
+            semantic_version: "5".into(),
         },
         setup: mtgml_state::SyntheticV4Setup::m2_compatibility(),
         replay: SyntheticM1ReplayConfig {
@@ -44,7 +47,7 @@ fn config(players: [PlayerId; 2]) -> SyntheticM1EnvironmentConfig {
             oracle_snapshot: "synthetic-oracle".into(),
             card_bundle: "synthetic-bundle".into(),
             randomness_contract_id: "mtgml.rng.v1".into(),
-            schemas: ReplaySchemaVersionsV4 {
+            schemas: ReplaySchemaVersionsV5 {
                 observation: OBSERVATION_SCHEMA.into(),
                 observation_payload_codec: "synthetic-m3-observation.v1".into(),
                 information_state: INFORMATION_STATE_SCHEMA_V2.into(),
@@ -52,7 +55,7 @@ fn config(players: [PlayerId; 2]) -> SyntheticM1EnvironmentConfig {
                 decision_response: DECISION_RESPONSE_V2_SCHEMA.into(),
                 observed_event: OBSERVED_EVENT_SCHEMA_V2.into(),
                 player_step: PLAYER_STEP_SCHEMA_V2.into(),
-                replay_step: "replay-step.v4".into(),
+                replay_step: "replay-step.v5".into(),
             },
             decks: players
                 .into_iter()
@@ -146,13 +149,14 @@ fn eventful_replay_reprojects_both_perspectives_byte_exactly() {
     assert_eq!(live_replay.steps.len(), 1);
     assert_eq!(
         live_replay.final_identity,
-        InitialEnvironmentIdentityV4 {
+        InitialEnvironmentIdentityV5 {
             state_revision: live_after.state.revision,
             full_state_digest: live_after.state_digest.clone(),
             episode_status: live_after.status.clone(),
             environment_limit_counters: live_after.limit_counters.clone(),
             checkpoint_codec_identity: live_after.codec.clone(),
             checkpoint_digest: live_after.checkpoint_digest.clone(),
+            execution_identity: live_after.execution_identity.clone(),
         }
     );
 
@@ -246,7 +250,7 @@ fn historical_reprojection_byte_exact() {
     // endpoints (entry -> count -> members), capturing per-step products.
     let mut captures: Vec<(
         PlayerStepV2,
-        crate::checkpoint::EnvironmentCheckpointV4,
+        crate::checkpoint::EnvironmentCheckpointV5,
         _,
         _,
     )> = Vec::new();
@@ -371,11 +375,12 @@ fn historical_reprojection_byte_exact() {
         // both perspectives read through REAL bound endpoints over the
         // replayed after-state.
         let step_config = config([PlayerId(1), PlayerId(2)]);
-        let step_checkpoint = EnvironmentCheckpointV4::new(
+        let step_checkpoint = EnvironmentCheckpointV5::new(
             trace.after.state.clone(),
             trace.after.status.clone(),
             trace.after.limit_counters.clone(),
             step_config.codec.clone(),
+            synthetic_identity(),
         )
         .unwrap();
         let step_controller = TrustedEnvironmentController::new(
@@ -466,7 +471,7 @@ fn diagnostic_rejected_step_executes_with_intact_identity_chain() {
     // One hand-built accepted:false diagnostic step preserving EVERY
     // after-field of the starting identity (structural contract).
     let initial = &segment.manifest.initial_identity;
-    let diagnostic_step = ReplayStepV4 {
+    let diagnostic_step = ReplayStepV5 {
         step_index: 0,
         actor: PlayerId(1),
         checkpoint_digest_before: initial.checkpoint_digest.clone(),
@@ -486,8 +491,8 @@ fn diagnostic_rejected_step_executes_with_intact_identity_chain() {
         environment_limit_counters_after: initial.environment_limit_counters.clone(),
         checkpoint_digest_after: initial.checkpoint_digest.clone(),
     };
-    let diagnostic = AuthoritativeReplayV4 {
-        schema_version: REPLAY_FILE_SCHEMA_V4.into(),
+    let diagnostic = AuthoritativeReplayV5 {
+        schema_version: REPLAY_FILE_SCHEMA_V5.into(),
         manifest: segment.manifest.clone(),
         steps: vec![diagnostic_step],
         final_identity: initial.clone(),
@@ -512,16 +517,16 @@ fn diagnostic_rejected_step_executes_with_intact_identity_chain() {
 
 #[test]
 fn recorded_external_counter_progression_is_applied_without_live_mutation() {
-    use mtgml_model::CheckpointDigestV4;
-    use mtgml_persistence::checkpoint_digest::calculate_checkpoint_digest_v4;
-    use mtgml_replay::InitialEnvironmentIdentityV4;
+    use mtgml_model::CheckpointDigestV5;
+    use mtgml_persistence::checkpoint_digest::calculate_checkpoint_digest_v5;
+    use mtgml_replay::InitialEnvironmentIdentityV5;
 
     // Re-anchors the after-identity digests onto a mutated counter set so
     // ONLY the recorded counter progression diverges from what deterministic
     // execution reproduces (the structural gate alone already rejects
     // digest-inconsistent recordings).
-    fn resealed(tampered: &mut AuthoritativeReplayV4) {
-        let identity = InitialEnvironmentIdentityV4 {
+    fn resealed(tampered: &mut AuthoritativeReplayV5) {
+        let identity = InitialEnvironmentIdentityV5 {
             state_revision: tampered.steps[0].state_revision_after,
             full_state_digest: tampered.steps[0].full_state_digest_after.clone(),
             episode_status: tampered.steps[0].episode_status_after.clone(),
@@ -531,14 +536,20 @@ fn recorded_external_counter_progression_is_applied_without_live_mutation() {
                 .initial_identity
                 .checkpoint_codec_identity
                 .clone(),
-            checkpoint_digest: CheckpointDigestV4::from_digest_bytes([0; 32]),
+            checkpoint_digest: CheckpointDigestV5::from_digest_bytes([0; 32]),
+            execution_identity: tampered
+                .manifest
+                .initial_identity
+                .execution_identity
+                .clone(),
         };
-        let identity = InitialEnvironmentIdentityV4 {
-            checkpoint_digest: calculate_checkpoint_digest_v4(
+        let identity = InitialEnvironmentIdentityV5 {
+            checkpoint_digest: calculate_checkpoint_digest_v5(
                 &identity.full_state_digest.as_digest_reference(),
                 &identity.episode_status,
                 &identity.environment_limit_counters,
                 &identity.checkpoint_codec_identity,
+                &identity.execution_identity,
             )
             .unwrap(),
             ..identity
@@ -555,7 +566,7 @@ fn recorded_external_counter_progression_is_applied_without_live_mutation() {
     let pristine = live.export_replay().unwrap();
     assert_eq!(pristine.steps.len(), 1);
 
-    let run = |replay: AuthoritativeReplayV4| {
+    let run = |replay: AuthoritativeReplayV5| {
         TrustedEnvironmentController::new(backend())
             .execute_replay_from_checkpoint(cp0.clone(), replay)
     };

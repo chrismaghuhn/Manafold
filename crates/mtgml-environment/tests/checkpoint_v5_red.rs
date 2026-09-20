@@ -19,8 +19,8 @@ use mtgml_random::RootSeed256;
 use mtgml_state::{construct_synthetic_engine_state, SyntheticResetInputs, SyntheticV4Setup};
 
 use mtgml_environment::{
-    CheckpointValidationError, EnvironmentCheckpointV4, EnvironmentCheckpointV5,
-    CHECKPOINT_CODEC_ID_V5, CHECKPOINT_CODEC_SEMANTIC_VERSION_V5, ENVIRONMENT_CHECKPOINT_SCHEMA_V5,
+    CheckpointValidationError, EnvironmentCheckpointV5, CHECKPOINT_CODEC_ID_V5,
+    CHECKPOINT_CODEC_SEMANTIC_VERSION_V5, ENVIRONMENT_CHECKPOINT_SCHEMA_V5,
 };
 
 const CONTRACT_A: &str = "1111111111111111111111111111111111111111111111111111111111111111";
@@ -329,7 +329,7 @@ fn identical_facts_different_identity_differ_in_digest() {
 /// must not alter V4 semantics).
 #[test]
 fn v4_checkpoint_construction_still_works() {
-    let checkpoint = EnvironmentCheckpointV4::new(
+    let checkpoint = mtgml_environment::checkpoint::EnvironmentCheckpointV4::new(
         synthetic_state(),
         EpisodeStatus::Running,
         counters(),

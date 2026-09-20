@@ -60,7 +60,7 @@ fn fnd_028_declared_zero_player_is_produced_checkpointed_forked_and_replayed() {
             .unwrap()
             .contains("\"actor\":\"0\"")
     );
-    let decoded: AuthoritativeReplayV4 = mtgml_wire::decode_canonical(&bytes).unwrap();
+    let decoded: AuthoritativeReplayV5 = mtgml_wire::decode_canonical(&bytes).unwrap();
     assert_eq!(decoded, replay);
 
     let report = controller
@@ -92,9 +92,9 @@ fn fnd_028_declared_zero_player_is_produced_checkpointed_forked_and_replayed() {
 
 fn declared_zero_run() -> (
     TrustedEnvironmentController,
-    EnvironmentCheckpointV4,
-    EnvironmentCheckpointV4,
-    AuthoritativeReplayV4,
+    EnvironmentCheckpointV5,
+    EnvironmentCheckpointV5,
+    AuthoritativeReplayV5,
 ) {
     let players = [PlayerId(0), PlayerId(1)];
     let controller = TrustedEnvironmentController::new(

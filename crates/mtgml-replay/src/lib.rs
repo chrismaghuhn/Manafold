@@ -12,7 +12,7 @@ mod recorder;
 mod v1;
 mod v2;
 mod v3;
-mod v4;
+pub mod v4;
 mod v5;
 mod validation;
 
@@ -21,7 +21,6 @@ mod tests;
 
 pub use identity::{
     DeckIdentityV1, KernelIdentityV1, RandomnessIdentityV1, ReplayIdentity, ReplaySchemaVersionsV1,
-    ReplaySchemaVersionsV4,
 };
 pub use manifest::ReplayManifestV1;
 pub use v1::{AuthoritativeReplayV1, ReplayStepV1};
@@ -29,10 +28,6 @@ pub use v2::{AuthoritativeReplayV2, RandomnessIdentityV2, ReplayManifestV2, Repl
 pub use v3::{
     AuthoritativeReplayV3, InitialEnvironmentIdentityV3, ReplayManifestV3, ReplayRecorderV3,
     ReplayStepV3, REPLAY_FILE_SCHEMA_V3, REPLAY_MANIFEST_SCHEMA_V3, REPLAY_STEP_SCHEMA_V3,
-};
-pub use v4::{
-    AuthoritativeReplayV4, InitialEnvironmentIdentityV4, ReplayManifestV4, ReplayRecorderV4,
-    ReplayStepV4, REPLAY_FILE_SCHEMA_V4, REPLAY_MANIFEST_SCHEMA_V4, REPLAY_STEP_SCHEMA_V4,
 };
 pub use v5::{
     AuthoritativeReplayV5, InitialEnvironmentIdentityV5, ReplayManifestV5, ReplayRecorderV5,

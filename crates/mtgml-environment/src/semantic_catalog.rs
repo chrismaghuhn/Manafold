@@ -12,10 +12,8 @@
 //! order as a PURE / STATELESS function (phases 1–8; phase 9 is Task 13).
 //! Rejected admission mutates NOTHING (spec §2.8 / §12.6).
 //
-// Functions in this module are intentionally not yet wired into the live
-// controller restore path (Task 13 owns that wiring). They are exercised by
-// crate-internal tests and the KAT.
-#![allow(dead_code)]
+// Functions in this module are wired into the live controller restore path
+// (Task 13). They are exercised by crate-internal tests and the KAT.
 
 use mtgml_model::{
     ExecutionProgramV1, RulesAuthorityV1, RulesContractManifestV1, SemanticContractIdV1,
@@ -96,16 +94,16 @@ impl RuntimeSemanticCatalog {
     /// SUPPORTED EXECUTION: does THIS runtime support executing this program
     /// × contract pairing?
     ///
-    /// Checks: the contract is known AND the program × authority pairing is
-    /// both semantically valid (frozen pairing rule) and supported by this
-    /// runtime build. Pre-S1: only `SyntheticRulesCompat` has a production
-    /// kernel; `MagicRules` is never supported.
+    /// Checks: the contract is known AND the program is supported by this
+    /// runtime build. The program × authority pairing is validated separately
+    /// in `admit_restore` phase 6 (frozen pairing rule); this method does not
+    /// re-check pairing — that would be redundant and could diverge from the
+    /// admission order.
     pub fn supported(&self, id: &SemanticContractIdV1, program: ExecutionProgramV1) -> bool {
-        let Some(entry) = self.resolve(id) else {
+        let Some(_entry) = self.resolve(id) else {
             return false;
         };
-        program_authority_compatible(program, &entry.rules_manifest.rules_authority)
-            && runtime_supports_program(program)
+        runtime_supports_program(program)
     }
 
     /// Number of entries (crate-internal, used by tests).

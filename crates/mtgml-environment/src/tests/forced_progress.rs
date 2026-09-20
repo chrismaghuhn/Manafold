@@ -16,14 +16,14 @@ fn backend_without_pending() -> SyntheticM1EnvironmentBackend {
         })
         .unwrap();
     state.execution.pending_decision = None;
-    let checkpoint = EnvironmentCheckpointV4::new(
+    let checkpoint = EnvironmentCheckpointV5::new(
         state,
         EpisodeStatus::Running,
         EnvironmentLimitCounters::default(),
         CheckpointCodecIdentity {
             codec_id: "in-memory-reference".into(),
-            semantic_version: "4".into(),
-        },
+            semantic_version: "5".into(),
+        }, synthetic_identity(),
     )
     .unwrap();
     SyntheticM1EnvironmentBackend::from_checkpoint(checkpoint, config(players)).unwrap()
@@ -260,14 +260,14 @@ fn forced_progress_failure_leaves_checkpoint_counters_and_replay_unchanged() {
         .unwrap()
         .life = 39;
     let players = [PlayerId(1), PlayerId(2)];
-    let checkpoint = EnvironmentCheckpointV4::new(
+    let checkpoint = EnvironmentCheckpointV5::new(
         setup,
         EpisodeStatus::Running,
         EnvironmentLimitCounters::default(),
         CheckpointCodecIdentity {
             codec_id: "in-memory-reference".into(),
-            semantic_version: "4".into(),
-        },
+            semantic_version: "5".into(),
+        }, synthetic_identity(),
     )
     .unwrap();
     let controller = TrustedEnvironmentController::new(

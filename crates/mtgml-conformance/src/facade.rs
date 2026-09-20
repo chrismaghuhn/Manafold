@@ -337,7 +337,7 @@ fn run_transition(
         .map_err(infrastructure)?;
 
     // Parity: the shared endpoint-mutated instant must equal the trusted
-    // fork's product exactly. The complete `EnvironmentCheckpointV4` binds
+    // fork's product exactly. The complete `EnvironmentCheckpointV5` binds
     // authoritative state, full-state digest, episode status, limit counters,
     // codec identity, and checkpoint digest; the authoritative replay
     // products bind the recorded transition and the terminal identity. The
@@ -379,7 +379,7 @@ fn run_transition(
     }
     // The fork records the identical transition in its own segment, so only
     // the segment-local step index may differ. Aligning it lets the whole
-    // `ReplayStepV4` be compared instead of hand-picked fields.
+    // `ReplayStepV5` be compared instead of hand-picked fields.
     let mut aligned_fork_step = fork_step.clone();
     aligned_fork_step.step_index = main_step.step_index;
     if &aligned_fork_step != main_step || fork_replay.final_identity != main_replay.final_identity {

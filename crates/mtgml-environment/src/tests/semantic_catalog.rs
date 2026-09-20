@@ -2,7 +2,6 @@ use crate::semantic_catalog::{CatalogEntry, RuntimeSemanticCatalog};
 use crate::semantic_catalog_generated::{
     synthetic_legacy_default_rules_contract_id,
     synthetic_legacy_default_rules_manifest,
-    synthetic_legacy_default_semantic_contract_id,
     synthetic_legacy_default_semantic_manifest,
     SEMANTIC_CONTRACT_CATALOG_SYNTHETIC_LEGACY_DEFAULT_RULES_CONTRACT_HEX,
     SEMANTIC_CONTRACT_CATALOG_SYNTHETIC_LEGACY_DEFAULT_SEMANTIC_CONTRACT_HEX,

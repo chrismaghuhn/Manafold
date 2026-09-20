@@ -527,7 +527,7 @@ fn replay_v5_v4_types_remain_untouched_and_pass() {
         &codec,
     )
     .unwrap();
-    let v4_identity = mtgml_replay::InitialEnvironmentIdentityV4 {
+    let v4_identity = mtgml_replay::v4::InitialEnvironmentIdentityV4 {
         state_revision: StateRevision(0),
         full_state_digest,
         episode_status: EpisodeStatus::Running,

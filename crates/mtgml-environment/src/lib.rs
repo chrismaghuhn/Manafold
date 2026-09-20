@@ -5,7 +5,7 @@
 //! projected information. Multiple player handles may coexist.
 
 mod boundary;
-mod checkpoint;
+pub mod checkpoint;
 mod controller;
 mod endpoint;
 mod errors;
@@ -20,10 +20,8 @@ mod tests;
 
 pub use boundary::{submit_response_bytes, PlayerBoundaryError};
 pub use checkpoint::{
-    CheckpointValidationError, EnvironmentCheckpointV4, EnvironmentCheckpointV5,
-    CHECKPOINT_CODEC_ID_V4, CHECKPOINT_CODEC_ID_V5, CHECKPOINT_CODEC_SEMANTIC_VERSION_V4,
-    CHECKPOINT_CODEC_SEMANTIC_VERSION_V5, ENVIRONMENT_CHECKPOINT_SCHEMA,
-    ENVIRONMENT_CHECKPOINT_SCHEMA_V5,
+    CheckpointValidationError, EnvironmentCheckpointV5, CHECKPOINT_CODEC_ID_V5,
+    CHECKPOINT_CODEC_SEMANTIC_VERSION_V5, ENVIRONMENT_CHECKPOINT_SCHEMA_V5,
 };
 pub use controller::{EnvironmentBackend, TrustedEnvironmentController};
 pub use endpoint::{PlayerEndpoint, PlayerEndpointError, PlayerEndpointHandle};
@@ -34,6 +32,9 @@ pub use mtgml_model::{CheckpointCodecIdentity, EnvironmentLimitCounters};
 // production input Task 8 consumes. Only the KAT is test-only.
 mod semantic_catalog_generated;
 pub use replay::{ReplayExecutionReport, ReplayExecutionTrace};
+pub use semantic_catalog_generated::synthetic_legacy_default_rules_manifest;
+pub use semantic_catalog_generated::synthetic_legacy_default_semantic_contract_id;
+pub use semantic_catalog_generated::synthetic_legacy_default_semantic_manifest;
 pub use synthetic::{
     SyntheticM1EnvironmentBackend, SyntheticM1EnvironmentConfig, SyntheticM1ReplayConfig,
 };

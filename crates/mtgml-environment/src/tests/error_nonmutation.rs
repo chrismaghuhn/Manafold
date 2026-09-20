@@ -337,7 +337,7 @@ fn typed_rejection_codes_matrix() {
 
     // Build a truncated checkpoint to drive episode_closed.
     let completed_state = controller.checkpoint().unwrap().state;
-    let truncated_checkpoint = EnvironmentCheckpointV4::new(
+    let truncated_checkpoint = EnvironmentCheckpointV5::new(
         completed_state,
         EpisodeStatus::Truncated {
             reason: TruncationReason::ExternalStop,
@@ -355,8 +355,8 @@ fn typed_rejection_codes_matrix() {
         EnvironmentLimitCounters::default(),
         CheckpointCodecIdentity {
             codec_id: "in-memory-reference".into(),
-            semantic_version: "4".into(),
-        },
+            semantic_version: "5".into(),
+        }, synthetic_identity(),
     )
     .unwrap();
     let truncated_env = TrustedEnvironmentController::new(
@@ -404,14 +404,14 @@ fn internal_failures_surface_only_service_unavailable() {
             continuation_id: None,
         },
     });
-    let checkpoint = EnvironmentCheckpointV4::new(
+    let checkpoint = EnvironmentCheckpointV5::new(
         state,
         EpisodeStatus::Running,
         EnvironmentLimitCounters::default(),
         CheckpointCodecIdentity {
             codec_id: "in-memory-reference".into(),
-            semantic_version: "4".into(),
-        },
+            semantic_version: "5".into(),
+        }, synthetic_identity(),
     )
     .unwrap();
 
@@ -438,14 +438,14 @@ fn internal_failures_surface_only_service_unavailable() {
     // and must map to exactly `service_unavailable`.
     let players = [PlayerId(1), PlayerId(2)];
     let fresh = backend().checkpoint().unwrap();
-    let exhausted_checkpoint = EnvironmentCheckpointV4::new(
+    let exhausted_checkpoint = EnvironmentCheckpointV5::new(
         fresh.state,
         fresh.status.clone(),
         EnvironmentLimitCounters {
             decisions_submitted: u64::MAX,
             ..fresh.limit_counters.clone()
         },
-        fresh.codec.clone(),
+        fresh.codec.clone(), synthetic_identity(),
     )
     .unwrap();
     let exhausted_controller = TrustedEnvironmentController::new(

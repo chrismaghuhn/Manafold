@@ -29,7 +29,7 @@ pub struct EnvironmentCheckpointV4 {
     pub checkpoint_digest: CheckpointDigestV4,
 }
 
-fn validate_v4_status_for_players(
+fn validate_checkpoint_status_player_universe(
     status: &EpisodeStatus,
     expected: &BTreeSet<PlayerId>,
 ) -> Result<(), CheckpointValidationError> {
@@ -93,7 +93,7 @@ impl EnvironmentCheckpointV4 {
             .validate()
             .map_err(|_| CheckpointValidationError::EpisodeStatus)?;
         let players: BTreeSet<_> = self.state.core.players.keys().copied().collect();
-        validate_v4_status_for_players(&self.status, &players)?;
+        validate_checkpoint_status_player_universe(&self.status, &players)?;
         let state_digest = self
             .state
             .digest()
@@ -228,7 +228,7 @@ impl EnvironmentCheckpointV5 {
             .validate()
             .map_err(|_| CheckpointValidationError::EpisodeStatus)?;
         let players: BTreeSet<_> = self.state.core.players.keys().copied().collect();
-        validate_v4_status_for_players(&self.status, &players)?;
+        validate_checkpoint_status_player_universe(&self.status, &players)?;
         let state_digest = self
             .state
             .digest()

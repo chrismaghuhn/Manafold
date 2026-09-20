@@ -1,12 +1,12 @@
 use mtgml_decision::{DecisionResponseV2, PlayerDecisionRequestV2};
-use mtgml_model::{EpisodeStatus, ExecutionProgramV1, PlayerId};
+use mtgml_model::{EpisodeStatus, ExecutionIdentityV1, ExecutionProgramV1, PlayerId};
 use mtgml_observation::{
     ObservationEnvelope, PlayerInformationStateV2, PlayerStepV2, PlayerSubmissionCodeV1,
 };
 use mtgml_random::RootSeed256;
 use mtgml_replay::{
-    AuthoritativeReplayV4, DeckIdentityV1, KernelIdentityV1, ReplayRecorderV4,
-    ReplaySchemaVersionsV4,
+    AuthoritativeReplayV5, DeckIdentityV1, KernelIdentityV1, ReplayRecorderV5,
+    ReplaySchemaVersionsV5,
 };
 use mtgml_rules::{ProgramKernelV1, TransitionResult};
 use mtgml_state::{
@@ -14,11 +14,12 @@ use mtgml_state::{
 };
 
 use crate::checkpoint::{
-    CheckpointCodecIdentity, EnvironmentCheckpointV4, EnvironmentLimitCounters,
+    CheckpointCodecIdentity, EnvironmentCheckpointV5, EnvironmentLimitCounters,
 };
 use crate::controller::EnvironmentBackend;
 use crate::endpoint::PlayerEndpointError;
 use crate::errors::{ControllerError, EnvironmentCommitError};
+use crate::semantic_catalog_generated::synthetic_legacy_default_semantic_contract_id;
 
 mod commit;
 #[cfg(test)]
@@ -35,6 +36,14 @@ mod replay;
 mod replay_parity_tests;
 
 use replay::build_manifest;
+
+#[cfg(test)]
+fn synthetic_identity() -> ExecutionIdentityV1 {
+    ExecutionIdentityV1 {
+        program_kind: ExecutionProgramV1::SyntheticRulesCompat,
+        semantic_contract_id: synthetic_legacy_default_semantic_contract_id(),
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SyntheticM1EnvironmentConfig {
@@ -67,7 +76,7 @@ pub struct SyntheticM1ReplayConfig {
     pub oracle_snapshot: String,
     pub card_bundle: String,
     pub randomness_contract_id: String,
-    pub schemas: ReplaySchemaVersionsV4,
+    pub schemas: ReplaySchemaVersionsV5,
     pub decks: Vec<DeckIdentityV1>,
 }
 
@@ -76,8 +85,9 @@ pub struct SyntheticM1EnvironmentBackend {
     status: EpisodeStatus,
     limit_counters: EnvironmentLimitCounters,
     codec: CheckpointCodecIdentity,
+    execution_identity: ExecutionIdentityV1,
     config: SyntheticM1EnvironmentConfig,
-    replay: ReplayRecorderV4,
+    replay: ReplayRecorderV5,
     kernel: ProgramKernelV1,
     #[cfg(test)]
     eventful_fixture: bool,
@@ -96,18 +106,24 @@ impl SyntheticM1EnvironmentBackend {
         })?;
         let status = EpisodeStatus::Running;
         let limit_counters = EnvironmentLimitCounters::default();
-        let checkpoint = EnvironmentCheckpointV4::new(
+        let execution_identity = ExecutionIdentityV1 {
+            program_kind: ExecutionProgramV1::SyntheticRulesCompat,
+            semantic_contract_id: synthetic_legacy_default_semantic_contract_id(),
+        };
+        let checkpoint = EnvironmentCheckpointV5::new(
             state.clone(),
             status.clone(),
             limit_counters.clone(),
             config.codec.clone(),
+            execution_identity.clone(),
         )?;
-        let replay = ReplayRecorderV4::new(build_manifest(&config, &checkpoint)?)?;
+        let replay = ReplayRecorderV5::new(build_manifest(&config, &checkpoint)?)?;
         Ok(Self {
             state,
             status,
             limit_counters,
             codec: config.codec.clone(),
+            execution_identity,
             config,
             replay,
             kernel: ProgramKernelV1::for_program(ExecutionProgramV1::SyntheticRulesCompat)
@@ -118,7 +134,7 @@ impl SyntheticM1EnvironmentBackend {
     }
 
     pub fn from_checkpoint(
-        checkpoint: EnvironmentCheckpointV4,
+        checkpoint: EnvironmentCheckpointV5,
         config: SyntheticM1EnvironmentConfig,
     ) -> Result<Self, ControllerError> {
         checkpoint.validate()?;
@@ -130,12 +146,13 @@ impl SyntheticM1EnvironmentBackend {
         // are rejected before any player projection can expose them.
         mtgml_rules::validate_synthetic_runtime_state(&checkpoint.state)
             .map_err(|_| ControllerError::UnsupportedSyntheticState)?;
-        let replay = ReplayRecorderV4::new(build_manifest(&config, &checkpoint)?)?;
+        let replay = ReplayRecorderV5::new(build_manifest(&config, &checkpoint)?)?;
         Ok(Self {
             state: checkpoint.state,
             status: checkpoint.status,
             limit_counters: checkpoint.limit_counters,
             codec: checkpoint.codec,
+            execution_identity: checkpoint.execution_identity,
             config,
             replay,
             kernel: ProgramKernelV1::for_program(ExecutionProgramV1::SyntheticRulesCompat)
@@ -151,11 +168,11 @@ impl EnvironmentBackend for SyntheticM1EnvironmentBackend {
         self.state.core.players.keys().copied().collect()
     }
 
-    fn checkpoint(&self) -> Result<EnvironmentCheckpointV4, ControllerError> {
+    fn checkpoint(&self) -> Result<EnvironmentCheckpointV5, ControllerError> {
         self.current_checkpoint()
     }
 
-    fn restore(&mut self, checkpoint: EnvironmentCheckpointV4) -> Result<(), ControllerError> {
+    fn restore(&mut self, checkpoint: EnvironmentCheckpointV5) -> Result<(), ControllerError> {
         #[cfg(test)]
         let eventful_fixture = self.eventful_fixture;
         let candidate = Self::from_checkpoint(checkpoint, self.config.clone())?;
@@ -163,6 +180,7 @@ impl EnvironmentBackend for SyntheticM1EnvironmentBackend {
         self.status = candidate.status;
         self.limit_counters = candidate.limit_counters;
         self.codec = candidate.codec;
+        self.execution_identity = candidate.execution_identity;
         self.replay = candidate.replay;
         self.kernel = ProgramKernelV1::for_program(ExecutionProgramV1::SyntheticRulesCompat)
             .expect("the synthetic program is supported by the current kernel boundary");
@@ -186,7 +204,7 @@ impl EnvironmentBackend for SyntheticM1EnvironmentBackend {
         Ok(Box::new(child))
     }
 
-    fn export_replay(&self) -> Result<AuthoritativeReplayV4, ControllerError> {
+    fn export_replay(&self) -> Result<AuthoritativeReplayV5, ControllerError> {
         Ok(self.replay.export()?)
     }
 
