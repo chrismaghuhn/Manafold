@@ -432,6 +432,7 @@ V4_CURRENT_CONSUMER_SITES: set[str] = {
     "python/src/mtgml/replay.py",
     "python/src/mtgml/wire.py",
     "python/src/mtgml/__init__.py",
+    "python/src/mtgml/_replay_v5.py",  # V4 import in V5 module — CURRENT_CONSUMER
     "crates/mtgml-wire/src/replay.rs",
     "tools/m2-semantic-adapter/src/config.rs",
     "tools/m2-semantic-adapter/src/session.rs",
