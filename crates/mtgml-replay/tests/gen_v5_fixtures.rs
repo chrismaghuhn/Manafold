@@ -7,9 +7,9 @@ use mtgml_persistence::semantic_contract_digest::{
     calculate_rules_contract_id_v1, calculate_semantic_contract_id_v1,
 };
 use mtgml_replay::{
-    DeckIdentityV1, InitialEnvironmentIdentityV5, KernelIdentityV1, RandomnessIdentityV2,
-    ReplayManifestV5, ReplaySchemaVersionsV5, SemanticContractMaterialV5,
-    REPLAY_MANIFEST_SCHEMA_V5, REPLAY_STEP_SCHEMA_V5,
+    AuthoritativeReplayV5, DeckIdentityV1, InitialEnvironmentIdentityV5, KernelIdentityV1,
+    RandomnessIdentityV2, ReplayManifestV5, ReplaySchemaVersionsV5, SemanticContractMaterialV5,
+    REPLAY_FILE_SCHEMA_V5, REPLAY_MANIFEST_SCHEMA_V5, REPLAY_STEP_SCHEMA_V5,
 };
 use serde_json::{Map, Value};
 const CHECKPOINT_CODEC_ID_V5: &str = "in-memory-reference";
@@ -254,6 +254,36 @@ fn print_all_fixtures() {
         value["initial_identity"]["execution_identity"]["program_kind"] =
             serde_json::Value::String("magic_rules".to_string());
         println!("NEG_THREE_WAY: {}", to_canonical_json(&value));
+    }
+
+    // Negative: authoritative three-way identity mismatch (final diverges from initial)
+    {
+        let m = base_manifest(execution_identity.clone(), material.clone());
+        let mut final_identity = m.initial_identity.clone();
+        final_identity.execution_identity = ExecutionIdentityV1 {
+            program_kind: ExecutionProgramV1::MagicRules,
+            semantic_contract_id: m.semantic_contract.semantic_contract_id.clone(),
+        };
+        let final_digest = mtgml_persistence::checkpoint_digest::calculate_checkpoint_digest_v5(
+            &final_identity.full_state_digest.as_digest_reference(),
+            &final_identity.episode_status,
+            &final_identity.environment_limit_counters,
+            &final_identity.checkpoint_codec_identity,
+            &final_identity.execution_identity,
+        )
+        .unwrap();
+        final_identity.checkpoint_digest = final_digest;
+
+        let replay = AuthoritativeReplayV5 {
+            schema_version: REPLAY_FILE_SCHEMA_V5.to_string(),
+            manifest: m,
+            steps: vec![],
+            final_identity,
+        };
+        println!(
+            "NEG_AUTHORITATIVE_THREE_WAY: {}",
+            to_canonical_json(&serde_json::to_value(&replay).unwrap())
+        );
     }
 
     // Negative: unknown field
