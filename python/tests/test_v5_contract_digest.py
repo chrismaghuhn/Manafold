@@ -56,9 +56,7 @@ def minimal_comprehensive_manifest() -> dict[str, object]:
             "variant": "comprehensive_rules",
             "snapshot_id": "CR-2026-09-19",
         },
-        "capability_closure": [
-            {"key": "rules/synthetic-transition", "version": "1.0.0"}
-        ],
+        "capability_closure": [{"key": "rules/synthetic-transition", "version": "1.0.0"}],
     }
 
 
@@ -80,9 +78,7 @@ class SharedKatFixtureTests(unittest.TestCase):
         for vector in vectors:
             case = str(vector["case"])
             if vector["manifest_kind"] == "rules":
-                rules_ids[case] = calculate_rules_contract_id_v1(
-                    rules_manifest_from(vector)
-                )
+                rules_ids[case] = calculate_rules_contract_id_v1(rules_manifest_from(vector))
                 self.assertEqual(
                     rules_ids[case],
                     vector["rules_contract_id"],
@@ -130,9 +126,7 @@ class RulesContractDigestTests(unittest.TestCase):
 
         synthetic_with_closure = {
             "rules_authority": {"variant": "synthetic_legacy"},
-            "capability_closure": [
-                {"key": "rules/synthetic-transition", "version": "1.0.0"}
-            ],
+            "capability_closure": [{"key": "rules/synthetic-transition", "version": "1.0.0"}],
         }
         with self.assertRaises(PersistenceError):
             calculate_rules_contract_id_v1(synthetic_with_closure)

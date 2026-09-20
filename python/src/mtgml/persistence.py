@@ -477,16 +477,14 @@ def _is_capability_word_segment(segment: str) -> bool:
         and segment[0].isascii()
         and (segment[0].islower() or segment[0].isdigit())
         and all(
-            char.isascii() and (char.islower() or char.isdigit() or char == "-")
-            for char in segment
+            char.isascii() and (char.islower() or char.isdigit() or char == "-") for char in segment
         )
     )
 
 
 def _is_capability_format_namespace(segment: str) -> bool:
     return bool(segment) and all(
-        char.isascii() and (char.islower() or char.isdigit() or char == "-")
-        for char in segment
+        char.isascii() and (char.islower() or char.isdigit() or char == "-") for char in segment
     )
 
 
@@ -517,10 +515,7 @@ def _is_valid_capability_version(version: str) -> bool:
     if not isinstance(version, str):
         return False
     parts = version.split(".")
-    return (
-        len(parts) == 3
-        and all(part.isdigit() and part.isascii() for part in parts)
-    )
+    return len(parts) == 3 and all(part.isdigit() and part.isascii() for part in parts)
 
 
 def _validate_rules_contract_manifest(manifest: object) -> None:
@@ -556,9 +551,7 @@ def _validate_rules_contract_manifest(manifest: object) -> None:
     if not isinstance(authority["snapshot_id"], str) or not authority["snapshot_id"]:
         raise _error("semantic_validation", "comprehensive_rules snapshot_id must be non-empty")
     if not isinstance(closure, list) or not closure:
-        raise _error(
-            "semantic_validation", "comprehensive_rules closure must be a non-empty list"
-        )
+        raise _error("semantic_validation", "comprehensive_rules closure must be a non-empty list")
     previous_key: str | None = None
     for entry in closure:
         if not isinstance(entry, dict) or set(entry) != {"key", "version"}:
@@ -571,13 +564,13 @@ def _validate_rules_contract_manifest(manifest: object) -> None:
         if previous_key == key:
             raise _error("semantic_validation", "capability closure contains a duplicate key")
         if previous_key is not None and previous_key > key:
-            raise _error(
-                "semantic_validation", "capability closure is not sorted ascending by key"
-            )
+            raise _error("semantic_validation", "capability closure is not sorted ascending by key")
         previous_key = key
 
 
-def _validate_semantic_contract_manifest(manifest: object) -> tuple[bytes, bytes | None, bytes | None]:
+def _validate_semantic_contract_manifest(
+    manifest: object,
+) -> tuple[bytes, bytes | None, bytes | None]:
     if not isinstance(manifest, dict) or set(manifest) != {
         "rules_contract_id",
         "format_contract_id",
@@ -611,9 +604,7 @@ def calculate_rules_contract_id_v1(manifest: dict[str, object]) -> str:
         authority_value = ["comprehensive_rules", authority["snapshot_id"]]
     closure = manifest["capability_closure"]
     closure_value: PersistenceValue = (
-        None
-        if closure is None
-        else [[entry["key"], entry["version"]] for entry in closure]
+        None if closure is None else [[entry["key"], entry["version"]] for entry in closure]
     )
     payload = encode_canonical(
         [
@@ -644,7 +635,7 @@ def calculate_semantic_contract_id_v1(manifest: dict[str, object]) -> str:
             rules_bytes,
             format_bytes,
             content_bytes,
-    ]
+        ]
     )
     return hashlib.sha256(
         encode_envelope(SEMANTIC_CONTRACT_DOMAIN, SEMANTIC_CONTRACT_INPUT_SCHEMA, payload)

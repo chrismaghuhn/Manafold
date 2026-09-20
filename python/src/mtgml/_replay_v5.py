@@ -146,17 +146,24 @@ class SemanticContractMaterialV5:
         try:
             recomputed_semantic = calculate_semantic_contract_id_v1(self.manifest)
         except PersistenceError as exc:
-            raise WireError("semantic.replay_manifest", "semantic contract manifest is invalid") from exc
+            raise WireError(
+                "semantic.replay_manifest", "semantic contract manifest is invalid"
+            ) from exc
         if recomputed_semantic != self.semantic_contract_id:
             raise WireError("semantic.replay_manifest", "semantic contract id does not match")
         try:
             recomputed_rules = calculate_rules_contract_id_v1(self.rules_manifest)
         except PersistenceError as exc:
-            raise WireError("semantic.replay_manifest", "rules contract manifest is invalid") from exc
+            raise WireError(
+                "semantic.replay_manifest", "rules contract manifest is invalid"
+            ) from exc
         if recomputed_rules != self.manifest["rules_contract_id"]:
             raise WireError("semantic.replay_manifest", "rules contract id does not match")
         manifest = self.manifest
-        if manifest["format_contract_id"] is not None or manifest["content_contract_id"] is not None:
+        if (
+            manifest["format_contract_id"] is not None
+            or manifest["content_contract_id"] is not None
+        ):
             raise WireError(
                 "semantic.replay_manifest", "format/content contract ids must be null in V5"
             )
@@ -348,19 +355,30 @@ class ReplayManifestV5:
             players.append(deck.player)
         _validate_status_for_players(self.initial_identity.episode_status, seen)
         self.semantic_contract.validate()
-        if self.execution_identity.semantic_contract_id != self.semantic_contract.semantic_contract_id:
-            raise WireError("semantic.replay_manifest", "execution identity semantic contract id does not match")
+        if (
+            self.execution_identity.semantic_contract_id
+            != self.semantic_contract.semantic_contract_id
+        ):
+            raise WireError(
+                "semantic.replay_manifest", "execution identity semantic contract id does not match"
+            )
         if self.execution_identity != self.initial_identity.execution_identity:
-            raise WireError("semantic.replay_manifest", "execution identity does not match initial identity")
+            raise WireError(
+                "semantic.replay_manifest", "execution identity does not match initial identity"
+            )
         if (
             self.initial_identity.execution_identity.semantic_contract_id
             != self.semantic_contract.semantic_contract_id
         ):
-            raise WireError("semantic.replay_manifest", "initial identity semantic contract id does not match")
+            raise WireError(
+                "semantic.replay_manifest", "initial identity semantic contract id does not match"
+            )
         rules_authority = self.semantic_contract.rules_manifest["rules_authority"]
         if rules_authority["variant"] == "comprehensive_rules":
             if rules_authority.get("snapshot_id") != self.rules_snapshot:
-                raise WireError("semantic.replay_manifest", "rules snapshot does not match manifest")
+                raise WireError(
+                    "semantic.replay_manifest", "rules snapshot does not match manifest"
+                )
         elif rules_authority["variant"] != "synthetic_legacy":
             raise WireError("semantic.replay_manifest", "unknown rules authority variant")
         self.initial_identity.validate(error_code="semantic.replay_manifest")
@@ -372,7 +390,9 @@ class ReplayManifestV5:
             "decks": [deck.to_wire() for deck in self.decks],
             "engine_build": require_nonempty(self.engine_build, "engine_build"),
             "execution_identity": self.execution_identity.to_wire(),
-            "format_policy_snapshot": require_nonempty(self.format_policy_snapshot, "format_policy_snapshot"),
+            "format_policy_snapshot": require_nonempty(
+                self.format_policy_snapshot, "format_policy_snapshot"
+            ),
             "initial_identity": self.initial_identity.to_wire(),
             "kernel": self.kernel.to_wire(),
             "oracle_snapshot": require_nonempty(self.oracle_snapshot, "oracle_snapshot"),
@@ -487,7 +507,9 @@ class AuthoritativeReplayV5:
             manifest_initial.execution_identity.semantic_contract_id
             != self.manifest.semantic_contract.semantic_contract_id
         ):
-            raise WireError("semantic.replay", "semantic contract id is not consistent across replay")
+            raise WireError(
+                "semantic.replay", "semantic contract id is not consistent across replay"
+            )
         previous = self.manifest.initial_identity
         manifest_players = {deck.player for deck in self.manifest.decks}
         for index, step in enumerate(self.steps):

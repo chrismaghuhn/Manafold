@@ -159,12 +159,12 @@ def parse_call_lines(type_name: str, const_name: str) -> list[str]:
     """
     single = f"    {type_name}::parse({const_name})"
     if len(single) <= 100:
-        return [single, "        .expect(\"generated canonical hex\")"]
+        return [single, '        .expect("generated canonical hex")']
     return [
         f"    {type_name}::parse(",
         f"        {const_name},",
         "    )",
-        "    .expect(\"generated canonical hex\")",
+        '    .expect("generated canonical hex")',
     ]
 
 
@@ -205,9 +205,9 @@ def render_generated(catalog: dict[str, object] | None = None) -> str:
         const_prefix = f"SEMANTIC_CONTRACT_CATALOG_{snake.upper()}"
         lines.append(f"// {entry_id}")
         lines.append(f"pub const {const_prefix}_RULES_CONTRACT_HEX: &str =")
-        lines.append(f"    \"{rules_id}\";")
+        lines.append(f'    "{rules_id}";')
         lines.append(f"pub const {const_prefix}_SEMANTIC_CONTRACT_HEX: &str =")
-        lines.append(f"    \"{semantic_id}\";")
+        lines.append(f'    "{semantic_id}";')
         lines.append("")
         # GENERATED MANIFEST FACTS: the manifest constructors are emitted from
         # the source facts themselves, so the recompute KAT builds its

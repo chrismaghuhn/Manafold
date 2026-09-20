@@ -12,6 +12,7 @@ Exit codes:
     0  — GREEN  (all V5-current tokens present, §23a.1 clean, no residual V4 producers/consumers)
     1  — RED    (one or more violations named in the report)
 """
+
 from __future__ import annotations
 
 import codecs
@@ -82,6 +83,7 @@ V5_CURRENT_TOKENS: list[tuple[str, str, int]] = [
     ("crates/mtgml-environment/src/semantic_catalog_generated.rs", "SemanticContractIdV1", 1),
 ]
 
+
 # ---------------------------------------------------------------------------
 # §23a.1 SyntheticM1RulesKernel site classifier.
 # ---------------------------------------------------------------------------
@@ -98,6 +100,7 @@ class KernelSiteClass:
     FORBIDDEN_TEST_LITERAL = "FORBIDDEN: direct literal in test"
     FORBIDDEN_TOOL_LITERAL = "FORBIDDEN: direct literal in tool"
 
+
 @dataclass
 class KernelFinding:
     path: str
@@ -105,6 +108,7 @@ class KernelFinding:
     text: str
     classification: str
     disposition: str  # "ALLOWED" or "FORBIDDEN"
+
 
 @dataclass
 class KernelResult:
@@ -114,6 +118,7 @@ class KernelResult:
     @property
     def violations(self) -> list[KernelFinding]:
         return [f for f in self.findings if f.disposition == "FORBIDDEN"]
+
 
 # §23a.1 allowed sites — normative list from spec §23a.1 Fix-07:
 # 1. synthetic.rs: struct declaration + trait/inherent impl blocks
@@ -134,66 +139,83 @@ class KernelResult:
 # The regex for construction requires the `ProgramKernelInner::` prefix.
 _KERNEL_PATTERNS: list[tuple[str, str, str]] = [
     # synthetic.rs: declaration and impl blocks only
-    ("crates/mtgml-rules/src/synthetic.rs",
+    (
+        "crates/mtgml-rules/src/synthetic.rs",
         r"^\s*pub struct SyntheticM1RulesKernel\b",
-        KernelSiteClass.ALLOWED_DECLARATION),
-    ("crates/mtgml-rules/src/synthetic.rs",
+        KernelSiteClass.ALLOWED_DECLARATION,
+    ),
+    (
+        "crates/mtgml-rules/src/synthetic.rs",
         r"^\s*impl\s+(RulesKernel for\s+)?SyntheticM1RulesKernel\b",
-        KernelSiteClass.ALLOWED_IMPL),
-
+        KernelSiteClass.ALLOWED_IMPL,
+    ),
     # synthetic/stages.rs: internal child-module import + impl
-    ("crates/mtgml-rules/src/synthetic/stages.rs",
+    (
+        "crates/mtgml-rules/src/synthetic/stages.rs",
         r"^\s*use\s+super::SyntheticM1RulesKernel\b",
-        KernelSiteClass.ALLOWED_CHILD_IMPL),
-    ("crates/mtgml-rules/src/synthetic/stages.rs",
+        KernelSiteClass.ALLOWED_CHILD_IMPL,
+    ),
+    (
+        "crates/mtgml-rules/src/synthetic/stages.rs",
         r"^\s*impl\s+SyntheticM1RulesKernel\b",
-        KernelSiteClass.ALLOWED_CHILD_IMPL),
-
+        KernelSiteClass.ALLOWED_CHILD_IMPL,
+    ),
     # synthetic/runtime.rs: internal child-module import + impl ONLY
-    ("crates/mtgml-rules/src/synthetic/runtime.rs",
+    (
+        "crates/mtgml-rules/src/synthetic/runtime.rs",
         r"^\s*use\s+super::SyntheticM1RulesKernel\b",
-        KernelSiteClass.ALLOWED_CHILD_IMPL),
-    ("crates/mtgml-rules/src/synthetic/runtime.rs",
+        KernelSiteClass.ALLOWED_CHILD_IMPL,
+    ),
+    (
+        "crates/mtgml-rules/src/synthetic/runtime.rs",
         r"^\s*impl\s+SyntheticM1RulesKernel\b",
-        KernelSiteClass.ALLOWED_CHILD_IMPL),
-
+        KernelSiteClass.ALLOWED_CHILD_IMPL,
+    ),
     # synthetic/helpers.rs: internal child-module import + impl ONLY
-    ("crates/mtgml-rules/src/synthetic/helpers.rs",
+    (
+        "crates/mtgml-rules/src/synthetic/helpers.rs",
         r"^\s*use\s+super::SyntheticM1RulesKernel\b",
-        KernelSiteClass.ALLOWED_CHILD_IMPL),
-    ("crates/mtgml-rules/src/synthetic/helpers.rs",
+        KernelSiteClass.ALLOWED_CHILD_IMPL,
+    ),
+    (
+        "crates/mtgml-rules/src/synthetic/helpers.rs",
         r"^\s*impl\s+SyntheticM1RulesKernel\b",
-        KernelSiteClass.ALLOWED_CHILD_IMPL),
-
+        KernelSiteClass.ALLOWED_CHILD_IMPL,
+    ),
     # program_kernel.rs: internal import, enum variant DECLARATION (not
     # construction — the prefix `ProgramKernelInner::` is absent), doc
     # comments, and the single ACTUAL construction.
-    ("crates/mtgml-rules/src/program_kernel.rs",
+    (
+        "crates/mtgml-rules/src/program_kernel.rs",
         r"^\s*use\s+crate::synthetic::\{[^}]*SyntheticM1RulesKernel[^}]*\}",
-        KernelSiteClass.ALLOWED_IMPORT),
-    ("crates/mtgml-rules/src/program_kernel.rs",
+        KernelSiteClass.ALLOWED_IMPORT,
+    ),
+    (
+        "crates/mtgml-rules/src/program_kernel.rs",
         r"^\s*use\s+crate::synthetic::.*SyntheticM1RulesKernel",
-        KernelSiteClass.ALLOWED_IMPORT),
+        KernelSiteClass.ALLOWED_IMPORT,
+    ),
     # Enum variant declaration: `    SyntheticLegacy(SyntheticM1RulesKernel),`
     # This is NOT a construction — it defines the variant's payload type.
-    ("crates/mtgml-rules/src/program_kernel.rs",
+    (
+        "crates/mtgml-rules/src/program_kernel.rs",
         r"^\s*SyntheticLegacy\(SyntheticM1RulesKernel\)\s*,?\s*$",
-        KernelSiteClass.ALLOWED_DECLARATION),
+        KernelSiteClass.ALLOWED_DECLARATION,
+    ),
     # Doc comment references
-    ("crates/mtgml-rules/src/program_kernel.rs",
-        r"^\s*//.*",
-        KernelSiteClass.ALLOWED_DOC),
+    ("crates/mtgml-rules/src/program_kernel.rs", r"^\s*//.*", KernelSiteClass.ALLOWED_DOC),
     # The single ACTUAL construction:
     # `... ProgramKernelInner::SyntheticLegacy(SyntheticM1RulesKernel) ...`
-    ("crates/mtgml-rules/src/program_kernel.rs",
+    (
+        "crates/mtgml-rules/src/program_kernel.rs",
         r"ProgramKernelInner::SyntheticLegacy\(SyntheticM1RulesKernel\)",
-        KernelSiteClass.ALLOWED_CONSTRUCTION),
+        KernelSiteClass.ALLOWED_CONSTRUCTION,
+    ),
 ]
 
 # lib.rs: any SyntheticM1RulesKernel re-export is FORBIDDEN.
-_KERNEL_LIB_REEXPORT = re.compile(
-    r"^\s*pub\s+use\s+.*SyntheticM1RulesKernel"
-)
+_KERNEL_LIB_REEXPORT = re.compile(r"^\s*pub\s+use\s+.*SyntheticM1RulesKernel")
+
 
 def classify_kernel_site(rel_path: str, line: int, text: str) -> tuple[str, str] | None:
     """Return (classification, disposition) or None if not a kernel site.
@@ -228,9 +250,7 @@ def classify_kernel_site(rel_path: str, line: int, text: str) -> tuple[str, str]
 
     # --- Any remaining reference is FORBIDDEN ---
     is_test = (
-        "/tests/" in norm_path
-        or norm_path.endswith("_test.rs")
-        or norm_path.endswith("_red.rs")
+        "/tests/" in norm_path or norm_path.endswith("_test.rs") or norm_path.endswith("_red.rs")
     )
     is_tool = norm_path.startswith("tools/")
 
@@ -243,6 +263,7 @@ def classify_kernel_site(rel_path: str, line: int, text: str) -> tuple[str, str]
     if is_tool:
         return KernelSiteClass.FORBIDDEN_TOOL_LITERAL, "FORBIDDEN"
     return KernelSiteClass.FORBIDDEN_LITERAL, "FORBIDDEN"
+
 
 def scan_kernel_sites() -> KernelResult:
     result = KernelResult()
@@ -270,25 +291,32 @@ def scan_kernel_sites() -> KernelResult:
                 classification = classify_kernel_site(rel_path, lineno, line)
                 if classification is not None:
                     classification_str, disposition = classification
-                    if disposition == "ALLOWED" and classification_str == KernelSiteClass.ALLOWED_CONSTRUCTION:
+                    if (
+                        disposition == "ALLOWED"
+                        and classification_str == KernelSiteClass.ALLOWED_CONSTRUCTION
+                    ):
                         result.construction_count += 1
-                    result.findings.append(KernelFinding(
-                        path=rel_path,
-                        line=lineno,
-                        text=line.rstrip()[:120],
-                        classification=classification_str,
-                        disposition=disposition,
-                    ))
+                    result.findings.append(
+                        KernelFinding(
+                            path=rel_path,
+                            line=lineno,
+                            text=line.rstrip()[:120],
+                            classification=classification_str,
+                            disposition=disposition,
+                        )
+                    )
 
     # §23a.1: exactly ONE ProgramKernelInner construction is allowed.
     if result.construction_count != 1:
-        result.findings.append(KernelFinding(
-            path="<global>",
-            line=0,
-            text="ProgramKernelInner::SyntheticLegacy(SyntheticM1RulesKernel) construction count",
-            classification="MUST HAVE EXACTLY 1 CONSTRUCTION",
-            disposition="FORBIDDEN",
-        ))
+        result.findings.append(
+            KernelFinding(
+                path="<global>",
+                line=0,
+                text="ProgramKernelInner::SyntheticLegacy(SyntheticM1RulesKernel) construction count",
+                classification="MUST HAVE EXACTLY 1 CONSTRUCTION",
+                disposition="FORBIDDEN",
+            )
+        )
 
     return result
 
@@ -331,113 +359,10 @@ V4_MIGRATION_TOKENS: tuple[str, ...] = (
 )
 
 # RETAIN rows: V4 tokens permitted here (HISTORICAL_VERIFIER / FROZEN_FIXTURE /
-# DOC_HISTORY disposition per §22). Each entry: (rel_path_prefix, token_subset_or_empty).
+# DOC_HISTORY disposition per §22).  Each entry: (rel_path, token_subset_or_empty).
 # Empty tuple means ALL V4 migration tokens are retained at this site.
-V4_RETAIN_RULES: list[tuple[str, tuple[str, ...]]] = [
-    # Checkpoint V4 retained for historical validation only (§17 writer posture)
-    ("crates/mtgml-environment/src/checkpoint.rs", ()),
-    # Integration test files using V4 for RED/historical evidence (FROZEN_FIXTURE)
-    ("crates/mtgml-environment/tests/checkpoint_v5_red.rs", ("EnvironmentCheckpointV4",
-        "environment-checkpoint.v4")),
-    ("crates/mtgml-environment/tests/p0_red.rs", ()),
-    ("crates/mtgml-rules/tests/p0_red.rs", ()),
-    # V4 replay types retained as historical (READABLE_VERIFIABLE_ONLY)
-    ("crates/mtgml-replay/src/v4.rs", ()),
-    ("crates/mtgml-replay/src/v3.rs", ()),
-    ("crates/mtgml-replay/src/v2.rs", ()),
-    ("crates/mtgml-replay/src/v1.rs", ()),
-    ("crates/mtgml-replay/src/identity.rs", ()),  # ReplaySchemaVersionsV4 + V1 historical
-    ("crates/mtgml-replay/tests/p0_red.rs", ()),
-    ("crates/mtgml-replay/tests/replay_v5_red.rs", ("calculate_checkpoint_digest_v4",
-        "InitialEnvironmentIdentityV4")),
-    ("crates/mtgml-replay/tests/gen_v5_fixtures.rs", ("replay-manifest.v4",)),
-    # Wire dispatch for V4 fixtures (HISTORICAL_VERIFIER — V4 decoder retained)
-    ("crates/mtgml-wire/src/fixtures.rs", ()),
-    ("crates/mtgml-wire/src/lib.rs", ()),
-    ("crates/mtgml-replay/src/lib.rs", (
-        "AuthoritativeReplayV4",
-        "InitialEnvironmentIdentityV4",
-        "ReplayManifestV4",
-        "ReplayRecorderV4",
-        "ReplayStepV4",
-        "REPLAY_FILE_SCHEMA_V4",
-        "REPLAY_MANIFEST_SCHEMA_V4",
-        "REPLAY_STEP_SCHEMA_V4",
-        "ReplaySchemaVersionsV4",
-    )),  # V4 pub use re-exports (historical verifier)
-    ("crates/mtgml-wire/src/replay.rs", (
-        "AuthoritativeReplayV4",
-        "ReplayManifestV4",
-    )),  # V4 WireContract impls (historical verifier)
-    # V4 digest newtype retained in model (CheckpointDigestV4 is historical verifier)
-    ("crates/mtgml-model/src/lib.rs", ()),
-    ("crates/mtgml-model/tests/p0_red.rs", ()),
-    # V4 persistence functions retained for historical digest recompute
-    ("crates/mtgml-persistence/src/checkpoint_digest.rs", ()),
-    ("crates/mtgml-persistence/tests/p0_red.rs", ()),
-    # Python V4 persistence/replay retained as historical
-    ("python/src/mtgml/persistence.py", ()),
-    ("python/src/mtgml/_replay_v4.py", ()),
-    ("python/src/mtgml/replay.py", (
-        "CHECKPOINT_CODEC_ID_V4",
-        "REPLAY_FILE_SCHEMA_V4",
-        "REPLAY_MANIFEST_SCHEMA_V4",
-        "REPLAY_STEP_SCHEMA_V4",
-        "AuthoritativeReplayV4",
-        "InitialEnvironmentIdentityV4",
-        "ReplayManifestV4",
-        "ReplaySchemaVersionsV4",
-        "ReplayStepV4",
-        "calculate_checkpoint_digest_v4",
-    )),  # V4 re-exports (historical verifier)
-    ("python/src/mtgml/wire.py", (
-        "AuthoritativeReplayV4",
-        "ReplayManifestV4",
-        "replay-manifest.v4",
-        "authoritative-replay.v4",
-    )),  # V4 decoder dispatch (historical verifier)
-    ("python/src/mtgml/__init__.py", (
-        "AuthoritativeReplayV4",
-        "InitialEnvironmentIdentityV4",
-        "ReplayManifestV4",
-        "ReplaySchemaVersionsV4",
-        "ReplayStepV4",
-    )),  # V4 re-exports (historical verifier)
-    # Frozen P0/M2-era Python test evidence (FROZEN_FIXTURE / DOC_HISTORY)
-    ("python/tests/test_p0_red.py", ()),
-    ("python/tests/test_m3_p0_green03.py", ()),
-    ("python/tests/test_schema_parity.py", ("replay-manifest.v4", "authoritative-replay.v4")),
-    # Schema inventory lists V4 schema filenames (DOC_HISTORY)
-    ("schemas/README.json", ()),
-    ("schemas/replay-manifest.v4.schema.json", ()),
-    ("schemas/authoritative-replay.v4.schema.json", ()),
-    # Wire golden/negative fixtures: only V4 schema filename strings appear here
-    # (DOC_HISTORY / FROZEN_FIXTURE). V4 type names in wire fixtures are FORBIDDEN.
-    ("wire/golden/authoritative-replay-empty.v4.json", ("replay-manifest.v4", "authoritative-replay.v4", "replay-step.v4")),
-    ("wire/golden/manifest.json", ("replay-manifest.v4", "authoritative-replay.v4")),
-    ("wire/golden/replay-manifest.v4.json", ("replay-manifest.v4", "replay-step.v4")),
-    ("wire/negative/authoritative-replay-v4-wrong-schema.json", ("replay-manifest.v4", "replay-step.v4")),
-    ("wire/negative/manifest.json", ("replay-manifest.v4", "authoritative-replay.v4")),
-    ("wire/negative/replay-manifest-v5-wrong-schema.json", ("replay-manifest.v4",)),
-    ("wire/negative/replay-v4-m2-payload-codec.json", ("replay-manifest.v4", "replay-step.v4")),
-    ("wire/negative/replay-v4-unknown-field.json", ("replay-manifest.v4", "replay-step.v4")),
-    ("wire/negative/replay-v4-v3-checkpoint-digest.json", ("replay-manifest.v4", "replay-step.v4")),
-    ("wire/negative/replay-v4-wrong-rng.json", ("replay-manifest.v4", "replay-step.v4")),
-    ("wire/negative/replay-v4-wrong-replay-step.json", ("replay-manifest.v4",)),
-    ("wire/negative/replay-v4-wrong-schema.json", ("replay-step.v4",)),
-    # Historical scripts (DOC_HISTORY / HISTORICAL_VERIFIER)
-    ("scripts/run_m1_closure.py", ()),
-    ("scripts/run_m2_final_closure.py", ()),
-    ("scripts/run_m2_h_gates.py", ()),
-    ("scripts/validate_schemas.py", ()),
-    # The gate script itself contains V4 vocabulary as detection patterns
-    ("scripts/run_v5_execution_identity_gate.py", ()),
-    # Documentation files referencing V4 as historical context (DOC_HISTORY)
-    ("docs/adr/0054-m3-pre-t0-hardening.md", ()),
-    ("docs/adr/0055-v5-execution-identity.md", ()),
-    ("docs/superpowers/specs/2026-09-16-m3-p0-state-identity-cut-design.md", ()),
-    ("docs/superpowers/specs/2026-09-18-v5-execution-identity-implementation-design.md", ()),
-]
+# This is the single authoritative definition (see also the structural guard
+# at the bottom of this file asserting exactly one V4_RETAIN_RULES).
 
 # CURRENT_PRODUCER sites: V4 tokens here are VIOLATIONS.
 # These are the production checkpoint/replay construction paths that must
@@ -466,8 +391,10 @@ V4_RETAIN_RULES: list[tuple[str, tuple[str, ...]]] = [
     # Checkpoint V4 retained for historical validation only (§17 writer posture)
     ("crates/mtgml-environment/src/checkpoint.rs", ()),
     # Integration test files using V4 for RED/historical evidence (FROZEN_FIXTURE)
-    ("crates/mtgml-environment/tests/checkpoint_v5_red.rs", ("EnvironmentCheckpointV4",
-        "environment-checkpoint.v4")),
+    (
+        "crates/mtgml-environment/tests/checkpoint_v5_red.rs",
+        ("EnvironmentCheckpointV4", "environment-checkpoint.v4"),
+    ),
     ("crates/mtgml-environment/tests/p0_red.rs", ()),
     ("crates/mtgml-rules/tests/p0_red.rs", ()),
     # V4 replay types retained as historical (READABLE_VERIFIABLE_ONLY)
@@ -477,27 +404,35 @@ V4_RETAIN_RULES: list[tuple[str, tuple[str, ...]]] = [
     ("crates/mtgml-replay/src/v1.rs", ()),
     ("crates/mtgml-replay/src/identity.rs", ()),  # ReplaySchemaVersionsV4 + V1 historical
     ("crates/mtgml-replay/tests/p0_red.rs", ()),
-    ("crates/mtgml-replay/tests/replay_v5_red.rs", ("calculate_checkpoint_digest_v4",
-        "InitialEnvironmentIdentityV4")),
+    (
+        "crates/mtgml-replay/tests/replay_v5_red.rs",
+        ("calculate_checkpoint_digest_v4", "InitialEnvironmentIdentityV4"),
+    ),
     ("crates/mtgml-replay/tests/gen_v5_fixtures.rs", ("replay-manifest.v4",)),
     # Wire dispatch for V4 fixtures (HISTORICAL_VERIFIER — V4 decoder retained)
     ("crates/mtgml-wire/src/fixtures.rs", ()),
     ("crates/mtgml-wire/src/lib.rs", ()),
-    ("crates/mtgml-replay/src/lib.rs", (
-        "AuthoritativeReplayV4",
-        "InitialEnvironmentIdentityV4",
-        "ReplayManifestV4",
-        "ReplayRecorderV4",
-        "ReplayStepV4",
-        "REPLAY_FILE_SCHEMA_V4",
-        "REPLAY_MANIFEST_SCHEMA_V4",
-        "REPLAY_STEP_SCHEMA_V4",
-        "ReplaySchemaVersionsV4",
-    )),  # V4 pub use re-exports (historical verifier)
-    ("crates/mtgml-wire/src/replay.rs", (
-        "AuthoritativeReplayV4",
-        "ReplayManifestV4",
-    )),  # V4 WireContract impls (historical verifier)
+    (
+        "crates/mtgml-replay/src/lib.rs",
+        (
+            "AuthoritativeReplayV4",
+            "InitialEnvironmentIdentityV4",
+            "ReplayManifestV4",
+            "ReplayRecorderV4",
+            "ReplayStepV4",
+            "REPLAY_FILE_SCHEMA_V4",
+            "REPLAY_MANIFEST_SCHEMA_V4",
+            "REPLAY_STEP_SCHEMA_V4",
+            "ReplaySchemaVersionsV4",
+        ),
+    ),  # V4 pub use re-exports (historical verifier)
+    (
+        "crates/mtgml-wire/src/replay.rs",
+        (
+            "AuthoritativeReplayV4",
+            "ReplayManifestV4",
+        ),
+    ),  # V4 WireContract impls (historical verifier)
     # V4 digest newtype retained in model (CheckpointDigestV4 is historical verifier)
     ("crates/mtgml-model/src/lib.rs", ()),
     ("crates/mtgml-model/tests/p0_red.rs", ()),
@@ -507,31 +442,40 @@ V4_RETAIN_RULES: list[tuple[str, tuple[str, ...]]] = [
     # Python V4 persistence/replay retained as historical
     ("python/src/mtgml/persistence.py", ()),
     ("python/src/mtgml/_replay_v4.py", ()),
-    ("python/src/mtgml/replay.py", (
-        "CHECKPOINT_CODEC_ID_V4",
-        "REPLAY_FILE_SCHEMA_V4",
-        "REPLAY_MANIFEST_SCHEMA_V4",
-        "REPLAY_STEP_SCHEMA_V4",
-        "AuthoritativeReplayV4",
-        "InitialEnvironmentIdentityV4",
-        "ReplayManifestV4",
-        "ReplaySchemaVersionsV4",
-        "ReplayStepV4",
-        "calculate_checkpoint_digest_v4",
-    )),  # V4 re-exports (historical verifier)
-    ("python/src/mtgml/wire.py", (
-        "AuthoritativeReplayV4",
-        "ReplayManifestV4",
-        "replay-manifest.v4",
-        "authoritative-replay.v4",
-    )),  # V4 decoder dispatch (historical verifier)
-    ("python/src/mtgml/__init__.py", (
-        "AuthoritativeReplayV4",
-        "InitialEnvironmentIdentityV4",
-        "ReplayManifestV4",
-        "ReplaySchemaVersionsV4",
-        "ReplayStepV4",
-    )),  # V4 re-exports (historical verifier)
+    (
+        "python/src/mtgml/replay.py",
+        (
+            "CHECKPOINT_CODEC_ID_V4",
+            "REPLAY_FILE_SCHEMA_V4",
+            "REPLAY_MANIFEST_SCHEMA_V4",
+            "REPLAY_STEP_SCHEMA_V4",
+            "AuthoritativeReplayV4",
+            "InitialEnvironmentIdentityV4",
+            "ReplayManifestV4",
+            "ReplaySchemaVersionsV4",
+            "ReplayStepV4",
+            "calculate_checkpoint_digest_v4",
+        ),
+    ),  # V4 re-exports (historical verifier)
+    (
+        "python/src/mtgml/wire.py",
+        (
+            "AuthoritativeReplayV4",
+            "ReplayManifestV4",
+            "replay-manifest.v4",
+            "authoritative-replay.v4",
+        ),
+    ),  # V4 decoder dispatch (historical verifier)
+    (
+        "python/src/mtgml/__init__.py",
+        (
+            "AuthoritativeReplayV4",
+            "InitialEnvironmentIdentityV4",
+            "ReplayManifestV4",
+            "ReplaySchemaVersionsV4",
+            "ReplayStepV4",
+        ),
+    ),  # V4 re-exports (historical verifier)
     # Frozen P0/M2-era Python test evidence (FROZEN_FIXTURE / DOC_HISTORY)
     ("python/tests/test_p0_red.py", ()),
     ("python/tests/test_m3_p0_green03.py", ()),
@@ -544,10 +488,16 @@ V4_RETAIN_RULES: list[tuple[str, tuple[str, ...]]] = [
     ("schemas/authoritative-replay.v4.schema.json", ()),
     # Wire golden/negative fixtures: only V4 schema filename strings appear here
     # (DOC_HISTORY / FROZEN_FIXTURE). V4 type names in wire fixtures are FORBIDDEN.
-    ("wire/golden/authoritative-replay-empty.v4.json", ("replay-manifest.v4", "authoritative-replay.v4", "replay-step.v4")),
+    (
+        "wire/golden/authoritative-replay-empty.v4.json",
+        ("replay-manifest.v4", "authoritative-replay.v4", "replay-step.v4"),
+    ),
     ("wire/golden/manifest.json", ("replay-manifest.v4", "authoritative-replay.v4")),
     ("wire/golden/replay-manifest.v4.json", ("replay-manifest.v4", "replay-step.v4")),
-    ("wire/negative/authoritative-replay-v4-wrong-schema.json", ("replay-manifest.v4", "replay-step.v4")),
+    (
+        "wire/negative/authoritative-replay-v4-wrong-schema.json",
+        ("replay-manifest.v4", "replay-step.v4"),
+    ),
     ("wire/negative/manifest.json", ("replay-manifest.v4", "authoritative-replay.v4")),
     ("wire/negative/replay-manifest-v5-wrong-schema.json", ("replay-manifest.v4",)),
     ("wire/negative/replay-v4-m2-payload-codec.json", ("replay-manifest.v4", "replay-step.v4")),
@@ -576,17 +526,22 @@ V4_RETAIN_RULES: list[tuple[str, tuple[str, ...]]] = [
     ("docs/maintenance/API_LIFECYCLE.md", ()),
 ]
 
+
 @dataclass
 class V4Finding:
     path: str
     line: int
     text: str
     token: str
-    disposition: str  # CURRENT_PRODUCER, CURRENT_CONSUMER, HISTORICAL_VERIFIER, FROZEN_FIXTURE, etc.
+    disposition: (
+        str  # CURRENT_PRODUCER, CURRENT_CONSUMER, HISTORICAL_VERIFIER, FROZEN_FIXTURE, etc.
+    )
+
 
 @dataclass
 class V4Result:
     violations: list[V4Finding] = field(default_factory=list)
+
 
 def _path_matches_rules(rel_path: str) -> tuple[str, ...] | None:
     """Check if this path matches any RETAIN rule. Returns the token tuple (empty = all)."""
@@ -631,7 +586,15 @@ V4_CURRENT_CONSUMER_SITES: set[str] = {
 
 def census_v4() -> V4Result:
     result = V4Result()
-    scan_dirs = [ROOT / "crates", ROOT / "tools", ROOT / "python", ROOT / "schemas", ROOT / "wire", ROOT / "scripts", ROOT / "docs"]
+    scan_dirs = [
+        ROOT / "crates",
+        ROOT / "tools",
+        ROOT / "python",
+        ROOT / "schemas",
+        ROOT / "wire",
+        ROOT / "scripts",
+        ROOT / "docs",
+    ]
     for src_dir in scan_dirs:
         if not src_dir.exists():
             continue
@@ -658,41 +621,76 @@ def census_v4() -> V4Result:
                             elif token in retain_tokens:
                                 continue
                             else:
-                                result.violations.append(V4Finding(
-                                    path=rel_path, line=lineno, text=line.rstrip()[:120], token=token,
-                                    disposition="HISTORICAL_VERIFIER (token not in retain set)",
-                                ))
+                                result.violations.append(
+                                    V4Finding(
+                                        path=rel_path,
+                                        line=lineno,
+                                        text=line.rstrip()[:120],
+                                        token=token,
+                                        disposition="HISTORICAL_VERIFIER (token not in retain set)",
+                                    )
+                                )
                                 continue
                         elif rel_path in V4_STALE_FILES:
-                            result.violations.append(V4Finding(
-                                path=rel_path, line=lineno, text=line.rstrip()[:120], token=token,
-                                disposition=V4_STALE_FILES[rel_path],
-                            ))
+                            result.violations.append(
+                                V4Finding(
+                                    path=rel_path,
+                                    line=lineno,
+                                    text=line.rstrip()[:120],
+                                    token=token,
+                                    disposition=V4_STALE_FILES[rel_path],
+                                )
+                            )
                         elif rel_path in V4_CURRENT_PRODUCER_SITES:
-                            result.violations.append(V4Finding(
-                                path=rel_path, line=lineno, text=line.rstrip()[:120], token=token,
-                                disposition="CURRENT_PRODUCER -> MUST MIGRATE TO V5",
-                            ))
+                            result.violations.append(
+                                V4Finding(
+                                    path=rel_path,
+                                    line=lineno,
+                                    text=line.rstrip()[:120],
+                                    token=token,
+                                    disposition="CURRENT_PRODUCER -> MUST MIGRATE TO V5",
+                                )
+                            )
                         elif rel_path in V4_CURRENT_CONSUMER_SITES:
-                            result.violations.append(V4Finding(
-                                path=rel_path, line=lineno, text=line.rstrip()[:120], token=token,
-                                disposition="CURRENT_CONSUMER -> MUST MIGRATE TO V5",
-                            ))
+                            result.violations.append(
+                                V4Finding(
+                                    path=rel_path,
+                                    line=lineno,
+                                    text=line.rstrip()[:120],
+                                    token=token,
+                                    disposition="CURRENT_CONSUMER -> MUST MIGRATE TO V5",
+                                )
+                            )
                         elif rel_path.startswith("crates/mtgml-environment/src/tests/"):
-                            result.violations.append(V4Finding(
-                                path=rel_path, line=lineno, text=line.rstrip()[:120], token=token,
-                                disposition="CURRENT_CONSUMER -> MUST MIGRATE TO V5 (src/tests/)",
-                            ))
+                            result.violations.append(
+                                V4Finding(
+                                    path=rel_path,
+                                    line=lineno,
+                                    text=line.rstrip()[:120],
+                                    token=token,
+                                    disposition="CURRENT_CONSUMER -> MUST MIGRATE TO V5 (src/tests/)",
+                                )
+                            )
                         elif rel_path == "crates/mtgml-environment/src/tests.rs":
-                            result.violations.append(V4Finding(
-                                path=rel_path, line=lineno, text=line.rstrip()[:120], token=token,
-                                disposition="CURRENT_CONSUMER -> MUST MIGRATE TO V5 (tests.rs)",
-                            ))
+                            result.violations.append(
+                                V4Finding(
+                                    path=rel_path,
+                                    line=lineno,
+                                    text=line.rstrip()[:120],
+                                    token=token,
+                                    disposition="CURRENT_CONSUMER -> MUST MIGRATE TO V5 (tests.rs)",
+                                )
+                            )
                         else:
-                            result.violations.append(V4Finding(
-                                path=rel_path, line=lineno, text=line.rstrip()[:120], token=token,
-                                disposition="UNKNOWN_SITE -> review required",
-                            ))
+                            result.violations.append(
+                                V4Finding(
+                                    path=rel_path,
+                                    line=lineno,
+                                    text=line.rstrip()[:120],
+                                    token=token,
+                                    disposition="UNKNOWN_SITE -> review required",
+                                )
+                            )
     return result
 
 
@@ -747,6 +745,20 @@ def main() -> None:
     print(f"  - V5 current tokens: {len(V5_CURRENT_TOKENS)} verified")
     print(f"  - §23a.1 kernel sites: {len(kernel_result.findings)} checked, 0 forbidden")
     print(f"  - §22 residual-V4 census: 0 current-producer/consumer violations")
+
+
+# Structural guard: V4_RETAIN_RULES must have exactly one authoritative
+# definition.  A duplicated/shadowed definition silently overrides the
+# first one and produces a validation-drift trap for future maintainers.
+_retain_rule_count = 0
+for _line in Path(__file__).read_text(encoding="utf-8").splitlines():
+    if _line.strip().startswith("V4_RETAIN_RULES: list[tuple"):
+        _retain_rule_count += 1
+if _retain_rule_count != 1:
+    fail(
+        f"V4_RETAIN_RULES must have exactly one authoritative definition; "
+        f"found {_retain_rule_count}"
+    )
 
 
 if __name__ == "__main__":

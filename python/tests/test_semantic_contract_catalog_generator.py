@@ -35,7 +35,9 @@ from mtgml.persistence import (  # noqa: E402
 def load_generator_module():
     if not GENERATOR_PATH.is_file():
         raise FileNotFoundError(f"generator script is absent: {GENERATOR_PATH}")
-    spec = importlib.util.spec_from_file_location("generate_semantic_contract_catalog", GENERATOR_PATH)
+    spec = importlib.util.spec_from_file_location(
+        "generate_semantic_contract_catalog", GENERATOR_PATH
+    )
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
@@ -105,7 +107,9 @@ class GeneratorEmitTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as scratch:
             target = Path(scratch) / "generated.rs"
             module.write_generated(target, module.render_generated())
-            stale = target.read_text(encoding="utf-8").replace("semantic_contract", "semantic_contract_stale", 1)
+            stale = target.read_text(encoding="utf-8").replace(
+                "semantic_contract", "semantic_contract_stale", 1
+            )
             target.write_text(stale, encoding="utf-8")
             self.assertNotEqual(module.check_paths([target]), 0)
 
@@ -236,9 +240,7 @@ class NegativeEvidenceTests(unittest.TestCase):
                 "variant": "comprehensive_rules",
                 "snapshot_id": "CR-BASELINE",
             },
-            "capability_closure": [
-                {"key": "rules/synthetic-transition", "version": "1.0.0"}
-            ],
+            "capability_closure": [{"key": "rules/synthetic-transition", "version": "1.0.0"}],
             "format_contract_id": None,
             "content_contract_id": None,
         }
@@ -310,7 +312,9 @@ class NegativeEvidenceTests(unittest.TestCase):
         self.assertIn("RulesAuthorityV1::ComprehensiveRules", text)
         self.assertIn("capability_closure: Some(vec![", text)
         self.assertIn("hypothetical_magic_rules_manifest", text)
-        with self.assertRaises(SystemExit, msg="production policy must refuse a valid ComprehensiveRules entry"):
+        with self.assertRaises(
+            SystemExit, msg="production policy must refuse a valid ComprehensiveRules entry"
+        ):
             module.assert_production_policy(comprehensive)
 
     def test_production_policy_accepts_current_source(self) -> None:
