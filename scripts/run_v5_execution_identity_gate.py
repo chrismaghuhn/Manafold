@@ -337,18 +337,10 @@ V4_RETAIN_RULES: list[tuple[str, tuple[str, ...]]] = [
     # Checkpoint V4 retained for historical validation only (§17 writer posture)
     ("crates/mtgml-environment/src/checkpoint.rs", ()),
     # Integration test files using V4 for RED/historical evidence (FROZEN_FIXTURE)
-    ("crates/mtgml-environment/tests/checkpoint_v5_red.rs", ()),
+    ("crates/mtgml-environment/tests/checkpoint_v5_red.rs", ("EnvironmentCheckpointV4",
+        "environment-checkpoint.v4")),
     ("crates/mtgml-environment/tests/p0_red.rs", ()),
     ("crates/mtgml-rules/tests/p0_red.rs", ()),
-    ("crates/mtgml-rules/tests/program_kernel_red.rs", ("ReplayStepV4",
-        "EnvironmentCheckpointV4", "ReplayRecorderV4", "ReplayManifestV4",
-        "ReplaySchemaVersionsV4", "InitialEnvironmentIdentityV4",
-        "AuthoritativeReplayV4", "CheckpointDigestV4",
-        "calculate_checkpoint_digest_v4", "REPLAY_FILE_SCHEMA_V4",
-        "REPLAY_MANIFEST_SCHEMA_V4", "REPLAY_STEP_SCHEMA_V4",
-        "CHECKPOINT_CODEC_ID_V4", "CHECKPOINT_CODEC_SEMANTIC_VERSION_V4",
-        "replay-manifest.v4", "authoritative-replay.v4", "replay-step.v4",
-        "environment-checkpoint.v4", "environment-checkpoint-digest-input.v4")),
     # V4 replay types retained as historical (READABLE_VERIFIABLE_ONLY)
     ("crates/mtgml-replay/src/v4.rs", ()),
     ("crates/mtgml-replay/src/v3.rs", ()),
@@ -356,7 +348,8 @@ V4_RETAIN_RULES: list[tuple[str, tuple[str, ...]]] = [
     ("crates/mtgml-replay/src/v1.rs", ()),
     ("crates/mtgml-replay/src/identity.rs", ()),  # ReplaySchemaVersionsV4 + V1 historical
     ("crates/mtgml-replay/tests/p0_red.rs", ()),
-    ("crates/mtgml-replay/tests/replay_v5_red.rs", ()),
+    ("crates/mtgml-replay/tests/replay_v5_red.rs", ("calculate_checkpoint_digest_v4",
+        "InitialEnvironmentIdentityV4")),
     ("crates/mtgml-replay/tests/gen_v5_fixtures.rs", ("replay-manifest.v4",)),
     # Wire dispatch for V4 fixtures (HISTORICAL_VERIFIER — V4 decoder retained)
     ("crates/mtgml-wire/src/fixtures.rs", ()),
@@ -370,7 +363,6 @@ V4_RETAIN_RULES: list[tuple[str, tuple[str, ...]]] = [
     # Python V4 persistence/replay retained as historical
     ("python/src/mtgml/persistence.py", ()),
     ("python/src/mtgml/_replay_v4.py", ()),
-    ("python/src/mtgml/_replay_v5.py", ("CHECKPOINT_CODEC_ID_V4",)),
     # Frozen P0/M2-era Python test evidence (FROZEN_FIXTURE / DOC_HISTORY)
     ("python/tests/test_p0_red.py", ()),
     ("python/tests/test_m3_p0_green03.py", ()),
