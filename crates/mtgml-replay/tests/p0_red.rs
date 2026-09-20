@@ -4,7 +4,7 @@ use mtgml_model::{
     CheckpointCodecIdentity, ContentDigest, EnvironmentLimitCounters, EpisodeStatus,
     FullStateDigestV4, PlayerId, StateRevision,
 };
-use mtgml_replay::v4::{
+use mtgml_replay::{
     AuthoritativeReplayV4, InitialEnvironmentIdentityV4, ReplayManifestV4, ReplayRecorderV4,
     ReplaySchemaVersionsV4, ReplayStepV4, REPLAY_FILE_SCHEMA_V4, REPLAY_MANIFEST_SCHEMA_V4,
     REPLAY_STEP_SCHEMA_V4,

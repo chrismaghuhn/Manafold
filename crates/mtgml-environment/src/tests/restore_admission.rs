@@ -290,6 +290,124 @@ fn controller_restore_rejects_incompatible_state_without_mutation() {
     assert_eq!(controller.export_replay().unwrap(), before_replay);
 }
 
+#[test]
+fn controller_restore_rejects_semantic_contract_digest_mismatch_without_mutation() {
+    let wrong_id = SemanticContractIdV1::from_digest_bytes([0xab; 32]);
+    let entry = CatalogEntry {
+        semantic_contract_id: wrong_id.clone(),
+        manifest: synthetic_legacy_default_semantic_manifest(),
+        rules_manifest: synthetic_legacy_default_rules_manifest(),
+    };
+    let catalog = RuntimeSemanticCatalog::from_entries(vec![entry]);
+
+    let controller = TrustedEnvironmentController::new(backend());
+    let before_checkpoint = controller.checkpoint().unwrap();
+    let before_replay = controller.export_replay().unwrap();
+
+    let identity = ExecutionIdentityV1 {
+        program_kind: ExecutionProgramV1::SyntheticRulesCompat,
+        semantic_contract_id: wrong_id,
+    };
+    let checkpoint = valid_v5_checkpoint(identity);
+    let result = controller.restore_with_catalog(checkpoint, catalog);
+    assert!(matches!(
+        result,
+        Err(ControllerError::CheckpointValidation(
+            CheckpointValidationError::SemanticContractDigestMismatch
+        ))
+    ));
+    assert_eq!(controller.checkpoint().unwrap(), before_checkpoint);
+    assert_eq!(controller.export_replay().unwrap(), before_replay);
+}
+
+#[test]
+fn controller_restore_rejects_rules_contract_digest_mismatch_without_mutation() {
+    let _wrong_id = SemanticContractIdV1::from_digest_bytes([0xcd; 32]);
+    let cr_rules_manifest = RulesContractManifestV1 {
+        rules_authority: RulesAuthorityV1::ComprehensiveRules {
+            snapshot_id: "test-cr-2026-01-01".to_string(),
+        },
+        capability_closure: Some(vec![CapabilityRequirementV1 {
+            key: "rules/test".to_string(),
+            version: "1.0.0".to_string(),
+        }]),
+    };
+    let cr_rules_id = calculate_rules_contract_id_v1(&cr_rules_manifest).unwrap();
+    let cr_manifest = SemanticContractManifestV1 {
+        rules_contract_id: cr_rules_id,
+        format_contract_id: None,
+        content_contract_id: None,
+    };
+    let cr_semantic_id = calculate_semantic_contract_id_v1(&cr_manifest).unwrap();
+
+    let entry = CatalogEntry {
+        semantic_contract_id: cr_semantic_id.clone(),
+        manifest: cr_manifest,
+        rules_manifest: synthetic_legacy_default_rules_manifest(),
+    };
+    let catalog = RuntimeSemanticCatalog::from_entries(vec![entry]);
+
+    let controller = TrustedEnvironmentController::new(backend());
+    let before_checkpoint = controller.checkpoint().unwrap();
+    let before_replay = controller.export_replay().unwrap();
+
+    let identity = ExecutionIdentityV1 {
+        program_kind: ExecutionProgramV1::MagicRules,
+        semantic_contract_id: cr_semantic_id,
+    };
+    let checkpoint = valid_v5_checkpoint(identity);
+    let result = controller.restore_with_catalog(checkpoint, catalog);
+    assert!(matches!(
+        result,
+        Err(ControllerError::CheckpointValidation(
+            CheckpointValidationError::RulesContractDigestMismatch
+        ))
+    ));
+    assert_eq!(controller.checkpoint().unwrap(), before_checkpoint);
+    assert_eq!(controller.export_replay().unwrap(), before_replay);
+}
+
+#[test]
+fn controller_restore_rejects_unsupported_program_without_mutation() {
+    let cr_rules_manifest = RulesContractManifestV1 {
+        rules_authority: RulesAuthorityV1::ComprehensiveRules {
+            snapshot_id: "test-cr-2026-01-01".to_string(),
+        },
+        capability_closure: Some(vec![CapabilityRequirementV1 {
+            key: "rules/test".to_string(),
+            version: "1.0.0".to_string(),
+        }]),
+    };
+    let cr_rules_id = calculate_rules_contract_id_v1(&cr_rules_manifest).unwrap();
+    let cr_manifest = SemanticContractManifestV1 {
+        rules_contract_id: cr_rules_id,
+        format_contract_id: None,
+        content_contract_id: None,
+    };
+    let cr_semantic_id = calculate_semantic_contract_id_v1(&cr_manifest).unwrap();
+
+    let entry = CatalogEntry {
+        semantic_contract_id: cr_semantic_id.clone(),
+        manifest: cr_manifest,
+        rules_manifest: cr_rules_manifest,
+    };
+    let catalog = RuntimeSemanticCatalog::from_entries(vec![entry]);
+
+    let controller = TrustedEnvironmentController::new(backend());
+    let before_checkpoint = controller.checkpoint().unwrap();
+    let before_replay = controller.export_replay().unwrap();
+
+    let identity = ExecutionIdentityV1 {
+        program_kind: ExecutionProgramV1::MagicRules,
+        semantic_contract_id: cr_semantic_id,
+    };
+    let checkpoint = valid_v5_checkpoint(identity);
+    let result = controller.restore_with_catalog(checkpoint, catalog);
+    assert!(matches!(result, Err(ControllerError::SemanticContractUnsupported)));
+    assert_eq!(controller.checkpoint().unwrap(), before_checkpoint);
+    assert_eq!(controller.export_replay().unwrap(), before_replay);
+}
+
 // === Phase 6: program × authority mismatch ===
 
 #[test]

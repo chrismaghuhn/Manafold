@@ -9,9 +9,10 @@ use mtgml_persistence::semantic_contract_digest::{
     calculate_rules_contract_id_v1, calculate_semantic_contract_id_v1,
 };
 use mtgml_replay::{
-    AuthoritativeReplayV5, DeckIdentityV1, InitialEnvironmentIdentityV5, KernelIdentityV1,
-    RandomnessIdentityV2, ReplayManifestV5, ReplayRecorderV5, ReplaySchemaVersionsV5, ReplayStepV5,
-    ReplayValidationError, REPLAY_FILE_SCHEMA_V5, REPLAY_MANIFEST_SCHEMA_V5, REPLAY_STEP_SCHEMA_V5,
+    AuthoritativeReplayV5, DeckIdentityV1, InitialEnvironmentIdentityV4,
+    InitialEnvironmentIdentityV5, KernelIdentityV1, RandomnessIdentityV2, ReplayManifestV5,
+    ReplayRecorderV5, ReplaySchemaVersionsV5, ReplayStepV5, ReplayValidationError,
+    REPLAY_FILE_SCHEMA_V5, REPLAY_MANIFEST_SCHEMA_V5, REPLAY_STEP_SCHEMA_V5,
 };
 
 const CHECKPOINT_CODEC_ID_V5: &str = "in-memory-reference";
@@ -442,7 +443,7 @@ fn replay_v5_step_uses_checkpoint_digest_v5_types() {
         state_revision_before: initial.state_revision,
         response: response_v2(0),
         accepted: false,
-        state_revision_after: initial.state_revision.clone(),
+        state_revision_after: initial.state_revision,
         full_state_digest_after: initial.full_state_digest.clone(),
         episode_status_after: initial.episode_status.clone(),
         environment_limit_counters_after: initial.environment_limit_counters.clone(),
@@ -527,7 +528,7 @@ fn replay_v5_v4_types_remain_untouched_and_pass() {
         &codec,
     )
     .unwrap();
-    let v4_identity = mtgml_replay::v4::InitialEnvironmentIdentityV4 {
+    let v4_identity = InitialEnvironmentIdentityV4 {
         state_revision: StateRevision(0),
         full_state_digest,
         episode_status: EpisodeStatus::Running,

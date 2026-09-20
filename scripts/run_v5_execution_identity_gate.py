@@ -354,8 +354,21 @@ V4_RETAIN_RULES: list[tuple[str, tuple[str, ...]]] = [
     # Wire dispatch for V4 fixtures (HISTORICAL_VERIFIER — V4 decoder retained)
     ("crates/mtgml-wire/src/fixtures.rs", ()),
     ("crates/mtgml-wire/src/lib.rs", ()),
-    ("crates/mtgml-replay/src/lib.rs", ()),  # V4 pub use re-exports (historical verifier)
-    ("crates/mtgml-wire/src/replay.rs", ()),  # V4 WireContract impls (historical verifier)
+    ("crates/mtgml-replay/src/lib.rs", (
+        "AuthoritativeReplayV4",
+        "InitialEnvironmentIdentityV4",
+        "ReplayManifestV4",
+        "ReplayRecorderV4",
+        "ReplayStepV4",
+        "REPLAY_FILE_SCHEMA_V4",
+        "REPLAY_MANIFEST_SCHEMA_V4",
+        "REPLAY_STEP_SCHEMA_V4",
+        "ReplaySchemaVersionsV4",
+    )),  # V4 pub use re-exports (historical verifier)
+    ("crates/mtgml-wire/src/replay.rs", (
+        "AuthoritativeReplayV4",
+        "ReplayManifestV4",
+    )),  # V4 WireContract impls (historical verifier)
     # V4 digest newtype retained in model (CheckpointDigestV4 is historical verifier)
     ("crates/mtgml-model/src/lib.rs", ()),
     ("crates/mtgml-model/tests/p0_red.rs", ()),
@@ -365,9 +378,31 @@ V4_RETAIN_RULES: list[tuple[str, tuple[str, ...]]] = [
     # Python V4 persistence/replay retained as historical
     ("python/src/mtgml/persistence.py", ()),
     ("python/src/mtgml/_replay_v4.py", ()),
-    ("python/src/mtgml/replay.py", ()),  # V4 re-exports (historical verifier)
-    ("python/src/mtgml/wire.py", ()),  # V4 decoder dispatch (historical verifier)
-    ("python/src/mtgml/__init__.py", ()),  # V4 re-exports (historical verifier)
+    ("python/src/mtgml/replay.py", (
+        "CHECKPOINT_CODEC_ID_V4",
+        "REPLAY_FILE_SCHEMA_V4",
+        "REPLAY_MANIFEST_SCHEMA_V4",
+        "REPLAY_STEP_SCHEMA_V4",
+        "AuthoritativeReplayV4",
+        "InitialEnvironmentIdentityV4",
+        "ReplayManifestV4",
+        "ReplaySchemaVersionsV4",
+        "ReplayStepV4",
+        "calculate_checkpoint_digest_v4",
+    )),  # V4 re-exports (historical verifier)
+    ("python/src/mtgml/wire.py", (
+        "AuthoritativeReplayV4",
+        "ReplayManifestV4",
+        "replay-manifest.v4",
+        "authoritative-replay.v4",
+    )),  # V4 decoder dispatch (historical verifier)
+    ("python/src/mtgml/__init__.py", (
+        "AuthoritativeReplayV4",
+        "InitialEnvironmentIdentityV4",
+        "ReplayManifestV4",
+        "ReplaySchemaVersionsV4",
+        "ReplayStepV4",
+    )),  # V4 re-exports (historical verifier)
     # Frozen P0/M2-era Python test evidence (FROZEN_FIXTURE / DOC_HISTORY)
     ("python/tests/test_p0_red.py", ()),
     ("python/tests/test_m3_p0_green03.py", ()),

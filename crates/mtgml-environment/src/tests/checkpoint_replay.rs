@@ -677,12 +677,12 @@ fn from_checkpoint_rejects_states_the_kernel_cannot_execute() {
             checkpoint.clone(),
             config([PlayerId(1), PlayerId(2)])
         ),
-        Err(ControllerError::UnsupportedSyntheticState | ControllerError::ProgramStateIncompatible)
+        Err(ControllerError::ProgramStateIncompatible)
     ));
     let controller = TrustedEnvironmentController::new(backend());
     assert!(matches!(
         controller.restore(checkpoint),
-        Err(ControllerError::UnsupportedSyntheticState | ControllerError::ProgramStateIncompatible)
+        Err(ControllerError::ProgramStateIncompatible)
     ));
 
     // A root ChooseOne whose kernel preconditions are violated (life not at
@@ -707,7 +707,7 @@ fn from_checkpoint_rejects_states_the_kernel_cannot_execute() {
             checkpoint.clone(),
             config([PlayerId(1), PlayerId(2)])
         ),
-        Err(ControllerError::UnsupportedSyntheticState | ControllerError::ProgramStateIncompatible)
+        Err(ControllerError::ProgramStateIncompatible)
     ));
 
     // The genuine program remains restorable.

@@ -107,11 +107,13 @@ impl RuntimeSemanticCatalog {
     }
 
     /// Number of entries (crate-internal, used by tests).
+    #[allow(dead_code)]
     pub(crate) fn entry_count(&self) -> usize {
         self.entries.len()
     }
 
     /// Slice of all entries (crate-internal, used by tests).
+    #[allow(dead_code)]
     pub(crate) fn entries(&self) -> &[CatalogEntry] {
         &self.entries
     }
@@ -126,11 +128,11 @@ impl RuntimeSemanticCatalog {
 /// `ProgramAuthorityMismatch`; `SyntheticRulesCompat` with
 /// `comprehensive_rules` is a `ProgramAuthorityMismatch`.
 fn program_authority_compatible(program: ExecutionProgramV1, authority: &RulesAuthorityV1) -> bool {
-    match (program, authority) {
-        (ExecutionProgramV1::SyntheticRulesCompat, RulesAuthorityV1::SyntheticLegacy) => true,
-        (ExecutionProgramV1::MagicRules, RulesAuthorityV1::ComprehensiveRules { .. }) => true,
-        _ => false,
-    }
+    matches!(
+        (program, authority),
+        (ExecutionProgramV1::SyntheticRulesCompat, RulesAuthorityV1::SyntheticLegacy)
+            | (ExecutionProgramV1::MagicRules, RulesAuthorityV1::ComprehensiveRules { .. })
+    )
 }
 
 /// Whether THIS runtime build supports a given program.
