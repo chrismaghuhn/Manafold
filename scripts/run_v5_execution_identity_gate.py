@@ -86,14 +86,14 @@ V5_CURRENT_TOKENS: list[tuple[str, str, int]] = [
 # §23a.1 SyntheticM1RulesKernel site classifier.
 # ---------------------------------------------------------------------------
 class KernelSiteClass:
-    ALLOWED_DECLARATION = "ALLOWED: declaration (struct/enum definition)"
+    ALLOWED_DECLARATION = "ALLOWED: declaration (struct/enum variant definition)"
     ALLOWED_IMPL = "ALLOWED: impl block"
     ALLOWED_CHILD_IMPL = "ALLOWED: internal child-module impl reference"
     ALLOWED_IMPORT = "ALLOWED: internal import to boundary/declaration module"
     ALLOWED_CONSTRUCTION = "ALLOWED: single ProgramKernelInner construction"
     ALLOWED_DOC = "ALLOWED: doc comment reference"
     FORBIDDEN_REEXPORT = "FORBIDDEN: public re-export"
-    FORBIDDEN_EXTERNAL_IMPORT = "FORBIDDEN: external import (use mtgml_rules::…)"
+    FORBIDDEN_EXTERNAL_IMPORT = "FORBIDDEN: external import (use mtgml_rules::...)"
     FORBIDDEN_LITERAL = "FORBIDDEN: direct literal outside allowed scope"
     FORBIDDEN_TEST_LITERAL = "FORBIDDEN: direct literal in test"
     FORBIDDEN_TOOL_LITERAL = "FORBIDDEN: direct literal in tool"
@@ -109,122 +109,140 @@ class KernelFinding:
 @dataclass
 class KernelResult:
     findings: list[KernelFinding] = field(default_factory=list)
+    construction_count: int = 0
 
     @property
     def violations(self) -> list[KernelFinding]:
         return [f for f in self.findings if f.disposition == "FORBIDDEN"]
 
-# Files and line-pattern maps for §23a.1 ALLOWED classification.
-# The classifier matches per-line/per-site, never per-file.
-KERNEL_ALLOWED_SITES: dict[str, list[tuple[str, str]]] = {
-    # (line_pattern_regex, classification)
-    "crates/mtgml-rules/src/synthetic.rs": [
-        (r"^\s*pub struct SyntheticM1RulesKernel\b", KernelSiteClass.ALLOWED_DECLARATION),
-        (r"^\s*impl\s+(RulesKernel for\s+)?SyntheticM1RulesKernel\b", KernelSiteClass.ALLOWED_IMPL),
-    ],
-    "crates/mtgml-rules/src/synthetic/stages.rs": [
-        (r"^\s*use\s+super::SyntheticM1RulesKernel\b", KernelSiteClass.ALLOWED_CHILD_IMPL),
-        (r"^\s*impl\s+SyntheticM1RulesKernel\b", KernelSiteClass.ALLOWED_CHILD_IMPL),
-    ],
-    "crates/mtgml-rules/src/program_kernel.rs": [
-        (r"^\s*use\s+crate::synthetic::\{[^}]*SyntheticM1RulesKernel[^}]*\}", KernelSiteClass.ALLOWED_IMPORT),
-        (r"^\s*use\s+crate::synthetic::.*SyntheticM1RulesKernel", KernelSiteClass.ALLOWED_IMPORT),
-        (r"^\s*///", KernelSiteClass.ALLOWED_DOC),  # doc comment references
-        (r"^\s*//.*", KernelSiteClass.ALLOWED_DOC),  # regular comment references
-        (r"^\s*SyntheticLegacy\(SyntheticM1RulesKernel\)", KernelSiteClass.ALLOWED_CONSTRUCTION),
-        (r"^\s*synthetic.*SyntheticM1RulesKernel", KernelSiteClass.ALLOWED_IMPORT),
-    ],
-    "crates/mtgml-rules/src/lib.rs": [
-        # No SyntheticM1RulesKernel re-export allowed here; if it appears, it's FORBIDDEN_REEXPORT
-        # (but validate_synthetic_runtime_state re-export is fine — we only flag SyntheticM1RulesKernel)
-    ],
-}
+# §23a.1 allowed sites — normative list from spec §23a.1 Fix-07:
+# 1. synthetic.rs: struct declaration + trait/inherent impl blocks
+# 2. synthetic/stages.rs: internal child-module impl references (import + impl)
+# 3. synthetic/runtime.rs: internal child-module impl references ONLY
+# 4. synthetic/helpers.rs: internal child-module impl references ONLY
+# 5. program_kernel.rs: internal import, enum variant DECLARATION, doc refs,
+#    and the single ProgramKernelInner::SyntheticLegacy(...) construction
+#
+# EVERY line pattern is matched explicitly — no broad per-file fallbacks.
+# An unmatched line referencing SyntheticM1RulesKernel in an allowed file is
+# a FORBIDDEN direct literal (e.g. `let k = SyntheticM1RulesKernel;` in synthetic.rs).
+#
+# Critical distinction: the enum variant declaration
+#   `SyntheticLegacy(SyntheticM1RulesKernel),`
+# is NOT a construction. The actual construction is
+#   `ProgramKernelInner::SyntheticLegacy(SyntheticM1RulesKernel)`
+# The regex for construction requires the `ProgramKernelInner::` prefix.
+_KERNEL_PATTERNS: list[tuple[str, str, str]] = [
+    # synthetic.rs: declaration and impl blocks only
+    ("crates/mtgml-rules/src/synthetic.rs",
+        r"^\s*pub struct SyntheticM1RulesKernel\b",
+        KernelSiteClass.ALLOWED_DECLARATION),
+    ("crates/mtgml-rules/src/synthetic.rs",
+        r"^\s*impl\s+(RulesKernel for\s+)?SyntheticM1RulesKernel\b",
+        KernelSiteClass.ALLOWED_IMPL),
 
-# Files where any SyntheticM1RulesKernel reference is FORBIDDEN.
-KERNEL_FORBIDDEN_FILES: set[str] = {
-    "crates/mtgml-rules/src/lib.rs",  # any SyntheticM1RulesKernel re-export is forbidden
-}
+    # synthetic/stages.rs: internal child-module import + impl
+    ("crates/mtgml-rules/src/synthetic/stages.rs",
+        r"^\s*use\s+super::SyntheticM1RulesKernel\b",
+        KernelSiteClass.ALLOWED_CHILD_IMPL),
+    ("crates/mtgml-rules/src/synthetic/stages.rs",
+        r"^\s*impl\s+SyntheticM1RulesKernel\b",
+        KernelSiteClass.ALLOWED_CHILD_IMPL),
+
+    # synthetic/runtime.rs: internal child-module import + impl ONLY
+    ("crates/mtgml-rules/src/synthetic/runtime.rs",
+        r"^\s*use\s+super::SyntheticM1RulesKernel\b",
+        KernelSiteClass.ALLOWED_CHILD_IMPL),
+    ("crates/mtgml-rules/src/synthetic/runtime.rs",
+        r"^\s*impl\s+SyntheticM1RulesKernel\b",
+        KernelSiteClass.ALLOWED_CHILD_IMPL),
+
+    # synthetic/helpers.rs: internal child-module import + impl ONLY
+    ("crates/mtgml-rules/src/synthetic/helpers.rs",
+        r"^\s*use\s+super::SyntheticM1RulesKernel\b",
+        KernelSiteClass.ALLOWED_CHILD_IMPL),
+    ("crates/mtgml-rules/src/synthetic/helpers.rs",
+        r"^\s*impl\s+SyntheticM1RulesKernel\b",
+        KernelSiteClass.ALLOWED_CHILD_IMPL),
+
+    # program_kernel.rs: internal import, enum variant DECLARATION (not
+    # construction — the prefix `ProgramKernelInner::` is absent), doc
+    # comments, and the single ACTUAL construction.
+    ("crates/mtgml-rules/src/program_kernel.rs",
+        r"^\s*use\s+crate::synthetic::\{[^}]*SyntheticM1RulesKernel[^}]*\}",
+        KernelSiteClass.ALLOWED_IMPORT),
+    ("crates/mtgml-rules/src/program_kernel.rs",
+        r"^\s*use\s+crate::synthetic::.*SyntheticM1RulesKernel",
+        KernelSiteClass.ALLOWED_IMPORT),
+    # Enum variant declaration: `    SyntheticLegacy(SyntheticM1RulesKernel),`
+    # This is NOT a construction — it defines the variant's payload type.
+    ("crates/mtgml-rules/src/program_kernel.rs",
+        r"^\s*SyntheticLegacy\(SyntheticM1RulesKernel\)\s*,?\s*$",
+        KernelSiteClass.ALLOWED_DECLARATION),
+    # Doc comment references
+    ("crates/mtgml-rules/src/program_kernel.rs",
+        r"^\s*//.*",
+        KernelSiteClass.ALLOWED_DOC),
+    # The single ACTUAL construction:
+    # `... ProgramKernelInner::SyntheticLegacy(SyntheticM1RulesKernel) ...`
+    ("crates/mtgml-rules/src/program_kernel.rs",
+        r"ProgramKernelInner::SyntheticLegacy\(SyntheticM1RulesKernel\)",
+        KernelSiteClass.ALLOWED_CONSTRUCTION),
+]
+
+# lib.rs: any SyntheticM1RulesKernel re-export is FORBIDDEN.
+_KERNEL_LIB_REEXPORT = re.compile(
+    r"^\s*pub\s+use\s+.*SyntheticM1RulesKernel"
+)
 
 def classify_kernel_site(rel_path: str, line: int, text: str) -> tuple[str, str] | None:
-    """Return (classification, disposition) or None if not a kernel site."""
+    """Return (classification, disposition) or None if not a kernel site.
+
+    Matching is per-line/per-site, never per-file. An unmatched reference to
+    SyntheticM1RulesKernel in any file is classified by context — comments are
+    ALLOWED_DOC, everything else in a non-allowed file is FORBIDDEN.
+    """
+    if "SyntheticM1RulesKernel" not in text:
+        return None
 
     norm_path = rel_path.replace("\\", "/")
-    match norm_path:
-        case p if p in KERNEL_ALLOWED_SITES:
-            # Check allowed patterns
-            for pattern, classification in KERNEL_ALLOWED_SITES[p]:
-                if re.search(pattern, text):
-                    return classification, "ALLOWED"
-            # If in an allowed file but didn't match an allowed pattern AND
-            # the line contains SyntheticM1RulesKernel, it's a direct literal
-            # that slipped through.
-            if "SyntheticM1RulesKernel" in text:
-                # Check if it's a doc/comment line
-                if re.match(r"^\s*(//|///|//!)", text):
-                    # Comments in allowed files are allowed context
-                    return KernelSiteClass.ALLOWED_DOC, "ALLOWED"
-                # Any non-matched line with SyntheticM1RulesKernel in an allowed
-                # file is a direct literal that doesn't match an allowed pattern.
-                # In synthetic.rs this includes the struct field type reference,
-                # use statements within the module, etc. — classify based on context.
-                if p == "crates/mtgml-rules/src/synthetic.rs":
-                    # The struct is module-private; references within the file
-                    # to the type itself (field types, etc.) are internal.
-                    if re.search(r"^\s*(pub\s+)?struct\s+", text):
-                        return KernelSiteClass.ALLOWED_DECLARATION, "ALLOWED"
-                    if re.search(r"^\s*(pub\s+)?use\s+", text):
-                        return KernelSiteClass.ALLOWED_IMPORT, "ALLOWED"
-                    return KernelSiteClass.ALLOWED_IMPL, "ALLOWED"
 
-            # Comments without the token are not kernel sites
-            return None
+    # --- Check explicit allowed patterns ---
+    for file_pattern, line_pattern, classification in _KERNEL_PATTERNS:
+        if norm_path == file_pattern and re.search(line_pattern, text):
+            return classification, "ALLOWED"
 
-        case p if p in KERNEL_FORBIDDEN_FILES:
-            if "SyntheticM1RulesKernel" in text:
-                if re.search(r"^\s*pub\s+use\s+.*SyntheticM1RulesKernel", text):
-                    return KernelSiteClass.FORBIDDEN_REEXPORT, "FORBIDDEN"
-                if re.search(r"^\s*use\s+.*SyntheticM1RulesKernel", text):
-                    return KernelSiteClass.FORBIDDEN_EXTERNAL_IMPORT, "FORBIDDEN"
-                if "SyntheticM1RulesKernel" in text:
-                    return KernelSiteClass.FORBIDDEN_LITERAL, "FORBIDDEN"
-            return None
+    # --- lib.rs: public re-export is FORBIDDEN ---
+    if norm_path == "crates/mtgml-rules/src/lib.rs":
+        if _KERNEL_LIB_REEXPORT.search(text):
+            return KernelSiteClass.FORBIDDEN_REEXPORT, "FORBIDDEN"
+        if "SyntheticM1RulesKernel" in text and not re.match(r"^\s*(//|///|//!)", text):
+            return KernelSiteClass.FORBIDDEN_REEXPORT, "FORBIDDEN"
+        if re.match(r"^\s*(//|///|//!)", text):
+            return KernelSiteClass.ALLOWED_DOC, "ALLOWED"
+        return None
 
-        case "crates/mtgml-rules/src/synthetic/runtime.rs":
-            # Internal child module of synthetic/ - allowed impl references
-            if "SyntheticM1RulesKernel" in text:
-                if re.match(r"^\s*(//|///|//!)", text):
-                    return KernelSiteClass.ALLOWED_DOC, "ALLOWED"
-                return KernelSiteClass.ALLOWED_CHILD_IMPL, "ALLOWED"
-            return None
+    # --- Comment-only lines are always ALLOWED_DOC ---
+    if re.match(r"^\s*(//|///|//!)", text):
+        return KernelSiteClass.ALLOWED_DOC, "ALLOWED"
 
-        case "crates/mtgml-rules/src/synthetic/helpers.rs":
-            # Internal child module of synthetic/ - allowed impl references
-            if "SyntheticM1RulesKernel" in text:
-                if re.match(r"^\s*(//|///|//!)", text):
-                    return KernelSiteClass.ALLOWED_DOC, "ALLOWED"
-                return KernelSiteClass.ALLOWED_CHILD_IMPL, "ALLOWED"
-            return None
+    # --- Any remaining reference is FORBIDDEN ---
+    is_test = (
+        "/tests/" in norm_path
+        or norm_path.endswith("_test.rs")
+        or norm_path.endswith("_red.rs")
+    )
+    is_tool = norm_path.startswith("tools/")
 
-        case _:
-            # Any other file: FORBIDDEN
-            if "SyntheticM1RulesKernel" in text:
-                stripped = text.strip()
-                # Skip comment-only lines in non-allowed files (they're documentation,
-                # not constructions/imports) — but still flag as informational
-                if re.match(r"^\s*(//|///|//!)", text):
-                    return KernelSiteClass.ALLOWED_DOC, "ALLOWED"
-                # Determine context for classification
-                is_test = "tests/" in norm_path or "/tests/" in norm_path or norm_path.endswith("_test.rs") or norm_path.endswith("_red.rs")
-                is_tool = norm_path.startswith("tools/")
-                if re.search(r"^\s*use\s+(mtgml_rules|crate::rules).*SyntheticM1RulesKernel", text) or \
-                   re.search(r"^\s*use\s+.*\{.*SyntheticM1RulesKernel.*\}", text):
-                    return KernelSiteClass.FORBIDDEN_EXTERNAL_IMPORT, "FORBIDDEN"
-                if is_test:
-                    return KernelSiteClass.FORBIDDEN_TEST_LITERAL, "FORBIDDEN"
-                if is_tool:
-                    return KernelSiteClass.FORBIDDEN_TOOL_LITERAL, "FORBIDDEN"
-                return KernelSiteClass.FORBIDDEN_LITERAL, "FORBIDDEN"
-            return None
+    if re.search(r"^\s*use\s+.*SyntheticM1RulesKernel", text):
+        # External import: `use mtgml_rules::{... SyntheticM1RulesKernel ...}`
+        return KernelSiteClass.FORBIDDEN_EXTERNAL_IMPORT, "FORBIDDEN"
+
+    if is_test:
+        return KernelSiteClass.FORBIDDEN_TEST_LITERAL, "FORBIDDEN"
+    if is_tool:
+        return KernelSiteClass.FORBIDDEN_TOOL_LITERAL, "FORBIDDEN"
+    return KernelSiteClass.FORBIDDEN_LITERAL, "FORBIDDEN"
 
 def scan_kernel_sites() -> KernelResult:
     result = KernelResult()
@@ -244,11 +262,16 @@ def scan_kernel_sites() -> KernelResult:
             continue
         for path in sorted(src_dir.rglob("*.rs")):
             rel_path = str(path.relative_to(ROOT)).replace("\\", "/")
-            text = path.read_text(encoding="utf-8")
+            try:
+                text = path.read_text(encoding="utf-8")
+            except (UnicodeDecodeError, OSError):
+                continue
             for lineno, line in enumerate(text.splitlines(), start=1):
                 classification = classify_kernel_site(rel_path, lineno, line)
                 if classification is not None:
                     classification_str, disposition = classification
+                    if disposition == "ALLOWED" and classification_str == KernelSiteClass.ALLOWED_CONSTRUCTION:
+                        result.construction_count += 1
                     result.findings.append(KernelFinding(
                         path=rel_path,
                         line=lineno,
@@ -256,6 +279,17 @@ def scan_kernel_sites() -> KernelResult:
                         classification=classification_str,
                         disposition=disposition,
                     ))
+
+    # §23a.1: exactly ONE ProgramKernelInner construction is allowed.
+    if result.construction_count != 1:
+        result.findings.append(KernelFinding(
+            path="<global>",
+            line=0,
+            text="ProgramKernelInner::SyntheticLegacy(SyntheticM1RulesKernel) construction count",
+            classification="MUST HAVE EXACTLY 1 CONSTRUCTION",
+            disposition="FORBIDDEN",
+        ))
+
     return result
 
 
@@ -302,8 +336,9 @@ V4_MIGRATION_TOKENS: tuple[str, ...] = (
 V4_RETAIN_RULES: list[tuple[str, tuple[str, ...]]] = [
     # Checkpoint V4 retained for historical validation only (§17 writer posture)
     ("crates/mtgml-environment/src/checkpoint.rs", ()),
-    # Integration test files (crate-root tests/) using V4 for RED/historical evidence
-    ("crates/mtgml-environment/tests/", ()),
+    # Integration test files using V4 for RED/historical evidence (FROZEN_FIXTURE)
+    ("crates/mtgml-environment/tests/checkpoint_v5_red.rs", ()),
+    ("crates/mtgml-environment/tests/p0_red.rs", ()),
     ("crates/mtgml-rules/tests/p0_red.rs", ()),
     ("crates/mtgml-rules/tests/", ("ReplayStepV4",
         "EnvironmentCheckpointV4", "ReplayRecorderV4", "ReplayManifestV4",
@@ -320,40 +355,37 @@ V4_RETAIN_RULES: list[tuple[str, tuple[str, ...]]] = [
     ("crates/mtgml-replay/src/v2.rs", ()),
     ("crates/mtgml-replay/src/v1.rs", ()),
     ("crates/mtgml-replay/src/identity.rs", ()),  # ReplaySchemaVersionsV4 + V1 historical
+    ("crates/mtgml-replay/tests/p0_red.rs", ()),
+    ("crates/mtgml-replay/tests/replay_v5_red.rs", ()),
+    ("crates/mtgml-replay/tests/gen_v5_fixtures.rs", ("replay-manifest.v4",)),
     # Wire dispatch for V4 fixtures (HISTORICAL_VERIFIER — V4 decoder retained)
     ("crates/mtgml-wire/src/fixtures.rs", ()),
     ("crates/mtgml-wire/src/lib.rs", ()),
     # V4 digest newtype retained in model (CheckpointDigestV4 is historical verifier)
     ("crates/mtgml-model/src/lib.rs", ()),
+    ("crates/mtgml-model/tests/p0_red.rs", ()),
     # V4 persistence functions retained for historical digest recompute
     ("crates/mtgml-persistence/src/checkpoint_digest.rs", ()),
+    ("crates/mtgml-persistence/tests/p0_red.rs", ()),
     # Python V4 persistence/replay retained as historical
     ("python/src/mtgml/persistence.py", ()),
     ("python/src/mtgml/_replay_v4.py", ()),
-    # _replay_v5.py imports shared V4-named types (EnvironmentLimitCountersV4,
-    # CheckpointCodecIdentityV4) that are NOT versioned — they carry the same
-    # identity in V4 and V5. Only these tokens are retained here; any other
-    # V4 migration token is a violation.
     ("python/src/mtgml/_replay_v5.py", (
         "EnvironmentLimitCountersV4", "CheckpointCodecIdentityV4",
         "CHECKPOINT_CODEC_ID_V4", "CHECKPOINT_CODEC_VERSION_V4",
     )),
+    # Frozen P0/M2-era Python test evidence (FROZEN_FIXTURE / DOC_HISTORY)
+    ("python/tests/test_p0_red.py", ()),
+    ("python/tests/test_m3_p0_green03.py", ()),
+    ("python/tests/test_schema_parity.py", ()),  # schema mapping includes V4 schema refs (DOC_HISTORY)
     # Schema inventory lists V4 schema filenames (DOC_HISTORY)
     ("schemas/README.json", ()),
     ("schemas/replay-manifest.v4.schema.json", ()),
     ("schemas/authoritative-replay.v4.schema.json", ()),
-    # Wire fixtures
-    ("wire/golden/", ()),
-    ("wire/negative/", ()),
-    # P0 frozen fixtures — integration tests at crate root
-    ("crates/mtgml-environment/tests/", ()),
-    ("crates/mtgml-replay/tests/", ()),
-    ("crates/mtgml-model/tests/", ()),
-    ("crates/mtgml-persistence/tests/", ()),
-    ("crates/mtgml-rules/tests/", ()),
-    ("crates/mtgml-conformance/tests/", ()),
-    ("python/tests/test_p0_red.py", ()),
-    ("python/tests/test_m3_p0_green03.py", ()),
+    # Wire golden/negative fixtures: only V4 schema filename strings appear here
+    # (DOC_HISTORY / FROZEN_FIXTURE). V4 type names in wire fixtures are FORBIDDEN.
+    ("wire/golden/", ("replay-manifest.v4", "authoritative-replay.v4", "replay-step.v4")),
+    ("wire/negative/", ("replay-manifest.v4", "authoritative-replay.v4", "replay-step.v4")),
     # Historical scripts (DOC_HISTORY / HISTORICAL_VERIFIER)
     ("scripts/run_m1_closure.py", ()),
     ("scripts/run_m2_final_closure.py", ()),
@@ -361,12 +393,11 @@ V4_RETAIN_RULES: list[tuple[str, tuple[str, ...]]] = [
     ("scripts/validate_schemas.py", ()),
     # The gate script itself contains V4 vocabulary as detection patterns
     ("scripts/run_v5_execution_identity_gate.py", ()),
-    # README and roadmap
-    ("README.md", ()),
-    ("docs/ROADMAP.md", ()),
-    ("docs/README.md", ()),
     # Documentation files referencing V4 as historical context (DOC_HISTORY)
-    ("docs/", ()),
+    ("docs/adr/0054-m3-pre-t0-hardening.md", ()),
+    ("docs/adr/0055-v5-execution-identity.md", ()),
+    ("docs/superpowers/specs/2026-09-16-m3-p0-state-identity-cut-design.md", ()),
+    ("docs/superpowers/specs/2026-09-18-v5-execution-identity-implementation-design.md", ()),
 ]
 
 # CURRENT_PRODUCER sites: V4 tokens here are VIOLATIONS.
@@ -446,7 +477,7 @@ def _is_comment_line(line: str) -> bool:
 
 def census_v4() -> V4Result:
     result = V4Result()
-    scan_dirs = [ROOT / "crates", ROOT / "tools", ROOT / "python" / "src", ROOT / "schemas", ROOT / "wire", ROOT / "scripts", ROOT / "docs"]
+    scan_dirs = [ROOT / "crates", ROOT / "tools", ROOT / "python", ROOT / "schemas", ROOT / "wire", ROOT / "scripts", ROOT / "docs"]
     for src_dir in scan_dirs:
         if not src_dir.exists():
             continue
