@@ -204,6 +204,92 @@ fn rules_contract_digest_mismatch_rejected() {
     );
 }
 
+// === Controller-level rejection nonmutation matrix ===
+// (spec §12 observable invariant: rejected controller.restore() must not mutate
+//  pre/post checkpoint or replay identity for ANY admission-rejection phase)
+
+#[test]
+fn controller_restore_rejects_corrupt_checkpoint_without_mutation() {
+    let controller = TrustedEnvironmentController::new(backend());
+    let before_checkpoint = controller.checkpoint().unwrap();
+    let before_replay = controller.export_replay().unwrap();
+
+    let mut checkpoint = valid_v5_checkpoint(synthetic_identity());
+    checkpoint.state_digest = FullStateDigestV4::from_digest_bytes([0xff; 32]);
+    let result = controller.restore(checkpoint);
+    assert!(matches!(
+        result,
+        Err(ControllerError::CheckpointValidation(
+            CheckpointValidationError::StateDigest
+        ))
+    ));
+    assert_eq!(controller.checkpoint().unwrap(), before_checkpoint);
+    assert_eq!(controller.export_replay().unwrap(), before_replay);
+}
+
+#[test]
+fn controller_restore_rejects_unknown_contract_without_mutation() {
+    let controller = TrustedEnvironmentController::new(backend());
+    let before_checkpoint = controller.checkpoint().unwrap();
+    let before_replay = controller.export_replay().unwrap();
+
+    let identity = ExecutionIdentityV1 {
+        program_kind: ExecutionProgramV1::SyntheticRulesCompat,
+        semantic_contract_id: SemanticContractIdV1::from_digest_bytes([0u8; 32]),
+    };
+    let checkpoint = valid_v5_checkpoint(identity);
+    let result = controller.restore(checkpoint);
+    assert!(matches!(
+        result,
+        Err(ControllerError::CheckpointValidation(
+            CheckpointValidationError::SemanticContractUnknown
+        ))
+    ));
+    assert_eq!(controller.checkpoint().unwrap(), before_checkpoint);
+    assert_eq!(controller.export_replay().unwrap(), before_replay);
+}
+
+#[test]
+fn controller_restore_rejects_program_authority_mismatch_without_mutation() {
+    let controller = TrustedEnvironmentController::new(backend());
+    let before_checkpoint = controller.checkpoint().unwrap();
+    let before_replay = controller.export_replay().unwrap();
+
+    let identity = ExecutionIdentityV1 {
+        program_kind: ExecutionProgramV1::MagicRules,
+        semantic_contract_id: synthetic_legacy_default_semantic_contract_id(),
+    };
+    let checkpoint = valid_v5_checkpoint(identity);
+    let result = controller.restore(checkpoint);
+    assert!(matches!(result, Err(ControllerError::ProgramAuthorityMismatch)));
+    assert_eq!(controller.checkpoint().unwrap(), before_checkpoint);
+    assert_eq!(controller.export_replay().unwrap(), before_replay);
+}
+
+#[test]
+fn controller_restore_rejects_incompatible_state_without_mutation() {
+    let controller = TrustedEnvironmentController::new(backend());
+    let before_checkpoint = controller.checkpoint().unwrap();
+    let before_replay = controller.export_replay().unwrap();
+
+    let state = synthetic_incompatible_state();
+    let checkpoint = EnvironmentCheckpointV5::new(
+        state,
+        EpisodeStatus::Running,
+        EnvironmentLimitCounters::default(),
+        v5_codec(),
+        synthetic_identity(),
+    )
+    .unwrap();
+    let result = controller.restore(checkpoint);
+    assert!(matches!(
+        result,
+        Err(ControllerError::ProgramStateIncompatible)
+    ));
+    assert_eq!(controller.checkpoint().unwrap(), before_checkpoint);
+    assert_eq!(controller.export_replay().unwrap(), before_replay);
+}
+
 // === Phase 6: program × authority mismatch ===
 
 #[test]

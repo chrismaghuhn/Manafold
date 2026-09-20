@@ -22,14 +22,8 @@ REPLAY_MANIFEST_SCHEMA_V4 = "replay-manifest.v4"
 REPLAY_FILE_SCHEMA_V4 = "authoritative-replay.v4"
 REPLAY_STEP_SCHEMA_V4 = "replay-step.v4"
 
-REPLAY_MANIFEST_SCHEMA_V5 = "replay-manifest.v5"
-REPLAY_FILE_SCHEMA_V5 = "authoritative-replay.v5"
-REPLAY_STEP_SCHEMA_V5 = "replay-step.v5"
-
 CHECKPOINT_CODEC_ID_V4 = "in-memory-reference"
 CHECKPOINT_CODEC_VERSION_V4 = "4"
-CHECKPOINT_CODEC_ID_V5 = "in-memory-reference"
-CHECKPOINT_CODEC_VERSION_V5 = "5"
 
 
 @dataclass(frozen=True, slots=True)

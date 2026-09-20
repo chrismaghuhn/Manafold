@@ -354,6 +354,8 @@ V4_RETAIN_RULES: list[tuple[str, tuple[str, ...]]] = [
     # Wire dispatch for V4 fixtures (HISTORICAL_VERIFIER — V4 decoder retained)
     ("crates/mtgml-wire/src/fixtures.rs", ()),
     ("crates/mtgml-wire/src/lib.rs", ()),
+    ("crates/mtgml-replay/src/lib.rs", ()),  # V4 pub use re-exports (historical verifier)
+    ("crates/mtgml-wire/src/replay.rs", ()),  # V4 WireContract impls (historical verifier)
     # V4 digest newtype retained in model (CheckpointDigestV4 is historical verifier)
     ("crates/mtgml-model/src/lib.rs", ()),
     ("crates/mtgml-model/tests/p0_red.rs", ()),
@@ -363,6 +365,9 @@ V4_RETAIN_RULES: list[tuple[str, tuple[str, ...]]] = [
     # Python V4 persistence/replay retained as historical
     ("python/src/mtgml/persistence.py", ()),
     ("python/src/mtgml/_replay_v4.py", ()),
+    ("python/src/mtgml/replay.py", ()),  # V4 re-exports (historical verifier)
+    ("python/src/mtgml/wire.py", ()),  # V4 decoder dispatch (historical verifier)
+    ("python/src/mtgml/__init__.py", ()),  # V4 re-exports (historical verifier)
     # Frozen P0/M2-era Python test evidence (FROZEN_FIXTURE / DOC_HISTORY)
     ("python/tests/test_p0_red.py", ()),
     ("python/tests/test_m3_p0_green03.py", ()),
@@ -424,16 +429,11 @@ V4_STALE_FILES: dict[str, str] = {
 V4_CURRENT_CONSUMER_SITES: set[str] = {
     "crates/mtgml-environment/src/lib.rs",  # V4 re-exports in production non-test surface
     "crates/mtgml-environment/src/controller.rs",  # V4 trait + TrustedEnvironmentController signatures
-    "crates/mtgml-replay/src/lib.rs",  # V4 pub use re-exports
     # Internal test module root + test subdirectory (spec §22: "tests.rs, tests/")
     "crates/mtgml-environment/src/tests.rs",
     # Files under src/tests/ that are NOT already in CURRENT_PRODUCER_SITES
     # are CURRENT_CONSUMER — catch them by path prefix.
-    "python/src/mtgml/replay.py",
-    "python/src/mtgml/wire.py",
-    "python/src/mtgml/__init__.py",
     "python/src/mtgml/_replay_v5.py",  # V4 import in V5 module — CURRENT_CONSUMER
-    "crates/mtgml-wire/src/replay.rs",
     "tools/m2-semantic-adapter/src/config.rs",
     "tools/m2-semantic-adapter/src/session.rs",
     # Conformance harness (spec §22: CURRENT_CONSUMER → MUST MIGRATE)

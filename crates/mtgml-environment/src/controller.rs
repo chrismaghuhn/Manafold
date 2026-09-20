@@ -7,7 +7,6 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use crate::checkpoint::EnvironmentCheckpointV5;
 use crate::endpoint::PlayerEndpointHandle;
 use crate::errors::ControllerError;
-use crate::semantic_catalog::{admit_restore, RuntimeSemanticCatalog};
 
 pub trait EnvironmentBackend: Send {
     fn players(&self) -> Vec<PlayerId>;
@@ -83,8 +82,6 @@ impl TrustedEnvironmentController {
     }
 
     pub fn restore(&self, checkpoint: EnvironmentCheckpointV5) -> Result<(), ControllerError> {
-        let catalog = RuntimeSemanticCatalog::production();
-        admit_restore(&catalog, &checkpoint)?;
         self.lock()?.restore(checkpoint)
     }
 
@@ -121,8 +118,6 @@ impl TrustedEnvironmentController {
         checkpoint: EnvironmentCheckpointV5,
         replay: AuthoritativeReplayV5,
     ) -> Result<crate::replay::ReplayExecutionReport, ControllerError> {
-        let catalog = RuntimeSemanticCatalog::production();
-        admit_restore(&catalog, &checkpoint)?;
         let mut backend = self.lock()?.fork_boxed()?;
         backend.restore(checkpoint)?;
         crate::replay::execute_replay(&mut *backend, replay)

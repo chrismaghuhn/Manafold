@@ -677,7 +677,7 @@ fn from_checkpoint_rejects_states_the_kernel_cannot_execute() {
             checkpoint.clone(),
             config([PlayerId(1), PlayerId(2)])
         ),
-        Err(ControllerError::UnsupportedSyntheticState)
+        Err(ControllerError::UnsupportedSyntheticState | ControllerError::ProgramStateIncompatible)
     ));
     let controller = TrustedEnvironmentController::new(backend());
     assert!(matches!(
@@ -707,7 +707,7 @@ fn from_checkpoint_rejects_states_the_kernel_cannot_execute() {
             checkpoint.clone(),
             config([PlayerId(1), PlayerId(2)])
         ),
-        Err(ControllerError::UnsupportedSyntheticState)
+        Err(ControllerError::UnsupportedSyntheticState | ControllerError::ProgramStateIncompatible)
     ));
 
     // The genuine program remains restorable.

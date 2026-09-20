@@ -6,10 +6,8 @@ from itertools import pairwise
 from ._replay_common import DeckIdentityV1, KernelIdentityV1
 from ._replay_v2 import RandomnessIdentityV2
 from ._replay_v4 import (
-    CHECKPOINT_CODEC_ID_V5,
-    CHECKPOINT_CODEC_VERSION_V5,
-    EnvironmentLimitCountersV4,
     CheckpointCodecIdentityV4,
+    EnvironmentLimitCountersV4,
 )
 from .canonical import (
     parse_u64_number,

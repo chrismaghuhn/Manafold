@@ -19,6 +19,7 @@ use crate::checkpoint::{
 use crate::controller::EnvironmentBackend;
 use crate::endpoint::PlayerEndpointError;
 use crate::errors::{ControllerError, EnvironmentCommitError};
+use crate::semantic_catalog::{admit_restore, RuntimeSemanticCatalog};
 use crate::semantic_catalog_generated::synthetic_legacy_default_semantic_contract_id;
 
 mod commit;
@@ -137,6 +138,15 @@ impl SyntheticM1EnvironmentBackend {
         checkpoint: EnvironmentCheckpointV5,
         config: SyntheticM1EnvironmentConfig,
     ) -> Result<Self, ControllerError> {
+        let catalog = RuntimeSemanticCatalog::production();
+        admit_restore(&catalog, &checkpoint)?;
+        Self::from_admitted_checkpoint(checkpoint, config)
+    }
+
+    fn from_admitted_checkpoint(
+        checkpoint: EnvironmentCheckpointV5,
+        config: SyntheticM1EnvironmentConfig,
+    ) -> Result<Self, ControllerError> {
         checkpoint.validate()?;
         if checkpoint.codec != config.codec {
             return Err(ControllerError::UnsupportedCheckpointCodec);
@@ -173,9 +183,11 @@ impl EnvironmentBackend for SyntheticM1EnvironmentBackend {
     }
 
     fn restore(&mut self, checkpoint: EnvironmentCheckpointV5) -> Result<(), ControllerError> {
+        let catalog = RuntimeSemanticCatalog::production();
+        admit_restore(&catalog, &checkpoint)?;
         #[cfg(test)]
         let eventful_fixture = self.eventful_fixture;
-        let candidate = Self::from_checkpoint(checkpoint, self.config.clone())?;
+        let candidate = Self::from_admitted_checkpoint(checkpoint, self.config.clone())?;
         self.state = candidate.state;
         self.status = candidate.status;
         self.limit_counters = candidate.limit_counters;
@@ -193,10 +205,11 @@ impl EnvironmentBackend for SyntheticM1EnvironmentBackend {
 
     fn fork_boxed(&self) -> Result<Box<dyn EnvironmentBackend>, ControllerError> {
         let checkpoint = self.current_checkpoint()?;
+        // Fork from an already-admitted checkpoint — no re-admission needed.
         #[cfg(test)]
-        let mut child = Self::from_checkpoint(checkpoint, self.config.clone())?;
+        let mut child = Self::from_admitted_checkpoint(checkpoint, self.config.clone())?;
         #[cfg(not(test))]
-        let child = Self::from_checkpoint(checkpoint, self.config.clone())?;
+        let child = Self::from_admitted_checkpoint(checkpoint, self.config.clone())?;
         #[cfg(test)]
         {
             child.eventful_fixture = self.eventful_fixture;
