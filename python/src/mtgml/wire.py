@@ -30,10 +30,12 @@ from .replay import (
     AuthoritativeReplayV2,
     AuthoritativeReplayV3,
     AuthoritativeReplayV4,
+    AuthoritativeReplayV5,
     ReplayManifestV1,
     ReplayManifestV2,
     ReplayManifestV3,
     ReplayManifestV4,
+    ReplayManifestV5,
 )
 
 T = TypeVar("T")
@@ -61,6 +63,8 @@ _DECODERS: dict[str, Callable[[object], object]] = {
     "synthetic-m3-observation.v1": SyntheticM3Observation.from_wire,
     "replay-manifest.v4": ReplayManifestV4.from_wire,
     "authoritative-replay.v4": AuthoritativeReplayV4.from_wire,
+    "replay-manifest.v5": ReplayManifestV5.from_wire,
+    "authoritative-replay.v5": AuthoritativeReplayV5.from_wire,
 }
 
 

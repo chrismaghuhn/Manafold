@@ -729,6 +729,8 @@ SCHEMA_INVENTORY_ALLOWED: frozenset[str] = frozenset(
         "replay-manifest.v2.schema.json",
         "replay-manifest.v3.schema.json",
         "replay-manifest.v4.schema.json",
+        "replay-manifest.v5.schema.json",
+        "authoritative-replay.v5.schema.json",
         "synthetic-m3-observation.v1.schema.json",
         "scope-impact-report.v1.schema.json",
     }

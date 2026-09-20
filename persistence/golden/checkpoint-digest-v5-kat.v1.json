@@ -1,0 +1,26 @@
+{
+  "schema_version": "checkpoint-digest-v5-kat.v1",
+  "vectors": [
+    {
+      "case": "synthetic_legacy_baseline",
+      "program_kind": "synthetic_rules_compat",
+      "semantic_contract_id": "1111111111111111111111111111111111111111111111111111111111111111",
+      "full_state_digest": "0707070707070707070707070707070707070707070707070707070707070707",
+      "expected_digest": "8ce1fc2ec3b5e16364629a74ee7b11514be1bcb43f7448d30bd2b3278a0046de"
+    },
+    {
+      "case": "magic_rules_same_contract",
+      "program_kind": "magic_rules",
+      "semantic_contract_id": "1111111111111111111111111111111111111111111111111111111111111111",
+      "full_state_digest": "0707070707070707070707070707070707070707070707070707070707070707",
+      "expected_digest": "ef7fdb00b406478717e8e569166b3733b681eddb03338391150861afcc9e0774"
+    },
+    {
+      "case": "synthetic_legacy_different_contract",
+      "program_kind": "synthetic_rules_compat",
+      "semantic_contract_id": "2222222222222222222222222222222222222222222222222222222222222222",
+      "full_state_digest": "0707070707070707070707070707070707070707070707070707070707070707",
+      "expected_digest": "4c284922d7bdc5de0506811749c51a7fc9f6ba8f52d33d8141092bf44b8a0278"
+    }
+  ]
+}
