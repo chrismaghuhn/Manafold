@@ -15,13 +15,13 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "python" / "src"))
 
-from mtgml.errors import WireError  # noqa: E402
-from mtgml.wire import decode_canonical, encode_canonical  # noqa: E402
-from mtgml.replay import (  # noqa: E402
+from mtgml.errors import WireError
+from mtgml.replay import (
     AuthoritativeReplayV5,
     ExecutionIdentityV1,
     ReplayManifestV5,
 )
+from mtgml.wire import decode_canonical, encode_canonical
 
 GOLDEN = ROOT / "wire" / "golden"
 NEGATIVE = ROOT / "wire" / "negative"
@@ -55,11 +55,13 @@ class V5ExecutionIdentityTests(unittest.TestCase):
 
     def test_malformed_contract_id_rejects(self) -> None:
         for bad in ("too_short", "5a" * 31, "5A" * 32):
-            with self.subTest(bad=bad):
-                with self.assertRaises(WireError):
-                    ExecutionIdentityV1.from_wire(
-                        {"program_kind": "synthetic_rules_compat", "semantic_contract_id": bad}
-                    )
+            with self.subTest(bad=bad), self.assertRaises(WireError):
+                ExecutionIdentityV1.from_wire(
+                    {
+                        "program_kind": "synthetic_rules_compat",
+                        "semantic_contract_id": bad,
+                    }
+                )
 
 
 class V5GoldenFixtureTests(unittest.TestCase):

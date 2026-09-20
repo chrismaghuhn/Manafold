@@ -312,7 +312,8 @@ def scan_kernel_sites() -> KernelResult:
             KernelFinding(
                 path="<global>",
                 line=0,
-                text="ProgramKernelInner::SyntheticLegacy(SyntheticM1RulesKernel) construction count",
+                text="ProgramKernelInner::SyntheticLegacy("
+                "SyntheticM1RulesKernel) construction count",
                 classification="MUST HAVE EXACTLY 1 CONSTRUCTION",
                 disposition="FORBIDDEN",
             )
@@ -562,8 +563,8 @@ def _is_comment_line(line: str) -> bool:
 # CURRENT_CONSUMER sites: V4 re-exports / V4 imports that are current consumer surface.
 # These MUST MIGRATE TO V5 per §22.
 V4_CURRENT_CONSUMER_SITES: set[str] = {
-    "crates/mtgml-environment/src/lib.rs",  # V4 re-exports in production non-test surface
-    "crates/mtgml-environment/src/controller.rs",  # V4 trait + TrustedEnvironmentController signatures
+    "crates/mtgml-environment/src/lib.rs",  # V4 re-exports in non-test surface
+    "crates/mtgml-environment/src/controller.rs",  # V4 trait + controller sigs
     # Internal test module root + test subdirectory (spec §22: "tests.rs, tests/")
     "crates/mtgml-environment/src/tests.rs",
     # Files under src/tests/ that are NOT already in CURRENT_PRODUCER_SITES
@@ -616,9 +617,7 @@ def census_v4() -> V4Result:
                     if token in line:
                         retain_tokens = _path_matches_rules(rel_path)
                         if retain_tokens is not None:
-                            if retain_tokens == ():
-                                continue
-                            elif token in retain_tokens:
+                            if retain_tokens == () or token in retain_tokens:
                                 continue
                             else:
                                 result.violations.append(
@@ -668,7 +667,7 @@ def census_v4() -> V4Result:
                                     line=lineno,
                                     text=line.rstrip()[:120],
                                     token=token,
-                                    disposition="CURRENT_CONSUMER -> MUST MIGRATE TO V5 (src/tests/)",
+                                    disposition="CURRENT_CONSUMER -> MUST MIGRATE TO V5 (tests)",
                                 )
                             )
                         elif rel_path == "crates/mtgml-environment/src/tests.rs":
@@ -744,18 +743,23 @@ def main() -> None:
     print("GREEN: V5 execution-identity gate — all checks pass")
     print(f"  - V5 current tokens: {len(V5_CURRENT_TOKENS)} verified")
     print(f"  - §23a.1 kernel sites: {len(kernel_result.findings)} checked, 0 forbidden")
-    print(f"  - §22 residual-V4 census: 0 current-producer/consumer violations")
+    print("  - §22 residual-V4 census: 0 current-producer/consumer violations")
 
 
 # Structural guard: V4_RETAIN_RULES must have exactly one authoritative
 # definition.  A duplicated/shadowed definition silently overrides the
 # first one and produces a validation-drift trap for future maintainers.
+def _fail(message: str) -> None:
+    print(f"FAIL: {message}", file=sys.stderr)
+    sys.exit(1)
+
+
 _retain_rule_count = 0
 for _line in Path(__file__).read_text(encoding="utf-8").splitlines():
     if _line.strip().startswith("V4_RETAIN_RULES: list[tuple"):
         _retain_rule_count += 1
 if _retain_rule_count != 1:
-    fail(
+    _fail(
         f"V4_RETAIN_RULES must have exactly one authoritative definition; "
         f"found {_retain_rule_count}"
     )

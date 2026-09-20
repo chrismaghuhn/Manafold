@@ -1,5 +1,5 @@
 """Task 2 contract tests: Python mechanical mirrors of the V5 contract
-digest machinery (spec §7–§9, §19.1/§19.2).
+digest machinery (spec §7-§9, §19.1/§19.2).
 
 The KAT vectors live in the shared fixture
 ``persistence/golden/semantic-contract-kat.v1.json`` — the single source of
@@ -21,7 +21,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "python" / "src"))
 
-from mtgml.persistence import (  # noqa: E402
+from mtgml.persistence import (
     DIGEST_ENVELOPE_ID,
     RULES_CONTRACT_DOMAIN,
     RULES_CONTRACT_INPUT_SCHEMA,

@@ -33,6 +33,7 @@ from .observation import (
     PlayerStep,
     PlayerStepV2,
 )
+from .persistence import calculate_checkpoint_digest_v5
 from .player_client import PlayerClient
 from .replay import (
     AuthoritativeReplayV1,
@@ -48,9 +49,6 @@ from .replay import (
     InitialEnvironmentIdentityV3,
     InitialEnvironmentIdentityV4,
     InitialEnvironmentIdentityV5,
-    KernelIdentityV1,
-    RandomnessIdentityV1,
-    RandomnessIdentityV2,
     ReplayManifestV1,
     ReplayManifestV2,
     ReplayManifestV3,
@@ -64,7 +62,6 @@ from .replay import (
     SemanticContractMaterialV5,
 )
 from .wire import compute_information_state_digest_v2, decode_canonical, encode_canonical
-from .persistence import calculate_checkpoint_digest_v5
 
 __all__ = [
     "SYNTHETIC_M3_OBSERVATION_SCHEMA",

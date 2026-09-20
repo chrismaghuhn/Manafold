@@ -655,7 +655,7 @@ def calculate_checkpoint_digest_v5(
 
     Byte-exact: envelope mtgml.digest-envelope.v1 / sha-256 /
     mtgml.canonical-cbor.v1 over the canonical V5 fixed 7-array payload, where
-    elements 1–6 are the V4-verified facts with V5 schema/domain strings and
+    elements 1-6 are the V4-verified facts with V5 schema/domain strings and
     element 7 is the ExecutionIdentityV1 encoded as
     ``[program_kind_variant, semantic_contract_id_32bytes]``.
 

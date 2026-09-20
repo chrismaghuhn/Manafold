@@ -25,7 +25,7 @@ GENERATOR_PATH = ROOT / "scripts" / "generate_semantic_contract_catalog.py"
 sys.dont_write_bytecode = True
 sys.path.insert(0, str(ROOT / "python" / "src"))
 
-from mtgml.persistence import (  # noqa: E402
+from mtgml.persistence import (
     PersistenceError,
     calculate_rules_contract_id_v1,
     calculate_semantic_contract_id_v1,

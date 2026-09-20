@@ -21,11 +21,9 @@ from .decision import DecisionResponseV2
 from .episode import EpisodeStatus
 from .errors import WireError
 from .persistence import (
-    PersistenceError,
     CHECKPOINT_CODEC_ID_V5,
     CHECKPOINT_CODEC_VERSION_V5,
-    CHECKPOINT_DOMAIN_V5,
-    CHECKPOINT_INPUT_SCHEMA_V5,
+    PersistenceError,
     calculate_checkpoint_digest_v5,
     calculate_rules_contract_id_v1,
     calculate_semantic_contract_id_v1,

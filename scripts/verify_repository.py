@@ -340,7 +340,6 @@ def main() -> None:
             parts.extend(p.read_text(encoding="utf-8") for p in sorted(fragment_dir.glob("*.rs")))
         return "\n".join(parts)
 
-    env_tests = _test_module_text(env_src)
     if "Arc<Mutex" not in env_rust or re.search(r"fn\s+bind_player\s*\(\s*&self", env_rust) is None:
         fail("player endpoint handles still borrow the controller exclusively")
 

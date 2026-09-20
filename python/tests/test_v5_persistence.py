@@ -17,10 +17,10 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "python" / "src"))
 
-from mtgml.persistence import (  # noqa: E402
+from mtgml.episode import EpisodeStatus
+from mtgml.persistence import (
     calculate_checkpoint_digest_v5,
 )
-from mtgml.episode import EpisodeStatus  # noqa: E402
 
 KAT_PATH = ROOT / "persistence" / "golden" / "checkpoint-digest-v5-kat.v1.json"
 
@@ -148,17 +148,16 @@ class V5CheckpointDigestNegativeTests(unittest.TestCase):
         from mtgml.persistence import PersistenceError
 
         for bad in ("too_short", "5a" * 31, "5A" * 32, "zz" * 32):
-            with self.subTest(bad=bad):
-                with self.assertRaises((PersistenceError, ValueError)):
-                    calculate_checkpoint_digest_v5(
-                        full_state_digest="07" * 32,
-                        status=EpisodeStatus.running(),
-                        counters=DEFAULT_COUNTERS,
-                        codec_id=CODEC_ID_V5,
-                        semantic_version=CODEC_VERSION_V5,
-                        program_kind="synthetic_rules_compat",
-                        semantic_contract_id=bad,
-                    )
+            with self.subTest(bad=bad), self.assertRaises((PersistenceError, ValueError)):
+                calculate_checkpoint_digest_v5(
+                    full_state_digest="07" * 32,
+                    status=EpisodeStatus.running(),
+                    counters=DEFAULT_COUNTERS,
+                    codec_id=CODEC_ID_V5,
+                    semantic_version=CODEC_VERSION_V5,
+                    program_kind="synthetic_rules_compat",
+                    semantic_contract_id=bad,
+                )
 
     def test_codec_semantic_version_4_rejected(self) -> None:
         from mtgml.persistence import PersistenceError
