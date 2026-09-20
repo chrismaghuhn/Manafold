@@ -23,6 +23,7 @@ from .decision import DecisionResponseV2
 from .episode import EpisodeStatus
 from .errors import WireError
 from .persistence import (
+    PersistenceError,
     CHECKPOINT_CODEC_ID_V5,
     CHECKPOINT_CODEC_VERSION_V5,
     CHECKPOINT_DOMAIN_V5,
@@ -104,6 +105,18 @@ class ExecutionIdentityV1:
         }
 
 
+def _require_contract_manifest(value: object) -> dict[str, object]:
+    if not isinstance(value, dict):
+        raise WireError("decode.invalid_json", "semantic contract manifest must be an object")
+    return dict(value)
+
+
+def _require_rules_manifest(value: object) -> dict[str, object]:
+    if not isinstance(value, dict):
+        raise WireError("decode.invalid_json", "rules contract manifest must be an object")
+    return dict(value)
+
+
 @dataclass(frozen=True, slots=True)
 class SemanticContractMaterialV5:
     semantic_contract_id: str
@@ -116,10 +129,12 @@ class SemanticContractMaterialV5:
             value,
             {"semantic_contract_id", "manifest", "rules_manifest"},
         )
+        manifest = _require_contract_manifest(obj["manifest"])
+        rules_manifest = _require_rules_manifest(obj["rules_manifest"])
         return cls(
             semantic_contract_id=require_digest(obj["semantic_contract_id"]),
-            manifest=dict(obj["manifest"]),
-            rules_manifest=dict(obj["rules_manifest"]),
+            manifest=manifest,
+            rules_manifest=rules_manifest,
         )
 
     def to_wire(self) -> dict[str, object]:
@@ -130,10 +145,16 @@ class SemanticContractMaterialV5:
         }
 
     def validate(self) -> None:
-        recomputed_semantic = calculate_semantic_contract_id_v1(self.manifest)
+        try:
+            recomputed_semantic = calculate_semantic_contract_id_v1(self.manifest)
+        except PersistenceError as exc:
+            raise WireError("semantic.replay_manifest", "semantic contract manifest is invalid") from exc
         if recomputed_semantic != self.semantic_contract_id:
             raise WireError("semantic.replay_manifest", "semantic contract id does not match")
-        recomputed_rules = calculate_rules_contract_id_v1(self.rules_manifest)
+        try:
+            recomputed_rules = calculate_rules_contract_id_v1(self.rules_manifest)
+        except PersistenceError as exc:
+            raise WireError("semantic.replay_manifest", "rules contract manifest is invalid") from exc
         if recomputed_rules != self.manifest["rules_contract_id"]:
             raise WireError("semantic.replay_manifest", "rules contract id does not match")
         manifest = self.manifest

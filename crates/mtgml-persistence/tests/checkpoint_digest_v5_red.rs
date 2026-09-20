@@ -371,3 +371,87 @@ fn different_episode_status_changes_digest() {
     .unwrap();
     assert_ne!(running, terminal);
 }
+
+fn kat_fixture_path() -> std::path::PathBuf {
+    std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../persistence/golden/checkpoint-digest-v5-kat.v1.json")
+}
+
+fn kat_vectors() -> Vec<serde_json::Value> {
+    let raw = std::fs::read(kat_fixture_path()).unwrap();
+    let document: serde_json::Value = serde_json::from_slice(&raw).unwrap();
+    document["vectors"].as_array().cloned().unwrap()
+}
+
+/// Spec §19.3 shared KAT: the Rust and Python suites must read the same
+/// `persistence/golden/checkpoint-digest-v5-kat.v1.json` fixture and
+/// reproduce every frozen `expected_digest`.
+#[test]
+fn shared_kat_vectors_reproduce_frozen_digests() {
+    let vectors = kat_vectors();
+    assert!(vectors.len() >= 3, "shared checkpoint-digest-v5 KAT fixture regressed");
+
+    let counters = EnvironmentLimitCounters::default();
+    for vector in &vectors {
+        let case = vector["case"].as_str().unwrap();
+        let program_kind = vector["program_kind"].as_str().unwrap();
+        let program = match program_kind {
+            "synthetic_rules_compat" => ExecutionProgramV1::SyntheticRulesCompat,
+            "magic_rules" => ExecutionProgramV1::MagicRules,
+            other => panic!("unknown program_kind {other} in KAT case {case}"),
+        };
+        let contract_hex = vector["semantic_contract_id"].as_str().unwrap();
+        let full_state_hex = vector["full_state_digest"].as_str().unwrap();
+        let expected = vector["expected_digest"].as_str().unwrap();
+
+        let digest = calculate_checkpoint_digest_v5(
+            &FullStateDigestV4::from_digest_bytes(
+                hex_to_bytes(full_state_hex)
+            ).as_digest_reference(),
+            &EpisodeStatus::Running,
+            &counters,
+            &codec_v5(),
+            &ExecutionIdentityV1 {
+                program_kind: program,
+                semantic_contract_id: SemanticContractIdV1::parse(contract_hex).unwrap(),
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            digest.as_str(),
+            expected,
+            "KAT case {case} drifted"
+        );
+    }
+}
+
+fn hex_to_bytes(hex: &str) -> [u8; 32] {
+    let bytes = decode_hex(hex).unwrap();
+    assert_eq!(bytes.len(), 32);
+    let mut result = [0u8; 32];
+    result.copy_from_slice(&bytes);
+    result
+}
+
+fn decode_hex(hex: &str) -> Result<Vec<u8>, String> {
+    if hex.len() % 2 != 0 {
+        return Err("odd-length hex string".to_owned());
+    }
+    (0..hex.len())
+        .step_by(2)
+        .map(|i| {
+            let hi = hex_digit(hex.as_bytes()[i])?;
+            let lo = hex_digit(hex.as_bytes()[i + 1])?;
+            Ok(hi * 16 + lo)
+        })
+        .collect()
+}
+
+fn hex_digit(byte: u8) -> Result<u8, String> {
+    match byte {
+        b'0'..=b'9' => Ok(byte - b'0'),
+        b'a'..=b'f' => Ok(byte - b'a' + 10),
+        b'A'..=b'F' => Ok(byte - b'A' + 10),
+        _ => Err(format!("invalid hex digit: {}", byte as char)),
+    }
+}

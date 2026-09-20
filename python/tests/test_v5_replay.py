@@ -166,6 +166,44 @@ class V5NegativeFixtureTests(unittest.TestCase):
         self.assertEqual(caught.exception.code, "semantic.replay")
 
 
+class V5NestedContractObjectStrictnessTests(unittest.TestCase):
+    """Nested contract manifests must be JSON objects, not arrays of pairs.
+
+    Rust serde and the V5 JSON schemas require objects at these positions.
+    Python's dict() constructor silently accepts array-of-pairs, which we
+    must reject at decode time (decode.invalid_json).
+    """
+
+    def test_manifest_as_array_of_pairs_is_rejected(self) -> None:
+        manifest = _v5_golden_manifest()
+        manifest["semantic_contract"]["manifest"] = [
+            ["rules_contract_id", manifest["semantic_contract"]["manifest"]["rules_contract_id"]],
+            ["format_contract_id", None],
+            ["content_contract_id", None],
+        ]
+        with self.assertRaises(WireError) as caught:
+            ReplayManifestV5.from_wire(manifest)
+        self.assertEqual(caught.exception.code, "decode.invalid_json")
+
+    def test_rules_manifest_as_array_of_pairs_is_rejected(self) -> None:
+        manifest = _v5_golden_manifest()
+        original = manifest["semantic_contract"]["rules_manifest"]
+        manifest["semantic_contract"]["rules_manifest"] = [
+            ["rules_authority", original["rules_authority"]],
+            ["capability_closure", None],
+        ]
+        with self.assertRaises(WireError) as caught:
+            ReplayManifestV5.from_wire(manifest)
+        self.assertEqual(caught.exception.code, "decode.invalid_json")
+
+    def test_manifest_as_non_object_primitive_is_rejected(self) -> None:
+        manifest = _v5_golden_manifest()
+        manifest["semantic_contract"]["manifest"] = "not-an-object"
+        with self.assertRaises(WireError) as caught:
+            ReplayManifestV5.from_wire(manifest)
+        self.assertEqual(caught.exception.code, "decode.invalid_json")
+
+
 class V5CheckpointIdentityConsistencyTests(unittest.TestCase):
     def test_manifest_initial_identity_checkpoint_digest_is_consistent(self) -> None:
         manifest = _v5_golden_manifest()
