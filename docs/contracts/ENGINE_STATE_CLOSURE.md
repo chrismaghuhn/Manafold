@@ -120,3 +120,19 @@ runtime converts to `FullStateDigestInputV3` and constructs `FullStateDigestV3`
 through the accepted persisted semantic codec.
 
 The detached V3 semantic digest mapping is specified in [`../STATE_HASHING.md`](../STATE_HASHING.md).
+
+## V5 execution-identity binding
+
+ADR 0055 introduces `ExecutionIdentityV1` as the resumable checkpoint identity.
+`EngineState` and `FullStateDigest` are unchanged — execution identity is
+environment/resume identity, not a Magic state variable.
+
+`EnvironmentCheckpointV5` carries `execution_identity: ExecutionIdentityV1`
+(`program_kind: ExecutionProgramV1`, `semantic_contract_id: SemanticContractIdV1`)
+and `checkpoint_digest: CheckpointDigestV5`. The checkpoint digest input is the
+V4 6-element array plus `ExecutionIdentityV1` as the 7th (last) element, canonically
+encoded as `[program_kind_variant_array, semantic_contract_id_32bytes]`.
+
+V4 checkpoint/replay identities remain as historical/verifier context only
+(`READABLE_VERIFIABLE_ONLY` / `UNSUPPORTED` per ADR §2.12). No V4→V5 automatic
+migration exists. Historical V4 material is never reinterpreted as V5.

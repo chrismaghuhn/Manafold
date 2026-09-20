@@ -48,15 +48,15 @@ the certification profile runs after every other verification step and is
 followed only by the final read-only source snapshot and report writing
 into gitignored ``dist/``.
 
+Posture (Task 14 / ADR §2.15 / §21b): the V5 current gate lives in the
+CURRENT verification chain (``scripts/run_v5_execution_identity_gate.py``
+wired into ``scripts/run_checks.py`` FAST and ``justfile contracts``).
+This runner remains a purely HISTORICAL M2 aggregator; it never becomes a
+V5-current-gate aggregator.  History and currentness are never mixed in
+one runner again.
+
 Reports and logs are written only below ``dist/m2-final-verification/``
 (never into the reproducible source archive).
-
-Scope-guard notes: the vocabulary pattern scans deliberately cover only
-``crates/``, ``tools/``, and ``python/src`` production sources.  The
-verification tooling itself (this script, sibling gate runners, and their
-tests) necessarily contains the literal forbidden vocabulary as detection
-patterns, so scanning it would be self-defeating; maintainer-tooling changes
-remain guarded by review and the pinned structural inventories.
 """
 
 from __future__ import annotations

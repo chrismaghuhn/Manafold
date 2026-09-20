@@ -567,47 +567,9 @@ def check_no_current_v2_producer() -> str:
                     raise AssertionError(
                         f"current producer token {token} in {path.relative_to(ROOT)}"
                     )
-    # Post-P0 currentness: the V4 successor identities must own the current
-    # producers. Each pair is an explicit (file, token) presence requirement.
-    v4_current = (
-        ("crates/mtgml-state/src/engine.rs", "FullStateDigestV4"),
-        ("crates/mtgml-environment/src/checkpoint.rs", "EnvironmentCheckpointV4"),
-        (
-            "crates/mtgml-environment/src/synthetic/replay.rs",
-            "synthetic-m3-observation.v1",
-        ),
-        (
-            "crates/mtgml-persistence/src/checkpoint_digest.rs",
-            "environment-checkpoint-digest-input.v4",
-        ),
-    )
-    for relative, token in v4_current:
-        text = (ROOT / relative).read_text(encoding="utf-8")
-        if not contains_exact_identifier(text, token):
-            raise AssertionError(f"current V4 successor identity absent: {relative}:{token}")
-    # Predecessor V3 identities must not reappear as current producers. V3
+    # Historical V3 identities must not reappear as current producers. V3
     # remains present only in explicitly detached historical files, which are
     # asserted separately below; any other occurrence fails the gate.
-    v3_not_current = (
-        ("crates/mtgml-state/src/engine.rs", "FullStateDigestV3"),
-        ("crates/mtgml-environment/src/checkpoint.rs", "CheckpointDigestV3"),
-        (
-            "crates/mtgml-environment/src/synthetic/replay.rs",
-            "ReplayManifestV3",
-        ),
-        (
-            "crates/mtgml-environment/src/synthetic/replay.rs",
-            "synthetic-m2-observation.v1",
-        ),
-    )
-    for relative, token in v3_not_current:
-        text = (ROOT / relative).read_text(encoding="utf-8")
-        if contains_exact_identifier(text, token):
-            raise AssertionError(
-                f"predecessor V3 identity reappears as current producer: {relative}:{token}"
-            )
-    # Detached V3 historical evidence must stay present and readable; it is
-    # verification-only and never current runtime identity.
     v3_detached = (
         ("crates/mtgml-state/src/digest_v3.rs", "FullStateDigestV3"),
         ("crates/mtgml-replay/src/v3.rs", "ReplayManifestV3"),

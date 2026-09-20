@@ -18,6 +18,7 @@
 - Replay V2: provisional-public M1 replay identity; after the M2 state cut it is `READABLE_VERIFIABLE_ONLY` in the current engine and is not semantically executed against M2 `EngineState`.
 - M2 Decision V2, Information/Event/PlayerStep V2, synthetic observation payload V1: `experimental` during M2.A–M2.H; promotion to `provisional-public` requires M2 executable closure.
 - `FullStateDigestV3`, Checkpoint V3 and Replay V3: experimental/freeze-candidate until their ADR-0038 codec/schema fixtures and executable parity gates pass.
+- Replay V5: current resumable replay identity per ADR 0055; carries `ExecutionIdentityV1` binding.
 - the temporary M2 subprocess Python semantic adapter: internal/experimental test infrastructure; never a production transport promise.
 - concrete Card IR variants: experimental.
 - Rust crate APIs: internal/experimental unless explicitly registered otherwise.
@@ -53,6 +54,20 @@ Once the M2 V3 runtime cut lands, current-engine support is frozen as follows:
 `EnvironmentCheckpointV2` never had a durable detached historical state codec; therefore current M2 code must not pretend to read it by deserializing into the changed `EngineState`. Historical M1 execution remains reproducible only with the archived matching engine/source identity.
 
 A future explicit V2→V3 migration ADR may change only the `Migration` column by adding a provenance-preserving Rust-authoritative migration. It cannot relabel or reinterpret the source artifact.
+
+## V5 execution-identity cut support matrix
+
+Per ADR 0055 §2.12. V4→V5 compatibility is frozen now; no automatic migration exists.
+
+| Surface | Writer | Reader | Verifier | Semantic execution | Migration | Classification |
+|---|---|---|---|---|---|---|
+| `FullStateDigestV4` | yes (unchanged) | yes | yes | n/a | n/a | `EXECUTABLE` (current) |
+| `EnvironmentCheckpointV4` | no (V5 current) | NO durable reader | YES, digest recompute | no under V5 runtime | none | `UNSUPPORTED` (historical; retained-Rust-V4-value validation allowed ONLY if the historical type is retained, never as a restore path) |
+| `CheckpointDigestV4` | no | yes | yes | n/a | none | `READABLE_VERIFIABLE_ONLY` |
+| `ReplayManifestV4` | no | yes | yes, detached | no | none | `READABLE_VERIFIABLE_ONLY` |
+| `ReplayStepV4` | no | yes | yes, detached | no | none | `READABLE_VERIFIABLE_ONLY` |
+| `AuthoritativeReplayV4` | no | yes | yes, detached | archived matching V4 runtime ONLY | none | `READABLE_VERIFIABLE_ONLY` |
+| V4 → V5 automatic migration | — | — | — | — | NONE (no silent upgrade) | — |
 
 ## Deprecation and version changes
 

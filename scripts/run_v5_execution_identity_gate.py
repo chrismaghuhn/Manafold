@@ -450,38 +450,131 @@ V4_CURRENT_PRODUCER_SITES: set[str] = {
     "crates/mtgml-environment/src/replay_parity_tests.rs",
 }
 
-# STALE rows: V4 tokens in scripts whose V4-current blocks must be removed
-# in Task 14.  These are NOT on RETAIN rules — they are flagged so Task 14
-# knows to remove them.  (verify_repository.py's V4-current-block and
-# run_m2_b_contract_cut.py's current-successor block are STALE per §22.)
-V4_STALE_FILES: dict[str, str] = {
-    "scripts/verify_repository.py": "STALE -> REMOVE (V4-current block replaced by V5 gate, Task 14)",
-    "scripts/run_m2_b_contract_cut.py": "STALE -> REMOVE (current-successor block moves to V5 gate, Task 14)",
-}
+# STALE rows: V4 tokens in scripts whose V4-current blocks were removed
+# in Task 14.  These files no longer contain stale V4-current blocks;
+# any V4 token found here after Task 14 is a detection pattern in a
+# gate/verification script and is retained as historical evidence.
+# (verify_repository.py's V4-current block was replaced by V5-current
+# checks in Task 14; run_m2_b_contract_cut.py's current-successor
+# block was split to the V5 gate in Task 14.)
+V4_STALE_FILES: dict[str, str] = {}
 
-# CURRENT_CONSUMER sites: V4 re-exports / V4 imports that are current consumer surface.
-# These MUST MIGRATE TO V5 per §22.
-V4_CURRENT_CONSUMER_SITES: set[str] = {
-    "crates/mtgml-environment/src/lib.rs",  # V4 re-exports in production non-test surface
-    "crates/mtgml-environment/src/controller.rs",  # V4 trait + TrustedEnvironmentController signatures
-    # Internal test module root + test subdirectory (spec §22: "tests.rs, tests/")
-    "crates/mtgml-environment/src/tests.rs",
-    # Files under src/tests/ that are NOT already in CURRENT_PRODUCER_SITES
-    # are CURRENT_CONSUMER — catch them by path prefix.
-    "python/src/mtgml/_replay_v5.py",  # V4 import in V5 module — CURRENT_CONSUMER
-    "tools/m2-semantic-adapter/src/config.rs",
-    "tools/m2-semantic-adapter/src/session.rs",
-    # Conformance harness (spec §22: CURRENT_CONSUMER → MUST MIGRATE)
-    "crates/mtgml-conformance/src/facade.rs",
-    "crates/mtgml-conformance/src/isolation/paired.rs",
-    "crates/mtgml-conformance/src/isolation/replay_parity.rs",
-    "crates/mtgml-conformance/src/isolation/checkpoint_parity.rs",
-    "crates/mtgml-conformance/src/isolation/fork_parity.rs",
-    "crates/mtgml-conformance/src/isolation/rejection.rs",
-    "crates/mtgml-conformance/src/isolation/fingerprint.rs",
-    "crates/mtgml-conformance/src/isolation/endpoint_pair.rs",
-    "crates/mtgml-conformance/src/legal_space/gate_evidence.rs",
-}
+# RETAIN rows: V4 tokens permitted here (HISTORICAL_VERIFIER / FROZEN_FIXTURE /
+# DOC_HISTORY disposition per §22).  Each entry: (rel_path, token_subset_or_empty).
+# Empty tuple means ALL V4 migration tokens are retained at this site.
+V4_RETAIN_RULES: list[tuple[str, tuple[str, ...]]] = [
+    # Checkpoint V4 retained for historical validation only (§17 writer posture)
+    ("crates/mtgml-environment/src/checkpoint.rs", ()),
+    # Integration test files using V4 for RED/historical evidence (FROZEN_FIXTURE)
+    ("crates/mtgml-environment/tests/checkpoint_v5_red.rs", ("EnvironmentCheckpointV4",
+        "environment-checkpoint.v4")),
+    ("crates/mtgml-environment/tests/p0_red.rs", ()),
+    ("crates/mtgml-rules/tests/p0_red.rs", ()),
+    # V4 replay types retained as historical (READABLE_VERIFIABLE_ONLY)
+    ("crates/mtgml-replay/src/v4.rs", ()),
+    ("crates/mtgml-replay/src/v3.rs", ()),
+    ("crates/mtgml-replay/src/v2.rs", ()),
+    ("crates/mtgml-replay/src/v1.rs", ()),
+    ("crates/mtgml-replay/src/identity.rs", ()),  # ReplaySchemaVersionsV4 + V1 historical
+    ("crates/mtgml-replay/tests/p0_red.rs", ()),
+    ("crates/mtgml-replay/tests/replay_v5_red.rs", ("calculate_checkpoint_digest_v4",
+        "InitialEnvironmentIdentityV4")),
+    ("crates/mtgml-replay/tests/gen_v5_fixtures.rs", ("replay-manifest.v4",)),
+    # Wire dispatch for V4 fixtures (HISTORICAL_VERIFIER — V4 decoder retained)
+    ("crates/mtgml-wire/src/fixtures.rs", ()),
+    ("crates/mtgml-wire/src/lib.rs", ()),
+    ("crates/mtgml-replay/src/lib.rs", (
+        "AuthoritativeReplayV4",
+        "InitialEnvironmentIdentityV4",
+        "ReplayManifestV4",
+        "ReplayRecorderV4",
+        "ReplayStepV4",
+        "REPLAY_FILE_SCHEMA_V4",
+        "REPLAY_MANIFEST_SCHEMA_V4",
+        "REPLAY_STEP_SCHEMA_V4",
+        "ReplaySchemaVersionsV4",
+    )),  # V4 pub use re-exports (historical verifier)
+    ("crates/mtgml-wire/src/replay.rs", (
+        "AuthoritativeReplayV4",
+        "ReplayManifestV4",
+    )),  # V4 WireContract impls (historical verifier)
+    # V4 digest newtype retained in model (CheckpointDigestV4 is historical verifier)
+    ("crates/mtgml-model/src/lib.rs", ()),
+    ("crates/mtgml-model/tests/p0_red.rs", ()),
+    # V4 persistence functions retained for historical digest recompute
+    ("crates/mtgml-persistence/src/checkpoint_digest.rs", ()),
+    ("crates/mtgml-persistence/tests/p0_red.rs", ()),
+    # Python V4 persistence/replay retained as historical
+    ("python/src/mtgml/persistence.py", ()),
+    ("python/src/mtgml/_replay_v4.py", ()),
+    ("python/src/mtgml/replay.py", (
+        "CHECKPOINT_CODEC_ID_V4",
+        "REPLAY_FILE_SCHEMA_V4",
+        "REPLAY_MANIFEST_SCHEMA_V4",
+        "REPLAY_STEP_SCHEMA_V4",
+        "AuthoritativeReplayV4",
+        "InitialEnvironmentIdentityV4",
+        "ReplayManifestV4",
+        "ReplaySchemaVersionsV4",
+        "ReplayStepV4",
+        "calculate_checkpoint_digest_v4",
+    )),  # V4 re-exports (historical verifier)
+    ("python/src/mtgml/wire.py", (
+        "AuthoritativeReplayV4",
+        "ReplayManifestV4",
+        "replay-manifest.v4",
+        "authoritative-replay.v4",
+    )),  # V4 decoder dispatch (historical verifier)
+    ("python/src/mtgml/__init__.py", (
+        "AuthoritativeReplayV4",
+        "InitialEnvironmentIdentityV4",
+        "ReplayManifestV4",
+        "ReplaySchemaVersionsV4",
+        "ReplayStepV4",
+    )),  # V4 re-exports (historical verifier)
+    # Frozen P0/M2-era Python test evidence (FROZEN_FIXTURE / DOC_HISTORY)
+    ("python/tests/test_p0_red.py", ()),
+    ("python/tests/test_m3_p0_green03.py", ()),
+    ("python/tests/test_schema_parity.py", ("replay-manifest.v4", "authoritative-replay.v4")),
+    # test_current_status.py audits V4 tokens as historical classification (DOC_HISTORY)
+    ("python/tests/test_current_status.py", ()),
+    # Schema inventory lists V4 schema filenames (DOC_HISTORY)
+    ("schemas/README.json", ()),
+    ("schemas/replay-manifest.v4.schema.json", ()),
+    ("schemas/authoritative-replay.v4.schema.json", ()),
+    # Wire golden/negative fixtures: only V4 schema filename strings appear here
+    # (DOC_HISTORY / FROZEN_FIXTURE). V4 type names in wire fixtures are FORBIDDEN.
+    ("wire/golden/authoritative-replay-empty.v4.json", ("replay-manifest.v4", "authoritative-replay.v4", "replay-step.v4")),
+    ("wire/golden/manifest.json", ("replay-manifest.v4", "authoritative-replay.v4")),
+    ("wire/golden/replay-manifest.v4.json", ("replay-manifest.v4", "replay-step.v4")),
+    ("wire/negative/authoritative-replay-v4-wrong-schema.json", ("replay-manifest.v4", "replay-step.v4")),
+    ("wire/negative/manifest.json", ("replay-manifest.v4", "authoritative-replay.v4")),
+    ("wire/negative/replay-manifest-v5-wrong-schema.json", ("replay-manifest.v4",)),
+    ("wire/negative/replay-v4-m2-payload-codec.json", ("replay-manifest.v4", "replay-step.v4")),
+    ("wire/negative/replay-v4-unknown-field.json", ("replay-manifest.v4", "replay-step.v4")),
+    ("wire/negative/replay-v4-v3-checkpoint-digest.json", ("replay-manifest.v4", "replay-step.v4")),
+    ("wire/negative/replay-v4-wrong-rng.json", ("replay-manifest.v4", "replay-step.v4")),
+    ("wire/negative/replay-v4-wrong-replay-step.json", ("replay-manifest.v4",)),
+    ("wire/negative/replay-v4-wrong-schema.json", ("replay-step.v4",)),
+    # Historical scripts (DOC_HISTORY / HISTORICAL_VERIFIER)
+    ("scripts/run_m1_closure.py", ()),
+    ("scripts/run_m2_final_closure.py", ()),
+    ("scripts/run_m2_h_gates.py", ()),
+    ("scripts/validate_schemas.py", ()),
+    # verify_repository.py now contains V4 tokens only as detection patterns
+    # in FORBIDDEN check lists (DOC_HISTORY / HISTORICAL_VERIFIER)
+    ("scripts/verify_repository.py", ()),
+    # The gate script itself contains V4 vocabulary as detection patterns
+    ("scripts/run_v5_execution_identity_gate.py", ()),
+    # Documentation files referencing V4 as historical context (DOC_HISTORY)
+    ("docs/adr/0054-m3-pre-t0-hardening.md", ()),
+    ("docs/adr/0055-v5-execution-identity.md", ()),
+    ("docs/superpowers/specs/2026-09-16-m3-p0-state-identity-cut-design.md", ()),
+    ("docs/superpowers/specs/2026-09-18-v5-execution-identity-implementation-design.md", ()),
+    # API_LIFECYCLE.md V5 compatibility matrix references V4 surfaces as
+    # DOC_HISTORY (§2.12 matrix home)
+    ("docs/maintenance/API_LIFECYCLE.md", ()),
+]
 
 @dataclass
 class V4Finding:
@@ -509,6 +602,31 @@ def _is_comment_line(line: str) -> bool:
     """True if the line is purely a comment (not code containing a comment)."""
     stripped = line.strip()
     return stripped.startswith("//") or stripped.startswith("#")
+
+
+# CURRENT_CONSUMER sites: V4 re-exports / V4 imports that are current consumer surface.
+# These MUST MIGRATE TO V5 per §22.
+V4_CURRENT_CONSUMER_SITES: set[str] = {
+    "crates/mtgml-environment/src/lib.rs",  # V4 re-exports in production non-test surface
+    "crates/mtgml-environment/src/controller.rs",  # V4 trait + TrustedEnvironmentController signatures
+    # Internal test module root + test subdirectory (spec §22: "tests.rs, tests/")
+    "crates/mtgml-environment/src/tests.rs",
+    # Files under src/tests/ that are NOT already in CURRENT_PRODUCER_SITES
+    # are CURRENT_CONSUMER — catch them by path prefix.
+    "python/src/mtgml/_replay_v5.py",  # V4 import in V5 module — CURRENT_CONSUMER
+    "tools/m2-semantic-adapter/src/config.rs",
+    "tools/m2-semantic-adapter/src/session.rs",
+    # Conformance harness (spec §22: CURRENT_CONSUMER → MUST MIGRATE)
+    "crates/mtgml-conformance/src/facade.rs",
+    "crates/mtgml-conformance/src/isolation/paired.rs",
+    "crates/mtgml-conformance/src/isolation/replay_parity.rs",
+    "crates/mtgml-conformance/src/isolation/checkpoint_parity.rs",
+    "crates/mtgml-conformance/src/isolation/fork_parity.rs",
+    "crates/mtgml-conformance/src/isolation/rejection.rs",
+    "crates/mtgml-conformance/src/isolation/fingerprint.rs",
+    "crates/mtgml-conformance/src/isolation/endpoint_pair.rs",
+    "crates/mtgml-conformance/src/legal_space/gate_evidence.rs",
+}
 
 
 def census_v4() -> V4Result:

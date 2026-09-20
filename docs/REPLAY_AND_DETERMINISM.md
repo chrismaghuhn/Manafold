@@ -52,6 +52,14 @@ The checkpoint digest must recompute from the other fields using the V3 checkpoi
 
 M2 does not resolve stable semantic action keys or trajectory encoding.
 
+### V5 replay
+
+ADR 0055 introduces Replay V5 as the current resumable replay identity. `ReplayManifestV5` carries the full `ExecutionIdentityV1` (`execution_identity`), the semantic contract material (`semantic_contract` with `semantic_contract_id`, `manifest`, `rules_manifest`), and retains `KernelIdentityV1` and `rules_snapshot` as provenance. `InitialEnvironmentIdentityV5` adds `execution_identity` to the V4 fields. `AuthoritativeReplayV5` adds `final_identity.execution_identity`. `ReplayStepV5` uses `CheckpointDigestV5` with schema `replay-step.v5`.
+
+Detached `AuthoritativeReplayV5::validate()` verifies the three-way identity binding (`manifest.execution_identity == initial_identity.execution_identity == final_identity.execution_identity`), semantic manifest hashes to `semantic_contract_id`, rules manifest hashes to the rules ID, and for `comprehensive_rules` contracts `rules_snapshot` equals the bound authority payload. `synthetic_legacy` rules_snapshot remains informational.
+
+V4 replay types remain as historical/verifier context only (`READABLE_VERIFIABLE_ONLY`). No V4→V5 migration exists.
+
 ## ReplayStepV3
 
 A step contains:

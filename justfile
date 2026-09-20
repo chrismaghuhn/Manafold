@@ -49,7 +49,9 @@ unit:
     PYTHONDONTWRITEBYTECODE=1 {{project_python}} scripts/run_python_tests.py
 
 contracts:
+    {{project_python}} scripts/generate_semantic_contract_catalog.py --check
     {{project_python}} scripts/generate_contracts.py --check
+    {{project_python}} scripts/run_v5_execution_identity_gate.py
     {{project_python}} scripts/verify_repository.py
     {{project_python}} scripts/check_rust_source_structure.py
     {{project_python}} scripts/check_documentation.py
