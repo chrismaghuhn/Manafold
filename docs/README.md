@@ -1,99 +1,112 @@
-# Documentation Index
+# Manafold
 
-**Status:** accepted documentation index  
-**Stability:** informative
+**Deterministic, inspectable, ML-native Magic: The Gathering rules and simulation infrastructure.**
 
-The machine-readable classification of binding, process, and informative documents is [`normative-document-register.v1.json`](normative-document-register.v1.json).
+Manafold is a greenfield engine designed for trustworthy rules execution and research. Its core priorities are correctness, determinism, information safety, decision completeness, replayability, and maintainability before raw card count or simulation throughput.
 
-## Orientation
+> **Repository status is evidence-driven.** The root [Manafold README on GitHub](https://github.com/chrismaghuhn/Manafold) is the current project-status authority. This GitBook is a curated navigation and presentation layer over the repository's existing contracts; it does not create a second semantic authority.
 
-- [`../PROJECT_CHARTER.md`](../PROJECT_CHARTER.md)
-- [`M0_2_SPECIFICATION.md`](M0_2_SPECIFICATION.md)
-- [`M1_1_STATE_FOUNDATION_SPECIFICATION.md`](M1_1_STATE_FOUNDATION_SPECIFICATION.md)
-- [`V0_2_2_EXECUTABLE_FREEZE_AND_MAINTAINER_ERGONOMICS.md`](V0_2_2_EXECUTABLE_FREEZE_AND_MAINTAINER_ERGONOMICS.md)
-- [`V0_2_1_CONTRACT_CLOSURE.md`](V0_2_1_CONTRACT_CLOSURE.md)
-- [`VISION.md`](VISION.md)
-- [`SCOPE.md`](SCOPE.md)
-- [`ROADMAP.md`](ROADMAP.md)
-- [`OPEN_DECISIONS.md`](OPEN_DECISIONS.md)
+## Design compass
 
-Current status is owned by the repository root [`README.md`](../README.md) and
-the milestone ordering in [`ROADMAP.md`](ROADMAP.md). They record M2 as
-complete by accepted ADR 0041, M2.5 as `NOT_CLAIMED` / `NOT_FROZEN`, and engine
-M3 as `NOT_AUTHORIZED`; this documentation index does not duplicate a second
-status source.
+```text
+correctness
+→ determinism
+→ information safety
+→ decision completeness
+→ replayability
+→ maintainability
+→ performance
+→ ML scale
+```
 
-## Normative architecture and semantics
+## System at a glance
 
-- [`NORMATIVE_HIERARCHY.md`](NORMATIVE_HIERARCHY.md)
-- [`ARCHITECTURE.md`](ARCHITECTURE.md)
-- [`PROJECT_STRUCTURE.md`](PROJECT_STRUCTURE.md)
-- [`DOMAIN_MODEL.md`](DOMAIN_MODEL.md)
-- [`EXECUTION_MODEL.md`](EXECUTION_MODEL.md)
-- [`RULES_SEMANTICS.md`](RULES_SEMANTICS.md)
-- [`DECISION_PROTOCOL.md`](DECISION_PROTOCOL.md)
-- [`DECISION_INVENTORY.md`](DECISION_INVENTORY.md)
-- [`INFORMATION_MODEL.md`](INFORMATION_MODEL.md)
-- [`ERROR_MODEL.md`](ERROR_MODEL.md)
-- [`FORMAT_MODULES.md`](FORMAT_MODULES.md)
-- [`STATE_HASHING.md`](STATE_HASHING.md)
-- [`RNG_CONTRACT.md`](RNG_CONTRACT.md)
-- [`CONCURRENCY_MODEL.md`](CONCURRENCY_MODEL.md)
-- [`REPLAY_AND_DETERMINISM.md`](REPLAY_AND_DETERMINISM.md)
-- [`ML_ENVIRONMENT.md`](ML_ENVIRONMENT.md)
-- [`ML_TRAJECTORIES.md`](ML_TRAJECTORIES.md)
+```mermaid
+flowchart TD
+    A[External authority snapshots] --> B[Card definitions + capability registry]
+    B --> C[Trusted semantic core]
+    C --> D[EngineState]
+    C --> E[RulesKernel]
+    E --> F[Transition product]
+    C --> G[Observation projector]
+    G --> H[Perspective-bound PlayerEndpoint]
+    C --> I[Trusted Environment Controller]
+    H --> J[Rules-free Python / ML]
+    I --> J
+```
 
-`STATE_HASHING.md` owns the accepted ADR-0038 byte-level digest-envelope / `mtgml.canonical-cbor.v1` specification for the M2 V3 structural implementation.
+The trusted semantic core owns authoritative state, rules execution, deterministic randomness, decisions, events, replay, checkpointing, and conformance. Player-facing endpoints are permanently perspective-bound and expose only authorized observations, retained information state, visible decisions, observed events, and sanitized errors.
 
-## Content and rules maintenance
+## Start here
 
-- [`CARD_IR.md`](CARD_IR.md)
-- [`rules/AUTHORITY_POLICY.md`](rules/AUTHORITY_POLICY.md)
-- [`rules/ADDING_RULES_AND_MECHANICS.md`](rules/ADDING_RULES_AND_MECHANICS.md)
-- [`rules/MECHANIC_LIFECYCLE.md`](rules/MECHANIC_LIFECYCLE.md)
-- [`cards/ADDING_CARDS.md`](cards/ADDING_CARDS.md)
-- [`cards/CAPABILITY_MODEL.md`](cards/CAPABILITY_MODEL.md)
-- [`cards/CERTIFICATION.md`](cards/CERTIFICATION.md)
-- [`cards/SOURCE_AND_GENERATION_PIPELINE.md`](cards/SOURCE_AND_GENERATION_PIPELINE.md)
-- [`cards/NATIVE_EXECUTOR_POLICY.md`](cards/NATIVE_EXECUTOR_POLICY.md)
-- [`cards/CARD_DIRECTORY_LAYOUT.md`](cards/CARD_DIRECTORY_LAYOUT.md)
+### Understand the project
 
-## Testing, debugging, and performance
+- [Vision](VISION.md) — long-term direction and project intent.
+- [Scope](SCOPE.md) — what Manafold does and deliberately does not claim.
+- [Roadmap](ROADMAP.md) — milestone ordering and bounded M3/M4 progression.
+- [Normative Hierarchy](NORMATIVE_HIERARCHY.md) — how contracts, ADRs, schemas, fixtures, and conformance evidence relate.
 
-- [`TESTING_AND_CONFORMANCE.md`](TESTING_AND_CONFORMANCE.md)
-- [`testing/CONFORMANCE_AUTHORING.md`](testing/CONFORMANCE_AUTHORING.md)
-- [`testing/NONINTERFERENCE_TESTING.md`](testing/NONINTERFERENCE_TESTING.md)
-- [`testing/PROPERTY_AND_FUZZING.md`](testing/PROPERTY_AND_FUZZING.md)
-- [`OBSERVABILITY_AND_DEBUGGING.md`](OBSERVABILITY_AND_DEBUGGING.md)
-- [`DEBUG_ARCHITECTURE_CONTRACT.md`](DEBUG_ARCHITECTURE_CONTRACT.md)
-- [`PERFORMANCE.md`](PERFORMANCE.md)
+### Understand the engine
 
-## Binding contract sheets
+- [Architecture Overview](ARCHITECTURE.md) — trust boundaries and semantic ownership.
+- [Domain Model](DOMAIN_MODEL.md) — object identity, zones, authoritative state, and invariants.
+- [Execution & Transaction Model](EXECUTION_MODEL.md) — atomic transitions and forced progress.
+- [Decision Protocol](DECISION_PROTOCOL.md) — every player-influenced choice is explicit data.
+- [Information Model](INFORMATION_MODEL.md) — separation of full state, observation, and retained knowledge.
 
-- [`contracts/M0_2_DESIGN_LOCK_MATRIX.md`](contracts/M0_2_DESIGN_LOCK_MATRIX.md)
-- [`contracts/SEMANTIC_CONTRACT.md`](contracts/SEMANTIC_CONTRACT.md)
-- [`contracts/ML_CONTRACT.md`](contracts/ML_CONTRACT.md)
-- [`contracts/PLAYER_API_CAPABILITY_MATRIX.md`](contracts/PLAYER_API_CAPABILITY_MATRIX.md)
-- [`contracts/ENGINE_STATE_CLOSURE.md`](contracts/ENGINE_STATE_CLOSURE.md)
-- [`contracts/WIRE_CONTRACT.md`](contracts/WIRE_CONTRACT.md)
-- [`contracts/V1_SCOPE_MATRIX.md`](contracts/V1_SCOPE_MATRIX.md)
-- [`contracts/ACCEPTANCE_GATES.md`](contracts/ACCEPTANCE_GATES.md)
-- [`contracts/COMPATIBILITY_POLICY.md`](contracts/COMPATIBILITY_POLICY.md)
+### Understand determinism and replay
 
-## Maintainer process
+- [Replay & Determinism](REPLAY_AND_DETERMINISM.md)
+- [RNG Contract](RNG_CONTRACT.md)
+- [State Hashing](STATE_HASHING.md)
+- [Compatibility Policy](contracts/COMPATIBILITY_POLICY.md)
 
-- [`maintenance/MAINTAINER_PROFILES.md`](maintenance/MAINTAINER_PROFILES.md)
-- [`maintenance/DEVELOPER_SETUP.md`](maintenance/DEVELOPER_SETUP.md)
-- [`MAINTAINER_PLAYBOOK.md`](MAINTAINER_PLAYBOOK.md)
-- [`IMPLEMENTATION_STANDARDS.md`](IMPLEMENTATION_STANDARDS.md)
-- [`THREAT_MODEL.md`](THREAT_MODEL.md)
-- [`maintenance/API_LIFECYCLE.md`](maintenance/API_LIFECYCLE.md)
-- [`maintenance/FREEZE_LEVELS.md`](maintenance/FREEZE_LEVELS.md)
-- [`maintenance/OWNERSHIP_MODEL.md`](maintenance/OWNERSHIP_MODEL.md)
-- [`maintenance/DEPENDENCY_POLICY.md`](maintenance/DEPENDENCY_POLICY.md)
-- [`maintenance/TOOLCHAIN_POLICY.md`](maintenance/TOOLCHAIN_POLICY.md)
-- [`maintenance/RELEASE_PROCESS.md`](maintenance/RELEASE_PROCESS.md)
-- [`maintenance/SCHEMA_EVOLUTION.md`](maintenance/SCHEMA_EVOLUTION.md)
-- [`adr/README.md`](adr/README.md)
+### Build Magic semantics
 
-Accepted ADRs 0039 and 0040 contain the M2 decision and information/V3 compatibility architecture; accepted ADR 0041 records the post-`M2.Final` capability-oriented semantic-ownership decision and the accepted M2 closure status. ADRs record intent, while executable behavior remains evidence-driven.
+- [Rules Authority Policy](rules/AUTHORITY_POLICY.md)
+- [Capability Model](cards/CAPABILITY_MODEL.md)
+- [Adding Rules & Mechanics](rules/ADDING_RULES_AND_MECHANICS.md)
+- [Adding Cards](cards/ADDING_CARDS.md)
+- [Card & Bundle Certification](cards/CERTIFICATION.md)
+
+### Work on the repository
+
+- [Maintainer Playbook](MAINTAINER_PLAYBOOK.md)
+- [Maintainer Profiles](maintenance/MAINTAINER_PROFILES.md)
+- [Developer Setup](maintenance/DEVELOPER_SETUP.md)
+- [Testing & Conformance](TESTING_AND_CONFORMANCE.md)
+- [Acceptance Gates](contracts/ACCEPTANCE_GATES.md)
+
+## Core architectural boundaries
+
+| Surface | Owns | Must not expose or own |
+| --- | --- | --- |
+| Trusted semantic core | rules, state, RNG, decisions, events, exact deltas | model policy, UI, experiment logic |
+| Trusted environment controller | reset, checkpoint, restore, fork, replay, scheduling | player-visible privileged state |
+| Player endpoint | observation, information state, visible decision, submit | full state, seeds, internal IDs, trusted diagnostics |
+| Rules-free Python / ML | models, training, rewards, datasets, orchestration | legality or a second rules implementation |
+
+## Support means evidence
+
+Manafold does not equate importing, parsing, compiling, or implementing with support.
+
+```text
+Imported → Parsed → Implemented → Covered → Certified
+```
+
+A real support claim belongs to an immutable certified bundle with exact capability closure, source identities, conformance evidence, information-safety evidence, replay/checkpoint parity, and explicit exclusions.
+
+## Documentation authority
+
+The machine-readable [documentation register](normative-document-register.v1.json) classifies normative, process, and informative documents. The [Normative Hierarchy](NORMATIVE_HIERARCHY.md) defines the conflict policy.
+
+If two artifacts describing the same contract disagree, that contradiction is a defect. No GitBook page, schema, fixture, implementation, or prose summary silently wins.
+
+## Historical foundation reference
+
+These documents remain part of the repository's traceable foundation history and are intentionally kept outside the primary reading path:
+
+- [M0.2 Specification](M0_2_SPECIFICATION.md)
+- [V0.2.1 Contract Closure](V0_2_1_CONTRACT_CLOSURE.md)
+- [V0.2.2 Executable Freeze & Maintainer Ergonomics](V0_2_2_EXECUTABLE_FREEZE_AND_MAINTAINER_ERGONOMICS.md)
+- [Freeze Levels](maintenance/FREEZE_LEVELS.md)
