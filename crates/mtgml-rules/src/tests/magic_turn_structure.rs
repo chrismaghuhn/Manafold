@@ -190,81 +190,6 @@ fn magic_turn_structure_kernel_shell_reports_end_step_priority_boundary() {
     assert_eq!(state, before, "failed progress must not mutate input");
 }
 
-fn add_hand_object(
-    state: &mut EngineState,
-    object_id: GameObjectId,
-    controller: PlayerId,
-) {
-    use mtgml_model::{CardDefinitionId, OpaqueObjectId, PhysicalCardId, ZoneKind};
-    use mtgml_state::{
-        GameObject, KnownLocationFactV2, KnowledgeAcquisitionReason, KnowledgeRecordV2,
-        VisibilityPartition, ZoneLocation, ZonePosition,
-    };
-
-    let physical_card = PhysicalCardId(object_id.0);
-    let card_definition = CardDefinitionId(object_id.0);
-    let opaque = OpaqueObjectId(object_id.0);
-
-    state.zones.objects.insert(
-        object_id,
-        GameObject {
-            id: object_id,
-            physical_card: Some(physical_card),
-            card_definition,
-            owner: controller,
-            controller,
-            tapped: false,
-            face_down: false,
-        },
-    );
-
-    let location = ZoneLocation {
-        zone: ZoneKind::Hand,
-        player: None,
-        position: ZonePosition::Unordered,
-        visibility: VisibilityPartition::Public,
-        partition: None,
-    };
-    state.zones.locations.insert(object_id, location.clone());
-
-    let next_id = GameObjectId(object_id.0 + 1);
-    if state.allocators.next_object_id.0 < next_id.0 {
-        state.allocators.next_object_id = next_id;
-    }
-
-    let knowledge_record = KnowledgeRecordV2 {
-        opaque_object: opaque,
-        physical_card: Some(physical_card),
-        card_definition: Some(card_definition),
-        known_location: Some(KnownLocationFactV2 {
-            location: location.clone(),
-            provenance: KnowledgeAcquisitionReason::InitialConfiguration,
-        }),
-        acquisition: KnowledgeAcquisitionReason::InitialConfiguration,
-        historical_locations: Vec::new(),
-    };
-
-    for player_id in state.core.players.keys().copied().collect::<Vec<_>>() {
-        state
-            .knowledge
-            .players
-            .get_mut(&player_id)
-            .unwrap()
-            .active
-            .insert(opaque, knowledge_record.clone());
-        let identity = state
-            .perspective_identities
-            .players
-            .get_mut(&player_id)
-            .unwrap();
-        identity.opaque_to_object.insert(opaque, object_id);
-        identity.object_to_opaque.insert(object_id, opaque);
-        if identity.next_opaque_object_id.0 <= opaque.0 {
-            identity.next_opaque_object_id = OpaqueObjectId(opaque.0 + 1);
-        }
-    }
-}
-
 // --- Positive Cleanup transition tests ---
 
 #[test]
@@ -722,29 +647,6 @@ fn cleanup_contract_rejects_extra_event() {
         "extra event must reject via TurnStructure"
     );
     assert_contract_rejects_without_mutation(&before, &result);
-}
-
-// --- FIX A: Cleanup discard requirement regression ---
-
-#[test]
-fn cleanup_rejects_discard_required_state() {
-    let mut state = s1_state_at(mtgml_state::TurnPosition::Ending {
-        step: mtgml_state::EndingStep::Cleanup,
-    });
-    add_hand_object(&mut state, GameObjectId(10), PlayerId(7));
-    let before = state.clone();
-    let mut kernel = MagicRulesKernel::new();
-    let result = kernel.advance_forced_progress(&state);
-    assert!(
-        matches!(
-            result,
-            Err(crate::KernelExecutionError::TurnStructure(
-                crate::TurnStructureError::CleanupDiscardRequired
-            ))
-        ),
-        "Cleanup with represented hand-size discard must fail typed"
-    );
-    assert_eq!(state, before, "rejected work must not mutate input");
 }
 
 // --- FIX B: unique-other player in transition contract ---

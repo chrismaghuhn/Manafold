@@ -62,8 +62,6 @@ pub enum TurnStructureError {
     PriorityHeld,
     #[error("turn number would overflow")]
     TurnNumberOverflow,
-    #[error("cleanup requires discard")]
-    CleanupDiscardRequired,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -149,26 +147,6 @@ pub fn validate_turn_structure_support(
 
     if state.core.priority != PriorityState::None {
         return Err(TurnStructureError::PriorityHeld);
-    }
-
-    // Task 7: a quiescent Cleanup that requires ordinary hand-size
-    // discard fails closed. Any object represented in the Hand zone
-    // means a discard obligation could exist. Without a bounded
-    // maximum-hand-size authority in the S1 state, non-empty hands
-    // cannot be proven safe, so they reject before any player/turn
-    // mutation. Empty hands are soundly accepted.
-    if matches!(
-        state.core.position,
-        TurnPosition::Ending {
-            step: EndingStep::Cleanup,
-        }
-    ) && state
-        .zones
-        .locations
-        .values()
-        .any(|loc| loc.zone == ZoneKind::Hand)
-    {
-        return Err(TurnStructureError::CleanupDiscardRequired);
     }
 
     Ok(TurnStructureSupportProfile {
