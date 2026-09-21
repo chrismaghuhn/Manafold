@@ -19,6 +19,7 @@ Current/historical families include:
 | `ObservationDigest` | exact current observation bytes |
 | `CandidateSetDigest` | ordered visible candidates/constraints only |
 | `CheckpointDigestV2/V3` | complete trusted checkpoint identity for the corresponding state version |
+| `CheckpointDigestV5` | V5 resumable checkpoint identity binding `ExecutionIdentityV1` (ADR 0055) |
 
 Digest identity provides content identity/divergence detection, not authenticity.
 

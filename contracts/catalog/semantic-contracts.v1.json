@@ -1,0 +1,12 @@
+{
+  "schema_version": "semantic-contracts-catalog.v1",
+  "entries": [
+    {
+      "entry_id": "synthetic_legacy_default",
+      "rules_authority": { "variant": "synthetic_legacy" },
+      "capability_closure": null,
+      "format_contract_id": null,
+      "content_contract_id": null
+    }
+  ]
+}

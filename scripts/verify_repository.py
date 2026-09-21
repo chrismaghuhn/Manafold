@@ -340,7 +340,6 @@ def main() -> None:
             parts.extend(p.read_text(encoding="utf-8") for p in sorted(fragment_dir.glob("*.rs")))
         return "\n".join(parts)
 
-    env_tests = _test_module_text(env_src)
     if "Arc<Mutex" not in env_rust or re.search(r"fn\s+bind_player\s*\(\s*&self", env_rust) is None:
         fail("player endpoint handles still borrow the controller exclusively")
 
@@ -380,28 +379,33 @@ def main() -> None:
     if "full_state_digest_v3_historical_known_answer_is_detached" not in state_tests:
         fail("historical V3 full-state digest evidence is not preserved")
 
-    # Current checkpoint runtime is V4; V3 digest history survives only as
-    # detached historical replay/persistence identity (no V3 checkpoint writer).
+    # V5 execution-identity cut: the current checkpoint runtime is V5.
+    env_rust = "\n".join(p.read_text(encoding="utf-8") for p in env_prod)
     for token in (
-        "EnvironmentCheckpointV4",
-        "EnvironmentLimitCounters",
-        "CheckpointCodecIdentity",
-        "checkpoint_digest: CheckpointDigestV4",
+        "EnvironmentCheckpointV5",
+        "ENVIRONMENT_CHECKPOINT_SCHEMA_V5",
+        "CHECKPOINT_CODEC_SEMANTIC_VERSION_V5",
+        "execution_identity: ExecutionIdentityV1",
     ):
         if token not in env_rust:
-            fail(f"checkpoint contract lacks {token}")
+            fail(f"checkpoint contract lacks V5 current token {token}")
+    # V5 identity invariants (ADR §2.15): checkpoint carries execution_identity;
+    # digest input carries the identity element; no child manifests in checkpoints.
+    for token in (
+        "execution_identity: ExecutionIdentityV1",
+        "CheckpointDigestV5",
+    ):
+        if token not in env_rust:
+            fail(f"checkpoint V5 identity invariant missing: {token}")
+    # V5 digest input schema is in the persistence crate, not the environment crate.
     persistence_rust = (ROOT / "crates/mtgml-persistence/src/checkpoint_digest.rs").read_text(
         encoding="utf-8"
     )
+    if "environment-checkpoint-digest-input.v5" not in persistence_rust:
+        fail("checkpoint V5 digest input schema is not present in persistence")
+    # Historical V3 digest support remains preserved as detached verifier.
     if "calculate_checkpoint_digest_v3" not in persistence_rust:
         fail("historical V3 checkpoint digest support is not preserved")
-
-    for token in (
-        "checkpoint_v4_validation_and_restore_nonmutation_matrix",
-        "checkpoint_identity_tampering_is_rejected",
-    ):
-        if token not in env_tests:
-            fail(f"environment test evidence lacks {token}")
 
     rules_src = ROOT / "crates/mtgml-rules/src"
     rules_prod = [p for p in sorted(rules_src.glob("*.rs")) if p.name != "tests.rs"]

@@ -15,6 +15,13 @@ use mtgml_state::{
     EngineState, PendingDecisionRecordV2, SyntheticResetInputs, SyntheticV4Setup,
 };
 
+use crate::ProgramKernelV1;
+
+fn boundary_kernel() -> ProgramKernelV1 {
+    ProgramKernelV1::for_program(mtgml_model::ExecutionProgramV1::SyntheticRulesCompat)
+        .expect("the synthetic program is supported by the current kernel boundary")
+}
+
 fn synthetic_state() -> mtgml_state::EngineState {
     construct_synthetic_engine_state(SyntheticResetInputs {
         players: [PlayerId(1), PlayerId(2)],
@@ -132,7 +139,7 @@ fn order_response(
 }
 
 fn apply(state: &EngineState, response: &DecisionResponseV2) -> TransitionResult {
-    let mut kernel = SyntheticM1RulesKernel;
+    let mut kernel = boundary_kernel();
     kernel.apply(state, PlayerId(1), response).unwrap()
 }
 
@@ -151,7 +158,7 @@ fn rng_exhaustion_is_a_typed_internal_failure_without_input_mutation() {
         )
         .unwrap();
     let before = state.clone();
-    let mut kernel = SyntheticM1RulesKernel;
+    let mut kernel = boundary_kernel();
     let error = kernel
         .apply(&state, PlayerId(1), &response(0, 0))
         .unwrap_err();
@@ -167,7 +174,7 @@ fn effect_allocator_exhaustion_is_a_typed_internal_failure_before_rng() {
     state.allocators.next_effect_id = EffectInstanceId(u64::MAX);
     let key = RandomStreamKeyV1::global(RandomStreamKindV1::SyntheticM1);
     let cursor_before = state.random.lookup_stream(&key).unwrap().next_raw_u64;
-    let mut kernel = SyntheticM1RulesKernel;
+    let mut kernel = boundary_kernel();
     let error = kernel
         .apply(&state, PlayerId(1), &response(0, 0))
         .unwrap_err();

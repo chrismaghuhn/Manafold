@@ -16,12 +16,12 @@ use mtgml_observation::{
     INFORMATION_STATE_SCHEMA_V2, OBSERVATION_SCHEMA, OBSERVED_EVENT_SCHEMA_V2,
     PLAYER_STEP_SCHEMA_V2,
 };
-use mtgml_replay::{DeckIdentityV1, KernelIdentityV1, ReplaySchemaVersionsV4};
+use mtgml_replay::{DeckIdentityV1, KernelIdentityV1, ReplaySchemaVersionsV5};
 
 fn codec_identity() -> CheckpointCodecIdentity {
     CheckpointCodecIdentity {
         codec_id: "in-memory-reference".into(),
-        semantic_version: "4".into(),
+        semantic_version: "5".into(),
     }
 }
 
@@ -40,7 +40,7 @@ pub fn synthetic_environment_config(players: [PlayerId; 2]) -> SyntheticM1Enviro
             oracle_snapshot: "synthetic-oracle".into(),
             card_bundle: "synthetic-bundle".into(),
             randomness_contract_id: "mtgml.rng.v1".into(),
-            schemas: ReplaySchemaVersionsV4 {
+            schemas: ReplaySchemaVersionsV5 {
                 observation: OBSERVATION_SCHEMA.into(),
                 observation_payload_codec: "synthetic-m3-observation.v1".into(),
                 information_state: INFORMATION_STATE_SCHEMA_V2.into(),
@@ -48,7 +48,7 @@ pub fn synthetic_environment_config(players: [PlayerId; 2]) -> SyntheticM1Enviro
                 decision_response: "decision-response.v2".into(),
                 observed_event: OBSERVED_EVENT_SCHEMA_V2.into(),
                 player_step: PLAYER_STEP_SCHEMA_V2.into(),
-                replay_step: "replay-step.v4".into(),
+                replay_step: "replay-step.v5".into(),
             },
             decks: players
                 .into_iter()

@@ -114,6 +114,23 @@ Expected RED: the digest FUNCTIONS are missing (unresolved imports/functions in 
 
 **Negative/adversarial evidence:** schema/domain disagreement rejected; malformed child digest length rejected.
 
+**DISPOSITION_SCHEMA_DOMAIN_REJECTION_REQUIREMENT (authoritative, accepted 2026-09-19):** The
+"schema/domain disagreement rejected" half of the gate above is **DEFERRED / NOT_RUN** for Task 2.
+Task 2 ships only writer/calculator paths (`calculate_rules_contract_id_v1`,
+`calculate_semantic_contract_id_v1`); no rules/semantic contract envelope decode surface exists
+in any current representation — no decoder compares the payload's leading schema/domain fields
+against envelope identity, and the cited `FullStateDigestInputV3` precedent implemented
+detection (STATE_HASHING.md documents the check at decode) without a comparing rejection path in
+production, while V4 validates digest equality, not leading-field agreement.
+OWNER = the first actual rules/semantic contract envelope decode path.
+CURRENT_V5_PLAN_OWNER = NONE — no task in this plan introduces such a decoder (Task 8 semantic
+admission operates on already-constructed typed manifests, not on canonical-CBOR contract
+envelopes, so the payload-vs-envelope comparison has no representation there).
+The task that introduces the decoder — or a dedicated plan amendment creating it — MUST then
+prove a genuine `payload leading schema/domain != envelope schema/domain → Err` case and mark
+`SCHEMA_DOMAIN_DISAGREEMENT_REJECTED = PASS`; until then this gate remains
+`DEFERRED / NOT_RUN` and must not be claimed by any other task.
+
 **Focused GREEN:** `cargo test -p mtgml-persistence --all-features`. **Affected-package GREEN:** `cargo check --workspace --all-targets --all-features --locked`.
 
 **Commit:** `persistence: rules/semantic contract digest machinery with rust/python parity KATs`

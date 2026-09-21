@@ -23,7 +23,7 @@ mod tests {
         CandidateIdV1, OpaqueObjectId, PlayerDecisionIdV1, PlayerId, StateRevision, VisibleSequence,
     };
     use mtgml_observation::PlayerStepSubmissionV1;
-    use mtgml_replay::AuthoritativeReplayV4;
+    use mtgml_replay::AuthoritativeReplayV5;
     use mtgml_state::{validate_engine_state, EngineState, KnowledgeAcquisitionCause};
 
     const P1: PlayerId = PlayerId(1);
@@ -512,7 +512,7 @@ mod tests {
 
         // Segment anchor: restoring seeds a FRESH replay segment whose
         // initial identity IS the restored checkpoint identity, with no steps.
-        let exported: AuthoritativeReplayV4 = controller
+        let exported: AuthoritativeReplayV5 = controller
             .export_replay()
             .map_err(|_| HarnessError::ControllerService)?;
         assert!(

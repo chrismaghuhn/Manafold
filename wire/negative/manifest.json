@@ -365,6 +365,60 @@
       "expected_error_code": "semantic.replay",
       "expected_reject_layer": "rust-python-semantic-or-decode",
       "path": "authoritative-replay-v4-wrong-schema.json"
+    },
+    {
+      "contract": "replay-manifest.v5",
+      "expected_error_code": "decode.invalid_json",
+      "expected_reject_layer": "rust-python-semantic-or-decode",
+      "path": "replay-manifest-v5-unknown-program.json"
+    },
+    {
+      "contract": "replay-manifest.v5",
+      "expected_error_code": "decode.invalid_json",
+      "expected_reject_layer": "rust-python-semantic-or-decode",
+      "path": "replay-manifest-v5-wrong-digest.json"
+    },
+    {
+      "contract": "replay-manifest.v5",
+      "expected_error_code": "semantic.replay_manifest",
+      "expected_reject_layer": "rust-python-semantic-or-decode",
+      "path": "replay-manifest-v5-semantic-mismatch.json"
+    },
+    {
+      "contract": "replay-manifest.v5",
+      "expected_error_code": "semantic.replay_manifest",
+      "expected_reject_layer": "rust-python-semantic-or-decode",
+      "path": "replay-manifest-v5-rules-mismatch.json"
+    },
+    {
+      "contract": "replay-manifest.v5",
+      "expected_error_code": "semantic.replay_manifest",
+      "expected_reject_layer": "rust-python-semantic-or-decode",
+      "path": "replay-manifest-v5-cr-snapshot.json"
+    },
+    {
+      "contract": "replay-manifest.v5",
+      "expected_error_code": "semantic.replay_manifest",
+      "expected_reject_layer": "rust-python-semantic-or-decode",
+      "path": "replay-manifest-v5-three-way.json"
+    },
+    {
+      "contract": "authoritative-replay.v5",
+      "expected_error_code": "semantic.replay",
+      "expected_reject_layer": "rust-python-semantic-or-decode",
+      "path": "authoritative-replay-v5-three-way.json"
+    },
+    {
+      "contract": "replay-manifest.v5",
+      "expected_error_code": "decode.invalid_json",
+      "expected_reject_layer": "rust-python-semantic-or-decode",
+      "path": "replay-manifest-v5-unknown-field.json"
+    },
+    {
+      "contract": "replay-manifest.v5",
+      "expected_error_code": "semantic.replay_manifest",
+      "expected_reject_layer": "rust-python-semantic-or-decode",
+      "path": "replay-manifest-v5-wrong-schema.json"
     }
   ]
 }

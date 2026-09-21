@@ -1,6 +1,6 @@
 //! M2.G G.6 Node B: information-rich EMPTY-replay identity parity.
 //!
-//! A wire-shaped empty `AuthoritativeReplayV4` is constructed around an
+//! A wire-shaped empty `AuthoritativeReplayV5` is constructed around an
 //! information-rich checkpoint identity (mirroring the golden
 //! `authoritative-replay-empty.v3.json` shape under the synthetic M2 codec),
 //! validated, executed from that checkpoint, and proven to preserve the
@@ -16,12 +16,12 @@ mod tests {
     };
     use crate::isolation::HarnessError;
     use mtgml_environment::{
-        ControllerError, EnvironmentCheckpointV4, SyntheticM1EnvironmentBackend,
+        ControllerError, EnvironmentCheckpointV5, SyntheticM1EnvironmentBackend,
         TrustedEnvironmentController,
     };
     use mtgml_replay::{
-        AuthoritativeReplayV4, InitialEnvironmentIdentityV4, RandomnessIdentityV2,
-        ReplayManifestV4, REPLAY_FILE_SCHEMA_V4, REPLAY_MANIFEST_SCHEMA_V4,
+        AuthoritativeReplayV5, InitialEnvironmentIdentityV5, RandomnessIdentityV2,
+        ReplayManifestV5, REPLAY_FILE_SCHEMA_V5, REPLAY_MANIFEST_SCHEMA_V5,
     };
     use mtgml_wire::{decode_canonical, encode_canonical};
 
@@ -31,14 +31,15 @@ mod tests {
 
     /// The checkpoint identity triple shared by the manifest anchor and the
     /// empty segment's final identity.
-    fn identity_of(checkpoint: &EnvironmentCheckpointV4) -> InitialEnvironmentIdentityV4 {
-        InitialEnvironmentIdentityV4 {
+    fn identity_of(checkpoint: &EnvironmentCheckpointV5) -> InitialEnvironmentIdentityV5 {
+        InitialEnvironmentIdentityV5 {
             state_revision: checkpoint.state.revision,
             full_state_digest: checkpoint.state_digest.clone(),
             episode_status: checkpoint.status.clone(),
             environment_limit_counters: checkpoint.limit_counters.clone(),
             checkpoint_codec_identity: checkpoint.codec.clone(),
             checkpoint_digest: checkpoint.checkpoint_digest.clone(),
+            execution_identity: checkpoint.execution_identity.clone(),
         }
     }
 
@@ -58,13 +59,13 @@ mod tests {
             initial.checkpoint_codec_identity.codec_id, "in-memory-reference",
             "the V4 synthetic codec must anchor the constructed replay"
         );
-        assert_eq!(initial.checkpoint_codec_identity.semantic_version, "4");
+        assert_eq!(initial.checkpoint_codec_identity.semantic_version, "5");
 
         // Empty V4 replay: manifest anchored at the
         // checkpoint identity, zero steps, final identity equal to initial.
         let harness_config = config();
-        let manifest = ReplayManifestV4 {
-            schema_version: REPLAY_MANIFEST_SCHEMA_V4.into(),
+        let manifest = ReplayManifestV5 {
+            schema_version: REPLAY_MANIFEST_SCHEMA_V5.into(),
             engine_build: harness_config.replay.engine_build.clone(),
             kernel: harness_config.replay.kernel.clone(),
             rules_snapshot: harness_config.replay.rules_snapshot.clone(),
@@ -78,12 +79,19 @@ mod tests {
             },
             decks: harness_config.replay.decks.clone(),
             initial_identity: initial.clone(),
+            execution_identity: checkpoint.execution_identity.clone(),
+            semantic_contract: mtgml_replay::SemanticContractMaterialV5 {
+                semantic_contract_id:
+                    mtgml_environment::synthetic_legacy_default_semantic_contract_id(),
+                manifest: mtgml_environment::synthetic_legacy_default_semantic_manifest(),
+                rules_manifest: mtgml_environment::synthetic_legacy_default_rules_manifest(),
+            },
         };
         manifest
             .validate()
             .map_err(|_| HarnessError::CheckpointInvalid)?;
-        let replay = AuthoritativeReplayV4 {
-            schema_version: REPLAY_FILE_SCHEMA_V4.into(),
+        let replay = AuthoritativeReplayV5 {
+            schema_version: REPLAY_FILE_SCHEMA_V5.into(),
             manifest,
             steps: Vec::new(),
             final_identity: initial.clone(),
@@ -94,7 +102,7 @@ mod tests {
 
         // The constructed artifact survives the canonical wire round-trip.
         let bytes = encode_canonical(&replay).map_err(|_| HarnessError::WireEncoding)?;
-        let decoded: AuthoritativeReplayV4 =
+        let decoded: AuthoritativeReplayV5 =
             decode_canonical(&bytes).map_err(|_| HarnessError::WireEncoding)?;
         assert_eq!(decoded, replay);
 

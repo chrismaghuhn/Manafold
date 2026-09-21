@@ -10,6 +10,14 @@ pub use generated_contract_vocab::{
     PlayerResult, TerminalReason, TruncationReason, ZoneKind, STABLE_WIRE_ERROR_CODES,
 };
 
+mod execution_identity;
+mod semantic_contract;
+pub use execution_identity::{ExecutionIdentityV1, ExecutionProgramV1};
+pub use semantic_contract::{
+    CapabilityRequirementV1, RulesAuthorityV1, RulesContractManifestV1,
+    RulesContractManifestValidationError, SemanticContractManifestV1,
+};
+
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum CanonicalIntegerError {
     #[error("integer text is empty")]
@@ -327,6 +335,76 @@ raw_digest!(FullStateDigestV3, "mtgml.full-state-digest.v3");
 raw_digest!(CheckpointDigestV3, "mtgml.checkpoint-digest.v3");
 raw_digest!(FullStateDigestV4, "mtgml.full-state-digest.v4");
 raw_digest!(CheckpointDigestV4, "mtgml.checkpoint-digest.v4");
+
+// === V5 contract identity and digest domains (spec §5) ===
+raw_digest!(RulesContractIdV1, "mtgml.rules-contract.v1");
+raw_digest!(SemanticContractIdV1, "mtgml.semantic-contract.v1");
+raw_digest!(CheckpointDigestV5, "mtgml.checkpoint-digest.v5");
+
+/// Reserved digest identity newtype: DOMAIN + canonical hex parse/serde only.
+///
+/// Deliberately NO construction from arbitrary digest bytes (spec §5): the
+/// reserved format/content contract identities cannot be minted before their
+/// contracts exist. Values may only arrive via canonical 64-lowercase-hex
+/// text (typed-seam decode); no arbitrary-byte construction or semantic
+/// derivation path exists. Reading the raw digest bytes of an already-valid
+/// value (`raw_bytes`) is an observation, not a minting path.
+macro_rules! reserved_digest {
+    ($name:ident, $domain:literal) => {
+        #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+        pub struct $name(Digest);
+
+        impl $name {
+            pub const DOMAIN: &'static str = $domain;
+
+            pub fn parse(text: impl Into<String>) -> Result<Self, DigestError> {
+                let text = text.into();
+                decode_lower_hex_32(&text)?;
+                Ok(Self(Digest(text)))
+            }
+
+            pub fn raw_bytes(&self) -> [u8; 32] {
+                decode_lower_hex_32(self.0.as_str()).expect("reserved digest invariant")
+            }
+
+            pub fn as_str(&self) -> &str {
+                self.0.as_str()
+            }
+
+            pub fn into_untyped(self) -> Digest {
+                self.0
+            }
+        }
+
+        impl fmt::Display for $name {
+            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                fmt::Display::fmt(&self.0, f)
+            }
+        }
+
+        impl Serialize for $name {
+            fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+            where
+                S: Serializer,
+            {
+                self.0.serialize(serializer)
+            }
+        }
+
+        impl<'de> Deserialize<'de> for $name {
+            fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+            where
+                D: Deserializer<'de>,
+            {
+                Digest::deserialize(deserializer)
+                    .and_then(|digest| Self::parse(digest.as_str()).map_err(D::Error::custom))
+            }
+        }
+    };
+}
+
+reserved_digest!(FormatContractIdV1, "mtgml.format-contract.v1");
+reserved_digest!(ContentContractIdV1, "mtgml.content-contract.v1");
 
 impl FullStateDigestV3 {
     pub fn as_digest_reference(&self) -> DigestReferenceV1 {

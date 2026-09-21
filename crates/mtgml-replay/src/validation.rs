@@ -36,4 +36,8 @@ pub enum ReplayValidationError {
     NoncanonicalKeyOrder,
     #[error("V3 replay status does not cover the manifest player universe")]
     StatusPlayerUniverse,
+    #[error("semantic contract identity or content binding does not recompute")]
+    SemanticContractMismatch,
+    #[error("comprehensive rules snapshot identity does not match the bound contract")]
+    RulesSnapshotMismatch,
 }

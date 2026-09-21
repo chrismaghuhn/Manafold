@@ -51,7 +51,10 @@ fn mtgml_rules_validate_runtime(state: &EngineState) -> Result<(), KernelExecuti
     validate_synthetic_runtime_state(state)
 }
 
-#[derive(Debug, Default)]
+// Module-private implementation detail (spec §23a.1): construction flows
+// exclusively through the program-owned boundary (`ProgramKernelV1`).
+// `Default` was removed — no silently-selecting kernel constructors.
+#[derive(Debug)]
 pub struct SyntheticM1RulesKernel;
 
 impl RulesKernel for SyntheticM1RulesKernel {

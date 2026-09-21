@@ -166,7 +166,7 @@ CARGO_PACKAGE_ADAPTER = f"cargo-package::{ADAPTER_PACKAGE}"
 EXPECTED_PYTHON_PASSED: dict[str, int] = {
     PYTEST_WIRE_CONTRACTS: 2,
     PYTEST_CONSTRUCTIVE: 16,
-    PYTEST_SCHEMA_PARITY: 13,
+    PYTEST_SCHEMA_PARITY: 14,
     PYTEST_ADAPTER_UNIT: 49,
     PYTEST_CORE_SCENARIOS: 4,
     PYTEST_REJECTION_SCENARIOS: 14,
@@ -390,6 +390,8 @@ COMMON_NAMED_CONTRACTS = frozenset(
         "synthetic-m3-observation.v1",
         "replay-manifest.v4",
         "authoritative-replay.v4",
+        "replay-manifest.v5",
+        "authoritative-replay.v5",
     }
 )
 

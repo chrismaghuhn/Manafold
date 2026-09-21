@@ -229,6 +229,20 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
             r"(?:CURRENT_STATUS|PROJECT_STATE|status\.json)",
         )
 
+    def test_v5_cut_requires_no_current_status_changes(self) -> None:
+        # CURRENT_STATUS_TEST = VERIFIED_NO_CHANGE
+        # The V5 execution-identity cut does not affect the current-runtime
+        # status pins audited by this test (README/roadmap/ADR pins are
+        # milestone and governance markers, not checkpoint/identity pins).
+        for path in (
+            ROOT / "README.md",
+            ROOT / "docs" / "ROADMAP.md",
+        ):
+            text = path.read_text(encoding="utf-8")
+            self.assertNotIn("EnvironmentCheckpointV4", text)
+            self.assertNotIn("CheckpointDigestV4", text)
+            self.assertNotIn("calculate_checkpoint_digest_v4", text)
+
     def test_foundation_registry_is_specified_only(self) -> None:
         registry = json.loads(
             (ROOT / "cards" / "capabilities" / "registry.json").read_text(encoding="utf-8")

@@ -32,6 +32,16 @@ FULL_STATE_DOMAIN_V4 = "mtgml.full-state-digest.v4"
 FULL_STATE_INPUT_SCHEMA_V4 = "full-state-digest-input.v4"
 FULL_STATE_DOMAIN_V3 = "mtgml.full-state-digest.v3"
 FULL_STATE_INPUT_SCHEMA_V3 = "full-state-digest-input.v3"
+RULES_CONTRACT_DOMAIN = "mtgml.rules-contract.v1"
+RULES_CONTRACT_INPUT_SCHEMA = "rules-contract-manifest.v1"
+SEMANTIC_CONTRACT_DOMAIN = "mtgml.semantic-contract.v1"
+SEMANTIC_CONTRACT_INPUT_SCHEMA = "semantic-contract-manifest.v1"
+CHECKPOINT_DOMAIN_V5 = "mtgml.checkpoint-digest.v5"
+CHECKPOINT_INPUT_SCHEMA_V5 = "environment-checkpoint-digest-input.v5"
+CHECKPOINT_CODEC_ID_V5 = "in-memory-reference"
+CHECKPOINT_CODEC_VERSION_V5 = "5"
+
+_VALID_PROGRAM_KINDS = frozenset({"synthetic_rules_compat", "magic_rules"})
 
 PersistenceValue: TypeAlias = bool | int | bytes | str | list["PersistenceValue"] | None
 
@@ -455,4 +465,249 @@ def calculate_checkpoint_digest_v4(
     )
     return hashlib.sha256(
         encode_envelope(CHECKPOINT_DOMAIN_V4, CHECKPOINT_INPUT_SCHEMA_V4, payload)
+    ).hexdigest()
+
+
+_CAPABILITY_KEY_FIXED_HEADS = ("rules", "mechanic", "decision", "visibility", "tooling")
+
+
+def _is_capability_word_segment(segment: str) -> bool:
+    return (
+        bool(segment)
+        and segment[0].isascii()
+        and (segment[0].islower() or segment[0].isdigit())
+        and all(
+            char.isascii() and (char.islower() or char.isdigit() or char == "-") for char in segment
+        )
+    )
+
+
+def _is_capability_format_namespace(segment: str) -> bool:
+    return bool(segment) and all(
+        char.isascii() and (char.islower() or char.isdigit() or char == "-") for char in segment
+    )
+
+
+def _is_valid_capability_key(key: str) -> bool:
+    """Frozen capability key grammar (spec §7c, capability registry schema):
+    ^(rules|mechanic|decision|visibility|tooling|format/[a-z0-9-]+)/
+    [a-z0-9][a-z0-9-]*(/[a-z0-9][a-z0-9-]*)*
+    """
+    if not isinstance(key, str):
+        return False
+    segments = key.split("/")
+    if len(segments) < 2:
+        return False
+    head, second = segments[0], segments[1]
+    if head == "format":
+        if not _is_capability_format_namespace(second):
+            return False
+        if len(segments) < 3:
+            return False
+        return all(_is_capability_word_segment(segment) for segment in segments[2:])
+    if head in _CAPABILITY_KEY_FIXED_HEADS:
+        return all(_is_capability_word_segment(segment) for segment in segments[1:])
+    return False
+
+
+def _is_valid_capability_version(version: str) -> bool:
+    r"""Frozen version grammar (spec §7c): ^[0-9]+\.[0-9]+\.[0-9]+$"""
+    if not isinstance(version, str):
+        return False
+    parts = version.split(".")
+    return len(parts) == 3 and all(part.isdigit() and part.isascii() for part in parts)
+
+
+def _validate_rules_contract_manifest(manifest: object) -> None:
+    """Mechanical fail-closed structural validation (spec §7, §7c).
+
+    Canonical order is an invariant that must already hold: caller input is
+    never silently sorted.
+    """
+    if not isinstance(manifest, dict) or set(manifest) != {
+        "rules_authority",
+        "capability_closure",
+    }:
+        raise _error("semantic_validation", "rules contract manifest shape is invalid")
+    authority = manifest["rules_authority"]
+    closure = manifest["capability_closure"]
+    if not isinstance(authority, dict) or set(authority) > {"variant", "snapshot_id"}:
+        raise _error("semantic_validation", "rules authority shape is invalid")
+    variant = authority.get("variant")
+    if variant == "synthetic_legacy":
+        if set(authority) != {"variant"}:
+            raise _error(
+                "semantic_validation", "synthetic_legacy authority must not carry snapshot_id"
+            )
+        if closure is not None:
+            raise _error(
+                "semantic_validation", "synthetic_legacy authority must not claim a closure"
+            )
+        return
+    if variant != "comprehensive_rules":
+        raise _error("semantic_validation", "rules authority variant is unknown")
+    if set(authority) != {"variant", "snapshot_id"}:
+        raise _error("semantic_validation", "comprehensive_rules requires snapshot_id")
+    if not isinstance(authority["snapshot_id"], str) or not authority["snapshot_id"]:
+        raise _error("semantic_validation", "comprehensive_rules snapshot_id must be non-empty")
+    if not isinstance(closure, list) or not closure:
+        raise _error("semantic_validation", "comprehensive_rules closure must be a non-empty list")
+    previous_key: str | None = None
+    for entry in closure:
+        if not isinstance(entry, dict) or set(entry) != {"key", "version"}:
+            raise _error("semantic_validation", "capability entry shape is invalid")
+        key, version = entry["key"], entry["version"]
+        if not _is_valid_capability_key(key):
+            raise _error("semantic_validation", f"capability key is invalid: {key!r}")
+        if not _is_valid_capability_version(version):
+            raise _error("semantic_validation", f"capability version is invalid: {version!r}")
+        if previous_key == key:
+            raise _error("semantic_validation", "capability closure contains a duplicate key")
+        if previous_key is not None and previous_key > key:
+            raise _error("semantic_validation", "capability closure is not sorted ascending by key")
+        previous_key = key
+
+
+def _validate_semantic_contract_manifest(
+    manifest: object,
+) -> tuple[bytes, bytes | None, bytes | None]:
+    if not isinstance(manifest, dict) or set(manifest) != {
+        "rules_contract_id",
+        "format_contract_id",
+        "content_contract_id",
+    }:
+        raise _error("semantic_validation", "semantic contract manifest shape is invalid")
+    rules = require_digest(manifest["rules_contract_id"])
+    format_id = manifest["format_contract_id"]
+    content_id = manifest["content_contract_id"]
+    if format_id is not None and (not isinstance(format_id, str)):
+        raise _error("semantic_validation", "format_contract_id must be hex text or null")
+    if content_id is not None and (not isinstance(content_id, str)):
+        raise _error("semantic_validation", "content_contract_id must be hex text or null")
+    rules_bytes = bytes.fromhex(rules)
+    format_bytes = None if format_id is None else bytes.fromhex(require_digest(format_id))
+    content_bytes = None if content_id is None else bytes.fromhex(require_digest(content_id))
+    return rules_bytes, format_bytes, content_bytes
+
+
+def calculate_rules_contract_id_v1(manifest: dict[str, object]) -> str:
+    """Mechanical mirror of the Rust rules contract identity (spec §9).
+
+    Byte-exact: envelope mtgml.digest-envelope.v1 / sha-256 /
+    mtgml.canonical-cbor.v1 over the canonical §7 fixed 4-array payload.
+    """
+    _validate_rules_contract_manifest(manifest)
+    authority = manifest["rules_authority"]
+    if not isinstance(authority, dict):
+        raise _error("semantic_validation", "rules_authority must be a dict")
+    closure = manifest["capability_closure"]
+    if not isinstance(closure, list) and closure is not None:
+        raise _error("semantic_validation", "capability_closure must be a list or null")
+    if authority["variant"] == "synthetic_legacy":
+        authority_value: list[PersistenceValue] = ["synthetic_legacy", None]
+    else:
+        authority_value = ["comprehensive_rules", authority["snapshot_id"]]
+    closure_value: PersistenceValue = (
+        None if closure is None else [[entry["key"], entry["version"]] for entry in closure]
+    )
+    payload = encode_canonical(
+        [
+            RULES_CONTRACT_INPUT_SCHEMA,
+            RULES_CONTRACT_DOMAIN,
+            authority_value,
+            closure_value,
+        ]
+    )
+    return hashlib.sha256(
+        encode_envelope(RULES_CONTRACT_DOMAIN, RULES_CONTRACT_INPUT_SCHEMA, payload)
+    ).hexdigest()
+
+
+def calculate_semantic_contract_id_v1(manifest: dict[str, object]) -> str:
+    """Mechanical mirror of the Rust semantic contract identity (spec §9).
+
+    Byte-exact: envelope mtgml.digest-envelope.v1 / sha-256 /
+    mtgml.canonical-cbor.v1 over the canonical §8 fixed 5-array payload;
+    contract IDs travel as raw 32-byte byte strings, reserved dimensions
+    render canonical null for absence.
+    """
+    rules_bytes, format_bytes, content_bytes = _validate_semantic_contract_manifest(manifest)
+    payload = encode_canonical(
+        [
+            SEMANTIC_CONTRACT_INPUT_SCHEMA,
+            SEMANTIC_CONTRACT_DOMAIN,
+            rules_bytes,
+            format_bytes,
+            content_bytes,
+        ]
+    )
+    return hashlib.sha256(
+        encode_envelope(SEMANTIC_CONTRACT_DOMAIN, SEMANTIC_CONTRACT_INPUT_SCHEMA, payload)
+    ).hexdigest()
+
+
+def calculate_checkpoint_digest_v5(
+    full_state_digest: str,
+    status: EpisodeStatus,
+    counters: dict[str, int],
+    codec_id: str,
+    semantic_version: str,
+    program_kind: str,
+    semantic_contract_id: str,
+) -> str:
+    """Mechanical mirror of the Rust V5 checkpoint digest (spec §9, ADR 0055 §2.7).
+
+    Byte-exact: envelope mtgml.digest-envelope.v1 / sha-256 /
+    mtgml.canonical-cbor.v1 over the canonical V5 fixed 7-array payload, where
+    elements 1-6 are the V4-verified facts with V5 schema/domain strings and
+    element 7 is the ExecutionIdentityV1 encoded as
+    ``[program_kind_variant, semantic_contract_id_32bytes]``.
+
+    The full-state reference validates UNCHANGED against the V4 domain and
+    input schema (``mtgml.full-state-digest.v4`` + ``full-state-digest-input.v4``).
+    The codec pair is FROZEN to ``["in-memory-reference", "5"]``.
+    """
+    full_state_digest = require_digest(full_state_digest)
+    reference: dict[str, object] = {
+        "envelope_version": DIGEST_ENVELOPE_ID,
+        "algorithm_id": SHA256_ID,
+        "semantic_domain": FULL_STATE_DOMAIN_V4,
+        "payload_codec_id": CANONICAL_CBOR_ID,
+        "input_schema_id": FULL_STATE_INPUT_SCHEMA_V4,
+        "digest_bytes": bytes.fromhex(full_state_digest),
+    }
+    counter_names = (
+        "decisions_submitted",
+        "accepted_transitions",
+        "rule_events_emitted",
+        "resource_units_consumed",
+        "wall_clock_elapsed_millis",
+    )
+    validated_counter_values: list[int] = []
+    for name in counter_names:
+        value = counters.get(name)
+        if isinstance(value, bool) or not isinstance(value, int) or not 0 <= value <= 2**64 - 1:
+            raise _error("value_out_of_range", f"counter {name} is outside u64")
+        validated_counter_values.append(value)
+    if codec_id != CHECKPOINT_CODEC_ID_V5 or semantic_version != CHECKPOINT_CODEC_VERSION_V5:
+        raise _error("semantic_validation", "checkpoint codec identity is not V5")
+    if program_kind not in _VALID_PROGRAM_KINDS:
+        raise _error("semantic_validation", "execution program kind is unknown")
+    if not isinstance(semantic_contract_id, str):
+        raise _error("semantic_validation", "semantic_contract_id must be hex text")
+    contract_bytes = require_digest(semantic_contract_id)
+    counter_values: list[PersistenceValue] = list(validated_counter_values)
+    payload = encode_canonical(
+        [
+            CHECKPOINT_INPUT_SCHEMA_V5,
+            CHECKPOINT_DOMAIN_V5,
+            digest_reference_value(reference),
+            _episode_status_value(status),
+            counter_values,
+            [codec_id, semantic_version],
+            [[program_kind, None], bytes.fromhex(contract_bytes)],
+        ]
+    )
+    return hashlib.sha256(
+        encode_envelope(CHECKPOINT_DOMAIN_V5, CHECKPOINT_INPUT_SCHEMA_V5, payload)
     ).hexdigest()

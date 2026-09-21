@@ -1,11 +1,12 @@
 use super::*;
+use crate::semantic_catalog_generated::synthetic_legacy_default_semantic_contract_id;
 
 use mtgml_decision::{DecisionAnswerV2, DecisionResponseV2, DECISION_RESPONSE_V2_SCHEMA};
 
 use mtgml_model::{
-    CandidateIdV1, CheckpointDigestV4, ContentDigest, ContinuationId, EpisodeStatus,
-    FullStateDigestV4, PlayerDecisionIdV1, PlayerId, PlayerOutcome, PlayerResult, StateRevision,
-    TerminalReason, TruncationReason,
+    CandidateIdV1, CheckpointDigestV5, ContentDigest, ContinuationId, EpisodeStatus,
+    ExecutionIdentityV1, ExecutionProgramV1, FullStateDigestV4, PlayerDecisionIdV1, PlayerId,
+    PlayerOutcome, PlayerResult, StateRevision, TerminalReason, TruncationReason,
 };
 
 use mtgml_observation::{
@@ -16,14 +17,14 @@ use mtgml_observation::{
 use mtgml_random::RootSeed256;
 
 use mtgml_replay::{
-    AuthoritativeReplayV4, DeckIdentityV1, KernelIdentityV1, ReplaySchemaVersionsV4,
+    AuthoritativeReplayV5, DeckIdentityV1, KernelIdentityV1, ReplaySchemaVersionsV5,
 };
 
 fn config(players: [PlayerId; 2]) -> SyntheticM1EnvironmentConfig {
     SyntheticM1EnvironmentConfig {
         codec: CheckpointCodecIdentity {
             codec_id: "in-memory-reference".into(),
-            semantic_version: "4".into(),
+            semantic_version: "5".into(),
         },
         setup: mtgml_state::SyntheticV4Setup::m2_compatibility(),
         replay: SyntheticM1ReplayConfig {
@@ -38,7 +39,7 @@ fn config(players: [PlayerId; 2]) -> SyntheticM1EnvironmentConfig {
             oracle_snapshot: "synthetic-oracle".into(),
             card_bundle: "synthetic-bundle".into(),
             randomness_contract_id: "mtgml.rng.v1".into(),
-            schemas: ReplaySchemaVersionsV4 {
+            schemas: ReplaySchemaVersionsV5 {
                 observation: OBSERVATION_SCHEMA.into(),
                 observation_payload_codec: "synthetic-m3-observation.v1".into(),
                 information_state: INFORMATION_STATE_SCHEMA_V2.into(),
@@ -46,7 +47,7 @@ fn config(players: [PlayerId; 2]) -> SyntheticM1EnvironmentConfig {
                 decision_response: DECISION_RESPONSE_V2_SCHEMA.into(),
                 observed_event: OBSERVED_EVENT_SCHEMA_V2.into(),
                 player_step: PLAYER_STEP_SCHEMA_V2.into(),
-                replay_step: "replay-step.v4".into(),
+                replay_step: "replay-step.v5".into(),
             },
             decks: players
                 .into_iter()
@@ -75,6 +76,13 @@ fn response(candidate_id: u32, revision: u64) -> DecisionResponseV2 {
         answer: DecisionAnswerV2::SelectOne {
             candidate_id: CandidateIdV1(candidate_id),
         },
+    }
+}
+
+fn synthetic_identity() -> ExecutionIdentityV1 {
+    ExecutionIdentityV1 {
+        program_kind: ExecutionProgramV1::SyntheticRulesCompat,
+        semantic_contract_id: synthetic_legacy_default_semantic_contract_id(),
     }
 }
 
@@ -588,3 +596,16 @@ include!("tests/batch_d.rs");
 include!("tests/batch_e.rs");
 include!("tests/batch_f.rs");
 include!("tests/batch_g.rs");
+
+mod semantic_catalog {
+    #![allow(unused_imports)]
+    use super::*;
+    use crate::semantic_catalog_generated::synthetic_legacy_default_semantic_contract_id;
+    include!("tests/semantic_catalog.rs");
+}
+
+mod restore_admission {
+    use super::*;
+    use crate::semantic_catalog_generated::synthetic_legacy_default_semantic_contract_id;
+    include!("tests/restore_admission.rs");
+}

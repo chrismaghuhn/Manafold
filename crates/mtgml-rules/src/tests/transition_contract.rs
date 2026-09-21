@@ -81,7 +81,7 @@ fn decision_creation_product(
 #[test]
 fn invalid_v2_answer_is_rejected_without_state_mutation() {
     let state = synthetic_state();
-    let mut kernel = SyntheticM1RulesKernel;
+    let mut kernel = boundary_kernel();
     let result = kernel.apply(&state, PlayerId(1), &response(1, 0)).unwrap();
 
     assert!(!result.accepted);
@@ -97,7 +97,7 @@ fn invalid_v2_answer_is_rejected_without_state_mutation() {
 #[test]
 fn wrong_actor_and_stale_revision_fail_closed() {
     let state = synthetic_state();
-    let mut kernel = SyntheticM1RulesKernel;
+    let mut kernel = boundary_kernel();
     let wrong_actor = kernel.apply(&state, PlayerId(2), &response(0, 0)).unwrap();
     assert!(!wrong_actor.accepted);
     assert_eq!(wrong_actor.next_state, state);
@@ -148,7 +148,7 @@ fn synthetic_rejection_matrix_preserves_complete_nonmutation() {
     ];
 
     for case in &cases {
-        let mut kernel = SyntheticM1RulesKernel;
+        let mut kernel = boundary_kernel();
         let result = kernel.apply(&state, PlayerId(1), case).unwrap();
         assert!(!result.accepted);
         assert_eq!(result.next_state, state);
@@ -162,7 +162,7 @@ fn synthetic_rejection_matrix_preserves_complete_nonmutation() {
     // A standalone ChooseMany pending request is not part of the supported
     // program: offering it is an internal soundness failure, not a player
     // rejection.
-    let mut kernel = SyntheticM1RulesKernel;
+    let mut kernel = boundary_kernel();
     assert!(matches!(
         kernel.apply(&wrong_domain, PlayerId(1), &cases[0]),
         Err(KernelExecutionError::UnsupportedStagePath)
@@ -175,7 +175,7 @@ fn sequential_event_delta_audit_rejects_tampered_products() {
     use mtgml_model::RuleEventId;
 
     let state = synthetic_state();
-    let mut kernel = SyntheticM1RulesKernel;
+    let mut kernel = boundary_kernel();
     let result = kernel.apply(&state, PlayerId(1), &response(0, 0)).unwrap();
     assert_eq!(result.events.len(), 5);
     validate_transition_contract(&state, &result).unwrap();
@@ -213,7 +213,7 @@ fn sequential_event_delta_audit_rejects_tampered_products() {
 
     // A random sample event must match the authoritative sampler.
     let mut tampered = result.clone();
-    let mut second_kernel = SyntheticM1RulesKernel;
+    let mut second_kernel = boundary_kernel();
     let fresh = second_kernel
         .apply(&synthetic_state(), PlayerId(1), &response(0, 0))
         .unwrap();

@@ -1,0 +1,48 @@
+{
+  "schema_version": "semantic-contract-kat.v1",
+  "vectors": [
+    {
+      "case": "rules_synthetic_legacy",
+      "manifest_kind": "rules",
+      "rules_authority": { "variant": "synthetic_legacy" },
+      "capability_closure": null,
+      "rules_contract_id": "19bac684b74115b4fab823dfae2d3e75c23ee24f78effe51e9f72a33d4a58521"
+    },
+    {
+      "case": "rules_comprehensive_minimal",
+      "manifest_kind": "rules",
+      "rules_authority": {
+        "variant": "comprehensive_rules",
+        "snapshot_id": "CR-2026-09-19"
+      },
+      "capability_closure": [
+        { "key": "rules/synthetic-transition", "version": "1.0.0" }
+      ],
+      "rules_contract_id": "6759a1bfa9ab56da74bdddde7c2e56ade99fc3169bffe9e16ce27f3947574722"
+    },
+    {
+      "case": "semantic_synthetic_null_null",
+      "manifest_kind": "semantic",
+      "rules_contract_id_ref": "rules_synthetic_legacy",
+      "format_contract_id": null,
+      "content_contract_id": null,
+      "semantic_contract_id": "66ccac959475370e641e853473cbdd7f88489399587794b43f66cfa0342b1be4"
+    },
+    {
+      "case": "semantic_magic_hypothetical_null_null",
+      "manifest_kind": "semantic",
+      "rules_contract_id": "5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a",
+      "format_contract_id": null,
+      "content_contract_id": null,
+      "semantic_contract_id": "f82a44a672f1095d7db11a505e0d6004e1e0670604f71cea80b3787255f883e9"
+    },
+    {
+      "case": "semantic_reserved_dimensions",
+      "manifest_kind": "semantic",
+      "rules_contract_id_ref": "rules_synthetic_legacy",
+      "format_contract_id": "3434343434343434343434343434343434343434343434343434343434343434",
+      "content_contract_id": "5656565656565656565656565656565656565656565656565656565656565656",
+      "semantic_contract_id": "5465b1d7799db3ed2175211cb49a342520258ee7e6782a7f8aa45b985ca150fb"
+    }
+  ]
+}

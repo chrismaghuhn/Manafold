@@ -84,6 +84,16 @@ class PythonTestProfileTests(unittest.TestCase):
         )
         self.assertIn(full, run_checks.INTEGRATION_EXTRA)
 
+    def test_fast_profile_includes_v5_execution_identity_gate(self) -> None:
+        gate = [sys.executable, "scripts/run_v5_execution_identity_gate.py"]
+        self.assertIn(gate, run_checks.FAST)
+
+    def test_justfile_contracts_includes_v5_gate_and_catalog_check(self) -> None:
+        justfile = ROOT / "justfile"
+        text = justfile.read_text(encoding="utf-8")
+        self.assertIn("run_v5_execution_identity_gate.py", text)
+        self.assertIn("generate_semantic_contract_catalog.py --check", text)
+
     def test_python_tools_are_bound_to_the_selected_interpreter(self) -> None:
         self.assertIn(
             [sys.executable, "-m", "ruff", "format", "--check", "python", "scripts"],

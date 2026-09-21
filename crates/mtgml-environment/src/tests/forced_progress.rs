@@ -16,14 +16,14 @@ fn backend_without_pending() -> SyntheticM1EnvironmentBackend {
         })
         .unwrap();
     state.execution.pending_decision = None;
-    let checkpoint = EnvironmentCheckpointV4::new(
+    let checkpoint = EnvironmentCheckpointV5::new(
         state,
         EpisodeStatus::Running,
         EnvironmentLimitCounters::default(),
         CheckpointCodecIdentity {
             codec_id: "in-memory-reference".into(),
-            semantic_version: "4".into(),
-        },
+            semantic_version: "5".into(),
+        }, synthetic_identity(),
     )
     .unwrap();
     SyntheticM1EnvironmentBackend::from_checkpoint(checkpoint, config(players)).unwrap()
@@ -97,6 +97,15 @@ fn forced_progress_commits_without_response_counters_or_replay_step() {
         replay_after.final_identity, replay_before.final_identity,
         "baseline must advance past the pre-progress identity"
     );
+    // Parity lock (Task 5): the post-progress full-state identity must
+    // recompute EXACTLY from the committed state — forced progress changes
+    // semantics and identity together or not at all.
+    assert_eq!(
+        after.state_digest,
+        after.state.digest().unwrap(),
+        "forced progress must leave the FullStateDigestV4 identity recompute-exact"
+    );
+    assert_eq!(after.state_digest, product.next_state.digest().unwrap());
 }
 
 #[test]
@@ -195,7 +204,10 @@ fn forced_progress_candidate_projects_successfully_pre_commit() {
         })
         .unwrap();
     setup.execution.pending_decision = None;
-    let mut kernel = mtgml_rules::SyntheticM1RulesKernel;
+    let mut kernel = mtgml_rules::ProgramKernelV1::for_program(
+        mtgml_model::ExecutionProgramV1::SyntheticRulesCompat,
+    )
+    .expect("the synthetic program is supported by the current kernel boundary");
     let product = kernel.advance_forced_progress(&setup).unwrap();
     let candidate: &EngineState = &product.next_state;
     for perspective in players {
@@ -248,14 +260,14 @@ fn forced_progress_failure_leaves_checkpoint_counters_and_replay_unchanged() {
         .unwrap()
         .life = 39;
     let players = [PlayerId(1), PlayerId(2)];
-    let checkpoint = EnvironmentCheckpointV4::new(
+    let checkpoint = EnvironmentCheckpointV5::new(
         setup,
         EpisodeStatus::Running,
         EnvironmentLimitCounters::default(),
         CheckpointCodecIdentity {
             codec_id: "in-memory-reference".into(),
-            semantic_version: "4".into(),
-        },
+            semantic_version: "5".into(),
+        }, synthetic_identity(),
     )
     .unwrap();
     let controller = TrustedEnvironmentController::new(

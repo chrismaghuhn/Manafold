@@ -17,11 +17,11 @@ fn fnd_017b_closed_status_with_pending_decision_is_rejected_at_checkpoint_owner(
         ],
     };
     assert!(matches!(
-        EnvironmentCheckpointV4::new(
+        EnvironmentCheckpointV5::new(
             checkpoint.state.clone(),
             status,
             checkpoint.limit_counters.clone(),
-            checkpoint.codec.clone(),
+            checkpoint.codec.clone(), synthetic_identity(),
         ),
         Err(CheckpointValidationError::CompletedWithDecision)
     ));

@@ -256,6 +256,7 @@ dependencies = [
  "mtgml-persistence",
  "mtgml-random",
  "serde",
+ "serde_json",
  "thiserror",
 ]
 

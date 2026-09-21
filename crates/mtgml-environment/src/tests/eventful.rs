@@ -10,7 +10,7 @@ use mtgml_model::{
     RuleEventId, VisibleSequence, ZoneKind,
 };
 use mtgml_random::RootSeed256;
-use mtgml_replay::ReplayRecorderV4;
+use mtgml_replay::ReplayRecorderV5;
 use mtgml_rules::fixture_support::{FixtureTransition, PlannedOccurrence};
 use mtgml_rules::{AuthoritativeRuleEvent, AuthoritativeRuleEventKind, TransitionResult};
 use mtgml_state::{
@@ -20,8 +20,8 @@ use mtgml_state::{
     ZoneLocation, ZonePosition,
 };
 
-use super::{SyntheticM1EnvironmentBackend, SyntheticM1EnvironmentConfig};
-use crate::checkpoint::EnvironmentCheckpointV4;
+use super::{synthetic_identity, SyntheticM1EnvironmentBackend, SyntheticM1EnvironmentConfig};
+use crate::checkpoint::EnvironmentCheckpointV5;
 use crate::errors::ControllerError;
 
 fn battlefield() -> ZoneLocation {
@@ -70,14 +70,15 @@ pub(super) fn backend(
     add_eventful_objects(&mut backend.state);
     validate_engine_state(&backend.state)
         .map_err(mtgml_state::SyntheticStateConstructionError::Validation)?;
-    let checkpoint = EnvironmentCheckpointV4::new(
+    let checkpoint = EnvironmentCheckpointV5::new(
         backend.state.clone(),
         backend.status.clone(),
         backend.limit_counters.clone(),
         backend.codec.clone(),
+        synthetic_identity(),
     )?;
     backend.replay =
-        ReplayRecorderV4::new(super::replay::build_manifest(&backend.config, &checkpoint)?)?;
+        ReplayRecorderV5::new(super::replay::build_manifest(&backend.config, &checkpoint)?)?;
     backend.eventful_fixture = true;
     Ok(backend)
 }

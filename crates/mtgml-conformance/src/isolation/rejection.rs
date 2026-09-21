@@ -50,14 +50,14 @@ mod tests {
     };
     use crate::isolation::paired::test_support::accepted_entry_submission;
     use crate::isolation::paired::{
-        base_pair_state, spawn_environment, synthetic_environment_config,
+        base_pair_state, spawn_environment, synthetic_environment_config, synthetic_identity,
     };
     use crate::isolation::HarnessError;
     use mtgml_decision::{
         DecisionAnswerV2, DecisionResponseV2, PlayerDecisionRequestV2, DECISION_RESPONSE_V2_SCHEMA,
     };
     use mtgml_environment::{
-        EnvironmentCheckpointV4, PlayerEndpoint, PlayerEndpointHandle, TrustedEnvironmentController,
+        EnvironmentCheckpointV5, PlayerEndpoint, PlayerEndpointHandle, TrustedEnvironmentController,
     };
     use mtgml_model::{
         CandidateIdV1, EpisodeStatus, PlayerDecisionIdV1, PlayerId, PlayerOutcome, PlayerResult,
@@ -544,7 +544,7 @@ mod tests {
         let completed = controller
             .checkpoint()
             .map_err(|_| HarnessError::ControllerService)?;
-        let terminal = EnvironmentCheckpointV4::new(
+        let terminal = EnvironmentCheckpointV5::new(
             completed.state.clone(),
             EpisodeStatus::Terminal {
                 reason: TerminalReason::Concession,
@@ -561,6 +561,7 @@ mod tests {
             },
             completed.limit_counters.clone(),
             completed.codec.clone(),
+            synthetic_identity(),
         )
         .map_err(|_| HarnessError::CheckpointInvalid)?;
         controller

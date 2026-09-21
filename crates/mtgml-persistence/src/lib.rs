@@ -4,6 +4,7 @@ pub mod cbor;
 pub mod checkpoint_digest;
 pub mod envelope;
 pub mod error;
+pub mod semantic_contract_digest;
 
 pub use error::{PersistenceDecodeErrorV1, PersistenceErrorCategory};
 

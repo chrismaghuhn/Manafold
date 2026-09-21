@@ -5,10 +5,11 @@ use mtgml_model::{
     FullStateDigestV4, PlayerId, StateRevision,
 };
 use mtgml_replay::{
-    AuthoritativeReplayV4, DeckIdentityV1, InitialEnvironmentIdentityV4, KernelIdentityV1,
-    RandomnessIdentityV2, ReplayManifestV4, ReplayRecorderV4, ReplaySchemaVersionsV4, ReplayStepV4,
-    ReplayValidationError, REPLAY_FILE_SCHEMA_V4, REPLAY_MANIFEST_SCHEMA_V4, REPLAY_STEP_SCHEMA_V4,
+    AuthoritativeReplayV4, InitialEnvironmentIdentityV4, ReplayManifestV4, ReplayRecorderV4,
+    ReplaySchemaVersionsV4, ReplayStepV4, REPLAY_FILE_SCHEMA_V4, REPLAY_MANIFEST_SCHEMA_V4,
+    REPLAY_STEP_SCHEMA_V4,
 };
+use mtgml_replay::{DeckIdentityV1, KernelIdentityV1, RandomnessIdentityV2, ReplayValidationError};
 
 #[test]
 fn p0_replay_v4_identity_family_is_present_and_closed() {

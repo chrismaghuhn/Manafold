@@ -18,7 +18,7 @@
 pub(crate) mod support {
     use crate::isolation::paired::test_support::accepted_entry_submission;
     use crate::isolation::paired::{
-        base_pair_state, spawn_environment, synthetic_environment_config,
+        base_pair_state, spawn_environment, synthetic_environment_config, synthetic_identity,
     };
     use crate::isolation::HarnessError;
     use mtgml_decision::{
@@ -26,7 +26,7 @@ pub(crate) mod support {
         DECISION_RESPONSE_V2_SCHEMA,
     };
     use mtgml_environment::{
-        EnvironmentCheckpointV4, PlayerEndpoint, PlayerEndpointHandle,
+        EnvironmentCheckpointV5, PlayerEndpoint, PlayerEndpointHandle,
         SyntheticM1EnvironmentConfig, TrustedEnvironmentController,
     };
     use mtgml_model::{
@@ -35,7 +35,7 @@ pub(crate) mod support {
     };
     use mtgml_observation::PlayerStepSubmissionV1;
     use mtgml_random::{RandomStreamKeyV1, RandomStreamKindV1};
-    use mtgml_replay::InitialEnvironmentIdentityV4;
+    use mtgml_replay::InitialEnvironmentIdentityV5;
     use mtgml_rules::fixture_support::{FixtureTransition, PlannedOccurrence};
     use mtgml_rules::PerspectiveObservationPolicyV1;
     use mtgml_state::{
@@ -480,11 +480,12 @@ pub(crate) mod support {
     ) -> Result<(TrustedEnvironmentController, [PlayerEndpointHandle; 2]), HarnessError> {
         let state = information_rich_state()?;
         let config = config();
-        let wrapped = EnvironmentCheckpointV4::new(
+        let wrapped = EnvironmentCheckpointV5::new(
             state.clone(),
             EpisodeStatus::Running,
             EnvironmentLimitCounters::default(),
             config.codec.clone(),
+            synthetic_identity(),
         )
         .map_err(|_| HarnessError::CheckpointInvalid)?;
         wrapped
@@ -555,8 +556,8 @@ pub(crate) mod support {
     /// the replay segment seeded from `checkpoint` carries exactly the
     /// checkpoint identity fields.
     pub(crate) fn assert_segment_anchor(
-        anchor: &InitialEnvironmentIdentityV4,
-        checkpoint: &EnvironmentCheckpointV4,
+        anchor: &InitialEnvironmentIdentityV5,
+        checkpoint: &EnvironmentCheckpointV5,
     ) {
         assert_eq!(anchor.state_revision, checkpoint.state.revision);
         assert_eq!(anchor.full_state_digest, checkpoint.state_digest);
@@ -584,7 +585,7 @@ mod tests {
         TrustedEnvironmentController,
     };
     use mtgml_model::{CandidateIdV1, PlayerDecisionIdV1, StateRevision};
-    use mtgml_replay::AuthoritativeReplayV4;
+    use mtgml_replay::AuthoritativeReplayV5;
     use mtgml_wire::encode_canonical;
 
     fn controller_service(_: ControllerError) -> HarnessError {
@@ -632,7 +633,7 @@ mod tests {
 
         // Segment anchor: the restored recorder starts an empty segment
         // whose initial identity IS the restored checkpoint identity.
-        let exported: AuthoritativeReplayV4 =
+        let exported: AuthoritativeReplayV5 =
             controller.export_replay().map_err(controller_service)?;
         assert!(exported.steps.is_empty());
         assert_segment_anchor(&exported.manifest.initial_identity, &cp0);
@@ -748,7 +749,7 @@ mod tests {
             &fp_restored,
             FingerprintComparison::ExcludeReplayRecorder,
         )?;
-        let exported: AuthoritativeReplayV4 =
+        let exported: AuthoritativeReplayV5 =
             controller.export_replay().map_err(controller_service)?;
         assert!(exported.steps.is_empty());
         assert_segment_anchor(&exported.manifest.initial_identity, &cp0);

@@ -46,6 +46,7 @@ def reference_python_matches() -> bool:
 
 FAST = [
     [sys.executable, "scripts/generate_contracts.py", "--check"],
+    [sys.executable, "scripts/run_v5_execution_identity_gate.py"],
     [sys.executable, "scripts/verify_repository.py"],
     [sys.executable, "scripts/check_rust_source_structure.py"],
     [sys.executable, "scripts/check_documentation.py"],

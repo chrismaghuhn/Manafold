@@ -154,7 +154,7 @@ fn stale_stage_response_is_rejected_without_any_mutation() {
 
 #[test]
 fn order_permutations_bind_distinct_replay_identity() {
-    let run = |order: &[u32]| -> (AuthoritativeReplayV4, EnvironmentCheckpointV4) {
+    let run = |order: &[u32]| -> (AuthoritativeReplayV5, EnvironmentCheckpointV5) {
         let controller = TrustedEnvironmentController::new(backend());
         let p1 = controller.bind_player(PlayerId(1)).unwrap();
         let _ = submit_answer(&p1, order_entry_answer());
@@ -171,7 +171,7 @@ fn order_permutations_bind_distinct_replay_identity() {
     let (reverse_replay, reverse_checkpoint) = run(&[1, 0]);
 
     // The semantic order lives in the recorded authoritative response.
-    fn last(replay: &AuthoritativeReplayV4) -> &DecisionResponseV2 {
+    fn last(replay: &AuthoritativeReplayV5) -> &DecisionResponseV2 {
         &replay.steps.last().unwrap().response
     }
     assert_eq!(

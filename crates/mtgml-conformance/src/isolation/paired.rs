@@ -6,25 +6,26 @@
 //! accept — or a pair the witness cannot authorize — never becomes evidence.
 
 use mtgml_environment::{
-    EnvironmentCheckpointV4, PlayerEndpointHandle, SyntheticM1EnvironmentBackend,
+    EnvironmentCheckpointV5, PlayerEndpointHandle, SyntheticM1EnvironmentBackend,
     SyntheticM1EnvironmentConfig, SyntheticM1ReplayConfig, TrustedEnvironmentController,
 };
 use mtgml_model::{
-    CheckpointCodecIdentity, ContentDigest, EnvironmentLimitCounters, EpisodeStatus, GameObjectId,
-    PlayerId,
+    CheckpointCodecIdentity, ContentDigest, EnvironmentLimitCounters, EpisodeStatus,
+    ExecutionIdentityV1, ExecutionProgramV1, GameObjectId, PlayerId,
 };
 use mtgml_observation::{
     INFORMATION_STATE_SCHEMA_V2, OBSERVATION_SCHEMA, OBSERVED_EVENT_SCHEMA_V2,
     PLAYER_STEP_SCHEMA_V2,
 };
 use mtgml_random::RootSeed256;
-use mtgml_replay::{DeckIdentityV1, KernelIdentityV1, ReplaySchemaVersionsV4};
+use mtgml_replay::{DeckIdentityV1, KernelIdentityV1, ReplaySchemaVersionsV5};
 use mtgml_state::{
     construct_synthetic_engine_state, validate_engine_state, EngineState, SyntheticResetInputs,
 };
 
 use super::witnesses::{assert_witness, PairWitness};
 use super::HarnessError;
+use mtgml_environment::synthetic_legacy_default_semantic_contract_id;
 
 const P1: PlayerId = PlayerId(1);
 const P2: PlayerId = PlayerId(2);
@@ -78,7 +79,14 @@ pub type TransformFn = fn(&mut EngineState) -> Result<TransformReport, HarnessEr
 fn codec_identity() -> CheckpointCodecIdentity {
     CheckpointCodecIdentity {
         codec_id: "in-memory-reference".into(),
-        semantic_version: "4".into(),
+        semantic_version: "5".into(),
+    }
+}
+
+pub(crate) fn synthetic_identity() -> ExecutionIdentityV1 {
+    ExecutionIdentityV1 {
+        program_kind: ExecutionProgramV1::SyntheticRulesCompat,
+        semantic_contract_id: synthetic_legacy_default_semantic_contract_id(),
     }
 }
 
@@ -100,7 +108,7 @@ pub fn synthetic_environment_config(players: [PlayerId; 2]) -> SyntheticM1Enviro
             oracle_snapshot: "synthetic-oracle".into(),
             card_bundle: "synthetic-bundle".into(),
             randomness_contract_id: "mtgml.rng.v1".into(),
-            schemas: ReplaySchemaVersionsV4 {
+            schemas: ReplaySchemaVersionsV5 {
                 observation: OBSERVATION_SCHEMA.into(),
                 observation_payload_codec: "synthetic-m3-observation.v1".into(),
                 information_state: INFORMATION_STATE_SCHEMA_V2.into(),
@@ -108,7 +116,7 @@ pub fn synthetic_environment_config(players: [PlayerId; 2]) -> SyntheticM1Enviro
                 decision_response: "decision-response.v2".into(),
                 observed_event: OBSERVED_EVENT_SCHEMA_V2.into(),
                 player_step: PLAYER_STEP_SCHEMA_V2.into(),
-                replay_step: "replay-step.v4".into(),
+                replay_step: "replay-step.v5".into(),
             },
             decks: players
                 .into_iter()
@@ -133,9 +141,14 @@ pub fn spawn_environment(
     config: &SyntheticM1EnvironmentConfig,
 ) -> Result<(TrustedEnvironmentController, [PlayerEndpointHandle; 2]), HarnessError> {
     let counters = EnvironmentLimitCounters::default();
-    let checkpoint =
-        EnvironmentCheckpointV4::new(state, EpisodeStatus::Running, counters, codec_identity())
-            .map_err(|_| HarnessError::CheckpointInvalid)?;
+    let checkpoint = EnvironmentCheckpointV5::new(
+        state,
+        EpisodeStatus::Running,
+        counters,
+        codec_identity(),
+        synthetic_identity(),
+    )
+    .map_err(|_| HarnessError::CheckpointInvalid)?;
     checkpoint
         .validate()
         .map_err(|_| HarnessError::CheckpointInvalid)?;
@@ -352,8 +365,8 @@ pub(crate) mod test_support {
     /// Independently checks the synthetic entry transition before any
     /// byte-parity assertion is used as evidence.
     pub fn assert_accepted_entry_progression(
-        before: &EnvironmentCheckpointV4,
-        after: &EnvironmentCheckpointV4,
+        before: &EnvironmentCheckpointV5,
+        after: &EnvironmentCheckpointV5,
         step: &PlayerStepV2,
     ) -> Result<(), HarnessError> {
         if step.submission != PlayerStepSubmissionV1::Accepted {
@@ -491,8 +504,8 @@ pub(crate) mod test_support {
     /// Independently checks the frozen ChooseCount -> ChooseMembers accepted
     /// transition used by checkpoint and fork parity.
     pub fn assert_accepted_count_progression(
-        before: &EnvironmentCheckpointV4,
-        after: &EnvironmentCheckpointV4,
+        before: &EnvironmentCheckpointV5,
+        after: &EnvironmentCheckpointV5,
         step: &PlayerStepV2,
     ) -> Result<(), HarnessError> {
         if step.submission != PlayerStepSubmissionV1::Accepted {
