@@ -1,7 +1,8 @@
 use crate::events::AuthoritativeRuleEventKind;
 use mtgml_model::{EpisodeStatus, PlayerId};
 use mtgml_state::{
-    validate_engine_state, BeginningStep, EngineState, PerspectiveIdentityRecordV2, TurnPosition,
+    validate_engine_state, BeginningStep, EndingStep, EngineState, PerspectiveIdentityRecordV2,
+    TurnPosition,
 };
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
@@ -111,15 +112,57 @@ fn validate_accepted_progression(
             .get(player)
             .is_none_or(|other| other.has_lost != state.has_lost)
     });
-    if before.core.active_player != after.core.active_player
-        || before.core.turn_number != after.core.turn_number
-        || before.core.priority != after.core.priority
-        || before.core.players.len() != after.core.players.len()
-        || has_lost_changed
-        || before.combat != after.combat
-        || before.foundation_sources != after.foundation_sources
-    {
-        return Err(TransitionViolation::UnexplainedMutation);
+
+    // Task 7: detect the quiescent Cleanup boundary. A product that
+    // transitions Ending(Cleanup) -> Beginning(Untap) MUST produce the
+    // exact three-event shape. This check runs BEFORE the blanket mutation
+    // check so that every Cleanup boundary violation returns TurnStructure
+    // (not UnexplainedMutation). Conversely, Task-7 event families cannot
+    // justify an unrelated transition because the before/after position
+    // guard gates this rule entirely.
+    let is_cleanup_boundary = before.core.position
+        == TurnPosition::Ending {
+            step: EndingStep::Cleanup,
+        }
+        && after.core.position
+            == TurnPosition::Beginning {
+                step: BeginningStep::Untap,
+            };
+
+    if is_cleanup_boundary {
+        let turn_ok = before.core.turn_number.checked_add(1) == Some(after.core.turn_number);
+        let player_ok = after.core.active_player != before.core.active_player
+            && before.core.players.contains_key(&after.core.active_player);
+        let events_ok = result.events.len() == 3
+            && matches!(
+                &result.events[0].event,
+                AuthoritativeRuleEventKind::TurnNumberChanged { from, to }
+                    if *from == before.core.turn_number
+                        && *to == before.core.turn_number + 1
+            )
+            && matches!(
+                &result.events[1].event,
+                AuthoritativeRuleEventKind::ActivePlayerChanged { from, to }
+                    if *from == before.core.active_player
+                        && *to == after.core.active_player
+                        && from != to
+            )
+            && matches!(
+                &result.events[2].event,
+                AuthoritativeRuleEventKind::TurnPositionChanged { from, to }
+                    if *from == TurnPosition::Ending {
+                        step: EndingStep::Cleanup,
+                    }
+                    && *to == TurnPosition::Beginning {
+                        step: BeginningStep::Untap,
+                    }
+            );
+        if !turn_ok || !player_ok || !events_ok {
+            return Err(TransitionViolation::TurnStructure);
+        }
+        // Exact Cleanup event shape validated: active_player and turn_number
+        // changes are expected and proven by events. Continue to blanket
+        // check which will pass for all non-position/non-priority fields.
     }
 
     // Task 6: if this accepted product performs the ordinary untap boundary
@@ -160,6 +203,21 @@ fn validate_accepted_progression(
             ))
     {
         return Err(TransitionViolation::TurnStructure);
+    }
+
+    // Blanket mutation check. active_player and turn_number changes
+    // are already validated above for Cleanup boundaries. All other
+    // fields must not change for any accepted transition.
+    if (before.core.active_player != after.core.active_player
+        || before.core.turn_number != after.core.turn_number)
+        && !is_cleanup_boundary
+        || before.core.priority != after.core.priority
+        || before.core.players.len() != after.core.players.len()
+        || has_lost_changed
+        || before.combat != after.combat
+        || before.foundation_sources != after.foundation_sources
+    {
+        return Err(TransitionViolation::UnexplainedMutation);
     }
     Ok(())
 }

@@ -186,19 +186,478 @@ fn magic_turn_structure_kernel_shell_reports_end_step_priority_boundary() {
     assert_eq!(state, before, "failed progress must not mutate input");
 }
 
-// --- Owned-but-not-yet-implemented boundary tests (section 16) ---
+// --- Positive Cleanup transition tests ---
 
 #[test]
-fn magic_turn_structure_kernel_shell_rejects_unimplemented_cleanup() {
+fn magic_turn_structure_cleanup_quiescent_transition_succeeds() {
     let state = s1_state_at(mtgml_state::TurnPosition::Ending {
         step: mtgml_state::EndingStep::Cleanup,
+    });
+    let before = state.clone();
+    let mut kernel = MagicRulesKernel::new();
+    let result = kernel
+        .advance_forced_progress(&state)
+        .expect("quiescent cleanup must be accepted at Ending(Cleanup)");
+    assert_eq!(state, before, "input state must not be mutated");
+
+    assert!(result.accepted);
+
+    // turn_number increments exactly once
+    assert_eq!(
+        result.next_state.core.turn_number,
+        before.core.turn_number + 1
+    );
+
+    // active player switches to unique other declared player
+    assert_eq!(result.next_state.core.active_player, PlayerId(42));
+
+    // position becomes Beginning(Untap)
+    assert_eq!(
+        result.next_state.core.position,
+        TurnPosition::Beginning {
+            step: BeginningStep::Untap,
+        }
+    );
+
+    // priority remains None
+    assert_eq!(
+        result.next_state.core.priority,
+        mtgml_state::PriorityState::None
+    );
+
+    // event order is exactly: TurnNumberChanged, ActivePlayerChanged, TurnPositionChanged
+    assert_eq!(result.events.len(), 3);
+    assert!(matches!(
+        &result.events[0].event,
+        AuthoritativeRuleEventKind::TurnNumberChanged { from, to }
+            if *from == before.core.turn_number
+                && *to == before.core.turn_number + 1
+    ));
+    assert!(matches!(
+        &result.events[1].event,
+        AuthoritativeRuleEventKind::ActivePlayerChanged { from, to }
+            if *from == before.core.active_player
+                && *to == result.next_state.core.active_player
+    ));
+    assert!(matches!(
+        &result.events[2].event,
+        AuthoritativeRuleEventKind::TurnPositionChanged { from, to }
+            if *from == TurnPosition::Ending {
+                step: EndingStep::Cleanup,
+            }
+            && *to == TurnPosition::Beginning {
+                step: BeginningStep::Untap,
+            }
+    ));
+
+    // revision increments exactly once
+    assert_eq!(
+        result.next_state.revision,
+        StateRevision(before.revision.0 + 1)
+    );
+
+    // rule-event allocator advances exactly three
+    assert_eq!(
+        result.next_state.allocators.next_rule_event_id,
+        RuleEventId(before.allocators.next_rule_event_id.0 + 3)
+    );
+
+    // no Decision is created
+    assert!(result.next_decision.is_none());
+
+    // no RNG changes
+    assert_eq!(
+        result.next_state.random.root_seed,
+        before.random.root_seed
+    );
+    assert_eq!(
+        result.next_state.random.streams,
+        before.random.streams
+    );
+
+    // no object tapped state changes
+    assert_eq!(
+        result.next_state.zones.objects,
+        before.zones.objects
+    );
+
+    // delta audit matches event order
+    assert_eq!(
+        result.delta.audit,
+        vec![
+            SemanticDeltaOperation::TurnNumberChanged {
+                from: before.core.turn_number,
+                to: before.core.turn_number + 1,
+            },
+            SemanticDeltaOperation::ActivePlayerChanged {
+                from: before.core.active_player,
+                to: result.next_state.core.active_player,
+            },
+            SemanticDeltaOperation::TurnPositionChanged {
+                from: TurnPosition::Ending {
+                    step: EndingStep::Cleanup,
+                },
+                to: TurnPosition::Beginning {
+                    step: BeginningStep::Untap,
+                },
+            },
+        ]
+    );
+
+    // delta reapplies exactly to next_state
+    assert_eq!(
+        result.delta.apply(&before).unwrap(),
+        result.next_state,
+    );
+}
+
+#[test]
+fn magic_turn_structure_cleanup_no_untap_performed_in_product() {
+    let state = s1_state_at(mtgml_state::TurnPosition::Ending {
+        step: mtgml_state::EndingStep::Cleanup,
+    });
+    let before = state.clone();
+    let mut kernel = MagicRulesKernel::new();
+    let result = kernel
+        .advance_forced_progress(&state)
+        .expect("quiescent cleanup must be accepted");
+
+    // Position is Beginning(Untap) but the next player's ordinary untap
+    // is NOT performed: no tapped objects changed and no UntapCompleted event.
+    assert!(result.events.iter().all(|e| {
+        !matches!(e.event, AuthoritativeRuleEventKind::UntapCompleted { .. })
+    }));
+    assert_eq!(result.next_state.zones.objects, before.zones.objects);
+}
+
+// --- Task 7: quiescent Cleanup contract-level negative tests ---
+
+fn cleanup_state_at_turn(turn: u64) -> EngineState {
+    let mut state = s1_state_at(mtgml_state::TurnPosition::Ending {
+        step: mtgml_state::EndingStep::Cleanup,
+    });
+    state.core.turn_number = turn;
+    state
+}
+
+fn cleanup_before_after() -> (EngineState, EngineState) {
+    let before = cleanup_state_at_turn(1);
+    let mut after = before.clone();
+    after.revision = StateRevision(before.revision.0 + 1);
+    after.core.turn_number = 2;
+    after.core.active_player = PlayerId(42);
+    after.core.position = TurnPosition::Beginning {
+        step: BeginningStep::Untap,
+    };
+    after.allocators.next_rule_event_id = RuleEventId(before.allocators.next_rule_event_id.0 + 3);
+    (before, after)
+}
+
+#[test]
+fn cleanup_turn_number_overflow_rejects_without_mutation() {
+    let state = cleanup_state_at_turn(u64::MAX);
+    let before = state.clone();
+    let mut kernel = MagicRulesKernel::new();
+    let result = kernel.advance_forced_progress(&state);
+    assert!(
+        matches!(
+            result,
+            Err(crate::KernelExecutionError::TurnStructure(
+                crate::TurnStructureError::TurnNumberOverflow
+            ))
+        ),
+        "u64::MAX cleanup must reject with typed overflow error"
+    );
+    assert_eq!(state, before, "overflow must not mutate input");
+}
+
+#[test]
+fn cleanup_contract_rejects_missing_turn_number_changed() {
+    let (before, mut after) = cleanup_before_after();
+    after.allocators.next_rule_event_id = RuleEventId(before.allocators.next_rule_event_id.0 + 2);
+    let events = vec![
+        AuthoritativeRuleEvent {
+            event_id: RuleEventId(before.allocators.next_rule_event_id.0 + 1),
+            state_revision: StateRevision(before.revision.0 + 1),
+            event: AuthoritativeRuleEventKind::ActivePlayerChanged {
+                from: PlayerId(7),
+                to: PlayerId(42),
+            },
+        },
+        AuthoritativeRuleEvent {
+            event_id: RuleEventId(before.allocators.next_rule_event_id.0 + 2),
+            state_revision: StateRevision(before.revision.0 + 1),
+            event: AuthoritativeRuleEventKind::TurnPositionChanged {
+                from: TurnPosition::Ending {
+                    step: EndingStep::Cleanup,
+                },
+                to: TurnPosition::Beginning {
+                    step: BeginningStep::Untap,
+                },
+            },
+        },
+    ];
+    let result = accepted_product_for_contract(&before, after, events);
+    assert!(
+        matches!(validate_transition_contract(&before, &result), Err(TransitionViolation::TurnStructure)),
+        "missing TurnNumberChanged must reject via TurnStructure"
+    );
+    assert_contract_rejects_without_mutation(&before, &result);
+}
+
+#[test]
+fn cleanup_contract_rejects_missing_active_player_changed() {
+    let (before, mut after) = cleanup_before_after();
+    after.allocators.next_rule_event_id = RuleEventId(before.allocators.next_rule_event_id.0 + 2);
+    let events = vec![
+        AuthoritativeRuleEvent {
+            event_id: RuleEventId(before.allocators.next_rule_event_id.0),
+            state_revision: StateRevision(before.revision.0 + 1),
+            event: AuthoritativeRuleEventKind::TurnNumberChanged {
+                from: 1,
+                to: 2,
+            },
+        },
+        AuthoritativeRuleEvent {
+            event_id: RuleEventId(before.allocators.next_rule_event_id.0 + 1),
+            state_revision: StateRevision(before.revision.0 + 1),
+            event: AuthoritativeRuleEventKind::TurnPositionChanged {
+                from: TurnPosition::Ending {
+                    step: EndingStep::Cleanup,
+                },
+                to: TurnPosition::Beginning {
+                    step: BeginningStep::Untap,
+                },
+            },
+        },
+    ];
+    let result = accepted_product_for_contract(&before, after, events);
+    assert!(
+        matches!(validate_transition_contract(&before, &result), Err(TransitionViolation::TurnStructure)),
+        "missing ActivePlayerChanged must reject via TurnStructure"
+    );
+    assert_contract_rejects_without_mutation(&before, &result);
+}
+
+#[test]
+fn cleanup_contract_rejects_missing_position_changed() {
+    let (before, mut after) = cleanup_before_after();
+    // Keep after at Cleanup boundary target Beginning(Untap)
+    // but omit TurnPositionChanged from events.
+    after.allocators.next_rule_event_id = RuleEventId(before.allocators.next_rule_event_id.0 + 2);
+    let events = vec![
+        AuthoritativeRuleEvent {
+            event_id: RuleEventId(before.allocators.next_rule_event_id.0),
+            state_revision: StateRevision(before.revision.0 + 1),
+            event: AuthoritativeRuleEventKind::TurnNumberChanged {
+                from: 1,
+                to: 2,
+            },
+        },
+        AuthoritativeRuleEvent {
+            event_id: RuleEventId(before.allocators.next_rule_event_id.0 + 1),
+            state_revision: StateRevision(before.revision.0 + 1),
+            event: AuthoritativeRuleEventKind::ActivePlayerChanged {
+                from: PlayerId(7),
+                to: PlayerId(42),
+            },
+        },
+    ];
+    let result = accepted_product_for_contract(&before, after, events);
+    assert!(
+        matches!(validate_transition_contract(&before, &result), Err(TransitionViolation::TurnStructure)),
+        "missing TurnPositionChanged must reject via TurnStructure"
+    );
+    assert_contract_rejects_without_mutation(&before, &result);
+}
+
+#[test]
+fn cleanup_contract_rejects_wrong_event_order() {
+    let (before, after) = cleanup_before_after();
+    let events = vec![
+        AuthoritativeRuleEvent {
+            event_id: RuleEventId(before.allocators.next_rule_event_id.0),
+            state_revision: StateRevision(before.revision.0 + 1),
+            event: AuthoritativeRuleEventKind::ActivePlayerChanged {
+                from: PlayerId(7),
+                to: PlayerId(42),
+            },
+        },
+        AuthoritativeRuleEvent {
+            event_id: RuleEventId(before.allocators.next_rule_event_id.0 + 1),
+            state_revision: StateRevision(before.revision.0 + 1),
+            event: AuthoritativeRuleEventKind::TurnNumberChanged {
+                from: 1,
+                to: 2,
+            },
+        },
+        AuthoritativeRuleEvent {
+            event_id: RuleEventId(before.allocators.next_rule_event_id.0 + 2),
+            state_revision: StateRevision(before.revision.0 + 1),
+            event: AuthoritativeRuleEventKind::TurnPositionChanged {
+                from: TurnPosition::Ending {
+                    step: EndingStep::Cleanup,
+                },
+                to: TurnPosition::Beginning {
+                    step: BeginningStep::Untap,
+                },
+            },
+        },
+    ];
+    let result = accepted_product_for_contract(&before, after, events);
+    assert!(
+        matches!(validate_transition_contract(&before, &result), Err(TransitionViolation::TurnStructure)),
+        "ActivePlayerChanged before TurnNumberChanged must reject via TurnStructure"
+    );
+    assert_contract_rejects_without_mutation(&before, &result);
+}
+
+#[test]
+fn cleanup_contract_rejects_wrong_turn_increment() {
+    let (before, mut after) = cleanup_before_after();
+    after.core.turn_number = 3;
+    let events = vec![
+        AuthoritativeRuleEvent {
+            event_id: RuleEventId(before.allocators.next_rule_event_id.0),
+            state_revision: StateRevision(before.revision.0 + 1),
+            event: AuthoritativeRuleEventKind::TurnNumberChanged {
+                from: 1,
+                to: 3,
+            },
+        },
+        AuthoritativeRuleEvent {
+            event_id: RuleEventId(before.allocators.next_rule_event_id.0 + 1),
+            state_revision: StateRevision(before.revision.0 + 1),
+            event: AuthoritativeRuleEventKind::ActivePlayerChanged {
+                from: PlayerId(7),
+                to: PlayerId(42),
+            },
+        },
+        AuthoritativeRuleEvent {
+            event_id: RuleEventId(before.allocators.next_rule_event_id.0 + 2),
+            state_revision: StateRevision(before.revision.0 + 1),
+            event: AuthoritativeRuleEventKind::TurnPositionChanged {
+                from: TurnPosition::Ending {
+                    step: EndingStep::Cleanup,
+                },
+                to: TurnPosition::Beginning {
+                    step: BeginningStep::Untap,
+                },
+            },
+        },
+    ];
+    let result = accepted_product_for_contract(&before, after, events);
+    assert!(
+        matches!(validate_transition_contract(&before, &result), Err(TransitionViolation::TurnStructure)),
+        "wrong turn increment (1->3) must reject via TurnStructure"
+    );
+    assert_contract_rejects_without_mutation(&before, &result);
+}
+
+#[test]
+fn cleanup_contract_rejects_wrong_active_player() {
+    let (before, mut after) = cleanup_before_after();
+    after.core.active_player = PlayerId(7);
+    let events = vec![
+        AuthoritativeRuleEvent {
+            event_id: RuleEventId(before.allocators.next_rule_event_id.0),
+            state_revision: StateRevision(before.revision.0 + 1),
+            event: AuthoritativeRuleEventKind::TurnNumberChanged {
+                from: 1,
+                to: 2,
+            },
+        },
+        AuthoritativeRuleEvent {
+            event_id: RuleEventId(before.allocators.next_rule_event_id.0 + 1),
+            state_revision: StateRevision(before.revision.0 + 1),
+            event: AuthoritativeRuleEventKind::ActivePlayerChanged {
+                from: PlayerId(7),
+                to: PlayerId(7),
+            },
+        },
+        AuthoritativeRuleEvent {
+            event_id: RuleEventId(before.allocators.next_rule_event_id.0 + 2),
+            state_revision: StateRevision(before.revision.0 + 1),
+            event: AuthoritativeRuleEventKind::TurnPositionChanged {
+                from: TurnPosition::Ending {
+                    step: EndingStep::Cleanup,
+                },
+                to: TurnPosition::Beginning {
+                    step: BeginningStep::Untap,
+                },
+            },
+        },
+    ];
+    let result = accepted_product_for_contract(&before, after, events);
+    assert!(
+        matches!(validate_transition_contract(&before, &result), Err(TransitionViolation::TurnStructure)),
+        "same active player must reject via TurnStructure"
+    );
+    assert_contract_rejects_without_mutation(&before, &result);
+}
+
+#[test]
+fn cleanup_contract_rejects_extra_event() {
+    let (before, after) = cleanup_before_after();
+    let events = vec![
+        AuthoritativeRuleEvent {
+            event_id: RuleEventId(before.allocators.next_rule_event_id.0),
+            state_revision: StateRevision(before.revision.0 + 1),
+            event: AuthoritativeRuleEventKind::TurnNumberChanged {
+                from: 1,
+                to: 2,
+            },
+        },
+        AuthoritativeRuleEvent {
+            event_id: RuleEventId(before.allocators.next_rule_event_id.0 + 1),
+            state_revision: StateRevision(before.revision.0 + 1),
+            event: AuthoritativeRuleEventKind::ActivePlayerChanged {
+                from: PlayerId(7),
+                to: PlayerId(42),
+            },
+        },
+        AuthoritativeRuleEvent {
+            event_id: RuleEventId(before.allocators.next_rule_event_id.0 + 2),
+            state_revision: StateRevision(before.revision.0 + 1),
+            event: AuthoritativeRuleEventKind::TurnPositionChanged {
+                from: TurnPosition::Ending {
+                    step: EndingStep::Cleanup,
+                },
+                to: TurnPosition::Beginning {
+                    step: BeginningStep::Untap,
+                },
+            },
+        },
+        AuthoritativeRuleEvent {
+            event_id: RuleEventId(before.allocators.next_rule_event_id.0 + 3),
+            state_revision: StateRevision(before.revision.0 + 1),
+            event: AuthoritativeRuleEventKind::TurnNumberChanged {
+                from: 2,
+                to: 3,
+            },
+        },
+    ];
+    let result = accepted_product_for_contract(&before, after, events);
+    assert!(
+        matches!(validate_transition_contract(&before, &result), Err(TransitionViolation::TurnStructure)),
+        "extra event must reject via TurnStructure"
+    );
+    assert_contract_rejects_without_mutation(&before, &result);
+}
+
+// --- Task 6 regressions (must remain green) ---
+
+#[test]
+fn magic_turn_structure_kernel_shell_rejects_unsupported_cleanup_old() {
+    let state = s1_state_at(mtgml_state::TurnPosition::Ending {
+        step: mtgml_state::EndingStep::EndStep,
     });
     let before = state.clone();
     let mut kernel = MagicRulesKernel::new();
     let result = kernel.advance_forced_progress(&state);
     assert!(
         result.is_err(),
-        "quiescent cleanup is not yet implemented and must not be accepted"
+        "EndStep still routes through unsupported boundary"
     );
     assert_eq!(state, before, "rejected work must not mutate input");
 }

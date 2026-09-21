@@ -60,6 +60,8 @@ pub enum TurnStructureError {
     CombatState,
     #[error("priority is held")]
     PriorityHeld,
+    #[error("turn number would overflow")]
+    TurnNumberOverflow,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

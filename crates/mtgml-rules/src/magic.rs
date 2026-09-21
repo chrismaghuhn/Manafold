@@ -16,7 +16,7 @@
 
 use mtgml_decision::DecisionResponseV2;
 use mtgml_model::{PlayerId, RuleEventId, StateRevision};
-use mtgml_state::{validate_engine_state, BeginningStep, EngineState, TurnPosition};
+use mtgml_state::{validate_engine_state, BeginningStep, EndingStep, EngineState, TurnPosition};
 
 use crate::errors::KernelExecutionError;
 use crate::events::{AuthoritativeRuleEvent, AuthoritativeRuleEventKind};
@@ -24,7 +24,7 @@ use crate::product::build_accepted_product;
 use crate::transition::{RulesKernel, TransitionResult};
 use crate::turn_structure::{
     derive_ordinary_untap_affected_objects, temporal_successor, unsupported_rules_boundary,
-    validate_turn_structure_support, TurnStructureSupportProfile,
+    validate_turn_structure_support, TurnStructureError, TurnStructureSupportProfile,
 };
 
 /// Durable, milestone-free owner of Magic execution.
@@ -75,6 +75,15 @@ impl MagicRulesKernel {
             }
         ) {
             return self.ordinary_untap(state, &profile);
+        }
+
+        if matches!(
+            position,
+            TurnPosition::Ending {
+                step: EndingStep::Cleanup,
+            }
+        ) {
+            return self.advance_quiescent_cleanup(state, &profile);
         }
 
         match unsupported_rules_boundary(position) {
@@ -141,6 +150,89 @@ impl MagicRulesKernel {
                     object.tapped = false;
                 }
             }
+            Ok(())
+        })
+    }
+
+    /// Quiescent Cleanup boundary: switches active player to the unique other
+    /// declared player, increments turn_number with checked arithmetic, and
+    /// advances position to the next player's Beginning(Untap). Priority remains
+    /// None. No damage removal, discard, duration expiry, or cleanup trigger
+    /// work is performed.
+    fn advance_quiescent_cleanup(
+        &mut self,
+        state: &EngineState,
+        profile: &TurnStructureSupportProfile,
+    ) -> Result<TransitionResult, KernelExecutionError> {
+        let old_turn = profile.turn_number();
+        let old_active = profile.active_player();
+        let new_active = profile.other_player();
+        let new_turn = old_turn
+            .checked_add(1)
+            .ok_or(KernelExecutionError::TurnStructure(
+                TurnStructureError::TurnNumberOverflow,
+            ))?;
+        let from = profile.position();
+        let to = temporal_successor(from);
+
+        let first_event_id = state.allocators.next_rule_event_id;
+        let second_event_id = RuleEventId(
+            state
+                .allocators
+                .next_rule_event_id
+                .0
+                .checked_add(1)
+                .ok_or(KernelExecutionError::RuleEventIdOverflow)?,
+        );
+        let third_event_id = RuleEventId(
+            state
+                .allocators
+                .next_rule_event_id
+                .0
+                .checked_add(2)
+                .ok_or(KernelExecutionError::RuleEventIdOverflow)?,
+        );
+
+        let next_revision = StateRevision(
+            state
+                .revision
+                .0
+                .checked_add(1)
+                .ok_or(KernelExecutionError::RevisionOverflow)?,
+        );
+
+        let events = vec![
+            AuthoritativeRuleEvent {
+                event_id: first_event_id,
+                state_revision: next_revision,
+                event: AuthoritativeRuleEventKind::TurnNumberChanged {
+                    from: old_turn,
+                    to: new_turn,
+                },
+            },
+            AuthoritativeRuleEvent {
+                event_id: second_event_id,
+                state_revision: next_revision,
+                event: AuthoritativeRuleEventKind::ActivePlayerChanged {
+                    from: old_active,
+                    to: new_active,
+                },
+            },
+            AuthoritativeRuleEvent {
+                event_id: third_event_id,
+                state_revision: next_revision,
+                event: AuthoritativeRuleEventKind::TurnPositionChanged { from, to },
+            },
+        ];
+
+        let mut next = state.clone();
+        next.revision = next_revision;
+        next.core.turn_number = new_turn;
+        next.core.active_player = new_active;
+        next.core.position = to;
+
+        build_accepted_product(state, next, events, |workspace| {
+            workspace.core.position = to;
             Ok(())
         })
     }
