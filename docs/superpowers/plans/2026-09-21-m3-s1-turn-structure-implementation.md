@@ -201,15 +201,12 @@ transition or Magic runtime activation.
 - `crates/mtgml-rules/src/lib.rs` if exports are required;
 - focused rules tests named `turn_structure` or `magic_turn_structure`.
 
-**RED command:**
+**RED command:** `NOT_APPLICABLE`.
 
-```powershell
-cargo test -p mtgml-rules --all-features --locked turn_structure
-```
-
-**Expected RED reason:** no production path yet emits/applies the new S1
-families. Any compile-only failure is scaffolding feedback and must be fixed
-before recording the semantic RED.
+**Expected RED reason:** this is a structural vocabulary-only task. It adds no
+runtime semantic behavior, so a semantic RED is neither required nor valid.
+Compile/format checks and the existing synthetic suite are the applicable
+guards.
 
 **Implementation scope:** add closed typed representations for
 `TurnPositionChanged`, `UntapCompleted`, `ActivePlayerChanged`, and
@@ -377,14 +374,11 @@ general MagicRules program through V5.
 - `crates/mtgml-rules/src/errors.rs`;
 - private rules tests named `magic_turn_structure`.
 
-**RED command:**
+**RED command:** `NOT_APPLICABLE`.
 
-```powershell
-cargo test -p mtgml-rules --all-features --locked magic_turn_structure -- kernel_shell
-```
-
-**Expected RED reason:** no durable MagicRules kernel owner exists; the current
-program boundary still has only the synthetic inner variant.
+**Expected RED reason:** this is an unreachable internal kernel-shell task;
+there is no player/runtime semantic behavior to characterize before the shell
+exists. Compile/format checks are the applicable guards.
 
 **Implementation scope:** add `MagicRulesKernel` with response execution
 fail-closed and a private forced-progress shell that returns an explicit
@@ -528,6 +522,7 @@ V5 admission and the durable `MagicRulesKernel`.
 - `crates/mtgml-environment/src/tests/semantic_catalog.rs`;
 - `crates/mtgml-environment/src/tests/restore_admission.rs`;
 - `crates/mtgml-rules/src/program_kernel.rs`;
+- `crates/mtgml-rules/src/magic.rs`;
 - `crates/mtgml-environment/src/lib.rs` exports;
 - no checkpoint/replay version files.
 
@@ -543,12 +538,33 @@ cargo test -p mtgml-environment --all-features --locked restore_admission -- exa
 kernel still has no Magic inner dispatch.
 
 **Implementation scope:** in one atomic enablement task, change the runtime
-support predicate to recognize only the exact comprehensive S1 ID and add the
-`ProgramKernelV1` `MagicRules -> MagicRulesKernel` branch. The environment's
-existing V5 admission path must prove exact catalog identity, authority pair,
-runtime support, and `validate_turn_structure_support()` before constructing
-or committing the Magic kernel/backend. Synthetic remains unchanged. An
-arbitrary comprehensive contract remains unsupported.
+support predicate to recognize only the exact comprehensive turn-structure ID
+and add a contract-aware constructor such as
+`ProgramKernelV1::for_admitted_execution(...)`. `for_program(MagicRules)` alone
+must remain fail-closed or be unavailable for production execution; it is not
+semantic authorization.
+
+The admitted construction carries a validated, compile-time/runtime-resolved
+`MagicExecutionProfile` into the durable kernel:
+
+```rust
+MagicRulesKernel {
+    profile: MagicExecutionProfile,
+}
+```
+
+The profile is an internal executable interpretation of the already-admitted
+`ExecutionIdentityV1`/`SemanticContractIdV1`; it is not a second contract, a
+public registry, or a mutable lookup. Its capability predicates are exact for
+the admitted contract. An old checkpoint admitted under Contract A therefore
+cannot execute Contract B behavior merely because the same `MagicRulesKernel`
+type later grows more capabilities.
+
+The environment's existing V5 admission path must prove exact catalog
+identity, authority pair, runtime support, profile construction, and
+`validate_turn_structure_support()` before constructing or committing the Magic
+kernel/backend. Synthetic remains unchanged. An arbitrary comprehensive
+contract remains unsupported.
 
 Add exact positive/negative KATs and restore nonmutation cases.
 
@@ -648,17 +664,16 @@ environment/controller path and prove V5 checkpoint/fork/replay parity.
 **Files allowed:**
 
 - new `crates/mtgml-environment/src/reference.rs` for the durable
-  `ReferenceEnvironmentBackend` and explicit complete-state setup;
-- new `crates/mtgml-environment/src/reference.rs` for shared reference-backend
-  transaction, projection, checkpoint, and replay mechanics extracted from the
-  current synthetic-only owner;
+  `ReferenceEnvironmentBackend`, explicit complete-state setup, and shared
+  reference-backend transaction/projection/checkpoint/replay mechanics
+  extracted from the current synthetic-only owner;
 - `crates/mtgml-environment/src/lib.rs`, `controller.rs`, `replay.rs` only for
   wiring the existing traits;
 - `crates/mtgml-environment/src/synthetic.rs` and its `commit.rs`, `replay.rs`,
   `projection.rs` only for mechanical delegation to `reference.rs`; synthetic
   semantics must remain unchanged;
 - `crates/mtgml-conformance/src/facade.rs` and a new
-  `crates/mtgml-conformance/src/m3_s1.rs` for real-kernel S1 cases;
+  `crates/mtgml-conformance/src/turn_structure.rs` for real-kernel cases;
 - `crates/mtgml-environment/src/tests/turn_structure.rs` and parity tests;
 - no `mtgml-replay` V5 schema change.
 
@@ -792,17 +807,19 @@ evidence.
 - registry validation tests/scripts;
 - no other capability entry.
 
-**RED command (invalid-candidate probe):**
+**RED command:** `NOT_APPLICABLE`.
+
+**Expected RED reason:** lifecycle metadata promotion is not runtime semantic
+behavior. The existing negative guard
+`test_implemented_capability_requires_existing_implementation` must be `PASS`
+as a prerequisite; it is not a new RED condition and does not authorize
+promotion by itself.
+
+**Negative lifecycle guard command:**
 
 ```powershell
 <project-python> -m unittest python.tests.test_maintainer_artifacts.MaintainerArtifactTests.test_implemented_capability_requires_existing_implementation
 ```
-
-**Expected RED reason:** the probe deliberately presents an `implemented`
-candidate with no implementation path and the validator must reject it. This
-is a lifecycle RED guard, not a claim that the current valid `specified`
-registry is invalid. A green implementation test alone never promotes the
-lifecycle.
 
 **Implementation scope:**
 
