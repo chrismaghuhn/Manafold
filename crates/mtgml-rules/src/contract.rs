@@ -122,10 +122,14 @@ fn validate_accepted_progression(
         return Err(TransitionViolation::UnexplainedMutation);
     }
 
-    // Task 6: if this accepted product contains UntapCompleted, enforce the
-    // exact ordinary-untap event shape. UntapCompleted must be the first event
-    // so that the cursor derives its expected set from the before-state, not
-    // from any prior event's mutations.
+    // Task 6: if this accepted product performs the ordinary untap boundary
+    // (Untap -> Upkeep), enforce the exact ordinary-untap event shape.
+    // UntapCompleted must be the first event so that the cursor derives its
+    // expected set from the before-state, not from any prior event's
+    // mutations. This check is driven by before/after state position, not by
+    // the presence of UntapCompleted alone, so that a product which performs
+    // Untap -> Upkeep but emits a substitute event (e.g. ObjectTapped) is
+    // rejected for missing UntapCompleted.
     let has_untap = result.events.iter().any(|event| {
         matches!(
             event.event,
@@ -133,7 +137,16 @@ fn validate_accepted_progression(
         )
     });
 
-    if has_untap
+    let is_ordinary_untap_transition = before.core.position
+        == TurnPosition::Beginning {
+            step: BeginningStep::Untap,
+        }
+        && after.core.position
+            == TurnPosition::Beginning {
+                step: BeginningStep::Upkeep,
+            };
+
+    if (has_untap || is_ordinary_untap_transition)
         && (result.events.len() != 2
             || !matches!(
                 &result.events[0].event,

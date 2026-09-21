@@ -292,6 +292,79 @@ fn valid_untap_completed_passes_transition_contract() {
     assert!(validate_transition_contract(&before, &result).is_ok());
 }
 
+#[test]
+fn untap_contract_rejects_missing_untap_completed_with_tap_substitute() {
+    let mut before = state_without_pending_decision();
+    before
+        .zones
+        .objects
+        .get_mut(&GameObjectId(1))
+        .unwrap()
+        .tapped = true;
+    let mut after = before.clone();
+    after.revision = StateRevision(1);
+    after
+        .zones
+        .objects
+        .get_mut(&GameObjectId(1))
+        .unwrap()
+        .tapped = false;
+    after.core.position = TurnPosition::Beginning {
+        step: BeginningStep::Upkeep,
+    };
+    after.allocators.next_rule_event_id = RuleEventId(3);
+    let events = vec![
+        AuthoritativeRuleEvent {
+            event_id: RuleEventId(1),
+            state_revision: StateRevision(1),
+            event: AuthoritativeRuleEventKind::ObjectTapped {
+                object: GameObjectId(1),
+                from: true,
+                to: false,
+            },
+        },
+        AuthoritativeRuleEvent {
+            event_id: RuleEventId(2),
+            state_revision: StateRevision(1),
+            event: AuthoritativeRuleEventKind::TurnPositionChanged {
+                from: TurnPosition::Beginning {
+                    step: BeginningStep::Untap,
+                },
+                to: TurnPosition::Beginning {
+                    step: BeginningStep::Upkeep,
+                },
+            },
+        },
+    ];
+    let result = accepted_product_for_contract(&before, after, events);
+    assert_contract_rejects_without_mutation(&before, &result);
+}
+
+#[test]
+fn untap_contract_rejects_missing_empty_untap_completed() {
+    let before = state_without_pending_decision();
+    let mut after = before.clone();
+    after.revision = StateRevision(1);
+    after.core.position = TurnPosition::Beginning {
+        step: BeginningStep::Upkeep,
+    };
+    after.allocators.next_rule_event_id = RuleEventId(2);
+    let events = vec![AuthoritativeRuleEvent {
+        event_id: RuleEventId(1),
+        state_revision: StateRevision(1),
+        event: AuthoritativeRuleEventKind::TurnPositionChanged {
+            from: TurnPosition::Beginning {
+                step: BeginningStep::Untap,
+            },
+            to: TurnPosition::Beginning {
+                step: BeginningStep::Upkeep,
+            },
+        },
+    }];
+    let result = accepted_product_for_contract(&before, after, events);
+    assert_contract_rejects_without_mutation(&before, &result);
+}
+
 // --- Task 6 event-shape enforcement negatives ---
 
 #[test]
