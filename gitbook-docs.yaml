@@ -1,0 +1,96 @@
+$schema: https://api.gitbook.com/gitbook-docs.yaml
+version: 1
+site:
+  title: Manafold
+  structure:
+    - type: section
+      key: section-documentation
+      title: Documentation
+      path: documentation
+      default: true
+      children:
+        - type: space
+          key: space-documentation
+          title: Documentation
+          path: docs
+          default: true
+          content:
+            directory: ./docs
+        - type: space
+          key: space-project-sources
+          title: Project Sources
+          path: project-sources
+          content:
+            directory: ./project-sources
+        - type: space
+          key: space-research
+          title: Research
+          path: research
+          content:
+            directory: ./research
+    - type: section
+      key: section-repository-layers
+      title: Repository Layers
+      path: repository-layers
+      children:
+        - type: space
+          key: space-benchmarks
+          title: Benchmarks
+          path: benchmarks
+          content:
+            directory: ./benchmarks
+        - type: space
+          key: space-cards
+          title: Cards
+          path: cards
+          content:
+            directory: ./cards
+        - type: space
+          key: space-conformance
+          title: Conformance
+          path: conformance
+          content:
+            directory: ./conformance
+        - type: space
+          key: space-crates
+          title: Crates
+          path: crates
+          default: true
+          content:
+            directory: ./crates
+        - type: space
+          key: space-examples
+          title: Examples
+          path: examples
+          content:
+            directory: ./examples
+        - type: space
+          key: space-python
+          title: Python
+          path: python
+          content:
+            directory: ./python
+        - type: space
+          key: space-scripts
+          title: Scripts
+          path: scripts
+          content:
+            directory: ./scripts
+        - type: space
+          key: space-sources
+          title: Sources
+          path: sources
+          content:
+            directory: ./sources
+        - type: space
+          key: space-tools
+          title: Tools
+          path: tools
+          content:
+            directory: ./tools
+        - type: space
+          key: space-wire
+          title: Wire
+          path: wire
+          content:
+            directory: ./wire
