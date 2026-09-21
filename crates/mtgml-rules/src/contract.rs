@@ -130,15 +130,17 @@ fn validate_accepted_progression(
             };
 
     if is_cleanup_boundary {
-        let turn_ok = before.core.turn_number.checked_add(1) == Some(after.core.turn_number);
+        let next_turn = before.core.turn_number.checked_add(1);
+        let turn_ok = next_turn == Some(after.core.turn_number);
         let player_ok = after.core.active_player != before.core.active_player
-            && before.core.players.contains_key(&after.core.active_player);
+            && before.core.players.contains_key(&after.core.active_player)
+            && before.core.players.len() == 2;
         let events_ok = result.events.len() == 3
             && matches!(
                 &result.events[0].event,
                 AuthoritativeRuleEventKind::TurnNumberChanged { from, to }
                     if *from == before.core.turn_number
-                        && *to == before.core.turn_number + 1
+                        && *to == after.core.turn_number
             )
             && matches!(
                 &result.events[1].event,
@@ -163,6 +165,23 @@ fn validate_accepted_progression(
         // Exact Cleanup event shape validated: active_player and turn_number
         // changes are expected and proven by events. Continue to blanket
         // check which will pass for all non-position/non-priority fields.
+    } else {
+        // Task 7 turn-switch events (TurnNumberChanged, ActivePlayerChanged)
+        // are valid for the Cleanup -> next-Untap transition only. Outside
+        // that boundary they must never justify any transition, because the
+        // blanket mutation check sees only net Before/After equality and
+        // would permit transient switches (e.g. P1->P2->P1) that net to
+        // the original state.
+        let has_turn_switch_event = result.events.iter().any(|event| {
+            matches!(
+                event.event,
+                AuthoritativeRuleEventKind::TurnNumberChanged { .. }
+                    | AuthoritativeRuleEventKind::ActivePlayerChanged { .. }
+            )
+        });
+        if has_turn_switch_event {
+            return Err(TransitionViolation::TurnStructure);
+        }
     }
 
     // Task 6: if this accepted product performs the ordinary untap boundary

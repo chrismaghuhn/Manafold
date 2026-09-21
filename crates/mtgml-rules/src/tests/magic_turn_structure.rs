@@ -23,9 +23,13 @@ fn s1_state_at(position: mtgml_state::TurnPosition) -> EngineState {
 }
 
 fn three_player_s1_state() -> EngineState {
-    let mut state = s1_state_at(mtgml_state::TurnPosition::Beginning {
-        step: mtgml_state::BeginningStep::Untap,
-    });
+    three_player_s1_state_at(mtgml_state::TurnPosition::Beginning {
+        step: BeginningStep::Untap,
+    })
+}
+
+fn three_player_s1_state_at(position: TurnPosition) -> EngineState {
+    let mut state = s1_state_at(position);
     state.core.players.insert(
         PlayerId(99),
         mtgml_state::PlayerState {
@@ -184,6 +188,81 @@ fn magic_turn_structure_kernel_shell_reports_end_step_priority_boundary() {
         ))
     ));
     assert_eq!(state, before, "failed progress must not mutate input");
+}
+
+fn add_hand_object(
+    state: &mut EngineState,
+    object_id: GameObjectId,
+    controller: PlayerId,
+) {
+    use mtgml_model::{CardDefinitionId, OpaqueObjectId, PhysicalCardId, ZoneKind};
+    use mtgml_state::{
+        GameObject, KnownLocationFactV2, KnowledgeAcquisitionReason, KnowledgeRecordV2,
+        VisibilityPartition, ZoneLocation, ZonePosition,
+    };
+
+    let physical_card = PhysicalCardId(object_id.0);
+    let card_definition = CardDefinitionId(object_id.0);
+    let opaque = OpaqueObjectId(object_id.0);
+
+    state.zones.objects.insert(
+        object_id,
+        GameObject {
+            id: object_id,
+            physical_card: Some(physical_card),
+            card_definition,
+            owner: controller,
+            controller,
+            tapped: false,
+            face_down: false,
+        },
+    );
+
+    let location = ZoneLocation {
+        zone: ZoneKind::Hand,
+        player: None,
+        position: ZonePosition::Unordered,
+        visibility: VisibilityPartition::Public,
+        partition: None,
+    };
+    state.zones.locations.insert(object_id, location.clone());
+
+    let next_id = GameObjectId(object_id.0 + 1);
+    if state.allocators.next_object_id.0 < next_id.0 {
+        state.allocators.next_object_id = next_id;
+    }
+
+    let knowledge_record = KnowledgeRecordV2 {
+        opaque_object: opaque,
+        physical_card: Some(physical_card),
+        card_definition: Some(card_definition),
+        known_location: Some(KnownLocationFactV2 {
+            location: location.clone(),
+            provenance: KnowledgeAcquisitionReason::InitialConfiguration,
+        }),
+        acquisition: KnowledgeAcquisitionReason::InitialConfiguration,
+        historical_locations: Vec::new(),
+    };
+
+    for player_id in state.core.players.keys().copied().collect::<Vec<_>>() {
+        state
+            .knowledge
+            .players
+            .get_mut(&player_id)
+            .unwrap()
+            .active
+            .insert(opaque, knowledge_record.clone());
+        let identity = state
+            .perspective_identities
+            .players
+            .get_mut(&player_id)
+            .unwrap();
+        identity.opaque_to_object.insert(opaque, object_id);
+        identity.object_to_opaque.insert(object_id, opaque);
+        if identity.next_opaque_object_id.0 <= opaque.0 {
+            identity.next_opaque_object_id = OpaqueObjectId(opaque.0 + 1);
+        }
+    }
 }
 
 // --- Positive Cleanup transition tests ---
@@ -641,6 +720,218 @@ fn cleanup_contract_rejects_extra_event() {
     assert!(
         matches!(validate_transition_contract(&before, &result), Err(TransitionViolation::TurnStructure)),
         "extra event must reject via TurnStructure"
+    );
+    assert_contract_rejects_without_mutation(&before, &result);
+}
+
+// --- FIX A: Cleanup discard requirement regression ---
+
+#[test]
+fn cleanup_rejects_discard_required_state() {
+    let mut state = s1_state_at(mtgml_state::TurnPosition::Ending {
+        step: mtgml_state::EndingStep::Cleanup,
+    });
+    add_hand_object(&mut state, GameObjectId(10), PlayerId(7));
+    let before = state.clone();
+    let mut kernel = MagicRulesKernel::new();
+    let result = kernel.advance_forced_progress(&state);
+    assert!(
+        matches!(
+            result,
+            Err(crate::KernelExecutionError::TurnStructure(
+                crate::TurnStructureError::CleanupDiscardRequired
+            ))
+        ),
+        "Cleanup with represented hand-size discard must fail typed"
+    );
+    assert_eq!(state, before, "rejected work must not mutate input");
+}
+
+// --- FIX B: unique-other player in transition contract ---
+
+#[test]
+fn cleanup_contract_rejects_three_player_non_unique_other() {
+    let before = three_player_s1_state_at(mtgml_state::TurnPosition::Ending {
+        step: mtgml_state::EndingStep::Cleanup,
+    });
+    let mut after = before.clone();
+    after.revision = StateRevision(before.revision.0 + 1);
+    after.core.turn_number = 2;
+    after.core.active_player = PlayerId(99);
+    after.core.position = TurnPosition::Beginning {
+        step: BeginningStep::Untap,
+    };
+    after.allocators.next_rule_event_id = RuleEventId(before.allocators.next_rule_event_id.0 + 3);
+    let events = vec![
+        AuthoritativeRuleEvent {
+            event_id: RuleEventId(before.allocators.next_rule_event_id.0),
+            state_revision: StateRevision(before.revision.0 + 1),
+            event: AuthoritativeRuleEventKind::TurnNumberChanged {
+                from: 1,
+                to: 2,
+            },
+        },
+        AuthoritativeRuleEvent {
+            event_id: RuleEventId(before.allocators.next_rule_event_id.0 + 1),
+            state_revision: StateRevision(before.revision.0 + 1),
+            event: AuthoritativeRuleEventKind::ActivePlayerChanged {
+                from: PlayerId(7),
+                to: PlayerId(99),
+            },
+        },
+        AuthoritativeRuleEvent {
+            event_id: RuleEventId(before.allocators.next_rule_event_id.0 + 2),
+            state_revision: StateRevision(before.revision.0 + 1),
+            event: AuthoritativeRuleEventKind::TurnPositionChanged {
+                from: TurnPosition::Ending {
+                    step: EndingStep::Cleanup,
+                },
+                to: TurnPosition::Beginning {
+                    step: BeginningStep::Untap,
+                },
+            },
+        },
+    ];
+    let result = accepted_product_for_contract(&before, after, events);
+    assert!(
+        matches!(validate_transition_contract(&before, &result), Err(TransitionViolation::TurnStructure)),
+        "non-unique-other in 3-player state must reject via TurnStructure"
+    );
+    assert_contract_rejects_without_mutation(&before, &result);
+}
+
+// --- FIX C: unique-other in semantic cursor ---
+
+#[test]
+fn active_player_changed_cursor_rejects_three_player_target() {
+    let before = three_player_s1_state_at(mtgml_state::TurnPosition::Beginning {
+        step: BeginningStep::Untap,
+    });
+    use crate::semantic_cursor::SemanticValidationCursor;
+    use crate::events::AuthoritativeRuleEventKind;
+
+    let mut cursor = SemanticValidationCursor::from_state(&before)
+        .expect("cursor from 3-player state should be constructible");
+    let event = AuthoritativeRuleEventKind::ActivePlayerChanged {
+        from: PlayerId(7),
+        to: PlayerId(99),
+    };
+    assert!(
+        matches!(cursor.apply(&event), Err(TransitionViolation::TurnStructure)),
+        "ActivePlayerChanged to non-unique-other in 3-player cursor must reject via TurnStructure"
+    );
+}
+
+// --- FIX D: unchecked turn arithmetic removed from validator ---
+
+#[test]
+fn cleanup_contract_max_turn_rejects_without_panic() {
+    let mut before = s1_state_at(mtgml_state::TurnPosition::Ending {
+        step: mtgml_state::EndingStep::Cleanup,
+    });
+    before.core.turn_number = u64::MAX;
+    let mut after = before.clone();
+    after.revision = StateRevision(before.revision.0 + 1);
+    after.core.turn_number = 0;
+    after.core.active_player = PlayerId(42);
+    after.core.position = TurnPosition::Beginning {
+        step: BeginningStep::Untap,
+    };
+    after.allocators.next_rule_event_id = RuleEventId(before.allocators.next_rule_event_id.0 + 3);
+    let events = vec![
+        AuthoritativeRuleEvent {
+            event_id: RuleEventId(before.allocators.next_rule_event_id.0),
+            state_revision: StateRevision(before.revision.0 + 1),
+            event: AuthoritativeRuleEventKind::TurnNumberChanged {
+                from: u64::MAX,
+                to: 0,
+            },
+        },
+        AuthoritativeRuleEvent {
+            event_id: RuleEventId(before.allocators.next_rule_event_id.0 + 1),
+            state_revision: StateRevision(before.revision.0 + 1),
+            event: AuthoritativeRuleEventKind::ActivePlayerChanged {
+                from: PlayerId(7),
+                to: PlayerId(42),
+            },
+        },
+        AuthoritativeRuleEvent {
+            event_id: RuleEventId(before.allocators.next_rule_event_id.0 + 2),
+            state_revision: StateRevision(before.revision.0 + 1),
+            event: AuthoritativeRuleEventKind::TurnPositionChanged {
+                from: TurnPosition::Ending {
+                    step: EndingStep::Cleanup,
+                },
+                to: TurnPosition::Beginning {
+                    step: BeginningStep::Untap,
+                },
+            },
+        },
+    ];
+    let result = accepted_product_for_contract(&before, after, events);
+    assert!(
+        matches!(validate_transition_contract(&before, &result), Err(TransitionViolation::TurnStructure)),
+        "u64::MAX Cleanup turn must reject via TurnStructure without panic"
+    );
+    assert_contract_rejects_without_mutation(&before, &result);
+}
+
+// --- FIX E: Task-7 events forbidden outside Cleanup boundary ---
+
+#[test]
+fn turn_switch_events_reject_outside_cleanup_boundary() {
+    let before = s1_state_at(mtgml_state::TurnPosition::Beginning {
+        step: BeginningStep::Upkeep,
+    });
+    let mut after = before.clone();
+    after.revision = StateRevision(before.revision.0 + 1);
+    after.allocators.next_rule_event_id = RuleEventId(before.allocators.next_rule_event_id.0 + 1);
+    let events = vec![AuthoritativeRuleEvent {
+        event_id: RuleEventId(before.allocators.next_rule_event_id.0),
+        state_revision: StateRevision(before.revision.0 + 1),
+        event: AuthoritativeRuleEventKind::TurnNumberChanged {
+            from: 1,
+            to: 2,
+        },
+    }];
+    let result = accepted_product_for_contract(&before, after, events);
+    assert!(
+        matches!(validate_transition_contract(&before, &result), Err(TransitionViolation::TurnStructure)),
+        "TurnNumberChanged outside Cleanup must reject via TurnStructure"
+    );
+    assert_contract_rejects_without_mutation(&before, &result);
+}
+
+#[test]
+fn active_player_transient_switch_outside_cleanup_rejects() {
+    let before = s1_state_at(mtgml_state::TurnPosition::Beginning {
+        step: BeginningStep::Upkeep,
+    });
+    let mut after = before.clone();
+    after.revision = StateRevision(before.revision.0 + 1);
+    after.allocators.next_rule_event_id = RuleEventId(before.allocators.next_rule_event_id.0 + 2);
+    let events = vec![
+        AuthoritativeRuleEvent {
+            event_id: RuleEventId(before.allocators.next_rule_event_id.0),
+            state_revision: StateRevision(before.revision.0 + 1),
+            event: AuthoritativeRuleEventKind::ActivePlayerChanged {
+                from: PlayerId(7),
+                to: PlayerId(42),
+            },
+        },
+        AuthoritativeRuleEvent {
+            event_id: RuleEventId(before.allocators.next_rule_event_id.0 + 1),
+            state_revision: StateRevision(before.revision.0 + 1),
+            event: AuthoritativeRuleEventKind::ActivePlayerChanged {
+                from: PlayerId(42),
+                to: PlayerId(7),
+            },
+        },
+    ];
+    let result = accepted_product_for_contract(&before, after, events);
+    assert!(
+        matches!(validate_transition_contract(&before, &result), Err(TransitionViolation::TurnStructure)),
+        "transient ActivePlayerChanged outside Cleanup must reject via TurnStructure"
     );
     assert_contract_rejects_without_mutation(&before, &result);
 }

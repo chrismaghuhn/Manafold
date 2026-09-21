@@ -191,10 +191,18 @@ impl SemanticValidationCursor {
                 }
             }
             AuthoritativeRuleEventKind::ActivePlayerChanged { from, to } => {
-                if self.active_player != *from || from == to {
+                // Task 7: ActivePlayerChanged represents the exact
+                // two-player S1 unique-other relation. derived from
+                // the cursor's authoritative player set.
+                if self.life.len() != 2 || self.active_player != *from || from == to {
                     return Err(TransitionViolation::TurnStructure);
                 }
-                if !self.life.contains_key(to) {
+                let unique_other = self
+                    .life
+                    .keys()
+                    .find(|&&p| p != *from)
+                    .ok_or(TransitionViolation::TurnStructure)?;
+                if *to != *unique_other {
                     return Err(TransitionViolation::TurnStructure);
                 }
                 self.active_player = *to;
