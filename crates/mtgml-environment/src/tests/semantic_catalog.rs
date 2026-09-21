@@ -6,7 +6,10 @@ use crate::semantic_catalog_generated::{
     SEMANTIC_CONTRACT_CATALOG_SYNTHETIC_LEGACY_DEFAULT_RULES_CONTRACT_HEX,
     SEMANTIC_CONTRACT_CATALOG_SYNTHETIC_LEGACY_DEFAULT_SEMANTIC_CONTRACT_HEX,
 };
-use mtgml_model::{RulesAuthorityV1, SemanticContractIdV1};
+use mtgml_model::{
+    CapabilityRequirementV1, RulesAuthorityV1, RulesContractManifestV1,
+    SemanticContractIdV1, SemanticContractManifestV1,
+};
 use mtgml_persistence::semantic_contract_digest::{
     calculate_rules_contract_id_v1, calculate_semantic_contract_id_v1,
 };
@@ -181,4 +184,48 @@ fn program_kernel_construction_error_maps_to_controller_error() {
         matches!(controller_err, ControllerError::SemanticContractUnsupported),
         "UnsupportedProgram must map to SemanticContractUnsupported, not Backend(String)"
     );
+}
+
+#[test]
+fn exact_turn_structure_contract_not_yet_in_production_catalog() {
+    // Step 1: Independently author the exact RulesContractManifestV1
+    // for rules/turn-structure@0.1.0 under comprehensive_rules authority.
+    let rules_manifest = RulesContractManifestV1 {
+        rules_authority: RulesAuthorityV1::ComprehensiveRules {
+            snapshot_id: "wotc-cr-2026-08-07-txt-20260819-sha256-4381ad1b39ab2c05f7d03633a20f711ed37277074d3266dcba5f38cbb527423f".to_string(),
+        },
+        capability_closure: Some(vec![CapabilityRequirementV1 {
+            key: "rules/turn-structure".to_string(),
+            version: "0.1.0".to_string(),
+        }]),
+    };
+
+    // Step 2: Mechanically compute RulesContractIdV1 using production digest.
+    let rules_contract_id = calculate_rules_contract_id_v1(&rules_manifest)
+        .expect("independently authored rules manifest must be valid");
+
+    // Step 3: Independently author the exact SemanticContractManifestV1.
+    let semantic_manifest = SemanticContractManifestV1 {
+        rules_contract_id,
+        format_contract_id: None,
+        content_contract_id: None,
+    };
+
+    // Step 4: Mechanically compute SemanticContractIdV1.
+    let semantic_contract_id = calculate_semantic_contract_id_v1(&semantic_manifest)
+        .expect("independently authored semantic manifest must be valid");
+
+    // Step 5: Construct production catalog.
+    let catalog = RuntimeSemanticCatalog::production();
+
+    // Step 6: Attempt to resolve the exact turn-structure contract.
+    let result = catalog.resolve(&semantic_contract_id);
+
+    // Step 7: RED — the contract is expected to resolve but the
+    // production catalog does not yet know it. This fails until
+    // S1 implementation adds the turn-structure contract.
+    let entry = result.expect(
+        "exact turn-structure contract must resolve in production catalog",
+    );
+    assert_eq!(entry.semantic_contract_id, semantic_contract_id);
 }
