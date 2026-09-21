@@ -126,13 +126,15 @@ fn validate_accepted_progression(
     // exact ordinary-untap event shape. UntapCompleted must be the first event
     // so that the cursor derives its expected set from the before-state, not
     // from any prior event's mutations.
-    if result.events.iter().any(|event| {
+    let has_untap = result.events.iter().any(|event| {
         matches!(
             event.event,
             AuthoritativeRuleEventKind::UntapCompleted { .. }
         )
-    }) {
-        if result.events.len() != 2
+    });
+
+    if has_untap
+        && (result.events.len() != 2
             || !matches!(
                 &result.events[0].event,
                 AuthoritativeRuleEventKind::UntapCompleted { .. }
@@ -142,10 +144,9 @@ fn validate_accepted_progression(
                 AuthoritativeRuleEventKind::TurnPositionChanged { from, to }
                     if *from == TurnPosition::Beginning { step: BeginningStep::Untap }
                         && *to == TurnPosition::Beginning { step: BeginningStep::Upkeep }
-            )
-        {
-            return Err(TransitionViolation::TurnStructure);
-        }
+            ))
+    {
+        return Err(TransitionViolation::TurnStructure);
     }
     Ok(())
 }
