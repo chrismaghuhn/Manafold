@@ -13,6 +13,7 @@
 //! `ProgramKernelConstructionErrorV1::UnsupportedProgram`.
 
 use crate::synthetic::{validate_synthetic_runtime_state, SyntheticM1RulesKernel};
+use crate::turn_structure::validate_turn_structure_support;
 use crate::{KernelExecutionError, RulesKernel, TransitionResult};
 use mtgml_decision::DecisionResponseV2;
 use mtgml_model::ExecutionProgramV1;
@@ -103,7 +104,8 @@ impl ProgramKernelV1 {
 /// Pre-S1:
 /// - `SyntheticRulesCompat` → reuses the existing synthetic runtime-state
 ///   validation semantics (never weakened).
-/// - `MagicRules` → NOT executable pre-S1: fails closed.
+/// - `MagicRules` → state admission only: generic EngineState validation
+///   followed by S1 profile validation. Execution remains unsupported.
 pub fn validate_runtime_state(
     program_kind: ExecutionProgramV1,
     state: &EngineState,
@@ -111,8 +113,10 @@ pub fn validate_runtime_state(
     match program_kind {
         ExecutionProgramV1::SyntheticRulesCompat => validate_synthetic_runtime_state(state),
         ExecutionProgramV1::MagicRules => {
-            // Pre-S1: no Magic kernel exists; Magic rules are not executable.
-            Err(KernelExecutionError::UnsupportedStagePath)
+            mtgml_state::validate_engine_state(state).map_err(KernelExecutionError::BeforeState)?;
+            let _ = validate_turn_structure_support(state)
+                .map_err(KernelExecutionError::TurnStructure)?;
+            Ok(())
         }
     }
 }

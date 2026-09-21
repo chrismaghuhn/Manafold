@@ -2,6 +2,7 @@ use mtgml_random::RandomValidationError;
 use mtgml_state::{EngineStateViolation, IdentityAllocationError, StateDigestError};
 use thiserror::Error;
 
+use crate::turn_structure::TurnStructureError;
 use crate::TransitionViolation;
 
 #[derive(Debug, Error)]
@@ -26,4 +27,6 @@ pub enum KernelExecutionError {
     Exhaustion(&'static str),
     #[error("engine-offered stage path is unsupported in the current synthetic protocol")]
     UnsupportedStagePath,
+    #[error("turn structure validation failed: {0}")]
+    TurnStructure(TurnStructureError),
 }

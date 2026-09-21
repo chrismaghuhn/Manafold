@@ -11,6 +11,7 @@ mod semantic_cursor;
 mod snapshots;
 mod synthetic;
 mod transition;
+mod turn_structure;
 mod validation;
 
 #[cfg(test)]
@@ -27,4 +28,8 @@ pub use program_kernel::{
 };
 pub use synthetic::validate_synthetic_runtime_state;
 pub use transition::{RulesKernel, TransitionResult};
+pub use turn_structure::{
+    temporal_successor, unsupported_rules_boundary, validate_turn_structure_support,
+    TurnStructureError, TurnStructureSupportProfile, UnsupportedRulesBoundary,
+};
 pub use validation::TransitionViolation;
