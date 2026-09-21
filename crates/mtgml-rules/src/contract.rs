@@ -99,6 +99,10 @@ fn validate_accepted_progression(
     // M2/P0 have no event families for these core semantic fields. Fail
     // closed until a reviewed current contract defines their event/cursor
     // proof. Compare complete values, not only map presence or keys.
+    //
+    // `core.position` is intentionally NOT in this blanket: it is proven
+    // event-by-event through the `TurnPositionChanged` cursor arm (Task 6),
+    // which requires `temporal_successor(from) == to`.
     let has_lost_changed = before.core.players.iter().any(|(player, state)| {
         after
             .core
@@ -109,7 +113,6 @@ fn validate_accepted_progression(
     if before.core.active_player != after.core.active_player
         || before.core.turn_number != after.core.turn_number
         || before.core.priority != after.core.priority
-        || before.core.position != after.core.position
         || before.core.players.len() != after.core.players.len()
         || has_lost_changed
         || before.combat != after.combat

@@ -1,4 +1,4 @@
-use mtgml_model::{DecisionId, GameObjectId, PlayerId, ZoneKind};
+use mtgml_model::{DecisionId, GameObjectId, PlayerId};
 use mtgml_random::{RandomStreamCursorV1, RandomStreamKeyV1, RootSeed256};
 use mtgml_state::{
     CombatState, EngineState, FoundationCreatureSource, KnowledgeStateV2, ObjectSnapshot,
@@ -6,6 +6,8 @@ use mtgml_state::{
 };
 use std::collections::BTreeMap;
 
+use crate::turn_structure::derive_ordinary_untap_affected_objects;
+use crate::turn_structure::temporal_successor;
 use crate::validation::TransitionViolation;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -163,34 +165,19 @@ impl SemanticValidationCursor {
                 }
             }
             AuthoritativeRuleEventKind::TurnPositionChanged { from, to } => {
-                if self.position != *from || from == to {
+                if self.position != *from || temporal_successor(*from) != *to {
                     return Err(TransitionViolation::TurnStructure);
                 }
                 self.position = *to;
             }
             AuthoritativeRuleEventKind::UntapCompleted { affected_objects } => {
-                for window in affected_objects.windows(2) {
-                    if window[0] >= window[1] {
-                        return Err(TransitionViolation::TurnStructure);
-                    }
+                let expected =
+                    derive_ordinary_untap_affected_objects(&self.objects, self.active_player);
+                if *affected_objects != expected {
+                    return Err(TransitionViolation::TurnStructure);
                 }
                 for object_id in affected_objects {
-                    let current = self
-                        .objects
-                        .get(&object_id)
-                        .ok_or(TransitionViolation::TurnStructure)?;
-                    if !current.tapped {
-                        return Err(TransitionViolation::TurnStructure);
-                    }
-                    if current.location.zone != ZoneKind::Battlefield {
-                        return Err(TransitionViolation::TurnStructure);
-                    }
-                    if current.controller != self.active_player {
-                        return Err(TransitionViolation::TurnStructure);
-                    }
-                }
-                for object_id in affected_objects {
-                    if let Some(object) = self.objects.get_mut(&object_id) {
+                    if let Some(object) = self.objects.get_mut(object_id) {
                         object.tapped = false;
                     }
                 }

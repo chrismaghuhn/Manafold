@@ -1,7 +1,9 @@
-use mtgml_model::{PlayerId, ZoneKind};
+use mtgml_model::{GameObjectId, PlayerId, ZoneKind};
 use mtgml_state::{
-    BeginningStep, CombatStep, EndingStep, EngineState, FormatState, PriorityState, TurnPosition,
+    BeginningStep, CombatStep, EndingStep, EngineState, FormatState, ObjectSnapshot, PriorityState,
+    TurnPosition,
 };
+use std::collections::BTreeMap;
 use thiserror::Error;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -231,6 +233,37 @@ pub fn unsupported_rules_boundary(position: TurnPosition) -> Option<UnsupportedR
             step: EndingStep::Cleanup,
         } => None,
     }
+}
+
+/// Crate-private ordinary-untap eligibility authority.
+///
+/// Derives the complete canonical set of `GameObjectId`s eligible for ordinary
+/// untap from authoritative object snapshots. An object is affected exactly when
+/// all of the following hold in the before-state:
+///   - live object
+///   - location.zone == ZoneKind::Battlefield
+///   - controller == active_player
+///   - tapped == true
+///
+/// The returned vector is in strict ascending `GameObjectId` order. This is
+/// the single eligibility authority shared by `MagicRulesKernel` and
+/// `SemanticValidationCursor` so the two can never disagree about which objects
+/// ordinary Untap must affect.
+pub(crate) fn derive_ordinary_untap_affected_objects(
+    snapshots: &BTreeMap<GameObjectId, ObjectSnapshot>,
+    active_player: PlayerId,
+) -> Vec<GameObjectId> {
+    let mut affected: Vec<GameObjectId> = snapshots
+        .iter()
+        .filter(|(_, snapshot)| {
+            snapshot.location.zone == ZoneKind::Battlefield
+                && snapshot.controller == active_player
+                && snapshot.tapped
+        })
+        .map(|(id, _)| *id)
+        .collect();
+    affected.sort();
+    affected
 }
 
 #[cfg(test)]

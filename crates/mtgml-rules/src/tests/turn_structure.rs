@@ -1,6 +1,7 @@
 // Turn-structure event and delta vocabulary tests.
 
 use mtgml_state::{BeginningStep, EndingStep, TurnPosition};
+use mtgml_model::ZoneKind;
 
 fn turn_position_beginning() -> TurnPosition {
     TurnPosition::Beginning {
@@ -291,11 +292,15 @@ fn cursor_final_parity_rejects_position_mismatch() {
     let before = state_without_pending_decision();
     let mut cursor = crate::semantic_cursor::SemanticValidationCursor::from_state(&before).unwrap();
     cursor
-        .apply(&event_turn_position_changed(
-            turn_position_beginning(),
-            TurnPosition::PrecombatMain,
+        .apply(
+            &event_turn_position_changed(
+                turn_position_beginning(),
+                TurnPosition::Beginning {
+                    step: BeginningStep::Upkeep,
+                },
+            )
+            .event,
         )
-        .event)
         .unwrap();
     let mut after = before.clone();
     after.core.position = TurnPosition::Ending {
@@ -321,4 +326,172 @@ fn cursor_final_parity_rejects_tapped_state_mismatch() {
         cursor.validate_final_state(&after),
         Err(TransitionViolation::ObjectTraceIncomplete)
     ));
+}
+
+// --- Task 6: ordinary untap contract enforcement negatives ---
+
+#[test]
+fn untap_completed_omits_eligible_object_is_rejected() {
+    let mut before = state_without_pending_decision();
+    before
+        .zones
+        .objects
+        .get_mut(&GameObjectId(1))
+        .unwrap()
+        .tapped = true;
+    let mut cursor = crate::semantic_cursor::SemanticValidationCursor::from_state(&before).unwrap();
+    // GameObjectId(1) is eligible (Battlefield, active-player, tapped) but
+    // the event omits it from the affected set.
+    assert!(matches!(
+        cursor.apply(&event_untap_completed(vec![]).event),
+        Err(TransitionViolation::TurnStructure)
+    ));
+}
+
+#[test]
+fn turn_position_changed_rejects_illegal_temporal_successor() {
+    let before = state_without_pending_decision();
+    let mut cursor = crate::semantic_cursor::SemanticValidationCursor::from_state(&before).unwrap();
+    // Beginning(Untap) -> PrecombatMain is not the temporal successor of Untap.
+    assert!(matches!(
+        cursor.apply(
+            &event_turn_position_changed(
+                TurnPosition::Beginning {
+                    step: BeginningStep::Untap,
+                },
+                TurnPosition::PrecombatMain,
+            )
+            .event
+        ),
+        Err(TransitionViolation::TurnStructure)
+    ));
+}
+
+#[test]
+fn untap_contract_rejects_unrelated_field_mutation() {
+    let mut before = state_without_pending_decision();
+    before
+        .zones
+        .objects
+        .get_mut(&GameObjectId(1))
+        .unwrap()
+        .tapped = true;
+    let mut after = before.clone();
+    after.revision = StateRevision(1);
+    after
+        .zones
+        .objects
+        .get_mut(&GameObjectId(1))
+        .unwrap()
+        .tapped = false;
+    after
+        .zones
+        .objects
+        .get_mut(&GameObjectId(1))
+        .unwrap()
+        .face_down = true;
+    after.allocators.next_rule_event_id = RuleEventId(3);
+    let events = vec![
+        AuthoritativeRuleEvent {
+            event_id: RuleEventId(1),
+            state_revision: StateRevision(1),
+            event: AuthoritativeRuleEventKind::UntapCompleted {
+                affected_objects: vec![GameObjectId(1)],
+            },
+        },
+        AuthoritativeRuleEvent {
+            event_id: RuleEventId(2),
+            state_revision: StateRevision(1),
+            event: AuthoritativeRuleEventKind::TurnPositionChanged {
+                from: TurnPosition::Beginning {
+                    step: BeginningStep::Untap,
+                },
+                to: TurnPosition::Beginning {
+                    step: BeginningStep::Upkeep,
+                },
+            },
+        },
+    ];
+    let result = accepted_product_for_contract(&before, after, events);
+    assert_contract_rejects_without_mutation(&before, &result);
+}
+
+#[test]
+fn untap_contract_rejects_unrelated_zone_location_mutation() {
+    use mtgml_state::{KnownLocationFactV2, KnowledgeAcquisitionReason, KnowledgeRecordV2};
+
+    let mut before = state_without_pending_decision();
+    before
+        .zones
+        .objects
+        .get_mut(&GameObjectId(1))
+        .unwrap()
+        .tapped = true;
+
+    let new_location = mtgml_state::ZoneLocation {
+        zone: ZoneKind::Graveyard,
+        player: Some(PlayerId(1)),
+        position: mtgml_state::ZonePosition::Unordered,
+        visibility: mtgml_state::VisibilityPartition::Public,
+        partition: None,
+    };
+
+    let mut after = before.clone();
+    after.revision = StateRevision(1);
+    after
+        .zones
+        .objects
+        .get_mut(&GameObjectId(1))
+        .unwrap()
+        .tapped = false;
+    after
+        .zones
+        .locations
+        .insert(GameObjectId(1), new_location.clone());
+
+    // Align knowledge so the after-state passes structural validation; the
+    // cursor will still catch the location divergence.
+    for player_id in after.core.players.keys() {
+        let identity = after
+            .perspective_identities
+            .players
+            .get_mut(player_id)
+            .unwrap();
+        let opaque = identity.object_to_opaque.get(&GameObjectId(1)).copied();
+        if let Some(opaque) = opaque {
+            if let Some(record) =
+                after.knowledge.players.get_mut(player_id).unwrap().active.get_mut(&opaque)
+            {
+                record.known_location = Some(KnownLocationFactV2 {
+                    location: new_location.clone(),
+                    provenance: KnowledgeAcquisitionReason::InitialConfiguration,
+                });
+            }
+        }
+    }
+
+    after.allocators.next_rule_event_id = RuleEventId(3);
+    let events = vec![
+        AuthoritativeRuleEvent {
+            event_id: RuleEventId(1),
+            state_revision: StateRevision(1),
+            event: AuthoritativeRuleEventKind::UntapCompleted {
+                affected_objects: vec![GameObjectId(1)],
+            },
+        },
+        AuthoritativeRuleEvent {
+            event_id: RuleEventId(2),
+            state_revision: StateRevision(1),
+            event: AuthoritativeRuleEventKind::TurnPositionChanged {
+                from: TurnPosition::Beginning {
+                    step: BeginningStep::Untap,
+                },
+                to: TurnPosition::Beginning {
+                    step: BeginningStep::Upkeep,
+                },
+            },
+        },
+    ];
+    let result = accepted_product_for_contract(&before, after, events);
+    assert_contract_rejects_without_mutation(&before, &result);
 }

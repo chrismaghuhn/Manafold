@@ -189,21 +189,6 @@ fn magic_turn_structure_kernel_shell_reports_end_step_priority_boundary() {
 // --- Owned-but-not-yet-implemented boundary tests (section 16) ---
 
 #[test]
-fn magic_turn_structure_kernel_shell_rejects_unimplemented_untap() {
-    let state = s1_state_at(mtgml_state::TurnPosition::Beginning {
-        step: mtgml_state::BeginningStep::Untap,
-    });
-    let before = state.clone();
-    let mut kernel = MagicRulesKernel::new();
-    let result = kernel.advance_forced_progress(&state);
-    assert!(
-        result.is_err(),
-        "ordinary untap is not yet implemented and must not be accepted"
-    );
-    assert_eq!(state, before, "rejected work must not mutate input");
-}
-
-#[test]
 fn magic_turn_structure_kernel_shell_rejects_unimplemented_cleanup() {
     let state = s1_state_at(mtgml_state::TurnPosition::Ending {
         step: mtgml_state::EndingStep::Cleanup,
@@ -275,5 +260,291 @@ fn magic_turn_structure_kernel_shell_program_dispatch_still_unsupported() {
             Err(crate::ProgramKernelConstructionErrorV1::UnsupportedProgram)
         ),
         "MagicRules must remain unsupported at the program kernel boundary"
+    );
+}
+
+// --- Positive ordinary untap tests (section 24) ---
+
+/// Adds a Battlefield object with the given controller and tapped state to the
+/// state, including the mandatory knowledge/perspective-identity bookkeeping
+/// required for `validate_engine_state` to accept the fixture.
+fn add_battlefield_object(state: &mut EngineState, object_id: GameObjectId, controller: PlayerId, tapped: bool) {
+    use mtgml_model::{CardDefinitionId, OpaqueObjectId, PhysicalCardId, ZoneKind};
+    use mtgml_state::{
+        GameObject, KnownLocationFactV2, KnowledgeAcquisitionReason, KnowledgeRecordV2,
+        VisibilityPartition, ZoneLocation, ZonePosition,
+    };
+
+    let physical_card = PhysicalCardId(object_id.0);
+    let card_definition = CardDefinitionId(object_id.0);
+    let opaque = OpaqueObjectId(object_id.0);
+
+    state.zones.objects.insert(
+        object_id,
+        GameObject {
+            id: object_id,
+            physical_card: Some(physical_card),
+            card_definition,
+            owner: controller,
+            controller,
+            tapped,
+            face_down: false,
+        },
+    );
+
+    let location = ZoneLocation {
+        zone: ZoneKind::Battlefield,
+        player: None,
+        position: ZonePosition::Unordered,
+        visibility: VisibilityPartition::Public,
+        partition: None,
+    };
+    state.zones.locations.insert(object_id, location.clone());
+
+    let next_id = GameObjectId(object_id.0 + 1);
+    if state.allocators.next_object_id.0 < next_id.0 {
+        state.allocators.next_object_id = next_id;
+    }
+
+    let knowledge_record = KnowledgeRecordV2 {
+        opaque_object: opaque,
+        physical_card: Some(physical_card),
+        card_definition: Some(card_definition),
+        known_location: Some(KnownLocationFactV2 {
+            location: location.clone(),
+            provenance: KnowledgeAcquisitionReason::InitialConfiguration,
+        }),
+        acquisition: KnowledgeAcquisitionReason::InitialConfiguration,
+        historical_locations: Vec::new(),
+    };
+
+    for player_id in state.core.players.keys().copied().collect::<Vec<_>>() {
+        state
+            .knowledge
+            .players
+            .get_mut(&player_id)
+            .unwrap()
+            .active
+            .insert(opaque, knowledge_record.clone());
+        let identity = state
+            .perspective_identities
+            .players
+            .get_mut(&player_id)
+            .unwrap();
+        identity.opaque_to_object.insert(opaque, object_id);
+        identity.object_to_opaque.insert(object_id, opaque);
+        if identity.next_opaque_object_id.0 <= opaque.0 {
+            identity.next_opaque_object_id = OpaqueObjectId(opaque.0 + 1);
+        }
+    }
+}
+
+fn untap_state_with_one_active_tapped() -> EngineState {
+    let mut state = s1_state_at(mtgml_state::TurnPosition::Beginning {
+        step: mtgml_state::BeginningStep::Untap,
+    });
+    state
+        .zones
+        .objects
+        .get_mut(&GameObjectId(1))
+        .unwrap()
+        .tapped = true;
+    state
+}
+
+#[test]
+fn magic_turn_structure_untap_one_active_tapped() {
+    let state = untap_state_with_one_active_tapped();
+    let before = state.clone();
+    let mut kernel = MagicRulesKernel::new();
+    let result = kernel
+        .advance_forced_progress(&state)
+        .expect("ordinary untap must be accepted at Beginning(Untap)");
+    assert_eq!(state, before, "input state must not be mutated");
+
+    assert!(result.accepted);
+    assert_eq!(
+        result.next_state.revision,
+        StateRevision(before.revision.0 + 1)
+    );
+    assert_eq!(
+        result.next_state.core.position,
+        TurnPosition::Beginning {
+            step: BeginningStep::Upkeep,
+        }
+    );
+    assert!(
+        !result.next_state.zones.objects[&GameObjectId(1)].tapped,
+        "untapped object must have tapped=false"
+    );
+
+    assert_eq!(result.events.len(), 2);
+    assert!(matches!(
+        &result.events[0].event,
+        AuthoritativeRuleEventKind::UntapCompleted { affected_objects }
+        if *affected_objects == vec![GameObjectId(1)]
+    ));
+    assert_eq!(result.events[0].event_id, before.allocators.next_rule_event_id);
+    assert_eq!(
+        result.events[0].state_revision,
+        result.next_state.revision,
+    );
+    assert!(matches!(
+        &result.events[1].event,
+        AuthoritativeRuleEventKind::TurnPositionChanged { from, to }
+        if *from == TurnPosition::Beginning { step: BeginningStep::Untap }
+        && *to == TurnPosition::Beginning { step: BeginningStep::Upkeep }
+    ));
+    assert_eq!(
+        result.events[1].event_id,
+        RuleEventId(before.allocators.next_rule_event_id.0 + 1),
+    );
+    assert_eq!(
+        result.events[1].state_revision,
+        result.next_state.revision,
+    );
+
+    assert!(result.next_decision.is_none());
+    assert_eq!(result.status, mtgml_model::EpisodeStatus::Running);
+}
+
+#[test]
+fn magic_turn_structure_untap_empty_affected_set() {
+    let state = s1_state_at(mtgml_state::TurnPosition::Beginning {
+        step: mtgml_state::BeginningStep::Untap,
+    });
+    let before = state.clone();
+    let mut kernel = MagicRulesKernel::new();
+    let result = kernel
+        .advance_forced_progress(&state)
+        .expect("ordinary untap with no eligible objects must still complete the boundary");
+    assert_eq!(state, before, "input state must not be mutated");
+
+    assert!(result.accepted);
+    assert_eq!(
+        result.next_state.core.position,
+        TurnPosition::Beginning {
+            step: BeginningStep::Upkeep,
+        }
+    );
+    assert_eq!(result.events.len(), 2);
+    assert!(matches!(
+        &result.events[0].event,
+        AuthoritativeRuleEventKind::UntapCompleted { affected_objects }
+        if affected_objects.is_empty()
+    ));
+    assert!(matches!(
+        &result.events[1].event,
+        AuthoritativeRuleEventKind::TurnPositionChanged { .. }
+    ));
+    assert!(result.next_decision.is_none());
+}
+
+#[test]
+fn magic_turn_structure_untap_nonactive_control_remains_tapped() {
+    let mut state = s1_state_at(mtgml_state::TurnPosition::Beginning {
+        step: mtgml_state::BeginningStep::Untap,
+    });
+    state
+        .zones
+        .objects
+        .get_mut(&GameObjectId(1))
+        .unwrap()
+        .tapped = true;
+    add_battlefield_object(&mut state, GameObjectId(3), PlayerId(42), true);
+    let before = state.clone();
+    let mut kernel = MagicRulesKernel::new();
+    let result = kernel
+        .advance_forced_progress(&state)
+        .expect("ordinary untap must be accepted");
+    assert_eq!(state, before, "input state must not be mutated");
+
+    assert!(result.accepted);
+    assert!(matches!(
+        &result.events[0].event,
+        AuthoritativeRuleEventKind::UntapCompleted { affected_objects }
+        if *affected_objects == vec![GameObjectId(1)]
+    ));
+    assert!(
+        result.next_state.zones.objects[&GameObjectId(3)].tapped,
+        "nonactive-controlled object must remain tapped"
+    );
+    assert!(
+        !result.next_state.zones.objects[&GameObjectId(1)].tapped,
+        "active-controlled object must be untapped"
+    );
+    assert_eq!(
+        result.next_state.core.position,
+        TurnPosition::Beginning {
+            step: BeginningStep::Upkeep,
+        }
+    );
+}
+
+#[test]
+fn magic_turn_structure_untap_multiple_objects_canonical() {
+    let mut state = s1_state_at(mtgml_state::TurnPosition::Beginning {
+        step: mtgml_state::BeginningStep::Untap,
+    });
+    state
+        .zones
+        .objects
+        .get_mut(&GameObjectId(1))
+        .unwrap()
+        .tapped = true;
+    add_battlefield_object(&mut state, GameObjectId(3), PlayerId(7), true);
+    let before = state.clone();
+    let mut kernel = MagicRulesKernel::new();
+    let result = kernel
+        .advance_forced_progress(&state)
+        .expect("ordinary untap with multiple eligible objects must be accepted");
+    assert_eq!(state, before, "input state must not be mutated");
+
+    assert!(result.accepted);
+    assert!(matches!(
+        &result.events[0].event,
+        AuthoritativeRuleEventKind::UntapCompleted { affected_objects }
+        if *affected_objects == vec![GameObjectId(1), GameObjectId(3)]
+    ));
+    assert!(
+        !result.next_state.zones.objects[&GameObjectId(1)].tapped,
+        "first object must be untapped"
+    );
+    assert!(
+        !result.next_state.zones.objects[&GameObjectId(3)].tapped,
+        "second object must be untapped"
+    );
+    assert_eq!(result.events[0].event_id, before.allocators.next_rule_event_id);
+    assert_eq!(
+        result.events[1].event_id,
+        RuleEventId(before.allocators.next_rule_event_id.0 + 1)
+    );
+}
+
+#[test]
+fn magic_turn_structure_untap_narrow_mutation() {
+    let state = untap_state_with_one_active_tapped();
+    let mut kernel = MagicRulesKernel::new();
+    let result = kernel
+        .advance_forced_progress(&state)
+        .expect("ordinary untap must be accepted");
+
+    let mut expected_after = state.clone();
+    expected_after.revision = StateRevision(state.revision.0 + 1);
+    expected_after.allocators.next_rule_event_id =
+        RuleEventId(state.allocators.next_rule_event_id.0 + 2);
+    expected_after.core.position = TurnPosition::Beginning {
+        step: BeginningStep::Upkeep,
+    };
+    expected_after
+        .zones
+        .objects
+        .get_mut(&GameObjectId(1))
+        .unwrap()
+        .tapped = false;
+
+    assert_eq!(
+        result.next_state, expected_after,
+        "ordinary untap must only change revision, rule-event allocator, position, and tapped"
     );
 }
