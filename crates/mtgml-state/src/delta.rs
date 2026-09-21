@@ -1,5 +1,6 @@
 use mtgml_model::{DecisionId, FullStateDigestV4, GameObjectId, PlayerId, StateRevision};
 use mtgml_random::RandomStreamKeyV1;
+use crate::TurnPosition;
 use serde::{Deserialize, Serialize};
 
 use crate::digest::StateDigestError;
@@ -42,6 +43,21 @@ pub enum SemanticDeltaOperation {
     },
     PublicOutcome {
         code: String,
+    },
+    TurnPositionChanged {
+        from: TurnPosition,
+        to: TurnPosition,
+    },
+    UntapCompleted {
+        affected_objects: Vec<GameObjectId>,
+    },
+    ActivePlayerChanged {
+        from: PlayerId,
+        to: PlayerId,
+    },
+    TurnNumberChanged {
+        from: u64,
+        to: u64,
     },
     /// Complete state-changing meaning of one perspective-visible occurrence
     /// (M2.E). Carries perspective, consumed visible sequence, and the typed

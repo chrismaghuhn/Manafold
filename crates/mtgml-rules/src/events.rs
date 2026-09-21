@@ -3,7 +3,7 @@ use mtgml_random::RandomStreamKeyV1;
 use mtgml_state::{
     IdentityMutationV1, KnowledgeAcquisitionCause, KnowledgeAcquisitionReason,
     KnowledgeHistoryChannel, KnowledgeMutationV1, PerspectiveLifecycleAuditV1,
-    SemanticDeltaOperation, ZoneTransition,
+    SemanticDeltaOperation, TurnPosition, ZoneTransition,
 };
 use serde::{Deserialize, Serialize};
 
@@ -42,6 +42,21 @@ pub enum AuthoritativeRuleEventKind {
     },
     PublicOutcome {
         code: String,
+    },
+    TurnPositionChanged {
+        from: TurnPosition,
+        to: TurnPosition,
+    },
+    UntapCompleted {
+        affected_objects: Vec<GameObjectId>,
+    },
+    ActivePlayerChanged {
+        from: PlayerId,
+        to: PlayerId,
+    },
+    TurnNumberChanged {
+        from: u64,
+        to: u64,
     },
     /// One complete perspective-visible occurrence (M2.E). The state-owned
     /// `lifecycle` payload is the single authority for perspective, consumed
@@ -102,6 +117,21 @@ impl AuthoritativeRuleEventKind {
             Self::PublicOutcome { code } => {
                 SemanticDeltaOperation::PublicOutcome { code: code.clone() }
             }
+            Self::TurnPositionChanged { from, to } => SemanticDeltaOperation::TurnPositionChanged {
+                from: *from,
+                to: *to,
+            },
+            Self::UntapCompleted { affected_objects } => SemanticDeltaOperation::UntapCompleted {
+                affected_objects: affected_objects.clone(),
+            },
+            Self::ActivePlayerChanged { from, to } => SemanticDeltaOperation::ActivePlayerChanged {
+                from: *from,
+                to: *to,
+            },
+            Self::TurnNumberChanged { from, to } => SemanticDeltaOperation::TurnNumberChanged {
+                from: *from,
+                to: *to,
+            },
         }
     }
 }

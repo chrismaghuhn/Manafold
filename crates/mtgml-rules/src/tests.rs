@@ -198,3 +198,4 @@ include!("tests/transition_contract.rs");
 include!("tests/determinism.rs");
 include!("tests/batch_e.rs");
 include!("tests/batch_f.rs");
+include!("tests/turn_structure.rs");
