@@ -259,6 +259,13 @@
       "stability": "accepted"
     },
     {
+      "change_process": "documentation-pr",
+      "owner_role": "maintainer",
+      "path": "docs/SUMMARY.md",
+      "role": "informative",
+      "stability": "accepted"
+    },
+    {
       "change_process": "cross-layer-contract-change",
       "owner_role": "replay-maintainer",
       "path": "docs/REPLAY_AND_DETERMINISM.md",
