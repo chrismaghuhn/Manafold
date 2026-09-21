@@ -223,9 +223,10 @@ The predicate then requires all of the following:
 8. every relevant live object/location and every source fact passes existing
    structural validation; no unsupported modifier can be represented by an
    unvalidated or hidden cache;
-9. any perspective mapping required to project a public untap consequence is
-   resolvable to an authorized opaque ID for that perspective. Failure is an
-   internal fail-closed error, never an authoritative-ID leak.
+9. all generic state/profile conditions pass. Perspective-local opaque-ID
+   resolution is deliberately not part of Rules Admission. Rules semantics
+   must not depend on whether a player projector can currently materialize an
+   `OpaqueObjectId`.
 
 The predicate does not require a particular number of objects. It admits
 already-untapped objects, objects controlled by either player, and empty
@@ -537,6 +538,25 @@ distinct. Observation and information state are pure projections of explicit
 state and retained knowledge. Paired-state tests must remain equal for
 unauthorized hidden IDs, RNG, allocator history, checkpoints, execution
 identity, and catalog contents.
+
+The ownership boundary is explicit:
+
+```text
+rules/profile admission
+    != perspective/opaque mapping validation
+
+rules kernel
+    -> produces a semantically valid candidate product
+
+environment pre-commit projection
+    -> resolves authorized opaque mappings
+    -> failure (for example AuthorizedObjectUnresolvable)
+       rejects the complete candidate atomically
+```
+
+`lifecycle_projection::project_occurrence_envelopes()` is the existing owner
+of that pre-commit check. S1 does not move it into `mtgml-rules` and does not
+make untap legality depend on projection success.
 
 ## 15. V5 ExecutionIdentity and semantic-contract integration
 

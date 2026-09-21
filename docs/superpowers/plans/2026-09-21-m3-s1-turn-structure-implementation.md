@@ -37,6 +37,27 @@ SCOPE_DEPENDENCY_DISCOVERED
 
 and record the exact correctness reason. Do not solve it silently.
 
+## Durable naming rule
+
+Milestone labels remain valid in planning, governance, task names, and
+historical evidence. They are not durable production semantic identities.
+
+```text
+M3.S1 / S1
+  allowed in planning and historical evidence
+
+turn_structure
+MagicRulesKernel
+TurnStructureSupportProfile
+TurnStructureError
+ReferenceEnvironmentBackend
+  durable production names
+```
+
+Do not introduce `MagicS1RulesKernel`, `magic_s1.rs`, `MagicS1EnvironmentBackend`,
+`S1SupportPredicate`, or `S1Error`. The content-derived
+`SemanticContractIdV1` is the persistent semantic identity; `S1` is not.
+
 ## Shared execution rules
 
 ### One authority
@@ -119,67 +140,56 @@ slice is reopened; no capability lifecycle changes.
 **HARD STOP:** if the exact remote head, V5 closure, S1 authorization, or
 current lifecycle cannot be established, stop before Task 1.
 
-## Task 1 — S1 RED conformance characterization
+## Task 1 — First exact-contract RED characterization
 
 **BASE/PARENT:** Task 0 exact reviewed parent
-**Purpose:** add behavior-first RED evidence before adding S1 production
-semantics.
+**Purpose:** characterize only the first missing seam: the exact S1 semantic
+contract is not yet known to the runtime catalog. Do not add a broad future
+S1 suite.
 
 **Files allowed:**
 
-- `crates/mtgml-rules/src/tests.rs` only for module inclusion;
-- new `crates/mtgml-rules/src/tests/magic_s1.rs`;
-- new or current `crates/mtgml-environment/src/tests/magic_s1.rs` only for
-  tests that compile against existing APIs;
-- `python/tests/test_semantic_contract_catalog_generator.py` only for the
-  catalog-policy RED assertion;
+- `crates/mtgml-environment/src/tests/semantic_catalog.rs`;
 - no production Rust/Python code, catalog source, registry, schema, or
   generated file.
 
 **RED command:**
 
 ```powershell
-cargo test -p mtgml-rules --all-features --locked magic_s1
-cargo test -p mtgml-environment --all-features --locked magic_s1
-<project-python> scripts/run_python_tests.py --profile smoke
+cargo test -p mtgml-environment --all-features --locked semantic_catalog -- exact_turn_structure_contract
 ```
 
-**Expected RED reason:** current `ProgramKernelV1::for_program(MagicRules)`
-returns `UnsupportedProgram`, and current `validate_runtime_state(MagicRules,
-...)` fails closed. The RED assertions must fail on that missing MagicRules
-behavior, not merely fail to compile. Catalog RED must show that the current
-production source has no exact comprehensive S1 entry.
+**Expected RED reason:** the test computes the independently authored
+comprehensive-rules manifest for exactly
+`rules/turn-structure@0.1.0` and expects `RuntimeSemanticCatalog::resolve()`
+to recognize its content-derived ID. The current production catalog has only
+the synthetic entry, so this is a runtime semantic RED, not a compile break.
 
-**Implementation scope:** author independent setup/expected-value fixtures for:
+**Implementation scope:** one exact catalog-resolution RED only. Do not add
+untap, Cleanup, observation, backend, or downstream capability tests yet.
 
-- valid two-player Untap state expected to progress;
-- valid two-player Cleanup state expected to switch to the other player;
-- a three-player admission negative;
-- active/nonactive tapped-object cases;
-- unsupported downstream boundary and overflow fingerprints;
-- exact S1 closure admission.
+**Focused GREEN command:** `NOT_RUN` by design; this commit is the RED
+characterization commit.
 
-The fixtures must not call a future S1 function to calculate their expected
-products.
+**Broader GREEN command:**
 
-**Focused GREEN command:** none; this task is intentionally RED-only.
+```powershell
+git diff --check
+```
 
-**Broader GREEN command:** `git diff --check` plus the same focused commands;
-the expected result remains RED until implementation tasks land.
+**Negative evidence:** the test must not construct a kernel, choose a default,
+or calculate any Magic rule behavior.
 
-**Negative evidence:** no test may add an implicit response, a pass, a card,
-or a second turn implementation.
+**Commit boundary:** one RED characterization commit.
 
-**Commit boundary:** one RED characterization commit containing tests only.
+**HARD STOP:** if the RED is a compiler failure rather than catalog absence,
+rewrite the test against the current public catalog/model APIs.
 
-**HARD STOP:** if RED is only a compiler failure, rewrite the test until the
-failure exercises the existing runtime's missing semantic behavior.
-
-## Task 2 — Typed S1 event/delta/cursor vocabulary
+## Task 2 — Durable typed event/delta vocabulary
 
 **BASE/PARENT:** Task 1 RED commit
-**Purpose:** add only the reviewed typed audit vocabulary needed by the
-specification; do not implement a transition.
+**Purpose:** add only the reviewed typed audit vocabulary; no temporal
+transition or Magic runtime activation.
 
 **Files allowed:**
 
@@ -189,301 +199,52 @@ specification; do not implement a transition.
 - `crates/mtgml-rules/src/errors.rs` and `validation.rs`;
 - `crates/mtgml-state/src/delta.rs`;
 - `crates/mtgml-rules/src/lib.rs` if exports are required;
-- focused tests from Task 1.
+- focused rules tests named `turn_structure` or `magic_turn_structure`.
 
 **RED command:**
 
 ```powershell
-cargo test -p mtgml-rules --all-features --locked magic_s1
+cargo test -p mtgml-rules --all-features --locked turn_structure
 ```
 
-**Expected RED reason:** the RED suite still fails because no production path
-emits or applies the S1 event families. Any compile-only failure from a new
-type reference is scaffolding feedback, not accepted semantic RED; resolve it
-within this task before recording the RED result.
+**Expected RED reason:** no production path yet emits/applies the new S1
+families. Any compile-only failure is scaffolding feedback and must be fixed
+before recording the semantic RED.
 
-**Implementation scope:** add closed, typed representations for:
-
-```text
-TurnPositionChanged { from, to }
-UntapCompleted { affected_objects }
-ActivePlayerChanged { from, to }
-TurnNumberChanged { from, to }
-```
-
-and matching `SemanticDeltaOperation` variants. Add semantic-cursor fields and
-cursor arms for position, active player, turn number, affected-set ordering and
-final parity. Add the narrowly required observation policy for public
-`ObjectTapped` projection only if the existing lifecycle path needs a typed
-policy arm; do not add a public wire variant because
-`ObservedEventKindV2::ObjectTapped` already exists.
-
-Define canonical serialization/ordering and typed validation errors. Do not
-add a generic event bus, free-form labels, or speculative future event types.
+**Implementation scope:** add closed typed representations for
+`TurnPositionChanged`, `UntapCompleted`, `ActivePlayerChanged`, and
+`TurnNumberChanged`, with matching `SemanticDeltaOperation` variants and
+sequential cursor arms. Use durable names such as `TurnStructureError`; do not
+use `S1Error`, `MagicS1*`, or free-form labels. Do not add a public wire event
+variant; existing `ObservedEventKindV2::ObjectTapped` is sufficient.
 
 **Focused GREEN command:**
 
 ```powershell
 cargo fmt --all -- --check
-cargo test -p mtgml-rules --all-features --locked magic_s1
+cargo test -p mtgml-rules --all-features --locked
 ```
 
 **Broader GREEN command:**
 
 ```powershell
+cargo test -p mtgml-state --all-features --locked
 cargo test -p mtgml-rules --all-features --locked
 ```
 
 **Negative evidence:** existing synthetic event/delta tests remain green;
-rejected transitions still have empty audit; a malformed affected set is
-rejected rather than normalized.
+rejected transitions retain empty audit; malformed affected sets are rejected.
 
-**Commit boundary:** one typed-vocabulary commit; no semantic behavior claim.
+**Commit boundary:** one durable typed-vocabulary commit.
 
-**HARD STOP:** if the vocabulary duplicates an existing semantic authority or
-requires a public schema change, stop and return to the specification review.
+**HARD STOP:** if the vocabulary requires a public schema or milestone-named
+production type, stop and return to spec review.
 
-## Task 3 — Executable supported-state/profile admission
+## Task 3 — Known S1 contract, still non-executable
 
 **BASE/PARENT:** Task 2 typed-vocabulary commit
-**Purpose:** make the S1 predicate explicit, reusable, and fail-closed.
-
-**Files allowed:**
-
-- new `crates/mtgml-rules/src/turn_structure.rs` for the pure S1 predicate,
-  successor relation, other-player derivation, and typed S1 profile errors;
-- `crates/mtgml-rules/src/lib.rs`;
-- `crates/mtgml-rules/src/program_kernel.rs` only for the program-aware
-  validation call;
-- `crates/mtgml-rules/src/errors.rs`;
-- `crates/mtgml-state/src/validation/core.rs` only if an existing structural
-  invariant must be extended; do not place Magic legality there;
-- S1 tests from Task 1.
-
-**RED command:**
-
-```powershell
-cargo test -p mtgml-rules --all-features --locked magic_s1 -- two_players
-cargo test -p mtgml-rules --all-features --locked magic_s1 -- unsupported_profile
-```
-
-**Expected RED reason:** current MagicRules admission fails for the valid
-two-player state, and no executable S1 predicate distinguishes exact two
-players, held priority, unsupported execution profile, and invalid temporal
-state.
-
-**Implementation scope:** implement the first check exactly as
-`players.len() == 2`, then validate the rest of Section 7. Reuse existing
-`TurnPosition`, `PriorityState`, `ExecutionState`, `ZoneState`, and generic
-state validation. Derive the unique other player from the two-player set.
-Reject pending decisions, continuations, effect/trigger state, active combat,
-format state, held priority, zero turn number, unsupported profile, and
-unresolvable public mappings. Do not persist any eligibility cache.
-
-Expose one internal predicate to both MagicRules execution and V5 program-aware
-admission. T0 must call this production predicate, never mirror it.
-
-**Focused GREEN command:**
-
-```powershell
-cargo test -p mtgml-rules --all-features --locked magic_s1 -- two_players
-cargo test -p mtgml-rules --all-features --locked magic_s1 -- unsupported_profile
-```
-
-**Broader GREEN command:**
-
-```powershell
-cargo test -p mtgml-state --all-features --locked
-cargo test -p mtgml-rules --all-features --locked
-```
-
-**Negative evidence:** valid one-player and three-player states reject; held
-priority, nonempty unsupported execution state, `turn_number == 0`, and
-invalid mappings reject with unchanged fingerprints.
-
-**Commit boundary:** one admission/predicate commit.
-
-**HARD STOP:** if exact-two-player admission cannot be tested with a complete
-valid state, add a structurally valid fixture builder; do not weaken the
-predicate or test only a map length assertion in isolation.
-
-## Task 4 — Program-owned S1 temporal forced-progress primitive
-
-**BASE/PARENT:** Task 3 admission commit
-**Purpose:** make `MagicRules` constructible and give it one authoritative
-forced-progress path, while keeping response execution unsupported.
-
-**Files allowed:**
-
-- new `crates/mtgml-rules/src/magic.rs` for `MagicS1RulesKernel` and its
-  program-owned dispatch;
-- `crates/mtgml-rules/src/program_kernel.rs`;
-- `crates/mtgml-rules/src/transition.rs` if the forced-progress trait seam
-  needs the existing internal interface;
-- `crates/mtgml-rules/src/product.rs`;
-- `crates/mtgml-rules/src/turn_structure.rs`;
-- S1 forced-progress tests.
-
-**RED command:**
-
-```powershell
-cargo test -p mtgml-rules --all-features --locked magic_s1 -- magic_kernel
-```
-
-**Expected RED reason:** `ProgramKernelV1::for_program(MagicRules)` currently
-fails closed and no Magic kernel can produce a temporal product.
-
-**Implementation scope:** add a program-owned MagicRules inner variant and a
-named constructor path that can be reached only after exact semantic-contract
-admission. Keep the synthetic inner variant and behavior unchanged. Magic
-`apply(DecisionResponseV2)` must reject/fail closed; it must never fall through
-to `SyntheticM1RulesKernel`. `advance_forced_progress` must call the single
-S1 temporal primitive and return a complete `TransitionResult`.
-
-For `Beginning(Untap)`, produce the supported boundary product that clears the
-derived set and advances to Upkeep. For all unsupported downstream positions,
-return the typed boundary failure without mutation. Do not implement cleanup,
-priority, draw, or combat in this task.
-
-**Focused GREEN command:**
-
-```powershell
-cargo test -p mtgml-rules --all-features --locked magic_s1 -- magic_kernel
-```
-
-**Broader GREEN command:**
-
-```powershell
-cargo test -p mtgml-rules --all-features --locked
-cargo test -p mtgml-environment --all-features --locked forced_progress
-```
-
-**Negative evidence:** Magic cannot answer a response; synthetic still uses
-its existing response path; unsupported progress leaves the input and all
-identities unchanged.
-
-**Commit boundary:** one program-dispatch/forced-progress commit.
-
-**HARD STOP:** if the Magic kernel can be constructed with an arbitrary or
-unknown semantic contract, stop and close the admission hole before moving
-on. Do not accept program kind alone as sufficient identity.
-
-## Task 5 — Ordinary untap affected-set and narrow mutation
-
-**BASE/PARENT:** Task 4 Magic kernel commit
-**Purpose:** implement only ordinary untap inside the S1 temporal primitive.
-
-**Files allowed:**
-
-- `crates/mtgml-rules/src/turn_structure.rs`;
-- `crates/mtgml-rules/src/magic.rs`;
-- `crates/mtgml-rules/src/events.rs`;
-- `crates/mtgml-rules/src/semantic_cursor.rs`;
-- `crates/mtgml-rules/src/contract.rs`;
-- `crates/mtgml-state/src/delta.rs` only for the matching audit variant;
-- S1 rule tests and independent expected-state fixtures.
-
-**RED command:**
-
-```powershell
-cargo test -p mtgml-rules --all-features --locked magic_s1 -- untap
-```
-
-**Expected RED reason:** the temporal primitive exists but does not yet derive
-the complete eligible set or produce the exact `UntapCompleted`/event/delta
-product.
-
-**Implementation scope:** derive all tapped battlefield objects controlled by
-the active player from the before-state; sort by `GameObjectId`; validate the
-simple no-modifier profile; mutate all `tapped` fields in one workspace
-operation; emit `UntapCompleted`; emit only the reviewed position/observation
-evidence; and validate the narrow mutation boundary before commit.
-
-The implementation must compare before/after object snapshots and reject any
-zone/location/identity/owner/controller/face-down mutation. Nonactive tapped
-objects and already-untapped objects remain unchanged. No RNG, decision,
-continuation, zone transition, or physical identity is touched.
-
-**Focused GREEN command:**
-
-```powershell
-cargo test -p mtgml-rules --all-features --locked magic_s1 -- untap
-```
-
-**Broader GREEN command:**
-
-```powershell
-cargo test -p mtgml-rules --all-features --locked
-cargo test -p mtgml-state --all-features --locked
-```
-
-**Negative evidence:** one-player/nonactive/control/profile/duplicate-order
-mutants reject; affected-set omission and unrelated object-field mutation fail
-the transition contract; empty affected set is exact and deterministic.
-
-**Commit boundary:** one ordinary-untap semantic commit.
-
-**HARD STOP:** if untap needs a persisted `can_untap`/`untap_eligible` field,
-zone transition, object reincarnation, or choice, stop; the S1 specification
-forbids that design.
-
-## Task 6 — Quiescent Cleanup boundary and next-turn switch
-
-**BASE/PARENT:** Task 5 ordinary-untap commit
-**Purpose:** add only the S1-owned Cleanup-to-next-Untap temporal switch.
-
-**Files allowed:**
-
-- `crates/mtgml-rules/src/turn_structure.rs`;
-- `crates/mtgml-rules/src/magic.rs`;
-- `crates/mtgml-rules/src/events.rs`;
-- `crates/mtgml-rules/src/semantic_cursor.rs`;
-- `crates/mtgml-rules/src/contract.rs`;
-- S1 rule tests.
-
-**RED command:**
-
-```powershell
-cargo test -p mtgml-rules --all-features --locked magic_s1 -- cleanup
-```
-
-**Expected RED reason:** current S1 execution has no Cleanup temporal product,
-checked player switch, or checked turn increment.
-
-**Implementation scope:** validate that Cleanup is quiescent with respect to
-all excluded cleanup-reset/discard/exception work; calculate the unique other
-player; use `checked_add`; emit `TurnNumberChanged`,
-`ActivePlayerChanged`, and `TurnPositionChanged` in the specified order; and
-leave the final position at the next player's Untap boundary. Do not clear
-damage, discard, expire durations, or generate cleanup triggers.
-
-**Focused GREEN command:**
-
-```powershell
-cargo test -p mtgml-rules --all-features --locked magic_s1 -- cleanup
-```
-
-**Broader GREEN command:**
-
-```powershell
-cargo test -p mtgml-rules --all-features --locked
-cargo test -p mtgml-environment --all-features --locked forced_progress
-```
-
-**Negative evidence:** `u64::MAX` rejects without wraparound; marked damage or
-an unsupported cleanup profile rejects without switching players; active-player
-and turn-number event order is exact.
-
-**Commit boundary:** one cleanup-boundary commit.
-
-**HARD STOP:** if crossing Cleanup requires implementing cleanup-reset or
-discard semantics, stop with `SCOPE_DEPENDENCY_DISCOVERED`.
-
-## Task 7 — Exact V5 S1 semantic-contract activation
-
-**BASE/PARENT:** Task 6 temporal commit
-**Purpose:** register and admit exactly the first real Magic contract without
-reopening V5.
+**Purpose:** make the exact content-derived contract known to V5 admission
+without enabling Magic execution yet.
 
 **Files allowed:**
 
@@ -494,44 +255,40 @@ reopening V5.
 - `crates/mtgml-environment/src/semantic_catalog_kat.rs`;
 - `crates/mtgml-environment/src/lib.rs` exports;
 - `crates/mtgml-environment/src/tests/semantic_catalog.rs`;
-- `crates/mtgml-environment/src/tests/restore_admission.rs`;
 - `python/tests/test_semantic_contract_catalog_generator.py`;
-- `crates/mtgml-rules/src/program_kernel.rs` only for the exact admission handoff;
-- no checkpoint/replay version files.
+- no `ProgramKernelV1::MagicRules` activation.
 
 **RED command:**
 
 ```powershell
 <project-python> scripts/generate_semantic_contract_catalog.py --check
-cargo test -p mtgml-environment --all-features --locked semantic_catalog
-cargo test -p mtgml-environment --all-features --locked restore_admission
+cargo test -p mtgml-environment --all-features --locked semantic_catalog -- exact_turn_structure_contract
 ```
 
-**Expected RED reason:** the current production catalog accepts only the
-synthetic legacy entry; its generator policy rejects a second comprehensive
-S1 entry; MagicRules restore is currently unsupported.
+**Expected RED reason:** the source catalog and generated catalog do not yet
+contain the exact comprehensive-rules entry.
 
-**Implementation scope:** add one hand-authored comprehensive-rules catalog
-entry with exactly `[rules/turn-structure@0.1.0]`, null format/content
-dimensions, and the verified CR snapshot. Extend the generator policy to
-accept exactly the reviewed synthetic entry plus this reviewed S1 entry; keep
-the renderer and digest derivation single-sourced. Regenerate the Rust catalog;
-never hand-edit generated output.
+**Implementation scope:** add one hand-authored comprehensive-rules entry with
+exactly `[rules/turn-structure@0.1.0]`, the verified CR snapshot, and null
+format/content dimensions. Extend generator policy to accept exactly the
+synthetic entry plus this S1 entry. Regenerate; never hand-edit generated Rust.
 
-Change `RuntimeSemanticCatalog::supported` from program-only support to exact
-program/semantic-contract support. Keep the frozen program/authority pairing
-and V5 admission order. Bind MagicRules construction to the admitted S1
-contract; an arbitrary comprehensive contract must remain unsupported.
+At the end of this task:
 
-Add positive/negative KATs for both IDs, wrong closure, wrong snapshot,
-synthetic/Magic mismatch, unknown ID, and exact catalog recomputation.
+```text
+catalog.resolve(exact_s1_id) = Some
+catalog.supported(exact_s1_id, MagicRules) = false
+ProgramKernelV1::for_program(MagicRules) = unsupported
+```
+
+This is the intentional known-but-not-executable state. Add KATs for exact
+IDs, wrong closure, wrong snapshot, unknown ID, and synthetic/Magic mismatch.
 
 **Focused GREEN command:**
 
 ```powershell
 <project-python> scripts/generate_semantic_contract_catalog.py --check
 cargo test -p mtgml-environment --all-features --locked semantic_catalog
-cargo test -p mtgml-environment --all-features --locked restore_admission
 ```
 
 **Broader GREEN command:**
@@ -543,20 +300,287 @@ cargo test -p mtgml-persistence --all-features --locked
 cargo test -p mtgml-replay --all-features --locked
 ```
 
-**Negative evidence:** no V6 types, no child manifests in checkpoints, no
-mutable catalog, no registry lookup at runtime, and no broad
-`MagicRules => every comprehensive contract` behavior.
+**Negative evidence:** catalog knowledge does not imply runtime support;
+MagicRules remains fail-closed and no arbitrary comprehensive contract is
+accepted.
 
-**Commit boundary:** one catalog/admission activation commit, with generated
-drift clean.
+**Commit boundary:** one generated-catalog commit with runtime support still
+disabled for Magic.
 
-**HARD STOP:** if the generator or V5 runtime requires a checkpoint/replay
-schema redesign, stop and report the exact structural insufficiency; do not
-create V6.
+**HARD STOP:** if this requires checkpoint/replay schema changes, report the
+exact V5 insufficiency; do not create V6.
 
-## Task 8 — Observation, public tapped consequences, and product closure
+## Task 4 — `TurnStructureSupportProfile` and temporal skeleton
 
-**BASE/PARENT:** Task 7 exact-contract commit
+**BASE/PARENT:** Task 3 known-contract commit
+**Purpose:** implement the reusable S1 rules/profile authority without
+implementing untap, Cleanup mutation, or Magic kernel dispatch.
+
+**Files allowed:**
+
+- new `crates/mtgml-rules/src/turn_structure.rs`;
+- `crates/mtgml-rules/src/lib.rs`;
+- `crates/mtgml-rules/src/errors.rs`;
+- `crates/mtgml-rules/src/program_kernel.rs` only for state-validation wiring;
+- rules tests named `turn_structure`.
+
+**RED command:**
+
+```powershell
+cargo test -p mtgml-rules --all-features --locked turn_structure -- support_profile
+```
+
+**Expected RED reason:** current MagicRules state admission has no
+`validate_turn_structure_support()` implementation and fails closed through
+the pre-S1 unsupported path.
+
+**Implementation scope:** add durable `TurnStructureSupportProfile`,
+`validate_turn_structure_support()`, `TurnStructureError`, the exact first
+condition `players.len() == 2`, unique-other-player derivation, closed temporal
+successor relation, and downstream `UnsupportedRulesBoundary` classification.
+Do not inspect perspective/opaque mappings here. Do not mutate tapped state or
+advance position here. Do not enable `ProgramKernelV1::MagicRules` yet.
+
+**Focused GREEN command:**
+
+```powershell
+cargo test -p mtgml-rules --all-features --locked turn_structure -- support_profile
+```
+
+**Broader GREEN command:**
+
+```powershell
+cargo test -p mtgml-state --all-features --locked
+cargo test -p mtgml-rules --all-features --locked
+```
+
+**Negative evidence:** one/three-player, held-priority, zero-turn,
+unsupported-profile, invalid-temporal, and active-combat states reject without
+any perspective mapping lookup.
+
+**Commit boundary:** one support-profile/temporal-relation commit.
+
+**HARD STOP:** if Rules Admission imports lifecycle projection or opaque-ID
+state, remove that dependency before proceeding.
+
+## Task 5 — Durable `MagicRulesKernel` shell, still not enabled
+
+**BASE/PARENT:** Task 4 support-profile commit
+**Purpose:** establish the milestone-free Magic kernel owner without enabling a
+general MagicRules program through V5.
+
+**Files allowed:**
+
+- new `crates/mtgml-rules/src/magic.rs` containing `MagicRulesKernel`;
+- `crates/mtgml-rules/src/transition.rs`;
+- `crates/mtgml-rules/src/product.rs`;
+- `crates/mtgml-rules/src/errors.rs`;
+- private rules tests named `magic_turn_structure`.
+
+**RED command:**
+
+```powershell
+cargo test -p mtgml-rules --all-features --locked magic_turn_structure -- kernel_shell
+```
+
+**Expected RED reason:** no durable MagicRules kernel owner exists; the current
+program boundary still has only the synthetic inner variant.
+
+**Implementation scope:** add `MagicRulesKernel` with response execution
+fail-closed and a private forced-progress shell that returns an explicit
+`UnsupportedRulesBoundary` until the semantic operation is added. Do not add a
+`ProgramKernelInner::MagicRules` production branch or make
+`ProgramKernelV1::for_program(MagicRules)` succeed in this task. The shell is
+tested only inside the rules crate and is not an executable environment path.
+
+**Focused GREEN command:**
+
+```powershell
+cargo fmt --all -- --check
+cargo test -p mtgml-rules --all-features --locked magic_turn_structure -- kernel_shell
+```
+
+**Broader GREEN command:**
+
+```powershell
+cargo test -p mtgml-rules --all-features --locked
+```
+
+**Negative evidence:** no public Magic runtime constructor is enabled; no
+response, pass, default, or synthetic fallback is accepted.
+
+**Commit boundary:** one durable kernel-shell commit.
+
+**HARD STOP:** if the shell becomes reachable from an arbitrary semantic
+contract or is named `MagicS1RulesKernel`, stop and rename/reorder it.
+
+## Task 6 — Ordinary untap affected-set and narrow mutation
+
+**BASE/PARENT:** Task 5 `MagicRulesKernel` shell commit
+**Purpose:** implement only ordinary untap in the durable kernel owner.
+
+**Files allowed:**
+
+- `crates/mtgml-rules/src/turn_structure.rs`;
+- `crates/mtgml-rules/src/magic.rs`;
+- `crates/mtgml-rules/src/events.rs`;
+- `crates/mtgml-rules/src/semantic_cursor.rs`;
+- `crates/mtgml-rules/src/contract.rs`;
+- `crates/mtgml-state/src/delta.rs` only for the matching audit variant;
+- rules tests named `turn_structure` or `magic_turn_structure`.
+
+**RED command:**
+
+```powershell
+cargo test -p mtgml-rules --all-features --locked magic_turn_structure -- untap
+```
+
+**Expected RED reason:** the kernel shell has no ordinary untap product,
+affected-set derivation, or `UntapCompleted` event.
+
+**Implementation scope:** derive all tapped Battlefield objects controlled by
+the active player from the before-state; sort by `GameObjectId`; mutate only
+the complete `tapped=true -> false` set; emit `UntapCompleted` and
+`TurnPositionChanged`; and validate the narrow mutation boundary. Do not
+advance through priority or implement any downstream capability.
+
+**Focused GREEN command:**
+
+```powershell
+cargo test -p mtgml-rules --all-features --locked magic_turn_structure -- untap
+```
+
+**Broader GREEN command:**
+
+```powershell
+cargo test -p mtgml-rules --all-features --locked
+cargo test -p mtgml-state --all-features --locked
+```
+
+**Negative evidence:** nonactive and already-untapped objects remain unchanged;
+affected-set omissions, duplicate order, and unrelated object/zone/identity
+changes fail atomically. No perspective mapping is checked by the rules path.
+
+**Commit boundary:** one ordinary-untap semantic commit.
+
+**HARD STOP:** if untap needs `can_untap`, a zone transition, reincarnation,
+or a choice, stop.
+
+## Task 7 — Quiescent Cleanup boundary and next-turn switch
+
+**BASE/PARENT:** Task 6 ordinary-untap commit
+**Purpose:** add only the S1-owned Cleanup-to-next-Untap temporal switch.
+
+**Files allowed:**
+
+- `crates/mtgml-rules/src/turn_structure.rs`;
+- `crates/mtgml-rules/src/magic.rs`;
+- `crates/mtgml-rules/src/events.rs`;
+- `crates/mtgml-rules/src/semantic_cursor.rs`;
+- `crates/mtgml-rules/src/contract.rs`;
+- rules tests named `turn_structure` or `magic_turn_structure`.
+
+**RED command:**
+
+```powershell
+cargo test -p mtgml-rules --all-features --locked magic_turn_structure -- cleanup
+```
+
+**Expected RED reason:** the kernel has no Cleanup temporal product, checked
+player switch, or checked turn increment.
+
+**Implementation scope:** validate quiescent Cleanup; derive the unique other
+player; use `checked_add`; emit `TurnNumberChanged`,
+`ActivePlayerChanged`, and `TurnPositionChanged` in the specified order; and
+leave the final position at the next player's Untap boundary. Do not clear
+damage, discard, expire durations, or generate cleanup triggers.
+
+**Focused GREEN command:**
+
+```powershell
+cargo test -p mtgml-rules --all-features --locked magic_turn_structure -- cleanup
+```
+
+**Broader GREEN command:**
+
+```powershell
+cargo test -p mtgml-rules --all-features --locked
+```
+
+**Negative evidence:** `u64::MAX` and required cleanup-reset work reject with
+no player switch or wraparound.
+
+**Commit boundary:** one cleanup-boundary commit.
+
+**HARD STOP:** if crossing Cleanup requires cleanup-reset or discard semantics,
+stop with `SCOPE_DEPENDENCY_DISCOVERED`.
+
+## Task 8 — Atomic exact-contract admission and Magic runtime enablement
+
+**BASE/PARENT:** Task 7 Cleanup commit
+**Purpose:** make the existing known S1 contract executable only through exact
+V5 admission and the durable `MagicRulesKernel`.
+
+**Files allowed:**
+
+- `crates/mtgml-environment/src/semantic_catalog.rs`;
+- `crates/mtgml-environment/src/semantic_catalog_kat.rs`;
+- `crates/mtgml-environment/src/tests/semantic_catalog.rs`;
+- `crates/mtgml-environment/src/tests/restore_admission.rs`;
+- `crates/mtgml-rules/src/program_kernel.rs`;
+- `crates/mtgml-environment/src/lib.rs` exports;
+- no checkpoint/replay version files.
+
+**RED command:**
+
+```powershell
+cargo test -p mtgml-environment --all-features --locked semantic_catalog -- exact_turn_structure_support
+cargo test -p mtgml-environment --all-features --locked restore_admission -- exact_turn_structure_support
+```
+
+**Expected RED reason:** Task 3 makes the exact ID resolvable, but
+`catalog.supported(exact_s1_id, MagicRules)` remains false and the program
+kernel still has no Magic inner dispatch.
+
+**Implementation scope:** in one atomic enablement task, change the runtime
+support predicate to recognize only the exact comprehensive S1 ID and add the
+`ProgramKernelV1` `MagicRules -> MagicRulesKernel` branch. The environment's
+existing V5 admission path must prove exact catalog identity, authority pair,
+runtime support, and `validate_turn_structure_support()` before constructing
+or committing the Magic kernel/backend. Synthetic remains unchanged. An
+arbitrary comprehensive contract remains unsupported.
+
+Add exact positive/negative KATs and restore nonmutation cases.
+
+**Focused GREEN command:**
+
+```powershell
+cargo test -p mtgml-environment --all-features --locked semantic_catalog -- exact_turn_structure_support
+cargo test -p mtgml-environment --all-features --locked restore_admission -- exact_turn_structure_support
+```
+
+**Broader GREEN command:**
+
+```powershell
+<project-python> scripts/generate_semantic_contract_catalog.py --check
+<project-python> scripts/run_v5_execution_identity_gate.py
+cargo test -p mtgml-model --all-features --locked
+cargo test -p mtgml-persistence --all-features --locked
+cargo test -p mtgml-replay --all-features --locked
+```
+
+**Negative evidence:** no generic MagicRules construction path, no synthetic
+fallback, no mutable catalog, no registry runtime lookup, no V6 types, and no
+wrong-contract execution.
+
+**Commit boundary:** one atomic catalog-support/program-dispatch commit.
+
+**HARD STOP:** if exact contract admission and Magic dispatch cannot be enabled
+atomically, keep both disabled and report the dependency.
+
+## Task 9 — Observation, public tapped consequences, and product closure
+
+**BASE/PARENT:** Task 8 atomic exact-contract/runtime-enable commit
 **Purpose:** close the existing observation/event projection without public
 schema churn.
 
@@ -576,7 +600,7 @@ schema churn.
 **RED command:**
 
 ```powershell
-cargo test -p mtgml-environment --all-features --locked magic_s1 -- observation
+cargo test -p mtgml-environment --all-features --locked turn_structure -- observation
 cargo test -p mtgml-observation --all-features --locked
 ```
 
@@ -594,7 +618,7 @@ digests, trusted IDs, physical card IDs, or hidden information.
 **Focused GREEN command:**
 
 ```powershell
-cargo test -p mtgml-environment --all-features --locked magic_s1 -- observation
+cargo test -p mtgml-environment --all-features --locked turn_structure -- observation
 cargo test -p mtgml-observation --all-features --locked
 ```
 
@@ -615,16 +639,16 @@ rules logic is introduced.
 authorized public tap consequence without exposing trusted identity, return to
 spec review; do not add a privileged field or bypass the projector.
 
-## Task 9 — Magic S1 reference backend and parity integration
+## Task 10 — Reference environment backend and parity integration
 
-**BASE/PARENT:** Task 8 observation commit
+**BASE/PARENT:** Task 9 observation commit
 **Purpose:** make the exact S1 contract executable through the existing trusted
 environment/controller path and prove V5 checkpoint/fork/replay parity.
 
 **Files allowed:**
 
-- new `crates/mtgml-environment/src/magic.rs` for the bounded S1 backend and
-  explicit complete-state setup;
+- new `crates/mtgml-environment/src/reference.rs` for the durable
+  `ReferenceEnvironmentBackend` and explicit complete-state setup;
 - new `crates/mtgml-environment/src/reference.rs` for shared reference-backend
   transaction, projection, checkpoint, and replay mechanics extracted from the
   current synthetic-only owner;
@@ -635,22 +659,22 @@ environment/controller path and prove V5 checkpoint/fork/replay parity.
   semantics must remain unchanged;
 - `crates/mtgml-conformance/src/facade.rs` and a new
   `crates/mtgml-conformance/src/m3_s1.rs` for real-kernel S1 cases;
-- `crates/mtgml-environment/src/tests/magic_s1.rs` and parity tests;
+- `crates/mtgml-environment/src/tests/turn_structure.rs` and parity tests;
 - no `mtgml-replay` V5 schema change.
 
 **RED command:**
 
 ```powershell
-cargo test -p mtgml-environment --all-features --locked magic_s1
-cargo test -p mtgml-conformance --all-features --locked s1
+cargo test -p mtgml-environment --all-features --locked turn_structure
+cargo test -p mtgml-conformance --all-features --locked turn_structure
 ```
 
-**Expected RED reason:** no current `EnvironmentBackend` constructs a
-MagicRules S1 execution identity and no current environment path runs S1
-forced progress through V5 checkpoints/projections.
+**Expected RED reason:** no current `ReferenceEnvironmentBackend` constructs a
+MagicRules execution identity and no current environment path runs the exact
+admitted turn-structure contract through V5 checkpoints/projections.
 
-**Implementation scope:** add an explicit bounded Magic S1 backend/config that
-accepts complete trusted setup, exact S1 identity, V5 checkpoint/replay
+**Implementation scope:** add the durable reference backend/config that accepts
+complete trusted setup, exact content-derived turn-structure identity, V5 checkpoint/replay
 metadata, and two players. Reuse the existing atomic commit sequence:
 
 ```text
@@ -671,8 +695,8 @@ deterministic scenario provenance; do not claim a deck or card bundle.
 **Focused GREEN command:**
 
 ```powershell
-cargo test -p mtgml-environment --all-features --locked magic_s1
-cargo test -p mtgml-conformance --all-features --locked s1
+cargo test -p mtgml-environment --all-features --locked turn_structure
+cargo test -p mtgml-conformance --all-features --locked turn_structure
 ```
 
 **Broader GREEN command:**
@@ -693,18 +717,18 @@ backend checkpoint/replay identity unchanged.
 if replay parity requires a fabricated response, stop and revert the extraction
 within the task; no second environment rules path is acceptable.
 
-## Task 10 — Full negative, nonmutation, and fail-closed matrix
+## Task 11 — Full negative, nonmutation, and fail-closed matrix
 
-**BASE/PARENT:** Task 9 backend/parity commit
+**BASE/PARENT:** Task 10 backend/parity commit
 **Purpose:** close every negative/support-boundary obligation from the
 specification before lifecycle promotion.
 
 **Files allowed:**
 
-- `crates/mtgml-rules/src/tests/magic_s1.rs`;
-- `crates/mtgml-environment/src/tests/magic_s1.rs`;
+- `crates/mtgml-rules/src/tests/magic_turn_structure.rs`;
+- `crates/mtgml-environment/src/tests/turn_structure.rs`;
 - `crates/mtgml-environment/src/tests/restore_admission.rs`;
-- `crates/mtgml-conformance/src/m3_s1.rs`;
+- `crates/mtgml-conformance/src/turn_structure.rs`;
 - `crates/mtgml-conformance/src/isolation/*` only for reuse of existing
   fingerprint/parity helpers;
 - no production semantic expansion.
@@ -712,9 +736,9 @@ specification before lifecycle promotion.
 **RED command:**
 
 ```powershell
-cargo test -p mtgml-rules --all-features --locked magic_s1
-cargo test -p mtgml-environment --all-features --locked magic_s1
-cargo test -p mtgml-conformance --all-features --locked s1
+cargo test -p mtgml-rules --all-features --locked magic_turn_structure
+cargo test -p mtgml-environment --all-features --locked turn_structure
+cargo test -p mtgml-conformance --all-features --locked turn_structure
 ```
 
 **Expected RED reason:** any missing matrix case, incomplete rejection
@@ -730,9 +754,9 @@ Use the existing complete state/checkpoint/replay/player-product fingerprints.
 **Focused GREEN command:**
 
 ```powershell
-cargo test -p mtgml-rules --all-features --locked magic_s1
-cargo test -p mtgml-environment --all-features --locked magic_s1
-cargo test -p mtgml-conformance --all-features --locked s1
+cargo test -p mtgml-rules --all-features --locked magic_turn_structure
+cargo test -p mtgml-environment --all-features --locked turn_structure
+cargo test -p mtgml-conformance --all-features --locked turn_structure
 ```
 
 **Broader GREEN command:**
@@ -752,37 +776,41 @@ changed. Unsupported is never reported as a legal transition.
 negative case passes only because the expected output was copied from the
 implementation, stop for independent expected-value correction.
 
-## Task 11 — Capability lifecycle and evidence registry update
+## Task 12 — Capability lifecycle and evidence registry update
 
-**BASE/PARENT:** Task 10 negative-matrix commit
-**Purpose:** advance only the S1 registry metadata justified by evidence.
+**BASE/PARENT:** Task 11 negative-matrix commit
+**Purpose:** advance only the turn-structure registry metadata justified by
+evidence.
 
 **Files allowed:**
 
 - `cards/capabilities/registry.json`;
 - `cards/capabilities/README.md` only if its current lifecycle explanation
   requires an S1-specific note;
+- `python/tests/test_maintainer_artifacts.py` only for a focused lifecycle
+  guard if the existing negative guard is insufficient;
 - registry validation tests/scripts;
 - no other capability entry.
 
-**RED command:**
+**RED command (invalid-candidate probe):**
 
 ```powershell
-<project-python> scripts/validate_schemas.py
-<project-python> scripts/validate_maintainer_artifacts.py
+<project-python> -m unittest python.tests.test_maintainer_artifacts.MaintainerArtifactTests.test_implemented_capability_requires_existing_implementation
 ```
 
-**Expected RED reason:** before this task, the S1 entry has no implementation
-path or conformance case references. This task is not allowed to use a green
-Rust test alone as a lifecycle promotion.
+**Expected RED reason:** the probe deliberately presents an `implemented`
+candidate with no implementation path and the validator must reject it. This
+is a lifecycle RED guard, not a claim that the current valid `specified`
+registry is invalid. A green implementation test alone never promotes the
+lifecycle.
 
 **Implementation scope:**
 
-1. set `spec_path` to this S1 specification while preserving Foundation V2 and
+1. set `spec_path` to this turn-structure specification while preserving Foundation V2 and
    ADR authority references;
-2. add exact Rust implementation paths only after Task 4–9 evidence and set
+2. add exact Rust implementation paths only after Task 4–10 evidence and set
    lifecycle to `implemented`;
-3. add exact S1 conformance case IDs only after Task 10 evidence and set
+3. add exact turn-structure conformance case IDs only after Task 11 evidence and set
    lifecycle to `covered`;
 4. leave all other 10 Foundation capabilities `specified` with empty evidence;
 5. do not add benchmark/certification/card/deck claims.
@@ -811,15 +839,14 @@ implemented`, then `implemented -> covered`, each with its own evidence.
 **HARD STOP:** if a required evidence class is `NOT_RUN`, `FAIL`, or
 `BLOCKED`, leave lifecycle unchanged and report the missing evidence.
 
-## Task 12 — Documentation, status, and generated-contract closure
+## Task 13 — Documentation, status, and generated-contract closure
 
-**BASE/PARENT:** Task 11 evidence/registry commit
+**BASE/PARENT:** Task 12 evidence/registry commit
 **Purpose:** reconcile status without rewriting historical V4 records or
 claiming more than S1 evidence proves.
 
 **Files allowed:**
 
-- `docs/normative-document-register.v1.json`;
 - `README.md`;
 - `docs/ROADMAP.md`;
 - `python/tests/test_current_status.py`;
@@ -832,15 +859,16 @@ claiming more than S1 evidence proves.
 **RED command:**
 
 ```powershell
-<project-python> scripts/check_documentation.py
-<project-python> scripts/verify_repository.py
+<project-python> scripts/run_python_tests.py --profile smoke
 ```
 
-**Expected RED reason:** the new planning documents are not yet registered or
-current-status tests do not yet describe the final narrow S1 evidence state.
+**Expected RED reason:** after the intended narrow lifecycle/status change,
+the existing current-status assertions still describe the pre-implementation
+state. Document registration is already complete in the planning fix and is
+not a future RED condition.
 
-**Implementation scope:** register the spec and plan as provisional process
-artifacts; preserve the V4 historical wording and name V5 as current; update
+**Implementation scope:** preserve the V4 historical wording and name V5 as
+current; update
 status only to the exact lifecycle/evidence achieved; state that S1 remains
 non-playable and adds no card/deck/format certification. Update generated
 semantic catalog only from `contracts/catalog/semantic-contracts.v1.json`.
@@ -869,9 +897,9 @@ evidence is attached.
 **HARD STOP:** if status prose would need to claim a broader capability than
 the registry and conformance evidence prove, leave the status unchanged.
 
-## Task 13 — Exact-head final verification
+## Task 14 — Exact-head final verification
 
-**BASE/PARENT:** Task 12 documentation/status commit
+**BASE/PARENT:** Task 13 documentation/status commit
 **Purpose:** verify the final source head and produce external verification
 evidence without mutating the source being verified.
 
@@ -954,5 +982,16 @@ SPEC_MINOR = 0
 SPEC_NIT = 0
 ```
 
-The current task must stop here. No Task 1–13 implementation task may be
-started in this planning turn.
+Planning-fix review disposition:
+
+```text
+PLANNING_FIX_BASE = 214064b0d5f038bc03aeb672198e119638cfc984
+PLAN_BLOCKER = 0
+PLAN_MAJOR = 0
+PLAN_MINOR = 0
+IMPLEMENTATION_PLAN_READY = YES
+```
+
+The implementation branch must be created from the then-current `master`, not
+from this planning branch's historical ancestor. The current task must stop
+here. No Task 1–14 implementation task may be started in this planning turn.
