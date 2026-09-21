@@ -234,10 +234,11 @@ fn untap_completed_rejects_outside_battlefield() {
 #[test]
 fn untap_completed_rejects_non_active_player() {
     let mut before = state_without_pending_decision();
-    before.zones.objects.get_mut(&GameObjectId(2)).unwrap().tapped = true;
+    before.zones.objects.get_mut(&GameObjectId(1)).unwrap().tapped = true;
+    before.zones.objects.get_mut(&GameObjectId(1)).unwrap().controller = PlayerId(2);
     let mut cursor = crate::semantic_cursor::SemanticValidationCursor::from_state(&before).unwrap();
     assert!(matches!(
-        cursor.apply(&event_untap_completed(vec![GameObjectId(2)]).event),
+        cursor.apply(&event_untap_completed(vec![GameObjectId(1)]).event),
         Err(TransitionViolation::TurnStructure)
     ));
 }

@@ -1,6 +1,6 @@
+use crate::TurnPosition;
 use mtgml_model::{DecisionId, FullStateDigestV4, GameObjectId, PlayerId, StateRevision};
 use mtgml_random::RandomStreamKeyV1;
-use crate::TurnPosition;
 use serde::{Deserialize, Serialize};
 
 use crate::digest::StateDigestError;
