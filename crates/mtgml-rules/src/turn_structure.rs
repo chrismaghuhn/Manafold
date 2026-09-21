@@ -1,4 +1,4 @@
-use mtgml_model::PlayerId;
+use mtgml_model::{PlayerId, ZoneKind};
 use mtgml_state::{
     BeginningStep, CombatStep, EndingStep, EngineState, FormatState, PriorityState, TurnPosition,
 };
@@ -124,6 +124,15 @@ pub fn validate_turn_structure_support(
         return Err(TurnStructureError::StackState);
     }
 
+    if state
+        .zones
+        .locations
+        .values()
+        .any(|location| location.zone == ZoneKind::Stack)
+    {
+        return Err(TurnStructureError::StackState);
+    }
+
     if state.format != FormatState::None {
         return Err(TurnStructureError::FormatState);
     }
@@ -228,10 +237,13 @@ pub fn unsupported_rules_boundary(position: TurnPosition) -> Option<UnsupportedR
 mod tests {
     use super::*;
     use crate::validate_runtime_state;
-    use mtgml_model::{ExecutionProgramV1, GameObjectId, PlayerId, StateRevision};
+    use mtgml_model::{
+        ExecutionProgramV1, GameObjectId, OpaqueObjectId, PlayerId, StateRevision, ZoneKind,
+    };
     use mtgml_random::RootSeed256;
     use mtgml_state::{
         construct_synthetic_engine_state, CombatState, SyntheticResetInputs, SyntheticV4Setup,
+        VisibilityPartition, ZoneLocation, ZonePosition,
     };
 
     fn valid_s1_state() -> EngineState {
@@ -382,6 +394,56 @@ mod tests {
         assert!(matches!(
             validate_turn_structure_support(&state),
             Err(TurnStructureError::StackState)
+        ));
+    }
+
+    #[test]
+    fn support_profile_rejects_live_stack_zone_object() {
+        let mut state = valid_s1_state();
+        assert!(
+            mtgml_state::validate_engine_state(&state).is_ok(),
+            "generic validator must accept the shape before S1 profile rejects it"
+        );
+        assert!(state.zones.stack_records.is_empty());
+        assert!(state.zones.stack_order.is_empty());
+        let stack_location = ZoneLocation {
+            zone: ZoneKind::Stack,
+            player: None,
+            position: ZonePosition::Unordered,
+            visibility: VisibilityPartition::Public,
+            partition: None,
+        };
+        state
+            .zones
+            .locations
+            .insert(GameObjectId(1), stack_location.clone());
+        if let Some(player_knowledge) = state.knowledge.players.get_mut(&PlayerId(7)) {
+            if let Some(record) = player_knowledge.active.get_mut(&OpaqueObjectId(1)) {
+                record.known_location = Some(mtgml_state::KnownLocationFactV2 {
+                    location: stack_location.clone(),
+                    provenance: record.known_location.as_ref().unwrap().provenance,
+                });
+            }
+        }
+        if let Some(player_knowledge) = state.knowledge.players.get_mut(&PlayerId(42)) {
+            if let Some(record) = player_knowledge.active.get_mut(&OpaqueObjectId(1)) {
+                record.known_location = Some(mtgml_state::KnownLocationFactV2 {
+                    location: stack_location.clone(),
+                    provenance: record.known_location.as_ref().unwrap().provenance,
+                });
+            }
+        }
+        let generic_result = mtgml_state::validate_engine_state(&state);
+        assert!(
+            generic_result.is_ok(),
+            "generic validator must still accept after knowledge alignment: {:?}",
+            generic_result
+        );
+        assert!(matches!(
+            validate_runtime_state(ExecutionProgramV1::MagicRules, &state),
+            Err(crate::KernelExecutionError::TurnStructure(
+                TurnStructureError::StackState
+            ))
         ));
     }
 
