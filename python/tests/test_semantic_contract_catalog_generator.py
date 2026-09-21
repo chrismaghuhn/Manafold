@@ -408,6 +408,15 @@ class NegativeEvidenceTests(unittest.TestCase):
         with self.assertRaises(SystemExit, msg="non-null format must be refused"):
             module.assert_production_policy(document)
 
+    def test_non_null_content_rejected(self) -> None:
+        # V5 slice: non-null content dimensions are refused at
+        # the emission boundary (and by production policy).
+        module = load_generator_module()
+        document = json.loads(SOURCE_PATH.read_text(encoding="utf-8"))
+        document["entries"][1]["content_contract_id"] = "b" * 64
+        with self.assertRaises(SystemExit, msg="non-null content must be refused"):
+            module.assert_production_policy(document)
+
 
 class GeneratedModuleTests(unittest.TestCase):
     def test_generated_file_exists_at_expected_path(self) -> None:

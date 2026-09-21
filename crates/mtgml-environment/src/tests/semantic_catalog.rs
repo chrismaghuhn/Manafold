@@ -342,3 +342,48 @@ fn synthetic_not_supported_with_magic_rules() {
         "MagicRules must NOT be supported for SyntheticLegacy",
     );
 }
+
+#[test]
+fn support_matrix_exact_program_contract_pairing() {
+    // ADR 0055 §2.9: supported() is the frozen exact
+    // (program_kind, SemanticContractIdV1) runtime-support predicate.
+    // Known contract does NOT automatically imply support.
+    let catalog = RuntimeSemanticCatalog::production();
+    let syn_id = synthetic_legacy_default_semantic_contract_id();
+    let ts_id = magic_turn_structure_0_1_0_semantic_contract_id();
+    let unknown = SemanticContractIdV1::from_digest_bytes([0u8; 32]);
+
+    // synthetic + SyntheticRulesCompat = true
+    assert!(
+        catalog.supported(&syn_id, ExecutionProgramV1::SyntheticRulesCompat),
+        "SyntheticRulesCompat must be supported for synthetic_legacy_default",
+    );
+
+    // synthetic + MagicRules = false
+    assert!(
+        !catalog.supported(&syn_id, ExecutionProgramV1::MagicRules),
+        "MagicRules must NOT be supported for synthetic_legacy_default",
+    );
+
+    // turn-structure + SyntheticRulesCompat = false
+    assert!(
+        !catalog.supported(&ts_id, ExecutionProgramV1::SyntheticRulesCompat),
+        "SyntheticRulesCompat must NOT be supported for turn-structure contract",
+    );
+
+    // turn-structure + MagicRules = false
+    assert!(
+        !catalog.supported(&ts_id, ExecutionProgramV1::MagicRules),
+        "MagicRules must NOT be supported for turn-structure contract",
+    );
+
+    // unknown + either program = false
+    assert!(
+        !catalog.supported(&unknown, ExecutionProgramV1::SyntheticRulesCompat),
+        "unknown ID must not be supported with SyntheticRulesCompat",
+    );
+    assert!(
+        !catalog.supported(&unknown, ExecutionProgramV1::MagicRules),
+        "unknown ID must not be supported with MagicRules",
+    );
+}
