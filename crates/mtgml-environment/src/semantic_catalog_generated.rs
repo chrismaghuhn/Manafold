@@ -45,3 +45,45 @@ pub fn synthetic_legacy_default_semantic_contract_id() -> SemanticContractIdV1 {
     )
     .expect("generated canonical hex")
 }
+
+// magic_turn_structure_0_1_0
+pub const SEMANTIC_CONTRACT_CATALOG_MAGIC_TURN_STRUCTURE_0_1_0_RULES_CONTRACT_HEX: &str =
+    "92377633765924893ad9ca0102a07cdf2a8730526909b7d7b5e3059ae4487065";
+pub const SEMANTIC_CONTRACT_CATALOG_MAGIC_TURN_STRUCTURE_0_1_0_SEMANTIC_CONTRACT_HEX: &str =
+    "7e8f54f15bd27d16643422f6904a23ea2004cab1098b56f8cd842a2397ff42fe";
+
+pub fn magic_turn_structure_0_1_0_rules_manifest() -> mtgml_model::RulesContractManifestV1 {
+    mtgml_model::RulesContractManifestV1 {
+        rules_authority: mtgml_model::RulesAuthorityV1::ComprehensiveRules {
+            snapshot_id: "wotc-cr-2026-08-07-txt-20260819-sha256-4381ad1b39ab2c05f7d03633a20f711ed37277074d3266dcba5f38cbb527423f".to_owned(),
+        },
+        capability_closure: Some(vec![
+            mtgml_model::CapabilityRequirementV1 {
+                key: "rules/turn-structure".to_owned(),
+                version: "0.1.0".to_owned(),
+            },
+        ]),
+    }
+}
+
+pub fn magic_turn_structure_0_1_0_semantic_manifest() -> mtgml_model::SemanticContractManifestV1 {
+    mtgml_model::SemanticContractManifestV1 {
+        rules_contract_id: magic_turn_structure_0_1_0_rules_contract_id(),
+        format_contract_id: None,
+        content_contract_id: None,
+    }
+}
+
+pub fn magic_turn_structure_0_1_0_rules_contract_id() -> RulesContractIdV1 {
+    RulesContractIdV1::parse(
+        SEMANTIC_CONTRACT_CATALOG_MAGIC_TURN_STRUCTURE_0_1_0_RULES_CONTRACT_HEX,
+    )
+    .expect("generated canonical hex")
+}
+
+pub fn magic_turn_structure_0_1_0_semantic_contract_id() -> SemanticContractIdV1 {
+    SemanticContractIdV1::parse(
+        SEMANTIC_CONTRACT_CATALOG_MAGIC_TURN_STRUCTURE_0_1_0_SEMANTIC_CONTRACT_HEX,
+    )
+    .expect("generated canonical hex")
+}

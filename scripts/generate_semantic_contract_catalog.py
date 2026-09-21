@@ -253,27 +253,62 @@ def render_generated(catalog: dict[str, object] | None = None) -> str:
 
 def assert_production_policy(catalog: dict[str, object]) -> None:
     """PRODUCTION source policy (V5 slice): exactly one synthetic_legacy
-    entry with a null capability closure. Dimension nullity is deliberately
-    NOT checked here — non-null format/content dimensions are refused at the
-    emission boundary (``render_generated``), which the CLI always runs after
-    this validator. This validator owns the entry-count/variant surface."""
+    entry with a null capability closure, plus exactly one exact
+    turn-structure comprehensive_rules entry. The turn-structure entry
+    is the only real Magic contract authorized at this slice; it is
+    known but NOT executable (Task 8 owns Magic runtime activation).
+    The policy remains fail-closed: any deviation from the exact
+    two-entry shape is rejected."""
     entries = catalog["entries"]
-    if len(entries) != 1:
+    if len(entries) != 2:
         raise SystemExit(
-            f"production semantic-contract catalog must contain exactly one entry; "
+            f"production semantic-contract catalog must contain exactly two entries; "
             f"got {len(entries)}"
         )
-    entry = entries[0]
-    if not isinstance(entry, dict):
-        raise SystemExit("catalog entry must be an object")
-    validate_entry_facts(entry)
-    authority = entry["rules_authority"]
-    if not isinstance(authority, dict) or authority.get("variant") != "synthetic_legacy":
-        raise SystemExit(
-            "production semantic-contract catalog allows only synthetic_legacy entries"
-        )
-    if entry["capability_closure"] is not None:
-        raise SystemExit("production synthetic entry must carry a null capability closure")
+    synthetic = None
+    turn_structure = None
+    for entry in entries:
+        if not isinstance(entry, dict):
+            raise SystemExit("catalog entry must be an object")
+        validate_entry_facts(entry)
+        authority = entry["rules_authority"]
+        if not isinstance(authority, dict):
+            raise SystemExit("rules_authority must be an object")
+        if authority.get("variant") == "synthetic_legacy":
+            if synthetic is not None:
+                raise SystemExit("production catalog must contain exactly one synthetic_legacy entry")
+            if set(authority) != {"variant"}:
+                raise SystemExit("synthetic_legacy authority carries no payload fields")
+            if entry["capability_closure"] is not None:
+                raise SystemExit("production synthetic entry must carry a null capability closure")
+            if entry["entry_id"] != "synthetic_legacy_default":
+                raise SystemExit("synthetic entry must use durable entry_id 'synthetic_legacy_default'")
+            if entry["format_contract_id"] is not None or entry["content_contract_id"] is not None:
+                raise SystemExit("synthetic entry must have null format/content dimensions")
+            synthetic = entry
+        elif authority.get("variant") == "comprehensive_rules":
+            if turn_structure is not None:
+                raise SystemExit("production catalog must contain exactly one comprehensive_rules entry")
+            if set(authority) != {"variant", "snapshot_id"}:
+                raise SystemExit("comprehensive_rules authority carries exactly a snapshot_id")
+            if authority["snapshot_id"] != "wotc-cr-2026-08-07-txt-20260819-sha256-4381ad1b39ab2c05f7d03633a20f711ed37277074d3266dcba5f38cbb527423f":
+                raise SystemExit("turn-structure entry must use the exact accepted CR snapshot")
+            closure = entry["capability_closure"]
+            if not isinstance(closure, list) or len(closure) != 1:
+                raise SystemExit("turn-structure entry must carry exactly one capability closure element")
+            if closure[0] != {"key": "rules/turn-structure", "version": "0.1.0"}:
+                raise SystemExit("turn-structure entry must carry exact closure rules/turn-structure@0.1.0")
+            if entry["entry_id"] != "magic_turn_structure_0_1_0":
+                raise SystemExit("turn-structure entry must use durable entry_id 'magic_turn_structure_0_1_0'")
+            if entry["format_contract_id"] is not None or entry["content_contract_id"] is not None:
+                raise SystemExit("turn-structure entry must have null format/content dimensions")
+            turn_structure = entry
+        else:
+            raise SystemExit(f"unknown rules authority variant in production catalog: {authority.get('variant')!r}")
+    if synthetic is None:
+        raise SystemExit("production catalog missing required synthetic_legacy entry")
+    if turn_structure is None:
+        raise SystemExit("production catalog missing required turn-structure comprehensive_rules entry")
 
 
 def generated_bytes(content: str) -> bytes:

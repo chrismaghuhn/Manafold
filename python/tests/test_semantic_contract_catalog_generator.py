@@ -56,12 +56,24 @@ class SourceOfTruthTests(unittest.TestCase):
         self.assertEqual(document["schema_version"], "semantic-contracts-catalog.v1")
         entries = document["entries"]
         self.assertIsInstance(entries, list)
-        self.assertEqual(len(entries), 1, "production catalog must contain exactly one entry")
-        entry = entries[0]
-        self.assertEqual(entry["rules_authority"], {"variant": "synthetic_legacy"})
-        self.assertIsNone(entry["capability_closure"])
-        self.assertIsNone(entry["format_contract_id"])
-        self.assertIsNone(entry["content_contract_id"])
+        self.assertEqual(len(entries), 2, "production catalog must contain exactly two entries")
+        # Entry 0: synthetic_legacy_default
+        syn = entries[0]
+        self.assertEqual(syn["entry_id"], "synthetic_legacy_default")
+        self.assertEqual(syn["rules_authority"], {"variant": "synthetic_legacy"})
+        self.assertIsNone(syn["capability_closure"])
+        self.assertIsNone(syn["format_contract_id"])
+        self.assertIsNone(syn["content_contract_id"])
+        # Entry 1: magic_turn_structure_0_1_0
+        ts = entries[1]
+        self.assertEqual(ts["entry_id"], "magic_turn_structure_0_1_0")
+        self.assertEqual(ts["rules_authority"], {
+            "variant": "comprehensive_rules",
+            "snapshot_id": "wotc-cr-2026-08-07-txt-20260819-sha256-4381ad1b39ab2c05f7d03633a20f711ed37277074d3266dcba5f38cbb527423f",
+        })
+        self.assertEqual(ts["capability_closure"], [{"key": "rules/turn-structure", "version": "0.1.0"}])
+        self.assertIsNone(ts["format_contract_id"])
+        self.assertIsNone(ts["content_contract_id"])
 
     def test_source_contains_no_hand_authored_identity(self) -> None:
         # BLOCKER regression: derived IDs are GENERATED, never hand-authored.
@@ -69,9 +81,9 @@ class SourceOfTruthTests(unittest.TestCase):
         # literal there would be a second authority for derived identity.
         text = SOURCE_PATH.read_text(encoding="utf-8")
         document = json.loads(text)
-        entry = document["entries"][0]
-        self.assertNotIn("rules_contract_id", entry)
-        self.assertNotIn("semantic_contract_id", entry)
+        for entry in document["entries"]:
+            self.assertNotIn("rules_contract_id", entry)
+            self.assertNotIn("semantic_contract_id", entry)
         self.assertNotIn("rules_contract_id", document)
         self.assertNotIn("semantic_contract_id", document)
         self.assertNotIn("19bac684", text, "no hand-maintained digest literal in the source")
@@ -127,7 +139,7 @@ class GeneratorEmitTests(unittest.TestCase):
         if not GENERATOR_PATH.is_file():
             self.fail(f"generator script is absent: {GENERATOR_PATH}")
         text = GENERATOR_PATH.read_text(encoding="utf-8")
-        self.assertNotIn("sha256", text.lower())
+        self.assertNotIn("sha256(", text.lower())
         self.assertNotIn("hashlib", text.lower())
         self.assertNotIn("encode_envelope", text.lower())
         self.assertNotIn("encode_canonical", text.lower())
@@ -181,9 +193,9 @@ class IndependentPythonKatTests(unittest.TestCase):
     generator's own derivation helper, which would make the check
     self-referential."""
 
-    def test_python_kat_recomputes_independently_from_generated_output(self) -> None:
-        document = json.loads(SOURCE_PATH.read_text(encoding="utf-8"))
-        entry = document["entries"][0]
+    def _recompute_entry_ids(self, entry: dict[str, object]) -> tuple[str, str]:
+        """Independently recompute both IDs for a source entry via
+        the Task-2 persistence mirrors — no generator routing."""
         rules_id = calculate_rules_contract_id_v1(
             {
                 "rules_authority": entry["rules_authority"],
@@ -197,29 +209,24 @@ class IndependentPythonKatTests(unittest.TestCase):
                 "content_contract_id": entry["content_contract_id"],
             }
         )
+        return rules_id, semantic_id
+
+    def test_python_kat_recomputes_independently_from_generated_output(self) -> None:
+        document = json.loads(SOURCE_PATH.read_text(encoding="utf-8"))
         generated = GENERATED_PATH.read_text(encoding="utf-8")
         hex_literals = set(re.findall(r'"([0-9a-f]{64})"', generated))
-        self.assertIn(rules_id, hex_literals, "rules ID missing from generated output")
-        self.assertIn(semantic_id, hex_literals, "semantic ID missing from generated output")
+        for entry in document["entries"]:
+            rules_id, semantic_id = self._recompute_entry_ids(entry)
+            self.assertIn(rules_id, hex_literals, f"rules ID missing from generated output for {entry['entry_id']}")
+            self.assertIn(semantic_id, hex_literals, f"semantic ID missing from generated output for {entry['entry_id']}")
 
     def test_derived_ids_match_checked_in_generated_values(self) -> None:
         document = json.loads(SOURCE_PATH.read_text(encoding="utf-8"))
-        entry = document["entries"][0]
-        rules_id = calculate_rules_contract_id_v1(
-            {
-                "rules_authority": entry["rules_authority"],
-                "capability_closure": entry["capability_closure"],
-            }
-        )
-        semantic_id = calculate_semantic_contract_id_v1(
-            {
-                "rules_contract_id": rules_id,
-                "format_contract_id": entry["format_contract_id"],
-                "content_contract_id": entry["content_contract_id"],
-            }
-        )
-        self.assertIn(rules_id, GENERATED_PATH.read_text(encoding="utf-8"))
-        self.assertIn(semantic_id, GENERATED_PATH.read_text(encoding="utf-8"))
+        generated = GENERATED_PATH.read_text(encoding="utf-8")
+        for entry in document["entries"]:
+            rules_id, semantic_id = self._recompute_entry_ids(entry)
+            self.assertIn(rules_id, generated, f"rules ID missing from generated output for {entry['entry_id']}")
+            self.assertIn(semantic_id, generated, f"semantic ID missing from generated output for {entry['entry_id']}")
 
 
 class NegativeEvidenceTests(unittest.TestCase):
@@ -341,6 +348,65 @@ class NegativeEvidenceTests(unittest.TestCase):
         document["entries"][0]["unexpected_key"] = "x"
         with self.assertRaises(SystemExit):
             module.render_generated(document)
+
+    def test_extra_production_entry_rejected(self) -> None:
+        # Production policy accepts exactly 2 entries; a third is refused.
+        module = load_generator_module()
+        document = json.loads(SOURCE_PATH.read_text(encoding="utf-8"))
+        document["entries"].append({
+            "entry_id": "extra_entry",
+            "rules_authority": {"variant": "synthetic_legacy"},
+            "capability_closure": None,
+            "format_contract_id": None,
+            "content_contract_id": None,
+        })
+        with self.assertRaises(SystemExit, msg="extra production entry must be refused"):
+            module.assert_production_policy(document)
+
+    def test_wrong_snapshot_rejected(self) -> None:
+        # Turn-structure entry with wrong snapshot_id must be refused
+        # by production policy.
+        module = load_generator_module()
+        document = json.loads(SOURCE_PATH.read_text(encoding="utf-8"))
+        document["entries"][1] = {
+            "entry_id": "magic_turn_structure_0_1_0",
+            "rules_authority": {
+                "variant": "comprehensive_rules",
+                "snapshot_id": "wotc-cr-2026-08-07-txt-20260819-sha256-wrong-snapshot-0000000000000000000000000000000000000000000000000000",
+            },
+            "capability_closure": [{"key": "rules/turn-structure", "version": "0.1.0"}],
+            "format_contract_id": None,
+            "content_contract_id": None,
+        }
+        with self.assertRaises(SystemExit, msg="wrong snapshot must be refused"):
+            module.assert_production_policy(document)
+
+    def test_wrong_closure_rejected(self) -> None:
+        # Turn-structure entry with wrong closure must be refused
+        # by production policy.
+        module = load_generator_module()
+        document = json.loads(SOURCE_PATH.read_text(encoding="utf-8"))
+        document["entries"][1] = {
+            "entry_id": "magic_turn_structure_0_1_0",
+            "rules_authority": {
+                "variant": "comprehensive_rules",
+                "snapshot_id": "wotc-cr-2026-08-07-txt-20260819-sha256-4381ad1b39ab2c05f7d03633a20f711ed37277074d3266dcba5f38cbb527423f",
+            },
+            "capability_closure": [{"key": "rules/turn-structure", "version": "0.2.0"}],
+            "format_contract_id": None,
+            "content_contract_id": None,
+        }
+        with self.assertRaises(SystemExit, msg="wrong closure must be refused"):
+            module.assert_production_policy(document)
+
+    def test_non_null_format_content_rejected(self) -> None:
+        # V5 slice: non-null format/content dimensions are refused at
+        # the emission boundary (and by production policy).
+        module = load_generator_module()
+        document = json.loads(SOURCE_PATH.read_text(encoding="utf-8"))
+        document["entries"][1]["format_contract_id"] = "a" * 64
+        with self.assertRaises(SystemExit, msg="non-null format must be refused"):
+            module.assert_production_policy(document)
 
 
 class GeneratedModuleTests(unittest.TestCase):

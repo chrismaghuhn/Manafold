@@ -1,13 +1,19 @@
 use crate::semantic_catalog::{CatalogEntry, RuntimeSemanticCatalog};
 use crate::semantic_catalog_generated::{
+    magic_turn_structure_0_1_0_rules_contract_id,
+    magic_turn_structure_0_1_0_rules_manifest,
+    magic_turn_structure_0_1_0_semantic_contract_id,
+    magic_turn_structure_0_1_0_semantic_manifest,
     synthetic_legacy_default_rules_contract_id,
     synthetic_legacy_default_rules_manifest,
     synthetic_legacy_default_semantic_manifest,
+    SEMANTIC_CONTRACT_CATALOG_MAGIC_TURN_STRUCTURE_0_1_0_RULES_CONTRACT_HEX,
+    SEMANTIC_CONTRACT_CATALOG_MAGIC_TURN_STRUCTURE_0_1_0_SEMANTIC_CONTRACT_HEX,
     SEMANTIC_CONTRACT_CATALOG_SYNTHETIC_LEGACY_DEFAULT_RULES_CONTRACT_HEX,
     SEMANTIC_CONTRACT_CATALOG_SYNTHETIC_LEGACY_DEFAULT_SEMANTIC_CONTRACT_HEX,
 };
 use mtgml_model::{
-    CapabilityRequirementV1, RulesAuthorityV1, RulesContractManifestV1,
+    CapabilityRequirementV1, ExecutionProgramV1, RulesAuthorityV1, RulesContractManifestV1,
     SemanticContractIdV1, SemanticContractManifestV1,
 };
 use mtgml_persistence::semantic_contract_digest::{
@@ -71,40 +77,70 @@ fn known_meaning_is_distinct_from_supported_execution() {
 #[test]
 fn production_catalog_contains_exactly_generated_material() {
     let catalog = RuntimeSemanticCatalog::production();
-    assert_eq!(catalog.entry_count(), 1, "exactly one production entry");
+    assert_eq!(catalog.entry_count(), 2, "exactly two production entries");
 
-    let id = synthetic_legacy_default_semantic_contract_id();
-    let entry = catalog.resolve(&id).unwrap();
+    let syn_id = synthetic_legacy_default_semantic_contract_id();
+    let syn_entry = catalog.resolve(&syn_id).unwrap();
+    assert_eq!(syn_entry.semantic_contract_id, syn_id);
+    assert_eq!(syn_entry.manifest.rules_contract_id, synthetic_legacy_default_rules_contract_id());
+    assert_eq!(syn_entry.manifest, synthetic_legacy_default_semantic_manifest());
+    assert_eq!(syn_entry.rules_manifest, synthetic_legacy_default_rules_manifest());
+    assert_eq!(syn_entry.rules_manifest.rules_authority, RulesAuthorityV1::SyntheticLegacy);
+    assert!(syn_entry.rules_manifest.capability_closure.is_none());
+    assert!(syn_entry.manifest.format_contract_id.is_none());
+    assert!(syn_entry.manifest.content_contract_id.is_none());
 
-    // Every field must match the generated Task-3 constants — no hand-copied data.
-    assert_eq!(
-        entry.semantic_contract_id.as_str(),
-        SEMANTIC_CONTRACT_CATALOG_SYNTHETIC_LEGACY_DEFAULT_SEMANTIC_CONTRACT_HEX
-    );
-    assert_eq!(
-        entry.manifest.rules_contract_id.as_str(),
-        SEMANTIC_CONTRACT_CATALOG_SYNTHETIC_LEGACY_DEFAULT_RULES_CONTRACT_HEX
-    );
-    assert_eq!(entry.manifest, synthetic_legacy_default_semantic_manifest());
-    assert_eq!(entry.rules_manifest, synthetic_legacy_default_rules_manifest());
-    assert_eq!(entry.rules_manifest.rules_authority, RulesAuthorityV1::SyntheticLegacy);
-    assert!(entry.rules_manifest.capability_closure.is_none());
-    assert!(entry.manifest.format_contract_id.is_none());
-    assert!(entry.manifest.content_contract_id.is_none());
+    let ts_id = magic_turn_structure_0_1_0_semantic_contract_id();
+    let ts_entry = catalog.resolve(&ts_id).unwrap();
+    assert_eq!(ts_entry.semantic_contract_id, ts_id);
+    assert_eq!(ts_entry.manifest.rules_contract_id, magic_turn_structure_0_1_0_rules_contract_id());
+    assert_eq!(ts_entry.manifest, magic_turn_structure_0_1_0_semantic_manifest());
+    assert_eq!(ts_entry.rules_manifest, magic_turn_structure_0_1_0_rules_manifest());
+    assert!(matches!(ts_entry.rules_manifest.rules_authority, RulesAuthorityV1::ComprehensiveRules { .. }));
+    assert!(ts_entry.rules_manifest.capability_closure.is_some());
+    assert!(ts_entry.manifest.format_contract_id.is_none());
+    assert!(ts_entry.manifest.content_contract_id.is_none());
 }
 
 #[test]
-fn production_catalog_does_not_invent_magic_contract() {
+fn production_catalog_turn_structure_known_but_not_executable() {
     let catalog = RuntimeSemanticCatalog::production();
-    for entry in catalog.entries() {
-        assert!(
-            !matches!(
-                entry.rules_manifest.rules_authority,
-                RulesAuthorityV1::ComprehensiveRules { .. }
-            ),
-            "production catalog must not contain a comprehensive_rules contract"
-        );
-    }
+    let ts_id = magic_turn_structure_0_1_0_semantic_contract_id();
+    let entry = catalog.resolve(&ts_id).expect(
+        "turn-structure contract must resolve in production catalog",
+    );
+
+    // Known: the contract resolves to an immutable manifest.
+    assert!(catalog.resolve(&ts_id).is_some());
+
+    // NOT executable: MagicRules is not supported for this contract.
+    assert!(
+        !catalog.supported(&ts_id, ExecutionProgramV1::MagicRules),
+        "MagicRules must NOT be supported for turn-structure contract at this slice"
+    );
+
+    // The authority is comprehensive_rules with the exact CR snapshot.
+    assert!(matches!(&entry.rules_manifest.rules_authority, RulesAuthorityV1::ComprehensiveRules { snapshot_id } if snapshot_id == "wotc-cr-2026-08-07-txt-20260819-sha256-4381ad1b39ab2c05f7d03633a20f711ed37277074d3266dcba5f38cbb527423f"));
+
+    // Exact one-element capability closure.
+    let closure = entry.rules_manifest.capability_closure.clone().expect("closure must be present");
+    assert_eq!(closure.len(), 1);
+    assert_eq!(closure[0].key, "rules/turn-structure");
+    assert_eq!(closure[0].version, "0.1.0");
+
+    // Null dimensions.
+    assert!(entry.manifest.format_contract_id.is_none());
+    assert!(entry.manifest.content_contract_id.is_none());
+
+    // IDs match generated constants.
+    assert_eq!(
+        entry.semantic_contract_id.as_str(),
+        SEMANTIC_CONTRACT_CATALOG_MAGIC_TURN_STRUCTURE_0_1_0_SEMANTIC_CONTRACT_HEX
+    );
+    assert_eq!(
+        entry.manifest.rules_contract_id.as_str(),
+        SEMANTIC_CONTRACT_CATALOG_MAGIC_TURN_STRUCTURE_0_1_0_RULES_CONTRACT_HEX
+    );
 }
 
 #[test]
@@ -187,7 +223,7 @@ fn program_kernel_construction_error_maps_to_controller_error() {
 }
 
 #[test]
-fn exact_turn_structure_contract_not_yet_in_production_catalog() {
+fn exact_turn_structure_contract_resolves_in_production_catalog() {
     // Step 1: Independently author the exact RulesContractManifestV1
     // for rules/turn-structure@0.1.0 under comprehensive_rules authority.
     let rules_manifest = RulesContractManifestV1 {
@@ -218,14 +254,91 @@ fn exact_turn_structure_contract_not_yet_in_production_catalog() {
     // Step 5: Construct production catalog.
     let catalog = RuntimeSemanticCatalog::production();
 
-    // Step 6: Attempt to resolve the exact turn-structure contract.
-    let result = catalog.resolve(&semantic_contract_id);
-
-    // Step 7: RED — the contract is expected to resolve but the
-    // production catalog does not yet know it. This fails until
-    // S1 implementation adds the turn-structure contract.
-    let entry = result.expect(
+    // Step 6: The exact turn-structure contract MUST resolve.
+    let entry = catalog.resolve(&semantic_contract_id).expect(
         "exact turn-structure contract must resolve in production catalog",
     );
     assert_eq!(entry.semantic_contract_id, semantic_contract_id);
+}
+
+#[test]
+fn wrong_snapshot_rejected() {
+    // Independently author an otherwise-identical contract with a
+    // DIFFERENT CR snapshot. Mechanically derive its semantic ID.
+    let rules_manifest = RulesContractManifestV1 {
+        rules_authority: RulesAuthorityV1::ComprehensiveRules {
+            snapshot_id: "wotc-cr-2026-08-07-txt-20260819-sha256-different-snapshot-value-0000000000000000000000000000000000000000000000000000".to_string(),
+        },
+        capability_closure: Some(vec![CapabilityRequirementV1 {
+            key: "rules/turn-structure".to_string(),
+            version: "0.1.0".to_string(),
+        }]),
+    };
+    let rules_contract_id = calculate_rules_contract_id_v1(&rules_manifest)
+        .expect("wrong-snapshot manifest must be structurally valid");
+    let semantic_manifest = SemanticContractManifestV1 {
+        rules_contract_id,
+        format_contract_id: None,
+        content_contract_id: None,
+    };
+    let wrong_id = calculate_semantic_contract_id_v1(&semantic_manifest)
+        .expect("wrong-snapshot semantic manifest must be valid");
+
+    let catalog = RuntimeSemanticCatalog::production();
+    assert!(
+        catalog.resolve(&wrong_id).is_none(),
+        "wrong snapshot must not resolve",
+    );
+}
+
+#[test]
+fn wrong_closure_rejected() {
+    // Independently author an otherwise-identical contract with a
+    // DIFFERENT capability closure. Mechanically derive its semantic ID.
+    let rules_manifest = RulesContractManifestV1 {
+        rules_authority: RulesAuthorityV1::ComprehensiveRules {
+            snapshot_id: "wotc-cr-2026-08-07-txt-20260819-sha256-4381ad1b39ab2c05f7d03633a20f711ed37277074d3266dcba5f38cbb527423f".to_string(),
+        },
+        capability_closure: Some(vec![CapabilityRequirementV1 {
+            key: "rules/turn-structure".to_string(),
+            version: "0.2.0".to_string(),
+        }]),
+    };
+    let rules_contract_id = calculate_rules_contract_id_v1(&rules_manifest)
+        .expect("wrong-closure manifest must be structurally valid");
+    let semantic_manifest = SemanticContractManifestV1 {
+        rules_contract_id,
+        format_contract_id: None,
+        content_contract_id: None,
+    };
+    let wrong_id = calculate_semantic_contract_id_v1(&semantic_manifest)
+        .expect("wrong-closure semantic manifest must be valid");
+
+    let catalog = RuntimeSemanticCatalog::production();
+    assert!(
+        catalog.resolve(&wrong_id).is_none(),
+        "wrong closure must not resolve",
+    );
+}
+
+#[test]
+fn magic_rules_kernel_unsupported() {
+    // Task 3 must NOT activate MagicRules. The kernel construction
+    // path for MagicRules still returns UnsupportedProgram.
+    let result = mtgml_rules::ProgramKernelV1::for_program(ExecutionProgramV1::MagicRules);
+    assert!(
+        matches!(result, Err(mtgml_rules::ProgramKernelConstructionErrorV1::UnsupportedProgram)),
+        "MagicRules kernel construction must still return UnsupportedProgram",
+    );
+}
+
+#[test]
+fn synthetic_not_supported_with_magic_rules() {
+    // Synthetic contract + MagicRules = not supported (authority family mismatch).
+    let catalog = RuntimeSemanticCatalog::production();
+    let syn_id = synthetic_legacy_default_semantic_contract_id();
+    assert!(
+        !catalog.supported(&syn_id, ExecutionProgramV1::MagicRules),
+        "MagicRules must NOT be supported for SyntheticLegacy",
+    );
 }

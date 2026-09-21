@@ -28,7 +28,11 @@ use thiserror::Error;
 use crate::checkpoint::{CheckpointValidationError, EnvironmentCheckpointV5};
 use crate::errors::ControllerError;
 use crate::semantic_catalog_generated::{
-    synthetic_legacy_default_rules_manifest, synthetic_legacy_default_semantic_contract_id,
+    magic_turn_structure_0_1_0_rules_manifest,
+    magic_turn_structure_0_1_0_semantic_contract_id,
+    magic_turn_structure_0_1_0_semantic_manifest,
+    synthetic_legacy_default_rules_manifest,
+    synthetic_legacy_default_semantic_contract_id,
     synthetic_legacy_default_semantic_manifest,
 };
 
@@ -67,11 +71,18 @@ impl RuntimeSemanticCatalog {
     /// every value is a frozen generated constant (spec §10).
     pub fn production() -> Self {
         Self {
-            entries: vec![CatalogEntry {
-                semantic_contract_id: synthetic_legacy_default_semantic_contract_id(),
-                manifest: synthetic_legacy_default_semantic_manifest(),
-                rules_manifest: synthetic_legacy_default_rules_manifest(),
-            }],
+            entries: vec![
+                CatalogEntry {
+                    semantic_contract_id: synthetic_legacy_default_semantic_contract_id(),
+                    manifest: synthetic_legacy_default_semantic_manifest(),
+                    rules_manifest: synthetic_legacy_default_rules_manifest(),
+                },
+                CatalogEntry {
+                    semantic_contract_id: magic_turn_structure_0_1_0_semantic_contract_id(),
+                    manifest: magic_turn_structure_0_1_0_semantic_manifest(),
+                    rules_manifest: magic_turn_structure_0_1_0_rules_manifest(),
+                },
+            ],
         }
     }
 
