@@ -1,10 +1,10 @@
-use mtgml_model::{DecisionId, GameObjectId, PlayerId};
+use mtgml_model::{DecisionId, GameObjectId, PlayerId, ZoneKind};
 use mtgml_random::{RandomStreamCursorV1, RandomStreamKeyV1, RootSeed256};
 use mtgml_state::{
     CombatState, EngineState, FoundationCreatureSource, KnowledgeStateV2, ObjectSnapshot,
     PerspectiveIdentityStateV2, PriorityState, TurnPosition,
 };
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 
 use crate::validation::TransitionViolation;
 
@@ -169,16 +169,23 @@ impl SemanticValidationCursor {
                 self.position = *to;
             }
             AuthoritativeRuleEventKind::UntapCompleted { affected_objects } => {
-                let mut seen = BTreeSet::new();
-                for object_id in affected_objects {
-                    if !seen.insert(object_id) {
+                for window in affected_objects.windows(2) {
+                    if window[0] >= window[1] {
                         return Err(TransitionViolation::TurnStructure);
                     }
+                }
+                for object_id in affected_objects {
                     let current = self
                         .objects
                         .get(&object_id)
                         .ok_or(TransitionViolation::TurnStructure)?;
                     if !current.tapped {
+                        return Err(TransitionViolation::TurnStructure);
+                    }
+                    if current.location.zone != ZoneKind::Battlefield {
+                        return Err(TransitionViolation::TurnStructure);
+                    }
+                    if current.controller != self.active_player {
                         return Err(TransitionViolation::TurnStructure);
                     }
                 }
@@ -190,6 +197,9 @@ impl SemanticValidationCursor {
             }
             AuthoritativeRuleEventKind::ActivePlayerChanged { from, to } => {
                 if self.active_player != *from || from == to {
+                    return Err(TransitionViolation::TurnStructure);
+                }
+                if !self.life.contains_key(to) {
                     return Err(TransitionViolation::TurnStructure);
                 }
                 self.active_player = *to;
