@@ -1,7 +1,8 @@
 use crate::events::AuthoritativeRuleEventKind;
 use mtgml_model::{EpisodeStatus, PlayerId};
-use mtgml_state::PerspectiveIdentityRecordV2;
-use mtgml_state::{validate_engine_state, EngineState};
+use mtgml_state::{
+    validate_engine_state, BeginningStep, EngineState, PerspectiveIdentityRecordV2, TurnPosition,
+};
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 use std::convert::TryFrom;
@@ -119,6 +120,32 @@ fn validate_accepted_progression(
         || before.foundation_sources != after.foundation_sources
     {
         return Err(TransitionViolation::UnexplainedMutation);
+    }
+
+    // Task 6: if this accepted product contains UntapCompleted, enforce the
+    // exact ordinary-untap event shape. UntapCompleted must be the first event
+    // so that the cursor derives its expected set from the before-state, not
+    // from any prior event's mutations.
+    if result.events.iter().any(|event| {
+        matches!(
+            event.event,
+            AuthoritativeRuleEventKind::UntapCompleted { .. }
+        )
+    }) {
+        if result.events.len() != 2
+            || !matches!(
+                &result.events[0].event,
+                AuthoritativeRuleEventKind::UntapCompleted { .. }
+            )
+            || !matches!(
+                &result.events[1].event,
+                AuthoritativeRuleEventKind::TurnPositionChanged { from, to }
+                    if *from == TurnPosition::Beginning { step: BeginningStep::Untap }
+                        && *to == TurnPosition::Beginning { step: BeginningStep::Upkeep }
+            )
+        {
+            return Err(TransitionViolation::TurnStructure);
+        }
     }
     Ok(())
 }

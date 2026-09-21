@@ -1,8 +1,8 @@
 use mtgml_model::{DecisionId, GameObjectId, PlayerId};
 use mtgml_random::{RandomStreamCursorV1, RandomStreamKeyV1, RootSeed256};
 use mtgml_state::{
-    CombatState, EngineState, FoundationCreatureSource, KnowledgeStateV2, ObjectSnapshot,
-    PerspectiveIdentityStateV2, PriorityState, TurnPosition,
+    BeginningStep, CombatState, EngineState, FoundationCreatureSource, KnowledgeStateV2,
+    ObjectSnapshot, PerspectiveIdentityStateV2, PriorityState, TurnPosition,
 };
 use std::collections::BTreeMap;
 
@@ -171,6 +171,14 @@ impl SemanticValidationCursor {
                 self.position = *to;
             }
             AuthoritativeRuleEventKind::UntapCompleted { affected_objects } => {
+                if !matches!(
+                    self.position,
+                    TurnPosition::Beginning {
+                        step: BeginningStep::Untap,
+                    }
+                ) {
+                    return Err(TransitionViolation::TurnStructure);
+                }
                 let expected =
                     derive_ordinary_untap_affected_objects(&self.objects, self.active_player);
                 if *affected_objects != expected {

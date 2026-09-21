@@ -548,3 +548,37 @@ fn magic_turn_structure_untap_narrow_mutation() {
         "ordinary untap must only change revision, rule-event allocator, position, and tapped"
     );
 }
+
+#[test]
+fn magic_turn_structure_untap_exact_delta_audit_and_reapply() {
+    let state = untap_state_with_one_active_tapped();
+    let before = state.clone();
+    let mut kernel = MagicRulesKernel::new();
+    let result = kernel
+        .advance_forced_progress(&state)
+        .expect("ordinary untap must be accepted");
+
+    // Exact audit sequence must match event order.
+    assert_eq!(
+        result.delta.audit,
+        vec![
+            SemanticDeltaOperation::UntapCompleted {
+                affected_objects: vec![GameObjectId(1)],
+            },
+            SemanticDeltaOperation::TurnPositionChanged {
+                from: TurnPosition::Beginning {
+                    step: BeginningStep::Untap,
+                },
+                to: TurnPosition::Beginning {
+                    step: BeginningStep::Upkeep,
+                },
+            },
+        ]
+    );
+
+    // Delta reapplication must reconstruct the exact next state.
+    assert_eq!(
+        result.delta.apply(&before).unwrap(),
+        result.next_state,
+    );
+}

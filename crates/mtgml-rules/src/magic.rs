@@ -55,7 +55,7 @@ impl MagicRulesKernel {
     /// Rules-owned forced-progress shell.
     ///
     /// Validates the S1 supported-state profile, then classifies the current
-    /// temporal position. The Unap position executes ordinary untap and
+    /// temporal position. The Untap position executes ordinary untap and
     /// advances to Upkeep; every other position is classified at its
     /// downstream boundary and returns a typed `Err`. No state mutation
     /// occurs on any rejection path.

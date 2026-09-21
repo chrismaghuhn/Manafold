@@ -249,14 +249,224 @@ fn untap_completed_rejects_non_active_player() {
 #[test]
 fn valid_untap_completed_passes_transition_contract() {
     let mut before = state_without_pending_decision();
-    before.zones.objects.get_mut(&GameObjectId(1)).unwrap().tapped = true;
+    before
+        .zones
+        .objects
+        .get_mut(&GameObjectId(1))
+        .unwrap()
+        .tapped = true;
     let mut after = before.clone();
     after.revision = StateRevision(1);
-    after.zones.objects.get_mut(&GameObjectId(1)).unwrap().tapped = false;
-    after.allocators.next_rule_event_id = mtgml_model::RuleEventId(2);
-    let events = vec![event_untap_completed(vec![GameObjectId(1)])];
+    after
+        .zones
+        .objects
+        .get_mut(&GameObjectId(1))
+        .unwrap()
+        .tapped = false;
+    after.core.position = TurnPosition::Beginning {
+        step: BeginningStep::Upkeep,
+    };
+    after.allocators.next_rule_event_id = RuleEventId(3);
+    let events = vec![
+        AuthoritativeRuleEvent {
+            event_id: RuleEventId(1),
+            state_revision: StateRevision(1),
+            event: AuthoritativeRuleEventKind::UntapCompleted {
+                affected_objects: vec![GameObjectId(1)],
+            },
+        },
+        AuthoritativeRuleEvent {
+            event_id: RuleEventId(2),
+            state_revision: StateRevision(1),
+            event: AuthoritativeRuleEventKind::TurnPositionChanged {
+                from: TurnPosition::Beginning {
+                    step: BeginningStep::Untap,
+                },
+                to: TurnPosition::Beginning {
+                    step: BeginningStep::Upkeep,
+                },
+            },
+        },
+    ];
     let result = accepted_product_for_contract(&before, after, events);
     assert!(validate_transition_contract(&before, &result).is_ok());
+}
+
+// --- Task 6 event-shape enforcement negatives ---
+
+#[test]
+fn untap_contract_rejects_preceding_tap_event_completeness_bypass() {
+    // Exploit regression: a preceding ObjectTapped event should not be
+    // allowed to make an UntapCompleted appear complete by emptying the
+    // cursor's eligibility set before UntapCompleted is validated. The
+    // event-shape check must reject any product whose UntapCompleted is not
+    // the first of exactly two events.
+    let mut before = state_without_pending_decision();
+    before
+        .zones
+        .objects
+        .get_mut(&GameObjectId(1))
+        .unwrap()
+        .tapped = true;
+    let mut after = before.clone();
+    after.revision = StateRevision(1);
+    after
+        .zones
+        .objects
+        .get_mut(&GameObjectId(1))
+        .unwrap()
+        .tapped = false;
+    after.core.position = TurnPosition::Beginning {
+        step: BeginningStep::Upkeep,
+    };
+    after.allocators.next_rule_event_id = RuleEventId(4);
+    let events = vec![
+        AuthoritativeRuleEvent {
+            event_id: RuleEventId(1),
+            state_revision: StateRevision(1),
+            event: AuthoritativeRuleEventKind::ObjectTapped {
+                object: GameObjectId(1),
+                from: true,
+                to: false,
+            },
+        },
+        AuthoritativeRuleEvent {
+            event_id: RuleEventId(2),
+            state_revision: StateRevision(1),
+            event: AuthoritativeRuleEventKind::UntapCompleted {
+                affected_objects: vec![],
+            },
+        },
+        AuthoritativeRuleEvent {
+            event_id: RuleEventId(3),
+            state_revision: StateRevision(1),
+            event: AuthoritativeRuleEventKind::TurnPositionChanged {
+                from: TurnPosition::Beginning {
+                    step: BeginningStep::Untap,
+                },
+                to: TurnPosition::Beginning {
+                    step: BeginningStep::Upkeep,
+                },
+            },
+        },
+    ];
+    let result = accepted_product_for_contract(&before, after, events);
+    let error = validate_transition_contract(&before, &result).unwrap_err();
+    assert!(matches!(error, TransitionViolation::TurnStructure));
+}
+
+#[test]
+fn untap_contract_rejects_untap_completed_not_first() {
+    let mut before = state_without_pending_decision();
+    before
+        .zones
+        .objects
+        .get_mut(&GameObjectId(1))
+        .unwrap()
+        .tapped = true;
+    let mut after = before.clone();
+    after.revision = StateRevision(1);
+    after
+        .zones
+        .objects
+        .get_mut(&GameObjectId(1))
+        .unwrap()
+        .tapped = false;
+    after.core.position = TurnPosition::Beginning {
+        step: BeginningStep::Upkeep,
+    };
+    after.allocators.next_rule_event_id = RuleEventId(3);
+    let events = vec![
+        AuthoritativeRuleEvent {
+            event_id: RuleEventId(1),
+            state_revision: StateRevision(1),
+            event: AuthoritativeRuleEventKind::TurnPositionChanged {
+                from: TurnPosition::Beginning {
+                    step: BeginningStep::Untap,
+                },
+                to: TurnPosition::Beginning {
+                    step: BeginningStep::Upkeep,
+                },
+            },
+        },
+        AuthoritativeRuleEvent {
+            event_id: RuleEventId(2),
+            state_revision: StateRevision(1),
+            event: AuthoritativeRuleEventKind::UntapCompleted {
+                affected_objects: vec![GameObjectId(1)],
+            },
+        },
+    ];
+    let result = accepted_product_for_contract(&before, after, events);
+    assert_contract_rejects_without_mutation(&before, &result);
+}
+
+#[test]
+fn untap_contract_rejects_extra_event_after_position_change() {
+    let mut before = state_without_pending_decision();
+    before
+        .zones
+        .objects
+        .get_mut(&GameObjectId(1))
+        .unwrap()
+        .tapped = true;
+    let mut after = before.clone();
+    after.revision = StateRevision(1);
+    after
+        .zones
+        .objects
+        .get_mut(&GameObjectId(1))
+        .unwrap()
+        .tapped = false;
+    after.core.position = TurnPosition::Beginning {
+        step: BeginningStep::Upkeep,
+    };
+    after.allocators.next_rule_event_id = RuleEventId(4);
+    let events = vec![
+        AuthoritativeRuleEvent {
+            event_id: RuleEventId(1),
+            state_revision: StateRevision(1),
+            event: AuthoritativeRuleEventKind::UntapCompleted {
+                affected_objects: vec![GameObjectId(1)],
+            },
+        },
+        AuthoritativeRuleEvent {
+            event_id: RuleEventId(2),
+            state_revision: StateRevision(1),
+            event: AuthoritativeRuleEventKind::TurnPositionChanged {
+                from: TurnPosition::Beginning {
+                    step: BeginningStep::Untap,
+                },
+                to: TurnPosition::Beginning {
+                    step: BeginningStep::Upkeep,
+                },
+            },
+        },
+        AuthoritativeRuleEvent {
+            event_id: RuleEventId(3),
+            state_revision: StateRevision(1),
+            event: AuthoritativeRuleEventKind::UntapCompleted {
+                affected_objects: vec![],
+            },
+        },
+    ];
+    let result = accepted_product_for_contract(&before, after, events);
+    assert_contract_rejects_without_mutation(&before, &result);
+}
+
+#[test]
+fn untap_completed_rejects_non_untap_cursor_position() {
+    // Defense-in-depth: UntapCompleted is only valid when the cursor is at
+    // Beginning(Untap). A cursor at any other position rejects it.
+    let mut before = state_without_pending_decision();
+    before.core.position = TurnPosition::Beginning {
+        step: BeginningStep::Upkeep,
+    };
+    let mut cursor = crate::semantic_cursor::SemanticValidationCursor::from_state(&before).unwrap();
+    assert!(matches!(
+        cursor.apply(&event_untap_completed(vec![]).event),
+        Err(TransitionViolation::TurnStructure)
+    ));
 }
 
 // --- Final parity rejection cases (cursor-level) ---
@@ -418,7 +628,7 @@ fn untap_contract_rejects_unrelated_field_mutation() {
 
 #[test]
 fn untap_contract_rejects_unrelated_zone_location_mutation() {
-    use mtgml_state::{KnownLocationFactV2, KnowledgeAcquisitionReason, KnowledgeRecordV2};
+    use mtgml_state::{KnownLocationFactV2, KnowledgeAcquisitionReason};
 
     let mut before = state_without_pending_decision();
     before
