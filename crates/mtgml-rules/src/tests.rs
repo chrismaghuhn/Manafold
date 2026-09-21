@@ -199,3 +199,4 @@ include!("tests/determinism.rs");
 include!("tests/batch_e.rs");
 include!("tests/batch_f.rs");
 include!("tests/turn_structure.rs");
+include!("tests/magic_turn_structure.rs");

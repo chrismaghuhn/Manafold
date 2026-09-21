@@ -2,7 +2,7 @@ use mtgml_random::RandomValidationError;
 use mtgml_state::{EngineStateViolation, IdentityAllocationError, StateDigestError};
 use thiserror::Error;
 
-use crate::turn_structure::TurnStructureError;
+use crate::turn_structure::{TurnStructureError, UnsupportedRulesBoundary};
 use crate::TransitionViolation;
 
 #[derive(Debug, Error)]
@@ -29,4 +29,8 @@ pub enum KernelExecutionError {
     UnsupportedStagePath,
     #[error("turn structure validation failed: {0}")]
     TurnStructure(TurnStructureError),
+    #[error("player response is not accepted on this no-choice Magic path")]
+    UnsupportedPlayerResponse,
+    #[error("unsupported rules boundary: {0:?}")]
+    UnsupportedRulesBoundary(UnsupportedRulesBoundary),
 }

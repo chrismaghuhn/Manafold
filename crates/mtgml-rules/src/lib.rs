@@ -5,6 +5,7 @@ mod errors;
 mod events;
 #[cfg(feature = "m2-conformance-fixtures")]
 pub mod fixture_support;
+mod magic;
 mod product;
 mod program_kernel;
 mod semantic_cursor;
