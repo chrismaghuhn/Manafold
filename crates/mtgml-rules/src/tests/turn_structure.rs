@@ -337,7 +337,14 @@ fn untap_contract_rejects_missing_untap_completed_with_tap_substitute() {
         },
     ];
     let result = accepted_product_for_contract(&before, after, events);
-    assert_contract_rejects_without_mutation(&before, &result);
+    let before_snapshot = before.clone();
+    let result_snapshot = result.clone();
+    assert!(matches!(
+        validate_transition_contract(&before, &result),
+        Err(TransitionViolation::TurnStructure)
+    ));
+    assert_eq!(before, before_snapshot);
+    assert_eq!(result, result_snapshot);
 }
 
 #[test]
@@ -362,7 +369,14 @@ fn untap_contract_rejects_missing_empty_untap_completed() {
         },
     }];
     let result = accepted_product_for_contract(&before, after, events);
-    assert_contract_rejects_without_mutation(&before, &result);
+    let before_snapshot = before.clone();
+    let result_snapshot = result.clone();
+    assert!(matches!(
+        validate_transition_contract(&before, &result),
+        Err(TransitionViolation::TurnStructure)
+    ));
+    assert_eq!(before, before_snapshot);
+    assert_eq!(result, result_snapshot);
 }
 
 // --- Task 6 event-shape enforcement negatives ---
