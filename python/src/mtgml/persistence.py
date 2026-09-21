@@ -598,11 +598,15 @@ def calculate_rules_contract_id_v1(manifest: dict[str, object]) -> str:
     """
     _validate_rules_contract_manifest(manifest)
     authority = manifest["rules_authority"]
+    if not isinstance(authority, dict):
+        raise _error("semantic_validation", "rules_authority must be a dict")
+    closure = manifest["capability_closure"]
+    if not isinstance(closure, list) and closure is not None:
+        raise _error("semantic_validation", "capability_closure must be a list or null")
     if authority["variant"] == "synthetic_legacy":
         authority_value: list[PersistenceValue] = ["synthetic_legacy", None]
     else:
         authority_value = ["comprehensive_rules", authority["snapshot_id"]]
-    closure = manifest["capability_closure"]
     closure_value: PersistenceValue = (
         None if closure is None else [[entry["key"], entry["version"]] for entry in closure]
     )

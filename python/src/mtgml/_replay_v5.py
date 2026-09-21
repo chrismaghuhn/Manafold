@@ -33,6 +33,21 @@ REPLAY_MANIFEST_SCHEMA_V5 = "replay-manifest.v5"
 REPLAY_FILE_SCHEMA_V5 = "authoritative-replay.v5"
 REPLAY_STEP_SCHEMA_V5 = "replay-step.v5"
 
+__all__ = [
+    "CHECKPOINT_CODEC_ID_V5",
+    "CHECKPOINT_CODEC_VERSION_V5",
+    "REPLAY_FILE_SCHEMA_V5",
+    "REPLAY_MANIFEST_SCHEMA_V5",
+    "REPLAY_STEP_SCHEMA_V5",
+    "AuthoritativeReplayV5",
+    "ExecutionIdentityV1",
+    "InitialEnvironmentIdentityV5",
+    "ReplayManifestV5",
+    "ReplaySchemaVersionsV5",
+    "ReplayStepV5",
+    "SemanticContractMaterialV5",
+]
+
 _VALID_PROGRAM_KINDS = frozenset({"synthetic_rules_compat", "magic_rules"})
 
 
@@ -372,6 +387,8 @@ class ReplayManifestV5:
                 "semantic.replay_manifest", "initial identity semantic contract id does not match"
             )
         rules_authority = self.semantic_contract.rules_manifest["rules_authority"]
+        if not isinstance(rules_authority, dict):
+            raise WireError("semantic.replay_manifest", "rules_authority must be a dict")
         if rules_authority["variant"] == "comprehensive_rules":
             if rules_authority.get("snapshot_id") != self.rules_snapshot:
                 raise WireError(
