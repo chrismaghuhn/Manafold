@@ -16,8 +16,8 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
             r"\*\*Foundation closure/freeze:\*\* `COMPLETE`",
         )
         self.assertIn(
-            "**Current active work area:** M3 S1 post-authorization repository status sync; "
-            "`rules/turn-structure@0.1.0` is authorized for implementation but has not started",
+            "**Current active work area:** M3 S1 lifecycle/evidence closure; "
+            "the bounded `rules/turn-structure@0.1.0` implementation exists and coverage promotion remains pending",
             readme,
         )
         self.assertNotIn(
@@ -49,15 +49,15 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
         self.assertIn("`b9c5f2be97b8fc1f31d648d58f890de78f0a035c`", readme)
         self.assertNotIn("COMPLETE-CANDIDATE / FREEZE-ELIGIBLE", readme)
         self.assertNotIn("freeze not yet executed or tracked", readme)
-        self.assertIn("**M3.S1:** `AUTHORIZED / NOT_STARTED`", readme)
+        self.assertIn("**M3.S1:** `IMPLEMENTED / COVERAGE PENDING`", readme)
         self.assertIn("`587016574e4e8f9f797a713877f8caf1c5143cfb`", readme)
         self.assertNotIn("SELECTED / AUTHORIZATION-ELIGIBLE / NOT_AUTHORIZED", readme)
-        self.assertIn("**M3 semantic implementation:** `NOT_STARTED`", readme)
+        self.assertIn("**M3 semantic implementation:** `IMPLEMENTED`", readme)
         self.assertIn("**M3 Pre-T0 hardening:** `COMPLETE / ACCEPTED`", readme)
         self.assertIn("ADR 0054 = ACCEPTED", readme)
         self.assertIn("FOUNDATION_V2 = ACCEPTED_HARDENED_M3_SCOPE", readme)
         self.assertIn("**M3 plan status:** `ACCEPTED`", readme)
-        self.assertIn("**Next gate:** `M3_S1_IMPLEMENTATION_SLICE_01`", readme)
+        self.assertIn("**Next gate:** `TASK_12B_IMPLEMENTED_TO_COVERED`", readme)
         self.assertNotIn("M3_S1_AUTHORIZATION_DECISION", readme)
         self.assertNotIn("M3_T0_CLOSURE_STATUS_SYNC_EXACT_HEAD_REVIEW", readme)
         self.assertIn(
@@ -69,7 +69,13 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
             readme,
         )
         self.assertIn("finalized as COMPLETE / FROZEN", readme)
-        self.assertIn("11 Foundation capabilities are `specified` only", readme)
+        self.assertIn(
+            "10 Foundation capabilities are `specified`, 1 is `implemented`, 0 are `covered`, and 0 are `certified`",
+            readme,
+        )
+        self.assertIn("**Real Magic semantics:** bounded M3.S1 turn-structure slice only", readme)
+        self.assertIn("**Playable engine:** no", readme)
+        self.assertIn("**Real card support:** none", readme)
         self.assertNotIn("M3 Pre-T0 plan hardening under Issue #178", readme)
         self.assertNotIn("HARDENED_PLAN_MERGE_AND_EXACT_MASTER_REAUTHORIZATION", readme)
         self.assertNotIn(
@@ -80,7 +86,7 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
         self.assertNotIn("maintainer hardening under Issue #130", readme)
         self.assertNotIn("Batch A5/C1", readme)
         self.assertRegex(readme, r"M2\.5[^\n]*NOT_CLAIMED")
-        self.assertRegex(readme, r"M3\.S1[^\n]*AUTHORIZED / NOT_STARTED")
+        self.assertRegex(readme, r"M3\.S1[^\n]*IMPLEMENTED / COVERAGE PENDING")
         self.assertNotIn("NOT_AUTHORIZED", readme)
         self.assertNotIn("M2 is not complete", readme)
 
@@ -132,8 +138,13 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
         self.assertIn("S1_AUTHORIZATION_ELIGIBLE = YES", roadmap)
         self.assertIn("S1_AUTHORIZED = YES", roadmap)
         self.assertIn("S1_IMPLEMENTATION_AUTHORIZED = YES", roadmap)
-        self.assertIn("S1_STARTED = NO", roadmap)
-        self.assertIn("S1_IMPLEMENTATION_STARTED = NO", roadmap)
+        self.assertIn("S1_STARTED = YES", roadmap)
+        self.assertIn("S1_IMPLEMENTATION_STARTED = YES", roadmap)
+        self.assertIn("S1_TURN_STRUCTURE_LIFECYCLE = implemented", roadmap)
+        self.assertIn("S1_COVERAGE_STATUS = pending / not yet claimed", roadmap)
+        self.assertIn("S1_IMPLEMENTED_CAPABILITY_COUNT = 1", roadmap)
+        self.assertIn("S1_COVERED_CAPABILITY_COUNT = 0", roadmap)
+        self.assertIn("S1_CERTIFIED_CAPABILITY_COUNT = 0", roadmap)
         self.assertIn("AUTHORIZED_NEXT_TASK = M3.S1", roadmap)
         self.assertIn("S1_REVIEW_MINORS = 3 CARRIED", roadmap)
         self.assertIn(
@@ -145,7 +156,7 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
         self.assertIn("S1_PHYSICAL_CARD_IDENTITY_CHANGE_AUTHORIZED = NO", roadmap)
         self.assertNotIn("S1_IMPLEMENTATION = NOT_AUTHORIZED", roadmap)
         self.assertNotIn("NEXT_GATE = M3_S1_AUTHORIZATION_DECISION", roadmap)
-        self.assertIn("NEXT_GATE = M3_S1_IMPLEMENTATION_SLICE_01", roadmap)
+        self.assertIn("NEXT_GATE = TASK_12B_IMPLEMENTED_TO_COVERED", roadmap)
         self.assertNotIn("eligible for a separate authorization decision", roadmap)
         self.assertNotIn("S1 implementation remains NOT_AUTHORIZED", roadmap)
         self.assertIn(
@@ -190,18 +201,18 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
         self.assertIn(
             "M3.P0 semantic-neutral state/persistence identity cut\n"
             "→ M3.T0 thin private conformance facade\n"
-            "→ M3.S1 rules/turn-structure@0.1.0",
+            "→ M3.S1 rules/turn-structure@0.1.0 implemented\n"
+            "→ Task 12B bounded coverage promotion",
             roadmap,
         )
         self.assertIn("M3.P0 semantic-neutral state/persistence identity cut", roadmap)
         self.assertIn("PR #184", roadmap)
         self.assertIn(
-            "M3 has started through semantic-neutral P0 infrastructure and T0",
+            "M3 has started through semantic-neutral P0 infrastructure, T0",
             roadmap,
         )
         self.assertIn(
-            "T0 was separately\nreauthorized under Issue #178 and has completed its\n"
-            "implementation and executed freeze",
+            "T0 was\nreauthorized under Issue #178 and implemented by merged PRs #189 (T0-01),",
             roadmap,
         )
         self.assertIn("Issue #178 finalized T0 as", roadmap)
@@ -220,7 +231,7 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
         self.assertIn("Issue #105", roadmap)
         self.assertNotIn("current active maintainer work area is Issue\n#130", roadmap)
         self.assertIn("Census-driven scope", roadmap)
-        self.assertIn("outside this authoritative engine repository", roadmap)
+        self.assertRegex(roadmap, r"outside this authoritative\s+engine repository")
 
     def test_current_status_does_not_duplicate_a_second_status_file(self) -> None:
         readme = (ROOT / "README.md").read_text(encoding="utf-8")
@@ -243,7 +254,7 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
             self.assertNotIn("CheckpointDigestV4", text)
             self.assertNotIn("calculate_checkpoint_digest_v4", text)
 
-    def test_foundation_registry_is_specified_only(self) -> None:
+    def test_foundation_registry_tracks_bounded_s1_implementation(self) -> None:
         registry = json.loads(
             (ROOT / "cards" / "capabilities" / "registry.json").read_text(encoding="utf-8")
         )
@@ -263,7 +274,22 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
         entries = registry["entries"]
         self.assertEqual({entry["key"] for entry in entries}, expected)
         self.assertEqual(len(entries), 11)
-        for entry in entries:
+        turn_structure = next(
+            entry for entry in entries if entry["key"] == "rules/turn-structure"
+        )
+        other_entries = [entry for entry in entries if entry is not turn_structure]
+
+        self.assertEqual(turn_structure["version"], "0.1.0")
+        self.assertEqual(turn_structure["lifecycle"], "implemented")
+        self.assertTrue(turn_structure["implementation_paths"])
+        self.assertEqual(turn_structure["conformance_cases"], [])
+        self.assertEqual(turn_structure["benchmark_scenarios"], [])
+        self.assertEqual(
+            turn_structure["spec_path"],
+            "docs/superpowers/specs/2026-09-21-m3-s1-turn-structure-design.md",
+        )
+
+        for entry in other_entries:
             with self.subTest(capability=entry["key"]):
                 self.assertEqual(entry["version"], "0.1.0")
                 self.assertEqual(entry["lifecycle"], "specified")
@@ -271,7 +297,7 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
                 self.assertEqual(entry["conformance_cases"], [])
                 self.assertEqual(entry["benchmark_scenarios"], [])
 
-        self.assertEqual(sum(entry["lifecycle"] == "implemented" for entry in entries), 0)
+        self.assertEqual(sum(entry["lifecycle"] == "implemented" for entry in entries), 1)
         self.assertEqual(sum(entry["lifecycle"] == "covered" for entry in entries), 0)
         self.assertEqual(sum(entry["lifecycle"] == "certified" for entry in entries), 0)
         self.assertEqual(
