@@ -1,5 +1,5 @@
 use crate::events::AuthoritativeRuleEventKind;
-use mtgml_model::{EpisodeStatus, PlayerId};
+use mtgml_model::{EpisodeStatus, GameObjectId, PlayerId};
 use mtgml_state::{
     validate_engine_state, BeginningStep, EndingStep, EngineState, PerspectiveIdentityRecordV2,
     TurnPosition,
@@ -189,14 +189,20 @@ fn validate_accepted_progression(
         }
     }
 
-    // Task 6: if this accepted product performs the ordinary untap boundary
-    // (Untap -> Upkeep), enforce the exact ordinary-untap event shape.
-    // UntapCompleted must be the first event so that the cursor derives its
-    // expected set from the before-state, not from any prior event's
-    // mutations. This check is driven by before/after state position, not by
-    // the presence of UntapCompleted alone, so that a product which performs
-    // Untap -> Upkeep but emits a substitute event (e.g. ObjectTapped) is
-    // rejected for missing UntapCompleted.
+    // Task 9: if this accepted product performs the ordinary untap boundary
+    // (Untap -> Upkeep), enforce the exact ordinary-untap event shape with
+    // public tap observations.
+    //
+    // Required order:
+    //   1. UntapCompleted
+    //   2. PerspectiveOccurrence per (perspective ascending, object ascending)
+    //      with ObjectTapped observation, one per affected object × perspective
+    //   3. TurnPositionChanged(Untap -> Upkeep)
+    //
+    // UntapCompleted must be first so the cursor derives its expected set
+    // from the before-state. Every middle event must be a causally bound
+    // ObjectTapped occurrence. No free-floating observation policies are
+    // accepted at this boundary.
     let has_untap = result.events.iter().any(|event| {
         matches!(
             event.event,
@@ -213,19 +219,100 @@ fn validate_accepted_progression(
                 step: BeginningStep::Upkeep,
             };
 
-    if (has_untap || is_ordinary_untap_transition)
-        && (result.events.len() != 2
-            || !matches!(
-                &result.events[0].event,
-                AuthoritativeRuleEventKind::UntapCompleted { .. }
-            )
-            || !matches!(
-                &result.events[1].event,
-                AuthoritativeRuleEventKind::TurnPositionChanged { from, to }
-                    if *from == TurnPosition::Beginning { step: BeginningStep::Untap }
-                        && *to == TurnPosition::Beginning { step: BeginningStep::Upkeep }
-            ))
-    {
+    if is_ordinary_untap_transition {
+        // UntapCompleted must be first.
+        if !matches!(
+            &result.events[0].event,
+            AuthoritativeRuleEventKind::UntapCompleted { .. }
+        ) {
+            return Err(TransitionViolation::TurnStructure);
+        }
+
+        let untap_completed = match &result.events[0].event {
+            AuthoritativeRuleEventKind::UntapCompleted { affected_objects } => affected_objects,
+            _ => unreachable!(),
+        };
+
+        // TurnPositionChanged(Untap -> Upkeep) must be last.
+        if !matches!(
+            &result.events[result.events.len() - 1].event,
+            AuthoritativeRuleEventKind::TurnPositionChanged { from, to }
+                if *from == TurnPosition::Beginning { step: BeginningStep::Untap }
+                    && *to == TurnPosition::Beginning { step: BeginningStep::Upkeep }
+        ) {
+            return Err(TransitionViolation::TurnStructure);
+        }
+
+        let middle_events = &result.events[1..result.events.len() - 1];
+
+        // Every middle event must be a PerspectiveOccurrence with ObjectTapped.
+        let mut seen_pairs: BTreeSet<(PlayerId, GameObjectId)> = BTreeSet::new();
+        let mut prev_perspective: Option<PlayerId> = None;
+        let mut prev_object: Option<GameObjectId> = None;
+
+        for event in middle_events {
+            let lifecycle = match &event.event {
+                AuthoritativeRuleEventKind::PerspectiveOccurrence { lifecycle, .. } => lifecycle,
+                _ => return Err(TransitionViolation::TurnStructure),
+            };
+            let observation = match &event.event {
+                AuthoritativeRuleEventKind::PerspectiveOccurrence { observation, .. } => observation,
+                _ => return Err(TransitionViolation::TurnStructure),
+            };
+
+            let object = match observation {
+                crate::events::PerspectiveObservationPolicyV1::ObjectTapped { object, tapped } => {
+                    // Object must be in UntapCompleted affected set.
+                    if !untap_completed.contains(object) {
+                        return Err(TransitionViolation::TurnStructure);
+                    }
+                    // tapped must be false (untap clears tapped=true to false).
+                    if *tapped {
+                        return Err(TransitionViolation::TurnStructure);
+                    }
+                    *object
+                }
+                _ => return Err(TransitionViolation::TurnStructure),
+            };
+
+            // No duplicate (perspective, object) pair.
+            let pair = (lifecycle.perspective, object);
+            if !seen_pairs.insert(pair) {
+                return Err(TransitionViolation::TurnStructure);
+            }
+
+            // Canonical order: perspective ascending, then object ascending.
+            if let Some(prev_p) = prev_perspective {
+                if lifecycle.perspective < prev_p {
+                    return Err(TransitionViolation::TurnStructure);
+                }
+                if lifecycle.perspective == prev_p {
+                    if let Some(prev_o) = prev_object {
+                        if object < prev_o {
+                            return Err(TransitionViolation::TurnStructure);
+                        }
+                    }
+                }
+            }
+            prev_perspective = Some(lifecycle.perspective);
+            prev_object = Some(object);
+        }
+
+        // Complete set: every (affected_object, perspective) pair must have
+        // exactly one occurrence. No missing, no extra.
+        let expected_count = untap_completed.len() * before.core.players.len();
+        if middle_events.len() != expected_count {
+            return Err(TransitionViolation::TurnStructure);
+        }
+        for object in untap_completed {
+            for player in before.core.players.keys() {
+                if !seen_pairs.contains(&(*player, *object)) {
+                    return Err(TransitionViolation::TurnStructure);
+                }
+            }
+        }
+    } else if has_untap {
+        // UntapCompleted outside an ordinary untap transition is invalid.
         return Err(TransitionViolation::TurnStructure);
     }
 

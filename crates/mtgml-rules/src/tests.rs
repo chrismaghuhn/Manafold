@@ -5,14 +5,17 @@ use mtgml_decision::{
 };
 
 use mtgml_model::{
-    CandidateIdV1, ContinuationId, DecisionId, PlayerDecisionIdV1, PlayerId, StateRevision,
+    CandidateIdV1, ContinuationId, DecisionId, PlayerDecisionIdV1, PlayerId,
+    StateRevision, VisibleSequence,
 };
 
 use mtgml_random::RootSeed256;
 
 use mtgml_state::{
-    construct_synthetic_engine_state, AssemblyStageV2, ContinuationPayloadV2, ContinuationRecordV2,
-    EngineState, PendingDecisionRecordV2, SyntheticResetInputs, SyntheticV4Setup,
+    construct_synthetic_engine_state, AssemblyStageV2, ContinuationPayloadV2,
+    ContinuationRecordV2, EngineState, IdentityMutationV1,
+    PendingDecisionRecordV2, PerspectiveLifecycleMutationV1,
+    PerspectiveLifecycleAuditV1, SyntheticResetInputs, SyntheticV4Setup,
 };
 
 use crate::ProgramKernelV1;

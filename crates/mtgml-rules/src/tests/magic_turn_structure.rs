@@ -1034,7 +1034,7 @@ fn magic_turn_structure_untap_one_active_tapped() {
         "untapped object must have tapped=false"
     );
 
-    assert_eq!(result.events.len(), 2);
+    assert_eq!(result.events.len(), 4);
     assert!(matches!(
         &result.events[0].event,
         AuthoritativeRuleEventKind::UntapCompleted { affected_objects }
@@ -1047,16 +1047,36 @@ fn magic_turn_structure_untap_one_active_tapped() {
     );
     assert!(matches!(
         &result.events[1].event,
+        AuthoritativeRuleEventKind::PerspectiveOccurrence {
+            lifecycle,
+            observation,
+        } if lifecycle.perspective == PlayerId(7)
+            && matches!(observation,
+                PerspectiveObservationPolicyV1::ObjectTapped { object, tapped: false }
+                if *object == GameObjectId(1))
+    ));
+    assert!(matches!(
+        &result.events[2].event,
+        AuthoritativeRuleEventKind::PerspectiveOccurrence {
+            lifecycle,
+            observation,
+        } if lifecycle.perspective == PlayerId(42)
+            && matches!(observation,
+                PerspectiveObservationPolicyV1::ObjectTapped { object, tapped: false }
+                if *object == GameObjectId(1))
+    ));
+    assert!(matches!(
+        &result.events[3].event,
         AuthoritativeRuleEventKind::TurnPositionChanged { from, to }
         if *from == TurnPosition::Beginning { step: BeginningStep::Untap }
         && *to == TurnPosition::Beginning { step: BeginningStep::Upkeep }
     ));
     assert_eq!(
-        result.events[1].event_id,
-        RuleEventId(before.allocators.next_rule_event_id.0 + 1),
+        result.events[3].event_id,
+        RuleEventId(before.allocators.next_rule_event_id.0 + 3),
     );
     assert_eq!(
-        result.events[1].state_revision,
+        result.events[3].state_revision,
         result.next_state.revision,
     );
 
@@ -1188,7 +1208,7 @@ fn magic_turn_structure_untap_narrow_mutation() {
     let mut expected_after = state.clone();
     expected_after.revision = StateRevision(state.revision.0 + 1);
     expected_after.allocators.next_rule_event_id =
-        RuleEventId(state.allocators.next_rule_event_id.0 + 2);
+        RuleEventId(state.allocators.next_rule_event_id.0 + 4);
     expected_after.core.position = TurnPosition::Beginning {
         step: BeginningStep::Upkeep,
     };
@@ -1198,10 +1218,15 @@ fn magic_turn_structure_untap_narrow_mutation() {
         .get_mut(&GameObjectId(1))
         .unwrap()
         .tapped = false;
+    for knowledge in expected_after.knowledge.players.values_mut() {
+        knowledge.next_visible_sequence = VisibleSequence(
+            knowledge.next_visible_sequence.0 + 1,
+        );
+    }
 
     assert_eq!(
         result.next_state, expected_after,
-        "ordinary untap must only change revision, rule-event allocator, position, and tapped"
+        "ordinary untap must only change revision, rule-event allocator, position, tapped, and visible sequence"
     );
 }
 
@@ -1220,6 +1245,26 @@ fn magic_turn_structure_untap_exact_delta_audit_and_reapply() {
         vec![
             SemanticDeltaOperation::UntapCompleted {
                 affected_objects: vec![GameObjectId(1)],
+            },
+            SemanticDeltaOperation::PerspectiveLifecycle {
+                lifecycle: PerspectiveLifecycleAuditV1 {
+                    perspective: PlayerId(7),
+                    sequence: VisibleSequence(1),
+                    mutation: PerspectiveLifecycleMutationV1 {
+                        identity: IdentityMutationV1::None,
+                        knowledge: None,
+                    },
+                },
+            },
+            SemanticDeltaOperation::PerspectiveLifecycle {
+                lifecycle: PerspectiveLifecycleAuditV1 {
+                    perspective: PlayerId(42),
+                    sequence: VisibleSequence(1),
+                    mutation: PerspectiveLifecycleMutationV1 {
+                        identity: IdentityMutationV1::None,
+                        knowledge: None,
+                    },
+                },
             },
             SemanticDeltaOperation::TurnPositionChanged {
                 from: TurnPosition::Beginning {

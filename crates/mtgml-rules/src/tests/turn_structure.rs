@@ -266,7 +266,12 @@ fn valid_untap_completed_passes_transition_contract() {
     after.core.position = TurnPosition::Beginning {
         step: BeginningStep::Upkeep,
     };
-    after.allocators.next_rule_event_id = RuleEventId(3);
+    after.allocators.next_rule_event_id = RuleEventId(5);
+    for knowledge in after.knowledge.players.values_mut() {
+        knowledge.next_visible_sequence = mtgml_model::VisibleSequence(
+            knowledge.next_visible_sequence.0 + 1,
+        );
+    }
     let events = vec![
         AuthoritativeRuleEvent {
             event_id: RuleEventId(1),
@@ -277,6 +282,36 @@ fn valid_untap_completed_passes_transition_contract() {
         },
         AuthoritativeRuleEvent {
             event_id: RuleEventId(2),
+            state_revision: StateRevision(1),
+            event: AuthoritativeRuleEventKind::PerspectiveOccurrence {
+                lifecycle: PerspectiveLifecycleAuditV1 {
+                    perspective: PlayerId(1),
+                    sequence: mtgml_model::VisibleSequence(1),
+                    mutation: PerspectiveLifecycleMutationV1::default(),
+                },
+                observation: PerspectiveObservationPolicyV1::ObjectTapped {
+                    object: GameObjectId(1),
+                    tapped: false,
+                },
+            },
+        },
+        AuthoritativeRuleEvent {
+            event_id: RuleEventId(3),
+            state_revision: StateRevision(1),
+            event: AuthoritativeRuleEventKind::PerspectiveOccurrence {
+                lifecycle: PerspectiveLifecycleAuditV1 {
+                    perspective: PlayerId(2),
+                    sequence: mtgml_model::VisibleSequence(1),
+                    mutation: PerspectiveLifecycleMutationV1::default(),
+                },
+                observation: PerspectiveObservationPolicyV1::ObjectTapped {
+                    object: GameObjectId(1),
+                    tapped: false,
+                },
+            },
+        },
+        AuthoritativeRuleEvent {
+            event_id: RuleEventId(4),
             state_revision: StateRevision(1),
             event: AuthoritativeRuleEventKind::TurnPositionChanged {
                 from: TurnPosition::Beginning {

@@ -12,12 +12,20 @@
 //! checkpoint admitted under Contract A cannot execute Contract B behavior
 //! merely because the same `MagicRulesKernel` type later gains more capabilities.
 
+use std::collections::BTreeMap;
+
 use mtgml_decision::DecisionResponseV2;
-use mtgml_model::{PlayerId, RuleEventId, StateRevision};
-use mtgml_state::{validate_engine_state, BeginningStep, EndingStep, EngineState, TurnPosition};
+use mtgml_model::{PlayerId, RuleEventId, StateRevision, VisibleSequence};
+use mtgml_state::{
+    PerspectiveLifecycleAuditV1, PerspectiveLifecycleMutationV1,
+    validate_engine_state, BeginningStep, EndingStep, EngineState, TurnPosition,
+};
 
 use crate::errors::KernelExecutionError;
-use crate::events::{AuthoritativeRuleEvent, AuthoritativeRuleEventKind};
+use crate::events::{
+    AuthoritativeRuleEvent, AuthoritativeRuleEventKind,
+    PerspectiveObservationPolicyV1,
+};
 use crate::product::build_accepted_product;
 use crate::semantic_execution_generated::MagicExecutionProfile;
 #[cfg(test)]
@@ -154,29 +162,55 @@ impl MagicRulesKernel {
                 .ok_or(KernelExecutionError::RevisionOverflow)?,
         );
 
-        let second_event_id = RuleEventId(
-            state
-                .allocators
-                .next_rule_event_id
-                .0
-                .checked_add(1)
-                .ok_or(KernelExecutionError::RuleEventIdOverflow)?,
+        let mut events: Vec<AuthoritativeRuleEvent> = Vec::with_capacity(
+            2 + affected.len() * state.knowledge.players.len(),
         );
 
-        let events = vec![
-            AuthoritativeRuleEvent {
-                event_id: state.allocators.next_rule_event_id,
-                state_revision: next_revision,
-                event: AuthoritativeRuleEventKind::UntapCompleted {
-                    affected_objects: affected.clone(),
-                },
+        events.push(AuthoritativeRuleEvent {
+            event_id: state.allocators.next_rule_event_id,
+            state_revision: next_revision,
+            event: AuthoritativeRuleEventKind::UntapCompleted {
+                affected_objects: affected.clone(),
             },
-            AuthoritativeRuleEvent {
-                event_id: second_event_id,
-                state_revision: next_revision,
-                event: AuthoritativeRuleEventKind::TurnPositionChanged { from, to },
-            },
-        ];
+        });
+
+        let mut occurrence_event_id = state.allocators.next_rule_event_id.0 + 1;
+        let mut occurrence_sequence: BTreeMap<PlayerId, u64> = BTreeMap::new();
+        for (player, knowledge) in &state.knowledge.players {
+            occurrence_sequence.insert(*player, knowledge.next_visible_sequence.0);
+        }
+
+        for player_id in state.knowledge.players.keys().copied().collect::<Vec<_>>() {
+            for object_id in &affected {
+                let sequence = VisibleSequence(
+                    *occurrence_sequence.get(&player_id).unwrap(),
+                );
+                events.push(AuthoritativeRuleEvent {
+                    event_id: RuleEventId(occurrence_event_id),
+                    state_revision: next_revision,
+                    event: AuthoritativeRuleEventKind::PerspectiveOccurrence {
+                        lifecycle: PerspectiveLifecycleAuditV1 {
+                            perspective: player_id,
+                            sequence,
+                            mutation: PerspectiveLifecycleMutationV1::default(),
+                        },
+                        observation: PerspectiveObservationPolicyV1::ObjectTapped {
+                            object: *object_id,
+                            tapped: false,
+                        },
+                    },
+                });
+                occurrence_event_id += 1;
+                *occurrence_sequence.get_mut(&player_id).unwrap() += 1;
+            }
+        }
+
+        let turn_event_id = RuleEventId(occurrence_event_id);
+        events.push(AuthoritativeRuleEvent {
+            event_id: turn_event_id,
+            state_revision: next_revision,
+            event: AuthoritativeRuleEventKind::TurnPositionChanged { from, to },
+        });
 
         let mut next = state.clone();
         next.revision = next_revision;
@@ -187,6 +221,12 @@ impl MagicRulesKernel {
                 if let Some(object) = workspace.zones.objects.get_mut(object_id) {
                     object.tapped = false;
                 }
+            }
+            let advance = affected.len() as u64;
+            for knowledge in workspace.knowledge.players.values_mut() {
+                knowledge.next_visible_sequence = VisibleSequence(
+                    knowledge.next_visible_sequence.0 + advance,
+                );
             }
             Ok(())
         })
