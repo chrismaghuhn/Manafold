@@ -103,7 +103,7 @@ fn production_catalog_contains_exactly_generated_material() {
 }
 
 #[test]
-fn production_catalog_turn_structure_known_but_not_executable() {
+fn production_catalog_turn_structure_known_and_executable() {
     let catalog = RuntimeSemanticCatalog::production();
     let ts_id = magic_turn_structure_0_1_0_semantic_contract_id();
     let entry = catalog.resolve(&ts_id).expect(
@@ -113,10 +113,10 @@ fn production_catalog_turn_structure_known_but_not_executable() {
     // Known: the contract resolves to an immutable manifest.
     assert!(catalog.resolve(&ts_id).is_some());
 
-    // NOT executable: MagicRules is not supported for this contract.
+    // Executable: MagicRules IS supported for this exact contract (Task 8).
     assert!(
-        !catalog.supported(&ts_id, ExecutionProgramV1::MagicRules),
-        "MagicRules must NOT be supported for turn-structure contract at this slice"
+        catalog.supported(&ts_id, ExecutionProgramV1::MagicRules),
+        "MagicRules MUST be supported for turn-structure contract after Task 8",
     );
 
     // The authority is comprehensive_rules with the exact CR snapshot.
@@ -371,10 +371,10 @@ fn support_matrix_exact_program_contract_pairing() {
         "SyntheticRulesCompat must NOT be supported for turn-structure contract",
     );
 
-    // turn-structure + MagicRules = false
+    // turn-structure + MagicRules = true (Task 8: exact admitted MagicRules)
     assert!(
-        !catalog.supported(&ts_id, ExecutionProgramV1::MagicRules),
-        "MagicRules must NOT be supported for turn-structure contract",
+        catalog.supported(&ts_id, ExecutionProgramV1::MagicRules),
+        "MagicRules must be supported for exact turn-structure contract",
     );
 
     // unknown + either program = false
@@ -385,5 +385,117 @@ fn support_matrix_exact_program_contract_pairing() {
     assert!(
         !catalog.supported(&unknown, ExecutionProgramV1::MagicRules),
         "unknown ID must not be supported with MagicRules",
+    );
+}
+
+#[test]
+fn exact_turn_structure_support() {
+    let catalog = RuntimeSemanticCatalog::production();
+    let ts_id = magic_turn_structure_0_1_0_semantic_contract_id();
+
+    // POSITIVE: exact S1 contract + MagicRules = supported
+    assert!(
+        catalog.supported(&ts_id, ExecutionProgramV1::MagicRules),
+        "exact turn-structure contract MUST be supported under MagicRules",
+    );
+
+    // NEGATIVE MATRIX: known does not imply supported
+    let syn_id = synthetic_legacy_default_semantic_contract_id();
+    let unknown = SemanticContractIdV1::from_digest_bytes([0u8; 32]);
+
+    // MagicRules + synthetic semantic ID = false
+    assert!(
+        !catalog.supported(&syn_id, ExecutionProgramV1::MagicRules),
+        "MagicRules must NOT be supported for synthetic legacy",
+    );
+
+    // SyntheticRulesCompat + exact S1 semantic ID = false
+    assert!(
+        !catalog.supported(&ts_id, ExecutionProgramV1::SyntheticRulesCompat),
+        "SyntheticRulesCompat must NOT be supported for turn-structure",
+    );
+
+    // MagicRules + arbitrary known ComprehensiveRules contract = false
+    let arbitrary_cr_rules_manifest = RulesContractManifestV1 {
+        rules_authority: RulesAuthorityV1::ComprehensiveRules {
+            snapshot_id: "wotc-cr-2026-08-07-txt-20260819-sha256-different-snapshot-0000000000000000000000000000000000000000000000000000".to_string(),
+        },
+        capability_closure: Some(vec![CapabilityRequirementV1 {
+            key: "rules/turn-structure".to_string(),
+            version: "0.1.0".to_string(),
+        }]),
+    };
+    let arbitrary_cr_rules_id =
+        calculate_rules_contract_id_v1(&arbitrary_cr_rules_manifest)
+            .expect("arbitrary CR manifest is valid");
+    let arbitrary_cr_semantic_manifest = SemanticContractManifestV1 {
+        rules_contract_id: arbitrary_cr_rules_id,
+        format_contract_id: None,
+        content_contract_id: None,
+    };
+    let arbitrary_cr_semantic_id =
+        calculate_semantic_contract_id_v1(&arbitrary_cr_semantic_manifest)
+            .expect("arbitrary CR semantic manifest is valid");
+    assert!(
+        !catalog.supported(&arbitrary_cr_semantic_id, ExecutionProgramV1::MagicRules),
+        "MagicRules must NOT be supported for arbitrary ComprehensiveRules contract",
+    );
+
+    // unknown semantic ID = false
+    assert!(
+        !catalog.supported(&unknown, ExecutionProgramV1::MagicRules),
+        "unknown ID must not be supported with MagicRules",
+    );
+}
+
+#[test]
+fn exact_turn_structure_manifest_evidence() {
+    let catalog = RuntimeSemanticCatalog::production();
+    let ts_id = magic_turn_structure_0_1_0_semantic_contract_id();
+    let entry = catalog.resolve(&ts_id).expect("S1 contract must resolve");
+
+    // Authority = ComprehensiveRules pinned snapshot.
+    assert!(matches!(
+        &entry.rules_manifest.rules_authority,
+        RulesAuthorityV1::ComprehensiveRules { snapshot_id }
+        if snapshot_id == "wotc-cr-2026-08-07-txt-20260819-sha256-4381ad1b39ab2c05f7d03633a20f711ed37277074d3266dcba5f38cbb527423f"
+    ));
+
+    // Capability closure = exactly [rules/turn-structure@0.1.0].
+    let closure = entry.rules_manifest.capability_closure.clone().expect("closure must be present");
+    assert_eq!(closure.len(), 1);
+    assert_eq!(closure[0].key, "rules/turn-structure");
+    assert_eq!(closure[0].version, "0.1.0");
+
+    // Format = None, Content = None.
+    assert!(entry.manifest.format_contract_id.is_none());
+    assert!(entry.manifest.content_contract_id.is_none());
+
+    // IDs match generated constants.
+    assert_eq!(
+        entry.semantic_contract_id.as_str(),
+        SEMANTIC_CONTRACT_CATALOG_MAGIC_TURN_STRUCTURE_0_1_0_SEMANTIC_CONTRACT_HEX
+    );
+    assert_eq!(
+        entry.manifest.rules_contract_id.as_str(),
+        SEMANTIC_CONTRACT_CATALOG_MAGIC_TURN_STRUCTURE_0_1_0_RULES_CONTRACT_HEX
+    );
+}
+
+#[test]
+fn exact_turn_structure_negative_contract_evidence() {
+    // Synthetic ID + MagicRules: not supported.
+    let catalog = RuntimeSemanticCatalog::production();
+    let syn_id = synthetic_legacy_default_semantic_contract_id();
+    assert!(
+        !catalog.supported(&syn_id, ExecutionProgramV1::MagicRules),
+        "synthetic+MagicRules must not be supported"
+    );
+
+    // S1 ID + SyntheticRulesCompat: not supported.
+    let ts_id = magic_turn_structure_0_1_0_semantic_contract_id();
+    assert!(
+        !catalog.supported(&ts_id, ExecutionProgramV1::SyntheticRulesCompat),
+        "S1+SyntheticRulesCompat must not be supported"
     );
 }

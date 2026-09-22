@@ -1349,3 +1349,47 @@ fn cleanup_ambiguous_hand_ownership_rejects() {
     );
     assert_eq!(state, before, "rejected cleanup must not mutate input");
 }
+
+// === Admitted construction evidence (Task 8) ===
+
+use crate::MagicExecutionProfile;
+use mtgml_model::{ExecutionProgramV1, SemanticContractIdV1};
+
+#[test]
+fn kernel_from_admitted_profile_construction() {
+    let profile = MagicExecutionProfile::new(SemanticContractIdV1::from_digest_bytes([0u8; 32]));
+    let _kernel = MagicRulesKernel::from_admitted_profile(profile);
+}
+
+#[test]
+fn kernel_new_is_test_construction_only() {
+    let _kernel = MagicRulesKernel::new();
+}
+
+#[test]
+fn for_program_magic_rules_still_unsupported() {
+    let result = ProgramKernelV1::for_program(ExecutionProgramV1::MagicRules);
+    assert!(
+        matches!(
+            result,
+            Err(ProgramKernelConstructionErrorV1::UnsupportedProgram)
+        ),
+        "for_program(MagicRules) must still be UnsupportedProgram"
+    );
+}
+
+#[test]
+fn for_admitted_execution_rejects_synthetic_program() {
+    let profile = MagicExecutionProfile::new(SemanticContractIdV1::from_digest_bytes([0u8; 32]));
+    let result = ProgramKernelV1::for_admitted_execution(
+        ExecutionProgramV1::SyntheticRulesCompat,
+        profile,
+    );
+    assert!(
+        matches!(
+            result,
+            Err(ProgramKernelConstructionErrorV1::UnsupportedProgram)
+        ),
+        "for_admitted_execution(SyntheticRulesCompat) must be UnsupportedProgram"
+    );
+}

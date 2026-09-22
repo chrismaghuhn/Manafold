@@ -15,7 +15,7 @@
 //!   the corresponding semantic operation exists.
 
 use mtgml_decision::DecisionResponseV2;
-use mtgml_model::{PlayerId, RuleEventId, StateRevision};
+use mtgml_model::{PlayerId, RuleEventId, SemanticContractIdV1, StateRevision};
 use mtgml_state::{validate_engine_state, BeginningStep, EndingStep, EngineState, TurnPosition};
 
 use crate::errors::KernelExecutionError;
@@ -28,12 +28,64 @@ use crate::turn_structure::{
     TurnStructureSupportProfile, UnsupportedRulesBoundary,
 };
 
+/// Durable, milestone-free profile of what an admitted Magic kernel may
+/// execute.
+///
+/// The profile is derived ONLY from the already-admitted
+/// execution identity / semantic contract. It is not a second contract,
+/// a public registry, or a mutable lookup. Its capability predicates are
+/// exact for the admitted contract: an old checkpoint admitted under
+/// Contract A cannot execute Contract B behavior merely because the
+/// same `MagicRulesKernel` type later gains more capabilities.
+#[derive(Debug, Clone)]
+pub struct MagicExecutionProfile {
+    admitted_contract: SemanticContractIdV1,
+}
+
+impl MagicExecutionProfile {
+    /// Construct the profile from the exact admitted semantic contract ID.
+    /// The caller (V5 admission layer) is responsible for verifying that
+    /// the ID is the exact supported contract before construction.
+    pub fn new(admitted_contract: SemanticContractIdV1) -> Self {
+        Self { admitted_contract }
+    }
+
+    /// The semantic contract this profile authorizes.
+    pub fn admitted_contract(&self) -> &SemanticContractIdV1 {
+        &self.admitted_contract
+    }
+}
+
 /// Durable, milestone-free owner of Magic execution.
 ///
-/// Reachable only from crate-internal tests in this task. `Task 8` owns the
-/// contract-aware constructor that binds this kernel to V5 admission.
+/// Reachable only from crate-internal tests and the V5 admission path
+/// via `ProgramKernelV1::for_admitted_execution`.
 #[allow(dead_code)]
-pub(crate) struct MagicRulesKernel;
+pub struct MagicRulesKernel {
+    profile: MagicExecutionProfile,
+}
+
+impl MagicRulesKernel {
+    /// Construct from an admitted execution profile.
+    ///
+    /// This is the production admission authority for Magic execution.
+    /// The profile MUST carry the exact supported semantic contract ID;
+    /// the V5 admission layer guarantees this before construction.
+    pub(crate) fn from_admitted_profile(profile: MagicExecutionProfile) -> Self {
+        Self { profile }
+    }
+
+    /// Construct a bare shell instance for crate-internal tests only.
+    ///
+    /// This is NOT a production constructor and carries no semantic-admission
+    /// authority. `Task 8` owns admitted construction.
+    #[allow(dead_code)]
+    pub(crate) fn new() -> Self {
+        Self {
+            profile: MagicExecutionProfile::new(SemanticContractIdV1::from_digest_bytes([0u8; 32])),
+        }
+    }
+}
 
 impl RulesKernel for MagicRulesKernel {
     /// Trusted response execution entry point.
@@ -240,13 +292,5 @@ impl MagicRulesKernel {
             workspace.core.position = to;
             Ok(())
         })
-    }
-
-    /// Construct a bare shell instance for crate-internal tests only.
-    ///
-    /// This is NOT a production constructor and carries no semantic-admission
-    /// authority. `Task 8` owns admitted construction.
-    pub(crate) fn new() -> Self {
-        MagicRulesKernel
     }
 }

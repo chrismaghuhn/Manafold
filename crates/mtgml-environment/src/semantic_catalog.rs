@@ -108,13 +108,15 @@ impl RuntimeSemanticCatalog {
     ///
     /// Current slice pairings:
     /// - SyntheticRulesCompat ↔ synthetic_legacy_default
-    /// - MagicRules: none (Task 8 owns activation)
+    /// - MagicRules ↔ exact turn-structure@0.1.0 (exact contract only)
     pub fn supported(&self, id: &SemanticContractIdV1, program: ExecutionProgramV1) -> bool {
         match program {
             ExecutionProgramV1::SyntheticRulesCompat => {
                 *id == synthetic_legacy_default_semantic_contract_id()
             }
-            ExecutionProgramV1::MagicRules => false,
+            ExecutionProgramV1::MagicRules => {
+                *id == magic_turn_structure_0_1_0_semantic_contract_id()
+            }
         }
     }
 
@@ -126,6 +128,7 @@ impl RuntimeSemanticCatalog {
 
     /// Slice of all entries (crate-internal, used by tests).
     #[cfg(test)]
+    #[allow(dead_code)]
     pub(crate) fn entries(&self) -> &[CatalogEntry] {
         &self.entries
     }

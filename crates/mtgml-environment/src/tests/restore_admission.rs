@@ -19,9 +19,9 @@ use mtgml_model::{
 use mtgml_persistence::semantic_contract_digest::{
     calculate_rules_contract_id_v1, calculate_semantic_contract_id_v1,
 };
-use mtgml_state::PendingDecisionRecordV2;
 use mtgml_state::{
-    construct_synthetic_engine_state, EngineState, SyntheticResetInputs, SyntheticV4Setup,
+    construct_synthetic_engine_state, EngineState, PendingDecisionRecordV2, SyntheticResetInputs,
+    SyntheticV4Setup,
 };
 
 // === Helpers ===
@@ -90,17 +90,180 @@ fn synthetic_incompatible_state() -> EngineState {
 fn invalid_checkpoint_rejects_at_structural_validation() {
     let catalog = RuntimeSemanticCatalog::production();
     let mut checkpoint = valid_v5_checkpoint(synthetic_identity());
-    // Corrupt the state digest so validate() rejects it.
-    checkpoint.state_digest = FullStateDigestV4::from_digest_bytes([0xff; 32]);
-    assert_eq!(
-        checkpoint.state_digest,
-        FullStateDigestV4::from_digest_bytes([0xff; 32])
-    );
+    // Corrupt the checkpoint digest so digest recompute (phase 2) rejects.
+    checkpoint.checkpoint_digest = CheckpointDigestV5::from_digest_bytes([0xee; 32]);
     let result = admit_restore(&catalog, &checkpoint);
     assert_eq!(
         result.unwrap_err(),
-        RestoreAdmissionError::CheckpointValidation(CheckpointValidationError::StateDigest)
+        RestoreAdmissionError::CheckpointValidation(CheckpointValidationError::CheckpointDigest)
     );
+}
+
+// === Exact S1 positive and negative restore admission ===
+
+fn magic_identity() -> ExecutionIdentityV1 {
+    ExecutionIdentityV1 {
+        program_kind: ExecutionProgramV1::MagicRules,
+        semantic_contract_id: magic_turn_structure_0_1_0_semantic_contract_id(),
+    }
+}
+
+fn s1_valid_state() -> EngineState {
+    let mut state =
+        construct_synthetic_engine_state(SyntheticResetInputs {
+            players: [PlayerId(1), PlayerId(2)],
+            root_seed: mtgml_random::RootSeed256::from_lower_hex(&"11".repeat(32)).unwrap(),
+            setup: SyntheticV4Setup {
+                position: mtgml_state::TurnPosition::Beginning {
+                    step: mtgml_state::BeginningStep::Untap,
+                },
+                priority: mtgml_state::PriorityState::None,
+                combat: None,
+                foundation_sources: std::collections::BTreeMap::new(),
+            },
+        })
+        .unwrap();
+    state.execution.pending_decision = None;
+    state
+}
+
+fn s1_checkpoint(identity: ExecutionIdentityV1) -> EnvironmentCheckpointV5 {
+    let state = s1_valid_state();
+    let codec = CheckpointCodecIdentity {
+        codec_id: CHECKPOINT_CODEC_ID_V5.to_string(),
+        semantic_version: CHECKPOINT_CODEC_SEMANTIC_VERSION_V5.to_string(),
+    };
+    EnvironmentCheckpointV5::new(
+        state,
+        EpisodeStatus::Running,
+        EnvironmentLimitCounters::default(),
+        codec,
+        identity,
+    )
+    .unwrap()
+}
+
+#[test]
+fn exact_turn_structure_restore_admits() {
+    // Exact S1 contract + valid S1 state + MagicRules identity.
+    let catalog = RuntimeSemanticCatalog::production();
+    let checkpoint = s1_checkpoint(magic_identity());
+    let result = admit_restore(&catalog, &checkpoint);
+    assert!(result.is_ok(), "exact S1 restore must admit");
+}
+
+#[test]
+fn exact_turn_structure_invalid_state_rejected() {
+    // MagicRules + exact S1 + state with pending decision.
+    // Passes generic validate_engine_state but fails
+    // validate_turn_structure_support (pending decision), so
+    // phase 8 rejects before backend construction.
+    let catalog = RuntimeSemanticCatalog::production();
+    let state = synthetic_incompatible_state();
+    let codec = v5_codec();
+    let identity = magic_identity();
+    let checkpoint = EnvironmentCheckpointV5::new(
+        state,
+        EpisodeStatus::Running,
+        EnvironmentLimitCounters::default(),
+        codec,
+        identity,
+    )
+    .unwrap();
+    let result = admit_restore(&catalog, &checkpoint);
+    assert_eq!(
+        result.unwrap_err(),
+        RestoreAdmissionError::ProgramStateIncompatible
+    );
+}
+
+#[test]
+fn exact_turn_structure_synthetic_contract_rejected() {
+    // MagicRules + synthetic contract → ProgramAuthorityMismatch.
+    let catalog = RuntimeSemanticCatalog::production();
+    let identity = ExecutionIdentityV1 {
+        program_kind: ExecutionProgramV1::MagicRules,
+        semantic_contract_id: synthetic_legacy_default_semantic_contract_id(),
+    };
+    let checkpoint = s1_checkpoint(identity);
+    let result = admit_restore(&catalog, &checkpoint);
+    assert_eq!(
+        result.unwrap_err(),
+        RestoreAdmissionError::ProgramAuthorityMismatch
+    );
+}
+
+#[test]
+fn exact_turn_structure_arbitrary_cr_contract_rejected() {
+    // MagicRules + arbitrary ComprehensiveRules contract → SemanticContractUnknown.
+    // The arbitrary contract is NOT in the catalog, so phase 3 (resolve) fails
+    // before phase 7 (runtime support). Preserves frozen error precedence.
+    let catalog = RuntimeSemanticCatalog::production();
+    let cr_rules_manifest = RulesContractManifestV1 {
+        rules_authority: RulesAuthorityV1::ComprehensiveRules {
+            snapshot_id: "wotc-cr-2026-08-07-txt-20260819-sha256-different-snapshot-000000000000000000000000000000000000000000000000".to_string(),
+        },
+        capability_closure: Some(vec![CapabilityRequirementV1 {
+            key: "rules/turn-structure".to_string(),
+            version: "0.1.0".to_string(),
+        }]),
+    };
+    let cr_rules_id = calculate_rules_contract_id_v1(&cr_rules_manifest).unwrap();
+    let cr_manifest = SemanticContractManifestV1 {
+        rules_contract_id: cr_rules_id,
+        format_contract_id: None,
+        content_contract_id: None,
+    };
+    let cr_semantic_id = calculate_semantic_contract_id_v1(&cr_manifest).unwrap();
+
+    let identity = ExecutionIdentityV1 {
+        program_kind: ExecutionProgramV1::MagicRules,
+        semantic_contract_id: cr_semantic_id,
+    };
+    let checkpoint = s1_checkpoint(identity);
+    let result = admit_restore(&catalog, &checkpoint);
+    assert_eq!(
+        result.unwrap_err(),
+        RestoreAdmissionError::SemanticContractUnknown
+    );
+}
+
+#[test]
+fn exact_turn_structure_unknown_contract_rejected() {
+    // MagicRules + unknown contract → SemanticContractUnknown.
+    let catalog = RuntimeSemanticCatalog::production();
+    let identity = ExecutionIdentityV1 {
+        program_kind: ExecutionProgramV1::MagicRules,
+        semantic_contract_id: SemanticContractIdV1::from_digest_bytes([0u8; 32]),
+    };
+    let checkpoint = s1_checkpoint(identity);
+    let result = admit_restore(&catalog, &checkpoint);
+    assert_eq!(
+        result.unwrap_err(),
+        RestoreAdmissionError::SemanticContractUnknown
+    );
+}
+
+#[test]
+fn controller_restore_exact_turn_structure_nonmutation_on_rejection() {
+    // Controller-level nonmutation: rejected restore must not mutate
+    // checkpoint, replay, state, execution identity, status, or limit counters.
+    let controller = TrustedEnvironmentController::new(backend());
+    let before_checkpoint = controller.checkpoint().unwrap();
+    let before_replay = controller.export_replay().unwrap();
+
+    let identity = ExecutionIdentityV1 {
+        program_kind: ExecutionProgramV1::MagicRules,
+        semantic_contract_id: synthetic_legacy_default_semantic_contract_id(),
+    };
+    let checkpoint = valid_v5_checkpoint(identity);
+    let result = controller.restore(checkpoint);
+    assert!(matches!(
+        result,
+        Err(ControllerError::ProgramAuthorityMismatch)
+    ));
+    assert_eq!(controller.checkpoint().unwrap(), before_checkpoint);
+    assert_eq!(controller.export_replay().unwrap(), before_replay);
 }
 
 #[test]
