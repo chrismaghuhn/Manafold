@@ -24,7 +24,8 @@ use crate::product::build_accepted_product;
 use crate::transition::{RulesKernel, TransitionResult};
 use crate::turn_structure::{
     derive_ordinary_untap_affected_objects, temporal_successor, unsupported_rules_boundary,
-    validate_turn_structure_support, TurnStructureError, TurnStructureSupportProfile,
+    validate_quiescent_cleanup_boundary, validate_turn_structure_support, TurnStructureError,
+    TurnStructureSupportProfile, UnsupportedRulesBoundary,
 };
 
 /// Durable, milestone-free owner of Magic execution.
@@ -164,6 +165,10 @@ impl MagicRulesKernel {
         state: &EngineState,
         profile: &TurnStructureSupportProfile,
     ) -> Result<TransitionResult, KernelExecutionError> {
+        validate_quiescent_cleanup_boundary(state, profile.active_player()).map_err(|_| {
+            KernelExecutionError::UnsupportedRulesBoundary(UnsupportedRulesBoundary::CleanupReset)
+        })?;
+
         let old_turn = profile.turn_number();
         let old_active = profile.active_player();
         let new_active = profile.other_player();

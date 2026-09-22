@@ -713,6 +713,167 @@ fn untap_contract_rejects_unrelated_field_mutation() {
     assert_contract_rejects_without_mutation(&before, &result);
 }
 
+// --- Helper: add a single card to a player's Hand zone with proper
+// knowledge/identity bookkeeping (owner-only visibility). ---
+
+fn add_hand_card(state: &mut EngineState, object_id: GameObjectId, owner: PlayerId) {
+    use mtgml_model::{CardDefinitionId, OpaqueObjectId, PhysicalCardId};
+    use mtgml_state::{
+        GameObject, KnownLocationFactV2, KnowledgeAcquisitionReason, KnowledgeRecordV2,
+        VisibilityPartition, ZoneLocation, ZonePosition,
+    };
+
+    let physical_card = PhysicalCardId(object_id.0);
+    let card_definition = CardDefinitionId(object_id.0);
+    let opaque = OpaqueObjectId(object_id.0);
+
+    state.zones.objects.insert(
+        object_id,
+        GameObject {
+            id: object_id,
+            physical_card: Some(physical_card),
+            card_definition,
+            owner,
+            controller: owner,
+            tapped: false,
+            face_down: false,
+        },
+    );
+
+    let location = ZoneLocation {
+        zone: ZoneKind::Hand,
+        player: Some(owner),
+        position: ZonePosition::Unordered,
+        visibility: VisibilityPartition::OwnerOnly,
+        partition: None,
+    };
+    state.zones.locations.insert(object_id, location.clone());
+
+    let next_id = GameObjectId(object_id.0 + 1);
+    if state.allocators.next_object_id.0 < next_id.0 {
+        state.allocators.next_object_id = next_id;
+    }
+
+    let knowledge_record = KnowledgeRecordV2 {
+        opaque_object: opaque,
+        physical_card: Some(physical_card),
+        card_definition: Some(card_definition),
+        known_location: Some(KnownLocationFactV2 {
+            location,
+            provenance: KnowledgeAcquisitionReason::InitialConfiguration,
+        }),
+        acquisition: KnowledgeAcquisitionReason::InitialConfiguration,
+        historical_locations: Vec::new(),
+    };
+
+    state
+        .knowledge
+        .players
+        .get_mut(&owner)
+        .unwrap()
+        .active
+        .insert(opaque, knowledge_record);
+
+    let identity = state
+        .perspective_identities
+        .players
+        .get_mut(&owner)
+        .unwrap();
+    identity.opaque_to_object.insert(opaque, object_id);
+    identity.object_to_opaque.insert(object_id, opaque);
+    if identity.next_opaque_object_id.0 <= opaque.0 {
+        identity.next_opaque_object_id = OpaqueObjectId(opaque.0 + 1);
+    }
+}
+
+fn cleanup_state_at_turn_with_hand(turn: u64, hand_count: usize) -> EngineState {
+    let mut state = state_without_pending_decision();
+    state.core.turn_number = turn;
+    state.core.position = TurnPosition::Ending { step: EndingStep::Cleanup };
+    for i in 3..(3 + hand_count as u64) {
+        add_hand_card(&mut state, GameObjectId(i), PlayerId(1));
+    }
+    state
+}
+
+fn cleanup_state_with_marked_damage() -> EngineState {
+    let mut state = state_without_pending_decision();
+    state.core.position = TurnPosition::Ending { step: EndingStep::Cleanup };
+    state.foundation_sources.insert(
+        GameObjectId(1),
+        mtgml_state::FoundationCreatureSource {
+            source_kind: mtgml_state::FoundationSourceKind::Creature,
+            base_characteristics: mtgml_state::BaseCharacteristics::Simple {
+                power: 3,
+                toughness: 3,
+            },
+            marked_damage: 1,
+            control_history: mtgml_state::ControlHistory::BeforeTurnStart { turn_number: 1 },
+        },
+    );
+    state
+}
+
+fn cleanup_product_for_contract(before: &EngineState) -> TransitionResult {
+    let mut after = before.clone();
+    after.revision = StateRevision(before.revision.0 + 1);
+    after.core.turn_number = before.core.turn_number + 1;
+    after.core.active_player = PlayerId(2);
+    after.core.position = TurnPosition::Beginning { step: BeginningStep::Untap };
+    after.allocators.next_rule_event_id = RuleEventId(before.allocators.next_rule_event_id.0 + 3);
+    let events = vec![
+        AuthoritativeRuleEvent {
+            event_id: RuleEventId(before.allocators.next_rule_event_id.0),
+            state_revision: StateRevision(before.revision.0 + 1),
+            event: AuthoritativeRuleEventKind::TurnNumberChanged {
+                from: before.core.turn_number,
+                to: before.core.turn_number + 1,
+            },
+        },
+        AuthoritativeRuleEvent {
+            event_id: RuleEventId(before.allocators.next_rule_event_id.0 + 1),
+            state_revision: StateRevision(before.revision.0 + 1),
+            event: AuthoritativeRuleEventKind::ActivePlayerChanged {
+                from: before.core.active_player,
+                to: PlayerId(2),
+            },
+        },
+        AuthoritativeRuleEvent {
+            event_id: RuleEventId(before.allocators.next_rule_event_id.0 + 2),
+            state_revision: StateRevision(before.revision.0 + 1),
+            event: AuthoritativeRuleEventKind::TurnPositionChanged {
+                from: TurnPosition::Ending { step: EndingStep::Cleanup },
+                to: TurnPosition::Beginning { step: BeginningStep::Untap },
+            },
+        },
+    ];
+    accepted_product_for_contract(before, after, events)
+}
+
+// --- Task 7 FIX_03 RED: contract-level quiescent Cleanup detection ---
+
+#[test]
+fn cleanup_contract_rejects_nonquiescent_hand_product() {
+    let before = cleanup_state_at_turn_with_hand(1, 8);
+    let result = cleanup_product_for_contract(&before);
+    assert!(
+        matches!(validate_transition_contract(&before, &result), Err(TransitionViolation::TurnStructure)),
+        "non-quiescent Cleanup with active hand > 7 must reject via TurnStructure"
+    );
+    assert_contract_rejects_without_mutation(&before, &result);
+}
+
+#[test]
+fn cleanup_contract_rejects_nonquiescent_damage_product() {
+    let before = cleanup_state_with_marked_damage();
+    let result = cleanup_product_for_contract(&before);
+    assert!(
+        matches!(validate_transition_contract(&before, &result), Err(TransitionViolation::TurnStructure)),
+        "non-quiescent Cleanup with marked damage must reject via TurnStructure"
+    );
+    assert_contract_rejects_without_mutation(&before, &result);
+}
+
 #[test]
 fn untap_contract_rejects_unrelated_zone_location_mutation() {
     use mtgml_state::{KnownLocationFactV2, KnowledgeAcquisitionReason};

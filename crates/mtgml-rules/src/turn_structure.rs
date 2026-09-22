@@ -268,6 +268,81 @@ pub(crate) fn derive_ordinary_untap_affected_objects(
     affected
 }
 
+/// Pinned Comprehensive Rules CR 402.2 ordinary maximum hand size.
+///
+/// "Each player has a maximum hand size, which is normally seven cards."
+/// Within the S1 admitted profile (no format, no effects/triggers/delayed
+/// effects), no modifier that could change this value can be represented,
+/// so 7 is the fixed operative constant. Hand sizes are computed from
+/// authoritative Hand-zone facts; the maximum hand size is a derived rule
+/// constant, not a field of `EngineState`.
+pub(crate) const ORDINARY_MAXIMUM_HAND_SIZE: usize = 7;
+
+/// Failure reason for a non-quiescent Cleanup boundary.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum CleanupBoundaryViolation {
+    /// Active player's Hand-zone cardinality exceeds the ordinary maximum.
+    ActiveHandExceedsLimit,
+    /// A live object carries authoritative `marked_damage` greater than zero.
+    MarkedDamagePresent,
+    /// A Hand-zone location has `player == None`, so ownership is ambiguous.
+    AmbiguousHandOwnership,
+}
+
+/// Shared authoritative quiescent-Cleanup boundary predicate (spec §11.1).
+///
+/// Both `MagicRulesKernel::advance_quiescent_cleanup()` and
+/// `validate_transition_contract()` consume this single rule authority so
+/// that runtime detection and contract validation can never drift.
+///
+/// Returns `Ok(())` when the before-state at `Ending(Cleanup)` requires no
+/// downstream `rules/cleanup-reset` consequence work (no discard, no damage
+/// removal). Returns `Err(CleanupBoundaryViolation)` when the cleanup is
+/// not quiescent.
+///
+/// Checks (in order):
+/// 1. Ambiguous Hand ownership — a `ZoneKind::Hand` location with
+///    `player == None` is not silently ignored; it fails closed.
+/// 2. Active player Hand cardinality — counts locations where
+///    `zone == Hand` and `player == Some(active_player)`. Exceeds 7 → reject.
+/// 3. Marked damage — any `foundation_sources[*].marked_damage > 0` → reject.
+///
+/// The opponent's hand is intentionally NOT checked; the opponent is checked
+/// at their own Cleanup on the next turn.
+pub(crate) fn validate_quiescent_cleanup_boundary(
+    state: &EngineState,
+    active_player: PlayerId,
+) -> Result<(), CleanupBoundaryViolation> {
+    for location in state.zones.locations.values() {
+        if location.zone == ZoneKind::Hand && location.player.is_none() {
+            return Err(CleanupBoundaryViolation::AmbiguousHandOwnership);
+        }
+    }
+
+    let active_hand_count = state
+        .zones
+        .locations
+        .values()
+        .filter(|location| {
+            location.zone == ZoneKind::Hand && location.player == Some(active_player)
+        })
+        .count();
+
+    if active_hand_count > ORDINARY_MAXIMUM_HAND_SIZE {
+        return Err(CleanupBoundaryViolation::ActiveHandExceedsLimit);
+    }
+
+    if state
+        .foundation_sources
+        .values()
+        .any(|source| source.marked_damage > 0)
+    {
+        return Err(CleanupBoundaryViolation::MarkedDamagePresent);
+    }
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

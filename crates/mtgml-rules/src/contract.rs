@@ -10,6 +10,7 @@ use std::convert::TryFrom;
 
 use crate::semantic_cursor::SemanticValidationCursor;
 use crate::transition::TransitionResult;
+use crate::turn_structure::validate_quiescent_cleanup_boundary;
 use crate::validation::TransitionViolation;
 
 fn validate_accepted_progression(
@@ -162,6 +163,10 @@ fn validate_accepted_progression(
         if !turn_ok || !player_ok || !events_ok {
             return Err(TransitionViolation::TurnStructure);
         }
+
+        validate_quiescent_cleanup_boundary(before, before.core.active_player)
+            .map_err(|_| TransitionViolation::TurnStructure)?;
+
         // Exact Cleanup event shape validated: active_player and turn_number
         // changes are expected and proven by events. Continue to blanket
         // check which will pass for all non-position/non-priority fields.

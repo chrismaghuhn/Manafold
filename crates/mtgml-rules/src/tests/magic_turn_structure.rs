@@ -1234,3 +1234,93 @@ fn magic_turn_structure_untap_exact_delta_audit_and_reapply() {
         result.next_state,
     );
 }
+
+// --- Task 7 FIX_03 RED: kernel-level quiescent Cleanup detection ---
+
+fn cleanup_state_with_active_hand(count: usize) -> EngineState {
+    let mut state = s1_state_at(mtgml_state::TurnPosition::Ending {
+        step: mtgml_state::EndingStep::Cleanup,
+    });
+    for i in 3..(3 + count as u64) {
+        add_hand_card(&mut state, GameObjectId(i), PlayerId(7));
+    }
+    state
+}
+
+fn cleanup_state_with_opponent_hand(count: usize) -> EngineState {
+    let mut state = s1_state_at(mtgml_state::TurnPosition::Ending {
+        step: mtgml_state::EndingStep::Cleanup,
+    });
+    for i in 3..(3 + count as u64) {
+        add_hand_card(&mut state, GameObjectId(i), PlayerId(42));
+    }
+    state
+}
+
+#[test]
+fn cleanup_active_hand_at_limit_is_quiescent() {
+    let state = cleanup_state_with_active_hand(7);
+    let before = state.clone();
+    let mut kernel = MagicRulesKernel::new();
+    let result = kernel
+        .advance_forced_progress(&state)
+        .expect("quiescent cleanup with active hand at 7 must be accepted");
+    assert_eq!(state, before, "input state must not be mutated");
+    assert!(result.accepted);
+    assert_eq!(result.next_state.core.active_player, PlayerId(42));
+    assert_eq!(result.next_state.core.turn_number, 2);
+    assert_eq!(
+        result.next_state.core.position,
+        TurnPosition::Beginning { step: BeginningStep::Untap }
+    );
+    assert!(result.next_decision.is_none());
+}
+
+#[test]
+fn cleanup_active_hand_above_limit_rejects() {
+    let state = cleanup_state_with_active_hand(8);
+    let before = state.clone();
+    let mut kernel = MagicRulesKernel::new();
+    let result = kernel.advance_forced_progress(&state);
+    assert!(
+        matches!(
+            result,
+            Err(crate::KernelExecutionError::UnsupportedRulesBoundary(
+                crate::UnsupportedRulesBoundary::CleanupReset
+            ))
+        ),
+        "active hand above 7 at Cleanup must fail closed with CleanupReset"
+    );
+    assert_eq!(state, before, "rejected cleanup must not mutate input");
+}
+
+#[test]
+fn cleanup_opponent_large_hand_does_not_block_active_cleanup() {
+    let state = cleanup_state_with_opponent_hand(8);
+    let before = state.clone();
+    let mut kernel = MagicRulesKernel::new();
+    let result = kernel
+        .advance_forced_progress(&state)
+        .expect("opponent hand above 7 must not block active cleanup");
+    assert_eq!(state, before, "input state must not be mutated");
+    assert!(result.accepted);
+    assert_eq!(result.next_state.core.active_player, PlayerId(42));
+}
+
+#[test]
+fn cleanup_marked_damage_rejects() {
+    let state = cleanup_state_with_marked_damage();
+    let before = state.clone();
+    let mut kernel = MagicRulesKernel::new();
+    let result = kernel.advance_forced_progress(&state);
+    assert!(
+        matches!(
+            result,
+            Err(crate::KernelExecutionError::UnsupportedRulesBoundary(
+                crate::UnsupportedRulesBoundary::CleanupReset
+            ))
+        ),
+        "marked damage at Cleanup must fail closed with CleanupReset"
+    );
+    assert_eq!(state, before, "rejected cleanup must not mutate input");
+}
