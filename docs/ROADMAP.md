@@ -133,10 +133,10 @@ S1_IMPLEMENTATION_STARTED = YES
 AUTHORIZED_NEXT_TASK = M3.S1
 S1_DEPENDENCIES = NONE
 S1_PRIMARY_SEMANTIC_OWNER = turn
-S1_TURN_STRUCTURE_LIFECYCLE = implemented
-S1_COVERAGE_STATUS = pending / not yet claimed
-S1_IMPLEMENTED_CAPABILITY_COUNT = 1
-S1_COVERED_CAPABILITY_COUNT = 0
+S1_TURN_STRUCTURE_LIFECYCLE = covered
+S1_COVERAGE_STATUS = covered / certification not claimed
+S1_IMPLEMENTED_CAPABILITY_COUNT = 0
+S1_COVERED_CAPABILITY_COUNT = 1
 S1_CERTIFIED_CAPABILITY_COUNT = 0
 S1_SUPPORT_PREDICATE_REQUIRES_EXACTLY_TWO_PLAYERS = YES
 DOWNSTREAM_CAPABILITIES_AUTHORIZED = NO
@@ -146,7 +146,7 @@ S1_OBJECT_INCARNATION_CHANGE_AUTHORIZED = NO
 S1_PHYSICAL_CARD_IDENTITY_CHANGE_AUTHORIZED = NO
 S1_ALLOWED_ZONES_OWNED_MUTATION = bounded untap tapped-field mutation only
 S1_REVIEW_MINORS = 3 CARRIED
-NEXT_GATE = TASK_12B_IMPLEMENTED_TO_COVERED
+NEXT_GATE = TASK_13_REMAINING_CLOSURE
 ```
 
 `M2.5 = NOT_CLAIMED / NOT_FROZEN`. Its abandoned census and research
@@ -169,14 +169,14 @@ COMPLETE / FROZEN. Issue #178 recorded an exact-master S1 authorization
 review APPROVE at `587016574e4e8f9f797a713877f8caf1c5143cfb`:
 At that historical authorization point, `rules/turn-structure@0.1.0` was
 authorized for implementation and implementation had not started; the current
-registry now records the bounded capability as `implemented`, with coverage and
-certification still unclaimed. All downstream capabilities remain
+registry now records the bounded capability as `covered`, with certification
+still unclaimed. All downstream capabilities remain
 unauthorized.
 
 M3 has started through semantic-neutral P0 infrastructure, T0
 conformance/proof infrastructure, and the bounded S1 turn-structure
 implementation. P0 is complete/frozen; T0 is COMPLETE / FROZEN; S1 is
-`implemented` with coverage pending and certification unclaimed. Ten other
+`covered` for the bounded turn-structure scope with certification unclaimed. Ten other
 Foundation capabilities remain `specified`; downstream capabilities remain
 unauthorized. Census-driven scope research is outside this authoritative
 engine repository, and external census M3 authorization must not be treated
@@ -195,19 +195,19 @@ reauthorization was recorded separately under Issue #178.
 
 ## M3 — Bounded Semantic Coverage
 
-**Status:** `STARTED — P0 COMPLETE / FROZEN — T0 COMPLETE / FROZEN — S1 IMPLEMENTED / COVERAGE PENDING`;
+**Status:** `STARTED — P0 COMPLETE / FROZEN — T0 COMPLETE / FROZEN — S1 COVERED / NOT CERTIFIED`;
 the sections below describe the
 execution model for the remaining slices. M3.P0 infrastructure is merged and
 frozen; M3.T0 is finalized COMPLETE / FROZEN (Issue #178); M3.S1 is
-`IMPLEMENTED / COVERAGE PENDING` for the bounded turn-structure capability.
+`COVERED / NOT CERTIFIED` for the bounded turn-structure capability.
 
 The planned execution order is:
 
 ```text
 M3.P0 semantic-neutral state/persistence identity cut
 → M3.T0 thin private conformance facade
-→ M3.S1 rules/turn-structure@0.1.0 implemented
-→ Task 12B bounded coverage promotion
+→ M3.S1 rules/turn-structure@0.1.0 covered
+→ Task 13 remaining documentation/status/generated-contract closure
 ```
 
 P0 added no Magic capability and advanced no capability lifecycle; T0 added no
@@ -255,7 +255,7 @@ declared exit:
 
 ```text
 M3.T0  thin private conformance facade over the real Rust kernel
-M3.S1  rules/turn-structure@0.1.0 implemented; coverage pending
+M3.S1  rules/turn-structure@0.1.0 covered; certification not claimed
 M3.S2  next independently justified capability slice
 M3.S3  first meaningful multi-capability interaction closure
 M3.Sn  additional reviewed slices as evidence and scope justify them
