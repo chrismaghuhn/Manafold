@@ -1356,12 +1356,18 @@ fn cleanup_ambiguous_hand_ownership_rejects() {
 
 // === Admitted construction evidence (Task 8) ===
 
-use crate::magic::MagicExecutionProfile;
+use crate::semantic_execution_generated::{
+    magic_turn_structure_0_1_0_semantic_contract_id,
+    test_only_magic_execution_profile,
+};
 use mtgml_model::{ExecutionProgramV1, SemanticContractIdV1};
 
 #[test]
 fn kernel_from_admitted_profile_construction() {
-    let profile = MagicExecutionProfile::new(SemanticContractIdV1::from_digest_bytes([0u8; 32]));
+    let profile = test_only_magic_execution_profile(
+        magic_turn_structure_0_1_0_semantic_contract_id(),
+        true,
+    );
     let _kernel = MagicRulesKernel::from_admitted_profile(profile);
 }
 
@@ -1394,5 +1400,115 @@ fn for_admitted_execution_rejects_synthetic_program() {
             Err(ProgramKernelConstructionErrorV1::UnsupportedProgram)
         ),
         "for_admitted_execution(SyntheticRulesCompat) must be UnsupportedProgram"
+    );
+}
+
+#[test]
+fn for_admitted_execution_rejects_unknown_magic_contract() {
+    let result = ProgramKernelV1::for_admitted_execution(
+        ExecutionProgramV1::MagicRules,
+        SemanticContractIdV1::from_digest_bytes([0u8; 32]),
+    );
+    assert!(
+        matches!(
+            result,
+            Err(ProgramKernelConstructionErrorV1::UnsupportedProgram)
+        ),
+        "for_admitted_execution(MagicRules, unknown_id) must be UnsupportedProgram"
+    );
+}
+
+#[test]
+fn for_program_synthetic_rules_compat_succeeds() {
+    let result = ProgramKernelV1::for_program(ExecutionProgramV1::SyntheticRulesCompat);
+    assert!(
+        result.is_ok(),
+        "for_program(SyntheticRulesCompat) must succeed"
+    );
+}
+
+#[test]
+fn for_admitted_execution_exact_s1_accepts() {
+    let s1_id = crate::semantic_execution_generated::magic_turn_structure_0_1_0_semantic_contract_id();
+    let result = ProgramKernelV1::for_admitted_execution(
+        ExecutionProgramV1::MagicRules,
+        s1_id,
+    );
+    assert!(
+        result.is_ok(),
+        "for_admitted_execution(MagicRules, exact S1 ID) must accept"
+    );
+}
+
+#[test]
+fn for_admitted_execution_rejects_synthetic_semantic_with_magic_rules() {
+    let syn_id = crate::semantic_execution_generated::synthetic_legacy_default_semantic_contract_id();
+    let result = ProgramKernelV1::for_admitted_execution(
+        ExecutionProgramV1::MagicRules,
+        syn_id,
+    );
+    assert!(
+        matches!(
+            result,
+            Err(ProgramKernelConstructionErrorV1::UnsupportedProgram)
+        ),
+        "for_admitted_execution(MagicRules, synthetic ID) must be UnsupportedProgram"
+    );
+}
+
+#[test]
+fn for_admitted_execution_rejects_arbitrary_comprehensive_rules() {
+    // Any contract ID other than the exact S1 contract must be
+    // rejected, including arbitrary ComprehensiveRules contracts.
+    let arbitrary_id = SemanticContractIdV1::from_digest_bytes([1u8; 32]);
+    assert_ne!(
+        arbitrary_id,
+        crate::semantic_execution_generated::magic_turn_structure_0_1_0_semantic_contract_id(),
+        "test fixture must differ from S1 contract"
+    );
+    let result = ProgramKernelV1::for_admitted_execution(
+        ExecutionProgramV1::MagicRules,
+        arbitrary_id,
+    );
+    assert!(
+        matches!(
+            result,
+            Err(ProgramKernelConstructionErrorV1::UnsupportedProgram)
+        ),
+        "for_admitted_execution(MagicRules, arbitrary CR ID) must be UnsupportedProgram"
+    );
+}
+
+#[test]
+fn non_authorizing_profile_cannot_execute_untap() {
+    use crate::semantic_execution_generated::test_only_magic_execution_profile;
+    use mtgml_state::{BeginningStep, TurnPosition};
+
+    let state = s1_state_at(TurnPosition::Beginning {
+        step: BeginningStep::Untap,
+    });
+    let before = state.clone();
+    let profile = test_only_magic_execution_profile(
+        crate::semantic_execution_generated::magic_turn_structure_0_1_0_semantic_contract_id(),
+        false,
+    );
+    let mut kernel = MagicRulesKernel::from_admitted_profile(profile);
+    let result = kernel.advance_forced_progress(&state);
+    assert!(
+        matches!(
+            result,
+            Err(crate::KernelExecutionError::UnsupportedStagePath)
+        ),
+        "non-authorizing profile must reject with UnsupportedStagePath"
+    );
+    assert_eq!(state, before, "rejection must not mutate input");
+    assert_eq!(
+        state.revision, before.revision,
+        "revision must not advance on rejection"
+    );
+    assert_eq!(
+        state.allocators.next_rule_event_id,
+        before.allocators.next_rule_event_id,
+        "rule event allocator must not advance on rejection"
     );
 }

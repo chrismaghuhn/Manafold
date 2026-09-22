@@ -12,11 +12,13 @@
 //! Magic admission: `for_admitted_execution` receives the
 //! semantic contract ID after the V5 catalog admission layer has
 //! confirmed `catalog.supported(id, MagicRules) == true` for the
-//! exact supported contract. The profile is constructed internally
-//! and is never exposed externally. Program kind alone is never
-//! sufficient to construct Magic runtime.
+//! exact supported contract. Admission is validated through
+//! `magic_execution_profile()`: only the exact supported contract
+//! ID maps to a profile. Program kind alone is never sufficient
+//! to construct Magic runtime.
 
-use crate::magic::{MagicExecutionProfile, MagicRulesKernel};
+use crate::magic::MagicRulesKernel;
+use crate::semantic_execution_generated::magic_execution_profile;
 use crate::synthetic::{validate_synthetic_runtime_state, SyntheticM1RulesKernel};
 use crate::turn_structure::validate_turn_structure_support;
 use crate::{KernelExecutionError, RulesKernel, TransitionResult};
@@ -84,16 +86,17 @@ impl ProgramKernelV1 {
     /// `catalog.supported(id, MagicRules) == true`. Program kind alone is
     /// never sufficient to construct Magic runtime.
     ///
-    /// The `MagicExecutionProfile` is constructed internally from the
-    /// admitted contract ID and is never exposed externally, closing the
-    /// construction path: external crates cannot fabricate a profile.
+    /// Admission is validated through `magic_execution_profile()`: only
+    /// the exact supported contract ID maps to a profile. Any other
+    /// ID returns `None` and is rejected with `UnsupportedProgram`.
     pub fn for_admitted_execution(
         program_kind: ExecutionProgramV1,
         semantic_contract_id: SemanticContractIdV1,
     ) -> Result<Self, ProgramKernelConstructionErrorV1> {
         match program_kind {
             ExecutionProgramV1::MagicRules => {
-                let profile = MagicExecutionProfile::new(semantic_contract_id);
+                let profile = magic_execution_profile(semantic_contract_id)
+                    .ok_or(ProgramKernelConstructionErrorV1::UnsupportedProgram)?;
                 Ok(Self {
                     inner: ProgramKernelInner::Magic(MagicRulesKernel::from_admitted_profile(
                         profile,

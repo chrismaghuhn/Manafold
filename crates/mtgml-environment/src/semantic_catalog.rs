@@ -102,35 +102,18 @@ impl RuntimeSemanticCatalog {
     /// SUPPORTED EXECUTION: does THIS runtime support executing this exact
     /// (program_kind, semantic_contract_id) pairing?
     ///
-    /// This is a frozen exact-pairing predicate, NOT "known contract +
-    /// supported program family". `resolve(id) == Some(...)` does NOT
-    /// automatically imply support under any program.
-    ///
-    /// Current slice pairings:
-    /// - SyntheticRulesCompat ↔ synthetic_legacy_default
-    /// - MagicRules ↔ exact turn-structure@0.1.0 (exact contract only)
+    /// Delegates to the shared runtime-support authority
+    /// (`mtgml_rules::execution_contract_supported`) which is generated
+    /// from the same manifest source. No independent pairing logic
+    /// lives here.
     pub fn supported(&self, id: &SemanticContractIdV1, program: ExecutionProgramV1) -> bool {
-        match program {
-            ExecutionProgramV1::SyntheticRulesCompat => {
-                *id == synthetic_legacy_default_semantic_contract_id()
-            }
-            ExecutionProgramV1::MagicRules => {
-                *id == magic_turn_structure_0_1_0_semantic_contract_id()
-            }
-        }
+        mtgml_rules::execution_contract_supported(program, id)
     }
 
     /// Number of entries (crate-internal, used by tests).
     #[cfg(test)]
     pub(crate) fn entry_count(&self) -> usize {
         self.entries.len()
-    }
-
-    /// Slice of all entries (crate-internal, used by tests).
-    #[cfg(test)]
-    #[allow(dead_code)]
-    pub(crate) fn entries(&self) -> &[CatalogEntry] {
-        &self.entries
     }
 }
 

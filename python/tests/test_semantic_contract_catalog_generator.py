@@ -96,8 +96,8 @@ class GeneratorEmitTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as scratch:
             out_a = Path(scratch) / "a.rs"
             out_b = Path(scratch) / "b.rs"
-            module.write_generated(out_a, module.render_generated())
-            module.write_generated(out_b, module.render_generated())
+            module.write_generated(out_a, module.render_catalog_generated())
+            module.write_generated(out_b, module.render_catalog_generated())
             self.assertEqual(out_a.read_bytes(), out_b.read_bytes())
             self.assertIn("@generated", out_a.read_text(encoding="utf-8"))
             self.assertIn("DO NOT EDIT", out_a.read_text(encoding="utf-8"))
@@ -106,24 +106,24 @@ class GeneratorEmitTests(unittest.TestCase):
         module = load_generator_module()
         with tempfile.TemporaryDirectory() as scratch:
             target = Path(scratch) / "generated.rs"
-            module.write_generated(target, module.render_generated())
-            self.assertEqual(module.check_paths([target]), 0)
+            module.write_generated(target, module.render_catalog_generated())
+            self.assertEqual(module.check_catalog_paths([target]), 0)
             target.write_text(
                 target.read_text(encoding="utf-8").replace("synthetic_legacy", "magic_legacy"),
                 encoding="utf-8",
             )
-            self.assertEqual(module.check_paths([target]), 1)
+            self.assertEqual(module.check_catalog_paths([target]), 1)
 
     def test_check_mode_reports_stale_generated_output(self) -> None:
         module = load_generator_module()
         with tempfile.TemporaryDirectory() as scratch:
             target = Path(scratch) / "generated.rs"
-            module.write_generated(target, module.render_generated())
+            module.write_generated(target, module.render_catalog_generated())
             stale = target.read_text(encoding="utf-8").replace(
                 "semantic_contract", "semantic_contract_stale", 1
             )
             target.write_text(stale, encoding="utf-8")
-            self.assertNotEqual(module.check_paths([target]), 0)
+            self.assertNotEqual(module.check_catalog_paths([target]), 0)
 
     def test_cli_check_exit_codes(self) -> None:
         if not GENERATOR_PATH.is_file():
@@ -148,7 +148,7 @@ class GeneratorEmitTests(unittest.TestCase):
         module = load_generator_module()
         with tempfile.TemporaryDirectory() as scratch:
             target = Path(scratch) / "generated.rs"
-            module.write_generated(target, module.render_generated())
+            module.write_generated(target, module.render_catalog_generated())
             text = target.read_text(encoding="utf-8")
         document = json.loads(SOURCE_PATH.read_text(encoding="utf-8"))
         rules_id, semantic_id = module.derive_ids(document["entries"][0])
@@ -173,7 +173,7 @@ class GeneratorEmitTests(unittest.TestCase):
                 }
             ],
         }
-        text = module.render_generated(alternate)
+        text = module.render_catalog_generated(alternate)
         self.assertIn("pub fn scratch_other_name_rules_contract_id()", text)
         self.assertIn("pub fn scratch_other_name_semantic_contract_id()", text)
         self.assertIn("pub fn scratch_other_name_rules_manifest()", text)
@@ -276,8 +276,8 @@ class NegativeEvidenceTests(unittest.TestCase):
             mutated_semantic,
             "a single fact change must alter the semantic ID",
         )
-        baseline_render = module.render_generated(baseline_catalog)
-        mutated_render = module.render_generated(mutated_catalog)
+        baseline_render = module.render_catalog_generated(baseline_catalog)
+        mutated_render = module.render_catalog_generated(mutated_catalog)
         self.assertIn(baseline_rules, baseline_render)
         self.assertIn(mutated_rules, mutated_render)
         self.assertNotIn(mutated_rules, baseline_render)
@@ -285,9 +285,9 @@ class NegativeEvidenceTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as scratch:
             target = Path(scratch) / "generated.rs"
             module.write_generated(target, baseline_render)  # stale after the mutation
-            self.assertEqual(module.check_paths([target], catalog=baseline_catalog), 0)
+            self.assertEqual(module.check_catalog_paths([target], catalog=baseline_catalog), 0)
             self.assertEqual(
-                module.check_paths([target], catalog=mutated_catalog),
+                module.check_catalog_paths([target], catalog=mutated_catalog),
                 1,
                 "--check must fail against stale generated output after the mutation",
             )
@@ -315,7 +315,7 @@ class NegativeEvidenceTests(unittest.TestCase):
                 }
             ],
         }
-        text = module.render_generated(comprehensive)
+        text = module.render_catalog_generated(comprehensive)
         self.assertIn("RulesAuthorityV1::ComprehensiveRules", text)
         self.assertIn("capability_closure: Some(vec![", text)
         self.assertIn("hypothetical_magic_rules_manifest", text)
@@ -340,14 +340,14 @@ class NegativeEvidenceTests(unittest.TestCase):
         # The renderer fails closed at the digest boundary before its own
         # variant dispatch can fire; both boundaries reject the same defect.
         with self.assertRaises((SystemExit, PersistenceError)):
-            module.render_generated(document)
+            module.render_catalog_generated(document)
 
     def test_source_shape_tampering_fails_closed(self) -> None:
         module = load_generator_module()
         document = json.loads(SOURCE_PATH.read_text(encoding="utf-8"))
         document["entries"][0]["unexpected_key"] = "x"
         with self.assertRaises(SystemExit):
-            module.render_generated(document)
+            module.render_catalog_generated(document)
 
     def test_extra_production_entry_rejected(self) -> None:
         # Production policy accepts exactly 2 entries; a third is refused.

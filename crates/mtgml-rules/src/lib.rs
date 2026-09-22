@@ -9,6 +9,7 @@ mod magic;
 mod product;
 mod program_kernel;
 mod semantic_cursor;
+mod semantic_execution_generated;
 mod snapshots;
 mod synthetic;
 mod transition;
@@ -27,6 +28,7 @@ pub use events::{
 pub use program_kernel::{
     validate_runtime_state, ProgramKernelConstructionErrorV1, ProgramKernelV1,
 };
+pub use semantic_execution_generated::execution_contract_supported;
 pub use synthetic::validate_synthetic_runtime_state;
 pub use transition::{RulesKernel, TransitionResult};
 pub use turn_structure::{
