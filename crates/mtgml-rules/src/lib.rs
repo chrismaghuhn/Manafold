@@ -24,7 +24,6 @@ pub use events::{
     AuthoritativeRuleEvent, AuthoritativeRuleEventKind, OccurrencePairingError,
     PerspectiveObservationPolicyV1,
 };
-pub use magic::{MagicExecutionProfile, MagicRulesKernel};
 pub use program_kernel::{
     validate_runtime_state, ProgramKernelConstructionErrorV1, ProgramKernelV1,
 };

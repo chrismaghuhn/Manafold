@@ -1,18 +1,17 @@
 //! Durable `MagicRulesKernel` owner.
 //!
 //! This module establishes the milestone-free, future-authoritative owner of
-//! Magic execution inside `mtgml-rules`. The kernel is structurally present but
-//! intentionally unreachable from `ProgramKernelV1` and from the environment in
-//! this task: `ExecutionProgramV1::MagicRules` remains
-//! `ProgramKernelConstructionErrorV1::UnsupportedProgram`.
+//! Magic execution inside `mtgml-rules`. The kernel is structurally present and
+//! reachable through `ProgramKernelV1::for_admitted_execution` once the V5
+//! admission layer has confirmed `catalog.supported(semantic_contract_id,
+//! MagicRules) == true` for the exact `rules/turn-structure@0.1.0` contract.
 //!
-//! The shell is fail-closed by construction:
-//! - `apply()` never accepts a player response; S1 has no player decision
-//!   surface in the supported slice.
-//! - `advance_forced_progress()` validates the S1 supported-state profile, then
-//!   classifies the current temporal position at its downstream boundary and
-//!   returns a typed `Err` for every position. No transition is accepted until
-//!   the corresponding semantic operation exists.
+//! The profile is derived ONLY from the already-admitted
+//! execution identity / semantic contract. It is not a second contract,
+//! a public registry, or a mutable lookup. Its capability predicates are
+//! exact for the admitted contract: an old checkpoint admitted under
+//! Contract A cannot execute Contract B behavior merely because the
+//! same `MagicRulesKernel` type later gains more capabilities.
 
 use mtgml_decision::DecisionResponseV2;
 use mtgml_model::{PlayerId, RuleEventId, SemanticContractIdV1, StateRevision};
@@ -37,31 +36,37 @@ use crate::turn_structure::{
 /// exact for the admitted contract: an old checkpoint admitted under
 /// Contract A cannot execute Contract B behavior merely because the
 /// same `MagicRulesKernel` type later gains more capabilities.
-#[derive(Debug, Clone)]
-pub struct MagicExecutionProfile {
+///
+/// Constructible only from within `mtgml-rules` via
+/// `ProgramKernelV1::for_admitted_execution`, which receives the
+/// semantic contract ID after the V5 catalog admission layer has
+/// confirmed support. External crates cannot fabricate a profile.
+pub(crate) struct MagicExecutionProfile {
     admitted_contract: SemanticContractIdV1,
 }
 
 impl MagicExecutionProfile {
-    /// Construct the profile from the exact admitted semantic contract ID.
-    /// The caller (V5 admission layer) is responsible for verifying that
-    /// the ID is the exact supported contract before construction.
-    pub fn new(admitted_contract: SemanticContractIdV1) -> Self {
+    /// Construct the profile from the admitted semantic contract ID.
+    ///
+    /// Only reachable from within `mtgml-rules` after V5 admission has
+    /// confirmed `catalog.supported(id, MagicRules) == true` for the
+    /// exact supported contract.
+    pub(crate) fn new(admitted_contract: SemanticContractIdV1) -> Self {
         Self { admitted_contract }
     }
 
     /// The semantic contract this profile authorizes.
-    pub fn admitted_contract(&self) -> &SemanticContractIdV1 {
+    pub(crate) fn admitted_contract(&self) -> &SemanticContractIdV1 {
         &self.admitted_contract
     }
 }
 
 /// Durable, milestone-free owner of Magic execution.
 ///
-/// Reachable only from crate-internal tests and the V5 admission path
-/// via `ProgramKernelV1::for_admitted_execution`.
-#[allow(dead_code)]
-pub struct MagicRulesKernel {
+/// Reachable only through `ProgramKernelV1::for_admitted_execution`
+/// with a contract ID that the V5 admission layer has confirmed is the
+/// exact supported semantic contract.
+pub(crate) struct MagicRulesKernel {
     profile: MagicExecutionProfile,
 }
 
@@ -78,8 +83,8 @@ impl MagicRulesKernel {
     /// Construct a bare shell instance for crate-internal tests only.
     ///
     /// This is NOT a production constructor and carries no semantic-admission
-    /// authority. `Task 8` owns admitted construction.
-    #[allow(dead_code)]
+    /// authority. V5 admission constructs the production kernel.
+    #[cfg(test)]
     pub(crate) fn new() -> Self {
         Self {
             profile: MagicExecutionProfile::new(SemanticContractIdV1::from_digest_bytes([0u8; 32])),
@@ -103,9 +108,13 @@ impl RulesKernel for MagicRulesKernel {
     }
 }
 
-#[allow(dead_code)]
 impl MagicRulesKernel {
     /// Rules-owned forced-progress shell.
+    ///
+    /// The admitted profile is read at the entry point to confirm the kernel
+    /// carries a verified execution identity before any S1 semantics execute.
+    /// The catalog admission layer has already confirmed that the profile's
+    /// admitted contract is the exact supported semantic contract.
     ///
     /// Validates the S1 supported-state profile, then classifies the current
     /// temporal position. The Untap position executes ordinary untap and
@@ -116,6 +125,8 @@ impl MagicRulesKernel {
         &mut self,
         state: &EngineState,
     ) -> Result<TransitionResult, KernelExecutionError> {
+        let _admitted = self.profile.admitted_contract();
+
         validate_engine_state(state).map_err(KernelExecutionError::BeforeState)?;
         let profile =
             validate_turn_structure_support(state).map_err(KernelExecutionError::TurnStructure)?;

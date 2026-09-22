@@ -1,8 +1,12 @@
-// Private rules tests for the unreachable MagicRulesKernel shell.
+// Private rules tests for the MagicRulesKernel shell.
 //
-// These tests verify that the Magic kernel shell is fail-closed: no player
-// response is accepted, all temporal positions classify at their downstream
-// boundary, and no state mutation occurs on any rejection path.
+// These tests verify:
+// - The kernel constructs from an admitted profile
+// - No player response is accepted (S1 has no decision surface)
+// - All temporal positions classify at their downstream boundary
+// - No state mutation occurs on any rejection path
+// - ProgramKernelV1 remains opaque: for_program(MagicRules) fails,
+//   for_admitted_execution requires post-V5-admission identity
 
 use crate::magic::MagicRulesKernel;
 
@@ -1352,7 +1356,7 @@ fn cleanup_ambiguous_hand_ownership_rejects() {
 
 // === Admitted construction evidence (Task 8) ===
 
-use crate::MagicExecutionProfile;
+use crate::magic::MagicExecutionProfile;
 use mtgml_model::{ExecutionProgramV1, SemanticContractIdV1};
 
 #[test]
@@ -1380,10 +1384,9 @@ fn for_program_magic_rules_still_unsupported() {
 
 #[test]
 fn for_admitted_execution_rejects_synthetic_program() {
-    let profile = MagicExecutionProfile::new(SemanticContractIdV1::from_digest_bytes([0u8; 32]));
     let result = ProgramKernelV1::for_admitted_execution(
         ExecutionProgramV1::SyntheticRulesCompat,
-        profile,
+        SemanticContractIdV1::from_digest_bytes([0u8; 32]),
     );
     assert!(
         matches!(

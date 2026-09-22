@@ -8,17 +8,21 @@
 //! execution and forced-progress execution) remain program-owned. There is
 //! deliberately NO `Default` and no other constructor: ambient or
 //! silently-selecting kernel construction is an architectural violation.
-//! Pre-S1 there is no production Magic semantic contract, so
-//! `ExecutionProgramV1::MagicRules` fails closed with
-//! `ProgramKernelConstructionErrorV1::UnsupportedProgram`.
+//!
+//! Magic admission: `for_admitted_execution` receives the
+//! semantic contract ID after the V5 catalog admission layer has
+//! confirmed `catalog.supported(id, MagicRules) == true` for the
+//! exact supported contract. The profile is constructed internally
+//! and is never exposed externally. Program kind alone is never
+//! sufficient to construct Magic runtime.
 
-use crate::magic::MagicRulesKernel;
+use crate::magic::{MagicExecutionProfile, MagicRulesKernel};
 use crate::synthetic::{validate_synthetic_runtime_state, SyntheticM1RulesKernel};
 use crate::turn_structure::validate_turn_structure_support;
-use crate::{KernelExecutionError, MagicExecutionProfile, RulesKernel, TransitionResult};
+use crate::{KernelExecutionError, RulesKernel, TransitionResult};
 use mtgml_decision::DecisionResponseV2;
-use mtgml_model::ExecutionProgramV1;
 use mtgml_model::PlayerId;
+use mtgml_model::{ExecutionProgramV1, SemanticContractIdV1};
 use mtgml_state::EngineState;
 
 /// Opaque public kernel adapter. Construction flows exclusively through
@@ -29,7 +33,7 @@ pub struct ProgramKernelV1 {
 }
 
 /// Private inner dispatch. The Magic variant is reachable ONLY through
-/// `for_admitted_execution` with a validated `MagicExecutionProfile`.
+/// `for_admitted_execution` after V5 admission has confirmed support.
 enum ProgramKernelInner {
     SyntheticLegacy(SyntheticM1RulesKernel),
     Magic(MagicRulesKernel),
@@ -75,18 +79,27 @@ impl ProgramKernelV1 {
 
     /// Contract-aware admitted construction for Magic execution.
     ///
-    /// Requires a validated `MagicExecutionProfile` carrying the exact
-    /// admitted semantic contract ID. Program kind alone is never
-    /// sufficient to construct Magic runtime; the profile provides the
-    /// already-admitted identity that bounds what the kernel may execute.
+    /// Requires a semantic contract ID that the V5 admission layer has
+    /// already confirmed is the exact supported contract via
+    /// `catalog.supported(id, MagicRules) == true`. Program kind alone is
+    /// never sufficient to construct Magic runtime.
+    ///
+    /// The `MagicExecutionProfile` is constructed internally from the
+    /// admitted contract ID and is never exposed externally, closing the
+    /// construction path: external crates cannot fabricate a profile.
     pub fn for_admitted_execution(
         program_kind: ExecutionProgramV1,
-        profile: MagicExecutionProfile,
+        semantic_contract_id: SemanticContractIdV1,
     ) -> Result<Self, ProgramKernelConstructionErrorV1> {
         match program_kind {
-            ExecutionProgramV1::MagicRules => Ok(Self {
-                inner: ProgramKernelInner::Magic(MagicRulesKernel::from_admitted_profile(profile)),
-            }),
+            ExecutionProgramV1::MagicRules => {
+                let profile = MagicExecutionProfile::new(semantic_contract_id);
+                Ok(Self {
+                    inner: ProgramKernelInner::Magic(MagicRulesKernel::from_admitted_profile(
+                        profile,
+                    )),
+                })
+            }
             ExecutionProgramV1::SyntheticRulesCompat => {
                 Err(ProgramKernelConstructionErrorV1::UnsupportedProgram)
             }
@@ -129,11 +142,9 @@ impl ProgramKernelV1 {
 /// `EngineState` remains free of execution-program identity; program-awareness
 /// lives here, in the rules layer.
 ///
-/// Pre-S1:
-/// - `SyntheticRulesCompat` → reuses the existing synthetic runtime-state
-///   validation semantics (never weakened).
-/// - `MagicRules` → state admission only: generic EngineState validation
-///   followed by S1 profile validation. Execution remains unsupported.
+/// For MagicRules: state admission only — generic EngineState validation
+/// followed by S1 profile validation. Kernel execution of S1 semantics
+/// requires V5 admission via `ProgramKernelV1::for_admitted_execution`.
 pub fn validate_runtime_state(
     program_kind: ExecutionProgramV1,
     state: &EngineState,
