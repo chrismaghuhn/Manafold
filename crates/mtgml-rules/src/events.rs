@@ -172,6 +172,13 @@ pub enum PerspectiveObservationPolicyV1 {
     },
     /// Knowledge-only occurrence: no observed envelope is projected.
     NoEnvelope,
+    /// A public object's tapped state is authorized to change for this
+    /// perspective. Trusted `GameObjectId` stays here; opaque
+    /// substitution happens exclusively in observation projection.
+    ObjectTapped {
+        object: GameObjectId,
+        tapped: bool,
+    },
     SawRandomOutcome {
         label: String,
         exclusive_upper_bound: u64,
@@ -338,6 +345,20 @@ pub fn validate_occurrence_pairing(
             // mutations (private looks, own-private identity, explicit
             // forget, hidden randomization/shuffle retirement); emptiness is
             // rejected above.
+        }
+        Policy::ObjectTapped {
+            object: _,
+            tapped: _,
+        } => {
+            // ObjectTapped is an envelope-producing policy that observes
+            // a public state change. No identity or knowledge mutation is
+            // required: the authoritative transition represents the state
+            // change; this occurrence is observation evidence only.
+            if !matches!(mutation.identity, IdentityMutationV1::None)
+                || mutation.knowledge.is_some()
+            {
+                return Err(OccurrencePairingError::IdentityMismatch);
+            }
         }
         Policy::SawRandomOutcome {
             label,

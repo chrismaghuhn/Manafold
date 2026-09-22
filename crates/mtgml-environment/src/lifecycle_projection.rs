@@ -133,6 +133,15 @@ pub fn project_occurrence_envelopes(
                 event.state_revision,
             )),
             Policy::NoEnvelope => None,
+            Policy::ObjectTapped { object, tapped } => Some((
+                mtgml_observation::ObservedEventKindV2::ObjectTapped {
+                    object: resolve(true, *object, &record_before)?
+                        .ok_or(LifecycleProjectionError::AuthorizedObjectUnresolvable)?,
+                    tapped: *tapped,
+                },
+                lifecycle.sequence,
+                event.state_revision,
+            )),
             Policy::SawRandomOutcome {
                 label,
                 exclusive_upper_bound,
