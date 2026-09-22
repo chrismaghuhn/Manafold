@@ -9,7 +9,7 @@
 // (semantic_catalog_kat.rs) re-derives every ID from these generated
 // manifest constants via the §9 persistence functions and fails the
 // build on drift. Hand-editing any constant is a gate violation.
-#![allow(dead_code)] // consumed by the KAT now and the Task-8 runtime later
+#![allow(dead_code)] // hex constants and *_rules_contract_id accessors are KAT/test-only
 
 use mtgml_model::{RulesContractIdV1, SemanticContractIdV1};
 

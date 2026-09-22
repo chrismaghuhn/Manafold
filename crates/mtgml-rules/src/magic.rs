@@ -84,12 +84,9 @@ impl RulesKernel for MagicRulesKernel {
 impl MagicRulesKernel {
     /// Rules-owned forced-progress shell.
     ///
-    /// The profile's `turn_structure_0_1_0` capability flag is checked
-    /// at the entry point as a real capability gate before any S1
-    /// semantics execute. The catalog admission layer has already
-    /// confirmed that the profile's admitted contract is the exact
-    /// supported semantic contract; the capability flag confirms the
-    /// contract carries the turn-structure capability.
+    /// The profile gate checks both the turn-structure capability and the
+    /// exact admitted semantic identity before any S1 semantics execute.
+    /// This prevents a capability bit from authorizing a different contract.
     ///
     /// Validates the S1 supported-state profile, then classifies the current
     /// temporal position. The Untap position executes ordinary untap and

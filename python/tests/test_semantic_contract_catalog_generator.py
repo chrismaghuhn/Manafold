@@ -20,6 +20,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 SOURCE_PATH = ROOT / "contracts" / "catalog" / "semantic-contracts.v1.json"
 GENERATED_PATH = ROOT / "crates" / "mtgml-environment" / "src" / "semantic_catalog_generated.rs"
+RULES_GENERATED_PATH = ROOT / "crates" / "mtgml-rules" / "src" / "semantic_execution_generated.rs"
 GENERATOR_PATH = ROOT / "scripts" / "generate_semantic_contract_catalog.py"
 
 sys.dont_write_bytecode = True
@@ -91,6 +92,117 @@ class SourceOfTruthTests(unittest.TestCase):
 
 
 class GeneratorEmitTests(unittest.TestCase):
+    def test_rules_generated_target_exists(self) -> None:
+        self.assertTrue(
+            RULES_GENERATED_PATH.is_file(),
+            f"generated rules execution module is absent: {RULES_GENERATED_PATH}",
+        )
+
+    def test_rules_generated_output_is_deterministic_and_matches_checked_in(self) -> None:
+        module = load_generator_module()
+        first = module.render_rules_execution_generated(module.load_source())
+        second = module.render_rules_execution_generated(module.load_source())
+        self.assertEqual(first.encode("utf-8"), second.encode("utf-8"))
+        self.assertEqual(RULES_GENERATED_PATH.read_bytes(), first.encode("utf-8"))
+
+    def test_rules_generated_stale_output_is_detected(self) -> None:
+        module = load_generator_module()
+        with tempfile.TemporaryDirectory() as scratch:
+            target = Path(scratch) / "semantic_execution_generated.rs"
+            module.write_generated(target, module.render_rules_execution_generated(module.load_source()))
+            stale = target.read_text(encoding="utf-8").replace(
+                "7e8f54f15bd27d16643422f6904a23ea2004cab1098b56f8cd842a2397ff42fe",
+                "0" * 64,
+                1,
+            )
+            target.write_text(stale, encoding="utf-8")
+            self.assertEqual(
+                module.check_rules_execution_path(target, catalog=module.load_source()),
+                1,
+            )
+
+    def test_cli_check_fails_when_only_rules_generated_target_drifts(self) -> None:
+        module = load_generator_module()
+        with tempfile.TemporaryDirectory() as scratch:
+            catalog_target = Path(scratch) / "semantic_catalog_generated.rs"
+            rules_target = Path(scratch) / "semantic_execution_generated.rs"
+            module.write_generated(
+                catalog_target, module.render_catalog_generated()
+            )
+            module.write_generated(
+                rules_target, module.render_rules_execution_generated(module.load_source())
+            )
+            stale_rules = rules_target.read_text(encoding="utf-8").replace(
+                "7e8f54f15bd27d16643422f6904a23ea2004cab1098b56f8cd842a2397ff42fe",
+                "0" * 64,
+                1,
+            )
+            rules_target.write_text(stale_rules, encoding="utf-8")
+
+            old_argv = sys.argv[:]
+            old_catalog_target = module.TARGET_PATH
+            old_rules_target = module.RULES_TARGET_PATH
+            try:
+                sys.argv = [str(GENERATOR_PATH), "--check"]
+                module.TARGET_PATH = catalog_target
+                module.RULES_TARGET_PATH = rules_target
+                result = module.main()
+            finally:
+                sys.argv = old_argv
+                module.TARGET_PATH = old_catalog_target
+                module.RULES_TARGET_PATH = old_rules_target
+
+            self.assertEqual(result, 1)
+
+    def test_rules_generated_ids_are_derived_from_source_manifest(self) -> None:
+        module = load_generator_module()
+        document = json.loads(SOURCE_PATH.read_text(encoding="utf-8"))
+        rendered = module.render_rules_execution_generated(document)
+        for entry in document["entries"]:
+            _, semantic_id = module.derive_ids(entry)
+            self.assertIn(semantic_id, rendered)
+
+    def test_rules_generated_surface_is_execution_only(self) -> None:
+        module = load_generator_module()
+        rendered = module.render_rules_execution_generated(module.load_source())
+        self.assertNotIn("#![allow(dead_code)]", rendered)
+        self.assertNotIn("RulesContractIdV1", rendered)
+        self.assertNotIn("SemanticContractManifestV1", rendered)
+        self.assertNotIn("_rules_manifest()", rendered)
+        self.assertNotIn("_semantic_manifest()", rendered)
+        self.assertNotIn("RULES_CONTRACT_HEX", rendered)
+        self.assertIn("pub fn execution_contract_supported", rendered)
+        self.assertIn("pub(crate) struct MagicExecutionProfile", rendered)
+        self.assertIn("test_only_magic_execution_profile", rendered)
+
+    def test_rules_generated_support_query_uses_derived_id_accessors(self) -> None:
+        module = load_generator_module()
+        rendered = module.render_rules_execution_generated(module.load_source())
+        self.assertIn("pub fn execution_contract_supported", rendered)
+        self.assertIn(
+            "synthetic_legacy_default_semantic_contract_id()", rendered
+        )
+        self.assertIn("magic_execution_profile", rendered)
+
+    def test_scratch_catalog_rendering_remains_policy_free(self) -> None:
+        module = load_generator_module()
+        scratch_catalog = {
+            "schema_version": "semantic-contracts-catalog.v1",
+            "entries": [
+                {
+                    "entry_id": "scratch_policy_free",
+                    "rules_authority": {"variant": "synthetic_legacy"},
+                    "capability_closure": None,
+                    "format_contract_id": None,
+                    "content_contract_id": None,
+                }
+            ],
+        }
+        rendered = module.render_catalog_generated(scratch_catalog)
+        self.assertIn("scratch_policy_free_semantic_contract_id", rendered)
+        with self.assertRaises(SystemExit):
+            module.assert_production_policy(scratch_catalog)
+
     def test_generate_is_deterministic_and_stable(self) -> None:
         module = load_generator_module()
         with tempfile.TemporaryDirectory() as scratch:

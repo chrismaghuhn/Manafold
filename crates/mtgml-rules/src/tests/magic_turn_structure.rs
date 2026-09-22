@@ -1512,3 +1512,70 @@ fn non_authorizing_profile_cannot_execute_untap() {
         "rule event allocator must not advance on rejection"
     );
 }
+
+#[test]
+fn wrong_contract_identity_cannot_authorize_turn_structure() {
+    use crate::semantic_execution_generated::test_only_magic_execution_profile;
+    use mtgml_state::{BeginningStep, TurnPosition};
+
+    let exact_id = crate::semantic_execution_generated::magic_turn_structure_0_1_0_semantic_contract_id();
+    let wrong_id = SemanticContractIdV1::from_digest_bytes([1u8; 32]);
+    assert_ne!(wrong_id, exact_id);
+
+    let state = s1_state_at(TurnPosition::Beginning {
+        step: BeginningStep::Untap,
+    });
+    let before = state.clone();
+    let profile = test_only_magic_execution_profile(wrong_id, true);
+    let mut kernel = MagicRulesKernel::from_admitted_profile(profile);
+    let result = kernel.advance_forced_progress(&state);
+
+    assert!(
+        matches!(
+            result,
+            Err(crate::KernelExecutionError::UnsupportedStagePath)
+        ),
+        "a capability bit cannot authorize a different semantic contract"
+    );
+    assert_eq!(state, before, "rejection must not mutate input");
+    assert_eq!(state.revision, before.revision);
+    assert_eq!(
+        state.allocators.next_rule_event_id,
+        before.allocators.next_rule_event_id,
+    );
+}
+
+#[test]
+fn execution_contract_supported_uses_exact_program_identity_matrix() {
+    use crate::semantic_execution_generated::{
+        magic_turn_structure_0_1_0_semantic_contract_id,
+        synthetic_legacy_default_semantic_contract_id,
+    };
+
+    let synthetic_id = synthetic_legacy_default_semantic_contract_id();
+    let turn_structure_id = magic_turn_structure_0_1_0_semantic_contract_id();
+    let unknown_id = SemanticContractIdV1::from_digest_bytes([2u8; 32]);
+    assert_ne!(unknown_id, synthetic_id);
+    assert_ne!(unknown_id, turn_structure_id);
+
+    assert!(crate::execution_contract_supported(
+        ExecutionProgramV1::SyntheticRulesCompat,
+        &synthetic_id,
+    ));
+    assert!(!crate::execution_contract_supported(
+        ExecutionProgramV1::SyntheticRulesCompat,
+        &turn_structure_id,
+    ));
+    assert!(crate::execution_contract_supported(
+        ExecutionProgramV1::MagicRules,
+        &turn_structure_id,
+    ));
+    assert!(!crate::execution_contract_supported(
+        ExecutionProgramV1::MagicRules,
+        &synthetic_id,
+    ));
+    assert!(!crate::execution_contract_supported(
+        ExecutionProgramV1::MagicRules,
+        &unknown_id,
+    ));
+}
