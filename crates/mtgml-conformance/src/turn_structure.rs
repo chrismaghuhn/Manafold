@@ -498,8 +498,12 @@ fn s1_projection_failure_is_real_backend_atomic_and_nonmutating() {
         .execute_forced_progress()
         .expect_err("the authorized but unresolvable occurrence must reject");
     assert!(
-        matches!(error, ControllerError::EnvironmentCommit(_)),
-        "expected pre-commit projection rejection, got {error:?}"
+        matches!(
+            error,
+            ControllerError::EnvironmentCommit(ref inner)
+                if format!("{inner:?}") == "PlayerProjectionInvalid"
+        ),
+        "expected exact pre-commit PlayerProjectionInvalid rejection, got {error:?}"
     );
 
     let after = capture_complete(&controller, &endpoints).unwrap();
