@@ -1191,10 +1191,85 @@ fn magic_turn_structure_untap_multiple_objects_canonical() {
         "second object must be untapped"
     );
     assert_eq!(result.events[0].event_id, before.allocators.next_rule_event_id);
+
+    let next_rid = before.allocators.next_rule_event_id.0;
+
+    // Full canonical 2x2 occurrence sequence:
+    // P1/O1, P1/O2, P2/O1, P2/O2
+    assert_eq!(result.events.len(), 6);
+
+    assert!(matches!(
+        &result.events[1].event,
+        AuthoritativeRuleEventKind::PerspectiveOccurrence {
+            lifecycle,
+            observation,
+        } if lifecycle.perspective == PlayerId(7)
+            && lifecycle.sequence == VisibleSequence(1)
+            && matches!(observation,
+                PerspectiveObservationPolicyV1::ObjectTapped { object, tapped: false }
+                if *object == GameObjectId(1))
+    ));
+    assert_eq!(result.events[1].event_id, RuleEventId(next_rid + 1));
+    assert_eq!(result.events[1].state_revision, result.next_state.revision);
+
+    assert!(matches!(
+        &result.events[2].event,
+        AuthoritativeRuleEventKind::PerspectiveOccurrence {
+            lifecycle,
+            observation,
+        } if lifecycle.perspective == PlayerId(7)
+            && lifecycle.sequence == VisibleSequence(2)
+            && matches!(observation,
+                PerspectiveObservationPolicyV1::ObjectTapped { object, tapped: false }
+                if *object == GameObjectId(3))
+    ));
+    assert_eq!(result.events[2].event_id, RuleEventId(next_rid + 2));
+    assert_eq!(result.events[2].state_revision, result.next_state.revision);
+
+    assert!(matches!(
+        &result.events[3].event,
+        AuthoritativeRuleEventKind::PerspectiveOccurrence {
+            lifecycle,
+            observation,
+        } if lifecycle.perspective == PlayerId(42)
+            && lifecycle.sequence == VisibleSequence(1)
+            && matches!(observation,
+                PerspectiveObservationPolicyV1::ObjectTapped { object, tapped: false }
+                if *object == GameObjectId(1))
+    ));
+    assert_eq!(result.events[3].event_id, RuleEventId(next_rid + 3));
+    assert_eq!(result.events[3].state_revision, result.next_state.revision);
+
+    assert!(matches!(
+        &result.events[4].event,
+        AuthoritativeRuleEventKind::PerspectiveOccurrence {
+            lifecycle,
+            observation,
+        } if lifecycle.perspective == PlayerId(42)
+            && lifecycle.sequence == VisibleSequence(2)
+            && matches!(observation,
+                PerspectiveObservationPolicyV1::ObjectTapped { object, tapped: false }
+                if *object == GameObjectId(3))
+    ));
+    assert_eq!(result.events[4].event_id, RuleEventId(next_rid + 4));
+    assert_eq!(result.events[4].state_revision, result.next_state.revision);
+
+    assert!(matches!(
+        &result.events[5].event,
+        AuthoritativeRuleEventKind::TurnPositionChanged { from, to }
+        if *from == TurnPosition::Beginning { step: BeginningStep::Untap }
+            && *to == TurnPosition::Beginning { step: BeginningStep::Upkeep }
+    ));
+    assert_eq!(result.events[5].event_id, RuleEventId(next_rid + 5));
+    assert_eq!(result.events[5].state_revision, result.next_state.revision);
+
     assert_eq!(
-        result.events[1].event_id,
-        RuleEventId(before.allocators.next_rule_event_id.0 + 1)
+        result.next_state.core.position,
+        TurnPosition::Beginning {
+            step: BeginningStep::Upkeep,
+        }
     );
+    assert!(result.next_decision.is_none());
 }
 
 #[test]

@@ -17,7 +17,7 @@ use mtgml_state::{
     PerspectiveLifecycleAuditV1, PerspectiveLifecycleMutationV1,
     SyntheticResetInputs, SyntheticV4Setup,
 };
-use mtgml_wire;
+use mtgml_wire::decode_canonical;
 
 use crate::lifecycle_projection::project_occurrence_envelopes;
 use crate::SyntheticM1EnvironmentBackend;
@@ -321,7 +321,7 @@ fn observation_exact_temporal_fields_after_untap() {
         .decode(&envelope.payload_base64)
         .unwrap();
     let payload: SyntheticM3Observation =
-        mtgml_wire::decode_canonical(&payload_bytes).unwrap();
+        decode_canonical(&payload_bytes).unwrap();
     assert_eq!(payload.active_player, active);
     assert_eq!(payload.turn_number, "1");
     assert!(matches!(
@@ -448,13 +448,72 @@ fn observation_object_tapped_no_trusted_id_in_envelope() {
 
 // --- F. Paired-state noninterference ---
 
+/// Build a state with a single Battlefield object where the card
+/// definition, controller, zone, and tapped state are explicitly
+/// specified. This allows constructing two states that share the
+/// same authorized semantic facts while differing only in the
+/// trusted GameObjectId and its perspective identity mapping.
+fn state_with_explicit_object(
+    active_player: PlayerId,
+    object_id: mtgml_model::GameObjectId,
+    card_definition: mtgml_model::CardDefinitionId,
+    controller: PlayerId,
+    tapped: bool,
+) -> mtgml_state::EngineState {
+    let mut state = mtgml_state::construct_synthetic_engine_state(
+        SyntheticResetInputs {
+            players: [PlayerId(1), PlayerId(2)],
+            root_seed: seed(),
+            setup: SyntheticV4Setup {
+                position: mtgml_state::TurnPosition::Beginning {
+                    step: mtgml_state::BeginningStep::Untap,
+                },
+                priority: mtgml_state::PriorityState::None,
+                combat: None,
+                foundation_sources: std::collections::BTreeMap::new(),
+            },
+        },
+    )
+    .unwrap();
+    state.core.active_player = active_player;
+    let location = mtgml_state::ZoneLocation {
+        zone: mtgml_model::ZoneKind::Battlefield,
+        player: None,
+        position: mtgml_state::ZonePosition::Unordered,
+        visibility: mtgml_state::VisibilityPartition::Public,
+        partition: None,
+    };
+    state.zones.objects.insert(
+        object_id,
+        mtgml_state::GameObject {
+            id: object_id,
+            physical_card: Some(mtgml_model::PhysicalCardId(card_definition.0)),
+            card_definition,
+            owner: controller,
+            controller,
+            tapped,
+            face_down: false,
+        },
+    );
+    state.zones.locations.insert(object_id, location);
+    state
+}
+
 #[test]
 fn observation_paired_state_noninterference() {
     let active = PlayerId(1);
+    let card_def = mtgml_model::CardDefinitionId(42);
 
     // State A: trusted GameObjectId(1) -> opaque OpaqueObjectId(9001)
+    // CardDefinitionId = 42, controller = PlayerId(1), tapped = true
     let before_a = {
-        let mut state = base_state_with_objects(active, &[(mtgml_model::GameObjectId(1), active, true)]);
+        let mut state = state_with_explicit_object(
+            active,
+            mtgml_model::GameObjectId(1),
+            card_def,
+            active,
+            true,
+        );
         let identity = state.perspective_identities.players.get_mut(&active).unwrap();
         identity.object_to_opaque.clear();
         identity.opaque_to_object.clear();
@@ -465,8 +524,15 @@ fn observation_paired_state_noninterference() {
     };
 
     // State B: trusted GameObjectId(7) -> opaque OpaqueObjectId(9001)
+    // CardDefinitionId = 42 (SAME), controller = PlayerId(1) (SAME), tapped = true (SAME)
     let before_b = {
-        let mut state = base_state_with_objects(active, &[(mtgml_model::GameObjectId(7), active, true)]);
+        let mut state = state_with_explicit_object(
+            active,
+            mtgml_model::GameObjectId(7),
+            card_def,
+            active,
+            true,
+        );
         let identity = state.perspective_identities.players.get_mut(&active).unwrap();
         identity.object_to_opaque.clear();
         identity.opaque_to_object.clear();
@@ -476,12 +542,12 @@ fn observation_paired_state_noninterference() {
         state
     };
 
-    let mut after_a = base_state_with_objects(active, &[(mtgml_model::GameObjectId(1), active, false)]);
+    let mut after_a = state_with_explicit_object(active, mtgml_model::GameObjectId(1), card_def, active, false);
     after_a = with_next_visible_sequence(after_a, active, 2);
-    let mut after_b = base_state_with_objects(active, &[(mtgml_model::GameObjectId(7), active, false)]);
+    let mut after_b = state_with_explicit_object(active, mtgml_model::GameObjectId(7), card_def, active, false);
     after_b = with_next_visible_sequence(after_b, active, 2);
 
-    // Restore opaque mappings in after states (base_state_with_objects doesn't set them).
+    // Restore opaque mappings in after states.
     for (after, object_id) in [(&mut after_a, mtgml_model::GameObjectId(1)), (&mut after_b, mtgml_model::GameObjectId(7))] {
         let identity = after.perspective_identities.players.get_mut(&active).unwrap();
         identity.object_to_opaque.clear();
@@ -500,4 +566,14 @@ fn observation_paired_state_noninterference() {
     let bytes_b = serde_json::to_vec(&envelopes_b).unwrap();
 
     assert_eq!(bytes_a, bytes_b, "player-safe observation bytes must be identical for equivalent public states");
+
+    // Also compare the player-level observation (information state)
+    // for the same perspective. Both states must produce identical
+    // player observation bytes because the authorized semantic
+    // facts are equal and only the trusted identity mapping differs.
+    let obs_a = SyntheticM1EnvironmentBackend::synthetic_observation(&before_a, active).unwrap();
+    let obs_b = SyntheticM1EnvironmentBackend::synthetic_observation(&before_b, active).unwrap();
+    let obs_bytes_a = serde_json::to_vec(&obs_a).unwrap();
+    let obs_bytes_b = serde_json::to_vec(&obs_b).unwrap();
+    assert_eq!(obs_bytes_a, obs_bytes_b, "player observation bytes must be identical for equivalent public states");
 }

@@ -17,14 +17,13 @@ use std::collections::BTreeMap;
 use mtgml_decision::DecisionResponseV2;
 use mtgml_model::{PlayerId, RuleEventId, StateRevision, VisibleSequence};
 use mtgml_state::{
-    PerspectiveLifecycleAuditV1, PerspectiveLifecycleMutationV1,
-    validate_engine_state, BeginningStep, EndingStep, EngineState, TurnPosition,
+    validate_engine_state, BeginningStep, EndingStep, EngineState, PerspectiveLifecycleAuditV1,
+    PerspectiveLifecycleMutationV1, TurnPosition,
 };
 
 use crate::errors::KernelExecutionError;
 use crate::events::{
-    AuthoritativeRuleEvent, AuthoritativeRuleEventKind,
-    PerspectiveObservationPolicyV1,
+    AuthoritativeRuleEvent, AuthoritativeRuleEventKind, PerspectiveObservationPolicyV1,
 };
 use crate::product::build_accepted_product;
 use crate::semantic_execution_generated::MagicExecutionProfile;
@@ -181,13 +180,15 @@ impl MagicRulesKernel {
         let _ = last_event_id;
 
         for knowledge in state.knowledge.players.values() {
-            knowledge.next_visible_sequence.0.checked_add(affected_count)
+            knowledge
+                .next_visible_sequence
+                .0
+                .checked_add(affected_count)
                 .ok_or(KernelExecutionError::VisibleSequenceOverflow)?;
         }
 
-        let mut events: Vec<AuthoritativeRuleEvent> = Vec::with_capacity(
-            2 + affected.len() * state.knowledge.players.len(),
-        );
+        let mut events: Vec<AuthoritativeRuleEvent> =
+            Vec::with_capacity(2 + affected.len() * state.knowledge.players.len());
 
         events.push(AuthoritativeRuleEvent {
             event_id: state.allocators.next_rule_event_id,
@@ -205,9 +206,7 @@ impl MagicRulesKernel {
 
         for player_id in state.knowledge.players.keys().copied().collect::<Vec<_>>() {
             for object_id in &affected {
-                let sequence = VisibleSequence(
-                    *occurrence_sequence.get(&player_id).unwrap(),
-                );
+                let sequence = VisibleSequence(*occurrence_sequence.get(&player_id).unwrap());
                 events.push(AuthoritativeRuleEvent {
                     event_id: RuleEventId(occurrence_event_id),
                     state_revision: next_revision,
@@ -248,9 +247,8 @@ impl MagicRulesKernel {
             let advance = u64::try_from(affected.len())
                 .map_err(|_| KernelExecutionError::VisibleSequenceOverflow)?;
             for knowledge in workspace.knowledge.players.values_mut() {
-                knowledge.next_visible_sequence = VisibleSequence(
-                    knowledge.next_visible_sequence.0 + advance,
-                );
+                knowledge.next_visible_sequence =
+                    VisibleSequence(knowledge.next_visible_sequence.0 + advance);
             }
             Ok(())
         })

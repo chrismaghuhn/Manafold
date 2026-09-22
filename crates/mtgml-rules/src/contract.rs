@@ -259,7 +259,9 @@ fn validate_accepted_progression(
                 _ => return Err(TransitionViolation::TurnStructure),
             };
             let observation = match &event.event {
-                AuthoritativeRuleEventKind::PerspectiveOccurrence { observation, .. } => observation,
+                AuthoritativeRuleEventKind::PerspectiveOccurrence { observation, .. } => {
+                    observation
+                }
                 _ => return Err(TransitionViolation::TurnStructure),
             };
 
