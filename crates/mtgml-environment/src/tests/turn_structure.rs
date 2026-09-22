@@ -725,6 +725,89 @@ fn task10_turn_structure_reference_ordinary_untap_uses_real_kernel_and_projectio
 }
 
 #[test]
+fn turn_structure_projection_failure_has_exact_typed_error_and_is_nonmutating() {
+    let mut state = reference_state(mtgml_state::TurnPosition::Beginning {
+        step: mtgml_state::BeginningStep::Untap,
+    });
+    state
+        .zones
+        .objects
+        .get_mut(&mtgml_model::GameObjectId(1))
+        .unwrap()
+        .tapped = true;
+
+    let opaque = state
+        .perspective_identities
+        .players
+        .get_mut(&PlayerId(1))
+        .unwrap()
+        .object_to_opaque
+        .remove(&mtgml_model::GameObjectId(1))
+        .expect("the admitted fixture must expose P1's opaque mapping");
+    assert_eq!(
+        state
+            .perspective_identities
+            .players
+            .get_mut(&PlayerId(1))
+            .unwrap()
+            .opaque_to_object
+            .remove(&opaque),
+        Some(mtgml_model::GameObjectId(1))
+    );
+    assert!(state
+        .knowledge
+        .players
+        .get_mut(&PlayerId(1))
+        .unwrap()
+        .active
+        .remove(&opaque)
+        .is_some());
+    mtgml_state::validate_engine_state(&state)
+        .expect("the projection-failure witness must remain generic-state valid");
+
+    let controller = reference_controller(state);
+    let before_checkpoint = controller.checkpoint().unwrap();
+    let before_replay = controller.export_replay().unwrap();
+    let before_products = player_products(&controller);
+    let error = controller
+        .execute_forced_progress()
+        .expect_err("the authorized but unresolvable occurrence must reject");
+    assert!(matches!(
+        error,
+        ControllerError::EnvironmentCommit(
+            crate::errors::EnvironmentCommitError::PlayerProjectionInvalid
+        )
+    ));
+    assert_eq!(controller.checkpoint().unwrap(), before_checkpoint);
+    assert_eq!(controller.export_replay().unwrap(), before_replay);
+    assert_eq!(player_products(&controller), before_products);
+    assert_eq!(
+        controller
+            .checkpoint()
+            .unwrap()
+            .limit_counters
+            .decisions_submitted,
+        before_checkpoint.limit_counters.decisions_submitted
+    );
+    assert_eq!(
+        controller
+            .checkpoint()
+            .unwrap()
+            .limit_counters
+            .accepted_transitions,
+        before_checkpoint.limit_counters.accepted_transitions
+    );
+    assert_eq!(
+        controller
+            .checkpoint()
+            .unwrap()
+            .limit_counters
+            .rule_events_emitted,
+        before_checkpoint.limit_counters.rule_events_emitted
+    );
+}
+
+#[test]
 fn task10_turn_structure_reference_empty_untap_has_exact_two_events() {
     let controller = reference_controller(reference_state(mtgml_state::TurnPosition::Beginning {
         step: mtgml_state::BeginningStep::Untap,
