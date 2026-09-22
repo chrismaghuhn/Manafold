@@ -1356,12 +1356,17 @@ fn cleanup_ambiguous_hand_ownership_rejects() {
 
 // === Admitted construction evidence (Task 8) ===
 
-use crate::magic::MagicExecutionProfile;
+use crate::semantic_execution_generated::{
+    magic_turn_structure_0_1_0_semantic_contract_id, MagicExecutionProfile,
+};
 use mtgml_model::{ExecutionProgramV1, SemanticContractIdV1};
 
 #[test]
 fn kernel_from_admitted_profile_construction() {
-    let profile = MagicExecutionProfile::new(SemanticContractIdV1::from_digest_bytes([0u8; 32]));
+    let profile = MagicExecutionProfile {
+        admitted_contract: magic_turn_structure_0_1_0_semantic_contract_id(),
+        turn_structure_0_1_0: true,
+    };
     let _kernel = MagicRulesKernel::from_admitted_profile(profile);
 }
 
@@ -1394,5 +1399,20 @@ fn for_admitted_execution_rejects_synthetic_program() {
             Err(ProgramKernelConstructionErrorV1::UnsupportedProgram)
         ),
         "for_admitted_execution(SyntheticRulesCompat) must be UnsupportedProgram"
+    );
+}
+
+#[test]
+fn for_admitted_execution_rejects_unknown_magic_contract() {
+    let result = ProgramKernelV1::for_admitted_execution(
+        ExecutionProgramV1::MagicRules,
+        SemanticContractIdV1::from_digest_bytes([0u8; 32]),
+    );
+    assert!(
+        matches!(
+            result,
+            Err(ProgramKernelConstructionErrorV1::UnsupportedProgram)
+        ),
+        "for_admitted_execution(MagicRules, unknown_id) must be UnsupportedProgram"
     );
 }

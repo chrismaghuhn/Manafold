@@ -9,6 +9,7 @@ mod magic;
 mod product;
 mod program_kernel;
 mod semantic_cursor;
+mod semantic_execution_generated;
 mod snapshots;
 mod synthetic;
 mod transition;
