@@ -16,8 +16,8 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
             r"\*\*Foundation closure/freeze:\*\* `COMPLETE`",
         )
         self.assertIn(
-            "**Current active work area:** remaining M3 S1 documentation/status/generated-contract closure "
-            "after the bounded capability reached `covered`",
+            "**Current active work area:** M3.S1 final exact-head verification preparation; "
+            "the bounded capability is `covered` and not certified",
             readme,
         )
         self.assertNotIn(
@@ -57,7 +57,7 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
         self.assertIn("ADR 0054 = ACCEPTED", readme)
         self.assertIn("FOUNDATION_V2 = ACCEPTED_HARDENED_M3_SCOPE", readme)
         self.assertIn("**M3 plan status:** `ACCEPTED`", readme)
-        self.assertIn("**Next gate:** `TASK_13_REMAINING_CLOSURE`", readme)
+        self.assertIn("**Next gate:** `TASK_14_EXACT_HEAD_VERIFICATION`", readme)
         self.assertNotIn("M3_S1_AUTHORIZATION_DECISION", readme)
         self.assertNotIn("M3_T0_CLOSURE_STATUS_SYNC_EXACT_HEAD_REVIEW", readme)
         self.assertIn(
@@ -76,6 +76,9 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
         self.assertIn("**Real Magic semantics:** bounded M3.S1 turn-structure slice only", readme)
         self.assertIn("**Playable engine:** no", readme)
         self.assertIn("**Real card support:** none", readme)
+        self.assertIn("**Current resumable execution contract:** V5.", readme)
+        self.assertIn("`EnvironmentCheckpointV5` / `CheckpointDigestV5`", readme)
+        self.assertRegex(readme, r"V4 remains historical-only and is not\s+reinterpreted")
         self.assertNotIn("M3 Pre-T0 plan hardening under Issue #178", readme)
         self.assertNotIn("HARDENED_PLAN_MERGE_AND_EXACT_MASTER_REAUTHORIZATION", readme)
         self.assertNotIn(
@@ -101,6 +104,9 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
         self.assertIn("docs/maintenance/MAINTAINER_PROFILES.md", readme)
         self.assertIn("README.md", docs_readme)
         self.assertIn("ROADMAP.md", docs_readme)
+        self.assertIn("Current status is owned by the repository root", docs_readme)
+        self.assertIn("intentionally does not restate current milestone", docs_readme)
+        self.assertNotIn("engine M3 as `NOT_AUTHORIZED`", docs_readme)
         for gate in ("PR Fast", "manafold-pr-gate"):
             with self.subTest(gate=gate):
                 self.assertIn(gate, profile)
@@ -145,6 +151,10 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
         self.assertIn("S1_IMPLEMENTED_CAPABILITY_COUNT = 0", roadmap)
         self.assertIn("S1_COVERED_CAPABILITY_COUNT = 1", roadmap)
         self.assertIn("S1_CERTIFIED_CAPABILITY_COUNT = 0", roadmap)
+        self.assertIn("CURRENT_RESUMABLE_EXECUTION_CONTRACT = V5", roadmap)
+        self.assertIn("V4_RESUMABLE_CONTRACT_STATUS = HISTORICAL_ONLY", roadmap)
+        self.assertIn("TASK_13_DOCUMENTATION_STATUS_CLOSURE = COMPLETE", roadmap)
+        self.assertIn("TASK_14_STARTED = NO", roadmap)
         self.assertIn("AUTHORIZED_NEXT_TASK = M3.S1", roadmap)
         self.assertIn("S1_REVIEW_MINORS = 3 CARRIED", roadmap)
         self.assertIn(
@@ -156,7 +166,7 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
         self.assertIn("S1_PHYSICAL_CARD_IDENTITY_CHANGE_AUTHORIZED = NO", roadmap)
         self.assertNotIn("S1_IMPLEMENTATION = NOT_AUTHORIZED", roadmap)
         self.assertNotIn("NEXT_GATE = M3_S1_AUTHORIZATION_DECISION", roadmap)
-        self.assertIn("NEXT_GATE = TASK_13_REMAINING_CLOSURE", roadmap)
+        self.assertIn("NEXT_GATE = TASK_14_EXACT_HEAD_VERIFICATION", roadmap)
         self.assertNotIn("eligible for a separate authorization decision", roadmap)
         self.assertNotIn("S1 implementation remains NOT_AUTHORIZED", roadmap)
         self.assertIn(
@@ -202,7 +212,8 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
             "M3.P0 semantic-neutral state/persistence identity cut\n"
             "→ M3.T0 thin private conformance facade\n"
             "→ M3.S1 rules/turn-structure@0.1.0 covered\n"
-            "→ Task 13 remaining documentation/status/generated-contract closure",
+            "→ Task 13 documentation/status/generated-contract closure complete\n"
+            "→ Task 14 exact-head verification",
             roadmap,
         )
         self.assertIn("M3.P0 semantic-neutral state/persistence identity cut", roadmap)
