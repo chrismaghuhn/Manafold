@@ -229,15 +229,24 @@
       "category": "core_rule",
       "conformance_cases": [],
       "dependencies": [],
-      "implementation_paths": [],
+      "implementation_paths": [
+        "crates/mtgml-rules/src/turn_structure.rs",
+        "crates/mtgml-rules/src/magic.rs",
+        "crates/mtgml-rules/src/contract.rs",
+        "crates/mtgml-rules/src/semantic_cursor.rs",
+        "crates/mtgml-rules/src/program_kernel.rs",
+        "crates/mtgml-environment/src/semantic_catalog.rs",
+        "crates/mtgml-environment/src/lifecycle_projection.rs",
+        "crates/mtgml-environment/src/reference.rs"
+      ],
       "information_risk": "low",
       "key": "rules/turn-structure",
-      "lifecycle": "specified",
-      "notes": "Specified only; no implementation, conformance, benchmark, coverage, or certification evidence is claimed.",
+      "lifecycle": "implemented",
+      "notes": "Implemented for the bounded M3.S1 turn-structure scope only; coverage, certification, card, deck, format, Commander, playability, and downstream capability support are not claimed.",
       "owners": [
         "turn"
       ],
-      "spec_path": "docs/rules/M3_INITIAL_SEMANTIC_FOUNDATION_V2.md",
+      "spec_path": "docs/superpowers/specs/2026-09-21-m3-s1-turn-structure-design.md",
       "summary": "Deterministic two-player turn, phase, and step structure.",
       "version": "0.1.0"
     },
