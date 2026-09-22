@@ -1,11 +1,14 @@
+use mtgml_decision::{DecisionAnswerV2, DecisionResponseV2, DECISION_RESPONSE_V2_SCHEMA};
 use mtgml_environment::{
-    magic_turn_structure_0_1_0_rules_manifest, ReferenceEnvironmentConfig,
-    ReferenceEnvironmentReplayConfig, REFERENCE_SCENARIO_ID,
+    magic_turn_structure_0_1_0_rules_manifest, ControllerError, EnvironmentCheckpointV5,
+    PlayerEndpoint, ReferenceEnvironmentConfig, ReferenceEnvironmentReplayConfig,
+    REFERENCE_SCENARIO_ID,
+};
+use mtgml_model::{
+    CandidateIdV1, EnvironmentLimitCounters, EpisodeStatus, ExecutionIdentityV1,
+    ExecutionProgramV1, PlayerDecisionIdV1, PlayerId, StateRevision,
 };
 use mtgml_model::{CheckpointCodecIdentity, RulesAuthorityV1};
-use mtgml_model::{
-    EnvironmentLimitCounters, EpisodeStatus, ExecutionIdentityV1, ExecutionProgramV1,
-};
 use mtgml_observation::{
     INFORMATION_STATE_SCHEMA_V2, OBSERVATION_SCHEMA, OBSERVED_EVENT_SCHEMA_V2,
     PLAYER_STEP_SCHEMA_V2,
@@ -15,6 +18,10 @@ use mtgml_replay::{KernelIdentityV1, ReplaySchemaVersionsV5};
 use crate::facade::{
     ConformanceCase, ConformanceCaseStep, ConformanceForcedProgressStepRef,
     ForcedProgressExpectation, LimitCounterDeltas,
+};
+use crate::isolation::{
+    assert_fingerprint_policies, capture_complete, capture_transition_product,
+    FingerprintComparison,
 };
 
 fn reference_config(state: mtgml_state::EngineState) -> ReferenceEnvironmentConfig {
@@ -117,6 +124,395 @@ fn reference_state(position: mtgml_state::TurnPosition) -> mtgml_state::EngineSt
         .unwrap();
     state.execution.pending_decision = None;
     state
+}
+
+fn assert_forced_rejection(
+    label: &str,
+    state: mtgml_state::EngineState,
+    expected: impl FnOnce(&ControllerError) -> bool,
+) {
+    let (controller, endpoints) = reference_controller_and_endpoints(state);
+    let before = capture_complete(&controller, &endpoints).unwrap();
+    let error = controller
+        .execute_forced_progress()
+        .expect_err("the unsupported case must reject");
+    assert!(expected(&error), "{label}: unexpected error {error:?}");
+    for endpoint in &endpoints {
+        assert!(
+            endpoint.visible_decision().unwrap().is_none(),
+            "{label}: rejected forced progress exposed a decision"
+        );
+    }
+    let after = capture_complete(&controller, &endpoints).unwrap();
+    assert_fingerprint_policies(&before, &after, FingerprintComparison::All)
+        .unwrap_or_else(|error| panic!("{label}: complete fingerprint changed: {error:?}"));
+}
+
+fn one_player_reference_state() -> mtgml_state::EngineState {
+    let mut state = reference_state(mtgml_state::TurnPosition::Beginning {
+        step: mtgml_state::BeginningStep::Untap,
+    });
+    state.core.players.remove(&PlayerId(2));
+    state.zones.objects.remove(&mtgml_model::GameObjectId(2));
+    state.zones.locations.remove(&mtgml_model::GameObjectId(2));
+    state
+        .zones
+        .ordered_zones
+        .retain(|key, _| key.player != Some(PlayerId(2)));
+    state.knowledge.players.remove(&PlayerId(2));
+    state.perspective_identities.players.remove(&PlayerId(2));
+    mtgml_state::validate_engine_state(&state).unwrap();
+    state
+}
+
+fn three_player_reference_state() -> mtgml_state::EngineState {
+    let mut state = reference_state(mtgml_state::TurnPosition::Beginning {
+        step: mtgml_state::BeginningStep::Untap,
+    });
+    state.core.players.insert(
+        PlayerId(3),
+        mtgml_state::PlayerState {
+            life: 40,
+            has_lost: false,
+        },
+    );
+    state.knowledge.players.insert(
+        PlayerId(3),
+        mtgml_state::PlayerKnowledgeStateV2 {
+            next_visible_sequence: mtgml_model::VisibleSequence(1),
+            ..Default::default()
+        },
+    );
+    state.perspective_identities.players.insert(
+        PlayerId(3),
+        mtgml_state::PerspectiveIdentityRecordV2 {
+            next_opaque_object_id: mtgml_model::OpaqueObjectId(1),
+            next_opaque_ability_id: mtgml_model::OpaqueAbilityId(1),
+            next_player_decision_id: PlayerDecisionIdV1(1),
+            ..Default::default()
+        },
+    );
+    mtgml_state::validate_engine_state(&state).unwrap();
+    state
+}
+
+fn unsupported_profile_reference_state() -> mtgml_state::EngineState {
+    let mut state = reference_state(mtgml_state::TurnPosition::Beginning {
+        step: mtgml_state::BeginningStep::Untap,
+    });
+    state.format = mtgml_state::FormatState::Commander {
+        state: mtgml_state::CommanderState {
+            designations: std::collections::BTreeMap::new(),
+            cast_counts: std::collections::BTreeMap::new(),
+            damage: std::collections::BTreeMap::new(),
+        },
+    };
+    mtgml_state::validate_engine_state(&state).unwrap();
+    state
+}
+
+fn held_priority_reference_state() -> mtgml_state::EngineState {
+    let mut state = reference_state(mtgml_state::TurnPosition::Beginning {
+        step: mtgml_state::BeginningStep::Untap,
+    });
+    state.core.priority = mtgml_state::PriorityState::HeldBy {
+        player: PlayerId(1),
+        consecutive_passes: 0,
+    };
+    mtgml_state::validate_engine_state(&state).unwrap();
+    state
+}
+
+fn invalid_temporal_reference_state() -> mtgml_state::EngineState {
+    let mut state = reference_state(mtgml_state::TurnPosition::Beginning {
+        step: mtgml_state::BeginningStep::Untap,
+    });
+    state.core.turn_number = 0;
+    mtgml_state::validate_engine_state(&state).unwrap();
+    state
+}
+
+fn assert_restore_state_rejection(label: &str, state: mtgml_state::EngineState) {
+    let (controller, endpoints) =
+        reference_controller_and_endpoints(reference_state(mtgml_state::TurnPosition::Beginning {
+            step: mtgml_state::BeginningStep::Untap,
+        }));
+    let before = capture_complete(&controller, &endpoints).unwrap();
+    let checkpoint = EnvironmentCheckpointV5::new(
+        state,
+        EpisodeStatus::Running,
+        EnvironmentLimitCounters::default(),
+        CheckpointCodecIdentity {
+            codec_id: "in-memory-reference".into(),
+            semantic_version: "5".into(),
+        },
+        ExecutionIdentityV1 {
+            program_kind: ExecutionProgramV1::MagicRules,
+            semantic_contract_id:
+                mtgml_environment::magic_turn_structure_0_1_0_semantic_contract_id(),
+        },
+    )
+    .unwrap();
+    assert!(matches!(
+        controller.restore(checkpoint),
+        Err(ControllerError::ProgramStateIncompatible)
+    ));
+    let after = capture_complete(&controller, &endpoints).unwrap();
+    assert_fingerprint_policies(&before, &after, FingerprintComparison::All)
+        .unwrap_or_else(|error| panic!("{label}: complete fingerprint changed: {error:?}"));
+}
+
+#[test]
+fn s1_admission_not_two_players_has_complete_restore_nonmutation() {
+    assert_restore_state_rejection(
+        "s1.admission.not-two-players / one player",
+        one_player_reference_state(),
+    );
+    assert_restore_state_rejection(
+        "s1.admission.not-two-players / three players",
+        three_player_reference_state(),
+    );
+}
+
+#[test]
+fn s1_admission_unsupported_profile_is_not_repaired() {
+    assert_restore_state_rejection(
+        "s1.admission.unsupported-profile",
+        unsupported_profile_reference_state(),
+    );
+}
+
+#[test]
+fn s1_admission_priority_held_is_not_passed_or_transferred() {
+    assert_restore_state_rejection(
+        "s1.admission.priority-held",
+        held_priority_reference_state(),
+    );
+}
+
+#[test]
+fn s1_invalid_temporal_state_is_not_normalized() {
+    assert_restore_state_rejection(
+        "s1.invalid-temporal-state",
+        invalid_temporal_reference_state(),
+    );
+}
+
+#[test]
+fn s1_downstream_upkeep_priority_is_a_closed_boundary() {
+    assert_forced_rejection(
+        "s1.downstream.upkeep-priority",
+        reference_state(mtgml_state::TurnPosition::Beginning {
+            step: mtgml_state::BeginningStep::Upkeep,
+        }),
+        |error| {
+            matches!(
+                error,
+                ControllerError::KernelExecution(
+                    mtgml_rules::KernelExecutionError::UnsupportedRulesBoundary(
+                        mtgml_rules::UnsupportedRulesBoundary::BasicPriority
+                    )
+                )
+            )
+        },
+    );
+}
+
+#[test]
+fn s1_downstream_draw_is_a_closed_boundary() {
+    assert_forced_rejection(
+        "s1.downstream.draw",
+        reference_state(mtgml_state::TurnPosition::Beginning {
+            step: mtgml_state::BeginningStep::Draw,
+        }),
+        |error| {
+            matches!(
+                error,
+                ControllerError::KernelExecution(
+                    mtgml_rules::KernelExecutionError::UnsupportedRulesBoundary(
+                        mtgml_rules::UnsupportedRulesBoundary::DrawCard
+                    )
+                )
+            )
+        },
+    );
+}
+
+#[test]
+fn s1_downstream_combat_is_a_closed_boundary() {
+    assert_forced_rejection(
+        "s1.downstream.combat",
+        reference_state(mtgml_state::TurnPosition::Combat {
+            step: mtgml_state::CombatStep::BeginningOfCombat,
+        }),
+        |error| {
+            matches!(
+                error,
+                ControllerError::KernelExecution(
+                    mtgml_rules::KernelExecutionError::UnsupportedRulesBoundary(
+                        mtgml_rules::UnsupportedRulesBoundary::Combat
+                    )
+                )
+            )
+        },
+    );
+}
+
+#[test]
+fn s1_cleanup_reset_required_is_a_closed_boundary() {
+    let mut state = reference_state(mtgml_state::TurnPosition::Ending {
+        step: mtgml_state::EndingStep::Cleanup,
+    });
+    state.foundation_sources.insert(
+        mtgml_model::GameObjectId(1),
+        mtgml_state::FoundationCreatureSource {
+            source_kind: mtgml_state::FoundationSourceKind::Creature,
+            base_characteristics: mtgml_state::BaseCharacteristics::Simple {
+                power: 3,
+                toughness: 3,
+            },
+            marked_damage: 1,
+            control_history: mtgml_state::ControlHistory::BeforeTurnStart { turn_number: 1 },
+        },
+    );
+    mtgml_state::validate_engine_state(&state).unwrap();
+    assert_forced_rejection("s1.cleanup.reset-required", state, |error| {
+        matches!(
+            error,
+            ControllerError::KernelExecution(
+                mtgml_rules::KernelExecutionError::UnsupportedRulesBoundary(
+                    mtgml_rules::UnsupportedRulesBoundary::CleanupReset
+                )
+            )
+        )
+    });
+}
+
+#[test]
+fn s1_turn_number_overflow_is_atomic() {
+    let mut state = reference_state(mtgml_state::TurnPosition::Ending {
+        step: mtgml_state::EndingStep::Cleanup,
+    });
+    state.core.turn_number = u64::MAX;
+    assert_forced_rejection("s1.turn-number-overflow", state, |error| {
+        matches!(
+            error,
+            ControllerError::KernelExecution(mtgml_rules::KernelExecutionError::TurnStructure(
+                mtgml_rules::TurnStructureError::TurnNumberOverflow
+            ))
+        )
+    });
+}
+
+#[test]
+fn s1_fabricated_response_is_rejected_on_trusted_and_player_surfaces() {
+    let case_name = "s1.fabricated-response";
+    let (controller, endpoints) =
+        reference_controller_and_endpoints(reference_state(mtgml_state::TurnPosition::Beginning {
+            step: mtgml_state::BeginningStep::Untap,
+        }));
+    let before = capture_complete(&controller, &endpoints).unwrap();
+    let response = DecisionResponseV2 {
+        schema_version: DECISION_RESPONSE_V2_SCHEMA.into(),
+        player_decision_id: PlayerDecisionIdV1(999),
+        state_revision: StateRevision(0),
+        answer: DecisionAnswerV2::SelectOne {
+            candidate_id: CandidateIdV1(999),
+        },
+    };
+
+    assert!(matches!(
+        controller.execute_trusted_response(PlayerId(1), response.clone()),
+        Err(ControllerError::KernelExecution(
+            mtgml_rules::KernelExecutionError::UnsupportedPlayerResponse
+        ))
+    ));
+    let after_trusted = capture_complete(&controller, &endpoints).unwrap();
+    assert_fingerprint_policies(&before, &after_trusted, FingerprintComparison::All).unwrap();
+
+    assert!(endpoints[0].visible_decision().unwrap().is_none());
+    let step = endpoints[0].submit(response).unwrap();
+    let product = capture_transition_product(Ok(step.clone())).unwrap();
+    assert_eq!(
+        product.semantic_submission_code.as_deref(),
+        Some("unavailable_decision")
+    );
+    assert!(product.endpoint_error_code.is_none());
+    assert!(step.observed_events.is_empty());
+    assert!(step.next_decision.is_none());
+
+    let after_player = capture_complete(&controller, &endpoints).unwrap();
+    assert_fingerprint_policies(&before, &after_player, FingerprintComparison::All).unwrap();
+    assert!(
+        endpoints[0].visible_decision().unwrap().is_none(),
+        "{case_name}: rejected response must not create a decision"
+    );
+}
+
+#[test]
+fn s1_projection_failure_is_owner_level_only_and_nonmutating() {
+    let case_name = "projection-failure";
+    let (controller, endpoints) =
+        reference_controller_and_endpoints(reference_state(mtgml_state::TurnPosition::Beginning {
+            step: mtgml_state::BeginningStep::Untap,
+        }));
+    let controller_before = capture_complete(&controller, &endpoints).unwrap();
+
+    let mut before = reference_state(mtgml_state::TurnPosition::Beginning {
+        step: mtgml_state::BeginningStep::Untap,
+    });
+    before
+        .perspective_identities
+        .players
+        .get_mut(&PlayerId(1))
+        .unwrap()
+        .object_to_opaque
+        .remove(&mtgml_model::GameObjectId(1));
+    let mut after = before.clone();
+    after.core.position = mtgml_state::TurnPosition::Beginning {
+        step: mtgml_state::BeginningStep::Upkeep,
+    };
+    after
+        .zones
+        .objects
+        .get_mut(&mtgml_model::GameObjectId(1))
+        .unwrap()
+        .tapped = false;
+    let events = vec![mtgml_rules::AuthoritativeRuleEvent {
+        event_id: mtgml_model::RuleEventId(1),
+        state_revision: StateRevision(1),
+        event: mtgml_rules::AuthoritativeRuleEventKind::PerspectiveOccurrence {
+            lifecycle: mtgml_state::PerspectiveLifecycleAuditV1 {
+                perspective: PlayerId(1),
+                sequence: mtgml_model::VisibleSequence(1),
+                mutation: mtgml_state::PerspectiveLifecycleMutationV1::default(),
+            },
+            observation: mtgml_rules::PerspectiveObservationPolicyV1::ObjectTapped {
+                object: mtgml_model::GameObjectId(1),
+                tapped: false,
+            },
+        },
+    }];
+    let before_snapshot = before.clone();
+    let after_snapshot = after.clone();
+    let events_snapshot = events.clone();
+    assert!(matches!(
+        mtgml_environment::lifecycle_projection::project_occurrence_envelopes(
+            &before, &after, &events,
+        ),
+        Err(mtgml_environment::lifecycle_projection::LifecycleProjectionError::AuthorizedObjectUnresolvable)
+    ));
+    assert_eq!(before, before_snapshot);
+    assert_eq!(after, after_snapshot);
+    assert_eq!(events, events_snapshot);
+
+    let controller_after = capture_complete(&controller, &endpoints).unwrap();
+    assert_fingerprint_policies(
+        &controller_before,
+        &controller_after,
+        FingerprintComparison::All,
+    )
+    .unwrap_or_else(|error| panic!("{case_name}: controller fingerprint changed: {error:?}"));
 }
 
 fn authored_forced_expectation(

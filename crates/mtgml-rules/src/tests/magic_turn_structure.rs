@@ -60,6 +60,26 @@ fn three_player_s1_state_at(position: TurnPosition) -> EngineState {
     state
 }
 
+fn one_player_s1_state() -> EngineState {
+    let mut state = s1_state_at(TurnPosition::Beginning {
+        step: BeginningStep::Untap,
+    });
+    state.core.players.remove(&PlayerId(42));
+    state.zones.objects.remove(&GameObjectId(2));
+    state.zones.locations.remove(&GameObjectId(2));
+    state
+        .zones
+        .ordered_zones
+        .retain(|key, _| key.player != Some(PlayerId(42)));
+    state.knowledge.players.remove(&PlayerId(42));
+    state.perspective_identities.players.remove(&PlayerId(42));
+    assert!(
+        mtgml_state::validate_engine_state(&state).is_ok(),
+        "one-player witness must be generic-state valid before S1 admission"
+    );
+    state
+}
+
 // --- Response rejection ---
 
 #[test]
@@ -68,6 +88,7 @@ fn magic_turn_structure_kernel_shell_rejects_player_response() {
         step: mtgml_state::BeginningStep::Untap,
     });
     let before = state.clone();
+    let digest_before = state.digest().unwrap();
     let mut kernel = MagicRulesKernel::new();
     let result = kernel.apply(&state, PlayerId(7), &response(0, 0));
     assert!(
@@ -78,6 +99,7 @@ fn magic_turn_structure_kernel_shell_rejects_player_response() {
         "Magic apply() must never accept a player response"
     );
     assert_eq!(state, before, "apply() must not mutate input state");
+    assert_eq!(state.digest().unwrap(), digest_before);
 }
 
 #[test]
@@ -886,9 +908,29 @@ fn magic_turn_structure_kernel_shell_rejects_held_priority() {
 }
 
 #[test]
+fn magic_turn_structure_s1_admission_not_two_players_rejects_one_player_before_execution() {
+    let state = one_player_s1_state();
+    let before = state.clone();
+    let digest_before = state.digest().unwrap();
+    let mut kernel = MagicRulesKernel::new();
+
+    let result = kernel.advance_forced_progress(&state);
+
+    assert!(matches!(
+        result,
+        Err(crate::KernelExecutionError::TurnStructure(
+            crate::TurnStructureError::UnsupportedPlayerCount
+        ))
+    ));
+    assert_eq!(state, before);
+    assert_eq!(state.digest().unwrap(), digest_before);
+}
+
+#[test]
 fn magic_turn_structure_kernel_shell_rejects_three_players() {
     let state = three_player_s1_state();
     let before = state.clone();
+    let digest_before = state.digest().unwrap();
     let mut kernel = MagicRulesKernel::new();
     let result = kernel.advance_forced_progress(&state);
     assert!(
@@ -901,6 +943,152 @@ fn magic_turn_structure_kernel_shell_rejects_three_players() {
         "three-player states must fail through the S1 support validator"
     );
     assert_eq!(state, before, "rejected work must not mutate input");
+    assert_eq!(state.digest().unwrap(), digest_before);
+}
+
+#[test]
+fn magic_turn_structure_s1_admission_unsupported_profile_rejects_without_mutation() {
+    let mut state = s1_state_at(TurnPosition::Beginning {
+        step: BeginningStep::Untap,
+    });
+    state.format = mtgml_state::FormatState::Commander {
+        state: mtgml_state::CommanderState {
+            designations: std::collections::BTreeMap::new(),
+            cast_counts: std::collections::BTreeMap::new(),
+            damage: std::collections::BTreeMap::new(),
+        },
+    };
+    assert!(
+        mtgml_state::validate_engine_state(&state).is_ok(),
+        "unsupported-profile witness must be generic-state valid"
+    );
+    let before = state.clone();
+    let digest_before = state.digest().unwrap();
+    let mut kernel = MagicRulesKernel::new();
+
+    let result = kernel.advance_forced_progress(&state);
+
+    assert!(matches!(
+        result,
+        Err(crate::KernelExecutionError::TurnStructure(
+            crate::TurnStructureError::FormatState
+        ))
+    ));
+    assert_eq!(state, before);
+    assert_eq!(state.digest().unwrap(), digest_before);
+}
+
+#[test]
+fn magic_turn_structure_s1_invalid_temporal_state_rejects_without_repair() {
+    let mut state = s1_state_at(TurnPosition::Beginning {
+        step: BeginningStep::Untap,
+    });
+    state.core.turn_number = 0;
+    let before = state.clone();
+    let digest_before = state.digest().unwrap();
+    let mut kernel = MagicRulesKernel::new();
+
+    let result = kernel.advance_forced_progress(&state);
+
+    assert!(matches!(
+        result,
+        Err(crate::KernelExecutionError::TurnStructure(
+            crate::TurnStructureError::ZeroTurnNumber
+        ))
+    ));
+    assert_eq!(state, before);
+    assert_eq!(state.digest().unwrap(), digest_before);
+}
+
+#[test]
+fn magic_turn_structure_s1_downstream_and_cleanup_negative_kernel_matrix_is_nonmutating() {
+    let cases = vec![
+        (
+            "upkeep priority",
+            s1_state_at(TurnPosition::Beginning {
+                step: BeginningStep::Upkeep,
+            }),
+            0u8,
+        ),
+        (
+            "draw",
+            s1_state_at(TurnPosition::Beginning {
+                step: BeginningStep::Draw,
+            }),
+            1,
+        ),
+        (
+            "combat",
+            s1_state_at(TurnPosition::Combat {
+                step: mtgml_state::CombatStep::BeginningOfCombat,
+            }),
+            2,
+        ),
+        (
+            "cleanup reset",
+            cleanup_state_with_active_hand(8),
+            3,
+        ),
+        (
+            "turn overflow",
+            cleanup_state_at_turn(u64::MAX),
+            4,
+        ),
+    ];
+
+    for (label, state, expected) in cases {
+        let before = state.clone();
+        let digest_before = state.digest().unwrap();
+        let mut kernel = MagicRulesKernel::new();
+        let result = kernel.advance_forced_progress(&state);
+        match expected {
+            0 => assert!(
+                matches!(
+                    result,
+                    Err(crate::KernelExecutionError::UnsupportedRulesBoundary(
+                        crate::UnsupportedRulesBoundary::BasicPriority
+                    ))
+                ),
+                "{label} must stop at BasicPriority"
+            ),
+            1 => assert!(
+                matches!(
+                    result,
+                    Err(crate::KernelExecutionError::UnsupportedRulesBoundary(
+                        crate::UnsupportedRulesBoundary::DrawCard
+                    ))
+                ),
+                "{label} must stop at DrawCard"
+            ),
+            2 => assert!(
+                matches!(
+                    result,
+                    Err(crate::KernelExecutionError::UnsupportedRulesBoundary(
+                        crate::UnsupportedRulesBoundary::Combat
+                    ))
+                ),
+                "{label} must stop at Combat"
+            ),
+            3 => assert!(
+                matches!(
+                    result,
+                    Err(crate::KernelExecutionError::UnsupportedRulesBoundary(
+                        crate::UnsupportedRulesBoundary::CleanupReset
+                    ))
+                ),
+                "{label} must stop at CleanupReset"
+            ),
+            4 => assert!(matches!(
+                result,
+                Err(crate::KernelExecutionError::TurnStructure(
+                    crate::TurnStructureError::TurnNumberOverflow
+                ))
+            )),
+            _ => unreachable!("test case expected tag is closed"),
+        }
+        assert_eq!(state, before, "{label} mutated the input state");
+        assert_eq!(state.digest().unwrap(), digest_before, "{label} changed the digest");
+    }
 }
 
 // --- Program dispatch negative (section 28) ---

@@ -143,6 +143,86 @@ fn s1_checkpoint(identity: ExecutionIdentityV1) -> EnvironmentCheckpointV5 {
     .unwrap()
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct RestoreAdmissionFingerprint {
+    checkpoint: EnvironmentCheckpointV5,
+    replay: mtgml_replay::AuthoritativeReplayV5,
+    player_bytes: Vec<Vec<u8>>,
+}
+
+fn capture_restore_admission_fingerprint(
+    controller: &TrustedEnvironmentController,
+) -> RestoreAdmissionFingerprint {
+    let player_bytes = [PlayerId(1), PlayerId(2)]
+        .into_iter()
+        .map(|player| {
+            let endpoint = controller.bind_player(player).unwrap();
+            let mut bytes = Vec::new();
+            bytes.extend(mtgml_wire::encode_canonical(&endpoint.observation().unwrap()).unwrap());
+            bytes.extend(
+                mtgml_wire::encode_canonical(&endpoint.information_state().unwrap()).unwrap(),
+            );
+            if let Some(decision) = endpoint.visible_decision().unwrap() {
+                bytes.push(1);
+                bytes.extend(mtgml_wire::encode_canonical(&decision).unwrap());
+            } else {
+                bytes.push(0);
+            }
+            bytes
+        })
+        .collect();
+    RestoreAdmissionFingerprint {
+        checkpoint: controller.checkpoint().unwrap(),
+        replay: controller.export_replay().unwrap(),
+        player_bytes,
+    }
+}
+
+fn assert_controller_restore_rejection_is_nonmutating(
+    label: &str,
+    controller: &TrustedEnvironmentController,
+    checkpoint: EnvironmentCheckpointV5,
+    catalog: RuntimeSemanticCatalog,
+    expected: impl FnOnce(&ControllerError) -> bool,
+) {
+    let before = capture_restore_admission_fingerprint(controller);
+    let error = controller
+        .restore_with_catalog(checkpoint, catalog)
+        .expect_err("restore admission must reject");
+    assert!(expected(&error), "{label}: unexpected error {error:?}");
+    let after = capture_restore_admission_fingerprint(controller);
+    assert_eq!(after, before, "{label}: restore mutated the complete fingerprint");
+}
+
+fn valid_wrong_closure_catalog() -> (RuntimeSemanticCatalog, SemanticContractIdV1, SemanticContractIdV1) {
+    let rules_manifest = RulesContractManifestV1 {
+        rules_authority: RulesAuthorityV1::ComprehensiveRules {
+            snapshot_id: "wotc-cr-2026-08-07-txt-20260819-sha256-4381ad1b39ab2c05f7d03633a20f711ed37277074d3266dcba5f38cbb527423f".into(),
+        },
+        capability_closure: Some(vec![CapabilityRequirementV1 {
+            key: "rules/turn-structure".into(),
+            version: "0.2.0".into(),
+        }]),
+    };
+    let wrong_rules_id = calculate_rules_contract_id_v1(&rules_manifest).unwrap();
+    let semantic_manifest = SemanticContractManifestV1 {
+        rules_contract_id: wrong_rules_id,
+        format_contract_id: None,
+        content_contract_id: None,
+    };
+    let wrong_semantic_id = calculate_semantic_contract_id_v1(&semantic_manifest).unwrap();
+    let catalog = RuntimeSemanticCatalog::from_entries(vec![CatalogEntry {
+        semantic_contract_id: wrong_semantic_id.clone(),
+        manifest: semantic_manifest,
+        rules_manifest,
+    }]);
+    (
+        catalog,
+        wrong_semantic_id,
+        magic_turn_structure_0_1_0_semantic_contract_id(),
+    )
+}
+
 #[test]
 fn exact_turn_structure_restore_admits() {
     // Exact S1 contract + valid S1 state + MagicRules identity.
@@ -267,6 +347,35 @@ fn controller_restore_exact_turn_structure_nonmutation_on_rejection() {
 }
 
 #[test]
+fn turn_structure_task11_program_authority_pairing_both_directions_is_nonmutating() {
+    let controller = TrustedEnvironmentController::new(backend());
+
+    let magic_with_synthetic = valid_v5_checkpoint(ExecutionIdentityV1 {
+        program_kind: ExecutionProgramV1::MagicRules,
+        semantic_contract_id: synthetic_legacy_default_semantic_contract_id(),
+    });
+    assert_controller_restore_rejection_is_nonmutating(
+        "MagicRules plus SyntheticLegacy",
+        &controller,
+        magic_with_synthetic,
+        RuntimeSemanticCatalog::production(),
+        |error| matches!(error, ControllerError::ProgramAuthorityMismatch),
+    );
+
+    let synthetic_with_magic = s1_checkpoint(ExecutionIdentityV1 {
+        program_kind: ExecutionProgramV1::SyntheticRulesCompat,
+        semantic_contract_id: magic_turn_structure_0_1_0_semantic_contract_id(),
+    });
+    assert_controller_restore_rejection_is_nonmutating(
+        "SyntheticRulesCompat plus ComprehensiveRules",
+        &controller,
+        synthetic_with_magic,
+        RuntimeSemanticCatalog::production(),
+        |error| matches!(error, ControllerError::ProgramAuthorityMismatch),
+    );
+}
+
+#[test]
 fn tampered_checkpoint_digest_rejects_at_structural_validation() {
     let catalog = RuntimeSemanticCatalog::production();
     let mut checkpoint = valid_v5_checkpoint(synthetic_identity());
@@ -319,6 +428,84 @@ fn semantic_contract_digest_mismatch_rejected() {
     assert_eq!(
         result.unwrap_err(),
         RestoreAdmissionError::SemanticContractDigestMismatch
+    );
+}
+
+#[test]
+fn turn_structure_task11_wrong_semantic_id_restore_is_nonmutating() {
+    let wrong_id = SemanticContractIdV1::from_digest_bytes([0xab; 32]);
+    let catalog = RuntimeSemanticCatalog::from_entries(vec![CatalogEntry {
+        semantic_contract_id: wrong_id.clone(),
+        manifest: synthetic_legacy_default_semantic_manifest(),
+        rules_manifest: synthetic_legacy_default_rules_manifest(),
+    }]);
+    let controller = TrustedEnvironmentController::new(backend());
+    let checkpoint = valid_v5_checkpoint(ExecutionIdentityV1 {
+        program_kind: ExecutionProgramV1::SyntheticRulesCompat,
+        semantic_contract_id: wrong_id,
+    });
+
+    assert_controller_restore_rejection_is_nonmutating(
+        "s1.catalog.wrong-semantic-id",
+        &controller,
+        checkpoint,
+        catalog,
+        |error| {
+            matches!(
+                error,
+                ControllerError::CheckpointValidation(
+                    CheckpointValidationError::SemanticContractDigestMismatch
+                )
+            )
+        },
+    );
+}
+
+#[test]
+fn turn_structure_task11_wrong_closure_is_content_derived_and_not_exact_s1() {
+    let (catalog, wrong_semantic_id, exact_semantic_id) = valid_wrong_closure_catalog();
+    let production_catalog = RuntimeSemanticCatalog::production();
+    let exact_entry = production_catalog.resolve(&exact_semantic_id).unwrap();
+    let wrong_entry = catalog.resolve(&wrong_semantic_id).unwrap();
+    let wrong_rules_id = wrong_entry.manifest.rules_contract_id.clone();
+    assert_ne!(wrong_rules_id, exact_entry.manifest.rules_contract_id);
+    assert_ne!(wrong_semantic_id, exact_semantic_id);
+    assert!(catalog.resolve(&wrong_semantic_id).is_some());
+    assert_eq!(
+        calculate_rules_contract_id_v1(&wrong_entry.rules_manifest).unwrap(),
+        wrong_rules_id
+    );
+    assert_eq!(
+        calculate_semantic_contract_id_v1(&wrong_entry.manifest).unwrap(),
+        wrong_semantic_id
+    );
+    assert!(matches!(
+        admit_restore(
+            &catalog,
+            &s1_checkpoint(ExecutionIdentityV1 {
+                program_kind: ExecutionProgramV1::MagicRules,
+                semantic_contract_id: wrong_semantic_id.clone(),
+            })
+        ),
+        Err(RestoreAdmissionError::SemanticContractUnsupported)
+    ));
+}
+
+#[test]
+fn turn_structure_task11_unsupported_restore_reaches_runtime_support_phase_and_is_nonmutating() {
+    let (catalog, wrong_semantic_id, _) = valid_wrong_closure_catalog();
+    let controller = TrustedEnvironmentController::new(backend());
+    let checkpoint = s1_checkpoint(ExecutionIdentityV1 {
+        program_kind: ExecutionProgramV1::MagicRules,
+        semantic_contract_id: wrong_semantic_id,
+    });
+
+    assert_controller_restore_rejection_is_nonmutating(
+        "s1.unsupported-restore",
+        &controller,
+        checkpoint,
+        catalog,
+        |error| matches!(error, ControllerError::SemanticContractUnsupported),
     );
 }
 
