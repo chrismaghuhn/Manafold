@@ -1324,3 +1324,28 @@ fn cleanup_marked_damage_rejects() {
     );
     assert_eq!(state, before, "rejected cleanup must not mutate input");
 }
+
+#[test]
+fn cleanup_ambiguous_hand_ownership_rejects() {
+    let mut state = s1_state_at(mtgml_state::TurnPosition::Ending {
+        step: mtgml_state::EndingStep::Cleanup,
+    });
+    add_ambiguous_hand_card(&mut state, GameObjectId(3), PlayerId(7));
+    assert!(
+        mtgml_state::validate_engine_state(&state).is_ok(),
+        "fixture with ambiguous Hand must still pass generic engine-state validation"
+    );
+    let before = state.clone();
+    let mut kernel = MagicRulesKernel::new();
+    let result = kernel.advance_forced_progress(&state);
+    assert!(
+        matches!(
+            result,
+            Err(crate::KernelExecutionError::UnsupportedRulesBoundary(
+                crate::UnsupportedRulesBoundary::CleanupReset
+            ))
+        ),
+        "Hand-zone location with player=None must fail closed with CleanupReset"
+    );
+    assert_eq!(state, before, "rejected cleanup must not mutate input");
+}

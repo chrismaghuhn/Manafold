@@ -786,6 +786,79 @@ fn add_hand_card(state: &mut EngineState, object_id: GameObjectId, owner: Player
     }
 }
 
+/// Adds a Hand-zone card with `player: None` (ambiguous ownership) to `state`,
+/// including the knowledge/perspective-identity bookkeeping required for
+/// `validate_engine_state` to accept the fixture.
+fn add_ambiguous_hand_card(state: &mut EngineState, object_id: GameObjectId, owner: PlayerId) {
+    use mtgml_model::{CardDefinitionId, OpaqueObjectId, PhysicalCardId};
+    use mtgml_state::{
+        GameObject, KnownLocationFactV2, KnowledgeAcquisitionReason, KnowledgeRecordV2,
+        VisibilityPartition, ZoneLocation, ZonePosition,
+    };
+
+    let physical_card = PhysicalCardId(object_id.0);
+    let card_definition = CardDefinitionId(object_id.0);
+    let opaque = OpaqueObjectId(object_id.0);
+
+    state.zones.objects.insert(
+        object_id,
+        GameObject {
+            id: object_id,
+            physical_card: Some(physical_card),
+            card_definition,
+            owner,
+            controller: owner,
+            tapped: false,
+            face_down: false,
+        },
+    );
+
+    let location = ZoneLocation {
+        zone: ZoneKind::Hand,
+        player: None,
+        position: ZonePosition::Unordered,
+        visibility: VisibilityPartition::OwnerOnly,
+        partition: None,
+    };
+    state.zones.locations.insert(object_id, location.clone());
+
+    let next_id = GameObjectId(object_id.0 + 1);
+    if state.allocators.next_object_id.0 < next_id.0 {
+        state.allocators.next_object_id = next_id;
+    }
+
+    let knowledge_record = KnowledgeRecordV2 {
+        opaque_object: opaque,
+        physical_card: Some(physical_card),
+        card_definition: Some(card_definition),
+        known_location: Some(KnownLocationFactV2 {
+            location,
+            provenance: KnowledgeAcquisitionReason::InitialConfiguration,
+        }),
+        acquisition: KnowledgeAcquisitionReason::InitialConfiguration,
+        historical_locations: Vec::new(),
+    };
+
+    state
+        .knowledge
+        .players
+        .get_mut(&owner)
+        .unwrap()
+        .active
+        .insert(opaque, knowledge_record);
+
+    let identity = state
+        .perspective_identities
+        .players
+        .get_mut(&owner)
+        .unwrap();
+    identity.opaque_to_object.insert(opaque, object_id);
+    identity.object_to_opaque.insert(object_id, opaque);
+    if identity.next_opaque_object_id.0 <= opaque.0 {
+        identity.next_opaque_object_id = OpaqueObjectId(opaque.0 + 1);
+    }
+}
+
 fn cleanup_state_at_turn_with_hand(turn: u64, hand_count: usize) -> EngineState {
     let mut state = state_without_pending_decision();
     state.core.turn_number = turn;
@@ -870,6 +943,24 @@ fn cleanup_contract_rejects_nonquiescent_damage_product() {
     assert!(
         matches!(validate_transition_contract(&before, &result), Err(TransitionViolation::TurnStructure)),
         "non-quiescent Cleanup with marked damage must reject via TurnStructure"
+    );
+    assert_contract_rejects_without_mutation(&before, &result);
+}
+
+#[test]
+fn cleanup_contract_rejects_ambiguous_hand_product() {
+    use mtgml_state::validate_engine_state;
+
+    let mut before = cleanup_state_at_turn_with_hand(1, 0);
+    add_ambiguous_hand_card(&mut before, GameObjectId(3), PlayerId(1));
+    assert!(
+        validate_engine_state(&before).is_ok(),
+        "fixture with ambiguous Hand must still pass generic engine-state validation"
+    );
+    let result = cleanup_product_for_contract(&before);
+    assert!(
+        matches!(validate_transition_contract(&before, &result), Err(TransitionViolation::TurnStructure)),
+        "ambiguous Hand ownership (player=None) must reject via TurnStructure"
     );
     assert_contract_rejects_without_mutation(&before, &result);
 }
