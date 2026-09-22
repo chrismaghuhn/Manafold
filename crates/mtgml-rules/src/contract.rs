@@ -220,6 +220,9 @@ fn validate_accepted_progression(
             };
 
     if is_ordinary_untap_transition {
+        if result.events.len() < 2 {
+            return Err(TransitionViolation::TurnStructure);
+        }
         // UntapCompleted must be first.
         if !matches!(
             &result.events[0].event,

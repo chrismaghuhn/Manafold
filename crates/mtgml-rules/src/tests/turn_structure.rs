@@ -1079,3 +1079,174 @@ fn untap_contract_rejects_unrelated_zone_location_mutation() {
     let result = accepted_product_for_contract(&before, after, events);
     assert_contract_rejects_without_mutation(&before, &result);
 }
+
+
+// --- RED: malformed event vectors must not panic ---
+
+#[test]
+fn untap_empty_event_product_rejects_no_panic() {
+    let mut before = state_without_pending_decision();
+    before
+        .zones
+        .objects
+        .get_mut(&GameObjectId(1))
+        .unwrap()
+        .tapped = true;
+    let after = before.clone();
+    let events = vec![];
+    let result = accepted_product_for_contract(&before, after, events);
+    assert!(validate_transition_contract(&before, &result).is_err());
+}
+
+#[test]
+fn untap_one_event_product_rejects_no_panic() {
+    let mut before = state_without_pending_decision();
+    before
+        .zones
+        .objects
+        .get_mut(&GameObjectId(1))
+        .unwrap()
+        .tapped = true;
+    let mut after = before.clone();
+    after.revision = StateRevision(1);
+    after.core.position = TurnPosition::Beginning {
+        step: BeginningStep::Upkeep,
+    };
+    let events = vec![AuthoritativeRuleEvent {
+        event_id: RuleEventId(1),
+        state_revision: StateRevision(1),
+        event: AuthoritativeRuleEventKind::UntapCompleted {
+            affected_objects: vec![GameObjectId(1)],
+        },
+    }];
+    let result = accepted_product_for_contract(&before, after, events);
+    assert!(validate_transition_contract(&before, &result).is_err());
+}
+
+
+#[test]
+fn untap_contract_rejects_missing_occurrence() {
+    let mut before = state_without_pending_decision();
+    before.zones.objects.get_mut(&GameObjectId(1)).unwrap().tapped = true;
+    let mut after = before.clone();
+    after.revision = StateRevision(1);
+    after.zones.objects.get_mut(&GameObjectId(1)).unwrap().tapped = false;
+    after.core.position = TurnPosition::Beginning { step: BeginningStep::Upkeep };
+    after.allocators.next_rule_event_id = RuleEventId(3);
+    for knowledge in after.knowledge.players.values_mut() {
+        knowledge.next_visible_sequence = mtgml_model::VisibleSequence(knowledge.next_visible_sequence.0 + 1);
+    }
+    let events = vec![
+        AuthoritativeRuleEvent { event_id: RuleEventId(1), state_revision: StateRevision(1), event: AuthoritativeRuleEventKind::UntapCompleted { affected_objects: vec![GameObjectId(1)] } },
+        AuthoritativeRuleEvent { event_id: RuleEventId(3), state_revision: StateRevision(1), event: AuthoritativeRuleEventKind::TurnPositionChanged { from: TurnPosition::Beginning { step: BeginningStep::Untap }, to: TurnPosition::Beginning { step: BeginningStep::Upkeep } } },
+    ];
+    let result = accepted_product_for_contract(&before, after, events);
+    assert_contract_rejects_without_mutation(&before, &result);
+}
+
+#[test]
+fn untap_contract_rejects_duplicate_occurrence() {
+    let mut before = state_without_pending_decision();
+    before.zones.objects.get_mut(&GameObjectId(1)).unwrap().tapped = true;
+    let mut after = before.clone();
+    after.revision = StateRevision(1);
+    after.zones.objects.get_mut(&GameObjectId(1)).unwrap().tapped = false;
+    after.core.position = TurnPosition::Beginning { step: BeginningStep::Upkeep };
+    after.allocators.next_rule_event_id = RuleEventId(4);
+    for knowledge in after.knowledge.players.values_mut() {
+        knowledge.next_visible_sequence = mtgml_model::VisibleSequence(knowledge.next_visible_sequence.0 + 1);
+    }
+    let events = vec![
+        AuthoritativeRuleEvent { event_id: RuleEventId(1), state_revision: StateRevision(1), event: AuthoritativeRuleEventKind::UntapCompleted { affected_objects: vec![GameObjectId(1)] } },
+        AuthoritativeRuleEvent { event_id: RuleEventId(2), state_revision: StateRevision(1), event: AuthoritativeRuleEventKind::PerspectiveOccurrence { lifecycle: PerspectiveLifecycleAuditV1 { perspective: PlayerId(1), sequence: mtgml_model::VisibleSequence(1), mutation: PerspectiveLifecycleMutationV1::default() }, observation: PerspectiveObservationPolicyV1::ObjectTapped { object: GameObjectId(1), tapped: false } } },
+        AuthoritativeRuleEvent { event_id: RuleEventId(3), state_revision: StateRevision(1), event: AuthoritativeRuleEventKind::PerspectiveOccurrence { lifecycle: PerspectiveLifecycleAuditV1 { perspective: PlayerId(1), sequence: mtgml_model::VisibleSequence(2), mutation: PerspectiveLifecycleMutationV1::default() }, observation: PerspectiveObservationPolicyV1::ObjectTapped { object: GameObjectId(1), tapped: false } } },
+        AuthoritativeRuleEvent { event_id: RuleEventId(4), state_revision: StateRevision(1), event: AuthoritativeRuleEventKind::TurnPositionChanged { from: TurnPosition::Beginning { step: BeginningStep::Untap }, to: TurnPosition::Beginning { step: BeginningStep::Upkeep } } },
+    ];
+    let result = accepted_product_for_contract(&before, after, events);
+    assert_contract_rejects_without_mutation(&before, &result);
+}
+
+#[test]
+fn untap_contract_rejects_wrong_object() {
+    let mut before = state_without_pending_decision();
+    before.zones.objects.get_mut(&GameObjectId(1)).unwrap().tapped = true;
+    let mut after = before.clone();
+    after.revision = StateRevision(1);
+    after.zones.objects.get_mut(&GameObjectId(1)).unwrap().tapped = false;
+    after.core.position = TurnPosition::Beginning { step: BeginningStep::Upkeep };
+    after.allocators.next_rule_event_id = RuleEventId(3);
+    for knowledge in after.knowledge.players.values_mut() {
+        knowledge.next_visible_sequence = mtgml_model::VisibleSequence(knowledge.next_visible_sequence.0 + 1);
+    }
+    let events = vec![
+        AuthoritativeRuleEvent { event_id: RuleEventId(1), state_revision: StateRevision(1), event: AuthoritativeRuleEventKind::UntapCompleted { affected_objects: vec![GameObjectId(1)] } },
+        AuthoritativeRuleEvent { event_id: RuleEventId(2), state_revision: StateRevision(1), event: AuthoritativeRuleEventKind::PerspectiveOccurrence { lifecycle: PerspectiveLifecycleAuditV1 { perspective: PlayerId(1), sequence: mtgml_model::VisibleSequence(1), mutation: PerspectiveLifecycleMutationV1::default() }, observation: PerspectiveObservationPolicyV1::ObjectTapped { object: GameObjectId(2), tapped: false } } },
+        AuthoritativeRuleEvent { event_id: RuleEventId(3), state_revision: StateRevision(1), event: AuthoritativeRuleEventKind::TurnPositionChanged { from: TurnPosition::Beginning { step: BeginningStep::Untap }, to: TurnPosition::Beginning { step: BeginningStep::Upkeep } } },
+    ];
+    let result = accepted_product_for_contract(&before, after, events);
+    assert_contract_rejects_without_mutation(&before, &result);
+}
+
+#[test]
+fn untap_contract_rejects_wrong_tapped() {
+    let mut before = state_without_pending_decision();
+    before.zones.objects.get_mut(&GameObjectId(1)).unwrap().tapped = true;
+    let mut after = before.clone();
+    after.revision = StateRevision(1);
+    after.zones.objects.get_mut(&GameObjectId(1)).unwrap().tapped = false;
+    after.core.position = TurnPosition::Beginning { step: BeginningStep::Upkeep };
+    after.allocators.next_rule_event_id = RuleEventId(3);
+    for knowledge in after.knowledge.players.values_mut() {
+        knowledge.next_visible_sequence = mtgml_model::VisibleSequence(knowledge.next_visible_sequence.0 + 1);
+    }
+    let events = vec![
+        AuthoritativeRuleEvent { event_id: RuleEventId(1), state_revision: StateRevision(1), event: AuthoritativeRuleEventKind::UntapCompleted { affected_objects: vec![GameObjectId(1)] } },
+        AuthoritativeRuleEvent { event_id: RuleEventId(2), state_revision: StateRevision(1), event: AuthoritativeRuleEventKind::PerspectiveOccurrence { lifecycle: PerspectiveLifecycleAuditV1 { perspective: PlayerId(1), sequence: mtgml_model::VisibleSequence(1), mutation: PerspectiveLifecycleMutationV1::default() }, observation: PerspectiveObservationPolicyV1::ObjectTapped { object: GameObjectId(1), tapped: true } } },
+        AuthoritativeRuleEvent { event_id: RuleEventId(3), state_revision: StateRevision(1), event: AuthoritativeRuleEventKind::TurnPositionChanged { from: TurnPosition::Beginning { step: BeginningStep::Untap }, to: TurnPosition::Beginning { step: BeginningStep::Upkeep } } },
+    ];
+    let result = accepted_product_for_contract(&before, after, events);
+    assert_contract_rejects_without_mutation(&before, &result);
+}
+
+#[test]
+fn untap_contract_rejects_wrong_order() {
+    let mut before = state_without_pending_decision();
+    before.zones.objects.get_mut(&GameObjectId(1)).unwrap().tapped = true;
+    let mut after = before.clone();
+    after.revision = StateRevision(1);
+    after.zones.objects.get_mut(&GameObjectId(1)).unwrap().tapped = false;
+    after.core.position = TurnPosition::Beginning { step: BeginningStep::Upkeep };
+    after.allocators.next_rule_event_id = RuleEventId(3);
+    for knowledge in after.knowledge.players.values_mut() {
+        knowledge.next_visible_sequence = mtgml_model::VisibleSequence(knowledge.next_visible_sequence.0 + 1);
+    }
+    let events = vec![
+        AuthoritativeRuleEvent { event_id: RuleEventId(2), state_revision: StateRevision(1), event: AuthoritativeRuleEventKind::PerspectiveOccurrence { lifecycle: PerspectiveLifecycleAuditV1 { perspective: PlayerId(1), sequence: mtgml_model::VisibleSequence(1), mutation: PerspectiveLifecycleMutationV1::default() }, observation: PerspectiveObservationPolicyV1::ObjectTapped { object: GameObjectId(1), tapped: false } } },
+        AuthoritativeRuleEvent { event_id: RuleEventId(1), state_revision: StateRevision(1), event: AuthoritativeRuleEventKind::UntapCompleted { affected_objects: vec![GameObjectId(1)] } },
+        AuthoritativeRuleEvent { event_id: RuleEventId(3), state_revision: StateRevision(1), event: AuthoritativeRuleEventKind::TurnPositionChanged { from: TurnPosition::Beginning { step: BeginningStep::Untap }, to: TurnPosition::Beginning { step: BeginningStep::Upkeep } } },
+    ];
+    let result = accepted_product_for_contract(&before, after, events);
+    assert_contract_rejects_without_mutation(&before, &result);
+}
+
+#[test]
+fn untap_contract_rejects_extra_middle_event() {
+    let mut before = state_without_pending_decision();
+    before.zones.objects.get_mut(&GameObjectId(1)).unwrap().tapped = true;
+    let mut after = before.clone();
+    after.revision = StateRevision(1);
+    after.zones.objects.get_mut(&GameObjectId(1)).unwrap().tapped = false;
+    after.core.position = TurnPosition::Beginning { step: BeginningStep::Upkeep };
+    after.allocators.next_rule_event_id = RuleEventId(4);
+    for knowledge in after.knowledge.players.values_mut() {
+        knowledge.next_visible_sequence = mtgml_model::VisibleSequence(knowledge.next_visible_sequence.0 + 1);
+    }
+    let events = vec![
+        AuthoritativeRuleEvent { event_id: RuleEventId(1), state_revision: StateRevision(1), event: AuthoritativeRuleEventKind::UntapCompleted { affected_objects: vec![GameObjectId(1)] } },
+        AuthoritativeRuleEvent { event_id: RuleEventId(2), state_revision: StateRevision(1), event: AuthoritativeRuleEventKind::PerspectiveOccurrence { lifecycle: PerspectiveLifecycleAuditV1 { perspective: PlayerId(1), sequence: mtgml_model::VisibleSequence(1), mutation: PerspectiveLifecycleMutationV1::default() }, observation: PerspectiveObservationPolicyV1::ObjectTapped { object: GameObjectId(1), tapped: false } } },
+        AuthoritativeRuleEvent { event_id: RuleEventId(3), state_revision: StateRevision(1), event: AuthoritativeRuleEventKind::TurnPositionChanged { from: TurnPosition::Beginning { step: BeginningStep::Untap }, to: TurnPosition::Beginning { step: BeginningStep::Upkeep } } },
+        AuthoritativeRuleEvent { event_id: RuleEventId(4), state_revision: StateRevision(1), event: AuthoritativeRuleEventKind::TurnPositionChanged { from: TurnPosition::Beginning { step: BeginningStep::Untap }, to: TurnPosition::Beginning { step: BeginningStep::Upkeep } } },
+    ];
+    let result = accepted_product_for_contract(&before, after, events);
+    assert_contract_rejects_without_mutation(&before, &result);
+}

@@ -4,8 +4,10 @@
 // through the existing observation infrastructure using
 // ObservedEventKindV2::ObjectTapped and perspective-local opaque identity.
 
+use base64::Engine as _;
 use mtgml_observation::{
     ObservedEventKindV2,
+    SyntheticM3Observation, SyntheticM3BeginningStep, SyntheticM3Priority, SyntheticM3TurnPosition,
 };
 use mtgml_rules::{
     AuthoritativeRuleEvent, AuthoritativeRuleEventKind,
@@ -15,8 +17,10 @@ use mtgml_state::{
     PerspectiveLifecycleAuditV1, PerspectiveLifecycleMutationV1,
     SyntheticResetInputs, SyntheticV4Setup,
 };
+use mtgml_wire;
 
 use crate::lifecycle_projection::project_occurrence_envelopes;
+use crate::SyntheticM1EnvironmentBackend;
 
 fn untap_completed_event(
     event_id: mtgml_model::RuleEventId,
@@ -120,7 +124,7 @@ fn state_with_opaque_mapping(
     let mut state = base_state_with_objects(active_player, objects);
     let identity = state.perspective_identities.players.get_mut(&perspective).unwrap();
     for (object_id, _, _) in objects {
-        let opaque = OpaqueObjectId(object_id.0);
+        let opaque = OpaqueObjectId(object_id.0 + 1000);
         identity.object_to_opaque.insert(*object_id, opaque);
         identity.opaque_to_object.insert(opaque, *object_id);
     }
@@ -163,7 +167,7 @@ fn observation_one_public_untap_produces_object_tapped() {
     assert_eq!(p1.len(), 1, "one perspective should have one envelope");
     match &p1[0].event {
         ObservedEventKindV2::ObjectTapped { object: opaque, tapped } => {
-            assert_eq!(*opaque, OpaqueObjectId(1), "opaque ID from perspective mapping");
+            assert_eq!(*opaque, OpaqueObjectId(1001), "opaque ID from perspective mapping");
             assert!(!*tapped, "tapped is false after untap");
         }
         other => panic!("expected ObjectTapped, got {other:?}"),
@@ -209,14 +213,14 @@ fn observation_multiple_public_untaps_canonical_order() {
     assert_eq!(p1.len(), 2);
     match &p1[0].event {
         ObservedEventKindV2::ObjectTapped { object: opaque, tapped } => {
-            assert_eq!(*opaque, OpaqueObjectId(1));
+            assert_eq!(*opaque, OpaqueObjectId(1001));
             assert!(!*tapped);
         }
         other => panic!("expected ObjectTapped at index 0, got {other:?}"),
     }
     match &p1[1].event {
         ObservedEventKindV2::ObjectTapped { object: opaque, tapped } => {
-            assert_eq!(*opaque, OpaqueObjectId(2));
+            assert_eq!(*opaque, OpaqueObjectId(1002));
             assert!(!*tapped);
         }
         other => panic!("expected ObjectTapped at index 1, got {other:?}"),
@@ -310,6 +314,23 @@ fn observation_exact_temporal_fields_after_untap() {
     after.core.position = mtgml_state::TurnPosition::Beginning {
         step: mtgml_state::BeginningStep::Upkeep,
     };
+
+    let envelope = SyntheticM1EnvironmentBackend::synthetic_observation(&after, active)
+        .unwrap();
+    let payload_bytes = base64::engine::general_purpose::STANDARD
+        .decode(&envelope.payload_base64)
+        .unwrap();
+    let payload: SyntheticM3Observation =
+        mtgml_wire::decode_canonical(&payload_bytes).unwrap();
+    assert_eq!(payload.active_player, active);
+    assert_eq!(payload.turn_number, "1");
+    assert!(matches!(
+        payload.turn_position,
+        SyntheticM3TurnPosition::Beginning {
+            step: SyntheticM3BeginningStep::Upkeep,
+        }
+    ));
+    assert!(matches!(payload.priority, SyntheticM3Priority::None));
 
     let envelopes = project_occurrence_envelopes(&before, &after, &events).unwrap();
     let p1 = &envelopes[&active];
@@ -423,4 +444,60 @@ fn observation_object_tapped_no_trusted_id_in_envelope() {
             "projection leaked forbidden key {forbidden}"
         );
     }
+}
+
+// --- F. Paired-state noninterference ---
+
+#[test]
+fn observation_paired_state_noninterference() {
+    let active = PlayerId(1);
+
+    // State A: trusted GameObjectId(1) -> opaque OpaqueObjectId(9001)
+    let before_a = {
+        let mut state = base_state_with_objects(active, &[(mtgml_model::GameObjectId(1), active, true)]);
+        let identity = state.perspective_identities.players.get_mut(&active).unwrap();
+        identity.object_to_opaque.clear();
+        identity.opaque_to_object.clear();
+        identity.object_to_opaque.insert(mtgml_model::GameObjectId(1), mtgml_model::OpaqueObjectId(9001));
+        identity.opaque_to_object.insert(mtgml_model::OpaqueObjectId(9001), mtgml_model::GameObjectId(1));
+        state = with_next_visible_sequence(state, active, 1);
+        state
+    };
+
+    // State B: trusted GameObjectId(7) -> opaque OpaqueObjectId(9001)
+    let before_b = {
+        let mut state = base_state_with_objects(active, &[(mtgml_model::GameObjectId(7), active, true)]);
+        let identity = state.perspective_identities.players.get_mut(&active).unwrap();
+        identity.object_to_opaque.clear();
+        identity.opaque_to_object.clear();
+        identity.object_to_opaque.insert(mtgml_model::GameObjectId(7), mtgml_model::OpaqueObjectId(9001));
+        identity.opaque_to_object.insert(mtgml_model::OpaqueObjectId(9001), mtgml_model::GameObjectId(7));
+        state = with_next_visible_sequence(state, active, 1);
+        state
+    };
+
+    let mut after_a = base_state_with_objects(active, &[(mtgml_model::GameObjectId(1), active, false)]);
+    after_a = with_next_visible_sequence(after_a, active, 2);
+    let mut after_b = base_state_with_objects(active, &[(mtgml_model::GameObjectId(7), active, false)]);
+    after_b = with_next_visible_sequence(after_b, active, 2);
+
+    // Restore opaque mappings in after states (base_state_with_objects doesn't set them).
+    for (after, object_id) in [(&mut after_a, mtgml_model::GameObjectId(1)), (&mut after_b, mtgml_model::GameObjectId(7))] {
+        let identity = after.perspective_identities.players.get_mut(&active).unwrap();
+        identity.object_to_opaque.clear();
+        identity.opaque_to_object.clear();
+        identity.object_to_opaque.insert(object_id, mtgml_model::OpaqueObjectId(9001));
+        identity.opaque_to_object.insert(mtgml_model::OpaqueObjectId(9001), object_id);
+    }
+
+    let events_a = vec![occurrence_event(mtgml_model::RuleEventId(1), active, 1, mtgml_model::GameObjectId(1), false)];
+    let events_b = vec![occurrence_event(mtgml_model::RuleEventId(1), active, 1, mtgml_model::GameObjectId(7), false)];
+
+    let envelopes_a = project_occurrence_envelopes(&before_a, &after_a, &events_a).unwrap();
+    let envelopes_b = project_occurrence_envelopes(&before_b, &after_b, &events_b).unwrap();
+
+    let bytes_a = serde_json::to_vec(&envelopes_a).unwrap();
+    let bytes_b = serde_json::to_vec(&envelopes_b).unwrap();
+
+    assert_eq!(bytes_a, bytes_b, "player-safe observation bytes must be identical for equivalent public states");
 }

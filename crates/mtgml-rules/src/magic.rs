@@ -162,6 +162,29 @@ impl MagicRulesKernel {
                 .ok_or(KernelExecutionError::RevisionOverflow)?,
         );
 
+        let perspective_count = u64::try_from(state.knowledge.players.len())
+            .map_err(|_| KernelExecutionError::RuleEventIdOverflow)?;
+        let affected_count = u64::try_from(affected.len())
+            .map_err(|_| KernelExecutionError::VisibleSequenceOverflow)?;
+        let occurrence_count = perspective_count
+            .checked_mul(affected_count)
+            .ok_or(KernelExecutionError::RuleEventIdOverflow)?;
+        let total_events = 2u64
+            .checked_add(occurrence_count)
+            .ok_or(KernelExecutionError::RuleEventIdOverflow)?;
+
+        let first_event_id = state.allocators.next_rule_event_id.0;
+        let last_event_id = first_event_id
+            .checked_add(total_events)
+            .ok_or(KernelExecutionError::RuleEventIdOverflow)?
+            - 1;
+        let _ = last_event_id;
+
+        for knowledge in state.knowledge.players.values() {
+            knowledge.next_visible_sequence.0.checked_add(affected_count)
+                .ok_or(KernelExecutionError::VisibleSequenceOverflow)?;
+        }
+
         let mut events: Vec<AuthoritativeRuleEvent> = Vec::with_capacity(
             2 + affected.len() * state.knowledge.players.len(),
         );
@@ -222,7 +245,8 @@ impl MagicRulesKernel {
                     object.tapped = false;
                 }
             }
-            let advance = affected.len() as u64;
+            let advance = u64::try_from(affected.len())
+                .map_err(|_| KernelExecutionError::VisibleSequenceOverflow)?;
             for knowledge in workspace.knowledge.players.values_mut() {
                 knowledge.next_visible_sequence = VisibleSequence(
                     knowledge.next_visible_sequence.0 + advance,

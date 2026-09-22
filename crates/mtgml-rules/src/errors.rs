@@ -13,6 +13,8 @@ pub enum KernelExecutionError {
     RevisionOverflow,
     #[error("rule event identity would overflow")]
     RuleEventIdOverflow,
+    #[error("visible sequence would overflow")]
+    VisibleSequenceOverflow,
     #[error("state delta construction failed: {0}")]
     Delta(StateDigestError),
     #[error("after state is invalid: {0}")]

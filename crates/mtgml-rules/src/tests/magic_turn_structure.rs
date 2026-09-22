@@ -1624,3 +1624,29 @@ fn execution_contract_supported_uses_exact_program_identity_matrix() {
         &unknown_id,
     ));
 }
+
+// --- RED: overflow preflight evidence ---
+
+#[test]
+fn untap_rule_event_id_overflow_rejects() {
+    let mut state = untap_state_with_one_active_tapped();
+    state.allocators.next_rule_event_id = RuleEventId(u64::MAX);
+    let before = state.clone();
+    let mut kernel = MagicRulesKernel::new();
+    let result = kernel.advance_forced_progress(&state);
+    assert!(matches!(result, Err(crate::errors::KernelExecutionError::RuleEventIdOverflow)));
+    assert_eq!(state, before, "input state must not be mutated on overflow");
+}
+
+#[test]
+fn untap_visible_sequence_overflow_rejects() {
+    let mut state = untap_state_with_one_active_tapped();
+    for knowledge in state.knowledge.players.values_mut() {
+        knowledge.next_visible_sequence = mtgml_model::VisibleSequence(u64::MAX);
+    }
+    let before = state.clone();
+    let mut kernel = MagicRulesKernel::new();
+    let result = kernel.advance_forced_progress(&state);
+    assert!(matches!(result, Err(crate::errors::KernelExecutionError::VisibleSequenceOverflow)));
+    assert_eq!(state, before, "input state must not be mutated on overflow");
+}
