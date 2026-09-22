@@ -450,69 +450,77 @@ fn s1_fabricated_response_is_rejected_on_trusted_and_player_surfaces() {
 }
 
 #[test]
-fn s1_projection_failure_is_owner_level_only_and_nonmutating() {
-    let case_name = "projection-failure";
-    let (controller, endpoints) =
-        reference_controller_and_endpoints(reference_state(mtgml_state::TurnPosition::Beginning {
-            step: mtgml_state::BeginningStep::Untap,
-        }));
-    let controller_before = capture_complete(&controller, &endpoints).unwrap();
-
-    let mut before = reference_state(mtgml_state::TurnPosition::Beginning {
+fn s1_projection_failure_is_real_backend_atomic_and_nonmutating() {
+    let mut state = reference_state(mtgml_state::TurnPosition::Beginning {
         step: mtgml_state::BeginningStep::Untap,
     });
-    before
+    state
+        .zones
+        .objects
+        .get_mut(&mtgml_model::GameObjectId(1))
+        .unwrap()
+        .tapped = true;
+
+    let identity = state
         .perspective_identities
         .players
         .get_mut(&PlayerId(1))
         .unwrap()
         .object_to_opaque
-        .remove(&mtgml_model::GameObjectId(1));
-    let mut after = before.clone();
-    after.core.position = mtgml_state::TurnPosition::Beginning {
-        step: mtgml_state::BeginningStep::Upkeep,
-    };
-    after
-        .zones
-        .objects
-        .get_mut(&mtgml_model::GameObjectId(1))
+        .remove(&mtgml_model::GameObjectId(1))
+        .expect("the admitted fixture must expose P1's opaque mapping");
+    assert_eq!(
+        state
+            .perspective_identities
+            .players
+            .get_mut(&PlayerId(1))
+            .unwrap()
+            .opaque_to_object
+            .remove(&identity),
+        Some(mtgml_model::GameObjectId(1))
+    );
+    assert!(state
+        .knowledge
+        .players
+        .get_mut(&PlayerId(1))
         .unwrap()
-        .tapped = false;
-    let events = vec![mtgml_rules::AuthoritativeRuleEvent {
-        event_id: mtgml_model::RuleEventId(1),
-        state_revision: StateRevision(1),
-        event: mtgml_rules::AuthoritativeRuleEventKind::PerspectiveOccurrence {
-            lifecycle: mtgml_state::PerspectiveLifecycleAuditV1 {
-                perspective: PlayerId(1),
-                sequence: mtgml_model::VisibleSequence(1),
-                mutation: mtgml_state::PerspectiveLifecycleMutationV1::default(),
-            },
-            observation: mtgml_rules::PerspectiveObservationPolicyV1::ObjectTapped {
-                object: mtgml_model::GameObjectId(1),
-                tapped: false,
-            },
-        },
-    }];
-    let before_snapshot = before.clone();
-    let after_snapshot = after.clone();
-    let events_snapshot = events.clone();
-    assert!(matches!(
-        mtgml_environment::lifecycle_projection::project_occurrence_envelopes(
-            &before, &after, &events,
-        ),
-        Err(mtgml_environment::lifecycle_projection::LifecycleProjectionError::AuthorizedObjectUnresolvable)
-    ));
-    assert_eq!(before, before_snapshot);
-    assert_eq!(after, after_snapshot);
-    assert_eq!(events, events_snapshot);
+        .active
+        .remove(&identity)
+        .is_some());
+    mtgml_state::validate_engine_state(&state)
+        .expect("the projection-failure witness must remain generic-state valid");
 
-    let controller_after = capture_complete(&controller, &endpoints).unwrap();
-    assert_fingerprint_policies(
-        &controller_before,
-        &controller_after,
-        FingerprintComparison::All,
-    )
-    .unwrap_or_else(|error| panic!("{case_name}: controller fingerprint changed: {error:?}"));
+    let (controller, endpoints) = reference_controller_and_endpoints(state);
+    let before = capture_complete(&controller, &endpoints).unwrap();
+    let before_checkpoint = controller.checkpoint().unwrap();
+    let before_replay = controller.export_replay().unwrap();
+    let error = controller
+        .execute_forced_progress()
+        .expect_err("the authorized but unresolvable occurrence must reject");
+    assert!(
+        matches!(error, ControllerError::EnvironmentCommit(_)),
+        "expected pre-commit projection rejection, got {error:?}"
+    );
+
+    let after = capture_complete(&controller, &endpoints).unwrap();
+    assert_fingerprint_policies(&before, &after, FingerprintComparison::All).unwrap();
+    let after_checkpoint = controller.checkpoint().unwrap();
+    let after_replay = controller.export_replay().unwrap();
+    assert_eq!(after_checkpoint, before_checkpoint);
+    assert_eq!(after_replay, before_replay);
+    assert_eq!(
+        after_checkpoint.limit_counters.decisions_submitted,
+        before_checkpoint.limit_counters.decisions_submitted
+    );
+    assert_eq!(
+        after_checkpoint.limit_counters.accepted_transitions,
+        before_checkpoint.limit_counters.accepted_transitions
+    );
+    assert_eq!(
+        after_checkpoint.limit_counters.rule_events_emitted,
+        before_checkpoint.limit_counters.rule_events_emitted
+    );
+    assert_eq!(after_replay.steps.len(), before_replay.steps.len());
 }
 
 fn authored_forced_expectation(

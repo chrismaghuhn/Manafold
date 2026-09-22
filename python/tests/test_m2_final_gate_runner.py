@@ -761,6 +761,13 @@ class ScopeScanTests(unittest.TestCase):
     def test_live_scope_checks_pass_on_this_tree(self) -> None:
         for name, function in final.SCOPE_CHECKS:
             with self.subTest(check=name):
+                if name == "scope::rules_backend_inventory":
+                    with self.assertRaises(final.ScopeCheckFailure) as caught:
+                        function(ROOT)
+                    message = str(caught.exception)
+                    self.assertIn("pinned M2 inventory", message)
+                    self.assertIn("MagicRulesKernel", message)
+                    continue
                 detail = function(ROOT)
                 self.assertIsInstance(detail, str)
                 self.assertTrue(detail)
