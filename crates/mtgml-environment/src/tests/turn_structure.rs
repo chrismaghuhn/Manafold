@@ -848,13 +848,24 @@ fn task10_turn_structure_reference_rejected_restore_cases_do_not_mutate() {
     let replay_before = controller.export_replay().unwrap();
     let products_before = player_products(&controller);
     let exact = ReferenceEnvironmentBackend::magic_execution_identity();
+    let wrong_s1_id = synthetic_legacy_default_semantic_contract_id();
+    let unknown_id = mtgml_model::SemanticContractIdV1::from_digest_bytes([0; 32]);
+    assert_ne!(wrong_s1_id, exact.semantic_contract_id);
+    assert!(crate::semantic_catalog::RuntimeSemanticCatalog::production()
+        .resolve(&wrong_s1_id)
+        .is_some());
+    assert_ne!(unknown_id, exact.semantic_contract_id);
+    assert_ne!(unknown_id, wrong_s1_id);
+    assert!(crate::semantic_catalog::RuntimeSemanticCatalog::production()
+        .resolve(&unknown_id)
+        .is_none());
 
     let rejected = [
         (
             "wrong S1 ID",
             ExecutionIdentityV1 {
                 program_kind: ExecutionProgramV1::MagicRules,
-                semantic_contract_id: mtgml_model::SemanticContractIdV1::from_digest_bytes([0x44; 32]),
+                semantic_contract_id: wrong_s1_id.clone(),
             },
             reference_state(mtgml_state::TurnPosition::Beginning {
                 step: mtgml_state::BeginningStep::Untap,
@@ -874,7 +885,7 @@ fn task10_turn_structure_reference_rejected_restore_cases_do_not_mutate() {
             "unknown contract",
             ExecutionIdentityV1 {
                 program_kind: ExecutionProgramV1::MagicRules,
-                semantic_contract_id: mtgml_model::SemanticContractIdV1::from_digest_bytes([0; 32]),
+                semantic_contract_id: unknown_id.clone(),
             },
             reference_state(mtgml_state::TurnPosition::Beginning {
                 step: mtgml_state::BeginningStep::Untap,
