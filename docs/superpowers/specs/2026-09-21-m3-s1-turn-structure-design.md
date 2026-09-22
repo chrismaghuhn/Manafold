@@ -88,6 +88,17 @@ Comprehensive Rules `500.1`, `500.3`, `500.12`, `501.1`, `502.2–502.4`,
 The rules snapshot is authority metadata; it is not evidence that the
 capability is implemented or covered.
 
+Comprehensive Rules `402.2` (ordinary maximum hand size), `514.1` (cleanup
+discard instruction), `514.2` (cleanup damage removal), and `120.6` (marked
+damage persists to cleanup) are **not** part of `rules/turn-structure`'s cited
+semantic authority above, which remains the temporal/untap/no-priority set
+enumerated by Foundation V2. The §11.1 cleanup fail-closed detection references
+`402.2`, `514.1`, `514.2`, and `120.6` only as downstream boundary conditions,
+resolved through the contract-bound Comprehensive Rules snapshot (`S1_AUTHORITY`
+in §3) and routed to `rules/cleanup-reset@0.1.0`. The ordinary maximum hand
+size is a fixed rule constant within the S1 admitted profile (see §11), not a
+field of `EngineState`.
+
 Foundation V2 and ADR 0054 remain authoritative for S1 semantic scope. Their
 references to a coordinated V4 state/persistence cut are historical planning
 provenance superseded for current persistence by ADR 0055 and the merged V5
@@ -412,6 +423,49 @@ discard, duration expiry, a cleanup trigger exception, or another excluded
 meaning fails closed before the active-player or turn-number change. A clean
 bounded state may therefore prove `Cleanup -> next player's Untap` without
 claiming the cleanup-reset capability.
+
+### 11.1 Quiescent cleanup detection predicate (fail-closed boundary)
+
+S1 performs the §11 temporal switch at `Ending(Cleanup)` only when it can prove
+the cleanup is **quiescent** — that is, it requires no downstream
+`rules/cleanup-reset` consequence work that S1 does not own (§10
+first-unsupported table). S1 classifies this boundary; it never executes the
+discard or damage-removal consequences (§5).
+
+The ordinary maximum hand size is the pinned rule constant **CR `402.2`**:
+*"Each player has a maximum hand size, which is normally seven cards."*
+Within the S1 admitted profile, no modifier that could change that value can be
+represented: supported-state predicate item 6 (`format == FormatState::None`)
+excludes vanguard and command-zone hand-size modifiers (CR `211.1`, `313.6`,
+`902.5b`), and item 5 excludes continuous effects that modify a player's
+maximum hand size (CR `613.11`). The only sources of a hand-size modifier
+therefore cannot be admitted, so `7` is the fixed operative constant. Hand sizes
+are computed from authoritative Hand-zone facts; the maximum hand size is a
+derived rule constant, **not** a field of `EngineState`.
+
+At `Ending(Cleanup)` the detection predicate is:
+
+- **Discard required** — CR `514.1`: the active (turn-ending) player's
+  Hand-zone cardinality exceeds the ordinary maximum hand size `7` (CR
+  `402.2`). The nonactive player's hand is not checked here; it is checked at
+  that player's own cleanup on the next turn.
+- **Damage-removal required** — CR `514.2` / `120.6`: any live object whose
+  authoritative `marked_damage` fact (`mtgml-state::FoundationCreatureSource`)
+  is greater than `0`.
+- **Duration/expiration and cleanup-trigger work** — already excluded before
+  this point by supported-state predicate item 5 (no effects, waiting-triggers,
+  delayed-effects, or continuations), so there are no "until end of turn"/"this
+  turn" durations to expire and no waiting triggers to fire.
+
+If any of the above holds, the cleanup is not quiescent: S1 fails closed as an
+unsupported-cleanup-reset boundary (route `rules/cleanup-reset@0.1.0`, §10
+table), emits **no** turn-switch events, and leaves the input state, RNG, IDs,
+knowledge, and revision unchanged. Otherwise the §11 temporal switch proceeds.
+
+This predicate supersedes any earlier hand-zone-presence approximation: a card
+present in a Hand zone does not by itself require discard — only a hand exceeding
+the maximum hand size (CR `514.1`/`402.2`) does — and marked damage
+(CR `120.6`/`514.2`) must be checked in the same pass.
 
 The next player's untap is a separate S1 ordinary-untap boundary operation;
 the cleanup transition does not silently perform it in the same product. This

@@ -489,6 +489,19 @@ player; use `checked_add`; emit `TurnNumberChanged`,
 leave the final position at the next player's Untap boundary. Do not clear
 damage, discard, expire durations, or generate cleanup triggers.
 
+The quiescent detection is the precise spec §11.1 predicate, not the reverted
+hand-zone-presence approximation. It must live in the Cleanup boundary path of
+the temporal product (the `Ending(Cleanup)` arm of the forced-progress switch),
+never in the admission support predicate, because a hand of seven or fewer
+cards is a valid quiescent cleanup. Concretely: fail closed (no mutation, no
+turn switch) when the active player's hand size exceeds the ordinary maximum
+hand size (CR `402.2`, normally seven; `514.1`), or when any live object
+carries authoritative `marked_damage` greater than zero (`514.2`/`120.6`).
+Duration and cleanup-trigger work is already excluded by the supported-state
+predicate (no effects/triggers/delayed-effects). No `maximum_hand_size`
+EngineState field is added; it is a derived rule constant. See
+`TASK_7_AUTHORITY_REMEDIATION_01`.
+
 **Focused GREEN command:**
 
 ```powershell
