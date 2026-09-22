@@ -577,3 +577,363 @@ fn observation_paired_state_noninterference() {
     let obs_bytes_b = serde_json::to_vec(&obs_b).unwrap();
     assert_eq!(obs_bytes_a, obs_bytes_b, "player observation bytes must be identical for equivalent public states");
 }
+
+fn reference_config(state: mtgml_state::EngineState) -> ReferenceEnvironmentConfig {
+    let rules_snapshot = match magic_turn_structure_0_1_0_rules_manifest().rules_authority {
+        mtgml_model::RulesAuthorityV1::ComprehensiveRules { snapshot_id } => snapshot_id,
+        mtgml_model::RulesAuthorityV1::SyntheticLegacy => {
+            panic!("S1 reference configuration requires ComprehensiveRules")
+        }
+    };
+    ReferenceEnvironmentConfig {
+        state,
+        status: EpisodeStatus::Running,
+        limit_counters: EnvironmentLimitCounters::default(),
+        codec: CheckpointCodecIdentity {
+            codec_id: "in-memory-reference".into(),
+            semantic_version: "5".into(),
+        },
+        execution_identity: ExecutionIdentityV1 {
+            program_kind: ExecutionProgramV1::MagicRules,
+            semantic_contract_id: magic_turn_structure_0_1_0_semantic_contract_id(),
+        },
+        replay: ReferenceEnvironmentReplayConfig {
+            scenario_id: REFERENCE_SCENARIO_ID.into(),
+            engine_build: "reference-test".into(),
+            kernel: KernelIdentityV1 {
+                implementation_id: "magic-reference".into(),
+                semantic_version: "0.2.2".into(),
+                build_profile: "test".into(),
+            },
+            rules_snapshot,
+            format_policy_snapshot: "format:none".into(),
+            oracle_snapshot: "oracle:none".into(),
+            schemas: ReplaySchemaVersionsV5 {
+                observation: OBSERVATION_SCHEMA.into(),
+                observation_payload_codec: "synthetic-m3-observation.v1".into(),
+                information_state: INFORMATION_STATE_SCHEMA_V2.into(),
+                decision: "player-decision-request.v2".into(),
+                decision_response: DECISION_RESPONSE_V2_SCHEMA.into(),
+                observed_event: OBSERVED_EVENT_SCHEMA_V2.into(),
+                player_step: PLAYER_STEP_SCHEMA_V2.into(),
+                replay_step: "replay-step.v5".into(),
+            },
+        },
+    }
+}
+
+fn reference_state(position: mtgml_state::TurnPosition) -> mtgml_state::EngineState {
+    let mut state = mtgml_state::construct_synthetic_engine_state(SyntheticResetInputs {
+        players: [PlayerId(1), PlayerId(2)],
+        root_seed: seed(),
+        setup: SyntheticV4Setup {
+            position,
+            priority: mtgml_state::PriorityState::None,
+            combat: None,
+            foundation_sources: std::collections::BTreeMap::new(),
+        },
+    })
+    .unwrap();
+    state.execution.pending_decision = None;
+    state
+}
+
+fn reference_controller(state: mtgml_state::EngineState) -> TrustedEnvironmentController {
+    TrustedEnvironmentController::new(
+        ReferenceEnvironmentBackend::new(reference_config(state)).unwrap(),
+    )
+}
+
+fn player_products(
+    controller: &TrustedEnvironmentController,
+) -> Vec<(
+    mtgml_observation::ObservationEnvelope,
+    mtgml_observation::PlayerInformationStateV2,
+    Option<mtgml_decision::PlayerDecisionRequestV2>,
+)> {
+    [PlayerId(1), PlayerId(2)]
+        .into_iter()
+        .map(|player| {
+            let endpoint = controller.bind_player(player).unwrap();
+            (
+                endpoint.observation().unwrap(),
+                endpoint.information_state().unwrap(),
+                endpoint.visible_decision().unwrap(),
+            )
+        })
+        .collect()
+}
+
+#[test]
+fn task10_turn_structure_reference_ordinary_untap_uses_real_kernel_and_projection() {
+    let mut state = reference_state(mtgml_state::TurnPosition::Beginning {
+        step: mtgml_state::BeginningStep::Untap,
+    });
+    state
+        .zones
+        .objects
+        .get_mut(&mtgml_model::GameObjectId(1))
+        .unwrap()
+        .tapped = true;
+    let controller = reference_controller(state);
+    let before = controller.checkpoint().unwrap();
+    let before_products = player_products(&controller);
+
+    let product = controller.execute_forced_progress().unwrap();
+    let after = controller.checkpoint().unwrap();
+    let replay = controller.export_replay().unwrap();
+
+    assert!(product.accepted);
+    assert_eq!(product.events.len(), 4);
+    assert_eq!(
+        product.next_state.core.position,
+        mtgml_state::TurnPosition::Beginning {
+            step: mtgml_state::BeginningStep::Upkeep,
+        }
+    );
+    assert!(!product.next_state.zones.objects[&mtgml_model::GameObjectId(1)].tapped);
+    assert!(!product.next_state.zones.objects[&mtgml_model::GameObjectId(2)].tapped);
+    assert_eq!(
+        after.limit_counters.decisions_submitted,
+        before.limit_counters.decisions_submitted
+    );
+    assert_eq!(
+        after.limit_counters.accepted_transitions,
+        before.limit_counters.accepted_transitions
+    );
+    assert_eq!(
+        after.limit_counters.rule_events_emitted,
+        before.limit_counters.rule_events_emitted + 4
+    );
+    assert!(product.next_decision.is_none());
+    assert!(replay.steps.is_empty());
+    assert_eq!(replay.final_identity.checkpoint_digest, after.checkpoint_digest);
+    assert_eq!(replay.final_identity.execution_identity, after.execution_identity);
+    assert_ne!(before_products, player_products(&controller));
+    for player in [PlayerId(1), PlayerId(2)] {
+        assert_eq!(
+            controller
+                .bind_player(player)
+                .unwrap()
+                .information_state()
+                .unwrap()
+                .next_visible_sequence
+                .0,
+            2
+        );
+    }
+}
+
+#[test]
+fn task10_turn_structure_reference_empty_untap_has_exact_two_events() {
+    let controller = reference_controller(reference_state(mtgml_state::TurnPosition::Beginning {
+        step: mtgml_state::BeginningStep::Untap,
+    }));
+    let before = controller.checkpoint().unwrap();
+
+    let product = controller.execute_forced_progress().unwrap();
+    let after = controller.checkpoint().unwrap();
+
+    assert_eq!(product.events.len(), 2);
+    assert!(matches!(
+        product.events[0].event,
+        mtgml_rules::AuthoritativeRuleEventKind::UntapCompleted {
+            ref affected_objects
+        } if affected_objects.is_empty()
+    ));
+    assert_eq!(
+        after.limit_counters.rule_events_emitted,
+        before.limit_counters.rule_events_emitted + 2
+    );
+    assert_eq!(after.limit_counters.decisions_submitted, 0);
+    assert_eq!(after.limit_counters.accepted_transitions, 0);
+    assert_eq!(controller.export_replay().unwrap().steps.len(), 0);
+}
+
+#[test]
+fn task10_turn_structure_reference_quiescent_cleanup_switches_turn_without_untapping() {
+    let controller = reference_controller(reference_state(mtgml_state::TurnPosition::Ending {
+        step: mtgml_state::EndingStep::Cleanup,
+    }));
+    let before = controller.checkpoint().unwrap();
+
+    let product = controller.execute_forced_progress().unwrap();
+    let after = controller.checkpoint().unwrap();
+
+    assert_eq!(product.events.len(), 3);
+    assert_eq!(after.state.core.turn_number, before.state.core.turn_number + 1);
+    assert_eq!(after.state.core.active_player, PlayerId(2));
+    assert_eq!(
+        after.state.core.position,
+        mtgml_state::TurnPosition::Beginning {
+            step: mtgml_state::BeginningStep::Untap,
+        }
+    );
+    assert!(product.next_decision.is_none());
+    assert_eq!(after.limit_counters.rule_events_emitted, 3);
+    assert_eq!(controller.export_replay().unwrap().steps.len(), 0);
+}
+
+#[test]
+fn task10_turn_structure_checkpoint_replay_restore_fork_and_replay_are_equal() {
+    let controller = reference_controller(reference_state(mtgml_state::TurnPosition::Beginning {
+        step: mtgml_state::BeginningStep::Untap,
+    }));
+    let initial = controller.checkpoint().unwrap();
+    assert_eq!(initial, controller.checkpoint().unwrap());
+    assert_eq!(initial.state_digest, initial.state.digest().unwrap());
+    assert_eq!(
+        initial.execution_identity,
+        ReferenceEnvironmentBackend::magic_execution_identity()
+    );
+
+    let fork = controller.fork().unwrap();
+    assert_eq!(fork.checkpoint().unwrap(), initial);
+    let main_product = controller.execute_forced_progress().unwrap();
+    let fork_product = fork.execute_forced_progress().unwrap();
+    assert_eq!(main_product, fork_product);
+    assert_eq!(controller.checkpoint().unwrap(), fork.checkpoint().unwrap());
+    assert_eq!(controller.export_replay().unwrap(), fork.export_replay().unwrap());
+
+    let progressed = controller.checkpoint().unwrap();
+    let replay = controller.export_replay().unwrap();
+    assert!(replay
+        .manifest
+        .card_bundle
+        .starts_with("not-a-card-bundle:"));
+    assert!(replay
+        .manifest
+        .decks
+        .iter()
+        .all(|deck| deck.deck_id.starts_with("not-a-deck:")));
+    assert_eq!(
+        replay.manifest.semantic_contract.semantic_contract_id,
+        magic_turn_structure_0_1_0_semantic_contract_id()
+    );
+    let report = controller
+        .execute_replay_from_checkpoint(progressed.clone(), replay.clone())
+        .unwrap();
+    assert!(report.traces.is_empty());
+    assert_eq!(report.final_checkpoint, progressed);
+    assert!(replay.steps.is_empty());
+    assert_eq!(replay.final_identity.full_state_digest, progressed.state_digest);
+    assert_eq!(replay.final_identity.checkpoint_digest, progressed.checkpoint_digest);
+
+    controller.restore(progressed.clone()).unwrap();
+    assert_eq!(controller.checkpoint().unwrap(), progressed);
+    assert_eq!(controller.export_replay().unwrap(), replay);
+}
+
+fn assert_reference_nonmutation(
+    controller: &TrustedEnvironmentController,
+    before: &EnvironmentCheckpointV5,
+    replay_before: &mtgml_replay::AuthoritativeReplayV5,
+    products_before: &[ (
+        mtgml_observation::ObservationEnvelope,
+        mtgml_observation::PlayerInformationStateV2,
+        Option<mtgml_decision::PlayerDecisionRequestV2>,
+    ) ],
+) {
+    assert_eq!(&controller.checkpoint().unwrap(), before);
+    assert_eq!(&controller.export_replay().unwrap(), replay_before);
+    assert_eq!(player_products(controller), products_before);
+}
+
+#[test]
+fn task10_turn_structure_reference_rejected_restore_cases_do_not_mutate() {
+    let controller = reference_controller(reference_state(mtgml_state::TurnPosition::Beginning {
+        step: mtgml_state::BeginningStep::Untap,
+    }));
+    let before = controller.checkpoint().unwrap();
+    let replay_before = controller.export_replay().unwrap();
+    let products_before = player_products(&controller);
+    let exact = ReferenceEnvironmentBackend::magic_execution_identity();
+
+    let rejected = [
+        (
+            "wrong S1 ID",
+            ExecutionIdentityV1 {
+                program_kind: ExecutionProgramV1::MagicRules,
+                semantic_contract_id: mtgml_model::SemanticContractIdV1::from_digest_bytes([0x44; 32]),
+            },
+            reference_state(mtgml_state::TurnPosition::Beginning {
+                step: mtgml_state::BeginningStep::Untap,
+            }),
+        ),
+        (
+            "wrong program/authority pair",
+            ExecutionIdentityV1 {
+                program_kind: ExecutionProgramV1::SyntheticRulesCompat,
+                semantic_contract_id: exact.semantic_contract_id.clone(),
+            },
+            reference_state(mtgml_state::TurnPosition::Beginning {
+                step: mtgml_state::BeginningStep::Untap,
+            }),
+        ),
+        (
+            "unknown contract",
+            ExecutionIdentityV1 {
+                program_kind: ExecutionProgramV1::MagicRules,
+                semantic_contract_id: mtgml_model::SemanticContractIdV1::from_digest_bytes([0; 32]),
+            },
+            reference_state(mtgml_state::TurnPosition::Beginning {
+                step: mtgml_state::BeginningStep::Untap,
+            }),
+        ),
+        (
+            "invalid player count",
+            exact.clone(),
+            one_player_reference_state(),
+        ),
+        (
+            "invalid S1 state",
+            exact.clone(),
+            held_priority_reference_state(),
+        ),
+    ];
+
+    for (label, identity, state) in rejected {
+        let checkpoint = EnvironmentCheckpointV5::new(
+            state,
+            EpisodeStatus::Running,
+            EnvironmentLimitCounters::default(),
+            CheckpointCodecIdentity {
+                codec_id: "in-memory-reference".into(),
+                semantic_version: "5".into(),
+            },
+            identity,
+        )
+        .unwrap();
+        assert!(controller.restore(checkpoint).is_err(), "{label} must reject");
+        assert_reference_nonmutation(
+            &controller,
+            &before,
+            &replay_before,
+            &products_before,
+        );
+    }
+}
+
+fn one_player_reference_state() -> mtgml_state::EngineState {
+    let mut state = reference_state(mtgml_state::TurnPosition::Beginning {
+        step: mtgml_state::BeginningStep::Untap,
+    });
+    state.core.players.remove(&PlayerId(2));
+    state.zones.objects.remove(&mtgml_model::GameObjectId(2));
+    state.zones.locations.remove(&mtgml_model::GameObjectId(2));
+    state.zones.ordered_zones.retain(|key, _| key.player != Some(PlayerId(2)));
+    state.knowledge.players.remove(&PlayerId(2));
+    state.perspective_identities.players.remove(&PlayerId(2));
+    state
+}
+
+fn held_priority_reference_state() -> mtgml_state::EngineState {
+    let mut state = reference_state(mtgml_state::TurnPosition::Beginning {
+        step: mtgml_state::BeginningStep::Untap,
+    });
+    state.core.priority = mtgml_state::PriorityState::HeldBy {
+        player: PlayerId(1),
+        consecutive_passes: 0,
+    };
+    state
+}

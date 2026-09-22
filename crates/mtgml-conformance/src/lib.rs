@@ -29,6 +29,9 @@ pub mod isolation;
 pub mod legal_space;
 pub mod lifecycle;
 
+#[cfg(test)]
+mod turn_structure;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ExpectedResponseResult {
     Accepted,

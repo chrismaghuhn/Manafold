@@ -47,7 +47,7 @@ fn validate_current_producer_identity(
     Ok(())
 }
 
-pub(super) fn build_manifest(
+pub(crate) fn build_manifest(
     config: &SyntheticM1EnvironmentConfig,
     checkpoint: &EnvironmentCheckpointV5,
 ) -> Result<ReplayManifestV5, ControllerError> {
