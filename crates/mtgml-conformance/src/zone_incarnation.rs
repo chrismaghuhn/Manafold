@@ -1,13 +1,13 @@
 //! M3.S2 direct-request RED cases and substrate characterization.
 //!
 //! Positive cases deliberately stop at the private production-owned seam.
-//! Their independently authored expected products remain here as the Task 2
-//! oracle; FIX-01 must not calculate any part of those products.
+//! Their independently authored expected products remain the conformance
+//! oracle; production output never supplies expected semantic values.
 
 use mtgml_model::{CardDefinitionId, GameObjectId, PhysicalCardId, PlayerId, ZoneKind};
 use mtgml_rules::{
     execute_selected_zone_transition_for_conformance, ConformanceZoneTransitionKind,
-    KernelExecutionError,
+    KernelExecutionError, ZoneIncarnationError,
 };
 use mtgml_state::{
     construct_synthetic_engine_state, validate_engine_state, BaseCharacteristics, ControlHistory,
@@ -189,9 +189,44 @@ fn library_case_state() -> EngineState {
     state
 }
 
+fn remove_object_tracking(state: &mut EngineState, object: GameObjectId) {
+    for (player, identity) in &mut state.perspective_identities.players {
+        if let Some(opaque) = identity.object_to_opaque.remove(&object) {
+            identity.opaque_to_object.remove(&opaque);
+            state
+                .knowledge
+                .players
+                .get_mut(player)
+                .expect("knowledge covers each player")
+                .active
+                .remove(&opaque);
+        }
+    }
+}
+
+/// Task-2-only positive fixture: source objects are intentionally untracked
+/// and carry no FoundationSource so that Task-3 lifecycle/closure semantics
+/// are not smuggled into this slice.
+fn task2_battlefield_case_state() -> EngineState {
+    let mut state = battlefield_case_state();
+    remove_object_tracking(&mut state, OLD_BATTLEFIELD);
+    state.foundation_sources.remove(&OLD_BATTLEFIELD);
+    validate_engine_state(&state).expect("Task-2 battlefield state is valid");
+    state
+}
+
+/// Task-2-only Library fixture excludes the owner mapping update; Task 3 owns
+/// lifecycle integration and the corresponding player products.
+fn task2_library_case_state() -> EngineState {
+    let mut state = library_case_state();
+    remove_object_tracking(&mut state, OLD_LIBRARY_TOP);
+    validate_engine_state(&state).expect("Task-2 library state is valid");
+    state
+}
+
 fn battlefield_request() -> Result<mtgml_rules::TransitionResult, KernelExecutionError> {
     execute_selected_zone_transition_for_conformance(
-        &battlefield_case_state(),
+        &task2_battlefield_case_state(),
         OLD_BATTLEFIELD,
         battlefield_from(),
         owner_graveyard_top(P1),
@@ -201,12 +236,24 @@ fn battlefield_request() -> Result<mtgml_rules::TransitionResult, KernelExecutio
 
 fn library_request() -> Result<mtgml_rules::TransitionResult, KernelExecutionError> {
     execute_selected_zone_transition_for_conformance(
-        &library_case_state(),
+        &task2_library_case_state(),
         OLD_LIBRARY_TOP,
         owner_library_top(P2),
         owner_hand(P2),
         ConformanceZoneTransitionKind::LibraryTopToOwnerHand,
     )
+}
+
+fn assert_unrelated_allocators_unchanged(
+    before: &mtgml_state::IdentityAllocatorState,
+    after: &mtgml_state::IdentityAllocatorState,
+) {
+    assert_eq!(after.next_ability_id, before.next_ability_id);
+    assert_eq!(after.next_stack_object_id, before.next_stack_object_id);
+    assert_eq!(after.next_effect_id, before.next_effect_id);
+    assert_eq!(after.next_trigger_id, before.next_trigger_id);
+    assert_eq!(after.next_decision_id, before.next_decision_id);
+    assert_eq!(after.next_continuation_id, before.next_continuation_id);
 }
 
 fn assert_s2_red<T>(case_id: &str, actual: Result<T, KernelExecutionError>) -> T {
@@ -216,9 +263,8 @@ fn assert_s2_red<T>(case_id: &str, actual: Result<T, KernelExecutionError>) -> T
 }
 
 #[test]
-#[ignore = "RED: M3.S2 production semantics intentionally not implemented"]
 fn s2_zone_battlefield_graveyard() {
-    let before = battlefield_case_state();
+    let before = task2_battlefield_case_state();
     assert_eq!(before.allocators.next_object_id, GameObjectId(5));
     // Independent expected vector and redundant position witnesses:
     // [NEW(5), G0(3), G1(4)] at offsets 0, 1, 2.
@@ -233,22 +279,49 @@ fn s2_zone_battlefield_graveyard() {
         [GameObjectId(5), GameObjectId(3), GameObjectId(4)]
     );
     assert_eq!(expected_positions[2].1, ZonePosition::Top { offset: 2 });
-    let _ = assert_s2_red(
-        "s2.zone.battlefield_graveyard",
-        execute_selected_zone_transition_for_conformance(
-            &before,
-            OLD_BATTLEFIELD,
-            battlefield_from(),
-            owner_graveyard_top(P1),
-            ConformanceZoneTransitionKind::BattlefieldToOwnerGraveyard,
-        ),
-    );
+    let result = execute_selected_zone_transition_for_conformance(
+        &before,
+        OLD_BATTLEFIELD,
+        battlefield_from(),
+        owner_graveyard_top(P1),
+        ConformanceZoneTransitionKind::BattlefieldToOwnerGraveyard,
+    )
+    .expect("s2.zone.battlefield_graveyard accepted core product");
+    assert!(result.accepted);
+    assert!(!result
+        .next_state
+        .zones
+        .objects
+        .contains_key(&OLD_BATTLEFIELD));
+    assert!(!result
+        .next_state
+        .zones
+        .locations
+        .contains_key(&OLD_BATTLEFIELD));
+    let key = owner_graveyard_top(P1).key();
+    assert_eq!(result.next_state.zones.ordered_zones[&key], expected_order);
+    for (object, expected_position) in expected_positions {
+        assert_eq!(
+            result.next_state.zones.locations[&object].position,
+            expected_position
+        );
+    }
+    let new = &result.next_state.zones.objects[&GameObjectId(5)];
+    assert_eq!(new.physical_card, Some(CARD_BATTLEFIELD));
+    assert_eq!(new.card_definition, CardDefinitionId(1));
+    assert_eq!(new.owner, P1);
+    assert_eq!(new.controller, P1);
+    assert!(!new.tapped);
+    assert!(!new.face_down);
+    assert_eq!(result.next_state.allocators.next_object_id, GameObjectId(6));
+    assert_eq!(result.events.len(), 1);
+    assert_eq!(result.next_state.allocators.next_rule_event_id.0, 2);
+    assert_unrelated_allocators_unchanged(&before.allocators, &result.next_state.allocators);
 }
 
 #[test]
-#[ignore = "RED: M3.S2 production semantics intentionally not implemented"]
 fn s2_zone_library_hand_top() {
-    let before = library_case_state();
+    let before = task2_library_case_state();
     assert_eq!(
         before.zones.ordered_zones.values().next().unwrap(),
         &[OLD_LIBRARY_TOP, GameObjectId(3)]
@@ -258,13 +331,104 @@ fn s2_zone_library_hand_top() {
     let expected_new_object = GameObjectId(4);
     assert_eq!(expected_remaining_library, [GameObjectId(3)]);
     assert_eq!(expected_new_object, GameObjectId(4));
-    let _ = assert_s2_red("s2.zone.library_hand_top", library_request());
+    let result = library_request().expect("s2.zone.library_hand_top accepted core product");
+    assert!(result.accepted);
+    assert!(!result
+        .next_state
+        .zones
+        .objects
+        .contains_key(&OLD_LIBRARY_TOP));
+    assert!(!result
+        .next_state
+        .zones
+        .locations
+        .contains_key(&OLD_LIBRARY_TOP));
+    let key = owner_library_top(P2).key();
+    assert_eq!(
+        result.next_state.zones.ordered_zones[&key],
+        expected_remaining_library
+    );
+    assert_eq!(
+        result.next_state.zones.locations[&GameObjectId(3)].position,
+        ZonePosition::Top { offset: 0 }
+    );
+    let new = &result.next_state.zones.objects[&expected_new_object];
+    assert_eq!(new.physical_card, Some(CARD_LIBRARY));
+    assert_eq!(new.card_definition, CardDefinitionId(2));
+    assert_eq!(new.owner, P2);
+    assert_eq!(new.controller, P2);
+    assert!(!new.tapped);
+    assert!(!new.face_down);
+    assert_eq!(
+        result.next_state.zones.locations[&expected_new_object],
+        owner_hand(P2)
+    );
+    assert_eq!(result.next_state.allocators.next_object_id, GameObjectId(5));
+    assert_eq!(result.events.len(), 1);
+    assert_eq!(
+        result.next_state.allocators.next_rule_event_id,
+        mtgml_model::RuleEventId(2)
+    );
+    assert_unrelated_allocators_unchanged(&before.allocators, &result.next_state.allocators);
+    let old_snapshot = ObjectSnapshot {
+        object: OLD_LIBRARY_TOP,
+        physical_card: Some(CARD_LIBRARY),
+        card_definition: CardDefinitionId(2),
+        owner: P2,
+        controller: P2,
+        tapped: false,
+        face_down: false,
+        location: owner_library_top(P2),
+    };
+    let transition = match &result.events[0].event {
+        mtgml_rules::AuthoritativeRuleEventKind::ZoneTransition { transition } => transition,
+        other => panic!("unexpected first event: {other:?}"),
+    };
+    assert_eq!(transition.last_known, old_snapshot);
+    assert_eq!(transition.new_snapshot.object, expected_new_object);
+    assert_eq!(transition.new_snapshot.location, owner_hand(P2));
+    assert_eq!(result.delta.apply(&before).unwrap(), result.next_state);
+    assert_eq!(result.next_state.random, before.random);
+    assert_eq!(result.next_state.revision.0, before.revision.0 + 1);
 }
 
 #[test]
-#[ignore = "RED: M3.S2 production semantics intentionally not implemented"]
+fn s2_zone_library_singleton_removes_empty_order_key() {
+    let mut before = base_state();
+    before
+        .zones
+        .objects
+        .get_mut(&OLD_LIBRARY_TOP)
+        .unwrap()
+        .face_down = false;
+    remove_object_tracking(&mut before, OLD_LIBRARY_TOP);
+    validate_engine_state(&before).unwrap();
+    let library_key = owner_library_top(P2).key();
+    assert_eq!(before.zones.ordered_zones[&library_key], [OLD_LIBRARY_TOP]);
+
+    let result = execute_selected_zone_transition_for_conformance(
+        &before,
+        OLD_LIBRARY_TOP,
+        owner_library_top(P2),
+        owner_hand(P2),
+        ConformanceZoneTransitionKind::LibraryTopToOwnerHand,
+    )
+    .expect("singleton library transition");
+    assert!(!result
+        .next_state
+        .zones
+        .ordered_zones
+        .contains_key(&library_key));
+    assert_eq!(result.next_state.zones.ordered_zones.len(), 0);
+    assert_eq!(
+        result.next_state.zones.locations[&GameObjectId(3)],
+        owner_hand(P2)
+    );
+}
+
+#[test]
 fn s2_zone_graveyard_order() {
-    let before = battlefield_case_state();
+    let before = task2_battlefield_case_state();
     let key = before.zones.locations.get(&GameObjectId(3)).unwrap().key();
     assert_eq!(
         before.zones.ordered_zones[&key],
@@ -279,22 +443,29 @@ fn s2_zone_graveyard_order() {
     assert_eq!(expected[0].1, ZonePosition::Top { offset: 0 });
     assert_eq!(expected[1].1, ZonePosition::Top { offset: 1 });
     assert_eq!(expected[2].1, ZonePosition::Top { offset: 2 });
-    let _ = assert_s2_red(
-        "s2.zone.graveyard_order",
-        execute_selected_zone_transition_for_conformance(
-            &before,
-            OLD_BATTLEFIELD,
-            battlefield_from(),
-            owner_graveyard_top(P1),
-            ConformanceZoneTransitionKind::BattlefieldToOwnerGraveyard,
-        ),
+    let result = execute_selected_zone_transition_for_conformance(
+        &before,
+        OLD_BATTLEFIELD,
+        battlefield_from(),
+        owner_graveyard_top(P1),
+        ConformanceZoneTransitionKind::BattlefieldToOwnerGraveyard,
+    )
+    .expect("graveyard ordering product");
+    assert_eq!(
+        result.next_state.zones.ordered_zones[&key],
+        [GameObjectId(5), GameObjectId(3), GameObjectId(4),]
     );
+    for (object, position) in expected {
+        assert_eq!(
+            result.next_state.zones.locations[&object].position,
+            position
+        );
+    }
 }
 
 #[test]
-#[ignore = "RED: M3.S2 production semantics intentionally not implemented"]
 fn s2_zone_event_delta_cursor_expectations() {
-    let before = battlefield_case_state();
+    let before = task2_battlefield_case_state();
     let old_snapshot = ObjectSnapshot {
         object: OLD_BATTLEFIELD,
         physical_card: Some(CARD_BATTLEFIELD),
@@ -351,20 +522,29 @@ fn s2_zone_event_delta_cursor_expectations() {
     };
     assert_eq!(expected_event.semantic_delta(), expected_delta);
     assert_eq!(before.revision.0.checked_add(1), Some(1));
-    let _ = assert_s2_red(
-        "s2.zone.event_delta_cursor_expectations",
-        execute_selected_zone_transition_for_conformance(
-            &before,
-            OLD_BATTLEFIELD,
-            battlefield_from(),
-            owner_graveyard_top(P1),
-            ConformanceZoneTransitionKind::BattlefieldToOwnerGraveyard,
-        ),
+    let result = execute_selected_zone_transition_for_conformance(
+        &before,
+        OLD_BATTLEFIELD,
+        battlefield_from(),
+        owner_graveyard_top(P1),
+        ConformanceZoneTransitionKind::BattlefieldToOwnerGraveyard,
+    )
+    .expect("event/delta/cursor product");
+    assert_eq!(result.events.len(), 1);
+    assert_eq!(result.events[0].event, expected_event);
+    assert_eq!(
+        result.events[0].event_id,
+        before.allocators.next_rule_event_id
     );
+    assert_eq!(result.events[0].state_revision, result.next_state.revision);
+    assert_eq!(result.next_state.allocators.next_rule_event_id.0, 2);
+    assert_eq!(result.delta.audit, vec![expected_delta]);
+    assert_eq!(result.delta.apply(&before).unwrap(), result.next_state);
+    assert_eq!(result.next_state.revision.0, 1);
+    assert_eq!(result.next_state.random, before.random);
 }
 
 #[test]
-#[ignore = "RED: M3.S2 production semantics intentionally not implemented"]
 fn s2_identity_destination_canonical_state() {
     // `controller = owner` is GameObject storage normalization for non-
     // battlefield rows, not a Magic rule assigning those cards a controller.
@@ -425,14 +605,19 @@ fn s2_identity_destination_canonical_state() {
     );
     assert_eq!(expected_library_snapshot.object, GameObjectId(4));
     assert_eq!(expected_library_snapshot.location.zone, ZoneKind::Hand);
-    let _ = assert_s2_red(
-        "s2.identity.destination_canonical_state/battlefield",
-        battlefield_request(),
+    let result = battlefield_request().expect("canonical Graveyard row");
+    assert_eq!(
+        result.next_state.zones.objects[&GameObjectId(5)],
+        battlefield_expected
     );
+    let transition = match &result.events[0].event {
+        mtgml_rules::AuthoritativeRuleEventKind::ZoneTransition { transition } => transition,
+        other => panic!("unexpected first event: {other:?}"),
+    };
+    assert_eq!(transition.new_snapshot, expected_battlefield_snapshot);
 }
 
 #[test]
-#[ignore = "RED: M3.S2 production semantics intentionally not implemented"]
 fn s2_identity_destination_canonical_state_library() {
     let expected = ObjectSnapshot {
         object: GameObjectId(4),
@@ -454,10 +639,24 @@ fn s2_identity_destination_canonical_state_library() {
     assert_eq!(expected.controller, P2);
     assert!(!expected.tapped);
     assert!(!expected.face_down);
-    let _ = assert_s2_red(
-        "s2.identity.destination_canonical_state/library",
-        library_request(),
+    let result = library_request().expect("canonical Hand row");
+    assert_eq!(
+        result.next_state.zones.objects[&GameObjectId(4)],
+        GameObject {
+            id: expected.object,
+            physical_card: expected.physical_card,
+            card_definition: expected.card_definition,
+            owner: expected.owner,
+            controller: expected.controller,
+            tapped: expected.tapped,
+            face_down: expected.face_down,
+        }
     );
+    let transition = match &result.events[0].event {
+        mtgml_rules::AuthoritativeRuleEventKind::ZoneTransition { transition } => transition,
+        other => panic!("unexpected first event: {other:?}"),
+    };
+    assert_eq!(transition.new_snapshot, expected);
 }
 
 #[test]
@@ -548,7 +747,7 @@ fn s2_identity_old_reference_closure_characterization() {
 }
 
 #[test]
-#[ignore = "RED: M3.S2 production semantics intentionally not implemented"]
+#[ignore = "RED: Task 3 foundation-source closure intentionally not implemented"]
 fn s2_identity_foundation_source_cessation() {
     let before = battlefield_case_state();
     assert!(before.foundation_sources.contains_key(&OLD_BATTLEFIELD));
@@ -569,7 +768,9 @@ fn s2_identity_foundation_source_cessation() {
 
 #[test]
 fn s2_request_vocabulary_represents_typed_rejection_inputs() {
-    let before = battlefield_case_state();
+    let before = task2_battlefield_case_state();
+    let before_digest = before.digest().unwrap();
+    let before_rng = before.random.clone();
     let mismatched_source = location(
         ZoneKind::Hand,
         Some(P1),
@@ -585,37 +786,54 @@ fn s2_request_vocabulary_represents_typed_rejection_inputs() {
     );
     let wrong_owner_hand = owner_hand(P1);
 
-    // These caller-authored values reach the typed seam unchanged in shape.
-    // FIX-02 characterizes representation only; semantic rejection belongs to
-    // Task 2/5. Every attempted request remains unavailable and non-mutating.
-    for (claimed_from, claimed_to, kind) in [
-        (
+    assert!(matches!(
+        execute_selected_zone_transition_for_conformance(
+            &before,
+            OLD_BATTLEFIELD,
             mismatched_source,
             owner_graveyard_top(P1),
             ConformanceZoneTransitionKind::BattlefieldToOwnerGraveyard,
         ),
-        (
+        Err(KernelExecutionError::ZoneIncarnation(
+            ZoneIncarnationError::ClaimedSourceLocationMismatch
+        ))
+    ));
+    assert!(matches!(
+        execute_selected_zone_transition_for_conformance(
+            &before,
+            OLD_BATTLEFIELD,
             battlefield_from(),
             wrong_owner_graveyard,
             ConformanceZoneTransitionKind::BattlefieldToOwnerGraveyard,
         ),
-        (
+        Err(KernelExecutionError::ZoneIncarnation(
+            ZoneIncarnationError::DestinationMismatch
+        ))
+    ));
+    let mut unadmitted_before = before.clone();
+    let actual_unadmitted_source = location(
+        ZoneKind::Exile,
+        None,
+        ZonePosition::Unordered,
+        VisibilityPartition::Public,
+    );
+    unadmitted_before
+        .zones
+        .locations
+        .insert(OLD_BATTLEFIELD, actual_unadmitted_source.clone());
+    validate_engine_state(&unadmitted_before).unwrap();
+    assert!(matches!(
+        execute_selected_zone_transition_for_conformance(
+            &unadmitted_before,
+            OLD_BATTLEFIELD,
             unadmitted_source,
             battlefield_from(),
             ConformanceZoneTransitionKind::BattlefieldToOwnerGraveyard,
         ),
-    ] {
-        assert!(matches!(
-            execute_selected_zone_transition_for_conformance(
-                &before,
-                OLD_BATTLEFIELD,
-                claimed_from,
-                claimed_to,
-                kind,
-            ),
-            Err(KernelExecutionError::ZoneIncarnationUnavailable)
-        ));
-    }
+        Err(KernelExecutionError::ZoneIncarnation(
+            ZoneIncarnationError::UnadmittedSourceFamily
+        ))
+    ));
     let library_before = library_case_state();
     assert!(matches!(
         execute_selected_zone_transition_for_conformance(
@@ -625,16 +843,112 @@ fn s2_request_vocabulary_represents_typed_rejection_inputs() {
             wrong_owner_hand,
             ConformanceZoneTransitionKind::LibraryTopToOwnerHand,
         ),
-        Err(KernelExecutionError::ZoneIncarnationUnavailable)
+        Err(KernelExecutionError::ZoneIncarnation(
+            ZoneIncarnationError::DestinationMismatch
+        ))
+    ));
+    assert_eq!(before.digest().unwrap(), before_digest);
+    assert_eq!(before.random, before_rng);
+}
+
+#[test]
+fn s2_task2_request_preconditions_fail_closed() {
+    let absent_state = task2_battlefield_case_state();
+    assert!(matches!(
+        execute_selected_zone_transition_for_conformance(
+            &absent_state,
+            GameObjectId(99),
+            battlefield_from(),
+            owner_graveyard_top(P1),
+            ConformanceZoneTransitionKind::BattlefieldToOwnerGraveyard,
+        ),
+        Err(KernelExecutionError::ZoneIncarnation(
+            ZoneIncarnationError::ObjectNotLive
+        ))
+    ));
+
+    let mut no_physical = task2_battlefield_case_state();
+    no_physical
+        .zones
+        .objects
+        .get_mut(&OLD_BATTLEFIELD)
+        .unwrap()
+        .physical_card = None;
+    validate_engine_state(&no_physical).unwrap();
+    assert!(matches!(
+        execute_selected_zone_transition_for_conformance(
+            &no_physical,
+            OLD_BATTLEFIELD,
+            battlefield_from(),
+            owner_graveyard_top(P1),
+            ConformanceZoneTransitionKind::BattlefieldToOwnerGraveyard,
+        ),
+        Err(KernelExecutionError::ZoneIncarnation(
+            ZoneIncarnationError::PhysicalCardRequired
+        ))
+    ));
+
+    let library = task2_library_case_state();
+    let non_top = GameObjectId(3);
+    let non_top_from = location(
+        ZoneKind::Library,
+        Some(P2),
+        ZonePosition::Top { offset: 1 },
+        VisibilityPartition::FaceDown,
+    );
+    assert!(matches!(
+        execute_selected_zone_transition_for_conformance(
+            &library,
+            non_top,
+            non_top_from,
+            owner_hand(P2),
+            ConformanceZoneTransitionKind::LibraryTopToOwnerHand,
+        ),
+        Err(KernelExecutionError::ZoneIncarnation(
+            ZoneIncarnationError::LibrarySourceNotTop
+        ))
+    ));
+
+    let mut exhausted = task2_battlefield_case_state();
+    exhausted.allocators.next_object_id = GameObjectId(u64::MAX);
+    validate_engine_state(&exhausted).unwrap();
+    let exhausted_digest = exhausted.digest().unwrap();
+    assert!(matches!(
+        execute_selected_zone_transition_for_conformance(
+            &exhausted,
+            OLD_BATTLEFIELD,
+            battlefield_from(),
+            owner_graveyard_top(P1),
+            ConformanceZoneTransitionKind::BattlefieldToOwnerGraveyard,
+        ),
+        Err(KernelExecutionError::IdentityAllocation(
+            mtgml_state::IdentityAllocationError::GameObjectIdExhausted
+        ))
+    ));
+    assert_eq!(exhausted.allocators.next_object_id, GameObjectId(u64::MAX));
+    assert_eq!(exhausted.digest().unwrap(), exhausted_digest);
+
+    let mut invalid_before = task2_battlefield_case_state();
+    invalid_before.zones.locations.remove(&OLD_BATTLEFIELD);
+    assert!(matches!(
+        execute_selected_zone_transition_for_conformance(
+            &invalid_before,
+            OLD_BATTLEFIELD,
+            battlefield_from(),
+            owner_graveyard_top(P1),
+            ConformanceZoneTransitionKind::BattlefieldToOwnerGraveyard,
+        ),
+        Err(KernelExecutionError::BeforeState(_))
     ));
 }
 
 #[test]
-#[ignore = "RED: M3.S2 production semantics intentionally not implemented"]
+#[ignore = "RED: Task 3 lifecycle/reference closure intentionally not implemented"]
 fn s2_rejection_stale_old_incarnation_historical_witness() {
     let before = battlefield_case_state();
     // Step 1 must be a real accepted production-owned transition. The intended
-    // Step 2 is already explicit below; FIX-01 RED stops at Step 1.
+    // Step 2 is already explicit below. The rich witness requires Task 3's
+    // identity/reference closure before Step 1 can commit.
     let first = assert_s2_red(
         "s2.rejection.stale_old_incarnation/step_1",
         execute_selected_zone_transition_for_conformance(
@@ -744,23 +1058,33 @@ fn s2_mutant_stale_old_lifecycle_occurrence_is_validator_only() {
 }
 
 #[test]
-fn s2_requests_fail_closed_without_mutation() {
-    let battlefield = battlefield_case_state();
-    let library = library_case_state();
+fn s2_valid_requests_preserve_input_and_rng() {
+    let battlefield = task2_battlefield_case_state();
+    let library = task2_library_case_state();
     let battlefield_digest = battlefield.digest().unwrap();
     let library_digest = library.digest().unwrap();
     let battlefield_rng = battlefield.random.clone();
     let library_rng = library.random.clone();
-    assert!(matches!(
-        battlefield_request(),
-        Err(KernelExecutionError::ZoneIncarnationUnavailable)
-    ));
-    assert!(matches!(
-        library_request(),
-        Err(KernelExecutionError::ZoneIncarnationUnavailable)
-    ));
-    // FIX-01 authorization requires all requests to remain fail-closed and
-    // read-only; these checks pass independently of the RED product tests.
+    let battlefield_result = execute_selected_zone_transition_for_conformance(
+        &battlefield,
+        OLD_BATTLEFIELD,
+        battlefield_from(),
+        owner_graveyard_top(P1),
+        ConformanceZoneTransitionKind::BattlefieldToOwnerGraveyard,
+    )
+    .unwrap();
+    let library_result = execute_selected_zone_transition_for_conformance(
+        &library,
+        OLD_LIBRARY_TOP,
+        owner_library_top(P2),
+        owner_hand(P2),
+        ConformanceZoneTransitionKind::LibraryTopToOwnerHand,
+    )
+    .unwrap();
+    assert!(battlefield_result.accepted);
+    assert!(library_result.accepted);
+    assert_eq!(battlefield_result.next_state.random, battlefield_rng);
+    assert_eq!(library_result.next_state.random, library_rng);
     assert_eq!(battlefield.digest().unwrap(), battlefield_digest);
     assert_eq!(library.digest().unwrap(), library_digest);
     assert_eq!(battlefield.random, battlefield_rng);

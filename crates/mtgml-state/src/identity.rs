@@ -6,6 +6,8 @@ use crate::m2_shape::PerspectiveIdentityStateV2;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
 pub enum IdentityAllocationError {
+    #[error("game object identity is exhausted")]
+    GameObjectIdExhausted,
     #[error("effect instance identity is exhausted")]
     EffectInstanceIdExhausted,
 }
@@ -24,6 +26,17 @@ pub struct IdentityAllocatorState {
 }
 
 impl IdentityAllocatorState {
+    pub fn allocate_object_id(&mut self) -> Result<GameObjectId, IdentityAllocationError> {
+        let allocated = self.next_object_id;
+        let next = allocated
+            .0
+            .checked_add(1)
+            .map(GameObjectId)
+            .ok_or(IdentityAllocationError::GameObjectIdExhausted)?;
+        self.next_object_id = next;
+        Ok(allocated)
+    }
+
     pub fn allocate_effect_id(
         &mut self,
     ) -> Result<mtgml_model::EffectInstanceId, IdentityAllocationError> {
@@ -38,6 +51,38 @@ impl IdentityAllocatorState {
                 .ok_or(IdentityAllocationError::EffectInstanceIdExhausted)?,
         );
         Ok(allocated)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{IdentityAllocationError, IdentityAllocatorState};
+    use mtgml_model::GameObjectId;
+
+    #[test]
+    fn object_id_allocation_advances_exactly_once() {
+        let mut allocators = IdentityAllocatorState {
+            next_object_id: GameObjectId(41),
+            ..IdentityAllocatorState::default()
+        };
+
+        assert_eq!(allocators.allocate_object_id(), Ok(GameObjectId(41)));
+        assert_eq!(allocators.next_object_id, GameObjectId(42));
+    }
+
+    #[test]
+    fn object_id_exhaustion_preserves_allocator() {
+        let mut allocators = IdentityAllocatorState {
+            next_object_id: GameObjectId(u64::MAX),
+            ..IdentityAllocatorState::default()
+        };
+        let before = allocators.next_object_id;
+
+        assert_eq!(
+            allocators.allocate_object_id(),
+            Err(IdentityAllocationError::GameObjectIdExhausted)
+        );
+        assert_eq!(allocators.next_object_id, before);
     }
 }
 

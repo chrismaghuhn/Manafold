@@ -83,6 +83,80 @@ impl SemanticValidationCursor {
                 {
                     return Err(TransitionViolation::ZoneTransition);
                 }
+
+                // A selected ordered-zone move also changes the redundant
+                // `Top` witnesses of the other objects in that zone. Keep
+                // the cursor's object projection compositional for these two
+                // frozen families; EngineState validation cross-checks the
+                // final vectors against these exact locations.
+                let battlefield = mtgml_state::ZoneLocation {
+                    zone: mtgml_model::ZoneKind::Battlefield,
+                    player: None,
+                    position: mtgml_state::ZonePosition::Unordered,
+                    visibility: mtgml_state::VisibilityPartition::Public,
+                    partition: None,
+                };
+                let graveyard_top = mtgml_state::ZoneLocation {
+                    zone: mtgml_model::ZoneKind::Graveyard,
+                    player: Some(transition.last_known.owner),
+                    position: mtgml_state::ZonePosition::Top { offset: 0 },
+                    visibility: mtgml_state::VisibilityPartition::Public,
+                    partition: None,
+                };
+                let selected_battlefield_graveyard =
+                    transition.from == battlefield && transition.to == graveyard_top;
+                let library_top = mtgml_state::ZoneLocation {
+                    zone: mtgml_model::ZoneKind::Library,
+                    player: Some(transition.last_known.owner),
+                    position: mtgml_state::ZonePosition::Top { offset: 0 },
+                    visibility: mtgml_state::VisibilityPartition::FaceDown,
+                    partition: None,
+                };
+                let hand = mtgml_state::ZoneLocation {
+                    zone: mtgml_model::ZoneKind::Hand,
+                    player: Some(transition.last_known.owner),
+                    position: mtgml_state::ZonePosition::Unordered,
+                    visibility: mtgml_state::VisibilityPartition::OwnerOnly,
+                    partition: None,
+                };
+                let selected_library_hand = transition.from == library_top && transition.to == hand;
+
+                if selected_battlefield_graveyard {
+                    let destination_key = transition.to.key();
+                    for (object, snapshot) in &mut self.objects {
+                        if *object == transition.old_object
+                            || snapshot.location.key() != destination_key
+                        {
+                            continue;
+                        }
+                        let mtgml_state::ZonePosition::Top { offset } = snapshot.location.position
+                        else {
+                            return Err(TransitionViolation::ZoneTransition);
+                        };
+                        snapshot.location.position = mtgml_state::ZonePosition::Top {
+                            offset: offset
+                                .checked_add(1)
+                                .ok_or(TransitionViolation::ZoneTransition)?,
+                        };
+                    }
+                } else if selected_library_hand {
+                    let source_key = transition.from.key();
+                    for (object, snapshot) in &mut self.objects {
+                        if *object == transition.old_object || snapshot.location.key() != source_key
+                        {
+                            continue;
+                        }
+                        let mtgml_state::ZonePosition::Top { offset } = snapshot.location.position
+                        else {
+                            return Err(TransitionViolation::ZoneTransition);
+                        };
+                        snapshot.location.position = mtgml_state::ZonePosition::Top {
+                            offset: offset
+                                .checked_sub(1)
+                                .ok_or(TransitionViolation::ZoneTransition)?,
+                        };
+                    }
+                }
                 self.objects.remove(&transition.old_object);
                 self.objects
                     .insert(transition.new_object, transition.new_snapshot.clone());

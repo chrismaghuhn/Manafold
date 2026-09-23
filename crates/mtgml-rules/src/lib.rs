@@ -21,7 +21,7 @@ mod zone_incarnation;
 mod tests;
 
 pub use contract::validate_transition_contract;
-pub use errors::KernelExecutionError;
+pub use errors::{KernelExecutionError, ZoneIncarnationError};
 pub use events::{
     AuthoritativeRuleEvent, AuthoritativeRuleEventKind, OccurrencePairingError,
     PerspectiveObservationPolicyV1,

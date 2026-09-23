@@ -5,6 +5,28 @@ use thiserror::Error;
 use crate::turn_structure::{TurnStructureError, UnsupportedRulesBoundary};
 use crate::TransitionViolation;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
+pub enum ZoneIncarnationError {
+    #[error("selected source object is not live")]
+    ObjectNotLive,
+    #[error("claimed source location does not match the authoritative location")]
+    ClaimedSourceLocationMismatch,
+    #[error("source location is outside the selected transition family")]
+    UnadmittedSourceFamily,
+    #[error("claimed destination does not match the selected family and owner")]
+    DestinationMismatch,
+    #[error("selected transition requires a physical card identity")]
+    PhysicalCardRequired,
+    #[error("selected source profile is not admitted")]
+    UnsupportedSourceProfile,
+    #[error("library source is not the exact ordered top member")]
+    LibrarySourceNotTop,
+    #[error("graveyard order offset would overflow")]
+    GraveyardOffsetOverflow,
+    #[error("allocated game-object identity collides with a live object")]
+    ObjectIdCollision,
+}
+
 #[derive(Debug, Error)]
 pub enum KernelExecutionError {
     #[error("before state is invalid: {0}")]
@@ -29,8 +51,8 @@ pub enum KernelExecutionError {
     Exhaustion(&'static str),
     #[error("engine-offered stage path is unsupported in the current synthetic protocol")]
     UnsupportedStagePath,
-    #[error("selected zone-incarnation transition is not executable in this rules slice")]
-    ZoneIncarnationUnavailable,
+    #[error("zone-incarnation request rejected: {0}")]
+    ZoneIncarnation(ZoneIncarnationError),
     #[error("turn structure validation failed: {0}")]
     TurnStructure(TurnStructureError),
     #[error("player response is not accepted on this no-choice Magic path")]
