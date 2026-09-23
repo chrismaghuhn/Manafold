@@ -1,6 +1,8 @@
 // S3.0 Task 3: characterize the existing Synthetic response boundary and
 // keep an explicit compile-contract witness for the absent shared owner.
 
+use crate::controller::EnvironmentBackend;
+
 #[test]
 fn synthetic_accepted_response_pins_the_current_transaction_products() {
     use mtgml_observation::PlayerStepSubmissionV1;
@@ -196,6 +198,205 @@ fn shared_response_transaction_production_entry_point_exists() {
     // S3.0 Task 4 is expected to introduce this environment-owned seam. Keep
     // this compile-contract RED until the shared primitive owns commit order.
     use crate::response_transaction::execute_response_transaction;
+    use crate::response_transaction::{
+        ResponseTransaction, ResponseTransactionFailurePoint, TestApplyOverride,
+    };
+    use mtgml_observation::ObservedEventEnvelopeV2;
+    use std::collections::BTreeMap;
 
-    let _shared_entry_point = execute_response_transaction;
+    type Hook = fn(
+        &EnvironmentCheckpointV6,
+        &mtgml_rules::TransitionResult,
+        &BTreeMap<PlayerId, Vec<ObservedEventEnvelopeV2>>,
+    ) -> Result<(), ControllerError>;
+    type SharedEntry = for<'a> fn(
+        ResponseTransaction<'a>,
+        PlayerId,
+        DecisionResponseV2,
+        Hook,
+        Option<ResponseTransactionFailurePoint>,
+        Option<TestApplyOverride>,
+    ) -> Result<mtgml_rules::TransitionResult, ControllerError>;
+    let _shared_entry_point: SharedEntry = execute_response_transaction::<Hook>;
+}
+
+#[derive(Debug, PartialEq, Eq)]
+struct ResponseWorldSnapshot {
+    checkpoint: EnvironmentCheckpointV6,
+    replay: AuthoritativeReplayV6,
+    player_products: Vec<(PlayerId, Vec<Vec<u8>>)>,
+}
+
+fn response_world_snapshot(backend: &SyntheticM1EnvironmentBackend) -> ResponseWorldSnapshot {
+    let mut player_products = Vec::new();
+    for player in backend.players() {
+        let observation = backend.player_observation(player).unwrap();
+        let information = backend.player_information_state(player).unwrap();
+        let decision = backend.player_visible_decision(player).unwrap();
+        player_products.push((
+            player,
+            vec![
+                mtgml_wire::encode_canonical(&observation).unwrap(),
+                mtgml_wire::encode_canonical(&information).unwrap(),
+                match decision {
+                    Some(decision) => mtgml_wire::encode_canonical(&decision).unwrap(),
+                    None => b"null".to_vec(),
+                },
+            ],
+        ));
+    }
+    ResponseWorldSnapshot {
+        checkpoint: backend.checkpoint().unwrap(),
+        replay: backend.export_replay().unwrap(),
+        player_products,
+    }
+}
+
+fn response_for_backend(
+    backend: &SyntheticM1EnvironmentBackend,
+    actor: PlayerId,
+    answer: DecisionAnswerV2,
+) -> DecisionResponseV2 {
+    let request = backend
+        .player_visible_decision(actor)
+        .unwrap()
+        .expect("test response actor owns a visible Decision");
+    DecisionResponseV2 {
+        schema_version: DECISION_RESPONSE_V2_SCHEMA.into(),
+        player_decision_id: request.player_decision_id,
+        state_revision: request.state_revision,
+        answer,
+    }
+}
+
+#[test]
+fn shared_transaction_injected_candidate_replay_and_projection_failures_are_atomic() {
+    use crate::response_transaction::ResponseTransactionFailurePoint as Failure;
+
+    for failure in [
+        Failure::CandidateCheckpoint,
+        Failure::ReplayAppend,
+        Failure::ReplayExport,
+        Failure::OccurrenceProjection,
+        Failure::PlayerProjectionValidation,
+    ] {
+        let mut backend = backend();
+        let before = response_world_snapshot(&backend);
+        let response = response_for_backend(&backend, PlayerId(1), order_entry_answer());
+        let result = backend.execute_response_with_failure_point(
+            PlayerId(1),
+            response,
+            Some(failure),
+            |_candidate, _transition, _occurrences| Ok(()),
+        );
+        assert!(result.is_err(), "{failure:?} must be injected");
+        assert_eq!(response_world_snapshot(&backend), before, "{failure:?}");
+    }
+}
+
+#[test]
+fn shared_transaction_before_commit_hook_failure_is_atomic() {
+    let mut backend = backend();
+    let before = response_world_snapshot(&backend);
+    let response = response_for_backend(&backend, PlayerId(1), order_entry_answer());
+    let result = backend.execute_response_with_failure_point(
+        PlayerId(1),
+        response,
+        None,
+        |candidate, transition, _occurrences| {
+            assert_eq!(candidate.state.revision, StateRevision(1));
+            assert!(transition.accepted);
+            Err(ControllerError::Backend("injected before-commit failure".into()))
+        },
+    );
+    assert!(result.is_err());
+    assert_eq!(response_world_snapshot(&backend), before);
+}
+
+#[test]
+fn shared_transaction_forced_progress_boundary_failure_is_atomic() {
+    use crate::response_transaction::ResponseTransactionFailurePoint::ForcedProgress;
+
+    let mut backend = backend();
+    let actor = PlayerId(1);
+    // Move to the existing final Order response. It completes the synthetic
+    // chain without a Decision, which is precisely the one-advance boundary.
+    let initial = response_for_backend(&backend, actor, order_entry_answer());
+    assert!(backend.execute_trusted_response(actor, initial).unwrap().accepted);
+    let count = response_for_backend(&backend, actor, number_answer(2));
+    assert!(backend.execute_trusted_response(actor, count).unwrap().accepted);
+    let members = response_for_backend(&backend, actor, members_answer(&[0, 1]));
+    assert!(backend.execute_trusted_response(actor, members).unwrap().accepted);
+
+    let before = response_world_snapshot(&backend);
+    let final_order = response_for_backend(&backend, actor, order_answer(&[1, 0]));
+    let result = backend.execute_response_with_failure_point(
+        actor,
+        final_order,
+        Some(ForcedProgress),
+        |_candidate, _transition, _occurrences| Ok(()),
+    );
+    assert!(result.is_err(), "forced-progress boundary must be reached");
+    assert_eq!(response_world_snapshot(&backend), before);
+}
+
+#[test]
+fn shared_transaction_final_synthetic_response_adds_only_its_real_replay_step() {
+    let mut backend = backend();
+    let actor = PlayerId(1);
+    for answer in [order_entry_answer(), number_answer(2), members_answer(&[0, 1])] {
+        let response = response_for_backend(&backend, actor, answer);
+        assert!(backend.execute_trusted_response(actor, response).unwrap().accepted);
+    }
+    let replay_before = backend.export_replay().unwrap();
+    assert_eq!(replay_before.steps.len(), 3);
+
+    let response = response_for_backend(&backend, actor, order_answer(&[1, 0]));
+    let transition = backend.execute_trusted_response(actor, response.clone()).unwrap();
+    assert!(transition.accepted);
+    assert!(transition.next_decision.is_none());
+    assert_eq!(transition.status, EpisodeStatus::Running);
+
+    let replay_after = backend.export_replay().unwrap();
+    assert_eq!(replay_after.steps.len(), 4);
+    assert_eq!(replay_after.steps[3].response, response);
+    assert!(replay_after.steps[3].accepted);
+    assert_eq!(replay_after.steps[3].state_revision_after, StateRevision(4));
+}
+
+#[test]
+fn shared_transaction_kernel_rejection_is_atomic() {
+    let mut backend = backend();
+    let before = response_world_snapshot(&backend);
+    let rejected = backend
+        .execute_trusted_response(PlayerId(1), response(1, 0))
+        .unwrap();
+    assert!(!rejected.accepted);
+    assert_eq!(response_world_snapshot(&backend), before);
+}
+
+#[test]
+fn shared_transaction_counter_overflow_is_atomic() {
+    let players = [PlayerId(1), PlayerId(2)];
+    let original = backend().checkpoint().unwrap();
+    let checkpoint = EnvironmentCheckpointV6::new(
+        original.state,
+        original.status,
+        EnvironmentLimitCounters {
+            decisions_submitted: u64::MAX,
+            ..original.limit_counters
+        },
+        original.codec,
+        synthetic_identity(),
+    )
+    .unwrap();
+    let mut backend = SyntheticM1EnvironmentBackend::from_checkpoint(checkpoint, config(players))
+        .unwrap();
+    let before = response_world_snapshot(&backend);
+    let response = response_for_backend(&backend, PlayerId(1), order_entry_answer());
+    let error = backend
+        .execute_trusted_response(PlayerId(1), response)
+        .expect_err("counter overflow must stop before commit");
+    assert!(matches!(error, ControllerError::CounterOverflow { .. }));
+    assert_eq!(response_world_snapshot(&backend), before);
 }
