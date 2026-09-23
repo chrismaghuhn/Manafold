@@ -25,6 +25,16 @@ pub enum TransitionViolation {
     EpisodeStatus,
     #[error("zone transition identity, snapshots, or last-known information is invalid")]
     ZoneTransition,
+    #[error("selected ordered-zone transformation is not exact")]
+    ZoneOrderProgression,
+    #[error("selected transition did not allocate the exact next game-object identity")]
+    ObjectAllocatorProgression,
+    #[error("selected transition advanced an unrelated allocator")]
+    UnrelatedAllocatorProgression,
+    #[error("selected transition left OLD as a live authoritative reference")]
+    OldReferenceClosure,
+    #[error("selected transition foundation-source closure is not exact")]
+    FoundationSourceProgression,
     #[error("object cessation event does not match the semantic cursor")]
     ObjectCessation,
     #[error("object trace does not compose to the final state")]

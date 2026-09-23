@@ -84,6 +84,64 @@ impl SemanticValidationCursor {
                     return Err(TransitionViolation::ZoneTransition);
                 }
 
+                let owner = transition.last_known.owner;
+                let selected_locations = match (transition.from.zone, transition.to.zone) {
+                    (mtgml_model::ZoneKind::Battlefield, mtgml_model::ZoneKind::Graveyard) => {
+                        Some((
+                            mtgml_state::ZoneLocation {
+                                zone: mtgml_model::ZoneKind::Battlefield,
+                                player: None,
+                                position: mtgml_state::ZonePosition::Unordered,
+                                visibility: mtgml_state::VisibilityPartition::Public,
+                                partition: None,
+                            },
+                            mtgml_state::ZoneLocation {
+                                zone: mtgml_model::ZoneKind::Graveyard,
+                                player: Some(owner),
+                                position: mtgml_state::ZonePosition::Top { offset: 0 },
+                                visibility: mtgml_state::VisibilityPartition::Public,
+                                partition: None,
+                            },
+                        ))
+                    }
+                    (mtgml_model::ZoneKind::Library, mtgml_model::ZoneKind::Hand) => Some((
+                        mtgml_state::ZoneLocation {
+                            zone: mtgml_model::ZoneKind::Library,
+                            player: Some(owner),
+                            position: mtgml_state::ZonePosition::Top { offset: 0 },
+                            visibility: mtgml_state::VisibilityPartition::FaceDown,
+                            partition: None,
+                        },
+                        mtgml_state::ZoneLocation {
+                            zone: mtgml_model::ZoneKind::Hand,
+                            player: Some(owner),
+                            position: mtgml_state::ZonePosition::Unordered,
+                            visibility: mtgml_state::VisibilityPartition::OwnerOnly,
+                            partition: None,
+                        },
+                    )),
+                    _ => None,
+                };
+                if let Some((expected_from, expected_to)) = selected_locations {
+                    if transition.from != expected_from
+                        || transition.to != expected_to
+                        || transition.physical_card.is_none()
+                        || transition.last_known.card_definition
+                            != transition.new_snapshot.card_definition
+                        || transition.last_known.owner != transition.new_snapshot.owner
+                        || transition.new_snapshot.controller != owner
+                        || transition.new_snapshot.tapped
+                        || transition.new_snapshot.face_down
+                    {
+                        return Err(TransitionViolation::ZoneTransition);
+                    }
+                    if matches!(transition.from.zone, mtgml_model::ZoneKind::Battlefield)
+                        && transition.last_known.face_down
+                    {
+                        return Err(TransitionViolation::ZoneTransition);
+                    }
+                }
+
                 // A selected ordered-zone move also changes the redundant
                 // `Top` witnesses of the other objects in that zone. Keep
                 // the cursor's object projection compositional for these two
@@ -122,6 +180,11 @@ impl SemanticValidationCursor {
                 let selected_library_hand = transition.from == library_top && transition.to == hand;
 
                 if selected_battlefield_graveyard {
+                    if self.objects.values().any(|snapshot| {
+                        snapshot.location.key() == transition.to.key() && snapshot.face_down
+                    }) {
+                        return Err(TransitionViolation::ZoneTransition);
+                    }
                     self.foundation_sources.remove(&transition.old_object);
                     let destination_key = transition.to.key();
                     for (object, snapshot) in &mut self.objects {

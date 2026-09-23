@@ -278,6 +278,126 @@ fn assert_event_delta_mirror(result: &mtgml_rules::TransitionResult) {
     }
 }
 
+fn assert_rejected_request_preserves_complete_state<T>(
+    before: &EngineState,
+    result: Result<T, KernelExecutionError>,
+    expected_error: impl FnOnce(&KernelExecutionError) -> bool,
+) {
+    let before_state = before.clone();
+    let before_digest = before.digest().ok();
+    let error = match result {
+        Err(error) => error,
+        Ok(_) => panic!("expected typed S2 request rejection"),
+    };
+    assert!(
+        expected_error(&error),
+        "unexpected typed rejection: {error:?}"
+    );
+    assert_eq!(*before, before_state);
+    assert_eq!(before.digest().ok(), before_digest);
+    assert_eq!(before.revision, before_state.revision);
+    assert_eq!(before.zones, before_state.zones);
+    assert_eq!(before.allocators, before_state.allocators);
+    assert_eq!(before.combat, before_state.combat);
+    assert_eq!(before.foundation_sources, before_state.foundation_sources);
+    assert_eq!(before.execution, before_state.execution);
+    assert_eq!(before.random, before_state.random);
+    assert_eq!(before.knowledge, before_state.knowledge);
+    assert_eq!(
+        before.perspective_identities,
+        before_state.perspective_identities
+    );
+    assert_eq!(before.format, before_state.format);
+}
+
+fn accepted_task2_battlefield_product() -> (EngineState, mtgml_rules::TransitionResult) {
+    let before = task2_battlefield_case_state();
+    let result = execute_selected_zone_transition_for_conformance(
+        &before,
+        OLD_BATTLEFIELD,
+        battlefield_from(),
+        owner_graveyard_top(P1),
+        ConformanceZoneTransitionKind::BattlefieldToOwnerGraveyard,
+    )
+    .unwrap();
+    (before, result)
+}
+
+fn accepted_task2_library_product_with_three_cards() -> (EngineState, mtgml_rules::TransitionResult)
+{
+    let mut before = task2_library_case_state();
+    let third = GameObjectId(4);
+    before.zones.objects.insert(
+        third,
+        GameObject {
+            id: third,
+            physical_card: Some(PhysicalCardId(4)),
+            card_definition: CardDefinitionId(4),
+            owner: P2,
+            controller: P2,
+            tapped: false,
+            face_down: false,
+        },
+    );
+    before.zones.locations.insert(
+        third,
+        location(
+            ZoneKind::Library,
+            Some(P2),
+            ZonePosition::Top { offset: 2 },
+            VisibilityPartition::FaceDown,
+        ),
+    );
+    before
+        .zones
+        .ordered_zones
+        .get_mut(&owner_library_top(P2).key())
+        .unwrap()
+        .push(third);
+    before.allocators.next_object_id = GameObjectId(5);
+    validate_engine_state(&before).unwrap();
+    let result = execute_selected_zone_transition_for_conformance(
+        &before,
+        OLD_LIBRARY_TOP,
+        owner_library_top(P2),
+        owner_hand(P2),
+        ConformanceZoneTransitionKind::LibraryTopToOwnerHand,
+    )
+    .unwrap();
+    (before, result)
+}
+
+fn mutated_zone_transition(
+    result: &mut mtgml_rules::TransitionResult,
+) -> &mut mtgml_state::ZoneTransition {
+    match &mut result.events[0].event {
+        mtgml_rules::AuthoritativeRuleEventKind::ZoneTransition { transition } => transition,
+        other => panic!("expected ZoneTransition first, got {other:?}"),
+    }
+}
+
+fn rebuild_candidate_delta(before: &EngineState, result: &mut mtgml_rules::TransitionResult) {
+    let audit = result
+        .events
+        .iter()
+        .map(|event| event.event.semantic_delta())
+        .collect();
+    result.delta = mtgml_state::StateDelta::between(before, &result.next_state, audit).unwrap();
+}
+
+fn assert_transition_violation(
+    before: &EngineState,
+    result: &mtgml_rules::TransitionResult,
+    expected: impl FnOnce(&mtgml_rules::TransitionViolation) -> bool,
+) {
+    let violation = mtgml_rules::validate_transition_contract(before, result)
+        .expect_err("mutated accepted product must be rejected");
+    assert!(
+        expected(&violation),
+        "unexpected validator violation: {violation:?}"
+    );
+}
+
 #[test]
 fn s2_zone_battlefield_graveyard() {
     let before = task2_battlefield_case_state();
@@ -773,8 +893,8 @@ fn s2_identity_old_reference_forbidden_sites_reject() {
         blockers: BTreeMap::from([(OLD_BATTLEFIELD, None)]),
     });
     validate_engine_state(&combat).unwrap();
-    let combat_before = combat.clone();
-    assert!(matches!(
+    assert_rejected_request_preserves_complete_state(
+        &combat,
         execute_selected_zone_transition_for_conformance(
             &combat,
             OLD_BATTLEFIELD,
@@ -782,11 +902,13 @@ fn s2_identity_old_reference_forbidden_sites_reject() {
             owner_graveyard_top(P1),
             ConformanceZoneTransitionKind::BattlefieldToOwnerGraveyard,
         ),
-        Err(KernelExecutionError::ZoneIncarnation(
-            ZoneIncarnationError::CombatReference
-        ))
-    ));
-    assert_eq!(combat, combat_before);
+        |error| {
+            matches!(
+                error,
+                KernelExecutionError::ZoneIncarnation(ZoneIncarnationError::CombatReference)
+            )
+        },
+    );
 
     let mut stack = task2_battlefield_case_state();
     let stack_id = mtgml_model::StackObjectId(1);
@@ -802,8 +924,8 @@ fn s2_identity_old_reference_forbidden_sites_reject() {
     stack.zones.stack_order.push(stack_id);
     stack.allocators.next_stack_object_id = mtgml_model::StackObjectId(2);
     validate_engine_state(&stack).unwrap();
-    let stack_before = stack.clone();
-    assert!(matches!(
+    assert_rejected_request_preserves_complete_state(
+        &stack,
         execute_selected_zone_transition_for_conformance(
             &stack,
             OLD_BATTLEFIELD,
@@ -811,11 +933,13 @@ fn s2_identity_old_reference_forbidden_sites_reject() {
             owner_graveyard_top(P1),
             ConformanceZoneTransitionKind::BattlefieldToOwnerGraveyard,
         ),
-        Err(KernelExecutionError::ZoneIncarnation(
-            ZoneIncarnationError::StackSourceReference
-        ))
-    ));
-    assert_eq!(stack, stack_before);
+        |error| {
+            matches!(
+                error,
+                KernelExecutionError::ZoneIncarnation(ZoneIncarnationError::StackSourceReference)
+            )
+        },
+    );
 
     let pending = construct_synthetic_engine_state(SyntheticResetInputs {
         players: [P1, P2],
@@ -824,8 +948,8 @@ fn s2_identity_old_reference_forbidden_sites_reject() {
     })
     .unwrap();
     validate_engine_state(&pending).unwrap();
-    let pending_before = pending.clone();
-    assert!(matches!(
+    assert_rejected_request_preserves_complete_state(
+        &pending,
         execute_selected_zone_transition_for_conformance(
             &pending,
             OLD_BATTLEFIELD,
@@ -833,11 +957,15 @@ fn s2_identity_old_reference_forbidden_sites_reject() {
             owner_graveyard_top(P1),
             ConformanceZoneTransitionKind::BattlefieldToOwnerGraveyard,
         ),
-        Err(KernelExecutionError::ZoneIncarnation(
-            ZoneIncarnationError::PendingDecisionReference
-        ))
-    ));
-    assert_eq!(pending, pending_before);
+        |error| {
+            matches!(
+                error,
+                KernelExecutionError::ZoneIncarnation(
+                    ZoneIncarnationError::PendingDecisionReference
+                )
+            )
+        },
+    );
 }
 
 #[test]
@@ -1237,9 +1365,8 @@ fn s2_library_non_owner_mapping_rejects() {
             },
         );
     validate_engine_state(&before).unwrap();
-    let before_digest = before.digest().unwrap();
-
-    assert!(matches!(
+    assert_rejected_request_preserves_complete_state(
+        &before,
         execute_selected_zone_transition_for_conformance(
             &before,
             OLD_LIBRARY_TOP,
@@ -1247,11 +1374,15 @@ fn s2_library_non_owner_mapping_rejects() {
             owner_hand(P2),
             ConformanceZoneTransitionKind::LibraryTopToOwnerHand,
         ),
-        Err(KernelExecutionError::ZoneIncarnation(
-            ZoneIncarnationError::NonOwnerTracksHiddenSource
-        ))
-    ));
-    assert_eq!(before.digest().unwrap(), before_digest);
+        |error| {
+            matches!(
+                error,
+                KernelExecutionError::ZoneIncarnation(
+                    ZoneIncarnationError::NonOwnerTracksHiddenSource
+                )
+            )
+        },
+    );
 }
 
 #[test]
@@ -1340,8 +1471,6 @@ fn s2_identity_foundation_source_cessation() {
 #[test]
 fn s2_request_vocabulary_represents_typed_rejection_inputs() {
     let before = task2_battlefield_case_state();
-    let before_digest = before.digest().unwrap();
-    let before_rng = before.random.clone();
     let mismatched_source = location(
         ZoneKind::Hand,
         Some(P1),
@@ -1357,7 +1486,8 @@ fn s2_request_vocabulary_represents_typed_rejection_inputs() {
     );
     let wrong_owner_hand = owner_hand(P1);
 
-    assert!(matches!(
+    assert_rejected_request_preserves_complete_state(
+        &before,
         execute_selected_zone_transition_for_conformance(
             &before,
             OLD_BATTLEFIELD,
@@ -1365,11 +1495,17 @@ fn s2_request_vocabulary_represents_typed_rejection_inputs() {
             owner_graveyard_top(P1),
             ConformanceZoneTransitionKind::BattlefieldToOwnerGraveyard,
         ),
-        Err(KernelExecutionError::ZoneIncarnation(
-            ZoneIncarnationError::ClaimedSourceLocationMismatch
-        ))
-    ));
-    assert!(matches!(
+        |error| {
+            matches!(
+                error,
+                KernelExecutionError::ZoneIncarnation(
+                    ZoneIncarnationError::ClaimedSourceLocationMismatch
+                )
+            )
+        },
+    );
+    assert_rejected_request_preserves_complete_state(
+        &before,
         execute_selected_zone_transition_for_conformance(
             &before,
             OLD_BATTLEFIELD,
@@ -1377,10 +1513,13 @@ fn s2_request_vocabulary_represents_typed_rejection_inputs() {
             wrong_owner_graveyard,
             ConformanceZoneTransitionKind::BattlefieldToOwnerGraveyard,
         ),
-        Err(KernelExecutionError::ZoneIncarnation(
-            ZoneIncarnationError::DestinationMismatch
-        ))
-    ));
+        |error| {
+            matches!(
+                error,
+                KernelExecutionError::ZoneIncarnation(ZoneIncarnationError::DestinationMismatch)
+            )
+        },
+    );
     let mut unadmitted_before = before.clone();
     let actual_unadmitted_source = location(
         ZoneKind::Exile,
@@ -1393,7 +1532,8 @@ fn s2_request_vocabulary_represents_typed_rejection_inputs() {
         .locations
         .insert(OLD_BATTLEFIELD, actual_unadmitted_source.clone());
     validate_engine_state(&unadmitted_before).unwrap();
-    assert!(matches!(
+    assert_rejected_request_preserves_complete_state(
+        &unadmitted_before,
         execute_selected_zone_transition_for_conformance(
             &unadmitted_before,
             OLD_BATTLEFIELD,
@@ -1401,12 +1541,16 @@ fn s2_request_vocabulary_represents_typed_rejection_inputs() {
             battlefield_from(),
             ConformanceZoneTransitionKind::BattlefieldToOwnerGraveyard,
         ),
-        Err(KernelExecutionError::ZoneIncarnation(
-            ZoneIncarnationError::UnadmittedSourceFamily
-        ))
-    ));
+        |error| {
+            matches!(
+                error,
+                KernelExecutionError::ZoneIncarnation(ZoneIncarnationError::UnadmittedSourceFamily)
+            )
+        },
+    );
     let library_before = library_case_state();
-    assert!(matches!(
+    assert_rejected_request_preserves_complete_state(
+        &library_before,
         execute_selected_zone_transition_for_conformance(
             &library_before,
             OLD_LIBRARY_TOP,
@@ -1414,20 +1558,310 @@ fn s2_request_vocabulary_represents_typed_rejection_inputs() {
             wrong_owner_hand,
             ConformanceZoneTransitionKind::LibraryTopToOwnerHand,
         ),
-        Err(KernelExecutionError::ZoneIncarnation(
-            ZoneIncarnationError::DestinationMismatch
-        ))
-    ));
-    assert_eq!(before.digest().unwrap(), before_digest);
-    assert_eq!(before.random, before_rng);
+        |error| {
+            matches!(
+                error,
+                KernelExecutionError::ZoneIncarnation(ZoneIncarnationError::DestinationMismatch)
+            )
+        },
+    );
 }
 
 #[test]
 fn s2_task2_request_preconditions_fail_closed() {
     let absent_state = task2_battlefield_case_state();
-    assert!(matches!(
+    assert_rejected_request_preserves_complete_state(
+        &absent_state,
         execute_selected_zone_transition_for_conformance(
             &absent_state,
+            GameObjectId(99),
+            battlefield_from(),
+            owner_graveyard_top(P1),
+            ConformanceZoneTransitionKind::BattlefieldToOwnerGraveyard,
+        ),
+        |error| {
+            matches!(
+                error,
+                KernelExecutionError::ZoneIncarnation(ZoneIncarnationError::ObjectNotLive)
+            )
+        },
+    );
+
+    let mut no_physical = task2_battlefield_case_state();
+    no_physical
+        .zones
+        .objects
+        .get_mut(&OLD_BATTLEFIELD)
+        .unwrap()
+        .physical_card = None;
+    validate_engine_state(&no_physical).unwrap();
+    assert_rejected_request_preserves_complete_state(
+        &no_physical,
+        execute_selected_zone_transition_for_conformance(
+            &no_physical,
+            OLD_BATTLEFIELD,
+            battlefield_from(),
+            owner_graveyard_top(P1),
+            ConformanceZoneTransitionKind::BattlefieldToOwnerGraveyard,
+        ),
+        |error| {
+            matches!(
+                error,
+                KernelExecutionError::ZoneIncarnation(ZoneIncarnationError::PhysicalCardRequired)
+            )
+        },
+    );
+
+    let library = task2_library_case_state();
+    let non_top = GameObjectId(3);
+    let non_top_from = location(
+        ZoneKind::Library,
+        Some(P2),
+        ZonePosition::Top { offset: 1 },
+        VisibilityPartition::FaceDown,
+    );
+    assert_rejected_request_preserves_complete_state(
+        &library,
+        execute_selected_zone_transition_for_conformance(
+            &library,
+            non_top,
+            non_top_from,
+            owner_hand(P2),
+            ConformanceZoneTransitionKind::LibraryTopToOwnerHand,
+        ),
+        |error| {
+            matches!(
+                error,
+                KernelExecutionError::ZoneIncarnation(ZoneIncarnationError::LibrarySourceNotTop)
+            )
+        },
+    );
+
+    let mut exhausted = task2_battlefield_case_state();
+    exhausted.allocators.next_object_id = GameObjectId(u64::MAX);
+    validate_engine_state(&exhausted).unwrap();
+    assert_rejected_request_preserves_complete_state(
+        &exhausted,
+        execute_selected_zone_transition_for_conformance(
+            &exhausted,
+            OLD_BATTLEFIELD,
+            battlefield_from(),
+            owner_graveyard_top(P1),
+            ConformanceZoneTransitionKind::BattlefieldToOwnerGraveyard,
+        ),
+        |error| {
+            matches!(
+                error,
+                KernelExecutionError::IdentityAllocation(
+                    mtgml_state::IdentityAllocationError::GameObjectIdExhausted
+                )
+            )
+        },
+    );
+
+    let mut invalid_before = task2_battlefield_case_state();
+    invalid_before.zones.locations.remove(&OLD_BATTLEFIELD);
+    assert_rejected_request_preserves_complete_state(
+        &invalid_before,
+        execute_selected_zone_transition_for_conformance(
+            &invalid_before,
+            OLD_BATTLEFIELD,
+            battlefield_from(),
+            owner_graveyard_top(P1),
+            ConformanceZoneTransitionKind::BattlefieldToOwnerGraveyard,
+        ),
+        |error| matches!(error, KernelExecutionError::BeforeState(_)),
+    );
+}
+
+#[test]
+fn s2_rejection_unsupported_profile_atomic() {
+    let mut face_down_battlefield = task2_battlefield_case_state();
+    face_down_battlefield
+        .zones
+        .objects
+        .get_mut(&OLD_BATTLEFIELD)
+        .unwrap()
+        .face_down = true;
+    validate_engine_state(&face_down_battlefield).unwrap();
+    assert_rejected_request_preserves_complete_state(
+        &face_down_battlefield,
+        execute_selected_zone_transition_for_conformance(
+            &face_down_battlefield,
+            OLD_BATTLEFIELD,
+            battlefield_from(),
+            owner_graveyard_top(P1),
+            ConformanceZoneTransitionKind::BattlefieldToOwnerGraveyard,
+        ),
+        |error| {
+            matches!(
+                error,
+                KernelExecutionError::ZoneIncarnation(
+                    ZoneIncarnationError::UnsupportedSourceProfile
+                )
+            )
+        },
+    );
+
+    let mut face_down_library = task2_library_case_state();
+    face_down_library
+        .zones
+        .objects
+        .get_mut(&OLD_LIBRARY_TOP)
+        .unwrap()
+        .face_down = true;
+    validate_engine_state(&face_down_library).unwrap();
+    assert_rejected_request_preserves_complete_state(
+        &face_down_library,
+        execute_selected_zone_transition_for_conformance(
+            &face_down_library,
+            OLD_LIBRARY_TOP,
+            owner_library_top(P2),
+            owner_hand(P2),
+            ConformanceZoneTransitionKind::LibraryTopToOwnerHand,
+        ),
+        |error| {
+            matches!(
+                error,
+                KernelExecutionError::ZoneIncarnation(
+                    ZoneIncarnationError::UnsupportedSourceProfile
+                )
+            )
+        },
+    );
+
+    let mut face_down_graveyard = task2_battlefield_case_state();
+    face_down_graveyard
+        .zones
+        .objects
+        .get_mut(&GameObjectId(3))
+        .unwrap()
+        .face_down = true;
+    validate_engine_state(&face_down_graveyard).unwrap();
+    assert_rejected_request_preserves_complete_state(
+        &face_down_graveyard,
+        execute_selected_zone_transition_for_conformance(
+            &face_down_graveyard,
+            OLD_BATTLEFIELD,
+            battlefield_from(),
+            owner_graveyard_top(P1),
+            ConformanceZoneTransitionKind::BattlefieldToOwnerGraveyard,
+        ),
+        |error| {
+            matches!(
+                error,
+                KernelExecutionError::ZoneIncarnation(
+                    ZoneIncarnationError::UnsupportedSourceProfile
+                )
+            )
+        },
+    );
+
+    let mut library_with_source = task2_library_case_state();
+    library_with_source.foundation_sources.insert(
+        OLD_LIBRARY_TOP,
+        FoundationCreatureSource {
+            source_kind: FoundationSourceKind::Creature,
+            base_characteristics: BaseCharacteristics::Simple {
+                power: 2,
+                toughness: 2,
+            },
+            marked_damage: 0,
+            control_history: ControlHistory::BeforeTurnStart { turn_number: 0 },
+        },
+    );
+    validate_engine_state(&library_with_source).unwrap();
+    assert_rejected_request_preserves_complete_state(
+        &library_with_source,
+        execute_selected_zone_transition_for_conformance(
+            &library_with_source,
+            OLD_LIBRARY_TOP,
+            owner_library_top(P2),
+            owner_hand(P2),
+            ConformanceZoneTransitionKind::LibraryTopToOwnerHand,
+        ),
+        |error| {
+            matches!(
+                error,
+                KernelExecutionError::ZoneIncarnation(
+                    ZoneIncarnationError::UnsupportedSourceProfile
+                )
+            )
+        },
+    );
+}
+
+#[test]
+fn s2_state_late_candidate_failures_are_atomic() {
+    let mut exhausted_event = battlefield_case_state();
+    exhausted_event.allocators.next_rule_event_id = mtgml_model::RuleEventId(u64::MAX);
+    validate_engine_state(&exhausted_event).unwrap();
+    assert_rejected_request_preserves_complete_state(
+        &exhausted_event,
+        execute_selected_zone_transition_for_conformance(
+            &exhausted_event,
+            OLD_BATTLEFIELD,
+            battlefield_from(),
+            owner_graveyard_top(P1),
+            ConformanceZoneTransitionKind::BattlefieldToOwnerGraveyard,
+        ),
+        |error| matches!(error, KernelExecutionError::RuleEventIdOverflow),
+    );
+
+    let mut exhausted_opaque = first_private_library_case_state();
+    exhausted_opaque
+        .perspective_identities
+        .players
+        .get_mut(&P2)
+        .unwrap()
+        .next_opaque_object_id = mtgml_model::OpaqueObjectId(u64::MAX);
+    validate_engine_state(&exhausted_opaque).unwrap();
+    assert_rejected_request_preserves_complete_state(
+        &exhausted_opaque,
+        execute_selected_zone_transition_for_conformance(
+            &exhausted_opaque,
+            OLD_LIBRARY_TOP,
+            owner_library_top(P2),
+            owner_hand(P2),
+            ConformanceZoneTransitionKind::LibraryTopToOwnerHand,
+        ),
+        |error| {
+            matches!(
+                error,
+                KernelExecutionError::PerspectiveLifecycle(
+                    mtgml_state::LifecycleApplicationError::AllocatorOverflow
+                )
+            )
+        },
+    );
+
+    let mut revision_overflow = battlefield_case_state();
+    revision_overflow.revision = mtgml_model::StateRevision(u64::MAX);
+    validate_engine_state(&revision_overflow).unwrap();
+    assert_rejected_request_preserves_complete_state(
+        &revision_overflow,
+        execute_selected_zone_transition_for_conformance(
+            &revision_overflow,
+            OLD_BATTLEFIELD,
+            battlefield_from(),
+            owner_graveyard_top(P1),
+            ConformanceZoneTransitionKind::BattlefieldToOwnerGraveyard,
+        ),
+        |error| matches!(error, KernelExecutionError::RevisionOverflow),
+    );
+}
+
+#[test]
+fn s2_rejected_direct_request_preserves_complete_environment_fingerprint() {
+    let initial = crate::isolation::base_pair_state(&"11".repeat(32)).unwrap();
+    let config = crate::isolation::synthetic_environment_config([P1, P2]);
+    let (controller, endpoints) = crate::isolation::spawn_environment(initial, &config).unwrap();
+    let before = crate::isolation::capture_complete(&controller, &endpoints).unwrap();
+    let authoritative_before = before.semantic.engine_state_equal_probe.clone();
+
+    assert!(matches!(
+        execute_selected_zone_transition_for_conformance(
+            &authoritative_before,
             GameObjectId(99),
             battlefield_from(),
             owner_graveyard_top(P1),
@@ -1438,92 +1872,801 @@ fn s2_task2_request_preconditions_fail_closed() {
         ))
     ));
 
-    let mut no_physical = task2_battlefield_case_state();
-    no_physical
+    let after = crate::isolation::capture_complete(&controller, &endpoints).unwrap();
+    crate::isolation::assert_fingerprint_policies(
+        &before,
+        &after,
+        crate::isolation::FingerprintComparison::All,
+    )
+    .unwrap();
+}
+
+#[test]
+fn s2_mutant_object_allocator_progression() {
+    let (before, valid) = accepted_task2_battlefield_product();
+
+    let mut skipped_cursor = valid.clone();
+    skipped_cursor.next_state.allocators.next_object_id = GameObjectId(7);
+    rebuild_candidate_delta(&before, &mut skipped_cursor);
+    assert_transition_violation(&before, &skipped_cursor, |violation| {
+        matches!(
+            violation,
+            mtgml_rules::TransitionViolation::ObjectAllocatorProgression
+        )
+    });
+
+    let mut skipped_identity = valid.clone();
+    let allocated = GameObjectId(5);
+    let unexpected = GameObjectId(6);
+    let mut row = skipped_identity
+        .next_state
         .zones
         .objects
-        .get_mut(&OLD_BATTLEFIELD)
+        .remove(&allocated)
+        .unwrap();
+    row.id = unexpected;
+    skipped_identity
+        .next_state
+        .zones
+        .objects
+        .insert(unexpected, row);
+    let new_location = skipped_identity
+        .next_state
+        .zones
+        .locations
+        .remove(&allocated)
+        .unwrap();
+    skipped_identity
+        .next_state
+        .zones
+        .locations
+        .insert(unexpected, new_location);
+    for members in skipped_identity.next_state.zones.ordered_zones.values_mut() {
+        for member in members {
+            if *member == allocated {
+                *member = unexpected;
+            }
+        }
+    }
+    let transition = mutated_zone_transition(&mut skipped_identity);
+    transition.new_object = unexpected;
+    transition.new_snapshot.object = unexpected;
+    skipped_identity.next_state.allocators.next_object_id = GameObjectId(7);
+    validate_engine_state(&skipped_identity.next_state).unwrap();
+    rebuild_candidate_delta(&before, &mut skipped_identity);
+    assert_transition_violation(&before, &skipped_identity, |violation| {
+        matches!(
+            violation,
+            mtgml_rules::TransitionViolation::ObjectAllocatorProgression
+        )
+    });
+
+    let mut reused_live_id = valid.clone();
+    let expected_new = GameObjectId(5);
+    let reused = GameObjectId(3);
+    let new_row = reused_live_id
+        .next_state
+        .zones
+        .objects
+        .remove(&expected_new)
+        .unwrap();
+    let old_graveyard_row = reused_live_id
+        .next_state
+        .zones
+        .objects
+        .remove(&reused)
+        .unwrap();
+    assert_ne!(old_graveyard_row.physical_card, new_row.physical_card);
+    reused_live_id.next_state.zones.objects.insert(
+        reused,
+        GameObject {
+            id: reused,
+            ..new_row
+        },
+    );
+    reused_live_id
+        .next_state
+        .zones
+        .locations
+        .remove(&expected_new);
+    reused_live_id.next_state.zones.locations.remove(&reused);
+    reused_live_id
+        .next_state
+        .zones
+        .locations
+        .insert(reused, owner_graveyard_top(P1));
+    let key = owner_graveyard_top(P1).key();
+    reused_live_id
+        .next_state
+        .zones
+        .ordered_zones
+        .insert(key, vec![reused, GameObjectId(4)]);
+    reused_live_id.next_state.zones.locations.insert(
+        GameObjectId(4),
+        location(
+            ZoneKind::Graveyard,
+            Some(P1),
+            ZonePosition::Top { offset: 1 },
+            VisibilityPartition::Public,
+        ),
+    );
+    mutated_zone_transition(&mut reused_live_id).new_object = reused;
+    mutated_zone_transition(&mut reused_live_id)
+        .new_snapshot
+        .object = reused;
+    validate_engine_state(&reused_live_id.next_state).unwrap();
+    rebuild_candidate_delta(&before, &mut reused_live_id);
+    assert_transition_violation(&before, &reused_live_id, |violation| {
+        matches!(
+            violation,
+            mtgml_rules::TransitionViolation::ObjectAllocatorProgression
+        )
+    });
+
+    let mut unrelated_allocator = valid;
+    unrelated_allocator.next_state.allocators.next_effect_id = mtgml_model::EffectInstanceId(2);
+    validate_engine_state(&unrelated_allocator.next_state).unwrap();
+    rebuild_candidate_delta(&before, &mut unrelated_allocator);
+    assert_transition_violation(&before, &unrelated_allocator, |violation| {
+        matches!(
+            violation,
+            mtgml_rules::TransitionViolation::UnrelatedAllocatorProgression
+        )
+    });
+}
+
+#[test]
+fn s2_mutant_snapshot_pairing_and_physical_continuity() {
+    let (before, valid) = accepted_task2_battlefield_product();
+
+    let mut stale_lki = valid.clone();
+    mutated_zone_transition(&mut stale_lki).last_known.tapped = true;
+    rebuild_candidate_delta(&before, &mut stale_lki);
+    assert_transition_violation(&before, &stale_lki, |violation| {
+        matches!(violation, mtgml_rules::TransitionViolation::ZoneTransition)
+    });
+
+    let mut wrong_new_snapshot = valid.clone();
+    mutated_zone_transition(&mut wrong_new_snapshot)
+        .new_snapshot
+        .face_down = true;
+    rebuild_candidate_delta(&before, &mut wrong_new_snapshot);
+    assert_transition_violation(&before, &wrong_new_snapshot, |violation| {
+        matches!(violation, mtgml_rules::TransitionViolation::ZoneTransition)
+    });
+
+    let mut missing_physical_continuity = valid;
+    mutated_zone_transition(&mut missing_physical_continuity).physical_card = None;
+    rebuild_candidate_delta(&before, &mut missing_physical_continuity);
+    assert_transition_violation(&before, &missing_physical_continuity, |violation| {
+        matches!(violation, mtgml_rules::TransitionViolation::ZoneTransition)
+    });
+
+    let mut mismatched_physical = accepted_task2_battlefield_product().1;
+    let transition = mutated_zone_transition(&mut mismatched_physical);
+    transition.physical_card = Some(PhysicalCardId(99));
+    transition.new_snapshot.physical_card = Some(PhysicalCardId(99));
+    rebuild_candidate_delta(&before, &mut mismatched_physical);
+    assert_transition_violation(&before, &mismatched_physical, |violation| {
+        matches!(violation, mtgml_rules::TransitionViolation::ZoneTransition)
+    });
+
+    let mut reused_old = accepted_task2_battlefield_product().1;
+    let transition = mutated_zone_transition(&mut reused_old);
+    transition.new_object = OLD_BATTLEFIELD;
+    transition.new_snapshot.object = OLD_BATTLEFIELD;
+    rebuild_candidate_delta(&before, &mut reused_old);
+    assert_transition_violation(&before, &reused_old, |violation| {
+        matches!(violation, mtgml_rules::TransitionViolation::ZoneTransition)
+    });
+
+    let mut wrong_definition = accepted_task2_battlefield_product().1;
+    mutated_zone_transition(&mut wrong_definition)
+        .new_snapshot
+        .card_definition = CardDefinitionId(99);
+    rebuild_candidate_delta(&before, &mut wrong_definition);
+    assert_transition_violation(&before, &wrong_definition, |violation| {
+        matches!(violation, mtgml_rules::TransitionViolation::ZoneTransition)
+    });
+
+    let mut wrong_owner = accepted_task2_battlefield_product().1;
+    mutated_zone_transition(&mut wrong_owner).new_snapshot.owner = P2;
+    rebuild_candidate_delta(&before, &mut wrong_owner);
+    assert_transition_violation(&before, &wrong_owner, |violation| {
+        matches!(violation, mtgml_rules::TransitionViolation::ZoneTransition)
+    });
+
+    let mut wrong_destination = accepted_task2_battlefield_product().1;
+    mutated_zone_transition(&mut wrong_destination).to = location(
+        ZoneKind::Exile,
+        None,
+        ZonePosition::Unordered,
+        VisibilityPartition::Public,
+    );
+    rebuild_candidate_delta(&before, &mut wrong_destination);
+    assert_transition_violation(&before, &wrong_destination, |violation| {
+        matches!(violation, mtgml_rules::TransitionViolation::ZoneTransition)
+    });
+}
+
+#[test]
+fn s2_mutant_graveyard_and_library_order() {
+    let (before_battlefield, valid_battlefield) = accepted_task2_battlefield_product();
+    let mut swapped_graveyard = valid_battlefield;
+    let graveyard_key = owner_graveyard_top(P1).key();
+    swapped_graveyard.next_state.zones.ordered_zones.insert(
+        graveyard_key.clone(),
+        vec![GameObjectId(5), GameObjectId(4), GameObjectId(3)],
+    );
+    swapped_graveyard
+        .next_state
+        .zones
+        .locations
+        .get_mut(&GameObjectId(3))
         .unwrap()
-        .physical_card = None;
-    validate_engine_state(&no_physical).unwrap();
-    assert!(matches!(
-        execute_selected_zone_transition_for_conformance(
-            &no_physical,
+        .position = ZonePosition::Top { offset: 2 };
+    swapped_graveyard
+        .next_state
+        .zones
+        .locations
+        .get_mut(&GameObjectId(4))
+        .unwrap()
+        .position = ZonePosition::Top { offset: 1 };
+    validate_engine_state(&swapped_graveyard.next_state).unwrap();
+    rebuild_candidate_delta(&before_battlefield, &mut swapped_graveyard);
+    assert_transition_violation(&before_battlefield, &swapped_graveyard, |violation| {
+        matches!(
+            violation,
+            mtgml_rules::TransitionViolation::ZoneOrderProgression
+        )
+    });
+
+    let (before_library, valid_library) = accepted_task2_library_product_with_three_cards();
+    let mut swapped_library = valid_library;
+    let library_key = owner_library_top(P2).key();
+    swapped_library
+        .next_state
+        .zones
+        .ordered_zones
+        .insert(library_key, vec![GameObjectId(4), GameObjectId(3)]);
+    swapped_library
+        .next_state
+        .zones
+        .locations
+        .get_mut(&GameObjectId(3))
+        .unwrap()
+        .position = ZonePosition::Top { offset: 1 };
+    swapped_library
+        .next_state
+        .zones
+        .locations
+        .get_mut(&GameObjectId(4))
+        .unwrap()
+        .position = ZonePosition::Top { offset: 0 };
+    validate_engine_state(&swapped_library.next_state).unwrap();
+    rebuild_candidate_delta(&before_library, &mut swapped_library);
+    assert_transition_violation(&before_library, &swapped_library, |violation| {
+        matches!(
+            violation,
+            mtgml_rules::TransitionViolation::ZoneOrderProgression
+        )
+    });
+
+    let mut unrelated_before = task2_battlefield_case_state();
+    remove_object_tracking(&mut unrelated_before, OLD_LIBRARY_TOP);
+    validate_engine_state(&unrelated_before).unwrap();
+    let mut unrelated_zone = execute_selected_zone_transition_for_conformance(
+        &unrelated_before,
+        OLD_BATTLEFIELD,
+        battlefield_from(),
+        owner_graveyard_top(P1),
+        ConformanceZoneTransitionKind::BattlefieldToOwnerGraveyard,
+    )
+    .unwrap();
+    let library_key = owner_library_top(P2).key();
+    unrelated_zone
+        .next_state
+        .zones
+        .ordered_zones
+        .remove(&library_key);
+    unrelated_zone
+        .next_state
+        .zones
+        .locations
+        .insert(OLD_LIBRARY_TOP, owner_hand(P2));
+    validate_engine_state(&unrelated_zone.next_state).unwrap();
+    rebuild_candidate_delta(&unrelated_before, &mut unrelated_zone);
+    assert_transition_violation(&unrelated_before, &unrelated_zone, |violation| {
+        matches!(
+            violation,
+            mtgml_rules::TransitionViolation::ZoneOrderProgression
+        )
+    });
+}
+
+#[test]
+fn s2_mutant_empty_library_key_rejects() {
+    let mut before = base_state();
+    before
+        .zones
+        .objects
+        .get_mut(&OLD_LIBRARY_TOP)
+        .unwrap()
+        .face_down = false;
+    remove_object_tracking(&mut before, OLD_LIBRARY_TOP);
+    validate_engine_state(&before).unwrap();
+    let key = owner_library_top(P2).key();
+    let mut result = execute_selected_zone_transition_for_conformance(
+        &before,
+        OLD_LIBRARY_TOP,
+        owner_library_top(P2),
+        owner_hand(P2),
+        ConformanceZoneTransitionKind::LibraryTopToOwnerHand,
+    )
+    .unwrap();
+    result
+        .next_state
+        .zones
+        .ordered_zones
+        .insert(key, Vec::new());
+    assert_transition_violation(&before, &result, |violation| {
+        matches!(
+            violation,
+            mtgml_rules::TransitionViolation::AfterState(
+                mtgml_state::EngineStateViolation::OrderedZoneMismatch
+            )
+        )
+    });
+}
+
+#[test]
+fn s2_zone_library_reindexes_all_remaining_members() {
+    let (before, result) = accepted_task2_library_product_with_three_cards();
+    let key = owner_library_top(P2).key();
+    assert_eq!(
+        result.next_state.zones.ordered_zones[&key],
+        [GameObjectId(3), GameObjectId(4)]
+    );
+    assert_eq!(
+        result.next_state.zones.locations[&GameObjectId(3)].position,
+        ZonePosition::Top { offset: 0 }
+    );
+    assert_eq!(
+        result.next_state.zones.locations[&GameObjectId(4)].position,
+        ZonePosition::Top { offset: 1 }
+    );
+    assert_eq!(
+        result.next_state.zones.locations[&GameObjectId(5)],
+        owner_hand(P2)
+    );
+    assert_eq!(result.next_state.random, before.random);
+    assert_eq!(result.delta.apply(&before).unwrap(), result.next_state);
+}
+
+#[test]
+fn s2_mutant_foundation_source_transfer() {
+    let (before, mut result) = accepted_task2_battlefield_product();
+    let new = GameObjectId(5);
+    result.next_state.foundation_sources.insert(
+        new,
+        FoundationCreatureSource {
+            source_kind: FoundationSourceKind::Creature,
+            base_characteristics: BaseCharacteristics::Simple {
+                power: 2,
+                toughness: 2,
+            },
+            marked_damage: 1,
+            control_history: ControlHistory::BeforeTurnStart { turn_number: 0 },
+        },
+    );
+    validate_engine_state(&result.next_state).unwrap();
+    rebuild_candidate_delta(&before, &mut result);
+    assert_transition_violation(&before, &result, |violation| {
+        matches!(
+            violation,
+            mtgml_rules::TransitionViolation::FoundationSourceProgression
+        )
+    });
+
+    let mut before_with_unrelated_source = battlefield_case_state();
+    let unrelated = GameObjectId(6);
+    before_with_unrelated_source.zones.objects.insert(
+        unrelated,
+        GameObject {
+            id: unrelated,
+            physical_card: Some(PhysicalCardId(6)),
+            card_definition: CardDefinitionId(6),
+            owner: P2,
+            controller: P2,
+            tapped: false,
+            face_down: false,
+        },
+    );
+    before_with_unrelated_source
+        .zones
+        .locations
+        .insert(unrelated, battlefield_from());
+    before_with_unrelated_source.allocators.next_object_id = GameObjectId(7);
+    let unrelated_source = FoundationCreatureSource {
+        source_kind: FoundationSourceKind::Creature,
+        base_characteristics: BaseCharacteristics::Simple {
+            power: 3,
+            toughness: 3,
+        },
+        marked_damage: 0,
+        control_history: ControlHistory::BeforeTurnStart { turn_number: 0 },
+    };
+    before_with_unrelated_source
+        .foundation_sources
+        .insert(unrelated, unrelated_source);
+    validate_engine_state(&before_with_unrelated_source).unwrap();
+    let mut unrelated_deleted = execute_selected_zone_transition_for_conformance(
+        &before_with_unrelated_source,
+        OLD_BATTLEFIELD,
+        battlefield_from(),
+        owner_graveyard_top(P1),
+        ConformanceZoneTransitionKind::BattlefieldToOwnerGraveyard,
+    )
+    .unwrap();
+    assert_eq!(
+        unrelated_deleted
+            .next_state
+            .foundation_sources
+            .get(&unrelated),
+        Some(&unrelated_source)
+    );
+    unrelated_deleted
+        .next_state
+        .foundation_sources
+        .remove(&unrelated);
+    rebuild_candidate_delta(&before_with_unrelated_source, &mut unrelated_deleted);
+    assert_transition_violation(
+        &before_with_unrelated_source,
+        &unrelated_deleted,
+        |violation| {
+            matches!(
+                violation,
+                mtgml_rules::TransitionViolation::FoundationSourceProgression
+            )
+        },
+    );
+}
+
+#[test]
+fn s2_mutant_event_delta_pairing() {
+    let (before, mut omitted_audit) = accepted_task2_battlefield_product();
+    omitted_audit.delta.audit.clear();
+    assert_transition_violation(&before, &omitted_audit, |violation| {
+        matches!(
+            violation,
+            mtgml_rules::TransitionViolation::EventDeltaMismatch
+        )
+    });
+
+    let (before, mut replacement_mismatch) = accepted_task2_battlefield_product();
+    replacement_mismatch.delta.replacement.core.turn_number += 1;
+    assert_transition_violation(&before, &replacement_mismatch, |violation| {
+        matches!(
+            violation,
+            mtgml_rules::TransitionViolation::DeltaReapplication
+        )
+    });
+
+    let (before, mut wrong_event_identity) = accepted_task2_battlefield_product();
+    wrong_event_identity.events[0].event_id = mtgml_model::RuleEventId(2);
+    assert_transition_violation(&before, &wrong_event_identity, |violation| {
+        matches!(violation, mtgml_rules::TransitionViolation::EventIdentity)
+    });
+
+    let (before, mut wrong_event_revision) = accepted_task2_battlefield_product();
+    wrong_event_revision.events[0].state_revision = mtgml_model::StateRevision(2);
+    assert_transition_violation(&before, &wrong_event_revision, |violation| {
+        matches!(violation, mtgml_rules::TransitionViolation::EventIdentity)
+    });
+
+    let (before, mut skipped_event_cursor) = accepted_task2_battlefield_product();
+    skipped_event_cursor
+        .next_state
+        .allocators
+        .next_rule_event_id = mtgml_model::RuleEventId(3);
+    rebuild_candidate_delta(&before, &mut skipped_event_cursor);
+    assert_transition_violation(&before, &skipped_event_cursor, |violation| {
+        matches!(violation, mtgml_rules::TransitionViolation::EventIdentity)
+    });
+
+    let (before, mut reordered_occurrences) = {
+        let before = battlefield_case_state();
+        let result = execute_selected_zone_transition_for_conformance(
+            &before,
             OLD_BATTLEFIELD,
             battlefield_from(),
             owner_graveyard_top(P1),
             ConformanceZoneTransitionKind::BattlefieldToOwnerGraveyard,
-        ),
-        Err(KernelExecutionError::ZoneIncarnation(
-            ZoneIncarnationError::PhysicalCardRequired
-        ))
-    ));
+        )
+        .unwrap();
+        (before, result)
+    };
+    reordered_occurrences.events.swap(1, 2);
+    reordered_occurrences.delta.audit = reordered_occurrences
+        .events
+        .iter()
+        .map(|event| event.event.semantic_delta())
+        .collect();
+    assert_transition_violation(&before, &reordered_occurrences, |violation| {
+        matches!(
+            violation,
+            mtgml_rules::TransitionViolation::OccurrencePairing
+        )
+    });
+}
 
-    let library = task2_library_case_state();
-    let non_top = GameObjectId(3);
-    let non_top_from = location(
-        ZoneKind::Library,
-        Some(P2),
-        ZonePosition::Top { offset: 1 },
-        VisibilityPartition::FaceDown,
-    );
-    let library_before = library.clone();
-    let library_digest = library.digest().unwrap();
-    let object_allocator_before = library.allocators.next_object_id;
-    let rule_event_allocator_before = library.allocators.next_rule_event_id;
-    let library_rng_before = library.random.clone();
-    assert!(matches!(
-        execute_selected_zone_transition_for_conformance(
-            &library,
-            non_top,
-            non_top_from,
+#[test]
+fn s2_mutant_lifecycle_pairing_matrix() {
+    let (before_public, valid_public) = {
+        let before = battlefield_case_state();
+        let result = execute_selected_zone_transition_for_conformance(
+            &before,
+            OLD_BATTLEFIELD,
+            battlefield_from(),
+            owner_graveyard_top(P1),
+            ConformanceZoneTransitionKind::BattlefieldToOwnerGraveyard,
+        )
+        .unwrap();
+        (before, result)
+    };
+
+    let mut wrong_public_remap = valid_public.clone();
+    let lifecycle = match &mut wrong_public_remap.events[1].event {
+        mtgml_rules::AuthoritativeRuleEventKind::PerspectiveOccurrence { lifecycle, .. } => {
+            lifecycle
+        }
+        _ => panic!("expected public lifecycle occurrence"),
+    };
+    lifecycle.mutation.identity = mtgml_state::IdentityMutationV1::Remap {
+        opaque: mtgml_model::OpaqueObjectId(1),
+        from_object: OLD_BATTLEFIELD,
+        to_object: GameObjectId(6),
+    };
+    rebuild_candidate_delta(&before_public, &mut wrong_public_remap);
+    assert_transition_violation(&before_public, &wrong_public_remap, |violation| {
+        matches!(
+            violation,
+            mtgml_rules::TransitionViolation::OccurrencePairing
+        )
+    });
+
+    let mut wrong_public_location = valid_public;
+    let lifecycle = match &mut wrong_public_location.events[1].event {
+        mtgml_rules::AuthoritativeRuleEventKind::PerspectiveOccurrence { lifecycle, .. } => {
+            lifecycle
+        }
+        _ => panic!("expected public lifecycle occurrence"),
+    };
+    if let Some(mtgml_state::KnowledgeMutationV1::UpdateLocation { fact, .. }) =
+        &mut lifecycle.mutation.knowledge
+    {
+        fact.location = owner_hand(P1);
+    } else {
+        panic!("expected public location update");
+    }
+    rebuild_candidate_delta(&before_public, &mut wrong_public_location);
+    assert_transition_violation(&before_public, &wrong_public_location, |violation| {
+        matches!(
+            violation,
+            mtgml_rules::TransitionViolation::OccurrencePairing
+        )
+    });
+
+    let (before_private, mut wrong_private_allocate) = {
+        let before = first_private_library_case_state();
+        let result = execute_selected_zone_transition_for_conformance(
+            &before,
+            OLD_LIBRARY_TOP,
+            owner_library_top(P2),
             owner_hand(P2),
             ConformanceZoneTransitionKind::LibraryTopToOwnerHand,
-        ),
-        Err(KernelExecutionError::ZoneIncarnation(
-            ZoneIncarnationError::LibrarySourceNotTop
-        ))
-    ));
-    assert_eq!(library, library_before);
-    assert_eq!(library.digest().unwrap(), library_digest);
-    assert_eq!(library.allocators.next_object_id, object_allocator_before);
-    assert_eq!(
-        library.allocators.next_rule_event_id,
-        rule_event_allocator_before
+        )
+        .unwrap();
+        (before, result)
+    };
+    let lifecycle = match &mut wrong_private_allocate.events[1].event {
+        mtgml_rules::AuthoritativeRuleEventKind::PerspectiveOccurrence { lifecycle, .. } => {
+            lifecycle
+        }
+        _ => panic!("expected owner private lifecycle occurrence"),
+    };
+    lifecycle.mutation.identity = mtgml_state::IdentityMutationV1::Allocate {
+        opaque: mtgml_model::OpaqueObjectId(3),
+        object: OLD_LIBRARY_TOP,
+    };
+    rebuild_candidate_delta(&before_private, &mut wrong_private_allocate);
+    assert_transition_violation(&before_private, &wrong_private_allocate, |violation| {
+        matches!(
+            violation,
+            mtgml_rules::TransitionViolation::OccurrencePairing
+        )
+    });
+
+    let (before_private, mut non_owner_occurrence) = {
+        let before = first_private_library_case_state();
+        let result = execute_selected_zone_transition_for_conformance(
+            &before,
+            OLD_LIBRARY_TOP,
+            owner_library_top(P2),
+            owner_hand(P2),
+            ConformanceZoneTransitionKind::LibraryTopToOwnerHand,
+        )
+        .unwrap();
+        (before, result)
+    };
+    if let mtgml_rules::AuthoritativeRuleEventKind::PerspectiveOccurrence { lifecycle, .. } =
+        &mut non_owner_occurrence.events[1].event
+    {
+        lifecycle.perspective = P1;
+    } else {
+        panic!("expected owner private lifecycle occurrence");
+    }
+    rebuild_candidate_delta(&before_private, &mut non_owner_occurrence);
+    assert_transition_violation(&before_private, &non_owner_occurrence, |violation| {
+        matches!(
+            violation,
+            mtgml_rules::TransitionViolation::OccurrencePairing
+        )
+    });
+
+    let (before_preknown, mut opaque_allocator_mutant) = {
+        let before = library_case_state();
+        let result = execute_selected_zone_transition_for_conformance(
+            &before,
+            OLD_LIBRARY_TOP,
+            owner_library_top(P2),
+            owner_hand(P2),
+            ConformanceZoneTransitionKind::LibraryTopToOwnerHand,
+        )
+        .unwrap();
+        (before, result)
+    };
+    opaque_allocator_mutant
+        .next_state
+        .perspective_identities
+        .players
+        .get_mut(&P2)
+        .unwrap()
+        .next_opaque_object_id = mtgml_model::OpaqueObjectId(4);
+    validate_engine_state(&opaque_allocator_mutant.next_state).unwrap();
+    rebuild_candidate_delta(&before_preknown, &mut opaque_allocator_mutant);
+    assert_transition_violation(&before_preknown, &opaque_allocator_mutant, |violation| {
+        matches!(
+            violation,
+            mtgml_rules::TransitionViolation::OccurrencePairing
+        )
+    });
+}
+
+#[test]
+fn s2_mutant_foundation_old_retained_rejects() {
+    let before = battlefield_case_state();
+    let mut result = execute_selected_zone_transition_for_conformance(
+        &before,
+        OLD_BATTLEFIELD,
+        battlefield_from(),
+        owner_graveyard_top(P1),
+        ConformanceZoneTransitionKind::BattlefieldToOwnerGraveyard,
+    )
+    .unwrap();
+    result
+        .next_state
+        .foundation_sources
+        .insert(OLD_BATTLEFIELD, before.foundation_sources[&OLD_BATTLEFIELD]);
+    assert_transition_violation(&before, &result, |violation| {
+        matches!(
+            violation,
+            mtgml_rules::TransitionViolation::AfterState(
+                mtgml_state::EngineStateViolation::FoundationSource
+            )
+        )
+    });
+}
+
+#[test]
+fn s2_mutant_old_reference_after_state_rejects() {
+    let (before, valid) = accepted_task2_battlefield_product();
+
+    let mut combat_reference = valid.clone();
+    combat_reference.next_state.combat = Some(mtgml_state::CombatState {
+        defending_player: P2,
+        attackers: vec![OLD_BATTLEFIELD],
+        blockers: BTreeMap::from([(OLD_BATTLEFIELD, None)]),
+    });
+    assert_transition_violation(&before, &combat_reference, |violation| {
+        matches!(
+            violation,
+            mtgml_rules::TransitionViolation::AfterState(
+                mtgml_state::EngineStateViolation::CombatState
+            )
+        )
+    });
+
+    let mut stack_reference = valid.clone();
+    let stack_id = mtgml_model::StackObjectId(1);
+    stack_reference.next_state.zones.stack_records.insert(
+        stack_id,
+        mtgml_state::StackRecord {
+            id: stack_id,
+            controller: P1,
+            source_object: Some(OLD_BATTLEFIELD),
+            source_ability: None,
+        },
     );
-    assert_eq!(library.random, library_rng_before);
+    stack_reference.next_state.zones.stack_order.push(stack_id);
+    stack_reference.next_state.allocators.next_stack_object_id = mtgml_model::StackObjectId(2);
+    assert_transition_violation(&before, &stack_reference, |violation| {
+        matches!(
+            violation,
+            mtgml_rules::TransitionViolation::AfterState(
+                mtgml_state::EngineStateViolation::StackMismatch
+            )
+        )
+    });
 
-    let mut exhausted = task2_battlefield_case_state();
-    exhausted.allocators.next_object_id = GameObjectId(u64::MAX);
-    validate_engine_state(&exhausted).unwrap();
-    let exhausted_digest = exhausted.digest().unwrap();
-    assert!(matches!(
-        execute_selected_zone_transition_for_conformance(
-            &exhausted,
-            OLD_BATTLEFIELD,
-            battlefield_from(),
-            owner_graveyard_top(P1),
-            ConformanceZoneTransitionKind::BattlefieldToOwnerGraveyard,
-        ),
-        Err(KernelExecutionError::IdentityAllocation(
-            mtgml_state::IdentityAllocationError::GameObjectIdExhausted
-        ))
-    ));
-    assert_eq!(exhausted.allocators.next_object_id, GameObjectId(u64::MAX));
-    assert_eq!(exhausted.digest().unwrap(), exhausted_digest);
+    let mut ordered_reference = valid.clone();
+    ordered_reference
+        .next_state
+        .zones
+        .ordered_zones
+        .get_mut(&owner_graveyard_top(P1).key())
+        .unwrap()
+        .push(OLD_BATTLEFIELD);
+    assert_transition_violation(&before, &ordered_reference, |violation| {
+        matches!(
+            violation,
+            mtgml_rules::TransitionViolation::AfterState(
+                mtgml_state::EngineStateViolation::OrderedZoneMismatch
+            )
+        )
+    });
 
-    let mut invalid_before = task2_battlefield_case_state();
-    invalid_before.zones.locations.remove(&OLD_BATTLEFIELD);
-    assert!(matches!(
-        execute_selected_zone_transition_for_conformance(
-            &invalid_before,
-            OLD_BATTLEFIELD,
-            battlefield_from(),
-            owner_graveyard_top(P1),
-            ConformanceZoneTransitionKind::BattlefieldToOwnerGraveyard,
-        ),
-        Err(KernelExecutionError::BeforeState(_))
-    ));
+    let mut identity_reference = valid.clone();
+    let identities = identity_reference
+        .next_state
+        .perspective_identities
+        .players
+        .get_mut(&P1)
+        .unwrap();
+    let opaque = identities.next_opaque_object_id;
+    identities.next_opaque_object_id.0 += 1;
+    identities.opaque_to_object.insert(opaque, OLD_BATTLEFIELD);
+    identities.object_to_opaque.insert(OLD_BATTLEFIELD, opaque);
+    assert_transition_violation(&before, &identity_reference, |violation| {
+        matches!(
+            violation,
+            mtgml_rules::TransitionViolation::AfterState(
+                mtgml_state::EngineStateViolation::PerspectiveIdentityMismatch
+            )
+        )
+    });
+
+    let pending_fixture = construct_synthetic_engine_state(SyntheticResetInputs {
+        players: [P1, P2],
+        root_seed: mtgml_random::RootSeed256::from_lower_hex(&"11".repeat(32)).unwrap(),
+        setup: SyntheticV4Setup::m2_compatibility(),
+    })
+    .unwrap();
+    let mut pending_reference = valid;
+    let mut pending = pending_fixture
+        .execution
+        .pending_decision
+        .expect("synthetic fixture has a trusted pending request");
+    pending.request.state_revision = pending_reference.next_state.revision;
+    pending_reference.next_state.execution.pending_decision = Some(pending);
+    assert_transition_violation(&before, &pending_reference, |violation| {
+        matches!(
+            violation,
+            mtgml_rules::TransitionViolation::AfterState(
+                mtgml_state::EngineStateViolation::PendingDecisionMismatch
+            )
+        )
+    });
 }
 
 #[test]
@@ -1561,68 +2704,37 @@ fn s2_rejection_stale_old_incarnation_historical_witness() {
 #[test]
 fn s2_mutant_stale_old_lifecycle_occurrence_is_validator_only() {
     // This is an internal candidate-product mutant, never a typed S2 request.
-    // FixtureTransition supplies only a valid base ZoneTransition product;
-    // this test mutates its trusted audit and calls the real validator.
-    use mtgml_model::{RuleEventId, StateRevision, VisibleSequence};
-    use mtgml_rules::fixture_support::FixtureTransition;
+    // Step 1 is produced by the real S2 executor; only the later trusted audit
+    // occurrence is mutated.
     use mtgml_rules::{AuthoritativeRuleEvent, AuthoritativeRuleEventKind};
     use mtgml_state::{
         IdentityMutationV1, PerspectiveLifecycleAuditV1, PerspectiveLifecycleMutationV1,
     };
 
-    let mut before = base_state();
-    let old = GameObjectId(3);
-    before.zones.objects.insert(
-        old,
-        GameObject {
-            id: old,
-            physical_card: Some(PhysicalCardId(3)),
-            card_definition: CardDefinitionId(3),
-            owner: P1,
-            controller: P1,
-            tapped: false,
-            face_down: false,
-        },
-    );
-    before.zones.locations.insert(
-        old,
-        location(
-            ZoneKind::Exile,
-            None,
-            ZonePosition::Unordered,
-            VisibilityPartition::Public,
-        ),
-    );
-    before.allocators.next_object_id = GameObjectId(4);
-    validate_engine_state(&before).unwrap();
-    let mut candidate = FixtureTransition::start(&before).unwrap();
-    candidate
-        .move_object_incarnation(
-            old,
-            location(
-                ZoneKind::Battlefield,
-                None,
-                ZonePosition::Unordered,
-                VisibilityPartition::Public,
-            ),
-        )
-        .unwrap();
-    let mut result = candidate.finish().unwrap();
+    let before = battlefield_case_state();
+    let mut result = execute_selected_zone_transition_for_conformance(
+        &before,
+        OLD_BATTLEFIELD,
+        battlefield_from(),
+        owner_graveyard_top(P1),
+        ConformanceZoneTransitionKind::BattlefieldToOwnerGraveyard,
+    )
+    .unwrap();
 
     let stale_lifecycle = PerspectiveLifecycleAuditV1 {
         perspective: P1,
-        sequence: VisibleSequence(1),
+        sequence: result.next_state.knowledge.players[&P1].next_visible_sequence,
         mutation: PerspectiveLifecycleMutationV1 {
             identity: IdentityMutationV1::Allocate {
                 opaque: mtgml_model::OpaqueObjectId(2),
-                object: old,
+                object: OLD_BATTLEFIELD,
             },
             knowledge: None,
         },
     };
     result.events.push(AuthoritativeRuleEvent {
-        event_id: RuleEventId(2),
-        state_revision: StateRevision(1),
+        event_id: result.next_state.allocators.next_rule_event_id,
+        state_revision: result.next_state.revision,
         event: AuthoritativeRuleEventKind::PerspectiveOccurrence {
             lifecycle: stale_lifecycle.clone(),
             observation: mtgml_rules::PerspectiveObservationPolicyV1::NoEnvelope,
@@ -1637,7 +2749,7 @@ fn s2_mutant_stale_old_lifecycle_occurrence_is_validator_only() {
     let error = mtgml_rules::validate_transition_contract(&before, &result).unwrap_err();
     assert!(
         matches!(error, mtgml_rules::TransitionViolation::OccurrencePairing),
-        "RED s2.mutant.stale_old_lifecycle_occurrence: expected semantic cursor rejection for OLD after ZoneTransition"
+        "s2.mutant.stale_old_lifecycle_occurrence: expected contract rejection for OLD after ZoneTransition"
     );
 }
 

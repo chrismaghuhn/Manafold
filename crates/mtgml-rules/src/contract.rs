@@ -1,8 +1,11 @@
 use crate::events::AuthoritativeRuleEventKind;
 use mtgml_model::{EpisodeStatus, GameObjectId, PlayerId, ZoneKind};
 use mtgml_state::{
-    validate_engine_state, BeginningStep, EndingStep, EngineState, PerspectiveIdentityRecordV2,
-    TurnPosition, VisibilityPartition, ZoneLocation, ZonePosition,
+    validate_engine_state, BeginningStep, EndingStep, EngineState, GameObject, IdentityMutationV1,
+    KnowledgeAcquisitionCause, KnowledgeAcquisitionReason, KnowledgeHistoryChannel,
+    KnowledgeMutationV1, KnownLocationFactV2, PerspectiveIdentityRecordV2,
+    PerspectiveLifecycleAuditV1, PerspectiveLifecycleMutationV1, TurnPosition, VisibilityPartition,
+    ZoneLocation, ZonePosition, ZoneTransition,
 };
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
@@ -12,6 +15,490 @@ use crate::semantic_cursor::SemanticValidationCursor;
 use crate::transition::TransitionResult;
 use crate::turn_structure::validate_quiescent_cleanup_boundary;
 use crate::validation::TransitionViolation;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SelectedZoneFamily {
+    BattlefieldToGraveyard,
+    LibraryToHand,
+}
+
+fn selected_zone_family(transition: &ZoneTransition) -> Option<SelectedZoneFamily> {
+    match (transition.from.zone, transition.to.zone) {
+        (ZoneKind::Battlefield, ZoneKind::Graveyard) => {
+            Some(SelectedZoneFamily::BattlefieldToGraveyard)
+        }
+        (ZoneKind::Library, ZoneKind::Hand) => Some(SelectedZoneFamily::LibraryToHand),
+        _ => None,
+    }
+}
+
+fn expected_s2_occurrences(
+    before: &EngineState,
+    transition: &ZoneTransition,
+    family: SelectedZoneFamily,
+) -> Result<
+    Vec<(
+        PerspectiveLifecycleAuditV1,
+        crate::events::PerspectiveObservationPolicyV1,
+    )>,
+    TransitionViolation,
+> {
+    use crate::events::PerspectiveObservationPolicyV1 as Observation;
+    let old = transition.old_object;
+    let new = transition.new_object;
+    let owner = transition.last_known.owner;
+    let mut expected = Vec::new();
+
+    match family {
+        SelectedZoneFamily::BattlefieldToGraveyard => {
+            for perspective in before.core.players.keys().copied() {
+                let identity = before
+                    .perspective_identities
+                    .players
+                    .get(&perspective)
+                    .ok_or(TransitionViolation::OccurrencePairing)?;
+                let Some(opaque) = identity.object_to_opaque.get(&old).copied() else {
+                    continue;
+                };
+                let knowledge = before
+                    .knowledge
+                    .players
+                    .get(&perspective)
+                    .ok_or(TransitionViolation::OccurrencePairing)?;
+                if !knowledge.active.contains_key(&opaque) {
+                    return Err(TransitionViolation::OccurrencePairing);
+                }
+                let sequence = knowledge.next_visible_sequence;
+                let provenance = KnowledgeAcquisitionReason::Observed {
+                    channel: KnowledgeHistoryChannel::Public,
+                    sequence,
+                    cause: KnowledgeAcquisitionCause::PublicEvent,
+                };
+                expected.push((
+                    PerspectiveLifecycleAuditV1 {
+                        perspective,
+                        sequence,
+                        mutation: PerspectiveLifecycleMutationV1 {
+                            identity: IdentityMutationV1::Remap {
+                                opaque,
+                                from_object: old,
+                                to_object: new,
+                            },
+                            knowledge: Some(KnowledgeMutationV1::UpdateLocation {
+                                opaque,
+                                fact: KnownLocationFactV2 {
+                                    location: transition.to.clone(),
+                                    provenance,
+                                },
+                            }),
+                        },
+                    },
+                    Observation::MovedInSight {
+                        from_zone: ZoneKind::Battlefield,
+                        to_zone: ZoneKind::Graveyard,
+                        old_object: old,
+                        new_object: new,
+                        reveals_old: true,
+                        reveals_new: true,
+                    },
+                ));
+            }
+        }
+        SelectedZoneFamily::LibraryToHand => {
+            for (perspective, identity) in &before.perspective_identities.players {
+                if *perspective != owner && identity.object_to_opaque.contains_key(&old) {
+                    return Err(TransitionViolation::OldReferenceClosure);
+                }
+            }
+            let identity = before
+                .perspective_identities
+                .players
+                .get(&owner)
+                .ok_or(TransitionViolation::OccurrencePairing)?;
+            let knowledge = before
+                .knowledge
+                .players
+                .get(&owner)
+                .ok_or(TransitionViolation::OccurrencePairing)?;
+            let sequence = knowledge.next_visible_sequence;
+            let (identity_mutation, knowledge_mutation, observation) =
+                if let Some(opaque) = identity.object_to_opaque.get(&old).copied() {
+                    let record = knowledge
+                        .active
+                        .get(&opaque)
+                        .ok_or(TransitionViolation::OccurrencePairing)?;
+                    if record.card_definition != Some(transition.last_known.card_definition) {
+                        return Err(TransitionViolation::OccurrencePairing);
+                    }
+                    let provenance = KnowledgeAcquisitionReason::Observed {
+                        channel: KnowledgeHistoryChannel::Private,
+                        sequence,
+                        cause: KnowledgeAcquisitionCause::OwnPrivateIdentity,
+                    };
+                    (
+                        IdentityMutationV1::Remap {
+                            opaque,
+                            from_object: old,
+                            to_object: new,
+                        },
+                        Some(KnowledgeMutationV1::UpdateLocation {
+                            opaque,
+                            fact: KnownLocationFactV2 {
+                                location: transition.to.clone(),
+                                provenance,
+                            },
+                        }),
+                        Observation::MovedInSight {
+                            from_zone: ZoneKind::Library,
+                            to_zone: ZoneKind::Hand,
+                            old_object: old,
+                            new_object: new,
+                            reveals_old: true,
+                            reveals_new: true,
+                        },
+                    )
+                } else {
+                    let opaque = identity.next_opaque_object_id;
+                    let acquisition = KnowledgeAcquisitionReason::Observed {
+                        channel: KnowledgeHistoryChannel::Private,
+                        sequence,
+                        cause: KnowledgeAcquisitionCause::OwnPrivateIdentity,
+                    };
+                    (
+                        IdentityMutationV1::Allocate {
+                            opaque,
+                            object: new,
+                        },
+                        Some(KnowledgeMutationV1::Acquire {
+                            opaque,
+                            definition: Some(transition.last_known.card_definition),
+                            location: Some(transition.to.clone()),
+                            acquisition,
+                        }),
+                        Observation::NoEnvelope,
+                    )
+                };
+            expected.push((
+                PerspectiveLifecycleAuditV1 {
+                    perspective: owner,
+                    sequence,
+                    mutation: PerspectiveLifecycleMutationV1 {
+                        identity: identity_mutation,
+                        knowledge: knowledge_mutation,
+                    },
+                },
+                observation,
+            ));
+        }
+    }
+    Ok(expected)
+}
+
+fn object_references_old(state: &EngineState, object: GameObjectId) -> bool {
+    state.combat.as_ref().is_some_and(|combat| {
+        combat.attackers.contains(&object)
+            || combat.blockers.contains_key(&object)
+            || combat
+                .blockers
+                .values()
+                .any(|blocker| *blocker == Some(object))
+    }) || state
+        .zones
+        .stack_records
+        .values()
+        .any(|record| record.source_object == Some(object))
+        || state
+            .execution
+            .pending_decision
+            .as_ref()
+            .is_some_and(|pending| {
+                pending.request.candidates.iter().any(|candidate| {
+                    matches!(
+                        candidate.trusted_binding,
+                        mtgml_decision::EngineCandidateBinding::CastSpell { object: bound }
+                            | mtgml_decision::EngineCandidateBinding::SelectObject { object: bound }
+                            if bound == object
+                    )
+                })
+            })
+}
+
+fn validate_s2_zone_transition_product(
+    before: &EngineState,
+    result: &TransitionResult,
+) -> Result<(), TransitionViolation> {
+    let transitions: Vec<_> = result
+        .events
+        .iter()
+        .filter_map(|event| match &event.event {
+            AuthoritativeRuleEventKind::ZoneTransition { transition }
+                if selected_zone_family(transition).is_some() =>
+            {
+                Some(transition.as_ref())
+            }
+            _ => None,
+        })
+        .collect();
+    if transitions.is_empty() {
+        return Ok(());
+    }
+    let transition = *transitions
+        .first()
+        .ok_or(TransitionViolation::ZoneTransition)?;
+    let family = selected_zone_family(transition).ok_or(TransitionViolation::ZoneTransition)?;
+    if transitions.len() != 1
+        || result
+            .events
+            .iter()
+            .filter(|event| {
+                matches!(
+                    event.event,
+                    AuthoritativeRuleEventKind::ZoneTransition { .. }
+                )
+            })
+            .count()
+            != 1
+        || !matches!(
+            result.events.first().map(|event| &event.event),
+            Some(AuthoritativeRuleEventKind::ZoneTransition { .. })
+        )
+    {
+        return Err(TransitionViolation::ZoneTransition);
+    }
+
+    let old = transition.old_object;
+    let new = transition.new_object;
+    let old_object = before
+        .zones
+        .objects
+        .get(&old)
+        .ok_or(TransitionViolation::ZoneTransition)?;
+    let old_snapshot = crate::snapshots::object_snapshots(before)?
+        .remove(&old)
+        .ok_or(TransitionViolation::ZoneTransition)?;
+    if transition.last_known != old_snapshot
+        || old == new
+        || transition.physical_card != old_object.physical_card
+        || transition.physical_card.is_none()
+        || old_object.face_down
+    {
+        return Err(TransitionViolation::ZoneTransition);
+    }
+
+    let source = match family {
+        SelectedZoneFamily::BattlefieldToGraveyard => ZoneLocation {
+            zone: ZoneKind::Battlefield,
+            player: None,
+            position: ZonePosition::Unordered,
+            visibility: VisibilityPartition::Public,
+            partition: None,
+        },
+        SelectedZoneFamily::LibraryToHand => ZoneLocation {
+            zone: ZoneKind::Library,
+            player: Some(old_object.owner),
+            position: ZonePosition::Top { offset: 0 },
+            visibility: VisibilityPartition::FaceDown,
+            partition: None,
+        },
+    };
+    let destination = match family {
+        SelectedZoneFamily::BattlefieldToGraveyard => ZoneLocation {
+            zone: ZoneKind::Graveyard,
+            player: Some(old_object.owner),
+            position: ZonePosition::Top { offset: 0 },
+            visibility: VisibilityPartition::Public,
+            partition: None,
+        },
+        SelectedZoneFamily::LibraryToHand => ZoneLocation {
+            zone: ZoneKind::Hand,
+            player: Some(old_object.owner),
+            position: ZonePosition::Unordered,
+            visibility: VisibilityPartition::OwnerOnly,
+            partition: None,
+        },
+    };
+    if transition.from != source || transition.to != destination {
+        return Err(TransitionViolation::ZoneTransition);
+    }
+    if object_references_old(before, old) {
+        return Err(TransitionViolation::OldReferenceClosure);
+    }
+
+    let expected_new = GameObject {
+        id: new,
+        physical_card: old_object.physical_card,
+        card_definition: old_object.card_definition,
+        owner: old_object.owner,
+        controller: old_object.owner,
+        tapped: false,
+        face_down: false,
+    };
+    let expected_snapshot = mtgml_state::ObjectSnapshot {
+        object: new,
+        physical_card: old_object.physical_card,
+        card_definition: old_object.card_definition,
+        owner: old_object.owner,
+        controller: old_object.owner,
+        tapped: false,
+        face_down: false,
+        location: destination.clone(),
+    };
+    if transition.new_snapshot != expected_snapshot {
+        return Err(TransitionViolation::ZoneTransition);
+    }
+
+    let expected_next_object_id = before
+        .allocators
+        .next_object_id
+        .0
+        .checked_add(1)
+        .ok_or(TransitionViolation::ObjectAllocatorProgression)?;
+    if new != before.allocators.next_object_id
+        || result.next_state.allocators.next_object_id.0 != expected_next_object_id
+    {
+        return Err(TransitionViolation::ObjectAllocatorProgression);
+    }
+    let before_allocators = &before.allocators;
+    let after_allocators = &result.next_state.allocators;
+    if after_allocators.next_ability_id != before_allocators.next_ability_id
+        || after_allocators.next_stack_object_id != before_allocators.next_stack_object_id
+        || after_allocators.next_effect_id != before_allocators.next_effect_id
+        || after_allocators.next_trigger_id != before_allocators.next_trigger_id
+        || after_allocators.next_decision_id != before_allocators.next_decision_id
+        || after_allocators.next_continuation_id != before_allocators.next_continuation_id
+    {
+        return Err(TransitionViolation::UnrelatedAllocatorProgression);
+    }
+    if result.next_state.random != before.random
+        || result.events.iter().any(|event| {
+            matches!(
+                event.event,
+                AuthoritativeRuleEventKind::RandomValueSampled { .. }
+            )
+        })
+    {
+        return Err(TransitionViolation::Randomness);
+    }
+    if result.next_state.core != before.core
+        || result.next_state.execution != before.execution
+        || result.next_state.format != before.format
+        || result.next_state.combat != before.combat
+    {
+        return Err(TransitionViolation::UnexplainedMutation);
+    }
+
+    let mut expected_zones = before.zones.clone();
+    expected_zones.objects.remove(&old);
+    expected_zones.locations.remove(&old);
+    match family {
+        SelectedZoneFamily::BattlefieldToGraveyard => {
+            let destination_key = destination.key();
+            let existing = before
+                .zones
+                .ordered_zones
+                .get(&destination_key)
+                .cloned()
+                .unwrap_or_default();
+            for member in &existing {
+                let location = expected_zones
+                    .locations
+                    .get_mut(member)
+                    .ok_or(TransitionViolation::ZoneOrderProgression)?;
+                let ZonePosition::Top { offset } = location.position else {
+                    return Err(TransitionViolation::ZoneOrderProgression);
+                };
+                location.position = ZonePosition::Top {
+                    offset: offset
+                        .checked_add(1)
+                        .ok_or(TransitionViolation::ZoneOrderProgression)?,
+                };
+            }
+            expected_zones
+                .ordered_zones
+                .entry(destination_key)
+                .or_default()
+                .insert(0, new);
+        }
+        SelectedZoneFamily::LibraryToHand => {
+            let source_key = source.key();
+            let ordered = expected_zones
+                .ordered_zones
+                .get_mut(&source_key)
+                .ok_or(TransitionViolation::ZoneOrderProgression)?;
+            if ordered.first() != Some(&old) {
+                return Err(TransitionViolation::ZoneOrderProgression);
+            }
+            ordered.remove(0);
+            let remaining = ordered.clone();
+            if ordered.is_empty() {
+                expected_zones.ordered_zones.remove(&source_key);
+            }
+            for member in remaining {
+                let location = expected_zones
+                    .locations
+                    .get_mut(&member)
+                    .ok_or(TransitionViolation::ZoneOrderProgression)?;
+                let ZonePosition::Top { offset } = location.position else {
+                    return Err(TransitionViolation::ZoneOrderProgression);
+                };
+                location.position = ZonePosition::Top {
+                    offset: offset
+                        .checked_sub(1)
+                        .ok_or(TransitionViolation::ZoneOrderProgression)?,
+                };
+            }
+        }
+    }
+    expected_zones.objects.insert(new, expected_new);
+    expected_zones.locations.insert(new, destination.clone());
+    if result.next_state.zones.ordered_zones != expected_zones.ordered_zones {
+        return Err(TransitionViolation::ZoneOrderProgression);
+    }
+    if result.next_state.zones != expected_zones {
+        return Err(TransitionViolation::ZoneTransition);
+    }
+
+    if result.next_state.zones.objects.contains_key(&old)
+        || result.next_state.zones.locations.contains_key(&old)
+        || result
+            .next_state
+            .zones
+            .ordered_zones
+            .values()
+            .any(|objects| objects.contains(&old))
+        || result.next_state.foundation_sources.contains_key(&old)
+        || result.next_state.foundation_sources.contains_key(&new)
+        || object_references_old(&result.next_state, old)
+        || result
+            .next_state
+            .perspective_identities
+            .players
+            .values()
+            .any(|identity| identity.object_to_opaque.contains_key(&old))
+    {
+        return Err(TransitionViolation::OldReferenceClosure);
+    }
+
+    let expected_occurrences = expected_s2_occurrences(before, transition, family)?;
+    if result.events.len() != expected_occurrences.len() + 1 {
+        return Err(TransitionViolation::OccurrencePairing);
+    }
+    for (event, (lifecycle, observation)) in result
+        .events
+        .iter()
+        .skip(1)
+        .zip(expected_occurrences.iter())
+    {
+        match &event.event {
+            AuthoritativeRuleEventKind::PerspectiveOccurrence {
+                lifecycle: actual_lifecycle,
+                observation: actual_observation,
+            } if actual_lifecycle == lifecycle && actual_observation == observation => {}
+            _ => return Err(TransitionViolation::OccurrencePairing),
+        }
+    }
+    Ok(())
+}
 
 fn foundation_sources_match_selected_zone_transitions(
     before: &EngineState,
@@ -371,9 +858,23 @@ fn validate_accepted_progression(
         || before.core.players.len() != after.core.players.len()
         || has_lost_changed
         || before.combat != after.combat
-        || !foundation_sources_match_selected_zone_transitions(before, after, &result.events)
     {
         return Err(TransitionViolation::UnexplainedMutation);
+    }
+    if !foundation_sources_match_selected_zone_transitions(before, after, &result.events) {
+        let selected_battlefield_graveyard = result.events.iter().any(|event| {
+            matches!(
+                &event.event,
+                AuthoritativeRuleEventKind::ZoneTransition { transition }
+                    if transition.from.zone == ZoneKind::Battlefield
+                        && transition.to.zone == ZoneKind::Graveyard
+            )
+        });
+        return Err(if selected_battlefield_graveyard {
+            TransitionViolation::FoundationSourceProgression
+        } else {
+            TransitionViolation::UnexplainedMutation
+        });
     }
     Ok(())
 }
@@ -430,6 +931,7 @@ pub fn validate_transition_contract(
 
     if result.accepted {
         validate_accepted_progression(before, result)?;
+        validate_s2_zone_transition_product(before, result)?;
     }
 
     let event_audit: Vec<_> = result
