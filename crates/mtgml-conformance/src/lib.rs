@@ -32,6 +32,9 @@ pub mod lifecycle;
 #[cfg(test)]
 mod turn_structure;
 
+#[cfg(test)]
+mod zone_incarnation;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ExpectedResponseResult {
     Accepted,

@@ -29,6 +29,8 @@ pub enum KernelExecutionError {
     Exhaustion(&'static str),
     #[error("engine-offered stage path is unsupported in the current synthetic protocol")]
     UnsupportedStagePath,
+    #[error("selected zone-incarnation transition is not executable in this rules slice")]
+    ZoneIncarnationUnavailable,
     #[error("turn structure validation failed: {0}")]
     TurnStructure(TurnStructureError),
     #[error("player response is not accepted on this no-choice Magic path")]
