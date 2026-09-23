@@ -5,6 +5,7 @@
 **Branch:** `chris/m3-s3-draw-card-design`
 **Required base:** `b67cfdcc0a8e623da52a889ef2ae138a3e4256ac`
 **Reviewed design:** [M3.S3 Draw-card interaction design](../specs/2026-09-23-m3-s3-draw-card-design.md)
+**State identity cut:** [M3.S3.P0 design](../specs/2026-09-23-m3-s3-state-identity-cut-design.md)
 **Capability lifecycles changed by planning:** NO
 
 This plan decomposes the selected S3 architecture into reviewable, sequential
@@ -55,13 +56,62 @@ There is no `draw-card -> basic-priority` capability edge. `damage-and-life`
 is not an SBA dependency: SBA consumes authoritative life and marked-damage
 facts regardless of which capability produced them.
 
-## 2. Frozen S3 order
+## 2. S3.P0 authoritative state identity cut
 
-The proposed order is accepted with one process-only prerequisite before
-S3.A: a semantic-neutral shared response-commit extraction. It changes no
-Magic rule and no lifecycle.
+The S3.A APNAP ordering continuation is authoritative state. Its continuation
+payload cannot be added to `full-state-digest-input.v4` or interpreted by
+`EnvironmentCheckpointV5` / Replay V5. The coordinated identity cut is
+mandatory:
 
 ```text
+FullStateDigestV5
+full-state-digest-input.v5
+mtgml.full-state-digest.v5
+
+EnvironmentCheckpointV6
+environment-checkpoint.v6
+
+CheckpointDigestV6
+environment-checkpoint-digest-input.v6
+mtgml.checkpoint-digest.v6
+
+ReplayManifestV6 / ReplayStepV6 / AuthoritativeReplayV6
+replay-manifest.v6 / replay-step.v6 / authoritative-replay.v6
+ReplayRecorderV6 / ReplaySchemaVersionsV6 / InitialEnvironmentIdentityV6
+```
+
+S3.P0 also adds the closed typed Magic continuation payload representation
+that S3.A will later produce/consume. It performs no SBA derivation, Decision
+generation, APNAP collection, zone movement, or lifecycle promotion. Until
+S3.A is implemented, restore admission must reject a semantic contract that
+claims the Magic SBA program is executable.
+
+`FullStateDigestV4`, V5 checkpoint and V5 replay remain exact historical
+meanings with no reinterpretation or automatic migration. V4 digest known
+answers remain byte-identical under a detached verifier. Current writers move
+to V5 state digest and V6 checkpoint/replay; ReplayStep V6 still contains one
+real `DecisionResponseV2`, including each staged Order response. No forced-
+progress input, fake response or Replay V7 is introduced.
+
+S3.P0 must also preserve existing `synthetic-m3-observation.v1` bytes and
+bind `magic-m3-observation.v1` as the APNAP progress codec in V6 manifests.
+`ObservationEnvelopeV1` and `InformationStateDigestV2` remain unchanged; the
+observation envelope already hashes a named payload codec. The exact state
+cut, detached identity mappings, V4/V5 compatibility table and P0 gates are
+specified in the linked S3.P0 design.
+
+## 3. Frozen S3 order
+
+The new authoritative Magic SBA-order continuation requires an explicit
+identity cut before any shared response-transaction or S3.A implementation.
+S3.P0 is state/schema/checkpoint/replay infrastructure only. It changes no
+Magic rule or capability lifecycle. The previously reviewed shared
+response-commit extraction remains the semantic-neutral S3.0 prerequisite
+after S3.P0.
+
+```text
+S3.P0 authoritative state/checkpoint/replay identity cut
+
 S3.0 shared response-commit primitive (semantic-neutral prerequisite)
 
 S3.A rules/state-based-actions-combat
@@ -81,7 +131,7 @@ S3.D integrated replay witness:
     -> zone incarnation
     -> selected SBA fixed point
     -> Draw priority
-    -> backend-verified Replay V5
+    -> backend-verified Replay V6
 ```
 
 S3.A comes first because Basic Priority's accepted dependency requires SBA and
@@ -94,7 +144,7 @@ evidence, not a new capability.
 The order is not a coding convenience and must not be inverted. Each PR must
 leave `master` buildable and the declared lifecycle truthful.
 
-## 3. S3.A exact bounded SBA scope
+## 4. S3.A exact bounded SBA scope
 
 Implement only the Foundation V2 selected actions over a validated two-player,
 `FormatState::None`, inert-card profile with no unsupported layers, effects,
@@ -230,7 +280,7 @@ The final Order response's `kernel.apply` completes the entire SBA batch and
 returns at the next real Decision, terminal outcome, or typed unsupported/
 error boundary. Earlier APNAP responses commit only the new stage/Decision.
 They do not move cards or apply player losses. This lets each genuine response
-own the consequences in V5 while every checkpoint remains a valid resumable
+own the consequences in V6 while every checkpoint remains a valid resumable
 EngineState.
 
 Exact audit ordering for a staged owner response is:
@@ -304,36 +354,31 @@ the nonactive endpoint sees the same public order progress on its next
 observation read, before its own Decision.
 
 `synthetic-m3-observation.v1` bytes must remain unchanged. The Magic rules
-contract binds `magic-m3-observation.v1` in `ReplayManifestV5`; V5 manifest
+contract binds `magic-m3-observation.v1` in `ReplayManifestV6`; V6 manifest
 validation/schema expands its allowed payload codecs by bound semantic
 contract. ObservationEnvelope V1, InformationState V2, PlayerStep V2,
-Decision V2, ObservedEventEnvelope V2 and ReplayStep V5 shapes remain
-unchanged. Update the Magic payload schema/Python projection, V5 manifest
+Decision V2, ObservedEventEnvelope V2 and PlayerStep V2 shapes remain
+unchanged. Update the Magic payload schema/Python projection, V6 manifest
 schema/validator, and golden/negative fixtures. If codec binding cannot be
 expressed without reinterpreting an existing codec or widening an
 unauthorized player surface, stop before Order implementation.
 
-#### Digest, checkpoint and V5 compatibility
+#### Digest, checkpoint and V6 compatibility
 
 The Magic payload/order state is authoritative EngineState and therefore must
 be validated and included in canonical state identity. Extend the existing
 `execution_v2.continuations[].continuation_payload` mapping with a unique
 `magic_sba_graveyard_order` tag and canonical payload layout. Do not reuse a
-tag. Existing `SyntheticM2Assembly` FullStateDigestV4 bytes/golden vectors
-must remain byte-identical. Update `STATE_HASHING.md`, the V4 canonical codec,
+tag. Existing `SyntheticM2Assembly` V4 historical bytes/golden vectors must
+remain byte-identical. Update `STATE_HASHING.md`, the new V5 canonical codec,
 reader/writer fixtures, state schemas/adapters if applicable, and
 Rust/Python/digest parity evidence from the authoritative source.
 
-`EnvironmentCheckpointV5` and `ReplayStepV5` remain the intended surfaces:
-V5 binds the unchanged FullStateDigestV4 type plus the new semantic contract
-identity, and every Order answer is already a real DecisionResponseV2 replay
-input. Historical V5 artifacts keep their old semantic contract IDs and
-digest bytes; they are never reinterpreted under this S3 closure. The state
-hash/schema review must explicitly approve the uniquely tagged additive V4
-encoding and prove old-state byte parity. If accepted version policy instead
-requires a new full-state/checkpoint/replay identity for this variant, stop
-before S3.A3 and resolve the versioning constraint; do not silently claim V5
-compatibility or introduce Replay V6 in this plan.
+`EnvironmentCheckpointV6` and `ReplayStepV6` are required: V6 binds
+FullStateDigestV5 plus the new semantic contract identity, and each Order
+answer is a real DecisionResponseV2 replay input. Historical V4/V5 artifacts
+keep their exact old contract IDs and digest bytes; they are never
+reinterpreted under this S3 closure. No automatic V5-to-V6 migration exists.
 
 ### S3.A event and delta shape
 
@@ -392,7 +437,7 @@ contract vocabulary, semantic-contract material, Rust/Python parity, and
 conformance vocabulary; update all affected representations and run the
 repository generator. Never hand-edit generated output.
 
-## 4. S3.B exact Basic Priority scope
+## 5. S3.B exact Basic Priority scope
 
 Support only the validated pass-only two-player profile. Before every window:
 
@@ -466,7 +511,7 @@ An active Magic SBA ordering continuation instead has `PriorityState::None`
 and an `Order` Decision for its APNAP stage actor; it cannot coexist with a
 pass-priority Decision.
 
-## 5. S3.C exact Draw scope and event disposition
+## 6. S3.C exact Draw scope and event disposition
 
 Use the accepted S3 design profile without widening:
 
@@ -504,13 +549,13 @@ Do not add a trace-only Draw event. If a later admitted Library-to-Hand
 producer makes this proof ambiguous, that is a separately reviewed semantic
 version/event decision, not a reason to add a duplicate now.
 
-## 6. Environment response transaction and one forced advance
+## 7. Environment response transaction and one forced advance
 
 Current seam at the required head:
 
 ```text
 SyntheticM1EnvironmentBackend::execute_response
-  owns response + forced consequence + V5 append + atomic commit
+  owns response + forced consequence + current-head V5 append + atomic commit
 
 ReferenceEnvironmentBackend::execute_trusted_response
   calls kernel.apply only; does not commit or append replay
@@ -523,7 +568,7 @@ Task S3.0 extracts one environment-owned response transaction primitive and
 routes both backends through it. Do not copy the Synthetic transaction into
 Reference. Preserve ADR-0040 order exactly:
 
-1. Capture and validate the complete before `EnvironmentCheckpointV5`.
+1. Capture and validate the complete before `EnvironmentCheckpointV6`.
 2. Validate endpoint/player/episode/pending actor and response layers; call
    `kernel.apply` with immutable before-state semantics.
 3. If accepted, no Decision exists, and status is Running, call
@@ -533,8 +578,8 @@ Reference. Preserve ADR-0040 order exactly:
 4. Validate the complete transition contract.
 5. On semantic rejection, prove checkpoint, status, every counter, replay and
    projected player state equal their before values; commit nothing.
-6. Calculate candidate counters and construct/validate candidate V5 checkpoint.
-7. Append exactly one `ReplayStepV5` for the real input response and validate
+6. Calculate candidate counters and construct/validate candidate V6 checkpoint.
+7. Append exactly one `ReplayStepV6` for the real input response and validate
    the candidate replay.
 8. Project all perspective occurrence envelopes and validate candidate player
    products.
@@ -566,9 +611,9 @@ transaction, and returns the usual `PlayerStepV2`. Public callers never use
 same shared transaction. Synthetic behavior and byte products must remain
 unchanged under semantic-neutral S3.0.
 
-## 7. Replay and evidence contract
+## 8. Replay and evidence contract
 
-Replay remains V5. A forced consequence has no replay step and no input DTO.
+Replay is V6 after S3.P0. A forced consequence has no replay step and no input DTO.
 The real response that causes the consequence owns it. The end-to-end witness
 is:
 
@@ -590,7 +635,7 @@ ReplayStep N+1:
   kernel draws the exact Library top through S2
   kernel runs SBA to a stable result
   kernel establishes HeldBy(active, 0) and creates active pass Decision
-  V5 records the actual opponent pass response in ReplayStep N+1
+  V6 records the actual opponent pass response in ReplayStep N+1
 ```
 
 The primary S2 Library-to-Hand witness uses a no-SBA-action Draw fixture; its
@@ -608,17 +653,17 @@ ReplayStep N+3 = next owner's real Order response
   -> next priority Decision/outcome/error
 ```
 
-Each Order response is a genuine V5 step. The last response re-executes the
+Each Order response is a genuine V6 step. The last response re-executes the
 same saved typed round plan and applies the complete round atomically. Replay
 and checkpoint/restore are tested before the first Order and between APNAP
 stages; no history or controller-local buffer resumes the choice.
 
-Backend replay from the initial V5 checkpoint must re-execute both real pass
+Backend replay from the initial V6 checkpoint must re-execute both real pass
 responses and prove identical before identity, actor/request binding, capability
 closure, allocator-derived fresh `GameObjectId`, zone/order, S2 knowledge and
 perspective identity mutations, authoritative events, delta, full-state digest,
 status, counters, after checkpoint identity, next Decision, and all player
-products. It must include no forced-work replay step, fake response, or V6.
+products. It must include no forced-work replay step, fake response, or V7.
 
 Checkpoint/restore and fork tests cover both pending and completed Draw state.
 Paired hidden worlds vary top-card `CardDefinitionId` and
@@ -628,7 +673,7 @@ rejection class remain identical. Owner differences are exactly the S2
 authorized private identity/knowledge differences. Priority DTOs never reveal
 Draw identity.
 
-## 8. Lifecycle and interaction gates
+## 9. Lifecycle and interaction gates
 
 Implementation does not imply coverage:
 
@@ -659,28 +704,29 @@ draw-card × zone-incarnation:
 
 Mark neither satisfied until executable witnesses pass and an independent
 review accepts them. S2 covered promotion additionally requires backend-
-verified authoritative V5 replay of a real S2 transition and every other S2
+verified authoritative V6 replay of a real S2 transition and every other S2
 coverage gate in its accepted design. Promotion is a distinct governance task;
 deterministic rerun alone is insufficient.
 
-## 9. Sequential PR strategy
+## 10. Sequential PR strategy
 
-Use five sequential PRs, each based on the newly merged `master` head:
+Use six sequential PRs, each based on the newly merged `master` head:
 
 | PR | Tasks | Scope and merge exit |
 | --- | --- | --- |
-| A — shared response transaction | 1–2 | Semantic-neutral extraction; Synthetic regression parity; Reference remains unavailable until its separate implementation. No lifecycle change. |
-| B — S3.A ordered SBA | 3–8 | RED, Magic continuation/state identity, APNAP Order Decisions and public progress observation, transactional S2 composition, fixed-point/evidence; `state-based-actions-combat` may become `implemented` only after all gates pass. S2 remains not covered. |
-| C — S3.B Basic Priority | 9–12 | Priority event/Decision kernel, Reference player submission through shared transaction, replay/checkpoint/fork evidence; Basic Priority may become `implemented` after gates pass. Draw remains specified. |
-| D — S3.C/D Draw integration | 13–18 | Draw, one-advance Upkeep→Draw path, continuation-aware SBA ordering, hidden-world proof and real V5 replay; Draw may become `implemented`. S2 is not promoted automatically. |
-| E — S2 interaction/coverage closure | 19–22 | Independent review of both S2 interactions and V5 replay; update S2 to `covered` only if every accepted S2 gate passes; otherwise retain not covered and report the exact blocker. |
+| A — S3.P0 state identity cut | 1–2 | New state/checkpoint/replay identity family, closed Magic continuation representation, old V4/V5 compatibility proof. No semantic capability lifecycle change. |
+| B — S3.0 shared response transaction | 3–4 | Semantic-neutral shared transaction; Synthetic regression parity; Reference response seam. No lifecycle change. |
+| C — S3.A ordered SBA | 5–10 | RED, continuation program, APNAP choices/public progress observation, transactional S2 composition, fixed point/evidence; SBA may become `implemented` only after all gates pass. S2 remains not covered. |
+| D — S3.B Basic Priority | 11–14 | Priority event/Decision kernel, Reference player submission through shared transaction, replay/checkpoint/fork evidence; Basic Priority may become `implemented` after gates pass. Draw remains specified. |
+| E — S3.C/D Draw integration | 15–20 | Draw, one-advance Upkeep→Draw path, continuation-aware SBA ordering, hidden-world proof and real V6 replay; Draw may become `implemented`. S2 is not promoted automatically. |
+| F — S2 interaction/coverage closure | 21–24 | Independent review of both S2 interactions and V6 replay; update S2 to `covered` only if every accepted S2 gate passes; otherwise retain not covered and report the exact blocker. |
 
 This sequence keeps `master` green, exposes no unsupported half-contract as a
 capability, and keeps each semantic owner independently reviewable. Do not
 combine S3.A, S3.B, or S3.C into one large implementation PR. A maintainer may
 split a PR further if review reveals a public contract/version boundary.
 
-## 10. Task-by-task execution
+## 11. Task-by-task execution
 
 Every task is a separate logical commit. Future implementation tasks require
 their own explicit authorization; this plan is not that authorization. RED
@@ -690,7 +736,73 @@ package tests and `scripts/run_checks.py integration`; run the complete
 repository release/freeze gates only when preparing the corresponding
 certification or freeze decision.
 
-### Task 1 — RED: expose the Reference response transaction seam
+### Task 1 — RED: S3.P0 V5/V6 identity and compatibility vectors
+
+**Allowed files:** test-only state/model/persistence/checkpoint/replay identity
+tests, versioned schemas and golden/negative fixtures.
+
+**Forbidden:** production identity codecs, Magic rule producers, registry/
+lifecycle changes, V5 reinterpretation or automatic migration.
+
+**RED tests:** require V5 FullStateDigest/CheckpointDigestV6/Replay V6 KATs
+and a typed Magic continuation fixture; pin all current V4 full-state known
+answers and V5 checkpoint/replay detached-validation results. Check V6
+ExecutionIdentity binding, schema identities and V5 migration rejection.
+New identity/type cases are expected to fail before S3.P0 implementation.
+
+**Objective:** inventory every writer, reader, verifier, schema, golden,
+negative fixture and Python surface affected by the identity cut. Record the
+exact current V4/V5 compatibility behavior and archived-runtime requirements.
+
+**Verification:** focused state/digest/checkpoint/replay tests (expected RED
+recorded), `scripts/validate_schemas.py`, documentation checks,
+`git diff --check`.
+
+**Commit boundary:** P0 RED tests and fixture inventory only.
+
+**HARD STOP:** do not reinterpret or rewrite any V4/V5 bytes.
+
+### Task 2 — implement S3.P0 state/checkpoint/replay identity cut
+
+**Allowed files:** `mtgml-model`, `mtgml-state`, persistence/checkpoint/replay
+crates, schemas, Python adapters, golden/negative fixtures, generators and
+identity/support documentation.
+
+**Forbidden:** kernel creation/consumption of SBA ordering continuation,
+SBA/Priority/Draw behavior, capability dependencies/lifecycle, V5 changes or
+automatic V5 migration.
+
+**Objective:** implement the linked S3.P0 design: FullStateDigestV5 and its
+detached canonical mapping; EnvironmentCheckpointV6; CheckpointDigestV6;
+InitialEnvironmentIdentityV6; ReplayManifestV6, ReplayStepV6,
+AuthoritativeReplayV6, ReplayRecorderV6 and schema inventory V6. Add the
+closed typed Magic SBA-order continuation representation and structural
+validation, but no production Rules producer. Bind V6 checkpoints to complete
+`ExecutionIdentityV1`; a Magic SBA continuation is restore-executable only
+under a contract/runtime that later admits S3.A.
+
+Preserve V4/V5 exact bytes and meanings. Current writers/readers move to V5
+state digest and V6 checkpoint/replay. Classify V4 digest and V5 replay as
+`READABLE_VERIFIABLE_ONLY` under current runtime; V5 checkpoints are
+`UNSUPPORTED` for current V6 restore and require the archived V5 runtime for
+execution. `V5_TO_V6_AUTOMATIC_MIGRATION = NONE`. Keep
+`ObservationEnvelopeV1`, `InformationStateDigestV2`, and
+`ExecutionIdentityV1`; V6 manifest binds `magic-m3-observation.v1` separately.
+
+**RED/GREEN:** Task 1 identity tests pass; all V4 KAT bytes remain exact; V5
+artifacts are never interpreted as V6; V6 digest/checkpoint restore/fork and
+Replay V6 backend response parity pass across Rust/Python/schema fixtures.
+
+**Verification:** full state/digest/checkpoint/replay suites, generator/schema
+drift, `scripts/run_checks.py integration`, repository/archive reproducibility.
+
+**Commit boundary:** coordinated S3.P0 identity cut; PR A. No Magic producer
+or capability lifecycle change.
+
+**HARD STOP:** old V4/V5 meaning/bytes change, V6 omits an authoritative state
+field or execution identity, or any S3 rule becomes reachable during P0.
+
+### Task 3 — RED: expose the Reference response transaction seam
 
 **Allowed files:** `crates/mtgml-environment/src/tests/response_transaction.rs`,
 `crates/mtgml-environment/src/tests.rs`, and test-only setup helpers under
@@ -699,11 +811,11 @@ certification or freeze decision.
 **Forbidden:** production source edits; rules semantics; registry/lifecycle;
 replay version or fixtures.
 
-**RED test:** from a validated Reference Magic checkpoint with one pending
+**RED test:** from a validated Reference Magic V6 checkpoint with one pending
 pass Decision, the authorized actor's visible Decision is projected and a
 valid pass submission returns an accepted PlayerStep, advances the state,
-increments exactly the decision/event counters, and appends one genuine V5
-response step. Assert the current implementation fails because Reference
+increments exactly the decision/event counters, and appends one genuine
+`ReplayStepV6`. Assert the current implementation fails because Reference
 submission returns `UnavailableDecision`. Pin existing Synthetic response,
 rejection, and replay product bytes as semantic-neutral baselines.
 
@@ -719,18 +831,19 @@ response/replay test filters must remain green.
 **HARD STOP:** do not implement rules or make the RED fixture pass by
 fabricating a replay response.
 
-### Task 2 — semantic-neutral shared response-commit primitive
+### Task 4 — semantic-neutral shared response-commit primitive
 
 **Allowed files:** `crates/mtgml-environment/src/response_transaction.rs` (or
 one reviewed common transaction module), `reference.rs`, `synthetic/commit.rs`,
 `lib.rs`, and environment transaction tests.
 
 **Forbidden:** Magic state/event semantics, Basic Priority, Draw, arbitrary
-forced-progress loops, changes to V5 DTOs or ADR-0040 ordering.
+forced-progress loops, changes to historical V5 DTOs or the already frozen V6
+identity shapes, or changes to ADR-0040 ordering.
 
 **RED/GREEN:** make both Synthetic and Reference backends use one transaction
 implementation. Retain a single rules-owned `kernel.apply`, at most one
-`advance_forced_progress`, one merged transition/delta, one V5 append for the
+`advance_forced_progress`, one merged transition/delta, one V6 append for the
 real response, candidate projection, hook, and final atomic commit. Add
 test-only failure injection at transaction boundaries without runtime mutable
 semantic state.
@@ -749,12 +862,12 @@ counters, replay, checkpoint identity, and player bytes.
 `scripts/run_checks.py integration` before PR A.
 
 **Commit boundary:** common transaction and parity evidence, separate from
-Task 1 RED commit.
+Task 3 RED commit.
 
 **HARD STOP:** any Synthetic bytes/counters/replay behavior changes, duplicated
 commit logic remains, or a failure commits partial environment state.
 
-### Task 3 — S3.A1 RED: simultaneous SBA batch and ordering obligation
+### Task 5 — S3.A1 RED: simultaneous SBA batch and ordering obligation
 
 **Allowed files:** `crates/mtgml-conformance/src/state_based_actions.rs`,
 `crates/mtgml-conformance/src/lib.rs`, rules test modules, and test-only state
@@ -784,50 +897,52 @@ Decision, state, allocators, history, replay and player bytes.
 
 **HARD STOP:** no hidden-ID or deterministic sort workaround for CR 404.3.
 
-### Task 4 — S3.A2 typed Magic continuation and state identity
+### Task 6 — S3.A2 validate typed Magic continuation program
 
-**Allowed files:** `crates/mtgml-state/src/m2_shape/continuation.rs`,
-`m2_shape.rs`, `validation.rs`, digest codec; state/digest tests; the
-authoritative continuation/hash specification and affected schema/fixtures.
+**Allowed files:** `crates/mtgml-state/src/m2_shape/validation.rs`,
+`semantic_cursor.rs` and related state validation; rules continuation tests
+and the authoritative continuation specification. S3.P0 owns payload shape,
+V5 digest encoding and persistence identities.
 
 **Forbidden:** changing `SyntheticM2Assembly` meaning, producer/decision
-implementation, Priority/Draw code, implicit stage-local memory, replay DTO
-version change.
+implementation, Priority/Draw code, implicit stage-local memory, or any
+identity/schema version change.
 
 **RED tests:** Magic payload validates one round plan, APNAP order owners,
 stage cursor and previously collected exact permutations. Reject invalid owner
 order, duplicate/missing/foreign card IDs, malformed cause arrays, current
 actor mismatch, future source revision, missing/mismatched pending Decision,
-continuation ID change and unsupported cross-program payload. Prove checkpoint,
-restore and fork retain the payload. Add a FullStateDigestV4 vector for the
-new uniquely tagged variant and assert every existing state vector remains
-byte-identical.
+continuation ID change and unsupported cross-program payload. Prove V6
+checkpoint, restore and fork retain the payload. Re-derive round applicability
+from the immutable current state and validate that the saved plan is still
+exactly the selected action set; reject stale or partial plans. Keep all V4
+detached KATs byte-identical and validate the V5 continuation KAT added by
+S3.P0.
 
-**Objective:** add a typed Magic-specific payload with the saved complete SBA
-action set and APNAP order progress. Keep one ContinuationId across stages;
+**Objective:** implement S3.A semantic validation and resume invariants for
+the typed Magic payload introduced by S3.P0. Keep one ContinuationId across stages;
 fresh DecisionId and PlayerDecisionId per response stage. For Magic only,
 the continuation record actor tracks the currently expected owner; Synthetic
 continuations retain their fixed actor invariant. No continuation without a
 pending Decision is valid checkpoint state.
 
-Extend the existing `execution_v2` continuation payload mapping with a unique
-Magic tag. The FullStateDigestV4 outer mapping and every old-variant byte stay
-unchanged; V5 checkpoints bind the resulting digest, and the V5 semantic
-contract identity identifies the new capability closure. Update the hashing
-spec and run the version-compatibility gate in Section 3. If old-state vectors
-change or an additive V4 variant is not accepted, stop before Task 5.
+Use the S3.P0 closed V5 continuation variant and validate its S3.A semantics:
+round-start revision, complete selected actions/causes, APNAP owner list,
+stage cursor, and completed owner permutations must agree with current state
+and the pending Order Decision. No SBA producer exists in this task. The
+FullStateDigestV4 codec remains detached historical evidence; do not edit it.
 
 **Verification:** state validation/continuation/digest suites, checkpoint
 restore/fork tests, old and new digest known-answer vectors, generation/drift
 checks, `cargo fmt --all -- --check`.
 
-**Commit boundary:** typed payload + state/digest/checkpoint support, no
-producer yet.
+**Commit boundary:** S3.A continuation semantic validation only; no payload,
+digest or checkpoint type work and no producer.
 
 **HARD STOP:** a local cache, event history, or test-only flag is needed to
 resume the SBA round.
 
-### Task 5 — S3.A3 RED/GREEN: Order Decisions and APNAP stages
+### Task 7 — S3.A3 RED/GREEN: Order Decisions and APNAP stages
 
 **Allowed files:** `crates/mtgml-rules/src/` SBA continuation program,
 decision tests, candidate-binding contract/cursor tests and conformance.
@@ -850,10 +965,10 @@ continuation mismatch rejects atomically.
 **Objective:** on the final Order response, validate the unchanged round-start
 facts against the saved round plan, record `SbaGraveyardOrderChosen`, then
 complete the entire batch/fixed point in that same rules transition. This
-keeps every accepted checkpoint valid and gives each response its natural V5
+keeps every accepted checkpoint valid and gives each response its natural V6
 step.
 
-**Verification:** Task 3 RED cases turn green through the actual Decision V2
+**Verification:** Task 5 RED cases turn green through the actual Decision V2
 protocol; decision/state/rules/conformance suites and replay response binding.
 
 **Commit boundary:** APNAP Decision/continuation progression, still no S2
@@ -862,15 +977,15 @@ multi-move integration.
 **HARD STOP:** any zone/life/status mutation occurs before the last required
 Order response, or any Order request leaks trusted GameObjectId.
 
-### Task 6 — S3.A3b Magic public APNAP-order observation codec
+### Task 8 — S3.A3b Magic public APNAP-order observation codec
 
 **Allowed files:** `crates/mtgml-observation/src/`, its Python codec/DTO,
 observation schemas and fixtures, `crates/mtgml-environment/src/` projection
-and replay manifest validation, V5 manifest schemas/tests, observation docs.
+and replay manifest validation, V6 manifest schemas/tests, observation docs.
 
 **Forbidden:** new public Decision family, new `ObservedEvent`/`PlayerStep`
 schema variant, exposing trusted object/card/continuation IDs, changing the
-existing synthetic M3 observation bytes, Replay V6.
+existing synthetic M3 observation bytes.
 
 **RED tests:** after the active player supplies the first of two APNAP orders,
 the nonactive player's current observation must contain the completed public
@@ -892,25 +1007,25 @@ IDs. The trusted `SbaGraveyardOrderChosen` event remains audit/replay
 authority; the public current observation carries the order needed by the
 next chooser.
 
-Bind the codec to the S3 Magic semantic contract in ReplayManifestV5. Preserve
+Bind the codec to the S3 Magic semantic contract in ReplayManifestV6. Preserve
 the SyntheticRulesCompat/S1 `synthetic-m3-observation.v1` codec and bytes.
-Extend V5 schema/validation to admit only the existing codec for its supported
+Extend V6 schema/validation to admit only the existing codec for its supported
 contract and the Magic codec for the S3 contract; do not broaden arbitrary
 strings. Update the Python projector and all canonical schema/fixture
 representations.
 
 **Verification:** observation and PlayerStep suites, paired noninterference
-tests at each APNAP stage, V5 manifest/schema tests, `scripts/run_checks.py
+tests at each APNAP stage, V6 manifest/schema tests, `scripts/run_checks.py
 fast`, Python full, generation/drift checks.
 
-**Commit boundary:** versioned Magic current-observation projection + V5 codec
+**Commit boundary:** versioned Magic current-observation projection + V6 codec
 binding; no SBA state mutation code.
 
 **HARD STOP:** the nonactive chooser cannot see the prior APNAP choice, a
 trusted identity leaks, an event-sequence side channel appears, or existing
 S1/Synthetic observation bytes change.
 
-### Task 7 — S3.A4 ordered S2 composition and atomic SBA application
+### Task 9 — S3.A4 ordered S2 composition and atomic SBA application
 
 **Allowed files:** sole S2 zone-incarnation executor/composition API,
 `crates/mtgml-rules/src/` SBA result builder, events/delta/cursor/contract,
@@ -951,7 +1066,7 @@ no lifecycle/status promotion.
 **HARD STOP:** S2's single move authority is duplicated, an intermediate move
 is exposed, or final order differs from the player's accepted permutation.
 
-### Task 8 — S3.A5 fixed point, evidence and lifecycle
+### Task 10 — S3.A5 fixed point, evidence and lifecycle
 
 **Allowed files:** SBA conformance, checkpoint/fork/replay tests and, after
 all evidence passes, only SBA registry/status files.
@@ -986,7 +1101,7 @@ SBA interaction as evidence pending the later independent S2 coverage review.
 **HARD STOP:** no APNAP Order resume/replay proof, any mutation occurs before
 all orders, or an S2 coverage claim is made here.
 
-### Task 9 — RED: Basic Priority event, state and Decision contract
+### Task 11 — RED: Basic Priority event, state and Decision contract
 
 **Allowed files:** `crates/mtgml-rules/src/tests/`,
 `crates/mtgml-conformance/src/basic_priority.rs` and module wiring, plus
@@ -1000,7 +1115,7 @@ pass-only precondition failure before Decision, exact one-pass candidate,
 first pass transfer, second pass close, wrong actor/response/stale revision,
 pending-decision/priority mismatch, RuleEventId/DecisionId/visible ID
 exhaustion, terminal SBA prevents Decision, malformed transition product.
-Pin the exact event ordering in Section 4.
+Pin the exact event ordering in Section 5.
 
 **Verification:** `cargo test -p mtgml-rules basic_priority` and
 `cargo test -p mtgml-conformance basic_priority` (expected RED recorded).
@@ -1010,7 +1125,7 @@ Pin the exact event ordering in Section 4.
 **HARD STOP:** no automatic pass, fallback actor, default response, or
 Decision creation from an unproven pass-only surface.
 
-### Task 10 — implement Basic Priority in the rules kernel
+### Task 12 — implement Basic Priority in the rules kernel
 
 **Allowed files:** `crates/mtgml-rules/src/`, event/delta/cursor and
 transition-contract authorities, generated contract sources if required, and
@@ -1028,7 +1143,7 @@ candidate and binding. A second explicit pass closes the window and advances
 only by the accepted temporal successor; forced continuation is returned to
 the environment transaction.
 
-**Verification:** Task 9 RED tests GREEN; rules/conformance package suites,
+**Verification:** Task 11 RED tests GREEN; rules/conformance package suites,
 generated contract drift/schema checks, `scripts/run_checks.py fast`.
 
 **Commit boundary:** rules-owned Basic Priority implementation and focused
@@ -1037,7 +1152,7 @@ conformance, no environment player API in this commit.
 **HARD STOP:** `PriorityState` changes without a matching typed event/cursor
 proof, or Decision and priority state disagree at any accepted boundary.
 
-### Task 11 — Reference Magic player response path
+### Task 13 — Reference Magic player response path
 
 **Allowed files:** `crates/mtgml-environment/src/reference.rs`, shared
 transaction module, endpoint/error mapping, environment player endpoint tests.
@@ -1052,7 +1167,7 @@ existing closed public codes. `execute_trusted_response` remains internal and
 uses the same transaction for replay. No trusted kernel error or hidden state
 is returned to a player.
 
-**Verification:** Task 1 RED passes; actor/nonactor projection; all closed
+**Verification:** Task 3 RED passes; actor/nonactor projection; all closed
 rejection codes; replay and environment existing tests; `cargo test -p
 mtgml-environment --all-features`; `scripts/run_checks.py fast`.
 
@@ -1062,7 +1177,7 @@ mtgml-environment --all-features`; `scripts/run_checks.py fast`.
 internal `DecisionId`/binding, or Reference and Synthetic use distinct
 response-commit implementations.
 
-### Task 12 — S3.B end-to-end priority evidence and lifecycle
+### Task 14 — S3.B end-to-end priority evidence and lifecycle
 
 **Allowed files:** Basic Priority conformance, environment tests, current
 status/registry files only after evidence passes.
@@ -1073,7 +1188,7 @@ coverage promotion.
 **Evidence:** explicit active then opponent pass sequence; SBA gate before each
 window; no-priority Untap/Cleanup unchanged; all selected priority-bearing
 boundaries require pass-only validation; pass Decision soundness and
-completeness; checkpoint/restore; fork parity; backend V5 replay/reprojection;
+completeness; checkpoint/restore; fork parity; backend V6 replay/reprojection;
 paired hidden-state bytes; every rejection path atomic.
 
 **RED test / evidence failure:** a mutant automatic pass, mismatched
@@ -1092,7 +1207,7 @@ Foundation V2 dependency closure and leave Draw specified.
 **HARD STOP:** any pass is implied, or priority can be granted before SBA and
 the pass-only proof.
 
-### Task 13 — freeze Draw event disposition
+### Task 15 — freeze Draw event disposition
 
 **Allowed files:** Draw design/implementation contract documentation and
 conformance expectation only.
@@ -1110,7 +1225,7 @@ DRAW_COMPLETED_EVENT_REQUIRED = NO
 ```
 
 Do not add `DrawCompleted`. If the code audit finds another admitted producer
-or cannot validate the context-transition-context pairing, block Task 13 and
+or cannot validate the context-transition-context pairing, block Task 15 and
 re-open the event decision before code.
 
 **Verification:** conformance contract review; `scripts/check_documentation.py`
@@ -1121,7 +1236,7 @@ and `git diff --check`.
 **HARD STOP:** event evidence relies on a trace-only event or ignores another
 admitted Library-to-Hand producer.
 
-### Task 14 — RED: ordinary Draw × S2 interaction
+### Task 16 — RED: ordinary Draw × S2 interaction
 
 **Allowed files:** Draw conformance cases, Rules/Environment test setup, and
 paired-world tests.
@@ -1148,7 +1263,7 @@ sequence behavior must match; only authorized owner-private products differ.
 **HARD STOP:** any decision is fabricated for Draw, or tests depend on test-only
 knowledge/history to prevent repetition.
 
-### Task 15 — implement Draw through S2
+### Task 17 — implement Draw through S2
 
 **Allowed files:** `crates/mtgml-rules/src/` Draw producer and orchestration,
 S2 executor invocation, transition validator/cursor, conformance.
@@ -1164,17 +1279,17 @@ the one S2 executor; complete the same transition workspace through
 pass Decision. The forced-progress kernel returns one complete TransitionResult
 through the next Decision/outcome or a typed unsupported/error boundary.
 
-**Verification:** Task 14 RED GREEN; S2 conformance regression; exact
+**Verification:** Task 16 RED GREEN; S2 conformance regression; exact
 checkpoint/delta/cursor/event/rejection tests; generated contract and schema
 drift checks; `scripts/run_checks.py fast`.
 
 **Commit boundary:** Draw producer and focused kernel evidence, no final replay
-claim until Task 17.
+claim until Task 19.
 
 **HARD STOP:** any accepted state exposes moved card + Draw + Priority=None, or
 the implementation moves a card without invoking the S2 executor.
 
-### Task 16 — Upkeep pass → Draw → priority integration
+### Task 18 — Upkeep pass → Draw → priority integration
 
 **Allowed files:** environment turn/priority/Draw integration tests and
 conformance only.
@@ -1202,15 +1317,16 @@ Test terminal SBA and typed unsupported outcomes stop the advance correctly.
 **HARD STOP:** temporal successor skips Draw, draw priority is passed
 implicitly, or the environment performs a second progress call.
 
-### Task 17 — authoritative Replay V5 witness for S2
+### Task 19 — authoritative Replay V6 witness for S2
 
 **Allowed files:** environment backend replay, replay parity tests, conformance
 evidence. No replay DTO version change.
 
-**Forbidden:** Replay V6, forced-progress replay step, event-as-input, fake
-DecisionResponse, test-only replay executor.
+**Forbidden:** Replay V7 or any replay DTO change beyond S3.P0, a
+forced-progress replay step, event-as-input, fake DecisionResponse, or a
+test-only replay executor.
 
-**Evidence:** export the real two-pass V5 replay; execute it from the exact
+**Evidence:** export the real two-pass V6 replay; execute it from the exact
 initial checkpoint with Reference backend. Prove replay re-applies the
 opponent's second pass and repeats the integrated forced consequence. Compare
 the exact new `GameObjectId`, S2 `ZoneTransition`, physical continuity/order,
@@ -1220,18 +1336,18 @@ projections. Restore/fork/rerun produce the same proof.
 
 **RED test / evidence failure:** mutate each recorded after identity and the
 replayed fresh object/knowledge/event result; backend replay must reject every
-divergence. Structural V5 validation alone is not a passing witness.
+divergence. Structural V6 validation alone is not a passing witness.
 
 **Verification:** `cargo test -p mtgml-environment authoritative_s2_replay`,
-all V5 replay tests, `scripts/run_checks.py integration`.
+all V6 replay tests, `scripts/run_checks.py integration`.
 
 **Commit boundary:** backend-verified replay witness; no S2 promotion in this
 commit.
 
-**HARD STOP:** V5 only structurally validates, but backend execution does not
+**HARD STOP:** V6 only structurally validates, but backend execution does not
 reproduce the exact S2 transition and after identity.
 
-### Task 18 — S3 interaction and information evidence; Draw lifecycle
+### Task 20 — S3 interaction and information evidence; Draw lifecycle
 
 **Allowed files:** conformance cases and, after evidence review, Draw registry
 lifecycle and status test/docs entries.
@@ -1243,7 +1359,7 @@ Decision/event shape.
 `draw-card × zone-incarnation`, and cross-priority/SBA ordering. Include owner
 exact knowledge, opponent paired-world byte parity, checkpoint restore before
 and after Draw, forks, rejection nonmutation, no RNG, no Decision for Draw,
-and Task 17 authoritative V5 replay, including a separate checkpointed APNAP
+and Task 19 authoritative V6 replay, including a separate checkpointed APNAP
 ordering witness when a same-owner simultaneous Graveyard group occurs.
 
 For APNAP ordering, checkpoint after the first owner's Order response and
@@ -1270,7 +1386,7 @@ PR D.
 **HARD STOP:** owner/opponent information differs outside S2 authorization or
 S2 replay evidence is missing.
 
-### Task 19 — independent S2 interaction and coverage review
+### Task 21 — independent S2 interaction and coverage review
 
 **Allowed files:** evidence/status review artifacts and S2 lifecycle surfaces
 only after the reviewer accepts every gate.
@@ -1283,12 +1399,12 @@ code, certification, changing S2 semantic scope in-place.
 ```text
 state-based-actions-combat × zone-incarnation = SATISFIED_EVIDENCE
 draw-card × zone-incarnation = SATISFIED_EVIDENCE
-authoritative V5 replay of real S2 transition = PASS
+authoritative V6 replay of real S2 transition = PASS
 all S2 accepted-design evidence remains valid at exact head
 ```
 
 **RED test / evidence failure:** independent review rejects either interaction,
-V5 backend replay diverges, or any accepted S2 gate is absent; S2 remains
+V6 backend replay diverges, or any accepted S2 gate is absent; S2 remains
 `implemented / not covered`.
 
 If every gate passes, a separate authorized lifecycle decision may update S2
@@ -1303,7 +1419,7 @@ the required exact-head status checks on the reviewed candidate.
 
 **HARD STOP:** reviewer rejects or any required S2 coverage gate is not PASS.
 
-### Task 20 — lifecycle and interaction status closure
+### Task 22 — lifecycle and interaction status closure
 
 **Allowed files:** capability registry lifecycle fields, README, roadmap,
 current-status tests, and accepted evidence/status artifact references.
@@ -1314,7 +1430,7 @@ claims beyond the exact witnessed scope.
 **Objective:** synchronize lifecycle counts and statuses to merged evidence:
 SBA, Basic Priority and Draw implemented only if their individual evidence
 passed; turn structure remains covered; zone incarnation becomes covered only
-if Task 19 passed. Keep explicit S2 replay and interaction results factual.
+if Task 21 passed. Keep explicit S2 replay and interaction results factual.
 Update generated status/contract artifacts only through their authority.
 
 **RED test / evidence failure:** status assertions deliberately compare the
@@ -1324,12 +1440,12 @@ final status tests pass only for evidence-backed lifecycle values.
 **Verification:** focused status tests, docs, schemas, maintainer artifacts,
 contract generation/drift, `scripts/run_checks.py integration`.
 
-**Commit boundary:** status-only synchronization following Task 19's review.
+**Commit boundary:** status-only synchronization following Task 21's review.
 
 **HARD STOP:** any unsupported lifecycle/coverage claim appears in registry,
 README, roadmap, generated artifacts, or tests.
 
-### Task 21 — cumulative exact-head verification
+### Task 23 — cumulative exact-head verification
 
 **Allowed files:** verification reports in the repository-defined external
 verification location only; no source changes after final archive gate.
@@ -1354,7 +1470,7 @@ practice requires tracked evidence; otherwise no code commit.
 **HARD STOP:** any required gate fails or remains unknown; resolve it before
 review handoff.
 
-### Task 22 — implementation PR preparation
+### Task 24 — implementation PR preparation
 
 **Allowed files:** PR description/verification evidence; no source changes
 unless a previous gate explicitly reopened a task.
@@ -1378,21 +1494,22 @@ all required CI checks and no generated/source drift.
 
 **HARD STOP:** do not create, merge, or publish a PR in this planning task.
 
-## 11. Required conclusions
+## 12. Required conclusions
 
 ```text
 S3_ORDER =
-S3.0 shared response transaction
+S3.P0 authoritative state/checkpoint/replay identity cut
+-> S3.0 shared response transaction
 -> S3.A1 simultaneous SBA derivation and Order requirement
--> S3.A2 typed Magic SBA continuation/state identity
+-> S3.A2 validate typed Magic SBA continuation program
 -> S3.A3 existing Order Decision and APNAP collection
 -> S3.A4 ordered S2 incarnation composition and atomic round application
 -> S3.A5 fixed point and evidence
 -> S3.B basic-priority × turn-structure × state-based-actions-combat
 -> S3.C draw-card × turn-structure × zone-incarnation
--> S3.D end-to-end Upkeep passes -> Draw -> SBA -> priority -> V5 replay
+-> S3.D end-to-end Upkeep passes -> Draw -> SBA -> priority -> V6 replay
 
-S3_A = full simultaneous selected SBA set; explicit per-owner Order Choices for same-Graveyard multi-card rounds; typed Magic continuation; ordered S2 batch composition; fixed point and terminal mapping
+S3_A = full simultaneous selected SBA set; explicit per-owner Order Choices for same-Graveyard multi-card rounds; S3.P0-typed Magic continuation validated/resumed by S3.A; ordered S2 batch composition; fixed point and terminal mapping
 S3_B = explicit pass-only priority, typed priority event/cursor, bound ChooseOne PassPriority Decision
 S3_C = exactly-once ordinary Draw Step via S2; no DrawCompleted event
 
@@ -1403,10 +1520,21 @@ ONE_KERNEL_FORCED_ADVANCE_SUFFICIENT = YES, if it runs all forced work to next D
 PRIORITY_EVENT_REQUIRED = YES
 DRAW_COMPLETED_EVENT_REQUIRED = NO
 DRAW_PROGRESS_STATE_REQUIRED = NO
-REPLAY_V6_REQUIRED = NO
+NEW_AUTHORITATIVE_MAGIC_CONTINUATION_STATE = YES
+FULL_STATE_DIGEST_V4_CAN_BE_EXTENDED_IN_PLACE = NO
+FULL_STATE_DIGEST_V5_REQUIRED = YES
+ENVIRONMENT_CHECKPOINT_V6_REQUIRED = YES
+CHECKPOINT_DIGEST_V6_REQUIRED = YES
+REPLAY_V6_REQUIRED = YES
+OBSERVATION_ENVELOPE_V2_REQUIRED = NO
+INFORMATION_STATE_DIGEST_V3_REQUIRED = NO, unless independent retained-information review finds a meaning change
+MAGIC_OBSERVATION_PAYLOAD_CODEC = magic-m3-observation.v1
+V5_ARTIFACTS_REINTERPRETED = NO
+AUTOMATIC_V5_TO_V6_MIGRATION = NONE
+S3_P0_REQUIRED = YES
 S2_SBA_INTERACTION_CLOSABLE = YES, within the reviewed S2 admitted zone-order profile
 S2_DRAW_INTERACTION_CLOSABLE = YES
-S2_AUTHORITATIVE_REPLAY_PATH_CLOSABLE = YES, through a real response transaction plus backend V5 replay
+S2_AUTHORITATIVE_REPLAY_PATH_CLOSABLE = YES, through a real response transaction plus backend V6 replay
 S2_COVERED_PROMOTION_POSSIBLE_AFTER_PLAN = YES, only after independent review and all accepted S2 gates pass
 SAME_OWNER_MULTI_GRAVEYARD_POLICY = EXPLICIT_ORDER_DECISION
 GRAVEYARD_ORDER_DECISION_DOMAIN = DecisionDomainV2::Order
