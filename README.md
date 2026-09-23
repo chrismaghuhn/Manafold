@@ -5,17 +5,18 @@
 - **Foundation closure/freeze:** `COMPLETE` (`FINAL_FOUNDATION_CLOSURE = PASS`, `PRE_M3_REMEDIATION_FREEZE = PASS`, `FOUNDATION_READY_FOR_M3 = YES`)
 - **Core modularization:** Issue #162 `COMPLETE`, merged by PR #179; the refactor was semantic-neutral and did not change public, wire, schema, digest, replay, or rules contracts
 - **M2.5 scope work:** `NOT_CLAIMED` / `NOT_FROZEN`; the abandoned census and research machinery remains historical Git evidence, not active engine scope
-- **Current active work area:** M3.S1 final exact-head verification preparation; the bounded capability is `covered` and not certified
+- **Current status:** M3.S1 complete / covered / not certified; exact-head verification is complete
 - **Pre-M3 governance cleanup:** `COMPLETE`; the accepted M3 Entry Decision and its historical authorization are preserved, with the hardened scope accepted by PR #184
 - **M3 authorization:** `AUTHORIZED` at `ea668c47ef1361b3d989fd32b8f3cfd4751b1e79`; the authorized task at that head was `M3.P0_STATE_IDENTITY_CUT`
 - **M3 milestone execution:** `STARTED` — P0 infrastructure is merged and frozen
 - **P0:** `COMPLETE / FROZEN` (reviewed head `a7e641a7e6145610c9533187cf6340712f460e44`, merge commit `20dac927027776ef5f0a5b389a27d4a05eefb180`)
 - **M3.T0:** `COMPLETE / FROZEN` (closure review head `b403edefcabf7b304c0fa5f6816d22ac8aca477b`, 10/10 frozen exit criteria PASS, 0 BLOCKER / 0 MAJOR; status-sync merge `b9c5f2be97b8fc1f31d648d58f890de78f0a035c`; freeze executed and tracked in Issue #178)
-- **M3.S1:** `COVERED / NOT CERTIFIED` (`rules/turn-structure@0.1.0`; S1 authorization head `587016574e4e8f9f797a713877f8caf1c5143cfb`; covered for the bounded scope, certification is not claimed)
+- **M3.S1:** `COMPLETE / COVERED / NOT CERTIFIED` (`rules/turn-structure@0.1.0`; S1 authorization head `587016574e4e8f9f797a713877f8caf1c5143cfb`; covered for the bounded scope, certification is not claimed)
 - **M3 semantic implementation:** `COVERED` — bounded M3.S1 turn-structure semantics only; downstream capabilities remain unauthorized and unimplemented
 - **M3 Pre-T0 hardening:** `COMPLETE / ACCEPTED` (`ADR 0054 = ACCEPTED`, `FOUNDATION_V2 = ACCEPTED_HARDENED_M3_SCOPE`)
 - **M3 plan status:** `ACCEPTED`
-- **Next gate:** `TASK_14_EXACT_HEAD_VERIFICATION` (final exact-head verification; Task 14 has not started)
+- **Task 14:** `COMPLETE` — `S1_EXACT_HEAD_VERIFICATION = PASS`
+- **Next gate:** `M3_S2_SELECTION_OR_AUTHORIZATION` (S2 selection/review/authorization is separate and has not begun)
 - **M3 hardening acceptance:** PR #184 merged and accepted ADR 0054/Foundation V2; T0 was reauthorized under Issue #178, implemented by merged PRs #189/#190/#191, and finalized as COMPLETE / FROZEN
 - **Capability lifecycle:** 10 Foundation capabilities are `specified`, 0 are `implemented`, 1 is `covered`, and 0 are `certified`
 - **Current boundary:** S1 is covered for its bounded scope; certification remains unclaimed, downstream semantic capabilities remain unauthorized/unimplemented, and no card/deck/format/Commander support claim follows.

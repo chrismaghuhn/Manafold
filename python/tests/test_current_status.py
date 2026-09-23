@@ -16,8 +16,8 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
             r"\*\*Foundation closure/freeze:\*\* `COMPLETE`",
         )
         self.assertIn(
-            "**Current active work area:** M3.S1 final exact-head verification preparation; "
-            "the bounded capability is `covered` and not certified",
+            "**Current status:** M3.S1 complete / covered / not certified; "
+            "exact-head verification is complete",
             readme,
         )
         self.assertNotIn(
@@ -49,7 +49,7 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
         self.assertIn("`b9c5f2be97b8fc1f31d648d58f890de78f0a035c`", readme)
         self.assertNotIn("COMPLETE-CANDIDATE / FREEZE-ELIGIBLE", readme)
         self.assertNotIn("freeze not yet executed or tracked", readme)
-        self.assertIn("**M3.S1:** `COVERED / NOT CERTIFIED`", readme)
+        self.assertIn("**M3.S1:** `COMPLETE / COVERED / NOT CERTIFIED`", readme)
         self.assertIn("`587016574e4e8f9f797a713877f8caf1c5143cfb`", readme)
         self.assertNotIn("SELECTED / AUTHORIZATION-ELIGIBLE / NOT_AUTHORIZED", readme)
         self.assertIn("**M3 semantic implementation:** `COVERED`", readme)
@@ -57,7 +57,9 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
         self.assertIn("ADR 0054 = ACCEPTED", readme)
         self.assertIn("FOUNDATION_V2 = ACCEPTED_HARDENED_M3_SCOPE", readme)
         self.assertIn("**M3 plan status:** `ACCEPTED`", readme)
-        self.assertIn("**Next gate:** `TASK_14_EXACT_HEAD_VERIFICATION`", readme)
+        self.assertIn("**Task 14:** `COMPLETE` — `S1_EXACT_HEAD_VERIFICATION = PASS`", readme)
+        self.assertIn("**Next gate:** `M3_S2_SELECTION_OR_AUTHORIZATION`", readme)
+        self.assertNotIn("M3_S2_AUTHORIZED = YES", readme)
         self.assertNotIn("M3_S1_AUTHORIZATION_DECISION", readme)
         self.assertNotIn("M3_T0_CLOSURE_STATUS_SYNC_EXACT_HEAD_REVIEW", readme)
         self.assertIn(
@@ -149,13 +151,17 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
         self.assertIn("S1_IMPLEMENTATION_STARTED = YES", roadmap)
         self.assertIn("S1_TURN_STRUCTURE_LIFECYCLE = covered", roadmap)
         self.assertIn("S1_COVERAGE_STATUS = covered / certification not claimed", roadmap)
+        self.assertIn("S1_SPECIFIED_CAPABILITY_COUNT = 10", roadmap)
         self.assertIn("S1_IMPLEMENTED_CAPABILITY_COUNT = 0", roadmap)
         self.assertIn("S1_COVERED_CAPABILITY_COUNT = 1", roadmap)
         self.assertIn("S1_CERTIFIED_CAPABILITY_COUNT = 0", roadmap)
         self.assertIn("CURRENT_RESUMABLE_EXECUTION_CONTRACT = V5", roadmap)
         self.assertIn("V4_RESUMABLE_CONTRACT_STATUS = HISTORICAL_ONLY", roadmap)
         self.assertIn("TASK_13_DOCUMENTATION_STATUS_CLOSURE = COMPLETE", roadmap)
-        self.assertIn("TASK_14_STARTED = NO", roadmap)
+        self.assertIn("TASK_14_EXACT_HEAD_VERIFICATION = COMPLETE", roadmap)
+        self.assertIn("S1_EXACT_HEAD_VERIFICATION = PASS", roadmap)
+        self.assertIn("M3_S1_STATUS = COMPLETE / COVERED / NOT CERTIFIED", roadmap)
+        self.assertIn("M3_S2_AUTHORIZED = NO", roadmap)
         self.assertIn("AUTHORIZED_NEXT_TASK = M3.S1", roadmap)
         self.assertIn("S1_REVIEW_MINORS = 3 CARRIED", roadmap)
         self.assertIn(
@@ -167,7 +173,7 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
         self.assertIn("S1_PHYSICAL_CARD_IDENTITY_CHANGE_AUTHORIZED = NO", roadmap)
         self.assertNotIn("S1_IMPLEMENTATION = NOT_AUTHORIZED", roadmap)
         self.assertNotIn("NEXT_GATE = M3_S1_AUTHORIZATION_DECISION", roadmap)
-        self.assertIn("NEXT_GATE = TASK_14_EXACT_HEAD_VERIFICATION", roadmap)
+        self.assertIn("NEXT_GATE = M3_S2_SELECTION_OR_AUTHORIZATION", roadmap)
         self.assertNotIn("eligible for a separate authorization decision", roadmap)
         self.assertNotIn("S1 implementation remains NOT_AUTHORIZED", roadmap)
         self.assertIn(
@@ -214,7 +220,8 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
             "→ M3.T0 thin private conformance facade\n"
             "→ M3.S1 rules/turn-structure@0.1.0 covered\n"
             "→ Task 13 documentation/status/generated-contract closure complete\n"
-            "→ Task 14 exact-head verification",
+            "→ Task 14 exact-head verification COMPLETE\n"
+            "→ M3.S2 selection/review/authorization (separate; not yet authorized)",
             roadmap,
         )
         self.assertIn("M3.P0 semantic-neutral state/persistence identity cut", roadmap)

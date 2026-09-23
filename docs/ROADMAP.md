@@ -135,13 +135,17 @@ S1_DEPENDENCIES = NONE
 S1_PRIMARY_SEMANTIC_OWNER = turn
 S1_TURN_STRUCTURE_LIFECYCLE = covered
 S1_COVERAGE_STATUS = covered / certification not claimed
+S1_SPECIFIED_CAPABILITY_COUNT = 10
 S1_IMPLEMENTED_CAPABILITY_COUNT = 0
 S1_COVERED_CAPABILITY_COUNT = 1
 S1_CERTIFIED_CAPABILITY_COUNT = 0
 CURRENT_RESUMABLE_EXECUTION_CONTRACT = V5
 V4_RESUMABLE_CONTRACT_STATUS = HISTORICAL_ONLY
 TASK_13_DOCUMENTATION_STATUS_CLOSURE = COMPLETE
-TASK_14_STARTED = NO
+TASK_14_EXACT_HEAD_VERIFICATION = COMPLETE
+S1_EXACT_HEAD_VERIFICATION = PASS
+M3_S1_STATUS = COMPLETE / COVERED / NOT CERTIFIED
+M3_S2_AUTHORIZED = NO
 S1_SUPPORT_PREDICATE_REQUIRES_EXACTLY_TWO_PLAYERS = YES
 DOWNSTREAM_CAPABILITIES_AUTHORIZED = NO
 S1_ZONE_TRANSITIONS_AUTHORIZED = NO
@@ -150,7 +154,7 @@ S1_OBJECT_INCARNATION_CHANGE_AUTHORIZED = NO
 S1_PHYSICAL_CARD_IDENTITY_CHANGE_AUTHORIZED = NO
 S1_ALLOWED_ZONES_OWNED_MUTATION = bounded untap tapped-field mutation only
 S1_REVIEW_MINORS = 3 CARRIED
-NEXT_GATE = TASK_14_EXACT_HEAD_VERIFICATION
+NEXT_GATE = M3_S2_SELECTION_OR_AUTHORIZATION
 ```
 
 `M2.5 = NOT_CLAIMED / NOT_FROZEN`. Its abandoned census and research
@@ -199,13 +203,14 @@ reauthorization was recorded separately under Issue #178.
 
 ## M3 — Bounded Semantic Coverage
 
-**Status:** `STARTED — P0 COMPLETE / FROZEN — T0 COMPLETE / FROZEN — S1 COVERED / NOT CERTIFIED`;
+**Status:** `STARTED — P0 COMPLETE / FROZEN — T0 COMPLETE / FROZEN — S1 COMPLETE / COVERED / NOT CERTIFIED`;
 the sections below describe the
 execution model for the remaining slices. M3.P0 infrastructure is merged and
 frozen; M3.T0 is finalized COMPLETE / FROZEN (Issue #178); M3.S1 is
-`COVERED / NOT CERTIFIED` for the bounded turn-structure capability. Task 13
-documentation/status/generated-contract closure is complete; Task 14 has not
-started.
+`COMPLETE / COVERED / NOT CERTIFIED` for the bounded turn-structure
+capability. Task 13 documentation/status/generated-contract closure and Task
+14 exact-head verification are complete. M3.S2 has not been selected or
+authorized; its selection/review/authorization is the next separate gate.
 
 The planned execution order is:
 
@@ -214,7 +219,8 @@ M3.P0 semantic-neutral state/persistence identity cut
 → M3.T0 thin private conformance facade
 → M3.S1 rules/turn-structure@0.1.0 covered
 → Task 13 documentation/status/generated-contract closure complete
-→ Task 14 exact-head verification
+→ Task 14 exact-head verification COMPLETE
+→ M3.S2 selection/review/authorization (separate; not yet authorized)
 ```
 
 P0 added no Magic capability and advanced no capability lifecycle; T0 added no
