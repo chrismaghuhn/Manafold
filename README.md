@@ -19,11 +19,12 @@
 - **M3 Pre-T0 hardening:** `COMPLETE / ACCEPTED` (`ADR 0054 = ACCEPTED`, `FOUNDATION_V2 = ACCEPTED_HARDENED_M3_SCOPE`)
 - **M3 plan status:** `ACCEPTED`
 - **Task 14:** `COMPLETE` — `S1_EXACT_HEAD_VERIFICATION = PASS`
-- **S3.P0:** implementation complete candidate; exact-head review pending
-- **Next gate:** `M3_S3_P0_EXACT_HEAD_REVIEW`
+- **S3.P0:** `COMPLETE / FROZEN` (reviewed head `0cd24d1f2cb4183c19fb04ce0c3c827148313a3b`, PR #210, merge commit `ffc433985f41e6e2980df23a103b5e2358527ea3`)
+- **S3.0:** `AUTHORIZED / STARTED`; shared response transaction seam characterization is underway
+- **Next gate:** `M3_S3_0_TASK_3_RED`
 - **M3 hardening acceptance:** PR #184 merged and accepted ADR 0054/Foundation V2; T0 was reauthorized under Issue #178, implemented by merged PRs #189/#190/#191, and finalized as COMPLETE / FROZEN
 - **Capability lifecycle:** 9 Foundation capabilities are `specified`, 1 is `implemented`, 1 is `covered`, and 0 are `certified`
-- **Current boundary:** S2 authoritative replay is `DEFERRED_REQUIRED / BLOCKED_FOR_COVERED`; `draw-card × zone-incarnation` and `state-based-actions-combat × zone-incarnation` remain `UNSATISFIED`. S3.0/A/B/C are not authorized. Certification and card/deck/format/Commander/playability support are not claimed.
+- **Current boundary:** S2 authoritative replay is `DEFERRED_REQUIRED / BLOCKED_FOR_COVERED`; `draw-card × zone-incarnation` and `state-based-actions-combat × zone-incarnation` remain `UNSATISFIED`. S3.A/B/C are not authorized. Certification and card/deck/format/Commander/playability support are not claimed.
 - **Project type:** independent greenfield MTG/ML rules and simulation engine
 - **Playable engine:** no
 - **Real Magic semantics:** bounded M3.S1 turn-structure slice and implemented M3.S2 selected zone-incarnation profiles only
