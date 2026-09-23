@@ -132,15 +132,208 @@ gameplay Decision follows a terminal result. A creature zone transition in
 the same SBA check remains in the complete event/delta product before the
 environment commits the terminal state.
 
-**S2 ordering bound:** S2 explicitly excludes simultaneous multi-object
-Graveyard ordering. For S3.A, preflight must reject atomically if a single SBA
-round would put more than one creature owned by the same player into that
-player's ordered Graveyard. One move per owner in a round is admitted; moves
-to different owners' Graveyards can coexist in the same simultaneous round.
-Never choose an order using hidden/global ID order as a substitute for an
-unreviewed Magic ordering rule. If Foundation V2 review determines that its
-selected scope requires same-owner multi-object ordering, stop S3.A before
-production implementation and revise the accepted scope/authority explicitly.
+Same-owner multi-object Graveyard order is a required player choice under the
+pinned CR 404.3, not an implementation sort and not a fail-closed cardinality
+exception. Foundation V2's selected simultaneous SBA scope remains unchanged.
+Each owner receiving two or more cards in the same Graveyard in one SBA round
+must explicitly order those cards before any action in that round is applied.
+Use the already accepted Comprehensive Rules snapshot
+`wotc-cr-2026-08-07-txt-20260819-sha256-4381ad1b39ab2c05f7d03633a20f711ed37277074d3266dcba5f38cbb527423f`
+for CR 404.3 and the player-choice/APNAP rule. The implementation contract and
+conformance references must pin the exact applicable APNAP paragraph from
+that snapshot; no second authority snapshot is introduced.
+
+The Decision uses existing public Decision V2 shapes:
+
+```text
+DecisionDomainV2::Order { minimum: N, maximum: N }
+DecisionAnswerV2::Order { candidate_ids: complete permutation }
+DecisionVisibility::ActingPlayerOnly; actor = current APNAP owner
+CandidateIntent::SelectObject { object: owner-authorized OpaqueObjectId }
+EngineCandidateBinding::SelectObject { object: trusted GameObjectId }
+```
+
+The candidate array contains exactly the N selected cards, uses authorized
+owner-side opaque identities, is canonical/dense under
+`CandidateOrderingV1`, and the answer is an exact permutation. No new public
+Decision family or implicit GameObjectId/PhysicalCardId ordering is added.
+Every offered card must already have an authorized owner-side opaque mapping;
+otherwise the kernel fails closed before creating the continuation or
+Decision. The first object in the accepted order is topmost in the new
+Graveyard group; all remaining selected objects follow it and precede every
+pre-round Graveyard member.
+
+If both players need to order cards in the same SBA round, collect required
+orders in APNAP order: active player first, then nonactive player. Skip an
+owner who has fewer than two cards in that Graveyard. No zone, `has_lost`,
+status, or other SBA action from the round mutates until every required order
+has been received. `PriorityState` remains `None`; no priority or forced
+advance is offered between ordering stages. Rejection at any stage preserves
+the complete continuation/request/environment/player fingerprint.
+
+### Magic SBA ordering continuation
+
+The current `ContinuationPayloadV2` contains only
+`SyntheticM2Assembly`. Add a distinct typed Magic-specific variant for this
+SBA ordering program; do not overload, reinterpret, or insert Magic values
+into the Synthetic payload. One active round continuation stores the exact
+authoritative information needed to resume without event-history or
+controller-local state:
+
+```text
+SbaRoundPlan:
+  round_start_revision
+  complete canonical selected action set and causes
+  order_owners in APNAP order
+  next_owner_index
+  completed owner -> exact ordered GameObjectId permutation
+```
+
+These are semantic requirements, not frozen Rust field names. Each resume
+re-derives the complete SBA action set from the unchanged authoritative game
+facts and requires exact equality with the saved plan before accepting an
+order. Prior staged responses may change revision, pending decision,
+continuation data and allocators; they may not change life, zones, source
+facts, priority or status. Do not persist cached characteristics or an
+unverifiable full-state snapshot.
+
+One trusted `ContinuationId` persists across all APNAP Order stages. Each
+stage receives a fresh checked `DecisionId` and actor-local
+`PlayerDecisionIdV1`. The existing continuation record's actor coherence
+becomes payload-specific: Synthetic stages preserve their current same-actor
+rule; the Magic payload identifies the expected APNAP owner for the current
+stage, and record actor/pending-request actor must match it. On stage transfer,
+update the current-stage actor while preserving ContinuationId and creation
+revision. A pending continuation always has a pending Decision; no accepted
+continuation-only checkpoint is permitted.
+
+Stage behavior:
+
+```text
+no owner needs Order:
+  derive complete round -> apply complete round in one rules product
+
+one owner needs Order:
+  save complete round -> owner Order Decision
+  accepted response -> validate/store permutation
+  -> apply round, fixed point and following forced work in that response
+
+both owners need Order:
+  save complete round -> active-owner Order Decision
+  accepted response -> store active order; same ContinuationId;
+  -> fresh nonactive-owner Order Decision, no SBA mutation
+  accepted response -> store nonactive order
+  -> apply round, fixed point and following forced work in that response
+```
+
+The final Order response's `kernel.apply` completes the entire SBA batch and
+returns at the next real Decision, terminal outcome, or typed unsupported/
+error boundary. Earlier APNAP responses commit only the new stage/Decision.
+They do not move cards or apply player losses. This lets each genuine response
+own the consequences in V5 while every checkpoint remains a valid resumable
+EngineState.
+
+Exact audit ordering for a staged owner response is:
+
+```text
+DecisionCleared(current Order Decision)
+SbaGraveyardOrderChosen(current owner, exact top-to-bottom order)
+if another owner remains: DecisionCreated(next APNAP Order Decision)
+otherwise: StateBasedActionsApplied(complete saved action set)
+          ZoneTransition(s) for the complete batch
+          subsequent fixed-point event round(s), if any
+          terminal outcome OR priority event + next Decision
+```
+
+The initial no-choice-to-order continuation transition creates the first
+`DecisionCreated` event and stores the typed round plan in the complete state;
+it emits no applied-SBA event because no SBA action has happened yet. Every
+event sequence is checked by the semantic cursor and complete transition
+contract at its own revision.
+
+The selected semantic audit adds a typed `SbaGraveyardOrderChosen` event and
+matching `SemanticDeltaOperation` for each accepted owner order. It records
+the trusted continuation, owner and exact permutation and advances the
+cursor's typed continuation state. The bound Order Decision is projected
+only to its actor.
+
+Continuation validation proves the current pending request maps to the
+payload's next APNAP owner; the candidate set is exactly that owner's SBA
+objects; each prior order is an exact permutation; no order is duplicated or
+missing; and no SBA action has already been applied. On final completion,
+remove the continuation in the same transition that applies the complete
+round. Checkpoint/restore, fork and replay resume from this payload alone.
+
+### Public APNAP choice visibility
+
+CR 101.4b means a later player making an APNAP choice knows earlier players'
+choices. After the active owner submits an order, the nonactive owner must
+therefore see that exact arrangement before answering their own Order
+Decision. `DecisionVisibility::ActingPlayerOnly` still limits each request
+and candidate list to its actor; actor-only request visibility alone does not
+satisfy this rule.
+
+Project persisted order progress as public **current observation state** in a
+distinct `magic-m3-observation.v1` payload codec carried by the existing
+`ObservationEnvelopeV1` payload surface:
+
+```text
+pending_sba_ordering = null
+  OR {
+    completed_orders: [
+      { owner: PlayerId, ordered_objects: [perspective-local OpaqueObjectId] }
+    ],
+    next_order_owner: PlayerId
+  }
+```
+
+Each perspective resolves the same trusted `GameObjectId` permutation through
+its own authorized opaque mapping. No observation contains GameObjectId,
+PhysicalCardId, CardDefinitionId, ContinuationId, allocator state or another
+actor's candidate binding. The payload is projected read-only from the
+authoritative continuation; the continuation itself is never exposed. After
+the complete SBA batch, `pending_sba_ordering` clears and the final public
+Graveyard state carries the selected order.
+
+This is a public current-state projection, not an event-history cache or a
+second authority. It consumes no `VisibleSequence`: the typed
+`SbaGraveyardOrderChosen` rule event remains the replay/audit authority, and
+no `ObservedEventEnvelopeV2` is fabricated for an incomplete round. The
+active submitter's `PlayerStepV2` includes the updated current observation;
+the nonactive endpoint sees the same public order progress on its next
+observation read, before its own Decision.
+
+`synthetic-m3-observation.v1` bytes must remain unchanged. The Magic rules
+contract binds `magic-m3-observation.v1` in `ReplayManifestV5`; V5 manifest
+validation/schema expands its allowed payload codecs by bound semantic
+contract. ObservationEnvelope V1, InformationState V2, PlayerStep V2,
+Decision V2, ObservedEventEnvelope V2 and ReplayStep V5 shapes remain
+unchanged. Update the Magic payload schema/Python projection, V5 manifest
+schema/validator, and golden/negative fixtures. If codec binding cannot be
+expressed without reinterpreting an existing codec or widening an
+unauthorized player surface, stop before Order implementation.
+
+#### Digest, checkpoint and V5 compatibility
+
+The Magic payload/order state is authoritative EngineState and therefore must
+be validated and included in canonical state identity. Extend the existing
+`execution_v2.continuations[].continuation_payload` mapping with a unique
+`magic_sba_graveyard_order` tag and canonical payload layout. Do not reuse a
+tag. Existing `SyntheticM2Assembly` FullStateDigestV4 bytes/golden vectors
+must remain byte-identical. Update `STATE_HASHING.md`, the V4 canonical codec,
+reader/writer fixtures, state schemas/adapters if applicable, and
+Rust/Python/digest parity evidence from the authoritative source.
+
+`EnvironmentCheckpointV5` and `ReplayStepV5` remain the intended surfaces:
+V5 binds the unchanged FullStateDigestV4 type plus the new semantic contract
+identity, and every Order answer is already a real DecisionResponseV2 replay
+input. Historical V5 artifacts keep their old semantic contract IDs and
+digest bytes; they are never reinterpreted under this S3 closure. The state
+hash/schema review must explicitly approve the uniquely tagged additive V4
+encoding and prove old-state byte parity. If accepted version policy instead
+requires a new full-state/checkpoint/replay identity for this variant, stop
+before S3.A3 and resolve the versioning constraint; do not silently claim V5
+compatibility or introduce Replay V6 in this plan.
 
 ### S3.A event and delta shape
 
@@ -155,13 +348,34 @@ StateBasedActionsApplied {
 
 Its closed action variants carry trusted player/object identity and the
 selected cause (`player loses`, `zero toughness`, `lethal marked damage`, or
-both creature causes). The event's matching `SemanticDeltaOperation` preserves
-that batch. Then emit the already existing S2 `ZoneTransition` for each
-creature action in canonical `(owner PlayerId, old GameObjectId)` order; the
-per-owner cardinality bound ensures this audit ordering cannot decide
-same-Graveyard semantics. All events carry the candidate revision. Terminal
-`EpisodeStatus` is the environment result paired with the `player loses`
-actions; do not add a string-coded `PublicOutcome` as a second authority.
+both creature causes). Its matching `SemanticDeltaOperation` preserves the
+complete action batch. `SbaGraveyardOrderChosen` events and the typed
+continuation preserve each player's accepted permutation. Emit the existing
+S2 `ZoneTransition` once per creature action as one atomic rules workspace
+product; all events carry the candidate revision. Event serialization order
+is deterministic audit order only; it is not authority for Graveyard order.
+The completed continuation choices are the sole authority for destination
+arrangement. Terminal `EpisodeStatus` is the environment result paired with
+the `player loses` actions; do not add a string-coded `PublicOutcome` as a
+second authority.
+
+The selected order is top-to-bottom: the first object in the owner's
+`DecisionAnswerV2::Order` is topmost in the new Graveyard group. Existing
+pre-round Graveyard members remain below the entire group and retain relative
+order. Keep `rules/zone-incarnation@0.1.0` as the sole one-object OLD→NEW
+transition authority, unchanged in semantic meaning. The S3.A rules-owned
+round coordinator composes that executor on one uncommitted workspace after
+all required orders are collected. Derive and validate the complete SBA
+action/source set from the same round-start state before the first call. For
+each owner, invoke the S2 top-inserting transition in reverse selected order
+so the final owner vector realizes the accepted top-to-bottom permutation.
+Process owner groups in fixed APNAP order only for deterministic allocation
+and event audit. The group is one SBA transition and one environment commit;
+no intermediate workspace is a supported S2 checkpoint or lifecycle state.
+This composition does not change S2's declared single-transition semantics or
+version. If the existing executor cannot compose safely without a second
+mutation implementation or a semantic change to S2, stop and request the
+required governance/version decision before coding.
 
 `SemanticValidationCursor` must derive the complete applicable set from its
 round-start facts and compare it exactly with the batch event before applying
@@ -182,16 +396,20 @@ repository generator. Never hand-edit generated output.
 
 Support only the validated pass-only two-player profile. Before every window:
 
-1. The `priority-sba-gate` runs S3.A to a stable result.
-2. If terminal, stop without priority.
-3. Derive and validate `PASS_ONLY_PRIORITY_PRECONDITION` from complete
+1. The `priority-sba-gate` derives the complete S3.A round.
+2. If one or more owners require Graveyard ordering, create/resume the typed
+   Magic SBA continuation and collect all required APNAP Order decisions
+   before applying any SBA action. While this continuation is active, no
+   priority Decision may exist or be offered.
+3. Once the SBA fixed point is stable, if terminal, stop without priority.
+4. Derive and validate `PASS_ONLY_PRIORITY_PRECONDITION` from complete
    authoritative state: empty stack, no waiting/delayed triggers, effects,
    replacement/prevention, continuous-effect, mana, special-action,
    land-play, or action-bearing ability surface; inert card objects; no
    turn-based action still pending.
-4. If any fact is absent or non-pass action remains unproven, reject before
+5. If any fact is absent or non-pass action remains unproven, reject before
    creating a Decision.
-5. Otherwise give the active player priority and create one explicit pass
+6. Otherwise give the active player priority and create one explicit pass
    Decision.
 
 The public Decision reuses the existing V2 contract:
@@ -244,6 +462,9 @@ The cursor and state validator require pending pass Decision actor/domain /
 candidate / trusted binding to agree with the held player and pass count.
 `PriorityState::None` has no pending Basic Priority Decision. A terminal SBA
 product clears no nonexistent Decision and creates no later priority event.
+An active Magic SBA ordering continuation instead has `PriorityState::None`
+and an `Order` Decision for its APNAP stage actor; it cannot coexist with a
+pass-priority Decision.
 
 ## 5. S3.C exact Draw scope and event disposition
 
@@ -327,8 +548,15 @@ or schedule another forced advance. One kernel advance is sufficient only
 because the rules kernel itself resolves every deterministic mandatory action
 until the next real Decision, terminal outcome, or typed unsupported/error
 boundary. For this Draw path one advance must include Draw, S2, SBA fixed
-point, and the new pass Decision. If the kernel cannot guarantee this, stop;
-do not add an arbitrary environment loop.
+point, and the next Decision. If the selected SBA round requires ordering,
+the one advance returns its first APNAP Order Decision with the complete
+typed continuation and no round mutation. Each genuine Order response passes
+through the same shared transaction. An intermediate APNAP response returns
+the next Order Decision with no SBA action applied; the final APNAP response
+applies the complete round, repeats the fixed point, and returns at the next
+Decision/outcome/error. If the kernel cannot guarantee this with one progress
+advance plus explicit Order responses, stop; do not add an arbitrary
+environment loop.
 
 `ReferenceEnvironmentBackend::player_visible_decision` returns the projected
 pass Decision only for its authorized actor. Its `submit_player_response`
@@ -365,6 +593,26 @@ ReplayStep N+1:
   V5 records the actual opponent pass response in ReplayStep N+1
 ```
 
+The primary S2 Library-to-Hand witness uses a no-SBA-action Draw fixture; its
+real opponent pass step re-executes the Draw/S2 transition and ends at active
+priority. A separate simultaneous-SBA ordering witness extends the chain:
+
+```text
+real pass response
+  -> forced progress derives complete SBA round
+  -> APNAP Order Decision for first required owner
+ReplayStep N+2 = that owner's real Order response
+  -> next APNAP Order Decision, if another owner needs one
+ReplayStep N+3 = next owner's real Order response
+  -> complete ordered-group S2 transitions + SBA fixed point
+  -> next priority Decision/outcome/error
+```
+
+Each Order response is a genuine V5 step. The last response re-executes the
+same saved typed round plan and applies the complete round atomically. Replay
+and checkpoint/restore are tested before the first Order and between APNAP
+stages; no history or controller-local buffer resumes the choice.
+
 Backend replay from the initial V5 checkpoint must re-execute both real pass
 responses and prove identical before identity, actor/request binding, capability
 closure, allocator-derived fresh `GameObjectId`, zone/order, S2 knowledge and
@@ -399,9 +647,10 @@ The candidate S2 interaction evidence is:
 
 ```text
 state-based-actions-combat × zone-incarnation:
-  real derived creature SBA -> one exact S2 Battlefield-to-owner-Graveyard
-  transition, complete event/delta/cursor, fresh identity, OLD-reference
-  closure, and rejection nonmutation
+  real derived simultaneous creature SBA -> exact S2
+  Battlefield-to-owner-Graveyard transition(s), typed APNAP Order choices for
+  each owner with multiple incoming cards, complete event/delta/cursor, fresh
+  identities, OLD-reference closure, and rejection nonmutation
 
 draw-card × zone-incarnation:
   real mandatory Draw -> exact S2 Library-top-to-owner-Hand transition,
@@ -421,10 +670,10 @@ Use five sequential PRs, each based on the newly merged `master` head:
 | PR | Tasks | Scope and merge exit |
 | --- | --- | --- |
 | A — shared response transaction | 1–2 | Semantic-neutral extraction; Synthetic regression parity; Reference remains unavailable until its separate implementation. No lifecycle change. |
-| B — S3.A SBA | 3–5 | Bounded SBA fixed point, selected S2 move, conformance and rejection evidence; `state-based-actions-combat` may become `implemented` only after its gates pass. S2 remains not covered. |
-| C — S3.B Basic Priority | 6–9 | Priority event/Decision kernel, Reference player submission through shared transaction, replay/checkpoint/fork evidence; Basic Priority may become `implemented` after gates pass. Draw remains specified. |
-| D — S3.C/D Draw integration | 10–15 | Draw, one-advance end-to-end Upkeep→Draw→priority path, hidden-world proof and real V5 replay; Draw may become `implemented`. S2 is still not promoted automatically. |
-| E — S2 interaction/coverage closure | 16–19 | Independent review of both S2 interactions and V5 replay; update S2 to `covered` only if every accepted S2 gate passes; otherwise retain not covered and report the exact blocker. |
+| B — S3.A ordered SBA | 3–8 | RED, Magic continuation/state identity, APNAP Order Decisions and public progress observation, transactional S2 composition, fixed-point/evidence; `state-based-actions-combat` may become `implemented` only after all gates pass. S2 remains not covered. |
+| C — S3.B Basic Priority | 9–12 | Priority event/Decision kernel, Reference player submission through shared transaction, replay/checkpoint/fork evidence; Basic Priority may become `implemented` after gates pass. Draw remains specified. |
+| D — S3.C/D Draw integration | 13–18 | Draw, one-advance Upkeep→Draw path, continuation-aware SBA ordering, hidden-world proof and real V5 replay; Draw may become `implemented`. S2 is not promoted automatically. |
+| E — S2 interaction/coverage closure | 19–22 | Independent review of both S2 interactions and V5 replay; update S2 to `covered` only if every accepted S2 gate passes; otherwise retain not covered and report the exact blocker. |
 
 This sequence keeps `master` green, exposes no unsupported half-contract as a
 capability, and keeps each semantic owner independently reviewable. Do not
@@ -488,11 +737,12 @@ semantic state.
 
 Inject and assert full nonmutation for kernel response rejection,
 forced-progress/SBA failure, S2 zone rejection, object/Decision/event/visible-
-sequence exhaustion, candidate checkpoint failure, replay append/export
-failure, occurrence projection failure, player projection validation failure,
-and before-commit hook failure. Compare EngineState, status, RNG, allocators,
-knowledge, perspective identities/history, events, counters, replay,
-checkpoint identity, and player bytes.
+sequence/continuation-ID exhaustion, invalid Order binding, APNAP stage-transfer
+failure, candidate checkpoint failure, replay append/export failure,
+occurrence projection failure, player projection validation failure, and
+before-commit hook failure. Compare EngineState, status, RNG, allocators,
+knowledge, perspective identities/history, events, continuation/request,
+counters, replay, checkpoint identity, and player bytes.
 
 **Verification:** `cargo test -p mtgml-environment --all-features`,
 `cargo fmt --all -- --check`, `scripts/run_checks.py fast`, then
@@ -504,109 +754,239 @@ Task 1 RED commit.
 **HARD STOP:** any Synthetic bytes/counters/replay behavior changes, duplicated
 commit logic remains, or a failure commits partial environment state.
 
-### Task 3 — RED: S3.A SBA fixed-point conformance
+### Task 3 — S3.A1 RED: simultaneous SBA batch and ordering obligation
 
 **Allowed files:** `crates/mtgml-conformance/src/state_based_actions.rs`,
-`crates/mtgml-conformance/src/lib.rs`, `crates/mtgml-rules/src/tests/`, and
-test-only state construction.
+`crates/mtgml-conformance/src/lib.rs`, rules test modules, and test-only state
+construction.
 
-**Forbidden:** production SBA implementation, a second zone executor,
-`damage-and-life` dependency, schema/lifecycle promotion.
+**Forbidden:** production SBA code, cardinality rejection, implicit ordering,
+zone executor changes, continuation production types, lifecycle edits.
 
-**RED tests:** life at zero/negative; one player loss; simultaneous two-player
-loss; zero toughness; lethal marked damage; both causes on one creature
-(exactly one move); multiple applicable actions in one common round snapshot;
-stable reevaluation; different-owner concurrent Graveyard moves; more than one
-same-owner Graveyard move rejected before mutation; terminal plus creature
-move; invalid/unsupported source profile; S2 rejection and ID exhaustion.
+**RED tests:** all Foundation V2 predicates from one round-start state;
+multiple same-owner deaths require a complete owner `Order`; different owners
+are represented simultaneously; APNAP actor order when both owners need
+choices; zero-toughness and lethal causes on one card cause one move; player
+loss plus creature death is one round; both-player loss gets the exact
+simultaneous-outcome mapping; no zone/life/status mutation happens while an
+Order is pending; no order is chosen from IDs/containers; reject an incomplete
+or duplicate order.
 
-Assert exact status, `has_lost`, old/new identities, ordered zone vectors,
-event/delta/cursor pairing, no RNG, no Decision at terminal, and full rejection
-fingerprints. If review rejects the one-move-per-owner bound, stop and request
-an explicit scope/ordering design update before production edits.
+Assert order candidates map only through the owner's opaque identities,
+answers are full permutations, complete action batch survives round staging,
+no priority is offered, and every rejected answer preserves continuation,
+Decision, state, allocators, history, replay and player bytes.
 
 **Verification:** `cargo test -p mtgml-conformance state_based_actions` and
 `cargo test -p mtgml-rules state_based_actions` (expected RED recorded).
 
-**Commit boundary:** S3.A RED cases only.
+**Commit boundary:** action-set/order RED cases only.
 
-**HARD STOP:** no deterministic GameObjectId sort may be used to invent
-same-owner simultaneous Graveyard order.
+**HARD STOP:** no hidden-ID or deterministic sort workaround for CR 404.3.
 
-### Task 4 — implement bounded S3.A SBA fixed point
+### Task 4 — S3.A2 typed Magic continuation and state identity
 
-**Allowed files:** `crates/mtgml-rules/src/`, authoritative event/delta/cursor
-and transition validation; the authoritative event contract and affected
-schema/catalog/generator sources; `crates/mtgml-conformance/src/`.
+**Allowed files:** `crates/mtgml-state/src/m2_shape/continuation.rs`,
+`m2_shape.rs`, `validation.rs`, digest codec; state/digest tests; the
+authoritative continuation/hash specification and affected schema/fixtures.
 
-**Forbidden:** Draw, Priority, `damage-and-life` execution/dependency, arbitrary
-SBA kinds, triggers/replacements, a new zone-incarnation implementation.
+**Forbidden:** changing `SyntheticM2Assembly` meaning, producer/decision
+implementation, Priority/Draw code, implicit stage-local memory, replay DTO
+version change.
 
-**Objective:** derive each complete SBA action batch from one round-start
-snapshot; validate the no-unsupported-effect profile; record typed SBA action
-meaning; invoke S2 exactly once for each admitted physical-card move; apply all
-round consequences to one scratch state; re-evaluate until stable; then map
-terminal status exactly. Cursor and transition contract prove the derived
-batch, move correspondence, fixed-point order, full state, event revision,
-delta, and status.
+**RED tests:** Magic payload validates one round plan, APNAP order owners,
+stage cursor and previously collected exact permutations. Reject invalid owner
+order, duplicate/missing/foreign card IDs, malformed cause arrays, current
+actor mismatch, future source revision, missing/mismatched pending Decision,
+continuation ID change and unsupported cross-program payload. Prove checkpoint,
+restore and fork retain the payload. Add a FullStateDigestV4 vector for the
+new uniquely tagged variant and assert every existing state vector remains
+byte-identical.
 
-**RED test:** the Task 3 transition mutants and incomplete action batches must
-remain rejected until this implementation provides the exact event/cursor
-proof; no test may be weakened to permit unexplained `has_lost` or zone state.
+**Objective:** add a typed Magic-specific payload with the saved complete SBA
+action set and APNAP order progress. Keep one ContinuationId across stages;
+fresh DecisionId and PlayerDecisionId per response stage. For Magic only,
+the continuation record actor tracks the currently expected owner; Synthetic
+continuations retain their fixed actor invariant. No continuation without a
+pending Decision is valid checkpoint state.
 
-`StateBasedActionsApplied` must be a typed authoritative event and matching
-semantic delta. Its cursor arm must prove the complete canonical action set
-and mutate the `has_lost` facts. Existing `ZoneTransition` remains the sole
-incarnation event. Update every generated/schema representation from its
-authoritative source.
+Extend the existing `execution_v2` continuation payload mapping with a unique
+Magic tag. The FullStateDigestV4 outer mapping and every old-variant byte stay
+unchanged; V5 checkpoints bind the resulting digest, and the V5 semantic
+contract identity identifies the new capability closure. Update the hashing
+spec and run the version-compatibility gate in Section 3. If old-state vectors
+change or an additive V4 variant is not accepted, stop before Task 5.
 
-**Verification:** RED cases from Task 3 turn GREEN;
-`cargo test -p mtgml-rules --all-features`,
-`cargo test -p mtgml-conformance --all-features`, generation/drift checks,
-schema and Python fixture checks, `scripts/run_checks.py fast`.
+**Verification:** state validation/continuation/digest suites, checkpoint
+restore/fork tests, old and new digest known-answer vectors, generation/drift
+checks, `cargo fmt --all -- --check`.
 
-**Commit boundary:** SBA interpreter/event/cursor implementation, no lifecycle
-change before Task 5 evidence review.
+**Commit boundary:** typed payload + state/digest/checkpoint support, no
+producer yet.
 
-**HARD STOP:** event audit cannot prove the same-snapshot action set, a selected
-move bypasses S2, or the exact terminal mapping diverges from Foundation V2.
+**HARD STOP:** a local cache, event history, or test-only flag is needed to
+resume the SBA round.
 
-### Task 5 — S3.A evidence and implementation lifecycle
+### Task 5 — S3.A3 RED/GREEN: Order Decisions and APNAP stages
 
-**Allowed files:** conformance evidence and, only after all S3.A gates pass,
-`cards/capabilities/registry.json`, `README.md`, `docs/ROADMAP.md`, and
-`python/tests/test_current_status.py`.
+**Allowed files:** `crates/mtgml-rules/src/` SBA continuation program,
+decision tests, candidate-binding contract/cursor tests and conformance.
 
-**Forbidden:** marking the S2 interaction satisfied or promoting S2 to
-covered; unrelated capability status edits.
+**Forbidden:** any SBA or Graveyard mutation before all required owner orders;
+new public Decision family; changing `SyntheticM2Assembly`; PriorityState
+transition.
 
-**Evidence:** exact simultaneous batch and fixed point; one S2
-Battlefield-to-owner-Graveyard witness with fresh incarnation, physical
-continuity, event/delta/cursor and OLD-reference closure; both terminal
-mappings; no Decision/priority after terminal; rejection atomicity; checkpoint
-restore/fork/rerun; perspective-safe public movement.
+**RED tests:** request domain is `Order { minimum: N, maximum: N }`, candidates
+are exactly the actor owner's selected SBA cards, candidate payloads use that
+owner's opaque IDs and trusted `SelectObject` bindings, request visibility is
+`ActingPlayerOnly`, and each answer is an exact permutation. One owner gets
+one Order Decision. Two owners get active
+then nonactive APNAP Decisions, same ContinuationId and fresh DecisionId /
+PlayerDecisionId at each stage. The first response stores only the order and
+creates the next Order Decision; state/zone/status/loss facts remain unchanged.
+Wrong actor, stale response, invalid permutation, identity exhaustion, or
+continuation mismatch rejects atomically.
 
-**RED test / evidence failure:** a contract mutant omitting one applicable
-action, adding a duplicate zone move, or changing `has_lost` without the typed
-SBA batch must fail transition validation; a missing evidence artifact keeps
-lifecycle `specified`.
+**Objective:** on the final Order response, validate the unchanged round-start
+facts against the saved round plan, record `SbaGraveyardOrderChosen`, then
+complete the entire batch/fixed point in that same rules transition. This
+keeps every accepted checkpoint valid and gives each response its natural V5
+step.
 
-Update `state-based-actions-combat` from `specified` to `implemented` only
-after independent evidence review and full relevant gates. Record the S2
-interaction as candidate evidence for independent later review; current S2
-status stays `implemented / not covered`.
+**Verification:** Task 3 RED cases turn green through the actual Decision V2
+protocol; decision/state/rules/conformance suites and replay response binding.
 
-**Verification:** `scripts/run_checks.py integration`,
-`cargo test --workspace --all-features --locked`, docs/schema/registry/status
-validators, exact commit diff.
+**Commit boundary:** APNAP Decision/continuation progression, still no S2
+multi-move integration.
 
-**Commit boundary:** S3.A evidence + only its justified lifecycle/status sync;
-PR B.
+**HARD STOP:** any zone/life/status mutation occurs before the last required
+Order response, or any Order request leaks trusted GameObjectId.
 
-**HARD STOP:** an SBA interaction row or S2 lifecycle is promoted without an
-independent review and all applicable evidence.
+### Task 6 — S3.A3b Magic public APNAP-order observation codec
 
-### Task 6 — RED: Basic Priority event, state and Decision contract
+**Allowed files:** `crates/mtgml-observation/src/`, its Python codec/DTO,
+observation schemas and fixtures, `crates/mtgml-environment/src/` projection
+and replay manifest validation, V5 manifest schemas/tests, observation docs.
+
+**Forbidden:** new public Decision family, new `ObservedEvent`/`PlayerStep`
+schema variant, exposing trusted object/card/continuation IDs, changing the
+existing synthetic M3 observation bytes, Replay V6.
+
+**RED tests:** after the active player supplies the first of two APNAP orders,
+the nonactive player's current observation must contain the completed public
+owner order before that player answers; current `synthetic-m3-observation.v1`
+does not express it. Assert the existing PlayerStepV2 still returns only the
+actor-bound Order Decision, while the nonactor's next observation sees the
+previous order through opaque identities. For one-owner ordering, no partial
+stage is exposed; after completion the field is null and final Graveyard state
+shows the selected order. Missing an opaque mapping for any perspective fails
+closed. No visible event sequence is consumed for this current-state field.
+
+**Objective:** add `magic-m3-observation.v1` under existing
+`ObservationEnvelopeV1.payload_codec`. Keep the existing V1 envelope,
+InformationStateV2, PlayerStepV2, Decision V2 and ObservedEventEnvelopeV2
+shapes. The Magic payload adds a closed `pending_sba_ordering` value with
+APNAP completed orders expressed in each perspective's own `OpaqueObjectId`s
+and the next owner. It never projects the continuation payload or trusted
+IDs. The trusted `SbaGraveyardOrderChosen` event remains audit/replay
+authority; the public current observation carries the order needed by the
+next chooser.
+
+Bind the codec to the S3 Magic semantic contract in ReplayManifestV5. Preserve
+the SyntheticRulesCompat/S1 `synthetic-m3-observation.v1` codec and bytes.
+Extend V5 schema/validation to admit only the existing codec for its supported
+contract and the Magic codec for the S3 contract; do not broaden arbitrary
+strings. Update the Python projector and all canonical schema/fixture
+representations.
+
+**Verification:** observation and PlayerStep suites, paired noninterference
+tests at each APNAP stage, V5 manifest/schema tests, `scripts/run_checks.py
+fast`, Python full, generation/drift checks.
+
+**Commit boundary:** versioned Magic current-observation projection + V5 codec
+binding; no SBA state mutation code.
+
+**HARD STOP:** the nonactive chooser cannot see the prior APNAP choice, a
+trusted identity leaks, an event-sequence side channel appears, or existing
+S1/Synthetic observation bytes change.
+
+### Task 7 — S3.A4 ordered S2 composition and atomic SBA application
+
+**Allowed files:** sole S2 zone-incarnation executor/composition API,
+`crates/mtgml-rules/src/` SBA result builder, events/delta/cursor/contract,
+and conformance fixtures.
+
+**Forbidden:** second zone-move implementation, object-ID sorting as chosen
+order, per-object environment commits, `damage-and-life` dependency, invented
+default Graveyard order.
+
+**RED tests:** execute a selected top-to-bottom order `[A, B, C]` and assert
+the final owner Graveyard top is exactly `[A, B, C]` above old entries;
+physical identity is preserved, each OLD has one NEW, all old references
+close, allocator progression is exact, and reapplication/cursor agree. Repeat
+with both owners and APNAP collection. Inject exhaustion/S2 failure on a later
+member and prove no partial batch is committed.
+
+**Objective:** retain one authoritative S2 primitive. Derive every OLD and
+cause from the same before-round snapshot. Compose all calls in one scratch
+workspace; because the primitive inserts at top, execute each owner's
+top-to-bottom selection in reverse within that owner group. Different owners
+are independent; process owner groups in the fixed APNAP order for deterministic
+allocator/event audit. Each accepted stage emits its own
+`SbaGraveyardOrderChosen` event and response revision. The final APNAP Order
+response emits its last choice event followed by `StateBasedActionsApplied`,
+each existing `ZoneTransition`, fixed-point events and any resulting priority
+Decision, all at that final candidate revision. Construct one complete
+before-to-final delta and one transition product for that response. Earlier
+staged choices remain represented in the before-state continuation/replay;
+the environment does not observe or commit intermediate SBA workspace states.
+
+**Verification:** all order and simultaneous action tests, S2 single-move
+regressions, cursor/delta mutants, full atomic rejection fingerprint,
+generation/schema checks.
+
+**Commit boundary:** single-authority ordered composition + event/cursor proof;
+no lifecycle/status promotion.
+
+**HARD STOP:** S2's single move authority is duplicated, an intermediate move
+is exposed, or final order differs from the player's accepted permutation.
+
+### Task 8 — S3.A5 fixed point, evidence and lifecycle
+
+**Allowed files:** SBA conformance, checkpoint/fork/replay tests and, after
+all evidence passes, only SBA registry/status files.
+
+**Forbidden:** Draw/Priority, changing capability dependencies, S2 coverage
+promotion, certification.
+
+**RED test/evidence:** terminal/no-priority and action-batch mutants remain
+rejected; fixed-point reevaluation reaches an empty action set; pending APNAP
+continuation cannot produce priority; restore/fork at each Order stage
+reproduces identical next Decision and completion; replay each real Order
+response and reproduce final batch.
+
+**Objective:** close one- and two-owner order cases; terminal one-player and
+simultaneous-loss products; combined death/loss; exact S2 identities/order;
+noninterference; all atomic rejection surfaces. Prove only the current stage
+actor can project the Order Decision; all candidates use that actor's opaque
+IDs; the nonactive player sees prior public orders only through the
+Magic-specific current observation required by CR 101.4b; no trusted identity
+or incomplete zone result is exposed. No opponent `ObservedEventEnvelope` or
+VisibleSequence is fabricated for an order-stage update. Final S2 public
+movements disclose the complete authorized result. Only after independent S3.A review update
+`state-based-actions-combat` to `implemented`. Record the S2
+SBA interaction as evidence pending the later independent S2 coverage review.
+
+**Verification:** rules/conformance/environment test suites,
+`scripts/run_checks.py integration`, `cargo test --workspace --all-features
+--locked`, schema/docs/status/registry checks.
+
+**Commit boundary:** S3.A evidence + its lifecycle/status synchronization; PR B.
+
+**HARD STOP:** no APNAP Order resume/replay proof, any mutation occurs before
+all orders, or an S2 coverage claim is made here.
+
+### Task 9 — RED: Basic Priority event, state and Decision contract
 
 **Allowed files:** `crates/mtgml-rules/src/tests/`,
 `crates/mtgml-conformance/src/basic_priority.rs` and module wiring, plus
@@ -630,7 +1010,7 @@ Pin the exact event ordering in Section 4.
 **HARD STOP:** no automatic pass, fallback actor, default response, or
 Decision creation from an unproven pass-only surface.
 
-### Task 7 — implement Basic Priority in the rules kernel
+### Task 10 — implement Basic Priority in the rules kernel
 
 **Allowed files:** `crates/mtgml-rules/src/`, event/delta/cursor and
 transition-contract authorities, generated contract sources if required, and
@@ -648,7 +1028,7 @@ candidate and binding. A second explicit pass closes the window and advances
 only by the accepted temporal successor; forced continuation is returned to
 the environment transaction.
 
-**Verification:** Task 6 RED tests GREEN; rules/conformance package suites,
+**Verification:** Task 9 RED tests GREEN; rules/conformance package suites,
 generated contract drift/schema checks, `scripts/run_checks.py fast`.
 
 **Commit boundary:** rules-owned Basic Priority implementation and focused
@@ -657,7 +1037,7 @@ conformance, no environment player API in this commit.
 **HARD STOP:** `PriorityState` changes without a matching typed event/cursor
 proof, or Decision and priority state disagree at any accepted boundary.
 
-### Task 8 — Reference Magic player response path
+### Task 11 — Reference Magic player response path
 
 **Allowed files:** `crates/mtgml-environment/src/reference.rs`, shared
 transaction module, endpoint/error mapping, environment player endpoint tests.
@@ -676,13 +1056,13 @@ is returned to a player.
 rejection codes; replay and environment existing tests; `cargo test -p
 mtgml-environment --all-features`; `scripts/run_checks.py fast`.
 
-**Commit boundary:** Reference endpoint wiring, kept in PR C with Tasks 6–9.
+**Commit boundary:** Reference endpoint wiring, kept in PR C with Tasks 9–12.
 
 **HARD STOP:** public API invokes `execute_trusted_response`, endpoint sees an
 internal `DecisionId`/binding, or Reference and Synthetic use distinct
 response-commit implementations.
 
-### Task 9 — S3.B end-to-end priority evidence and lifecycle
+### Task 12 — S3.B end-to-end priority evidence and lifecycle
 
 **Allowed files:** Basic Priority conformance, environment tests, current
 status/registry files only after evidence passes.
@@ -712,7 +1092,7 @@ Foundation V2 dependency closure and leave Draw specified.
 **HARD STOP:** any pass is implied, or priority can be granted before SBA and
 the pass-only proof.
 
-### Task 10 — freeze Draw event disposition
+### Task 13 — freeze Draw event disposition
 
 **Allowed files:** Draw design/implementation contract documentation and
 conformance expectation only.
@@ -730,7 +1110,7 @@ DRAW_COMPLETED_EVENT_REQUIRED = NO
 ```
 
 Do not add `DrawCompleted`. If the code audit finds another admitted producer
-or cannot validate the context-transition-context pairing, block Task 10 and
+or cannot validate the context-transition-context pairing, block Task 13 and
 re-open the event decision before code.
 
 **Verification:** conformance contract review; `scripts/check_documentation.py`
@@ -741,7 +1121,7 @@ and `git diff --check`.
 **HARD STOP:** event evidence relies on a trace-only event or ignores another
 admitted Library-to-Hand producer.
 
-### Task 11 — RED: ordinary Draw × S2 interaction
+### Task 14 — RED: ordinary Draw × S2 interaction
 
 **Allowed files:** Draw conformance cases, Rules/Environment test setup, and
 paired-world tests.
@@ -753,7 +1133,7 @@ Priority changes, second Library-to-Hand executor.
 pending Decision, nonempty exact-top Library; exactly one S2 transition and
 fresh incarnation; no RNG; owner private knowledge; opponent redaction;
 position remains Draw with `HeldBy(active,0)` plus exact pass Decision;
-Restore completed state cannot redraw. Reject all Task 5/Design exclusions and
+Restore completed state cannot redraw. Reject all Design exclusions and
 S2 rejection, with full environment/player fingerprint equality.
 
 Paired hidden worlds vary physical and definition identities. Opponent
@@ -768,7 +1148,7 @@ sequence behavior must match; only authorized owner-private products differ.
 **HARD STOP:** any decision is fabricated for Draw, or tests depend on test-only
 knowledge/history to prevent repetition.
 
-### Task 12 — implement Draw through S2
+### Task 15 — implement Draw through S2
 
 **Allowed files:** `crates/mtgml-rules/src/` Draw producer and orchestration,
 S2 executor invocation, transition validator/cursor, conformance.
@@ -784,17 +1164,17 @@ the one S2 executor; complete the same transition workspace through
 pass Decision. The forced-progress kernel returns one complete TransitionResult
 through the next Decision/outcome or a typed unsupported/error boundary.
 
-**Verification:** Task 11 RED GREEN; S2 conformance regression; exact
+**Verification:** Task 14 RED GREEN; S2 conformance regression; exact
 checkpoint/delta/cursor/event/rejection tests; generated contract and schema
 drift checks; `scripts/run_checks.py fast`.
 
 **Commit boundary:** Draw producer and focused kernel evidence, no final replay
-claim until Task 14.
+claim until Task 17.
 
 **HARD STOP:** any accepted state exposes moved card + Draw + Priority=None, or
 the implementation moves a card without invoking the S2 executor.
 
-### Task 13 — Upkeep pass → Draw → priority integration
+### Task 16 — Upkeep pass → Draw → priority integration
 
 **Allowed files:** environment turn/priority/Draw integration tests and
 conformance only.
@@ -805,9 +1185,12 @@ mutation, S2 lifecycle update.
 **RED/GREEN witness:** start `Beginning(Upkeep)`, `HeldBy(active,0)`, active
 pass Decision. Active pass produces opponent pass Decision. Opponent's real
 pass closes Upkeep; shared transaction calls `advance_forced_progress` exactly
-once. That kernel call reaches Draw, S2, SBA, and active `HeldBy(active,0)`
-with the next explicit pass Decision. Assert exact event/revision order and
-one transition product.
+once. In the no-SBA-action Draw witness, that kernel call reaches Draw, S2,
+SBA stability, and active `HeldBy(active,0)` with the next explicit pass
+Decision. A companion same-owner multi-death case reaches the first APNAP
+Order Decision without mutation and completes the SBA batch only after all
+real owner order responses. Assert exact event/revision order and each atomic
+TransitionResult.
 
 Test terminal SBA and typed unsupported outcomes stop the advance correctly.
 
@@ -819,7 +1202,7 @@ Test terminal SBA and typed unsupported outcomes stop the advance correctly.
 **HARD STOP:** temporal successor skips Draw, draw priority is passed
 implicitly, or the environment performs a second progress call.
 
-### Task 14 — authoritative Replay V5 witness for S2
+### Task 17 — authoritative Replay V5 witness for S2
 
 **Allowed files:** environment backend replay, replay parity tests, conformance
 evidence. No replay DTO version change.
@@ -848,7 +1231,7 @@ commit.
 **HARD STOP:** V5 only structurally validates, but backend execution does not
 reproduce the exact S2 transition and after identity.
 
-### Task 15 — S3 interaction and information evidence; Draw lifecycle
+### Task 18 — S3 interaction and information evidence; Draw lifecycle
 
 **Allowed files:** conformance cases and, after evidence review, Draw registry
 lifecycle and status test/docs entries.
@@ -860,7 +1243,14 @@ Decision/event shape.
 `draw-card × zone-incarnation`, and cross-priority/SBA ordering. Include owner
 exact knowledge, opponent paired-world byte parity, checkpoint restore before
 and after Draw, forks, rejection nonmutation, no RNG, no Decision for Draw,
-and Task 14 authoritative V5 replay.
+and Task 17 authoritative V5 replay, including a separate checkpointed APNAP
+ordering witness when a same-owner simultaneous Graveyard group occurs.
+
+For APNAP ordering, checkpoint after the first owner's Order response and
+restore/fork before the next owner responds. The nonactor endpoint receives no
+trusted identity, partial order, continuation payload, Order Decision or
+visible-sequence side channel. Compare paired worlds' opponent Observation,
+InformationState, PlayerStep and observed-event bytes at each stage.
 
 After the independent Draw scope review and applicable full gates, update only
 `rules/draw-card` from `specified` to `implemented`. Mark no interaction row
@@ -880,7 +1270,7 @@ PR D.
 **HARD STOP:** owner/opponent information differs outside S2 authorization or
 S2 replay evidence is missing.
 
-### Task 16 — independent S2 interaction and coverage review
+### Task 19 — independent S2 interaction and coverage review
 
 **Allowed files:** evidence/status review artifacts and S2 lifecycle surfaces
 only after the reviewer accepts every gate.
@@ -913,7 +1303,7 @@ the required exact-head status checks on the reviewed candidate.
 
 **HARD STOP:** reviewer rejects or any required S2 coverage gate is not PASS.
 
-### Task 17 — lifecycle and interaction status closure
+### Task 20 — lifecycle and interaction status closure
 
 **Allowed files:** capability registry lifecycle fields, README, roadmap,
 current-status tests, and accepted evidence/status artifact references.
@@ -924,7 +1314,7 @@ claims beyond the exact witnessed scope.
 **Objective:** synchronize lifecycle counts and statuses to merged evidence:
 SBA, Basic Priority and Draw implemented only if their individual evidence
 passed; turn structure remains covered; zone incarnation becomes covered only
-if Task 16 passed. Keep explicit S2 replay and interaction results factual.
+if Task 19 passed. Keep explicit S2 replay and interaction results factual.
 Update generated status/contract artifacts only through their authority.
 
 **RED test / evidence failure:** status assertions deliberately compare the
@@ -934,12 +1324,12 @@ final status tests pass only for evidence-backed lifecycle values.
 **Verification:** focused status tests, docs, schemas, maintainer artifacts,
 contract generation/drift, `scripts/run_checks.py integration`.
 
-**Commit boundary:** status-only synchronization following Task 16's review.
+**Commit boundary:** status-only synchronization following Task 19's review.
 
 **HARD STOP:** any unsupported lifecycle/coverage claim appears in registry,
 README, roadmap, generated artifacts, or tests.
 
-### Task 18 — cumulative exact-head verification
+### Task 21 — cumulative exact-head verification
 
 **Allowed files:** verification reports in the repository-defined external
 verification location only; no source changes after final archive gate.
@@ -964,7 +1354,7 @@ practice requires tracked evidence; otherwise no code commit.
 **HARD STOP:** any required gate fails or remains unknown; resolve it before
 review handoff.
 
-### Task 19 — implementation PR preparation
+### Task 22 — implementation PR preparation
 
 **Allowed files:** PR description/verification evidence; no source changes
 unless a previous gate explicitly reopened a task.
@@ -993,12 +1383,16 @@ all required CI checks and no generated/source drift.
 ```text
 S3_ORDER =
 S3.0 shared response transaction
--> S3.A state-based-actions-combat × zone-incarnation
+-> S3.A1 simultaneous SBA derivation and Order requirement
+-> S3.A2 typed Magic SBA continuation/state identity
+-> S3.A3 existing Order Decision and APNAP collection
+-> S3.A4 ordered S2 incarnation composition and atomic round application
+-> S3.A5 fixed point and evidence
 -> S3.B basic-priority × turn-structure × state-based-actions-combat
 -> S3.C draw-card × turn-structure × zone-incarnation
 -> S3.D end-to-end Upkeep passes -> Draw -> SBA -> priority -> V5 replay
 
-S3_A = bounded simultaneous selected SBA fixed point, terminal mapping, S2 battlefield/graveyard moves
+S3_A = full simultaneous selected SBA set; explicit per-owner Order Choices for same-Graveyard multi-card rounds; typed Magic continuation; ordered S2 batch composition; fixed point and terminal mapping
 S3_B = explicit pass-only priority, typed priority event/cursor, bound ChooseOne PassPriority Decision
 S3_C = exactly-once ordinary Draw Step via S2; no DrawCompleted event
 
@@ -1014,12 +1408,16 @@ S2_SBA_INTERACTION_CLOSABLE = YES, within the reviewed S2 admitted zone-order pr
 S2_DRAW_INTERACTION_CLOSABLE = YES
 S2_AUTHORITATIVE_REPLAY_PATH_CLOSABLE = YES, through a real response transaction plus backend V5 replay
 S2_COVERED_PROMOTION_POSSIBLE_AFTER_PLAN = YES, only after independent review and all accepted S2 gates pass
+SAME_OWNER_MULTI_GRAVEYARD_POLICY = EXPLICIT_ORDER_DECISION
+GRAVEYARD_ORDER_DECISION_DOMAIN = DecisionDomainV2::Order
+MULTI_PLAYER_ORDER_COLLECTION = APNAP
+SBA_ORDER_CONTINUATION_REQUIRED = YES
+NEW_PUBLIC_DECISION_FAMILY_REQUIRED = NO
+NEW_TYPED_MAGIC_CONTINUATION_PAYLOAD_REQUIRED = YES
+SBA_ZONE_BATCH_INTEGRATION_REQUIRED = YES
+ZONE_INCARNATION_SEMANTIC_VERSION_CHANGE_REQUIRED = NO (S3.A composes the existing S2 executor atomically)
+SCOPE_NARROWING_REQUIRED = NO
+CAPABILITY_VERSION_CHANGE_REQUIRED_FOR_FAIL_CLOSED_BOUND = NOT_APPLICABLE — bound rejected
 S3_IMPLEMENTATION_PLAN_READY = YES
 S3_IMPLEMENTATION_AUTHORIZED = NO
 ```
-
-The same-owner simultaneous Graveyard cardinality guard is an explicit S3.A
-admission boundary. If its compatibility with the accepted Foundation V2
-scope is rejected at Task 3, stop before implementation and update the
-accepted scope/authority through its governance path; do not silently weaken
-simultaneity or invent ordering.
