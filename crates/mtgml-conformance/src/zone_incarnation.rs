@@ -1467,6 +1467,11 @@ fn s2_task2_request_preconditions_fail_closed() {
         ZonePosition::Top { offset: 1 },
         VisibilityPartition::FaceDown,
     );
+    let library_before = library.clone();
+    let library_digest = library.digest().unwrap();
+    let object_allocator_before = library.allocators.next_object_id;
+    let rule_event_allocator_before = library.allocators.next_rule_event_id;
+    let library_rng_before = library.random.clone();
     assert!(matches!(
         execute_selected_zone_transition_for_conformance(
             &library,
@@ -1479,6 +1484,14 @@ fn s2_task2_request_preconditions_fail_closed() {
             ZoneIncarnationError::LibrarySourceNotTop
         ))
     ));
+    assert_eq!(library, library_before);
+    assert_eq!(library.digest().unwrap(), library_digest);
+    assert_eq!(library.allocators.next_object_id, object_allocator_before);
+    assert_eq!(
+        library.allocators.next_rule_event_id,
+        rule_event_allocator_before
+    );
+    assert_eq!(library.random, library_rng_before);
 
     let mut exhausted = task2_battlefield_case_state();
     exhausted.allocators.next_object_id = GameObjectId(u64::MAX);
