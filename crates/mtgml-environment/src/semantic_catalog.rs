@@ -1,4 +1,4 @@
-//! Runtime semantic catalog and stateless V5 restore admission (spec §10, §12, §18;
+//! Runtime semantic catalog and stateless V6 restore admission (spec §10, §12, §18;
 //! ADR 0055 §2.8–§2.9).
 //!
 //! The catalog consumes ONLY the checked-in generated Task-3 material
@@ -25,7 +25,7 @@ use mtgml_persistence::semantic_contract_digest::{
 use mtgml_rules::{validate_runtime_state, ProgramKernelConstructionErrorV1};
 use thiserror::Error;
 
-use crate::checkpoint::{CheckpointValidationError, EnvironmentCheckpointV5};
+use crate::checkpoint::{CheckpointValidationError, EnvironmentCheckpointV6};
 use crate::errors::ControllerError;
 use crate::semantic_catalog_generated::{
     magic_turn_structure_0_1_0_rules_manifest, magic_turn_structure_0_1_0_semantic_contract_id,
@@ -138,7 +138,7 @@ fn program_authority_compatible(program: ExecutionProgramV1, authority: &RulesAu
     )
 }
 
-/// Typed failure family for the V5 restore admission machinery (spec §18).
+/// Typed failure family for the V6 restore admission machinery (spec §18).
 ///
 /// This is the pure admission-layer error. The environment maps these
 /// onto the existing `CheckpointValidationError` / `ControllerError` families
@@ -229,7 +229,7 @@ impl From<ProgramKernelConstructionErrorV1> for ControllerError {
     }
 }
 
-/// The spec §12 nine-phase V5 restore admission, implemented as a PURE /
+/// The spec §12 nine-phase V6 restore admission, implemented as a PURE /
 /// STATELESS function (phases 1–8; phase 9 backend construction is Task 13).
 ///
 /// Phases are evaluated in the exact frozen order. An earlier-phase defect
@@ -249,7 +249,7 @@ impl From<ProgramKernelConstructionErrorV1> for ControllerError {
 /// ```
 pub fn admit_restore(
     catalog: &RuntimeSemanticCatalog,
-    checkpoint: &EnvironmentCheckpointV5,
+    checkpoint: &EnvironmentCheckpointV6,
 ) -> Result<(), RestoreAdmissionError> {
     // Phase 1: structural validation (schema, codec, state digest,
     // checkpoint digest recompute from stored execution_identity, completed

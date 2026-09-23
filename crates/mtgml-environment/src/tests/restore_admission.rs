@@ -1,27 +1,34 @@
 use crate::checkpoint::{
-    CheckpointValidationError, EnvironmentCheckpointV5, CHECKPOINT_CODEC_ID_V5,
-    CHECKPOINT_CODEC_SEMANTIC_VERSION_V5,
+    CheckpointValidationError, EnvironmentCheckpointV6, CHECKPOINT_CODEC_ID_V6,
+    CHECKPOINT_CODEC_SEMANTIC_VERSION_V6,
 };
 use crate::semantic_catalog::{
     admit_restore, CatalogEntry, RestoreAdmissionError, RuntimeSemanticCatalog,
 };
 use crate::semantic_catalog_generated::{
+    magic_turn_structure_0_1_0_semantic_contract_id,
     synthetic_legacy_default_rules_manifest,
     synthetic_legacy_default_semantic_manifest,
 };
-use mtgml_decision::{AuthoritativeDecisionRequestV2, DecisionDomainV2, DecisionVisibility};
+use mtgml_decision::{
+    AuthoritativeCandidateV2, AuthoritativeDecisionRequestV2, CandidateIntent, DecisionDomainV2,
+    DecisionVisibility, EngineCandidateBinding,
+};
 use mtgml_model::{
-    CapabilityRequirementV1, CheckpointCodecIdentity, EnvironmentLimitCounters,
-    ExecutionIdentityV1, ExecutionProgramV1, EpisodeStatus, FullStateDigestV4, PlayerId,
-    RulesAuthorityV1, RulesContractManifestV1, SemanticContractIdV1,
-    SemanticContractManifestV1, StateRevision,
+    CapabilityRequirementV1, CardDefinitionId, CheckpointCodecIdentity, ContinuationId,
+    EnvironmentLimitCounters, ExecutionIdentityV1, ExecutionProgramV1, EpisodeStatus,
+    FullStateDigestV5, GameObjectId, OpaqueObjectId, PhysicalCardId, PlayerDecisionIdV1,
+    PlayerId, RulesAuthorityV1, RulesContractManifestV1, SemanticContractIdV1,
+    SemanticContractManifestV1, StateRevision, ZoneKind,
 };
 use mtgml_persistence::semantic_contract_digest::{
     calculate_rules_contract_id_v1, calculate_semantic_contract_id_v1,
 };
 use mtgml_state::{
-    construct_synthetic_engine_state, EngineState, PendingDecisionRecordV2, SyntheticResetInputs,
-    SyntheticV4Setup,
+    construct_synthetic_engine_state, ContinuationPayloadV2, ContinuationRecordV2, EngineState,
+    GameObject, KnownLocationFactV2, KnowledgeAcquisitionReason, KnowledgeRecordV2,
+    PendingDecisionRecordV2, SbaObjectCauseV1, SbaSelectedActionV1, SyntheticResetInputs,
+    SyntheticV4Setup, VisibilityPartition, ZoneLocation, ZonePosition,
 };
 
 // === Helpers ===
@@ -33,21 +40,21 @@ fn synthetic_identity() -> ExecutionIdentityV1 {
     }
 }
 
-fn v5_codec() -> CheckpointCodecIdentity {
+fn v6_codec() -> CheckpointCodecIdentity {
     CheckpointCodecIdentity {
-        codec_id: CHECKPOINT_CODEC_ID_V5.to_string(),
-        semantic_version: CHECKPOINT_CODEC_SEMANTIC_VERSION_V5.to_string(),
+        codec_id: CHECKPOINT_CODEC_ID_V6.to_string(),
+        semantic_version: CHECKPOINT_CODEC_SEMANTIC_VERSION_V6.to_string(),
     }
 }
 
-fn valid_v5_checkpoint(identity: ExecutionIdentityV1) -> EnvironmentCheckpointV5 {
+fn valid_v6_checkpoint(identity: ExecutionIdentityV1) -> EnvironmentCheckpointV6 {
     let bk = backend();
     let v4 = bk.checkpoint().unwrap();
-    EnvironmentCheckpointV5::new(
+    EnvironmentCheckpointV6::new(
         v4.state,
         v4.status,
         v4.limit_counters,
-        v5_codec(),
+        v6_codec(),
         identity,
     )
     .unwrap()
@@ -89,9 +96,9 @@ fn synthetic_incompatible_state() -> EngineState {
 #[test]
 fn invalid_checkpoint_rejects_at_structural_validation() {
     let catalog = RuntimeSemanticCatalog::production();
-    let mut checkpoint = valid_v5_checkpoint(synthetic_identity());
+    let mut checkpoint = valid_v6_checkpoint(synthetic_identity());
     // Corrupt the checkpoint digest so digest recompute (phase 2) rejects.
-    checkpoint.checkpoint_digest = CheckpointDigestV5::from_digest_bytes([0xee; 32]);
+    checkpoint.checkpoint_digest = CheckpointDigestV6::from_digest_bytes([0xee; 32]);
     let result = admit_restore(&catalog, &checkpoint);
     assert_eq!(
         result.unwrap_err(),
@@ -127,13 +134,156 @@ fn s1_valid_state() -> EngineState {
     state
 }
 
-fn s1_checkpoint(identity: ExecutionIdentityV1) -> EnvironmentCheckpointV5 {
+#[test]
+fn current_magic_s1_contract_rejects_restore_of_magic_sba_continuation() {
+    let state = magic_sba_continuation_state();
+    let checkpoint = EnvironmentCheckpointV6::new(
+        state,
+        EpisodeStatus::Running,
+        EnvironmentLimitCounters::default(),
+        v6_codec(),
+        magic_identity(),
+    )
+    .unwrap();
+    let before = checkpoint.clone();
+
+    assert_eq!(
+        admit_restore(&RuntimeSemanticCatalog::production(), &checkpoint),
+        Err(RestoreAdmissionError::ProgramStateIncompatible)
+    );
+    assert_eq!(checkpoint, before);
+    checkpoint.validate().unwrap();
+}
+
+fn magic_sba_continuation_state() -> EngineState {
+    let mut state = s1_valid_state();
+    let object = GameObjectId(3);
+    let location = ZoneLocation {
+        zone: ZoneKind::Battlefield,
+        player: None,
+        position: ZonePosition::Unordered,
+        visibility: VisibilityPartition::Public,
+        partition: None,
+    };
+    state.zones.objects.insert(
+        object,
+        GameObject {
+            id: object,
+            physical_card: Some(PhysicalCardId(3)),
+            card_definition: CardDefinitionId(3),
+            owner: PlayerId(1),
+            controller: PlayerId(1),
+            tapped: false,
+            face_down: false,
+        },
+    );
+    state.zones.locations.insert(object, location.clone());
+    state.allocators.next_object_id = GameObjectId(4);
+
+    for (player, opaque) in [(PlayerId(1), OpaqueObjectId(2)), (PlayerId(2), OpaqueObjectId(3))] {
+        let identity = state
+            .perspective_identities
+            .players
+            .get_mut(&player)
+            .unwrap();
+        identity.opaque_to_object.insert(opaque, object);
+        identity.object_to_opaque.insert(object, opaque);
+        identity.next_opaque_object_id = OpaqueObjectId(opaque.0 + 1);
+        state
+            .knowledge
+            .players
+            .get_mut(&player)
+            .unwrap()
+            .active
+            .insert(
+                opaque,
+                KnowledgeRecordV2 {
+                    opaque_object: opaque,
+                    physical_card: Some(PhysicalCardId(3)),
+                    card_definition: Some(CardDefinitionId(3)),
+                    known_location: Some(KnownLocationFactV2 {
+                        location: location.clone(),
+                        provenance: KnowledgeAcquisitionReason::InitialConfiguration,
+                    }),
+                    historical_locations: Vec::new(),
+                    acquisition: KnowledgeAcquisitionReason::InitialConfiguration,
+                },
+            );
+    }
+
+    state
+        .execution
+        .continuations
+        .insert(
+            ContinuationId(1),
+            ContinuationRecordV2 {
+                id: ContinuationId(1),
+                actor: PlayerId(1),
+                created_at_revision: StateRevision(0),
+                stage_index: 0,
+                payload: ContinuationPayloadV2::MagicSbaGraveyardOrderV1 {
+                    round_start_revision: StateRevision(0),
+                    selected_sba_actions: vec![
+                        SbaSelectedActionV1::PlayerLoses {
+                            player: PlayerId(1),
+                        },
+                        SbaSelectedActionV1::ObjectToOwnerGraveyard {
+                            object: GameObjectId(1),
+                            causes: vec![SbaObjectCauseV1::LethalDamage],
+                        },
+                        SbaSelectedActionV1::ObjectToOwnerGraveyard {
+                            object,
+                            causes: vec![SbaObjectCauseV1::ZeroToughness],
+                        },
+                    ],
+                    apnap_owners: vec![PlayerId(1)],
+                    next_owner_index: 0,
+                    completed_owner_orders: Vec::new(),
+                },
+            },
+        );
+    state.allocators.next_continuation_id = ContinuationId(2);
+    state.execution.pending_decision = Some(PendingDecisionRecordV2 {
+        request: AuthoritativeDecisionRequestV2 {
+            decision_id: mtgml_model::DecisionId(1),
+            player_decision_id: PlayerDecisionIdV1(1),
+            state_revision: StateRevision(0),
+            actor: PlayerId(1),
+            visibility: DecisionVisibility::ActingPlayerOnly,
+            decision: DecisionDomainV2::Order {
+                minimum: 2,
+                maximum: 2,
+            },
+            candidates: [GameObjectId(1), object]
+                .into_iter()
+                .enumerate()
+                .map(|(index, object)| {
+                    let opaque = if object == GameObjectId(1) {
+                        OpaqueObjectId(1)
+                    } else {
+                        OpaqueObjectId(2)
+                    };
+                    AuthoritativeCandidateV2 {
+                        candidate_id: mtgml_model::CandidateIdV1(index as u32),
+                        visible_intent: CandidateIntent::SelectObject { object: opaque },
+                        trusted_binding: EngineCandidateBinding::SelectObject { object },
+                    }
+                })
+                .collect(),
+            continuation_id: Some(ContinuationId(1)),
+        },
+    });
+    mtgml_state::validate_engine_state(&state).unwrap();
+    state
+}
+
+fn s1_checkpoint(identity: ExecutionIdentityV1) -> EnvironmentCheckpointV6 {
     let state = s1_valid_state();
     let codec = CheckpointCodecIdentity {
-        codec_id: CHECKPOINT_CODEC_ID_V5.to_string(),
-        semantic_version: CHECKPOINT_CODEC_SEMANTIC_VERSION_V5.to_string(),
+        codec_id: CHECKPOINT_CODEC_ID_V6.to_string(),
+        semantic_version: CHECKPOINT_CODEC_SEMANTIC_VERSION_V6.to_string(),
     };
-    EnvironmentCheckpointV5::new(
+    EnvironmentCheckpointV6::new(
         state,
         EpisodeStatus::Running,
         EnvironmentLimitCounters::default(),
@@ -145,8 +295,8 @@ fn s1_checkpoint(identity: ExecutionIdentityV1) -> EnvironmentCheckpointV5 {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct RestoreAdmissionFingerprint {
-    checkpoint: EnvironmentCheckpointV5,
-    replay: mtgml_replay::AuthoritativeReplayV5,
+    checkpoint: EnvironmentCheckpointV6,
+    replay: mtgml_replay::AuthoritativeReplayV6,
     player_bytes: Vec<Vec<u8>>,
 }
 
@@ -181,7 +331,7 @@ fn capture_restore_admission_fingerprint(
 fn assert_controller_restore_rejection_is_nonmutating(
     label: &str,
     controller: &TrustedEnvironmentController,
-    checkpoint: EnvironmentCheckpointV5,
+    checkpoint: EnvironmentCheckpointV6,
     catalog: RuntimeSemanticCatalog,
     expected: impl FnOnce(&ControllerError) -> bool,
 ) {
@@ -240,9 +390,9 @@ fn exact_turn_structure_invalid_state_rejected() {
     // phase 8 rejects before backend construction.
     let catalog = RuntimeSemanticCatalog::production();
     let state = synthetic_incompatible_state();
-    let codec = v5_codec();
+    let codec = v6_codec();
     let identity = magic_identity();
-    let checkpoint = EnvironmentCheckpointV5::new(
+    let checkpoint = EnvironmentCheckpointV6::new(
         state,
         EpisodeStatus::Running,
         EnvironmentLimitCounters::default(),
@@ -336,7 +486,7 @@ fn controller_restore_exact_turn_structure_nonmutation_on_rejection() {
         program_kind: ExecutionProgramV1::MagicRules,
         semantic_contract_id: synthetic_legacy_default_semantic_contract_id(),
     };
-    let checkpoint = valid_v5_checkpoint(identity);
+    let checkpoint = valid_v6_checkpoint(identity);
     let result = controller.restore(checkpoint);
     assert!(matches!(
         result,
@@ -350,7 +500,7 @@ fn controller_restore_exact_turn_structure_nonmutation_on_rejection() {
 fn turn_structure_task11_program_authority_pairing_both_directions_is_nonmutating() {
     let controller = TrustedEnvironmentController::new(backend());
 
-    let magic_with_synthetic = valid_v5_checkpoint(ExecutionIdentityV1 {
+    let magic_with_synthetic = valid_v6_checkpoint(ExecutionIdentityV1 {
         program_kind: ExecutionProgramV1::MagicRules,
         semantic_contract_id: synthetic_legacy_default_semantic_contract_id(),
     });
@@ -378,8 +528,8 @@ fn turn_structure_task11_program_authority_pairing_both_directions_is_nonmutatin
 #[test]
 fn tampered_checkpoint_digest_rejects_at_structural_validation() {
     let catalog = RuntimeSemanticCatalog::production();
-    let mut checkpoint = valid_v5_checkpoint(synthetic_identity());
-    checkpoint.checkpoint_digest = mtgml_model::CheckpointDigestV5::from_digest_bytes([0xee; 32]);
+    let mut checkpoint = valid_v6_checkpoint(synthetic_identity());
+    checkpoint.checkpoint_digest = mtgml_model::CheckpointDigestV6::from_digest_bytes([0xee; 32]);
     let result = admit_restore(&catalog, &checkpoint);
     assert_eq!(
         result.unwrap_err(),
@@ -396,7 +546,7 @@ fn unknown_semantic_contract_id_rejected() {
         program_kind: ExecutionProgramV1::SyntheticRulesCompat,
         semantic_contract_id: SemanticContractIdV1::from_digest_bytes([0u8; 32]),
     };
-    let checkpoint = valid_v5_checkpoint(identity);
+    let checkpoint = valid_v6_checkpoint(identity);
     let result = admit_restore(&catalog, &checkpoint);
     assert_eq!(
         result.unwrap_err(),
@@ -423,7 +573,7 @@ fn semantic_contract_digest_mismatch_rejected() {
         program_kind: ExecutionProgramV1::SyntheticRulesCompat,
         semantic_contract_id: wrong_id.clone(),
     };
-    let checkpoint = valid_v5_checkpoint(identity);
+    let checkpoint = valid_v6_checkpoint(identity);
     let result = admit_restore(&catalog, &checkpoint);
     assert_eq!(
         result.unwrap_err(),
@@ -440,7 +590,7 @@ fn turn_structure_task11_wrong_semantic_id_restore_is_nonmutating() {
         rules_manifest: synthetic_legacy_default_rules_manifest(),
     }]);
     let controller = TrustedEnvironmentController::new(backend());
-    let checkpoint = valid_v5_checkpoint(ExecutionIdentityV1 {
+    let checkpoint = valid_v6_checkpoint(ExecutionIdentityV1 {
         program_kind: ExecutionProgramV1::SyntheticRulesCompat,
         semantic_contract_id: wrong_id,
     });
@@ -546,7 +696,7 @@ fn rules_contract_digest_mismatch_rejected() {
         program_kind: ExecutionProgramV1::MagicRules,
         semantic_contract_id: cr_semantic_id,
     };
-    let checkpoint = valid_v5_checkpoint(identity);
+    let checkpoint = valid_v6_checkpoint(identity);
     let result = admit_restore(&catalog, &checkpoint);
     assert_eq!(
         result.unwrap_err(),
@@ -564,8 +714,8 @@ fn controller_restore_rejects_corrupt_checkpoint_without_mutation() {
     let before_checkpoint = controller.checkpoint().unwrap();
     let before_replay = controller.export_replay().unwrap();
 
-    let mut checkpoint = valid_v5_checkpoint(synthetic_identity());
-    checkpoint.state_digest = FullStateDigestV4::from_digest_bytes([0xff; 32]);
+    let mut checkpoint = valid_v6_checkpoint(synthetic_identity());
+    checkpoint.state_digest = FullStateDigestV5::from_digest_bytes([0xff; 32]);
     let result = controller.restore(checkpoint);
     assert!(matches!(
         result,
@@ -587,7 +737,7 @@ fn controller_restore_rejects_unknown_contract_without_mutation() {
         program_kind: ExecutionProgramV1::SyntheticRulesCompat,
         semantic_contract_id: SemanticContractIdV1::from_digest_bytes([0u8; 32]),
     };
-    let checkpoint = valid_v5_checkpoint(identity);
+    let checkpoint = valid_v6_checkpoint(identity);
     let result = controller.restore(checkpoint);
     assert!(matches!(
         result,
@@ -609,7 +759,7 @@ fn controller_restore_rejects_program_authority_mismatch_without_mutation() {
         program_kind: ExecutionProgramV1::MagicRules,
         semantic_contract_id: synthetic_legacy_default_semantic_contract_id(),
     };
-    let checkpoint = valid_v5_checkpoint(identity);
+    let checkpoint = valid_v6_checkpoint(identity);
     let result = controller.restore(checkpoint);
     assert!(matches!(result, Err(ControllerError::ProgramAuthorityMismatch)));
     assert_eq!(controller.checkpoint().unwrap(), before_checkpoint);
@@ -623,11 +773,11 @@ fn controller_restore_rejects_incompatible_state_without_mutation() {
     let before_replay = controller.export_replay().unwrap();
 
     let state = synthetic_incompatible_state();
-    let checkpoint = EnvironmentCheckpointV5::new(
+    let checkpoint = EnvironmentCheckpointV6::new(
         state,
         EpisodeStatus::Running,
         EnvironmentLimitCounters::default(),
-        v5_codec(),
+        v6_codec(),
         synthetic_identity(),
     )
     .unwrap();
@@ -658,7 +808,7 @@ fn controller_restore_rejects_semantic_contract_digest_mismatch_without_mutation
         program_kind: ExecutionProgramV1::SyntheticRulesCompat,
         semantic_contract_id: wrong_id,
     };
-    let checkpoint = valid_v5_checkpoint(identity);
+    let checkpoint = valid_v6_checkpoint(identity);
     let result = controller.restore_with_catalog(checkpoint, catalog);
     assert!(matches!(
         result,
@@ -704,7 +854,7 @@ fn controller_restore_rejects_rules_contract_digest_mismatch_without_mutation() 
         program_kind: ExecutionProgramV1::MagicRules,
         semantic_contract_id: cr_semantic_id,
     };
-    let checkpoint = valid_v5_checkpoint(identity);
+    let checkpoint = valid_v6_checkpoint(identity);
     let result = controller.restore_with_catalog(checkpoint, catalog);
     assert!(matches!(
         result,
@@ -750,7 +900,7 @@ fn controller_restore_rejects_unsupported_program_without_mutation() {
         program_kind: ExecutionProgramV1::MagicRules,
         semantic_contract_id: cr_semantic_id,
     };
-    let checkpoint = valid_v5_checkpoint(identity);
+    let checkpoint = valid_v6_checkpoint(identity);
     let result = controller.restore_with_catalog(checkpoint, catalog);
     assert!(matches!(result, Err(ControllerError::SemanticContractUnsupported)));
     assert_eq!(controller.checkpoint().unwrap(), before_checkpoint);
@@ -768,7 +918,7 @@ fn program_authority_mismatch_rejected() {
         program_kind: ExecutionProgramV1::MagicRules,
         semantic_contract_id: synthetic_legacy_default_semantic_contract_id(),
     };
-    let checkpoint = valid_v5_checkpoint(identity);
+    let checkpoint = valid_v6_checkpoint(identity);
     let result = admit_restore(&catalog, &checkpoint);
     assert_eq!(
         result.unwrap_err(),
@@ -815,7 +965,7 @@ fn unsupported_program_rejected_as_semantic_contract_unsupported() {
         program_kind: ExecutionProgramV1::MagicRules,
         semantic_contract_id: cr_semantic_id,
     };
-    let checkpoint = valid_v5_checkpoint(identity);
+    let checkpoint = valid_v6_checkpoint(identity);
     let result = admit_restore(&catalog, &checkpoint);
     assert_eq!(
         result.unwrap_err(),
@@ -829,9 +979,9 @@ fn unsupported_program_rejected_as_semantic_contract_unsupported() {
 fn program_state_incompatible_rejected() {
     let catalog = RuntimeSemanticCatalog::production();
     let state = synthetic_incompatible_state();
-    let codec = v5_codec();
+    let codec = v6_codec();
     let identity = synthetic_identity();
-    let checkpoint = EnvironmentCheckpointV5::new(
+    let checkpoint = EnvironmentCheckpointV6::new(
         state,
         EpisodeStatus::Running,
         EnvironmentLimitCounters::default(),
@@ -851,7 +1001,7 @@ fn program_state_incompatible_rejected() {
 #[test]
 fn synthetic_legacy_admits_under_synthetic_program() {
     let catalog = RuntimeSemanticCatalog::production();
-    let checkpoint = valid_v5_checkpoint(synthetic_identity());
+    let checkpoint = valid_v6_checkpoint(synthetic_identity());
     let result = admit_restore(&catalog, &checkpoint);
     assert!(result.is_ok(), "valid synthetic restore must be admitted");
 }
@@ -867,7 +1017,7 @@ fn earlier_phase_defects_are_not_reported_as_later_failures() {
         program_kind: ExecutionProgramV1::MagicRules,
         semantic_contract_id: SemanticContractIdV1::from_digest_bytes([0u8; 32]),
     };
-    let checkpoint = valid_v5_checkpoint(identity);
+    let checkpoint = valid_v6_checkpoint(identity);
     let result = admit_restore(&catalog, &checkpoint);
     assert_eq!(
         result.unwrap_err(),
@@ -893,7 +1043,7 @@ fn digest_mismatch_precedes_authority_mismatch() {
         program_kind: ExecutionProgramV1::MagicRules,
         semantic_contract_id: wrong_id,
     };
-    let checkpoint = valid_v5_checkpoint(identity);
+    let checkpoint = valid_v6_checkpoint(identity);
     let result = admit_restore(&catalog, &checkpoint);
     assert_eq!(
         result.unwrap_err(),

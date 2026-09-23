@@ -1,6 +1,6 @@
 use mtgml_decision::{DecisionAnswerV2, DecisionResponseV2, DECISION_RESPONSE_V2_SCHEMA};
 use mtgml_environment::{
-    magic_turn_structure_0_1_0_rules_manifest, ControllerError, EnvironmentCheckpointV5,
+    magic_turn_structure_0_1_0_rules_manifest, ControllerError, EnvironmentCheckpointV6,
     PlayerEndpoint, ReferenceEnvironmentConfig, ReferenceEnvironmentReplayConfig,
     REFERENCE_SCENARIO_ID,
 };
@@ -13,7 +13,7 @@ use mtgml_observation::{
     INFORMATION_STATE_SCHEMA_V2, OBSERVATION_SCHEMA, OBSERVED_EVENT_SCHEMA_V2,
     PLAYER_STEP_SCHEMA_V2,
 };
-use mtgml_replay::{KernelIdentityV1, ReplaySchemaVersionsV5};
+use mtgml_replay::{KernelIdentityV1, ReplaySchemaVersionsV6};
 
 use crate::facade::{
     ConformanceCase, ConformanceCaseStep, ConformanceForcedProgressStepRef,
@@ -35,7 +35,7 @@ fn reference_config(state: mtgml_state::EngineState) -> ReferenceEnvironmentConf
         limit_counters: EnvironmentLimitCounters::default(),
         codec: CheckpointCodecIdentity {
             codec_id: "in-memory-reference".into(),
-            semantic_version: "5".into(),
+            semantic_version: "6".into(),
         },
         execution_identity: ExecutionIdentityV1 {
             program_kind: ExecutionProgramV1::MagicRules,
@@ -53,7 +53,7 @@ fn reference_config(state: mtgml_state::EngineState) -> ReferenceEnvironmentConf
             rules_snapshot,
             format_policy_snapshot: "format:none".into(),
             oracle_snapshot: "oracle:none".into(),
-            schemas: ReplaySchemaVersionsV5 {
+            schemas: ReplaySchemaVersionsV6 {
                 observation: OBSERVATION_SCHEMA.into(),
                 observation_payload_codec: "synthetic-m3-observation.v1".into(),
                 information_state: INFORMATION_STATE_SCHEMA_V2.into(),
@@ -61,7 +61,7 @@ fn reference_config(state: mtgml_state::EngineState) -> ReferenceEnvironmentConf
                 decision_response: "decision-response.v2".into(),
                 observed_event: OBSERVED_EVENT_SCHEMA_V2.into(),
                 player_step: PLAYER_STEP_SCHEMA_V2.into(),
-                replay_step: "replay-step.v5".into(),
+                replay_step: "replay-step.v6".into(),
             },
         },
     }
@@ -238,13 +238,13 @@ fn assert_restore_state_rejection(label: &str, state: mtgml_state::EngineState) 
             step: mtgml_state::BeginningStep::Untap,
         }));
     let before = capture_complete(&controller, &endpoints).unwrap();
-    let checkpoint = EnvironmentCheckpointV5::new(
+    let checkpoint = EnvironmentCheckpointV6::new(
         state,
         EpisodeStatus::Running,
         EnvironmentLimitCounters::default(),
         CheckpointCodecIdentity {
             codec_id: "in-memory-reference".into(),
-            semantic_version: "5".into(),
+            semantic_version: "6".into(),
         },
         ExecutionIdentityV1 {
             program_kind: ExecutionProgramV1::MagicRules,

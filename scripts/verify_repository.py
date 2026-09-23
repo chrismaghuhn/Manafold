@@ -356,53 +356,87 @@ def main() -> None:
         if token not in state_rust:
             fail(f"state contract lacks {token}")
 
-    # M3 P0 state-identity cut: current runtime is V4; historical V3
-    # full-state support remains detached (digest_v3.rs).
+    # S3.P0 state-identity cut: current runtime is V5; V4 and V3 remain exact
+    # detached historical verifiers.
     for token in (
-        "FullStateDigestInputV4",
+        "FullStateDigestInputV5",
+        "magic_sba_graveyard_order_v1",
         "canonical_digest_bytes",
         "KnowledgeInvalidationReason",
         "KnowledgeAcquisitionReason",
     ):
         if token not in state_rust:
             fail(f"state contract closure lacks {token}")
-    if "FullStateDigestInputV3" not in state_rust:
-        fail("historical V3 full-state digest support is not preserved")
+    for token in (
+        "FullStateDigestInputV4",
+        "calculate_full_state_digest_v4_historical",
+        "FullStateDigestInputV3",
+    ):
+        if token not in state_rust:
+            fail(f"historical detached digest support lacks {token}")
 
     for token in (
         "full_state_digest_v4_known_answer",
         "m3_p0_full_state_digest_v4_mutation_matrix",
-        "state_delta_uses_full_state_digest_v4",
+        "m3_p0_full_state_digest_v5_mutation_matrix",
+        "state_delta_uses_full_state_digest_v5",
     ):
         if token not in state_tests:
             fail(f"state test evidence lacks {token}")
+    magic_v5_contract_test = (ROOT / "crates/mtgml-state/tests/s3_p0_digest_v5_red.rs").read_text(
+        encoding="utf-8"
+    )
+    for token in (
+        "magic_continuation_is_valid_v5_state_and_changes_digest_when_its_order_changes",
+        "magic_sba_graveyard_order_v1",
+    ):
+        if token not in magic_v5_contract_test:
+            fail(f"Magic continuation V5 digest evidence lacks {token}")
     if "full_state_digest_v3_historical_known_answer_is_detached" not in state_tests:
         fail("historical V3 full-state digest evidence is not preserved")
 
-    # V5 execution-identity cut: the current checkpoint runtime is V5.
+    # S3.P0 coordinated identity cut: current state is V5 and checkpoint/
+    # replay are V6; V5 checkpoint/replay remain historical verifier surfaces.
     env_rust = "\n".join(p.read_text(encoding="utf-8") for p in env_prod)
     for token in (
-        "EnvironmentCheckpointV5",
-        "ENVIRONMENT_CHECKPOINT_SCHEMA_V5",
-        "CHECKPOINT_CODEC_SEMANTIC_VERSION_V5",
+        "EnvironmentCheckpointV6",
+        "ENVIRONMENT_CHECKPOINT_SCHEMA_V6",
+        "CHECKPOINT_CODEC_SEMANTIC_VERSION_V6",
         "execution_identity: ExecutionIdentityV1",
     ):
         if token not in env_rust:
-            fail(f"checkpoint contract lacks V5 current token {token}")
-    # V5 identity invariants (ADR §2.15): checkpoint carries execution_identity;
+            fail(f"checkpoint contract lacks V6 current token {token}")
+    # V6 identity invariants: checkpoint carries execution_identity;
     # digest input carries the identity element; no child manifests in checkpoints.
     for token in (
         "execution_identity: ExecutionIdentityV1",
-        "CheckpointDigestV5",
+        "CheckpointDigestV6",
     ):
         if token not in env_rust:
-            fail(f"checkpoint V5 identity invariant missing: {token}")
-    # V5 digest input schema is in the persistence crate, not the environment crate.
+            fail(f"checkpoint V6 identity invariant missing: {token}")
     persistence_rust = (ROOT / "crates/mtgml-persistence/src/checkpoint_digest.rs").read_text(
         encoding="utf-8"
     )
-    if "environment-checkpoint-digest-input.v5" not in persistence_rust:
-        fail("checkpoint V5 digest input schema is not present in persistence")
+    for token in (
+        "FullStateDigestV5::DOMAIN",
+        "environment-checkpoint-digest-input.v6",
+        "mtgml.checkpoint-digest.v6",
+        "calculate_checkpoint_digest_v6",
+    ):
+        if token not in persistence_rust:
+            fail(f"checkpoint V6 identity surface lacks {token}")
+    replay_v6_rust = (ROOT / "crates/mtgml-replay/src/v6.rs").read_text(encoding="utf-8")
+    for token in (
+        "ReplayManifestV6",
+        "ReplayStepV6",
+        "AuthoritativeReplayV6",
+        "replay-manifest.v6",
+        "replay-step.v6",
+        "authoritative-replay.v6",
+        "DecisionResponseV2",
+    ):
+        if token not in replay_v6_rust:
+            fail(f"Replay V6 identity surface lacks {token}")
     # Historical V3 digest support remains preserved as detached verifier.
     if "calculate_checkpoint_digest_v3" not in persistence_rust:
         fail("historical V3 checkpoint digest support is not preserved")

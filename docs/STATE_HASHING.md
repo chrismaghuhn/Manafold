@@ -1,6 +1,6 @@
 # State and Artifact Hashing
 
-**Status:** accepted V1/V2 historical contracts; M2 V3 persistence/digest freeze candidate  
+**Status:** V1–V4 historical identity contracts; current V5 state / V6 checkpoint identity
 **Stability:** normative identity separation and ADR-0038 persistence-codec specification
 
 ## Digest domains
@@ -14,12 +14,15 @@ Current/historical families include:
 | `FullStateDigest` | historical V1 full state under placeholder RNG semantics |
 | `FullStateDigestV2` | M1 full state under typed `mtgml.rng.v1` semantics |
 | `FullStateDigestV3` | M2 full authoritative state with typed continuation/information/perspective-local visible identity semantics |
+| `FullStateDigestV4` | historical M3 state meaning; detached exact verifier only after S3.P0 |
+| `FullStateDigestV5` | current complete EngineState identity, including the typed Magic SBA-order continuation |
 | `InformationStateDigest` | historical M1 information-state digest (`mtgml.information-state-digest.v1`) |
 | `InformationStateDigestV2` | M2 perspective-safe current observation + retained knowledge (`mtgml.information-state-digest.v2`) |
 | `ObservationDigest` | exact current observation bytes |
 | `CandidateSetDigest` | ordered visible candidates/constraints only |
 | `CheckpointDigestV2/V3` | complete trusted checkpoint identity for the corresponding state version |
-| `CheckpointDigestV5` | V5 resumable checkpoint identity binding `ExecutionIdentityV1` (ADR 0055) |
+| `CheckpointDigestV5` | historical execution-identity checkpoint digest; detached exact verifier only after S3.P0 |
+| `CheckpointDigestV6` | current checkpoint identity binding `FullStateDigestV5` and `ExecutionIdentityV1` |
 
 Digest identity provides content identity/divergence detection, not authenticity.
 
@@ -769,6 +772,81 @@ player damage entry = [player_id, damage_u32]
 
 The presence of this historical structural field does not claim executable Commander semantics in M2.
 
+# Current FullStateDigestV5
+
+S3.P0 makes `FullStateDigestV5` the current full-state identity because the
+typed Magic SBA Graveyard-order continuation is new authoritative
+`EngineState`. It uses SHA-256, the V1 digest envelope, canonical CBOR, and
+fresh identities:
+
+```text
+semantic_domain = mtgml.full-state-digest.v5
+input_schema_id = full-state-digest-input.v5
+```
+
+The canonical top-level input remains a fixed 13-element array with the same
+field sequence and unchanged component meanings as the accepted V4 encoder;
+only the first two schema/domain strings change, and the closed continuation
+payload family gains the new Magic variant:
+
+```text
+[
+  "full-state-digest-input.v5",
+  "mtgml.full-state-digest.v5",
+  revision,
+  core_v1,
+  zones_v1,
+  allocators_v3,
+  execution_v2,
+  random_v1,
+  knowledge_v2,
+  perspective_identities_v2,
+  combat,
+  foundation_sources,
+  format_v1
+]
+```
+
+The V5 `execution_v2.continuations[]` payload is a closed variant array. The
+existing `SyntheticM2Assembly` encoding remains byte-for-byte the same under
+V5's new outer state identity. The new Magic encoding is:
+
+```text
+[
+  "magic_sba_graveyard_order_v1",
+  [
+    round_start_revision,
+    selected_sba_actions[closed_selected_action],
+    apnap_owners[player_id],
+    next_owner_index,
+    completed_owner_orders[[owner, top_to_bottom_game_object_ids]]
+  ]
+]
+```
+
+`selected_sba_actions` is a closed typed action sequence. Its variants and
+canonical forms are:
+
+```text
+["player_loses", player_id]
+["object_to_owner_graveyard", [game_object_id, causes[stable_cause_id]]]
+```
+
+Player-loss actions precede object actions and are ordered by `PlayerId`;
+object actions follow in `GameObjectId` order. Each target appears at most
+once. Object causes are nonempty, duplicate-free, and sorted by their closed
+cause ordering (`zero_toughness`, `lethal_damage`). Player-loss actions are
+part of the frozen simultaneous round but do not participate in Graveyard
+order candidate derivation. APNAP owner sequence and each selected
+top-to-bottom permutation preserve semantic order. Completed order entries
+are a prefix of the owner sequence. No arbitrary Serde serialization or
+controller-local state enters the digest.
+
+`FullStateDigestV4` remains an immutable historical identity. Its KAT bytes
+are unchanged, and its detached historical encoder rejects the Magic
+continuation rather than assigning it a V4 representation. No V4-to-V5
+automatic migration exists.
+
 # CheckpointDigestV3
 
 Envelope fields:
@@ -832,6 +910,39 @@ Checkpoint codec identity:
 Both strings are non-empty exact UTF-8 values declared by the checkpoint contract.
 
 The checkpoint digest binds the complete `FullStateDigestV3` identity, not merely its 32 digest bytes.
+
+# Current CheckpointDigestV6
+
+`EnvironmentCheckpointV6` uses `FullStateDigestV5` and the fresh checkpoint
+identity family:
+
+```text
+semantic_domain = mtgml.checkpoint-digest.v6
+input_schema_id = environment-checkpoint-digest-input.v6
+codec identity = ["in-memory-reference", "6"]
+```
+
+Its canonical payload is the fixed seven-element execution-bound form:
+
+```text
+[
+  "environment-checkpoint-digest-input.v6",
+  "mtgml.checkpoint-digest.v6",
+  full_state_digest_reference_v1_for_v5,
+  episode_status,
+  environment_limit_counters,
+  ["in-memory-reference", "6"],
+  [[execution_program_variant, null], semantic_contract_id_32bytes]
+]
+```
+
+The V5 full-state reference must identify
+`mtgml.full-state-digest.v5` / `full-state-digest-input.v5`. Status and
+counters use the already declared closed encodings; the entire
+`ExecutionIdentityV1` is bound. Rust and Python use the same canonical
+preimage and known-answer fixture. `CheckpointDigestV5` retains its exact V5
+preimage over a V4 full-state reference and codec `/5`; it is never re-bound
+to V5 state or codec `/6`.
 
 # Conversion and reader rules
 

@@ -1,5 +1,5 @@
 use crate::TurnPosition;
-use mtgml_model::{DecisionId, FullStateDigestV4, GameObjectId, PlayerId, StateRevision};
+use mtgml_model::{DecisionId, FullStateDigestV5, GameObjectId, PlayerId, StateRevision};
 use mtgml_random::RandomStreamKeyV1;
 use serde::{Deserialize, Serialize};
 
@@ -74,8 +74,8 @@ pub enum SemanticDeltaOperation {
 pub struct StateDelta {
     pub before_revision: StateRevision,
     pub after_revision: StateRevision,
-    pub before_digest: FullStateDigestV4,
-    pub after_digest: FullStateDigestV4,
+    pub before_digest: FullStateDigestV5,
+    pub after_digest: FullStateDigestV5,
     pub replacement: EngineStateParts,
     pub audit: Vec<SemanticDeltaOperation>,
 }

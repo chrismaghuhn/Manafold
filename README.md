@@ -5,7 +5,7 @@
 - **Foundation closure/freeze:** `COMPLETE` (`FINAL_FOUNDATION_CLOSURE = PASS`, `PRE_M3_REMEDIATION_FREEZE = PASS`, `FOUNDATION_READY_FOR_M3 = YES`)
 - **Core modularization:** Issue #162 `COMPLETE`, merged by PR #179; the refactor was semantic-neutral and did not change public, wire, schema, digest, replay, or rules contracts
 - **M2.5 scope work:** `NOT_CLAIMED` / `NOT_FROZEN`; the abandoned census and research machinery remains historical Git evidence, not active engine scope
-- **Current status:** M3.S1 complete / covered / not certified; M3.S2 implemented / not covered / not certified; Task 7 promotion is complete and Task 8 exact-head verification is next
+- **Current status:** M3.S1 complete / covered / not certified; M3.S2 complete / implemented / not covered / not certified; PR #208 is merged and S2 exact-head verification passed
 - **Pre-M3 governance cleanup:** `COMPLETE`; the accepted M3 Entry Decision and its historical authorization are preserved, with the hardened scope accepted by PR #184
 - **M3 authorization:** `AUTHORIZED` at `ea668c47ef1361b3d989fd32b8f3cfd4751b1e79`; the authorized task at that head was `M3.P0_STATE_IDENTITY_CUT`
 - **M3 milestone execution:** `STARTED` — P0 infrastructure is merged and frozen
@@ -13,24 +13,26 @@
 - **M3.T0:** `COMPLETE / FROZEN` (closure review head `b403edefcabf7b304c0fa5f6816d22ac8aca477b`, 10/10 frozen exit criteria PASS, 0 BLOCKER / 0 MAJOR; status-sync merge `b9c5f2be97b8fc1f31d648d58f890de78f0a035c`; freeze executed and tracked in Issue #178)
 - **M3.S1:** `COMPLETE / COVERED / NOT CERTIFIED` (`rules/turn-structure@0.1.0`; S1 authorization head `587016574e4e8f9f797a713877f8caf1c5143cfb`; covered for the bounded scope, certification is not claimed)
 - **M3 semantic implementation:** M3.S1 is `COVERED`; bounded M3.S2 zone-incarnation is `IMPLEMENTED` and not covered
-- **M3.S2:** `IMPLEMENTED / NOT COVERED / NOT CERTIFIED` (`rules/zone-incarnation@0.1.0`); only the selected Battlefield → owner Graveyard and owner Library-top → owner Hand profiles are implemented
+- **M3.S2:** `COMPLETE / IMPLEMENTED / NOT COVERED / NOT CERTIFIED` (`rules/zone-incarnation@0.1.0`); only the selected Battlefield → owner Graveyard and owner Library-top → owner Hand profiles are implemented
+- **PR #208:** `MERGED`; `S2_EXACT_HEAD_VERIFICATION = PASS`
 - **S2 authoritative replay:** `DEFERRED_REQUIRED / BLOCKED_FOR_COVERED`
 - **M3 Pre-T0 hardening:** `COMPLETE / ACCEPTED` (`ADR 0054 = ACCEPTED`, `FOUNDATION_V2 = ACCEPTED_HARDENED_M3_SCOPE`)
 - **M3 plan status:** `ACCEPTED`
 - **Task 14:** `COMPLETE` — `S1_EXACT_HEAD_VERIFICATION = PASS`
-- **Next gate:** `M3_S2_EXACT_HEAD_VERIFICATION` (Task 8; S2 lifecycle promotion is complete, exact-head closure remains)
+- **S3.P0:** implementation complete candidate; exact-head review pending
+- **Next gate:** `M3_S3_P0_EXACT_HEAD_REVIEW`
 - **M3 hardening acceptance:** PR #184 merged and accepted ADR 0054/Foundation V2; T0 was reauthorized under Issue #178, implemented by merged PRs #189/#190/#191, and finalized as COMPLETE / FROZEN
 - **Capability lifecycle:** 9 Foundation capabilities are `specified`, 1 is `implemented`, 1 is `covered`, and 0 are `certified`
-- **Current boundary:** S2 authoritative replay is `DEFERRED_REQUIRED / BLOCKED_FOR_COVERED`; SBA-combat and draw-card interactions remain unsatisfied. Certification and card/deck/format/Commander/playability support are not claimed.
+- **Current boundary:** S2 authoritative replay is `DEFERRED_REQUIRED / BLOCKED_FOR_COVERED`; `draw-card × zone-incarnation` and `state-based-actions-combat × zone-incarnation` remain `UNSATISFIED`. S3.0/A/B/C are not authorized. Certification and card/deck/format/Commander/playability support are not claimed.
 - **Project type:** independent greenfield MTG/ML rules and simulation engine
 - **Playable engine:** no
 - **Real Magic semantics:** bounded M3.S1 turn-structure slice and implemented M3.S2 selected zone-incarnation profiles only
 - **Real card support:** none
 
-**Current resumable execution contract:** V5. V5 binds `ExecutionIdentityV1`
-through the `EnvironmentCheckpointV5` / `CheckpointDigestV5` and
-`ReplayManifestV5` surfaces; V4 remains historical-only and is not
-reinterpreted.
+**Current resumable execution contract:** V6. V6 binds the V5 full-state
+identity and `ExecutionIdentityV1` through `EnvironmentCheckpointV6`,
+`CheckpointDigestV6`, and Replay V6. V4/V5 artifacts retain their historical
+meanings and are not reinterpreted or automatically migrated.
 
 Manafold prioritizes:
 

@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""V5 Execution-Identity Gate (spec Task 12 / ADR 0055 §21/§22/§23a.1).
+"""Detached V5 execution-identity evidence gate (ADR 0055).
 
-Asserts the V5 current-state identity surface and enforces the residual-V4
-census (§22) plus the resolved kernel-construction census (§23a.1).
+Preserves the exact historical V5 checkpoint/replay types, detached validators,
+fixtures, and their original V4->V5 migration census. Current runtime identity
+is independently checked by ``run_v6_state_identity_gate.py``.
 
 The gate is intentionally RED until the current producers/consumers from the
 V4 census are migrated to V5 (Task 13).  Its RED state at this point IS the
@@ -32,7 +33,7 @@ elif sys.stdout.encoding and sys.stdout.encoding.lower().startswith("cp"):
 ROOT = Path(__file__).resolve().parents[1]
 
 # ---------------------------------------------------------------------------
-# §21 V5-current tokens — these must be present in the current runtime surface.
+# Historical V5 identity tokens — retain their exact detached verifier surfaces.
 # ---------------------------------------------------------------------------
 # (relative_path, token, expected_minimum_occurrences_in_file_contents)
 V5_CURRENT_TOKENS: list[tuple[str, str, int]] = [
@@ -325,11 +326,12 @@ def scan_kernel_sites() -> KernelResult:
 # ---------------------------------------------------------------------------
 # §22 Residual-V4 census.
 # ---------------------------------------------------------------------------
-# V4 migration tokens: V4 types/identifiers that have V5 successors and must
-# be migrated where they appear as CURRENT_PRODUCER/CURRENT_CONSUMER.
+# Historical V4→V5 census tokens. This gate preserves the earlier cut audit;
+# the current V5-state/V6-checkpoint cut is owned by the V6 gate.
 #
-# NOT included: FullStateDigestV4 (still EXECUTABLE/current per ADR §2.12 —
-# it has NO V5 successor), CheckpointDigestV3 and all V3 replay types (historical
+# NOT included: FullStateDigestV4 was not migrated by ADR 0055; the later S3.P0
+# cut adds FullStateDigestV5 and classifies V4 as historical. CheckpointDigestV3
+# and all V3 replay types remain historical
 # READABLE_VERIFIABLE_ONLY with no V5 successor), ReplaySchemaVersionsV1/V3/V4
 # (only when in HISTORICAL_VERIFIER files).
 #
@@ -367,7 +369,7 @@ V4_MIGRATION_TOKENS: tuple[str, ...] = (
 
 # CURRENT_PRODUCER sites: V4 tokens here are VIOLATIONS.
 # These are the production checkpoint/replay construction paths that must
-# migrate to V5 per §22 census.
+# historical V4→V5 cut per §22 census.
 V4_CURRENT_PRODUCER_SITES: set[str] = {
     "crates/mtgml-environment/src/synthetic.rs",
     "crates/mtgml-environment/src/synthetic/commit.rs",
@@ -713,7 +715,7 @@ def main() -> None:
 
     violations: list[str] = []
 
-    # --- Layer 1: V5-current tokens ---
+    # --- Layer 1: detached V5 identity artifacts ---
     missing_tokens = check_v5_current_tokens()
     if missing_tokens:
         violations.extend(missing_tokens)
@@ -735,15 +737,15 @@ def main() -> None:
         )
 
     if violations:
-        print(f"RED: {len(violations)} V5 execution-identity violation(s):")
+        print(f"RED: {len(violations)} historical V5 identity evidence violation(s):")
         for v in violations:
             print(f"  - {v}")
         sys.exit(1)
 
-    print("GREEN: V5 execution-identity gate — all checks pass")
-    print(f"  - V5 current tokens: {len(V5_CURRENT_TOKENS)} verified")
+    print("GREEN: detached V5 checkpoint/replay identity evidence — all checks pass")
+    print(f"  - V5 historical identity tokens: {len(V5_CURRENT_TOKENS)} verified")
     print(f"  - §23a.1 kernel sites: {len(kernel_result.findings)} checked, 0 forbidden")
-    print("  - §22 residual-V4 census: 0 current-producer/consumer violations")
+    print("  - historical ADR-0055 V4→V5 census: no unresolved violations")
 
 
 # Structural guard: V4_RETAIN_RULES must have exactly one authoritative

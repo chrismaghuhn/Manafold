@@ -18,17 +18,17 @@ use std::collections::BTreeMap;
 use mtgml_decision::DecisionResponseV2;
 use mtgml_model::PlayerId;
 use mtgml_observation::ObservedEventEnvelopeV2;
-use mtgml_replay::ReplayStepV5;
+use mtgml_replay::ReplayStepV6;
 use mtgml_rules::{validate_transition_contract, TransitionResult};
 use mtgml_state::StateDelta;
 
 use super::replay::build_manifest;
 use super::SyntheticM1EnvironmentBackend;
-use crate::checkpoint::{EnvironmentCheckpointV5, EnvironmentLimitCounters};
+use crate::checkpoint::{EnvironmentCheckpointV6, EnvironmentLimitCounters};
 use crate::errors::{ControllerError, EnvironmentCommitError};
 
 impl SyntheticM1EnvironmentBackend {
-    pub(super) fn current_checkpoint(&self) -> Result<EnvironmentCheckpointV5, ControllerError> {
+    pub(super) fn current_checkpoint(&self) -> Result<EnvironmentCheckpointV6, ControllerError> {
         crate::reference::current_checkpoint(
             &self.state,
             &self.status,
@@ -85,7 +85,7 @@ impl SyntheticM1EnvironmentBackend {
     /// `decisions_submitted` never increments (which by the counter
     /// invariant also pins `accepted_transitions`), and no replay step is
     /// appended — responseless progress is execution semantics, not a
-    /// synthetic player action, and ReplayStepV5 carries no response field
+    /// synthetic player action, and ReplayStepV6 carries no response field
     /// to fabricate — but the recorder baseline is rebased onto the
     /// post-progress checkpoint so the next real response appends against a
     /// continuous identity instead of orphaning into RevisionDiscontinuity.
@@ -117,7 +117,7 @@ impl SyntheticM1EnvironmentBackend {
     ) -> Result<TransitionResult, ControllerError>
     where
         F: FnOnce(
-            &EnvironmentCheckpointV5,
+            &EnvironmentCheckpointV6,
             &TransitionResult,
             &BTreeMap<PlayerId, Vec<ObservedEventEnvelopeV2>>,
         ) -> Result<(), ControllerError>,
@@ -178,7 +178,7 @@ impl SyntheticM1EnvironmentBackend {
 
         let candidate_counters =
             Self::candidate_counters(&before.limit_counters, transition.events.len())?;
-        let candidate = EnvironmentCheckpointV5::new(
+        let candidate = EnvironmentCheckpointV6::new(
             transition.next_state.clone(),
             transition.status.clone(),
             candidate_counters,
@@ -194,7 +194,7 @@ impl SyntheticM1EnvironmentBackend {
                 counter: "replay_step_index",
             }
         })?;
-        let step = ReplayStepV5 {
+        let step = ReplayStepV6 {
             step_index,
             actor,
             checkpoint_digest_before: before.checkpoint_digest.clone(),

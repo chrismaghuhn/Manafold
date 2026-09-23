@@ -122,6 +122,23 @@ pub(crate) fn full_state_digest_input(
     })
 }
 
+/// Recomputes the immutable historical V4 identity for a current EngineState
+/// that is representable by the V4 semantic contract. V4 rejects the new
+/// Magic SBA continuation variant rather than assigning it a V4 encoding.
+pub fn calculate_full_state_digest_v4_historical(
+    state: &EngineState,
+) -> Result<FullStateDigestV4, StateDigestError> {
+    calculate_full_state_digest_v4_for_state(state)
+}
+
+/// Returns the exact historical V4 canonical state payload for old-state
+/// parity evidence. Current EngineState::canonical_digest_bytes uses V5.
+pub fn canonical_state_bytes_v4_historical(
+    state: &EngineState,
+) -> Result<Vec<u8>, StateDigestError> {
+    full_state_digest_input(state)?.canonical_payload()
+}
+
 fn semantic_error() -> StateDigestError {
     StateDigestError::Persistence(PersistenceDecodeErrorV1::SemanticValidation)
 }
@@ -389,7 +406,8 @@ fn execution_value(state: &EngineState) -> Result<Value, StateDigestError> {
         .execution
         .continuations
         .values()
-        .map(continuation_value);
+        .map(continuation_value)
+        .collect::<Result<Vec<_>, _>>()?;
     if !state.execution.effects.is_empty()
         || !state.execution.waiting_triggers.is_empty()
         || !state.execution.delayed_effects.is_empty()
@@ -497,7 +515,9 @@ fn trusted_binding(value: &EngineCandidateBinding) -> Value {
     }
 }
 
-fn continuation_value(record: &crate::m2_shape::ContinuationRecordV2) -> Value {
+fn continuation_value(
+    record: &crate::m2_shape::ContinuationRecordV2,
+) -> Result<Value, StateDigestError> {
     let payload = match &record.payload {
         ContinuationPayloadV2::SyntheticM2Assembly {
             stage,
@@ -513,14 +533,20 @@ fn continuation_value(record: &crate::m2_shape::ContinuationRecordV2) -> Value {
                 array(ordered_piece_keys.iter().copied().map(u32_value)),
             ]),
         ]),
+        ContinuationPayloadV2::MagicSbaGraveyardOrderV1 { .. } => {
+            // The V4 canonical meaning is frozen and has no representation for
+            // the newly authoritative Magic continuation. Fail closed instead
+            // of reinterpreting V4 bytes under a new state shape.
+            return Err(semantic_error());
+        }
     };
-    array([
+    Ok(array([
         u(record.id.0),
         u(record.actor.0),
         u(record.created_at_revision.0),
         u(u64::from(record.stage_index)),
         payload,
-    ])
+    ]))
 }
 
 fn assembly_stage(value: AssemblyStageV2) -> &'static str {

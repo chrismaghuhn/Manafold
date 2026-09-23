@@ -5,8 +5,8 @@ use mtgml_observation::{
 };
 use mtgml_random::RootSeed256;
 use mtgml_replay::{
-    AuthoritativeReplayV5, DeckIdentityV1, KernelIdentityV1, ReplayRecorderV5,
-    ReplaySchemaVersionsV5,
+    AuthoritativeReplayV6, DeckIdentityV1, KernelIdentityV1, ReplayRecorderV6,
+    ReplaySchemaVersionsV6,
 };
 use mtgml_rules::{ProgramKernelV1, TransitionResult};
 use mtgml_state::{
@@ -14,7 +14,7 @@ use mtgml_state::{
 };
 
 use crate::checkpoint::{
-    CheckpointCodecIdentity, EnvironmentCheckpointV5, EnvironmentLimitCounters,
+    CheckpointCodecIdentity, EnvironmentCheckpointV6, EnvironmentLimitCounters,
 };
 use crate::controller::EnvironmentBackend;
 use crate::endpoint::PlayerEndpointError;
@@ -77,7 +77,7 @@ pub struct SyntheticM1ReplayConfig {
     pub oracle_snapshot: String,
     pub card_bundle: String,
     pub randomness_contract_id: String,
-    pub schemas: ReplaySchemaVersionsV5,
+    pub schemas: ReplaySchemaVersionsV6,
     pub decks: Vec<DeckIdentityV1>,
 }
 
@@ -88,7 +88,7 @@ pub struct SyntheticM1EnvironmentBackend {
     codec: CheckpointCodecIdentity,
     execution_identity: ExecutionIdentityV1,
     config: SyntheticM1EnvironmentConfig,
-    replay: ReplayRecorderV5,
+    replay: ReplayRecorderV6,
     kernel: ProgramKernelV1,
     #[cfg(test)]
     eventful_fixture: bool,
@@ -111,14 +111,14 @@ impl SyntheticM1EnvironmentBackend {
             program_kind: ExecutionProgramV1::SyntheticRulesCompat,
             semantic_contract_id: synthetic_legacy_default_semantic_contract_id(),
         };
-        let checkpoint = EnvironmentCheckpointV5::new(
+        let checkpoint = EnvironmentCheckpointV6::new(
             state.clone(),
             status.clone(),
             limit_counters.clone(),
             config.codec.clone(),
             execution_identity.clone(),
         )?;
-        let replay = ReplayRecorderV5::new(build_manifest(&config, &checkpoint)?)?;
+        let replay = ReplayRecorderV6::new(build_manifest(&config, &checkpoint)?)?;
         Ok(Self {
             state,
             status,
@@ -135,7 +135,7 @@ impl SyntheticM1EnvironmentBackend {
     }
 
     pub fn from_checkpoint(
-        checkpoint: EnvironmentCheckpointV5,
+        checkpoint: EnvironmentCheckpointV6,
         config: SyntheticM1EnvironmentConfig,
     ) -> Result<Self, ControllerError> {
         let catalog = RuntimeSemanticCatalog::production();
@@ -144,7 +144,7 @@ impl SyntheticM1EnvironmentBackend {
     }
 
     fn from_admitted_checkpoint(
-        checkpoint: EnvironmentCheckpointV5,
+        checkpoint: EnvironmentCheckpointV6,
         config: SyntheticM1EnvironmentConfig,
     ) -> Result<Self, ControllerError> {
         checkpoint.validate()?;
@@ -156,7 +156,7 @@ impl SyntheticM1EnvironmentBackend {
         // are rejected before any player projection can expose them.
         mtgml_rules::validate_synthetic_runtime_state(&checkpoint.state)
             .map_err(|_| ControllerError::UnsupportedSyntheticState)?;
-        let replay = ReplayRecorderV5::new(build_manifest(&config, &checkpoint)?)?;
+        let replay = ReplayRecorderV6::new(build_manifest(&config, &checkpoint)?)?;
         Ok(Self {
             state: checkpoint.state,
             status: checkpoint.status,
@@ -178,11 +178,11 @@ impl EnvironmentBackend for SyntheticM1EnvironmentBackend {
         self.state.core.players.keys().copied().collect()
     }
 
-    fn checkpoint(&self) -> Result<EnvironmentCheckpointV5, ControllerError> {
+    fn checkpoint(&self) -> Result<EnvironmentCheckpointV6, ControllerError> {
         self.current_checkpoint()
     }
 
-    fn restore(&mut self, checkpoint: EnvironmentCheckpointV5) -> Result<(), ControllerError> {
+    fn restore(&mut self, checkpoint: EnvironmentCheckpointV6) -> Result<(), ControllerError> {
         let catalog = RuntimeSemanticCatalog::production();
         admit_restore(&catalog, &checkpoint)?;
         #[cfg(test)]
@@ -217,7 +217,7 @@ impl EnvironmentBackend for SyntheticM1EnvironmentBackend {
         Ok(Box::new(child))
     }
 
-    fn export_replay(&self) -> Result<AuthoritativeReplayV5, ControllerError> {
+    fn export_replay(&self) -> Result<AuthoritativeReplayV6, ControllerError> {
         Ok(self.replay.export()?)
     }
 

@@ -419,6 +419,84 @@
       "expected_error_code": "semantic.replay_manifest",
       "expected_reject_layer": "rust-python-semantic-or-decode",
       "path": "replay-manifest-v5-wrong-schema.json"
+    },
+    {
+      "contract": "replay-manifest.v6",
+      "expected_error_code": "decode.invalid_json",
+      "expected_reject_layer": "rust-python-semantic-or-decode",
+      "path": "replay-manifest-v6-unknown-program.json"
+    },
+    {
+      "contract": "replay-manifest.v6",
+      "expected_error_code": "decode.invalid_json",
+      "expected_reject_layer": "rust-python-semantic-or-decode",
+      "path": "replay-manifest-v6-wrong-digest.json"
+    },
+    {
+      "contract": "replay-manifest.v6",
+      "expected_error_code": "semantic.replay_manifest",
+      "expected_reject_layer": "rust-python-semantic-or-decode",
+      "path": "replay-manifest-v6-semantic-mismatch.json"
+    },
+    {
+      "contract": "replay-manifest.v6",
+      "expected_error_code": "semantic.replay_manifest",
+      "expected_reject_layer": "rust-python-semantic-or-decode",
+      "path": "replay-manifest-v6-rules-mismatch.json"
+    },
+    {
+      "contract": "replay-manifest.v6",
+      "expected_error_code": "semantic.replay_manifest",
+      "expected_reject_layer": "rust-python-semantic-or-decode",
+      "path": "replay-manifest-v6-cr-snapshot.json"
+    },
+    {
+      "contract": "replay-manifest.v6",
+      "expected_error_code": "semantic.replay_manifest",
+      "expected_reject_layer": "rust-python-semantic-or-decode",
+      "path": "replay-manifest-v6-three-way.json"
+    },
+    {
+      "contract": "authoritative-replay.v6",
+      "expected_error_code": "semantic.replay",
+      "expected_reject_layer": "rust-python-semantic-or-decode",
+      "path": "authoritative-replay-v6-three-way.json"
+    },
+    {
+      "contract": "authoritative-replay.v6",
+      "expected_error_code": "semantic.replay",
+      "expected_reject_layer": "rust-python-semantic-or-decode",
+      "path": "authoritative-replay-v5-presented-as-v6.json"
+    },
+    {
+      "contract": "replay-manifest.v6",
+      "expected_error_code": "decode.invalid_json",
+      "expected_reject_layer": "rust-python-semantic-or-decode",
+      "path": "replay-manifest-v6-unknown-field.json"
+    },
+    {
+      "contract": "replay-manifest.v6",
+      "expected_error_code": "semantic.replay_manifest",
+      "expected_reject_layer": "rust-python-semantic-or-decode",
+      "path": "replay-manifest-v6-wrong-schema.json"
+    },
+    {
+      "contract": "replay-manifest.v6",
+      "expected_error_code": "semantic.replay_manifest",
+      "expected_reject_layer": "rust-python-semantic-or-decode",
+      "path": "replay-manifest-v6-sba-synthetic-codec.json"
+    },
+    {
+      "contract": "replay-manifest.v6",
+      "expected_error_code": "semantic.replay_manifest",
+      "expected_reject_layer": "rust-python-semantic-or-decode",
+      "path": "replay-manifest-v6-wrong-sba-version-magic-codec.json"
+    },
+    {
+      "contract": "replay-manifest.v6",
+      "expected_error_code": "semantic.replay_manifest",
+      "expected_reject_layer": "rust-python-semantic-or-decode",
+      "path": "replay-manifest-v6-synthetic-authority-magic-codec.json"
     }
   ]
 }

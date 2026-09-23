@@ -16,13 +16,13 @@ fn backend_without_pending() -> SyntheticM1EnvironmentBackend {
         })
         .unwrap();
     state.execution.pending_decision = None;
-    let checkpoint = EnvironmentCheckpointV5::new(
+    let checkpoint = EnvironmentCheckpointV6::new(
         state,
         EpisodeStatus::Running,
         EnvironmentLimitCounters::default(),
         CheckpointCodecIdentity {
             codec_id: "in-memory-reference".into(),
-            semantic_version: "5".into(),
+            semantic_version: "6".into(),
         }, synthetic_identity(),
     )
     .unwrap();
@@ -103,7 +103,7 @@ fn forced_progress_commits_without_response_counters_or_replay_step() {
     assert_eq!(
         after.state_digest,
         after.state.digest().unwrap(),
-        "forced progress must leave the FullStateDigestV4 identity recompute-exact"
+        "forced progress must leave the FullStateDigestV5 identity recompute-exact"
     );
     assert_eq!(after.state_digest, product.next_state.digest().unwrap());
 }
@@ -260,13 +260,13 @@ fn forced_progress_failure_leaves_checkpoint_counters_and_replay_unchanged() {
         .unwrap()
         .life = 39;
     let players = [PlayerId(1), PlayerId(2)];
-    let checkpoint = EnvironmentCheckpointV5::new(
+    let checkpoint = EnvironmentCheckpointV6::new(
         setup,
         EpisodeStatus::Running,
         EnvironmentLimitCounters::default(),
         CheckpointCodecIdentity {
             codec_id: "in-memory-reference".into(),
-            semantic_version: "5".into(),
+            semantic_version: "6".into(),
         }, synthetic_identity(),
     )
     .unwrap();

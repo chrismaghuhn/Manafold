@@ -92,13 +92,13 @@ fn information_state_orders_active_and_retired_knowledge_jointly() {
         },
     );
 
-    let checkpoint = EnvironmentCheckpointV5::new(
+    let checkpoint = EnvironmentCheckpointV6::new(
         state.clone(),
         EpisodeStatus::Running,
         EnvironmentLimitCounters::default(),
         CheckpointCodecIdentity {
             codec_id: "in-memory-reference".into(),
-            semantic_version: "5".into(),
+            semantic_version: "6".into(),
         }, synthetic_identity(),
     )
     .unwrap();
@@ -131,10 +131,10 @@ fn information_state_orders_active_and_retired_knowledge_jointly() {
 fn evd_015_retained_provenance_is_complete_and_stable_through_restore_and_fork() {
     let codec = CheckpointCodecIdentity {
         codec_id: "in-memory-reference".into(),
-        semantic_version: "5".into(),
+        semantic_version: "6".into(),
     };
     let state = rich_provenance_state();
-    let checkpoint = EnvironmentCheckpointV5::new(
+    let checkpoint = EnvironmentCheckpointV6::new(
         state.clone(),
         EpisodeStatus::Running,
         EnvironmentLimitCounters::default(),
@@ -259,9 +259,9 @@ fn episode_status_does_not_change_the_information_digest() {
 
     let codec = CheckpointCodecIdentity {
         codec_id: "in-memory-reference".into(),
-        semantic_version: "5".into(),
+        semantic_version: "6".into(),
     };
-    let running = EnvironmentCheckpointV5::new(
+    let running = EnvironmentCheckpointV6::new(
         final_state.clone(),
         EpisodeStatus::Running,
         EnvironmentLimitCounters::default(),
@@ -269,7 +269,7 @@ fn episode_status_does_not_change_the_information_digest() {
     synthetic_identity()
     )
     .unwrap();
-    let terminal = EnvironmentCheckpointV5::new(
+    let terminal = EnvironmentCheckpointV6::new(
         final_state.clone(),
         EpisodeStatus::Terminal {
             reason: TerminalReason::Concession,
@@ -403,13 +403,13 @@ fn visible_decision_exposes_no_trusted_identities_or_internals() {
         .unwrap();
     variant.allocators.next_effect_id = mtgml_model::EffectInstanceId(500);
     variant.allocators.next_trigger_id = mtgml_model::TriggerInstanceId(900);
-    let checkpoint = EnvironmentCheckpointV5::new(
+    let checkpoint = EnvironmentCheckpointV6::new(
         variant,
         EpisodeStatus::Running,
         EnvironmentLimitCounters::default(),
         CheckpointCodecIdentity {
             codec_id: "in-memory-reference".into(),
-            semantic_version: "5".into(),
+            semantic_version: "6".into(),
         }, synthetic_identity(),
     )
     .unwrap();

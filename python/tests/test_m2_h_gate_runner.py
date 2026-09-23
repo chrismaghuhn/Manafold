@@ -652,6 +652,19 @@ def _synthetic_registry(
 class RegistryRelationTests(unittest.TestCase):
     """rust == COMMON, python == COMMON + exception, schemas == COMMON."""
 
+    def test_replay_v6_contracts_are_pinned_as_common_named_contracts(self) -> None:
+        self.assertTrue(
+            {
+                "replay-manifest.v6",
+                "authoritative-replay.v6",
+            }
+            <= runner.COMMON_NAMED_CONTRACTS
+        )
+
+    def test_live_decoder_registry_relation_passes(self) -> None:
+        detail = runner.verify_registry_relation()
+        self.assertTrue(detail.startswith("relation holds:"), detail)
+
     def test_relation_holds_on_the_pinned_sets(self) -> None:
         common = runner.COMMON_NAMED_CONTRACTS
         python_set = common | runner.PYTHON_MECHANICAL_ONLY

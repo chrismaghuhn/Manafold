@@ -82,6 +82,7 @@ pub fn validate_engine_state(state: &EngineState) -> Result<(), EngineStateViola
     validate_m2_shape(
         state.revision,
         &players,
+        &state.zones.objects,
         state.execution.pending_decision.as_ref(),
         &state.execution.continuations,
         &state.knowledge,

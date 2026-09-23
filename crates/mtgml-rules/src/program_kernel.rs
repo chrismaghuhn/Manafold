@@ -147,7 +147,7 @@ impl ProgramKernelV1 {
 ///
 /// For MagicRules: state admission only — generic EngineState validation
 /// followed by S1 profile validation. Kernel execution of S1 semantics
-/// requires V5 admission via `ProgramKernelV1::for_admitted_execution`.
+/// requires V6 admission via `ProgramKernelV1::for_admitted_execution`.
 pub fn validate_runtime_state(
     program_kind: ExecutionProgramV1,
     state: &EngineState,

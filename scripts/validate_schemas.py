@@ -33,6 +33,8 @@ WIRE_MAPPING = {
     "authoritative-replay.v4": "authoritative-replay.v4.schema.json",
     "replay-manifest.v5": "replay-manifest.v5.schema.json",
     "authoritative-replay.v5": "authoritative-replay.v5.schema.json",
+    "replay-manifest.v6": "replay-manifest.v6.schema.json",
+    "authoritative-replay.v6": "authoritative-replay.v6.schema.json",
 }
 ARTIFACT_CASES = [
     ("capability-registry.v1.schema.json", "cards/capabilities/registry.json"),

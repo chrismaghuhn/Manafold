@@ -137,6 +137,9 @@ fn continuation_chain_advances_with_fresh_explicit_identities() {
                     AssemblyStageV2::ChooseCount => {}
                 }
             }
+            ContinuationPayloadV2::MagicSbaGraveyardOrderV1 { .. } => {
+                panic!("synthetic rules tests must never contain a Magic continuation")
+            }
         }
     }
 

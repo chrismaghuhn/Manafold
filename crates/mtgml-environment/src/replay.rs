@@ -1,17 +1,17 @@
 use mtgml_model::EnvironmentLimitCounters;
-use mtgml_replay::{AuthoritativeReplayV5, InitialEnvironmentIdentityV5};
+use mtgml_replay::{AuthoritativeReplayV6, InitialEnvironmentIdentityV6};
 use mtgml_rules::validate_transition_contract;
 
-use crate::checkpoint::EnvironmentCheckpointV5;
+use crate::checkpoint::EnvironmentCheckpointV6;
 use crate::controller::EnvironmentBackend;
 use crate::errors::{ControllerError, ReplayExecutionError};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ReplayExecutionTrace {
     pub step_index: u64,
-    pub before: EnvironmentCheckpointV5,
+    pub before: EnvironmentCheckpointV6,
     pub transition: mtgml_rules::TransitionResult,
-    pub after: EnvironmentCheckpointV5,
+    pub after: EnvironmentCheckpointV6,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -20,7 +20,7 @@ pub struct ReplayExecutionTrace {
 /// through a player endpoint.
 pub struct ReplayExecutionReport {
     pub traces: Vec<ReplayExecutionTrace>,
-    pub final_checkpoint: EnvironmentCheckpointV5,
+    pub final_checkpoint: EnvironmentCheckpointV6,
 }
 
 fn checked_counter_add(
@@ -34,7 +34,7 @@ fn checked_counter_add(
 }
 
 fn deterministic_counters(
-    before: &EnvironmentCheckpointV5,
+    before: &EnvironmentCheckpointV6,
     transition: &mtgml_rules::TransitionResult,
 ) -> Result<EnvironmentLimitCounters, ControllerError> {
     let event_count =
@@ -63,7 +63,7 @@ fn deterministic_counters(
 }
 
 fn expected_counters(
-    before: &EnvironmentCheckpointV5,
+    before: &EnvironmentCheckpointV6,
     transition: &mtgml_rules::TransitionResult,
     recorded: &EnvironmentLimitCounters,
     step_index: u64,
@@ -84,7 +84,7 @@ fn expected_counters(
 
 fn checkpoint(
     backend: &dyn EnvironmentBackend,
-) -> Result<EnvironmentCheckpointV5, ControllerError> {
+) -> Result<EnvironmentCheckpointV6, ControllerError> {
     let checkpoint = backend.checkpoint()?;
     checkpoint
         .validate()
@@ -92,8 +92,8 @@ fn checkpoint(
     Ok(checkpoint)
 }
 
-fn identity_from_checkpoint(checkpoint: &EnvironmentCheckpointV5) -> InitialEnvironmentIdentityV5 {
-    InitialEnvironmentIdentityV5 {
+fn identity_from_checkpoint(checkpoint: &EnvironmentCheckpointV6) -> InitialEnvironmentIdentityV6 {
+    InitialEnvironmentIdentityV6 {
         state_revision: checkpoint.state.revision,
         full_state_digest: checkpoint.state_digest.clone(),
         episode_status: checkpoint.status.clone(),
@@ -106,7 +106,7 @@ fn identity_from_checkpoint(checkpoint: &EnvironmentCheckpointV5) -> InitialEnvi
 
 pub(crate) fn execute_replay(
     backend: &mut dyn EnvironmentBackend,
-    replay: AuthoritativeReplayV5,
+    replay: AuthoritativeReplayV6,
 ) -> Result<ReplayExecutionReport, ControllerError> {
     replay.validate()?;
     let segment = backend.export_replay()?;
@@ -186,7 +186,7 @@ pub(crate) fn execute_replay(
             // control data. Apply it only to the replay-owned backend through
             // the existing complete checkpoint boundary; never read the host
             // clock or infer the values from game semantics.
-            let candidate = EnvironmentCheckpointV5::new(
+            let candidate = EnvironmentCheckpointV6::new(
                 executed_after.state.clone(),
                 executed_after.status.clone(),
                 expected_counters,

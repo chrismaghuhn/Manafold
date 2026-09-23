@@ -392,6 +392,8 @@ COMMON_NAMED_CONTRACTS = frozenset(
         "authoritative-replay.v4",
         "replay-manifest.v5",
         "authoritative-replay.v5",
+        "replay-manifest.v6",
+        "authoritative-replay.v6",
     }
 )
 

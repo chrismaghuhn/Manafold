@@ -17,14 +17,14 @@ use mtgml_observation::{
 };
 use mtgml_random::MTGML_RNG_V1;
 use mtgml_replay::{
-    AuthoritativeReplayV5, DeckIdentityV1, InitialEnvironmentIdentityV5, KernelIdentityV1,
-    RandomnessIdentityV2, ReplayManifestV5, ReplayRecorderV5, ReplaySchemaVersionsV5,
-    SemanticContractMaterialV5, REPLAY_MANIFEST_SCHEMA_V5, REPLAY_STEP_SCHEMA_V5,
+    AuthoritativeReplayV6, DeckIdentityV1, InitialEnvironmentIdentityV6, KernelIdentityV1,
+    RandomnessIdentityV2, ReplayManifestV6, ReplayRecorderV6, ReplaySchemaVersionsV6,
+    SemanticContractMaterialV5, REPLAY_MANIFEST_SCHEMA_V6, REPLAY_STEP_SCHEMA_V6,
 };
 use mtgml_rules::{validate_transition_contract, ProgramKernelV1, TransitionResult};
 use mtgml_state::EngineState;
 
-use crate::checkpoint::{EnvironmentCheckpointV5, EnvironmentLimitCounters as CheckpointCounters};
+use crate::checkpoint::{EnvironmentCheckpointV6, EnvironmentLimitCounters as CheckpointCounters};
 use crate::controller::EnvironmentBackend;
 use crate::endpoint::PlayerEndpointError;
 use crate::errors::{ControllerError, EnvironmentCommitError};
@@ -44,7 +44,7 @@ pub struct ReferenceEnvironmentReplayConfig {
     pub rules_snapshot: String,
     pub format_policy_snapshot: String,
     pub oracle_snapshot: String,
-    pub schemas: ReplaySchemaVersionsV5,
+    pub schemas: ReplaySchemaVersionsV6,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -64,7 +64,7 @@ pub struct ReferenceEnvironmentBackend {
     codec: CheckpointCodecIdentity,
     execution_identity: ExecutionIdentityV1,
     replay_config: ReferenceEnvironmentReplayConfig,
-    replay: ReplayRecorderV5,
+    replay: ReplayRecorderV6,
     kernel: ProgramKernelV1,
 }
 
@@ -75,8 +75,8 @@ fn magic_execution_identity() -> ExecutionIdentityV1 {
     }
 }
 
-fn current_v5_schema_versions() -> ReplaySchemaVersionsV5 {
-    ReplaySchemaVersionsV5 {
+fn current_v6_schema_versions() -> ReplaySchemaVersionsV6 {
+    ReplaySchemaVersionsV6 {
         observation: OBSERVATION_SCHEMA.into(),
         observation_payload_codec: "synthetic-m3-observation.v1".into(),
         information_state: INFORMATION_STATE_SCHEMA_V2.into(),
@@ -84,7 +84,7 @@ fn current_v5_schema_versions() -> ReplaySchemaVersionsV5 {
         decision_response: mtgml_decision::DECISION_RESPONSE_V2_SCHEMA.into(),
         observed_event: OBSERVED_EVENT_SCHEMA_V2.into(),
         player_step: PLAYER_STEP_SCHEMA_V2.into(),
-        replay_step: REPLAY_STEP_SCHEMA_V5.into(),
+        replay_step: REPLAY_STEP_SCHEMA_V6.into(),
     }
 }
 
@@ -93,7 +93,7 @@ fn validate_reference_replay_config(
 ) -> Result<(), ControllerError> {
     if config.scenario_id.is_empty()
         || config.rules_snapshot.is_empty()
-        || config.schemas != current_v5_schema_versions()
+        || config.schemas != current_v6_schema_versions()
     {
         return Err(ControllerError::ReplayIdentityMismatch);
     }
@@ -102,15 +102,15 @@ fn validate_reference_replay_config(
 
 pub(crate) fn build_reference_manifest(
     config: &ReferenceEnvironmentReplayConfig,
-    checkpoint: &EnvironmentCheckpointV5,
-) -> Result<ReplayManifestV5, ControllerError> {
+    checkpoint: &EnvironmentCheckpointV6,
+) -> Result<ReplayManifestV6, ControllerError> {
     validate_reference_replay_config(config)?;
     let players: Vec<_> = checkpoint.state.core.players.keys().copied().collect();
     if players.len() != 2 {
         return Err(ControllerError::ProgramStateIncompatible);
     }
 
-    // V5 requires participant/deck-shaped provenance fields. These values are
+    // V6 requires participant/deck-shaped provenance fields. These values are
     // explicit non-card scenario markers, never deck or card-bundle support
     // claims, and are derived deterministically from the scenario ID/player.
     let decks = players
@@ -124,8 +124,8 @@ pub(crate) fn build_reference_manifest(
             }
         })
         .collect::<Vec<_>>();
-    let manifest = ReplayManifestV5 {
-        schema_version: REPLAY_MANIFEST_SCHEMA_V5.into(),
+    let manifest = ReplayManifestV6 {
+        schema_version: REPLAY_MANIFEST_SCHEMA_V6.into(),
         engine_build: config.engine_build.clone(),
         kernel: config.kernel.clone(),
         rules_snapshot: config.rules_snapshot.clone(),
@@ -153,8 +153,8 @@ pub(crate) fn build_reference_manifest(
     Ok(manifest)
 }
 
-fn identity_from_checkpoint(checkpoint: &EnvironmentCheckpointV5) -> InitialEnvironmentIdentityV5 {
-    InitialEnvironmentIdentityV5 {
+fn identity_from_checkpoint(checkpoint: &EnvironmentCheckpointV6) -> InitialEnvironmentIdentityV6 {
+    InitialEnvironmentIdentityV6 {
         state_revision: checkpoint.state.revision,
         full_state_digest: checkpoint.state_digest.clone(),
         episode_status: checkpoint.status.clone(),
@@ -171,8 +171,8 @@ pub(crate) fn current_checkpoint(
     limit_counters: &EnvironmentLimitCounters,
     codec: &CheckpointCodecIdentity,
     execution_identity: &ExecutionIdentityV1,
-) -> Result<EnvironmentCheckpointV5, ControllerError> {
-    Ok(EnvironmentCheckpointV5::new(
+) -> Result<EnvironmentCheckpointV6, ControllerError> {
+    Ok(EnvironmentCheckpointV6::new(
         state.clone(),
         status.clone(),
         limit_counters.clone(),
@@ -189,7 +189,7 @@ pub(crate) struct ReferenceEnvironmentTransaction<'a> {
     pub(crate) limit_counters: &'a mut EnvironmentLimitCounters,
     pub(crate) codec: &'a CheckpointCodecIdentity,
     pub(crate) execution_identity: &'a ExecutionIdentityV1,
-    pub(crate) replay: &'a mut ReplayRecorderV5,
+    pub(crate) replay: &'a mut ReplayRecorderV6,
     pub(crate) kernel: &'a mut ProgramKernelV1,
 }
 
@@ -198,7 +198,7 @@ pub(crate) fn execute_forced_progress_transaction<F>(
     build_manifest: F,
 ) -> Result<TransitionResult, ControllerError>
 where
-    F: FnOnce(&EnvironmentCheckpointV5) -> Result<ReplayManifestV5, ControllerError>,
+    F: FnOnce(&EnvironmentCheckpointV6) -> Result<ReplayManifestV6, ControllerError>,
 {
     let state = &mut *transaction.state;
     let status = &mut *transaction.status;
@@ -254,7 +254,7 @@ where
             "forced progress changed player-submission counters".into(),
         ));
     }
-    let candidate = EnvironmentCheckpointV5::new(
+    let candidate = EnvironmentCheckpointV6::new(
         transition.next_state.clone(),
         transition.status.clone(),
         candidate_counters,
@@ -269,7 +269,7 @@ where
             "forced progress cannot rebase a non-empty replay history".into(),
         ));
     }
-    let rebased_replay = ReplayRecorderV5::new(build_manifest(&candidate)?)?;
+    let rebased_replay = ReplayRecorderV6::new(build_manifest(&candidate)?)?;
 
     *state = candidate.state;
     *status = candidate.status;
@@ -284,7 +284,7 @@ impl ReferenceEnvironmentBackend {
         if config.execution_identity != expected_identity {
             return Err(ControllerError::ProgramAuthorityMismatch);
         }
-        let checkpoint = EnvironmentCheckpointV5::new(
+        let checkpoint = EnvironmentCheckpointV6::new(
             config.state,
             config.status,
             config.limit_counters,
@@ -296,7 +296,7 @@ impl ReferenceEnvironmentBackend {
     }
 
     fn from_admitted_checkpoint(
-        checkpoint: EnvironmentCheckpointV5,
+        checkpoint: EnvironmentCheckpointV6,
         codec: CheckpointCodecIdentity,
         replay_config: ReferenceEnvironmentReplayConfig,
     ) -> Result<Self, ControllerError> {
@@ -312,7 +312,7 @@ impl ReferenceEnvironmentBackend {
             checkpoint.execution_identity.program_kind,
             checkpoint.execution_identity.semantic_contract_id.clone(),
         )?;
-        let replay = ReplayRecorderV5::new(build_reference_manifest(&replay_config, &checkpoint)?)?;
+        let replay = ReplayRecorderV6::new(build_reference_manifest(&replay_config, &checkpoint)?)?;
         Ok(Self {
             state: checkpoint.state,
             status: checkpoint.status,
@@ -335,7 +335,7 @@ impl EnvironmentBackend for ReferenceEnvironmentBackend {
         self.state.core.players.keys().copied().collect()
     }
 
-    fn checkpoint(&self) -> Result<EnvironmentCheckpointV5, ControllerError> {
+    fn checkpoint(&self) -> Result<EnvironmentCheckpointV6, ControllerError> {
         current_checkpoint(
             &self.state,
             &self.status,
@@ -345,7 +345,7 @@ impl EnvironmentBackend for ReferenceEnvironmentBackend {
         )
     }
 
-    fn restore(&mut self, checkpoint: EnvironmentCheckpointV5) -> Result<(), ControllerError> {
+    fn restore(&mut self, checkpoint: EnvironmentCheckpointV6) -> Result<(), ControllerError> {
         admit_restore(&RuntimeSemanticCatalog::production(), &checkpoint)?;
         let candidate = Self::from_admitted_checkpoint(
             checkpoint,
@@ -371,7 +371,7 @@ impl EnvironmentBackend for ReferenceEnvironmentBackend {
         )?))
     }
 
-    fn export_replay(&self) -> Result<AuthoritativeReplayV5, ControllerError> {
+    fn export_replay(&self) -> Result<AuthoritativeReplayV6, ControllerError> {
         Ok(self.replay.export()?)
     }
 

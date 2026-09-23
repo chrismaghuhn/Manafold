@@ -1,0 +1,22 @@
+{
+  "schema_version": "checkpoint-digest-v6-kat.v1",
+  "vectors": [
+    {
+      "case": "magic_rules_v5_state_baseline",
+      "full_state_digest": "0101010101010101010101010101010101010101010101010101010101010101",
+      "status": "running",
+      "counters": {
+        "decisions_submitted": 0,
+        "accepted_transitions": 0,
+        "rule_events_emitted": 0,
+        "resource_units_consumed": 0,
+        "wall_clock_elapsed_millis": 0
+      },
+      "codec_id": "in-memory-reference",
+      "semantic_version": "6",
+      "program_kind": "magic_rules",
+      "semantic_contract_id": "1111111111111111111111111111111111111111111111111111111111111111",
+      "expected_digest": "fe8e6125baa017858650977903d4b06e65710bb6b8df745514cc3f12ff09fb23"
+    }
+  ]
+}

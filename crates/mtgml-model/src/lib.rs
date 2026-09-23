@@ -335,11 +335,13 @@ raw_digest!(FullStateDigestV3, "mtgml.full-state-digest.v3");
 raw_digest!(CheckpointDigestV3, "mtgml.checkpoint-digest.v3");
 raw_digest!(FullStateDigestV4, "mtgml.full-state-digest.v4");
 raw_digest!(CheckpointDigestV4, "mtgml.checkpoint-digest.v4");
+raw_digest!(FullStateDigestV5, "mtgml.full-state-digest.v5");
 
 // === V5 contract identity and digest domains (spec §5) ===
 raw_digest!(RulesContractIdV1, "mtgml.rules-contract.v1");
 raw_digest!(SemanticContractIdV1, "mtgml.semantic-contract.v1");
 raw_digest!(CheckpointDigestV5, "mtgml.checkpoint-digest.v5");
+raw_digest!(CheckpointDigestV6, "mtgml.checkpoint-digest.v6");
 
 /// Reserved digest identity newtype: DOMAIN + canonical hex parse/serde only.
 ///
@@ -427,6 +429,19 @@ impl FullStateDigestV4 {
             semantic_domain: Self::DOMAIN.to_owned(),
             payload_codec_id: "mtgml.canonical-cbor.v1".to_owned(),
             input_schema_id: "full-state-digest-input.v4".to_owned(),
+            digest_bytes: self.raw_bytes(),
+        }
+    }
+}
+
+impl FullStateDigestV5 {
+    pub fn as_digest_reference(&self) -> DigestReferenceV1 {
+        DigestReferenceV1 {
+            envelope_version: "mtgml.digest-envelope.v1".to_owned(),
+            algorithm_id: "sha-256".to_owned(),
+            semantic_domain: Self::DOMAIN.to_owned(),
+            payload_codec_id: "mtgml.canonical-cbor.v1".to_owned(),
+            input_schema_id: "full-state-digest-input.v5".to_owned(),
             digest_bytes: self.raw_bytes(),
         }
     }

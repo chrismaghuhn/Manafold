@@ -3526,8 +3526,8 @@ fn assert_s2_family_state(before: &EngineState, after: &EngineState, scenario: S
 }
 
 fn assert_replay_segment_anchored(
-    replay: &mtgml_replay::AuthoritativeReplayV5,
-    checkpoint: &mtgml_environment::EnvironmentCheckpointV5,
+    replay: &mtgml_replay::AuthoritativeReplayV6,
+    checkpoint: &mtgml_environment::EnvironmentCheckpointV6,
 ) {
     assert!(replay.steps.is_empty());
     let anchor = &replay.manifest.initial_identity;

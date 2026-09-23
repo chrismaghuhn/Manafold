@@ -1,21 +1,23 @@
 // Ownership fragment: canonical digest known-answer/mutation evidence. Included lexically by tests.rs so
 // every identity remains tests::<name>.
 
-/// Frozen known answer for the canonical synthetic reset state. The payload is
-/// the complete `full-state-digest-input.v4` canonical CBOR array and the
-/// digest is SHA-256 of the `mtgml.digest-envelope.v1` framing around it.
+/// Frozen historical V4 known answer for the canonical synthetic reset state.
+/// V4 bytes are evaluated only through the detached historical verifier.
 #[test]
 fn full_state_digest_v4_known_answer() {
     let state = synthetic_state();
-    let payload = state.canonical_digest_bytes().unwrap();
+    let payload = crate::canonical_state_bytes_v4_historical(&state).unwrap();
     const EXPECTED_PAYLOAD_HEX: &str = "8d781a66756c6c2d73746174652d6469676573742d696e7075742e7634781a6d74676d6c2e66756c6c2d73746174652d6469676573742e763400858283011828f483021828f401018269626567696e6e696e6765756e74617082646e6f6e65f68582870101010101f4f4870202020202f4f5828201856b626174746c656669656c64f68269756e6f726465726564f6667075626c6963f6820285676c696272617279028263746f700069666163655f646f776ef6818284676c6962726172790269666163655f646f776ef681028080880301010101020101858801010001667075626c6963826a63686f6f73655f6f6e65f6818300826d73656c6563745f6f626a65637401826d73656c6563745f6f626a65637401f680808080836c6d74676d6c2e726e672e763158201111111111111111111111111111111111111111111111111111111111111111818244010001000082840101818601010182856b626174746c656669656c64f68269756e6f726465726564f6667075626c6963f68275696e697469616c5f636f6e66696775726174696f6ef6808275696e697469616c5f636f6e66696775726174696f6ef680840201828601010182856b626174746c656669656c64f68269756e6f726465726564f6667075626c6963f68275696e697469616c5f636f6e66696775726174696f6ef6808275696e697469616c5f636f6e66696775726174696f6ef6860202028285676c696272617279028263746f700069666163655f646f776ef68275696e697469616c5f636f6e66696775726174696f6ef6808275696e697469616c5f636f6e66696775726174696f6ef68082880181820101800201028080880282820101820202800301028080f68082646e6f6e65f6";
     const EXPECTED_DIGEST_HEX: &str =
         "24fe3ab44864b6e3e7e75e55a62fba7fed6c94be3198ae5e93c1c196c1527227";
     assert_eq!(hex(&payload), EXPECTED_PAYLOAD_HEX);
-    let digest = state.digest().unwrap();
+    let digest = crate::calculate_full_state_digest_v4_historical(&state).unwrap();
     assert_eq!(digest.to_string(), EXPECTED_DIGEST_HEX);
     assert_eq!(digest.raw_bytes().len(), 32);
-    assert_eq!(digest, state.clone().digest().unwrap());
+    assert_eq!(
+        digest,
+        crate::calculate_full_state_digest_v4_historical(&state).unwrap()
+    );
 
     // The payload is exactly the thirteen declared top-level fields, and each
     // knowledge entry is the fixed four-element per-player record.
@@ -72,7 +74,7 @@ fn full_state_digest_v3_historical_known_answer_is_detached() {
 }
 
 #[test]
-fn m3_p0_full_state_digest_v4_mutation_matrix() {
+fn m3_p0_full_state_digest_v5_mutation_matrix() {
     type Mutation = (&'static str, fn(&mut EngineState));
     let mutations: Vec<Mutation> = vec![
         ("revision_and_pending_revision", |state| {
@@ -490,7 +492,31 @@ fn m3_p0_full_state_digest_v4_mutation_matrix() {
         let changed_digest = changed.digest().unwrap();
         assert_ne!(
             baseline_digest, changed_digest,
-            "mutation {name} must change the V4 digest"
+            "mutation {name} must change the current V5 digest"
+        );
+    }
+}
+
+#[test]
+fn m3_p0_full_state_digest_v4_mutation_matrix() {
+    let baseline = synthetic_state();
+    let baseline_digest = crate::calculate_full_state_digest_v4_historical(&baseline).unwrap();
+    let mutations: [fn(&mut EngineState); 3] = [
+        |state| state.core.players.get_mut(&PlayerId(1)).unwrap().life += 1,
+        |state| {
+            state.core.position = TurnPosition::Beginning {
+                step: BeginningStep::Upkeep,
+            }
+        },
+        |state| state.zones.objects.get_mut(&GameObjectId(1)).unwrap().tapped = true,
+    ];
+    for mutate in mutations {
+        let mut changed = synthetic_state();
+        mutate(&mut changed);
+        validate_engine_state(&changed).unwrap();
+        assert_ne!(
+            baseline_digest,
+            crate::calculate_full_state_digest_v4_historical(&changed).unwrap()
         );
     }
 }
@@ -514,7 +540,7 @@ fn state_with_foundation_source() -> EngineState {
 }
 
 #[test]
-fn v4_digest_binds_foundation_source_inner_values() {
+fn v5_digest_binds_foundation_source_inner_values() {
     let baseline = state_with_foundation_source();
     let baseline_digest = baseline.digest().unwrap();
     let mutations: [fn(&mut EngineState); 3] = [
@@ -558,7 +584,7 @@ fn v4_digest_binds_foundation_source_inner_values() {
 }
 
 #[test]
-fn v4_digest_binds_combat_inner_values() {
+fn v5_digest_binds_combat_inner_values() {
     let mut baseline = synthetic_state();
     baseline.combat = Some(CombatState {
         defending_player: PlayerId(2),
@@ -610,7 +636,7 @@ fn knowledge_history_is_digested_without_a_player_level_aggregate() {
 }
 
 #[test]
-fn state_delta_uses_full_state_digest_v4() {
+fn state_delta_uses_full_state_digest_v5() {
     let before = synthetic_state();
     let mut after = before.clone();
     after.core.players.get_mut(&PlayerId(1)).unwrap().life = 39;
@@ -655,7 +681,7 @@ fn state_delta_uses_full_state_digest_v4() {
 }
 
 #[test]
-fn v4_digest_payload_is_nonempty_canonical_cbor() {
+fn v5_digest_payload_is_nonempty_canonical_cbor() {
     let state = synthetic_state();
     let payload = state.canonical_digest_bytes().unwrap();
     assert!(!payload.is_empty());

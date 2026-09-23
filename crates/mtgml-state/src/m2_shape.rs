@@ -12,12 +12,18 @@ mod perspective_identity;
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use mtgml_model::{ContinuationId, PlayerId, StateRevision};
+use mtgml_model::{ContinuationId, GameObjectId, PlayerId, StateRevision};
 use thiserror::Error;
 
-use self::continuation::{validate_program_coherence, validate_synthetic_assembly};
+use crate::zones::GameObject;
+
+use self::continuation::{
+    validate_magic_sba_graveyard_order, validate_program_coherence, validate_synthetic_assembly,
+    MagicSbaGraveyardOrderValidation,
+};
 pub use self::continuation::{
     AssemblyStageV2, ContinuationPayloadV2, ContinuationRecordV2, PendingDecisionRecordV2,
+    SbaGraveyardOwnerOrderV1, SbaObjectCauseV1, SbaSelectedActionV1,
 };
 use self::knowledge::validate_knowledge;
 pub use self::knowledge::{
@@ -51,6 +57,8 @@ pub enum M2ShapeViolation {
     ContinuationRevision,
     #[error("M2 continuation stage is invalid")]
     ContinuationStage,
+    #[error("Magic SBA Graveyard-order continuation is structurally inconsistent")]
+    MagicContinuation,
 }
 
 /// Inclusive numeric interval of the synthetic assembly ChooseCount stage.
@@ -63,6 +71,7 @@ pub const SYNTHETIC_COUNT_MAX: u32 = 3;
 pub fn validate_m2_shape(
     current_revision: StateRevision,
     players: &BTreeSet<PlayerId>,
+    objects: &BTreeMap<GameObjectId, GameObject>,
     pending: Option<&PendingDecisionRecordV2>,
     continuations: &BTreeMap<ContinuationId, ContinuationRecordV2>,
     knowledge: &KnowledgeStateV2,
@@ -118,6 +127,25 @@ pub fn validate_m2_shape(
                     ordered_piece_keys,
                 )?;
             }
+            ContinuationPayloadV2::MagicSbaGraveyardOrderV1 {
+                round_start_revision,
+                selected_sba_actions,
+                apnap_owners,
+                next_owner_index,
+                completed_owner_orders,
+            } => {
+                validate_magic_sba_graveyard_order(MagicSbaGraveyardOrderValidation {
+                    round_start_revision: *round_start_revision,
+                    continuation_created_at_revision: continuation.created_at_revision,
+                    selected_sba_actions,
+                    apnap_owners,
+                    next_owner_index: *next_owner_index,
+                    completed_owner_orders,
+                    current_revision,
+                    players,
+                    objects,
+                })?;
+            }
         }
     }
 
@@ -151,6 +179,6 @@ pub fn validate_m2_shape(
             }
         }
     }
-    validate_program_coherence(pending, continuations)?;
+    validate_program_coherence(pending, continuations, players, objects)?;
     Ok(())
 }

@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use mtgml_model::{FullStateDigestV4, GameObjectId, StateRevision};
+use mtgml_model::{FullStateDigestV5, GameObjectId, StateRevision};
 use mtgml_random::RandomStateV1;
 use serde::{Deserialize, Serialize};
 
@@ -12,7 +12,7 @@ use crate::identity::IdentityAllocatorState;
 use crate::m2_shape::{KnowledgeStateV2, PerspectiveIdentityStateV2};
 use crate::zones::ZoneState;
 
-pub const FULL_STATE_DIGEST_INPUT_SCHEMA: &str = "full-state-digest-input.v4";
+pub const FULL_STATE_DIGEST_INPUT_SCHEMA: &str = "full-state-digest-input.v5";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -32,11 +32,11 @@ pub struct EngineState {
 
 impl EngineState {
     pub fn canonical_digest_bytes(&self) -> Result<Vec<u8>, StateDigestError> {
-        crate::digest_v4::full_state_digest_input(self)?.canonical_payload()
+        crate::digest_v5::full_state_digest_input_v5(self)?.canonical_payload()
     }
 
-    pub fn digest(&self) -> Result<FullStateDigestV4, StateDigestError> {
-        crate::digest_v4::calculate_full_state_digest_v4_for_state(self)
+    pub fn digest(&self) -> Result<FullStateDigestV5, StateDigestError> {
+        crate::digest_v5::calculate_full_state_digest_v5_for_state(self)
     }
 
     pub fn parts(&self) -> EngineStateParts {
