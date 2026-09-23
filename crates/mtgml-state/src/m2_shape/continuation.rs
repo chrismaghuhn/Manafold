@@ -281,6 +281,7 @@ pub(super) fn validate_magic_sba_graveyard_order(
 pub(super) fn validate_program_coherence(
     pending: Option<&PendingDecisionRecordV2>,
     continuations: &BTreeMap<ContinuationId, ContinuationRecordV2>,
+    players: &BTreeSet<PlayerId>,
     objects: &BTreeMap<GameObjectId, GameObject>,
 ) -> Result<(), M2ShapeViolation> {
     if continuations.len() > 1 {
@@ -314,7 +315,6 @@ pub(super) fn validate_program_coherence(
         else {
             unreachable!("ContinuationPayloadV2 is a closed enum")
         };
-        let players: BTreeSet<_> = objects.values().map(|object| object.owner).collect();
         let objects_by_owner =
             validate_magic_sba_graveyard_order(MagicSbaGraveyardOrderValidation {
                 round_start_revision: *round_start_revision,
@@ -324,7 +324,7 @@ pub(super) fn validate_program_coherence(
                 next_owner_index: *next_owner_index,
                 completed_owner_orders,
                 current_revision: pending.request.state_revision,
-                players: &players,
+                players,
                 objects,
             })?;
         let current_owner = apnap_owners

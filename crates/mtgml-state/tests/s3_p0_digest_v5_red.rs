@@ -369,3 +369,78 @@ fn magic_sba_round_structural_validation_rejects_incomplete_or_noncanonical_acti
     causes.clear();
     assert!(mtgml_state::validate_engine_state(&empty_causes).is_err());
 }
+
+fn objectless_player_loss_state() -> EngineState {
+    let mut state = magic_order_state([GameObjectId(1), GameObjectId(3)], true, "lethal_damage");
+    for object in [GameObjectId(1), GameObjectId(3)] {
+        let game_object = state.zones.objects.get_mut(&object).unwrap();
+        game_object.owner = PlayerId(2);
+        game_object.controller = PlayerId(2);
+    }
+
+    let continuation = state
+        .execution
+        .continuations
+        .get_mut(&ContinuationId(1))
+        .unwrap();
+    continuation.actor = PlayerId(2);
+    continuation.payload = ContinuationPayloadV2::MagicSbaGraveyardOrderV1 {
+        round_start_revision: StateRevision(0),
+        selected_sba_actions: vec![
+            SbaSelectedActionV1::PlayerLoses {
+                player: PlayerId(1),
+            },
+            SbaSelectedActionV1::ObjectToOwnerGraveyard {
+                object: GameObjectId(2),
+                causes: vec![SbaObjectCauseV1::LethalDamage],
+            },
+            SbaSelectedActionV1::ObjectToOwnerGraveyard {
+                object: GameObjectId(4),
+                causes: vec![SbaObjectCauseV1::ZeroToughness],
+            },
+        ],
+        apnap_owners: vec![PlayerId(2)],
+        next_owner_index: 0,
+        completed_owner_orders: Vec::new(),
+    };
+    continuation.stage_index = continuation.payload.stage_index();
+    state
+}
+
+#[test]
+fn objectless_declared_player_loss_uses_the_declared_player_universe() {
+    let state = objectless_player_loss_state();
+    assert!(state
+        .zones
+        .objects
+        .values()
+        .all(|object| object.owner == PlayerId(2)));
+    mtgml_state::validate_engine_state(&state).unwrap();
+
+    let mut undeclared_player_loss = state.clone();
+    let continuation = undeclared_player_loss
+        .execution
+        .continuations
+        .get_mut(&ContinuationId(1))
+        .unwrap();
+    let ContinuationPayloadV2::MagicSbaGraveyardOrderV1 {
+        selected_sba_actions,
+        ..
+    } = &mut continuation.payload
+    else {
+        unreachable!()
+    };
+    selected_sba_actions[0] = SbaSelectedActionV1::PlayerLoses {
+        player: PlayerId(3),
+    };
+    assert!(mtgml_state::validate_engine_state(&undeclared_player_loss).is_err());
+
+    let mut undeclared_object_owner = state;
+    undeclared_object_owner
+        .zones
+        .objects
+        .get_mut(&GameObjectId(2))
+        .unwrap()
+        .owner = PlayerId(3);
+    assert!(mtgml_state::validate_engine_state(&undeclared_object_owner).is_err());
+}
