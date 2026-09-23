@@ -146,6 +146,9 @@ TASK_14_EXACT_HEAD_VERIFICATION = COMPLETE
 S1_EXACT_HEAD_VERIFICATION = PASS
 M3_S1_STATUS = COMPLETE / COVERED / NOT CERTIFIED
 M3_S2 = rules/zone-incarnation@0.1.0
+PR_208 = MERGED
+S2_EXACT_HEAD_VERIFICATION = PASS
+M3_S2_STATUS = COMPLETE / IMPLEMENTED / NOT COVERED / NOT CERTIFIED
 M3_S2_AUTHORIZED = YES
 S2_IMPLEMENTATION_AUTHORIZED = YES
 S2_STARTED = YES
@@ -162,7 +165,7 @@ S2_AUTHORITATIVE_REPLAY = DEFERRED_REQUIRED / BLOCKED_FOR_COVERED
 S2_STATE_BASED_ACTIONS_INTERACTION = UNSATISFIED
 S2_DRAW_CARD_INTERACTION = UNSATISFIED
 TASK_7_LIFECYCLE_PROMOTION = COMPLETE
-TASK_8_EXACT_HEAD_VERIFICATION = NOT_STARTED
+TASK_8_EXACT_HEAD_VERIFICATION = COMPLETE
 S1_SUPPORT_PREDICATE_REQUIRES_EXACTLY_TWO_PLAYERS = YES
 S1_ZONE_TRANSITIONS_AUTHORIZED = NO
 S1_ZONE_LOCATION_MUTATION_AUTHORIZED = NO
@@ -170,7 +173,7 @@ S1_OBJECT_INCARNATION_CHANGE_AUTHORIZED = NO
 S1_PHYSICAL_CARD_IDENTITY_CHANGE_AUTHORIZED = NO
 S1_ALLOWED_ZONES_OWNED_MUTATION = bounded untap tapped-field mutation only
 S1_REVIEW_MINORS = 3 CARRIED
-NEXT_GATE = M3_S2_EXACT_HEAD_VERIFICATION
+NEXT_GATE = M3_S3_SELECTION_AND_DESIGN
 ```
 
 `M2.5 = NOT_CLAIMED / NOT_FROZEN`. Its abandoned census and research
@@ -196,6 +199,11 @@ authorized for implementation and implementation had not started; the current
 registry now records the bounded capability as `covered`, with certification
 still unclaimed. At S1 authorization, the other ten Foundation capabilities
 were still specified and downstream work had not been authorized.
+
+PR #208 merged S2 at `b67cfdcc0a8e623da52a889ef2ae138a3e4256ac`; exact-head
+verification passed. M3.S2 is complete as an implementation slice, but is not
+covered or certified. S2 authoritative replay remains deferred and required
+before covered. The next gate is M3.S3 selection and design.
 
 M3 has started through semantic-neutral P0 infrastructure, T0
 conformance/proof infrastructure, the covered S1 turn-structure capability,
@@ -226,9 +234,9 @@ execution model for the remaining slices. M3.P0 infrastructure is merged and
 frozen; M3.T0 is finalized COMPLETE / FROZEN (Issue #178); M3.S1 is
 `COMPLETE / COVERED / NOT CERTIFIED` for the bounded turn-structure
 capability. Task 13 documentation/status/generated-contract closure and Task
-14 exact-head verification are complete. M3.S2 is authorized and implemented
-for its bounded selected profiles, but remains not covered while authoritative
-replay is deferred.
+14 exact-head verification are complete. M3.S2 was merged by PR #208 and
+passed exact-head verification; it remains not covered while authoritative
+replay is deferred. S2 is complete / implemented / not covered / not certified.
 
 The planned execution order is:
 
@@ -240,7 +248,8 @@ M3.P0 semantic-neutral state/persistence identity cut
 → Task 14 exact-head verification COMPLETE
 → M3.S2 rules/zone-incarnation@0.1.0 implemented / not covered
 → Task 7 lifecycle promotion COMPLETE
-→ Task 8 exact-head verification NOT STARTED
+→ Task 8 exact-head verification PASS (PR #208 merged)
+→ M3.S3 selection and design
 ```
 
 P0 added no Magic capability and advanced no capability lifecycle; T0 added no

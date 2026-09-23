@@ -17,8 +17,8 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
         )
         self.assertIn(
             "**Current status:** M3.S1 complete / covered / not certified; "
-            "M3.S2 implemented / not covered / not certified; Task 7 promotion "
-            "is complete and Task 8 exact-head verification is next",
+            "M3.S2 complete / implemented / not covered / not certified; PR #208 "
+            "is merged and S2 exact-head verification passed",
             readme,
         )
         self.assertNotIn(
@@ -58,7 +58,11 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
             "zone-incarnation is `IMPLEMENTED` and not covered",
             readme,
         )
-        self.assertIn("**M3.S2:** `IMPLEMENTED / NOT COVERED / NOT CERTIFIED`", readme)
+        self.assertIn(
+            "**M3.S2:** `COMPLETE / IMPLEMENTED / NOT COVERED / NOT CERTIFIED`",
+            readme,
+        )
+        self.assertIn("**PR #208:** `MERGED`; `S2_EXACT_HEAD_VERIFICATION = PASS`", readme)
         self.assertIn(
             "**S2 authoritative replay:** `DEFERRED_REQUIRED / BLOCKED_FOR_COVERED`",
             readme,
@@ -68,8 +72,7 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
         self.assertIn("FOUNDATION_V2 = ACCEPTED_HARDENED_M3_SCOPE", readme)
         self.assertIn("**M3 plan status:** `ACCEPTED`", readme)
         self.assertIn("**Task 14:** `COMPLETE` — `S1_EXACT_HEAD_VERIFICATION = PASS`", readme)
-        self.assertIn("**Next gate:** `M3_S2_EXACT_HEAD_VERIFICATION`", readme)
-        self.assertIn("Task 8 exact-head verification is next", readme)
+        self.assertIn("**Next gate:** `M3_S3_SELECTION_AND_DESIGN`", readme)
         self.assertNotIn("M3_S1_AUTHORIZATION_DECISION", readme)
         self.assertNotIn("M3_T0_CLOSURE_STATUS_SYNC_EXACT_HEAD_REVIEW", readme)
         self.assertIn(
@@ -202,7 +205,10 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
         self.assertIn("S2_STATE_BASED_ACTIONS_INTERACTION = UNSATISFIED", roadmap)
         self.assertIn("S2_DRAW_CARD_INTERACTION = UNSATISFIED", roadmap)
         self.assertIn("TASK_7_LIFECYCLE_PROMOTION = COMPLETE", roadmap)
-        self.assertIn("TASK_8_EXACT_HEAD_VERIFICATION = NOT_STARTED", roadmap)
+        self.assertIn("PR_208 = MERGED", roadmap)
+        self.assertIn("S2_EXACT_HEAD_VERIFICATION = PASS", roadmap)
+        self.assertIn("M3_S2_STATUS = COMPLETE / IMPLEMENTED / NOT COVERED / NOT CERTIFIED", roadmap)
+        self.assertIn("TASK_8_EXACT_HEAD_VERIFICATION = COMPLETE", roadmap)
         self.assertIn("S1_AUTHORIZED_TASK_AT_S1_HEAD = M3.S1", roadmap)
         self.assertIn("S1_REVIEW_MINORS = 3 CARRIED", roadmap)
         self.assertIn(
@@ -214,7 +220,7 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
         self.assertIn("S1_PHYSICAL_CARD_IDENTITY_CHANGE_AUTHORIZED = NO", roadmap)
         self.assertNotIn("S1_IMPLEMENTATION = NOT_AUTHORIZED", roadmap)
         self.assertNotIn("NEXT_GATE = M3_S1_AUTHORIZATION_DECISION", roadmap)
-        self.assertIn("NEXT_GATE = M3_S2_EXACT_HEAD_VERIFICATION", roadmap)
+        self.assertIn("NEXT_GATE = M3_S3_SELECTION_AND_DESIGN", roadmap)
         self.assertNotIn("M3_S2_AUTHORIZED = NO", roadmap)
         self.assertNotIn("S2_IMPLEMENTED = NO", roadmap)
         self.assertNotIn("M3.S2 has not been selected or", roadmap)
@@ -267,7 +273,8 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
             "→ Task 14 exact-head verification COMPLETE\n"
             "→ M3.S2 rules/zone-incarnation@0.1.0 implemented / not covered\n"
             "→ Task 7 lifecycle promotion COMPLETE\n"
-            "→ Task 8 exact-head verification NOT STARTED",
+            "→ Task 8 exact-head verification PASS (PR #208 merged)\n"
+            "→ M3.S3 selection and design",
             roadmap,
         )
         self.assertIn("M3.P0 semantic-neutral state/persistence identity cut", roadmap)
