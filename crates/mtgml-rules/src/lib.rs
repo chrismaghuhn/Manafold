@@ -15,12 +15,13 @@ mod synthetic;
 mod transition;
 mod turn_structure;
 mod validation;
+mod zone_incarnation;
 
 #[cfg(test)]
 mod tests;
 
 pub use contract::validate_transition_contract;
-pub use errors::KernelExecutionError;
+pub use errors::{KernelExecutionError, ZoneIncarnationError};
 pub use events::{
     AuthoritativeRuleEvent, AuthoritativeRuleEventKind, OccurrencePairingError,
     PerspectiveObservationPolicyV1,
@@ -36,3 +37,8 @@ pub use turn_structure::{
     TurnStructureError, TurnStructureSupportProfile, UnsupportedRulesBoundary,
 };
 pub use validation::TransitionViolation;
+
+#[cfg(feature = "m3-conformance-testkit")]
+pub use zone_incarnation::{
+    execute_selected_zone_transition_for_conformance, ConformanceZoneTransitionKind,
+};

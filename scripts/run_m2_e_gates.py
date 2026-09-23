@@ -162,11 +162,46 @@ GATE_TESTS: dict[str, tuple[EvidenceDefinition, ...]] = {
 }
 
 
+def validate_m2_fixture_feature_scope(rules_cargo_toml: str, conformance_cargo_toml: str) -> None:
+    """Validate the M2 fixture feature and its conformance-only activation."""
+    try:
+        rules_manifest = tomllib.loads(rules_cargo_toml)
+        conformance_manifest = tomllib.loads(conformance_cargo_toml)
+    except tomllib.TOMLDecodeError as error:
+        raise AssertionError(
+            f"invalid Cargo TOML while checking fixture feature scope: {error}"
+        ) from error
+
+    rules_features = rules_manifest.get("features")
+    if not isinstance(rules_features, dict):
+        raise AssertionError("rules crate has no [features] table")
+    if rules_features.get("m2-conformance-fixtures") != []:
+        raise AssertionError("rules crate lost the empty m2-conformance-fixtures feature gate")
+
+    dependencies = conformance_manifest.get("dependencies")
+    if not isinstance(dependencies, dict):
+        raise AssertionError("conformance crate has no [dependencies] table")
+    rules_dependency = dependencies.get("mtgml-rules")
+    if not isinstance(rules_dependency, dict):
+        raise AssertionError("conformance crate has no mtgml-rules dependency table")
+    enabled_features = rules_dependency.get("features")
+    if not isinstance(enabled_features, list) or any(
+        not isinstance(feature, str) for feature in enabled_features
+    ):
+        raise AssertionError("conformance mtgml-rules features must be a TOML string array")
+    if "m2-conformance-fixtures" not in enabled_features:
+        raise AssertionError(
+            "conformance mtgml-rules dependency does not enable the fixture feature"
+        )
+
+
 def check_no_runtime_lifecycle_channel() -> str:
     """The fixture driver stays behind its feature gate with no runtime caller."""
-    cargo_toml = (ROOT / "crates" / "mtgml-rules" / "Cargo.toml").read_text(encoding="utf-8")
-    if "m2-conformance-fixtures = []" not in cargo_toml:
-        raise AssertionError("rules crate lost the m2-conformance-fixtures feature gate")
+    rules_cargo_toml = (ROOT / "crates" / "mtgml-rules" / "Cargo.toml").read_text(encoding="utf-8")
+    conformance_cargo_toml = (ROOT / "crates" / "mtgml-conformance" / "Cargo.toml").read_text(
+        encoding="utf-8"
+    )
+    validate_m2_fixture_feature_scope(rules_cargo_toml, conformance_cargo_toml)
     # Issue #62 review: environment runtime sources now also live below
     # src/synthetic/ since the structural split; scan every production .rs
     # recursively and keep test modules out of the "no runtime caller"
@@ -188,11 +223,6 @@ def check_no_runtime_lifecycle_channel() -> str:
         raise AssertionError("environment test module lost its cfg(test) guard")
     if env_lib.index("#[cfg(test)]") > env_lib.index("mod tests;"):
         raise AssertionError("cfg(test) no longer guards the environment test module")
-    conformance_toml = (ROOT / "crates" / "mtgml-conformance" / "Cargo.toml").read_text(
-        encoding="utf-8"
-    )
-    if 'features = ["m2-conformance-fixtures"]' not in conformance_toml:
-        raise AssertionError("conformance no longer enables the fixture feature")
     return "test module gated, fixture feature scoped, no runtime caller"
 
 

@@ -130,7 +130,7 @@ S1_AUTHORIZED = YES
 S1_IMPLEMENTATION_AUTHORIZED = YES
 S1_STARTED = YES
 S1_IMPLEMENTATION_STARTED = YES
-AUTHORIZED_NEXT_TASK = M3.S1
+S1_AUTHORIZED_TASK_AT_S1_HEAD = M3.S1
 S1_DEPENDENCIES = NONE
 S1_PRIMARY_SEMANTIC_OWNER = turn
 S1_TURN_STRUCTURE_LIFECYCLE = covered
@@ -145,16 +145,32 @@ TASK_13_DOCUMENTATION_STATUS_CLOSURE = COMPLETE
 TASK_14_EXACT_HEAD_VERIFICATION = COMPLETE
 S1_EXACT_HEAD_VERIFICATION = PASS
 M3_S1_STATUS = COMPLETE / COVERED / NOT CERTIFIED
-M3_S2_AUTHORIZED = NO
+M3_S2 = rules/zone-incarnation@0.1.0
+M3_S2_AUTHORIZED = YES
+S2_IMPLEMENTATION_AUTHORIZED = YES
+S2_STARTED = YES
+S2_IMPLEMENTATION_STARTED = YES
+S2_ZONE_INCARNATION_LIFECYCLE = implemented
+S2_COVERED = NO
+S2_CERTIFIED = NO
+S2_COVERAGE_STATUS = implemented / covered blocked by authoritative replay
+S2_SPECIFIED_CAPABILITY_COUNT = 9
+S2_IMPLEMENTED_CAPABILITY_COUNT = 1
+S2_COVERED_CAPABILITY_COUNT = 1
+S2_CERTIFIED_CAPABILITY_COUNT = 0
+S2_AUTHORITATIVE_REPLAY = DEFERRED_REQUIRED / BLOCKED_FOR_COVERED
+S2_STATE_BASED_ACTIONS_INTERACTION = UNSATISFIED
+S2_DRAW_CARD_INTERACTION = UNSATISFIED
+TASK_7_LIFECYCLE_PROMOTION = COMPLETE
+TASK_8_EXACT_HEAD_VERIFICATION = NOT_STARTED
 S1_SUPPORT_PREDICATE_REQUIRES_EXACTLY_TWO_PLAYERS = YES
-DOWNSTREAM_CAPABILITIES_AUTHORIZED = NO
 S1_ZONE_TRANSITIONS_AUTHORIZED = NO
 S1_ZONE_LOCATION_MUTATION_AUTHORIZED = NO
 S1_OBJECT_INCARNATION_CHANGE_AUTHORIZED = NO
 S1_PHYSICAL_CARD_IDENTITY_CHANGE_AUTHORIZED = NO
 S1_ALLOWED_ZONES_OWNED_MUTATION = bounded untap tapped-field mutation only
 S1_REVIEW_MINORS = 3 CARRIED
-NEXT_GATE = M3_S2_SELECTION_OR_AUTHORIZATION
+NEXT_GATE = M3_S2_EXACT_HEAD_VERIFICATION
 ```
 
 `M2.5 = NOT_CLAIMED / NOT_FROZEN`. Its abandoned census and research
@@ -178,19 +194,20 @@ review APPROVE at `587016574e4e8f9f797a713877f8caf1c5143cfb`:
 At that historical authorization point, `rules/turn-structure@0.1.0` was
 authorized for implementation and implementation had not started; the current
 registry now records the bounded capability as `covered`, with certification
-still unclaimed. All downstream capabilities remain
-unauthorized.
+still unclaimed. At S1 authorization, the other ten Foundation capabilities
+were still specified and downstream work had not been authorized.
 
 M3 has started through semantic-neutral P0 infrastructure, T0
-conformance/proof infrastructure, and the bounded S1 turn-structure
-implementation. P0 is complete/frozen; T0 is COMPLETE / FROZEN; S1 is
-`covered` for the bounded turn-structure scope with certification unclaimed. Ten other
-Foundation capabilities remain `specified`; downstream capabilities remain
-unauthorized. Census-driven scope research is outside this authoritative
-engine repository, and external census M3 authorization must not be treated
-as engine-semantic authorization. The accepted M3 Entry Decision and accepted
-hardening plan select `rules/turn-structure@0.1.0` as S1. No broad Magic,
-card, deck, format, Commander, or playability claim follows.
+conformance/proof infrastructure, the covered S1 turn-structure capability,
+and the implemented bounded S2 zone-incarnation capability. P0 is
+complete/frozen; T0 is COMPLETE / FROZEN; S1 is covered and S2 is implemented,
+neither certified. Nine Foundation capabilities remain `specified`; one is
+implemented and one is covered. S2 authoritative replay remains deferred and
+required before covered. The state-based-actions-combat and draw-card
+interactions with S2 are unsatisfied. Census-driven scope research is outside
+this authoritative engine repository, and external census M3 authorization
+must not be treated as engine-semantic authorization. No broad Magic, card,
+deck, format, Commander, or playability claim follows.
 
 The historical accepted operational scope record for that decision is
 [`docs/rules/M3_INITIAL_SEMANTIC_FOUNDATION_V1.md`](rules/M3_INITIAL_SEMANTIC_FOUNDATION_V1.md).
@@ -209,8 +226,9 @@ execution model for the remaining slices. M3.P0 infrastructure is merged and
 frozen; M3.T0 is finalized COMPLETE / FROZEN (Issue #178); M3.S1 is
 `COMPLETE / COVERED / NOT CERTIFIED` for the bounded turn-structure
 capability. Task 13 documentation/status/generated-contract closure and Task
-14 exact-head verification are complete. M3.S2 has not been selected or
-authorized; its selection/review/authorization is the next separate gate.
+14 exact-head verification are complete. M3.S2 is authorized and implemented
+for its bounded selected profiles, but remains not covered while authoritative
+replay is deferred.
 
 The planned execution order is:
 
@@ -220,7 +238,9 @@ M3.P0 semantic-neutral state/persistence identity cut
 → M3.S1 rules/turn-structure@0.1.0 covered
 → Task 13 documentation/status/generated-contract closure complete
 → Task 14 exact-head verification COMPLETE
-→ M3.S2 selection/review/authorization (separate; not yet authorized)
+→ M3.S2 rules/zone-incarnation@0.1.0 implemented / not covered
+→ Task 7 lifecycle promotion COMPLETE
+→ Task 8 exact-head verification NOT STARTED
 ```
 
 P0 added no Magic capability and advanced no capability lifecycle; T0 added no
@@ -269,7 +289,7 @@ declared exit:
 ```text
 M3.T0  thin private conformance facade over the real Rust kernel
 M3.S1  rules/turn-structure@0.1.0 covered; certification not claimed
-M3.S2  next independently justified capability slice
+M3.S2  rules/zone-incarnation@0.1.0 implemented; not covered pending authoritative replay
 M3.S3  first meaningful multi-capability interaction closure
 M3.Sn  additional reviewed slices as evidence and scope justify them
 ```
