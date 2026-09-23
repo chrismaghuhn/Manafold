@@ -17,8 +17,9 @@ use mtgml_random::RootSeed256;
 use mtgml_state::{
     construct_synthetic_engine_state, ContinuationPayloadV2, ContinuationRecordV2, EngineState,
     GameObject, KnowledgeAcquisitionReason, KnowledgeRecordV2, KnownLocationFactV2,
-    PendingDecisionRecordV2, SyntheticResetInputs, SyntheticV4Setup, VisibilityPartition,
-    ZoneLocation, ZonePosition, FULL_STATE_DIGEST_INPUT_SCHEMA_V5,
+    PendingDecisionRecordV2, SbaObjectCauseV1, SbaSelectedActionV1, SyntheticResetInputs,
+    SyntheticV4Setup, VisibilityPartition, ZoneLocation, ZonePosition,
+    FULL_STATE_DIGEST_INPUT_SCHEMA_V5,
 };
 
 fn synthetic_state() -> mtgml_state::EngineState {
@@ -81,7 +82,11 @@ fn add_public_object_identity(state: &mut EngineState, player: PlayerId, object:
         );
 }
 
-fn magic_order_state(completed_top_to_bottom: [GameObjectId; 2]) -> EngineState {
+fn magic_order_state(
+    completed_top_to_bottom: [GameObjectId; 2],
+    include_player_loss: bool,
+    object_one_cause: &str,
+) -> EngineState {
     let mut state = synthetic_state();
     let public = public_location();
 
@@ -156,15 +161,22 @@ fn magic_order_state(completed_top_to_bottom: [GameObjectId; 2]) -> EngineState 
         }
     }
 
+    let mut selected_sba_actions = vec![
+        serde_json::json!({"kind": "object_to_owner_graveyard", "object": "1", "causes": [object_one_cause]}),
+        serde_json::json!({"kind": "object_to_owner_graveyard", "object": "2", "causes": ["lethal_damage"]}),
+        serde_json::json!({"kind": "object_to_owner_graveyard", "object": "3", "causes": ["zero_toughness"]}),
+        serde_json::json!({"kind": "object_to_owner_graveyard", "object": "4", "causes": ["zero_toughness"]}),
+    ];
+    if include_player_loss {
+        selected_sba_actions.insert(
+            0,
+            serde_json::json!({"kind": "player_loses", "player": "1"}),
+        );
+    }
     let payload_fixture = serde_json::json!({
         "kind": "magic_sba_graveyard_order_v1",
         "round_start_revision": "0",
-        "selected_sba_actions": [
-            {"object": "1", "causes": ["lethal_damage"]},
-            {"object": "2", "causes": ["lethal_damage"]},
-            {"object": "3", "causes": ["zero_toughness"]},
-            {"object": "4", "causes": ["zero_toughness"]}
-        ],
+        "selected_sba_actions": selected_sba_actions,
         "apnap_owners": ["1", "2"],
         "next_owner_index": 1,
         "completed_owner_orders": [
@@ -224,6 +236,22 @@ fn magic_order_state(completed_top_to_bottom: [GameObjectId; 2]) -> EngineState 
     state
 }
 
+fn selected_actions_mut(state: &mut EngineState) -> &mut Vec<SbaSelectedActionV1> {
+    let continuation = state
+        .execution
+        .continuations
+        .get_mut(&ContinuationId(1))
+        .unwrap();
+    let ContinuationPayloadV2::MagicSbaGraveyardOrderV1 {
+        selected_sba_actions,
+        ..
+    } = &mut continuation.payload
+    else {
+        panic!("fixture must contain the Magic SBA continuation")
+    };
+    selected_sba_actions
+}
+
 fn canonical_texts(value: &mtgml_persistence::cbor::Value, output: &mut Vec<String>) {
     use mtgml_persistence::cbor::Value;
     match value {
@@ -262,19 +290,27 @@ fn engine_state_digest_uses_the_typed_v5_identity_and_schema() {
 
 #[test]
 fn magic_continuation_is_valid_v5_state_and_changes_digest_when_its_order_changes() {
-    let state_a = magic_order_state([GameObjectId(1), GameObjectId(3)]);
-    let state_b = magic_order_state([GameObjectId(3), GameObjectId(1)]);
+    let state_a = magic_order_state([GameObjectId(1), GameObjectId(3)], true, "lethal_damage");
+    let state_b = magic_order_state([GameObjectId(3), GameObjectId(1)], true, "lethal_damage");
+    let no_player_loss =
+        magic_order_state([GameObjectId(1), GameObjectId(3)], false, "lethal_damage");
+    let changed_cause =
+        magic_order_state([GameObjectId(1), GameObjectId(3)], true, "zero_toughness");
     mtgml_state::validate_engine_state(&state_a).unwrap();
     mtgml_state::validate_engine_state(&state_b).unwrap();
     assert!(mtgml_state::calculate_full_state_digest_v4_historical(&state_a).is_err());
 
     let digest_a: FullStateDigestV5 = state_a.digest().unwrap();
     let digest_b: FullStateDigestV5 = state_b.digest().unwrap();
+    let digest_no_player_loss: FullStateDigestV5 = no_player_loss.digest().unwrap();
+    let digest_changed_cause: FullStateDigestV5 = changed_cause.digest().unwrap();
     assert_eq!(
         digest_a.to_string(),
-        "718d1d675154da69c638f19e33b24c6244ba2892c982bc5c2e9c2d22f98eb344"
+        "62831653aef08f7394b3f42aad5fbba1407b5094745f927d63dc331e46b451a4"
     );
     assert_ne!(digest_a, digest_b);
+    assert_ne!(digest_a, digest_no_player_loss);
+    assert_ne!(digest_a, digest_changed_cause);
 
     let canonical_bytes = state_a.canonical_digest_bytes().unwrap();
     assert_eq!(
@@ -290,4 +326,46 @@ fn magic_continuation_is_valid_v5_state_and_changes_digest_when_its_order_change
             .any(|text| text == "magic_sba_graveyard_order_v1"),
         "FullStateDigestV5 canonical state input must bind the Magic continuation tag"
     );
+    assert!(texts.iter().any(|text| text == "player_loses"));
+    assert!(texts.iter().any(|text| text == "object_to_owner_graveyard"));
+}
+
+#[test]
+fn magic_sba_round_structural_validation_rejects_incomplete_or_noncanonical_actions() {
+    let mut duplicate_player =
+        magic_order_state([GameObjectId(1), GameObjectId(3)], true, "lethal_damage");
+    let duplicate = selected_actions_mut(&mut duplicate_player)[0].clone();
+    selected_actions_mut(&mut duplicate_player).insert(1, duplicate);
+    assert!(mtgml_state::validate_engine_state(&duplicate_player).is_err());
+
+    let mut duplicate_object =
+        magic_order_state([GameObjectId(1), GameObjectId(3)], true, "lethal_damage");
+    let duplicate = selected_actions_mut(&mut duplicate_object)[1].clone();
+    selected_actions_mut(&mut duplicate_object).insert(2, duplicate);
+    assert!(mtgml_state::validate_engine_state(&duplicate_object).is_err());
+
+    let mut undeclared_player =
+        magic_order_state([GameObjectId(1), GameObjectId(3)], true, "lethal_damage");
+    selected_actions_mut(&mut undeclared_player)[0] = SbaSelectedActionV1::PlayerLoses {
+        player: PlayerId(99),
+    };
+    assert!(mtgml_state::validate_engine_state(&undeclared_player).is_err());
+
+    let mut missing_object =
+        magic_order_state([GameObjectId(1), GameObjectId(3)], true, "lethal_damage");
+    selected_actions_mut(&mut missing_object)[1] = SbaSelectedActionV1::ObjectToOwnerGraveyard {
+        object: GameObjectId(99),
+        causes: vec![SbaObjectCauseV1::LethalDamage],
+    };
+    assert!(mtgml_state::validate_engine_state(&missing_object).is_err());
+
+    let mut empty_causes =
+        magic_order_state([GameObjectId(1), GameObjectId(3)], true, "lethal_damage");
+    let SbaSelectedActionV1::ObjectToOwnerGraveyard { causes, .. } =
+        &mut selected_actions_mut(&mut empty_causes)[1]
+    else {
+        unreachable!()
+    };
+    causes.clear();
+    assert!(mtgml_state::validate_engine_state(&empty_causes).is_err());
 }

@@ -816,7 +816,7 @@ V5's new outer state identity. The new Magic encoding is:
   "magic_sba_graveyard_order_v1",
   [
     round_start_revision,
-    selected_sba_actions[[game_object_id, causes[stable_cause_id]]],
+    selected_sba_actions[closed_selected_action],
     apnap_owners[player_id],
     next_owner_index,
     completed_owner_orders[[owner, top_to_bottom_game_object_ids]]
@@ -824,11 +824,23 @@ V5's new outer state identity. The new Magic encoding is:
 ]
 ```
 
-`selected_sba_actions` is canonical by `GameObjectId`; each nonempty cause
-list is duplicate-free and sorted by its closed cause ordering. APNAP owner
-sequence and each selected top-to-bottom permutation preserve semantic order.
-Completed order entries are a prefix of the owner sequence. No arbitrary
-Serde serialization or controller-local state enters the digest.
+`selected_sba_actions` is a closed typed action sequence. Its variants and
+canonical forms are:
+
+```text
+["player_loses", player_id]
+["object_to_owner_graveyard", [game_object_id, causes[stable_cause_id]]]
+```
+
+Player-loss actions precede object actions and are ordered by `PlayerId`;
+object actions follow in `GameObjectId` order. Each target appears at most
+once. Object causes are nonempty, duplicate-free, and sorted by their closed
+cause ordering (`zero_toughness`, `lethal_damage`). Player-loss actions are
+part of the frozen simultaneous round but do not participate in Graveyard
+order candidate derivation. APNAP owner sequence and each selected
+top-to-bottom permutation preserve semantic order. Completed order entries
+are a prefix of the owner sequence. No arbitrary Serde serialization or
+controller-local state enters the digest.
 
 `FullStateDigestV4` remains an immutable historical identity. Its KAT bytes
 are unchanged, and its detached historical encoder rejects the Magic

@@ -29,16 +29,24 @@ pub enum AssemblyStageV2 {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub enum SbaActionCauseV1 {
+pub enum SbaObjectCauseV1 {
     ZeroToughness,
     LethalDamage,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct SbaSelectedActionV1 {
-    pub object: GameObjectId,
-    pub causes: Vec<SbaActionCauseV1>,
+/// Complete selected action family for the bounded SBA continuation.
+/// Variant order is canonical: player losses by PlayerId, then Graveyard
+/// object actions by GameObjectId.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+pub enum SbaSelectedActionV1 {
+    PlayerLoses {
+        player: PlayerId,
+    },
+    ObjectToOwnerGraveyard {
+        object: GameObjectId,
+        causes: Vec<SbaObjectCauseV1>,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -186,17 +194,30 @@ pub(super) fn validate_magic_sba_graveyard_order(
         || selected_sba_actions.is_empty()
         || selected_sba_actions
             .windows(2)
-            .any(|window| window[0].object >= window[1].object)
-        || selected_sba_actions.iter().any(|action| {
-            action.causes.is_empty()
-                || action
-                    .causes
-                    .windows(2)
-                    .any(|window| window[0] >= window[1])
-                || !objects.contains_key(&action.object)
-        })
+            .any(|window| window[0] >= window[1])
     {
         return Err(M2ShapeViolation::MagicContinuation);
+    }
+
+    let mut losing_players = BTreeSet::new();
+    let mut graveyard_objects = BTreeSet::new();
+    for action in selected_sba_actions {
+        match action {
+            SbaSelectedActionV1::PlayerLoses { player } => {
+                if !players.contains(player) || !losing_players.insert(*player) {
+                    return Err(M2ShapeViolation::MagicContinuation);
+                }
+            }
+            SbaSelectedActionV1::ObjectToOwnerGraveyard { object, causes } => {
+                if !graveyard_objects.insert(*object)
+                    || causes.is_empty()
+                    || causes.windows(2).any(|window| window[0] >= window[1])
+                    || !objects.contains_key(object)
+                {
+                    return Err(M2ShapeViolation::MagicContinuation);
+                }
+            }
+        }
     }
 
     let next_owner_index_usize =
@@ -212,16 +233,18 @@ pub(super) fn validate_magic_sba_graveyard_order(
 
     let mut objects_by_owner = BTreeMap::<PlayerId, Vec<GameObjectId>>::new();
     for action in selected_sba_actions {
-        let object = objects
-            .get(&action.object)
-            .ok_or(M2ShapeViolation::MagicContinuation)?;
-        if !players.contains(&object.owner) {
-            return Err(M2ShapeViolation::MagicContinuation);
+        if let SbaSelectedActionV1::ObjectToOwnerGraveyard { object, .. } = action {
+            let game_object = objects
+                .get(object)
+                .ok_or(M2ShapeViolation::MagicContinuation)?;
+            if !players.contains(&game_object.owner) {
+                return Err(M2ShapeViolation::MagicContinuation);
+            }
+            objects_by_owner
+                .entry(game_object.owner)
+                .or_default()
+                .push(*object);
         }
-        objects_by_owner
-            .entry(object.owner)
-            .or_default()
-            .push(action.object);
     }
 
     let required_owners: BTreeSet<_> = objects_by_owner

@@ -27,7 +27,7 @@ use mtgml_persistence::semantic_contract_digest::{
 use mtgml_state::{
     construct_synthetic_engine_state, ContinuationPayloadV2, ContinuationRecordV2, EngineState,
     GameObject, KnownLocationFactV2, KnowledgeAcquisitionReason, KnowledgeRecordV2,
-    PendingDecisionRecordV2, SbaActionCauseV1, SbaSelectedActionV1, SyntheticResetInputs,
+    PendingDecisionRecordV2, SbaObjectCauseV1, SbaSelectedActionV1, SyntheticResetInputs,
     SyntheticV4Setup, VisibilityPartition, ZoneLocation, ZonePosition,
 };
 
@@ -224,13 +224,16 @@ fn magic_sba_continuation_state() -> EngineState {
                 payload: ContinuationPayloadV2::MagicSbaGraveyardOrderV1 {
                     round_start_revision: StateRevision(0),
                     selected_sba_actions: vec![
-                        SbaSelectedActionV1 {
-                            object: GameObjectId(1),
-                            causes: vec![SbaActionCauseV1::LethalDamage],
+                        SbaSelectedActionV1::PlayerLoses {
+                            player: PlayerId(1),
                         },
-                        SbaSelectedActionV1 {
+                        SbaSelectedActionV1::ObjectToOwnerGraveyard {
+                            object: GameObjectId(1),
+                            causes: vec![SbaObjectCauseV1::LethalDamage],
+                        },
+                        SbaSelectedActionV1::ObjectToOwnerGraveyard {
                             object,
-                            causes: vec![SbaActionCauseV1::ZeroToughness],
+                            causes: vec![SbaObjectCauseV1::ZeroToughness],
                         },
                     ],
                     apnap_owners: vec![PlayerId(1)],

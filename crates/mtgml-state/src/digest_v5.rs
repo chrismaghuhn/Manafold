@@ -525,18 +525,29 @@ fn continuation_value(
             text("magic_sba_graveyard_order_v1"),
             array([
                 u(round_start_revision.0),
-                array(selected_sba_actions.iter().map(|action| {
-                    array([
-                        u(action.object.0),
-                        array(action.causes.iter().map(|cause| {
-                            text(match cause {
-                                crate::m2_shape::SbaActionCauseV1::ZeroToughness => {
-                                    "zero_toughness"
-                                }
-                                crate::m2_shape::SbaActionCauseV1::LethalDamage => "lethal_damage",
-                            })
-                        })),
-                    ])
+                array(selected_sba_actions.iter().map(|action| match action {
+                    crate::m2_shape::SbaSelectedActionV1::PlayerLoses { player } => {
+                        array([text("player_loses"), u(player.0)])
+                    }
+                    crate::m2_shape::SbaSelectedActionV1::ObjectToOwnerGraveyard {
+                        object,
+                        causes,
+                    } => array([
+                        text("object_to_owner_graveyard"),
+                        array([
+                            u(object.0),
+                            array(causes.iter().map(|cause| {
+                                text(match cause {
+                                    crate::m2_shape::SbaObjectCauseV1::ZeroToughness => {
+                                        "zero_toughness"
+                                    }
+                                    crate::m2_shape::SbaObjectCauseV1::LethalDamage => {
+                                        "lethal_damage"
+                                    }
+                                })
+                            })),
+                        ]),
+                    ]),
                 })),
                 array(apnap_owners.iter().map(|owner| u(owner.0))),
                 u(u64::from(*next_owner_index)),

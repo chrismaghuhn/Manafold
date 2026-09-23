@@ -23,7 +23,7 @@ use self::continuation::{
 };
 pub use self::continuation::{
     AssemblyStageV2, ContinuationPayloadV2, ContinuationRecordV2, PendingDecisionRecordV2,
-    SbaActionCauseV1, SbaGraveyardOwnerOrderV1, SbaSelectedActionV1,
+    SbaGraveyardOwnerOrderV1, SbaObjectCauseV1, SbaSelectedActionV1,
 };
 use self::knowledge::validate_knowledge;
 pub use self::knowledge::{
