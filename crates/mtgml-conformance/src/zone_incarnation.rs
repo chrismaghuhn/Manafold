@@ -224,6 +224,13 @@ fn task2_library_case_state() -> EngineState {
     state
 }
 
+fn first_private_library_case_state() -> EngineState {
+    let mut state = library_case_state();
+    remove_object_tracking(&mut state, OLD_LIBRARY_TOP);
+    validate_engine_state(&state).expect("first-private library state is valid");
+    state
+}
+
 fn battlefield_request() -> Result<mtgml_rules::TransitionResult, KernelExecutionError> {
     execute_selected_zone_transition_for_conformance(
         &task2_battlefield_case_state(),
@@ -256,10 +263,19 @@ fn assert_unrelated_allocators_unchanged(
     assert_eq!(after.next_continuation_id, before.next_continuation_id);
 }
 
-fn assert_s2_red<T>(case_id: &str, actual: Result<T, KernelExecutionError>) -> T {
-    actual.unwrap_or_else(|error| {
-        panic!("RED {case_id}: expected selected S2 product; authoritative seam returned {error}")
-    })
+fn assert_event_delta_mirror(result: &mtgml_rules::TransitionResult) {
+    assert_eq!(
+        result.delta.audit,
+        result
+            .events
+            .iter()
+            .map(|event| event.event.semantic_delta())
+            .collect::<Vec<_>>()
+    );
+    for (index, event) in result.events.iter().enumerate() {
+        assert_eq!(event.event_id.0, index as u64 + 1);
+        assert_eq!(event.state_revision, result.next_state.revision);
+    }
 }
 
 #[test]
@@ -364,11 +380,13 @@ fn s2_zone_library_hand_top() {
         owner_hand(P2)
     );
     assert_eq!(result.next_state.allocators.next_object_id, GameObjectId(5));
-    assert_eq!(result.events.len(), 1);
+    assert_eq!(result.events.len(), 2);
     assert_eq!(
         result.next_state.allocators.next_rule_event_id,
-        mtgml_model::RuleEventId(2)
+        mtgml_model::RuleEventId(3)
     );
+    assert_eq!(result.events[0].event_id, mtgml_model::RuleEventId(1));
+    assert_eq!(result.events[1].event_id, mtgml_model::RuleEventId(2));
     assert_unrelated_allocators_unchanged(&before.allocators, &result.next_state.allocators);
     let old_snapshot = ObjectSnapshot {
         object: OLD_LIBRARY_TOP,
@@ -747,23 +765,576 @@ fn s2_identity_old_reference_closure_characterization() {
 }
 
 #[test]
-#[ignore = "RED: Task 3 foundation-source closure intentionally not implemented"]
-fn s2_identity_foundation_source_cessation() {
-    let before = battlefield_case_state();
-    assert!(before.foundation_sources.contains_key(&OLD_BATTLEFIELD));
-    // Independently authored expected destination has no source record.
-    let expected_new = GameObjectId(5);
-    assert!(!before.foundation_sources.contains_key(&expected_new));
-    let _ = assert_s2_red(
-        "s2.identity.foundation_source_cessation",
+fn s2_identity_old_reference_forbidden_sites_reject() {
+    let mut combat = task2_battlefield_case_state();
+    combat.combat = Some(mtgml_state::CombatState {
+        defending_player: P2,
+        attackers: vec![OLD_BATTLEFIELD],
+        blockers: BTreeMap::from([(OLD_BATTLEFIELD, None)]),
+    });
+    validate_engine_state(&combat).unwrap();
+    let combat_before = combat.clone();
+    assert!(matches!(
         execute_selected_zone_transition_for_conformance(
-            &before,
+            &combat,
             OLD_BATTLEFIELD,
             battlefield_from(),
             owner_graveyard_top(P1),
             ConformanceZoneTransitionKind::BattlefieldToOwnerGraveyard,
         ),
+        Err(KernelExecutionError::ZoneIncarnation(
+            ZoneIncarnationError::CombatReference
+        ))
+    ));
+    assert_eq!(combat, combat_before);
+
+    let mut stack = task2_battlefield_case_state();
+    let stack_id = mtgml_model::StackObjectId(1);
+    stack.zones.stack_records.insert(
+        stack_id,
+        mtgml_state::StackRecord {
+            id: stack_id,
+            controller: P1,
+            source_object: Some(OLD_BATTLEFIELD),
+            source_ability: None,
+        },
     );
+    stack.zones.stack_order.push(stack_id);
+    stack.allocators.next_stack_object_id = mtgml_model::StackObjectId(2);
+    validate_engine_state(&stack).unwrap();
+    let stack_before = stack.clone();
+    assert!(matches!(
+        execute_selected_zone_transition_for_conformance(
+            &stack,
+            OLD_BATTLEFIELD,
+            battlefield_from(),
+            owner_graveyard_top(P1),
+            ConformanceZoneTransitionKind::BattlefieldToOwnerGraveyard,
+        ),
+        Err(KernelExecutionError::ZoneIncarnation(
+            ZoneIncarnationError::StackSourceReference
+        ))
+    ));
+    assert_eq!(stack, stack_before);
+
+    let pending = construct_synthetic_engine_state(SyntheticResetInputs {
+        players: [P1, P2],
+        root_seed: mtgml_random::RootSeed256::from_lower_hex(&"11".repeat(32)).unwrap(),
+        setup: SyntheticV4Setup::m2_compatibility(),
+    })
+    .unwrap();
+    validate_engine_state(&pending).unwrap();
+    let pending_before = pending.clone();
+    assert!(matches!(
+        execute_selected_zone_transition_for_conformance(
+            &pending,
+            OLD_BATTLEFIELD,
+            battlefield_from(),
+            owner_graveyard_top(P1),
+            ConformanceZoneTransitionKind::BattlefieldToOwnerGraveyard,
+        ),
+        Err(KernelExecutionError::ZoneIncarnation(
+            ZoneIncarnationError::PendingDecisionReference
+        ))
+    ));
+    assert_eq!(pending, pending_before);
+}
+
+#[test]
+fn s2_identity_public_remap() {
+    let before = battlefield_case_state();
+    let result = execute_selected_zone_transition_for_conformance(
+        &before,
+        OLD_BATTLEFIELD,
+        battlefield_from(),
+        owner_graveyard_top(P1),
+        ConformanceZoneTransitionKind::BattlefieldToOwnerGraveyard,
+    )
+    .unwrap();
+    assert_event_delta_mirror(&result);
+    assert_eq!(result.events.len(), 3);
+    assert!(matches!(
+        result.events[0].event,
+        mtgml_rules::AuthoritativeRuleEventKind::ZoneTransition { .. }
+    ));
+    assert!(!result
+        .next_state
+        .zones
+        .objects
+        .contains_key(&OLD_BATTLEFIELD));
+    assert!(!result
+        .next_state
+        .zones
+        .locations
+        .contains_key(&OLD_BATTLEFIELD));
+    assert!(!result
+        .next_state
+        .zones
+        .ordered_zones
+        .values()
+        .any(|objects| objects.contains(&OLD_BATTLEFIELD)));
+    assert!(!result
+        .next_state
+        .foundation_sources
+        .contains_key(&OLD_BATTLEFIELD));
+    assert!(!result
+        .next_state
+        .zones
+        .stack_records
+        .values()
+        .any(|record| record.source_object == Some(OLD_BATTLEFIELD)));
+    assert!(result.next_state.combat.as_ref().is_none_or(|combat| {
+        !combat.attackers.contains(&OLD_BATTLEFIELD)
+            && !combat.blockers.contains_key(&OLD_BATTLEFIELD)
+            && !combat
+                .blockers
+                .values()
+                .any(|blocker| *blocker == Some(OLD_BATTLEFIELD))
+    }));
+    assert!(result
+        .next_state
+        .execution
+        .pending_decision
+        .as_ref()
+        .is_none_or(
+            |pending| !pending.request.candidates.iter().any(|candidate| {
+                matches!(
+                    candidate.trusted_binding,
+                    mtgml_decision::EngineCandidateBinding::CastSpell { object }
+                        | mtgml_decision::EngineCandidateBinding::SelectObject { object }
+                        if object == OLD_BATTLEFIELD
+                )
+            })
+        ));
+    assert!(result
+        .next_state
+        .perspective_identities
+        .players
+        .values()
+        .all(|identity| !identity.object_to_opaque.contains_key(&OLD_BATTLEFIELD)));
+    let opaque = mtgml_model::OpaqueObjectId(1);
+    let occurrences: Vec<_> = result
+        .events
+        .iter()
+        .filter_map(|event| match &event.event {
+            mtgml_rules::AuthoritativeRuleEventKind::PerspectiveOccurrence {
+                lifecycle,
+                observation,
+            } => Some((lifecycle, observation)),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        occurrences
+            .iter()
+            .map(|(lifecycle, _)| lifecycle.perspective)
+            .collect::<Vec<_>>(),
+        vec![P1, P2]
+    );
+    for perspective in [P1, P2] {
+        let before_identity = &before.perspective_identities.players[&perspective];
+        let after_identity = &result.next_state.perspective_identities.players[&perspective];
+        assert_eq!(
+            after_identity.opaque_to_object.get(&opaque),
+            Some(&GameObjectId(5))
+        );
+        assert!(!after_identity
+            .object_to_opaque
+            .contains_key(&OLD_BATTLEFIELD));
+        assert_eq!(
+            after_identity.next_opaque_object_id,
+            before_identity.next_opaque_object_id
+        );
+        let before_knowledge = &before.knowledge.players[&perspective];
+        let after_knowledge = &result.next_state.knowledge.players[&perspective];
+        assert_eq!(
+            after_knowledge.next_visible_sequence,
+            mtgml_model::VisibleSequence(2)
+        );
+        let record = &after_knowledge.active[&opaque];
+        assert_eq!(record.card_definition, Some(CardDefinitionId(1)));
+        assert_eq!(record.historical_locations.len(), 1);
+        assert_eq!(record.historical_locations[0].location, battlefield_from());
+        let current = record.known_location.as_ref().unwrap();
+        assert_eq!(current.location, owner_graveyard_top(P1));
+        assert_eq!(
+            current.provenance,
+            mtgml_state::KnowledgeAcquisitionReason::Observed {
+                channel: mtgml_state::KnowledgeHistoryChannel::Public,
+                sequence: mtgml_model::VisibleSequence(1),
+                cause: mtgml_state::KnowledgeAcquisitionCause::PublicEvent,
+            }
+        );
+        assert_eq!(
+            before_knowledge.next_visible_sequence,
+            mtgml_model::VisibleSequence(1)
+        );
+    }
+    for (_, observation) in occurrences {
+        assert!(matches!(
+            observation,
+            mtgml_rules::PerspectiveObservationPolicyV1::MovedInSight {
+                from_zone: ZoneKind::Battlefield,
+                to_zone: ZoneKind::Graveyard,
+                old_object: OLD_BATTLEFIELD,
+                new_object: GameObjectId(5),
+                reveals_old: true,
+                reveals_new: true,
+            }
+        ));
+    }
+    for (event, perspective) in result.events.iter().skip(1).zip([P1, P2]) {
+        let mtgml_rules::AuthoritativeRuleEventKind::PerspectiveOccurrence { lifecycle, .. } =
+            &event.event
+        else {
+            panic!("expected perspective occurrence after ZoneTransition");
+        };
+        assert_eq!(lifecycle.perspective, perspective);
+        assert_eq!(lifecycle.sequence, mtgml_model::VisibleSequence(1));
+        assert_eq!(
+            lifecycle.mutation.identity,
+            mtgml_state::IdentityMutationV1::Remap {
+                opaque,
+                from_object: OLD_BATTLEFIELD,
+                to_object: GameObjectId(5),
+            }
+        );
+    }
+    let projected = mtgml_environment::lifecycle_projection::project_occurrence_envelopes(
+        &before,
+        &result.next_state,
+        &result.events,
+    )
+    .unwrap();
+    assert_event_delta_mirror(&result);
+    for perspective in [P1, P2] {
+        assert_eq!(projected[&perspective].len(), 1);
+        assert_eq!(
+            projected[&perspective][0].event,
+            mtgml_observation::ObservedEventKindV2::ObjectMoved {
+                old_object: Some(opaque),
+                new_object: Some(opaque),
+                from: ZoneKind::Battlefield,
+                to: ZoneKind::Graveyard,
+            }
+        );
+    }
+}
+
+#[test]
+fn s2_identity_owner_hand_private() {
+    let before = first_private_library_case_state();
+    let non_owner_identity = before.perspective_identities.players[&P1].clone();
+    let non_owner_knowledge = before.knowledge.players[&P1].clone();
+    let result = execute_selected_zone_transition_for_conformance(
+        &before,
+        OLD_LIBRARY_TOP,
+        owner_library_top(P2),
+        owner_hand(P2),
+        ConformanceZoneTransitionKind::LibraryTopToOwnerHand,
+    )
+    .unwrap();
+    assert_event_delta_mirror(&result);
+    let new = GameObjectId(4);
+    let opaque = mtgml_model::OpaqueObjectId(3);
+    let owner_identity = &result.next_state.perspective_identities.players[&P2];
+    assert_eq!(owner_identity.opaque_to_object.get(&opaque), Some(&new));
+    assert_eq!(
+        owner_identity.next_opaque_object_id,
+        mtgml_model::OpaqueObjectId(4)
+    );
+    assert!(!owner_identity
+        .object_to_opaque
+        .contains_key(&OLD_LIBRARY_TOP));
+    let owner_knowledge = &result.next_state.knowledge.players[&P2];
+    assert_eq!(
+        owner_knowledge.next_visible_sequence,
+        mtgml_model::VisibleSequence(2)
+    );
+    let record = &owner_knowledge.active[&opaque];
+    assert_eq!(record.physical_card, None);
+    assert_eq!(record.card_definition, Some(CardDefinitionId(2)));
+    assert!(record.historical_locations.is_empty());
+    assert_eq!(
+        record.known_location.as_ref().unwrap().location,
+        owner_hand(P2)
+    );
+    let acquisition = mtgml_state::KnowledgeAcquisitionReason::Observed {
+        channel: mtgml_state::KnowledgeHistoryChannel::Private,
+        sequence: mtgml_model::VisibleSequence(1),
+        cause: mtgml_state::KnowledgeAcquisitionCause::OwnPrivateIdentity,
+    };
+    assert_eq!(record.acquisition, acquisition);
+    assert_eq!(
+        record.known_location.as_ref().unwrap().provenance,
+        acquisition
+    );
+    assert_eq!(
+        result.next_state.perspective_identities.players[&P1],
+        non_owner_identity
+    );
+    assert_eq!(
+        result.next_state.knowledge.players[&P1],
+        non_owner_knowledge
+    );
+    assert_eq!(result.events.len(), 2);
+    assert!(matches!(
+        &result.events[1].event,
+        mtgml_rules::AuthoritativeRuleEventKind::PerspectiveOccurrence {
+            lifecycle: mtgml_state::PerspectiveLifecycleAuditV1 {
+                perspective: P2,
+                sequence: mtgml_model::VisibleSequence(1),
+                mutation: mtgml_state::PerspectiveLifecycleMutationV1 {
+                    identity: mtgml_state::IdentityMutationV1::Allocate {
+                        opaque: mtgml_model::OpaqueObjectId(3),
+                        object: GameObjectId(4),
+                    },
+                    knowledge: Some(mtgml_state::KnowledgeMutationV1::Acquire { .. }),
+                },
+            },
+            observation: mtgml_rules::PerspectiveObservationPolicyV1::NoEnvelope,
+        }
+    ));
+    let projected = mtgml_environment::lifecycle_projection::project_occurrence_envelopes(
+        &before,
+        &result.next_state,
+        &result.events,
+    )
+    .unwrap();
+    assert!(projected[&P1].is_empty());
+    assert!(projected[&P2].is_empty());
+}
+
+#[test]
+fn s2_identity_owner_hand_private_preknown() {
+    let before = library_case_state();
+    let owner_allocator = before.perspective_identities.players[&P2].next_opaque_object_id;
+    let non_owner_identity = before.perspective_identities.players[&P1].clone();
+    let non_owner_knowledge = before.knowledge.players[&P1].clone();
+    let opaque = before.perspective_identities.players[&P2].object_to_opaque[&OLD_LIBRARY_TOP];
+    let result = execute_selected_zone_transition_for_conformance(
+        &before,
+        OLD_LIBRARY_TOP,
+        owner_library_top(P2),
+        owner_hand(P2),
+        ConformanceZoneTransitionKind::LibraryTopToOwnerHand,
+    )
+    .unwrap();
+    assert_event_delta_mirror(&result);
+    let owner_identity = &result.next_state.perspective_identities.players[&P2];
+    assert_eq!(
+        owner_identity.opaque_to_object.get(&opaque),
+        Some(&GameObjectId(4))
+    );
+    assert!(!owner_identity
+        .object_to_opaque
+        .contains_key(&OLD_LIBRARY_TOP));
+    assert_eq!(owner_identity.next_opaque_object_id, owner_allocator);
+    let owner_knowledge = &result.next_state.knowledge.players[&P2];
+    assert_eq!(
+        owner_knowledge.next_visible_sequence,
+        mtgml_model::VisibleSequence(2)
+    );
+    let record = &owner_knowledge.active[&opaque];
+    assert_eq!(record.card_definition, Some(CardDefinitionId(2)));
+    assert_eq!(record.historical_locations.len(), 1);
+    assert_eq!(
+        record.historical_locations[0].location,
+        owner_library_top(P2)
+    );
+    assert_eq!(
+        record.known_location.as_ref().unwrap().location,
+        owner_hand(P2)
+    );
+    assert_eq!(
+        record.known_location.as_ref().unwrap().provenance,
+        mtgml_state::KnowledgeAcquisitionReason::Observed {
+            channel: mtgml_state::KnowledgeHistoryChannel::Private,
+            sequence: mtgml_model::VisibleSequence(1),
+            cause: mtgml_state::KnowledgeAcquisitionCause::OwnPrivateIdentity,
+        }
+    );
+    assert_eq!(
+        result.next_state.perspective_identities.players[&P1],
+        non_owner_identity
+    );
+    assert_eq!(
+        result.next_state.knowledge.players[&P1],
+        non_owner_knowledge
+    );
+    assert_eq!(result.events.len(), 2);
+    assert!(matches!(
+        &result.events[1].event,
+        mtgml_rules::AuthoritativeRuleEventKind::PerspectiveOccurrence {
+            lifecycle: mtgml_state::PerspectiveLifecycleAuditV1 {
+                perspective: P2,
+                mutation: mtgml_state::PerspectiveLifecycleMutationV1 {
+                    identity: mtgml_state::IdentityMutationV1::Remap {
+                        opaque: seen,
+                        from_object: OLD_LIBRARY_TOP,
+                        to_object: GameObjectId(4),
+                    },
+                    knowledge: Some(mtgml_state::KnowledgeMutationV1::UpdateLocation { .. }),
+                },
+                ..
+            },
+            observation: mtgml_rules::PerspectiveObservationPolicyV1::MovedInSight {
+                from_zone: ZoneKind::Library,
+                to_zone: ZoneKind::Hand,
+                old_object: OLD_LIBRARY_TOP,
+                new_object: GameObjectId(4),
+                reveals_old: true,
+                reveals_new: true,
+            },
+        } if *seen == opaque
+    ));
+    let projected = mtgml_environment::lifecycle_projection::project_occurrence_envelopes(
+        &before,
+        &result.next_state,
+        &result.events,
+    )
+    .unwrap();
+    assert!(projected[&P1].is_empty());
+    assert_eq!(projected[&P2].len(), 1);
+    assert_eq!(
+        projected[&P2][0].event,
+        mtgml_observation::ObservedEventKindV2::ObjectMoved {
+            old_object: Some(opaque),
+            new_object: Some(opaque),
+            from: ZoneKind::Library,
+            to: ZoneKind::Hand,
+        }
+    );
+}
+
+#[test]
+fn s2_library_non_owner_mapping_rejects() {
+    let mut before = library_case_state();
+    let opaque = mtgml_model::OpaqueObjectId(2);
+    let library_location = owner_library_top(P2);
+    let p1_identity = before.perspective_identities.players.get_mut(&P1).unwrap();
+    p1_identity.opaque_to_object.insert(opaque, OLD_LIBRARY_TOP);
+    p1_identity.object_to_opaque.insert(OLD_LIBRARY_TOP, opaque);
+    p1_identity.next_opaque_object_id = mtgml_model::OpaqueObjectId(3);
+    before
+        .knowledge
+        .players
+        .get_mut(&P1)
+        .unwrap()
+        .active
+        .insert(
+            opaque,
+            mtgml_state::KnowledgeRecordV2 {
+                opaque_object: opaque,
+                physical_card: Some(CARD_LIBRARY),
+                card_definition: Some(CardDefinitionId(2)),
+                known_location: Some(mtgml_state::KnownLocationFactV2 {
+                    location: library_location,
+                    provenance: mtgml_state::KnowledgeAcquisitionReason::InitialConfiguration,
+                }),
+                historical_locations: Vec::new(),
+                acquisition: mtgml_state::KnowledgeAcquisitionReason::InitialConfiguration,
+            },
+        );
+    validate_engine_state(&before).unwrap();
+    let before_digest = before.digest().unwrap();
+
+    assert!(matches!(
+        execute_selected_zone_transition_for_conformance(
+            &before,
+            OLD_LIBRARY_TOP,
+            owner_library_top(P2),
+            owner_hand(P2),
+            ConformanceZoneTransitionKind::LibraryTopToOwnerHand,
+        ),
+        Err(KernelExecutionError::ZoneIncarnation(
+            ZoneIncarnationError::NonOwnerTracksHiddenSource
+        ))
+    ));
+    assert_eq!(before.digest().unwrap(), before_digest);
+}
+
+#[test]
+fn s2_observation_lifecycle_matrix() {
+    let public_before = battlefield_case_state();
+    let public_result = execute_selected_zone_transition_for_conformance(
+        &public_before,
+        OLD_BATTLEFIELD,
+        battlefield_from(),
+        owner_graveyard_top(P1),
+        ConformanceZoneTransitionKind::BattlefieldToOwnerGraveyard,
+    )
+    .unwrap();
+    let public_projection = mtgml_environment::lifecycle_projection::project_occurrence_envelopes(
+        &public_before,
+        &public_result.next_state,
+        &public_result.events,
+    )
+    .unwrap();
+    assert_eq!(public_projection[&P1].len(), 1);
+    assert_eq!(public_projection[&P2].len(), 1);
+
+    let first_private_before = first_private_library_case_state();
+    let first_private_result = execute_selected_zone_transition_for_conformance(
+        &first_private_before,
+        OLD_LIBRARY_TOP,
+        owner_library_top(P2),
+        owner_hand(P2),
+        ConformanceZoneTransitionKind::LibraryTopToOwnerHand,
+    )
+    .unwrap();
+    let first_private_projection =
+        mtgml_environment::lifecycle_projection::project_occurrence_envelopes(
+            &first_private_before,
+            &first_private_result.next_state,
+            &first_private_result.events,
+        )
+        .unwrap();
+    assert!(first_private_projection[&P1].is_empty());
+    assert!(first_private_projection[&P2].is_empty());
+
+    let preknown_before = library_case_state();
+    let preknown_result = execute_selected_zone_transition_for_conformance(
+        &preknown_before,
+        OLD_LIBRARY_TOP,
+        owner_library_top(P2),
+        owner_hand(P2),
+        ConformanceZoneTransitionKind::LibraryTopToOwnerHand,
+    )
+    .unwrap();
+    let preknown_projection =
+        mtgml_environment::lifecycle_projection::project_occurrence_envelopes(
+            &preknown_before,
+            &preknown_result.next_state,
+            &preknown_result.events,
+        )
+        .unwrap();
+    assert!(preknown_projection[&P1].is_empty());
+    assert_eq!(preknown_projection[&P2].len(), 1);
+}
+
+#[test]
+fn s2_identity_foundation_source_cessation() {
+    let before = battlefield_case_state();
+    assert!(before.foundation_sources.contains_key(&OLD_BATTLEFIELD));
+    let expected_new = GameObjectId(5);
+    assert!(!before.foundation_sources.contains_key(&expected_new));
+    let result = execute_selected_zone_transition_for_conformance(
+        &before,
+        OLD_BATTLEFIELD,
+        battlefield_from(),
+        owner_graveyard_top(P1),
+        ConformanceZoneTransitionKind::BattlefieldToOwnerGraveyard,
+    )
+    .expect("tracked creature moves through integrated core product");
+    assert!(!result
+        .next_state
+        .foundation_sources
+        .contains_key(&OLD_BATTLEFIELD));
+    assert!(!result
+        .next_state
+        .foundation_sources
+        .contains_key(&expected_new));
 }
 
 #[test]
@@ -943,22 +1514,17 @@ fn s2_task2_request_preconditions_fail_closed() {
 }
 
 #[test]
-#[ignore = "RED: Task 3 lifecycle/reference closure intentionally not implemented"]
 fn s2_rejection_stale_old_incarnation_historical_witness() {
     let before = battlefield_case_state();
-    // Step 1 must be a real accepted production-owned transition. The intended
-    // Step 2 is already explicit below. The rich witness requires Task 3's
-    // identity/reference closure before Step 1 can commit.
-    let first = assert_s2_red(
-        "s2.rejection.stale_old_incarnation/step_1",
-        execute_selected_zone_transition_for_conformance(
-            &before,
-            OLD_BATTLEFIELD,
-            battlefield_from(),
-            owner_graveyard_top(P1),
-            ConformanceZoneTransitionKind::BattlefieldToOwnerGraveyard,
-        ),
-    );
+    // Step 1 uses the production-owned executor and the rich tracked source.
+    let first = execute_selected_zone_transition_for_conformance(
+        &before,
+        OLD_BATTLEFIELD,
+        battlefield_from(),
+        owner_graveyard_top(P1),
+        ConformanceZoneTransitionKind::BattlefieldToOwnerGraveyard,
+    )
+    .expect("first accepted OLD -> NEW transition");
     let after_first = first.next_state.clone();
     let captured_after_first = after_first.clone();
     let after_first_digest = after_first.digest().unwrap();
@@ -969,7 +1535,12 @@ fn s2_rejection_stale_old_incarnation_historical_witness() {
         owner_graveyard_top(P1),
         ConformanceZoneTransitionKind::BattlefieldToOwnerGraveyard,
     );
-    assert!(retry.is_err(), "stale OLD must be rejected");
+    assert!(matches!(
+        retry,
+        Err(KernelExecutionError::ZoneIncarnation(
+            ZoneIncarnationError::ObjectNotLive
+        ))
+    ));
     assert_eq!(after_first, captured_after_first);
     assert_eq!(after_first.digest().unwrap(), after_first_digest);
 }

@@ -25,6 +25,16 @@ pub enum ZoneIncarnationError {
     GraveyardOffsetOverflow,
     #[error("allocated game-object identity collides with a live object")]
     ObjectIdCollision,
+    #[error("selected object is referenced by combat state")]
+    CombatReference,
+    #[error("selected object is referenced by a stack source record")]
+    StackSourceReference,
+    #[error("selected object is referenced by a pending trusted decision")]
+    PendingDecisionReference,
+    #[error("non-owner has a live identity mapping for a hidden Library source")]
+    NonOwnerTracksHiddenSource,
+    #[error("perspective identity/knowledge state cannot represent the selected move")]
+    PerspectiveKnowledgeMismatch,
 }
 
 #[derive(Debug, Error)]
@@ -47,6 +57,8 @@ pub enum KernelExecutionError {
     Random(#[from] RandomValidationError),
     #[error("identity allocator failed: {0}")]
     IdentityAllocation(#[from] IdentityAllocationError),
+    #[error("perspective lifecycle failed: {0}")]
+    PerspectiveLifecycle(#[from] mtgml_state::LifecycleApplicationError),
     #[error("{0} identity space is exhausted")]
     Exhaustion(&'static str),
     #[error("engine-offered stage path is unsupported in the current synthetic protocol")]

@@ -122,6 +122,7 @@ impl SemanticValidationCursor {
                 let selected_library_hand = transition.from == library_top && transition.to == hand;
 
                 if selected_battlefield_graveyard {
+                    self.foundation_sources.remove(&transition.old_object);
                     let destination_key = transition.to.key();
                     for (object, snapshot) in &mut self.objects {
                         if *object == transition.old_object

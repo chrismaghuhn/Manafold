@@ -1,8 +1,8 @@
 use crate::events::AuthoritativeRuleEventKind;
-use mtgml_model::{EpisodeStatus, GameObjectId, PlayerId};
+use mtgml_model::{EpisodeStatus, GameObjectId, PlayerId, ZoneKind};
 use mtgml_state::{
     validate_engine_state, BeginningStep, EndingStep, EngineState, PerspectiveIdentityRecordV2,
-    TurnPosition,
+    TurnPosition, VisibilityPartition, ZoneLocation, ZonePosition,
 };
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
@@ -12,6 +12,46 @@ use crate::semantic_cursor::SemanticValidationCursor;
 use crate::transition::TransitionResult;
 use crate::turn_structure::validate_quiescent_cleanup_boundary;
 use crate::validation::TransitionViolation;
+
+fn foundation_sources_match_selected_zone_transitions(
+    before: &EngineState,
+    after: &EngineState,
+    events: &[crate::events::AuthoritativeRuleEvent],
+) -> bool {
+    let battlefield = ZoneLocation {
+        zone: ZoneKind::Battlefield,
+        player: None,
+        position: ZonePosition::Unordered,
+        visibility: VisibilityPartition::Public,
+        partition: None,
+    };
+    let mut expected = before.foundation_sources.clone();
+    for event in events {
+        let crate::events::AuthoritativeRuleEventKind::ZoneTransition { transition } = &event.event
+        else {
+            continue;
+        };
+        let is_selected_battlefield_graveyard = transition.from == battlefield
+            && transition.to
+                == (ZoneLocation {
+                    zone: ZoneKind::Graveyard,
+                    player: Some(transition.last_known.owner),
+                    position: ZonePosition::Top { offset: 0 },
+                    visibility: VisibilityPartition::Public,
+                    partition: None,
+                });
+        if is_selected_battlefield_graveyard {
+            expected.remove(&transition.old_object);
+            if after
+                .foundation_sources
+                .contains_key(&transition.new_object)
+            {
+                return false;
+            }
+        }
+    }
+    expected == after.foundation_sources
+}
 
 fn validate_accepted_progression(
     before: &EngineState,
@@ -331,7 +371,7 @@ fn validate_accepted_progression(
         || before.core.players.len() != after.core.players.len()
         || has_lost_changed
         || before.combat != after.combat
-        || before.foundation_sources != after.foundation_sources
+        || !foundation_sources_match_selected_zone_transitions(before, after, &result.events)
     {
         return Err(TransitionViolation::UnexplainedMutation);
     }
