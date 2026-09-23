@@ -23,15 +23,20 @@ const CHECKPOINT_CODEC_VERSION_V6: &str = "6";
 
 const SYNTHETIC_OBSERVATION_CODEC: &str = "synthetic-m3-observation.v1";
 const MAGIC_OBSERVATION_CODEC: &str = "magic-m3-observation.v1";
+const SBA_CAPABILITY_KEY: &str = "rules/state-based-actions-combat";
+const SBA_CAPABILITY_VERSION: &str = "0.1.0";
 
 fn observation_codec_supported(rules: &RulesContractManifestV1, codec: &str) -> bool {
-    match codec {
-        SYNTHETIC_OBSERVATION_CODEC => true,
-        MAGIC_OBSERVATION_CODEC => rules.capability_closure.as_ref().is_some_and(|closure| {
-            closure
-                .iter()
-                .any(|requirement| requirement.key == "rules/state-based-actions-combat")
-        }),
+    let magic_semantics_admitted = matches!(
+        &rules.rules_authority,
+        RulesAuthorityV1::ComprehensiveRules { .. }
+    ) && rules.capability_closure.as_ref().is_some_and(|closure| {
+        closure.iter().any(|requirement| {
+            requirement.key == SBA_CAPABILITY_KEY && requirement.version == SBA_CAPABILITY_VERSION
+        })
+    });
+    match (magic_semantics_admitted, codec) {
+        (true, MAGIC_OBSERVATION_CODEC) | (false, SYNTHETIC_OBSERVATION_CODEC) => true,
         _ => false,
     }
 }

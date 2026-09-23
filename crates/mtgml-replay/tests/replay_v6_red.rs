@@ -120,6 +120,43 @@ fn manifest() -> ReplayManifestV6 {
     }
 }
 
+fn rebind_rules_and_codec(
+    manifest: &mut ReplayManifestV6,
+    rules: RulesContractManifestV1,
+    codec: &str,
+) {
+    let program_kind = match &rules.rules_authority {
+        RulesAuthorityV1::SyntheticLegacy => ExecutionProgramV1::SyntheticRulesCompat,
+        RulesAuthorityV1::ComprehensiveRules { .. } => ExecutionProgramV1::MagicRules,
+    };
+    let semantic = semantic_material(rules);
+    let execution = ExecutionIdentityV1 {
+        program_kind,
+        semantic_contract_id: semantic.semantic_contract_id.clone(),
+    };
+    if let RulesAuthorityV1::ComprehensiveRules { snapshot_id } =
+        &semantic.rules_manifest.rules_authority
+    {
+        manifest.rules_snapshot = snapshot_id.clone();
+    }
+    manifest.schemas.observation_payload_codec = codec.to_owned();
+    manifest.execution_identity = execution.clone();
+    manifest.initial_identity.execution_identity = execution.clone();
+    manifest.initial_identity.checkpoint_digest =
+        mtgml_persistence::checkpoint_digest::calculate_checkpoint_digest_v6(
+            &manifest
+                .initial_identity
+                .full_state_digest
+                .as_digest_reference(),
+            &manifest.initial_identity.episode_status,
+            &manifest.initial_identity.environment_limit_counters,
+            &manifest.initial_identity.checkpoint_codec_identity,
+            &execution,
+        )
+        .unwrap();
+    manifest.semantic_contract = semantic;
+}
+
 fn response(revision: u64) -> DecisionResponseV2 {
     DecisionResponseV2 {
         schema_version: "decision-response.v2".to_owned(),
@@ -225,11 +262,16 @@ fn replay_v6_rejects_v5_schema_and_unknown_fields() {
 
 #[test]
 fn magic_observation_codec_is_bound_to_sba_semantics() {
-    let mut manifest = manifest();
-    manifest.schemas.observation_payload_codec = "magic-m3-observation.v1".to_owned();
-    assert!(manifest.validate().is_err());
-
-    let rules = RulesContractManifestV1 {
+    let cr_s1 = RulesContractManifestV1 {
+        rules_authority: RulesAuthorityV1::ComprehensiveRules {
+            snapshot_id: "cr:test".to_owned(),
+        },
+        capability_closure: Some(vec![CapabilityRequirementV1 {
+            key: "rules/turn-structure".to_owned(),
+            version: "0.1.0".to_owned(),
+        }]),
+    };
+    let cr_sba = RulesContractManifestV1 {
         rules_authority: RulesAuthorityV1::ComprehensiveRules {
             snapshot_id: "cr:test".to_owned(),
         },
@@ -238,25 +280,50 @@ fn magic_observation_codec_is_bound_to_sba_semantics() {
             version: "0.1.0".to_owned(),
         }]),
     };
-    let semantic = semantic_material(rules);
-    manifest.rules_snapshot = "cr:test".to_owned();
-    manifest.execution_identity = ExecutionIdentityV1 {
-        program_kind: ExecutionProgramV1::MagicRules,
-        semantic_contract_id: semantic.semantic_contract_id.clone(),
+    let cr_wrong_sba = RulesContractManifestV1 {
+        rules_authority: RulesAuthorityV1::ComprehensiveRules {
+            snapshot_id: "cr:test".to_owned(),
+        },
+        capability_closure: Some(vec![CapabilityRequirementV1 {
+            key: "rules/state-based-actions-combat".to_owned(),
+            version: "999.0.0".to_owned(),
+        }]),
     };
-    manifest.initial_identity.execution_identity = manifest.execution_identity.clone();
-    manifest.initial_identity.checkpoint_digest =
-        mtgml_persistence::checkpoint_digest::calculate_checkpoint_digest_v6(
-            &manifest
-                .initial_identity
-                .full_state_digest
-                .as_digest_reference(),
-            &manifest.initial_identity.episode_status,
-            &manifest.initial_identity.environment_limit_counters,
-            &manifest.initial_identity.checkpoint_codec_identity,
-            &manifest.initial_identity.execution_identity,
-        )
-        .unwrap();
-    manifest.semantic_contract = semantic;
-    assert!(manifest.validate().is_ok());
+
+    assert!(manifest().validate().is_ok());
+
+    let mut s1_synthetic = manifest();
+    rebind_rules_and_codec(&mut s1_synthetic, cr_s1, "synthetic-m3-observation.v1");
+    assert!(s1_synthetic.validate().is_ok());
+
+    let mut sba_magic = manifest();
+    rebind_rules_and_codec(&mut sba_magic, cr_sba.clone(), "magic-m3-observation.v1");
+    assert!(sba_magic.validate().is_ok());
+
+    let mut sba_synthetic = manifest();
+    rebind_rules_and_codec(&mut sba_synthetic, cr_sba, "synthetic-m3-observation.v1");
+    assert!(sba_synthetic.validate().is_err());
+
+    let mut wrong_version_magic = manifest();
+    rebind_rules_and_codec(
+        &mut wrong_version_magic,
+        cr_wrong_sba,
+        "magic-m3-observation.v1",
+    );
+    assert!(wrong_version_magic.validate().is_err());
+
+    let mut synthetic_fake_closure = manifest();
+    synthetic_fake_closure
+        .semantic_contract
+        .rules_manifest
+        .capability_closure = Some(vec![CapabilityRequirementV1 {
+        key: "rules/state-based-actions-combat".to_owned(),
+        version: "0.1.0".to_owned(),
+    }]);
+    synthetic_fake_closure.schemas.observation_payload_codec = "magic-m3-observation.v1".to_owned();
+    assert!(synthetic_fake_closure.validate().is_err());
+
+    let mut unknown = manifest();
+    unknown.schemas.observation_payload_codec = "other-observation.v1".to_owned();
+    assert!(unknown.validate().is_err());
 }

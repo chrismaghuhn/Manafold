@@ -69,10 +69,13 @@ fn v6_identity(
 }
 
 fn synthetic_semantic_material() -> SemanticContractMaterialV5 {
-    let rules_manifest = RulesContractManifestV1 {
+    semantic_material(RulesContractManifestV1 {
         rules_authority: RulesAuthorityV1::SyntheticLegacy,
         capability_closure: None,
-    };
+    })
+}
+
+fn semantic_material(rules_manifest: RulesContractManifestV1) -> SemanticContractMaterialV5 {
     let rules_contract_id = calculate_rules_contract_id_v1(&rules_manifest).unwrap();
     let semantic_manifest = SemanticContractManifestV1 {
         rules_contract_id,
@@ -88,7 +91,7 @@ fn synthetic_semantic_material() -> SemanticContractMaterialV5 {
 }
 
 fn cr_semantic_material(snapshot_id: &str) -> SemanticContractMaterialV5 {
-    let rules_manifest = RulesContractManifestV1 {
+    semantic_material(RulesContractManifestV1 {
         rules_authority: RulesAuthorityV1::ComprehensiveRules {
             snapshot_id: snapshot_id.to_string(),
         },
@@ -96,19 +99,7 @@ fn cr_semantic_material(snapshot_id: &str) -> SemanticContractMaterialV5 {
             key: "rules/synthetic-m1".to_string(),
             version: "1.0.0".to_string(),
         }]),
-    };
-    let rules_contract_id = calculate_rules_contract_id_v1(&rules_manifest).unwrap();
-    let semantic_manifest = SemanticContractManifestV1 {
-        rules_contract_id,
-        format_contract_id: None,
-        content_contract_id: None,
-    };
-    let semantic_contract_id = calculate_semantic_contract_id_v1(&semantic_manifest).unwrap();
-    SemanticContractMaterialV5 {
-        semantic_contract_id,
-        manifest: semantic_manifest,
-        rules_manifest,
-    }
+    })
 }
 
 fn base_manifest(
@@ -156,6 +147,37 @@ fn base_manifest(
         execution_identity,
         semantic_contract,
     }
+}
+
+fn manifest_for_rules(
+    rules_manifest: RulesContractManifestV1,
+    observation_codec: &str,
+) -> ReplayManifestV6 {
+    let program_kind = match &rules_manifest.rules_authority {
+        RulesAuthorityV1::SyntheticLegacy => ExecutionProgramV1::SyntheticRulesCompat,
+        RulesAuthorityV1::ComprehensiveRules { .. } => ExecutionProgramV1::MagicRules,
+    };
+    let semantic = semantic_material(rules_manifest);
+    let execution = ExecutionIdentityV1 {
+        program_kind,
+        semantic_contract_id: semantic.semantic_contract_id.clone(),
+    };
+    let mut manifest = base_manifest(execution.clone(), semantic.clone());
+    if let RulesAuthorityV1::ComprehensiveRules { snapshot_id } =
+        &semantic.rules_manifest.rules_authority
+    {
+        manifest.rules_snapshot = snapshot_id.clone();
+    }
+    manifest.schemas.observation_payload_codec = observation_codec.to_owned();
+    manifest.execution_identity = execution.clone();
+    manifest.initial_identity = v6_identity(
+        manifest.initial_identity.state_revision.0,
+        0,
+        manifest.initial_identity.environment_limit_counters,
+        execution,
+    );
+    manifest.semantic_contract = semantic;
+    manifest
 }
 
 #[test]
@@ -300,5 +322,54 @@ fn print_all_fixtures() {
         m.schema_version = "replay-manifest.v5".to_string();
         let value = serde_json::to_value(&m).unwrap();
         println!("NEG_WRONG_SCHEMA: {}", to_canonical_json(&value));
+    }
+
+    // Exact CR SBA semantics require the Magic observation payload codec.
+    {
+        let rules = RulesContractManifestV1 {
+            rules_authority: RulesAuthorityV1::ComprehensiveRules {
+                snapshot_id: "cr:sba-codec-test".to_owned(),
+            },
+            capability_closure: Some(vec![CapabilityRequirementV1 {
+                key: "rules/state-based-actions-combat".to_owned(),
+                version: "0.1.0".to_owned(),
+            }]),
+        };
+        let value =
+            serde_json::to_value(manifest_for_rules(rules, "synthetic-m3-observation.v1")).unwrap();
+        println!("NEG_CODEC_SBA_SYNTHETIC: {}", to_canonical_json(&value));
+    }
+
+    // A different version does not admit the Magic observation payload.
+    {
+        let rules = RulesContractManifestV1 {
+            rules_authority: RulesAuthorityV1::ComprehensiveRules {
+                snapshot_id: "cr:sba-codec-test".to_owned(),
+            },
+            capability_closure: Some(vec![CapabilityRequirementV1 {
+                key: "rules/state-based-actions-combat".to_owned(),
+                version: "999.0.0".to_owned(),
+            }]),
+        };
+        let value =
+            serde_json::to_value(manifest_for_rules(rules, "magic-m3-observation.v1")).unwrap();
+        println!(
+            "NEG_CODEC_WRONG_SBA_VERSION_MAGIC: {}",
+            to_canonical_json(&value)
+        );
+    }
+
+    // SyntheticLegacy cannot claim Magic codec semantics by adding a fake closure.
+    {
+        let m = base_manifest(execution_identity.clone(), synthetic_semantic_material());
+        let mut value = serde_json::to_value(&m).unwrap();
+        value["schemas"]["observation_payload_codec"] =
+            serde_json::Value::String("magic-m3-observation.v1".to_owned());
+        value["semantic_contract"]["rules_manifest"]["capability_closure"] =
+            serde_json::json!([{"key": "rules/state-based-actions-combat", "version": "0.1.0"}]);
+        println!(
+            "NEG_CODEC_SYNTHETIC_AUTHORITY_MAGIC: {}",
+            to_canonical_json(&value)
+        );
     }
 }

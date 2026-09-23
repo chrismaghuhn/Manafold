@@ -27,6 +27,11 @@ from .persistence import (
     calculate_checkpoint_digest_v6,
 )
 
+SYNTHETIC_OBSERVATION_CODEC = "synthetic-m3-observation.v1"
+MAGIC_OBSERVATION_CODEC = "magic-m3-observation.v1"
+SBA_CAPABILITY_KEY = "rules/state-based-actions-combat"
+SBA_CAPABILITY_VERSION = "0.1.0"
+
 REPLAY_MANIFEST_SCHEMA_V6 = "replay-manifest.v6"
 REPLAY_FILE_SCHEMA_V6 = "authoritative-replay.v6"
 REPLAY_STEP_SCHEMA_V6 = "replay-step.v6"
@@ -245,20 +250,28 @@ class ReplayManifestV6:
             raise WireError("semantic.replay_manifest", "unsupported RNG contract")
         if self.schemas.observation != "observation-envelope.v1":
             raise WireError("semantic.replay_manifest", "observation schema is not V1")
-        payload_codec = self.schemas.observation_payload_codec
-        if payload_codec == "magic-m3-observation.v1":
-            closure = self.semantic_contract.rules_manifest.get("capability_closure")
-            has_sba = isinstance(closure, list) and any(
-                isinstance(item, dict) and item.get("key") == "rules/state-based-actions-combat"
+        rules_manifest = self.semantic_contract.rules_manifest
+        rules_authority = rules_manifest.get("rules_authority")
+        closure = rules_manifest.get("capability_closure")
+        magic_semantics_admitted = (
+            isinstance(rules_authority, dict)
+            and rules_authority.get("variant") == "comprehensive_rules"
+            and isinstance(closure, list)
+            and any(
+                isinstance(item, dict)
+                and item.get("key") == SBA_CAPABILITY_KEY
+                and item.get("version") == SBA_CAPABILITY_VERSION
                 for item in closure
             )
-            if not has_sba:
-                raise WireError(
-                    "semantic.replay_manifest",
-                    "Magic observation codec requires the SBA semantic closure",
-                )
-        elif payload_codec != "synthetic-m3-observation.v1":
-            raise WireError("semantic.replay_manifest", "unsupported observation payload codec")
+        )
+        expected_codec = (
+            MAGIC_OBSERVATION_CODEC if magic_semantics_admitted else SYNTHETIC_OBSERVATION_CODEC
+        )
+        if self.schemas.observation_payload_codec != expected_codec:
+            raise WireError(
+                "semantic.replay_manifest",
+                "observation payload codec does not match the exact rules contract closure",
+            )
         if self.schemas.decision != "player-decision-request.v2":
             raise WireError("semantic.replay_manifest", "decision schema is not V2")
         if self.schemas.decision_response != "decision-response.v2":

@@ -479,6 +479,24 @@
       "expected_error_code": "semantic.replay_manifest",
       "expected_reject_layer": "rust-python-semantic-or-decode",
       "path": "replay-manifest-v6-wrong-schema.json"
+    },
+    {
+      "contract": "replay-manifest.v6",
+      "expected_error_code": "semantic.replay_manifest",
+      "expected_reject_layer": "rust-python-semantic-or-decode",
+      "path": "replay-manifest-v6-sba-synthetic-codec.json"
+    },
+    {
+      "contract": "replay-manifest.v6",
+      "expected_error_code": "semantic.replay_manifest",
+      "expected_reject_layer": "rust-python-semantic-or-decode",
+      "path": "replay-manifest-v6-wrong-sba-version-magic-codec.json"
+    },
+    {
+      "contract": "replay-manifest.v6",
+      "expected_error_code": "semantic.replay_manifest",
+      "expected_reject_layer": "rust-python-semantic-or-decode",
+      "path": "replay-manifest-v6-synthetic-authority-magic-codec.json"
     }
   ]
 }
