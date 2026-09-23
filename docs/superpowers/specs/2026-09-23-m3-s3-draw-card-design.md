@@ -82,11 +82,25 @@ with declared dependencies `rules/turn-structure` and
 `rules/zone-incarnation`. The bounded semantic capability is one ordinary
 turn-based draw in a normal Draw Step. It is not a generic draw effect.
 
-**Disposition:** reject Draw as a self-contained S3 implementation slice.
-Retain Draw as the semantic producer in a reviewed S3 closure only if the
-priority prerequisite and registry dependency closure are resolved first.
-Draw must not copy or fork S2's zone-incarnation operation. This document
-does not change the registry.
+**Disposition:** retain `rules/draw-card@0.1.0` as an S3 interaction
+participant, but it is insufficient by itself for end-to-end Draw-Step
+closure. Foundation V2's capability DAG remains authoritative and unchanged:
+
+```text
+rules/draw-card
+├── rules/turn-structure
+└── rules/zone-incarnation
+
+rules/basic-priority
+├── rules/turn-structure
+└── rules/state-based-actions-combat
+    └── rules/zone-incarnation
+```
+
+The runtime must orchestrate the Draw action and subsequent priority window;
+that cross-domain sequence does not add `basic-priority` as a semantic
+dependency of `draw-card`. Draw must not copy or fork S2's zone-incarnation
+operation. The registry is unchanged.
 
 ## 4. Bounded supported profile
 
@@ -106,9 +120,10 @@ The proposed executable profile is:
   Hand profile, with physical-card identity and current state invariants valid.
 - Exactly one card is moved through the existing zone-incarnation executor.
 - The action consumes no random stream. No player decision is created.
-- Completion leaves the turn position at Draw and establishes the active
-  player's priority window through the one authoritative basic-priority
-  implementation. The next pass-only Decision is owned by basic-priority.
+- The integrated progression leaves the turn position at Draw, performs the
+  pre-priority SBA gate, and establishes the active player's priority window
+  through the one authoritative basic-priority implementation. The next
+  pass-only Decision is owned by basic-priority.
 
 The `turn_number >= 2` admission excludes the first turn, where the first
 player's ordinary draw is skipped. The ingress/admission contract must accept
@@ -146,8 +161,8 @@ or uncheckpointed execution memory may decide whether the draw is pending.
 
 ## 7. Exactly-once Draw-Step execution
 
-**Current state distinguishes pending from completed Draw:** YES, for the
-admitted valid state machine. The existing pair is:
+**State representation can distinguish pending from completed Draw:** YES.
+The existing pair can represent:
 
 ```text
 Beginning(Draw) + PriorityState::None
@@ -157,20 +172,23 @@ Beginning(Draw) + PriorityState::HeldBy(active_player, 0)
     = turn-based draw complete; priority window active
 ```
 
-There is no intermediate accepted state between the turn-based action and
-priority assignment. The position alone is insufficient, but `PriorityState`
-is already authoritative, included in the full-state digest, and checkpointed.
-The transition validator must establish this pairing, reject malformed Draw
-states, and prove the single transition from pending to completed. A repeated
-forced-progress attempt encounters held priority and rejects without another
-zone move.
+The position alone is insufficient, but `PriorityState` is authoritative,
+included in the full-state digest, and checkpointed. The current S1 executable
+support profile rejects held priority, and no executable Draw/priority
+contract currently establishes the pairing. The integrated transition
+validator must establish it, reject malformed Draw states, and prove one
+pending-to-completed transition. A repeated attempt in the completed state
+must reject without another zone move.
 
-**New authoritative Draw progress field required:** NO, if the action and
-priority grant commit atomically through basic-priority. **If Draw is stopped
-after the zone move while priority remains `None`, a new typed authoritative
-progress field is required** and must be included in state validation, digest,
-checkpoint/restore/fork, serialization, and replay identity. Such a split
-state is not admitted by this design.
+**Current executable Draw/priority contract exists:** NO.
+
+**New authoritative Draw progress field required:** NO, conditional on atomic
+integrated closure: Draw action, pre-priority SBA gate, and priority
+establishment. If an accepted state is exposed after the zone move while
+priority remains `None`, a new typed authoritative progress field is required
+and must be included in state validation, digest, checkpoint/restore/fork,
+serialization, and replay identity. Such a split state is not admitted by
+this design.
 
 The current semantic cursor already snapshots priority but cannot apply a
 priority transition event. Basic-priority must supply its canonical event and
@@ -181,9 +199,41 @@ cursor contract; Draw must not implement a parallel priority mutation.
 Turn structure admits the normal Draw Step boundary and fixes its place after
 Upkeep and before Precombat Main. The Draw producer handles the mandatory
 turn-based action at that boundary. `temporal_successor(Draw)` is not called to
-move directly to Precombat Main. After the active player receives priority,
-basic-priority resolves the explicit pass sequence and only then advances the
-turn position.
+move directly to Precombat Main. Runtime orchestration then runs the selected
+pre-priority SBA gate and basic-priority's explicit window/pass protocol.
+Only explicit passes later advance the turn position.
+
+Capability dependency and runtime orchestration are distinct. The S3
+end-to-end sequence is:
+
+```text
+turn-priority-progression
+
+Beginning(Draw) + Priority=None
+    -> turn-step-action
+    -> rules/draw-card
+    -> rules/zone-incarnation
+    -> priority-sba-gate
+    -> rules/state-based-actions-combat
+    -> rules/basic-priority
+    -> Beginning(Draw) + Priority=HeldBy(active_player, 0)
+```
+
+The capability dependency closure of `basic-priority` remains the accepted
+Foundation V2 closure: `basic-priority` depends on `turn-structure` and
+`state-based-actions-combat`; `state-based-actions-combat` depends on
+`zone-incarnation`. This does not add a `draw-card -> basic-priority` edge.
+The likely ordered S3 closure for independent design/review is:
+
+```text
+S3.A  state-based-actions-combat × zone-incarnation
+S3.B  turn-structure × basic-priority × state-based-actions-combat
+S3.C  turn-structure × draw-card × zone-incarnation,
+      integrated into the priority-bearing Draw-Step path
+```
+
+This is a design candidate only. End-to-end Draw/priority cannot omit the
+selected pre-priority SBA gate.
 
 The interaction closes with evidence for entry into Draw after the preceding
 priority window, one ordinary draw, the active-player priority Decision, and
@@ -268,12 +318,18 @@ with its `OLD -> NEW` identity, old snapshot, new snapshot, physical-card
 continuity, and existing perspective lifecycle. The Draw producer does not
 restate those facts in another zone event.
 
-A distinct semantic `DrawCompleted` event is required because a Library-to-Hand
-transition alone does not prove that the turn-based Draw action occurred; the
-same zone move can be produced by other rules. It records the active player
-and is paired by the cursor with exactly one admitted S2 transition in the
-same atomic product. It contains no card identity in player-visible form.
-Ordering is:
+`DRAW_COMPLETED_EVENT = PROPOSED / UNRESOLVED`.
+
+Two reviewed outcomes remain open:
+
+- If `ZoneTransition` plus the canonical SBA/priority event structure does not
+  independently prove that the turn-based Draw action occurred, a typed Draw
+  semantic event may be justified. It must pair the active player and exactly
+  one admitted S2 transition, and must expose no card identity.
+- If existing or newly required canonical semantic events already prove the
+  Draw action without ambiguity, do not add a duplicate trace-only event.
+
+If a typed Draw event is justified, its candidate ordering is:
 
 ```text
 ZoneTransition
@@ -289,10 +345,9 @@ source/destination, one transition only, no RNG change, and priority
 completion. A failure is an implementation defect and rejects the whole
 product.
 
-`DrawCompleted` is not a player-decision input. If reviewed semantics
-determine that S2's zone transition plus the priority event already proves the
-draw without adding a distinct semantic fact, that must be resolved before
-implementation; code must not add a trace-only event.
+Any Draw semantic event is not a player-decision input. Final event authority,
+ordering, cursor pairing, and projection remain unresolved for the S3 execution
+design; code must not add a trace-only event.
 
 ## 14. Checkpoint, restore, and fork
 
@@ -311,44 +366,49 @@ representations must be updated coherently before implementation.
 
 ## 15. Replay analysis (V5)
 
-The legitimate path is an accepted real basic-priority response that ends the
-Upkeep priority window and leaves forced Draw work next. The existing response
-transaction then executes exactly one rules-owned forced-progress closure;
-Draw, S2 zone incarnation, and the active-player priority request are merged
-into the accepted response product. V5 records the actual accepted
-`DecisionResponseV2` that initiated this causal chain. Replay re-executes that
-response, re-runs forced consequences, validates the transition contract and
-compares the after-state/checkpoint identity. The fresh `GameObjectId`, exact
-zone order, knowledge, and event trace are derived from the restored complete
+The architectural path is a real accepted basic-priority pass response that
+ends the Upkeep priority window and initiates the Draw-Step progression. The
+response transaction can then execute rules-owned forced consequences; a
+complete future implementation could merge Draw, S2 zone incarnation, the
+pre-priority SBA gate, and the active-player priority request into the
+accepted response product. V5 would record the actual accepted
+`DecisionResponseV2` that initiated this causal chain. Backend replay would
+re-execute that response and consequences, validate the transition contract,
+and compare after-state/checkpoint identity. The fresh `GameObjectId`, exact
+zone order, knowledge, and event trace would be derived from restored complete
 state and checked by the final digest and product validation.
+
+This is not current evidence: no real Basic-Priority response currently
+produces Draw and the S2 Library-to-Hand transition. The current production
+forced-progress path rejects at Draw, and its response transaction executes
+at most one forced-progress closure. The integrated production path and its
+backend replay must exist and execute before authoritative S2 replay can be
+claimed.
 
 The standalone forced-progress endpoint is not this path: it is setup-only,
 has no replay step, and cannot support a game-state Draw replay claim. No fake
 response, event-as-input, test-only replay, or Replay V6 is proposed.
 
 This path depends on the basic-priority pass response producing the Draw
-boundary without silently passing the Draw priority window. The final pass
-must execute the Draw action and then install a real explicit pass-only
-Decision for the active player. If implementation cannot fit that single
-response-plus-forced-progress contract, replay support is `UNPROVEN` and must
-not be manufactured.
+boundary without silently passing the Draw priority window. The Draw action,
+SBA check, and establishment of the priority window must lead to a real
+explicit pass-only Decision for the active player. If implementation cannot
+fit that response-plus-forced-consequence contract, replay support remains
+unproven and must not be manufactured.
 
 ## 16. S2 authoritative replay disposition
 
 ```text
-CAN_DRAW_PRODUCE_AUTHORITATIVE_S2_REPLAY = YES
-S2_CAN_BECOME_COVERED_DURING_S3 = YES (only after required evidence and review)
+REPLAY_ARCHITECTURE_PATH_IDENTIFIED = YES
+CAN_DRAW_PRODUCE_AUTHORITATIVE_S2_REPLAY = UNPROVEN
+S2_CAN_BECOME_COVERED_DURING_S3 = UNPROVEN
 ```
 
-The existing production response transaction and backend-verified V5 replay
-runner provide the legitimate initiating input and re-execution path described
-above. The current repository has no Draw producer, so this is a reviewed
-future integration path, not evidence already earned. S2 remains
-`implemented / not covered`; it is not promoted by this design or by
-deterministic rerun alone. S3 may discharge the outstanding S2 replay
-obligation only with a real kernel witness, V5 backend replay, exact new
-incarnation and after-identity validation, and independent S2 lifecycle
-review.
+The response-initiated V5 path appears architecturally available, but becomes
+evidence only after Basic Priority, Draw, and forced progression exist in
+production and backend replay actually reproduces and validates the S2
+transition. S2 remains `implemented / not covered`; this design does not
+promote it.
 
 ## 17. Conformance witness matrix
 
@@ -364,9 +424,10 @@ review.
 | V5 authoritative replay | Genuine final priority response re-executes Draw/S2 forced consequences and validates complete after identity. |
 | Fail-closed matrix | Each rejection in Section 12 preserves every listed state and environment product. |
 
-These witnesses close `turn-structure × draw-card` and
-`draw-card × zone-incarnation` as interaction obligations; they do not create
-separate pair-capabilities.
+These are proposed witnesses for `turn-structure × draw-card` and
+`draw-card × zone-incarnation` interaction obligations. No interaction is
+marked satisfied by this design, and the obligations do not create separate
+pair-capabilities.
 
 ## 18. RED-test inventory
 
@@ -388,54 +449,61 @@ Before implementation, add failing tests for:
   complete after-state, observations, information, and events.
 - No replay step for standalone forced progress and no fabricated Decision or
   response for Draw.
-- Exact capability dependency closure and rejection when basic-priority or
-  its dependencies are absent.
+- Exact capability DAG conformance (Draw retains only its two Foundation V2
+  dependencies) and runtime orchestration through the SBA/priority closure.
 
 ## 19. Lifecycle consequences
 
-`rules/draw-card@0.1.0` remains `specified`. Design review alone does not make
-it implemented, covered, or certified. S2 remains implemented and not covered
-until its own replay obligation is evidenced and reviewed. No certification,
-card, deck, format, Commander, or playability support is implied.
+The lifecycle remains unchanged: `rules/draw-card` is `specified`,
+`rules/basic-priority` is `specified`,
+`rules/state-based-actions-combat` is `specified`,
+`rules/zone-incarnation` is `implemented`, and `rules/turn-structure` is
+`covered`. Design review alone advances none of them. No interaction is newly
+claimed satisfied. S2 remains not covered until its replay obligation is
+evidenced and reviewed. No certification, card, deck, format, Commander, or
+playability support is implied.
 
 ## 20. Unresolved blockers
 
-1. The capability registry currently omits `rules/basic-priority` from Draw's
-   dependencies. The required priority semantics and the priority capability's
-   existing dependency closure must be reconciled through a separate reviewed
-   registry/governance change; this design does not edit it.
-2. No current priority event or semantic cursor arm proves `None` to
+1. No current priority event or semantic cursor arm proves `None` to
    `HeldBy(active_player)`; basic-priority must own and validate this transition.
-3. The basic-priority closure currently depends on
-   `state-based-actions-combat`, so exact S3 semantic scope/dependency closure
-   must be selected and reviewed before implementation.
-4. A semantic `DrawCompleted` event is proposed, but event audience, projection,
-   and pairing with S2 must be resolved against the current event contract.
-5. V5 Draw replay is a valid existing transaction pattern only if the real
-   basic-priority response can initiate the complete forced consequence in
-   one response transaction and produce the next explicit Decision.
+2. The accepted basic-priority dependency closure includes
+   `state-based-actions-combat`, whose closure includes zone-incarnation. The
+   likely S3.A/S3.B/S3.C order and orchestration must be selected and reviewed;
+   this does not change Draw's capability dependencies.
+3. `DrawCompleted` remains proposed/unresolved pending analysis of the
+   canonical event/cursor proof; no trace-only event may be added.
+4. V5 Draw replay remains unproven until a real response produces and backend
+   replay validates the complete forced consequence.
 
 ## 21. Implementation-readiness verdict
 
 The zone/incarnation and private-knowledge parts are bounded and reusable.
-However, Draw alone is not an independently coherent S3 slice: it must finish
-at an explicit priority window, and the repository does not yet have that
-priority execution/event contract or a reviewed dependency closure. Do not
-start implementation until those blockers are resolved and the S3 capability
-bundle is independently selected and authorized.
+Draw's Foundation V2 dependencies are correct and need no change. Draw alone
+is insufficient for end-to-end Draw-Step closure: runtime orchestration must
+run the selected pre-priority SBA gate and basic-priority window. The
+repository lacks that executable priority/event contract and has no replay
+witness for Draw. Do not start implementation until the ordered S3 interaction
+closure is selected, its event contract reviewed, and implementation is
+independently authorized.
 
 ## Required conclusions
 
 ```text
-S3_CANDIDATE = rules/draw-card@0.1.0 / REJECTED (as a standalone slice)
+S3_CANDIDATE = rules/draw-card@0.1.0 remains a selected S3 interaction participant; not sufficient by itself for end-to-end Draw-Step closure
 DRAW_CARD_ALONE_FOR_S3 = INSUFFICIENT
-CURRENT_STATE_DISTINGUISHES_PRE_DRAW_POST_DRAW = YES (position + PriorityState)
-NEW_AUTHORITATIVE_DRAW_PROGRESS_STATE_REQUIRED = NO (atomic draw-to-priority)
-BASIC_PRIORITY_REQUIRED_FOR_S3 = YES
+DRAW_CARD_DEPENDENCIES = rules/turn-structure; rules/zone-incarnation
+STATE_REPRESENTATION_CAN_DISTINGUISH_PRE_POST_DRAW = YES
+CURRENT_EXECUTABLE_DRAW_PRIORITY_CONTRACT_EXISTS = NO
+NEW_AUTHORITATIVE_DRAW_PROGRESS_STATE_REQUIRED = NO, conditional on atomic integrated closure
+BASIC_PRIORITY_REQUIRED_FOR_END_TO_END_S3 = YES
+DRAW_DEPENDS_ON_BASIC_PRIORITY = NO
 DRAW_CARD_ZONE_INCARNATION_INTERACTION_CLOSABLE = YES
 TURN_STRUCTURE_DRAW_CARD_INTERACTION_CLOSABLE = YES
-CAN_DRAW_PRODUCE_AUTHORITATIVE_S2_REPLAY = YES (through the real response transaction)
-S2_CAN_BECOME_COVERED_DURING_S3 = YES (conditional on required evidence/review)
-DEPENDENCY_CHANGE_REQUIRED = YES
+REPLAY_ARCHITECTURE_PATH_IDENTIFIED = YES
+CAN_DRAW_PRODUCE_AUTHORITATIVE_S2_REPLAY = UNPROVEN
+S2_CAN_BECOME_COVERED_DURING_S3 = UNPROVEN
+DEPENDENCY_CHANGE_REQUIRED = NO
+DRAW_COMPLETED_EVENT = PROPOSED / UNRESOLVED
 S3_IMPLEMENTATION_READY = NO
 ```
