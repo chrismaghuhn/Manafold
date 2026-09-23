@@ -72,11 +72,13 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
         self.assertIn("FOUNDATION_V2 = ACCEPTED_HARDENED_M3_SCOPE", readme)
         self.assertIn("**M3 plan status:** `ACCEPTED`", readme)
         self.assertIn("**Task 14:** `COMPLETE` — `S1_EXACT_HEAD_VERIFICATION = PASS`", readme)
-        self.assertIn("**Next gate:** `M3_S3_P0_EXACT_HEAD_REVIEW`", readme)
+        self.assertIn("**Next gate:** `M3_S3_0_EXACT_HEAD_REVIEW`", readme)
+        self.assertIn("**S3.P0:** `COMPLETE / FROZEN`", readme)
         self.assertIn(
-            "**S3.P0:** implementation complete candidate; exact-head review pending", readme
+            "**S3.0:** implementation complete candidate; exact-head review pending",
+            readme,
         )
-        self.assertIn("S3.0/A/B/C are not authorized", readme)
+        self.assertIn("S3.A/B/C are not authorized", readme)
         self.assertNotIn("M3_S1_AUTHORIZATION_DECISION", readme)
         self.assertNotIn("M3_T0_CLOSURE_STATUS_SYNC_EXACT_HEAD_REVIEW", readme)
         self.assertIn(
@@ -230,11 +232,16 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
         self.assertIn("S1_PHYSICAL_CARD_IDENTITY_CHANGE_AUTHORIZED = NO", roadmap)
         self.assertNotIn("S1_IMPLEMENTATION = NOT_AUTHORIZED", roadmap)
         self.assertNotIn("NEXT_GATE = M3_S1_AUTHORIZATION_DECISION", roadmap)
-        self.assertIn("S3_P0_IMPLEMENTATION = COMPLETE_CANDIDATE", roadmap)
-        self.assertIn("S3_P0_EXACT_HEAD_REVIEW = PENDING", roadmap)
-        self.assertIn("NEXT_GATE = M3_S3_P0_EXACT_HEAD_REVIEW", roadmap)
-        self.assertIn("S3_0_IMPLEMENTATION_AUTHORIZED = NO", roadmap)
-        self.assertIn("S3_0_STARTED = NO", roadmap)
+        self.assertIn("S3_P0_IMPLEMENTATION = COMPLETE", roadmap)
+        self.assertIn("S3_P0_COMPLETE = YES", roadmap)
+        self.assertIn("S3_P0_FROZEN = YES", roadmap)
+        self.assertIn("S3_P0_PR = #210", roadmap)
+        self.assertIn("S3_P0_MERGE_COMMIT = ffc433985f41e6e2980df23a103b5e2358527ea3", roadmap)
+        self.assertIn("S3_0_AUTHORIZED = YES", roadmap)
+        self.assertIn("S3_0_STARTED = YES", roadmap)
+        self.assertIn("S3_0_IMPLEMENTATION = COMPLETE_CANDIDATE", roadmap)
+        self.assertIn("S3_0_EXACT_HEAD_REVIEW = PENDING", roadmap)
+        self.assertIn("NEXT_GATE = M3_S3_0_EXACT_HEAD_REVIEW", roadmap)
         self.assertIn("S3_A_IMPLEMENTATION_AUTHORIZED = NO", roadmap)
         self.assertIn("S3_B_IMPLEMENTATION_AUTHORIZED = NO", roadmap)
         self.assertIn("S3_C_IMPLEMENTATION_AUTHORIZED = NO", roadmap)
