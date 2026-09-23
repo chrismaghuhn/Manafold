@@ -68,11 +68,19 @@ class SourceOfTruthTests(unittest.TestCase):
         # Entry 1: magic_turn_structure_0_1_0
         ts = entries[1]
         self.assertEqual(ts["entry_id"], "magic_turn_structure_0_1_0")
-        self.assertEqual(ts["rules_authority"], {
-            "variant": "comprehensive_rules",
-            "snapshot_id": "wotc-cr-2026-08-07-txt-20260819-sha256-4381ad1b39ab2c05f7d03633a20f711ed37277074d3266dcba5f38cbb527423f",
-        })
-        self.assertEqual(ts["capability_closure"], [{"key": "rules/turn-structure", "version": "0.1.0"}])
+        self.assertEqual(
+            ts["rules_authority"],
+            {
+                "variant": "comprehensive_rules",
+                "snapshot_id": (
+                    "wotc-cr-2026-08-07-txt-20260819-sha256-"
+                    "4381ad1b39ab2c05f7d03633a20f711ed37277074d3266dcba5f38cbb527423f"
+                ),
+            },
+        )
+        self.assertEqual(
+            ts["capability_closure"], [{"key": "rules/turn-structure", "version": "0.1.0"}]
+        )
         self.assertIsNone(ts["format_contract_id"])
         self.assertIsNone(ts["content_contract_id"])
 
@@ -109,7 +117,9 @@ class GeneratorEmitTests(unittest.TestCase):
         module = load_generator_module()
         with tempfile.TemporaryDirectory() as scratch:
             target = Path(scratch) / "semantic_execution_generated.rs"
-            module.write_generated(target, module.render_rules_execution_generated(module.load_source()))
+            module.write_generated(
+                target, module.render_rules_execution_generated(module.load_source())
+            )
             stale = target.read_text(encoding="utf-8").replace(
                 "7e8f54f15bd27d16643422f6904a23ea2004cab1098b56f8cd842a2397ff42fe",
                 "0" * 64,
@@ -126,9 +136,7 @@ class GeneratorEmitTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as scratch:
             catalog_target = Path(scratch) / "semantic_catalog_generated.rs"
             rules_target = Path(scratch) / "semantic_execution_generated.rs"
-            module.write_generated(
-                catalog_target, module.render_catalog_generated()
-            )
+            module.write_generated(catalog_target, module.render_catalog_generated())
             module.write_generated(
                 rules_target, module.render_rules_execution_generated(module.load_source())
             )
@@ -179,9 +187,7 @@ class GeneratorEmitTests(unittest.TestCase):
         module = load_generator_module()
         rendered = module.render_rules_execution_generated(module.load_source())
         self.assertIn("pub fn execution_contract_supported", rendered)
-        self.assertIn(
-            "synthetic_legacy_default_semantic_contract_id()", rendered
-        )
+        self.assertIn("synthetic_legacy_default_semantic_contract_id()", rendered)
         self.assertIn("magic_execution_profile", rendered)
 
     def test_scratch_catalog_rendering_remains_policy_free(self) -> None:
@@ -329,16 +335,32 @@ class IndependentPythonKatTests(unittest.TestCase):
         hex_literals = set(re.findall(r'"([0-9a-f]{64})"', generated))
         for entry in document["entries"]:
             rules_id, semantic_id = self._recompute_entry_ids(entry)
-            self.assertIn(rules_id, hex_literals, f"rules ID missing from generated output for {entry['entry_id']}")
-            self.assertIn(semantic_id, hex_literals, f"semantic ID missing from generated output for {entry['entry_id']}")
+            self.assertIn(
+                rules_id,
+                hex_literals,
+                f"rules ID missing from generated output for {entry['entry_id']}",
+            )
+            self.assertIn(
+                semantic_id,
+                hex_literals,
+                f"semantic ID missing from generated output for {entry['entry_id']}",
+            )
 
     def test_derived_ids_match_checked_in_generated_values(self) -> None:
         document = json.loads(SOURCE_PATH.read_text(encoding="utf-8"))
         generated = GENERATED_PATH.read_text(encoding="utf-8")
         for entry in document["entries"]:
             rules_id, semantic_id = self._recompute_entry_ids(entry)
-            self.assertIn(rules_id, generated, f"rules ID missing from generated output for {entry['entry_id']}")
-            self.assertIn(semantic_id, generated, f"semantic ID missing from generated output for {entry['entry_id']}")
+            self.assertIn(
+                rules_id,
+                generated,
+                f"rules ID missing from generated output for {entry['entry_id']}",
+            )
+            self.assertIn(
+                semantic_id,
+                generated,
+                f"semantic ID missing from generated output for {entry['entry_id']}",
+            )
 
 
 class NegativeEvidenceTests(unittest.TestCase):
@@ -465,13 +487,15 @@ class NegativeEvidenceTests(unittest.TestCase):
         # Production policy accepts exactly 2 entries; a third is refused.
         module = load_generator_module()
         document = json.loads(SOURCE_PATH.read_text(encoding="utf-8"))
-        document["entries"].append({
-            "entry_id": "extra_entry",
-            "rules_authority": {"variant": "synthetic_legacy"},
-            "capability_closure": None,
-            "format_contract_id": None,
-            "content_contract_id": None,
-        })
+        document["entries"].append(
+            {
+                "entry_id": "extra_entry",
+                "rules_authority": {"variant": "synthetic_legacy"},
+                "capability_closure": None,
+                "format_contract_id": None,
+                "content_contract_id": None,
+            }
+        )
         with self.assertRaises(SystemExit, msg="extra production entry must be refused"):
             module.assert_production_policy(document)
 
@@ -484,7 +508,10 @@ class NegativeEvidenceTests(unittest.TestCase):
             "entry_id": "magic_turn_structure_0_1_0",
             "rules_authority": {
                 "variant": "comprehensive_rules",
-                "snapshot_id": "wotc-cr-2026-08-07-txt-20260819-sha256-wrong-snapshot-0000000000000000000000000000000000000000000000000000",
+                "snapshot_id": (
+                    "wotc-cr-2026-08-07-txt-20260819-sha256-wrong-snapshot-"
+                    "0000000000000000000000000000000000000000000000000000"
+                ),
             },
             "capability_closure": [{"key": "rules/turn-structure", "version": "0.1.0"}],
             "format_contract_id": None,
@@ -502,7 +529,10 @@ class NegativeEvidenceTests(unittest.TestCase):
             "entry_id": "magic_turn_structure_0_1_0",
             "rules_authority": {
                 "variant": "comprehensive_rules",
-                "snapshot_id": "wotc-cr-2026-08-07-txt-20260819-sha256-4381ad1b39ab2c05f7d03633a20f711ed37277074d3266dcba5f38cbb527423f",
+                "snapshot_id": (
+                    "wotc-cr-2026-08-07-txt-20260819-sha256-"
+                    "4381ad1b39ab2c05f7d03633a20f711ed37277074d3266dcba5f38cbb527423f"
+                ),
             },
             "capability_closure": [{"key": "rules/turn-structure", "version": "0.2.0"}],
             "format_contract_id": None,

@@ -70,7 +70,8 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
         )
         self.assertIn("finalized as COMPLETE / FROZEN", readme)
         self.assertIn(
-            "10 Foundation capabilities are `specified`, 0 are `implemented`, 1 is `covered`, and 0 are `certified`",
+            "10 Foundation capabilities are `specified`, 0 are `implemented`, "
+            "1 is `covered`, and 0 are `certified`",
             readme,
         )
         self.assertIn("**Real Magic semantics:** bounded M3.S1 turn-structure slice only", readme)
@@ -285,9 +286,7 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
         entries = registry["entries"]
         self.assertEqual({entry["key"] for entry in entries}, expected)
         self.assertEqual(len(entries), 11)
-        turn_structure = next(
-            entry for entry in entries if entry["key"] == "rules/turn-structure"
-        )
+        turn_structure = next(entry for entry in entries if entry["key"] == "rules/turn-structure")
         other_entries = [entry for entry in entries if entry is not turn_structure]
 
         self.assertEqual(turn_structure["version"], "0.1.0")
