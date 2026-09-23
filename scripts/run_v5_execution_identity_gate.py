@@ -330,7 +330,8 @@ def scan_kernel_sites() -> KernelResult:
 # the current V5-state/V6-checkpoint cut is owned by the V6 gate.
 #
 # NOT included: FullStateDigestV4 was not migrated by ADR 0055; the later S3.P0
-# cut adds FullStateDigestV5 and classifies V4 as historical. CheckpointDigestV3 and all V3 replay types remain historical
+# cut adds FullStateDigestV5 and classifies V4 as historical. CheckpointDigestV3
+# and all V3 replay types remain historical
 # READABLE_VERIFIABLE_ONLY with no V5 successor), ReplaySchemaVersionsV1/V3/V4
 # (only when in HISTORICAL_VERIFIER files).
 #

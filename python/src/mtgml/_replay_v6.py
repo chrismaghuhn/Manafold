@@ -9,6 +9,7 @@ from ._replay_v4 import (
     CheckpointCodecIdentityV4,
     EnvironmentLimitCountersV4,
 )
+from ._replay_v5 import ExecutionIdentityV1, SemanticContractMaterialV5
 from .canonical import (
     parse_u64_number,
     parse_uint,
@@ -25,7 +26,6 @@ from .persistence import (
     CHECKPOINT_CODEC_VERSION_V6,
     calculate_checkpoint_digest_v6,
 )
-from ._replay_v5 import ExecutionIdentityV1, SemanticContractMaterialV5
 
 REPLAY_MANIFEST_SCHEMA_V6 = "replay-manifest.v6"
 REPLAY_FILE_SCHEMA_V6 = "authoritative-replay.v6"
