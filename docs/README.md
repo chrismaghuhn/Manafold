@@ -18,10 +18,9 @@ The machine-readable classification of binding, process, and informative documen
 - [`OPEN_DECISIONS.md`](OPEN_DECISIONS.md)
 
 Current status is owned by the repository root [`README.md`](../README.md) and
-the milestone ordering in [`ROADMAP.md`](ROADMAP.md). They record M2 as
-complete by accepted ADR 0041, M2.5 as `NOT_CLAIMED` / `NOT_FROZEN`, and engine
-M3 as `NOT_AUTHORIZED`; this documentation index does not duplicate a second
-status source.
+the milestone ordering in [`ROADMAP.md`](ROADMAP.md). This documentation index
+is an index only: it intentionally does not restate current milestone,
+capability-lifecycle, or resumable-execution status.
 
 ## Normative architecture and semantics
 

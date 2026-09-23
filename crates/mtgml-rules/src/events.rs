@@ -3,7 +3,7 @@ use mtgml_random::RandomStreamKeyV1;
 use mtgml_state::{
     IdentityMutationV1, KnowledgeAcquisitionCause, KnowledgeAcquisitionReason,
     KnowledgeHistoryChannel, KnowledgeMutationV1, PerspectiveLifecycleAuditV1,
-    SemanticDeltaOperation, ZoneTransition,
+    SemanticDeltaOperation, TurnPosition, ZoneTransition,
 };
 use serde::{Deserialize, Serialize};
 
@@ -42,6 +42,21 @@ pub enum AuthoritativeRuleEventKind {
     },
     PublicOutcome {
         code: String,
+    },
+    TurnPositionChanged {
+        from: TurnPosition,
+        to: TurnPosition,
+    },
+    UntapCompleted {
+        affected_objects: Vec<GameObjectId>,
+    },
+    ActivePlayerChanged {
+        from: PlayerId,
+        to: PlayerId,
+    },
+    TurnNumberChanged {
+        from: u64,
+        to: u64,
     },
     /// One complete perspective-visible occurrence (M2.E). The state-owned
     /// `lifecycle` payload is the single authority for perspective, consumed
@@ -102,6 +117,21 @@ impl AuthoritativeRuleEventKind {
             Self::PublicOutcome { code } => {
                 SemanticDeltaOperation::PublicOutcome { code: code.clone() }
             }
+            Self::TurnPositionChanged { from, to } => SemanticDeltaOperation::TurnPositionChanged {
+                from: *from,
+                to: *to,
+            },
+            Self::UntapCompleted { affected_objects } => SemanticDeltaOperation::UntapCompleted {
+                affected_objects: affected_objects.clone(),
+            },
+            Self::ActivePlayerChanged { from, to } => SemanticDeltaOperation::ActivePlayerChanged {
+                from: *from,
+                to: *to,
+            },
+            Self::TurnNumberChanged { from, to } => SemanticDeltaOperation::TurnNumberChanged {
+                from: *from,
+                to: *to,
+            },
         }
     }
 }
@@ -142,6 +172,13 @@ pub enum PerspectiveObservationPolicyV1 {
     },
     /// Knowledge-only occurrence: no observed envelope is projected.
     NoEnvelope,
+    /// A public object's tapped state is authorized to change for this
+    /// perspective. Trusted `GameObjectId` stays here; opaque
+    /// substitution happens exclusively in observation projection.
+    ObjectTapped {
+        object: GameObjectId,
+        tapped: bool,
+    },
     SawRandomOutcome {
         label: String,
         exclusive_upper_bound: u64,
@@ -308,6 +345,20 @@ pub fn validate_occurrence_pairing(
             // mutations (private looks, own-private identity, explicit
             // forget, hidden randomization/shuffle retirement); emptiness is
             // rejected above.
+        }
+        Policy::ObjectTapped {
+            object: _,
+            tapped: _,
+        } => {
+            // ObjectTapped is an envelope-producing policy that observes
+            // a public state change. No identity or knowledge mutation is
+            // required: the authoritative transition represents the state
+            // change; this occurrence is observation evidence only.
+            if !matches!(mutation.identity, IdentityMutationV1::None)
+                || mutation.knowledge.is_some()
+            {
+                return Err(OccurrencePairingError::IdentityMismatch);
+            }
         }
         Policy::SawRandomOutcome {
             label,

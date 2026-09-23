@@ -51,4 +51,6 @@ pub enum TransitionViolation {
     DecisionProgression,
     #[error("staged transition changed its continuation identity")]
     ContinuationIdentity,
+    #[error("turn-structure event sequence does not compose to the final state")]
+    TurnStructure,
 }

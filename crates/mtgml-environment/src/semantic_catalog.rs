@@ -28,8 +28,9 @@ use thiserror::Error;
 use crate::checkpoint::{CheckpointValidationError, EnvironmentCheckpointV5};
 use crate::errors::ControllerError;
 use crate::semantic_catalog_generated::{
-    synthetic_legacy_default_rules_manifest, synthetic_legacy_default_semantic_contract_id,
-    synthetic_legacy_default_semantic_manifest,
+    magic_turn_structure_0_1_0_rules_manifest, magic_turn_structure_0_1_0_semantic_contract_id,
+    magic_turn_structure_0_1_0_semantic_manifest, synthetic_legacy_default_rules_manifest,
+    synthetic_legacy_default_semantic_contract_id, synthetic_legacy_default_semantic_manifest,
 };
 
 /// A single catalog entry: the frozen meaning of one semantic contract ID.
@@ -67,11 +68,18 @@ impl RuntimeSemanticCatalog {
     /// every value is a frozen generated constant (spec §10).
     pub fn production() -> Self {
         Self {
-            entries: vec![CatalogEntry {
-                semantic_contract_id: synthetic_legacy_default_semantic_contract_id(),
-                manifest: synthetic_legacy_default_semantic_manifest(),
-                rules_manifest: synthetic_legacy_default_rules_manifest(),
-            }],
+            entries: vec![
+                CatalogEntry {
+                    semantic_contract_id: synthetic_legacy_default_semantic_contract_id(),
+                    manifest: synthetic_legacy_default_semantic_manifest(),
+                    rules_manifest: synthetic_legacy_default_rules_manifest(),
+                },
+                CatalogEntry {
+                    semantic_contract_id: magic_turn_structure_0_1_0_semantic_contract_id(),
+                    manifest: magic_turn_structure_0_1_0_semantic_manifest(),
+                    rules_manifest: magic_turn_structure_0_1_0_rules_manifest(),
+                },
+            ],
         }
     }
 
@@ -91,31 +99,21 @@ impl RuntimeSemanticCatalog {
             .find(|entry| entry.semantic_contract_id == *id)
     }
 
-    /// SUPPORTED EXECUTION: does THIS runtime support executing this program
-    /// × contract pairing?
+    /// SUPPORTED EXECUTION: does THIS runtime support executing this exact
+    /// (program_kind, semantic_contract_id) pairing?
     ///
-    /// Checks: the contract is known AND the program is supported by this
-    /// runtime build. The program × authority pairing is validated separately
-    /// in `admit_restore` phase 6 (frozen pairing rule); this method does not
-    /// re-check pairing — that would be redundant and could diverge from the
-    /// admission order.
+    /// Delegates to the shared runtime-support authority
+    /// (`mtgml_rules::execution_contract_supported`) which is generated
+    /// from the same manifest source. No independent pairing logic
+    /// lives here.
     pub fn supported(&self, id: &SemanticContractIdV1, program: ExecutionProgramV1) -> bool {
-        let Some(_entry) = self.resolve(id) else {
-            return false;
-        };
-        runtime_supports_program(program)
+        mtgml_rules::execution_contract_supported(program, id)
     }
 
     /// Number of entries (crate-internal, used by tests).
     #[cfg(test)]
     pub(crate) fn entry_count(&self) -> usize {
         self.entries.len()
-    }
-
-    /// Slice of all entries (crate-internal, used by tests).
-    #[cfg(test)]
-    pub(crate) fn entries(&self) -> &[CatalogEntry] {
-        &self.entries
     }
 }
 
@@ -138,13 +136,6 @@ fn program_authority_compatible(program: ExecutionProgramV1, authority: &RulesAu
             RulesAuthorityV1::ComprehensiveRules { .. }
         )
     )
-}
-
-/// Whether THIS runtime build supports a given program.
-/// Pre-S1: only `SyntheticRulesCompat` is supported; `MagicRules` has no
-/// production kernel.
-fn runtime_supports_program(program: ExecutionProgramV1) -> bool {
-    matches!(program, ExecutionProgramV1::SyntheticRulesCompat)
 }
 
 /// Typed failure family for the V5 restore admission machinery (spec §18).

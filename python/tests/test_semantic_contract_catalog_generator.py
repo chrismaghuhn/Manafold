@@ -20,6 +20,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 SOURCE_PATH = ROOT / "contracts" / "catalog" / "semantic-contracts.v1.json"
 GENERATED_PATH = ROOT / "crates" / "mtgml-environment" / "src" / "semantic_catalog_generated.rs"
+RULES_GENERATED_PATH = ROOT / "crates" / "mtgml-rules" / "src" / "semantic_execution_generated.rs"
 GENERATOR_PATH = ROOT / "scripts" / "generate_semantic_contract_catalog.py"
 
 sys.dont_write_bytecode = True
@@ -56,12 +57,32 @@ class SourceOfTruthTests(unittest.TestCase):
         self.assertEqual(document["schema_version"], "semantic-contracts-catalog.v1")
         entries = document["entries"]
         self.assertIsInstance(entries, list)
-        self.assertEqual(len(entries), 1, "production catalog must contain exactly one entry")
-        entry = entries[0]
-        self.assertEqual(entry["rules_authority"], {"variant": "synthetic_legacy"})
-        self.assertIsNone(entry["capability_closure"])
-        self.assertIsNone(entry["format_contract_id"])
-        self.assertIsNone(entry["content_contract_id"])
+        self.assertEqual(len(entries), 2, "production catalog must contain exactly two entries")
+        # Entry 0: synthetic_legacy_default
+        syn = entries[0]
+        self.assertEqual(syn["entry_id"], "synthetic_legacy_default")
+        self.assertEqual(syn["rules_authority"], {"variant": "synthetic_legacy"})
+        self.assertIsNone(syn["capability_closure"])
+        self.assertIsNone(syn["format_contract_id"])
+        self.assertIsNone(syn["content_contract_id"])
+        # Entry 1: magic_turn_structure_0_1_0
+        ts = entries[1]
+        self.assertEqual(ts["entry_id"], "magic_turn_structure_0_1_0")
+        self.assertEqual(
+            ts["rules_authority"],
+            {
+                "variant": "comprehensive_rules",
+                "snapshot_id": (
+                    "wotc-cr-2026-08-07-txt-20260819-sha256-"
+                    "4381ad1b39ab2c05f7d03633a20f711ed37277074d3266dcba5f38cbb527423f"
+                ),
+            },
+        )
+        self.assertEqual(
+            ts["capability_closure"], [{"key": "rules/turn-structure", "version": "0.1.0"}]
+        )
+        self.assertIsNone(ts["format_contract_id"])
+        self.assertIsNone(ts["content_contract_id"])
 
     def test_source_contains_no_hand_authored_identity(self) -> None:
         # BLOCKER regression: derived IDs are GENERATED, never hand-authored.
@@ -69,9 +90,9 @@ class SourceOfTruthTests(unittest.TestCase):
         # literal there would be a second authority for derived identity.
         text = SOURCE_PATH.read_text(encoding="utf-8")
         document = json.loads(text)
-        entry = document["entries"][0]
-        self.assertNotIn("rules_contract_id", entry)
-        self.assertNotIn("semantic_contract_id", entry)
+        for entry in document["entries"]:
+            self.assertNotIn("rules_contract_id", entry)
+            self.assertNotIn("semantic_contract_id", entry)
         self.assertNotIn("rules_contract_id", document)
         self.assertNotIn("semantic_contract_id", document)
         self.assertNotIn("19bac684", text, "no hand-maintained digest literal in the source")
@@ -79,13 +100,122 @@ class SourceOfTruthTests(unittest.TestCase):
 
 
 class GeneratorEmitTests(unittest.TestCase):
+    def test_rules_generated_target_exists(self) -> None:
+        self.assertTrue(
+            RULES_GENERATED_PATH.is_file(),
+            f"generated rules execution module is absent: {RULES_GENERATED_PATH}",
+        )
+
+    def test_rules_generated_output_is_deterministic_and_matches_checked_in(self) -> None:
+        module = load_generator_module()
+        first = module.render_rules_execution_generated(module.load_source())
+        second = module.render_rules_execution_generated(module.load_source())
+        self.assertEqual(first.encode("utf-8"), second.encode("utf-8"))
+        self.assertEqual(RULES_GENERATED_PATH.read_bytes(), first.encode("utf-8"))
+
+    def test_rules_generated_stale_output_is_detected(self) -> None:
+        module = load_generator_module()
+        with tempfile.TemporaryDirectory() as scratch:
+            target = Path(scratch) / "semantic_execution_generated.rs"
+            module.write_generated(
+                target, module.render_rules_execution_generated(module.load_source())
+            )
+            stale = target.read_text(encoding="utf-8").replace(
+                "7e8f54f15bd27d16643422f6904a23ea2004cab1098b56f8cd842a2397ff42fe",
+                "0" * 64,
+                1,
+            )
+            target.write_text(stale, encoding="utf-8")
+            self.assertEqual(
+                module.check_rules_execution_path(target, catalog=module.load_source()),
+                1,
+            )
+
+    def test_cli_check_fails_when_only_rules_generated_target_drifts(self) -> None:
+        module = load_generator_module()
+        with tempfile.TemporaryDirectory() as scratch:
+            catalog_target = Path(scratch) / "semantic_catalog_generated.rs"
+            rules_target = Path(scratch) / "semantic_execution_generated.rs"
+            module.write_generated(catalog_target, module.render_catalog_generated())
+            module.write_generated(
+                rules_target, module.render_rules_execution_generated(module.load_source())
+            )
+            stale_rules = rules_target.read_text(encoding="utf-8").replace(
+                "7e8f54f15bd27d16643422f6904a23ea2004cab1098b56f8cd842a2397ff42fe",
+                "0" * 64,
+                1,
+            )
+            rules_target.write_text(stale_rules, encoding="utf-8")
+
+            old_argv = sys.argv[:]
+            old_catalog_target = module.TARGET_PATH
+            old_rules_target = module.RULES_TARGET_PATH
+            try:
+                sys.argv = [str(GENERATOR_PATH), "--check"]
+                module.TARGET_PATH = catalog_target
+                module.RULES_TARGET_PATH = rules_target
+                result = module.main()
+            finally:
+                sys.argv = old_argv
+                module.TARGET_PATH = old_catalog_target
+                module.RULES_TARGET_PATH = old_rules_target
+
+            self.assertEqual(result, 1)
+
+    def test_rules_generated_ids_are_derived_from_source_manifest(self) -> None:
+        module = load_generator_module()
+        document = json.loads(SOURCE_PATH.read_text(encoding="utf-8"))
+        rendered = module.render_rules_execution_generated(document)
+        for entry in document["entries"]:
+            _, semantic_id = module.derive_ids(entry)
+            self.assertIn(semantic_id, rendered)
+
+    def test_rules_generated_surface_is_execution_only(self) -> None:
+        module = load_generator_module()
+        rendered = module.render_rules_execution_generated(module.load_source())
+        self.assertNotIn("#![allow(dead_code)]", rendered)
+        self.assertNotIn("RulesContractIdV1", rendered)
+        self.assertNotIn("SemanticContractManifestV1", rendered)
+        self.assertNotIn("_rules_manifest()", rendered)
+        self.assertNotIn("_semantic_manifest()", rendered)
+        self.assertNotIn("RULES_CONTRACT_HEX", rendered)
+        self.assertIn("pub fn execution_contract_supported", rendered)
+        self.assertIn("pub(crate) struct MagicExecutionProfile", rendered)
+        self.assertIn("test_only_magic_execution_profile", rendered)
+
+    def test_rules_generated_support_query_uses_derived_id_accessors(self) -> None:
+        module = load_generator_module()
+        rendered = module.render_rules_execution_generated(module.load_source())
+        self.assertIn("pub fn execution_contract_supported", rendered)
+        self.assertIn("synthetic_legacy_default_semantic_contract_id()", rendered)
+        self.assertIn("magic_execution_profile", rendered)
+
+    def test_scratch_catalog_rendering_remains_policy_free(self) -> None:
+        module = load_generator_module()
+        scratch_catalog = {
+            "schema_version": "semantic-contracts-catalog.v1",
+            "entries": [
+                {
+                    "entry_id": "scratch_policy_free",
+                    "rules_authority": {"variant": "synthetic_legacy"},
+                    "capability_closure": None,
+                    "format_contract_id": None,
+                    "content_contract_id": None,
+                }
+            ],
+        }
+        rendered = module.render_catalog_generated(scratch_catalog)
+        self.assertIn("scratch_policy_free_semantic_contract_id", rendered)
+        with self.assertRaises(SystemExit):
+            module.assert_production_policy(scratch_catalog)
+
     def test_generate_is_deterministic_and_stable(self) -> None:
         module = load_generator_module()
         with tempfile.TemporaryDirectory() as scratch:
             out_a = Path(scratch) / "a.rs"
             out_b = Path(scratch) / "b.rs"
-            module.write_generated(out_a, module.render_generated())
-            module.write_generated(out_b, module.render_generated())
+            module.write_generated(out_a, module.render_catalog_generated())
+            module.write_generated(out_b, module.render_catalog_generated())
             self.assertEqual(out_a.read_bytes(), out_b.read_bytes())
             self.assertIn("@generated", out_a.read_text(encoding="utf-8"))
             self.assertIn("DO NOT EDIT", out_a.read_text(encoding="utf-8"))
@@ -94,24 +224,24 @@ class GeneratorEmitTests(unittest.TestCase):
         module = load_generator_module()
         with tempfile.TemporaryDirectory() as scratch:
             target = Path(scratch) / "generated.rs"
-            module.write_generated(target, module.render_generated())
-            self.assertEqual(module.check_paths([target]), 0)
+            module.write_generated(target, module.render_catalog_generated())
+            self.assertEqual(module.check_catalog_paths([target]), 0)
             target.write_text(
                 target.read_text(encoding="utf-8").replace("synthetic_legacy", "magic_legacy"),
                 encoding="utf-8",
             )
-            self.assertEqual(module.check_paths([target]), 1)
+            self.assertEqual(module.check_catalog_paths([target]), 1)
 
     def test_check_mode_reports_stale_generated_output(self) -> None:
         module = load_generator_module()
         with tempfile.TemporaryDirectory() as scratch:
             target = Path(scratch) / "generated.rs"
-            module.write_generated(target, module.render_generated())
+            module.write_generated(target, module.render_catalog_generated())
             stale = target.read_text(encoding="utf-8").replace(
                 "semantic_contract", "semantic_contract_stale", 1
             )
             target.write_text(stale, encoding="utf-8")
-            self.assertNotEqual(module.check_paths([target]), 0)
+            self.assertNotEqual(module.check_catalog_paths([target]), 0)
 
     def test_cli_check_exit_codes(self) -> None:
         if not GENERATOR_PATH.is_file():
@@ -127,7 +257,7 @@ class GeneratorEmitTests(unittest.TestCase):
         if not GENERATOR_PATH.is_file():
             self.fail(f"generator script is absent: {GENERATOR_PATH}")
         text = GENERATOR_PATH.read_text(encoding="utf-8")
-        self.assertNotIn("sha256", text.lower())
+        self.assertNotIn("sha256(", text.lower())
         self.assertNotIn("hashlib", text.lower())
         self.assertNotIn("encode_envelope", text.lower())
         self.assertNotIn("encode_canonical", text.lower())
@@ -136,7 +266,7 @@ class GeneratorEmitTests(unittest.TestCase):
         module = load_generator_module()
         with tempfile.TemporaryDirectory() as scratch:
             target = Path(scratch) / "generated.rs"
-            module.write_generated(target, module.render_generated())
+            module.write_generated(target, module.render_catalog_generated())
             text = target.read_text(encoding="utf-8")
         document = json.loads(SOURCE_PATH.read_text(encoding="utf-8"))
         rules_id, semantic_id = module.derive_ids(document["entries"][0])
@@ -161,7 +291,7 @@ class GeneratorEmitTests(unittest.TestCase):
                 }
             ],
         }
-        text = module.render_generated(alternate)
+        text = module.render_catalog_generated(alternate)
         self.assertIn("pub fn scratch_other_name_rules_contract_id()", text)
         self.assertIn("pub fn scratch_other_name_semantic_contract_id()", text)
         self.assertIn("pub fn scratch_other_name_rules_manifest()", text)
@@ -181,9 +311,9 @@ class IndependentPythonKatTests(unittest.TestCase):
     generator's own derivation helper, which would make the check
     self-referential."""
 
-    def test_python_kat_recomputes_independently_from_generated_output(self) -> None:
-        document = json.loads(SOURCE_PATH.read_text(encoding="utf-8"))
-        entry = document["entries"][0]
+    def _recompute_entry_ids(self, entry: dict[str, object]) -> tuple[str, str]:
+        """Independently recompute both IDs for a source entry via
+        the Task-2 persistence mirrors — no generator routing."""
         rules_id = calculate_rules_contract_id_v1(
             {
                 "rules_authority": entry["rules_authority"],
@@ -197,29 +327,40 @@ class IndependentPythonKatTests(unittest.TestCase):
                 "content_contract_id": entry["content_contract_id"],
             }
         )
+        return rules_id, semantic_id
+
+    def test_python_kat_recomputes_independently_from_generated_output(self) -> None:
+        document = json.loads(SOURCE_PATH.read_text(encoding="utf-8"))
         generated = GENERATED_PATH.read_text(encoding="utf-8")
         hex_literals = set(re.findall(r'"([0-9a-f]{64})"', generated))
-        self.assertIn(rules_id, hex_literals, "rules ID missing from generated output")
-        self.assertIn(semantic_id, hex_literals, "semantic ID missing from generated output")
+        for entry in document["entries"]:
+            rules_id, semantic_id = self._recompute_entry_ids(entry)
+            self.assertIn(
+                rules_id,
+                hex_literals,
+                f"rules ID missing from generated output for {entry['entry_id']}",
+            )
+            self.assertIn(
+                semantic_id,
+                hex_literals,
+                f"semantic ID missing from generated output for {entry['entry_id']}",
+            )
 
     def test_derived_ids_match_checked_in_generated_values(self) -> None:
         document = json.loads(SOURCE_PATH.read_text(encoding="utf-8"))
-        entry = document["entries"][0]
-        rules_id = calculate_rules_contract_id_v1(
-            {
-                "rules_authority": entry["rules_authority"],
-                "capability_closure": entry["capability_closure"],
-            }
-        )
-        semantic_id = calculate_semantic_contract_id_v1(
-            {
-                "rules_contract_id": rules_id,
-                "format_contract_id": entry["format_contract_id"],
-                "content_contract_id": entry["content_contract_id"],
-            }
-        )
-        self.assertIn(rules_id, GENERATED_PATH.read_text(encoding="utf-8"))
-        self.assertIn(semantic_id, GENERATED_PATH.read_text(encoding="utf-8"))
+        generated = GENERATED_PATH.read_text(encoding="utf-8")
+        for entry in document["entries"]:
+            rules_id, semantic_id = self._recompute_entry_ids(entry)
+            self.assertIn(
+                rules_id,
+                generated,
+                f"rules ID missing from generated output for {entry['entry_id']}",
+            )
+            self.assertIn(
+                semantic_id,
+                generated,
+                f"semantic ID missing from generated output for {entry['entry_id']}",
+            )
 
 
 class NegativeEvidenceTests(unittest.TestCase):
@@ -269,8 +410,8 @@ class NegativeEvidenceTests(unittest.TestCase):
             mutated_semantic,
             "a single fact change must alter the semantic ID",
         )
-        baseline_render = module.render_generated(baseline_catalog)
-        mutated_render = module.render_generated(mutated_catalog)
+        baseline_render = module.render_catalog_generated(baseline_catalog)
+        mutated_render = module.render_catalog_generated(mutated_catalog)
         self.assertIn(baseline_rules, baseline_render)
         self.assertIn(mutated_rules, mutated_render)
         self.assertNotIn(mutated_rules, baseline_render)
@@ -278,9 +419,9 @@ class NegativeEvidenceTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as scratch:
             target = Path(scratch) / "generated.rs"
             module.write_generated(target, baseline_render)  # stale after the mutation
-            self.assertEqual(module.check_paths([target], catalog=baseline_catalog), 0)
+            self.assertEqual(module.check_catalog_paths([target], catalog=baseline_catalog), 0)
             self.assertEqual(
-                module.check_paths([target], catalog=mutated_catalog),
+                module.check_catalog_paths([target], catalog=mutated_catalog),
                 1,
                 "--check must fail against stale generated output after the mutation",
             )
@@ -308,7 +449,7 @@ class NegativeEvidenceTests(unittest.TestCase):
                 }
             ],
         }
-        text = module.render_generated(comprehensive)
+        text = module.render_catalog_generated(comprehensive)
         self.assertIn("RulesAuthorityV1::ComprehensiveRules", text)
         self.assertIn("capability_closure: Some(vec![", text)
         self.assertIn("hypothetical_magic_rules_manifest", text)
@@ -333,14 +474,90 @@ class NegativeEvidenceTests(unittest.TestCase):
         # The renderer fails closed at the digest boundary before its own
         # variant dispatch can fire; both boundaries reject the same defect.
         with self.assertRaises((SystemExit, PersistenceError)):
-            module.render_generated(document)
+            module.render_catalog_generated(document)
 
     def test_source_shape_tampering_fails_closed(self) -> None:
         module = load_generator_module()
         document = json.loads(SOURCE_PATH.read_text(encoding="utf-8"))
         document["entries"][0]["unexpected_key"] = "x"
         with self.assertRaises(SystemExit):
-            module.render_generated(document)
+            module.render_catalog_generated(document)
+
+    def test_extra_production_entry_rejected(self) -> None:
+        # Production policy accepts exactly 2 entries; a third is refused.
+        module = load_generator_module()
+        document = json.loads(SOURCE_PATH.read_text(encoding="utf-8"))
+        document["entries"].append(
+            {
+                "entry_id": "extra_entry",
+                "rules_authority": {"variant": "synthetic_legacy"},
+                "capability_closure": None,
+                "format_contract_id": None,
+                "content_contract_id": None,
+            }
+        )
+        with self.assertRaises(SystemExit, msg="extra production entry must be refused"):
+            module.assert_production_policy(document)
+
+    def test_wrong_snapshot_rejected(self) -> None:
+        # Turn-structure entry with wrong snapshot_id must be refused
+        # by production policy.
+        module = load_generator_module()
+        document = json.loads(SOURCE_PATH.read_text(encoding="utf-8"))
+        document["entries"][1] = {
+            "entry_id": "magic_turn_structure_0_1_0",
+            "rules_authority": {
+                "variant": "comprehensive_rules",
+                "snapshot_id": (
+                    "wotc-cr-2026-08-07-txt-20260819-sha256-wrong-snapshot-"
+                    "0000000000000000000000000000000000000000000000000000"
+                ),
+            },
+            "capability_closure": [{"key": "rules/turn-structure", "version": "0.1.0"}],
+            "format_contract_id": None,
+            "content_contract_id": None,
+        }
+        with self.assertRaises(SystemExit, msg="wrong snapshot must be refused"):
+            module.assert_production_policy(document)
+
+    def test_wrong_closure_rejected(self) -> None:
+        # Turn-structure entry with wrong closure must be refused
+        # by production policy.
+        module = load_generator_module()
+        document = json.loads(SOURCE_PATH.read_text(encoding="utf-8"))
+        document["entries"][1] = {
+            "entry_id": "magic_turn_structure_0_1_0",
+            "rules_authority": {
+                "variant": "comprehensive_rules",
+                "snapshot_id": (
+                    "wotc-cr-2026-08-07-txt-20260819-sha256-"
+                    "4381ad1b39ab2c05f7d03633a20f711ed37277074d3266dcba5f38cbb527423f"
+                ),
+            },
+            "capability_closure": [{"key": "rules/turn-structure", "version": "0.2.0"}],
+            "format_contract_id": None,
+            "content_contract_id": None,
+        }
+        with self.assertRaises(SystemExit, msg="wrong closure must be refused"):
+            module.assert_production_policy(document)
+
+    def test_non_null_format_content_rejected(self) -> None:
+        # V5 slice: non-null format/content dimensions are refused at
+        # the emission boundary (and by production policy).
+        module = load_generator_module()
+        document = json.loads(SOURCE_PATH.read_text(encoding="utf-8"))
+        document["entries"][1]["format_contract_id"] = "a" * 64
+        with self.assertRaises(SystemExit, msg="non-null format must be refused"):
+            module.assert_production_policy(document)
+
+    def test_non_null_content_rejected(self) -> None:
+        # V5 slice: non-null content dimensions are refused at
+        # the emission boundary (and by production policy).
+        module = load_generator_module()
+        document = json.loads(SOURCE_PATH.read_text(encoding="utf-8"))
+        document["entries"][1]["content_contract_id"] = "b" * 64
+        with self.assertRaises(SystemExit, msg="non-null content must be refused"):
+            module.assert_production_policy(document)
 
 
 class GeneratedModuleTests(unittest.TestCase):

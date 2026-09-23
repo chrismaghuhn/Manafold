@@ -2,6 +2,7 @@ use mtgml_random::RandomValidationError;
 use mtgml_state::{EngineStateViolation, IdentityAllocationError, StateDigestError};
 use thiserror::Error;
 
+use crate::turn_structure::{TurnStructureError, UnsupportedRulesBoundary};
 use crate::TransitionViolation;
 
 #[derive(Debug, Error)]
@@ -12,6 +13,8 @@ pub enum KernelExecutionError {
     RevisionOverflow,
     #[error("rule event identity would overflow")]
     RuleEventIdOverflow,
+    #[error("visible sequence would overflow")]
+    VisibleSequenceOverflow,
     #[error("state delta construction failed: {0}")]
     Delta(StateDigestError),
     #[error("after state is invalid: {0}")]
@@ -26,4 +29,10 @@ pub enum KernelExecutionError {
     Exhaustion(&'static str),
     #[error("engine-offered stage path is unsupported in the current synthetic protocol")]
     UnsupportedStagePath,
+    #[error("turn structure validation failed: {0}")]
+    TurnStructure(TurnStructureError),
+    #[error("player response is not accepted on this no-choice Magic path")]
+    UnsupportedPlayerResponse,
+    #[error("unsupported rules boundary: {0:?}")]
+    UnsupportedRulesBoundary(UnsupportedRulesBoundary),
 }

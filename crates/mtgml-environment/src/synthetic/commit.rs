@@ -18,7 +18,7 @@ use std::collections::BTreeMap;
 use mtgml_decision::DecisionResponseV2;
 use mtgml_model::PlayerId;
 use mtgml_observation::ObservedEventEnvelopeV2;
-use mtgml_replay::{ReplayRecorderV5, ReplayStepV5};
+use mtgml_replay::ReplayStepV5;
 use mtgml_rules::{validate_transition_contract, TransitionResult};
 use mtgml_state::StateDelta;
 
@@ -29,13 +29,13 @@ use crate::errors::{ControllerError, EnvironmentCommitError};
 
 impl SyntheticM1EnvironmentBackend {
     pub(super) fn current_checkpoint(&self) -> Result<EnvironmentCheckpointV5, ControllerError> {
-        Ok(EnvironmentCheckpointV5::new(
-            self.state.clone(),
-            self.status.clone(),
-            self.limit_counters.clone(),
-            self.codec.clone(),
-            self.execution_identity.clone(),
-        )?)
+        crate::reference::current_checkpoint(
+            &self.state,
+            &self.status,
+            &self.limit_counters,
+            &self.codec,
+            &self.execution_identity,
+        )
     }
 
     fn checked_add_counter(
@@ -94,93 +94,19 @@ impl SyntheticM1EnvironmentBackend {
     /// an empty recorder; anything else fails closed here. Failed progress
     /// commits nothing.
     pub(crate) fn execute_forced_progress(&mut self) -> Result<TransitionResult, ControllerError> {
-        let before = self.current_checkpoint()?;
-        let transition = match self.kernel.advance_forced_progress(&before.state) {
-            Ok(transition) => transition,
-            Err(error) => {
-                let after = self.current_checkpoint()?;
-                if after != before {
-                    return Err(EnvironmentCommitError::RejectedMutation.into());
-                }
-                return Err(error.into());
-            }
+        let config = self.config.clone();
+        let mut transaction = crate::reference::ReferenceEnvironmentTransaction {
+            state: &mut self.state,
+            status: &mut self.status,
+            limit_counters: &mut self.limit_counters,
+            codec: &self.codec,
+            execution_identity: &self.execution_identity,
+            replay: &mut self.replay,
+            kernel: &mut self.kernel,
         };
-        validate_transition_contract(&before.state, &transition)?;
-        // Pre-commit projection discipline, as in the response path: the
-        // occurrence projection must validate before anything commits. No
-        // PlayerStep exists to attach envelopes to without a submission
-        // (the entry precedent yields empty batches), so the validated
-        // product stands alone; T0 binds the on-demand projections after.
-        let _envelopes = crate::lifecycle_projection::project_occurrence_envelopes(
-            &before.state,
-            &transition.next_state,
-            &transition.events,
-        )
-        .map_err(|_| {
-            ControllerError::EnvironmentCommit(EnvironmentCommitError::PlayerProjectionInvalid)
-        })?;
-        // Full player-facing projection discipline, as required before any
-        // atomic commit: every required perspective's observation,
-        // information state, and visible decision must materialize and
-        // validate against the candidate product. A candidate whose
-        // projections fail must never advance the committed state, even
-        // when the trusted product itself validated.
-        for perspective in transition.next_state.core.players.keys().copied() {
-            Self::synthetic_observation(&transition.next_state, perspective).map_err(|_| {
-                ControllerError::EnvironmentCommit(EnvironmentCommitError::PlayerProjectionInvalid)
-            })?;
-            Self::player_information_state_from_state(&transition.next_state, perspective)
-                .map_err(|_| {
-                    ControllerError::EnvironmentCommit(
-                        EnvironmentCommitError::PlayerProjectionInvalid,
-                    )
-                })?;
-            Self::visible_decision_from_state(&transition.next_state, perspective).map_err(
-                |_| {
-                    ControllerError::EnvironmentCommit(
-                        EnvironmentCommitError::PlayerProjectionInvalid,
-                    )
-                },
-            )?;
-        }
-
-        let candidate_counters = EnvironmentLimitCounters {
-            decisions_submitted: before.limit_counters.decisions_submitted,
-            accepted_transitions: before.limit_counters.accepted_transitions,
-            rule_events_emitted: Self::checked_add_counter(
-                before.limit_counters.rule_events_emitted,
-                u64::try_from(transition.events.len()).map_err(|_| {
-                    ControllerError::CounterOverflow {
-                        counter: "rule_events_emitted",
-                    }
-                })?,
-                "rule_events_emitted",
-            )?,
-            resource_units_consumed: before.limit_counters.resource_units_consumed,
-            wall_clock_elapsed_millis: before.limit_counters.wall_clock_elapsed_millis,
-        };
-        let candidate = EnvironmentCheckpointV5::new(
-            transition.next_state.clone(),
-            transition.status.clone(),
-            candidate_counters,
-            before.codec.clone(),
-            before.execution_identity.clone(),
-        )?;
-        if candidate.state != transition.next_state || candidate.status != transition.status {
-            return Err(EnvironmentCommitError::CandidateMismatch.into());
-        }
-        if self.replay.step_count() != 0 {
-            return Err(ControllerError::Backend(
-                "forced progress cannot rebase a non-empty replay history".into(),
-            ));
-        }
-        let rebased_replay = ReplayRecorderV5::new(build_manifest(&self.config, &candidate)?)?;
-
-        self.state = candidate.state;
-        self.status = candidate.status;
-        self.limit_counters = candidate.limit_counters;
-        self.replay = rebased_replay;
-        Ok(transition)
+        crate::reference::execute_forced_progress_transaction(&mut transaction, move |checkpoint| {
+            build_manifest(&config, checkpoint)
+        })
     }
 
     pub(crate) fn execute_response<F>(

@@ -1,11 +1,13 @@
 use mtgml_model::{DecisionId, GameObjectId, PlayerId};
 use mtgml_random::{RandomStreamCursorV1, RandomStreamKeyV1, RootSeed256};
 use mtgml_state::{
-    CombatState, EngineState, FoundationCreatureSource, KnowledgeStateV2, ObjectSnapshot,
-    PerspectiveIdentityStateV2, PriorityState, TurnPosition,
+    BeginningStep, CombatState, EngineState, FoundationCreatureSource, KnowledgeStateV2,
+    ObjectSnapshot, PerspectiveIdentityStateV2, PriorityState, TurnPosition,
 };
 use std::collections::BTreeMap;
 
+use crate::turn_structure::derive_ordinary_untap_affected_objects;
+use crate::turn_structure::temporal_successor;
 use crate::validation::TransitionViolation;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -19,9 +21,8 @@ pub(crate) struct SemanticValidationCursor {
     pending_decision: Option<DecisionId>,
     root_seed: RootSeed256,
     random_counters: BTreeMap<RandomStreamKeyV1, u64>,
-    /// M2.E lifecycle shadows: knowledge state and perspective identities are
-    /// replayed through the authoritative occurrence payloads so sequential
-    /// event parity covers every knowledge/identity/cursor mutation.
+    active_player: PlayerId,
+    turn_number: u64,
     lifecycle_knowledge: KnowledgeStateV2,
     lifecycle_identities: PerspectiveIdentityStateV2,
 }
@@ -54,6 +55,8 @@ impl SemanticValidationCursor {
                 .collect(),
             lifecycle_knowledge: state.knowledge.clone(),
             lifecycle_identities: state.perspective_identities.clone(),
+            active_player: state.core.active_player,
+            turn_number: state.core.turn_number,
         })
     }
 
@@ -161,6 +164,55 @@ impl SemanticValidationCursor {
                     return Err(TransitionViolation::PublicOutcome);
                 }
             }
+            AuthoritativeRuleEventKind::TurnPositionChanged { from, to } => {
+                if self.position != *from || temporal_successor(*from) != *to {
+                    return Err(TransitionViolation::TurnStructure);
+                }
+                self.position = *to;
+            }
+            AuthoritativeRuleEventKind::UntapCompleted { affected_objects } => {
+                if !matches!(
+                    self.position,
+                    TurnPosition::Beginning {
+                        step: BeginningStep::Untap,
+                    }
+                ) {
+                    return Err(TransitionViolation::TurnStructure);
+                }
+                let expected =
+                    derive_ordinary_untap_affected_objects(&self.objects, self.active_player);
+                if *affected_objects != expected {
+                    return Err(TransitionViolation::TurnStructure);
+                }
+                for object_id in affected_objects {
+                    if let Some(object) = self.objects.get_mut(object_id) {
+                        object.tapped = false;
+                    }
+                }
+            }
+            AuthoritativeRuleEventKind::ActivePlayerChanged { from, to } => {
+                // Task 7: ActivePlayerChanged represents the exact
+                // two-player S1 unique-other relation. derived from
+                // the cursor's authoritative player set.
+                if self.life.len() != 2 || self.active_player != *from || from == to {
+                    return Err(TransitionViolation::TurnStructure);
+                }
+                let unique_other = self
+                    .life
+                    .keys()
+                    .find(|&&p| p != *from)
+                    .ok_or(TransitionViolation::TurnStructure)?;
+                if *to != *unique_other {
+                    return Err(TransitionViolation::TurnStructure);
+                }
+                self.active_player = *to;
+            }
+            AuthoritativeRuleEventKind::TurnNumberChanged { from, to } => {
+                if self.turn_number != *from || from.checked_add(1) != Some(*to) {
+                    return Err(TransitionViolation::TurnStructure);
+                }
+                self.turn_number = *to;
+            }
             AuthoritativeRuleEventKind::PerspectiveOccurrence { lifecycle, .. } => {
                 let Self {
                     objects,
@@ -193,6 +245,8 @@ impl SemanticValidationCursor {
         after: &EngineState,
     ) -> Result<(), TransitionViolation> {
         if self.position != after.core.position
+            || self.active_player != after.core.active_player
+            || self.turn_number != after.core.turn_number
             || self.priority != after.core.priority
             || self.combat != after.combat
             || self.foundation_sources != after.foundation_sources

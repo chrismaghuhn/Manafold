@@ -10,6 +10,8 @@ mod controller;
 mod endpoint;
 mod errors;
 pub mod lifecycle_projection;
+mod player_projection;
+mod reference;
 mod replay;
 mod semantic_catalog;
 #[cfg(test)]
@@ -31,7 +33,14 @@ pub use mtgml_model::{CheckpointCodecIdentity, EnvironmentLimitCounters};
 // Task 3 generated catalog module: unconditional compile surface — it is the
 // production input Task 8 consumes. Only the KAT is test-only.
 mod semantic_catalog_generated;
+pub use reference::{
+    ReferenceEnvironmentBackend, ReferenceEnvironmentConfig, ReferenceEnvironmentReplayConfig,
+    REFERENCE_SCENARIO_ID,
+};
 pub use replay::{ReplayExecutionReport, ReplayExecutionTrace};
+pub use semantic_catalog_generated::magic_turn_structure_0_1_0_rules_manifest;
+pub use semantic_catalog_generated::magic_turn_structure_0_1_0_semantic_contract_id;
+pub use semantic_catalog_generated::magic_turn_structure_0_1_0_semantic_manifest;
 pub use semantic_catalog_generated::synthetic_legacy_default_rules_manifest;
 pub use semantic_catalog_generated::synthetic_legacy_default_semantic_contract_id;
 pub use semantic_catalog_generated::synthetic_legacy_default_semantic_manifest;

@@ -6,13 +6,15 @@ use mtgml_decision::{
 
 use mtgml_model::{
     CandidateIdV1, ContinuationId, DecisionId, PlayerDecisionIdV1, PlayerId, StateRevision,
+    VisibleSequence,
 };
 
 use mtgml_random::RootSeed256;
 
 use mtgml_state::{
     construct_synthetic_engine_state, AssemblyStageV2, ContinuationPayloadV2, ContinuationRecordV2,
-    EngineState, PendingDecisionRecordV2, SyntheticResetInputs, SyntheticV4Setup,
+    EngineState, IdentityMutationV1, PendingDecisionRecordV2, PerspectiveLifecycleAuditV1,
+    PerspectiveLifecycleMutationV1, SyntheticResetInputs, SyntheticV4Setup,
 };
 
 use crate::ProgramKernelV1;
@@ -198,3 +200,5 @@ include!("tests/transition_contract.rs");
 include!("tests/determinism.rs");
 include!("tests/batch_e.rs");
 include!("tests/batch_f.rs");
+include!("tests/turn_structure.rs");
+include!("tests/magic_turn_structure.rs");

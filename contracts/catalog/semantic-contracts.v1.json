@@ -1,12 +1,1 @@
-{
-  "schema_version": "semantic-contracts-catalog.v1",
-  "entries": [
-    {
-      "entry_id": "synthetic_legacy_default",
-      "rules_authority": { "variant": "synthetic_legacy" },
-      "capability_closure": null,
-      "format_contract_id": null,
-      "content_contract_id": null
-    }
-  ]
-}
+{"schema_version":"semantic-contracts-catalog.v1","entries":[{"entry_id":"synthetic_legacy_default","rules_authority":{"variant":"synthetic_legacy"},"capability_closure":null,"format_contract_id":null,"content_contract_id":null},{"entry_id":"magic_turn_structure_0_1_0","rules_authority":{"variant":"comprehensive_rules","snapshot_id":"wotc-cr-2026-08-07-txt-20260819-sha256-4381ad1b39ab2c05f7d03633a20f711ed37277074d3266dcba5f38cbb527423f"},"capability_closure":[{"key":"rules/turn-structure","version":"0.1.0"}],"format_contract_id":null,"content_contract_id":null}]}

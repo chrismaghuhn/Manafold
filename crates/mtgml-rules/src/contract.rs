@@ -1,13 +1,16 @@
 use crate::events::AuthoritativeRuleEventKind;
-use mtgml_model::{EpisodeStatus, PlayerId};
-use mtgml_state::PerspectiveIdentityRecordV2;
-use mtgml_state::{validate_engine_state, EngineState};
+use mtgml_model::{EpisodeStatus, GameObjectId, PlayerId};
+use mtgml_state::{
+    validate_engine_state, BeginningStep, EndingStep, EngineState, PerspectiveIdentityRecordV2,
+    TurnPosition,
+};
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 use std::convert::TryFrom;
 
 use crate::semantic_cursor::SemanticValidationCursor;
 use crate::transition::TransitionResult;
+use crate::turn_structure::validate_quiescent_cleanup_boundary;
 use crate::validation::TransitionViolation;
 
 fn validate_accepted_progression(
@@ -99,6 +102,10 @@ fn validate_accepted_progression(
     // M2/P0 have no event families for these core semantic fields. Fail
     // closed until a reviewed current contract defines their event/cursor
     // proof. Compare complete values, not only map presence or keys.
+    //
+    // `core.position` is intentionally NOT in this blanket: it is proven
+    // event-by-event through the `TurnPositionChanged` cursor arm (Task 6),
+    // which requires `temporal_successor(from) == to`.
     let has_lost_changed = before.core.players.iter().any(|(player, state)| {
         after
             .core
@@ -106,10 +113,221 @@ fn validate_accepted_progression(
             .get(player)
             .is_none_or(|other| other.has_lost != state.has_lost)
     });
-    if before.core.active_player != after.core.active_player
-        || before.core.turn_number != after.core.turn_number
+
+    // Task 7: detect the quiescent Cleanup boundary. A product that
+    // transitions Ending(Cleanup) -> Beginning(Untap) MUST produce the
+    // exact three-event shape. This check runs BEFORE the blanket mutation
+    // check so that every Cleanup boundary violation returns TurnStructure
+    // (not UnexplainedMutation). Conversely, Task-7 event families cannot
+    // justify an unrelated transition because the before/after position
+    // guard gates this rule entirely.
+    let is_cleanup_boundary = before.core.position
+        == TurnPosition::Ending {
+            step: EndingStep::Cleanup,
+        }
+        && after.core.position
+            == TurnPosition::Beginning {
+                step: BeginningStep::Untap,
+            };
+
+    if is_cleanup_boundary {
+        let next_turn = before.core.turn_number.checked_add(1);
+        let turn_ok = next_turn == Some(after.core.turn_number);
+        let player_ok = after.core.active_player != before.core.active_player
+            && before.core.players.contains_key(&after.core.active_player)
+            && before.core.players.len() == 2;
+        let events_ok = result.events.len() == 3
+            && matches!(
+                &result.events[0].event,
+                AuthoritativeRuleEventKind::TurnNumberChanged { from, to }
+                    if *from == before.core.turn_number
+                        && *to == after.core.turn_number
+            )
+            && matches!(
+                &result.events[1].event,
+                AuthoritativeRuleEventKind::ActivePlayerChanged { from, to }
+                    if *from == before.core.active_player
+                        && *to == after.core.active_player
+                        && from != to
+            )
+            && matches!(
+                &result.events[2].event,
+                AuthoritativeRuleEventKind::TurnPositionChanged { from, to }
+                    if *from == TurnPosition::Ending {
+                        step: EndingStep::Cleanup,
+                    }
+                    && *to == TurnPosition::Beginning {
+                        step: BeginningStep::Untap,
+                    }
+            );
+        if !turn_ok || !player_ok || !events_ok {
+            return Err(TransitionViolation::TurnStructure);
+        }
+
+        validate_quiescent_cleanup_boundary(before, before.core.active_player)
+            .map_err(|_| TransitionViolation::TurnStructure)?;
+
+        // Exact Cleanup event shape validated: active_player and turn_number
+        // changes are expected and proven by events. Continue to blanket
+        // check which will pass for all non-position/non-priority fields.
+    } else {
+        // Task 7 turn-switch events (TurnNumberChanged, ActivePlayerChanged)
+        // are valid for the Cleanup -> next-Untap transition only. Outside
+        // that boundary they must never justify any transition, because the
+        // blanket mutation check sees only net Before/After equality and
+        // would permit transient switches (e.g. P1->P2->P1) that net to
+        // the original state.
+        let has_turn_switch_event = result.events.iter().any(|event| {
+            matches!(
+                event.event,
+                AuthoritativeRuleEventKind::TurnNumberChanged { .. }
+                    | AuthoritativeRuleEventKind::ActivePlayerChanged { .. }
+            )
+        });
+        if has_turn_switch_event {
+            return Err(TransitionViolation::TurnStructure);
+        }
+    }
+
+    // Task 9: if this accepted product performs the ordinary untap boundary
+    // (Untap -> Upkeep), enforce the exact ordinary-untap event shape with
+    // public tap observations.
+    //
+    // Required order:
+    //   1. UntapCompleted
+    //   2. PerspectiveOccurrence per (perspective ascending, object ascending)
+    //      with ObjectTapped observation, one per affected object × perspective
+    //   3. TurnPositionChanged(Untap -> Upkeep)
+    //
+    // UntapCompleted must be first so the cursor derives its expected set
+    // from the before-state. Every middle event must be a causally bound
+    // ObjectTapped occurrence. No free-floating observation policies are
+    // accepted at this boundary.
+    let has_untap = result.events.iter().any(|event| {
+        matches!(
+            event.event,
+            AuthoritativeRuleEventKind::UntapCompleted { .. }
+        )
+    });
+
+    let is_ordinary_untap_transition = before.core.position
+        == TurnPosition::Beginning {
+            step: BeginningStep::Untap,
+        }
+        && after.core.position
+            == TurnPosition::Beginning {
+                step: BeginningStep::Upkeep,
+            };
+
+    if is_ordinary_untap_transition {
+        if result.events.len() < 2 {
+            return Err(TransitionViolation::TurnStructure);
+        }
+        // UntapCompleted must be first.
+        if !matches!(
+            &result.events[0].event,
+            AuthoritativeRuleEventKind::UntapCompleted { .. }
+        ) {
+            return Err(TransitionViolation::TurnStructure);
+        }
+
+        let untap_completed = match &result.events[0].event {
+            AuthoritativeRuleEventKind::UntapCompleted { affected_objects } => affected_objects,
+            _ => unreachable!(),
+        };
+
+        // TurnPositionChanged(Untap -> Upkeep) must be last.
+        if !matches!(
+            &result.events[result.events.len() - 1].event,
+            AuthoritativeRuleEventKind::TurnPositionChanged { from, to }
+                if *from == TurnPosition::Beginning { step: BeginningStep::Untap }
+                    && *to == TurnPosition::Beginning { step: BeginningStep::Upkeep }
+        ) {
+            return Err(TransitionViolation::TurnStructure);
+        }
+
+        let middle_events = &result.events[1..result.events.len() - 1];
+
+        // Every middle event must be a PerspectiveOccurrence with ObjectTapped.
+        let mut seen_pairs: BTreeSet<(PlayerId, GameObjectId)> = BTreeSet::new();
+        let mut prev_perspective: Option<PlayerId> = None;
+        let mut prev_object: Option<GameObjectId> = None;
+
+        for event in middle_events {
+            let lifecycle = match &event.event {
+                AuthoritativeRuleEventKind::PerspectiveOccurrence { lifecycle, .. } => lifecycle,
+                _ => return Err(TransitionViolation::TurnStructure),
+            };
+            let observation = match &event.event {
+                AuthoritativeRuleEventKind::PerspectiveOccurrence { observation, .. } => {
+                    observation
+                }
+                _ => return Err(TransitionViolation::TurnStructure),
+            };
+
+            let object = match observation {
+                crate::events::PerspectiveObservationPolicyV1::ObjectTapped { object, tapped } => {
+                    // Object must be in UntapCompleted affected set.
+                    if !untap_completed.contains(object) {
+                        return Err(TransitionViolation::TurnStructure);
+                    }
+                    // tapped must be false (untap clears tapped=true to false).
+                    if *tapped {
+                        return Err(TransitionViolation::TurnStructure);
+                    }
+                    *object
+                }
+                _ => return Err(TransitionViolation::TurnStructure),
+            };
+
+            // No duplicate (perspective, object) pair.
+            let pair = (lifecycle.perspective, object);
+            if !seen_pairs.insert(pair) {
+                return Err(TransitionViolation::TurnStructure);
+            }
+
+            // Canonical order: perspective ascending, then object ascending.
+            if let Some(prev_p) = prev_perspective {
+                if lifecycle.perspective < prev_p {
+                    return Err(TransitionViolation::TurnStructure);
+                }
+                if lifecycle.perspective == prev_p {
+                    if let Some(prev_o) = prev_object {
+                        if object < prev_o {
+                            return Err(TransitionViolation::TurnStructure);
+                        }
+                    }
+                }
+            }
+            prev_perspective = Some(lifecycle.perspective);
+            prev_object = Some(object);
+        }
+
+        // Complete set: every (affected_object, perspective) pair must have
+        // exactly one occurrence. No missing, no extra.
+        let expected_count = untap_completed.len() * before.core.players.len();
+        if middle_events.len() != expected_count {
+            return Err(TransitionViolation::TurnStructure);
+        }
+        for object in untap_completed {
+            for player in before.core.players.keys() {
+                if !seen_pairs.contains(&(*player, *object)) {
+                    return Err(TransitionViolation::TurnStructure);
+                }
+            }
+        }
+    } else if has_untap {
+        // UntapCompleted outside an ordinary untap transition is invalid.
+        return Err(TransitionViolation::TurnStructure);
+    }
+
+    // Blanket mutation check. active_player and turn_number changes
+    // are already validated above for Cleanup boundaries. All other
+    // fields must not change for any accepted transition.
+    if (before.core.active_player != after.core.active_player
+        || before.core.turn_number != after.core.turn_number)
+        && !is_cleanup_boundary
         || before.core.priority != after.core.priority
-        || before.core.position != after.core.position
         || before.core.players.len() != after.core.players.len()
         || has_lost_changed
         || before.combat != after.combat
