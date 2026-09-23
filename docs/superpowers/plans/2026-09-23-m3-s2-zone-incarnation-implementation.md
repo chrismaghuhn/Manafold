@@ -1,188 +1,214 @@
 # M3.S2 `rules/zone-incarnation@0.1.0` Implementation Plan
 
-**Status:** candidate plan; implementation blocked by the replay-input finding
-in the Spec; requires independent review, explicit resolution, then S2
-selection and authorization
+**Status:** candidate plan; requires independent review and explicit S2
+selection/authorization
 **Implements:** nothing in this planning change
 **Capability target:** `specified → implemented → covered`; not certified
 **Design:** [M3.S2 Zone Incarnation Specification](../specs/2026-09-23-m3-s2-zone-incarnation-design.md)
 
 ## Preconditions and invariant set
 
-Do not begin this plan until the exact current master is reviewed and a
+Do not begin implementation until the exact current master is reviewed and a
 separate record explicitly selects and authorizes
 `rules/zone-incarnation@0.1.0`. Planning or approval of these documents alone
 does not authorize production changes.
-
-Before production implementation, separately resolve Spec §3/Q9. Current
-`ReplayStepV5` carries only a player `DecisionResponseV2`, but the isolated S2
-conformance request is not a player decision. Do not begin Task 6 or represent
-its replay gate as satisfied until an accepted, version-correct way to replay
-that transition exists, or an explicit reviewed scope decision changes where
-the replay obligation is proved. This prerequisite may require a separate
-design/ADR/version change; this plan does not authorize one.
 
 The implementation is one coherent S2 PR with multiple reviewable logical
 commits, not multiple mini PRs. Preserve these invariants throughout:
 
 * only battlefield→owner graveyard and ordered library-top→owner hand;
+* battlefield→graveyard inserts NEW at Graveyard top and preserves prior
+  relative order with exact offset shifts;
 * producer reason is outside S2; direct validated requests are allowed;
-* one fresh `GameObjectId`, exact `PhysicalCardId` continuity, OLD ceases,
-  NEW is live at destination;
-* exact old/new snapshots, membership/order, event/delta/cursor parity;
+* one fresh `GameObjectId`, exact `PhysicalCardId`, owner and
+  `CardDefinitionId` continuity; destination-canonical status fields;
+* OLD is closed across every authoritative `GameObjectId` reference;
+  destination `foundation_sources` is absent;
+* exact snapshots, membership/order, event/delta/cursor parity;
 * per-perspective identity/knowledge/observation follow existing contracts;
-* no trusted identity leakage, no RNG, atomic rejection, deterministic V5
-  checkpoint/restore/fork/replay;
-* exclusions from Foundation V2 remain fail-closed; no lifecycle status beyond
-  covered and no support claims.
+* no trusted identity leakage, no RNG, atomic rejection;
+* checkpoint/restore/fork/rerun parity; authoritative replay remains required
+  before `covered` but is deferred until a valid replayable path exists;
+* Foundation V2 exclusions remain fail-closed; no card/deck/format claim.
 
 Current substrate characterization from source base
-`cf60c012113550d4e8449c72fea938167002fddc`: production zone executor absent;
-fixture-only movement exists; `ZoneTransition` and snapshots already encode
-the product; delta has a complete replacement but no allocator-specific
-operation; semantic cursor validates incarnation shape but not object
-allocator progression. The Spec resolves owner placement and lists exact
-proposed conformance cases. These gaps are to be addressed in this one slice.
+`cf60c012113550d4e8449c72fea938167002fddc`: no production zone executor;
+fixture-only movement does not handle ordered positions; `ZoneTransition`
+and snapshots already encode the product; `GameObject.controller` is required
+and validated as a player; `StateDelta` has complete replacement state but
+no allocator-specific operation; the semantic cursor does not yet prove
+object allocator progression or source-record closure. Current authoritative
+object references are in zone object/location/order indexes, optional combat
+attackers/blockers, `foundation_sources`, stack-record `source_object`, and
+pending decision candidate bindings. Existing effects, triggers,
+continuations and format state contain no direct `GameObjectId`; the executor
+must keep an exhaustive typed reference scan current as these shapes evolve.
 
 ## Task 1 — RED conformance and exact substrate characterization
 
-Add tests in the conformance/rules harness using explicit validated states and
-direct primitive requests. Do not create fake SBA/death or Draw causality.
-Start with RED cases for both selected families, transition snapshots, exact
-membership/order, current allocator/cursor gaps, player products, delta and
-deterministic identities. Record the current failing assertions before
-production behavior changes.
+Add test/conformance cases over explicit validated state and direct primitive
+requests. Do not create fake SBA/death or Draw causality. Start with RED cases
+for both selected moves, Graveyard top insertion and offset shifts,
+destination-canonical snapshot, OLD-reference closure, event/delta/cursor,
+player products and deterministic identity. Add test-only mutant products for
+validator negatives; do not expose internal snapshots/lifecycle mutations as
+request fields. Record current failures before production behavior changes.
 
-Acceptance: tests use existing `ZoneTransition`, lifecycle, projection,
-delta, and engine validation paths; they prove no second reference executor
-is imported by production; no production or registry lifecycle is changed in
-this task.
+Acceptance: cases reuse existing transition, lifecycle, projection, delta and
+engine validation paths; no second reference executor enters production; no
+production behavior or registry lifecycle changes in this task.
 
-## Task 2 — Authoritative transition primitive and allocation
+## Task 2 — Authoritative incarnation and ordered-zone primitive
 
 Implement the single rules-owned selected transition executor in
-`mtgml-rules`' authoritative transition pipeline. Add only a checked
-`GameObjectId` allocation method to the existing state allocator if required.
-Perform full prevalidation, create NEW, transform exact object/location/order
-membership and snapshots, and emit the existing `ZoneTransition` event.
-Integrate with the ordinary accepted product path. Keep fixture helpers as
+`mtgml-rules`' authoritative transition pipeline and a checked
+`GameObjectId` allocation method on the existing allocator if required.
+Prevalidate source/destination family, order and destination owner. Capture
+exact `last_known`; allocate NEW once; preserve PhysicalCardId, owner and
+CardDefinitionId; normalize mandatory destination storage to
+`controller = owner`, `tapped = false`, `face_down = false`; build exact
+`new_snapshot`. For Battlefield→Graveyard insert NEW at vector index zero
+and increment every old Graveyard offset. For Library→Hand consume exact
+library index zero and shift its remaining offsets. Integrate the existing
+`ZoneTransition` and ordinary accepted-product path. Keep fixture helpers as
 harnesses, never runtime authorities.
 
-Acceptance: battlefield→owner-graveyard positive case passes; one fresh ID,
-physical identity exact; OLD absent/NEW exact; unchanged unrelated allocators;
-exact `ObjectSnapshot`, event, delta reapplication and digest. Failed
-prevalidation does not expose partial workspace products.
+Acceptance: both zone products have exact locations, ordered vectors, object
+rows, snapshots, one fresh ID, event, delta reapplication and digest. Explain
+storage normalization separately from Magic controller/status semantics.
+No multi-object order choice or generic movement API is introduced.
 
-## Task 3 — Perspective lifecycle and projection integration
+## Task 3 — OLD-reference closure and perspective/knowledge integration
 
-Plan each perspective's lifecycle from authorized visibility and current
-distinguishability. Use existing `PerspectiveLifecycleAuditV1`, pairing
-validation, observation projector and information projector. Cover public
-tracked remap plus location/history update; owner-only first-known allocation
-and private acquisition; pre-known identity remap; no lifecycle for
-non-owner hidden information. Keep event sequencing canonical and per-player.
+Before mutation, scan all current authoritative `GameObjectId` reference
+sites. Reject if OLD occurs in combat assignments, stack source records,
+pending decision bindings or any unhandled site. Remove `foundation_sources`
+for OLD on Battlefield→Graveyard and never transfer/create a destination
+source. Remove OLD from live object/location/source-order indexes. Treat only
+per-perspective identity mapping updates as a deliberate exception, through
+existing lifecycle mutations. Future state fields containing a
+`GameObjectId` must join the scan before they can be used with this executor.
 
-Acceptance: exact `PerspectiveIdentityState`, retained/current/historical
-knowledge and provenance; visible sequence; `PlayerObservation`,
-`PlayerInformationState`, observed events; no trusted ID exposure. No
-reveal/randomization extension or schema change without a returned design
-review.
+Integrate existing `PerspectiveLifecycleAuditV1`, pairing validator and
+projection paths: public tracked remap/location-history update for the
+Graveyard move, owner-only private acquisition/remap as appropriate for
+Library→Hand, and no non-owner hidden identity/event update. Keep canonical
+event order.
 
-## Task 4 — Ordered library-to-hand family
+Acceptance: exact OLD closure; OLD foundation data ceases and NEW has none;
+exact opaque mappings, current/historical retained knowledge and provenance,
+visible sequence, observation, information state and observed events. No
+trusted ID leaks.
 
-Add the explicit validated request for the exact top of a nonempty ordered
-owner library. Consume vector index zero only, shift all remaining `Top`
-offsets exactly, insert NEW in owner hand, and run the same incarnation and
-information path. Do not inspect Draw step or empty-library loss semantics.
+## Task 4 — Library-to-hand selected family
 
-Acceptance: exact top source, vector/offset update, exact snapshots and
-physical continuity, owner private knowledge, opponent noninterference, no
-RNG. A non-top request rejects atomically.
+Complete the explicit validated request for the exact top of a nonempty
+ordered owner library. Consume vector index zero once, rewrite every remaining
+`Top` offset, set owner Hand membership/location, and run the same fresh
+incarnation and information path. Do not implement Draw timing or
+empty-library loss.
 
-## Task 5 — Negative matrix, atomicity, event/delta/cursor closure
+Acceptance: exact ordered source consumption, physical/card/owner continuity,
+canonical destination storage, owner-private identity/knowledge,
+opponent noninterference, no RNG. Non-top requests reject atomically.
 
-Complete the Spec's rejected-request cases. Extend the semantic cursor and
-transition contract to prove exact object-ID allocation progression, source
-and destination families, transition/snapshot causality, and exact changed
-state closure. Validate event/delta alignment and final zone membership/order.
-Add complete before/after semantic fingerprints for each rejection, including
-environment and visible products.
+## Task 5 — Negative matrix, event/delta/cursor and atomicity closure
 
-Acceptance: every negative case rejects with a closed error and preserves
-EngineState, all IDs/allocators, zones/order, lifecycle/knowledge, RNG,
-events/delta, replay/checkpoint identity, counters/status, and player bytes.
-No unsupported family accepted; lifecycle evidence remains `specified` until
-review of the production implementation.
+Keep caller-controlled typed-request rejection tests distinct from
+transition-contract/semantic-cursor/mutant negatives. Caller request tests
+cover absent source, claimed-location mismatch, unadmitted family,
+wrong-owner destination, non-top library source and invalid before state.
+Mutant tests alter only private trusted products to cover reused/exhausted
+allocator, malformed old/new snapshot or physical continuity, lifecycle and
+event/delta pairing, order/offset corruption, stale OLD references, and
+source-record cessation/creation errors.
 
-## Task 6 — Checkpoint, restore, fork, replay, rerun, noninterference
+Extend the semantic cursor and transition contract to prove exact allocation
+progression, snapshot semantics, destination order, OLD reference closure,
+FoundationSource removal, event/delta alignment and final state. Add complete
+before/after fingerprints for every rejection, including state, products,
+environment, checkpoint/replay state and player bytes.
 
-Use current V5 execution contracts. Prove allocator and zone order survive
-checkpoint restore; equal forks match; same checkpoint/request gives exact
-same state/event/delta/products/digest; selected transition consumes no RNG.
-Add paired worlds with different opponent hidden library identities and
-compare complete non-owner-safe bytes. Actual replay of the direct transition
-is blocked by the response-only V5 input contract; complete this portion only
-after the separate design resolution above. Do not substitute empty replay,
-an after-transition checkpoint, a fabricated response, or authoritative
-events as replay input.
+Acceptance: all request and mutant cases reject without commit or mutation;
+no internal audit product becomes caller input; all supported transitions
+reapply their delta exactly and preserve unrelated allocators/RNG.
 
-Acceptance: exact authoritative and per-perspective parity across each path,
-including genuine replay of the selected transition under the separately
-accepted replay solution; no replay-supplied NEW ID; no root seed, cursor or
-global-allocation side channel. Use existing endpoint isolation and projection
-rules. Until resolved and executed, this task and `covered` status remain
-BLOCKED/NOT_RUN as appropriate.
+## Task 6 — Checkpoint/restore, fork, rerun and noninterference
 
-## Task 7 — Lifecycle evidence and status/documentation closure
+Execute these S2 gates directly: checkpoint/restore after each move preserves
+allocator and order state; equal forks match; deterministic rerun from the
+same checkpoint/request yields identical state, IDs, event, delta, products,
+digest and zero RNG delta; paired worlds differing in opponent hidden library
+identity produce equal non-owner-safe bytes.
 
-Only after production review, update the capability lifecycle through its
-authoritative registry/generator process to `implemented` when actual reviewed
-Rust behavior meets that definition, then to `covered` only when all
-applicable cases and interaction-independent gates pass. Synchronize only
-mechanically generated artifacts. Update current status, M3 tracker evidence
-and relevant documentation so that S2 remains not certified and no
-card/deck/format claim is introduced. Record future interactions as
-unsatisfied: `state-based-actions-combat × zone-incarnation` and
+Disposition by evidence type:
+
+```text
+checkpoint/restore       = executable in S2
+fork                     = executable in S2
+deterministic rerun      = executable in S2; NOT replay evidence
+noninterference          = executable in S2
+authoritative replay     = DEFERRED_REQUIRED / BLOCKED for covered
+```
+
+Do not fabricate a response, replay events as input, claim an after-state
+checkpoint or empty replay proves transition replay, or add Replay V6 in this
+slice. A later separate review may accept/version replay support, or a later
+replayable producer/integration path may execute the exact transition. In
+either case it must reproduce typed `ZoneTransition`, NEW identity, state,
+delta and player products. Foundation V2 replay evidence remains required;
+this deferral is not a waiver.
+
+Acceptance for this S2 task: the four executable gates above pass. Record the
+authoritative replay case as `DEFERRED_REQUIRED / BLOCKED`, never PASS.
+
+## Task 7 — Lifecycle promotion to IMPLEMENTED only
+
+After review of actual production Rust behavior, update the capability
+lifecycle through its authoritative registry/generator process to
+`implemented` only when the executor, allocation, ordered-zone mutation,
+OLD-reference closure, exact state/event/delta behavior and fail-closed
+paths exist. Update status evidence without promoting to `covered`. Preserve
+the outstanding authoritative replay obligation and both unsatisfied future
+interactions:
+`state-based-actions-combat × zone-incarnation` and
 `draw-card × zone-incarnation`.
 
-Acceptance: exact status counts and generated reports agree; no registry or
-status claim precedes its evidence. No selection/authorization is created by
-this task or PR.
+Acceptance: counts and generated reports reflect S2 as implemented but not
+covered or certified; no support claim is created. A later replay evidence
+change is separately reviewed, executed, and required before covered
+promotion.
 
-## Task 8 — Exact-head verification and PR closure
+## Task 8 — Exact-head verification and one PR closure
 
-At the final integration boundary, inspect the complete staged/unstaged diff,
-run the repository-required fast and integration checks, then the broad
-conformance, information-safety, replay and reproducibility gates appropriate
-to the cross-layer state change. Run exact-head verification after all source
-changes. Expensive full checks need not repeat after mechanical edits; rerun
-affected checks and the final profile once on the final candidate head. Do
-not weaken exact-head verification or claim unavailable hosted CI.
+Inspect the complete staged/unstaged diff; run relevant Rust format/check/
+clippy/tests, `just check-fast`, `just check`, and `just check-all` on the
+appropriate integration/final boundaries. Include ordered-zone conformance,
+information safety, rejection atomicity, replay/checkpoint and reproducibility
+profiles. Run exact-head verification after all source changes. Do not weaken
+exact-head verification or infer hosted CI.
 
-Preserve reviewable commit boundaries for RED evidence, core semantics,
-information-safety integration, negative/parity closure, and lifecycle/status
-closure. Deliver one coherent S2 implementation PR. Do not merge it or
-authorize a later slice as part of this plan.
+Preserve reviewable logical commits for RED evidence, core zone semantics,
+OLD closure/information integration, negative/parity closure, and lifecycle
+closure. Deliver one coherent S2 implementation PR; do not merge it. The PR
+may close at `implemented` while replay is deferred, but it may not claim
+`covered`. A later `covered` promotion requires genuine authoritative replay
+evidence at its own exact head.
 
 ## Verification and lifecycle gates
 
-Use the pinned toolchain and applicable repository commands. At minimum the
-implementation PR must execute relevant Rust format/check/clippy/tests,
-`just check-fast`, `just check`, and `just check-all` because this changes
-authoritative semantics, information boundaries, and replay behavior. Run
-focused conformance continuously; generated contract checks only if any
-authoritative generated source is changed. Final source/archive checks run
-last after source-changing operations. Report every gate as `PASS`, `FAIL`,
-`BLOCKED`, or `NOT_RUN` with its actual result. Python tests passing do not
-stand in for Rust workspace evidence. No benchmark is required.
-
-Lifecycle is advanced only with reviewed evidence:
+Use the pinned toolchain and applicable repository commands. Run focused
+conformance throughout; generated contract checks only if an authoritative
+generated source is changed. Final source/archive checks run last after all
+source-changing operations. Report every gate as `PASS`, `FAIL`, `BLOCKED`, or
+`NOT_RUN` with its actual result. Python tests passing do not stand in for
+Rust workspace evidence. No benchmark is required.
 
 | Status | Required evidence |
 | --- | --- |
-| `specified` | Reviewed design matches Foundation V2 exact capability identity and exclusions. |
-| `implemented` | Actual production Rust executor and checked allocation exist; exact accepted state/event/delta behavior and fail-closed paths reviewed. A fixture-only implementation or successful compile is insufficient. |
-| `covered` | Both positive families, full negative atomicity, event/cursor/delta closure, perspective knowledge/projection, noninterference, deterministic rerun, V5 checkpoint/restore/fork/replay all execute and pass at final exact head. |
+| `specified` | Reviewed design matches Foundation V2 exact identity, selected families and exclusions. |
+| `implemented` | Explicit S2 selection/authorization; actual reviewed authoritative Rust executor, allocator, Graveyard ordering, canonical new-incarnation storage, complete OLD closure, exact event/delta/cursor behavior and fail-closed paths. Replay may remain deferred. |
+| `covered` | All applicable positive/negative cases, atomicity, order, perspective knowledge/projection, noninterference, delta, checkpoint/restore, fork, rerun, plus genuine authoritative replay evidence. Replay may come from separately reviewed/versioned replay support or a later producer/integration path; until then coverage is blocked. |
 | `certified` | Out of scope and explicitly not targeted. |
 
 S2 coverage does not satisfy producer interactions. Future acceptance must
