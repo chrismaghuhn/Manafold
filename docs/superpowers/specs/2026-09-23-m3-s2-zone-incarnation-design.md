@@ -182,7 +182,13 @@ reference cleanup. `s2.identity.old_reference_closure` proves every live
 reference category; dedicated mutant cases seed each forbidden reference and
 prove unchanged rejection. `s2.identity.foundation_source_cessation`
 positively proves OLD source data is removed and no source data transfers to
-NEW.
+NEW. The historical `s2.rejection.stale_old_incarnation` witness first runs a
+real accepted OLD→NEW transition, then attempts a second admitted transition
+using OLD from the resulting state and proves rejection plus the complete
+unchanged after-state fingerprint. `s2.mutant.stale_old_lifecycle_occurrence`
+adds a mutated subsequent lifecycle occurrence referencing OLD after the
+transition event and proves contract rejection. Neither case fabricates a
+player decision response.
 
 ## 9. Selected transition families and snapshot derivation
 
@@ -423,6 +429,8 @@ until a separate S2 selection/authorization and implementation change.
 | `s2.identity.owner_hand_private` | First private appearance allocates one owner-local opaque ID and private knowledge; test pre-known tracked variant remaps without allocation. |
 | `s2.identity.old_reference_closure` | Inventory and assert absence of every OLD reference except the explicitly processed source and allowed lifecycle remap; each forbidden reference rejects atomically. |
 | `s2.identity.foundation_source_cessation` | Graveyard move removes `foundation_sources[OLD]` when present; no destination source record is retained or created. |
+| `s2.rejection.stale_old_incarnation` | Execute a real accepted OLD→NEW transition; then request a second admitted operation with OLD from the resulting state. Reject as non-live and preserve the complete resulting-state fingerprint. |
+| `s2.mutant.stale_old_lifecycle_occurrence` | After a real ZoneTransition OLD→NEW, mutate a subsequent lifecycle occurrence to reference OLD; the transition contract/cursor rejects it. No DecisionResponse is synthesized. |
 | `s2.identity.destination_canonical_state` | Both families prove new controller storage equals owner (normalization only), tapped=false, face_down=false, with PhysicalCardId, owner and CardDefinitionId preserved. |
 | `s2.zone.graveyard_order` | NEW is top; existing Graveyard relative order is unchanged; every shifted `Top` offset agrees with vector ordinal. |
 | `s2.observation.no_trusted_ids` | No PhysicalCardId/GameObjectId in player DTOs, events, metadata, or errors. |

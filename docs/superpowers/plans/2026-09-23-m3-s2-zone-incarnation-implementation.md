@@ -52,7 +52,12 @@ for both selected moves, Graveyard top insertion and offset shifts,
 destination-canonical snapshot, OLD-reference closure, event/delta/cursor,
 player products and deterministic identity. Add test-only mutant products for
 validator negatives; do not expose internal snapshots/lifecycle mutations as
-request fields. Record current failures before production behavior changes.
+request fields. Include the historical finality witness: execute a real
+accepted OLD→NEW move, then attempt a second admitted request with OLD and
+assert rejection plus complete nonmutation from that resulting state. Also
+mutate a subsequent lifecycle occurrence to reference OLD and require
+contract rejection without fabricating a player response. Record current
+failures before production behavior changes.
 
 Acceptance: cases reuse existing transition, lifecycle, projection, delta and
 engine validation paths; no second reference executor enters production; no
@@ -128,6 +133,12 @@ progression, snapshot semantics, destination order, OLD reference closure,
 FoundationSource removal, event/delta alignment and final state. Add complete
 before/after fingerprints for every rejection, including state, products,
 environment, checkpoint/replay state and player bytes.
+
+Include both historical finality proofs from the Spec: after a committed
+transition, a second real request using OLD rejects with the full resulting
+state fingerprint unchanged; a test-mutated later lifecycle occurrence that
+references OLD after `ZoneTransition(OLD, NEW)` fails cursor/contract
+validation. Neither proof invents a `DecisionResponseV2`.
 
 Acceptance: all request and mutant cases reject without commit or mutation;
 no internal audit product becomes caller input; all supported transitions
