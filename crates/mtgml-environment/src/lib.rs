@@ -13,6 +13,7 @@ pub mod lifecycle_projection;
 mod player_projection;
 mod reference;
 mod replay;
+mod response_transaction;
 mod semantic_catalog;
 #[cfg(test)]
 mod semantic_catalog_kat;
