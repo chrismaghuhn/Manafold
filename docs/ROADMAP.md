@@ -182,13 +182,15 @@ S3_P0_MERGE_COMMIT = ffc433985f41e6e2980df23a103b5e2358527ea3
 S3_0_AUTHORIZED = YES
 S3_0_IMPLEMENTATION_AUTHORIZED = YES
 S3_0_STARTED = YES
+S3_0_IMPLEMENTATION = COMPLETE_CANDIDATE
+S3_0_EXACT_HEAD_REVIEW = PENDING
 S3_A_AUTHORIZED = NO
 S3_B_AUTHORIZED = NO
 S3_C_AUTHORIZED = NO
 S3_A_IMPLEMENTATION_AUTHORIZED = NO
 S3_B_IMPLEMENTATION_AUTHORIZED = NO
 S3_C_IMPLEMENTATION_AUTHORIZED = NO
-NEXT_GATE = M3_S3_0_TASK_3_RED
+NEXT_GATE = M3_S3_0_EXACT_HEAD_REVIEW
 ```
 
 `M2.5 = NOT_CLAIMED / NOT_FROZEN`. Its abandoned census and research
@@ -222,7 +224,8 @@ before covered. M3.S3 selection/design is complete. S3.P0 implementation is a
 complete and frozen after PR #210 merged at
 `ffc433985f41e6e2980df23a103b5e2358527ea3`, following exact-head review of
 `0cd24d1f2cb4183c19fb04ce0c3c827148313a3b`. S3.0 is authorized and started;
-S3.A, S3.B, and S3.C remain unauthorized.
+its semantic-neutral shared response transaction is an implementation-complete
+candidate pending exact-head review. S3.A, S3.B, and S3.C remain unauthorized.
 
 M3 has started through semantic-neutral P0 infrastructure, T0
 conformance/proof infrastructure, the covered S1 turn-structure capability,
