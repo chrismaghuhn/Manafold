@@ -10,12 +10,12 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "python" / "src"))
 
-from mtgml.errors import WireError
-from mtgml.replay import AuthoritativeReplayV6, ReplayManifestV6
-from mtgml.wire import decode_canonical, encode_canonical
 from mtgml._replay_v5 import calculate_rules_contract_id_v1, calculate_semantic_contract_id_v1
 from mtgml.episode import EpisodeStatus
+from mtgml.errors import WireError
 from mtgml.persistence import calculate_checkpoint_digest_v6
+from mtgml.replay import AuthoritativeReplayV6, ReplayManifestV6
+from mtgml.wire import decode_canonical, encode_canonical
 
 GOLDEN = ROOT / "wire" / "golden"
 NEGATIVE = ROOT / "wire" / "negative"
