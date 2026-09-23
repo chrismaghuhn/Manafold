@@ -211,7 +211,9 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
         self.assertIn("TASK_7_LIFECYCLE_PROMOTION = COMPLETE", roadmap)
         self.assertIn("PR_208 = MERGED", roadmap)
         self.assertIn("S2_EXACT_HEAD_VERIFICATION = PASS", roadmap)
-        self.assertIn("M3_S2_STATUS = COMPLETE / IMPLEMENTED / NOT COVERED / NOT CERTIFIED", roadmap)
+        self.assertIn(
+            "M3_S2_STATUS = COMPLETE / IMPLEMENTED / NOT COVERED / NOT CERTIFIED", roadmap
+        )
         self.assertIn("TASK_8_EXACT_HEAD_VERIFICATION = COMPLETE", roadmap)
         self.assertIn("S1_AUTHORIZED_TASK_AT_S1_HEAD = M3.S1", roadmap)
         self.assertIn("S1_REVIEW_MINORS = 3 CARRIED", roadmap)

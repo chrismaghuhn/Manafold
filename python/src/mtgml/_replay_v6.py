@@ -45,6 +45,7 @@ __all__ = [
     "ReplayStepV6",
 ]
 
+
 @dataclass(frozen=True, slots=True)
 class ReplaySchemaVersionsV6:
     observation: str
@@ -248,8 +249,7 @@ class ReplayManifestV6:
         if payload_codec == "magic-m3-observation.v1":
             closure = self.semantic_contract.rules_manifest.get("capability_closure")
             has_sba = isinstance(closure, list) and any(
-                isinstance(item, dict)
-                and item.get("key") == "rules/state-based-actions-combat"
+                isinstance(item, dict) and item.get("key") == "rules/state-based-actions-combat"
                 for item in closure
             )
             if not has_sba:

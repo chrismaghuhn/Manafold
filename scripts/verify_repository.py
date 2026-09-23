@@ -383,9 +383,9 @@ def main() -> None:
     ):
         if token not in state_tests:
             fail(f"state test evidence lacks {token}")
-    magic_v5_contract_test = (
-        ROOT / "crates/mtgml-state/tests/s3_p0_digest_v5_red.rs"
-    ).read_text(encoding="utf-8")
+    magic_v5_contract_test = (ROOT / "crates/mtgml-state/tests/s3_p0_digest_v5_red.rs").read_text(
+        encoding="utf-8"
+    )
     for token in (
         "magic_continuation_is_valid_v5_state_and_changes_digest_when_its_order_changes",
         "magic_sba_graveyard_order_v1",

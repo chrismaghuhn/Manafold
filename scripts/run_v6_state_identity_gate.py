@@ -10,16 +10,28 @@ sys.dont_write_bytecode = True
 ROOT = Path(__file__).resolve().parents[1]
 
 REQUIRED: tuple[tuple[str, str], ...] = (
-    ("crates/mtgml-model/src/lib.rs", 'raw_digest!(FullStateDigestV5, "mtgml.full-state-digest.v5")'),
-    ("crates/mtgml-model/src/lib.rs", 'raw_digest!(CheckpointDigestV6, "mtgml.checkpoint-digest.v6")'),
+    (
+        "crates/mtgml-model/src/lib.rs",
+        'raw_digest!(FullStateDigestV5, "mtgml.full-state-digest.v5")',
+    ),
+    (
+        "crates/mtgml-model/src/lib.rs",
+        'raw_digest!(CheckpointDigestV6, "mtgml.checkpoint-digest.v6")',
+    ),
     ("crates/mtgml-state/src/engine.rs", "Result<FullStateDigestV5, StateDigestError>"),
     ("crates/mtgml-state/src/digest_v5.rs", '"full-state-digest-input.v5"'),
     ("crates/mtgml-state/src/digest_v5.rs", '"magic_sba_graveyard_order_v1"'),
     ("crates/mtgml-state/src/delta.rs", "pub before_digest: FullStateDigestV5"),
     ("crates/mtgml-persistence/src/checkpoint_digest.rs", "calculate_checkpoint_digest_v6"),
-    ("crates/mtgml-persistence/src/checkpoint_digest.rs", '"environment-checkpoint-digest-input.v6"'),
+    (
+        "crates/mtgml-persistence/src/checkpoint_digest.rs",
+        '"environment-checkpoint-digest-input.v6"',
+    ),
     ("crates/mtgml-environment/src/checkpoint.rs", "pub struct EnvironmentCheckpointV6"),
-    ("crates/mtgml-environment/src/controller.rs", "Result<EnvironmentCheckpointV6, ControllerError>"),
+    (
+        "crates/mtgml-environment/src/controller.rs",
+        "Result<EnvironmentCheckpointV6, ControllerError>",
+    ),
     ("crates/mtgml-environment/src/synthetic.rs", "ReplayRecorderV6"),
     ("crates/mtgml-environment/src/reference.rs", "ReplayRecorderV6"),
     ("crates/mtgml-replay/src/lib.rs", "AuthoritativeReplayV6"),
@@ -34,7 +46,10 @@ REQUIRED: tuple[tuple[str, str], ...] = (
     ("schemas/replay-manifest.v6.schema.json", '"const": "replay-manifest.v6"'),
     ("schemas/authoritative-replay.v6.schema.json", '"const": "authoritative-replay.v6"'),
     ("wire/golden/replay-manifest.v6.json", '"schema_version":"replay-manifest.v6"'),
-    ("wire/golden/authoritative-replay-empty.v6.json", '"schema_version":"authoritative-replay.v6"'),
+    (
+        "wire/golden/authoritative-replay-empty.v6.json",
+        '"schema_version":"authoritative-replay.v6"',
+    ),
 )
 
 CURRENT_NO_OLD_IDS: tuple[str, ...] = (
@@ -89,8 +104,14 @@ def main() -> None:
         ("crates/mtgml-state/src/digest_v4.rs", "calculate_full_state_digest_v4_historical"),
         ("crates/mtgml-environment/src/checkpoint.rs", "pub struct EnvironmentCheckpointV5"),
         ("crates/mtgml-replay/src/v5.rs", "pub struct ReplayManifestV5"),
-        ("crates/mtgml-environment/tests/checkpoint_v5_red.rs", "new_builds_and_self_validates_a_v5_checkpoint"),
-        ("crates/mtgml-replay/tests/replay_v5_red.rs", "replay_v5_v4_types_remain_untouched_and_pass"),
+        (
+            "crates/mtgml-environment/tests/checkpoint_v5_red.rs",
+            "new_builds_and_self_validates_a_v5_checkpoint",
+        ),
+        (
+            "crates/mtgml-replay/tests/replay_v5_red.rs",
+            "replay_v5_v4_types_remain_untouched_and_pass",
+        ),
     )
     for relative, token in historical_requirements:
         path = ROOT / relative
