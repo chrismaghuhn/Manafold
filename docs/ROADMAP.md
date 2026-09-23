@@ -173,7 +173,14 @@ S1_OBJECT_INCARNATION_CHANGE_AUTHORIZED = NO
 S1_PHYSICAL_CARD_IDENTITY_CHANGE_AUTHORIZED = NO
 S1_ALLOWED_ZONES_OWNED_MUTATION = bounded untap tapped-field mutation only
 S1_REVIEW_MINORS = 3 CARRIED
-NEXT_GATE = M3_S3_SELECTION_AND_DESIGN
+S3_P0_IMPLEMENTATION = COMPLETE_CANDIDATE
+S3_P0_EXACT_HEAD_REVIEW = PENDING
+S3_0_IMPLEMENTATION_AUTHORIZED = NO
+S3_0_STARTED = NO
+S3_A_IMPLEMENTATION_AUTHORIZED = NO
+S3_B_IMPLEMENTATION_AUTHORIZED = NO
+S3_C_IMPLEMENTATION_AUTHORIZED = NO
+NEXT_GATE = M3_S3_P0_EXACT_HEAD_REVIEW
 ```
 
 `M2.5 = NOT_CLAIMED / NOT_FROZEN`. Its abandoned census and research
@@ -203,7 +210,9 @@ were still specified and downstream work had not been authorized.
 PR #208 merged S2 at `b67cfdcc0a8e623da52a889ef2ae138a3e4256ac`; exact-head
 verification passed. M3.S2 is complete as an implementation slice, but is not
 covered or certified. S2 authoritative replay remains deferred and required
-before covered. The next gate is M3.S3 selection and design.
+before covered. M3.S3 selection/design is complete. S3.P0 implementation is a
+candidate pending exact-head review; S3.0, S3.A, S3.B, and S3.C remain
+unauthorized.
 
 M3 has started through semantic-neutral P0 infrastructure, T0
 conformance/proof infrastructure, the covered S1 turn-structure capability,
