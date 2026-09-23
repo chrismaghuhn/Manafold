@@ -35,10 +35,10 @@ fn observation_codec_supported(rules: &RulesContractManifestV1, codec: &str) -> 
             requirement.key == SBA_CAPABILITY_KEY && requirement.version == SBA_CAPABILITY_VERSION
         })
     });
-    match (magic_semantics_admitted, codec) {
-        (true, MAGIC_OBSERVATION_CODEC) | (false, SYNTHETIC_OBSERVATION_CODEC) => true,
-        _ => false,
-    }
+    matches!(
+        (magic_semantics_admitted, codec),
+        (true, MAGIC_OBSERVATION_CODEC) | (false, SYNTHETIC_OBSERVATION_CODEC)
+    )
 }
 
 fn validate_status_for_players(
