@@ -10,6 +10,7 @@ mod controller;
 mod endpoint;
 mod errors;
 pub mod lifecycle_projection;
+mod player_projection;
 mod reference;
 mod replay;
 mod semantic_catalog;

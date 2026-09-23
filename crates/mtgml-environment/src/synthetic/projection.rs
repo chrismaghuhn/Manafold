@@ -1,7 +1,7 @@
 //! Compatibility delegation for the shared player-safe projection owner.
 //!
 //! SyntheticRulesCompat retains its historical associated-function surface;
-//! the implementation lives in `reference.rs` so reference and synthetic
+//! the implementation lives in `player_projection.rs` so reference and synthetic
 //! transactions validate identical observation/information products.
 
 use mtgml_decision::PlayerDecisionRequestV2;
@@ -28,21 +28,21 @@ impl SyntheticM1EnvironmentBackend {
         state: &EngineState,
         perspective: PlayerId,
     ) -> Result<ObservationEnvelope, PlayerEndpointError> {
-        crate::reference::project_observation(state, perspective)
+        crate::player_projection::project_observation(state, perspective)
     }
 
     pub(crate) fn player_information_state_from_state(
         state: &EngineState,
         perspective: PlayerId,
     ) -> Result<PlayerInformationStateV2, PlayerEndpointError> {
-        crate::reference::project_information_state(state, perspective)
+        crate::player_projection::project_information_state(state, perspective)
     }
 
     pub(crate) fn visible_decision_from_state(
         state: &EngineState,
         perspective: PlayerId,
     ) -> Result<Option<PlayerDecisionRequestV2>, PlayerEndpointError> {
-        crate::reference::project_visible_decision(state, perspective)
+        crate::player_projection::project_visible_decision(state, perspective)
     }
 
     pub(crate) fn player_step_from_state(
@@ -51,6 +51,6 @@ impl SyntheticM1EnvironmentBackend {
         status: EpisodeStatus,
         submission: PlayerStepSubmissionV1,
     ) -> Result<PlayerStepV2, PlayerEndpointError> {
-        crate::reference::project_player_step(state, perspective, status, submission)
+        crate::player_projection::project_player_step(state, perspective, status, submission)
     }
 }
