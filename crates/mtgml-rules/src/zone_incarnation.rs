@@ -5,7 +5,7 @@
 //! delegates here; it contains no transition behavior.
 
 use mtgml_model::GameObjectId;
-use mtgml_state::EngineState;
+use mtgml_state::{EngineState, ZoneLocation};
 
 use crate::{KernelExecutionError, TransitionResult};
 
@@ -15,10 +15,12 @@ pub(crate) enum SelectedZoneTransitionKind {
     LibraryTopToOwnerHand,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct SelectedZoneTransitionRequest {
     pub object: GameObjectId,
     pub kind: SelectedZoneTransitionKind,
+    pub claimed_from: ZoneLocation,
+    pub claimed_to: ZoneLocation,
 }
 
 /// The one future implementation point for both selected transition families.
@@ -46,6 +48,8 @@ pub enum ConformanceZoneTransitionKind {
 pub fn execute_selected_zone_transition_for_conformance(
     state: &EngineState,
     object: GameObjectId,
+    claimed_from: ZoneLocation,
+    claimed_to: ZoneLocation,
     kind: ConformanceZoneTransitionKind,
 ) -> Result<TransitionResult, KernelExecutionError> {
     let kind = match kind {
@@ -56,5 +60,13 @@ pub fn execute_selected_zone_transition_for_conformance(
             SelectedZoneTransitionKind::LibraryTopToOwnerHand
         }
     };
-    execute_selected_zone_transition(&state, &SelectedZoneTransitionRequest { object, kind })
+    execute_selected_zone_transition(
+        state,
+        &SelectedZoneTransitionRequest {
+            object,
+            kind,
+            claimed_from,
+            claimed_to,
+        },
+    )
 }

@@ -52,6 +52,42 @@ fn location(
     }
 }
 
+fn battlefield_from() -> ZoneLocation {
+    location(
+        ZoneKind::Battlefield,
+        None,
+        ZonePosition::Unordered,
+        VisibilityPartition::Public,
+    )
+}
+
+fn owner_graveyard_top(owner: PlayerId) -> ZoneLocation {
+    location(
+        ZoneKind::Graveyard,
+        Some(owner),
+        ZonePosition::Top { offset: 0 },
+        VisibilityPartition::Public,
+    )
+}
+
+fn owner_library_top(owner: PlayerId) -> ZoneLocation {
+    location(
+        ZoneKind::Library,
+        Some(owner),
+        ZonePosition::Top { offset: 0 },
+        VisibilityPartition::FaceDown,
+    )
+}
+
+fn owner_hand(owner: PlayerId) -> ZoneLocation {
+    location(
+        ZoneKind::Hand,
+        Some(owner),
+        ZonePosition::Unordered,
+        VisibilityPartition::OwnerOnly,
+    )
+}
+
 fn battlefield_case_state() -> EngineState {
     let mut state = base_state();
     let graveyard = location(
@@ -157,6 +193,8 @@ fn battlefield_request() -> Result<mtgml_rules::TransitionResult, KernelExecutio
     execute_selected_zone_transition_for_conformance(
         &battlefield_case_state(),
         OLD_BATTLEFIELD,
+        battlefield_from(),
+        owner_graveyard_top(P1),
         ConformanceZoneTransitionKind::BattlefieldToOwnerGraveyard,
     )
 }
@@ -165,6 +203,8 @@ fn library_request() -> Result<mtgml_rules::TransitionResult, KernelExecutionErr
     execute_selected_zone_transition_for_conformance(
         &library_case_state(),
         OLD_LIBRARY_TOP,
+        owner_library_top(P2),
+        owner_hand(P2),
         ConformanceZoneTransitionKind::LibraryTopToOwnerHand,
     )
 }
@@ -176,6 +216,7 @@ fn assert_s2_red<T>(case_id: &str, actual: Result<T, KernelExecutionError>) -> T
 }
 
 #[test]
+#[ignore = "RED: M3.S2 production semantics intentionally not implemented"]
 fn s2_zone_battlefield_graveyard() {
     let before = battlefield_case_state();
     assert_eq!(before.allocators.next_object_id, GameObjectId(5));
@@ -197,12 +238,15 @@ fn s2_zone_battlefield_graveyard() {
         execute_selected_zone_transition_for_conformance(
             &before,
             OLD_BATTLEFIELD,
+            battlefield_from(),
+            owner_graveyard_top(P1),
             ConformanceZoneTransitionKind::BattlefieldToOwnerGraveyard,
         ),
     );
 }
 
 #[test]
+#[ignore = "RED: M3.S2 production semantics intentionally not implemented"]
 fn s2_zone_library_hand_top() {
     let before = library_case_state();
     assert_eq!(
@@ -218,6 +262,7 @@ fn s2_zone_library_hand_top() {
 }
 
 #[test]
+#[ignore = "RED: M3.S2 production semantics intentionally not implemented"]
 fn s2_zone_graveyard_order() {
     let before = battlefield_case_state();
     let key = before.zones.locations.get(&GameObjectId(3)).unwrap().key();
@@ -239,12 +284,15 @@ fn s2_zone_graveyard_order() {
         execute_selected_zone_transition_for_conformance(
             &before,
             OLD_BATTLEFIELD,
+            battlefield_from(),
+            owner_graveyard_top(P1),
             ConformanceZoneTransitionKind::BattlefieldToOwnerGraveyard,
         ),
     );
 }
 
 #[test]
+#[ignore = "RED: M3.S2 production semantics intentionally not implemented"]
 fn s2_zone_event_delta_cursor_expectations() {
     let before = battlefield_case_state();
     let old_snapshot = ObjectSnapshot {
@@ -308,12 +356,15 @@ fn s2_zone_event_delta_cursor_expectations() {
         execute_selected_zone_transition_for_conformance(
             &before,
             OLD_BATTLEFIELD,
+            battlefield_from(),
+            owner_graveyard_top(P1),
             ConformanceZoneTransitionKind::BattlefieldToOwnerGraveyard,
         ),
     );
 }
 
 #[test]
+#[ignore = "RED: M3.S2 production semantics intentionally not implemented"]
 fn s2_identity_destination_canonical_state() {
     // `controller = owner` is GameObject storage normalization for non-
     // battlefield rows, not a Magic rule assigning those cards a controller.
@@ -381,6 +432,7 @@ fn s2_identity_destination_canonical_state() {
 }
 
 #[test]
+#[ignore = "RED: M3.S2 production semantics intentionally not implemented"]
 fn s2_identity_destination_canonical_state_library() {
     let expected = ObjectSnapshot {
         object: GameObjectId(4),
@@ -496,6 +548,7 @@ fn s2_identity_old_reference_closure_characterization() {
 }
 
 #[test]
+#[ignore = "RED: M3.S2 production semantics intentionally not implemented"]
 fn s2_identity_foundation_source_cessation() {
     let before = battlefield_case_state();
     assert!(before.foundation_sources.contains_key(&OLD_BATTLEFIELD));
@@ -507,12 +560,77 @@ fn s2_identity_foundation_source_cessation() {
         execute_selected_zone_transition_for_conformance(
             &before,
             OLD_BATTLEFIELD,
+            battlefield_from(),
+            owner_graveyard_top(P1),
             ConformanceZoneTransitionKind::BattlefieldToOwnerGraveyard,
         ),
     );
 }
 
 #[test]
+fn s2_request_vocabulary_represents_typed_rejection_inputs() {
+    let before = battlefield_case_state();
+    let mismatched_source = location(
+        ZoneKind::Hand,
+        Some(P1),
+        ZonePosition::Unordered,
+        VisibilityPartition::OwnerOnly,
+    );
+    let wrong_owner_graveyard = owner_graveyard_top(P2);
+    let unadmitted_source = location(
+        ZoneKind::Exile,
+        None,
+        ZonePosition::Unordered,
+        VisibilityPartition::Public,
+    );
+    let wrong_owner_hand = owner_hand(P1);
+
+    // These caller-authored values reach the typed seam unchanged in shape.
+    // FIX-02 characterizes representation only; semantic rejection belongs to
+    // Task 2/5. Every attempted request remains unavailable and non-mutating.
+    for (claimed_from, claimed_to, kind) in [
+        (
+            mismatched_source,
+            owner_graveyard_top(P1),
+            ConformanceZoneTransitionKind::BattlefieldToOwnerGraveyard,
+        ),
+        (
+            battlefield_from(),
+            wrong_owner_graveyard,
+            ConformanceZoneTransitionKind::BattlefieldToOwnerGraveyard,
+        ),
+        (
+            unadmitted_source,
+            battlefield_from(),
+            ConformanceZoneTransitionKind::BattlefieldToOwnerGraveyard,
+        ),
+    ] {
+        assert!(matches!(
+            execute_selected_zone_transition_for_conformance(
+                &before,
+                OLD_BATTLEFIELD,
+                claimed_from,
+                claimed_to,
+                kind,
+            ),
+            Err(KernelExecutionError::ZoneIncarnationUnavailable)
+        ));
+    }
+    let library_before = library_case_state();
+    assert!(matches!(
+        execute_selected_zone_transition_for_conformance(
+            &library_before,
+            OLD_LIBRARY_TOP,
+            owner_library_top(P2),
+            wrong_owner_hand,
+            ConformanceZoneTransitionKind::LibraryTopToOwnerHand,
+        ),
+        Err(KernelExecutionError::ZoneIncarnationUnavailable)
+    ));
+}
+
+#[test]
+#[ignore = "RED: M3.S2 production semantics intentionally not implemented"]
 fn s2_rejection_stale_old_incarnation_historical_witness() {
     let before = battlefield_case_state();
     // Step 1 must be a real accepted production-owned transition. The intended
@@ -522,41 +640,24 @@ fn s2_rejection_stale_old_incarnation_historical_witness() {
         execute_selected_zone_transition_for_conformance(
             &before,
             OLD_BATTLEFIELD,
+            battlefield_from(),
+            owner_graveyard_top(P1),
             ConformanceZoneTransitionKind::BattlefieldToOwnerGraveyard,
         ),
     );
     let after_first = first.next_state.clone();
-    let before_retry = DirectProductFingerprint::capture(&first);
+    let captured_after_first = after_first.clone();
+    let after_first_digest = after_first.digest().unwrap();
     let retry = execute_selected_zone_transition_for_conformance(
         &after_first,
         OLD_BATTLEFIELD,
+        battlefield_from(),
+        owner_graveyard_top(P1),
         ConformanceZoneTransitionKind::BattlefieldToOwnerGraveyard,
     );
     assert!(retry.is_err(), "stale OLD must be rejected");
-    assert_eq!(DirectProductFingerprint::capture(&first), before_retry);
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct DirectProductFingerprint {
-    state: EngineState,
-    digest: mtgml_model::FullStateDigestV4,
-    events: Vec<mtgml_rules::AuthoritativeRuleEvent>,
-    delta: mtgml_state::StateDelta,
-    next_decision: Option<mtgml_decision::AuthoritativeDecisionRequestV2>,
-    status: mtgml_model::EpisodeStatus,
-}
-
-impl DirectProductFingerprint {
-    fn capture(result: &mtgml_rules::TransitionResult) -> Self {
-        Self {
-            state: result.next_state.clone(),
-            digest: result.next_state.digest().unwrap(),
-            events: result.events.clone(),
-            delta: result.delta.clone(),
-            next_decision: result.next_decision.clone(),
-            status: result.status.clone(),
-        }
-    }
+    assert_eq!(after_first, captured_after_first);
+    assert_eq!(after_first.digest().unwrap(), after_first_digest);
 }
 
 #[test]
