@@ -82,7 +82,7 @@ M2 uses new versions where meaning changes:
 - Observed event V2;
 - PlayerStep V2;
 - replay V3;
-- replay V5 (ADR 0055 execution-identity cut).
+- replay V6 (S3.P0 state-identity cut); V5 remains detached historical evidence.
 
 `ObservationEnvelopeV1` may remain because its payload codec identity is independently versioned; M2 uses `synthetic-m2-observation.v1`.
 

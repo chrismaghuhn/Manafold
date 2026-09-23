@@ -10,8 +10,8 @@ use mtgml_observation::{
 };
 use mtgml_replay::{
     AuthoritativeReplayV1, AuthoritativeReplayV2, AuthoritativeReplayV3, AuthoritativeReplayV4,
-    AuthoritativeReplayV5, ReplayManifestV1, ReplayManifestV2, ReplayManifestV3, ReplayManifestV4,
-    ReplayManifestV5,
+    AuthoritativeReplayV5, AuthoritativeReplayV6, ReplayManifestV1, ReplayManifestV2,
+    ReplayManifestV3, ReplayManifestV4, ReplayManifestV5, ReplayManifestV6,
 };
 use serde::Deserialize;
 use std::{fs, path::Path};
@@ -124,6 +124,8 @@ fn decode_named(contract: &str, bytes: &[u8]) -> Result<(), WireError> {
         "authoritative-replay.v4" => decode_canonical::<AuthoritativeReplayV4>(bytes).map(drop),
         "replay-manifest.v5" => decode_canonical::<ReplayManifestV5>(bytes).map(drop),
         "authoritative-replay.v5" => decode_canonical::<AuthoritativeReplayV5>(bytes).map(drop),
+        "replay-manifest.v6" => decode_canonical::<ReplayManifestV6>(bytes).map(drop),
+        "authoritative-replay.v6" => decode_canonical::<AuthoritativeReplayV6>(bytes).map(drop),
         "synthetic-m3-observation.v1" => {
             decode_canonical::<SyntheticM3Observation>(bytes).map(drop)
         }

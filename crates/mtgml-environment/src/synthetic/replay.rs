@@ -10,8 +10,8 @@ use mtgml_observation::{
 };
 use mtgml_random::MTGML_RNG_V1;
 use mtgml_replay::{
-    InitialEnvironmentIdentityV5, RandomnessIdentityV2, ReplayManifestV5, ReplaySchemaVersionsV5,
-    REPLAY_MANIFEST_SCHEMA_V5, REPLAY_STEP_SCHEMA_V5,
+    InitialEnvironmentIdentityV6, RandomnessIdentityV2, ReplayManifestV6, ReplaySchemaVersionsV6,
+    REPLAY_MANIFEST_SCHEMA_V6, REPLAY_STEP_SCHEMA_V6,
 };
 
 use crate::semantic_catalog_generated::{
@@ -20,11 +20,11 @@ use crate::semantic_catalog_generated::{
 };
 
 use super::SyntheticM1EnvironmentConfig;
-use crate::checkpoint::EnvironmentCheckpointV5;
+use crate::checkpoint::EnvironmentCheckpointV6;
 use crate::errors::ControllerError;
 
-fn current_v5_schema_versions() -> ReplaySchemaVersionsV5 {
-    ReplaySchemaVersionsV5 {
+fn current_v6_schema_versions() -> ReplaySchemaVersionsV6 {
+    ReplaySchemaVersionsV6 {
         observation: OBSERVATION_SCHEMA.into(),
         observation_payload_codec: "synthetic-m3-observation.v1".into(),
         information_state: INFORMATION_STATE_SCHEMA_V2.into(),
@@ -32,7 +32,7 @@ fn current_v5_schema_versions() -> ReplaySchemaVersionsV5 {
         decision_response: DECISION_RESPONSE_V2_SCHEMA.into(),
         observed_event: OBSERVED_EVENT_SCHEMA_V2.into(),
         player_step: PLAYER_STEP_SCHEMA_V2.into(),
-        replay_step: REPLAY_STEP_SCHEMA_V5.into(),
+        replay_step: REPLAY_STEP_SCHEMA_V6.into(),
     }
 }
 
@@ -40,7 +40,7 @@ fn validate_current_producer_identity(
     config: &SyntheticM1EnvironmentConfig,
 ) -> Result<(), ControllerError> {
     if config.replay.randomness_contract_id != MTGML_RNG_V1
-        || config.replay.schemas != current_v5_schema_versions()
+        || config.replay.schemas != current_v6_schema_versions()
     {
         return Err(ControllerError::ReplayIdentityMismatch);
     }
@@ -49,13 +49,13 @@ fn validate_current_producer_identity(
 
 pub(crate) fn build_manifest(
     config: &SyntheticM1EnvironmentConfig,
-    checkpoint: &EnvironmentCheckpointV5,
-) -> Result<ReplayManifestV5, ControllerError> {
+    checkpoint: &EnvironmentCheckpointV6,
+) -> Result<ReplayManifestV6, ControllerError> {
     validate_current_producer_identity(config)?;
     let mut decks = config.replay.decks.clone();
     decks.sort_by_key(|deck| deck.player);
-    let manifest = ReplayManifestV5 {
-        schema_version: REPLAY_MANIFEST_SCHEMA_V5.into(),
+    let manifest = ReplayManifestV6 {
+        schema_version: REPLAY_MANIFEST_SCHEMA_V6.into(),
         engine_build: config.replay.engine_build.clone(),
         kernel: config.replay.kernel.clone(),
         rules_snapshot: config.replay.rules_snapshot.clone(),
@@ -68,7 +68,7 @@ pub(crate) fn build_manifest(
             root_seed_hex: checkpoint.state.random.root_seed.to_lower_hex(),
         },
         decks,
-        initial_identity: InitialEnvironmentIdentityV5 {
+        initial_identity: InitialEnvironmentIdentityV6 {
             state_revision: checkpoint.state.revision,
             full_state_digest: checkpoint.state_digest.clone(),
             episode_status: checkpoint.status.clone(),

@@ -237,6 +237,16 @@ fn canonical_texts(value: &mtgml_persistence::cbor::Value, output: &mut Vec<Stri
     }
 }
 
+fn hex(bytes: &[u8]) -> String {
+    const DIGITS: &[u8; 16] = b"0123456789abcdef";
+    let mut encoded = String::with_capacity(bytes.len() * 2);
+    for byte in bytes {
+        encoded.push(DIGITS[usize::from(byte >> 4)] as char);
+        encoded.push(DIGITS[usize::from(byte & 0x0f)] as char);
+    }
+    encoded
+}
+
 #[test]
 fn engine_state_digest_uses_the_typed_v5_identity_and_schema() {
     let digest: FullStateDigestV5 = synthetic_state().digest().unwrap();
@@ -256,14 +266,22 @@ fn magic_continuation_is_valid_v5_state_and_changes_digest_when_its_order_change
     let state_b = magic_order_state([GameObjectId(3), GameObjectId(1)]);
     mtgml_state::validate_engine_state(&state_a).unwrap();
     mtgml_state::validate_engine_state(&state_b).unwrap();
+    assert!(mtgml_state::calculate_full_state_digest_v4_historical(&state_a).is_err());
 
     let digest_a: FullStateDigestV5 = state_a.digest().unwrap();
     let digest_b: FullStateDigestV5 = state_b.digest().unwrap();
+    assert_eq!(
+        digest_a.to_string(),
+        "718d1d675154da69c638f19e33b24c6244ba2892c982bc5c2e9c2d22f98eb344"
+    );
     assert_ne!(digest_a, digest_b);
 
-    let canonical =
-        mtgml_persistence::cbor::decode_canonical(&state_a.canonical_digest_bytes().unwrap())
-            .unwrap();
+    let canonical_bytes = state_a.canonical_digest_bytes().unwrap();
+    assert_eq!(
+        hex(&canonical_bytes),
+        include_str!("fixtures/magic-sba-graveyard-order-v5-input.hex").trim()
+    );
+    let canonical = mtgml_persistence::cbor::decode_canonical(&canonical_bytes).unwrap();
     let mut texts = Vec::new();
     canonical_texts(&canonical, &mut texts);
     assert!(

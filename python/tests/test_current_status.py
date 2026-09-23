@@ -103,9 +103,10 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
         self.assertNotIn("S2 certified", readme)
         self.assertIn("**Playable engine:** no", readme)
         self.assertIn("**Real card support:** none", readme)
-        self.assertIn("**Current resumable execution contract:** V5.", readme)
-        self.assertIn("`EnvironmentCheckpointV5` / `CheckpointDigestV5`", readme)
-        self.assertRegex(readme, r"V4 remains historical-only and is not\s+reinterpreted")
+        self.assertIn("**Current resumable execution contract:** V6.", readme)
+        self.assertIn("`EnvironmentCheckpointV6`", readme)
+        self.assertIn("`CheckpointDigestV6`", readme)
+        self.assertRegex(readme, r"V4/V5 artifacts retain their historical\s+meanings")
         self.assertNotIn("M3 Pre-T0 plan hardening under Issue #178", readme)
         self.assertNotIn("HARDENED_PLAN_MERGE_AND_EXACT_MASTER_REAUTHORIZATION", readme)
         self.assertNotIn(
@@ -179,8 +180,11 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
         self.assertIn("S1_IMPLEMENTED_CAPABILITY_COUNT = 0", roadmap)
         self.assertIn("S1_COVERED_CAPABILITY_COUNT = 1", roadmap)
         self.assertIn("S1_CERTIFIED_CAPABILITY_COUNT = 0", roadmap)
-        self.assertIn("CURRENT_RESUMABLE_EXECUTION_CONTRACT = V5", roadmap)
-        self.assertIn("V4_RESUMABLE_CONTRACT_STATUS = HISTORICAL_ONLY", roadmap)
+        self.assertIn("CURRENT_RESUMABLE_EXECUTION_CONTRACT = V6", roadmap)
+        self.assertIn(
+            "V4_V5_RESUMABLE_CONTRACT_STATUS = HISTORICAL_ONLY / V5_TO_V6_MIGRATION_NONE",
+            roadmap,
+        )
         self.assertIn("TASK_13_DOCUMENTATION_STATUS_CLOSURE = COMPLETE", roadmap)
         self.assertIn("TASK_14_EXACT_HEAD_VERIFICATION = COMPLETE", roadmap)
         self.assertIn("S1_EXACT_HEAD_VERIFICATION = PASS", roadmap)
@@ -312,11 +316,9 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
             r"(?:CURRENT_STATUS|PROJECT_STATE|status\.json)",
         )
 
-    def test_v5_cut_requires_no_current_status_changes(self) -> None:
-        # CURRENT_STATUS_TEST = VERIFIED_NO_CHANGE
-        # The V5 execution-identity cut does not affect the current-runtime
-        # status pins audited by this test (README/roadmap/ADR pins are
-        # milestone and governance markers, not checkpoint/identity pins).
+    def test_v6_cut_keeps_old_checkpoint_identities_out_of_current_claims(self) -> None:
+        # Capability/milestone lifecycle pins stay as reviewed while the
+        # resumable state/checkpoint/replay identity family advances.
         for path in (
             ROOT / "README.md",
             ROOT / "docs" / "ROADMAP.md",

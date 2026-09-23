@@ -57,7 +57,7 @@ mod tests {
         DecisionAnswerV2, DecisionResponseV2, PlayerDecisionRequestV2, DECISION_RESPONSE_V2_SCHEMA,
     };
     use mtgml_environment::{
-        EnvironmentCheckpointV5, PlayerEndpoint, PlayerEndpointHandle, TrustedEnvironmentController,
+        EnvironmentCheckpointV6, PlayerEndpoint, PlayerEndpointHandle, TrustedEnvironmentController,
     };
     use mtgml_model::{
         CandidateIdV1, EpisodeStatus, PlayerDecisionIdV1, PlayerId, PlayerOutcome, PlayerResult,
@@ -544,7 +544,7 @@ mod tests {
         let completed = controller
             .checkpoint()
             .map_err(|_| HarnessError::ControllerService)?;
-        let terminal = EnvironmentCheckpointV5::new(
+        let terminal = EnvironmentCheckpointV6::new(
             completed.state.clone(),
             EpisodeStatus::Terminal {
                 reason: TerminalReason::Concession,

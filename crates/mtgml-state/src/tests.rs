@@ -235,7 +235,10 @@ fn matching_pending(record: &ContinuationRecordV2) -> PendingDecisionRecordV2 {
         selected_count,
         selected_piece_keys,
         ..
-    } = &record.payload;
+    } = &record.payload
+    else {
+        panic!("matching_pending is only used by synthetic assembly tests")
+    };
     let actor = record.actor;
     let pieces: Vec<u32> = match stage {
         AssemblyStageV2::ChooseCount => Vec::new(),

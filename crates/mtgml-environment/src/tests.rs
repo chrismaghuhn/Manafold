@@ -4,8 +4,8 @@ use crate::semantic_catalog_generated::synthetic_legacy_default_semantic_contrac
 use mtgml_decision::{DecisionAnswerV2, DecisionResponseV2, DECISION_RESPONSE_V2_SCHEMA};
 
 use mtgml_model::{
-    CandidateIdV1, CheckpointDigestV5, ContentDigest, ContinuationId, EpisodeStatus,
-    ExecutionIdentityV1, ExecutionProgramV1, FullStateDigestV4, PlayerDecisionIdV1, PlayerId,
+    CandidateIdV1, CheckpointDigestV6, ContentDigest, ContinuationId, EpisodeStatus,
+    ExecutionIdentityV1, ExecutionProgramV1, FullStateDigestV5, PlayerDecisionIdV1, PlayerId,
     PlayerOutcome, PlayerResult, StateRevision, TerminalReason, TruncationReason,
 };
 
@@ -17,14 +17,14 @@ use mtgml_observation::{
 use mtgml_random::RootSeed256;
 
 use mtgml_replay::{
-    AuthoritativeReplayV5, DeckIdentityV1, KernelIdentityV1, ReplaySchemaVersionsV5,
+    AuthoritativeReplayV6, DeckIdentityV1, KernelIdentityV1, ReplaySchemaVersionsV6,
 };
 
 fn config(players: [PlayerId; 2]) -> SyntheticM1EnvironmentConfig {
     SyntheticM1EnvironmentConfig {
         codec: CheckpointCodecIdentity {
             codec_id: "in-memory-reference".into(),
-            semantic_version: "5".into(),
+            semantic_version: "6".into(),
         },
         setup: mtgml_state::SyntheticV4Setup::m2_compatibility(),
         replay: SyntheticM1ReplayConfig {
@@ -39,7 +39,7 @@ fn config(players: [PlayerId; 2]) -> SyntheticM1EnvironmentConfig {
             oracle_snapshot: "synthetic-oracle".into(),
             card_bundle: "synthetic-bundle".into(),
             randomness_contract_id: "mtgml.rng.v1".into(),
-            schemas: ReplaySchemaVersionsV5 {
+            schemas: ReplaySchemaVersionsV6 {
                 observation: OBSERVATION_SCHEMA.into(),
                 observation_payload_codec: "synthetic-m3-observation.v1".into(),
                 information_state: INFORMATION_STATE_SCHEMA_V2.into(),
@@ -47,7 +47,7 @@ fn config(players: [PlayerId; 2]) -> SyntheticM1EnvironmentConfig {
                 decision_response: DECISION_RESPONSE_V2_SCHEMA.into(),
                 observed_event: OBSERVED_EVENT_SCHEMA_V2.into(),
                 player_step: PLAYER_STEP_SCHEMA_V2.into(),
-                replay_step: "replay-step.v5".into(),
+                replay_step: "replay-step.v6".into(),
             },
             decks: players
                 .into_iter()

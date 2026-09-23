@@ -6,7 +6,7 @@
 //! evidence for the three owned M2.E gates.
 
 use mtgml_model::{
-    CardDefinitionId, EpisodeStatus, FullStateDigestV4, GameObjectId, OpaqueObjectId,
+    CardDefinitionId, EpisodeStatus, FullStateDigestV5, GameObjectId, OpaqueObjectId,
     PhysicalCardId, PlayerId, VisibleSequence, ZoneKind,
 };
 use mtgml_rules::fixture_support::{FixtureTransition, PlannedOccurrence};
@@ -660,7 +660,7 @@ pub fn assert_exact_transition_product(
     before: &EngineState,
     result: &TransitionResult,
     expected_events: &[AuthoritativeRuleEvent],
-    expected_digest: &FullStateDigestV4,
+    expected_digest: &FullStateDigestV5,
 ) -> Result<(), ConformanceFailure> {
     mtgml_rules::validate_transition_contract(before, result)
         .map_err(|error| ConformanceFailure::Contract(error.to_string()))?;

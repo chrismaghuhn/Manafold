@@ -2,7 +2,8 @@
 
 use mtgml_model::{
     CheckpointCodecIdentity, CheckpointDigestV6, EnvironmentLimitCounters, EpisodeStatus,
-    ExecutionIdentityV1, ExecutionProgramV1, FullStateDigestV5, SemanticContractIdV1,
+    ExecutionIdentityV1, ExecutionProgramV1, FullStateDigestV4, FullStateDigestV5,
+    SemanticContractIdV1,
 };
 use mtgml_persistence::checkpoint_digest::{
     calculate_checkpoint_digest_v6, CHECKPOINT_DOMAIN_V6, CHECKPOINT_INPUT_SCHEMA_V6,
@@ -28,6 +29,14 @@ fn v6_checkpoint_preimage_binds_state_status_counters_codec_and_execution() {
     assert_eq!(
         CHECKPOINT_INPUT_SCHEMA_V6,
         "environment-checkpoint-digest-input.v6"
+    );
+    assert_eq!(
+        mtgml_persistence::checkpoint_digest::CHECKPOINT_CODEC_ID_V6,
+        "in-memory-reference"
+    );
+    assert_eq!(
+        mtgml_persistence::checkpoint_digest::CHECKPOINT_CODEC_SEMANTIC_VERSION_V6,
+        "6"
     );
 
     let status = EpisodeStatus::Running;
@@ -55,6 +64,14 @@ fn v6_checkpoint_preimage_binds_state_status_counters_codec_and_execution() {
         &counters,
         &codec("6"),
         &identity_a,
+    );
+    let kat: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../persistence/golden/checkpoint-digest-v6-kat.v1.json"
+    ))
+    .unwrap();
+    assert_eq!(
+        baseline.as_str(),
+        kat["vectors"][0]["expected_digest"].as_str().unwrap()
     );
     assert_ne!(
         baseline,
@@ -111,6 +128,25 @@ fn v6_checkpoint_preimage_binds_state_status_counters_codec_and_execution() {
         &status,
         &counters,
         &codec("5"),
+        &identity_a,
+    )
+    .is_err());
+    assert!(calculate_checkpoint_digest_v6(
+        &FullStateDigestV5::from_digest_bytes([1; 32]).as_digest_reference(),
+        &status,
+        &counters,
+        &CheckpointCodecIdentity {
+            codec_id: "other-codec".to_owned(),
+            semantic_version: "6".to_owned(),
+        },
+        &identity_a,
+    )
+    .is_err());
+    assert!(calculate_checkpoint_digest_v6(
+        &FullStateDigestV4::from_digest_bytes([1; 32]).as_digest_reference(),
+        &status,
+        &counters,
+        &codec("6"),
         &identity_a,
     )
     .is_err());

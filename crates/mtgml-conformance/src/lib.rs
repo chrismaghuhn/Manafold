@@ -5,7 +5,7 @@
 //! player projections supplied by the caller.
 
 use mtgml_decision::{AuthoritativeDecisionRequestV2, DecisionResponseV2};
-use mtgml_model::{EpisodeStatus, FullStateDigestV4, PlayerId};
+use mtgml_model::{EpisodeStatus, FullStateDigestV5, PlayerId};
 use mtgml_observation::PlayerStepV2;
 use mtgml_rules::{validate_transition_contract, AuthoritativeRuleEvent, TransitionResult};
 use mtgml_state::{EngineState, SemanticDeltaOperation};
@@ -48,7 +48,7 @@ pub struct ConformanceStep {
     pub expected_response_result: ExpectedResponseResult,
     pub expected_authoritative_events: Vec<AuthoritativeRuleEvent>,
     pub expected_semantic_delta: Vec<SemanticDeltaOperation>,
-    pub expected_state_digest: FullStateDigestV4,
+    pub expected_state_digest: FullStateDigestV5,
     pub expected_next_decision: Option<AuthoritativeDecisionRequestV2>,
     pub expected_player_steps: BTreeMap<PlayerId, PlayerStepV2>,
     pub expected_status: EpisodeStatus,
@@ -265,7 +265,7 @@ mod tests {
         DecisionAnswerV2, DecisionDomainV2, DecisionResponseV2, DecisionVisibility,
     };
     use mtgml_model::{
-        DecisionId, FullStateDigestV4, PlayerDecisionIdV1, PlayerOutcome, PlayerResult,
+        DecisionId, FullStateDigestV5, PlayerDecisionIdV1, PlayerOutcome, PlayerResult,
         StateRevision, TruncationReason,
     };
 
@@ -351,7 +351,7 @@ mod tests {
         EngineState,
         TransitionResult,
         Vec<AuthoritativeRuleEvent>,
-        FullStateDigestV4,
+        FullStateDigestV5,
     ) {
         let before = lifecycle::lifecycle_fixture();
         let result = lifecycle::scenario_explicit_forget(&before).unwrap();
@@ -789,7 +789,7 @@ mod tests {
     fn exact_transition_state_digest_failure_is_detailed() {
         let (before, result, mut expected) = lifecycle_conformance_case();
         expected.expected_state_digest =
-            FullStateDigestV4::parse("ff".repeat(32)).expect("synthetic digest");
+            FullStateDigestV5::parse("ff".repeat(32)).expect("synthetic digest");
 
         assert_detailed_failure(
             assert_exact_transition(
@@ -974,7 +974,7 @@ mod tests {
     #[test]
     fn exact_product_digest_failure_is_detailed() {
         let (before, result, expected_events, _) = lifecycle_product_case();
-        let wrong_digest = FullStateDigestV4::parse("ff".repeat(32)).expect("synthetic digest");
+        let wrong_digest = FullStateDigestV5::parse("ff".repeat(32)).expect("synthetic digest");
 
         assert_detailed_failure(
             lifecycle::assert_exact_transition_product(

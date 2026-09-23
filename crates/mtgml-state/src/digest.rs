@@ -6,6 +6,6 @@ pub enum StateDigestError {
     Serialization,
     #[error("persisted full-state digest encoding failed: {0}")]
     Persistence(mtgml_persistence::PersistenceDecodeErrorV1),
-    #[error("state violates the authoritative V4 digest preconditions")]
+    #[error("state violates the authoritative current digest preconditions")]
     StateInvariant,
 }

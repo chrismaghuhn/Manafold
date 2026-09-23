@@ -122,8 +122,8 @@ GATE_TESTS: dict[str, tuple[EvidenceDefinition, ...]] = {
         ),
         rust(
             "mtgml-state",
-            "tests::state_delta_uses_full_state_digest_v4",
-            "StateDelta V4 identity and exact reapplication",
+            "tests::state_delta_uses_full_state_digest_v5",
+            "StateDelta V5 identity and exact reapplication",
         ),
         rust(
             "mtgml-state",
@@ -580,7 +580,7 @@ def check_no_current_v2_producer() -> str:
             raise AssertionError(f"detached V3 historical evidence missing: {relative}:{token}")
     if (ROOT / "wire" / "staging").exists():
         raise AssertionError("temporary wire staging directory remains")
-    return "current state/rules/environment producers are V4; V3 readers/evidence remain detached"
+    return "current state is V5 and checkpoint/replay are V6; V3 readers/evidence remain detached"
 
 
 SOURCE_CHECKS: dict[str, Callable[[], str]] = {

@@ -1,10 +1,10 @@
 use std::collections::BTreeSet;
 
 use mtgml_model::{
-    CheckpointDigestV4, CheckpointDigestV5, EpisodeStatus, ExecutionIdentityV1, FullStateDigestV4,
-    PlayerId,
+    CheckpointDigestV4, CheckpointDigestV5, CheckpointDigestV6, EpisodeStatus, ExecutionIdentityV1,
+    FullStateDigestV4, FullStateDigestV5, PlayerId,
 };
-use mtgml_state::{validate_engine_state, EngineState};
+use mtgml_state::{calculate_full_state_digest_v4_historical, validate_engine_state, EngineState};
 use thiserror::Error;
 
 pub use mtgml_model::{CheckpointCodecIdentity, EnvironmentLimitCounters};
@@ -17,6 +17,11 @@ pub const CHECKPOINT_CODEC_SEMANTIC_VERSION_V4: &str = "4";
 pub const ENVIRONMENT_CHECKPOINT_SCHEMA_V5: &str = "environment-checkpoint.v5";
 pub const CHECKPOINT_CODEC_ID_V5: &str = "in-memory-reference";
 pub const CHECKPOINT_CODEC_SEMANTIC_VERSION_V5: &str = "5";
+
+// === Current V6 identity cut ===
+pub const ENVIRONMENT_CHECKPOINT_SCHEMA_V6: &str = "environment-checkpoint.v6";
+pub const CHECKPOINT_CODEC_ID_V6: &str = "in-memory-reference";
+pub const CHECKPOINT_CODEC_SEMANTIC_VERSION_V6: &str = "6";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EnvironmentCheckpointV4 {
@@ -59,8 +64,7 @@ impl EnvironmentCheckpointV4 {
         limit_counters: EnvironmentLimitCounters,
         codec: CheckpointCodecIdentity,
     ) -> Result<Self, CheckpointValidationError> {
-        let state_digest = state
-            .digest()
+        let state_digest = calculate_full_state_digest_v4_historical(&state)
             .map_err(|_| CheckpointValidationError::StateDigest)?;
         limit_counters
             .validate()
@@ -94,9 +98,7 @@ impl EnvironmentCheckpointV4 {
             .map_err(|_| CheckpointValidationError::EpisodeStatus)?;
         let players: BTreeSet<_> = self.state.core.players.keys().copied().collect();
         validate_checkpoint_status_player_universe(&self.status, &players)?;
-        let state_digest = self
-            .state
-            .digest()
+        let state_digest = calculate_full_state_digest_v4_historical(&self.state)
             .map_err(|_| CheckpointValidationError::StateDigest)?;
         if state_digest != self.state_digest {
             return Err(CheckpointValidationError::StateDigest);
@@ -182,8 +184,7 @@ impl EnvironmentCheckpointV5 {
         codec: CheckpointCodecIdentity,
         execution_identity: ExecutionIdentityV1,
     ) -> Result<Self, CheckpointValidationError> {
-        let state_digest = state
-            .digest()
+        let state_digest = calculate_full_state_digest_v4_historical(&state)
             .map_err(|_| CheckpointValidationError::StateDigest)?;
         limit_counters
             .validate()
@@ -229,6 +230,113 @@ impl EnvironmentCheckpointV5 {
             .map_err(|_| CheckpointValidationError::EpisodeStatus)?;
         let players: BTreeSet<_> = self.state.core.players.keys().copied().collect();
         validate_checkpoint_status_player_universe(&self.status, &players)?;
+        let state_digest = calculate_full_state_digest_v4_historical(&self.state)
+            .map_err(|_| CheckpointValidationError::StateDigest)?;
+        if state_digest != self.state_digest {
+            return Err(CheckpointValidationError::StateDigest);
+        }
+        self.limit_counters
+            .validate()
+            .map_err(|_| CheckpointValidationError::LimitCounters)?;
+        let checkpoint_digest = calculate_checkpoint_digest_v5(
+            &self.state_digest,
+            &self.status,
+            &self.limit_counters,
+            &self.codec,
+            &self.execution_identity,
+        )?;
+        if checkpoint_digest != self.checkpoint_digest {
+            return Err(CheckpointValidationError::CheckpointDigest);
+        }
+        if !matches!(self.status, EpisodeStatus::Running)
+            && self.state.execution.pending_decision.is_some()
+        {
+            return Err(CheckpointValidationError::CompletedWithDecision);
+        }
+        Ok(())
+    }
+}
+
+fn calculate_checkpoint_digest_v6(
+    state_digest: &FullStateDigestV5,
+    status: &EpisodeStatus,
+    counters: &EnvironmentLimitCounters,
+    codec: &CheckpointCodecIdentity,
+    execution_identity: &ExecutionIdentityV1,
+) -> Result<CheckpointDigestV6, CheckpointValidationError> {
+    mtgml_persistence::checkpoint_digest::calculate_checkpoint_digest_v6(
+        &state_digest.as_digest_reference(),
+        status,
+        counters,
+        codec,
+        execution_identity,
+    )
+    .map_err(|_| CheckpointValidationError::CheckpointDigest)
+}
+
+/// Current complete V6 checkpoint identity. This is the first checkpoint
+/// family whose state digest can represent the typed Magic SBA continuation.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EnvironmentCheckpointV6 {
+    pub schema_version: String,
+    pub state: EngineState,
+    pub state_digest: FullStateDigestV5,
+    pub status: EpisodeStatus,
+    pub limit_counters: EnvironmentLimitCounters,
+    pub codec: CheckpointCodecIdentity,
+    pub execution_identity: ExecutionIdentityV1,
+    pub checkpoint_digest: CheckpointDigestV6,
+}
+
+impl EnvironmentCheckpointV6 {
+    pub fn new(
+        state: EngineState,
+        status: EpisodeStatus,
+        limit_counters: EnvironmentLimitCounters,
+        codec: CheckpointCodecIdentity,
+        execution_identity: ExecutionIdentityV1,
+    ) -> Result<Self, CheckpointValidationError> {
+        let state_digest = state
+            .digest()
+            .map_err(|_| CheckpointValidationError::StateDigest)?;
+        limit_counters
+            .validate()
+            .map_err(|_| CheckpointValidationError::LimitCounters)?;
+        let checkpoint_digest = calculate_checkpoint_digest_v6(
+            &state_digest,
+            &status,
+            &limit_counters,
+            &codec,
+            &execution_identity,
+        )?;
+        let checkpoint = Self {
+            schema_version: ENVIRONMENT_CHECKPOINT_SCHEMA_V6.into(),
+            state,
+            state_digest,
+            status,
+            limit_counters,
+            codec,
+            execution_identity,
+            checkpoint_digest,
+        };
+        checkpoint.validate()?;
+        Ok(checkpoint)
+    }
+
+    pub fn validate(&self) -> Result<(), CheckpointValidationError> {
+        if self.schema_version != ENVIRONMENT_CHECKPOINT_SCHEMA_V6
+            || self.codec.codec_id != CHECKPOINT_CODEC_ID_V6
+            || self.codec.semantic_version != CHECKPOINT_CODEC_SEMANTIC_VERSION_V6
+        {
+            return Err(CheckpointValidationError::Identity);
+        }
+        validate_engine_state(&self.state)
+            .map_err(|_| CheckpointValidationError::StateInvariant)?;
+        self.status
+            .validate()
+            .map_err(|_| CheckpointValidationError::EpisodeStatus)?;
+        let players: BTreeSet<_> = self.state.core.players.keys().copied().collect();
+        validate_checkpoint_status_player_universe(&self.status, &players)?;
         let state_digest = self
             .state
             .digest()
@@ -239,7 +347,7 @@ impl EnvironmentCheckpointV5 {
         self.limit_counters
             .validate()
             .map_err(|_| CheckpointValidationError::LimitCounters)?;
-        let checkpoint_digest = calculate_checkpoint_digest_v5(
+        let checkpoint_digest = calculate_checkpoint_digest_v6(
             &self.state_digest,
             &self.status,
             &self.limit_counters,

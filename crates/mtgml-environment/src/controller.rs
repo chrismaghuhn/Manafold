@@ -1,20 +1,20 @@
 use mtgml_decision::{DecisionResponseV2, PlayerDecisionRequestV2};
 use mtgml_model::PlayerId;
 use mtgml_observation::{ObservationEnvelope, PlayerInformationStateV2, PlayerStepV2};
-use mtgml_replay::AuthoritativeReplayV5;
+use mtgml_replay::AuthoritativeReplayV6;
 use std::sync::{Arc, Mutex, MutexGuard};
 
-use crate::checkpoint::EnvironmentCheckpointV5;
+use crate::checkpoint::EnvironmentCheckpointV6;
 use crate::endpoint::PlayerEndpointHandle;
 use crate::errors::ControllerError;
 use crate::semantic_catalog::{admit_restore, RuntimeSemanticCatalog};
 
 pub trait EnvironmentBackend: Send {
     fn players(&self) -> Vec<PlayerId>;
-    fn checkpoint(&self) -> Result<EnvironmentCheckpointV5, ControllerError>;
-    fn restore(&mut self, checkpoint: EnvironmentCheckpointV5) -> Result<(), ControllerError>;
+    fn checkpoint(&self) -> Result<EnvironmentCheckpointV6, ControllerError>;
+    fn restore(&mut self, checkpoint: EnvironmentCheckpointV6) -> Result<(), ControllerError>;
     fn fork_boxed(&self) -> Result<Box<dyn EnvironmentBackend>, ControllerError>;
-    fn export_replay(&self) -> Result<AuthoritativeReplayV5, ControllerError>;
+    fn export_replay(&self) -> Result<AuthoritativeReplayV6, ControllerError>;
     fn execute_trusted_response(
         &mut self,
         _actor: PlayerId,
@@ -78,11 +78,11 @@ impl TrustedEnvironmentController {
         })
     }
 
-    pub fn checkpoint(&self) -> Result<EnvironmentCheckpointV5, ControllerError> {
+    pub fn checkpoint(&self) -> Result<EnvironmentCheckpointV6, ControllerError> {
         self.lock()?.checkpoint()
     }
 
-    pub fn restore(&self, checkpoint: EnvironmentCheckpointV5) -> Result<(), ControllerError> {
+    pub fn restore(&self, checkpoint: EnvironmentCheckpointV6) -> Result<(), ControllerError> {
         admit_restore(&RuntimeSemanticCatalog::production(), &checkpoint)?;
         self.lock()?.restore(checkpoint)
     }
@@ -90,7 +90,7 @@ impl TrustedEnvironmentController {
     #[cfg(test)]
     pub(crate) fn restore_with_catalog(
         &self,
-        checkpoint: EnvironmentCheckpointV5,
+        checkpoint: EnvironmentCheckpointV6,
         catalog: RuntimeSemanticCatalog,
     ) -> Result<(), ControllerError> {
         admit_restore(&catalog, &checkpoint)?;
@@ -104,7 +104,7 @@ impl TrustedEnvironmentController {
         })
     }
 
-    pub fn export_replay(&self) -> Result<AuthoritativeReplayV5, ControllerError> {
+    pub fn export_replay(&self) -> Result<AuthoritativeReplayV6, ControllerError> {
         self.lock()?.export_replay()
     }
 
@@ -127,8 +127,8 @@ impl TrustedEnvironmentController {
     /// not establish these execution facts.
     pub fn execute_replay_from_checkpoint(
         &self,
-        checkpoint: EnvironmentCheckpointV5,
-        replay: AuthoritativeReplayV5,
+        checkpoint: EnvironmentCheckpointV6,
+        replay: AuthoritativeReplayV6,
     ) -> Result<crate::replay::ReplayExecutionReport, ControllerError> {
         admit_restore(&RuntimeSemanticCatalog::production(), &checkpoint)?;
         let mut backend = self.lock()?.fork_boxed()?;

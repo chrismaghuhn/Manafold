@@ -61,7 +61,7 @@
 //!                                                real PlayerEndpointHandle
 //!                                                boundary -> PlayerStepV2
 //! parity: controller.checkpoint().state == trusted.next_state (and exact
-//!                                                FullStateDigestV4 equality)
+//!                                                FullStateDigestV5 equality)
 //!                                                before proceeding
 //! assert_exact_transition(&cp.state, current_decision, &step.response,
 //!                         &trusted, actual_steps{actor: player_step},
@@ -114,7 +114,7 @@ use std::collections::BTreeMap;
 
 use mtgml_decision::{AuthoritativeDecisionRequestV2, DecisionResponseV2, PlayerDecisionRequestV2};
 use mtgml_environment::{PlayerEndpoint, PlayerEndpointHandle, TrustedEnvironmentController};
-use mtgml_model::{EpisodeStatus, FullStateDigestV4, PlayerId};
+use mtgml_model::{EpisodeStatus, FullStateDigestV5, PlayerId};
 use mtgml_observation::PlayerStepV2;
 use mtgml_rules::{AuthoritativeRuleEvent, TransitionResult};
 use mtgml_state::StateDelta;
@@ -211,7 +211,7 @@ pub struct ConformanceForcedProgressStepRef {
 /// decisions, and environment limit-counter deltas.
 #[derive(Debug, Clone)]
 pub struct ForcedProgressExpectation {
-    pub expected_state_digest: FullStateDigestV4,
+    pub expected_state_digest: FullStateDigestV5,
     pub expected_authoritative_events: Vec<AuthoritativeRuleEvent>,
     pub expected_semantic_delta: StateDelta,
     pub expected_next_decision: Option<AuthoritativeDecisionRequestV2>,
@@ -337,7 +337,7 @@ fn run_transition(
         .map_err(infrastructure)?;
 
     // Parity: the shared endpoint-mutated instant must equal the trusted
-    // fork's product exactly. The complete `EnvironmentCheckpointV5` binds
+    // fork's product exactly. The complete `EnvironmentCheckpointV6` binds
     // authoritative state, full-state digest, episode status, limit counters,
     // codec identity, and checkpoint digest; the authoritative replay
     // products bind the recorded transition and the terminal identity. The
@@ -379,7 +379,7 @@ fn run_transition(
     }
     // The fork records the identical transition in its own segment, so only
     // the segment-local step index may differ. Aligning it lets the whole
-    // `ReplayStepV5` be compared instead of hand-picked fields.
+    // `ReplayStepV6` be compared instead of hand-picked fields.
     let mut aligned_fork_step = fork_step.clone();
     aligned_fork_step.step_index = main_step.step_index;
     if &aligned_fork_step != main_step || fork_replay.final_identity != main_replay.final_identity {
@@ -645,7 +645,7 @@ mod t0_01_red_contract {
     };
     use mtgml_model::{
         CandidateIdV1, CardDefinitionId, ContinuationId, DecisionId, EpisodeStatus,
-        FullStateDigestV4, GameObjectId, InformationStateDigestV2, ObservationDigest,
+        FullStateDigestV5, GameObjectId, InformationStateDigestV2, ObservationDigest,
         OpaqueObjectId, PlayerDecisionIdV1, PlayerId, RuleEventId, StateRevision, VisibleSequence,
         ZoneKind,
     };
@@ -1022,13 +1022,13 @@ mod t0_01_red_contract {
         }
     }
 
-    fn entry_expected_state_digest() -> FullStateDigestV4 {
-        FullStateDigestV4::parse("4bf8babd2e5661bd64e84e4830dae09c633d0db348e4df7e75915a15c6c1d3e7")
+    fn entry_expected_state_digest() -> FullStateDigestV5 {
+        FullStateDigestV5::parse("fe66fe556e91ee82c858505279be02277715d435c601bcf63bc262a524f63d24")
             .expect("entry digest")
     }
 
-    fn count_expected_state_digest() -> FullStateDigestV4 {
-        FullStateDigestV4::parse("03e13400f71135656196ea83b00bad1821df341ea8b9a03634e45fc0ae83ed0a")
+    fn count_expected_state_digest() -> FullStateDigestV5 {
+        FullStateDigestV5::parse("43bff9d696d61c9473cf6e78c5da7021e7a1d5b1622224e9f1131840499eefde")
             .expect("count digest")
     }
 
@@ -1063,7 +1063,7 @@ mod t0_01_red_contract {
     fn entry_case() -> ConformanceCase {
         ConformanceCase {
             name: "synthetic-entry-choose-one-accepted",
-            description: "one explicit ChooseOne response commits the accepted V4 transition",
+            description: "one explicit ChooseOne response commits the accepted transition",
             steps: vec![ConformanceCaseStep::Transition(Box::new(
                 ConformanceStepRef {
                     label: "step-1-entry-choose-one",
@@ -1548,11 +1548,11 @@ mod t0_01_red_contract {
         expected
     }
 
-    /// Frozen golden: the mechanical V4 digest of the independently
+    /// Frozen golden: the mechanical V5 digest of the independently
     /// constructed expected stabilized state (transcribed from authored
     /// fixture data through the hash mechanism; never production output).
-    fn stabilized_expected_state_digest() -> FullStateDigestV4 {
-        FullStateDigestV4::parse("c02efa9c73cbdea7ac3901cc172f0aa5c749ceb5b4cba5cd790e41fcc7aa967e")
+    fn stabilized_expected_state_digest() -> FullStateDigestV5 {
+        FullStateDigestV5::parse("ef845e3c7da6cec551cee93e54c2774018474a877c1acd45c1abd86b7c29187a")
             .expect("stabilized digest")
     }
 

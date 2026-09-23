@@ -3,8 +3,8 @@ use crate::error::WireError;
 use mtgml_model::EpisodeStatus;
 use mtgml_replay::{
     AuthoritativeReplayV1, AuthoritativeReplayV2, AuthoritativeReplayV3, AuthoritativeReplayV4,
-    AuthoritativeReplayV5, ReplayManifestV1, ReplayManifestV2, ReplayManifestV3, ReplayManifestV4,
-    ReplayManifestV5,
+    AuthoritativeReplayV5, AuthoritativeReplayV6, ReplayManifestV1, ReplayManifestV2,
+    ReplayManifestV3, ReplayManifestV4, ReplayManifestV5, ReplayManifestV6,
 };
 
 impl WireContract for EpisodeStatus {
@@ -78,6 +78,20 @@ impl WireContract for ReplayManifestV5 {
 }
 
 impl WireContract for AuthoritativeReplayV5 {
+    fn validate_wire(&self) -> Result<(), WireError> {
+        self.validate()
+            .map_err(|error| WireError::new("semantic.replay", error.to_string()))
+    }
+}
+
+impl WireContract for ReplayManifestV6 {
+    fn validate_wire(&self) -> Result<(), WireError> {
+        self.validate()
+            .map_err(|error| WireError::new("semantic.replay_manifest", error.to_string()))
+    }
+}
+
+impl WireContract for AuthoritativeReplayV6 {
     fn validate_wire(&self) -> Result<(), WireError> {
         self.validate()
             .map_err(|error| WireError::new("semantic.replay", error.to_string()))

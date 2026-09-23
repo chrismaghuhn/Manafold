@@ -6,7 +6,7 @@
 //! accept — or a pair the witness cannot authorize — never becomes evidence.
 
 use mtgml_environment::{
-    EnvironmentCheckpointV5, PlayerEndpointHandle, SyntheticM1EnvironmentBackend,
+    EnvironmentCheckpointV6, PlayerEndpointHandle, SyntheticM1EnvironmentBackend,
     SyntheticM1EnvironmentConfig, SyntheticM1ReplayConfig, TrustedEnvironmentController,
 };
 use mtgml_model::{
@@ -18,7 +18,7 @@ use mtgml_observation::{
     PLAYER_STEP_SCHEMA_V2,
 };
 use mtgml_random::RootSeed256;
-use mtgml_replay::{DeckIdentityV1, KernelIdentityV1, ReplaySchemaVersionsV5};
+use mtgml_replay::{DeckIdentityV1, KernelIdentityV1, ReplaySchemaVersionsV6};
 use mtgml_state::{
     construct_synthetic_engine_state, validate_engine_state, EngineState, SyntheticResetInputs,
 };
@@ -79,7 +79,7 @@ pub type TransformFn = fn(&mut EngineState) -> Result<TransformReport, HarnessEr
 fn codec_identity() -> CheckpointCodecIdentity {
     CheckpointCodecIdentity {
         codec_id: "in-memory-reference".into(),
-        semantic_version: "5".into(),
+        semantic_version: "6".into(),
     }
 }
 
@@ -108,7 +108,7 @@ pub fn synthetic_environment_config(players: [PlayerId; 2]) -> SyntheticM1Enviro
             oracle_snapshot: "synthetic-oracle".into(),
             card_bundle: "synthetic-bundle".into(),
             randomness_contract_id: "mtgml.rng.v1".into(),
-            schemas: ReplaySchemaVersionsV5 {
+            schemas: ReplaySchemaVersionsV6 {
                 observation: OBSERVATION_SCHEMA.into(),
                 observation_payload_codec: "synthetic-m3-observation.v1".into(),
                 information_state: INFORMATION_STATE_SCHEMA_V2.into(),
@@ -116,7 +116,7 @@ pub fn synthetic_environment_config(players: [PlayerId; 2]) -> SyntheticM1Enviro
                 decision_response: "decision-response.v2".into(),
                 observed_event: OBSERVED_EVENT_SCHEMA_V2.into(),
                 player_step: PLAYER_STEP_SCHEMA_V2.into(),
-                replay_step: "replay-step.v5".into(),
+                replay_step: "replay-step.v6".into(),
             },
             decks: players
                 .into_iter()
@@ -141,7 +141,7 @@ pub fn spawn_environment(
     config: &SyntheticM1EnvironmentConfig,
 ) -> Result<(TrustedEnvironmentController, [PlayerEndpointHandle; 2]), HarnessError> {
     let counters = EnvironmentLimitCounters::default();
-    let checkpoint = EnvironmentCheckpointV5::new(
+    let checkpoint = EnvironmentCheckpointV6::new(
         state,
         EpisodeStatus::Running,
         counters,
@@ -365,8 +365,8 @@ pub(crate) mod test_support {
     /// Independently checks the synthetic entry transition before any
     /// byte-parity assertion is used as evidence.
     pub fn assert_accepted_entry_progression(
-        before: &EnvironmentCheckpointV5,
-        after: &EnvironmentCheckpointV5,
+        before: &EnvironmentCheckpointV6,
+        after: &EnvironmentCheckpointV6,
         step: &PlayerStepV2,
     ) -> Result<(), HarnessError> {
         if step.submission != PlayerStepSubmissionV1::Accepted {
@@ -504,8 +504,8 @@ pub(crate) mod test_support {
     /// Independently checks the frozen ChooseCount -> ChooseMembers accepted
     /// transition used by checkpoint and fork parity.
     pub fn assert_accepted_count_progression(
-        before: &EnvironmentCheckpointV5,
-        after: &EnvironmentCheckpointV5,
+        before: &EnvironmentCheckpointV6,
+        after: &EnvironmentCheckpointV6,
         step: &PlayerStepV2,
     ) -> Result<(), HarnessError> {
         if step.submission != PlayerStepSubmissionV1::Accepted {

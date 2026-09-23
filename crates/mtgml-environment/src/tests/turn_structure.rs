@@ -591,7 +591,7 @@ fn reference_config(state: mtgml_state::EngineState) -> ReferenceEnvironmentConf
         limit_counters: EnvironmentLimitCounters::default(),
         codec: CheckpointCodecIdentity {
             codec_id: "in-memory-reference".into(),
-            semantic_version: "5".into(),
+            semantic_version: "6".into(),
         },
         execution_identity: ExecutionIdentityV1 {
             program_kind: ExecutionProgramV1::MagicRules,
@@ -608,7 +608,7 @@ fn reference_config(state: mtgml_state::EngineState) -> ReferenceEnvironmentConf
             rules_snapshot,
             format_policy_snapshot: "format:none".into(),
             oracle_snapshot: "oracle:none".into(),
-            schemas: ReplaySchemaVersionsV5 {
+            schemas: ReplaySchemaVersionsV6 {
                 observation: OBSERVATION_SCHEMA.into(),
                 observation_payload_codec: "synthetic-m3-observation.v1".into(),
                 information_state: INFORMATION_STATE_SCHEMA_V2.into(),
@@ -616,7 +616,7 @@ fn reference_config(state: mtgml_state::EngineState) -> ReferenceEnvironmentConf
                 decision_response: DECISION_RESPONSE_V2_SCHEMA.into(),
                 observed_event: OBSERVED_EVENT_SCHEMA_V2.into(),
                 player_step: PLAYER_STEP_SCHEMA_V2.into(),
-                replay_step: "replay-step.v5".into(),
+                replay_step: "replay-step.v6".into(),
             },
         },
     }
@@ -909,8 +909,8 @@ fn task10_turn_structure_checkpoint_replay_restore_fork_and_replay_are_equal() {
 
 fn assert_reference_nonmutation(
     controller: &TrustedEnvironmentController,
-    before: &EnvironmentCheckpointV5,
-    replay_before: &mtgml_replay::AuthoritativeReplayV5,
+    before: &EnvironmentCheckpointV6,
+    replay_before: &mtgml_replay::AuthoritativeReplayV6,
     products_before: &[ (
         mtgml_observation::ObservationEnvelope,
         mtgml_observation::PlayerInformationStateV2,
@@ -987,13 +987,13 @@ fn task10_turn_structure_reference_rejected_restore_cases_do_not_mutate() {
     ];
 
     for (label, identity, state) in rejected {
-        let checkpoint = EnvironmentCheckpointV5::new(
+        let checkpoint = EnvironmentCheckpointV6::new(
             state,
             EpisodeStatus::Running,
             EnvironmentLimitCounters::default(),
             CheckpointCodecIdentity {
                 codec_id: "in-memory-reference".into(),
-                semantic_version: "5".into(),
+                semantic_version: "6".into(),
             },
             identity,
         )

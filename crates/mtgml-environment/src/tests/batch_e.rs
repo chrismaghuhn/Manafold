@@ -20,7 +20,7 @@ fn fnd_022b_checkpoint_requires_the_exact_authoritative_player_universe() {
     let (state, _) = two_perspective_outcome_product();
     let codec = CheckpointCodecIdentity {
         codec_id: "in-memory-reference".into(),
-        semantic_version: "5".into(),
+        semantic_version: "6".into(),
     };
     for players in [
         Vec::new(),
@@ -44,7 +44,7 @@ fn fnd_022b_checkpoint_requires_the_exact_authoritative_player_universe() {
             players,
         };
         assert!(
-            EnvironmentCheckpointV5::new(
+            EnvironmentCheckpointV6::new(
                 state.clone(),
                 status,
                 EnvironmentLimitCounters::default(),
@@ -54,7 +54,7 @@ fn fnd_022b_checkpoint_requires_the_exact_authoritative_player_universe() {
             .is_err()
         );
     }
-    assert!(EnvironmentCheckpointV5::new(
+    assert!(EnvironmentCheckpointV6::new(
         state,
         EpisodeStatus::Terminal {
             reason: TerminalReason::Concession,
@@ -92,13 +92,13 @@ fn fnd_025_checkpoint_rejects_noncanonical_status_order() {
         ],
     };
     assert!(
-        EnvironmentCheckpointV5::new(
+        EnvironmentCheckpointV6::new(
             state,
             status,
             EnvironmentLimitCounters::default(),
             CheckpointCodecIdentity {
                 codec_id: "in-memory-reference".into(),
-                semantic_version: "5".into(),
+                semantic_version: "6".into(),
             }, synthetic_identity(),
         )
         .is_err()
@@ -112,7 +112,7 @@ fn fnd_025_checkpoint_digest_helper_retains_defensive_outcome_sort() {
     let counters = EnvironmentLimitCounters::default();
     let codec = CheckpointCodecIdentity {
         codec_id: "in-memory-reference".into(),
-        semantic_version: "5".into(),
+        semantic_version: "6".into(),
     };
     let sorted = EpisodeStatus::Terminal {
         reason: TerminalReason::Concession,
@@ -140,7 +140,7 @@ fn fnd_025_checkpoint_digest_helper_retains_defensive_outcome_sort() {
             },
         ],
     };
-    let sorted_digest = mtgml_persistence::checkpoint_digest::calculate_checkpoint_digest_v5(
+    let sorted_digest = mtgml_persistence::checkpoint_digest::calculate_checkpoint_digest_v6(
         &digest.as_digest_reference(),
         &sorted,
         &counters,
@@ -149,7 +149,7 @@ fn fnd_025_checkpoint_digest_helper_retains_defensive_outcome_sort() {
     )
     .unwrap();
     let permuted_digest =
-        mtgml_persistence::checkpoint_digest::calculate_checkpoint_digest_v5(
+        mtgml_persistence::checkpoint_digest::calculate_checkpoint_digest_v6(
             &digest.as_digest_reference(),
             &permuted,
             &counters,
@@ -160,9 +160,9 @@ fn fnd_025_checkpoint_digest_helper_retains_defensive_outcome_sort() {
     assert_eq!(sorted_digest, permuted_digest);
 }
 
-fn reseal_replay_step(replay: &mut AuthoritativeReplayV5) {
+fn reseal_replay_step(replay: &mut AuthoritativeReplayV6) {
     let step = &mut replay.steps[0];
-    let identity = mtgml_replay::InitialEnvironmentIdentityV5 {
+    let identity = mtgml_replay::InitialEnvironmentIdentityV6 {
         state_revision: step.state_revision_after,
         full_state_digest: step.full_state_digest_after.clone(),
         episode_status: step.episode_status_after.clone(),
@@ -172,11 +172,11 @@ fn reseal_replay_step(replay: &mut AuthoritativeReplayV5) {
             .initial_identity
             .checkpoint_codec_identity
             .clone(),
-        checkpoint_digest: CheckpointDigestV5::from_digest_bytes([0; 32]),
+        checkpoint_digest: CheckpointDigestV6::from_digest_bytes([0; 32]),
         execution_identity: replay.manifest.initial_identity.execution_identity.clone(),
     };
     step.checkpoint_digest_after =
-        mtgml_persistence::checkpoint_digest::calculate_checkpoint_digest_v5(
+        mtgml_persistence::checkpoint_digest::calculate_checkpoint_digest_v6(
             &identity.full_state_digest.as_digest_reference(),
             &identity.episode_status,
             &identity.environment_limit_counters,
@@ -184,7 +184,7 @@ fn reseal_replay_step(replay: &mut AuthoritativeReplayV5) {
             &identity.execution_identity,
         )
         .unwrap();
-    replay.final_identity = mtgml_replay::InitialEnvironmentIdentityV5 {
+    replay.final_identity = mtgml_replay::InitialEnvironmentIdentityV6 {
         checkpoint_digest: step.checkpoint_digest_after.clone(),
         ..identity
     };
@@ -232,7 +232,7 @@ fn fnd_023_structural_replay_validation_does_not_verify_backend_state() {
     let live_after = controller.checkpoint().unwrap();
     let mut tampered = controller.export_replay().unwrap();
     tampered.steps[0].full_state_digest_after =
-        mtgml_model::FullStateDigestV4::from_digest_bytes([0x7f; 32]);
+        mtgml_model::FullStateDigestV5::from_digest_bytes([0x7f; 32]);
     reseal_replay_step(&mut tampered);
 
     tampered.validate().unwrap();

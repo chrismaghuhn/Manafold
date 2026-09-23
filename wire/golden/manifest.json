@@ -179,6 +179,14 @@
     {
       "contract": "authoritative-replay.v5",
       "path": "authoritative-replay-empty.v5.json"
+    },
+    {
+      "contract": "replay-manifest.v6",
+      "path": "replay-manifest.v6.json"
+    },
+    {
+      "contract": "authoritative-replay.v6",
+      "path": "authoritative-replay-empty.v6.json"
     }
   ]
 }

@@ -115,24 +115,32 @@ The reference contract prefers correctness/auditability over compactness. A late
 
 M2 changes authoritative execution/knowledge/perspective-identity meaning and therefore requires a new V3 full-state identity. Historical V1/V2 state/checkpoint identities are never reinterpreted against the changed runtime `EngineState`.
 
-`FullStateDigestInputV2` remains detached historical evidence only. The current
-runtime converts to `FullStateDigestInputV3` and constructs `FullStateDigestV3`
-through the accepted persisted semantic codec.
+`FullStateDigestInputV2` and V3 remain detached historical evidence only.
+After the later M3 V4 cut and S3.P0 identity cut, the current runtime converts
+to `FullStateDigestInputV5` and constructs `FullStateDigestV5` through the
+accepted persisted semantic codec.
 
 The detached V3 semantic digest mapping is specified in [`../STATE_HASHING.md`](../STATE_HASHING.md).
 
-## V5 execution-identity binding
+## V5 state and V6 checkpoint/replay identity
 
-ADR 0055 introduces `ExecutionIdentityV1` as the resumable checkpoint identity.
-`EngineState` and `FullStateDigest` are unchanged — execution identity is
-environment/resume identity, not a Magic state variable.
+ADR 0055 introduced `ExecutionIdentityV1` as the resumable checkpoint
+identity. S3.P0 adds authoritative Magic SBA-order continuation state, so the
+current full-state identity is now `FullStateDigestV5`; the detached V4 codec
+keeps its exact historical meaning and rejects the Magic continuation.
 
-`EnvironmentCheckpointV5` carries `execution_identity: ExecutionIdentityV1`
-(`program_kind: ExecutionProgramV1`, `semantic_contract_id: SemanticContractIdV1`)
-and `checkpoint_digest: CheckpointDigestV5`. The checkpoint digest input is the
-V4 6-element array plus `ExecutionIdentityV1` as the 7th (last) element, canonically
-encoded as `[program_kind_variant_array, semantic_contract_id_32bytes]`.
+`EnvironmentCheckpointV6` carries `FullStateDigestV5`,
+`execution_identity: ExecutionIdentityV1` (`program_kind: ExecutionProgramV1`,
+`semantic_contract_id: SemanticContractIdV1`), and `checkpoint_digest:
+CheckpointDigestV6`. Its V6 digest input binds the complete V5 full-state
+digest reference, status, environment counters, `in-memory-reference / 6`,
+and the full execution identity as the final element. Replay V6 uses those
+same V5/V6 typed identity references and retains one real
+`DecisionResponseV2` per replay step.
 
-V4 checkpoint/replay identities remain as historical/verifier context only
-(`READABLE_VERIFIABLE_ONLY` / `UNSUPPORTED` per ADR §2.12). No V4→V5 automatic
-migration exists. Historical V4 material is never reinterpreted as V5.
+`FullStateDigestV4`, `EnvironmentCheckpointV5`, `CheckpointDigestV5`, and
+Replay V5 retain their exact historical meanings. V4 digest and V5
+checkpoint/replay evidence are not reinterpreted by the V6 runtime. Neither
+V4→V5 nor V5→V6 automatic migration exists. A V6 checkpoint containing the
+Magic SBA-order continuation is not restore-executable under a semantic
+contract that does not admit S3.A.

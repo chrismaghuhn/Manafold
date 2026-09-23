@@ -28,10 +28,10 @@
 - **Real Magic semantics:** bounded M3.S1 turn-structure slice and implemented M3.S2 selected zone-incarnation profiles only
 - **Real card support:** none
 
-**Current resumable execution contract:** V5. V5 binds `ExecutionIdentityV1`
-through the `EnvironmentCheckpointV5` / `CheckpointDigestV5` and
-`ReplayManifestV5` surfaces; V4 remains historical-only and is not
-reinterpreted.
+**Current resumable execution contract:** V6. V6 binds the V5 full-state
+identity and `ExecutionIdentityV1` through `EnvironmentCheckpointV6`,
+`CheckpointDigestV6`, and Replay V6. V4/V5 artifacts retain their historical
+meanings and are not reinterpreted or automatically migrated.
 
 Manafold prioritizes:
 

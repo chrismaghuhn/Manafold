@@ -9,6 +9,7 @@ mod delta;
 mod digest;
 mod digest_v3;
 mod digest_v4;
+mod digest_v5;
 mod engine;
 mod execution;
 mod format;
@@ -30,6 +31,10 @@ pub use core::{
 };
 pub use delta::{DeltaApplicationError, SemanticDeltaOperation, StateDelta};
 pub use digest::StateDigestError;
+pub use digest_v4::{
+    calculate_full_state_digest_v4_historical, canonical_state_bytes_v4_historical,
+};
+pub use digest_v5::{FULL_STATE_DIGEST_DOMAIN_V5, FULL_STATE_DIGEST_INPUT_SCHEMA_V5};
 pub use engine::{EngineState, EngineStateParts, FULL_STATE_DIGEST_INPUT_SCHEMA};
 pub use execution::{EffectRecord, ExecutionState, TriggerRecord};
 pub use format::{CommanderState, FormatState};
@@ -47,7 +52,8 @@ pub use m2_shape::{
     AssemblyStageV2, ContinuationPayloadV2, ContinuationRecordV2, KnowledgeInvalidationV2,
     KnowledgeRecordV2, KnowledgeStateV2, KnownLocationFactV2, PendingDecisionRecordV2,
     PerspectiveIdentityRecordV2, PerspectiveIdentityStateV2, PlayerKnowledgeStateV2,
-    RetiredKnowledgeRecordV2, SYNTHETIC_COUNT_MAX, SYNTHETIC_COUNT_MIN,
+    RetiredKnowledgeRecordV2, SbaActionCauseV1, SbaGraveyardOwnerOrderV1, SbaSelectedActionV1,
+    SYNTHETIC_COUNT_MAX, SYNTHETIC_COUNT_MIN,
 };
 pub use validation::{validate_engine_state, EngineStateViolation};
 pub use zones::{

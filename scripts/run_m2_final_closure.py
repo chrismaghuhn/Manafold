@@ -48,12 +48,11 @@ the certification profile runs after every other verification step and is
 followed only by the final read-only source snapshot and report writing
 into gitignored ``dist/``.
 
-Posture (Task 14 / ADR §2.15 / §21b): the V5 current gate lives in the
-CURRENT verification chain (``scripts/run_v5_execution_identity_gate.py``
-wired into ``scripts/run_checks.py`` FAST and ``justfile contracts``).
-This runner remains a purely HISTORICAL M2 aggregator; it never becomes a
-V5-current-gate aggregator.  History and currentness are never mixed in
-one runner again.
+Posture: this remains a purely HISTORICAL M2 aggregator. The detached V5 gate
+and the current V6 state-identity gate live in the current verification chain
+(``scripts/run_v5_execution_identity_gate.py`` and
+``scripts/run_v6_state_identity_gate.py``). This runner does not promote M2
+history into current-runtime identity evidence.
 
 Reports and logs are written only below ``dist/m2-final-verification/``
 (never into the reproducible source archive).
@@ -674,6 +673,11 @@ SCOPE_MAGIC_CLOSED_VOCAB_EXCEPTIONS: dict[tuple[str, str, str], int] = {
     ): 1,
     (
         r"\bcombat_damage\b",
+        "crates/mtgml-state/src/digest_v5.rs",
+        'CombatStep::CombatDamage => "combat_damage",',
+    ): 1,
+    (
+        r"\bcombat_damage\b",
         "python/src/mtgml/_observation_m3.py",
         '"combat_damage",',
     ): 1,
@@ -706,6 +710,8 @@ SCHEMA_INVENTORY_ALLOWED: frozenset[str] = frozenset(
         "authoritative-replay.v2.schema.json",
         "authoritative-replay.v3.schema.json",
         "authoritative-replay.v4.schema.json",
+        "authoritative-replay.v5.schema.json",
+        "authoritative-replay.v6.schema.json",
         "bundle-certification.v1.schema.json",
         "bundle-manifest.v1.schema.json",
         "capability-registry.v1.schema.json",
@@ -730,7 +736,7 @@ SCHEMA_INVENTORY_ALLOWED: frozenset[str] = frozenset(
         "replay-manifest.v3.schema.json",
         "replay-manifest.v4.schema.json",
         "replay-manifest.v5.schema.json",
-        "authoritative-replay.v5.schema.json",
+        "replay-manifest.v6.schema.json",
         "synthetic-m3-observation.v1.schema.json",
         "scope-impact-report.v1.schema.json",
     }

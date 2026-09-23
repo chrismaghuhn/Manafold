@@ -1,6 +1,6 @@
 # Replay and Determinism
 
-**Status:** M1 Replay V2 accepted/current; M2 Replay V3 freeze candidate  
+**Status:** Replay V6 current resumable identity; V1–V5 meanings retained historically
 **Stability:** provisional-public replay identity; historical versions never reinterpreted
 
 ## Replay identity
@@ -52,13 +52,41 @@ The checkpoint digest must recompute from the other fields using the V3 checkpoi
 
 M2 does not resolve stable semantic action keys or trajectory encoding.
 
-### V5 replay
+### V5 replay (historical)
 
-ADR 0055 introduces Replay V5 as the current resumable replay identity. `ReplayManifestV5` carries the full `ExecutionIdentityV1` (`execution_identity`), the semantic contract material (`semantic_contract` with `semantic_contract_id`, `manifest`, `rules_manifest`), and retains `KernelIdentityV1` and `rules_snapshot` as provenance. `InitialEnvironmentIdentityV5` adds `execution_identity` to the V4 fields. `AuthoritativeReplayV5` adds `final_identity.execution_identity`. `ReplayStepV5` uses `CheckpointDigestV5` with schema `replay-step.v5`.
+ADR 0055 introduced Replay V5 and it retains that exact historical meaning.
+`ReplayManifestV5` carries the full `ExecutionIdentityV1`, semantic contract
+material, and kernel/rules provenance. Its initial/step identities are typed
+against `FullStateDigestV4` and `CheckpointDigestV5`.
 
-Detached `AuthoritativeReplayV5::validate()` verifies the three-way identity binding (`manifest.execution_identity == initial_identity.execution_identity == final_identity.execution_identity`), semantic manifest hashes to `semantic_contract_id`, rules manifest hashes to the rules ID, and for `comprehensive_rules` contracts `rules_snapshot` equals the bound authority payload. `synthetic_legacy` rules_snapshot remains informational.
+Detached `AuthoritativeReplayV5::validate()` verifies the three-way identity
+binding and the semantic/rules contract hashes. V5 is no longer a current
+writer or current-runtime execution path after S3.P0.
 
-V4 replay types remain as historical/verifier context only (`READABLE_VERIFIABLE_ONLY`). No V4→V5 migration exists.
+### V6 replay (current)
+
+S3.P0 introduces `ReplayManifestV6`, `ReplayStepV6`,
+`AuthoritativeReplayV6`, `ReplayRecorderV6`, `ReplaySchemaVersionsV6`, and
+`InitialEnvironmentIdentityV6`. V6 binds the complete `ExecutionIdentityV1`
+and uses `FullStateDigestV5` / `CheckpointDigestV6` in initial, per-step and
+final identities.
+
+Each `ReplayStepV6` contains exactly one real `DecisionResponseV2`. Forced
+progress has no replay input; deterministic consequences belong to the real
+response that caused them. No event-as-input, implicit pass, or synthetic
+response is introduced by the state identity cut.
+
+The V6 manifest binds the observation payload codec. Existing producers retain
+`synthetic-m3-observation.v1`; `magic-m3-observation.v1` is admitted only for a
+semantic rules closure containing the selected SBA capability. The observation
+envelope and information-state digest identities remain unchanged.
+
+`FullStateDigestV4`, Checkpoint V5 and Replay V5 retain their exact historical
+meaning and bytes. V4 digest and V5 checkpoint/replay artifacts are never
+reinterpreted as V5 state or V6 replay. V5 artifacts remain detached
+`READABLE_VERIFIABLE_ONLY` evidence in the current runtime; executing V5
+semantics requires its archived matching runtime. No automatic V5→V6
+migration exists.
 
 ## ReplayStepV3
 
