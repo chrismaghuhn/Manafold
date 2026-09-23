@@ -182,15 +182,19 @@ S3_P0_MERGE_COMMIT = ffc433985f41e6e2980df23a103b5e2358527ea3
 S3_0_AUTHORIZED = YES
 S3_0_IMPLEMENTATION_AUTHORIZED = YES
 S3_0_STARTED = YES
-S3_0_IMPLEMENTATION = COMPLETE_CANDIDATE
-S3_0_EXACT_HEAD_REVIEW = PENDING
-S3_A_AUTHORIZED = NO
+S3_0_COMPLETE = YES
+S3_0_FROZEN = YES
+S3_0_REVIEW_HEAD = aa28f9753225dca0e58e33b0d0356a1cc560aae3
+S3_0_PR = #211
+S3_0_MERGE_COMMIT = 66f3b713787cad89674257f6e0b6448b9fd568f9
+S3_A_AUTHORIZED = YES
+S3_A_IMPLEMENTATION_AUTHORIZED = YES
+S3_A_STARTED = YES
 S3_B_AUTHORIZED = NO
 S3_C_AUTHORIZED = NO
-S3_A_IMPLEMENTATION_AUTHORIZED = NO
 S3_B_IMPLEMENTATION_AUTHORIZED = NO
 S3_C_IMPLEMENTATION_AUTHORIZED = NO
-NEXT_GATE = M3_S3_0_EXACT_HEAD_REVIEW
+NEXT_GATE = M3_S3_A_TASK_5_RED
 ```
 
 `M2.5 = NOT_CLAIMED / NOT_FROZEN`. Its abandoned census and research
@@ -220,12 +224,13 @@ were still specified and downstream work had not been authorized.
 PR #208 merged S2 at `b67cfdcc0a8e623da52a889ef2ae138a3e4256ac`; exact-head
 verification passed. M3.S2 is complete as an implementation slice, but is not
 covered or certified. S2 authoritative replay remains deferred and required
-before covered. M3.S3 selection/design is complete. S3.P0 implementation is a
-complete and frozen after PR #210 merged at
+before covered. M3.S3 selection/design is complete. S3.P0 is complete and
+frozen after PR #210 merged at
 `ffc433985f41e6e2980df23a103b5e2358527ea3`, following exact-head review of
-`0cd24d1f2cb4183c19fb04ce0c3c827148313a3b`. S3.0 is authorized and started;
-its semantic-neutral shared response transaction is an implementation-complete
-candidate pending exact-head review. S3.A, S3.B, and S3.C remain unauthorized.
+`0cd24d1f2cb4183c19fb04ce0c3c827148313a3b`. S3.0 is complete and frozen.
+PR #211's reviewed source head `aa28f9753225dca0e58e33b0d0356a1cc560aae3`
+merged at `66f3b713787cad89674257f6e0b6448b9fd568f9`. S3.A is authorized and
+started; S3.B and S3.C remain unauthorized.
 
 M3 has started through semantic-neutral P0 infrastructure, T0
 conformance/proof infrastructure, the covered S1 turn-structure capability,
