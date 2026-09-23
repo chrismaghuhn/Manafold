@@ -73,7 +73,9 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
         self.assertIn("**M3 plan status:** `ACCEPTED`", readme)
         self.assertIn("**Task 14:** `COMPLETE` — `S1_EXACT_HEAD_VERIFICATION = PASS`", readme)
         self.assertIn("**Next gate:** `M3_S3_P0_EXACT_HEAD_REVIEW`", readme)
-        self.assertIn("**S3.P0:** implementation complete candidate; exact-head review pending", readme)
+        self.assertIn(
+            "**S3.P0:** implementation complete candidate; exact-head review pending", readme
+        )
         self.assertIn("S3.0/A/B/C are not authorized", readme)
         self.assertNotIn("M3_S1_AUTHORIZATION_DECISION", readme)
         self.assertNotIn("M3_T0_CLOSURE_STATUS_SYNC_EXACT_HEAD_REVIEW", readme)
