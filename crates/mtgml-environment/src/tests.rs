@@ -592,6 +592,10 @@ include!("tests/player_endpoint.rs");
 include!("tests/continuation.rs");
 include!("tests/information_projection.rs");
 include!("tests/error_nonmutation.rs");
+mod response_transaction {
+    use super::*;
+    include!("tests/response_transaction.rs");
+}
 include!("tests/batch_d.rs");
 include!("tests/batch_e.rs");
 include!("tests/batch_f.rs");
