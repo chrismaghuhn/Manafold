@@ -54,38 +54,6 @@ impl IdentityAllocatorState {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::{IdentityAllocationError, IdentityAllocatorState};
-    use mtgml_model::GameObjectId;
-
-    #[test]
-    fn object_id_allocation_advances_exactly_once() {
-        let mut allocators = IdentityAllocatorState {
-            next_object_id: GameObjectId(41),
-            ..IdentityAllocatorState::default()
-        };
-
-        assert_eq!(allocators.allocate_object_id(), Ok(GameObjectId(41)));
-        assert_eq!(allocators.next_object_id, GameObjectId(42));
-    }
-
-    #[test]
-    fn object_id_exhaustion_preserves_allocator() {
-        let mut allocators = IdentityAllocatorState {
-            next_object_id: GameObjectId(u64::MAX),
-            ..IdentityAllocatorState::default()
-        };
-        let before = allocators.next_object_id;
-
-        assert_eq!(
-            allocators.allocate_object_id(),
-            Err(IdentityAllocationError::GameObjectIdExhausted)
-        );
-        assert_eq!(allocators.next_object_id, before);
-    }
-}
-
 impl Default for IdentityAllocatorState {
     fn default() -> Self {
         Self {
@@ -124,5 +92,37 @@ impl mtgml_decision::PerspectiveIdentityResolver for PerspectiveIdentityStateV2 
             .opaque_to_ability
             .get(&opaque)
             .copied()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{IdentityAllocationError, IdentityAllocatorState};
+    use mtgml_model::GameObjectId;
+
+    #[test]
+    fn object_id_allocation_advances_exactly_once() {
+        let mut allocators = IdentityAllocatorState {
+            next_object_id: GameObjectId(41),
+            ..IdentityAllocatorState::default()
+        };
+
+        assert_eq!(allocators.allocate_object_id(), Ok(GameObjectId(41)));
+        assert_eq!(allocators.next_object_id, GameObjectId(42));
+    }
+
+    #[test]
+    fn object_id_exhaustion_preserves_allocator() {
+        let mut allocators = IdentityAllocatorState {
+            next_object_id: GameObjectId(u64::MAX),
+            ..IdentityAllocatorState::default()
+        };
+        let before = allocators.next_object_id;
+
+        assert_eq!(
+            allocators.allocate_object_id(),
+            Err(IdentityAllocationError::GameObjectIdExhausted)
+        );
+        assert_eq!(allocators.next_object_id, before);
     }
 }

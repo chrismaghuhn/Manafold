@@ -866,15 +866,15 @@ fn s2_identity_old_reference_closure_characterization() {
                 .any(|identity| identity.object_to_opaque.contains_key(&old)),
         ),
     ]);
-    assert_eq!(refs["zones.objects"], true, "{CASE_ID}");
-    assert_eq!(refs["zones.locations"], true, "{CASE_ID}");
-    assert_eq!(refs["ordered_zones"], false, "{CASE_ID}");
-    assert_eq!(refs["foundation_sources"], true, "{CASE_ID}");
-    assert_eq!(refs["combat.attackers"], false, "{CASE_ID}");
-    assert_eq!(refs["combat.blocker_keys_or_values"], false, "{CASE_ID}");
-    assert_eq!(refs["stack_records"], false, "{CASE_ID}");
-    assert_eq!(refs["pending_trusted_bindings"], false, "{CASE_ID}");
-    assert_eq!(refs["perspective_live_mappings"], true, "{CASE_ID}");
+    assert!(refs["zones.objects"], "{CASE_ID}");
+    assert!(refs["zones.locations"], "{CASE_ID}");
+    assert!(!refs["ordered_zones"], "{CASE_ID}");
+    assert!(refs["foundation_sources"], "{CASE_ID}");
+    assert!(!refs["combat.attackers"], "{CASE_ID}");
+    assert!(!refs["combat.blocker_keys_or_values"], "{CASE_ID}");
+    assert!(!refs["stack_records"], "{CASE_ID}");
+    assert!(!refs["pending_trusted_bindings"], "{CASE_ID}");
+    assert!(refs["perspective_live_mappings"], "{CASE_ID}");
     // These current shapes contain no GameObjectId fields: effects, waiting
     // triggers, delayed effects, continuations, and FormatState.
     assert!(state.execution.effects.is_empty());

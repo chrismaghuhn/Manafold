@@ -324,8 +324,8 @@ pub(crate) fn execute_selected_zone_transition(
             if ordered.is_empty() {
                 next.zones.ordered_zones.remove(&source_key);
             } else {
-                for member in ordered.iter().copied() {
-                    let location = next.zones.locations.get_mut(&member).ok_or(
+                for member in ordered.iter() {
+                    let location = next.zones.locations.get_mut(member).ok_or(
                         KernelExecutionError::ZoneIncarnation(
                             ZoneIncarnationError::LibrarySourceNotTop,
                         ),
