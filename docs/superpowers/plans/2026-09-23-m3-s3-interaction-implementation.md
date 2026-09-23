@@ -565,8 +565,13 @@ ReferenceEnvironmentBackend::submit_player_response
 ```
 
 Task S3.0 extracts one environment-owned response transaction primitive and
-routes both backends through it. Do not copy the Synthetic transaction into
-Reference. Preserve ADR-0040 order exactly:
+moves the existing Synthetic backend onto it. The primitive is designed for
+later Reference use, but S3.0 does not activate Reference Magic submissions.
+At this plan's base, `MagicRulesKernel::apply` rejects every
+`DecisionResponseV2` with `UnsupportedPlayerResponse`; the Reference endpoint
+therefore remains unavailable until S3.B implements Basic Priority. The
+shared transaction accepts only responses the supplied kernel accepts and
+must preserve this rejection. Preserve ADR-0040 order exactly:
 
 1. Capture and validate the complete before `EnvironmentCheckpointV6`.
 2. Validate endpoint/player/episode/pending actor and response layers; call
@@ -603,13 +608,15 @@ Decision/outcome/error. If the kernel cannot guarantee this with one progress
 advance plus explicit Order responses, stop; do not add an arbitrary
 environment loop.
 
-`ReferenceEnvironmentBackend::player_visible_decision` returns the projected
-pass Decision only for its authorized actor. Its `submit_player_response`
-uses existing Layer A/B and stable rejection mapping, invokes the shared
-transaction, and returns the usual `PlayerStepV2`. Public callers never use
-`execute_trusted_response`; replay uses that internal trusted entry and the
-same shared transaction. Synthetic behavior and byte products must remain
-unchanged under semantic-neutral S3.0.
+In S3.0, only Synthetic executes accepted responses through the shared
+primitive. Reference may receive unobservable internal plumbing only if
+`player_visible_decision` and `submit_player_response` retain their current
+unavailable behavior and `MagicRulesKernel::apply` continues to reject every
+response. Do not make the Reference endpoint invoke the transaction to
+manufacture acceptance. S3.B later owns the actor-authorized pass Decision,
+Magic response acceptance, Reference submission and replay use. Public callers
+never use `execute_trusted_response`. Synthetic behavior and byte products
+must remain unchanged under semantic-neutral S3.0.
 
 ## 8. Replay and evidence contract
 
@@ -715,9 +722,9 @@ Use six sequential PRs, each based on the newly merged `master` head:
 | PR | Tasks | Scope and merge exit |
 | --- | --- | --- |
 | A — S3.P0 state identity cut | 1–2 | New state/checkpoint/replay identity family, closed Magic continuation representation, old V4/V5 compatibility proof. No semantic capability lifecycle change. |
-| B — S3.0 shared response transaction | 3–4 | Semantic-neutral shared transaction; Synthetic regression parity; Reference response seam. No lifecycle change. |
+| B — S3.0 shared response transaction | 3–4 | Semantic-neutral shared transaction used by Synthetic; parity with existing Synthetic behavior; Reference remains unavailable for accepted Magic responses. No lifecycle change. |
 | C — S3.A ordered SBA | 5–10 | RED, continuation program, APNAP choices/public progress observation, transactional S2 composition, fixed point/evidence; SBA may become `implemented` only after all gates pass. S2 remains not covered. |
-| D — S3.B Basic Priority | 11–14 | Priority event/Decision kernel, Reference player submission through shared transaction, replay/checkpoint/fork evidence; Basic Priority may become `implemented` after gates pass. Draw remains specified. |
+| D — S3.B Basic Priority | 11–14 | Priority event/Decision kernel, then Reference player submission through the shared transaction, replay/checkpoint/fork evidence; Basic Priority may become `implemented` after gates pass. Draw remains specified. |
 | E — S3.C/D Draw integration | 15–20 | Draw, one-advance Upkeep→Draw path, continuation-aware SBA ordering, hidden-world proof and real V6 replay; Draw may become `implemented`. S2 is not promoted automatically. |
 | F — S2 interaction/coverage closure | 21–24 | Independent review of both S2 interactions and V6 replay; update S2 to `covered` only if every accepted S2 gate passes; otherwise retain not covered and report the exact blocker. |
 
@@ -802,34 +809,38 @@ or capability lifecycle change.
 **HARD STOP:** old V4/V5 meaning/bytes change, V6 omits an authoritative state
 field or execution identity, or any S3 rule becomes reachable during P0.
 
-### Task 3 — RED: expose the Reference response transaction seam
+### Task 3 — RED: characterize and expose the shared transaction seam
 
 **Allowed files:** `crates/mtgml-environment/src/tests/response_transaction.rs`,
 `crates/mtgml-environment/src/tests.rs`, and test-only setup helpers under
 `crates/mtgml-environment/src/tests/`.
 
 **Forbidden:** production source edits; rules semantics; registry/lifecycle;
-replay version or fixtures.
+replay DTO/schema changes.
 
-**RED test:** from a validated Reference Magic V6 checkpoint with one pending
-pass Decision, the authorized actor's visible Decision is projected and a
-valid pass submission returns an accepted PlayerStep, advances the state,
-increments exactly the decision/event counters, and appends one genuine
-`ReplayStepV6`. Assert the current implementation fails because Reference
-submission returns `UnavailableDecision`. Pin existing Synthetic response,
-rejection, and replay product bytes as semantic-neutral baselines.
+**RED tests:** pin the current Synthetic accepted and rejected response
+products as the behavioral oracle: status and revision, deterministic forced
+consequence ownership, environment counters, checkpoint identity,
+`ReplayStepV6`, occurrence projections, player projections and complete
+rejection nonmutation. Add a focused test-only seam proving these expectations
+are not yet exercised through one shared response-commit primitive. Record the
+current Magic behavior as a separate invariant: `MagicRulesKernel::apply(any
+DecisionResponseV2) = UnsupportedPlayerResponse`, and Reference submission
+remains unavailable. Do not require an accepted Reference pass or create a
+production response to satisfy this RED.
 
-**Objective:** create executable evidence of the missing production Magic
-player path and transaction behavior without changing production behavior.
+**Objective:** establish exact Synthetic transaction behavior and executable
+evidence for the missing shared transaction authority without changing
+production behavior.
 
 **Verification:** `cargo test -p mtgml-environment response_transaction`
 (expected RED failure is recorded, never called PASS); existing synthetic
 response/replay test filters must remain green.
 
-**Commit boundary:** tests only, `S3.0 RED: reference response transaction`.
+**Commit boundary:** tests only, `S3.0 RED: shared transaction seam`.
 
-**HARD STOP:** do not implement rules or make the RED fixture pass by
-fabricating a replay response.
+**HARD STOP:** do not implement rules, require an accepted Magic response, or
+make the RED fixture pass by fabricating a replay response.
 
 ### Task 4 — semantic-neutral shared response-commit primitive
 
@@ -841,31 +852,46 @@ one reviewed common transaction module), `reference.rs`, `synthetic/commit.rs`,
 forced-progress loops, changes to historical V5 DTOs or the already frozen V6
 identity shapes, or changes to ADR-0040 ordering.
 
-**RED/GREEN:** make both Synthetic and Reference backends use one transaction
-implementation. Retain a single rules-owned `kernel.apply`, at most one
+**RED/GREEN:** make Synthetic use one shared transaction implementation.
+Retain a single rules-owned `kernel.apply`, at most one
 `advance_forced_progress`, one merged transition/delta, one V6 append for the
 real response, candidate projection, hook, and final atomic commit. Add
 test-only failure injection at transaction boundaries without runtime mutable
-semantic state.
+semantic state. Reference may be wired to the primitive only if its public
+availability and rejection behavior remain byte-for-byte/exactly unchanged;
+it is also valid to defer all Reference call-site wiring to S3.B.
 
-Inject and assert full nonmutation for kernel response rejection,
-forced-progress/SBA failure, S2 zone rejection, object/Decision/event/visible-
-sequence/continuation-ID exhaustion, invalid Order binding, APNAP stage-transfer
-failure, candidate checkpoint failure, replay append/export failure,
-occurrence projection failure, player projection validation failure, and
-before-commit hook failure. Compare EngineState, status, RNG, allocators,
-knowledge, perspective identities/history, events, continuation/request,
-counters, replay, checkpoint identity, and player bytes.
+Inject and assert full nonmutation for kernel response rejection, existing
+Synthetic forced-progress failure, candidate checkpoint failure, replay
+append/export failure, occurrence projection failure, player projection
+validation failure, before-commit hook failure, and counter/identity overflow
+where the current substrate supports injection. Do not require SBA, S2,
+APNAP/Order, or Basic Priority failure cases in S3.0. Compare EngineState,
+status, RNG, allocators, knowledge, perspective identities/history, events,
+continuation/request where applicable, counters, replay, checkpoint identity,
+and player bytes.
 
 **Verification:** `cargo test -p mtgml-environment --all-features`,
 `cargo fmt --all -- --check`, `scripts/run_checks.py fast`, then
-`scripts/run_checks.py integration` before PR A.
+`scripts/run_checks.py integration` before PR B.
 
 **Commit boundary:** common transaction and parity evidence, separate from
 Task 3 RED commit.
 
+Required S3.0 exit evidence is:
+
+```text
+SYNTHETIC_TRANSACTION_PARITY = PASS
+ONE_SHARED_TRANSACTION_AUTHORITY = YES
+REFERENCE_MAGIC_ACCEPTED_RESPONSE = NO
+MAGIC_RULE_BEHAVIOR_CHANGED = NO
+MAGIC_LEGAL_ACTIONS_CHANGED = NO
+CAPABILITY_LIFECYCLE_CHANGE = NONE
+```
+
 **HARD STOP:** any Synthetic bytes/counters/replay behavior changes, duplicated
-commit logic remains, or a failure commits partial environment state.
+commit logic remains, a failure commits partial environment state, or Magic
+response rejection changes.
 
 ### Task 5 — S3.A1 RED: simultaneous SBA batch and ordering obligation
 
@@ -1096,7 +1122,8 @@ SBA interaction as evidence pending the later independent S2 coverage review.
 `scripts/run_checks.py integration`, `cargo test --workspace --all-features
 --locked`, schema/docs/status/registry checks.
 
-**Commit boundary:** S3.A evidence + its lifecycle/status synchronization; PR B.
+**Commit boundary:** S3.A evidence + its justified implementation lifecycle
+promotion; PR C. No S2 coverage promotion.
 
 **HARD STOP:** no APNAP Order resume/replay proof, any mutation occurs before
 all orders, or an S2 coverage claim is made here.
@@ -1152,26 +1179,40 @@ conformance, no environment player API in this commit.
 **HARD STOP:** `PriorityState` changes without a matching typed event/cursor
 proof, or Decision and priority state disagree at any accepted boundary.
 
-### Task 13 — Reference Magic player response path
+### Task 13 — RED/GREEN: Reference Magic player response path
 
 **Allowed files:** `crates/mtgml-environment/src/reference.rs`, shared
 transaction module, endpoint/error mapping, environment player endpoint tests.
 
+**Prerequisite:** Task 12 Basic Priority kernel semantics and its accepted
+`PassPriority` response contract must be implemented and pass its focused
+tests. S3.0 alone cannot satisfy this task.
+
 **Forbidden:** second commit pipeline; public trusted execution; changes to
-Synthetic semantics; any Magic-specific rule calculation in environment code.
+Synthetic semantics; any Magic-specific rule calculation in environment code;
+accepted Reference response before Task 12.
+
+**RED tests:** after Task 12, from a validated Magic V6 checkpoint with a
+real pending `PassPriority` Decision, require the authorized actor to receive
+that Decision and a valid response to be accepted by `MagicRulesKernel`, then
+committed through the shared S3.0 transaction into `PlayerStepV2` and one
+`ReplayStepV6`. Before Task 12 this accepted-response witness is not required
+and must remain unavailable.
 
 **Objective:** make Reference project the pass Decision only to the actor and
 submit via existing Layer A/B validation and the shared S3.0 transaction.
-Return `PlayerStepV2`; map invalid/stale/no-decision/closed responses through
-existing closed public codes. `execute_trusted_response` remains internal and
-uses the same transaction for replay. No trusted kernel error or hidden state
-is returned to a player.
+Map invalid/stale/no-decision/closed responses through existing closed public
+codes. `execute_trusted_response` remains internal and uses the same
+transaction for replay. No trusted kernel error or hidden state is returned
+to a player.
 
-**Verification:** Task 3 RED passes; actor/nonactor projection; all closed
+**Verification:** Task 12 kernel response tests and this task's endpoint RED
+pass; actor/nonactor projection; all closed
 rejection codes; replay and environment existing tests; `cargo test -p
 mtgml-environment --all-features`; `scripts/run_checks.py fast`.
 
-**Commit boundary:** Reference endpoint wiring, kept in PR C with Tasks 9–12.
+**Commit boundary:** Reference endpoint wiring after Basic Priority kernel
+semantics, within PR D.
 
 **HARD STOP:** public API invokes `execute_trusted_response`, endpoint sees an
 internal `DecisionId`/binding, or Reference and Synthetic use distinct
@@ -1202,7 +1243,7 @@ Foundation V2 dependency closure and leave Draw specified.
 `cargo test -p mtgml-environment --all-features`,
 `scripts/run_checks.py integration`, status/registry/docs/schema validation.
 
-**Commit boundary:** evidence + Basic Priority lifecycle/status sync; PR C.
+**Commit boundary:** evidence + Basic Priority lifecycle/status sync; PR D.
 
 **HARD STOP:** any pass is implied, or priority can be granted before SBA and
 the pass-only proof.
@@ -1231,7 +1272,7 @@ re-open the event decision before code.
 **Verification:** conformance contract review; `scripts/check_documentation.py`
 and `git diff --check`.
 
-**Commit boundary:** a small design-only decision commit inside PR D.
+**Commit boundary:** a small design-only decision commit inside PR E.
 
 **HARD STOP:** event evidence relies on a trace-only event or ignores another
 admitted Library-to-Hand producer.
@@ -1312,7 +1353,7 @@ Test terminal SBA and typed unsupported outcomes stop the advance correctly.
 **Verification:** environment/conformance focused tests, package suites,
 `scripts/run_checks.py fast`.
 
-**Commit boundary:** integrated response-to-Draw witness, in PR D.
+**Commit boundary:** integrated response-to-Draw witness, in PR E.
 
 **HARD STOP:** temporal successor skips Draw, draw priority is passed
 implicitly, or the environment performs a second progress call.
@@ -1381,7 +1422,7 @@ and keeps Draw `specified`.
 registry closure.
 
 **Commit boundary:** S3.C evidence and justified Draw implementation status;
-PR D.
+PR E.
 
 **HARD STOP:** owner/opponent information differs outside S2 authorization or
 S2 replay evidence is missing.
@@ -1415,7 +1456,7 @@ not an implementation-task assumption.
 **Verification:** rerun the complete S2-specific conformance/replay suite and
 the required exact-head status checks on the reviewed candidate.
 
-**Commit boundary:** separate governance/evidence PR E; no bundled Draw code.
+**Commit boundary:** separate governance/evidence PR F; no bundled Draw code.
 
 **HARD STOP:** reviewer rejects or any required S2 coverage gate is not PASS.
 
@@ -1440,7 +1481,8 @@ final status tests pass only for evidence-backed lifecycle values.
 **Verification:** focused status tests, docs, schemas, maintainer artifacts,
 contract generation/drift, `scripts/run_checks.py integration`.
 
-**Commit boundary:** status-only synchronization following Task 21's review.
+**Commit boundary:** status-only synchronization following Task 21's review;
+PR F.
 
 **HARD STOP:** any unsupported lifecycle/coverage claim appears in registry,
 README, roadmap, generated artifacts, or tests.
@@ -1514,6 +1556,16 @@ S3_B = explicit pass-only priority, typed priority event/cursor, bound ChooseOne
 S3_C = exactly-once ordinary Draw Step via S2; no DrawCompleted event
 
 SHARED_RESPONSE_TRANSACTION_REQUIRED = YES
+S3_0_SEMANTIC_NEUTRAL = YES
+S3_0_CAN_ACCEPT_MAGIC_PLAYER_RESPONSE = NO
+S3_0_CHANGES_MAGIC_LEGAL_ACTIONS = NO
+MAGIC_PLAYER_RESPONSE_SEMANTICS_CHANGED_BY_S3_0 = NO
+SYNTHETIC_FIRST_SHARED_TRANSACTION_WITNESS = YES
+REFERENCE_TRANSACTION_PLUMBING_MAY_PREEXIST = YES, only if externally observable Magic behavior remains unchanged
+BASIC_PRIORITY_REQUIRED_BEFORE_REFERENCE_ACCEPTED_PASS = YES
+REFERENCE_ACCEPTED_MAGIC_RESPONSE_REQUIRES_S3_B = YES
+REFERENCE_MAGIC_PLAYER_RESPONSE_PATH_OWNER = S3.B
+REFERENCE_MAGIC_RESPONSE_REPLAY_OWNER = S3.B
 REFERENCE_MAGIC_PLAYER_RESPONSE_PATH_REQUIRED = YES
 ENVIRONMENT_FORCED_PROGRESS_LOOP_REQUIRED = NO
 ONE_KERNEL_FORCED_ADVANCE_SUFFICIENT = YES, if it runs all forced work to next Decision/outcome/error
