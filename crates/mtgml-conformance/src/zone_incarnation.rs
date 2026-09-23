@@ -3279,3 +3279,652 @@ fn s2_valid_requests_preserve_input_and_rng() {
     assert_eq!(battlefield.random, battlefield_rng);
     assert_eq!(library.random, library_rng);
 }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum S2ParityScenario {
+    BattlefieldTracked,
+    LibraryFirstPrivate,
+    LibraryPreknown,
+    LibraryFirstPrivateSingleton,
+}
+
+fn s2_scenario_state(scenario: S2ParityScenario) -> EngineState {
+    match scenario {
+        S2ParityScenario::BattlefieldTracked => battlefield_case_state(),
+        S2ParityScenario::LibraryFirstPrivate => first_private_library_case_state(),
+        S2ParityScenario::LibraryPreknown => library_case_state(),
+        S2ParityScenario::LibraryFirstPrivateSingleton => {
+            let mut state = first_private_library_case_state();
+            let ordered = state
+                .zones
+                .ordered_zones
+                .get_mut(&owner_library_top(P2).key())
+                .expect("authored Library exists");
+            let removed = ordered.pop().expect("authored Library has a second member");
+            remove_object_tracking(&mut state, removed);
+            state.zones.objects.remove(&removed).unwrap();
+            state.zones.locations.remove(&removed).unwrap();
+            validate_engine_state(&state).unwrap();
+            state
+        }
+    }
+}
+
+fn s2_scenario_request(
+    scenario: S2ParityScenario,
+    before: &EngineState,
+) -> (
+    GameObjectId,
+    ZoneLocation,
+    ZoneLocation,
+    ConformanceZoneTransitionKind,
+) {
+    match scenario {
+        S2ParityScenario::BattlefieldTracked => (
+            OLD_BATTLEFIELD,
+            battlefield_from(),
+            owner_graveyard_top(P1),
+            ConformanceZoneTransitionKind::BattlefieldToOwnerGraveyard,
+        ),
+        S2ParityScenario::LibraryFirstPrivate
+        | S2ParityScenario::LibraryPreknown
+        | S2ParityScenario::LibraryFirstPrivateSingleton => {
+            let top = before
+                .zones
+                .ordered_zones
+                .get(&owner_library_top(P2).key())
+                .and_then(|objects| objects.first())
+                .copied()
+                .expect("authored owner Library has a top card");
+            (
+                top,
+                owner_library_top(P2),
+                owner_hand(P2),
+                ConformanceZoneTransitionKind::LibraryTopToOwnerHand,
+            )
+        }
+    }
+}
+
+fn execute_s2_scenario(
+    before: &EngineState,
+    scenario: S2ParityScenario,
+) -> mtgml_rules::TransitionResult {
+    let (object, from, to, kind) = s2_scenario_request(scenario, before);
+    execute_selected_zone_transition_for_conformance(before, object, from, to, kind)
+        .expect("selected S2 scenario is accepted by the production-owned executor")
+}
+
+fn s2_pair_unchanged(
+    _state: &mut EngineState,
+) -> Result<crate::isolation::TransformReport, crate::isolation::HarnessError> {
+    Ok(crate::isolation::TransformReport {
+        mutated_fields: &[],
+    })
+}
+
+fn s2_pair_rename_hidden_library_top(
+    state: &mut EngineState,
+) -> Result<crate::isolation::TransformReport, crate::isolation::HarnessError> {
+    let mut candidate = state.clone();
+    let renamed = GameObjectId(9);
+    let mut object = candidate
+        .zones
+        .objects
+        .remove(&OLD_LIBRARY_TOP)
+        .ok_or(crate::isolation::HarnessError::TransformFixtureAbsent)?;
+    object.id = renamed;
+    candidate.zones.objects.insert(renamed, object);
+    let location = candidate
+        .zones
+        .locations
+        .remove(&OLD_LIBRARY_TOP)
+        .ok_or(crate::isolation::HarnessError::TransformFixtureAbsent)?;
+    candidate.zones.locations.insert(renamed, location);
+    for members in candidate.zones.ordered_zones.values_mut() {
+        for member in members {
+            if *member == OLD_LIBRARY_TOP {
+                *member = renamed;
+            }
+        }
+    }
+    for identity in candidate.perspective_identities.players.values_mut() {
+        for object in identity.opaque_to_object.values_mut() {
+            if *object == OLD_LIBRARY_TOP {
+                *object = renamed;
+            }
+        }
+        if let Some(opaque) = identity.object_to_opaque.remove(&OLD_LIBRARY_TOP) {
+            identity.object_to_opaque.insert(renamed, opaque);
+        }
+    }
+    candidate.allocators.next_object_id = GameObjectId(
+        renamed
+            .0
+            .checked_add(1)
+            .ok_or(crate::isolation::HarnessError::TransformPreconditionViolated)?,
+    );
+    *state = candidate;
+    Ok(crate::isolation::TransformReport {
+        mutated_fields: &["zones", "allocators", "perspective_identities"],
+    })
+}
+
+fn assert_s2_family_state(before: &EngineState, after: &EngineState, scenario: S2ParityScenario) {
+    let new = before.allocators.next_object_id;
+    assert_eq!(after.allocators.next_object_id.0, new.0 + 1);
+    match scenario {
+        S2ParityScenario::BattlefieldTracked => {
+            let key = owner_graveyard_top(P1).key();
+            let old_members = before.zones.ordered_zones.get(&key).unwrap();
+            let new_members = after.zones.ordered_zones.get(&key).unwrap();
+            let mut expected = vec![new];
+            expected.extend(old_members.iter().copied());
+            assert_eq!(new_members, &expected);
+            assert!(!after.zones.objects.contains_key(&OLD_BATTLEFIELD));
+            assert!(!after.zones.locations.contains_key(&OLD_BATTLEFIELD));
+            assert!(!after.foundation_sources.contains_key(&OLD_BATTLEFIELD));
+            assert!(!after.foundation_sources.contains_key(&new));
+            for (offset, object) in new_members.iter().enumerate() {
+                assert_eq!(
+                    after.zones.locations[object].position,
+                    ZonePosition::Top {
+                        offset: u32::try_from(offset).unwrap()
+                    }
+                );
+            }
+        }
+        S2ParityScenario::LibraryFirstPrivate
+        | S2ParityScenario::LibraryPreknown
+        | S2ParityScenario::LibraryFirstPrivateSingleton => {
+            let key = owner_library_top(P2).key();
+            let old_members = before.zones.ordered_zones.get(&key).unwrap();
+            let expected: Vec<_> = old_members.iter().copied().skip(1).collect();
+            if expected.is_empty() {
+                assert!(!after.zones.ordered_zones.contains_key(&key));
+            } else {
+                assert_eq!(after.zones.ordered_zones.get(&key), Some(&expected));
+                for (offset, object) in expected.iter().enumerate() {
+                    assert_eq!(
+                        after.zones.locations[object].position,
+                        ZonePosition::Top {
+                            offset: u32::try_from(offset).unwrap()
+                        }
+                    );
+                }
+            }
+            let (old, _, _, _) = s2_scenario_request(scenario, before);
+            assert!(!after.zones.objects.contains_key(&old));
+            assert!(!after.zones.locations.contains_key(&old));
+            assert_eq!(after.zones.locations[&new], owner_hand(P2));
+            assert!(!after
+                .zones
+                .ordered_zones
+                .values()
+                .any(|objects| objects.contains(&new)));
+
+            assert_eq!(
+                after.perspective_identities.players[&P1],
+                before.perspective_identities.players[&P1]
+            );
+            assert_eq!(after.knowledge.players[&P1], before.knowledge.players[&P1]);
+
+            let old_owner_identity = &before.perspective_identities.players[&P2];
+            let new_owner_identity = &after.perspective_identities.players[&P2];
+            let old_owner_knowledge = &before.knowledge.players[&P2];
+            let new_owner_knowledge = &after.knowledge.players[&P2];
+            let sequence = old_owner_knowledge.next_visible_sequence;
+            assert_eq!(new_owner_knowledge.next_visible_sequence.0, sequence.0 + 1);
+            let (old, _, _, _) = s2_scenario_request(scenario, before);
+            if let Some(opaque) = old_owner_identity.object_to_opaque.get(&old).copied() {
+                assert_eq!(new_owner_identity.object_to_opaque.get(&new), Some(&opaque));
+                assert!(!new_owner_identity.object_to_opaque.contains_key(&old));
+                assert_eq!(
+                    new_owner_identity.next_opaque_object_id,
+                    old_owner_identity.next_opaque_object_id
+                );
+                let old_record = &old_owner_knowledge.active[&opaque];
+                let new_record = &new_owner_knowledge.active[&opaque];
+                assert_eq!(
+                    new_record.historical_locations.last(),
+                    old_record.known_location.as_ref()
+                );
+                let current = new_record.known_location.as_ref().unwrap();
+                assert_eq!(current.location, owner_hand(P2));
+                assert_eq!(
+                    current.provenance,
+                    mtgml_state::KnowledgeAcquisitionReason::Observed {
+                        channel: mtgml_state::KnowledgeHistoryChannel::Private,
+                        sequence,
+                        cause: mtgml_state::KnowledgeAcquisitionCause::OwnPrivateIdentity,
+                    }
+                );
+            } else {
+                let opaque = old_owner_identity.next_opaque_object_id;
+                assert_eq!(new_owner_identity.object_to_opaque.get(&new), Some(&opaque));
+                assert!(!new_owner_identity.object_to_opaque.contains_key(&old));
+                assert_eq!(new_owner_identity.next_opaque_object_id.0, opaque.0 + 1);
+                let record = &new_owner_knowledge.active[&opaque];
+                assert_eq!(
+                    record.card_definition,
+                    Some(after.zones.objects[&new].card_definition)
+                );
+                assert!(record.historical_locations.is_empty());
+                let current = record.known_location.as_ref().unwrap();
+                assert_eq!(current.location, owner_hand(P2));
+                assert_eq!(
+                    current.provenance,
+                    mtgml_state::KnowledgeAcquisitionReason::Observed {
+                        channel: mtgml_state::KnowledgeHistoryChannel::Private,
+                        sequence,
+                        cause: mtgml_state::KnowledgeAcquisitionCause::OwnPrivateIdentity,
+                    }
+                );
+            }
+        }
+    }
+}
+
+fn assert_replay_segment_anchored(
+    replay: &mtgml_replay::AuthoritativeReplayV5,
+    checkpoint: &mtgml_environment::EnvironmentCheckpointV5,
+) {
+    assert!(replay.steps.is_empty());
+    let anchor = &replay.manifest.initial_identity;
+    assert_eq!(anchor.state_revision, checkpoint.state.revision);
+    assert_eq!(anchor.full_state_digest, checkpoint.state_digest);
+    assert_eq!(anchor.episode_status, checkpoint.status);
+    assert_eq!(anchor.environment_limit_counters, checkpoint.limit_counters);
+    assert_eq!(anchor.checkpoint_codec_identity, checkpoint.codec);
+    assert_eq!(anchor.checkpoint_digest, checkpoint.checkpoint_digest);
+    assert_eq!(anchor.execution_identity, checkpoint.execution_identity);
+}
+
+fn s2_checkpoint_restore_case(scenario: S2ParityScenario) {
+    let before = s2_scenario_state(scenario);
+    let config = crate::isolation::synthetic_environment_config([P1, P2]);
+    let (input_controller, _) =
+        crate::isolation::spawn_environment(before.clone(), &config).unwrap();
+    let input_checkpoint = input_controller.checkpoint().unwrap();
+    assert_eq!(input_checkpoint.state, before);
+    let result = execute_s2_scenario(&input_checkpoint.state, scenario);
+    assert_eq!(result.next_state.random, input_checkpoint.state.random);
+    assert_s2_family_state(&input_checkpoint.state, &result.next_state, scenario);
+
+    let (controller, endpoints) =
+        crate::isolation::spawn_environment(result.next_state.clone(), &config).unwrap();
+    let checkpoint = controller.checkpoint().unwrap();
+    assert_eq!(checkpoint.state, result.next_state);
+    assert_eq!(checkpoint.state_digest, result.next_state.digest().unwrap());
+    assert_eq!(checkpoint, controller.checkpoint().unwrap());
+    let before_restore = crate::isolation::capture_complete(&controller, &endpoints).unwrap();
+    controller.restore(checkpoint.clone()).unwrap();
+    let after_restore = crate::isolation::capture_complete(&controller, &endpoints).unwrap();
+    crate::isolation::assert_fingerprint_policies(
+        &before_restore,
+        &after_restore,
+        crate::isolation::FingerprintComparison::ExcludeReplayRecorder,
+    )
+    .unwrap();
+    assert_eq!(controller.checkpoint().unwrap(), checkpoint);
+    assert_s2_family_state(
+        &input_checkpoint.state,
+        &controller.checkpoint().unwrap().state,
+        scenario,
+    );
+    let restored_replay = controller.export_replay().unwrap();
+    assert_replay_segment_anchored(&restored_replay, &checkpoint);
+}
+
+#[test]
+// Stable S2 case: `s2.replay.checkpoint_restore` (Battlefield family).
+fn s2_replay_checkpoint_restore_battlefield() {
+    s2_checkpoint_restore_case(S2ParityScenario::BattlefieldTracked);
+}
+
+#[test]
+// Stable S2 case: `s2.replay.checkpoint_restore` (Library family).
+fn s2_replay_checkpoint_restore_library() {
+    s2_checkpoint_restore_case(S2ParityScenario::LibraryFirstPrivate);
+    s2_checkpoint_restore_case(S2ParityScenario::LibraryFirstPrivateSingleton);
+}
+
+fn s2_fork_parity_case(scenario: S2ParityScenario) {
+    let before = s2_scenario_state(scenario);
+    let result = execute_s2_scenario(&before, scenario);
+    assert_eq!(result.next_state.random, before.random);
+    assert_s2_family_state(&before, &result.next_state, scenario);
+
+    let config = crate::isolation::synthetic_environment_config([P1, P2]);
+    let (source, source_endpoints) =
+        crate::isolation::spawn_environment(result.next_state.clone(), &config).unwrap();
+    let source_checkpoint = source.checkpoint().unwrap();
+    assert_eq!(source_checkpoint.state, result.next_state);
+    let source_before = crate::isolation::capture_complete(&source, &source_endpoints).unwrap();
+    let fork = source.fork().unwrap();
+    let fork_endpoints = [fork.bind_player(P1).unwrap(), fork.bind_player(P2).unwrap()];
+    let fork_checkpoint = fork.checkpoint().unwrap();
+    let fork_fingerprint = crate::isolation::capture_complete(&fork, &fork_endpoints).unwrap();
+    crate::isolation::assert_fingerprint_policies(
+        &source_before,
+        &fork_fingerprint,
+        crate::isolation::FingerprintComparison::ExcludeReplayRecorder,
+    )
+    .unwrap();
+    assert_eq!(source_checkpoint, fork_checkpoint);
+    let fork_replay = fork.export_replay().unwrap();
+    assert_replay_segment_anchored(&fork_replay, &source_checkpoint);
+    assert_eq!(
+        crate::isolation::capture_complete(&source, &source_endpoints).unwrap(),
+        source_before,
+        "forking must not mutate the source environment"
+    );
+    assert_s2_family_state(&before, &fork_checkpoint.state, scenario);
+}
+
+#[test]
+// Stable S2 case: `s2.replay.fork` (Battlefield family).
+fn s2_replay_fork_battlefield() {
+    s2_fork_parity_case(S2ParityScenario::BattlefieldTracked);
+}
+
+#[test]
+// Stable S2 case: `s2.replay.fork` (Library family).
+fn s2_replay_fork_library() {
+    s2_fork_parity_case(S2ParityScenario::LibraryFirstPrivate);
+    s2_fork_parity_case(S2ParityScenario::LibraryPreknown);
+}
+
+fn s2_deterministic_rerun_case(scenario: S2ParityScenario) {
+    let before = s2_scenario_state(scenario);
+    let config = crate::isolation::synthetic_environment_config([P1, P2]);
+    let (input_controller, _) =
+        crate::isolation::spawn_environment(before.clone(), &config).unwrap();
+    let checkpoint = input_controller.checkpoint().unwrap();
+    assert_eq!(checkpoint.state, before);
+    assert_eq!(input_controller.checkpoint().unwrap(), checkpoint);
+    let before_state = checkpoint.state.clone();
+    let request = s2_scenario_request(scenario, &checkpoint.state);
+    assert_eq!(request, s2_scenario_request(scenario, &before_state));
+    let first = execute_selected_zone_transition_for_conformance(
+        &before_state,
+        request.0,
+        request.1.clone(),
+        request.2.clone(),
+        request.3,
+    )
+    .expect("first identical direct S2 request is accepted");
+    let second = execute_selected_zone_transition_for_conformance(
+        &checkpoint.state,
+        request.0,
+        request.1.clone(),
+        request.2.clone(),
+        request.3,
+    )
+    .expect("second identical direct S2 request is accepted");
+    assert_eq!(
+        first, second,
+        "identical checkpoint/request reruns must match"
+    );
+    assert!(first.accepted);
+    assert_eq!(
+        first.next_state.digest().unwrap(),
+        second.next_state.digest().unwrap()
+    );
+    assert_eq!(first.next_state.random, before_state.random);
+    assert_eq!(second.next_state.random, before_state.random);
+    assert_eq!(first.next_state.allocators, second.next_state.allocators);
+    assert_s2_family_state(&before_state, &first.next_state, scenario);
+    let first_projection = mtgml_environment::lifecycle_projection::project_occurrence_envelopes(
+        &before_state,
+        &first.next_state,
+        &first.events,
+    )
+    .unwrap();
+    let second_projection = mtgml_environment::lifecycle_projection::project_occurrence_envelopes(
+        &before_state,
+        &second.next_state,
+        &second.events,
+    )
+    .unwrap();
+    assert_eq!(first_projection, second_projection);
+
+    let (first_controller, first_endpoints) =
+        crate::isolation::spawn_environment(first.next_state.clone(), &config).unwrap();
+    let (second_controller, second_endpoints) =
+        crate::isolation::spawn_environment(second.next_state.clone(), &config).unwrap();
+    let first_checkpoint = first_controller.checkpoint().unwrap();
+    let second_checkpoint = second_controller.checkpoint().unwrap();
+    assert_eq!(first_checkpoint, second_checkpoint);
+    assert_eq!(
+        first_checkpoint.state_digest,
+        second_checkpoint.state_digest
+    );
+    let first_visible =
+        crate::isolation::capture_complete(&first_controller, &first_endpoints).unwrap();
+    let second_visible =
+        crate::isolation::capture_complete(&second_controller, &second_endpoints).unwrap();
+    crate::isolation::assert_fingerprint_policies(
+        &first_visible,
+        &second_visible,
+        crate::isolation::FingerprintComparison::All,
+    )
+    .unwrap();
+}
+
+#[test]
+// Stable S2 case: `s2.replay.rerun`; this is deterministic rerun, not replay.
+fn s2_replay_rerun() {
+    s2_deterministic_rerun_case(S2ParityScenario::BattlefieldTracked);
+    s2_deterministic_rerun_case(S2ParityScenario::LibraryFirstPrivate);
+    s2_deterministic_rerun_case(S2ParityScenario::LibraryPreknown);
+}
+
+#[test]
+// Stable S2 case: `s2.observation.library_noninterference`.
+fn s2_observation_library_noninterference_pair() {
+    let base = library_case_state();
+    let paired = crate::isolation::build_case(
+        "s2.observation.library_noninterference",
+        crate::isolation::AxisKind::ObjectRenaming,
+        &base,
+        s2_pair_unchanged,
+        s2_pair_rename_hidden_library_top,
+        crate::isolation::PairWitness::new(
+            P1,
+            Some(crate::isolation::TrustedRenamingBijection {
+                objects: BTreeMap::from([(OLD_LIBRARY_TOP, GameObjectId(9))]),
+                abilities: BTreeMap::new(),
+            }),
+            crate::isolation::NonVacuityPredicate::ObjectRenaming,
+        ),
+    )
+    .unwrap();
+    let source_key = owner_library_top(P2).key();
+    let old_a = paired.state_a.zones.ordered_zones[&source_key][0];
+    let old_b = paired.state_b.zones.ordered_zones[&source_key][0];
+    assert_ne!(paired.state_a, paired.state_b);
+    assert_ne!(old_a, old_b, "the moved hidden top itself must differ");
+    let before_bijection = crate::isolation::TrustedRenamingBijection {
+        objects: BTreeMap::from([(old_a, old_b)]),
+        abilities: BTreeMap::new(),
+    };
+    let before_witness = crate::isolation::PairWitness::new(
+        P1,
+        Some(before_bijection),
+        crate::isolation::NonVacuityPredicate::ObjectRenaming,
+    );
+    crate::isolation::assert_witness(&paired.state_a, &paired.state_b, &before_witness).unwrap();
+
+    let config = crate::isolation::synthetic_environment_config([P1, P2]);
+    let (before_controller_a, endpoints_a) =
+        crate::isolation::spawn_environment(paired.state_a.clone(), &config).unwrap();
+    let (before_controller_b, endpoints_b) =
+        crate::isolation::spawn_environment(paired.state_b.clone(), &config).unwrap();
+    let before_fingerprint_a =
+        crate::isolation::capture_complete(&before_controller_a, &endpoints_a).unwrap();
+    let before_fingerprint_b =
+        crate::isolation::capture_complete(&before_controller_b, &endpoints_b).unwrap();
+    assert_eq!(
+        before_fingerprint_a.player.p1_snapshot,
+        before_fingerprint_b.player.p1_snapshot
+    );
+
+    let request_a = (
+        old_a,
+        owner_library_top(P2),
+        owner_hand(P2),
+        ConformanceZoneTransitionKind::LibraryTopToOwnerHand,
+    );
+    let request_b = (
+        old_b,
+        owner_library_top(P2),
+        owner_hand(P2),
+        ConformanceZoneTransitionKind::LibraryTopToOwnerHand,
+    );
+    let result_a = execute_selected_zone_transition_for_conformance(
+        &paired.state_a,
+        request_a.0,
+        request_a.1.clone(),
+        request_a.2.clone(),
+        request_a.3,
+    )
+    .unwrap();
+    let result_b = execute_selected_zone_transition_for_conformance(
+        &paired.state_b,
+        request_b.0,
+        request_b.1.clone(),
+        request_b.2.clone(),
+        request_b.3,
+    )
+    .unwrap();
+    assert_eq!(result_a.next_state.random, paired.state_a.random);
+    assert_eq!(result_b.next_state.random, paired.state_b.random);
+    let new_a = result_a
+        .events
+        .iter()
+        .find_map(|event| match &event.event {
+            mtgml_rules::AuthoritativeRuleEventKind::ZoneTransition { transition } => {
+                Some(transition.new_object)
+            }
+            _ => None,
+        })
+        .unwrap();
+    let new_b = result_b
+        .events
+        .iter()
+        .find_map(|event| match &event.event {
+            mtgml_rules::AuthoritativeRuleEventKind::ZoneTransition { transition } => {
+                Some(transition.new_object)
+            }
+            _ => None,
+        })
+        .unwrap();
+    assert_ne!(new_a, new_b);
+    let after_bijection = crate::isolation::TrustedRenamingBijection {
+        objects: BTreeMap::from([(new_a, new_b)]),
+        abilities: BTreeMap::new(),
+    };
+    let after_witness = crate::isolation::PairWitness::new(
+        P1,
+        Some(after_bijection),
+        crate::isolation::NonVacuityPredicate::ObjectRenaming,
+    );
+    crate::isolation::assert_witness(&result_a.next_state, &result_b.next_state, &after_witness)
+        .unwrap();
+
+    let projected_a = mtgml_environment::lifecycle_projection::project_occurrence_envelopes(
+        &paired.state_a,
+        &result_a.next_state,
+        &result_a.events,
+    )
+    .unwrap();
+    let projected_b = mtgml_environment::lifecycle_projection::project_occurrence_envelopes(
+        &paired.state_b,
+        &result_b.next_state,
+        &result_b.events,
+    )
+    .unwrap();
+    let events_a = &projected_a[&P1];
+    let events_b = &projected_b[&P1];
+    assert!(events_a.is_empty());
+    assert!(events_b.is_empty());
+    let event_bytes = |events: &[mtgml_observation::ObservedEventEnvelopeV2]| {
+        events
+            .iter()
+            .map(|event| mtgml_wire::encode_canonical(event).unwrap())
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(event_bytes(events_a), event_bytes(events_b));
+    assert_eq!(
+        result_a.next_state.knowledge.players[&P1].next_visible_sequence,
+        paired.state_a.knowledge.players[&P1].next_visible_sequence
+    );
+    assert_eq!(
+        result_b.next_state.knowledge.players[&P1].next_visible_sequence,
+        paired.state_b.knowledge.players[&P1].next_visible_sequence
+    );
+
+    let (after_controller_a, after_endpoints_a) =
+        crate::isolation::spawn_environment(result_a.next_state.clone(), &config).unwrap();
+    let (after_controller_b, after_endpoints_b) =
+        crate::isolation::spawn_environment(result_b.next_state.clone(), &config).unwrap();
+    let after_fingerprint_a =
+        crate::isolation::capture_complete(&after_controller_a, &after_endpoints_a).unwrap();
+    let after_fingerprint_b =
+        crate::isolation::capture_complete(&after_controller_b, &after_endpoints_b).unwrap();
+    assert_eq!(
+        after_fingerprint_a.player.p1_snapshot,
+        after_fingerprint_b.player.p1_snapshot
+    );
+    assert_eq!(
+        after_fingerprint_a
+            .player
+            .p1_snapshot
+            .current_visible_sequence,
+        before_fingerprint_a
+            .player
+            .p1_snapshot
+            .current_visible_sequence
+    );
+    assert_eq!(
+        after_fingerprint_b
+            .player
+            .p1_snapshot
+            .current_visible_sequence,
+        before_fingerprint_b
+            .player
+            .p1_snapshot
+            .current_visible_sequence
+    );
+    assert_eq!(
+        after_fingerprint_a
+            .player
+            .p1_snapshot
+            .current_visible_sequence
+            .0
+            .checked_sub(
+                before_fingerprint_a
+                    .player
+                    .p1_snapshot
+                    .current_visible_sequence
+                    .0,
+            ),
+        Some(0)
+    );
+    assert_eq!(
+        after_fingerprint_b
+            .player
+            .p1_snapshot
+            .current_visible_sequence
+            .0
+            .checked_sub(
+                before_fingerprint_b
+                    .player
+                    .p1_snapshot
+                    .current_visible_sequence
+                    .0,
+            ),
+        Some(0)
+    );
+}
