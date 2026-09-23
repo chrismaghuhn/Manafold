@@ -1851,26 +1851,41 @@ fn s2_state_late_candidate_failures_are_atomic() {
     );
 }
 
-#[test]
-fn s2_rejected_direct_request_preserves_complete_environment_fingerprint() {
-    let initial = crate::isolation::base_pair_state(&"11".repeat(32)).unwrap();
+fn assert_environment_fingerprint_unchanged_for_rejection(
+    case: &str,
+    before_state: &EngineState,
+    object: GameObjectId,
+    claimed_from: ZoneLocation,
+    claimed_to: ZoneLocation,
+    kind: ConformanceZoneTransitionKind,
+    expected_error: impl FnOnce(&KernelExecutionError) -> bool,
+) {
     let config = crate::isolation::synthetic_environment_config([P1, P2]);
-    let (controller, endpoints) = crate::isolation::spawn_environment(initial, &config).unwrap();
+    let (controller, endpoints) = crate::isolation::spawn_environment(
+        before_state.clone(),
+        &config,
+    )
+    .unwrap_or_else(|error| {
+        panic!("{case}: valid rejection before-state was not environment-admissible: {error:?}")
+    });
     let before = crate::isolation::capture_complete(&controller, &endpoints).unwrap();
     let authoritative_before = before.semantic.engine_state_equal_probe.clone();
 
-    assert!(matches!(
+    assert_rejected_request_preserves_complete_state(
+        &authoritative_before,
         execute_selected_zone_transition_for_conformance(
             &authoritative_before,
-            GameObjectId(99),
-            battlefield_from(),
-            owner_graveyard_top(P1),
-            ConformanceZoneTransitionKind::BattlefieldToOwnerGraveyard,
+            object,
+            claimed_from,
+            claimed_to,
+            kind,
         ),
-        Err(KernelExecutionError::ZoneIncarnation(
-            ZoneIncarnationError::ObjectNotLive
-        ))
-    ));
+        |error| {
+            let matches = expected_error(error);
+            assert!(matches, "{case}: unexpected direct S2 rejection: {error:?}");
+            matches
+        },
+    );
 
     let after = crate::isolation::capture_complete(&controller, &endpoints).unwrap();
     crate::isolation::assert_fingerprint_policies(
@@ -1879,6 +1894,451 @@ fn s2_rejected_direct_request_preserves_complete_environment_fingerprint() {
         crate::isolation::FingerprintComparison::All,
     )
     .unwrap();
+}
+
+#[test]
+fn s2_rejected_direct_requests_preserve_complete_environment_fingerprint_matrix() {
+    type Expected = fn(&KernelExecutionError) -> bool;
+    type Case = (
+        &'static str,
+        EngineState,
+        GameObjectId,
+        ZoneLocation,
+        ZoneLocation,
+        ConformanceZoneTransitionKind,
+        Expected,
+    );
+
+    let absent = task2_battlefield_case_state();
+    validate_engine_state(&absent).unwrap();
+    let mismatched_location = task2_battlefield_case_state();
+    validate_engine_state(&mismatched_location).unwrap();
+    let claimed_hand = owner_hand(P1);
+    let mut unadmitted = task2_battlefield_case_state();
+    let exile = location(
+        ZoneKind::Exile,
+        None,
+        ZonePosition::Unordered,
+        VisibilityPartition::Public,
+    );
+    unadmitted
+        .zones
+        .locations
+        .insert(OLD_BATTLEFIELD, exile.clone());
+    validate_engine_state(&unadmitted).unwrap();
+    let wrong_owner = task2_battlefield_case_state();
+    validate_engine_state(&wrong_owner).unwrap();
+    let library = task2_library_case_state();
+    validate_engine_state(&library).unwrap();
+    let mut missing_physical = task2_battlefield_case_state();
+    missing_physical
+        .zones
+        .objects
+        .get_mut(&OLD_BATTLEFIELD)
+        .unwrap()
+        .physical_card = None;
+    validate_engine_state(&missing_physical).unwrap();
+    let mut unsupported_profile = task2_battlefield_case_state();
+    unsupported_profile
+        .zones
+        .objects
+        .get_mut(&OLD_BATTLEFIELD)
+        .unwrap()
+        .face_down = true;
+    validate_engine_state(&unsupported_profile).unwrap();
+
+    let mut combat = task2_battlefield_case_state();
+    combat.combat = Some(mtgml_state::CombatState {
+        defending_player: P2,
+        attackers: vec![OLD_BATTLEFIELD],
+        blockers: BTreeMap::from([(OLD_BATTLEFIELD, None)]),
+    });
+    validate_engine_state(&combat).unwrap();
+    let mut stack = task2_battlefield_case_state();
+    let stack_id = mtgml_model::StackObjectId(1);
+    stack.zones.stack_records.insert(
+        stack_id,
+        mtgml_state::StackRecord {
+            id: stack_id,
+            controller: P1,
+            source_object: Some(OLD_BATTLEFIELD),
+            source_ability: None,
+        },
+    );
+    stack.zones.stack_order.push(stack_id);
+    stack.allocators.next_stack_object_id = mtgml_model::StackObjectId(2);
+    validate_engine_state(&stack).unwrap();
+    let pending = construct_synthetic_engine_state(SyntheticResetInputs {
+        players: [P1, P2],
+        root_seed: mtgml_random::RootSeed256::from_lower_hex(&"11".repeat(32)).unwrap(),
+        setup: SyntheticV4Setup::m2_compatibility(),
+    })
+    .unwrap();
+    validate_engine_state(&pending).unwrap();
+
+    let mut non_owner_tracking = library_case_state();
+    let opaque = mtgml_model::OpaqueObjectId(2);
+    non_owner_tracking
+        .perspective_identities
+        .players
+        .get_mut(&P1)
+        .unwrap()
+        .opaque_to_object
+        .insert(opaque, OLD_LIBRARY_TOP);
+    non_owner_tracking
+        .perspective_identities
+        .players
+        .get_mut(&P1)
+        .unwrap()
+        .object_to_opaque
+        .insert(OLD_LIBRARY_TOP, opaque);
+    non_owner_tracking
+        .perspective_identities
+        .players
+        .get_mut(&P1)
+        .unwrap()
+        .next_opaque_object_id = mtgml_model::OpaqueObjectId(3);
+    non_owner_tracking
+        .knowledge
+        .players
+        .get_mut(&P1)
+        .unwrap()
+        .active
+        .insert(
+            opaque,
+            mtgml_state::KnowledgeRecordV2 {
+                opaque_object: opaque,
+                physical_card: Some(CARD_LIBRARY),
+                card_definition: Some(CardDefinitionId(2)),
+                known_location: Some(mtgml_state::KnownLocationFactV2 {
+                    location: owner_library_top(P2),
+                    provenance: mtgml_state::KnowledgeAcquisitionReason::InitialConfiguration,
+                }),
+                historical_locations: Vec::new(),
+                acquisition: mtgml_state::KnowledgeAcquisitionReason::InitialConfiguration,
+            },
+        );
+    validate_engine_state(&non_owner_tracking).unwrap();
+
+    let mut library_foundation = task2_library_case_state();
+    library_foundation.foundation_sources.insert(
+        OLD_LIBRARY_TOP,
+        FoundationCreatureSource {
+            source_kind: FoundationSourceKind::Creature,
+            base_characteristics: BaseCharacteristics::Simple {
+                power: 2,
+                toughness: 2,
+            },
+            marked_damage: 0,
+            control_history: ControlHistory::BeforeTurnStart { turn_number: 0 },
+        },
+    );
+    validate_engine_state(&library_foundation).unwrap();
+
+    let mut object_exhaustion = task2_battlefield_case_state();
+    object_exhaustion.allocators.next_object_id = GameObjectId(u64::MAX);
+    validate_engine_state(&object_exhaustion).unwrap();
+    let mut event_exhaustion = task2_battlefield_case_state();
+    event_exhaustion.allocators.next_rule_event_id = mtgml_model::RuleEventId(u64::MAX);
+    validate_engine_state(&event_exhaustion).unwrap();
+    let mut opaque_exhaustion = first_private_library_case_state();
+    opaque_exhaustion
+        .perspective_identities
+        .players
+        .get_mut(&P2)
+        .unwrap()
+        .next_opaque_object_id = mtgml_model::OpaqueObjectId(u64::MAX);
+    validate_engine_state(&opaque_exhaustion).unwrap();
+    let mut revision_overflow = battlefield_case_state();
+    revision_overflow.revision = mtgml_model::StateRevision(u64::MAX);
+    validate_engine_state(&revision_overflow).unwrap();
+
+    let first = execute_selected_zone_transition_for_conformance(
+        &battlefield_case_state(),
+        OLD_BATTLEFIELD,
+        battlefield_from(),
+        owner_graveyard_top(P1),
+        ConformanceZoneTransitionKind::BattlefieldToOwnerGraveyard,
+    )
+    .expect("historical witness Step 1 is a real accepted S2 transition");
+    let historical_after = first.next_state;
+    validate_engine_state(&historical_after).unwrap();
+
+    let cases: Vec<Case> = vec![
+        (
+            "source_absent",
+            absent.clone(),
+            GameObjectId(99),
+            battlefield_from(),
+            owner_graveyard_top(P1),
+            ConformanceZoneTransitionKind::BattlefieldToOwnerGraveyard,
+            |error| {
+                matches!(
+                    error,
+                    KernelExecutionError::ZoneIncarnation(ZoneIncarnationError::ObjectNotLive)
+                )
+            },
+        ),
+        (
+            "claimed_source_location_mismatch",
+            mismatched_location.clone(),
+            OLD_BATTLEFIELD,
+            claimed_hand,
+            owner_graveyard_top(P1),
+            ConformanceZoneTransitionKind::BattlefieldToOwnerGraveyard,
+            |error| {
+                matches!(
+                    error,
+                    KernelExecutionError::ZoneIncarnation(
+                        ZoneIncarnationError::ClaimedSourceLocationMismatch
+                    )
+                )
+            },
+        ),
+        (
+            "unadmitted_source_family",
+            unadmitted,
+            OLD_BATTLEFIELD,
+            exile,
+            owner_graveyard_top(P1),
+            ConformanceZoneTransitionKind::BattlefieldToOwnerGraveyard,
+            |error| {
+                matches!(
+                    error,
+                    KernelExecutionError::ZoneIncarnation(
+                        ZoneIncarnationError::UnadmittedSourceFamily
+                    )
+                )
+            },
+        ),
+        (
+            "wrong_owner_destination",
+            wrong_owner,
+            OLD_BATTLEFIELD,
+            battlefield_from(),
+            owner_graveyard_top(P2),
+            ConformanceZoneTransitionKind::BattlefieldToOwnerGraveyard,
+            |error| {
+                matches!(
+                    error,
+                    KernelExecutionError::ZoneIncarnation(
+                        ZoneIncarnationError::DestinationMismatch
+                    )
+                )
+            },
+        ),
+        (
+            "library_not_top",
+            library.clone(),
+            GameObjectId(3),
+            location(
+                ZoneKind::Library,
+                Some(P2),
+                ZonePosition::Top { offset: 1 },
+                VisibilityPartition::FaceDown,
+            ),
+            owner_hand(P2),
+            ConformanceZoneTransitionKind::LibraryTopToOwnerHand,
+            |error| {
+                matches!(
+                    error,
+                    KernelExecutionError::ZoneIncarnation(
+                        ZoneIncarnationError::LibrarySourceNotTop
+                    )
+                )
+            },
+        ),
+        (
+            "physical_card_missing",
+            missing_physical,
+            OLD_BATTLEFIELD,
+            battlefield_from(),
+            owner_graveyard_top(P1),
+            ConformanceZoneTransitionKind::BattlefieldToOwnerGraveyard,
+            |error| {
+                matches!(
+                    error,
+                    KernelExecutionError::ZoneIncarnation(
+                        ZoneIncarnationError::PhysicalCardRequired
+                    )
+                )
+            },
+        ),
+        (
+            "unsupported_source_profile",
+            unsupported_profile,
+            OLD_BATTLEFIELD,
+            battlefield_from(),
+            owner_graveyard_top(P1),
+            ConformanceZoneTransitionKind::BattlefieldToOwnerGraveyard,
+            |error| {
+                matches!(
+                    error,
+                    KernelExecutionError::ZoneIncarnation(
+                        ZoneIncarnationError::UnsupportedSourceProfile
+                    )
+                )
+            },
+        ),
+        (
+            "combat_reference",
+            combat,
+            OLD_BATTLEFIELD,
+            battlefield_from(),
+            owner_graveyard_top(P1),
+            ConformanceZoneTransitionKind::BattlefieldToOwnerGraveyard,
+            |error| {
+                matches!(
+                    error,
+                    KernelExecutionError::ZoneIncarnation(ZoneIncarnationError::CombatReference)
+                )
+            },
+        ),
+        (
+            "stack_source_reference",
+            stack,
+            OLD_BATTLEFIELD,
+            battlefield_from(),
+            owner_graveyard_top(P1),
+            ConformanceZoneTransitionKind::BattlefieldToOwnerGraveyard,
+            |error| {
+                matches!(
+                    error,
+                    KernelExecutionError::ZoneIncarnation(
+                        ZoneIncarnationError::StackSourceReference
+                    )
+                )
+            },
+        ),
+        (
+            "pending_decision_reference",
+            pending,
+            OLD_BATTLEFIELD,
+            battlefield_from(),
+            owner_graveyard_top(P1),
+            ConformanceZoneTransitionKind::BattlefieldToOwnerGraveyard,
+            |error| {
+                matches!(
+                    error,
+                    KernelExecutionError::ZoneIncarnation(
+                        ZoneIncarnationError::PendingDecisionReference
+                    )
+                )
+            },
+        ),
+        (
+            "non_owner_hidden_tracking",
+            non_owner_tracking,
+            OLD_LIBRARY_TOP,
+            owner_library_top(P2),
+            owner_hand(P2),
+            ConformanceZoneTransitionKind::LibraryTopToOwnerHand,
+            |error| {
+                matches!(
+                    error,
+                    KernelExecutionError::ZoneIncarnation(
+                        ZoneIncarnationError::NonOwnerTracksHiddenSource
+                    )
+                )
+            },
+        ),
+        (
+            "library_foundation_source",
+            library_foundation,
+            OLD_LIBRARY_TOP,
+            owner_library_top(P2),
+            owner_hand(P2),
+            ConformanceZoneTransitionKind::LibraryTopToOwnerHand,
+            |error| {
+                matches!(
+                    error,
+                    KernelExecutionError::ZoneIncarnation(
+                        ZoneIncarnationError::UnsupportedSourceProfile
+                    )
+                )
+            },
+        ),
+        (
+            "object_allocator_exhaustion",
+            object_exhaustion,
+            OLD_BATTLEFIELD,
+            battlefield_from(),
+            owner_graveyard_top(P1),
+            ConformanceZoneTransitionKind::BattlefieldToOwnerGraveyard,
+            |error| {
+                matches!(
+                    error,
+                    KernelExecutionError::IdentityAllocation(
+                        mtgml_state::IdentityAllocationError::GameObjectIdExhausted
+                    )
+                )
+            },
+        ),
+        (
+            "event_id_exhaustion",
+            event_exhaustion,
+            OLD_BATTLEFIELD,
+            battlefield_from(),
+            owner_graveyard_top(P1),
+            ConformanceZoneTransitionKind::BattlefieldToOwnerGraveyard,
+            |error| matches!(error, KernelExecutionError::RuleEventIdOverflow),
+        ),
+        (
+            "opaque_allocator_exhaustion",
+            opaque_exhaustion,
+            OLD_LIBRARY_TOP,
+            owner_library_top(P2),
+            owner_hand(P2),
+            ConformanceZoneTransitionKind::LibraryTopToOwnerHand,
+            |error| {
+                matches!(
+                    error,
+                    KernelExecutionError::PerspectiveLifecycle(
+                        mtgml_state::LifecycleApplicationError::AllocatorOverflow
+                    )
+                )
+            },
+        ),
+        (
+            "revision_overflow",
+            revision_overflow,
+            OLD_BATTLEFIELD,
+            battlefield_from(),
+            owner_graveyard_top(P1),
+            ConformanceZoneTransitionKind::BattlefieldToOwnerGraveyard,
+            |error| matches!(error, KernelExecutionError::RevisionOverflow),
+        ),
+        (
+            "historical_stale_old",
+            historical_after,
+            OLD_BATTLEFIELD,
+            battlefield_from(),
+            owner_graveyard_top(P1),
+            ConformanceZoneTransitionKind::BattlefieldToOwnerGraveyard,
+            |error| {
+                matches!(
+                    error,
+                    KernelExecutionError::ZoneIncarnation(ZoneIncarnationError::ObjectNotLive)
+                )
+            },
+        ),
+    ];
+
+    for (case, before, object, from, to, kind, expected_error) in cases {
+        assert_environment_fingerprint_unchanged_for_rejection(
+            case,
+            &before,
+            object,
+            from,
+            to,
+            kind,
+            expected_error,
+        );
+    }
+
+    // This malformed state is deliberately not admitted as an environment
+    // checkpoint. Its direct full-state/digest rejection is covered by the
+    // request precondition matrix above.
 }
 
 #[test]
@@ -2481,6 +2941,39 @@ fn s2_mutant_lifecycle_pairing_matrix() {
     };
     rebuild_candidate_delta(&before_private, &mut wrong_private_allocate);
     assert_transition_violation(&before_private, &wrong_private_allocate, |violation| {
+        matches!(
+            violation,
+            mtgml_rules::TransitionViolation::OccurrencePairing
+        )
+    });
+
+    let (before_first_private, mut wrong_allocate_cursor) = {
+        let before = first_private_library_case_state();
+        let result = execute_selected_zone_transition_for_conformance(
+            &before,
+            OLD_LIBRARY_TOP,
+            owner_library_top(P2),
+            owner_hand(P2),
+            ConformanceZoneTransitionKind::LibraryTopToOwnerHand,
+        )
+        .unwrap();
+        (before, result)
+    };
+    let owner_identity = wrong_allocate_cursor
+        .next_state
+        .perspective_identities
+        .players
+        .get_mut(&P2)
+        .unwrap();
+    assert_eq!(
+        owner_identity.next_opaque_object_id,
+        mtgml_model::OpaqueObjectId(4)
+    );
+    owner_identity.next_opaque_object_id = mtgml_model::OpaqueObjectId(5);
+    validate_engine_state(&wrong_allocate_cursor.next_state)
+        .expect("the mutant cursor remains structurally valid");
+    rebuild_candidate_delta(&before_first_private, &mut wrong_allocate_cursor);
+    assert_transition_violation(&before_first_private, &wrong_allocate_cursor, |violation| {
         matches!(
             violation,
             mtgml_rules::TransitionViolation::OccurrencePairing
