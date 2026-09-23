@@ -35,6 +35,9 @@ mod turn_structure;
 #[cfg(test)]
 mod zone_incarnation;
 
+#[cfg(test)]
+mod state_based_actions;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ExpectedResponseResult {
     Accepted,

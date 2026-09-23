@@ -21,8 +21,8 @@
 - **Task 14:** `COMPLETE` — `S1_EXACT_HEAD_VERIFICATION = PASS`
 - **S3.P0:** `COMPLETE / FROZEN` (reviewed head `0cd24d1f2cb4183c19fb04ce0c3c827148313a3b`, PR #210, merge commit `ffc433985f41e6e2980df23a103b5e2358527ea3`)
 - **S3.0:** `COMPLETE / FROZEN` (reviewed head `aa28f9753225dca0e58e33b0d0356a1cc560aae3`, PR #211, merge commit `66f3b713787cad89674257f6e0b6448b9fd568f9`)
-- **S3.A:** `AUTHORIZED / STARTED`; Task 5 RED is underway
-- **Next gate:** `M3_S3_A_TASK_5_RED`
+- **S3.A:** Task 5 RED complete; implementation incomplete; exact-head review pending
+- **Next gate:** `M3_S3_A_TASK_5_EXACT_HEAD_REVIEW`
 - **M3 hardening acceptance:** PR #184 merged and accepted ADR 0054/Foundation V2; T0 was reauthorized under Issue #178, implemented by merged PRs #189/#190/#191, and finalized as COMPLETE / FROZEN
 - **Capability lifecycle:** 9 Foundation capabilities are `specified`, 1 is `implemented`, 1 is `covered`, and 0 are `certified`
 - **Current boundary:** S2 authoritative replay is `DEFERRED_REQUIRED / BLOCKED_FOR_COVERED`; `draw-card × zone-incarnation` and `state-based-actions-combat × zone-incarnation` remain `UNSATISFIED`. S3.B/C are not authorized. Certification and card/deck/format/Commander/playability support are not claimed.
