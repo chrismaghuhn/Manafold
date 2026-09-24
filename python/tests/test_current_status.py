@@ -64,7 +64,8 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
         )
         self.assertIn("**PR #208:** `MERGED`; `S2_EXACT_HEAD_VERIFICATION = PASS`", readme)
         self.assertIn(
-            "**S2 authoritative replay:** `DEFERRED_REQUIRED / BLOCKED_FOR_COVERED`",
+            "**S2 authoritative replay:** Draw × S2 has a Block 3 Replay V6 candidate witness; "
+            "overall S2 replay coverage remains `DEFERRED_REQUIRED / BLOCKED_FOR_COVERED`",
             readme,
         )
         self.assertIn("**M3 Pre-T0 hardening:** `COMPLETE / ACCEPTED`", readme)
@@ -72,21 +73,24 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
         self.assertIn("FOUNDATION_V2 = ACCEPTED_HARDENED_M3_SCOPE", readme)
         self.assertIn("**M3 plan status:** `ACCEPTED`", readme)
         self.assertIn("**Task 14:** `COMPLETE` — `S1_EXACT_HEAD_VERIFICATION = PASS`", readme)
-        self.assertIn(
-            "**Next gate:** `M3_BLOCK_2_EXACT_HEAD_REVIEW`",
-            readme,
-        )
+        self.assertIn("**PR #213:** `MERGED` at `60b6ee7957032a36371ceac89c3a1e4f886d200c`", readme)
         self.assertIn("**S3.P0:** `COMPLETE / FROZEN`", readme)
         self.assertIn("**S3.0:** `COMPLETE / FROZEN`", readme)
         self.assertIn(
             "**Magic rules-flow inventory:** `REVIEWED / FROZEN_PLANNING_INPUT`",
             readme,
         )
-        self.assertIn("**M3 Block 1:** bounded S3.A is complete / reviewed", readme)
+        self.assertIn("**M3 Block 1:** bounded S3.A is accepted / merged", readme)
         self.assertIn(
-            "**M3 Block 2:** Basic Priority + Reference response integration is a candidate", readme
+            "**M3 Block 2:** Basic Priority + Reference response integration is accepted / merged",
+            readme,
         )
-        self.assertIn("Block 3 / Draw and Combat remain unstarted", readme)
+        self.assertIn(
+            "**M3 Block 3:** Draw + S2 replay/interaction implementation candidate complete; "
+            "exact-head review pending",
+            readme,
+        )
+        self.assertIn("Combat and later blocks have not started", readme)
         self.assertNotIn("M3_S1_AUTHORIZATION_DECISION", readme)
         self.assertNotIn("M3_T0_CLOSURE_STATUS_SYNC_EXACT_HEAD_REVIEW", readme)
         self.assertIn(
@@ -104,14 +108,14 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
             readme,
         )
         self.assertIn(
-            "**Current boundary:** S2 authoritative replay remains "
-            "`DEFERRED_REQUIRED / BLOCKED_FOR_COVERED`",
+            "**Current boundary:** S2 remains `IMPLEMENTED / NOT COVERED`; Block 3 supplies a "
+            "Draw × S2 Replay V6 candidate witness but does not close all S2 coverage gates",
             readme,
         )
         self.assertIn(
             "**Real Magic semantics:** S1 is covered; S2 is implemented / not covered; "
-            "bounded S3.A is complete / reviewed and remains `specified`; S3.B Basic Priority "
-            "is a candidate under a distinct production identity and remains `specified`",
+            "bounded S3.A and S3.B implementations are accepted / merged under distinct "
+            "production identities",
             readme,
         )
         self.assertNotIn("S2 covered", readme)
@@ -280,16 +284,18 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
         self.assertIn("M3_MAJOR_SEMANTIC_BLOCKS = 8", roadmap)
         self.assertIn("M3_BLOCK_1 = COMPLETE / REVIEWED", roadmap)
         self.assertIn("M3_BLOCK_1_REVIEW_HEAD = 6fc3ff9694aa9d61975929a2d4a1c8006df28014", roadmap)
-        self.assertIn("M3_BLOCK_2 = COMPLETE_CANDIDATE", roadmap)
+        self.assertIn("M3_BLOCK_2 = COMPLETE / FINAL ACCEPTANCE PASS / MERGED", roadmap)
+        self.assertIn("M3_BLOCK_3 = COMPLETE_CANDIDATE", roadmap)
         self.assertIn(
-            "CURRENT_M3_BLOCK = BASIC_PRIORITY_AND_REFERENCE_RESPONSE_INTEGRATION", roadmap
+            "CURRENT_M3_BLOCK = DRAW_AND_S2_REPLAY_INTERACTION", roadmap
         )
-        self.assertIn("NEXT_GATE = M3_BLOCK_2_EXACT_HEAD_REVIEW", roadmap)
+        self.assertIn("BLOCK_3_STARTED = YES", roadmap)
+        self.assertIn("S3_C_AUTHORIZED = YES", roadmap)
+        self.assertIn("S3_C_IMPLEMENTATION_AUTHORIZED = YES", roadmap)
+        self.assertIn("NEXT_GATE = M3_BLOCK_3_EXACT_HEAD_REVIEW", roadmap)
         self.assertIn("S3_A_IMPLEMENTATION_AUTHORIZED = YES", roadmap)
         self.assertIn("S3_B_AUTHORIZED = YES", roadmap)
-        self.assertIn("S3_C_AUTHORIZED = NO", roadmap)
         self.assertIn("S3_B_IMPLEMENTATION_AUTHORIZED = YES", roadmap)
-        self.assertIn("S3_C_IMPLEMENTATION_AUTHORIZED = NO", roadmap)
         self.assertNotIn("M3_S2_AUTHORIZED = NO", roadmap)
         self.assertNotIn("S2_IMPLEMENTED = NO", roadmap)
         self.assertNotIn("M3.S2 has not been selected or", roadmap)
@@ -417,8 +423,11 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
         zone_incarnation = next(
             entry for entry in entries if entry["key"] == "rules/zone-incarnation"
         )
+        draw_card = next(entry for entry in entries if entry["key"] == "rules/draw-card")
         other_entries = [
-            entry for entry in entries if entry not in (turn_structure, zone_incarnation)
+            entry
+            for entry in entries
+            if entry not in (turn_structure, zone_incarnation, draw_card)
         ]
 
         self.assertEqual(turn_structure["version"], "0.1.0")
@@ -517,6 +526,27 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
         self.assertNotIn("s2.replay.authoritative", zone_incarnation["conformance_cases"])
         self.assertIn("fail closed", zone_incarnation["notes"])
         self.assertIn("DEFERRED_REQUIRED", zone_incarnation["notes"])
+
+        self.assertEqual(draw_card["lifecycle"], "specified")
+        self.assertEqual(
+            draw_card["conformance_cases"],
+            [
+                "m3.draw.upkeep-pass-s2-priority-replay",
+                "m3.draw.hidden-world-noninterference",
+                "m3.draw.rejection-atomicity",
+            ],
+        )
+        self.assertEqual(
+            draw_card["implementation_paths"],
+            [
+                "crates/mtgml-rules/src/magic.rs",
+                "crates/mtgml-rules/src/contract.rs",
+                "crates/mtgml-rules/src/product.rs",
+                "crates/mtgml-environment/src/reference.rs",
+                "crates/mtgml-environment/src/tests/s3_a_production.rs",
+            ],
+        )
+        self.assertIn("lifecycle remains specified", draw_card["notes"])
 
         for entry in other_entries:
             with self.subTest(capability=entry["key"]):

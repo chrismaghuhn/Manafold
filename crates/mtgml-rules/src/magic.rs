@@ -67,6 +67,7 @@ enum MagicKernelProfile {
     AdmittedS1(MagicExecutionProfile),
     AdmittedS3A(MagicExecutionProfile),
     AdmittedS3B(MagicExecutionProfile),
+    AdmittedS3C(MagicExecutionProfile),
     #[cfg(test)]
     UnitTest(MagicExecutionProfile),
     #[cfg(any(test, feature = "m3-conformance-testkit"))]
@@ -81,6 +82,7 @@ impl MagicKernelProfile {
             Self::AdmittedS1(profile) => profile.allows_turn_structure_0_1_0(),
             Self::AdmittedS3A(_) => false,
             Self::AdmittedS3B(_) => false,
+            Self::AdmittedS3C(_) => false,
             #[cfg(test)]
             Self::UnitTest(profile) => profile.allows_turn_structure_0_1_0(),
             #[cfg(any(test, feature = "m3-conformance-testkit"))]
@@ -93,9 +95,9 @@ impl MagicKernelProfile {
     fn allows_s3_a(&self) -> bool {
         match self {
             Self::AdmittedS1(_) => false,
-            Self::AdmittedS3A(profile) | Self::AdmittedS3B(profile) => {
-                profile.allows_state_based_actions_combat_0_1_0()
-            }
+            Self::AdmittedS3A(profile)
+            | Self::AdmittedS3B(profile)
+            | Self::AdmittedS3C(profile) => profile.allows_state_based_actions_combat_0_1_0(),
             #[cfg(test)]
             Self::UnitTest(_) => false,
             #[cfg(any(test, feature = "m3-conformance-testkit"))]
@@ -108,10 +110,15 @@ impl MagicKernelProfile {
     fn allows_s3_b(&self) -> bool {
         match self {
             Self::AdmittedS3B(profile) => profile.allows_basic_priority_0_1_0(),
+            Self::AdmittedS3C(profile) => profile.allows_basic_priority_0_1_0(),
             #[cfg(test)]
             Self::S3BConformanceCandidate => true,
             _ => false,
         }
+    }
+
+    fn allows_s3_c_draw(&self) -> bool {
+        matches!(self, Self::AdmittedS3C(profile) if profile.allows_draw_card_0_1_0())
     }
 }
 
@@ -122,7 +129,9 @@ impl MagicRulesKernel {
     /// The profile MUST carry the exact supported semantic contract ID;
     /// the V6 admission layer guarantees this before construction.
     pub(crate) fn from_admitted_profile(profile: MagicExecutionProfile) -> Self {
-        let profile = if profile.allows_basic_priority_0_1_0() {
+        let profile = if profile.allows_draw_card_0_1_0() {
+            MagicKernelProfile::AdmittedS3C(profile)
+        } else if profile.allows_basic_priority_0_1_0() {
             MagicKernelProfile::AdmittedS3B(profile)
         } else if profile.allows_state_based_actions_combat_0_1_0() {
             MagicKernelProfile::AdmittedS3A(profile)
@@ -210,6 +219,72 @@ impl RulesKernel for MagicRulesKernel {
 }
 
 impl MagicRulesKernel {
+    fn advance_s3_c_draw(
+        &mut self,
+        state: &EngineState,
+    ) -> Result<TransitionResult, KernelExecutionError> {
+        let profile =
+            validate_turn_structure_support(state).map_err(KernelExecutionError::TurnStructure)?;
+        if profile.turn_number() < 2
+            || profile.position()
+                != (TurnPosition::Beginning {
+                    step: BeginningStep::Draw,
+                })
+        {
+            return Err(KernelExecutionError::UnsupportedStagePath);
+        }
+        let owner = profile.active_player();
+        let source = mtgml_state::ZoneKey {
+            zone: ZoneKind::Library,
+            player: Some(owner),
+            visibility: VisibilityPartition::FaceDown,
+            partition: None,
+        };
+        let top = state
+            .zones
+            .ordered_zones
+            .get(&source)
+            .and_then(|objects| objects.first())
+            .copied()
+            .ok_or(KernelExecutionError::UnsupportedStagePath)?;
+        if state
+            .zones
+            .objects
+            .get(&top)
+            .is_none_or(|object| object.owner != owner)
+        {
+            return Err(KernelExecutionError::UnsupportedStagePath);
+        }
+
+        let draw = crate::zone_incarnation::execute_selected_zone_transition(
+            state,
+            &crate::zone_incarnation::SelectedZoneTransitionRequest {
+                object: top,
+                kind: crate::zone_incarnation::SelectedZoneTransitionKind::LibraryTopToOwnerHand,
+                claimed_from: ZoneLocation {
+                    zone: ZoneKind::Library,
+                    player: Some(owner),
+                    position: ZonePosition::Top { offset: 0 },
+                    visibility: VisibilityPartition::FaceDown,
+                    partition: None,
+                },
+                claimed_to: ZoneLocation {
+                    zone: ZoneKind::Hand,
+                    player: Some(owner),
+                    position: ZonePosition::Unordered,
+                    visibility: VisibilityPartition::OwnerOnly,
+                    partition: None,
+                },
+            },
+        )?;
+        let followup = self.advance_s3_a_round(&draw.next_state)?;
+        let result = crate::product::compose_atomic_products(state, draw, followup)?;
+        validate_engine_state(&result.next_state).map_err(KernelExecutionError::AfterState)?;
+        crate::validate_transition_contract(state, &result)
+            .map_err(KernelExecutionError::TransitionContract)?;
+        Ok(result)
+    }
+
     fn advance_s3_a_round(
         &mut self,
         state: &EngineState,
@@ -217,6 +292,17 @@ impl MagicRulesKernel {
         validate_engine_state(state).map_err(KernelExecutionError::BeforeState)?;
         if state.execution.pending_decision.is_some() || !state.execution.continuations.is_empty() {
             return Err(KernelExecutionError::UnsupportedStagePath);
+        }
+        if matches!(
+            state.core.position,
+            TurnPosition::Beginning {
+                step: BeginningStep::Draw
+            }
+        ) && !self.profile.allows_s3_c_draw()
+        {
+            return Err(KernelExecutionError::UnsupportedRulesBoundary(
+                UnsupportedRulesBoundary::DrawCard,
+            ));
         }
         if matches!(
             state.core.position,
@@ -1107,6 +1193,16 @@ impl MagicRulesKernel {
         &mut self,
         state: &EngineState,
     ) -> Result<TransitionResult, KernelExecutionError> {
+        if self.profile.allows_s3_c_draw()
+            && matches!(
+                state.core.position,
+                TurnPosition::Beginning {
+                    step: BeginningStep::Draw
+                }
+            )
+        {
+            return self.advance_s3_c_draw(state);
+        }
         if self.profile.allows_s3_a() {
             return self.advance_s3_a_round(state);
         }

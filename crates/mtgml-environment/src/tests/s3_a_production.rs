@@ -6,6 +6,7 @@ use mtgml_decision::{DecisionAnswerV2, DecisionResponseV2};
 use mtgml_model::{
     CardDefinitionId, CheckpointCodecIdentity, EpisodeStatus, GameObjectId, OpaqueObjectId,
     PhysicalCardId, PlayerId,
+    StateRevision,
 };
 use mtgml_observation::{MagicM3Observation, PlayerStepSubmissionV1};
 use mtgml_replay::{KernelIdentityV1, ReplaySchemaVersionsV6};
@@ -72,6 +73,23 @@ fn s3_b_backend(state: mtgml_state::EngineState) -> ReferenceEnvironmentBackend 
         replay: s3_replay_config(),
     })
     .expect("the production S3.B semantic identity admits its bounded state")
+}
+
+fn s3_c_backend(state: mtgml_state::EngineState) -> ReferenceEnvironmentBackend {
+    let mut replay = s3_replay_config();
+    replay.scenario_id = "rules/draw-card@0.1.0:upkeep-to-draw".into();
+    ReferenceEnvironmentBackend::new(ReferenceEnvironmentConfig {
+        state,
+        status: EpisodeStatus::Running,
+        limit_counters: EnvironmentLimitCounters::default(),
+        codec: CheckpointCodecIdentity {
+            codec_id: CHECKPOINT_CODEC_ID_V6.into(),
+            semantic_version: CHECKPOINT_CODEC_SEMANTIC_VERSION_V6.into(),
+        },
+        execution_identity: ReferenceEnvironmentBackend::magic_s3_c_execution_identity(),
+        replay,
+    })
+    .expect("the production S3.C semantic identity admits its bounded state")
 }
 
 fn add_creature(state: &mut mtgml_state::EngineState, object_id: u64, owner: PlayerId, opaque: [u64; 2]) {
@@ -201,6 +219,39 @@ fn stable_state_at(position: mtgml_state::TurnPosition) -> mtgml_state::EngineSt
     state
 }
 
+fn stable_draw_state_at_upkeep() -> mtgml_state::EngineState {
+    let mut state = stable_state_at(TurnPosition::Beginning {
+        step: mtgml_state::BeginningStep::Upkeep,
+    });
+    // Object 2 is the selected S2 Library-top card owned by P2 in the shared
+    // authoritative fixture. Make its ordinary Draw Step the active player.
+    state.core.active_player = P2;
+    state.core.turn_number = 2;
+    state.zones.objects.get_mut(&GameObjectId(2)).unwrap().face_down = false;
+    mtgml_state::validate_engine_state(&state).unwrap();
+    state
+}
+
+fn replace_library_top_identity(
+    state: &mut mtgml_state::EngineState,
+    physical: u64,
+    definition: u64,
+) {
+    let object = GameObjectId(2);
+    state.zones.objects.get_mut(&object).unwrap().physical_card = Some(PhysicalCardId(physical));
+    state.zones.objects.get_mut(&object).unwrap().card_definition = CardDefinitionId(definition);
+    if let Some(opaque) = state.perspective_identities.players[&P2]
+        .object_to_opaque
+        .get(&object)
+        .copied()
+    {
+        let record = state.knowledge.players.get_mut(&P2).unwrap().active.get_mut(&opaque).unwrap();
+        record.physical_card = Some(PhysicalCardId(physical));
+        record.card_definition = Some(CardDefinitionId(definition));
+    }
+    mtgml_state::validate_engine_state(state).unwrap();
+}
+
 fn current_order_response(state: &mtgml_state::EngineState) -> DecisionResponseV2 {
     let request = &state.execution.pending_decision.as_ref().unwrap().request;
     let mut candidate_ids: Vec<_> = request.candidates.iter().map(|c| c.candidate_id).collect();
@@ -224,6 +275,267 @@ fn current_select_one_response(
             candidate_id: request.candidates[0].candidate_id,
         },
     }
+}
+
+#[test]
+// Rules authority: accepted `wotc-cr-2026-08-07-txt-20260819-sha256-
+// 4381ad1b39ab2c05f7d03633a20f711ed37277074d3266dcba5f38cbb527423f`;
+// CR 121.1 defines the top-Library-to-Hand draw, and CR 504.1 / 504.2 define
+// the ordinary Draw Step action followed by active-player priority.
+fn m3_block_3_upkeep_passes_draw_once_through_s2_and_opens_active_priority() {
+    let controller = TrustedEnvironmentController::new(s3_c_backend(stable_draw_state_at_upkeep()));
+    controller.execute_forced_progress().unwrap();
+    let initial = controller.checkpoint().unwrap();
+    let old_top = GameObjectId(2);
+    assert_eq!(initial.state.zones.ordered_zones[&mtgml_state::ZoneKey {
+        zone: mtgml_model::ZoneKind::Library,
+        player: Some(P2),
+        visibility: mtgml_state::VisibilityPartition::FaceDown,
+        partition: None,
+    }][0], old_top);
+    assert!(!initial.state.foundation_sources.contains_key(&old_top));
+    let physical = initial.state.zones.objects[&old_top].physical_card;
+    let old_library = initial.state.zones.locations[&old_top].clone();
+    let active = controller.bind_player(P2).unwrap();
+    let nonactive = controller.bind_player(P1).unwrap();
+    assert_eq!(active.visible_decision().unwrap().unwrap().actor, P2);
+    let mut restored_before_draw = s3_c_backend(initial.state.clone());
+    restored_before_draw.restore(initial.clone()).unwrap();
+    assert_eq!(restored_before_draw.checkpoint().unwrap(), initial);
+    assert_eq!(controller.fork().unwrap().checkpoint().unwrap(), initial);
+    let active_request = active.visible_decision().unwrap().unwrap();
+    let before_stale = controller.checkpoint().unwrap();
+    let replay_before_stale = controller.export_replay().unwrap();
+    let p1_before_stale = player_fingerprint(&controller, P1);
+    let p2_before_stale = player_fingerprint(&controller, P2);
+    let mut stale = current_select_one_response(&active_request);
+    stale.state_revision = StateRevision(stale.state_revision.0 - 1);
+    let rejected = active.submit(stale).unwrap();
+    assert!(matches!(
+        rejected.submission,
+        PlayerStepSubmissionV1::Rejected {
+            code: mtgml_observation::PlayerSubmissionCodeV1::StaleDecision
+        }
+    ));
+    assert_eq!(controller.checkpoint().unwrap(), before_stale);
+    assert_eq!(controller.export_replay().unwrap(), replay_before_stale);
+    assert_eq!(player_fingerprint(&controller, P1), p1_before_stale);
+    assert_eq!(player_fingerprint(&controller, P2), p2_before_stale);
+    active.submit(current_select_one_response(&active_request)).unwrap();
+    let after_active_pass = controller.checkpoint().unwrap();
+    let nonactive_request = nonactive.visible_decision().unwrap().unwrap();
+
+    let mut direct_backend = s3_c_backend(after_active_pass.state.clone());
+    direct_backend.restore(after_active_pass.clone()).unwrap();
+    let transition = direct_backend
+        .execute_trusted_response(P1, current_select_one_response(&nonactive_request))
+        .expect("one real second pass composes Draw, S2, SBA, and Priority");
+    assert_eq!(
+        transition.next_state.revision,
+        StateRevision(after_active_pass.state.revision.0 + 2)
+    );
+    assert_eq!(transition.delta.apply(&after_active_pass.state).unwrap(), transition.next_state);
+    assert_eq!(
+        transition.events.iter().filter(|event| matches!(
+            &event.event,
+            mtgml_rules::AuthoritativeRuleEventKind::ZoneTransition { transition }
+                if transition.from.zone == mtgml_model::ZoneKind::Library
+                    && transition.to.zone == mtgml_model::ZoneKind::Hand
+        )).count(),
+        1,
+        "the forced product contains exactly one S2 Library-to-Hand transition"
+    );
+    assert!(matches!(
+        &transition.events[3].event,
+        mtgml_rules::AuthoritativeRuleEventKind::ZoneTransition { transition }
+            if transition.old_object == old_top
+                && transition.new_object == after_active_pass.state.allocators.next_object_id
+    ));
+    assert!(transition.events[..3].iter().all(|event| {
+        event.state_revision == StateRevision(after_active_pass.state.revision.0 + 1)
+    }));
+    assert!(transition.events[3..].iter().all(|event| {
+        event.state_revision == StateRevision(after_active_pass.state.revision.0 + 2)
+    }));
+    assert_eq!(transition.next_state.random, after_active_pass.state.random);
+    let forced_replay = direct_backend.export_replay().unwrap();
+    assert_eq!(forced_replay.steps.len(), 1);
+    assert_eq!(forced_replay.steps[0].response, current_select_one_response(&nonactive_request));
+
+    nonactive.submit(current_select_one_response(&nonactive_request)).unwrap();
+
+    let after = controller.checkpoint().unwrap();
+    assert_eq!(after, direct_backend.checkpoint().unwrap());
+    assert_eq!(after.state.core.position, TurnPosition::Beginning {
+        step: mtgml_state::BeginningStep::Draw,
+    });
+    assert_eq!(after.state.core.priority, mtgml_state::PriorityState::HeldBy {
+        player: P2,
+        consecutive_passes: 0,
+    });
+    assert!(!after.state.zones.objects.contains_key(&old_top));
+    let new_top = *after.state.zones.locations.iter().find_map(|(id, location)| {
+        (location.zone == mtgml_model::ZoneKind::Hand && location.player == Some(P2))
+            .then_some(id)
+    }).expect("Draw must create a fresh S2 incarnation in P2's Hand");
+    assert_ne!(new_top, old_top);
+    assert_eq!(after.state.zones.objects[&new_top].physical_card, physical);
+    assert_eq!(new_top, after_active_pass.state.allocators.next_object_id);
+    assert_eq!(old_library.zone, mtgml_model::ZoneKind::Library);
+    assert_eq!(after.state.execution.pending_decision.as_ref().unwrap().request.actor, P2);
+    for identity in after.state.perspective_identities.players.values() {
+        assert!(!identity.object_to_opaque.contains_key(&old_top));
+    }
+    assert!(after.state.perspective_identities.players[&P2]
+        .object_to_opaque
+        .contains_key(&new_top));
+    assert!(!after.state.perspective_identities.players[&P1]
+        .object_to_opaque
+        .contains_key(&new_top));
+
+    let mut restored_after = s3_c_backend(after.state.clone());
+    restored_after.restore(after.clone()).unwrap();
+    assert_eq!(restored_after.checkpoint().unwrap(), after);
+    let fork_after = controller.fork().unwrap();
+    assert_eq!(fork_after.checkpoint().unwrap(), after);
+
+    let replay = controller.export_replay().unwrap();
+    assert_eq!(replay.steps.len(), 2);
+    assert_eq!(replay.steps[1].response, current_select_one_response(&nonactive_request));
+    let report = controller.execute_replay_from_checkpoint(initial, replay).unwrap();
+    assert_eq!(report.final_checkpoint, after);
+}
+
+#[test]
+fn m3_block_3_draw_preserves_opponent_noninterference_across_hidden_worlds() {
+    let base = stable_draw_state_at_upkeep();
+    let mut world_a = base.clone();
+    let mut world_b = base;
+    replace_library_top_identity(&mut world_a, 20, 120);
+    replace_library_top_identity(&mut world_b, 30, 130);
+
+    let first = TrustedEnvironmentController::new(s3_c_backend(world_a));
+    let second = TrustedEnvironmentController::new(s3_c_backend(world_b));
+    first.execute_forced_progress().unwrap();
+    second.execute_forced_progress().unwrap();
+    assert_eq!(player_fingerprint(&first, P1), player_fingerprint(&second, P1));
+
+    let first_active = first.bind_player(P2).unwrap();
+    let second_active = second.bind_player(P2).unwrap();
+    first_active
+        .submit(current_select_one_response(&first_active.visible_decision().unwrap().unwrap()))
+        .unwrap();
+    second_active
+        .submit(current_select_one_response(&second_active.visible_decision().unwrap().unwrap()))
+        .unwrap();
+    assert_eq!(player_fingerprint(&first, P1), player_fingerprint(&second, P1));
+
+    let first_nonactive = first.bind_player(P1).unwrap();
+    let second_nonactive = second.bind_player(P1).unwrap();
+    let first_request = first_nonactive.visible_decision().unwrap().unwrap();
+    let second_request = second_nonactive.visible_decision().unwrap().unwrap();
+    assert_eq!(first_request, second_request);
+    let first_step = first_nonactive
+        .submit(current_select_one_response(&first_request))
+        .unwrap();
+    let second_step = second_nonactive
+        .submit(current_select_one_response(&second_request))
+        .unwrap();
+
+    assert_eq!(
+        mtgml_wire::encode_canonical(&first_step).unwrap(),
+        mtgml_wire::encode_canonical(&second_step).unwrap(),
+        "the nonactive PlayerStep must not expose the hidden card identity"
+    );
+    assert_eq!(player_fingerprint(&first, P1), player_fingerprint(&second, P1));
+    assert_ne!(
+        player_fingerprint(&first, P2),
+        player_fingerprint(&second, P2),
+        "the owner receives the private identity authorized by S2"
+    );
+}
+
+#[test]
+fn m3_block_3_draw_rejections_are_atomic_and_fail_closed() {
+    let mut wrong_turn = stable_draw_state_at_upkeep();
+    wrong_turn.core.position = TurnPosition::Beginning {
+        step: mtgml_state::BeginningStep::Draw,
+    };
+    wrong_turn.core.turn_number = 1;
+    mtgml_state::validate_engine_state(&wrong_turn).unwrap();
+
+    let mut wrong_owner = stable_draw_state_at_upkeep();
+    wrong_owner.core.position = TurnPosition::Beginning {
+        step: mtgml_state::BeginningStep::Draw,
+    };
+    wrong_owner.core.active_player = P1;
+    mtgml_state::validate_engine_state(&wrong_owner).unwrap();
+
+    let mut empty_library = stable_draw_state_at_upkeep();
+    empty_library.core.position = TurnPosition::Beginning {
+        step: mtgml_state::BeginningStep::Draw,
+    };
+    let old_top = GameObjectId(2);
+    let key = mtgml_state::ZoneKey {
+        zone: mtgml_model::ZoneKind::Library,
+        player: Some(P2),
+        visibility: mtgml_state::VisibilityPartition::FaceDown,
+        partition: None,
+    };
+    empty_library.zones.ordered_zones.remove(&key);
+    empty_library.zones.objects.remove(&old_top);
+    empty_library.zones.locations.remove(&old_top);
+    for (perspective, identity) in &mut empty_library.perspective_identities.players {
+        if let Some(opaque) = identity.object_to_opaque.remove(&old_top) {
+            identity.opaque_to_object.remove(&opaque);
+            empty_library
+                .knowledge
+                .players
+                .get_mut(perspective)
+                .unwrap()
+                .active
+                .remove(&opaque);
+        }
+    }
+    mtgml_state::validate_engine_state(&empty_library).unwrap();
+
+    for (label, state) in [
+        ("turn one", wrong_turn),
+        ("wrong Library owner", wrong_owner),
+        ("empty Library", empty_library),
+    ] {
+        let before = state.clone();
+        let mut kernel = mtgml_rules::ProgramKernelV1::for_admitted_execution(
+            mtgml_model::ExecutionProgramV1::MagicRules,
+            crate::semantic_catalog_generated::magic_s3_c_draw_interaction_0_1_0_semantic_contract_id(),
+        )
+        .unwrap();
+        let rejected = kernel.advance_forced_progress(&state);
+        assert!(rejected.is_err(), "{label} must fail closed");
+        assert_eq!(state, before, "{label} rejection must not mutate EngineState");
+    }
+
+    let mut partial_draw = stable_draw_state_at_upkeep();
+    partial_draw.core.position = TurnPosition::Beginning {
+        step: mtgml_state::BeginningStep::Draw,
+    };
+    partial_draw.core.turn_number = 2;
+    let mut invalid_config = ReferenceEnvironmentConfig {
+        state: partial_draw,
+        status: EpisodeStatus::Running,
+        limit_counters: EnvironmentLimitCounters::default(),
+        codec: CheckpointCodecIdentity {
+            codec_id: CHECKPOINT_CODEC_ID_V6.into(),
+            semantic_version: CHECKPOINT_CODEC_SEMANTIC_VERSION_V6.into(),
+        },
+        execution_identity: ReferenceEnvironmentBackend::magic_s3_c_execution_identity(),
+        replay: s3_replay_config(),
+    };
+    invalid_config.replay.scenario_id = "rules/draw-card@0.1.0:partial-draw-rejected".into();
+    assert!(
+        ReferenceEnvironmentBackend::new(invalid_config).is_err(),
+        "Draw + Priority=None is kernel-local and cannot be admitted as a checkpoint"
+    );
 }
 
 fn decode_magic_observation(

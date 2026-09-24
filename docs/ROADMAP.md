@@ -214,22 +214,29 @@ S3_A_PRODUCTION_SEMANTIC_CONTRACT_ID = 51efc0307d9ef8fc4fca46f8ea6e4ea5d5293cb83
 S3_A_LIFECYCLE = specified
 NONTERMINAL_FINAL_ORDER_REFERENCE_PATH = PASS
 S3_B_AUTHORIZED = YES
-S3_C_AUTHORIZED = NO
+S3_C_AUTHORIZED = YES
 S3_B_IMPLEMENTATION_AUTHORIZED = YES
-S3_C_IMPLEMENTATION_AUTHORIZED = NO
+S3_C_IMPLEMENTATION_AUTHORIZED = YES
 MAGIC_RULES_FLOW_INVENTORY_V1 = REVIEWED / FROZEN_PLANNING_INPUT
 MAGIC_RULES_FLOW_INVENTORY_REVIEW_HEAD = 8a440645735fcb17be9470c7a53969860b1d4fad
 M3_MAJOR_SEMANTIC_BLOCKS = 8
 S3_B_STARTED = YES
-S3_B_IMPLEMENTATION = COMPLETE_CANDIDATE
+S3_B_IMPLEMENTATION = COMPLETE / ACCEPTED / MERGED
 S3_B_PRODUCTION_SEMANTIC_CONTRACT_REQUIRED = YES
 S3_B_PRODUCTION_SEMANTIC_CONTRACT_ALLOCATED = YES
 S3_B_PRODUCTION_SEMANTIC_CONTRACT_ID = c480cbae69bf0496aff83bb973a859721bfa0f969351b33b3f0b09ee3f7c5498
 BASIC_PRIORITY_LIFECYCLE = specified
-M3_BLOCK_2 = COMPLETE_CANDIDATE
-BLOCK_3_STARTED = NO
-CURRENT_M3_BLOCK = BASIC_PRIORITY_AND_REFERENCE_RESPONSE_INTEGRATION
-NEXT_GATE = M3_BLOCK_2_EXACT_HEAD_REVIEW
+S3_C_STARTED = YES
+S3_C_IMPLEMENTATION = COMPLETE_CANDIDATE
+S3_C_PRODUCTION_SEMANTIC_CONTRACT_REQUIRED = YES
+S3_C_PRODUCTION_SEMANTIC_CONTRACT_ALLOCATED = YES
+S3_C_PRODUCTION_SEMANTIC_CONTRACT_ID = 2818c779c0a1f3b534d5551d9842a26e64ea93fa5906e8d43b499c4a3e042cb5
+S3_C_LIFECYCLE = specified
+M3_BLOCK_2 = COMPLETE / FINAL ACCEPTANCE PASS / MERGED
+M3_BLOCK_3 = COMPLETE_CANDIDATE
+BLOCK_3_STARTED = YES
+CURRENT_M3_BLOCK = DRAW_AND_S2_REPLAY_INTERACTION
+NEXT_GATE = M3_BLOCK_3_EXACT_HEAD_REVIEW
 ```
 
 `M2.5 = NOT_CLAIMED / NOT_FROZEN`. Its abandoned census and research
@@ -265,19 +272,22 @@ frozen after PR #210 merged at
 `0cd24d1f2cb4183c19fb04ce0c3c827148313a3b`. S3.0 is complete and frozen.
 PR #211's reviewed source head `aa28f9753225dca0e58e33b0d0356a1cc560aae3`
 merged at `66f3b713787cad89674257f6e0b6448b9fd568f9`. S3.A is authorized and
-started. Block 1 is complete / reviewed. S3.B Basic Priority is implemented
-as a candidate under its distinct generated semantic identity; its capability
-lifecycle remains specified pending exact-head review. Block 3 and S3.C remain
-unstarted / unauthorized.
+started. M3 Blocks 1 and 2 are accepted / merged by PR #213 at
+`60b6ee7957032a36371ceac89c3a1e4f886d200c`. The S3.B implementation uses its
+distinct generated semantic identity; its capability lifecycle remains
+specified pending evidence review. Block 3 / Draw + S2 replay interaction is
+the current authorized implementation scope. Block 4 and later remain
+unauthorized.
 
 M3 has started through semantic-neutral P0 infrastructure, T0
 conformance/proof infrastructure, the covered S1 turn-structure capability,
 and the implemented bounded S2 zone-incarnation capability. P0 is
 complete/frozen; T0 is COMPLETE / FROZEN; S1 is covered and S2 is implemented,
 neither certified. Nine Foundation capabilities remain `specified`; one is
-implemented and one is covered. S2 authoritative replay remains deferred and
-required before covered. The state-based-actions-combat and draw-card
-interactions with S2 are unsatisfied. Census-driven scope research is outside
+implemented and one is covered. S2 authoritative replay remains required
+before covered. The state-based-actions-combat interaction with S2 remains
+unsatisfied. The Draw × S2 interaction has a Block 3 candidate witness pending
+exact-head review. Census-driven scope research is outside
 this authoritative engine repository, and external census M3 authorization
 must not be treated as engine-semantic authorization. No broad Magic, card,
 deck, format, Commander, or playability claim follows.

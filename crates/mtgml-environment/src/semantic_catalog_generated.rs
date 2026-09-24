@@ -192,3 +192,62 @@ pub fn magic_s3_b_basic_priority_0_1_0_semantic_contract_id() -> SemanticContrac
     )
     .expect("generated canonical hex")
 }
+
+// magic_s3_c_draw_interaction_0_1_0
+pub const SEMANTIC_CONTRACT_CATALOG_MAGIC_S3_C_DRAW_INTERACTION_0_1_0_RULES_CONTRACT_HEX: &str =
+    "081464ecd909d561d482b760333a68c3f3ac40de1a1532ff974cd71475115b20";
+pub const SEMANTIC_CONTRACT_CATALOG_MAGIC_S3_C_DRAW_INTERACTION_0_1_0_SEMANTIC_CONTRACT_HEX: &str =
+    "2818c779c0a1f3b534d5551d9842a26e64ea93fa5906e8d43b499c4a3e042cb5";
+
+pub fn magic_s3_c_draw_interaction_0_1_0_rules_manifest() -> mtgml_model::RulesContractManifestV1 {
+    mtgml_model::RulesContractManifestV1 {
+        rules_authority: mtgml_model::RulesAuthorityV1::ComprehensiveRules {
+            snapshot_id: "wotc-cr-2026-08-07-txt-20260819-sha256-4381ad1b39ab2c05f7d03633a20f711ed37277074d3266dcba5f38cbb527423f".to_owned(),
+        },
+        capability_closure: Some(vec![
+            mtgml_model::CapabilityRequirementV1 {
+                key: "rules/basic-priority".to_owned(),
+                version: "0.1.0".to_owned(),
+            },
+            mtgml_model::CapabilityRequirementV1 {
+                key: "rules/draw-card".to_owned(),
+                version: "0.1.0".to_owned(),
+            },
+            mtgml_model::CapabilityRequirementV1 {
+                key: "rules/state-based-actions-combat".to_owned(),
+                version: "0.1.0".to_owned(),
+            },
+            mtgml_model::CapabilityRequirementV1 {
+                key: "rules/turn-structure".to_owned(),
+                version: "0.1.0".to_owned(),
+            },
+            mtgml_model::CapabilityRequirementV1 {
+                key: "rules/zone-incarnation".to_owned(),
+                version: "0.1.0".to_owned(),
+            },
+        ]),
+    }
+}
+
+pub fn magic_s3_c_draw_interaction_0_1_0_semantic_manifest(
+) -> mtgml_model::SemanticContractManifestV1 {
+    mtgml_model::SemanticContractManifestV1 {
+        rules_contract_id: magic_s3_c_draw_interaction_0_1_0_rules_contract_id(),
+        format_contract_id: None,
+        content_contract_id: None,
+    }
+}
+
+pub fn magic_s3_c_draw_interaction_0_1_0_rules_contract_id() -> RulesContractIdV1 {
+    RulesContractIdV1::parse(
+        SEMANTIC_CONTRACT_CATALOG_MAGIC_S3_C_DRAW_INTERACTION_0_1_0_RULES_CONTRACT_HEX,
+    )
+    .expect("generated canonical hex")
+}
+
+pub fn magic_s3_c_draw_interaction_0_1_0_semantic_contract_id() -> SemanticContractIdV1 {
+    SemanticContractIdV1::parse(
+        SEMANTIC_CONTRACT_CATALOG_MAGIC_S3_C_DRAW_INTERACTION_0_1_0_SEMANTIC_CONTRACT_HEX,
+    )
+    .expect("generated canonical hex")
+}

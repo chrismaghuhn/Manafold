@@ -59,8 +59,8 @@ class SourceOfTruthTests(unittest.TestCase):
         self.assertIsInstance(entries, list)
         self.assertEqual(
             len(entries),
-            4,
-            "production catalog must contain Synthetic, S1, S3.A, and S3.B",
+            5,
+            "production catalog must contain Synthetic, S1, S3.A, S3.B, and S3.C",
         )
         # Entry 0: synthetic_legacy_default
         syn = entries[0]
@@ -114,6 +114,21 @@ class SourceOfTruthTests(unittest.TestCase):
         )
         self.assertIsNone(s3b["format_contract_id"])
         self.assertIsNone(s3b["content_contract_id"])
+        s3c = entries[4]
+        self.assertEqual(s3c["entry_id"], "magic_s3_c_draw_interaction_0_1_0")
+        self.assertEqual(s3c["rules_authority"], ts["rules_authority"])
+        self.assertEqual(
+            s3c["capability_closure"],
+            [
+                {"key": "rules/basic-priority", "version": "0.1.0"},
+                {"key": "rules/draw-card", "version": "0.1.0"},
+                {"key": "rules/state-based-actions-combat", "version": "0.1.0"},
+                {"key": "rules/turn-structure", "version": "0.1.0"},
+                {"key": "rules/zone-incarnation", "version": "0.1.0"},
+            ],
+        )
+        self.assertIsNone(s3c["format_contract_id"])
+        self.assertIsNone(s3c["content_contract_id"])
 
     def test_source_contains_no_hand_authored_identity(self) -> None:
         # BLOCKER regression: derived IDs are GENERATED, never hand-authored.

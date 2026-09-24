@@ -26,6 +26,7 @@ const MAGIC_OBSERVATION_CODEC: &str = "magic-m3-observation.v1";
 const SBA_CAPABILITY_KEY: &str = "rules/state-based-actions-combat";
 const SBA_CAPABILITY_VERSION: &str = "0.1.0";
 const BASIC_PRIORITY_CAPABILITY_KEY: &str = "rules/basic-priority";
+const DRAW_CARD_CAPABILITY_KEY: &str = "rules/draw-card";
 const TURN_STRUCTURE_CAPABILITY_KEY: &str = "rules/turn-structure";
 const ZONE_INCARNATION_CAPABILITY_KEY: &str = "rules/zone-incarnation";
 
@@ -52,11 +53,23 @@ fn permits_one_forced_progress_revision(
         TURN_STRUCTURE_CAPABILITY_KEY,
         ZONE_INCARNATION_CAPABILITY_KEY,
     ];
-    closure.len() == expected.len()
+    let s3_b = closure.len() == expected.len()
         && closure
             .iter()
             .zip(expected)
-            .all(|(actual, key)| actual.key == key && actual.version == SBA_CAPABILITY_VERSION)
+            .all(|(actual, key)| actual.key == key && actual.version == SBA_CAPABILITY_VERSION);
+    let expected_draw = [
+        BASIC_PRIORITY_CAPABILITY_KEY,
+        DRAW_CARD_CAPABILITY_KEY,
+        SBA_CAPABILITY_KEY,
+        TURN_STRUCTURE_CAPABILITY_KEY,
+        ZONE_INCARNATION_CAPABILITY_KEY,
+    ];
+    s3_b || (closure.len() == expected_draw.len()
+        && closure
+            .iter()
+            .zip(expected_draw)
+            .all(|(actual, key)| actual.key == key && actual.version == SBA_CAPABILITY_VERSION))
 }
 
 fn observation_codec_supported(rules: &RulesContractManifestV1, codec: &str) -> bool {

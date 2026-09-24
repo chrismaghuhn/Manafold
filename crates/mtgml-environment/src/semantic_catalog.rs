@@ -31,7 +31,10 @@ use crate::semantic_catalog_generated::{
     magic_s3_a_ordered_sba_0_1_0_rules_manifest, magic_s3_a_ordered_sba_0_1_0_semantic_contract_id,
     magic_s3_a_ordered_sba_0_1_0_semantic_manifest, magic_s3_b_basic_priority_0_1_0_rules_manifest,
     magic_s3_b_basic_priority_0_1_0_semantic_contract_id,
-    magic_s3_b_basic_priority_0_1_0_semantic_manifest, magic_turn_structure_0_1_0_rules_manifest,
+    magic_s3_b_basic_priority_0_1_0_semantic_manifest,
+    magic_s3_c_draw_interaction_0_1_0_rules_manifest,
+    magic_s3_c_draw_interaction_0_1_0_semantic_contract_id,
+    magic_s3_c_draw_interaction_0_1_0_semantic_manifest, magic_turn_structure_0_1_0_rules_manifest,
     magic_turn_structure_0_1_0_semantic_contract_id, magic_turn_structure_0_1_0_semantic_manifest,
     synthetic_legacy_default_rules_manifest, synthetic_legacy_default_semantic_contract_id,
     synthetic_legacy_default_semantic_manifest,
@@ -92,6 +95,11 @@ impl RuntimeSemanticCatalog {
                     semantic_contract_id: magic_s3_b_basic_priority_0_1_0_semantic_contract_id(),
                     manifest: magic_s3_b_basic_priority_0_1_0_semantic_manifest(),
                     rules_manifest: magic_s3_b_basic_priority_0_1_0_rules_manifest(),
+                },
+                CatalogEntry {
+                    semantic_contract_id: magic_s3_c_draw_interaction_0_1_0_semantic_contract_id(),
+                    manifest: magic_s3_c_draw_interaction_0_1_0_semantic_manifest(),
+                    rules_manifest: magic_s3_c_draw_interaction_0_1_0_rules_manifest(),
                 },
             ],
         }
