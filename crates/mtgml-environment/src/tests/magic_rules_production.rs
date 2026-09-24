@@ -174,6 +174,47 @@ fn mixed_attacker_eligibility_state() -> mtgml_state::EngineState {
     state
 }
 
+fn bounded_attacker_count_state(count: u64) -> mtgml_state::EngineState {
+    assert!((1..=9).contains(&count));
+    let mut state = stable_combat_state();
+    for object_id in 4..(3 + count) {
+        add_creature(
+            &mut state,
+            object_id,
+            P1,
+            [object_id - 1, object_id],
+        );
+        state
+            .foundation_sources
+            .get_mut(&GameObjectId(object_id))
+            .unwrap()
+            .base_characteristics = BaseCharacteristics::Simple {
+            power: 2,
+            toughness: 2,
+        };
+    }
+    state.allocators.next_object_id = GameObjectId(3 + count);
+    mtgml_state::validate_engine_state(&state).unwrap();
+    state
+}
+
+fn reach_pending_attacker_decision(
+    controller: &TrustedEnvironmentController,
+) -> crate::checkpoint::EnvironmentCheckpointV6 {
+    controller.execute_forced_progress().unwrap();
+    let p1 = controller.bind_player(P1).unwrap();
+    let p2 = controller.bind_player(P2).unwrap();
+    for _ in 0..2 {
+        let active = p1.visible_decision().unwrap().unwrap();
+        p1.submit(current_select_one_response(&active)).unwrap();
+        let nonactive = p2.visible_decision().unwrap().unwrap();
+        p2.submit(current_select_one_response(&nonactive)).unwrap();
+    }
+    let pending = controller.checkpoint().unwrap();
+    assert!(pending.state.execution.pending_decision.is_some());
+    pending
+}
+
 fn assert_combat_checkpoint_parity(controller: &TrustedEnvironmentController) {
     let checkpoint = controller.checkpoint().unwrap();
     let mut restored = combat_backend(checkpoint.state.clone());
@@ -322,6 +363,126 @@ fn source_less_battlefield_object_is_rejected_at_admission_without_mutation() {
     assert!(unsupported.combat.is_none());
     assert_eq!(unsupported.allocators.next_object_id, GameObjectId(9));
     assert!(admission.is_err(), "rejected admission creates no replay backend");
+}
+
+#[test]
+fn nine_eligible_attackers_fail_before_decision_without_mutation() {
+    let controller =
+        TrustedEnvironmentController::new(combat_backend(bounded_attacker_count_state(9)));
+    controller.execute_forced_progress().unwrap();
+    let p1 = controller.bind_player(P1).unwrap();
+    let p2 = controller.bind_player(P2).unwrap();
+
+    let active = p1.visible_decision().unwrap().unwrap();
+    p1.submit(current_select_one_response(&active)).unwrap();
+    let nonactive = p2.visible_decision().unwrap().unwrap();
+    p2.submit(current_select_one_response(&nonactive)).unwrap();
+    let active = p1.visible_decision().unwrap().unwrap();
+    p1.submit(current_select_one_response(&active)).unwrap();
+
+    let before = controller.checkpoint().unwrap();
+    let replay_before = controller.export_replay().unwrap();
+    let p1_before = player_fingerprint(&controller, P1);
+    let p2_before = player_fingerprint(&controller, P2);
+    let nonactive = p2.visible_decision().unwrap().unwrap();
+    assert!(matches!(
+        controller.execute_trusted_response(P2, current_select_one_response(&nonactive)),
+        Err(crate::ControllerError::KernelExecution(
+            mtgml_rules::KernelExecutionError::UnsupportedStagePath
+        ))
+    ));
+    assert_eq!(controller.checkpoint().unwrap(), before);
+    assert!(matches!(
+        before.state.execution.pending_decision.as_ref().unwrap().request.decision,
+        mtgml_decision::DecisionDomainV2::ChooseOne { .. }
+    ));
+    assert!(p1.visible_decision().unwrap().is_none());
+    assert!(matches!(
+        p2.visible_decision().unwrap().unwrap().decision,
+        mtgml_decision::DecisionDomainV2::ChooseOne { .. }
+    ));
+    assert_eq!(controller.export_replay().unwrap(), replay_before);
+    assert_eq!(player_fingerprint(&controller, P1), p1_before);
+    assert_eq!(player_fingerprint(&controller, P2), p2_before);
+}
+
+#[test]
+fn pending_attacker_restore_rejects_source_less_battlefield_and_is_nonmutating() {
+    let controller = TrustedEnvironmentController::new(combat_backend(stable_combat_state()));
+    let valid = reach_pending_attacker_decision(&controller);
+    let original = controller.checkpoint().unwrap();
+    assert_eq!(valid, original);
+    let replay_before = controller.export_replay().unwrap();
+    let p1_before = player_fingerprint(&controller, P1);
+    let p2_before = player_fingerprint(&controller, P2);
+
+    let mut unsupported = valid.state.clone();
+    add_creature(&mut unsupported, 4, P1, [3, 4]);
+    unsupported.foundation_sources.remove(&GameObjectId(4));
+    unsupported.allocators.next_object_id = GameObjectId(5);
+    mtgml_state::validate_engine_state(&unsupported).unwrap();
+    let checkpoint = crate::checkpoint::EnvironmentCheckpointV6::new(
+        unsupported,
+        valid.status.clone(),
+        valid.limit_counters.clone(),
+        valid.codec.clone(),
+        valid.execution_identity.clone(),
+    )
+    .expect("crafted checkpoint must pass structural identity validation");
+    assert_eq!(
+        crate::semantic_catalog::admit_restore(
+            &crate::semantic_catalog::RuntimeSemanticCatalog::production(),
+            &checkpoint,
+        ),
+        Err(crate::semantic_catalog::RestoreAdmissionError::ProgramStateIncompatible)
+    );
+
+    assert!(matches!(
+        controller.restore(checkpoint),
+        Err(crate::ControllerError::ProgramStateIncompatible)
+    ));
+    assert_eq!(controller.checkpoint().unwrap(), original);
+    assert_eq!(controller.export_replay().unwrap(), replay_before);
+    assert_eq!(player_fingerprint(&controller, P1), p1_before);
+    assert_eq!(player_fingerprint(&controller, P2), p2_before);
+}
+
+#[test]
+fn pending_attacker_restore_rejects_nine_eligible_attackers() {
+    let controller = TrustedEnvironmentController::new(combat_backend(bounded_attacker_count_state(8)));
+    let valid = reach_pending_attacker_decision(&controller);
+    assert_eq!(
+        valid
+            .state
+            .execution
+            .pending_decision
+            .as_ref()
+            .unwrap()
+            .request
+            .candidates
+            .len(),
+        8
+    );
+
+    let mut overbound = valid.state.clone();
+    add_creature(&mut overbound, 11, P1, [10, 11]);
+    overbound.allocators.next_object_id = GameObjectId(12);
+    mtgml_state::validate_engine_state(&overbound).unwrap();
+    let checkpoint = crate::checkpoint::EnvironmentCheckpointV6::new(
+        overbound,
+        valid.status,
+        valid.limit_counters,
+        valid.codec,
+        valid.execution_identity,
+    )
+    .expect("over-bound candidate checkpoint remains structurally valid");
+    assert_eq!(
+        crate::semantic_catalog::admit_restore(
+            &crate::semantic_catalog::RuntimeSemanticCatalog::production(),
+            &checkpoint,
+        ),
+        Err(crate::semantic_catalog::RestoreAdmissionError::ProgramStateIncompatible)
+    );
 }
 
 #[test]

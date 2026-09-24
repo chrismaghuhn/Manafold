@@ -49,6 +49,8 @@ use crate::turn_structure::{
     TurnStructureSupportProfile, UnsupportedRulesBoundary,
 };
 
+const MAX_SUPPORTED_ATTACKERS: usize = 8;
+
 /// Durable, milestone-free owner of Magic execution.
 ///
 /// Production construction is reachable only through
@@ -291,11 +293,7 @@ impl MagicRulesKernel {
                 {
                     return Err(KernelExecutionError::UnsupportedStagePath);
                 }
-                let mut support = state.clone();
-                support.execution.pending_decision = None;
-                validate_turn_structure_support(&support)
-                    .map_err(KernelExecutionError::TurnStructure)?;
-                let candidates = Self::derive_eligible_attackers(state)?;
+                let candidates = Self::validate_attacker_declaration_support(state)?;
                 let expected = CandidateOrderingV1::assign_dense(
                     candidates
                         .iter()
@@ -344,11 +342,13 @@ impl MagicRulesKernel {
             if location.zone == ZoneKind::Battlefield && object.face_down {
                 return Err(KernelExecutionError::UnsupportedStagePath);
             }
-            let Some(source) = state.foundation_sources.get(object_id) else {
+            if location.zone != ZoneKind::Battlefield {
                 continue;
+            }
+            let Some(source) = state.foundation_sources.get(object_id) else {
+                return Err(KernelExecutionError::UnsupportedStagePath);
             };
-            if location.zone != ZoneKind::Battlefield
-                || object.controller != actor
+            if object.controller != actor
                 || source.source_kind != mtgml_state::FoundationSourceKind::Creature
                 || !matches!(
                     source.base_characteristics,
@@ -379,10 +379,14 @@ impl MagicRulesKernel {
         Ok(candidates)
     }
 
-    fn create_attacker_decision(
-        &mut self,
+    /// Proves the single bounded profile used when an attacker decision is
+    /// created, answered, or resumed from a checkpoint. Foundation/SBA state
+    /// admission runs before eligibility, so a source-less Battlefield object
+    /// cannot be filtered away as though it were merely an ineligible attacker.
+    fn validate_attacker_declaration_support(
         state: &EngineState,
-    ) -> Result<TransitionResult, KernelExecutionError> {
+    ) -> Result<Vec<(mtgml_model::OpaqueObjectId, mtgml_model::GameObjectId)>, KernelExecutionError>
+    {
         validate_engine_state(state).map_err(KernelExecutionError::BeforeState)?;
         if state.core.position
             != (TurnPosition::Combat {
@@ -390,18 +394,46 @@ impl MagicRulesKernel {
             })
             || state.combat.is_some()
             || state.core.priority != mtgml_state::PriorityState::None
-            || state.execution.pending_decision.is_some()
         {
             return Err(KernelExecutionError::UnsupportedStagePath);
         }
-        let support =
-            validate_turn_structure_support(state).map_err(KernelExecutionError::TurnStructure)?;
-        if support.position() != state.core.position {
+        if let Some(pending) = &state.execution.pending_decision {
+            if pending.request.actor != state.core.active_player
+                || pending.request.state_revision != state.revision
+                || pending.request.visibility != DecisionVisibility::ActingPlayerOnly
+                || pending.request.continuation_id.is_some()
+                || !matches!(
+                    pending.request.decision,
+                    DecisionDomainV2::ChooseMany { .. }
+                )
+            {
+                return Err(KernelExecutionError::UnsupportedStagePath);
+            }
+        }
+        let mut support_state = state.clone();
+        support_state.execution.pending_decision = None;
+        validate_turn_structure_support(&support_state)
+            .map_err(KernelExecutionError::TurnStructure)?;
+        crate::state_based_actions::validate_state_based_actions_support_profile(&support_state)
+            .map_err(|_| KernelExecutionError::UnsupportedStagePath)?;
+
+        let eligible = Self::derive_eligible_attackers(state)?;
+        if eligible.len() > MAX_SUPPORTED_ATTACKERS {
             return Err(KernelExecutionError::UnsupportedStagePath);
         }
+        Ok(eligible)
+    }
+
+    fn create_attacker_decision(
+        &mut self,
+        state: &EngineState,
+    ) -> Result<TransitionResult, KernelExecutionError> {
+        if state.execution.pending_decision.is_some() {
+            return Err(KernelExecutionError::UnsupportedStagePath);
+        }
+        let eligible = Self::validate_attacker_declaration_support(state)?;
         let actor = state.core.active_player;
         let identity = crate::decision_stage::fresh_stage_identity(state, actor)?;
-        let eligible = Self::derive_eligible_attackers(state)?;
         let candidates = CandidateOrderingV1::assign_dense(
             eligible
                 .iter()
@@ -487,11 +519,7 @@ impl MagicRulesKernel {
         let DecisionAnswerV2::SelectMany { candidate_ids } = &response.answer else {
             return crate::decision_stage::rejected(state);
         };
-        let mut support_state = state.clone();
-        support_state.execution.pending_decision = None;
-        validate_turn_structure_support(&support_state)
-            .map_err(KernelExecutionError::TurnStructure)?;
-        let eligible = Self::derive_eligible_attackers(state)?;
+        let eligible = Self::validate_attacker_declaration_support(state)?;
         let expected_candidates = CandidateOrderingV1::assign_dense(
             eligible
                 .iter()
@@ -2037,13 +2065,9 @@ mod attacker_eligibility_tests {
         );
         state.zones.locations.insert(unsupported, location);
 
-        // The pure eligibility predicate never mistakes a source-less object
-        // for an attacker. The enclosing SBA profile still fails closed on
-        // this world because a Battlefield object lacks the required source
-        // facts; no player Decision can be created from it.
-        assert_eq!(
-            MagicRulesKernel::derive_eligible_attackers(&state).unwrap(),
-            vec![(opaque, eligible)]
-        );
+        // The source-less object is an unsupported Foundation state, rather
+        // than an ineligible candidate to filter from an otherwise admitted
+        // attacker domain.
+        assert!(MagicRulesKernel::derive_eligible_attackers(&state).is_err());
     }
 }
