@@ -663,8 +663,11 @@ fn state_with_order_stage(
     actor: PlayerId,
     next_owner_index: u32,
     completed_owner_orders: Vec<SbaGraveyardOwnerOrderV1>,
+    current_revision: u64,
+    created_at_revision: u64,
+    round_start_revision: u64,
 ) -> EngineState {
-    state.revision = StateRevision(1);
+    state.revision = StateRevision(current_revision);
     let continuation = mtgml_model::ContinuationId(1);
     let mut bindings = selected_sba_actions
         .iter()
@@ -694,10 +697,10 @@ fn state_with_order_stage(
         ContinuationRecordV2 {
             id: continuation,
             actor,
-            created_at_revision: StateRevision(1),
-            stage_index: 0,
+            created_at_revision: StateRevision(created_at_revision),
+            stage_index: next_owner_index as u16,
             payload: ContinuationPayloadV2::MagicSbaGraveyardOrderV1 {
-                round_start_revision: StateRevision(0),
+                round_start_revision: StateRevision(round_start_revision),
                 selected_sba_actions,
                 apnap_owners,
                 next_owner_index,
@@ -705,11 +708,12 @@ fn state_with_order_stage(
             },
         },
     );
+    let decision_id = DecisionId(2 + u64::from(next_owner_index));
     state.execution.pending_decision = Some(PendingDecisionRecordV2 {
         request: AuthoritativeDecisionRequestV2 {
-            decision_id: DecisionId(2),
+            decision_id,
             player_decision_id: PlayerDecisionIdV1(2),
-            state_revision: StateRevision(1),
+            state_revision: StateRevision(current_revision),
             actor,
             visibility: DecisionVisibility::ActingPlayerOnly,
             decision: DecisionDomainV2::Order {
@@ -720,7 +724,7 @@ fn state_with_order_stage(
             continuation_id: Some(continuation),
         },
     });
-    state.allocators.next_decision_id = DecisionId(3);
+    state.allocators.next_decision_id = DecisionId(decision_id.0 + 1);
     state.allocators.next_continuation_id = mtgml_model::ContinuationId(2);
     state
         .perspective_identities
@@ -758,6 +762,9 @@ fn state_with_pending_order() -> EngineState {
         P1,
         0,
         Vec::new(),
+        1,
+        1,
+        0,
     )
 }
 
@@ -796,7 +803,131 @@ fn state_with_pending_two_owner_order() -> EngineState {
         P1,
         0,
         Vec::new(),
+        1,
+        1,
+        0,
     )
+}
+
+fn state_with_second_owner_order() -> EngineState {
+    let state = state_with(
+        &[
+            CreatureSpec {
+                owner: P1,
+                toughness: 0,
+                marked_damage: 0,
+            },
+            CreatureSpec {
+                owner: P1,
+                toughness: 0,
+                marked_damage: 0,
+            },
+            CreatureSpec {
+                owner: P2,
+                toughness: 0,
+                marked_damage: 0,
+            },
+            CreatureSpec {
+                owner: P2,
+                toughness: 0,
+                marked_damage: 0,
+            },
+        ],
+        [40, 40],
+    );
+    state_with_order_stage(
+        state,
+        (1..=4)
+            .map(|id| object_action(id, vec![SbaObjectCauseV1::ZeroToughness]))
+            .collect(),
+        vec![P1, P2],
+        P2,
+        1,
+        vec![SbaGraveyardOwnerOrderV1 {
+            owner: P1,
+            top_to_bottom: vec![GameObjectId(1), GameObjectId(2)],
+        }],
+        2,
+        1,
+        0,
+    )
+}
+
+#[test]
+fn task6_sba_semantic_validator_accepts_a_valid_first_owner_stage() {
+    let state = state_with_pending_two_owner_order();
+    validate_engine_state(&state).unwrap();
+    assert_eq!(
+        magic_kernel().validate_s3_a_conformance_continuation(&state),
+        Ok(())
+    );
+}
+
+#[test]
+fn task6_sba_semantic_validator_accepts_a_valid_resumed_second_owner_stage() {
+    let state = state_with_second_owner_order();
+    validate_engine_state(&state).unwrap();
+    assert_eq!(
+        magic_kernel().validate_s3_a_conformance_continuation(&state),
+        Ok(())
+    );
+}
+
+#[test]
+fn task6_sba_semantic_validator_rejects_a_stale_cause_set() {
+    let mut state = state_with_pending_two_owner_order();
+    let continuation = state.execution.continuations.values_mut().next().unwrap();
+    let ContinuationPayloadV2::MagicSbaGraveyardOrderV1 {
+        selected_sba_actions,
+        ..
+    } = &mut continuation.payload
+    else {
+        unreachable!()
+    };
+    selected_sba_actions[0] = object_action(1, vec![SbaObjectCauseV1::LethalDamage]);
+    validate_engine_state(&state).expect("a stale semantic cause remains structurally well-formed");
+    assert_eq!(
+        magic_kernel().validate_s3_a_conformance_continuation(&state),
+        Err(mtgml_rules::SbaContinuationValidationError::SelectedActionSetMismatch)
+    );
+}
+
+#[test]
+fn task6_sba_semantic_validator_rejects_a_missing_new_loss_action() {
+    let mut state = state_with_pending_two_owner_order();
+    state.core.players.get_mut(&P1).unwrap().life = 0;
+    validate_engine_state(&state)
+        .expect("a newly applicable loss action is not a generic state-shape defect");
+    assert_eq!(
+        magic_kernel().validate_s3_a_conformance_continuation(&state),
+        Err(mtgml_rules::SbaContinuationValidationError::SelectedActionSetMismatch)
+    );
+}
+
+#[test]
+fn task6_sba_semantic_validator_rederives_apnap_from_the_active_player() {
+    let mut state = state_with_pending_two_owner_order();
+    state.core.active_player = P2;
+    validate_engine_state(&state)
+        .expect("persisted owner membership and current actor remain structurally coherent");
+    assert_eq!(
+        magic_kernel().validate_s3_a_conformance_continuation(&state),
+        Err(mtgml_rules::SbaContinuationValidationError::ApnapOwnersMismatch)
+    );
+}
+
+#[test]
+fn task6_sba_semantic_validator_fails_closed_when_priority_is_already_held() {
+    let mut state = state_with_pending_two_owner_order();
+    state.core.priority = mtgml_state::PriorityState::HeldBy {
+        player: P1,
+        consecutive_passes: 0,
+    };
+    validate_engine_state(&state).unwrap();
+    assert_eq!(
+        magic_kernel().validate_s3_a_conformance_continuation(&state),
+        Err(mtgml_rules::SbaContinuationValidationError::UnsupportedSbaProfile)
+    );
 }
 
 fn order_response(answer: DecisionAnswerV2) -> DecisionResponseV2 {

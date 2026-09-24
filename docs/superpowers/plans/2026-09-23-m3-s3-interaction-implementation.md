@@ -925,48 +925,60 @@ Decision, state, allocators, history, replay and player bytes.
 
 ### Task 6 — S3.A2 validate typed Magic continuation program
 
-**Allowed files:** `crates/mtgml-state/src/m2_shape/validation.rs`,
-`semantic_cursor.rs` and related state validation; rules continuation tests
-and the authoritative continuation specification. S3.P0 owns payload shape,
-V5 digest encoding and persistence identities.
+**Allowed files:** `crates/mtgml-state/src/m2_shape.rs`,
+`crates/mtgml-state/src/m2_shape/continuation.rs`, related state continuation
+tests, and the narrow Rules-owned read-only SBA semantic validator under
+`crates/mtgml-rules/src/state_based_actions.rs` with its tests. This plan file
+may be updated to record the ownership and restore boundary. S3.P0 owns
+payload shape, V5 digest encoding and persistence identities.
 
 **Forbidden:** changing `SyntheticM2Assembly` meaning, producer/decision
 implementation, Priority/Draw code, implicit stage-local memory, or any
 identity/schema version change.
 
-**RED tests:** Magic payload validates one round plan, APNAP order owners,
-stage cursor and previously collected exact permutations. Reject invalid owner
-order, duplicate/missing/foreign card IDs, malformed cause arrays, current
-actor mismatch, future source revision, missing/mismatched pending Decision,
-continuation ID change and unsupported cross-program payload. Prove V6
-checkpoint, restore and fork retain the payload. Re-derive round applicability
-from the immutable current state and validate that the saved plan is still
-exactly the selected action set; reject stale or partial plans. Keep all V4
-detached KATs byte-identical and validate the V5 continuation KAT added by
-S3.P0.
+**RED tests:** the state layer checks only structural continuation coherence:
+canonical/unique actions and causes, existing referenced players/objects,
+owner grouping, required-order-owner membership, completed-order
+permutations, stage/actor/request coherence, and the `R + 1 + K` revision
+relation. The Rules layer independently re-derives the bounded SBA action set
+from the immutable current state, derives exact APNAP owners, and compares
+both to the saved plan. It rejects stale, missing, extra, or inapplicable
+actions without mutating state. Rules semantics do not move into
+`mtgml-state`.
 
-**Objective:** implement S3.A semantic validation and resume invariants for
-the typed Magic payload introduced by S3.P0. Keep one ContinuationId across stages;
-fresh DecisionId and PlayerDecisionId per response stage. For Magic only,
-the continuation record actor tracks the currently expected owner; Synthetic
+Production checkpoint restore/fork of an SBA continuation is not admissible
+yet: there is no S3 production Magic `SemanticContractId`. Task 6 proves only
+the V5 state/V6 checkpoint representation and retains the explicit production
+S1 restore rejection. Real production restore/fork parity at each Order stage
+is `DEFERRED_REQUIRED` to Task 10, after a separate S3 semantic contract is
+introduced through the generated catalog. Do not make S1 admission accept the
+SBA continuation to satisfy Task 6.
+
+**Objective:** strengthen generic structural resumability in `mtgml-state`
+and add a read-only, Rules-owned semantic plan validator under the fixed S3.A
+conformance-candidate profile. Keep one ContinuationId across stages; fresh
+DecisionId and actor-local PlayerDecisionId per stage. For Magic only, the
+continuation record actor tracks the currently expected APNAP owner; Synthetic
 continuations retain their fixed actor invariant. No continuation without a
 pending Decision is valid checkpoint state.
 
-Use the S3.P0 closed V5 continuation variant and validate its S3.A semantics:
-round-start revision, complete selected actions/causes, APNAP owner list,
-stage cursor, and completed owner permutations must agree with current state
-and the pending Order Decision. No SBA producer exists in this task. The
-FullStateDigestV4 codec remains detached historical evidence; do not edit it.
+Use the S3.P0 closed V5 continuation variant. Do not add a producer, execute
+an Order response, mutate zones/life/status, allocate a production S3
+SemanticContractId, change any digest/checkpoint shape, or edit the historical
+FullStateDigestV4 codec. V5 continuation KATs must remain valid under the
+newly pinned stage revision model.
 
-**Verification:** state validation/continuation/digest suites, checkpoint
-restore/fork tests, old and new digest known-answer vectors, generation/drift
-checks, `cargo fmt --all -- --check`.
+**Verification:** state validation/continuation tests; Rules semantic
+re-derivation tests; the V5 continuation KAT; S1 checkpoint admission
+rejection; Task 5 producer RED remains red; `cargo fmt --all -- --check`.
 
 **Commit boundary:** S3.A continuation semantic validation only; no payload,
 digest or checkpoint type work and no producer.
 
-**HARD STOP:** a local cache, event history, or test-only flag is needed to
-resume the SBA round.
+**HARD STOP:** state-layer code derives Magic SBA semantics; a local cache or
+event history is needed to resume the SBA round; S1 production admission is
+weakened; or production checkpoint restore is claimed without an S3 semantic
+contract.
 
 ### Task 7 — S3.A3 RED/GREEN: Order Decisions and APNAP stages
 

@@ -11,6 +11,8 @@ mod program_kernel;
 mod semantic_cursor;
 mod semantic_execution_generated;
 mod snapshots;
+#[cfg(any(test, feature = "m3-conformance-testkit"))]
+mod state_based_actions;
 mod synthetic;
 mod transition;
 mod turn_structure;
@@ -30,6 +32,8 @@ pub use program_kernel::{
     validate_runtime_state, ProgramKernelConstructionErrorV1, ProgramKernelV1,
 };
 pub use semantic_execution_generated::execution_contract_supported;
+#[cfg(feature = "m3-conformance-testkit")]
+pub use state_based_actions::SbaContinuationValidationError;
 pub use synthetic::validate_synthetic_runtime_state;
 pub use transition::{RulesKernel, TransitionResult};
 pub use turn_structure::{

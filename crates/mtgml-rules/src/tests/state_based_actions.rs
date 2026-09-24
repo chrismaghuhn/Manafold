@@ -101,6 +101,140 @@ fn two_same_owner_deaths_at_upkeep() -> EngineState {
     state
 }
 
+fn two_same_owner_order_stage0() -> EngineState {
+    use mtgml_decision::{
+        AuthoritativeCandidateV2, AuthoritativeDecisionRequestV2, CandidateIntent,
+        DecisionDomainV2, DecisionVisibility, EngineCandidateBinding,
+    };
+    use mtgml_model::{CandidateIdV1, ContinuationId, DecisionId, PlayerDecisionIdV1};
+    use mtgml_state::{
+        ContinuationPayloadV2, ContinuationRecordV2, PendingDecisionRecordV2, SbaObjectCauseV1,
+        SbaSelectedActionV1,
+    };
+
+    let mut state = two_same_owner_deaths_at_upkeep();
+    state.revision = StateRevision(1);
+    let continuation = ContinuationId(1);
+    let actions = vec![
+        SbaSelectedActionV1::ObjectToOwnerGraveyard {
+            object: GameObjectId(1),
+            causes: vec![SbaObjectCauseV1::ZeroToughness],
+        },
+        SbaSelectedActionV1::ObjectToOwnerGraveyard {
+            object: GameObjectId(2),
+            causes: vec![SbaObjectCauseV1::ZeroToughness],
+        },
+    ];
+    let payload = ContinuationPayloadV2::MagicSbaGraveyardOrderV1 {
+        round_start_revision: StateRevision(0),
+        selected_sba_actions: actions,
+        apnap_owners: vec![PlayerId(1)],
+        next_owner_index: 0,
+        completed_owner_orders: Vec::new(),
+    };
+    state.execution.continuations.insert(
+        continuation,
+        ContinuationRecordV2 {
+            id: continuation,
+            actor: PlayerId(1),
+            created_at_revision: StateRevision(1),
+            stage_index: 0,
+            payload,
+        },
+    );
+    let candidates = [GameObjectId(1), GameObjectId(2)]
+        .into_iter()
+        .enumerate()
+        .map(|(index, object)| AuthoritativeCandidateV2 {
+            candidate_id: CandidateIdV1(index as u32),
+            visible_intent: CandidateIntent::SelectObject {
+                object: state.perspective_identities.players[&PlayerId(1)].object_to_opaque
+                    [&object],
+            },
+            trusted_binding: EngineCandidateBinding::SelectObject { object },
+        })
+        .collect();
+    state.execution.pending_decision = Some(PendingDecisionRecordV2 {
+        request: AuthoritativeDecisionRequestV2 {
+            decision_id: DecisionId(2),
+            player_decision_id: PlayerDecisionIdV1(2),
+            state_revision: StateRevision(1),
+            actor: PlayerId(1),
+            visibility: DecisionVisibility::ActingPlayerOnly,
+            decision: DecisionDomainV2::Order {
+                minimum: 2,
+                maximum: 2,
+            },
+            candidates,
+            continuation_id: Some(continuation),
+        },
+    });
+    state.allocators.next_decision_id = DecisionId(3);
+    state.allocators.next_continuation_id = ContinuationId(2);
+    state
+        .perspective_identities
+        .players
+        .get_mut(&PlayerId(1))
+        .unwrap()
+        .next_player_decision_id = PlayerDecisionIdV1(3);
+    mtgml_state::validate_engine_state(&state)
+        .expect("authored Rules semantic plan fixture must be structural");
+    state
+}
+
+#[test]
+fn task6_sba_rules_validator_accepts_an_exact_stage_zero_plan() {
+    let state = two_same_owner_order_stage0();
+    assert_eq!(
+        crate::state_based_actions::validate_sba_order_continuation(&state),
+        Ok(())
+    );
+}
+
+#[test]
+fn task6_sba_rules_validator_rejects_stale_applicable_causes() {
+    use mtgml_state::{
+        ContinuationPayloadV2, SbaObjectCauseV1, SbaSelectedActionV1,
+    };
+
+    let mut state = two_same_owner_order_stage0();
+    let continuation = state
+        .execution
+        .continuations
+        .get_mut(&mtgml_model::ContinuationId(1))
+        .unwrap();
+    let ContinuationPayloadV2::MagicSbaGraveyardOrderV1 {
+        selected_sba_actions,
+        ..
+    } = &mut continuation.payload
+    else {
+        unreachable!()
+    };
+    selected_sba_actions[0] = SbaSelectedActionV1::ObjectToOwnerGraveyard {
+        object: GameObjectId(1),
+        causes: vec![SbaObjectCauseV1::LethalDamage],
+    };
+    mtgml_state::validate_engine_state(&state)
+        .expect("stale cause remains structurally well-formed for Rules validation");
+    assert_eq!(
+        crate::state_based_actions::validate_sba_order_continuation(&state),
+        Err(crate::state_based_actions::SbaContinuationValidationError::SelectedActionSetMismatch)
+    );
+}
+
+#[test]
+fn task6_sba_rules_validator_rejects_a_newly_applicable_player_loss() {
+    let mut state = two_same_owner_order_stage0();
+    state.core.players.get_mut(&PlayerId(1)).unwrap().life = 0;
+    mtgml_state::validate_engine_state(&state)
+        .expect("missing semantic loss action remains structurally valid");
+    assert_eq!(
+        crate::state_based_actions::validate_sba_order_continuation(&state),
+        Err(crate::state_based_actions::SbaContinuationValidationError::SelectedActionSetMismatch)
+    );
+}
+
+
 #[test]
 fn magic_rules_state_based_actions_round_is_missing_before_priority() {
     let mut state = sba_upkeep_state();

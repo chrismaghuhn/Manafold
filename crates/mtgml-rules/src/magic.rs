@@ -95,6 +95,18 @@ impl MagicRulesKernel {
         }
     }
 
+    /// Read-only conformance hook for Task 6 continuation semantic evidence.
+    #[cfg(feature = "m3-conformance-testkit")]
+    pub(crate) fn validate_s3_a_conformance_continuation(
+        &self,
+        state: &EngineState,
+    ) -> Result<(), crate::SbaContinuationValidationError> {
+        if !matches!(self.profile, MagicKernelProfile::S3AConformanceCandidate) {
+            return Err(crate::SbaContinuationValidationError::NotS3AConformanceCandidate);
+        }
+        crate::state_based_actions::validate_sba_order_continuation(state)
+    }
+
     /// Construct a bare shell instance for crate-internal tests only.
     ///
     /// This is NOT a production constructor and carries no semantic-admission

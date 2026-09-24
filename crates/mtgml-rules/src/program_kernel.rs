@@ -120,6 +120,23 @@ impl ProgramKernelV1 {
         }
     }
 
+    /// Validate a persisted SBA plan using the fixed conformance candidate.
+    /// This is read-only testkit access, not production restore admission.
+    #[cfg(feature = "m3-conformance-testkit")]
+    pub fn validate_s3_a_conformance_continuation(
+        &self,
+        state: &EngineState,
+    ) -> Result<(), crate::SbaContinuationValidationError> {
+        match &self.inner {
+            ProgramKernelInner::Magic(kernel) => {
+                kernel.validate_s3_a_conformance_continuation(state)
+            }
+            ProgramKernelInner::SyntheticLegacy(_) => {
+                Err(crate::SbaContinuationValidationError::NotS3AConformanceCandidate)
+            }
+        }
+    }
+
     /// Mandatory entry point 1: trusted response execution, dispatched to
     /// the wrapped kernel.
     pub fn apply(
