@@ -154,11 +154,26 @@
       "dependencies": [
         "rules/declare-attackers"
       ],
-      "implementation_paths": [],
+      "implementation_paths": [
+        "crates/mtgml-state/src/core.rs",
+        "crates/mtgml-state/src/delta.rs",
+        "crates/mtgml-rules/src/basic_priority.rs",
+        "crates/mtgml-rules/src/events.rs",
+        "crates/mtgml-rules/src/magic.rs",
+        "crates/mtgml-rules/src/contract.rs",
+        "crates/mtgml-rules/src/semantic_cursor.rs",
+        "crates/mtgml-environment/src/reference.rs",
+        "crates/mtgml-environment/src/player_projection.rs",
+        "crates/mtgml-observation/src/magic_observation.rs",
+        "crates/mtgml-replay/src/v6.rs",
+        "python/src/mtgml/_magic_combat_observation_v3.py",
+        "python/src/mtgml/_replay_v6.py",
+        "schemas/magic-combat-observation.v3.schema.json"
+      ],
       "information_risk": "high",
       "key": "rules/declare-blockers",
       "lifecycle": "specified",
-      "notes": "Specified only; no implementation, conformance, benchmark, coverage, or certification evidence is claimed.",
+      "notes": "Bounded blocker assignment implementation candidate is present; lifecycle remains specified and independent exact-head review is pending. More than one eligible blocker still fails closed before Decision creation; coverage and certification are not claimed.",
       "owners": [
         "combat"
       ],

@@ -7,6 +7,7 @@ use crate::{ObservationValidationError, SyntheticPriority, SyntheticTurnPosition
 
 pub const MAGIC_OBSERVATION_SCHEMA_V1: &str = "magic-m3-observation.v1";
 pub const MAGIC_OBSERVATION_SCHEMA_V2: &str = "magic-combat-observation.v2";
+pub const MAGIC_OBSERVATION_SCHEMA_V3: &str = "magic-combat-observation.v3";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -148,6 +149,124 @@ impl MagicObservationV2 {
                     .any(|(assignment, attacker)| {
                         assignment.attacker != *attacker || assignment.blocker.is_some()
                     })
+            {
+                return Err(ObservationValidationError::ObservationPayload);
+            }
+        }
+        if let Some(progress) = &self.pending_sba_ordering {
+            let mut owners = std::collections::BTreeSet::new();
+            for order in &progress.completed_orders {
+                if order.ordered_objects.len() < 2
+                    || !owners.insert(order.owner)
+                    || order.owner == progress.next_order_owner
+                {
+                    return Err(ObservationValidationError::ObservationPayload);
+                }
+                let mut objects = std::collections::BTreeSet::new();
+                if order
+                    .ordered_objects
+                    .iter()
+                    .any(|object| !objects.insert(*object))
+                {
+                    return Err(ObservationValidationError::ObservationPayload);
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct MagicCombatBlockerAssignmentV3 {
+    pub attacker: OpaqueObjectId,
+    pub blocker: Option<OpaqueObjectId>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct MagicCombatParticipationV3 {
+    pub defending_player: PlayerId,
+    pub attackers: Vec<OpaqueObjectId>,
+    pub blockers: Vec<MagicCombatBlockerAssignmentV3>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct MagicObservationV3 {
+    pub schema_version: String,
+    pub active_player: PlayerId,
+    pub turn_number: String,
+    pub turn_position: SyntheticTurnPosition,
+    pub priority: SyntheticPriority,
+    #[serde(deserialize_with = "deserialize_required_pending_ordering")]
+    pub pending_sba_ordering: Option<MagicPendingSbaOrdering>,
+    #[serde(deserialize_with = "deserialize_required_combat_v3")]
+    pub combat: Option<MagicCombatParticipationV3>,
+}
+
+fn deserialize_required_combat_v3<'de, D>(
+    deserializer: D,
+) -> Result<Option<MagicCombatParticipationV3>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    Option::deserialize(deserializer)
+}
+
+impl MagicObservationV3 {
+    pub fn validate(&self) -> Result<(), ObservationValidationError> {
+        if self.schema_version != MAGIC_OBSERVATION_SCHEMA_V3
+            || parse_canonical_u64(&self.turn_number).is_err()
+        {
+            return Err(ObservationValidationError::ObservationPayload);
+        }
+        if let Some(combat) = &self.combat {
+            let mut attackers = std::collections::BTreeSet::new();
+            let mut blockers = std::collections::BTreeSet::new();
+            let assigned_count = combat
+                .blockers
+                .iter()
+                .filter(|entry| entry.blocker.is_some())
+                .count();
+            if combat.defending_player == self.active_player
+                || !matches!(
+                    self.turn_position,
+                    SyntheticTurnPosition::Combat {
+                        step: crate::SyntheticCombatStep::DeclareAttackers
+                            | crate::SyntheticCombatStep::DeclareBlockers
+                            | crate::SyntheticCombatStep::EndOfCombat
+                    }
+                )
+                || (matches!(
+                    self.turn_position,
+                    SyntheticTurnPosition::Combat {
+                        step: crate::SyntheticCombatStep::DeclareAttackers
+                    }
+                ) && combat.blockers.iter().any(|entry| entry.blocker.is_some()))
+                || (matches!(
+                    self.turn_position,
+                    SyntheticTurnPosition::Combat {
+                        step: crate::SyntheticCombatStep::EndOfCombat
+                    }
+                ) && !combat.attackers.is_empty())
+                || combat.blockers.len() != combat.attackers.len()
+                || combat
+                    .attackers
+                    .iter()
+                    .any(|attacker| !attackers.insert(*attacker))
+                || combat.attackers.windows(2).any(|pair| pair[0] >= pair[1])
+                || combat
+                    .blockers
+                    .iter()
+                    .zip(&combat.attackers)
+                    .any(|(assignment, attacker)| assignment.attacker != *attacker)
+                || assigned_count > 1
+                || combat
+                    .blockers
+                    .iter()
+                    .filter_map(|assignment| assignment.blocker)
+                    .any(|blocker| !blockers.insert(blocker))
             {
                 return Err(ObservationValidationError::ObservationPayload);
             }

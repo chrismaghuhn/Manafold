@@ -207,6 +207,10 @@
     {
       "contract": "magic-combat-observation.v2",
       "path": "magic-combat-observation.v2.json"
+    },
+    {
+      "contract": "magic-combat-observation.v3",
+      "path": "magic-combat-observation.v3.json"
     }
   ]
 }

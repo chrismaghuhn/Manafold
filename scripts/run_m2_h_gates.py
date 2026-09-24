@@ -393,6 +393,8 @@ COMMON_NAMED_CONTRACTS = frozenset(
         "magic-m3-observation.v1",
         # Block 4 successor codec carries perspective-local public combat.
         "magic-combat-observation.v2",
+        # Block 5 successor records bounded public blocker assignments.
+        "magic-combat-observation.v3",
         "replay-manifest.v4",
         "authoritative-replay.v4",
         "replay-manifest.v5",

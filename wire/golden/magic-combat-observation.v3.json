@@ -1,0 +1,1 @@
+{"active_player":"1","combat":{"attackers":["7"],"blockers":[{"attacker":"7","blocker":"8"}],"defending_player":"2"},"pending_sba_ordering":null,"priority":{"kind":"held_by","player":"1"},"schema_version":"magic-combat-observation.v3","turn_number":"1","turn_position":{"kind":"combat","step":"declare_blockers"}}

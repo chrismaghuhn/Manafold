@@ -30,6 +30,7 @@ from .persistence import (
 SYNTHETIC_OBSERVATION_CODEC = "synthetic-m3-observation.v1"
 MAGIC_OBSERVATION_CODEC = "magic-m3-observation.v1"
 COMBAT_OBSERVATION_CODEC = "magic-combat-observation.v2"
+COMBAT_BLOCKERS_OBSERVATION_CODEC = "magic-combat-observation.v3"
 SBA_CAPABILITY_KEY = "rules/state-based-actions-combat"
 SBA_CAPABILITY_VERSION = "0.1.0"
 
@@ -274,8 +275,22 @@ class ReplayManifestV6:
             {"key": "rules/turn-structure", "version": "0.1.0"},
             {"key": "rules/zone-incarnation", "version": "0.1.0"},
         ]
+        combat_blockers_closure = [
+            {"key": "rules/basic-priority", "version": "0.1.0"},
+            {"key": "rules/combat-phase", "version": "0.1.0"},
+            {"key": "rules/declare-attackers", "version": "0.1.0"},
+            {"key": "rules/declare-blockers", "version": "0.1.0"},
+            {"key": "rules/draw-card", "version": "0.1.0"},
+            {"key": "rules/state-based-actions-combat", "version": "0.1.0"},
+            {"key": "rules/turn-structure", "version": "0.1.0"},
+            {"key": "rules/zone-incarnation", "version": "0.1.0"},
+        ]
         exact_combat_profile = closure == combat_closure
+        exact_combat_blockers_profile = closure == combat_blockers_closure
         expected_codec = (
+            COMBAT_BLOCKERS_OBSERVATION_CODEC
+            if exact_combat_blockers_profile
+            else
             COMBAT_OBSERVATION_CODEC
             if exact_combat_profile
             else MAGIC_OBSERVATION_CODEC

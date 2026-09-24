@@ -111,6 +111,25 @@ fn combat_backend(state: mtgml_state::EngineState) -> ReferenceEnvironmentBacken
     .expect("the combat semantic identity admits its bounded state")
 }
 
+fn blocker_backend(state: mtgml_state::EngineState) -> ReferenceEnvironmentBackend {
+    let mut replay = s3_replay_config();
+    replay.scenario_id = "rules/declare-blockers@0.1.0:combat-flow".into();
+    replay.schemas.observation_payload_codec =
+        mtgml_observation::MAGIC_OBSERVATION_SCHEMA_V3.into();
+    ReferenceEnvironmentBackend::new(ReferenceEnvironmentConfig {
+        state,
+        status: EpisodeStatus::Running,
+        limit_counters: EnvironmentLimitCounters::default(),
+        codec: CheckpointCodecIdentity {
+            codec_id: CHECKPOINT_CODEC_ID_V6.into(),
+            semantic_version: CHECKPOINT_CODEC_SEMANTIC_VERSION_V6.into(),
+        },
+        execution_identity: ReferenceEnvironmentBackend::magic_combat_blockers_execution_identity(),
+        replay,
+    })
+    .expect("the combat + blockers identity admits its bounded state")
+}
+
 fn stable_combat_state() -> mtgml_state::EngineState {
     let mut state = super::restore_admission::magic_sba_continuation_state();
     state.core.position = TurnPosition::PrecombatMain;
@@ -196,6 +215,889 @@ fn bounded_attacker_count_state(count: u64) -> mtgml_state::EngineState {
     state.allocators.next_object_id = GameObjectId(3 + count);
     mtgml_state::validate_engine_state(&state).unwrap();
     state
+}
+
+fn blocker_fixture(
+    attacker_count: u64,
+    eligible_blockers: u64,
+    tapped_blockers: u64,
+) -> mtgml_state::EngineState {
+    assert!((1..=3).contains(&attacker_count));
+    let mut state = stable_combat_state();
+    for object_id in 4..(3 + attacker_count) {
+        add_creature(&mut state, object_id, P1, [object_id - 1, object_id]);
+        state
+            .foundation_sources
+            .get_mut(&GameObjectId(object_id))
+            .unwrap()
+            .base_characteristics = BaseCharacteristics::Simple {
+            power: 2,
+            toughness: 2,
+        };
+    }
+    let first_blocker = 3 + attacker_count;
+    for offset in 0..(eligible_blockers + tapped_blockers) {
+        let object_id = first_blocker + offset;
+        add_creature(
+            &mut state,
+            object_id,
+            P2,
+            [100 + object_id, 200 + object_id],
+        );
+        let source = state
+            .foundation_sources
+            .get_mut(&GameObjectId(object_id))
+            .unwrap();
+        source.base_characteristics = BaseCharacteristics::Simple {
+            power: 2,
+            toughness: 2,
+        };
+        source.control_history = ControlHistory::DuringTurn {
+            turn_number: state.core.turn_number,
+            boundary: TurnPosition::PrecombatMain,
+        };
+        state.zones.objects.get_mut(&GameObjectId(object_id)).unwrap().tapped =
+            offset >= eligible_blockers;
+    }
+    state.allocators.next_object_id = GameObjectId(first_blocker + eligible_blockers + tapped_blockers);
+    mtgml_state::validate_engine_state(&state).unwrap();
+    state
+}
+
+fn declared_blockers_state(
+    attacker_count: u64,
+    eligible_blockers: u64,
+    tapped_blockers: u64,
+) -> mtgml_state::EngineState {
+    let mut state = blocker_fixture(attacker_count, eligible_blockers, tapped_blockers);
+    let attackers: Vec<_> = (3..(3 + attacker_count)).map(GameObjectId).collect();
+    for attacker in &attackers {
+        state.zones.objects.get_mut(attacker).unwrap().tapped = true;
+    }
+    state.core.position = TurnPosition::Combat {
+        step: mtgml_state::CombatStep::DeclareBlockers,
+    };
+    state.combat = Some(mtgml_state::CombatState {
+        defending_player: P2,
+        blockers: attackers.iter().map(|attacker| (*attacker, None)).collect(),
+        attackers,
+    });
+    mtgml_state::validate_engine_state(&state).unwrap();
+    state
+}
+
+fn blocker_kernel() -> mtgml_rules::ProgramKernelV1 {
+    mtgml_rules::ProgramKernelV1::for_admitted_execution(
+        mtgml_model::ExecutionProgramV1::MagicRules,
+        ReferenceEnvironmentBackend::magic_combat_blockers_execution_identity()
+            .semantic_contract_id,
+    )
+    .unwrap()
+}
+
+fn reach_blocker_declaration_boundary(
+    controller: &TrustedEnvironmentController,
+    attacker_count: usize,
+) -> crate::checkpoint::EnvironmentCheckpointV6 {
+    controller.execute_forced_progress().unwrap();
+    finish_blocker_declaration_boundary(controller, attacker_count)
+}
+
+fn finish_blocker_declaration_boundary(
+    controller: &TrustedEnvironmentController,
+    attacker_count: usize,
+) -> crate::checkpoint::EnvironmentCheckpointV6 {
+    let p1 = controller.bind_player(P1).unwrap();
+    let p2 = controller.bind_player(P2).unwrap();
+    for _ in 0..2 {
+        let active = p1.visible_decision().unwrap().unwrap();
+        let active_step = p1.submit(current_select_one_response(&active)).unwrap();
+        assert_eq!(active_step.submission, PlayerStepSubmissionV1::Accepted);
+        let nonactive = p2.visible_decision().unwrap().unwrap();
+        p2.submit(current_select_one_response(&nonactive)).unwrap();
+    }
+    let attack_request = p1.visible_decision().unwrap().unwrap();
+    assert_eq!(attack_request.candidates.len(), attacker_count);
+    p1.submit(DecisionResponseV2 {
+        schema_version: mtgml_decision::DECISION_RESPONSE_V2_SCHEMA.into(),
+        player_decision_id: attack_request.player_decision_id,
+        state_revision: attack_request.state_revision,
+        answer: DecisionAnswerV2::SelectMany {
+            candidate_ids: attack_request
+                .candidates
+                .iter()
+                .map(|candidate| candidate.candidate_id)
+                .collect(),
+        },
+    })
+    .unwrap();
+    let active = p1.visible_decision().unwrap().unwrap();
+    p1.submit(current_select_one_response(&active)).unwrap();
+    let nonactive = p2.visible_decision().unwrap().unwrap();
+    p2.submit(current_select_one_response(&nonactive)).unwrap();
+    controller.checkpoint().unwrap()
+}
+
+fn blocker_checkpoint_with_state(
+    reference: &crate::checkpoint::EnvironmentCheckpointV6,
+    state: mtgml_state::EngineState,
+) -> crate::checkpoint::EnvironmentCheckpointV6 {
+    crate::checkpoint::EnvironmentCheckpointV6::new(
+        state,
+        reference.status.clone(),
+        reference.limit_counters.clone(),
+        reference.codec.clone(),
+        reference.execution_identity.clone(),
+    )
+    .expect("crafted checkpoint must pass structural and digest validation")
+}
+
+#[test]
+fn one_blocker_three_attackers_offers_exactly_four_choose_one_candidates() {
+    let state = declared_blockers_state(3, 1, 0);
+    let transition = blocker_kernel().advance_forced_progress(&state).unwrap();
+    let request = transition.next_decision.unwrap();
+    assert_eq!(request.decision, mtgml_decision::DecisionDomainV2::ChooseOne);
+    assert_eq!(request.candidates.len(), 4);
+    let selected_attacker_ids: Vec<_> = request
+        .candidates
+        .iter()
+        .filter_map(|candidate| match candidate.visible_intent {
+            mtgml_decision::CandidateIntent::SelectObject { object } => Some(
+                state.perspective_identities.players[&P2].opaque_to_object[&object],
+            ),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        selected_attacker_ids,
+        vec![GameObjectId(3), GameObjectId(4), GameObjectId(5)]
+    );
+    assert_eq!(
+        request
+            .candidates
+            .iter()
+            .filter(|candidate| {
+                candidate.visible_intent == mtgml_decision::CandidateIntent::Confirm
+            })
+            .count(),
+        1
+    );
+}
+
+#[test]
+fn zero_eligible_blockers_uses_deterministic_empty_assignment_without_decision() {
+    let state = declared_blockers_state(1, 0, 0);
+    let transition = blocker_kernel().advance_forced_progress(&state).unwrap();
+    assert_eq!(transition.next_state.core.position, TurnPosition::Combat {
+        step: mtgml_state::CombatStep::DeclareBlockers,
+    });
+    assert_eq!(transition.next_state.combat.as_ref().unwrap().blockers, std::collections::BTreeMap::from([
+        (GameObjectId(3), None),
+    ]));
+    let pending = transition.next_state.execution.pending_decision.as_ref().unwrap();
+    assert_eq!(pending.request.actor, P1);
+    assert_eq!(pending.request.candidates[0].visible_intent, mtgml_decision::CandidateIntent::PassPriority);
+    assert!(matches!(
+        transition.next_state.core.priority,
+        mtgml_state::PriorityState::HeldBy {
+            player: P1,
+            consecutive_passes: 0
+        }
+    ));
+}
+
+#[test]
+fn one_blocker_one_attacker_gets_attacker_and_confirm_choices() {
+    let controller = TrustedEnvironmentController::new(blocker_backend(blocker_fixture(1, 1, 0)));
+    let checkpoint = reach_blocker_declaration_boundary(&controller, 1);
+    let defender = controller.bind_player(P2).unwrap();
+    let request = defender.visible_decision().unwrap().unwrap();
+    assert_eq!(request.decision, mtgml_decision::DecisionDomainV2::ChooseOne);
+    assert_eq!(request.actor, P2);
+    assert_eq!(request.candidates.len(), 2);
+    assert!(matches!(
+        request.candidates[0].intent,
+        mtgml_decision::CandidateIntent::SelectObject { .. }
+    ));
+    assert_eq!(
+        request.candidates[1].intent,
+        mtgml_decision::CandidateIntent::Confirm
+    );
+    assert_eq!(
+        checkpoint.state.core.position,
+        TurnPosition::Combat {
+            step: mtgml_state::CombatStep::DeclareBlockers
+        }
+    );
+    assert!(matches!(checkpoint.state.core.priority, mtgml_state::PriorityState::None));
+    assert_eq!(
+        request.candidates[0].intent,
+        mtgml_decision::CandidateIntent::SelectObject {
+            object: checkpoint.state.perspective_identities.players[&P2].object_to_opaque
+                [&GameObjectId(3)]
+        }
+    );
+    assert!(matches!(
+        checkpoint.state.foundation_sources[&GameObjectId(4)].control_history,
+        ControlHistory::DuringTurn { turn_number: 1, .. }
+    ));
+}
+
+#[test]
+fn zero_or_only_tapped_blockers_auto_assign_empty_and_give_active_priority() {
+    for tapped_blockers in [0, 1] {
+        let controller = TrustedEnvironmentController::new(blocker_backend(blocker_fixture(
+            1,
+            0,
+            tapped_blockers,
+        )));
+        let checkpoint = reach_blocker_declaration_boundary(&controller, 1);
+        assert_eq!(checkpoint.state.core.position, TurnPosition::Combat {
+            step: mtgml_state::CombatStep::DeclareBlockers,
+        });
+        assert_eq!(checkpoint.state.combat.as_ref().unwrap().blockers, std::collections::BTreeMap::from([
+            (GameObjectId(3), None),
+        ]));
+        let pending = checkpoint.state.execution.pending_decision.as_ref().unwrap();
+        assert_eq!(pending.request.actor, P1);
+        assert_eq!(pending.request.candidates[0].visible_intent, mtgml_decision::CandidateIntent::PassPriority);
+        assert!(matches!(
+            checkpoint.state.core.priority,
+            mtgml_state::PriorityState::HeldBy {
+                player: P1,
+                consecutive_passes: 0
+            }
+        ));
+        assert_eq!(controller.export_replay().unwrap().steps.len(), 7);
+        for player in [P1, P2] {
+            let observation = controller.bind_player(player).unwrap().observation().unwrap();
+            assert_eq!(observation.payload_codec, mtgml_observation::MAGIC_OBSERVATION_SCHEMA_V3);
+            let bytes = base64::engine::general_purpose::STANDARD
+                .decode(observation.payload_base64)
+                .unwrap();
+            let payload: mtgml_observation::MagicObservationV3 =
+                serde_json::from_slice(&bytes).unwrap();
+            assert!(payload.combat.unwrap().blockers.iter().all(|entry| entry.blocker.is_none()));
+        }
+    }
+}
+
+#[test]
+fn one_blocker_three_attacker_choice_space_is_exactly_four_assignments() {
+    let controller = TrustedEnvironmentController::new(blocker_backend(blocker_fixture(3, 1, 0)));
+    let pending = reach_blocker_declaration_boundary(&controller, 3);
+    let defender = controller.bind_player(P2).unwrap();
+    let request = defender.visible_decision().unwrap().unwrap();
+    assert_eq!(request.decision, mtgml_decision::DecisionDomainV2::ChooseOne);
+    assert_eq!(request.candidates.len(), 4);
+    crate::semantic_catalog::admit_restore(
+        &crate::semantic_catalog::RuntimeSemanticCatalog::production(),
+        &pending,
+    )
+    .unwrap();
+    let visible_attackers: Vec<_> = request
+        .candidates
+        .iter()
+        .filter_map(|candidate| match candidate.intent {
+            mtgml_decision::CandidateIntent::SelectObject { object } => Some(object),
+            mtgml_decision::CandidateIntent::Confirm => None,
+            _ => panic!("blocker choice must only select an attacker or confirm"),
+        })
+        .collect();
+    assert_eq!(visible_attackers, vec![OpaqueObjectId(3), OpaqueObjectId(4), OpaqueObjectId(5)]);
+    assert_eq!(
+        request.candidates.last().unwrap().intent,
+        mtgml_decision::CandidateIntent::Confirm
+    );
+
+    let blocker = GameObjectId(6);
+    let mut assignments = std::collections::BTreeSet::new();
+    for candidate in &request.candidates {
+        let mut backend = blocker_backend(pending.state.clone());
+        backend.restore(pending.clone()).unwrap();
+        let branch = TrustedEnvironmentController::new(backend);
+        let response = DecisionResponseV2 {
+            schema_version: mtgml_decision::DECISION_RESPONSE_V2_SCHEMA.into(),
+            player_decision_id: request.player_decision_id,
+            state_revision: request.state_revision,
+            answer: DecisionAnswerV2::SelectOne {
+                candidate_id: candidate.candidate_id,
+            },
+        };
+        let transition = branch.execute_trusted_response(P2, response).unwrap();
+        assert!(transition.accepted);
+        let after = branch.checkpoint().unwrap();
+        assert!(matches!(
+            after.state.core.priority,
+            mtgml_state::PriorityState::HeldBy {
+                player: P1,
+                consecutive_passes: 0
+            }
+        ));
+        assert_eq!(after.state.core.position, TurnPosition::Combat {
+            step: mtgml_state::CombatStep::DeclareBlockers,
+        });
+        assert!(!after.state.zones.objects[&blocker].tapped);
+        let mapping: Vec<_> = after.state.combat.as_ref().unwrap().attackers.iter().map(|attacker| {
+            (*attacker, after.state.combat.as_ref().unwrap().blockers[attacker])
+        }).collect();
+        assert!(assignments.insert(mapping.clone()), "each offered choice is unique");
+        if let mtgml_decision::CandidateIntent::SelectObject { object: opaque } = candidate.intent {
+            let selected = pending.state.perspective_identities.players[&P2].opaque_to_object[&opaque];
+            assert_eq!(after.state.combat.as_ref().unwrap().blockers[&selected], Some(blocker));
+            assert_eq!(after.state.combat.as_ref().unwrap().blockers.values().flatten().count(), 1);
+        } else {
+            assert_eq!(candidate.intent, mtgml_decision::CandidateIntent::Confirm);
+            assert!(after.state.combat.as_ref().unwrap().blockers.values().all(Option::is_none));
+        }
+        for player in [P1, P2] {
+            let observation = branch.bind_player(player).unwrap().observation().unwrap();
+            assert_eq!(observation.payload_codec, mtgml_observation::MAGIC_OBSERVATION_SCHEMA_V3);
+            let bytes = base64::engine::general_purpose::STANDARD
+                .decode(observation.payload_base64)
+                .unwrap();
+            let payload: mtgml_observation::MagicObservationV3 =
+                serde_json::from_slice(&bytes).unwrap();
+            let identity = &after.state.perspective_identities.players[&player];
+            let combat = payload.combat.unwrap();
+            let authoritative = after.state.combat.as_ref().unwrap();
+            let expected_attackers: Vec<_> = authoritative
+                .attackers
+                .iter()
+                .map(|attacker| identity.object_to_opaque[attacker])
+                .collect();
+            assert_eq!(combat.attackers, expected_attackers);
+            for (attacker, blocker) in &authoritative.blockers {
+                let visible_attacker = identity.object_to_opaque[attacker];
+                let assignment = combat
+                    .blockers
+                    .iter()
+                    .find(|assignment| assignment.attacker == visible_attacker)
+                    .unwrap();
+                assert_eq!(
+                    assignment.blocker,
+                    blocker.map(|blocker| identity.object_to_opaque[&blocker])
+                );
+            }
+        }
+    }
+    assert_eq!(assignments.len(), 4);
+}
+
+#[test]
+fn hidden_worlds_do_not_change_blocker_decision_or_public_block_assignment() {
+    let mut world_a = blocker_fixture(3, 1, 0);
+    let mut world_b = world_a.clone();
+    set_library_top_hidden_identity(&mut world_a, 22, 122);
+    set_library_top_hidden_identity(&mut world_b, 33, 133);
+    assert_ne!(world_a.digest().unwrap(), world_b.digest().unwrap());
+
+    let first = TrustedEnvironmentController::new(blocker_backend(world_a));
+    let second = TrustedEnvironmentController::new(blocker_backend(world_b));
+    let first_pending = reach_blocker_declaration_boundary(&first, 3);
+    let second_pending = reach_blocker_declaration_boundary(&second, 3);
+    let first_defender = first.bind_player(P2).unwrap();
+    let second_defender = second.bind_player(P2).unwrap();
+    let first_request = first_defender.visible_decision().unwrap().unwrap();
+    let second_request = second_defender.visible_decision().unwrap().unwrap();
+    assert_eq!(
+        mtgml_wire::encode_canonical(&first_request).unwrap(),
+        mtgml_wire::encode_canonical(&second_request).unwrap()
+    );
+    assert!(first.bind_player(P1).unwrap().visible_decision().unwrap().is_none());
+    assert!(second.bind_player(P1).unwrap().visible_decision().unwrap().is_none());
+    for player in [P1, P2] {
+        assert_eq!(
+            mtgml_wire::encode_canonical(
+                &first.bind_player(player).unwrap().observation().unwrap()
+            )
+            .unwrap(),
+            mtgml_wire::encode_canonical(
+                &second.bind_player(player).unwrap().observation().unwrap()
+            )
+            .unwrap()
+        );
+    }
+
+    let selected = first_request.candidates[0].candidate_id;
+    for (controller, request) in [(&first, first_request), (&second, second_request)] {
+        controller
+            .bind_player(P2)
+            .unwrap()
+            .submit(DecisionResponseV2 {
+                schema_version: mtgml_decision::DECISION_RESPONSE_V2_SCHEMA.into(),
+                player_decision_id: request.player_decision_id,
+                state_revision: request.state_revision,
+                answer: DecisionAnswerV2::SelectOne {
+                    candidate_id: selected,
+                },
+            })
+            .unwrap();
+    }
+    for player in [P1, P2] {
+        assert_eq!(
+            mtgml_wire::encode_canonical(
+                &first.bind_player(player).unwrap().observation().unwrap()
+            )
+            .unwrap(),
+            mtgml_wire::encode_canonical(
+                &second.bind_player(player).unwrap().observation().unwrap()
+            )
+            .unwrap()
+        );
+    }
+    assert_eq!(
+        first
+            .checkpoint()
+            .unwrap()
+            .state
+            .combat
+            .as_ref()
+            .unwrap()
+            .blockers
+            .values()
+            .flatten()
+            .count(),
+        1
+    );
+    assert_eq!(first_pending.state.core.position, second_pending.state.core.position);
+}
+
+#[test]
+fn blocker_decision_restore_fork_and_replay_v6_are_exact() {
+    let controller = TrustedEnvironmentController::new(blocker_backend(blocker_fixture(3, 1, 0)));
+    controller.execute_forced_progress().unwrap();
+    let initial = controller.checkpoint().unwrap();
+    let pending = finish_blocker_declaration_boundary(&controller, 3);
+    let request = controller.bind_player(P2).unwrap().visible_decision().unwrap().unwrap();
+    let selected = request
+        .candidates
+        .iter()
+        .find(|candidate| matches!(candidate.intent, mtgml_decision::CandidateIntent::SelectObject { .. }))
+        .unwrap();
+    controller.bind_player(P2).unwrap().submit(DecisionResponseV2 {
+        schema_version: mtgml_decision::DECISION_RESPONSE_V2_SCHEMA.into(),
+        player_decision_id: request.player_decision_id,
+        state_revision: request.state_revision,
+        answer: DecisionAnswerV2::SelectOne { candidate_id: selected.candidate_id },
+    }).unwrap();
+    let after = controller.checkpoint().unwrap();
+    let checkpoint = controller.checkpoint().unwrap();
+    let mut restored = blocker_backend(checkpoint.state.clone());
+    restored.restore(checkpoint.clone()).unwrap();
+    assert_eq!(restored.checkpoint().unwrap(), checkpoint);
+    assert_eq!(controller.fork().unwrap().checkpoint().unwrap(), checkpoint);
+    let replay = controller.export_replay().unwrap();
+    let mut replay_backend = blocker_backend(initial.state.clone());
+    replay_backend.restore(initial.clone()).unwrap();
+    assert_eq!(replay_backend.export_replay().unwrap().manifest, replay.manifest);
+    let report = controller.execute_replay_from_checkpoint(initial, replay).unwrap();
+    assert_eq!(report.final_checkpoint, after);
+    assert_eq!(pending.state.core.position, TurnPosition::Combat {
+        step: mtgml_state::CombatStep::DeclareBlockers,
+    });
+}
+
+#[test]
+fn blocker_commit_is_typed_non_tapping_and_combat_damage_fails_closed_atomically() {
+    let controller = TrustedEnvironmentController::new(blocker_backend(blocker_fixture(1, 1, 0)));
+    let pending = reach_blocker_declaration_boundary(&controller, 1);
+    let request = controller.bind_player(P2).unwrap().visible_decision().unwrap().unwrap();
+    let candidate = request
+        .candidates
+        .iter()
+        .find(|candidate| matches!(candidate.intent, mtgml_decision::CandidateIntent::SelectObject { .. }))
+        .unwrap();
+    let transition = controller
+        .execute_trusted_response(
+            P2,
+            DecisionResponseV2 {
+                schema_version: mtgml_decision::DECISION_RESPONSE_V2_SCHEMA.into(),
+                player_decision_id: request.player_decision_id,
+                state_revision: request.state_revision,
+                answer: DecisionAnswerV2::SelectOne {
+                    candidate_id: candidate.candidate_id,
+                },
+            },
+        )
+        .unwrap();
+    assert!(transition.accepted);
+    assert_eq!(transition.next_state.revision.0, pending.state.revision.0 + 1);
+    assert!(transition.events.iter().any(|event| matches!(
+        &event.event,
+        mtgml_rules::AuthoritativeRuleEventKind::BlockersDeclared { assignments }
+            if assignments == &vec![mtgml_state::CombatBlockerAssignmentV1 {
+                attacker: GameObjectId(3),
+                blocker: Some(GameObjectId(4)),
+            }]
+    )));
+    assert!(!transition.events.iter().any(|event| matches!(
+        event.event,
+        mtgml_rules::AuthoritativeRuleEventKind::ObjectTapped { .. }
+    )));
+    assert!(matches!(
+        transition.next_state.core.priority,
+        mtgml_state::PriorityState::HeldBy {
+            player: P1,
+            consecutive_passes: 0
+        }
+    ));
+    assert!(!transition.next_state.zones.objects[&GameObjectId(4)].tapped);
+    assert_eq!(transition.next_state.core.players[&P2].life, pending.state.core.players[&P2].life);
+
+    let p1 = controller.bind_player(P1).unwrap();
+    let p2 = controller.bind_player(P2).unwrap();
+    p1.submit(current_select_one_response(&p1.visible_decision().unwrap().unwrap()))
+        .unwrap();
+    let nonactive = p2.visible_decision().unwrap().unwrap();
+    let before_damage_boundary = controller.checkpoint().unwrap();
+    let replay_before = controller.export_replay().unwrap();
+    let p1_before = player_fingerprint(&controller, P1);
+    let p2_before = player_fingerprint(&controller, P2);
+    assert!(matches!(
+        controller.execute_trusted_response(
+            P2,
+            current_select_one_response(&nonactive)
+        ),
+        Err(crate::ControllerError::KernelExecution(
+            mtgml_rules::KernelExecutionError::UnsupportedStagePath
+        ))
+    ));
+    assert_eq!(controller.checkpoint().unwrap(), before_damage_boundary);
+    assert_eq!(controller.export_replay().unwrap(), replay_before);
+    assert_eq!(player_fingerprint(&controller, P1), p1_before);
+    assert_eq!(player_fingerprint(&controller, P2), p2_before);
+}
+
+#[test]
+fn pending_blocker_restore_rejects_source_less_battlefield_and_is_nonmutating() {
+    let controller = TrustedEnvironmentController::new(blocker_backend(blocker_fixture(3, 1, 0)));
+    let valid = reach_blocker_declaration_boundary(&controller, 3);
+    let before = controller.checkpoint().unwrap();
+    let replay_before = controller.export_replay().unwrap();
+    let p1_before = player_fingerprint(&controller, P1);
+    let p2_before = player_fingerprint(&controller, P2);
+
+    let mut unsupported = valid.state.clone();
+    add_creature(&mut unsupported, 7, P2, [107, 207]);
+    unsupported.foundation_sources.remove(&GameObjectId(7));
+    unsupported.allocators.next_object_id = GameObjectId(8);
+    mtgml_state::validate_engine_state(&unsupported).unwrap();
+    let unsupported = blocker_checkpoint_with_state(&valid, unsupported);
+    assert_eq!(
+        crate::semantic_catalog::admit_restore(
+            &crate::semantic_catalog::RuntimeSemanticCatalog::production(),
+            &unsupported,
+        ),
+        Err(crate::semantic_catalog::RestoreAdmissionError::ProgramStateIncompatible)
+    );
+    assert!(matches!(
+        controller.restore(unsupported),
+        Err(crate::ControllerError::ProgramStateIncompatible)
+    ));
+    assert_eq!(controller.checkpoint().unwrap(), before);
+    assert_eq!(controller.export_replay().unwrap(), replay_before);
+    assert_eq!(player_fingerprint(&controller, P1), p1_before);
+    assert_eq!(player_fingerprint(&controller, P2), p2_before);
+}
+
+#[test]
+fn pending_blocker_restore_rejects_second_eligible_blocker_and_sba_unstable_state() {
+    let controller = TrustedEnvironmentController::new(blocker_backend(blocker_fixture(3, 1, 0)));
+    let valid = reach_blocker_declaration_boundary(&controller, 3);
+
+    let mut overbound = valid.state.clone();
+    add_creature(&mut overbound, 7, P2, [107, 207]);
+    overbound.allocators.next_object_id = GameObjectId(8);
+    mtgml_state::validate_engine_state(&overbound).unwrap();
+    let overbound = blocker_checkpoint_with_state(&valid, overbound);
+    assert_eq!(
+        crate::semantic_catalog::admit_restore(
+            &crate::semantic_catalog::RuntimeSemanticCatalog::production(),
+            &overbound,
+        ),
+        Err(crate::semantic_catalog::RestoreAdmissionError::ProgramStateIncompatible)
+    );
+
+    let mut unstable = valid.state.clone();
+    unstable
+        .foundation_sources
+        .get_mut(&GameObjectId(6))
+        .unwrap()
+        .base_characteristics = BaseCharacteristics::Simple {
+        power: 2,
+        toughness: 0,
+    };
+    mtgml_state::validate_engine_state(&unstable).unwrap();
+    let unstable = blocker_checkpoint_with_state(&valid, unstable);
+    assert_eq!(
+        crate::semantic_catalog::admit_restore(
+            &crate::semantic_catalog::RuntimeSemanticCatalog::production(),
+            &unstable,
+        ),
+        Err(crate::semantic_catalog::RestoreAdmissionError::ProgramStateIncompatible)
+    );
+}
+
+#[test]
+fn pending_blocker_restore_rejects_tampered_choice_domain() {
+    let controller = TrustedEnvironmentController::new(blocker_backend(blocker_fixture(3, 1, 0)));
+    let valid = reach_blocker_declaration_boundary(&controller, 3);
+    let mut tampered = valid.state.clone();
+    let request = &mut tampered.execution.pending_decision.as_mut().unwrap().request;
+    assert_eq!(request.candidates.len(), 4);
+    request.candidates.pop();
+    let tampered = blocker_checkpoint_with_state(&valid, tampered);
+    assert_eq!(
+        crate::semantic_catalog::admit_restore(
+            &crate::semantic_catalog::RuntimeSemanticCatalog::production(),
+            &tampered,
+        ),
+        Err(crate::semantic_catalog::RestoreAdmissionError::ProgramStateIncompatible)
+    );
+}
+
+#[test]
+fn pending_blocker_restore_rejects_wrong_actor_domain_missing_or_extra_candidate_and_bad_binding() {
+    let controller = TrustedEnvironmentController::new(blocker_backend(blocker_fixture(3, 1, 0)));
+    let valid = reach_blocker_declaration_boundary(&controller, 3);
+    let mut wrong_actor = valid.state.clone();
+    wrong_actor.execution.pending_decision.as_mut().unwrap().request.actor = P1;
+
+    let mut wrong_domain = valid.state.clone();
+    wrong_domain
+        .execution
+        .pending_decision
+        .as_mut()
+        .unwrap()
+        .request
+        .decision = mtgml_decision::DecisionDomainV2::ChooseMany {
+        minimum: 0,
+        maximum: 4,
+    };
+
+    let mut missing_candidate = valid.state.clone();
+    missing_candidate
+        .execution
+        .pending_decision
+        .as_mut()
+        .unwrap()
+        .request
+        .candidates
+        .pop();
+
+    let mut extra_candidate = valid.state.clone();
+    let visible_blocker = extra_candidate.perspective_identities.players[&P2]
+        .object_to_opaque[&GameObjectId(6)];
+    let request = &mut extra_candidate
+        .execution
+        .pending_decision
+        .as_mut()
+        .unwrap()
+        .request;
+    let mut candidate_bindings: Vec<_> = request
+        .candidates
+        .iter()
+        .map(|candidate| {
+            (
+                candidate.visible_intent.clone(),
+                candidate.trusted_binding.clone(),
+            )
+        })
+        .collect();
+    candidate_bindings.push((
+        mtgml_decision::CandidateIntent::SelectObject {
+            object: visible_blocker,
+        },
+        mtgml_decision::EngineCandidateBinding::SelectObject {
+            object: GameObjectId(6),
+        },
+    ));
+    request.candidates = mtgml_decision::CandidateOrderingV1::assign_dense(candidate_bindings).unwrap();
+
+    let mut wrong_binding = valid.state.clone();
+    wrong_binding
+        .execution
+        .pending_decision
+        .as_mut()
+        .unwrap()
+        .request
+        .candidates[0]
+        .trusted_binding = mtgml_decision::EngineCandidateBinding::SelectObject {
+        object: GameObjectId(6),
+    };
+
+    for (case, state) in [
+        ("wrong domain", wrong_domain),
+        ("missing candidate", missing_candidate),
+        ("extra candidate", extra_candidate),
+    ] {
+        mtgml_state::validate_engine_state(&state)
+            .unwrap_or_else(|error| panic!("{case} should pass structural state validation: {error}"));
+        let checkpoint = blocker_checkpoint_with_state(&valid, state);
+        assert_eq!(
+            crate::semantic_catalog::admit_restore(
+                &crate::semantic_catalog::RuntimeSemanticCatalog::production(),
+                &checkpoint,
+            ),
+            Err(crate::semantic_catalog::RestoreAdmissionError::ProgramStateIncompatible),
+            "{case} must fail at exact-contract semantic admission"
+        );
+    }
+    assert!(mtgml_state::validate_engine_state(&wrong_actor).is_err());
+    assert!(mtgml_state::validate_engine_state(&wrong_binding).is_err());
+
+    let mut stale_revision = valid.state.clone();
+    stale_revision
+        .execution
+        .pending_decision
+        .as_mut()
+        .unwrap()
+        .request
+        .state_revision = StateRevision(0);
+    assert!(mtgml_state::validate_engine_state(&stale_revision).is_err());
+}
+
+#[test]
+fn blocker_semantics_require_the_exact_new_contract_and_old_profiles_stay_closed() {
+    let controller = TrustedEnvironmentController::new(blocker_backend(blocker_fixture(1, 1, 0)));
+    let pending = reach_blocker_declaration_boundary(&controller, 1);
+    let response = DecisionResponseV2 {
+        schema_version: mtgml_decision::DECISION_RESPONSE_V2_SCHEMA.into(),
+        player_decision_id: pending
+            .state
+            .execution
+            .pending_decision
+            .as_ref()
+            .unwrap()
+            .request
+            .player_decision_id,
+        state_revision: pending.state.revision,
+        answer: DecisionAnswerV2::SelectOne {
+            candidate_id: mtgml_model::CandidateIdV1(0),
+        },
+    };
+
+    for contract in [
+        crate::semantic_catalog_generated::magic_turn_structure_0_1_0_semantic_contract_id(),
+        crate::semantic_catalog_generated::magic_s3_a_ordered_sba_0_1_0_semantic_contract_id(),
+        crate::semantic_catalog_generated::magic_s3_b_basic_priority_0_1_0_semantic_contract_id(),
+        crate::semantic_catalog_generated::magic_s3_c_draw_interaction_0_1_0_semantic_contract_id(),
+        ReferenceEnvironmentBackend::magic_combat_attackers_execution_identity().semantic_contract_id,
+    ] {
+        let mut kernel = mtgml_rules::ProgramKernelV1::for_admitted_execution(
+            mtgml_model::ExecutionProgramV1::MagicRules,
+            contract.clone(),
+        )
+        .unwrap();
+        assert!(kernel.apply(&pending.state, P2, &response).is_err());
+        assert!(mtgml_rules::validate_runtime_state_for_contract(
+            mtgml_model::ExecutionProgramV1::MagicRules,
+            contract,
+            &pending.state,
+            &EpisodeStatus::Running,
+        )
+        .is_err());
+    }
+
+    assert!(mtgml_rules::validate_runtime_state_for_contract(
+        mtgml_model::ExecutionProgramV1::MagicRules,
+        ReferenceEnvironmentBackend::magic_combat_blockers_execution_identity()
+            .semantic_contract_id,
+        &pending.state,
+        &EpisodeStatus::Running,
+    )
+    .is_ok());
+}
+
+#[test]
+fn rejected_blocker_responses_preserve_checkpoint_replay_and_player_products() {
+    let controller = TrustedEnvironmentController::new(blocker_backend(blocker_fixture(3, 1, 0)));
+    let before = reach_blocker_declaration_boundary(&controller, 3);
+    let request = controller.bind_player(P2).unwrap().visible_decision().unwrap().unwrap();
+    let valid = DecisionResponseV2 {
+        schema_version: mtgml_decision::DECISION_RESPONSE_V2_SCHEMA.into(),
+        player_decision_id: request.player_decision_id,
+        state_revision: request.state_revision,
+        answer: DecisionAnswerV2::SelectOne {
+            candidate_id: request.candidates[0].candidate_id,
+        },
+    };
+    let replay_before = controller.export_replay().unwrap();
+    let p1_before = player_fingerprint(&controller, P1);
+    let p2_before = player_fingerprint(&controller, P2);
+
+    let wrong_actor = controller.execute_trusted_response(P1, valid.clone()).unwrap();
+    assert!(!wrong_actor.accepted);
+    assert_eq!(controller.checkpoint().unwrap(), before);
+    assert_eq!(controller.export_replay().unwrap(), replay_before);
+    assert_eq!(player_fingerprint(&controller, P1), p1_before);
+    assert_eq!(player_fingerprint(&controller, P2), p2_before);
+
+    let mut stale = valid.clone();
+    stale.state_revision = StateRevision(0);
+    assert!(!controller.execute_trusted_response(P2, stale).unwrap().accepted);
+    assert_eq!(controller.checkpoint().unwrap(), before);
+    assert_eq!(controller.export_replay().unwrap(), replay_before);
+
+    let mut unknown = valid.clone();
+    unknown.answer = DecisionAnswerV2::SelectOne {
+        candidate_id: mtgml_model::CandidateIdV1(u32::MAX),
+    };
+    assert!(!controller.execute_trusted_response(P2, unknown).unwrap().accepted);
+    assert_eq!(controller.checkpoint().unwrap(), before);
+    assert_eq!(controller.export_replay().unwrap(), replay_before);
+
+    let mut wrong_variant = valid;
+    wrong_variant.answer = DecisionAnswerV2::SelectMany {
+        candidate_ids: Vec::new(),
+    };
+    assert!(!controller.execute_trusted_response(P2, wrong_variant).unwrap().accepted);
+    assert_eq!(controller.checkpoint().unwrap(), before);
+    assert_eq!(controller.export_replay().unwrap(), replay_before);
+    assert_eq!(player_fingerprint(&controller, P1), p1_before);
+    assert_eq!(player_fingerprint(&controller, P2), p2_before);
+}
+
+#[test]
+fn more_than_one_eligible_blocker_rejects_before_decision_without_mutation() {
+    let controller = TrustedEnvironmentController::new(blocker_backend(blocker_fixture(3, 2, 0)));
+    controller.execute_forced_progress().unwrap();
+    let p1 = controller.bind_player(P1).unwrap();
+    let p2 = controller.bind_player(P2).unwrap();
+    for _ in 0..2 {
+        let active = p1.visible_decision().unwrap().unwrap();
+        p1.submit(current_select_one_response(&active)).unwrap();
+        let nonactive = p2.visible_decision().unwrap().unwrap();
+        p2.submit(current_select_one_response(&nonactive)).unwrap();
+    }
+    let attackers = p1.visible_decision().unwrap().unwrap();
+    p1.submit(DecisionResponseV2 {
+        schema_version: mtgml_decision::DECISION_RESPONSE_V2_SCHEMA.into(),
+        player_decision_id: attackers.player_decision_id,
+        state_revision: attackers.state_revision,
+        answer: DecisionAnswerV2::SelectMany {
+            candidate_ids: attackers.candidates.iter().map(|candidate| candidate.candidate_id).collect(),
+        },
+    }).unwrap();
+    let active = p1.visible_decision().unwrap().unwrap();
+    p1.submit(current_select_one_response(&active)).unwrap();
+    let before = controller.checkpoint().unwrap();
+    let replay = controller.export_replay().unwrap();
+    let p1_before = player_fingerprint(&controller, P1);
+    let p2_before = player_fingerprint(&controller, P2);
+    let nonactive = p2.visible_decision().unwrap().unwrap();
+    assert!(matches!(
+        controller.execute_trusted_response(P2, current_select_one_response(&nonactive)),
+        Err(crate::ControllerError::KernelExecution(
+            mtgml_rules::KernelExecutionError::UnsupportedStagePath
+        ))
+    ));
+    assert_eq!(controller.checkpoint().unwrap(), before);
+    assert_eq!(controller.export_replay().unwrap(), replay);
+    assert_eq!(player_fingerprint(&controller, P1), p1_before);
+    assert_eq!(player_fingerprint(&controller, P2), p2_before);
 }
 
 fn reach_pending_attacker_decision(
@@ -886,6 +1788,31 @@ fn replace_library_top_identity(
         let record = state.knowledge.players.get_mut(&P2).unwrap().active.get_mut(&opaque).unwrap();
         record.physical_card = Some(PhysicalCardId(physical));
         record.card_definition = Some(CardDefinitionId(definition));
+    }
+    mtgml_state::validate_engine_state(state).unwrap();
+}
+
+fn set_library_top_hidden_identity(
+    state: &mut mtgml_state::EngineState,
+    physical: u64,
+    definition: u64,
+) {
+    let object = GameObjectId(2);
+    state.zones.objects.get_mut(&object).unwrap().physical_card = Some(PhysicalCardId(physical));
+    state.zones.objects.get_mut(&object).unwrap().card_definition = CardDefinitionId(definition);
+    for (player, identity) in &state.perspective_identities.players {
+        if let Some(opaque) = identity.object_to_opaque.get(&object) {
+            let record = state
+                .knowledge
+                .players
+                .get_mut(player)
+                .unwrap()
+                .active
+                .get_mut(opaque)
+                .unwrap();
+            record.physical_card = None;
+            record.card_definition = None;
+        }
     }
     mtgml_state::validate_engine_state(state).unwrap();
 }

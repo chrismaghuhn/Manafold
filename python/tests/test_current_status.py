@@ -87,13 +87,17 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
             readme,
         )
         self.assertIn(
-            "**M3 Block 3:** Draw + S2 replay/interaction implementation candidate complete; "
-            "exact-head review pending",
+            "**M3 Block 3:** Draw + S2 replay/interaction merged by PR #214 at `0a36290`; "
+            "exact-head review passed",
             readme,
         )
         self.assertIn(
-            "Block 4 supplies a Combat Phase + Declare Attackers implementation candidate; "
-            "Declare Blockers and later blocks have not started",
+            "**M3 Block 4:** Combat Phase + Declare Attackers merged by PR #216 at "
+            "`5e474c763a1a67b14536fe5f70824897320e864b`; exact-head code review passed.",
+            readme,
+        )
+        self.assertIn(
+            "**M3 Block 5:** Declare Blockers implementation candidate in progress",
             readme,
         )
         self.assertNotIn("M3_S1_AUTHORIZATION_DECISION", readme)
@@ -431,11 +435,21 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
         declare_attackers = next(
             entry for entry in entries if entry["key"] == "rules/declare-attackers"
         )
+        declare_blockers = next(
+            entry for entry in entries if entry["key"] == "rules/declare-blockers"
+        )
         other_entries = [
             entry
             for entry in entries
             if entry
-            not in (turn_structure, zone_incarnation, draw_card, combat_phase, declare_attackers)
+            not in (
+                turn_structure,
+                zone_incarnation,
+                draw_card,
+                combat_phase,
+                declare_attackers,
+                declare_blockers,
+            )
         ]
 
         self.assertEqual(turn_structure["version"], "0.1.0")
@@ -565,6 +579,10 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
         self.assertTrue(declare_attackers["implementation_paths"])
         self.assertEqual(declare_attackers["conformance_cases"], [])
         self.assertIn("independent exact-head review pending", declare_attackers["notes"])
+        self.assertEqual(declare_blockers["lifecycle"], "specified")
+        self.assertTrue(declare_blockers["implementation_paths"])
+        self.assertEqual(declare_blockers["conformance_cases"], [])
+        self.assertIn("independent exact-head review is pending", declare_blockers["notes"])
 
         for entry in other_entries:
             with self.subTest(capability=entry["key"]):

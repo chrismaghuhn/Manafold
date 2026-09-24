@@ -726,6 +726,8 @@ SCHEMA_INVENTORY_ALLOWED: frozenset[str] = frozenset(
         "magic-m3-observation.v1.schema.json",
         # Explicit Block 4 observation successor; V1 remains byte-frozen.
         "magic-combat-observation.v2.schema.json",
+        # Explicit Block 5 successor; V1/V2 remain byte-frozen.
+        "magic-combat-observation.v3.schema.json",
         "normative-document-register.v1.schema.json",
         "observation-envelope.v1.schema.json",
         "observed-event-envelope.v1.schema.json",

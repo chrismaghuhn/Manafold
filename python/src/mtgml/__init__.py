@@ -4,6 +4,12 @@ from ._magic_combat_observation import (
     MagicCombatParticipationV2,
     MagicObservationV2,
 )
+from ._magic_combat_observation_v3 import (
+    MAGIC_OBSERVATION_SCHEMA_V3,
+    MagicCombatBlockerAssignmentV3,
+    MagicCombatParticipationV3,
+    MagicObservationV3,
+)
 from ._magic_observation import (
     MAGIC_OBSERVATION_SCHEMA_V1,
     MagicCompletedOrder,
@@ -83,6 +89,7 @@ from .wire import compute_information_state_digest_v2, decode_canonical, encode_
 __all__ = [
     "MAGIC_OBSERVATION_SCHEMA_V1",
     "MAGIC_OBSERVATION_SCHEMA_V2",
+    "MAGIC_OBSERVATION_SCHEMA_V3",
     "SYNTHETIC_OBSERVATION_SCHEMA_V1",
     "ActionCandidate",
     "AuthoritativeReplayV1",
@@ -110,10 +117,13 @@ __all__ = [
     "InitialEnvironmentIdentityV5",
     "InitialEnvironmentIdentityV6",
     "MagicCombatBlockerAssignmentV2",
+    "MagicCombatBlockerAssignmentV3",
     "MagicCombatParticipationV2",
+    "MagicCombatParticipationV3",
     "MagicCompletedOrder",
     "MagicObservation",
     "MagicObservationV2",
+    "MagicObservationV3",
     "MagicPendingSbaOrdering",
     "ObservationEnvelope",
     "ObservedEvent",

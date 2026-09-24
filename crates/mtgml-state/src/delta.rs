@@ -66,6 +66,9 @@ pub enum SemanticDeltaOperation {
         defending_player: PlayerId,
         attackers: Vec<GameObjectId>,
     },
+    BlockersDeclared {
+        assignments: Vec<crate::CombatBlockerAssignmentV1>,
+    },
     CombatEnded,
     EmptyCombatStepsSkipped,
     UntapCompleted {

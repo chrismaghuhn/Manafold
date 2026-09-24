@@ -53,6 +53,7 @@ S3A_ENTRY_ID = "magic_s3_a_ordered_sba_0_1_0"
 S3B_ENTRY_ID = "magic_s3_b_basic_priority_0_1_0"
 S3C_ENTRY_ID = "magic_s3_c_draw_interaction_0_1_0"
 COMBAT_ENTRY_ID = "magic_combat_attackers_0_1_0"
+COMBAT_BLOCKERS_ENTRY_ID = "magic_combat_blockers_0_1_0"
 
 
 def render_rules_execution_generated(
@@ -68,6 +69,7 @@ def render_rules_execution_generated(
     basic_priority_entry = entries.get(S3B_ENTRY_ID)
     draw_entry = entries.get(S3C_ENTRY_ID)
     combat_entry = entries.get(COMBAT_ENTRY_ID)
+    combat_blockers_entry = entries.get(COMBAT_BLOCKERS_ENTRY_ID)
     synthetic = entries.get("synthetic_legacy_default")
     if (
         turn_structure_entry is None
@@ -75,6 +77,7 @@ def render_rules_execution_generated(
         or basic_priority_entry is None
         or draw_entry is None
         or combat_entry is None
+        or combat_blockers_entry is None
         or synthetic is None
     ):
         raise SystemExit("production catalog is missing a required execution identity")
@@ -84,6 +87,7 @@ def render_rules_execution_generated(
         basic_priority_entry,
         draw_entry,
         combat_entry,
+        combat_blockers_entry,
         synthetic,
     ):
         validate_entry_facts(entry)
@@ -92,6 +96,7 @@ def render_rules_execution_generated(
     _, s3b_semantic = derive_ids(basic_priority_entry)
     _, s3c_semantic = derive_ids(draw_entry)
     _, combat_semantic = derive_ids(combat_entry)
+    _, combat_blockers_semantic = derive_ids(combat_blockers_entry)
     _, synthetic_semantic = derive_ids(synthetic)
 
     def has_capability(entry: dict[str, object], key: str) -> bool:
@@ -119,6 +124,8 @@ pub(crate) const MAGIC_S3_C_SEMANTIC_CONTRACT_HEX: &str =
     "@S3C_ID@";
 pub(crate) const MAGIC_COMBAT_ATTACKERS_SEMANTIC_CONTRACT_HEX: &str =
     "@COMBAT_ID@";
+pub(crate) const MAGIC_COMBAT_BLOCKERS_SEMANTIC_CONTRACT_HEX: &str =
+    "@COMBAT_BLOCKERS_ID@";
 pub(crate) const SYNTHETIC_LEGACY_SEMANTIC_CONTRACT_HEX: &str =
     "@SYNTHETIC_ID@";
 
@@ -139,6 +146,10 @@ pub(crate) fn magic_combat_attackers_0_1_0_semantic_contract_id() -> SemanticCon
     SemanticContractIdV1::parse(MAGIC_COMBAT_ATTACKERS_SEMANTIC_CONTRACT_HEX)
         .expect("generated canonical hex")
 }
+pub(crate) fn magic_combat_blockers_0_1_0_semantic_contract_id() -> SemanticContractIdV1 {
+    SemanticContractIdV1::parse(MAGIC_COMBAT_BLOCKERS_SEMANTIC_CONTRACT_HEX)
+        .expect("generated canonical hex")
+}
 pub(crate) fn synthetic_legacy_default_semantic_contract_id() -> SemanticContractIdV1 {
     SemanticContractIdV1::parse(SYNTHETIC_LEGACY_SEMANTIC_CONTRACT_HEX)
         .expect("generated canonical hex")
@@ -151,6 +162,7 @@ pub(crate) struct MagicExecutionProfile {
     draw_card_0_1_0: bool,
     combat_phase_0_1_0: bool,
     declare_attackers_0_1_0: bool,
+    declare_blockers_0_1_0: bool,
 }
 impl MagicExecutionProfile {
     pub(crate) fn allows_turn_structure_0_1_0(&self) -> bool {
@@ -168,12 +180,16 @@ impl MagicExecutionProfile {
     pub(crate) fn allows_combat_attackers_0_1_0(&self) -> bool {
         self.combat_phase_0_1_0 && self.declare_attackers_0_1_0
     }
+    pub(crate) fn allows_combat_blockers_0_1_0(&self) -> bool {
+        self.allows_combat_attackers_0_1_0() && self.declare_blockers_0_1_0
+    }
     pub(crate) fn is_turn_structure_only_profile(&self) -> bool {
         self.allows_turn_structure_0_1_0()
             && !self.allows_state_based_actions_combat_0_1_0()
             && !self.allows_basic_priority_0_1_0()
             && !self.allows_draw_card_0_1_0()
             && !self.allows_combat_attackers_0_1_0()
+            && !self.allows_combat_blockers_0_1_0()
     }
 }
 #[cfg(test)]
@@ -189,6 +205,7 @@ pub(crate) fn test_only_magic_execution_profile(
         draw_card_0_1_0: false,
         combat_phase_0_1_0: false,
         declare_attackers_0_1_0: false,
+        declare_blockers_0_1_0: false,
     }
 }
 pub(crate) fn magic_execution_profile(
@@ -202,6 +219,7 @@ pub(crate) fn magic_execution_profile(
             draw_card_0_1_0: false,
             combat_phase_0_1_0: false,
             declare_attackers_0_1_0: false,
+            declare_blockers_0_1_0: false,
         });
     }
     if semantic_contract_id == magic_s3_a_ordered_sba_0_1_0_semantic_contract_id() {
@@ -212,6 +230,7 @@ pub(crate) fn magic_execution_profile(
             draw_card_0_1_0: false,
             combat_phase_0_1_0: false,
             declare_attackers_0_1_0: false,
+            declare_blockers_0_1_0: false,
         });
     }
     if semantic_contract_id == magic_s3_b_basic_priority_0_1_0_semantic_contract_id() {
@@ -222,6 +241,7 @@ pub(crate) fn magic_execution_profile(
             draw_card_0_1_0: false,
             combat_phase_0_1_0: false,
             declare_attackers_0_1_0: false,
+            declare_blockers_0_1_0: false,
         });
     }
     if semantic_contract_id == magic_s3_c_draw_interaction_0_1_0_semantic_contract_id() {
@@ -232,6 +252,7 @@ pub(crate) fn magic_execution_profile(
             draw_card_0_1_0: @DRAW_CARD_PERMISSION@,
             combat_phase_0_1_0: false,
             declare_attackers_0_1_0: false,
+            declare_blockers_0_1_0: false,
         });
     }
     if semantic_contract_id == magic_combat_attackers_0_1_0_semantic_contract_id() {
@@ -242,6 +263,18 @@ pub(crate) fn magic_execution_profile(
             draw_card_0_1_0: @COMBAT_DRAW@,
             combat_phase_0_1_0: @COMBAT_PHASE@,
             declare_attackers_0_1_0: @DECLARE_ATTACKERS@,
+            declare_blockers_0_1_0: false,
+        });
+    }
+    if semantic_contract_id == magic_combat_blockers_0_1_0_semantic_contract_id() {
+        return Some(MagicExecutionProfile {
+            turn_structure_0_1_0: @BLOCKERS_TURN@,
+            state_based_actions_combat_0_1_0: @BLOCKERS_SBA@,
+            basic_priority_0_1_0: @BLOCKERS_PRIORITY@,
+            draw_card_0_1_0: @BLOCKERS_DRAW@,
+            combat_phase_0_1_0: @BLOCKERS_PHASE@,
+            declare_attackers_0_1_0: @BLOCKERS_ATTACKERS@,
+            declare_blockers_0_1_0: @BLOCKERS_BLOCKERS@,
         });
     }
     None
@@ -266,6 +299,7 @@ pub fn execution_contract_supported(
         .replace("@S3B_ID@", s3b_semantic)
         .replace("@S3C_ID@", s3c_semantic)
         .replace("@COMBAT_ID@", combat_semantic)
+        .replace("@COMBAT_BLOCKERS_ID@", combat_blockers_semantic)
         .replace("@COMBAT_TURN@", str(has_capability(combat_entry, "rules/turn-structure")).lower())
         .replace(
             "@COMBAT_SBA@",
@@ -279,6 +313,34 @@ pub fn execution_contract_supported(
         .replace(
             "@DECLARE_ATTACKERS@",
             str(has_capability(combat_entry, "rules/declare-attackers")).lower(),
+        )
+        .replace(
+            "@BLOCKERS_TURN@",
+            str(has_capability(combat_blockers_entry, "rules/turn-structure")).lower(),
+        )
+        .replace(
+            "@BLOCKERS_SBA@",
+            str(has_capability(combat_blockers_entry, "rules/state-based-actions-combat")).lower(),
+        )
+        .replace(
+            "@BLOCKERS_PRIORITY@",
+            str(has_capability(combat_blockers_entry, "rules/basic-priority")).lower(),
+        )
+        .replace(
+            "@BLOCKERS_DRAW@",
+            str(has_capability(combat_blockers_entry, "rules/draw-card")).lower(),
+        )
+        .replace(
+            "@BLOCKERS_PHASE@",
+            str(has_capability(combat_blockers_entry, "rules/combat-phase")).lower(),
+        )
+        .replace(
+            "@BLOCKERS_ATTACKERS@",
+            str(has_capability(combat_blockers_entry, "rules/declare-attackers")).lower(),
+        )
+        .replace(
+            "@BLOCKERS_BLOCKERS@",
+            str(has_capability(combat_blockers_entry, "rules/declare-blockers")).lower(),
         )
         .replace("@SYNTHETIC_ID@", synthetic_semantic)
         .replace(
@@ -540,9 +602,9 @@ def render_catalog_generated(catalog: dict[str, object] | None = None) -> str:
 def assert_production_policy(catalog: dict[str, object]) -> None:
     """Require Synthetic, frozen S1, and distinct bounded S3.A/S3.B identities."""
     entries = catalog["entries"]
-    if len(entries) != 6:
+    if len(entries) != 7:
         raise SystemExit(
-            "production semantic-contract catalog must contain exactly six entries; "
+            "production semantic-contract catalog must contain exactly seven entries; "
             f"got {len(entries)}"
         )
     by_id = {}
@@ -560,6 +622,7 @@ def assert_production_policy(catalog: dict[str, object]) -> None:
     basic_priority_entry = by_id.get(S3B_ENTRY_ID)
     draw_entry = by_id.get(S3C_ENTRY_ID)
     combat_entry = by_id.get(COMBAT_ENTRY_ID)
+    combat_blockers_entry = by_id.get(COMBAT_BLOCKERS_ENTRY_ID)
     if (
         synthetic is None
         or turn_structure_entry is None
@@ -567,10 +630,11 @@ def assert_production_policy(catalog: dict[str, object]) -> None:
         or basic_priority_entry is None
         or draw_entry is None
         or combat_entry is None
+        or combat_blockers_entry is None
     ):
         raise SystemExit(
             "production semantic catalog requires Synthetic, exact S1, S3.A, S3.B, S3.C, "
-            "and combat entries"
+            "combat, and combat+blockers entries"
         )
     if (
         synthetic["rules_authority"] != {"variant": "synthetic_legacy"}
@@ -627,12 +691,28 @@ def assert_production_policy(catalog: dict[str, object]) -> None:
         {"key": "rules/zone-incarnation", "version": "0.1.0"},
     ]:
         raise SystemExit("combat profile must use the exact reviewed cumulative combat closure")
+    if combat_blockers_entry["rules_authority"] != expected_authority or combat_blockers_entry[
+        "capability_closure"
+    ] != [
+        {"key": "rules/basic-priority", "version": "0.1.0"},
+        {"key": "rules/combat-phase", "version": "0.1.0"},
+        {"key": "rules/declare-attackers", "version": "0.1.0"},
+        {"key": "rules/declare-blockers", "version": "0.1.0"},
+        {"key": "rules/draw-card", "version": "0.1.0"},
+        {"key": "rules/state-based-actions-combat", "version": "0.1.0"},
+        {"key": "rules/turn-structure", "version": "0.1.0"},
+        {"key": "rules/zone-incarnation", "version": "0.1.0"},
+    ]:
+        raise SystemExit(
+            "combat+blockers profile must use the exact reviewed cumulative blocker closure"
+        )
     for entry in (
         turn_structure_entry,
         ordered_sba_entry,
         basic_priority_entry,
         draw_entry,
         combat_entry,
+        combat_blockers_entry,
     ):
         if entry["format_contract_id"] is not None or entry["content_contract_id"] is not None:
             raise SystemExit(

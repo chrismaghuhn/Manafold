@@ -65,6 +65,9 @@ pub enum AuthoritativeRuleEventKind {
         defending_player: PlayerId,
         attackers: Vec<GameObjectId>,
     },
+    BlockersDeclared {
+        assignments: Vec<mtgml_state::CombatBlockerAssignmentV1>,
+    },
     CombatEnded,
     EmptyCombatStepsSkipped,
     UntapCompleted {
@@ -165,6 +168,9 @@ impl AuthoritativeRuleEventKind {
             } => SemanticDeltaOperation::AttackersDeclared {
                 defending_player: *defending_player,
                 attackers: attackers.clone(),
+            },
+            Self::BlockersDeclared { assignments } => SemanticDeltaOperation::BlockersDeclared {
+                assignments: assignments.clone(),
             },
             Self::CombatEnded => SemanticDeltaOperation::CombatEnded,
             Self::EmptyCombatStepsSkipped => SemanticDeltaOperation::EmptyCombatStepsSkipped,

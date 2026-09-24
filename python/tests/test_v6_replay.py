@@ -66,6 +66,25 @@ def manifest_for_rules(
 
 def schema_codec_cases() -> list[tuple[str, dict[str, object], object, str, bool]]:
     cr = {"variant": "comprehensive_rules", "snapshot_id": "cr:test"}
+    combat_closure = [
+        {"key": "rules/basic-priority", "version": "0.1.0"},
+        {"key": "rules/combat-phase", "version": "0.1.0"},
+        {"key": "rules/declare-attackers", "version": "0.1.0"},
+        {"key": "rules/draw-card", "version": "0.1.0"},
+        {"key": "rules/state-based-actions-combat", "version": "0.1.0"},
+        {"key": "rules/turn-structure", "version": "0.1.0"},
+        {"key": "rules/zone-incarnation", "version": "0.1.0"},
+    ]
+    combat_blockers_closure = [
+        {"key": "rules/basic-priority", "version": "0.1.0"},
+        {"key": "rules/combat-phase", "version": "0.1.0"},
+        {"key": "rules/declare-attackers", "version": "0.1.0"},
+        {"key": "rules/declare-blockers", "version": "0.1.0"},
+        {"key": "rules/draw-card", "version": "0.1.0"},
+        {"key": "rules/state-based-actions-combat", "version": "0.1.0"},
+        {"key": "rules/turn-structure", "version": "0.1.0"},
+        {"key": "rules/zone-incarnation", "version": "0.1.0"},
+    ]
     return [
         (
             "synthetic",
@@ -87,6 +106,34 @@ def schema_codec_cases() -> list[tuple[str, dict[str, object], object, str, bool
             [{"key": "rules/state-based-actions-combat", "version": "0.1.0"}],
             "magic-m3-observation.v1",
             True,
+        ),
+        (
+            "cr_combat_attackers",
+            cr,
+            combat_closure,
+            "magic-combat-observation.v2",
+            True,
+        ),
+        (
+            "cr_combat_blockers",
+            cr,
+            combat_blockers_closure,
+            "magic-combat-observation.v3",
+            True,
+        ),
+        (
+            "cr_combat_blockers_wrong_codec",
+            cr,
+            combat_blockers_closure,
+            "magic-combat-observation.v2",
+            False,
+        ),
+        (
+            "cr_combat_attackers_wrong_codec",
+            cr,
+            combat_closure,
+            "magic-combat-observation.v3",
+            False,
         ),
         (
             "cr_sba_synthetic",

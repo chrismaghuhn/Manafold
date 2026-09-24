@@ -437,6 +437,61 @@ impl SemanticValidationCursor {
                 });
                 self.attacker_taps_pending = Some(attackers.iter().copied().collect());
             }
+            AuthoritativeRuleEventKind::BlockersDeclared { assignments } => {
+                let Some(combat) = self.combat.as_mut() else {
+                    return Err(TransitionViolation::Combat);
+                };
+                let defending_player = combat.defending_player;
+                if self.position
+                    != (TurnPosition::Combat {
+                        step: mtgml_state::CombatStep::DeclareBlockers,
+                    })
+                    || combat.attackers.is_empty()
+                    || assignments.len() != combat.attackers.len()
+                    || combat.blockers.len() != combat.attackers.len()
+                    || combat.blockers.values().any(Option::is_some)
+                    || assignments
+                        .iter()
+                        .zip(&combat.attackers)
+                        .any(|(assignment, attacker)| assignment.attacker != *attacker)
+                    || assignments
+                        .iter()
+                        .filter_map(|assignment| assignment.blocker)
+                        .count()
+                        > 1
+                {
+                    return Err(TransitionViolation::Combat);
+                }
+                let mut seen_blockers = BTreeSet::new();
+                for assignment in assignments {
+                    if let Some(blocker) = assignment.blocker {
+                        let object = self
+                            .objects
+                            .get(&blocker)
+                            .ok_or(TransitionViolation::Combat)?;
+                        let source = self
+                            .foundation_sources
+                            .get(&blocker)
+                            .ok_or(TransitionViolation::Combat)?;
+                        if !seen_blockers.insert(blocker)
+                            || object.location.zone != mtgml_model::ZoneKind::Battlefield
+                            || object.controller != defending_player
+                            || object.tapped
+                            || object.face_down
+                            || source.source_kind != mtgml_state::FoundationSourceKind::Creature
+                            || !matches!(
+                                source.base_characteristics,
+                                mtgml_state::BaseCharacteristics::Simple { .. }
+                            )
+                        {
+                            return Err(TransitionViolation::Combat);
+                        }
+                    }
+                    combat
+                        .blockers
+                        .insert(assignment.attacker, assignment.blocker);
+                }
+            }
             AuthoritativeRuleEventKind::CombatEnded => {
                 if self.position
                     != (TurnPosition::Combat {
