@@ -73,7 +73,7 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
         self.assertIn("**M3 plan status:** `ACCEPTED`", readme)
         self.assertIn("**Task 14:** `COMPLETE` — `S1_EXACT_HEAD_VERIFICATION = PASS`", readme)
         self.assertIn(
-            "**Next gate:** `M3_BLOCK_1_EXACT_HEAD_REVIEW`",
+            "**Next gate:** `M3_BLOCK_2_EXACT_HEAD_REVIEW`",
             readme,
         )
         self.assertIn("**S3.P0:** `COMPLETE / FROZEN`", readme)
@@ -82,8 +82,9 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
             "**Magic rules-flow inventory:** `REVIEWED / FROZEN_PLANNING_INPUT`",
             readme,
         )
-        self.assertIn("**M3 Block 1:** bounded S3.A implementation is a candidate", readme)
-        self.assertIn("S3.B/C are not authorized", readme)
+        self.assertIn("**M3 Block 1:** bounded S3.A is complete / reviewed", readme)
+        self.assertIn("**M3 Block 2:** Basic Priority + Reference response integration is a candidate", readme)
+        self.assertIn("Block 3 / Draw and Combat remain unstarted", readme)
         self.assertNotIn("M3_S1_AUTHORIZATION_DECISION", readme)
         self.assertNotIn("M3_T0_CLOSURE_STATUS_SYNC_EXACT_HEAD_REVIEW", readme)
         self.assertIn(
@@ -101,14 +102,14 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
             readme,
         )
         self.assertIn(
-            "**Current boundary:** S2 authoritative replay is "
+            "**Current boundary:** S2 authoritative replay remains "
             "`DEFERRED_REQUIRED / BLOCKED_FOR_COVERED`",
             readme,
         )
         self.assertIn(
             "**Real Magic semantics:** S1 is covered; S2 is implemented / not covered; "
-            "bounded S3.A batch, APNAP, and production-identity work is a candidate "
-            "pending exact-head review",
+            "bounded S3.A is complete / reviewed and remains `specified`; S3.B Basic Priority "
+            "is a candidate under a distinct production identity and remains `specified`",
             readme,
         )
         self.assertNotIn("S2 covered", readme)
@@ -263,24 +264,27 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
             "S3_A_TASK_9A_REVIEW_HEAD = 28ffe32b8acb72c0ec3cca98bcfbd90499827f5b", roadmap
         )
         self.assertIn("S3_A_TASK_9B0 = COMPLETE / REVIEWED", roadmap)
-        self.assertIn("S3_A_TASK_9 = COMPLETE_CANDIDATE", roadmap)
-        self.assertIn("S3_A_BLOCK_1 = COMPLETE_CANDIDATE", roadmap)
-        self.assertIn("S3_A_IMPLEMENTATION = COMPLETE_CANDIDATE", roadmap)
-        self.assertIn("S3_A_EXACT_HEAD_REVIEW = PENDING", roadmap)
+        self.assertIn("S3_A_TASK_9 = COMPLETE / REVIEWED", roadmap)
+        self.assertIn("S3_A_BLOCK_1 = COMPLETE / REVIEWED", roadmap)
+        self.assertIn("S3_A_IMPLEMENTATION = COMPLETE / REVIEWED", roadmap)
+        self.assertIn("S3_A_EXACT_HEAD_REVIEW = PASS", roadmap)
         self.assertIn("S3_A_PRODUCTION_SEMANTIC_CONTRACT_REQUIRED = YES", roadmap)
         self.assertIn("S3_A_PRODUCTION_SEMANTIC_CONTRACT_ALLOCATED = YES", roadmap)
         self.assertIn(
-            "NONTERMINAL_FINAL_ORDER_REFERENCE_PATH = BLOCKED_BY_M3_BLOCK_2_BASIC_PRIORITY",
+            "NONTERMINAL_FINAL_ORDER_REFERENCE_PATH = PASS",
             roadmap,
         )
         self.assertIn("MAGIC_RULES_FLOW_INVENTORY_V1 = REVIEWED / FROZEN_PLANNING_INPUT", roadmap)
         self.assertIn("M3_MAJOR_SEMANTIC_BLOCKS = 8", roadmap)
-        self.assertIn("CURRENT_M3_BLOCK = FINISH_BOUNDED_S3_A", roadmap)
-        self.assertIn("NEXT_GATE = M3_BLOCK_1_EXACT_HEAD_REVIEW", roadmap)
+        self.assertIn("M3_BLOCK_1 = COMPLETE / REVIEWED", roadmap)
+        self.assertIn("M3_BLOCK_1_REVIEW_HEAD = 6fc3ff9694aa9d61975929a2d4a1c8006df28014", roadmap)
+        self.assertIn("M3_BLOCK_2 = COMPLETE_CANDIDATE", roadmap)
+        self.assertIn("CURRENT_M3_BLOCK = BASIC_PRIORITY_AND_REFERENCE_RESPONSE_INTEGRATION", roadmap)
+        self.assertIn("NEXT_GATE = M3_BLOCK_2_EXACT_HEAD_REVIEW", roadmap)
         self.assertIn("S3_A_IMPLEMENTATION_AUTHORIZED = YES", roadmap)
-        self.assertIn("S3_B_AUTHORIZED = NO", roadmap)
+        self.assertIn("S3_B_AUTHORIZED = YES", roadmap)
         self.assertIn("S3_C_AUTHORIZED = NO", roadmap)
-        self.assertIn("S3_B_IMPLEMENTATION_AUTHORIZED = NO", roadmap)
+        self.assertIn("S3_B_IMPLEMENTATION_AUTHORIZED = YES", roadmap)
         self.assertIn("S3_C_IMPLEMENTATION_AUTHORIZED = NO", roadmap)
         self.assertNotIn("M3_S2_AUTHORIZED = NO", roadmap)
         self.assertNotIn("S2_IMPLEMENTED = NO", roadmap)

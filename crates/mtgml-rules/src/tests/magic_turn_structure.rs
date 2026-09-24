@@ -6,7 +6,7 @@
 // - All temporal positions classify at their downstream boundary
 // - No state mutation occurs on any rejection path
 // - ProgramKernelV1 remains opaque: for_program(MagicRules) fails,
-//   for_admitted_execution requires post-V5-admission identity
+//   for_admitted_execution requires a V6-admitted semantic identity
 
 use crate::magic::MagicRulesKernel;
 

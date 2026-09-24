@@ -57,7 +57,11 @@ class SourceOfTruthTests(unittest.TestCase):
         self.assertEqual(document["schema_version"], "semantic-contracts-catalog.v1")
         entries = document["entries"]
         self.assertIsInstance(entries, list)
-        self.assertEqual(len(entries), 3, "production catalog must contain Synthetic, S1, and S3.A")
+        self.assertEqual(
+            len(entries),
+            4,
+            "production catalog must contain Synthetic, S1, S3.A, and S3.B",
+        )
         # Entry 0: synthetic_legacy_default
         syn = entries[0]
         self.assertEqual(syn["entry_id"], "synthetic_legacy_default")
@@ -96,6 +100,20 @@ class SourceOfTruthTests(unittest.TestCase):
         )
         self.assertIsNone(s3a["format_contract_id"])
         self.assertIsNone(s3a["content_contract_id"])
+        s3b = entries[3]
+        self.assertEqual(s3b["entry_id"], "magic_s3_b_basic_priority_0_1_0")
+        self.assertEqual(s3b["rules_authority"], ts["rules_authority"])
+        self.assertEqual(
+            s3b["capability_closure"],
+            [
+                {"key": "rules/basic-priority", "version": "0.1.0"},
+                {"key": "rules/state-based-actions-combat", "version": "0.1.0"},
+                {"key": "rules/turn-structure", "version": "0.1.0"},
+                {"key": "rules/zone-incarnation", "version": "0.1.0"},
+            ],
+        )
+        self.assertIsNone(s3b["format_contract_id"])
+        self.assertIsNone(s3b["content_contract_id"])
 
     def test_source_contains_no_hand_authored_identity(self) -> None:
         # BLOCKER regression: derived IDs are GENERATED, never hand-authored.
@@ -497,7 +515,8 @@ class NegativeEvidenceTests(unittest.TestCase):
             module.render_catalog_generated(document)
 
     def test_extra_production_entry_rejected(self) -> None:
-        # Production policy accepts exactly 3 entries; a fourth is refused.
+        # Production policy accepts the four generated execution identities;
+        # any fifth entry remains refused.
         module = load_generator_module()
         document = json.loads(SOURCE_PATH.read_text(encoding="utf-8"))
         document["entries"].append(
