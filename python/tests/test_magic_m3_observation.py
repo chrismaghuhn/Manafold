@@ -5,6 +5,7 @@ import unittest
 from pathlib import Path
 
 from mtgml.errors import WireError
+from mtgml.canonical import canonical_json_bytes
 from mtgml.observation import (
     MAGIC_OBSERVATION_SCHEMA_V1,
     MAGIC_OBSERVATION_SCHEMA_V2,
@@ -46,6 +47,14 @@ class MagicObservationTests(unittest.TestCase):
         )
         with self.assertRaises(WireError):
             decode_canonical(MAGIC_OBSERVATION_SCHEMA_V2, payload)
+
+    def test_v3_rejects_an_object_that_is_both_attacker_and_blocker(self) -> None:
+        value = json.loads(
+            (ROOT / ".." / "wire" / "golden" / "magic-combat-observation.v3.json").read_bytes()
+        )
+        value["combat"]["blockers"][0]["blocker"] = "7"
+        with self.assertRaises(WireError):
+            decode_canonical(MAGIC_OBSERVATION_SCHEMA_V3, canonical_json_bytes(value))
 
     def test_golden_magic_payloads_roundtrip_and_keep_perspective_local_ids(self) -> None:
         names = (

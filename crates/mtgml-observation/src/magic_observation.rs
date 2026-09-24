@@ -266,7 +266,7 @@ impl MagicObservationV3 {
                     .blockers
                     .iter()
                     .filter_map(|assignment| assignment.blocker)
-                    .any(|blocker| !blockers.insert(blocker))
+                    .any(|blocker| !blockers.insert(blocker) || attackers.contains(&blocker))
             {
                 return Err(ObservationValidationError::ObservationPayload);
             }

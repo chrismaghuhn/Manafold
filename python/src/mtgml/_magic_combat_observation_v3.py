@@ -58,6 +58,7 @@ class MagicCombatParticipationV3:
             )
             or len(assigned) > 1
             or len(set(assigned)) != len(assigned)
+            or bool(set(assigned).intersection(self.attackers))
         ):
             raise WireError("semantic.magic_combat_observation", "invalid combat participation")
         return {

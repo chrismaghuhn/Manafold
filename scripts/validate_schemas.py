@@ -112,6 +112,19 @@ def validate_wire_schema_inventory(
     if missing_files:
         raise ValueError(f"missing schema files: {missing_files}")
 
+    identities: dict[str, str] = {}
+    for name in expected:
+        schema = load(schema_root / name)
+        if not isinstance(schema, dict):
+            raise ValueError(f"wire schema must be an object: {name}")
+        schema_id = schema.get("$id")
+        if schema_id != name:
+            raise ValueError(f"wire schema $id must match filename: {name} has {schema_id!r}")
+        previous = identities.get(schema_id)
+        if previous is not None:
+            raise ValueError(f"duplicate wire schema $id: {schema_id} in {previous} and {name}")
+        identities[schema_id] = name
+
 
 def main() -> None:
     validate_wire_schema_inventory(load(ROOT / "schemas" / "README.json"))
