@@ -127,7 +127,9 @@ class MagicObservationV3:
             )
             or (self.turn_position.step == "end_of_combat" and self.combat.attackers)
         ):
-            raise WireError("semantic.magic_combat_observation", "combat does not match turn position")
+            raise WireError(
+                "semantic.magic_combat_observation", "combat does not match turn position"
+            )
         return {
             "schema_version": MAGIC_OBSERVATION_SCHEMA_V3,
             "active_player": uint_wire(self.active_player),

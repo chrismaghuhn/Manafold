@@ -290,8 +290,7 @@ class ReplayManifestV6:
         expected_codec = (
             COMBAT_BLOCKERS_OBSERVATION_CODEC
             if exact_combat_blockers_profile
-            else
-            COMBAT_OBSERVATION_CODEC
+            else COMBAT_OBSERVATION_CODEC
             if exact_combat_profile
             else MAGIC_OBSERVATION_CODEC
             if magic_semantics_admitted
