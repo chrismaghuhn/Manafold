@@ -416,6 +416,11 @@ impl MagicRulesKernel {
             .map_err(KernelExecutionError::TurnStructure)?;
         crate::state_based_actions::validate_state_based_actions_support_profile(&support_state)
             .map_err(|_| KernelExecutionError::UnsupportedStagePath)?;
+        let sba_plan = crate::state_based_actions::derive_bounded_sba_round_plan(&support_state)
+            .map_err(|_| KernelExecutionError::UnsupportedStagePath)?;
+        if !sba_plan.selected_sba_actions.is_empty() || !sba_plan.apnap_owners.is_empty() {
+            return Err(KernelExecutionError::UnsupportedStagePath);
+        }
 
         let eligible = Self::derive_eligible_attackers(state)?;
         if eligible.len() > MAX_SUPPORTED_ATTACKERS {

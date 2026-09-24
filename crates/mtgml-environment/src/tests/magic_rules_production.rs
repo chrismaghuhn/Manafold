@@ -448,6 +448,83 @@ fn pending_attacker_restore_rejects_source_less_battlefield_and_is_nonmutating()
 }
 
 #[test]
+fn pending_attacker_restore_rejects_applicable_sba_and_is_nonmutating() {
+    let controller = TrustedEnvironmentController::new(combat_backend(stable_combat_state()));
+    let valid = reach_pending_attacker_decision(&controller);
+    let original = controller.checkpoint().unwrap();
+    let replay_before = controller.export_replay().unwrap();
+    let p1_before = player_fingerprint(&controller, P1);
+    let p2_before = player_fingerprint(&controller, P2);
+
+    let mut unstable = valid.state.clone();
+    unstable
+        .foundation_sources
+        .get_mut(&GameObjectId(3))
+        .unwrap()
+        .base_characteristics = BaseCharacteristics::Simple {
+        power: 2,
+        toughness: 0,
+    };
+    mtgml_state::validate_engine_state(&unstable).unwrap();
+    let pending_request = unstable.execution.pending_decision.clone();
+    let checkpoint = crate::checkpoint::EnvironmentCheckpointV6::new(
+        unstable,
+        valid.status.clone(),
+        valid.limit_counters.clone(),
+        valid.codec.clone(),
+        valid.execution_identity.clone(),
+    )
+    .expect("SBA-unstable checkpoint must pass generic digest/structure validation");
+    assert_eq!(checkpoint.state.execution.pending_decision, pending_request);
+    assert_eq!(
+        crate::semantic_catalog::admit_restore(
+            &crate::semantic_catalog::RuntimeSemanticCatalog::production(),
+            &checkpoint,
+        ),
+        Err(crate::semantic_catalog::RestoreAdmissionError::ProgramStateIncompatible)
+    );
+
+    assert!(matches!(
+        controller.restore(checkpoint),
+        Err(crate::ControllerError::ProgramStateIncompatible)
+    ));
+    assert_eq!(controller.checkpoint().unwrap(), original);
+    assert_eq!(controller.export_replay().unwrap(), replay_before);
+    assert_eq!(player_fingerprint(&controller, P1), p1_before);
+    assert_eq!(player_fingerprint(&controller, P2), p2_before);
+}
+
+#[test]
+fn attacker_decision_creation_rejects_applicable_sba_without_mutation() {
+    let mut state = stable_combat_state();
+    state.core.position = TurnPosition::Combat {
+        step: mtgml_state::CombatStep::DeclareAttackers,
+    };
+    state
+        .foundation_sources
+        .get_mut(&GameObjectId(3))
+        .unwrap()
+        .base_characteristics = BaseCharacteristics::Simple {
+        power: 2,
+        toughness: 0,
+    };
+    mtgml_state::validate_engine_state(&state).unwrap();
+    let before = state.clone();
+    let mut kernel = mtgml_rules::ProgramKernelV1::for_admitted_execution(
+        mtgml_model::ExecutionProgramV1::MagicRules,
+        ReferenceEnvironmentBackend::magic_combat_attackers_execution_identity()
+            .semantic_contract_id,
+    )
+    .unwrap();
+
+    assert!(matches!(
+        kernel.advance_forced_progress(&state),
+        Err(mtgml_rules::KernelExecutionError::UnsupportedStagePath)
+    ));
+    assert_eq!(state, before);
+}
+
+#[test]
 fn pending_attacker_restore_rejects_nine_eligible_attackers() {
     let controller = TrustedEnvironmentController::new(combat_backend(bounded_attacker_count_state(8)));
     let valid = reach_pending_attacker_decision(&controller);
