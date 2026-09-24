@@ -1,10 +1,11 @@
 //! Durable `MagicRulesKernel` owner.
 //!
 //! This module establishes the milestone-free, future-authoritative owner of
-//! Magic execution inside `mtgml-rules`. The kernel is structurally present and
-//! reachable through `ProgramKernelV1::for_admitted_execution` once the V5
-//! admission layer has confirmed `catalog.supported(semantic_contract_id,
-//! MagicRules) == true` for the exact `rules/turn-structure@0.1.0` contract.
+//! Magic execution inside `mtgml-rules`. Production execution is reachable
+//! through `ProgramKernelV1::for_admitted_execution` once V5 admission confirms
+//! the exact `rules/turn-structure@0.1.0` contract. A separate fixed S3.A
+//! conformance-candidate profile exists only behind the non-default
+//! `m3-conformance-testkit` feature and carries no production identity.
 //!
 //! The execution profile is provided by the semantic execution catalog
 //! (`semantic_execution_generated`) and is validated via `magic_execution_profile()`.
@@ -40,11 +41,36 @@ use crate::turn_structure::{
 
 /// Durable, milestone-free owner of Magic execution.
 ///
-/// Reachable only through `ProgramKernelV1::for_admitted_execution`
-/// with a contract ID that the V5 admission layer has confirmed is the
-/// exact supported semantic contract.
+/// Production construction is reachable only through
+/// `ProgramKernelV1::for_admitted_execution` with the exact V5-admitted
+/// semantic contract. The non-default conformance testkit has a separate
+/// fixed constructor that does not participate in production admission.
 pub(crate) struct MagicRulesKernel {
-    profile: MagicExecutionProfile,
+    profile: MagicKernelProfile,
+}
+
+/// The kernel's execution context is not itself a semantic contract. The
+/// admitted production profile remains the frozen S1 contract; S3.A RED/GREEN
+/// execution uses one fixed, non-production candidate profile behind the
+/// non-default conformance-testkit feature.
+enum MagicKernelProfile {
+    AdmittedS1(MagicExecutionProfile),
+    #[cfg(test)]
+    UnitTest(MagicExecutionProfile),
+    #[cfg(feature = "m3-conformance-testkit")]
+    S3AConformanceCandidate,
+}
+
+impl MagicKernelProfile {
+    fn allows_s1_turn_structure(&self) -> bool {
+        match self {
+            Self::AdmittedS1(profile) => profile.allows_turn_structure_0_1_0(),
+            #[cfg(test)]
+            Self::UnitTest(profile) => profile.allows_turn_structure_0_1_0(),
+            #[cfg(feature = "m3-conformance-testkit")]
+            Self::S3AConformanceCandidate => true,
+        }
+    }
 }
 
 impl MagicRulesKernel {
@@ -54,7 +80,19 @@ impl MagicRulesKernel {
     /// The profile MUST carry the exact supported semantic contract ID;
     /// the V5 admission layer guarantees this before construction.
     pub(crate) fn from_admitted_profile(profile: MagicExecutionProfile) -> Self {
-        Self { profile }
+        Self {
+            profile: MagicKernelProfile::AdmittedS1(profile),
+        }
+    }
+
+    /// Construct the single prospective S3.A candidate profile for isolated
+    /// conformance. It carries no SemanticContractId and cannot be admitted
+    /// from a production checkpoint or replay.
+    #[cfg(feature = "m3-conformance-testkit")]
+    pub(crate) fn s3_a_conformance_candidate() -> Self {
+        Self {
+            profile: MagicKernelProfile::S3AConformanceCandidate,
+        }
     }
 
     /// Construct a bare shell instance for crate-internal tests only.
@@ -64,10 +102,10 @@ impl MagicRulesKernel {
     #[cfg(test)]
     pub(crate) fn new() -> Self {
         Self {
-            profile: test_only_magic_execution_profile(
+            profile: MagicKernelProfile::UnitTest(test_only_magic_execution_profile(
                 magic_turn_structure_0_1_0_semantic_contract_id(),
                 true,
-            ),
+            )),
         }
     }
 }
@@ -104,7 +142,7 @@ impl MagicRulesKernel {
         &mut self,
         state: &EngineState,
     ) -> Result<TransitionResult, KernelExecutionError> {
-        if !self.profile.allows_turn_structure_0_1_0() {
+        if !self.profile.allows_s1_turn_structure() {
             return Err(KernelExecutionError::UnsupportedStagePath);
         }
 

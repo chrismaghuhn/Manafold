@@ -1,21 +1,20 @@
 //! Program-owned kernel boundary (spec §23a.1, ADR 0055
 //! `PROGRAM_OWNS_ALL_KERNEL_ENTRYPOINTS`).
 //!
-//! `ProgramKernelV1` is the ONLY construction path for any rules kernel: an
+//! `ProgramKernelV1` is the production construction path for rules kernels: an
 //! opaque public adapter struct wrapping a PRIVATE inner enum, so
 //! `SyntheticM1RulesKernel` stays a private implementation detail of
 //! `mtgml-rules` while both mandatory entry points (trusted response
 //! execution and forced-progress execution) remain program-owned. There is
-//! deliberately NO `Default` and no other constructor: ambient or
-//! silently-selecting kernel construction is an architectural violation.
+//! deliberately NO `Default`. A fixed S3.A conformance constructor is
+//! available only with the non-default `m3-conformance-testkit` feature; it
+//! is not a production admission route.
 //!
-//! Magic admission: `for_admitted_execution` receives the
-//! semantic contract ID after the V5 catalog admission layer has
-//! confirmed `catalog.supported(id, MagicRules) == true` for the
-//! exact supported contract. Admission is validated through
-//! `magic_execution_profile()`: only the exact supported contract
-//! ID maps to a profile. Program kind alone is never sufficient
-//! to construct Magic runtime.
+//! Production Magic admission: `for_admitted_execution` receives the
+//! semantic contract ID after the V5 catalog confirms support for the exact
+//! contract. Only that production constructor uses `magic_execution_profile()`.
+//! The testkit constructor uses a fixed prospective profile without any
+//! SemanticContractId.
 
 use crate::magic::MagicRulesKernel;
 use crate::semantic_execution_generated::magic_execution_profile;
@@ -27,15 +26,16 @@ use mtgml_model::PlayerId;
 use mtgml_model::{ExecutionProgramV1, SemanticContractIdV1};
 use mtgml_state::EngineState;
 
-/// Opaque public kernel adapter. Construction flows exclusively through
+/// Opaque public kernel adapter. Production construction flows through
 /// [`ProgramKernelV1::for_program`] or
-/// [`ProgramKernelV1::for_admitted_execution`].
+/// [`ProgramKernelV1::for_admitted_execution`]. A separate constructor is
+/// available only with the non-default conformance-testkit feature.
 pub struct ProgramKernelV1 {
     inner: ProgramKernelInner,
 }
 
-/// Private inner dispatch. The Magic variant is reachable ONLY through
-/// `for_admitted_execution` after V5 admission has confirmed support.
+/// Private inner dispatch. Production Magic execution is reachable only
+/// through V5 admission; the fixed conformance candidate is feature-gated.
 enum ProgramKernelInner {
     SyntheticLegacy(SyntheticM1RulesKernel),
     Magic(MagicRulesKernel),
@@ -106,6 +106,17 @@ impl ProgramKernelV1 {
             ExecutionProgramV1::SyntheticRulesCompat => {
                 Err(ProgramKernelConstructionErrorV1::UnsupportedProgram)
             }
+        }
+    }
+
+    /// Construct the real Magic kernel implementation under the fixed S3.A
+    /// conformance-candidate profile. This non-default testkit entry is not a
+    /// production admission path and carries no `SemanticContractId`; only
+    /// the conformance crate enables `m3-conformance-testkit`.
+    #[cfg(feature = "m3-conformance-testkit")]
+    pub fn for_s3_a_conformance_testkit() -> Self {
+        Self {
+            inner: ProgramKernelInner::Magic(MagicRulesKernel::s3_a_conformance_candidate()),
         }
     }
 

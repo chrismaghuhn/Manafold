@@ -7,6 +7,10 @@
 //! The literal scope follows Foundation V2 and the pinned Rules snapshot
 //! `wotc-cr-2026-08-07-txt-20260819-sha256-4381ad1b39ab2c05f7d03633a20f711ed37277074d3266dcba5f38cbb527423f`:
 //! CR 704.5a, 704.5f, 704.5g, 404.3, and 101.4.
+//!
+//! Behavioral S3.A cases use the fixed `m3-conformance-testkit` candidate
+//! constructor, never the admitted S1 SemanticContractId. The explicit
+//! legacy regression below separately binds that frozen S1 identity.
 
 use std::collections::BTreeMap;
 
@@ -165,11 +169,52 @@ fn state_with(creatures: &[CreatureSpec], life: [i64; 2]) -> EngineState {
 }
 
 fn magic_kernel() -> ProgramKernelV1 {
-    ProgramKernelV1::for_admitted_execution(
+    ProgramKernelV1::for_s3_a_conformance_testkit()
+}
+
+#[test]
+fn legacy_s1_semantic_contract_keeps_its_frozen_sba_and_response_boundaries() {
+    use mtgml_rules::{KernelExecutionError, UnsupportedRulesBoundary};
+
+    let s1_manifest = mtgml_environment::magic_turn_structure_0_1_0_rules_manifest();
+    let closure = s1_manifest
+        .capability_closure
+        .expect("S1 production rules contract has an explicit closure");
+    assert_eq!(closure.len(), 1);
+    assert_eq!(closure[0].key, "rules/turn-structure");
+    assert_eq!(closure[0].version, "0.1.0");
+
+    let state = state_with(
+        &[CreatureSpec {
+            owner: P1,
+            toughness: 0,
+            marked_damage: 0,
+        }],
+        [0, 40],
+    );
+    let before = state.clone();
+    let mut s1 = ProgramKernelV1::for_admitted_execution(
         ExecutionProgramV1::MagicRules,
         mtgml_environment::magic_turn_structure_0_1_0_semantic_contract_id(),
     )
-    .expect("the current admitted Magic profile must construct its real rules kernel")
+    .expect("the historical production S1 contract remains admitted");
+    assert!(matches!(
+        s1.advance_forced_progress(&state),
+        Err(KernelExecutionError::UnsupportedRulesBoundary(
+            UnsupportedRulesBoundary::BasicPriority
+        ))
+    ));
+    assert!(matches!(
+        s1.apply(
+            &state,
+            P1,
+            &order_response(DecisionAnswerV2::Order {
+                candidate_ids: vec![]
+            })
+        ),
+        Err(KernelExecutionError::UnsupportedPlayerResponse)
+    ));
+    assert_eq!(state, before);
 }
 
 fn advance_sba(state: &EngineState, witness: &str) -> TransitionResult {
@@ -566,8 +611,8 @@ fn both_players_losing_in_one_check_produce_canonical_simultaneous_draw() {
     let before = state_with(&[], [0, 0]);
     let transition = advance_sba(&before, "both-player simultaneous outcome");
     assert!(transition.accepted);
-    assert_eq!(transition.next_state.core.players[&P1].has_lost, true);
-    assert_eq!(transition.next_state.core.players[&P2].has_lost, true);
+    assert!(transition.next_state.core.players[&P1].has_lost);
+    assert!(transition.next_state.core.players[&P2].has_lost);
     assert_eq!(
         transition.status,
         EpisodeStatus::Terminal {

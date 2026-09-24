@@ -153,3 +153,24 @@ fn magic_rules_state_based_actions_same_owner_deaths_require_order_before_mutati
         })
     ));
 }
+
+#[test]
+fn production_s1_contract_state_based_actions_boundary_remains_frozen() {
+    let state = sba_upkeep_state();
+    let before = state.clone();
+    let mut kernel = crate::ProgramKernelV1::for_admitted_execution(
+        mtgml_model::ExecutionProgramV1::MagicRules,
+        crate::semantic_execution_generated::magic_turn_structure_0_1_0_semantic_contract_id(),
+    )
+    .expect("the exact production S1 contract remains admitted");
+    let error = kernel
+        .advance_forced_progress(&state)
+        .expect_err("S1 must not gain the S3.A SBA producer");
+    assert!(matches!(
+        error,
+        crate::KernelExecutionError::UnsupportedRulesBoundary(
+            crate::UnsupportedRulesBoundary::BasicPriority
+        )
+    ));
+    assert_eq!(state, before);
+}
