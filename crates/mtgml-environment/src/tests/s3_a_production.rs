@@ -404,6 +404,36 @@ fn m3_block_3_upkeep_passes_draw_once_through_s2_and_opens_active_priority() {
     assert_eq!(replay.steps[1].response, current_select_one_response(&nonactive_request));
     let report = controller.execute_replay_from_checkpoint(initial, replay).unwrap();
     assert_eq!(report.final_checkpoint, after);
+
+    let draw_priority_response =
+        current_select_one_response(&active.visible_decision().unwrap().unwrap());
+    let frozen_s3_b_before = after.state.clone();
+    let mut s3_b_kernel = mtgml_rules::ProgramKernelV1::for_admitted_execution(
+        mtgml_model::ExecutionProgramV1::MagicRules,
+        crate::semantic_catalog_generated::magic_s3_b_basic_priority_0_1_0_semantic_contract_id(),
+    )
+    .unwrap();
+    assert!(matches!(
+        s3_b_kernel.apply(&frozen_s3_b_before, P2, &draw_priority_response),
+        Err(mtgml_rules::KernelExecutionError::UnsupportedStagePath)
+    ));
+    assert_eq!(frozen_s3_b_before, after.state);
+
+    let mut s3_c_kernel = mtgml_rules::ProgramKernelV1::for_admitted_execution(
+        mtgml_model::ExecutionProgramV1::MagicRules,
+        crate::semantic_catalog_generated::magic_s3_c_draw_interaction_0_1_0_semantic_contract_id(),
+    )
+    .unwrap();
+    let s3_c_pass = s3_c_kernel
+        .apply(&after.state, P2, &draw_priority_response)
+        .unwrap();
+    assert_eq!(
+        s3_c_pass.next_state.core.priority,
+        mtgml_state::PriorityState::HeldBy {
+            player: P1,
+            consecutive_passes: 1,
+        }
+    );
 }
 
 #[test]

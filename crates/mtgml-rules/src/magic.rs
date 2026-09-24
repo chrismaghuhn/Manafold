@@ -210,6 +210,15 @@ impl RulesKernel for MagicRulesKernel {
                 return self.apply_s3_a_order_response(state, trusted_actor, response);
             }
             if self.profile.allows_s3_b() {
+                if matches!(
+                    state.core.position,
+                    TurnPosition::Beginning {
+                        step: BeginningStep::Draw
+                    }
+                ) && !self.profile.allows_s3_c_draw()
+                {
+                    return Err(KernelExecutionError::UnsupportedStagePath);
+                }
                 return self.apply_priority_response(state, trusted_actor, response);
             }
         }
