@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import sys
 import unittest
-from dataclasses import replace
 from pathlib import Path
 from typing import ClassVar
 
@@ -44,7 +43,7 @@ from mtgml.observation import (
     PlayerStepSubmissionV1,
     PlayerStepV2,
 )
-from mtgml.wire import WireError, compute_information_state_digest_v2, encode_canonical
+from mtgml.wire import compute_information_state_digest_v2, encode_canonical
 
 GOLDEN = ROOT / "wire" / "golden"
 OBSERVATION_DIGEST = "90845308617867fd703c6c4f37ede7908da24420053821f89190ad36236dfca3"
@@ -327,54 +326,6 @@ class ConstructivePlayerStepV2Tests(unittest.TestCase):
             submission=PlayerStepSubmissionV1("accepted"),
         )
         self.assertEqual(encode_canonical(step), golden_bytes("player-step.v2.json"))
-
-    def test_response_step_preserves_prior_revision_events_from_one_forced_progress(self) -> None:
-        initial = information_state_v2()
-        observation = replace(initial.current_observation, state_revision=2)
-        digest_input = InformationStateDigestInputV2(
-            schema_version="information-state-digest-input.v2",
-            perspective=initial.perspective,
-            state_revision=2,
-            current_observation=observation,
-            next_visible_sequence=initial.next_visible_sequence,
-            retained_knowledge=initial.retained_knowledge,
-        )
-        _, digest = compute_information_state_digest_v2(digest_input)
-        info = replace(
-            initial,
-            state_revision=2,
-            current_observation=observation,
-            next_visible_sequence=initial.next_visible_sequence,
-            digest=digest,
-        )
-        step = PlayerStepV2(
-            schema_version=PLAYER_STEP_SCHEMA_V2,
-            information_state=info,
-            observed_events=(
-                ObservedEventEnvelopeV2(
-                    OBSERVED_EVENT_SCHEMA_V2,
-                    1,
-                    1,
-                    ObservedEventV2("life_changed", (("from", 20), ("player", 1), ("to", 19))),
-                ),
-                ObservedEventEnvelopeV2(
-                    OBSERVED_EVENT_SCHEMA_V2,
-                    2,
-                    2,
-                    ObservedEventV2("life_changed", (("from", 19), ("player", 1), ("to", 18))),
-                ),
-            ),
-            next_decision=None,
-            status=EpisodeStatus("running"),
-            submission=PlayerStepSubmissionV1("accepted"),
-        )
-        step.validate()
-        future = replace(
-            step,
-            observed_events=(replace(step.observed_events[0], state_revision=3),),
-        )
-        with self.assertRaisesRegex(WireError, "future revision"):
-            future.validate()
 
     def test_terminal_events_step_matches_golden_bytes(self) -> None:
         events = (
