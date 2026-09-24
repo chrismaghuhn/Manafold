@@ -22,15 +22,17 @@ use mtgml_model::{
 use mtgml_persistence::semantic_contract_digest::{
     calculate_rules_contract_id_v1, calculate_semantic_contract_id_v1,
 };
-use mtgml_rules::{validate_runtime_state, ProgramKernelConstructionErrorV1};
+use mtgml_rules::{validate_runtime_state_for_contract, ProgramKernelConstructionErrorV1};
 use thiserror::Error;
 
 use crate::checkpoint::{CheckpointValidationError, EnvironmentCheckpointV6};
 use crate::errors::ControllerError;
 use crate::semantic_catalog_generated::{
-    magic_turn_structure_0_1_0_rules_manifest, magic_turn_structure_0_1_0_semantic_contract_id,
-    magic_turn_structure_0_1_0_semantic_manifest, synthetic_legacy_default_rules_manifest,
-    synthetic_legacy_default_semantic_contract_id, synthetic_legacy_default_semantic_manifest,
+    magic_s3_a_ordered_sba_0_1_0_rules_manifest, magic_s3_a_ordered_sba_0_1_0_semantic_contract_id,
+    magic_s3_a_ordered_sba_0_1_0_semantic_manifest, magic_turn_structure_0_1_0_rules_manifest,
+    magic_turn_structure_0_1_0_semantic_contract_id, magic_turn_structure_0_1_0_semantic_manifest,
+    synthetic_legacy_default_rules_manifest, synthetic_legacy_default_semantic_contract_id,
+    synthetic_legacy_default_semantic_manifest,
 };
 
 /// A single catalog entry: the frozen meaning of one semantic contract ID.
@@ -78,6 +80,11 @@ impl RuntimeSemanticCatalog {
                     semantic_contract_id: magic_turn_structure_0_1_0_semantic_contract_id(),
                     manifest: magic_turn_structure_0_1_0_semantic_manifest(),
                     rules_manifest: magic_turn_structure_0_1_0_rules_manifest(),
+                },
+                CatalogEntry {
+                    semantic_contract_id: magic_s3_a_ordered_sba_0_1_0_semantic_contract_id(),
+                    manifest: magic_s3_a_ordered_sba_0_1_0_semantic_manifest(),
+                    rules_manifest: magic_s3_a_ordered_sba_0_1_0_rules_manifest(),
                 },
             ],
         }
@@ -303,9 +310,11 @@ pub fn admit_restore(
     // validator lives in the rules kernel (mtgml-rules), above the generic
     // EngineState which carries no program identity. Pre-S1: SyntheticRulesCompat
     // reuses existing synthetic runtime-state validation; MagicRules fails closed.
-    validate_runtime_state(
+    validate_runtime_state_for_contract(
         checkpoint.execution_identity.program_kind,
+        checkpoint.execution_identity.semantic_contract_id.clone(),
         &checkpoint.state,
+        &checkpoint.status,
     )
     .map_err(|_| RestoreAdmissionError::ProgramStateIncompatible)?;
 

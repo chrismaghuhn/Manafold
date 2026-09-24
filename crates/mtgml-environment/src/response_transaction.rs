@@ -224,7 +224,13 @@ where
         failure_point,
         ResponseTransactionFailurePoint::PlayerProjectionValidation,
     )?;
-    crate::player_projection::validate_candidate_projections(&candidate.state).map_err(|_| {
+    let projection_profile =
+        crate::player_projection::profile_for_execution_identity(execution_identity)?;
+    crate::player_projection::validate_candidate_projections_with_profile(
+        &candidate.state,
+        projection_profile,
+    )
+    .map_err(|_| {
         ControllerError::EnvironmentCommit(EnvironmentCommitError::PlayerProjectionInvalid)
     })?;
 

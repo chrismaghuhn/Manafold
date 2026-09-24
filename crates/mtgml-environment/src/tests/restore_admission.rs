@@ -25,10 +25,11 @@ use mtgml_persistence::semantic_contract_digest::{
     calculate_rules_contract_id_v1, calculate_semantic_contract_id_v1,
 };
 use mtgml_state::{
-    construct_synthetic_engine_state, ContinuationPayloadV2, ContinuationRecordV2, EngineState,
-    GameObject, KnownLocationFactV2, KnowledgeAcquisitionReason, KnowledgeRecordV2,
-    PendingDecisionRecordV2, SbaObjectCauseV1, SbaSelectedActionV1, SyntheticResetInputs,
-    SyntheticV4Setup, VisibilityPartition, ZoneLocation, ZonePosition,
+    construct_synthetic_engine_state, BaseCharacteristics, ContinuationPayloadV2,
+    ContinuationRecordV2, ControlHistory, EngineState, FoundationCreatureSource,
+    FoundationSourceKind, GameObject, KnownLocationFactV2, KnowledgeAcquisitionReason,
+    KnowledgeRecordV2, PendingDecisionRecordV2, SbaObjectCauseV1, SbaSelectedActionV1,
+    SyntheticResetInputs, SyntheticV4Setup, VisibilityPartition, ZoneLocation, ZonePosition,
 };
 
 // === Helpers ===
@@ -165,9 +166,12 @@ fn current_magic_s1_contract_rejects_restore_of_magic_sba_continuation() {
     checkpoint.validate().unwrap();
 }
 
-fn magic_sba_continuation_state() -> EngineState {
+pub(super) fn magic_sba_continuation_state() -> EngineState {
     let mut state = s1_valid_state();
     state.revision = StateRevision(1);
+    state.core.position = mtgml_state::TurnPosition::Beginning {
+        step: mtgml_state::BeginningStep::Upkeep,
+    };
     let object = GameObjectId(3);
     let location = ZoneLocation {
         zone: ZoneKind::Battlefield,
@@ -190,6 +194,21 @@ fn magic_sba_continuation_state() -> EngineState {
     );
     state.zones.locations.insert(object, location.clone());
     state.allocators.next_object_id = GameObjectId(4);
+
+    for object_id in [GameObjectId(1), object] {
+        state.foundation_sources.insert(
+            object_id,
+            FoundationCreatureSource {
+                source_kind: FoundationSourceKind::Creature,
+                base_characteristics: BaseCharacteristics::Simple {
+                    power: 2,
+                    toughness: 0,
+                },
+                marked_damage: 0,
+                control_history: ControlHistory::BeforeTurnStart { turn_number: 1 },
+            },
+        );
+    }
 
     for (player, opaque) in [(PlayerId(1), OpaqueObjectId(2)), (PlayerId(2), OpaqueObjectId(3))] {
         let identity = state
@@ -235,12 +254,9 @@ fn magic_sba_continuation_state() -> EngineState {
                 payload: ContinuationPayloadV2::MagicSbaGraveyardOrderV1 {
                     round_start_revision: StateRevision(0),
                     selected_sba_actions: vec![
-                        SbaSelectedActionV1::PlayerLoses {
-                            player: PlayerId(1),
-                        },
                         SbaSelectedActionV1::ObjectToOwnerGraveyard {
                             object: GameObjectId(1),
-                            causes: vec![SbaObjectCauseV1::LethalDamage],
+                            causes: vec![SbaObjectCauseV1::ZeroToughness],
                         },
                         SbaSelectedActionV1::ObjectToOwnerGraveyard {
                             object,

@@ -618,3 +618,8 @@ mod restore_admission {
     use crate::semantic_catalog_generated::synthetic_legacy_default_semantic_contract_id;
     include!("tests/restore_admission.rs");
 }
+
+mod s3_a_production {
+    use super::*;
+    include!("tests/s3_a_production.rs");
+}

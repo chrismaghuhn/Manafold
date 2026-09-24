@@ -6,7 +6,7 @@
 
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 use mtgml_decision::PlayerDecisionRequestV2;
-use mtgml_model::{EpisodeStatus, PlayerId};
+use mtgml_model::{EpisodeStatus, ExecutionIdentityV1, ExecutionProgramV1, PlayerId};
 use mtgml_observation::{
     InformationStateDigestInputV2, ObservationEnvelope, ObservedEventEnvelopeV2,
     PlayerInformationStateV2, PlayerKnowledgeCauseV1, PlayerKnowledgeChannelV1,
@@ -16,12 +16,10 @@ use mtgml_observation::{
     SyntheticM3Priority, SyntheticM3TurnPosition, INFORMATION_STATE_SCHEMA_V2, OBSERVATION_SCHEMA,
     PLAYER_STEP_SCHEMA_V2, SYNTHETIC_M3_OBSERVATION_SCHEMA,
 };
-#[cfg(test)]
 use mtgml_observation::{
     MagicM3CompletedOrder, MagicM3Observation, MagicM3PendingSbaOrdering,
     MAGIC_M3_OBSERVATION_SCHEMA,
 };
-#[cfg(test)]
 use mtgml_state::ContinuationPayloadV2;
 use mtgml_state::{
     BeginningStep, CombatStep, EndingStep, EngineState, KnowledgeAcquisitionCause,
@@ -31,14 +29,39 @@ use mtgml_state::{
 
 use crate::endpoint::PlayerEndpointError;
 use crate::errors::{ControllerError, EnvironmentCommitError};
+use crate::semantic_catalog_generated::{
+    magic_s3_a_ordered_sba_0_1_0_semantic_contract_id,
+    magic_turn_structure_0_1_0_semantic_contract_id, synthetic_legacy_default_semantic_contract_id,
+};
 
 const SYNTHETIC_M3_OBSERVATION_CODEC: &str = SYNTHETIC_M3_OBSERVATION_SCHEMA;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ObservationProjectionProfile {
     SyntheticM3,
-    #[cfg(test)]
     MagicM3,
+}
+
+pub(crate) fn profile_for_execution_identity(
+    identity: &ExecutionIdentityV1,
+) -> Result<ObservationProjectionProfile, ControllerError> {
+    if identity.program_kind == ExecutionProgramV1::SyntheticRulesCompat {
+        return if identity.semantic_contract_id == synthetic_legacy_default_semantic_contract_id() {
+            Ok(ObservationProjectionProfile::SyntheticM3)
+        } else {
+            Err(ControllerError::ProgramAuthorityMismatch)
+        };
+    }
+    if identity.program_kind != ExecutionProgramV1::MagicRules {
+        return Err(ControllerError::ProgramAuthorityMismatch);
+    }
+    if identity.semantic_contract_id == magic_turn_structure_0_1_0_semantic_contract_id() {
+        Ok(ObservationProjectionProfile::SyntheticM3)
+    } else if identity.semantic_contract_id == magic_s3_a_ordered_sba_0_1_0_semantic_contract_id() {
+        Ok(ObservationProjectionProfile::MagicM3)
+    } else {
+        Err(ControllerError::SemanticContractUnsupported)
+    }
 }
 
 pub(crate) fn project_observation(
@@ -74,7 +97,6 @@ pub(crate) fn project_observation_with_profile(
                 mtgml_wire::encode_canonical(&value),
             )
         }
-        #[cfg(test)]
         ObservationProjectionProfile::MagicM3 => {
             let value = MagicM3Observation {
                 schema_version: MAGIC_M3_OBSERVATION_SCHEMA.into(),
@@ -108,7 +130,6 @@ pub(crate) fn project_observation_with_profile(
     Ok(observation)
 }
 
-#[cfg(test)]
 fn project_sba_ordering(
     state: &EngineState,
     perspective: PlayerId,
@@ -421,12 +442,15 @@ pub(crate) fn project_player_step_with_profile(
     Ok(step)
 }
 
-pub(crate) fn validate_candidate_projections(state: &EngineState) -> Result<(), ControllerError> {
+pub(crate) fn validate_candidate_projections_with_profile(
+    state: &EngineState,
+    profile: ObservationProjectionProfile,
+) -> Result<(), ControllerError> {
     for perspective in state.core.players.keys().copied() {
-        project_observation(state, perspective).map_err(|_| {
+        project_observation_with_profile(state, perspective, profile).map_err(|_| {
             ControllerError::EnvironmentCommit(EnvironmentCommitError::PlayerProjectionInvalid)
         })?;
-        project_information_state(state, perspective).map_err(|_| {
+        project_information_state_with_profile(state, perspective, profile).map_err(|_| {
             ControllerError::EnvironmentCommit(EnvironmentCommitError::PlayerProjectionInvalid)
         })?;
         project_visible_decision(state, perspective).map_err(|_| {
