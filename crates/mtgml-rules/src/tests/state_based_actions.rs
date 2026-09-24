@@ -511,3 +511,76 @@ fn production_s1_contract_state_based_actions_boundary_remains_frozen() {
     ));
     assert_eq!(state, before);
 }
+
+fn fresh_no_order_combat_death_at(step: mtgml_state::CombatStep) -> EngineState {
+    let mut state = two_same_owner_deaths_at_upkeep();
+    let mtgml_state::BaseCharacteristics::Simple { power, .. } = state.foundation_sources
+        [&GameObjectId(1)]
+        .base_characteristics;
+    state
+        .foundation_sources
+        .get_mut(&GameObjectId(1))
+        .unwrap()
+        .base_characteristics = mtgml_state::BaseCharacteristics::Simple {
+        power,
+        toughness: 2,
+    };
+    state.core.position = mtgml_state::TurnPosition::Combat { step };
+    state.combat = Some(mtgml_state::CombatState {
+        defending_player: PlayerId(2),
+        attackers: vec![GameObjectId(1)],
+        blockers: std::collections::BTreeMap::from([(
+            GameObjectId(1),
+            Some(GameObjectId(2)),
+        )]),
+    });
+    mtgml_state::validate_engine_state(&state)
+        .expect("fresh no-order combat-death fixture must be structurally valid");
+    state
+}
+
+fn assert_fresh_no_order_combat_boundary_rejects(step: mtgml_state::CombatStep) {
+    let state = fresh_no_order_combat_death_at(step);
+    let result = crate::state_based_actions::derive_bounded_sba_round_plan(&state);
+    if let Ok(plan) = &result {
+        assert_eq!(plan.selected_sba_actions.len(), 1);
+        assert!(plan.apnap_owners.is_empty(), "one selected card needs no order");
+    }
+    assert!(
+        matches!(
+            result,
+            Err(crate::state_based_actions::SbaContinuationValidationError::UnsupportedSbaProfile)
+        ),
+        "fresh no-order combat participant at {step:?} must fail closed, got {result:?}"
+    );
+}
+
+#[test]
+#[ignore = "Task 9B0 FIX-01 RED: no-order BeginningOfCombat participant must fail closed"]
+fn task9b_no_order_beginning_of_combat_fail_closed() {
+    assert_fresh_no_order_combat_boundary_rejects(
+        mtgml_state::CombatStep::BeginningOfCombat,
+    );
+}
+
+#[test]
+#[ignore = "Task 9B0 FIX-01 RED: no-order DeclareAttackers participant must fail closed"]
+fn task9b_no_order_declare_attackers_fail_closed() {
+    assert_fresh_no_order_combat_boundary_rejects(
+        mtgml_state::CombatStep::DeclareAttackers,
+    );
+}
+
+#[test]
+#[ignore = "Task 9B0 FIX-01 RED: no-order DeclareBlockers participant must fail closed"]
+fn task9b_no_order_declare_blockers_fail_closed() {
+    assert_fresh_no_order_combat_boundary_rejects(
+        mtgml_state::CombatStep::DeclareBlockers,
+    );
+}
+
+#[test]
+#[ignore = "Task 9B0 FIX-01 RED: no-order EndOfCombat participant must fail closed"]
+fn task9b_no_order_end_of_combat_fail_closed() {
+    assert_fresh_no_order_combat_boundary_rejects(mtgml_state::CombatStep::EndOfCombat);
+}

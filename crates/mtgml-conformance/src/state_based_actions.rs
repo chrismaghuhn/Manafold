@@ -2168,6 +2168,67 @@ fn task9b_no_order_round_emits_exact_batch_and_one_zone_move() {
 }
 
 #[test]
+#[ignore = "Task 9B0 FIX-01 RED: no-order post-CombatDamage SBA application is not implemented"]
+fn task9b_no_order_post_damage_application_prunes_one_blocker_and_moves_it() {
+    let mut before = state_with(
+        &[
+            CreatureSpec {
+                owner: P1,
+                toughness: 2,
+                marked_damage: 0,
+            },
+            CreatureSpec {
+                owner: P1,
+                toughness: 0,
+                marked_damage: 0,
+            },
+        ],
+        [40, 40],
+    );
+    before.core.position = mtgml_state::TurnPosition::Combat {
+        step: mtgml_state::CombatStep::CombatDamage,
+    };
+    before.combat = Some(mtgml_state::CombatState {
+        defending_player: P2,
+        attackers: vec![GameObjectId(1)],
+        blockers: BTreeMap::from([(GameObjectId(1), Some(GameObjectId(2)))]),
+    });
+    validate_engine_state(&before)
+        .expect("one-death post-damage no-order state must be structurally valid");
+    let expected_actions = vec![object_action(2, vec![SbaObjectCauseV1::ZeroToughness])];
+    let original = before.clone();
+    let transition = advance_sba(&before, "Task 9B0 post-damage no-order batch");
+    assert_eq!(
+        before, original,
+        "forced progress must leave its input untouched"
+    );
+    assert!(transition.next_decision.is_none());
+    assert!(transition.next_state.execution.continuations.is_empty());
+    let batch = transition.events.iter().find_map(|event| {
+        let value = serde_json::to_value(&event.event).ok()?;
+        (value["kind"] == "state_based_actions_applied").then_some(value)
+    });
+    assert_eq!(
+        batch.unwrap()["actions"],
+        serde_json::to_value(expected_actions).unwrap()
+    );
+    assert_eq!(
+        transition
+            .events
+            .iter()
+            .filter(|event| matches!(
+                event.event,
+                AuthoritativeRuleEventKind::ZoneTransition { .. }
+            ))
+            .count(),
+        1
+    );
+    let combat = transition.next_state.combat.as_ref().unwrap();
+    assert_eq!(combat.attackers, vec![GameObjectId(1)]);
+    assert_eq!(combat.blockers, BTreeMap::from([(GameObjectId(1), None)]));
+}
+
+#[test]
 #[ignore = "Task 9B0 acceptance RED: PlayerLoses batch and terminal RulesLoss are not implemented"]
 fn task9b_one_player_loss_sets_has_lost_and_terminal_rules_loss() {
     let before = state_with(&[], [0, 40]);

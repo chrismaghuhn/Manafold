@@ -1222,7 +1222,11 @@ blocks production replay/restore/lifecycle claims until Task 10 disposition.
 Task 9B0 adds ignored/future-acceptance RED witnesses for final one- and
 two-owner Order application, no-order batch application, terminal loss
 products, post-damage combat pruning, and pre-damage/EndOfCombat fail-closed
-boundaries. Existing one-/two-player loss producer REDs remain expected.
+boundaries. The no-order combat profile is pinned independently at fresh
+BeginningOfCombat, DeclareAttackers, DeclareBlockers, and EndOfCombat states
+with exactly one dying combat participant; its post-CombatDamage forced path
+has a separate one-death/no-order application witness. Existing
+one-/two-player loss producer REDs remain expected.
 Standalone-final-order-without-batch and multi-move-without-batch rejection
 are positive negative-contract guards.
 
