@@ -569,7 +569,7 @@ fn owner_with_one_move_is_skipped_from_apnap_order_collection() {
 }
 
 #[test]
-fn zero_toughness_and_lethal_damage_are_one_canonical_object_action() {
+fn zero_toughness_and_lethal_damage_are_distinct_canonical_object_actions() {
     let before = state_with(
         &[
             CreatureSpec {
@@ -579,42 +579,23 @@ fn zero_toughness_and_lethal_damage_are_one_canonical_object_action() {
             },
             CreatureSpec {
                 owner: P1,
-                toughness: 0,
-                marked_damage: 0,
+                toughness: 2,
+                marked_damage: 2,
             },
         ],
         [40, 40],
     );
-    let transition = advance_sba(&before, "combined causes on one selected object");
-    let actions = assert_pending_order(
+    let transition = advance_sba(&before, "CR 704.5f and 704.5g causes on distinct objects");
+    assert_pending_order(
         &before,
         &transition,
         P1,
         &[P1],
         &[GameObjectId(1), GameObjectId(2)],
         &[
-            object_action(
-                1,
-                vec![
-                    SbaObjectCauseV1::ZeroToughness,
-                    SbaObjectCauseV1::LethalDamage,
-                ],
-            ),
-            object_action(2, vec![SbaObjectCauseV1::ZeroToughness]),
+            object_action(1, vec![SbaObjectCauseV1::ZeroToughness]),
+            object_action(2, vec![SbaObjectCauseV1::LethalDamage]),
         ],
-    );
-    assert_eq!(
-        actions,
-        vec![
-            object_action(
-                1,
-                vec![
-                    SbaObjectCauseV1::ZeroToughness,
-                    SbaObjectCauseV1::LethalDamage
-                ],
-            ),
-            object_action(2, vec![SbaObjectCauseV1::ZeroToughness]),
-        ]
     );
 }
 
@@ -932,6 +913,37 @@ fn task6_sba_semantic_validator_rejects_a_stale_cause_set() {
     );
     assert_eq!(state, before, "semantic validation must not mutate state");
     assert_eq!(state.digest().unwrap(), digest_before);
+}
+
+#[test]
+fn task7_zero_toughness_with_damage_cannot_persist_lethal_damage_cause() {
+    let mut state = state_with_pending_two_owner_order();
+    state
+        .foundation_sources
+        .get_mut(&GameObjectId(1))
+        .unwrap()
+        .marked_damage = 2;
+    let continuation = state.execution.continuations.values_mut().next().unwrap();
+    let ContinuationPayloadV2::MagicSbaGraveyardOrderV1 {
+        selected_sba_actions,
+        ..
+    } = &mut continuation.payload
+    else {
+        unreachable!()
+    };
+    selected_sba_actions[0] = object_action(
+        1,
+        vec![
+            SbaObjectCauseV1::ZeroToughness,
+            SbaObjectCauseV1::LethalDamage,
+        ],
+    );
+    validate_engine_state(&state)
+        .expect("the generic state layer retains the typed cause-array shape");
+    assert_eq!(
+        magic_kernel().validate_s3_a_conformance_continuation(&state),
+        Err(mtgml_rules::SbaContinuationValidationError::SelectedActionSetMismatch)
+    );
 }
 
 #[test]

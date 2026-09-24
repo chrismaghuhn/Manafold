@@ -160,10 +160,18 @@ triggers, replacement/prevention, or unsupported permanent families:
 5. Recompute from the resulting workspace until the derived action set is
    empty. Do not return priority between rounds.
 
-If one object qualifies for both zero-toughness and lethal-damage actions, the
-round contains one object-removal action with both applicable causes; it must
-produce one S2 zone transition, one fresh `GameObjectId`, and one OLD-reference
-closure. It must not attempt two incarnation transitions for the same OLD.
+For the current S3.A profile the creature-removal predicates are mutually
+exclusive for one immutable SBA round-start state:
+
+- derived toughness `<= 0` produces exactly `[ZeroToughness]`;
+- derived toughness `> 0` with marked damage `>= toughness` produces exactly
+  `[LethalDamage]`.
+
+An object action therefore carries exactly one of these causes. CR 704.5f and
+704.5g cannot both apply to the same creature in one check. Each selected
+object still produces one S2 zone transition, one fresh `GameObjectId`, and
+one OLD-reference closure; never attempt two incarnation transitions for the
+same OLD.
 
 Terminal status follows Foundation V2 exactly:
 
@@ -391,8 +399,8 @@ StateBasedActionsApplied {
 ```
 
 Its closed action variants carry trusted player/object identity and the
-selected cause (`player loses`, `zero toughness`, `lethal marked damage`, or
-both creature causes). Its matching `SemanticDeltaOperation` preserves the
+selected cause (`player loses`, `zero toughness`, or `lethal marked damage`).
+Its matching `SemanticDeltaOperation` preserves the
 complete action batch. `SbaGraveyardOrderChosen` events and the typed
 continuation preserve each player's accepted permutation. Emit the existing
 S2 `ZoneTransition` once per creature action as one atomic rules workspace
@@ -904,8 +912,9 @@ zone executor changes, continuation production types, lifecycle edits.
 **RED tests:** all Foundation V2 predicates from one round-start state;
 multiple same-owner deaths require a complete owner `Order`; different owners
 are represented simultaneously; APNAP actor order when both owners need
-choices; zero-toughness and lethal causes on one card cause one move; player
-loss plus creature death is one round; both-player loss gets the exact
+choices; zero-toughness and lethal causes are mutually exclusive per-object
+predicates at one round-start state; player loss plus creature death is one
+round; both-player loss gets the exact
 simultaneous-outcome mapping; no zone/life/status mutation happens while an
 Order is pending; no order is chosen from IDs/containers; reject an incomplete
 or duplicate order.

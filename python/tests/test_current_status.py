@@ -76,7 +76,7 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
         self.assertIn("**S3.P0:** `COMPLETE / FROZEN`", readme)
         self.assertIn("**S3.0:** `COMPLETE / FROZEN`", readme)
         self.assertIn(
-            "**S3.A:** Task 5 and Task 6 complete / reviewed; Task 7 Order Decisions and APNAP progression are in progress; S3.A implementation remains incomplete",
+            "**S3.A:** Tasks 5 and 6 complete / reviewed; Task 7 Order Decisions and APNAP progression are an implementation candidate; S3.A implementation remains incomplete",
             readme,
         )
         self.assertIn("S3.B/C are not authorized", readme)
@@ -249,7 +249,7 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
         self.assertIn("S3_A_TASK_5 = COMPLETE / REVIEWED", roadmap)
         self.assertIn("S3_A_TASK_6 = COMPLETE / REVIEWED", roadmap)
         self.assertIn("S3_A_TASK_6_REVIEW_HEAD = 5711886772e431a80f81bcd099cb5546d327a362", roadmap)
-        self.assertIn("S3_A_TASK_7 = IN_PROGRESS", roadmap)
+        self.assertIn("S3_A_TASK_7 = COMPLETE_CANDIDATE", roadmap)
         self.assertIn("S3_A_IMPLEMENTATION = NOT_COMPLETE", roadmap)
         self.assertIn("S3_A_EXACT_HEAD_REVIEW = PENDING", roadmap)
         self.assertIn("S3_A_PRODUCTION_SEMANTIC_CONTRACT_REQUIRED = YES", roadmap)
