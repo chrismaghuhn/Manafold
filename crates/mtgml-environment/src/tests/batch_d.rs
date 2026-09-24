@@ -7,7 +7,7 @@ fn batch_d_invalid_ordered_state_cannot_construct_checkpoint() {
         mtgml_state::construct_synthetic_engine_state(mtgml_state::SyntheticResetInputs {
             players: [PlayerId(1), PlayerId(2)],
             root_seed: seed(),
-            setup: mtgml_state::SyntheticV4Setup::m2_compatibility(),
+            setup: mtgml_state::SyntheticV4Setup::synthetic_compatibility(),
         })
         .unwrap();
     let codec = CheckpointCodecIdentity {

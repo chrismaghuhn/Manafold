@@ -11,10 +11,10 @@ use mtgml_observation::{
 };
 use mtgml_state::EngineState;
 
-use super::SyntheticM1EnvironmentBackend;
+use super::SyntheticRulesEnvironmentBackend;
 use crate::endpoint::PlayerEndpointError;
 
-impl SyntheticM1EnvironmentBackend {
+impl SyntheticRulesEnvironmentBackend {
     pub(super) fn require_player(&self, perspective: PlayerId) -> Result<(), PlayerEndpointError> {
         self.state
             .core

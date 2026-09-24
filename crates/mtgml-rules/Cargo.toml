@@ -15,7 +15,7 @@ thiserror.workspace = true
 [features]
 # Conformance/test-support entry for the M2.E lifecycle fixture driver. Never
 # enabled by runtime crates; no EnvironmentBackend/controller/replay caller.
-m2-conformance-fixtures = []
+synthetic-conformance-fixtures = []
 # Narrow access bridge to the private selected-zone executor for S2
 # conformance. Never enabled by runtime crates or environment/replay callers.
-m3-conformance-testkit = []
+magic-conformance-testkit = []

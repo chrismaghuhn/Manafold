@@ -8,7 +8,7 @@
 use crate::config::synthetic_environment_config;
 use crate::tokens::{BoundEndpoint, TokenRegistry};
 use mtgml_environment::{
-    ControllerError, PlayerEndpoint, PlayerEndpointHandle, SyntheticM1EnvironmentBackend,
+    ControllerError, PlayerEndpoint, PlayerEndpointHandle, SyntheticRulesEnvironmentBackend,
     TrustedEnvironmentController,
 };
 use mtgml_model::PlayerId;
@@ -84,7 +84,7 @@ impl Session {
         root_seed: RootSeed256,
     ) -> Result<(), ControllerError> {
         let config = synthetic_environment_config(players);
-        let backend = SyntheticM1EnvironmentBackend::new(players, root_seed, config)?;
+        let backend = SyntheticRulesEnvironmentBackend::new(players, root_seed, config)?;
         let controller = TrustedEnvironmentController::new(backend);
         let tokens = TokenRegistry::new();
         self.environment = Some(LiveEnvironment {

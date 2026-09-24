@@ -14,7 +14,7 @@ from run_m2_e_gates import (
 
 RULES_MANIFEST = """
 [features]
-m2-conformance-fixtures = []
+synthetic-conformance-fixtures = []
 """
 
 
@@ -34,27 +34,29 @@ class ConformanceFeatureScopeTests(unittest.TestCase):
 
     def test_single_m2_fixture_feature_is_accepted(self) -> None:
         validate_m2_fixture_feature_scope(
-            RULES_MANIFEST, conformance_manifest('["m2-conformance-fixtures"]')
+            RULES_MANIFEST, conformance_manifest('["synthetic-conformance-fixtures"]')
         )
 
     def test_additional_conformance_feature_is_accepted(self) -> None:
         validate_m2_fixture_feature_scope(
             RULES_MANIFEST,
-            conformance_manifest('["m2-conformance-fixtures", "m3-conformance-testkit"]'),
+            conformance_manifest('["synthetic-conformance-fixtures", "magic-conformance-testkit"]'),
         )
 
     def test_missing_m2_fixture_feature_is_rejected(self) -> None:
         with self.assertRaisesRegex(AssertionError, "does not enable the fixture feature"):
             validate_m2_fixture_feature_scope(
                 RULES_MANIFEST,
-                conformance_manifest('["m3-conformance-testkit"]'),
+                conformance_manifest('["magic-conformance-testkit"]'),
             )
 
     def test_rules_manifest_must_declare_fixture_feature(self) -> None:
-        with self.assertRaisesRegex(AssertionError, "lost the empty m2-conformance-fixtures"):
+        with self.assertRaisesRegex(
+            AssertionError, "lost the empty synthetic-conformance-fixtures"
+        ):
             validate_m2_fixture_feature_scope(
                 "[features]\nother-feature = []\n",
-                conformance_manifest('["m2-conformance-fixtures"]'),
+                conformance_manifest('["synthetic-conformance-fixtures"]'),
             )
 
     def test_malformed_toml_is_rejected(self) -> None:
@@ -65,7 +67,7 @@ class ConformanceFeatureScopeTests(unittest.TestCase):
         with self.assertRaisesRegex(AssertionError, "features must be a TOML string array"):
             validate_m2_fixture_feature_scope(
                 RULES_MANIFEST,
-                conformance_manifest('"m2-conformance-fixtures"'),
+                conformance_manifest('"synthetic-conformance-fixtures"'),
             )
 
 

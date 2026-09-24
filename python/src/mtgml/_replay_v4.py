@@ -282,7 +282,7 @@ class ReplayManifestV4:
         if self.schemas.observation != "observation-envelope.v1":
             raise WireError("semantic.replay_manifest", "observation schema is not V1")
         if self.schemas.observation_payload_codec != "synthetic-m3-observation.v1":
-            raise WireError("semantic.replay_manifest", "observation payload codec is not M3")
+            raise WireError("semantic.replay_manifest", "observation payload codec is unsupported")
         if self.schemas.decision != "player-decision-request.v2":
             raise WireError("semantic.replay_manifest", "decision schema is not V2")
         if self.schemas.decision_response != "decision-response.v2":

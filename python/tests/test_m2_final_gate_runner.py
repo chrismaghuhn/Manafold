@@ -551,7 +551,8 @@ class RulesBackendInventoryTests(unittest.TestCase):
         kernel.mkdir(parents=True)
         (kernel / "transition.rs").write_text("pub trait RulesKernel: Send {}\n", encoding="utf-8")
         (kernel / "synthetic.rs").write_text(
-            "pub struct SyntheticM1RulesKernel;\nimpl RulesKernel for SyntheticM1RulesKernel {}\n",
+            "pub struct SyntheticLegacyRulesKernel;\n"
+            "impl RulesKernel for SyntheticLegacyRulesKernel {}\n",
             encoding="utf-8",
         )
 
@@ -562,7 +563,7 @@ class RulesBackendInventoryTests(unittest.TestCase):
             base = Path(tmp)
             self.write_sole_kernel(base)
             detail = final.check_rules_backend_inventory(base)
-            self.assertIn("SyntheticM1RulesKernel", detail)
+            self.assertIn("SyntheticLegacyRulesKernel", detail)
 
     def test_injected_alternate_backend_fails_closed(self) -> None:
         import tempfile
@@ -600,7 +601,7 @@ class RulesBackendInventoryTests(unittest.TestCase):
                 "impl RulesKernel for MockKernel {}\n", encoding="utf-8"
             )
             detail = final.check_rules_backend_inventory(base)
-            self.assertIn("SyntheticM1RulesKernel", detail)
+            self.assertIn("SyntheticLegacyRulesKernel", detail)
 
     def test_qualified_trait_path_implementation_is_detected(self) -> None:
         import tempfile
@@ -661,7 +662,7 @@ class RulesBackendInventoryTests(unittest.TestCase):
                 encoding="utf-8",
             )
             detail = final.check_rules_backend_inventory(base)
-            self.assertIn("SyntheticM1RulesKernel", detail)
+            self.assertIn("SyntheticLegacyRulesKernel", detail)
 
     def test_strip_rust_comments_and_strings_preserves_code(self) -> None:
         source = (
@@ -785,8 +786,8 @@ class ScopeScanTests(unittest.TestCase):
             )
             py_dir = base / "python" / "src" / "mtgml"
             py_dir.mkdir(parents=True)
-            (py_dir / "_observation_m3.py").write_text(
-                'M3_COMBAT_STEPS = frozenset(\n    {\n        "combat_damage",\n    }\n)\n',
+            (py_dir / "_synthetic_observation.py").write_text(
+                'SYNTHETIC_COMBAT_STEPS = frozenset(\n    {\n        "combat_damage",\n    }\n)\n',
                 encoding="utf-8",
             )
             detail = final.check_no_real_magic_sources(base)
@@ -830,8 +831,8 @@ class ScopeScanTests(unittest.TestCase):
             base = Path(tmp)
             py_dir = base / "python" / "src" / "mtgml"
             py_dir.mkdir(parents=True)
-            (py_dir / "_observation_m3.py").write_text(
-                'M3_COMBAT_STEPS = frozenset(\n    {\n        "combat_damage",\n'
+            (py_dir / "_synthetic_observation.py").write_text(
+                'SYNTHETIC_COMBAT_STEPS = frozenset(\n    {\n        "combat_damage",\n'
                 '        "combat_damage",\n    }\n)\n',
                 encoding="utf-8",
             )

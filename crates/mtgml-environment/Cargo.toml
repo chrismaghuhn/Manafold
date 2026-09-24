@@ -22,4 +22,4 @@ thiserror.workspace = true
 [dev-dependencies]
 # Test-only access to the M2.E lifecycle fixture driver; never enabled for
 # production builds of this crate.
-mtgml-rules = { path = "../mtgml-rules", features = ["m2-conformance-fixtures"] }
+mtgml-rules = { path = "../mtgml-rules", features = ["synthetic-conformance-fixtures"] }

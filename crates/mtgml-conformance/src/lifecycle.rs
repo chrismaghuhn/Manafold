@@ -33,7 +33,7 @@ pub fn lifecycle_fixture() -> EngineState {
     let mut state = construct_synthetic_engine_state(SyntheticResetInputs {
         players: [P1, P2],
         root_seed: seed(),
-        setup: mtgml_state::SyntheticV4Setup::m2_compatibility(),
+        setup: mtgml_state::SyntheticV4Setup::synthetic_compatibility(),
     })
     .unwrap();
     for index in 3..=4u64 {

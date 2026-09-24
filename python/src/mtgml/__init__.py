@@ -1,14 +1,14 @@
-from ._magic_observation_m3 import (
-    MAGIC_M3_OBSERVATION_SCHEMA,
-    MagicM3CompletedOrder,
-    MagicM3Observation,
-    MagicM3PendingSbaOrdering,
+from ._magic_observation import (
+    MAGIC_OBSERVATION_SCHEMA_V1,
+    MagicCompletedOrder,
+    MagicObservation,
+    MagicPendingSbaOrdering,
 )
-from ._observation_m3 import (
-    SYNTHETIC_M3_OBSERVATION_SCHEMA,
-    SyntheticM3Observation,
-    SyntheticM3Priority,
-    SyntheticM3TurnPosition,
+from ._synthetic_observation import (
+    SYNTHETIC_OBSERVATION_SCHEMA_V1,
+    SyntheticObservation,
+    SyntheticPriority,
+    SyntheticTurnPosition,
 )
 from .decision import (
     ActionCandidate,
@@ -75,8 +75,8 @@ from .replay import (
 from .wire import compute_information_state_digest_v2, decode_canonical, encode_canonical
 
 __all__ = [
-    "MAGIC_M3_OBSERVATION_SCHEMA",
-    "SYNTHETIC_M3_OBSERVATION_SCHEMA",
+    "MAGIC_OBSERVATION_SCHEMA_V1",
+    "SYNTHETIC_OBSERVATION_SCHEMA_V1",
     "ActionCandidate",
     "AuthoritativeReplayV1",
     "AuthoritativeReplayV2",
@@ -102,9 +102,9 @@ __all__ = [
     "InitialEnvironmentIdentityV4",
     "InitialEnvironmentIdentityV5",
     "InitialEnvironmentIdentityV6",
-    "MagicM3CompletedOrder",
-    "MagicM3Observation",
-    "MagicM3PendingSbaOrdering",
+    "MagicCompletedOrder",
+    "MagicObservation",
+    "MagicPendingSbaOrdering",
     "ObservationEnvelope",
     "ObservedEvent",
     "ObservedEventEnvelope",
@@ -131,9 +131,9 @@ __all__ = [
     "ReplayStepV5",
     "ReplayStepV6",
     "SemanticContractMaterialV5",
-    "SyntheticM3Observation",
-    "SyntheticM3Priority",
-    "SyntheticM3TurnPosition",
+    "SyntheticObservation",
+    "SyntheticPriority",
+    "SyntheticTurnPosition",
     "TerminalReason",
     "TruncationReason",
     "VisibleCandidateV2",

@@ -10,12 +10,12 @@ use super::helpers::{
     advance_player_allocator, answered_piece, cleared_event, created_event, fresh_stage_identity,
     next_revision, piece_candidates_from, rejected,
 };
-use super::SyntheticM1RulesKernel;
+use super::SyntheticLegacyRulesKernel;
 use crate::errors::KernelExecutionError;
 use crate::product::build_accepted_product;
 use crate::transition::TransitionResult;
 
-impl SyntheticM1RulesKernel {
+impl SyntheticLegacyRulesKernel {
     /// Stage 1: ChooseMembers fixes the unordered member set.
     pub(super) fn apply_members_stage(
         state: &EngineState,

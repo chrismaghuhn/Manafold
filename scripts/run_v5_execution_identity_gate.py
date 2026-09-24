@@ -86,7 +86,7 @@ V5_CURRENT_TOKENS: list[tuple[str, str, int]] = [
 
 
 # ---------------------------------------------------------------------------
-# §23a.1 SyntheticM1RulesKernel site classifier.
+# §23a.1 SyntheticLegacyRulesKernel site classifier.
 # ---------------------------------------------------------------------------
 class KernelSiteClass:
     ALLOWED_DECLARATION = "ALLOWED: declaration (struct/enum variant definition)"
@@ -130,57 +130,57 @@ class KernelResult:
 #    and the single ProgramKernelInner::SyntheticLegacy(...) construction
 #
 # EVERY line pattern is matched explicitly — no broad per-file fallbacks.
-# An unmatched line referencing SyntheticM1RulesKernel in an allowed file is
-# a FORBIDDEN direct literal (e.g. `let k = SyntheticM1RulesKernel;` in synthetic.rs).
+# An unmatched line referencing SyntheticLegacyRulesKernel in an allowed file is
+# a FORBIDDEN direct literal (e.g. `let k = SyntheticLegacyRulesKernel;` in synthetic.rs).
 #
 # Critical distinction: the enum variant declaration
-#   `SyntheticLegacy(SyntheticM1RulesKernel),`
+#   `SyntheticLegacy(SyntheticLegacyRulesKernel),`
 # is NOT a construction. The actual construction is
-#   `ProgramKernelInner::SyntheticLegacy(SyntheticM1RulesKernel)`
+#   `ProgramKernelInner::SyntheticLegacy(SyntheticLegacyRulesKernel)`
 # The regex for construction requires the `ProgramKernelInner::` prefix.
 _KERNEL_PATTERNS: list[tuple[str, str, str]] = [
     # synthetic.rs: declaration and impl blocks only
     (
         "crates/mtgml-rules/src/synthetic.rs",
-        r"^\s*pub struct SyntheticM1RulesKernel\b",
+        r"^\s*pub struct SyntheticLegacyRulesKernel\b",
         KernelSiteClass.ALLOWED_DECLARATION,
     ),
     (
         "crates/mtgml-rules/src/synthetic.rs",
-        r"^\s*impl\s+(RulesKernel for\s+)?SyntheticM1RulesKernel\b",
+        r"^\s*impl\s+(RulesKernel for\s+)?SyntheticLegacyRulesKernel\b",
         KernelSiteClass.ALLOWED_IMPL,
     ),
     # synthetic/stages.rs: internal child-module import + impl
     (
         "crates/mtgml-rules/src/synthetic/stages.rs",
-        r"^\s*use\s+super::SyntheticM1RulesKernel\b",
+        r"^\s*use\s+super::SyntheticLegacyRulesKernel\b",
         KernelSiteClass.ALLOWED_CHILD_IMPL,
     ),
     (
         "crates/mtgml-rules/src/synthetic/stages.rs",
-        r"^\s*impl\s+SyntheticM1RulesKernel\b",
+        r"^\s*impl\s+SyntheticLegacyRulesKernel\b",
         KernelSiteClass.ALLOWED_CHILD_IMPL,
     ),
     # synthetic/runtime.rs: internal child-module import + impl ONLY
     (
         "crates/mtgml-rules/src/synthetic/runtime.rs",
-        r"^\s*use\s+super::SyntheticM1RulesKernel\b",
+        r"^\s*use\s+super::SyntheticLegacyRulesKernel\b",
         KernelSiteClass.ALLOWED_CHILD_IMPL,
     ),
     (
         "crates/mtgml-rules/src/synthetic/runtime.rs",
-        r"^\s*impl\s+SyntheticM1RulesKernel\b",
+        r"^\s*impl\s+SyntheticLegacyRulesKernel\b",
         KernelSiteClass.ALLOWED_CHILD_IMPL,
     ),
     # synthetic/helpers.rs: internal child-module import + impl ONLY
     (
         "crates/mtgml-rules/src/synthetic/helpers.rs",
-        r"^\s*use\s+super::SyntheticM1RulesKernel\b",
+        r"^\s*use\s+super::SyntheticLegacyRulesKernel\b",
         KernelSiteClass.ALLOWED_CHILD_IMPL,
     ),
     (
         "crates/mtgml-rules/src/synthetic/helpers.rs",
-        r"^\s*impl\s+SyntheticM1RulesKernel\b",
+        r"^\s*impl\s+SyntheticLegacyRulesKernel\b",
         KernelSiteClass.ALLOWED_CHILD_IMPL,
     ),
     # program_kernel.rs: internal import, enum variant DECLARATION (not
@@ -188,44 +188,44 @@ _KERNEL_PATTERNS: list[tuple[str, str, str]] = [
     # comments, and the single ACTUAL construction.
     (
         "crates/mtgml-rules/src/program_kernel.rs",
-        r"^\s*use\s+crate::synthetic::\{[^}]*SyntheticM1RulesKernel[^}]*\}",
+        r"^\s*use\s+crate::synthetic::\{[^}]*SyntheticLegacyRulesKernel[^}]*\}",
         KernelSiteClass.ALLOWED_IMPORT,
     ),
     (
         "crates/mtgml-rules/src/program_kernel.rs",
-        r"^\s*use\s+crate::synthetic::.*SyntheticM1RulesKernel",
+        r"^\s*use\s+crate::synthetic::.*SyntheticLegacyRulesKernel",
         KernelSiteClass.ALLOWED_IMPORT,
     ),
-    # Enum variant declaration: `    SyntheticLegacy(SyntheticM1RulesKernel),`
+    # Enum variant declaration: `    SyntheticLegacy(SyntheticLegacyRulesKernel),`
     # This is NOT a construction — it defines the variant's payload type.
     (
         "crates/mtgml-rules/src/program_kernel.rs",
-        r"^\s*SyntheticLegacy\(SyntheticM1RulesKernel\)\s*,?\s*$",
+        r"^\s*SyntheticLegacy\(SyntheticLegacyRulesKernel\)\s*,?\s*$",
         KernelSiteClass.ALLOWED_DECLARATION,
     ),
     # Doc comment references
     ("crates/mtgml-rules/src/program_kernel.rs", r"^\s*//.*", KernelSiteClass.ALLOWED_DOC),
     # The single ACTUAL construction:
-    # `... ProgramKernelInner::SyntheticLegacy(SyntheticM1RulesKernel) ...`
+    # `... ProgramKernelInner::SyntheticLegacy(SyntheticLegacyRulesKernel) ...`
     (
         "crates/mtgml-rules/src/program_kernel.rs",
-        r"ProgramKernelInner::SyntheticLegacy\(SyntheticM1RulesKernel\)",
+        r"ProgramKernelInner::SyntheticLegacy\(SyntheticLegacyRulesKernel\)",
         KernelSiteClass.ALLOWED_CONSTRUCTION,
     ),
 ]
 
-# lib.rs: any SyntheticM1RulesKernel re-export is FORBIDDEN.
-_KERNEL_LIB_REEXPORT = re.compile(r"^\s*pub\s+use\s+.*SyntheticM1RulesKernel")
+# lib.rs: any SyntheticLegacyRulesKernel re-export is FORBIDDEN.
+_KERNEL_LIB_REEXPORT = re.compile(r"^\s*pub\s+use\s+.*SyntheticLegacyRulesKernel")
 
 
 def classify_kernel_site(rel_path: str, line: int, text: str) -> tuple[str, str] | None:
     """Return (classification, disposition) or None if not a kernel site.
 
     Matching is per-line/per-site, never per-file. An unmatched reference to
-    SyntheticM1RulesKernel in any file is classified by context — comments are
+    SyntheticLegacyRulesKernel in any file is classified by context — comments are
     ALLOWED_DOC, everything else in a non-allowed file is FORBIDDEN.
     """
-    if "SyntheticM1RulesKernel" not in text:
+    if "SyntheticLegacyRulesKernel" not in text:
         return None
 
     norm_path = rel_path.replace("\\", "/")
@@ -239,7 +239,7 @@ def classify_kernel_site(rel_path: str, line: int, text: str) -> tuple[str, str]
     if norm_path == "crates/mtgml-rules/src/lib.rs":
         if _KERNEL_LIB_REEXPORT.search(text):
             return KernelSiteClass.FORBIDDEN_REEXPORT, "FORBIDDEN"
-        if "SyntheticM1RulesKernel" in text and not re.match(r"^\s*(//|///|//!)", text):
+        if "SyntheticLegacyRulesKernel" in text and not re.match(r"^\s*(//|///|//!)", text):
             return KernelSiteClass.FORBIDDEN_REEXPORT, "FORBIDDEN"
         if re.match(r"^\s*(//|///|//!)", text):
             return KernelSiteClass.ALLOWED_DOC, "ALLOWED"
@@ -255,8 +255,8 @@ def classify_kernel_site(rel_path: str, line: int, text: str) -> tuple[str, str]
     )
     is_tool = norm_path.startswith("tools/")
 
-    if re.search(r"^\s*use\s+.*SyntheticM1RulesKernel", text):
-        # External import: `use mtgml_rules::{... SyntheticM1RulesKernel ...}`
+    if re.search(r"^\s*use\s+.*SyntheticLegacyRulesKernel", text):
+        # External import: `use mtgml_rules::{... SyntheticLegacyRulesKernel ...}`
         return KernelSiteClass.FORBIDDEN_EXTERNAL_IMPORT, "FORBIDDEN"
 
     if is_test:
@@ -314,7 +314,7 @@ def scan_kernel_sites() -> KernelResult:
                 path="<global>",
                 line=0,
                 text="ProgramKernelInner::SyntheticLegacy("
-                "SyntheticM1RulesKernel) construction count",
+                "SyntheticLegacyRulesKernel) construction count",
                 classification="MUST HAVE EXACTLY 1 CONSTRUCTION",
                 disposition="FORBIDDEN",
             )
@@ -720,7 +720,7 @@ def main() -> None:
     if missing_tokens:
         violations.extend(missing_tokens)
 
-    # --- Layer 2: §23a.1 SyntheticM1RulesKernel site classifier ---
+    # --- Layer 2: §23a.1 SyntheticLegacyRulesKernel site classifier ---
     kernel_result = scan_kernel_sites()
     for finding in kernel_result.violations:
         violations.append(

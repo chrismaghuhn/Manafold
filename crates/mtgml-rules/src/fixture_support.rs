@@ -1,7 +1,7 @@
 //! M2.E lifecycle fixture support (test/conformance only).
 //!
 //! This module exists exclusively behind the non-default
-//! `m2-conformance-fixtures` feature and is consumed only by
+//! `synthetic-conformance-fixtures` feature and is consumed only by
 //! `mtgml-conformance` and rule tests. It is NOT a runtime action channel:
 //! no EnvironmentBackend, controller, or replay path may call it, so every
 //! authoritative state change it produces remains attributable to the normal
@@ -284,7 +284,7 @@ mod tests {
         construct_synthetic_engine_state(SyntheticResetInputs {
             players: [P1, P2],
             root_seed: RootSeed256::from_lower_hex(&"11".repeat(32)).unwrap(),
-            setup: SyntheticV4Setup::m2_compatibility(),
+            setup: SyntheticV4Setup::synthetic_compatibility(),
         })
         .unwrap()
     }

@@ -7,7 +7,7 @@
 use base64::Engine as _;
 use mtgml_observation::{
     ObservedEventKindV2,
-    SyntheticM3Observation, SyntheticM3BeginningStep, SyntheticM3Priority, SyntheticM3TurnPosition,
+    SyntheticObservation, SyntheticBeginningStep, SyntheticPriority, SyntheticTurnPosition,
 };
 use mtgml_rules::{
     AuthoritativeRuleEvent, AuthoritativeRuleEventKind,
@@ -20,7 +20,7 @@ use mtgml_state::{
 use mtgml_wire::decode_canonical;
 
 use crate::lifecycle_projection::project_occurrence_envelopes;
-use crate::SyntheticM1EnvironmentBackend;
+use crate::SyntheticRulesEnvironmentBackend;
 
 fn untap_completed_event(
     event_id: mtgml_model::RuleEventId,
@@ -315,22 +315,22 @@ fn observation_exact_temporal_fields_after_untap() {
         step: mtgml_state::BeginningStep::Upkeep,
     };
 
-    let envelope = SyntheticM1EnvironmentBackend::synthetic_observation(&after, active)
+    let envelope = SyntheticRulesEnvironmentBackend::synthetic_observation(&after, active)
         .unwrap();
     let payload_bytes = base64::engine::general_purpose::STANDARD
         .decode(&envelope.payload_base64)
         .unwrap();
-    let payload: SyntheticM3Observation =
+    let payload: SyntheticObservation =
         decode_canonical(&payload_bytes).unwrap();
     assert_eq!(payload.active_player, active);
     assert_eq!(payload.turn_number, "1");
     assert!(matches!(
         payload.turn_position,
-        SyntheticM3TurnPosition::Beginning {
-            step: SyntheticM3BeginningStep::Upkeep,
+        SyntheticTurnPosition::Beginning {
+            step: SyntheticBeginningStep::Upkeep,
         }
     ));
-    assert!(matches!(payload.priority, SyntheticM3Priority::None));
+    assert!(matches!(payload.priority, SyntheticPriority::None));
 
     let envelopes = project_occurrence_envelopes(&before, &after, &events).unwrap();
     let p1 = &envelopes[&active];
@@ -571,8 +571,8 @@ fn observation_paired_state_noninterference() {
     // for the same perspective. Both states must produce identical
     // player observation bytes because the authorized semantic
     // facts are equal and only the trusted identity mapping differs.
-    let obs_a = SyntheticM1EnvironmentBackend::synthetic_observation(&before_a, active).unwrap();
-    let obs_b = SyntheticM1EnvironmentBackend::synthetic_observation(&before_b, active).unwrap();
+    let obs_a = SyntheticRulesEnvironmentBackend::synthetic_observation(&before_a, active).unwrap();
+    let obs_b = SyntheticRulesEnvironmentBackend::synthetic_observation(&before_b, active).unwrap();
     let obs_bytes_a = serde_json::to_vec(&obs_a).unwrap();
     let obs_bytes_b = serde_json::to_vec(&obs_b).unwrap();
     assert_eq!(obs_bytes_a, obs_bytes_b, "player observation bytes must be identical for equivalent public states");

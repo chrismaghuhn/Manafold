@@ -36,8 +36,8 @@ fn reverse_identity_maps_must_agree() {
         .insert(GameObjectId(1), OpaqueObjectId(9));
     assert!(matches!(
         validate_engine_state(&state),
-        Err(EngineStateViolation::M2Shape(
-            M2ShapeViolation::IdentityMapping
+        Err(EngineStateViolation::EngineStateShape(
+            EngineStateShapeViolation::IdentityMapping
         ))
     ));
 }
@@ -53,8 +53,8 @@ fn retired_opaque_identity_must_not_stay_active() {
     identity.retired_object_ids.insert(OpaqueObjectId(1));
     assert!(matches!(
         validate_engine_state(&state),
-        Err(EngineStateViolation::M2Shape(
-            M2ShapeViolation::RetiredIdentity
+        Err(EngineStateViolation::EngineStateShape(
+            EngineStateShapeViolation::RetiredIdentity
         ))
     ));
 }
@@ -70,7 +70,7 @@ fn opaque_allocator_must_stay_ahead_of_issued_ids() {
         .next_opaque_object_id = OpaqueObjectId(1);
     assert!(matches!(
         validate_engine_state(&state),
-        Err(EngineStateViolation::M2Shape(M2ShapeViolation::Allocator))
+        Err(EngineStateViolation::EngineStateShape(EngineStateShapeViolation::Allocator))
     ));
 }
 
@@ -104,8 +104,8 @@ fn retired_knowledge_must_not_keep_a_live_mapping() {
         .insert(GameObjectId(2), OpaqueObjectId(5));
     assert!(matches!(
         validate_engine_state(&state),
-        Err(EngineStateViolation::M2Shape(
-            M2ShapeViolation::RetiredIdentity
+        Err(EngineStateViolation::EngineStateShape(
+            EngineStateShapeViolation::RetiredIdentity
         ))
     ));
 }
@@ -290,8 +290,8 @@ fn historical_location_sequences_must_increase() {
     }
     assert!(matches!(
         validate_engine_state(&state),
-        Err(EngineStateViolation::M2Shape(
-            M2ShapeViolation::VisibleSequence
+        Err(EngineStateViolation::EngineStateShape(
+            EngineStateShapeViolation::VisibleSequence
         ))
     ));
     {
@@ -301,8 +301,8 @@ fn historical_location_sequences_must_increase() {
     }
     assert!(matches!(
         validate_engine_state(&state),
-        Err(EngineStateViolation::M2Shape(
-            M2ShapeViolation::VisibleSequence
+        Err(EngineStateViolation::EngineStateShape(
+            EngineStateShapeViolation::VisibleSequence
         ))
     ));
 }
@@ -319,8 +319,8 @@ fn knowledge_provenance_must_not_be_future_dated() {
     );
     assert!(matches!(
         validate_engine_state(&state),
-        Err(EngineStateViolation::M2Shape(
-            M2ShapeViolation::VisibleSequence
+        Err(EngineStateViolation::EngineStateShape(
+            EngineStateShapeViolation::VisibleSequence
         ))
     ));
 }
@@ -337,8 +337,8 @@ fn invalid_knowledge_cause_channel_combination_is_rejected() {
     );
     assert_eq!(
         validate_engine_state(&state),
-        Err(EngineStateViolation::M2Shape(
-            M2ShapeViolation::VisibleSequence
+        Err(EngineStateViolation::EngineStateShape(
+            EngineStateShapeViolation::VisibleSequence
         ))
     );
 }
@@ -363,8 +363,8 @@ fn retired_knowledge_provenance_is_validated() {
     knowledge.retired.insert(OpaqueObjectId(5), record);
     assert!(matches!(
         validate_engine_state(&state),
-        Err(EngineStateViolation::M2Shape(
-            M2ShapeViolation::VisibleSequence
+        Err(EngineStateViolation::EngineStateShape(
+            EngineStateShapeViolation::VisibleSequence
         ))
     ));
 }
@@ -385,7 +385,7 @@ fn invalidation_must_carry_an_observed_visible_sequence() {
     knowledge.retired.insert(OpaqueObjectId(5), record);
     assert_eq!(
         validate_engine_state(&state),
-        Err(EngineStateViolation::M2Shape(M2ShapeViolation::Knowledge))
+        Err(EngineStateViolation::EngineStateShape(EngineStateShapeViolation::Knowledge))
     );
 }
 

@@ -20,12 +20,12 @@ use crate::core::{
 };
 use crate::digest::StateDigestError;
 use crate::engine::EngineState;
-use crate::format::FormatState;
-use crate::knowledge::{KnowledgeAcquisitionReason, KnowledgeInvalidationReason};
-use crate::m2_shape::{
+use crate::engine_state_shape::{
     AssemblyStageV2, ContinuationPayloadV2, KnowledgeInvalidationV2, KnowledgeRecordV2,
     KnownLocationFactV2, RetiredKnowledgeRecordV2,
 };
+use crate::format::FormatState;
+use crate::knowledge::{KnowledgeAcquisitionReason, KnowledgeInvalidationReason};
 use crate::zones::{VisibilityPartition, ZoneKey, ZoneLocation, ZonePosition};
 
 pub const FULL_STATE_DIGEST_DOMAIN_V5: &str = "mtgml.full-state-digest.v5";
@@ -498,7 +498,7 @@ fn trusted_binding(value: &EngineCandidateBinding) -> Value {
 }
 
 fn continuation_value(
-    record: &crate::m2_shape::ContinuationRecordV2,
+    record: &crate::engine_state_shape::ContinuationRecordV2,
 ) -> Result<Value, StateDigestError> {
     let payload = match &record.payload {
         ContinuationPayloadV2::SyntheticM2Assembly {
@@ -526,10 +526,10 @@ fn continuation_value(
             array([
                 u(round_start_revision.0),
                 array(selected_sba_actions.iter().map(|action| match action {
-                    crate::m2_shape::SbaSelectedActionV1::PlayerLoses { player } => {
+                    crate::engine_state_shape::SbaSelectedActionV1::PlayerLoses { player } => {
                         array([text("player_loses"), u(player.0)])
                     }
-                    crate::m2_shape::SbaSelectedActionV1::ObjectToOwnerGraveyard {
+                    crate::engine_state_shape::SbaSelectedActionV1::ObjectToOwnerGraveyard {
                         object,
                         causes,
                     } => array([
@@ -538,10 +538,10 @@ fn continuation_value(
                             u(object.0),
                             array(causes.iter().map(|cause| {
                                 text(match cause {
-                                    crate::m2_shape::SbaObjectCauseV1::ZeroToughness => {
+                                    crate::engine_state_shape::SbaObjectCauseV1::ZeroToughness => {
                                         "zero_toughness"
                                     }
-                                    crate::m2_shape::SbaObjectCauseV1::LethalDamage => {
+                                    crate::engine_state_shape::SbaObjectCauseV1::LethalDamage => {
                                         "lethal_damage"
                                     }
                                 })

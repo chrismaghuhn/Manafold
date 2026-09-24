@@ -31,7 +31,7 @@ class P0RedTests(unittest.TestCase):
 
     def test_python_m3_observation_payload_is_current(self) -> None:
         self.assertTrue(
-            hasattr(observation, "SyntheticM3Observation"),
+            hasattr(observation, "SyntheticObservation"),
             "P0 requires the synthetic-m3-observation.v1 DTO",
         )
 

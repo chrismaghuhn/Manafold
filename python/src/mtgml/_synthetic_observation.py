@@ -5,10 +5,10 @@ from dataclasses import dataclass
 from .canonical import parse_uint, require_exact_keys, uint_wire
 from .errors import WireError
 
-SYNTHETIC_M3_OBSERVATION_SCHEMA = "synthetic-m3-observation.v1"
+SYNTHETIC_OBSERVATION_SCHEMA_V1 = "synthetic-m3-observation.v1"
 
-M3_BEGINNING_STEPS = frozenset({"untap", "upkeep", "draw"})
-M3_COMBAT_STEPS = frozenset(
+SYNTHETIC_BEGINNING_STEPS = frozenset({"untap", "upkeep", "draw"})
+SYNTHETIC_COMBAT_STEPS = frozenset(
     {
         "beginning_of_combat",
         "declare_attackers",
@@ -17,40 +17,42 @@ M3_COMBAT_STEPS = frozenset(
         "end_of_combat",
     }
 )
-M3_ENDING_STEPS = frozenset({"end_step", "cleanup"})
-M3_TURN_KINDS = frozenset({"beginning", "precombat_main", "combat", "postcombat_main", "ending"})
-M3_PRIORITY_KINDS = frozenset({"none", "held_by"})
+SYNTHETIC_ENDING_STEPS = frozenset({"end_step", "cleanup"})
+SYNTHETIC_TURN_KINDS = frozenset(
+    {"beginning", "precombat_main", "combat", "postcombat_main", "ending"}
+)
+SYNTHETIC_PRIORITY_KINDS = frozenset({"none", "held_by"})
 
 
 @dataclass(frozen=True, slots=True)
-class SyntheticM3TurnPosition:
+class SyntheticTurnPosition:
     kind: str
     step: str | None = None
 
     @classmethod
-    def from_wire(cls, value: object) -> SyntheticM3TurnPosition:
+    def from_wire(cls, value: object) -> SyntheticTurnPosition:
         if not isinstance(value, dict):
             raise WireError("decode.invalid_json", "turn position must be an object")
         kind = value.get("kind")
-        if kind not in M3_TURN_KINDS:
+        if kind not in SYNTHETIC_TURN_KINDS:
             raise WireError("decode.invalid_json", "unknown turn-position kind")
         kind_str = str(kind)
         if kind_str == "beginning":
             obj = require_exact_keys(value, {"kind", "step"})
             step = obj["step"]
-            if step not in M3_BEGINNING_STEPS:
+            if step not in SYNTHETIC_BEGINNING_STEPS:
                 raise WireError("decode.invalid_json", "unknown beginning step")
             return cls("beginning", str(step))
         if kind_str == "combat":
             obj = require_exact_keys(value, {"kind", "step"})
             step = obj["step"]
-            if step not in M3_COMBAT_STEPS:
+            if step not in SYNTHETIC_COMBAT_STEPS:
                 raise WireError("decode.invalid_json", "unknown combat step")
             return cls("combat", str(step))
         if kind_str == "ending":
             obj = require_exact_keys(value, {"kind", "step"})
             step = obj["step"]
-            if step not in M3_ENDING_STEPS:
+            if step not in SYNTHETIC_ENDING_STEPS:
                 raise WireError("decode.invalid_json", "unknown ending step")
             return cls("ending", str(step))
         # precombat_main / postcombat_main carry no step field.
@@ -60,15 +62,15 @@ class SyntheticM3TurnPosition:
     def to_wire(self) -> dict[str, object]:
         # Reuse the reader as exact structural validation.
         if self.kind == "beginning":
-            if self.step not in M3_BEGINNING_STEPS:
+            if self.step not in SYNTHETIC_BEGINNING_STEPS:
                 raise WireError("decode.invalid_json", "unknown beginning step")
             result: dict[str, object] = {"kind": "beginning", "step": self.step}
         elif self.kind == "combat":
-            if self.step not in M3_COMBAT_STEPS:
+            if self.step not in SYNTHETIC_COMBAT_STEPS:
                 raise WireError("decode.invalid_json", "unknown combat step")
             result = {"kind": "combat", "step": self.step}
         elif self.kind == "ending":
-            if self.step not in M3_ENDING_STEPS:
+            if self.step not in SYNTHETIC_ENDING_STEPS:
                 raise WireError("decode.invalid_json", "unknown ending step")
             result = {"kind": "ending", "step": self.step}
         elif self.kind in {"precombat_main", "postcombat_main"}:
@@ -77,21 +79,21 @@ class SyntheticM3TurnPosition:
             result = {"kind": self.kind}
         else:
             raise WireError("decode.invalid_json", "unknown turn-position kind")
-        SyntheticM3TurnPosition.from_wire(result)
+        SyntheticTurnPosition.from_wire(result)
         return result
 
 
 @dataclass(frozen=True, slots=True)
-class SyntheticM3Priority:
+class SyntheticPriority:
     kind: str
     player: int | None = None
 
     @classmethod
-    def from_wire(cls, value: object) -> SyntheticM3Priority:
+    def from_wire(cls, value: object) -> SyntheticPriority:
         if not isinstance(value, dict):
             raise WireError("decode.invalid_json", "priority must be an object")
         kind = value.get("kind")
-        if kind not in M3_PRIORITY_KINDS:
+        if kind not in SYNTHETIC_PRIORITY_KINDS:
             raise WireError("decode.invalid_json", "unknown priority kind")
         if kind == "none":
             require_exact_keys(value, {"kind"})
@@ -110,20 +112,20 @@ class SyntheticM3Priority:
             result = {"kind": "held_by", "player": uint_wire(self.player)}
         else:
             raise WireError("decode.invalid_json", "unknown priority kind")
-        SyntheticM3Priority.from_wire(result)
+        SyntheticPriority.from_wire(result)
         return result
 
 
 @dataclass(frozen=True, slots=True)
-class SyntheticM3Observation:
+class SyntheticObservation:
     schema_version: str
     active_player: int
     turn_number: str
-    turn_position: SyntheticM3TurnPosition
-    priority: SyntheticM3Priority
+    turn_position: SyntheticTurnPosition
+    priority: SyntheticPriority
 
     @classmethod
-    def from_wire(cls, value: object) -> SyntheticM3Observation:
+    def from_wire(cls, value: object) -> SyntheticObservation:
         obj = require_exact_keys(
             value,
             {
@@ -136,16 +138,16 @@ class SyntheticM3Observation:
         )
         schema_raw = obj["schema_version"]
         if not isinstance(schema_raw, str):
-            raise WireError("decode.invalid_json", "unsupported M3 observation schema")
-        if schema_raw != SYNTHETIC_M3_OBSERVATION_SCHEMA:
+            raise WireError("decode.invalid_json", "unsupported synthetic observation schema")
+        if schema_raw != SYNTHETIC_OBSERVATION_SCHEMA_V1:
             raise WireError(
-                "semantic.synthetic_m3_observation", "unsupported M3 observation schema"
+                "semantic.synthetic_m3_observation", "unsupported synthetic observation schema"
             )
         active_player = parse_uint(obj["active_player"])
         turn_number_raw = obj["turn_number"]
         # turn_number is a canonical u64 decimal string on the wire. A
         # non-string is a shape failure; a string that is not canonical
-        # u64 decimal is an M3 semantic-identity failure.
+        # u64 decimal is a synthetic observation identity failure.
         if not isinstance(turn_number_raw, str):
             raise WireError("decode.invalid_json", "turn number must be a string")
         try:
@@ -153,21 +155,21 @@ class SyntheticM3Observation:
         except WireError as exc:
             raise WireError("semantic.synthetic_m3_observation", exc.message) from exc
         result = cls(
-            SYNTHETIC_M3_OBSERVATION_SCHEMA,
+            SYNTHETIC_OBSERVATION_SCHEMA_V1,
             active_player,
             str(turn_number_raw),
-            SyntheticM3TurnPosition.from_wire(obj["turn_position"]),
-            SyntheticM3Priority.from_wire(obj["priority"]),
+            SyntheticTurnPosition.from_wire(obj["turn_position"]),
+            SyntheticPriority.from_wire(obj["priority"]),
         )
         result.validate()
         return result
 
     def validate(self) -> None:
         if not isinstance(self.schema_version, str):
-            raise WireError("decode.invalid_json", "unsupported M3 observation schema")
-        if self.schema_version != SYNTHETIC_M3_OBSERVATION_SCHEMA:
+            raise WireError("decode.invalid_json", "unsupported synthetic observation schema")
+        if self.schema_version != SYNTHETIC_OBSERVATION_SCHEMA_V1:
             raise WireError(
-                "semantic.synthetic_m3_observation", "unsupported M3 observation schema"
+                "semantic.synthetic_m3_observation", "unsupported synthetic observation schema"
             )
         uint_wire(self.active_player)
         if not isinstance(self.turn_number, str):
@@ -184,7 +186,7 @@ class SyntheticM3Observation:
         return {
             "active_player": uint_wire(self.active_player),
             "priority": self.priority.to_wire(),
-            "schema_version": SYNTHETIC_M3_OBSERVATION_SCHEMA,
+            "schema_version": SYNTHETIC_OBSERVATION_SCHEMA_V1,
             "turn_number": str(self.turn_number),
             "turn_position": self.turn_position.to_wire(),
         }

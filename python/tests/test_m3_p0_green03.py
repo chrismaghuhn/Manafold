@@ -8,17 +8,17 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "python" / "src"))
 
-from mtgml._observation_m3 import (
-    SYNTHETIC_M3_OBSERVATION_SCHEMA,
-    SyntheticM3Observation,
-    SyntheticM3Priority,
-    SyntheticM3TurnPosition,
-)
 from mtgml._replay_v4 import (
     REPLAY_FILE_SCHEMA_V4,
     REPLAY_MANIFEST_SCHEMA_V4,
     REPLAY_STEP_SCHEMA_V4,
     ReplayManifestV4,
+)
+from mtgml._synthetic_observation import (
+    SYNTHETIC_OBSERVATION_SCHEMA_V1,
+    SyntheticObservation,
+    SyntheticPriority,
+    SyntheticTurnPosition,
 )
 from mtgml.episode import EpisodeStatus
 from mtgml.errors import WireError
@@ -38,17 +38,17 @@ except ImportError:  # pragma: no cover
     jsonschema = None
 
 
-def _m3(kind: str, step: str | None, priority: str, player: int = 1) -> SyntheticM3Observation:
+def _m3(kind: str, step: str | None, priority: str, player: int = 1) -> SyntheticObservation:
     if kind in {"beginning", "combat", "ending"}:
         assert step is not None
-        pos = SyntheticM3TurnPosition(kind, step)
+        pos = SyntheticTurnPosition(kind, step)
     else:
-        pos = SyntheticM3TurnPosition(kind, None)
+        pos = SyntheticTurnPosition(kind, None)
     if priority == "none":
-        pri = SyntheticM3Priority("none", None)
+        pri = SyntheticPriority("none", None)
     else:
-        pri = SyntheticM3Priority("held_by", player)
-    return SyntheticM3Observation(SYNTHETIC_M3_OBSERVATION_SCHEMA, 1, "1", pos, pri)
+        pri = SyntheticPriority("held_by", player)
+    return SyntheticObservation(SYNTHETIC_OBSERVATION_SCHEMA_V1, 1, "1", pos, pri)
 
 
 class M3ObservationParityTests(unittest.TestCase):

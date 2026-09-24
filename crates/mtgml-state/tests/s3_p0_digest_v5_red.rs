@@ -26,7 +26,7 @@ fn synthetic_state() -> mtgml_state::EngineState {
     construct_synthetic_engine_state(SyntheticResetInputs {
         players: [PlayerId(1), PlayerId(2)],
         root_seed: RootSeed256::from_lower_hex(&"11".repeat(32)).unwrap(),
-        setup: SyntheticV4Setup::m2_compatibility(),
+        setup: SyntheticV4Setup::synthetic_compatibility(),
     })
     .unwrap()
 }

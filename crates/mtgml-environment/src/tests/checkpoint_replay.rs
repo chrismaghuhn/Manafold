@@ -314,7 +314,7 @@ fn closed_status_trusted_execution_is_rejected_without_mutation() {
         )
         .unwrap();
         let closed = TrustedEnvironmentController::new(
-            SyntheticM1EnvironmentBackend::from_checkpoint(
+            SyntheticRulesEnvironmentBackend::from_checkpoint(
                 checkpoint,
                 config([PlayerId(1), PlayerId(2)]),
             )
@@ -641,7 +641,7 @@ fn from_checkpoint_rejects_states_the_kernel_cannot_execute() {
     let base = mtgml_state::construct_synthetic_engine_state(mtgml_state::SyntheticResetInputs {
         players: [PlayerId(1), PlayerId(2)],
         root_seed: seed(),
-        setup: mtgml_state::SyntheticV4Setup::m2_compatibility(),
+        setup: mtgml_state::SyntheticV4Setup::synthetic_compatibility(),
     })
     .unwrap();
 
@@ -673,7 +673,7 @@ fn from_checkpoint_rejects_states_the_kernel_cannot_execute() {
     )
     .expect("generic validation passes");
     assert!(matches!(
-        SyntheticM1EnvironmentBackend::from_checkpoint(
+        SyntheticRulesEnvironmentBackend::from_checkpoint(
             checkpoint.clone(),
             config([PlayerId(1), PlayerId(2)])
         ),
@@ -703,7 +703,7 @@ fn from_checkpoint_rejects_states_the_kernel_cannot_execute() {
     )
     .unwrap();
     assert!(matches!(
-        SyntheticM1EnvironmentBackend::from_checkpoint(
+        SyntheticRulesEnvironmentBackend::from_checkpoint(
             checkpoint.clone(),
             config([PlayerId(1), PlayerId(2)])
         ),
@@ -712,7 +712,7 @@ fn from_checkpoint_rejects_states_the_kernel_cannot_execute() {
 
     // The genuine program remains restorable.
     let genuine_checkpoint = environment_at_members_stage().checkpoint().unwrap();
-    assert!(SyntheticM1EnvironmentBackend::from_checkpoint(
+    assert!(SyntheticRulesEnvironmentBackend::from_checkpoint(
         genuine_checkpoint,
         config([PlayerId(1), PlayerId(2)])
     )
@@ -728,7 +728,7 @@ fn unsupported_standalone_decisions_are_internal_kernel_failures() {
         mtgml_state::construct_synthetic_engine_state(mtgml_state::SyntheticResetInputs {
             players: [PlayerId(1), PlayerId(2)],
             root_seed: seed(),
-            setup: mtgml_state::SyntheticV4Setup::m2_compatibility(),
+            setup: mtgml_state::SyntheticV4Setup::synthetic_compatibility(),
         })
         .unwrap();
     state.execution.pending_decision = Some(PendingDecisionRecordV2 {
@@ -811,14 +811,14 @@ fn checkpoint_restore_preserves_the_lifecycle_public_surface() {
     )
     .unwrap();
     let original = TrustedEnvironmentController::new(
-        SyntheticM1EnvironmentBackend::from_checkpoint(
+        SyntheticRulesEnvironmentBackend::from_checkpoint(
             checkpoint.clone(),
             config([PlayerId(1), PlayerId(2)]),
         )
         .unwrap(),
     );
     let restored = TrustedEnvironmentController::new(
-        SyntheticM1EnvironmentBackend::from_checkpoint(
+        SyntheticRulesEnvironmentBackend::from_checkpoint(
             checkpoint,
             config([PlayerId(1), PlayerId(2)]),
         )
@@ -868,7 +868,7 @@ fn equal_input_fork_reproduces_lifecycle_public_bytes() {
     )
     .unwrap();
     let original = TrustedEnvironmentController::new(
-        SyntheticM1EnvironmentBackend::from_checkpoint(
+        SyntheticRulesEnvironmentBackend::from_checkpoint(
             checkpoint.clone(),
             config([PlayerId(1), PlayerId(2)]),
         )

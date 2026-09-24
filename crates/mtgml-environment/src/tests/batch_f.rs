@@ -5,14 +5,14 @@ fn fnd_028_declared_zero_state_endpoint_and_manifest_remain_valid() {
         mtgml_state::SyntheticResetInputs {
             players,
             root_seed: seed(),
-            setup: mtgml_state::SyntheticV4Setup::m2_compatibility(),
+            setup: mtgml_state::SyntheticV4Setup::synthetic_compatibility(),
         }
     )
     .unwrap();
     assert!(mtgml_state::validate_engine_state(&state).is_ok());
 
     let controller = TrustedEnvironmentController::new(
-        SyntheticM1EnvironmentBackend::new(players, seed(), config(players)).unwrap(),
+        SyntheticRulesEnvironmentBackend::new(players, seed(), config(players)).unwrap(),
     );
     let zero_endpoint = controller.bind_player(PlayerId(0)).unwrap();
     assert_eq!(
@@ -28,7 +28,7 @@ fn fnd_028_declared_zero_player_is_produced_checkpointed_forked_and_replayed() {
     let zero = PlayerId(0);
     let players = [zero, PlayerId(1)];
     let controller = TrustedEnvironmentController::new(
-        SyntheticM1EnvironmentBackend::new(players, seed(), config(players)).unwrap(),
+        SyntheticRulesEnvironmentBackend::new(players, seed(), config(players)).unwrap(),
     );
     let before = controller.checkpoint().unwrap();
     let fork = controller.fork().unwrap();
@@ -74,7 +74,7 @@ fn fnd_028_declared_zero_player_is_produced_checkpointed_forked_and_replayed() {
     assert_eq!(controller.export_replay().unwrap(), replay);
 
     let restored = TrustedEnvironmentController::new(
-        SyntheticM1EnvironmentBackend::new(players, seed(), config(players)).unwrap(),
+        SyntheticRulesEnvironmentBackend::new(players, seed(), config(players)).unwrap(),
     );
     restored
         .execute_trusted_response(zero, response(0, 0))
@@ -98,7 +98,7 @@ fn declared_zero_run() -> (
 ) {
     let players = [PlayerId(0), PlayerId(1)];
     let controller = TrustedEnvironmentController::new(
-        SyntheticM1EnvironmentBackend::new(players, seed(), config(players)).unwrap(),
+        SyntheticRulesEnvironmentBackend::new(players, seed(), config(players)).unwrap(),
     );
     let before = controller.checkpoint().unwrap();
     controller
@@ -137,7 +137,7 @@ fn fnd_028_undeclared_zero_actor() {
 fn fnd_028_declared_zero_actor_must_match_pending_actor() {
     let players = [PlayerId(1), PlayerId(0)];
     let controller = TrustedEnvironmentController::new(
-        SyntheticM1EnvironmentBackend::new(players, seed(), config(players)).unwrap(),
+        SyntheticRulesEnvironmentBackend::new(players, seed(), config(players)).unwrap(),
     );
     let before = controller.checkpoint().unwrap();
     controller

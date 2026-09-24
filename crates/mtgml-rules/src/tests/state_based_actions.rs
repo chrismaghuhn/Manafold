@@ -344,7 +344,7 @@ fn task6_sba_profile_checks_effect_trigger_and_delayed_effect_axes_directly() {
         },
     );
     assert_eq!(
-        crate::state_based_actions::validate_s3_a_support_profile(&effects),
+        crate::state_based_actions::validate_state_based_actions_support_profile(&effects),
         Err(crate::state_based_actions::SbaContinuationValidationError::UnsupportedSbaProfile)
     );
 
@@ -357,7 +357,7 @@ fn task6_sba_profile_checks_effect_trigger_and_delayed_effect_axes_directly() {
         },
     );
     assert_eq!(
-        crate::state_based_actions::validate_s3_a_support_profile(&triggers),
+        crate::state_based_actions::validate_state_based_actions_support_profile(&triggers),
         Err(crate::state_based_actions::SbaContinuationValidationError::UnsupportedSbaProfile)
     );
 
@@ -370,7 +370,7 @@ fn task6_sba_profile_checks_effect_trigger_and_delayed_effect_axes_directly() {
         },
     );
     assert_eq!(
-        crate::state_based_actions::validate_s3_a_support_profile(&delayed),
+        crate::state_based_actions::validate_state_based_actions_support_profile(&delayed),
         Err(crate::state_based_actions::SbaContinuationValidationError::UnsupportedSbaProfile)
     );
 }
@@ -439,7 +439,7 @@ fn task6_sba_profile_rejects_non_physical_objects_and_live_ability_mappings() {
         .unwrap()
         .physical_card = None;
     assert_eq!(
-        crate::state_based_actions::validate_s3_a_support_profile(&token),
+        crate::state_based_actions::validate_state_based_actions_support_profile(&token),
         Err(crate::state_based_actions::SbaContinuationValidationError::UnsupportedSbaProfile)
     );
 
@@ -456,7 +456,7 @@ fn task6_sba_profile_rejects_non_physical_objects_and_live_ability_mappings() {
         .ability_to_opaque
         .insert(mtgml_model::AbilityInstanceId(1), mtgml_model::OpaqueAbilityId(1));
     assert_eq!(
-        crate::state_based_actions::validate_s3_a_support_profile(&ability),
+        crate::state_based_actions::validate_state_based_actions_support_profile(&ability),
         Err(crate::state_based_actions::SbaContinuationValidationError::UnsupportedSbaProfile)
     );
 }
@@ -474,7 +474,7 @@ fn magic_rules_state_based_actions_round_is_missing_before_priority() {
     );
     assert!(plan.apnap_owners.is_empty());
     let before = state.clone();
-    let mut kernel = crate::magic::MagicRulesKernel::s3_a_conformance_candidate();
+    let mut kernel = crate::magic::MagicRulesKernel::state_based_actions_conformance_candidate();
     let result = kernel.advance_forced_progress(&state);
     assert_eq!(state, before, "the RED probe must not mutate the input fixture");
     let transition = result.unwrap_or_else(|error| {
@@ -504,7 +504,7 @@ fn magic_rules_state_based_actions_round_is_missing_before_priority() {
 fn magic_rules_state_based_actions_same_owner_deaths_require_order_before_mutation() {
     let state = two_same_owner_deaths_at_upkeep();
     let before = state.clone();
-    let mut kernel = crate::magic::MagicRulesKernel::s3_a_conformance_candidate();
+    let mut kernel = crate::magic::MagicRulesKernel::state_based_actions_conformance_candidate();
     let result = kernel.advance_forced_progress(&state);
     assert_eq!(state, before, "forced progress must not mutate its input");
     let transition = result.unwrap_or_else(|error| {
@@ -544,7 +544,7 @@ fn production_s1_contract_state_based_actions_boundary_remains_frozen() {
 }
 
 #[test]
-fn production_s3_a_identity_is_distinct_and_executes_the_reviewed_sba_scope() {
+fn production_state_based_actions_identity_is_distinct_and_executes_the_reviewed_sba_scope() {
     let mut state = sba_upkeep_state();
     state.core.players.get_mut(&PlayerId(1)).unwrap().life = 0;
     let s3_id = crate::semantic_execution_generated::

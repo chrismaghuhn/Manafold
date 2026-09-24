@@ -20,14 +20,14 @@ use mtgml_replay::{
     AuthoritativeReplayV6, DeckIdentityV1, KernelIdentityV1, ReplaySchemaVersionsV6,
 };
 
-fn config(players: [PlayerId; 2]) -> SyntheticM1EnvironmentConfig {
-    SyntheticM1EnvironmentConfig {
+fn config(players: [PlayerId; 2]) -> SyntheticRulesEnvironmentConfig {
+    SyntheticRulesEnvironmentConfig {
         codec: CheckpointCodecIdentity {
             codec_id: "in-memory-reference".into(),
             semantic_version: "6".into(),
         },
-        setup: mtgml_state::SyntheticV4Setup::m2_compatibility(),
-        replay: SyntheticM1ReplayConfig {
+        setup: mtgml_state::SyntheticV4Setup::synthetic_compatibility(),
+        replay: SyntheticRulesReplayConfig {
             engine_build: "synthetic-build".into(),
             kernel: KernelIdentityV1 {
                 implementation_id: "synthetic-m2".into(),
@@ -86,9 +86,9 @@ fn synthetic_identity() -> ExecutionIdentityV1 {
     }
 }
 
-fn backend() -> SyntheticM1EnvironmentBackend {
+fn backend() -> SyntheticRulesEnvironmentBackend {
     let players = [PlayerId(1), PlayerId(2)];
-    SyntheticM1EnvironmentBackend::new(players, seed(), config(players)).unwrap()
+    SyntheticRulesEnvironmentBackend::new(players, seed(), config(players)).unwrap()
 }
 
 fn rich_provenance_state() -> mtgml_state::EngineState {
@@ -107,7 +107,7 @@ fn rich_provenance_state() -> mtgml_state::EngineState {
         mtgml_state::construct_synthetic_engine_state(mtgml_state::SyntheticResetInputs {
             players: [PlayerId(1), PlayerId(2)],
             root_seed: seed(),
-            setup: mtgml_state::SyntheticV4Setup::m2_compatibility(),
+            setup: mtgml_state::SyntheticV4Setup::synthetic_compatibility(),
         })
         .unwrap();
 
@@ -373,7 +373,7 @@ fn m2e_fixture() -> EngineState {
     let mut state = construct_synthetic_engine_state(mtgml_state::SyntheticResetInputs {
         players: [PlayerId(1), PlayerId(2)],
         root_seed: seed(),
-        setup: mtgml_state::SyntheticV4Setup::m2_compatibility(),
+        setup: mtgml_state::SyntheticV4Setup::synthetic_compatibility(),
     })
     .unwrap();
     let exile = ZoneLocation {
@@ -619,7 +619,7 @@ mod restore_admission {
     include!("tests/restore_admission.rs");
 }
 
-mod s3_a_production {
+mod magic_rules_production {
     use super::*;
-    include!("tests/s3_a_production.rs");
+    include!("tests/magic_rules_production.rs");
 }

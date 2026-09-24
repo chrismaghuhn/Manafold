@@ -47,29 +47,29 @@ fn synthetic_identity() -> ExecutionIdentityV1 {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct SyntheticM1EnvironmentConfig {
+pub struct SyntheticRulesEnvironmentConfig {
     pub codec: CheckpointCodecIdentity,
     pub setup: SyntheticV4Setup,
-    pub replay: SyntheticM1ReplayConfig,
+    pub replay: SyntheticRulesReplayConfig,
 }
 
-impl SyntheticM1EnvironmentConfig {
-    /// Builds the current rules-free M2 compatibility configuration while
+impl SyntheticRulesEnvironmentConfig {
+    /// Builds the current rules-free synthetic compatibility configuration while
     /// keeping the V4 state setup behind the Environment ownership boundary.
-    pub fn m2_compatibility(
+    pub fn synthetic_compatibility(
         codec: CheckpointCodecIdentity,
-        replay: SyntheticM1ReplayConfig,
+        replay: SyntheticRulesReplayConfig,
     ) -> Self {
         Self {
             codec,
-            setup: SyntheticV4Setup::m2_compatibility(),
+            setup: SyntheticV4Setup::synthetic_compatibility(),
             replay,
         }
     }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct SyntheticM1ReplayConfig {
+pub struct SyntheticRulesReplayConfig {
     pub engine_build: String,
     pub kernel: KernelIdentityV1,
     pub rules_snapshot: String,
@@ -81,24 +81,24 @@ pub struct SyntheticM1ReplayConfig {
     pub decks: Vec<DeckIdentityV1>,
 }
 
-pub struct SyntheticM1EnvironmentBackend {
+pub struct SyntheticRulesEnvironmentBackend {
     state: EngineState,
     status: EpisodeStatus,
     limit_counters: EnvironmentLimitCounters,
     codec: CheckpointCodecIdentity,
     execution_identity: ExecutionIdentityV1,
-    config: SyntheticM1EnvironmentConfig,
+    config: SyntheticRulesEnvironmentConfig,
     replay: ReplayRecorderV6,
     kernel: ProgramKernelV1,
     #[cfg(test)]
     eventful_fixture: bool,
 }
 
-impl SyntheticM1EnvironmentBackend {
+impl SyntheticRulesEnvironmentBackend {
     pub fn new(
         players: [PlayerId; 2],
         root_seed: RootSeed256,
-        config: SyntheticM1EnvironmentConfig,
+        config: SyntheticRulesEnvironmentConfig,
     ) -> Result<Self, ControllerError> {
         let state = construct_synthetic_engine_state(SyntheticResetInputs {
             players,
@@ -136,7 +136,7 @@ impl SyntheticM1EnvironmentBackend {
 
     pub fn from_checkpoint(
         checkpoint: EnvironmentCheckpointV6,
-        config: SyntheticM1EnvironmentConfig,
+        config: SyntheticRulesEnvironmentConfig,
     ) -> Result<Self, ControllerError> {
         let catalog = RuntimeSemanticCatalog::production();
         admit_restore(&catalog, &checkpoint)?;
@@ -145,7 +145,7 @@ impl SyntheticM1EnvironmentBackend {
 
     fn from_admitted_checkpoint(
         checkpoint: EnvironmentCheckpointV6,
-        config: SyntheticM1EnvironmentConfig,
+        config: SyntheticRulesEnvironmentConfig,
     ) -> Result<Self, ControllerError> {
         checkpoint.validate()?;
         if checkpoint.codec != config.codec {
@@ -173,7 +173,7 @@ impl SyntheticM1EnvironmentBackend {
     }
 }
 
-impl EnvironmentBackend for SyntheticM1EnvironmentBackend {
+impl EnvironmentBackend for SyntheticRulesEnvironmentBackend {
     fn players(&self) -> Vec<PlayerId> {
         self.state.core.players.keys().copied().collect()
     }

@@ -69,7 +69,7 @@ fn synthetic_incompatible_state() -> EngineState {
         construct_synthetic_engine_state(SyntheticResetInputs {
             players: [PlayerId(1), PlayerId(2)],
             root_seed: seed(),
-            setup: SyntheticV4Setup::m2_compatibility(),
+            setup: SyntheticV4Setup::synthetic_compatibility(),
         })
         .unwrap();
     state.execution.pending_decision = Some(PendingDecisionRecordV2 {

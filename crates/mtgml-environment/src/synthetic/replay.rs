@@ -19,7 +19,7 @@ use crate::semantic_catalog_generated::{
     synthetic_legacy_default_semantic_manifest,
 };
 
-use super::SyntheticM1EnvironmentConfig;
+use super::SyntheticRulesEnvironmentConfig;
 use crate::checkpoint::EnvironmentCheckpointV6;
 use crate::errors::ControllerError;
 
@@ -37,7 +37,7 @@ fn current_v6_schema_versions() -> ReplaySchemaVersionsV6 {
 }
 
 fn validate_current_producer_identity(
-    config: &SyntheticM1EnvironmentConfig,
+    config: &SyntheticRulesEnvironmentConfig,
 ) -> Result<(), ControllerError> {
     if config.replay.randomness_contract_id != MTGML_RNG_V1
         || config.replay.schemas != current_v6_schema_versions()
@@ -48,7 +48,7 @@ fn validate_current_producer_identity(
 }
 
 pub(crate) fn build_manifest(
-    config: &SyntheticM1EnvironmentConfig,
+    config: &SyntheticRulesEnvironmentConfig,
     checkpoint: &EnvironmentCheckpointV6,
 ) -> Result<ReplayManifestV6, ControllerError> {
     validate_current_producer_identity(config)?;

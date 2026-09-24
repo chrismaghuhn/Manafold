@@ -6,11 +6,11 @@
 mod error;
 mod information;
 mod knowledge;
-mod m3;
-mod magic_m3;
+mod magic_observation;
 mod observation;
 mod observed_event;
 mod player_step;
+mod synthetic_observation;
 
 pub use error::ObservationValidationError;
 pub use information::{
@@ -21,13 +21,8 @@ pub use knowledge::{
     PlayerKnowledgeInvalidationV1, PlayerKnowledgeProvenanceV1, PlayerKnownLocationFactV1,
     PlayerKnownLocationV1, PlayerKnownObjectV1,
 };
-pub use m3::{
-    SyntheticM3BeginningStep, SyntheticM3CombatStep, SyntheticM3EndingStep, SyntheticM3Observation,
-    SyntheticM3Priority, SyntheticM3TurnPosition, SYNTHETIC_M3_OBSERVATION_SCHEMA,
-};
-pub use magic_m3::{
-    MagicM3CompletedOrder, MagicM3Observation, MagicM3PendingSbaOrdering,
-    MAGIC_M3_OBSERVATION_SCHEMA,
+pub use magic_observation::{
+    MagicCompletedOrder, MagicObservation, MagicPendingSbaOrdering, MAGIC_OBSERVATION_SCHEMA_V1,
 };
 pub use observation::ObservationEnvelope;
 pub use observed_event::{
@@ -36,6 +31,10 @@ pub use observed_event::{
 pub use player_step::{
     PlayerServiceErrorCodeV1, PlayerStep, PlayerStepSubmissionV1, PlayerStepV2,
     PlayerSubmissionCodeV1,
+};
+pub use synthetic_observation::{
+    SyntheticBeginningStep, SyntheticCombatStep, SyntheticEndingStep, SyntheticObservation,
+    SyntheticPriority, SyntheticTurnPosition, SYNTHETIC_OBSERVATION_SCHEMA_V1,
 };
 
 pub const OBSERVATION_SCHEMA: &str = "observation-envelope.v1";

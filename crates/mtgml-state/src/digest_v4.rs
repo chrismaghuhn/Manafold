@@ -21,12 +21,12 @@ use crate::core::{
 };
 use crate::digest::StateDigestError;
 use crate::engine::EngineState;
-use crate::format::FormatState;
-use crate::knowledge::{KnowledgeAcquisitionReason, KnowledgeInvalidationReason};
-use crate::m2_shape::{
+use crate::engine_state_shape::{
     AssemblyStageV2, ContinuationPayloadV2, KnowledgeInvalidationV2, KnowledgeRecordV2,
     KnownLocationFactV2, RetiredKnowledgeRecordV2,
 };
+use crate::format::FormatState;
+use crate::knowledge::{KnowledgeAcquisitionReason, KnowledgeInvalidationReason};
 use crate::zones::{VisibilityPartition, ZoneKey, ZoneLocation, ZonePosition};
 
 pub const FULL_STATE_DIGEST_DOMAIN_V4: &str = "mtgml.full-state-digest.v4";
@@ -516,7 +516,7 @@ fn trusted_binding(value: &EngineCandidateBinding) -> Value {
 }
 
 fn continuation_value(
-    record: &crate::m2_shape::ContinuationRecordV2,
+    record: &crate::engine_state_shape::ContinuationRecordV2,
 ) -> Result<Value, StateDigestError> {
     let payload = match &record.payload {
         ContinuationPayloadV2::SyntheticM2Assembly {

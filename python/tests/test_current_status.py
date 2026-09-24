@@ -541,7 +541,7 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
                 "crates/mtgml-rules/src/contract.rs",
                 "crates/mtgml-rules/src/product.rs",
                 "crates/mtgml-environment/src/reference.rs",
-                "crates/mtgml-environment/src/tests/s3_a_production.rs",
+                "crates/mtgml-environment/src/tests/magic_rules_production.rs",
             ],
         )
         self.assertIn("lifecycle remains specified", draw_card["notes"])

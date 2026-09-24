@@ -209,6 +209,22 @@ If you discover an unrelated problem:
 * fix it only if it blocks the requested work or creates immediate correctness risk;
 * otherwise record/report it separately.
 
+## Production naming
+
+Milestones, phases, tasks, roadmap labels, and implementation blocks are
+project-management terms, not production-domain names. Do not put names such
+as `M3`, `S3.A`, `Block 3`, `Task 15`, or `Phase 4` in production identifiers,
+runtime types, functions, modules, fields, traits, enums, or long-lived
+architecture. Use stable semantic names such as `draw-card`, `basic-priority`,
+`state-based-actions`, `zone-incarnation`, `replay`, and `checkpoint`.
+
+Milestone labels may remain in planning and historical documentation, ADRs,
+research, issue/PR traceability, and genuinely historical comments. Existing
+frozen/versioned contract identifiers that contain milestone provenance are
+grandfathered when renaming would change identity, compatibility, hashes,
+replay/schema artifacts, or historical evidence. Do not create new such
+identifiers for consistency with grandfathered ones.
+
 ---
 
 # 8. Maintainer workflows

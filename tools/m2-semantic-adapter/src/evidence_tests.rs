@@ -1578,7 +1578,7 @@ fn privilege_scan_detector_rejects_hits_and_allows_lookalikes() {
     // none of them contains a forbidden token as a matching substring.
     for identity in [
         "CheckpointCodecIdentity",
-        "SyntheticM1ReplayConfig",
+        "SyntheticRulesReplayConfig",
         "DeckIdentityV1",
         "KernelIdentityV1",
         "ReplaySchemaVersionsV1",

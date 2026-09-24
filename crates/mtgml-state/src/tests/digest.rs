@@ -830,8 +830,8 @@ fn historical_monotonicity_ignores_unsequenced_provenance() {
     ]);
     assert_eq!(
         validate_engine_state(&invalid),
-        Err(EngineStateViolation::M2Shape(
-            M2ShapeViolation::Knowledge
+        Err(EngineStateViolation::EngineStateShape(
+            EngineStateShapeViolation::Knowledge
         ))
     );
 }

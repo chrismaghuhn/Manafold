@@ -27,7 +27,7 @@ pub(crate) mod support {
     };
     use mtgml_environment::{
         EnvironmentCheckpointV6, PlayerEndpoint, PlayerEndpointHandle,
-        SyntheticM1EnvironmentConfig, TrustedEnvironmentController,
+        SyntheticRulesEnvironmentConfig, TrustedEnvironmentController,
     };
     use mtgml_model::{
         CardDefinitionId, EnvironmentLimitCounters, EpisodeStatus, GameObjectId, OpaqueObjectId,
@@ -61,7 +61,7 @@ pub(crate) mod support {
 
     /// The one perspective whose lifecycle occurrences enrich the
     /// information-rich scenario beyond its construction-time defaults.
-    pub(crate) fn config() -> SyntheticM1EnvironmentConfig {
+    pub(crate) fn config() -> SyntheticRulesEnvironmentConfig {
         synthetic_environment_config([P1, P2])
     }
 
@@ -581,8 +581,8 @@ mod tests {
     use crate::isolation::HarnessError;
     use mtgml_decision::DECISION_RESPONSE_V2_SCHEMA;
     use mtgml_environment::{
-        CheckpointValidationError, ControllerError, PlayerEndpoint, SyntheticM1EnvironmentBackend,
-        TrustedEnvironmentController,
+        CheckpointValidationError, ControllerError, PlayerEndpoint,
+        SyntheticRulesEnvironmentBackend, TrustedEnvironmentController,
     };
     use mtgml_model::{CandidateIdV1, PlayerDecisionIdV1, StateRevision};
     use mtgml_replay::AuthoritativeReplayV6;
@@ -662,8 +662,9 @@ mod tests {
         );
         let successor_original = capture_complete(&controller, &endpoints)?;
 
-        let backend = SyntheticM1EnvironmentBackend::from_checkpoint(cp0, super::support::config())
-            .map_err(|_| HarnessError::SyntheticBackendRejected)?;
+        let backend =
+            SyntheticRulesEnvironmentBackend::from_checkpoint(cp0, super::support::config())
+                .map_err(|_| HarnessError::SyntheticBackendRejected)?;
         let twin = TrustedEnvironmentController::new(backend);
         let twin_endpoints = [
             twin.bind_player(P1).map_err(bind_failed)?,
@@ -769,8 +770,9 @@ mod tests {
         );
         let successor_original = capture_complete(&controller, &endpoints)?;
 
-        let backend = SyntheticM1EnvironmentBackend::from_checkpoint(cp0, super::support::config())
-            .map_err(|_| HarnessError::SyntheticBackendRejected)?;
+        let backend =
+            SyntheticRulesEnvironmentBackend::from_checkpoint(cp0, super::support::config())
+                .map_err(|_| HarnessError::SyntheticBackendRejected)?;
         let twin = TrustedEnvironmentController::new(backend);
         let twin_endpoints = [
             twin.bind_player(P1).map_err(bind_failed)?,

@@ -727,7 +727,7 @@ fn apply_selected_zone_transition_in_workspace_with_reindex(
 
 /// Closed family vocabulary available only when the conformance testkit feature
 /// is explicitly enabled. It is not a runtime request or environment API.
-#[cfg(feature = "m3-conformance-testkit")]
+#[cfg(feature = "magic-conformance-testkit")]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ConformanceZoneTransitionKind {
     BattlefieldToOwnerGraveyard,
@@ -735,7 +735,7 @@ pub enum ConformanceZoneTransitionKind {
 }
 
 /// Narrow conformance bridge to the private production-owned seam.
-#[cfg(feature = "m3-conformance-testkit")]
+#[cfg(feature = "magic-conformance-testkit")]
 pub fn execute_selected_zone_transition_for_conformance(
     state: &EngineState,
     object: GameObjectId,

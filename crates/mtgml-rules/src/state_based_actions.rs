@@ -1,4 +1,4 @@
-//! Rules-owned read-only validation for the bounded S3.A SBA-order continuation.
+//! Rules-owned read-only validation for the bounded state-based-action order continuation.
 //!
 //! This module derives the currently applicable action set from immutable
 //! Magic state. It does not produce decisions or transitions and never mutates
@@ -16,7 +16,7 @@ use mtgml_state::{
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[allow(dead_code)] // Used by the non-default conformance-testkit adapter.
 pub enum SbaContinuationValidationError {
-    NotS3AConformanceCandidate,
+    NotStateBasedActionsConformanceCandidate,
     NoActiveSbaContinuation,
     UnsupportedSbaProfile,
     SelectedActionSetMismatch,
@@ -29,10 +29,10 @@ pub(crate) struct SbaOrderRoundPlan {
     pub(crate) apnap_owners: Vec<PlayerId>,
 }
 
-/// Resolve only already-authorized owner permutations into deterministic S2
+/// Resolve only already-authorized owner permutations into deterministic
 /// invocation order. This never chooses a player's order: multi-card groups
 /// require the exact persisted/accepted permutation; singleton groups have a
-/// unique order. S2 inserts at top, so each chosen top-to-bottom group is
+/// unique order. Zone-incarnation inserts at top, so each chosen top-to-bottom group is
 /// returned in reverse invocation order.
 pub(crate) fn ordered_sba_objects_for_s2(
     state: &EngineState,
@@ -142,7 +142,7 @@ pub(crate) fn validate_sba_order_continuation(
 pub(crate) fn derive_bounded_sba_round_plan(
     state: &EngineState,
 ) -> Result<SbaOrderRoundPlan, SbaContinuationValidationError> {
-    validate_s3_a_support_profile(state)?;
+    validate_state_based_actions_support_profile(state)?;
     validate_engine_state(state)
         .map_err(|_| SbaContinuationValidationError::UnsupportedSbaProfile)?;
     let selected_sba_actions = derive_bounded_sba_actions(state)?;
@@ -186,17 +186,17 @@ fn validate_selected_combat_boundary(
     Ok(())
 }
 
-/// Proves the closed S3.A semantic support profile before Foundation source
+/// Proves the closed semantic support profile before Foundation source
 /// facts are treated as current characteristics. This is deliberately
-/// separate from S1 turn-structure admission: an active Order continuation
-/// and bounded combat state are valid S3.A inputs.
-pub(crate) fn validate_s3_a_support_profile(
+/// separate from turn-structure-only admission: an active Order continuation
+/// and bounded combat state are valid inputs.
+pub(crate) fn validate_state_based_actions_support_profile(
     state: &EngineState,
 ) -> Result<(), SbaContinuationValidationError> {
-    validate_s3_a_state_profile(state, false)
+    validate_state_based_actions_state_profile(state, false)
 }
 
-pub(crate) fn validate_s3_a_state_profile(
+pub(crate) fn validate_state_based_actions_state_profile(
     state: &EngineState,
     allow_lost_players: bool,
 ) -> Result<(), SbaContinuationValidationError> {

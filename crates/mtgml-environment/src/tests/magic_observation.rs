@@ -4,7 +4,7 @@ use mtgml_decision::{
     DecisionVisibility, EngineCandidateBinding,
 };
 use mtgml_model::{GameObjectId, OpaqueObjectId};
-use mtgml_observation::{MagicM3Observation, MAGIC_M3_OBSERVATION_SCHEMA};
+use mtgml_observation::{MagicObservation, MAGIC_OBSERVATION_SCHEMA_V1};
 use mtgml_state::{
     ContinuationPayloadV2, ContinuationRecordV2, PendingDecisionRecordV2,
     SbaGraveyardOwnerOrderV1,
@@ -14,7 +14,7 @@ fn state_with_completed_sba_order() -> mtgml_state::EngineState {
     let mut state = mtgml_state::construct_synthetic_engine_state(mtgml_state::SyntheticResetInputs {
         players: [PlayerId(1), PlayerId(2)],
         root_seed: seed(),
-        setup: mtgml_state::SyntheticV4Setup::m2_compatibility(),
+        setup: mtgml_state::SyntheticV4Setup::synthetic_compatibility(),
     })
     .unwrap();
     state.revision = StateRevision(2);
@@ -142,11 +142,11 @@ fn state_with_completed_sba_order() -> mtgml_state::EngineState {
     state
 }
 
-fn magic_payload(state: &mtgml_state::EngineState, perspective: PlayerId) -> MagicM3Observation {
+fn magic_payload(state: &mtgml_state::EngineState, perspective: PlayerId) -> MagicObservation {
     let envelope = crate::player_projection::project_observation_with_profile(
         state,
         perspective,
-        crate::player_projection::ObservationProjectionProfile::MagicM3,
+        crate::player_projection::ObservationProjectionProfile::Magic,
     )
     .unwrap();
     let bytes = STANDARD.decode(envelope.payload_base64).unwrap();
@@ -159,7 +159,7 @@ fn accepted_apnap_order_is_projected_with_each_perspectives_opaque_ids_without_m
     let before = state.clone();
     let p1 = magic_payload(&state, PlayerId(1));
     let p2 = magic_payload(&state, PlayerId(2));
-    assert_eq!(p1.schema_version, MAGIC_M3_OBSERVATION_SCHEMA);
+    assert_eq!(p1.schema_version, MAGIC_OBSERVATION_SCHEMA_V1);
     let p1_order = p1.pending_sba_ordering.as_ref().unwrap();
     let p2_order = p2.pending_sba_ordering.as_ref().unwrap();
     assert_eq!(p1_order.next_order_owner, PlayerId(2));
@@ -189,7 +189,7 @@ fn accepted_apnap_order_is_projected_with_each_perspectives_opaque_ids_without_m
         PlayerId(1),
         EpisodeStatus::Running,
         mtgml_observation::PlayerStepSubmissionV1::Accepted,
-        crate::player_projection::ObservationProjectionProfile::MagicM3,
+        crate::player_projection::ObservationProjectionProfile::Magic,
     )
     .unwrap();
     let p2_step = crate::player_projection::project_player_step_with_profile(
@@ -197,7 +197,7 @@ fn accepted_apnap_order_is_projected_with_each_perspectives_opaque_ids_without_m
         PlayerId(2),
         EpisodeStatus::Running,
         mtgml_observation::PlayerStepSubmissionV1::Accepted,
-        crate::player_projection::ObservationProjectionProfile::MagicM3,
+        crate::player_projection::ObservationProjectionProfile::Magic,
     )
     .unwrap();
     assert!(p1_step.next_decision.is_none());
@@ -262,7 +262,7 @@ fn missing_perspective_opaque_mapping_fails_closed() {
     assert!(crate::player_projection::project_observation_with_profile(
         &state,
         PlayerId(2),
-        crate::player_projection::ObservationProjectionProfile::MagicM3,
+        crate::player_projection::ObservationProjectionProfile::Magic,
     ).is_err());
 }
 

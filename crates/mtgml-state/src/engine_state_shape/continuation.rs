@@ -11,7 +11,9 @@ use mtgml_model::{ContinuationId, GameObjectId, PlayerId, StateRevision};
 use serde::{Deserialize, Serialize};
 
 use super::PerspectiveIdentityStateV2;
-use crate::m2_shape::{M2ShapeViolation, SYNTHETIC_COUNT_MAX, SYNTHETIC_COUNT_MIN};
+use crate::engine_state_shape::{
+    EngineStateShapeViolation, SYNTHETIC_COUNT_MAX, SYNTHETIC_COUNT_MIN,
+};
 use crate::zones::GameObject;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -123,7 +125,7 @@ pub(super) fn validate_synthetic_assembly(
     selected_count: Option<u32>,
     selected_piece_keys: &[u32],
     ordered_piece_keys: &[u32],
-) -> Result<(), M2ShapeViolation> {
+) -> Result<(), EngineStateShapeViolation> {
     let canonical_set = |values: &[u32]| values.windows(2).all(|window| window[0] < window[1]);
     match stage {
         AssemblyStageV2::ChooseCount => {
@@ -131,7 +133,7 @@ pub(super) fn validate_synthetic_assembly(
                 || !selected_piece_keys.is_empty()
                 || !ordered_piece_keys.is_empty()
             {
-                return Err(M2ShapeViolation::Knowledge);
+                return Err(EngineStateShapeViolation::Knowledge);
             }
         }
         AssemblyStageV2::ChooseMembers => {
@@ -139,18 +141,18 @@ pub(super) fn validate_synthetic_assembly(
                 || !selected_piece_keys.is_empty()
                 || !ordered_piece_keys.is_empty()
             {
-                return Err(M2ShapeViolation::Knowledge);
+                return Err(EngineStateShapeViolation::Knowledge);
             }
         }
         AssemblyStageV2::OrderMembers => {
             let Some(count) = selected_count else {
-                return Err(M2ShapeViolation::Knowledge);
+                return Err(EngineStateShapeViolation::Knowledge);
             };
             if !ordered_piece_keys.is_empty()
                 || selected_piece_keys.len() != count as usize
                 || !canonical_set(selected_piece_keys)
             {
-                return Err(M2ShapeViolation::Knowledge);
+                return Err(EngineStateShapeViolation::Knowledge);
             }
         }
     }
@@ -158,7 +160,7 @@ pub(super) fn validate_synthetic_assembly(
     // interval; anything else was never offered by this program.
     if let Some(count) = selected_count {
         if count > SYNTHETIC_COUNT_MAX {
-            return Err(M2ShapeViolation::Knowledge);
+            return Err(EngineStateShapeViolation::Knowledge);
         }
     }
     Ok(())
@@ -178,7 +180,7 @@ pub(super) struct MagicSbaGraveyardOrderValidation<'a> {
 
 pub(super) fn validate_magic_sba_graveyard_order(
     validation: MagicSbaGraveyardOrderValidation<'_>,
-) -> Result<BTreeMap<PlayerId, Vec<GameObjectId>>, M2ShapeViolation> {
+) -> Result<BTreeMap<PlayerId, Vec<GameObjectId>>, EngineStateShapeViolation> {
     let MagicSbaGraveyardOrderValidation {
         round_start_revision,
         continuation_created_at_revision,
@@ -193,22 +195,22 @@ pub(super) fn validate_magic_sba_graveyard_order(
     let expected_created_revision = round_start_revision
         .0
         .checked_add(1)
-        .ok_or(M2ShapeViolation::ContinuationRevision)?;
+        .ok_or(EngineStateShapeViolation::ContinuationRevision)?;
     let stage_count = u64::from(next_owner_index);
     let expected_current_revision = expected_created_revision
         .checked_add(stage_count)
-        .ok_or(M2ShapeViolation::ContinuationRevision)?;
+        .ok_or(EngineStateShapeViolation::ContinuationRevision)?;
     if continuation_created_at_revision.0 != expected_created_revision
         || current_revision.0 != expected_current_revision
     {
-        return Err(M2ShapeViolation::ContinuationRevision);
+        return Err(EngineStateShapeViolation::ContinuationRevision);
     }
     if selected_sba_actions.is_empty()
         || selected_sba_actions
             .windows(2)
             .any(|window| window[0] >= window[1])
     {
-        return Err(M2ShapeViolation::MagicContinuation);
+        return Err(EngineStateShapeViolation::MagicContinuation);
     }
 
     let mut losing_players = BTreeSet::new();
@@ -217,7 +219,7 @@ pub(super) fn validate_magic_sba_graveyard_order(
         match action {
             SbaSelectedActionV1::PlayerLoses { player } => {
                 if !players.contains(player) || !losing_players.insert(*player) {
-                    return Err(M2ShapeViolation::MagicContinuation);
+                    return Err(EngineStateShapeViolation::MagicContinuation);
                 }
             }
             SbaSelectedActionV1::ObjectToOwnerGraveyard { object, causes } => {
@@ -226,21 +228,21 @@ pub(super) fn validate_magic_sba_graveyard_order(
                     || causes.windows(2).any(|window| window[0] >= window[1])
                     || !objects.contains_key(object)
                 {
-                    return Err(M2ShapeViolation::MagicContinuation);
+                    return Err(EngineStateShapeViolation::MagicContinuation);
                 }
             }
         }
     }
 
-    let next_owner_index_usize =
-        usize::try_from(next_owner_index).map_err(|_| M2ShapeViolation::MagicContinuation)?;
+    let next_owner_index_usize = usize::try_from(next_owner_index)
+        .map_err(|_| EngineStateShapeViolation::MagicContinuation)?;
     if apnap_owners.is_empty()
         || apnap_owners.iter().any(|owner| !players.contains(owner))
         || apnap_owners.iter().copied().collect::<BTreeSet<_>>().len() != apnap_owners.len()
         || next_owner_index_usize != completed_owner_orders.len()
         || next_owner_index_usize >= apnap_owners.len()
     {
-        return Err(M2ShapeViolation::MagicContinuation);
+        return Err(EngineStateShapeViolation::MagicContinuation);
     }
 
     let mut objects_by_owner = BTreeMap::<PlayerId, Vec<GameObjectId>>::new();
@@ -248,9 +250,9 @@ pub(super) fn validate_magic_sba_graveyard_order(
         if let SbaSelectedActionV1::ObjectToOwnerGraveyard { object, .. } = action {
             let game_object = objects
                 .get(object)
-                .ok_or(M2ShapeViolation::MagicContinuation)?;
+                .ok_or(EngineStateShapeViolation::MagicContinuation)?;
             if !players.contains(&game_object.owner) {
-                return Err(M2ShapeViolation::MagicContinuation);
+                return Err(EngineStateShapeViolation::MagicContinuation);
             }
             objects_by_owner
                 .entry(game_object.owner)
@@ -266,21 +268,21 @@ pub(super) fn validate_magic_sba_graveyard_order(
     if required_owners.len() != apnap_owners.len()
         || apnap_owners.iter().copied().collect::<BTreeSet<_>>() != required_owners
     {
-        return Err(M2ShapeViolation::MagicContinuation);
+        return Err(EngineStateShapeViolation::MagicContinuation);
     }
 
     for (index, order) in completed_owner_orders.iter().enumerate() {
         let owner = apnap_owners[index];
         let expected = objects_by_owner
             .get(&owner)
-            .ok_or(M2ShapeViolation::MagicContinuation)?;
+            .ok_or(EngineStateShapeViolation::MagicContinuation)?;
         let actual: BTreeSet<_> = order.top_to_bottom.iter().copied().collect();
         if order.owner != owner
             || order.top_to_bottom.len() != expected.len()
             || actual.len() != order.top_to_bottom.len()
             || actual != expected.iter().copied().collect()
         {
-            return Err(M2ShapeViolation::MagicContinuation);
+            return Err(EngineStateShapeViolation::MagicContinuation);
         }
     }
     Ok(objects_by_owner)
@@ -296,9 +298,9 @@ pub(super) fn validate_program_coherence(
     players: &BTreeSet<PlayerId>,
     objects: &BTreeMap<GameObjectId, GameObject>,
     identities: &PerspectiveIdentityStateV2,
-) -> Result<(), M2ShapeViolation> {
+) -> Result<(), EngineStateShapeViolation> {
     if continuations.len() > 1 {
-        return Err(M2ShapeViolation::ContinuationReference);
+        return Err(EngineStateShapeViolation::ContinuationReference);
     }
     let Some(record) = continuations.values().next() else {
         return Ok(());
@@ -306,10 +308,10 @@ pub(super) fn validate_program_coherence(
     let Some(pending) = pending else {
         // An active continuation without its next stage request is not
         // resumable and can never become checkpointable state.
-        return Err(M2ShapeViolation::ContinuationReference);
+        return Err(EngineStateShapeViolation::ContinuationReference);
     };
     if pending.request.continuation_id != Some(record.id) {
-        return Err(M2ShapeViolation::ContinuationReference);
+        return Err(EngineStateShapeViolation::ContinuationReference);
     }
     let ContinuationPayloadV2::SyntheticM2Assembly {
         stage,
@@ -343,10 +345,10 @@ pub(super) fn validate_program_coherence(
         let current_owner = apnap_owners
             .get(*next_owner_index as usize)
             .copied()
-            .ok_or(M2ShapeViolation::MagicContinuation)?;
+            .ok_or(EngineStateShapeViolation::MagicContinuation)?;
         let expected = objects_by_owner
             .get(&current_owner)
-            .ok_or(M2ShapeViolation::MagicContinuation)?;
+            .ok_or(EngineStateShapeViolation::MagicContinuation)?;
         let request = &pending.request;
         let domain_matches = matches!(
             &request.decision,
@@ -357,7 +359,7 @@ pub(super) fn validate_program_coherence(
         let actor_identities = identities
             .players
             .get(&current_owner)
-            .ok_or(M2ShapeViolation::MagicContinuation)?;
+            .ok_or(EngineStateShapeViolation::MagicContinuation)?;
         let bindings_match = request.candidates.iter().all(|candidate| {
             if let (
                 EngineCandidateBinding::SelectObject { object },
@@ -381,7 +383,7 @@ pub(super) fn validate_program_coherence(
             || !bindings_match
             || bound != expected
         {
-            return Err(M2ShapeViolation::MagicContinuation);
+            return Err(EngineStateShapeViolation::MagicContinuation);
         }
         return Ok(());
     };
@@ -411,42 +413,42 @@ pub(super) fn validate_program_coherence(
                 || *maximum != i64::from(SYNTHETIC_COUNT_MAX)
                 || !pending.request.candidates.is_empty()
             {
-                return Err(M2ShapeViolation::PendingDecision);
+                return Err(EngineStateShapeViolation::PendingDecision);
             }
         }
         (
             AssemblyStageV2::ChooseMembers,
             mtgml_decision::DecisionDomainV2::ChooseMany { minimum, maximum },
         ) => {
-            let count = selected_count.ok_or(M2ShapeViolation::Knowledge)?;
+            let count = selected_count.ok_or(EngineStateShapeViolation::Knowledge)?;
             if count > SYNTHETIC_COUNT_MAX || *minimum != count || *maximum != count {
-                return Err(M2ShapeViolation::PendingDecision);
+                return Err(EngineStateShapeViolation::PendingDecision);
             }
             // Stage members are the fixed synthetic piece surface 0..count.
             let expected: Vec<u32> = (0..count).collect();
             if !candidates_express(&expected) {
-                return Err(M2ShapeViolation::PendingDecision);
+                return Err(EngineStateShapeViolation::PendingDecision);
             }
         }
         (
             AssemblyStageV2::OrderMembers,
             mtgml_decision::DecisionDomainV2::Order { minimum, maximum },
         ) => {
-            let count = selected_count.ok_or(M2ShapeViolation::Knowledge)?;
+            let count = selected_count.ok_or(EngineStateShapeViolation::Knowledge)?;
             if count > SYNTHETIC_COUNT_MAX || *minimum != count || *maximum != count {
-                return Err(M2ShapeViolation::PendingDecision);
+                return Err(EngineStateShapeViolation::PendingDecision);
             }
             // ChooseMembers offers exactly pieces 0..count and requires
             // exactly count selections: the only reachable member set is the
             // full prefix. Anything else is an unreachable history.
             if *selected_piece_keys != (0..count).collect::<Vec<u32>>() {
-                return Err(M2ShapeViolation::Knowledge);
+                return Err(EngineStateShapeViolation::Knowledge);
             }
             if !candidates_express(selected_piece_keys) {
-                return Err(M2ShapeViolation::PendingDecision);
+                return Err(EngineStateShapeViolation::PendingDecision);
             }
         }
-        _ => return Err(M2ShapeViolation::PendingDecision),
+        _ => return Err(EngineStateShapeViolation::PendingDecision),
     }
     Ok(())
 }

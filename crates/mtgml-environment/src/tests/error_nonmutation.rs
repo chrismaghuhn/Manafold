@@ -360,7 +360,7 @@ fn typed_rejection_codes_matrix() {
     )
     .unwrap();
     let truncated_env = TrustedEnvironmentController::new(
-        SyntheticM1EnvironmentBackend::from_checkpoint(
+        SyntheticRulesEnvironmentBackend::from_checkpoint(
             truncated_checkpoint,
             config([PlayerId(1), PlayerId(2)]),
         )
@@ -386,7 +386,7 @@ fn internal_failures_surface_only_service_unavailable() {
         mtgml_state::construct_synthetic_engine_state(mtgml_state::SyntheticResetInputs {
             players: [PlayerId(1), PlayerId(2)],
             root_seed: seed(),
-            setup: mtgml_state::SyntheticV4Setup::m2_compatibility(),
+            setup: mtgml_state::SyntheticV4Setup::synthetic_compatibility(),
         })
         .unwrap();
     state.execution.pending_decision = Some(PendingDecisionRecordV2 {
@@ -415,7 +415,7 @@ fn internal_failures_surface_only_service_unavailable() {
     )
     .unwrap();
 
-    let result = SyntheticM1EnvironmentBackend::from_checkpoint(
+    let result = SyntheticRulesEnvironmentBackend::from_checkpoint(
         checkpoint.clone(),
         config([PlayerId(1), PlayerId(2)]),
     );
@@ -449,7 +449,7 @@ fn internal_failures_surface_only_service_unavailable() {
     )
     .unwrap();
     let exhausted_controller = TrustedEnvironmentController::new(
-        SyntheticM1EnvironmentBackend::from_checkpoint(exhausted_checkpoint, config(players))
+        SyntheticRulesEnvironmentBackend::from_checkpoint(exhausted_checkpoint, config(players))
             .unwrap(),
     );
     let p1 = exhausted_controller.bind_player(PlayerId(1)).unwrap();

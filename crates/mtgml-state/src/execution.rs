@@ -3,7 +3,7 @@ use std::collections::BTreeMap;
 use mtgml_model::{EffectInstanceId, PlayerId, TriggerInstanceId};
 use serde::{Deserialize, Serialize};
 
-use crate::m2_shape::{ContinuationRecordV2, PendingDecisionRecordV2};
+use crate::engine_state_shape::{ContinuationRecordV2, PendingDecisionRecordV2};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]

@@ -33,6 +33,6 @@ pub enum ObservationValidationError {
     PerspectiveRevision,
     #[error("submission outcome contradicts the step product")]
     Submission,
-    #[error("synthetic M3 observation payload is invalid")]
-    M3Payload,
+    #[error("synthetic observation payload is invalid")]
+    ObservationPayload,
 }

@@ -20,7 +20,9 @@ use mtgml_state::{
     ZoneLocation, ZonePosition,
 };
 
-use super::{synthetic_identity, SyntheticM1EnvironmentBackend, SyntheticM1EnvironmentConfig};
+use super::{
+    synthetic_identity, SyntheticRulesEnvironmentBackend, SyntheticRulesEnvironmentConfig,
+};
 use crate::checkpoint::EnvironmentCheckpointV6;
 use crate::errors::ControllerError;
 
@@ -64,9 +66,9 @@ fn add_eventful_objects(state: &mut EngineState) {
 pub(super) fn backend(
     players: [PlayerId; 2],
     root_seed: RootSeed256,
-    config: SyntheticM1EnvironmentConfig,
-) -> Result<SyntheticM1EnvironmentBackend, ControllerError> {
-    let mut backend = SyntheticM1EnvironmentBackend::new(players, root_seed, config)?;
+    config: SyntheticRulesEnvironmentConfig,
+) -> Result<SyntheticRulesEnvironmentBackend, ControllerError> {
+    let mut backend = SyntheticRulesEnvironmentBackend::new(players, root_seed, config)?;
     add_eventful_objects(&mut backend.state);
     validate_engine_state(&backend.state)
         .map_err(mtgml_state::SyntheticStateConstructionError::Validation)?;

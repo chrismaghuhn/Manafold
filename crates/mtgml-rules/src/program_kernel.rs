@@ -3,23 +3,23 @@
 //!
 //! `ProgramKernelV1` is the production construction path for rules kernels: an
 //! opaque public adapter struct wrapping a PRIVATE inner enum, so
-//! `SyntheticM1RulesKernel` stays a private implementation detail of
+//! `SyntheticLegacyRulesKernel` stays a private implementation detail of
 //! `mtgml-rules` while both mandatory entry points (trusted response
 //! execution and forced-progress execution) remain program-owned. There is
-//! deliberately NO `Default`. A fixed S3.A conformance constructor is
-//! available only with the non-default `m3-conformance-testkit` feature; it
+//! deliberately NO `Default`. A fixed state-based-actions conformance constructor is
+//! available only with the non-default `magic-conformance-testkit` feature; it
 //! is not a production admission route.
 //!
 //! Production Magic admission: `for_admitted_execution` receives the
 //! semantic contract ID after the V6 catalog confirms support for the exact
-//! S1, S3.A, or S3.B contract. Only that production constructor uses
+//! an exact catalog-recognized semantic contract. Only that production constructor uses
 //! `magic_execution_profile()`.
 //! The testkit constructor uses a fixed prospective profile without any
 //! SemanticContractId.
 
 use crate::magic::MagicRulesKernel;
 use crate::semantic_execution_generated::magic_execution_profile;
-use crate::synthetic::{validate_synthetic_runtime_state, SyntheticM1RulesKernel};
+use crate::synthetic::{validate_synthetic_runtime_state, SyntheticLegacyRulesKernel};
 use crate::turn_structure::validate_turn_structure_support;
 use crate::{KernelExecutionError, RulesKernel, TransitionResult};
 use mtgml_decision::DecisionResponseV2;
@@ -41,7 +41,7 @@ pub struct ProgramKernelV1 {
 /// Private inner dispatch. Production Magic execution is reachable only
 /// through V6 admission; fixed conformance candidates are feature-gated.
 enum ProgramKernelInner {
-    SyntheticLegacy(SyntheticM1RulesKernel),
+    SyntheticLegacy(SyntheticLegacyRulesKernel),
     Magic(MagicRulesKernel),
 }
 
@@ -49,7 +49,7 @@ enum ProgramKernelInner {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ProgramKernelConstructionErrorV1 {
     /// The requested execution program has no production kernel contract in
-    /// the current slice (e.g. `MagicRules` before S1).
+    /// the current slice.
     UnsupportedProgram,
 }
 
@@ -67,7 +67,7 @@ impl std::fmt::Debug for ProgramKernelV1 {
 impl ProgramKernelV1 {
     /// The single named construction path. Behavior is unchanged for the
     /// synthetic program: the wrapped kernel is the existing
-    /// `SyntheticM1RulesKernel`. `MagicRules` remains fail-closed;
+    /// `SyntheticLegacyRulesKernel`. `MagicRules` remains fail-closed;
     /// production Magic construction goes through
     /// `for_admitted_execution` only.
     pub fn for_program(
@@ -75,7 +75,7 @@ impl ProgramKernelV1 {
     ) -> Result<Self, ProgramKernelConstructionErrorV1> {
         match program_kind {
             ExecutionProgramV1::SyntheticRulesCompat => Ok(Self {
-                inner: ProgramKernelInner::SyntheticLegacy(SyntheticM1RulesKernel),
+                inner: ProgramKernelInner::SyntheticLegacy(SyntheticLegacyRulesKernel),
             }),
             ExecutionProgramV1::MagicRules => {
                 Err(ProgramKernelConstructionErrorV1::UnsupportedProgram)
@@ -113,30 +113,32 @@ impl ProgramKernelV1 {
         }
     }
 
-    /// Construct the real Magic kernel implementation under the fixed S3.A
+    /// Construct the real Magic kernel implementation under the fixed state-based-actions
     /// conformance-candidate profile. This non-default testkit entry is not a
     /// production admission path and carries no `SemanticContractId`; only
-    /// the conformance crate enables `m3-conformance-testkit`.
-    #[cfg(feature = "m3-conformance-testkit")]
-    pub fn for_s3_a_conformance_testkit() -> Self {
+    /// the conformance crate enables `magic-conformance-testkit`.
+    #[cfg(feature = "magic-conformance-testkit")]
+    pub fn for_state_based_actions_conformance_testkit() -> Self {
         Self {
-            inner: ProgramKernelInner::Magic(MagicRulesKernel::s3_a_conformance_candidate()),
+            inner: ProgramKernelInner::Magic(
+                MagicRulesKernel::state_based_actions_conformance_candidate(),
+            ),
         }
     }
 
     /// Validate a persisted SBA plan using the fixed conformance candidate.
     /// This is read-only testkit access, not production restore admission.
-    #[cfg(feature = "m3-conformance-testkit")]
-    pub fn validate_s3_a_conformance_continuation(
+    #[cfg(feature = "magic-conformance-testkit")]
+    pub fn validate_state_based_actions_conformance_continuation(
         &self,
         state: &EngineState,
     ) -> Result<(), crate::SbaContinuationValidationError> {
         match &self.inner {
             ProgramKernelInner::Magic(kernel) => {
-                kernel.validate_s3_a_conformance_continuation(state)
+                kernel.validate_state_based_actions_conformance_continuation(state)
             }
             ProgramKernelInner::SyntheticLegacy(_) => {
-                Err(crate::SbaContinuationValidationError::NotS3AConformanceCandidate)
+                Err(crate::SbaContinuationValidationError::NotStateBasedActionsConformanceCandidate)
             }
         }
     }
@@ -177,8 +179,8 @@ impl ProgramKernelV1 {
 /// `EngineState` remains free of execution-program identity; program-awareness
 /// lives here, in the rules layer.
 ///
-/// For MagicRules: legacy program-only validation remains the exact S1
-/// validator. Production S1/S3.A/S3.B restore admission uses
+/// For MagicRules: legacy program-only validation remains the turn-structure-only
+/// validator. Production capability-profile restore admission uses
 /// `validate_runtime_state_for_contract` so the content-addressed identity
 /// selects one exact profile.
 pub fn validate_runtime_state(
@@ -197,8 +199,8 @@ pub fn validate_runtime_state(
 }
 
 /// Contract-aware restore admission. The old program-only validator remains
-/// frozen as the S1 entry point; production S3.A admission is selected only
-/// by its distinct generated SemanticContractId.
+/// frozen as the turn-structure entry point; broader runtime admission is
+/// selected only by its exact generated SemanticContractId and capability closure.
 pub fn validate_runtime_state_for_contract(
     program_kind: ExecutionProgramV1,
     semantic_contract_id: SemanticContractIdV1,
@@ -211,7 +213,7 @@ pub fn validate_runtime_state_for_contract(
             let profile = magic_execution_profile(semantic_contract_id)
                 .ok_or(KernelExecutionError::UnsupportedStagePath)?;
             mtgml_state::validate_engine_state(state).map_err(KernelExecutionError::BeforeState)?;
-            if profile.allows_turn_structure_0_1_0() {
+            if profile.is_turn_structure_only_profile() {
                 let _ = validate_turn_structure_support(state)
                     .map_err(KernelExecutionError::TurnStructure)?;
                 return Ok(());
@@ -226,20 +228,20 @@ pub fn validate_runtime_state_for_contract(
                 return Err(KernelExecutionError::UnsupportedStagePath);
             }
             if profile.allows_draw_card_0_1_0() {
-                return validate_s3_c_runtime_state(state, status);
+                return validate_draw_runtime_state(state, status);
             }
             if profile.allows_basic_priority_0_1_0() {
-                return validate_s3_b_runtime_state(state, status);
+                return validate_basic_priority_runtime_state(state, status);
             }
             if profile.allows_state_based_actions_combat_0_1_0() {
-                return validate_s3_a_runtime_state(state, status);
+                return validate_state_based_actions_runtime_state(state, status);
             }
             Err(KernelExecutionError::UnsupportedStagePath)
         }
     }
 }
 
-fn validate_s3_c_runtime_state(
+fn validate_draw_runtime_state(
     state: &EngineState,
     status: &EpisodeStatus,
 ) -> Result<(), KernelExecutionError> {
@@ -256,19 +258,19 @@ fn validate_s3_c_runtime_state(
             state.core.priority,
             mtgml_state::PriorityState::HeldBy { .. }
         ) {
-            return validate_s3_b_runtime_state(state, status);
+            return validate_basic_priority_runtime_state(state, status);
         }
         if state.execution.pending_decision.is_some() {
-            return validate_s3_a_runtime_state(state, status);
+            return validate_state_based_actions_runtime_state(state, status);
         }
         // This pre-action boundary is only kernel-local; accepted response
         // transactions finish forced progress before exposing a checkpoint.
         return Err(KernelExecutionError::UnsupportedStagePath);
     }
-    validate_s3_b_runtime_state(state, status)
+    validate_basic_priority_runtime_state(state, status)
 }
 
-fn validate_s3_b_runtime_state(
+fn validate_basic_priority_runtime_state(
     state: &EngineState,
     status: &EpisodeStatus,
 ) -> Result<(), KernelExecutionError> {
@@ -282,10 +284,10 @@ fn validate_s3_b_runtime_state(
         crate::basic_priority::validate_pass_only_state(state, true)?;
         return Ok(());
     }
-    validate_s3_a_runtime_state(state, status)
+    validate_state_based_actions_runtime_state(state, status)
 }
 
-fn validate_s3_a_runtime_state(
+fn validate_state_based_actions_runtime_state(
     state: &EngineState,
     status: &EpisodeStatus,
 ) -> Result<(), KernelExecutionError> {
@@ -308,7 +310,7 @@ fn validate_s3_a_runtime_state(
             validate_turn_structure_support(state).map_err(KernelExecutionError::TurnStructure)?;
         return Ok(());
     }
-    crate::state_based_actions::validate_s3_a_state_profile(state, true)
+    crate::state_based_actions::validate_state_based_actions_state_profile(state, true)
         .map_err(|_| KernelExecutionError::UnsupportedStagePath)?;
     let lost: Vec<_> = state
         .core
