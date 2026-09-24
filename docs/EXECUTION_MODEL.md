@@ -121,7 +121,10 @@ M3 may extend continuation composition through new typed state after evidence; M
 
 ## Sequential semantic validation cursor
 
-An accepted response remains one atomic revision, but authoritative events are validated in order against an internal semantic cursor.
+An accepted response remains one externally atomic response transaction, but
+may span one or two Rules revisions when the single permitted forced-progress
+product is composed; authoritative events are validated in order against an
+internal semantic cursor.
 
 The cursor starts from the before-state projection; each event validates and advances it; the final cursor equals the corresponding after-state projection.
 
