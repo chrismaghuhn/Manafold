@@ -939,6 +939,107 @@ fn task6_sba_semantic_validator_fails_closed_when_creature_facts_are_missing() {
     );
 }
 
+#[test]
+fn task6_sba_conformance_profile_rejects_format_untap_and_partial_loss() {
+    let mut format_state = state_with_pending_two_owner_order();
+    format_state.format = mtgml_state::FormatState::Commander {
+        state: mtgml_state::CommanderState {
+            designations: std::collections::BTreeMap::from([(
+                P1,
+                vec![mtgml_model::PhysicalCardId(1)],
+            )]),
+            cast_counts: std::collections::BTreeMap::new(),
+            damage: std::collections::BTreeMap::new(),
+        },
+    };
+    validate_engine_state(&format_state).unwrap();
+    assert_eq!(
+        magic_kernel().validate_s3_a_conformance_continuation(&format_state),
+        Err(mtgml_rules::SbaContinuationValidationError::UnsupportedSbaProfile)
+    );
+
+    let mut untap = state_with_pending_two_owner_order();
+    untap.core.position = mtgml_state::TurnPosition::Beginning {
+        step: mtgml_state::BeginningStep::Untap,
+    };
+    validate_engine_state(&untap).unwrap();
+    assert_eq!(
+        magic_kernel().validate_s3_a_conformance_continuation(&untap),
+        Err(mtgml_rules::SbaContinuationValidationError::UnsupportedSbaProfile)
+    );
+
+    let mut partially_lost = state_with_pending_two_owner_order();
+    partially_lost.core.players.get_mut(&P1).unwrap().has_lost = true;
+    validate_engine_state(&partially_lost).unwrap();
+    assert_eq!(
+        magic_kernel().validate_s3_a_conformance_continuation(&partially_lost),
+        Err(mtgml_rules::SbaContinuationValidationError::UnsupportedSbaProfile)
+    );
+}
+
+#[test]
+fn task6_sba_conformance_profile_rejects_effect_trigger_delay_and_stack_surfaces() {
+    use mtgml_model::{EffectInstanceId, StackObjectId, TriggerInstanceId};
+    use mtgml_state::{EffectRecord, StackRecord, TriggerRecord};
+
+    let mut effects = state_with_pending_two_owner_order();
+    effects.execution.effects.insert(
+        EffectInstanceId(1),
+        EffectRecord {
+            id: EffectInstanceId(1),
+            label: "unsupported".into(),
+        },
+    );
+    assert_eq!(
+        magic_kernel().validate_s3_a_conformance_continuation(&effects),
+        Err(mtgml_rules::SbaContinuationValidationError::UnsupportedSbaProfile)
+    );
+
+    let mut triggers = state_with_pending_two_owner_order();
+    triggers.execution.waiting_triggers.insert(
+        TriggerInstanceId(1),
+        TriggerRecord {
+            id: TriggerInstanceId(1),
+            controller: P1,
+        },
+    );
+    assert_eq!(
+        magic_kernel().validate_s3_a_conformance_continuation(&triggers),
+        Err(mtgml_rules::SbaContinuationValidationError::UnsupportedSbaProfile)
+    );
+
+    let mut delayed = state_with_pending_two_owner_order();
+    delayed.execution.delayed_effects.insert(
+        EffectInstanceId(1),
+        EffectRecord {
+            id: EffectInstanceId(1),
+            label: "unsupported".into(),
+        },
+    );
+    assert_eq!(
+        magic_kernel().validate_s3_a_conformance_continuation(&delayed),
+        Err(mtgml_rules::SbaContinuationValidationError::UnsupportedSbaProfile)
+    );
+
+    let mut stack = state_with_pending_two_owner_order();
+    stack.zones.stack_records.insert(
+        StackObjectId(1),
+        StackRecord {
+            id: StackObjectId(1),
+            controller: P1,
+            source_object: None,
+            source_ability: None,
+        },
+    );
+    stack.zones.stack_order.push(StackObjectId(1));
+    stack.allocators.next_stack_object_id = StackObjectId(2);
+    validate_engine_state(&stack).unwrap();
+    assert_eq!(
+        magic_kernel().validate_s3_a_conformance_continuation(&stack),
+        Err(mtgml_rules::SbaContinuationValidationError::UnsupportedSbaProfile)
+    );
+}
+
 fn order_response(answer: DecisionAnswerV2) -> DecisionResponseV2 {
     DecisionResponseV2 {
         schema_version: DECISION_RESPONSE_V2_SCHEMA.into(),

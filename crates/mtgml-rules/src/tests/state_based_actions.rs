@@ -234,6 +234,209 @@ fn task6_sba_rules_validator_rejects_a_newly_applicable_player_loss() {
     );
 }
 
+#[test]
+fn task6_sba_profile_rejects_a_non_none_format_state() {
+    let mut state = two_same_owner_order_stage0();
+    state.format = mtgml_state::FormatState::Commander {
+        state: mtgml_state::CommanderState {
+            designations: std::collections::BTreeMap::from([(
+                PlayerId(1),
+                vec![mtgml_model::PhysicalCardId(1)],
+            )]),
+            cast_counts: std::collections::BTreeMap::new(),
+            damage: std::collections::BTreeMap::new(),
+        },
+    };
+    mtgml_state::validate_engine_state(&state).unwrap();
+    assert_eq!(
+        crate::state_based_actions::validate_sba_order_continuation(&state),
+        Err(crate::state_based_actions::SbaContinuationValidationError::UnsupportedSbaProfile)
+    );
+}
+
+#[test]
+fn task6_sba_profile_rejects_already_applied_player_loss() {
+    let mut state = two_same_owner_order_stage0();
+    state.core.players.get_mut(&PlayerId(1)).unwrap().has_lost = true;
+    mtgml_state::validate_engine_state(&state).unwrap();
+    assert_eq!(
+        crate::state_based_actions::validate_sba_order_continuation(&state),
+        Err(crate::state_based_actions::SbaContinuationValidationError::UnsupportedSbaProfile)
+    );
+}
+
+#[test]
+fn task6_sba_profile_rejects_untap_but_accepts_selected_cleanup_check() {
+    let mut untap = two_same_owner_order_stage0();
+    untap.core.position = mtgml_state::TurnPosition::Beginning {
+        step: mtgml_state::BeginningStep::Untap,
+    };
+    mtgml_state::validate_engine_state(&untap).unwrap();
+    assert_eq!(
+        crate::state_based_actions::validate_sba_order_continuation(&untap),
+        Err(crate::state_based_actions::SbaContinuationValidationError::UnsupportedSbaProfile)
+    );
+
+    let mut cleanup = two_same_owner_order_stage0();
+    cleanup.core.position = mtgml_state::TurnPosition::Ending {
+        step: mtgml_state::EndingStep::Cleanup,
+    };
+    mtgml_state::validate_engine_state(&cleanup).unwrap();
+    assert_eq!(
+        crate::state_based_actions::validate_sba_order_continuation(&cleanup),
+        Ok(())
+    );
+}
+
+#[test]
+fn task6_sba_profile_allows_bounded_combat_damage_boundary() {
+    let mut state = two_same_owner_order_stage0();
+    state.core.position = mtgml_state::TurnPosition::Combat {
+        step: mtgml_state::CombatStep::CombatDamage,
+    };
+    state.combat = Some(mtgml_state::CombatState {
+        defending_player: PlayerId(2),
+        attackers: vec![GameObjectId(1)],
+        blockers: std::collections::BTreeMap::from([(GameObjectId(1), None)]),
+    });
+    mtgml_state::validate_engine_state(&state).unwrap();
+    assert_eq!(
+        crate::state_based_actions::validate_sba_order_continuation(&state),
+        Ok(())
+    );
+}
+
+#[test]
+fn task6_sba_profile_checks_effect_trigger_and_delayed_effect_axes_directly() {
+    use mtgml_model::{EffectInstanceId, TriggerInstanceId};
+    use mtgml_state::{EffectRecord, TriggerRecord};
+
+    let mut effects = two_same_owner_order_stage0();
+    effects.execution.effects.insert(
+        EffectInstanceId(1),
+        EffectRecord {
+            id: EffectInstanceId(1),
+            label: "unsupported".into(),
+        },
+    );
+    assert_eq!(
+        crate::state_based_actions::validate_s3_a_support_profile(&effects),
+        Err(crate::state_based_actions::SbaContinuationValidationError::UnsupportedSbaProfile)
+    );
+
+    let mut triggers = two_same_owner_order_stage0();
+    triggers.execution.waiting_triggers.insert(
+        TriggerInstanceId(1),
+        TriggerRecord {
+            id: TriggerInstanceId(1),
+            controller: PlayerId(1),
+        },
+    );
+    assert_eq!(
+        crate::state_based_actions::validate_s3_a_support_profile(&triggers),
+        Err(crate::state_based_actions::SbaContinuationValidationError::UnsupportedSbaProfile)
+    );
+
+    let mut delayed = two_same_owner_order_stage0();
+    delayed.execution.delayed_effects.insert(
+        EffectInstanceId(1),
+        EffectRecord {
+            id: EffectInstanceId(1),
+            label: "unsupported".into(),
+        },
+    );
+    assert_eq!(
+        crate::state_based_actions::validate_s3_a_support_profile(&delayed),
+        Err(crate::state_based_actions::SbaContinuationValidationError::UnsupportedSbaProfile)
+    );
+}
+
+#[test]
+fn task6_sba_profile_rejects_both_stack_representations() {
+    use mtgml_model::StackObjectId;
+    use mtgml_state::StackRecord;
+
+    let mut stack = two_same_owner_order_stage0();
+    stack.zones.stack_records.insert(
+        StackObjectId(1),
+        StackRecord {
+            id: StackObjectId(1),
+            controller: PlayerId(1),
+            source_object: None,
+            source_ability: None,
+        },
+    );
+    stack.zones.stack_order.push(StackObjectId(1));
+    stack.allocators.next_stack_object_id = StackObjectId(2);
+    mtgml_state::validate_engine_state(&stack).unwrap();
+    assert_eq!(
+        crate::state_based_actions::validate_sba_order_continuation(&stack),
+        Err(crate::state_based_actions::SbaContinuationValidationError::UnsupportedSbaProfile)
+    );
+
+    let mut stack_zone = two_same_owner_order_stage0();
+    stack_zone
+        .zones
+        .locations
+        .get_mut(&GameObjectId(1))
+        .unwrap()
+        .zone = mtgml_model::ZoneKind::Stack;
+    let stack_location = stack_zone.zones.locations[&GameObjectId(1)].clone();
+    for player in [PlayerId(1), PlayerId(2)] {
+        let identity = &stack_zone.perspective_identities.players[&player];
+        let opaque = identity.object_to_opaque[&GameObjectId(1)];
+        stack_zone
+            .knowledge
+            .players
+            .get_mut(&player)
+            .unwrap()
+            .active
+            .get_mut(&opaque)
+            .unwrap()
+            .known_location = Some(mtgml_state::KnownLocationFactV2 {
+            location: stack_location.clone(),
+            provenance: mtgml_state::KnowledgeAcquisitionReason::InitialConfiguration,
+        });
+    }
+    mtgml_state::validate_engine_state(&stack_zone).unwrap();
+    assert_eq!(
+        crate::state_based_actions::validate_sba_order_continuation(&stack_zone),
+        Err(crate::state_based_actions::SbaContinuationValidationError::UnsupportedSbaProfile)
+    );
+}
+
+#[test]
+fn task6_sba_profile_rejects_non_physical_objects_and_live_ability_mappings() {
+    let mut token = two_same_owner_order_stage0();
+    token
+        .zones
+        .objects
+        .get_mut(&GameObjectId(1))
+        .unwrap()
+        .physical_card = None;
+    assert_eq!(
+        crate::state_based_actions::validate_s3_a_support_profile(&token),
+        Err(crate::state_based_actions::SbaContinuationValidationError::UnsupportedSbaProfile)
+    );
+
+    let mut ability = two_same_owner_order_stage0();
+    let identity = ability
+        .perspective_identities
+        .players
+        .get_mut(&PlayerId(1))
+        .unwrap();
+    identity
+        .opaque_to_ability
+        .insert(mtgml_model::OpaqueAbilityId(1), mtgml_model::AbilityInstanceId(1));
+    identity
+        .ability_to_opaque
+        .insert(mtgml_model::AbilityInstanceId(1), mtgml_model::OpaqueAbilityId(1));
+    assert_eq!(
+        crate::state_based_actions::validate_s3_a_support_profile(&ability),
+        Err(crate::state_based_actions::SbaContinuationValidationError::UnsupportedSbaProfile)
+    );
+}
+
 
 #[test]
 fn magic_rules_state_based_actions_round_is_missing_before_priority() {
