@@ -1,7 +1,7 @@
 //! S3.A1 RED witnesses for one simultaneous bounded SBA round.
 //!
 //! These cases build structurally valid authoritative snapshots and submit
-//! them to the real admitted Magic rules kernel. No expected SBA action is
+//! them to the real Magic rules kernel through its fixed conformance candidate. No expected SBA action is
 //! applied by the fixture; each RED should currently stop at the S1
 //! unsupported forced-progress boundary because S3.A has no producer yet.
 //! The literal scope follows Foundation V2 and the pinned Rules snapshot
@@ -663,10 +663,9 @@ fn state_with_order_stage(
     actor: PlayerId,
     next_owner_index: u32,
     completed_owner_orders: Vec<SbaGraveyardOwnerOrderV1>,
-    current_revision: u64,
-    created_at_revision: u64,
-    round_start_revision: u64,
+    revisions: (u64, u64, u64),
 ) -> EngineState {
+    let (current_revision, created_at_revision, round_start_revision) = revisions;
     state.revision = StateRevision(current_revision);
     let continuation = mtgml_model::ContinuationId(1);
     let mut bindings = selected_sba_actions
@@ -762,9 +761,7 @@ fn state_with_pending_order() -> EngineState {
         P1,
         0,
         Vec::new(),
-        1,
-        1,
-        0,
+        (1, 1, 0),
     )
 }
 
@@ -803,9 +800,7 @@ fn state_with_pending_two_owner_order() -> EngineState {
         P1,
         0,
         Vec::new(),
-        1,
-        1,
-        0,
+        (1, 1, 0),
     )
 }
 
@@ -847,9 +842,7 @@ fn state_with_second_owner_order() -> EngineState {
             owner: P1,
             top_to_bottom: vec![GameObjectId(1), GameObjectId(2)],
         }],
-        2,
-        1,
-        0,
+        (2, 1, 0),
     )
 }
 
@@ -886,10 +879,14 @@ fn task6_sba_semantic_validator_rejects_a_stale_cause_set() {
     };
     selected_sba_actions[0] = object_action(1, vec![SbaObjectCauseV1::LethalDamage]);
     validate_engine_state(&state).expect("a stale semantic cause remains structurally well-formed");
+    let before = state.clone();
+    let digest_before = state.digest().unwrap();
     assert_eq!(
         magic_kernel().validate_s3_a_conformance_continuation(&state),
         Err(mtgml_rules::SbaContinuationValidationError::SelectedActionSetMismatch)
     );
+    assert_eq!(state, before, "semantic validation must not mutate state");
+    assert_eq!(state.digest().unwrap(), digest_before);
 }
 
 #[test]
@@ -924,6 +921,18 @@ fn task6_sba_semantic_validator_fails_closed_when_priority_is_already_held() {
         consecutive_passes: 0,
     };
     validate_engine_state(&state).unwrap();
+    assert_eq!(
+        magic_kernel().validate_s3_a_conformance_continuation(&state),
+        Err(mtgml_rules::SbaContinuationValidationError::UnsupportedSbaProfile)
+    );
+}
+
+#[test]
+fn task6_sba_semantic_validator_fails_closed_when_creature_facts_are_missing() {
+    let mut state = state_with_pending_two_owner_order();
+    state.foundation_sources.remove(&GameObjectId(1));
+    validate_engine_state(&state)
+        .expect("generic state structure does not derive Magic creature facts");
     assert_eq!(
         magic_kernel().validate_s3_a_conformance_continuation(&state),
         Err(mtgml_rules::SbaContinuationValidationError::UnsupportedSbaProfile)

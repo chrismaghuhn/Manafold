@@ -72,11 +72,11 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
         self.assertIn("FOUNDATION_V2 = ACCEPTED_HARDENED_M3_SCOPE", readme)
         self.assertIn("**M3 plan status:** `ACCEPTED`", readme)
         self.assertIn("**Task 14:** `COMPLETE` — `S1_EXACT_HEAD_VERIFICATION = PASS`", readme)
-        self.assertIn("**Next gate:** `M3_S3_A_TASK_5_EXACT_HEAD_REVIEW`", readme)
+        self.assertIn("**Next gate:** `M3_S3_A_TASK_6_EXACT_HEAD_REVIEW`", readme)
         self.assertIn("**S3.P0:** `COMPLETE / FROZEN`", readme)
         self.assertIn("**S3.0:** `COMPLETE / FROZEN`", readme)
         self.assertIn(
-            "**S3.A:** Task 5 RED complete; implementation incomplete; exact-head review pending",
+            "**S3.A:** Task 5 complete / reviewed; Task 6 continuation validation is an implementation candidate; S3.A implementation remains incomplete",
             readme,
         )
         self.assertIn("S3.B/C are not authorized", readme)
@@ -246,10 +246,13 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
         self.assertIn("S3_0_MERGE_COMMIT = 66f3b713787cad89674257f6e0b6448b9fd568f9", roadmap)
         self.assertIn("S3_A_AUTHORIZED = YES", roadmap)
         self.assertIn("S3_A_STARTED = YES", roadmap)
-        self.assertIn("S3_A_TASK_5_RED = COMPLETE", roadmap)
+        self.assertIn("S3_A_TASK_5 = COMPLETE / REVIEWED", roadmap)
+        self.assertIn("S3_A_TASK_6 = COMPLETE_CANDIDATE", roadmap)
         self.assertIn("S3_A_IMPLEMENTATION = NOT_COMPLETE", roadmap)
         self.assertIn("S3_A_EXACT_HEAD_REVIEW = PENDING", roadmap)
-        self.assertIn("NEXT_GATE = M3_S3_A_TASK_5_EXACT_HEAD_REVIEW", roadmap)
+        self.assertIn("S3_A_PRODUCTION_SEMANTIC_CONTRACT_REQUIRED = YES", roadmap)
+        self.assertIn("S3_A_PRODUCTION_SEMANTIC_CONTRACT_ALLOCATED = NO", roadmap)
+        self.assertIn("NEXT_GATE = M3_S3_A_TASK_6_EXACT_HEAD_REVIEW", roadmap)
         self.assertIn("S3_A_IMPLEMENTATION_AUTHORIZED = YES", roadmap)
         self.assertIn("S3_B_AUTHORIZED = NO", roadmap)
         self.assertIn("S3_C_AUTHORIZED = NO", roadmap)

@@ -10,6 +10,7 @@ use mtgml_decision::{
 use mtgml_model::{ContinuationId, GameObjectId, PlayerId, StateRevision};
 use serde::{Deserialize, Serialize};
 
+use super::PerspectiveIdentityStateV2;
 use crate::m2_shape::{M2ShapeViolation, SYNTHETIC_COUNT_MAX, SYNTHETIC_COUNT_MIN};
 use crate::zones::GameObject;
 
@@ -189,9 +190,20 @@ pub(super) fn validate_magic_sba_graveyard_order(
         players,
         objects,
     } = validation;
-    if round_start_revision > continuation_created_at_revision
-        || round_start_revision > current_revision
-        || selected_sba_actions.is_empty()
+    let expected_created_revision = round_start_revision
+        .0
+        .checked_add(1)
+        .ok_or(M2ShapeViolation::ContinuationRevision)?;
+    let stage_count = u64::from(next_owner_index);
+    let expected_current_revision = expected_created_revision
+        .checked_add(stage_count)
+        .ok_or(M2ShapeViolation::ContinuationRevision)?;
+    if continuation_created_at_revision.0 != expected_created_revision
+        || current_revision.0 != expected_current_revision
+    {
+        return Err(M2ShapeViolation::ContinuationRevision);
+    }
+    if selected_sba_actions.is_empty()
         || selected_sba_actions
             .windows(2)
             .any(|window| window[0] >= window[1])
@@ -283,6 +295,7 @@ pub(super) fn validate_program_coherence(
     continuations: &BTreeMap<ContinuationId, ContinuationRecordV2>,
     players: &BTreeSet<PlayerId>,
     objects: &BTreeMap<GameObjectId, GameObject>,
+    identities: &PerspectiveIdentityStateV2,
 ) -> Result<(), M2ShapeViolation> {
     if continuations.len() > 1 {
         return Err(M2ShapeViolation::ContinuationReference);
@@ -341,13 +354,19 @@ pub(super) fn validate_program_coherence(
                 if *minimum as usize == expected.len() && *maximum as usize == expected.len()
         );
         let mut bound = Vec::with_capacity(request.candidates.len());
+        let actor_identities = identities
+            .players
+            .get(&current_owner)
+            .ok_or(M2ShapeViolation::MagicContinuation)?;
         let bindings_match = request.candidates.iter().all(|candidate| {
-            if let EngineCandidateBinding::SelectObject { object } = &candidate.trusted_binding {
+            if let (
+                EngineCandidateBinding::SelectObject { object },
+                CandidateIntent::SelectObject { object: opaque },
+            ) = (&candidate.trusted_binding, &candidate.visible_intent)
+            {
                 bound.push(*object);
-                matches!(
-                    &candidate.visible_intent,
-                    CandidateIntent::SelectObject { .. }
-                )
+                actor_identities.opaque_to_object.get(opaque) == Some(object)
+                    && actor_identities.object_to_opaque.get(object) == Some(opaque)
             } else {
                 false
             }

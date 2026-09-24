@@ -146,6 +146,16 @@ fn current_magic_s1_contract_rejects_restore_of_magic_sba_continuation() {
     )
     .unwrap();
     let before = checkpoint.clone();
+    let checkpoint_roundtrip = EnvironmentCheckpointV6::new(
+        checkpoint.state.clone(),
+        checkpoint.status.clone(),
+        checkpoint.limit_counters.clone(),
+        checkpoint.codec.clone(),
+        checkpoint.execution_identity.clone(),
+    )
+    .unwrap();
+    assert_eq!(checkpoint_roundtrip, checkpoint);
+    checkpoint_roundtrip.validate().unwrap();
 
     assert_eq!(
         admit_restore(&RuntimeSemanticCatalog::production(), &checkpoint),
@@ -157,6 +167,7 @@ fn current_magic_s1_contract_rejects_restore_of_magic_sba_continuation() {
 
 fn magic_sba_continuation_state() -> EngineState {
     let mut state = s1_valid_state();
+    state.revision = StateRevision(1);
     let object = GameObjectId(3);
     let location = ZoneLocation {
         zone: ZoneKind::Battlefield,
@@ -219,7 +230,7 @@ fn magic_sba_continuation_state() -> EngineState {
             ContinuationRecordV2 {
                 id: ContinuationId(1),
                 actor: PlayerId(1),
-                created_at_revision: StateRevision(0),
+                created_at_revision: StateRevision(1),
                 stage_index: 0,
                 payload: ContinuationPayloadV2::MagicSbaGraveyardOrderV1 {
                     round_start_revision: StateRevision(0),
@@ -247,7 +258,7 @@ fn magic_sba_continuation_state() -> EngineState {
         request: AuthoritativeDecisionRequestV2 {
             decision_id: mtgml_model::DecisionId(1),
             player_decision_id: PlayerDecisionIdV1(1),
-            state_revision: StateRevision(0),
+            state_revision: StateRevision(1),
             actor: PlayerId(1),
             visibility: DecisionVisibility::ActingPlayerOnly,
             decision: DecisionDomainV2::Order {

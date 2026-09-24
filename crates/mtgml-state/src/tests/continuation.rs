@@ -672,4 +672,74 @@ fn magic_sba_stage_revision_relation_uses_checked_arithmetic() {
     );
 }
 
+#[test]
+fn magic_sba_order_stage_rejects_wrong_actor_domain_and_visible_binding() {
+    use crate::ContinuationPayloadV2;
+    use mtgml_decision::{CandidateIntent, DecisionDomainV2, EngineCandidateBinding};
+    use mtgml_model::OpaqueObjectId;
+
+    let mut wrong_actor = magic_order_stage_state(1, 1, 0, 0);
+    wrong_actor
+        .execution
+        .pending_decision
+        .as_mut()
+        .unwrap()
+        .request
+        .actor = PlayerId(2);
+    assert!(validate_engine_state(&wrong_actor).is_err());
+
+    let mut wrong_domain = magic_order_stage_state(1, 1, 0, 0);
+    wrong_domain
+        .execution
+        .pending_decision
+        .as_mut()
+        .unwrap()
+        .request
+        .decision = DecisionDomainV2::Order {
+        minimum: 1,
+        maximum: 1,
+    };
+    assert!(validate_engine_state(&wrong_domain).is_err());
+
+    let mut wrong_trusted_set = magic_order_stage_state(1, 1, 0, 0);
+    let candidate = &mut wrong_trusted_set
+        .execution
+        .pending_decision
+        .as_mut()
+        .unwrap()
+        .request
+        .candidates[0];
+    candidate.trusted_binding = EngineCandidateBinding::SelectObject {
+        object: GameObjectId(3),
+    };
+    assert!(validate_engine_state(&wrong_trusted_set).is_err());
+
+    let mut wrong_opaque_binding = magic_order_stage_state(1, 1, 0, 0);
+    let candidate = &mut wrong_opaque_binding
+        .execution
+        .pending_decision
+        .as_mut()
+        .unwrap()
+        .request
+        .candidates[0];
+    candidate.visible_intent = CandidateIntent::SelectObject {
+        object: OpaqueObjectId(3),
+    };
+    assert!(validate_engine_state(&wrong_opaque_binding).is_err());
+
+    let mut wrong_stage = magic_order_stage_state(2, 1, 0, 1);
+    let continuation = wrong_stage
+        .execution
+        .continuations
+        .values_mut()
+        .next()
+        .unwrap();
+    continuation.stage_index = 0;
+    assert!(matches!(
+        &continuation.payload,
+        ContinuationPayloadV2::MagicSbaGraveyardOrderV1 { .. }
+    ));
+    assert!(validate_engine_state(&wrong_stage).is_err());
+}
+
 // ---------------------------------------------------------------- M2.E lifecycle

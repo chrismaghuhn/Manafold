@@ -1,6 +1,6 @@
-// S3.A1 RED witnesses enter the real private Magic rules kernel. The state
-// fixtures are ordinary valid inputs; the current S1 kernel is expected to
-// stop at its typed Basic Priority boundary because no S3.A producer exists.
+// S3.A1 RED witnesses enter the real private Magic rules kernel through the
+// fixed S3.A conformance candidate. The frozen production S1 contract remains
+// covered separately and retains its own Basic Priority boundary.
 
 fn sba_upkeep_state() -> EngineState {
     let mut state = synthetic_state();
