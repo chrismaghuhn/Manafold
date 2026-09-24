@@ -278,7 +278,15 @@ impl MagicRulesKernel {
             },
         )?;
         let followup = self.advance_s3_a_round(&draw.next_state)?;
-        let result = crate::product::compose_atomic_products(state, draw, followup)?;
+        let ordering_continuation = followup
+            .next_decision
+            .as_ref()
+            .is_some_and(|request| matches!(request.decision, DecisionDomainV2::Order { .. }));
+        let result = if ordering_continuation {
+            crate::product::compose_sequential_products(state, draw, followup)?
+        } else {
+            crate::product::compose_atomic_products(state, draw, followup)?
+        };
         validate_engine_state(&result.next_state).map_err(KernelExecutionError::AfterState)?;
         crate::validate_transition_contract(state, &result)
             .map_err(KernelExecutionError::TransitionContract)?;
@@ -824,7 +832,13 @@ impl MagicRulesKernel {
                 state,
                 Some((continuation_id, orders)),
                 selected_sba_actions.clone(),
-                false,
+                self.profile.allows_s3_c_draw()
+                    && matches!(
+                        state.core.position,
+                        TurnPosition::Beginning {
+                            step: BeginningStep::Draw
+                        }
+                    ),
             );
         }
         let next_owner = next_owner.ok_or(KernelExecutionError::UnsupportedStagePath)?;

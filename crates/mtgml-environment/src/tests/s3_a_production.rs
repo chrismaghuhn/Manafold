@@ -538,6 +538,77 @@ fn m3_block_3_draw_rejections_are_atomic_and_fail_closed() {
     );
 }
 
+#[test]
+fn m3_block_3_postdraw_sba_order_continuation_restores_forks_and_resumes() {
+    let mut state = stable_draw_state_at_upkeep();
+    state.core.position = TurnPosition::Beginning {
+        step: mtgml_state::BeginningStep::Draw,
+    };
+    add_creature(&mut state, 4, P2, [3, 4]);
+    add_creature(&mut state, 5, P2, [4, 5]);
+    state.allocators.next_object_id = GameObjectId(6);
+    mtgml_state::validate_engine_state(&state).unwrap();
+    let before = state.clone();
+
+    let mut kernel = mtgml_rules::ProgramKernelV1::for_admitted_execution(
+        mtgml_model::ExecutionProgramV1::MagicRules,
+        crate::semantic_catalog_generated::magic_s3_c_draw_interaction_0_1_0_semantic_contract_id(),
+    )
+    .unwrap();
+    let draw_and_sba = kernel.advance_forced_progress(&state).unwrap();
+    assert_eq!(
+        draw_and_sba.next_state.revision,
+        StateRevision(before.revision.0 + 2),
+        "Draw and the persisted Order Decision retain separate Rules revisions"
+    );
+    let pending = draw_and_sba.next_state.execution.pending_decision.as_ref().unwrap();
+    assert_eq!(pending.request.actor, P2);
+    assert!(matches!(pending.request.decision, mtgml_decision::DecisionDomainV2::Order { .. }));
+    assert_eq!(draw_and_sba.next_state.core.priority, mtgml_state::PriorityState::None);
+    assert!(!draw_and_sba.events.iter().any(|event| matches!(
+        event.event,
+        mtgml_rules::AuthoritativeRuleEventKind::StateBasedActionsApplied { .. }
+    )));
+    assert!(draw_and_sba.next_state.zones.objects.contains_key(&GameObjectId(4)));
+    assert!(draw_and_sba.next_state.zones.objects.contains_key(&GameObjectId(5)));
+    assert_eq!(
+        draw_and_sba.events.iter().filter(|event| matches!(
+            &event.event,
+            mtgml_rules::AuthoritativeRuleEventKind::ZoneTransition { transition }
+                if transition.from.zone == mtgml_model::ZoneKind::Library
+                    && transition.to.zone == mtgml_model::ZoneKind::Hand
+        )).count(),
+        1
+    );
+
+    let backend = s3_c_backend(draw_and_sba.next_state.clone());
+    let controller = TrustedEnvironmentController::new(backend);
+    let order_checkpoint = controller.checkpoint().unwrap();
+    let mut restored = s3_c_backend(order_checkpoint.state.clone());
+    restored.restore(order_checkpoint.clone()).unwrap();
+    assert_eq!(restored.checkpoint().unwrap(), order_checkpoint);
+    assert_eq!(controller.fork().unwrap().checkpoint().unwrap(), order_checkpoint);
+
+    let order_response = current_order_response(&order_checkpoint.state);
+    let mut direct_backend = s3_c_backend(order_checkpoint.state.clone());
+    direct_backend.restore(order_checkpoint.clone()).unwrap();
+    direct_backend.execute_trusted_response(P2, order_response.clone()).unwrap();
+    controller.bind_player(P2).unwrap().submit(order_response).unwrap();
+    let after_order = controller.checkpoint().unwrap();
+    assert_eq!(
+        after_order.state.core.priority,
+        mtgml_state::PriorityState::HeldBy {
+            player: P2,
+            consecutive_passes: 0,
+        }
+    );
+    assert_eq!(after_order, direct_backend.checkpoint().unwrap());
+    assert!(after_order.state.execution.continuations.is_empty());
+    assert!(!after_order.state.zones.objects.contains_key(&GameObjectId(4)));
+    assert!(!after_order.state.zones.objects.contains_key(&GameObjectId(5)));
+    assert_eq!(controller.export_replay().unwrap().steps.len(), 1);
+}
+
 fn decode_magic_observation(
     envelope: mtgml_observation::ObservationEnvelope,
 ) -> MagicM3Observation {

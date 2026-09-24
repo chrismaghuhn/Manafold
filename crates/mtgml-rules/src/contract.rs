@@ -232,6 +232,13 @@ fn validate_s2_zone_transition_product(
         let (draw_before, _, forced) = split_upkeep_pass_draw_products(before, result)?;
         return validate_draw_composed_product(&draw_before, &forced);
     }
+    if is_draw_s2_priority_composition(before, result) {
+        return validate_draw_composed_product(before, result);
+    }
+    validate_s2_zone_transition_product_core(before, result)
+}
+
+fn is_draw_s2_priority_composition(before: &EngineState, result: &TransitionResult) -> bool {
     let library_to_hand = result.events.iter().any(|event| {
         matches!(
             &event.event,
@@ -245,7 +252,7 @@ fn validate_s2_zone_transition_product(
         mtgml_state::PriorityState::HeldBy { .. }
     ) || result.next_state.execution.pending_decision.is_some()
         || matches!(result.status, EpisodeStatus::Terminal { .. });
-    if library_to_hand
+    library_to_hand
         && followup_complete
         && matches!(
             before.core.position,
@@ -255,10 +262,6 @@ fn validate_s2_zone_transition_product(
         )
         && before.core.priority == mtgml_state::PriorityState::None
         && before.execution.pending_decision.is_none()
-    {
-        return validate_draw_composed_product(before, result);
-    }
-    validate_s2_zone_transition_product_core(before, result)
 }
 
 fn validate_s2_zone_transition_product_core(
@@ -675,19 +678,27 @@ fn validate_draw_composed_product(
             .checked_add(1)
             .ok_or(TransitionViolation::RevisionDidNotAdvance)?,
     );
-    let mut followup_state = result.next_state.clone();
-    followup_state.revision = followup_revision;
-    if let Some(pending) = followup_state.execution.pending_decision.as_mut() {
-        pending.request.state_revision = followup_revision;
+    let coalesced_followup = result.next_state.revision == drawn_state.revision;
+    if !coalesced_followup && result.next_state.revision != followup_revision {
+        return Err(TransitionViolation::RevisionDidNotAdvance);
     }
-    for continuation in followup_state.execution.continuations.values_mut() {
-        if continuation.created_at_revision == result.next_state.revision {
-            continuation.created_at_revision = followup_revision;
+    let mut followup_state = result.next_state.clone();
+    if coalesced_followup {
+        followup_state.revision = followup_revision;
+        if let Some(pending) = followup_state.execution.pending_decision.as_mut() {
+            pending.request.state_revision = followup_revision;
+        }
+        for continuation in followup_state.execution.continuations.values_mut() {
+            if continuation.created_at_revision == result.next_state.revision {
+                continuation.created_at_revision = followup_revision;
+            }
         }
     }
     let mut followup_events = suffix.to_vec();
-    for event in &mut followup_events {
-        event.state_revision = followup_revision;
+    if coalesced_followup {
+        for event in &mut followup_events {
+            event.state_revision = followup_revision;
+        }
     }
     let followup = TransitionResult {
         accepted: true,
@@ -1825,6 +1836,7 @@ fn is_final_sba_order_priority_composition(
     has_sba_continuation
         && pending_before_is_order
         && pending_after_is_pass
+        && before.revision.0.checked_add(2) == Some(after.revision.0)
         && matches!(result.status, EpisodeStatus::Running)
         && matches!(
             after.core.priority,
@@ -2089,14 +2101,29 @@ pub fn validate_transition_contract(
         let composed_sba = is_final_sba_order_priority_composition(before, result);
         let composed_cleanup = is_second_pass_cleanup_composition(before, result);
         let composed_draw = is_upkeep_pass_draw_composition(before, result);
+        let direct_draw = is_draw_s2_priority_composition(before, result);
+        let draw_order = result
+            .next_state
+            .execution
+            .pending_decision
+            .as_ref()
+            .is_some_and(|pending| {
+                matches!(
+                    pending.request.decision,
+                    mtgml_decision::DecisionDomainV2::Order { .. }
+                )
+            });
+        let revision_advance = if composed_draw && draw_order {
+            3
+        } else if composed_sba || composed_cleanup || composed_draw || direct_draw && draw_order {
+            2
+        } else {
+            1
+        };
         let expected_revision = before
             .revision
             .0
-            .checked_add(if composed_sba || composed_cleanup || composed_draw {
-                2
-            } else {
-                1
-            })
+            .checked_add(revision_advance)
             .ok_or(TransitionViolation::RevisionDidNotAdvance)?;
         if result.next_state.revision.0 != expected_revision {
             return Err(TransitionViolation::RevisionDidNotAdvance);
@@ -2147,13 +2174,18 @@ pub fn validate_transition_contract(
     let composed_sba = is_final_sba_order_priority_composition(before, result);
     let composed_cleanup = is_second_pass_cleanup_composition(before, result);
     let composed_draw = is_upkeep_pass_draw_composition(before, result);
-    let composed_priority = composed_sba || composed_cleanup || composed_draw;
-    let composed_split = u64::try_from(if composed_cleanup || composed_draw {
-        3
-    } else {
-        result.events.len().saturating_sub(2)
-    })
-    .map_err(|_| TransitionViolation::EventIdentity)?;
+    let direct_draw = is_draw_s2_priority_composition(before, result);
+    let draw_order = result
+        .next_state
+        .execution
+        .pending_decision
+        .as_ref()
+        .is_some_and(|pending| {
+            matches!(
+                pending.request.decision,
+                mtgml_decision::DecisionDomainV2::Order { .. }
+            )
+        });
     let revision_one = mtgml_model::StateRevision(
         before
             .revision
@@ -2168,6 +2200,15 @@ pub fn validate_transition_contract(
             .checked_add(2)
             .ok_or(TransitionViolation::RevisionDidNotAdvance)?,
     );
+    let revision_three = mtgml_model::StateRevision(
+        before
+            .revision
+            .0
+            .checked_add(3)
+            .ok_or(TransitionViolation::RevisionDidNotAdvance)?,
+    );
+    let event_len =
+        u64::try_from(result.events.len()).map_err(|_| TransitionViolation::EventIdentity)?;
     for (offset, event) in result.events.iter().enumerate() {
         let offset = u64::try_from(offset).map_err(|_| TransitionViolation::EventIdentity)?;
         let expected = before
@@ -2176,8 +2217,27 @@ pub fn validate_transition_contract(
             .0
             .checked_add(offset)
             .ok_or(TransitionViolation::EventIdentity)?;
-        let expected_revision = if composed_priority {
-            if offset < composed_split {
+        let expected_revision = if composed_draw {
+            if offset < 3 {
+                revision_one
+            } else if draw_order && offset + 1 == event_len {
+                revision_three
+            } else {
+                revision_two
+            }
+        } else if direct_draw && draw_order {
+            if offset + 1 == event_len {
+                revision_two
+            } else {
+                revision_one
+            }
+        } else if composed_sba || composed_cleanup {
+            let split = if composed_cleanup {
+                3u64
+            } else {
+                event_len.saturating_sub(2)
+            };
+            if offset < split {
                 revision_one
             } else {
                 revision_two

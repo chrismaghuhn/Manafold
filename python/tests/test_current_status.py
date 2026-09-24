@@ -531,6 +531,7 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
                 "m3.draw.upkeep-pass-s2-priority-replay",
                 "m3.draw.hidden-world-noninterference",
                 "m3.draw.rejection-atomicity",
+                "m3.draw.postdraw-order-restore-fork",
             ],
         )
         self.assertEqual(
