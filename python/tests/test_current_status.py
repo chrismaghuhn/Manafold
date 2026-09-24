@@ -83,7 +83,9 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
             readme,
         )
         self.assertIn("**M3 Block 1:** bounded S3.A is complete / reviewed", readme)
-        self.assertIn("**M3 Block 2:** Basic Priority + Reference response integration is a candidate", readme)
+        self.assertIn(
+            "**M3 Block 2:** Basic Priority + Reference response integration is a candidate", readme
+        )
         self.assertIn("Block 3 / Draw and Combat remain unstarted", readme)
         self.assertNotIn("M3_S1_AUTHORIZATION_DECISION", readme)
         self.assertNotIn("M3_T0_CLOSURE_STATUS_SYNC_EXACT_HEAD_REVIEW", readme)
@@ -279,7 +281,9 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
         self.assertIn("M3_BLOCK_1 = COMPLETE / REVIEWED", roadmap)
         self.assertIn("M3_BLOCK_1_REVIEW_HEAD = 6fc3ff9694aa9d61975929a2d4a1c8006df28014", roadmap)
         self.assertIn("M3_BLOCK_2 = COMPLETE_CANDIDATE", roadmap)
-        self.assertIn("CURRENT_M3_BLOCK = BASIC_PRIORITY_AND_REFERENCE_RESPONSE_INTEGRATION", roadmap)
+        self.assertIn(
+            "CURRENT_M3_BLOCK = BASIC_PRIORITY_AND_REFERENCE_RESPONSE_INTEGRATION", roadmap
+        )
         self.assertIn("NEXT_GATE = M3_BLOCK_2_EXACT_HEAD_REVIEW", roadmap)
         self.assertIn("S3_A_IMPLEMENTATION_AUTHORIZED = YES", roadmap)
         self.assertIn("S3_B_AUTHORIZED = YES", roadmap)

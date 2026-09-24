@@ -391,8 +391,7 @@ def render_catalog_generated(catalog: dict[str, object] | None = None) -> str:
         lines.append("}")
         lines.append("")
         semantic_manifest_signature = (
-            f"pub fn {snake}_semantic_manifest() -> "
-            "mtgml_model::SemanticContractManifestV1"
+            f"pub fn {snake}_semantic_manifest() -> mtgml_model::SemanticContractManifestV1"
         )
         if len(semantic_manifest_signature) + 2 <= 100:
             lines.append(f"{semantic_manifest_signature} {{")
