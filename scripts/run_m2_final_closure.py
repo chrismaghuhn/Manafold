@@ -986,7 +986,10 @@ def check_schema_inventory_pinned(root: Path) -> str:
     ]
     if forbidden:
         raise ScopeCheckFailure(f"forbidden later-milestone schema artifacts present: {forbidden}")
-    return f"schema inventory matches the pinned M2 inventory plus the reviewed combat payload successor ({len(schemas)} schemas)"
+    return (
+        "schema inventory matches the pinned M2 inventory plus the reviewed combat payload "
+        f"successor ({len(schemas)} schemas)"
+    )
 
 
 def check_card_and_deck_artifacts_unclaimed(root: Path) -> str:

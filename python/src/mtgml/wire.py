@@ -5,8 +5,8 @@ import json
 from collections.abc import Callable
 from typing import TypeVar
 
-from ._magic_observation import MagicObservation
 from ._magic_combat_observation import MagicObservationV2
+from ._magic_observation import MagicObservation
 from ._synthetic_observation import SyntheticObservation
 from .canonical import canonical_json_bytes
 from .decision import (

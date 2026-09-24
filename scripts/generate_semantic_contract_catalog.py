@@ -267,11 +267,19 @@ pub fn execution_contract_supported(
         .replace("@S3C_ID@", s3c_semantic)
         .replace("@COMBAT_ID@", combat_semantic)
         .replace("@COMBAT_TURN@", str(has_capability(combat_entry, "rules/turn-structure")).lower())
-        .replace("@COMBAT_SBA@", str(has_capability(combat_entry, "rules/state-based-actions-combat")).lower())
-        .replace("@COMBAT_PRIORITY@", str(has_capability(combat_entry, "rules/basic-priority")).lower())
+        .replace(
+            "@COMBAT_SBA@",
+            str(has_capability(combat_entry, "rules/state-based-actions-combat")).lower(),
+        )
+        .replace(
+            "@COMBAT_PRIORITY@", str(has_capability(combat_entry, "rules/basic-priority")).lower()
+        )
         .replace("@COMBAT_DRAW@", str(has_capability(combat_entry, "rules/draw-card")).lower())
         .replace("@COMBAT_PHASE@", str(has_capability(combat_entry, "rules/combat-phase")).lower())
-        .replace("@DECLARE_ATTACKERS@", str(has_capability(combat_entry, "rules/declare-attackers")).lower())
+        .replace(
+            "@DECLARE_ATTACKERS@",
+            str(has_capability(combat_entry, "rules/declare-attackers")).lower(),
+        )
         .replace("@SYNTHETIC_ID@", synthetic_semantic)
         .replace(
             "@TURN_STRUCTURE_TURN@",
@@ -561,7 +569,8 @@ def assert_production_policy(catalog: dict[str, object]) -> None:
         or combat_entry is None
     ):
         raise SystemExit(
-            "production semantic catalog requires Synthetic, exact S1, S3.A, S3.B, S3.C, and combat entries"
+            "production semantic catalog requires Synthetic, exact S1, S3.A, S3.B, S3.C, "
+            "and combat entries"
         )
     if (
         synthetic["rules_authority"] != {"variant": "synthetic_legacy"}
@@ -606,7 +615,9 @@ def assert_production_policy(catalog: dict[str, object]) -> None:
         {"key": "rules/zone-incarnation", "version": "0.1.0"},
     ]:
         raise SystemExit("S3.C must use the exact reviewed draw/priority/SBA/turn/zone closure")
-    if combat_entry["rules_authority"] != expected_authority or combat_entry["capability_closure"] != [
+    if combat_entry["rules_authority"] != expected_authority or combat_entry[
+        "capability_closure"
+    ] != [
         {"key": "rules/basic-priority", "version": "0.1.0"},
         {"key": "rules/combat-phase", "version": "0.1.0"},
         {"key": "rules/declare-attackers", "version": "0.1.0"},
@@ -616,7 +627,13 @@ def assert_production_policy(catalog: dict[str, object]) -> None:
         {"key": "rules/zone-incarnation", "version": "0.1.0"},
     ]:
         raise SystemExit("combat profile must use the exact reviewed cumulative combat closure")
-    for entry in (turn_structure_entry, ordered_sba_entry, basic_priority_entry, draw_entry, combat_entry):
+    for entry in (
+        turn_structure_entry,
+        ordered_sba_entry,
+        basic_priority_entry,
+        draw_entry,
+        combat_entry,
+    ):
         if entry["format_contract_id"] is not None or entry["content_contract_id"] is not None:
             raise SystemExit(
                 "current S1/S3.A production identities have null format/content dimensions"

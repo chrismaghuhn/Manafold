@@ -278,7 +278,9 @@ class ReplayManifestV6:
         expected_codec = (
             COMBAT_OBSERVATION_CODEC
             if exact_combat_profile
-            else MAGIC_OBSERVATION_CODEC if magic_semantics_admitted else SYNTHETIC_OBSERVATION_CODEC
+            else MAGIC_OBSERVATION_CODEC
+            if magic_semantics_admitted
+            else SYNTHETIC_OBSERVATION_CODEC
         )
         if self.schemas.observation_payload_codec != expected_codec:
             raise WireError(
@@ -519,11 +521,17 @@ class AuthoritativeReplayV6:
                     ("rules/zone-incarnation", "0.1.0"),
                 ]
                 maximum_advance = (
-                    3 if closure_pairs == draw_closure
-                    else 2 if closure_pairs in (priority_closure, combat_closure)
+                    3
+                    if closure_pairs == draw_closure
+                    else 2
+                    if closure_pairs in (priority_closure, combat_closure)
                     else 1
                 )
-                if not previous.state_revision < step.state_revision_after <= previous.state_revision + maximum_advance:
+                if (
+                    not previous.state_revision
+                    < step.state_revision_after
+                    <= previous.state_revision + maximum_advance
+                ):
                     raise WireError(
                         "semantic.replay", "accepted step revision exceeds its exact contract bound"
                     )

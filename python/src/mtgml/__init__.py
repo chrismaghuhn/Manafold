@@ -1,14 +1,14 @@
-from ._magic_observation import (
-    MAGIC_OBSERVATION_SCHEMA_V1,
-    MagicCompletedOrder,
-    MagicObservation,
-    MagicPendingSbaOrdering,
-)
 from ._magic_combat_observation import (
     MAGIC_OBSERVATION_SCHEMA_V2,
     MagicCombatBlockerAssignmentV2,
     MagicCombatParticipationV2,
     MagicObservationV2,
+)
+from ._magic_observation import (
+    MAGIC_OBSERVATION_SCHEMA_V1,
+    MagicCompletedOrder,
+    MagicObservation,
+    MagicPendingSbaOrdering,
 )
 from ._synthetic_observation import (
     SYNTHETIC_OBSERVATION_SCHEMA_V1,
@@ -109,9 +109,9 @@ __all__ = [
     "InitialEnvironmentIdentityV4",
     "InitialEnvironmentIdentityV5",
     "InitialEnvironmentIdentityV6",
-    "MagicCompletedOrder",
     "MagicCombatBlockerAssignmentV2",
     "MagicCombatParticipationV2",
+    "MagicCompletedOrder",
     "MagicObservation",
     "MagicObservationV2",
     "MagicPendingSbaOrdering",

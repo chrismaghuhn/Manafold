@@ -53,7 +53,7 @@ class MagicCombatParticipationV2:
             or len(self.blockers) != len(self.attackers)
             or any(
                 assignment.attacker != attacker or assignment.blocker is not None
-                for assignment, attacker in zip(self.blockers, self.attackers)
+                for assignment, attacker in zip(self.blockers, self.attackers, strict=True)
             )
         ):
             raise WireError("semantic.magic_combat_observation", "invalid combat participation")
@@ -79,8 +79,13 @@ class MagicObservationV2:
         obj = require_exact_keys(
             value,
             {
-                "schema_version", "active_player", "turn_number", "turn_position",
-                "priority", "pending_sba_ordering", "combat",
+                "schema_version",
+                "active_player",
+                "turn_number",
+                "turn_position",
+                "priority",
+                "pending_sba_ordering",
+                "combat",
             },
         )
         if obj["schema_version"] != MAGIC_OBSERVATION_SCHEMA_V2:
@@ -114,8 +119,10 @@ class MagicObservationV2:
             or self.turn_position.step not in {"declare_attackers", "end_of_combat"}
             or (self.turn_position.step == "end_of_combat" and self.combat.attackers)
         ):
-            raise WireError("semantic.magic_combat_observation", "combat does not match turn position")
-        result = {
+            raise WireError(
+                "semantic.magic_combat_observation", "combat does not match turn position"
+            )
+        result: dict[str, object] = {
             "schema_version": MAGIC_OBSERVATION_SCHEMA_V2,
             "active_player": uint_wire(self.active_player),
             "turn_number": self.turn_number,
