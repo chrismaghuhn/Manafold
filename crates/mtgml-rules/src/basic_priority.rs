@@ -22,6 +22,9 @@ pub(crate) fn is_priority_bearing_position(position: TurnPosition) -> bool {
         TurnPosition::Beginning {
             step: mtgml_state::BeginningStep::Upkeep
         } | TurnPosition::PrecombatMain
+            | TurnPosition::Beginning {
+                step: mtgml_state::BeginningStep::Draw
+            }
             | TurnPosition::PostcombatMain
             | TurnPosition::Ending {
                 step: mtgml_state::EndingStep::EndStep

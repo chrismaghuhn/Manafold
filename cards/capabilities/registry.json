@@ -202,16 +202,27 @@
       ],
       "benchmark_scenarios": [],
       "category": "core_rule",
-      "conformance_cases": [],
+      "conformance_cases": [
+        "m3.draw.upkeep-pass-s2-priority-replay",
+        "m3.draw.hidden-world-noninterference",
+        "m3.draw.rejection-atomicity",
+        "m3.draw.postdraw-order-restore-fork"
+      ],
       "dependencies": [
         "rules/turn-structure",
         "rules/zone-incarnation"
       ],
-      "implementation_paths": [],
+      "implementation_paths": [
+        "crates/mtgml-rules/src/magic.rs",
+        "crates/mtgml-rules/src/contract.rs",
+        "crates/mtgml-rules/src/product.rs",
+        "crates/mtgml-environment/src/reference.rs",
+        "crates/mtgml-environment/src/tests/s3_a_production.rs"
+      ],
       "information_risk": "high",
       "key": "rules/draw-card",
       "lifecycle": "specified",
-      "notes": "Specified only; no implementation, conformance, benchmark, coverage, or certification evidence is claimed.",
+      "notes": "Bounded ordinary Draw implementation and Block 3 candidate evidence are present; lifecycle remains specified pending exact-head review. Coverage and certification are not claimed.",
       "owners": [
         "turn"
       ],

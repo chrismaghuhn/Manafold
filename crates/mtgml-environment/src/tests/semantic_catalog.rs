@@ -8,6 +8,10 @@ use crate::semantic_catalog_generated::{
     magic_s3_b_basic_priority_0_1_0_rules_manifest,
     magic_s3_b_basic_priority_0_1_0_semantic_contract_id,
     magic_s3_b_basic_priority_0_1_0_semantic_manifest,
+    magic_s3_c_draw_interaction_0_1_0_rules_contract_id,
+    magic_s3_c_draw_interaction_0_1_0_rules_manifest,
+    magic_s3_c_draw_interaction_0_1_0_semantic_contract_id,
+    magic_s3_c_draw_interaction_0_1_0_semantic_manifest,
     magic_turn_structure_0_1_0_rules_contract_id,
     magic_turn_structure_0_1_0_rules_manifest,
     magic_turn_structure_0_1_0_semantic_contract_id,
@@ -24,6 +28,22 @@ use mtgml_model::{
     CapabilityRequirementV1, ExecutionProgramV1, RulesAuthorityV1, RulesContractManifestV1,
     SemanticContractIdV1, SemanticContractManifestV1,
 };
+
+#[test]
+fn frozen_s1_s3a_s3b_semantic_contract_ids_remain_byte_identical() {
+    assert_eq!(
+        magic_turn_structure_0_1_0_semantic_contract_id().as_str(),
+        "7e8f54f15bd27d16643422f6904a23ea2004cab1098b56f8cd842a2397ff42fe"
+    );
+    assert_eq!(
+        magic_s3_a_ordered_sba_0_1_0_semantic_contract_id().as_str(),
+        "51efc0307d9ef8fc4fca46f8ea6e4ea5d5293cb8301c2a7917a590982079020e"
+    );
+    assert_eq!(
+        magic_s3_b_basic_priority_0_1_0_semantic_contract_id().as_str(),
+        "c480cbae69bf0496aff83bb973a859721bfa0f969351b33b3f0b09ee3f7c5498"
+    );
+}
 use mtgml_persistence::semantic_contract_digest::{
     calculate_rules_contract_id_v1, calculate_semantic_contract_id_v1,
 };
@@ -85,7 +105,7 @@ fn known_meaning_is_distinct_from_supported_execution() {
 #[test]
 fn production_catalog_contains_exactly_generated_material() {
     let catalog = RuntimeSemanticCatalog::production();
-    assert_eq!(catalog.entry_count(), 4, "Synthetic, frozen S1, S3.A, and S3.B identities");
+    assert_eq!(catalog.entry_count(), 5, "Synthetic, frozen S1, S3.A, S3.B, and S3.C identities");
 
     let syn_id = synthetic_legacy_default_semantic_contract_id();
     let syn_entry = catalog.resolve(&syn_id).unwrap();
@@ -163,6 +183,21 @@ fn production_catalog_contains_exactly_generated_material() {
     assert!(catalog.supported(&s3b_id, ExecutionProgramV1::MagicRules));
     assert_ne!(s3b_id, s3a_id, "S3.B must not reinterpret the S3.A identity");
     assert_ne!(s3b_id, ts_id, "S3.B must not reinterpret the S1 identity");
+
+    let s3c_id = magic_s3_c_draw_interaction_0_1_0_semantic_contract_id();
+    let s3c_entry = catalog.resolve(&s3c_id).unwrap();
+    assert_eq!(s3c_entry.manifest.rules_contract_id, magic_s3_c_draw_interaction_0_1_0_rules_contract_id());
+    assert_eq!(s3c_entry.manifest, magic_s3_c_draw_interaction_0_1_0_semantic_manifest());
+    assert_eq!(s3c_entry.rules_manifest, magic_s3_c_draw_interaction_0_1_0_rules_manifest());
+    let s3c_closure = s3c_entry.rules_manifest.capability_closure.as_ref().unwrap();
+    assert_eq!(s3c_closure.len(), 5);
+    assert_eq!(s3c_closure[0].key, "rules/basic-priority");
+    assert_eq!(s3c_closure[1].key, "rules/draw-card");
+    assert_eq!(s3c_closure[2].key, "rules/state-based-actions-combat");
+    assert_eq!(s3c_closure[3].key, "rules/turn-structure");
+    assert_eq!(s3c_closure[4].key, "rules/zone-incarnation");
+    assert!(catalog.supported(&s3c_id, ExecutionProgramV1::MagicRules));
+    assert_ne!(s3c_id, s3b_id, "Draw closure must have a distinct identity");
 }
 
 #[test]

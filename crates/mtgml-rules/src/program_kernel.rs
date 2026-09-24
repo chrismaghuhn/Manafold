@@ -216,6 +216,18 @@ pub fn validate_runtime_state_for_contract(
                     .map_err(KernelExecutionError::TurnStructure)?;
                 return Ok(());
             }
+            if matches!(
+                state.core.position,
+                mtgml_state::TurnPosition::Beginning {
+                    step: mtgml_state::BeginningStep::Draw
+                }
+            ) && !profile.allows_draw_card_0_1_0()
+            {
+                return Err(KernelExecutionError::UnsupportedStagePath);
+            }
+            if profile.allows_draw_card_0_1_0() {
+                return validate_s3_c_runtime_state(state, status);
+            }
             if profile.allows_basic_priority_0_1_0() {
                 return validate_s3_b_runtime_state(state, status);
             }
@@ -225,6 +237,35 @@ pub fn validate_runtime_state_for_contract(
             Err(KernelExecutionError::UnsupportedStagePath)
         }
     }
+}
+
+fn validate_s3_c_runtime_state(
+    state: &EngineState,
+    status: &EpisodeStatus,
+) -> Result<(), KernelExecutionError> {
+    if matches!(
+        state.core.position,
+        mtgml_state::TurnPosition::Beginning {
+            step: mtgml_state::BeginningStep::Draw
+        }
+    ) {
+        if state.core.turn_number < 2 {
+            return Err(KernelExecutionError::UnsupportedStagePath);
+        }
+        if matches!(
+            state.core.priority,
+            mtgml_state::PriorityState::HeldBy { .. }
+        ) {
+            return validate_s3_b_runtime_state(state, status);
+        }
+        if state.execution.pending_decision.is_some() {
+            return validate_s3_a_runtime_state(state, status);
+        }
+        // This pre-action boundary is only kernel-local; accepted response
+        // transactions finish forced progress before exposing a checkpoint.
+        return Err(KernelExecutionError::UnsupportedStagePath);
+    }
+    validate_s3_b_runtime_state(state, status)
 }
 
 fn validate_s3_b_runtime_state(

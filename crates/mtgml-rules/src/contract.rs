@@ -228,6 +228,46 @@ fn validate_s2_zone_transition_product(
     before: &EngineState,
     result: &TransitionResult,
 ) -> Result<(), TransitionViolation> {
+    if is_upkeep_pass_draw_composition(before, result) {
+        let (draw_before, _, forced) = split_upkeep_pass_draw_products(before, result)?;
+        return validate_draw_composed_product(&draw_before, &forced);
+    }
+    if is_draw_s2_priority_composition(before, result) {
+        return validate_draw_composed_product(before, result);
+    }
+    validate_s2_zone_transition_product_core(before, result)
+}
+
+fn is_draw_s2_priority_composition(before: &EngineState, result: &TransitionResult) -> bool {
+    let library_to_hand = result.events.iter().any(|event| {
+        matches!(
+            &event.event,
+            AuthoritativeRuleEventKind::ZoneTransition { transition }
+                if transition.from.zone == ZoneKind::Library
+                    && transition.to.zone == ZoneKind::Hand
+        )
+    });
+    let followup_complete = matches!(
+        result.next_state.core.priority,
+        mtgml_state::PriorityState::HeldBy { .. }
+    ) || result.next_state.execution.pending_decision.is_some()
+        || matches!(result.status, EpisodeStatus::Terminal { .. });
+    library_to_hand
+        && followup_complete
+        && matches!(
+            before.core.position,
+            TurnPosition::Beginning {
+                step: BeginningStep::Draw
+            }
+        )
+        && before.core.priority == mtgml_state::PriorityState::None
+        && before.execution.pending_decision.is_none()
+}
+
+fn validate_s2_zone_transition_product_core(
+    before: &EngineState,
+    result: &TransitionResult,
+) -> Result<(), TransitionViolation> {
     if result.events.iter().any(|event| {
         matches!(
             event.event,
@@ -505,6 +545,207 @@ fn validate_s2_zone_transition_product(
             } if actual_lifecycle == lifecycle && actual_observation == observation => {}
             _ => return Err(TransitionViolation::OccurrencePairing),
         }
+    }
+    Ok(())
+}
+
+fn validate_draw_composed_product(
+    before: &EngineState,
+    result: &TransitionResult,
+) -> Result<(), TransitionViolation> {
+    if before.core.turn_number < 2
+        || !result.accepted
+        || before.execution.pending_decision.is_some()
+        || !before.execution.continuations.is_empty()
+        || before.core.priority != mtgml_state::PriorityState::None
+    {
+        return Err(TransitionViolation::ZoneTransition);
+    }
+    let owner = before.core.active_player;
+    let source_key = mtgml_state::ZoneKey {
+        zone: ZoneKind::Library,
+        player: Some(owner),
+        visibility: VisibilityPartition::FaceDown,
+        partition: None,
+    };
+    let top = before
+        .zones
+        .ordered_zones
+        .get(&source_key)
+        .and_then(|objects| objects.first())
+        .copied()
+        .ok_or(TransitionViolation::ZoneTransition)?;
+    if before
+        .zones
+        .objects
+        .get(&top)
+        .is_none_or(|object| object.owner != owner)
+    {
+        return Err(TransitionViolation::ZoneTransition);
+    }
+
+    let revision = mtgml_model::StateRevision(
+        before
+            .revision
+            .0
+            .checked_add(1)
+            .ok_or(TransitionViolation::RevisionDidNotAdvance)?,
+    );
+    let mut drawn_state = before.clone();
+    drawn_state.revision = revision;
+    let mut draw_events = Vec::new();
+    crate::zone_incarnation::apply_selected_zone_transition_in_workspace(
+        &mut drawn_state,
+        &crate::zone_incarnation::SelectedZoneTransitionRequest {
+            object: top,
+            kind: crate::zone_incarnation::SelectedZoneTransitionKind::LibraryTopToOwnerHand,
+            claimed_from: ZoneLocation {
+                zone: ZoneKind::Library,
+                player: Some(owner),
+                position: ZonePosition::Top { offset: 0 },
+                visibility: VisibilityPartition::FaceDown,
+                partition: None,
+            },
+            claimed_to: ZoneLocation {
+                zone: ZoneKind::Hand,
+                player: Some(owner),
+                position: ZonePosition::Unordered,
+                visibility: VisibilityPartition::OwnerOnly,
+                partition: None,
+            },
+        },
+        before.allocators.next_rule_event_id,
+        &mut draw_events,
+    )
+    .map_err(|_| TransitionViolation::ZoneTransition)?;
+    drawn_state.allocators.next_rule_event_id = mtgml_model::RuleEventId(
+        before
+            .allocators
+            .next_rule_event_id
+            .0
+            .checked_add(
+                u64::try_from(draw_events.len()).map_err(|_| TransitionViolation::EventIdentity)?,
+            )
+            .ok_or(TransitionViolation::EventIdentity)?,
+    );
+    validate_engine_state(&drawn_state).map_err(TransitionViolation::AfterState)?;
+
+    let library_move_count = result
+        .events
+        .iter()
+        .filter(|event| {
+            matches!(
+                &event.event,
+                AuthoritativeRuleEventKind::ZoneTransition { transition }
+                    if transition.from.zone == ZoneKind::Library
+                        && transition.to.zone == ZoneKind::Hand
+            )
+        })
+        .count();
+    if library_move_count != 1
+        || result.events.get(..draw_events.len()) != Some(draw_events.as_slice())
+    {
+        return Err(TransitionViolation::ZoneTransition);
+    }
+    let draw_only = TransitionResult {
+        accepted: true,
+        next_state: drawn_state.clone(),
+        delta: mtgml_state::StateDelta::between(
+            before,
+            &drawn_state,
+            draw_events
+                .iter()
+                .map(|event| event.event.semantic_delta())
+                .collect(),
+        )
+        .map_err(|_| TransitionViolation::DeltaReapplication)?,
+        events: draw_events.clone(),
+        next_decision: None,
+        status: EpisodeStatus::Running,
+    };
+    validate_s2_zone_transition_product_core(before, &draw_only)?;
+
+    let suffix = result
+        .events
+        .get(draw_events.len()..)
+        .ok_or(TransitionViolation::SbaBatch)?;
+    let plan = crate::state_based_actions::derive_bounded_sba_round_plan(&drawn_state)
+        .map_err(|_| TransitionViolation::SbaBatch)?;
+    let followup_revision = mtgml_model::StateRevision(
+        drawn_state
+            .revision
+            .0
+            .checked_add(1)
+            .ok_or(TransitionViolation::RevisionDidNotAdvance)?,
+    );
+    let coalesced_followup = result.next_state.revision == drawn_state.revision;
+    if !coalesced_followup && result.next_state.revision != followup_revision {
+        return Err(TransitionViolation::RevisionDidNotAdvance);
+    }
+    let mut followup_state = result.next_state.clone();
+    if coalesced_followup {
+        followup_state.revision = followup_revision;
+        if let Some(pending) = followup_state.execution.pending_decision.as_mut() {
+            pending.request.state_revision = followup_revision;
+        }
+        for continuation in followup_state.execution.continuations.values_mut() {
+            if continuation.created_at_revision == result.next_state.revision {
+                continuation.created_at_revision = followup_revision;
+            }
+        }
+    }
+    let mut followup_events = suffix.to_vec();
+    if coalesced_followup {
+        for event in &mut followup_events {
+            event.state_revision = followup_revision;
+        }
+    }
+    let followup = TransitionResult {
+        accepted: true,
+        delta: mtgml_state::StateDelta::between(
+            &drawn_state,
+            &followup_state,
+            followup_events
+                .iter()
+                .map(|event| event.event.semantic_delta())
+                .collect(),
+        )
+        .map_err(|_| TransitionViolation::DeltaReapplication)?,
+        next_decision: result.next_decision.clone().map(|mut request| {
+            request.state_revision = followup_revision;
+            request
+        }),
+        next_state: followup_state,
+        events: followup_events,
+        status: result.status.clone(),
+    };
+
+    if plan.selected_sba_actions.is_empty() {
+        if suffix.iter().any(|event| {
+            matches!(
+                event.event,
+                AuthoritativeRuleEventKind::StateBasedActionsApplied { .. }
+                    | AuthoritativeRuleEventKind::SbaGraveyardOrderChosen { .. }
+            )
+        }) {
+            return Err(TransitionViolation::SbaBatch);
+        }
+        validate_sba_order_transition(&drawn_state, &followup)?;
+        crate::basic_priority::validate_priority_transition(&drawn_state, &followup)?;
+    } else if !plan.apnap_owners.is_empty() {
+        if suffix.iter().any(|event| {
+            matches!(
+                event.event,
+                AuthoritativeRuleEventKind::StateBasedActionsApplied { .. }
+            )
+        }) {
+            return Err(TransitionViolation::SbaBatch);
+        }
+        validate_sba_order_transition(&drawn_state, &followup)?;
+    } else {
+        validate_sba_order_transition(&drawn_state, &followup)?;
+        validate_sba_batch_product(&drawn_state, &followup)?;
+        crate::basic_priority::validate_priority_transition(&drawn_state, &followup)?;
     }
     Ok(())
 }
@@ -1595,6 +1836,7 @@ fn is_final_sba_order_priority_composition(
     has_sba_continuation
         && pending_before_is_order
         && pending_after_is_pass
+        && before.revision.0.checked_add(2) == Some(after.revision.0)
         && matches!(result.status, EpisodeStatus::Running)
         && matches!(
             after.core.priority,
@@ -1626,6 +1868,145 @@ fn is_final_sba_order_priority_composition(
                 if after.execution.pending_decision.as_ref().is_some_and(|pending|
                     pending.request.decision_id == *decision)
         )
+}
+
+fn is_upkeep_pass_draw_composition(before: &EngineState, result: &TransitionResult) -> bool {
+    use crate::events::AuthoritativeRuleEventKind as Event;
+    let Some(pending) = before.execution.pending_decision.as_ref() else {
+        return false;
+    };
+    let Some(
+        [Event::DecisionCleared { decision }, Event::PriorityChanged { from, to }, Event::TurnPositionChanged {
+            from: position_from,
+            to: position_to,
+        }],
+    ) = result
+        .events
+        .get(..3)
+        .map(|events| [&events[0].event, &events[1].event, &events[2].event])
+    else {
+        return false;
+    };
+    let after = &result.next_state;
+    matches!(
+        before.core.position,
+        TurnPosition::Beginning {
+            step: BeginningStep::Upkeep
+        }
+    ) && matches!(
+        before.core.priority,
+        mtgml_state::PriorityState::HeldBy {
+            player,
+            consecutive_passes: 1
+        } if player == pending.request.actor && pending.request.actor != before.core.active_player
+    ) && pending.request.decision == mtgml_decision::DecisionDomainV2::ChooseOne
+        && *decision == pending.request.decision_id
+        && *from == before.core.priority
+        && *to == mtgml_state::PriorityState::None
+        && *position_from == before.core.position
+        && *position_to
+            == (TurnPosition::Beginning {
+                step: BeginningStep::Draw,
+            })
+        && after.core.position == *position_to
+        && matches!(result.status, EpisodeStatus::Running)
+        && result.events[3..].iter().any(|event| {
+            matches!(
+                &event.event,
+                Event::ZoneTransition { transition }
+                    if transition.from.zone == ZoneKind::Library
+                        && transition.to.zone == ZoneKind::Hand
+            )
+        })
+        && (matches!(
+            after.core.priority,
+            mtgml_state::PriorityState::HeldBy {
+                player,
+                consecutive_passes: 0
+            } if player == after.core.active_player
+        ) || after
+            .execution
+            .pending_decision
+            .as_ref()
+            .is_some_and(|request| {
+                request.request.actor == after.core.active_player
+                    && matches!(
+                        request.request.decision,
+                        mtgml_decision::DecisionDomainV2::Order { .. }
+                    )
+            }))
+}
+
+fn split_upkeep_pass_draw_products(
+    before: &EngineState,
+    result: &TransitionResult,
+) -> Result<(EngineState, TransitionResult, TransitionResult), TransitionViolation> {
+    if !is_upkeep_pass_draw_composition(before, result) {
+        return Err(TransitionViolation::Priority);
+    }
+    let prefix = result
+        .events
+        .get(..3)
+        .ok_or(TransitionViolation::Priority)?;
+    let suffix = result
+        .events
+        .get(3..)
+        .ok_or(TransitionViolation::Priority)?;
+    let response_revision = mtgml_model::StateRevision(
+        before
+            .revision
+            .0
+            .checked_add(1)
+            .ok_or(TransitionViolation::RevisionDidNotAdvance)?,
+    );
+    let mut draw_before = before.clone();
+    draw_before.revision = response_revision;
+    draw_before.core.position = TurnPosition::Beginning {
+        step: BeginningStep::Draw,
+    };
+    draw_before.core.priority = mtgml_state::PriorityState::None;
+    draw_before.execution.pending_decision = None;
+    draw_before.allocators.next_rule_event_id = mtgml_model::RuleEventId(
+        before
+            .allocators
+            .next_rule_event_id
+            .0
+            .checked_add(3)
+            .ok_or(TransitionViolation::EventIdentity)?,
+    );
+    let response = TransitionResult {
+        accepted: true,
+        next_state: draw_before.clone(),
+        delta: mtgml_state::StateDelta::between(
+            before,
+            &draw_before,
+            prefix
+                .iter()
+                .map(|event| event.event.semantic_delta())
+                .collect(),
+        )
+        .map_err(|_| TransitionViolation::DeltaReapplication)?,
+        events: prefix.to_vec(),
+        next_decision: None,
+        status: EpisodeStatus::Running,
+    };
+    let forced = TransitionResult {
+        accepted: true,
+        next_state: result.next_state.clone(),
+        delta: mtgml_state::StateDelta::between(
+            &draw_before,
+            &result.next_state,
+            suffix
+                .iter()
+                .map(|event| event.event.semantic_delta())
+                .collect(),
+        )
+        .map_err(|_| TransitionViolation::DeltaReapplication)?,
+        events: suffix.to_vec(),
+        next_decision: result.next_decision.clone(),
+        status: result.status.clone(),
+    };
+    Ok((draw_before, response, forced))
 }
 
 pub(crate) fn is_second_pass_cleanup_composition(
@@ -1719,14 +2100,30 @@ pub fn validate_transition_contract(
     } else {
         let composed_sba = is_final_sba_order_priority_composition(before, result);
         let composed_cleanup = is_second_pass_cleanup_composition(before, result);
+        let composed_draw = is_upkeep_pass_draw_composition(before, result);
+        let direct_draw = is_draw_s2_priority_composition(before, result);
+        let draw_order = result
+            .next_state
+            .execution
+            .pending_decision
+            .as_ref()
+            .is_some_and(|pending| {
+                matches!(
+                    pending.request.decision,
+                    mtgml_decision::DecisionDomainV2::Order { .. }
+                )
+            });
+        let revision_advance = if composed_draw && draw_order {
+            3
+        } else if composed_sba || composed_cleanup || composed_draw || direct_draw && draw_order {
+            2
+        } else {
+            1
+        };
         let expected_revision = before
             .revision
             .0
-            .checked_add(if composed_sba || composed_cleanup {
-                2
-            } else {
-                1
-            })
+            .checked_add(revision_advance)
             .ok_or(TransitionViolation::RevisionDidNotAdvance)?;
         if result.next_state.revision.0 != expected_revision {
             return Err(TransitionViolation::RevisionDidNotAdvance);
@@ -1749,7 +2146,13 @@ pub fn validate_transition_contract(
 
     if result.accepted {
         validate_accepted_progression(before, result)?;
-        crate::basic_priority::validate_priority_transition(before, result)?;
+        if is_upkeep_pass_draw_composition(before, result) {
+            let (draw_before, response, forced) = split_upkeep_pass_draw_products(before, result)?;
+            crate::basic_priority::validate_priority_transition(before, &response)?;
+            crate::basic_priority::validate_priority_transition(&draw_before, &forced)?;
+        } else {
+            crate::basic_priority::validate_priority_transition(before, result)?;
+        }
         validate_s2_zone_transition_product(before, result)?;
     }
 
@@ -1770,13 +2173,19 @@ pub fn validate_transition_contract(
     let mut cursor = SemanticValidationCursor::from_state(before)?;
     let composed_sba = is_final_sba_order_priority_composition(before, result);
     let composed_cleanup = is_second_pass_cleanup_composition(before, result);
-    let composed_priority = composed_sba || composed_cleanup;
-    let composed_split = u64::try_from(if composed_cleanup {
-        3
-    } else {
-        result.events.len().saturating_sub(2)
-    })
-    .map_err(|_| TransitionViolation::EventIdentity)?;
+    let composed_draw = is_upkeep_pass_draw_composition(before, result);
+    let direct_draw = is_draw_s2_priority_composition(before, result);
+    let draw_order = result
+        .next_state
+        .execution
+        .pending_decision
+        .as_ref()
+        .is_some_and(|pending| {
+            matches!(
+                pending.request.decision,
+                mtgml_decision::DecisionDomainV2::Order { .. }
+            )
+        });
     let revision_one = mtgml_model::StateRevision(
         before
             .revision
@@ -1791,6 +2200,15 @@ pub fn validate_transition_contract(
             .checked_add(2)
             .ok_or(TransitionViolation::RevisionDidNotAdvance)?,
     );
+    let revision_three = mtgml_model::StateRevision(
+        before
+            .revision
+            .0
+            .checked_add(3)
+            .ok_or(TransitionViolation::RevisionDidNotAdvance)?,
+    );
+    let event_len =
+        u64::try_from(result.events.len()).map_err(|_| TransitionViolation::EventIdentity)?;
     for (offset, event) in result.events.iter().enumerate() {
         let offset = u64::try_from(offset).map_err(|_| TransitionViolation::EventIdentity)?;
         let expected = before
@@ -1799,8 +2217,27 @@ pub fn validate_transition_contract(
             .0
             .checked_add(offset)
             .ok_or(TransitionViolation::EventIdentity)?;
-        let expected_revision = if composed_priority {
-            if offset < composed_split {
+        let expected_revision = if composed_draw {
+            if offset < 3 {
+                revision_one
+            } else if draw_order && offset + 1 == event_len {
+                revision_three
+            } else {
+                revision_two
+            }
+        } else if direct_draw && draw_order {
+            if offset + 1 == event_len {
+                revision_two
+            } else {
+                revision_one
+            }
+        } else if composed_sba || composed_cleanup {
+            let split = if composed_cleanup {
+                3u64
+            } else {
+                event_len.saturating_sub(2)
+            };
+            if offset < split {
                 revision_one
             } else {
                 revision_two
@@ -1930,7 +2367,15 @@ pub fn validate_transition_contract(
     }
     cursor.validate_final_state(&result.next_state)?;
 
-    if result.accepted {
+    if result.accepted
+        && !is_upkeep_pass_draw_composition(before, result)
+        && !matches!(
+            before.core.position,
+            TurnPosition::Beginning {
+                step: BeginningStep::Draw
+            }
+        )
+    {
         validate_sba_order_transition(before, result)?;
     }
 

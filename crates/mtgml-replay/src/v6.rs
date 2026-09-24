@@ -26,14 +26,15 @@ const MAGIC_OBSERVATION_CODEC: &str = "magic-m3-observation.v1";
 const SBA_CAPABILITY_KEY: &str = "rules/state-based-actions-combat";
 const SBA_CAPABILITY_VERSION: &str = "0.1.0";
 const BASIC_PRIORITY_CAPABILITY_KEY: &str = "rules/basic-priority";
+const DRAW_CARD_CAPABILITY_KEY: &str = "rules/draw-card";
 const TURN_STRUCTURE_CAPABILITY_KEY: &str = "rules/turn-structure";
 const ZONE_INCARNATION_CAPABILITY_KEY: &str = "rules/zone-incarnation";
 
-fn permits_one_forced_progress_revision(
+fn forced_progress_revision_budget(
     execution: &ExecutionIdentityV1,
     rules: &RulesContractManifestV1,
     observation_codec: &str,
-) -> bool {
+) -> Option<u64> {
     if execution.program_kind != mtgml_model::ExecutionProgramV1::MagicRules
         || observation_codec != MAGIC_OBSERVATION_CODEC
         || !matches!(
@@ -41,10 +42,10 @@ fn permits_one_forced_progress_revision(
             RulesAuthorityV1::ComprehensiveRules { .. }
         )
     {
-        return false;
+        return None;
     }
     let Some(closure) = &rules.capability_closure else {
-        return false;
+        return None;
     };
     let expected = [
         BASIC_PRIORITY_CAPABILITY_KEY,
@@ -52,11 +53,32 @@ fn permits_one_forced_progress_revision(
         TURN_STRUCTURE_CAPABILITY_KEY,
         ZONE_INCARNATION_CAPABILITY_KEY,
     ];
-    closure.len() == expected.len()
+    let expected_draw = [
+        BASIC_PRIORITY_CAPABILITY_KEY,
+        DRAW_CARD_CAPABILITY_KEY,
+        SBA_CAPABILITY_KEY,
+        TURN_STRUCTURE_CAPABILITY_KEY,
+        ZONE_INCARNATION_CAPABILITY_KEY,
+    ];
+    if closure.len() == expected.len()
         && closure
             .iter()
             .zip(expected)
             .all(|(actual, key)| actual.key == key && actual.version == SBA_CAPABILITY_VERSION)
+    {
+        Some(1)
+    } else if closure.len() == expected_draw.len()
+        && closure
+            .iter()
+            .zip(expected_draw)
+            .all(|(actual, key)| actual.key == key && actual.version == SBA_CAPABILITY_VERSION)
+    {
+        // Draw may persist an SBA Order Decision in a later revision while
+        // remaining one forced-progress kernel call.
+        Some(2)
+    } else {
+        None
+    }
 }
 
 fn observation_codec_supported(rules: &RulesContractManifestV1, codec: &str) -> bool {
@@ -330,15 +352,12 @@ impl AuthoritativeReplayV6 {
                 // environment transaction may compose that response with
                 // exactly one rules-owned forced-progress transition before
                 // committing; it never runs a scheduler loop.
-                let maximum_advance = if permits_one_forced_progress_revision(
+                let forced_progress_revisions = forced_progress_revision_budget(
                     &self.manifest.execution_identity,
                     &self.manifest.semantic_contract.rules_manifest,
                     &self.manifest.schemas.observation_payload_codec,
-                ) {
-                    2
-                } else {
-                    1
-                };
+                );
+                let maximum_advance = 1 + forced_progress_revisions.unwrap_or(0);
                 let maximum_revision = previous
                     .state_revision
                     .0
