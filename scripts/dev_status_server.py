@@ -18,6 +18,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 PORT = int(os.environ.get("PORT", "3000"))
+MOCKUP_PATH = ROOT / "scripts" / "dashboard_mockup.html"
 CARGO_HOME = os.environ.get("CARGO_HOME", os.path.expanduser("~/.cargo"))
 VENV_PYTHON = str(ROOT / ".venv" / "bin" / "python")
 
@@ -436,7 +437,14 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header("Cache-Control", "no-cache")
             self.end_headers()
             self.wfile.write(json.dumps(runner.get_state()).encode())
-        elif self.path in ("/", "/index.html"):
+        elif self.path in ("/", "/index.html", "/dashboard"):
+            # RL training dashboard mockup (read per-request so edits show live)
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Cache-Control", "no-cache")
+            self.end_headers()
+            self.wfile.write(MOCKUP_PATH.read_text().encode())
+        elif self.path in ("/status", "/status/index.html"):
             self.send_response(200)
             self.send_header("Content-Type", "text/html; charset=utf-8")
             self.end_headers()

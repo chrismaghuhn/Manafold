@@ -1,0 +1,576 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Manafold — RL Training Observatory (Mockup)</title>
+<style>
+  :root {
+    --bg: #0d1117;
+    --card: #161b22;
+    --card2: #1c2129;
+    --border: #30363d;
+    --text: #c9d1d9;
+    --muted: #8b949e;
+    --green: #3fb950;
+    --red: #f85149;
+    --yellow: #d29922;
+    --blue: #58a6ff;
+    --purple: #bc8cff;
+    --cyan: #39c5cf;
+    --radius: 8px;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.55;
+    padding-bottom: 48px;
+  }
+  .wrap { max-width: 1200px; margin: 0 auto; padding: 20px 16px; }
+
+  header.top {
+    display: flex; flex-wrap: wrap; gap: 10px; align-items: center;
+    padding: 14px 16px; border-bottom: 1px solid var(--border);
+    background: var(--card);
+  }
+  .brand { font-size: 1.05rem; font-weight: 700; letter-spacing: 0.3px; }
+  .brand span { color: var(--blue); }
+  .mock-badge {
+    font-size: 0.7rem; font-weight: 700; letter-spacing: 1px;
+    color: var(--yellow); border: 1px solid var(--yellow);
+    padding: 2px 8px; border-radius: 20px; text-transform: uppercase;
+  }
+  .top .spacer { flex: 1; }
+  .top a { color: var(--muted); font-size: 0.85rem; text-decoration: none; }
+  .top a:hover { color: var(--blue); }
+
+  .runbar {
+    display: flex; flex-wrap: wrap; gap: 8px 20px; align-items: center;
+    padding: 10px 16px; font-size: 0.85rem; color: var(--muted);
+    border-bottom: 1px solid var(--border); background: #10151c;
+  }
+  .runbar b { color: var(--text); font-weight: 600; }
+  .runbar .live-dot {
+    display: inline-block; width: 8px; height: 8px; border-radius: 50%;
+    background: var(--green); margin-right: 6px; animation: pulse 1.6s infinite;
+  }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.35; } }
+
+  nav.tabs {
+    display: flex; gap: 4px; overflow-x: auto; padding: 8px 16px 0;
+    background: #10151c; border-bottom: 1px solid var(--border);
+    scrollbar-width: thin;
+  }
+  nav.tabs button {
+    background: none; border: none; border-bottom: 2px solid transparent;
+    color: var(--muted); font-size: 0.88rem; font-weight: 500;
+    padding: 8px 14px; cursor: pointer; white-space: nowrap;
+  }
+  nav.tabs button.active { color: var(--text); border-bottom-color: var(--blue); }
+  nav.tabs button:hover { color: var(--text); }
+
+  section.tab { display: none; padding-top: 18px; }
+  section.tab.active { display: block; }
+  .grid { display: grid; gap: 14px; }
+  .g4 { grid-template-columns: repeat(4, 1fr); }
+  .g3 { grid-template-columns: repeat(3, 1fr); }
+  .g2 { grid-template-columns: repeat(2, 1fr); }
+  @media (max-width: 980px) { .g4 { grid-template-columns: repeat(2, 1fr); } .g3 { grid-template-columns: repeat(2, 1fr); } }
+  @media (max-width: 640px) { .g4, .g3, .g2 { grid-template-columns: 1fr; } }
+
+  .card {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 14px 16px;
+    min-width: 0;
+  }
+  .card h3 {
+    font-size: 0.78rem; font-weight: 600; color: var(--muted);
+    text-transform: uppercase; letter-spacing: 0.6px; margin-bottom: 8px;
+  }
+  .kpi .value { font-size: 1.7rem; font-weight: 700; }
+  .kpi .delta { font-size: 0.8rem; font-weight: 600; }
+  .kpi .sub { font-size: 0.78rem; color: var(--muted); margin-top: 2px; }
+  .up { color: var(--green); }
+  .down { color: var(--red); }
+
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+  th {
+    text-align: left; color: var(--muted); font-weight: 600; font-size: 0.72rem;
+    text-transform: uppercase; letter-spacing: 0.5px;
+    padding: 6px 8px; border-bottom: 1px solid var(--border);
+  }
+  td { padding: 7px 8px; border-bottom: 1px solid #21262d; white-space: nowrap; }
+  tr:last-child td { border-bottom: none; }
+  td.num { font-variant-numeric: tabular-nums; }
+  .bar {
+    height: 6px; border-radius: 3px; background: #21262d;
+    overflow: hidden; min-width: 80px;
+  }
+  .bar > i { display: block; height: 100%; background: var(--blue); border-radius: 3px; }
+  .bar > i.g { background: var(--green); }
+  .bar > i.r { background: var(--red); }
+  .bar > i.y { background: var(--yellow); }
+  .bar > i.p { background: var(--purple); }
+  .bar > i.c { background: var(--cyan); }
+
+  .chart { width: 100%; height: auto; display: block; }
+  .legend { display: flex; gap: 14px; flex-wrap: wrap; font-size: 0.75rem; color: var(--muted); margin-top: 6px; }
+  .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; }
+
+  .feed {
+    font-family: "SF Mono", Monaco, Consolas, monospace;
+    font-size: 0.76rem; line-height: 1.7; max-height: 260px; overflow: auto;
+  }
+  .feed .t { color: var(--muted); margin-right: 8px; }
+  .feed .tag { padding: 0 6px; border-radius: 4px; margin-right: 6px; font-size: 0.7rem; }
+  .tag-blue { background: rgba(88,166,255,0.15); color: var(--blue); }
+  .tag-green { background: rgba(63,185,80,0.15); color: var(--green); }
+  .tag-red { background: rgba(248,81,73,0.15); color: var(--red); }
+  .tag-yellow { background: rgba(210,153,34,0.15); color: var(--yellow); }
+  .tag-purple { background: rgba(188,140,255,0.15); color: var(--purple); }
+
+  .replay-row { display: flex; align-items: center; gap: 12px; padding: 8px 0; border-bottom: 1px solid #21262d; flex-wrap: wrap; }
+  .replay-row:last-child { border-bottom: none; }
+  .replay-id { font-family: monospace; color: var(--blue); font-size: 0.82rem; }
+  .replay-meta { color: var(--muted); font-size: 0.78rem; }
+  .btn-sm {
+    margin-left: auto; background: none; border: 1px solid var(--border);
+    color: var(--muted); font-size: 0.75rem; padding: 4px 12px;
+    border-radius: 6px; cursor: pointer;
+  }
+  .btn-sm:hover { border-color: var(--blue); color: var(--blue); }
+
+  .note { font-size: 0.75rem; color: var(--muted); margin-top: 14px; }
+  .mt { margin-top: 14px; }
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="brand">Manafold <span>· RL Training Observatory</span></div>
+  <span class="mock-badge">Mockup</span>
+  <div class="spacer"></div>
+  <a href="/status">Dev status →</a>
+</header>
+
+<div class="runbar">
+  <span><span class="live-dot"></span>Run <b>#0142</b></span>
+  <span>Agent: <b>PPO-v3 (2×256 MLP)</b></span>
+  <span>Engine: <b>Manafold v0.2.2</b></span>
+  <span>Games: <b>50,120</b></span>
+  <span>Wall time: <b>4h 12m</b></span>
+  <span>Mirror match: <b>Monored Aggro vs Monored Aggro</b></span>
+</div>
+
+<nav class="tabs" id="tabs">
+  <button data-tab="live" class="active">Live</button>
+  <button data-tab="gameplay">Gameplay</button>
+  <button data-tab="cards">Cards</button>
+  <button data-tab="decisions">Decisions</button>
+  <button data-tab="learning">Learning</button>
+  <button data-tab="evaluation">Evaluation</button>
+  <button data-tab="performance">Performance</button>
+  <button data-tab="replays">Replays</button>
+</nav>
+
+<div class="wrap">
+
+<!-- ============ LIVE ============ -->
+<section class="tab active" id="tab-live">
+  <div class="grid g4">
+    <div class="card kpi">
+      <h3>Win rate</h3>
+      <div class="value">54.2%</div>
+      <div class="delta up">▲ +1.8 pts / 1k games</div>
+      <div class="sub">rolling window 500 games</div>
+    </div>
+    <div class="card kpi">
+      <h3>Mana efficiency</h3>
+      <div class="value">71.3%</div>
+      <div class="delta up">▲ +2.1 pts</div>
+      <div class="sub">mana spent ÷ mana available</div>
+    </div>
+    <div class="card kpi">
+      <h3>Sequencing score</h3>
+      <div class="value">0.68</div>
+      <div class="delta up">▲ +0.04</div>
+      <div class="sub">temporal ordering of plays</div>
+    </div>
+    <div class="card kpi">
+      <h3>Games / sec</h3>
+      <div class="value">132</div>
+      <div class="delta" style="color:var(--muted)">stable</div>
+      <div class="sub">across 8 rollout workers</div>
+    </div>
+  </div>
+
+  <div class="grid g2 mt">
+    <div class="card">
+      <h3>Win rate over training</h3>
+      <div id="chart-winrate"></div>
+      <div class="legend"><span><i style="background:var(--blue)"></i>win rate</span><span><i style="background:var(--muted)"></i>baseline (random)</span></div>
+    </div>
+    <div class="card">
+      <h3>Why the win rate moves — drivers</h3>
+      <div id="chart-drivers"></div>
+      <div class="legend">
+        <span><i style="background:var(--green)"></i>mana efficiency</span>
+        <span><i style="background:var(--yellow)"></i>mulligan accuracy</span>
+        <span><i style="background:var(--purple)"></i>sequencing</span>
+        <span><i style="background:var(--cyan)"></i>card priority quality</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="card mt">
+    <h3>Live game feed — game #50,120</h3>
+    <div class="feed" id="feed">
+      <div><span class="t">t+0.0s</span><span class="tag tag-blue">START</span>Game 50120 initialized · seed 0x9f3a21c4 · Agent=P0</div>
+      <div><span class="t">t+0.3s</span><span class="tag tag-yellow">DECISION</span>P0 mulligans 7 → 6 · hand land count 1</div>
+      <div><span class="t">t+1.2s</span><span class="tag tag-green">CAST</span>P0 plays Mountain (turn 1)</div>
+      <div><span class="t">t+2.1s</span><span class="tag tag-red">COMBAT</span>P0 attacks with Ragavan (P1 at 19)</div>
+      <div><span class="t">t+3.4s</span><span class="tag tag-blue">RESOLVE</span>Lightning Bolt targets P1 (P1 at 16)</div>
+    </div>
+    <div class="note">Feed is simulated for the mockup. Real feed will project the engine's authoritative event stream (DEEP telemetry level).</div>
+  </div>
+</section>
+
+<!-- ============ GAMEPLAY ============ -->
+<section class="tab" id="tab-gameplay">
+  <div class="grid g2">
+    <div class="card">
+      <h3>Life totals — sampled game #49,877</h3>
+      <div id="chart-life"></div>
+      <div class="legend"><span><i style="background:var(--blue)"></i>P0 (agent)</span><span><i style="background:var(--red)"></i>P1 (opponent)</span></div>
+    </div>
+    <div class="card">
+      <h3>Board size per turn</h3>
+      <div id="chart-board"></div>
+      <div class="legend"><span><i style="background:var(--green)"></i>agent permanents</span><span><i style="background:var(--purple)"></i>opponent permanents</span></div>
+    </div>
+  </div>
+  <div class="grid g3 mt">
+    <div class="card kpi">
+      <h3>Avg game length</h3>
+      <div class="value">8.4 <span style="font-size:0.9rem;color:var(--muted)">turns</span></div>
+      <div class="sub">▼ −0.6 turns vs last checkpoint</div>
+    </div>
+    <div class="card kpi">
+      <h3>Timeouts / rule-out losses</h3>
+      <div class="value">0.4%</div>
+      <div class="sub">fail-closed engine errors</div>
+    </div>
+    <div class="card kpi">
+      <h3>Mulligan accuracy</h3>
+      <div class="value">88%</div>
+      <div class="sub">kept hands that won ≥ 50% baseline</div>
+    </div>
+  </div>
+  <div class="card mt">
+    <h3>Turn-by-turn state sequence — game #49,877 (DEEP trace)</h3>
+    <table>
+      <tr><th>Turn</th><th>Active</th><th>Mana avail</th><th>Mana spent</th><th>Key play</th><th>Decision candidates</th><th>Chosen (p)</th></tr>
+      <tr><td>1</td><td>P0</td><td class="num">1</td><td class="num">1</td><td>Mountain → Ragavan</td><td class="num">14</td><td>Ragavan (0.61)</td></tr>
+      <tr><td>2</td><td>P1</td><td class="num">2</td><td class="num">2</td><td>Mountain → Bloodmoon</td><td class="num">9</td><td>Bloodmoon (0.44)</td></tr>
+      <tr><td>3</td><td>P0</td><td class="num">2</td><td class="num">2</td><td>Attack, then Dragon's Rage</td><td class="num">22</td><td>Attack (0.72)</td></tr>
+      <tr><td>4</td><td>P1</td><td class="num">3</td><td class="num">3</td><td>Cast Fury on attacker</td><td class="num">17</td><td>Fury (0.55)</td></tr>
+      <tr><td>5</td><td>P0</td><td class="num">3</td><td class="num">1</td><td>Hold mana, pass</td><td class="num">11</td><td>Pass (0.39)</td></tr>
+    </table>
+    <div class="note">Snapshot-based trace from the DEEP telemetry level; candidate lists come from the engine's decision protocol.</div>
+  </div>
+</section>
+
+<!-- ============ CARDS ============ -->
+<section class="tab" id="tab-cards">
+  <div class="grid g2">
+    <div class="card">
+      <h3>Card impact on win rate — top cards (played ≥ 500 games)</h3>
+      <table>
+        <tr><th>Card</th><th>Played</th><th>Win Δ when cast</th><th></th></tr>
+        <tr><td>Ragavan, Nimble Pilferer</td><td class="num">18,204</td><td class="num up">+6.2%</td><td><div class="bar"><i class="g" style="width:78%"></i></div></td></tr>
+        <tr><td>Lightning Bolt</td><td class="num">21,930</td><td class="num up">+4.8%</td><td><div class="bar"><i class="g" style="width:62%"></i></div></td></tr>
+        <tr><td>Blood Moon</td><td class="num">9,412</td><td class="num up">+3.1%</td><td><div class="bar"><i class="g" style="width:44%"></i></div></td></tr>
+        <tr><td>Fury</td><td class="num">7,805</td><td class="num down">−1.4%</td><td><div class="bar"><i class="r" style="width:22%"></i></div></td></tr>
+        <tr><td>Dragon's Rage Channeler</td><td class="num">12,330</td><td class="num up">+2.9%</td><td><div class="bar"><i class="g" style="width:41%"></i></div></td></tr>
+      </table>
+    </div>
+    <div class="card">
+      <h3>Mana efficiency per card (spent when available)</h3>
+      <table>
+        <tr><th>Card</th><th>Cast on curve</th><th>Efficiency</th><th></th></tr>
+        <tr><td>Lightning Bolt</td><td class="num">92%</td><td class="num">0.94</td><td><div class="bar"><i class="c" style="width:94%"></i></div></td></tr>
+        <tr><td>Ragavan, Nimble Pilferer</td><td class="num">85%</td><td class="num">0.88</td><td><div class="bar"><i class="c" style="width:88%"></i></div></td></tr>
+        <tr><td>Blood Moon</td><td class="num">71%</td><td class="num">0.76</td><td><div class="bar"><i class="c" style="width:76%"></i></div></td></tr>
+        <tr><td>Fury</td><td class="num">54%</td><td class="num">0.61</td><td><div class="bar"><i class="y" style="width:61%"></i></div></td></tr>
+        <tr><td>Dragon's Rage Channeler</td><td class="num">80%</td><td class="num">0.83</td><td><div class="bar"><i class="c" style="width:83%"></i></div></td></tr>
+      </table>
+    </div>
+  </div>
+  <div class="card mt">
+    <h3>Card priority learning curve — P(chosen) vs. optimal priority</h3>
+    <div id="chart-priority"></div>
+    <div class="legend"><span><i style="background:var(--cyan)"></i>agent priority</span><span><i style="background:var(--muted)"></i>oracle priority</span></div>
+  </div>
+</section>
+
+<!-- ============ DECISIONS ============ -->
+<section class="tab" id="tab-decisions">
+  <div class="grid g2">
+    <div class="card">
+      <h3>Decision type distribution — last 10k games</h3>
+      <table>
+        <tr><th>Decision</th><th>Share</th><th></th></tr>
+        <tr><td>Cast spell</td><td class="num">31%</td><td><div class="bar"><i style="width:62%"></i></div></td></tr>
+        <tr><td>Declare attackers</td><td class="num">23%</td><td><div class="bar"><i style="width:46%"></i></div></td></tr>
+        <tr><td>Pass priority</td><td class="num">18%</td><td><div class="bar"><i style="width:36%"></i></div></td></tr>
+        <tr><td>Activate ability</td><td class="num">14%</td><td><div class="bar"><i class="p" style="width:28%"></i></div></td></tr>
+        <tr><td>Assign blockers</td><td class="num">9%</td><td><div class="bar"><i class="g" style="width:18%"></i></div></td></tr>
+        <tr><td>Mulligan</td><td class="num">5%</td><td><div class="bar"><i class="y" style="width:10%"></i></div></td></tr>
+      </table>
+    </div>
+    <div class="card">
+      <h3>Decision quality by phase (win Δ of chosen vs. best candidate)</h3>
+      <div id="chart-phase"></div>
+      <div class="legend"><span><i style="background:var(--blue)"></i>value regret per phase</span></div>
+    </div>
+  </div>
+  <div class="card mt">
+    <h3>Chosen action log-softmax stats</h3>
+    <table>
+      <tr><th>Bucket</th><th>Mean log p</th><th>Entropy contribution</th><th>Candidates (avg)</th></tr>
+      <tr><td>Casting spells</td><td class="num">−0.72</td><td class="num">0.41</td><td class="num">18.2</td></tr>
+      <tr><td>Combat declaration</td><td class="num">−0.58</td><td class="num">0.33</td><td class="num">6.4</td></tr>
+      <tr><td>Activated abilities</td><td class="num">−0.91</td><td class="num">0.52</td><td class="num">4.1</td></tr>
+      <tr><td>Forced progress (pass)</td><td class="num">−0.12</td><td class="num">0.08</td><td class="num">1.0</td></tr>
+    </table>
+  </div>
+</section>
+
+<!-- ============ LEARNING ============ -->
+<section class="tab" id="tab-learning">
+  <div class="grid g4">
+    <div class="card kpi"><h3>Policy loss</h3><div class="value">−0.021</div><div class="delta down">▼ −0.004</div></div>
+    <div class="card kpi"><h3>Value loss (MSE)</h3><div class="value">0.083</div><div class="delta down">▼ −0.011</div></div>
+    <div class="card kpi"><h3>Entropy</h3><div class="value">1.94</div><div class="delta" style="color:var(--muted)">target 1.5–2.5</div></div>
+    <div class="card kpi"><h3>Approx. KL</h3><div class="value">0.008</div><div class="delta up">within trust region</div></div>
+  </div>
+  <div class="grid g2 mt">
+    <div class="card">
+      <h3>Loss curves</h3>
+      <div id="chart-loss"></div>
+      <div class="legend"><span><i style="background:var(--blue)"></i>policy loss</span><span><i style="background:var(--purple)"></i>value loss</span></div>
+    </div>
+    <div class="card">
+      <h3>Value prediction vs. realized outcome</h3>
+      <div id="chart-value"></div>
+      <div class="legend"><span><i style="background:var(--cyan)"></i>predicted V(s)</span><span><i style="background:var(--muted)"></i>realized return</span></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ EVALUATION ============ -->
+<section class="tab" id="tab-evaluation">
+  <div class="card">
+    <h3>League table — best-of-500 evaluation matches</h3>
+    <table>
+      <tr><th>Opponent</th><th>Win rate</th><th></th><th>Avg turns</th><th>Elo (est.)</th><th>Δ vs last eval</th></tr>
+      <tr><td>Random legal agent</td><td class="num">98.1%</td><td><div class="bar"><i class="g" style="width:98%"></i></div></td><td class="num">5.2</td><td class="num">1842</td><td class="num up">+12</td></tr>
+      <tr><td>Greedy heuristic</td><td class="num">61.4%</td><td><div class="bar"><i class="g" style="width:61%"></i></div></td><td class="num">7.1</td><td class="num">1420</td><td class="num up">+21</td></tr>
+      <tr><td>MCTS-lite (100 rollouts)</td><td class="num">52.7%</td><td><div class="bar"><i class="g" style="width:53%"></i></div></td><td class="num">8.9</td><td class="num">1381</td><td class="num up">+34</td></tr>
+      <tr><td>Self (frozen ckpt #0130)</td><td class="num">53.9%</td><td><div class="bar"><i class="g" style="width:54%"></i></div></td><td class="num">8.4</td><td class="num">1395</td><td class="num up">+29</td></tr>
+    </table>
+    <div class="note">Evaluation games run with the engine's deterministic replay seeds — identical agent weights vs. identical opponents.</div>
+  </div>
+  <div class="card mt">
+    <h3>Win rate per evaluation round</h3>
+    <div id="chart-eval"></div>
+    <div class="legend"><span><i style="background:var(--green)"></i>vs. self (frozen)</span><span><i style="background:var(--yellow)"></i>vs. MCTS-lite</span></div>
+  </div>
+</section>
+
+<!-- ============ PERFORMANCE ============ -->
+<section class="tab" id="tab-performance">
+  <div class="grid g4">
+    <div class="card kpi"><h3>Engine steps / sec</h3><div class="value">48.2k</div><div class="sub">authoritative state transitions</div></div>
+    <div class="card kpi"><h3>Games / sec</h3><div class="value">132</div><div class="sub">8 rollout workers</div></div>
+    <div class="card kpi"><h3>Avg step latency</h3><div class="value">84 µs</div><div class="sub">p99: 310 µs</div></div>
+    <div class="card kpi"><h3>Worker RSS</h3><div class="value">312 MB</div><div class="sub">per worker, stable</div></div>
+  </div>
+  <div class="card mt">
+    <h3>Throughput over run</h3>
+    <div id="chart-throughput"></div>
+    <div class="legend"><span><i style="background:var(--blue)"></i>games/sec</span><span><i style="background:var(--purple)"></i>steps/sec (÷1000)</span></div>
+  </div>
+  <div class="card mt">
+    <h3>Engine internals</h3>
+    <table>
+      <tr><th>Subsystem</th><th>Calls</th><th>Avg time</th><th>Share</th><th></th></tr>
+      <tr><td>State transition</td><td class="num">212.4M</td><td class="num">31 µs</td><td class="num">42%</td><td><div class="bar"><i style="width:42%"></i></div></td></tr>
+      <tr><td>Legal decision enumeration</td><td class="num">96.1M</td><td class="num">22 µs</td><td class="num">28%</td><td><div class="bar"><i class="p" style="width:28%"></i></div></td></tr>
+      <tr><td>Observation encoding</td><td class="num">88.3M</td><td class="num">17 µs</td><td class="num">19%</td><td><div class="bar"><i class="c" style="width:19%"></i></div></td></tr>
+      <tr><td>State hashing / digests</td><td class="num">41.0M</td><td class="num">9 µs</td><td class="num">8%</td><td><div class="bar"><i class="y" style="width:8%"></i></div></td></tr>
+      <tr><td>Telemetry (FAST)</td><td class="num">40.2M</td><td class="num">4 µs</td><td class="num">3%</td><td><div class="bar"><i class="g" style="width:3%"></i></div></td></tr>
+    </table>
+  </div>
+</section>
+
+<!-- ============ REPLAYS ============ -->
+<section class="tab" id="tab-replays">
+  <div class="card">
+    <h3>Saved replays (DEEP traces)</h3>
+    <div class="replay-row">
+      <span class="replay-id">game-49877.jsonl</span>
+      <span class="replay-meta">P0 win · 11 turns · 1.4 MB · seed 0x9f3a21c4 · tags: <span class="tag tag-green">comeback</span> <span class="tag tag-blue">deep-trace</span></span>
+      <button class="btn-sm">Open</button>
+    </div>
+    <div class="replay-row">
+      <span class="replay-id">game-49812.jsonl</span>
+      <span class="replay-meta">P1 win · 6 turns · 0.6 MB · seed 0x2c71b0fe · tags: <span class="tag tag-red">fast-loss</span></span>
+      <button class="btn-sm">Open</button>
+    </div>
+    <div class="replay-row">
+      <span class="replay-id">game-49640.jsonl</span>
+      <span class="replay-meta">P0 win · 9 turns · 1.1 MB · seed 0x77aa90d2 · tags: <span class="tag tag-blue">deep-trace</span> <span class="tag tag-yellow">close-game</span></span>
+      <button class="btn-sm">Open</button>
+    </div>
+    <div class="replay-row">
+      <span class="replay-id">game-49588.jsonl</span>
+      <span class="replay-meta">P0 win · 4 turns · 0.3 MB · seed 0x1de4c8a0 · tags: <span class="tag tag-green">rush</span></span>
+      <button class="btn-sm">Open</button>
+    </div>
+    <div class="note">Deterministic replays: identical seed + identical decision log reproduce the game bit-for-bit (replay contract).</div>
+  </div>
+</section>
+
+<div class="note">
+  ⚠️ Mockup only — all numbers are illustrative placeholders. The real dashboard will consume the FAST/DEEP telemetry
+  streams emitted by the <code>mtgml-telemetry</code> aggregator.
+</div>
+</div>
+
+<script>
+// ---------- tabs ----------
+document.querySelectorAll("#tabs button").forEach(function (btn) {
+  btn.addEventListener("click", function () {
+    document.querySelectorAll("#tabs button").forEach(function (b) { b.classList.remove("active"); });
+    document.querySelectorAll("section.tab").forEach(function (s) { s.classList.remove("active"); });
+    btn.classList.add("active");
+    document.getElementById("tab-" + btn.dataset.tab).classList.add("active");
+  });
+});
+
+// ---------- tiny SVG line chart helper ----------
+function lineChart(containerId, series, opts) {
+  opts = opts || {};
+  var W = opts.w || 560, H = opts.h || 160, pad = 26;
+  var all = [];
+  series.forEach(function (s) { all = all.concat(s.data); });
+  var min = Math.min.apply(null, all), max = Math.max.apply(null, all);
+  if (min === max) { min -= 1; max += 1; }
+  var n = Math.max.apply(null, series.map(function (s) { return s.data.length; }));
+  function pts(data) {
+    var step = (W - pad * 2) / Math.max(n - 1, 1);
+    return data.map(function (v, i) {
+      var x = pad + i * step;
+      var y = H - pad - ((v - min) / (max - min)) * (H - pad * 2);
+      return x.toFixed(1) + "," + y.toFixed(1);
+    }).join(" ");
+  }
+  var svg = '<svg class="chart" viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="none" role="img">';
+  // gridlines
+  for (var g = 0; g <= 3; g++) {
+    var gy = pad + ((H - pad * 2) * g) / 3;
+    svg += '<line x1="' + pad + '" y1="' + gy + '" x2="' + (W - pad) + '" y2="' + gy + '" stroke="#21262d" stroke-width="1"/>';
+    var gv = max - ((max - min) * g) / 3;
+    svg += '<text x="4" y="' + (gy + 3) + '" fill="#8b949e" font-size="9">' + gv.toFixed(opts.dec === undefined ? 1 : opts.dec) + "</text>";
+  }
+  series.forEach(function (s) {
+    svg += '<polyline fill="none" stroke="' + s.color + '" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" points="' + pts(s.data) + '"/>';
+    if (s.area) {
+      var p = pts(s.data).split(" ");
+      svg += '<polygon fill="' + s.color + '" opacity="0.08" points="' + pad + "," + (H - pad) + " " + pts(s.data) + " " + (W - pad) + "," + (H - pad) + '"/>';
+    }
+  });
+  svg += "</svg>";
+  document.getElementById(containerId).innerHTML = svg;
+}
+
+function walk(base, n, noise, drift) {
+  var out = [], v = base;
+  for (var i = 0; i < n; i++) {
+    v += (Math.sin(i / 6) * noise) + drift + (Math.random() - 0.5) * noise;
+    out.push(Math.max(0, v));
+  }
+  return out;
+}
+
+lineChart("chart-winrate", [
+  { color: "#58a6ff", data: walk(42, 1.6, 1.8, 0.07), area: true },
+  { color: "#8b949e", data: walk(50, 1.2, 1.0, 0) }
+]);
+lineChart("chart-drivers", [
+  { color: "#3fb950", data: walk(58, 1.4, 2.2, 0.05) },
+  { color: "#d29922", data: walk(74, 1.2, 2.0, 0.03) },
+  { color: "#bc8cff", data: walk(52, 1.6, 2.0, 0.04) },
+  { color: "#39c5cf", data: walk(47, 1.4, 2.2, 0.05) }
+]);
+lineChart("chart-life", [
+  { color: "#58a6ff", data: [20, 20, 19, 19, 17, 16, 14, 12, 9, 6, 3, 1] },
+  { color: "#f85149", data: [20, 18, 16, 15, 13, 11, 9, 8, 5, 3, 0, 0] }
+]);
+lineChart("chart-board", [
+  { color: "#3fb950", data: [1, 2, 2, 3, 4, 4, 5, 5, 6, 6] },
+  { color: "#bc8cff", data: [0, 1, 1, 2, 2, 3, 3, 3, 2, 1] }
+]);
+lineChart("chart-priority", [
+  { color: "#39c5cf", data: walk(0.42, 0.03, 0.06, 0.008) },
+  { color: "#8b949e", data: walk(0.91, 0.01, 0.05, 0) }
+], { dec: 2 });
+lineChart("chart-phase", [
+  { color: "#58a6ff", data: walk(0.18, 0.02, 0.04, -0.001) }
+], { dec: 2 });
+lineChart("chart-loss", [
+  { color: "#58a6ff", data: walk(0.06, 0.008, 0.012, -0.0004) },
+  { color: "#bc8cff", data: walk(0.14, 0.02, 0.03, -0.001) }
+], { dec: 2 });
+lineChart("chart-value", [
+  { color: "#39c5cf", data: walk(0.1, 0.04, 0.09, 0.001) },
+  { color: "#8b949e", data: walk(0.05, 0.05, 0.12, 0) }
+], { dec: 2 });
+lineChart("chart-eval", [
+  { color: "#3fb950", data: walk(45, 2.5, 4, 0.6) },
+  { color: "#d29922", data: walk(44, 2.5, 4, 0.5) }
+]);
+lineChart("chart-throughput", [
+  { color: "#58a6ff", data: walk(120, 4, 8, 0.4) },
+  { color: "#bc8cff", data: walk(42, 2, 4, 0.2) }
+]);
+
+// ---------- simulated live feed ----------
+var feedEvents = [
+  '<span class="tag tag-green">CAST</span>P0 plays Mountain, passes (turn 5)',
+  '<span class="tag tag-red">COMBAT</span>P1 attacks with 2 creatures · P0 blocks 1 (trade)',
+  '<span class="tag tag-yellow">DECISION</span>P0 holds instant — 3 candidates, pass (0.52)',
+  '<span class="tag tag-blue">RESOLVE</span>Blood Moon enters battlefield',
+  '<span class="tag tag-purple">TRIGGER</span>Ragavan creates Treasure token',
+  '<span class="tag tag-red">COMBAT</span>P0 attacks for 4 (P1 at 12)',
+  '<span class="tag tag-green">CAST</span>P1 casts Fury (evoked)',
+  '<span class="tag tag-blue">STATE</span>State digest 0x4b2c… verified (replay contract)'
+];
+var feedIdx = 0, feedT = 4.5;
+setInterval(function () {
+  var feed = document.getElementById("feed");
+  if (!feed) return;
+  var div = document.createElement("div");
+  feedT += 1.1;
+  div.innerHTML = '<span class="t">t+' + feedT.toFixed(1) + 's</span>' + feedEvents[feedIdx % feedEvents.length];
+  feed.appendChild(div);
+  feedIdx++;
+  while (feed.children.length > 12) feed.removeChild(feed.firstChild);
+  feed.scrollTop = feed.scrollHeight;
+}, 1800);
+</script>
+</body>
+</html>
