@@ -1,14 +1,14 @@
-from ._observation_m3 import (
-    SYNTHETIC_M3_OBSERVATION_SCHEMA,
-    SyntheticM3Observation,
-    SyntheticM3Priority,
-    SyntheticM3TurnPosition,
-)
 from ._magic_observation_m3 import (
     MAGIC_M3_OBSERVATION_SCHEMA,
     MagicM3CompletedOrder,
     MagicM3Observation,
     MagicM3PendingSbaOrdering,
+)
+from ._observation_m3 import (
+    SYNTHETIC_M3_OBSERVATION_SCHEMA,
+    SyntheticM3Observation,
+    SyntheticM3Priority,
+    SyntheticM3TurnPosition,
 )
 from .decision import (
     ActionCandidate,
@@ -75,6 +75,7 @@ from .replay import (
 from .wire import compute_information_state_digest_v2, decode_canonical, encode_canonical
 
 __all__ = [
+    "MAGIC_M3_OBSERVATION_SCHEMA",
     "SYNTHETIC_M3_OBSERVATION_SCHEMA",
     "ActionCandidate",
     "AuthoritativeReplayV1",
@@ -101,6 +102,9 @@ __all__ = [
     "InitialEnvironmentIdentityV4",
     "InitialEnvironmentIdentityV5",
     "InitialEnvironmentIdentityV6",
+    "MagicM3CompletedOrder",
+    "MagicM3Observation",
+    "MagicM3PendingSbaOrdering",
     "ObservationEnvelope",
     "ObservedEvent",
     "ObservedEventEnvelope",
@@ -113,10 +117,6 @@ __all__ = [
     "PlayerResult",
     "PlayerStep",
     "PlayerStepV2",
-    "MAGIC_M3_OBSERVATION_SCHEMA",
-    "MagicM3CompletedOrder",
-    "MagicM3Observation",
-    "MagicM3PendingSbaOrdering",
     "ReplayManifestV1",
     "ReplayManifestV2",
     "ReplayManifestV3",

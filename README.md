@@ -21,14 +21,15 @@
 - **Task 14:** `COMPLETE` — `S1_EXACT_HEAD_VERIFICATION = PASS`
 - **S3.P0:** `COMPLETE / FROZEN` (reviewed head `0cd24d1f2cb4183c19fb04ce0c3c827148313a3b`, PR #210, merge commit `ffc433985f41e6e2980df23a103b5e2358527ea3`)
 - **S3.0:** `COMPLETE / FROZEN` (reviewed head `aa28f9753225dca0e58e33b0d0356a1cc560aae3`, PR #211, merge commit `66f3b713787cad89674257f6e0b6448b9fd568f9`)
-- **S3.A:** Tasks 5–9A complete / reviewed; Task 9B0 atomic SBA batch design is a candidate pending exact-head review; Task 9 implementation is not complete
-- **Next gate:** `M3_S3_A_TASK_9B0_EXACT_HEAD_REVIEW`
+- **Magic rules-flow inventory:** `REVIEWED / FROZEN_PLANNING_INPUT` at `8a440645735fcb17be9470c7a53969860b1d4fad`; M3 has 8 major semantic blocks and all 11 Foundation capabilities accounted for
+- **M3 Block 1:** bounded S3.A implementation is a candidate pending exact-head review; the nonterminal final-Order Reference path remains blocked until Basic Priority in Block 2
+- **Next gate:** `M3_BLOCK_1_EXACT_HEAD_REVIEW`
 - **M3 hardening acceptance:** PR #184 merged and accepted ADR 0054/Foundation V2; T0 was reauthorized under Issue #178, implemented by merged PRs #189/#190/#191, and finalized as COMPLETE / FROZEN
 - **Capability lifecycle:** 9 Foundation capabilities are `specified`, 1 is `implemented`, 1 is `covered`, and 0 are `certified`
 - **Current boundary:** S2 authoritative replay is `DEFERRED_REQUIRED / BLOCKED_FOR_COVERED`; `draw-card × zone-incarnation` and `state-based-actions-combat × zone-incarnation` remain `UNSATISFIED`. S3.B/C are not authorized. Certification and card/deck/format/Commander/playability support are not claimed.
 - **Project type:** independent greenfield MTG/ML rules and simulation engine
 - **Playable engine:** no
-- **Real Magic semantics:** bounded M3.S1 turn-structure slice and implemented M3.S2 selected zone-incarnation profiles only
+- **Real Magic semantics:** S1 is covered; S2 is implemented / not covered; bounded S3.A batch, APNAP, and production-identity work is a candidate pending exact-head review; no S3.A lifecycle promotion is claimed
 - **Real card support:** none
 
 **Current resumable execution contract:** V6. V6 binds the V5 full-state

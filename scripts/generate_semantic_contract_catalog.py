@@ -58,9 +58,7 @@ def render_rules_execution_generated(
     """Render the exact S1 and S3.A Magic execution profiles."""
     catalog = catalog if catalog is not None else load_source()
     entries = {
-        entry.get("entry_id"): entry
-        for entry in catalog["entries"]
-        if isinstance(entry, dict)
+        entry.get("entry_id"): entry for entry in catalog["entries"] if isinstance(entry, dict)
     }
     s1 = entries.get(RULES_ENTRY_ID)
     s3a = entries.get(S3A_ENTRY_ID)
@@ -395,7 +393,10 @@ def assert_production_policy(catalog: dict[str, object]) -> None:
     """Require Synthetic, frozen S1, and the distinct bounded S3.A identity."""
     entries = catalog["entries"]
     if len(entries) != 3:
-        raise SystemExit(f"production semantic-contract catalog must contain exactly three entries; got {len(entries)}")
+        raise SystemExit(
+            "production semantic-contract catalog must contain exactly three entries; "
+            f"got {len(entries)}"
+        )
     by_id = {}
     for entry in entries:
         if not isinstance(entry, dict):
@@ -409,14 +410,26 @@ def assert_production_policy(catalog: dict[str, object]) -> None:
     s1 = by_id.get(RULES_ENTRY_ID)
     s3a = by_id.get(S3A_ENTRY_ID)
     if synthetic is None or s1 is None or s3a is None:
-        raise SystemExit("production semantic catalog requires Synthetic, exact S1, and exact S3.A entries")
-    if synthetic["rules_authority"] != {"variant": "synthetic_legacy"} or synthetic["capability_closure"] is not None or synthetic["format_contract_id"] is not None or synthetic["content_contract_id"] is not None:
+        raise SystemExit(
+            "production semantic catalog requires Synthetic, exact S1, and exact S3.A entries"
+        )
+    if (
+        synthetic["rules_authority"] != {"variant": "synthetic_legacy"}
+        or synthetic["capability_closure"] is not None
+        or synthetic["format_contract_id"] is not None
+        or synthetic["content_contract_id"] is not None
+    ):
         raise SystemExit("synthetic production entry must retain its exact legacy identity")
     expected_authority = {
         "variant": "comprehensive_rules",
-        "snapshot_id": "wotc-cr-2026-08-07-txt-20260819-sha256-4381ad1b39ab2c05f7d03633a20f711ed37277074d3266dcba5f38cbb527423f",
+        "snapshot_id": (
+            "wotc-cr-2026-08-07-txt-20260819-sha256-"
+            "4381ad1b39ab2c05f7d03633a20f711ed37277074d3266dcba5f38cbb527423f"
+        ),
     }
-    if s1["rules_authority"] != expected_authority or s1["capability_closure"] != [{"key": "rules/turn-structure", "version": "0.1.0"}]:
+    if s1["rules_authority"] != expected_authority or s1["capability_closure"] != [
+        {"key": "rules/turn-structure", "version": "0.1.0"}
+    ]:
         raise SystemExit("S1 must preserve the exact historical turn-structure-only closure")
     if s3a["rules_authority"] != expected_authority or s3a["capability_closure"] != [
         {"key": "rules/state-based-actions-combat", "version": "0.1.0"},
@@ -426,7 +439,9 @@ def assert_production_policy(catalog: dict[str, object]) -> None:
         raise SystemExit("S3.A must use the exact reviewed turn/SBA/zone-incarnation closure")
     for entry in (s1, s3a):
         if entry["format_contract_id"] is not None or entry["content_contract_id"] is not None:
-            raise SystemExit("current S1/S3.A production identities have null format/content dimensions")
+            raise SystemExit(
+                "current S1/S3.A production identities have null format/content dimensions"
+            )
 
 
 def generated_bytes(content: str) -> bytes:

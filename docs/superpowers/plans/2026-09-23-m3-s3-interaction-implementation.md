@@ -56,6 +56,19 @@ There is no `draw-card -> basic-priority` capability edge. `damage-and-life`
 is not an SBA dependency: SBA consumes authoritative life and marked-damage
 facts regardless of which capability produced them.
 
+## Current M3 implementation grouping (2026-09-24)
+
+The user-approved `M3 Block 1 — Finish Bounded S3.A` scope supersedes the
+former implementation split between Task 9B's one-round batch and Task 10's
+fixed-point/identity/durability evidence. The coherent block owns atomic
+no-order and final-Order batches, S2 composition, CombatDamage-only combat
+pruning, terminal outcomes, fixed-point re-derivation, production S3 admission,
+pending-stage restore/fork and available replay evidence. The nonterminal final
+Order Reference path remains blocked until M3 Block 2 implements Basic
+Priority; no implicit pass or forced scheduler work is authorized. Task numbers
+below remain traceability for accepted requirements, not a request to create
+additional planning microtasks.
+
 ## 2. S3.P0 authoritative state identity cut
 
 The S3.A APNAP ordering continuation is authoritative state. Its continuation
@@ -282,13 +295,12 @@ both owners need Order (Task 7):
   final response remains unaccepted until Task 9 can apply the whole round
 ```
 
-Task 7 accepts only nonfinal APNAP responses, which commit the new stage and
-next Decision without applying SBA actions. A one-owner response or the last
-owner's response is not accepted as an order-only state: Task 9 must validate
-that answer and apply the complete SBA batch/fixed point atomically in the
-same rules transition. A round requiring no Order is likewise left unapplied
-until Task 9. This prevents a final-choice checkpoint from existing without
-its consequences.
+Historical Task 7 accepted only nonfinal APNAP responses, which committed the
+new stage and next Decision without applying SBA actions. That reviewed boundary
+is superseded by M3 Block 1: the final real Order response now validates the
+answer and applies the complete SBA batch/fixed point atomically in the same
+Rules transition. A no-order round is also applied directly without a fake
+Decision. No final-choice-only checkpoint is introduced.
 
 Exact audit ordering for a staged owner response is:
 
@@ -1008,15 +1020,15 @@ creates the next Order Decision; state/zone/status/loss facts remain unchanged.
 Wrong actor, stale response, invalid permutation, identity exhaustion, or
 continuation mismatch rejects atomically.
 
-**Objective:** derive and stage a fresh round requiring an Order; validate and
-commit only nonfinal owner answers; preserve the complete unapplied batch and
-advance to the next APNAP owner. The one-owner and final-owner responses stay
-unaccepted until Task 9 owns their atomic choice-plus-batch transition.
+**Historical Task 7 objective:** derive and stage a fresh round requiring an
+Order; validate and commit only nonfinal owner answers; preserve the complete
+unapplied batch and advance to the next APNAP owner. M3 Block 1 extends this
+path to atomically apply the final choice and complete batch.
 
-**Verification:** order staging and nonfinal APNAP Task 5 cases turn green
-through Decision V2; final-order and no-order SBA application cases remain
-RED for Task 9. Run decision/state/rules/conformance suites and replay response
-binding.
+**Task 7 verification record:** order staging and nonfinal APNAP cases turn
+green through Decision V2; final-order and no-order application were then RED
+for Task 9. M3 Block 1 turns the in-scope batch/product cases GREEN and adds
+production identity, S2 composition and replay evidence.
 
 **Commit boundary:** APNAP Decision/continuation progression and trusted
 order-choice audit, still no S2 multi-move integration or final order-only
@@ -1203,11 +1215,18 @@ destination order. No batch event means no multi-move exception.
 
 The round plan and causes are derived from one immutable round-start snapshot.
 Execute each owner's chosen top-to-bottom order in reverse through the single
-S2 workspace. Task 9B applies one complete nonempty round; Task 10 proves the
-full fixed point. The next round is derived from its completed result and is
-applied before any priority. No Decision appears between fixed-point rounds,
-except a new typed APNAP Order continuation when the next round requires an
-actual order.
+S2 workspace. Within the SBA-batch mode of that same S2 authority, one public
+movement occurrence also refreshes all tracked current locations in that
+owner's Graveyard whose trusted top offsets changed. `UpdateLocations` records
+those changes in the same perspective-local visible occurrence as the move;
+it consumes no extra `VisibleSequence`. Standalone S2 keeps its reviewed
+single-move audit product unchanged. The user-approved M3 Block 1 execution grouping combines the
+former Task 9B batch and Task 10 fixed-point/durability scope: Block 1 applies
+the complete batch, re-derives the next action set, and proves stability before
+any priority. If the closed profile ever derives a nonempty next set, it must
+be handled before priority; it cannot be committed as an intermediate state.
+There is no environment scheduler loop, and unsupported Basic Priority is not
+swallowed.
 
 #### Remaining environment limitation
 
@@ -1217,16 +1236,19 @@ implemented, a nonterminal final Order transition that has no next Decision
 hits the existing `BasicPriority` unsupported boundary. Record
 `NONTERMINAL_FINAL_ORDER_ENVIRONMENT_CLOSURE = BLOCKED_UNTIL_S3_B_OR_REVIEWED_TRANSACTION_DISPOSITION`.
 Do not change the response transaction or hide the error in Task 9B0. This
-blocks production replay/restore/lifecycle claims until Task 10 disposition.
+does not block the Block 1 pending-stage, intermediate-response, terminal
+response, and no-order checkpoint/replay evidence. The only deferred product is
+the nonterminal final-Order Reference response transaction: the shared
+response transaction reaches the missing Basic Priority boundary and leaves
+state/replay unchanged. This remains closed until M3 Block 2; no implicit pass
+or fake response is allowed.
 
-Task 9B0 adds ignored/future-acceptance RED witnesses for final one- and
-two-owner Order application, no-order batch application, terminal loss
-products, post-damage combat pruning, and pre-damage/EndOfCombat fail-closed
-boundaries. The no-order combat profile is pinned independently at fresh
-BeginningOfCombat, DeclareAttackers, DeclareBlockers, and EndOfCombat states
-with exactly one dying combat participant; its post-CombatDamage forced path
-has a separate one-death/no-order application witness. Existing
-one-/two-player loss producer REDs remain expected.
+Task 9B0 added future-acceptance witnesses for final one- and two-owner Order
+application, no-order batch application, terminal loss products, post-damage
+combat pruning, and pre-damage/EndOfCombat fail-closed boundaries. The
+user-approved M3 Block 1 turns those in-scope witnesses into active GREEN
+evidence; no-order fresh Combat boundaries are checked independently at
+BeginningOfCombat, DeclareAttackers, DeclareBlockers, and EndOfCombat.
 Standalone-final-order-without-batch and multi-move-without-batch rejection
 are positive negative-contract guards.
 
@@ -1269,10 +1291,14 @@ no lifecycle/status promotion.
 **HARD STOP:** S2's single move authority is duplicated, an intermediate move
 is exposed, or final order differs from the player's accepted permutation.
 
-### Task 10 — S3.A5 fixed point, evidence and lifecycle
+### Task 10 — historical task grouping absorbed by M3 Block 1
 
-**Allowed files:** SBA conformance, checkpoint/fork/replay tests and, after
-all evidence passes, only SBA registry/status files.
+The user-approved M3 Block 1 implementation grouping absorbs Task 10's fixed
+point, production S3 identity, checkpoint/restore/fork, and available replay
+proofs into the same coherent S3.A implementation block. This heading remains
+for requirement traceability; it is not a separate implementation task or
+micro-gate. Nonterminal final-Order environment acceptance/replay remains
+blocked for M3 Block 2 Basic Priority.
 
 **Forbidden:** Draw/Priority, changing capability dependencies, S2 coverage
 promotion, certification.
@@ -1283,24 +1309,28 @@ continuation cannot produce priority; restore/fork at each Order stage
 reproduces identical next Decision and completion; replay each real Order
 response and reproduce final batch.
 
-**Objective:** close one- and two-owner order cases; terminal one-player and
-simultaneous-loss products; combined death/loss; exact S2 identities/order;
-noninterference; all atomic rejection surfaces. Prove only the current stage
-actor can project the Order Decision; all candidates use that actor's opaque
-IDs; the nonactive player sees prior public orders only through the
+**Objective (owned by M3 Block 1):** close one- and two-owner order cases;
+terminal one-player and simultaneous-loss products; combined death/loss; exact
+S2 identities/order; noninterference; fixed-point stability; checkpoint/
+restore/fork parity and replay for executable response stages. Prove only the
+current stage actor can project the Order Decision; candidates use that actor's
+opaque IDs; the nonactive player sees prior public orders through the
 Magic-specific current observation required by CR 101.4b; no trusted identity
 or incomplete zone result is exposed. No opponent `ObservedEventEnvelope` or
-VisibleSequence is fabricated for an order-stage update. Final S2 public
-movements disclose the complete authorized result. Only after independent S3.A review update
-`state-based-actions-combat` to `implemented`. Record the S2
-SBA interaction as evidence pending the later independent S2 coverage review.
+VisibleSequence is fabricated for an order-stage update. The nonterminal final
+Order Reference path remains blocked at Basic Priority until M3 Block 2; record
+that limit instead of authorizing an implicit pass. Only after independent S3.A
+review may `state-based-actions-combat` move to `implemented`, if its evidence
+justifies it. Record the S2 SBA interaction as evidence pending the later
+independent S2 coverage review.
 
 **Verification:** rules/conformance/environment test suites,
 `scripts/run_checks.py integration`, `cargo test --workspace --all-features
 --locked`, schema/docs/status/registry checks.
 
-**Commit boundary:** S3.A evidence + its justified implementation lifecycle
-promotion; PR C. No S2 coverage promotion.
+**Commit boundary:** integrated M3 Block 1 implementation/evidence commits;
+no S2 coverage promotion. Capability lifecycle remains `specified` unless the
+independent exact-head review justifies an implementation promotion.
 
 **HARD STOP:** no APNAP Order resume/replay proof, any mutation occurs before
 all orders, or an S2 coverage claim is made here.

@@ -5,8 +5,8 @@ import json
 from collections.abc import Callable
 from typing import TypeVar
 
-from ._observation_m3 import SyntheticM3Observation
 from ._magic_observation_m3 import MagicM3Observation
+from ._observation_m3 import SyntheticM3Observation
 from .canonical import canonical_json_bytes
 from .decision import (
     DecisionResponse,

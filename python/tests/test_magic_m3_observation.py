@@ -36,7 +36,9 @@ class MagicM3ObservationTests(unittest.TestCase):
 
     def test_magic_negative_fixtures_are_rejected(self) -> None:
         manifest = json.loads((ROOT / ".." / "wire" / "negative" / "manifest.json").read_text())
-        cases = [case for case in manifest["fixtures"] if case["contract"] == MAGIC_M3_OBSERVATION_SCHEMA]
+        cases = [
+            case for case in manifest["fixtures"] if case["contract"] == MAGIC_M3_OBSERVATION_SCHEMA
+        ]
         self.assertGreaterEqual(len(cases), 8)
         for case in cases:
             payload = (ROOT / ".." / "wire" / "negative" / case["path"]).read_bytes().strip()

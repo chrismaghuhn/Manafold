@@ -72,13 +72,17 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
         self.assertIn("FOUNDATION_V2 = ACCEPTED_HARDENED_M3_SCOPE", readme)
         self.assertIn("**M3 plan status:** `ACCEPTED`", readme)
         self.assertIn("**Task 14:** `COMPLETE` — `S1_EXACT_HEAD_VERIFICATION = PASS`", readme)
-        self.assertIn("**Next gate:** `M3_S3_A_TASK_9B0_EXACT_HEAD_REVIEW`", readme)
+        self.assertIn(
+            "**Next gate:** `M3_BLOCK_1_EXACT_HEAD_REVIEW`",
+            readme,
+        )
         self.assertIn("**S3.P0:** `COMPLETE / FROZEN`", readme)
         self.assertIn("**S3.0:** `COMPLETE / FROZEN`", readme)
         self.assertIn(
-            "**S3.A:** Tasks 5–9A complete / reviewed; Task 9B0 atomic SBA batch design is a candidate pending exact-head review; Task 9 implementation is not complete",
+            "**Magic rules-flow inventory:** `REVIEWED / FROZEN_PLANNING_INPUT`",
             readme,
         )
+        self.assertIn("**M3 Block 1:** bounded S3.A implementation is a candidate", readme)
         self.assertIn("S3.B/C are not authorized", readme)
         self.assertNotIn("M3_S1_AUTHORIZATION_DECISION", readme)
         self.assertNotIn("M3_T0_CLOSURE_STATUS_SYNC_EXACT_HEAD_REVIEW", readme)
@@ -102,8 +106,9 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
             readme,
         )
         self.assertIn(
-            "**Real Magic semantics:** bounded M3.S1 turn-structure slice and "
-            "implemented M3.S2 selected zone-incarnation profiles only",
+            "**Real Magic semantics:** S1 is covered; S2 is implemented / not covered; "
+            "bounded S3.A batch, APNAP, and production-identity work is a candidate "
+            "pending exact-head review",
             readme,
         )
         self.assertNotIn("S2 covered", readme)
@@ -254,14 +259,24 @@ class CurrentStatusEntryPointTests(unittest.TestCase):
         self.assertIn("S3_A_TASK_8 = COMPLETE / REVIEWED", roadmap)
         self.assertIn("S3_A_TASK_8_REVIEW_HEAD = 8a531c33ced9e532bd90b3870ac088b06924c348", roadmap)
         self.assertIn("S3_A_TASK_9A = COMPLETE / REVIEWED", roadmap)
-        self.assertIn("S3_A_TASK_9A_REVIEW_HEAD = 28ffe32b8acb72c0ec3cca98bcfbd90499827f5b", roadmap)
-        self.assertIn("S3_A_TASK_9B0 = COMPLETE_CANDIDATE", roadmap)
-        self.assertIn("S3_A_TASK_9 = NOT_COMPLETE", roadmap)
-        self.assertIn("S3_A_IMPLEMENTATION = NOT_COMPLETE", roadmap)
+        self.assertIn(
+            "S3_A_TASK_9A_REVIEW_HEAD = 28ffe32b8acb72c0ec3cca98bcfbd90499827f5b", roadmap
+        )
+        self.assertIn("S3_A_TASK_9B0 = COMPLETE / REVIEWED", roadmap)
+        self.assertIn("S3_A_TASK_9 = COMPLETE_CANDIDATE", roadmap)
+        self.assertIn("S3_A_BLOCK_1 = COMPLETE_CANDIDATE", roadmap)
+        self.assertIn("S3_A_IMPLEMENTATION = COMPLETE_CANDIDATE", roadmap)
         self.assertIn("S3_A_EXACT_HEAD_REVIEW = PENDING", roadmap)
         self.assertIn("S3_A_PRODUCTION_SEMANTIC_CONTRACT_REQUIRED = YES", roadmap)
-        self.assertIn("S3_A_PRODUCTION_SEMANTIC_CONTRACT_ALLOCATED = NO", roadmap)
-        self.assertIn("NEXT_GATE = M3_S3_A_TASK_9B0_EXACT_HEAD_REVIEW", roadmap)
+        self.assertIn("S3_A_PRODUCTION_SEMANTIC_CONTRACT_ALLOCATED = YES", roadmap)
+        self.assertIn(
+            "NONTERMINAL_FINAL_ORDER_REFERENCE_PATH = BLOCKED_BY_M3_BLOCK_2_BASIC_PRIORITY",
+            roadmap,
+        )
+        self.assertIn("MAGIC_RULES_FLOW_INVENTORY_V1 = REVIEWED / FROZEN_PLANNING_INPUT", roadmap)
+        self.assertIn("M3_MAJOR_SEMANTIC_BLOCKS = 8", roadmap)
+        self.assertIn("CURRENT_M3_BLOCK = FINISH_BOUNDED_S3_A", roadmap)
+        self.assertIn("NEXT_GATE = M3_BLOCK_1_EXACT_HEAD_REVIEW", roadmap)
         self.assertIn("S3_A_IMPLEMENTATION_AUTHORIZED = YES", roadmap)
         self.assertIn("S3_B_AUTHORIZED = NO", roadmap)
         self.assertIn("S3_C_AUTHORIZED = NO", roadmap)
