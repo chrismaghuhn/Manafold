@@ -1046,7 +1046,11 @@ shows the selected order. Missing an opaque mapping for any perspective fails
 closed. No visible event sequence is consumed for this current-state field.
 
 **Objective:** add `magic-m3-observation.v1` under existing
-`ObservationEnvelopeV1.payload_codec`. Keep the existing V1 envelope,
+`ObservationEnvelopeV1.payload_codec`. Codec selection is an explicit closed
+projection profile supplied by semantic execution context; it is not inferred
+from `ExecutionProgramV1` or arbitrary state contents. Until the production S3
+semantic contract exists, Magic projection is conformance/testkit-only.
+Keep the existing V1 envelope,
 InformationStateV2, PlayerStepV2, Decision V2 and ObservedEventEnvelopeV2
 shapes. The Magic payload adds a closed `pending_sba_ordering` value with
 APNAP completed orders expressed in each perspective's own `OpaqueObjectId`s
@@ -1055,12 +1059,12 @@ IDs. The trusted `SbaGraveyardOrderChosen` event remains audit/replay
 authority; the public current observation carries the order needed by the
 next chooser.
 
-Bind the codec to the S3 Magic semantic contract in ReplayManifestV6. Preserve
-the SyntheticRulesCompat/S1 `synthetic-m3-observation.v1` codec and bytes.
-Extend V6 schema/validation to admit only the existing codec for its supported
-contract and the Magic codec for the S3 contract; do not broaden arbitrary
-strings. Update the Python projector and all canonical schema/fixture
-representations.
+Preserve and test the existing ReplayManifestV6 contract binding: the
+SyntheticRulesCompat/S1 `synthetic-m3-observation.v1` codec remains unchanged;
+the Magic codec is accepted only with the already-specified SBA capability
+closure in detached identity fixtures. Do not allocate the production S3
+semantic contract or broaden arbitrary strings. Update the Python codec and
+all canonical schema/fixture representations.
 
 **Verification:** observation and PlayerStep suites, paired noninterference
 tests at each APNAP stage, V6 manifest/schema tests, `scripts/run_checks.py

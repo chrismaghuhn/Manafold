@@ -497,6 +497,78 @@
       "expected_error_code": "semantic.replay_manifest",
       "expected_reject_layer": "rust-python-semantic-or-decode",
       "path": "replay-manifest-v6-synthetic-authority-magic-codec.json"
+    },
+    {
+      "contract": "magic-m3-observation.v1",
+      "expected_error_code": "semantic.magic_m3_observation",
+      "expected_reject_layer": "rust-python-semantic-or-decode",
+      "path": "magic-m3-wrong-schema.json"
+    },
+    {
+      "contract": "magic-m3-observation.v1",
+      "expected_error_code": "decode.invalid_json",
+      "expected_reject_layer": "rust-python-semantic-or-decode",
+      "path": "magic-m3-unknown-root-field.json"
+    },
+    {
+      "contract": "magic-m3-observation.v1",
+      "expected_error_code": "decode.invalid_json",
+      "expected_reject_layer": "rust-python-semantic-or-decode",
+      "path": "magic-m3-missing-pending.json"
+    },
+    {
+      "contract": "magic-m3-observation.v1",
+      "expected_error_code": "decode.invalid_json",
+      "expected_reject_layer": "rust-python-semantic-or-decode",
+      "path": "magic-m3-trusted-id-field.json"
+    },
+    {
+      "contract": "magic-m3-observation.v1",
+      "expected_error_code": "decode.invalid_json",
+      "expected_reject_layer": "rust-python-semantic-or-decode",
+      "path": "magic-m3-missing-next-owner.json"
+    },
+    {
+      "contract": "magic-m3-observation.v1",
+      "expected_error_code": "decode.invalid_json",
+      "expected_reject_layer": "rust-python-semantic-or-decode",
+      "path": "magic-m3-malformed-opaque.json"
+    },
+    {
+      "contract": "magic-m3-observation.v1",
+      "expected_error_code": "semantic.magic_m3_observation",
+      "expected_reject_layer": "rust-python-semantic-or-decode",
+      "path": "magic-m3-noncanonical-turn.json"
+    },
+    {
+      "contract": "magic-m3-observation.v1",
+      "expected_error_code": "semantic.magic_m3_observation",
+      "expected_reject_layer": "rust-python-semantic-or-decode",
+      "path": "magic-m3-duplicate-opaque.json"
+    },
+    {
+      "contract": "magic-m3-observation.v1",
+      "expected_error_code": "decode.invalid_json",
+      "expected_reject_layer": "rust-python-semantic-or-decode",
+      "path": "magic-m3-unknown-turn-kind.json"
+    },
+    {
+      "contract": "magic-m3-observation.v1",
+      "expected_error_code": "decode.invalid_json",
+      "expected_reject_layer": "rust-python-semantic-or-decode",
+      "path": "magic-m3-unknown-priority-kind.json"
+    },
+    {
+      "contract": "magic-m3-observation.v1",
+      "expected_error_code": "decode.invalid_json",
+      "expected_reject_layer": "rust-python-semantic-or-decode",
+      "path": "magic-m3-unknown-completed-order-field.json"
+    },
+    {
+      "contract": "magic-m3-observation.v1",
+      "expected_error_code": "decode.invalid_json",
+      "expected_reject_layer": "rust-python-semantic-or-decode",
+      "path": "magic-m3-unknown-pending-field.json"
     }
   ]
 }

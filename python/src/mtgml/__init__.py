@@ -4,6 +4,12 @@ from ._observation_m3 import (
     SyntheticM3Priority,
     SyntheticM3TurnPosition,
 )
+from ._magic_observation_m3 import (
+    MAGIC_M3_OBSERVATION_SCHEMA,
+    MagicM3CompletedOrder,
+    MagicM3Observation,
+    MagicM3PendingSbaOrdering,
+)
 from .decision import (
     ActionCandidate,
     CandidateAssignment,
@@ -107,6 +113,10 @@ __all__ = [
     "PlayerResult",
     "PlayerStep",
     "PlayerStepV2",
+    "MAGIC_M3_OBSERVATION_SCHEMA",
+    "MagicM3CompletedOrder",
+    "MagicM3Observation",
+    "MagicM3PendingSbaOrdering",
     "ReplayManifestV1",
     "ReplayManifestV2",
     "ReplayManifestV3",

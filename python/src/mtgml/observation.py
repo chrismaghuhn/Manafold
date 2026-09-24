@@ -32,6 +32,12 @@ from ._observation_m3 import (
     SyntheticM3Priority,
     SyntheticM3TurnPosition,
 )
+from ._magic_observation_m3 import (
+    MAGIC_M3_OBSERVATION_SCHEMA,
+    MagicM3CompletedOrder,
+    MagicM3Observation,
+    MagicM3PendingSbaOrdering,
+)
 from ._observation_v1 import (
     INFORMATION_STATE_SCHEMA,
     OBSERVATION_SCHEMA,
@@ -63,6 +69,7 @@ from .events import ObservedEventEnvelope
 
 __all__ = [
     "INFORMATION_STATE_SCHEMA",
+    "MAGIC_M3_OBSERVATION_SCHEMA",
     "INFORMATION_STATE_SCHEMA_V2",
     "M3_BEGINNING_STEPS",
     "M3_COMBAT_STEPS",
@@ -95,6 +102,9 @@ __all__ = [
     "PlayerStep",
     "PlayerStepSubmissionV1",
     "PlayerStepV2",
+    "MagicM3CompletedOrder",
+    "MagicM3Observation",
+    "MagicM3PendingSbaOrdering",
     "SyntheticM3Observation",
     "SyntheticM3Priority",
     "SyntheticM3TurnPosition",

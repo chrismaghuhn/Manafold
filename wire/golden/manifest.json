@@ -187,6 +187,22 @@
     {
       "contract": "authoritative-replay.v6",
       "path": "authoritative-replay-empty.v6.json"
+    },
+    {
+      "contract": "magic-m3-observation.v1",
+      "path": "magic-m3-observation-null.json"
+    },
+    {
+      "contract": "magic-m3-observation.v1",
+      "path": "magic-m3-observation-stage-0.json"
+    },
+    {
+      "contract": "magic-m3-observation.v1",
+      "path": "magic-m3-observation-stage-1-p1.json"
+    },
+    {
+      "contract": "magic-m3-observation.v1",
+      "path": "magic-m3-observation-stage-1-p2.json"
     }
   ]
 }

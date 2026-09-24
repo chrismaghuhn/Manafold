@@ -723,6 +723,7 @@ SCHEMA_INVENTORY_ALLOWED: frozenset[str] = frozenset(
         "golden-path-index.v1.schema.json",
         "information-state-envelope.v1.schema.json",
         "information-state-envelope.v2.schema.json",
+        "magic-m3-observation.v1.schema.json",
         "normative-document-register.v1.schema.json",
         "observation-envelope.v1.schema.json",
         "observed-event-envelope.v1.schema.json",

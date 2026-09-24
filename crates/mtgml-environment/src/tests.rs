@@ -601,6 +601,10 @@ include!("tests/batch_e.rs");
 include!("tests/batch_f.rs");
 include!("tests/batch_g.rs");
 include!("tests/turn_structure.rs");
+mod magic_observation {
+    use super::*;
+    include!("tests/magic_observation.rs");
+}
 
 mod semantic_catalog {
     #![allow(unused_imports)]
