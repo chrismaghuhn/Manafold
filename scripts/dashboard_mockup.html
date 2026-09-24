@@ -71,8 +71,19 @@
   nav.tabs button.active { color: var(--text); border-bottom-color: var(--blue); }
   nav.tabs button:hover { color: var(--text); }
 
-  section.tab { display: none; padding-top: 18px; }
+  section.tab { display: none; padding-top: 10px; }
   section.tab.active { display: block; }
+
+  .subsec {
+    display: flex; align-items: center; gap: 8px;
+    font-size: 0.95rem; font-weight: 700; margin: 26px 0 10px;
+  }
+  .subsec i {
+    width: 7px; height: 7px; border-radius: 50%; background: var(--blue);
+    display: inline-block;
+  }
+  .subsec:first-child { margin-top: 14px; }
+
   .grid { display: grid; gap: 14px; }
   .g4 { grid-template-columns: repeat(4, 1fr); }
   .g3 { grid-template-columns: repeat(3, 1fr); }
@@ -82,8 +93,8 @@
 
   .card {
     background: var(--card); border: 1px solid var(--border);
-    border-radius: var(--radius); padding: 14px 16px;
-    min-width: 0;
+    border-radius: var(--radius); padding: 14px 16px; min-width: 0;
+    overflow-x: auto;
   }
   .card h3 {
     font-size: 0.78rem; font-weight: 600; color: var(--muted);
@@ -99,15 +110,12 @@
   th {
     text-align: left; color: var(--muted); font-weight: 600; font-size: 0.72rem;
     text-transform: uppercase; letter-spacing: 0.5px;
-    padding: 6px 8px; border-bottom: 1px solid var(--border);
+    padding: 6px 8px; border-bottom: 1px solid var(--border); white-space: nowrap;
   }
   td { padding: 7px 8px; border-bottom: 1px solid #21262d; white-space: nowrap; }
   tr:last-child td { border-bottom: none; }
   td.num { font-variant-numeric: tabular-nums; }
-  .bar {
-    height: 6px; border-radius: 3px; background: #21262d;
-    overflow: hidden; min-width: 80px;
-  }
+  .bar { height: 6px; border-radius: 3px; background: #21262d; overflow: hidden; min-width: 80px; }
   .bar > i { display: block; height: 100%; background: var(--blue); border-radius: 3px; }
   .bar > i.g { background: var(--green); }
   .bar > i.r { background: var(--red); }
@@ -124,12 +132,13 @@
     font-size: 0.76rem; line-height: 1.7; max-height: 260px; overflow: auto;
   }
   .feed .t { color: var(--muted); margin-right: 8px; }
-  .feed .tag { padding: 0 6px; border-radius: 4px; margin-right: 6px; font-size: 0.7rem; }
+  .feed .tag, .tag { padding: 0 6px; border-radius: 4px; margin-right: 6px; font-size: 0.7rem; }
   .tag-blue { background: rgba(88,166,255,0.15); color: var(--blue); }
   .tag-green { background: rgba(63,185,80,0.15); color: var(--green); }
   .tag-red { background: rgba(248,81,73,0.15); color: var(--red); }
   .tag-yellow { background: rgba(210,153,34,0.15); color: var(--yellow); }
   .tag-purple { background: rgba(188,140,255,0.15); color: var(--purple); }
+  .tag-muted { background: rgba(139,148,158,0.15); color: var(--muted); }
 
   .replay-row { display: flex; align-items: center; gap: 12px; padding: 8px 0; border-bottom: 1px solid #21262d; flex-wrap: wrap; }
   .replay-row:last-child { border-bottom: none; }
@@ -177,51 +186,32 @@
 
 <div class="wrap">
 
-<!-- ============ LIVE ============ -->
+<!-- ================================================== LIVE -->
 <section class="tab active" id="tab-live">
   <div class="grid g4">
-    <div class="card kpi">
-      <h3>Win rate</h3>
-      <div class="value">54.2%</div>
-      <div class="delta up">▲ +1.8 pts / 1k games</div>
-      <div class="sub">rolling window 500 games</div>
-    </div>
-    <div class="card kpi">
-      <h3>Mana efficiency</h3>
-      <div class="value">71.3%</div>
-      <div class="delta up">▲ +2.1 pts</div>
-      <div class="sub">mana spent ÷ mana available</div>
-    </div>
-    <div class="card kpi">
-      <h3>Sequencing score</h3>
-      <div class="value">0.68</div>
-      <div class="delta up">▲ +0.04</div>
-      <div class="sub">temporal ordering of plays</div>
-    </div>
-    <div class="card kpi">
-      <h3>Games / sec</h3>
-      <div class="value">132</div>
-      <div class="delta" style="color:var(--muted)">stable</div>
-      <div class="sub">across 8 rollout workers</div>
-    </div>
+    <div class="card kpi"><h3>Win rate</h3><div class="value">54.2%</div><div class="delta up">▲ +1.8 pts / 1k games</div><div class="sub">rolling window 500 games</div></div>
+    <div class="card kpi"><h3>Mana efficiency</h3><div class="value">71.3%</div><div class="delta up">▲ +2.1 pts</div><div class="sub">mana spent ÷ mana available</div></div>
+    <div class="card kpi"><h3>Games / sec</h3><div class="value">132</div><div class="delta" style="color:var(--muted)">stable</div><div class="sub">8 rollout workers</div></div>
+    <div class="card kpi"><h3>Games in flight</h3><div class="value">17</div><div class="delta" style="color:var(--muted)">2 deep-traced</div><div class="sub">DEEP sampling 1/1000</div></div>
   </div>
 
   <div class="grid g2 mt">
-    <div class="card">
-      <h3>Win rate over training</h3>
-      <div id="chart-winrate"></div>
-      <div class="legend"><span><i style="background:var(--blue)"></i>win rate</span><span><i style="background:var(--muted)"></i>baseline (random)</span></div>
-    </div>
-    <div class="card">
-      <h3>Why the win rate moves — drivers</h3>
-      <div id="chart-drivers"></div>
-      <div class="legend">
-        <span><i style="background:var(--green)"></i>mana efficiency</span>
-        <span><i style="background:var(--yellow)"></i>mulligan accuracy</span>
-        <span><i style="background:var(--purple)"></i>sequencing</span>
-        <span><i style="background:var(--cyan)"></i>card priority quality</span>
-      </div>
-    </div>
+    <div class="card"><h3>Win rate over training</h3><div id="chart-winrate"></div>
+      <div class="legend"><span><i style="background:var(--blue)"></i>win rate</span><span><i style="background:var(--muted)"></i>baseline (random)</span></div></div>
+    <div class="card"><h3>Why the win rate moves — drivers</h3><div id="chart-drivers"></div>
+      <div class="legend"><span><i style="background:var(--green)"></i>mana eff.</span><span><i style="background:var(--yellow)"></i>mulligan</span><span><i style="background:var(--purple)"></i>sequencing</span><span><i style="background:var(--cyan)"></i>card priority</span></div></div>
+  </div>
+
+  <div class="subsec"><i></i>Current &amp; sample games</div>
+  <div class="card">
+    <table>
+      <tr><th>Game</th><th>Seed</th><th>Agent seat</th><th>Turn</th><th>Life (agent / opp)</th><th>State</th><th></th></tr>
+      <tr><td class="num">#50,120</td><td class="num">0x9f3a21c4</td><td>P0</td><td class="num">7</td><td class="num">16 / 11</td><td><span class="tag tag-green">running</span></td><td><button class="btn-sm">Watch</button></td></tr>
+      <tr><td class="num">#50,119</td><td class="num">0x41d7c08e</td><td>P1</td><td class="num">3</td><td class="num">20 / 19</td><td><span class="tag tag-green">running</span></td><td><button class="btn-sm">Watch</button></td></tr>
+      <tr><td class="num">#50,118</td><td class="num">0x0b55a1f2</td><td>P0</td><td class="num">—</td><td class="num">—</td><td><span class="tag tag-purple">deep trace</span></td><td><button class="btn-sm">Watch</button></td></tr>
+      <tr><td class="num">#50,117</td><td class="num">0xd2c9e340</td><td>P1</td><td class="num">12</td><td class="num">8 / 4</td><td><span class="tag tag-green">running</span></td><td><button class="btn-sm">Watch</button></td></tr>
+      <tr><td class="num">#50,116</td><td class="num">0x77aa90d2</td><td>P0</td><td class="num">—</td><td class="num">won 4–20</td><td><span class="tag tag-muted">finished</span></td><td><button class="btn-sm">Replay</button></td></tr>
+    </table>
   </div>
 
   <div class="card mt">
@@ -233,93 +223,121 @@
       <div><span class="t">t+2.1s</span><span class="tag tag-red">COMBAT</span>P0 attacks with Ragavan (P1 at 19)</div>
       <div><span class="t">t+3.4s</span><span class="tag tag-blue">RESOLVE</span>Lightning Bolt targets P1 (P1 at 16)</div>
     </div>
-    <div class="note">Feed is simulated for the mockup. Real feed will project the engine's authoritative event stream (DEEP telemetry level).</div>
+    <div class="note">Feed simulated for the mockup. Real feed projects the engine's authoritative event stream.</div>
   </div>
 </section>
 
-<!-- ============ GAMEPLAY ============ -->
+<!-- ================================================== GAMEPLAY -->
 <section class="tab" id="tab-gameplay">
+
+  <div class="subsec"><i></i>Turns</div>
+  <div class="grid g3">
+    <div class="card"><h3>Game length distribution</h3><div id="chart-turns"></div>
+      <div class="legend"><span><i style="background:var(--blue)"></i>% of games by turn count</span></div></div>
+    <div class="card kpi"><h3>Avg game length</h3><div class="value">8.4 <span style="font-size:0.9rem;color:var(--muted)">turns</span></div><div class="sub">▼ −0.6 turns vs last checkpoint</div></div>
+    <div class="card kpi"><h3>Timeouts / rule-out losses</h3><div class="value">0.4%</div><div class="sub">fail-closed engine errors</div></div>
+  </div>
+
+  <div class="subsec"><i></i>Mana</div>
   <div class="grid g2">
-    <div class="card">
-      <h3>Life totals — sampled game #49,877</h3>
-      <div id="chart-life"></div>
-      <div class="legend"><span><i style="background:var(--blue)"></i>P0 (agent)</span><span><i style="background:var(--red)"></i>P1 (opponent)</span></div>
-    </div>
-    <div class="card">
-      <h3>Board size per turn</h3>
-      <div id="chart-board"></div>
-      <div class="legend"><span><i style="background:var(--green)"></i>agent permanents</span><span><i style="background:var(--purple)"></i>opponent permanents</span></div>
-    </div>
+    <div class="card"><h3>Mana available vs spent — per turn</h3><div id="chart-mana"></div>
+      <div class="legend"><span><i style="background:var(--yellow)"></i>available</span><span><i style="background:var(--green)"></i>spent by agent</span></div></div>
+    <div class="card"><h3>Mana efficiency over training</h3><div id="chart-mana-eff"></div>
+      <div class="legend"><span><i style="background:var(--green)"></i>mana spent ÷ available (rolling)</span></div></div>
   </div>
-  <div class="grid g3 mt">
-    <div class="card kpi">
-      <h3>Avg game length</h3>
-      <div class="value">8.4 <span style="font-size:0.9rem;color:var(--muted)">turns</span></div>
-      <div class="sub">▼ −0.6 turns vs last checkpoint</div>
-    </div>
-    <div class="card kpi">
-      <h3>Timeouts / rule-out losses</h3>
-      <div class="value">0.4%</div>
-      <div class="sub">fail-closed engine errors</div>
-    </div>
-    <div class="card kpi">
-      <h3>Mulligan accuracy</h3>
-      <div class="value">88%</div>
-      <div class="sub">kept hands that won ≥ 50% baseline</div>
-    </div>
+
+  <div class="subsec"><i></i>Lands</div>
+  <div class="grid g2">
+    <div class="card"><h3>On-curve land drops — per turn</h3><div id="chart-lands"></div>
+      <div class="legend"><span><i style="background:var(--blue)"></i>agent</span><span><i style="background:var(--purple)"></i>opponent</span></div></div>
+    <div class="card"><h3>Land trouble rates</h3>
+      <table>
+        <tr><th>Condition</th><th>Rate</th><th></th></tr>
+        <tr><td>Mana screw (&lt; 3 lands by turn 5)</td><td class="num">6.8%</td><td><div class="bar"><i class="r" style="width:34%"></i></div></td></tr>
+        <tr><td>Mana flood (7+ lands in 10 turns)</td><td class="num">11.2%</td><td><div class="bar"><i class="y" style="width:56%"></i></div></td></tr>
+        <tr><td>Perfect curve (drop 1–5)</td><td class="num">58.3%</td><td><div class="bar"><i class="g" style="width:58%"></i></div></td></tr>
+      </table>
+      <div class="note">Rates for games where the agent kept its opening hand.</div></div>
   </div>
-  <div class="card mt">
-    <h3>Turn-by-turn state sequence — game #49,877 (DEEP trace)</h3>
-    <table>
-      <tr><th>Turn</th><th>Active</th><th>Mana avail</th><th>Mana spent</th><th>Key play</th><th>Decision candidates</th><th>Chosen (p)</th></tr>
-      <tr><td>1</td><td>P0</td><td class="num">1</td><td class="num">1</td><td>Mountain → Ragavan</td><td class="num">14</td><td>Ragavan (0.61)</td></tr>
-      <tr><td>2</td><td>P1</td><td class="num">2</td><td class="num">2</td><td>Mountain → Bloodmoon</td><td class="num">9</td><td>Bloodmoon (0.44)</td></tr>
-      <tr><td>3</td><td>P0</td><td class="num">2</td><td class="num">2</td><td>Attack, then Dragon's Rage</td><td class="num">22</td><td>Attack (0.72)</td></tr>
-      <tr><td>4</td><td>P1</td><td class="num">3</td><td class="num">3</td><td>Cast Fury on attacker</td><td class="num">17</td><td>Fury (0.55)</td></tr>
-      <tr><td>5</td><td>P0</td><td class="num">3</td><td class="num">1</td><td>Hold mana, pass</td><td class="num">11</td><td>Pass (0.39)</td></tr>
-    </table>
-    <div class="note">Snapshot-based trace from the DEEP telemetry level; candidate lists come from the engine's decision protocol.</div>
+
+  <div class="subsec"><i></i>Combat</div>
+  <div class="grid g2">
+    <div class="card"><h3>Damage dealt / taken — per turn</h3><div id="chart-combat"></div>
+      <div class="legend"><span><i style="background:var(--green)"></i>dealt</span><span><i style="background:var(--red)"></i>taken</span></div></div>
+    <div class="card"><h3>Combat behaviour</h3>
+      <table>
+        <tr><th>Metric</th><th>Value</th><th></th></tr>
+        <tr><td>Attack ratio when board ahead</td><td class="num">82%</td><td><div class="bar"><i class="g" style="width:82%"></i></div></td></tr>
+        <tr><td>Attack ratio when board behind</td><td class="num">31%</td><td><div class="bar"><i class="y" style="width:31%"></i></div></td></tr>
+        <tr><td>Favourable block rate</td><td class="num">74%</td><td><div class="bar"><i class="g" style="width:74%"></i></div></td></tr>
+        <tr><td>Chump-block rate</td><td class="num">18%</td><td><div class="bar"><i class="r" style="width:18%"></i></div></td></tr>
+      </table></div>
+  </div>
+
+  <div class="subsec"><i></i>Zones</div>
+  <div class="grid g2">
+    <div class="card"><h3>Avg cards per zone — over turns</h3><div id="chart-zones"></div>
+      <div class="legend"><span><i style="background:var(--blue)"></i>hand</span><span><i style="background:var(--cyan)"></i>battlefield</span><span><i style="background:var(--purple)"></i>graveyard</span><span><i style="background:var(--muted)"></i>library</span></div></div>
+    <div class="card kpi"><h3>Card advantage at game end</h3><div class="value">+2.1</div><div class="delta up">▲ +0.4 vs last ckpt</div><div class="sub">cards drawn − cards drawn by opponent (winner games)</div></div>
+  </div>
+
+  <div class="subsec"><i></i>Actions</div>
+  <div class="grid g2">
+    <div class="card"><h3>Engine action events — distribution</h3><div id="chart-actions"></div>
+      <div class="legend"><span><i style="background:var(--blue)"></i>share of all action events</span></div></div>
+    <div class="card"><h3>Hold vs act — by turn</h3><div id="chart-hold"></div>
+      <div class="legend"><span><i style="background:var(--green)"></i>act</span><span><i style="background:var(--muted)"></i>pass / hold</span></div></div>
   </div>
 </section>
 
-<!-- ============ CARDS ============ -->
+<!-- ================================================== CARDS -->
 <section class="tab" id="tab-cards">
+  <div class="subsec"><i></i>Per-card statistics</div>
   <div class="grid g2">
-    <div class="card">
-      <h3>Card impact on win rate — top cards (played ≥ 500 games)</h3>
+    <div class="card"><h3>Card impact on win rate (played ≥ 500 games)</h3>
       <table>
         <tr><th>Card</th><th>Played</th><th>Win Δ when cast</th><th></th></tr>
         <tr><td>Ragavan, Nimble Pilferer</td><td class="num">18,204</td><td class="num up">+6.2%</td><td><div class="bar"><i class="g" style="width:78%"></i></div></td></tr>
         <tr><td>Lightning Bolt</td><td class="num">21,930</td><td class="num up">+4.8%</td><td><div class="bar"><i class="g" style="width:62%"></i></div></td></tr>
         <tr><td>Blood Moon</td><td class="num">9,412</td><td class="num up">+3.1%</td><td><div class="bar"><i class="g" style="width:44%"></i></div></td></tr>
-        <tr><td>Fury</td><td class="num">7,805</td><td class="num down">−1.4%</td><td><div class="bar"><i class="r" style="width:22%"></i></div></td></tr>
         <tr><td>Dragon's Rage Channeler</td><td class="num">12,330</td><td class="num up">+2.9%</td><td><div class="bar"><i class="g" style="width:41%"></i></div></td></tr>
-      </table>
-    </div>
-    <div class="card">
-      <h3>Mana efficiency per card (spent when available)</h3>
+        <tr><td>Fury</td><td class="num">7,805</td><td class="num down">−1.4%</td><td><div class="bar"><i class="r" style="width:22%"></i></div></td></tr>
+      </table></div>
+    <div class="card"><h3>Casting behaviour per card</h3>
       <table>
         <tr><th>Card</th><th>Cast on curve</th><th>Efficiency</th><th></th></tr>
         <tr><td>Lightning Bolt</td><td class="num">92%</td><td class="num">0.94</td><td><div class="bar"><i class="c" style="width:94%"></i></div></td></tr>
         <tr><td>Ragavan, Nimble Pilferer</td><td class="num">85%</td><td class="num">0.88</td><td><div class="bar"><i class="c" style="width:88%"></i></div></td></tr>
+        <tr><td>Dragon's Rage Channeler</td><td class="num">80%</td><td class="num">0.83</td><td><div class="bar"><i class="c" style="width:83%"></i></div></td></tr>
         <tr><td>Blood Moon</td><td class="num">71%</td><td class="num">0.76</td><td><div class="bar"><i class="c" style="width:76%"></i></div></td></tr>
         <tr><td>Fury</td><td class="num">54%</td><td class="num">0.61</td><td><div class="bar"><i class="y" style="width:61%"></i></div></td></tr>
-        <tr><td>Dragon's Rage Channeler</td><td class="num">80%</td><td class="num">0.83</td><td><div class="bar"><i class="c" style="width:83%"></i></div></td></tr>
       </table>
-    </div>
+      <div class="note">Efficiency = mana value spent ÷ mana available in turns the card was cast.</div></div>
   </div>
-  <div class="card mt">
-    <h3>Card priority learning curve — P(chosen) vs. optimal priority</h3>
-    <div id="chart-priority"></div>
-    <div class="legend"><span><i style="background:var(--cyan)"></i>agent priority</span><span><i style="background:var(--muted)"></i>oracle priority</span></div>
+  <div class="grid g2 mt">
+    <div class="card"><h3>Card priority learning curve</h3><div id="chart-priority"></div>
+      <div class="legend"><span><i style="background:var(--cyan)"></i>agent priority</span><span><i style="background:var(--muted)"></i>oracle priority</span></div></div>
+    <div class="card"><h3>Targeting quality — targeted spells</h3><div id="chart-targeting"></div>
+      <div class="legend"><span><i style="background:var(--blue)"></i>optimal target chosen (rolling)</span></div></div>
   </div>
 </section>
 
-<!-- ============ DECISIONS ============ -->
+<!-- ================================================== DECISIONS -->
 <section class="tab" id="tab-decisions">
+
+  <div class="subsec"><i></i>Legal actions</div>
   <div class="grid g2">
-    <div class="card">
-      <h3>Decision type distribution — last 10k games</h3>
+    <div class="card"><h3>Avg legal candidates — per turn</h3><div id="chart-candidates"></div>
+      <div class="legend"><span><i style="background:var(--blue)"></i>avg candidates at each decision</span></div></div>
+    <div class="card"><h3>Candidate count distribution</h3><div id="chart-cand-hist"></div>
+      <div class="legend"><span><i style="background:var(--purple)"></i>% of decisions by candidate bucket</span></div></div>
+  </div>
+
+  <div class="subsec"><i></i>Policy probabilities</div>
+  <div class="grid g2">
+    <div class="card"><h3>Distribution of P(chosen action)</h3><div id="chart-policy-hist"></div>
+      <div class="legend"><span><i style="background:var(--blue)"></i>% of decisions per probability bucket</span></div></div>
+    <div class="card"><h3>Decision type share</h3>
       <table>
         <tr><th>Decision</th><th>Share</th><th></th></tr>
         <tr><td>Cast spell</td><td class="num">31%</td><td><div class="bar"><i style="width:62%"></i></div></td></tr>
@@ -328,96 +346,200 @@
         <tr><td>Activate ability</td><td class="num">14%</td><td><div class="bar"><i class="p" style="width:28%"></i></div></td></tr>
         <tr><td>Assign blockers</td><td class="num">9%</td><td><div class="bar"><i class="g" style="width:18%"></i></div></td></tr>
         <tr><td>Mulligan</td><td class="num">5%</td><td><div class="bar"><i class="y" style="width:10%"></i></div></td></tr>
-      </table>
-    </div>
-    <div class="card">
-      <h3>Decision quality by phase (win Δ of chosen vs. best candidate)</h3>
-      <div id="chart-phase"></div>
-      <div class="legend"><span><i style="background:var(--blue)"></i>value regret per phase</span></div>
-    </div>
+      </table></div>
   </div>
-  <div class="card mt">
-    <h3>Chosen action log-softmax stats</h3>
+
+  <div class="subsec"><i></i>Value estimates</div>
+  <div class="grid g2">
+    <div class="card"><h3>Value prediction vs realized outcome</h3><div id="chart-value"></div>
+      <div class="legend"><span><i style="background:var(--cyan)"></i>predicted V(s)</span><span><i style="background:var(--muted)"></i>realized return</span></div></div>
+    <div class="card"><h3>Value calibration — predicted win prob vs actual</h3>
+      <table>
+        <tr><th>Predicted bucket</th><th>Actual win rate</th><th>Gap</th><th></th></tr>
+        <tr><td class="num">0–20%</td><td class="num">12%</td><td class="num">−5</td><td><div class="bar"><i class="g" style="width:25%"></i></div></td></tr>
+        <tr><td class="num">20–40%</td><td class="num">31%</td><td class="num">−3</td><td><div class="bar"><i class="g" style="width:39%"></i></div></td></tr>
+        <tr><td class="num">40–60%</td><td class="num">54%</td><td class="num">+4</td><td><div class="bar"><i class="y" style="width:54%"></i></div></td></tr>
+        <tr><td class="num">60–80%</td><td class="num">71%</td><td class="num">+2</td><td><div class="bar"><i class="g" style="width:71%"></i></div></td></tr>
+        <tr><td class="num">80–100%</td><td class="num">91%</td><td class="num">−4</td><td><div class="bar"><i class="g" style="width:91%"></i></div></td></tr>
+      </table>
+      <div class="note">Value head is slightly overconfident in the mid bucket — entropy bonus tuned in ckpt #0138.</div></div>
+  </div>
+
+  <div class="subsec"><i></i>Probe positions</div>
+  <div class="card">
+    <h3>Fixed decision probes — stability across checkpoints</h3>
     <table>
-      <tr><th>Bucket</th><th>Mean log p</th><th>Entropy contribution</th><th>Candidates (avg)</th></tr>
-      <tr><td>Casting spells</td><td class="num">−0.72</td><td class="num">0.41</td><td class="num">18.2</td></tr>
-      <tr><td>Combat declaration</td><td class="num">−0.58</td><td class="num">0.33</td><td class="num">6.4</td></tr>
-      <tr><td>Activated abilities</td><td class="num">−0.91</td><td class="num">0.52</td><td class="num">4.1</td></tr>
-      <tr><td>Forced progress (pass)</td><td class="num">−0.12</td><td class="num">0.08</td><td class="num">1.0</td></tr>
+      <tr><th>Probe</th><th>Position</th><th>Legal candidates</th><th>Optimal action</th><th>P(chosen) @ckpt 0130</th><th>P @ckpt 0142</th><th></th></tr>
+      <tr><td class="num">probe-001</td><td>Turn 1, 7-card hand, 1 land</td><td class="num">2</td><td>Mulligan</td><td class="num">0.44</td><td class="num up">0.81</td><td><div class="bar"><i class="g" style="width:81%"></i></div></td></tr>
+      <tr><td class="num">probe-002</td><td>Turn 3, lethal on board</td><td class="num">9</td><td>Full attack</td><td class="num">0.62</td><td class="num up">0.88</td><td><div class="bar"><i class="g" style="width:88%"></i></div></td></tr>
+      <tr><td class="num">probe-003</td><td>Turn 5, Bolt + 2 targets</td><td class="num">14</td><td>Bolt → creature</td><td class="num">0.51</td><td class="num up">0.77</td><td><div class="bar"><i class="g" style="width:77%"></i></div></td></tr>
+      <tr><td class="num">probe-004</td><td>Turn 2, flood risk</td><td class="num">6</td><td>Hold land</td><td class="num">0.18</td><td class="num">0.29</td><td><div class="bar"><i class="y" style="width:29%"></i></div></td></tr>
+    </table>
+    <div class="note">Probe positions are deterministic states from the engine's replay contract — identical observation at every checkpoint.</div>
+  </div>
+</section>
+
+<!-- ================================================== LEARNING -->
+<section class="tab" id="tab-learning">
+
+  <div class="subsec"><i></i>Loss</div>
+  <div class="grid g2">
+    <div class="card"><h3>Loss curves</h3><div id="chart-loss"></div>
+      <div class="legend"><span><i style="background:var(--blue)"></i>policy loss</span><span><i style="background:var(--purple)"></i>value loss (MSE)</span></div></div>
+    <div class="card kpi"><h3>Latest losses</h3>
+      <table>
+        <tr><th>Metric</th><th>Value</th><th>Δ vs last update</th></tr>
+        <tr><td>Policy loss</td><td class="num">−0.021</td><td class="num down">▼ −0.004</td></tr>
+        <tr><td>Value loss (MSE)</td><td class="num">0.083</td><td class="num down">▼ −0.011</td></tr>
+        <tr><td>Approx. KL</td><td class="num">0.008</td><td class="num up">within trust region</td></tr>
+        <tr><td>Clip fraction</td><td class="num">0.11</td><td class="num">stable</td></tr>
+      </table></div>
+  </div>
+
+  <div class="subsec"><i></i>Entropy</div>
+  <div class="grid g2">
+    <div class="card"><h3>Policy entropy over training</h3><div id="chart-entropy"></div>
+      <div class="legend"><span><i style="background:var(--cyan)"></i>entropy</span><span><i style="background:var(--muted)"></i>target band 1.5–2.5</span></div></div>
+    <div class="card"><h3>Entropy per decision type</h3>
+      <table>
+        <tr><th>Decision</th><th>Entropy</th><th>Trend</th></tr>
+        <tr><td>Casting spells</td><td class="num">0.41</td><td class="num">converging</td></tr>
+        <tr><td>Combat declaration</td><td class="num">0.33</td><td class="num">converging</td></tr>
+        <tr><td>Activated abilities</td><td class="num">0.52</td><td class="num">slowly converging</td></tr>
+        <tr><td>Forced progress (pass)</td><td class="num">0.08</td><td class="num">converged</td></tr>
+      </table></div>
+  </div>
+
+  <div class="subsec"><i></i>Gradients</div>
+  <div class="grid g2">
+    <div class="card"><h3>Gradient norm per update</h3><div id="chart-grad"></div>
+      <div class="legend"><span><i style="background:var(--yellow)"></i>global grad norm (clipped at 0.5)</span></div></div>
+    <div class="card"><h3>Gradient clip events</h3>
+      <table>
+        <tr><th>Layer group</th><th>Norm (avg)</th><th>Clipped</th><th></th></tr>
+        <tr><td>Policy torso</td><td class="num">0.31</td><td class="num">1.2%</td><td><div class="bar"><i class="g" style="width:6%"></i></div></td></tr>
+        <tr><td>Policy head</td><td class="num">0.24</td><td class="num">0.4%</td><td><div class="bar"><i class="g" style="width:2%"></i></div></td></tr>
+        <tr><td>Value head</td><td class="num">0.47</td><td class="num">3.8%</td><td><div class="bar"><i class="y" style="width:19%"></i></div></td></tr>
+      </table></div>
+  </div>
+
+  <div class="subsec"><i></i>Checkpoints</div>
+  <div class="card">
+    <table>
+      <tr><th>Checkpoint</th><th>Games</th><th>Eval win rate</th><th>Policy loss</th><th>Entropy</th><th>Size</th><th></th></tr>
+      <tr><td class="num">#0142 · latest</td><td class="num">50,120</td><td class="num">54.2%</td><td class="num">−0.021</td><td class="num">1.94</td><td class="num">14 MB</td><td><button class="btn-sm">Download</button></td></tr>
+      <tr><td class="num">#0138</td><td class="num">46,000</td><td class="num">52.8%</td><td class="num">−0.018</td><td class="num">2.02</td><td class="num">14 MB</td><td><button class="btn-sm">Download</button></td></tr>
+      <tr><td class="num">#0134</td><td class="num">42,000</td><td class="num">52.1%</td><td class="num">−0.016</td><td class="num">2.11</td><td class="num">14 MB</td><td><button class="btn-sm">Download</button></td></tr>
+      <tr><td class="num">#0130 · eval baseline</td><td class="num">38,000</td><td class="num">51.4%</td><td class="num">−0.014</td><td class="num">2.18</td><td class="num">14 MB</td><td><button class="btn-sm">Download</button></td></tr>
     </table>
   </div>
 </section>
 
-<!-- ============ LEARNING ============ -->
-<section class="tab" id="tab-learning">
-  <div class="grid g4">
-    <div class="card kpi"><h3>Policy loss</h3><div class="value">−0.021</div><div class="delta down">▼ −0.004</div></div>
-    <div class="card kpi"><h3>Value loss (MSE)</h3><div class="value">0.083</div><div class="delta down">▼ −0.011</div></div>
-    <div class="card kpi"><h3>Entropy</h3><div class="value">1.94</div><div class="delta" style="color:var(--muted)">target 1.5–2.5</div></div>
-    <div class="card kpi"><h3>Approx. KL</h3><div class="value">0.008</div><div class="delta up">within trust region</div></div>
-  </div>
-  <div class="grid g2 mt">
-    <div class="card">
-      <h3>Loss curves</h3>
-      <div id="chart-loss"></div>
-      <div class="legend"><span><i style="background:var(--blue)"></i>policy loss</span><span><i style="background:var(--purple)"></i>value loss</span></div>
-    </div>
-    <div class="card">
-      <h3>Value prediction vs. realized outcome</h3>
-      <div id="chart-value"></div>
-      <div class="legend"><span><i style="background:var(--cyan)"></i>predicted V(s)</span><span><i style="background:var(--muted)"></i>realized return</span></div>
-    </div>
-  </div>
-</section>
-
-<!-- ============ EVALUATION ============ -->
+<!-- ================================================== EVALUATION -->
 <section class="tab" id="tab-evaluation">
+
+  <div class="subsec"><i></i>Matchups</div>
   <div class="card">
     <h3>League table — best-of-500 evaluation matches</h3>
     <table>
       <tr><th>Opponent</th><th>Win rate</th><th></th><th>Avg turns</th><th>Elo (est.)</th><th>Δ vs last eval</th></tr>
       <tr><td>Random legal agent</td><td class="num">98.1%</td><td><div class="bar"><i class="g" style="width:98%"></i></div></td><td class="num">5.2</td><td class="num">1842</td><td class="num up">+12</td></tr>
       <tr><td>Greedy heuristic</td><td class="num">61.4%</td><td><div class="bar"><i class="g" style="width:61%"></i></div></td><td class="num">7.1</td><td class="num">1420</td><td class="num up">+21</td></tr>
-      <tr><td>MCTS-lite (100 rollouts)</td><td class="num">52.7%</td><td><div class="bar"><i class="g" style="width:53%"></i></div></td><td class="num">8.9</td><td class="num">1381</td><td class="num up">+34</td></tr>
       <tr><td>Self (frozen ckpt #0130)</td><td class="num">53.9%</td><td><div class="bar"><i class="g" style="width:54%"></i></div></td><td class="num">8.4</td><td class="num">1395</td><td class="num up">+29</td></tr>
+      <tr><td>MCTS-lite (100 rollouts)</td><td class="num">52.7%</td><td><div class="bar"><i class="g" style="width:53%"></i></div></td><td class="num">8.9</td><td class="num">1381</td><td class="num up">+34</td></tr>
     </table>
-    <div class="note">Evaluation games run with the engine's deterministic replay seeds — identical agent weights vs. identical opponents.</div>
   </div>
-  <div class="card mt">
-    <h3>Win rate per evaluation round</h3>
-    <div id="chart-eval"></div>
-    <div class="legend"><span><i style="background:var(--green)"></i>vs. self (frozen)</span><span><i style="background:var(--yellow)"></i>vs. MCTS-lite</span></div>
+
+  <div class="subsec"><i></i>Seats</div>
+  <div class="grid g2">
+    <div class="card"><h3>Win rate by seat (mirror match)</h3>
+      <table>
+        <tr><th>Seat</th><th>Win rate</th><th></th></tr>
+        <tr><td>P0 (plays first)</td><td class="num">56.1%</td><td><div class="bar"><i class="g" style="width:56%"></i></div></td></tr>
+        <tr><td>P1 (draws first)</td><td class="num">52.3%</td><td><div class="bar"><i class="g" style="width:52%"></i></div></td></tr>
+      </table>
+      <div class="note">Agent occupies both seats equally in the mirror matchup; seat delta ≈ 3.8 pts engine tempo advantage.</div></div>
+    <div class="card"><h3>Seat win rate over evaluation rounds</h3><div id="chart-seats"></div>
+      <div class="legend"><span><i style="background:var(--blue)"></i>P0 seat</span><span><i style="background:var(--purple)"></i>P1 seat</span></div></div>
+  </div>
+
+  <div class="subsec"><i></i>Seeds</div>
+  <div class="grid g2">
+    <div class="card"><h3>Win rate per seed bucket (100 games each)</h3><div id="chart-seeds"></div>
+      <div class="legend"><span><i style="background:var(--green)"></i>win rate per deterministic seed bucket</span></div></div>
+    <div class="card kpi"><h3>Seed variance</h3><div class="value">σ = 2.1 pts</div><div class="sub">across 50 seed buckets · expected binomial σ ≈ 5 pts</div></div>
+  </div>
+
+  <div class="subsec"><i></i>Fixed probes</div>
+  <div class="card">
+    <h3>Fixed evaluation probes — results per checkpoint</h3>
+    <table>
+      <tr><th>Probe suite</th><th>Games</th><th>Win rate</th><th>Avg value at probe</th><th>vs. greedy baseline</th></tr>
+      <tr><td class="num">suite-A · mulligan probes</td><td class="num">500</td><td class="num">72.4%</td><td class="num">0.61</td><td class="num up">+9.2 pts</td></tr>
+      <tr><td class="num">suite-B · combat math probes</td><td class="num">500</td><td class="num">68.1%</td><td class="num">0.55</td><td class="num up">+11.7 pts</td></tr>
+      <tr><td class="num">suite-C · sequencing probes</td><td class="num">500</td><td class="num">61.9%</td><td class="num">0.48</td><td class="num up">+7.4 pts</td></tr>
+      <tr><td class="num">suite-D · hidden-info probes</td><td class="num">500</td><td class="num">54.8%</td><td class="num">0.41</td><td class="num up">+3.1 pts</td></tr>
+    </table>
+    <div class="note">Probes replay fixed deterministic game prefixes; identical agent weights always face identical positions.</div>
   </div>
 </section>
 
-<!-- ============ PERFORMANCE ============ -->
+<!-- ================================================== PERFORMANCE -->
 <section class="tab" id="tab-performance">
   <div class="grid g4">
-    <div class="card kpi"><h3>Engine steps / sec</h3><div class="value">48.2k</div><div class="sub">authoritative state transitions</div></div>
     <div class="card kpi"><h3>Games / sec</h3><div class="value">132</div><div class="sub">8 rollout workers</div></div>
+    <div class="card kpi"><h3>Engine steps / sec</h3><div class="value">48.2k</div><div class="sub">authoritative state transitions</div></div>
     <div class="card kpi"><h3>Avg step latency</h3><div class="value">84 µs</div><div class="sub">p99: 310 µs</div></div>
     <div class="card kpi"><h3>Worker RSS</h3><div class="value">312 MB</div><div class="sub">per worker, stable</div></div>
   </div>
-  <div class="card mt">
-    <h3>Throughput over run</h3>
-    <div id="chart-throughput"></div>
-    <div class="legend"><span><i style="background:var(--blue)"></i>games/sec</span><span><i style="background:var(--purple)"></i>steps/sec (÷1000)</span></div>
+
+  <div class="subsec"><i></i>Throughput</div>
+  <div class="grid g2">
+    <div class="card"><h3>Games/s &amp; steps/s over run</h3><div id="chart-throughput"></div>
+      <div class="legend"><span><i style="background:var(--blue)"></i>games/sec</span><span><i style="background:var(--purple)"></i>steps/sec (÷1000)</span></div></div>
+    <div class="card"><h3>Engine internals</h3>
+      <table>
+        <tr><th>Subsystem</th><th>Calls</th><th>Avg time</th><th>Share</th><th></th></tr>
+        <tr><td>State transition</td><td class="num">212.4M</td><td class="num">31 µs</td><td class="num">42%</td><td><div class="bar"><i style="width:42%"></i></div></td></tr>
+        <tr><td>Legal decision enumeration</td><td class="num">96.1M</td><td class="num">22 µs</td><td class="num">28%</td><td><div class="bar"><i class="p" style="width:28%"></i></div></td></tr>
+        <tr><td>Observation encoding</td><td class="num">88.3M</td><td class="num">17 µs</td><td class="num">19%</td><td><div class="bar"><i class="c" style="width:19%"></i></div></td></tr>
+        <tr><td>State hashing / digests</td><td class="num">41.0M</td><td class="num">9 µs</td><td class="num">8%</td><td><div class="bar"><i class="y" style="width:8%"></i></div></td></tr>
+        <tr><td>Telemetry (FAST)</td><td class="num">40.2M</td><td class="num">4 µs</td><td class="num">3%</td><td><div class="bar"><i class="g" style="width:3%"></i></div></td></tr>
+      </table></div>
   </div>
-  <div class="card mt">
-    <h3>Engine internals</h3>
+
+  <div class="subsec"><i></i>Workers</div>
+  <div class="card">
     <table>
-      <tr><th>Subsystem</th><th>Calls</th><th>Avg time</th><th>Share</th><th></th></tr>
-      <tr><td>State transition</td><td class="num">212.4M</td><td class="num">31 µs</td><td class="num">42%</td><td><div class="bar"><i style="width:42%"></i></div></td></tr>
-      <tr><td>Legal decision enumeration</td><td class="num">96.1M</td><td class="num">22 µs</td><td class="num">28%</td><td><div class="bar"><i class="p" style="width:28%"></i></div></td></tr>
-      <tr><td>Observation encoding</td><td class="num">88.3M</td><td class="num">17 µs</td><td class="num">19%</td><td><div class="bar"><i class="c" style="width:19%"></i></div></td></tr>
-      <tr><td>State hashing / digests</td><td class="num">41.0M</td><td class="num">9 µs</td><td class="num">8%</td><td><div class="bar"><i class="y" style="width:8%"></i></div></td></tr>
-      <tr><td>Telemetry (FAST)</td><td class="num">40.2M</td><td class="num">4 µs</td><td class="num">3%</td><td><div class="bar"><i class="g" style="width:3%"></i></div></td></tr>
+      <tr><th>Worker</th><th>Status</th><th>Games completed</th><th>Games/s</th><th>Steps/s</th><th>RSS</th><th>Uptime</th></tr>
+      <tr><td class="num">worker-0</td><td><span class="tag tag-green">healthy</span></td><td class="num">6,412</td><td class="num">16.8</td><td class="num">6.1k</td><td class="num">308 MB</td><td class="num">4h 12m</td></tr>
+      <tr><td class="num">worker-1</td><td><span class="tag tag-green">healthy</span></td><td class="num">6,388</td><td class="num">16.5</td><td class="num">6.0k</td><td class="num">311 MB</td><td class="num">4h 12m</td></tr>
+      <tr><td class="num">worker-2</td><td><span class="tag tag-green">healthy</span></td><td class="num">6,401</td><td class="num">16.7</td><td class="num">6.1k</td><td class="num">305 MB</td><td class="num">4h 12m</td></tr>
+      <tr><td class="num">worker-3</td><td><span class="tag tag-yellow">throttled</span></td><td class="num">6,350</td><td class="num">13.9</td><td class="num">5.2k</td><td class="num">322 MB</td><td class="num">4h 12m</td></tr>
+      <tr><td class="num">worker-4 … 7</td><td><span class="tag tag-green">healthy</span></td><td class="num">24,969 (Σ)</td><td class="num">68.1</td><td class="num">24.8k</td><td class="num">≈310 MB</td><td class="num">4h 12m</td></tr>
     </table>
+  </div>
+
+  <div class="subsec"><i></i>CPU / GPU / RAM</div>
+  <div class="grid g3">
+    <div class="card"><h3>Host utilization</h3>
+      <table>
+        <tr><th>Resource</th><th>Usage</th><th></th></tr>
+        <tr><td>CPU (32 cores)</td><td class="num">62%</td><td><div class="bar"><i style="width:62%"></i></div></td></tr>
+        <tr><td>GPU (rollout inference)</td><td class="num">71%</td><td><div class="bar"><i class="p" style="width:71%"></i></div></td></tr>
+        <tr><td>RAM</td><td class="num">8.2 / 16 GB</td><td><div class="bar"><i class="c" style="width:51%"></i></div></td></tr>
+        <tr><td>VRAM</td><td class="num">1.9 / 8 GB</td><td><div class="bar"><i class="g" style="width:24%"></i></div></td></tr>
+      </table></div>
+    <div class="card"><h3>CPU % over run</h3><div id="chart-cpu"></div>
+      <div class="legend"><span><i style="background:var(--blue)"></i>host CPU utilization</span></div></div>
+    <div class="card"><h3>RAM over run</h3><div id="chart-ram"></div>
+      <div class="legend"><span><i style="background:var(--cyan)"></i>host RAM (GB)</span></div></div>
   </div>
 </section>
 
-<!-- ============ REPLAYS ============ -->
+<!-- ================================================== REPLAYS -->
 <section class="tab" id="tab-replays">
+  <div class="subsec"><i></i>Deep training traces</div>
   <div class="card">
     <h3>Saved replays (DEEP traces)</h3>
     <div class="replay-row">
@@ -440,7 +562,7 @@
       <span class="replay-meta">P0 win · 4 turns · 0.3 MB · seed 0x1de4c8a0 · tags: <span class="tag tag-green">rush</span></span>
       <button class="btn-sm">Open</button>
     </div>
-    <div class="note">Deterministic replays: identical seed + identical decision log reproduce the game bit-for-bit (replay contract).</div>
+    <div class="note">Deterministic replays: identical seed + identical decision log reproduce the game bit-for-bit (replay contract). Deep traces include per-turn snapshots, legal candidate lists, and policy/value side data.</div>
   </div>
 </section>
 
@@ -461,10 +583,10 @@ document.querySelectorAll("#tabs button").forEach(function (btn) {
   });
 });
 
-// ---------- tiny SVG line chart helper ----------
+// ---------- tiny SVG chart helpers ----------
 function lineChart(containerId, series, opts) {
   opts = opts || {};
-  var W = opts.w || 560, H = opts.h || 160, pad = 26;
+  var W = 560, H = opts.h || 160, pad = 26;
   var all = [];
   series.forEach(function (s) { all = all.concat(s.data); });
   var min = Math.min.apply(null, all), max = Math.max.apply(null, all);
@@ -479,7 +601,6 @@ function lineChart(containerId, series, opts) {
     }).join(" ");
   }
   var svg = '<svg class="chart" viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="none" role="img">';
-  // gridlines
   for (var g = 0; g <= 3; g++) {
     var gy = pad + ((H - pad * 2) * g) / 3;
     svg += '<line x1="' + pad + '" y1="' + gy + '" x2="' + (W - pad) + '" y2="' + gy + '" stroke="#21262d" stroke-width="1"/>';
@@ -487,10 +608,30 @@ function lineChart(containerId, series, opts) {
     svg += '<text x="4" y="' + (gy + 3) + '" fill="#8b949e" font-size="9">' + gv.toFixed(opts.dec === undefined ? 1 : opts.dec) + "</text>";
   }
   series.forEach(function (s) {
-    svg += '<polyline fill="none" stroke="' + s.color + '" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" points="' + pts(s.data) + '"/>';
     if (s.area) {
-      var p = pts(s.data).split(" ");
       svg += '<polygon fill="' + s.color + '" opacity="0.08" points="' + pad + "," + (H - pad) + " " + pts(s.data) + " " + (W - pad) + "," + (H - pad) + '"/>';
+    }
+    svg += '<polyline fill="none" stroke="' + s.color + '" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" points="' + pts(s.data) + '"/>';
+  });
+  svg += "</svg>";
+  document.getElementById(containerId).innerHTML = svg;
+}
+
+function barChart(containerId, labels, values, opts) {
+  opts = opts || {};
+  var W = 560, H = opts.h || 150, pad = 28;
+  var max = Math.max.apply(null, values) * 1.1;
+  var n = values.length;
+  var bw = (W - pad * 2) / n;
+  var svg = '<svg class="chart" viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="none" role="img">';
+  svg += '<line x1="' + pad + '" y1="' + (H - pad) + '" x2="' + (W - pad) + '" y2="' + (H - pad) + '" stroke="#30363d" stroke-width="1"/>';
+  values.forEach(function (v, i) {
+    var bh = (v / max) * (H - pad * 2);
+    var x = pad + i * bw + bw * 0.12;
+    svg += '<rect x="' + x.toFixed(1) + '" y="' + (H - pad - bh).toFixed(1) + '" width="' + (bw * 0.76).toFixed(1) + '" height="' + bh.toFixed(1) + '" rx="2" fill="' + (opts.color || "#58a6ff") + '"/>';
+    if (n <= 12) {
+      svg += '<text x="' + (x + bw * 0.38).toFixed(1) + '" y="' + (H - pad - bh - 4).toFixed(1) + '" fill="#8b949e" font-size="9" text-anchor="middle">' + v + "</text>";
+      svg += '<text x="' + (x + bw * 0.38).toFixed(1) + '" y="' + (H - pad + 12) + '" fill="#8b949e" font-size="9" text-anchor="middle">' + labels[i] + "</text>";
     }
   });
   svg += "</svg>";
@@ -506,6 +647,7 @@ function walk(base, n, noise, drift) {
   return out;
 }
 
+// Live
 lineChart("chart-winrate", [
   { color: "#58a6ff", data: walk(42, 1.6, 1.8, 0.07), area: true },
   { color: "#8b949e", data: walk(50, 1.2, 1.0, 0) }
@@ -516,37 +658,123 @@ lineChart("chart-drivers", [
   { color: "#bc8cff", data: walk(52, 1.6, 2.0, 0.04) },
   { color: "#39c5cf", data: walk(47, 1.4, 2.2, 0.05) }
 ]);
-lineChart("chart-life", [
-  { color: "#58a6ff", data: [20, 20, 19, 19, 17, 16, 14, 12, 9, 6, 3, 1] },
-  { color: "#f85149", data: [20, 18, 16, 15, 13, 11, 9, 8, 5, 3, 0, 0] }
+
+// Gameplay — Turns
+barChart("chart-turns",
+  ["3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13+"],
+  [4, 7, 11, 14, 16, 15, 12, 9, 6, 4, 2],
+  { color: "#58a6ff" }
+);
+
+// Gameplay — Mana
+lineChart("chart-mana", [
+  { color: "#d29922", data: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10] },
+  { color: "#3fb950", data: [0.9, 1.7, 2.6, 3.3, 4.1, 4.6, 5.1, 5.4, 5.6, 5.7] }
+], { dec: 1 });
+lineChart("chart-mana-eff", [
+  { color: "#3fb950", data: walk(61, 1.2, 2.5, 0.08) }
 ]);
-lineChart("chart-board", [
-  { color: "#3fb950", data: [1, 2, 2, 3, 4, 4, 5, 5, 6, 6] },
-  { color: "#bc8cff", data: [0, 1, 1, 2, 2, 3, 3, 3, 2, 1] }
+
+// Gameplay — Lands
+lineChart("chart-lands", [
+  { color: "#58a6ff", data: [92, 88, 81, 74, 66, 58, 50, 44, 39, 35] },
+  { color: "#bc8cff", data: [90, 86, 79, 72, 64, 57, 49, 43, 38, 34] }
 ]);
+
+// Gameplay — Combat
+lineChart("chart-combat", [
+  { color: "#3fb950", data: [0.5, 1.2, 2.1, 2.8, 2.4, 2.9, 2.2, 1.8, 1.2, 0.8] },
+  { color: "#f85149", data: [0.4, 0.9, 1.6, 2.2, 2.0, 1.7, 1.4, 1.0, 0.7, 0.3] }
+], { dec: 1 });
+
+// Gameplay — Zones
+lineChart("chart-zones", [
+  { color: "#58a6ff", data: [7, 6.8, 6.4, 6.1, 6.3, 6.0, 5.6, 5.4, 5.1, 4.9] },
+  { color: "#39c5cf", data: [1, 2, 2.8, 3.7, 4.3, 4.6, 4.9, 5.0, 5.1, 5.2] },
+  { color: "#bc8cff", data: [0, 0.2, 0.6, 1.1, 1.7, 2.3, 3.0, 3.6, 4.1, 4.6] },
+  { color: "#8b949e", data: [53, 51.5, 50, 48.5, 47, 45.5, 44, 42.5, 41, 39.5] }
+], { dec: 1 });
+
+// Gameplay — Actions
+barChart("chart-actions",
+  ["cast", "attack", "block", "activate", "trigger", "pass", "other"],
+  [31, 23, 9, 14, 8, 18, 4],
+  { color: "#58a6ff" }
+);
+lineChart("chart-hold", [
+  { color: "#3fb950", data: [88, 84, 76, 72, 74, 70, 68, 66, 64, 62] },
+  { color: "#8b949e", data: [12, 16, 24, 28, 26, 30, 32, 34, 36, 38] }
+]);
+
+// Cards
 lineChart("chart-priority", [
   { color: "#39c5cf", data: walk(0.42, 0.03, 0.06, 0.008) },
   { color: "#8b949e", data: walk(0.91, 0.01, 0.05, 0) }
 ], { dec: 2 });
-lineChart("chart-phase", [
-  { color: "#58a6ff", data: walk(0.18, 0.02, 0.04, -0.001) }
+lineChart("chart-targeting", [
+  { color: "#58a6ff", data: walk(0.51, 0.03, 0.06, 0.009) }
 ], { dec: 2 });
-lineChart("chart-loss", [
-  { color: "#58a6ff", data: walk(0.06, 0.008, 0.012, -0.0004) },
-  { color: "#bc8cff", data: walk(0.14, 0.02, 0.03, -0.001) }
-], { dec: 2 });
+
+// Decisions — legal actions
+lineChart("chart-candidates", [
+  { color: "#58a6ff", data: [3.2, 6.8, 11.4, 15.2, 17.9, 18.6, 17.2, 15.8, 14.1, 12.6, 11.0, 9.4] }
+], { dec: 1 });
+barChart("chart-cand-hist",
+  ["1", "2–5", "6–10", "11–20", "21–40", "41+"],
+  [22, 27, 21, 16, 9, 5],
+  { color: "#bc8cff" }
+);
+barChart("chart-policy-hist",
+  ["<0.1", "0.1–0.3", "0.3–0.5", "0.5–0.7", "0.7–0.9", ">0.9"],
+  [9, 13, 16, 19, 24, 19],
+  { color: "#58a6ff" }
+);
+
+// Decisions — value estimates
 lineChart("chart-value", [
   { color: "#39c5cf", data: walk(0.1, 0.04, 0.09, 0.001) },
   { color: "#8b949e", data: walk(0.05, 0.05, 0.12, 0) }
 ], { dec: 2 });
-lineChart("chart-eval", [
-  { color: "#3fb950", data: walk(45, 2.5, 4, 0.6) },
-  { color: "#d29922", data: walk(44, 2.5, 4, 0.5) }
+
+// Learning — loss
+lineChart("chart-loss", [
+  { color: "#58a6ff", data: walk(0.06, 0.008, 0.012, -0.0004) },
+  { color: "#bc8cff", data: walk(0.14, 0.02, 0.03, -0.001) }
+], { dec: 2 });
+
+// Learning — entropy
+lineChart("chart-entropy", [
+  { color: "#39c5cf", data: walk(2.4, 0.06, 0.1, -0.006) },
+  { color: "#8b949e", data: [1.5, 1.5, 1.5, 1.5, 1.5, 1.5, 1.5, 1.5, 1.5, 1.5, 1.5, 1.5] }
+], { dec: 1 });
+
+// Learning — gradients
+lineChart("chart-grad", [
+  { color: "#d29922", data: walk(0.32, 0.03, 0.08, -0.002) }
+], { dec: 2 });
+
+// Evaluation — seats & seeds
+lineChart("chart-seats", [
+  { color: "#58a6ff", data: walk(48, 2.5, 3, 0.5) },
+  { color: "#bc8cff", data: walk(45, 2.5, 3, 0.45) }
 ]);
+barChart("chart-seeds",
+  ["0–9", "10–19", "20–29", "30–39", "40–49"],
+  [55, 53, 57, 51, 56],
+  { color: "#3fb950" }
+);
+
+// Performance
 lineChart("chart-throughput", [
   { color: "#58a6ff", data: walk(120, 4, 8, 0.4) },
   { color: "#bc8cff", data: walk(42, 2, 4, 0.2) }
 ]);
+lineChart("chart-cpu", [
+  { color: "#58a6ff", data: walk(48, 3, 6, 0.3) }
+]);
+lineChart("chart-ram", [
+  { color: "#39c5cf", data: walk(5.1, 0.1, 0.3, 0.02) }
+], { dec: 1 });
 
 // ---------- simulated live feed ----------
 var feedEvents = [
