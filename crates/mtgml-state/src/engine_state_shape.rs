@@ -1,7 +1,7 @@
-//! Typed M2 state components used by current `EngineState` validation.
+//! Typed state components used by current `EngineState` validation.
 //!
 //! This module provides the continuation, retained-knowledge, and
-//! perspective-identity shapes embedded in `EngineState`, plus their M2 shape
+//! perspective-identity shapes embedded in `EngineState`, plus their structural
 //! checks. `validation::validate_engine_state` composes these checks with the
 //! other authoritative state validators. The types do not adapt or
 //! reinterpret any historical V1/V2 value.
@@ -34,28 +34,28 @@ use self::perspective_identity::validate_identity;
 pub use self::perspective_identity::{PerspectiveIdentityRecordV2, PerspectiveIdentityStateV2};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
-pub enum M2ShapeViolation {
-    #[error("M2 state does not cover exactly the declared players")]
+pub enum EngineStateShapeViolation {
+    #[error("engine state does not cover exactly the declared players")]
     PlayerCoverage,
-    #[error("M2 perspective-local allocator is missing or behind")]
+    #[error("perspective-local allocator is missing or behind")]
     Allocator,
-    #[error("M2 opaque mapping is not bijective")]
+    #[error("opaque mapping is not bijective")]
     IdentityMapping,
-    #[error("M2 opaque identity is active and retired simultaneously")]
+    #[error("opaque identity is active and retired simultaneously")]
     RetiredIdentity,
-    #[error("M2 retained knowledge shape is invalid")]
+    #[error("retained knowledge shape is invalid")]
     Knowledge,
-    #[error("M2 visible sequence is not strictly monotonic")]
+    #[error("visible sequence is not strictly monotonic")]
     VisibleSequence,
-    #[error("M2 pending decision is invalid")]
+    #[error("pending decision is invalid")]
     PendingDecision,
-    #[error("M2 pending decision references a missing continuation")]
+    #[error("pending decision references a missing continuation")]
     ContinuationReference,
-    #[error("M2 continuation stage is owned by a different actor than its request")]
+    #[error("continuation stage is owned by a different actor than its request")]
     ContinuationActor,
-    #[error("M2 continuation revision is stale or future-dated")]
+    #[error("continuation revision is stale or future-dated")]
     ContinuationRevision,
-    #[error("M2 continuation stage is invalid")]
+    #[error("continuation stage is invalid")]
     ContinuationStage,
     #[error("Magic SBA Graveyard-order continuation is structurally inconsistent")]
     MagicContinuation,
@@ -63,12 +63,12 @@ pub enum M2ShapeViolation {
 
 /// Inclusive numeric interval of the synthetic assembly ChooseCount stage.
 ///
-/// This is the single authority for the frozen M2.C program bound; the rules
+/// This is the single authority for the frozen synthetic-program bound; the rules
 /// kernel consumes these values instead of restating them.
 pub const SYNTHETIC_COUNT_MIN: u32 = 0;
 pub const SYNTHETIC_COUNT_MAX: u32 = 3;
 
-pub fn validate_m2_shape(
+pub fn validate_engine_state_shape(
     current_revision: StateRevision,
     players: &BTreeSet<PlayerId>,
     objects: &BTreeMap<GameObjectId, GameObject>,
@@ -76,11 +76,11 @@ pub fn validate_m2_shape(
     continuations: &BTreeMap<ContinuationId, ContinuationRecordV2>,
     knowledge: &KnowledgeStateV2,
     identities: &PerspectiveIdentityStateV2,
-) -> Result<(), M2ShapeViolation> {
+) -> Result<(), EngineStateShapeViolation> {
     if knowledge.players.keys().copied().collect::<BTreeSet<_>>() != *players
         || identities.players.keys().copied().collect::<BTreeSet<_>>() != *players
     {
-        return Err(M2ShapeViolation::PlayerCoverage);
+        return Err(EngineStateShapeViolation::PlayerCoverage);
     }
 
     for (player, identity) in &identities.players {
@@ -94,24 +94,24 @@ pub fn validate_m2_shape(
                 .values()
                 .any(|ability| !identity.ability_to_opaque.contains_key(ability))
         {
-            return Err(M2ShapeViolation::IdentityMapping);
+            return Err(EngineStateShapeViolation::IdentityMapping);
         }
         let player_knowledge = knowledge
             .players
             .get(player)
-            .ok_or(M2ShapeViolation::PlayerCoverage)?;
+            .ok_or(EngineStateShapeViolation::PlayerCoverage)?;
         validate_knowledge(player_knowledge)?;
     }
 
     for continuation in continuations.values() {
         if !players.contains(&continuation.actor) {
-            return Err(M2ShapeViolation::PlayerCoverage);
+            return Err(EngineStateShapeViolation::PlayerCoverage);
         }
         if continuation.created_at_revision > current_revision {
-            return Err(M2ShapeViolation::ContinuationRevision);
+            return Err(EngineStateShapeViolation::ContinuationRevision);
         }
         if continuation.stage_index != continuation.payload.stage_index() {
-            return Err(M2ShapeViolation::ContinuationStage);
+            return Err(EngineStateShapeViolation::ContinuationStage);
         }
         match &continuation.payload {
             ContinuationPayloadV2::SyntheticM2Assembly {
@@ -153,29 +153,29 @@ pub fn validate_m2_shape(
         pending
             .request
             .validate()
-            .map_err(|_| M2ShapeViolation::PendingDecision)?;
+            .map_err(|_| EngineStateShapeViolation::PendingDecision)?;
         if pending.request.state_revision != current_revision
             || !players.contains(&pending.request.actor)
         {
-            return Err(M2ShapeViolation::PendingDecision);
+            return Err(EngineStateShapeViolation::PendingDecision);
         }
         if let Some(continuation_id) = pending.request.continuation_id {
             let continuation = continuations
                 .get(&continuation_id)
-                .ok_or(M2ShapeViolation::ContinuationReference)?;
+                .ok_or(EngineStateShapeViolation::ContinuationReference)?;
             // DECISION_PROTOCOL.md: the endpoint bound to the actor projects
             // the request; ADR 0039 serializes the owning actor as
             // continuation state. M2 has no accepted stage-transfer
             // semantics, so a referenced continuation must belong to the
             // pending request's actor.
             if continuation.actor != pending.request.actor {
-                return Err(M2ShapeViolation::ContinuationActor);
+                return Err(EngineStateShapeViolation::ContinuationActor);
             }
             if continuation.created_at_revision > pending.request.state_revision {
-                return Err(M2ShapeViolation::ContinuationRevision);
+                return Err(EngineStateShapeViolation::ContinuationRevision);
             }
             if continuation.stage_index != continuation.payload.stage_index() {
-                return Err(M2ShapeViolation::ContinuationStage);
+                return Err(EngineStateShapeViolation::ContinuationStage);
             }
         }
     }

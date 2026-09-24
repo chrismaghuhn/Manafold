@@ -2,20 +2,20 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from ._observation_m3 import SyntheticM3Priority, SyntheticM3TurnPosition
+from ._synthetic_observation import SyntheticPriority, SyntheticTurnPosition
 from .canonical import parse_uint, require_exact_keys, uint_wire
 from .errors import WireError
 
-MAGIC_M3_OBSERVATION_SCHEMA = "magic-m3-observation.v1"
+MAGIC_OBSERVATION_SCHEMA_V1 = "magic-m3-observation.v1"
 
 
 @dataclass(frozen=True, slots=True)
-class MagicM3CompletedOrder:
+class MagicCompletedOrder:
     owner: int
     ordered_objects: tuple[int, ...]
 
     @classmethod
-    def from_wire(cls, value: object) -> MagicM3CompletedOrder:
+    def from_wire(cls, value: object) -> MagicCompletedOrder:
         obj = require_exact_keys(value, {"owner", "ordered_objects"})
         raw_objects = obj["ordered_objects"]
         if not isinstance(raw_objects, list):
@@ -37,18 +37,18 @@ class MagicM3CompletedOrder:
 
 
 @dataclass(frozen=True, slots=True)
-class MagicM3PendingSbaOrdering:
-    completed_orders: tuple[MagicM3CompletedOrder, ...]
+class MagicPendingSbaOrdering:
+    completed_orders: tuple[MagicCompletedOrder, ...]
     next_order_owner: int
 
     @classmethod
-    def from_wire(cls, value: object) -> MagicM3PendingSbaOrdering:
+    def from_wire(cls, value: object) -> MagicPendingSbaOrdering:
         obj = require_exact_keys(value, {"completed_orders", "next_order_owner"})
         raw_orders = obj["completed_orders"]
         if not isinstance(raw_orders, list):
             raise WireError("decode.invalid_json", "completed_orders must be an array")
         result = cls(
-            tuple(MagicM3CompletedOrder.from_wire(x) for x in raw_orders),
+            tuple(MagicCompletedOrder.from_wire(x) for x in raw_orders),
             parse_uint(obj["next_order_owner"]),
         )
         result.to_wire()
@@ -65,16 +65,16 @@ class MagicM3PendingSbaOrdering:
 
 
 @dataclass(frozen=True, slots=True)
-class MagicM3Observation:
+class MagicObservation:
     schema_version: str
     active_player: int
     turn_number: str
-    turn_position: SyntheticM3TurnPosition
-    priority: SyntheticM3Priority
-    pending_sba_ordering: MagicM3PendingSbaOrdering | None
+    turn_position: SyntheticTurnPosition
+    priority: SyntheticPriority
+    pending_sba_ordering: MagicPendingSbaOrdering | None
 
     @classmethod
-    def from_wire(cls, value: object) -> MagicM3Observation:
+    def from_wire(cls, value: object) -> MagicObservation:
         obj = require_exact_keys(
             value,
             {
@@ -86,10 +86,8 @@ class MagicM3Observation:
                 "pending_sba_ordering",
             },
         )
-        if obj["schema_version"] != MAGIC_M3_OBSERVATION_SCHEMA:
-            raise WireError(
-                "semantic.magic_m3_observation", "unsupported Magic M3 observation schema"
-            )
+        if obj["schema_version"] != MAGIC_OBSERVATION_SCHEMA_V1:
+            raise WireError("semantic.magic_m3_observation", "unsupported Magic observation schema")
         turn_number = obj["turn_number"]
         if not isinstance(turn_number, str):
             raise WireError("decode.invalid_json", "turn number must be a string")
@@ -99,19 +97,17 @@ class MagicM3Observation:
             raise WireError("semantic.magic_m3_observation", exc.message) from exc
         pending_raw = obj["pending_sba_ordering"]
         return cls(
-            MAGIC_M3_OBSERVATION_SCHEMA,
+            MAGIC_OBSERVATION_SCHEMA_V1,
             parse_uint(obj["active_player"]),
             turn_number,
-            SyntheticM3TurnPosition.from_wire(obj["turn_position"]),
-            SyntheticM3Priority.from_wire(obj["priority"]),
-            None if pending_raw is None else MagicM3PendingSbaOrdering.from_wire(pending_raw),
+            SyntheticTurnPosition.from_wire(obj["turn_position"]),
+            SyntheticPriority.from_wire(obj["priority"]),
+            None if pending_raw is None else MagicPendingSbaOrdering.from_wire(pending_raw),
         )
 
     def validate(self) -> None:
-        if self.schema_version != MAGIC_M3_OBSERVATION_SCHEMA:
-            raise WireError(
-                "semantic.magic_m3_observation", "unsupported Magic M3 observation schema"
-            )
+        if self.schema_version != MAGIC_OBSERVATION_SCHEMA_V1:
+            raise WireError("semantic.magic_m3_observation", "unsupported Magic observation schema")
         uint_wire(self.active_player)
         if not isinstance(self.turn_number, str):
             raise WireError("decode.invalid_json", "turn number must be a string")
@@ -132,7 +128,7 @@ class MagicM3Observation:
             if self.pending_sba_ordering is None
             else self.pending_sba_ordering.to_wire(),
             "priority": self.priority.to_wire(),
-            "schema_version": MAGIC_M3_OBSERVATION_SCHEMA,
+            "schema_version": MAGIC_OBSERVATION_SCHEMA_V1,
             "turn_number": self.turn_number,
             "turn_position": self.turn_position.to_wire(),
         }

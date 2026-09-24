@@ -57,5 +57,5 @@ pub use semantic_catalog_generated::synthetic_legacy_default_rules_manifest;
 pub use semantic_catalog_generated::synthetic_legacy_default_semantic_contract_id;
 pub use semantic_catalog_generated::synthetic_legacy_default_semantic_manifest;
 pub use synthetic::{
-    SyntheticM1EnvironmentBackend, SyntheticM1EnvironmentConfig, SyntheticM1ReplayConfig,
+    SyntheticRulesEnvironmentBackend, SyntheticRulesEnvironmentConfig, SyntheticRulesReplayConfig,
 };

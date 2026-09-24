@@ -17,8 +17,8 @@ use mtgml_decision::{
     VisibleCandidateV2, PLAYER_DECISION_REQUEST_V2_SCHEMA,
 };
 use mtgml_environment::{
-    EnvironmentCheckpointV6, EnvironmentLimitCounters, SyntheticM1EnvironmentBackend,
-    SyntheticM1EnvironmentConfig, SyntheticM1ReplayConfig, TrustedEnvironmentController,
+    EnvironmentCheckpointV6, EnvironmentLimitCounters, SyntheticRulesEnvironmentBackend,
+    SyntheticRulesEnvironmentConfig, SyntheticRulesReplayConfig, TrustedEnvironmentController,
 };
 use mtgml_model::{
     CandidateIdV1, CheckpointCodecIdentity, ContentDigest, ExecutionIdentityV1, ExecutionProgramV1,
@@ -50,15 +50,15 @@ fn synthetic_identity() -> ExecutionIdentityV1 {
     }
 }
 
-fn config(players: [PlayerId; 2]) -> SyntheticM1EnvironmentConfig {
+fn config(players: [PlayerId; 2]) -> SyntheticRulesEnvironmentConfig {
     use mtgml_observation::{
         INFORMATION_STATE_SCHEMA_V2, OBSERVATION_SCHEMA, OBSERVED_EVENT_SCHEMA_V2,
         PLAYER_STEP_SCHEMA_V2,
     };
-    SyntheticM1EnvironmentConfig {
+    SyntheticRulesEnvironmentConfig {
         codec: codec(),
-        setup: mtgml_state::SyntheticV4Setup::m2_compatibility(),
-        replay: SyntheticM1ReplayConfig {
+        setup: mtgml_state::SyntheticV4Setup::synthetic_compatibility(),
+        replay: SyntheticRulesReplayConfig {
             engine_build: "synthetic-build".into(),
             kernel: KernelIdentityV1 {
                 implementation_id: "synthetic-m2".into(),
@@ -100,7 +100,7 @@ fn fixture_controller() -> TrustedEnvironmentController {
     let state = construct_synthetic_engine_state(mtgml_state::SyntheticResetInputs {
         players,
         root_seed: seed(),
-        setup: mtgml_state::SyntheticV4Setup::m2_compatibility(),
+        setup: mtgml_state::SyntheticV4Setup::synthetic_compatibility(),
     })
     .unwrap();
     let counters = EnvironmentLimitCounters::default();
@@ -113,7 +113,7 @@ fn fixture_controller() -> TrustedEnvironmentController {
     )
     .unwrap();
     TrustedEnvironmentController::new(
-        SyntheticM1EnvironmentBackend::from_checkpoint(checkpoint, config(players)).unwrap(),
+        SyntheticRulesEnvironmentBackend::from_checkpoint(checkpoint, config(players)).unwrap(),
     )
 }
 

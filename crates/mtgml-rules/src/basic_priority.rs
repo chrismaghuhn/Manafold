@@ -1,4 +1,4 @@
-//! Closed two-player, pass-only Basic Priority semantics for S3.B.
+//! Closed two-player, pass-only Basic Priority semantics.
 
 use mtgml_decision::{
     AuthoritativeDecisionRequestV2, CandidateIntent, CandidateOrderingV1, DecisionDomainV2,
@@ -32,8 +32,8 @@ pub(crate) fn is_priority_bearing_position(position: TurnPosition) -> bool {
     )
 }
 
-/// Proves the currently representable pass-only S3.B state from authoritative
-/// state. SBA semantics remain owned by the S3.A Rules authority.
+/// Proves the currently representable pass-only state from authoritative
+/// state. State-based-action semantics remain owned by their rules authority.
 pub(crate) fn validate_pass_only_state(
     state: &EngineState,
     require_held_decision: bool,
@@ -50,7 +50,7 @@ pub(crate) fn validate_pass_only_state(
     let mut stable = state.clone();
     stable.core.priority = PriorityState::None;
     stable.execution.pending_decision = None;
-    crate::state_based_actions::validate_s3_a_support_profile(&stable)
+    crate::state_based_actions::validate_state_based_actions_support_profile(&stable)
         .map_err(|_| KernelExecutionError::UnsupportedStagePath)?;
     let plan = crate::state_based_actions::derive_bounded_sba_round_plan(&stable)
         .map_err(|_| KernelExecutionError::UnsupportedStagePath)?;

@@ -443,7 +443,7 @@ def execute_python_test(definition: EvidenceDefinition, logs: Path, index: int) 
 def check_single_count_authority() -> str:
     """The synthetic count interval has exactly one definition, in the state
     authority beside the frozen payload; the rules kernel consumes it."""
-    state_source = (ROOT / "crates" / "mtgml-state" / "src" / "m2_shape.rs").read_text(
+    state_source = (ROOT / "crates" / "mtgml-state" / "src" / "engine_state_shape.rs").read_text(
         encoding="utf-8"
     )
     if "pub const SYNTHETIC_COUNT_MIN: u32 = 0;" not in state_source:

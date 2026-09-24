@@ -678,7 +678,7 @@ SCOPE_MAGIC_CLOSED_VOCAB_EXCEPTIONS: dict[tuple[str, str, str], int] = {
     ): 1,
     (
         r"\bcombat_damage\b",
-        "python/src/mtgml/_observation_m3.py",
+        "python/src/mtgml/_synthetic_observation.py",
         '"combat_damage",',
     ): 1,
 }
@@ -1026,7 +1026,7 @@ KERNEL_ALIAS_PATTERNS: tuple[re.Pattern[str], ...] = tuple(
         r"\buse\s+[\w:]*\{[^}]*\bRulesKernel\b\s+as\s+[A-Za-z_][A-Za-z0-9_]*[^}]*\}",
     )
 )
-EXPECTED_KERNEL_IMPLEMENTATIONS: frozenset[str] = frozenset({"SyntheticM1RulesKernel"})
+EXPECTED_KERNEL_IMPLEMENTATIONS: frozenset[str] = frozenset({"SyntheticLegacyRulesKernel"})
 
 
 def _is_test_convention_path(relative_posix: str) -> bool:
@@ -1116,7 +1116,7 @@ def check_rules_backend_inventory(root: Path) -> str:
         raise ScopeCheckFailure("\n".join(problems))
     return (
         "exactly one production RulesKernel implementation "
-        f"(SyntheticM1RulesKernel), no import aliasing, across {scanned} "
+        f"(SyntheticLegacyRulesKernel), no import aliasing, across {scanned} "
         "production source files"
     )
 

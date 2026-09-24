@@ -24,7 +24,7 @@ pub use wire_boundary::WIRE_MALFORMED_CLASSES;
 
 pub use fingerprint::{
     assert_fingerprint_policies, capture_complete, capture_snapshot, capture_transition_product,
-    CompleteM2Fingerprint, EnvironmentFingerprint, FingerprintComparison,
+    CompleteStateFingerprint, EnvironmentFingerprint, FingerprintComparison,
     PlayerProtocolIdentitySurface, PlayerVisibleFingerprint, PlayerVisibleSnapshot,
     ReplayRecorderFingerprint, SemanticStateFingerprint, TransitionVisibleProduct,
     TrustedEnvironmentIdentitySurface,

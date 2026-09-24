@@ -9,8 +9,8 @@
 //! external counters. The M2.G runner records the gate verdicts separately.
 
 use super::{
-    synthetic_identity, SyntheticM1EnvironmentBackend, SyntheticM1EnvironmentConfig,
-    SyntheticM1ReplayConfig,
+    synthetic_identity, SyntheticRulesEnvironmentBackend, SyntheticRulesEnvironmentConfig,
+    SyntheticRulesReplayConfig,
 };
 use crate::checkpoint::{CheckpointCodecIdentity, EnvironmentCheckpointV6};
 use crate::controller::TrustedEnvironmentController;
@@ -28,14 +28,14 @@ use mtgml_replay::{
     ReplaySchemaVersionsV6, ReplayStepV6, ReplayValidationError, REPLAY_FILE_SCHEMA_V6,
 };
 
-fn config(players: [PlayerId; 2]) -> SyntheticM1EnvironmentConfig {
-    SyntheticM1EnvironmentConfig {
+fn config(players: [PlayerId; 2]) -> SyntheticRulesEnvironmentConfig {
+    SyntheticRulesEnvironmentConfig {
         codec: CheckpointCodecIdentity {
             codec_id: "in-memory-reference".into(),
             semantic_version: "6".into(),
         },
-        setup: mtgml_state::SyntheticV4Setup::m2_compatibility(),
-        replay: SyntheticM1ReplayConfig {
+        setup: mtgml_state::SyntheticV4Setup::synthetic_compatibility(),
+        replay: SyntheticRulesReplayConfig {
             engine_build: "synthetic-build".into(),
             kernel: KernelIdentityV1 {
                 implementation_id: "synthetic-m2".into(),
@@ -76,12 +76,12 @@ fn seed() -> RootSeed256 {
     RootSeed256::from_lower_hex(&"11".repeat(32)).unwrap()
 }
 
-fn backend() -> SyntheticM1EnvironmentBackend {
+fn backend() -> SyntheticRulesEnvironmentBackend {
     let players = [PlayerId(1), PlayerId(2)];
-    SyntheticM1EnvironmentBackend::new(players, seed(), config(players)).unwrap()
+    SyntheticRulesEnvironmentBackend::new(players, seed(), config(players)).unwrap()
 }
 
-fn eventful_backend() -> SyntheticM1EnvironmentBackend {
+fn eventful_backend() -> SyntheticRulesEnvironmentBackend {
     let players = [PlayerId(1), PlayerId(2)];
     super::eventful::backend(players, seed(), config(players)).unwrap()
 }
@@ -189,7 +189,7 @@ fn eventful_replay_reprojects_both_perspectives_byte_exactly() {
             if code == "p2-public"
     ));
 
-    let mut replay_step = SyntheticM1EnvironmentBackend::player_step_from_state(
+    let mut replay_step = SyntheticRulesEnvironmentBackend::player_step_from_state(
         &trace.after.state,
         PlayerId(1),
         trace.after.status.clone(),
@@ -354,7 +354,7 @@ fn historical_reprojection_byte_exact() {
             &trace.transition.events,
         )
         .unwrap();
-        let mut rebuilt = SyntheticM1EnvironmentBackend::player_step_from_state(
+        let mut rebuilt = SyntheticRulesEnvironmentBackend::player_step_from_state(
             &trace.after.state,
             actor,
             trace.after.status.clone(),
@@ -384,7 +384,8 @@ fn historical_reprojection_byte_exact() {
         )
         .unwrap();
         let step_controller = TrustedEnvironmentController::new(
-            SyntheticM1EnvironmentBackend::from_checkpoint(step_checkpoint, step_config).unwrap(),
+            SyntheticRulesEnvironmentBackend::from_checkpoint(step_checkpoint, step_config)
+                .unwrap(),
         );
         let step_endpoints = [
             step_controller.bind_player(PlayerId(1)).unwrap(),
@@ -395,16 +396,17 @@ fn historical_reprojection_byte_exact() {
             .iter()
             .zip([(PlayerId(1), live_p1), (PlayerId(2), live_p2)])
         {
-            let information = SyntheticM1EnvironmentBackend::player_information_state_from_state(
-                &trace.after.state,
-                perspective,
-            )
-            .unwrap();
+            let information =
+                SyntheticRulesEnvironmentBackend::player_information_state_from_state(
+                    &trace.after.state,
+                    perspective,
+                )
+                .unwrap();
             assert_eq!(
                 mtgml_wire::encode_canonical(&information).unwrap(),
                 live_bytes.information_bytes
             );
-            let observation = SyntheticM1EnvironmentBackend::synthetic_observation(
+            let observation = SyntheticRulesEnvironmentBackend::synthetic_observation(
                 &trace.after.state,
                 perspective,
             )
@@ -428,7 +430,7 @@ fn historical_reprojection_byte_exact() {
     // Current-state parity: endpoints rebuilt from the FINAL checkpoint
     // reproduce the live final projections byte-for-byte.
     let rebuilt_controller = TrustedEnvironmentController::new(
-        SyntheticM1EnvironmentBackend::from_checkpoint(
+        SyntheticRulesEnvironmentBackend::from_checkpoint(
             report.final_checkpoint.clone(),
             config([PlayerId(1), PlayerId(2)]),
         )

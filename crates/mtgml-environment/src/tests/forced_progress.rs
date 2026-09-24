@@ -1,18 +1,18 @@
 // Ownership fragment: forced-progress environment commit evidence.
 // Included lexically by tests.rs so every identity remains tests::<name>.
 //
-// RED: SyntheticM1EnvironmentBackend::execute_forced_progress and the
+// RED: SyntheticRulesEnvironmentBackend::execute_forced_progress and the
 // controller passthrough do not exist yet.
 
 use mtgml_model::DecisionId;
 
-fn backend_without_pending() -> SyntheticM1EnvironmentBackend {
+fn backend_without_pending() -> SyntheticRulesEnvironmentBackend {
     let players = [PlayerId(1), PlayerId(2)];
     let mut state =
         mtgml_state::construct_synthetic_engine_state(mtgml_state::SyntheticResetInputs {
             players,
             root_seed: seed(),
-            setup: mtgml_state::SyntheticV4Setup::m2_compatibility(),
+            setup: mtgml_state::SyntheticV4Setup::synthetic_compatibility(),
         })
         .unwrap();
     state.execution.pending_decision = None;
@@ -26,7 +26,7 @@ fn backend_without_pending() -> SyntheticM1EnvironmentBackend {
         }, synthetic_identity(),
     )
     .unwrap();
-    SyntheticM1EnvironmentBackend::from_checkpoint(checkpoint, config(players)).unwrap()
+    SyntheticRulesEnvironmentBackend::from_checkpoint(checkpoint, config(players)).unwrap()
 }
 
 #[test]
@@ -178,9 +178,9 @@ fn forced_progress_candidate_projects_successfully_pre_commit() {
     // makes pre-commit must accept the candidate product. A committable-yet-
     // unprojectable mutant is not constructible in the current substrate —
     // verified by inspection, not assumed:
-    // - opaque id 0 is structurally forbidden (m2_shape perspective_identity
+    // - opaque id 0 is structurally forbidden (engine_state_shape perspective_identity
     //   rejects zero ids before any projection runs);
-    // - non-increasing observed history is structurally forbidden (m2_shape
+    // - non-increasing observed history is structurally forbidden (engine_state_shape
     //   knowledge enforces strict sequence order);
     // - channel/cause acceptance and sequence bounds are identically strict
     //   in structural validation (state knowledge.rs) and projection
@@ -200,7 +200,7 @@ fn forced_progress_candidate_projects_successfully_pre_commit() {
         mtgml_state::construct_synthetic_engine_state(mtgml_state::SyntheticResetInputs {
             players,
             root_seed: seed(),
-            setup: mtgml_state::SyntheticV4Setup::m2_compatibility(),
+            setup: mtgml_state::SyntheticV4Setup::synthetic_compatibility(),
         })
         .unwrap();
     setup.execution.pending_decision = None;
@@ -211,11 +211,11 @@ fn forced_progress_candidate_projects_successfully_pre_commit() {
     let product = kernel.advance_forced_progress(&setup).unwrap();
     let candidate: &EngineState = &product.next_state;
     for perspective in players {
-        SyntheticM1EnvironmentBackend::synthetic_observation(candidate, perspective)
+        SyntheticRulesEnvironmentBackend::synthetic_observation(candidate, perspective)
             .expect("observation must project");
-        SyntheticM1EnvironmentBackend::player_information_state_from_state(candidate, perspective)
+        SyntheticRulesEnvironmentBackend::player_information_state_from_state(candidate, perspective)
             .expect("information state must project");
-        SyntheticM1EnvironmentBackend::visible_decision_from_state(candidate, perspective)
+        SyntheticRulesEnvironmentBackend::visible_decision_from_state(candidate, perspective)
             .expect("visible decision must project");
     }
 }
@@ -246,7 +246,7 @@ fn forced_progress_failure_leaves_checkpoint_counters_and_replay_unchanged() {
         mtgml_state::construct_synthetic_engine_state(mtgml_state::SyntheticResetInputs {
             players: [PlayerId(1), PlayerId(2)],
             root_seed: seed(),
-            setup: mtgml_state::SyntheticV4Setup::m2_compatibility(),
+            setup: mtgml_state::SyntheticV4Setup::synthetic_compatibility(),
         })
         .unwrap();
     setup.execution.pending_decision = None;
@@ -271,7 +271,7 @@ fn forced_progress_failure_leaves_checkpoint_counters_and_replay_unchanged() {
     )
     .unwrap();
     let controller = TrustedEnvironmentController::new(
-        SyntheticM1EnvironmentBackend::from_checkpoint(checkpoint, config(players)).unwrap(),
+        SyntheticRulesEnvironmentBackend::from_checkpoint(checkpoint, config(players)).unwrap(),
     );
     let before = controller.checkpoint().unwrap();
     let replay_before = controller.export_replay().unwrap();

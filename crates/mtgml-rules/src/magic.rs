@@ -3,14 +3,14 @@
 //! This module establishes the milestone-free, future-authoritative owner of
 //! Magic execution inside `mtgml-rules`. Production execution is reachable
 //! through `ProgramKernelV1::for_admitted_execution` once V6 admission confirms
-//! the exact S1, S3.A, or S3.B contract. Separate fixed S3.A/S3.B
-//! conformance-candidate profile exists only behind the non-default
-//! `m3-conformance-testkit` feature and carries no production identity.
+//! an exact catalog-backed semantic contract. Separate fixed state-based-actions
+//! and basic-priority conformance-candidate profiles exist only behind the
+//! non-default `magic-conformance-testkit` feature and carry no production identity.
 //!
 //! The execution profile is provided by the semantic execution catalog
 //! (`semantic_execution_generated`) and is validated via `magic_execution_profile()`.
-//! Its capability predicates are exact for the admitted contract: an S1
-//! checkpoint cannot execute S3.A behavior
+//! Its capability permissions are generated for the admitted contract: a
+//! turn-structure-only checkpoint cannot execute state-based-action behavior
 //! merely because the same `MagicRulesKernel` type later gains more capabilities.
 
 use std::collections::BTreeMap;
@@ -60,65 +60,58 @@ pub(crate) struct MagicRulesKernel {
 }
 
 /// The kernel's execution context is not itself a semantic contract. The
-/// admitted S1, S3.A, and S3.B production profiles are selected only by their
-/// exact V6 semantic identities. S3.A/S3.B candidate profiles carry no
+/// admitted production profiles are selected only by their exact V6 semantic
+/// identities. Conformance candidate profiles carry no
 /// production identity and exist only in test/conformance builds.
 enum MagicKernelProfile {
-    AdmittedS1(MagicExecutionProfile),
-    AdmittedS3A(MagicExecutionProfile),
-    AdmittedS3B(MagicExecutionProfile),
-    AdmittedS3C(MagicExecutionProfile),
+    Admitted(MagicExecutionProfile),
     #[cfg(test)]
     UnitTest(MagicExecutionProfile),
-    #[cfg(any(test, feature = "m3-conformance-testkit"))]
-    S3AConformanceCandidate,
+    #[cfg(any(test, feature = "magic-conformance-testkit"))]
+    StateBasedActionsConformanceCandidate,
     #[cfg(test)]
-    S3BConformanceCandidate,
+    BasicPriorityConformanceCandidate,
 }
 
 impl MagicKernelProfile {
-    fn allows_s1_turn_structure(&self) -> bool {
+    fn allows_turn_structure(&self) -> bool {
         match self {
-            Self::AdmittedS1(profile) => profile.allows_turn_structure_0_1_0(),
-            Self::AdmittedS3A(_) => false,
-            Self::AdmittedS3B(_) => false,
-            Self::AdmittedS3C(_) => false,
+            Self::Admitted(profile) => profile.allows_turn_structure_0_1_0(),
             #[cfg(test)]
             Self::UnitTest(profile) => profile.allows_turn_structure_0_1_0(),
-            #[cfg(any(test, feature = "m3-conformance-testkit"))]
-            Self::S3AConformanceCandidate => false,
+            #[cfg(any(test, feature = "magic-conformance-testkit"))]
+            Self::StateBasedActionsConformanceCandidate => false,
             #[cfg(test)]
-            Self::S3BConformanceCandidate => false,
+            Self::BasicPriorityConformanceCandidate => false,
         }
     }
 
-    fn allows_s3_a(&self) -> bool {
+    fn allows_state_based_actions(&self) -> bool {
         match self {
-            Self::AdmittedS1(_) => false,
-            Self::AdmittedS3A(profile)
-            | Self::AdmittedS3B(profile)
-            | Self::AdmittedS3C(profile) => profile.allows_state_based_actions_combat_0_1_0(),
+            Self::Admitted(profile) => profile.allows_state_based_actions_combat_0_1_0(),
             #[cfg(test)]
             Self::UnitTest(_) => false,
-            #[cfg(any(test, feature = "m3-conformance-testkit"))]
-            Self::S3AConformanceCandidate => true,
+            #[cfg(any(test, feature = "magic-conformance-testkit"))]
+            Self::StateBasedActionsConformanceCandidate => true,
             #[cfg(test)]
-            Self::S3BConformanceCandidate => true,
+            Self::BasicPriorityConformanceCandidate => true,
         }
     }
 
-    fn allows_s3_b(&self) -> bool {
+    fn allows_basic_priority(&self) -> bool {
         match self {
-            Self::AdmittedS3B(profile) => profile.allows_basic_priority_0_1_0(),
-            Self::AdmittedS3C(profile) => profile.allows_basic_priority_0_1_0(),
+            Self::Admitted(profile) => profile.allows_basic_priority_0_1_0(),
             #[cfg(test)]
-            Self::S3BConformanceCandidate => true,
-            _ => false,
+            Self::BasicPriorityConformanceCandidate => true,
+            #[cfg(test)]
+            Self::UnitTest(_) => false,
+            #[cfg(any(test, feature = "magic-conformance-testkit"))]
+            Self::StateBasedActionsConformanceCandidate => false,
         }
     }
 
-    fn allows_s3_c_draw(&self) -> bool {
-        matches!(self, Self::AdmittedS3C(profile) if profile.allows_draw_card_0_1_0())
+    fn allows_draw_card(&self) -> bool {
+        matches!(self, Self::Admitted(profile) if profile.allows_draw_card_0_1_0())
     }
 }
 
@@ -126,46 +119,44 @@ impl MagicRulesKernel {
     /// Construct from an admitted execution profile.
     ///
     /// This is the production admission authority for Magic execution.
-    /// The profile MUST carry the exact supported semantic contract ID;
-    /// the V6 admission layer guarantees this before construction.
+    /// Only `magic_execution_profile()` constructs this profile in production,
+    /// after exact catalog-ID recognition and capability-closure generation.
     pub(crate) fn from_admitted_profile(profile: MagicExecutionProfile) -> Self {
-        let profile = if profile.allows_draw_card_0_1_0() {
-            MagicKernelProfile::AdmittedS3C(profile)
-        } else if profile.allows_basic_priority_0_1_0() {
-            MagicKernelProfile::AdmittedS3B(profile)
-        } else if profile.allows_state_based_actions_combat_0_1_0() {
-            MagicKernelProfile::AdmittedS3A(profile)
-        } else {
-            MagicKernelProfile::AdmittedS1(profile)
-        };
-        Self { profile }
+        Self {
+            profile: MagicKernelProfile::Admitted(profile),
+        }
     }
 
-    /// Construct the single prospective S3.A candidate profile for isolated
+    /// Construct the single prospective state-based-actions candidate profile for isolated
     /// conformance. It carries no SemanticContractId and cannot be admitted
     /// from a production checkpoint or replay.
-    #[cfg(any(test, feature = "m3-conformance-testkit"))]
-    pub(crate) fn s3_a_conformance_candidate() -> Self {
+    #[cfg(any(test, feature = "magic-conformance-testkit"))]
+    pub(crate) fn state_based_actions_conformance_candidate() -> Self {
         Self {
-            profile: MagicKernelProfile::S3AConformanceCandidate,
+            profile: MagicKernelProfile::StateBasedActionsConformanceCandidate,
         }
     }
 
     #[cfg(test)]
-    pub(crate) fn s3_b_conformance_candidate() -> Self {
+    pub(crate) fn basic_priority_conformance_candidate() -> Self {
         Self {
-            profile: MagicKernelProfile::S3BConformanceCandidate,
+            profile: MagicKernelProfile::BasicPriorityConformanceCandidate,
         }
     }
 
-    /// Read-only conformance hook for Task 6 continuation semantic evidence.
-    #[cfg(feature = "m3-conformance-testkit")]
-    pub(crate) fn validate_s3_a_conformance_continuation(
+    /// Read-only conformance hook for persisted state-based-action continuation evidence.
+    #[cfg(feature = "magic-conformance-testkit")]
+    pub(crate) fn validate_state_based_actions_conformance_continuation(
         &self,
         state: &EngineState,
     ) -> Result<(), crate::SbaContinuationValidationError> {
-        if !matches!(self.profile, MagicKernelProfile::S3AConformanceCandidate) {
-            return Err(crate::SbaContinuationValidationError::NotS3AConformanceCandidate);
+        if !matches!(
+            self.profile,
+            MagicKernelProfile::StateBasedActionsConformanceCandidate
+        ) {
+            return Err(
+                crate::SbaContinuationValidationError::NotStateBasedActionsConformanceCandidate,
+            );
         }
         crate::state_based_actions::validate_sba_order_continuation(state)
     }
@@ -188,17 +179,17 @@ impl MagicRulesKernel {
 impl RulesKernel for MagicRulesKernel {
     /// Trusted response execution entry point.
     ///
-    /// Admitted S1 has no player Decision surface and rejects every response
-    /// without inspecting or mutating it. The fixed non-production S3.A
+    /// Turn-structure-only admission has no player Decision surface and rejects every response
+    /// without inspecting or mutating it. The fixed non-production state-based-actions
     /// candidate accepts only a nonfinal SBA Order stage; its final Order
-    /// remains unaccepted until Task 9 can apply the complete round atomically.
+    /// remains unaccepted until the complete round can be applied atomically.
     fn apply(
         &mut self,
         state: &EngineState,
         trusted_actor: PlayerId,
         response: &DecisionResponseV2,
     ) -> Result<TransitionResult, KernelExecutionError> {
-        if self.profile.allows_s3_a() {
+        if self.profile.allows_state_based_actions() {
             if state
                 .execution
                 .pending_decision
@@ -207,15 +198,19 @@ impl RulesKernel for MagicRulesKernel {
                     matches!(pending.request.decision, DecisionDomainV2::Order { .. })
                 })
             {
-                return self.apply_s3_a_order_response(state, trusted_actor, response);
+                return self.apply_state_based_actions_order_response(
+                    state,
+                    trusted_actor,
+                    response,
+                );
             }
-            if self.profile.allows_s3_b() {
+            if self.profile.allows_basic_priority() {
                 if matches!(
                     state.core.position,
                     TurnPosition::Beginning {
                         step: BeginningStep::Draw
                     }
-                ) && !self.profile.allows_s3_c_draw()
+                ) && !self.profile.allows_draw_card()
                 {
                     return Err(KernelExecutionError::UnsupportedStagePath);
                 }
@@ -228,7 +223,7 @@ impl RulesKernel for MagicRulesKernel {
 }
 
 impl MagicRulesKernel {
-    fn advance_s3_c_draw(
+    fn advance_draw_step(
         &mut self,
         state: &EngineState,
     ) -> Result<TransitionResult, KernelExecutionError> {
@@ -286,7 +281,7 @@ impl MagicRulesKernel {
                 },
             },
         )?;
-        let followup = self.advance_s3_a_round(&draw.next_state)?;
+        let followup = self.advance_state_based_actions_fixed_point(&draw.next_state)?;
         let ordering_continuation = followup
             .next_decision
             .as_ref()
@@ -302,7 +297,7 @@ impl MagicRulesKernel {
         Ok(result)
     }
 
-    fn advance_s3_a_round(
+    fn advance_state_based_actions_fixed_point(
         &mut self,
         state: &EngineState,
     ) -> Result<TransitionResult, KernelExecutionError> {
@@ -315,7 +310,7 @@ impl MagicRulesKernel {
             TurnPosition::Beginning {
                 step: BeginningStep::Draw
             }
-        ) && !self.profile.allows_s3_c_draw()
+        ) && !self.profile.allows_draw_card()
         {
             return Err(KernelExecutionError::UnsupportedRulesBoundary(
                 UnsupportedRulesBoundary::DrawCard,
@@ -344,7 +339,7 @@ impl MagicRulesKernel {
         let plan = crate::state_based_actions::derive_bounded_sba_round_plan(state)
             .map_err(|_| KernelExecutionError::UnsupportedStagePath)?;
         if plan.selected_sba_actions.is_empty() {
-            if self.profile.allows_s3_b() {
+            if self.profile.allows_basic_priority() {
                 return crate::basic_priority::open_priority_window(state);
             }
             return match unsupported_rules_boundary(state.core.position) {
@@ -353,11 +348,11 @@ impl MagicRulesKernel {
             };
         }
         let Some(actor) = plan.apnap_owners.first().copied() else {
-            return self.apply_s3_a_batch(
+            return self.apply_state_based_actions_batch(
                 state,
                 None,
                 plan.selected_sba_actions,
-                self.profile.allows_s3_b(),
+                self.profile.allows_basic_priority(),
             );
         };
 
@@ -367,7 +362,8 @@ impl MagicRulesKernel {
             .checked_add(1)
             .ok_or(KernelExecutionError::Exhaustion("continuation"))?;
         let identity = crate::decision_stage::fresh_stage_identity(state, actor)?;
-        let candidates = Self::s3_a_order_candidates(state, &plan.selected_sba_actions, actor)?;
+        let candidates =
+            Self::state_based_actions_order_candidates(state, &plan.selected_sba_actions, actor)?;
         let cardinality = u32::try_from(candidates.len())
             .map_err(|_| KernelExecutionError::Exhaustion("order_cardinality"))?;
         let request = mtgml_decision::AuthoritativeDecisionRequestV2 {
@@ -397,7 +393,7 @@ impl MagicRulesKernel {
             stage_index: payload.stage_index(),
             payload,
         };
-        let event = Self::s3_a_bound_event(
+        let event = Self::state_based_actions_bound_event(
             state,
             0,
             identity.revision,
@@ -432,7 +428,7 @@ impl MagicRulesKernel {
         })
     }
 
-    fn apply_s3_a_batch(
+    fn apply_state_based_actions_batch(
         &mut self,
         state: &EngineState,
         final_order: Option<(mtgml_model::ContinuationId, Vec<SbaGraveyardOwnerOrderV1>)>,
@@ -509,7 +505,7 @@ impl MagicRulesKernel {
             let final_order = orders
                 .last()
                 .ok_or(KernelExecutionError::UnsupportedStagePath)?;
-            events.push(Self::s3_a_bound_event(
+            events.push(Self::state_based_actions_bound_event(
                 state,
                 events.len() as u64,
                 revision,
@@ -517,7 +513,7 @@ impl MagicRulesKernel {
                     decision: pending.request.decision_id,
                 },
             )?);
-            events.push(Self::s3_a_bound_event(
+            events.push(Self::state_based_actions_bound_event(
                 state,
                 events.len() as u64,
                 revision,
@@ -528,7 +524,7 @@ impl MagicRulesKernel {
                 },
             )?);
         }
-        events.push(Self::s3_a_bound_event(
+        events.push(Self::state_based_actions_bound_event(
             state,
             events.len() as u64,
             revision,
@@ -720,7 +716,7 @@ impl MagicRulesKernel {
                     .checked_add(1)
                     .ok_or(KernelExecutionError::Exhaustion("decision"))?,
             );
-            events.push(Self::s3_a_bound_event(
+            events.push(Self::state_based_actions_bound_event(
                 state,
                 u64::try_from(events.len())
                     .map_err(|_| KernelExecutionError::RuleEventIdOverflow)?,
@@ -733,7 +729,7 @@ impl MagicRulesKernel {
                     },
                 },
             )?);
-            events.push(Self::s3_a_bound_event(
+            events.push(Self::state_based_actions_bound_event(
                 state,
                 u64::try_from(events.len())
                     .map_err(|_| KernelExecutionError::RuleEventIdOverflow)?,
@@ -758,7 +754,7 @@ impl MagicRulesKernel {
         build_accepted_product_with_status(state, candidate, events, status, |_| Ok(()))
     }
 
-    fn apply_s3_a_order_response(
+    fn apply_state_based_actions_order_response(
         &mut self,
         state: &EngineState,
         trusted_actor: PlayerId,
@@ -808,7 +804,7 @@ impl MagicRulesKernel {
             return crate::decision_stage::rejected(state);
         }
 
-        let top_to_bottom = Self::s3_a_resolve_order_answer(
+        let top_to_bottom = Self::resolve_state_based_actions_order_answer(
             state,
             request,
             owner,
@@ -837,11 +833,11 @@ impl MagicRulesKernel {
                 owner,
                 top_to_bottom,
             });
-            return self.apply_s3_a_batch(
+            return self.apply_state_based_actions_batch(
                 state,
                 Some((continuation_id, orders)),
                 selected_sba_actions.clone(),
-                self.profile.allows_s3_c_draw()
+                self.profile.allows_draw_card()
                     && matches!(
                         state.core.position,
                         TurnPosition::Beginning {
@@ -853,7 +849,8 @@ impl MagicRulesKernel {
         let next_owner = next_owner.ok_or(KernelExecutionError::UnsupportedStagePath)?;
 
         let identity = crate::decision_stage::fresh_stage_identity(state, next_owner)?;
-        let candidates = Self::s3_a_order_candidates(state, selected_sba_actions, next_owner)?;
+        let candidates =
+            Self::state_based_actions_order_candidates(state, selected_sba_actions, next_owner)?;
         let cardinality = u32::try_from(candidates.len())
             .map_err(|_| KernelExecutionError::Exhaustion("order_cardinality"))?;
         let next_request = mtgml_decision::AuthoritativeDecisionRequestV2 {
@@ -877,7 +874,7 @@ impl MagicRulesKernel {
                 .ok_or(KernelExecutionError::Exhaustion("decision"))?,
         );
         let events = vec![
-            Self::s3_a_bound_event(
+            Self::state_based_actions_bound_event(
                 state,
                 0,
                 identity.revision,
@@ -885,7 +882,7 @@ impl MagicRulesKernel {
                     decision: request.decision_id,
                 },
             )?,
-            Self::s3_a_bound_event(
+            Self::state_based_actions_bound_event(
                 state,
                 1,
                 identity.revision,
@@ -895,7 +892,7 @@ impl MagicRulesKernel {
                     top_to_bottom: top_to_bottom.clone(),
                 },
             )?,
-            Self::s3_a_bound_event(
+            Self::state_based_actions_bound_event(
                 state,
                 2,
                 identity.revision,
@@ -1094,7 +1091,7 @@ impl MagicRulesKernel {
         }
     }
 
-    fn s3_a_order_candidates(
+    fn state_based_actions_order_candidates(
         state: &EngineState,
         selected_actions: &[mtgml_state::SbaSelectedActionV1],
         actor: PlayerId,
@@ -1136,7 +1133,7 @@ impl MagicRulesKernel {
         Ok(ordered)
     }
 
-    fn s3_a_resolve_order_answer(
+    fn resolve_state_based_actions_order_answer(
         state: &EngineState,
         request: &mtgml_decision::AuthoritativeDecisionRequestV2,
         owner: PlayerId,
@@ -1183,7 +1180,7 @@ impl MagicRulesKernel {
         Ok(resolved)
     }
 
-    fn s3_a_bound_event(
+    fn state_based_actions_bound_event(
         state: &EngineState,
         offset: u64,
         revision: StateRevision,
@@ -1207,16 +1204,16 @@ impl MagicRulesKernel {
 impl MagicRulesKernel {
     /// Rules-owned forced-progress shell.
     ///
-    /// The fixed non-production S3.A candidate takes its separate typed SBA
-    /// Order staging path. Admitted S1 validates its exact execution profile,
+    /// The fixed non-production state-based-actions candidate takes its separate typed SBA
+    /// Order staging path. Turn-structure-only admission validates its exact execution profile,
     /// then classifies the current temporal position: Untap advances to
     /// Upkeep, and downstream boundaries remain typed failures. No production
-    /// S1 accepted state set changes here.
+    /// accepted turn-structure state set changes here.
     pub(crate) fn advance_forced_progress(
         &mut self,
         state: &EngineState,
     ) -> Result<TransitionResult, KernelExecutionError> {
-        if self.profile.allows_s3_c_draw()
+        if self.profile.allows_draw_card()
             && matches!(
                 state.core.position,
                 TurnPosition::Beginning {
@@ -1224,12 +1221,12 @@ impl MagicRulesKernel {
                 }
             )
         {
-            return self.advance_s3_c_draw(state);
+            return self.advance_draw_step(state);
         }
-        if self.profile.allows_s3_a() {
-            return self.advance_s3_a_round(state);
+        if self.profile.allows_state_based_actions() {
+            return self.advance_state_based_actions_fixed_point(state);
         }
-        if !self.profile.allows_s1_turn_structure() {
+        if !self.profile.allows_turn_structure() {
             return Err(KernelExecutionError::UnsupportedStagePath);
         }
 

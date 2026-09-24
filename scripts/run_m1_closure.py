@@ -52,7 +52,7 @@ GATE_TESTS: dict[str, tuple[TestDefinition, ...]] = {
         *test_definitions(
             "mtgml-state",
             (
-                "tests::synthetic_state_is_the_current_m2_shape",
+                "tests::synthetic_state_is_the_current_engine_state_shape",
                 "tests::valid_empty_shell_passes_cross_component_validation",
                 "tests::synthetic_reset_is_exactly_deterministic_for_identical_inputs",
                 "tests::pending_decision_must_match_state_revision",

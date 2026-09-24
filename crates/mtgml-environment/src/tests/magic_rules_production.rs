@@ -8,7 +8,7 @@ use mtgml_model::{
     PhysicalCardId, PlayerId,
     StateRevision,
 };
-use mtgml_observation::{MagicM3Observation, PlayerStepSubmissionV1};
+use mtgml_observation::{MagicObservation, PlayerStepSubmissionV1};
 use mtgml_replay::{KernelIdentityV1, ReplaySchemaVersionsV6};
 use mtgml_state::{
     BaseCharacteristics, ContinuationPayloadV2, ControlHistory, FoundationCreatureSource, FoundationSourceKind,
@@ -34,7 +34,7 @@ fn s3_replay_config() -> ReferenceEnvironmentReplayConfig {
         oracle_snapshot: "oracle:none".into(),
         schemas: ReplaySchemaVersionsV6 {
             observation: mtgml_observation::OBSERVATION_SCHEMA.into(),
-            observation_payload_codec: mtgml_observation::MAGIC_M3_OBSERVATION_SCHEMA.into(),
+            observation_payload_codec: mtgml_observation::MAGIC_OBSERVATION_SCHEMA_V1.into(),
             information_state: mtgml_observation::INFORMATION_STATE_SCHEMA_V2.into(),
             decision: mtgml_decision::PLAYER_DECISION_REQUEST_V2_SCHEMA.into(),
             decision_response: mtgml_decision::DECISION_RESPONSE_V2_SCHEMA.into(),
@@ -54,13 +54,13 @@ fn s3_backend(state: mtgml_state::EngineState) -> ReferenceEnvironmentBackend {
             codec_id: CHECKPOINT_CODEC_ID_V6.into(),
             semantic_version: CHECKPOINT_CODEC_SEMANTIC_VERSION_V6.into(),
         },
-        execution_identity: ReferenceEnvironmentBackend::magic_s3_a_execution_identity(),
+        execution_identity: ReferenceEnvironmentBackend::magic_state_based_actions_execution_identity(),
         replay: s3_replay_config(),
     })
     .expect("the production S3.A semantic identity admits its bounded state")
 }
 
-fn s3_b_backend(state: mtgml_state::EngineState) -> ReferenceEnvironmentBackend {
+fn basic_priority_backend(state: mtgml_state::EngineState) -> ReferenceEnvironmentBackend {
     ReferenceEnvironmentBackend::new(ReferenceEnvironmentConfig {
         state,
         status: EpisodeStatus::Running,
@@ -69,13 +69,13 @@ fn s3_b_backend(state: mtgml_state::EngineState) -> ReferenceEnvironmentBackend 
             codec_id: CHECKPOINT_CODEC_ID_V6.into(),
             semantic_version: CHECKPOINT_CODEC_SEMANTIC_VERSION_V6.into(),
         },
-        execution_identity: ReferenceEnvironmentBackend::magic_s3_b_execution_identity(),
+        execution_identity: ReferenceEnvironmentBackend::magic_basic_priority_execution_identity(),
         replay: s3_replay_config(),
     })
     .expect("the production S3.B semantic identity admits its bounded state")
 }
 
-fn s3_c_backend(state: mtgml_state::EngineState) -> ReferenceEnvironmentBackend {
+fn draw_backend(state: mtgml_state::EngineState) -> ReferenceEnvironmentBackend {
     let mut replay = s3_replay_config();
     replay.scenario_id = "rules/draw-card@0.1.0:upkeep-to-draw".into();
     ReferenceEnvironmentBackend::new(ReferenceEnvironmentConfig {
@@ -86,7 +86,7 @@ fn s3_c_backend(state: mtgml_state::EngineState) -> ReferenceEnvironmentBackend 
             codec_id: CHECKPOINT_CODEC_ID_V6.into(),
             semantic_version: CHECKPOINT_CODEC_SEMANTIC_VERSION_V6.into(),
         },
-        execution_identity: ReferenceEnvironmentBackend::magic_s3_c_execution_identity(),
+        execution_identity: ReferenceEnvironmentBackend::magic_draw_execution_identity(),
         replay,
     })
     .expect("the production S3.C semantic identity admits its bounded state")
@@ -282,8 +282,8 @@ fn current_select_one_response(
 // 4381ad1b39ab2c05f7d03633a20f711ed37277074d3266dcba5f38cbb527423f`;
 // CR 121.1 defines the top-Library-to-Hand draw, and CR 504.1 / 504.2 define
 // the ordinary Draw Step action followed by active-player priority.
-fn m3_block_3_upkeep_passes_draw_once_through_s2_and_opens_active_priority() {
-    let controller = TrustedEnvironmentController::new(s3_c_backend(stable_draw_state_at_upkeep()));
+fn ordinary_draw_uses_s2_and_opens_active_priority() {
+    let controller = TrustedEnvironmentController::new(draw_backend(stable_draw_state_at_upkeep()));
     controller.execute_forced_progress().unwrap();
     let initial = controller.checkpoint().unwrap();
     let old_top = GameObjectId(2);
@@ -299,7 +299,7 @@ fn m3_block_3_upkeep_passes_draw_once_through_s2_and_opens_active_priority() {
     let active = controller.bind_player(P2).unwrap();
     let nonactive = controller.bind_player(P1).unwrap();
     assert_eq!(active.visible_decision().unwrap().unwrap().actor, P2);
-    let mut restored_before_draw = s3_c_backend(initial.state.clone());
+    let mut restored_before_draw = draw_backend(initial.state.clone());
     restored_before_draw.restore(initial.clone()).unwrap();
     assert_eq!(restored_before_draw.checkpoint().unwrap(), initial);
     assert_eq!(controller.fork().unwrap().checkpoint().unwrap(), initial);
@@ -325,7 +325,7 @@ fn m3_block_3_upkeep_passes_draw_once_through_s2_and_opens_active_priority() {
     let after_active_pass = controller.checkpoint().unwrap();
     let nonactive_request = nonactive.visible_decision().unwrap().unwrap();
 
-    let mut direct_backend = s3_c_backend(after_active_pass.state.clone());
+    let mut direct_backend = draw_backend(after_active_pass.state.clone());
     direct_backend.restore(after_active_pass.clone()).unwrap();
     let transition = direct_backend
         .execute_trusted_response(P1, current_select_one_response(&nonactive_request))
@@ -393,7 +393,7 @@ fn m3_block_3_upkeep_passes_draw_once_through_s2_and_opens_active_priority() {
         .object_to_opaque
         .contains_key(&new_top));
 
-    let mut restored_after = s3_c_backend(after.state.clone());
+    let mut restored_after = draw_backend(after.state.clone());
     restored_after.restore(after.clone()).unwrap();
     assert_eq!(restored_after.checkpoint().unwrap(), after);
     let fork_after = controller.fork().unwrap();
@@ -437,15 +437,15 @@ fn m3_block_3_upkeep_passes_draw_once_through_s2_and_opens_active_priority() {
 }
 
 #[test]
-fn m3_block_3_draw_preserves_opponent_noninterference_across_hidden_worlds() {
+fn ordinary_draw_preserves_opponent_noninterference_across_hidden_worlds() {
     let base = stable_draw_state_at_upkeep();
     let mut world_a = base.clone();
     let mut world_b = base;
     replace_library_top_identity(&mut world_a, 20, 120);
     replace_library_top_identity(&mut world_b, 30, 130);
 
-    let first = TrustedEnvironmentController::new(s3_c_backend(world_a));
-    let second = TrustedEnvironmentController::new(s3_c_backend(world_b));
+    let first = TrustedEnvironmentController::new(draw_backend(world_a));
+    let second = TrustedEnvironmentController::new(draw_backend(world_b));
     first.execute_forced_progress().unwrap();
     second.execute_forced_progress().unwrap();
     assert_eq!(player_fingerprint(&first, P1), player_fingerprint(&second, P1));
@@ -486,7 +486,7 @@ fn m3_block_3_draw_preserves_opponent_noninterference_across_hidden_worlds() {
 }
 
 #[test]
-fn m3_block_3_draw_rejections_are_atomic_and_fail_closed() {
+fn ordinary_draw_rejections_are_atomic_and_fail_closed() {
     let mut wrong_turn = stable_draw_state_at_upkeep();
     wrong_turn.core.position = TurnPosition::Beginning {
         step: mtgml_state::BeginningStep::Draw,
@@ -558,7 +558,7 @@ fn m3_block_3_draw_rejections_are_atomic_and_fail_closed() {
             codec_id: CHECKPOINT_CODEC_ID_V6.into(),
             semantic_version: CHECKPOINT_CODEC_SEMANTIC_VERSION_V6.into(),
         },
-        execution_identity: ReferenceEnvironmentBackend::magic_s3_c_execution_identity(),
+        execution_identity: ReferenceEnvironmentBackend::magic_draw_execution_identity(),
         replay: s3_replay_config(),
     };
     invalid_config.replay.scenario_id = "rules/draw-card@0.1.0:partial-draw-rejected".into();
@@ -569,7 +569,7 @@ fn m3_block_3_draw_rejections_are_atomic_and_fail_closed() {
 }
 
 #[test]
-fn m3_block_3_postdraw_sba_order_continuation_restores_forks_and_resumes() {
+fn postdraw_sba_order_continuation_restores_forks_and_resumes() {
     let mut state = stable_draw_state_at_upkeep();
     state.core.position = TurnPosition::Beginning {
         step: mtgml_state::BeginningStep::Draw,
@@ -611,16 +611,16 @@ fn m3_block_3_postdraw_sba_order_continuation_restores_forks_and_resumes() {
         1
     );
 
-    let backend = s3_c_backend(draw_and_sba.next_state.clone());
+    let backend = draw_backend(draw_and_sba.next_state.clone());
     let controller = TrustedEnvironmentController::new(backend);
     let order_checkpoint = controller.checkpoint().unwrap();
-    let mut restored = s3_c_backend(order_checkpoint.state.clone());
+    let mut restored = draw_backend(order_checkpoint.state.clone());
     restored.restore(order_checkpoint.clone()).unwrap();
     assert_eq!(restored.checkpoint().unwrap(), order_checkpoint);
     assert_eq!(controller.fork().unwrap().checkpoint().unwrap(), order_checkpoint);
 
     let order_response = current_order_response(&order_checkpoint.state);
-    let mut direct_backend = s3_c_backend(order_checkpoint.state.clone());
+    let mut direct_backend = draw_backend(order_checkpoint.state.clone());
     direct_backend.restore(order_checkpoint.clone()).unwrap();
     direct_backend.execute_trusted_response(P2, order_response.clone()).unwrap();
     controller.bind_player(P2).unwrap().submit(order_response).unwrap();
@@ -641,7 +641,7 @@ fn m3_block_3_postdraw_sba_order_continuation_restores_forks_and_resumes() {
 
 fn decode_magic_observation(
     envelope: mtgml_observation::ObservationEnvelope,
-) -> MagicM3Observation {
+) -> MagicObservation {
     let bytes = base64::engine::general_purpose::STANDARD
         .decode(envelope.payload_base64)
         .unwrap();
@@ -670,14 +670,14 @@ fn production_s3_identity_restores_pending_order_stages_and_projects_magic_codec
     let stage_zero = backend.checkpoint().unwrap();
     assert_eq!(
         stage_zero.execution_identity,
-        ReferenceEnvironmentBackend::magic_s3_a_execution_identity()
+        ReferenceEnvironmentBackend::magic_state_based_actions_execution_identity()
     );
     let mut restored_stage_zero = s3_backend(stage_zero.state.clone());
     restored_stage_zero.restore(stage_zero.clone()).unwrap();
     assert_eq!(restored_stage_zero.checkpoint().unwrap(), stage_zero);
     assert_eq!(
         backend.player_observation(P1).unwrap().payload_codec,
-        mtgml_observation::MAGIC_M3_OBSERVATION_SCHEMA
+        mtgml_observation::MAGIC_OBSERVATION_SCHEMA_V1
     );
     assert_eq!(
         decode_magic_observation(backend.player_observation(P1).unwrap())
@@ -706,7 +706,7 @@ fn production_s3_identity_restores_pending_order_stages_and_projects_magic_codec
     let p2_observation = controller.bind_player(P2).unwrap().observation().unwrap();
     assert_eq!(
         p2_observation.payload_codec,
-        mtgml_observation::MAGIC_M3_OBSERVATION_SCHEMA
+        mtgml_observation::MAGIC_OBSERVATION_SCHEMA_V1
     );
     let s1_p2 = decode_magic_observation(p2_observation);
     assert_eq!(s1_p2.pending_sba_ordering.as_ref().unwrap().next_order_owner, P2);
@@ -817,9 +817,9 @@ fn production_s3_no_order_batch_restores_and_forks_at_the_stable_boundary() {
 }
 
 #[test]
-fn production_s3_b_final_order_then_priority_is_one_r_plus_two_replay_commit() {
+fn production_basic_priority_final_order_then_priority_is_one_r_plus_two_replay_commit() {
     let initial_state = super::restore_admission::magic_sba_continuation_state();
-    let initial = s3_b_backend(initial_state).checkpoint().unwrap();
+    let initial = basic_priority_backend(initial_state).checkpoint().unwrap();
     let response = current_order_response(&initial.state);
     let mut kernel = mtgml_rules::ProgramKernelV1::for_admitted_execution(
         mtgml_model::ExecutionProgramV1::MagicRules,
@@ -854,7 +854,7 @@ fn production_s3_b_final_order_then_priority_is_one_r_plus_two_replay_commit() {
         status: opened.status.clone(),
     };
     mtgml_rules::validate_transition_contract(&initial.state, &merged).unwrap();
-    let mut direct_backend = s3_b_backend(initial.state.clone());
+    let mut direct_backend = basic_priority_backend(initial.state.clone());
     crate::controller::EnvironmentBackend::execute_trusted_response(
         &mut direct_backend,
         P1,
@@ -867,11 +867,11 @@ fn production_s3_b_final_order_then_priority_is_one_r_plus_two_replay_commit() {
         P1,
         direct_checkpoint.status.clone(),
         PlayerStepSubmissionV1::Accepted,
-        crate::player_projection::ObservationProjectionProfile::MagicM3,
+        crate::player_projection::ObservationProjectionProfile::Magic,
     )
     .expect("S3.B candidate PlayerStep projection");
     projected_step.validate().expect("S3.B PlayerStep validation");
-    let backend = s3_b_backend(initial.state.clone());
+    let backend = basic_priority_backend(initial.state.clone());
     let controller = TrustedEnvironmentController::new(backend);
     let p1 = controller.bind_player(P1).unwrap();
     assert!(p1.visible_decision().unwrap().is_some());
@@ -905,10 +905,10 @@ fn production_s3_b_final_order_then_priority_is_one_r_plus_two_replay_commit() {
 }
 
 #[test]
-fn production_s3_b_no_order_sba_finishes_before_opening_priority_in_one_forced_product() {
+fn production_basic_priority_no_order_sba_finishes_before_opening_priority_in_one_forced_product() {
     let state = no_order_one_death_state();
     let expected_revision = state.revision.0 + 1;
-    let mut backend = s3_b_backend(state);
+    let mut backend = basic_priority_backend(state);
     let transition = backend
         .execute_forced_progress()
         .expect("one no-order SBA round must reach the pass-only window");
@@ -935,14 +935,14 @@ fn production_s3_b_no_order_sba_finishes_before_opening_priority_in_one_forced_p
     let checkpoint = backend.checkpoint().unwrap();
     let fork = backend.fork_boxed().unwrap();
     assert_eq!(fork.checkpoint().unwrap(), checkpoint);
-    let mut restored = s3_b_backend(checkpoint.state.clone());
+    let mut restored = basic_priority_backend(checkpoint.state.clone());
     restored.restore(checkpoint.clone()).unwrap();
     assert_eq!(restored.checkpoint().unwrap(), checkpoint);
 }
 
 #[test]
-fn production_s3_b_restore_admission_is_distinct_from_s1_and_s3_a() {
-    let mut backend = s3_b_backend(no_order_one_death_state());
+fn production_basic_priority_restore_admission_is_distinct_from_s1_and_s3_a() {
+    let mut backend = basic_priority_backend(no_order_one_death_state());
     backend.execute_forced_progress().unwrap();
     let valid = backend.checkpoint().unwrap();
     let catalog = crate::semantic_catalog::RuntimeSemanticCatalog::production();
@@ -962,7 +962,7 @@ fn production_s3_b_restore_admission_is_distinct_from_s1_and_s3_a() {
 
     for identity in [
         ReferenceEnvironmentBackend::magic_execution_identity(),
-        ReferenceEnvironmentBackend::magic_s3_a_execution_identity(),
+        ReferenceEnvironmentBackend::magic_state_based_actions_execution_identity(),
     ] {
         let wrong = crate::EnvironmentCheckpointV6::new(
             valid.state.clone(),
@@ -995,8 +995,8 @@ fn production_s3_b_restore_admission_is_distinct_from_s1_and_s3_a() {
 }
 
 #[test]
-fn production_s3_b_active_priority_and_after_first_pass_restore_fork_and_replay() {
-    let mut backend = s3_b_backend(stable_state_at(TurnPosition::Beginning {
+fn production_basic_priority_active_priority_and_after_first_pass_restore_fork_and_replay() {
+    let mut backend = basic_priority_backend(stable_state_at(TurnPosition::Beginning {
         step: mtgml_state::BeginningStep::Upkeep,
     }));
     backend.execute_forced_progress().unwrap();
@@ -1005,7 +1005,7 @@ fn production_s3_b_active_priority_and_after_first_pass_restore_fork_and_replay(
     assert!(backend.player_visible_decision(P2).unwrap().is_none());
     assert_eq!(p1_request.actor, P1);
 
-    let mut restored_stage_zero = s3_b_backend(stage_zero.state.clone());
+    let mut restored_stage_zero = basic_priority_backend(stage_zero.state.clone());
     restored_stage_zero.restore(stage_zero.clone()).unwrap();
     assert_eq!(restored_stage_zero.checkpoint().unwrap(), stage_zero);
     assert_eq!(restored_stage_zero.player_visible_decision(P1).unwrap(), Some(p1_request));
@@ -1031,7 +1031,7 @@ fn production_s3_b_active_priority_and_after_first_pass_restore_fork_and_replay(
     assert!(controller.bind_player(P1).unwrap().visible_decision().unwrap().is_none());
     let p2_decision = controller.bind_player(P2).unwrap().visible_decision().unwrap().unwrap();
     assert_eq!(p2_decision.actor, P2);
-    let mut restored_stage_one = s3_b_backend(stage_one.state.clone());
+    let mut restored_stage_one = basic_priority_backend(stage_one.state.clone());
     restored_stage_one.restore(stage_one.clone()).unwrap();
     assert_eq!(restored_stage_one.checkpoint().unwrap(), stage_one);
     assert_eq!(restored_stage_one.player_visible_decision(P2).unwrap(), Some(p2_decision));
@@ -1046,8 +1046,8 @@ fn production_s3_b_active_priority_and_after_first_pass_restore_fork_and_replay(
 }
 
 #[test]
-fn production_s3_b_end_step_two_pass_reference_replay_closes_through_cleanup() {
-    let mut backend = s3_b_backend(stable_state_at(TurnPosition::Ending {
+fn production_basic_priority_end_step_two_pass_reference_replay_closes_through_cleanup() {
+    let mut backend = basic_priority_backend(stable_state_at(TurnPosition::Ending {
         step: mtgml_state::EndingStep::EndStep,
     }));
     backend.execute_forced_progress().unwrap();
@@ -1081,7 +1081,7 @@ fn production_s3_b_end_step_two_pass_reference_replay_closes_through_cleanup() {
 }
 
 #[test]
-fn production_s3_b_pass_window_noninterference_hides_opponent_library_definition() {
+fn production_basic_priority_pass_window_noninterference_hides_opponent_library_definition() {
     let first = stable_state_at(TurnPosition::Beginning {
         step: mtgml_state::BeginningStep::Upkeep,
     });
@@ -1098,8 +1098,8 @@ fn production_s3_b_pass_window_noninterference_hides_opponent_library_definition
         .card_definition = Some(CardDefinitionId(999));
     mtgml_state::validate_engine_state(&second).unwrap();
 
-    let mut first_backend = s3_b_backend(first);
-    let mut second_backend = s3_b_backend(second);
+    let mut first_backend = basic_priority_backend(first);
+    let mut second_backend = basic_priority_backend(second);
     first_backend.execute_forced_progress().unwrap();
     second_backend.execute_forced_progress().unwrap();
     let first_controller = TrustedEnvironmentController::new(first_backend);

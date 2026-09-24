@@ -12,13 +12,12 @@ use mtgml_observation::{
     PlayerInformationStateV2, PlayerKnowledgeCauseV1, PlayerKnowledgeChannelV1,
     PlayerKnowledgeInvalidationReasonV1, PlayerKnowledgeProvenanceV1, PlayerKnownLocationFactV1,
     PlayerKnownLocationV1, PlayerKnownObjectV1, PlayerStepSubmissionV1, PlayerStepV2,
-    SyntheticM3BeginningStep, SyntheticM3CombatStep, SyntheticM3EndingStep, SyntheticM3Observation,
-    SyntheticM3Priority, SyntheticM3TurnPosition, INFORMATION_STATE_SCHEMA_V2, OBSERVATION_SCHEMA,
-    PLAYER_STEP_SCHEMA_V2, SYNTHETIC_M3_OBSERVATION_SCHEMA,
+    SyntheticBeginningStep, SyntheticCombatStep, SyntheticEndingStep, SyntheticObservation,
+    SyntheticPriority, SyntheticTurnPosition, INFORMATION_STATE_SCHEMA_V2, OBSERVATION_SCHEMA,
+    PLAYER_STEP_SCHEMA_V2, SYNTHETIC_OBSERVATION_SCHEMA_V1,
 };
 use mtgml_observation::{
-    MagicM3CompletedOrder, MagicM3Observation, MagicM3PendingSbaOrdering,
-    MAGIC_M3_OBSERVATION_SCHEMA,
+    MagicCompletedOrder, MagicObservation, MagicPendingSbaOrdering, MAGIC_OBSERVATION_SCHEMA_V1,
 };
 use mtgml_state::ContinuationPayloadV2;
 use mtgml_state::{
@@ -36,12 +35,12 @@ use crate::semantic_catalog_generated::{
     magic_turn_structure_0_1_0_semantic_contract_id, synthetic_legacy_default_semantic_contract_id,
 };
 
-const SYNTHETIC_M3_OBSERVATION_CODEC: &str = SYNTHETIC_M3_OBSERVATION_SCHEMA;
+const SYNTHETIC_OBSERVATION_CODEC: &str = SYNTHETIC_OBSERVATION_SCHEMA_V1;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ObservationProjectionProfile {
-    SyntheticM3,
-    MagicM3,
+    Synthetic,
+    Magic,
 }
 
 pub(crate) fn profile_for_execution_identity(
@@ -49,7 +48,7 @@ pub(crate) fn profile_for_execution_identity(
 ) -> Result<ObservationProjectionProfile, ControllerError> {
     if identity.program_kind == ExecutionProgramV1::SyntheticRulesCompat {
         return if identity.semantic_contract_id == synthetic_legacy_default_semantic_contract_id() {
-            Ok(ObservationProjectionProfile::SyntheticM3)
+            Ok(ObservationProjectionProfile::Synthetic)
         } else {
             Err(ControllerError::ProgramAuthorityMismatch)
         };
@@ -58,12 +57,12 @@ pub(crate) fn profile_for_execution_identity(
         return Err(ControllerError::ProgramAuthorityMismatch);
     }
     if identity.semantic_contract_id == magic_turn_structure_0_1_0_semantic_contract_id() {
-        Ok(ObservationProjectionProfile::SyntheticM3)
+        Ok(ObservationProjectionProfile::Synthetic)
     } else if identity.semantic_contract_id == magic_s3_a_ordered_sba_0_1_0_semantic_contract_id()
         || identity.semantic_contract_id == magic_s3_b_basic_priority_0_1_0_semantic_contract_id()
         || identity.semantic_contract_id == magic_s3_c_draw_interaction_0_1_0_semantic_contract_id()
     {
-        Ok(ObservationProjectionProfile::MagicM3)
+        Ok(ObservationProjectionProfile::Magic)
     } else {
         Err(ControllerError::SemanticContractUnsupported)
     }
@@ -73,11 +72,7 @@ pub(crate) fn project_observation(
     state: &EngineState,
     perspective: PlayerId,
 ) -> Result<ObservationEnvelope, PlayerEndpointError> {
-    project_observation_with_profile(
-        state,
-        perspective,
-        ObservationProjectionProfile::SyntheticM3,
-    )
+    project_observation_with_profile(state, perspective, ObservationProjectionProfile::Synthetic)
 }
 
 pub(crate) fn project_observation_with_profile(
@@ -89,22 +84,22 @@ pub(crate) fn project_observation_with_profile(
         return Err(PlayerEndpointError::ServiceUnavailable);
     }
     let (codec, payload) = match profile {
-        ObservationProjectionProfile::SyntheticM3 => {
-            let value = SyntheticM3Observation {
-                schema_version: SYNTHETIC_M3_OBSERVATION_SCHEMA.into(),
+        ObservationProjectionProfile::Synthetic => {
+            let value = SyntheticObservation {
+                schema_version: SYNTHETIC_OBSERVATION_SCHEMA_V1.into(),
                 active_player: state.core.active_player,
                 turn_number: state.core.turn_number.to_string(),
                 turn_position: public_turn_position(state.core.position),
                 priority: public_priority(state.core.priority),
             };
             (
-                SYNTHETIC_M3_OBSERVATION_CODEC,
+                SYNTHETIC_OBSERVATION_CODEC,
                 mtgml_wire::encode_canonical(&value),
             )
         }
-        ObservationProjectionProfile::MagicM3 => {
-            let value = MagicM3Observation {
-                schema_version: MAGIC_M3_OBSERVATION_SCHEMA.into(),
+        ObservationProjectionProfile::Magic => {
+            let value = MagicObservation {
+                schema_version: MAGIC_OBSERVATION_SCHEMA_V1.into(),
                 active_player: state.core.active_player,
                 turn_number: state.core.turn_number.to_string(),
                 turn_position: public_turn_position(state.core.position),
@@ -115,7 +110,7 @@ pub(crate) fn project_observation_with_profile(
                 .validate()
                 .map_err(|_| PlayerEndpointError::ServiceUnavailable)?;
             (
-                MAGIC_M3_OBSERVATION_SCHEMA,
+                MAGIC_OBSERVATION_SCHEMA_V1,
                 mtgml_wire::encode_canonical(&value),
             )
         }
@@ -138,7 +133,7 @@ pub(crate) fn project_observation_with_profile(
 fn project_sba_ordering(
     state: &EngineState,
     perspective: PlayerId,
-) -> Result<Option<MagicM3PendingSbaOrdering>, PlayerEndpointError> {
+) -> Result<Option<MagicPendingSbaOrdering>, PlayerEndpointError> {
     let mut matching = state
         .execution
         .continuations
@@ -190,13 +185,13 @@ fn project_sba_ordering(
                         .ok_or(PlayerEndpointError::ServiceUnavailable)
                 })
                 .collect::<Result<Vec<_>, _>>()?;
-            Ok(MagicM3CompletedOrder {
+            Ok(MagicCompletedOrder {
                 owner: order.owner,
                 ordered_objects,
             })
         })
         .collect::<Result<Vec<_>, PlayerEndpointError>>()?;
-    Ok(Some(MagicM3PendingSbaOrdering {
+    Ok(Some(MagicPendingSbaOrdering {
         completed_orders,
         next_order_owner,
     }))
@@ -271,7 +266,7 @@ pub(crate) fn project_information_state(
     project_information_state_with_profile(
         state,
         perspective,
-        ObservationProjectionProfile::SyntheticM3,
+        ObservationProjectionProfile::Synthetic,
     )
 }
 
@@ -348,39 +343,39 @@ pub(crate) fn project_information_state_with_profile(
     Ok(information_state)
 }
 
-fn public_turn_position(position: TurnPosition) -> SyntheticM3TurnPosition {
+fn public_turn_position(position: TurnPosition) -> SyntheticTurnPosition {
     match position {
-        TurnPosition::Beginning { step } => SyntheticM3TurnPosition::Beginning {
+        TurnPosition::Beginning { step } => SyntheticTurnPosition::Beginning {
             step: match step {
-                BeginningStep::Untap => SyntheticM3BeginningStep::Untap,
-                BeginningStep::Upkeep => SyntheticM3BeginningStep::Upkeep,
-                BeginningStep::Draw => SyntheticM3BeginningStep::Draw,
+                BeginningStep::Untap => SyntheticBeginningStep::Untap,
+                BeginningStep::Upkeep => SyntheticBeginningStep::Upkeep,
+                BeginningStep::Draw => SyntheticBeginningStep::Draw,
             },
         },
-        TurnPosition::PrecombatMain => SyntheticM3TurnPosition::PrecombatMain,
-        TurnPosition::Combat { step } => SyntheticM3TurnPosition::Combat {
+        TurnPosition::PrecombatMain => SyntheticTurnPosition::PrecombatMain,
+        TurnPosition::Combat { step } => SyntheticTurnPosition::Combat {
             step: match step {
-                CombatStep::BeginningOfCombat => SyntheticM3CombatStep::BeginningOfCombat,
-                CombatStep::DeclareAttackers => SyntheticM3CombatStep::DeclareAttackers,
-                CombatStep::DeclareBlockers => SyntheticM3CombatStep::DeclareBlockers,
-                CombatStep::CombatDamage => SyntheticM3CombatStep::CombatDamage,
-                CombatStep::EndOfCombat => SyntheticM3CombatStep::EndOfCombat,
+                CombatStep::BeginningOfCombat => SyntheticCombatStep::BeginningOfCombat,
+                CombatStep::DeclareAttackers => SyntheticCombatStep::DeclareAttackers,
+                CombatStep::DeclareBlockers => SyntheticCombatStep::DeclareBlockers,
+                CombatStep::CombatDamage => SyntheticCombatStep::CombatDamage,
+                CombatStep::EndOfCombat => SyntheticCombatStep::EndOfCombat,
             },
         },
-        TurnPosition::PostcombatMain => SyntheticM3TurnPosition::PostcombatMain,
-        TurnPosition::Ending { step } => SyntheticM3TurnPosition::Ending {
+        TurnPosition::PostcombatMain => SyntheticTurnPosition::PostcombatMain,
+        TurnPosition::Ending { step } => SyntheticTurnPosition::Ending {
             step: match step {
-                EndingStep::EndStep => SyntheticM3EndingStep::EndStep,
-                EndingStep::Cleanup => SyntheticM3EndingStep::Cleanup,
+                EndingStep::EndStep => SyntheticEndingStep::EndStep,
+                EndingStep::Cleanup => SyntheticEndingStep::Cleanup,
             },
         },
     }
 }
 
-fn public_priority(priority: PriorityState) -> SyntheticM3Priority {
+fn public_priority(priority: PriorityState) -> SyntheticPriority {
     match priority {
-        PriorityState::None => SyntheticM3Priority::None,
-        PriorityState::HeldBy { player, .. } => SyntheticM3Priority::HeldBy { player },
+        PriorityState::None => SyntheticPriority::None,
+        PriorityState::HeldBy { player, .. } => SyntheticPriority::HeldBy { player },
     }
 }
 
@@ -415,7 +410,7 @@ pub(crate) fn project_player_step(
         perspective,
         status,
         submission,
-        ObservationProjectionProfile::SyntheticM3,
+        ObservationProjectionProfile::Synthetic,
     )
 }
 

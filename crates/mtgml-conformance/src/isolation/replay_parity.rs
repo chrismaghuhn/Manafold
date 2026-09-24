@@ -16,7 +16,7 @@ mod tests {
     };
     use crate::isolation::HarnessError;
     use mtgml_environment::{
-        ControllerError, EnvironmentCheckpointV6, SyntheticM1EnvironmentBackend,
+        ControllerError, EnvironmentCheckpointV6, SyntheticRulesEnvironmentBackend,
         TrustedEnvironmentController,
     };
     use mtgml_replay::{
@@ -123,7 +123,7 @@ mod tests {
 
         // Endpoints rebuilt from the FINAL checkpoint reproduce the
         // pre-capture snapshot bytes for both perspectives.
-        let rebuilt_backend = SyntheticM1EnvironmentBackend::from_checkpoint(
+        let rebuilt_backend = SyntheticRulesEnvironmentBackend::from_checkpoint(
             report.final_checkpoint.clone(),
             config(),
         )

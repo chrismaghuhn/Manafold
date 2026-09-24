@@ -13,11 +13,11 @@ use mtgml_observation::ObservedEventEnvelopeV2;
 use mtgml_rules::TransitionResult;
 
 use super::replay::build_manifest;
-use super::SyntheticM1EnvironmentBackend;
+use super::SyntheticRulesEnvironmentBackend;
 use crate::checkpoint::EnvironmentCheckpointV6;
 use crate::errors::ControllerError;
 
-impl SyntheticM1EnvironmentBackend {
+impl SyntheticRulesEnvironmentBackend {
     pub(super) fn current_checkpoint(&self) -> Result<EnvironmentCheckpointV6, ControllerError> {
         crate::reference::current_checkpoint(
             &self.state,

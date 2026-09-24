@@ -36,8 +36,8 @@ pub enum EngineStateViolation {
     FormatMismatch,
     #[error("random state is invalid")]
     RandomState,
-    #[error("M2 state shape is invalid: {0}")]
-    M2Shape(#[from] crate::m2_shape::M2ShapeViolation),
+    #[error("engine state shape is invalid: {0}")]
+    EngineStateShape(#[from] crate::engine_state_shape::EngineStateShapeViolation),
 }
 
 mod allocators_execution;
@@ -54,7 +54,7 @@ use mtgml_decision::{EngineCandidateBinding, VisibleCandidateV2};
 use thiserror::Error;
 
 use crate::engine::EngineState;
-use crate::m2_shape::validate_m2_shape;
+use crate::engine_state_shape::validate_engine_state_shape;
 
 use self::allocators_execution::validate_allocators_and_execution;
 use self::core::validate_core_structure;
@@ -79,7 +79,7 @@ pub fn validate_engine_state(state: &EngineState) -> Result<(), EngineStateViola
     validate_allocators_and_execution(state)?;
 
     let players: BTreeSet<_> = state.core.players.keys().copied().collect();
-    validate_m2_shape(
+    validate_engine_state_shape(
         state.revision,
         &players,
         &state.zones.objects,

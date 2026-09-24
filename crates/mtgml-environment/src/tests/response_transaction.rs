@@ -227,7 +227,7 @@ struct ResponseWorldSnapshot {
     player_products: Vec<(PlayerId, Vec<Vec<u8>>)>,
 }
 
-fn response_world_snapshot(backend: &SyntheticM1EnvironmentBackend) -> ResponseWorldSnapshot {
+fn response_world_snapshot(backend: &SyntheticRulesEnvironmentBackend) -> ResponseWorldSnapshot {
     let mut player_products = Vec::new();
     for player in backend.players() {
         let observation = backend.player_observation(player).unwrap();
@@ -253,7 +253,7 @@ fn response_world_snapshot(backend: &SyntheticM1EnvironmentBackend) -> ResponseW
 }
 
 fn response_for_backend(
-    backend: &SyntheticM1EnvironmentBackend,
+    backend: &SyntheticRulesEnvironmentBackend,
     actor: PlayerId,
     answer: DecisionAnswerV2,
 ) -> DecisionResponseV2 {
@@ -390,7 +390,7 @@ fn shared_transaction_counter_overflow_is_atomic() {
         synthetic_identity(),
     )
     .unwrap();
-    let mut backend = SyntheticM1EnvironmentBackend::from_checkpoint(checkpoint, config(players))
+    let mut backend = SyntheticRulesEnvironmentBackend::from_checkpoint(checkpoint, config(players))
         .unwrap();
     let before = response_world_snapshot(&backend);
     let response = response_for_backend(&backend, PlayerId(1), order_entry_answer());

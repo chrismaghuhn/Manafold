@@ -87,7 +87,7 @@ mod tests {
         }
     }
 
-    fn config() -> mtgml_environment::SyntheticM1EnvironmentConfig {
+    fn config() -> mtgml_environment::SyntheticRulesEnvironmentConfig {
         synthetic_environment_config([P1, P2])
     }
 

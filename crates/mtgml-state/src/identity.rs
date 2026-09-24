@@ -2,7 +2,7 @@ use mtgml_model::{AbilityInstanceId, GameObjectId, PlayerId};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-use crate::m2_shape::PerspectiveIdentityStateV2;
+use crate::engine_state_shape::PerspectiveIdentityStateV2;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
 pub enum IdentityAllocationError {

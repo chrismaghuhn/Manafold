@@ -36,7 +36,7 @@ mod tests {
     /// `PlayerSubmissionCodeV1::UnavailableDecision` outcome.
     const UNAVAILABLE_DECISION_CODE: &str = "unavailable_decision";
 
-    fn config() -> mtgml_environment::SyntheticM1EnvironmentConfig {
+    fn config() -> mtgml_environment::SyntheticRulesEnvironmentConfig {
         synthetic_environment_config([P1, P2])
     }
 

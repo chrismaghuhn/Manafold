@@ -6,10 +6,10 @@ use serde::{Deserialize, Serialize};
 
 use crate::core::{CombatState, CoreRulesState, FoundationCreatureSource};
 use crate::digest::StateDigestError;
+use crate::engine_state_shape::{KnowledgeStateV2, PerspectiveIdentityStateV2};
 use crate::execution::ExecutionState;
 use crate::format::FormatState;
 use crate::identity::IdentityAllocatorState;
-use crate::m2_shape::{KnowledgeStateV2, PerspectiveIdentityStateV2};
 use crate::zones::ZoneState;
 
 pub const FULL_STATE_DIGEST_INPUT_SCHEMA: &str = "full-state-digest-input.v5";

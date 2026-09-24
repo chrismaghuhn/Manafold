@@ -28,7 +28,7 @@ fn base_state() -> EngineState {
     let mut state = construct_synthetic_engine_state(SyntheticResetInputs {
         players: [P1, P2],
         root_seed: mtgml_random::RootSeed256::from_lower_hex(&"11".repeat(32)).unwrap(),
-        setup: SyntheticV4Setup::m2_compatibility(),
+        setup: SyntheticV4Setup::synthetic_compatibility(),
     })
     .unwrap();
     // These direct primitive cases do not carry or fabricate a player response.
@@ -944,7 +944,7 @@ fn s2_identity_old_reference_forbidden_sites_reject() {
     let pending = construct_synthetic_engine_state(SyntheticResetInputs {
         players: [P1, P2],
         root_seed: mtgml_random::RootSeed256::from_lower_hex(&"11".repeat(32)).unwrap(),
-        setup: SyntheticV4Setup::m2_compatibility(),
+        setup: SyntheticV4Setup::synthetic_compatibility(),
     })
     .unwrap();
     validate_engine_state(&pending).unwrap();
@@ -1971,7 +1971,7 @@ fn s2_rejected_direct_requests_preserve_complete_environment_fingerprint_matrix(
     let pending = construct_synthetic_engine_state(SyntheticResetInputs {
         players: [P1, P2],
         root_seed: mtgml_random::RootSeed256::from_lower_hex(&"11".repeat(32)).unwrap(),
-        setup: SyntheticV4Setup::m2_compatibility(),
+        setup: SyntheticV4Setup::synthetic_compatibility(),
     })
     .unwrap();
     validate_engine_state(&pending).unwrap();
@@ -3142,7 +3142,7 @@ fn s2_mutant_old_reference_after_state_rejects() {
     let pending_fixture = construct_synthetic_engine_state(SyntheticResetInputs {
         players: [P1, P2],
         root_seed: mtgml_random::RootSeed256::from_lower_hex(&"11".repeat(32)).unwrap(),
-        setup: SyntheticV4Setup::m2_compatibility(),
+        setup: SyntheticV4Setup::synthetic_compatibility(),
     })
     .unwrap();
     let mut pending_reference = valid;
@@ -3281,19 +3281,19 @@ fn s2_valid_requests_preserve_input_and_rng() {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum S2ParityScenario {
+enum ZoneIncarnationParityScenario {
     BattlefieldTracked,
     LibraryFirstPrivate,
     LibraryPreknown,
     LibraryFirstPrivateSingleton,
 }
 
-fn s2_scenario_state(scenario: S2ParityScenario) -> EngineState {
+fn s2_scenario_state(scenario: ZoneIncarnationParityScenario) -> EngineState {
     match scenario {
-        S2ParityScenario::BattlefieldTracked => battlefield_case_state(),
-        S2ParityScenario::LibraryFirstPrivate => first_private_library_case_state(),
-        S2ParityScenario::LibraryPreknown => library_case_state(),
-        S2ParityScenario::LibraryFirstPrivateSingleton => {
+        ZoneIncarnationParityScenario::BattlefieldTracked => battlefield_case_state(),
+        ZoneIncarnationParityScenario::LibraryFirstPrivate => first_private_library_case_state(),
+        ZoneIncarnationParityScenario::LibraryPreknown => library_case_state(),
+        ZoneIncarnationParityScenario::LibraryFirstPrivateSingleton => {
             let mut state = first_private_library_case_state();
             let ordered = state
                 .zones
@@ -3311,7 +3311,7 @@ fn s2_scenario_state(scenario: S2ParityScenario) -> EngineState {
 }
 
 fn s2_scenario_request(
-    scenario: S2ParityScenario,
+    scenario: ZoneIncarnationParityScenario,
     before: &EngineState,
 ) -> (
     GameObjectId,
@@ -3320,15 +3320,15 @@ fn s2_scenario_request(
     ConformanceZoneTransitionKind,
 ) {
     match scenario {
-        S2ParityScenario::BattlefieldTracked => (
+        ZoneIncarnationParityScenario::BattlefieldTracked => (
             OLD_BATTLEFIELD,
             battlefield_from(),
             owner_graveyard_top(P1),
             ConformanceZoneTransitionKind::BattlefieldToOwnerGraveyard,
         ),
-        S2ParityScenario::LibraryFirstPrivate
-        | S2ParityScenario::LibraryPreknown
-        | S2ParityScenario::LibraryFirstPrivateSingleton => {
+        ZoneIncarnationParityScenario::LibraryFirstPrivate
+        | ZoneIncarnationParityScenario::LibraryPreknown
+        | ZoneIncarnationParityScenario::LibraryFirstPrivateSingleton => {
             let top = before
                 .zones
                 .ordered_zones
@@ -3348,7 +3348,7 @@ fn s2_scenario_request(
 
 fn execute_s2_scenario(
     before: &EngineState,
-    scenario: S2ParityScenario,
+    scenario: ZoneIncarnationParityScenario,
 ) -> mtgml_rules::TransitionResult {
     let (object, from, to, kind) = s2_scenario_request(scenario, before);
     execute_selected_zone_transition_for_conformance(before, object, from, to, kind)
@@ -3410,11 +3410,15 @@ fn s2_pair_rename_hidden_library_top(
     })
 }
 
-fn assert_s2_family_state(before: &EngineState, after: &EngineState, scenario: S2ParityScenario) {
+fn assert_s2_family_state(
+    before: &EngineState,
+    after: &EngineState,
+    scenario: ZoneIncarnationParityScenario,
+) {
     let new = before.allocators.next_object_id;
     assert_eq!(after.allocators.next_object_id.0, new.0 + 1);
     match scenario {
-        S2ParityScenario::BattlefieldTracked => {
+        ZoneIncarnationParityScenario::BattlefieldTracked => {
             let key = owner_graveyard_top(P1).key();
             let old_members = before.zones.ordered_zones.get(&key).unwrap();
             let new_members = after.zones.ordered_zones.get(&key).unwrap();
@@ -3434,9 +3438,9 @@ fn assert_s2_family_state(before: &EngineState, after: &EngineState, scenario: S
                 );
             }
         }
-        S2ParityScenario::LibraryFirstPrivate
-        | S2ParityScenario::LibraryPreknown
-        | S2ParityScenario::LibraryFirstPrivateSingleton => {
+        ZoneIncarnationParityScenario::LibraryFirstPrivate
+        | ZoneIncarnationParityScenario::LibraryPreknown
+        | ZoneIncarnationParityScenario::LibraryFirstPrivateSingleton => {
             let key = owner_library_top(P2).key();
             let old_members = before.zones.ordered_zones.get(&key).unwrap();
             let expected: Vec<_> = old_members.iter().copied().skip(1).collect();
@@ -3540,7 +3544,7 @@ fn assert_replay_segment_anchored(
     assert_eq!(anchor.execution_identity, checkpoint.execution_identity);
 }
 
-fn s2_checkpoint_restore_case(scenario: S2ParityScenario) {
+fn s2_checkpoint_restore_case(scenario: ZoneIncarnationParityScenario) {
     let before = s2_scenario_state(scenario);
     let config = crate::isolation::synthetic_environment_config([P1, P2]);
     let (input_controller, _) =
@@ -3579,17 +3583,17 @@ fn s2_checkpoint_restore_case(scenario: S2ParityScenario) {
 #[test]
 // Stable S2 case: `s2.replay.checkpoint_restore` (Battlefield family).
 fn s2_replay_checkpoint_restore_battlefield() {
-    s2_checkpoint_restore_case(S2ParityScenario::BattlefieldTracked);
+    s2_checkpoint_restore_case(ZoneIncarnationParityScenario::BattlefieldTracked);
 }
 
 #[test]
 // Stable S2 case: `s2.replay.checkpoint_restore` (Library family).
 fn s2_replay_checkpoint_restore_library() {
-    s2_checkpoint_restore_case(S2ParityScenario::LibraryFirstPrivate);
-    s2_checkpoint_restore_case(S2ParityScenario::LibraryFirstPrivateSingleton);
+    s2_checkpoint_restore_case(ZoneIncarnationParityScenario::LibraryFirstPrivate);
+    s2_checkpoint_restore_case(ZoneIncarnationParityScenario::LibraryFirstPrivateSingleton);
 }
 
-fn s2_fork_parity_case(scenario: S2ParityScenario) {
+fn s2_fork_parity_case(scenario: ZoneIncarnationParityScenario) {
     let before = s2_scenario_state(scenario);
     let result = execute_s2_scenario(&before, scenario);
     assert_eq!(result.next_state.random, before.random);
@@ -3625,17 +3629,17 @@ fn s2_fork_parity_case(scenario: S2ParityScenario) {
 #[test]
 // Stable S2 case: `s2.replay.fork` (Battlefield family).
 fn s2_replay_fork_battlefield() {
-    s2_fork_parity_case(S2ParityScenario::BattlefieldTracked);
+    s2_fork_parity_case(ZoneIncarnationParityScenario::BattlefieldTracked);
 }
 
 #[test]
 // Stable S2 case: `s2.replay.fork` (Library family).
 fn s2_replay_fork_library() {
-    s2_fork_parity_case(S2ParityScenario::LibraryFirstPrivate);
-    s2_fork_parity_case(S2ParityScenario::LibraryPreknown);
+    s2_fork_parity_case(ZoneIncarnationParityScenario::LibraryFirstPrivate);
+    s2_fork_parity_case(ZoneIncarnationParityScenario::LibraryPreknown);
 }
 
-fn s2_deterministic_rerun_case(scenario: S2ParityScenario) {
+fn s2_deterministic_rerun_case(scenario: ZoneIncarnationParityScenario) {
     let before = s2_scenario_state(scenario);
     let config = crate::isolation::synthetic_environment_config([P1, P2]);
     let (input_controller, _) =
@@ -3715,9 +3719,9 @@ fn s2_deterministic_rerun_case(scenario: S2ParityScenario) {
 #[test]
 // Stable S2 case: `s2.replay.rerun`; this is deterministic rerun, not replay.
 fn s2_replay_rerun() {
-    s2_deterministic_rerun_case(S2ParityScenario::BattlefieldTracked);
-    s2_deterministic_rerun_case(S2ParityScenario::LibraryFirstPrivate);
-    s2_deterministic_rerun_case(S2ParityScenario::LibraryPreknown);
+    s2_deterministic_rerun_case(ZoneIncarnationParityScenario::BattlefieldTracked);
+    s2_deterministic_rerun_case(ZoneIncarnationParityScenario::LibraryFirstPrivate);
+    s2_deterministic_rerun_case(ZoneIncarnationParityScenario::LibraryPreknown);
 }
 
 #[test]

@@ -5,7 +5,7 @@ mod contract;
 mod decision_stage;
 mod errors;
 mod events;
-#[cfg(feature = "m2-conformance-fixtures")]
+#[cfg(feature = "synthetic-conformance-fixtures")]
 pub mod fixture_support;
 mod magic;
 mod product;
@@ -34,7 +34,7 @@ pub use program_kernel::{
     ProgramKernelV1,
 };
 pub use semantic_execution_generated::execution_contract_supported;
-#[cfg(feature = "m3-conformance-testkit")]
+#[cfg(feature = "magic-conformance-testkit")]
 pub use state_based_actions::SbaContinuationValidationError;
 pub use synthetic::validate_synthetic_runtime_state;
 pub use transition::{RulesKernel, TransitionResult};
@@ -44,7 +44,7 @@ pub use turn_structure::{
 };
 pub use validation::TransitionViolation;
 
-#[cfg(feature = "m3-conformance-testkit")]
+#[cfg(feature = "magic-conformance-testkit")]
 pub use zone_incarnation::{
     execute_selected_zone_transition_for_conformance, ConformanceZoneTransitionKind,
 };

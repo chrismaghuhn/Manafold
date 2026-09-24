@@ -8,7 +8,7 @@ use mtgml_model::{
 };
 use serde::{Deserialize, Serialize};
 
-use crate::m2_shape::M2ShapeViolation;
+use crate::engine_state_shape::EngineStateShapeViolation;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(deny_unknown_fields)]
@@ -36,17 +36,17 @@ pub struct PerspectiveIdentityStateV2 {
 
 pub(super) fn validate_identity(
     identity: &PerspectiveIdentityRecordV2,
-) -> Result<(), M2ShapeViolation> {
+) -> Result<(), EngineStateShapeViolation> {
     if identity.next_opaque_object_id.0 == 0
         || identity.next_opaque_ability_id.0 == 0
         || identity.next_player_decision_id.0 == 0
     {
-        return Err(M2ShapeViolation::Allocator);
+        return Err(EngineStateShapeViolation::Allocator);
     }
     if identity.object_to_opaque.len() != identity.opaque_to_object.len()
         || identity.ability_to_opaque.len() != identity.opaque_to_ability.len()
     {
-        return Err(M2ShapeViolation::IdentityMapping);
+        return Err(EngineStateShapeViolation::IdentityMapping);
     }
     if identity
         .opaque_to_object
@@ -65,7 +65,7 @@ pub(super) fn validate_identity(
             .iter()
             .any(|opaque| opaque.0 == 0)
     {
-        return Err(M2ShapeViolation::RetiredIdentity);
+        return Err(EngineStateShapeViolation::RetiredIdentity);
     }
     if identity
         .opaque_to_object
@@ -76,16 +76,16 @@ pub(super) fn validate_identity(
             .keys()
             .any(|opaque| opaque.0 >= identity.next_opaque_ability_id.0)
     {
-        return Err(M2ShapeViolation::Allocator);
+        return Err(EngineStateShapeViolation::Allocator);
     }
     for (object, opaque) in &identity.object_to_opaque {
         if identity.opaque_to_object.get(opaque) != Some(object) {
-            return Err(M2ShapeViolation::IdentityMapping);
+            return Err(EngineStateShapeViolation::IdentityMapping);
         }
     }
     for (ability, opaque) in &identity.ability_to_opaque {
         if identity.opaque_to_ability.get(opaque) != Some(ability) {
-            return Err(M2ShapeViolation::IdentityMapping);
+            return Err(EngineStateShapeViolation::IdentityMapping);
         }
     }
     Ok(())

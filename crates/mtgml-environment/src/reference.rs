@@ -81,21 +81,21 @@ fn magic_execution_identity() -> ExecutionIdentityV1 {
     }
 }
 
-fn magic_s3_a_execution_identity() -> ExecutionIdentityV1 {
+fn magic_state_based_actions_execution_identity() -> ExecutionIdentityV1 {
     ExecutionIdentityV1 {
         program_kind: ExecutionProgramV1::MagicRules,
         semantic_contract_id: magic_s3_a_ordered_sba_0_1_0_semantic_contract_id(),
     }
 }
 
-fn magic_s3_b_execution_identity() -> ExecutionIdentityV1 {
+fn magic_basic_priority_execution_identity() -> ExecutionIdentityV1 {
     ExecutionIdentityV1 {
         program_kind: ExecutionProgramV1::MagicRules,
         semantic_contract_id: magic_s3_b_basic_priority_0_1_0_semantic_contract_id(),
     }
 }
 
-fn magic_s3_c_execution_identity() -> ExecutionIdentityV1 {
+fn magic_draw_execution_identity() -> ExecutionIdentityV1 {
     ExecutionIdentityV1 {
         program_kind: ExecutionProgramV1::MagicRules,
         semantic_contract_id: magic_s3_c_draw_interaction_0_1_0_semantic_contract_id(),
@@ -112,21 +112,21 @@ fn semantic_material(
             rules_manifest: magic_turn_structure_0_1_0_rules_manifest(),
         });
     }
-    if *id == magic_s3_a_execution_identity().semantic_contract_id {
+    if *id == magic_state_based_actions_execution_identity().semantic_contract_id {
         return Ok(SemanticContractMaterialV5 {
             semantic_contract_id: id.clone(),
             manifest: magic_s3_a_ordered_sba_0_1_0_semantic_manifest(),
             rules_manifest: magic_s3_a_ordered_sba_0_1_0_rules_manifest(),
         });
     }
-    if *id == magic_s3_b_execution_identity().semantic_contract_id {
+    if *id == magic_basic_priority_execution_identity().semantic_contract_id {
         return Ok(SemanticContractMaterialV5 {
             semantic_contract_id: id.clone(),
             manifest: magic_s3_b_basic_priority_0_1_0_semantic_manifest(),
             rules_manifest: magic_s3_b_basic_priority_0_1_0_rules_manifest(),
         });
     }
-    if *id == magic_s3_c_execution_identity().semantic_contract_id {
+    if *id == magic_draw_execution_identity().semantic_contract_id {
         return Ok(SemanticContractMaterialV5 {
             semantic_contract_id: id.clone(),
             manifest: magic_s3_c_draw_interaction_0_1_0_semantic_manifest(),
@@ -182,9 +182,9 @@ pub(crate) fn build_reference_manifest(
     validate_reference_replay_config(config)?;
     let expected_schemas = if checkpoint.execution_identity == magic_execution_identity() {
         current_v6_schema_versions()
-    } else if checkpoint.execution_identity == magic_s3_a_execution_identity()
-        || checkpoint.execution_identity == magic_s3_b_execution_identity()
-        || checkpoint.execution_identity == magic_s3_c_execution_identity()
+    } else if checkpoint.execution_identity == magic_state_based_actions_execution_identity()
+        || checkpoint.execution_identity == magic_basic_priority_execution_identity()
+        || checkpoint.execution_identity == magic_draw_execution_identity()
     {
         magic_v6_schema_versions()
     } else {
@@ -370,9 +370,9 @@ where
 impl ReferenceEnvironmentBackend {
     pub fn new(config: ReferenceEnvironmentConfig) -> Result<Self, ControllerError> {
         if config.execution_identity != magic_execution_identity()
-            && config.execution_identity != magic_s3_a_execution_identity()
-            && config.execution_identity != magic_s3_b_execution_identity()
-            && config.execution_identity != magic_s3_c_execution_identity()
+            && config.execution_identity != magic_state_based_actions_execution_identity()
+            && config.execution_identity != magic_basic_priority_execution_identity()
+            && config.execution_identity != magic_draw_execution_identity()
         {
             return Err(ControllerError::ProgramAuthorityMismatch);
         }
@@ -397,9 +397,9 @@ impl ReferenceEnvironmentBackend {
             return Err(ControllerError::UnsupportedCheckpointCodec);
         }
         if checkpoint.execution_identity != magic_execution_identity()
-            && checkpoint.execution_identity != magic_s3_a_execution_identity()
-            && checkpoint.execution_identity != magic_s3_b_execution_identity()
-            && checkpoint.execution_identity != magic_s3_c_execution_identity()
+            && checkpoint.execution_identity != magic_state_based_actions_execution_identity()
+            && checkpoint.execution_identity != magic_basic_priority_execution_identity()
+            && checkpoint.execution_identity != magic_draw_execution_identity()
         {
             return Err(ControllerError::ProgramAuthorityMismatch);
         }
@@ -431,16 +431,16 @@ impl ReferenceEnvironmentBackend {
         magic_execution_identity()
     }
 
-    pub fn magic_s3_a_execution_identity() -> ExecutionIdentityV1 {
-        magic_s3_a_execution_identity()
+    pub fn magic_state_based_actions_execution_identity() -> ExecutionIdentityV1 {
+        magic_state_based_actions_execution_identity()
     }
 
-    pub fn magic_s3_b_execution_identity() -> ExecutionIdentityV1 {
-        magic_s3_b_execution_identity()
+    pub fn magic_basic_priority_execution_identity() -> ExecutionIdentityV1 {
+        magic_basic_priority_execution_identity()
     }
 
-    pub fn magic_s3_c_execution_identity() -> ExecutionIdentityV1 {
-        magic_s3_c_execution_identity()
+    pub fn magic_draw_execution_identity() -> ExecutionIdentityV1 {
+        magic_draw_execution_identity()
     }
 
     fn projection_profile(
@@ -593,9 +593,9 @@ impl EnvironmentBackend for ReferenceEnvironmentBackend {
         response: DecisionResponseV2,
     ) -> Result<PlayerStepV2, PlayerEndpointError> {
         self.require_player(perspective)?;
-        let s3_magic = self.execution_identity == magic_s3_a_execution_identity()
-            || self.execution_identity == magic_s3_b_execution_identity()
-            || self.execution_identity == magic_s3_c_execution_identity();
+        let s3_magic = self.execution_identity == magic_state_based_actions_execution_identity()
+            || self.execution_identity == magic_basic_priority_execution_identity()
+            || self.execution_identity == magic_draw_execution_identity();
         let code = if !matches!(self.status, EpisodeStatus::Running) {
             Some(mtgml_observation::PlayerSubmissionCodeV1::EpisodeClosed)
         } else if !s3_magic {

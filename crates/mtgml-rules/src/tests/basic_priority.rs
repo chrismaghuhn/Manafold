@@ -44,7 +44,7 @@ fn basic_priority_stable_upkeep_opens_actor_only_single_pass_decision() {
     let before = priority_state(TurnPosition::Beginning {
         step: BeginningStep::Upkeep,
     });
-    let mut kernel = MagicRulesKernel::s3_b_conformance_candidate();
+    let mut kernel = MagicRulesKernel::basic_priority_conformance_candidate();
     let result = kernel.advance_forced_progress(&before).unwrap();
     assert!(result.accepted);
     assert_eq!(result.next_state.revision, StateRevision(1));
@@ -87,7 +87,7 @@ fn basic_priority_first_pass_transfers_and_second_advances_one_step() {
     let before = priority_state(TurnPosition::Ending {
         step: mtgml_state::EndingStep::EndStep,
     });
-    let mut kernel = MagicRulesKernel::s3_b_conformance_candidate();
+    let mut kernel = MagicRulesKernel::basic_priority_conformance_candidate();
     let opened = kernel.advance_forced_progress(&before).unwrap();
     let first_response = pass_response(&opened.next_state);
     let first = kernel
@@ -129,7 +129,7 @@ fn basic_priority_rejects_wrong_actor_and_stale_response_without_mutation() {
     let state = priority_state(TurnPosition::Beginning {
         step: BeginningStep::Upkeep,
     });
-    let mut kernel = MagicRulesKernel::s3_b_conformance_candidate();
+    let mut kernel = MagicRulesKernel::basic_priority_conformance_candidate();
     let opened = kernel.advance_forced_progress(&state).unwrap();
     let held = opened.next_state;
     let response = pass_response(&held);
@@ -156,7 +156,7 @@ fn basic_priority_terminal_sba_and_unresolved_order_prevent_pass_decisions() {
         step: BeginningStep::Upkeep,
     });
     losing.core.players.get_mut(&PlayerId(7)).unwrap().life = 0;
-    let mut kernel = MagicRulesKernel::s3_b_conformance_candidate();
+    let mut kernel = MagicRulesKernel::basic_priority_conformance_candidate();
     let terminal = kernel.advance_forced_progress(&losing).unwrap();
     assert!(matches!(terminal.status, mtgml_model::EpisodeStatus::Terminal { .. }));
     assert!(terminal.next_decision.is_none());
@@ -179,7 +179,7 @@ fn basic_priority_identity_exhaustion_is_nonmutating() {
     });
     state.revision = StateRevision(u64::MAX);
     let before = state.clone();
-    let mut kernel = MagicRulesKernel::s3_b_conformance_candidate();
+    let mut kernel = MagicRulesKernel::basic_priority_conformance_candidate();
     assert!(kernel.advance_forced_progress(&state).is_err());
     assert_eq!(state, before);
 
@@ -201,7 +201,7 @@ fn basic_priority_identity_exhaustion_is_nonmutating() {
         });
         mutate(&mut exhausted);
         let before = exhausted.clone();
-        let mut kernel = MagicRulesKernel::s3_b_conformance_candidate();
+        let mut kernel = MagicRulesKernel::basic_priority_conformance_candidate();
         assert!(kernel.advance_forced_progress(&exhausted).is_err());
         assert_eq!(exhausted, before);
     }
@@ -212,7 +212,7 @@ fn basic_priority_contract_rejects_mismatched_priority_event_before_and_delta() 
     let before = priority_state(TurnPosition::Beginning {
         step: BeginningStep::Upkeep,
     });
-    let mut kernel = MagicRulesKernel::s3_b_conformance_candidate();
+    let mut kernel = MagicRulesKernel::basic_priority_conformance_candidate();
     let opened = kernel.advance_forced_progress(&before).unwrap();
     let mut tampered = opened.clone();
     tampered.events[0].event = crate::AuthoritativeRuleEventKind::PriorityChanged {
@@ -242,7 +242,7 @@ fn basic_priority_rejects_untap_draw_declaration_damage_and_cleanup_windows() {
     let untap = priority_state(TurnPosition::Beginning {
         step: BeginningStep::Untap,
     });
-    let mut untap_kernel = MagicRulesKernel::s3_b_conformance_candidate();
+    let mut untap_kernel = MagicRulesKernel::basic_priority_conformance_candidate();
     let untapped = untap_kernel.advance_forced_progress(&untap).unwrap();
     assert!(untapped.next_decision.is_none());
     assert_eq!(untapped.next_state.core.priority, PriorityState::None);
@@ -255,7 +255,7 @@ fn basic_priority_rejects_untap_draw_declaration_damage_and_cleanup_windows() {
     let cleanup = priority_state(TurnPosition::Ending {
         step: mtgml_state::EndingStep::Cleanup,
     });
-    let mut cleanup_kernel = MagicRulesKernel::s3_b_conformance_candidate();
+    let mut cleanup_kernel = MagicRulesKernel::basic_priority_conformance_candidate();
     let cleaned = cleanup_kernel.advance_forced_progress(&cleanup).unwrap();
     assert!(cleaned.next_decision.is_none());
     assert_eq!(cleaned.next_state.core.priority, PriorityState::None);
@@ -275,7 +275,7 @@ fn basic_priority_rejects_untap_draw_declaration_damage_and_cleanup_windows() {
     ];
     for position in unsupported {
         let state = priority_state(position);
-        let mut kernel = MagicRulesKernel::s3_b_conformance_candidate();
+        let mut kernel = MagicRulesKernel::basic_priority_conformance_candidate();
         assert!(kernel.advance_forced_progress(&state).is_err(), "{position:?}");
         assert!(state.execution.pending_decision.is_none());
         assert_eq!(state.core.priority, PriorityState::None);

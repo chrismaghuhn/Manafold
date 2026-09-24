@@ -8,8 +8,8 @@ fn pending_decision_must_reference_an_existing_continuation() {
     pending.request.continuation_id = Some(ContinuationId(42));
     assert!(matches!(
         validate_engine_state(&state),
-        Err(EngineStateViolation::M2Shape(
-            M2ShapeViolation::ContinuationReference
+        Err(EngineStateViolation::EngineStateShape(
+            EngineStateShapeViolation::ContinuationReference
         ))
     ));
 }
@@ -35,8 +35,8 @@ fn continuation_stage_must_match_its_payload() {
     state.allocators.next_continuation_id = ContinuationId(2);
     assert!(matches!(
         validate_engine_state(&state),
-        Err(EngineStateViolation::M2Shape(
-            M2ShapeViolation::ContinuationStage
+        Err(EngineStateViolation::EngineStateShape(
+            EngineStateShapeViolation::ContinuationStage
         ))
     ));
 }
@@ -62,8 +62,8 @@ fn continuation_revision_must_not_be_future_dated() {
     state.allocators.next_continuation_id = ContinuationId(2);
     assert!(matches!(
         validate_engine_state(&state),
-        Err(EngineStateViolation::M2Shape(
-            M2ShapeViolation::ContinuationRevision
+        Err(EngineStateViolation::EngineStateShape(
+            EngineStateShapeViolation::ContinuationRevision
         ))
     ));
 }
@@ -107,8 +107,8 @@ fn continuation_actor_must_own_the_referenced_request() {
     });
     assert_eq!(
         validate_engine_state(&state),
-        Err(EngineStateViolation::M2Shape(
-            M2ShapeViolation::ContinuationActor
+        Err(EngineStateViolation::EngineStateShape(
+            EngineStateShapeViolation::ContinuationActor
         ))
     );
 }
@@ -208,7 +208,7 @@ fn assembly_payload_stage_invariants_are_enforced() {
 
 #[test]
 fn continuation_pending_program_coherence_matrix() {
-    use crate::m2_shape::SYNTHETIC_COUNT_MAX;
+    use crate::engine_state_shape::SYNTHETIC_COUNT_MAX;
     use mtgml_decision::AuthoritativeCandidateV2;
     use mtgml_model::CandidateIdV1;
 
@@ -644,8 +644,8 @@ fn magic_sba_created_revision_must_follow_round_start_revision() {
     let state = magic_order_stage_state(1, 0, 0, 0);
     assert_eq!(
         validate_engine_state(&state),
-        Err(EngineStateViolation::M2Shape(
-            M2ShapeViolation::ContinuationRevision
+        Err(EngineStateViolation::EngineStateShape(
+            EngineStateShapeViolation::ContinuationRevision
         ))
     );
 }
@@ -655,8 +655,8 @@ fn magic_sba_current_revision_must_count_each_completed_owner_order() {
     let state = magic_order_stage_state(1, 1, 0, 1);
     assert_eq!(
         validate_engine_state(&state),
-        Err(EngineStateViolation::M2Shape(
-            M2ShapeViolation::ContinuationRevision
+        Err(EngineStateViolation::EngineStateShape(
+            EngineStateShapeViolation::ContinuationRevision
         ))
     );
 }
@@ -666,8 +666,8 @@ fn magic_sba_stage_revision_relation_uses_checked_arithmetic() {
     let state = magic_order_stage_state(u64::MAX, u64::MAX, u64::MAX, 0);
     assert_eq!(
         validate_engine_state(&state),
-        Err(EngineStateViolation::M2Shape(
-            M2ShapeViolation::ContinuationRevision
+        Err(EngineStateViolation::EngineStateShape(
+            EngineStateShapeViolation::ContinuationRevision
         ))
     );
 }

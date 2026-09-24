@@ -6,7 +6,7 @@ fn fnd_020_current_producer_rejects_a_false_observation_schema_identity() {
     let mut invalid = config([PlayerId(1), PlayerId(2)]);
     invalid.replay.schemas.observation = "observation-envelope.v999".into();
     assert!(matches!(
-        SyntheticM1EnvironmentBackend::new(
+        SyntheticRulesEnvironmentBackend::new(
             [PlayerId(1), PlayerId(2)],
             seed(),
             invalid,

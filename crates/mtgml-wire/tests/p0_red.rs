@@ -1,31 +1,31 @@
 use mtgml_model::PlayerId;
 use mtgml_observation::{
-    SyntheticM3BeginningStep, SyntheticM3Observation, SyntheticM3Priority, SyntheticM3TurnPosition,
-    SYNTHETIC_M3_OBSERVATION_SCHEMA,
+    SyntheticBeginningStep, SyntheticObservation, SyntheticPriority, SyntheticTurnPosition,
+    SYNTHETIC_OBSERVATION_SCHEMA_V1,
 };
 use mtgml_wire::{encode_canonical, WireError};
 
 #[test]
 fn p0_m3_observation_uses_the_existing_canonical_json_owner() {
-    let encoder: fn(&SyntheticM3Observation) -> Result<Vec<u8>, WireError> =
-        encode_canonical::<SyntheticM3Observation>;
+    let encoder: fn(&SyntheticObservation) -> Result<Vec<u8>, WireError> =
+        encode_canonical::<SyntheticObservation>;
     let _ = encoder;
 }
 
-fn observation(position: SyntheticM3TurnPosition) -> SyntheticM3Observation {
-    SyntheticM3Observation {
-        schema_version: SYNTHETIC_M3_OBSERVATION_SCHEMA.into(),
+fn observation(position: SyntheticTurnPosition) -> SyntheticObservation {
+    SyntheticObservation {
+        schema_version: SYNTHETIC_OBSERVATION_SCHEMA_V1.into(),
         active_player: PlayerId(1),
         turn_number: "1".into(),
         turn_position: position,
-        priority: SyntheticM3Priority::None,
+        priority: SyntheticPriority::None,
     }
 }
 
 #[test]
 fn p0_m3_observation_untap_payload_has_exact_canonical_bytes() {
-    let bytes = encode_canonical(&observation(SyntheticM3TurnPosition::Beginning {
-        step: SyntheticM3BeginningStep::Untap,
+    let bytes = encode_canonical(&observation(SyntheticTurnPosition::Beginning {
+        step: SyntheticBeginningStep::Untap,
     }))
     .unwrap();
 
@@ -37,7 +37,7 @@ fn p0_m3_observation_untap_payload_has_exact_canonical_bytes() {
 
 #[test]
 fn p0_m3_observation_precombat_main_has_no_fake_step_field() {
-    let bytes = encode_canonical(&observation(SyntheticM3TurnPosition::PrecombatMain)).unwrap();
+    let bytes = encode_canonical(&observation(SyntheticTurnPosition::PrecombatMain)).unwrap();
 
     assert_eq!(
         bytes,

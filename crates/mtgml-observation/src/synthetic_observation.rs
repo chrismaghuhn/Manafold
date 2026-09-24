@@ -1,15 +1,15 @@
-//! Passive public DTO for the M3 synthetic observation payload.
+//! Passive public DTO for the synthetic turn and priority observation payload.
 
 use mtgml_model::{parse_canonical_u64, PlayerId};
 use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::error::ObservationValidationError;
 
-pub const SYNTHETIC_M3_OBSERVATION_SCHEMA: &str = "synthetic-m3-observation.v1";
+pub const SYNTHETIC_OBSERVATION_SCHEMA_V1: &str = "synthetic-m3-observation.v1";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub enum SyntheticM3BeginningStep {
+pub enum SyntheticBeginningStep {
     Untap,
     Upkeep,
     Draw,
@@ -17,7 +17,7 @@ pub enum SyntheticM3BeginningStep {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub enum SyntheticM3CombatStep {
+pub enum SyntheticCombatStep {
     BeginningOfCombat,
     DeclareAttackers,
     DeclareBlockers,
@@ -27,22 +27,22 @@ pub enum SyntheticM3CombatStep {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub enum SyntheticM3EndingStep {
+pub enum SyntheticEndingStep {
     EndStep,
     Cleanup,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
-pub enum SyntheticM3TurnPosition {
-    Beginning { step: SyntheticM3BeginningStep },
+pub enum SyntheticTurnPosition {
+    Beginning { step: SyntheticBeginningStep },
     PrecombatMain,
-    Combat { step: SyntheticM3CombatStep },
+    Combat { step: SyntheticCombatStep },
     PostcombatMain,
-    Ending { step: SyntheticM3EndingStep },
+    Ending { step: SyntheticEndingStep },
 }
 
-impl<'de> Deserialize<'de> for SyntheticM3TurnPosition {
+impl<'de> Deserialize<'de> for SyntheticTurnPosition {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: Deserializer<'de>,
@@ -53,10 +53,10 @@ impl<'de> Deserialize<'de> for SyntheticM3TurnPosition {
         struct TurnPositionVisitor;
 
         impl<'de> Visitor<'de> for TurnPositionVisitor {
-            type Value = SyntheticM3TurnPosition;
+            type Value = SyntheticTurnPosition;
 
             fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-                formatter.write_str("a closed synthetic M3 turn position")
+                formatter.write_str("a closed synthetic turn position")
             }
 
             fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error>
@@ -91,39 +91,39 @@ impl<'de> Deserialize<'de> for SyntheticM3TurnPosition {
                         // Delegate to the derived step decoder so the closed
                         // step vocabulary stays single-sourced (no duplicated
                         // wire literals here).
-                        let step = SyntheticM3BeginningStep::deserialize(
+                        let step = SyntheticBeginningStep::deserialize(
                             serde::de::value::StringDeserializer::<A::Error>::new(step),
                         )
                         .map_err(A::Error::custom)?;
-                        Ok(SyntheticM3TurnPosition::Beginning { step })
+                        Ok(SyntheticTurnPosition::Beginning { step })
                     }
                     "precombat_main" => {
                         if step.is_some() {
                             return Err(A::Error::unknown_field("step", &["kind"]));
                         }
-                        Ok(SyntheticM3TurnPosition::PrecombatMain)
+                        Ok(SyntheticTurnPosition::PrecombatMain)
                     }
                     "combat" => {
                         let step = step.ok_or_else(|| A::Error::missing_field("step"))?;
-                        let step = SyntheticM3CombatStep::deserialize(
+                        let step = SyntheticCombatStep::deserialize(
                             serde::de::value::StringDeserializer::<A::Error>::new(step),
                         )
                         .map_err(A::Error::custom)?;
-                        Ok(SyntheticM3TurnPosition::Combat { step })
+                        Ok(SyntheticTurnPosition::Combat { step })
                     }
                     "postcombat_main" => {
                         if step.is_some() {
                             return Err(A::Error::unknown_field("step", &["kind"]));
                         }
-                        Ok(SyntheticM3TurnPosition::PostcombatMain)
+                        Ok(SyntheticTurnPosition::PostcombatMain)
                     }
                     "ending" => {
                         let step = step.ok_or_else(|| A::Error::missing_field("step"))?;
-                        let step = SyntheticM3EndingStep::deserialize(
+                        let step = SyntheticEndingStep::deserialize(
                             serde::de::value::StringDeserializer::<A::Error>::new(step),
                         )
                         .map_err(A::Error::custom)?;
-                        Ok(SyntheticM3TurnPosition::Ending { step })
+                        Ok(SyntheticTurnPosition::Ending { step })
                     }
                     _ => Err(A::Error::unknown_variant(
                         &kind,
@@ -145,12 +145,12 @@ impl<'de> Deserialize<'de> for SyntheticM3TurnPosition {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
-pub enum SyntheticM3Priority {
+pub enum SyntheticPriority {
     None,
     HeldBy { player: PlayerId },
 }
 
-impl<'de> Deserialize<'de> for SyntheticM3Priority {
+impl<'de> Deserialize<'de> for SyntheticPriority {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: Deserializer<'de>,
@@ -161,10 +161,10 @@ impl<'de> Deserialize<'de> for SyntheticM3Priority {
         struct PriorityVisitor;
 
         impl<'de> Visitor<'de> for PriorityVisitor {
-            type Value = SyntheticM3Priority;
+            type Value = SyntheticPriority;
 
             fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-                formatter.write_str("a closed synthetic M3 priority")
+                formatter.write_str("a closed synthetic priority")
             }
 
             fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error>
@@ -198,12 +198,12 @@ impl<'de> Deserialize<'de> for SyntheticM3Priority {
                         if player.is_some() {
                             return Err(A::Error::unknown_field("player", &["kind"]));
                         }
-                        Ok(SyntheticM3Priority::None)
+                        Ok(SyntheticPriority::None)
                     }
                     "held_by" => {
                         let player = player.ok_or_else(|| A::Error::missing_field("player"))?;
                         let player = player.parse::<PlayerId>().map_err(A::Error::custom)?;
-                        Ok(SyntheticM3Priority::HeldBy { player })
+                        Ok(SyntheticPriority::HeldBy { player })
                     }
                     _ => Err(A::Error::unknown_variant(&kind, &["none", "held_by"])),
                 }
@@ -216,21 +216,21 @@ impl<'de> Deserialize<'de> for SyntheticM3Priority {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct SyntheticM3Observation {
+pub struct SyntheticObservation {
     pub schema_version: String,
     pub active_player: PlayerId,
     pub turn_number: String,
-    pub turn_position: SyntheticM3TurnPosition,
-    pub priority: SyntheticM3Priority,
+    pub turn_position: SyntheticTurnPosition,
+    pub priority: SyntheticPriority,
 }
 
-impl SyntheticM3Observation {
+impl SyntheticObservation {
     pub fn validate(&self) -> Result<(), ObservationValidationError> {
-        if self.schema_version != SYNTHETIC_M3_OBSERVATION_SCHEMA {
-            return Err(ObservationValidationError::M3Payload);
+        if self.schema_version != SYNTHETIC_OBSERVATION_SCHEMA_V1 {
+            return Err(ObservationValidationError::ObservationPayload);
         }
         parse_canonical_u64(&self.turn_number)
-            .map_err(|_| ObservationValidationError::M3Payload)?;
+            .map_err(|_| ObservationValidationError::ObservationPayload)?;
         Ok(())
     }
 }

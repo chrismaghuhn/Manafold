@@ -20,7 +20,7 @@ fn information_state_orders_active_and_retired_knowledge_jointly() {
         mtgml_state::construct_synthetic_engine_state(mtgml_state::SyntheticResetInputs {
             players: [PlayerId(1), PlayerId(2)],
             root_seed: seed(),
-            setup: mtgml_state::SyntheticV4Setup::m2_compatibility(),
+            setup: mtgml_state::SyntheticV4Setup::synthetic_compatibility(),
         })
         .unwrap();
 
@@ -103,7 +103,7 @@ fn information_state_orders_active_and_retired_knowledge_jointly() {
     )
     .unwrap();
     let controller = TrustedEnvironmentController::new(
-        SyntheticM1EnvironmentBackend::from_checkpoint(
+        SyntheticRulesEnvironmentBackend::from_checkpoint(
             checkpoint,
             config([PlayerId(1), PlayerId(2)]),
         )
@@ -144,7 +144,7 @@ fn evd_015_retained_provenance_is_complete_and_stable_through_restore_and_fork()
     .unwrap();
 
     let controller = TrustedEnvironmentController::new(
-        SyntheticM1EnvironmentBackend::from_checkpoint(
+        SyntheticRulesEnvironmentBackend::from_checkpoint(
             checkpoint.clone(),
             config([PlayerId(1), PlayerId(2)]),
         )
@@ -161,7 +161,7 @@ fn evd_015_retained_provenance_is_complete_and_stable_through_restore_and_fork()
 
     // Checkpoint -> restore preserves exact provenance.
     let restored = TrustedEnvironmentController::new(
-        SyntheticM1EnvironmentBackend::from_checkpoint(
+        SyntheticRulesEnvironmentBackend::from_checkpoint(
             checkpoint.clone(),
             config([PlayerId(1), PlayerId(2)]),
         )
@@ -290,11 +290,11 @@ fn episode_status_does_not_change_the_information_digest() {
     .unwrap();
 
     let running_env = TrustedEnvironmentController::new(
-        SyntheticM1EnvironmentBackend::from_checkpoint(running, config([PlayerId(1), PlayerId(2)]))
+        SyntheticRulesEnvironmentBackend::from_checkpoint(running, config([PlayerId(1), PlayerId(2)]))
             .unwrap(),
     );
     let terminal_env = TrustedEnvironmentController::new(
-        SyntheticM1EnvironmentBackend::from_checkpoint(
+        SyntheticRulesEnvironmentBackend::from_checkpoint(
             terminal,
             config([PlayerId(1), PlayerId(2)]),
         )
@@ -398,7 +398,7 @@ fn visible_decision_exposes_no_trusted_identities_or_internals() {
         mtgml_state::construct_synthetic_engine_state(mtgml_state::SyntheticResetInputs {
             players: [PlayerId(1), PlayerId(2)],
             root_seed: seed(),
-            setup: mtgml_state::SyntheticV4Setup::m2_compatibility(),
+            setup: mtgml_state::SyntheticV4Setup::synthetic_compatibility(),
         })
         .unwrap();
     variant.allocators.next_effect_id = mtgml_model::EffectInstanceId(500);
@@ -414,7 +414,7 @@ fn visible_decision_exposes_no_trusted_identities_or_internals() {
     )
     .unwrap();
     let other_controller = TrustedEnvironmentController::new(
-        SyntheticM1EnvironmentBackend::from_checkpoint(
+        SyntheticRulesEnvironmentBackend::from_checkpoint(
             checkpoint,
             config([PlayerId(1), PlayerId(2)]),
         )

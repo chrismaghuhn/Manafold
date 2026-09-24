@@ -128,7 +128,7 @@ pub struct ReplayRecorderFingerprint {
 
 /// The complete fingerprint of one M2 environment instant.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct CompleteM2Fingerprint {
+pub struct CompleteStateFingerprint {
     pub semantic: SemanticStateFingerprint,
     pub environment: EnvironmentFingerprint,
     pub player: PlayerVisibleFingerprint,
@@ -302,7 +302,7 @@ const ACCEPTED_SUBMISSION_MARKER: &str = "accepted";
 pub fn capture_complete(
     controller: &TrustedEnvironmentController,
     endpoints: &[PlayerEndpointHandle; 2],
-) -> Result<CompleteM2Fingerprint, HarnessError> {
+) -> Result<CompleteStateFingerprint, HarnessError> {
     let checkpoint_before = controller
         .checkpoint()
         .map_err(|_| HarnessError::ControllerService)?;
@@ -363,7 +363,7 @@ pub fn capture_complete(
         full_state_digest_reference: checkpoint_before.state_digest.as_digest_reference(),
         checkpoint_digest_reference,
     };
-    Ok(CompleteM2Fingerprint {
+    Ok(CompleteStateFingerprint {
         semantic: SemanticStateFingerprint {
             revision: checkpoint_before.state.revision,
             full_state_digest: checkpoint_before.state_digest.clone(),
@@ -392,8 +392,8 @@ pub fn capture_complete(
 /// the semantic, environment, and player groups to be equal while leaving
 /// the recorder segment anchor to a separate caller assertion.
 pub fn assert_fingerprint_policies(
-    before: &CompleteM2Fingerprint,
-    after: &CompleteM2Fingerprint,
+    before: &CompleteStateFingerprint,
+    after: &CompleteStateFingerprint,
     comparison: FingerprintComparison,
 ) -> Result<(), HarnessError> {
     if before.semantic != after.semantic {
@@ -619,7 +619,7 @@ mod tests {
         assert_ne!(rejection, serde_json::json!({ "kind": "accepted" }));
     }
 
-    fn equal_complete_fingerprints() -> (CompleteM2Fingerprint, CompleteM2Fingerprint) {
+    fn equal_complete_fingerprints() -> (CompleteStateFingerprint, CompleteStateFingerprint) {
         let state = base_pair_state(&"11".repeat(32)).unwrap();
         let config = synthetic_environment_config([P1, P2]);
         let (controller, endpoints) = spawn_environment(state, &config).unwrap();

@@ -653,7 +653,7 @@ mod t0_01_red_contract {
         ObservationEnvelope, PlayerInformationStateV2, PlayerKnowledgeProvenanceV1,
         PlayerKnownLocationFactV1, PlayerKnownLocationV1, PlayerKnownObjectV1,
         PlayerStepSubmissionV1, PlayerStepV2, PlayerSubmissionCodeV1, INFORMATION_STATE_SCHEMA_V2,
-        OBSERVATION_SCHEMA, PLAYER_STEP_SCHEMA_V2, SYNTHETIC_M3_OBSERVATION_SCHEMA,
+        OBSERVATION_SCHEMA, PLAYER_STEP_SCHEMA_V2, SYNTHETIC_OBSERVATION_SCHEMA_V1,
     };
     use mtgml_random::{RandomStreamKeyV1, RandomStreamKindV1};
     use mtgml_rules::{AuthoritativeRuleEvent, AuthoritativeRuleEventKind};
@@ -853,7 +853,7 @@ mod t0_01_red_contract {
             schema_version: OBSERVATION_SCHEMA.into(),
             perspective: P1,
             state_revision,
-            payload_codec: SYNTHETIC_M3_OBSERVATION_SCHEMA.into(),
+            payload_codec: SYNTHETIC_OBSERVATION_SCHEMA_V1.into(),
             payload_base64: payload_base64.into(),
             digest: ObservationDigest::parse(
                 "9129fde7674374383922b1af48edfccce7dbfdb87a24af79ee77af5ff928e4e5",

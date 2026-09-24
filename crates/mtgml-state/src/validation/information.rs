@@ -12,8 +12,8 @@ use mtgml_model::PlayerId;
 use super::zones::player_reference_is_declared;
 use super::EngineStateViolation;
 use crate::engine::EngineState;
+use crate::engine_state_shape::{KnownLocationFactV2, PlayerKnowledgeStateV2};
 use crate::knowledge::KnowledgeAcquisitionReason;
-use crate::m2_shape::{KnownLocationFactV2, PlayerKnowledgeStateV2};
 
 fn provenance_is_valid(
     provenance: &KnowledgeAcquisitionReason,

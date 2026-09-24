@@ -2,7 +2,7 @@
 // every identity remains tests::<name>.
 
 #[test]
-fn synthetic_state_is_the_current_m2_shape() {
+fn synthetic_state_is_the_current_engine_state_shape() {
     let state = synthetic_state();
     validate_engine_state(&state).unwrap();
     assert_eq!(state.revision, StateRevision(0));
@@ -27,8 +27,8 @@ fn pending_decision_must_match_state_revision() {
     state.revision = StateRevision(7);
     assert!(matches!(
         validate_engine_state(&state),
-        Err(EngineStateViolation::M2Shape(
-            M2ShapeViolation::PendingDecision
+        Err(EngineStateViolation::EngineStateShape(
+            EngineStateShapeViolation::PendingDecision
         ))
     ));
 }
@@ -308,8 +308,8 @@ fn simultaneous_violations_preserve_the_existing_error_precedence() {
     };
     assert!(matches!(
         validate_engine_state(&state),
-        Err(EngineStateViolation::M2Shape(
-            M2ShapeViolation::PendingDecision
+        Err(EngineStateViolation::EngineStateShape(
+            EngineStateShapeViolation::PendingDecision
         ))
     ));
 }

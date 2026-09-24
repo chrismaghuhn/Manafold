@@ -55,9 +55,9 @@ fn mtgml_rules_validate_runtime(state: &EngineState) -> Result<(), KernelExecuti
 // exclusively through the program-owned boundary (`ProgramKernelV1`).
 // `Default` was removed — no silently-selecting kernel constructors.
 #[derive(Debug)]
-pub struct SyntheticM1RulesKernel;
+pub struct SyntheticLegacyRulesKernel;
 
-impl RulesKernel for SyntheticM1RulesKernel {
+impl RulesKernel for SyntheticLegacyRulesKernel {
     fn apply(
         &mut self,
         state: &EngineState,
@@ -102,7 +102,7 @@ impl RulesKernel for SyntheticM1RulesKernel {
     }
 }
 
-impl SyntheticM1RulesKernel {
+impl SyntheticLegacyRulesKernel {
     /// Rules-owned forced progress: the single authoritative internal
     /// forced-progress primitive of the synthetic kernel, shared by the
     /// response-transaction closure, reset/initial stabilization, and the

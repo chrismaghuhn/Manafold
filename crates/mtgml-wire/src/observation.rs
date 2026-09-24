@@ -2,9 +2,9 @@ use crate::canonical_json::encode_canonical;
 use crate::contract::WireContract;
 use crate::error::WireError;
 use mtgml_observation::{
-    InformationStateDigestInputV2, InformationStateEnvelope, MagicM3Observation,
-    ObservationEnvelope, ObservedEventEnvelope, ObservedEventEnvelopeV2, PlayerInformationStateV2,
-    PlayerStep, PlayerStepV2, SyntheticM3Observation,
+    InformationStateDigestInputV2, InformationStateEnvelope, MagicObservation, ObservationEnvelope,
+    ObservedEventEnvelope, ObservedEventEnvelopeV2, PlayerInformationStateV2, PlayerStep,
+    PlayerStepV2, SyntheticObservation,
 };
 
 impl WireContract for ObservationEnvelope {
@@ -14,14 +14,14 @@ impl WireContract for ObservationEnvelope {
     }
 }
 
-impl WireContract for SyntheticM3Observation {
+impl WireContract for SyntheticObservation {
     fn validate_wire(&self) -> Result<(), WireError> {
         self.validate()
             .map_err(|error| WireError::new("semantic.synthetic_m3_observation", error.to_string()))
     }
 }
 
-impl WireContract for MagicM3Observation {
+impl WireContract for MagicObservation {
     fn validate_wire(&self) -> Result<(), WireError> {
         self.validate()
             .map_err(|error| WireError::new("semantic.magic_m3_observation", error.to_string()))

@@ -20,14 +20,14 @@ use crate::core::{
     PriorityState, TurnPosition,
 };
 use crate::engine::EngineState;
+use crate::engine_state_shape::{
+    KnowledgeRecordV2, KnownLocationFactV2, PendingDecisionRecordV2, PerspectiveIdentityRecordV2,
+    PerspectiveIdentityStateV2, PlayerKnowledgeStateV2,
+};
 use crate::execution::ExecutionState;
 use crate::format::FormatState;
 use crate::identity::IdentityAllocatorState;
 use crate::knowledge::KnowledgeAcquisitionReason;
-use crate::m2_shape::{
-    KnowledgeRecordV2, KnownLocationFactV2, PendingDecisionRecordV2, PerspectiveIdentityRecordV2,
-    PerspectiveIdentityStateV2, PlayerKnowledgeStateV2,
-};
 use crate::validation::{validate_engine_state, EngineStateViolation};
 use crate::zones::{GameObject, VisibilityPartition, ZoneLocation, ZonePosition, ZoneState};
 
@@ -47,7 +47,7 @@ pub struct SyntheticV4Setup {
 }
 
 impl SyntheticV4Setup {
-    pub fn m2_compatibility() -> Self {
+    pub fn synthetic_compatibility() -> Self {
         Self {
             position: TurnPosition::Beginning {
                 step: BeginningStep::Untap,
@@ -294,4 +294,4 @@ pub fn construct_synthetic_engine_state(
 
 // Keep the type name used by the current EngineState field explicit at the
 // module boundary; the implementation is the M2 V2 semantic shape.
-type KnowledgeState = crate::m2_shape::KnowledgeStateV2;
+type KnowledgeState = crate::engine_state_shape::KnowledgeStateV2;

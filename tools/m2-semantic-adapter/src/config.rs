@@ -9,7 +9,7 @@
 //! privileged operation is performed by this tool.
 
 use mtgml_environment::{
-    CheckpointCodecIdentity, SyntheticM1EnvironmentConfig, SyntheticM1ReplayConfig,
+    CheckpointCodecIdentity, SyntheticRulesEnvironmentConfig, SyntheticRulesReplayConfig,
 };
 use mtgml_model::{ContentDigest, PlayerId};
 use mtgml_observation::{
@@ -25,10 +25,10 @@ fn codec_identity() -> CheckpointCodecIdentity {
     }
 }
 
-pub fn synthetic_environment_config(players: [PlayerId; 2]) -> SyntheticM1EnvironmentConfig {
-    SyntheticM1EnvironmentConfig::m2_compatibility(
+pub fn synthetic_environment_config(players: [PlayerId; 2]) -> SyntheticRulesEnvironmentConfig {
+    SyntheticRulesEnvironmentConfig::synthetic_compatibility(
         codec_identity(),
-        SyntheticM1ReplayConfig {
+        SyntheticRulesReplayConfig {
             engine_build: "synthetic-build".into(),
             kernel: KernelIdentityV1 {
                 implementation_id: "synthetic-m2".into(),

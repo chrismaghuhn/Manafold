@@ -59,7 +59,7 @@ fn multi_player_endpoints_remain_bound_through_visibility_and_submission() {
 fn non_default_player_ids_remain_bound_through_submission() {
     let players = [PlayerId(7), PlayerId(9)];
     let controller = TrustedEnvironmentController::new(
-        SyntheticM1EnvironmentBackend::new(players, seed(), config(players)).unwrap(),
+        SyntheticRulesEnvironmentBackend::new(players, seed(), config(players)).unwrap(),
     );
     let p7 = controller.bind_player(PlayerId(7)).unwrap();
     let step = p7.submit(response(0, 0)).unwrap();

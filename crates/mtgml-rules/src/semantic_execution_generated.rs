@@ -34,7 +34,6 @@ pub(crate) fn synthetic_legacy_default_semantic_contract_id() -> SemanticContrac
 }
 
 pub(crate) struct MagicExecutionProfile {
-    admitted_contract: SemanticContractIdV1,
     turn_structure_0_1_0: bool,
     state_based_actions_combat_0_1_0: bool,
     basic_priority_0_1_0: bool,
@@ -43,24 +42,15 @@ pub(crate) struct MagicExecutionProfile {
 impl MagicExecutionProfile {
     pub(crate) fn allows_turn_structure_0_1_0(&self) -> bool {
         self.turn_structure_0_1_0
-            && self.admitted_contract == magic_turn_structure_0_1_0_semantic_contract_id()
     }
     pub(crate) fn allows_state_based_actions_combat_0_1_0(&self) -> bool {
         self.state_based_actions_combat_0_1_0
-            && (self.admitted_contract == magic_s3_a_ordered_sba_0_1_0_semantic_contract_id()
-                || self.admitted_contract == magic_s3_b_basic_priority_0_1_0_semantic_contract_id()
-                || self.admitted_contract
-                    == magic_s3_c_draw_interaction_0_1_0_semantic_contract_id())
     }
     pub(crate) fn allows_basic_priority_0_1_0(&self) -> bool {
         self.basic_priority_0_1_0
-            && (self.admitted_contract == magic_s3_b_basic_priority_0_1_0_semantic_contract_id()
-                || self.admitted_contract
-                    == magic_s3_c_draw_interaction_0_1_0_semantic_contract_id())
     }
     pub(crate) fn allows_draw_card_0_1_0(&self) -> bool {
         self.draw_card_0_1_0
-            && self.admitted_contract == magic_s3_c_draw_interaction_0_1_0_semantic_contract_id()
     }
 }
 #[cfg(test)]
@@ -69,8 +59,8 @@ pub(crate) fn test_only_magic_execution_profile(
     turn_structure_0_1_0: bool,
 ) -> MagicExecutionProfile {
     MagicExecutionProfile {
-        admitted_contract,
-        turn_structure_0_1_0,
+        turn_structure_0_1_0: turn_structure_0_1_0
+            && admitted_contract == magic_turn_structure_0_1_0_semantic_contract_id(),
         state_based_actions_combat_0_1_0: false,
         basic_priority_0_1_0: false,
         draw_card_0_1_0: false,
@@ -81,7 +71,6 @@ pub(crate) fn magic_execution_profile(
 ) -> Option<MagicExecutionProfile> {
     if semantic_contract_id == magic_turn_structure_0_1_0_semantic_contract_id() {
         return Some(MagicExecutionProfile {
-            admitted_contract: semantic_contract_id,
             turn_structure_0_1_0: true,
             state_based_actions_combat_0_1_0: false,
             basic_priority_0_1_0: false,
@@ -90,7 +79,6 @@ pub(crate) fn magic_execution_profile(
     }
     if semantic_contract_id == magic_s3_a_ordered_sba_0_1_0_semantic_contract_id() {
         return Some(MagicExecutionProfile {
-            admitted_contract: semantic_contract_id,
             turn_structure_0_1_0: true,
             state_based_actions_combat_0_1_0: true,
             basic_priority_0_1_0: false,
@@ -99,7 +87,6 @@ pub(crate) fn magic_execution_profile(
     }
     if semantic_contract_id == magic_s3_b_basic_priority_0_1_0_semantic_contract_id() {
         return Some(MagicExecutionProfile {
-            admitted_contract: semantic_contract_id,
             turn_structure_0_1_0: true,
             state_based_actions_combat_0_1_0: true,
             basic_priority_0_1_0: true,
@@ -108,7 +95,6 @@ pub(crate) fn magic_execution_profile(
     }
     if semantic_contract_id == magic_s3_c_draw_interaction_0_1_0_semantic_contract_id() {
         return Some(MagicExecutionProfile {
-            admitted_contract: semantic_contract_id,
             turn_structure_0_1_0: true,
             state_based_actions_combat_0_1_0: true,
             basic_priority_0_1_0: true,

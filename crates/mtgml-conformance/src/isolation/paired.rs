@@ -6,8 +6,8 @@
 //! accept — or a pair the witness cannot authorize — never becomes evidence.
 
 use mtgml_environment::{
-    EnvironmentCheckpointV6, PlayerEndpointHandle, SyntheticM1EnvironmentBackend,
-    SyntheticM1EnvironmentConfig, SyntheticM1ReplayConfig, TrustedEnvironmentController,
+    EnvironmentCheckpointV6, PlayerEndpointHandle, SyntheticRulesEnvironmentBackend,
+    SyntheticRulesEnvironmentConfig, SyntheticRulesReplayConfig, TrustedEnvironmentController,
 };
 use mtgml_model::{
     CheckpointCodecIdentity, ContentDigest, EnvironmentLimitCounters, EpisodeStatus,
@@ -92,11 +92,11 @@ pub(crate) fn synthetic_identity() -> ExecutionIdentityV1 {
 
 /// The established per-consumer synthetic environment configuration
 /// (duplication-per-consumer, as in `legal_space`).
-pub fn synthetic_environment_config(players: [PlayerId; 2]) -> SyntheticM1EnvironmentConfig {
-    SyntheticM1EnvironmentConfig {
+pub fn synthetic_environment_config(players: [PlayerId; 2]) -> SyntheticRulesEnvironmentConfig {
+    SyntheticRulesEnvironmentConfig {
         codec: codec_identity(),
-        setup: mtgml_state::SyntheticV4Setup::m2_compatibility(),
-        replay: SyntheticM1ReplayConfig {
+        setup: mtgml_state::SyntheticV4Setup::synthetic_compatibility(),
+        replay: SyntheticRulesReplayConfig {
             engine_build: "synthetic-build".into(),
             kernel: KernelIdentityV1 {
                 implementation_id: "synthetic-m2".into(),
@@ -138,7 +138,7 @@ pub fn synthetic_environment_config(players: [PlayerId; 2]) -> SyntheticM1Enviro
 /// full backend validation runs before any endpoint exists.
 pub fn spawn_environment(
     state: EngineState,
-    config: &SyntheticM1EnvironmentConfig,
+    config: &SyntheticRulesEnvironmentConfig,
 ) -> Result<(TrustedEnvironmentController, [PlayerEndpointHandle; 2]), HarnessError> {
     let counters = EnvironmentLimitCounters::default();
     let checkpoint = EnvironmentCheckpointV6::new(
@@ -152,7 +152,7 @@ pub fn spawn_environment(
     checkpoint
         .validate()
         .map_err(|_| HarnessError::CheckpointInvalid)?;
-    let backend = SyntheticM1EnvironmentBackend::from_checkpoint(checkpoint, config.clone())
+    let backend = SyntheticRulesEnvironmentBackend::from_checkpoint(checkpoint, config.clone())
         .map_err(|_| HarnessError::SyntheticBackendRejected)?;
     let controller = TrustedEnvironmentController::new(backend);
     let p1 = controller
@@ -207,7 +207,7 @@ pub fn base_pair_state(seed_hex: &str) -> Result<EngineState, HarnessError> {
     construct_synthetic_engine_state(SyntheticResetInputs {
         players: [P1, P2],
         root_seed,
-        setup: mtgml_state::SyntheticV4Setup::m2_compatibility(),
+        setup: mtgml_state::SyntheticV4Setup::synthetic_compatibility(),
     })
     .map_err(|_| HarnessError::SyntheticConstruction)
 }

@@ -13,11 +13,11 @@ use mtgml_model::{CardDefinitionId, GameObjectId, OpaqueObjectId, PlayerId, Visi
 use serde::{Deserialize, Serialize};
 
 use crate::engine::EngineState;
-use crate::knowledge::{KnowledgeAcquisitionReason, KnowledgeInvalidationReason};
-use crate::m2_shape::{
+use crate::engine_state_shape::{
     KnowledgeInvalidationV2, KnowledgeRecordV2, KnownLocationFactV2, PerspectiveIdentityRecordV2,
     PlayerKnowledgeStateV2, RetiredKnowledgeRecordV2,
 };
+use crate::knowledge::{KnowledgeAcquisitionReason, KnowledgeInvalidationReason};
 use crate::zones::ZoneLocation;
 
 /// Complete state-changing meaning of one perspective-visible occurrence.

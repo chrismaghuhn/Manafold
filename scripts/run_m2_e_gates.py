@@ -175,8 +175,10 @@ def validate_m2_fixture_feature_scope(rules_cargo_toml: str, conformance_cargo_t
     rules_features = rules_manifest.get("features")
     if not isinstance(rules_features, dict):
         raise AssertionError("rules crate has no [features] table")
-    if rules_features.get("m2-conformance-fixtures") != []:
-        raise AssertionError("rules crate lost the empty m2-conformance-fixtures feature gate")
+    if rules_features.get("synthetic-conformance-fixtures") != []:
+        raise AssertionError(
+            "rules crate lost the empty synthetic-conformance-fixtures feature gate"
+        )
 
     dependencies = conformance_manifest.get("dependencies")
     if not isinstance(dependencies, dict):
@@ -189,7 +191,7 @@ def validate_m2_fixture_feature_scope(rules_cargo_toml: str, conformance_cargo_t
         not isinstance(feature, str) for feature in enabled_features
     ):
         raise AssertionError("conformance mtgml-rules features must be a TOML string array")
-    if "m2-conformance-fixtures" not in enabled_features:
+    if "synthetic-conformance-fixtures" not in enabled_features:
         raise AssertionError(
             "conformance mtgml-rules dependency does not enable the fixture feature"
         )

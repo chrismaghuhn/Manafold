@@ -8,7 +8,7 @@
 //! `wotc-cr-2026-08-07-txt-20260819-sha256-4381ad1b39ab2c05f7d03633a20f711ed37277074d3266dcba5f38cbb527423f`:
 //! CR 704.5a, 704.5f, 704.5g, 404.3, and 101.4.
 //!
-//! Behavioral S3.A cases use the fixed `m3-conformance-testkit` candidate
+//! Behavioral S3.A cases use the fixed `magic-conformance-testkit` candidate
 //! constructor, never the admitted S1 SemanticContractId. The explicit
 //! legacy regression below separately binds that frozen S1 identity.
 
@@ -171,7 +171,7 @@ fn state_with(creatures: &[CreatureSpec], life: [i64; 2]) -> EngineState {
 }
 
 fn magic_kernel() -> ProgramKernelV1 {
-    ProgramKernelV1::for_s3_a_conformance_testkit()
+    ProgramKernelV1::for_state_based_actions_conformance_testkit()
 }
 
 #[test]
@@ -879,7 +879,7 @@ fn task6_sba_semantic_validator_accepts_a_valid_first_owner_stage() {
     let state = state_with_pending_two_owner_order();
     validate_engine_state(&state).unwrap();
     assert_eq!(
-        magic_kernel().validate_s3_a_conformance_continuation(&state),
+        magic_kernel().validate_state_based_actions_conformance_continuation(&state),
         Ok(())
     );
 }
@@ -889,7 +889,7 @@ fn task6_sba_semantic_validator_accepts_a_valid_resumed_second_owner_stage() {
     let state = state_with_second_owner_order();
     validate_engine_state(&state).unwrap();
     assert_eq!(
-        magic_kernel().validate_s3_a_conformance_continuation(&state),
+        magic_kernel().validate_state_based_actions_conformance_continuation(&state),
         Ok(())
     );
 }
@@ -910,7 +910,7 @@ fn task6_sba_semantic_validator_rejects_a_stale_cause_set() {
     let before = state.clone();
     let digest_before = state.digest().unwrap();
     assert_eq!(
-        magic_kernel().validate_s3_a_conformance_continuation(&state),
+        magic_kernel().validate_state_based_actions_conformance_continuation(&state),
         Err(mtgml_rules::SbaContinuationValidationError::SelectedActionSetMismatch)
     );
     assert_eq!(state, before, "semantic validation must not mutate state");
@@ -943,7 +943,7 @@ fn task7_zero_toughness_with_damage_cannot_persist_lethal_damage_cause() {
     validate_engine_state(&state)
         .expect("the generic state layer retains the typed cause-array shape");
     assert_eq!(
-        magic_kernel().validate_s3_a_conformance_continuation(&state),
+        magic_kernel().validate_state_based_actions_conformance_continuation(&state),
         Err(mtgml_rules::SbaContinuationValidationError::SelectedActionSetMismatch)
     );
 }
@@ -955,7 +955,7 @@ fn task6_sba_semantic_validator_rejects_a_missing_new_loss_action() {
     validate_engine_state(&state)
         .expect("a newly applicable loss action is not a generic state-shape defect");
     assert_eq!(
-        magic_kernel().validate_s3_a_conformance_continuation(&state),
+        magic_kernel().validate_state_based_actions_conformance_continuation(&state),
         Err(mtgml_rules::SbaContinuationValidationError::SelectedActionSetMismatch)
     );
 }
@@ -967,7 +967,7 @@ fn task6_sba_semantic_validator_rederives_apnap_from_the_active_player() {
     validate_engine_state(&state)
         .expect("persisted owner membership and current actor remain structurally coherent");
     assert_eq!(
-        magic_kernel().validate_s3_a_conformance_continuation(&state),
+        magic_kernel().validate_state_based_actions_conformance_continuation(&state),
         Err(mtgml_rules::SbaContinuationValidationError::ApnapOwnersMismatch)
     );
 }
@@ -981,7 +981,7 @@ fn task6_sba_semantic_validator_fails_closed_when_priority_is_already_held() {
     };
     validate_engine_state(&state).unwrap();
     assert_eq!(
-        magic_kernel().validate_s3_a_conformance_continuation(&state),
+        magic_kernel().validate_state_based_actions_conformance_continuation(&state),
         Err(mtgml_rules::SbaContinuationValidationError::UnsupportedSbaProfile)
     );
 }
@@ -993,7 +993,7 @@ fn task6_sba_semantic_validator_fails_closed_when_creature_facts_are_missing() {
     validate_engine_state(&state)
         .expect("generic state structure does not derive Magic creature facts");
     assert_eq!(
-        magic_kernel().validate_s3_a_conformance_continuation(&state),
+        magic_kernel().validate_state_based_actions_conformance_continuation(&state),
         Err(mtgml_rules::SbaContinuationValidationError::UnsupportedSbaProfile)
     );
 }
@@ -1013,7 +1013,7 @@ fn task6_sba_conformance_profile_rejects_format_untap_and_partial_loss() {
     };
     validate_engine_state(&format_state).unwrap();
     assert_eq!(
-        magic_kernel().validate_s3_a_conformance_continuation(&format_state),
+        magic_kernel().validate_state_based_actions_conformance_continuation(&format_state),
         Err(mtgml_rules::SbaContinuationValidationError::UnsupportedSbaProfile)
     );
 
@@ -1023,7 +1023,7 @@ fn task6_sba_conformance_profile_rejects_format_untap_and_partial_loss() {
     };
     validate_engine_state(&untap).unwrap();
     assert_eq!(
-        magic_kernel().validate_s3_a_conformance_continuation(&untap),
+        magic_kernel().validate_state_based_actions_conformance_continuation(&untap),
         Err(mtgml_rules::SbaContinuationValidationError::UnsupportedSbaProfile)
     );
 
@@ -1031,7 +1031,7 @@ fn task6_sba_conformance_profile_rejects_format_untap_and_partial_loss() {
     partially_lost.core.players.get_mut(&P1).unwrap().has_lost = true;
     validate_engine_state(&partially_lost).unwrap();
     assert_eq!(
-        magic_kernel().validate_s3_a_conformance_continuation(&partially_lost),
+        magic_kernel().validate_state_based_actions_conformance_continuation(&partially_lost),
         Err(mtgml_rules::SbaContinuationValidationError::UnsupportedSbaProfile)
     );
 }
@@ -1050,7 +1050,7 @@ fn task6_sba_conformance_profile_rejects_effect_trigger_delay_and_stack_surfaces
         },
     );
     assert_eq!(
-        magic_kernel().validate_s3_a_conformance_continuation(&effects),
+        magic_kernel().validate_state_based_actions_conformance_continuation(&effects),
         Err(mtgml_rules::SbaContinuationValidationError::UnsupportedSbaProfile)
     );
 
@@ -1063,7 +1063,7 @@ fn task6_sba_conformance_profile_rejects_effect_trigger_delay_and_stack_surfaces
         },
     );
     assert_eq!(
-        magic_kernel().validate_s3_a_conformance_continuation(&triggers),
+        magic_kernel().validate_state_based_actions_conformance_continuation(&triggers),
         Err(mtgml_rules::SbaContinuationValidationError::UnsupportedSbaProfile)
     );
 
@@ -1076,7 +1076,7 @@ fn task6_sba_conformance_profile_rejects_effect_trigger_delay_and_stack_surfaces
         },
     );
     assert_eq!(
-        magic_kernel().validate_s3_a_conformance_continuation(&delayed),
+        magic_kernel().validate_state_based_actions_conformance_continuation(&delayed),
         Err(mtgml_rules::SbaContinuationValidationError::UnsupportedSbaProfile)
     );
 
@@ -1094,7 +1094,7 @@ fn task6_sba_conformance_profile_rejects_effect_trigger_delay_and_stack_surfaces
     stack.allocators.next_stack_object_id = StackObjectId(2);
     validate_engine_state(&stack).unwrap();
     assert_eq!(
-        magic_kernel().validate_s3_a_conformance_continuation(&stack),
+        magic_kernel().validate_state_based_actions_conformance_continuation(&stack),
         Err(mtgml_rules::SbaContinuationValidationError::UnsupportedSbaProfile)
     );
 }
@@ -2443,7 +2443,7 @@ fn task9b_pre_damage_combat_participant_continuation_fails_closed() {
             &[2, 3],
         );
         assert_eq!(
-            magic_kernel().validate_s3_a_conformance_continuation(&state),
+            magic_kernel().validate_state_based_actions_conformance_continuation(&state),
             Err(mtgml_rules::SbaContinuationValidationError::UnsupportedSbaProfile),
             "combat participant death before damage assignment must remain unsupported"
         );
@@ -2479,7 +2479,7 @@ fn task9b_end_of_combat_stale_combat_participant_fails_closed() {
         &[2, 3],
     );
     assert_eq!(
-        magic_kernel().validate_s3_a_conformance_continuation(&state),
+        magic_kernel().validate_state_based_actions_conformance_continuation(&state),
         Err(mtgml_rules::SbaContinuationValidationError::UnsupportedSbaProfile)
     );
 }
