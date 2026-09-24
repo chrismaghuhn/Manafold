@@ -32,16 +32,100 @@ pub(crate) fn is_priority_bearing_position(position: TurnPosition) -> bool {
     )
 }
 
+fn declared_combat_state_supported(state: &EngineState) -> bool {
+    let Some(combat) = state.combat.as_ref() else {
+        return false;
+    };
+    let Some(defending_player) = state
+        .core
+        .players
+        .keys()
+        .copied()
+        .find(|player| *player != state.core.active_player)
+    else {
+        return false;
+    };
+    combat.defending_player == defending_player
+        && combat.attackers.windows(2).all(|pair| pair[0] < pair[1])
+        && combat.blockers.len() == combat.attackers.len()
+        && combat.attackers.iter().all(|attacker| {
+            if combat.blockers.get(attacker) != Some(&None) {
+                return false;
+            }
+            let Some(object) = state.zones.objects.get(attacker) else {
+                return false;
+            };
+            let Some(location) = state.zones.locations.get(attacker) else {
+                return false;
+            };
+            let Some(source) = state.foundation_sources.get(attacker) else {
+                return false;
+            };
+            let controlled_in_time = match source.control_history {
+                mtgml_state::ControlHistory::BeforeTurnStart { turn_number } => {
+                    turn_number <= state.core.turn_number
+                }
+                mtgml_state::ControlHistory::DuringTurn { turn_number, .. } => {
+                    turn_number < state.core.turn_number
+                }
+            };
+            location.zone == mtgml_model::ZoneKind::Battlefield
+                && object.controller == state.core.active_player
+                && object.tapped
+                && !object.face_down
+                && source.source_kind == mtgml_state::FoundationSourceKind::Creature
+                && matches!(
+                    source.base_characteristics,
+                    mtgml_state::BaseCharacteristics::Simple { .. }
+                )
+                && controlled_in_time
+        })
+}
+
 /// Proves the currently representable pass-only state from authoritative
 /// state. State-based-action semantics remain owned by their rules authority.
 pub(crate) fn validate_pass_only_state(
     state: &EngineState,
     require_held_decision: bool,
 ) -> Result<(), KernelExecutionError> {
+    validate_pass_only_state_with_combat(state, require_held_decision, false)
+}
+
+pub(crate) fn validate_pass_only_state_with_combat(
+    state: &EngineState,
+    require_held_decision: bool,
+    combat_enabled: bool,
+) -> Result<(), KernelExecutionError> {
     validate_engine_state(state).map_err(KernelExecutionError::BeforeState)?;
-    if !is_priority_bearing_position(state.core.position)
+    let combat_position = matches!(
+        state.core.position,
+        TurnPosition::Combat {
+            step: mtgml_state::CombatStep::BeginningOfCombat
+                | mtgml_state::CombatStep::DeclareAttackers
+                | mtgml_state::CombatStep::EndOfCombat
+        }
+    );
+    let combat_state_supported = match state.core.position {
+        TurnPosition::Combat {
+            step: mtgml_state::CombatStep::BeginningOfCombat,
+        } => state.combat.is_none(),
+        TurnPosition::Combat {
+            step: mtgml_state::CombatStep::DeclareAttackers,
+        } => state.combat.is_none() || declared_combat_state_supported(state),
+        TurnPosition::Combat {
+            step: mtgml_state::CombatStep::EndOfCombat,
+        } => {
+            declared_combat_state_supported(state)
+                && state
+                    .combat
+                    .as_ref()
+                    .is_some_and(|combat| combat.attackers.is_empty() && combat.blockers.is_empty())
+        }
+        _ => state.combat.is_none(),
+    };
+    if !(is_priority_bearing_position(state.core.position) || (combat_enabled && combat_position))
         || !state.execution.continuations.is_empty()
-        || state.combat.is_some()
+        || !combat_state_supported
         || state.core.players.values().any(|player| player.has_lost)
     {
         return Err(KernelExecutionError::UnsupportedStagePath);
@@ -93,7 +177,20 @@ pub(crate) fn validate_pass_only_state(
 pub(crate) fn open_priority_window(
     state: &EngineState,
 ) -> Result<TransitionResult, KernelExecutionError> {
-    validate_pass_only_state(state, false)?;
+    open_priority_window_with_combat(state, false)
+}
+
+pub(crate) fn open_combat_priority_window(
+    state: &EngineState,
+) -> Result<TransitionResult, KernelExecutionError> {
+    open_priority_window_with_combat(state, true)
+}
+
+fn open_priority_window_with_combat(
+    state: &EngineState,
+    combat_enabled: bool,
+) -> Result<TransitionResult, KernelExecutionError> {
+    validate_pass_only_state_with_combat(state, false, combat_enabled)?;
     let actor = state.core.active_player;
     let identity = fresh_stage_identity(state, actor)?;
     let request = make_pass_request(
@@ -147,6 +244,9 @@ pub(crate) fn validate_priority_transition(
     before: &EngineState,
     result: &TransitionResult,
 ) -> Result<(), TransitionViolation> {
+    if validate_second_pass_combat_composition(before, result)? {
+        return Ok(());
+    }
     let after = &result.next_state;
     let priority_events: Vec<_> = result
         .events
@@ -188,7 +288,7 @@ pub(crate) fn validate_priority_transition(
             {
                 return Err(TransitionViolation::Priority);
             }
-            validate_pass_only_state(after, true).map_err(|_| TransitionViolation::Priority)?;
+            validate_priority_endpoint(after).map_err(|_| TransitionViolation::Priority)?;
         }
         (
             PriorityState::HeldBy {
@@ -219,7 +319,7 @@ pub(crate) fn validate_priority_transition(
             {
                 return Err(TransitionViolation::Priority);
             }
-            validate_pass_only_state(after, true).map_err(|_| TransitionViolation::Priority)?;
+            validate_priority_endpoint(after).map_err(|_| TransitionViolation::Priority)?;
         }
         (
             PriorityState::HeldBy {
@@ -230,15 +330,44 @@ pub(crate) fn validate_priority_transition(
         ) => {
             let cleanup_composition =
                 crate::contract::is_second_pass_cleanup_composition(before, result);
+            let empty_attack_skip = before.core.position
+                == (TurnPosition::Combat {
+                    step: mtgml_state::CombatStep::DeclareAttackers,
+                })
+                && before
+                    .combat
+                    .as_ref()
+                    .is_some_and(|combat| combat.attackers.is_empty());
+            let empty_combat_end = before.core.position
+                == (TurnPosition::Combat {
+                    step: mtgml_state::CombatStep::EndOfCombat,
+                })
+                && before
+                    .combat
+                    .as_ref()
+                    .is_some_and(|combat| combat.attackers.is_empty());
             let expected_position = if cleanup_composition {
                 TurnPosition::Beginning {
                     step: mtgml_state::BeginningStep::Untap,
                 }
+            } else if empty_attack_skip {
+                TurnPosition::Combat {
+                    step: mtgml_state::CombatStep::EndOfCombat,
+                }
+            } else if empty_combat_end {
+                TurnPosition::PostcombatMain
             } else {
                 crate::turn_structure::temporal_successor(before.core.position)
             };
             if from_player == before.core.active_player
-                || result.events.len() != if cleanup_composition { 6 } else { 3 }
+                || result.events.len()
+                    != if cleanup_composition {
+                        6
+                    } else if empty_combat_end {
+                        4
+                    } else {
+                        3
+                    }
                 || !matches!(
                     result.events[0].event,
                     AuthoritativeRuleEventKind::DecisionCleared { .. }
@@ -247,12 +376,28 @@ pub(crate) fn validate_priority_transition(
                     result.events[1].event,
                     AuthoritativeRuleEventKind::PriorityChanged { .. }
                 )
-                || !matches!(
-                    result.events[2].event,
-                    AuthoritativeRuleEventKind::TurnPositionChanged { from, to }
-                        if from == before.core.position
-                            && to == crate::turn_structure::temporal_successor(from)
-                )
+                || if empty_attack_skip {
+                    !matches!(
+                        result.events[2].event,
+                        AuthoritativeRuleEventKind::EmptyCombatStepsSkipped
+                    )
+                } else if empty_combat_end {
+                    !matches!(
+                        result.events[2].event,
+                        AuthoritativeRuleEventKind::CombatEnded
+                    ) || !matches!(
+                        result.events[3].event,
+                        AuthoritativeRuleEventKind::TurnPositionChanged { from, to }
+                            if from == before.core.position && to == TurnPosition::PostcombatMain
+                    )
+                } else {
+                    !matches!(
+                        result.events[2].event,
+                        AuthoritativeRuleEventKind::TurnPositionChanged { from, to }
+                            if from == before.core.position
+                                && to == crate::turn_structure::temporal_successor(from)
+                    )
+                }
                 || after.core.position != expected_position
                 || after.execution.pending_decision.is_some()
             {
@@ -262,6 +407,180 @@ pub(crate) fn validate_priority_transition(
         _ => return Err(TransitionViolation::Priority),
     }
     Ok(())
+}
+
+fn validate_priority_endpoint(state: &EngineState) -> Result<(), KernelExecutionError> {
+    if matches!(state.core.position, TurnPosition::Combat { .. }) {
+        validate_pass_only_state_with_combat(state, true, true)
+    } else {
+        validate_pass_only_state(state, true)
+    }
+}
+
+pub(crate) fn validate_second_pass_combat_composition(
+    before: &EngineState,
+    result: &TransitionResult,
+) -> Result<bool, TransitionViolation> {
+    let after = &result.next_state;
+    let Some(pending) = before.execution.pending_decision.as_ref() else {
+        return Ok(false);
+    };
+    if !matches!(
+        before.core.priority,
+        PriorityState::HeldBy {
+            player,
+            consecutive_passes: 1
+        } if player != before.core.active_player && pending.request.actor == player
+    ) {
+        return Ok(false);
+    }
+    let entering_beginning_of_combat = before.core.position == TurnPosition::PrecombatMain
+        && after.core.position
+            == (TurnPosition::Combat {
+                step: mtgml_state::CombatStep::BeginningOfCombat,
+            });
+    let entering_attacker_decision = before.core.position
+        == (TurnPosition::Combat {
+            step: mtgml_state::CombatStep::BeginningOfCombat,
+        })
+        && after.core.position
+            == (TurnPosition::Combat {
+                step: mtgml_state::CombatStep::DeclareAttackers,
+            });
+    let entering_end_of_combat = before.core.position
+        == (TurnPosition::Combat {
+            step: mtgml_state::CombatStep::DeclareAttackers,
+        })
+        && after.core.position
+            == (TurnPosition::Combat {
+                step: mtgml_state::CombatStep::EndOfCombat,
+            })
+        && before
+            .combat
+            .as_ref()
+            .is_some_and(|combat| combat.attackers.is_empty())
+        && after.combat == before.combat;
+    let entering_postcombat_main = before.core.position
+        == (TurnPosition::Combat {
+            step: mtgml_state::CombatStep::EndOfCombat,
+        })
+        && after.core.position == TurnPosition::PostcombatMain
+        && before
+            .combat
+            .as_ref()
+            .is_some_and(|combat| combat.attackers.is_empty())
+        && after.combat.is_none();
+    if !entering_beginning_of_combat
+        && !entering_attacker_decision
+        && !entering_end_of_combat
+        && !entering_postcombat_main
+    {
+        return Ok(false);
+    }
+    if result.events.len() == if entering_postcombat_main { 4 } else { 3 }
+        && after.core.priority == PriorityState::None
+        && after.execution.pending_decision.is_none()
+        && before.revision.0.checked_add(1) == Some(after.revision.0)
+    {
+        return Ok(false);
+    }
+    let expected_count = if entering_beginning_of_combat || entering_end_of_combat {
+        5
+    } else if entering_postcombat_main {
+        6
+    } else {
+        4
+    };
+    if result.events.len() != expected_count
+        || before.revision.0.checked_add(2) != Some(after.revision.0)
+        || result.status != mtgml_model::EpisodeStatus::Running
+        || !matches!(
+            &result.events[0].event,
+            AuthoritativeRuleEventKind::DecisionCleared { decision }
+                if *decision == pending.request.decision_id
+        )
+        || !matches!(
+            result.events[1].event,
+            AuthoritativeRuleEventKind::PriorityChanged { from, to }
+                if from == before.core.priority && to == PriorityState::None
+        )
+    {
+        return Err(TransitionViolation::Priority);
+    }
+    if entering_beginning_of_combat || entering_end_of_combat {
+        let expected_progression = if entering_end_of_combat {
+            AuthoritativeRuleEventKind::EmptyCombatStepsSkipped
+        } else {
+            AuthoritativeRuleEventKind::TurnPositionChanged {
+                from: before.core.position,
+                to: crate::turn_structure::temporal_successor(before.core.position),
+            }
+        };
+        if result.events[2].event != expected_progression {
+            return Err(TransitionViolation::Priority);
+        }
+        if !matches!(
+            result.events[3].event,
+            AuthoritativeRuleEventKind::PriorityChanged {
+                from: PriorityState::None,
+                to: PriorityState::HeldBy {
+                    player,
+                    consecutive_passes: 0,
+                }
+            } if player == before.core.active_player
+        ) || !matches!(
+            result.events[4].event,
+            AuthoritativeRuleEventKind::DecisionCreated { decision }
+                if after.execution.pending_decision.as_ref().is_some_and(|request| request.request.decision_id == decision)
+        ) {
+            return Err(TransitionViolation::Priority);
+        }
+        validate_pass_only_state_with_combat(after, true, true)
+            .map_err(|_| TransitionViolation::Priority)?;
+    } else if entering_postcombat_main {
+        if !matches!(
+            result.events[2].event,
+            AuthoritativeRuleEventKind::CombatEnded
+        ) || !matches!(
+            result.events[3].event,
+            AuthoritativeRuleEventKind::TurnPositionChanged { from, to }
+                if from == before.core.position && to == TurnPosition::PostcombatMain
+        ) || !matches!(
+            result.events[4].event,
+            AuthoritativeRuleEventKind::PriorityChanged {
+                from: PriorityState::None,
+                to: PriorityState::HeldBy {
+                    player,
+                    consecutive_passes: 0,
+                }
+            } if player == after.core.active_player
+        ) || !matches!(
+            result.events[5].event,
+            AuthoritativeRuleEventKind::DecisionCreated { decision }
+                if after.execution.pending_decision.as_ref().is_some_and(|request| request.request.decision_id == decision)
+        ) {
+            return Err(TransitionViolation::Priority);
+        }
+        validate_pass_only_state(after, true).map_err(|_| TransitionViolation::Priority)?;
+    } else {
+        if after.core.priority != PriorityState::None
+            || !matches!(
+                result.events[2].event,
+                AuthoritativeRuleEventKind::TurnPositionChanged { from, to }
+                    if from == before.core.position && to == crate::turn_structure::temporal_successor(from)
+            )
+            || !matches!(
+                result.events[3].event,
+                AuthoritativeRuleEventKind::DecisionCreated { decision }
+                    if after.execution.pending_decision.as_ref().is_some_and(|request| request.request.decision_id == decision)
+            )
+        {
+            return Err(TransitionViolation::Priority);
+        }
+        crate::magic::MagicRulesKernel::validate_combat_runtime_state(after, &result.status)
+            .map_err(|_| TransitionViolation::Priority)?;
+    }
+    Ok(true)
 }
 
 pub(crate) fn make_pass_request(

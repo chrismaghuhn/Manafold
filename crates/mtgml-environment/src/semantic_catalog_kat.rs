@@ -7,8 +7,10 @@
 //! persistence functions; drift fails the build.
 
 use crate::semantic_catalog_generated::{
-    magic_s3_a_ordered_sba_0_1_0_rules_contract_id, magic_s3_a_ordered_sba_0_1_0_rules_manifest,
-    magic_s3_a_ordered_sba_0_1_0_semantic_contract_id,
+    magic_combat_attackers_0_1_0_rules_contract_id, magic_combat_attackers_0_1_0_rules_manifest,
+    magic_combat_attackers_0_1_0_semantic_contract_id,
+    magic_combat_attackers_0_1_0_semantic_manifest, magic_s3_a_ordered_sba_0_1_0_rules_contract_id,
+    magic_s3_a_ordered_sba_0_1_0_rules_manifest, magic_s3_a_ordered_sba_0_1_0_semantic_contract_id,
     magic_s3_a_ordered_sba_0_1_0_semantic_manifest,
     magic_s3_c_draw_interaction_0_1_0_rules_contract_id,
     magic_s3_c_draw_interaction_0_1_0_rules_manifest,
@@ -18,6 +20,8 @@ use crate::semantic_catalog_generated::{
     magic_turn_structure_0_1_0_semantic_contract_id, magic_turn_structure_0_1_0_semantic_manifest,
     synthetic_legacy_default_rules_contract_id, synthetic_legacy_default_rules_manifest,
     synthetic_legacy_default_semantic_contract_id, synthetic_legacy_default_semantic_manifest,
+    SEMANTIC_CONTRACT_CATALOG_MAGIC_COMBAT_ATTACKERS_0_1_0_RULES_CONTRACT_HEX,
+    SEMANTIC_CONTRACT_CATALOG_MAGIC_COMBAT_ATTACKERS_0_1_0_SEMANTIC_CONTRACT_HEX,
     SEMANTIC_CONTRACT_CATALOG_MAGIC_S3_A_ORDERED_SBA_0_1_0_RULES_CONTRACT_HEX,
     SEMANTIC_CONTRACT_CATALOG_MAGIC_S3_A_ORDERED_SBA_0_1_0_SEMANTIC_CONTRACT_HEX,
     SEMANTIC_CONTRACT_CATALOG_MAGIC_S3_C_DRAW_INTERACTION_0_1_0_RULES_CONTRACT_HEX,
@@ -150,6 +154,31 @@ fn s3_c_draw_contract_ids_recompute_from_generated_manifest_facts() {
 }
 
 #[test]
+fn combat_contract_ids_recompute_from_generated_manifest_facts() {
+    let rules = mtgml_persistence::semantic_contract_digest::calculate_rules_contract_id_v1(
+        &magic_combat_attackers_0_1_0_rules_manifest(),
+    )
+    .expect("generated combat rules manifest is valid");
+    let semantic = mtgml_persistence::semantic_contract_digest::calculate_semantic_contract_id_v1(
+        &magic_combat_attackers_0_1_0_semantic_manifest(),
+    )
+    .expect("generated combat semantic manifest is valid");
+    assert_eq!(rules, magic_combat_attackers_0_1_0_rules_contract_id());
+    assert_eq!(
+        semantic,
+        magic_combat_attackers_0_1_0_semantic_contract_id()
+    );
+    assert_eq!(
+        rules.as_str(),
+        SEMANTIC_CONTRACT_CATALOG_MAGIC_COMBAT_ATTACKERS_0_1_0_RULES_CONTRACT_HEX
+    );
+    assert_eq!(
+        semantic.as_str(),
+        SEMANTIC_CONTRACT_CATALOG_MAGIC_COMBAT_ATTACKERS_0_1_0_SEMANTIC_CONTRACT_HEX
+    );
+}
+
+#[test]
 fn catalog_constants_are_distinct_typed_domains() {
     assert_eq!(
         mtgml_model::RulesContractIdV1::DOMAIN,
@@ -176,6 +205,8 @@ fn generated_constants_render_canonical_lowercase_hex() {
         SEMANTIC_CONTRACT_CATALOG_MAGIC_S3_A_ORDERED_SBA_0_1_0_SEMANTIC_CONTRACT_HEX,
         SEMANTIC_CONTRACT_CATALOG_MAGIC_S3_C_DRAW_INTERACTION_0_1_0_RULES_CONTRACT_HEX,
         SEMANTIC_CONTRACT_CATALOG_MAGIC_S3_C_DRAW_INTERACTION_0_1_0_SEMANTIC_CONTRACT_HEX,
+        SEMANTIC_CONTRACT_CATALOG_MAGIC_COMBAT_ATTACKERS_0_1_0_RULES_CONTRACT_HEX,
+        SEMANTIC_CONTRACT_CATALOG_MAGIC_COMBAT_ATTACKERS_0_1_0_SEMANTIC_CONTRACT_HEX,
     ];
     for value in values {
         assert_eq!(value.len(), 64, "canonical digest hex is 64 characters");

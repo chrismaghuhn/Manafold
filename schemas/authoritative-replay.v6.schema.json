@@ -40,12 +40,53 @@
         "required": ["manifest"]
       },
       "then": {
-        "properties": {
-          "manifest": {
-            "properties": {
-              "schemas": {
-                "properties": {
-                  "observation_payload_codec": {"const": "magic-m3-observation.v1"}
+        "if": {
+          "properties": {
+            "manifest": {
+              "properties": {
+                "semantic_contract": {
+                  "properties": {
+                    "rules_manifest": {
+                      "properties": {
+                        "capability_closure": {
+                          "contains": {
+                            "properties": {"key": {"const": "rules/combat-phase"}},
+                            "required": ["key"]
+                          }
+                        }
+                      },
+                      "required": ["capability_closure"]
+                    }
+                  },
+                  "required": ["rules_manifest"]
+                }
+              },
+              "required": ["semantic_contract"]
+            }
+          },
+          "required": ["manifest"]
+        },
+        "then": {
+          "properties": {
+            "manifest": {
+              "properties": {
+                "schemas": {
+                  "properties": {
+                    "observation_payload_codec": {"const": "magic-combat-observation.v2"}
+                  }
+                }
+              }
+            }
+          }
+        },
+        "else": {
+          "properties": {
+            "manifest": {
+              "properties": {
+                "schemas": {
+                  "properties": {
+                    "observation_payload_codec": {"const": "magic-m3-observation.v1"}
+                  }
                 }
               }
             }
@@ -86,7 +127,7 @@
     "semantic_contract_material": {"additionalProperties": false, "properties": {"manifest": {"$ref": "#/$defs/semantic_contract_manifest"}, "rules_manifest": {"$ref": "#/$defs/rules_contract_manifest"}, "semantic_contract_id": {"$ref": "#/$defs/contract_id"}}, "required": ["semantic_contract_id", "manifest", "rules_manifest"], "type": "object"},
     "execution_identity": {"additionalProperties": false, "properties": {"program_kind": {"enum": ["synthetic_rules_compat", "magic_rules"]}, "semantic_contract_id": {"$ref": "#/$defs/contract_id"}}, "required": ["program_kind", "semantic_contract_id"], "type": "object"},
     "identity": {"additionalProperties": false, "properties": {"checkpoint_codec_identity": {"$ref": "#/$defs/codec_identity"}, "checkpoint_digest": {"$ref": "#/$defs/digest"}, "environment_limit_counters": {"$ref": "#/$defs/counters"}, "episode_status": {"$ref": "#/$defs/status"}, "execution_identity": {"$ref": "#/$defs/execution_identity"}, "full_state_digest": {"$ref": "#/$defs/digest"}, "state_revision": {"$ref": "#/$defs/uint"}}, "required": ["state_revision", "full_state_digest", "episode_status", "environment_limit_counters", "checkpoint_codec_identity", "checkpoint_digest", "execution_identity"], "type": "object"},
-    "schemas": {"additionalProperties": false, "properties": {"decision": {"const": "player-decision-request.v2"}, "decision_response": {"const": "decision-response.v2"}, "information_state": {"const": "information-state-envelope.v2"}, "observation": {"const": "observation-envelope.v1"}, "observation_payload_codec": {"enum": ["synthetic-m3-observation.v1", "magic-m3-observation.v1"]}, "observed_event": {"const": "observed-event-envelope.v2"}, "player_step": {"const": "player-step.v2"}, "replay_step": {"const": "replay-step.v6"}}, "required": ["observation", "observation_payload_codec", "information_state", "decision", "decision_response", "observed_event", "player_step", "replay_step"], "type": "object"},
+    "schemas": {"additionalProperties": false, "properties": {"decision": {"const": "player-decision-request.v2"}, "decision_response": {"const": "decision-response.v2"}, "information_state": {"const": "information-state-envelope.v2"}, "observation": {"const": "observation-envelope.v1"}, "observation_payload_codec": {"enum": ["synthetic-m3-observation.v1", "magic-m3-observation.v1", "magic-combat-observation.v2"]}, "observed_event": {"const": "observed-event-envelope.v2"}, "player_step": {"const": "player-step.v2"}, "replay_step": {"const": "replay-step.v6"}}, "required": ["observation", "observation_payload_codec", "information_state", "decision", "decision_response", "observed_event", "player_step", "replay_step"], "type": "object"},
     "kernel": {"additionalProperties": false, "properties": {"build_profile": {"minLength": 1, "type": "string"}, "implementation_id": {"minLength": 1, "type": "string"}, "semantic_version": {"minLength": 1, "type": "string"}}, "required": ["implementation_id", "semantic_version", "build_profile"], "type": "object"},
     "randomness": {"additionalProperties": false, "properties": {"contract_id": {"const": "mtgml.rng.v1"}, "root_seed_hex": {"$ref": "#/$defs/digest"}}, "required": ["contract_id", "root_seed_hex"], "type": "object"},
     "deck": {"additionalProperties": false, "properties": {"deck_id": {"minLength": 1, "type": "string"}, "digest": {"$ref": "#/$defs/digest"}, "player": {"$ref": "#/$defs/uint"}}, "required": ["player", "deck_id", "digest"], "type": "object"},

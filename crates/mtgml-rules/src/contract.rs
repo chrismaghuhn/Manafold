@@ -1437,6 +1437,13 @@ fn validate_accepted_progression(
             AuthoritativeRuleEventKind::PriorityChanged { .. }
         )
     });
+    let has_combat_application = result.events.iter().any(|event| {
+        matches!(
+            event.event,
+            AuthoritativeRuleEventKind::AttackersDeclared { .. }
+                | AuthoritativeRuleEventKind::CombatEnded
+        )
+    });
     if (before.core.active_player != after.core.active_player
         || before.core.turn_number != after.core.turn_number)
         && !is_cleanup_boundary
@@ -1444,7 +1451,7 @@ fn validate_accepted_progression(
         || (before.core.priority != after.core.priority && !has_priority_application)
         || before.core.players.len() != after.core.players.len()
         || (has_lost_changed && !has_sba_application)
-        || (before.combat != after.combat && !has_sba_application)
+        || (before.combat != after.combat && !has_sba_application && !has_combat_application)
     {
         return Err(TransitionViolation::UnexplainedMutation);
     }
@@ -2072,6 +2079,95 @@ pub(crate) fn is_second_pass_cleanup_composition(
         && matches!(result.status, EpisodeStatus::Running)
 }
 
+fn is_attacker_declaration_priority_composition(
+    before: &EngineState,
+    result: &TransitionResult,
+) -> bool {
+    use crate::events::AuthoritativeRuleEventKind as Event;
+    let after = &result.next_state;
+    let Some(pending) = before.execution.pending_decision.as_ref() else {
+        return false;
+    };
+    let Some(after_pending) = after.execution.pending_decision.as_ref() else {
+        return false;
+    };
+    if before.core.position
+        != (TurnPosition::Combat {
+            step: mtgml_state::CombatStep::DeclareAttackers,
+        })
+        || before.core.priority != mtgml_state::PriorityState::None
+        || !matches!(
+            pending.request.decision,
+            mtgml_decision::DecisionDomainV2::ChooseMany { .. }
+        )
+        || after.core.position != before.core.position
+        || !matches!(
+            after.core.priority,
+            mtgml_state::PriorityState::HeldBy {
+                player,
+                consecutive_passes: 0
+            } if player == after.core.active_player
+        )
+        || after_pending.request.actor != after.core.active_player
+        || after_pending.request.decision != mtgml_decision::DecisionDomainV2::ChooseOne
+        || before.revision.0.checked_add(2) != Some(after.revision.0)
+        || !matches!(result.status, EpisodeStatus::Running)
+    {
+        return false;
+    }
+    let Some(Event::DecisionCleared { decision }) = result.events.first().map(|event| &event.event)
+    else {
+        return false;
+    };
+    if *decision != pending.request.decision_id {
+        return false;
+    }
+    let Some(declared_attackers) = result
+        .events
+        .iter()
+        .position(|event| matches!(event.event, Event::AttackersDeclared { .. }))
+    else {
+        return false;
+    };
+    if declared_attackers != 1 {
+        return false;
+    }
+    let Some(Event::AttackersDeclared { attackers, .. }) = result
+        .events
+        .get(declared_attackers)
+        .map(|event| &event.event)
+    else {
+        return false;
+    };
+    let tap_end = declared_attackers + 1 + attackers.len();
+    if result.events[declared_attackers + 1..tap_end]
+        .iter()
+        .zip(attackers)
+        .any(|(event, object)| {
+            !matches!(event.event, Event::ObjectTapped { object: tapped, from: false, to: true } if tapped == *object)
+        })
+        || result.events.len() != tap_end + 2
+        || !matches!(
+            result.events[tap_end].event,
+            Event::PriorityChanged {
+                from: mtgml_state::PriorityState::None,
+                to: mtgml_state::PriorityState::HeldBy {
+                    player,
+                    consecutive_passes: 0
+                }
+            } if player == after.core.active_player
+        )
+        || !matches!(
+            result.events[tap_end + 1].event,
+            Event::DecisionCreated { decision }
+                if decision == after_pending.request.decision_id
+        )
+    {
+        return false;
+    }
+    true
+}
+
 pub fn validate_transition_contract(
     before: &EngineState,
     result: &TransitionResult,
@@ -2113,9 +2209,19 @@ pub fn validate_transition_contract(
                     mtgml_decision::DecisionDomainV2::Order { .. }
                 )
             });
+        let composed_combat =
+            crate::basic_priority::validate_second_pass_combat_composition(before, result)?;
+        let composed_attacker_declaration =
+            is_attacker_declaration_priority_composition(before, result);
         let revision_advance = if composed_draw && draw_order {
             3
-        } else if composed_sba || composed_cleanup || composed_draw || direct_draw && draw_order {
+        } else if composed_sba
+            || composed_cleanup
+            || composed_draw
+            || direct_draw && draw_order
+            || composed_combat
+            || composed_attacker_declaration
+        {
             2
         } else {
             1
@@ -2174,6 +2280,10 @@ pub fn validate_transition_contract(
     let composed_sba = is_final_sba_order_priority_composition(before, result);
     let composed_cleanup = is_second_pass_cleanup_composition(before, result);
     let composed_draw = is_upkeep_pass_draw_composition(before, result);
+    let composed_combat =
+        crate::basic_priority::validate_second_pass_combat_composition(before, result)?;
+    let composed_attacker_declaration =
+        is_attacker_declaration_priority_composition(before, result);
     let direct_draw = is_draw_s2_priority_composition(before, result);
     let draw_order = result
         .next_state
@@ -2231,9 +2341,42 @@ pub fn validate_transition_contract(
             } else {
                 revision_one
             }
-        } else if composed_sba || composed_cleanup {
+        } else if composed_sba
+            || composed_cleanup
+            || composed_combat
+            || composed_attacker_declaration
+        {
             let split = if composed_cleanup {
                 3u64
+            } else if composed_combat {
+                if before.core.position
+                    == (TurnPosition::Combat {
+                        step: mtgml_state::CombatStep::EndOfCombat,
+                    })
+                {
+                    4u64
+                } else {
+                    3u64
+                }
+            } else if composed_attacker_declaration {
+                let declared_index = result
+                    .events
+                    .iter()
+                    .position(|event| {
+                        matches!(
+                            event.event,
+                            AuthoritativeRuleEventKind::AttackersDeclared { .. }
+                        )
+                    })
+                    .ok_or(TransitionViolation::EventIdentity)?;
+                let declared_count = match &result.events[declared_index].event {
+                    AuthoritativeRuleEventKind::AttackersDeclared { attackers, .. } => {
+                        attackers.len()
+                    }
+                    _ => return Err(TransitionViolation::EventIdentity),
+                };
+                u64::try_from(declared_index + 1 + declared_count)
+                    .map_err(|_| TransitionViolation::EventIdentity)?
             } else {
                 event_len.saturating_sub(2)
             };

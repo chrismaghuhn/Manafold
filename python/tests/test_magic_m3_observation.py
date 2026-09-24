@@ -5,13 +5,24 @@ import unittest
 from pathlib import Path
 
 from mtgml.errors import WireError
-from mtgml.observation import MAGIC_OBSERVATION_SCHEMA_V1
+from mtgml.observation import MAGIC_OBSERVATION_SCHEMA_V1, MAGIC_OBSERVATION_SCHEMA_V2
 from mtgml.wire import decode_canonical, encode_canonical
 
 ROOT = Path(__file__).resolve().parents[1]
 
 
 class MagicObservationTests(unittest.TestCase):
+    def test_combat_payload_roundtrips_perspective_local_participation(self) -> None:
+        payload = (
+            (ROOT / ".." / "wire" / "golden" / "magic-combat-observation.v2.json")
+            .read_bytes()
+            .strip()
+        )
+        value = decode_canonical(MAGIC_OBSERVATION_SCHEMA_V2, payload)
+        self.assertEqual(encode_canonical(value), payload)
+        self.assertEqual(value.combat.attackers, (7,))
+        self.assertEqual(value.combat.defending_player, 2)
+
     def test_golden_magic_payloads_roundtrip_and_keep_perspective_local_ids(self) -> None:
         names = (
             "magic-m3-observation-null.json",

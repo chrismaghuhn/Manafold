@@ -21,6 +21,12 @@ from ._knowledge import (
     PlayerKnownLocationV1,
     PlayerKnownObjectV1,
 )
+from ._magic_combat_observation import (
+    MAGIC_OBSERVATION_SCHEMA_V2,
+    MagicCombatBlockerAssignmentV2,
+    MagicCombatParticipationV2,
+    MagicObservationV2,
+)
 from ._magic_observation import (
     MAGIC_OBSERVATION_SCHEMA_V1,
     MagicCompletedOrder,
@@ -71,6 +77,7 @@ __all__ = [
     "INFORMATION_STATE_SCHEMA",
     "INFORMATION_STATE_SCHEMA_V2",
     "MAGIC_OBSERVATION_SCHEMA_V1",
+    "MAGIC_OBSERVATION_SCHEMA_V2",
     "OBSERVATION_SCHEMA",
     "OBSERVED_EVENT_KINDS",
     "OBSERVED_EVENT_SCHEMA_V2",
@@ -87,8 +94,11 @@ __all__ = [
     "EpisodeStatus",
     "InformationStateDigestInputV2",
     "InformationStateEnvelope",
+    "MagicCombatBlockerAssignmentV2",
+    "MagicCombatParticipationV2",
     "MagicCompletedOrder",
     "MagicObservation",
+    "MagicObservationV2",
     "MagicPendingSbaOrdering",
     "ObservationEnvelope",
     "ObservedEventEnvelope",

@@ -29,6 +29,7 @@ from .persistence import (
 
 SYNTHETIC_OBSERVATION_CODEC = "synthetic-m3-observation.v1"
 MAGIC_OBSERVATION_CODEC = "magic-m3-observation.v1"
+COMBAT_OBSERVATION_CODEC = "magic-combat-observation.v2"
 SBA_CAPABILITY_KEY = "rules/state-based-actions-combat"
 SBA_CAPABILITY_VERSION = "0.1.0"
 
@@ -264,8 +265,22 @@ class ReplayManifestV6:
                 for item in closure
             )
         )
+        combat_closure = [
+            {"key": "rules/basic-priority", "version": "0.1.0"},
+            {"key": "rules/combat-phase", "version": "0.1.0"},
+            {"key": "rules/declare-attackers", "version": "0.1.0"},
+            {"key": "rules/draw-card", "version": "0.1.0"},
+            {"key": "rules/state-based-actions-combat", "version": "0.1.0"},
+            {"key": "rules/turn-structure", "version": "0.1.0"},
+            {"key": "rules/zone-incarnation", "version": "0.1.0"},
+        ]
+        exact_combat_profile = closure == combat_closure
         expected_codec = (
-            MAGIC_OBSERVATION_CODEC if magic_semantics_admitted else SYNTHETIC_OBSERVATION_CODEC
+            COMBAT_OBSERVATION_CODEC
+            if exact_combat_profile
+            else MAGIC_OBSERVATION_CODEC
+            if magic_semantics_admitted
+            else SYNTHETIC_OBSERVATION_CODEC
         )
         if self.schemas.observation_payload_codec != expected_codec:
             raise WireError(
@@ -477,9 +492,48 @@ class AuthoritativeReplayV6:
                 ):
                     raise WireError("semantic.replay", "rejected step mutated identity")
             else:
-                if step.state_revision_after != previous.state_revision + 1:
+                closure = self.manifest.semantic_contract.rules_manifest.get("capability_closure")
+                closure_pairs = (
+                    [(item.get("key"), item.get("version")) for item in closure]
+                    if isinstance(closure, list) and all(isinstance(item, dict) for item in closure)
+                    else []
+                )
+                priority_closure = [
+                    ("rules/basic-priority", "0.1.0"),
+                    ("rules/state-based-actions-combat", "0.1.0"),
+                    ("rules/turn-structure", "0.1.0"),
+                    ("rules/zone-incarnation", "0.1.0"),
+                ]
+                draw_closure = [
+                    ("rules/basic-priority", "0.1.0"),
+                    ("rules/draw-card", "0.1.0"),
+                    ("rules/state-based-actions-combat", "0.1.0"),
+                    ("rules/turn-structure", "0.1.0"),
+                    ("rules/zone-incarnation", "0.1.0"),
+                ]
+                combat_closure = [
+                    ("rules/basic-priority", "0.1.0"),
+                    ("rules/combat-phase", "0.1.0"),
+                    ("rules/declare-attackers", "0.1.0"),
+                    ("rules/draw-card", "0.1.0"),
+                    ("rules/state-based-actions-combat", "0.1.0"),
+                    ("rules/turn-structure", "0.1.0"),
+                    ("rules/zone-incarnation", "0.1.0"),
+                ]
+                maximum_advance = (
+                    3
+                    if closure_pairs == draw_closure
+                    else 2
+                    if closure_pairs in (priority_closure, combat_closure)
+                    else 1
+                )
+                if (
+                    not previous.state_revision
+                    < step.state_revision_after
+                    <= previous.state_revision + maximum_advance
+                ):
                     raise WireError(
-                        "semantic.replay", "accepted step did not advance revision contiguously"
+                        "semantic.replay", "accepted step revision exceeds its exact contract bound"
                     )
                 after = step.environment_limit_counters_after
                 before = previous.environment_limit_counters

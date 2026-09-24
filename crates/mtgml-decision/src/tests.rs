@@ -296,6 +296,30 @@ fn closed_family_domain_boundaries_matrix() {
 }
 
 #[test]
+fn choose_many_zero_to_zero_with_no_candidates_requires_explicit_empty_answer() {
+    let request = PlayerDecisionRequestV2 {
+        schema_version: PLAYER_DECISION_REQUEST_V2_SCHEMA.to_owned(),
+        player_decision_id: PlayerDecisionIdV1(1),
+        state_revision: StateRevision(0),
+        actor: PlayerId(1),
+        visibility: DecisionVisibility::ActingPlayerOnly,
+        decision: DecisionDomainV2::ChooseMany {
+            minimum: 0,
+            maximum: 0,
+        },
+        candidates: vec![],
+    };
+
+    assert!(request.validate().is_ok());
+    assert_eq!(
+        request.answer(&DecisionAnswerV2::SelectMany {
+            candidate_ids: vec![],
+        }),
+        Ok(())
+    );
+}
+
+#[test]
 fn candidate_id_overflow_is_rejected() {
     let response = r#"{
             "schema_version":"decision-response.v2",

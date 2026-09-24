@@ -30,7 +30,9 @@ use crate::endpoint::PlayerEndpointError;
 use crate::errors::{ControllerError, EnvironmentCommitError};
 use crate::semantic_catalog::{admit_restore, RuntimeSemanticCatalog};
 use crate::semantic_catalog_generated::{
-    magic_s3_a_ordered_sba_0_1_0_rules_manifest, magic_s3_a_ordered_sba_0_1_0_semantic_contract_id,
+    magic_combat_attackers_0_1_0_rules_manifest, magic_combat_attackers_0_1_0_semantic_contract_id,
+    magic_combat_attackers_0_1_0_semantic_manifest, magic_s3_a_ordered_sba_0_1_0_rules_manifest,
+    magic_s3_a_ordered_sba_0_1_0_semantic_contract_id,
     magic_s3_a_ordered_sba_0_1_0_semantic_manifest, magic_s3_b_basic_priority_0_1_0_rules_manifest,
     magic_s3_b_basic_priority_0_1_0_semantic_contract_id,
     magic_s3_b_basic_priority_0_1_0_semantic_manifest,
@@ -102,6 +104,13 @@ fn magic_draw_execution_identity() -> ExecutionIdentityV1 {
     }
 }
 
+fn magic_combat_attackers_execution_identity() -> ExecutionIdentityV1 {
+    ExecutionIdentityV1 {
+        program_kind: ExecutionProgramV1::MagicRules,
+        semantic_contract_id: magic_combat_attackers_0_1_0_semantic_contract_id(),
+    }
+}
+
 fn semantic_material(
     id: &SemanticContractIdV1,
 ) -> Result<SemanticContractMaterialV5, ControllerError> {
@@ -133,6 +142,13 @@ fn semantic_material(
             rules_manifest: magic_s3_c_draw_interaction_0_1_0_rules_manifest(),
         });
     }
+    if *id == magic_combat_attackers_execution_identity().semantic_contract_id {
+        return Ok(SemanticContractMaterialV5 {
+            semantic_contract_id: id.clone(),
+            manifest: magic_combat_attackers_0_1_0_semantic_manifest(),
+            rules_manifest: magic_combat_attackers_0_1_0_rules_manifest(),
+        });
+    }
     Err(ControllerError::SemanticContractUnsupported)
 }
 
@@ -162,13 +178,27 @@ fn magic_v6_schema_versions() -> ReplaySchemaVersionsV6 {
     }
 }
 
+fn combat_v6_schema_versions() -> ReplaySchemaVersionsV6 {
+    ReplaySchemaVersionsV6 {
+        observation: OBSERVATION_SCHEMA.into(),
+        observation_payload_codec: mtgml_observation::MAGIC_OBSERVATION_SCHEMA_V2.into(),
+        information_state: INFORMATION_STATE_SCHEMA_V2.into(),
+        decision: mtgml_decision::PLAYER_DECISION_REQUEST_V2_SCHEMA.into(),
+        decision_response: mtgml_decision::DECISION_RESPONSE_V2_SCHEMA.into(),
+        observed_event: OBSERVED_EVENT_SCHEMA_V2.into(),
+        player_step: PLAYER_STEP_SCHEMA_V2.into(),
+        replay_step: REPLAY_STEP_SCHEMA_V6.into(),
+    }
+}
+
 fn validate_reference_replay_config(
     config: &ReferenceEnvironmentReplayConfig,
 ) -> Result<(), ControllerError> {
     if config.scenario_id.is_empty()
         || config.rules_snapshot.is_empty()
         || (config.schemas != current_v6_schema_versions()
-            && config.schemas != magic_v6_schema_versions())
+            && config.schemas != magic_v6_schema_versions()
+            && config.schemas != combat_v6_schema_versions())
     {
         return Err(ControllerError::ReplayIdentityMismatch);
     }
@@ -182,9 +212,12 @@ pub(crate) fn build_reference_manifest(
     validate_reference_replay_config(config)?;
     let expected_schemas = if checkpoint.execution_identity == magic_execution_identity() {
         current_v6_schema_versions()
+    } else if checkpoint.execution_identity == magic_combat_attackers_execution_identity() {
+        combat_v6_schema_versions()
     } else if checkpoint.execution_identity == magic_state_based_actions_execution_identity()
         || checkpoint.execution_identity == magic_basic_priority_execution_identity()
         || checkpoint.execution_identity == magic_draw_execution_identity()
+        || checkpoint.execution_identity == magic_combat_attackers_execution_identity()
     {
         magic_v6_schema_versions()
     } else {
@@ -373,6 +406,7 @@ impl ReferenceEnvironmentBackend {
             && config.execution_identity != magic_state_based_actions_execution_identity()
             && config.execution_identity != magic_basic_priority_execution_identity()
             && config.execution_identity != magic_draw_execution_identity()
+            && config.execution_identity != magic_combat_attackers_execution_identity()
         {
             return Err(ControllerError::ProgramAuthorityMismatch);
         }
@@ -400,6 +434,7 @@ impl ReferenceEnvironmentBackend {
             && checkpoint.execution_identity != magic_state_based_actions_execution_identity()
             && checkpoint.execution_identity != magic_basic_priority_execution_identity()
             && checkpoint.execution_identity != magic_draw_execution_identity()
+            && checkpoint.execution_identity != magic_combat_attackers_execution_identity()
         {
             return Err(ControllerError::ProgramAuthorityMismatch);
         }
@@ -441,6 +476,10 @@ impl ReferenceEnvironmentBackend {
 
     pub fn magic_draw_execution_identity() -> ExecutionIdentityV1 {
         magic_draw_execution_identity()
+    }
+
+    pub fn magic_combat_attackers_execution_identity() -> ExecutionIdentityV1 {
+        magic_combat_attackers_execution_identity()
     }
 
     fn projection_profile(
@@ -593,12 +632,15 @@ impl EnvironmentBackend for ReferenceEnvironmentBackend {
         response: DecisionResponseV2,
     ) -> Result<PlayerStepV2, PlayerEndpointError> {
         self.require_player(perspective)?;
-        let s3_magic = self.execution_identity == magic_state_based_actions_execution_identity()
+        let bounded_magic_profile = self.execution_identity
+            == magic_state_based_actions_execution_identity()
             || self.execution_identity == magic_basic_priority_execution_identity()
             || self.execution_identity == magic_draw_execution_identity();
+        let bounded_magic_profile = bounded_magic_profile
+            || self.execution_identity == magic_combat_attackers_execution_identity();
         let code = if !matches!(self.status, EpisodeStatus::Running) {
             Some(mtgml_observation::PlayerSubmissionCodeV1::EpisodeClosed)
-        } else if !s3_magic {
+        } else if !bounded_magic_profile {
             Some(mtgml_observation::PlayerSubmissionCodeV1::UnavailableDecision)
         } else if let Some(pending) = self.state.execution.pending_decision.as_ref() {
             if pending.request.actor != perspective {

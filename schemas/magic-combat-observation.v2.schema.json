@@ -1,0 +1,231 @@
+{
+  "$id": "magic-combat-observation.v2.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "active_player": {
+      "pattern": "^(0|[1-9][0-9]*)$",
+      "type": "string"
+    },
+    "combat": {
+      "oneOf": [
+        { "type": "null" },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "defending_player": { "pattern": "^(0|[1-9][0-9]*)$", "type": "string" },
+            "attackers": {
+              "items": { "pattern": "^(0|[1-9][0-9]*)$", "type": "string" },
+              "type": "array"
+            },
+            "blockers": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "attacker": { "pattern": "^(0|[1-9][0-9]*)$", "type": "string" },
+                  "blocker": {
+                    "oneOf": [
+                      { "type": "null" },
+                      { "pattern": "^(0|[1-9][0-9]*)$", "type": "string" }
+                    ]
+                  }
+                },
+                "required": ["attacker", "blocker"],
+                "type": "object"
+              },
+              "type": "array"
+            }
+          },
+          "required": ["defending_player", "attackers", "blockers"],
+          "type": "object"
+        }
+      ]
+    },
+    "pending_sba_ordering": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "completed_orders": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "ordered_objects": {
+                    "items": {
+                      "pattern": "^(0|[1-9][0-9]*)$",
+                      "type": "string"
+                    },
+                    "minItems": 2,
+                    "type": "array"
+                  },
+                  "owner": {
+                    "pattern": "^(0|[1-9][0-9]*)$",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "owner",
+                  "ordered_objects"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "next_order_owner": {
+              "pattern": "^(0|[1-9][0-9]*)$",
+              "type": "string"
+            }
+          },
+          "required": [
+            "completed_orders",
+            "next_order_owner"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "priority": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "none"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "held_by"
+            },
+            "player": {
+              "pattern": "^(0|[1-9][0-9]*)$",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "player"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "schema_version": {
+      "const": "magic-combat-observation.v2"
+    },
+    "turn_number": {
+      "pattern": "^(0|[1-9][0-9]*)$",
+      "type": "string"
+    },
+    "turn_position": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "beginning"
+            },
+            "step": {
+              "enum": [
+                "untap",
+                "upkeep",
+                "draw"
+              ]
+            }
+          },
+          "required": [
+            "kind",
+            "step"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "precombat_main"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "combat"
+            },
+            "step": {
+              "enum": [
+                "beginning_of_combat",
+                "declare_attackers",
+                "declare_blockers",
+                "combat_damage",
+                "end_of_combat"
+              ]
+            }
+          },
+          "required": [
+            "kind",
+            "step"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "postcombat_main"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "ending"
+            },
+            "step": {
+              "enum": [
+                "end_step",
+                "cleanup"
+              ]
+            }
+          },
+          "required": [
+            "kind",
+            "step"
+          ],
+          "type": "object"
+        }
+      ]
+    }
+  },
+  "required": [
+    "schema_version",
+    "active_player",
+    "turn_number",
+    "turn_position",
+    "priority",
+    "pending_sba_ordering",
+    "combat"
+  ],
+  "title": "MagicCombatObservation v2",
+  "type": "object"
+}

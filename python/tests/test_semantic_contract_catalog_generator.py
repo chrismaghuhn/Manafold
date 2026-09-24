@@ -59,8 +59,8 @@ class SourceOfTruthTests(unittest.TestCase):
         self.assertIsInstance(entries, list)
         self.assertEqual(
             len(entries),
-            5,
-            "production catalog must contain Synthetic, S1, S3.A, S3.B, and S3.C",
+            6,
+            "production catalog must contain Synthetic, S1, S3.A, S3.B, S3.C, and combat",
         )
         # Entry 0: synthetic_legacy_default
         syn = entries[0]
@@ -129,6 +129,23 @@ class SourceOfTruthTests(unittest.TestCase):
         )
         self.assertIsNone(s3c["format_contract_id"])
         self.assertIsNone(s3c["content_contract_id"])
+        combat = entries[5]
+        self.assertEqual(combat["entry_id"], "magic_combat_attackers_0_1_0")
+        self.assertEqual(combat["rules_authority"], ts["rules_authority"])
+        self.assertEqual(
+            combat["capability_closure"],
+            [
+                {"key": "rules/basic-priority", "version": "0.1.0"},
+                {"key": "rules/combat-phase", "version": "0.1.0"},
+                {"key": "rules/declare-attackers", "version": "0.1.0"},
+                {"key": "rules/draw-card", "version": "0.1.0"},
+                {"key": "rules/state-based-actions-combat", "version": "0.1.0"},
+                {"key": "rules/turn-structure", "version": "0.1.0"},
+                {"key": "rules/zone-incarnation", "version": "0.1.0"},
+            ],
+        )
+        self.assertIsNone(combat["format_contract_id"])
+        self.assertIsNone(combat["content_contract_id"])
 
     def test_source_contains_no_hand_authored_identity(self) -> None:
         # BLOCKER regression: derived IDs are GENERATED, never hand-authored.

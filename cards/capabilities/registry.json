@@ -88,11 +88,19 @@
         "rules/basic-priority",
         "rules/turn-structure"
       ],
-      "implementation_paths": [],
+      "implementation_paths": [
+        "crates/mtgml-rules/src/basic_priority.rs",
+        "crates/mtgml-rules/src/magic.rs",
+        "crates/mtgml-rules/src/semantic_cursor.rs",
+        "crates/mtgml-environment/src/reference.rs",
+        "crates/mtgml-environment/src/player_projection.rs",
+        "crates/mtgml-observation/src/magic_observation.rs",
+        "crates/mtgml-replay/src/v6.rs"
+      ],
       "information_risk": "medium",
       "key": "rules/combat-phase",
       "lifecycle": "specified",
-      "notes": "Specified only; no implementation, conformance, benchmark, coverage, or certification evidence is claimed.",
+      "notes": "Bounded combat phase progression implementation candidate is present; independent exact-head review pending. Source-less Battlefield states remain rejected by the accepted Foundation V2 closure. Lifecycle remains specified; coverage and certification are not claimed.",
       "owners": [
         "combat"
       ],
@@ -112,11 +120,21 @@
       "dependencies": [
         "rules/combat-phase"
       ],
-      "implementation_paths": [],
+      "implementation_paths": [
+        "crates/mtgml-rules/src/magic.rs",
+        "crates/mtgml-rules/src/events.rs",
+        "crates/mtgml-rules/src/semantic_cursor.rs",
+        "crates/mtgml-decision/src/v2.rs",
+        "crates/mtgml-environment/src/reference.rs",
+        "crates/mtgml-environment/src/player_projection.rs",
+        "crates/mtgml-observation/src/magic_observation.rs",
+        "python/src/mtgml/_magic_combat_observation.py",
+        "crates/mtgml-replay/src/v6.rs"
+      ],
       "information_risk": "high",
       "key": "rules/declare-attackers",
       "lifecycle": "specified",
-      "notes": "Specified only; no implementation, conformance, benchmark, coverage, or certification evidence is claimed.",
+      "notes": "Bounded attacker decision and commitment implementation candidate is present; independent exact-head review pending. Source-less Battlefield states remain rejected by the accepted Foundation V2 closure. Lifecycle remains specified; coverage and certification are not claimed.",
       "owners": [
         "combat"
       ],

@@ -26,9 +26,10 @@
 - **M3 Block 1:** bounded S3.A is accepted / merged
 - **M3 Block 2:** Basic Priority + Reference response integration is accepted / merged
 - **M3 Block 3:** Draw + S2 replay/interaction implementation candidate complete; exact-head review pending
+- **M3 Block 4:** Combat Phase + Declare Attackers implementation candidate complete on `chris/combat-phase-declare-attackers-20260924`, based on `488f5f47d2031aa9e93adf36bfb54e9427f57916`; independent exact-head review pending. Source-less Battlefield states remain rejected by Foundation V2 and have a separate fail-closed witness. Capability lifecycles remain `specified`.
 - **M3 hardening acceptance:** PR #184 merged and accepted ADR 0054/Foundation V2; T0 was reauthorized under Issue #178, implemented by merged PRs #189/#190/#191, and finalized as COMPLETE / FROZEN
 - **Capability lifecycle:** 9 Foundation capabilities are `specified`, 1 is `implemented`, 1 is `covered`, and 0 are `certified`
-- **Current boundary:** S2 remains `IMPLEMENTED / NOT COVERED`; Block 3 supplies a Draw × S2 Replay V6 candidate witness but does not close all S2 coverage gates. Combat and later blocks have not started. Certification and card/deck/format/Commander/playability support are not claimed.
+- **Current boundary:** S2 remains `IMPLEMENTED / NOT COVERED`; Block 3 supplies a Draw × S2 Replay V6 candidate witness but does not close all S2 coverage gates. Block 4 supplies a Combat Phase + Declare Attackers implementation candidate; Declare Blockers and later blocks have not started. Certification and card/deck/format/Commander/playability support are not claimed.
 - **Project type:** independent greenfield MTG/ML rules and simulation engine
 - **Playable engine:** no
 - **Real Magic semantics:** S1 is covered; S2 is implemented / not covered; bounded S3.A and S3.B implementations are accepted / merged under distinct production identities, while their capability lifecycle claims remain `specified` pending separate evidence review

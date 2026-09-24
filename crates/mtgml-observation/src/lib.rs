@@ -22,7 +22,9 @@ pub use knowledge::{
     PlayerKnownLocationV1, PlayerKnownObjectV1,
 };
 pub use magic_observation::{
-    MagicCompletedOrder, MagicObservation, MagicPendingSbaOrdering, MAGIC_OBSERVATION_SCHEMA_V1,
+    MagicCombatBlockerAssignmentV2, MagicCombatParticipationV2, MagicCompletedOrder,
+    MagicObservation, MagicObservationV2, MagicPendingSbaOrdering, MAGIC_OBSERVATION_SCHEMA_V1,
+    MAGIC_OBSERVATION_SCHEMA_V2,
 };
 pub use observation::ObservationEnvelope;
 pub use observed_event::{
